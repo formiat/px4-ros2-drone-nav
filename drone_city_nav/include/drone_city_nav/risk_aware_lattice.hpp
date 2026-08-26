@@ -96,6 +96,7 @@ struct RiskAwareLatticeConfig {
   double receding_goal_distance_m{60.0};
   double critical_distance_m{1.0};
   double preferred_distance_m{6.0};
+  bool reject_invalid_esdf{false};
   double planning_exposure_tie_break_per_m{1.0};
   double critical_exposure_tie_break_per_m{10.0};
   double turn_cost{0.5};

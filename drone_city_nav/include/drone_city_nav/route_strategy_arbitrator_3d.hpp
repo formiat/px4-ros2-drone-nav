@@ -20,6 +20,7 @@ enum class RouteStrategyKind3D : std::uint8_t {
 };
 
 struct RouteStrategyArbitration3DConfig {
+  bool leases_enabled{false};
   double topology_mission_lease_budget_m{160.0};
   double observation_frontier_lease_budget_m{80.0};
   double topological_backtrack_lease_budget_m{120.0};

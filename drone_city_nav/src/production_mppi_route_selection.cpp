@@ -96,6 +96,7 @@ evidenceWorld(const ProductionMppiPreparedEsdf& world,
                                         ? latest_raw_world->version.revision
                                         : world.source_raw_revision,
       .require_known_free_space = lattice_config.require_known_free_space,
+      .reject_invalid_esdf = lattice_config.reject_invalid_esdf,
   };
 }
 

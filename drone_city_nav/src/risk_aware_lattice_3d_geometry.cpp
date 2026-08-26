@@ -98,9 +98,12 @@ Lattice3DEdgeEvaluation evaluateLattice3DEdge(const mppi::EsdfGrid& grid,
         }
         break;
       case SweptFootprintStatus::kInvalidEsdf:
-        return Lattice3DEdgeEvaluation{.status =
-                                           Lattice3DEdgeEvaluationStatus::kInvalidEsdf,
-                                       .evidence = footprint.evidence};
+        if (config.reject_invalid_esdf) {
+          return Lattice3DEdgeEvaluation{
+              .status = Lattice3DEdgeEvaluationStatus::kInvalidEsdf,
+              .evidence = footprint.evidence};
+        }
+        break;
       case SweptFootprintStatus::kRawCollision:
         return Lattice3DEdgeEvaluation{.status =
                                            Lattice3DEdgeEvaluationStatus::kRawCollision,

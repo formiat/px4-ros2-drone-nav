@@ -79,6 +79,10 @@ SegmentEvaluation evaluateLatticeSegment(const mppi::EsdfGrid& grid,
         result.rejection_reason = SegmentEvaluation::RejectionReason::kOutsideGrid;
         break;
       case SweptFootprintStatus::kInvalidEsdf:
+        if (!config.reject_invalid_esdf) {
+          result.valid = true;
+          break;
+        }
         result.rejection_reason = SegmentEvaluation::RejectionReason::kInvalidClearance;
         break;
       case SweptFootprintStatus::kRawCollision:
@@ -87,7 +91,9 @@ SegmentEvaluation evaluateLatticeSegment(const mppi::EsdfGrid& grid,
       case SweptFootprintStatus::kValid:
         break;
     }
-    return result;
+    if (!result.valid) {
+      return result;
+    }
   }
   result.critical_exposure_m = profile.critical_exposure_m;
   result.planning_exposure_m = profile.planning_exposure_m;

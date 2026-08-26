@@ -281,37 +281,64 @@ void ProductionMppiNode::configureIncrementalTopology3D() {
       require_known_free_space_for_goal_;
   topological_planner_3d_config_.maximum_goal_anchor_distance_m =
       declare_parameter<double>("topological_planner_3d_goal_anchor_distance_m", 8.0);
+  const double minimum_mission_continuation_goal_progress_m = declare_parameter<double>(
+      "topological_planner_3d_minimum_mission_continuation_goal_progress_m", 8.0);
   topological_planner_3d_config_.minimum_mission_continuation_goal_progress_m =
-      declare_parameter<double>(
-          "topological_planner_3d_minimum_mission_continuation_goal_progress_m", 8.0);
+      optional_constraints_.frontier_viability_enabled
+          ? minimum_mission_continuation_goal_progress_m
+          : 0.0;
   topological_planner_3d_config_.path_cost_weight =
       declare_parameter<double>("topological_planner_3d_path_cost_weight", 1.0);
   topological_planner_3d_config_.information_gain_reward =
       declare_parameter<double>("topological_planner_3d_information_gain_reward", 1.0);
-  topological_planner_3d_config_.clearance_reward =
+  const double topological_clearance_reward =
       declare_parameter<double>("topological_planner_3d_clearance_reward", 0.5);
+  topological_planner_3d_config_.clearance_reward =
+      optional_constraints_.clearance_costs_enabled ? topological_clearance_reward
+                                                    : 0.0;
   topological_planner_3d_config_.goal_progress_reward =
       declare_parameter<double>("topological_planner_3d_goal_progress_reward", 3.0);
-  topological_planner_3d_config_.directed_traversal_penalty =
+  const double directed_traversal_penalty =
       declare_parameter<double>("topological_planner_3d_traversal_penalty", 6.0);
-  topological_planner_3d_config_.repeated_distance_penalty = declare_parameter<double>(
+  const double repeated_distance_penalty = declare_parameter<double>(
       "topological_planner_3d_repeated_distance_penalty", 0.25);
-  topological_planner_3d_config_.dead_end_penalty =
+  const double dead_end_penalty =
       declare_parameter<double>("topological_planner_3d_dead_end_penalty", 100.0);
-  topological_planner_3d_config_.frontier_selection_penalty = declare_parameter<double>(
+  const double frontier_selection_penalty = declare_parameter<double>(
       "topological_planner_3d_frontier_selection_penalty", 8.0);
-  topological_planner_3d_config_.frontier_completion_penalty =
-      declare_parameter<double>("topological_planner_3d_frontier_completion_penalty",
-                                48.0);
-  topological_planner_3d_config_.coverage_penalty_weight =
+  const double frontier_completion_penalty = declare_parameter<double>(
+      "topological_planner_3d_frontier_completion_penalty", 48.0);
+  const double coverage_penalty_weight =
       declare_parameter<double>("topological_planner_3d_coverage_penalty_weight", 1.0);
+  if (optional_constraints_.topological_history_costs_enabled) {
+    topological_planner_3d_config_.directed_traversal_penalty =
+        directed_traversal_penalty;
+    topological_planner_3d_config_.repeated_distance_penalty =
+        repeated_distance_penalty;
+    topological_planner_3d_config_.dead_end_penalty = dead_end_penalty;
+    topological_planner_3d_config_.frontier_selection_penalty =
+        frontier_selection_penalty;
+    topological_planner_3d_config_.frontier_completion_penalty =
+        frontier_completion_penalty;
+    topological_planner_3d_config_.coverage_penalty_weight = coverage_penalty_weight;
+  } else {
+    topological_planner_3d_config_.directed_traversal_penalty = 0.0;
+    topological_planner_3d_config_.repeated_distance_penalty = 0.0;
+    topological_planner_3d_config_.dead_end_penalty = 0.0;
+    topological_planner_3d_config_.frontier_selection_penalty = 0.0;
+    topological_planner_3d_config_.frontier_completion_penalty = 0.0;
+    topological_planner_3d_config_.coverage_penalty_weight = 0.0;
+  }
   topological_planner_3d_config_.maximum_fresh_frontier_anchor_distance_m =
       declare_parameter<double>(
           "topological_planner_3d_maximum_fresh_frontier_anchor_distance_m",
           lattice_3d_config_.sensor_observability.maximum_observation_range_m);
+  const double minimum_observation_target_displacement_m = declare_parameter<double>(
+      "topological_planner_3d_minimum_observation_target_displacement_m", 2.0);
   topological_planner_3d_config_.minimum_observation_target_displacement_m =
-      declare_parameter<double>(
-          "topological_planner_3d_minimum_observation_target_displacement_m", 2.0);
+      optional_constraints_.frontier_viability_enabled
+          ? minimum_observation_target_displacement_m
+          : 0.0;
   topological_planner_3d_config_.maximum_fresh_frontier_evaluations =
       checkedPositiveSizeParameter(
           declare_parameter<std::int64_t>(
@@ -327,10 +354,19 @@ void ProductionMppiNode::configureIncrementalTopology3D() {
       declare_parameter<double>("topological_memory_3d_coverage_resolution_m", 2.0);
   topological_memory_3d_config_.coverage_influence_radius_m = declare_parameter<double>(
       "topological_memory_3d_coverage_influence_radius_m", 4.0);
-  topological_memory_3d_config_.visit_penalty_weight =
+  const double topological_memory_visit_penalty_weight =
       declare_parameter<double>("topological_memory_3d_visit_penalty_weight", 2.0);
-  topological_memory_3d_config_.observation_penalty_weight = declare_parameter<double>(
-      "topological_memory_3d_observation_penalty_weight", 0.25);
+  const double topological_memory_observation_penalty_weight =
+      declare_parameter<double>("topological_memory_3d_observation_penalty_weight",
+                                0.25);
+  topological_memory_3d_config_.visit_penalty_weight =
+      optional_constraints_.topological_history_costs_enabled
+          ? topological_memory_visit_penalty_weight
+          : 0.0;
+  topological_memory_3d_config_.observation_penalty_weight =
+      optional_constraints_.topological_history_costs_enabled
+          ? topological_memory_observation_penalty_weight
+          : 0.0;
   topological_memory_3d_config_.revision_decay =
       declare_parameter<double>("topological_memory_3d_revision_decay", 0.0);
   topological_memory_3d_config_.maximum_observed_transition_m =

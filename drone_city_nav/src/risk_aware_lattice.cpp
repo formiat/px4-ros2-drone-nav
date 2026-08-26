@@ -255,7 +255,7 @@ RiskAwareLatticeResult planRiskAwareMotionPrimitiveGuide(
       !(config.maximum_search_time_ms > 0.0) ||
       config.maximum_frontier_candidates == 0U ||
       !(config.minimum_frontier_endpoint_displacement_m >= 0.0) ||
-      !(config.minimum_frontier_reachable_depth_m > 0.0) ||
+      !(config.minimum_frontier_reachable_depth_m >= 0.0) ||
       config.frontier_validation_maximum_states == 0U ||
       config.frontier_validation_expansion_interval == 0U ||
       !(config.frontier_goal_distance_weight >= 0.0) ||

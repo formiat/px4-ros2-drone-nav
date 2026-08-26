@@ -12,7 +12,13 @@
 namespace drone_city_nav {
 namespace {
 
-TEST(StaticRouteGeometryTest, ShortcutsOpenUnconstrainedZigzag) {
+constexpr StaticRouteGeometryConfig enabledGeometryConfig() {
+  StaticRouteGeometryConfig config;
+  config.enabled = true;
+  return config;
+}
+
+TEST(StaticRouteGeometryTest, DefaultPolicyPreservesPlannerGeometry) {
   const mppi::EsdfGrid grid{80, 80, 1.0F, 0.0F, 0.0F, 20, 0.0F};
   const std::vector<float> esdf(
       static_cast<std::size_t>(grid.width * grid.height * grid.depth),
@@ -26,6 +32,26 @@ TEST(StaticRouteGeometryTest, ShortcutsOpenUnconstrainedZigzag) {
       route, {}, grid, esdf,
       SweptFootprintConfig{.radius_m = 0.0, .perimeter_samples = 0U},
       StaticRouteGeometryConfig{}, RouteEnvelopeConfig{});
+
+  EXPECT_EQ(routeFingerprint(result.route), routeFingerprint(route));
+  EXPECT_EQ(result.shortcuts_applied, 0U);
+  EXPECT_EQ(result.corners_smoothed, 0U);
+}
+
+TEST(StaticRouteGeometryTest, ShortcutsOpenUnconstrainedZigzag) {
+  const mppi::EsdfGrid grid{80, 80, 1.0F, 0.0F, 0.0F, 20, 0.0F};
+  const std::vector<float> esdf(
+      static_cast<std::size_t>(grid.width * grid.height * grid.depth),
+      std::numeric_limits<float>::infinity());
+  const std::vector<RouteSample3D> route = sampleRoute3D(
+      std::vector<Point3>{
+          {5.0, 5.0, 5.0}, {20.0, 10.0, 5.0}, {35.0, 5.0, 5.0}, {50.0, 5.0, 5.0}},
+      0.5, 20.0);
+
+  const StaticRouteGeometryResult result = optimizeStaticRouteGeometry(
+      route, {}, grid, esdf,
+      SweptFootprintConfig{.radius_m = 0.0, .perimeter_samples = 0U},
+      enabledGeometryConfig(), RouteEnvelopeConfig{});
 
   ASSERT_GE(result.route.size(), 2U);
   EXPECT_GT(result.shortcuts_applied, 0U);
@@ -45,7 +71,7 @@ TEST(StaticRouteGeometryTest, SparseBatchesAvoidDenseAllPairsOnLongRoute) {
   const StaticRouteGeometryResult result = optimizeStaticRouteGeometry(
       route, {}, grid, esdf,
       SweptFootprintConfig{.radius_m = 0.0, .perimeter_samples = 0U},
-      StaticRouteGeometryConfig{}, RouteEnvelopeConfig{});
+      enabledGeometryConfig(), RouteEnvelopeConfig{});
 
   EXPECT_EQ(result.sparse_anchor_count, 2U);
   EXPECT_EQ(result.sparse_samples_removed, route.size() - 2U);
@@ -69,7 +95,7 @@ TEST(StaticRouteGeometryTest, MaterializesRawSafeRightAngleAsFillet) {
   const StaticRouteGeometryResult result = optimizeStaticRouteGeometry(
       route, {}, grid, esdf,
       SweptFootprintConfig{.radius_m = 0.0, .perimeter_samples = 0U},
-      StaticRouteGeometryConfig{}, RouteEnvelopeConfig{});
+      enabledGeometryConfig(), RouteEnvelopeConfig{});
 
   EXPECT_GT(result.corners_smoothed, 0U);
   ASSERT_GE(result.route.size(), 2U);
@@ -106,7 +132,7 @@ TEST(StaticRouteGeometryTest, SparseShortcutsRemainRawFootprintSafe) {
 
   const StaticRouteGeometryResult result =
       optimizeStaticRouteGeometry(route, {}, grid, field.distancesM(), footprint,
-                                  StaticRouteGeometryConfig{}, RouteEnvelopeConfig{});
+                                  enabledGeometryConfig(), RouteEnvelopeConfig{});
 
   ASSERT_GE(result.route.size(), 2U);
   for (std::size_t index = 1U; index < result.route.size(); ++index) {
@@ -143,6 +169,7 @@ TEST(StaticRouteGeometryTest, FreshRawWorldRejectsAnEsdfSafeShortcut) {
                                        .axial_samples = 1U,
                                        .sweep_step_m = 0.25};
   StaticRouteGeometryConfig geometry_config;
+  geometry_config.enabled = true;
   geometry_config.maximum_shortcut_turn_increase_rad = 10.0;
   const StaticRouteGeometryResult esdf_only = optimizeStaticRouteGeometry(
       route, {}, grid, stale_esdf, footprint, geometry_config, RouteEnvelopeConfig{});
@@ -212,7 +239,7 @@ TEST(StaticRouteGeometryTest, PreservesConstrainedPassageGeometry) {
   const StaticRouteGeometryResult result = optimizeStaticRouteGeometry(
       route, spans, grid, esdf,
       SweptFootprintConfig{.radius_m = 0.0, .perimeter_samples = 0U},
-      StaticRouteGeometryConfig{}, RouteEnvelopeConfig{});
+      enabledGeometryConfig(), RouteEnvelopeConfig{});
 
   ASSERT_EQ(result.constrained_spans.size(), 1U);
   EXPECT_EQ(result.constrained_spans.front().passage_traversal_id, "passage");
@@ -247,7 +274,7 @@ TEST(StaticRouteGeometryTest, FreezesPrefixByRouteStationNotEuclideanDistance) {
   const StaticRouteGeometryResult result = optimizeStaticRouteGeometry(
       route, {}, grid, esdf,
       SweptFootprintConfig{.radius_m = 0.0, .perimeter_samples = 0U},
-      StaticRouteGeometryConfig{.frozen_prefix_end_station_m = 90.0},
+      StaticRouteGeometryConfig{.enabled = true, .frozen_prefix_end_station_m = 90.0},
       RouteEnvelopeConfig{});
 
   ASSERT_FALSE(result.route.empty());
@@ -274,7 +301,7 @@ TEST(StaticRouteGeometryTest, ParallelValidationPreservesDeterministicGeometry) 
                                         {65.0, 5.0, 5.0}},
                     0.5, 20.0);
   const SweptFootprintConfig footprint{.radius_m = 0.0, .perimeter_samples = 0U};
-  const StaticRouteGeometryConfig geometry_config{};
+  const StaticRouteGeometryConfig geometry_config = enabledGeometryConfig();
   const RouteEnvelopeConfig envelope_config{};
 
   const StaticRouteGeometryResult serial = optimizeStaticRouteGeometry(

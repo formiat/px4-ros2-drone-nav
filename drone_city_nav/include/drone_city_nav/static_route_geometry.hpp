@@ -13,6 +13,7 @@ namespace drone_city_nav {
 class BoundedWorkerPool;
 
 struct StaticRouteGeometryConfig {
+  bool enabled{false};
   double sample_step_m{0.5};
   double maximum_shortcut_length_m{30.0};
   double sparse_deviation_tolerance_m{0.05};

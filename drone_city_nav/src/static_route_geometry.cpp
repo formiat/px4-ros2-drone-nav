@@ -301,6 +301,12 @@ StaticRouteGeometryResult optimizeStaticRouteGeometry(
     const RouteEnvelopeConfig& envelope_config, BoundedWorkerPool* const worker_pool,
     const StaticRouteGeometryRawValidation* const raw_validation) {
   StaticRouteGeometryResult result;
+  if (!geometry_config.enabled) {
+    result.route.assign(route.begin(), route.end());
+    result.constrained_spans.assign(constrained_spans.begin(), constrained_spans.end());
+    result.sparse_anchor_count = route.size();
+    return result;
+  }
   if (route.size() < 2U) {
     result.route.assign(route.begin(), route.end());
     result.sparse_anchor_count = route.size();

@@ -422,6 +422,9 @@ private:
                            std::uint64_t guide_generation = 0U);
   void requestStaticRouteReplan(GlobalGuideReleaseReason reason,
                                 std::uint64_t guide_generation);
+  void configureOptionalNavigationConstraints();
+  void configureSensorObservability();
+  void configureStaticRouteGeometry();
   void configureStaticRouteExtension(double maximum_horizontal_acceleration_mps2);
   void configureRouteStrategyArbitration();
   static void
@@ -738,6 +741,7 @@ private:
   std::optional<ConstrainedRouteObservation> last_route_constraint_observation_;
 
   mppi::BenchmarkConfig mppi_config_{};
+  ProductionNavigationOptionalConstraints optional_constraints_{};
   NavigationAngularDerivativeConfig navigation_angular_derivative_config_{};
   SweptFootprintConfig physical_footprint_config_{};
   std::shared_ptr<const VersionedExecutionValidationPolicy3D>

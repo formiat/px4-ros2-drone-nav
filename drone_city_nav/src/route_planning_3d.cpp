@@ -38,14 +38,14 @@ void mergeFootprintEvidence(SegmentEvidence3D& target,
 }
 
 [[nodiscard]] SegmentEvidenceStatus3D
-rejectedStatus(const SweptFootprintResult& result,
-               const bool require_known_free_space) noexcept {
+rejectedStatus(const SweptFootprintResult& result, const bool require_known_free_space,
+               const bool reject_invalid_esdf) noexcept {
   if (result.evidence.raw_collision ||
       result.status == SweptFootprintStatus::kRawCollision) {
     return SegmentEvidenceStatus3D::kRawCollision;
   }
-  if (result.evidence.invalid_esdf_exposure ||
-      result.status == SweptFootprintStatus::kInvalidEsdf) {
+  if (reject_invalid_esdf && (result.evidence.invalid_esdf_exposure ||
+                              result.status == SweptFootprintStatus::kInvalidEsdf)) {
     return SegmentEvidenceStatus3D::kInvalidEsdf;
   }
   if (result.status == SweptFootprintStatus::kOutsideGrid) {
@@ -60,6 +60,10 @@ rejectedStatus(const SweptFootprintResult& result,
 
 [[nodiscard]] double finiteCost(const double value) noexcept {
   return std::isfinite(value) ? value : std::numeric_limits<double>::infinity();
+}
+
+[[nodiscard]] double maximumValueRank(const double value) noexcept {
+  return std::isfinite(value) ? -value : std::numeric_limits<double>::infinity();
 }
 
 [[nodiscard]] int purposeRank(const RouteIntentPurpose3D purpose) noexcept {
@@ -78,19 +82,21 @@ rejectedStatus(const SweptFootprintResult& result,
 [[nodiscard]] auto proposalRank(const RouteProposal3D& proposal,
                                 const RouteProposalSelection3DConfig& config) noexcept {
   const SegmentEvidence3D& evidence = proposal.evidence;
-  // Direct transit remains preferable while it efficiently advances the mission.
-  // Once it only produces a looping or blocked prefix, validated topology may
-  // select a temporarily lateral or backward route.
+  // The permissive baseline ranks actual start-to-end mission progress before
+  // path length, so loops and zigzags cannot win merely by being longer. The
+  // legacy semantic precedence remains available as an explicit policy.
+  const bool heuristic_precedence = config.heuristic_precedence_enabled;
   return std::tuple{
       evidence.reaches_mission_target ? 0 : 1,
-      evidence.reaches_intent_target ? 0 : 1,
-      isProductiveDirectTransit3D(proposal, config) ? 0 : 1,
-      isStrategicMissionContinuation3D(proposal) ? 0 : 1,
-      proposal.intent.strategic_continuation_available ? 0 : 1,
-      purposeRank(proposal.intent.purpose),
-      evidence.reaches_segment_target ? 0 : 1,
+      heuristic_precedence && evidence.reaches_intent_target ? 0 : 1,
+      heuristic_precedence && isProductiveDirectTransit3D(proposal, config) ? 0 : 1,
+      heuristic_precedence && isStrategicMissionContinuation3D(proposal) ? 0 : 1,
+      heuristic_precedence && proposal.intent.strategic_continuation_available ? 0 : 1,
+      heuristic_precedence ? purposeRank(proposal.intent.purpose) : 0,
+      heuristic_precedence && evidence.reaches_segment_target ? 0 : 1,
+      maximumValueRank(evidence.mission_progress_m),
+      maximumValueRank(evidence.endpoint_displacement_m),
       finiteCost(evidence.objective_cost),
-      -evidence.endpoint_displacement_m,
       finiteCost(evidence.route_length_m),
       proposal.route_fingerprint,
       proposal.intent.id,
@@ -206,8 +212,13 @@ SegmentEvidence3D evaluateSegmentEvidence3D(
     const SweptFootprintResult esdf_validation = validateSweptFootprint(
         *world.grid, world.esdf_m, first, second, world.footprint);
     mergeFootprintEvidence(result, esdf_validation);
-    SegmentEvidenceStatus3D status =
-        rejectedStatus(esdf_validation, world.require_known_free_space);
+    // Invalid derived clearance may be ignored only when the authoritative raw
+    // occupancy is available for the same segment. This keeps raw collision a
+    // mandatory constraint while making ESDF completeness an opt-in policy.
+    const bool reject_invalid_esdf =
+        world.reject_invalid_esdf || world.latest_observed_occupancy == nullptr;
+    SegmentEvidenceStatus3D status = rejectedStatus(
+        esdf_validation, world.require_known_free_space, reject_invalid_esdf);
     if (status != SegmentEvidenceStatus3D::kValid) {
       result.status = status;
       result.failure_segment_index = index - 1U;
@@ -226,7 +237,8 @@ SegmentEvidence3D evaluateSegmentEvidence3D(
         FootprintBodyAxis{}, world.footprint, observed_policy,
         world.proprioceptive_free_space_seed, world.launch_support_contact);
     mergeFootprintEvidence(result, raw_validation);
-    status = rejectedStatus(raw_validation, world.require_known_free_space);
+    status = rejectedStatus(raw_validation, world.require_known_free_space,
+                            world.reject_invalid_esdf);
     if (status != SegmentEvidenceStatus3D::kValid) {
       result.status = status;
       result.failure_segment_index = index - 1U;
@@ -319,6 +331,8 @@ selectRouteProposal3D(const std::span<const RouteProposal3D> proposals,
   const RouteProposal3D& selected = proposals[*result.selected_index];
   if (selected.evidence.reaches_mission_target) {
     result.reason = RouteProposalSelectionReason3D::kMissionTarget;
+  } else if (!config.heuristic_precedence_enabled) {
+    result.reason = RouteProposalSelectionReason3D::kMissionProgress;
   } else if (selected.evidence.reaches_intent_target) {
     result.reason = RouteProposalSelectionReason3D::kIntentTarget;
   } else if (isStrategicMissionContinuation3D(selected)) {
@@ -411,6 +425,8 @@ const char* routeProposalSelectionReason3DName(
       return "only_eligible_candidate";
     case RouteProposalSelectionReason3D::kMissionTarget:
       return "mission_target";
+    case RouteProposalSelectionReason3D::kMissionProgress:
+      return "mission_progress";
     case RouteProposalSelectionReason3D::kIntentTarget:
       return "intent_target";
     case RouteProposalSelectionReason3D::kStrategicMissionContinuation:

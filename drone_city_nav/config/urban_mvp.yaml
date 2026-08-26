@@ -375,6 +375,17 @@ production_mppi_node:
     global_lattice_3d_horizontal_step_m: 2.0
     global_lattice_3d_vertical_step_m: 1.0
     global_lattice_3d_sample_step_m: 0.5
+    # Optional search and selection constraints are opt-in. Physical collision,
+    # flight-envelope, dynamics, terminal-rest, evidence, and ownership checks
+    # remain mandatory regardless of these switches.
+    reject_invalid_esdf_routes: false
+    clearance_costs_enabled: false
+    route_shape_costs_enabled: false
+    frontier_viability_constraints_enabled: false
+    topological_history_costs_enabled: false
+    route_proposal_precedence_enabled: false
+    route_strategy_leases_enabled: false
+    static_route_geometry_optimization_enabled: false
     require_known_free_space: false
     route_proposal_productive_direct_minimum_mission_progress_m: 2.0
     route_proposal_productive_direct_minimum_progress_ratio: 0.15
@@ -494,7 +505,7 @@ production_mppi_node:
     global_guide_stall_recovery_enabled: false
     # Directed soft tabu prevents repeatedly materialized local routes from
     # owning no-static navigation without measured mission progress.
-    no_static_cycle_recovery_enabled: true
+    no_static_cycle_recovery_enabled: false
 
 mppi_offboard_node:
   ros__parameters:

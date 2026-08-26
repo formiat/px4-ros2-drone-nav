@@ -115,6 +115,7 @@ struct SegmentEvidenceWorld3D {
   FlightEnvelopeConfig flight_envelope{};
   std::uint64_t validated_through_revision{0U};
   bool require_known_free_space{false};
+  bool reject_invalid_esdf{false};
 };
 
 struct RouteProposal3D {
@@ -127,12 +128,14 @@ struct RouteProposal3D {
 struct RouteProposalSelection3DConfig {
   double productive_direct_minimum_mission_progress_m{2.0};
   double productive_direct_minimum_progress_ratio{0.15};
+  bool heuristic_precedence_enabled{false};
 };
 
 enum class RouteProposalSelectionReason3D : std::uint8_t {
   kNoEligibleCandidate,
   kOnlyEligibleCandidate,
   kMissionTarget,
+  kMissionProgress,
   kIntentTarget,
   kStrategicMissionContinuation,
   kProductiveDirectTransit,

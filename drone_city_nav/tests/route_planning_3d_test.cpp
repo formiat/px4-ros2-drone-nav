@@ -45,7 +45,8 @@ proposal(const RouteIntentSource3D source, const bool strategic,
   };
 }
 
-constexpr RouteProposalSelection3DConfig kSelectionConfig{};
+constexpr RouteProposalSelection3DConfig kSelectionConfig{
+    .heuristic_precedence_enabled = true};
 
 [[nodiscard]] SegmentEvidenceWorld3D world(const mppi::EsdfGrid& grid,
                                            const std::vector<float>& esdf) {
@@ -106,6 +107,22 @@ TEST(RoutePlanning3DTest, NoPreparedCandidateLeavesSelectionEmpty) {
   EXPECT_FALSE(selection.selected_index.has_value());
   EXPECT_EQ(selection.eligible_candidates, 0U);
   EXPECT_EQ(selection.reason, RouteProposalSelectionReason3D::kNoEligibleCandidate);
+}
+
+TEST(RoutePlanning3DTest,
+     PermissiveSelectionPrefersCoordinateProgressOverLengthAndLegacyPrecedence) {
+  const std::vector<RouteProposal3D> proposals{
+      proposal(RouteIntentSource3D::kTopology, true, true, true, true, true, false, 1.0,
+               30.0, 80.0, 21U, 4.0),
+      proposal(RouteIntentSource3D::kDirect, false, true, true, false, false, false,
+               20.0, 20.0, 22.0, 22U, 12.0),
+  };
+
+  const RouteProposalSelection3D selection =
+      selectRouteProposal3D(proposals, RouteProposalSelection3DConfig{});
+
+  ASSERT_EQ(selection.selected_index, std::optional<std::size_t>{1U});
+  EXPECT_EQ(selection.reason, RouteProposalSelectionReason3D::kMissionProgress);
 }
 
 TEST(RoutePlanning3DTest, StrategicBypassBeatsShorterGoalDirectedPrefix) {
@@ -348,6 +365,45 @@ TEST(RoutePlanning3DTest, LatestRawCollisionRejectsAStaleUnknownEsdfRoute) {
   EXPECT_TRUE(evidence.raw_collision);
   EXPECT_TRUE(evidence.unknown_exposure);
   EXPECT_EQ(evidence.status, SegmentEvidenceStatus3D::kRawCollision);
+}
+
+TEST(RoutePlanning3DTest, InvalidDerivedEsdfIsOptionalWhenFreshRawWorldIsSafe) {
+  mppi::EsdfGrid grid{.width = 4,
+                      .height = 2,
+                      .resolution_m = 1.0F,
+                      .origin_x_m = 0.0F,
+                      .origin_y_m = 0.0F,
+                      .depth = 2,
+                      .origin_z_m = 0.0F,
+                      .outside_is_unknown = true};
+  const std::vector<float> esdf(16U, std::numeric_limits<float>::quiet_NaN());
+  ObservedOccupancyGrid3D latest_raw{GridBounds3D{0.0, 0.0, 0.0, 1.0, 4, 2, 2}};
+  for (int x = 0; x < 4; ++x) {
+    ASSERT_TRUE(latest_raw.setState(GridIndex3D{x, 0, 0}, ObservedVoxelState::kFree));
+  }
+  const RouteIntent3D intent{.id = 5U,
+                             .planned_on_revision = 12U,
+                             .mission_target = {3.0, 0.5, 0.5},
+                             .intent_target = {3.0, 0.5, 0.5},
+                             .segment_target = {3.0, 0.5, 0.5},
+                             .valid = true};
+  const std::vector<RouteSample3D> route{{.position = {0.5, 0.5, 0.5}},
+                                         {.position = {2.5, 0.5, 0.5}}};
+  SegmentEvidenceWorld3D permissive_world = world(grid, esdf);
+  permissive_world.latest_observed_occupancy = &latest_raw;
+
+  const SegmentEvidence3D permissive = evaluateSegmentEvidence3D(
+      intent, route, route.front().position, true, true, false, 1.0, permissive_world);
+  SegmentEvidenceWorld3D strict_world = permissive_world;
+  strict_world.reject_invalid_esdf = true;
+  const SegmentEvidence3D strict = evaluateSegmentEvidence3D(
+      intent, route, route.front().position, true, true, false, 1.0, strict_world);
+
+  EXPECT_TRUE(permissive.physical_executable);
+  EXPECT_TRUE(permissive.invalid_esdf_exposure);
+  EXPECT_EQ(permissive.status, SegmentEvidenceStatus3D::kValid);
+  EXPECT_FALSE(strict.physical_executable);
+  EXPECT_EQ(strict.status, SegmentEvidenceStatus3D::kInvalidEsdf);
 }
 
 } // namespace

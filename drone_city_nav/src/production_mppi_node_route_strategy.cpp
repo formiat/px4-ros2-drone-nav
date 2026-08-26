@@ -12,8 +12,11 @@ void ProductionMppiNode::configureRouteStrategyArbitration() {
   route_proposal_selection_3d_config_.productive_direct_minimum_progress_ratio =
       declare_parameter<double>(
           "route_proposal_productive_direct_minimum_progress_ratio", 0.15);
+  route_proposal_selection_3d_config_.heuristic_precedence_enabled =
+      optional_constraints_.route_proposal_precedence_enabled;
 
   RouteStrategyArbitration3DConfig config;
+  config.leases_enabled = optional_constraints_.route_strategy_leases_enabled;
   config.topology_mission_lease_budget_m = declare_parameter<double>(
       "route_strategy_topology_mission_lease_budget_m", 160.0);
   config.observation_frontier_lease_budget_m = declare_parameter<double>(

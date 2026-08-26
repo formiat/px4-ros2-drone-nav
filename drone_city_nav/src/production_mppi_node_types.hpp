@@ -12,6 +12,17 @@
 
 namespace drone_city_nav {
 
+struct ProductionNavigationOptionalConstraints {
+  bool reject_invalid_esdf_routes{false};
+  bool clearance_costs_enabled{false};
+  bool route_shape_costs_enabled{false};
+  bool frontier_viability_enabled{false};
+  bool topological_history_costs_enabled{false};
+  bool route_proposal_precedence_enabled{false};
+  bool route_strategy_leases_enabled{false};
+  bool static_route_geometry_optimization_enabled{false};
+};
+
 struct ProductionMppiNavigation {
   mppi::State state{};
   mppi::Control measured_equivalent_control{};

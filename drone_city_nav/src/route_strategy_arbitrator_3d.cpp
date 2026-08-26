@@ -356,6 +356,11 @@ RouteStrategyArbitrationDecision3D RouteStrategyArbitrator3D::evaluate(
   decision.action = decision.selection.selected_index.has_value()
                         ? RouteStrategyArbitrationAction3D::kStatelessSelection
                         : RouteStrategyArbitrationAction3D::kNoSelection;
+  if (!config_.leases_enabled) {
+    decision.state_without_commit = state_;
+    decision.state_after_commit = state_;
+    return decision;
+  }
   RouteStrategyArbitrationState3D observed =
       observeState(state_, observation, config_, decision.action);
   decision.state_without_commit = observed;

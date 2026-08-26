@@ -74,6 +74,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   planning_tick_phase_offset_s_ =
       declare_parameter<double>("planning_tick_phase_offset_s", 0.0);
   use_static_map_ = declare_parameter<bool>("use_static_map", true);
+  configureOptionalNavigationConstraints();
   no_static_world_model_ = parseNoStaticWorldModel(
       declare_parameter<std::string>("no_static_world_model", "occupancy_2d"));
   no_static_guide_lookahead_m_ =
@@ -380,14 +381,26 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       static_cast<float>(declare_parameter<double>("head_progress_weight", 8.0));
   mppi_config_.costs.route_progress_integral_weight = static_cast<float>(
       declare_parameter<double>("route_progress_integral_weight", 2.0));
-  mppi_config_.costs.planning_exposure_weight =
+  const float planning_exposure_weight =
       static_cast<float>(declare_parameter<double>("planning_exposure_weight", 2.0));
-  mppi_config_.costs.critical_exposure_weight =
+  const float critical_exposure_weight =
       static_cast<float>(declare_parameter<double>("critical_exposure_weight", 20.0));
-  mppi_config_.costs.critical_clearance_proximity_weight = static_cast<float>(
+  const float critical_clearance_proximity_weight = static_cast<float>(
       declare_parameter<double>("critical_clearance_proximity_weight", 400.0));
-  mppi_config_.costs.obstacle_approach_weight =
+  const float obstacle_approach_weight =
       static_cast<float>(declare_parameter<double>("obstacle_approach_weight", 40.0));
+  if (optional_constraints_.clearance_costs_enabled) {
+    mppi_config_.costs.planning_exposure_weight = planning_exposure_weight;
+    mppi_config_.costs.critical_exposure_weight = critical_exposure_weight;
+    mppi_config_.costs.critical_clearance_proximity_weight =
+        critical_clearance_proximity_weight;
+    mppi_config_.costs.obstacle_approach_weight = obstacle_approach_weight;
+  } else {
+    mppi_config_.costs.planning_exposure_weight = 0.0F;
+    mppi_config_.costs.critical_exposure_weight = 0.0F;
+    mppi_config_.costs.critical_clearance_proximity_weight = 0.0F;
+    mppi_config_.costs.obstacle_approach_weight = 0.0F;
+  }
   mppi_config_.horizon_sampling.full_rate_duration_s = static_cast<float>(
       declare_parameter<double>("far_horizon_full_rate_duration_s", 2.0));
   mppi_config_.horizon_sampling.far_cost_stride = static_cast<std::uint32_t>(
@@ -439,10 +452,22 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       use_static_map_ ? static_lattice_roi_halo_m : no_static_lattice_roi_halo_m;
   lattice_config_.maximum_frontier_candidates = static_cast<std::size_t>(
       declare_parameter<std::int64_t>("global_lattice_frontier_candidates", 64));
-  lattice_config_.minimum_frontier_endpoint_displacement_m = declare_parameter<double>(
-      "global_lattice_frontier_minimum_endpoint_displacement_m", 4.0);
-  lattice_config_.minimum_frontier_reachable_depth_m =
+  const double lattice_frontier_minimum_endpoint_displacement_m =
+      declare_parameter<double>(
+          "global_lattice_frontier_minimum_endpoint_displacement_m", 4.0);
+  const double lattice_frontier_minimum_reachable_depth_m =
       declare_parameter<double>("global_lattice_frontier_reachable_depth_m", 20.0);
+  if (optional_constraints_.frontier_viability_enabled) {
+    lattice_config_.minimum_frontier_endpoint_displacement_m =
+        lattice_frontier_minimum_endpoint_displacement_m;
+    lattice_config_.minimum_frontier_reachable_depth_m =
+        lattice_frontier_minimum_reachable_depth_m;
+  } else {
+    lattice_config_.minimum_frontier_guide_points = 2U;
+    lattice_config_.minimum_frontier_guide_length_m = 0.0;
+    lattice_config_.minimum_frontier_endpoint_displacement_m = 0.0;
+    lattice_config_.minimum_frontier_reachable_depth_m = 0.0;
+  }
   const std::int64_t frontier_validation_maximum_states =
       declare_parameter<std::int64_t>(
           "global_lattice_frontier_validation_maximum_states", 2048);
@@ -495,10 +520,22 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       "global_lattice_cycle_maximum_vehicle_displacement_m", 12.0);
   no_static_cycle_config_.maximum_mission_progress_m =
       declare_parameter<double>("global_lattice_cycle_maximum_mission_progress_m", 4.0);
-  lattice_config_.planning_exposure_tie_break_per_m =
+  const double lattice_planning_exposure_tie_break_per_m =
       declare_parameter<double>("global_lattice_planning_tie_break_per_m", 1.0);
-  lattice_config_.critical_exposure_tie_break_per_m =
+  const double lattice_critical_exposure_tie_break_per_m =
       declare_parameter<double>("global_lattice_critical_tie_break_per_m", 10.0);
+  lattice_config_.planning_exposure_tie_break_per_m =
+      optional_constraints_.clearance_costs_enabled
+          ? lattice_planning_exposure_tie_break_per_m
+          : 0.0;
+  lattice_config_.critical_exposure_tie_break_per_m =
+      optional_constraints_.clearance_costs_enabled
+          ? lattice_critical_exposure_tie_break_per_m
+          : 0.0;
+  if (!optional_constraints_.route_shape_costs_enabled) {
+    lattice_config_.turn_cost = 0.0;
+    lattice_config_.heuristic_weight = 1.0;
+  }
   lattice_config_.critical_distance_m = mppi_config_.risk.critical_distance_m;
   lattice_config_.preferred_distance_m = mppi_config_.risk.preferred_distance_m;
   lattice_3d_config_.horizontal_step_m =
@@ -515,105 +552,82 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   require_known_free_space_for_goal_ =
       declare_parameter<bool>("require_known_free_space", false);
   lattice_3d_config_.require_known_free_space = require_known_free_space_for_goal_;
+  lattice_config_.reject_invalid_esdf =
+      optional_constraints_.reject_invalid_esdf_routes;
+  lattice_3d_config_.reject_invalid_esdf =
+      optional_constraints_.reject_invalid_esdf_routes;
   mppi_config_.risk.require_known_free_space = require_known_free_space_for_goal_;
   configureRouteStrategyArbitration();
   lattice_3d_config_.nominal_horizontal_speed_mps =
       speed_policy_config_.cruise_speed_mps;
   lattice_3d_config_.nominal_vertical_speed_mps =
       declare_parameter<double>("global_lattice_3d_nominal_vertical_speed_mps", 4.0);
-  lattice_3d_config_.vertical_alignment_cost_weight = declare_parameter<double>(
+  const double lattice_3d_vertical_alignment_cost_weight = declare_parameter<double>(
       "global_lattice_3d_vertical_alignment_cost_weight", 0.35);
-  lattice_3d_config_.route_shape_turn_cost_per_rad = declare_parameter<double>(
+  const double lattice_3d_route_shape_turn_cost_per_rad = declare_parameter<double>(
       "global_lattice_3d_route_shape_turn_cost_per_rad", 0.10);
-  lattice_3d_config_.route_shape_vertical_turn_cost_per_rad = declare_parameter<double>(
-      "global_lattice_3d_route_shape_vertical_turn_cost_per_rad", 0.20);
+  const double lattice_3d_route_shape_vertical_turn_cost_per_rad =
+      declare_parameter<double>(
+          "global_lattice_3d_route_shape_vertical_turn_cost_per_rad", 0.20);
+  lattice_3d_config_.vertical_alignment_cost_weight =
+      optional_constraints_.route_shape_costs_enabled
+          ? lattice_3d_vertical_alignment_cost_weight
+          : 0.0;
+  lattice_3d_config_.route_shape_turn_cost_per_rad =
+      optional_constraints_.route_shape_costs_enabled
+          ? lattice_3d_route_shape_turn_cost_per_rad
+          : 0.0;
+  lattice_3d_config_.route_shape_vertical_turn_cost_per_rad =
+      optional_constraints_.route_shape_costs_enabled
+          ? lattice_3d_route_shape_vertical_turn_cost_per_rad
+          : 0.0;
+  if (!optional_constraints_.route_shape_costs_enabled) {
+    lattice_3d_config_.heading_bias_cost_per_rad = 0.0;
+  }
   lattice_3d_config_.passage_topology_transition_cost = declare_parameter<double>(
       "global_lattice_3d_passage_topology_transition_cost", 0.0);
-  static_route_geometry_config_.sample_step_m = lattice_3d_config_.sample_step_m;
-  static_route_geometry_config_.maximum_shortcut_length_m =
-      declare_parameter<double>("static_route_maximum_shortcut_length_m", 30.0);
-  static_route_geometry_config_.sparse_deviation_tolerance_m =
-      declare_parameter<double>("static_route_sparse_deviation_tolerance_m", 0.05);
-  static_route_geometry_config_.maximum_shortcut_turn_increase_rad =
-      declare_parameter<double>("static_route_maximum_shortcut_turn_increase_rad",
-                                0.35);
-  static_route_geometry_config_.shortcut_validation_batch_size =
-      static_cast<std::size_t>(std::max<std::int64_t>(
-          0, declare_parameter<std::int64_t>(
-                 "static_route_shortcut_validation_batch_size", 4)));
-  static_route_geometry_config_.corner_smoothing_distance_m =
-      declare_parameter<double>("static_route_corner_smoothing_distance_m", 2.0);
-  static_route_geometry_config_.corner_curve_samples = static_cast<std::size_t>(
-      declare_parameter<std::int64_t>("static_route_corner_curve_samples", 4));
-  lattice_3d_config_.planning_exposure_cost_per_m =
+  configureStaticRouteGeometry();
+  const double lattice_3d_planning_exposure_cost_per_m =
       declare_parameter<double>("global_lattice_3d_planning_exposure_cost_per_m", 0.05);
-  lattice_3d_config_.critical_exposure_cost_per_m =
+  const double lattice_3d_critical_exposure_cost_per_m =
       declare_parameter<double>("global_lattice_3d_critical_exposure_cost_per_m", 0.50);
+  lattice_3d_config_.planning_exposure_cost_per_m =
+      optional_constraints_.clearance_costs_enabled
+          ? lattice_3d_planning_exposure_cost_per_m
+          : 0.0;
+  lattice_3d_config_.critical_exposure_cost_per_m =
+      optional_constraints_.clearance_costs_enabled
+          ? lattice_3d_critical_exposure_cost_per_m
+          : 0.0;
   lattice_3d_config_.passage_connection_distance_m =
       declare_parameter<double>("global_lattice_3d_passage_connection_distance_m", 3.0);
-  lattice_3d_config_.frontier_minimum_reachable_depth_m =
+  const double lattice_3d_frontier_minimum_reachable_depth_m =
       declare_parameter<double>("global_lattice_3d_frontier_reachable_depth_m", 8.0);
-  lattice_3d_config_.frontier_minimum_endpoint_displacement_m =
+  const double lattice_3d_frontier_minimum_endpoint_displacement_m =
       declare_parameter<double>(
           "global_lattice_3d_frontier_minimum_endpoint_displacement_m", 2.0);
+  lattice_3d_config_.frontier_minimum_reachable_depth_m =
+      optional_constraints_.frontier_viability_enabled
+          ? lattice_3d_frontier_minimum_reachable_depth_m
+          : 0.0;
+  lattice_3d_config_.frontier_minimum_endpoint_displacement_m =
+      optional_constraints_.frontier_viability_enabled
+          ? lattice_3d_frontier_minimum_endpoint_displacement_m
+          : 0.0;
   lattice_3d_config_.frontier_validation_maximum_states =
       static_cast<std::size_t>(declare_parameter<std::int64_t>(
           "global_lattice_3d_frontier_validation_maximum_states", 2048));
   lattice_3d_config_.frontier_validation_maximum_time_ms = declare_parameter<double>(
       "global_lattice_3d_frontier_validation_maximum_time_ms", 50.0);
-  lattice_3d_config_
-      .observation_frontier_replacement_minimum_score_improvement = declare_parameter<
-      double>(
-      "global_lattice_3d_observation_frontier_replacement_minimum_score_improvement",
-      0.5);
-  lattice_3d_config_.sensor_observability.maximum_observation_range_m =
-      declare_parameter<double>(
-          "global_lattice_3d_observation_frontier_maximum_range_m", 8.0);
-  lattice_3d_config_.sensor_observability.minimum_known_free_ray_m =
-      declare_parameter<double>(
-          "global_lattice_3d_observation_frontier_minimum_known_free_ray_m", 1.0);
-  lattice_3d_config_.sensor_observability.frontier_identity_resolution_m =
-      declare_parameter<double>(
-          "global_lattice_3d_observation_frontier_identity_resolution_m",
-          lattice_3d_config_.sensor_observability.maximum_observation_range_m);
-  lattice_3d_config_.sensor_observability.horizontal_min_angle_rad =
-      declare_parameter<double>("lidar_3d_horizontal_min_angle_rad", -std::numbers::pi);
-  lattice_3d_config_.sensor_observability.horizontal_max_angle_rad =
-      declare_parameter<double>("lidar_3d_horizontal_max_angle_rad", std::numbers::pi);
-  lattice_3d_config_.sensor_observability.vertical_min_angle_rad =
-      declare_parameter<double>("lidar_3d_vertical_min_angle_rad", -1.3962634015954636);
-  lattice_3d_config_.sensor_observability.vertical_max_angle_rad =
-      declare_parameter<double>("lidar_3d_vertical_max_angle_rad", 1.3962634015954636);
-  lattice_3d_config_.sensor_observability.directional_cluster_half_angle_rad =
-      declare_parameter<double>(
-          "global_lattice_3d_observation_frontier_directional_cluster_half_angle_rad",
-          std::numbers::pi / 4.0);
-  const std::int64_t lidar_3d_horizontal_samples =
-      declare_parameter<std::int64_t>("lidar_3d_horizontal_samples", 240);
-  const std::int64_t lidar_3d_vertical_samples =
-      declare_parameter<std::int64_t>("lidar_3d_vertical_samples", 17);
-  const std::int64_t observation_frontier_minimum_supporting_rays =
-      declare_parameter<std::int64_t>(
-          "global_lattice_3d_observation_frontier_minimum_supporting_rays", 2);
-  const std::int64_t observation_frontier_minimum_information_gain_voxels =
-      declare_parameter<std::int64_t>(
-          "global_lattice_3d_observation_frontier_minimum_information_gain_voxels", 4);
-  if (observation_frontier_minimum_supporting_rays <= 0 ||
-      observation_frontier_minimum_information_gain_voxels <= 0 ||
-      lidar_3d_horizontal_samples <= 1 || lidar_3d_vertical_samples <= 1) {
-    throw std::invalid_argument{"invalid observation frontier count configuration"};
-  }
-  lattice_3d_config_.sensor_observability.minimum_supporting_rays =
-      static_cast<std::size_t>(observation_frontier_minimum_supporting_rays);
-  lattice_3d_config_.sensor_observability.minimum_information_gain_voxels =
-      static_cast<std::size_t>(observation_frontier_minimum_information_gain_voxels);
-  lattice_3d_config_.sensor_observability.minimum_observation_pose_advance_m =
-      declare_parameter<double>(
-          "global_lattice_3d_observation_frontier_minimum_pose_advance_m", 2.0);
-  lattice_3d_config_.sensor_observability.horizontal_samples =
-      static_cast<std::size_t>(lidar_3d_horizontal_samples);
-  lattice_3d_config_.sensor_observability.vertical_samples =
-      static_cast<std::size_t>(lidar_3d_vertical_samples);
+  const double observation_frontier_replacement_minimum_score_improvement =
+      declare_parameter<double>("global_lattice_3d_observation_frontier_replacement_"
+                                "minimum_score_improvement",
+                                0.5);
+  lattice_3d_config_.observation_frontier_replacement_minimum_score_improvement =
+      optional_constraints_.frontier_viability_enabled
+          ? observation_frontier_replacement_minimum_score_improvement
+          : 0.0;
+  configureSensorObservability();
   lattice_3d_config_.maximum_expansions = static_cast<std::size_t>(
       use_static_map_ ? static_lattice_expansions : no_static_lattice_expansions);
   lattice_3d_config_.maximum_search_time_ms =
@@ -733,8 +747,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       !(lattice_3d_config_.planning_exposure_cost_per_m >= 0.0) ||
       !(lattice_3d_config_.critical_exposure_cost_per_m >= 0.0) ||
       !(lattice_3d_config_.passage_connection_distance_m > 0.0) ||
-      !(lattice_3d_config_.frontier_minimum_reachable_depth_m > 0.0) ||
-      !(lattice_3d_config_.frontier_minimum_endpoint_displacement_m > 0.0) ||
+      !(lattice_3d_config_.frontier_minimum_reachable_depth_m >= 0.0) ||
+      !(lattice_3d_config_.frontier_minimum_endpoint_displacement_m >= 0.0) ||
       lattice_3d_config_.frontier_validation_maximum_states == 0U ||
       !(lattice_3d_config_.frontier_validation_maximum_time_ms > 0.0) ||
       !(lattice_3d_config_.observation_frontier_replacement_minimum_score_improvement >=

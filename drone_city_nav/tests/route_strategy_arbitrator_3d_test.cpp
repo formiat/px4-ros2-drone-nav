@@ -102,7 +102,10 @@ observation(const Point3 position, const std::uint64_t revision = 10U) {
   };
 }
 
-constexpr RouteProposalSelection3DConfig kProposalConfig{};
+constexpr RouteProposalSelection3DConfig kProposalConfig{.heuristic_precedence_enabled =
+                                                             true};
+
+constexpr RouteStrategyArbitration3DConfig kLeaseConfig{.leases_enabled = true};
 
 [[nodiscard]] const RouteStrategyLease3D*
 activeLease(const RouteStrategyArbitrator3D& arbitrator) noexcept {
@@ -112,7 +115,7 @@ activeLease(const RouteStrategyArbitrator3D& arbitrator) noexcept {
 
 TEST(RouteStrategyArbitrator3DTest,
      StrategicMissionAcquisitionIsTransactionalAndOwnsReturnLineage) {
-  RouteStrategyArbitrator3D arbitrator;
+  RouteStrategyArbitrator3D arbitrator{kLeaseConfig};
   const std::vector<RouteProposal3D> proposals{
       directProposal(0.5),
       strategicProposal(RouteIntentPurpose3D::kMissionTransit, -2.0),
@@ -140,6 +143,7 @@ TEST(RouteStrategyArbitrator3DTest,
 TEST(RouteStrategyArbitrator3DTest,
      DirectReleaseFromExplorationRequiresTravelAndRepeatedMeasuredAdvantage) {
   RouteStrategyArbitration3DConfig config;
+  config.leases_enabled = true;
   config.minimum_lease_commitment_m = 5.0;
   config.direct_release_confirmation_count = 2U;
   config.direct_release_minimum_progress_advantage_m = 2.0;
@@ -184,6 +188,7 @@ TEST(RouteStrategyArbitrator3DTest,
 TEST(RouteStrategyArbitrator3DTest,
      LocalDirectProgressCannotPreemptStrategicMissionContinuation) {
   RouteStrategyArbitration3DConfig config;
+  config.leases_enabled = true;
   config.minimum_lease_commitment_m = 5.0;
   config.direct_release_confirmation_count = 1U;
   config.direct_release_minimum_progress_advantage_m = 0.0;
@@ -211,7 +216,7 @@ TEST(RouteStrategyArbitrator3DTest,
 
 TEST(RouteStrategyArbitrator3DTest,
      ResidentStrategicRouteRetainsLeaseWithoutEquivalentReplacement) {
-  RouteStrategyArbitrator3D arbitrator;
+  RouteStrategyArbitrator3D arbitrator{kLeaseConfig};
   const RouteProposal3D strategic =
       strategicProposal(RouteIntentPurpose3D::kObservationFrontier, -2.0);
   RouteStrategyArbitrationDecision3D decision =
@@ -242,7 +247,7 @@ TEST(RouteStrategyArbitrator3DTest,
 
 TEST(RouteStrategyArbitrator3DTest,
      MissingStrategicCandidateReleasesLeaseWithoutExecutableResidentRoute) {
-  RouteStrategyArbitrator3D arbitrator;
+  RouteStrategyArbitrator3D arbitrator{kLeaseConfig};
   const RouteProposal3D strategic =
       strategicProposal(RouteIntentPurpose3D::kObservationFrontier, -2.0);
   RouteStrategyArbitrationDecision3D decision =
@@ -268,7 +273,7 @@ TEST(RouteStrategyArbitrator3DTest,
 
 TEST(RouteStrategyArbitrator3DTest,
      MissionTargetCandidateCanPreemptLeaseWithoutHysteresis) {
-  RouteStrategyArbitrator3D arbitrator;
+  RouteStrategyArbitrator3D arbitrator{kLeaseConfig};
   const RouteProposal3D strategic =
       strategicProposal(RouteIntentPurpose3D::kObservationFrontier, -1.0);
   RouteStrategyArbitrationDecision3D decision =
@@ -291,6 +296,7 @@ TEST(RouteStrategyArbitrator3DTest,
 TEST(RouteStrategyArbitrator3DTest,
      ExhaustedFrontierBudgetRequiresMissionReturnBeforeReacquisition) {
   RouteStrategyArbitration3DConfig config;
+  config.leases_enabled = true;
   config.observation_frontier_lease_budget_m = 5.0;
   config.minimum_return_mission_progress_m = 8.0;
   RouteStrategyArbitrator3D arbitrator{config};
@@ -328,6 +334,7 @@ TEST(RouteStrategyArbitrator3DTest,
 TEST(RouteStrategyArbitrator3DTest,
      BacktrackingLeaseCarriesExplicitReasonBudgetAndReturnAnchor) {
   RouteStrategyArbitration3DConfig config;
+  config.leases_enabled = true;
   config.topological_backtrack_lease_budget_m = 42.0;
   RouteStrategyArbitrator3D arbitrator{config};
   const std::vector<RouteProposal3D> proposals{
@@ -349,7 +356,7 @@ TEST(RouteStrategyArbitrator3DTest,
 
 TEST(RouteStrategyArbitrator3DTest,
      StrategicCandidateWithoutReturnLineageCannotOwnArbitration) {
-  RouteStrategyArbitrator3D arbitrator;
+  RouteStrategyArbitrator3D arbitrator{kLeaseConfig};
   RouteProposal3D invalid =
       strategicProposal(RouteIntentPurpose3D::kMissionTransit, -3.0);
   invalid.intent.return_lineage = {};
@@ -369,7 +376,7 @@ TEST(RouteStrategyArbitrator3DTest,
 
 TEST(RouteStrategyArbitrator3DTest,
      CompletedFrontierRetiresItsLineageUntilMissionProgressResumes) {
-  RouteStrategyArbitrator3D arbitrator;
+  RouteStrategyArbitrator3D arbitrator{kLeaseConfig};
   const RouteProposal3D frontier =
       strategicProposal(RouteIntentPurpose3D::kObservationFrontier, -1.0);
   const std::vector<RouteProposal3D> proposals{directProposal(0.5), frontier};
@@ -402,6 +409,23 @@ TEST(RouteStrategyArbitrator3DTest, PendingDecisionMustBeResolvedBeforeNextEvalu
   EXPECT_EQ(blocked.action, RouteStrategyArbitrationAction3D::kPendingOutcome);
   EXPECT_FALSE(arbitrator.recordOutcome(blocked, true));
   EXPECT_TRUE(arbitrator.recordOutcome(first, true));
+}
+
+TEST(RouteStrategyArbitrator3DTest, DefaultPolicySelectsWithoutLeaseOrHysteresis) {
+  RouteStrategyArbitrator3D arbitrator;
+  const std::vector<RouteProposal3D> proposals{
+      directProposal(1.0),
+      strategicProposal(RouteIntentPurpose3D::kMissionTransit, 10.0),
+  };
+
+  const RouteStrategyArbitrationDecision3D decision = arbitrator.evaluate(
+      proposals, RouteProposalSelection3DConfig{}, observation({0.0, 0.0, 5.0}));
+
+  EXPECT_EQ(decision.selection.selected_index, std::optional<std::size_t>{1U});
+  EXPECT_EQ(decision.action, RouteStrategyArbitrationAction3D::kStatelessSelection);
+  ASSERT_TRUE(arbitrator.recordOutcome(decision, true));
+  EXPECT_FALSE(arbitrator.state().lease.has_value());
+  EXPECT_FALSE(arbitrator.state().retired_lineage.has_value());
 }
 
 TEST(RouteStrategyArbitrator3DTest, ReturnLineageIsStableAndGenerationBound) {
