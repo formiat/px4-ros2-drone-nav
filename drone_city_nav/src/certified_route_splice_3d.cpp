@@ -52,10 +52,12 @@ configValidImpl(const CertifiedRouteSpliceConfig3D& config) noexcept {
 }
 
 [[nodiscard]] bool routeIdentityMatches(const CertifiedRouteSuffix3D& route,
+                                        const RouteInstanceId3D route_instance_id,
                                         const std::uint64_t generation,
                                         const std::uint64_t geometry_revision,
                                         const std::uint64_t continuity_id) noexcept {
   return route.valid() && route.geometry != nullptr &&
+         route.route_instance_id == route_instance_id &&
          route.identity.generation == generation &&
          route.geometry->executable_geometry_revision == geometry_revision &&
          route.continuity_id == continuity_id;
@@ -92,7 +94,9 @@ bool certifiedRouteSpliceConfig3DValid(
 }
 
 bool CertifiedRouteSplice3D::structurallyValid() const noexcept {
-  return base_route_generation != 0U && base_geometry_revision != 0U &&
+  return base_route_instance_id.valid() && successor_route_instance_id.valid() &&
+         base_route_instance_id != successor_route_instance_id &&
+         base_route_generation != 0U && base_geometry_revision != 0U &&
          base_continuity_id != 0U && successor_route_generation != 0U &&
          successor_geometry_revision != 0U && successor_continuity_id != 0U &&
          base_route_generation != std::numeric_limits<std::uint64_t>::max() &&
@@ -123,10 +127,11 @@ bool CertifiedRouteSplice3D::validFor(
     const CertifiedRouteSuffix3D& base,
     const CertifiedRouteSuffix3D& successor) const noexcept {
   return structurallyValid() &&
-         routeIdentityMatches(base, base_route_generation, base_geometry_revision,
-                              base_continuity_id) &&
-         routeIdentityMatches(successor, successor_route_generation,
-                              successor_geometry_revision, successor_continuity_id) &&
+         routeIdentityMatches(base, base_route_instance_id, base_route_generation,
+                              base_geometry_revision, base_continuity_id) &&
+         routeIdentityMatches(successor, successor_route_instance_id,
+                              successor_route_generation, successor_geometry_revision,
+                              successor_continuity_id) &&
          sameLineage(base.continuity_lineage, continuity_lineage) &&
          sameLineage(successor.continuity_lineage, continuity_lineage) &&
          base.progress.station_m <=
@@ -221,9 +226,11 @@ certifyRouteSplice3D(const CertifiedRouteSuffix3D& base,
   }
 
   result.splice = CertifiedRouteSplice3D{
+      .base_route_instance_id = base.route_instance_id,
       .base_route_generation = base.identity.generation,
       .base_geometry_revision = base.geometry->executable_geometry_revision,
       .base_continuity_id = base.continuity_id,
+      .successor_route_instance_id = successor.route_instance_id,
       .successor_route_generation = successor.identity.generation,
       .successor_geometry_revision = successor.geometry->executable_geometry_revision,
       .successor_continuity_id = successor.continuity_id,
@@ -336,6 +343,7 @@ assessRouteSpliceReadiness3D(const CertifiedRouteSplice3D& splice,
 bool routeSpliceWindowExpired3D(const CertifiedRouteSplice3D& splice,
                                 const CertifiedRouteSuffix3D& base) noexcept {
   return base.geometry != nullptr &&
+         base.route_instance_id == splice.base_route_instance_id &&
          base.identity.generation == splice.base_route_generation &&
          base.geometry->executable_geometry_revision == splice.base_geometry_revision &&
          base.continuity_id == splice.base_continuity_id &&

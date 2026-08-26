@@ -4,6 +4,37 @@ namespace drone_city_nav {
 namespace {
 
 TEST(ExecutionRouteSnapshot3DTest,
+     FiniteExecutionRecognizesACopiedCertifiedRouteByInstanceId) {
+  SnapshotFixture3D fixture;
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
+      fixture.activeSnapshot();
+  ASSERT_NE(active, nullptr);
+  ASSERT_TRUE(active->route.has_value());
+  CertifiedRouteSuffix3D copied_route = *active->route;
+  copied_route.geometry =
+      std::make_shared<const ExecutionRouteGeometry3D>(*active->route->geometry);
+  ASSERT_NE(copied_route.geometry, active->route->geometry);
+  ASSERT_TRUE(copied_route.valid());
+
+  const std::optional<FiniteExecutionState3D> certified = certifyFiniteExecution3D(
+      *active, copied_route,
+      SnapshotFixture3D::finiteCertificationForRoute(copied_route));
+
+  ASSERT_TRUE(certified.has_value());
+  EXPECT_EQ(certified->source_route_instance_id, active->route->route_instance_id);
+
+  const std::optional<CertifiedRouteSuffix3D> independently_certified =
+      fixture.certify();
+  ASSERT_TRUE(independently_certified.has_value());
+  ASSERT_NE(independently_certified->route_instance_id,
+            active->route->route_instance_id);
+  EXPECT_FALSE(certifyFiniteExecution3D(*active, *independently_certified,
+                                        SnapshotFixture3D::finiteCertificationForRoute(
+                                            *independently_certified))
+                   .has_value());
+}
+
+TEST(ExecutionRouteSnapshot3DTest,
      StaticCertificationSweepsTheExactWorldAndBindsProgressFootprint) {
   SnapshotFixture3D fixture;
   OccupancyGrid3D blocked_static{fixture.raw_occupancy.bounds(),

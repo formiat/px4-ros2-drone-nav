@@ -63,6 +63,7 @@ struct RouteAdherenceAssessment3D {
 };
 
 struct CertificateView3D {
+  RouteInstanceId3D route_instance_id{};
   std::uint64_t route_generation{0U};
   std::uint64_t geometry_revision{0U};
   std::uint64_t physical_route_fingerprint{0U};
@@ -370,11 +371,10 @@ sameDirectTrackingOwner(const DirectTrackingOwnerIdentity3D& first,
 [[nodiscard]] std::uint64_t directTrackingExecutionArtifactFingerprint(
     const DirectTrackingFiniteExecution3D& execution) noexcept;
 
-[[nodiscard]] bool
-certificateValidForSource(const RouteSuffixCertificate3D& certificate,
-                          const std::uint64_t route_generation,
-                          const std::uint64_t geometry_revision,
-                          const std::uint64_t physical_route_fingerprint) noexcept;
+[[nodiscard]] bool certificateValidForSource(
+    const RouteSuffixCertificate3D& certificate, RouteInstanceId3D route_instance_id,
+    const std::uint64_t route_generation, const std::uint64_t geometry_revision,
+    const std::uint64_t physical_route_fingerprint) noexcept;
 
 [[nodiscard]] bool
 sameCertificateBinding(const RouteSuffixCertificate3D& first,

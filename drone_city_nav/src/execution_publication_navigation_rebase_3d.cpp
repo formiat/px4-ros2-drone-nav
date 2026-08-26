@@ -84,8 +84,8 @@ rebaseRouteExecution(const ExecutionPublicationNavigationRebaseRequest3D& reques
   const FiniteExecutionState3D& candidate_execution =
       candidate.finite_execution.value();
   const bool retaining_route =
-      expected.route.has_value() && expected.route->identity.generation ==
-                                        candidate.route.value().identity.generation;
+      expected.route.has_value() &&
+      expected.route->route_instance_id == candidate.route.value().route_instance_id;
   const CertifiedRouteSuffix3D* const target_route =
       retaining_route ? std::addressof(expected.route.value())
                       : std::addressof(candidate.route.value());

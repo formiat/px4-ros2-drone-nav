@@ -57,6 +57,7 @@ continuesCertifiedInitialHandoff(const ExecutionRouteSnapshot3D& current,
   const FiniteExecutionState3D* const execution =
       optionalAddress(current.finite_execution);
   if (execution == nullptr || execution->kind != FiniteExecutionKind3D::kNominal ||
+      execution->source_route_instance_id != target_route.route_instance_id ||
       execution->source_route_generation != target_route.identity.generation ||
       execution->source_geometry_revision !=
           target_route.geometry->executable_geometry_revision ||
@@ -101,7 +102,8 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
   }
 
   const bool targets_current_route =
-      current_route != nullptr && &target_route == current_route;
+      current_route != nullptr &&
+      target_route.route_instance_id == current_route->route_instance_id;
   const bool targets_successor_route =
       current_route != nullptr &&
       current_route->identity.generation != std::numeric_limits<std::uint64_t>::max() &&
@@ -443,6 +445,7 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
       .trajectory_revision = certification.trajectory_revision,
       .source_snapshot_version = current.version,
       .source_navigation_revision = certification.execution_input->poseRevision(),
+      .source_route_instance_id = target_route.route_instance_id,
       .source_route_generation = target_route.identity.generation,
       .source_geometry_revision = target_route.geometry->executable_geometry_revision,
       .source_physical_route_fingerprint =
@@ -458,6 +461,7 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
       .terminal_boundary = terminal_boundary,
       .stop_boundary =
           CertifiedStopBoundary3D{
+              .route_instance_id = target_route.route_instance_id,
               .route_generation = target_route.identity.generation,
               .geometry_revision = target_route.geometry->executable_geometry_revision,
               .physical_route_fingerprint =

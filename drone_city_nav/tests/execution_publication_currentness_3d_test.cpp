@@ -221,7 +221,7 @@ TEST(ExecutionPublicationCurrentness3DTest,
 }
 
 TEST(ExecutionPublicationCurrentness3DTest,
-     RequiresRevalidationForAdvancedLidarAndRejectsIdentityContentOwnerChanges) {
+     RequiresRevalidationForAdvancedLidarAndAcceptsCopiesOfTheSameEvidence) {
   const auto snapshot = makeInitialExecutionRouteSnapshot3D();
   const auto expected_lidar = lidarEvidence();
   ASSERT_NE(snapshot, nullptr);
@@ -250,8 +250,9 @@ TEST(ExecutionPublicationCurrentness3DTest,
   ASSERT_NE(check.current_lidar_evidence, expected_lidar);
   ASSERT_EQ(check.current_lidar_evidence->contentFingerprint(),
             expected_lidar->contentFingerprint());
+  ASSERT_EQ(check.current_lidar_evidence->evidenceId(), expected_lidar->evidenceId());
   EXPECT_EQ(assessExecutionPublicationCurrentness3D(check),
-            ExecutionPublicationCurrentnessStatus3D::kLidarOwnerChanged);
+            ExecutionPublicationCurrentnessStatus3D::kCurrent);
 }
 
 TEST(ExecutionPublicationCurrentness3DTest,

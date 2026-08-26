@@ -79,6 +79,7 @@ certificateView(const RouteSuffixCertificate3D& certificate) noexcept {
   if (const auto* const static_certificate =
           std::get_if<StaticRouteCertificate3D>(&certificate)) {
     return {
+        .route_instance_id = static_certificate->route_instance_id,
         .route_generation = static_certificate->route_generation,
         .geometry_revision = static_certificate->geometry_revision,
         .physical_route_fingerprint = static_certificate->physical_route_fingerprint,
@@ -108,6 +109,7 @@ certificateView(const RouteSuffixCertificate3D& certificate) noexcept {
     return {};
   }
   return {
+      .route_instance_id = raw_certificate->route_instance_id,
       .route_generation = raw_certificate->route_generation,
       .geometry_revision = raw_certificate->geometry_revision,
       .physical_route_fingerprint = raw_certificate->physical_route_fingerprint,
@@ -147,6 +149,7 @@ void hashVector(std::uint64_t& hash, const Vec3& vector) noexcept {
 void hashCertificate(std::uint64_t& hash,
                      const RouteSuffixCertificate3D& certificate) noexcept {
   const CertificateView3D view = certificateView(certificate);
+  hashValue(hash, view.route_instance_id.value);
   hashValue(hash, view.route_generation);
   hashValue(hash, view.geometry_revision);
   hashValue(hash, view.physical_route_fingerprint);
@@ -213,6 +216,7 @@ finiteExecutionArtifactFingerprint(const FiniteExecutionState3D& execution) noex
   hashValue(hash, execution.trajectory_revision);
   hashValue(hash, execution.source_snapshot_version);
   hashValue(hash, execution.source_navigation_revision);
+  hashValue(hash, execution.source_route_instance_id.value);
   hashValue(hash, execution.source_route_generation);
   hashValue(hash, execution.source_geometry_revision);
   hashValue(hash, execution.source_physical_route_fingerprint);
@@ -259,6 +263,7 @@ finiteExecutionArtifactFingerprint(const FiniteExecutionState3D& execution) noex
     hashDouble(hash, boundary.activation_route_station_m);
   }
   hashValue(hash, execution.stop_boundary.route_generation);
+  hashValue(hash, execution.stop_boundary.route_instance_id.value);
   hashValue(hash, execution.stop_boundary.geometry_revision);
   hashValue(hash, execution.stop_boundary.physical_route_fingerprint);
   hashValue(hash, execution.stop_boundary.trajectory_revision);
@@ -392,11 +397,13 @@ sameDirectTrackingOwner(const DirectTrackingOwnerIdentity3D& first,
 
 [[nodiscard]] bool
 certificateValidForSource(const RouteSuffixCertificate3D& certificate,
+                          const RouteInstanceId3D route_instance_id,
                           const std::uint64_t route_generation,
                           const std::uint64_t geometry_revision,
                           const std::uint64_t physical_route_fingerprint) noexcept {
   const CertificateView3D view = certificateView(certificate);
-  if (view.route_generation == 0U || view.route_generation != route_generation ||
+  if (!route_instance_id.valid() || view.route_instance_id != route_instance_id ||
+      view.route_generation == 0U || view.route_generation != route_generation ||
       view.geometry_revision == 0U || view.geometry_revision != geometry_revision ||
       view.physical_route_fingerprint == 0U ||
       view.physical_route_fingerprint != physical_route_fingerprint ||
@@ -426,6 +433,7 @@ sameCertificateBinding(const RouteSuffixCertificate3D& first,
   const CertificateView3D first_view = certificateView(first);
   const CertificateView3D second_view = certificateView(second);
   if (first.index() != second.index() ||
+      first_view.route_instance_id != second_view.route_instance_id ||
       first_view.route_generation != second_view.route_generation ||
       first_view.geometry_revision != second_view.geometry_revision ||
       first_view.physical_route_fingerprint != second_view.physical_route_fingerprint ||
@@ -472,6 +480,7 @@ certificateEligibleForRevalidation(const RouteSuffixCertificate3D& artifact,
   const CertificateView3D artifact_view = certificateView(artifact);
   const CertificateView3D route_view = certificateView(route);
   if (artifact.index() != route.index() ||
+      artifact_view.route_instance_id != route_view.route_instance_id ||
       artifact_view.route_generation != route_view.route_generation ||
       artifact_view.geometry_revision != route_view.geometry_revision ||
       artifact_view.physical_route_fingerprint !=
@@ -722,7 +731,8 @@ rawInvalidationProofMatchesEvent(const FiniteExecutionState3D& execution,
 [[nodiscard]] bool
 terminalStopBoundaryValid(const CertifiedStopBoundary3D& boundary,
                           const FiniteExecutionState3D& execution) noexcept {
-  if (boundary.route_generation != execution.source_route_generation ||
+  if (boundary.route_instance_id != execution.source_route_instance_id ||
+      boundary.route_generation != execution.source_route_generation ||
       boundary.geometry_revision != execution.source_geometry_revision ||
       boundary.physical_route_fingerprint !=
           execution.source_physical_route_fingerprint ||

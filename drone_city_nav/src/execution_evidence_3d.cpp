@@ -452,6 +452,11 @@ double VersionedExecutionValidationPolicy3D::executionInputMaximumControlAgeMs()
   return execution_input_maximum_control_age_ms_;
 }
 
+ExecutionValidationPolicyId3D
+VersionedExecutionValidationPolicy3D::policyId() const noexcept {
+  return ExecutionValidationPolicyId3D{.value = content_fingerprint_};
+}
+
 std::uint64_t
 VersionedExecutionValidationPolicy3D::contentFingerprint() const noexcept {
   return content_fingerprint_;
@@ -653,6 +658,15 @@ std::size_t VersionedLatestLidarEvidence3D::invalidBeamCount() const noexcept {
 const std::vector<Point3>&
 VersionedLatestLidarEvidence3D::hitPointsMapM() const noexcept {
   return capture_.hit_points_map_m;
+}
+
+LatestLidarEvidenceId3D VersionedLatestLidarEvidence3D::evidenceId() const noexcept {
+  return LatestLidarEvidenceId3D{
+      .producer_instance_id = capture_.producer_instance_id,
+      .sequence = capture_.sequence,
+      .pose_generation = capture_.pose_generation,
+      .acquisition_stamp_ns = capture_.acquisition_stamp_ns,
+  };
 }
 
 std::uint64_t

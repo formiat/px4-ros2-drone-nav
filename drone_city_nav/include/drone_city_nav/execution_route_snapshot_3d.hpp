@@ -34,7 +34,18 @@ struct CertifiedRouteProgress3D {
   [[nodiscard]] bool valid() const noexcept;
 };
 
+struct RouteInstanceId3D {
+  std::uint64_t value{0U};
+
+  [[nodiscard]] bool valid() const noexcept {
+    return value != 0U;
+  }
+
+  friend bool operator==(const RouteInstanceId3D&, const RouteInstanceId3D&) = default;
+};
+
 struct StaticRouteCertificate3D {
+  RouteInstanceId3D route_instance_id{};
   std::uint64_t route_generation{0U};
   std::uint64_t geometry_revision{0U};
   std::uint64_t physical_route_fingerprint{0U};
@@ -48,13 +59,15 @@ struct StaticRouteCertificate3D {
   double suffix_start_station_m{0.0};
   double certified_end_station_m{0.0};
 
-  [[nodiscard]] bool validFor(const ActivatedRouteIdentity3D& identity,
+  [[nodiscard]] bool validFor(RouteInstanceId3D expected_route_instance_id,
+                              const ActivatedRouteIdentity3D& identity,
                               std::uint64_t expected_geometry_revision,
                               std::uint64_t expected_physical_route_fingerprint,
                               double route_end_station_m) const noexcept;
 };
 
 struct ObservedRawRouteCertificate3D {
+  RouteInstanceId3D route_instance_id{};
   std::uint64_t route_generation{0U};
   std::uint64_t geometry_revision{0U};
   std::uint64_t physical_route_fingerprint{0U};
@@ -69,7 +82,8 @@ struct ObservedRawRouteCertificate3D {
   double suffix_start_station_m{0.0};
   double certified_end_station_m{0.0};
 
-  [[nodiscard]] bool validFor(const ActivatedRouteIdentity3D& identity,
+  [[nodiscard]] bool validFor(RouteInstanceId3D expected_route_instance_id,
+                              const ActivatedRouteIdentity3D& identity,
                               std::uint64_t expected_geometry_revision,
                               std::uint64_t expected_physical_route_fingerprint,
                               double route_end_station_m) const noexcept;
@@ -79,6 +93,7 @@ using RouteSuffixCertificate3D =
     std::variant<StaticRouteCertificate3D, ObservedRawRouteCertificate3D>;
 
 struct CertifiedRouteSuffix3D {
+  RouteInstanceId3D route_instance_id{};
   ActivatedRouteIdentity3D identity{};
   std::shared_ptr<const ExecutionRouteGeometry3D> geometry;
   RouteSuffixCertificate3D certificate{StaticRouteCertificate3D{}};
@@ -115,6 +130,7 @@ struct FiniteRouteTerminalBoundary3D {
 };
 
 struct CertifiedStopBoundary3D {
+  RouteInstanceId3D route_instance_id{};
   std::uint64_t route_generation{0U};
   std::uint64_t geometry_revision{0U};
   std::uint64_t physical_route_fingerprint{0U};
@@ -153,6 +169,7 @@ struct FiniteExecutionState3D {
   std::uint64_t trajectory_revision{0U};
   std::uint64_t source_snapshot_version{0U};
   std::uint64_t source_navigation_revision{0U};
+  RouteInstanceId3D source_route_instance_id{};
   std::uint64_t source_route_generation{0U};
   std::uint64_t source_geometry_revision{0U};
   std::uint64_t source_physical_route_fingerprint{0U};

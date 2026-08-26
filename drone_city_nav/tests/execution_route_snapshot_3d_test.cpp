@@ -41,6 +41,7 @@ TEST(ExecutionRouteSnapshot3DTest,
 
   ASSERT_TRUE(suffix.has_value());
   EXPECT_TRUE(suffix->valid());
+  EXPECT_TRUE(suffix->route_instance_id.valid());
   EXPECT_NE(suffix->geometry, original_geometry);
   EXPECT_NE(suffix->geometry->route, original_geometry->route);
   EXPECT_EQ(routeFingerprint(*suffix->geometry->route),
@@ -56,6 +57,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   const ObservedRawRouteCertificate3D* const raw_certificate =
       std::get_if<ObservedRawRouteCertificate3D>(&suffix->certificate);
   ASSERT_NE(raw_certificate, nullptr);
+  EXPECT_EQ(raw_certificate->route_instance_id, suffix->route_instance_id);
   EXPECT_EQ(raw_certificate->route_generation, SnapshotFixture3D::kRouteGeneration);
   EXPECT_EQ(raw_certificate->geometry_revision, fixture.geometry_revision);
   EXPECT_EQ(raw_certificate->physical_route_fingerprint,
@@ -70,6 +72,18 @@ TEST(ExecutionRouteSnapshot3DTest,
             suffix->observed_raw_world->occupiedContentFingerprint());
   EXPECT_DOUBLE_EQ(raw_certificate->suffix_start_station_m, 2.0);
   EXPECT_DOUBLE_EQ(raw_certificate->certified_end_station_m, 10.0);
+
+  const CertifiedRouteSuffix3D copied_suffix = *suffix;
+  EXPECT_TRUE(copied_suffix.valid());
+  EXPECT_EQ(copied_suffix.route_instance_id, suffix->route_instance_id);
+  CertifiedRouteSuffix3D tampered_identity = copied_suffix;
+  ++tampered_identity.route_instance_id.value;
+  EXPECT_FALSE(tampered_identity.valid());
+
+  const std::optional<CertifiedRouteSuffix3D> independently_certified =
+      fixture.certify();
+  ASSERT_TRUE(independently_certified.has_value());
+  EXPECT_NE(independently_certified->route_instance_id, suffix->route_instance_id);
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
@@ -112,6 +126,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       recertifyExecutionRoute3D(*sealed, observation, sealed->observed_raw_world);
 
   ASSERT_TRUE(refreshed.has_value());
+  EXPECT_NE(refreshed->route_instance_id, sealed->route_instance_id);
   EXPECT_EQ(refreshed->geometry, sealed->geometry);
   EXPECT_EQ(refreshed->geometry->route, sealed->geometry->route);
   EXPECT_DOUBLE_EQ(refreshed->progress.station_m, 3.0);

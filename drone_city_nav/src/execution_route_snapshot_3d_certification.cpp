@@ -2,6 +2,7 @@
 #include "drone_city_nav/execution_route_snapshot_3d.hpp"
 #include "drone_city_nav/mppi/mppi_reference.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
+#include "drone_city_nav/producer_instance_id.hpp"
 
 #include <algorithm>
 #include <array>
@@ -25,6 +26,8 @@ namespace drone_city_nav {
 using namespace execution_route_snapshot_3d_internal;
 
 namespace execution_route_snapshot_3d_internal {
+
+constexpr std::uint64_t kCertifiedRouteInstanceDomain{0x525445494e535433ULL};
 
 [[nodiscard]] std::optional<CertifiedRouteSuffix3D>
 certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
@@ -131,6 +134,11 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
     return std::nullopt;
   }
   const double end_station_m = geometry->route->back().station_m;
+  const RouteInstanceId3D route_instance_id{
+      .value = createProducerInstanceId(kCertifiedRouteInstanceDomain)};
+  if (!route_instance_id.valid()) {
+    return std::nullopt;
+  }
   RouteSuffixCertificate3D certificate;
   if (requires_observed_raw_certificate) {
     if (!assessment.raw_validation.connector_validated ||
@@ -145,6 +153,7 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
       return std::nullopt;
     }
     certificate = ObservedRawRouteCertificate3D{
+        .route_instance_id = route_instance_id,
         .route_generation = identity->generation,
         .geometry_revision = geometry->executable_geometry_revision,
         .physical_route_fingerprint = geometry->physical_route_fingerprint,
@@ -172,6 +181,7 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
       return std::nullopt;
     }
     certificate = StaticRouteCertificate3D{
+        .route_instance_id = route_instance_id,
         .route_generation = identity->generation,
         .geometry_revision = geometry->executable_geometry_revision,
         .physical_route_fingerprint = geometry->physical_route_fingerprint,
@@ -191,6 +201,7 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
   }
 
   CertifiedRouteSuffix3D result{
+      .route_instance_id = route_instance_id,
       .identity = *identity,
       .geometry = geometry,
       .certificate = certificate,

@@ -83,6 +83,8 @@ TEST(ExecutionEvidence3DTest,
   ASSERT_NE(policy, nullptr);
   ASSERT_NE(repeated, nullptr);
   ASSERT_TRUE(policy->valid());
+  EXPECT_TRUE(policy->policyId().valid());
+  EXPECT_EQ(policy->policyId(), repeated->policyId());
   EXPECT_NE(policy->contentFingerprint(), 0U);
   EXPECT_EQ(policy->contentFingerprint(), repeated->contentFingerprint());
 
@@ -102,6 +104,7 @@ TEST(ExecutionEvidence3DTest,
       FlightEnvelopeConfig{.minimum_target_z_m = 2.0, .maximum_target_z_m = 40.0},
       policy->dynamics(), policy->altitudeEnvelope(), footprint);
   ASSERT_NE(changed, nullptr);
+  EXPECT_NE(changed->policyId(), policy->policyId());
   EXPECT_NE(changed->contentFingerprint(), policy->contentFingerprint());
 
   const auto changed_pose_age = VersionedExecutionValidationPolicy3D::capture(
@@ -377,6 +380,8 @@ TEST(ExecutionEvidence3DTest, LatestLidarEvidenceDeepCopiesPointsAndHashesAllCon
   EXPECT_EQ(lidar->receiveStampNs(), 6'010'000'000);
   EXPECT_EQ(lidar->sourceBeamCount(), 5U);
   EXPECT_EQ(lidar->invalidBeamCount(), 1U);
+  EXPECT_TRUE(lidar->evidenceId().valid());
+  EXPECT_EQ(lidar->evidenceId(), repeated->evidenceId());
   EXPECT_DOUBLE_EQ(lidar->hitPointsMapM().front().x, 1.0);
   EXPECT_EQ(lidar->contentFingerprint(), repeated->contentFingerprint());
 
@@ -386,6 +391,7 @@ TEST(ExecutionEvidence3DTest, LatestLidarEvidenceDeepCopiesPointsAndHashesAllCon
   EXPECT_DOUBLE_EQ(lidar->hitPointsMapM().front().x, 1.0);
   EXPECT_EQ(lidar->producerInstanceId(), changed->producerInstanceId());
   EXPECT_EQ(lidar->sequence(), changed->sequence());
+  EXPECT_EQ(lidar->evidenceId(), changed->evidenceId());
   EXPECT_NE(lidar->contentFingerprint(), changed->contentFingerprint());
 }
 

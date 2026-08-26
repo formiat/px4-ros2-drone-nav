@@ -32,7 +32,6 @@ enum class ExecutionPublicationCurrentnessStatus3D : std::uint8_t {
   kLidarEvidenceInvalid,
   kLidarIdentityChanged,
   kLidarContentChanged,
-  kLidarOwnerChanged,
   kInvalidPublicationTime,
   kLidarNotFresh,
 };

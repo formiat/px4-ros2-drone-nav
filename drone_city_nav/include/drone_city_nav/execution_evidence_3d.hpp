@@ -15,6 +15,17 @@
 
 namespace drone_city_nav {
 
+struct ExecutionValidationPolicyId3D {
+  std::uint64_t value{0U};
+
+  [[nodiscard]] bool valid() const noexcept {
+    return value != 0U;
+  }
+
+  friend bool operator==(const ExecutionValidationPolicyId3D&,
+                         const ExecutionValidationPolicyId3D&) = default;
+};
+
 class VersionedExecutionValidationPolicy3D final {
 private:
   struct CaptureToken final {};
@@ -35,6 +46,7 @@ public:
   [[nodiscard]] double latestLidarMaximumAgeMs() const noexcept;
   [[nodiscard]] double executionInputMaximumPoseAgeMs() const noexcept;
   [[nodiscard]] double executionInputMaximumControlAgeMs() const noexcept;
+  [[nodiscard]] ExecutionValidationPolicyId3D policyId() const noexcept;
   [[nodiscard]] std::uint64_t contentFingerprint() const noexcept;
   [[nodiscard]] bool valid() const noexcept;
 
@@ -193,6 +205,21 @@ struct LatestLidarEvidenceFreshness3D {
   bool receive_time_fallback{false};
 };
 
+struct LatestLidarEvidenceId3D {
+  std::uint64_t producer_instance_id{0U};
+  std::uint64_t sequence{0U};
+  std::uint64_t pose_generation{0U};
+  std::int64_t acquisition_stamp_ns{0};
+
+  [[nodiscard]] bool valid() const noexcept {
+    return producer_instance_id != 0U && sequence != 0U && pose_generation != 0U &&
+           acquisition_stamp_ns > 0;
+  }
+
+  friend bool operator==(const LatestLidarEvidenceId3D&,
+                         const LatestLidarEvidenceId3D&) = default;
+};
+
 class VersionedLatestLidarEvidence3D final {
 private:
   struct CaptureToken final {};
@@ -209,6 +236,7 @@ public:
   [[nodiscard]] std::size_t sourceBeamCount() const noexcept;
   [[nodiscard]] std::size_t invalidBeamCount() const noexcept;
   [[nodiscard]] const std::vector<Point3>& hitPointsMapM() const noexcept;
+  [[nodiscard]] LatestLidarEvidenceId3D evidenceId() const noexcept;
   // Fingerprint of producer-owned content. Local receipt time is deliberately
   // excluded so retransmission cannot rejuvenate an observation.
   [[nodiscard]] std::uint64_t sourceContentFingerprint() const noexcept;

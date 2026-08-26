@@ -238,8 +238,12 @@ transferToExecutionHold3D(const ExecutionRouteSnapshot3D& current,
     const bool same_evidence =
         certification.observed_raw_world == resident_hold->observed_raw_world &&
         certification.static_world == resident_hold->static_world &&
-        certification.validation_policy == resident_hold->validation_policy &&
-        certification.latest_lidar_evidence == resident_hold->latest_lidar_evidence;
+        certification.validation_policy->policyId() ==
+            resident_hold->validation_policy->policyId() &&
+        certification.latest_lidar_evidence->evidenceId() ==
+            resident_hold->latest_lidar_evidence->evidenceId() &&
+        certification.latest_lidar_evidence->contentFingerprint() ==
+            resident_hold->latest_lidar_evidence->contentFingerprint();
     if (same_evidence) {
       return transitionFailure(ExecutionRouteTransitionStatus3D::kNoChange);
     }

@@ -163,9 +163,8 @@ bool PendingCertifiedRouteMailbox3D::commitExecutionIfSame(
   if (pending_ != expected_pending ||
       !pendingCertifiedRouteEligible3D(*expected_pending, *expected_snapshot) ||
       !transition.next->route.has_value() ||
-      transition.next->route->identity.generation !=
-          expected_pending->route.identity.generation ||
-      transition.next->route->geometry != expected_pending->route.geometry) {
+      transition.next->route->route_instance_id !=
+          expected_pending->route.route_instance_id) {
     return false;
   }
   if (execution_store.publish(expected_snapshot, transition) !=

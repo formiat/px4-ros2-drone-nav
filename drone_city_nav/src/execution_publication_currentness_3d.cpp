@@ -13,10 +13,7 @@ namespace {
 [[nodiscard]] bool
 sameLidarIdentity(const VersionedLatestLidarEvidence3D& expected,
                   const VersionedLatestLidarEvidence3D& current) noexcept {
-  return expected.producerInstanceId() == current.producerInstanceId() &&
-         expected.sequence() == current.sequence() &&
-         expected.poseGeneration() == current.poseGeneration() &&
-         expected.acquisitionStampNs() == current.acquisitionStampNs();
+  return expected.evidenceId() == current.evidenceId();
 }
 
 [[nodiscard]] bool sameRawLineage(const RawMapVersion& expected,
@@ -101,9 +98,6 @@ ExecutionPublicationCurrentnessStatus3D assessExecutionPublicationCurrentness3D(
         check.current_lidar_evidence->contentFingerprint()) {
       return ExecutionPublicationCurrentnessStatus3D::kLidarContentChanged;
     }
-    if (check.expected_lidar_evidence != check.current_lidar_evidence) {
-      return ExecutionPublicationCurrentnessStatus3D::kLidarOwnerChanged;
-    }
   }
 
   const LatestLidarEvidenceFreshness3D freshness = assessLatestLidarEvidenceFreshness3D(
@@ -153,8 +147,6 @@ std::string_view executionPublicationCurrentnessStatus3DName(
       return "lidar_identity_changed";
     case ExecutionPublicationCurrentnessStatus3D::kLidarContentChanged:
       return "lidar_content_changed";
-    case ExecutionPublicationCurrentnessStatus3D::kLidarOwnerChanged:
-      return "lidar_owner_changed";
     case ExecutionPublicationCurrentnessStatus3D::kInvalidPublicationTime:
       return "invalid_publication_time";
     case ExecutionPublicationCurrentnessStatus3D::kLidarNotFresh:

@@ -228,11 +228,15 @@ sameRouteEvidenceLineage(const CertifiedRouteSuffix3D& candidate,
                          const CertifiedRouteSuffix3D& expected) noexcept {
   if (!candidate.valid() || !expected.valid() ||
       candidate.identity.generation != expected.identity.generation ||
-      candidate.geometry != expected.geometry ||
+      candidate.geometry->executable_geometry_revision !=
+          expected.geometry->executable_geometry_revision ||
+      candidate.geometry->physical_route_fingerprint !=
+          expected.geometry->physical_route_fingerprint ||
       candidate.continuity_id != expected.continuity_id ||
       !sameRouteContinuityLineage(candidate.continuity_lineage,
                                   expected.continuity_lineage) ||
-      candidate.validation_policy != expected.validation_policy ||
+      candidate.validation_policy->policyId() !=
+          expected.validation_policy->policyId() ||
       candidate.planned_endpoint_semantics != expected.planned_endpoint_semantics ||
       candidate.certificate.index() != expected.certificate.index()) {
     return false;

@@ -62,11 +62,13 @@ bool CertifiedRouteProgress3D::valid() const noexcept {
 }
 
 bool StaticRouteCertificate3D::validFor(
+    const RouteInstanceId3D expected_route_instance_id,
     const ActivatedRouteIdentity3D& identity,
     const std::uint64_t expected_geometry_revision,
     const std::uint64_t expected_physical_route_fingerprint,
     const double route_end_station_m) const noexcept {
-  return route_generation == identity.generation && route_generation != 0U &&
+  return route_instance_id.valid() && route_instance_id == expected_route_instance_id &&
+         route_generation == identity.generation && route_generation != 0U &&
          geometry_revision == expected_geometry_revision && geometry_revision != 0U &&
          physical_route_fingerprint == expected_physical_route_fingerprint &&
          physical_route_fingerprint != 0U &&
@@ -82,11 +84,13 @@ bool StaticRouteCertificate3D::validFor(
 }
 
 bool ObservedRawRouteCertificate3D::validFor(
+    const RouteInstanceId3D expected_route_instance_id,
     const ActivatedRouteIdentity3D& identity,
     const std::uint64_t expected_geometry_revision,
     const std::uint64_t expected_physical_route_fingerprint,
     const double route_end_station_m) const noexcept {
-  return route_generation == identity.generation && route_generation != 0U &&
+  return route_instance_id.valid() && route_instance_id == expected_route_instance_id &&
+         route_generation == identity.generation && route_generation != 0U &&
          geometry_revision == expected_geometry_revision && geometry_revision != 0U &&
          physical_route_fingerprint == expected_physical_route_fingerprint &&
          physical_route_fingerprint != 0U &&
@@ -235,8 +239,8 @@ bool executionRouteGeometryValid3D(const ExecutionRouteGeometry3D& geometry,
 }
 
 bool CertifiedRouteSuffix3D::valid() const noexcept {
-  if (geometry == nullptr || !progress.valid() || validation_policy == nullptr ||
-      !validation_policy->valid() ||
+  if (!route_instance_id.valid() || geometry == nullptr || !progress.valid() ||
+      validation_policy == nullptr || !validation_policy->valid() ||
       (progress.execution_input != nullptr &&
        !executionInputFreshAt(*progress.execution_input, *validation_policy,
                               progress.execution_input->effectiveStampNs())) ||
@@ -262,13 +266,13 @@ bool CertifiedRouteSuffix3D::valid() const noexcept {
   const bool certificate_valid =
       static_certificate != nullptr
           ? static_certificate->validFor(
-                identity, geometry->executable_geometry_revision,
+                route_instance_id, identity, geometry->executable_geometry_revision,
                 geometry->physical_route_fingerprint, route_end_station_m) &&
                 observed_raw_world == nullptr &&
                 staticWorldMatchesCertificate(static_world, *static_certificate)
           : raw_certificate != nullptr &&
                 raw_certificate->validFor(
-                    identity, geometry->executable_geometry_revision,
+                    route_instance_id, identity, geometry->executable_geometry_revision,
                     geometry->physical_route_fingerprint, route_end_station_m) &&
                 static_world == nullptr &&
                 rawWorldMatchesCertificate(observed_raw_world, *raw_certificate, true);
@@ -345,16 +349,16 @@ bool FiniteExecutionState3D::validFor(
           : 0;
   if (!knownFiniteExecutionKind(kind) || trajectory_revision == 0U ||
       source_snapshot_version == 0U || source_navigation_revision == 0U ||
-      source_route_generation == 0U || source_geometry_revision == 0U ||
-      source_physical_route_fingerprint == 0U || horizon == nullptr ||
-      horizon->controls.empty() ||
+      !source_route_instance_id.valid() || source_route_generation == 0U ||
+      source_geometry_revision == 0U || source_physical_route_fingerprint == 0U ||
+      horizon == nullptr || horizon->controls.empty() ||
       horizon->states.size() != horizon->controls.size() + 1U ||
       !horizon_counts_valid || !duration_fits ||
       !mppi::finiteHorizonHasTerminalRestState(*horizon) || valid_from_ns < 0 ||
       valid_until_ns != expected_valid_until_ns ||
       !std::isfinite(begin_route_station_m) || begin_route_station_m < 0.0 ||
-      !certificateValidForSource(certificate, source_route_generation,
-                                 source_geometry_revision,
+      !certificateValidForSource(certificate, source_route_instance_id,
+                                 source_route_generation, source_geometry_revision,
                                  source_physical_route_fingerprint)) {
     return false;
   }
@@ -383,7 +387,8 @@ bool FiniteExecutionState3D::validFor(
   if (route == nullptr) {
     return kind != FiniteExecutionKind3D::kNominal;
   }
-  if (!route->valid() || source_route_generation != route->identity.generation ||
+  if (!route->valid() || source_route_instance_id != route->route_instance_id ||
+      source_route_generation != route->identity.generation ||
       validation_policy == nullptr ||
       validation_policy->contentFingerprint() !=
           route->validation_policy->contentFingerprint() ||

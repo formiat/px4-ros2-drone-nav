@@ -632,8 +632,10 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
   const std::shared_ptr<const VersionedLatestLidarEvidence3D> current_lidar =
       latest_lidar_evidence_.load(std::memory_order_acquire);
   if (latest_lidar_evidence_identity_conflicted_.load(std::memory_order_acquire) ||
-      publication_lidar == nullptr ||
-      (publication_lidar != current_lidar &&
+      publication_lidar == nullptr || current_lidar == nullptr ||
+      ((publication_lidar->evidenceId() != current_lidar->evidenceId() ||
+        publication_lidar->contentFingerprint() !=
+            current_lidar->contentFingerprint()) &&
        !publication_commit.latest_evidence_revalidated) ||
       !assessLatestLidarEvidenceFreshness3D(
            *publication_lidar, publication_now_ns,
@@ -880,9 +882,13 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
   std::shared_ptr<const ExecutionRouteSnapshot3D> hold_expected;
   std::optional<ExecutionRouteTransitionResult3D> hold_transition;
   if (cycle.snapshot_owner_required) {
-    if (!cycle.latest_lidar_obstacle_fresh ||
-        latest_lidar_evidence_.load(std::memory_order_acquire) !=
-            cycle.latest_lidar_evidence) {
+    const std::shared_ptr<const VersionedLatestLidarEvidence3D> current_lidar =
+        latest_lidar_evidence_.load(std::memory_order_acquire);
+    if (!cycle.latest_lidar_obstacle_fresh || cycle.latest_lidar_evidence == nullptr ||
+        current_lidar == nullptr ||
+        current_lidar->evidenceId() != cycle.latest_lidar_evidence->evidenceId() ||
+        current_lidar->contentFingerprint() !=
+            cycle.latest_lidar_evidence->contentFingerprint()) {
       return publication;
     }
     hold_expected = execution_route_store_.snapshot();
@@ -907,7 +913,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
         cycle.planning_state == ProductionMppiPlanningState::kMissionGoalPositionHold &&
         cycle.execution_input != nullptr &&
         cycle.execution_input->stationaryCaptureStateAuthoritative() &&
-        cycle.selected_policy == execution_validation_policy_.get() &&
+        cycle.selected_policy != nullptr && execution_validation_policy_ != nullptr &&
+        cycle.selected_policy->policyId() == execution_validation_policy_->policyId() &&
         (cycle.direct_observed_world == nullptr) !=
             (cycle.direct_static_world == nullptr);
     if (cycle.execution_input != nullptr &&

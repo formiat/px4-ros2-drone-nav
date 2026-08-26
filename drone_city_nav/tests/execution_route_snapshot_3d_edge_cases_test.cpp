@@ -28,10 +28,16 @@ TEST(ExecutionRouteSnapshot3DTest,
   ExecutionRouteSnapshotStore3D store;
   const std::shared_ptr<const ExecutionRouteSnapshot3D> initial = store.snapshot();
   ASSERT_NE(initial, nullptr);
+  CertifiedRouteSuffix3D copied_route = *suffix;
+  copied_route.geometry =
+      std::make_shared<const ExecutionRouteGeometry3D>(*suffix->geometry);
+  ASSERT_NE(copied_route.geometry, suffix->geometry);
+  ASSERT_TRUE(copied_route.valid());
+  ASSERT_EQ(copied_route.route_instance_id, suffix->route_instance_id);
   FiniteExecutionState3D execution = SnapshotFixture3D::finiteExecutionForRoute(
-      *initial, *suffix, FiniteExecutionKind3D::kNominal, true, 100U);
+      *initial, copied_route, FiniteExecutionKind3D::kNominal, true, 100U);
   const ExecutionRouteTransitionResult3D activation = activateCertifiedRoute3D(
-      *initial, initial->version, *suffix, std::move(execution));
+      *initial, initial->version, copied_route, std::move(execution));
   ASSERT_TRUE(activation.applied());
   ASSERT_EQ(store.publish(initial, activation),
             ExecutionRoutePublicationStatus3D::kPublished);

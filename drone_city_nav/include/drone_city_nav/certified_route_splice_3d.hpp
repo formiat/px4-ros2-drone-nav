@@ -37,9 +37,11 @@ enum class RouteSpliceCertificationStatus3D : std::uint8_t {
 };
 
 struct CertifiedRouteSplice3D {
+  RouteInstanceId3D base_route_instance_id{};
   std::uint64_t base_route_generation{0U};
   std::uint64_t base_geometry_revision{0U};
   std::uint64_t base_continuity_id{0U};
+  RouteInstanceId3D successor_route_instance_id{};
   std::uint64_t successor_route_generation{0U};
   std::uint64_t successor_geometry_revision{0U};
   std::uint64_t successor_continuity_id{0U};
