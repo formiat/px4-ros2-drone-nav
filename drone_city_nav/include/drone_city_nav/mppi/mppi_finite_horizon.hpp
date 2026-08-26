@@ -30,6 +30,17 @@ struct FiniteHorizon {
   std::size_t arrival_control_count{0U};
 };
 
+struct RouteConvergentFiniteHorizon {
+  std::optional<FiniteHorizon> horizon;
+  std::size_t arrival_shaping_attempts{0U};
+  std::size_t nominal_prefix_control_count{0U};
+  float closest_terminal_cross_track_m{-1.0F};
+
+  [[nodiscard]] bool accepted() const noexcept {
+    return horizon.has_value();
+  }
+};
+
 [[nodiscard]] FiniteHorizonConfig
 makeFiniteHorizonConfig(const StoppingCapability& capability) noexcept;
 
@@ -38,10 +49,19 @@ makeFiniteHorizonConfig(const StoppingCapability& capability) noexcept;
     std::size_t nominal_prefix_control_count, const DynamicsConfig& dynamics,
     Control previous_applied_control, const FiniteHorizonConfig& config = {});
 
+[[nodiscard]] RouteConvergentFiniteHorizon buildRouteConvergentFiniteHorizon(
+    std::span<const State> planned_states, std::span<const Control> planned_controls,
+    Control previous_applied_control, const DynamicsConfig& dynamics,
+    std::span<const RouteSample3D> route, float initial_route_station_m,
+    float terminal_cross_track_tolerance_m, std::size_t arrival_search_step_controls,
+    const FiniteHorizonConfig& config = {});
+
 [[nodiscard]] bool
 finiteHorizonHasTerminalRestState(const FiniteHorizon& horizon,
                                   float velocity_tolerance_mps = 1.0e-3F) noexcept;
 
 [[nodiscard]] std::int64_t finitePathControlIntervalNanoseconds(float dt_s) noexcept;
+
+[[nodiscard]] std::size_t finiteHorizonArrivalSearchStepControls(float dt_s) noexcept;
 
 } // namespace drone_city_nav::mppi

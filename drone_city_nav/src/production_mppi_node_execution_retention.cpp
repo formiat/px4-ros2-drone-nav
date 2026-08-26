@@ -20,8 +20,6 @@ namespace drone_city_nav {
 
 namespace {
 
-constexpr float kArrivalSearchIntervalS{0.5F};
-
 [[nodiscard]] mppi::TimedExecutionPathPoint
 executionPathPoint(const msg::MppiHorizonPoint& point) noexcept {
   return mppi::TimedExecutionPathPoint{
@@ -320,9 +318,9 @@ ProductionMppiNode::retainSnapshotFinitePath(
       mppi::validateFiniteExecutionTrajectoryContinuation(
           points, active.valid_from_ns, active.valid_until_ns, now_ns,
           exact_initial_state, exact_previous_control, *continuation_world);
-  const std::size_t route_arrival_search_step_controls = std::max<std::size_t>(
-      1U, static_cast<std::size_t>(std::ceil(
-              kArrivalSearchIntervalS / route.validation_policy->dynamics().dt_s)));
+  const std::size_t route_arrival_search_step_controls =
+      mppi::finiteHorizonArrivalSearchStepControls(
+          route.validation_policy->dynamics().dt_s);
   if (active.trajectory_revision == std::numeric_limits<std::uint64_t>::max()) {
     RCLCPP_ERROR(get_logger(),
                  "FINITE_EXECUTION_SNAPSHOT retained=false "
@@ -533,9 +531,9 @@ ProductionMppiNode::retainDirectFinitePath(
       mppi::validateFiniteExecutionTrajectoryContinuation(
           points, active.valid_from_ns, active.valid_until_ns, now_ns,
           exact_initial_state, exact_previous_control, *continuation_world);
-  const std::size_t direct_arrival_search_step_controls = std::max<std::size_t>(
-      1U, static_cast<std::size_t>(std::ceil(
-              kArrivalSearchIntervalS / active.validation_policy->dynamics().dt_s)));
+  const std::size_t direct_arrival_search_step_controls =
+      mppi::finiteHorizonArrivalSearchStepControls(
+          active.validation_policy->dynamics().dt_s);
   if (active.trajectory_revision == std::numeric_limits<std::uint64_t>::max()) {
     return std::nullopt;
   }

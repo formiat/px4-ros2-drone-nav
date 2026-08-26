@@ -1,6 +1,6 @@
 #pragma once
 
-#include "drone_city_nav/mppi/mppi_engine.hpp"
+#include "drone_city_nav/mppi/mppi_types.hpp"
 
 #include <cfloat>
 #include <cmath>

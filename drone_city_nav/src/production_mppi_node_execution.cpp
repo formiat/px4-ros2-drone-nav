@@ -322,13 +322,11 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       .latest_lidar_obstacle_points = latest_lidar_obstacle_points,
       .terminal_boundary = route_terminal_boundary,
   };
-  constexpr float kArrivalSearchIntervalS{0.5F};
   const float execution_dt_s = execution_dynamics != nullptr
                                    ? execution_dynamics->dt_s
                                    : mppi_config_.dynamics.dt_s;
-  const std::size_t arrival_search_step_controls = std::max<std::size_t>(
-      1U,
-      static_cast<std::size_t>(std::ceil(kArrivalSearchIntervalS / execution_dt_s)));
+  const std::size_t arrival_search_step_controls =
+      mppi::finiteHorizonArrivalSearchStepControls(execution_dt_s);
   const std::int64_t finite_path_control_interval_ns =
       mppi::finitePathControlIntervalNanoseconds(execution_dt_s);
   std::uint64_t latest_obstacle_revision = input.obstacle_revision;

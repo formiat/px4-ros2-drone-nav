@@ -1,6 +1,7 @@
 #include "drone_city_nav/mppi/mppi_finite_horizon.hpp"
 
 #include "drone_city_nav/mppi/mppi_reference.hpp"
+#include "drone_city_nav/mppi/mppi_route_projection.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -240,6 +241,54 @@ std::optional<FiniteHorizon> buildFiniteHorizon(
   return horizon;
 }
 
+RouteConvergentFiniteHorizon buildRouteConvergentFiniteHorizon(
+    const std::span<const State> planned_states,
+    const std::span<const Control> planned_controls,
+    const Control previous_applied_control, const DynamicsConfig& dynamics,
+    const std::span<const RouteSample3D> route, const float initial_route_station_m,
+    const float terminal_cross_track_tolerance_m,
+    const std::size_t arrival_search_step_controls, const FiniteHorizonConfig& config) {
+  RouteConvergentFiniteHorizon result;
+  if (planned_states.size() != planned_controls.size() + 1U ||
+      planned_controls.empty() || route.size() < 2U ||
+      !std::isfinite(initial_route_station_m) ||
+      !std::isfinite(terminal_cross_track_tolerance_m) ||
+      !(terminal_cross_track_tolerance_m > 0.0F) ||
+      arrival_search_step_controls == 0U) {
+    return result;
+  }
+
+  std::size_t preserved_prefix_control_count = planned_controls.size();
+  while (true) {
+    ++result.arrival_shaping_attempts;
+    std::optional<FiniteHorizon> candidate = buildFiniteHorizon(
+        planned_states, planned_controls, preserved_prefix_control_count, dynamics,
+        previous_applied_control, config);
+    if (candidate.has_value()) {
+      const MppiRouteProjection3D terminal_projection = projectOntoMppiRoute3D(
+          candidate->states.back(), route, initial_route_station_m);
+      if (terminal_projection.valid &&
+          (result.closest_terminal_cross_track_m < 0.0F ||
+           terminal_projection.distance_m < result.closest_terminal_cross_track_m)) {
+        result.closest_terminal_cross_track_m = terminal_projection.distance_m;
+      }
+      if (terminal_projection.valid &&
+          terminal_projection.distance_m <= terminal_cross_track_tolerance_m) {
+        result.nominal_prefix_control_count = candidate->nominal_prefix_control_count;
+        result.horizon = std::move(candidate);
+        return result;
+      }
+    }
+    if (preserved_prefix_control_count == 0U) {
+      return result;
+    }
+    preserved_prefix_control_count =
+        preserved_prefix_control_count > arrival_search_step_controls
+            ? preserved_prefix_control_count - arrival_search_step_controls
+            : 0U;
+  }
+}
+
 std::int64_t finitePathControlIntervalNanoseconds(const float dt_s) noexcept {
   constexpr double kMicrosecondsPerSecond{1.0e6};
   constexpr std::int64_t kNanosecondsPerMicrosecond{1'000LL};
@@ -253,6 +302,15 @@ std::int64_t finitePathControlIntervalNanoseconds(const float dt_s) noexcept {
     return 0;
   }
   return interval_us * kNanosecondsPerMicrosecond;
+}
+
+std::size_t finiteHorizonArrivalSearchStepControls(const float dt_s) noexcept {
+  constexpr float kArrivalSearchIntervalS{0.5F};
+  if (!std::isfinite(dt_s) || !(dt_s > 0.0F)) {
+    return 0U;
+  }
+  return std::max<std::size_t>(
+      1U, static_cast<std::size_t>(std::ceil(kArrivalSearchIntervalS / dt_s)));
 }
 
 bool finiteHorizonHasTerminalRestState(const FiniteHorizon& horizon,

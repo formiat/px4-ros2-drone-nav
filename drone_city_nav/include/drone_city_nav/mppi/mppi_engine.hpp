@@ -155,6 +155,8 @@ struct MppiTickResult {
   bool known_solid_collision{false};
   bool route_terminal_cross_track_violation{false};
   float terminal_route_cross_track_m{-1.0F};
+  std::size_t route_terminal_arrival_shaping_attempts{0U};
+  std::size_t route_terminal_nominal_prefix_control_count{0U};
   float critical_exposure_m{0.0F};
   float planning_exposure_m{0.0F};
   float critical_clearance_proximity_s{0.0F};

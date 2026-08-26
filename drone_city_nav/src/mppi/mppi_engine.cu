@@ -3,6 +3,7 @@
 #include "drone_city_nav/mppi/mppi_clearance_cost.hpp"
 #include "drone_city_nav/mppi/mppi_control_sequence.hpp"
 #include "drone_city_nav/mppi/mppi_engine.hpp"
+#include "drone_city_nav/mppi/mppi_finite_horizon.hpp"
 #include "drone_city_nav/mppi/mppi_input_validation.hpp"
 #include "drone_city_nav/mppi/mppi_reference.hpp"
 #include "drone_city_nav/mppi/mppi_route_projection.hpp"
@@ -605,15 +606,22 @@ public:
           evaluation.trace.horizon, controls, config_.footprint, known_solids_);
       if (route_active && input.route->terminal_cross_track_tolerance_m &&
           !evaluation.trace.horizon.empty()) {
-        const MppiRouteProjection3D terminal_projection =
-            projectOntoMppiRoute3D(evaluation.trace.horizon.back(), active_route,
-                                   input.route->initial_station_m);
+        const RouteConvergentFiniteHorizon finite_route =
+            buildRouteConvergentFiniteHorizon(
+                evaluation.trace.horizon, controls, previous_applied_control,
+                config_.dynamics, active_route, input.route->initial_station_m,
+                *input.route->terminal_cross_track_tolerance_m,
+                finiteHorizonArrivalSearchStepControls(config_.dynamics.dt_s),
+                makeFiniteHorizonConfig(config_.stopping_capability));
         evaluation.terminal_route_cross_track_m =
-            terminal_projection.valid ? terminal_projection.distance_m : -1.0F;
-        evaluation.route_terminal_cross_track_violation =
-            !terminal_projection.valid ||
-            terminal_projection.distance_m >
-                *input.route->terminal_cross_track_tolerance_m;
+            finite_route.closest_terminal_cross_track_m;
+        evaluation.route_terminal_cross_track_violation = !finite_route.accepted();
+        evaluation.route_terminal_arrival_shaping_attempts =
+            finite_route.arrival_shaping_attempts;
+        if (finite_route.accepted()) {
+          evaluation.route_terminal_nominal_prefix_control_count =
+              finite_route.nominal_prefix_control_count;
+        }
       }
       evaluation.classification = classifyMppiPostUpdate(
           result.feasibility_contract,
@@ -802,6 +810,10 @@ public:
         selected_evaluation.route_terminal_cross_track_violation;
     result.terminal_route_cross_track_m =
         selected_evaluation.terminal_route_cross_track_m;
+    result.route_terminal_arrival_shaping_attempts =
+        selected_evaluation.route_terminal_arrival_shaping_attempts;
+    result.route_terminal_nominal_prefix_control_count =
+        selected_evaluation.route_terminal_nominal_prefix_control_count;
     result.critical_exposure_m = metrics.critical_exposure_m;
     result.planning_exposure_m = metrics.planning_exposure_m;
     result.critical_clearance_proximity_s =

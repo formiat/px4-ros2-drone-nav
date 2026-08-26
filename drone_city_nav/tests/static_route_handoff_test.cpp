@@ -44,7 +44,7 @@ TEST(StaticRouteHandoff, RejectsRawCollisionWithoutClearanceGate) {
       static_cast<std::size_t>(grid.width * grid.height * grid.depth), 20.0F);
   const std::size_t width = static_cast<std::size_t>(grid.width);
   for (int y = 0; y < grid.height; ++y) {
-    esdf[static_cast<std::size_t>(y) * width + 10U] = 0.0F;
+    esdf[static_cast<std::size_t>(y) * width + 5U] = 0.0F;
   }
 
   const std::vector<RouteSample3D> route = straightRoute();

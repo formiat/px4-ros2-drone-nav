@@ -1,4 +1,5 @@
 #include "drone_city_nav/mppi/mppi_control_sequence.hpp"
+#include "drone_city_nav/mppi/mppi_finite_horizon.hpp"
 #include "drone_city_nav/mppi/mppi_reference.hpp"
 #include "drone_city_nav/mppi/mppi_route_projection.hpp"
 #include "drone_city_nav/mppi/mppi_separation_acquisition.hpp"
@@ -403,6 +404,9 @@ TEST(MppiControlSequenceTest,
   EXPECT_FALSE(result.route_terminal_cross_track_violation);
   EXPECT_GE(result.terminal_route_cross_track_m, 0.0F);
   EXPECT_LE(result.terminal_route_cross_track_m, 2.0F);
+  EXPECT_GT(result.route_terminal_arrival_shaping_attempts, 0U);
+  EXPECT_GT(result.route_terminal_nominal_prefix_control_count, 0U);
+  EXPECT_LT(result.route_terminal_nominal_prefix_control_count, config.steps);
 }
 
 TEST(MppiControlSequenceTest, AcquisitionCombinesRouteAccelerationAndClimb) {

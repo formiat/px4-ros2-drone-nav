@@ -362,6 +362,10 @@ void ProductionMppiNode::processDiagnostics(
       << " route_terminal_cross_track_violation="
       << (result.route_terminal_cross_track_violation ? "true" : "false")
       << " terminal_route_cross_track_m=" << result.terminal_route_cross_track_m
+      << " route_terminal_arrival_shaping_attempts="
+      << result.route_terminal_arrival_shaping_attempts
+      << " route_terminal_nominal_prefix_controls="
+      << result.route_terminal_nominal_prefix_control_count
       << " critical_exposure_m=" << result.critical_exposure_m
       << " planning_exposure_m=" << result.planning_exposure_m
       << " critical_clearance_proximity_s=" << result.critical_clearance_proximity_s
@@ -913,7 +917,11 @@ void ProductionMppiNode::processDiagnostics(
          << ",\"route_terminal_cross_track_violation\":"
          << (result.route_terminal_cross_track_violation ? "true" : "false")
          << ",\"terminal_route_cross_track_m\":" << result.terminal_route_cross_track_m
-         << ",\"risk_tier\":\"" << mppi::mppiRiskTierName(result.selected_tier) << '"'
+         << ",\"route_terminal_arrival_shaping_attempts\":"
+         << result.route_terminal_arrival_shaping_attempts
+         << ",\"route_terminal_nominal_prefix_controls\":"
+         << result.route_terminal_nominal_prefix_control_count << ",\"risk_tier\":\""
+         << mppi::mppiRiskTierName(result.selected_tier) << '"'
          << ",\"feasible_available\":"
          << (result.feasibility_contract.available ? "true" : "false")
          << ",\"feasible_weight_sum\":"

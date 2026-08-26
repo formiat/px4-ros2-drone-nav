@@ -286,6 +286,60 @@ buildGuideDirectedSeed(const State& initial, const State& target,
   return seed;
 }
 
+std::vector<Control> buildTerminalRestRouteSeed(
+    const State& initial, const State& target,
+    const std::span<const RouteSample3D> route, const float initial_route_station_m,
+    const float reference_speed_mps, const DynamicsConfig& dynamics,
+    const std::size_t steps, const Control previous_applied_control,
+    const StoppingCapability& stopping_capability) {
+  if (route.size() < 2U || steps == 0U) {
+    return buildGuideDirectedSeed(initial, target, route, initial_route_station_m,
+                                  reference_speed_mps, dynamics, steps,
+                                  previous_applied_control, stopping_capability);
+  }
+  const float horizon_duration_s = static_cast<float>(steps) * dynamics.dt_s;
+  // A rest-to-rest finite maneuver has roughly half the cruise speed on average.
+  // Aim at that reachable route station instead of carrying lateral convergence
+  // velocity into the generic arrival brake.
+  const float terminal_station_m =
+      std::min(route.back().station_m,
+               initial_route_station_m +
+                   0.5F * std::max(0.0F, reference_speed_mps) * horizon_duration_s);
+  const RouteSample terminal_route = sampleRoute(route, terminal_station_m);
+  if (!terminal_route.valid) {
+    return buildGuideDirectedSeed(initial, target, route, initial_route_station_m,
+                                  reference_speed_mps, dynamics, steps,
+                                  previous_applied_control, stopping_capability);
+  }
+
+  std::vector<Control> seed(steps);
+  State predicted = initial;
+  Control previous = previous_applied_control;
+  for (std::size_t index = 0U; index < steps; ++index) {
+    const float remaining_s = static_cast<float>(steps - index) * dynamics.dt_s;
+    const float inverse_remaining_s = 1.0F / remaining_s;
+    // These are the receding-horizon gains of the cubic boundary-value solution
+    // for the selected position and zero terminal velocity. Drag compensation
+    // maps its physical acceleration back into the reference dynamics command.
+    const float position_gain = 6.0F * inverse_remaining_s * inverse_remaining_s;
+    const float velocity_gain = 4.0F * inverse_remaining_s;
+    seed[index] = Control{
+        .ax = position_gain * (terminal_route.x_m - predicted.x) -
+              velocity_gain * predicted.vx + dynamics.linear_drag_1ps * predicted.vx,
+        .ay = position_gain * (terminal_route.y_m - predicted.y) -
+              velocity_gain * predicted.vy + dynamics.linear_drag_1ps * predicted.vy,
+        .az = position_gain * (terminal_route.z_m - predicted.z) -
+              velocity_gain * predicted.vz + dynamics.linear_drag_1ps * predicted.vz,
+        .yaw_accel = -velocity_gain * predicted.yaw_rate,
+    };
+    limitControlSequence(std::span<Control>{&seed[index], 1U}, dynamics, previous,
+                         dynamics.dt_s);
+    previous = seed[index];
+    predicted = integrateReference(predicted, seed[index], dynamics);
+  }
+  return seed;
+}
+
 } // namespace
 
 std::vector<Control> buildGuideDirectedNominalSeed(
@@ -305,9 +359,9 @@ std::vector<Control> buildFiniteRouteDirectedSeed(
     const float reference_speed_mps, const DynamicsConfig& dynamics,
     const std::size_t steps, const Control previous_applied_control,
     const StoppingCapability& stopping_capability) {
-  return buildGuideDirectedSeed(initial, target, route, initial_route_station_m,
-                                reference_speed_mps, dynamics, steps,
-                                previous_applied_control, stopping_capability);
+  return buildTerminalRestRouteSeed(initial, target, route, initial_route_station_m,
+                                    reference_speed_mps, dynamics, steps,
+                                    previous_applied_control, stopping_capability);
 }
 
 std::vector<Control> buildCooperativeSeparationAcquisitionCandidates(

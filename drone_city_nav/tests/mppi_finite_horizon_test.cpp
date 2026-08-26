@@ -3,6 +3,7 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cmath>
 #include <vector>
 
@@ -234,6 +235,49 @@ TEST(MppiFiniteHorizon, RejectsPathWithoutRoomForArrivalProfile) {
 TEST(MppiFiniteHorizon, ConvertsConfiguredControlPeriodWithoutFloatDrift) {
   EXPECT_EQ(finitePathControlIntervalNanoseconds(0.05F), 50'000'000LL);
   EXPECT_EQ(finitePathControlIntervalNanoseconds(0.1F), 100'000'000LL);
+}
+
+TEST(MppiFiniteHorizon, UsesOneSharedHalfSecondArrivalSearchInterval) {
+  EXPECT_EQ(finiteHorizonArrivalSearchStepControls(0.05F), 10U);
+  EXPECT_EQ(finiteHorizonArrivalSearchStepControls(0.1F), 5U);
+  EXPECT_EQ(finiteHorizonArrivalSearchStepControls(0.0F), 0U);
+}
+
+TEST(MppiFiniteHorizon, AcceptsAReachableTerminalRestInsideTheRouteCorridor) {
+  DynamicsConfig dynamics;
+  const std::vector<Control> controls(80U);
+  const std::vector<State> states = simulate(State{.vx = 5.0F}, controls, dynamics);
+  const std::array route{
+      RouteSample3D{.x_m = 0.0F, .tangent_x = 1.0F, .station_m = 0.0F},
+      RouteSample3D{.x_m = 100.0F, .tangent_x = 1.0F, .station_m = 100.0F},
+  };
+
+  const RouteConvergentFiniteHorizon finite = buildRouteConvergentFiniteHorizon(
+      states, controls, Control{}, dynamics, route, 0.0F, 2.0F,
+      finiteHorizonArrivalSearchStepControls(dynamics.dt_s));
+
+  ASSERT_TRUE(finite.accepted());
+  const FiniteHorizon horizon = finite.horizon.value_or(FiniteHorizon{});
+  EXPECT_TRUE(finiteHorizonHasTerminalRestState(horizon));
+  EXPECT_LE(finite.closest_terminal_cross_track_m, 2.0F);
+  EXPECT_GT(finite.arrival_shaping_attempts, 0U);
+}
+
+TEST(MppiFiniteHorizon, RejectsAStopThatCannotConvergeIntoTheRouteCorridor) {
+  DynamicsConfig dynamics;
+  const std::vector<Control> controls(80U);
+  const std::vector<State> states = simulate(State{.y = 8.5F}, controls, dynamics);
+  const std::array route{
+      RouteSample3D{.x_m = 0.0F, .tangent_x = 1.0F, .station_m = 0.0F},
+      RouteSample3D{.x_m = 100.0F, .tangent_x = 1.0F, .station_m = 100.0F},
+  };
+
+  const RouteConvergentFiniteHorizon finite = buildRouteConvergentFiniteHorizon(
+      states, controls, Control{}, dynamics, route, 0.0F, 2.0F,
+      finiteHorizonArrivalSearchStepControls(dynamics.dt_s));
+
+  EXPECT_FALSE(finite.accepted());
+  EXPECT_FLOAT_EQ(finite.closest_terminal_cross_track_m, 8.5F);
 }
 
 } // namespace

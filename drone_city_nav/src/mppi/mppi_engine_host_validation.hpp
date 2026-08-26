@@ -99,4 +99,6 @@ struct EvaluatedControlSequence {
   bool known_solid_collision{false};
   bool route_terminal_cross_track_violation{false};
   float terminal_route_cross_track_m{-1.0F};
+  std::size_t route_terminal_arrival_shaping_attempts{0U};
+  std::size_t route_terminal_nominal_prefix_control_count{0U};
 };
