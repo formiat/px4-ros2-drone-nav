@@ -281,7 +281,7 @@ runDijkstra(const RegionalTopologyGraph3D& graph, const RegionalAdjacency& adjac
   while (!pending.empty()) {
     if (deadline.has_value() && std::chrono::steady_clock::now() >= *deadline) {
       deadline_exceeded = true;
-      return {};
+      return records;
     }
     const QueueEntry current = pending.top();
     pending.pop();
@@ -297,7 +297,7 @@ runDijkstra(const RegionalTopologyGraph3D& graph, const RegionalAdjacency& adjac
     for (const RegionalAdjacencyEntry& next : adjacency_found->second) {
       if (deadline.has_value() && std::chrono::steady_clock::now() >= *deadline) {
         deadline_exceeded = true;
-        return {};
+        return records;
       }
       if (next.edge == nullptr || next.neighbor == current.node) {
         continue;
