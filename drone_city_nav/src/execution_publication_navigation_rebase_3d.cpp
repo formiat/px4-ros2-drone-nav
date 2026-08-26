@@ -294,9 +294,13 @@ rebaseExecutionPublicationForCurrentNavigation3D(
           request.publication_now_ns, request.current_execution_input->state(),
           request.current_execution_input->previousControl(),
           candidate_view->nominal_prefix_control_count,
-          candidate_view->policy->dynamics(), request.arrival_search_step_controls,
-          *request.finite_horizon_config, current_world,
-          std::move(route_candidate_validator));
+          // Every source control, including the already certified arrival tail,
+          // remains unexecuted. Preserve the complete sequence first; the
+          // validator may back off only the minimum suffix that current evidence
+          // requires rebuilding.
+          candidate_view->horizon->controls.size(), candidate_view->policy->dynamics(),
+          request.arrival_search_step_controls, *request.finite_horizon_config,
+          current_world, std::move(route_candidate_validator));
   result.path_validation_status = rebuilt.validation.status;
   result.route_certification_status = route_certification_diagnostic.status;
   result.route_adherence_status = route_certification_diagnostic.route_adherence_status;

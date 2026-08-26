@@ -297,6 +297,7 @@ ProductionMppiNode::retainSnapshotFinitePath(
           points, active.valid_from_ns, active.valid_until_ns, now_ns,
           exact_initial_state, exact_previous_control,
           active.horizon->nominal_prefix_control_count,
+          active.horizon->nominal_prefix_control_count,
           route.validation_policy->dynamics(), route_arrival_search_step_controls,
           finite_horizon_config_, *continuation_world);
   if (!rebuilt.accepted() ||
@@ -453,6 +454,7 @@ ProductionMppiNode::retainDirectFinitePath(
       mppi::rebuildFiniteExecutionPathContinuation(
           points, active.valid_from_ns, active.valid_until_ns, now_ns,
           exact_initial_state, exact_previous_control,
+          active.horizon->nominal_prefix_control_count,
           active.horizon->nominal_prefix_control_count,
           active.validation_policy->dynamics(), direct_arrival_search_step_controls,
           finite_horizon_config_, *continuation_world);
@@ -612,6 +614,7 @@ ProductionMppiNode::retainActiveFinitePath(
           production_mppi_execution_detail::timeToNanoseconds(
               active.message.valid_from),
           original_valid_until_ns, now_ns, exact_initial_state, exact_previous_control,
+          active.publication.nominal_prefix_control_count,
           active.publication.nominal_prefix_control_count, *execution_dynamics,
           arrival_search_step_controls, finite_horizon_config_, continuation_world);
   const std::size_t expected_index =

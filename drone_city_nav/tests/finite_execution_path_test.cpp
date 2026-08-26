@@ -548,7 +548,8 @@ TEST(FiniteExecutionPathTest, RebuildsContinuationFromActualStateWithoutExtensio
   const RebuiltFiniteExecutionPathContinuation rebuilt =
       rebuildFiniteExecutionPathContinuation(
           points, 10 * kSecondNs, 12 * kSecondNs, 10 * kSecondNs + 500'000'000LL,
-          actual, Control{}, source->nominal_prefix_control_count, world.dynamics, 2U,
+          actual, Control{}, source->nominal_prefix_control_count,
+          source->nominal_prefix_control_count, world.dynamics, 2U,
           FiniteHorizonConfig{}, world.view());
 
   ASSERT_TRUE(rebuilt.accepted());
@@ -558,6 +559,52 @@ TEST(FiniteExecutionPathTest, RebuildsContinuationFromActualStateWithoutExtensio
   EXPECT_TRUE(finiteHorizonHasTerminalRestState(*rebuilt.horizon));
   EXPECT_LE(rebuilt.valid_until_ns, 12 * kSecondNs);
   EXPECT_EQ(rebuilt.source_control_index, 5U);
+}
+
+TEST(FiniteExecutionPathTest,
+     RebasePreservesAnUnpublishedCertifiedArrivalSequenceFirst) {
+  TestWorld world;
+  world.dynamics.dt_s = 0.1F;
+  std::vector<Control> planned_controls(20U);
+  std::vector<State> planned_states{State{.x = 1.0F, .y = 1.0F, .z = 5.0F, .vx = 2.0F}};
+  for (const Control& control : planned_controls) {
+    planned_states.push_back(
+        integrateReference(planned_states.back(), control, world.dynamics));
+  }
+  const std::optional<FiniteHorizon> source = buildFiniteHorizon(
+      planned_states, planned_controls, 0U, world.dynamics, Control{});
+  ASSERT_TRUE(source.has_value());
+  ASSERT_EQ(source->nominal_prefix_control_count, 0U);
+  ASSERT_EQ(source->arrival_control_count, source->controls.size());
+  std::vector<TimedExecutionPathPoint> points;
+  points.reserve(source->states.size());
+  for (std::size_t index = 0U; index < source->states.size(); ++index) {
+    points.push_back(TimedExecutionPathPoint{
+        .time_from_start_s = static_cast<double>(index) * world.dynamics.dt_s,
+        .state = source->states[index],
+        .control = index == 0U ? Control{} : source->controls[index - 1U],
+    });
+  }
+
+  const RebuiltFiniteExecutionPathContinuation rebuilt =
+      rebuildFiniteExecutionPathContinuation(
+          points, 10 * kSecondNs, 12 * kSecondNs, 10 * kSecondNs,
+          source->states.front(), Control{}, source->nominal_prefix_control_count,
+          source->controls.size(), world.dynamics, 2U, FiniteHorizonConfig{},
+          world.view());
+
+  ASSERT_TRUE(rebuilt.accepted());
+  ASSERT_TRUE(rebuilt.horizon.has_value());
+  ASSERT_EQ(rebuilt.horizon->controls.size(), source->controls.size());
+  EXPECT_EQ(rebuilt.horizon->nominal_prefix_control_count, 0U);
+  EXPECT_EQ(rebuilt.horizon->arrival_control_count, source->controls.size());
+  for (std::size_t index = 0U; index < source->controls.size(); ++index) {
+    EXPECT_FLOAT_EQ(rebuilt.horizon->controls[index].ax, source->controls[index].ax);
+    EXPECT_FLOAT_EQ(rebuilt.horizon->controls[index].ay, source->controls[index].ay);
+    EXPECT_FLOAT_EQ(rebuilt.horizon->controls[index].az, source->controls[index].az);
+    EXPECT_FLOAT_EQ(rebuilt.horizon->controls[index].yaw_accel,
+                    source->controls[index].yaw_accel);
+  }
 }
 
 TEST(FiniteExecutionPathTest, RebuildsAFiniteRawSafeBrakingTailBeforeANewObstacle) {
@@ -592,7 +639,8 @@ TEST(FiniteExecutionPathTest, RebuildsAFiniteRawSafeBrakingTailBeforeANewObstacl
           10 * kSecondNs +
               static_cast<std::int64_t>(kCurrentControlIndex) * 100'000'000LL,
           current_state, current_control, source->nominal_prefix_control_count,
-          world.dynamics, 5U, FiniteHorizonConfig{}, world.view(latest_lidar_hits));
+          source->nominal_prefix_control_count, world.dynamics, 5U,
+          FiniteHorizonConfig{}, world.view(latest_lidar_hits));
 
   ASSERT_TRUE(braking.accepted());
   ASSERT_TRUE(braking.horizon.has_value());
@@ -637,8 +685,8 @@ TEST(FiniteExecutionPathTest, RebuildPreservesTheRemainingNominalPhaseBoundary) 
               static_cast<std::int64_t>(kCurrentControlIndex) * 100'000'000LL,
           source->states[kCurrentControlIndex],
           source->controls[kCurrentControlIndex - 1U],
-          source->nominal_prefix_control_count, world.dynamics, 5U,
-          FiniteHorizonConfig{}, world.view());
+          source->nominal_prefix_control_count, source->nominal_prefix_control_count,
+          world.dynamics, 5U, FiniteHorizonConfig{}, world.view());
 
   ASSERT_TRUE(rebuilt.accepted());
   ASSERT_TRUE(rebuilt.horizon.has_value());
