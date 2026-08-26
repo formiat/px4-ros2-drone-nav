@@ -343,6 +343,9 @@ void ProductionMppiNode::configureIncrementalTopology3D() {
 
   topological_lattice_adapter_3d_config_.maximum_lookahead_m =
       declare_parameter<double>("topological_lattice_3d_maximum_lookahead_m", 30.0);
+  topological_lattice_adapter_3d_config_.minimum_executable_lookahead_m =
+      declare_parameter<double>("topological_lattice_3d_minimum_executable_lookahead_m",
+                                15.0);
   topological_lattice_adapter_3d_config_.segment_capture_radius_m =
       declare_parameter<double>("topological_lattice_3d_segment_capture_radius_m",
                                 lattice_3d_config_.goal_tolerance_m);
@@ -584,6 +587,7 @@ void ProductionMppiNode::logIncrementalTopologyRoute3D(
       "directive_target_station_m=%.2f directive_progress_floor_station_m=%.2f "
       "directive_projection_distance_m=%.2f "
       "directive_captured_boundaries_skipped=%zu "
+      "directive_executable_lookahead_boundaries_skipped=%zu "
       "directive_target=(%.2f,%.2f,%.2f) directive_reaches_target=%s "
       "lattice_status=%s lattice_purpose=%s lattice_executable=%s "
       "candidate_validation=%.*s activation=%.*s certified_pending=%s "
@@ -661,6 +665,7 @@ void ProductionMppiNode::logIncrementalTopologyRoute3D(
       directive != nullptr ? directive->progress_floor_station_m : 0.0,
       directive != nullptr ? directive->projection_distance_m : 0.0,
       directive != nullptr ? directive->captured_boundaries_skipped : 0U,
+      directive != nullptr ? directive->executable_lookahead_boundaries_skipped : 0U,
       directive_target.x, directive_target.y, directive_target.z,
       directive != nullptr && directive->reaches_topological_target ? "true" : "false",
       lattice3DStatusName(lattice.status),

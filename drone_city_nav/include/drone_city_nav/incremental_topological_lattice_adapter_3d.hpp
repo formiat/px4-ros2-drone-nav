@@ -11,6 +11,11 @@ namespace drone_city_nav {
 
 struct IncrementalTopologicalLatticeAdapter3DConfig {
   double maximum_lookahead_m{30.0};
+  // A selected strategic path may contain regional boundaries closer than an
+  // executable route can be extended with certified overlap. Skip those
+  // internal boundaries until this net station advance is available; the
+  // local lattice still proves the complete materialized segment raw-safe.
+  double minimum_executable_lookahead_m{0.0};
   // A bend inside the local planner's goal-capture neighbourhood is already
   // acquired and cannot be a useful finite segment endpoint. Continue to the
   // first route point outside this radius instead of repeatedly stopping at a
@@ -31,6 +36,7 @@ struct IncrementalTopologicalLatticeDirective3D {
   double progress_floor_station_m{0.0};
   double projection_distance_m{0.0};
   std::size_t captured_boundaries_skipped{0U};
+  std::size_t executable_lookahead_boundaries_skipped{0U};
   bool reaches_topological_target{false};
 };
 

@@ -102,6 +102,9 @@ bool incrementalTopologicalLatticeAdapter3DConfigIsValid(
     const IncrementalTopologicalLatticeAdapter3DConfig& config) noexcept {
   return std::isfinite(config.maximum_lookahead_m) &&
          config.maximum_lookahead_m > 0.0 &&
+         std::isfinite(config.minimum_executable_lookahead_m) &&
+         config.minimum_executable_lookahead_m >= 0.0 &&
+         config.minimum_executable_lookahead_m <= config.maximum_lookahead_m &&
          std::isfinite(config.segment_capture_radius_m) &&
          config.segment_capture_radius_m >= 0.0 &&
          config.segment_capture_radius_m < config.maximum_lookahead_m &&
@@ -148,6 +151,7 @@ makeIncrementalTopologicalLatticeDirective3D(
   // decisions, so the local lattice may plan through them. Only an explicit
   // regional-edge endpoint is a branch boundary that limits lookahead.
   std::size_t captured_boundaries_skipped = 0U;
+  std::size_t executable_lookahead_boundaries_skipped = 0U;
   double available_lookahead_m = config.maximum_lookahead_m;
   double preferred_direction_floor_station_m = projection->station_m;
   if (explicit_strategic_boundaries) {
@@ -158,6 +162,12 @@ makeIncrementalTopologicalLatticeDirective3D(
                             kGeometryEpsilon) {
       preferred_direction_floor_station_m = *boundary;
       ++captured_boundaries_skipped;
+      ++boundary;
+    }
+    while (boundary != plan.strategic_boundary_stations_m.end() &&
+           *boundary <= projection->station_m + config.minimum_executable_lookahead_m +
+                            kGeometryEpsilon) {
+      ++executable_lookahead_boundaries_skipped;
       ++boundary;
     }
     if (boundary != plan.strategic_boundary_stations_m.end()) {
@@ -252,6 +262,8 @@ makeIncrementalTopologicalLatticeDirective3D(
       .progress_floor_station_m = minimum_source_station_m,
       .projection_distance_m = projection->distance_m,
       .captured_boundaries_skipped = captured_boundaries_skipped,
+      .executable_lookahead_boundaries_skipped =
+          executable_lookahead_boundaries_skipped,
       .reaches_topological_target = reaches_target,
   };
 }
