@@ -320,22 +320,25 @@ FiniteExecutionPathValidation validateCompleteFiniteExecutionPath(
   };
 }
 
-ValidatedFiniteExecutionPath buildValidatedFiniteExecutionPath(
+[[nodiscard]] static ValidatedFiniteExecutionPath
+buildValidatedFiniteExecutionPathFromNominalPrefix(
     const std::span<const State> planned_states,
     const std::span<const Control> planned_controls,
     const Control& previous_applied_control, const DynamicsConfig& dynamics,
     const std::size_t arrival_search_step_controls,
     const FiniteHorizonConfig& finite_horizon_config,
     const FiniteExecutionPathWorld& world,
+    const std::size_t initial_nominal_prefix_control_count,
     FiniteExecutionPathCandidateValidator candidate_validator) {
   ValidatedFiniteExecutionPath result;
   if (!validWorld(world) || !finite(previous_applied_control) ||
       planned_states.size() != planned_controls.size() + 1U ||
-      planned_controls.empty() || arrival_search_step_controls == 0U) {
+      planned_controls.empty() || arrival_search_step_controls == 0U ||
+      initial_nominal_prefix_control_count > planned_controls.size()) {
     return result;
   }
 
-  std::size_t nominal_prefix_control_count = planned_controls.size();
+  std::size_t nominal_prefix_control_count = initial_nominal_prefix_control_count;
   while (true) {
     ++result.arrival_shaping_attempts;
     std::optional<FiniteHorizon> candidate = buildFiniteHorizon(
@@ -375,6 +378,20 @@ ValidatedFiniteExecutionPath buildValidatedFiniteExecutionPath(
             ? nominal_prefix_control_count - arrival_search_step_controls
             : 0U;
   }
+}
+
+ValidatedFiniteExecutionPath buildValidatedFiniteExecutionPath(
+    const std::span<const State> planned_states,
+    const std::span<const Control> planned_controls,
+    const Control& previous_applied_control, const DynamicsConfig& dynamics,
+    const std::size_t arrival_search_step_controls,
+    const FiniteHorizonConfig& finite_horizon_config,
+    const FiniteExecutionPathWorld& world,
+    FiniteExecutionPathCandidateValidator candidate_validator) {
+  return buildValidatedFiniteExecutionPathFromNominalPrefix(
+      planned_states, planned_controls, previous_applied_control, dynamics,
+      arrival_search_step_controls, finite_horizon_config, world,
+      planned_controls.size(), std::move(candidate_validator));
 }
 
 FiniteExecutionPathValidation validateFiniteExecutionTrajectoryContinuation(
@@ -546,15 +563,17 @@ RebuiltFiniteExecutionPathContinuation rebuildFiniteExecutionPathContinuation(
     const std::span<const TimedExecutionPathPoint> points,
     const std::int64_t valid_from_ns, const std::int64_t valid_until_ns,
     const std::int64_t now_ns, const State& current_state,
-    const Control& current_control, const DynamicsConfig& dynamics,
-    const std::size_t arrival_search_step_controls,
+    const Control& current_control,
+    const std::size_t source_nominal_prefix_control_count,
+    const DynamicsConfig& dynamics, const std::size_t arrival_search_step_controls,
     const FiniteHorizonConfig& finite_horizon_config,
     const FiniteExecutionPathWorld& world,
     FiniteExecutionPathCandidateValidator candidate_validator) {
   RebuiltFiniteExecutionPathContinuation result;
   if (!validWorld(world) || !finite(current_state) || !finite(current_control) ||
       !(dynamics.dt_s > 0.0F) || arrival_search_step_controls == 0U ||
-      valid_from_ns <= 0 || valid_until_ns <= valid_from_ns) {
+      valid_from_ns <= 0 || valid_until_ns <= valid_from_ns || points.empty() ||
+      source_nominal_prefix_control_count > points.size() - 1U) {
     return result;
   }
   result.validation = validatePathContract(points);
@@ -602,9 +621,16 @@ RebuiltFiniteExecutionPathContinuation rebuildFiniteExecutionPathContinuation(
     states.push_back(integrateReference(states.back(), control, dynamics));
   }
 
-  ValidatedFiniteExecutionPath rebuilt = buildValidatedFiniteExecutionPath(
-      states, controls, current_control, dynamics, arrival_search_step_controls,
-      finite_horizon_config, world, std::move(candidate_validator));
+  const std::size_t remaining_nominal_prefix_control_count =
+      result.source_control_index < source_nominal_prefix_control_count
+          ? std::min(source_nominal_prefix_control_count - result.source_control_index,
+                     controls.size())
+          : 0U;
+  ValidatedFiniteExecutionPath rebuilt =
+      buildValidatedFiniteExecutionPathFromNominalPrefix(
+          states, controls, current_control, dynamics, arrival_search_step_controls,
+          finite_horizon_config, world, remaining_nominal_prefix_control_count,
+          std::move(candidate_validator));
   result.validation = rebuilt.validation;
   result.arrival_shaping_attempts = rebuilt.arrival_shaping_attempts;
   result.path_validation_backoff = rebuilt.path_validation_backoff;

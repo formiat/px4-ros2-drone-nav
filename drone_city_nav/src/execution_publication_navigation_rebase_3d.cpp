@@ -15,6 +15,7 @@ struct FiniteExecutionCandidateView3D {
   std::int64_t valid_from_ns{0};
   std::int64_t valid_until_ns{0};
   std::int64_t control_interval_ns{0};
+  std::size_t nominal_prefix_control_count{0U};
 };
 
 [[nodiscard]] std::optional<FiniteExecutionCandidateView3D>
@@ -35,6 +36,7 @@ candidateView(const ExecutionRouteSnapshot3D& snapshot) noexcept {
         .valid_from_ns = execution.valid_from_ns,
         .valid_until_ns = execution.valid_until_ns,
         .control_interval_ns = execution.control_interval_ns,
+        .nominal_prefix_control_count = execution.horizon->nominal_prefix_control_count,
     };
   };
   if (snapshot.finite_execution.has_value()) {
@@ -254,6 +256,7 @@ rebaseExecutionPublicationForCurrentNavigation3D(
           points, candidate_view->valid_from_ns, candidate_view->valid_until_ns,
           request.publication_now_ns, request.current_execution_input->state(),
           request.current_execution_input->previousControl(),
+          candidate_view->nominal_prefix_control_count,
           candidate_view->policy->dynamics(), request.arrival_search_step_controls,
           *request.finite_horizon_config, current_world,
           std::move(route_candidate_validator));

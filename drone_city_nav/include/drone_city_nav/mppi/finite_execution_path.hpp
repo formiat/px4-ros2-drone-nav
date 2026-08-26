@@ -136,8 +136,8 @@ validateFiniteExecutionTrajectoryContinuation(
 rebuildFiniteExecutionPathContinuation(
     std::span<const TimedExecutionPathPoint> points, std::int64_t valid_from_ns,
     std::int64_t valid_until_ns, std::int64_t now_ns, const State& current_state,
-    const Control& current_control, const DynamicsConfig& dynamics,
-    std::size_t arrival_search_step_controls,
+    const Control& current_control, std::size_t source_nominal_prefix_control_count,
+    const DynamicsConfig& dynamics, std::size_t arrival_search_step_controls,
     const FiniteHorizonConfig& finite_horizon_config,
     const FiniteExecutionPathWorld& world,
     FiniteExecutionPathCandidateValidator candidate_validator = {});
