@@ -387,6 +387,7 @@ RouteStrategyArbitrationDecision3D RouteStrategyArbitrator3D::evaluate(
       // lease while that exact strategic intent is still executing.
       const bool resident_strategy_route_active =
           observation.active_intent.has_value() &&
+          observation.active_intent_executable &&
           !observation.active_intent_completed &&
           leaseMatchesIntent(*observed.lease, *observation.active_intent);
       if (resident_strategy_route_active) {

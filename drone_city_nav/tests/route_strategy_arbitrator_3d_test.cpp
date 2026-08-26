@@ -221,6 +221,7 @@ TEST(RouteStrategyArbitrator3DTest,
 
   RouteStrategyArbitrationObservation3D executing = observation({1.0, 0.0, 5.0}, 11U);
   executing.active_intent = strategic.intent;
+  executing.active_intent_executable = true;
   RouteProposal3D rejected_replacement = strategic;
   rejected_replacement.activation_eligible = false;
   decision = arbitrator.evaluate(
@@ -240,7 +241,7 @@ TEST(RouteStrategyArbitrator3DTest,
 }
 
 TEST(RouteStrategyArbitrator3DTest,
-     MissingStrategicCandidateReleasesLeaseWithoutResidentRoute) {
+     MissingStrategicCandidateReleasesLeaseWithoutExecutableResidentRoute) {
   RouteStrategyArbitrator3D arbitrator;
   const RouteProposal3D strategic =
       strategicProposal(RouteIntentPurpose3D::kObservationFrontier, -2.0);
@@ -251,9 +252,11 @@ TEST(RouteStrategyArbitrator3DTest,
 
   RouteProposal3D rejected_replacement = strategic;
   rejected_replacement.activation_eligible = false;
+  RouteStrategyArbitrationObservation3D invalidated = observation({1.0, 0.0, 5.0}, 11U);
+  invalidated.active_intent = strategic.intent;
   decision = arbitrator.evaluate(
       std::vector<RouteProposal3D>{directProposal(0.5), rejected_replacement},
-      kProposalConfig, observation({1.0, 0.0, 5.0}, 11U));
+      kProposalConfig, invalidated);
 
   EXPECT_EQ(decision.selection.selected_index, std::optional<std::size_t>{0U});
   EXPECT_EQ(decision.action,

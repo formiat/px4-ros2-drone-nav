@@ -119,6 +119,8 @@ void ProductionMppiNode::processGuideSearch3D(
       .mission_target = mission_goal,
       .world_revision = world.revision,
       .active_intent = active_certified_intent,
+      .active_intent_executable =
+          active_certified_intent.has_value() && !world.static_route_replan_request,
       .active_intent_completed = active_route_completion.captured &&
                                  active_certified_intent.has_value() &&
                                  active_certified_intent->segment_reaches_intent_target,

@@ -38,6 +38,7 @@ struct RouteStrategyArbitrationObservation3D {
   Point3 mission_target{};
   std::uint64_t world_revision{0U};
   std::optional<RouteIntent3D> active_intent;
+  bool active_intent_executable{false};
   bool active_intent_completed{false};
 };
 
