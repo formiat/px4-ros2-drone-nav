@@ -86,11 +86,12 @@ rebaseRouteExecution(const ExecutionPublicationNavigationRebaseRequest3D& reques
   const bool retaining_route =
       expected.route.has_value() && expected.route->identity.generation ==
                                         candidate.route.value().identity.generation;
-  const CertifiedRouteSuffix3D target_route =
-      retaining_route ? expected.route.value() : candidate.route.value();
+  const CertifiedRouteSuffix3D* const target_route =
+      retaining_route ? std::addressof(expected.route.value())
+                      : std::addressof(candidate.route.value());
   const FiniteExecutionCertificationResult3D certified =
       certifyFiniteExecution3DDetailed(
-          expected, target_route,
+          expected, *target_route,
           FiniteExecutionCertification3D{
               .trajectory_revision = candidate_execution.trajectory_revision,
               .horizon = horizon,
@@ -110,10 +111,10 @@ rebaseRouteExecution(const ExecutionPublicationNavigationRebaseRequest3D& reques
   }
   if (expected.phase == ExecutionRoutePhase3D::kDirectTracking) {
     return transferDirectTrackingToCertifiedRoute3D(
-        expected, expected.version, target_route, certified.execution.value());
+        expected, expected.version, *target_route, certified.execution.value());
   }
   if (!expected.route.has_value()) {
-    return activateCertifiedRoute3D(expected, expected.version, target_route,
+    return activateCertifiedRoute3D(expected, expected.version, *target_route,
                                     *certified.execution);
   }
   const ExecutionRouteTransitionGuard3D guard{
@@ -129,7 +130,7 @@ rebaseRouteExecution(const ExecutionPublicationNavigationRebaseRequest3D& reques
       !request.expected_pending->route_splice.has_value()) {
     return {};
   }
-  return replaceCertifiedRoute3D(expected, guard, target_route, certified.execution,
+  return replaceCertifiedRoute3D(expected, guard, *target_route, certified.execution,
                                  *request.expected_pending->route_splice);
 }
 

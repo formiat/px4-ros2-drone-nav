@@ -110,6 +110,67 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
 }
 
 TEST(ExecutionPublicationNavigationRebase3DTest,
+     RecertifiesAnAlreadyActiveRouteWithoutLosingItsOwnerIdentity) {
+  SnapshotFixture3D fixture;
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
+      fixture.activeSnapshot();
+  ASSERT_NE(active, nullptr);
+  ASSERT_TRUE(active->route.has_value());
+  ASSERT_TRUE(active->finite_execution.has_value());
+
+  const ExecutionRouteTransitionResult3D candidate = replaceFiniteExecution3D(
+      *active, SnapshotFixture3D::guard(*active),
+      SnapshotFixture3D::finiteExecution(*active, FiniteExecutionKind3D::kNominal, true,
+                                         101U));
+  ASSERT_TRUE(candidate.applied());
+  ASSERT_NE(candidate.next, nullptr);
+  ASSERT_TRUE(candidate.next->finite_execution.has_value());
+  const FiniteExecutionState3D& candidate_owner =
+      candidate
+          .next // NOLINT(bugprone-unchecked-optional-access)
+          ->finite_execution.value();
+  ASSERT_NE(candidate_owner.execution_input, nullptr);
+  ASSERT_NE(candidate_owner.latest_lidar_evidence, nullptr);
+  ASSERT_NE(candidate_owner.observed_raw_world, nullptr);
+
+  const std::int64_t publication_now_ns = candidate_owner.valid_from_ns + 20'000'000;
+  const std::shared_ptr<const VersionedExecutionInput3D> current_input =
+      advanceExecutionInput(*candidate_owner.execution_input, publication_now_ns);
+  ASSERT_NE(current_input, nullptr);
+  mppi::FiniteHorizonConfig finite_horizon_config;
+
+  const ExecutionPublicationNavigationRebaseResult3D result =
+      rebaseExecutionPublicationForCurrentNavigation3D(
+          ExecutionPublicationNavigationRebaseRequest3D{
+              .expected_snapshot = active.get(),
+              .candidate_snapshot = candidate.next.get(),
+              .expected_pending = nullptr,
+              .current_execution_input = current_input,
+              .current_lidar_evidence = candidate_owner.latest_lidar_evidence,
+              .current_observed_raw_world = candidate_owner.observed_raw_world,
+              .publication_now_ns = publication_now_ns,
+              .arrival_search_step_controls = 5U,
+              .finite_horizon_config = &finite_horizon_config,
+              .terminal_boundary = std::nullopt,
+          });
+
+  ASSERT_TRUE(result.rebased());
+  EXPECT_EQ(result.path_validation_status, mppi::FiniteExecutionPathStatus::kValid);
+  EXPECT_EQ(result.route_certification_status,
+            FiniteExecutionCertificationStatus3D::kCertified);
+  EXPECT_EQ(result.route_adherence_status,
+            FiniteExecutionRouteAdherenceStatus3D::kAccepted);
+  EXPECT_EQ(result.transition_status, ExecutionRouteTransitionStatus3D::kApplied);
+  ASSERT_TRUE(result.transition.has_value());
+  ASSERT_NE(result.transition->next, nullptr);
+  ASSERT_TRUE(result.transition->next->route.has_value());
+  ASSERT_TRUE(result.transition->next->finite_execution.has_value());
+  EXPECT_EQ(result.transition->next->route->identity.generation,
+            active->route->identity.generation);
+  EXPECT_EQ(result.transition->next->finite_execution->execution_input, current_input);
+}
+
+TEST(ExecutionPublicationNavigationRebase3DTest,
      ReportsCertificationThatRejectsEveryPhysicalCandidate) {
   SnapshotFixture3D fixture;
   const std::shared_ptr<const ExecutionRouteSnapshot3D> initial =
