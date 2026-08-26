@@ -41,9 +41,9 @@ void ProductionMppiNode::planningTick() {
   if (!engine_) {
     return;
   }
-  const std::int64_t now_ns = get_clock()->now().nanoseconds();
+  const std::int64_t tick_entry_ns = get_clock()->now().nanoseconds();
   if (mission_waypoint_capture_gate_) {
-    mission_waypoint_capture_gate_->beginTick(now_ns);
+    mission_waypoint_capture_gate_->beginTick(tick_entry_ns);
   }
   const std::shared_ptr<const ProductionNavigationObjective> objective =
       navigationObjective();
@@ -58,7 +58,7 @@ void ProductionMppiNode::planningTick() {
   const bool observed_3d_world =
       !use_static_map_ &&
       no_static_world_model_ == ProductionNoStaticWorldModel::kObservedOccupancy3D;
-  if (handleRequestedExecutionRevocation(now_ns)) {
+  if (handleRequestedExecutionRevocation(tick_entry_ns)) {
     // A callback-requested epoch boundary is a hard barrier: never commit a new
     // owner in the same tick, and retain the request until revoke publication
     // has linearized with the exact snapshot.
@@ -148,6 +148,10 @@ void ProductionMppiNode::planningTick() {
       no_static_world_model_ == ProductionNoStaticWorldModel::kObservedOccupancy3D;
   const std::shared_ptr<const ExecutionRouteSnapshot3D> execution_snapshot =
       uses_3d_route ? execution_route_store_.snapshot() : nullptr;
+  // Timestamp the immutable planning view only after all callback-owned inputs
+  // have been captured. A concurrently published evidence value may have a
+  // receive stamp later than tick entry, but never later than this boundary.
+  const std::int64_t now_ns = get_clock()->now().nanoseconds();
   const double pose_age_ms =
       static_cast<double>(now_ns - navigation.receive_stamp_ns) / 1.0e6;
   double esdf_age_ms = std::numeric_limits<double>::infinity();

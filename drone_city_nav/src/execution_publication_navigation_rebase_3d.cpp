@@ -229,11 +229,28 @@ rebaseExecutionPublicationForCurrentNavigation3D(
            .fresh) {
     return reject(ExecutionPublicationNavigationRebaseStatus3D::kEvidenceUnavailable);
   }
+  const bool retained_published_route_continuation =
+      request.expected_snapshot->finite_execution.has_value() &&
+      request.candidate_snapshot->finite_execution.has_value() &&
+      request.expected_snapshot->route.has_value() &&
+      request.candidate_snapshot->route.has_value() &&
+      request.candidate_snapshot->finite_execution->kind ==
+          FiniteExecutionKind3D::kRetained &&
+      request.expected_snapshot->route->route_instance_id ==
+          request.candidate_snapshot->route->route_instance_id;
+  const std::optional<FiniteExecutionCandidateView3D> published_view =
+      retained_published_route_continuation ? candidateView(*request.expected_snapshot)
+                                            : std::nullopt;
+  const FiniteExecutionCandidateView3D* const path_source =
+      published_view.has_value() ? std::addressof(*published_view)
+                                 : std::addressof(*candidate_view);
   const std::vector<mppi::TimedExecutionPathPoint> points =
-      timedPathPoints(*candidate_view);
-  const std::optional<std::int64_t> publication_valid_until_ns =
-      publicationValidUntilNs(*candidate_view, request.publication_now_ns);
-  if (points.empty() || !publication_valid_until_ns.has_value()) {
+      timedPathPoints(*path_source);
+  const std::optional<std::int64_t> reset_valid_until_ns =
+      retained_published_route_continuation
+          ? std::optional<std::int64_t>{path_source->valid_until_ns}
+          : publicationValidUntilNs(*path_source, request.publication_now_ns);
+  if (points.empty() || !reset_valid_until_ns.has_value()) {
     return reject(ExecutionPublicationNavigationRebaseStatus3D::kPathUnavailable);
   }
   const bool static_world = candidate_view->static_world != nullptr;
@@ -287,18 +304,23 @@ rebaseExecutionPublicationForCurrentNavigation3D(
   }
   const mppi::RebuiltFiniteExecutionPathContinuation rebuilt =
       mppi::rebuildFiniteExecutionPathContinuation(
-          // The candidate has never been published, so none of its controls may
-          // be discarded as if they had already executed while planning ran.
-          // Give the rebuilt plan a fresh execution clock at the commit boundary.
-          points, request.publication_now_ns, *publication_valid_until_ns,
-          request.publication_now_ns, request.current_execution_input->state(),
+          // A nominal candidate has never been published, so planning latency
+          // cannot consume its controls. A retained candidate is different: it
+          // is a freshly certified continuation of the resident wire owner,
+          // which keeps executing during commit. Rebuild that case from the
+          // resident path and its original clock so already executed controls
+          // are not replayed against the newer navigation state.
+          points,
+          retained_published_route_continuation ? path_source->valid_from_ns
+                                                : request.publication_now_ns,
+          *reset_valid_until_ns, request.publication_now_ns,
+          request.current_execution_input->state(),
           request.current_execution_input->previousControl(),
-          candidate_view->nominal_prefix_control_count,
-          // Every source control, including the already certified arrival tail,
-          // remains unexecuted. Preserve the complete sequence first; the
-          // validator may back off only the minimum suffix that current evidence
-          // requires rebuilding.
-          candidate_view->horizon->controls.size(), candidate_view->policy->dynamics(),
+          path_source->nominal_prefix_control_count,
+          // Preserve the complete remaining source sequence first, including its
+          // already certified arrival tail. The validator may back off only the
+          // minimum suffix that current evidence requires rebuilding.
+          path_source->horizon->controls.size(), candidate_view->policy->dynamics(),
           request.arrival_search_step_controls, *request.finite_horizon_config,
           current_world, std::move(route_candidate_validator));
   result.path_validation_status = rebuilt.validation.status;

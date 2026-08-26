@@ -15,7 +15,8 @@ namespace {
 advanceExecutionInput(const VersionedExecutionInput3D& source,
                       const std::int64_t publication_now_ns,
                       std::optional<mppi::State> state = std::nullopt,
-                      const bool refresh_receive_witness = false) {
+                      const bool refresh_receive_witness = false,
+                      std::optional<mppi::Control> previous_control = std::nullopt) {
   const std::int64_t receive_stamp_ns = refresh_receive_witness
                                             ? publication_now_ns - 5'000'000LL
                                             : source.poseReceiveStampNs() + 10'000;
@@ -34,7 +35,7 @@ advanceExecutionInput(const VersionedExecutionInput3D& source,
       .state = state.value_or(source.state()),
       .full_state_authoritative = source.fullStateAuthoritative(),
       .state_provenance = source.stateProvenance(),
-      .previous_control = source.previousControl(),
+      .previous_control = previous_control.value_or(source.previousControl()),
       .previous_control_source = source.previousControlSource(),
       .previous_control_source_producer_instance_id =
           source.previousControlSourceProducerInstanceId(),
@@ -201,6 +202,87 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
   ASSERT_NE(rebased.horizon, nullptr);
   EXPECT_EQ(rebased.horizon->controls.size(), candidate_owner.horizon->controls.size());
   EXPECT_EQ(rebased.valid_from_ns, publication_now_ns);
+}
+
+TEST(ExecutionPublicationNavigationRebase3DTest,
+     RetainedCandidateContinuesThePublishedExecutionClock) {
+  SnapshotFixture3D fixture;
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
+      fixture.activeSnapshot();
+  ASSERT_NE(active, nullptr);
+  ASSERT_TRUE(active->finite_execution.has_value());
+  const FiniteExecutionState3D& active_execution = active->finite_execution.value();
+  ASSERT_NE(active_execution.horizon, nullptr);
+  ASSERT_GT(active_execution.horizon->controls.size(), 5U);
+
+  const ExecutionRouteTransitionResult3D candidate =
+      replaceFiniteExecution3D(*active, SnapshotFixture3D::guard(*active),
+                               SnapshotFixture3D::finiteExecution(
+                                   *active, FiniteExecutionKind3D::kRetained, true,
+                                   active_execution.trajectory_revision + 1U));
+  ASSERT_TRUE(candidate.applied());
+  ASSERT_NE(candidate.next, nullptr);
+  ASSERT_TRUE(candidate.next->finite_execution.has_value());
+  const FiniteExecutionState3D& candidate_execution =
+      candidate.next->finite_execution.value();
+  ASSERT_NE(candidate_execution.execution_input, nullptr);
+  ASSERT_NE(candidate_execution.latest_lidar_evidence, nullptr);
+  ASSERT_NE(candidate_execution.observed_raw_world, nullptr);
+
+  constexpr std::size_t kExecutedControlCount{5U};
+  const std::int64_t publication_now_ns =
+      active_execution.valid_from_ns + 500'000'000LL;
+  const std::shared_ptr<const VersionedExecutionInput3D> current_input =
+      advanceExecutionInput(
+          *candidate_execution.execution_input, publication_now_ns,
+          active_execution.horizon->states[kExecutedControlCount], true,
+          active_execution.horizon->controls[kExecutedControlCount - 1U]);
+  const std::shared_ptr<const VersionedLatestLidarEvidence3D> current_lidar =
+      VersionedLatestLidarEvidence3D::capture(LatestLidarEvidenceCapture3D{
+          .producer_instance_id =
+              candidate_execution.latest_lidar_evidence->producerInstanceId(),
+          .sequence = candidate_execution.latest_lidar_evidence->sequence() + 1U,
+          .pose_generation =
+              candidate_execution.latest_lidar_evidence->poseGeneration() + 1U,
+          .acquisition_stamp_ns = publication_now_ns - 15'000'000LL,
+          .receive_stamp_ns = publication_now_ns - 5'000'000LL,
+          .source_beam_count = 1U,
+          .hit_points_map_m = {},
+      });
+  ASSERT_NE(current_input, nullptr);
+  ASSERT_NE(current_lidar, nullptr);
+  mppi::FiniteHorizonConfig finite_horizon_config;
+
+  const ExecutionPublicationNavigationRebaseResult3D result =
+      rebaseExecutionPublicationForCurrentNavigation3D(
+          ExecutionPublicationNavigationRebaseRequest3D{
+              .expected_snapshot = active.get(),
+              .candidate_snapshot = candidate.next.get(),
+              .current_execution_input = current_input,
+              .current_lidar_evidence = current_lidar,
+              .current_observed_raw_world = candidate_execution.observed_raw_world,
+              .publication_now_ns = publication_now_ns,
+              .arrival_search_step_controls = 5U,
+              .finite_horizon_config = &finite_horizon_config,
+              .terminal_boundary = std::nullopt,
+          });
+
+  ASSERT_TRUE(result.rebased())
+      << executionPublicationNavigationRebaseStatus3DName(result.status) << ' '
+      << mppi::finiteExecutionPathStatusName(result.path_validation_status) << ' '
+      << finiteExecutionCertificationStatus3DName(result.route_certification_status)
+      << ' ' << executionRouteTransitionStatus3DName(result.transition_status);
+  ASSERT_TRUE(result.transition.has_value());
+  ASSERT_NE(result.transition->next, nullptr);
+  ASSERT_TRUE(result.transition->next->finite_execution.has_value());
+  const FiniteExecutionState3D& rebased =
+      result.transition->next->finite_execution.value();
+  ASSERT_NE(rebased.horizon, nullptr);
+  EXPECT_EQ(rebased.horizon->nominal_prefix_control_count,
+            active_execution.horizon->nominal_prefix_control_count -
+                kExecutedControlCount);
+  EXPECT_EQ(rebased.valid_from_ns, publication_now_ns);
+  EXPECT_LE(rebased.valid_until_ns, active_execution.valid_until_ns);
 }
 
 TEST(ExecutionPublicationNavigationRebase3DTest,
