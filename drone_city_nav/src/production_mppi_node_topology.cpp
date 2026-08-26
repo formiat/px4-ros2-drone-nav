@@ -423,7 +423,8 @@ ProductionMppiNode::strategicTopologyGraphFor(const ProductionMppiPreparedEsdf& 
 ProductionIncrementalTopologySearch3D
 ProductionMppiNode::selectIncrementalTopologyRoute3D(
     const ProductionMppiPreparedEsdf& world, const Point3& position,
-    const Point3& mission_goal, const std::chrono::steady_clock::time_point deadline) {
+    const Point3& mission_goal,
+    const std::chrono::steady_clock::duration planning_budget) {
   ProductionIncrementalTopologySearch3D result;
   const std::shared_ptr<const IncrementalTopologyGraph3DSnapshot> graph =
       strategicTopologyGraphFor(world);
@@ -433,14 +434,26 @@ ProductionMppiNode::selectIncrementalTopologyRoute3D(
 
   result.graph_node_count = graph->nodes().size();
   result.graph_edge_count = graph->edges().size();
+  const auto observation_started = std::chrono::steady_clock::now();
   result.observation = topological_navigation_3d_->observePosition(
       graph, position, world.observed_occupancy.get());
+  const auto planning_started = std::chrono::steady_clock::now();
+  result.observation_ms =
+      std::chrono::duration<double, std::milli>(planning_started - observation_started)
+          .count();
+  // Acquiring the raw-validated start anchor is a mandatory input preparation
+  // phase. Start the strategic-search deadline after that phase so connector
+  // cost cannot silently consume the planner's entire search budget.
+  const auto deadline = planning_started + planning_budget;
   result.plan =
       world.observed_occupancy
           ? topological_navigation_3d_->planObserved(graph, *world.observed_occupancy,
                                                      position, mission_goal, deadline,
                                                      &result.observation)
           : topological_navigation_3d_->plan(graph, position, mission_goal, deadline);
+  result.planning_ms = std::chrono::duration<double, std::milli>(
+                           std::chrono::steady_clock::now() - planning_started)
+                           .count();
   result.directive = topological_navigation_3d_->makeLatticeDirective(
       result.plan, position, topological_lattice_adapter_3d_config_);
   if (!topological_backtracking_enabled_ &&

@@ -358,6 +358,8 @@ struct ProductionIncrementalTopologySearch3D {
   IncrementalTopologicalPlanCommit3D commit{};
   std::size_t graph_node_count{0U};
   std::size_t graph_edge_count{0U};
+  double observation_ms{0.0};
+  double planning_ms{0.0};
   double no_executable_route_age_ms{0.0};
 };
 
@@ -585,7 +587,7 @@ private:
   [[nodiscard]] ProductionIncrementalTopologySearch3D
   selectIncrementalTopologyRoute3D(const ProductionMppiPreparedEsdf& world,
                                    const Point3& position, const Point3& mission_goal,
-                                   std::chrono::steady_clock::time_point deadline);
+                                   std::chrono::steady_clock::duration planning_budget);
   void commitIncrementalTopologyRoute3D(ProductionIncrementalTopologySearch3D& search);
   void rejectIncrementalTopologyRoute3D(
       const ProductionIncrementalTopologySearch3D& search,

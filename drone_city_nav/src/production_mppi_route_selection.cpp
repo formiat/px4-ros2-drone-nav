@@ -313,17 +313,20 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
                                                 search_started)
           .count();
   const auto topology_started = std::chrono::steady_clock::now();
-  const auto topology_deadline =
-      topology_started +
+  const auto topology_planning_budget =
       std::chrono::duration_cast<std::chrono::steady_clock::duration>(
           std::chrono::duration<double, std::milli>{topological_strategy_budget_ms_});
   double topology_selection_ms{0.0};
+  double topology_observation_ms{0.0};
+  double topology_planning_ms{0.0};
   if (direct_mission_candidate) {
     ProductionIncrementalTopologySearch3D topology = selectIncrementalTopologyRoute3D(
-        world, search_start, mission_goal, topology_deadline);
+        world, search_start, mission_goal, topology_planning_budget);
     topology_selection_ms = std::chrono::duration<double, std::milli>(
                                 std::chrono::steady_clock::now() - topology_started)
                                 .count();
+    topology_observation_ms = topology.observation_ms;
+    topology_planning_ms = topology.planning_ms;
     RCLCPP_INFO(get_logger(),
                 "INCREMENTAL_TOPOLOGY3D_SEARCH graph_revision=%" PRIu64
                 " strategic_plan_id=%" PRIu64
@@ -394,10 +397,11 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
   }
   RCLCPP_INFO(get_logger(),
               "ROUTE_STRATEGY_BUDGET direct_selection_ms=%.2f "
-              "topology_selection_ms=%.2f topology_budget_ms=%.2f "
+              "topology_selection_ms=%.2f topology_observation_ms=%.2f "
+              "topology_planning_ms=%.2f topology_budget_ms=%.2f "
               "direct_executable=%s passage_policy=%s passage_edges=%zu",
-              direct_selection_ms, topology_selection_ms,
-              topological_strategy_budget_ms_,
+              direct_selection_ms, topology_selection_ms, topology_observation_ms,
+              topology_planning_ms, topological_strategy_budget_ms_,
               direct_candidate_executable ? "true" : "false",
               passage_traversals.empty() ? "generic_raw_safe" : "constrained_topology",
               passage_traversals.size());
