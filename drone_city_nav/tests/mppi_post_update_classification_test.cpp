@@ -94,5 +94,19 @@ TEST(MppiPostUpdateClassification, ReportsUnknownSpaceSeparatelyFromCollision) {
                "unknown_space_violation");
 }
 
+TEST(MppiPostUpdateClassification, ReportsRouteTerminalCrossTrackViolation) {
+  MppiPostUpdateObservation observation = safeObservation();
+  observation.route_terminal_cross_track_violation = true;
+
+  const MppiPostUpdateClassificationResult result =
+      classifyMppiPostUpdate(feasibleContract(), observation);
+
+  EXPECT_EQ(result.classification,
+            MppiPostUpdateClassification::kRouteTerminalCrossTrackViolation);
+  EXPECT_FALSE(result.executable);
+  EXPECT_STREQ(mppiPostUpdateClassificationName(result.classification),
+               "route_terminal_cross_track_violation");
+}
+
 } // namespace
 } // namespace drone_city_nav::mppi

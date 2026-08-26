@@ -936,6 +936,8 @@ void ProductionMppiNode::planningTick() {
                     .points = execution_mppi_route,
                     .generation = route_generation,
                     .initial_station_m = static_cast<float>(route_projection.station_m),
+                    .terminal_cross_track_tolerance_m =
+                        static_cast<float>(kFiniteExecutionRouteCrossTrackToleranceM3D),
                 }}
               : std::nullopt,
       .dynamic_aircraft = noncooperative_cost_influence_active

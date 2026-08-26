@@ -9,6 +9,7 @@
 #include <cmath>
 #include <memory>
 #include <numbers>
+#include <optional>
 #include <vector>
 
 namespace drone_city_nav::mppi {
@@ -313,7 +314,9 @@ TEST(MppiControlSequenceTest,
   input.target = State{.x = 35.0F, .y = 20.0F, .z = 10.0F};
   input.planning_stamp_ns = 1;
   input.reference_speed_mps = 5.0F;
-  input.route = RouteReference{.points = std::move(route), .generation = 1U};
+  input.route = RouteReference{.points = std::move(route),
+                               .generation = 1U,
+                               .terminal_cross_track_tolerance_m = std::nullopt};
   input.deterministic_candidate = DeterministicCandidateKind::kRouteDirectedCruise;
 
   const MppiTickResult result = engine.plan(input);
@@ -325,6 +328,81 @@ TEST(MppiControlSequenceTest,
   ASSERT_FALSE(result.horizon.empty());
   EXPECT_GT(result.controls.front().ax, 0.0F);
   EXPECT_GT(result.terminal_progress_m, 1.0F);
+}
+
+TEST(MppiControlSequenceTest,
+     RepairsPhysicallySafeWeightedUpdateWithRouteConvergentCandidate) {
+  BenchmarkConfig config;
+  config.rollouts = 128U;
+  config.steps = 80U;
+  config.dynamics.dt_s = 0.05F;
+  config.noise.horizontal_acceleration_sigma_mps2 = 0.0F;
+  config.noise.vertical_acceleration_sigma_mps2 = 0.0F;
+  config.noise.yaw_acceleration_sigma_radps2 = 0.0F;
+  config.costs.guide_deviation_weight = 0.0F;
+  config.costs.altitude_tracking_weight = 0.0F;
+  config.costs.head_progress_weight = 0.0F;
+  config.costs.progress_weight = 0.0F;
+  config.costs.route_progress_integral_weight = 0.0F;
+  config.costs.speed_tracking_weight = 0.0F;
+  config.costs.terminal_weight = 0.0F;
+  config.seed = 37U;
+  MppiCudaEngine engine{config};
+  const EsdfGrid grid{.width = 50,
+                      .height = 40,
+                      .resolution_m = 1.0F,
+                      .origin_x_m = 0.0F,
+                      .origin_y_m = 0.0F,
+                      .depth = 20,
+                      .origin_z_m = 0.0F};
+  const std::vector<float> esdf(static_cast<std::size_t>(50U) * 40U * 20U, 20.0F);
+  ASSERT_TRUE(engine.updateEsdf(EsdfSnapshot{grid, esdf, 1U}).accepted);
+  auto route =
+      std::make_shared<const std::vector<RouteSample3D>>(std::vector<RouteSample3D>{
+          RouteSample3D{.x_m = 5.0F,
+                        .y_m = 20.0F,
+                        .z_m = 10.0F,
+                        .tangent_x = 1.0F,
+                        .station_m = 0.0F},
+          RouteSample3D{.x_m = 35.0F,
+                        .y_m = 20.0F,
+                        .z_m = 10.0F,
+                        .tangent_x = 1.0F,
+                        .station_m = 30.0F},
+      });
+  MppiTickInput input;
+  input.initial_state = State{.x = 5.0F, .y = 11.5F, .z = 10.0F};
+  input.target = State{.x = 35.0F, .y = 20.0F, .z = 10.0F};
+  input.planning_stamp_ns = 1;
+  input.reference_speed_mps = 5.0F;
+  input.route = RouteReference{.points = std::move(route),
+                               .generation = 1U,
+                               .terminal_cross_track_tolerance_m = 2.0F};
+  input.deterministic_candidate = DeterministicCandidateKind::kRouteDirectedCruise;
+
+  const std::vector<Control> route_controls = buildFiniteRouteDirectedSeed(
+      input.initial_state, input.target, *input.route->points,
+      input.route->initial_station_m, input.reference_speed_mps, config.dynamics,
+      config.steps, Control{}, config.stopping_capability);
+  State route_terminal = input.initial_state;
+  for (const Control& control : route_controls) {
+    route_terminal = integrateReference(route_terminal, control, config.dynamics);
+  }
+  const MppiRouteProjection3D route_terminal_projection = projectOntoMppiRoute3D(
+      route_terminal, *input.route->points, input.route->initial_station_m);
+  ASSERT_TRUE(route_terminal_projection.valid);
+  ASSERT_LE(route_terminal_projection.distance_m, 2.0F);
+
+  const MppiTickResult result = engine.plan(input);
+
+  EXPECT_TRUE(result.route_directed_candidate_raw_safe);
+  EXPECT_FALSE(result.route_directed_candidate_best_feasible);
+  EXPECT_EQ(result.post_update_repair, MppiPostUpdateRepair::kDeterministicCandidate);
+  EXPECT_EQ(result.control_selection, MppiControlSelection::kRouteDirectedCandidate);
+  EXPECT_TRUE(result.post_update_classification.executable);
+  EXPECT_FALSE(result.route_terminal_cross_track_violation);
+  EXPECT_GE(result.terminal_route_cross_track_m, 0.0F);
+  EXPECT_LE(result.terminal_route_cross_track_m, 2.0F);
 }
 
 TEST(MppiControlSequenceTest, AcquisitionCombinesRouteAccelerationAndClimb) {
@@ -489,7 +567,9 @@ TEST(MppiControlSequenceTest, AvoidanceReseedsOnceOnEntryAndRelease) {
   input.target = State{.x = 30.0F, .y = 10.0F, .z = 10.0F};
   input.planning_stamp_ns = 1;
   input.reference_speed_mps = 5.0F;
-  input.route = RouteReference{.points = route, .generation = 1U};
+  input.route = RouteReference{.points = route,
+                               .generation = 1U,
+                               .terminal_cross_track_tolerance_m = std::nullopt};
   input.dynamic_aircraft = {DynamicAircraftTrajectory{
       .samples = peers, .footprint_radius_m = 0.82F, .active_steps = config.steps}};
   input.cooperative_maneuver = CooperativeManeuverPreference{

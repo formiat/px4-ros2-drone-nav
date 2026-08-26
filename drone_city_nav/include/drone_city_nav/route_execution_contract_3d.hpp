@@ -7,6 +7,11 @@
 
 namespace drone_city_nav {
 
+// A finite execution must finish inside this route-centerline corridor before
+// it can own control. Initial handoff may start outside the corridor when its
+// connector is certified separately, but the terminal rest may not.
+inline constexpr double kFiniteExecutionRouteCrossTrackToleranceM3D{2.0};
+
 enum class RouteEndpointSemantics3D : std::uint8_t {
   kContinuation,
   kObservationStop,

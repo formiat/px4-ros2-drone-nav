@@ -13,6 +13,8 @@
 namespace drone_city_nav::mppi {
 namespace {
 
+inline constexpr float kRouteCrossTrackVelocityGainPerSecond{1.0F};
+
 [[nodiscard]] float clampMagnitude(const float value, const float limit) noexcept {
   return std::clamp(value, -limit, limit);
 }
@@ -235,21 +237,40 @@ buildGuideDirectedSeed(const State& initial, const State& target,
         (route_sample.valid ? route_sample.x_m : target.x) - predicted.x;
     const float position_error_y =
         (route_sample.valid ? route_sample.y_m : target.y) - predicted.y;
-    const float desired_vx = route_speed_mps * tangent_x;
-    const float desired_vy = route_speed_mps * tangent_y;
-    const float desired_vz =
-        route_speed_mps * (route_sample.valid ? route_sample.tangent_z : 0.0F);
     const float desired_z = route_sample.valid ? route_sample.z_m : target.z;
+    const float desired_vx = route_speed_mps * tangent_x;
+    float desired_vy = route_speed_mps * tangent_y;
+    float desired_vz =
+        route_speed_mps * (route_sample.valid ? route_sample.tangent_z : 0.0F);
+    float route_desired_vx = desired_vx;
+    if (route_sample.valid) {
+      const float tangent_error_m = position_error_x * route_sample.tangent_x +
+                                    position_error_y * route_sample.tangent_y +
+                                    (desired_z - predicted.z) * route_sample.tangent_z;
+      route_desired_vx += kRouteCrossTrackVelocityGainPerSecond *
+                          (position_error_x - tangent_error_m * route_sample.tangent_x);
+      desired_vy += kRouteCrossTrackVelocityGainPerSecond *
+                    (position_error_y - tangent_error_m * route_sample.tangent_y);
+      desired_vz +=
+          kRouteCrossTrackVelocityGainPerSecond *
+          ((desired_z - predicted.z) - tangent_error_m * route_sample.tangent_z);
+      clampHorizontal(
+          route_desired_vx, desired_vy,
+          std::min(requested_speed_mps, dynamics.maximum_horizontal_speed_mps));
+      desired_vz =
+          clampMagnitude(desired_vz, std::min(requested_speed_mps,
+                                              dynamics.maximum_vertical_speed_mps));
+    }
     const float route_velocity_gain =
         1.0F / std::max(dynamics.dt_s, std::numeric_limits<float>::epsilon());
     const float horizontal_velocity_gain =
         route_sample.valid ? route_velocity_gain : 0.8F;
-    const float horizontal_position_gain = route_sample.valid ? 1.0F : 0.35F;
+    const float horizontal_position_gain = route_sample.valid ? 0.0F : 0.35F;
     const float vertical_velocity_gain =
         route_sample.valid ? route_velocity_gain : 0.5F;
-    const float vertical_position_gain = route_sample.valid ? 1.0F : 0.8F;
+    const float vertical_position_gain = route_sample.valid ? 0.0F : 0.8F;
     seed[index] = Control{
-        .ax = horizontal_velocity_gain * (desired_vx - predicted.vx) +
+        .ax = horizontal_velocity_gain * (route_desired_vx - predicted.vx) +
               horizontal_position_gain * position_error_x,
         .ay = horizontal_velocity_gain * (desired_vy - predicted.vy) +
               horizontal_position_gain * position_error_y,

@@ -17,7 +17,8 @@ inline constexpr double kGeometryTolerance{1.0e-4};
 inline constexpr double kExecutionBindingToleranceM{0.25};
 inline constexpr double kCompletionStationToleranceM{0.5};
 inline constexpr double kFiniteStopPositionToleranceM{0.25};
-inline constexpr double kMaximumRouteCrossTrackM{2.0};
+inline constexpr double kMaximumRouteCrossTrackM{
+    kFiniteExecutionRouteCrossTrackToleranceM3D};
 inline constexpr double kTerminalBoundaryToleranceM{0.5};
 inline constexpr double kTerminalBoundaryActivationDistanceM{10.0};
 inline constexpr double kMaximumStationCreditPerTravel{1.0};

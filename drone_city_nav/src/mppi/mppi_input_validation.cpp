@@ -9,6 +9,11 @@ namespace drone_city_nav::mppi {
 
 void validateMppiTickInput(const MppiTickInput& input, const std::size_t expected_steps,
                            const std::size_t maximum_dynamic_aircraft) {
+  if (input.route && input.route->terminal_cross_track_tolerance_m &&
+      (!std::isfinite(*input.route->terminal_cross_track_tolerance_m) ||
+       !(*input.route->terminal_cross_track_tolerance_m > 0.0F))) {
+    throw std::invalid_argument{"invalid route terminal cross-track tolerance"};
+  }
   if (input.moving_target.has_value()) {
     const MovingTargetReference& target = *input.moving_target;
     const bool invalid_vertical =

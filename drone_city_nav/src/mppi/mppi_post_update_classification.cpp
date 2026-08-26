@@ -39,6 +39,11 @@ classifyMppiPostUpdate(const MppiFeasibilityContract& feasibility,
     result.classification = MppiPostUpdateClassification::kKnownSolidCollision;
     return result;
   }
+  if (observation.route_terminal_cross_track_violation) {
+    result.classification =
+        MppiPostUpdateClassification::kRouteTerminalCrossTrackViolation;
+    return result;
+  }
   result.classification = MppiPostUpdateClassification::kPreserved;
   result.executable = true;
   return result;
@@ -61,6 +66,8 @@ const char* mppiPostUpdateClassificationName(
       return "unknown_space_violation";
     case MppiPostUpdateClassification::kKnownSolidCollision:
       return "known_solid_collision";
+    case MppiPostUpdateClassification::kRouteTerminalCrossTrackViolation:
+      return "route_terminal_cross_track_violation";
   }
   return "unknown";
 }

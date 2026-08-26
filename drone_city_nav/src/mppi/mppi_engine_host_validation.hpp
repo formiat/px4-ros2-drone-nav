@@ -97,4 +97,6 @@ struct EvaluatedControlSequence {
   RolloutMetrics metrics{};
   MppiPostUpdateClassificationResult classification{};
   bool known_solid_collision{false};
+  bool route_terminal_cross_track_violation{false};
+  float terminal_route_cross_track_m{-1.0F};
 };

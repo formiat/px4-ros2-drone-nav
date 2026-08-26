@@ -603,6 +603,18 @@ public:
           config_.altitude_envelope);
       evaluation.known_solid_collision = hostSweptSolidCollision(
           evaluation.trace.horizon, controls, config_.footprint, known_solids_);
+      if (route_active && input.route->terminal_cross_track_tolerance_m &&
+          !evaluation.trace.horizon.empty()) {
+        const MppiRouteProjection3D terminal_projection =
+            projectOntoMppiRoute3D(evaluation.trace.horizon.back(), active_route,
+                                   input.route->initial_station_m);
+        evaluation.terminal_route_cross_track_m =
+            terminal_projection.valid ? terminal_projection.distance_m : -1.0F;
+        evaluation.route_terminal_cross_track_violation =
+            !terminal_projection.valid ||
+            terminal_projection.distance_m >
+                *input.route->terminal_cross_track_tolerance_m;
+      }
       evaluation.classification = classifyMppiPostUpdate(
           result.feasibility_contract,
           MppiPostUpdateObservation{
@@ -612,6 +624,8 @@ public:
               .unknown_space_violation = evaluation.metrics.unknown_space_violation &&
                                          config_.risk.require_known_free_space,
               .known_solid_collision = evaluation.known_solid_collision,
+              .route_terminal_cross_track_violation =
+                  evaluation.route_terminal_cross_track_violation,
           });
       return evaluation;
     };
@@ -731,6 +745,9 @@ public:
         } else {
           result.post_update_repair = MppiPostUpdateRepair::kDeterministicCandidate;
           result.post_update_backtrack_ratio = 0.0F;
+          if (route_directed_candidate) {
+            result.control_selection = MppiControlSelection::kRouteDirectedCandidate;
+          }
         }
         repaired = true;
         break;
@@ -781,6 +798,10 @@ public:
     result.raw_collision = metrics.collision;
     result.unknown_space_violation = metrics.unknown_space_violation;
     result.known_solid_collision = selected_evaluation.known_solid_collision;
+    result.route_terminal_cross_track_violation =
+        selected_evaluation.route_terminal_cross_track_violation;
+    result.terminal_route_cross_track_m =
+        selected_evaluation.terminal_route_cross_track_m;
     result.critical_exposure_m = metrics.critical_exposure_m;
     result.planning_exposure_m = metrics.planning_exposure_m;
     result.critical_clearance_proximity_s =

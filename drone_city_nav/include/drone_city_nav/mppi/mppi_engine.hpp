@@ -36,6 +36,7 @@ struct RouteReference {
   std::shared_ptr<const std::vector<RouteSample3D>> points;
   std::uint64_t generation{0U};
   float initial_station_m{0.0F};
+  std::optional<float> terminal_cross_track_tolerance_m;
 };
 
 enum class DeterministicCandidateKind : std::uint8_t {
@@ -152,6 +153,8 @@ struct MppiTickResult {
   bool raw_collision{true};
   bool unknown_space_violation{false};
   bool known_solid_collision{false};
+  bool route_terminal_cross_track_violation{false};
+  float terminal_route_cross_track_m{-1.0F};
   float critical_exposure_m{0.0F};
   float planning_exposure_m{0.0F};
   float critical_clearance_proximity_s{0.0F};
