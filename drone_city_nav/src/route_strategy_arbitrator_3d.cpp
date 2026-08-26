@@ -381,6 +381,23 @@ RouteStrategyArbitrationDecision3D RouteStrategyArbitrator3D::evaluate(
           return leaseMatchesProposal(*observed.lease, proposal);
         });
     if (!leased_index.has_value()) {
+      // Candidate materialization may intentionally retain the immutable
+      // resident route instead of publishing an equivalent replacement. The
+      // absence of a new eligible proposal therefore does not invalidate a
+      // lease while that exact strategic intent is still executing.
+      const bool resident_strategy_route_active =
+          observation.active_intent.has_value() &&
+          !observation.active_intent_completed &&
+          leaseMatchesIntent(*observed.lease, *observation.active_intent);
+      if (resident_strategy_route_active) {
+        decision.selection.selected_index.reset();
+        decision.selection.reason =
+            RouteProposalSelectionReason3D::kActiveStrategyLease;
+        decision.state_without_commit = observed;
+        decision.state_after_commit = observed;
+        decision.action = RouteStrategyArbitrationAction3D::kLeaseResidentRouteRetained;
+        return decision;
+      }
       releaseLease(observed, observation, true);
       decision.action =
           RouteStrategyArbitrationAction3D::kLeaseReleasedCandidateInvalid;
@@ -561,6 +578,8 @@ std::string_view routeStrategyArbitrationAction3DName(
       return "lease_acquired";
     case RouteStrategyArbitrationAction3D::kLeaseRetained:
       return "lease_retained";
+    case RouteStrategyArbitrationAction3D::kLeaseResidentRouteRetained:
+      return "lease_resident_route_retained";
     case RouteStrategyArbitrationAction3D::kLeaseHysteresisRetained:
       return "lease_hysteresis_retained";
     case RouteStrategyArbitrationAction3D::kLeaseReleasedMissionChanged:

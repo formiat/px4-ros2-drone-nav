@@ -210,6 +210,60 @@ TEST(RouteStrategyArbitrator3DTest,
 }
 
 TEST(RouteStrategyArbitrator3DTest,
+     ResidentStrategicRouteRetainsLeaseWithoutEquivalentReplacement) {
+  RouteStrategyArbitrator3D arbitrator;
+  const RouteProposal3D strategic =
+      strategicProposal(RouteIntentPurpose3D::kObservationFrontier, -2.0);
+  RouteStrategyArbitrationDecision3D decision =
+      arbitrator.evaluate(std::vector<RouteProposal3D>{directProposal(0.5), strategic},
+                          kProposalConfig, observation({0.0, 0.0, 5.0}));
+  ASSERT_TRUE(arbitrator.recordOutcome(decision, true));
+
+  RouteStrategyArbitrationObservation3D executing = observation({1.0, 0.0, 5.0}, 11U);
+  executing.active_intent = strategic.intent;
+  RouteProposal3D rejected_replacement = strategic;
+  rejected_replacement.activation_eligible = false;
+  decision = arbitrator.evaluate(
+      std::vector<RouteProposal3D>{directProposal(0.5), rejected_replacement},
+      kProposalConfig, executing);
+
+  EXPECT_FALSE(decision.selection.selected_index.has_value());
+  EXPECT_EQ(decision.selection.reason,
+            RouteProposalSelectionReason3D::kActiveStrategyLease);
+  EXPECT_EQ(decision.action,
+            RouteStrategyArbitrationAction3D::kLeaseResidentRouteRetained);
+  ASSERT_TRUE(arbitrator.recordOutcome(decision, false));
+  const RouteStrategyLease3D* const retained = activeLease(arbitrator);
+  ASSERT_NE(retained, nullptr);
+  EXPECT_EQ(retained->return_lineage.id, strategic.intent.return_lineage.id);
+  EXPECT_FALSE(arbitrator.state().retired_lineage.has_value());
+}
+
+TEST(RouteStrategyArbitrator3DTest,
+     MissingStrategicCandidateReleasesLeaseWithoutResidentRoute) {
+  RouteStrategyArbitrator3D arbitrator;
+  const RouteProposal3D strategic =
+      strategicProposal(RouteIntentPurpose3D::kObservationFrontier, -2.0);
+  RouteStrategyArbitrationDecision3D decision =
+      arbitrator.evaluate(std::vector<RouteProposal3D>{directProposal(0.5), strategic},
+                          kProposalConfig, observation({0.0, 0.0, 5.0}));
+  ASSERT_TRUE(arbitrator.recordOutcome(decision, true));
+
+  RouteProposal3D rejected_replacement = strategic;
+  rejected_replacement.activation_eligible = false;
+  decision = arbitrator.evaluate(
+      std::vector<RouteProposal3D>{directProposal(0.5), rejected_replacement},
+      kProposalConfig, observation({1.0, 0.0, 5.0}, 11U));
+
+  EXPECT_EQ(decision.selection.selected_index, std::optional<std::size_t>{0U});
+  EXPECT_EQ(decision.action,
+            RouteStrategyArbitrationAction3D::kLeaseReleasedCandidateInvalid);
+  ASSERT_TRUE(arbitrator.recordOutcome(decision, true));
+  EXPECT_FALSE(arbitrator.state().lease.has_value());
+  EXPECT_TRUE(arbitrator.state().retired_lineage.has_value());
+}
+
+TEST(RouteStrategyArbitrator3DTest,
      MissionTargetCandidateCanPreemptLeaseWithoutHysteresis) {
   RouteStrategyArbitrator3D arbitrator;
   const RouteProposal3D strategic =

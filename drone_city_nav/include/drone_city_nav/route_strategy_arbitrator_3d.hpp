@@ -84,6 +84,7 @@ enum class RouteStrategyArbitrationAction3D : std::uint8_t {
   kStatelessSelection,
   kLeaseAcquired,
   kLeaseRetained,
+  kLeaseResidentRouteRetained,
   kLeaseHysteresisRetained,
   kLeaseReleasedMissionChanged,
   kLeaseReleasedIntentCompleted,

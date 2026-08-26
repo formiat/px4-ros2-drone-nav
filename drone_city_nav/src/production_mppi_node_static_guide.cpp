@@ -109,16 +109,19 @@ void ProductionMppiNode::processGuideSearch3D(
     });
   }
 
+  const std::optional<RouteIntent3D> active_certified_intent =
+      active_route != nullptr && active_route->valid() &&
+              active_route->identity.proposal.intent.valid
+          ? std::optional<RouteIntent3D>{active_route->identity.proposal.intent}
+          : std::nullopt;
   const RouteStrategyArbitrationObservation3D strategy_observation{
       .position = search_start,
       .mission_target = mission_goal,
       .world_revision = world.revision,
-      .active_intent = world.route_intent.valid
-                           ? std::optional<RouteIntent3D>{world.route_intent}
-                           : std::nullopt,
+      .active_intent = active_certified_intent,
       .active_intent_completed = active_route_completion.captured &&
-                                 world.route_intent.valid &&
-                                 world.route_intent.segment_reaches_intent_target,
+                                 active_certified_intent.has_value() &&
+                                 active_certified_intent->segment_reaches_intent_target,
   };
   RouteStrategyArbitrationDecision3D strategy_decision;
   {
