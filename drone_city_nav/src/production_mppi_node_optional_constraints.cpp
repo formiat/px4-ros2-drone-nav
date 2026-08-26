@@ -33,6 +33,8 @@ void ProductionMppiNode::configureOptionalNavigationConstraints() {
           declare_parameter<bool>("topological_segment_boundaries_enabled", false),
       .route_replacement_progress_enabled =
           declare_parameter<bool>("route_replacement_progress_enabled", false),
+      .clearance_tier_constraints_enabled =
+          declare_parameter<bool>("clearance_tier_constraints_enabled", false),
   };
 }
 

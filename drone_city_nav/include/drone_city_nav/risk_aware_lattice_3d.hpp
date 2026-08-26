@@ -114,6 +114,7 @@ struct RiskAwareLattice3DConfig {
   double preferred_distance_m{6.0};
   bool require_known_free_space{false};
   bool reject_invalid_esdf{false};
+  bool clearance_tier_constraints_enabled{true};
   double heading_bias_cost_per_rad{0.5};
   double nominal_horizontal_speed_mps{20.0};
   double nominal_vertical_speed_mps{4.0};

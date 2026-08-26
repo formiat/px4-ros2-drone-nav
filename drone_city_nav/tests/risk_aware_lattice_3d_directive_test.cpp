@@ -138,6 +138,24 @@ TEST(RiskAwareLattice3DDirectiveTest,
   EXPECT_FALSE(result.reached_mission_goal);
 }
 
+TEST(RiskAwareLattice3DDirectiveTest, PermissiveSearchUsesOnlyTheRawSafeRiskStage) {
+  const OpenField3D field = makeOpenField();
+  RiskAwareLattice3DConfig config = makeConfig();
+  config.clearance_tier_constraints_enabled = false;
+  const Point3 start{3.5, 3.5, 3.5};
+  const Point3 target{10.5, 3.5, 3.5};
+
+  const RiskAwareLattice3DResult result =
+      planRiskAwareLattice3D(field.grid, field.distances.distancesM(), start,
+                             Vec3{1.0, 0.0, 0.0}, target, {}, config);
+
+  ASSERT_EQ(result.status, Lattice3DStatus::kReachedPlanningGoal);
+  EXPECT_EQ(result.risk_stage, Lattice3DRiskStage::kCriticalAllowed);
+  ASSERT_EQ(result.topology_candidates.size(), 1U);
+  EXPECT_EQ(result.topology_candidates.front().risk_stage,
+            Lattice3DRiskStage::kCriticalAllowed);
+}
+
 TEST(RiskAwareLattice3DDirectiveTest,
      DirectedSoftTabuPenalizesOnlyTheRecordedApproachDirection) {
   const OpenField3D field = makeOpenField();

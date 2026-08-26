@@ -599,6 +599,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       optional_constraints_.clearance_costs_enabled
           ? lattice_3d_critical_exposure_cost_per_m
           : 0.0;
+  lattice_3d_config_.clearance_tier_constraints_enabled =
+      optional_constraints_.clearance_tier_constraints_enabled;
   lattice_3d_config_.passage_connection_distance_m =
       declare_parameter<double>("global_lattice_3d_passage_connection_distance_m", 3.0);
   const double lattice_3d_frontier_minimum_reachable_depth_m =

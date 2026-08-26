@@ -390,6 +390,7 @@ production_mppi_node:
     observation_frontier_stops_enabled: false
     topological_segment_boundaries_enabled: false
     route_replacement_progress_enabled: false
+    clearance_tier_constraints_enabled: false
     require_known_free_space: false
     route_proposal_productive_direct_minimum_mission_progress_m: 2.0
     route_proposal_productive_direct_minimum_progress_ratio: 0.15
@@ -459,7 +460,7 @@ production_mppi_node:
     topological_lattice_3d_minimum_collinear_direction_cosine: 0.95
     topological_memory_3d_coverage_influence_radius_m: 4.0
     topological_memory_3d_maximum_observed_transition_m: 4.0
-    no_static_global_lattice_deadline_ms: 100.0
+    no_static_global_lattice_deadline_ms: 500.0
     static_global_lattice_roi_halo_m: 90.0
     no_static_global_lattice_roi_halo_m: 45.0
     global_lattice_frontier_candidates: 64

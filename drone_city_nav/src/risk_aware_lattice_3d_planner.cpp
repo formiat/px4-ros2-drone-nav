@@ -2,6 +2,7 @@
 #include "drone_city_nav/risk_aware_lattice_3d.hpp"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <span>
@@ -149,10 +150,15 @@ RiskAwareLattice3DResult planRiskAwareLattice3D(
   const auto run_topology_search = [&](const std::size_t search_index) {
     const auto topology_started = std::chrono::steady_clock::now();
     TopologySearchBatch& topology = topology_searches[search_index];
-    topology.stage_results.reserve(3U);
-    for (const Lattice3DRiskStage stage :
-         {Lattice3DRiskStage::kPreferredOnly, Lattice3DRiskStage::kPlanningAllowed,
-          Lattice3DRiskStage::kCriticalAllowed}) {
+    const std::array all_stages{Lattice3DRiskStage::kPreferredOnly,
+                                Lattice3DRiskStage::kPlanningAllowed,
+                                Lattice3DRiskStage::kCriticalAllowed};
+    const std::span<const Lattice3DRiskStage> stages =
+        config.clearance_tier_constraints_enabled
+            ? std::span<const Lattice3DRiskStage>{all_stages}
+            : std::span<const Lattice3DRiskStage>{all_stages}.last(1U);
+    topology.stage_results.reserve(stages.size());
+    for (const Lattice3DRiskStage stage : stages) {
       topology.stage_results.push_back(detail::searchRiskAwareLattice3DStage(
           grid, esdf_m, start, search_direction, planning_goal, mission_goal,
           topology.passages, stage, topology.requirement, config, worker_pool,
