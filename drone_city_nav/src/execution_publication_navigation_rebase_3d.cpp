@@ -179,6 +179,12 @@ rebaseRouteExecution(const ExecutionPublicationNavigationRebaseRequest3D& reques
       return replaceFiniteExecution3D(expected, guard, certified.execution);
     }
     if (request.expected_pending != nullptr &&
+        request.expected_pending->base_kind ==
+            PendingExecutionBaseKind3D::kRouteHandoff) {
+      return replaceCertifiedRouteAtHandoff3D(expected, guard, *target_route,
+                                              certified.execution);
+    }
+    if (request.expected_pending != nullptr &&
         request.expected_pending->route_splice.has_value()) {
       return replaceCertifiedRoute3D(expected, guard, *target_route,
                                      certified.execution,
