@@ -1130,6 +1130,8 @@ TEST(Route3DTest, MaterializesValidatedContinuationWhenSearchSliceExpires) {
             config.frontier_minimum_reachable_depth_m);
   EXPECT_GE(result.route_length_m, config.frontier_minimum_reachable_depth_m);
   ASSERT_GE(result.points.size(), 2U);
+  EXPECT_NEAR(result.achieved_progress_m,
+              distance3D(start, goal) - distance3D(result.points.back(), goal), 1.0e-9);
   EXPECT_LT(distance3D(result.points.back(), goal), distance3D(start, goal));
   EXPECT_NEAR(result.points.back().y, start.y, 1.0e-9);
   EXPECT_NEAR(result.points.back().z, start.z, 1.0e-9);
@@ -1249,6 +1251,8 @@ TEST(Route3DTest, MaterializedContinuationCommitsToGoalDirectedWallDetour) {
   ASSERT_EQ(result.status, Lattice3DStatus::kViableFrontier);
   EXPECT_EQ(result.termination, Lattice3DSearchTermination::kDeadlineReached);
   ASSERT_GE(result.points.size(), 2U);
+  EXPECT_NEAR(result.achieved_progress_m,
+              distance3D(start, goal) - distance3D(result.points.back(), goal), 1.0e-9);
   EXPECT_LT(distance3D(result.points.back(), goal), distance3D(start, goal));
   EXPECT_GT(std::abs(result.points.back().y - start.y), 1.0);
   EXPECT_NEAR(result.points.back().z, start.z, 1.0e-9);

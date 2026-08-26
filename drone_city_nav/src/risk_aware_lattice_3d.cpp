@@ -827,9 +827,8 @@ reconstruct(const Key& terminal, const Point3& origin,
         result.minimum_clearance_m =
             std::min(result.minimum_clearance_m, continuation_clearance_m);
         result.achieved_progress_m =
-            std::max(result.achieved_progress_m,
-                     distance3D(start, planning_goal) -
-                         distance3D(continuation.path.back(), planning_goal));
+            distance3D(start, planning_goal) -
+            distance3D(continuation.path.back(), planning_goal);
         result.status = Lattice3DStatus::kViableFrontier;
         continuation_route_accepted = true;
       }
