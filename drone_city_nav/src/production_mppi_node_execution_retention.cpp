@@ -229,7 +229,6 @@ ProductionMppiNode::retainSnapshotFinitePath(
     const ProductionMppiExecutionCycle& cycle,
     const ProductionMppiExecutionReason replacement_failure_reason) {
   const auto& route_execution = cycle.route_execution;
-  const auto& latest_raw_world_3d = cycle.latest_raw_world_3d;
   const auto& execution_input = cycle.execution_input;
   const auto& latest_lidar_evidence = cycle.latest_lidar_evidence;
   const std::int64_t now_ns = cycle.now_ns;
@@ -255,31 +254,17 @@ ProductionMppiNode::retainSnapshotFinitePath(
                   RouteLifecycleEventKind3D::kRawInvalidated
           ? std::addressof(*route_execution.lifecycle_event)
           : nullptr;
-  std::shared_ptr<const VersionedObservedRawWorld3D> invalidating_observed_world;
+  const std::shared_ptr<const VersionedObservedRawWorld3D>&
+      invalidating_observed_world = route_execution.lifecycle_observed_raw_world;
   if (raw_invalidation != nullptr) {
     if (route_execution.source_snapshot != expected ||
-        route.observed_raw_world == nullptr || latest_raw_world_3d == nullptr ||
-        latest_raw_world_3d->execution_owner == nullptr ||
-        !latest_raw_world_3d->execution_owner->valid() ||
-        latest_raw_world_3d->version.producer_instance_id !=
+        route.observed_raw_world == nullptr || invalidating_observed_world == nullptr ||
+        !invalidating_observed_world->valid() ||
+        invalidating_observed_world->version().producer_instance_id !=
             raw_invalidation->raw_producer_instance_id ||
-        latest_raw_world_3d->version.revision != raw_invalidation->raw_revision ||
-        latest_raw_world_3d->execution_owner->version().producer_instance_id !=
-            latest_raw_world_3d->version.producer_instance_id ||
-        latest_raw_world_3d->execution_owner->version().base_snapshot_revision !=
-            latest_raw_world_3d->version.base_snapshot_revision ||
-        latest_raw_world_3d->execution_owner->version().revision !=
-            latest_raw_world_3d->version.revision ||
-        std::addressof(latest_raw_world_3d->execution_owner->occupancy()) !=
-            latest_raw_world_3d->occupancy.get()) {
-      return std::nullopt;
-    }
-    invalidating_observed_world =
-        latest_raw_world_3d->execution_owner->deriveRouteEvidence(
-            route.observed_raw_world->proprioceptiveFreeSpaceSeed(),
-            route.observed_raw_world->launchSupportContact());
-    if (invalidating_observed_world == nullptr ||
-        !latest_raw_world_3d->execution_owner->sharesObservationOwner(
+        invalidating_observed_world->version().revision !=
+            raw_invalidation->raw_revision ||
+        !route.observed_raw_world->sharesObservationOwner(
             *invalidating_observed_world)) {
       return std::nullopt;
     }

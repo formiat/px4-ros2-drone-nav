@@ -9,6 +9,11 @@
 namespace drone_city_nav {
 namespace {
 
+// Raw occupancy may advance while a suffix is being checked. Bound optimistic
+// retries so route progress cannot monopolize a planning tick; exhaustion falls
+// through to the exact-evidence emergency-brake path.
+constexpr std::size_t kMaximumRawProgressPublicationAttempts{3U};
+
 [[nodiscard]] SweptFootprintConfig
 executionFootprint(const RiskAwareLattice3DConfig& lattice_config,
                    const SweptFootprintConfig& physical_config) noexcept {
@@ -407,6 +412,7 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
       .route = nullptr,
       .source_snapshot = nullptr,
       .pending_route = nullptr,
+      .lifecycle_observed_raw_world = nullptr,
       .projection = {},
       .status = RouteExecutionStatus3D::kNoActiveRoute,
       .lifecycle_event = std::nullopt,
@@ -455,53 +461,110 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
     const std::shared_ptr<const ExecutionRouteSnapshot3D> active_source_snapshot =
         result.source_snapshot;
     const CertifiedRouteSuffix3D& active_route = *active_source_snapshot->route;
-    RouteExecutionObservation3D observation = makeExecutionObservation(
-        world, objective, execution_navigation, minimum_tracking_sample_sequence,
-        active_guide_config_.maximum_cross_track_m, footprint);
-    std::shared_ptr<const VersionedObservedRawWorld3D> observed_owner;
-    if (result.source_snapshot->route->observed_raw_world != nullptr) {
-      if (!observed_3d_world) {
-        return result;
-      }
-      observed_owner =
-          deriveLatestObservedRouteEvidence(latest_raw_world, active_route);
-      if (observed_owner != nullptr) {
-        observation.latest_raw_occupancy = &observed_owner->occupancy();
-        observation.latest_raw_producer_instance_id =
-            observed_owner->version().producer_instance_id;
-        observation.latest_raw_revision = observed_owner->version().revision;
-        observation.proprioceptive_free_space_seed =
-            observed_owner->proprioceptiveFreeSpaceSeed().has_value()
-                ? std::addressof(*observed_owner->proprioceptiveFreeSpaceSeed())
-                : nullptr;
-        observation.launch_support_contact =
-            observed_owner->launchSupportContact().has_value()
-                ? std::addressof(*observed_owner->launchSupportContact())
-                : nullptr;
-      }
-    }
-    const auto* const raw_certificate =
-        std::get_if<ObservedRawRouteCertificate3D>(&active_route.certificate);
-    observation.previously_validated_through_raw_revision =
-        raw_certificate != nullptr ? raw_certificate->validated_through_revision : 0U;
-    observation.minimum_station_m = active_route.progress.station_m;
-    observation.maximum_station_m =
-        std::min(active_route.endStationM(),
-                 active_route.progress.station_m +
-                     distance3D(active_route.progress.last_observed_position,
-                                observation.position) +
-                     1.0e-6);
-    const RouteExecutionAssessment3D diagnostic_assessment = assessRouteExecution3D(
-        &active_route.identity, *active_route.geometry->route, observation);
     const ExecutionRouteTransitionGuard3D guard{
         .expected_snapshot_version = result.source_snapshot->version,
         .expected_route_generation = result.source_snapshot->route->identity.generation,
         .expected_geometry_revision =
             result.source_snapshot->route->geometry->executable_geometry_revision,
     };
-    const ExecutionRouteTransitionResult3D advanced = advanceCertifiedRoute3D(
-        *result.source_snapshot, guard, observation, execution_input, observed_owner);
-    if (advanced.applied()) {
+    const bool observed_route = active_route.observed_raw_world != nullptr;
+    if (observed_route && !observed_3d_world) {
+      return result;
+    }
+    std::shared_ptr<const ProductionMppiRawWorld3D> assessment_raw_world =
+        latest_raw_world;
+    const std::size_t maximum_attempts =
+        observed_route ? kMaximumRawProgressPublicationAttempts : 1U;
+    for (std::size_t attempt_index = 0U; attempt_index < maximum_attempts;
+         ++attempt_index) {
+      RouteExecutionObservation3D observation = makeExecutionObservation(
+          world, objective, execution_navigation, minimum_tracking_sample_sequence,
+          active_guide_config_.maximum_cross_track_m, footprint);
+      std::shared_ptr<const VersionedObservedRawWorld3D> observed_owner;
+      if (observed_route) {
+        observed_owner =
+            deriveLatestObservedRouteEvidence(assessment_raw_world, active_route);
+        if (observed_owner != nullptr) {
+          observation.latest_raw_occupancy = &observed_owner->occupancy();
+          observation.latest_raw_producer_instance_id =
+              observed_owner->version().producer_instance_id;
+          observation.latest_raw_revision = observed_owner->version().revision;
+          observation.proprioceptive_free_space_seed =
+              observed_owner->proprioceptiveFreeSpaceSeed().has_value()
+                  ? std::addressof(*observed_owner->proprioceptiveFreeSpaceSeed())
+                  : nullptr;
+          observation.launch_support_contact =
+              observed_owner->launchSupportContact().has_value()
+                  ? std::addressof(*observed_owner->launchSupportContact())
+                  : nullptr;
+        }
+      }
+      const auto* const raw_certificate =
+          std::get_if<ObservedRawRouteCertificate3D>(&active_route.certificate);
+      observation.previously_validated_through_raw_revision =
+          raw_certificate != nullptr ? raw_certificate->validated_through_revision : 0U;
+      observation.minimum_station_m = active_route.progress.station_m;
+      observation.maximum_station_m =
+          std::min(active_route.endStationM(),
+                   active_route.progress.station_m +
+                       distance3D(active_route.progress.last_observed_position,
+                                  observation.position) +
+                       1.0e-6);
+      const RouteExecutionAssessment3D diagnostic_assessment = assessRouteExecution3D(
+          &active_route.identity, *active_route.geometry->route, observation);
+      const ExecutionRouteTransitionResult3D advanced = advanceCertifiedRoute3D(
+          *result.source_snapshot, guard, observation, execution_input, observed_owner);
+      if (!advanced.applied()) {
+        if (advanced.status == ExecutionRouteTransitionStatus3D::kNoChange) {
+          active_usable = diagnostic_assessment.usable();
+        } else {
+          result.status = diagnostic_assessment.status;
+          if (result.status == RouteExecutionStatus3D::kUsable) {
+            result.status = RouteExecutionStatus3D::kRawCollision;
+          }
+          const std::uint64_t generation = active_route.identity.generation;
+          const bool raw_invalidated =
+              result.status != RouteExecutionStatus3D::kObjectiveMismatch &&
+              result.status != RouteExecutionStatus3D::kExcessiveCrossTrack;
+          if (raw_invalidated) {
+            result.lifecycle_observed_raw_world = observed_owner;
+          }
+          RouteLifecycleEventKind3D event_kind =
+              RouteLifecycleEventKind3D::kRawInvalidated;
+          GlobalGuideReleaseReason release_reason = GlobalGuideReleaseReason::kBlocked;
+          if (result.status == RouteExecutionStatus3D::kObjectiveMismatch) {
+            event_kind = RouteLifecycleEventKind3D::kObjectiveSuperseded;
+            release_reason = GlobalGuideReleaseReason::kObjectiveChanged;
+          } else if (result.status == RouteExecutionStatus3D::kExcessiveCrossTrack) {
+            event_kind = RouteLifecycleEventKind3D::kCrossTrackExceeded;
+            release_reason = GlobalGuideReleaseReason::kDiverged;
+          }
+          result.lifecycle_event = RouteLifecycleEvent3D{
+              .kind = event_kind,
+              .generation = generation,
+              .raw_producer_instance_id =
+                  raw_invalidated && observed_owner != nullptr
+                      ? observed_owner->version().producer_instance_id
+                      : 0U,
+              .raw_revision = raw_invalidated && observed_owner != nullptr
+                                  ? observed_owner->version().revision
+                                  : 0U,
+          };
+          requestGuideRelease(release_reason, generation);
+          RCLCPP_WARN_THROTTLE(
+              get_logger(), *get_clock(), 1000,
+              "ROUTE_EXECUTION3D snapshot_version=%" PRIu64 " route_generation=%" PRIu64
+              " status=%.*s transition=%.*s "
+              "action=retain_certified_owner_and_request_successor",
+              result.source_snapshot->version, generation,
+              static_cast<int>(routeExecutionStatus3DName(result.status).size()),
+              routeExecutionStatus3DName(result.status).data(),
+              static_cast<int>(
+                  executionRouteTransitionStatus3DName(advanced.status).size()),
+              executionRouteTransitionStatus3DName(advanced.status).data());
+        }
+        break;
+      }
       ExecutionRoutePublicationStatus3D publication_status{
           ExecutionRoutePublicationStatus3D::kInvalidCandidate};
       std::shared_ptr<const ProductionMppiRawWorld3D> publication_raw_world;
@@ -527,6 +590,12 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
           }
         }
       }
+      if (!publication_raw_current && observed_route &&
+          attempt_index + 1U < maximum_attempts && publication_raw_world != nullptr &&
+          publication_raw_world != assessment_raw_world) {
+        assessment_raw_world = std::move(publication_raw_world);
+        continue;
+      }
       if (publication_status == ExecutionRoutePublicationStatus3D::kPublished) {
         result.source_snapshot = advanced.next;
         active_usable = true;
@@ -549,6 +618,10 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
                             ? RouteExecutionStatus3D::kInvalidRoute
                             : RouteExecutionStatus3D::kWorldLineageMismatch;
         const std::uint64_t generation = active_route.identity.generation;
+        if (!publication_raw_current) {
+          result.lifecycle_observed_raw_world =
+              deriveLatestObservedRouteEvidence(publication_raw_world, active_route);
+        }
         const RouteLifecycleEventKind3D event_kind =
             publication_raw_current
                 ? RouteLifecycleEventKind3D::kControlCandidateRejected
@@ -580,44 +653,7 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
             static_cast<int>(routeExecutionStatus3DName(result.status).size()),
             routeExecutionStatus3DName(result.status).data(), publication_reason);
       }
-    } else if (advanced.status == ExecutionRouteTransitionStatus3D::kNoChange) {
-      active_usable = diagnostic_assessment.usable();
-    } else {
-      result.status = diagnostic_assessment.status;
-      if (result.status == RouteExecutionStatus3D::kUsable) {
-        result.status = RouteExecutionStatus3D::kRawCollision;
-      }
-      const std::uint64_t generation =
-          result.source_snapshot->route->identity.generation;
-      result.lifecycle_event = RouteLifecycleEvent3D{
-          .kind = result.status == RouteExecutionStatus3D::kObjectiveMismatch
-                      ? RouteLifecycleEventKind3D::kObjectiveSuperseded
-                  : result.status == RouteExecutionStatus3D::kExcessiveCrossTrack
-                      ? RouteLifecycleEventKind3D::kCrossTrackExceeded
-                      : RouteLifecycleEventKind3D::kRawInvalidated,
-          .generation = generation,
-          .raw_producer_instance_id =
-              latest_raw_world ? latest_raw_world->version.producer_instance_id : 0U,
-          .raw_revision = latest_raw_world ? latest_raw_world->version.revision : 0U,
-      };
-      requestGuideRelease(result.status == RouteExecutionStatus3D::kObjectiveMismatch
-                              ? GlobalGuideReleaseReason::kObjectiveChanged
-                          : result.status ==
-                                  RouteExecutionStatus3D::kExcessiveCrossTrack
-                              ? GlobalGuideReleaseReason::kDiverged
-                              : GlobalGuideReleaseReason::kBlocked,
-                          generation);
-      RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 1000,
-          "ROUTE_EXECUTION3D snapshot_version=%" PRIu64 " route_generation=%" PRIu64
-          " status=%.*s transition=%.*s "
-          "action=retain_certified_owner_and_request_successor",
-          result.source_snapshot->version, generation,
-          static_cast<int>(routeExecutionStatus3DName(result.status).size()),
-          routeExecutionStatus3DName(result.status).data(),
-          static_cast<int>(
-              executionRouteTransitionStatus3DName(advanced.status).size()),
-          executionRouteTransitionStatus3DName(advanced.status).data());
+      break;
     }
   }
 

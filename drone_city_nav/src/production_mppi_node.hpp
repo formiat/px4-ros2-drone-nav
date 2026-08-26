@@ -380,6 +380,7 @@ struct ProductionRouteExecutionSelection3D {
   std::shared_ptr<const CertifiedRouteSuffix3D> route;
   std::shared_ptr<const ExecutionRouteSnapshot3D> source_snapshot;
   std::shared_ptr<const PendingCertifiedRoute3D> pending_route;
+  std::shared_ptr<const VersionedObservedRawWorld3D> lifecycle_observed_raw_world;
   GlobalGuideProjection projection{};
   RouteExecutionStatus3D status{RouteExecutionStatus3D::kNoActiveRoute};
   std::optional<RouteLifecycleEvent3D> lifecycle_event;
