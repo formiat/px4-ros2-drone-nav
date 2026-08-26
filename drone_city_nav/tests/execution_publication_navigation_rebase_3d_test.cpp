@@ -205,6 +205,26 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
 }
 
 TEST(ExecutionPublicationNavigationRebase3DTest,
+     PhysicalProgressAlignsAnUnpublishedCandidateToItsControlSuffix) {
+  SnapshotFixture3D fixture;
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
+      fixture.activeSnapshot();
+  ASSERT_NE(active, nullptr);
+  ASSERT_TRUE(active->finite_execution.has_value());
+  const FiniteExecutionState3D& execution = active->finite_execution.value();
+  ASSERT_NE(execution.horizon, nullptr);
+  ASSERT_GT(execution.horizon->controls.size(), 12U);
+  ASSERT_NE(execution.validation_policy, nullptr);
+
+  constexpr std::size_t kExpectedControlIndex{10U};
+  const mppi::State current_state = execution.horizon->states[kExpectedControlIndex];
+  EXPECT_EQ(closestFiniteExecutionRebaseControlIndex3D(
+                *execution.horizon, current_state,
+                execution.validation_policy->dynamics().dt_s),
+            kExpectedControlIndex);
+}
+
+TEST(ExecutionPublicationNavigationRebase3DTest,
      RetainedCandidateContinuesThePublishedExecutionClock) {
   SnapshotFixture3D fixture;
   const std::shared_ptr<const ExecutionRouteSnapshot3D> active =

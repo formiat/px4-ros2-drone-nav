@@ -506,6 +506,7 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
       navigation_advanced || !previous_control_evidence_current;
   if (execution_input_advanced) {
     bool late_rebase_candidate_rejected{false};
+    std::size_t late_rebase_source_control_index{0U};
     const auto rebase_for_current_navigation = [&]() -> const char* {
       const bool planned_snapshot_transition =
           publication_horizon.execution_mode ==
@@ -553,6 +554,7 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
                   .finite_horizon_config = &finite_horizon_config_,
                   .terminal_boundary = cycle.execution_path_world.terminal_boundary,
               });
+      late_rebase_source_control_index = rebase.source_control_index;
       if (!rebase.rebased() || !rebase.transition.has_value() ||
           rebase.transition->next == nullptr) {
         late_rebase_candidate_rejected = true;
@@ -560,7 +562,7 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
             get_logger(), *get_clock(), 1000,
             "EXECUTION_HORIZON_REBASE rebased=false status=%s path_validation=%s "
             "route_certification=%.*s route_adherence=%.*s "
-            "route_adherence_state_index=%zu "
+            "source_control_index=%zu route_adherence_state_index=%zu "
             "route_adherence_failure_distance_m=%.3f transition=%.*s",
             executionPublicationNavigationRebaseStatus3DName(rebase.status),
             mppi::finiteExecutionPathStatusName(rebase.path_validation_status),
@@ -574,7 +576,7 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
                     .size()),
             finiteExecutionRouteAdherenceStatus3DName(rebase.route_adherence_status)
                 .data(),
-            rebase.route_adherence_failure_state_index,
+            rebase.source_control_index, rebase.route_adherence_failure_state_index,
             rebase.route_adherence_failure_distance_m,
             static_cast<int>(
                 executionRouteTransitionStatus3DName(rebase.transition_status).size()),
@@ -670,9 +672,10 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "EXECUTION_HORIZON_COMMIT late_rebase=true source_pose_revision=%" PRIu64
-        " publication_pose_revision=%" PRIu64 " control_evidence_advanced=%s",
+        " publication_pose_revision=%" PRIu64
+        " source_control_index=%zu control_evidence_advanced=%s",
         cycle.execution_input->poseRevision(),
-        publication_execution_input->poseRevision(),
+        publication_execution_input->poseRevision(), late_rebase_source_control_index,
         previous_control_evidence_current ? "false" : "true");
   }
   const ExecutionRouteSnapshot3D* publication_snapshot{nullptr};

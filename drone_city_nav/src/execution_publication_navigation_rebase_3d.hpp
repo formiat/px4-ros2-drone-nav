@@ -45,11 +45,20 @@ struct ExecutionPublicationNavigationRebaseResult3D {
       FiniteExecutionRouteAdherenceStatus3D::kNotEvaluated};
   ExecutionRouteTransitionStatus3D transition_status{
       ExecutionRouteTransitionStatus3D::kInvalidCandidate};
+  std::size_t source_control_index{0U};
   std::size_t route_adherence_failure_state_index{0U};
   double route_adherence_failure_distance_m{-1.0};
 
   [[nodiscard]] bool rebased() const noexcept;
 };
+
+// Selects the unexecuted control suffix whose state is physically closest to
+// the navigation state captured at publication. Time alone must not consume an
+// unpublished candidate, but vehicle motion during planning must be aligned.
+[[nodiscard]] std::size_t
+closestFiniteExecutionRebaseControlIndex3D(const mppi::FiniteHorizon& horizon,
+                                           const mppi::State& current_state,
+                                           float dt_s) noexcept;
 
 [[nodiscard]] ExecutionPublicationNavigationRebaseResult3D
 rebaseExecutionPublicationForCurrentNavigation3D(
