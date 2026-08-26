@@ -24,6 +24,7 @@ struct ProductionNavigationOptionalConstraints {
   bool stochastic_trajectory_selection_enabled{false};
   bool observation_frontier_stops_enabled{false};
   bool topological_segment_boundaries_enabled{false};
+  bool route_replacement_progress_enabled{false};
 };
 
 struct ProductionMppiNavigation {

@@ -283,6 +283,7 @@ enum class StaticRouteCandidateStatus : std::uint8_t {
 
 enum class StaticRouteReplacementPolicy : std::uint8_t {
   kRequireEndpointImprovement,
+  kAllowAnyValidatedReplacement,
   kAllowSafetyReplan,
   kAllowTopologicalProgress,
 };

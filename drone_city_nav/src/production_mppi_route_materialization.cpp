@@ -118,6 +118,9 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
              lattice.route_purpose != world.lattice_3d_route_purpose ||
              lattice.route_purpose == Lattice3DRoutePurpose::kObservationFrontier) {
     result.replacement_policy = StaticRouteReplacementPolicy::kAllowTopologicalProgress;
+  } else if (!optional_constraints_.route_replacement_progress_enabled) {
+    result.replacement_policy =
+        StaticRouteReplacementPolicy::kAllowAnyValidatedReplacement;
   }
 
   const std::optional<ObservationFrontier> active_observation_frontier =

@@ -389,6 +389,7 @@ production_mppi_node:
     stochastic_trajectory_selection_enabled: false
     observation_frontier_stops_enabled: false
     topological_segment_boundaries_enabled: false
+    route_replacement_progress_enabled: false
     require_known_free_space: false
     route_proposal_productive_direct_minimum_mission_progress_m: 2.0
     route_proposal_productive_direct_minimum_progress_ratio: 0.15

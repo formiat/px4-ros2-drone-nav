@@ -746,6 +746,8 @@ staticRouteReplacementPolicyName(const StaticRouteReplacementPolicy policy) noex
   switch (policy) {
     case StaticRouteReplacementPolicy::kRequireEndpointImprovement:
       return "require_endpoint_improvement";
+    case StaticRouteReplacementPolicy::kAllowAnyValidatedReplacement:
+      return "allow_any_validated_replacement";
     case StaticRouteReplacementPolicy::kAllowSafetyReplan:
       return "allow_safety_replan";
     case StaticRouteReplacementPolicy::kAllowTopologicalProgress:

@@ -31,6 +31,8 @@ void ProductionMppiNode::configureOptionalNavigationConstraints() {
           declare_parameter<bool>("observation_frontier_stops_enabled", false),
       .topological_segment_boundaries_enabled =
           declare_parameter<bool>("topological_segment_boundaries_enabled", false),
+      .route_replacement_progress_enabled =
+          declare_parameter<bool>("route_replacement_progress_enabled", false),
   };
 }
 
