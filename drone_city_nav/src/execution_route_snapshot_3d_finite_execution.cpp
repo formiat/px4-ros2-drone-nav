@@ -56,7 +56,13 @@ continuesCertifiedInitialHandoff(const ExecutionRouteSnapshot3D& current,
                                  const CertifiedRouteSuffix3D& target_route) noexcept {
   const FiniteExecutionState3D* const execution =
       optionalAddress(current.finite_execution);
-  if (execution == nullptr || execution->kind != FiniteExecutionKind3D::kNominal ||
+  // Retention recertifies the same published handoff while the vehicle is still
+  // converging to the route. The connector provenance ends naturally once the
+  // resident execution begins inside the route corridor; emergency tails do not
+  // inherit it.
+  if (execution == nullptr ||
+      (execution->kind != FiniteExecutionKind3D::kNominal &&
+       execution->kind != FiniteExecutionKind3D::kRetained) ||
       execution->source_route_instance_id != target_route.route_instance_id ||
       execution->source_route_generation != target_route.identity.generation ||
       execution->source_geometry_revision !=
