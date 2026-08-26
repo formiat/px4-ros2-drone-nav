@@ -4,6 +4,7 @@
 #include "drone_city_nav/passage_ids.hpp"
 #include "drone_city_nav/types.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -332,6 +333,21 @@ struct FrozenRoutePrefix3D {
   [[nodiscard]] bool valid() const noexcept;
 };
 
+// Shapes a future route extension from the active route tangent onto a
+// successor suffix. The connector preserves the exact certified active prefix
+// while avoiding a stop-and-turn solely because the lattice's first edge uses
+// a different discrete heading.
+struct FutureRouteConnectorConfig3D {
+  double tangent_departure_length_m{0.5};
+  double successor_join_station_m{2.0};
+  double curve_control_distance_m{0.75};
+  std::size_t curve_samples{12U};
+  double minimum_continuous_turn_alignment{0.7071067811865476};
+};
+
+[[nodiscard]] bool
+futureRouteConnectorConfig3DValid(const FutureRouteConnectorConfig3D& config) noexcept;
+
 [[nodiscard]] std::optional<FrozenRoutePrefix3D>
 materializeFrozenRoutePrefix3D(std::span<const RouteSample3D> active_route,
                                std::span<const RouteSample3D> successor_route,
@@ -346,6 +362,17 @@ materializeFrozenRoutePrefixAtStation3D(std::span<const RouteSample3D> active_ro
                                         std::span<const RouteSample3D> successor_route,
                                         const Point3& current_position,
                                         double active_stitch_station_m) noexcept;
+
+// Materializes the exact active prefix and a tangent-continuous connector to a
+// point on the successor route. The successor stitch station identifies the
+// beginning of the retained successor suffix and therefore also the earliest
+// successor passage contract that the caller may preserve.
+[[nodiscard]] std::optional<FrozenRoutePrefix3D>
+materializeTangentContinuousRoutePrefixAtStation3D(
+    std::span<const RouteSample3D> active_route,
+    std::span<const RouteSample3D> successor_route, const Point3& current_position,
+    double active_stitch_station_m,
+    const FutureRouteConnectorConfig3D& config) noexcept;
 
 // Materializes the same future-stitch geometry for an atomic route handoff.
 // Unlike a certified splice, a handoff may contain a tangent discontinuity at

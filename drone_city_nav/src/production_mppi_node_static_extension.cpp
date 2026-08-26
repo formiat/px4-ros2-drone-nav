@@ -1,3 +1,5 @@
+#include "drone_city_nav/route_compiler_3d.hpp"
+
 #include <algorithm>
 #include <cinttypes>
 #include <cmath>
@@ -54,6 +56,24 @@ void ProductionMppiNode::configureStaticRouteExtension(
   static_route_extension_config_.minimum_endpoint_improvement_m =
       declare_parameter<double>(
           "static_global_guide_extension_minimum_endpoint_improvement_m", 5.0);
+  future_route_connector_config_.tangent_departure_length_m =
+      declare_parameter<double>("static_global_guide_connector_departure_m", 0.5);
+  future_route_connector_config_.successor_join_station_m =
+      declare_parameter<double>("static_global_guide_connector_join_m", 2.0);
+  future_route_connector_config_.curve_control_distance_m =
+      declare_parameter<double>("static_global_guide_connector_control_m", 0.75);
+  const auto connector_curve_samples = declare_parameter<std::int64_t>(
+      "static_global_guide_connector_curve_samples", 12);
+  if (connector_curve_samples >= 0) {
+    future_route_connector_config_.curve_samples =
+        static_cast<std::size_t>(connector_curve_samples);
+  } else {
+    future_route_connector_config_.curve_samples = 0U;
+  }
+  future_route_connector_config_.minimum_continuous_turn_alignment =
+      declare_parameter<double>(
+          "static_global_guide_connector_minimum_continuous_turn_alignment",
+          RouteCompilerConfig3D{}.minimum_continuous_turn_alignment);
   certified_route_splice_config_.required_overlap_m =
       static_route_extension_config_.required_certified_overlap_m;
   certified_route_splice_config_.sample_step_m = declare_parameter<double>(
@@ -67,9 +87,10 @@ void ProductionMppiNode::configureStaticRouteExtension(
       declare_parameter<double>(
           "static_global_guide_splice_activation_station_tolerance_m", 1.0);
   if (!staticRouteExtensionConfigValid(static_route_extension_config_) ||
+      !futureRouteConnectorConfig3DValid(future_route_connector_config_) ||
       !certifiedRouteSpliceConfig3DValid(certified_route_splice_config_)) {
     throw std::invalid_argument{
-        "invalid static route extension or certified splice configuration"};
+        "invalid static route extension, connector, or certified splice configuration"};
   }
 }
 

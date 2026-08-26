@@ -868,6 +868,7 @@ private:
   PassageTraversalEvidenceTracker passage_traversal_evidence_tracker_{};
   PassageGeometryEvidenceTracker passage_geometry_evidence_tracker_{};
   StaticRouteExtensionConfig static_route_extension_config_{};
+  FutureRouteConnectorConfig3D future_route_connector_config_{};
   CertifiedRouteSpliceConfig3D certified_route_splice_config_{};
   StaticRouteSearchRetryConfig static_route_search_retry_config_{};
   StaticRouteGeometryConfig static_route_geometry_config_{};

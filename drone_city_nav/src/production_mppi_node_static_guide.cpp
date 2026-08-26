@@ -532,7 +532,8 @@ void ProductionMppiNode::processGuideSearch3D(
       "shortcut_validation_ms=%.2f corner_validation_ms=%.2f "
       "shortcut_candidates=%zu parallel_shortcut_candidates=%zu "
       "corner_candidates=%zu parallel_corner_candidates=%zu "
-      "shortcuts=%zu smoothed_corners=%zu route_fingerprint=%" PRIu64,
+      "shortcuts=%zu smoothed_corners=%zu stop_turns=%zu "
+      "route_fingerprint=%" PRIu64,
       prepared.revision, certified_pending ? "true" : "false",
       static_cast<int>(staticRouteActivationStatusName(activation_status).size()),
       staticRouteActivationStatusName(activation_status).data(),
@@ -641,7 +642,7 @@ void ProductionMppiNode::processGuideSearch3D(
       prepared.route_shortcut_candidates, prepared.route_parallel_shortcut_candidates,
       prepared.route_corner_candidates, prepared.route_parallel_corner_candidates,
       prepared.route_shortcuts_applied, prepared.route_corners_smoothed,
-      prepared.route_fingerprint);
+      prepared.route_stop_turn_count, prepared.route_fingerprint);
   for (const Lattice3DTopologyCandidate& candidate : lattice.topology_candidates) {
     RCLCPP_INFO(get_logger(),
                 "PRODUCTION_MPPI_TOPOLOGY_CANDIDATE revision=%" PRIu64

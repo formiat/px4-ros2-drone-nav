@@ -216,6 +216,24 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
         *active_route->geometry->route, lattice.route, current_position,
         *candidate.search_base_stitch_station_m);
     if (!frozen_prefix.has_value()) {
+      std::optional<FrozenRoutePrefix3D> connected_prefix =
+          materializeTangentContinuousRoutePrefixAtStation3D(
+              *active_route->geometry->route, lattice.route, current_position,
+              *candidate.search_base_stitch_station_m, future_route_connector_config_);
+      if (connected_prefix.has_value()) {
+        const double successor_join_station_m =
+            connected_prefix.value().successor_stitch_station_m;
+        const bool connector_replaces_constrained_geometry = std::ranges::any_of(
+            initial_spans,
+            [successor_join_station_m](const ConstrainedRouteSpan& span) {
+              return span.begin_station_m < successor_join_station_m;
+            });
+        if (!connector_replaces_constrained_geometry) {
+          frozen_prefix = std::move(connected_prefix);
+        }
+      }
+    }
+    if (!frozen_prefix.has_value()) {
       frozen_prefix = materializeRouteHandoffAtStation3D(
           *active_route->geometry->route, lattice.route, current_position,
           *candidate.search_base_stitch_station_m);
@@ -226,32 +244,35 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
       }
       prepared.required_splice_base_route_instance_id = {};
     }
+    const FrozenRoutePrefix3D& materialized_prefix = frozen_prefix.value();
     const std::vector<ConstrainedRouteSpan> active_prefix_spans =
         clipConstrainedRouteSpans(*active_route->geometry->constrained_spans,
-                                  frozen_prefix->active_begin_station_m,
-                                  frozen_prefix->stitch_station_m);
+                                  materialized_prefix.active_begin_station_m,
+                                  materialized_prefix.stitch_station_m);
     const std::vector<ConstrainedRouteSpan> successor_suffix_spans =
         clipConstrainedRouteSpans(initial_spans,
-                                  frozen_prefix->successor_stitch_station_m,
+                                  materialized_prefix.successor_stitch_station_m,
                                   std::numeric_limits<double>::infinity());
     initial_spans =
         remapConstrainedRouteSpans(*active_route->geometry->route, active_prefix_spans,
-                                   frozen_prefix->route, route_envelope_config_);
+                                   materialized_prefix.route, route_envelope_config_);
     const std::vector<ConstrainedRouteSpan> remapped_successor_spans =
         remapConstrainedRouteSpans(lattice.route, successor_suffix_spans,
-                                   frozen_prefix->route, route_envelope_config_);
+                                   materialized_prefix.route, route_envelope_config_);
     initial_spans.insert(initial_spans.end(), remapped_successor_spans.begin(),
                          remapped_successor_spans.end());
     mergeAdjacentConstrainedRouteSpans(initial_spans);
-    *mutable_route = frozen_prefix->route;
+    *mutable_route = materialized_prefix.route;
   }
   const std::size_t expected_span_count = initial_spans.size();
   const std::vector<RouteSample3D> canonical_route = *mutable_route;
   const auto smoothing_started = std::chrono::steady_clock::now();
   StaticRouteGeometryConfig geometry_config = static_route_geometry_config_;
   if (frozen_prefix.has_value()) {
+    const FrozenRoutePrefix3D& materialized_prefix = frozen_prefix.value();
     geometry_config.frozen_prefix_end_station_m =
-        frozen_prefix->stitch_station_m - frozen_prefix->active_begin_station_m;
+        materialized_prefix.stitch_station_m -
+        materialized_prefix.active_begin_station_m;
   }
   const StaticRouteGeometryRawValidation raw_geometry_validation{
       .occupancy =

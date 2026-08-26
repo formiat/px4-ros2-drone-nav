@@ -196,6 +196,34 @@ TEST(Route3DTest, MaterializesDiscontinuousFutureStitchAsStopTurnHandoff) {
   EXPECT_DOUBLE_EQ(stitch->reference_speed_mps, 0.0);
 }
 
+TEST(Route3DTest, ConnectsDiscontinuousFutureStitchWithoutStopTurn) {
+  const std::vector<RouteSample3D> active =
+      sampleRoute3D(std::vector<Point3>{{0.0, 0.0, 5.0}, {20.0, 0.0, 5.0}}, 1.0, 4.0);
+  const std::vector<RouteSample3D> successor =
+      sampleRoute3D(std::vector<Point3>{{8.0, 0.0, 5.0}, {8.0, 8.0, 5.0}}, 1.0, 4.0);
+
+  const std::optional<FrozenRoutePrefix3D> connected =
+      materializeTangentContinuousRoutePrefixAtStation3D(
+          active, successor, Point3{4.0, 0.0, 5.0}, 8.0,
+          FutureRouteConnectorConfig3D{});
+
+  ASSERT_TRUE(connected.has_value());
+  if (!connected.has_value()) {
+    return;
+  }
+  const FrozenRoutePrefix3D& connected_prefix = connected.value();
+  EXPECT_NEAR(connected_prefix.successor_stitch_station_m, 2.0, 1.0e-9);
+  std::vector<RouteSample3D> canonical = connected_prefix.route;
+  std::size_t stop_turn_count{0U};
+  ASSERT_TRUE(
+      canonicalizeRouteKinematics3D(canonical, 0.7071067811865476, &stop_turn_count));
+  EXPECT_EQ(stop_turn_count, 0U);
+  const RouteSample3D stitch = sampleRoute3DAtStation(canonical, 4.0);
+  EXPECT_NEAR(stitch.position.x, 8.0, 1.0e-6);
+  EXPECT_NEAR(stitch.position.y, 0.0, 1.0e-6);
+  EXPECT_GT(stitch.tangent.x, 0.995);
+}
+
 TEST(Route3DTest, RejectsSpatialGapForFutureStitchHandoff) {
   const std::vector<RouteSample3D> active =
       sampleRoute3D(std::vector<Point3>{{0.0, 0.0, 5.0}, {20.0, 0.0, 5.0}}, 1.0, 4.0);
@@ -204,6 +232,10 @@ TEST(Route3DTest, RejectsSpatialGapForFutureStitchHandoff) {
 
   EXPECT_FALSE(
       materializeRouteHandoffAtStation3D(active, successor, Point3{4.0, 0.0, 5.0}, 8.0)
+          .has_value());
+  EXPECT_FALSE(
+      materializeTangentContinuousRoutePrefixAtStation3D(
+          active, successor, Point3{4.0, 0.0, 5.0}, 8.0, FutureRouteConnectorConfig3D{})
           .has_value());
 }
 

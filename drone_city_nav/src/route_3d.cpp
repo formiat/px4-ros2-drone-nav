@@ -51,6 +51,44 @@ void hashText(std::uint64_t& hash, const std::string_view text) noexcept {
   return length > 1.0e-9 ? Vec3{dx / length, dy / length, dz / length} : Vec3{};
 }
 
+[[nodiscard]] double vectorNorm(const Vec3& value) noexcept {
+  return std::hypot(std::hypot(value.x, value.y), value.z);
+}
+
+[[nodiscard]] Vec3 normalized(const Vec3& value) noexcept {
+  const double length = vectorNorm(value);
+  return length > 1.0e-9 ? Vec3{value.x / length, value.y / length, value.z / length}
+                         : Vec3{};
+}
+
+[[nodiscard]] Point3 translated(const Point3& point, const Vec3& direction,
+                                const double distance_m) noexcept {
+  return Point3{point.x + direction.x * distance_m, point.y + direction.y * distance_m,
+                point.z + direction.z * distance_m};
+}
+
+struct CubicBezierCurve3D {
+  Point3 start{};
+  Point3 start_control{};
+  Point3 end_control{};
+  Point3 end{};
+};
+
+[[nodiscard]] Point3 cubicBezierPoint(const CubicBezierCurve3D& curve,
+                                      const double parameter) noexcept {
+  const double complement = 1.0 - parameter;
+  const double first_weight = complement * complement * complement;
+  const double second_weight = 3.0 * complement * complement * parameter;
+  const double third_weight = 3.0 * complement * parameter * parameter;
+  const double fourth_weight = parameter * parameter * parameter;
+  return Point3{first_weight * curve.start.x + second_weight * curve.start_control.x +
+                    third_weight * curve.end_control.x + fourth_weight * curve.end.x,
+                first_weight * curve.start.y + second_weight * curve.start_control.y +
+                    third_weight * curve.end_control.y + fourth_weight * curve.end.y,
+                first_weight * curve.start.z + second_weight * curve.start_control.z +
+                    third_weight * curve.end_control.z + fourth_weight * curve.end.z};
+}
+
 [[nodiscard]] RouteSample3D sampleAtStation(const std::span<const RouteSample3D> route,
                                             const double station_m) {
   if (route.empty()) {
@@ -214,6 +252,20 @@ bool FrozenRoutePrefix3D::valid() const noexcept {
          successor_stitch_station_m >= successor_begin_station_m;
 }
 
+bool futureRouteConnectorConfig3DValid(
+    const FutureRouteConnectorConfig3D& config) noexcept {
+  return std::isfinite(config.tangent_departure_length_m) &&
+         config.tangent_departure_length_m > 0.0 &&
+         std::isfinite(config.successor_join_station_m) &&
+         config.successor_join_station_m > 0.0 &&
+         std::isfinite(config.curve_control_distance_m) &&
+         config.curve_control_distance_m > 0.0 && config.curve_samples >= 2U &&
+         config.curve_samples <= 256U &&
+         std::isfinite(config.minimum_continuous_turn_alignment) &&
+         config.minimum_continuous_turn_alignment >= -1.0 &&
+         config.minimum_continuous_turn_alignment <= 1.0;
+}
+
 std::optional<FrozenRoutePrefix3D>
 materializeFrozenRoutePrefix3D(const std::span<const RouteSample3D> active_route,
                                const std::span<const RouteSample3D> successor_route,
@@ -271,6 +323,115 @@ std::optional<FrozenRoutePrefix3D> materializeFrozenRoutePrefixAtStation3D(
       active_route, successor_route, active_projection, active_stitch_station_m,
       successor_route.front().station_m, successor_route.front().station_m,
       FutureStitchJoinPolicy::kRequireContinuousTangent);
+}
+
+std::optional<FrozenRoutePrefix3D> materializeTangentContinuousRoutePrefixAtStation3D(
+    const std::span<const RouteSample3D> active_route,
+    const std::span<const RouteSample3D> successor_route,
+    const Point3& current_position, const double active_stitch_station_m,
+    const FutureRouteConnectorConfig3D& config) noexcept {
+  if (active_route.size() < 2U || successor_route.size() < 2U ||
+      !std::isfinite(active_stitch_station_m) ||
+      !futureRouteConnectorConfig3DValid(config)) {
+    return std::nullopt;
+  }
+  const RouteProjection3D active_projection =
+      projectOntoRoute3D(active_route, current_position);
+  if (!active_projection.valid ||
+      !(active_stitch_station_m > active_projection.station_m) ||
+      active_stitch_station_m > active_route.back().station_m ||
+      distance3D(sampleAtStation(active_route, active_stitch_station_m).position,
+                 successor_route.front().position) >
+          kFrozenPrefixMaximumStitchSeparationM ||
+      successor_route.back().station_m < config.successor_join_station_m) {
+    return std::nullopt;
+  }
+
+  const RouteSample3D active_stitch =
+      sampleAtStation(active_route, active_stitch_station_m);
+  const RouteSample3D successor_join =
+      sampleAtStation(successor_route, config.successor_join_station_m);
+  const Vec3 active_tangent = normalized(active_stitch.tangent);
+  const Vec3 successor_tangent = normalized(successor_join.tangent);
+  if (!(vectorNorm(active_tangent) > 0.0) || !(vectorNorm(successor_tangent) > 0.0)) {
+    return std::nullopt;
+  }
+
+  FrozenRoutePrefix3D result{
+      .route = {},
+      .active_begin_station_m = active_projection.station_m,
+      .stitch_station_m = active_stitch_station_m,
+      .successor_begin_station_m = successor_route.front().station_m,
+      .successor_stitch_station_m = config.successor_join_station_m,
+  };
+  const auto append = [&result](RouteSample3D sample) noexcept {
+    if (!result.route.empty()) {
+      const double segment_length_m =
+          distance3D(result.route.back().position, sample.position);
+      if (!(segment_length_m > 1.0e-6)) {
+        return;
+      }
+      sample.station_m = result.route.back().station_m + segment_length_m;
+    } else {
+      sample.station_m = 0.0;
+    }
+    sample.transition = RouteKinematicTransition3D::kContinuous;
+    result.route.push_back(sample);
+  };
+
+  append(sampleAtStation(active_route, active_projection.station_m));
+  for (const RouteSample3D& sample : active_route) {
+    if (sample.station_m > active_projection.station_m &&
+        sample.station_m < active_stitch_station_m) {
+      append(sample);
+    }
+  }
+  append(active_stitch);
+
+  const double connector_speed_mps =
+      std::min(active_stitch.reference_speed_mps, successor_join.reference_speed_mps);
+  const auto connector_risk_tier = static_cast<mppi::RiskTier>(
+      std::max(static_cast<std::uint8_t>(active_stitch.required_risk_tier),
+               static_cast<std::uint8_t>(successor_join.required_risk_tier)));
+  const Point3 departure = translated(active_stitch.position, active_tangent,
+                                      config.tangent_departure_length_m);
+  append(RouteSample3D{.position = departure,
+                       .tangent = active_tangent,
+                       .reference_speed_mps = connector_speed_mps,
+                       .required_risk_tier = connector_risk_tier});
+  const Point3 first_control =
+      translated(departure, active_tangent, config.curve_control_distance_m);
+  const Point3 second_control = translated(successor_join.position, successor_tangent,
+                                           -config.curve_control_distance_m);
+  const CubicBezierCurve3D connector_curve{
+      .start = departure,
+      .start_control = first_control,
+      .end_control = second_control,
+      .end = successor_join.position,
+  };
+  for (std::size_t index = 1U; index <= config.curve_samples; ++index) {
+    const double parameter =
+        static_cast<double>(index) / static_cast<double>(config.curve_samples);
+    append(RouteSample3D{
+        .position = cubicBezierPoint(connector_curve, parameter),
+        .tangent = {},
+        .reference_speed_mps = connector_speed_mps,
+        .required_risk_tier = connector_risk_tier,
+    });
+  }
+  for (const RouteSample3D& source : successor_route) {
+    if (source.station_m > config.successor_join_station_m + 1.0e-6) {
+      append(source);
+    }
+  }
+  std::size_t stop_turn_count{0U};
+  if (!result.valid() ||
+      !canonicalizeRouteKinematics3D(
+          result.route, config.minimum_continuous_turn_alignment, &stop_turn_count) ||
+      stop_turn_count != 0U) {
+    return std::nullopt;
+  }
+  return result;
 }
 
 std::optional<FrozenRoutePrefix3D>
