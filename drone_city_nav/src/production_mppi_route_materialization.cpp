@@ -22,7 +22,8 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
     const Point3& mission_goal, const ProductionRouteSearchCandidate3D& candidate,
     const std::uint64_t candidate_generation,
     const bool active_observation_segment_completed,
-    const CertifiedRouteSuffix3D* const active_route) {
+    const CertifiedRouteSuffix3D* const active_route,
+    const ProductionMppiRawWorld3D* const activation_raw_world) {
   const Point3 search_start{navigation.state.x, navigation.state.y, navigation.state.z};
   const RiskAwareLattice3DResult& lattice = candidate.lattice;
   ProductionRouteMaterialization3D result;
@@ -224,6 +225,22 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
     geometry_config.frozen_prefix_end_station_m =
         frozen_prefix->stitch_station_m - frozen_prefix->active_begin_station_m;
   }
+  const StaticRouteGeometryRawValidation raw_geometry_validation{
+      .occupancy =
+          activation_raw_world != nullptr && activation_raw_world->occupancy != nullptr
+              ? activation_raw_world->occupancy.get()
+              : nullptr,
+      .proprioceptive_free_space_seed =
+          world.proprioceptive_free_space_seed
+              ? std::addressof(*world.proprioceptive_free_space_seed)
+              : nullptr,
+      .launch_support_contact = world.launch_support_contact
+                                    ? std::addressof(*world.launch_support_contact)
+                                    : nullptr,
+      .policy = lattice_3d_config_.require_known_free_space
+                    ? ObservedSpaceValidationPolicy::kRequireKnownFree
+                    : ObservedSpaceValidationPolicy::kAllowUnknown,
+  };
   StaticRouteGeometryResult geometry = optimizeStaticRouteGeometry(
       *mutable_route, initial_spans, world.grid, *world.distances_m,
       SweptFootprintConfig{
@@ -234,7 +251,9 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
           .radial_rings = physical_footprint_config_.radial_rings,
           .axial_samples = physical_footprint_config_.axial_samples,
           .sweep_step_m = physical_footprint_config_.sweep_step_m},
-      geometry_config, route_envelope_config_, planning_worker_pool_.get());
+      geometry_config, route_envelope_config_, planning_worker_pool_.get(),
+      raw_geometry_validation.occupancy != nullptr ? &raw_geometry_validation
+                                                   : nullptr);
   prepared.route_smoothing_ms =
       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                 smoothing_started)

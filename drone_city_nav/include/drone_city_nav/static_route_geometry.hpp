@@ -25,6 +25,13 @@ struct StaticRouteGeometryConfig {
   std::optional<double> frozen_prefix_end_station_m;
 };
 
+struct StaticRouteGeometryRawValidation {
+  const ObservedOccupancyGrid3D* occupancy{nullptr};
+  const ProprioceptiveFreeSpaceSeed3D* proprioceptive_free_space_seed{nullptr};
+  const LaunchSupportContact3D* launch_support_contact{nullptr};
+  ObservedSpaceValidationPolicy policy{ObservedSpaceValidationPolicy::kAllowUnknown};
+};
+
 struct StaticRouteGeometryResult {
   std::vector<RouteSample3D> route;
   std::vector<ConstrainedRouteSpan> constrained_spans;
@@ -42,13 +49,13 @@ struct StaticRouteGeometryResult {
   double corner_validation_ms{0.0};
 };
 
-[[nodiscard]] StaticRouteGeometryResult
-optimizeStaticRouteGeometry(std::span<const RouteSample3D> route,
-                            std::span<const ConstrainedRouteSpan> constrained_spans,
-                            const mppi::EsdfGrid& grid, std::span<const float> esdf_m,
-                            const SweptFootprintConfig& footprint_config,
-                            const StaticRouteGeometryConfig& geometry_config,
-                            const RouteEnvelopeConfig& envelope_config,
-                            BoundedWorkerPool* worker_pool = nullptr);
+[[nodiscard]] StaticRouteGeometryResult optimizeStaticRouteGeometry(
+    std::span<const RouteSample3D> route,
+    std::span<const ConstrainedRouteSpan> constrained_spans, const mppi::EsdfGrid& grid,
+    std::span<const float> esdf_m, const SweptFootprintConfig& footprint_config,
+    const StaticRouteGeometryConfig& geometry_config,
+    const RouteEnvelopeConfig& envelope_config,
+    BoundedWorkerPool* worker_pool = nullptr,
+    const StaticRouteGeometryRawValidation* raw_validation = nullptr);
 
 } // namespace drone_city_nav

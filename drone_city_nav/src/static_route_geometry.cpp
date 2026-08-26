@@ -53,6 +53,24 @@ namespace {
   return std::acos(cosine);
 }
 
+[[nodiscard]] bool
+segmentValid(const Point3& first, const Point3& second, const mppi::EsdfGrid& grid,
+             const std::span<const float> esdf_m,
+             const SweptFootprintConfig& footprint_config,
+             const StaticRouteGeometryRawValidation* const raw_validation) noexcept {
+  if (!validateSweptFootprint(grid, esdf_m, first, second, footprint_config)
+           .accepted()) {
+    return false;
+  }
+  return raw_validation == nullptr || raw_validation->occupancy == nullptr ||
+         validateObservedSweptFootprint(
+             *raw_validation->occupancy, first, FootprintBodyAxis{}, second,
+             FootprintBodyAxis{}, footprint_config, raw_validation->policy,
+             raw_validation->proprioceptive_free_space_seed,
+             raw_validation->launch_support_contact)
+             .accepted();
+}
+
 [[nodiscard]] double pointSegmentDistance(const Point3& point, const Point3& first,
                                           const Point3& second) noexcept {
   const Vec3 segment = segmentVector(first, second);
@@ -232,7 +250,8 @@ maximumShortcutIndex(const std::span<const RouteSample3D> route,
 smoothCorner(const Point3& previous, const Point3& corner, const Point3& next,
              const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
              const SweptFootprintConfig& footprint_config,
-             const StaticRouteGeometryConfig& geometry_config) {
+             const StaticRouteGeometryConfig& geometry_config,
+             const StaticRouteGeometryRawValidation* const raw_validation) {
   const double incoming_length = distance3D(previous, corner);
   const double outgoing_length = distance3D(corner, next);
   const double smoothing_m = std::min({geometry_config.corner_smoothing_distance_m,
@@ -263,9 +282,8 @@ smoothCorner(const Point3& previous, const Point3& corner, const Point3& next,
     });
   }
   for (std::size_t index = 1U; index < curve.size(); ++index) {
-    if (!validateSweptFootprint(grid, esdf_m, curve[index - 1U], curve[index],
-                                footprint_config)
-             .accepted()) {
+    if (!segmentValid(curve[index - 1U], curve[index], grid, esdf_m, footprint_config,
+                      raw_validation)) {
       return std::nullopt;
     }
   }
@@ -280,7 +298,8 @@ StaticRouteGeometryResult optimizeStaticRouteGeometry(
     const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
     const SweptFootprintConfig& footprint_config,
     const StaticRouteGeometryConfig& geometry_config,
-    const RouteEnvelopeConfig& envelope_config, BoundedWorkerPool* const worker_pool) {
+    const RouteEnvelopeConfig& envelope_config, BoundedWorkerPool* const worker_pool,
+    const StaticRouteGeometryRawValidation* const raw_validation) {
   StaticRouteGeometryResult result;
   if (route.size() < 2U) {
     result.route.assign(route.begin(), route.end());
@@ -316,9 +335,8 @@ StaticRouteGeometryResult optimizeStaticRouteGeometry(
       const auto validate_candidate = [&](const std::size_t batch_index) {
         const std::size_t candidate = candidates[batch_begin + batch_index];
         accepted[batch_index] = static_cast<std::uint8_t>(
-            validateSweptFootprint(grid, esdf_m, route[current].position,
-                                   route[candidate].position, footprint_config)
-                .accepted());
+            segmentValid(route[current].position, route[candidate].position, grid,
+                         esdf_m, footprint_config, raw_validation));
       };
       const bool parallel = worker_pool != nullptr &&
                             worker_pool->canParallelizeFromCurrentThread() &&
@@ -372,7 +390,7 @@ StaticRouteGeometryResult optimizeStaticRouteGeometry(
     const std::size_t index = corner_candidates[candidate_index];
     curves[index] =
         smoothCorner(anchors[index - 1U], anchors[index], anchors[index + 1U], grid,
-                     esdf_m, footprint_config, geometry_config);
+                     esdf_m, footprint_config, geometry_config, raw_validation);
   };
   const bool corners_parallel = worker_pool != nullptr &&
                                 worker_pool->canParallelizeFromCurrentThread() &&

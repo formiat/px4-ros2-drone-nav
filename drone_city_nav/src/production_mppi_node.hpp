@@ -561,7 +561,8 @@ private:
       const ProductionMppiNavigation& navigation, const Point3& mission_goal,
       const ProductionRouteSearchCandidate3D& candidate,
       std::uint64_t candidate_generation, bool active_observation_segment_completed,
-      const CertifiedRouteSuffix3D* active_route);
+      const CertifiedRouteSuffix3D* active_route,
+      const ProductionMppiRawWorld3D* activation_raw_world);
   [[nodiscard]] ProductionRouteCandidateSet3D generateRouteCandidates3D(
       const ProductionMppiPreparedEsdf& world,
       const ProductionMppiNavigation& navigation, const Point3& mission_goal,

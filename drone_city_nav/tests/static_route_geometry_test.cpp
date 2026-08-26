@@ -117,6 +117,64 @@ TEST(StaticRouteGeometryTest, SparseShortcutsRemainRawFootprintSafe) {
   }
 }
 
+TEST(StaticRouteGeometryTest, FreshRawWorldRejectsAnEsdfSafeShortcut) {
+  const GridBounds3D bounds{0.0, 0.0, 0.0, 1.0, 40, 40, 10};
+  const mppi::EsdfGrid grid{bounds.width_cells,
+                            bounds.height_cells,
+                            static_cast<float>(bounds.resolution_m),
+                            static_cast<float>(bounds.origin_x),
+                            static_cast<float>(bounds.origin_y),
+                            bounds.depth_cells,
+                            static_cast<float>(bounds.origin_z)};
+  const std::vector<float> stale_esdf(
+      static_cast<std::size_t>(grid.width * grid.height * grid.depth),
+      std::numeric_limits<float>::infinity());
+  ObservedOccupancyGrid3D raw_world{bounds};
+  ASSERT_TRUE(
+      raw_world.setState(GridIndex3D{12, 19, 5}, ObservedVoxelState::kOccupied));
+  const std::vector<RouteSample3D> route = sampleRoute3D(
+      std::vector<Point3>{{5.5, 5.5, 5.5}, {5.5, 25.5, 5.5}, {25.5, 25.5, 5.5}}, 0.5,
+      20.0);
+  const SweptFootprintConfig footprint{.radius_m = 0.0,
+                                       .lower_extent_m = 0.0,
+                                       .upper_extent_m = 0.0,
+                                       .perimeter_samples = 0U,
+                                       .radial_rings = 0U,
+                                       .axial_samples = 1U,
+                                       .sweep_step_m = 0.25};
+  StaticRouteGeometryConfig geometry_config;
+  geometry_config.maximum_shortcut_turn_increase_rad = 10.0;
+  const StaticRouteGeometryResult esdf_only = optimizeStaticRouteGeometry(
+      route, {}, grid, stale_esdf, footprint, geometry_config, RouteEnvelopeConfig{});
+  const StaticRouteGeometryRawValidation raw_validation{.occupancy = &raw_world};
+
+  const StaticRouteGeometryResult snapshot_validated = optimizeStaticRouteGeometry(
+      route, {}, grid, stale_esdf, footprint, geometry_config, RouteEnvelopeConfig{},
+      nullptr, &raw_validation);
+
+  ASSERT_GE(esdf_only.route.size(), 2U);
+  bool esdf_only_raw_collision = false;
+  for (std::size_t index = 1U; index < esdf_only.route.size(); ++index) {
+    esdf_only_raw_collision =
+        esdf_only_raw_collision ||
+        !validateObservedSweptFootprint(
+             raw_world, esdf_only.route[index - 1U].position, FootprintBodyAxis{},
+             esdf_only.route[index].position, FootprintBodyAxis{}, footprint,
+             ObservedSpaceValidationPolicy::kAllowUnknown)
+             .accepted();
+  }
+  EXPECT_TRUE(esdf_only_raw_collision);
+  ASSERT_GE(snapshot_validated.route.size(), 2U);
+  for (std::size_t index = 1U; index < snapshot_validated.route.size(); ++index) {
+    EXPECT_TRUE(validateObservedSweptFootprint(
+                    raw_world, snapshot_validated.route[index - 1U].position,
+                    FootprintBodyAxis{}, snapshot_validated.route[index].position,
+                    FootprintBodyAxis{}, footprint,
+                    ObservedSpaceValidationPolicy::kAllowUnknown)
+                    .accepted());
+  }
+}
+
 TEST(StaticRouteGeometryTest, PreservesConstrainedPassageGeometry) {
   const mppi::EsdfGrid grid{80, 80, 1.0F, 0.0F, 0.0F, 20, 0.0F};
   const std::vector<float> esdf(

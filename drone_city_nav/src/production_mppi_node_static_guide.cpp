@@ -82,7 +82,8 @@ void ProductionMppiNode::processGuideSearch3D(
   for (const ProductionRouteSearchCandidate3D& candidate : candidate_set.candidates) {
     materializations.push_back(materializeRouteCandidate3D(
         world, navigation, mission_goal, candidate, candidate_generation,
-        active_observation_segment_completed, active_route));
+        active_observation_segment_completed, active_route,
+        activation_snapshot.raw_world.get()));
   }
   std::vector<ProductionRouteActivationResult3D> activations;
   std::vector<RouteProposal3D> final_proposals;
