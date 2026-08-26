@@ -385,7 +385,13 @@ GlobalGuideProgressUpdate GlobalGuideProgressTracker::evaluate(
 
   update.observation_age_s =
       static_cast<double>(observation.stamp_ns - anchor_stamp_ns_) / 1.0e9;
-  update.progress_m = observation.station_m - anchor_station_m_;
+  const double station_progress_m = observation.station_m - anchor_station_m_;
+  const double cross_track_reduction_m =
+      observation.recovery_active && std::isfinite(observation.cross_track_m) &&
+              std::isfinite(anchor_cross_track_m_)
+          ? anchor_cross_track_m_ - observation.cross_track_m
+          : 0.0;
+  update.progress_m = std::max(station_progress_m, cross_track_reduction_m);
   if (update.progress_m >= config_.minimum_progress_m) {
     local_reseed_pending_ = false;
     resetAnchor(observation);
@@ -440,6 +446,7 @@ void GlobalGuideProgressTracker::resetAnchor(
   anchor_stamp_ns_ = observation.stamp_ns;
   anchor_guide_generation_ = observation.guide_generation;
   anchor_station_m_ = observation.station_m;
+  anchor_cross_track_m_ = observation.cross_track_m;
 }
 
 const char*

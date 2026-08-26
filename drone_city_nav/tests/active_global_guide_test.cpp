@@ -423,6 +423,35 @@ TEST(GlobalGuideProgressTrackerTest, ResetsAfterUsefulProgress) {
   EXPECT_NEAR(update.progress_m, 0.6, 1.0e-9);
 }
 
+TEST(GlobalGuideProgressTrackerTest,
+     CrossTrackConvergenceCountsAsProgressDuringRecovery) {
+  GlobalGuideProgressTracker tracker;
+  (void)tracker.evaluate(GlobalGuideProgressObservation{
+      .stamp_ns = 1'000'000'000LL,
+      .guide_generation = 3U,
+      .station_m = 5.0,
+      .predicted_head_progress_m = 0.1,
+      .cross_track_m = 3.0,
+      .recovery_active = true,
+      .controller_active = true,
+  });
+
+  const GlobalGuideProgressUpdate update =
+      tracker.evaluate(GlobalGuideProgressObservation{
+          .stamp_ns = 2'100'000'000LL,
+          .guide_generation = 3U,
+          .station_m = 5.1,
+          .predicted_head_progress_m = 0.1,
+          .cross_track_m = 2.4,
+          .recovery_active = true,
+          .controller_active = true,
+      });
+
+  EXPECT_FALSE(update.stalled);
+  EXPECT_FALSE(update.local_reseed_requested);
+  EXPECT_NEAR(update.progress_m, 0.6, 1.0e-9);
+}
+
 TEST(GlobalGuideProgressTrackerTest, UsefulProgressClearsPendingReseed) {
   GlobalGuideProgressTracker tracker;
   (void)tracker.evaluate(GlobalGuideProgressObservation{

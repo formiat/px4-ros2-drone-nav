@@ -796,6 +796,8 @@ void ProductionMppiNode::planningTick() {
         .station_m = projection.station_m,
         .predicted_head_progress_m =
             previous_result_.has_value() ? previous_result_->head_progress_m : 0.0,
+        .cross_track_m = projection.cross_track_m,
+        .recovery_active = liveness.recovery_active,
         .controller_active = execution_input_preparation.control_feedback_fresh &&
                              planning_state == ProductionMppiPlanningState::kPlanned &&
                              !route_control.hold_xy,

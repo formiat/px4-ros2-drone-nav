@@ -100,6 +100,8 @@ struct GlobalGuideProgressObservation {
   std::uint64_t guide_generation{0U};
   double station_m{0.0};
   double predicted_head_progress_m{0.0};
+  double cross_track_m{0.0};
+  bool recovery_active{false};
   bool controller_active{false};
 };
 
@@ -174,6 +176,7 @@ private:
   std::int64_t anchor_stamp_ns_{0};
   std::uint64_t anchor_guide_generation_{0U};
   double anchor_station_m_{0.0};
+  double anchor_cross_track_m_{0.0};
   std::uint64_t stall_generation_{0U};
   std::uint64_t local_reseed_generation_{0U};
   bool local_reseed_pending_{false};
