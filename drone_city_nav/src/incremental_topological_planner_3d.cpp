@@ -958,15 +958,18 @@ IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planImpl(
   const RegionalAdjacency adjacency = buildRegionalAdjacency(regional);
   const SourceEdges source_edges = indexSourceEdges(graph);
   bool deadline_exceeded{false};
-  const SearchRecords mission_records =
-      runDijkstra(regional, adjacency, result.start_node, SearchMode::kMission, graph,
-                  source_edges, memory, config_, deadline, deadline_exceeded);
-  if (deadline_exceeded) {
-    result.status = IncrementalTopologicalPlanStatus3D::kDeadlineExceeded;
-    return result;
-  }
-
   if (result.goal_node && goal_connector.has_value()) {
+    // A mission-mode shortest-path tree is only useful when the mission goal
+    // is represented in this graph. Building the full tree for an unanchored
+    // distant goal would consume the budget before exploration can select a
+    // safe continuation toward it.
+    const SearchRecords mission_records =
+        runDijkstra(regional, adjacency, result.start_node, SearchMode::kMission, graph,
+                    source_edges, memory, config_, deadline, deadline_exceeded);
+    if (deadline_exceeded) {
+      result.status = IncrementalTopologicalPlanStatus3D::kDeadlineExceeded;
+      return result;
+    }
     if (const std::optional<std::vector<PathStep>> path =
             reconstructPath(result.start_node, *result.goal_node, mission_records)) {
       result.status = IncrementalTopologicalPlanStatus3D::kMissionRoute;
@@ -986,10 +989,7 @@ IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planImpl(
   const SearchRecords exploration_records =
       runDijkstra(regional, adjacency, result.start_node, SearchMode::kExploration,
                   graph, source_edges, memory, config_, deadline, deadline_exceeded);
-  if (deadline_exceeded) {
-    result.status = IncrementalTopologicalPlanStatus3D::kDeadlineExceeded;
-    return result;
-  }
+  const bool exploration_deadline_exceeded = deadline_exceeded;
   const std::optional<TopologicalDeadEndConclusion3D> start_dead_end =
       deadEndConclusion(graph, result.start_node, memory);
   const std::optional<MissionContinuationCandidate> mission_continuation =
@@ -1002,19 +1002,26 @@ IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planImpl(
   result.reachable_mission_continuation_count = reachable_mission_continuations;
   result.maximum_reachable_mission_continuation_goal_progress_m =
       maximum_mission_continuation_goal_progress_m;
+  const bool mission_incumbent_available =
+      mission_continuation.has_value() && mission_continuation->node != nullptr;
+  // Dijkstra records are complete predecessor chains even when the queue was
+  // not exhausted. Such a route is a safe, merely suboptimal anytime result.
+  if (exploration_deadline_exceeded && !mission_incumbent_available) {
+    result.status = IncrementalTopologicalPlanStatus3D::kDeadlineExceeded;
+    return result;
+  }
 
   std::size_t reachable_frontiers = 0U;
   FrontierSelectionDiagnostics frontier_diagnostics;
   std::optional<FrontierCandidate> frontier;
   ObservationFrontierDiscovery fresh_discovery;
-  if (occupancy != nullptr && observability != nullptr) {
+  if (!exploration_deadline_exceeded && occupancy != nullptr &&
+      observability != nullptr) {
     frontier = selectFreshFrontier(graph, exploration_records, result.start_node, start,
                                    mission_goal, source_edges, memory, config_,
                                    *occupancy, *observability, fresh_discovery,
                                    reachable_frontiers, active_frontier,
                                    frontier_diagnostics, deadline, deadline_exceeded);
-    const bool mission_incumbent_available =
-        mission_continuation.has_value() && mission_continuation->node != nullptr;
     if (deadline_exceeded && !mission_incumbent_available) {
       result.status = IncrementalTopologicalPlanStatus3D::kDeadlineExceeded;
       return result;
