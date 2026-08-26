@@ -580,15 +580,16 @@ public:
         route_directed_candidate ? reacquisition_weight : 0.0F;
     result.route_directed_candidate_generation =
         route_directed_candidate ? input.route->generation : 0U;
-    const bool recovery_prefers_route_candidate =
+    const bool policy_prefers_route_candidate =
         input.prefer_route_directed_candidate && input.dynamic_aircraft.empty();
     if (result.route_directed_candidate_raw_safe &&
         (result.route_directed_candidate_best_feasible ||
-         recovery_prefers_route_candidate)) {
+         policy_prefers_route_candidate)) {
       // The single explicit route candidate must not be diluted by many
-      // individually worse rollouts when it is the objective winner. During
-      // liveness recovery, following the certified raw-safe route is also the
-      // deterministic escape from a stationary weighted-update fixed point.
+      // individually worse rollouts when it is the objective winner. The
+      // caller may also make the certified raw-safe trajectory authoritative
+      // to avoid a stationary weighted-update fixed point. Dynamic-aircraft
+      // arbitration always remains stochastic and is excluded above.
       std::ranges::copy(reacquisition_candidate_, updated_.begin());
       limitControlSequence(updated_, config_.dynamics, previous_applied_control,
                            first_control_interval_s);

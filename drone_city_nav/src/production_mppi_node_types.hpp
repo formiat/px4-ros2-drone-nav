@@ -21,6 +21,7 @@ struct ProductionNavigationOptionalConstraints {
   bool route_proposal_precedence_enabled{false};
   bool route_strategy_leases_enabled{false};
   bool static_route_geometry_optimization_enabled{false};
+  bool stochastic_trajectory_selection_enabled{false};
 };
 
 struct ProductionMppiNavigation {

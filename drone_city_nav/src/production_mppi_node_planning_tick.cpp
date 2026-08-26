@@ -927,6 +927,7 @@ void ProductionMppiNode::planningTick() {
       .active_rollouts = rollout_budget.active_rollouts,
       .deterministic_candidate = deterministic_candidate,
       .prefer_route_directed_candidate =
+          !optional_constraints_.stochastic_trajectory_selection_enabled ||
           liveness.recovery_active || guide_progress.local_reseed_requested,
       .cooperative_avoidance_active = cooperative.mppi.avoidance_active,
       .noncooperative_avoidance_active = noncooperative_evasive_maneuver_active,

@@ -386,6 +386,7 @@ production_mppi_node:
     route_proposal_precedence_enabled: false
     route_strategy_leases_enabled: false
     static_route_geometry_optimization_enabled: false
+    stochastic_trajectory_selection_enabled: false
     require_known_free_space: false
     route_proposal_productive_direct_minimum_mission_progress_m: 2.0
     route_proposal_productive_direct_minimum_progress_ratio: 0.15
