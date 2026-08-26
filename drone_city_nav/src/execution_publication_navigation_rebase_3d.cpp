@@ -224,21 +224,34 @@ rebaseExecutionPublicationForCurrentNavigation3D(
       .latest_lidar_obstacle_points = request.current_lidar_evidence->hitPointsMapM(),
       .terminal_boundary = request.terminal_boundary,
   };
+  std::optional<ExecutionRouteTransitionResult3D> transition;
+  mppi::FiniteExecutionPathCandidateValidator route_candidate_validator;
+  if (request.candidate_snapshot->finite_execution.has_value() &&
+      request.candidate_snapshot->route.has_value()) {
+    route_candidate_validator = [&request,
+                                 &transition](const mppi::FiniteHorizon& candidate) {
+      ExecutionRouteTransitionResult3D candidate_transition =
+          rebaseRouteExecution(request, candidate);
+      if (!candidate_transition.applied() || candidate_transition.next == nullptr) {
+        return false;
+      }
+      transition.emplace(std::move(candidate_transition));
+      return true;
+    };
+  }
   const mppi::RebuiltFiniteExecutionPathContinuation rebuilt =
       mppi::rebuildFiniteExecutionPathContinuation(
           points, candidate_view->valid_from_ns, candidate_view->valid_until_ns,
           request.publication_now_ns, request.current_execution_input->state(),
           request.current_execution_input->previousControl(),
           candidate_view->policy->dynamics(), request.arrival_search_step_controls,
-          *request.finite_horizon_config, current_world);
+          *request.finite_horizon_config, current_world,
+          std::move(route_candidate_validator));
   if (!rebuilt.accepted() || !rebuilt.horizon.has_value()) {
     return reject(ExecutionPublicationNavigationRebaseStatus3D::kPathRejected);
   }
-  std::optional<ExecutionRouteTransitionResult3D> transition;
-  if (request.candidate_snapshot->finite_execution.has_value() &&
-      request.candidate_snapshot->route.has_value()) {
-    transition.emplace(rebaseRouteExecution(request, rebuilt.horizon.value()));
-  } else if (request.candidate_snapshot->direct_tracking_execution.has_value()) {
+  if (!transition.has_value() &&
+      request.candidate_snapshot->direct_tracking_execution.has_value()) {
     transition.emplace(rebaseDirectExecution(request, rebuilt.horizon.value()));
   }
   if (!transition.has_value() || !transition->applied() ||

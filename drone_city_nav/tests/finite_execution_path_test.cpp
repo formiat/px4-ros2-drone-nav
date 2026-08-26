@@ -309,6 +309,37 @@ TEST(FiniteExecutionPathTest,
   EXPECT_LT(horizon.states.back().x, 4.75F);
 }
 
+TEST(FiniteExecutionPathTest,
+     MovesArrivalProfileEarlierUntilCandidateContractAcceptsIt) {
+  TestWorld world;
+  world.dynamics.dt_s = 0.1F;
+  std::vector<Control> planned_controls(40U);
+  std::vector<State> planned_states{State{.x = 1.0F, .y = 1.0F, .z = 5.0F, .vx = 2.0F}};
+  for (const Control& control : planned_controls) {
+    planned_states.push_back(
+        integrateReference(planned_states.back(), control, world.dynamics));
+  }
+  std::size_t validation_attempts{0U};
+
+  const ValidatedFiniteExecutionPath path = buildValidatedFiniteExecutionPath(
+      planned_states, planned_controls, Control{}, world.dynamics, 5U,
+      FiniteHorizonConfig{}, world.view(),
+      [&validation_attempts](const FiniteHorizon& candidate) {
+        ++validation_attempts;
+        return candidate.nominal_prefix_control_count <= 20U;
+      });
+
+  ASSERT_TRUE(path.accepted());
+  ASSERT_TRUE(path.horizon.has_value());
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+  EXPECT_EQ(path.horizon.value().nominal_prefix_control_count, 20U);
+  EXPECT_EQ(path.arrival_shaping_attempts, 5U);
+  EXPECT_EQ(validation_attempts, 3U);
+  EXPECT_EQ(path.first_failed_validation_status,
+            FiniteExecutionPathStatus::kCandidateRejected);
+  EXPECT_TRUE(path.path_validation_backoff);
+}
+
 TEST(FiniteExecutionPathTest, RejectsDynamicallyUnrecoverableCurrentAltitude) {
   const TestWorld world;
   const std::vector<TimedExecutionPathPoint> path = testPath();

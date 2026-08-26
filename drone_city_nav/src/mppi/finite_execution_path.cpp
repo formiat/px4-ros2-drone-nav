@@ -9,6 +9,7 @@
 #include <iterator>
 #include <limits>
 #include <ranges>
+#include <utility>
 #include <vector>
 
 namespace drone_city_nav::mppi {
@@ -319,14 +320,14 @@ FiniteExecutionPathValidation validateCompleteFiniteExecutionPath(
   };
 }
 
-ValidatedFiniteExecutionPath
-buildValidatedFiniteExecutionPath(const std::span<const State> planned_states,
-                                  const std::span<const Control> planned_controls,
-                                  const Control& previous_applied_control,
-                                  const DynamicsConfig& dynamics,
-                                  const std::size_t arrival_search_step_controls,
-                                  const FiniteHorizonConfig& finite_horizon_config,
-                                  const FiniteExecutionPathWorld& world) {
+ValidatedFiniteExecutionPath buildValidatedFiniteExecutionPath(
+    const std::span<const State> planned_states,
+    const std::span<const Control> planned_controls,
+    const Control& previous_applied_control, const DynamicsConfig& dynamics,
+    const std::size_t arrival_search_step_controls,
+    const FiniteHorizonConfig& finite_horizon_config,
+    const FiniteExecutionPathWorld& world,
+    FiniteExecutionPathCandidateValidator candidate_validator) {
   ValidatedFiniteExecutionPath result;
   if (!validWorld(world) || !finite(previous_applied_control) ||
       planned_states.size() != planned_controls.size() + 1U ||
@@ -344,9 +345,15 @@ buildValidatedFiniteExecutionPath(const std::span<const State> planned_states,
       result.validation = validateCompleteFiniteExecutionPath(
           timedPathPoints(*candidate, previous_applied_control, dynamics.dt_s),
           previous_applied_control, world);
-      if (result.validation.accepted()) {
+      if (result.validation.accepted() &&
+          (!candidate_validator || candidate_validator(*candidate))) {
         result.horizon = std::move(candidate);
         return result;
+      }
+      if (result.validation.accepted()) {
+        result.validation = reject(FiniteExecutionPathStatus::kCandidateRejected, 0U,
+                                   nominal_prefix_control_count,
+                                   position(candidate->states.back()), 0.0);
       }
       if (!result.path_validation_backoff) {
         result.first_failed_validation_status = result.validation.status;
@@ -542,7 +549,8 @@ RebuiltFiniteExecutionPathContinuation rebuildFiniteExecutionPathContinuation(
     const Control& current_control, const DynamicsConfig& dynamics,
     const std::size_t arrival_search_step_controls,
     const FiniteHorizonConfig& finite_horizon_config,
-    const FiniteExecutionPathWorld& world) {
+    const FiniteExecutionPathWorld& world,
+    FiniteExecutionPathCandidateValidator candidate_validator) {
   RebuiltFiniteExecutionPathContinuation result;
   if (!validWorld(world) || !finite(current_state) || !finite(current_control) ||
       !(dynamics.dt_s > 0.0F) || arrival_search_step_controls == 0U ||
@@ -596,7 +604,7 @@ RebuiltFiniteExecutionPathContinuation rebuildFiniteExecutionPathContinuation(
 
   ValidatedFiniteExecutionPath rebuilt = buildValidatedFiniteExecutionPath(
       states, controls, current_control, dynamics, arrival_search_step_controls,
-      finite_horizon_config, world);
+      finite_horizon_config, world, std::move(candidate_validator));
   result.validation = rebuilt.validation;
   result.arrival_shaping_attempts = rebuilt.arrival_shaping_attempts;
   result.path_validation_backoff = rebuilt.path_validation_backoff;
@@ -621,6 +629,8 @@ finiteExecutionPathStatusName(const FiniteExecutionPathStatus status) noexcept {
       return "valid";
     case FiniteExecutionPathStatus::kInvalidContract:
       return "invalid_contract";
+    case FiniteExecutionPathStatus::kCandidateRejected:
+      return "candidate_rejected";
     case FiniteExecutionPathStatus::kNotActive:
       return "not_active";
     case FiniteExecutionPathStatus::kRouteEndpointExceeded:
