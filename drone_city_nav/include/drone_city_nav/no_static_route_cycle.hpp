@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/route_3d.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <cstddef>
@@ -21,21 +22,27 @@ struct NoStaticRouteCycleConfig {
 struct NoStaticRouteCycleObservation {
   std::uint64_t guide_generation{0U};
   std::int64_t stamp_ns{0};
-  Point2 vehicle_position{};
-  Point2 guide_endpoint{};
+  Point3 vehicle_position{};
+  Point3 guide_endpoint{};
   double approach_heading_rad{0.0};
+  Point3 mission_goal{};
   double mission_distance_m{0.0};
 };
 
 struct NoStaticRouteCycleResult {
   bool cycle_detected{false};
   std::size_t generation_changes{0U};
-  Point2 repeated_endpoint{};
+  Point3 repeated_endpoint{};
   double approach_heading_rad{0.0};
 };
 
 struct NoStaticDirectedTabuSample {
   Point2 point{};
+  double approach_heading_rad{0.0};
+};
+
+struct NoStaticDirectedTabuSample3D {
+  Point3 point{};
   double approach_heading_rad{0.0};
 };
 
@@ -52,9 +59,15 @@ private:
   std::deque<NoStaticRouteCycleObservation> observations_;
   std::uint64_t last_generation_{0U};
   std::int64_t last_detection_stamp_ns_{0};
+  Point3 last_mission_goal_{};
+  bool mission_goal_initialized_{false};
 };
 
 [[nodiscard]] std::vector<NoStaticDirectedTabuSample>
 sampleNoStaticDirectedTabu(std::span<const Point2> guide, double sample_spacing_m);
+
+[[nodiscard]] std::vector<NoStaticDirectedTabuSample3D>
+sampleNoStaticDirectedTabu3D(std::span<const RouteSample3D> route,
+                             double sample_spacing_m);
 
 } // namespace drone_city_nav

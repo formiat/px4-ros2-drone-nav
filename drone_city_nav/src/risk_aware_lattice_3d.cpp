@@ -9,6 +9,7 @@
 #include <compare>
 #include <limits>
 #include <map>
+#include <numbers>
 #include <optional>
 #include <queue>
 #include <ranges>
@@ -203,23 +204,62 @@ searchHeuristic(const Point3& point, const Point3& goal,
          topology_progress == TopologyProgress::kPassageTraversed;
 }
 
+[[nodiscard]] double directedSoftTabuPenalty(
+    const Point3& first, const Point3& second,
+    const std::span<const Lattice3DSoftTabuEntry> soft_tabu) noexcept {
+  const double horizontal_length_m = std::hypot(second.x - first.x, second.y - first.y);
+  const double segment_length_squared = squaredDistance(first, second);
+  if (!(horizontal_length_m > 1.0e-9) || !(segment_length_squared > 1.0e-9)) {
+    return 0.0;
+  }
+  const double heading_rad = std::atan2(second.y - first.y, second.x - first.x);
+  double penalty_cost = 0.0;
+  for (const Lattice3DSoftTabuEntry& entry : soft_tabu) {
+    if (!(entry.radius_m > 0.0) || !(entry.penalty_cost > 0.0) ||
+        std::abs(std::remainder(heading_rad - entry.approach_heading_rad,
+                                2.0 * std::numbers::pi)) >
+            entry.heading_tolerance_rad) {
+      continue;
+    }
+    const Vec3 segment{second.x - first.x, second.y - first.y, second.z - first.z};
+    const Vec3 offset{entry.point.x - first.x, entry.point.y - first.y,
+                      entry.point.z - first.z};
+    const double ratio = std::clamp(
+        (offset.x * segment.x + offset.y * segment.y + offset.z * segment.z) /
+            segment_length_squared,
+        0.0, 1.0);
+    const Point3 closest{first.x + ratio * segment.x, first.y + ratio * segment.y,
+                         first.z + ratio * segment.z};
+    if (distance3D(closest, entry.point) <= entry.radius_m) {
+      penalty_cost = std::max(penalty_cost, entry.penalty_cost);
+    }
+  }
+  return penalty_cost;
+}
+
 [[nodiscard]] bool appendEvaluatedSegment(
     const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
     const Point3& first, const Point3& second, const Lattice3DRiskStage stage,
     const Vec3& preferred_direction, const RiskAwareLattice3DConfig& config,
     Vec3& incoming_direction, detail::Lattice3DCostMetrics& metrics,
     double& minimum_clearance_m, Lattice3DEdgeEvaluationStatus& evaluation_status,
-    const bool charge_shape_turn = true) {
+    const std::span<const Lattice3DSoftTabuEntry> soft_tabu,
+    Lattice3DSuccessorDiagnostics& diagnostics, const bool charge_shape_turn = true) {
   const Lattice3DEdgeEvaluation evaluation =
       detail::evaluateLattice3DEdge(grid, esdf_m, first, second, stage, config);
   evaluation_status = evaluation.status;
   if (evaluation.status != Lattice3DEdgeEvaluationStatus::kValid) {
     return false;
   }
-  detail::accumulateLattice3DCost(
-      metrics, detail::evaluateLattice3DEdgeCost(first, second, incoming_direction,
-                                                 preferred_direction, evaluation,
-                                                 config, charge_shape_turn));
+  detail::Lattice3DCostMetrics addition = detail::evaluateLattice3DEdgeCost(
+      first, second, incoming_direction, preferred_direction, evaluation, config,
+      charge_shape_turn);
+  const double soft_tabu_penalty = directedSoftTabuPenalty(first, second, soft_tabu);
+  if (soft_tabu_penalty > 0.0) {
+    addition.objective_cost += soft_tabu_penalty;
+    ++diagnostics.soft_tabu_penalties_applied;
+  }
+  detail::accumulateLattice3DCost(metrics, addition);
   minimum_clearance_m = std::min(minimum_clearance_m, evaluation.minimum_clearance_m);
   if (distance3D(first, second) > 1.0e-9) {
     incoming_direction = detail::lattice3DUnitDirection(first, second);
@@ -235,6 +275,7 @@ passageSuccessorRecord(const mppi::EsdfGrid& grid, const std::span<const float> 
                        const Lattice3DRiskStage stage, const Vec3& preferred_direction,
                        const RiskAwareLattice3DConfig& config,
                        const double maximum_connection_distance_m,
+                       const std::span<const Lattice3DSoftTabuEntry> soft_tabu,
                        Lattice3DSuccessorDiagnostics& diagnostics) {
   if (!passageInsideFlightEnvelope(passage, config.flight_envelope)) {
     ++diagnostics.passage_rejected_flight_envelope;
@@ -255,7 +296,8 @@ passageSuccessorRecord(const mppi::EsdfGrid& grid, const std::span<const float> 
       Lattice3DEdgeEvaluationStatus::kValid};
   if (!appendEvaluatedSegment(grid, esdf_m, current, entry, stage, preferred_direction,
                               config, incoming, candidate.metrics,
-                              candidate.minimum_clearance_m, evaluation_status)) {
+                              candidate.minimum_clearance_m, evaluation_status,
+                              soft_tabu, diagnostics)) {
     detail::recordLattice3DRejectedEdge(diagnostics, evaluation_status, true);
     return std::nullopt;
   }
@@ -266,7 +308,7 @@ passageSuccessorRecord(const mppi::EsdfGrid& grid, const std::span<const float> 
       if (!appendEvaluatedSegment(grid, esdf_m, first, second, stage,
                                   preferred_direction, config, incoming,
                                   candidate.metrics, candidate.minimum_clearance_m,
-                                  evaluation_status, false)) {
+                                  evaluation_status, soft_tabu, diagnostics, false)) {
         detail::recordLattice3DRejectedEdge(diagnostics, evaluation_status, true);
         return std::nullopt;
       }
@@ -277,7 +319,7 @@ passageSuccessorRecord(const mppi::EsdfGrid& grid, const std::span<const float> 
                                   passage.centerline[index + 1U].position, stage,
                                   preferred_direction, config, incoming,
                                   candidate.metrics, candidate.minimum_clearance_m,
-                                  evaluation_status, false)) {
+                                  evaluation_status, soft_tabu, diagnostics, false)) {
         detail::recordLattice3DRejectedEdge(diagnostics, evaluation_status, true);
         return std::nullopt;
       }
@@ -386,7 +428,8 @@ reconstruct(const Key& terminal, const Point3& origin,
     const Point3& mission_goal, const std::span<const PassageTraversalEdge> passages,
     const Lattice3DRiskStage stage,
     const detail::Lattice3DTopologyRequirement topology_requirement,
-    const RiskAwareLattice3DConfig& config, BoundedWorkerPool* const worker_pool) {
+    const RiskAwareLattice3DConfig& config, BoundedWorkerPool* const worker_pool,
+    const std::span<const Lattice3DSoftTabuEntry> soft_tabu) {
   using Clock = std::chrono::steady_clock;
   const auto deadline = Clock::now() + std::chrono::duration<double, std::milli>(
                                            config.maximum_search_time_ms / 3.0);
@@ -423,7 +466,7 @@ reconstruct(const Key& terminal, const Point3& origin,
     evaluation.candidate = passageSuccessorRecord(
         grid, esdf_m, start, records.at(root), passages[passage_index], passage_index,
         reversed, stage, preferred_direction, config,
-        std::numeric_limits<double>::infinity(), evaluation.diagnostics);
+        std::numeric_limits<double>::infinity(), soft_tabu, evaluation.diagnostics);
     root_evaluations[candidate_index] = evaluation;
   };
   const bool root_parallel = worker_pool != nullptr &&
@@ -531,7 +574,8 @@ reconstruct(const Key& terminal, const Point3& origin,
           Lattice3DEdgeEvaluationStatus::kValid};
       if (appendEvaluatedSegment(grid, esdf_m, current, planning_goal, stage,
                                  preferred_direction, config, incoming, connector,
-                                 clearance, connector_status)) {
+                                 clearance, connector_status, soft_tabu,
+                                 successor_diagnostics)) {
         best = entry.key;
         reached = true;
         termination = Lattice3DSearchTermination::kPlanningGoalReached;
@@ -617,9 +661,15 @@ reconstruct(const Key& terminal, const Point3& origin,
       candidate.parent = entry.key;
       candidate.has_parent = true;
       candidate.passage_transition.reset();
-      const detail::Lattice3DCostMetrics addition = detail::evaluateLattice3DEdgeCost(
+      detail::Lattice3DCostMetrics addition = detail::evaluateLattice3DEdgeCost(
           current, evaluation.successor, found->second.incoming_direction,
           preferred_direction, evaluation.edge, config);
+      const double soft_tabu_penalty =
+          directedSoftTabuPenalty(current, evaluation.successor, soft_tabu);
+      if (soft_tabu_penalty > 0.0) {
+        addition.objective_cost += soft_tabu_penalty;
+        ++successor_diagnostics.soft_tabu_penalties_applied;
+      }
       detail::accumulateLattice3DCost(candidate.metrics, addition);
       candidate.g = candidate.metrics.objective_cost;
       candidate.minimum_clearance_m = std::min(found->second.minimum_clearance_m,
@@ -659,7 +709,7 @@ reconstruct(const Key& terminal, const Point3& origin,
           grid, esdf_m, current, found->second,
           passages[passage_candidate.passage_index], passage_candidate.passage_index,
           passage_candidate.reversed, stage, preferred_direction, config,
-          config.passage_connection_distance_m, evaluation.diagnostics);
+          config.passage_connection_distance_m, soft_tabu, evaluation.diagnostics);
       passage_evaluations[candidate_index] = evaluation;
     };
     const bool passage_parallel = worker_pool != nullptr &&
@@ -817,7 +867,8 @@ reconstruct(const Key& terminal, const Point3& origin,
         if (!appendEvaluatedSegment(
                 grid, esdf_m, continuation.path[index - 1U], continuation.path[index],
                 stage, preferred_direction, config, incoming_direction,
-                continuation_metrics, continuation_clearance_m, continuation_status)) {
+                continuation_metrics, continuation_clearance_m, continuation_status,
+                soft_tabu, successor_diagnostics)) {
           continuation_accepted = false;
           break;
         }
@@ -941,10 +992,11 @@ RiskAwareLattice3DResult searchRiskAwareLattice3DStage(
     const std::span<const PassageTraversalEdge> passage_traversals,
     const Lattice3DRiskStage stage,
     const Lattice3DTopologyRequirement topology_requirement,
-    const RiskAwareLattice3DConfig& config, BoundedWorkerPool* const worker_pool) {
+    const RiskAwareLattice3DConfig& config, BoundedWorkerPool* const worker_pool,
+    const std::span<const Lattice3DSoftTabuEntry> soft_tabu) {
   return searchStage(grid, esdf_m, start, preferred_direction, planning_goal,
                      mission_goal, passage_traversals, stage, topology_requirement,
-                     config, worker_pool);
+                     config, worker_pool, soft_tabu);
 }
 
 } // namespace detail

@@ -13,6 +13,14 @@ NoStaticRouteCycleDetector::NoStaticRouteCycleDetector(
 
 NoStaticRouteCycleResult
 NoStaticRouteCycleDetector::observe(const NoStaticRouteCycleObservation& observation) {
+  if (!mission_goal_initialized_ ||
+      distance3D(last_mission_goal_, observation.mission_goal) > 1.0e-6) {
+    observations_.clear();
+    last_generation_ = 0U;
+    last_detection_stamp_ns_ = 0;
+    last_mission_goal_ = observation.mission_goal;
+    mission_goal_initialized_ = true;
+  }
   if (observation.guide_generation == 0U ||
       observation.guide_generation == last_generation_) {
     return {};
@@ -33,10 +41,10 @@ NoStaticRouteCycleDetector::observe(const NoStaticRouteCycleObservation& observa
       observations_.begin(), std::prev(observations_.end()),
       [&](const NoStaticRouteCycleObservation& previous) {
         const double vehicle_displacement =
-            distance(previous.vehicle_position, observation.vehicle_position);
+            distance3D(previous.vehicle_position, observation.vehicle_position);
         const double mission_progress =
             previous.mission_distance_m - observation.mission_distance_m;
-        return distance(previous.guide_endpoint, observation.guide_endpoint) <=
+        return distance3D(previous.guide_endpoint, observation.guide_endpoint) <=
                    config_.repeated_endpoint_radius_m &&
                vehicle_displacement <= config_.maximum_vehicle_displacement_m &&
                mission_progress <= config_.maximum_mission_progress_m;
@@ -58,6 +66,7 @@ void NoStaticRouteCycleDetector::reset() noexcept {
   observations_.clear();
   last_generation_ = 0U;
   last_detection_stamp_ns_ = 0;
+  mission_goal_initialized_ = false;
 }
 
 std::vector<NoStaticDirectedTabuSample>
@@ -84,6 +93,46 @@ sampleNoStaticDirectedTabu(const std::span<const Point2> guide,
           .approach_heading_rad = heading_rad,
       });
     }
+  }
+  return samples;
+}
+
+std::vector<NoStaticDirectedTabuSample3D>
+sampleNoStaticDirectedTabu3D(const std::span<const RouteSample3D> route,
+                             const double sample_spacing_m) {
+  std::vector<NoStaticDirectedTabuSample3D> samples;
+  const double spacing_m = std::max(0.1, sample_spacing_m);
+  double distance_to_next_sample_m = spacing_m;
+  double final_heading_rad = 0.0;
+  for (std::size_t index = 1U; index < route.size(); ++index) {
+    const Point3& from = route[index - 1U].position;
+    const Point3& to = route[index].position;
+    const double segment_length_m = distance3D(from, to);
+    if (!(segment_length_m > 1.0e-9)) {
+      continue;
+    }
+    const double heading_rad = std::atan2(to.y - from.y, to.x - from.x);
+    final_heading_rad = heading_rad;
+    while (distance_to_next_sample_m <= segment_length_m + 1.0e-9) {
+      const double ratio =
+          std::clamp(distance_to_next_sample_m / segment_length_m, 0.0, 1.0);
+      samples.push_back(NoStaticDirectedTabuSample3D{
+          .point =
+              Point3{std::lerp(from.x, to.x, ratio), std::lerp(from.y, to.y, ratio),
+                     std::lerp(from.z, to.z, ratio)},
+          .approach_heading_rad = heading_rad,
+      });
+      distance_to_next_sample_m += spacing_m;
+    }
+    distance_to_next_sample_m -= segment_length_m;
+  }
+  if (route.size() >= 2U &&
+      (samples.empty() ||
+       distance3D(samples.back().point, route.back().position) > 1.0e-9)) {
+    samples.push_back(NoStaticDirectedTabuSample3D{
+        .point = route.back().position,
+        .approach_heading_rad = final_heading_rad,
+    });
   }
   return samples;
 }

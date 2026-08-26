@@ -123,7 +123,8 @@ RiskAwareLattice3DResult planRiskAwareLattice3D(
     const Point3& start, const Vec3& preferred_direction, const Point3& mission_goal,
     const std::span<const PassageTraversalEdge> passage_traversals,
     const RiskAwareLattice3DConfig& config, BoundedWorkerPool* const worker_pool,
-    const Lattice3DStrategicDirective* const strategic_directive) {
+    const Lattice3DStrategicDirective* const strategic_directive,
+    const std::span<const Lattice3DSoftTabuEntry> soft_tabu) {
   const auto search_started = std::chrono::steady_clock::now();
   if (!validSearchInput(grid, esdf_m, start, mission_goal, config)) {
     return {};
@@ -151,7 +152,8 @@ RiskAwareLattice3DResult planRiskAwareLattice3D(
           Lattice3DRiskStage::kCriticalAllowed}) {
       topology.stage_results.push_back(detail::searchRiskAwareLattice3DStage(
           grid, esdf_m, start, search_direction, planning_goal, mission_goal,
-          topology.passages, stage, topology.requirement, config, worker_pool));
+          topology.passages, stage, topology.requirement, config, worker_pool,
+          soft_tabu));
     }
     topology.worker_ms = std::chrono::duration<double, std::milli>(
                              std::chrono::steady_clock::now() - topology_started)

@@ -20,8 +20,8 @@ TEST(NoStaticRouteCycleTest, DetectsRepeatedEndpointWithoutMissionProgress) {
     result = detector.observe(NoStaticRouteCycleObservation{
         .guide_generation = generation,
         .stamp_ns = static_cast<std::int64_t>(generation) * 1'000'000'000,
-        .vehicle_position = Point2{0.2 * static_cast<double>(generation), 0.0},
-        .guide_endpoint = Point2{10.0 + static_cast<double>(generation % 2U), 5.0},
+        .vehicle_position = Point3{0.2 * static_cast<double>(generation), 0.0, 0.0},
+        .guide_endpoint = Point3{10.0 + static_cast<double>(generation % 2U), 5.0, 0.0},
         .approach_heading_rad = 0.0,
         .mission_distance_m = 100.0 - 0.2 * static_cast<double>(generation),
     });
@@ -44,8 +44,8 @@ TEST(NoStaticRouteCycleTest, DoesNotFlagRealMissionProgress) {
     result = detector.observe(NoStaticRouteCycleObservation{
         .guide_generation = generation,
         .stamp_ns = static_cast<std::int64_t>(generation) * 1'000'000'000,
-        .vehicle_position = Point2{static_cast<double>(generation), 0.0},
-        .guide_endpoint = Point2{10.0, 5.0},
+        .vehicle_position = Point3{static_cast<double>(generation), 0.0, 0.0},
+        .guide_endpoint = Point3{10.0, 5.0, 0.0},
         .mission_distance_m = 100.0 - 5.0 * static_cast<double>(generation),
     });
   }
@@ -65,8 +65,8 @@ TEST(NoStaticRouteCycleTest, MatchesDisplacementToRepeatedGeneration) {
                    .observe(NoStaticRouteCycleObservation{
                        .guide_generation = 1U,
                        .stamp_ns = 1'000'000'000LL,
-                       .vehicle_position = {0.0, 0.0},
-                       .guide_endpoint = {0.0, 20.0},
+                       .vehicle_position = {0.0, 0.0, 0.0},
+                       .guide_endpoint = {0.0, 20.0, 0.0},
                        .mission_distance_m = 100.0,
                    })
                    .cycle_detected);
@@ -74,8 +74,8 @@ TEST(NoStaticRouteCycleTest, MatchesDisplacementToRepeatedGeneration) {
                    .observe(NoStaticRouteCycleObservation{
                        .guide_generation = 2U,
                        .stamp_ns = 2'000'000'000LL,
-                       .vehicle_position = {20.0, 0.0},
-                       .guide_endpoint = {20.0, 20.0},
+                       .vehicle_position = {20.0, 0.0, 0.0},
+                       .guide_endpoint = {20.0, 20.0, 0.0},
                        .mission_distance_m = 99.0,
                    })
                    .cycle_detected);
@@ -83,8 +83,8 @@ TEST(NoStaticRouteCycleTest, MatchesDisplacementToRepeatedGeneration) {
                    .observe(NoStaticRouteCycleObservation{
                        .guide_generation = 3U,
                        .stamp_ns = 3'000'000'000LL,
-                       .vehicle_position = {21.0, 1.0},
-                       .guide_endpoint = {30.0, 20.0},
+                       .vehicle_position = {21.0, 1.0, 0.0},
+                       .guide_endpoint = {30.0, 20.0, 0.0},
                        .mission_distance_m = 99.5,
                    })
                    .cycle_detected);
@@ -92,8 +92,8 @@ TEST(NoStaticRouteCycleTest, MatchesDisplacementToRepeatedGeneration) {
                   .observe(NoStaticRouteCycleObservation{
                       .guide_generation = 4U,
                       .stamp_ns = 4'000'000'000LL,
-                      .vehicle_position = {21.0, 0.5},
-                      .guide_endpoint = {20.5, 20.0},
+                      .vehicle_position = {21.0, 0.5, 0.0},
+                      .guide_endpoint = {20.5, 20.0, 0.0},
                       .mission_distance_m = 99.2,
                   })
                   .cycle_detected);
@@ -111,6 +111,57 @@ TEST(NoStaticRouteCycleTest, SamplesDirectedEdgesAcrossFailedGuide) {
   EXPECT_NEAR(samples[0U].approach_heading_rad, 0.0, 1.0e-9);
   EXPECT_DOUBLE_EQ(samples[2U].point.y, 4.0);
   EXPECT_NEAR(samples[2U].approach_heading_rad, std::numbers::pi / 2.0, 1.0e-9);
+}
+
+TEST(NoStaticRouteCycleTest, SamplesCertifiedRouteInThreeDimensions) {
+  const std::vector<RouteSample3D> route{
+      {.position = {0.0, 0.0, 2.0}},
+      {.position = {6.0, 0.0, 5.0}},
+  };
+
+  const std::vector<NoStaticDirectedTabuSample3D> samples =
+      sampleNoStaticDirectedTabu3D(route, 4.0);
+
+  ASSERT_EQ(samples.size(), 2U);
+  EXPECT_DOUBLE_EQ(samples.back().point.x, 6.0);
+  EXPECT_DOUBLE_EQ(samples.back().point.z, 5.0);
+  EXPECT_NEAR(samples.back().approach_heading_rad, 0.0, 1.0e-9);
+}
+
+TEST(NoStaticRouteCycleTest, MissionGoalChangeStartsANewObservationWindow) {
+  NoStaticRouteCycleDetector detector{NoStaticRouteCycleConfig{
+      .observation_window_s = 20.0,
+      .minimum_generation_changes = 3U,
+      .repeated_endpoint_radius_m = 2.0,
+      .maximum_vehicle_displacement_m = 5.0,
+      .maximum_mission_progress_m = 2.0,
+  }};
+  for (std::uint64_t generation = 1U; generation <= 2U; ++generation) {
+    EXPECT_FALSE(
+        detector
+            .observe(NoStaticRouteCycleObservation{
+                .guide_generation = generation,
+                .stamp_ns = static_cast<std::int64_t>(generation) * 1'000'000'000,
+                .vehicle_position = {0.0, 0.0, 3.0},
+                .guide_endpoint = {10.0, 0.0, 3.0},
+                .mission_goal = {20.0, 0.0, 3.0},
+                .mission_distance_m = 20.0,
+            })
+            .cycle_detected);
+  }
+
+  const NoStaticRouteCycleResult result =
+      detector.observe(NoStaticRouteCycleObservation{
+          .guide_generation = 3U,
+          .stamp_ns = 3'000'000'000,
+          .vehicle_position = {0.0, 0.0, 3.0},
+          .guide_endpoint = {10.0, 0.0, 3.0},
+          .mission_goal = {0.0, 20.0, 3.0},
+          .mission_distance_m = 20.0,
+      });
+
+  EXPECT_FALSE(result.cycle_detected);
+  EXPECT_EQ(result.generation_changes, 1U);
 }
 
 } // namespace

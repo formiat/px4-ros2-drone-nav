@@ -538,10 +538,12 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
       cycle_result = no_static_cycle_detector_->observe(NoStaticRouteCycleObservation{
           .guide_generation = active_status.generation,
           .stamp_ns = worker_now_ns,
-          .vehicle_position = Point2{navigation.state.x, navigation.state.y},
-          .guide_endpoint = endpoint,
+          .vehicle_position =
+              Point3{navigation.state.x, navigation.state.y, navigation.state.z},
+          .guide_endpoint = Point3{endpoint.x, endpoint.y, navigation.state.z},
           .approach_heading_rad = std::atan2(endpoint.y - before_endpoint.y,
                                              endpoint.x - before_endpoint.x),
+          .mission_goal = Point3{mission_goal.x, mission_goal.y, mission_goal.z},
           .mission_distance_m = distance(Point2{navigation.state.x, navigation.state.y},
                                          Point2{mission_goal.x, mission_goal.y}),
       });

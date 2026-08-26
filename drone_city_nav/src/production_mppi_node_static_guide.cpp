@@ -8,6 +8,7 @@
 #include <cmath>
 #include <limits>
 #include <memory>
+#include <numbers>
 #include <optional>
 #include <span>
 #include <string>
@@ -21,6 +22,11 @@
 #include "production_mppi_route_world.hpp"
 
 namespace drone_city_nav {
+namespace {
+
+constexpr std::size_t kMaximumNoStaticSoftTabuEntries3D{64U};
+
+} // namespace
 
 void ProductionMppiNode::processGuideSearch3D(
     const ProductionMppiPreparedEsdf& world,
@@ -33,6 +39,11 @@ void ProductionMppiNode::processGuideSearch3D(
   const std::shared_ptr<const ProductionMppiRawWorld3D> latest_raw_world_3d =
       latest_raw_world_3d_.load(std::memory_order_acquire);
   const Point3 search_start{navigation.state.x, navigation.state.y, navigation.state.z};
+  const std::int64_t worker_now_ns = get_clock()->now().nanoseconds();
+  std::erase_if(no_static_soft_tabu_3d_,
+                [worker_now_ns](const TimedLattice3DSoftTabuEntry& entry) {
+                  return entry.expires_at_ns <= worker_now_ns;
+                });
   const RouteSegmentCompletionAssessment3D active_route_completion =
       assessActiveRouteCompletion3D(world, search_start);
   const bool active_observation_segment_completed =
@@ -72,8 +83,81 @@ void ProductionMppiNode::processGuideSearch3D(
       search_execution_snapshot && search_execution_snapshot->route.has_value()
           ? std::addressof(*search_execution_snapshot->route)
           : nullptr;
-  ProductionRouteCandidateSet3D candidate_set = generateRouteCandidates3D(
-      world, navigation, mission_goal, latest_raw_world_3d, search_active_route);
+  NoStaticRouteCycleResult cycle_result;
+  const std::shared_ptr<const std::vector<RouteSample3D>> active_geometry =
+      search_active_route != nullptr && search_active_route->geometry != nullptr
+          ? search_active_route->geometry->route
+          : nullptr;
+  if (!use_static_map_ && search_active_route != nullptr &&
+      search_active_route->valid() && no_static_cycle_detector_ && active_geometry &&
+      active_geometry->size() >= 2U) {
+    const Point3& route_endpoint = active_geometry->back().position;
+    const Point3& before_endpoint =
+        (*active_geometry)[active_geometry->size() - 2U].position;
+    cycle_result = no_static_cycle_detector_->observe(NoStaticRouteCycleObservation{
+        .guide_generation = search_active_route->identity.generation,
+        .stamp_ns = worker_now_ns,
+        .vehicle_position = search_start,
+        .guide_endpoint = route_endpoint,
+        .approach_heading_rad = std::atan2(route_endpoint.y - before_endpoint.y,
+                                           route_endpoint.x - before_endpoint.x),
+        .mission_goal = mission_goal,
+        .mission_distance_m = distance3D(search_start, mission_goal),
+    });
+    if (cycle_result.cycle_detected) {
+      const std::int64_t expires_at_ns =
+          worker_now_ns + static_cast<std::int64_t>(frontier_blacklist_ttl_s_ * 1.0e9);
+      const double heading_bin_width_rad =
+          2.0 * std::numbers::pi /
+          static_cast<double>(std::max(1, lattice_config_.heading_bins));
+      const double heading_tolerance_rad =
+          (static_cast<double>(
+               lattice_config_.frontier_blacklist_heading_tolerance_bins) +
+           0.5) *
+          heading_bin_width_rad;
+      for (const NoStaticDirectedTabuSample3D& sample : sampleNoStaticDirectedTabu3D(
+               *active_geometry, no_static_soft_tabu_sample_spacing_m_)) {
+        no_static_soft_tabu_3d_.push_back(TimedLattice3DSoftTabuEntry{
+            .entry =
+                Lattice3DSoftTabuEntry{
+                    .point = sample.point,
+                    .approach_heading_rad = sample.approach_heading_rad,
+                    .radius_m = lattice_config_.frontier_blacklist_radius_m,
+                    .heading_tolerance_rad = heading_tolerance_rad,
+                    .penalty_cost = no_static_soft_tabu_penalty_,
+                },
+            .expires_at_ns = expires_at_ns,
+        });
+      }
+      if (no_static_soft_tabu_3d_.size() > kMaximumNoStaticSoftTabuEntries3D) {
+        no_static_soft_tabu_3d_.erase(
+            no_static_soft_tabu_3d_.begin(),
+            no_static_soft_tabu_3d_.begin() +
+                static_cast<std::ptrdiff_t>(no_static_soft_tabu_3d_.size() -
+                                            kMaximumNoStaticSoftTabuEntries3D));
+      }
+      no_static_adaptive_search_until_ns_ =
+          worker_now_ns + static_cast<std::int64_t>(
+                              no_static_cycle_config_.observation_window_s * 1.0e9);
+      requestGuideRelease(GlobalGuideReleaseReason::kStalled,
+                          search_active_route->identity.generation);
+      RCLCPP_INFO(get_logger(),
+                  "NO_STATIC_ROUTE_CYCLE3D detected=true generation=%" PRIu64
+                  " observations=%zu endpoint=(%.2f,%.2f,%.2f) soft_tabu=%zu",
+                  search_active_route->identity.generation,
+                  cycle_result.generation_changes, cycle_result.repeated_endpoint.x,
+                  cycle_result.repeated_endpoint.y, cycle_result.repeated_endpoint.z,
+                  no_static_soft_tabu_3d_.size());
+    }
+  }
+  std::vector<Lattice3DSoftTabuEntry> active_soft_tabu;
+  active_soft_tabu.reserve(no_static_soft_tabu_3d_.size());
+  for (const TimedLattice3DSoftTabuEntry& entry : no_static_soft_tabu_3d_) {
+    active_soft_tabu.push_back(entry.entry);
+  }
+  ProductionRouteCandidateSet3D candidate_set =
+      generateRouteCandidates3D(world, navigation, mission_goal, latest_raw_world_3d,
+                                search_active_route, active_soft_tabu);
   const std::uint64_t candidate_generation = nextRouteGeneration3D();
   const ProductionRouteActivationSnapshot3D activation_snapshot =
       captureRouteActivationSnapshot3D();
@@ -221,6 +305,10 @@ void ProductionMppiNode::processGuideSearch3D(
     commitRouteActivation3D(world, activation_snapshot, candidate_generation,
                             strategy_decision, topology_effect, activation);
   }
+  activation.prepared.no_static_cycle_detected = cycle_result.cycle_detected;
+  activation.prepared.no_static_adaptive_search =
+      worker_now_ns < no_static_adaptive_search_until_ns_;
+  activation.prepared.no_static_soft_tabu_entries = no_static_soft_tabu_3d_.size();
   const bool recovery_without_active_route =
       (activation_snapshot.execution_snapshot == nullptr ||
        !activation_snapshot.execution_snapshot->route.has_value()) &&
@@ -417,7 +505,7 @@ void ProductionMppiNode::processGuideSearch3D(
       "lattice_successor_reject_envelope=%zu "
       "lattice_successor_reject_invalid=%zu "
       "lattice_successor_reject_collision=%zu lattice_successor_reject_risk=%zu "
-      "lattice_successor_reject_cost=%zu "
+      "lattice_successor_reject_cost=%zu lattice_successor_soft_tabu=%zu "
       "passage_successor_generated=%zu passage_successor_accepted=%zu "
       "passage_successor_rejected=%zu passage_successor_reject_connection=%zu "
       "passage_successor_reject_outside_roi=%zu "
@@ -519,6 +607,7 @@ void ProductionMppiNode::processGuideSearch3D(
       lattice.successor_diagnostics.lattice_rejected_raw_collision,
       lattice.successor_diagnostics.lattice_rejected_risk_stage,
       lattice.successor_diagnostics.lattice_rejected_no_cost_improvement,
+      lattice.successor_diagnostics.soft_tabu_penalties_applied,
       lattice.successor_diagnostics.passage_generated,
       lattice.successor_diagnostics.passage_accepted,
       lattice.successor_diagnostics.passage_rejected,

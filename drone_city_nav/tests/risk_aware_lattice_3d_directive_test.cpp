@@ -3,7 +3,10 @@
 
 #include <gtest/gtest.h>
 
+#include <cmath>
+#include <numbers>
 #include <optional>
+#include <ranges>
 #include <utility>
 
 namespace drone_city_nav {
@@ -133,6 +136,55 @@ TEST(RiskAwareLattice3DDirectiveTest,
   EXPECT_EQ(result.observation_frontier.value().id, frontier.id);
   EXPECT_DOUBLE_EQ(result.frontier_selection_score, directive.selection_score);
   EXPECT_FALSE(result.reached_mission_goal);
+}
+
+TEST(RiskAwareLattice3DDirectiveTest,
+     DirectedSoftTabuPenalizesOnlyTheRecordedApproachDirection) {
+  const OpenField3D field = makeOpenField();
+  const Point3 start{3.5, 3.5, 3.5};
+  const Point3 local_target{10.5, 3.5, 3.5};
+  const Lattice3DStrategicDirective directive{
+      .planning_goal = local_target,
+      .preferred_direction = Vec3{1.0, 0.0, 0.0},
+      .route_purpose = Lattice3DRoutePurpose::kMissionTransit,
+      .observation_frontier = std::nullopt,
+      .reaches_mission_goal = false,
+  };
+  const Lattice3DSoftTabuEntry same_direction{
+      .point = {6.5, 3.5, 3.5},
+      .approach_heading_rad = 0.0,
+      .radius_m = 1.0,
+      .heading_tolerance_rad = 0.2,
+      .penalty_cost = 40.0,
+  };
+  const Lattice3DSoftTabuEntry reverse_direction{
+      .point = same_direction.point,
+      .approach_heading_rad = std::numbers::pi,
+      .radius_m = same_direction.radius_m,
+      .heading_tolerance_rad = same_direction.heading_tolerance_rad,
+      .penalty_cost = same_direction.penalty_cost,
+  };
+
+  const RiskAwareLattice3DResult penalized = planRiskAwareLattice3D(
+      field.grid, field.distances.distancesM(), start, directive.preferred_direction,
+      local_target, {}, makeConfig(), nullptr, &directive,
+      std::span<const Lattice3DSoftTabuEntry>{&same_direction, 1U});
+  const RiskAwareLattice3DResult reverse = planRiskAwareLattice3D(
+      field.grid, field.distances.distancesM(), start, directive.preferred_direction,
+      local_target, {}, makeConfig(), nullptr, &directive,
+      std::span<const Lattice3DSoftTabuEntry>{&reverse_direction, 1U});
+
+  ASSERT_EQ(penalized.status, Lattice3DStatus::kReachedPlanningGoal);
+  ASSERT_EQ(reverse.status, Lattice3DStatus::kReachedPlanningGoal);
+  EXPECT_GT(penalized.successor_diagnostics.soft_tabu_penalties_applied, 0U);
+  const auto leaves_direct_line = [](const RiskAwareLattice3DResult& result) {
+    return std::any_of(
+        result.points.begin(), result.points.end(), [](const Point3& point) {
+          return std::abs(point.y - 3.5) > 0.25 || std::abs(point.z - 3.5) > 0.25;
+        });
+  };
+  EXPECT_TRUE(leaves_direct_line(penalized));
+  EXPECT_FALSE(leaves_direct_line(reverse));
 }
 
 } // namespace

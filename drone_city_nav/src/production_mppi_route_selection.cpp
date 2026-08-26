@@ -105,7 +105,8 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
     const ProductionMppiPreparedEsdf& world, const ProductionMppiNavigation& navigation,
     const Point3& mission_goal,
     const std::shared_ptr<const ProductionMppiRawWorld3D>& latest_raw_world,
-    const CertifiedRouteSuffix3D* const active_route) {
+    const CertifiedRouteSuffix3D* const active_route,
+    const std::span<const Lattice3DSoftTabuEntry> soft_tabu) {
   const auto search_started = std::chrono::steady_clock::now();
   Point3 search_start{navigation.state.x, navigation.state.y, navigation.state.z};
   RouteInstanceId3D search_base_route_instance_id{};
@@ -173,6 +174,20 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
           const std::optional<std::chrono::steady_clock::time_point> deadline =
               std::nullopt) {
         RiskAwareLattice3DConfig search_config = lattice_3d_config_;
+        if (get_clock()->now().nanoseconds() < no_static_adaptive_search_until_ns_) {
+          search_config.frontier_minimum_reachable_depth_m =
+              std::max(search_config.frontier_minimum_reachable_depth_m,
+                       no_static_adaptive_reachable_depth_m_);
+          search_config.frontier_minimum_endpoint_displacement_m =
+              std::max(search_config.frontier_minimum_endpoint_displacement_m,
+                       no_static_adaptive_minimum_endpoint_displacement_m_);
+          search_config.frontier_validation_maximum_states =
+              std::max(search_config.frontier_validation_maximum_states,
+                       no_static_adaptive_validation_states_);
+          search_config.maximum_expansions =
+              std::max(search_config.maximum_expansions,
+                       lattice_3d_config_.maximum_expansions * 2U);
+        }
         if (directive.route_purpose == Lattice3DRoutePurpose::kLaunchDeparture) {
           search_config.goal_tolerance_m = std::min(
               search_config.goal_tolerance_m, 0.5 * search_config.vertical_step_m);
@@ -201,7 +216,7 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
         RiskAwareLattice3DResult result = planRiskAwareLattice3D(
             world.grid, *world.distances_m, search_start, directive.preferred_direction,
             mission_goal, passage_traversals, search_config,
-            planning_worker_pool_.get(), &directive);
+            planning_worker_pool_.get(), &directive, soft_tabu);
         RCLCPP_INFO(get_logger(),
                     "ROUTE_PROPOSAL_SEARCH3D stage=complete revision=%" PRIu64
                     " purpose=%s status=%s points=%zu",

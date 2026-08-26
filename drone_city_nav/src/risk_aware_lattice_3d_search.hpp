@@ -18,6 +18,7 @@ enum class Lattice3DTopologyRequirement : std::uint8_t {
     const Point3& mission_goal,
     std::span<const PassageTraversalEdge> passage_traversals, Lattice3DRiskStage stage,
     Lattice3DTopologyRequirement topology_requirement,
-    const RiskAwareLattice3DConfig& config, BoundedWorkerPool* worker_pool);
+    const RiskAwareLattice3DConfig& config, BoundedWorkerPool* worker_pool,
+    std::span<const Lattice3DSoftTabuEntry> soft_tabu);
 
 } // namespace drone_city_nav::detail

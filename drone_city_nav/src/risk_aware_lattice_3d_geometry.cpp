@@ -152,6 +152,7 @@ void accumulateLattice3DSuccessorDiagnostics(
   target.lattice_rejected_risk_stage += addition.lattice_rejected_risk_stage;
   target.lattice_rejected_no_cost_improvement +=
       addition.lattice_rejected_no_cost_improvement;
+  target.soft_tabu_penalties_applied += addition.soft_tabu_penalties_applied;
   target.passage_generated += addition.passage_generated;
   target.passage_accepted += addition.passage_accepted;
   target.passage_rejected += addition.passage_rejected;

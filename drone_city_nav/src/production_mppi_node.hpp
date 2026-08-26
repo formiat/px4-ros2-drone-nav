@@ -150,6 +150,11 @@ struct ProductionMaterializedRouteProposal3D {
   ProductionRouteGeometry3D geometry{};
 };
 
+struct TimedLattice3DSoftTabuEntry {
+  Lattice3DSoftTabuEntry entry{};
+  std::int64_t expires_at_ns{0};
+};
+
 struct ProductionMppiPreparedEsdf {
   LocalWorldGeneration local_world_generation{};
   std::uint64_t producer_instance_id{0U};
@@ -576,7 +581,8 @@ private:
       const ProductionMppiPreparedEsdf& world,
       const ProductionMppiNavigation& navigation, const Point3& mission_goal,
       const std::shared_ptr<const ProductionMppiRawWorld3D>& latest_raw_world,
-      const CertifiedRouteSuffix3D* active_route);
+      const CertifiedRouteSuffix3D* active_route,
+      std::span<const Lattice3DSoftTabuEntry> soft_tabu);
   void diagnosticsWorker(std::stop_token stop_token);
   void startPlanningTimer();
   void initializeRuntimeInterfaces();
@@ -987,6 +993,8 @@ private:
       GlobalGuideReleaseReason::kStalled};
   std::optional<GlobalGuideCandidate> pending_global_guide_;
   std::vector<LatticeFrontierBlacklistEntry> frontier_blacklist_;
+  std::vector<TimedLattice3DSoftTabuEntry> no_static_soft_tabu_3d_;
+  std::int64_t no_static_adaptive_search_until_ns_{0};
 
   // Linearizes the active GPU ESDF with its exact immutable CPU world.
   mutable std::mutex world_generation_publication_mutex_;

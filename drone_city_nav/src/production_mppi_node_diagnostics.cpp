@@ -306,6 +306,8 @@ void ProductionMppiNode::processDiagnostics(
       << esdf.lattice_3d_successor_diagnostics.lattice_rejected_risk_stage
       << " lattice_3d_successor_reject_cost="
       << esdf.lattice_3d_successor_diagnostics.lattice_rejected_no_cost_improvement
+      << " lattice_3d_successor_soft_tabu="
+      << esdf.lattice_3d_successor_diagnostics.soft_tabu_penalties_applied
       << " passage_successor_generated="
       << esdf.lattice_3d_successor_diagnostics.passage_generated
       << " passage_successor_accepted="
@@ -856,6 +858,8 @@ void ProductionMppiNode::processDiagnostics(
          << esdf.lattice_3d_successor_diagnostics.lattice_rejected_risk_stage
          << ",\"lattice_3d_successors_rejected_no_cost_improvement\":"
          << esdf.lattice_3d_successor_diagnostics.lattice_rejected_no_cost_improvement
+         << ",\"lattice_3d_successor_soft_tabu_penalties\":"
+         << esdf.lattice_3d_successor_diagnostics.soft_tabu_penalties_applied
          << ",\"passage_successors_generated\":"
          << esdf.lattice_3d_successor_diagnostics.passage_generated
          << ",\"passage_successors_accepted\":"

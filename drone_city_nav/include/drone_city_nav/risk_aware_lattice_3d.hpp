@@ -60,6 +60,7 @@ struct Lattice3DSuccessorDiagnostics {
   std::size_t lattice_rejected_raw_collision{0U};
   std::size_t lattice_rejected_risk_stage{0U};
   std::size_t lattice_rejected_no_cost_improvement{0U};
+  std::size_t soft_tabu_penalties_applied{0U};
   std::size_t passage_generated{0U};
   std::size_t passage_accepted{0U};
   std::size_t passage_rejected{0U};
@@ -71,6 +72,14 @@ struct Lattice3DSuccessorDiagnostics {
   std::size_t passage_rejected_raw_collision{0U};
   std::size_t passage_rejected_risk_stage{0U};
   std::size_t passage_rejected_no_cost_improvement{0U};
+};
+
+struct Lattice3DSoftTabuEntry {
+  Point3 point{};
+  double approach_heading_rad{0.0};
+  double radius_m{0.0};
+  double heading_tolerance_rad{0.0};
+  double penalty_cost{0.0};
 };
 
 struct Lattice3DSuccessorBatchProfile {
@@ -204,7 +213,8 @@ struct Lattice3DStrategicDirective {
     const Vec3& preferred_direction, const Point3& mission_goal,
     std::span<const PassageTraversalEdge> passage_traversals,
     const RiskAwareLattice3DConfig& config, BoundedWorkerPool* worker_pool = nullptr,
-    const Lattice3DStrategicDirective* strategic_directive = nullptr);
+    const Lattice3DStrategicDirective* strategic_directive = nullptr,
+    std::span<const Lattice3DSoftTabuEntry> soft_tabu = {});
 
 [[nodiscard]] const char* lattice3DStatusName(Lattice3DStatus status) noexcept;
 
