@@ -138,11 +138,55 @@ TEST(RouteStrategyArbitrator3DTest,
 }
 
 TEST(RouteStrategyArbitrator3DTest,
-     DirectReleaseRequiresTravelAndRepeatedMeasuredAdvantage) {
+     DirectReleaseFromExplorationRequiresTravelAndRepeatedMeasuredAdvantage) {
   RouteStrategyArbitration3DConfig config;
   config.minimum_lease_commitment_m = 5.0;
   config.direct_release_confirmation_count = 2U;
   config.direct_release_minimum_progress_advantage_m = 2.0;
+  config.direct_release_minimum_progress_ratio_advantage = 0.0;
+  RouteStrategyArbitrator3D arbitrator{config};
+  const std::vector<RouteProposal3D> acquisition_proposals{
+      directProposal(0.5),
+      strategicProposal(RouteIntentPurpose3D::kObservationFrontier, -2.0),
+  };
+  const std::vector<RouteProposal3D> release_proposals{
+      directProposal(20.0),
+      acquisition_proposals[1],
+  };
+  RouteStrategyArbitrationDecision3D decision = arbitrator.evaluate(
+      acquisition_proposals, kProposalConfig, observation({0.0, 0.0, 5.0}));
+  ASSERT_TRUE(arbitrator.recordOutcome(decision, true));
+
+  decision = arbitrator.evaluate(release_proposals, kProposalConfig,
+                                 observation({6.0, 0.0, 5.0}, 11U));
+  EXPECT_EQ(decision.selection.selected_index, std::optional<std::size_t>{1U});
+  ASSERT_TRUE(arbitrator.recordOutcome(decision, true));
+  const RouteStrategyLease3D* const retained_lease = activeLease(arbitrator);
+  ASSERT_NE(retained_lease, nullptr);
+  EXPECT_EQ(retained_lease->direct_advantage_confirmations, 1U);
+
+  decision = arbitrator.evaluate(release_proposals, kProposalConfig,
+                                 observation({7.0, 0.0, 5.0}, 12U));
+  EXPECT_EQ(decision.selection.selected_index, std::optional<std::size_t>{0U});
+  EXPECT_EQ(decision.action,
+            RouteStrategyArbitrationAction3D::kLeaseReleasedDirectAdvantage);
+  ASSERT_TRUE(arbitrator.recordOutcome(decision, false));
+  EXPECT_TRUE(arbitrator.state().lease.has_value());
+
+  decision = arbitrator.evaluate(release_proposals, kProposalConfig,
+                                 observation({8.0, 0.0, 5.0}, 13U));
+  EXPECT_EQ(decision.selection.selected_index, std::optional<std::size_t>{0U});
+  ASSERT_TRUE(arbitrator.recordOutcome(decision, true));
+  EXPECT_FALSE(arbitrator.state().lease.has_value());
+  EXPECT_TRUE(arbitrator.state().retired_lineage.has_value());
+}
+
+TEST(RouteStrategyArbitrator3DTest,
+     LocalDirectProgressCannotPreemptStrategicMissionContinuation) {
+  RouteStrategyArbitration3DConfig config;
+  config.minimum_lease_commitment_m = 5.0;
+  config.direct_release_confirmation_count = 1U;
+  config.direct_release_minimum_progress_advantage_m = 0.0;
   config.direct_release_minimum_progress_ratio_advantage = 0.0;
   RouteStrategyArbitrator3D arbitrator{config};
   const std::vector<RouteProposal3D> proposals{
@@ -155,26 +199,14 @@ TEST(RouteStrategyArbitrator3DTest,
 
   decision = arbitrator.evaluate(proposals, kProposalConfig,
                                  observation({6.0, 0.0, 5.0}, 11U));
+
   EXPECT_EQ(decision.selection.selected_index, std::optional<std::size_t>{1U});
+  EXPECT_EQ(decision.action, RouteStrategyArbitrationAction3D::kLeaseRetained);
   ASSERT_TRUE(arbitrator.recordOutcome(decision, true));
-  const RouteStrategyLease3D* const retained_lease = activeLease(arbitrator);
-  ASSERT_NE(retained_lease, nullptr);
-  EXPECT_EQ(retained_lease->direct_advantage_confirmations, 1U);
-
-  decision = arbitrator.evaluate(proposals, kProposalConfig,
-                                 observation({7.0, 0.0, 5.0}, 12U));
-  EXPECT_EQ(decision.selection.selected_index, std::optional<std::size_t>{0U});
-  EXPECT_EQ(decision.action,
-            RouteStrategyArbitrationAction3D::kLeaseReleasedDirectAdvantage);
-  ASSERT_TRUE(arbitrator.recordOutcome(decision, false));
-  EXPECT_TRUE(arbitrator.state().lease.has_value());
-
-  decision = arbitrator.evaluate(proposals, kProposalConfig,
-                                 observation({8.0, 0.0, 5.0}, 13U));
-  EXPECT_EQ(decision.selection.selected_index, std::optional<std::size_t>{0U});
-  ASSERT_TRUE(arbitrator.recordOutcome(decision, true));
-  EXPECT_FALSE(arbitrator.state().lease.has_value());
-  EXPECT_TRUE(arbitrator.state().retired_lineage.has_value());
+  const RouteStrategyLease3D* const lease = activeLease(arbitrator);
+  ASSERT_NE(lease, nullptr);
+  EXPECT_EQ(lease->kind, RouteStrategyKind3D::kTopologyMission);
+  EXPECT_EQ(lease->direct_advantage_confirmations, 0U);
 }
 
 TEST(RouteStrategyArbitrator3DTest,

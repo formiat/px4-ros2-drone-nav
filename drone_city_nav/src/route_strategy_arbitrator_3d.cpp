@@ -407,7 +407,13 @@ RouteStrategyArbitrationDecision3D RouteStrategyArbitrator3D::evaluate(
                    isProductiveDirectTransit3D(proposal, proposal_config);
           });
       RouteStrategyLease3D& lease = *observed.lease;
+      // A short direct segment only proves local progress. It may shorten an
+      // exploration or return excursion, but it cannot supersede the only
+      // candidate that proves strategic continuation toward the mission.
+      // A direct candidate that actually reaches the mission was handled by
+      // the mission-target preemption above.
       const bool direct_advantage =
+          lease.kind != RouteStrategyKind3D::kTopologyMission &&
           direct_index.has_value() &&
           directHasReleaseAdvantage(proposals[*direct_index], proposals[*leased_index],
                                     proposal_config, config_);
