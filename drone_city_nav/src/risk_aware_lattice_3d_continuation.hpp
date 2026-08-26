@@ -19,12 +19,14 @@ struct Lattice3DContinuationMetrics {
   Lattice3DSuccessorBatchProfile successor_profile{};
 };
 
-[[nodiscard]] Lattice3DContinuationMetrics
-evaluateLattice3DContinuation(const mppi::EsdfGrid& grid, std::span<const float> esdf_m,
-                              const Point3& terminal, const Vec3& incoming_direction,
-                              const Point3& planning_goal, Lattice3DRiskStage stage,
-                              const RiskAwareLattice3DConfig& config,
-                              BoundedWorkerPool* worker_pool);
+// Returns a materializable path only when the validated continuation moves its
+// endpoint farther from route_origin than terminal. Reachable space that curls
+// back along the incumbent remains diagnostic evidence, not a route extension.
+[[nodiscard]] Lattice3DContinuationMetrics evaluateLattice3DContinuation(
+    const mppi::EsdfGrid& grid, std::span<const float> esdf_m,
+    const Point3& route_origin, const Point3& terminal, const Vec3& incoming_direction,
+    const Point3& planning_goal, Lattice3DRiskStage stage,
+    const RiskAwareLattice3DConfig& config, BoundedWorkerPool* worker_pool);
 
 } // namespace detail
 } // namespace drone_city_nav

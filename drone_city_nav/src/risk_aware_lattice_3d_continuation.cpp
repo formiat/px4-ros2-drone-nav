@@ -7,7 +7,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
-#include <limits>
+#include <optional>
 #include <queue>
 #include <tuple>
 #include <unordered_map>
@@ -44,6 +44,7 @@ struct Candidate {
   Point3 point{};
   double goal_distance_m{0.0};
   double goal_altitude_error_m{0.0};
+  double route_endpoint_displacement_m{0.0};
   std::size_t hops{0U};
   std::uint64_t sequence{0U};
 };
@@ -51,10 +52,10 @@ struct Candidate {
 struct CandidateGreater {
   [[nodiscard]] bool operator()(const Candidate& left,
                                 const Candidate& right) const noexcept {
-    return std::tuple{left.goal_altitude_error_m, left.goal_distance_m, left.hops,
-                      left.sequence} > std::tuple{right.goal_altitude_error_m,
-                                                  right.goal_distance_m, right.hops,
-                                                  right.sequence};
+    return std::tuple{left.goal_altitude_error_m, left.goal_distance_m,
+                      -left.route_endpoint_displacement_m, left.hops, left.sequence} >
+           std::tuple{right.goal_altitude_error_m, right.goal_distance_m,
+                      -right.route_endpoint_displacement_m, right.hops, right.sequence};
   }
 };
 
@@ -62,9 +63,9 @@ struct CandidateGreater {
 
 Lattice3DContinuationMetrics evaluateLattice3DContinuation(
     const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
-    const Point3& terminal, const Vec3& incoming_direction, const Point3& planning_goal,
-    const Lattice3DRiskStage stage, const RiskAwareLattice3DConfig& config,
-    BoundedWorkerPool* const worker_pool) {
+    const Point3& route_origin, const Point3& terminal, const Vec3& incoming_direction,
+    const Point3& planning_goal, const Lattice3DRiskStage stage,
+    const RiskAwareLattice3DConfig& config, BoundedWorkerPool* const worker_pool) {
   constexpr std::array<int, 3> kHorizontalOffsets{-1, 0, 1};
   constexpr std::array<int, 3> kVerticalOffsets{0, 1, -1};
   const std::size_t maximum_states =
@@ -79,23 +80,24 @@ Lattice3DContinuationMetrics evaluateLattice3DContinuation(
                 .point = terminal,
                 .goal_distance_m = distance3D(terminal, planning_goal),
                 .goal_altitude_error_m = std::abs(terminal.z - planning_goal.z),
+                .route_endpoint_displacement_m = distance3D(route_origin, terminal),
                 .hops = 0U,
                 .sequence = sequence++});
   visited.insert(origin);
   Lattice3DContinuationMetrics result;
-  OffsetKey best_key = origin;
-  Point3 best_point = terminal;
-  double best_depth_m = 0.0;
-  double best_goal_distance_m = distance3D(terminal, planning_goal);
-  std::uint64_t best_sequence = std::numeric_limits<std::uint64_t>::max();
+  const double incumbent_endpoint_displacement_m = distance3D(route_origin, terminal);
+  std::optional<Candidate> selected;
+  std::optional<Candidate> discovered_extension;
+  const CandidateGreater candidate_greater;
   while (!pending.empty() && result.reachable_states < maximum_states) {
     const Candidate current = pending.top();
     pending.pop();
     const double current_depth_m = distance3D(terminal, current.point);
     if (!(current.key == origin) &&
-        current_depth_m + 1.0e-9 >= config.frontier_minimum_reachable_depth_m) {
-      best_key = current.key;
-      best_point = current.point;
+        current_depth_m + 1.0e-9 >= config.frontier_minimum_reachable_depth_m &&
+        current.route_endpoint_displacement_m >
+            incumbent_endpoint_displacement_m + 1.0e-9) {
+      selected = current;
       break;
     }
     const auto collection_started = std::chrono::steady_clock::now();
@@ -140,6 +142,7 @@ Lattice3DContinuationMetrics evaluateLattice3DContinuation(
                   .point = successor,
                   .goal_distance_m = distance3D(successor, planning_goal),
                   .goal_altitude_error_m = std::abs(successor.z - planning_goal.z),
+                  .route_endpoint_displacement_m = distance3D(route_origin, successor),
                   .hops = current.hops + 1U,
                   .sequence = sequence++,
               }});
@@ -174,18 +177,16 @@ Lattice3DContinuationMetrics evaluateLattice3DContinuation(
       }
       ++result.reachable_states;
       const double candidate_depth_m = distance3D(terminal, evaluation.candidate.point);
-      const double candidate_goal_distance_m = evaluation.candidate.goal_distance_m;
       result.reachable_depth_m = std::max(result.reachable_depth_m, candidate_depth_m);
       parents[evaluation.candidate.key] = current.key;
-      if (std::tuple{-candidate_depth_m, evaluation.candidate.goal_altitude_error_m,
-                     candidate_goal_distance_m, evaluation.candidate.sequence} <
-          std::tuple{-best_depth_m, std::abs(best_point.z - planning_goal.z),
-                     best_goal_distance_m, best_sequence}) {
-        best_key = evaluation.candidate.key;
-        best_point = evaluation.candidate.point;
-        best_depth_m = candidate_depth_m;
-        best_goal_distance_m = candidate_goal_distance_m;
-        best_sequence = evaluation.candidate.sequence;
+      const bool extends_route_frontier =
+          candidate_depth_m + 1.0e-9 >= config.frontier_minimum_reachable_depth_m &&
+          evaluation.candidate.route_endpoint_displacement_m >
+              incumbent_endpoint_displacement_m + 1.0e-9;
+      if (extends_route_frontier &&
+          (!discovered_extension.has_value() ||
+           candidate_greater(*discovered_extension, evaluation.candidate))) {
+        discovered_extension = evaluation.candidate;
       }
       pending.push(evaluation.candidate);
     }
@@ -202,10 +203,13 @@ Lattice3DContinuationMetrics evaluateLattice3DContinuation(
                                                   collection_started)
             .count();
   }
-  if (!(best_key == origin)) {
+  if (!selected.has_value()) {
+    selected = discovered_extension;
+  }
+  if (selected.has_value()) {
     std::vector<Point3> reverse_path;
-    OffsetKey current = best_key;
-    reverse_path.push_back(best_point);
+    OffsetKey current = selected->key;
+    reverse_path.push_back(selected->point);
     while (!(current == origin)) {
       current = parents.at(current);
       reverse_path.push_back(

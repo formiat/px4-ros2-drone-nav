@@ -11,6 +11,7 @@
 #include <limits>
 #include <vector>
 
+#include "risk_aware_lattice_3d_continuation.hpp"
 #include "risk_aware_lattice_3d_geometry.hpp"
 
 namespace drone_city_nav {
@@ -1132,6 +1133,85 @@ TEST(Route3DTest, MaterializesValidatedContinuationWhenSearchSliceExpires) {
   EXPECT_LT(distance3D(result.points.back(), goal), distance3D(start, goal));
   EXPECT_NEAR(result.points.back().y, start.y, 1.0e-9);
   EXPECT_NEAR(result.points.back().z, start.z, 1.0e-9);
+}
+
+TEST(Route3DTest, ContinuationSelectsGoalProgressThatExtendsTheRouteFrontier) {
+  OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 30, 30, 12}};
+  const DistanceField3D field = DistanceField3D::build(occupancy, 40.0);
+  const GridBounds3D& bounds = field.bounds();
+  const mppi::EsdfGrid grid{bounds.width_cells,
+                            bounds.height_cells,
+                            static_cast<float>(bounds.resolution_m),
+                            static_cast<float>(bounds.origin_x),
+                            static_cast<float>(bounds.origin_y),
+                            bounds.depth_cells,
+                            static_cast<float>(bounds.origin_z)};
+  RiskAwareLattice3DConfig config;
+  config.horizontal_step_m = 2.0;
+  config.vertical_step_m = 1.0;
+  config.frontier_minimum_reachable_depth_m = 8.0;
+  config.frontier_validation_maximum_states = 256U;
+  config.preferred_distance_m = 0.0;
+  config.critical_distance_m = 0.0;
+  config.physical_footprint_radius_m = 0.0;
+  config.physical_footprint_samples = 0U;
+  const Point3 route_origin{2.5, 15.5, 5.5};
+  const Point3 terminal{10.5, 15.5, 5.5};
+
+  const detail::Lattice3DContinuationMetrics continuation =
+      detail::evaluateLattice3DContinuation(
+          grid, field.distancesM(), route_origin, terminal, Vec3{1.0, 0.0, 0.0},
+          Point3{25.5, 15.5, 5.5}, Lattice3DRiskStage::kPreferredOnly, config, nullptr);
+
+  ASSERT_GE(continuation.path.size(), 2U);
+  EXPECT_GT(distance3D(route_origin, continuation.path.back()),
+            distance3D(route_origin, terminal));
+  EXPECT_LT(distance3D(continuation.path.back(), Point3{25.5, 15.5, 5.5}),
+            distance3D(terminal, Point3{25.5, 15.5, 5.5}));
+}
+
+TEST(Route3DTest, ContinuationRejectsReachableSpaceThatOnlyLoopsBack) {
+  OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 32, 5, 3}};
+  for (int x = 0; x < 32; ++x) {
+    for (int y = 0; y < 5; ++y) {
+      for (int z = 0; z < 3; ++z) {
+        occupancy.setOccupied(GridIndex3D{x, y, z});
+      }
+    }
+  }
+  for (int x = 2; x <= 28; ++x) {
+    occupancy.clearOccupied(GridIndex3D{x, 2, 1});
+  }
+  const DistanceField3D field = DistanceField3D::build(occupancy, 40.0);
+  const GridBounds3D& bounds = field.bounds();
+  const mppi::EsdfGrid grid{bounds.width_cells,
+                            bounds.height_cells,
+                            static_cast<float>(bounds.resolution_m),
+                            static_cast<float>(bounds.origin_x),
+                            static_cast<float>(bounds.origin_y),
+                            bounds.depth_cells,
+                            static_cast<float>(bounds.origin_z)};
+  RiskAwareLattice3DConfig config;
+  config.horizontal_step_m = 2.0;
+  config.vertical_step_m = 1.0;
+  config.frontier_minimum_reachable_depth_m = 8.0;
+  config.frontier_validation_maximum_states = 256U;
+  config.preferred_distance_m = 0.0;
+  config.critical_distance_m = 0.0;
+  config.physical_footprint_radius_m = 0.0;
+  config.physical_footprint_samples = 0U;
+  const Point3 route_origin{2.5, 2.5, 1.5};
+  const Point3 terminal{28.5, 2.5, 1.5};
+
+  const detail::Lattice3DContinuationMetrics continuation =
+      detail::evaluateLattice3DContinuation(
+          grid, field.distancesM(), route_origin, terminal, Vec3{0.0, 1.0, 0.0},
+          Point3{40.5, 2.5, 1.5}, Lattice3DRiskStage::kCriticalAllowed, config,
+          nullptr);
+
+  EXPECT_GT(continuation.immediate_successors, 0U);
+  EXPECT_GE(continuation.reachable_depth_m, config.frontier_minimum_reachable_depth_m);
+  EXPECT_TRUE(continuation.path.empty());
 }
 
 TEST(Route3DTest, MaterializedContinuationCommitsToGoalDirectedWallDetour) {

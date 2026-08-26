@@ -780,7 +780,7 @@ reconstruct(const Key& terminal, const Point3& origin,
     const auto continuation_started = std::chrono::steady_clock::now();
     const detail::Lattice3DContinuationMetrics continuation =
         detail::evaluateLattice3DContinuation(
-            grid, esdf_m, pointFor(best, start, passages, config),
+            grid, esdf_m, start, pointFor(best, start, passages, config),
             records.at(best).incoming_direction, planning_goal, stage, config,
             worker_pool);
     result.terminal_successor_count = continuation.immediate_successors;
@@ -791,15 +791,15 @@ reconstruct(const Key& terminal, const Point3& origin,
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                   continuation_started)
             .count();
-    const bool continuation_viable = continuation.immediate_successors > 0U &&
-                                     continuation.reachable_depth_m + 1.0e-9 >=
-                                         config.frontier_minimum_reachable_depth_m &&
-                                     continuation.path.size() >= 2U;
+    const bool continuation_reachable = continuation.immediate_successors > 0U &&
+                                        continuation.reachable_depth_m + 1.0e-9 >=
+                                            config.frontier_minimum_reachable_depth_m;
+    const bool continuation_extends_route = continuation.path.size() >= 2U;
     const bool continuation_materializable =
-        continuation_viable &&
+        continuation_reachable && continuation_extends_route &&
         termination == Lattice3DSearchTermination::kDeadlineReached;
     bool continuation_route_accepted = false;
-    if (result.status == Lattice3DStatus::kViableFrontier && !continuation_viable) {
+    if (result.status == Lattice3DStatus::kViableFrontier && !continuation_reachable) {
       result.status =
           termination == Lattice3DSearchTermination::kDeadlineReached ||
                   termination == Lattice3DSearchTermination::kExpansionBudgetExhausted
