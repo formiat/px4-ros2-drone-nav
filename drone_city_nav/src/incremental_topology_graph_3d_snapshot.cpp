@@ -112,24 +112,40 @@ reconstructSampleTree(const GridBounds3D& bounds,
     const ObservedOccupancyGrid3D& occupancy, const IncrementalTopologyNode3D& node,
     std::vector<Point3> polyline, const SweptFootprintConfig& footprint,
     const ObservedSpaceValidationPolicy validation_policy,
-    const std::uint64_t graph_revision) {
+    const std::uint64_t graph_revision,
+    const std::optional<std::chrono::steady_clock::time_point> deadline =
+        std::nullopt) {
+  bool unknown_exposure = false;
   for (std::size_t index = 1U; index < polyline.size(); ++index) {
-    const SweptFootprintResult evidence = validateObservedSweptFootprint(
-        occupancy, polyline[index - 1U], FootprintBodyAxis{}, polyline[index],
-        FootprintBodyAxis{}, footprint, validation_policy);
-    if (!evidence.accepted()) {
+    if (deadline.has_value() && std::chrono::steady_clock::now() >= *deadline) {
       return std::nullopt;
     }
+    const SweptFootprintResult evidence =
+        validateRawSweptFootprint(occupancy, polyline[index - 1U], FootprintBodyAxis{},
+                                  polyline[index], FootprintBodyAxis{}, footprint);
+    const bool unknown_rejected =
+        validation_policy == ObservedSpaceValidationPolicy::kRequireKnownFree &&
+        evidence.evidence.unknown_exposure;
+    if (evidence.evidence.raw_collision || evidence.evidence.outside_grid_exposure ||
+        evidence.evidence.invalid_esdf_exposure || unknown_rejected) {
+      return std::nullopt;
+    }
+    unknown_exposure = unknown_exposure || evidence.evidence.unknown_exposure;
   }
   const double length_m = pathLength(polyline);
   const std::uint64_t validated_through_revision =
       std::min(graph_revision, node.validated_through_revision);
   const std::uint64_t lineage_id =
       incremental_topology_detail::makeTransitionLineage(node.id.value, polyline);
-  const IncrementalTopologyTransitionEvidence3D transition_evidence =
-      incremental_topology_detail::makeTransitionEvidence(
-          occupancy, polyline, footprint, validated_through_revision,
-          node.complete_through_revision, lineage_id);
+  const IncrementalTopologyTransitionEvidence3D transition_evidence{
+      .kind = unknown_exposure ? IncrementalTopologyTransitionKind3D::kOptimisticUnknown
+                               : IncrementalTopologyTransitionKind3D::kObservedFree,
+      .support_segment_count = polyline.empty() ? 0U : polyline.size() - 1U,
+      .validated_through_revision = validated_through_revision,
+      .complete_through_revision = node.complete_through_revision,
+      .lineage_id = lineage_id,
+      .unknown_exposure = unknown_exposure,
+  };
   return IncrementalTopologyConnector3D{
       .node = node.id,
       .polyline = std::move(polyline),
@@ -314,40 +330,62 @@ IncrementalTopologyGraph3DSnapshot::connectObserved(
   }
   std::ranges::sort(candidates, candidate_less);
 
-  std::optional<IncrementalTopologyConnector3D> best;
+  struct PreparedCandidate {
+    Candidate candidate{};
+    SampleTreePath3D tree{};
+    const IncrementalTopologyNode3D* node{nullptr};
+    double connector_length_m{0.0};
+  };
+
+  std::vector<PreparedCandidate> prepared_candidates;
+  prepared_candidates.reserve(candidates.size());
   for (const Candidate& candidate : candidates) {
-    // Every connector through this sample is at least its straight-line distance.
-    // Once that lower bound cannot improve the incumbent, later sorted candidates
-    // cannot improve it either.
-    if (best.has_value() && candidate.distance_m + 1.0e-9 >= best->length_m) {
-      break;
-    }
     if (deadline.has_value() && std::chrono::steady_clock::now() >= *deadline) {
       break;
     }
-    const std::optional<SampleTreePath3D> tree = reconstructSampleTree(
+    std::optional<SampleTreePath3D> tree = reconstructSampleTree(
         bounds_, *candidate.block, candidate.block->records[candidate.sample_index]);
     const IncrementalTopologyNode3D* const node = findNode(candidate.node);
     if (!tree.has_value() || tree->node != candidate.node || node == nullptr) {
       continue;
     }
+    const double connector_length_m = candidate.distance_m + pathLength(tree->polyline);
+    prepared_candidates.push_back(PreparedCandidate{
+        .candidate = candidate,
+        .tree = std::move(*tree),
+        .node = node,
+        .connector_length_m = connector_length_m,
+    });
+  }
+  std::ranges::sort(prepared_candidates, [](const PreparedCandidate& first,
+                                            const PreparedCandidate& second) {
+    const GridIndex3D& first_cell =
+        first.candidate.block->records[first.candidate.sample_index].cell;
+    const GridIndex3D& second_cell =
+        second.candidate.block->records[second.candidate.sample_index].cell;
+    return std::tie(first.connector_length_m, first.candidate.node.value, first_cell.z,
+                    first_cell.y, first_cell.x) <
+           std::tie(second.connector_length_m, second.candidate.node.value,
+                    second_cell.z, second_cell.y, second_cell.x);
+  });
+
+  for (PreparedCandidate& candidate : prepared_candidates) {
+    if (deadline.has_value() && std::chrono::steady_clock::now() >= *deadline) {
+      break;
+    }
     std::vector<Point3> polyline;
     appendUnique(polyline, position);
-    for (const Point3& point : tree->polyline) {
+    for (const Point3& point : candidate.tree.polyline) {
       appendUnique(polyline, point);
     }
-    std::optional<IncrementalTopologyConnector3D> connector = makeObservedConnector(
-        occupancy, *node, std::move(polyline), footprint, validation_policy, revision_);
-    if (!connector.has_value()) {
-      continue;
-    }
-    if (!best.has_value() || connector->length_m + 1.0e-9 < best->length_m ||
-        (std::abs(connector->length_m - best->length_m) <= 1.0e-9 &&
-         candidate.node < best->node)) {
-      best = std::move(connector);
+    std::optional<IncrementalTopologyConnector3D> connector =
+        makeObservedConnector(occupancy, *candidate.node, std::move(polyline),
+                              footprint, validation_policy, revision_, deadline);
+    if (connector.has_value()) {
+      return connector;
     }
   }
-  return best;
+  return std::nullopt;
 }
 
 std::optional<IncrementalTopologyConnector3D>
