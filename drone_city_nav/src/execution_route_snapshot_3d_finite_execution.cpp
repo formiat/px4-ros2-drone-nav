@@ -26,6 +26,14 @@ using namespace execution_route_snapshot_3d_internal;
 
 namespace execution_route_snapshot_3d_internal {
 
+template<typename T>
+[[nodiscard]] const T* optionalAddress(const std::optional<T>& value) noexcept {
+  if (!value.has_value()) {
+    return nullptr;
+  }
+  return std::addressof(value.value());
+}
+
 [[nodiscard]] static FiniteExecutionCertificationResult3D rejectedFiniteExecution(
     const FiniteExecutionCertificationStatus3D status,
     const RouteAdherenceAssessment3D* const route_adherence = nullptr) noexcept {
@@ -41,6 +49,30 @@ namespace execution_route_snapshot_3d_internal {
       .route_adherence_failure_distance_m =
           route_adherence != nullptr ? route_adherence->failure_distance_m : -1.0,
   };
+}
+
+[[nodiscard]] bool
+continuesCertifiedInitialHandoff(const ExecutionRouteSnapshot3D& current,
+                                 const CertifiedRouteSuffix3D& target_route) noexcept {
+  const FiniteExecutionState3D* const execution =
+      optionalAddress(current.finite_execution);
+  if (execution == nullptr || execution->kind != FiniteExecutionKind3D::kNominal ||
+      execution->source_route_generation != target_route.identity.generation ||
+      execution->source_geometry_revision !=
+          target_route.geometry->executable_geometry_revision ||
+      execution->horizon == nullptr || execution->horizon->states.empty()) {
+    return false;
+  }
+  const mppi::State& initial_state = execution->horizon->states.front();
+  const RouteProjection3D initial_projection = projectOntoRoute3DWithinStationWindow(
+      *target_route.geometry->route,
+      Point3{initial_state.x, initial_state.y, initial_state.z},
+      std::max(certificateView(target_route.certificate).suffix_start_station_m,
+               execution->begin_route_station_m - kExecutionBindingToleranceM),
+      std::min(target_route.endStationM(),
+               execution->begin_route_station_m + kExecutionBindingToleranceM));
+  return initial_projection.valid &&
+         initial_projection.distance_m > kMaximumRouteCrossTrackM;
 }
 
 [[nodiscard]] FiniteExecutionCertificationResult3D
@@ -287,7 +319,9 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
       certificate_view.suffix_start_station_m, certificate_view.certified_end_station_m,
       kMaximumRouteCrossTrackM, kMaximumRouteCrossTrackM,
       policy->sweptFootprint().sweep_step_m,
-      targets_initial_route || targets_direct_successor);
+      targets_initial_route || targets_direct_successor ||
+          (targets_current_route &&
+           continuesCertifiedInitialHandoff(current, target_route)));
   if (!route_adherence.accepted) {
     return rejectedFiniteExecution(
         FiniteExecutionCertificationStatus3D::kRouteAdherenceRejected,

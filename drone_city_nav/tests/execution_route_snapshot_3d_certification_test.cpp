@@ -717,6 +717,21 @@ TEST(ExecutionRouteSnapshot3DTest,
   EXPECT_TRUE(accepted.execution->validFor(&*suffix));
   EXPECT_LT(accepted.execution->stop_boundary.position.y, 0.01);
 
+  const ExecutionRouteTransitionResult3D activated = activateCertifiedRoute3D(
+      *initial, initial->version, *suffix, *accepted.execution);
+  ASSERT_TRUE(activated.applied());
+  ASSERT_NE(activated.next, nullptr);
+  ASSERT_TRUE(activated.next->route.has_value());
+  const FiniteExecutionCertificationResult3D continued =
+      certifyFiniteExecution3DDetailed(*activated.next, *activated.next->route,
+                                       handoff_certification(true, 103U));
+  EXPECT_TRUE(continued.certified())
+      << "status=" << finiteExecutionCertificationStatus3DName(continued.status)
+      << " route_adherence_status="
+      << finiteExecutionRouteAdherenceStatus3DName(continued.route_adherence_status)
+      << " route_adherence_failure_distance_m="
+      << continued.route_adherence_failure_distance_m;
+
   const FiniteExecutionCertificationResult3D nonconverging =
       certifyFiniteExecution3DDetailed(*initial, *suffix,
                                        handoff_certification(false, 103U));
