@@ -150,7 +150,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   no_static_3d_esdf_window_.vertical_recenter_margin_m =
       declare_parameter<double>("no_static_3d_esdf_vertical_recenter_margin_m", 9.0);
   no_static_3d_esdf_incremental_maximum_rebuild_ratio_ = declare_parameter<double>(
-      "no_static_3d_esdf_incremental_maximum_rebuild_ratio", 0.65);
+      "no_static_3d_esdf_incremental_maximum_rebuild_ratio", 0.15);
   const std::int64_t no_static_3d_esdf_full_audit_interval_builds =
       declare_parameter<std::int64_t>("no_static_3d_esdf_full_audit_interval_builds",
                                       120);
