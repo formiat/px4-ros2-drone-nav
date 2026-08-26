@@ -30,9 +30,9 @@ TEST(StaticRouteHandoff, AcceptsRawSafeRouteFromCurrentMotion) {
       static_cast<std::size_t>(grid.width * grid.height * grid.depth), 20.0F);
   const std::vector<RouteSample3D> route = straightRoute();
 
-  const StaticRouteHandoffResult result =
-      validateStaticRouteHandoff(State{.x = 3.0F, .y = 2.0F, .z = 10.0F, .vx = 6.0F},
-                                 Control{}, route, 20.0F, 15.0F, config(), grid, esdf);
+  const StaticRouteHandoffResult result = validateStaticRouteHandoff(
+      State{.x = 3.0F, .y = 2.0F, .z = 10.0F, .vx = 6.0F}, Control{}, route, 20.0F,
+      15.0F, 2.0F, config(), grid, esdf);
 
   EXPECT_EQ(result.status, StaticRouteHandoffStatus::kAccepted);
   EXPECT_TRUE(result.accepted);
@@ -48,9 +48,9 @@ TEST(StaticRouteHandoff, RejectsRawCollisionWithoutClearanceGate) {
   }
 
   const std::vector<RouteSample3D> route = straightRoute();
-  const StaticRouteHandoffResult result =
-      validateStaticRouteHandoff(State{.x = 3.0F, .y = 2.0F, .z = 10.0F, .vx = 6.0F},
-                                 Control{}, route, 20.0F, 15.0F, config(), grid, esdf);
+  const StaticRouteHandoffResult result = validateStaticRouteHandoff(
+      State{.x = 3.0F, .y = 2.0F, .z = 10.0F, .vx = 6.0F}, Control{}, route, 20.0F,
+      15.0F, 2.0F, config(), grid, esdf);
 
   EXPECT_EQ(result.status, StaticRouteHandoffStatus::kRawCollision);
   EXPECT_FALSE(result.accepted);
@@ -62,13 +62,29 @@ TEST(StaticRouteHandoff, CriticalClearanceRemainsExecutable) {
       static_cast<std::size_t>(grid.width * grid.height * grid.depth), 0.5F);
   const std::vector<RouteSample3D> route = straightRoute();
 
-  const StaticRouteHandoffResult result =
-      validateStaticRouteHandoff(State{.x = 3.0F, .y = 2.0F, .z = 10.0F, .vx = 6.0F},
-                                 Control{}, route, 20.0F, 15.0F, config(), grid, esdf);
+  const StaticRouteHandoffResult result = validateStaticRouteHandoff(
+      State{.x = 3.0F, .y = 2.0F, .z = 10.0F, .vx = 6.0F}, Control{}, route, 20.0F,
+      15.0F, 2.0F, config(), grid, esdf);
 
   EXPECT_EQ(result.status, StaticRouteHandoffStatus::kAccepted);
   EXPECT_TRUE(result.accepted);
   EXPECT_GT(result.critical_exposure_m, 0.0F);
+}
+
+TEST(StaticRouteHandoff, RejectsRouteWithoutReachableFiniteStoppingHandoff) {
+  const EsdfGrid grid{24, 24, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> esdf(
+      static_cast<std::size_t>(grid.width * grid.height * grid.depth), 20.0F);
+  const std::vector<RouteSample3D> route = straightRoute();
+
+  const StaticRouteHandoffResult result =
+      validateStaticRouteHandoff(State{.x = 3.0F, .y = 16.0F, .z = 10.0F}, Control{},
+                                 route, 20.0F, 15.0F, 2.0F, config(), grid, esdf);
+
+  EXPECT_EQ(result.status, StaticRouteHandoffStatus::kNoRouteConvergentFiniteHorizon);
+  EXPECT_FALSE(result.accepted);
+  EXPECT_GT(result.arrival_shaping_attempts, 0U);
+  EXPECT_GT(result.terminal_cross_track_m, 2.0F);
 }
 
 } // namespace

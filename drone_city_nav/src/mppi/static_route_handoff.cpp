@@ -1,6 +1,7 @@
 #include "drone_city_nav/mppi/static_route_handoff.hpp"
 
 #include "drone_city_nav/mppi/mppi_control_sequence.hpp"
+#include "drone_city_nav/mppi/mppi_finite_horizon.hpp"
 #include "drone_city_nav/mppi/mppi_reference.hpp"
 #include "drone_city_nav/mppi/mppi_route_projection.hpp"
 
@@ -30,13 +31,15 @@ StaticRouteHandoffResult validateStaticRouteHandoff(
     const State& current_state, const Control previous_applied_control,
     const std::span<const RouteSample3D> candidate_route,
     const float reference_speed_mps, const float maximum_cross_track_m,
-    const BenchmarkConfig& config, const EsdfGrid& grid,
-    const std::span<const float> esdf_m) {
+    const float terminal_cross_track_tolerance_m, const BenchmarkConfig& config,
+    const EsdfGrid& grid, const std::span<const float> esdf_m) {
   StaticRouteHandoffResult result;
   if (candidate_route.size() < 2U || config.steps < 2U ||
       !(config.dynamics.dt_s > 0.0F) || !(reference_speed_mps >= 0.0F) ||
       !(maximum_cross_track_m > 0.0F) || !std::isfinite(reference_speed_mps) ||
-      !std::isfinite(maximum_cross_track_m) || !validGrid(grid) ||
+      !std::isfinite(maximum_cross_track_m) ||
+      !(terminal_cross_track_tolerance_m > 0.0F) ||
+      !std::isfinite(terminal_cross_track_tolerance_m) || !validGrid(grid) ||
       esdf_m.size() != gridCellCount(grid)) {
     return result;
   }
@@ -63,10 +66,30 @@ StaticRouteHandoffResult validateStaticRouteHandoff(
       current_state, target, candidate_route, projection.station_m, handoff_speed_mps,
       config.dynamics, config.steps, previous_applied_control,
       config.stopping_capability);
+  std::vector<State> planned_states;
+  planned_states.reserve(controls.size() + 1U);
+  planned_states.push_back(current_state);
+  for (const Control& control : controls) {
+    planned_states.push_back(
+        integrateReference(planned_states.back(), control, config.dynamics));
+  }
+  RouteConvergentFiniteHorizon finite_route = buildRouteConvergentFiniteHorizon(
+      planned_states, controls, previous_applied_control, config.dynamics,
+      candidate_route, projection.station_m, terminal_cross_track_tolerance_m,
+      finiteHorizonArrivalSearchStepControls(config.dynamics.dt_s),
+      makeFiniteHorizonConfig(config.stopping_capability));
+  result.terminal_cross_track_m = finite_route.closest_terminal_cross_track_m;
+  result.arrival_shaping_attempts = finite_route.arrival_shaping_attempts;
+  result.nominal_prefix_control_count = finite_route.nominal_prefix_control_count;
+  if (!finite_route.horizon.has_value()) {
+    result.status = StaticRouteHandoffStatus::kNoRouteConvergentFiniteHorizon;
+    return result;
+  }
+  const std::vector<Control>& finite_controls = finite_route.horizon.value().controls;
   const std::vector<Control> zero_noise(config.steps);
   const RolloutMetrics metrics = simulateReference(
-      current_state, controls, zero_noise, config.dynamics, config.risk, config.costs,
-      grid, esdf_m, target.x, target.y, true, previous_applied_control,
+      current_state, finite_controls, zero_noise, config.dynamics, config.risk,
+      config.costs, grid, esdf_m, target.x, target.y, true, previous_applied_control,
       handoff_speed_mps, config.footprint, std::nullopt, nullptr, {}, std::nullopt,
       config.cooperative, std::nullopt, config.altitude_envelope);
   result.minimum_clearance_m = metrics.minimum_clearance_m;
@@ -98,6 +121,8 @@ staticRouteHandoffStatusName(const StaticRouteHandoffStatus status) noexcept {
       return "invalid_projection";
     case StaticRouteHandoffStatus::kExcessiveCrossTrack:
       return "excessive_cross_track";
+    case StaticRouteHandoffStatus::kNoRouteConvergentFiniteHorizon:
+      return "no_route_convergent_finite_horizon";
     case StaticRouteHandoffStatus::kAltitudeEnvelopeViolation:
       return "altitude_envelope_violation";
     case StaticRouteHandoffStatus::kRawCollision:

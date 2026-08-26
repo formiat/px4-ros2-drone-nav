@@ -507,7 +507,8 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
         handoff_control_fresh ? snapshot.applied_control.control : mppi::Control{},
         *candidate.mppi_route,
         static_cast<float>(speed_policy_config_.cruise_speed_mps),
-        static_cast<float>(active_guide_config_.maximum_cross_track_m), mppi_config_,
+        static_cast<float>(active_guide_config_.maximum_cross_track_m),
+        static_cast<float>(kFiniteExecutionRouteCrossTrackToleranceM3D), mppi_config_,
         candidate.grid, *candidate.distances_m);
   }
 

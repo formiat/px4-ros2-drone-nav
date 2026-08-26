@@ -384,6 +384,8 @@ void ProductionMppiNode::processGuideSearch3D(
       "raw_connector_validated=%s raw_suffix_validated=%s "
       "raw_validated_from_station_m=%.2f "
       "handoff=%s handoff_cross_track_m=%.2f handoff_minimum_clearance_m=%.2f "
+      "handoff_terminal_cross_track_m=%.2f handoff_arrival_shaping_attempts=%zu "
+      "handoff_nominal_prefix_controls=%zu "
       "handoff_planning_exposure_m=%.2f handoff_critical_exposure_m=%.2f "
       "splice=%.*s splice_overlap_m=%.2f splice_max_separation_m=%.2f "
       "splice_min_tangent_alignment=%.3f "
@@ -465,8 +467,9 @@ void ProductionMppiNode::processGuideSearch3D(
       activation.assessment.raw_validation.suffix_validated ? "true" : "false",
       activation.assessment.raw_validation.validated_from_station_m,
       mppi::staticRouteHandoffStatusName(handoff.status), handoff.cross_track_m,
-      handoff.minimum_clearance_m, handoff.planning_exposure_m,
-      handoff.critical_exposure_m,
+      handoff.minimum_clearance_m, handoff.terminal_cross_track_m,
+      handoff.arrival_shaping_attempts, handoff.nominal_prefix_control_count,
+      handoff.planning_exposure_m, handoff.critical_exposure_m,
       static_cast<int>(
           routeSpliceCertificationStatus3DName(activation.splice.status).size()),
       routeSpliceCertificationStatus3DName(activation.splice.status).data(),
