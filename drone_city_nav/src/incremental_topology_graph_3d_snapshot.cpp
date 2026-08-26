@@ -27,6 +27,32 @@ void appendUnique(std::vector<Point3>& output, const Point3& point) {
   return result;
 }
 
+[[nodiscard]] std::vector<Point3>
+splitLongSegments(const std::span<const Point3> polyline,
+                  const double maximum_segment_length_m) {
+  std::vector<Point3> result;
+  if (polyline.empty()) {
+    return result;
+  }
+  result.reserve(polyline.size());
+  appendUnique(result, polyline.front());
+  for (std::size_t index = 1U; index < polyline.size(); ++index) {
+    const Point3& first = polyline[index - 1U];
+    const Point3& second = polyline[index];
+    const double length_m = distance3D(first, second);
+    const std::size_t interval_count = std::max<std::size_t>(
+        1U, static_cast<std::size_t>(std::ceil(length_m / maximum_segment_length_m)));
+    for (std::size_t interval = 1U; interval <= interval_count; ++interval) {
+      const double ratio =
+          static_cast<double>(interval) / static_cast<double>(interval_count);
+      appendUnique(result, Point3{.x = std::lerp(first.x, second.x, ratio),
+                                  .y = std::lerp(first.y, second.y, ratio),
+                                  .z = std::lerp(first.z, second.z, ratio)});
+    }
+  }
+  return result;
+}
+
 [[nodiscard]] double distanceToInterval(const double value, const double minimum,
                                         const double maximum) noexcept {
   if (value < minimum) {
@@ -86,14 +112,18 @@ struct SampleTreePath3D {
   std::vector<Point3> polyline;
 };
 
-[[nodiscard]] std::optional<SampleTreePath3D>
-reconstructSampleTree(const GridBounds3D& bounds,
-                      const IncrementalTopologySampleBlock3D& block,
-                      const IncrementalTopologySampleRecord3D& sample) {
+[[nodiscard]] std::optional<SampleTreePath3D> reconstructSampleTree(
+    const GridBounds3D& bounds, const IncrementalTopologySampleBlock3D& block,
+    const IncrementalTopologySampleRecord3D& sample,
+    const std::optional<std::chrono::steady_clock::time_point> deadline =
+        std::nullopt) {
   SampleTreePath3D result{.node = sample.node, .polyline = {}};
   const IncrementalTopologySampleRecord3D* current = &sample;
   bool complete = false;
   for (std::size_t guard = 0U; guard <= block.records.size(); ++guard) {
+    if (deadline.has_value() && std::chrono::steady_clock::now() >= *deadline) {
+      return std::nullopt;
+    }
     appendUnique(result.polyline,
                  incremental_topology_detail::cellCenter(bounds, current->cell));
     if (current->parent_cell == current->cell) {
@@ -119,6 +149,8 @@ reconstructSampleTree(const GridBounds3D& bounds,
     const std::uint64_t graph_revision,
     const std::optional<std::chrono::steady_clock::time_point> deadline =
         std::nullopt) {
+  polyline = splitLongSegments(
+      polyline, std::max(occupancy.bounds().resolution_m, footprint.sweep_step_m));
   bool unknown_exposure = false;
   for (std::size_t index = 1U; index < polyline.size(); ++index) {
     if (deadline.has_value() && std::chrono::steady_clock::now() >= *deadline) {
@@ -353,7 +385,8 @@ IncrementalTopologyGraph3DSnapshot::connectObserved(
       break;
     }
     const std::optional<SampleTreePath3D> tree = reconstructSampleTree(
-        bounds_, *candidate.block, candidate.block->records[candidate.sample_index]);
+        bounds_, *candidate.block, candidate.block->records[candidate.sample_index],
+        deadline);
     const IncrementalTopologyNode3D* const node = findNode(candidate.node);
     if (!tree.has_value() || tree->node != candidate.node || node == nullptr) {
       continue;

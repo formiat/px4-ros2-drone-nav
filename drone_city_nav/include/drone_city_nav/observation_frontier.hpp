@@ -5,6 +5,7 @@
 #include "drone_city_nav/types.hpp"
 
 #include <array>
+#include <chrono>
 #include <compare>
 #include <cstddef>
 #include <cstdint>
@@ -102,6 +103,7 @@ struct ObservationFrontierDiscovery {
   std::uint64_t evaluation_sample_fingerprint{0U};
   std::array<std::size_t, 7U> evaluation_status_counts{};
   bool evaluation_budget_exhausted{false};
+  bool deadline_exhausted{false};
 };
 
 struct ObservationFrontierDiscoveryRegion {
@@ -142,7 +144,8 @@ evaluateObservationFrontiers(const ObservedOccupancyGrid3D& occupancy,
     const SensorObservabilityConfig& config,
     ObservedSpaceValidationPolicy validation_policy,
     std::span<const GridIndex3D> candidate_cells, std::size_t maximum_evaluations,
-    std::optional<Point3> mission_goal = std::nullopt);
+    std::optional<Point3> mission_goal = std::nullopt,
+    std::optional<std::chrono::steady_clock::time_point> deadline = std::nullopt);
 
 [[nodiscard]] bool
 sensorObservabilityConfigIsValid(const SensorObservabilityConfig& config) noexcept;

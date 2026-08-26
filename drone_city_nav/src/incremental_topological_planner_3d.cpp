@@ -708,7 +708,12 @@ makeObservedFreeConnector(const IncrementalTopologyNodeId node,
                                       : ObservedSpaceValidationPolicy::kAllowUnknown;
   discovery = discoverObservationFrontiersAtCells(
       occupancy, source_graph.revision(), observability, validation_policy,
-      candidate_cells, config.maximum_fresh_frontier_evaluations, mission_goal);
+      candidate_cells, config.maximum_fresh_frontier_evaluations, mission_goal,
+      deadline);
+  if (discovery.deadline_exhausted) {
+    deadline_exceeded = true;
+    return std::nullopt;
+  }
   std::optional<FrontierCandidate> best;
   for (const ObservationFrontier& frontier : discovery.frontiers) {
     if (deadline.has_value() && std::chrono::steady_clock::now() >= *deadline) {
@@ -992,9 +997,17 @@ IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planImpl(
                                    *occupancy, *observability, fresh_discovery,
                                    reachable_frontiers, active_frontier,
                                    frontier_diagnostics, deadline, deadline_exceeded);
-    if (deadline_exceeded) {
+    const bool mission_incumbent_available =
+        mission_continuation.has_value() && mission_continuation->node != nullptr;
+    if (deadline_exceeded && !mission_incumbent_available) {
       result.status = IncrementalTopologicalPlanStatus3D::kDeadlineExceeded;
       return result;
+    }
+    if (deadline_exceeded) {
+      // Fresh-frontier discovery is an optional refinement. Preserve the
+      // already validated mission-continuation incumbent when that refinement
+      // consumes the remaining planning budget.
+      frontier.reset();
     }
   }
   result.reachable_frontier_count = reachable_frontiers;

@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <sstream>
@@ -320,6 +321,20 @@ TEST(ObservationFrontierTest, BudgetedDiscoveryRotatesItsSampleAcrossRevisions) 
   ASSERT_EQ(first.evaluated_candidates, 2U);
   ASSERT_EQ(next.evaluated_candidates, 2U);
   EXPECT_NE(first.evaluation_sample_fingerprint, next.evaluation_sample_fingerprint);
+}
+
+TEST(ObservationFrontierTest, CandidateDiscoveryHonorsAnExpiredDeadline) {
+  const ObservedOccupancyGrid3D occupancy = makeHalfObservedWorld();
+  const std::vector<GridIndex3D> candidate_cells{{8, 12, 8}, {9, 12, 8}, {10, 12, 8}};
+
+  const ObservationFrontierDiscovery discovery = discoverObservationFrontiersAtCells(
+      occupancy, 17U, makeConfig(), kStrictValidation, candidate_cells, 128U,
+      std::nullopt, std::chrono::steady_clock::now() - std::chrono::milliseconds{1});
+
+  EXPECT_TRUE(discovery.deadline_exhausted);
+  EXPECT_EQ(discovery.sampled_free_voxels, 0U);
+  EXPECT_EQ(discovery.evaluated_candidates, 0U);
+  EXPECT_TRUE(discovery.frontiers.empty());
 }
 
 } // namespace

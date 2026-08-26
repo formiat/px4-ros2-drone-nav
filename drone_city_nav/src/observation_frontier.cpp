@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <functional>
@@ -499,11 +500,17 @@ makeBoundaryCandidate(const ObservedOccupancyGrid3D& occupancy, const GridIndex3
     const SensorObservabilityConfig& config,
     const ObservedSpaceValidationPolicy validation_policy,
     std::vector<BoundaryCandidate> boundary_candidates,
-    const std::size_t sampled_free_voxels, const std::size_t maximum_evaluations) {
+    const std::size_t sampled_free_voxels, const std::size_t maximum_evaluations,
+    const std::optional<std::chrono::steady_clock::time_point> deadline =
+        std::nullopt) {
   ObservationFrontierDiscovery result;
   result.sampled_free_voxels = sampled_free_voxels;
   result.boundary_candidates = boundary_candidates.size();
   result.evaluation_budget_exhausted = boundary_candidates.size() > maximum_evaluations;
+  if (deadline.has_value() && std::chrono::steady_clock::now() >= *deadline) {
+    result.deadline_exhausted = true;
+    return result;
+  }
   // Goal distance is only a budget-ordering term. Every reachable candidate
   // remains eligible as map revisions rotate the deterministic tie-breaker.
   std::ranges::sort(boundary_candidates, [](const BoundaryCandidate& lhs,
@@ -517,6 +524,10 @@ makeBoundaryCandidate(const ObservedOccupancyGrid3D& occupancy, const GridIndex3
       std::min(boundary_candidates.size(), maximum_evaluations);
   std::unordered_map<std::uint64_t, ObservationFrontier> frontier_by_id;
   for (std::size_t index = 0U; index < evaluation_count; ++index) {
+    if (deadline.has_value() && std::chrono::steady_clock::now() >= *deadline) {
+      result.deadline_exhausted = true;
+      break;
+    }
     ++result.evaluated_candidates;
     const BoundaryCandidate& candidate = boundary_candidates[index];
     result.evaluation_sample_fingerprint ^=
@@ -829,7 +840,8 @@ ObservationFrontierDiscovery discoverObservationFrontiersAtCells(
     const SensorObservabilityConfig& config,
     const ObservedSpaceValidationPolicy validation_policy,
     const std::span<const GridIndex3D> candidate_cells,
-    const std::size_t maximum_evaluations, const std::optional<Point3> mission_goal) {
+    const std::size_t maximum_evaluations, const std::optional<Point3> mission_goal,
+    const std::optional<std::chrono::steady_clock::time_point> deadline) {
   if (maximum_evaluations == 0U || !sensorObservabilityConfigIsValid(config) ||
       (mission_goal.has_value() && !finitePoint(*mission_goal))) {
     return {};
@@ -840,6 +852,14 @@ ObservationFrontierDiscovery discoverObservationFrontiersAtCells(
   boundary_candidates.reserve(candidate_cells.size());
   std::size_t sampled_free_voxels = 0U;
   for (const GridIndex3D cell : candidate_cells) {
+    if (deadline.has_value() && std::chrono::steady_clock::now() >= *deadline) {
+      ObservationFrontierDiscovery result = evaluateBoundaryCandidates(
+          occupancy, map_revision, config, validation_policy,
+          std::move(boundary_candidates), sampled_free_voxels, maximum_evaluations,
+          deadline);
+      result.deadline_exhausted = true;
+      return result;
+    }
     if (!unique_cells.insert(cell).second || !occupancy.contains(cell) ||
         !occupancy.isKnownFree(cell)) {
       continue;
@@ -852,7 +872,7 @@ ObservationFrontierDiscovery discoverObservationFrontiersAtCells(
   }
   return evaluateBoundaryCandidates(occupancy, map_revision, config, validation_policy,
                                     std::move(boundary_candidates), sampled_free_voxels,
-                                    maximum_evaluations);
+                                    maximum_evaluations, deadline);
 }
 
 const char*
