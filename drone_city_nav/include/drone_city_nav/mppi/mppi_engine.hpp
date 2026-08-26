@@ -65,6 +65,7 @@ struct MppiTickInput {
   std::optional<std::size_t> active_rollouts;
   DeterministicCandidateKind deterministic_candidate{
       DeterministicCandidateKind::kDisabled};
+  bool prefer_route_directed_candidate{false};
   bool cooperative_avoidance_active{false};
   bool noncooperative_avoidance_active{false};
 };
