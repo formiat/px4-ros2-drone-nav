@@ -250,7 +250,9 @@ production_mppi_node:
     topological_graph_3d_zero_progress_maximum_backoff_ms: 250
     topological_graph_3d_zero_progress_warning_streak: 3
     # Strategic selection owns this budget independently of direct lattice search.
-    topological_strategy_budget_ms: 50.0
+    # It must cover raw start anchoring plus both mission and exploration graph
+    # searches on the incrementally observed Manhattan intersection.
+    topological_strategy_budget_ms: 100.0
     topological_planner_3d_start_anchor_distance_m: 20.0
     # Return routes from confirmed topological dead ends are opt-in. Normal
     # Manhattan validation keeps goal-directed navigation only.

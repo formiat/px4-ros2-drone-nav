@@ -846,7 +846,7 @@ private:
   IncrementalTopologicalPlanner3DConfig topological_planner_3d_config_{};
   TopologicalExplorationMemory3DConfig topological_memory_3d_config_{};
   IncrementalTopologicalLatticeAdapter3DConfig topological_lattice_adapter_3d_config_{};
-  double topological_strategy_budget_ms_{50.0};
+  double topological_strategy_budget_ms_{100.0};
   double topological_graph_update_budget_ms_{50.0};
   IncrementalTopologyProgressWatchdog3D topology_progress_watchdog_{};
   bool topological_backtracking_enabled_{false};
