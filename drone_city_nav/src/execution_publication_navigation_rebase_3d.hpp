@@ -37,6 +37,16 @@ struct ExecutionPublicationNavigationRebaseResult3D {
   ExecutionPublicationNavigationRebaseStatus3D status{
       ExecutionPublicationNavigationRebaseStatus3D::kInvalidRequest};
   std::optional<ExecutionRouteTransitionResult3D> transition;
+  mppi::FiniteExecutionPathStatus path_validation_status{
+      mppi::FiniteExecutionPathStatus::kInvalidContract};
+  FiniteExecutionCertificationStatus3D route_certification_status{
+      FiniteExecutionCertificationStatus3D::kInvalidInput};
+  FiniteExecutionRouteAdherenceStatus3D route_adherence_status{
+      FiniteExecutionRouteAdherenceStatus3D::kNotEvaluated};
+  ExecutionRouteTransitionStatus3D transition_status{
+      ExecutionRouteTransitionStatus3D::kInvalidCandidate};
+  std::size_t route_adherence_failure_state_index{0U};
+  double route_adherence_failure_distance_m{-1.0};
 
   [[nodiscard]] bool rebased() const noexcept;
 };

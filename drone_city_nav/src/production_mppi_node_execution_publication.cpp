@@ -516,6 +516,29 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
               });
       if (!rebase.rebased() || !rebase.transition.has_value() ||
           rebase.transition->next == nullptr) {
+        RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 1000,
+            "EXECUTION_HORIZON_REBASE rebased=false status=%s path_validation=%s "
+            "route_certification=%.*s route_adherence=%.*s "
+            "route_adherence_state_index=%zu "
+            "route_adherence_failure_distance_m=%.3f transition=%.*s",
+            executionPublicationNavigationRebaseStatus3DName(rebase.status),
+            mppi::finiteExecutionPathStatusName(rebase.path_validation_status),
+            static_cast<int>(finiteExecutionCertificationStatus3DName(
+                                 rebase.route_certification_status)
+                                 .size()),
+            finiteExecutionCertificationStatus3DName(rebase.route_certification_status)
+                .data(),
+            static_cast<int>(
+                finiteExecutionRouteAdherenceStatus3DName(rebase.route_adherence_status)
+                    .size()),
+            finiteExecutionRouteAdherenceStatus3DName(rebase.route_adherence_status)
+                .data(),
+            rebase.route_adherence_failure_state_index,
+            rebase.route_adherence_failure_distance_m,
+            static_cast<int>(
+                executionRouteTransitionStatus3DName(rebase.transition_status).size()),
+            executionRouteTransitionStatus3DName(rebase.transition_status).data());
         return executionPublicationNavigationRebaseStatus3DName(rebase.status);
       }
       ExecutionRouteTransitionResult3D current_transition =

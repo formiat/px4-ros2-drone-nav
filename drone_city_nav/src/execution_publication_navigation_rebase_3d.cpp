@@ -72,7 +72,8 @@ timedPathPoints(const FiniteExecutionCandidateView3D& view) {
 
 [[nodiscard]] ExecutionRouteTransitionResult3D
 rebaseRouteExecution(const ExecutionPublicationNavigationRebaseRequest3D& request,
-                     const mppi::FiniteHorizon& horizon) {
+                     const mppi::FiniteHorizon& horizon,
+                     FiniteExecutionCertificationResult3D& diagnostic) {
   const ExecutionRouteSnapshot3D& expected = *request.expected_snapshot;
   const ExecutionRouteSnapshot3D& candidate = *request.candidate_snapshot;
   if (!candidate.finite_execution.has_value() || !candidate.route.has_value()) {
@@ -96,6 +97,12 @@ rebaseRouteExecution(const ExecutionPublicationNavigationRebaseRequest3D& reques
               .valid_from_ns = request.publication_now_ns,
               .kind = candidate_execution.kind,
           });
+  diagnostic.status = certified.status;
+  diagnostic.route_adherence_status = certified.route_adherence_status;
+  diagnostic.route_adherence_failure_state_index =
+      certified.route_adherence_failure_state_index;
+  diagnostic.route_adherence_failure_distance_m =
+      certified.route_adherence_failure_distance_m;
   if (!certified.certified() || !certified.execution.has_value()) {
     return {};
   }
@@ -166,11 +173,12 @@ bool ExecutionPublicationNavigationRebaseResult3D::rebased() const noexcept {
 ExecutionPublicationNavigationRebaseResult3D
 rebaseExecutionPublicationForCurrentNavigation3D(
     const ExecutionPublicationNavigationRebaseRequest3D& request) {
-  const auto reject = [](const ExecutionPublicationNavigationRebaseStatus3D status) {
-    ExecutionPublicationNavigationRebaseResult3D result;
-    result.status = status;
-    return result;
-  };
+  ExecutionPublicationNavigationRebaseResult3D result;
+  const auto reject =
+      [&result](const ExecutionPublicationNavigationRebaseStatus3D status) {
+        result.status = status;
+        return result;
+      };
   if (request.expected_snapshot == nullptr || request.candidate_snapshot == nullptr ||
       request.current_execution_input == nullptr ||
       !request.current_execution_input->valid() ||
@@ -225,19 +233,21 @@ rebaseExecutionPublicationForCurrentNavigation3D(
       .terminal_boundary = request.terminal_boundary,
   };
   std::optional<ExecutionRouteTransitionResult3D> transition;
+  FiniteExecutionCertificationResult3D route_certification_diagnostic;
   mppi::FiniteExecutionPathCandidateValidator route_candidate_validator;
   if (request.candidate_snapshot->finite_execution.has_value() &&
       request.candidate_snapshot->route.has_value()) {
-    route_candidate_validator = [&request,
-                                 &transition](const mppi::FiniteHorizon& candidate) {
-      ExecutionRouteTransitionResult3D candidate_transition =
-          rebaseRouteExecution(request, candidate);
-      if (!candidate_transition.applied() || candidate_transition.next == nullptr) {
-        return false;
-      }
-      transition.emplace(std::move(candidate_transition));
-      return true;
-    };
+    route_candidate_validator =
+        [&request, &transition,
+         &route_certification_diagnostic](const mppi::FiniteHorizon& candidate) {
+          ExecutionRouteTransitionResult3D candidate_transition =
+              rebaseRouteExecution(request, candidate, route_certification_diagnostic);
+          if (!candidate_transition.applied() || candidate_transition.next == nullptr) {
+            return false;
+          }
+          transition.emplace(std::move(candidate_transition));
+          return true;
+        };
   }
   const mppi::RebuiltFiniteExecutionPathContinuation rebuilt =
       mppi::rebuildFiniteExecutionPathContinuation(
@@ -247,6 +257,13 @@ rebaseExecutionPublicationForCurrentNavigation3D(
           candidate_view->policy->dynamics(), request.arrival_search_step_controls,
           *request.finite_horizon_config, current_world,
           std::move(route_candidate_validator));
+  result.path_validation_status = rebuilt.validation.status;
+  result.route_certification_status = route_certification_diagnostic.status;
+  result.route_adherence_status = route_certification_diagnostic.route_adherence_status;
+  result.route_adherence_failure_state_index =
+      route_certification_diagnostic.route_adherence_failure_state_index;
+  result.route_adherence_failure_distance_m =
+      route_certification_diagnostic.route_adherence_failure_distance_m;
   if (!rebuilt.accepted() || !rebuilt.horizon.has_value()) {
     return reject(ExecutionPublicationNavigationRebaseStatus3D::kPathRejected);
   }
@@ -254,11 +271,13 @@ rebaseExecutionPublicationForCurrentNavigation3D(
       request.candidate_snapshot->direct_tracking_execution.has_value()) {
     transition.emplace(rebaseDirectExecution(request, rebuilt.horizon.value()));
   }
+  if (transition.has_value()) {
+    result.transition_status = transition->status;
+  }
   if (!transition.has_value() || !transition->applied() ||
       transition->next == nullptr) {
     return reject(ExecutionPublicationNavigationRebaseStatus3D::kCertificationRejected);
   }
-  ExecutionPublicationNavigationRebaseResult3D result;
   result.status = ExecutionPublicationNavigationRebaseStatus3D::kRebased;
   result.transition.emplace(std::move(*transition));
   return result;
