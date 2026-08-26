@@ -177,6 +177,31 @@ TEST(IncrementalTopologicalLatticeAdapter3DTest,
 }
 
 TEST(IncrementalTopologicalLatticeAdapter3DTest,
+     PermissiveModeTraversesStrategicBoundariesAndBends) {
+  IncrementalTopologicalPlan3D plan = executablePlan(
+      IncrementalTopologicalRoutePurpose3D::kMissionTransit,
+      {{0.0, 0.0, 0.0}, {5.0, 0.0, 0.0}, {5.0, 5.0, 0.0}, {15.0, 5.0, 0.0}});
+  plan.strategic_boundary_stations_m = {5.0, 10.0, 20.0};
+
+  const auto directive_result = makeIncrementalTopologicalLatticeDirective3D(
+      plan, {0.0, 0.0, 0.0},
+      {.maximum_lookahead_m = 15.0,
+       .segment_capture_radius_m = 0.1,
+       .minimum_collinear_direction_cosine = -1.0,
+       .strategic_boundaries_enabled = false});
+
+  ASSERT_TRUE(directive_result.has_value());
+  const IncrementalTopologicalLatticeDirective3D directive =
+      directive_result.value_or(IncrementalTopologicalLatticeDirective3D{});
+  EXPECT_DOUBLE_EQ(directive.lattice.planning_goal.x, 10.0);
+  EXPECT_DOUBLE_EQ(directive.lattice.planning_goal.y, 5.0);
+  EXPECT_DOUBLE_EQ(directive.target_station_m, 15.0);
+  EXPECT_EQ(directive.captured_boundaries_skipped, 0U);
+  EXPECT_EQ(directive.executable_lookahead_boundaries_skipped, 0U);
+  EXPECT_FALSE(directive.reaches_topological_target);
+}
+
+TEST(IncrementalTopologicalLatticeAdapter3DTest,
      TraversesGeometryBendsWithinOneStrategicEdge) {
   IncrementalTopologicalPlan3D plan = executablePlan(
       IncrementalTopologicalRoutePurpose3D::kMissionTransit,

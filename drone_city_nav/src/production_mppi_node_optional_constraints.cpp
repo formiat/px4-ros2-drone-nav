@@ -29,6 +29,8 @@ void ProductionMppiNode::configureOptionalNavigationConstraints() {
           declare_parameter<bool>("stochastic_trajectory_selection_enabled", false),
       .observation_frontier_stops_enabled =
           declare_parameter<bool>("observation_frontier_stops_enabled", false),
+      .topological_segment_boundaries_enabled =
+          declare_parameter<bool>("topological_segment_boundaries_enabled", false),
   };
 }
 

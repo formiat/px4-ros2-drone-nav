@@ -21,10 +21,10 @@ struct IncrementalTopologicalLatticeAdapter3DConfig {
   // first route point outside this radius instead of repeatedly stopping at a
   // regenerated start connector.
   double segment_capture_radius_m{2.0};
-  // Consecutive graph edges are locally executable as one segment only while
-  // they retain this directional alignment. The adapter stops at a bend
-  // instead of letting the local lattice shortcut across it.
+  // When strategic boundaries are enabled, consecutive graph edges are
+  // locally executable as one segment only while they retain this alignment.
   double minimum_collinear_direction_cosine{0.95};
+  bool strategic_boundaries_enabled{true};
 };
 
 struct IncrementalTopologicalLatticeDirective3D {

@@ -378,13 +378,22 @@ void ProductionMppiNode::configureIncrementalTopology3D() {
       "topological_memory_3d_maximum_trail_nodes");
 
   topological_lattice_adapter_3d_config_.maximum_lookahead_m =
-      declare_parameter<double>("topological_lattice_3d_maximum_lookahead_m", 30.0);
+      declare_parameter<double>("topological_lattice_3d_maximum_lookahead_m",
+                                lattice_3d_config_.planning_goal_distance_m);
   topological_lattice_adapter_3d_config_.minimum_executable_lookahead_m =
       declare_parameter<double>("topological_lattice_3d_minimum_executable_lookahead_m",
                                 15.0);
   topological_lattice_adapter_3d_config_.segment_capture_radius_m =
       declare_parameter<double>("topological_lattice_3d_segment_capture_radius_m",
                                 lattice_3d_config_.goal_tolerance_m);
+  const double minimum_collinear_direction_cosine = declare_parameter<double>(
+      "topological_lattice_3d_minimum_collinear_direction_cosine", 0.95);
+  topological_lattice_adapter_3d_config_.minimum_collinear_direction_cosine =
+      optional_constraints_.topological_segment_boundaries_enabled
+          ? minimum_collinear_direction_cosine
+          : -1.0;
+  topological_lattice_adapter_3d_config_.strategic_boundaries_enabled =
+      optional_constraints_.topological_segment_boundaries_enabled;
   const double observation_rate_hz =
       declare_parameter<double>("topological_observation_rate_hz", 5.0);
   if (!incrementalTopologicalLatticeAdapter3DConfigIsValid(

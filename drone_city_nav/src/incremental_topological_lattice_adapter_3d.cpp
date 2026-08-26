@@ -135,6 +135,7 @@ makeIncrementalTopologicalLatticeDirective3D(
 
   const double route_end_station_m = projection->station_m + projection->remaining_m;
   const bool explicit_strategic_boundaries =
+      config.strategic_boundaries_enabled &&
       !plan.strategic_boundary_stations_m.empty();
   if (explicit_strategic_boundaries &&
       (!std::ranges::is_sorted(plan.strategic_boundary_stations_m) ||

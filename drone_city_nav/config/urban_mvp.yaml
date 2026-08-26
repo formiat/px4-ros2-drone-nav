@@ -388,6 +388,7 @@ production_mppi_node:
     static_route_geometry_optimization_enabled: false
     stochastic_trajectory_selection_enabled: false
     observation_frontier_stops_enabled: false
+    topological_segment_boundaries_enabled: false
     require_known_free_space: false
     route_proposal_productive_direct_minimum_mission_progress_m: 2.0
     route_proposal_productive_direct_minimum_progress_ratio: 0.15
@@ -453,6 +454,8 @@ production_mppi_node:
     topological_planner_3d_maximum_fresh_frontier_anchor_distance_m: 36.0
     topological_planner_3d_minimum_observation_target_displacement_m: 2.0
     topological_planner_3d_maximum_fresh_frontier_evaluations: 64
+    topological_lattice_3d_maximum_lookahead_m: 60.0
+    topological_lattice_3d_minimum_collinear_direction_cosine: 0.95
     topological_memory_3d_coverage_influence_radius_m: 4.0
     topological_memory_3d_maximum_observed_transition_m: 4.0
     no_static_global_lattice_deadline_ms: 100.0
