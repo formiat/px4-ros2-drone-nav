@@ -439,8 +439,15 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn("POINT_TO_POINT_SHUTDOWN_ON_MISSION_RESULT", self.text)
         self.assertIn("mission_goal_sequence_xyz_m", self.launch_text)
         self.assertIn("shutdown_on_mission_result", self.launch_text)
-        self.assertIn("ENABLE_LIVENESS_RECOVERY:-false", self.text)
-        self.assertIn("ENABLE_GLOBAL_GUIDE_STALL_RECOVERY:-false", self.text)
+        self.assertIn('default_no_static_progress_recovery="true"', self.text)
+        self.assertIn(
+            "ENABLE_LIVENESS_RECOVERY:-${default_no_static_progress_recovery}",
+            self.text,
+        )
+        self.assertIn(
+            "ENABLE_GLOBAL_GUIDE_STALL_RECOVERY:-${default_no_static_progress_recovery}",
+            self.text,
+        )
         self.assertIn('default_no_static_cycle_recovery="true"', self.text)
         self.assertIn('if bool_is_true "${active_static_map}"', self.text)
         self.assertIn(
