@@ -1332,6 +1332,14 @@ if(BUILD_TESTING)
   target_link_libraries(applied_control_admission_test drone_city_nav_core)
   enable_project_warnings(applied_control_admission_test)
 
+  ament_add_gtest(production_mppi_execution_control_test
+                  tests/production_mppi_execution_control_test.cpp)
+  target_compile_features(production_mppi_execution_control_test PRIVATE cxx_std_20)
+  target_include_directories(production_mppi_execution_control_test PRIVATE src)
+  target_link_libraries(production_mppi_execution_control_test
+                        drone_city_nav_core ${cpp_typesupport_target})
+  enable_project_warnings(production_mppi_execution_control_test)
+
   ament_add_gtest(execution_horizon_timing_test
                   tests/execution_horizon_timing_test.cpp)
   target_compile_features(execution_horizon_timing_test PRIVATE cxx_std_20)

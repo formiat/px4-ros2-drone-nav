@@ -272,6 +272,33 @@ void ProductionMppiNode::planningTick() {
         ProductionMppiExecutionReason::kNoExecutableHorizon, now_ns);
     return;
   }
+  const bool planned_owner_witnessed =
+      appliedControlAuthoritativeForExecution(applied_control, execution_horizon_owner,
+                                              now_ns, maximum_control_feedback_age_ms_);
+  switch (assessPlannedHorizonSupersession(execution_horizon_owner,
+                                           planned_owner_witnessed, now_ns)) {
+    case ProductionMppiHorizonSupersessionDecision::kDeferredAwaitingOwnerWitness:
+      RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "EXECUTION_HORIZON_SUPERSESSION deferred=true reason=awaiting_owner_witness "
+          "producer=%" PRIu64 " sequence=%" PRIu64,
+          execution_horizon_owner.producer_instance_id,
+          execution_horizon_owner.sequence);
+      return;
+    case ProductionMppiHorizonSupersessionDecision::kRejectedOwnerNotCurrent:
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "EXECUTION_HORIZON_SUPERSESSION rejected=true reason=owner_not_current "
+          "producer=%" PRIu64 " sequence=%" PRIu64,
+          execution_horizon_owner.producer_instance_id,
+          execution_horizon_owner.sequence);
+      publishFailClosedExecutionRevocation(
+          ProductionMppiExecutionReason::kNoExecutableHorizon, now_ns);
+      return;
+    case ProductionMppiHorizonSupersessionDecision::kAllowedNoPlannedOwner:
+    case ProductionMppiHorizonSupersessionDecision::kAllowedWitnessedOwner:
+      break;
+  }
   if (execution_input_capture_sequence_ == std::numeric_limits<std::uint64_t>::max()) {
     RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 1000,
                           "PRODUCTION_MPPI_UNAVAILABLE_CONTROL "

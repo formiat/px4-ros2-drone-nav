@@ -45,6 +45,33 @@ struct ProductionMppiExecutionHorizonOwner {
   bool valid{false};
 };
 
+enum class ProductionMppiHorizonSupersessionDecision : std::uint8_t {
+  kAllowedNoPlannedOwner,
+  kAllowedWitnessedOwner,
+  kDeferredAwaitingOwnerWitness,
+  kRejectedOwnerNotCurrent,
+};
+
+// A planned execution lease must remain the wire owner until offboard has
+// witnessed that exact tuple. Replacing an unwitnessed lease at planner rate
+// can keep every real feedback sample one generation behind forever.
+[[nodiscard]] constexpr ProductionMppiHorizonSupersessionDecision
+assessPlannedHorizonSupersession(const ProductionMppiExecutionHorizonOwner& owner,
+                                 const bool owner_witnessed,
+                                 const std::int64_t now_ns) noexcept {
+  if (!owner.valid ||
+      owner.execution_mode != msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED) {
+    return ProductionMppiHorizonSupersessionDecision::kAllowedNoPlannedOwner;
+  }
+  if (owner.valid_from_ns <= 0 || owner.valid_until_ns <= owner.valid_from_ns ||
+      now_ns < owner.valid_from_ns || now_ns >= owner.valid_until_ns) {
+    return ProductionMppiHorizonSupersessionDecision::kRejectedOwnerNotCurrent;
+  }
+  return owner_witnessed
+             ? ProductionMppiHorizonSupersessionDecision::kAllowedWitnessedOwner
+             : ProductionMppiHorizonSupersessionDecision::kDeferredAwaitingOwnerWitness;
+}
+
 enum class ProductionMppiExecutionMode : std::uint8_t {
   kPlanned = msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED,
   kPositionHold = msg::MppiTrajectoryHorizon::EXECUTION_MODE_POSITION_HOLD,

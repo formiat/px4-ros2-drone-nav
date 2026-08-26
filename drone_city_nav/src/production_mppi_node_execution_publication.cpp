@@ -466,7 +466,45 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
       navigation_.source_timestamp_us !=
           publication_execution_input->poseSourceTimestampUs() ||
       navigation_.receive_stamp_ns != publication_execution_input->poseReceiveStampNs();
-  if (navigation_advanced) {
+  const bool previous_control_evidence_current = [&]() noexcept {
+    switch (publication_execution_input->previousControlSource()) {
+      case ExecutionPreviousControlEvidenceSource3D::kOffboardFeedback:
+        return appliedControlAuthoritativeForExecution(
+                   applied_control_, execution_horizon_owner_, publication_now_ns,
+                   maximum_control_feedback_age_ms_) &&
+               applied_control_.horizon_producer_instance_id ==
+                   publication_execution_input
+                       ->previousControlSourceProducerInstanceId() &&
+               applied_control_.horizon_sequence ==
+                   publication_execution_input->previousControlSourceSequence() &&
+               applied_control_.source_stamp_ns ==
+                   publication_execution_input->previousControlSourceStampNs() &&
+               applied_control_.receive_stamp_ns ==
+                   publication_execution_input->previousControlReceiveStampNs() &&
+               sameControl(applied_control_.control,
+                           publication_execution_input->previousControl());
+      case ExecutionPreviousControlEvidenceSource3D::kMeasuredAcceleration:
+        return navigation_.measured_acceleration_valid &&
+               navigation_.source_timestamp_us ==
+                   publication_execution_input->previousControlSourceSequence() &&
+               navigation_.receive_stamp_ns ==
+                   publication_execution_input->previousControlSourceStampNs() &&
+               navigation_.receive_stamp_ns ==
+                   publication_execution_input->previousControlReceiveStampNs() &&
+               sameControl(navigation_.measured_equivalent_control,
+                           publication_execution_input->previousControl());
+      case ExecutionPreviousControlEvidenceSource3D::kAssumedZero:
+        // Stationary capture has its own exact empty-owner commit contract below.
+        return true;
+      case ExecutionPreviousControlEvidenceSource3D::kUnknown:
+      case ExecutionPreviousControlEvidenceSource3D::kEngineFallback:
+        return false;
+    }
+    return false;
+  }();
+  const bool execution_input_advanced =
+      navigation_advanced || !previous_control_evidence_current;
+  if (execution_input_advanced) {
     const auto rebase_for_current_navigation = [&]() -> const char* {
       const bool planned_snapshot_transition =
           publication_horizon.execution_mode ==
@@ -584,9 +622,10 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "EXECUTION_HORIZON_COMMIT late_rebase=true source_pose_revision=%" PRIu64
-        " publication_pose_revision=%" PRIu64,
+        " publication_pose_revision=%" PRIu64 " control_evidence_advanced=%s",
         cycle.execution_input->poseRevision(),
-        publication_execution_input->poseRevision());
+        publication_execution_input->poseRevision(),
+        previous_control_evidence_current ? "false" : "true");
   }
   const ExecutionRouteSnapshot3D* publication_snapshot{nullptr};
   if (cycle.snapshot_owner_required) {
