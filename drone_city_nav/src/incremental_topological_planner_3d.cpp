@@ -936,10 +936,20 @@ IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planImpl(
     return result;
   }
   result.start_node = start_connector->node;
+  const std::optional<GridIndex3D> goal_cell =
+      occupancy != nullptr ? occupancy->worldToCell(mission_goal) : std::nullopt;
+  const bool goal_anchor_can_satisfy_policy =
+      occupancy == nullptr || !config_.require_known_free_space ||
+      (goal_cell.has_value() && occupancy->isKnownFree(*goal_cell));
+  // A connector validated under the known-free policy must contain the goal
+  // centre. Avoid spending the bounded search budget testing graph samples
+  // when that necessary condition is already known to be false.
   const std::optional<IncrementalTopologyConnector3D> goal_connector =
-      connectPointToGraph(graph, occupancy, mission_goal,
-                          config_.maximum_goal_anchor_distance_m, footprint,
-                          config_.require_known_free_space, deadline);
+      goal_anchor_can_satisfy_policy
+          ? connectPointToGraph(graph, occupancy, mission_goal,
+                                config_.maximum_goal_anchor_distance_m, footprint,
+                                config_.require_known_free_space, deadline)
+          : std::nullopt;
   if (deadline.has_value() && std::chrono::steady_clock::now() >= *deadline) {
     result.status = IncrementalTopologicalPlanStatus3D::kDeadlineExceeded;
     return result;
