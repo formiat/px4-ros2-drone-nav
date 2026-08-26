@@ -57,7 +57,7 @@ TEST(MppiFiniteHorizon, ArrivalControlsRespectAccelerationAndJerkLimits) {
   constexpr std::size_t kNominalPrefixControls{10U};
 
   const std::optional<FiniteHorizon> finite =
-      buildFiniteHorizon(states, controls, kNominalPrefixControls, dynamics, Control{});
+      buildFiniteHorizon(states, controls, kNominalPrefixControls, dynamics, previous);
 
   ASSERT_TRUE(finite.has_value());
   const FiniteHorizon path = finite.value_or(FiniteHorizon{});
@@ -98,6 +98,40 @@ TEST(MppiFiniteHorizon, KeepsNominalPrefixAndStopsBeforeOriginalEndpoint) {
                   states[kNominalPrefixControls].y);
   EXPECT_LT(path.states.back().x, states.back().x);
   EXPECT_TRUE(finiteHorizonHasTerminalRestState(path));
+}
+
+TEST(MppiFiniteHorizon, ReconstructsNominalPrefixFromControls) {
+  DynamicsConfig dynamics;
+  const std::vector<Control> controls(120U, Control{.ax = 0.5F, .ay = -0.25F});
+  const State initial{.vx = 2.0F, .vy = 1.0F};
+  std::vector<State> inconsistent_states = simulate(initial, controls, dynamics);
+  inconsistent_states[1U].x += 10.0F;
+  inconsistent_states[2U].vy -= 4.0F;
+  constexpr std::size_t kNominalPrefixControls{12U};
+
+  const std::optional<FiniteHorizon> finite = buildFiniteHorizon(
+      inconsistent_states, controls, kNominalPrefixControls, dynamics, Control{});
+
+  ASSERT_TRUE(finite.has_value());
+  const FiniteHorizon path = finite.value_or(FiniteHorizon{});
+  const std::vector<State> expected = simulate(initial, controls, dynamics);
+  ASSERT_GT(path.states.size(), kNominalPrefixControls);
+  for (std::size_t index = 0U; index <= kNominalPrefixControls; ++index) {
+    EXPECT_FLOAT_EQ(path.states[index].x, expected[index].x);
+    EXPECT_FLOAT_EQ(path.states[index].y, expected[index].y);
+    EXPECT_FLOAT_EQ(path.states[index].vx, expected[index].vx);
+    EXPECT_FLOAT_EQ(path.states[index].vy, expected[index].vy);
+  }
+}
+
+TEST(MppiFiniteHorizon, RejectsNominalPrefixOutsideTheAppliedControlContract) {
+  DynamicsConfig dynamics;
+  dynamics.maximum_control_jerk_mps3 = 12.0F;
+  const std::vector<Control> controls(120U, Control{.ax = 3.0F});
+  const std::vector<State> states = simulate(State{}, controls, dynamics);
+
+  EXPECT_FALSE(
+      buildFiniteHorizon(states, controls, 10U, dynamics, Control{}).has_value());
 }
 
 TEST(MppiFiniteHorizon, UsesConservativeHorizontalDecelerationInArrivalProfile) {

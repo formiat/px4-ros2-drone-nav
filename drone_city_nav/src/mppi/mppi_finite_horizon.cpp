@@ -174,13 +174,18 @@ std::optional<FiniteHorizon> buildFiniteHorizon(
 
   FiniteHorizon horizon;
   horizon.nominal_prefix_control_count = nominal_prefix_control_count;
-  horizon.states.assign(
-      planned_states.begin(),
-      planned_states.begin() +
-          static_cast<std::ptrdiff_t>(nominal_prefix_control_count + 1U));
-  horizon.controls.assign(planned_controls.begin(),
-                          planned_controls.begin() + static_cast<std::ptrdiff_t>(
-                                                         nominal_prefix_control_count));
+  horizon.states.reserve(planned_states.size());
+  horizon.controls.reserve(planned_controls.size());
+  horizon.states.push_back(planned_states.front());
+  Control previous = previous_applied_control;
+  for (std::size_t index = 0U; index < nominal_prefix_control_count; ++index) {
+    const Control& control = planned_controls[index];
+    if (!controlWithinLimits(control, previous, dynamics)) {
+      return std::nullopt;
+    }
+    appendControl(horizon, control, dynamics);
+    previous = control;
+  }
   const std::size_t available_steps =
       planned_controls.size() - nominal_prefix_control_count;
   if (available_steps == 0U) {
@@ -190,9 +195,6 @@ std::optional<FiniteHorizon> buildFiniteHorizon(
                : std::nullopt;
   }
 
-  Control previous = nominal_prefix_control_count > 0U
-                         ? planned_controls[nominal_prefix_control_count - 1U]
-                         : previous_applied_control;
   if (!appendControlRelease(horizon, previous, dynamics, available_steps)) {
     return std::nullopt;
   }
