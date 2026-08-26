@@ -114,7 +114,7 @@ TEST(RouteStrategyArbitrator3DTest,
      StrategicMissionAcquisitionIsTransactionalAndOwnsReturnLineage) {
   RouteStrategyArbitrator3D arbitrator;
   const std::vector<RouteProposal3D> proposals{
-      directProposal(8.0),
+      directProposal(0.5),
       strategicProposal(RouteIntentPurpose3D::kMissionTransit, -2.0),
   };
 
@@ -190,7 +190,7 @@ TEST(RouteStrategyArbitrator3DTest,
   config.direct_release_minimum_progress_ratio_advantage = 0.0;
   RouteStrategyArbitrator3D arbitrator{config};
   const std::vector<RouteProposal3D> proposals{
-      directProposal(20.0),
+      directProposal(0.5),
       strategicProposal(RouteIntentPurpose3D::kMissionTransit, -2.0),
   };
   RouteStrategyArbitrationDecision3D decision =

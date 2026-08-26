@@ -174,8 +174,7 @@ TEST(RoutePlanning3DTest, ProductiveDirectTransitBeatsAValidatedStrategicFrontie
   EXPECT_EQ(selection.reason, RouteProposalSelectionReason3D::kProductiveDirectTransit);
 }
 
-TEST(RoutePlanning3DTest,
-     StrategicMissionContinuationBeatsAProductiveUnfinishedDirectPrefix) {
+TEST(RoutePlanning3DTest, ProductiveDirectPrefixDefersStrategicMissionContinuation) {
   const std::vector<RouteProposal3D> proposals{
       proposal(RouteIntentSource3D::kDirect, false, true, true, false, false, false,
                1.0, 9.0, 11.0, 13U, 3.0),
@@ -187,13 +186,11 @@ TEST(RoutePlanning3DTest,
       selectRouteProposal3D(proposals, kSelectionConfig);
 
   ASSERT_TRUE(selection.selected_index.has_value());
-  EXPECT_EQ(selection.selected_index.value_or(proposals.size()), 1U);
-  EXPECT_EQ(selection.reason,
-            RouteProposalSelectionReason3D::kStrategicMissionContinuation);
+  EXPECT_EQ(selection.selected_index.value_or(proposals.size()), 0U);
+  EXPECT_EQ(selection.reason, RouteProposalSelectionReason3D::kProductiveDirectTransit);
 }
 
-TEST(RoutePlanning3DTest,
-     PartialMissionContinuationKeepsStrategicPriorityWithoutClaimingArrival) {
+TEST(RoutePlanning3DTest, ProductiveDirectPrefixAlsoDefersPartialMissionContinuation) {
   RouteProposal3D partial =
       proposal(RouteIntentSource3D::kTopology, true, true, true, true, false, false,
                10.0, 3.0, 4.0, 19U, -2.0, RouteIntentPurpose3D::kMissionTransit, false);
@@ -209,12 +206,11 @@ TEST(RoutePlanning3DTest,
       selectRouteProposal3D(proposals, kSelectionConfig);
 
   ASSERT_TRUE(selection.selected_index.has_value());
-  EXPECT_EQ(selection.selected_index.value_or(proposals.size()), 1U);
+  EXPECT_EQ(selection.selected_index.value_or(proposals.size()), 0U);
   EXPECT_TRUE(isStrategicMissionContinuation3D(partial));
   EXPECT_FALSE(partial.intent.intent_reaches_mission_target);
   EXPECT_FALSE(partial.evidence.reaches_mission_target);
-  EXPECT_EQ(selection.reason,
-            RouteProposalSelectionReason3D::kStrategicMissionContinuation);
+  EXPECT_EQ(selection.reason, RouteProposalSelectionReason3D::kProductiveDirectTransit);
 }
 
 TEST(RoutePlanning3DTest, InefficientDirectPrefixYieldsToAValidatedStrategicFrontier) {
