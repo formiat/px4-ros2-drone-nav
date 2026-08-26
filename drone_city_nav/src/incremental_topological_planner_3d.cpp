@@ -172,17 +172,6 @@ indexSourceEdges(const IncrementalTopologyGraph3DSnapshot& graph) {
   return result;
 }
 
-void appendObservationAnchors(std::vector<IncrementalTopologyNodeId>& anchors,
-                              const IncrementalTopologyGraph3DSnapshot& graph) {
-  for (const IncrementalTopologyNode3D& node : graph.nodes()) {
-    if (node.unknown_boundary_exposure) {
-      anchors.push_back(node.id);
-    }
-  }
-  std::ranges::sort(anchors);
-  anchors.erase(std::unique(anchors.begin(), anchors.end()), anchors.end());
-}
-
 [[nodiscard]] std::uint64_t
 supportingRevision(const IncrementalTopologyGraph3DSnapshot& graph,
                    const IncrementalTopologyEdge3D& edge) noexcept {
@@ -969,9 +958,6 @@ IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planImpl(
   std::vector<IncrementalTopologyNodeId> anchors{result.start_node};
   if (result.goal_node && *result.goal_node != result.start_node) {
     anchors.push_back(*result.goal_node);
-  }
-  if (occupancy != nullptr && observability != nullptr) {
-    appendObservationAnchors(anchors, graph);
   }
   const RegionalTopologyGraph3D regional = buildRegionalTopologyGraph3D(graph, anchors);
   const RegionalAdjacency adjacency = buildRegionalAdjacency(regional);

@@ -85,44 +85,9 @@ buildSourceAdjacency(const IncrementalTopologyGraph3DSnapshot& graph) {
   return result;
 }
 
-[[nodiscard]] bool isGeometricTurn(const IncrementalTopologyNode3D& node,
-                                   const SourceAdjacency& adjacency,
-                                   const SourceNodes& nodes) noexcept {
-  const auto adjacent = adjacency.find(node.id);
-  if (adjacent == adjacency.end() || adjacent->second.size() != 2U) {
-    return false;
-  }
-  const auto first = nodes.find(adjacent->second[0U].neighbor);
-  const auto second = nodes.find(adjacent->second[1U].neighbor);
-  if (first == nodes.end() || second == nodes.end()) {
-    return true;
-  }
-  const Vec3 first_direction{first->second->representative.x - node.representative.x,
-                             first->second->representative.y - node.representative.y,
-                             first->second->representative.z - node.representative.z};
-  const Vec3 second_direction{second->second->representative.x - node.representative.x,
-                              second->second->representative.y - node.representative.y,
-                              second->second->representative.z - node.representative.z};
-  const double first_length = std::sqrt(first_direction.x * first_direction.x +
-                                        first_direction.y * first_direction.y +
-                                        first_direction.z * first_direction.z);
-  const double second_length = std::sqrt(second_direction.x * second_direction.x +
-                                         second_direction.y * second_direction.y +
-                                         second_direction.z * second_direction.z);
-  if (first_length <= 1.0e-9 || second_length <= 1.0e-9) {
-    return true;
-  }
-  const double cosine =
-      (first_direction.x * second_direction.x + first_direction.y * second_direction.y +
-       first_direction.z * second_direction.z) /
-      (first_length * second_length);
-  constexpr double kStraightCorridorCosine{-0.9659258262890683};
-  return cosine > kStraightCorridorCosine;
-}
-
 [[nodiscard]] bool hasStrategicTrait(const IncrementalTopologyNode3D& node) noexcept {
   return node.traits.junction || node.traits.turn || node.traits.vertical_connector ||
-         node.traits.frontier || node.traits.terminal || node.unknown_boundary_exposure;
+         node.traits.frontier || node.traits.terminal;
 }
 
 void preserveCycleAnchors(
@@ -233,8 +198,11 @@ buildRegionalTopologyGraph3D(const IncrementalTopologyGraph3DSnapshot& graph,
     const auto adjacent = adjacency.find(node.id);
     const std::size_t degree =
         adjacent == adjacency.end() ? 0U : adjacent->second.size();
-    if (degree != 2U || hasStrategicTrait(node) ||
-        isGeometricTurn(node, adjacency, nodes)) {
+    // A degree-two voxel is route geometry, not a strategic decision. Its full
+    // certified polyline remains on the contracted edge, so preserving every
+    // grid-staircase bend or observation-boundary cell only defeats regional
+    // contraction without adding connectivity information.
+    if (degree != 2U || hasStrategicTrait(node)) {
       preserved.insert(node.id);
     }
   }
@@ -252,7 +220,7 @@ buildRegionalTopologyGraph3D(const IncrementalTopologyGraph3DSnapshot& graph,
         .traits =
             IncrementalTopologyNodeTraits3D{
                 .junction = node.traits.junction,
-                .turn = node.traits.turn || isGeometricTurn(node, adjacency, nodes),
+                .turn = node.traits.turn,
                 .vertical_connector = node.traits.vertical_connector,
                 .frontier = node.traits.frontier,
                 .terminal = node.traits.terminal,

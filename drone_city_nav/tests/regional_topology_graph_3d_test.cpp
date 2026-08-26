@@ -89,6 +89,48 @@ TEST(RegionalTopologyGraph3DTest,
       }));
 }
 
+TEST(RegionalTopologyGraph3DTest,
+     ContractsNonBranchingObservedBoundaryBendsWithoutLosingTheirGeometry) {
+  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 48, 48, 16}};
+  fillFreeBox(occupancy, 2, 24, 9, 11, 5, 7);
+  fillFreeBox(occupancy, 22, 24, 9, 45, 5, 7);
+  IncrementalTopologyGraph3D source{makeConfig()};
+  static_cast<void>(source.update(occupancy, 1U, {}, true));
+  const IncrementalTopologyGraph3DSnapshot source_snapshot = source.snapshot();
+
+  const RegionalTopologyGraph3D regional =
+      buildRegionalTopologyGraph3D(source_snapshot);
+
+  ASSERT_GT(source_snapshot.nodes().size(), 2U);
+  EXPECT_TRUE(std::ranges::any_of(source_snapshot.nodes(), [](const auto& node) {
+    return node.unknown_boundary_exposure;
+  }));
+  EXPECT_LT(regional.nodes().size(), source_snapshot.nodes().size());
+  std::unordered_set<IncrementalTopologyEdgeId, IncrementalTopologyEdgeIdHash>
+      represented;
+  bool horizontal_leg = false;
+  bool vertical_leg = false;
+  for (const RegionalTopologyEdge3D& edge : regional.edges()) {
+    horizontal_leg =
+        horizontal_leg || std::ranges::any_of(edge.polyline, [](const Point3& point) {
+          return point.x > 20.0 && point.y < 15.0;
+        });
+    vertical_leg =
+        vertical_leg || std::ranges::any_of(edge.polyline, [](const Point3& point) {
+          return point.x > 20.0 && point.y > 40.0;
+        });
+    for (const IncrementalTopologyEdgeId source_edge : edge.source_edges) {
+      EXPECT_TRUE(represented.insert(source_edge).second);
+    }
+  }
+  EXPECT_EQ(represented.size(), source_snapshot.edges().size());
+  EXPECT_TRUE(std::ranges::any_of(regional.nodes(), [](const auto& node) {
+    return node.unknown_boundary_exposure;
+  }));
+  EXPECT_TRUE(horizontal_leg);
+  EXPECT_TRUE(vertical_leg);
+}
+
 TEST(RegionalTopologyGraph3DTest, ExplicitAnchorSplitsContractedCorridor) {
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 48, 24, 16}};
   fillOccupied(occupancy);
