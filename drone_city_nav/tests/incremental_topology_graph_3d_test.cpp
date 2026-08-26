@@ -904,11 +904,25 @@ TEST(IncrementalTopologyGraph3DTest,
   const std::optional<IncrementalTopologyConnector3D> connector =
       snapshot.connectObserved(occupancy, {183.25, 11.5, 3.5}, 5.0, config.footprint,
                                ObservedSpaceValidationPolicy::kRequireKnownFree);
+  const std::optional<IncrementalTopologyConnector3D> full_scan_connector =
+      snapshot.connectObserved(occupancy, {183.25, 11.5, 3.5}, 500.0, config.footprint,
+                               ObservedSpaceValidationPolicy::kRequireKnownFree);
 
-  if (!connector.has_value()) {
-    FAIL() << "local observed connector must exist";
+  ASSERT_TRUE(connector.has_value()) << "local observed connector must exist";
+  ASSERT_TRUE(full_scan_connector.has_value())
+      << "full-range observed connector must exist";
+  const IncrementalTopologyConnector3D local =
+      connector.value_or(IncrementalTopologyConnector3D{});
+  const IncrementalTopologyConnector3D full_scan =
+      full_scan_connector.value_or(IncrementalTopologyConnector3D{});
+  EXPECT_EQ(local.node, full_scan.node);
+  ASSERT_EQ(local.polyline.size(), full_scan.polyline.size());
+  for (std::size_t index = 0U; index < local.polyline.size(); ++index) {
+    EXPECT_DOUBLE_EQ(local.polyline[index].x, full_scan.polyline[index].x);
+    EXPECT_DOUBLE_EQ(local.polyline[index].y, full_scan.polyline[index].y);
+    EXPECT_DOUBLE_EQ(local.polyline[index].z, full_scan.polyline[index].z);
   }
-  const IncrementalTopologyConnector3D& local = *connector;
+  EXPECT_DOUBLE_EQ(local.length_m, full_scan.length_m);
   const IncrementalTopologyNode3D* node = snapshot.findNode(local.node);
   if (node == nullptr) {
     FAIL() << "connector node must belong to the snapshot";

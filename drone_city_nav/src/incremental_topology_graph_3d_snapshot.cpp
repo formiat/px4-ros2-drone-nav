@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <limits>
+#include <optional>
 #include <ranges>
 #include <tuple>
 #include <utility>
@@ -85,6 +87,91 @@ bucketDistanceLowerBound(const GridBounds3D& bounds,
   return std::hypot(distanceToInterval(position.x, minimum_x, maximum_x),
                     distanceToInterval(position.y, minimum_y, maximum_y),
                     distanceToInterval(position.z, minimum_z, maximum_z));
+}
+
+struct BlockRange3D {
+  IncrementalTopologyBlockIndex3D minimum{};
+  IncrementalTopologyBlockIndex3D maximum{};
+  std::uint64_t volume{0U};
+};
+
+[[nodiscard]] std::optional<std::pair<int, int>>
+cellIntervalWithinDistance(const double position, const double maximum_distance_m,
+                           const double origin, const double resolution_m,
+                           const int cell_count) noexcept {
+  if (cell_count <= 0 || !(resolution_m > 0.0) || !std::isfinite(resolution_m)) {
+    return std::nullopt;
+  }
+  const double minimum_center = origin + 0.5 * resolution_m;
+  const double maximum_center =
+      origin + (static_cast<double>(cell_count) - 0.5) * resolution_m;
+  const double query_minimum = position - maximum_distance_m;
+  const double query_maximum = position + maximum_distance_m;
+  if (query_maximum < minimum_center || query_minimum > maximum_center) {
+    return std::nullopt;
+  }
+
+  // Include one conservative boundary cell on either side. The exact spherical
+  // lower bound is applied afterwards, so this only broadens the lookup range.
+  const auto lower_cell = [&]() {
+    if (query_minimum <= minimum_center) {
+      return 0;
+    }
+    const double index = (query_minimum - origin) / resolution_m - 0.5;
+    return std::clamp(static_cast<int>(std::floor(index)), 0, cell_count - 1);
+  }();
+  const auto upper_cell = [&]() {
+    if (query_maximum >= maximum_center) {
+      return cell_count - 1;
+    }
+    const double index = (query_maximum - origin) / resolution_m - 0.5;
+    return std::clamp(static_cast<int>(std::ceil(index)), 0, cell_count - 1);
+  }();
+  return std::pair{lower_cell, upper_cell};
+}
+
+[[nodiscard]] std::optional<BlockRange3D>
+blockRangeWithinDistance(const GridBounds3D& bounds, const Point3& position,
+                         const double maximum_distance_m,
+                         const int block_size_cells) noexcept {
+  if (block_size_cells <= 0 || !std::isfinite(position.x) ||
+      !std::isfinite(position.y) || !std::isfinite(position.z)) {
+    return std::nullopt;
+  }
+  const auto x =
+      cellIntervalWithinDistance(position.x, maximum_distance_m, bounds.origin_x,
+                                 bounds.resolution_m, bounds.width_cells);
+  const auto y =
+      cellIntervalWithinDistance(position.y, maximum_distance_m, bounds.origin_y,
+                                 bounds.resolution_m, bounds.height_cells);
+  const auto z =
+      cellIntervalWithinDistance(position.z, maximum_distance_m, bounds.origin_z,
+                                 bounds.resolution_m, bounds.depth_cells);
+  if (!x.has_value() || !y.has_value() || !z.has_value()) {
+    return std::nullopt;
+  }
+  const IncrementalTopologyBlockIndex3D minimum =
+      incremental_topology_detail::blockForCell(
+          GridIndex3D{x->first, y->first, z->first}, block_size_cells);
+  const IncrementalTopologyBlockIndex3D maximum =
+      incremental_topology_detail::blockForCell(
+          GridIndex3D{x->second, y->second, z->second}, block_size_cells);
+  const auto extent = [](const int lower, const int upper) {
+    return static_cast<std::uint64_t>(upper) - static_cast<std::uint64_t>(lower) + 1U;
+  };
+  const auto saturated_product = [](const std::uint64_t first,
+                                    const std::uint64_t second) {
+    return first > std::numeric_limits<std::uint64_t>::max() / second
+               ? std::numeric_limits<std::uint64_t>::max()
+               : first * second;
+  };
+  const std::uint64_t xy_volume =
+      saturated_product(extent(minimum.x, maximum.x), extent(minimum.y, maximum.y));
+  return BlockRange3D{
+      .minimum = minimum,
+      .maximum = maximum,
+      .volume = saturated_product(xy_volume, extent(minimum.z, maximum.z)),
+  };
 }
 
 [[nodiscard]] const IncrementalTopologySampleBlock3D* findSampleBlock(
@@ -293,7 +380,8 @@ IncrementalTopologyGraph3DSnapshot::connectObserved(
     const ObservedSpaceValidationPolicy validation_policy,
     const std::optional<std::chrono::steady_clock::time_point> deadline) const {
   if (!(maximum_distance_m >= 0.0) || !std::isfinite(maximum_distance_m) ||
-      revision_ == 0U ||
+      !std::isfinite(position.x) || !std::isfinite(position.y) ||
+      !std::isfinite(position.z) || revision_ == 0U ||
       !incremental_topology_detail::sameBounds(bounds_, occupancy.bounds())) {
     return std::nullopt;
   }
@@ -321,15 +409,38 @@ IncrementalTopologyGraph3DSnapshot::connectObserved(
   };
 
   std::vector<BucketCandidate> nearby_buckets;
-  nearby_buckets.reserve(sample_blocks_.size());
-  for (const auto& block : sample_blocks_) {
+  const std::optional<BlockRange3D> block_range = blockRangeWithinDistance(
+      bounds_, position, maximum_distance_m, sample_block_size_cells_);
+  if (!block_range.has_value()) {
+    return std::nullopt;
+  }
+  nearby_buckets.reserve(static_cast<std::size_t>(
+      std::min<std::uint64_t>(block_range->volume, sample_blocks_.size())));
+  const auto append_if_nearby = [&](const IncrementalTopologySampleBlock3D* block) {
     const double lower_bound_m = bucketDistanceLowerBound(
         bounds_, block->block, sample_block_size_cells_, position);
     if (lower_bound_m <= maximum_distance_m) {
       nearby_buckets.push_back(BucketCandidate{
-          .block = block.get(),
+          .block = block,
           .distance_lower_bound_m = lower_bound_m,
       });
+    }
+  };
+  if (block_range->volume < sample_blocks_.size()) {
+    for (int z = block_range->minimum.z; z <= block_range->maximum.z; ++z) {
+      for (int y = block_range->minimum.y; y <= block_range->maximum.y; ++y) {
+        for (int x = block_range->minimum.x; x <= block_range->maximum.x; ++x) {
+          const IncrementalTopologySampleBlock3D* const block =
+              findSampleBlock(sample_blocks_, IncrementalTopologyBlockIndex3D{x, y, z});
+          if (block != nullptr) {
+            append_if_nearby(block);
+          }
+        }
+      }
+    }
+  } else {
+    for (const auto& block : sample_blocks_) {
+      append_if_nearby(block.get());
     }
   }
   std::ranges::sort(
