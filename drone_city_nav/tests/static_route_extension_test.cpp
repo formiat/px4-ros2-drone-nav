@@ -443,6 +443,21 @@ TEST(StaticRouteExtensionTest, ObservationReplacementRetainsSameFrontier) {
   EXPECT_EQ(decision.status, ObservationRouteReplacementStatus::kSameFrontierRetained);
 }
 
+TEST(StaticRouteExtensionTest, ObservationRecoveryHasNoFrontierWithoutResidentOwner) {
+  const ObservationRouteReplacementDecision decision =
+      evaluateObservationRouteReplacement(ObservationRouteReplacementObservation{
+          .active_frontier = std::nullopt,
+          .candidate_frontier = testFrontier(7U, 11U),
+          .active_score = 12.0,
+          .candidate_score = 20.0,
+          .minimum_score_improvement = 0.5,
+          .active_frontier_still_valid = true,
+      });
+
+  EXPECT_TRUE(decision.accepted);
+  EXPECT_EQ(decision.status, ObservationRouteReplacementStatus::kNoActiveFrontier);
+}
+
 TEST(StaticRouteExtensionTest, ObservationReplacementRequiresMeasuredProgress) {
   const ObservationRouteReplacementDecision decision =
       evaluateObservationRouteReplacement(ObservationRouteReplacementObservation{

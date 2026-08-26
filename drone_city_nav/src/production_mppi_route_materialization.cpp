@@ -118,13 +118,18 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
     result.replacement_policy = StaticRouteReplacementPolicy::kAllowTopologicalProgress;
   }
 
+  const std::optional<ObservationFrontier> active_observation_frontier =
+      active_route != nullptr && active_route->valid() && active_route->geometry &&
+              active_route->geometry->route_purpose ==
+                  Lattice3DRoutePurpose::kObservationFrontier
+          ? active_route->geometry->observation_frontier
+          : std::nullopt;
   bool active_observation_frontier_still_valid = false;
-  if (world.observed_occupancy && world.lattice_3d_observation_frontier) {
+  if (world.observed_occupancy && active_observation_frontier) {
     const ObservationFrontierSetEvaluation active_evaluation =
         evaluateObservationFrontiers(
-            *world.observed_occupancy,
-            world.lattice_3d_observation_frontier->observation_pose, world.revision,
-            lattice_3d_config_.sensor_observability,
+            *world.observed_occupancy, active_observation_frontier->observation_pose,
+            world.revision, lattice_3d_config_.sensor_observability,
             lattice_3d_config_.require_known_free_space
                 ? ObservedSpaceValidationPolicy::kRequireKnownFree
                 : ObservedSpaceValidationPolicy::kAllowUnknown);
@@ -132,13 +137,12 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
   }
   if (lattice.route_purpose == Lattice3DRoutePurpose::kObservationFrontier) {
     const bool active_observation_frontier_reached =
-        world.lattice_3d_observation_frontier.has_value() &&
-        distance3D(current_position,
-                   world.lattice_3d_observation_frontier->observation_pose) <=
+        active_observation_frontier.has_value() &&
+        distance3D(current_position, active_observation_frontier->observation_pose) <=
             lattice_3d_config_.goal_tolerance_m;
     result.observation_replacement =
         evaluateObservationRouteReplacement(ObservationRouteReplacementObservation{
-            .active_frontier = world.lattice_3d_observation_frontier,
+            .active_frontier = active_observation_frontier,
             .candidate_frontier = lattice.observation_frontier,
             .active_score = world.lattice_frontier_selection_score,
             .candidate_score = lattice.frontier_selection_score,
