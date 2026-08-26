@@ -711,19 +711,32 @@ makeObservedFreeConnector(const IncrementalTopologyNodeId node,
   const ObservedSpaceValidationPolicy validation_policy =
       config.require_known_free_space ? ObservedSpaceValidationPolicy::kRequireKnownFree
                                       : ObservedSpaceValidationPolicy::kAllowUnknown;
+  std::optional<std::chrono::steady_clock::time_point> discovery_deadline = deadline;
+  if (deadline.has_value()) {
+    const auto materialization_reserve =
+        std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+            std::chrono::duration<double, std::milli>{
+                config.fresh_frontier_materialization_reserve_ms});
+    const auto now = std::chrono::steady_clock::now();
+    if (now + materialization_reserve >= *deadline) {
+      deadline_exceeded = true;
+      return std::nullopt;
+    }
+    discovery_deadline = *deadline - materialization_reserve;
+  }
   discovery = discoverObservationFrontiersAtCells(
       occupancy, source_graph.revision(), observability, validation_policy,
       candidate_cells, config.maximum_fresh_frontier_evaluations, mission_goal,
-      deadline);
-  if (discovery.deadline_exhausted) {
+      discovery_deadline);
+  if (discovery.deadline_exhausted && discovery.frontiers.empty()) {
     deadline_exceeded = true;
     return std::nullopt;
   }
   std::optional<FrontierCandidate> best;
   for (const ObservationFrontier& frontier : discovery.frontiers) {
     if (deadline.has_value() && std::chrono::steady_clock::now() >= *deadline) {
-      deadline_exceeded = true;
-      return std::nullopt;
+      deadline_exceeded = !best.has_value();
+      break;
     }
     if (distance3D(start, frontier.observation_pose) <
             config.minimum_observation_target_displacement_m ||
@@ -798,6 +811,9 @@ makeObservedFreeConnector(const IncrementalTopologyNodeId node,
     if (!best || betterFrontier(candidate, *best)) {
       best = std::move(candidate);
     }
+  }
+  if (!best.has_value() && discovery.deadline_exhausted) {
+    deadline_exceeded = true;
   }
   return best;
 }
@@ -1074,7 +1090,8 @@ IncrementalTopologicalPlan3D IncrementalTopologicalPlanner3D::planImpl(
   result.fresh_frontier_sample_fingerprint =
       fresh_discovery.evaluation_sample_fingerprint;
   result.fresh_frontier_status_counts = fresh_discovery.evaluation_status_counts;
-  result.fresh_frontier_budget_exhausted = fresh_discovery.evaluation_budget_exhausted;
+  result.fresh_frontier_budget_exhausted =
+      fresh_discovery.evaluation_budget_exhausted || fresh_discovery.deadline_exhausted;
   const bool select_mission_continuation =
       mission_continuation.has_value() && mission_continuation->node != nullptr &&
       (!frontier.has_value() || mission_continuation->score + 1.0e-9 < frontier->score);

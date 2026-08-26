@@ -7,6 +7,7 @@
 #include <cmath>
 #include <optional>
 #include <ranges>
+#include <stdexcept>
 #include <utility>
 
 namespace drone_city_nav {
@@ -151,6 +152,15 @@ TEST(IncrementalTopologicalPlanner3DTest,
   EXPECT_EQ(plan.status, IncrementalTopologicalPlanStatus3D::kDeadlineExceeded);
   EXPECT_FALSE(plan.executableTargetSelected());
   EXPECT_TRUE(plan.guidance_points.empty());
+}
+
+TEST(IncrementalTopologicalPlanner3DTest,
+     RejectsNegativeFreshFrontierMaterializationReserve) {
+  IncrementalTopologicalPlanner3DConfig config;
+  config.fresh_frontier_materialization_reserve_ms = -1.0;
+
+  EXPECT_THROW(static_cast<void>(IncrementalTopologicalPlanner3D{config}),
+               std::invalid_argument);
 }
 
 TEST(IncrementalTopologicalPlanner3DTest,

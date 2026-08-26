@@ -143,6 +143,10 @@ struct IncrementalTopologicalPlanner3DConfig {
   // repeated sub-metre missions.
   double minimum_observation_target_displacement_m{2.0};
   std::size_t maximum_fresh_frontier_evaluations{128U};
+  // Ray evaluation is deadline-bounded, but an evaluated frontier still needs
+  // graph reconnection, raw validation, scoring, and route materialization.
+  // Preserve an explicit tail budget for those mandatory completion stages.
+  double fresh_frontier_materialization_reserve_ms{20.0};
 };
 
 class IncrementalTopologicalPlanner3D {

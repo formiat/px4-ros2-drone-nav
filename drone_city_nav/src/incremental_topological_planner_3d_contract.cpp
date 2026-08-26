@@ -34,7 +34,8 @@ bool incrementalTopologicalPlanner3DConfigIsValid(
          config.maximum_fresh_frontier_anchor_distance_m > 0.0 &&
          std::isfinite(config.minimum_observation_target_displacement_m) &&
          config.minimum_observation_target_displacement_m > 0.0 &&
-         config.maximum_fresh_frontier_evaluations > 0U;
+         config.maximum_fresh_frontier_evaluations > 0U &&
+         valid_nonnegative(config.fresh_frontier_materialization_reserve_ms);
 }
 
 IncrementalTopologicalPlanner3D::IncrementalTopologicalPlanner3D(

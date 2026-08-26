@@ -317,6 +317,9 @@ void ProductionMppiNode::configureIncrementalTopology3D() {
           declare_parameter<std::int64_t>(
               "topological_planner_3d_maximum_fresh_frontier_evaluations", 16),
           "topological_planner_3d_maximum_fresh_frontier_evaluations");
+  topological_planner_3d_config_.fresh_frontier_materialization_reserve_ms =
+      declare_parameter<double>(
+          "topological_planner_3d_fresh_frontier_materialization_reserve_ms", 20.0);
   topological_backtracking_enabled_ =
       declare_parameter<bool>("topological_backtracking_enabled", false);
 
