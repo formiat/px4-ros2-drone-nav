@@ -687,7 +687,16 @@ makeObservedFreeConnector(const IncrementalTopologyNodeId node,
     const std::optional<std::chrono::steady_clock::time_point> deadline,
     bool& deadline_exceeded) {
   std::vector<GridIndex3D> candidate_cells;
-  candidate_cells.reserve(records.size());
+  candidate_cells.reserve(records.size() + 1U);
+  // Raw observations can advance ahead of the asynchronously rebuilt graph.
+  // Always seed discovery at the current vehicle position so a newly visible
+  // exit remains discoverable even before its graph node is reclassified as
+  // exposing an unknown boundary. The resulting connector is still validated
+  // against the current occupancy below.
+  if (const std::optional<GridIndex3D> start_cell =
+          cellForPoint(source_graph.bounds(), start)) {
+    candidate_cells.push_back(*start_cell);
+  }
   for (const auto& [node_id, record] : records) {
     if (deadline.has_value() && std::chrono::steady_clock::now() >= *deadline) {
       deadline_exceeded = true;
