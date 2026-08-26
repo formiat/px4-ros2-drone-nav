@@ -124,6 +124,9 @@ TEST(IncrementalTopologicalPlanner3DTest, KnownMissionRouteHasPriority) {
   EXPECT_TRUE(plan.reaches_mission_goal);
   ASSERT_FALSE(plan.route_steps.empty());
   EXPECT_GT(plan.guidance_points.size(), 2U);
+  ASSERT_FALSE(plan.strategic_boundary_stations_m.empty());
+  EXPECT_TRUE(std::ranges::is_sorted(plan.strategic_boundary_stations_m));
+  EXPECT_NEAR(plan.strategic_boundary_stations_m.back(), plan.route_length_m, 1.0e-9);
   EXPECT_FALSE(plan.unknown_exposure);
   EXPECT_GT(plan.transition_support_segment_count, 0U);
   EXPECT_EQ(plan.validated_through_revision, 1U);

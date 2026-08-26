@@ -488,6 +488,7 @@ void materializePath(IncrementalTopologicalPlan3D& result,
   result.guidance_points.clear();
   result.route_nodes.clear();
   result.route_steps.clear();
+  result.strategic_boundary_stations_m.clear();
   IncrementalTopologyTransitionEvidence3D route_evidence;
   for (const Point3& point : start_connector.polyline) {
     appendUnique(result.guidance_points, point);
@@ -535,6 +536,13 @@ void materializePath(IncrementalTopologicalPlan3D& result,
         }
       }
     }
+    const double step_end_station_m =
+        incremental_topology_detail::polylineLength(result.guidance_points);
+    if (step_end_station_m > 1.0e-9 &&
+        (result.strategic_boundary_stations_m.empty() ||
+         step_end_station_m > result.strategic_boundary_stations_m.back() + 1.0e-9)) {
+      result.strategic_boundary_stations_m.push_back(step_end_station_m);
+    }
   }
   for (const Point3& point : std::views::reverse(target_connector.polyline)) {
     appendUnique(result.guidance_points, point);
@@ -545,10 +553,12 @@ void materializePath(IncrementalTopologicalPlan3D& result,
   result.topology_lineage_id = route_evidence.lineage_id;
   result.transition_support_segment_count = route_evidence.support_segment_count;
   result.unknown_exposure = route_evidence.unknown_exposure;
-  result.route_length_m = 0.0;
-  for (std::size_t index = 1U; index < result.guidance_points.size(); ++index) {
-    result.route_length_m +=
-        distance3D(result.guidance_points[index - 1U], result.guidance_points[index]);
+  result.route_length_m =
+      incremental_topology_detail::polylineLength(result.guidance_points);
+  if (result.route_length_m > 1.0e-9 &&
+      (result.strategic_boundary_stations_m.empty() ||
+       result.route_length_m > result.strategic_boundary_stations_m.back() + 1.0e-9)) {
+    result.strategic_boundary_stations_m.push_back(result.route_length_m);
   }
 }
 

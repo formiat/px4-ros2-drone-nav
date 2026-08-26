@@ -583,7 +583,7 @@ void ProductionMppiNode::logIncrementalTopologyRoute3D(
       "directive_source_segment=%zu directive_source_station_m=%.2f "
       "directive_target_station_m=%.2f directive_progress_floor_station_m=%.2f "
       "directive_projection_distance_m=%.2f "
-      "directive_captured_bends_skipped=%zu "
+      "directive_captured_boundaries_skipped=%zu "
       "directive_target=(%.2f,%.2f,%.2f) directive_reaches_target=%s "
       "lattice_status=%s lattice_purpose=%s lattice_executable=%s "
       "candidate_validation=%.*s activation=%.*s certified_pending=%s "
@@ -660,8 +660,8 @@ void ProductionMppiNode::logIncrementalTopologyRoute3D(
       directive != nullptr ? directive->target_station_m : 0.0,
       directive != nullptr ? directive->progress_floor_station_m : 0.0,
       directive != nullptr ? directive->projection_distance_m : 0.0,
-      directive != nullptr ? directive->captured_bends_skipped : 0U, directive_target.x,
-      directive_target.y, directive_target.z,
+      directive != nullptr ? directive->captured_boundaries_skipped : 0U,
+      directive_target.x, directive_target.y, directive_target.z,
       directive != nullptr && directive->reaches_topological_target ? "true" : "false",
       lattice3DStatusName(lattice.status),
       lattice3DRoutePurposeName(lattice.route_purpose),

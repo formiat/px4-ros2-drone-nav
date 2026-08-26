@@ -24,10 +24,11 @@ executablePlan(const IncrementalTopologicalRoutePurpose3D purpose,
 }
 
 TEST(IncrementalTopologicalLatticeAdapter3DTest,
-     StopsAtTheNextPolylineVertexInsteadOfCuttingAcrossABend) {
-  const IncrementalTopologicalPlan3D plan =
+     StopsAtTheNextStrategicBoundaryInsteadOfCrossingAJunction) {
+  IncrementalTopologicalPlan3D plan =
       executablePlan(IncrementalTopologicalRoutePurpose3D::kMissionTransit,
                      {{0.0, 0.0, 0.0}, {10.0, 0.0, 0.0}, {10.0, 10.0, 0.0}});
+  plan.strategic_boundary_stations_m = {10.0, 20.0};
 
   const auto directive_result = makeIncrementalTopologicalLatticeDirective3D(
       plan, {0.0, 0.0, 0.0},
@@ -47,9 +48,10 @@ TEST(IncrementalTopologicalLatticeAdapter3DTest,
 
 TEST(IncrementalTopologicalLatticeAdapter3DTest,
      ProjectsCurrentPositionAndContinuesForwardAlongRoute) {
-  const IncrementalTopologicalPlan3D plan =
+  IncrementalTopologicalPlan3D plan =
       executablePlan(IncrementalTopologicalRoutePurpose3D::kMissionTransit,
                      {{0.0, 0.0, 0.0}, {10.0, 0.0, 0.0}, {10.0, 10.0, 0.0}});
+  plan.strategic_boundary_stations_m = {10.0, 20.0};
 
   const auto directive_result = makeIncrementalTopologicalLatticeDirective3D(
       plan, {6.0, 1.0, 0.0},
@@ -113,6 +115,7 @@ TEST(IncrementalTopologicalLatticeAdapter3DTest,
   plan.purpose = IncrementalTopologicalRoutePurpose3D::kMissionTransit;
   plan.strategic_plan_id = 27U;
   plan.guidance_points = {{0.0, 0.0, 4.0}, {0.0, 8.0, 4.0}, {8.0, 8.0, 4.0}};
+  plan.strategic_boundary_stations_m = {16.0};
 
   const auto directive_result = makeIncrementalTopologicalLatticeDirective3D(
       plan, {0.0, 0.0, 4.0},
@@ -123,16 +126,17 @@ TEST(IncrementalTopologicalLatticeAdapter3DTest,
       directive_result.value_or(IncrementalTopologicalLatticeDirective3D{});
   EXPECT_EQ(directive.lattice.route_purpose, Lattice3DRoutePurpose::kMissionTransit);
   EXPECT_EQ(directive.strategic_plan_id, plan.strategic_plan_id);
-  EXPECT_FALSE(directive.reaches_topological_target);
+  EXPECT_TRUE(directive.reaches_topological_target);
   EXPECT_FALSE(directive.lattice.reaches_mission_goal);
   EXPECT_FALSE(isExplicitTopologicalBacktrack3D(plan));
 }
 
 TEST(IncrementalTopologicalLatticeAdapter3DTest,
-     SkipsARegeneratedConnectorBendInsideGoalCaptureRadius) {
-  const IncrementalTopologicalPlan3D plan =
+     SkipsAStrategicBoundaryInsideGoalCaptureRadius) {
+  IncrementalTopologicalPlan3D plan =
       executablePlan(IncrementalTopologicalRoutePurpose3D::kMissionTransit,
                      {{0.0, 0.0, 0.0}, {0.5, 0.0, 0.0}, {0.5, 10.0, 0.0}});
+  plan.strategic_boundary_stations_m = {0.5, 10.5};
 
   const auto directive_result = makeIncrementalTopologicalLatticeDirective3D(
       plan, {0.0, 0.0, 0.0},
@@ -145,7 +149,31 @@ TEST(IncrementalTopologicalLatticeAdapter3DTest,
   EXPECT_DOUBLE_EQ(directive.lattice.planning_goal.y, 5.5);
   EXPECT_DOUBLE_EQ(directive.lattice.preferred_direction.x, 0.0);
   EXPECT_DOUBLE_EQ(directive.lattice.preferred_direction.y, 10.0);
-  EXPECT_EQ(directive.captured_bends_skipped, 1U);
+  EXPECT_EQ(directive.captured_boundaries_skipped, 1U);
+  EXPECT_FALSE(directive.reaches_topological_target);
+}
+
+TEST(IncrementalTopologicalLatticeAdapter3DTest,
+     TraversesGeometryBendsWithinOneStrategicEdge) {
+  IncrementalTopologicalPlan3D plan = executablePlan(
+      IncrementalTopologicalRoutePurpose3D::kMissionTransit,
+      {{0.0, 0.0, 0.0}, {4.0, 0.0, 0.0}, {4.0, 4.0, 0.0}, {10.0, 4.0, 0.0}});
+  plan.strategic_boundary_stations_m = {14.0};
+
+  const auto directive_result = makeIncrementalTopologicalLatticeDirective3D(
+      plan, {0.0, 0.0, 0.0},
+      {.maximum_lookahead_m = 12.0, .segment_capture_radius_m = 0.1});
+
+  ASSERT_TRUE(directive_result.has_value());
+  const IncrementalTopologicalLatticeDirective3D directive =
+      directive_result.value_or(IncrementalTopologicalLatticeDirective3D{});
+  EXPECT_DOUBLE_EQ(directive.lattice.planning_goal.x, 8.0);
+  EXPECT_DOUBLE_EQ(directive.lattice.planning_goal.y, 4.0);
+  EXPECT_DOUBLE_EQ(directive.lattice.planning_goal.z, 0.0);
+  EXPECT_DOUBLE_EQ(directive.lattice.preferred_direction.x, 4.0);
+  EXPECT_DOUBLE_EQ(directive.lattice.preferred_direction.y, 0.0);
+  EXPECT_DOUBLE_EQ(directive.target_station_m, 12.0);
+  EXPECT_EQ(directive.captured_boundaries_skipped, 0U);
   EXPECT_FALSE(directive.reaches_topological_target);
 }
 

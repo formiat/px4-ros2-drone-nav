@@ -130,17 +130,47 @@ makeIncrementalTopologicalLatticeDirective3D(
     return std::nullopt;
   }
 
-  // A topological polyline is not merely a preferred heading. Its vertices
-  // represent observed connectivity. Keep a useful local lookahead along a
-  // straight voxel chain, but stop at the first real bend. This prevents the
-  // local lattice from cutting across graph topology while avoiding terminal
-  // micro-routes for the many collinear cells in an incremental graph.
+  const double route_end_station_m = projection->station_m + projection->remaining_m;
+  const bool explicit_strategic_boundaries =
+      !plan.strategic_boundary_stations_m.empty();
+  if (explicit_strategic_boundaries &&
+      (!std::ranges::is_sorted(plan.strategic_boundary_stations_m) ||
+       std::ranges::any_of(plan.strategic_boundary_stations_m,
+                           [route_end_station_m](const double station_m) {
+                             return !std::isfinite(station_m) || station_m <= 0.0 ||
+                                    station_m > route_end_station_m + kGeometryEpsilon;
+                           }))) {
+    return std::nullopt;
+  }
+
+  // Contracted regional edges own their complete certified geometry. Voxel
+  // staircase and obstacle-following bends inside one edge are not strategic
+  // decisions, so the local lattice may plan through them. Only an explicit
+  // regional-edge endpoint is a branch boundary that limits lookahead.
+  std::size_t captured_boundaries_skipped = 0U;
+  double available_lookahead_m = config.maximum_lookahead_m;
+  double preferred_direction_floor_station_m = projection->station_m;
+  if (explicit_strategic_boundaries) {
+    auto boundary = std::ranges::upper_bound(plan.strategic_boundary_stations_m,
+                                             projection->station_m + kGeometryEpsilon);
+    while (boundary != plan.strategic_boundary_stations_m.end() &&
+           *boundary <= projection->station_m + config.segment_capture_radius_m +
+                            kGeometryEpsilon) {
+      preferred_direction_floor_station_m = *boundary;
+      ++captured_boundaries_skipped;
+      ++boundary;
+    }
+    if (boundary != plan.strategic_boundary_stations_m.end()) {
+      available_lookahead_m =
+          std::min(available_lookahead_m, *boundary - projection->station_m);
+    }
+  }
+
   Point3 cursor = projection->point;
   Point3 target = cursor;
   Vec3 preferred_direction{};
   double target_station_m = projection->station_m;
-  double remaining_m = config.maximum_lookahead_m;
-  std::size_t captured_bends_skipped = 0U;
+  double remaining_m = available_lookahead_m;
   bool reaches_target = false;
   for (std::size_t index = projection->segment_index + 1U;
        index < plan.guidance_points.size(); ++index) {
@@ -153,8 +183,15 @@ makeIncrementalTopologicalLatticeDirective3D(
       cursor = next;
       continue;
     }
-    if (preferred_direction.x != 0.0 || preferred_direction.y != 0.0 ||
-        preferred_direction.z != 0.0) {
+    if (explicit_strategic_boundaries) {
+      if (preferred_direction.x == 0.0 && preferred_direction.y == 0.0 &&
+          preferred_direction.z == 0.0 &&
+          target_station_m + segment_length >
+              preferred_direction_floor_station_m + kGeometryEpsilon) {
+        preferred_direction = segment;
+      }
+    } else if (preferred_direction.x != 0.0 || preferred_direction.y != 0.0 ||
+               preferred_direction.z != 0.0) {
       const double preferred_length =
           std::sqrt(preferred_direction.x * preferred_direction.x +
                     preferred_direction.y * preferred_direction.y +
@@ -173,7 +210,7 @@ makeIncrementalTopologicalLatticeDirective3D(
         // capture neighbourhood in which the lattice reports goal arrival.
         // Treat the bend as acquired and aim along the outgoing segment.
         preferred_direction = segment;
-        ++captured_bends_skipped;
+        ++captured_boundaries_skipped;
       }
     } else {
       preferred_direction = segment;
@@ -187,13 +224,11 @@ makeIncrementalTopologicalLatticeDirective3D(
     target_station_m += segment_length;
     remaining_m -= segment_length;
     cursor = next;
-    if (index + 1U == plan.guidance_points.size()) {
-      reaches_target = true;
-    }
     if (remaining_m <= kGeometryEpsilon) {
       break;
     }
   }
+  reaches_target = target_station_m + kGeometryEpsilon >= route_end_station_m;
 
   if (distance3D(position, target) <=
       config.segment_capture_radius_m + kGeometryEpsilon) {
@@ -216,7 +251,7 @@ makeIncrementalTopologicalLatticeDirective3D(
       .target_station_m = target_station_m,
       .progress_floor_station_m = minimum_source_station_m,
       .projection_distance_m = projection->distance_m,
-      .captured_bends_skipped = captured_bends_skipped,
+      .captured_boundaries_skipped = captured_boundaries_skipped,
       .reaches_topological_target = reaches_target,
   };
 }

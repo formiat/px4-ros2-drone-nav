@@ -30,7 +30,7 @@ struct IncrementalTopologicalLatticeDirective3D {
   double target_station_m{0.0};
   double progress_floor_station_m{0.0};
   double projection_distance_m{0.0};
-  std::size_t captured_bends_skipped{0U};
+  std::size_t captured_boundaries_skipped{0U};
   bool reaches_topological_target{false};
 };
 

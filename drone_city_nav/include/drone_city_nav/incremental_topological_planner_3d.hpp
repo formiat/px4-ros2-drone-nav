@@ -89,6 +89,10 @@ struct IncrementalTopologicalPlan3D {
   std::vector<IncrementalTopologyNodeId> route_nodes;
   std::vector<TopologicalRouteStep3D> route_steps;
   std::vector<Point3> guidance_points;
+  // Stations at which a contracted regional edge ends, plus the final route
+  // endpoint when a target connector extends beyond the last edge. Geometry
+  // bends between these stations are certified shape, not branch decisions.
+  std::vector<double> strategic_boundary_stations_m;
   double route_length_m{0.0};
   double selection_score{0.0};
   double goal_progress_m{0.0};
