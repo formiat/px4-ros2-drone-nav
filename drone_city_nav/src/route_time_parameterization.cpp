@@ -78,6 +78,12 @@ void enforceJerkEnvelope(const std::span<const RouteSample3D> route,
     return;
   }
   for (std::size_t index = 1U; index + 1U < route.size(); ++index) {
+    if (route[index].transition == RouteKinematicTransition3D::kStopAndTurn) {
+      // A stop-and-turn separates two continuous-motion legs.  The vehicle can
+      // settle its acceleration while stopped, so braking acceleration from the
+      // incoming leg must not constrain departure along the new tangent.
+      continue;
+    }
     const double previous_distance =
         route[index].station_m - route[index - 1U].station_m;
     const double next_distance = route[index + 1U].station_m - route[index].station_m;

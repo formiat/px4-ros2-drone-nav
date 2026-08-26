@@ -66,5 +66,24 @@ TEST(RouteTimeParameterizationTest, CurvatureAndVerticalMotionCapTheSameProfile)
   EXPECT_LE(vertical_profile.reference_speeds_mps.back(), 2.0);
 }
 
+TEST(RouteTimeParameterizationTest, StopAndTurnStartsAnIndependentJerkLimitedLeg) {
+  std::vector<RouteSample3D> route = sampleRoute3D(
+      std::vector<Point3>{
+          {0.0, 0.0, 5.0}, {0.1, 0.0, 5.0}, {0.1, 0.1, 5.0}, {0.1, 0.2, 5.0}},
+      0.1, 5.0);
+  ASSERT_EQ(route.size(), 4U);
+  ASSERT_EQ(route[1U].transition, RouteKinematicTransition3D::kStopAndTurn);
+
+  const RouteTimeParameterization3D profile = parameterizeRouteTime3D(
+      route, {}, 5.0, 3.0, RouteEndpointSemantics3D::kContinuation,
+      MppiSpeedPolicyConfig{}, mppi::DynamicsConfig{});
+
+  ASSERT_TRUE(profile.valid);
+  ASSERT_EQ(profile.reference_speeds_mps.size(), route.size());
+  EXPECT_DOUBLE_EQ(profile.reference_speeds_mps[1U], 0.0);
+  EXPECT_GT(profile.reference_speeds_mps[2U], 0.0);
+  EXPECT_TRUE(std::isfinite(profile.travel_time_s));
+}
+
 } // namespace
 } // namespace drone_city_nav
