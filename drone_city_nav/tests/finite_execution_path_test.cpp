@@ -709,5 +709,53 @@ TEST(FiniteExecutionPathTest, RebuildPreservesTheRemainingNominalPhaseBoundary) 
   EXPECT_TRUE(finiteHorizonHasTerminalRestState(*rebuilt.horizon));
 }
 
+TEST(FiniteExecutionPathTest,
+     RebuildBacksOffACertifiedSuffixUntilCandidateContractAcceptsIt) {
+  TestWorld world;
+  world.dynamics.dt_s = 0.1F;
+  std::vector<Control> source_controls(50U);
+  std::vector<State> source_states{State{.x = 1.0F, .y = 1.0F, .z = 5.0F, .vx = 2.0F}};
+  for (const Control& control : source_controls) {
+    source_states.push_back(
+        integrateReference(source_states.back(), control, world.dynamics));
+  }
+  const std::optional<FiniteHorizon> source = buildFiniteHorizon(
+      source_states, source_controls, 20U, world.dynamics, Control{});
+  ASSERT_TRUE(source.has_value());
+  std::vector<TimedExecutionPathPoint> points;
+  points.reserve(source->states.size());
+  for (std::size_t index = 0U; index < source->states.size(); ++index) {
+    points.push_back(TimedExecutionPathPoint{
+        .time_from_start_s = static_cast<double>(index) * world.dynamics.dt_s,
+        .state = source->states[index],
+        .control = index == 0U ? Control{} : source->controls[index - 1U],
+    });
+  }
+  constexpr std::size_t kCurrentControlIndex{5U};
+  std::size_t certification_attempts{0U};
+
+  const RebuiltFiniteExecutionPathContinuation rebuilt =
+      rebuildFiniteExecutionPathContinuation(
+          points, 10 * kSecondNs, 15 * kSecondNs,
+          10 * kSecondNs +
+              static_cast<std::int64_t>(kCurrentControlIndex) * 100'000'000LL,
+          source->states[kCurrentControlIndex],
+          source->controls[kCurrentControlIndex - 1U],
+          source->nominal_prefix_control_count, source->controls.size(), world.dynamics,
+          5U, FiniteHorizonConfig{}, world.view(),
+          [&certification_attempts](const FiniteHorizon&) {
+            ++certification_attempts;
+            return certification_attempts >= 2U;
+          });
+
+  ASSERT_TRUE(rebuilt.accepted());
+  ASSERT_TRUE(rebuilt.horizon.has_value());
+  EXPECT_EQ(certification_attempts, 2U);
+  EXPECT_EQ(rebuilt.arrival_shaping_attempts, 2U);
+  EXPECT_TRUE(rebuilt.path_validation_backoff);
+  EXPECT_EQ(rebuilt.validation.status, FiniteExecutionPathStatus::kValid);
+  EXPECT_TRUE(finiteHorizonHasTerminalRestState(*rebuilt.horizon));
+}
+
 } // namespace
 } // namespace drone_city_nav::mppi

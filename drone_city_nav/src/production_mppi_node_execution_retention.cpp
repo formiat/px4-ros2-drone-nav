@@ -292,6 +292,39 @@ ProductionMppiNode::retainSnapshotFinitePath(
   const std::size_t route_arrival_search_step_controls = std::max<std::size_t>(
       1U, static_cast<std::size_t>(std::ceil(
               kArrivalSearchIntervalS / route.validation_policy->dynamics().dt_s)));
+  if (active.trajectory_revision == std::numeric_limits<std::uint64_t>::max()) {
+    return std::nullopt;
+  }
+  const std::uint64_t next_trajectory_revision = active.trajectory_revision + 1U;
+  std::optional<FiniteExecutionState3D> recertified;
+  FiniteExecutionCertificationResult3D certification_diagnostic;
+  const mppi::FiniteExecutionPathCandidateValidator candidate_validator =
+      [&](const mppi::FiniteHorizon& candidate) {
+        const FiniteExecutionCertification3D finite_execution{
+            .trajectory_revision = next_trajectory_revision,
+            .horizon = candidate,
+            .execution_input = execution_input,
+            .latest_lidar_evidence = latest_lidar_evidence,
+            .valid_from_ns = now_ns,
+            .kind = raw_invalidation != nullptr
+                        ? FiniteExecutionKind3D::kEmergencyBrakeTail
+                        : FiniteExecutionKind3D::kRetained,
+        };
+        if (raw_invalidation != nullptr) {
+          recertified = certifyRawInvalidatedFiniteExecution3D(
+              *expected,
+              RawInvalidatedFiniteExecutionCertification3D{
+                  .invalidation = *raw_invalidation,
+                  .invalidating_observed_raw_world = invalidating_observed_world,
+                  .finite_execution = finite_execution,
+              });
+          return recertified.has_value();
+        }
+        certification_diagnostic =
+            certifyFiniteExecution3DDetailed(*expected, route, finite_execution);
+        recertified = certification_diagnostic.execution;
+        return certification_diagnostic.certified();
+      };
   const mppi::RebuiltFiniteExecutionPathContinuation rebuilt =
       mppi::rebuildFiniteExecutionPathContinuation(
           points, active.valid_from_ns, active.valid_until_ns, now_ns,
@@ -302,43 +335,27 @@ ProductionMppiNode::retainSnapshotFinitePath(
           // back off only the suffix that actually requires rebuilding.
           active.horizon->controls.size(), route.validation_policy->dynamics(),
           route_arrival_search_step_controls, finite_horizon_config_,
-          *continuation_world);
-  if (!rebuilt.accepted() ||
-      active.trajectory_revision == std::numeric_limits<std::uint64_t>::max()) {
+          *continuation_world, candidate_validator);
+  if (!rebuilt.accepted() || !recertified.has_value()) {
+    const std::string_view certification_status =
+        finiteExecutionCertificationStatus3DName(certification_diagnostic.status);
+    const std::string_view adherence_status = finiteExecutionRouteAdherenceStatus3DName(
+        certification_diagnostic.route_adherence_status);
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "FINITE_EXECUTION_SNAPSHOT retained=false snapshot_version=%" PRIu64
         " replacement_failure_reason=%s trajectory_validation=%s "
-        "actual_state_validation=%s rebuild_validation=%s",
+        "actual_state_validation=%s rebuild_validation=%s "
+        "certification=%.*s route_adherence=%.*s "
+        "route_adherence_failure_distance_m=%.3f",
         expected->version,
         productionMppiExecutionReasonName(replacement_failure_reason),
         mppi::finiteExecutionPathStatusName(trajectory_validation.status),
         mppi::finiteExecutionPathStatusName(actual_state_validation.status),
-        mppi::finiteExecutionPathStatusName(rebuilt.validation.status));
-    return std::nullopt;
-  }
-  const auto make_finite_certification = [&]() {
-    return FiniteExecutionCertification3D{
-        .trajectory_revision = active.trajectory_revision + 1U,
-        .horizon = *rebuilt.horizon,
-        .execution_input = execution_input,
-        .latest_lidar_evidence = latest_lidar_evidence,
-        .valid_from_ns = now_ns,
-        .kind = raw_invalidation != nullptr ? FiniteExecutionKind3D::kEmergencyBrakeTail
-                                            : FiniteExecutionKind3D::kRetained,
-    };
-  };
-  const std::optional<FiniteExecutionState3D> recertified =
-      raw_invalidation != nullptr
-          ? certifyRawInvalidatedFiniteExecution3D(
-                *expected,
-                RawInvalidatedFiniteExecutionCertification3D{
-                    .invalidation = *raw_invalidation,
-                    .invalidating_observed_raw_world = invalidating_observed_world,
-                    .finite_execution = make_finite_certification(),
-                })
-          : certifyFiniteExecution3D(*expected, route, make_finite_certification());
-  if (!recertified.has_value()) {
+        mppi::finiteExecutionPathStatusName(rebuilt.validation.status),
+        static_cast<int>(certification_status.size()), certification_status.data(),
+        static_cast<int>(adherence_status.size()), adherence_status.data(),
+        certification_diagnostic.route_adherence_failure_distance_m);
     return std::nullopt;
   }
   const ExecutionRouteTransitionGuard3D guard{
@@ -453,6 +470,28 @@ ProductionMppiNode::retainDirectFinitePath(
   const std::size_t direct_arrival_search_step_controls = std::max<std::size_t>(
       1U, static_cast<std::size_t>(std::ceil(
               kArrivalSearchIntervalS / active.validation_policy->dynamics().dt_s)));
+  if (active.trajectory_revision == std::numeric_limits<std::uint64_t>::max()) {
+    return std::nullopt;
+  }
+  std::optional<DirectTrackingFiniteExecution3D> recertified;
+  const mppi::FiniteExecutionPathCandidateValidator candidate_validator =
+      [&](const mppi::FiniteHorizon& candidate) {
+        recertified = certifyDirectTrackingExecution3D(
+            *expected, DirectTrackingExecutionCertification3D{
+                           .identity = active.identity,
+                           .trajectory_revision = active.trajectory_revision + 1U,
+                           .target = active.target,
+                           .horizon = candidate,
+                           .observed_raw_world = active.observed_raw_world,
+                           .static_world = active.static_world,
+                           .validation_policy = active.validation_policy,
+                           .execution_input = execution_input,
+                           .latest_lidar_evidence = latest_lidar_evidence,
+                           .valid_from_ns = now_ns,
+                           .kind = FiniteExecutionKind3D::kRetained,
+                       });
+        return recertified.has_value();
+      };
   const mppi::RebuiltFiniteExecutionPathContinuation rebuilt =
       mppi::rebuildFiniteExecutionPathContinuation(
           points, active.valid_from_ns, active.valid_until_ns, now_ns,
@@ -462,9 +501,8 @@ ProductionMppiNode::retainDirectFinitePath(
           // controls unless current evidence proves that a suffix must change.
           active.horizon->controls.size(), active.validation_policy->dynamics(),
           direct_arrival_search_step_controls, finite_horizon_config_,
-          *continuation_world);
-  if (!rebuilt.accepted() ||
-      active.trajectory_revision == std::numeric_limits<std::uint64_t>::max()) {
+          *continuation_world, candidate_validator);
+  if (!rebuilt.accepted() || !recertified.has_value()) {
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "DIRECT_EXECUTION_SNAPSHOT retained=false snapshot_version=%" PRIu64
@@ -475,24 +513,6 @@ ProductionMppiNode::retainDirectFinitePath(
         mppi::finiteExecutionPathStatusName(trajectory_validation.status),
         mppi::finiteExecutionPathStatusName(actual_state_validation.status),
         mppi::finiteExecutionPathStatusName(rebuilt.validation.status));
-    return std::nullopt;
-  }
-  const std::optional<DirectTrackingFiniteExecution3D> recertified =
-      certifyDirectTrackingExecution3D(
-          *expected, DirectTrackingExecutionCertification3D{
-                         .identity = active.identity,
-                         .trajectory_revision = active.trajectory_revision + 1U,
-                         .target = active.target,
-                         .horizon = *rebuilt.horizon,
-                         .observed_raw_world = active.observed_raw_world,
-                         .static_world = active.static_world,
-                         .validation_policy = active.validation_policy,
-                         .execution_input = execution_input,
-                         .latest_lidar_evidence = latest_lidar_evidence,
-                         .valid_from_ns = now_ns,
-                         .kind = FiniteExecutionKind3D::kRetained,
-                     });
-  if (!recertified.has_value()) {
     return std::nullopt;
   }
   const ExecutionRouteTransitionResult3D transition =
