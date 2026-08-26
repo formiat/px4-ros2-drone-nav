@@ -121,11 +121,15 @@ std::uint64_t makeRouteIntentId3D(const RouteIntentSource3D source,
                                   const RouteIntentPurpose3D purpose,
                                   const Point3& mission_target,
                                   const Point3& intent_target,
-                                  const std::uint64_t target_identity) noexcept {
+                                  const std::uint64_t target_identity,
+                                  const bool observation_stop_required) noexcept {
   std::uint64_t hash{kFnvOffset};
   hashValue(hash, static_cast<std::uint64_t>(source));
   hashValue(hash, static_cast<std::uint64_t>(purpose));
   hashValue(hash, target_identity);
+  if (purpose == RouteIntentPurpose3D::kObservationFrontier) {
+    hashValue(hash, observation_stop_required ? 1U : 0U);
+  }
   hashPoint(hash, mission_target);
   hashPoint(hash, intent_target);
   return hash == 0U ? 1U : hash;

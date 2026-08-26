@@ -66,6 +66,7 @@ struct RouteIntent3D {
   bool strategic_mission_continuation{false};
   bool segment_reaches_intent_target{false};
   bool intent_reaches_mission_target{false};
+  bool observation_stop_required{true};
   bool valid{false};
 };
 
@@ -159,7 +160,8 @@ struct RouteProposalSelection3D {
 [[nodiscard]] std::uint64_t
 makeRouteIntentId3D(RouteIntentSource3D source, RouteIntentPurpose3D purpose,
                     const Point3& mission_target, const Point3& intent_target,
-                    std::uint64_t target_identity = 0U) noexcept;
+                    std::uint64_t target_identity = 0U,
+                    bool observation_stop_required = true) noexcept;
 
 [[nodiscard]] RouteStrategyReturnLineage3D makeRouteStrategyReturnLineage3D(
     std::uint64_t strategic_plan_id, std::uint64_t topology_lineage_id,

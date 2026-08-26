@@ -414,11 +414,13 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
           .segment_reaches_intent_target =
               topology.directive->reaches_topological_target,
           .intent_reaches_mission_target = topology.plan.reaches_mission_goal,
+          .observation_stop_required =
+              optional_constraints_.observation_frontier_stops_enabled,
           .valid = true,
       };
-      intent.id =
-          makeRouteIntentId3D(intent.source, intent.purpose, intent.mission_target,
-                              intent.intent_target, intent.target_identity);
+      intent.id = makeRouteIntentId3D(
+          intent.source, intent.purpose, intent.mission_target, intent.intent_target,
+          intent.target_identity, intent.observation_stop_required);
       if (auto lattice = plan_lattice(directive)) {
         add_candidate(intent, directive, std::move(*lattice), std::move(topology));
       }

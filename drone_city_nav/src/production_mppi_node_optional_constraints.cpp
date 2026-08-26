@@ -27,6 +27,8 @@ void ProductionMppiNode::configureOptionalNavigationConstraints() {
           declare_parameter<bool>("static_route_geometry_optimization_enabled", false),
       .stochastic_trajectory_selection_enabled =
           declare_parameter<bool>("stochastic_trajectory_selection_enabled", false),
+      .observation_frontier_stops_enabled =
+          declare_parameter<bool>("observation_frontier_stops_enabled", false),
   };
 }
 

@@ -12,11 +12,21 @@ TEST(RollingRouteTelemetry3DTest, ClassifiesTypedEndpointSemantics) {
       .purpose = RouteIntentPurpose3D::kObservationFrontier,
       .valid = true,
   };
+  RouteIntent3D continuous_observation = observation;
+  continuous_observation.observation_stop_required = false;
 
   EXPECT_EQ(routeEndpointSemantics3D(transit, false, false, true),
             RouteEndpointSemantics3D::kContinuation);
   EXPECT_EQ(routeEndpointSemantics3D(observation, true, false, true),
             RouteEndpointSemantics3D::kObservationStop);
+  EXPECT_EQ(routeEndpointSemantics3D(continuous_observation, true, false, true),
+            RouteEndpointSemantics3D::kContinuation);
+  EXPECT_NE(makeRouteIntentId3D(RouteIntentSource3D::kTopology,
+                                RouteIntentPurpose3D::kObservationFrontier, {}, {}, 7U,
+                                true),
+            makeRouteIntentId3D(RouteIntentSource3D::kTopology,
+                                RouteIntentPurpose3D::kObservationFrontier, {}, {}, 7U,
+                                false));
   EXPECT_EQ(routeEndpointSemantics3D(transit, true, true, true),
             RouteEndpointSemantics3D::kMissionStop);
   EXPECT_EQ(routeEndpointSemantics3D(transit, true, true, false),

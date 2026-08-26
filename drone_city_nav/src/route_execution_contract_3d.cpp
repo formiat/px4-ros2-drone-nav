@@ -26,7 +26,7 @@ routeEndpointSemantics3D(const RouteIntent3D& intent, const bool reaches_intent_
                                         : RouteEndpointSemantics3D::kContinuation;
   }
   if (intent.purpose == RouteIntentPurpose3D::kObservationFrontier &&
-      reaches_intent_target) {
+      intent.observation_stop_required && reaches_intent_target) {
     return RouteEndpointSemantics3D::kObservationStop;
   }
   return RouteEndpointSemantics3D::kContinuation;
@@ -66,7 +66,8 @@ std::uint64_t routeContinuityId3D(const RouteIntent3D& intent,
       intent.strategic_plan_id != 0U
           ? intent.strategic_plan_id
           : makeRouteIntentId3D(intent.source, intent.purpose, intent.mission_target,
-                                intent.mission_target, intent.target_identity);
+                                intent.mission_target, intent.target_identity,
+                                intent.observation_stop_required);
   if (lineage.mission_epoch == 0U && lineage.assignment_generation == 0U &&
       lineage.target_detection_id == 0U && lineage.target_track_id == 0U) {
     return route_lineage;
