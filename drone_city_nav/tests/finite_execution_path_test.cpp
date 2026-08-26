@@ -685,14 +685,27 @@ TEST(FiniteExecutionPathTest, RebuildPreservesTheRemainingNominalPhaseBoundary) 
               static_cast<std::int64_t>(kCurrentControlIndex) * 100'000'000LL,
           source->states[kCurrentControlIndex],
           source->controls[kCurrentControlIndex - 1U],
-          source->nominal_prefix_control_count, source->nominal_prefix_control_count,
-          world.dynamics, 5U, FiniteHorizonConfig{}, world.view());
+          source->nominal_prefix_control_count, source->controls.size(), world.dynamics,
+          5U, FiniteHorizonConfig{}, world.view());
 
   ASSERT_TRUE(rebuilt.accepted());
   ASSERT_TRUE(rebuilt.horizon.has_value());
   EXPECT_EQ(rebuilt.source_control_index, kCurrentControlIndex);
   EXPECT_EQ(rebuilt.horizon->nominal_prefix_control_count,
             source->nominal_prefix_control_count - kCurrentControlIndex);
+  EXPECT_EQ(rebuilt.horizon->arrival_control_count, source->arrival_control_count);
+  EXPECT_FALSE(rebuilt.path_validation_backoff);
+  EXPECT_EQ(rebuilt.arrival_shaping_attempts, 1U);
+  ASSERT_EQ(rebuilt.horizon->controls.size(),
+            source->controls.size() - kCurrentControlIndex);
+  for (std::size_t index = 0U; index < rebuilt.horizon->controls.size(); ++index) {
+    const Control& expected = source->controls[kCurrentControlIndex + index];
+    const Control& actual = rebuilt.horizon->controls[index];
+    EXPECT_FLOAT_EQ(actual.ax, expected.ax);
+    EXPECT_FLOAT_EQ(actual.ay, expected.ay);
+    EXPECT_FLOAT_EQ(actual.az, expected.az);
+    EXPECT_FLOAT_EQ(actual.yaw_accel, expected.yaw_accel);
+  }
   EXPECT_TRUE(finiteHorizonHasTerminalRestState(*rebuilt.horizon));
 }
 

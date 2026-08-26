@@ -297,9 +297,12 @@ ProductionMppiNode::retainSnapshotFinitePath(
           points, active.valid_from_ns, active.valid_until_ns, now_ns,
           exact_initial_state, exact_previous_control,
           active.horizon->nominal_prefix_control_count,
-          active.horizon->nominal_prefix_control_count,
-          route.validation_policy->dynamics(), route_arrival_search_step_controls,
-          finite_horizon_config_, *continuation_world);
+          // The complete remaining sequence was already certified, including
+          // its arrival tail. Preserve it first and let current-world validation
+          // back off only the suffix that actually requires rebuilding.
+          active.horizon->controls.size(), route.validation_policy->dynamics(),
+          route_arrival_search_step_controls, finite_horizon_config_,
+          *continuation_world);
   if (!rebuilt.accepted() ||
       active.trajectory_revision == std::numeric_limits<std::uint64_t>::max()) {
     RCLCPP_WARN_THROTTLE(
@@ -455,9 +458,11 @@ ProductionMppiNode::retainDirectFinitePath(
           points, active.valid_from_ns, active.valid_until_ns, now_ns,
           exact_initial_state, exact_previous_control,
           active.horizon->nominal_prefix_control_count,
-          active.horizon->nominal_prefix_control_count,
-          active.validation_policy->dynamics(), direct_arrival_search_step_controls,
-          finite_horizon_config_, *continuation_world);
+          // Retention starts from a certified finite sequence. Keep its arrival
+          // controls unless current evidence proves that a suffix must change.
+          active.horizon->controls.size(), active.validation_policy->dynamics(),
+          direct_arrival_search_step_controls, finite_horizon_config_,
+          *continuation_world);
   if (!rebuilt.accepted() ||
       active.trajectory_revision == std::numeric_limits<std::uint64_t>::max()) {
     RCLCPP_WARN_THROTTLE(
@@ -615,8 +620,10 @@ ProductionMppiNode::retainActiveFinitePath(
               active.message.valid_from),
           original_valid_until_ns, now_ns, exact_initial_state, exact_previous_control,
           active.publication.nominal_prefix_control_count,
-          active.publication.nominal_prefix_control_count, *execution_dynamics,
-          arrival_search_step_controls, finite_horizon_config_, continuation_world);
+          // Preserve every still-active certified control before falling back to
+          // arrival reshaping under newly observed constraints.
+          points.size() - 1U, *execution_dynamics, arrival_search_step_controls,
+          finite_horizon_config_, continuation_world);
   const std::size_t expected_index =
       std::min(rebuilt.source_control_index, points.size() - 1U);
   const mppi::State& expected_state = points[expected_index].state;
