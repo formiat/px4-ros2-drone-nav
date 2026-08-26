@@ -244,6 +244,14 @@ ProductionMppiNode::retainSnapshotFinitePath(
   if (expected == nullptr || !expected->route.has_value() ||
       !expected->finite_execution.has_value() ||
       expected->finite_execution->horizon == nullptr) {
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "FINITE_EXECUTION_SNAPSHOT retained=false stage=missing_resident_owner "
+        "snapshot_present=%s route_present=%s execution_present=%s",
+        expected != nullptr ? "true" : "false",
+        expected != nullptr && expected->route.has_value() ? "true" : "false",
+        expected != nullptr && expected->finite_execution.has_value() ? "true"
+                                                                      : "false");
     return std::nullopt;
   }
   const CertifiedRouteSuffix3D& route = *expected->route;
@@ -260,17 +268,32 @@ ProductionMppiNode::retainSnapshotFinitePath(
     if (route_execution.source_snapshot != expected ||
         route.observed_raw_world == nullptr || invalidating_observed_world == nullptr ||
         !invalidating_observed_world->valid() ||
+        raw_invalidation->generation != route.identity.generation ||
+        route.observed_raw_world->version().producer_instance_id !=
+            raw_invalidation->raw_producer_instance_id ||
         invalidating_observed_world->version().producer_instance_id !=
             raw_invalidation->raw_producer_instance_id ||
         invalidating_observed_world->version().revision !=
-            raw_invalidation->raw_revision ||
-        !route.observed_raw_world->sharesObservationOwner(
-            *invalidating_observed_world)) {
+            raw_invalidation->raw_revision) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "FINITE_EXECUTION_SNAPSHOT retained=false "
+          "stage=raw_invalidation_owner_mismatch snapshot_version=%" PRIu64,
+          expected->version);
       return std::nullopt;
     }
+    // A raw invalidation is certified against a newer immutable occupancy
+    // snapshot, so it must not be required to alias the route's older buffer.
+    // The exact lifecycle version above and the full certification below prove
+    // stream lineage and validate the replacement world contents.
   }
   const std::vector<mppi::TimedExecutionPathPoint> points = executionPathPoints(active);
   if (points.empty()) {
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "FINITE_EXECUTION_SNAPSHOT retained=false stage=invalid_active_path "
+        "snapshot_version=%" PRIu64,
+        expected->version);
     return std::nullopt;
   }
   const std::optional<mppi::FiniteExecutionPathWorld> continuation_world =
@@ -278,6 +301,14 @@ ProductionMppiNode::retainSnapshotFinitePath(
                                    validationTerminalBoundary(active, route),
                                    invalidating_observed_world);
   if (!continuation_world.has_value()) {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+                         "FINITE_EXECUTION_SNAPSHOT retained=false "
+                         "stage=validation_world_unavailable snapshot_version=%" PRIu64
+                         " lidar_present=%s route_valid=%s policy_present=%s",
+                         expected->version,
+                         latest_lidar_evidence != nullptr ? "true" : "false",
+                         route.valid() ? "true" : "false",
+                         route.validation_policy != nullptr ? "true" : "false");
     return std::nullopt;
   }
   const mppi::FiniteExecutionPathValidation actual_state_validation =
@@ -293,6 +324,10 @@ ProductionMppiNode::retainSnapshotFinitePath(
       1U, static_cast<std::size_t>(std::ceil(
               kArrivalSearchIntervalS / route.validation_policy->dynamics().dt_s)));
   if (active.trajectory_revision == std::numeric_limits<std::uint64_t>::max()) {
+    RCLCPP_ERROR(get_logger(),
+                 "FINITE_EXECUTION_SNAPSHOT retained=false "
+                 "stage=trajectory_revision_exhausted snapshot_version=%" PRIu64,
+                 expected->version);
     return std::nullopt;
   }
   const std::uint64_t next_trajectory_revision = active.trajectory_revision + 1U;
@@ -373,6 +408,14 @@ ProductionMppiNode::retainSnapshotFinitePath(
       !transition.next->route.has_value() ||
       (raw_invalidation != nullptr &&
        transition.next->phase != ExecutionRoutePhase3D::kBraking)) {
+    const std::string_view transition_status =
+        executionRouteTransitionStatus3DName(transition.status);
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "FINITE_EXECUTION_SNAPSHOT retained=false stage=transition_rejected "
+        "snapshot_version=%" PRIu64 " transition=%.*s",
+        expected->version, static_cast<int>(transition_status.size()),
+        transition_status.data());
     return std::nullopt;
   }
 
@@ -383,6 +426,11 @@ ProductionMppiNode::retainSnapshotFinitePath(
       ProductionMppiExecutionMode::kPlanned, ProductionMppiExecutionReason::kNone);
   if (!production_mppi_execution_detail::bindHorizonRouteMetadata(
           horizon, *transition.next->route)) {
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "FINITE_EXECUTION_SNAPSHOT retained=false stage=route_metadata_rejected "
+        "snapshot_version=%" PRIu64,
+        transition.next->version);
     return std::nullopt;
   }
   if (transition.next->finite_execution->observed_raw_world != nullptr) {
@@ -393,9 +441,19 @@ ProductionMppiNode::retainSnapshotFinitePath(
           horizon, finite_horizon.states, finite_horizon.controls,
           exact_previous_control,
           transition.next->finite_execution->control_interval_ns)) {
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "FINITE_EXECUTION_SNAPSHOT retained=false stage=horizon_encoding_rejected "
+        "snapshot_version=%" PRIu64,
+        transition.next->version);
     return std::nullopt;
   }
   if (!commitExecutionSnapshotHorizon(cycle, expected, transition, horizon, nullptr)) {
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "FINITE_EXECUTION_SNAPSHOT retained=false stage=publication_commit_rejected "
+        "snapshot_version=%" PRIu64,
+        expected->version);
     return std::nullopt;
   }
   ProductionMppiExecutionPublication retained;
