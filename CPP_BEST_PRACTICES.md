@@ -185,6 +185,11 @@ Most serious C++ bugs come from unclear ownership, dangling references, or inval
 - Use `std::span<T>` for non-owning contiguous ranges.
 - Use `std::string_view` for non-owning read-only string parameters.
 - Document any API that stores a view, reference, pointer, iterator, or callback.
+- Give copyable domain values an explicit immutable identity when correctness
+  depends on recognizing the same logical object across copies, serialization,
+  or component boundaries. Use a strong identifier type (for example a UUID or
+  scoped monotonic ID); preserve it on copies and issue a new identity only for
+  a semantically new object or revision.
 
   ```cpp
   class Parser {
@@ -205,6 +210,10 @@ Most serious C++ bugs come from unclear ownership, dangling references, or inval
 - Do not return pointers, references, views, or iterators to local objects.
 - Do not create ownership cycles with `shared_ptr`.
 - Do not use `malloc`, `calloc`, `realloc`, or `free` for C++ objects.
+- Do not use object addresses or reference equality as logical identity for
+  copyable value types. Address equality is appropriate only when the API
+  explicitly requires the same physical allocation and its lifetime and
+  non-copying invariant are guaranteed.
 
 ### Preferred ownership vocabulary
 
@@ -217,6 +226,7 @@ Most serious C++ bugs come from unclear ownership, dangling references, or inval
 | Non-owning contiguous data | `std::span<T>` |
 | Non-owning read-only string | `std::string_view` |
 | Optional value | `std::optional<T>` |
+| Logical identity across copies | Immutable strong ID such as UUID or scoped revision ID |
 
 ---
 
