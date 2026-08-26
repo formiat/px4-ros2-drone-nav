@@ -47,6 +47,8 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
   prepared.planning_search_kind = ProductionPlanningSearchKind::kLattice3D;
   prepared.planning_search_base_route_instance_id =
       candidate.search_base_route_instance_id;
+  prepared.planning_search_base_stitch_station_m =
+      candidate.search_base_stitch_station_m;
   prepared.planning_search_start = search_start;
   prepared.planning_search_goal = lattice.planning_goal;
   prepared.planning_candidate_endpoint =
@@ -192,14 +194,21 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
   std::vector<ConstrainedRouteSpan> initial_spans = makeConstrainedRouteSpans(
       *mutable_route, route_traversals, candidate_generation, route_envelope_config_);
   std::optional<FrozenRoutePrefix3D> frozen_prefix;
+  const bool overlap_search = candidate.search_base_route_instance_id.valid();
   if ((world.static_route_extension_request || world.static_route_replan_request) &&
-      candidate.search_base_route_instance_id.valid() && active_route != nullptr &&
-      active_route->route_instance_id == candidate.search_base_route_instance_id &&
-      active_route->valid() && active_route->geometry &&
-      active_route->geometry->route && active_route->geometry->constrained_spans) {
-    frozen_prefix = materializeFrozenRoutePrefix3D(
+      overlap_search) {
+    if (!candidate.search_base_stitch_station_m.has_value() ||
+        active_route == nullptr ||
+        active_route->route_instance_id != candidate.search_base_route_instance_id ||
+        !active_route->valid() || !active_route->geometry ||
+        !active_route->geometry->route || !active_route->geometry->constrained_spans) {
+      result.validation = StaticRouteCandidateValidation{
+          .status = StaticRouteCandidateStatus::kInvalidPassageSpan};
+      return result;
+    }
+    frozen_prefix = materializeFrozenRoutePrefixAtStation3D(
         *active_route->geometry->route, lattice.route, current_position,
-        static_route_extension_config_.required_certified_overlap_m);
+        *candidate.search_base_stitch_station_m);
     if (!frozen_prefix.has_value()) {
       result.validation = StaticRouteCandidateValidation{
           .status = StaticRouteCandidateStatus::kInvalidPassageSpan};

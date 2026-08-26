@@ -192,6 +192,10 @@ void ProductionMppiNode::processDiagnostics(
       << " guide_local_reseed_generation="
       << snapshot.guide_progress.local_reseed_generation << " planning_search_kind="
       << productionPlanningSearchKindName(esdf.planning_search_kind)
+      << " planning_search_base_route_instance_id="
+      << esdf.planning_search_base_route_instance_id.value
+      << " planning_search_base_stitch_station_m="
+      << esdf.planning_search_base_stitch_station_m.value_or(-1.0)
       << " planning_search_start=(" << esdf.planning_search_start.x << ','
       << esdf.planning_search_start.y << ',' << esdf.planning_search_start.z << ')'
       << " planning_search_goal=(" << esdf.planning_search_goal.x << ','
@@ -701,6 +705,10 @@ void ProductionMppiNode::processDiagnostics(
          << snapshot.guide_progress.local_reseed_generation
          << ",\"planning_search_kind\":\""
          << productionPlanningSearchKindName(esdf.planning_search_kind) << '"'
+         << ",\"planning_search_base_route_instance_id\":"
+         << esdf.planning_search_base_route_instance_id.value
+         << ",\"planning_search_base_stitch_station_m\":"
+         << esdf.planning_search_base_stitch_station_m.value_or(-1.0)
          << ",\"planning_search_start_x\":" << esdf.planning_search_start.x
          << ",\"planning_search_start_y\":" << esdf.planning_search_start.y
          << ",\"planning_search_start_z\":" << esdf.planning_search_start.z

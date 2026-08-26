@@ -237,6 +237,7 @@ struct ProductionMppiPreparedEsdf {
   ProductionPlanningSearchKind planning_search_kind{
       ProductionPlanningSearchKind::kNone};
   RouteInstanceId3D planning_search_base_route_instance_id{};
+  std::optional<double> planning_search_base_stitch_station_m;
   Point3 planning_search_start{};
   Point3 planning_search_goal{};
   Point3 planning_candidate_endpoint{};
@@ -368,6 +369,7 @@ enum class ProductionIncrementalTopologyRejectionReason3D : std::uint8_t {
 struct ProductionRouteSearchCandidate3D {
   Point3 search_start{};
   RouteInstanceId3D search_base_route_instance_id{};
+  std::optional<double> search_base_stitch_station_m;
   RouteIntent3D intent{};
   SegmentEvidence3D evidence{};
   RiskAwareLattice3DResult lattice{};

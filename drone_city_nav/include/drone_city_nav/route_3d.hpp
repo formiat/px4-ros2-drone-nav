@@ -338,6 +338,15 @@ materializeFrozenRoutePrefix3D(std::span<const RouteSample3D> active_route,
                                const Point3& current_position,
                                double frozen_prefix_length_m) noexcept;
 
+// Materializes a successor planned from an exact future station of the active
+// route.  The station is part of the search provenance and must not be derived
+// again from a newer vehicle pose during candidate materialization.
+[[nodiscard]] std::optional<FrozenRoutePrefix3D>
+materializeFrozenRoutePrefixAtStation3D(std::span<const RouteSample3D> active_route,
+                                        std::span<const RouteSample3D> successor_route,
+                                        const Point3& current_position,
+                                        double active_stitch_station_m) noexcept;
+
 [[nodiscard]] std::uint64_t
 routeFingerprint(std::span<const RouteSample3D> route,
                  std::span<const SelectedPassageTraversal> traversals = {}) noexcept;

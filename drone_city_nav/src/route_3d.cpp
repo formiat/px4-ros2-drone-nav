@@ -118,6 +118,81 @@ nearestEnvelopeSample(const ConstrainedRouteSpan& span, const double station_m) 
                                                                         : *upper;
 }
 
+[[nodiscard]] std::optional<FrozenRoutePrefix3D> materializeFrozenRoutePrefixAtStations(
+    const std::span<const RouteSample3D> active_route,
+    const std::span<const RouteSample3D> successor_route,
+    const RouteProjection3D& active_projection, const double active_stitch_station_m,
+    const double successor_begin_station_m,
+    const double successor_stitch_station_m) noexcept {
+  if (!active_projection.valid || !std::isfinite(active_stitch_station_m) ||
+      !std::isfinite(successor_begin_station_m) ||
+      !std::isfinite(successor_stitch_station_m) ||
+      !(active_stitch_station_m > active_projection.station_m) ||
+      active_stitch_station_m > active_route.back().station_m ||
+      successor_stitch_station_m < successor_begin_station_m ||
+      successor_stitch_station_m > successor_route.back().station_m) {
+    return std::nullopt;
+  }
+  const RouteSample3D active_stitch =
+      sampleAtStation(active_route, active_stitch_station_m);
+  const RouteSample3D successor_stitch =
+      sampleAtStation(successor_route, successor_stitch_station_m);
+  const double active_norm =
+      std::hypot(std::hypot(active_stitch.tangent.x, active_stitch.tangent.y),
+                 active_stitch.tangent.z);
+  const double successor_norm =
+      std::hypot(std::hypot(successor_stitch.tangent.x, successor_stitch.tangent.y),
+                 successor_stitch.tangent.z);
+  const double tangent_alignment =
+      active_norm > 1.0e-9 && successor_norm > 1.0e-9
+          ? (active_stitch.tangent.x * successor_stitch.tangent.x +
+             active_stitch.tangent.y * successor_stitch.tangent.y +
+             active_stitch.tangent.z * successor_stitch.tangent.z) /
+                (active_norm * successor_norm)
+          : -1.0;
+  if (distance3D(active_stitch.position, successor_stitch.position) >
+          kFrozenPrefixMaximumStitchSeparationM ||
+      tangent_alignment < kFrozenPrefixMinimumTangentAlignment) {
+    return std::nullopt;
+  }
+
+  FrozenRoutePrefix3D result{
+      .route = {},
+      .active_begin_station_m = active_projection.station_m,
+      .stitch_station_m = active_stitch_station_m,
+      .successor_begin_station_m = successor_begin_station_m,
+      .successor_stitch_station_m = successor_stitch_station_m,
+  };
+  const auto append = [&result, &active_projection](RouteSample3D sample) noexcept {
+    sample.station_m = std::max(0.0, sample.station_m - active_projection.station_m);
+    if (result.route.empty() ||
+        sample.station_m > result.route.back().station_m + 1.0e-6) {
+      result.route.push_back(sample);
+    }
+  };
+  append(sampleAtStation(active_route, active_projection.station_m));
+  for (const RouteSample3D& sample : active_route) {
+    if (sample.station_m > active_projection.station_m &&
+        sample.station_m < active_stitch_station_m) {
+      append(sample);
+    }
+  }
+  append(active_stitch);
+  const double successor_offset = active_stitch_station_m - successor_stitch_station_m;
+  for (const RouteSample3D& source : successor_route) {
+    if (source.station_m <= successor_stitch_station_m) {
+      continue;
+    }
+    RouteSample3D sample = source;
+    sample.station_m += successor_offset - active_projection.station_m;
+    if (sample.station_m > result.route.back().station_m + 1.0e-6) {
+      result.route.push_back(sample);
+    }
+  }
+  return result.valid() ? std::optional<FrozenRoutePrefix3D>{std::move(result)}
+                        : std::nullopt;
+}
+
 } // namespace
 
 RouteSample3D sampleRoute3DAtStation(const std::span<const RouteSample3D> route,
@@ -165,64 +240,30 @@ materializeFrozenRoutePrefix3D(const std::span<const RouteSample3D> active_route
       successor_stitch_station > successor_route.back().station_m) {
     return std::nullopt;
   }
-  const RouteSample3D successor_stitch =
-      sampleAtStation(successor_route, successor_stitch_station);
-  const double active_norm =
-      std::hypot(std::hypot(active_stitch.tangent.x, active_stitch.tangent.y),
-                 active_stitch.tangent.z);
-  const double successor_norm =
-      std::hypot(std::hypot(successor_stitch.tangent.x, successor_stitch.tangent.y),
-                 successor_stitch.tangent.z);
-  const double tangent_alignment =
-      active_norm > 1.0e-9 && successor_norm > 1.0e-9
-          ? (active_stitch.tangent.x * successor_stitch.tangent.x +
-             active_stitch.tangent.y * successor_stitch.tangent.y +
-             active_stitch.tangent.z * successor_stitch.tangent.z) /
-                (active_norm * successor_norm)
-          : -1.0;
-  if (distance3D(active_stitch.position, successor_stitch.position) >
-          kFrozenPrefixMaximumStitchSeparationM ||
-      tangent_alignment < kFrozenPrefixMinimumTangentAlignment) {
+  return materializeFrozenRoutePrefixAtStations(
+      active_route, successor_route, active_projection, stitch_station,
+      successor_starts_at_stitch ? successor_route.front().station_m
+                                 : successor_projection.station_m,
+      successor_stitch_station);
+}
+
+std::optional<FrozenRoutePrefix3D> materializeFrozenRoutePrefixAtStation3D(
+    const std::span<const RouteSample3D> active_route,
+    const std::span<const RouteSample3D> successor_route,
+    const Point3& current_position, const double active_stitch_station_m) noexcept {
+  if (active_route.size() < 2U || successor_route.size() < 2U ||
+      !std::isfinite(active_stitch_station_m)) {
     return std::nullopt;
   }
-
-  FrozenRoutePrefix3D result{
-      .route = {},
-      .active_begin_station_m = active_projection.station_m,
-      .stitch_station_m = stitch_station,
-      .successor_begin_station_m = successor_starts_at_stitch
-                                       ? successor_route.front().station_m
-                                       : successor_projection.station_m,
-      .successor_stitch_station_m = successor_stitch_station,
-  };
-  const auto append = [&result, &active_projection](RouteSample3D sample) noexcept {
-    sample.station_m = std::max(0.0, sample.station_m - active_projection.station_m);
-    if (result.route.empty() ||
-        sample.station_m > result.route.back().station_m + 1.0e-6) {
-      result.route.push_back(sample);
-    }
-  };
-  append(sampleAtStation(active_route, active_projection.station_m));
-  for (const RouteSample3D& sample : active_route) {
-    if (sample.station_m > active_projection.station_m &&
-        sample.station_m < stitch_station) {
-      append(sample);
-    }
+  const RouteProjection3D active_projection =
+      projectOntoRoute3D(active_route, current_position);
+  if (!active_projection.valid ||
+      active_stitch_station_m > active_route.back().station_m) {
+    return std::nullopt;
   }
-  append(active_stitch);
-  const double successor_offset = stitch_station - successor_stitch_station;
-  for (const RouteSample3D& source : successor_route) {
-    if (source.station_m <= successor_stitch_station) {
-      continue;
-    }
-    RouteSample3D sample = source;
-    sample.station_m += successor_offset - active_projection.station_m;
-    if (sample.station_m > result.route.back().station_m + 1.0e-6) {
-      result.route.push_back(sample);
-    }
-  }
-  return result.valid() ? std::optional<FrozenRoutePrefix3D>{std::move(result)}
-                        : std::nullopt;
+  return materializeFrozenRoutePrefixAtStations(
+      active_route, successor_route, active_projection, active_stitch_station_m,
+      successor_route.front().station_m, successor_route.front().station_m);
 }
 
 std::uint64_t

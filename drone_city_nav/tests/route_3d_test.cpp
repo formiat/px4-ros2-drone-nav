@@ -126,6 +126,43 @@ TEST(Route3DTest, MaterializesSuccessorPlannedFromFutureStitchStation) {
   EXPECT_NEAR(sampleRoute3DAtStation(frozen_prefix.route, 6.0).position.x, 8.0, 1.0e-6);
 }
 
+TEST(Route3DTest, PreservesSearchStitchStationAcrossVehicleProgress) {
+  const std::vector<RouteSample3D> active = sampleRoute3D(
+      std::vector<Point3>{{0.0, 0.0, 5.0}, {10.0, 0.0, 5.0}, {20.0, 0.0, 5.0}}, 1.0,
+      4.0);
+  const std::vector<RouteSample3D> successor = sampleRoute3D(
+      std::vector<Point3>{{8.0, 0.0, 5.0}, {14.0, 0.0, 5.0}, {20.0, 6.0, 5.0}}, 1.0,
+      4.0);
+
+  EXPECT_FALSE(
+      materializeFrozenRoutePrefix3D(active, successor, Point3{4.0, 0.0, 5.0}, 6.0)
+          .has_value());
+  const std::optional<FrozenRoutePrefix3D> frozen =
+      materializeFrozenRoutePrefixAtStation3D(active, successor, Point3{4.0, 0.0, 5.0},
+                                              8.0);
+
+  ASSERT_TRUE(frozen.has_value());
+  if (!frozen.has_value()) {
+    return;
+  }
+  const FrozenRoutePrefix3D& frozen_prefix = frozen.value();
+  EXPECT_NEAR(frozen_prefix.active_begin_station_m, 4.0, 1.0e-6);
+  EXPECT_NEAR(frozen_prefix.stitch_station_m, 8.0, 1.0e-6);
+  EXPECT_NEAR(frozen_prefix.route.front().position.x, 4.0, 1.0e-6);
+  EXPECT_NEAR(sampleRoute3DAtStation(frozen_prefix.route, 4.0).position.x, 8.0, 1.0e-6);
+}
+
+TEST(Route3DTest, RejectsSearchStitchAlreadyPassedByVehicle) {
+  const std::vector<RouteSample3D> active =
+      sampleRoute3D(std::vector<Point3>{{0.0, 0.0, 5.0}, {20.0, 0.0, 5.0}}, 1.0, 4.0);
+  const std::vector<RouteSample3D> successor =
+      sampleRoute3D(std::vector<Point3>{{8.0, 0.0, 5.0}, {20.0, 0.0, 5.0}}, 1.0, 4.0);
+
+  EXPECT_FALSE(materializeFrozenRoutePrefixAtStation3D(active, successor,
+                                                       Point3{9.0, 0.0, 5.0}, 8.0)
+                   .has_value());
+}
+
 TEST(Route3DTest, RemapsPassageContractsOntoCanonicalFrozenRoute) {
   const std::vector<RouteSample3D> source = sampleRoute3D(
       std::vector<Point3>{{0.0, 0.0, 5.0}, {10.0, 0.0, 5.0}, {20.0, 0.0, 5.0}}, 0.5,
