@@ -196,16 +196,17 @@ void ProductionMppiNode::processDiagnostics(
       << esdf.planning_search_base_route_instance_id.value
       << " planning_search_base_stitch_station_m="
       << esdf.planning_search_base_stitch_station_m.value_or(-1.0)
-      << " planning_search_start=(" << esdf.planning_search_start.x << ','
-      << esdf.planning_search_start.y << ',' << esdf.planning_search_start.z << ')'
-      << " planning_search_goal=(" << esdf.planning_search_goal.x << ','
-      << esdf.planning_search_goal.y << ',' << esdf.planning_search_goal.z << ')'
-      << " planning_candidate_endpoint=(" << esdf.planning_candidate_endpoint.x << ','
-      << esdf.planning_candidate_endpoint.y << ',' << esdf.planning_candidate_endpoint.z
-      << ')' << " planning_search_direction=(" << esdf.planning_search_direction.x
-      << ',' << esdf.planning_search_direction.y << ','
-      << esdf.planning_search_direction.z << ')'
-      << " planning_candidate_points=" << esdf.planning_candidate_points
+      << " required_splice_base_route_instance_id="
+      << esdf.required_splice_base_route_instance_id.value << " planning_search_start=("
+      << esdf.planning_search_start.x << ',' << esdf.planning_search_start.y << ','
+      << esdf.planning_search_start.z << ')' << " planning_search_goal=("
+      << esdf.planning_search_goal.x << ',' << esdf.planning_search_goal.y << ','
+      << esdf.planning_search_goal.z << ')' << " planning_candidate_endpoint=("
+      << esdf.planning_candidate_endpoint.x << ',' << esdf.planning_candidate_endpoint.y
+      << ',' << esdf.planning_candidate_endpoint.z << ')'
+      << " planning_search_direction=(" << esdf.planning_search_direction.x << ','
+      << esdf.planning_search_direction.y << ',' << esdf.planning_search_direction.z
+      << ')' << " planning_candidate_points=" << esdf.planning_candidate_points
       << " planning_candidate_samples=" << esdf.planning_candidate_samples
       << " lattice_search_performed="
       << (esdf.lattice_search_performed ? "true" : "false")
@@ -712,6 +713,8 @@ void ProductionMppiNode::processDiagnostics(
          << esdf.planning_search_base_route_instance_id.value
          << ",\"planning_search_base_stitch_station_m\":"
          << esdf.planning_search_base_stitch_station_m.value_or(-1.0)
+         << ",\"required_splice_base_route_instance_id\":"
+         << esdf.required_splice_base_route_instance_id.value
          << ",\"planning_search_start_x\":" << esdf.planning_search_start.x
          << ",\"planning_search_start_y\":" << esdf.planning_search_start.y
          << ",\"planning_search_start_z\":" << esdf.planning_search_start.z

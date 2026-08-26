@@ -243,6 +243,10 @@ struct ProductionMppiPreparedEsdf {
       ProductionPlanningSearchKind::kNone};
   RouteInstanceId3D planning_search_base_route_instance_id{};
   std::optional<double> planning_search_base_stitch_station_m;
+  // Search provenance and activation continuity are separate contracts. A
+  // valid ID requires certified overlap with this exact route at activation;
+  // an empty ID permits a dynamically validated atomic route handoff.
+  RouteInstanceId3D required_splice_base_route_instance_id{};
   Point3 planning_search_start{};
   Point3 planning_search_goal{};
   Point3 planning_candidate_endpoint{};

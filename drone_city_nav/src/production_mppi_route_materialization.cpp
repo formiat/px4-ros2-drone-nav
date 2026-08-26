@@ -49,6 +49,8 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
       candidate.search_base_route_instance_id;
   prepared.planning_search_base_stitch_station_m =
       candidate.search_base_stitch_station_m;
+  prepared.required_splice_base_route_instance_id =
+      candidate.search_base_route_instance_id;
   prepared.planning_search_start = search_start;
   prepared.planning_search_goal = lattice.planning_goal;
   prepared.planning_candidate_endpoint =
@@ -214,9 +216,15 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
         *active_route->geometry->route, lattice.route, current_position,
         *candidate.search_base_stitch_station_m);
     if (!frozen_prefix.has_value()) {
-      result.validation = StaticRouteCandidateValidation{
-          .status = StaticRouteCandidateStatus::kInvalidPassageSpan};
-      return result;
+      frozen_prefix = materializeRouteHandoffAtStation3D(
+          *active_route->geometry->route, lattice.route, current_position,
+          *candidate.search_base_stitch_station_m);
+      if (!frozen_prefix.has_value()) {
+        result.validation = StaticRouteCandidateValidation{
+            .status = StaticRouteCandidateStatus::kInvalidPassageSpan};
+        return result;
+      }
+      prepared.required_splice_base_route_instance_id = {};
     }
     const std::vector<ConstrainedRouteSpan> active_prefix_spans =
         clipConstrainedRouteSpans(*active_route->geometry->constrained_spans,

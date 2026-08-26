@@ -493,6 +493,7 @@ void ProductionMppiNode::processGuideSearch3D(
       "deadline_ms=%.2f "
       "risk_stage=%s search_base_route_instance_id=%" PRIu64
       " search_base_stitch_station_m=%.2f"
+      " required_splice_base_route_instance_id=%" PRIu64
       " start=(%.2f,%.2f,%.2f) planning_goal=(%.2f,%.2f,%.2f) "
       "endpoint=(%.2f,%.2f,%.2f) direction=(%.3f,%.3f,%.3f) "
       "achieved_progress_m=%.2f minimum_clearance_m=%.2f stale_pops=%zu "
@@ -588,7 +589,8 @@ void ProductionMppiNode::processGuideSearch3D(
       lattice_3d_config_.maximum_search_time_ms,
       lattice3DRiskStageName(lattice.risk_stage),
       prepared.planning_search_base_route_instance_id.value,
-      prepared.planning_search_base_stitch_station_m.value_or(-1.0), search_start.x,
+      prepared.planning_search_base_stitch_station_m.value_or(-1.0),
+      prepared.required_splice_base_route_instance_id.value, search_start.x,
       search_start.y, search_start.z, lattice.planning_goal.x, lattice.planning_goal.y,
       lattice.planning_goal.z, prepared.planning_candidate_endpoint.x,
       prepared.planning_candidate_endpoint.y, prepared.planning_candidate_endpoint.z,

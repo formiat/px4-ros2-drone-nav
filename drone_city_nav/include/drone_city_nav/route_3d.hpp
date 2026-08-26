@@ -347,6 +347,17 @@ materializeFrozenRoutePrefixAtStation3D(std::span<const RouteSample3D> active_ro
                                         const Point3& current_position,
                                         double active_stitch_station_m) noexcept;
 
+// Materializes the same future-stitch geometry for an atomic route handoff.
+// Unlike a certified splice, a handoff may contain a tangent discontinuity at
+// the exact stitch position. Route compilation must encode its kinematic
+// transition, including an explicit stop-and-turn when it exceeds the
+// continuous-turn threshold, before the route becomes executable.
+[[nodiscard]] std::optional<FrozenRoutePrefix3D>
+materializeRouteHandoffAtStation3D(std::span<const RouteSample3D> active_route,
+                                   std::span<const RouteSample3D> successor_route,
+                                   const Point3& current_position,
+                                   double active_stitch_station_m) noexcept;
+
 [[nodiscard]] std::uint64_t
 routeFingerprint(std::span<const RouteSample3D> route,
                  std::span<const SelectedPassageTraversal> traversals = {}) noexcept;

@@ -162,6 +162,49 @@ TEST(Route3DTest, RejectsSearchStitchAlreadyPassedByVehicle) {
   EXPECT_FALSE(materializeFrozenRoutePrefixAtStation3D(active, successor,
                                                        Point3{9.0, 0.0, 5.0}, 8.0)
                    .has_value());
+  EXPECT_FALSE(
+      materializeRouteHandoffAtStation3D(active, successor, Point3{9.0, 0.0, 5.0}, 8.0)
+          .has_value());
+}
+
+TEST(Route3DTest, MaterializesDiscontinuousFutureStitchAsStopTurnHandoff) {
+  const std::vector<RouteSample3D> active =
+      sampleRoute3D(std::vector<Point3>{{0.0, 0.0, 5.0}, {20.0, 0.0, 5.0}}, 1.0, 4.0);
+  const std::vector<RouteSample3D> successor =
+      sampleRoute3D(std::vector<Point3>{{8.0, 0.0, 5.0}, {8.0, 8.0, 5.0}}, 1.0, 4.0);
+
+  EXPECT_FALSE(materializeFrozenRoutePrefixAtStation3D(active, successor,
+                                                       Point3{4.0, 0.0, 5.0}, 8.0)
+                   .has_value());
+  const std::optional<FrozenRoutePrefix3D> handoff =
+      materializeRouteHandoffAtStation3D(active, successor, Point3{4.0, 0.0, 5.0}, 8.0);
+
+  ASSERT_TRUE(handoff.has_value());
+  if (!handoff.has_value()) {
+    return;
+  }
+  std::vector<RouteSample3D> canonical = handoff.value().route;
+  std::size_t stop_turn_count{0U};
+  ASSERT_TRUE(
+      canonicalizeRouteKinematics3D(canonical, 0.7071067811865476, &stop_turn_count));
+  EXPECT_EQ(stop_turn_count, 1U);
+  const auto stitch = std::ranges::find_if(canonical, [](const RouteSample3D& sample) {
+    return distance3D(sample.position, Point3{8.0, 0.0, 5.0}) < 1.0e-9;
+  });
+  ASSERT_NE(stitch, canonical.end());
+  EXPECT_EQ(stitch->transition, RouteKinematicTransition3D::kStopAndTurn);
+  EXPECT_DOUBLE_EQ(stitch->reference_speed_mps, 0.0);
+}
+
+TEST(Route3DTest, RejectsSpatialGapForFutureStitchHandoff) {
+  const std::vector<RouteSample3D> active =
+      sampleRoute3D(std::vector<Point3>{{0.0, 0.0, 5.0}, {20.0, 0.0, 5.0}}, 1.0, 4.0);
+  const std::vector<RouteSample3D> successor =
+      sampleRoute3D(std::vector<Point3>{{8.1, 0.0, 5.0}, {8.1, 8.0, 5.0}}, 1.0, 4.0);
+
+  EXPECT_FALSE(
+      materializeRouteHandoffAtStation3D(active, successor, Point3{4.0, 0.0, 5.0}, 8.0)
+          .has_value());
 }
 
 TEST(Route3DTest, RemapsPassageContractsOntoCanonicalFrozenRoute) {

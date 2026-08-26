@@ -678,11 +678,11 @@ void ProductionMppiNode::commitRouteActivation3D(
             })
           : std::nullopt;
 
-  const bool overlap_search = candidate.planning_search_base_route_instance_id.valid();
+  const bool overlap_search = candidate.required_splice_base_route_instance_id.valid();
   const bool overlap_base_matches =
       current_route != nullptr && overlap_search &&
       current_route->route_instance_id ==
-          candidate.planning_search_base_route_instance_id;
+          candidate.required_splice_base_route_instance_id;
   if (certified_route.has_value() && overlap_base_matches) {
     result.splice = certifyRouteSplice3D(*current_route, certified_route.value(),
                                          Point3{snapshot.navigation.state.x,

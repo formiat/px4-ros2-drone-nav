@@ -19,6 +19,11 @@ constexpr std::uint64_t kFnvPrime = 1099511628211ULL;
 constexpr double kFrozenPrefixMaximumStitchSeparationM{0.05};
 constexpr double kFrozenPrefixMinimumTangentAlignment{0.995};
 
+enum class FutureStitchJoinPolicy : std::uint8_t {
+  kRequireContinuousTangent,
+  kAllowStopAndTurn,
+};
+
 void hashByte(std::uint64_t& hash, const std::uint8_t value) noexcept {
   hash ^= value;
   hash *= kFnvPrime;
@@ -122,8 +127,8 @@ nearestEnvelopeSample(const ConstrainedRouteSpan& span, const double station_m) 
     const std::span<const RouteSample3D> active_route,
     const std::span<const RouteSample3D> successor_route,
     const RouteProjection3D& active_projection, const double active_stitch_station_m,
-    const double successor_begin_station_m,
-    const double successor_stitch_station_m) noexcept {
+    const double successor_begin_station_m, const double successor_stitch_station_m,
+    const FutureStitchJoinPolicy join_policy) noexcept {
   if (!active_projection.valid || !std::isfinite(active_stitch_station_m) ||
       !std::isfinite(successor_begin_station_m) ||
       !std::isfinite(successor_stitch_station_m) ||
@@ -152,7 +157,8 @@ nearestEnvelopeSample(const ConstrainedRouteSpan& span, const double station_m) 
           : -1.0;
   if (distance3D(active_stitch.position, successor_stitch.position) >
           kFrozenPrefixMaximumStitchSeparationM ||
-      tangent_alignment < kFrozenPrefixMinimumTangentAlignment) {
+      (join_policy == FutureStitchJoinPolicy::kRequireContinuousTangent &&
+       tangent_alignment < kFrozenPrefixMinimumTangentAlignment)) {
     return std::nullopt;
   }
 
@@ -244,7 +250,7 @@ materializeFrozenRoutePrefix3D(const std::span<const RouteSample3D> active_route
       active_route, successor_route, active_projection, stitch_station,
       successor_starts_at_stitch ? successor_route.front().station_m
                                  : successor_projection.station_m,
-      successor_stitch_station);
+      successor_stitch_station, FutureStitchJoinPolicy::kRequireContinuousTangent);
 }
 
 std::optional<FrozenRoutePrefix3D> materializeFrozenRoutePrefixAtStation3D(
@@ -263,7 +269,29 @@ std::optional<FrozenRoutePrefix3D> materializeFrozenRoutePrefixAtStation3D(
   }
   return materializeFrozenRoutePrefixAtStations(
       active_route, successor_route, active_projection, active_stitch_station_m,
-      successor_route.front().station_m, successor_route.front().station_m);
+      successor_route.front().station_m, successor_route.front().station_m,
+      FutureStitchJoinPolicy::kRequireContinuousTangent);
+}
+
+std::optional<FrozenRoutePrefix3D>
+materializeRouteHandoffAtStation3D(const std::span<const RouteSample3D> active_route,
+                                   const std::span<const RouteSample3D> successor_route,
+                                   const Point3& current_position,
+                                   const double active_stitch_station_m) noexcept {
+  if (active_route.size() < 2U || successor_route.size() < 2U ||
+      !std::isfinite(active_stitch_station_m)) {
+    return std::nullopt;
+  }
+  const RouteProjection3D active_projection =
+      projectOntoRoute3D(active_route, current_position);
+  if (!active_projection.valid ||
+      active_stitch_station_m > active_route.back().station_m) {
+    return std::nullopt;
+  }
+  return materializeFrozenRoutePrefixAtStations(
+      active_route, successor_route, active_projection, active_stitch_station_m,
+      successor_route.front().station_m, successor_route.front().station_m,
+      FutureStitchJoinPolicy::kAllowStopAndTurn);
 }
 
 std::uint64_t
