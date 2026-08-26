@@ -105,7 +105,11 @@ reconstructSampleTree(const GridBounds3D& bounds,
       break;
     }
   }
-  return complete ? std::optional<SampleTreePath3D>{std::move(result)} : std::nullopt;
+  if (!complete ||
+      std::abs(pathLength(result.polyline) - sample.distance_to_node_m) > 1.0e-6) {
+    return std::nullopt;
+  }
+  return result;
 }
 
 [[nodiscard]] std::optional<IncrementalTopologyConnector3D> makeObservedConnector(
@@ -267,6 +271,7 @@ IncrementalTopologyGraph3DSnapshot::connectObserved(
     std::size_t sample_index{0U};
     IncrementalTopologyNodeId node{};
     double distance_m{0.0};
+    double connector_length_m{0.0};
   };
 
   const auto candidate_less = [](const Candidate& first, const Candidate& second) {
@@ -317,7 +322,13 @@ IncrementalTopologyGraph3DSnapshot::connectObserved(
       if (distance_m > maximum_distance_m) {
         continue;
       }
-      const Candidate candidate{bucket.block, sample_index, sample.node, distance_m};
+      const Candidate candidate{
+          .block = bucket.block,
+          .sample_index = sample_index,
+          .node = sample.node,
+          .distance_m = distance_m,
+          .connector_length_m = distance_m + sample.distance_to_node_m,
+      };
       if (candidates.size() < kMaximumCandidates) {
         candidates.push_back(candidate);
         std::ranges::push_heap(candidates, candidate_less);
@@ -328,59 +339,33 @@ IncrementalTopologyGraph3DSnapshot::connectObserved(
       }
     }
   }
-  std::ranges::sort(candidates, candidate_less);
+  std::ranges::sort(candidates, [](const Candidate& first, const Candidate& second) {
+    const GridIndex3D& first_cell = first.block->records[first.sample_index].cell;
+    const GridIndex3D& second_cell = second.block->records[second.sample_index].cell;
+    return std::tie(first.connector_length_m, first.node.value, first_cell.z,
+                    first_cell.y, first_cell.x) <
+           std::tie(second.connector_length_m, second.node.value, second_cell.z,
+                    second_cell.y, second_cell.x);
+  });
 
-  struct PreparedCandidate {
-    Candidate candidate{};
-    SampleTreePath3D tree{};
-    const IncrementalTopologyNode3D* node{nullptr};
-    double connector_length_m{0.0};
-  };
-
-  std::vector<PreparedCandidate> prepared_candidates;
-  prepared_candidates.reserve(candidates.size());
   for (const Candidate& candidate : candidates) {
     if (deadline.has_value() && std::chrono::steady_clock::now() >= *deadline) {
       break;
     }
-    std::optional<SampleTreePath3D> tree = reconstructSampleTree(
+    const std::optional<SampleTreePath3D> tree = reconstructSampleTree(
         bounds_, *candidate.block, candidate.block->records[candidate.sample_index]);
     const IncrementalTopologyNode3D* const node = findNode(candidate.node);
     if (!tree.has_value() || tree->node != candidate.node || node == nullptr) {
       continue;
     }
-    const double connector_length_m = candidate.distance_m + pathLength(tree->polyline);
-    prepared_candidates.push_back(PreparedCandidate{
-        .candidate = candidate,
-        .tree = std::move(*tree),
-        .node = node,
-        .connector_length_m = connector_length_m,
-    });
-  }
-  std::ranges::sort(prepared_candidates, [](const PreparedCandidate& first,
-                                            const PreparedCandidate& second) {
-    const GridIndex3D& first_cell =
-        first.candidate.block->records[first.candidate.sample_index].cell;
-    const GridIndex3D& second_cell =
-        second.candidate.block->records[second.candidate.sample_index].cell;
-    return std::tie(first.connector_length_m, first.candidate.node.value, first_cell.z,
-                    first_cell.y, first_cell.x) <
-           std::tie(second.connector_length_m, second.candidate.node.value,
-                    second_cell.z, second_cell.y, second_cell.x);
-  });
-
-  for (PreparedCandidate& candidate : prepared_candidates) {
-    if (deadline.has_value() && std::chrono::steady_clock::now() >= *deadline) {
-      break;
-    }
     std::vector<Point3> polyline;
     appendUnique(polyline, position);
-    for (const Point3& point : candidate.tree.polyline) {
+    for (const Point3& point : tree->polyline) {
       appendUnique(polyline, point);
     }
     std::optional<IncrementalTopologyConnector3D> connector =
-        makeObservedConnector(occupancy, *candidate.node, std::move(polyline),
-                              footprint, validation_policy, revision_, deadline);
+        makeObservedConnector(occupancy, *node, std::move(polyline), footprint,
+                              validation_policy, revision_, deadline);
     if (connector.has_value()) {
       return connector;
     }

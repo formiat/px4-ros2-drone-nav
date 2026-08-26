@@ -54,6 +54,7 @@ struct IncrementalTopologyGraph3D::Impl {
     GridIndex3D representative_cell{};
     Point3 representative{};
     std::unordered_map<std::uint64_t, GridIndex3D> parent_by_cell;
+    std::unordered_map<std::uint64_t, double> distance_to_representative_m_by_cell;
     bool unknown_boundary_exposure{false};
   };
 
@@ -258,6 +259,7 @@ struct IncrementalTopologyGraph3D::Impl {
       component.representative_cell = representativeCellFor(occupancy, component.cells);
       component.representative = occupancy.cellCenter(component.representative_cell);
       rerootParentTree(component);
+      populateParentTreeDistances(component);
       if constexpr (std::is_same_v<Occupancy, ObservedOccupancyGrid3D>) {
         component.unknown_boundary_exposure =
             componentTouchesUnknown(occupancy, component.cells, sample_stride_cells);
@@ -400,6 +402,42 @@ struct IncrementalTopologyGraph3D::Impl {
       current = previous_parent;
     }
     throw std::logic_error{"topology discovery tree contains a cycle"};
+  }
+
+  void populateParentTreeDistances(BlockComponent& component) const {
+    auto& distances = component.distance_to_representative_m_by_cell;
+    distances.clear();
+    distances.reserve(component.cells.size());
+    distances.emplace(sampleCellKey(bounds, component.representative_cell), 0.0);
+    std::vector<GridIndex3D> unresolved;
+    unresolved.reserve(component.cells.size());
+    for (const GridIndex3D cell : component.cells) {
+      unresolved.clear();
+      GridIndex3D current = cell;
+      for (std::size_t guard = 0U; guard <= component.cells.size(); ++guard) {
+        const std::uint64_t current_key = sampleCellKey(bounds, current);
+        if (distances.contains(current_key)) {
+          break;
+        }
+        unresolved.push_back(current);
+        const auto parent = component.parent_by_cell.find(current_key);
+        if (parent == component.parent_by_cell.end() || parent->second == current) {
+          throw std::logic_error{"topology discovery tree is incomplete"};
+        }
+        current = parent->second;
+      }
+      const auto resolved = distances.find(sampleCellKey(bounds, current));
+      if (resolved == distances.end()) {
+        throw std::logic_error{"topology discovery tree contains a cycle"};
+      }
+      double distance_m = resolved->second;
+      for (const GridIndex3D child : unresolved | std::views::reverse) {
+        const GridIndex3D parent =
+            component.parent_by_cell.at(sampleCellKey(bounds, child));
+        distance_m += distance3D(cellCenter(bounds, child), cellCenter(bounds, parent));
+        distances.emplace(sampleCellKey(bounds, child), distance_m);
+      }
+    }
   }
 
   [[nodiscard]] std::vector<Point3>
@@ -648,6 +686,8 @@ struct IncrementalTopologyGraph3D::Impl {
               .cell = cell,
               .parent_cell = component.parent_by_cell.at(key),
               .node = component.id,
+              .distance_to_node_m =
+                  component.distance_to_representative_m_by_cell.at(key),
           });
         }
       }

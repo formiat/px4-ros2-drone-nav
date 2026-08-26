@@ -187,6 +187,7 @@ struct IncrementalTopologySampleRecord3D {
   GridIndex3D cell{};
   GridIndex3D parent_cell{};
   IncrementalTopologyNodeId node{};
+  double distance_to_node_m{0.0};
 };
 
 struct IncrementalTopologySampleBlock3D {
