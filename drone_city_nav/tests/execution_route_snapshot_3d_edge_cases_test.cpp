@@ -231,6 +231,35 @@ TEST(ExecutionRouteSnapshot3DTest,
   EXPECT_EQ(store.snapshot(), activation.next);
   EXPECT_EQ(mailbox.snapshot(), nullptr);
 
+  const std::optional<CertifiedRouteSuffix3D> recertified = recertifyExecutionRoute3D(
+      *suffix, fixture.activation().observation, suffix->observed_raw_world);
+  ASSERT_TRUE(recertified.has_value());
+  ASSERT_NE(recertified->route_instance_id, suffix->route_instance_id);
+  ASSERT_EQ(recertified->parent_route_instance_id,
+            std::optional<RouteInstanceId3D>{suffix->route_instance_id});
+  ExecutionRouteSnapshotStore3D recertified_store;
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> recertified_initial =
+      recertified_store.snapshot();
+  ASSERT_NE(recertified_initial, nullptr);
+  FiniteExecutionState3D recertified_execution =
+      SnapshotFixture3D::finiteExecutionForRoute(*recertified_initial, *recertified,
+                                                 FiniteExecutionKind3D::kNominal, true,
+                                                 101U);
+  const ExecutionRouteTransitionResult3D recertified_activation =
+      activateCertifiedRoute3D(*recertified_initial, recertified_initial->version,
+                               *recertified, std::move(recertified_execution));
+  ASSERT_TRUE(recertified_activation.applied());
+  PendingCertifiedRouteMailbox3D recertified_mailbox;
+  ASSERT_TRUE(recertified_mailbox.publish(pending));
+  const std::shared_ptr<const PendingCertifiedRoute3D> recertified_pending =
+      recertified_mailbox.snapshot();
+  ASSERT_NE(recertified_pending, nullptr);
+  EXPECT_TRUE(recertified_mailbox.commitExecutionIfSame(
+      recertified_pending, recertified_store, recertified_initial,
+      recertified_activation));
+  EXPECT_EQ(recertified_store.snapshot(), recertified_activation.next);
+  EXPECT_EQ(recertified_mailbox.snapshot(), nullptr);
+
   ExecutionRouteSnapshotStore3D rejected_store;
   ExecutionRouteSnapshotStore3D foreign_store;
   const std::shared_ptr<const ExecutionRouteSnapshot3D> rejected_initial =
@@ -255,6 +284,31 @@ TEST(ExecutionRouteSnapshot3DTest,
       retained, rejected_store, foreign_initial, foreign_activation));
   EXPECT_EQ(rejected_store.snapshot(), rejected_initial);
   EXPECT_EQ(retained_mailbox.snapshot(), retained);
+
+  const std::optional<CertifiedRouteSuffix3D> unrelated = fixture.certify();
+  ASSERT_TRUE(unrelated.has_value());
+  ASSERT_NE(unrelated->route_instance_id, suffix->route_instance_id);
+  ASSERT_FALSE(unrelated->parent_route_instance_id.has_value());
+  ExecutionRouteSnapshotStore3D unrelated_store;
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> unrelated_initial =
+      unrelated_store.snapshot();
+  ASSERT_NE(unrelated_initial, nullptr);
+  FiniteExecutionState3D unrelated_execution =
+      SnapshotFixture3D::finiteExecutionForRoute(
+          *unrelated_initial, *unrelated, FiniteExecutionKind3D::kNominal, true, 102U);
+  const ExecutionRouteTransitionResult3D unrelated_activation =
+      activateCertifiedRoute3D(*unrelated_initial, unrelated_initial->version,
+                               *unrelated, std::move(unrelated_execution));
+  ASSERT_TRUE(unrelated_activation.applied());
+  PendingCertifiedRouteMailbox3D unrelated_mailbox;
+  ASSERT_TRUE(unrelated_mailbox.publish(pending));
+  const std::shared_ptr<const PendingCertifiedRoute3D> unrelated_pending =
+      unrelated_mailbox.snapshot();
+  ASSERT_NE(unrelated_pending, nullptr);
+  EXPECT_FALSE(unrelated_mailbox.commitExecutionIfSame(
+      unrelated_pending, unrelated_store, unrelated_initial, unrelated_activation));
+  EXPECT_EQ(unrelated_store.snapshot(), unrelated_initial);
+  EXPECT_EQ(unrelated_mailbox.snapshot(), unrelated_pending);
 }
 
 TEST(ExecutionRouteSnapshot3DTest, RouteSplicePendingSurvivesExecutionProgressCasLoss) {

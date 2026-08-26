@@ -160,11 +160,19 @@ bool PendingCertifiedRouteMailbox3D::commitExecutionIfSame(
     return false;
   }
   const std::scoped_lock lock{mutex_};
+  const CertifiedRouteSuffix3D* const committed_route =
+      transition.next->route.has_value()
+          ? std::addressof(transition.next->route.value())
+          : nullptr;
+  const bool committed_route_is_pending_revision =
+      committed_route != nullptr &&
+      (committed_route->route_instance_id ==
+           expected_pending->route.route_instance_id ||
+       committed_route->parent_route_instance_id ==
+           std::optional<RouteInstanceId3D>{expected_pending->route.route_instance_id});
   if (pending_ != expected_pending ||
       !pendingCertifiedRouteEligible3D(*expected_pending, *expected_snapshot) ||
-      !transition.next->route.has_value() ||
-      transition.next->route->route_instance_id !=
-          expected_pending->route.route_instance_id) {
+      !committed_route_is_pending_revision) {
     return false;
   }
   if (execution_store.publish(expected_snapshot, transition) !=

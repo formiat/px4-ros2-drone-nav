@@ -127,6 +127,8 @@ TEST(ExecutionRouteSnapshot3DTest,
 
   ASSERT_TRUE(refreshed.has_value());
   EXPECT_NE(refreshed->route_instance_id, sealed->route_instance_id);
+  EXPECT_EQ(refreshed->parent_route_instance_id,
+            std::optional<RouteInstanceId3D>{sealed->route_instance_id});
   EXPECT_EQ(refreshed->geometry, sealed->geometry);
   EXPECT_EQ(refreshed->geometry->route, sealed->geometry->route);
   EXPECT_DOUBLE_EQ(refreshed->progress.station_m, 3.0);

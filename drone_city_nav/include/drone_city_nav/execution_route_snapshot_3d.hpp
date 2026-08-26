@@ -94,6 +94,10 @@ using RouteSuffixCertificate3D =
 
 struct CertifiedRouteSuffix3D {
   RouteInstanceId3D route_instance_id{};
+  // A recertified route is a new immutable semantic revision, but it retains
+  // explicit provenance to the sealed route revision from which it was
+  // derived. Copies preserve both identities.
+  std::optional<RouteInstanceId3D> parent_route_instance_id;
   ActivatedRouteIdentity3D identity{};
   std::shared_ptr<const ExecutionRouteGeometry3D> geometry;
   RouteSuffixCertificate3D certificate{StaticRouteCertificate3D{}};

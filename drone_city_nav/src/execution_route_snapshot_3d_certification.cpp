@@ -31,7 +31,7 @@ constexpr std::uint64_t kCertifiedRouteInstanceDomain{0x525445494e535433ULL};
 
 [[nodiscard]] std::optional<CertifiedRouteSuffix3D>
 certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
-                            const bool reuse_sealed_geometry_owner) {
+                            const CertifiedRouteSuffix3D* const sealed_source) {
   const bool requires_observed_raw_certificate =
       observedRawLineage(activation.proposal.validated_world);
   if (activation.observation.raw_validation_required !=
@@ -91,9 +91,8 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
     return std::nullopt;
   }
   const std::shared_ptr<const ExecutionRouteGeometry3D> geometry =
-      reuse_sealed_geometry_owner
-          ? activation.geometry
-          : captureExecutionRouteGeometry3D(*activation.geometry);
+      sealed_source != nullptr ? activation.geometry
+                               : captureExecutionRouteGeometry3D(*activation.geometry);
   if (geometry == nullptr || !executionRouteGeometryValid3D(*geometry, *identity)) {
     return std::nullopt;
   }
@@ -202,6 +201,10 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
 
   CertifiedRouteSuffix3D result{
       .route_instance_id = route_instance_id,
+      .parent_route_instance_id =
+          sealed_source != nullptr
+              ? std::optional<RouteInstanceId3D>{sealed_source->route_instance_id}
+              : std::nullopt,
       .identity = *identity,
       .geometry = geometry,
       .certificate = certificate,
@@ -226,7 +229,7 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
 
 std::optional<CertifiedRouteSuffix3D>
 certifyExecutionRoute3D(const ExecutionRouteActivation3D& activation) {
-  return certifyExecutionRoute3DImpl(activation, false);
+  return certifyExecutionRoute3DImpl(activation, nullptr);
 }
 
 std::optional<CertifiedRouteSuffix3D> recertifyExecutionRoute3D(
@@ -252,7 +255,7 @@ std::optional<CertifiedRouteSuffix3D> recertifyExecutionRoute3D(
           .static_world = sealed_source.static_world,
           .validation_policy = sealed_source.validation_policy,
       },
-      true);
+      std::addressof(sealed_source));
 }
 
 } // namespace drone_city_nav
