@@ -156,7 +156,7 @@ class ExecutionInputContractTest(unittest.TestCase):
         self.assertLess(admission_state, evidence_install)
         self.assertLess(evidence_install, revocation_request)
         evidence_commit = callback.split(
-            "const std::scoped_lock lock{execution_evidence_commit_mutex_};",
+            "const std::scoped_lock lock{latest_lidar_evidence_commit_mutex_};",
             maxsplit=1,
         )[1].split("\n  }\n  if (producer_handoff)", maxsplit=1)[0]
         self.assertIn("requestExecutionRevocation", evidence_commit)

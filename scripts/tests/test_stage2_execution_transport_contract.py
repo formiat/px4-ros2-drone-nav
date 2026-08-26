@@ -568,7 +568,7 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
             "LatestLidarEvidenceUpdateStatus3D update_status", maxsplit=1
         )[1]
         lidar_lock = lidar_commit.index(
-            "const std::scoped_lock lock{execution_evidence_commit_mutex_};"
+            "const std::scoped_lock lock{latest_lidar_evidence_commit_mutex_};"
         )
         lidar_store = lidar_commit.index(
             "latest_lidar_evidence_.store(evidence, std::memory_order_release);"
@@ -615,24 +615,24 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         owner_commit = execution_publication.split(
             "ProductionMppiNode::commitAndPublishExecutionHorizon", maxsplit=1
         )[1].split("ProductionMppiNode::publishLegacyExecutionHorizon", maxsplit=1)[0]
-        owner_callback = owner_commit.index("switch (commit.kind)")
+        owner_callback = owner_commit.index("switch (publication_commit.kind)")
         owner_control_revoke = owner_commit.index("applied_control_ = {};")
         owner_install = owner_commit.index("execution_horizon_owner_ = owner;")
-        owner_dds = owner_commit.index("execution_horizon_pub_->publish(horizon);")
+        owner_dds = owner_commit.index(
+            "execution_horizon_pub_->publish(publication_horizon);"
+        )
         self.assertLess(owner_callback, owner_control_revoke)
         self.assertLess(owner_control_revoke, owner_install)
         self.assertLess(owner_install, owner_dds)
         self.assertIn("owner.producer_instance_id ==", owner_commit)
         self.assertIn("execution_horizon_producer_instance_id_", owner_commit)
         self.assertIn("owner.target_offboard_instance_id", owner_commit)
-        self.assertIn(
-            "offboard_session_admission_.current_producer_instance_id",
-            owner_commit,
-        )
+        self.assertIn("assessOffboardSessionPublicationCurrentness", owner_commit)
+        self.assertIn("cycle.offboard_session", owner_commit)
 
         pending_snapshot_cas = owner_commit.index("commitExecutionIfSame")
         fallback_snapshot_cas = owner_commit.index(
-            "execution_route_store_.publish(commit.expected_snapshot"
+            "execution_route_store_.publish(publication_commit.expected_snapshot"
         )
         self.assertLess(pending_snapshot_cas, owner_control_revoke)
         self.assertLess(fallback_snapshot_cas, owner_control_revoke)
@@ -641,8 +641,9 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
             "ProductionMppiNode::commitExecutionSnapshotHorizon", maxsplit=1
         )[1].split("ProductionMppiNode::publishPositionHold", maxsplit=1)[0]
         snapshot_lock = snapshot_commit.index(
-            "const std::scoped_lock evidence_lock{execution_evidence_commit_mutex_};"
+            "const std::scoped_lock evidence_lock{execution_evidence_commit_mutex_,"
         )
+        self.assertIn("latest_lidar_evidence_commit_mutex_", snapshot_commit)
         snapshot_currentness = snapshot_commit.index(
             "assessExecutionPublicationCurrentness3D"
         )
@@ -674,7 +675,7 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
             "ProductionMppiNode::publishPositionHold", maxsplit=1
         )[1].split("ProductionMppiNode::publishNoExecutablePathHold", maxsplit=1)[0]
         hold_lidar_current = hold_commit.index(
-            "latest_lidar_evidence_.load(std::memory_order_acquire) !="
+            "current_lidar->evidenceId() != cycle.latest_lidar_evidence->evidenceId()"
         )
         hold_snapshot_load = hold_commit.index(
             "hold_expected = execution_route_store_.snapshot();"
@@ -723,14 +724,16 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         self.assertIn("!applied_control_.valid", owner_commit)
         self.assertNotIn("enterExecutionHold3D", hold_commit)
         self.assertNotIn("newerResident", hold_commit)
-        self.assertNotIn("execution_horizon_pub_->publish(horizon);", hold_commit)
+        self.assertNotIn(
+            "execution_horizon_pub_->publish(publication_horizon);", hold_commit
+        )
 
         execution_base = activation.split(
             "bool sameExecutionRouteBase", maxsplit=1
         )[1].split("pendingExecutionBaseKind", maxsplit=1)[0]
         self.assertIn("exclusiveExecutionHold(*first)", execution_base)
         self.assertIn("first->execution_owner_epoch", execution_base)
-        self.assertIn("first->stationary_hold->hold_id", execution_base)
+        self.assertIn("first_hold->hold_id == second_hold->hold_id", execution_base)
         self.assertNotIn("first->version == second->version", execution_base)
         pending_creation = activation.split(
             "const std::optional<std::uint64_t> publication_sequence",
@@ -750,10 +753,9 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         self.assertNotIn("base_hold_snapshot_version", pending_cleanup)
 
         route_progress_commit = route_execution.split(
-            "if (advanced.applied())", maxsplit=1
+            "ExecutionRoutePublicationStatus3D publication_status", maxsplit=1
         )[1].split(
-            "} else if (advanced.status == "
-            "ExecutionRouteTransitionStatus3D::kNoChange)",
+            "if (!publication_raw_current",
             maxsplit=1,
         )[0]
         route_lock = route_progress_commit.index(

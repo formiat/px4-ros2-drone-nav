@@ -938,6 +938,9 @@ private:
   std::uint64_t latest_observed_topological_producer_instance_id_{0U};
   IncrementalTopologyGraph3DUpdate latest_observed_topological_graph_update_;
   std::mutex execution_evidence_commit_mutex_;
+  // Latest-lidar admission is independent from raw-world reconstruction. Active
+  // execution publication locks both domains to validate one coherent boundary.
+  std::mutex latest_lidar_evidence_commit_mutex_;
   LatestLidarEvidenceAdmissionState3D latest_lidar_evidence_admission_state_{};
   std::atomic_bool latest_lidar_evidence_identity_conflicted_{false};
   std::atomic<std::shared_ptr<const VersionedLatestLidarEvidence3D>>

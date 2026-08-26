@@ -325,7 +325,7 @@ void ProductionMppiNode::onLatestLidarObstacleScan(
   const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
   LatestLidarEvidenceClaimResult3D claimed;
   {
-    const std::scoped_lock lock{execution_evidence_commit_mutex_};
+    const std::scoped_lock lock{latest_lidar_evidence_commit_mutex_};
     const std::shared_ptr<const VersionedLatestLidarEvidence3D> current =
         latest_lidar_evidence_.load(std::memory_order_acquire);
     claimed = claimLatestLidarEvidenceIdentity3D(
@@ -341,8 +341,9 @@ void ProductionMppiNode::onLatestLidarObstacleScan(
         latestLidarEvidenceAuthorityQuarantined3D(claimed.next_state),
         std::memory_order_release);
     if (claimed.authority_quarantine_opened) {
-      // This mutex also guards execution-owner publication, so the persisted
-      // quarantine and its monotonic revocation request are one boundary.
+      // Active execution publication also locks this admission domain, so the
+      // persisted quarantine and its monotonic revocation request are one
+      // boundary.
       requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
     }
   }
@@ -443,7 +444,7 @@ void ProductionMppiNode::onLatestLidarObstacleScan(
   std::uint64_t previous_producer_instance_id{0U};
   std::int64_t previous_acquisition_stamp_ns{0};
   {
-    const std::scoped_lock lock{execution_evidence_commit_mutex_};
+    const std::scoped_lock lock{latest_lidar_evidence_commit_mutex_};
     const std::shared_ptr<const VersionedLatestLidarEvidence3D> current =
         latest_lidar_evidence_.load(std::memory_order_acquire);
     previous_producer_instance_id =
@@ -491,6 +492,14 @@ void ProductionMppiNode::onLatestLidarObstacleScan(
         " acquisition_stamp_ns=%" PRId64,
         evidence->producerInstanceId(), evidence->sequence(),
         previous_acquisition_stamp_ns, evidence->acquisitionStampNs());
+  }
+  if (update_status == LatestLidarEvidenceUpdateStatus3D::kAcceptedInitial ||
+      update_status == LatestLidarEvidenceUpdateStatus3D::kAcceptedNewer) {
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
+                         "LATEST_LIDAR_OBSTACLE_SCAN accepted=true producer=%" PRIu64
+                         " sequence=%" PRIu64 " hit_points=%zu",
+                         evidence->producerInstanceId(), evidence->sequence(),
+                         evidence->hitPointsMapM().size());
   }
   if (update_status == LatestLidarEvidenceUpdateStatus3D::kAcceptedInitial ||
       update_status == LatestLidarEvidenceUpdateStatus3D::kAcceptedNewer ||

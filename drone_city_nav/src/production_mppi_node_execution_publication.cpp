@@ -819,7 +819,8 @@ bool ProductionMppiNode::commitAndPublishExecutionHorizon(
 bool ProductionMppiNode::publishLegacyExecutionHorizon(
     const ProductionMppiExecutionCycle& cycle,
     const msg::MppiTrajectoryHorizon& horizon) {
-  const std::scoped_lock evidence_lock{execution_evidence_commit_mutex_};
+  const std::scoped_lock evidence_lock{execution_evidence_commit_mutex_,
+                                       latest_lidar_evidence_commit_mutex_};
   return commitAndPublishExecutionHorizon(cycle, horizon,
                                           ProductionMppiHorizonCommit{});
 }
@@ -852,7 +853,8 @@ bool ProductionMppiNode::commitExecutionSnapshotHorizon(
     return false;
   }
 
-  const std::scoped_lock evidence_lock{execution_evidence_commit_mutex_};
+  const std::scoped_lock evidence_lock{execution_evidence_commit_mutex_,
+                                       latest_lidar_evidence_commit_mutex_};
   const std::shared_ptr<const ProductionMppiRawWorld3D> current_raw_container =
       latest_raw_world_3d_.load(std::memory_order_acquire);
   const bool raw_required = expected_raw != nullptr;
@@ -917,7 +919,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
     return publication;
   }
   Point3 owned_hold_position = hold_position;
-  const std::scoped_lock evidence_lock{execution_evidence_commit_mutex_};
+  const std::scoped_lock evidence_lock{execution_evidence_commit_mutex_,
+                                       latest_lidar_evidence_commit_mutex_};
   std::shared_ptr<const ExecutionRouteSnapshot3D> hold_expected;
   std::optional<ExecutionRouteTransitionResult3D> hold_transition;
   if (cycle.snapshot_owner_required) {
