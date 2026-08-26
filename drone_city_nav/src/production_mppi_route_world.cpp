@@ -140,6 +140,16 @@ navigationWorldCertificate3D(const ProductionMppiPreparedEsdf& world) noexcept {
   };
 }
 
+bool observedTopologyCanAdvanceWorld(
+    const std::uint64_t topology_producer_instance_id,
+    const std::uint64_t topology_revision, const RawMapVersion& world_raw_version,
+    const std::uint64_t retained_topology_revision) noexcept {
+  return topology_revision != 0U &&
+         topology_producer_instance_id == world_raw_version.producer_instance_id &&
+         topology_revision <= world_raw_version.revision &&
+         topology_revision > retained_topology_revision;
+}
+
 void adoptWorldResources(ProductionMppiPreparedEsdf& target,
                          const ProductionMppiPreparedEsdf& source) {
   target.local_world_generation = source.local_world_generation;

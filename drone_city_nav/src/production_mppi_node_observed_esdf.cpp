@@ -57,6 +57,22 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
     const std::scoped_lock lock{esdf_state_mutex_};
     active_prepared = prepared_esdf_;
   }
+  std::shared_ptr<const IncrementalTopologyGraph3DSnapshot> latest_topology_graph;
+  IncrementalTopologyGraph3DUpdate latest_topology_graph_update;
+  const auto capture_compatible_topology = [&]() {
+    const std::scoped_lock lock{topology_state_mutex_};
+    if (latest_observed_topological_graph_ &&
+        observedTopologyCanAdvanceWorld(
+            latest_observed_topological_producer_instance_id_,
+            latest_observed_topological_graph_->revision(), raw_world.version,
+            latest_topology_graph ? latest_topology_graph->revision() : 0U)) {
+      latest_topology_graph = latest_observed_topological_graph_;
+      latest_topology_graph_update = latest_observed_topological_graph_update_;
+    }
+  };
+  // Preserve the newest topology compatible with this exact raw snapshot before
+  // ESDF construction gives the faster topology worker time to overtake it.
+  capture_compatible_topology();
   const GridBounds3D& world_bounds = occupancy->bounds();
   const Point3 position{navigation.state.x, navigation.state.y, navigation.state.z};
   const std::optional<ProprioceptiveFreeSpaceSeed3D> free_space_seed =
@@ -353,18 +369,7 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
   world_update.launch_support_contact = launch_support_contact_;
   world_update.launch_support_resolution_pending = launch_support_resolution_pending;
 
-  std::shared_ptr<const IncrementalTopologyGraph3DSnapshot> latest_topology_graph;
-  IncrementalTopologyGraph3DUpdate latest_topology_graph_update;
-  {
-    const std::scoped_lock lock{topology_state_mutex_};
-    if (latest_observed_topological_producer_instance_id_ ==
-            raw_world.version.producer_instance_id &&
-        latest_observed_topological_graph_ &&
-        latest_observed_topological_graph_->revision() <= raw_world.version.revision) {
-      latest_topology_graph = latest_observed_topological_graph_;
-      latest_topology_graph_update = latest_observed_topological_graph_update_;
-    }
-  }
+  capture_compatible_topology();
 
   const std::shared_ptr<const ProductionNavigationObjective> current_objective =
       navigationObjective();

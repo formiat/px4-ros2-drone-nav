@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/route_lifecycle_3d.hpp"
+#include "drone_city_nav/world_generation.hpp"
 
 #include <cstdint>
 #include <string_view>
@@ -29,6 +30,12 @@ productionWorldGenerationStatusName(ProductionWorldGenerationStatus status) noex
 
 [[nodiscard]] NavigationWorldCertificate3D
 navigationWorldCertificate3D(const ProductionMppiPreparedEsdf& world) noexcept;
+
+[[nodiscard]] bool
+observedTopologyCanAdvanceWorld(std::uint64_t topology_producer_instance_id,
+                                std::uint64_t topology_revision,
+                                const RawMapVersion& world_raw_version,
+                                std::uint64_t retained_topology_revision) noexcept;
 
 void adoptWorldResources(ProductionMppiPreparedEsdf& target,
                          const ProductionMppiPreparedEsdf& source);
