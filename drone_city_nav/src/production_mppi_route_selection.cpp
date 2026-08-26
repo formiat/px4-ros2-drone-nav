@@ -110,6 +110,7 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
   Point3 search_start{navigation.state.x, navigation.state.y, navigation.state.z};
   RouteInstanceId3D search_base_route_instance_id{};
   std::optional<double> search_base_stitch_station_m;
+  std::optional<RouteSample3D> search_base_stitch;
   const bool certified_stitch_base_available =
       active_route != nullptr && active_route->route_instance_id.valid() &&
       active_route->route_instance_id == world.bound_route_instance_id &&
@@ -118,22 +119,33 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
   if ((world.static_route_extension_request || world.static_route_replan_request) &&
       certified_stitch_base_available) {
     const std::vector<RouteSample3D>& active_geometry = *active_route->geometry->route;
+    const RouteProjection3D navigation_projection =
+        projectOntoRoute3DWithinStationWindow(
+            active_geometry,
+            Point3{navigation.state.x, navigation.state.y, navigation.state.z},
+            active_route->progress.station_m, active_geometry.back().station_m);
     const double stitch_station_m =
-        std::max(active_route->progress.station_m,
-                 world.global_guide_projection.valid
-                     ? world.global_guide_projection.station_m
-                     : active_route->progress.station_m) +
+        std::max({active_route->progress.station_m,
+                  world.global_guide_projection.valid
+                      ? world.global_guide_projection.station_m
+                      : active_route->progress.station_m,
+                  navigation_projection.valid ? navigation_projection.station_m
+                                              : active_route->progress.station_m}) +
         static_route_extension_config_.required_certified_overlap_m;
     if (stitch_station_m <= active_geometry.back().station_m) {
-      search_start = sampleRoute3DAtStation(active_geometry, stitch_station_m).position;
+      search_base_stitch = sampleRoute3DAtStation(active_geometry, stitch_station_m);
+      search_start = search_base_stitch->position;
       search_base_route_instance_id = active_route->route_instance_id;
       search_base_stitch_station_m = stitch_station_m;
     }
   }
-  Vec3 preferred_direction{static_cast<double>(navigation.state.vx),
-                           static_cast<double>(navigation.state.vy),
-                           static_cast<double>(navigation.state.vz)};
-  if (std::hypot(preferred_direction.x, preferred_direction.y) < 0.5) {
+  Vec3 preferred_direction = search_base_stitch.has_value()
+                                 ? search_base_stitch->tangent
+                                 : Vec3{static_cast<double>(navigation.state.vx),
+                                        static_cast<double>(navigation.state.vy),
+                                        static_cast<double>(navigation.state.vz)};
+  if (!search_base_stitch.has_value() &&
+      std::hypot(preferred_direction.x, preferred_direction.y) < 0.5) {
     preferred_direction =
         Vec3{mission_goal.x - navigation.state.x, mission_goal.y - navigation.state.y,
              mission_goal.z - navigation.state.z};

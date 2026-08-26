@@ -588,6 +588,15 @@ replaceCertifiedRoute3D(const ExecutionRouteSnapshot3D& current,
                         std::optional<FiniteExecutionState3D> successor_execution,
                         const CertifiedRouteSplice3D& splice);
 
+// Replaces a still-resident route with a successor independently certified
+// from the current execution state.  This transition is for candidates that
+// were not planned as overlapping continuations and therefore have no splice
+// proof; the exact resident owner and fresh finite execution remain mandatory.
+[[nodiscard]] ExecutionRouteTransitionResult3D replaceCertifiedRouteAtHandoff3D(
+    const ExecutionRouteSnapshot3D& current,
+    const ExecutionRouteTransitionGuard3D& guard, CertifiedRouteSuffix3D successor,
+    std::optional<FiniteExecutionState3D> successor_execution);
+
 [[nodiscard]] ExecutionRouteTransitionResult3D
 transferToDirectTracking3D(const ExecutionRouteSnapshot3D& current,
                            std::uint64_t expected_snapshot_version,

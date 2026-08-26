@@ -601,6 +601,39 @@ TEST(ExecutionRouteSnapshot3DTest,
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
+     AtomicRouteHandoffReplacesExactOwnerWithoutInventingASplice) {
+  SnapshotFixture3D fixture;
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
+      fixture.activeSnapshot();
+  ASSERT_TRUE(active);
+  const ExecutionRouteTransitionResult3D following =
+      replaceFiniteExecution3D(*active, SnapshotFixture3D::guard(*active),
+                               SnapshotFixture3D::finiteExecution(*active));
+  ASSERT_TRUE(following.applied());
+  ASSERT_TRUE(following.next);
+
+  ExecutionRouteActivation3D successor_activation = fixture.activation();
+  successor_activation.route_generation = SnapshotFixture3D::kRouteGeneration + 1U;
+  const std::optional<CertifiedRouteSuffix3D> successor =
+      certifyExecutionRoute3D(successor_activation);
+  ASSERT_TRUE(successor.has_value());
+  const FiniteExecutionState3D successor_execution =
+      SnapshotFixture3D::finiteExecutionForRoute(
+          *following.next, *successor, FiniteExecutionKind3D::kNominal, true, 102U);
+
+  const ExecutionRouteTransitionResult3D accepted = replaceCertifiedRouteAtHandoff3D(
+      *following.next, SnapshotFixture3D::guard(*following.next), *successor,
+      successor_execution);
+
+  ASSERT_TRUE(accepted.applied());
+  ASSERT_TRUE(accepted.next->route.has_value());
+  EXPECT_EQ(accepted.next->route->identity.generation,
+            SnapshotFixture3D::kRouteGeneration + 1U);
+  EXPECT_GT(accepted.next->execution_owner_epoch,
+            following.next->execution_owner_epoch);
+}
+
+TEST(ExecutionRouteSnapshot3DTest,
      SuccessorRequiresFreshEvidenceAndRejectsUnauthenticatedProducerSwitch) {
   SnapshotFixture3D fixture;
   const std::shared_ptr<const ExecutionRouteSnapshot3D> active =

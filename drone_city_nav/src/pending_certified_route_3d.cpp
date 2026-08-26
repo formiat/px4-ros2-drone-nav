@@ -44,6 +44,10 @@ bool PendingCertifiedRoute3D::valid() const noexcept {
                  route.geometry->executable_geometry_revision &&
              route_splice->successor_continuity_id == route.continuity_id &&
              successor_generation;
+    case PendingExecutionBaseKind3D::kRouteHandoff:
+      return base_route_generation != 0U && base_geometry_revision != 0U &&
+             base_continuity_id != 0U && !base_direct_tracking_identity.has_value() &&
+             !route_splice.has_value() && successor_generation;
     case PendingExecutionBaseKind3D::kDirectTracking:
       return base_geometry_revision == 0U && base_continuity_id == 0U &&
              base_direct_tracking_identity.has_value() &&
@@ -89,6 +93,20 @@ bool pendingCertifiedRouteEligible3D(
              snapshot.route->continuity_id == pending.base_continuity_id &&
              pending.route_splice.has_value() &&
              pending.route_splice->validFor(*snapshot.route, pending.route);
+    case PendingExecutionBaseKind3D::kRouteHandoff:
+      return (snapshot.phase == ExecutionRoutePhase3D::kFollowing ||
+              snapshot.phase == ExecutionRoutePhase3D::kAwaitingSuccessor ||
+              snapshot.phase == ExecutionRoutePhase3D::kBraking ||
+              (snapshot.phase == ExecutionRoutePhase3D::kStopped &&
+               snapshot.route.has_value() &&
+               snapshot.route->planned_endpoint_semantics ==
+                   RouteEndpointSemantics3D::kObservationStop)) &&
+             snapshot.route.has_value() && snapshot.route->geometry != nullptr &&
+             snapshot.route->identity.generation == pending.base_route_generation &&
+             snapshot.route->geometry->executable_geometry_revision ==
+                 pending.base_geometry_revision &&
+             snapshot.route->continuity_id == pending.base_continuity_id &&
+             !pending.route_splice.has_value();
     case PendingExecutionBaseKind3D::kDirectTracking:
       return snapshot.phase == ExecutionRoutePhase3D::kDirectTracking &&
              snapshot.direct_tracking_execution.has_value() &&
@@ -160,10 +178,10 @@ bool PendingCertifiedRouteMailbox3D::commitExecutionIfSame(
     return false;
   }
   const std::scoped_lock lock{mutex_};
-  const CertifiedRouteSuffix3D* const committed_route =
-      transition.next->route.has_value()
-          ? std::addressof(transition.next->route.value())
-          : nullptr;
+  const CertifiedRouteSuffix3D* committed_route = nullptr;
+  if (transition.next->route.has_value()) {
+    committed_route = transition.next->route.operator->();
+  }
   const bool committed_route_is_pending_revision =
       committed_route != nullptr &&
       (committed_route->route_instance_id ==

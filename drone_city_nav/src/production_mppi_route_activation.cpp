@@ -107,7 +107,8 @@ exclusiveExecutionHold(const ExecutionRouteSnapshot3D& snapshot) noexcept {
 }
 
 [[nodiscard]] PendingExecutionBaseKind3D
-pendingExecutionBaseKind(const ExecutionRouteSnapshot3D& snapshot) noexcept {
+pendingExecutionBaseKind(const ExecutionRouteSnapshot3D& snapshot,
+                         const bool route_splice_required) noexcept {
   if (snapshot.phase == ExecutionRoutePhase3D::kRevoked) {
     return PendingExecutionBaseKind3D::kRevoked;
   }
@@ -118,7 +119,8 @@ pendingExecutionBaseKind(const ExecutionRouteSnapshot3D& snapshot) noexcept {
     return PendingExecutionBaseKind3D::kDirectTracking;
   }
   if (snapshot.route.has_value()) {
-    return PendingExecutionBaseKind3D::kRoute;
+    return route_splice_required ? PendingExecutionBaseKind3D::kRoute
+                                 : PendingExecutionBaseKind3D::kRouteHandoff;
   }
   return PendingExecutionBaseKind3D::kEmpty;
 }
@@ -676,15 +678,20 @@ void ProductionMppiNode::commitRouteActivation3D(
             })
           : std::nullopt;
 
-  const bool route_base = current_route != nullptr;
-  if (certified_route.has_value() && current_route != nullptr) {
+  const bool overlap_search = candidate.planning_search_base_route_instance_id.valid();
+  const bool overlap_base_matches =
+      current_route != nullptr && overlap_search &&
+      current_route->route_instance_id ==
+          candidate.planning_search_base_route_instance_id;
+  if (certified_route.has_value() && overlap_base_matches) {
     result.splice = certifyRouteSplice3D(*current_route, certified_route.value(),
                                          Point3{snapshot.navigation.state.x,
                                                 snapshot.navigation.state.y,
                                                 snapshot.navigation.state.z},
                                          certified_route_splice_config_);
   }
-  const bool splice_ready = !route_base || result.splice.certified();
+  const bool splice_ready =
+      !overlap_search || (overlap_base_matches && result.splice.certified());
 
   const std::optional<std::uint64_t> publication_sequence =
       certified_route.has_value() && splice_ready
@@ -698,9 +705,10 @@ void ProductionMppiNode::commitRouteActivation3D(
                     current_execution != nullptr
                         ? current_execution->execution_owner_epoch
                         : 0U,
-                .base_kind = current_execution != nullptr
-                                 ? pendingExecutionBaseKind(*current_execution)
-                                 : PendingExecutionBaseKind3D::kEmpty,
+                .base_kind =
+                    current_execution != nullptr
+                        ? pendingExecutionBaseKind(*current_execution, overlap_search)
+                        : PendingExecutionBaseKind3D::kEmpty,
                 .base_route_generation = base_generation,
                 .base_geometry_revision =
                     current_route != nullptr && current_route->geometry != nullptr
@@ -713,7 +721,7 @@ void ProductionMppiNode::commitRouteActivation3D(
                         ? std::optional<DirectTrackingOwnerIdentity3D>{current_direct
                                                                            ->identity}
                         : std::nullopt,
-                .route_splice = route_base ? result.splice.splice : std::nullopt,
+                .route_splice = overlap_search ? result.splice.splice : std::nullopt,
                 .strategy_decision = strategy_decision,
                 .topology_effect = topology_effect,
                 .route = certified_route.value(),
@@ -781,7 +789,7 @@ void ProductionMppiNode::commitRouteActivation3D(
   } else if (!published_pending && result.validation.accepted &&
              !execution_geometry_valid) {
     result.activation_status = StaticRouteActivationStatus::kInvalidExecutionGeometry;
-  } else if (!published_pending && result.validation.accepted && route_base &&
+  } else if (!published_pending && result.validation.accepted && overlap_search &&
              certified_route.has_value() && !result.splice.certified()) {
     result.activation_status = StaticRouteActivationStatus::kCertifiedSpliceRejected;
   } else if (!published_pending && result.validation.accepted &&

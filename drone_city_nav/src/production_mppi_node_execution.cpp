@@ -681,7 +681,9 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       const FiniteExecutionState3D& execution = *certified_execution.execution;
       if (route_execution.pending_activation && expected->route.has_value() &&
           (route_execution.pending_route == nullptr ||
-           !route_execution.pending_route->route_splice.has_value())) {
+           (route_execution.pending_route->base_kind ==
+                PendingExecutionBaseKind3D::kRoute &&
+            !route_execution.pending_route->route_splice.has_value()))) {
         return publishNoExecutablePathHold(
             cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
       }
@@ -700,11 +702,16 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
             .expected_geometry_revision =
                 expected->route->geometry->executable_geometry_revision,
         };
-        return route_execution.pending_activation
-                   ? replaceCertifiedRoute3D(
-                         *expected, guard, *target_route, execution,
-                         *route_execution.pending_route->route_splice)
-                   : replaceFiniteExecution3D(*expected, guard, execution);
+        if (!route_execution.pending_activation) {
+          return replaceFiniteExecution3D(*expected, guard, execution);
+        }
+        if (route_execution.pending_route->base_kind ==
+            PendingExecutionBaseKind3D::kRouteHandoff) {
+          return replaceCertifiedRouteAtHandoff3D(*expected, guard, *target_route,
+                                                  execution);
+        }
+        return replaceCertifiedRoute3D(*expected, guard, *target_route, execution,
+                                       *route_execution.pending_route->route_splice);
       }();
       if (!transition.applied() || transition.next == nullptr ||
           !transition.next->route.has_value() ||

@@ -8,20 +8,23 @@ pendingForSnapshot(const ExecutionRouteSnapshot3D& snapshot,
                    const PendingExecutionBaseKind3D base_kind,
                    const CertifiedRouteSuffix3D& route,
                    const std::uint64_t publication_sequence) {
-  const bool route_base = base_kind == PendingExecutionBaseKind3D::kRoute;
+  const bool route_owner = base_kind == PendingExecutionBaseKind3D::kRoute ||
+                           base_kind == PendingExecutionBaseKind3D::kRouteHandoff;
+  const bool route_splice = base_kind == PendingExecutionBaseKind3D::kRoute;
   return PendingCertifiedRoute3D{
       .publication_sequence = publication_sequence,
       .base_execution_owner_epoch = snapshot.execution_owner_epoch,
       .base_kind = base_kind,
       .base_route_generation = snapshot.routeGenerationHighWater(),
       .base_geometry_revision =
-          route_base && snapshot.route.has_value()
+          route_owner && snapshot.route.has_value()
               ? snapshot.route->geometry->executable_geometry_revision
               : 0U,
-      .base_continuity_id =
-          route_base && snapshot.route.has_value() ? snapshot.route->continuity_id : 0U,
+      .base_continuity_id = route_owner && snapshot.route.has_value()
+                                ? snapshot.route->continuity_id
+                                : 0U,
       .base_direct_tracking_identity = std::nullopt,
-      .route_splice = route_base && snapshot.route.has_value()
+      .route_splice = route_splice && snapshot.route.has_value()
                           ? std::optional<CertifiedRouteSplice3D>{testRouteSplice(
                                 *snapshot.route, route)}
                           : std::nullopt,
@@ -885,6 +888,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       };
 
   exercise_owner(active, PendingExecutionBaseKind3D::kRoute);
+  exercise_owner(active, PendingExecutionBaseKind3D::kRouteHandoff);
   exercise_owner(held.next, PendingExecutionBaseKind3D::kStationaryHold);
 }
 

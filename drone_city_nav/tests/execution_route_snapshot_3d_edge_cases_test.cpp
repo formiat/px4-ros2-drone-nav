@@ -495,6 +495,40 @@ TEST(ExecutionRouteSnapshot3DTest,
   EXPECT_FALSE(pendingCertifiedRouteEligible3D(wrong_generation, *newer_finite.next));
 }
 
+TEST(ExecutionRouteSnapshot3DTest,
+     PendingRouteHandoffTracksOwnerWithoutRequiringOverlapProof) {
+  SnapshotFixture3D fixture;
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
+      fixture.activeSnapshot();
+  ASSERT_TRUE(active);
+  ASSERT_TRUE(active->route.has_value());
+
+  ExecutionRouteActivation3D successor_activation = fixture.activation();
+  successor_activation.route_generation = active->routeGenerationHighWater() + 1U;
+  const std::optional<CertifiedRouteSuffix3D> successor =
+      certifyExecutionRoute3D(successor_activation);
+  ASSERT_TRUE(successor.has_value());
+  const PendingCertifiedRoute3D pending{
+      .publication_sequence = 1U,
+      .base_execution_owner_epoch = active->execution_owner_epoch,
+      .base_kind = PendingExecutionBaseKind3D::kRouteHandoff,
+      .base_route_generation = active->route->identity.generation,
+      .base_geometry_revision = active->route->geometry->executable_geometry_revision,
+      .base_continuity_id = active->route->continuity_id,
+      .base_direct_tracking_identity = std::nullopt,
+      .route_splice = std::nullopt,
+      .strategy_decision = std::nullopt,
+      .topology_effect = {},
+      .route = *successor,
+  };
+
+  ASSERT_TRUE(pending.valid());
+  EXPECT_TRUE(pendingCertifiedRouteEligible3D(pending, *active));
+  PendingCertifiedRoute3D unexpected_splice = pending;
+  unexpected_splice.route_splice = testRouteSplice(*active->route, *successor);
+  EXPECT_FALSE(unexpected_splice.valid());
+}
+
 TEST(ExecutionRouteSnapshot3DTest, PendingInitialLineageDoesNotAliasRevokedOwner) {
   SnapshotFixture3D fixture;
   const std::optional<CertifiedRouteSuffix3D> first_route = fixture.certify();

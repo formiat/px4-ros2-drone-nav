@@ -26,6 +26,82 @@ namespace drone_city_nav {
 
 using namespace execution_route_snapshot_3d_internal;
 
+namespace {
+
+[[nodiscard]] ExecutionRouteTransitionResult3D
+replaceCertifiedRouteImpl(const ExecutionRouteSnapshot3D& current,
+                          const ExecutionRouteTransitionGuard3D& guard,
+                          CertifiedRouteSuffix3D successor,
+                          std::optional<FiniteExecutionState3D> successor_execution,
+                          const CertifiedRouteSplice3D* const splice) {
+  const ExecutionRouteTransitionStatus3D guard_status = checkGuard(current, guard);
+  if (guard_status != ExecutionRouteTransitionStatus3D::kApplied) {
+    return transitionFailure(guard_status);
+  }
+  const CertifiedRouteSuffix3D* const current_route = routePointer(current);
+  if (current_route == nullptr) {
+    return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCurrentSnapshot);
+  }
+  if (!successor.valid() ||
+      current_route->identity.generation == std::numeric_limits<std::uint64_t>::max() ||
+      current.execution_owner_epoch == std::numeric_limits<std::uint64_t>::max() ||
+      successor.identity.generation != current_route->identity.generation + 1U ||
+      distance3D(successor.progress.last_observed_position,
+                 current_route->progress.last_observed_position) >
+          kExecutionBindingToleranceM) {
+    return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
+  }
+  const bool replacement_phase_allowed =
+      current.phase == ExecutionRoutePhase3D::kFollowing ||
+      current.phase == ExecutionRoutePhase3D::kAwaitingSuccessor ||
+      current.phase == ExecutionRoutePhase3D::kBraking ||
+      (current.phase == ExecutionRoutePhase3D::kStopped &&
+       current_route->planned_endpoint_semantics ==
+           RouteEndpointSemantics3D::kObservationStop);
+  if (!replacement_phase_allowed || !current.finite_execution.has_value() ||
+      !successor_execution.has_value() ||
+      successor_execution->execution_input == nullptr) {
+    return transitionFailure(
+        ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
+  }
+  if (splice != nullptr) {
+    const mppi::State& splice_state = successor_execution->execution_input->state();
+    const RouteSpliceReadiness3D splice_readiness = assessRouteSpliceReadiness3D(
+        *splice, *current_route, successor,
+        Point3{splice_state.x, splice_state.y, splice_state.z});
+    if (!splice_readiness.ready()) {
+      return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
+    }
+  }
+  if (successor_execution->kind != FiniteExecutionKind3D::kNominal ||
+      !candidateFiniteExecutionValid(*successor_execution, current, &successor, true) ||
+      !successorEvidenceNotOlder(*current_route, *current.finite_execution, successor,
+                                 *successor_execution)) {
+    return transitionFailure(
+        ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
+  }
+
+  bindProgressToExecutionInput(successor.progress, successor_execution->execution_input,
+                               successor_execution->begin_route_station_m);
+  if (!successor.valid() ||
+      !candidateFiniteExecutionValid(*successor_execution, current, &successor, true)) {
+    return transitionFailure(
+        ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
+  }
+  ExecutionRouteSnapshot3D next = current;
+  ++next.version;
+  next.phase = ExecutionRoutePhase3D::kFollowing;
+  next.route = std::move(successor);
+  next.finite_execution = std::move(successor_execution);
+  next.direct_tracking_execution.reset();
+  next.stationary_hold.reset();
+  ++next.execution_owner_epoch;
+  next.route_generation_high_water = next.route->identity.generation;
+  return finishTransition(current, std::move(next));
+}
+
+} // namespace
+
 ExecutionRouteTransitionResult3D
 activateCertifiedRoute3D(const ExecutionRouteSnapshot3D& current,
                          const std::uint64_t expected_snapshot_version,
@@ -566,69 +642,17 @@ replaceCertifiedRoute3D(const ExecutionRouteSnapshot3D& current,
                         CertifiedRouteSuffix3D successor,
                         std::optional<FiniteExecutionState3D> successor_execution,
                         const CertifiedRouteSplice3D& splice) {
-  const ExecutionRouteTransitionStatus3D guard_status = checkGuard(current, guard);
-  if (guard_status != ExecutionRouteTransitionStatus3D::kApplied) {
-    return transitionFailure(guard_status);
-  }
-  const CertifiedRouteSuffix3D* const current_route = routePointer(current);
-  if (current_route == nullptr) {
-    return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCurrentSnapshot);
-  }
-  if (!successor.valid() ||
-      current_route->identity.generation == std::numeric_limits<std::uint64_t>::max() ||
-      current.execution_owner_epoch == std::numeric_limits<std::uint64_t>::max() ||
-      successor.identity.generation != current_route->identity.generation + 1U ||
-      distance3D(successor.progress.last_observed_position,
-                 current_route->progress.last_observed_position) >
-          kExecutionBindingToleranceM) {
-    return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
-  }
-  const bool replacement_phase_allowed =
-      current.phase == ExecutionRoutePhase3D::kFollowing ||
-      current.phase == ExecutionRoutePhase3D::kAwaitingSuccessor ||
-      current.phase == ExecutionRoutePhase3D::kBraking ||
-      (current.phase == ExecutionRoutePhase3D::kStopped &&
-       current_route->planned_endpoint_semantics ==
-           RouteEndpointSemantics3D::kObservationStop);
-  if (!replacement_phase_allowed || !successor_execution.has_value() ||
-      successor_execution->execution_input == nullptr) {
-    return transitionFailure(
-        ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
-  }
-  const mppi::State& splice_state = successor_execution->execution_input->state();
-  const RouteSpliceReadiness3D splice_readiness = assessRouteSpliceReadiness3D(
-      splice, *current_route, successor,
-      Point3{splice_state.x, splice_state.y, splice_state.z});
-  if (!splice_readiness.ready()) {
-    return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
-  }
-  if (successor_execution.has_value() &&
-      (successor_execution->kind != FiniteExecutionKind3D::kNominal ||
-       !candidateFiniteExecutionValid(*successor_execution, current, &successor,
-                                      true) ||
-       !successorEvidenceNotOlder(*current_route, *current.finite_execution, successor,
-                                  *successor_execution))) {
-    return transitionFailure(
-        ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
-  }
+  return replaceCertifiedRouteImpl(current, guard, std::move(successor),
+                                   std::move(successor_execution),
+                                   std::addressof(splice));
+}
 
-  bindProgressToExecutionInput(successor.progress, successor_execution->execution_input,
-                               successor_execution->begin_route_station_m);
-  if (!successor.valid() ||
-      !candidateFiniteExecutionValid(*successor_execution, current, &successor, true)) {
-    return transitionFailure(
-        ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
-  }
-  ExecutionRouteSnapshot3D next = current;
-  ++next.version;
-  next.phase = ExecutionRoutePhase3D::kFollowing;
-  next.route = std::move(successor);
-  next.finite_execution = std::move(successor_execution);
-  next.direct_tracking_execution.reset();
-  next.stationary_hold.reset();
-  ++next.execution_owner_epoch;
-  next.route_generation_high_water = next.route->identity.generation;
-  return finishTransition(current, std::move(next));
+ExecutionRouteTransitionResult3D replaceCertifiedRouteAtHandoff3D(
+    const ExecutionRouteSnapshot3D& current,
+    const ExecutionRouteTransitionGuard3D& guard, CertifiedRouteSuffix3D successor,
+    std::optional<FiniteExecutionState3D> successor_execution) {
+  return replaceCertifiedRouteImpl(current, guard, std::move(successor),
+                                   std::move(successor_execution), nullptr);
 }
 
 ExecutionRouteTransitionResult3D

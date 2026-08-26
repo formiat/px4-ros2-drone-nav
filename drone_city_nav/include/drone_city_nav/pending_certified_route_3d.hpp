@@ -14,6 +14,7 @@ namespace drone_city_nav {
 enum class PendingExecutionBaseKind3D : std::uint8_t {
   kEmpty,
   kRoute,
+  kRouteHandoff,
   kDirectTracking,
   kStationaryHold,
   kRevoked,
