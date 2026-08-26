@@ -433,6 +433,7 @@ void ProductionMppiNode::processDiagnostics(
       << " no_eligible_guide_replan="
       << (snapshot.no_eligible_recovery.guide_replan_requested ? "true" : "false")
       << " liveness_state=" << mppiLivenessStateName(liveness.state)
+      << " liveness_recovery_active=" << (liveness.recovery_active ? "true" : "false")
       << " liveness_window_s=" << liveness.observation_age_s
       << " liveness_actual_displacement_m=" << liveness.actual_displacement_m
       << " liveness_actual_route_progress_m=" << liveness.actual_route_progress_m
@@ -996,6 +997,8 @@ void ProductionMppiNode::processDiagnostics(
          << ",\"no_eligible_guide_replan\":"
          << (snapshot.no_eligible_recovery.guide_replan_requested ? "true" : "false")
          << ",\"liveness_state\":\"" << mppiLivenessStateName(liveness.state) << '"'
+         << ",\"liveness_recovery_active\":"
+         << (liveness.recovery_active ? "true" : "false")
          << ",\"liveness_actual_displacement_m\":" << liveness.actual_displacement_m
          << ",\"liveness_actual_route_progress_m\":" << liveness.actual_route_progress_m
          << ",\"liveness_route_progress_used\":"

@@ -37,6 +37,7 @@ struct MppiLivenessObservation {
 struct MppiLivenessResult {
   MppiLivenessState state{MppiLivenessState::kInactive};
   bool reseed_requested{false};
+  bool recovery_active{false};
   double observation_age_s{0.0};
   double actual_displacement_m{0.0};
   double actual_route_progress_m{0.0};
@@ -66,6 +67,7 @@ private:
   MppiLivenessConfig config_;
   std::optional<Anchor> anchor_;
   std::uint64_t reseed_generation_{0U};
+  bool recovery_active_{false};
 };
 
 [[nodiscard]] const char* mppiLivenessStateName(MppiLivenessState state) noexcept;

@@ -37,9 +37,42 @@ TEST(MppiLivenessTest, RequestsReseedAfterStationaryPredictionWindow) {
   const MppiLivenessResult result = supervisor.evaluate(observation(2'100'000'000LL));
 
   EXPECT_TRUE(result.reseed_requested);
+  EXPECT_TRUE(result.recovery_active);
   EXPECT_EQ(result.state, MppiLivenessState::kReseedRequested);
   EXPECT_EQ(result.reseed_generation, 1U);
   EXPECT_DOUBLE_EQ(result.actual_displacement_m, 0.0);
+}
+
+TEST(MppiLivenessTest, RecoveryRemainsActiveUntilMeasuredProgress) {
+  MppiLivenessSupervisor supervisor = optInSupervisor();
+  (void)supervisor.evaluate(observation(1'000'000'000LL));
+  const MppiLivenessResult stalled = supervisor.evaluate(observation(2'100'000'000LL));
+  ASSERT_TRUE(stalled.recovery_active);
+
+  const MppiLivenessResult monitoring =
+      supervisor.evaluate(observation(2'200'000'000LL));
+  EXPECT_EQ(monitoring.state, MppiLivenessState::kMonitoring);
+  EXPECT_TRUE(monitoring.recovery_active);
+
+  mppi::State moved;
+  moved.x = 0.6F;
+  const MppiLivenessResult recovered =
+      supervisor.evaluate(observation(3'300'000'000LL, moved));
+  EXPECT_EQ(recovered.state, MppiLivenessState::kMoving);
+  EXPECT_FALSE(recovered.recovery_active);
+}
+
+TEST(MppiLivenessTest, RecoverySurvivesTemporaryControllerInactivity) {
+  MppiLivenessSupervisor supervisor = optInSupervisor();
+  (void)supervisor.evaluate(observation(1'000'000'000LL));
+  ASSERT_TRUE(supervisor.evaluate(observation(2'100'000'000LL)).recovery_active);
+
+  MppiLivenessObservation inactive = observation(2'200'000'000LL);
+  inactive.controller_active = false;
+  const MppiLivenessResult result = supervisor.evaluate(inactive);
+
+  EXPECT_EQ(result.state, MppiLivenessState::kInactive);
+  EXPECT_TRUE(result.recovery_active);
 }
 
 TEST(MppiLivenessTest, LowPredictedProgressDoesNotResetStationaryTimer) {

@@ -38,8 +38,16 @@ MppiLivenessSupervisor::evaluate(const MppiLivenessObservation& observation) {
   result.predicted_head_progress_m = observation.predicted_head_progress_m;
   result.predicted_terminal_progress_m = observation.predicted_terminal_progress_m;
   result.reseed_generation = reseed_generation_;
+  result.recovery_active = recovery_active_;
 
-  if (!config_.enabled || !observation.controller_active || observation.stamp_ns <= 0) {
+  if (!config_.enabled) {
+    recovery_active_ = false;
+    anchor_.reset();
+    result.recovery_active = false;
+    result.state = MppiLivenessState::kInactive;
+    return result;
+  }
+  if (!observation.controller_active || observation.stamp_ns <= 0) {
     anchor_.reset();
     result.state = MppiLivenessState::kInactive;
     return result;
@@ -74,19 +82,23 @@ MppiLivenessSupervisor::evaluate(const MppiLivenessObservation& observation) {
                                        ? result.actual_route_progress_m
                                        : result.actual_displacement_m;
   if (useful_progress_m >= config_.minimum_actual_displacement_m) {
+    recovery_active_ = false;
     anchor_ = Anchor{observation.stamp_ns, observation.actual_state,
                      observation.route_generation, observation.route_station_m,
                      route_progress_available};
+    result.recovery_active = false;
     result.state = MppiLivenessState::kMoving;
     return result;
   }
 
   ++reseed_generation_;
+  recovery_active_ = true;
   anchor_ = Anchor{observation.stamp_ns, observation.actual_state,
                    observation.route_generation, observation.route_station_m,
                    route_progress_available};
   result.state = MppiLivenessState::kReseedRequested;
   result.reseed_requested = true;
+  result.recovery_active = true;
   result.reseed_generation = reseed_generation_;
   if (observation.predicted_terminal_progress_m <
       config_.minimum_predicted_terminal_progress_m) {
@@ -97,6 +109,7 @@ MppiLivenessSupervisor::evaluate(const MppiLivenessObservation& observation) {
 
 void MppiLivenessSupervisor::reset() noexcept {
   anchor_.reset();
+  recovery_active_ = false;
 }
 
 const char* mppiLivenessStateName(const MppiLivenessState state) noexcept {
