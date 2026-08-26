@@ -414,7 +414,7 @@ TEST(RouteStrategyArbitrator3DTest, PendingDecisionMustBeResolvedBeforeNextEvalu
 TEST(RouteStrategyArbitrator3DTest, DefaultPolicySelectsWithoutLeaseOrHysteresis) {
   RouteStrategyArbitrator3D arbitrator;
   const std::vector<RouteProposal3D> proposals{
-      directProposal(1.0),
+      directProposal(1.0, 5.0),
       strategicProposal(RouteIntentPurpose3D::kMissionTransit, 10.0),
   };
 

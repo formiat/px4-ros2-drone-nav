@@ -66,6 +66,14 @@ rejectedStatus(const SweptFootprintResult& result, const bool require_known_free
   return std::isfinite(value) ? -value : std::numeric_limits<double>::infinity();
 }
 
+[[nodiscard]] double netCoordinateProgress(const SegmentEvidence3D& evidence) noexcept {
+  if (!std::isfinite(evidence.endpoint_displacement_m) ||
+      !std::isfinite(evidence.mission_progress_m)) {
+    return -std::numeric_limits<double>::infinity();
+  }
+  return evidence.endpoint_displacement_m + evidence.mission_progress_m;
+}
+
 [[nodiscard]] int purposeRank(const RouteIntentPurpose3D purpose) noexcept {
   switch (purpose) {
     case RouteIntentPurpose3D::kLaunchDeparture:
@@ -83,18 +91,12 @@ rejectedStatus(const SweptFootprintResult& result, const bool require_known_free
                                 const RouteProposalSelection3DConfig& config) noexcept {
   const SegmentEvidence3D& evidence = proposal.evidence;
   const bool heuristic_precedence = config.heuristic_precedence_enabled;
-  const bool positive_mission_progress = evidence.mission_progress_m > 1.0e-6;
-  // Productive prefixes are ranked by actual mission progress. When every
-  // local option is a detour, rank coordinate displacement first so a longer
-  // escape from a local minimum beats a short, repeatedly reversible step.
-  // Route length remains only a late tie-breaker, so loops and zigzags do not
-  // gain priority merely by accumulating distance.
-  const double permissive_primary =
-      positive_mission_progress ? maximumValueRank(evidence.mission_progress_m)
-                                : maximumValueRank(evidence.endpoint_displacement_m);
-  const double permissive_secondary =
-      positive_mission_progress ? maximumValueRank(evidence.endpoint_displacement_m)
-                                : maximumValueRank(evidence.mission_progress_m);
+  // Coordinate displacement plus signed radial mission progress rewards
+  // forward motion twice, lateral detours once, and pure reversal not at all.
+  // Only the endpoints participate, so route length cannot reward zigzags or
+  // loops. Objective cost remains a late tie-breaker among equally productive
+  // endpoint choices.
+  const double permissive_progress = netCoordinateProgress(evidence);
   return std::tuple{
       evidence.reaches_mission_target ? 0 : 1,
       heuristic_precedence && evidence.reaches_intent_target ? 0 : 1,
@@ -103,11 +105,11 @@ rejectedStatus(const SweptFootprintResult& result, const bool require_known_free
       heuristic_precedence && proposal.intent.strategic_continuation_available ? 0 : 1,
       heuristic_precedence ? purposeRank(proposal.intent.purpose) : 0,
       heuristic_precedence && evidence.reaches_segment_target ? 0 : 1,
-      heuristic_precedence || positive_mission_progress ? 0 : 1,
       heuristic_precedence ? maximumValueRank(evidence.mission_progress_m)
-                           : permissive_primary,
+                           : maximumValueRank(permissive_progress),
       heuristic_precedence ? maximumValueRank(evidence.endpoint_displacement_m)
-                           : permissive_secondary,
+                           : maximumValueRank(evidence.mission_progress_m),
+      heuristic_precedence ? 0.0 : maximumValueRank(evidence.endpoint_displacement_m),
       finiteCost(evidence.objective_cost),
       finiteCost(evidence.route_length_m),
       proposal.route_fingerprint,
@@ -348,9 +350,7 @@ selectRouteProposal3D(const std::span<const RouteProposal3D> proposals,
   if (selected.evidence.reaches_mission_target) {
     result.reason = RouteProposalSelectionReason3D::kMissionTarget;
   } else if (!config.heuristic_precedence_enabled) {
-    result.reason = selected.evidence.mission_progress_m > 1.0e-6
-                        ? RouteProposalSelectionReason3D::kMissionProgress
-                        : RouteProposalSelectionReason3D::kEndpointDisplacement;
+    result.reason = RouteProposalSelectionReason3D::kNetCoordinateProgress;
   } else if (selected.evidence.reaches_intent_target) {
     result.reason = RouteProposalSelectionReason3D::kIntentTarget;
   } else if (isStrategicMissionContinuation3D(selected)) {
@@ -445,8 +445,8 @@ const char* routeProposalSelectionReason3DName(
       return "mission_target";
     case RouteProposalSelectionReason3D::kMissionProgress:
       return "mission_progress";
-    case RouteProposalSelectionReason3D::kEndpointDisplacement:
-      return "endpoint_displacement";
+    case RouteProposalSelectionReason3D::kNetCoordinateProgress:
+      return "net_coordinate_progress";
     case RouteProposalSelectionReason3D::kIntentTarget:
       return "intent_target";
     case RouteProposalSelectionReason3D::kStrategicMissionContinuation:
