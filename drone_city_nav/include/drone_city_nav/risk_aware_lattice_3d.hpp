@@ -102,6 +102,8 @@ struct Lattice3DRawValidationContext {
   const ObservedOccupancyGrid3D* occupancy{nullptr};
   const ProprioceptiveFreeSpaceSeed3D* proprioceptive_free_space_seed{nullptr};
   const LaunchSupportContact3D* launch_support_contact{nullptr};
+  std::optional<Point3> initial_connector_start;
+  SweptFootprintConfig initial_connector_footprint{};
 };
 
 struct RiskAwareLattice3DConfig {

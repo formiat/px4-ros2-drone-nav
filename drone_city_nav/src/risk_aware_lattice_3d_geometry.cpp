@@ -26,7 +26,7 @@ namespace {
 [[nodiscard]] bool
 footprintSegmentInsideGrid(const mppi::EsdfGrid& grid, const Point3& first,
                            const Point3& second,
-                           const RiskAwareLattice3DConfig& config) noexcept {
+                           const SweptFootprintConfig& footprint) noexcept {
   if (grid.width <= 0 || grid.height <= 0 || grid.depth <= 0 ||
       !(grid.resolution_m > 0.0F)) {
     return false;
@@ -40,18 +40,32 @@ footprintSegmentInsideGrid(const mppi::EsdfGrid& grid, const Point3& first,
       minimum_y + static_cast<double>(grid.height) * grid.resolution_m;
   const double maximum_z =
       minimum_z + static_cast<double>(grid.depth) * grid.resolution_m;
-  return std::min(first.x, second.x) - config.physical_footprint_radius_m >=
-             minimum_x &&
-         std::max(first.x, second.x) + config.physical_footprint_radius_m <=
-             maximum_x &&
-         std::min(first.y, second.y) - config.physical_footprint_radius_m >=
-             minimum_y &&
-         std::max(first.y, second.y) + config.physical_footprint_radius_m <=
-             maximum_y &&
-         std::min(first.z, second.z) - config.physical_footprint_lower_extent_m >=
-             minimum_z &&
-         std::max(first.z, second.z) + config.physical_footprint_upper_extent_m <=
-             maximum_z;
+  return std::min(first.x, second.x) - footprint.radius_m >= minimum_x &&
+         std::max(first.x, second.x) + footprint.radius_m <= maximum_x &&
+         std::min(first.y, second.y) - footprint.radius_m >= minimum_y &&
+         std::max(first.y, second.y) + footprint.radius_m <= maximum_y &&
+         std::min(first.z, second.z) - footprint.lower_extent_m >= minimum_z &&
+         std::max(first.z, second.z) + footprint.upper_extent_m <= maximum_z;
+}
+
+[[nodiscard]] SweptFootprintConfig
+routeFootprint(const RiskAwareLattice3DConfig& config) noexcept {
+  return SweptFootprintConfig{
+      .radius_m = config.physical_footprint_radius_m,
+      .lower_extent_m = config.physical_footprint_lower_extent_m,
+      .upper_extent_m = config.physical_footprint_upper_extent_m,
+      .perimeter_samples = config.physical_footprint_samples,
+      .radial_rings = config.physical_footprint_radial_rings,
+      .axial_samples = config.physical_footprint_axial_samples,
+      .sweep_step_m = config.physical_footprint_sweep_step_m,
+  };
+}
+
+[[nodiscard]] bool
+isInitialPhysicalConnector(const Point3& first,
+                           const Lattice3DRawValidationContext& context) noexcept {
+  return context.initial_connector_start.has_value() &&
+         distance3D(first, *context.initial_connector_start) <= 1.0e-6;
 }
 
 } // namespace
@@ -66,7 +80,15 @@ Lattice3DEdgeEvaluation evaluateLattice3DEdge(const mppi::EsdfGrid& grid,
     return Lattice3DEdgeEvaluation{
         .status = Lattice3DEdgeEvaluationStatus::kOutsideFlightEnvelope};
   }
-  if (!footprintSegmentInsideGrid(grid, first, second, config)) {
+  const SweptFootprintConfig reserved_footprint = routeFootprint(config);
+  const bool initial_connector =
+      isInitialPhysicalConnector(first, config.raw_validation);
+  const SweptFootprintConfig& swept_footprint =
+      initial_connector ? config.raw_validation.initial_connector_footprint
+                        : reserved_footprint;
+  if (!footprintSegmentInsideGrid(grid, first, second, swept_footprint) ||
+      (initial_connector &&
+       !footprintSegmentInsideGrid(grid, second, second, reserved_footprint))) {
     return Lattice3DEdgeEvaluation{.status =
                                        Lattice3DEdgeEvaluationStatus::kOutsideGrid};
   }
@@ -74,16 +96,16 @@ Lattice3DEdgeEvaluation evaluateLattice3DEdge(const mppi::EsdfGrid& grid,
     return Lattice3DEdgeEvaluation{.status = Lattice3DEdgeEvaluationStatus::kValid};
   }
   const SweptFootprintClearanceProfile profile = profileSweptFootprintClearance(
-      grid, esdf_m, first, second,
-      SweptFootprintConfig{.radius_m = config.physical_footprint_radius_m,
-                           .lower_extent_m = config.physical_footprint_lower_extent_m,
-                           .upper_extent_m = config.physical_footprint_upper_extent_m,
-                           .perimeter_samples = config.physical_footprint_samples,
-                           .radial_rings = config.physical_footprint_radial_rings,
-                           .axial_samples = config.physical_footprint_axial_samples,
-                           .sweep_step_m = config.physical_footprint_sweep_step_m},
-      config.critical_distance_m, config.preferred_distance_m);
-  const SweptFootprintResult& footprint = profile.validation;
+      grid, esdf_m, first, second, swept_footprint, config.critical_distance_m,
+      config.preferred_distance_m);
+  const SweptFootprintClearanceProfile reserved_endpoint_profile =
+      initial_connector ? profileSweptFootprintClearance(
+                              grid, esdf_m, second, second, reserved_footprint,
+                              config.critical_distance_m, config.preferred_distance_m)
+                        : profile;
+  const SweptFootprintResult& footprint = profile.validation.accepted()
+                                              ? reserved_endpoint_profile.validation
+                                              : profile.validation;
   if (!footprint.accepted()) {
     switch (footprint.status) {
       case SweptFootprintStatus::kOutsideGrid:
@@ -117,18 +139,21 @@ Lattice3DEdgeEvaluation evaluateLattice3DEdge(const mppi::EsdfGrid& grid,
         config.require_known_free_space
             ? ObservedSpaceValidationPolicy::kRequireKnownFree
             : ObservedSpaceValidationPolicy::kAllowUnknown;
-    const SweptFootprintResult raw = validateObservedSweptFootprint(
+    const SweptFootprintResult swept_raw = validateObservedSweptFootprint(
         *config.raw_validation.occupancy, first, FootprintBodyAxis{}, second,
-        FootprintBodyAxis{},
-        SweptFootprintConfig{.radius_m = config.physical_footprint_radius_m,
-                             .lower_extent_m = config.physical_footprint_lower_extent_m,
-                             .upper_extent_m = config.physical_footprint_upper_extent_m,
-                             .perimeter_samples = config.physical_footprint_samples,
-                             .radial_rings = config.physical_footprint_radial_rings,
-                             .axial_samples = config.physical_footprint_axial_samples,
-                             .sweep_step_m = config.physical_footprint_sweep_step_m},
-        policy, config.raw_validation.proprioceptive_free_space_seed,
+        FootprintBodyAxis{}, swept_footprint, policy,
+        config.raw_validation.proprioceptive_free_space_seed,
         config.raw_validation.launch_support_contact);
+    const SweptFootprintResult reserved_endpoint_raw =
+        initial_connector && swept_raw.accepted()
+            ? validateObservedSweptFootprint(
+                  *config.raw_validation.occupancy, second, FootprintBodyAxis{}, second,
+                  FootprintBodyAxis{}, reserved_footprint, policy,
+                  config.raw_validation.proprioceptive_free_space_seed,
+                  config.raw_validation.launch_support_contact)
+            : swept_raw;
+    const SweptFootprintResult& raw =
+        swept_raw.accepted() ? reserved_endpoint_raw : swept_raw;
     if (raw.status == SweptFootprintStatus::kRawCollision) {
       return Lattice3DEdgeEvaluation{.status =
                                          Lattice3DEdgeEvaluationStatus::kRawCollision,
@@ -146,10 +171,16 @@ Lattice3DEdgeEvaluation evaluateLattice3DEdge(const mppi::EsdfGrid& grid,
                                      .evidence = raw.evidence};
     }
   }
-  const double minimum_known_clearance_m =
-      footprint.evidence.known_clearance_observed
-          ? footprint.evidence.minimum_known_clearance_m
+  const double swept_clearance_m =
+      profile.validation.evidence.known_clearance_observed
+          ? profile.validation.evidence.minimum_known_clearance_m
           : std::numeric_limits<double>::infinity();
+  const double endpoint_clearance_m =
+      reserved_endpoint_profile.validation.evidence.known_clearance_observed
+          ? reserved_endpoint_profile.validation.evidence.minimum_known_clearance_m
+          : std::numeric_limits<double>::infinity();
+  const double minimum_known_clearance_m =
+      std::min(swept_clearance_m, endpoint_clearance_m);
   if (!stageAllows(stage, minimum_known_clearance_m, config)) {
     return Lattice3DEdgeEvaluation{
         .status = Lattice3DEdgeEvaluationStatus::kRiskStageRejected,

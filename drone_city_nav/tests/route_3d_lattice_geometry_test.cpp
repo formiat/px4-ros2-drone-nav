@@ -178,6 +178,51 @@ TEST(Route3DTest, EdgeSearchRejectsCollisionFromAuthoritativeRawSnapshot) {
   EXPECT_EQ(result.status, detail::Lattice3DEdgeEvaluationStatus::kRawCollision);
 }
 
+TEST(Route3DTest, InitialConnectorBuildsRouteReserveFromAPhysicallySafePose) {
+  const GridBounds3D bounds{0.0, 0.0, 0.0, 1.0, 12, 6, 6};
+  const mppi::EsdfGrid grid{bounds.width_cells,
+                            bounds.height_cells,
+                            static_cast<float>(bounds.resolution_m),
+                            static_cast<float>(bounds.origin_x),
+                            static_cast<float>(bounds.origin_y),
+                            bounds.depth_cells,
+                            static_cast<float>(bounds.origin_z)};
+  const std::vector<float> stale_esdf(
+      static_cast<std::size_t>(grid.width * grid.height * grid.depth),
+      std::numeric_limits<float>::infinity());
+  ObservedOccupancyGrid3D latest_raw{bounds};
+  ASSERT_TRUE(latest_raw.setState(GridIndex3D{2, 2, 2}, ObservedVoxelState::kOccupied));
+  const Point3 start{3.5, 2.5, 2.5};
+  const Point3 endpoint{6.5, 2.5, 2.5};
+  RiskAwareLattice3DConfig config;
+  config.physical_footprint_radius_m = 1.25;
+  config.physical_footprint_lower_extent_m = 0.25;
+  config.physical_footprint_upper_extent_m = 0.25;
+  config.critical_distance_m = 0.0;
+  config.preferred_distance_m = 0.0;
+  config.raw_validation.occupancy = &latest_raw;
+
+  EXPECT_EQ(detail::evaluateLattice3DEdge(grid, stale_esdf, start, endpoint,
+                                          Lattice3DRiskStage::kCriticalAllowed, config)
+                .status,
+            detail::Lattice3DEdgeEvaluationStatus::kRawCollision);
+
+  config.raw_validation.initial_connector_start = start;
+  config.raw_validation.initial_connector_footprint = SweptFootprintConfig{
+      .radius_m = 0.25,
+      .lower_extent_m = 0.25,
+      .upper_extent_m = 0.25,
+      .perimeter_samples = config.physical_footprint_samples,
+      .radial_rings = config.physical_footprint_radial_rings,
+      .axial_samples = config.physical_footprint_axial_samples,
+      .sweep_step_m = config.physical_footprint_sweep_step_m,
+  };
+  EXPECT_EQ(detail::evaluateLattice3DEdge(grid, stale_esdf, start, endpoint,
+                                          Lattice3DRiskStage::kCriticalAllowed, config)
+                .status,
+            detail::Lattice3DEdgeEvaluationStatus::kValid);
+}
+
 TEST(Route3DTest, EdgeRiskStageUsesPhysicalFootprintClearance) {
   OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 16, 12, 10}};
   for (int y = 0; y < 12; ++y) {

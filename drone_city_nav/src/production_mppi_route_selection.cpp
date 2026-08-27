@@ -186,6 +186,10 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
                 world.launch_support_contact
                     ? std::addressof(*world.launch_support_contact)
                     : nullptr,
+            .initial_connector_start = search_base_stitch.has_value()
+                                           ? std::nullopt
+                                           : std::optional<Point3>{search_start},
+            .initial_connector_footprint = physical_footprint_config_,
         };
         if (get_clock()->now().nanoseconds() < no_static_adaptive_search_until_ns_) {
           search_config.frontier_minimum_reachable_depth_m =
