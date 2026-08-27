@@ -54,11 +54,15 @@ topologyName(const std::span<const SelectedPassageTraversal> traversals) {
                                         current.frontier_selection_score) > 1.0e-9) {
     return false;
   }
-  if (candidate.achieved_progress_m > current.achieved_progress_m + 1.0e-6) {
+  const double candidate_net_coordinate_progress =
+      candidate.frontier_endpoint_displacement_m + candidate.achieved_progress_m;
+  const double current_net_coordinate_progress =
+      current.frontier_endpoint_displacement_m + current.achieved_progress_m;
+  if (candidate_net_coordinate_progress > current_net_coordinate_progress + 1.0e-6) {
     return true;
   }
-  return std::abs(candidate.achieved_progress_m - current.achieved_progress_m) <=
-             1.0e-6 &&
+  return std::abs(candidate_net_coordinate_progress -
+                  current_net_coordinate_progress) <= 1.0e-6 &&
          betterReached(candidate, current);
 }
 

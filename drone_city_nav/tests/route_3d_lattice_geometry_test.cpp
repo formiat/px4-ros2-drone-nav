@@ -223,6 +223,51 @@ TEST(Route3DTest, InitialConnectorBuildsRouteReserveFromAPhysicallySafePose) {
             detail::Lattice3DEdgeEvaluationStatus::kValid);
 }
 
+TEST(Route3DTest, FrontierSelectionPreservesADeepLateralDetour) {
+  OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 30, 30, 10}};
+  for (int y = 0; y < occupancy.bounds().height_cells; ++y) {
+    for (int z = 0; z < occupancy.bounds().depth_cells; ++z) {
+      occupancy.setOccupied(GridIndex3D{6, y, z});
+    }
+  }
+  const DistanceField3D field = DistanceField3D::build(occupancy, 30.0);
+  const GridBounds3D& bounds = field.bounds();
+  const mppi::EsdfGrid grid{bounds.width_cells,
+                            bounds.height_cells,
+                            static_cast<float>(bounds.resolution_m),
+                            static_cast<float>(bounds.origin_x),
+                            static_cast<float>(bounds.origin_y),
+                            bounds.depth_cells,
+                            static_cast<float>(bounds.origin_z)};
+  RiskAwareLattice3DConfig config;
+  config.horizontal_step_m = 2.0;
+  config.vertical_step_m = 1.0;
+  config.preferred_distance_m = 0.0;
+  config.critical_distance_m = 0.0;
+  config.clearance_tier_constraints_enabled = false;
+  config.heading_bias_cost_per_rad = 0.0;
+  config.route_shape_turn_cost_per_rad = 0.0;
+  config.route_shape_vertical_turn_cost_per_rad = 0.0;
+  config.vertical_alignment_cost_weight = 0.0;
+  config.physical_footprint_radius_m = 0.0;
+  config.physical_footprint_lower_extent_m = 0.0;
+  config.physical_footprint_upper_extent_m = 0.0;
+  config.physical_footprint_samples = 0U;
+  config.maximum_expansions = 120U;
+  config.maximum_search_time_ms = 1000.0;
+  config.frontier_minimum_reachable_depth_m = 2.0;
+  const Point3 start{3.5, 15.5, 5.5};
+  const Point3 goal{24.5, 15.5, 5.5};
+
+  const RiskAwareLattice3DResult result = planRiskAwareLattice3D(
+      grid, field.distancesM(), start, Vec3{1.0, 0.0, 0.0}, goal, {}, config);
+
+  ASSERT_EQ(result.status, Lattice3DStatus::kViableFrontier);
+  ASSERT_FALSE(result.points.empty());
+  EXPECT_GE(std::abs(result.points.back().y - start.y), 4.0);
+  EXPECT_GT(result.frontier_endpoint_displacement_m + result.achieved_progress_m, 2.0);
+}
+
 TEST(Route3DTest, EdgeRiskStageUsesPhysicalFootprintClearance) {
   OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 16, 12, 10}};
   for (int y = 0; y < 12; ++y) {

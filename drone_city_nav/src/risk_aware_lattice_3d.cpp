@@ -116,6 +116,16 @@ struct ReconstructedPath {
   std::vector<SelectedPassageTraversal> traversals;
 };
 
+[[nodiscard]] double netCoordinateProgress(const Point3& start, const Point3& candidate,
+                                           const Point3& goal) noexcept {
+  // Endpoint displacement preserves useful lateral detours when every route
+  // toward the goal is temporarily blocked. Signed radial progress still
+  // favors forward motion, while a pure reversal and a loop back to the start
+  // receive no reward.
+  return distance3D(start, candidate) + distance3D(start, goal) -
+         distance3D(candidate, goal);
+}
+
 [[nodiscard]] Point3 latticePoint(const Key& key, const Point3& origin,
                                   const RiskAwareLattice3DConfig& config) noexcept {
   return Point3{origin.x + static_cast<double>(key.x) * config.horizontal_step_m,
@@ -528,6 +538,8 @@ reconstruct(const Key& terminal, const Point3& origin,
   bool best_satisfies_topology = unconstrained;
   double best_remaining = unconstrained ? distance3D(start, planning_goal)
                                         : std::numeric_limits<double>::infinity();
+  double best_net_coordinate_progress =
+      unconstrained ? 0.0 : -std::numeric_limits<double>::infinity();
   std::size_t expansions = 0U;
   std::size_t stale = 0U;
   std::size_t open_peak = open.size();
@@ -560,9 +572,18 @@ reconstruct(const Key& terminal, const Point3& origin,
     const bool satisfies_topology =
         unconstrained ||
         entry.key.topology_progress == TopologyProgress::kPassageTraversed;
+    const double candidate_net_coordinate_progress =
+        netCoordinateProgress(start, current, planning_goal);
+    const bool better_coordinate_progress =
+        candidate_net_coordinate_progress > best_net_coordinate_progress + 1.0e-9;
+    const bool equal_coordinate_progress =
+        std::abs(candidate_net_coordinate_progress - best_net_coordinate_progress) <=
+        1.0e-9;
     if (satisfies_topology &&
-        (!best_satisfies_topology || remaining < best_remaining)) {
+        (!best_satisfies_topology || better_coordinate_progress ||
+         (equal_coordinate_progress && remaining + 1.0e-9 < best_remaining))) {
       best_remaining = remaining;
+      best_net_coordinate_progress = candidate_net_coordinate_progress;
       best = entry.key;
       best_satisfies_topology = true;
     }
