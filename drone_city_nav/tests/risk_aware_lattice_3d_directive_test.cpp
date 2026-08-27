@@ -151,6 +151,7 @@ TEST(RiskAwareLattice3DDirectiveTest, PermissiveSearchUsesOnlyTheRawSafeRiskStag
 
   ASSERT_EQ(result.status, Lattice3DStatus::kReachedPlanningGoal);
   EXPECT_EQ(result.risk_stage, Lattice3DRiskStage::kCriticalAllowed);
+  EXPECT_DOUBLE_EQ(result.search_time_budget_ms, config.maximum_search_time_ms);
   ASSERT_EQ(result.topology_candidates.size(), 1U);
   EXPECT_EQ(result.topology_candidates.front().risk_stage,
             Lattice3DRiskStage::kCriticalAllowed);

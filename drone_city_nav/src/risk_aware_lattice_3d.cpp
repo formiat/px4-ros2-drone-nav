@@ -432,7 +432,7 @@ reconstruct(const Key& terminal, const Point3& origin,
     const std::span<const Lattice3DSoftTabuEntry> soft_tabu) {
   using Clock = std::chrono::steady_clock;
   const auto deadline = Clock::now() + std::chrono::duration<double, std::milli>(
-                                           config.maximum_search_time_ms / 3.0);
+                                           config.maximum_search_time_ms);
   std::priority_queue<QueueEntry, std::vector<QueueEntry>, Greater> open;
   std::unordered_map<Key, Record, KeyHash> records;
   const PassageEntrySpatialIndex passage_entry_index{
@@ -779,6 +779,7 @@ reconstruct(const Key& terminal, const Point3& origin,
   }
 
   RiskAwareLattice3DResult result;
+  result.search_time_budget_ms = config.maximum_search_time_ms;
   result.risk_stage = stage;
   result.termination = termination;
   result.planning_goal = planning_goal;

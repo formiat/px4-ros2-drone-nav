@@ -157,11 +157,14 @@ RiskAwareLattice3DResult planRiskAwareLattice3D(
         config.clearance_tier_constraints_enabled
             ? std::span<const Lattice3DRiskStage>{all_stages}
             : std::span<const Lattice3DRiskStage>{all_stages}.last(1U);
+    RiskAwareLattice3DConfig stage_config = config;
+    stage_config.maximum_search_time_ms =
+        config.maximum_search_time_ms / static_cast<double>(stages.size());
     topology.stage_results.reserve(stages.size());
     for (const Lattice3DRiskStage stage : stages) {
       topology.stage_results.push_back(detail::searchRiskAwareLattice3DStage(
           grid, esdf_m, start, search_direction, planning_goal, mission_goal,
-          topology.passages, stage, topology.requirement, config, worker_pool,
+          topology.passages, stage, topology.requirement, stage_config, worker_pool,
           soft_tabu));
     }
     topology.worker_ms = std::chrono::duration<double, std::milli>(

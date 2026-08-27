@@ -188,6 +188,7 @@ struct RiskAwareLattice3DResult {
   double planning_exposure_m{0.0};
   double critical_exposure_m{0.0};
   double turn_cost{0.0};
+  double search_time_budget_ms{0.0};
   double search_ms{0.0};
   std::size_t topology_searches{0U};
   std::size_t parallel_topology_searches{0U};
