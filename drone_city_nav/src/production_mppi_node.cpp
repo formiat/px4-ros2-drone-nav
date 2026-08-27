@@ -690,14 +690,11 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   lattice_config_.physical_footprint_axial_samples =
       physical_footprint_config_.axial_samples;
   lattice_3d_config_.physical_footprint_radius_m =
-      physical_footprint_config_.radius_m +
-      (use_static_map_ ? static_route_tracking_margin_m : 0.0);
+      physical_footprint_config_.radius_m + static_route_tracking_margin_m;
   lattice_3d_config_.physical_footprint_lower_extent_m =
-      physical_footprint_config_.lower_extent_m +
-      (use_static_map_ ? static_route_tracking_margin_m : 0.0);
+      physical_footprint_config_.lower_extent_m + static_route_tracking_margin_m;
   lattice_3d_config_.physical_footprint_upper_extent_m =
-      physical_footprint_config_.upper_extent_m +
-      (use_static_map_ ? static_route_tracking_margin_m : 0.0);
+      physical_footprint_config_.upper_extent_m + static_route_tracking_margin_m;
   lattice_3d_config_.physical_footprint_samples =
       physical_footprint_config_.perimeter_samples;
   lattice_3d_config_.physical_footprint_radial_rings =

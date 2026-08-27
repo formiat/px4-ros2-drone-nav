@@ -85,6 +85,14 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
             1000.0 * memory["lidar_scan_alignment_maximum_wait_s"],
         )
 
+    def test_route_tracking_margin_is_independent_of_map_source(self) -> None:
+        source = (PACKAGE / "src/production_mppi_node.cpp").read_text()
+
+        self.assertEqual(source.count("+ static_route_tracking_margin_m;"), 3)
+        self.assertNotIn(
+            "use_static_map_ ? static_route_tracking_margin_m : 0.0", source
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

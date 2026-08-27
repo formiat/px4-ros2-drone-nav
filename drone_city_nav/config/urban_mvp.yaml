@@ -299,6 +299,8 @@ production_mppi_node:
     physical_footprint_radial_rings: 2
     physical_footprint_axial_samples: 3
     physical_footprint_sweep_step_m: 0.25
+    # Certified routes reserve tracking-error clearance independently of the
+    # map source. The MPPI collision footprint itself remains the physical body.
     static_route_tracking_margin_m: 0.75
     mppi_footprint_clearance_broad_phase_enabled: true
     route_constraint_diagnostics_distance_m: 30.0
