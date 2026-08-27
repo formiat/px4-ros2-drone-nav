@@ -28,11 +28,14 @@ TEST(MppiSpeedPolicyTest, StraightGuideUsesCruiseAndHundredMeterLookahead) {
   config.absolute_speed_limit_mps = 20.0;
   config.stopping_capability.maximum_commanded_horizontal_deceleration_mps2 = 8.0;
   config.stopping_capability.reaction_latency_s = 0.1;
-  const std::array<Point2, 4> guide{Point2{0.0, 0.0}, Point2{40.0, 0.0},
-                                    Point2{80.0, 0.0}, Point2{180.0, 0.0}};
+  const std::array<RouteSample3D, 4> route{
+      RouteSample3D{.position = {0.0, 0.0, 0.0}},
+      RouteSample3D{.position = {40.0, 0.0, 0.0}},
+      RouteSample3D{.position = {80.0, 0.0, 0.0}},
+      RouteSample3D{.position = {180.0, 0.0, 0.0}}};
   MppiSpeedPolicyInput input;
   input.mission_goal = Point3{300.0, 0.0, 18.0};
-  input.guide = guide;
+  input.route = route;
 
   const MppiSpeedPolicyResult result = evaluateMppiSpeedPolicy(config, input);
 
@@ -45,11 +48,13 @@ TEST(MppiSpeedPolicyTest, UpcomingTurnReducesReferenceSpeedBeforeTurn) {
   MppiSpeedPolicyConfig config;
   config.cruise_speed_mps = 20.0;
   config.absolute_speed_limit_mps = 20.0;
-  const std::array<Point2, 4> guide{Point2{0.0, 0.0}, Point2{8.0, 0.0},
-                                    Point2{8.0, 8.0}, Point2{8.0, 40.0}};
+  const std::array<RouteSample3D, 4> route{RouteSample3D{.position = {0.0, 0.0, 0.0}},
+                                           RouteSample3D{.position = {8.0, 0.0, 0.0}},
+                                           RouteSample3D{.position = {8.0, 8.0, 0.0}},
+                                           RouteSample3D{.position = {8.0, 40.0, 0.0}}};
   MppiSpeedPolicyInput input;
   input.mission_goal = Point3{8.0, 100.0, 18.0};
-  input.guide = guide;
+  input.route = route;
 
   const MppiSpeedPolicyResult result = evaluateMppiSpeedPolicy(config, input);
 
@@ -69,11 +74,26 @@ TEST(MppiSpeedPolicyTest, RouteConstraintAndGoalApplyIndependentCaps) {
   EXPECT_DOUBLE_EQ(passage.reference_speed_mps, 10.0);
 
   MppiSpeedPolicyInput goal_input;
-  goal_input.mission_goal = Point3{10.0, 0.0, 18.0};
+  goal_input.mission_goal = Point3{10.0, 0.0, 0.0};
   const MppiSpeedPolicyResult goal = evaluateMppiSpeedPolicy(config, goal_input);
   EXPECT_LT(goal.goal_limit_mps, 12.0);
   EXPECT_DOUBLE_EQ(goal.reference_speed_mps, goal.goal_limit_mps);
   EXPECT_EQ(goal.active_limiter, MppiSpeedLimiter::kGoal);
+}
+
+TEST(MppiSpeedPolicyTest, PureVerticalMissionUsesTheSameGoalBrakingMetric) {
+  MppiSpeedPolicyConfig config;
+  config.cruise_speed_mps = 20.0;
+  config.absolute_speed_limit_mps = 20.0;
+  MppiSpeedPolicyInput input;
+  input.state.z = 10.0F;
+  input.mission_goal = Point3{0.0, 0.0, 20.0};
+
+  const MppiSpeedPolicyResult result = evaluateMppiSpeedPolicy(config, input);
+
+  EXPECT_LT(result.goal_limit_mps, config.cruise_speed_mps);
+  EXPECT_DOUBLE_EQ(result.reference_speed_mps, result.goal_limit_mps);
+  EXPECT_EQ(result.active_limiter, MppiSpeedLimiter::kGoal);
 }
 
 TEST(MppiSpeedPolicyTest, ContinuousTrackingDoesNotBrakeForMovingGoal) {
@@ -180,11 +200,12 @@ TEST(MppiSpeedPolicyTest, ExplicitProfileTracksTenMetersPerSecondAtFixedLookahea
   config.horizon_duration_s = 4.0;
   config.minimum_target_lookahead_m = 30.0;
   config.maximum_target_lookahead_m = 30.0;
-  const std::array<Point2, 3> guide{Point2{0.0, 0.0}, Point2{30.0, 0.0},
-                                    Point2{60.0, 0.0}};
+  const std::array<RouteSample3D, 3> route{RouteSample3D{.position = {0.0, 0.0, 0.0}},
+                                           RouteSample3D{.position = {30.0, 0.0, 0.0}},
+                                           RouteSample3D{.position = {60.0, 0.0, 0.0}}};
   MppiSpeedPolicyInput input;
   input.mission_goal = Point3{300.0, 0.0, 18.0};
-  input.guide = guide;
+  input.route = route;
 
   const MppiSpeedPolicyResult result = evaluateMppiSpeedPolicy(config, input);
 

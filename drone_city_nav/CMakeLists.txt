@@ -178,6 +178,7 @@ add_library(
   src/dynamic_agent_lidar_state.cpp
   src/esdf_query.cpp
   src/flight_envelope.cpp
+  src/flight_time_model_3d.cpp
   src/free_space_topology_3d.cpp
   src/free_space_topology_extractor_3d.cpp
   src/free_space_topology_extractor_3d_api.cpp

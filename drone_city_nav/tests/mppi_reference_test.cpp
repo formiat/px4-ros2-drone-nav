@@ -341,7 +341,7 @@ TEST(MppiReferenceTest, ReferenceSpeedAddsTrackingCost) {
   EXPECT_LT(matched.soft_cost, faster.soft_cost);
 }
 
-TEST(MppiReferenceTest, VerticalVelocityDoesNotSatisfyHorizontalReferenceSpeed) {
+TEST(MppiReferenceTest, ReferenceSpeedUsesTheTotalThreeDimensionalVelocity) {
   constexpr int kWidth = 20;
   constexpr int kHeight = 20;
   const EsdfGrid grid{kWidth, kHeight, 1.0F, 0.0F, 0.0F};
@@ -358,8 +358,8 @@ TEST(MppiReferenceTest, VerticalVelocityDoesNotSatisfyHorizontalReferenceSpeed) 
       State{.x = 1.5F, .y = 1.5F, .vx = 5.0F, .vz = 5.0F}, controls, noise, dynamics,
       RiskConfig{}, CostConfig{}, grid, esdf, 10.0F, 1.5F, false, Control{}, 5.0F);
 
-  EXPECT_GT(vertical_only.costs.speed_tracking, horizontal.costs.speed_tracking);
-  EXPECT_FLOAT_EQ(horizontal.costs.speed_tracking, 0.0F);
+  EXPECT_FLOAT_EQ(vertical_only.costs.speed_tracking, 0.0F);
+  EXPECT_GT(horizontal.costs.speed_tracking, vertical_only.costs.speed_tracking);
 }
 
 TEST(MppiReferenceTest, InheritedSpeedAboveModelLimitDecaysWithoutTeleporting) {

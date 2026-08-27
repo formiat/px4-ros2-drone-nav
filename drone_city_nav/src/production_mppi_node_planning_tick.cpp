@@ -387,9 +387,6 @@ void ProductionMppiNode::planningTick() {
       route_geometry != nullptr ? route_geometry->route : esdf->route_3d;
   const std::shared_ptr<const std::vector<mppi::RouteSample3D>> execution_mppi_route =
       route_geometry != nullptr ? route_geometry->mppi_route : esdf->mppi_route;
-  const std::shared_ptr<const std::vector<Point2>> execution_route_2d_projection =
-      route_geometry != nullptr ? route_geometry->route_2d_projection
-                                : esdf->route_2d_projection;
   const std::shared_ptr<const std::vector<ConstrainedRouteSpan>>
       execution_constrained_spans =
           route_geometry != nullptr ? route_geometry->constrained_spans
@@ -402,10 +399,6 @@ void ProductionMppiNode::planningTick() {
       execution_selected_passage_traversal_ids =
           route_geometry != nullptr ? route_geometry->selected_passage_traversal_ids
                                     : esdf->selected_passage_traversal_ids;
-  const std::span<const Point2> guide =
-      route_usable && execution_route_2d_projection
-          ? std::span<const Point2>{*execution_route_2d_projection}
-          : std::span<const Point2>{};
   const bool route_execution_blocked =
       !direct_tracking_interception && objective && !route_usable;
   const double route_station_m = route_execution.station_m;
@@ -539,7 +532,7 @@ void ProductionMppiNode::planningTick() {
       MppiSpeedPolicyInput{
           .state = navigation.state,
           .mission_goal = mission_goal,
-          .guide = guide,
+          .route = route_3d,
           .route_endpoint_remaining_m =
               route_usable && route_projection.valid &&
                       routeEndpointHasTerminalStop3D(route_endpoint_semantics)

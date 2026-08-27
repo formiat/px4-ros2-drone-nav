@@ -53,15 +53,6 @@ canonicalEdge(const PersistentPlannerNode3D first,
   return PersistentPlannerEdge3D{second, first};
 }
 
-[[nodiscard]] double
-pathSegmentTranslationTime(const Point3& first, const Point3& second,
-                           const PersistentPlannerConfig3D& config) noexcept {
-  const double horizontal = std::hypot(second.x - first.x, second.y - first.y);
-  const double vertical = std::abs(second.z - first.z);
-  return std::max(horizontal / config.nominal_horizontal_speed_mps,
-                  vertical / config.nominal_vertical_speed_mps);
-}
-
 } // namespace
 
 void PersistentDStarLitePlanner3DImpl::initializeSearch(
@@ -112,7 +103,8 @@ std::vector<PersistentPlannerNode3D> PersistentDStarLitePlanner3DImpl::adjacentN
 double PersistentDStarLitePlanner3DImpl::heuristic(
     const PersistentPlannerNode3D first,
     const PersistentPlannerNode3D second) const noexcept {
-  return pathSegmentTranslationTime(pointFor(first), pointFor(second), config_);
+  return minimumFlightTranslationTime3D(pointFor(first), pointFor(second),
+                                        config_.time_model);
 }
 
 double
@@ -127,10 +119,10 @@ PersistentDStarLitePlanner3DImpl::rawEdgeCost(const PersistentPlannerNode3D firs
   }
   const Point3 first_point = pointFor(first);
   const Point3 second_point = pointFor(second);
-  const double cost =
-      rawSegmentValid(first_point, second_point)
-          ? pathSegmentTranslationTime(first_point, second_point, config_)
-          : std::numeric_limits<double>::infinity();
+  const double cost = rawSegmentValid(first_point, second_point)
+                          ? minimumFlightTranslationTime3D(first_point, second_point,
+                                                           config_.time_model)
+                          : std::numeric_limits<double>::infinity();
   edge_cost_cache_.emplace(edge, cost);
   return cost;
 }
@@ -426,12 +418,42 @@ bool PersistentDStarLitePlanner3DImpl::pathRawValid(
 }
 
 void PersistentDStarLitePlanner3DImpl::populatePathMetrics(
-    PersistentPlannerResult3D& result) const noexcept {
+    PersistentPlannerResult3D& result, const Vec3& initial_velocity) const {
   for (std::size_t index = 1U; index < result.points.size(); ++index) {
     result.path_length_m += distance3D(result.points[index - 1U], result.points[index]);
-    result.estimated_translation_time_s += pathSegmentTranslationTime(
-        result.points[index - 1U], result.points[index], config_);
   }
+  if (result.points.size() < 2U) {
+    return;
+  }
+  std::vector<double> speed_limits(result.points.size(),
+                                   config_.time_model.maximum_horizontal_speed_mps);
+  std::vector<std::uint8_t> stop_turn_flags(result.points.size(), 0U);
+  for (std::size_t index = 1U; index + 1U < result.points.size(); ++index) {
+    const Point3& first = result.points[index - 1U];
+    const Point3& center = result.points[index];
+    const Point3& last = result.points[index + 1U];
+    const double first_length = distance3D(first, center);
+    const double second_length = distance3D(center, last);
+    if (!(first_length > kCostTolerance) || !(second_length > kCostTolerance)) {
+      continue;
+    }
+    const double alignment = ((center.x - first.x) * (last.x - center.x) +
+                              (center.y - first.y) * (last.y - center.y) +
+                              (center.z - first.z) * (last.z - center.z)) /
+                             (first_length * second_length);
+    if (alignment < config_.minimum_continuous_turn_alignment) {
+      stop_turn_flags[index] = 1U;
+    }
+  }
+  const FlightPathTimeProfile3D profile =
+      parameterizeFlightPathTime3D(result.points, speed_limits, stop_turn_flags,
+                                   initial_velocity, true, config_.time_model);
+  if (!profile.valid) {
+    return;
+  }
+  result.estimated_execution_time_s = profile.travel_time_s;
+  result.estimated_translation_time_s = profile.translation_time_s;
+  result.estimated_stationary_turn_time_s = profile.stationary_turn_time_s;
 }
 
 } // namespace drone_city_nav::detail

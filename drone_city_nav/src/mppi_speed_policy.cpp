@@ -9,13 +9,14 @@
 namespace drone_city_nav {
 namespace {
 
-[[nodiscard]] std::size_t nearestGuideIndex(const mppi::State& state,
-                                            const std::span<const Point2> guide) {
+[[nodiscard]] std::size_t
+nearestGuideIndex(const mppi::State& state,
+                  const std::span<const RouteSample3D> route) {
   std::size_t nearest_index = 0U;
   double nearest_distance = std::numeric_limits<double>::infinity();
-  for (std::size_t index = 0U; index < guide.size(); ++index) {
+  for (std::size_t index = 0U; index < route.size(); ++index) {
     const double candidate =
-        std::hypot(guide[index].x - state.x, guide[index].y - state.y);
+        distance3D(route[index].position, Point3{state.x, state.y, state.z});
     if (candidate < nearest_distance) {
       nearest_distance = candidate;
       nearest_index = index;
@@ -24,44 +25,52 @@ namespace {
   return nearest_index;
 }
 
-[[nodiscard]] double turnCurvature(const Point2 first, const Point2 center,
-                                   const Point2 last) noexcept {
-  const double first_length = distance(first, center);
-  const double second_length = distance(center, last);
+[[nodiscard]] double turnCurvature(const Point3& first, const Point3& center,
+                                   const Point3& last) noexcept {
+  const double first_length = distance3D(first, center);
+  const double second_length = distance3D(center, last);
   if (first_length <= 1.0e-6 || second_length <= 1.0e-6) {
     return 0.0;
   }
-  const double first_x = (center.x - first.x) / first_length;
-  const double first_y = (center.y - first.y) / first_length;
-  const double second_x = (last.x - center.x) / second_length;
-  const double second_y = (last.y - center.y) / second_length;
-  const double dot = std::clamp(first_x * second_x + first_y * second_y, -1.0, 1.0);
+  const Vec3 first_direction{(center.x - first.x) / first_length,
+                             (center.y - first.y) / first_length,
+                             (center.z - first.z) / first_length};
+  const Vec3 second_direction{(last.x - center.x) / second_length,
+                              (last.y - center.y) / second_length,
+                              (last.z - center.z) / second_length};
+  const double dot = std::clamp(first_direction.x * second_direction.x +
+                                    first_direction.y * second_direction.y +
+                                    first_direction.z * second_direction.z,
+                                -1.0, 1.0);
   return std::acos(dot) / (0.5 * (first_length + second_length));
 }
 
-[[nodiscard]] double windowedTurnCurvature(const std::span<const Point2> guide,
+[[nodiscard]] double windowedTurnCurvature(const std::span<const RouteSample3D> route,
                                            const std::size_t center_index,
                                            const double measurement_window_m) noexcept {
-  if (center_index == 0U || center_index + 1U >= guide.size()) {
+  if (center_index == 0U || center_index + 1U >= route.size()) {
     return 0.0;
   }
   const double half_window_m = 0.5 * measurement_window_m;
   std::size_t first_index = center_index;
   double first_distance_m = 0.0;
   while (first_index > 0U && first_distance_m < half_window_m) {
-    first_distance_m += distance(guide[first_index], guide[first_index - 1U]);
+    first_distance_m +=
+        distance3D(route[first_index].position, route[first_index - 1U].position);
     --first_index;
   }
   std::size_t last_index = center_index;
   double last_distance_m = 0.0;
-  while (last_index + 1U < guide.size() && last_distance_m < half_window_m) {
-    last_distance_m += distance(guide[last_index], guide[last_index + 1U]);
+  while (last_index + 1U < route.size() && last_distance_m < half_window_m) {
+    last_distance_m +=
+        distance3D(route[last_index].position, route[last_index + 1U].position);
     ++last_index;
   }
   if (first_index == center_index || last_index == center_index) {
     return 0.0;
   }
-  return turnCurvature(guide[first_index], guide[center_index], guide[last_index]);
+  return turnCurvature(route[first_index].position, route[center_index].position,
+                       route[last_index].position);
 }
 
 void validateConfig(const MppiSpeedPolicyConfig& config) {
@@ -114,8 +123,8 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
                            0.0, config.stopping_capability);
   if (input.terminal_goal_limit_enabled) {
     const double goal_distance =
-        std::max(0.0, std::hypot(input.mission_goal.x - input.state.x,
-                                 input.mission_goal.y - input.state.y) -
+        std::max(0.0, distance3D(input.mission_goal,
+                                 Point3{input.state.x, input.state.y, input.state.z}) -
                           config.goal_margin_m);
     result.goal_limit_mps =
         stoppingLimitedSpeed(goal_distance, 0.0, config.stopping_capability);
@@ -132,16 +141,17 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
         std::max(0.0, *input.route_constraint_speed_limit_mps);
   }
 
-  if (input.guide.size() >= 3U) {
-    const std::size_t nearest_index = nearestGuideIndex(input.state, input.guide);
+  if (input.route.size() >= 3U) {
+    const std::size_t nearest_index = nearestGuideIndex(input.state, input.route);
     double distance_to_turn_m = 0.0;
     for (std::size_t index = nearest_index + 1U;
-         index + 1U < input.guide.size() &&
+         index + 1U < input.route.size() &&
          distance_to_turn_m <= config.curvature_preview_distance_m;
          ++index) {
-      distance_to_turn_m += distance(input.guide[index - 1U], input.guide[index]);
+      distance_to_turn_m +=
+          distance3D(input.route[index - 1U].position, input.route[index].position);
       const double curvature = windowedTurnCurvature(
-          input.guide, index, config.curvature_measurement_window_m);
+          input.route, index, config.curvature_measurement_window_m);
       result.maximum_preview_curvature_1pm =
           std::max(result.maximum_preview_curvature_1pm, curvature);
       if (curvature <= 1.0e-6) {

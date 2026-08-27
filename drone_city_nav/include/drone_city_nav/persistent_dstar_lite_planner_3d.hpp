@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/flight_envelope.hpp"
+#include "drone_city_nav/flight_time_model_3d.hpp"
 #include "drone_city_nav/observed_occupancy_grid_3d.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
 #include "drone_city_nav/types.hpp"
@@ -40,8 +41,8 @@ struct PersistentPlannerWorld3D {
 struct PersistentPlannerConfig3D {
   double horizontal_step_m{2.0};
   double vertical_step_m{1.0};
-  double nominal_horizontal_speed_mps{5.0};
-  double nominal_vertical_speed_mps{3.0};
+  FlightTimeModel3D time_model{};
+  double minimum_continuous_turn_alignment{0.7071067811865476};
   double goal_tolerance_m{1.0};
   std::size_t connector_search_radius_cells{2U};
   std::size_t maximum_expansions_per_update{200000U};
@@ -77,7 +78,9 @@ struct PersistentPlannerResult3D {
   std::size_t shortcut_checks{0U};
   std::size_t shortcuts_applied{0U};
   double path_length_m{0.0};
+  double estimated_execution_time_s{0.0};
   double estimated_translation_time_s{0.0};
+  double estimated_stationary_turn_time_s{0.0};
   double world_update_ms{0.0};
   double search_ms{0.0};
   bool search_state_reused{false};

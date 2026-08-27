@@ -123,7 +123,8 @@ private:
   [[nodiscard]] std::optional<std::vector<Point3>>
   rebaseIncumbent(const Point3& start, const Point3& goal) const;
   [[nodiscard]] bool pathRawValid(const std::vector<Point3>& path) const;
-  void populatePathMetrics(PersistentPlannerResult3D& result) const noexcept;
+  void populatePathMetrics(PersistentPlannerResult3D& result,
+                           const Vec3& initial_velocity) const;
   [[nodiscard]] std::vector<GridIndex3D>
   changedOccupiedCells(const PersistentPlannerWorld3D& previous,
                        const PersistentPlannerWorld3D& current) const;

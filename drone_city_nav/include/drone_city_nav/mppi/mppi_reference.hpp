@@ -49,6 +49,7 @@ resolveUnroutedProgressDiagnostics(const RolloutMetrics& metrics,
     const CooperativeConfig& cooperative = {},
     std::optional<DynamicAircraftCostPolicy> dynamic_aircraft_cost_policy =
         std::nullopt,
-    AltitudeEnvelopeConfig altitude_envelope = {});
+    AltitudeEnvelopeConfig altitude_envelope = {},
+    std::optional<float> fixed_target_z_m = std::nullopt);
 
 } // namespace drone_city_nav::mppi

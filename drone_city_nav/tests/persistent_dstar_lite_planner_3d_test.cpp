@@ -18,8 +18,8 @@ namespace {
   PersistentPlannerConfig3D config;
   config.horizontal_step_m = 1.0;
   config.vertical_step_m = 1.0;
-  config.nominal_horizontal_speed_mps = 5.0;
-  config.nominal_vertical_speed_mps = 2.0;
+  config.time_model.maximum_horizontal_speed_mps = 5.0;
+  config.time_model.maximum_vertical_speed_mps = 2.0;
   config.goal_tolerance_m = 0.01;
   config.maximum_compute_time_ms = 1000.0;
   config.maximum_expansions_per_update = 100000U;
@@ -112,6 +112,7 @@ TEST(PersistentDStarLitePlanner3DTest,
   EXPECT_DOUBLE_EQ(result.points.back().y, goal.y);
   EXPECT_DOUBLE_EQ(result.points.back().z, goal.z);
   EXPECT_GT(result.estimated_translation_time_s, 0.0);
+  EXPECT_GE(result.estimated_execution_time_s, result.estimated_translation_time_s);
   expectRawValid(result.points, *occupancy, planner.config().physical_footprint);
 }
 

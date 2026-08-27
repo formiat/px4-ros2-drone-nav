@@ -395,7 +395,8 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
       moving_target_enabled ? hypotf(hypotf(moving_target.state.x - initial.x,
                                             moving_target.state.y - initial.y),
                                      moving_target.state.z - initial.z)
-                            : hypotf(target.x - initial.x, target.y - initial.y);
+                            : hypotf(hypotf(target.x - initial.x, target.y - initial.y),
+                                     target.z - initial.z);
   float minimum_target_separation_m = initial_distance;
   float head_progress = 0.0F;
   float terminal_route_progress = 0.0F;
@@ -486,7 +487,8 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
                             moving_target.state.y +
                                 moving_target.state.vy * target_elapsed_s - state.y),
                      movingTargetAltitudeAt(moving_target, target_elapsed_s) - state.z)
-            : hypotf(target.x - state.x, target.y - state.y);
+            : hypotf(hypotf(target.x - state.x, target.y - state.y),
+                     target.z - state.z);
     minimum_target_separation_m = fminf(minimum_target_separation_m, target_distance);
     for (std::size_t aircraft_index = 0U; aircraft_index < dynamic_aircraft_count;
          ++aircraft_index) {
@@ -542,12 +544,20 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
               sample_weight * dynamics.dt_s * terminal_route_progress;
         }
       } else {
-        const float guide_cross = (state.y - initial.y) * (target.x - initial.x) -
-                                  (state.x - initial.x) * (target.y - initial.y);
+        const float guide_x = target.x - initial.x;
+        const float guide_y = target.y - initial.y;
+        const float guide_z = target.z - initial.z;
+        const float offset_x = state.x - initial.x;
+        const float offset_y = state.y - initial.y;
+        const float offset_z = state.z - initial.z;
+        const float cross_x = offset_y * guide_z - offset_z * guide_y;
+        const float cross_y = offset_z * guide_x - offset_x * guide_z;
+        const float cross_z = offset_x * guide_y - offset_y * guide_x;
         const float guide_length =
-            fmaxf(1.0F, hypotf(target.x - initial.x, target.y - initial.y));
-        guide_cost +=
-            sample_weight * (guide_cross / guide_length) * (guide_cross / guide_length);
+            fmaxf(1.0F, hypotf(hypotf(guide_x, guide_y), guide_z));
+        const float cross_track =
+            hypotf(hypotf(cross_x, cross_y), cross_z) / guide_length;
+        guide_cost += sample_weight * cross_track * cross_track;
       }
       const float z_reference =
           route_projection.valid ? route_projection.reference_z_m : target.z;
@@ -560,17 +570,18 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
       if (active_reference_speed_mps >= 0.0F) {
         const float speed_mps = route_projection.valid
                                     ? routeTrackingSpeedMps(state, route_projection)
-                                    : hypotf(state.vx, state.vy);
+                                    : hypotf(hypotf(state.vx, state.vy), state.vz);
         const float speed_error = speed_mps - active_reference_speed_mps;
         speed_tracking_cost += sample_weight * speed_error * speed_error;
       }
     }
     if (step + 1U == head_steps) {
-      head_progress =
-          moving_target_enabled ? initial_distance - target_distance
-          : route_projection.valid
-              ? terminal_route_progress
-              : initial_distance - hypotf(target.x - state.x, target.y - state.y);
+      head_progress = moving_target_enabled ? initial_distance - target_distance
+                      : route_projection.valid
+                          ? terminal_route_progress
+                          : initial_distance -
+                                hypotf(hypotf(target.x - state.x, target.y - state.y),
+                                       target.z - state.z);
     }
     acceleration_cost +=
         control.ax * control.ax + control.ay * control.ay + control.az * control.az;
@@ -586,7 +597,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
   const float terminal_distance =
       moving_target_enabled
           ? fmaxf(0.0F, minimum_target_separation_m - moving_target.capture_radius_m)
-          : hypotf(target.x - state.x, target.y - state.y);
+          : hypotf(hypotf(target.x - state.x, target.y - state.y), target.z - state.z);
   const float progress =
       moving_target_enabled     ? initial_distance - minimum_target_separation_m
       : route_point_count >= 2U ? terminal_route_progress

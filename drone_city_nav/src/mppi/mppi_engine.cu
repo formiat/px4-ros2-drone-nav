@@ -607,7 +607,7 @@ public:
           previous_applied_control, input.reference_speed_mps, config_.footprint,
           input.moving_target, &evaluation.trace, input.dynamic_aircraft,
           input.cooperative_maneuver, config_.cooperative, dynamic_aircraft_cost_policy,
-          config_.altitude_envelope);
+          config_.altitude_envelope, input.target.z);
       evaluation.known_solid_collision = hostSweptSolidCollision(
           evaluation.trace.horizon, controls, config_.footprint, known_solids_);
       if (route_active && input.route->terminal_cross_track_tolerance_m &&

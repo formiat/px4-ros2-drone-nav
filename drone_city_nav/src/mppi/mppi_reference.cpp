@@ -232,7 +232,8 @@ RolloutMetrics simulateReference(
     const std::optional<CooperativeManeuverPreference> cooperative_maneuver,
     const CooperativeConfig& cooperative,
     const std::optional<DynamicAircraftCostPolicy> dynamic_aircraft_cost_policy,
-    const AltitudeEnvelopeConfig altitude_envelope) {
+    const AltitudeEnvelopeConfig altitude_envelope,
+    const std::optional<float> fixed_target_z_m) {
   for (const DynamicAircraftTrajectory& aircraft : dynamic_aircraft) {
     if (!aircraft.samples || aircraft.samples->size() < nominal_controls.size() ||
         aircraft.active_steps == 0U ||
@@ -269,10 +270,14 @@ RolloutMetrics simulateReference(
   }
   Control previous = previous_applied_control;
   float previous_clearance_m = std::numeric_limits<float>::infinity();
+  const float target_z_m = fixed_target_z_m.value_or(initial_state.z);
+  const auto fixedTargetDistance = [&](const State& sample) noexcept {
+    return std::hypot(std::hypot(target_x_m - sample.x, target_y_m - sample.y),
+                      target_z_m - sample.z);
+  };
   const float initial_target_distance =
-      moving_target.has_value()
-          ? targetDistance(state, *moving_target, 0.0F)
-          : std::hypot(target_x_m - state.x, target_y_m - state.y);
+      moving_target.has_value() ? targetDistance(state, *moving_target, 0.0F)
+                                : fixedTargetDistance(state);
   metrics.minimum_target_separation_m = initial_target_distance;
   const std::size_t head_steps =
       std::clamp<std::size_t>(static_cast<std::size_t>(std::ceil(
@@ -354,7 +359,7 @@ RolloutMetrics simulateReference(
         moving_target.has_value()
             ? targetDistance(state, *moving_target,
                              static_cast<float>(step + 1U) * dynamics.dt_s)
-            : std::hypot(target_x_m - state.x, target_y_m - state.y);
+            : fixedTargetDistance(state);
     if (target_distance < metrics.minimum_target_separation_m) {
       metrics.minimum_target_separation_m = target_distance;
     }
@@ -405,8 +410,8 @@ RolloutMetrics simulateReference(
     metrics.costs.control_effort += squared(control.ax) + squared(control.ay) +
                                     squared(control.az) + squared(control.yaw_accel);
     if (reference_speed_mps >= 0.0F) {
-      metrics.costs.speed_tracking +=
-          squared(std::hypot(state.vx, state.vy) - reference_speed_mps);
+      metrics.costs.speed_tracking += squared(
+          std::hypot(std::hypot(state.vx, state.vy), state.vz) - reference_speed_mps);
     }
     metrics.costs.terminal = moving_target.has_value()
                                  ? std::max(0.0F, metrics.minimum_target_separation_m -
@@ -435,10 +440,9 @@ RolloutMetrics simulateReference(
     }
   }
   metrics.costs.progress =
-      -(initial_target_distance -
-        (moving_target.has_value()
-             ? metrics.minimum_target_separation_m
-             : std::hypot(target_x_m - state.x, target_y_m - state.y)));
+      -(initial_target_distance - (moving_target.has_value()
+                                       ? metrics.minimum_target_separation_m
+                                       : fixedTargetDistance(state)));
   metrics.soft_cost =
       costs.head_progress_weight * -metrics.costs.head_progress +
       costs.progress_weight * metrics.costs.progress +

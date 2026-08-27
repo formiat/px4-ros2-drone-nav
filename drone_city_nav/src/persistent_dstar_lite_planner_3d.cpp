@@ -163,8 +163,11 @@ bool PersistentDStarLitePlanner3DImpl::validRequest(
   return finitePoint(request.start) && finitePoint(request.mission_goal) &&
          finiteVector(request.velocity) && request.mission_epoch != 0U &&
          request.world.valid() && config_.horizontal_step_m > 0.0 &&
-         config_.vertical_step_m > 0.0 && config_.nominal_horizontal_speed_mps > 0.0 &&
-         config_.nominal_vertical_speed_mps > 0.0 && config_.goal_tolerance_m >= 0.0 &&
+         config_.vertical_step_m > 0.0 && config_.time_model.valid() &&
+         std::isfinite(config_.minimum_continuous_turn_alignment) &&
+         config_.minimum_continuous_turn_alignment >= -1.0 &&
+         config_.minimum_continuous_turn_alignment <= 1.0 &&
+         config_.goal_tolerance_m >= 0.0 &&
          config_.connector_search_radius_cells <= 32U &&
          config_.maximum_expansions_per_update > 0U &&
          config_.maximum_incremental_changed_voxels > 0U &&
@@ -281,7 +284,7 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   result.repair_generation = repair_generation_;
   result.records = records_.size();
   result.open_entries = open_.size();
-  populatePathMetrics(result);
+  populatePathMetrics(result, request.velocity);
   result.search_ms = std::chrono::duration<double, std::milli>(
                          std::chrono::steady_clock::now() - operation_started)
                          .count();

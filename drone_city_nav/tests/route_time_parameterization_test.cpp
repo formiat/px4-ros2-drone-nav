@@ -25,11 +25,12 @@ TEST(RouteTimeParameterizationTest,
   const std::vector<RouteSample3D> route = straightRoute(20.0);
   const RouteTimeParameterization3D profile = parameterizeRouteTime3D(
       route, {}, 8.0, 3.0, RouteEndpointSemantics3D::kMissionStop,
-      MppiSpeedPolicyConfig{}, mppi::DynamicsConfig{});
+      MppiSpeedPolicyConfig{}, mppi::DynamicsConfig{}, Vec3{});
 
   ASSERT_TRUE(profile.valid);
   ASSERT_EQ(profile.reference_speeds_mps.size(), route.size());
   EXPECT_DOUBLE_EQ(profile.reference_speeds_mps.back(), 0.0);
+  EXPECT_DOUBLE_EQ(profile.reference_speeds_mps.front(), 0.0);
   EXPECT_GT(profile.travel_time_s, 20.0 / 5.0);
   EXPECT_TRUE(std::isfinite(profile.travel_time_s));
 }
@@ -82,7 +83,26 @@ TEST(RouteTimeParameterizationTest, StopAndTurnStartsAnIndependentJerkLimitedLeg
   ASSERT_EQ(profile.reference_speeds_mps.size(), route.size());
   EXPECT_DOUBLE_EQ(profile.reference_speeds_mps[1U], 0.0);
   EXPECT_GT(profile.reference_speeds_mps[2U], 0.0);
+  EXPECT_GT(profile.stationary_turn_time_s, 0.0);
+  EXPECT_GT(profile.travel_time_s, profile.translation_time_s);
   EXPECT_TRUE(std::isfinite(profile.travel_time_s));
+}
+
+TEST(RouteTimeParameterizationTest,
+     InitialThreeDimensionalVelocityChangesTheSharedEtaProfile) {
+  const std::vector<RouteSample3D> route = straightRoute(40.0);
+  const RouteTimeParameterization3D from_rest = parameterizeRouteTime3D(
+      route, {}, 8.0, 3.0, RouteEndpointSemantics3D::kContinuation,
+      MppiSpeedPolicyConfig{}, mppi::DynamicsConfig{}, Vec3{});
+  const RouteTimeParameterization3D already_moving = parameterizeRouteTime3D(
+      route, {}, 8.0, 3.0, RouteEndpointSemantics3D::kContinuation,
+      MppiSpeedPolicyConfig{}, mppi::DynamicsConfig{}, Vec3{5.0, 0.0, 0.0});
+
+  ASSERT_TRUE(from_rest.valid);
+  ASSERT_TRUE(already_moving.valid);
+  EXPECT_DOUBLE_EQ(from_rest.reference_speeds_mps.front(), 0.0);
+  EXPECT_DOUBLE_EQ(already_moving.reference_speeds_mps.front(), 5.0);
+  EXPECT_LT(already_moving.travel_time_s, from_rest.travel_time_s);
 }
 
 } // namespace

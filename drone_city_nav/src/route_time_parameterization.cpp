@@ -1,5 +1,7 @@
 #include "drone_city_nav/route_time_parameterization.hpp"
 
+#include "drone_city_nav/flight_time_model_3d.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -49,69 +51,6 @@ constexpr double kEpsilon{1.0e-6};
   return std::numeric_limits<double>::infinity();
 }
 
-[[nodiscard]] double
-segmentAccelerationLimit(const RouteSample3D& first, const RouteSample3D& second,
-                         const mppi::DynamicsConfig& dynamics) noexcept {
-  const double horizontal = std::hypot(second.position.x - first.position.x,
-                                       second.position.y - first.position.y);
-  const double vertical = std::abs(second.position.z - first.position.z);
-  const double distance_m = second.station_m - first.station_m;
-  if (!(distance_m > kEpsilon)) {
-    return 0.0;
-  }
-  const double horizontal_share = horizontal / distance_m;
-  const double vertical_share = vertical / distance_m;
-  const double horizontal_limit =
-      static_cast<double>(dynamics.maximum_horizontal_acceleration_mps2) /
-      std::max(horizontal_share, kEpsilon);
-  const double vertical_limit =
-      static_cast<double>(dynamics.maximum_vertical_acceleration_mps2) /
-      std::max(vertical_share, kEpsilon);
-  return std::min(horizontal_limit, vertical_limit);
-}
-
-void enforceJerkEnvelope(const std::span<const RouteSample3D> route,
-                         std::vector<double>& speeds,
-                         const mppi::DynamicsConfig& dynamics) noexcept {
-  const double jerk = static_cast<double>(dynamics.maximum_control_jerk_mps3);
-  if (!(jerk > kEpsilon) || route.size() < 3U) {
-    return;
-  }
-  for (std::size_t index = 1U; index + 1U < route.size(); ++index) {
-    if (route[index].transition == RouteKinematicTransition3D::kStopAndTurn) {
-      // A stop-and-turn separates two continuous-motion legs.  The vehicle can
-      // settle its acceleration while stopped, so braking acceleration from the
-      // incoming leg must not constrain departure along the new tangent.
-      continue;
-    }
-    const double previous_distance =
-        route[index].station_m - route[index - 1U].station_m;
-    const double next_distance = route[index + 1U].station_m - route[index].station_m;
-    const double previous_sum = speeds[index - 1U] + speeds[index];
-    const double next_sum = speeds[index] + speeds[index + 1U];
-    if (!(previous_distance > kEpsilon) || !(next_distance > kEpsilon) ||
-        !(previous_sum > kEpsilon) || !(next_sum > kEpsilon)) {
-      continue;
-    }
-    const double previous_acceleration =
-        (speeds[index] * speeds[index] - speeds[index - 1U] * speeds[index - 1U]) /
-        (2.0 * previous_distance);
-    const double next_acceleration =
-        (speeds[index + 1U] * speeds[index + 1U] - speeds[index] * speeds[index]) /
-        (2.0 * next_distance);
-    const double transition_time =
-        0.5 * (2.0 * previous_distance / previous_sum + 2.0 * next_distance / next_sum);
-    if (next_acceleration > previous_acceleration + jerk * transition_time) {
-      const double capped_next_acceleration =
-          previous_acceleration + jerk * transition_time;
-      speeds[index + 1U] = std::min(
-          speeds[index + 1U],
-          std::sqrt(std::max(0.0, speeds[index] * speeds[index] +
-                                      2.0 * capped_next_acceleration * next_distance)));
-    }
-  }
-}
-
 } // namespace
 
 RouteTimeParameterization3D parameterizeRouteTime3D(
@@ -119,22 +58,40 @@ RouteTimeParameterization3D parameterizeRouteTime3D(
     const std::span<const ConstrainedRouteSpan> constrained_spans,
     const double unconstrained_speed_mps, const double constrained_speed_mps,
     const RouteEndpointSemantics3D endpoint_semantics,
-    const MppiSpeedPolicyConfig& speed_policy, const mppi::DynamicsConfig& dynamics) {
+    const MppiSpeedPolicyConfig& speed_policy, const mppi::DynamicsConfig& dynamics,
+    const std::optional<Vec3>& initial_velocity) {
   RouteTimeParameterization3D result;
+  const FlightTimeModel3D time_model{
+      .maximum_horizontal_speed_mps =
+          std::min({unconstrained_speed_mps, speed_policy.cruise_speed_mps,
+                    speed_policy.absolute_speed_limit_mps,
+                    static_cast<double>(dynamics.maximum_horizontal_speed_mps)}),
+      .maximum_vertical_speed_mps =
+          static_cast<double>(dynamics.maximum_vertical_speed_mps),
+      .maximum_horizontal_acceleration_mps2 =
+          static_cast<double>(dynamics.maximum_horizontal_acceleration_mps2),
+      .maximum_vertical_acceleration_mps2 =
+          static_cast<double>(dynamics.maximum_vertical_acceleration_mps2),
+      .maximum_control_jerk_mps3 =
+          static_cast<double>(dynamics.maximum_control_jerk_mps3),
+      .maximum_yaw_acceleration_radps2 =
+          static_cast<double>(dynamics.maximum_yaw_acceleration_radps2),
+      .maximum_yaw_rate_radps = static_cast<double>(dynamics.maximum_yaw_rate_radps),
+  };
   if (route.size() < 2U || !(unconstrained_speed_mps > kEpsilon) ||
       !(constrained_speed_mps > kEpsilon) ||
       !(speed_policy.cruise_speed_mps > kEpsilon) ||
       !(speed_policy.absolute_speed_limit_mps > kEpsilon) ||
       !(speed_policy.maximum_lateral_acceleration_mps2 > kEpsilon) ||
-      !(dynamics.maximum_horizontal_acceleration_mps2 > 0.0F) ||
-      !(dynamics.maximum_vertical_acceleration_mps2 > 0.0F)) {
+      !time_model.valid()) {
     return result;
   }
-  result.reference_speeds_mps.resize(route.size());
-  const double base_speed =
-      std::min({unconstrained_speed_mps, speed_policy.cruise_speed_mps,
-                speed_policy.absolute_speed_limit_mps,
-                static_cast<double>(dynamics.maximum_horizontal_speed_mps)});
+  std::vector<Point3> points;
+  std::vector<double> speed_limits;
+  std::vector<std::uint8_t> stop_turn_flags;
+  points.reserve(route.size());
+  speed_limits.reserve(route.size());
+  stop_turn_flags.reserve(route.size());
   for (std::size_t index = 0U; index < route.size(); ++index) {
     if (!std::isfinite(route[index].station_m) ||
         (index > 0U && !(route[index].station_m > route[index - 1U].station_m))) {
@@ -145,54 +102,27 @@ RouteTimeParameterization3D parameterizeRouteTime3D(
         curvature > kEpsilon
             ? std::sqrt(speed_policy.maximum_lateral_acceleration_mps2 / curvature)
             : std::numeric_limits<double>::infinity();
-    const double tangent_norm = vectorNorm(route[index].tangent);
-    const double vertical_limit =
-        tangent_norm > kEpsilon
-            ? static_cast<double>(dynamics.maximum_vertical_speed_mps) /
-                  std::max(kEpsilon, std::abs(route[index].tangent.z) / tangent_norm)
-            : std::numeric_limits<double>::infinity();
-    result.reference_speeds_mps[index] = std::min(
-        {base_speed,
+    points.push_back(route[index].position);
+    speed_limits.push_back(std::min(
+        {time_model.maximum_horizontal_speed_mps,
          constrainedLimit(route[index], constrained_spans, constrained_speed_mps),
-         curvature_limit, vertical_limit});
-    if (route[index].transition == RouteKinematicTransition3D::kStopAndTurn) {
-      result.reference_speeds_mps[index] = 0.0;
-    }
+         curvature_limit}));
+    stop_turn_flags.push_back(
+        route[index].transition == RouteKinematicTransition3D::kStopAndTurn ? 1U : 0U);
   }
-  if (routeEndpointHasTerminalStop3D(endpoint_semantics)) {
-    result.reference_speeds_mps.back() = 0.0;
-  }
-  for (std::size_t index = 1U; index < route.size(); ++index) {
-    const double distance_m = route[index].station_m - route[index - 1U].station_m;
-    const double acceleration =
-        segmentAccelerationLimit(route[index - 1U], route[index], dynamics);
-    result.reference_speeds_mps[index] =
-        std::min(result.reference_speeds_mps[index],
-                 std::sqrt(result.reference_speeds_mps[index - 1U] *
-                               result.reference_speeds_mps[index - 1U] +
-                           2.0 * acceleration * distance_m));
-  }
-  for (std::size_t index = route.size() - 1U; index > 0U; --index) {
-    const double distance_m = route[index].station_m - route[index - 1U].station_m;
-    const double acceleration =
-        segmentAccelerationLimit(route[index - 1U], route[index], dynamics);
-    result.reference_speeds_mps[index - 1U] =
-        std::min(result.reference_speeds_mps[index - 1U],
-                 std::sqrt(result.reference_speeds_mps[index] *
-                               result.reference_speeds_mps[index] +
-                           2.0 * acceleration * distance_m));
-  }
-  enforceJerkEnvelope(route, result.reference_speeds_mps, dynamics);
-  for (std::size_t index = 1U; index < route.size(); ++index) {
-    const double distance_m = route[index].station_m - route[index - 1U].station_m;
-    const double speed_sum =
-        result.reference_speeds_mps[index - 1U] + result.reference_speeds_mps[index];
-    if (!(speed_sum > kEpsilon)) {
-      return {};
-    }
-    result.travel_time_s += 2.0 * distance_m / speed_sum;
-  }
-  result.valid = std::isfinite(result.travel_time_s) && result.travel_time_s > 0.0;
+  const Vec3 effective_initial_velocity = initial_velocity.value_or(Vec3{
+      .x = route.front().tangent.x * speed_limits.front(),
+      .y = route.front().tangent.y * speed_limits.front(),
+      .z = route.front().tangent.z * speed_limits.front(),
+  });
+  FlightPathTimeProfile3D profile = parameterizeFlightPathTime3D(
+      points, speed_limits, stop_turn_flags, effective_initial_velocity,
+      routeEndpointHasTerminalStop3D(endpoint_semantics), time_model);
+  result.valid = profile.valid;
+  result.travel_time_s = profile.travel_time_s;
+  result.translation_time_s = profile.translation_time_s;
+  result.stationary_turn_time_s = profile.stationary_turn_time_s;
+  result.reference_speeds_mps = std::move(profile.reference_speeds_mps);
   return result;
 }
 

@@ -91,7 +91,7 @@ StaticRouteHandoffResult validateStaticRouteHandoff(
       current_state, finite_controls, zero_noise, config.dynamics, config.risk,
       config.costs, grid, esdf_m, target.x, target.y, true, previous_applied_control,
       handoff_speed_mps, config.footprint, std::nullopt, nullptr, {}, std::nullopt,
-      config.cooperative, std::nullopt, config.altitude_envelope);
+      config.cooperative, std::nullopt, config.altitude_envelope, target.z);
   result.minimum_clearance_m = metrics.minimum_clearance_m;
   result.critical_exposure_m = metrics.critical_exposure_m;
   result.planning_exposure_m = metrics.planning_exposure_m;

@@ -72,7 +72,7 @@ evaluateCandidate(const NonCooperativeAcquisitionEvaluationInput& input,
       input.target.y, input.config.early_exit_on_collision,
       input.previous_applied_control, input.reference_speed_mps, input.config.footprint,
       std::nullopt, &trace, input.aircraft, std::nullopt, input.config.cooperative,
-      input.cost_policy, input.config.altitude_envelope);
+      input.cost_policy, input.config.altitude_envelope, input.target.z);
   const bool solid_collision = hostSweptSolidCollision(
       trace.horizon, controls, input.config.footprint, input.known_solids);
   const std::size_t head_step = std::clamp<std::size_t>(
