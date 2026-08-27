@@ -219,6 +219,9 @@ add_library(
   src/lidar_scan_3d.cpp
   src/lidar_self_filter.cpp
   src/offboard_session_admission.cpp
+  src/persistent_dstar_lite_planner_3d.cpp
+  src/persistent_dstar_lite_planner_3d_search.cpp
+  src/persistent_dstar_lite_planner_3d_world.cpp
   src/px4_ros_time_mapper.cpp
   src/radar_cadence.cpp
   src/radar_model.cpp
@@ -1079,6 +1082,12 @@ if(BUILD_TESTING)
     PRIVATE
       TEST_COMPACT_PASSAGE_OCCUPANCY3D_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../environments/fixtures/compact_3d_passage/world.occupancy3d")
   enable_project_warnings(occupancy_grid_3d_test)
+
+  ament_add_gtest(persistent_dstar_lite_planner_3d_test
+                  tests/persistent_dstar_lite_planner_3d_test.cpp)
+  target_compile_features(persistent_dstar_lite_planner_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(persistent_dstar_lite_planner_3d_test drone_city_nav_core)
+  enable_project_warnings(persistent_dstar_lite_planner_3d_test)
 
   ament_add_gtest(obstacle_memory_3d_test tests/obstacle_memory_3d_test.cpp)
   target_compile_features(obstacle_memory_3d_test PRIVATE cxx_std_20)
