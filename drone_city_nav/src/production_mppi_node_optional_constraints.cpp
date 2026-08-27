@@ -23,8 +23,8 @@ void ProductionMppiNode::configureOptionalNavigationConstraints() {
           declare_parameter<bool>("route_proposal_precedence_enabled", false),
       .route_strategy_leases_enabled =
           declare_parameter<bool>("route_strategy_leases_enabled", false),
-      .static_route_geometry_optimization_enabled =
-          declare_parameter<bool>("static_route_geometry_optimization_enabled", false),
+      .static_route_shortcut_optimization_enabled =
+          declare_parameter<bool>("static_route_shortcut_optimization_enabled", false),
       .stochastic_trajectory_selection_enabled =
           declare_parameter<bool>("stochastic_trajectory_selection_enabled", false),
       .observation_frontier_stops_enabled =
@@ -40,8 +40,9 @@ void ProductionMppiNode::configureOptionalNavigationConstraints() {
 
 void ProductionMppiNode::configureStaticRouteGeometry() {
   static_route_geometry_config_.sample_step_m = lattice_3d_config_.sample_step_m;
-  static_route_geometry_config_.enabled =
-      optional_constraints_.static_route_geometry_optimization_enabled;
+  static_route_geometry_config_.enabled = true;
+  static_route_geometry_config_.shortcut_optimization_enabled =
+      optional_constraints_.static_route_shortcut_optimization_enabled;
   static_route_geometry_config_.maximum_shortcut_length_m =
       declare_parameter<double>("static_route_maximum_shortcut_length_m", 30.0);
   static_route_geometry_config_.sparse_deviation_tolerance_m =

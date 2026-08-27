@@ -20,7 +20,7 @@ struct ProductionNavigationOptionalConstraints {
   bool topological_history_costs_enabled{false};
   bool route_proposal_precedence_enabled{false};
   bool route_strategy_leases_enabled{false};
-  bool static_route_geometry_optimization_enabled{false};
+  bool static_route_shortcut_optimization_enabled{false};
   bool stochastic_trajectory_selection_enabled{false};
   bool observation_frontier_stops_enabled{false};
   bool topological_segment_boundaries_enabled{false};

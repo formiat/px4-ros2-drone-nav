@@ -322,57 +322,64 @@ StaticRouteGeometryResult optimizeStaticRouteGeometry(
   std::vector<double> anchor_stations_m;
   anchors.reserve(route.size());
   anchor_stations_m.reserve(route.size());
-  anchors.push_back(route.front().position);
-  anchor_stations_m.push_back(route.front().station_m);
-  std::size_t current = 0U;
   const auto shortcut_validation_started = std::chrono::steady_clock::now();
-  while (current + 1U < route.size()) {
-    std::size_t selected = current + 1U;
-    const std::vector<std::size_t> candidates = shortcutCandidateIndices(
-        route, sparse_indices, current, constrained_spans, geometry_config,
-        result.shortcut_turn_budget_rejections);
-    const std::size_t batch_size =
-        std::max<std::size_t>(1U, geometry_config.shortcut_validation_batch_size);
-    for (std::size_t batch_begin = 0U; batch_begin < candidates.size();
-         batch_begin += batch_size) {
-      const std::size_t candidate_count =
-          std::min(batch_size, candidates.size() - batch_begin);
-      std::vector<std::uint8_t> accepted(candidate_count, 0U);
-      const auto validate_candidate = [&](const std::size_t batch_index) {
-        const std::size_t candidate = candidates[batch_begin + batch_index];
-        accepted[batch_index] = static_cast<std::uint8_t>(
-            segmentValid(route[current].position, route[candidate].position, grid,
-                         esdf_m, footprint_config, raw_validation));
-      };
-      const bool parallel = worker_pool != nullptr &&
-                            worker_pool->canParallelizeFromCurrentThread() &&
-                            candidate_count > 1U;
-      if (parallel) {
-        worker_pool->parallelFor(candidate_count, WorkerTaskLane::kRouteCritical,
-                                 validate_candidate);
-        result.parallel_shortcut_candidates += candidate_count;
-      } else {
-        for (std::size_t batch_index = 0U; batch_index < candidate_count;
-             ++batch_index) {
-          validate_candidate(batch_index);
+  if (!geometry_config.shortcut_optimization_enabled) {
+    for (const std::size_t index : sparse_indices) {
+      anchors.push_back(route[index].position);
+      anchor_stations_m.push_back(route[index].station_m);
+    }
+  } else {
+    anchors.push_back(route.front().position);
+    anchor_stations_m.push_back(route.front().station_m);
+    std::size_t current = 0U;
+    while (current + 1U < route.size()) {
+      std::size_t selected = current + 1U;
+      const std::vector<std::size_t> candidates = shortcutCandidateIndices(
+          route, sparse_indices, current, constrained_spans, geometry_config,
+          result.shortcut_turn_budget_rejections);
+      const std::size_t batch_size =
+          std::max<std::size_t>(1U, geometry_config.shortcut_validation_batch_size);
+      for (std::size_t batch_begin = 0U; batch_begin < candidates.size();
+           batch_begin += batch_size) {
+        const std::size_t candidate_count =
+            std::min(batch_size, candidates.size() - batch_begin);
+        std::vector<std::uint8_t> accepted(candidate_count, 0U);
+        const auto validate_candidate = [&](const std::size_t batch_index) {
+          const std::size_t candidate = candidates[batch_begin + batch_index];
+          accepted[batch_index] = static_cast<std::uint8_t>(
+              segmentValid(route[current].position, route[candidate].position, grid,
+                           esdf_m, footprint_config, raw_validation));
+        };
+        const bool parallel = worker_pool != nullptr &&
+                              worker_pool->canParallelizeFromCurrentThread() &&
+                              candidate_count > 1U;
+        if (parallel) {
+          worker_pool->parallelFor(candidate_count, WorkerTaskLane::kRouteCritical,
+                                   validate_candidate);
+          result.parallel_shortcut_candidates += candidate_count;
+        } else {
+          for (std::size_t batch_index = 0U; batch_index < candidate_count;
+               ++batch_index) {
+            validate_candidate(batch_index);
+          }
+        }
+        ++result.shortcut_validation_batches;
+        result.shortcut_candidates += candidate_count;
+        const auto accepted_candidate = std::ranges::find(accepted, std::uint8_t{1U});
+        if (accepted_candidate != accepted.end()) {
+          const std::size_t batch_index = static_cast<std::size_t>(
+              std::distance(accepted.begin(), accepted_candidate));
+          selected = candidates[batch_begin + batch_index];
+          break;
         }
       }
-      ++result.shortcut_validation_batches;
-      result.shortcut_candidates += candidate_count;
-      const auto accepted_candidate = std::ranges::find(accepted, std::uint8_t{1U});
-      if (accepted_candidate != accepted.end()) {
-        const std::size_t batch_index = static_cast<std::size_t>(
-            std::distance(accepted.begin(), accepted_candidate));
-        selected = candidates[batch_begin + batch_index];
-        break;
+      if (selected > current + 1U) {
+        ++result.shortcuts_applied;
       }
+      anchors.push_back(route[selected].position);
+      anchor_stations_m.push_back(route[selected].station_m);
+      current = selected;
     }
-    if (selected > current + 1U) {
-      ++result.shortcuts_applied;
-    }
-    anchors.push_back(route[selected].position);
-    anchor_stations_m.push_back(route[selected].station_m);
-    current = selected;
   }
   result.shortcut_validation_ms =
       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -

@@ -387,7 +387,7 @@ production_mppi_node:
     topological_history_costs_enabled: false
     route_proposal_precedence_enabled: false
     route_strategy_leases_enabled: false
-    static_route_geometry_optimization_enabled: false
+    static_route_shortcut_optimization_enabled: false
     stochastic_trajectory_selection_enabled: false
     observation_frontier_stops_enabled: false
     topological_segment_boundaries_enabled: false

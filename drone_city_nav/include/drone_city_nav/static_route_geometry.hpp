@@ -14,6 +14,7 @@ class BoundedWorkerPool;
 
 struct StaticRouteGeometryConfig {
   bool enabled{false};
+  bool shortcut_optimization_enabled{true};
   double sample_step_m{0.5};
   double maximum_shortcut_length_m{30.0};
   double sparse_deviation_tolerance_m{0.05};

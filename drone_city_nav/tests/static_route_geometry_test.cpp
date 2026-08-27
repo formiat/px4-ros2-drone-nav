@@ -108,6 +108,27 @@ TEST(StaticRouteGeometryTest, MaterializesRawSafeRightAngleAsFillet) {
   }
 }
 
+TEST(StaticRouteGeometryTest, CornerSmoothingDoesNotRequireShortcutOptimization) {
+  const mppi::EsdfGrid grid{80, 80, 1.0F, 0.0F, 0.0F, 20, 0.0F};
+  const std::vector<float> esdf(
+      static_cast<std::size_t>(grid.width * grid.height * grid.depth),
+      std::numeric_limits<float>::infinity());
+  const std::vector<RouteSample3D> route = sampleRoute3D(
+      std::vector<Point3>{{5.0, 5.0, 5.0}, {20.0, 5.0, 5.0}, {20.0, 20.0, 5.0}}, 0.5,
+      20.0);
+  StaticRouteGeometryConfig config = enabledGeometryConfig();
+  config.shortcut_optimization_enabled = false;
+
+  const StaticRouteGeometryResult result = optimizeStaticRouteGeometry(
+      route, {}, grid, esdf,
+      SweptFootprintConfig{.radius_m = 0.0, .perimeter_samples = 0U}, config,
+      RouteEnvelopeConfig{});
+
+  EXPECT_EQ(result.shortcuts_applied, 0U);
+  EXPECT_EQ(result.shortcut_candidates, 0U);
+  EXPECT_GT(result.corners_smoothed, 0U);
+}
+
 TEST(StaticRouteGeometryTest, SparseShortcutsRemainRawFootprintSafe) {
   OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 40, 40, 10}};
   for (int y = 0; y <= 25; ++y) {
