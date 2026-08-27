@@ -353,6 +353,9 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
         distance3D(snapshot_position, candidate.route_intent.mission_target) -
         distance3D(candidate.route_3d->back().position,
                    candidate.route_intent.mission_target);
+    activation_evidence.net_coordinate_progress_m = routeNetCoordinateProgress3D(
+        snapshot_position, candidate.route_3d->back().position,
+        candidate.route_intent.mission_target);
   }
   activation_evidence.physical_executable =
       candidate.lattice_executable && result.validation.accepted;

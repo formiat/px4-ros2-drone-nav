@@ -206,6 +206,7 @@ struct RiskAwareLattice3DResult {
   double topology_search_worker_ms{0.0};
   double continuation_validation_ms{0.0};
   double frontier_endpoint_displacement_m{0.0};
+  double frontier_net_coordinate_progress_m{0.0};
   double frontier_selection_score{0.0};
   std::uint64_t route_fingerprint{0U};
   Lattice3DRoutePurpose route_purpose{Lattice3DRoutePurpose::kMissionTransit};

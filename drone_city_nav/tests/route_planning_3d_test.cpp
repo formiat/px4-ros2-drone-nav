@@ -9,6 +9,27 @@
 namespace drone_city_nav {
 namespace {
 
+TEST(RoutePlanning3D, NetCoordinateProgressDoesNotRewardUnneededAltitude) {
+  const Point3 start{0.0, 0.0, 10.0};
+  const Point3 horizontal_goal{100.0, 0.0, 10.0};
+
+  EXPECT_DOUBLE_EQ(
+      routeNetCoordinateProgress3D(start, Point3{10.0, 0.0, 10.0}, horizontal_goal),
+      20.0);
+  EXPECT_GT(
+      routeNetCoordinateProgress3D(start, Point3{0.0, 10.0, 10.0}, horizontal_goal),
+      0.0);
+  EXPECT_DOUBLE_EQ(
+      routeNetCoordinateProgress3D(start, Point3{-10.0, 0.0, 10.0}, horizontal_goal),
+      0.0);
+  EXPECT_DOUBLE_EQ(
+      routeNetCoordinateProgress3D(start, Point3{0.0, 0.0, 20.0}, horizontal_goal),
+      0.0);
+  EXPECT_DOUBLE_EQ(routeNetCoordinateProgress3D(start, Point3{0.0, 0.0, 15.0},
+                                                Point3{0.0, 0.0, 20.0}),
+                   10.0);
+}
+
 [[nodiscard]] RouteProposal3D
 proposal(const RouteIntentSource3D source, const bool strategic,
          const bool physical_executable, const bool activation_eligible,

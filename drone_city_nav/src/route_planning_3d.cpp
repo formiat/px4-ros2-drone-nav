@@ -67,6 +67,9 @@ rejectedStatus(const SweptFootprintResult& result, const bool require_known_free
 }
 
 [[nodiscard]] double netCoordinateProgress(const SegmentEvidence3D& evidence) noexcept {
+  if (std::isfinite(evidence.net_coordinate_progress_m)) {
+    return evidence.net_coordinate_progress_m;
+  }
   if (!std::isfinite(evidence.endpoint_displacement_m) ||
       !std::isfinite(evidence.mission_progress_m)) {
     return -std::numeric_limits<double>::infinity();
@@ -118,6 +121,21 @@ rejectedStatus(const SweptFootprintResult& result, const bool require_known_free
 }
 
 } // namespace
+
+double routeNetCoordinateProgress3D(const Point3& start, const Point3& endpoint,
+                                    const Point3& mission_target) noexcept {
+  const double start_to_goal_xy =
+      std::hypot(mission_target.x - start.x, mission_target.y - start.y);
+  if (start_to_goal_xy <= 1.0e-9) {
+    return distance3D(start, endpoint) + distance3D(start, mission_target) -
+           distance3D(endpoint, mission_target);
+  }
+  const double endpoint_displacement_xy =
+      std::hypot(endpoint.x - start.x, endpoint.y - start.y);
+  const double endpoint_to_goal_xy =
+      std::hypot(mission_target.x - endpoint.x, mission_target.y - endpoint.y);
+  return endpoint_displacement_xy + start_to_goal_xy - endpoint_to_goal_xy;
+}
 
 std::uint64_t makeRouteIntentId3D(const RouteIntentSource3D source,
                                   const RouteIntentPurpose3D purpose,
@@ -210,6 +228,8 @@ SegmentEvidence3D evaluateSegmentEvidence3D(
   result.endpoint_displacement_m = distance3D(search_start, route.back().position);
   result.mission_progress_m = distance3D(search_start, intent.mission_target) -
                               distance3D(route.back().position, intent.mission_target);
+  result.net_coordinate_progress_m = routeNetCoordinateProgress3D(
+      search_start, route.back().position, intent.mission_target);
   for (std::size_t index = 1U; index < route.size(); ++index) {
     result.route_length_m +=
         distance3D(route[index - 1U].position, route[index].position);

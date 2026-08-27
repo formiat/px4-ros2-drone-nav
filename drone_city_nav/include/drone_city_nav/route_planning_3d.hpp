@@ -91,6 +91,7 @@ struct SegmentEvidence3D {
   double route_length_m{0.0};
   double endpoint_displacement_m{0.0};
   double mission_progress_m{0.0};
+  double net_coordinate_progress_m{std::numeric_limits<double>::quiet_NaN()};
   double objective_cost{std::numeric_limits<double>::infinity()};
   double minimum_known_clearance_m{std::numeric_limits<double>::infinity()};
   bool materialized{false};
@@ -105,6 +106,13 @@ struct SegmentEvidence3D {
   bool invalid_esdf_exposure{false};
   bool known_clearance_observed{false};
 };
+
+// Measures useful endpoint displacement without rewarding altitude excursions
+// during a predominantly horizontal mission. A purely vertical objective uses
+// the complete 3D displacement instead.
+[[nodiscard]] double
+routeNetCoordinateProgress3D(const Point3& start, const Point3& endpoint,
+                             const Point3& mission_target) noexcept;
 
 struct SegmentEvidenceWorld3D {
   const mppi::EsdfGrid* grid{nullptr};

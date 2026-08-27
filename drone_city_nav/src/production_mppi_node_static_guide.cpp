@@ -229,7 +229,8 @@ void ProductionMppiNode::processGuideSearch3D(
         "physical=%s activation_eligible=%s validation=%.*s handoff=%s "
         "execution_geometry=%s execution_geometry_sample=%zu "
         "raw_connector_validated=%s raw_suffix_validated=%s "
-        "route_length_m=%.2f mission_progress_m=%.2f objective=%.3f",
+        "route_length_m=%.2f mission_progress_m=%.2f "
+        "net_coordinate_progress_m=%.2f objective=%.3f",
         world.revision, index,
         proposal_selection.selected_index == std::optional<std::size_t>{index}
             ? "true"
@@ -252,7 +253,7 @@ void ProductionMppiNode::processGuideSearch3D(
         activation.assessment.raw_validation.connector_validated ? "true" : "false",
         activation.assessment.raw_validation.suffix_validated ? "true" : "false",
         proposal.evidence.route_length_m, proposal.evidence.mission_progress_m,
-        proposal.evidence.objective_cost);
+        proposal.evidence.net_coordinate_progress_m, proposal.evidence.objective_cost);
     ProductionRouteSearchCandidate3D& candidate = candidate_set.candidates[index];
     if (candidate.topology &&
         activation.validation.status == StaticRouteCandidateStatus::kRawCollision) {

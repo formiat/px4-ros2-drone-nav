@@ -118,12 +118,16 @@ struct ReconstructedPath {
 
 [[nodiscard]] double netCoordinateProgress(const Point3& start, const Point3& candidate,
                                            const Point3& goal) noexcept {
-  // Endpoint displacement preserves useful lateral detours when every route
-  // toward the goal is temporarily blocked. Signed radial progress still
-  // favors forward motion, while a pure reversal and a loop back to the start
-  // receive no reward.
-  return distance3D(start, candidate) + distance3D(start, goal) -
-         distance3D(candidate, goal);
+  // Horizontal endpoint displacement preserves lateral detours without
+  // rewarding altitude excursions during ground-plane transit. A purely
+  // vertical objective retains the complete 3D metric.
+  const double start_to_goal_xy = std::hypot(goal.x - start.x, goal.y - start.y);
+  if (start_to_goal_xy <= 1.0e-9) {
+    return distance3D(start, candidate) + distance3D(start, goal) -
+           distance3D(candidate, goal);
+  }
+  return std::hypot(candidate.x - start.x, candidate.y - start.y) + start_to_goal_xy -
+         std::hypot(goal.x - candidate.x, goal.y - candidate.y);
 }
 
 [[nodiscard]] Point3 latticePoint(const Key& key, const Point3& origin,
@@ -933,6 +937,10 @@ reconstruct(const Key& terminal, const Point3& origin,
               : Lattice3DStatus::kMotionGraphExhausted;
     }
   }
+  result.frontier_net_coordinate_progress_m =
+      result.points.empty()
+          ? 0.0
+          : netCoordinateProgress(start, result.points.back(), planning_goal);
   result.objective_cost = metrics.objective_cost;
   result.route_length_m = metrics.route_length_m;
   result.estimated_travel_time_s = metrics.travel_time_s;

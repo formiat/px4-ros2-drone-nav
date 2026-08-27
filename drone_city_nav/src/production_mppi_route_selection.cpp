@@ -465,7 +465,7 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
         "strategic_mission=%s "
         "unknown=%s known_clearance=%s minimum_known_clearance_m=%.3f "
         "route_length_m=%.2f endpoint_displacement_m=%.2f "
-        "mission_progress_m=%.2f objective=%.3f",
+        "mission_progress_m=%.2f net_coordinate_progress_m=%.2f objective=%.3f",
         world.revision, index, candidate.intent.id, candidate.intent.strategic_plan_id,
         routeIntentSource3DName(candidate.intent.source),
         routeIntentPurpose3DName(candidate.intent.purpose),
@@ -482,7 +482,9 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
         candidate.evidence.known_clearance_observed ? "true" : "false",
         candidate.evidence.minimum_known_clearance_m, candidate.evidence.route_length_m,
         candidate.evidence.endpoint_displacement_m,
-        candidate.evidence.mission_progress_m, candidate.evidence.objective_cost);
+        candidate.evidence.mission_progress_m,
+        candidate.evidence.net_coordinate_progress_m,
+        candidate.evidence.objective_cost);
   }
   return ProductionRouteCandidateSet3D{
       .candidates = std::move(candidates),

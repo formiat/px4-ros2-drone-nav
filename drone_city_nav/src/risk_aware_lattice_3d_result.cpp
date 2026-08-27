@@ -55,9 +55,9 @@ topologyName(const std::span<const SelectedPassageTraversal> traversals) {
     return false;
   }
   const double candidate_net_coordinate_progress =
-      candidate.frontier_endpoint_displacement_m + candidate.achieved_progress_m;
+      candidate.frontier_net_coordinate_progress_m;
   const double current_net_coordinate_progress =
-      current.frontier_endpoint_displacement_m + current.achieved_progress_m;
+      current.frontier_net_coordinate_progress_m;
   if (candidate_net_coordinate_progress > current_net_coordinate_progress + 1.0e-6) {
     return true;
   }

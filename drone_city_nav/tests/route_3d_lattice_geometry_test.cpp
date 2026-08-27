@@ -265,7 +265,8 @@ TEST(Route3DTest, FrontierSelectionPreservesADeepLateralDetour) {
   ASSERT_EQ(result.status, Lattice3DStatus::kViableFrontier);
   ASSERT_FALSE(result.points.empty());
   EXPECT_GE(std::abs(result.points.back().y - start.y), 4.0);
-  EXPECT_GT(result.frontier_endpoint_displacement_m + result.achieved_progress_m, 2.0);
+  EXPECT_DOUBLE_EQ(result.points.back().z, start.z);
+  EXPECT_GT(result.frontier_net_coordinate_progress_m, 2.0);
 }
 
 TEST(Route3DTest, EdgeRiskStageUsesPhysicalFootprintClearance) {
