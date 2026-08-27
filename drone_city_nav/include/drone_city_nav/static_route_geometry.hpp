@@ -29,6 +29,7 @@ struct StaticRouteGeometryConfig {
 
 struct StaticRouteGeometryRawValidation {
   const ObservedOccupancyGrid3D* occupancy{nullptr};
+  const OccupancyGrid3D* static_occupancy{nullptr};
   const ProprioceptiveFreeSpaceSeed3D* proprioceptive_free_space_seed{nullptr};
   const LaunchSupportContact3D* launch_support_contact{nullptr};
   ObservedSpaceValidationPolicy policy{ObservedSpaceValidationPolicy::kAllowUnknown};

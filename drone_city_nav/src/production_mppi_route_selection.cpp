@@ -74,6 +74,7 @@ strategyLeaseReason(const IncrementalTopologicalPlan3D& plan) noexcept {
 [[nodiscard]] SegmentEvidenceWorld3D
 evidenceWorld(const ProductionMppiPreparedEsdf& world,
               const std::shared_ptr<const ProductionMppiRawWorld3D>& latest_raw_world,
+              const OccupancyGrid3D* const static_occupancy,
               const RiskAwareLattice3DConfig& lattice_config,
               const SweptFootprintConfig& footprint) noexcept {
   return SegmentEvidenceWorld3D{
@@ -83,6 +84,7 @@ evidenceWorld(const ProductionMppiPreparedEsdf& world,
       .latest_observed_occupancy = latest_raw_world && latest_raw_world->occupancy
                                        ? latest_raw_world->occupancy.get()
                                        : nullptr,
+      .static_occupancy = static_occupancy,
       .proprioceptive_free_space_seed =
           world.proprioceptive_free_space_seed
               ? std::addressof(*world.proprioceptive_free_space_seed)
@@ -162,7 +164,8 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
       .sweep_step_m = physical_footprint_config_.sweep_step_m,
   };
   const SegmentEvidenceWorld3D evidence_world =
-      evidenceWorld(world, latest_raw_world, lattice_3d_config_, footprint);
+      evidenceWorld(world, latest_raw_world, static_occupancy_3d_.get(),
+                    lattice_3d_config_, footprint);
   const std::span<const PassageTraversalEdge> passage_traversals =
       world.passage_traversals
           ? std::span<const PassageTraversalEdge>{*world.passage_traversals}
@@ -178,6 +181,7 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
         search_config.raw_validation = Lattice3DRawValidationContext{
             .occupancy = latest_raw_world != nullptr ? latest_raw_world->occupancy.get()
                                                      : nullptr,
+            .static_occupancy = static_occupancy_3d_.get(),
             .proprioceptive_free_space_seed =
                 world.proprioceptive_free_space_seed
                     ? std::addressof(*world.proprioceptive_free_space_seed)

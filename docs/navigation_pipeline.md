@@ -5,11 +5,10 @@ into a timestamped local trajectory horizon.
 
 ## 1. Raw World Snapshot
 
-The selected obstacle-memory node integrates accepted lidar returns into either
-a scored 2D memory grid or sparse observed `Occupancy3D`.
+The obstacle-memory node integrates accepted 3D lidar returns into sparse
+observed `Occupancy3D`.
 `/drone_city_nav/obstacle_memory_status` carries the producer and sequence
-heartbeat without copying the grid. The 2D profile publishes
-`/drone_city_nav/raw_obstacle_snapshot`; the 3D profile publishes a revisioned
+heartbeat without copying the grid. The 3D profile publishes a revisioned
 `/drone_city_nav/raw_obstacle_snapshot_3d` base plus
 `/drone_city_nav/raw_obstacle_delta_3d` dirty chunks. RViz and provenance
 representations are debug-only and are never planner inputs.
@@ -33,17 +32,18 @@ revisions.
 ## 2. ESDF Preparation
 
 The production MPPI node prepares a mode-specific occupied-distance field
-asynchronously. Static mode extracts a local dense ESDF3D from the precomputed
+asynchronously. Static mode extracts a local dense distance window from the precomputed
 chunked cache associated with canonical Occupancy3D. Fingerprint or format
-mismatch falls back to the exact runtime EDT. No-static 2D mode builds a local
-ESDF2D. No-static 3D mode reconstructs the revisioned observed occupancy and
-builds a recentered local ESDF3D that retains explicit unknown-space state. A
-dirty observed update classifies a new immutable local grid, verifies raw
-changes against the dirty-chunk lineage, and recomputes only the bounded EDT
-region affected by raw or execution-evidence classification changes. A second
-source halo makes obstacle removal exact. Broad, reset, incompatible, or
-incomplete-lineage work falls back to a full local rebuild. An unchanged field
-is rebound to the new raw revision without another GPU upload. MPPI continues
+mismatch falls back to the exact runtime EDT. No-static mode reconstructs the
+revisioned observed occupancy and builds a recentered local
+`KnownObstacleDistance3D` window. Distances are defined in both free and unknown
+voxels from confirmed occupied sources only; a missing or out-of-window value is
+neutral. A dirty update verifies occupied changes against the dirty-chunk
+lineage and recomputes only the bounded EDT region affected by inserted or
+removed obstacles. A second source halo makes obstacle removal exact. Broad,
+reset, incompatible, or incomplete-lineage work falls back to a full local
+rebuild. Free/unknown relabeling reuses the same field, which is rebound to the
+new raw revision without another GPU upload. MPPI continues
 using the last complete immutable field until a newer coherent generation is
 ready.
 

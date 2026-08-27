@@ -178,6 +178,31 @@ TEST(Route3DTest, EdgeSearchRejectsCollisionFromAuthoritativeRawSnapshot) {
   EXPECT_EQ(result.status, detail::Lattice3DEdgeEvaluationStatus::kRawCollision);
 }
 
+TEST(Route3DTest, AuthoritativeRawSnapshotMakesLocalDistanceBoundaryNeutral) {
+  const mppi::EsdfGrid local_grid{2, 2, 1.0F, 0.0F, 0.0F, 2, 0.0F};
+  const std::vector<float> local_distances(
+      static_cast<std::size_t>(local_grid.width * local_grid.height * local_grid.depth),
+      std::numeric_limits<float>::infinity());
+  ObservedOccupancyGrid3D raw{GridBounds3D{0.0, 0.0, 0.0, 1.0, 10, 2, 2}};
+  RiskAwareLattice3DConfig config;
+  config.physical_footprint_radius_m = 0.0;
+  config.physical_footprint_lower_extent_m = 0.0;
+  config.physical_footprint_upper_extent_m = 0.0;
+  config.physical_footprint_samples = 0U;
+  config.critical_distance_m = 0.0;
+  config.preferred_distance_m = 0.0;
+  config.flight_envelope.minimum_target_z_m = 0.0;
+  config.flight_envelope.maximum_target_z_m = 2.0;
+  config.raw_validation.occupancy = &raw;
+
+  const detail::Lattice3DEdgeEvaluation result = detail::evaluateLattice3DEdge(
+      local_grid, local_distances, Point3{0.5, 0.5, 0.5}, Point3{8.5, 0.5, 0.5},
+      Lattice3DRiskStage::kCriticalAllowed, config);
+
+  EXPECT_EQ(result.status, detail::Lattice3DEdgeEvaluationStatus::kValid);
+  EXPECT_TRUE(result.evidence.outside_grid_exposure);
+}
+
 TEST(Route3DTest, InitialConnectorBuildsRouteReserveFromAPhysicallySafePose) {
   const GridBounds3D bounds{0.0, 0.0, 0.0, 1.0, 12, 6, 6};
   const mppi::EsdfGrid grid{bounds.width_cells,

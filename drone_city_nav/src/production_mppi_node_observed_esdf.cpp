@@ -105,7 +105,7 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
   }
 
   const std::uint64_t local_fingerprint =
-      observedOccupancyFingerprint(*occupancy, local_bounds);
+      knownObstacleFingerprint3D(*occupancy, local_bounds);
   const bool launch_support_resolution_pending = !launch_support_evaluated_;
   const bool transient_seed_unchanged =
       active_prepared &&

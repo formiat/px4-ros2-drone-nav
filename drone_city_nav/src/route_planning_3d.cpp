@@ -37,6 +37,20 @@ void mergeFootprintEvidence(SegmentEvidence3D& target,
   }
 }
 
+void mergeDerivedDistanceEvidence(SegmentEvidence3D& target,
+                                  const SweptFootprintResult& source) noexcept {
+  target.outside_grid_exposure =
+      target.outside_grid_exposure || source.evidence.outside_grid_exposure;
+  target.unknown_exposure = target.unknown_exposure || source.evidence.unknown_exposure;
+  target.invalid_esdf_exposure =
+      target.invalid_esdf_exposure || source.evidence.invalid_esdf_exposure;
+  if (source.evidence.known_clearance_observed) {
+    target.known_clearance_observed = true;
+    target.minimum_known_clearance_m = std::min(
+        target.minimum_known_clearance_m, source.evidence.minimum_known_clearance_m);
+  }
+}
+
 [[nodiscard]] SegmentEvidenceStatus3D
 rejectedStatus(const SweptFootprintResult& result, const bool require_known_free_space,
                const bool reject_invalid_esdf) noexcept {
@@ -124,17 +138,8 @@ rejectedStatus(const SweptFootprintResult& result, const bool require_known_free
 
 double routeNetCoordinateProgress3D(const Point3& start, const Point3& endpoint,
                                     const Point3& mission_target) noexcept {
-  const double start_to_goal_xy =
-      std::hypot(mission_target.x - start.x, mission_target.y - start.y);
-  if (start_to_goal_xy <= 1.0e-9) {
-    return distance3D(start, endpoint) + distance3D(start, mission_target) -
-           distance3D(endpoint, mission_target);
-  }
-  const double endpoint_displacement_xy =
-      std::hypot(endpoint.x - start.x, endpoint.y - start.y);
-  const double endpoint_to_goal_xy =
-      std::hypot(mission_target.x - endpoint.x, mission_target.y - endpoint.y);
-  return endpoint_displacement_xy + start_to_goal_xy - endpoint_to_goal_xy;
+  return distance3D(start, endpoint) + distance3D(start, mission_target) -
+         distance3D(endpoint, mission_target);
 }
 
 std::uint64_t makeRouteIntentId3D(const RouteIntentSource3D source,
@@ -234,7 +239,11 @@ SegmentEvidence3D evaluateSegmentEvidence3D(
     result.route_length_m +=
         distance3D(route[index - 1U].position, route[index].position);
   }
-  if (world.grid == nullptr || world.esdf_m.empty()) {
+  const bool observed_raw_authority = world.latest_observed_occupancy != nullptr;
+  const bool static_raw_authority = world.static_occupancy != nullptr;
+  const bool derived_distance_available =
+      world.grid != nullptr && !world.esdf_m.empty();
+  if (!observed_raw_authority && !static_raw_authority && !derived_distance_available) {
     return result;
   }
   if (!std::ranges::all_of(route, [&](const RouteSample3D& sample) {
@@ -247,41 +256,55 @@ SegmentEvidence3D evaluateSegmentEvidence3D(
   for (std::size_t index = 1U; index < route.size(); ++index) {
     const Point3& first = route[index - 1U].position;
     const Point3& second = route[index].position;
-    const SweptFootprintResult esdf_validation = validateSweptFootprint(
-        *world.grid, world.esdf_m, first, second, world.footprint);
-    mergeFootprintEvidence(result, esdf_validation);
-    // Invalid derived clearance may be ignored only when the authoritative raw
-    // occupancy is available for the same segment. This keeps raw collision a
-    // mandatory constraint while making ESDF completeness an opt-in policy.
-    const bool reject_invalid_esdf =
-        world.reject_invalid_esdf || world.latest_observed_occupancy == nullptr;
-    SegmentEvidenceStatus3D status = rejectedStatus(
-        esdf_validation, world.require_known_free_space, reject_invalid_esdf);
-    if (status != SegmentEvidenceStatus3D::kValid) {
-      result.status = status;
-      result.failure_segment_index = index - 1U;
-      result.failure_point = esdf_validation.failure_point;
-      return result;
+    if (observed_raw_authority) {
+      const ObservedSpaceValidationPolicy observed_policy =
+          world.require_known_free_space
+              ? ObservedSpaceValidationPolicy::kRequireKnownFree
+              : ObservedSpaceValidationPolicy::kAllowUnknown;
+      const SweptFootprintResult raw_validation = validateObservedSweptFootprint(
+          *world.latest_observed_occupancy, first, FootprintBodyAxis{}, second,
+          FootprintBodyAxis{}, world.footprint, observed_policy,
+          world.proprioceptive_free_space_seed, world.launch_support_contact);
+      mergeFootprintEvidence(result, raw_validation);
+      const SegmentEvidenceStatus3D status =
+          rejectedStatus(raw_validation, world.require_known_free_space, false);
+      if (status != SegmentEvidenceStatus3D::kValid) {
+        result.status = status;
+        result.failure_segment_index = index - 1U;
+        result.failure_point = raw_validation.failure_point;
+        return result;
+      }
+    } else if (static_raw_authority) {
+      const SweptFootprintResult raw_validation = validateKnownStaticSweptFootprint(
+          *world.static_occupancy, first, FootprintBodyAxis{}, second,
+          FootprintBodyAxis{}, world.footprint);
+      mergeFootprintEvidence(result, raw_validation);
+      const SegmentEvidenceStatus3D status =
+          rejectedStatus(raw_validation, false, false);
+      if (status != SegmentEvidenceStatus3D::kValid) {
+        result.status = status;
+        result.failure_segment_index = index - 1U;
+        result.failure_point = raw_validation.failure_point;
+        return result;
+      }
     }
-    if (world.latest_observed_occupancy == nullptr) {
-      continue;
-    }
-    const ObservedSpaceValidationPolicy observed_policy =
-        world.require_known_free_space
-            ? ObservedSpaceValidationPolicy::kRequireKnownFree
-            : ObservedSpaceValidationPolicy::kAllowUnknown;
-    const SweptFootprintResult raw_validation = validateObservedSweptFootprint(
-        *world.latest_observed_occupancy, first, FootprintBodyAxis{}, second,
-        FootprintBodyAxis{}, world.footprint, observed_policy,
-        world.proprioceptive_free_space_seed, world.launch_support_contact);
-    mergeFootprintEvidence(result, raw_validation);
-    status = rejectedStatus(raw_validation, world.require_known_free_space,
-                            world.reject_invalid_esdf);
-    if (status != SegmentEvidenceStatus3D::kValid) {
-      result.status = status;
-      result.failure_segment_index = index - 1U;
-      result.failure_point = raw_validation.failure_point;
-      return result;
+    if (derived_distance_available) {
+      const SweptFootprintResult derived_validation = validateSweptFootprint(
+          *world.grid, world.esdf_m, first, second, world.footprint);
+      if (observed_raw_authority || static_raw_authority) {
+        mergeDerivedDistanceEvidence(result, derived_validation);
+      } else {
+        mergeFootprintEvidence(result, derived_validation);
+        const SegmentEvidenceStatus3D status =
+            rejectedStatus(derived_validation, world.require_known_free_space,
+                           world.reject_invalid_esdf);
+        if (status != SegmentEvidenceStatus3D::kValid) {
+          result.status = status;
+          result.failure_segment_index = index - 1U;
+          result.failure_point = derived_validation.failure_point;
+          return result;
+        }
+      }
     }
   }
   result.status = SegmentEvidenceStatus3D::kValid;

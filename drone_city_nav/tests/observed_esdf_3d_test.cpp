@@ -38,7 +38,7 @@ previousField(const ObservedEsdf3D& field,
   };
 }
 
-TEST(ObservedEsdf3DTest, PreservesUnknownFreeAndOccupiedSemantics) {
+TEST(ObservedEsdf3DTest, MeasuresKnownObstaclesEquallyInFreeAndUnknownSpace) {
   const GridBounds3D bounds{0.0, 0.0, 0.0, 1.0, 6, 4, 3};
   ObservedOccupancyGrid3D occupancy{bounds};
   static_cast<void>(
@@ -58,7 +58,7 @@ TEST(ObservedEsdf3DTest, PreservesUnknownFreeAndOccupiedSemantics) {
   EXPECT_TRUE(field.grid.outside_is_unknown);
   ASSERT_TRUE(field.local_occupancy);
   EXPECT_EQ(field.grid.depth, bounds.depth_cells);
-  EXPECT_EQ(field.distances_m.at(index(0, 0, 0)), mppi::kUnknownEsdfDistanceM);
+  EXPECT_FLOAT_EQ(field.distances_m.at(index(0, 0, 0)), std::sqrt(6.0F));
   EXPECT_GT(field.distances_m.at(index(1, 1, 1)), 0.0F);
   EXPECT_FLOAT_EQ(field.distances_m.at(index(2, 1, 1)), 0.0F);
   EXPECT_EQ(field.stats.known_voxels, 2U);
@@ -73,7 +73,7 @@ TEST(ObservedEsdf3DTest, PreservesUnknownFreeAndOccupiedSemantics) {
             ObservedVoxelState::kOccupied);
 }
 
-TEST(ObservedEsdf3DTest, FingerprintIsDeterministicAndSensitiveToObservedState) {
+TEST(ObservedEsdf3DTest, FingerprintDependsOnlyOnKnownObstacles) {
   const GridBounds3D bounds{0.0, 0.0, 0.0, 0.5, 64, 64, 8};
   const LocalObservedEsdfWindow3D window{
       .horizontal_half_extent_m = 4.0,
@@ -84,32 +84,32 @@ TEST(ObservedEsdf3DTest, FingerprintIsDeterministicAndSensitiveToObservedState) 
   const GridBounds3D local =
       selectLocalObservedEsdfBounds(bounds, Point3{8.0, 8.0, 2.0}, window);
   ObservedOccupancyGrid3D occupancy{bounds};
-  const std::uint64_t empty = observedOccupancyFingerprint(occupancy, local);
+  const std::uint64_t empty = knownObstacleFingerprint3D(occupancy, local);
 
   static_cast<void>(
       occupancy.setState(GridIndex3D{16, 16, 4}, ObservedVoxelState::kFree));
-  const std::uint64_t free = observedOccupancyFingerprint(occupancy, local);
-  EXPECT_NE(free, empty);
-  EXPECT_EQ(free, observedOccupancyFingerprint(occupancy, local));
+  const std::uint64_t free = knownObstacleFingerprint3D(occupancy, local);
+  EXPECT_EQ(free, empty);
+  EXPECT_EQ(free, knownObstacleFingerprint3D(occupancy, local));
 
   static_cast<void>(
       occupancy.setState(GridIndex3D{16, 16, 4}, ObservedVoxelState::kOccupied));
-  EXPECT_NE(observedOccupancyFingerprint(occupancy, local), free);
+  EXPECT_NE(knownObstacleFingerprint3D(occupancy, local), free);
 }
 
 TEST(ObservedEsdf3DTest, FingerprintIgnoresCellsOutsideExactLocalBounds) {
   const GridBounds3D world{0.0, 0.0, 0.0, 1.0, 48, 48, 32};
   const GridBounds3D local{10.0, 10.0, 8.0, 1.0, 10, 10, 10};
   ObservedOccupancyGrid3D occupancy{world};
-  const std::uint64_t empty = observedOccupancyFingerprint(occupancy, local);
+  const std::uint64_t empty = knownObstacleFingerprint3D(occupancy, local);
 
   static_cast<void>(
       occupancy.setState(GridIndex3D{5, 12, 12}, ObservedVoxelState::kOccupied));
-  EXPECT_EQ(observedOccupancyFingerprint(occupancy, local), empty);
+  EXPECT_EQ(knownObstacleFingerprint3D(occupancy, local), empty);
 
   static_cast<void>(
       occupancy.setState(GridIndex3D{12, 12, 12}, ObservedVoxelState::kOccupied));
-  EXPECT_NE(observedOccupancyFingerprint(occupancy, local), empty);
+  EXPECT_NE(knownObstacleFingerprint3D(occupancy, local), empty);
 }
 
 TEST(ObservedEsdf3DTest, ProprioceptiveSeedRemainsTransientRawValidationEvidence) {
@@ -336,7 +336,7 @@ TEST(ObservedEsdf3DTest, IncrementalInsertAndRemoveExactlyMatchFullRebuilds) {
   EXPECT_EQ(removed.occupancy_fingerprint, removed_full.occupancy_fingerprint);
 }
 
-TEST(ObservedEsdf3DTest, IncrementalClassificationChangeMatchesFullRebuild) {
+TEST(ObservedEsdf3DTest, FreeUnknownRelabelReusesTheSameKnownObstacleDistance) {
   const GridBounds3D bounds{0.0, 0.0, 0.0, 1.0, 48, 32, 24};
   ObservedOccupancyGrid3D occupancy{bounds};
   fillKnownFree(occupancy);
@@ -352,7 +352,7 @@ TEST(ObservedEsdf3DTest, IncrementalClassificationChangeMatchesFullRebuild) {
       occupancy, bounds, 3.0, &previous, std::span{&dirty, 1U}, false, 0.75);
   const ObservedEsdf3D full = buildObservedEsdf3D(occupancy, bounds, 3.0);
 
-  EXPECT_EQ(incremental.stats.mode, ObservedEsdf3DBuildMode::kIncremental);
+  EXPECT_EQ(incremental.stats.mode, ObservedEsdf3DBuildMode::kReused);
   EXPECT_EQ(incremental.distances_m, full.distances_m);
   EXPECT_EQ(incremental.local_occupancy->state(changed_cell),
             ObservedVoxelState::kUnknown);
@@ -421,7 +421,7 @@ TEST(ObservedEsdf3DTest,
   EXPECT_EQ(incremental.stats.changed_voxels, 2U);
 }
 
-TEST(ObservedEsdf3DTest, LaunchSupportOverlayChangeIsIncrementalWithoutDirtyChunks) {
+TEST(ObservedEsdf3DTest, LaunchSupportRelabelWithoutObstacleChangeReusesDistance) {
   const GridBounds3D bounds{0.0, 0.0, 0.0, 1.0, 48, 32, 24};
   ObservedOccupancyGrid3D occupancy{bounds};
   static_cast<void>(
@@ -451,8 +451,8 @@ TEST(ObservedEsdf3DTest, LaunchSupportOverlayChangeIsIncrementalWithoutDirtyChun
   const ObservedEsdf3D full =
       buildObservedEsdf3D(occupancy, bounds, 3.0, nullptr, &second_support);
 
-  EXPECT_EQ(incremental.stats.mode, ObservedEsdf3DBuildMode::kIncremental);
-  EXPECT_GT(incremental.stats.changed_voxels, 0U);
+  EXPECT_EQ(incremental.stats.mode, ObservedEsdf3DBuildMode::kReused);
+  EXPECT_EQ(incremental.stats.changed_voxels, 0U);
   EXPECT_LT(incremental.stats.classified_voxels, incremental.distances_m.size());
   EXPECT_GT(incremental.stats.reused_classification_voxels, 0U);
   EXPECT_EQ(incremental.distances_m, full.distances_m);
@@ -520,7 +520,11 @@ TEST(ObservedEsdf3DTest, ReusesAnExactlyUnchangedClassifiedWorld) {
   EXPECT_EQ(reused.stats.recomputed_voxels, 0U);
   EXPECT_EQ(reused.stats.reused_voxels, reused.distances_m.size());
   EXPECT_EQ(reused.distances_m, initial.distances_m);
-  EXPECT_EQ(reused.local_occupancy, initial.local_occupancy);
+  ASSERT_TRUE(reused.local_occupancy);
+  EXPECT_EQ(reused.local_occupancy->knownVoxelCount(),
+            initial.local_occupancy->knownVoxelCount());
+  EXPECT_EQ(reused.local_occupancy->occupiedVoxelCount(),
+            initial.local_occupancy->occupiedVoxelCount());
 }
 
 TEST(ObservedEsdf3DTest, FallsBackWhenDirtyLineageOrPatchBudgetIsInsufficient) {

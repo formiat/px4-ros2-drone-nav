@@ -9,7 +9,7 @@
 namespace drone_city_nav {
 namespace {
 
-TEST(RoutePlanning3D, NetCoordinateProgressDoesNotRewardUnneededAltitude) {
+TEST(RoutePlanning3D, NetCoordinateProgressUsesTheFullThreeDimensionalMission) {
   const Point3 start{0.0, 0.0, 10.0};
   const Point3 horizontal_goal{100.0, 0.0, 10.0};
 
@@ -22,7 +22,7 @@ TEST(RoutePlanning3D, NetCoordinateProgressDoesNotRewardUnneededAltitude) {
   EXPECT_DOUBLE_EQ(
       routeNetCoordinateProgress3D(start, Point3{-10.0, 0.0, 10.0}, horizontal_goal),
       0.0);
-  EXPECT_DOUBLE_EQ(
+  EXPECT_GT(
       routeNetCoordinateProgress3D(start, Point3{0.0, 0.0, 20.0}, horizontal_goal),
       0.0);
   EXPECT_DOUBLE_EQ(routeNetCoordinateProgress3D(start, Point3{0.0, 0.0, 15.0},
@@ -430,11 +430,11 @@ TEST(RoutePlanning3DTest, LatestRawCollisionRejectsAStaleUnknownEsdfRoute) {
 
   EXPECT_FALSE(evidence.physical_executable);
   EXPECT_TRUE(evidence.raw_collision);
-  EXPECT_TRUE(evidence.unknown_exposure);
+  EXPECT_FALSE(evidence.unknown_exposure);
   EXPECT_EQ(evidence.status, SegmentEvidenceStatus3D::kRawCollision);
 }
 
-TEST(RoutePlanning3DTest, InvalidDerivedEsdfIsOptionalWhenFreshRawWorldIsSafe) {
+TEST(RoutePlanning3DTest, RawAuthorityMakesInvalidDerivedDistanceNonBlocking) {
   mppi::EsdfGrid grid{.width = 4,
                       .height = 2,
                       .resolution_m = 1.0F,
@@ -469,8 +469,39 @@ TEST(RoutePlanning3DTest, InvalidDerivedEsdfIsOptionalWhenFreshRawWorldIsSafe) {
   EXPECT_TRUE(permissive.physical_executable);
   EXPECT_TRUE(permissive.invalid_esdf_exposure);
   EXPECT_EQ(permissive.status, SegmentEvidenceStatus3D::kValid);
-  EXPECT_FALSE(strict.physical_executable);
-  EXPECT_EQ(strict.status, SegmentEvidenceStatus3D::kInvalidEsdf);
+  EXPECT_TRUE(strict.physical_executable);
+  EXPECT_TRUE(strict.invalid_esdf_exposure);
+  EXPECT_EQ(strict.status, SegmentEvidenceStatus3D::kValid);
+}
+
+TEST(RoutePlanning3DTest, RouteBeyondLocalDistanceCacheUsesRawAuthority) {
+  const mppi::EsdfGrid grid{.width = 2,
+                            .height = 2,
+                            .resolution_m = 1.0F,
+                            .origin_x_m = 0.0F,
+                            .origin_y_m = 0.0F,
+                            .depth = 2,
+                            .origin_z_m = 0.0F,
+                            .outside_is_unknown = true};
+  const std::vector<float> esdf(8U, std::numeric_limits<float>::infinity());
+  ObservedOccupancyGrid3D raw{GridBounds3D{0.0, 0.0, 0.0, 1.0, 8, 2, 2}};
+  const RouteIntent3D intent{.id = 6U,
+                             .planned_on_revision = 13U,
+                             .mission_target = {6.5, 0.5, 0.5},
+                             .intent_target = {6.5, 0.5, 0.5},
+                             .segment_target = {6.5, 0.5, 0.5},
+                             .valid = true};
+  const std::vector<RouteSample3D> route{{.position = {0.5, 0.5, 0.5}},
+                                         {.position = {6.5, 0.5, 0.5}}};
+  SegmentEvidenceWorld3D evidence_world = world(grid, esdf);
+  evidence_world.latest_observed_occupancy = &raw;
+
+  const SegmentEvidence3D evidence = evaluateSegmentEvidence3D(
+      intent, route, route.front().position, true, true, true, 6.0, evidence_world);
+
+  EXPECT_TRUE(evidence.physical_executable);
+  EXPECT_EQ(evidence.status, SegmentEvidenceStatus3D::kValid);
+  EXPECT_TRUE(evidence.outside_grid_exposure);
 }
 
 } // namespace

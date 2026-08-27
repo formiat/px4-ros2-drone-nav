@@ -405,7 +405,8 @@ staticRouteReplacementProtected(std::span<const RouteSample3D> route,
     StaticRouteReplacementPolicy replacement_policy =
         StaticRouteReplacementPolicy::kRequireEndpointImprovement,
     const SweptFootprintConfig& footprint_config = {},
-    bool require_known_free_space = false) noexcept;
+    bool require_known_free_space = false,
+    bool raw_occupancy_authoritative = false) noexcept;
 
 [[nodiscard]] std::string_view
 staticRouteReplacementPolicyName(StaticRouteReplacementPolicy policy) noexcept;

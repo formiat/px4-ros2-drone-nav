@@ -117,9 +117,12 @@ localObservedEsdfNeedsRecenter(const GridBounds3D& local_bounds,
 [[nodiscard]] bool
 localObservedEsdfWindow3DIsValid(const LocalObservedEsdfWindow3D& window) noexcept;
 
+// Identifies only confirmed occupied geometry inside the local distance window.
+// Free and unknown labels are deliberately absent from this identity: they are
+// equivalent inputs to KnownObstacleDistance3D.
 [[nodiscard]] std::uint64_t
-observedOccupancyFingerprint(const ObservedOccupancyGrid3D& occupancy,
-                             const GridBounds3D& local_bounds);
+knownObstacleFingerprint3D(const ObservedOccupancyGrid3D& occupancy,
+                           const GridBounds3D& local_bounds);
 
 [[nodiscard]] std::optional<LaunchSupportContact3D>
 detectLaunchSupportContact3D(const ObservedOccupancyGrid3D& occupancy,

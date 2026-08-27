@@ -282,6 +282,7 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
           activation_raw_world != nullptr && activation_raw_world->occupancy != nullptr
               ? activation_raw_world->occupancy.get()
               : nullptr,
+      .static_occupancy = static_occupancy_3d_.get(),
       .proprioceptive_free_space_seed =
           world.proprioceptive_free_space_seed
               ? std::addressof(*world.proprioceptive_free_space_seed)
@@ -304,8 +305,10 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
           .axial_samples = physical_footprint_config_.axial_samples,
           .sweep_step_m = physical_footprint_config_.sweep_step_m},
       geometry_config, route_envelope_config_, planning_worker_pool_.get(),
-      raw_geometry_validation.occupancy != nullptr ? &raw_geometry_validation
-                                                   : nullptr);
+      raw_geometry_validation.occupancy != nullptr ||
+              raw_geometry_validation.static_occupancy != nullptr
+          ? &raw_geometry_validation
+          : nullptr);
   prepared.route_smoothing_ms =
       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                 smoothing_started)
@@ -458,7 +461,7 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
         *mutable_route, world.grid, *world.distances_m, mission_goal,
         static_route_extension_config_.minimum_endpoint_improvement_m,
         lattice.reached_mission_goal, lattice_3d_config_.flight_envelope,
-        result.replacement_policy, footprint_config);
+        result.replacement_policy, footprint_config, false, true);
   } else {
     StaticRouteCandidateStatus candidate_status =
         StaticRouteCandidateStatus::kInvalidEsdf;

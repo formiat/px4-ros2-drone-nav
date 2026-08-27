@@ -268,7 +268,7 @@ classifyObservedGrid3D(const ObservedOccupancyGrid3D& occupancy,
                                 std::chrono::steady_clock::now() - started)
                                 .count();
   const std::uint64_t fingerprint =
-      observedOccupancyFingerprint(*local_occupancy, local_bounds);
+      knownObstacleFingerprint3D(*local_occupancy, local_bounds);
   return {.occupancy = std::move(local_occupancy),
           .override_cells = std::move(override_cells),
           .fingerprint = fingerprint,
@@ -377,7 +377,7 @@ classifyObservedGrid3D(const ObservedOccupancyGrid3D& occupancy,
                                 std::chrono::steady_clock::now() - started)
                                 .count();
   const std::uint64_t fingerprint =
-      observedOccupancyFingerprint(*local_occupancy, local_bounds);
+      knownObstacleFingerprint3D(*local_occupancy, local_bounds);
   return ClassifiedObservedGrid3D{
       .occupancy = std::move(local_occupancy),
       .override_cells = std::move(override_cells),
@@ -397,7 +397,7 @@ classifyObservedGrid3D(const ObservedOccupancyGrid3D& occupancy,
   ObservedEsdf3D result{
       .grid = esdfGrid(bounds),
       .distances_m =
-          std::vector<float>(voxelCount(bounds), mppi::kUnknownEsdfDistanceM),
+          std::vector<float>(field.distancesM().begin(), field.distancesM().end()),
       .nearest_obstacle_indices =
           std::vector<std::size_t>(field.nearestSourceLinearIndices().begin(),
                                    field.nearestSourceLinearIndices().end()),
@@ -408,12 +408,6 @@ classifyObservedGrid3D(const ObservedOccupancyGrid3D& occupancy,
       .maximum_distance_m = maximum_distance_m,
       .stats = classified.stats,
   };
-  const SourceCellRegion region = sourceCellRegion(bounds, bounds);
-  forEachObservedVoxel(*classified.occupancy, region,
-                       [&](const GridIndex3D cell, const ObservedVoxelState) {
-                         result.distances_m.at(localLinearIndex(bounds, cell)) =
-                             field.distanceAt(cell);
-                       });
   result.stats.distance_field = field.stats();
   result.stats.recomputed_voxels = result.distances_m.size();
   result.stats.dirty_chunks = dirty_chunks;
@@ -479,16 +473,11 @@ changedCellRegion3D(const ObservedOccupancyGrid3D& previous,
         previous.findChunk(chunk_index);
     const ObservedOccupancyGrid3D::Chunk* const after = current.findChunk(chunk_index);
     for (std::size_t word = 0U; word < OccupancyGrid3D::kWordsPerChunk; ++word) {
-      const std::uint64_t before_observed =
-          before != nullptr ? before->observed.at(word) : 0U;
       const std::uint64_t before_occupied =
           before != nullptr ? before->occupied.at(word) : 0U;
-      const std::uint64_t after_observed =
-          after != nullptr ? after->observed.at(word) : 0U;
       const std::uint64_t after_occupied =
           after != nullptr ? after->occupied.at(word) : 0U;
-      std::uint64_t changed =
-          (before_observed ^ after_observed) | (before_occupied ^ after_occupied);
+      std::uint64_t changed = before_occupied ^ after_occupied;
       while (changed != 0U) {
         const int bit_offset = std::countr_zero(changed);
         const std::size_t bit_index = word * 64U + static_cast<std::size_t>(bit_offset);
@@ -532,16 +521,11 @@ changedCellRegion3D(const ObservedOccupancyGrid3D& previous,
         const ObservedOccupancyGrid3D::Chunk* const after =
             current.findChunk(chunk_index);
         for (std::size_t word = 0U; word < OccupancyGrid3D::kWordsPerChunk; ++word) {
-          const std::uint64_t before_observed =
-              before != nullptr ? before->observed.at(word) : 0U;
           const std::uint64_t before_occupied =
               before != nullptr ? before->occupied.at(word) : 0U;
-          const std::uint64_t after_observed =
-              after != nullptr ? after->observed.at(word) : 0U;
           const std::uint64_t after_occupied =
               after != nullptr ? after->occupied.at(word) : 0U;
-          std::uint64_t changed =
-              (before_observed ^ after_observed) | (before_occupied ^ after_occupied);
+          std::uint64_t changed = before_occupied ^ after_occupied;
           while (changed != 0U) {
             const int bit_offset = std::countr_zero(changed);
             const std::size_t bit_index =
@@ -582,7 +566,7 @@ previousObservedEsdfIsCompatible(const PreviousObservedEsdf3D& previous,
          std::abs(previous.grid.origin_x_m - expected.origin_x_m) <= kGridTolerance &&
          std::abs(previous.grid.origin_y_m - expected.origin_y_m) <= kGridTolerance &&
          std::abs(previous.grid.origin_z_m - expected.origin_z_m) <= kGridTolerance &&
-         observedOccupancyFingerprint(*previous.local_occupancy, bounds) ==
+         knownObstacleFingerprint3D(*previous.local_occupancy, bounds) ==
              previous.occupancy_fingerprint;
 }
 
@@ -659,7 +643,7 @@ ObservedEsdf3D updateObservedEsdf3D(
         .nearest_obstacle_indices =
             std::vector<std::size_t>(previous->nearest_obstacle_indices.begin(),
                                      previous->nearest_obstacle_indices.end()),
-        .local_occupancy = previous->local_occupancy,
+        .local_occupancy = classified.occupancy,
         .classification_override_cells = classified.override_cells,
         .dirty_regions = {},
         .occupancy_fingerprint = classified.fingerprint,
@@ -883,10 +867,7 @@ ObservedEsdf3D updateObservedEsdf3D(
       continue;
     }
     const GridIndex3D cell = localCellFromLinear(local_bounds, index);
-    if (classified.occupancy->state(cell) == ObservedVoxelState::kUnknown) {
-      result.distances_m[index] = mppi::kUnknownEsdfDistanceM;
-    } else if (result.nearest_obstacle_indices[index] !=
-               DistanceField3D::kNoNearestSource) {
+    if (result.nearest_obstacle_indices[index] != DistanceField3D::kNoNearestSource) {
       const GridIndex3D source =
           localCellFromLinear(local_bounds, result.nearest_obstacle_indices[index]);
       const double dx = static_cast<double>(cell.x - source.x);

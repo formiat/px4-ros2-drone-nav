@@ -692,8 +692,8 @@ StaticRouteCandidateValidation validateStaticRouteCandidate(
     const double minimum_endpoint_improvement_m, const bool reaches_mission_goal,
     const FlightEnvelopeConfig& flight_envelope,
     const StaticRouteReplacementPolicy replacement_policy,
-    const SweptFootprintConfig& footprint_config,
-    const bool require_known_free_space) noexcept {
+    const SweptFootprintConfig& footprint_config, const bool require_known_free_space,
+    const bool raw_occupancy_authoritative) noexcept {
   if (candidate_route.size() < 2U) {
     return {.status = StaticRouteCandidateStatus::kEmpty};
   }
@@ -702,7 +702,8 @@ StaticRouteCandidateValidation validateStaticRouteCandidate(
       })) {
     return {.status = StaticRouteCandidateStatus::kOutsideFlightEnvelope};
   }
-  for (std::size_t index = 1U; index < candidate_route.size(); ++index) {
+  for (std::size_t index = 1U;
+       !raw_occupancy_authoritative && index < candidate_route.size(); ++index) {
     const SweptFootprintResult footprint =
         validateSweptFootprint(grid, esdf_m, candidate_route[index - 1U].position,
                                candidate_route[index].position, footprint_config);

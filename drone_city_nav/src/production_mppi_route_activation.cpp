@@ -253,7 +253,8 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
               .perimeter_samples = physical_footprint_config_.perimeter_samples,
               .radial_rings = physical_footprint_config_.radial_rings,
               .axial_samples = physical_footprint_config_.axial_samples,
-              .sweep_step_m = physical_footprint_config_.sweep_step_m});
+              .sweep_step_m = physical_footprint_config_.sweep_step_m},
+          false, true);
     }
     if (result.validation.accepted &&
         !validateConstrainedRouteSpans(*rebased_route, *candidate.constrained_spans,

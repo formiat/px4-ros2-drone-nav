@@ -58,17 +58,22 @@ segmentValid(const Point3& first, const Point3& second, const mppi::EsdfGrid& gr
              const std::span<const float> esdf_m,
              const SweptFootprintConfig& footprint_config,
              const StaticRouteGeometryRawValidation* const raw_validation) noexcept {
-  if (!validateSweptFootprint(grid, esdf_m, first, second, footprint_config)
-           .accepted()) {
-    return false;
+  if (raw_validation != nullptr && raw_validation->occupancy != nullptr) {
+    return validateObservedSweptFootprint(
+               *raw_validation->occupancy, first, FootprintBodyAxis{}, second,
+               FootprintBodyAxis{}, footprint_config, raw_validation->policy,
+               raw_validation->proprioceptive_free_space_seed,
+               raw_validation->launch_support_contact)
+        .accepted();
   }
-  return raw_validation == nullptr || raw_validation->occupancy == nullptr ||
-         validateObservedSweptFootprint(
-             *raw_validation->occupancy, first, FootprintBodyAxis{}, second,
-             FootprintBodyAxis{}, footprint_config, raw_validation->policy,
-             raw_validation->proprioceptive_free_space_seed,
-             raw_validation->launch_support_contact)
-             .accepted();
+  if (raw_validation != nullptr && raw_validation->static_occupancy != nullptr) {
+    return validateKnownStaticSweptFootprint(*raw_validation->static_occupancy, first,
+                                             FootprintBodyAxis{}, second,
+                                             FootprintBodyAxis{}, footprint_config)
+        .accepted();
+  }
+  return validateSweptFootprint(grid, esdf_m, first, second, footprint_config)
+      .accepted();
 }
 
 [[nodiscard]] double pointSegmentDistance(const Point3& point, const Point3& first,

@@ -75,7 +75,6 @@ Lattice3DEdgeEvaluation evaluateLattice3DEdge(const mppi::EsdfGrid& grid,
                                               const Point3& first, const Point3& second,
                                               const Lattice3DRiskStage stage,
                                               const RiskAwareLattice3DConfig& config) {
-  const double length = distance3D(first, second);
   if (!segmentInsideFlightEnvelope(first, second, config.flight_envelope)) {
     return Lattice3DEdgeEvaluation{
         .status = Lattice3DEdgeEvaluationStatus::kOutsideFlightEnvelope};
@@ -86,54 +85,7 @@ Lattice3DEdgeEvaluation evaluateLattice3DEdge(const mppi::EsdfGrid& grid,
   const SweptFootprintConfig& swept_footprint =
       initial_connector ? config.raw_validation.initial_connector_footprint
                         : reserved_footprint;
-  if (!footprintSegmentInsideGrid(grid, first, second, swept_footprint) ||
-      (initial_connector &&
-       !footprintSegmentInsideGrid(grid, second, second, reserved_footprint))) {
-    return Lattice3DEdgeEvaluation{.status =
-                                       Lattice3DEdgeEvaluationStatus::kOutsideGrid};
-  }
-  if (!(length > 1.0e-9)) {
-    return Lattice3DEdgeEvaluation{.status = Lattice3DEdgeEvaluationStatus::kValid};
-  }
-  const SweptFootprintClearanceProfile profile = profileSweptFootprintClearance(
-      grid, esdf_m, first, second, swept_footprint, config.critical_distance_m,
-      config.preferred_distance_m);
-  const SweptFootprintClearanceProfile reserved_endpoint_profile =
-      initial_connector ? profileSweptFootprintClearance(
-                              grid, esdf_m, second, second, reserved_footprint,
-                              config.critical_distance_m, config.preferred_distance_m)
-                        : profile;
-  const SweptFootprintResult& footprint = profile.validation.accepted()
-                                              ? reserved_endpoint_profile.validation
-                                              : profile.validation;
-  if (!footprint.accepted()) {
-    switch (footprint.status) {
-      case SweptFootprintStatus::kOutsideGrid:
-        return Lattice3DEdgeEvaluation{.status =
-                                           Lattice3DEdgeEvaluationStatus::kOutsideGrid,
-                                       .evidence = footprint.evidence};
-      case SweptFootprintStatus::kUnknownSpace:
-        if (config.require_known_free_space) {
-          return Lattice3DEdgeEvaluation{
-              .status = Lattice3DEdgeEvaluationStatus::kUnknownSpace,
-              .evidence = footprint.evidence};
-        }
-        break;
-      case SweptFootprintStatus::kInvalidEsdf:
-        if (config.reject_invalid_esdf) {
-          return Lattice3DEdgeEvaluation{
-              .status = Lattice3DEdgeEvaluationStatus::kInvalidEsdf,
-              .evidence = footprint.evidence};
-        }
-        break;
-      case SweptFootprintStatus::kRawCollision:
-        return Lattice3DEdgeEvaluation{.status =
-                                           Lattice3DEdgeEvaluationStatus::kRawCollision,
-                                       .evidence = footprint.evidence};
-      case SweptFootprintStatus::kValid:
-        break;
-    }
-  }
+  std::optional<SweptFootprintResult> raw_validation;
   if (config.raw_validation.occupancy != nullptr) {
     const ObservedSpaceValidationPolicy policy =
         config.require_known_free_space
@@ -154,22 +106,107 @@ Lattice3DEdgeEvaluation evaluateLattice3DEdge(const mppi::EsdfGrid& grid,
             : swept_raw;
     const SweptFootprintResult& raw =
         swept_raw.accepted() ? reserved_endpoint_raw : swept_raw;
-    if (raw.status == SweptFootprintStatus::kRawCollision) {
-      return Lattice3DEdgeEvaluation{.status =
-                                         Lattice3DEdgeEvaluationStatus::kRawCollision,
-                                     .evidence = raw.evidence};
+    raw_validation = raw;
+  } else if (config.raw_validation.static_occupancy != nullptr) {
+    const SweptFootprintResult swept_raw = validateKnownStaticSweptFootprint(
+        *config.raw_validation.static_occupancy, first, FootprintBodyAxis{}, second,
+        FootprintBodyAxis{}, swept_footprint);
+    const SweptFootprintResult reserved_endpoint_raw =
+        initial_connector && swept_raw.accepted()
+            ? validateKnownStaticSweptFootprint(*config.raw_validation.static_occupancy,
+                                                second, FootprintBodyAxis{}, second,
+                                                FootprintBodyAxis{}, reserved_footprint)
+            : swept_raw;
+    raw_validation = swept_raw.accepted() ? reserved_endpoint_raw : swept_raw;
+  }
+  if (raw_validation.has_value() && !raw_validation->accepted()) {
+    switch (raw_validation->status) {
+      case SweptFootprintStatus::kRawCollision:
+        return Lattice3DEdgeEvaluation{.status =
+                                           Lattice3DEdgeEvaluationStatus::kRawCollision,
+                                       .evidence = raw_validation->evidence};
+      case SweptFootprintStatus::kOutsideGrid:
+        return Lattice3DEdgeEvaluation{.status =
+                                           Lattice3DEdgeEvaluationStatus::kOutsideGrid,
+                                       .evidence = raw_validation->evidence};
+      case SweptFootprintStatus::kUnknownSpace:
+        if (config.require_known_free_space) {
+          return Lattice3DEdgeEvaluation{
+              .status = Lattice3DEdgeEvaluationStatus::kUnknownSpace,
+              .evidence = raw_validation->evidence};
+        }
+        break;
+      case SweptFootprintStatus::kInvalidEsdf:
+        return Lattice3DEdgeEvaluation{.status =
+                                           Lattice3DEdgeEvaluationStatus::kInvalidEsdf,
+                                       .evidence = raw_validation->evidence};
+      case SweptFootprintStatus::kValid:
+        break;
     }
-    if (raw.status == SweptFootprintStatus::kOutsideGrid) {
-      return Lattice3DEdgeEvaluation{.status =
-                                         Lattice3DEdgeEvaluationStatus::kOutsideGrid,
-                                     .evidence = raw.evidence};
+  }
+  const bool derived_cache_available =
+      footprintSegmentInsideGrid(grid, first, second, swept_footprint) &&
+      (!initial_connector ||
+       footprintSegmentInsideGrid(grid, second, second, reserved_footprint));
+  SweptFootprintClearanceProfile profile;
+  SweptFootprintClearanceProfile reserved_endpoint_profile;
+  if (derived_cache_available) {
+    profile = profileSweptFootprintClearance(
+        grid, esdf_m, first, second, swept_footprint, config.critical_distance_m,
+        config.preferred_distance_m);
+    reserved_endpoint_profile =
+        initial_connector ? profileSweptFootprintClearance(
+                                grid, esdf_m, second, second, reserved_footprint,
+                                config.critical_distance_m, config.preferred_distance_m)
+                          : profile;
+  } else {
+    profile.validation.status = SweptFootprintStatus::kOutsideGrid;
+    profile.validation.evidence.outside_grid_exposure = true;
+    reserved_endpoint_profile = profile;
+  }
+  const SweptFootprintResult& derived = profile.validation.accepted()
+                                            ? reserved_endpoint_profile.validation
+                                            : profile.validation;
+  if (!raw_validation.has_value() && !derived.accepted()) {
+    switch (derived.status) {
+      case SweptFootprintStatus::kOutsideGrid:
+        return Lattice3DEdgeEvaluation{.status =
+                                           Lattice3DEdgeEvaluationStatus::kOutsideGrid,
+                                       .evidence = derived.evidence};
+      case SweptFootprintStatus::kUnknownSpace:
+        if (config.require_known_free_space) {
+          return Lattice3DEdgeEvaluation{
+              .status = Lattice3DEdgeEvaluationStatus::kUnknownSpace,
+              .evidence = derived.evidence};
+        }
+        break;
+      case SweptFootprintStatus::kInvalidEsdf:
+        if (config.reject_invalid_esdf) {
+          return Lattice3DEdgeEvaluation{
+              .status = Lattice3DEdgeEvaluationStatus::kInvalidEsdf,
+              .evidence = derived.evidence};
+        }
+        break;
+      case SweptFootprintStatus::kRawCollision:
+        return Lattice3DEdgeEvaluation{.status =
+                                           Lattice3DEdgeEvaluationStatus::kRawCollision,
+                                       .evidence = derived.evidence};
+      case SweptFootprintStatus::kValid:
+        break;
     }
-    if (config.require_known_free_space &&
-        raw.status == SweptFootprintStatus::kUnknownSpace) {
-      return Lattice3DEdgeEvaluation{.status =
-                                         Lattice3DEdgeEvaluationStatus::kUnknownSpace,
-                                     .evidence = raw.evidence};
-    }
+  }
+  SweptFootprintEvidence evidence =
+      raw_validation.has_value() ? raw_validation->evidence : derived.evidence;
+  evidence.outside_grid_exposure =
+      evidence.outside_grid_exposure || derived.evidence.outside_grid_exposure;
+  evidence.unknown_exposure =
+      evidence.unknown_exposure || derived.evidence.unknown_exposure;
+  evidence.invalid_esdf_exposure =
+      evidence.invalid_esdf_exposure || derived.evidence.invalid_esdf_exposure;
+  if (derived.evidence.known_clearance_observed) {
+    evidence.known_clearance_observed = true;
+    evidence.minimum_known_clearance_m = std::min(
+        evidence.minimum_known_clearance_m, derived.evidence.minimum_known_clearance_m);
   }
   const double swept_clearance_m =
       profile.validation.evidence.known_clearance_observed
@@ -184,10 +221,10 @@ Lattice3DEdgeEvaluation evaluateLattice3DEdge(const mppi::EsdfGrid& grid,
   if (!stageAllows(stage, minimum_known_clearance_m, config)) {
     return Lattice3DEdgeEvaluation{
         .status = Lattice3DEdgeEvaluationStatus::kRiskStageRejected,
-        .evidence = footprint.evidence};
+        .evidence = evidence};
   }
   return Lattice3DEdgeEvaluation{.status = Lattice3DEdgeEvaluationStatus::kValid,
-                                 .evidence = footprint.evidence,
+                                 .evidence = evidence,
                                  .minimum_clearance_m = minimum_known_clearance_m,
                                  .planning_exposure_m = profile.planning_exposure_m,
                                  .critical_exposure_m = profile.critical_exposure_m};

@@ -99,8 +99,8 @@ struct CellRegion3D {
 
 } // namespace
 
-std::uint64_t observedOccupancyFingerprint(const ObservedOccupancyGrid3D& occupancy,
-                                           const GridBounds3D& local_bounds) {
+std::uint64_t knownObstacleFingerprint3D(const ObservedOccupancyGrid3D& occupancy,
+                                         const GridBounds3D& local_bounds) {
   const CellRegion3D region = localRegion(occupancy.bounds(), local_bounds);
   constexpr int kChunkSize{ObservedOccupancyGrid3D::kChunkSize};
   const OccupancyChunkIndex3D first{region.minimum_x / kChunkSize,
@@ -119,34 +119,29 @@ std::uint64_t observedOccupancyFingerprint(const ObservedOccupancyGrid3D& occupa
         if (chunk == nullptr) {
           continue;
         }
-        OccupancyGrid3D::Chunk local_observed{};
         OccupancyGrid3D::Chunk local_occupied{};
-        for (std::size_t word_index = 0U; word_index < chunk->observed.size();
+        for (std::size_t word_index = 0U; word_index < chunk->occupied.size();
              ++word_index) {
-          std::uint64_t observed_bits = chunk->observed.at(word_index);
-          while (observed_bits != 0U) {
-            const int bit_offset = std::countr_zero(observed_bits);
+          std::uint64_t occupied_bits = chunk->occupied.at(word_index);
+          while (occupied_bits != 0U) {
+            const int bit_offset = std::countr_zero(occupied_bits);
             const std::size_t bit_index =
                 word_index * 64U + static_cast<std::size_t>(bit_offset);
             if (inside(chunkCell(index, bit_index), region)) {
               const std::uint64_t bit = std::uint64_t{1U}
                                         << static_cast<unsigned int>(bit_offset);
-              local_observed.at(word_index) |= bit;
-              local_occupied.at(word_index) |= chunk->occupied.at(word_index) & bit;
+              local_occupied.at(word_index) |= bit;
             }
-            observed_bits &= observed_bits - 1U;
+            occupied_bits &= occupied_bits - 1U;
           }
         }
-        if (std::ranges::all_of(local_observed,
+        if (std::ranges::all_of(local_occupied,
                                 [](const std::uint64_t word) { return word == 0U; })) {
           continue;
         }
         hashInteger(hash, index.x);
         hashInteger(hash, index.y);
         hashInteger(hash, index.z);
-        for (const std::uint64_t word : local_observed) {
-          hashWord(hash, word);
-        }
         for (const std::uint64_t word : local_occupied) {
           hashWord(hash, word);
         }

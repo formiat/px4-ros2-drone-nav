@@ -107,9 +107,9 @@ struct SegmentEvidence3D {
   bool known_clearance_observed{false};
 };
 
-// Measures useful endpoint displacement without rewarding altitude excursions
-// during a predominantly horizontal mission. A purely vertical objective uses
-// the complete 3D displacement instead.
+// Measures endpoint displacement and signed radial progress in the same 3D
+// mission metric. Preparatory vertical and lateral motion therefore remains
+// visible to strategic diagnostics instead of collapsing onto XY.
 [[nodiscard]] double
 routeNetCoordinateProgress3D(const Point3& start, const Point3& endpoint,
                              const Point3& mission_target) noexcept;
@@ -118,6 +118,7 @@ struct SegmentEvidenceWorld3D {
   const mppi::EsdfGrid* grid{nullptr};
   std::span<const float> esdf_m;
   const ObservedOccupancyGrid3D* latest_observed_occupancy{nullptr};
+  const OccupancyGrid3D* static_occupancy{nullptr};
   const ProprioceptiveFreeSpaceSeed3D* proprioceptive_free_space_seed{nullptr};
   const LaunchSupportContact3D* launch_support_contact{nullptr};
   SweptFootprintConfig footprint{};
