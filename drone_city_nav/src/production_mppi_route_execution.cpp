@@ -521,22 +521,36 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
       if (!advanced.applied()) {
         if (advanced.status == ExecutionRouteTransitionStatus3D::kNoChange) {
           active_usable = diagnostic_assessment.usable();
+        } else if (diagnostic_assessment.usable()) {
+          // Progress and publication are optimistic transactions. A stale guard,
+          // non-monotonic projection, or another snapshot conflict only means
+          // that this observation must be retried against the current owner. It
+          // is not physical evidence and must never synthesize a raw collision.
+          active_usable = true;
+          result.status = RouteExecutionStatus3D::kUsable;
+          RCLCPP_INFO_THROTTLE(
+              get_logger(), *get_clock(), 1000,
+              "ROUTE_EXECUTION3D snapshot_version=%" PRIu64 " route_generation=%" PRIu64
+              " status=usable transition=%.*s "
+              "action=retain_certified_owner_and_retry_progress",
+              result.source_snapshot->version, active_route.identity.generation,
+              static_cast<int>(
+                  executionRouteTransitionStatus3DName(advanced.status).size()),
+              executionRouteTransitionStatus3DName(advanced.status).data());
         } else {
           result.status = diagnostic_assessment.status;
-          if (result.status == RouteExecutionStatus3D::kUsable) {
-            result.status = RouteExecutionStatus3D::kRawCollision;
-          }
           const std::uint64_t generation = active_route.identity.generation;
           const bool raw_invalidated =
-              result.status != RouteExecutionStatus3D::kObjectiveMismatch &&
-              result.status != RouteExecutionStatus3D::kExcessiveCrossTrack;
+              result.status == RouteExecutionStatus3D::kRawCollision;
           if (raw_invalidated) {
             result.lifecycle_observed_raw_world = observed_owner;
           }
           RouteLifecycleEventKind3D event_kind =
-              RouteLifecycleEventKind3D::kRawInvalidated;
+              RouteLifecycleEventKind3D::kControlCandidateRejected;
           GlobalGuideReleaseReason release_reason = GlobalGuideReleaseReason::kBlocked;
-          if (result.status == RouteExecutionStatus3D::kObjectiveMismatch) {
+          if (raw_invalidated) {
+            event_kind = RouteLifecycleEventKind3D::kRawInvalidated;
+          } else if (result.status == RouteExecutionStatus3D::kObjectiveMismatch) {
             event_kind = RouteLifecycleEventKind3D::kObjectiveSuperseded;
             release_reason = GlobalGuideReleaseReason::kObjectiveChanged;
           } else if (result.status == RouteExecutionStatus3D::kExcessiveCrossTrack) {
@@ -622,26 +636,17 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
                             ? RouteExecutionStatus3D::kInvalidRoute
                             : RouteExecutionStatus3D::kWorldLineageMismatch;
         const std::uint64_t generation = active_route.identity.generation;
-        if (!publication_raw_current) {
-          result.lifecycle_observed_raw_world =
-              deriveLatestObservedRouteEvidence(publication_raw_world, active_route);
-        }
-        const RouteLifecycleEventKind3D event_kind =
-            publication_raw_current
-                ? RouteLifecycleEventKind3D::kControlCandidateRejected
-                : RouteLifecycleEventKind3D::kRawInvalidated;
-        result.lifecycle_event = RouteLifecycleEvent3D{
-            .kind = event_kind,
-            .generation = generation,
-            .raw_producer_instance_id =
-                !publication_raw_current && publication_raw_world != nullptr
-                    ? publication_raw_world->version.producer_instance_id
-                    : 0U,
-            .raw_revision = !publication_raw_current && publication_raw_world != nullptr
-                                ? publication_raw_world->version.revision
-                                : 0U,
-        };
-        requestGuideRelease(GlobalGuideReleaseReason::kBlocked, generation);
+        const bool resident_retains_active_route =
+            result.source_snapshot != nullptr &&
+            result.source_snapshot->phase == ExecutionRoutePhase3D::kFollowing &&
+            result.source_snapshot->route.has_value() &&
+            result.source_snapshot->route->route_instance_id ==
+                active_route.route_instance_id &&
+            result.source_snapshot->route->geometry != nullptr &&
+            result.source_snapshot->route->geometry->executable_geometry_revision ==
+                active_route.geometry->executable_geometry_revision;
+        active_usable = publication_raw_current && resident_retains_active_route &&
+                        diagnostic_assessment.usable();
         const char* const publication_reason =
             !publication_raw_current ? "raw_evidence_not_current"
             : publication_status ==
@@ -652,7 +657,7 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
             get_logger(), *get_clock(), 1000,
             "ROUTE_EXECUTION3D snapshot_version=%" PRIu64 " route_generation=%" PRIu64
             " status=%.*s publication=%s "
-            "action=fail_closed_and_request_successor",
+            "action=retain_execution_owner_and_retry",
             result.source_snapshot->version, generation,
             static_cast<int>(routeExecutionStatus3DName(result.status).size()),
             routeExecutionStatus3DName(result.status).data(), publication_reason);
