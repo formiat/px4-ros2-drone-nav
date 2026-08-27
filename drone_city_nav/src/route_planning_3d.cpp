@@ -410,6 +410,8 @@ selectRouteProposal3D(const std::span<const RouteProposal3D> proposals,
 
 const char* routeIntentSource3DName(const RouteIntentSource3D source) noexcept {
   switch (source) {
+    case RouteIntentSource3D::kPersistentPlanner:
+      return "persistent_planner";
     case RouteIntentSource3D::kDirect:
       return "direct";
     case RouteIntentSource3D::kTopology:

@@ -18,6 +18,7 @@ enum class RouteIntentSource3D : std::uint8_t {
   kDirect,
   kTopology,
   kLaunchDeparture,
+  kPersistentPlanner,
 };
 
 enum class RouteIntentPurpose3D : std::uint8_t {

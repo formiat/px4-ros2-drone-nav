@@ -73,8 +73,8 @@ productionPlanningSearchKindName(const ProductionPlanningSearchKind kind) noexce
   switch (kind) {
     case ProductionPlanningSearchKind::kNone:
       return "none";
-    case ProductionPlanningSearchKind::kLattice3D:
-      return "lattice_3d";
+    case ProductionPlanningSearchKind::kPersistentDStarLite3D:
+      return "persistent_dstar_lite_3d";
   }
   return "unknown";
 }

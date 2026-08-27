@@ -228,8 +228,7 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
     const RouteRiskTierAssignmentResult risk_assignment = assignRouteRiskTiers(
         *rebased_route, snapshot.resident_world->grid,
         *snapshot.resident_world->distances_m, mppi_config_.risk.critical_distance_m,
-        mppi_config_.risk.preferred_distance_m,
-        lattice_3d_config_.require_known_free_space);
+        mppi_config_.risk.preferred_distance_m, false);
     if (!risk_assignment.accepted()) {
       result.validation = StaticRouteCandidateValidation{
           .status = candidateStatusFromRiskAssignment(risk_assignment.status),
@@ -247,9 +246,9 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
           candidate.global_guide_reaches_mission_goal,
           lattice_3d_config_.flight_envelope, replacement_policy,
           SweptFootprintConfig{
-              .radius_m = lattice_3d_config_.physical_footprint_radius_m,
-              .lower_extent_m = lattice_3d_config_.physical_footprint_lower_extent_m,
-              .upper_extent_m = lattice_3d_config_.physical_footprint_upper_extent_m,
+              .radius_m = physical_footprint_config_.radius_m,
+              .lower_extent_m = physical_footprint_config_.lower_extent_m,
+              .upper_extent_m = physical_footprint_config_.upper_extent_m,
               .perimeter_samples = physical_footprint_config_.perimeter_samples,
               .radial_rings = physical_footprint_config_.radial_rings,
               .axial_samples = physical_footprint_config_.axial_samples,
@@ -344,7 +343,10 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
     const RouteTimeParameterization3D time_parameterization = parameterizeRouteTime3D(
         *candidate.route_3d, *candidate.constrained_spans,
         speed_policy_config_.cruise_speed_mps, constrained_route_speed_limit_mps_,
-        endpoint_semantics, speed_policy_config_, mppi_config_.dynamics);
+        endpoint_semantics, speed_policy_config_, mppi_config_.dynamics,
+        Vec3{static_cast<double>(snapshot.navigation.state.vx),
+             static_cast<double>(snapshot.navigation.state.vy),
+             static_cast<double>(snapshot.navigation.state.vz)});
     activation_evidence.objective_cost = time_parameterization.valid
                                              ? time_parameterization.travel_time_s
                                              : std::numeric_limits<double>::infinity();
@@ -404,11 +406,9 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
               snapshot.raw_world ? snapshot.raw_world->version.revision : 0U,
           .footprint =
               SweptFootprintConfig{
-                  .radius_m = lattice_3d_config_.physical_footprint_radius_m,
-                  .lower_extent_m =
-                      lattice_3d_config_.physical_footprint_lower_extent_m,
-                  .upper_extent_m =
-                      lattice_3d_config_.physical_footprint_upper_extent_m,
+                  .radius_m = physical_footprint_config_.radius_m,
+                  .lower_extent_m = physical_footprint_config_.lower_extent_m,
+                  .upper_extent_m = physical_footprint_config_.upper_extent_m,
                   .perimeter_samples = physical_footprint_config_.perimeter_samples,
                   .radial_rings = physical_footprint_config_.radial_rings,
                   .axial_samples = physical_footprint_config_.axial_samples,
@@ -543,8 +543,6 @@ void ProductionMppiNode::commitRouteActivation3D(
     const ProductionMppiPreparedEsdf& search_world,
     const ProductionRouteActivationSnapshot3D& snapshot,
     const std::uint64_t candidate_generation,
-    const RouteStrategyArbitrationDecision3D& strategy_decision,
-    const PendingTopologyEffect3D& topology_effect,
     ProductionRouteActivationResult3D& result) {
   ProductionMppiPreparedEsdf& candidate = result.prepared;
   const ProductionMaterializedRouteProposal3D& materialized_proposal = result.proposal;
@@ -657,14 +655,11 @@ void ProductionMppiNode::commitRouteActivation3D(
                             active_guide_config_.maximum_cross_track_m,
                         .footprint =
                             SweptFootprintConfig{
-                                .radius_m =
-                                    lattice_3d_config_.physical_footprint_radius_m,
+                                .radius_m = physical_footprint_config_.radius_m,
                                 .lower_extent_m =
-                                    lattice_3d_config_
-                                        .physical_footprint_lower_extent_m,
+                                    physical_footprint_config_.lower_extent_m,
                                 .upper_extent_m =
-                                    lattice_3d_config_
-                                        .physical_footprint_upper_extent_m,
+                                    physical_footprint_config_.upper_extent_m,
                                 .perimeter_samples =
                                     physical_footprint_config_.perimeter_samples,
                                 .radial_rings = physical_footprint_config_.radial_rings,
@@ -726,8 +721,8 @@ void ProductionMppiNode::commitRouteActivation3D(
                                                                            ->identity}
                         : std::nullopt,
                 .route_splice = overlap_search ? result.splice.splice : std::nullopt,
-                .strategy_decision = strategy_decision,
-                .topology_effect = topology_effect,
+                .strategy_decision = std::nullopt,
+                .topology_effect = {},
                 .route = certified_route.value(),
             })
           : nullptr;

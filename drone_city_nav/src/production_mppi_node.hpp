@@ -54,6 +54,7 @@
 #include "drone_city_nav/offboard_session_admission.hpp"
 #include "drone_city_nav/passage_volume.hpp"
 #include "drone_city_nav/pending_certified_route_3d.hpp"
+#include "drone_city_nav/persistent_dstar_lite_planner_3d.hpp"
 #include "drone_city_nav/px4_map_frame_transform.hpp"
 #include "drone_city_nav/raw_guide_validation.hpp"
 #include "drone_city_nav/raw_obstacle_3d_ros.hpp"
@@ -106,7 +107,7 @@ namespace drone_city_nav {
 
 enum class ProductionPlanningSearchKind : std::uint8_t {
   kNone,
-  kLattice3D,
+  kPersistentDStarLite3D,
 };
 
 struct ProductionMppiPreparedEsdf;
@@ -446,26 +447,21 @@ private:
                            const Point3& mission_goal,
                            std::uint64_t candidate_generation,
                            const ProductionRouteActivationSnapshot3D& snapshot);
-  void
-  commitRouteActivation3D(const ProductionMppiPreparedEsdf& search_world,
-                          const ProductionRouteActivationSnapshot3D& snapshot,
-                          std::uint64_t candidate_generation,
-                          const RouteStrategyArbitrationDecision3D& strategy_decision,
-                          const PendingTopologyEffect3D& topology_effect,
-                          ProductionRouteActivationResult3D& result);
+  void commitRouteActivation3D(const ProductionMppiPreparedEsdf& search_world,
+                               const ProductionRouteActivationSnapshot3D& snapshot,
+                               std::uint64_t candidate_generation,
+                               ProductionRouteActivationResult3D& result);
   [[nodiscard]] ProductionRouteMaterialization3D materializeRouteCandidate3D(
       const ProductionMppiPreparedEsdf& world,
       const ProductionMppiNavigation& navigation, const Point3& mission_goal,
       const ProductionRouteSearchCandidate3D& candidate,
-      std::uint64_t candidate_generation, bool active_observation_segment_completed,
-      const CertifiedRouteSuffix3D* active_route,
+      std::uint64_t candidate_generation, const CertifiedRouteSuffix3D* active_route,
       const ProductionMppiRawWorld3D* activation_raw_world);
   [[nodiscard]] ProductionRouteCandidateSet3D generateRouteCandidates3D(
       const ProductionMppiPreparedEsdf& world,
       const ProductionMppiNavigation& navigation, const Point3& mission_goal,
       const std::shared_ptr<const ProductionMppiRawWorld3D>& latest_raw_world,
-      const CertifiedRouteSuffix3D* active_route,
-      std::span<const Lattice3DSoftTabuEntry> soft_tabu);
+      const CertifiedRouteSuffix3D* active_route);
   void diagnosticsWorker(std::stop_token stop_token);
   void startPlanningTimer();
   void initializeRuntimeInterfaces();
@@ -752,6 +748,7 @@ private:
   NonCooperativeAvoidanceConfig noncooperative_avoidance_config_{};
   std::unique_ptr<NonCooperativeCollisionAvoidance> noncooperative_avoidance_;
   std::unique_ptr<BoundedWorkerPool> planning_worker_pool_;
+  std::unique_ptr<PersistentDStarLitePlanner3D> persistent_planner_3d_;
   std::unique_ptr<mppi::MppiCudaEngine> engine_;
   std::unique_ptr<IncrementalTopologicalNavigation3D> topological_navigation_3d_;
   std::atomic<std::int64_t> last_topological_observation_stamp_ns_{0};

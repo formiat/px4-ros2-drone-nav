@@ -697,17 +697,18 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             'default_point_to_point_model_name="x500_lidar_3d_0"', self.text
         )
 
-    def test_legacy_2d_frontier_blacklist_is_removed(self) -> None:
+    def test_legacy_frontier_and_soft_tabu_route_producers_are_removed(self) -> None:
         parameter = "global_lattice_frontier_blacklist_enabled"
         self.assertNotIn(parameter, self.nav_config_text)
         self.assertNotIn(parameter, self.production_mppi_source_text)
         self.assertNotIn("frontier_blacklist_enabled_", self.production_mppi_runtime_source_text)
-        self.assertIn(
-            "Lattice3DSoftTabuEntry",
-            PRODUCTION_MPPI_SOURCE.with_name(
-                "production_mppi_node_static_guide.cpp"
-            ).read_text(),
-        )
+        guide = PRODUCTION_MPPI_SOURCE.with_name(
+            "production_mppi_node_static_guide.cpp"
+        ).read_text()
+        self.assertNotIn("Lattice3DSoftTabuEntry", guide)
+        self.assertNotIn("observation_frontier", guide)
+        self.assertNotIn("cycle_classification", guide)
+        self.assertNotIn("no_static_cycle", guide)
 
     def test_px4_vertical_velocity_limits_follow_active_ros_config(self) -> None:
         self.assertIn("read_ros_float_parameter()", self.text)

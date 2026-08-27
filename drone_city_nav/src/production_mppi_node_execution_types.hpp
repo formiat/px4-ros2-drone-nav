@@ -62,18 +62,19 @@ enum class ProductionIncrementalTopologyRejectionReason3D : std::uint8_t {
 
 struct ProductionRouteSearchCandidate3D {
   Point3 search_start{};
+  Vec3 search_velocity{};
   RouteInstanceId3D search_base_route_instance_id{};
   std::optional<double> search_base_stitch_station_m;
   RouteIntent3D intent{};
   SegmentEvidence3D evidence{};
-  RiskAwareLattice3DResult lattice{};
-  std::optional<ProductionIncrementalTopologySearch3D> topology;
-  Lattice3DStrategicDirective directive{};
+  PersistentPlannerResult3D plan{};
+  std::vector<RouteSample3D> route;
 };
 
 struct ProductionRouteCandidateSet3D {
   std::vector<ProductionRouteSearchCandidate3D> candidates;
-  Vec3 preferred_direction{};
+  PersistentPlannerResult3D planner_result{};
+  bool planner_invoked{false};
   double search_ms{0.0};
 };
 

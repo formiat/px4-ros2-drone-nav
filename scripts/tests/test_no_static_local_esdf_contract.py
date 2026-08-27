@@ -75,13 +75,21 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
             1000.0 * memory["lidar_scan_alignment_maximum_wait_s"],
         )
 
-    def test_route_tracking_margin_is_independent_of_map_source(self) -> None:
+    def test_hard_planning_footprint_is_the_physical_hull(self) -> None:
         source = (PACKAGE / "src/production_mppi_node.cpp").read_text()
 
-        self.assertEqual(source.count("+ static_route_tracking_margin_m;"), 3)
-        self.assertNotIn(
-            "use_static_map_ ? static_route_tracking_margin_m : 0.0", source
+        self.assertNotIn("+ static_route_tracking_margin_m", source)
+        self.assertIn(
+            "lattice_config_.physical_footprint_radius_m = "
+            "physical_footprint_config_.radius_m;",
+            source,
         )
+        self.assertIn(
+            "lattice_3d_config_.physical_footprint_radius_m = "
+            "physical_footprint_config_.radius_m;",
+            source,
+        )
+        self.assertIn(".physical_footprint = physical_footprint_config_", source)
 
 
 if __name__ == "__main__":

@@ -349,11 +349,6 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       declare_parameter<std::int64_t>("physical_footprint_radial_rings", 2));
   physical_footprint_config_.axial_samples = static_cast<std::size_t>(
       declare_parameter<std::int64_t>("physical_footprint_axial_samples", 3));
-  const double static_route_tracking_margin_m =
-      declare_parameter<double>("static_route_tracking_margin_m", 0.75);
-  if (!(static_route_tracking_margin_m >= 0.0)) {
-    throw std::invalid_argument{"static route tracking margin must be non-negative"};
-  }
   mppi_config_.footprint = mppi::FootprintConfig{
       .radius_m = static_cast<float>(physical_footprint_config_.radius_m),
       .lower_extent_m = static_cast<float>(physical_footprint_config_.lower_extent_m),
@@ -675,12 +670,11 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       physical_footprint_config_.radial_rings;
   lattice_config_.physical_footprint_axial_samples =
       physical_footprint_config_.axial_samples;
-  lattice_3d_config_.physical_footprint_radius_m =
-      physical_footprint_config_.radius_m + static_route_tracking_margin_m;
+  lattice_3d_config_.physical_footprint_radius_m = physical_footprint_config_.radius_m;
   lattice_3d_config_.physical_footprint_lower_extent_m =
-      physical_footprint_config_.lower_extent_m + static_route_tracking_margin_m;
+      physical_footprint_config_.lower_extent_m;
   lattice_3d_config_.physical_footprint_upper_extent_m =
-      physical_footprint_config_.upper_extent_m + static_route_tracking_margin_m;
+      physical_footprint_config_.upper_extent_m;
   lattice_3d_config_.physical_footprint_samples =
       physical_footprint_config_.perimeter_samples;
   lattice_3d_config_.physical_footprint_radial_rings =
@@ -916,6 +910,41 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
                 static_occupancy_3d_->bounds().height_cells,
                 static_occupancy_3d_->bounds().depth_cells);
   }
+  persistent_planner_3d_ =
+      std::make_unique<PersistentDStarLitePlanner3D>(PersistentPlannerConfig3D{
+          .horizontal_step_m = lattice_3d_config_.horizontal_step_m,
+          .vertical_step_m = lattice_3d_config_.vertical_step_m,
+          .time_model =
+              FlightTimeModel3D{
+                  .maximum_horizontal_speed_mps =
+                      std::min(speed_policy_config_.cruise_speed_mps,
+                               speed_policy_config_.absolute_speed_limit_mps),
+                  .maximum_vertical_speed_mps = static_cast<double>(
+                      mppi_config_.dynamics.maximum_vertical_speed_mps),
+                  .maximum_horizontal_acceleration_mps2 = static_cast<double>(
+                      mppi_config_.dynamics.maximum_horizontal_acceleration_mps2),
+                  .maximum_vertical_acceleration_mps2 = static_cast<double>(
+                      mppi_config_.dynamics.maximum_vertical_acceleration_mps2),
+                  .maximum_control_jerk_mps3 = static_cast<double>(
+                      mppi_config_.dynamics.maximum_control_jerk_mps3),
+                  .maximum_yaw_acceleration_radps2 = static_cast<double>(
+                      mppi_config_.dynamics.maximum_yaw_acceleration_radps2),
+                  .maximum_yaw_rate_radps =
+                      static_cast<double>(mppi_config_.dynamics.maximum_yaw_rate_radps),
+              },
+          .minimum_continuous_turn_alignment =
+              future_route_connector_config_.minimum_continuous_turn_alignment,
+          .goal_tolerance_m = lattice_3d_config_.goal_tolerance_m,
+          .connector_search_radius_cells = 2U,
+          .maximum_expansions_per_update =
+              std::max<std::size_t>(200'000U, lattice_3d_config_.maximum_expansions),
+          .maximum_incremental_changed_voxels = 32'768U,
+          .maximum_extracted_path_nodes = 8'192U,
+          .maximum_shortcut_checks = 8'192U,
+          .maximum_compute_time_ms = 150.0,
+          .physical_footprint = physical_footprint_config_,
+          .flight_envelope = flight_envelope_config_,
+      });
   initializeRuntimeInterfaces();
   RCLCPP_INFO(
       get_logger(),

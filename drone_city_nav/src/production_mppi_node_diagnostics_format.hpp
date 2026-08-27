@@ -14,28 +14,32 @@ namespace {
 
 [[nodiscard]] const char*
 planningStatusName(const ProductionMppiPreparedEsdf& esdf) noexcept {
-  return esdf.planning_search_kind == ProductionPlanningSearchKind::kLattice3D
+  return esdf.planning_search_kind ==
+                 ProductionPlanningSearchKind::kPersistentDStarLite3D
              ? lattice3DStatusName(esdf.lattice_3d_status)
              : latticePlanStatusName(esdf.lattice_status);
 }
 
 [[nodiscard]] const char*
 planningTerminationName(const ProductionMppiPreparedEsdf& esdf) noexcept {
-  return esdf.planning_search_kind == ProductionPlanningSearchKind::kLattice3D
+  return esdf.planning_search_kind ==
+                 ProductionPlanningSearchKind::kPersistentDStarLite3D
              ? lattice3DSearchTerminationName(esdf.lattice_3d_termination)
              : latticeSearchTerminationName(esdf.lattice_termination);
 }
 
 [[nodiscard]] const char*
 planningRiskStageName(const ProductionMppiPreparedEsdf& esdf) noexcept {
-  return esdf.planning_search_kind == ProductionPlanningSearchKind::kLattice3D
+  return esdf.planning_search_kind ==
+                 ProductionPlanningSearchKind::kPersistentDStarLite3D
              ? lattice3DRiskStageName(esdf.lattice_3d_risk_stage)
              : latticeRiskStageName(esdf.lattice_risk_stage);
 }
 
 [[nodiscard]] const char*
 planningRoutePurposeName(const ProductionMppiPreparedEsdf& esdf) noexcept {
-  return esdf.planning_search_kind == ProductionPlanningSearchKind::kLattice3D
+  return esdf.planning_search_kind ==
+                 ProductionPlanningSearchKind::kPersistentDStarLite3D
              ? lattice3DRoutePurposeName(esdf.lattice_3d_route_purpose)
              : "mission_transit";
 }
