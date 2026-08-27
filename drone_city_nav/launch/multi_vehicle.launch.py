@@ -197,9 +197,6 @@ def generate_multi_vehicle_launch_description(mission_kind):
         use_static_map = _optional_bool(
             LaunchConfiguration("use_static_map").perform(context), False
         )
-        require_known_free_space = _optional_bool(
-            LaunchConfiguration("require_known_free_space").perform(context), False
-        )
         liveness_enabled = _optional_bool(
             LaunchConfiguration("liveness_enabled").perform(context), False
         )
@@ -272,12 +269,12 @@ def generate_multi_vehicle_launch_description(mission_kind):
         )
         if not use_static_map and not obstacle_memory_enabled:
             raise RuntimeError("No-static navigation requires obstacle memory")
-        if not use_static_map and not lidar_enabled:
-            raise RuntimeError("No-static navigation requires a 2D or 3D lidar profile")
+        if not use_static_map and profile != "3d":
+            raise RuntimeError("No-static navigation requires the 3D lidar profile")
         if lidar_debug_enabled and not obstacle_memory_enabled:
             raise RuntimeError("Lidar debug requires obstacle memory")
         if lidar_debug_enabled and not lidar_enabled:
-            raise RuntimeError("Lidar debug requires a 2D or 3D lidar profile")
+            raise RuntimeError("Lidar debug requires the 3D lidar profile")
         static_path_override = LaunchConfiguration(
             "static_occupancy_3d_path"
         ).perform(context)
@@ -451,7 +448,6 @@ def generate_multi_vehicle_launch_description(mission_kind):
                 "production_mppi_node",
                 {
                     "use_static_map": use_static_map,
-                    "require_known_free_space": require_known_free_space,
                     "liveness_enabled": liveness_enabled,
                     "global_guide_stall_recovery_enabled": (
                         global_guide_stall_recovery_enabled
@@ -490,11 +486,6 @@ def generate_multi_vehicle_launch_description(mission_kind):
                     ),
                     "raw_obstacle_delta_3d_topic": (
                         f"{prefix}/raw_obstacle_delta_3d"
-                    ),
-                    "no_static_world_model": (
-                        "observed_occupancy_3d"
-                        if profile == "3d"
-                        else "occupancy_2d"
                     ),
                     "latest_lidar_obstacle_scan_topic": (
                         latest_lidar_obstacle_scan
@@ -867,7 +858,6 @@ def generate_multi_vehicle_launch_description(mission_kind):
             ),
             DeclareLaunchArgument("enable_obstacle_memory", default_value="true"),
             DeclareLaunchArgument("use_static_map", default_value="false"),
-            DeclareLaunchArgument("require_known_free_space", default_value="false"),
             DeclareLaunchArgument("liveness_enabled", default_value="false"),
             DeclareLaunchArgument(
                 "global_guide_stall_recovery_enabled", default_value="false"

@@ -42,17 +42,18 @@ class LidarProfileRuntimeTest(unittest.TestCase):
                 self.assertEqual(result.stdout.strip(), "3d")
 
     def test_each_typed_profile_can_be_selected_explicitly(self) -> None:
-        for profile in ("none", "2d", "3d"):
+        for profile in ("none", "3d"):
             with self.subTest(profile=profile):
                 result = self.resolve(profile)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(result.stdout.strip(), profile)
 
     def test_unknown_profile_is_rejected(self) -> None:
-        result = self.resolve("dual")
-
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("LIDAR_PROFILE must be one of none, 2d, or 3d", result.stderr)
+        for profile in ("2d", "dual"):
+            with self.subTest(profile=profile):
+                result = self.resolve(profile)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("LIDAR_PROFILE must be one of none or 3d", result.stderr)
 
 
 if __name__ == "__main__":

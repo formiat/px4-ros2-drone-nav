@@ -188,11 +188,10 @@ cloud topics.
 ## Environment Overrides
 
 Simulation scripts translate environment variables such as
-`ENABLE_STATIC_MAP`, `LIDAR_PROFILE=none|2d|3d`, `ENABLE_RVIZ`, and camera
-toggles into launch arguments or temporary parameter overrides. No-static mode
-rejects the `none` profile; 2D and 3D are alternatives rather than an implicit
-fusion mode. All simulation entry points default to 3D; 2D requires an explicit
-`LIDAR_PROFILE=2d` selection. Static maps are opt-in: `ENABLE_STATIC_MAP`
+`ENABLE_STATIC_MAP`, `LIDAR_PROFILE=none|3d`, `ENABLE_RVIZ`, and camera toggles
+into launch arguments or temporary parameter overrides. No-static mode requires
+the 3D profile and rejects `none`. All simulation entry points default to 3D.
+Static maps are opt-in: `ENABLE_STATIC_MAP`
 defaults to `false`, and a static run requires `ENABLE_STATIC_MAP=true`. No
 separate boolean lidar flags are supported.
 Intercept spectator selection additionally uses

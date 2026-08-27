@@ -257,7 +257,6 @@ production_mppi_node:
     # Return routes from confirmed topological dead ends are opt-in. Normal
     # Manhattan validation keeps goal-directed navigation only.
     topological_backtracking_enabled: false
-    no_static_world_model: occupancy_2d
     raw_obstacle_snapshot_3d_topic: /drone_city_nav/raw_obstacle_snapshot_3d
     raw_obstacle_delta_3d_topic: /drone_city_nav/raw_obstacle_delta_3d
     latest_lidar_obstacle_scan_topic: /drone_city_nav/latest_lidar_obstacle_scan
@@ -394,7 +393,6 @@ production_mppi_node:
     route_replacement_progress_enabled: false
     clearance_tier_constraints_enabled: false
     execution_route_cross_track_constraints_enabled: false
-    require_known_free_space: false
     route_proposal_productive_direct_minimum_mission_progress_m: 2.0
     route_proposal_productive_direct_minimum_progress_ratio: 0.15
     route_strategy_topology_mission_lease_budget_m: 160.0

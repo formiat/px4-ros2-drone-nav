@@ -9,7 +9,6 @@ from pathlib import Path
 
 from gazebo_visibility import (
     NO_STATIC_3D_VISIBILITY_MASK,
-    SENSOR_VISIBLE_WORLD_MASK,
     STATIC_VISIBILITY_MASK,
 )
 
@@ -17,8 +16,6 @@ from gazebo_visibility import (
 def visibility_mask(mode: str) -> int:
     if mode == "static":
         return STATIC_VISIBILITY_MASK
-    if mode in ("no-static", "no-static-2d"):
-        return SENSOR_VISIBLE_WORLD_MASK
     if mode == "no-static-3d":
         return NO_STATIC_3D_VISIBILITY_MASK
     raise ValueError(f"unsupported lidar visibility mode: {mode}")
@@ -55,7 +52,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("model_sdf", type=Path)
     parser.add_argument(
         "--mode",
-        choices=("static", "no-static", "no-static-2d", "no-static-3d"),
+        choices=("static", "no-static-3d"),
         required=True,
     )
     parser.add_argument(

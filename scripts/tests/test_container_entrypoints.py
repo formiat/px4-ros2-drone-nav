@@ -109,7 +109,6 @@ class ContainerEntrypointTest(unittest.TestCase):
         for variable in (
             "POINT_TO_POINT_SCENARIO_PATH",
             "REQUIRE_INCREMENTAL_TOPOLOGY_EVIDENCE",
-            "REQUIRE_KNOWN_FREE_SPACE",
             "REQUIRE_OBSERVED_3D_ROUTE_VOLUME_CROSSING",
             "OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M",
             "MAXIMUM_NO_EXECUTABLE_ROUTE_AGE_MS",

@@ -238,8 +238,6 @@ void ProductionMppiNode::configureIncrementalTopology3D() {
   topological_graph_3d_config_.forward_corridor_lookahead_m = declare_parameter<double>(
       "topological_graph_3d_forward_corridor_lookahead_m", 60.0);
   topological_graph_3d_config_.footprint = physical_footprint_config_;
-  topological_graph_3d_config_.require_known_free_space =
-      require_known_free_space_for_goal_;
   topological_strategy_budget_ms_ =
       declare_parameter<double>("topological_strategy_budget_ms", 100.0);
   if (!std::isfinite(topological_strategy_budget_ms_) ||
@@ -277,8 +275,6 @@ void ProductionMppiNode::configureIncrementalTopology3D() {
 
   topological_planner_3d_config_.maximum_start_anchor_distance_m =
       declare_parameter<double>("topological_planner_3d_start_anchor_distance_m", 20.0);
-  topological_planner_3d_config_.require_known_free_space =
-      require_known_free_space_for_goal_;
   topological_planner_3d_config_.maximum_goal_anchor_distance_m =
       declare_parameter<double>("topological_planner_3d_goal_anchor_distance_m", 8.0);
   const double minimum_mission_continuation_goal_progress_m = declare_parameter<double>(

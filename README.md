@@ -191,22 +191,17 @@ The first three IDs use versioned release artifacts. The remaining IDs are
 local evaluation candidates and report a clear error if their cached source
 assets are absent.
 
-`LIDAR_PROFILE=none|2d|3d` selects exactly one perception profile. Every
-simulation entry point defaults to the 3D lidar; the 2D lidar is disabled unless
-`LIDAR_PROFILE=2d` is selected explicitly. A static-map run may disable lidar
-entirely:
+`LIDAR_PROFILE=none|3d` selects the production perception profile. Every
+simulation entry point defaults to the 3D lidar. A static-map run may disable
+lidar entirely:
 
 ```bash
 ENABLE_STATIC_MAP=true LIDAR_PROFILE=none ./scripts/sim_gui.sh
 ```
 
-No-static navigation requires `LIDAR_PROFILE=2d` or `LIDAR_PROFILE=3d` and
-rejects `none` before starting the simulation. The profiles are mutually
-exclusive; there are no separate boolean lidar flags.
-
-`REQUIRE_KNOWN_FREE_SPACE=false` is the default: unknown volume is traversable
-until a lidar observation establishes a real obstacle. Set it to `true` only
-to run the conservative observation-frontier exploration policy.
+No-static navigation requires `LIDAR_PROFILE=3d` and rejects `none` before
+starting the simulation. Unknown and free volume have identical traversability
+and base cost; only confirmed occupied geometry is a hard spatial obstacle.
 
 Roadmap 8 acceptance uses Manhattan, no static map, and only the 3D profile:
 
@@ -562,15 +557,12 @@ routes with lazy sparse-graph traversals; no passage is mandatory. Selected
 traversals directly create typed route spans with varying 3D cross-sections.
 There is no hand-authored planner centerline, semantic lane, or nearest-portal
 selector.
-No-static mode supports two independent perception pipelines. The legacy 2D
-profile uses accumulated planar lidar memory. The 3D profile decodes every
-organized scan into hit and miss beams, resolves the full 6DoF acquisition pose,
-and integrates the rays into revisioned `unknown/free/occupied` `Occupancy3D`.
-Dirty chunks update a local 3D ESDF. The ordinary risk-aware 3D lattice then
-plans through all observed known-free volume without classifying the world into
-open space and special passages. Unknown space is neither an obstacle nor
-executable free space: a finite route ends at the observed frontier with zero
-speed and can be replaced when new observations extend it.
+No-static mode has one production perception pipeline. The 3D profile decodes
+every organized scan into hit and miss beams, resolves the full 6DoF acquisition
+pose, and integrates the rays into revisioned `unknown/free/occupied`
+`Occupancy3D`. Dirty chunks update derived distance evidence without giving it
+collision authority. Planning treats free and unknown identically; exact raw
+occupied geometry remains the only hard spatial obstacle.
 
 The static free-space topology index remains an optional compatibility
 acceleration for static Manhattan planning. It is not generated or consumed by
@@ -579,8 +571,7 @@ the no-static 3D pipeline. Source contracts are documented in
 
 Obstacle topics follow a strict raw/runtime/debug contract.
 `/drone_city_nav/obstacle_memory_status` is the lightweight per-update heartbeat.
-For the 2D profile, `/drone_city_nav/raw_obstacle_snapshot` carries the current
-raw grid. For the 3D profile, `/drone_city_nav/raw_obstacle_snapshot_3d` and
+For production navigation, `/drone_city_nav/raw_obstacle_snapshot_3d` and
 `/drone_city_nav/raw_obstacle_delta_3d` carry adaptive base snapshots and the
 latest cumulative dirty chunks. Persistent integration and DDS serialization
 run on independent latest-value workers; superseded work is coalesced rather

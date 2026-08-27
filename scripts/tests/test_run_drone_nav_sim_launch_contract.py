@@ -619,7 +619,7 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn('elif ! bool_is_true "${active_static_map}" ||', self.text)
         self.assertIn("No-static navigation requires ENABLE_OBSTACLE_MEMORY=true", self.text)
         self.assertIn(
-            "No-static navigation requires LIDAR_PROFILE=2d or LIDAR_PROFILE=3d",
+            "No-static navigation requires LIDAR_PROFILE=3d",
             self.text,
         )
         self.assertIn("LIDAR_PROFILE", self.container_text)
@@ -681,7 +681,6 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn("OccupancyGrid3D::load", self.production_mppi_source_text)
 
     def test_runtime_lidar_visibility_follows_resolved_static_map_mode(self) -> None:
-        self.assertIn('lidar_visibility_mode="no-static-2d"', self.text)
         self.assertIn('lidar_visibility_mode="no-static-3d"', self.text)
         self.assertIn('lidar_visibility_mode="static"', self.text)
         self.assertIn("configure_lidar_visibility.py", self.text)

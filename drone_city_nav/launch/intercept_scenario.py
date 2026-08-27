@@ -392,7 +392,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--lidar-profile",
-        choices=("none", "2d", "3d"),
+        choices=("none", "3d"),
         default=_DEFAULT_LIDAR_PROFILE,
     )
     args = parser.parse_args()

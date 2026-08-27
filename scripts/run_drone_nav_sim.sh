@@ -200,7 +200,6 @@ enable_gz_scene_diagnostics="$(
   normalize_bool "${ENABLE_GZ_SCENE_DIAGNOSTICS:-true}"
 )"
 active_static_map="$(normalize_bool "${ENABLE_STATIC_MAP:-false}")"
-require_known_free_space="$(normalize_bool "${REQUIRE_KNOWN_FREE_SPACE:-false}")"
 enable_liveness_recovery="$(
   normalize_bool "${ENABLE_LIVENESS_RECOVERY:-false}"
 )"
@@ -427,8 +426,8 @@ if ! bool_is_true "${active_static_map}" &&
   echo "No-static navigation requires ENABLE_OBSTACLE_MEMORY=true" >&2
   exit 1
 fi
-if ! bool_is_true "${active_static_map}" && [[ "${lidar_profile}" == "none" ]]; then
-  echo "No-static navigation requires LIDAR_PROFILE=2d or LIDAR_PROFILE=3d" >&2
+if ! bool_is_true "${active_static_map}" && [[ "${lidar_profile}" != "3d" ]]; then
+  echo "No-static navigation requires LIDAR_PROFILE=3d" >&2
   exit 1
 fi
 if bool_is_true "${require_observed_3d_route_volume_crossing}" &&
@@ -456,7 +455,7 @@ if bool_is_true "${enable_lidar_debug}" &&
   exit 1
 fi
 if bool_is_true "${enable_lidar_debug}" && [[ "${lidar_profile}" == "none" ]]; then
-  echo "Lidar debug requires LIDAR_PROFILE=2d or LIDAR_PROFILE=3d" >&2
+  echo "Lidar debug requires LIDAR_PROFILE=3d" >&2
   exit 1
 fi
 px4_active_max_horizontal_speed_mps="${speed_limit_override:-$(
@@ -942,7 +941,6 @@ else
   fi
 fi
 ros_launch_args+=(use_static_map:="${active_static_map}")
-ros_launch_args+=(require_known_free_space:="${require_known_free_space}")
 ros_launch_args+=(liveness_enabled:="${enable_liveness_recovery}")
 ros_launch_args+=(global_guide_stall_recovery_enabled:="${enable_global_guide_stall_recovery}")
 ros_launch_args+=(no_static_cycle_recovery_enabled:="${enable_no_static_cycle_recovery}")

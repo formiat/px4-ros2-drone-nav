@@ -109,7 +109,6 @@ def generate_launch_description():
         "rviz_drone_follow_tf_enabled"
     )
     use_static_map = LaunchConfiguration("use_static_map")
-    require_known_free_space = LaunchConfiguration("require_known_free_space")
     liveness_enabled = LaunchConfiguration("liveness_enabled")
     global_guide_stall_recovery_enabled = LaunchConfiguration(
         "global_guide_stall_recovery_enabled"
@@ -204,17 +203,14 @@ def generate_launch_description():
         )
         if not static_map_enabled and not obstacle_memory_enabled:
             raise RuntimeError("No-static navigation requires obstacle memory")
-        if not static_map_enabled and not lidar_enabled:
-            raise RuntimeError("No-static navigation requires a 2D or 3D lidar profile")
+        if not static_map_enabled and profile != "3d":
+            raise RuntimeError("No-static navigation requires the 3D lidar profile")
         if lidar_debug_override is True and not lidar_enabled:
-            raise RuntimeError("Lidar debug requires a 2D or 3D lidar profile")
+            raise RuntimeError("Lidar debug requires the 3D lidar profile")
         if lidar_debug_override is True and not obstacle_memory_enabled:
             raise RuntimeError("Lidar debug requires obstacle memory")
         if static_map_override is not None:
             obstacle_memory_overrides["use_static_map"] = static_map_override
-        known_free_space_override = optional_bool_override(
-            context, require_known_free_space, "require_known_free_space"
-        )
         liveness_override = optional_bool_override(
             context, liveness_enabled, "liveness_enabled"
         )
@@ -282,13 +278,6 @@ def generate_launch_description():
         production_mppi_parameters = [
             params_file.perform(context),
             {"use_sim_time": True},
-            {
-                "no_static_world_model": (
-                    "observed_occupancy_3d"
-                    if profile == "3d"
-                    else "occupancy_2d"
-                )
-            },
         ]
         mission_monitor_parameters = [
             params_file.perform(context),
@@ -317,10 +306,6 @@ def generate_launch_description():
             )
             mission_monitor_parameters.append(
                 {"use_static_map": static_map_override}
-            )
-        if known_free_space_override is not None:
-            production_mppi_parameters.append(
-                {"require_known_free_space": known_free_space_override}
             )
         for parameter_name, override in (
             ("liveness_enabled", liveness_override),
@@ -645,7 +630,7 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "lidar_profile",
                 default_value=DEFAULT_LIDAR_PROFILE,
-                description="Mutually exclusive navigation sensor profile: none, 2d, or 3d.",
+                description="Navigation sensor profile: none or production 3d lidar.",
             ),
             DeclareLaunchArgument(
                 "enable_obstacle_memory",
@@ -662,14 +647,6 @@ def generate_launch_description():
                 default_value="false",
                 description=(
                     "Use the static city obstacle map source. Disabled by default."
-                ),
-            ),
-            DeclareLaunchArgument(
-                "require_known_free_space",
-                default_value="false",
-                description=(
-                    "Require all executed no-static path volume to be confirmed free. "
-                    "Disabled by default."
                 ),
             ),
             DeclareLaunchArgument(

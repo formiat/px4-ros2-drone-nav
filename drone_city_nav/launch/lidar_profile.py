@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import Any
 
 
-LIDAR_PROFILES = ("none", "2d", "3d")
+LIDAR_PROFILES = ("none", "3d")
 DEFAULT_LIDAR_PROFILE = "3d"
 _MODEL_2D_TOKEN = "x500_lidar_2d"
 _MODEL_3D_TOKEN = "x500_lidar_3d"

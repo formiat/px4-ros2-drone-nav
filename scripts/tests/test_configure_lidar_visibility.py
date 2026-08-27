@@ -60,21 +60,6 @@ class ConfigureLidarVisibilityTest(unittest.TestCase):
             0, returned_mask & layers.NO_STATIC_OCCLUDER_VISIBILITY_FLAG
         )
 
-    def test_no_static_mode_sees_passage_masses_and_virtual_occluders(self) -> None:
-        returned_mask, written_mask = self.configure_copy("no-static-2d")
-
-        self.assertEqual(layers.SENSOR_VISIBLE_WORLD_MASK, returned_mask)
-        self.assertEqual(returned_mask, written_mask)
-        self.assertNotEqual(
-            0, returned_mask & layers.STATIC_PASSAGE_MASS_VISIBILITY_FLAG
-        )
-        self.assertNotEqual(
-            0, returned_mask & layers.NO_STATIC_OCCLUDER_VISIBILITY_FLAG
-        )
-        self.assertEqual(
-            0, returned_mask & layers.DRONE_MARKER_VISIBILITY_FLAG
-        )
-
     def test_no_static_3d_sees_physical_passage_but_not_virtual_occluder(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             destination = Path(temp_dir) / "model.sdf"

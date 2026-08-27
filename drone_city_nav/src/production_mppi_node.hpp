@@ -719,11 +719,8 @@ private:
   DirectTrackingManeuverLifecycle direct_tracking_maneuver_lifecycle_{};
   std::string target_mode_{"active_route_guide"};
   bool use_static_map_{true};
-  // The default exploration policy allows unknown space. A strict known-free
-  // execution policy remains available for conservative validation.
-  bool require_known_free_space_for_goal_{false};
   ProductionNoStaticWorldModel no_static_world_model_{
-      ProductionNoStaticWorldModel::kOccupancy2D};
+      ProductionNoStaticWorldModel::kObservedOccupancy3D};
   bool cooperative_traffic_enabled_{false};
   bool noncooperative_avoidance_enabled_{false};
   std::string noncooperative_tracks_topic_;

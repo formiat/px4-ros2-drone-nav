@@ -3,29 +3,6 @@
 namespace drone_city_nav {
 namespace {
 
-[[nodiscard]] ProductionNoStaticWorldModel
-parseNoStaticWorldModel(const std::string& value) {
-  if (value == "occupancy_2d") {
-    return ProductionNoStaticWorldModel::kOccupancy2D;
-  }
-  if (value == "observed_occupancy_3d") {
-    return ProductionNoStaticWorldModel::kObservedOccupancy3D;
-  }
-  throw std::invalid_argument{
-      "no_static_world_model must be occupancy_2d or observed_occupancy_3d"};
-}
-
-[[nodiscard]] const char*
-noStaticWorldModelName(const ProductionNoStaticWorldModel model) noexcept {
-  switch (model) {
-    case ProductionNoStaticWorldModel::kOccupancy2D:
-      return "occupancy_2d";
-    case ProductionNoStaticWorldModel::kObservedOccupancy3D:
-      return "observed_occupancy_3d";
-  }
-  return "unknown";
-}
-
 [[nodiscard]] std::int64_t durationNanoseconds(const double seconds,
                                                const char* const parameter_name,
                                                const bool allow_zero = false) {

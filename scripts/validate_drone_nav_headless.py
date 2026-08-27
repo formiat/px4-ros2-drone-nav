@@ -822,7 +822,7 @@ def main() -> int:
     parser.add_argument("--expected-static", default="")
     parser.add_argument("--expected-memory", default="")
     parser.add_argument(
-        "--lidar-profile", choices=("none", "2d", "3d"), default="3d"
+        "--lidar-profile", choices=("none", "3d"), default="3d"
     )
     parser.add_argument(
         "--require-observed-3d-route-volume-crossing", action="store_true"

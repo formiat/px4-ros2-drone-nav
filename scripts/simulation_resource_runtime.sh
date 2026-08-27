@@ -24,6 +24,8 @@ prepare_runtime_resources() {
     ln -s "${px4_model}" "${runtime_models_dir}/${model_name}"
   done
 
+  # The lidar-free static profile keeps the base PX4 model identity but disables
+  # its sensor. No production navigation consumes the materialized 2D sensor.
   local runtime_drone_model_name="x500_lidar_2d"
   local runtime_sensor_model_name="lidar_2d_v2"
   local materialized_lidar_profile="2d"
@@ -42,11 +44,9 @@ prepare_runtime_resources() {
     "${runtime_models_dir}/${runtime_sensor_model_name}"
   prepare_multi_vehicle_model_resources
 
-  local lidar_visibility_mode="no-static-2d"
+  local lidar_visibility_mode="no-static-3d"
   if bool_is_true "${active_static_map}"; then
     lidar_visibility_mode="static"
-  elif [[ "${lidar_profile}" == "3d" ]]; then
-    lidar_visibility_mode="no-static-3d"
   fi
   python3 "${repo_root}/scripts/configure_lidar_visibility.py" \
     "${runtime_models_dir}/${runtime_sensor_model_name}/model.sdf" \
