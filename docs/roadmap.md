@@ -237,17 +237,16 @@ that remains item 9. Item 8 does not reproduce this open-versus-passage
 classification online: observed navigation uses one continuous free-space
 domain.
 
-## 8. 3D Free-Space Navigation Without A Static Map (Completed)
+## 8. 3D Perception And Raw-World Foundation (Completed)
 
 **Type:** ordered implementation stage.
 
 **Hard prerequisite:** item 7.
 
-Add production 3D perception and local navigation without a preloaded static
-map. The planner must treat every physically occupiable observed volume as one
-free-space domain. A street, room, tunnel, cave, shaft, and continuously bounded
-underground network differ only in geometry and observation coverage; they do
-not trigger separate open-space and passage lifecycles.
+Provide production 3D perception and a revisioned raw world without requiring a
+preloaded static map. A street, room, tunnel, cave, shaft, and continuously
+bounded underground network are one physical domain; they do not trigger
+separate open-space and passage lifecycles.
 
 The production pipeline is:
 
@@ -255,39 +254,32 @@ The production pipeline is:
 2. timestamp alignment and full-6DoF acquisition-pose resolution;
 3. ray integration into revisioned `unknown/free/occupied` `Occupancy3D`;
 4. base snapshots plus dirty-chunk transport;
-5. a recentered local 3D ESDF;
-6. the generic risk-aware 3D lattice over observed known-free space;
-7. route risk and speed profiling, MPPI, and finite raw-safe execution.
+5. chunked immutable raw snapshots for planning and exact swept validation;
+6. latest-lidar evidence for bounded final execution revalidation;
+7. MPPI and finite raw-safe PX4 execution.
 
-Unknown space is not occupied and must never become a prohibited or inflated
-grid. It is also not executable known-free space. When current observations do
-not reach the destination, the generated finite route stops at its observed
-frontier with zero terminal speed and is extended or replaced only after new
-sensor evidence arrives. Exploration of unknown branches, remembered dead ends,
-and labyrinth coverage remains item 12.
+Raw occupancy has exactly three evidence labels: `Occupied`, `Free`, and
+`Unknown`. Only confirmed `Occupied` geometry is a hard spatial prohibition.
+Relabeling any non-occupied voxel between `Free` and `Unknown`, with occupied
+geometry unchanged, must not alter traversability or base cost. Clearance,
+observability, and derived distance caches are deliberately outside the raw
+collision contract and are completed by item 12.
 
-`LIDAR_PROFILE=none|2d|3d` selects one typed sensor profile and defaults to
-`3d` for every simulation entry point. The 2D pipeline remains an explicit
-alternative Manhattan profile; item 8 does not fuse 2D and 3D scans. No-static
-mode requires `2d` or `3d`. RViz displays the selected spectator's
-latest 3D returns with queue depth one and its rate-limited accumulated occupied
-voxels; it does not render the full diagnostic clouds of every vehicle.
+No-static production navigation uses the 3D lidar profile. A static map may be
+used without lidar, but there is no 2D-lidar production fallback for autonomous
+free-space navigation. RViz displays the selected spectator's latest 3D returns
+with queue depth one and its rate-limited accumulated occupied voxels; it does
+not render every vehicle's full diagnostic clouds.
 
-Acceptance uses Manhattan only, no static occupancy, ESDF, or topology, the 3D
-lidar profile, and the 2D lidar explicitly disabled. Three sequential
-point-to-point runs must physically cross the configured low-altitude 3D route
-volume and reach the goal without collision. Three sequential cooperative runs
-must preserve mission completion and physical safety. Logs must prove fresh hit
-and miss scans, Occupancy3D revisions, local 3D ESDF builds, activation of a
-generic `observed_known_free_3d` route with no topology accelerator, finite
-collision-free execution, and physical mission settlement. One GUI/RViz run
-must verify the latest-scan and accumulated-memory displays.
+This item owns the sensor-to-raw-world boundary, not strategic route selection.
+Its deterministic tests prove timestamped hit and miss integration, revisioned
+dirty-chunk transport, immutable snapshot identity, exact physical-footprint
+queries, latest-lidar admission, and display provenance. End-to-end navigation
+acceptance belongs to item 12.
 
-After completion, Manhattan supports static runs with any lidar profile and
-no-static runs with 2D or 3D lidar. Complex environments introduced after
-Manhattan use no-static 3D lidar until item 11 provides validated static 3D maps;
-after that they support static runs with no lidar or 3D lidar and no-static runs
-with 3D lidar only.
+Complex environments introduced after Manhattan use no-static 3D lidar until
+item 11 provides validated static 3D maps. After that they support static runs
+with no lidar or 3D lidar and no-static runs with 3D lidar only.
 
 ## 9. Large-Scale Realistic City And Full-Mission Validation
 
@@ -380,9 +372,9 @@ This stage is complete when every supported new environment has a reproducible
 3D static-map generation or acquisition path and that map passes coverage,
 alignment, and raw-collision validation against its physical world.
 
-## 12. Incremental Topological Exploration
+## 12. Persistent Full-3D Strategic Navigation
 
-**Type:** dependent implementation stage.
+**Type:** dependent implementation stage, in progress.
 
 **Hard prerequisite:** item 8, which is complete.
 
@@ -390,100 +382,138 @@ Finish one unified 3D navigation architecture for static and no-static maps,
 open cities, rooms, tunnels, caves, shafts, and labyrinths. There is no
 environment-specific planner mode and no location-specific knowledge of world
 names, starts, goals, opening coordinates, or opening altitudes. Static maps may
-initialize the world model completely; no-static maps grow it incrementally from
-revisioned 3D-lidar evidence. Both feed the same metric planner, topological
-memory, MPPI, and PX4 execution contracts.
+initialize the world completely; no-static maps grow it incrementally from
+revisioned 3D-lidar evidence. Both feed the same planner, trajectory compiler,
+route owner, MPPI, and PX4 execution contracts.
 
-### Decision Hierarchy
+### Raw World And Distance Evidence
 
-Ordinary goal-directed navigation always has first priority. The planner first
-tries to construct a physically executable 3D route toward the current mission
-goal. The existence of a topology graph, a frontier, unvisited space, or prior
-coverage must not replace a usable goal-directed route with an exploration
-maneuver.
+The planner consumes a global, sparse, world-fixed `RawOccupancy3D` snapshot.
+Confirmed `Occupied` cells and the physical flight envelope are its only hard
+spatial constraints. `Free` and `Unknown` have identical traversability and base
+cost. A production strict-known switch, observation-frontier stop policy,
+outside-local-grid rejection, inflated hard grid, or information-gain transit
+preference would violate this invariant and must not exist.
 
-Known-free and unknown space are strategically neutral in the default mode. A
-lidar miss is known-free up to the sensor range; unknown space beyond current
-observations remains traversable while the moving aircraft reveals it. The
-optional strict policy `REQUIRE_KNOWN_FREE_SPACE=true` may require known-free
-evidence, but it is disabled by default and is not used for normal acceptance.
-Raw occupied geometry is the only hard spatial prohibition. Clearance bands,
-ESDF distance, and proximity to walls affect route cost only; they must not
-become inflation, prohibited grids, monotonic-clearance gates, or equivalent
-hard exclusions.
+Maintain a sparse incremental `KnownObstacleDistance3D` cache over confirmed
+occupied cells. It supplies optional soft clearance and controller evidence in
+both free and unknown volume. Missing or out-of-cache distance evidence is
+neutral. The hard swept-footprint query always uses raw occupancy and the
+physical vehicle hull. Tracking uncertainty is a speed-dependent tube; it may
+reduce speed in a narrow passage but must not enlarge the hard planning hull by
+a fixed margin.
 
-When a fresh raw observation proves that the direct route intersects geometry,
-the risk-aware 3D lattice must generate and compare genuine alternatives around
-the obstacle, including left, right, above, below, and, when necessary, longer
-routes that initially make less Euclidean progress. Candidate selection is
-lexicographic in intent: physical executability first, then destination
-reachability or useful continuation, followed by travel cost, route continuity,
-turning, and soft clearance cost. A longer valid bypass must beat a shorter
-route that ends at the blocking wall.
+Unknown-space safety follows one sensor-and-braking inequality across the whole
+world:
 
-Incremental topology is a fallback for confirmed geometric blockage, branch
-choice, and explicitly requested exploration; it is not the default source of
-motion in open space. Maintain a sparse metric-topological graph with stable
-node and edge identities for junctions, turns, vertical connectors, frontiers,
-and terminal regions, and contract long degree-two corridors into route edges.
-Update only geometry affected by dirty `Occupancy3D` chunks.
+```text
+speed * total_latency + stopping_distance + physical_margin
+  <= guaranteed_lidar_detection_range
+```
 
-Exploration evidence remains separate from physical occupancy. Directed edges
-may retain traversal count, frontier and dead-end evidence, and the map revision
-supporting each conclusion. This evidence may rank alternatives only after
-ordinary goal-directed motion is genuinely blocked; it must not add a generic
-preference for known, covered, unvisited, or information-rich space during
-normal transit. Reaching a mission waypoint resets per-leg revisit and branch
-preferences while preserving physical obstacle memory and the reusable topology
-graph. Visited space is never converted into occupancy or a hard exclusion.
+Stale sensing prevents publication of new motion. Fresh sensing applies the
+same speed and admission rules to free and unknown space.
 
-Backtracking is an optional fallback, disabled by default. It may be enabled for
-labyrinth exploration and selected only after current geometry supports a real
-dead-end or exhausted branch. It must not cause an unprompted return toward the
-start in an open world or while a valid forward or lateral goal-directed route
-exists. Confirmed dead ends are revisioned conclusions and reopen when new
-geometry changes the graph.
+### Persistent Strategic Planner
 
-### Route And Execution Lifecycle
+Use one persistent sparse D* Lite planner over an adaptive world-fixed
+26-connected 3D lattice. It retains search state across a moving start and raw
+occupied updates, repairs only affected vertices, and preserves the incumbent
+mission route while bounded repair is incomplete. Lazy exact swept-footprint
+validation is authoritative; any-angle shortcutting may reduce lattice artifacts
+only after the shortcut passes the same raw validation.
 
-The planner, raw validator, and executor must agree on map revision. If a newer
-raw observation invalidates an active route, the old finite path and any derived
-finite horizon become non-executable immediately. The vehicle publishes a
-position hold while an ESDF from the blocking observation or a newer revision is
-prepared, then searches that world for an alternative route. Do not activate a
-truncated prefix validated only against an older ESDF.
+The strategic objective is predicted 3D execution time to the mission goal.
+Preparatory climb, descent, lateral detour, and justified backtracking are valid
+motions even when they temporarily reduce Euclidean goal progress. Spatial
+planning, curve compilation, and ranking share one 3D station/time model with
+horizontal and vertical velocity, acceleration, jerk, and stop-turn effects.
+There is no XY-only progress, frontier rank, or controller fallback metric.
 
-Every published route is finite, fully swept-footprint validated, and contains
-its own terminal arrival at zero speed. There is no separate braking tail. A
-route may pass arbitrarily close to a wall when the physical footprint fits; the
-clearance cost should discourage poor-quality flight without forbidding it. A
-missing valid path permits hold, but wall proximity alone must never create a
-persistent braking latch, escape controller, or clearance-increasing-only
-movement rule.
+Topology and dead-end memory may supply stable macro-edge heuristics to the
+persistent planner. They never run as a competing route-producing pipeline,
+never own execution, and never reward unknown or unvisited space during normal
+mission transit. The legacy direct-versus-topology-versus-frontier arbitration
+and the 2D production navigation branch are removed after migration.
 
-Each vehicle owns its graph and exploration memory; this item adds no map
-sharing. The cooperative mission may share typed flight intentions as already
-defined by item 6, but navigation geometry and branch history remain local.
+### Active Intent, Route Owner, And Execution Plan
+
+One `ActiveIntent3D` owns a mission objective and its persistent strategic route.
+World revisions, newer candidates, or a slightly better score cannot replace
+it. Ownership ends only for mission-epoch change, completion, exact fresh-raw
+invalidation, an external safety constraint, or confirmed sustained physical
+inability to follow the route. A continuity-preserving successor may improve the
+route only after full certification and hysteresis; an extension does not change
+the active intent.
+
+One `RouteManager3D` owns immutable route chunks, monotonic progress, an
+overlapping future-station successor, and atomic suffix repair. Every admitted
+non-terminal route has certified remaining reserve of at least:
+
+```text
+stopping_distance + speed * p99_successor_latency + certified_overlap
+```
+
+Background planning starts early enough to preserve that reserve. A successor
+is built from a future station and appended after the frozen valid suffix. A raw
+collision keeps the valid prefix and replaces only the affected suffix. If
+repair misses the braking boundary, the certified braking plan becomes the
+execution owner; the owner is never cleared merely because repair or a compare-
+and-swap attempt failed.
+
+Publish one immutable atomic `ExecutionPlan3D` containing the mission and route
+identities, geometry revision, progress, finite nominal horizon, certified
+braking fallback, raw-validation certificate, and all required evidence
+revisions. MPPI may refresh its short horizon at control rate without changing
+route ownership. A progress projection mismatch or snapshot conflict requests a
+fresh read and retry; only an exact raw collision result may report
+`raw_collision`.
+
+### Implementation Order And Cleanup
+
+1. Make production no-static navigation fail closed unless 3D lidar and the raw
+   3D world are active; remove strict-known and 2D production alternatives.
+2. Introduce the sparse raw world and known-obstacle distance interfaces, then
+   remove local-ESDF boundaries from hard planning and smoothing decisions.
+3. Add and integrate the persistent full-3D planner and one 3D ETA objective;
+   retire competing route pipelines and XY-only fallbacks.
+4. Introduce `ActiveIntent3D`, `RouteManager3D`, reserve admission, future-station
+   splice, suffix repair, and the atomic `ExecutionPlan3D` boundary.
+5. Replace the dense observed-ESDF/topology hot path with bounded sparse
+   incremental updates and retain topology only as optional heuristic memory.
+6. Remove superseded flags, configuration, diagnostics states, code paths, and
+   tests. Split oversized production-node sources along the new ownership
+   boundaries while retaining raw obstacle memory, exact validation, MPPI,
+   latest-lidar protection, PX4 execution, and truthful diagnostics.
 
 ### Validation
 
-Deterministic 3D regressions must cover an unobstructed route with no topology
-intervention, a wall requiring lateral alternatives, a wall requiring a vertical
-alternative, openings at arbitrary heights and orientations, a T junction, an X
-junction, a loop, a vertical shaft, and active-route invalidation by a newer raw
-revision. A dedicated cul-de-sac fixture enables backtracking explicitly and
-proves revisioned dead-end handling; ordinary Manhattan validation keeps
-backtracking disabled. Tests must also prove that unknown is not penalized in
-default mode and that no stale or truncated colliding route reaches execution.
+Deterministic generic sensor-to-execution regressions cover unobstructed motion,
+lower and upper openings, a lateral opening, a vertical shaft, an inclined
+passage, a wall requiring initial motion away from the goal, T and X junctions,
+a loop, a cul-de-sac with return, and a route beyond the local distance cache.
+They prove:
 
-Mission validation is sequential and uses no-static mode with the 3D lidar and
-`REQUIRE_KNOWN_FREE_SPACE=false`. First obtain three consecutive collision-free
-successful `sim` flights on Manhattan before proceeding to `coop` on Manhattan,
-then `sim` and `coop` on the selected complex environment. Until the development
-workflow explicitly changes, simulation validation is performed with GUI. Logs
-must prove alternative generation and selection, causal raw-to-ESDF revision
-handoff, graph stability, finite route continuity, physical clearance, mission
-completion, and zero vehicle collisions.
+- arbitrary `Free`/`Unknown` relabeling with occupied cells fixed leaves path,
+  cost, rank, speed, and admission unchanged;
+- frequent world revisions and better competing candidates do not change the
+  valid active route identity;
+- a climb-first or drop-first intent remains owner through the passage;
+- successor reserve includes measured p99 latency, stopping distance, and
+  overlap, with continuous braking ownership at every commit boundary;
+- newer raw occupied evidence repairs or brakes the affected suffix without
+  publishing stale or colliding execution;
+- planner, compiler, controller, and diagnostics use the same full-3D semantics.
+
+Final mission validation uses the unchanged Manhattan location, spawn, and
+waypoints. Run three sequential no-static 3D-lidar headless point-to-point
+missions. Each must reach the mission goal within the 120-second hard limit
+(approximately 90 seconds is the target), cross the required low-altitude route
+volume, remain collision-free, and have no route-ownership gap. After bootstrap,
+route availability must exceed 99 percent and ordinary
+`no_executable_route_hold` should be effectively absent; planner p95 is targeted
+below 200 ms. Each runtime manifest records commit, configuration, and world
+hashes, and the run retains the raw snapshot for the constrained section.
 
 ## 13. GNSS- And Magnetometer-Denied Lidar-Inertial Navigation
 
