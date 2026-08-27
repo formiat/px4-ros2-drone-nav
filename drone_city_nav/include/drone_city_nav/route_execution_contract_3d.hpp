@@ -3,14 +3,16 @@
 #include "drone_city_nav/route_planning_3d.hpp"
 
 #include <cstdint>
+#include <optional>
 #include <string_view>
 
 namespace drone_city_nav {
 
-// A finite execution must finish inside this route-centerline corridor before
-// it can own control. Initial handoff may start outside the corridor when its
-// connector is certified separately, but the terminal rest may not.
+// The opt-in route-adherence policy uses this centerline corridor. Independent
+// physical validation remains mandatory when the policy is disabled.
 inline constexpr double kFiniteExecutionRouteCrossTrackToleranceM3D{2.0};
+
+[[nodiscard]] std::optional<float> routeCrossTrackTolerance3D(bool enabled) noexcept;
 
 enum class RouteEndpointSemantics3D : std::uint8_t {
   kContinuation,

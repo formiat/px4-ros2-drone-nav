@@ -35,6 +35,8 @@ void ProductionMppiNode::configureOptionalNavigationConstraints() {
           declare_parameter<bool>("route_replacement_progress_enabled", false),
       .clearance_tier_constraints_enabled =
           declare_parameter<bool>("clearance_tier_constraints_enabled", false),
+      .route_cross_track_constraints_enabled = declare_parameter<bool>(
+          "execution_route_cross_track_constraints_enabled", false),
   };
 }
 

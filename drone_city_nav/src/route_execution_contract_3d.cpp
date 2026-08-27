@@ -17,6 +17,12 @@ void hashValue(std::uint64_t& hash, const std::uint64_t value) noexcept {
 
 } // namespace
 
+std::optional<float> routeCrossTrackTolerance3D(const bool enabled) noexcept {
+  return enabled ? std::optional<float>{static_cast<float>(
+                       kFiniteExecutionRouteCrossTrackToleranceM3D)}
+                 : std::nullopt;
+}
+
 RouteEndpointSemantics3D
 routeEndpointSemantics3D(const RouteIntent3D& intent, const bool reaches_intent_target,
                          const bool reaches_mission_goal,

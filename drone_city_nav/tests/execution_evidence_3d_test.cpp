@@ -99,6 +99,7 @@ TEST(ExecutionEvidence3DTest,
   EXPECT_DOUBLE_EQ(policy->latestLidarMaximumAgeMs(), 1000.0);
   EXPECT_DOUBLE_EQ(policy->executionInputMaximumPoseAgeMs(), 1000.0);
   EXPECT_DOUBLE_EQ(policy->executionInputMaximumControlAgeMs(), 1000.0);
+  EXPECT_FALSE(policy->routeCrossTrackConstraintsEnabled());
 
   const auto changed = VersionedExecutionValidationPolicy3D::capture(
       FlightEnvelopeConfig{.minimum_target_z_m = 2.0, .maximum_target_z_m = 40.0},
@@ -115,10 +116,18 @@ TEST(ExecutionEvidence3DTest,
       policy->flightEnvelope(), policy->dynamics(), policy->altitudeEnvelope(),
       policy->sweptFootprint(), policy->latestLidarMaximumAgeMs(),
       policy->executionInputMaximumPoseAgeMs(), 999.0);
+  const auto strict_route_adherence = VersionedExecutionValidationPolicy3D::capture(
+      policy->flightEnvelope(), policy->dynamics(), policy->altitudeEnvelope(),
+      policy->sweptFootprint(), policy->latestLidarMaximumAgeMs(),
+      policy->executionInputMaximumPoseAgeMs(),
+      policy->executionInputMaximumControlAgeMs(), true);
   ASSERT_NE(changed_pose_age, nullptr);
   ASSERT_NE(changed_control_age, nullptr);
+  ASSERT_NE(strict_route_adherence, nullptr);
   EXPECT_NE(changed_pose_age->contentFingerprint(), policy->contentFingerprint());
   EXPECT_NE(changed_control_age->contentFingerprint(), policy->contentFingerprint());
+  EXPECT_TRUE(strict_route_adherence->routeCrossTrackConstraintsEnabled());
+  EXPECT_NE(strict_route_adherence->contentFingerprint(), policy->contentFingerprint());
 }
 
 TEST(ExecutionEvidence3DTest,

@@ -78,7 +78,8 @@ continuesCertifiedInitialHandoff(const ExecutionRouteSnapshot3D& current,
                execution->begin_route_station_m - kExecutionBindingToleranceM),
       std::min(target_route.endStationM(),
                execution->begin_route_station_m + kExecutionBindingToleranceM));
-  return initial_projection.valid &&
+  return target_route.validation_policy->routeCrossTrackConstraintsEnabled() &&
+         initial_projection.valid &&
          initial_projection.distance_m > kMaximumRouteCrossTrackM;
 }
 
@@ -109,10 +110,14 @@ validateExecutionProgressConnector(
                   .y = static_cast<float>(execution_position.y),
                   .z = static_cast<float>(execution_position.z)},
   };
+  const std::optional<double> cross_track_limit =
+      route.validation_policy->routeCrossTrackConstraintsEnabled()
+          ? std::optional<double>{kMaximumRouteCrossTrackM}
+          : std::nullopt;
   RouteAdherenceAssessment3D adherence = validateFiniteRouteAdherence(
       *route.geometry, connector_states, route.progress.station_m,
       certificate_view.suffix_start_station_m, connector_maximum_station_m,
-      kMaximumRouteCrossTrackM, kMaximumRouteCrossTrackM,
+      cross_track_limit, cross_track_limit,
       route.validation_policy->sweptFootprint().sweep_step_m, false);
   if (!adherence.accepted) {
     return std::nullopt;
@@ -371,15 +376,17 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
     return rejectedFiniteExecution(
         FiniteExecutionCertificationStatus3D::kExecutionBindingRejected);
   }
-  // Route adherence bounds the whole finite path, including its terminal rest,
-  // to the certified corridor. The tighter stop-boundary tolerance below governs
-  // later execution against the immutable terminal position, not route centerline
-  // alignment during certification.
+  // Station order and constrained-passage geometry always bind the finite path.
+  // The generic centerline corridor is an opt-in behavioral constraint because
+  // physical safety is independently certified below.
+  const std::optional<double> cross_track_limit =
+      policy->routeCrossTrackConstraintsEnabled()
+          ? std::optional<double>{kMaximumRouteCrossTrackM}
+          : std::nullopt;
   const RouteAdherenceAssessment3D route_adherence = validateFiniteRouteAdherence(
       *target_route.geometry, validated_horizon.states, execution_begin_station_m,
       certificate_view.suffix_start_station_m, certificate_view.certified_end_station_m,
-      kMaximumRouteCrossTrackM, kMaximumRouteCrossTrackM,
-      policy->sweptFootprint().sweep_step_m,
+      cross_track_limit, cross_track_limit, policy->sweptFootprint().sweep_step_m,
       targets_initial_route || targets_direct_successor ||
           (targets_current_route &&
            continuesCertifiedInitialHandoff(current, target_route)));

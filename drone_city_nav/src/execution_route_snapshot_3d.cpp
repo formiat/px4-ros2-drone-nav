@@ -407,10 +407,11 @@ bool FiniteExecutionState3D::validFor(
   }
   const RouteSample3D expected_stop =
       sampleRoute3DAtStation(*route->geometry->route, stop_boundary.station_m);
-  // The certified stop is an exact execution target inside the route corridor.
-  // Its execution tolerance does not require that target to lie on centerline.
-  if (distance3D(stop_boundary.position, expected_stop.position) >
-      kMaximumRouteCrossTrackM) {
+  // A strict route corridor is optional because the complete finite horizon is
+  // independently swept against its immutable world and latest lidar evidence.
+  if (validation_policy->routeCrossTrackConstraintsEnabled() &&
+      distance3D(stop_boundary.position, expected_stop.position) >
+          kMaximumRouteCrossTrackM) {
     return false;
   }
   return sameTerminalBoundary(terminal_boundary, canonicalFiniteRouteTerminalBoundary(

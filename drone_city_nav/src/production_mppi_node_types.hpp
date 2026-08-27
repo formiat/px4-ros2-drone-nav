@@ -26,6 +26,7 @@ struct ProductionNavigationOptionalConstraints {
   bool topological_segment_boundaries_enabled{false};
   bool route_replacement_progress_enabled{false};
   bool clearance_tier_constraints_enabled{false};
+  bool route_cross_track_constraints_enabled{false};
 };
 
 struct ProductionMppiNavigation {

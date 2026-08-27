@@ -806,7 +806,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   execution_validation_policy_ = VersionedExecutionValidationPolicy3D::capture(
       flight_envelope_config_, mppi_config_.dynamics, mppi_config_.altitude_envelope,
       physical_footprint_config_, latest_lidar_obstacle_maximum_age_ms_,
-      maximum_pose_prediction_age_ms_, maximum_control_feedback_age_ms_);
+      maximum_pose_prediction_age_ms_, maximum_control_feedback_age_ms_,
+      optional_constraints_.route_cross_track_constraints_enabled);
   if (execution_validation_policy_ == nullptr) {
     throw std::invalid_argument{"invalid immutable execution validation policy"};
   }

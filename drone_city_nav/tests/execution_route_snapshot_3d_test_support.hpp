@@ -300,7 +300,7 @@ struct SnapshotFixture3D {
     dynamics.linear_drag_1ps = 0.0F;
     return VersionedExecutionValidationPolicy3D::capture(
         FlightEnvelopeConfig{}, dynamics, mppi::AltitudeEnvelopeConfig{},
-        testPassageVolumeConfig().footprint, 100.0);
+        testPassageVolumeConfig().footprint, 100.0, 1000.0, 1000.0, true);
   }();
 
   [[nodiscard]] RouteActivationObservation3D observation() const noexcept {
