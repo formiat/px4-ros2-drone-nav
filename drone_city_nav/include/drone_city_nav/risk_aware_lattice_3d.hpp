@@ -6,6 +6,7 @@
 #include "drone_city_nav/occupancy_grid_3d.hpp"
 #include "drone_city_nav/portal_graph.hpp"
 #include "drone_city_nav/route_3d.hpp"
+#include "drone_city_nav/swept_footprint.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <cstddef>
@@ -96,6 +97,13 @@ struct Lattice3DSuccessorProfiling {
   Lattice3DSuccessorBatchProfile continuation{};
 };
 
+struct Lattice3DRawValidationContext {
+  // The immutable owner must outlive the synchronous lattice search.
+  const ObservedOccupancyGrid3D* occupancy{nullptr};
+  const ProprioceptiveFreeSpaceSeed3D* proprioceptive_free_space_seed{nullptr};
+  const LaunchSupportContact3D* launch_support_contact{nullptr};
+};
+
 struct RiskAwareLattice3DConfig {
   double horizontal_step_m{2.0};
   double vertical_step_m{1.0};
@@ -107,6 +115,7 @@ struct RiskAwareLattice3DConfig {
   std::size_t physical_footprint_radial_rings{2U};
   std::size_t physical_footprint_axial_samples{3U};
   double physical_footprint_sweep_step_m{0.25};
+  Lattice3DRawValidationContext raw_validation{};
   FlightEnvelopeConfig flight_envelope{};
   double planning_goal_distance_m{180.0};
   double goal_tolerance_m{2.0};

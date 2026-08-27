@@ -175,6 +175,18 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
           const std::optional<std::chrono::steady_clock::time_point> deadline =
               std::nullopt) {
         RiskAwareLattice3DConfig search_config = lattice_3d_config_;
+        search_config.raw_validation = Lattice3DRawValidationContext{
+            .occupancy = latest_raw_world != nullptr ? latest_raw_world->occupancy.get()
+                                                     : nullptr,
+            .proprioceptive_free_space_seed =
+                world.proprioceptive_free_space_seed
+                    ? std::addressof(*world.proprioceptive_free_space_seed)
+                    : nullptr,
+            .launch_support_contact =
+                world.launch_support_contact
+                    ? std::addressof(*world.launch_support_contact)
+                    : nullptr,
+        };
         if (get_clock()->now().nanoseconds() < no_static_adaptive_search_until_ns_) {
           search_config.frontier_minimum_reachable_depth_m =
               std::max(search_config.frontier_minimum_reachable_depth_m,

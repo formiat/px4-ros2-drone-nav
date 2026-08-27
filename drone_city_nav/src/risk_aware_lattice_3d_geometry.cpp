@@ -112,6 +112,40 @@ Lattice3DEdgeEvaluation evaluateLattice3DEdge(const mppi::EsdfGrid& grid,
         break;
     }
   }
+  if (config.raw_validation.occupancy != nullptr) {
+    const ObservedSpaceValidationPolicy policy =
+        config.require_known_free_space
+            ? ObservedSpaceValidationPolicy::kRequireKnownFree
+            : ObservedSpaceValidationPolicy::kAllowUnknown;
+    const SweptFootprintResult raw = validateObservedSweptFootprint(
+        *config.raw_validation.occupancy, first, FootprintBodyAxis{}, second,
+        FootprintBodyAxis{},
+        SweptFootprintConfig{.radius_m = config.physical_footprint_radius_m,
+                             .lower_extent_m = config.physical_footprint_lower_extent_m,
+                             .upper_extent_m = config.physical_footprint_upper_extent_m,
+                             .perimeter_samples = config.physical_footprint_samples,
+                             .radial_rings = config.physical_footprint_radial_rings,
+                             .axial_samples = config.physical_footprint_axial_samples,
+                             .sweep_step_m = config.physical_footprint_sweep_step_m},
+        policy, config.raw_validation.proprioceptive_free_space_seed,
+        config.raw_validation.launch_support_contact);
+    if (raw.status == SweptFootprintStatus::kRawCollision) {
+      return Lattice3DEdgeEvaluation{.status =
+                                         Lattice3DEdgeEvaluationStatus::kRawCollision,
+                                     .evidence = raw.evidence};
+    }
+    if (raw.status == SweptFootprintStatus::kOutsideGrid) {
+      return Lattice3DEdgeEvaluation{.status =
+                                         Lattice3DEdgeEvaluationStatus::kOutsideGrid,
+                                     .evidence = raw.evidence};
+    }
+    if (config.require_known_free_space &&
+        raw.status == SweptFootprintStatus::kUnknownSpace) {
+      return Lattice3DEdgeEvaluation{.status =
+                                         Lattice3DEdgeEvaluationStatus::kUnknownSpace,
+                                     .evidence = raw.evidence};
+    }
+  }
   const double minimum_known_clearance_m =
       footprint.evidence.known_clearance_observed
           ? footprint.evidence.minimum_known_clearance_m

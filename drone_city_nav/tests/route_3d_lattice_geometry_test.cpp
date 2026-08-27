@@ -149,6 +149,35 @@ TEST(Route3DTest, EdgeFootprintContinuouslyCoversCoarseAndFineSweepIntervals) {
             detail::Lattice3DEdgeEvaluationStatus::kRawCollision);
 }
 
+TEST(Route3DTest, EdgeSearchRejectsCollisionFromAuthoritativeRawSnapshot) {
+  const GridBounds3D bounds{0.0, 0.0, 0.0, 1.0, 12, 6, 6};
+  const mppi::EsdfGrid grid{bounds.width_cells,
+                            bounds.height_cells,
+                            static_cast<float>(bounds.resolution_m),
+                            static_cast<float>(bounds.origin_x),
+                            static_cast<float>(bounds.origin_y),
+                            bounds.depth_cells,
+                            static_cast<float>(bounds.origin_z)};
+  const std::vector<float> stale_esdf(
+      static_cast<std::size_t>(grid.width * grid.height * grid.depth),
+      std::numeric_limits<float>::infinity());
+  ObservedOccupancyGrid3D latest_raw{bounds};
+  ASSERT_TRUE(latest_raw.setState(GridIndex3D{5, 2, 2}, ObservedVoxelState::kOccupied));
+  RiskAwareLattice3DConfig config;
+  config.physical_footprint_radius_m = 0.25;
+  config.physical_footprint_lower_extent_m = 0.25;
+  config.physical_footprint_upper_extent_m = 0.25;
+  config.critical_distance_m = 0.0;
+  config.preferred_distance_m = 0.0;
+  config.raw_validation.occupancy = &latest_raw;
+
+  const detail::Lattice3DEdgeEvaluation result = detail::evaluateLattice3DEdge(
+      grid, stale_esdf, Point3{1.5, 2.5, 2.5}, Point3{8.5, 2.5, 2.5},
+      Lattice3DRiskStage::kCriticalAllowed, config);
+
+  EXPECT_EQ(result.status, detail::Lattice3DEdgeEvaluationStatus::kRawCollision);
+}
+
 TEST(Route3DTest, EdgeRiskStageUsesPhysicalFootprintClearance) {
   OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 16, 12, 10}};
   for (int y = 0; y < 12; ++y) {
