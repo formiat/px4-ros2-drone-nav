@@ -56,7 +56,6 @@ struct ProductionMppiExecutionCycle {
   std::uint64_t target_offboard_instance_id;
   std::int64_t lidar_validation_now_ns;
   const Point3& mission_goal;
-  const std::shared_ptr<const ProductionMppiRawWorld2D>& latest_raw_world;
   const std::shared_ptr<const ProductionMppiRawWorld3D>& latest_raw_world_3d;
   bool snapshot_owner_required;
   bool direct_tracking_requested;

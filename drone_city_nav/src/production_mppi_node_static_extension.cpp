@@ -169,9 +169,7 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
   const Point3 current{navigation.state.x, navigation.state.y, navigation.state.z};
   const Point3 next_planning_goal = staticRoutePlanningGoal(
       current, mission_goal, lattice_3d_config_.planning_goal_distance_m);
-  const bool observed_world =
-      !use_static_map_ &&
-      no_static_world_model_ == ProductionNoStaticWorldModel::kObservedOccupancy3D;
+  const bool observed_world = !use_static_map_;
   const bool pending_successor = pending_certified_route_mailbox_.snapshot() != nullptr;
 
   std::scoped_lock extension_lock{static_route_extension_mutex_};
@@ -351,9 +349,7 @@ void ProductionMppiNode::requestStaticRouteReplan(
     }
     const std::uint64_t prepared_guide_generation =
         prepared_esdf_->global_guide_generation;
-    const bool snapshot_owned_execution =
-        use_static_map_ ||
-        no_static_world_model_ == ProductionNoStaticWorldModel::kObservedOccupancy3D;
+    constexpr bool snapshot_owned_execution{true};
     const std::uint64_t search_generation =
         staticRouteSearchGeneration(snapshot_owned_execution, prepared_guide_generation,
                                     committed_route_generation);
@@ -384,8 +380,7 @@ void ProductionMppiNode::requestStaticRouteReplan(
     request->static_route_replan_reason = reason;
   }
 
-  if (!use_static_map_ &&
-      no_static_world_model_ == ProductionNoStaticWorldModel::kObservedOccupancy3D) {
+  if (!use_static_map_) {
     const std::uint64_t blocked_raw_revision =
         observed_route_blocked_raw_revision_.load(std::memory_order_acquire);
     if (blocked_raw_revision > request->source_raw_revision) {

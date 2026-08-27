@@ -221,9 +221,6 @@ production_mppi_node:
     no_static_stale_esdf_execution_window_s: 4.0
     maximum_control_feedback_age_ms: 200.0
     no_static_guide_lookahead_m: 30.0
-    no_static_esdf_update_rate_hz: 2.5
-    no_static_esdf_half_extent_m: 100.0
-    no_static_esdf_recenter_margin_m: 70.0
     no_static_3d_esdf_update_rate_hz: 1.0
     no_static_3d_esdf_horizontal_half_extent_m: 20.0
     no_static_3d_esdf_vertical_half_extent_m: 15.0
@@ -351,8 +348,6 @@ production_mppi_node:
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
     px4_vehicle_land_detected_topic: /fmu/out/vehicle_land_detected
     obstacle_memory_status_topic: /drone_city_nav/obstacle_memory_status
-    raw_obstacle_snapshot_topic: /drone_city_nav/raw_obstacle_snapshot
-    raw_obstacle_delta_topic: /drone_city_nav/raw_obstacle_delta
     path_topic: /drone_city_nav/mppi/path
     markers_topic: /drone_city_nav/mppi/markers
     status_topic: /drone_city_nav/mppi/status
@@ -470,7 +465,6 @@ production_mppi_node:
     global_lattice_frontier_validation_maximum_states: 2048
     global_lattice_frontier_validation_expansion_interval: 256
     global_lattice_frontier_goal_distance_weight: 0.25
-    global_lattice_frontier_blacklist_enabled: false
     global_lattice_frontier_blacklist_radius_m: 6.0
     global_lattice_frontier_blacklist_heading_bins: 1
     global_lattice_frontier_blacklist_ttl_s: 120.0

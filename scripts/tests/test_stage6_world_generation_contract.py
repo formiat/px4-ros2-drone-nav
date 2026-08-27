@@ -68,7 +68,8 @@ class Stage6WorldGenerationContractTest(unittest.TestCase):
         world = (SOURCE / "production_mppi_route_world.cpp").read_text(
             encoding="utf-8"
         )
-        runtime = (SOURCE / "production_mppi_node_runtime.cpp").read_text(
+        runtime = (SOURCE / "production_mppi_node_runtime.cpp").read_text(encoding="utf-8")
+        generation = (SOURCE / "production_mppi_node_world_generation.cpp").read_text(
             encoding="utf-8"
         )
 
@@ -76,10 +77,7 @@ class Stage6WorldGenerationContractTest(unittest.TestCase):
         self.assertIn("world.topological_graph->revision()", world)
         self.assertIn("owner->version().base_snapshot_revision", world)
         self.assertIn("productionWorldGenerationCoherent", runtime)
-        self.assertIn("sameSnapshot", runtime)
-        generation = (SOURCE / "production_mppi_node_world_generation.cpp").read_text(
-            encoding="utf-8"
-        )
+        self.assertIn("sameSnapshot", generation)
         self.assertIn("action=retry_next_tick", generation)
 
     def test_lane_and_generation_backpressure_are_diagnostic(self) -> None:

@@ -66,29 +66,11 @@ void ProductionMppiNode::initializeRuntimeInterfaces() {
       },
       input_subscription_options);
 
-  const std::string raw_snapshot_topic = declare_parameter<std::string>(
-      "raw_obstacle_snapshot_topic", "/drone_city_nav/raw_obstacle_snapshot");
-  const std::string raw_delta_topic = declare_parameter<std::string>(
-      "raw_obstacle_delta_topic", "/drone_city_nav/raw_obstacle_delta");
   const std::string raw_snapshot_3d_topic = declare_parameter<std::string>(
       "raw_obstacle_snapshot_3d_topic", "/drone_city_nav/raw_obstacle_snapshot_3d");
   const std::string raw_delta_3d_topic = declare_parameter<std::string>(
       "raw_obstacle_delta_3d_topic", "/drone_city_nav/raw_obstacle_delta_3d");
-  if (!use_static_map_ &&
-      no_static_world_model_ == ProductionNoStaticWorldModel::kOccupancy2D) {
-    raw_snapshot_sub_ = create_subscription<msg::RawObstacleSnapshot>(
-        raw_snapshot_topic, rclcpp::QoS{1}.reliable().transient_local(),
-        [this](msg::RawObstacleSnapshot::ConstSharedPtr message) {
-          onRawObstacleSnapshot(std::move(message));
-        },
-        world_subscription_options);
-    raw_delta_sub_ = create_subscription<msg::RawObstacleDelta>(
-        raw_delta_topic, rclcpp::QoS{1}.reliable().transient_local(),
-        [this](msg::RawObstacleDelta::ConstSharedPtr message) {
-          onRawObstacleDelta(std::move(message));
-        },
-        world_subscription_options);
-  } else if (!use_static_map_) {
+  if (!use_static_map_) {
     raw_snapshot_3d_sub_ = create_subscription<msg::RawObstacleSnapshot3D>(
         raw_snapshot_3d_topic, rclcpp::QoS{1}.reliable().transient_local(),
         [this](msg::RawObstacleSnapshot3D::ConstSharedPtr message) {

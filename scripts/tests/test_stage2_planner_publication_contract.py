@@ -68,7 +68,7 @@ class Stage2PlannerPublicationContractTest(unittest.TestCase):
         input_freshness = commit.index("executionInputFreshAt")
         lidar_owner = commit.index("publication_lidar")
         lidar_freshness = commit.index("assessLatestLidarEvidenceFreshness3D")
-        raw_currentness = commit.index("legacy_raw_2d_required")
+        raw_currentness = commit.index("committed_world_current")
         snapshot_cas = commit.index("execution_route_store_.publish")
         wire_publication = commit.index("execution_horizon_pub_->publish")
         for barrier in (
@@ -111,13 +111,13 @@ class Stage2PlannerPublicationContractTest(unittest.TestCase):
             hold_commit.index("commitAndPublishExecutionHorizon"),
         )
         raw_update = raw_input.split(
-            "void ProductionMppiNode::queueRawWorld(", maxsplit=1
+            "void ProductionMppiNode::queueRawWorld3D(", maxsplit=1
         )[1].split(
-            "void ProductionMppiNode::onRawObstacleSnapshot3D", maxsplit=1
+            "void ProductionMppiNode::onMemoryStatus", maxsplit=1
         )[0]
         self.assertLess(
             raw_update.index("execution_evidence_commit_mutex_"),
-            raw_update.index("latest_raw_world_.store"),
+            raw_update.index("latest_raw_world_3d_.store"),
         )
 
         objective_callback = inputs.split(

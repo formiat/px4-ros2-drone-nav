@@ -129,8 +129,6 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   }
   const std::int64_t lidar_validation_now_ns = get_clock()->now().nanoseconds();
   const Point3 mission_goal = objective->goal;
-  const std::shared_ptr<const ProductionMppiRawWorld2D> latest_raw_world =
-      latest_raw_world_.load(std::memory_order_acquire);
   const std::shared_ptr<const ProductionMppiRawWorld3D> latest_raw_world_3d =
       latest_raw_world_3d_.load(std::memory_order_acquire);
   const bool snapshot_owner_required = route_execution.source_snapshot != nullptr;
@@ -209,10 +207,6 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   }
   const std::uint64_t latest_lidar_obstacle_sequence =
       latest_lidar_evidence != nullptr ? latest_lidar_evidence->sequence() : 0U;
-  const OccupancyGrid2D* latest_raw_occupancy =
-      latest_raw_world && latest_raw_world->occupancy
-          ? latest_raw_world->occupancy.get()
-          : nullptr;
   const bool exact_snapshot_world =
       snapshot_owner_required && selected_policy != nullptr &&
       selected_policy->valid() &&
@@ -318,7 +312,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
                                       : lattice_3d_config_.require_known_free_space,
       .proprioceptive_free_space_seed = proprioceptive_free_space_seed_owner,
       .launch_support_contact = launch_support_contact_owner,
-      .raw_occupancy = snapshot_owner_required ? nullptr : latest_raw_occupancy,
+      .raw_occupancy = nullptr,
       .latest_lidar_obstacle_points = latest_lidar_obstacle_points,
       .terminal_boundary = route_terminal_boundary,
   };
@@ -330,9 +324,6 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   const std::int64_t finite_path_control_interval_ns =
       mppi::finitePathControlIntervalNanoseconds(execution_dt_s);
   std::uint64_t latest_obstacle_revision = input.obstacle_revision;
-  if (latest_raw_world) {
-    latest_obstacle_revision = latest_raw_world->version.revision;
-  }
   if (exact_snapshot_world && direct_observed_world != nullptr) {
     latest_obstacle_revision = direct_observed_world->version().revision;
   } else if (exact_snapshot_world && selected_snapshot_route != nullptr &&
@@ -361,7 +352,6 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       .target_offboard_instance_id = target_offboard_instance_id,
       .lidar_validation_now_ns = lidar_validation_now_ns,
       .mission_goal = mission_goal,
-      .latest_raw_world = latest_raw_world,
       .latest_raw_world_3d = latest_raw_world_3d,
       .snapshot_owner_required = snapshot_owner_required,
       .direct_tracking_requested = direct_tracking_requested,

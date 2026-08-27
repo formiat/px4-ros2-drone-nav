@@ -180,12 +180,9 @@ class ExecutionInputContractTest(unittest.TestCase):
 
         self.assertIn("src/production_mppi_node_raw_input.cpp", cmake)
         self.assertNotIn("publishExecutionRevocation", raw_input)
-        for callback in (
-            "onRawObstacleSnapshot",
-            "onRawObstacleDelta",
-            "onRawObstacleSnapshot3D",
-            "onRawObstacleDelta3D",
-        ):
+        self.assertNotIn("ProductionMppiNode::onRawObstacleSnapshot(", raw_input)
+        self.assertNotIn("ProductionMppiNode::onRawObstacleDelta(", raw_input)
+        for callback in ("onRawObstacleSnapshot3D", "onRawObstacleDelta3D"):
             body = raw_input.split(
                 f"void ProductionMppiNode::{callback}", maxsplit=1
             )[1].split("\n}\n", maxsplit=1)[0]
@@ -206,7 +203,7 @@ class ExecutionInputContractTest(unittest.TestCase):
         self.assertIn("statusAnnouncesRawUpdate(message)", status)
         pending_join = status.split("if (!installed_through_status)", maxsplit=1)[
             1
-        ].split("} else {", maxsplit=1)[0]
+        ].split("synchronized =", maxsplit=1)[0]
         self.assertNotIn("clear_current_raw", pending_join)
         self.assertNotIn("requestExecutionRevocation", pending_join)
 

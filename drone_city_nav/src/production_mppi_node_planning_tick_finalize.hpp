@@ -43,7 +43,6 @@ struct ProductionMppiPlanningTickFinalization {
   ProductionMppiPlanningState planning_state;
   ProductionMppiPreviousControlSource previous_control_source;
   mppi::RiskTier route_required_risk_tier;
-  bool uses_3d_route;
   bool route_usable;
   bool direct_tracking_interception;
   bool temporary_frontier_is_terminal;

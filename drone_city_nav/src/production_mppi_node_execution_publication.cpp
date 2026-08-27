@@ -394,25 +394,12 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
   if (!use_static_map_) {
     const double maximum_observation_age_ms =
         maximum_esdf_age_ms_ + stale_esdf_execution_window_ms_;
-    const bool observed_3d_world =
-        no_static_world_model_ == ProductionNoStaticWorldModel::kObservedOccupancy3D;
-    const std::shared_ptr<const ProductionMppiRawWorld2D> committed_2d =
-        observed_3d_world ? nullptr : latest_raw_world_.load(std::memory_order_acquire);
-    committed_3d = observed_3d_world
-                       ? latest_raw_world_3d_.load(std::memory_order_acquire)
-                       : nullptr;
+    committed_3d = latest_raw_world_3d_.load(std::memory_order_acquire);
     const bool committed_world_current =
-        observed_3d_world
-            ? (committed_3d != nullptr &&
-               committed_3d->version.producer_instance_id ==
-                   cycle.esdf.producer_instance_id &&
-               committedRawWorldAgeMs(committed_3d.get(), publication_now_ns) <=
-                   maximum_observation_age_ms)
-            : (committed_2d != nullptr &&
-               committed_2d->version.producer_instance_id ==
-                   cycle.esdf.producer_instance_id &&
-               committedRawWorldAgeMs(committed_2d.get(), publication_now_ns) <=
-                   maximum_observation_age_ms);
+        committed_3d != nullptr &&
+        committed_3d->version.producer_instance_id == cycle.esdf.producer_instance_id &&
+        committedRawWorldAgeMs(committed_3d.get(), publication_now_ns) <=
+            maximum_observation_age_ms;
     if (raw_world_identity_conflicted_ || !committed_world_current) {
       requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
       report_commit_failure("raw_world_not_current");
@@ -725,16 +712,6 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
            .fresh) {
     requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
     report_commit_failure("lidar_evidence_not_current");
-    return ProductionMppiHorizonCommitStatus::kRejected;
-  }
-  const bool legacy_raw_2d_required =
-      !cycle.snapshot_owner_required && !use_static_map_ &&
-      no_static_world_model_ == ProductionNoStaticWorldModel::kOccupancy2D;
-  if (legacy_raw_2d_required &&
-      (cycle.latest_raw_world == nullptr ||
-       latest_raw_world_.load(std::memory_order_acquire) != cycle.latest_raw_world)) {
-    requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
-    report_commit_failure("legacy_raw_world_not_current");
     return ProductionMppiHorizonCommitStatus::kRejected;
   }
   const StationaryExecutionHold3D* const capture_hold =

@@ -83,7 +83,6 @@ struct ProductionMppiControllerTick {
   double route_cross_track_m{0.0};
   ProductionMppiPlanningState planning_state{ProductionMppiPlanningState::kPlanned};
   bool direct_tracking_interception{false};
-  bool uses_3d_route{false};
 };
 
 struct ProductionMppiControllerTickResult {
@@ -91,21 +90,15 @@ struct ProductionMppiControllerTickResult {
   MppiEligibleRolloutUpdate no_eligible_recovery;
 };
 
-[[nodiscard]] inline std::uint64_t planningRawRevision(
-    const bool use_static_map, const ProductionNoStaticWorldModel no_static_world_model,
-    const std::uint64_t esdf_revision,
-    const std::shared_ptr<const ProductionMppiRawWorld2D>& latest_raw_world,
-    const std::shared_ptr<const ProductionMppiRawWorld3D>&
-        latest_raw_world_3d) noexcept {
+[[nodiscard]] inline std::uint64_t
+planningRawRevision(const bool use_static_map, const std::uint64_t esdf_revision,
+                    const std::shared_ptr<const ProductionMppiRawWorld3D>&
+                        latest_raw_world_3d) noexcept {
   if (use_static_map) {
     return esdf_revision;
   }
-  if (no_static_world_model == ProductionNoStaticWorldModel::kObservedOccupancy3D) {
-    return latest_raw_world_3d != nullptr ? latest_raw_world_3d->version.revision
-                                          : esdf_revision;
-  }
-  return latest_raw_world != nullptr ? latest_raw_world->version.revision
-                                     : esdf_revision;
+  return latest_raw_world_3d != nullptr ? latest_raw_world_3d->version.revision
+                                        : esdf_revision;
 }
 
 } // namespace drone_city_nav

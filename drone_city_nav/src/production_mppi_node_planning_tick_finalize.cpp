@@ -60,7 +60,6 @@ void ProductionMppiNode::finalizePlanningTick(
   const ProductionMppiPreviousControlSource previous_control_source =
       finalization.previous_control_source;
   const mppi::RiskTier route_required_risk_tier = finalization.route_required_risk_tier;
-  const bool uses_3d_route = finalization.uses_3d_route;
   const bool route_usable = finalization.route_usable;
   const bool direct_tracking_interception = finalization.direct_tracking_interception;
   const bool temporary_frontier_is_terminal =
@@ -115,7 +114,7 @@ void ProductionMppiNode::finalizePlanningTick(
       latest_lidar_evidence, finalization.offboard_session,
       finalization.offboard_session_receive_stamp_ns, planning_state, now_ns);
   const std::shared_ptr<const ExecutionRouteSnapshot3D> committed_execution_snapshot =
-      uses_3d_route ? execution_route_store_.snapshot() : nullptr;
+      execution_route_store_.snapshot();
   const CertifiedRouteSuffix3D* const committed_route =
       committed_execution_snapshot != nullptr &&
               committed_execution_snapshot->route.has_value()
@@ -152,9 +151,8 @@ void ProductionMppiNode::finalizePlanningTick(
                                : std::numeric_limits<double>::infinity(),
       .speed_mps = routeSpeed3D(
           Vec3{navigation.state.vx, navigation.state.vy, navigation.state.vz}),
-      .resident_route_available =
-          uses_3d_route && (committed_route != nullptr || committed_direct_owner),
-      .execution_owner_available = !uses_3d_route || committed_execution_owner,
+      .resident_route_available = committed_route != nullptr || committed_direct_owner,
+      .execution_owner_available = committed_execution_owner,
       .endpoint_limiter_active =
           speed_policy.active_limiter == MppiSpeedLimiter::kRouteEndpoint,
       .raw_invalidation_active = raw_invalidation_active,

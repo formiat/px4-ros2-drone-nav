@@ -647,7 +647,6 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     src/production_mppi_node_world_generation.cpp
     src/production_mppi_node_planning_tick_finalize.cpp
     src/production_mppi_node_planning_tick_rearm.cpp
-    src/production_mppi_node_raw_world.cpp
     src/production_mppi_node_runtime.cpp
     src/production_mppi_route_execution.cpp
     src/production_mppi_route_activation.cpp

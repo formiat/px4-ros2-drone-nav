@@ -81,11 +81,6 @@ assessProductionWorldGeneration(const ProductionMppiPreparedEsdf& world) noexcep
     if (!observedEsdfCoverageMatches(world, raw)) {
       return ProductionWorldGenerationStatus::kObservedEsdfCoverageMismatch;
     }
-  } else if (world.raw_occupancy) {
-    if (world.producer_instance_id != raw.producer_instance_id ||
-        world.source_raw_revision != raw.revision) {
-      return ProductionWorldGenerationStatus::kRawVersionMismatch;
-    }
   } else if (world.producer_instance_id != 0U || world.source_raw_revision != 0U ||
              raw.producer_instance_id != 0U ||
              raw.base_snapshot_revision != world.revision ||
@@ -168,7 +163,6 @@ void adoptWorldResources(ProductionMppiPreparedEsdf& target,
   target.upload_ms = source.upload_ms;
   target.grid = source.grid;
   target.distances_m = source.distances_m;
-  target.raw_occupancy = source.raw_occupancy;
   target.observed_occupancy = source.observed_occupancy;
   target.observed_raw_world_owner = source.observed_raw_world_owner;
   target.observed_esdf_resource = source.observed_esdf_resource;

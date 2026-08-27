@@ -1,5 +1,3 @@
-#include "drone_city_nav/distance_field.hpp"
-#include "drone_city_nav/local_esdf_2d.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -77,8 +75,7 @@ namespace {
 
 void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
   while (!stop_token.stop_requested()) {
-    std::shared_ptr<const ProductionMppiRawWorld2D> raw_world;
-    std::shared_ptr<const ProductionMppiRawWorld3D> raw_world_3d;
+    std::shared_ptr<const ProductionMppiRawWorld3D> raw_world;
     bool static_work{false};
     {
       std::unique_lock lock{raw_queue_mutex_};
@@ -91,67 +88,44 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
           break;
         }
         const auto now = std::chrono::steady_clock::now();
-        if (no_static_world_model_ ==
-            ProductionNoStaticWorldModel::kObservedOccupancy3D) {
-          if (std::optional scheduled = raw_world_scheduler_3d_.takeReady(now)) {
-            raw_world_3d = std::move(*scheduled);
-            break;
-          }
-          if (raw_world_scheduler_3d_.notBefore().has_value()) {
-            static_cast<void>(raw_queue_condition_.wait_until(
-                lock, stop_token, *raw_world_scheduler_3d_.notBefore(), [this]() {
-                  return raw_world_scheduler_3d_.ready(
-                      std::chrono::steady_clock::now());
-                }));
-          } else {
-            raw_queue_condition_.wait(lock, stop_token, [this]() {
-              return raw_world_scheduler_3d_.hasPending();
-            });
-          }
-          continue;
-        }
-        if (std::optional scheduled = raw_world_scheduler_.takeReady(now)) {
+        if (std::optional scheduled = raw_world_scheduler_3d_.takeReady(now)) {
           raw_world = std::move(*scheduled);
           break;
         }
-        if (raw_world_scheduler_.notBefore().has_value()) {
+        if (raw_world_scheduler_3d_.notBefore().has_value()) {
           static_cast<void>(raw_queue_condition_.wait_until(
-              lock, stop_token, *raw_world_scheduler_.notBefore(), [this]() {
-                return raw_world_scheduler_.ready(std::chrono::steady_clock::now());
+              lock, stop_token, *raw_world_scheduler_3d_.notBefore(), [this]() {
+                return raw_world_scheduler_3d_.ready(std::chrono::steady_clock::now());
               }));
         } else {
-          raw_queue_condition_.wait(
-              lock, stop_token, [this]() { return raw_world_scheduler_.hasPending(); });
+          raw_queue_condition_.wait(lock, stop_token, [this]() {
+            return raw_world_scheduler_3d_.hasPending();
+          });
         }
       }
     }
     if (stop_token.stop_requested()) {
       return;
     }
-    if (use_static_map_ && !static_work) {
-      continue;
-    }
-    if (!use_static_map_ &&
-        no_static_world_model_ == ProductionNoStaticWorldModel::kObservedOccupancy3D) {
-      if (raw_world_3d) {
+    if (!use_static_map_) {
+      if (raw_world) {
         const std::optional<std::chrono::steady_clock::time_point> retry_not_before =
-            processObservedEsdf3D(*raw_world_3d);
+            processObservedEsdf3D(*raw_world);
         if (retry_not_before.has_value()) {
           {
             const std::scoped_lock lock{raw_queue_mutex_};
-            raw_world_scheduler_3d_.defer(std::move(raw_world_3d), *retry_not_before);
+            raw_world_scheduler_3d_.defer(std::move(raw_world), *retry_not_before);
           }
           raw_queue_condition_.notify_all();
         }
       }
       continue;
     }
-    if (!use_static_map_ && !raw_world) {
+    if (!static_work) {
       continue;
     }
-    const std::int64_t source_stamp_ns =
-        use_static_map_ ? get_clock()->now().nanoseconds() : raw_world->source_stamp_ns;
-    if (use_static_map_ && !static_occupancy_3d_) {
+    const std::int64_t source_stamp_ns = get_clock()->now().nanoseconds();
+    if (!static_occupancy_3d_) {
       RCLCPP_ERROR(get_logger(),
                    "STATIC_ESDF3D rejected reason=resident_occupancy_unavailable");
       completeStaticEsdfWork(false);
@@ -509,229 +483,6 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
                   prepared.grid.height, prepared.grid.depth);
       continue;
     }
-    const std::shared_ptr<const OccupancyGrid2D> raw_occupancy = raw_world->occupancy;
-    if (!raw_occupancy) {
-      RCLCPP_WARN(get_logger(),
-                  "PRODUCTION_MPPI_ESDF rejected revision=%" PRIu64
-                  " reason=unavailable_raw_grid",
-                  raw_world->version.revision);
-      continue;
-    }
-    const double raw_conversion_ms = raw_world->reconstruction_ms;
-
-    ProductionMppiNavigation navigation;
-    {
-      const std::scoped_lock lock{input_mutex_};
-      navigation = navigation_;
-    }
-    if (!navigation.valid) {
-      continue;
-    }
-    std::optional<ProductionMppiPreparedEsdf> active_prepared;
-    {
-      const std::scoped_lock lock{esdf_state_mutex_};
-      active_prepared = prepared_esdf_;
-    }
-    const GridBounds& world_bounds = raw_occupancy->bounds();
-    const Point2 position{navigation.state.x, navigation.state.y};
-    GridBounds local_bounds;
-    bool recenter = true;
-    if (active_prepared && active_prepared->distances_m) {
-      local_bounds = GridBounds{
-          .origin_x = active_prepared->grid.origin_x_m,
-          .origin_y = active_prepared->grid.origin_y_m,
-          .resolution_m = active_prepared->grid.resolution_m,
-          .width_cells = active_prepared->grid.width,
-          .height_cells = active_prepared->grid.height,
-      };
-      recenter = localEsdfNeedsRecenter(local_bounds, world_bounds, position,
-                                        no_static_esdf_recenter_margin_m_);
-    }
-    if (recenter) {
-      local_bounds =
-          selectLocalEsdfBounds(world_bounds, position, no_static_esdf_half_extent_m_);
-    }
-    OccupancyGrid2D local_occupancy = cropOccupancyGrid(*raw_occupancy, local_bounds);
-    const std::uint64_t local_occupied_fingerprint =
-        local_occupancy.occupiedFingerprint();
-    const bool local_occupancy_unchanged =
-        active_prepared && active_prepared->distances_m && !recenter &&
-        active_prepared->source_occupied_fingerprint == local_occupied_fingerprint;
-    const auto build_started_at = std::chrono::steady_clock::now();
-    const bool first_build =
-        no_static_esdf_last_build_time_ == std::chrono::steady_clock::time_point{};
-    const bool build_rate_due =
-        first_build || std::chrono::duration<double>(build_started_at -
-                                                     no_static_esdf_last_build_time_)
-                               .count() >= 1.0 / no_static_esdf_update_rate_hz_;
-    if (local_occupancy_unchanged) {
-      RCLCPP_INFO_THROTTLE(
-          get_logger(), *get_clock(), 1000,
-          "NO_STATIC_ESDF_DEFERRED raw_revision=%" PRIu64
-          " reason=occupied_unchanged raw_conversion_ms=%.2f raw_updates=%" PRIu64
-          " builds=%" PRIu64 " throttled=%" PRIu64,
-          raw_world->version.revision, raw_conversion_ms,
-          no_static_raw_updates_.load(std::memory_order_relaxed),
-          no_static_esdf_builds_.load(std::memory_order_relaxed),
-          no_static_esdf_throttled_updates_.load(std::memory_order_relaxed));
-      continue;
-    }
-    if (active_prepared && !recenter && !build_rate_due) {
-      no_static_esdf_throttled_updates_.fetch_add(1U, std::memory_order_relaxed);
-      const std::uint64_t deferred_raw_revision = raw_world->version.revision;
-      const auto update_period =
-          std::chrono::duration<double>{1.0 / no_static_esdf_update_rate_hz_};
-      const auto retry_not_before =
-          no_static_esdf_last_build_time_ +
-          std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-              update_period);
-      {
-        const std::scoped_lock lock{raw_queue_mutex_};
-        raw_world_scheduler_.defer(std::move(raw_world), retry_not_before);
-      }
-      raw_queue_condition_.notify_all();
-      RCLCPP_INFO_THROTTLE(
-          get_logger(), *get_clock(), 1000,
-          "NO_STATIC_ESDF_DEFERRED raw_revision=%" PRIu64
-          " reason=rate_limited raw_conversion_ms=%.2f raw_updates=%" PRIu64
-          " builds=%" PRIu64 " throttled=%" PRIu64,
-          deferred_raw_revision, raw_conversion_ms,
-          no_static_raw_updates_.load(std::memory_order_relaxed),
-          no_static_esdf_builds_.load(std::memory_order_relaxed),
-          no_static_esdf_throttled_updates_.load(std::memory_order_relaxed));
-      continue;
-    }
-    const DistanceField2D field = DistanceField2D::build(
-        local_occupancy,
-        static_cast<double>(mppi_config_.risk.preferred_distance_m) + 20.0,
-        DistanceFieldSource::kOccupied, planning_worker_pool_.get());
-    const double build_ms = field.stats().duration_ms;
-    const auto float_conversion_started = std::chrono::steady_clock::now();
-    std::vector<float> distances;
-    distances.reserve(field.distancesM().size());
-    for (const double distance_m : field.distancesM()) {
-      distances.push_back(static_cast<float>(distance_m));
-    }
-    const double conversion_ms =
-        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
-                                                  float_conversion_started)
-            .count() +
-        raw_conversion_ms;
-    const GridBounds& bounds = field.bounds();
-    const mppi::EsdfGrid grid{bounds.width_cells, bounds.height_cells,
-                              static_cast<float>(bounds.resolution_m),
-                              static_cast<float>(bounds.origin_x),
-                              static_cast<float>(bounds.origin_y)};
-    std::unique_lock generation_lock{world_generation_publication_mutex_};
-    const mppi::EsdfUploadResult upload = engine_->updateEsdf(
-        mppi::EsdfSnapshot{grid, distances, local_occupied_fingerprint});
-    if (!upload.accepted) {
-      continue;
-    }
-    no_static_esdf_last_build_time_ = build_started_at;
-    no_static_esdf_builds_.fetch_add(1U, std::memory_order_relaxed);
-
-    ProductionMppiPreparedEsdf prepared;
-    {
-      const std::scoped_lock lock{esdf_state_mutex_};
-      if (prepared_esdf_.has_value()) {
-        prepared = *prepared_esdf_;
-      }
-    }
-    prepared.producer_instance_id = raw_world->version.producer_instance_id;
-    prepared.revision = local_occupied_fingerprint;
-    prepared.source_raw_revision = raw_world->version.revision;
-    prepared.source_occupied_fingerprint = local_occupied_fingerprint;
-    prepared.source_stamp_ns = source_stamp_ns;
-    prepared.ready_stamp_ns = get_clock()->now().nanoseconds();
-    prepared.build_ms = build_ms;
-    prepared.esdf_x_pass_ms = field.stats().x_pass_ms;
-    prepared.esdf_y_pass_ms = field.stats().y_pass_ms;
-    prepared.esdf_z_pass_ms = 0.0;
-    prepared.esdf_finalize_ms = field.stats().finalize_ms;
-    prepared.conversion_ms = conversion_ms;
-    prepared.upload_ms = upload.upload_ms;
-    prepared.grid = grid;
-    prepared.distances_m =
-        std::make_shared<const std::vector<float>>(std::move(distances));
-    prepared.raw_occupancy = raw_occupancy;
-    const std::optional<LocalWorldGeneration> local_world_generation =
-        local_world_generation_counter_.issue(raw_world->version, navigation.revision,
-                                              prepared.revision, upload.revision);
-    if (!local_world_generation.has_value()) {
-      {
-        const std::scoped_lock lock{esdf_state_mutex_};
-        prepared_esdf_.reset();
-      }
-      generation_lock.unlock();
-      rejected_world_generation_publications_.fetch_add(1U, std::memory_order_relaxed);
-      if (world_ready_.exchange(false, std::memory_order_acq_rel)) {
-        publishWorldReadiness(false);
-      }
-      RCLCPP_ERROR(get_logger(),
-                   "PRODUCTION_MPPI_ESDF rejected revision=%" PRIu64
-                   " reason=invalid_local_world_generation",
-                   raw_world->version.revision);
-      continue;
-    }
-    prepared.local_world_generation = *local_world_generation;
-    if (const std::shared_ptr<const ProductionNavigationObjective> objective =
-            navigationObjective()) {
-      prepared.search_objective = makeStaticRouteObjective(*objective);
-    }
-    prepared.lattice_search_performed = false;
-    prepared.lattice_continuation_attempt = 0U;
-
-    const bool coherent_generation = productionWorldGenerationCoherent(prepared);
-    {
-      const std::scoped_lock lock{esdf_state_mutex_};
-      if (coherent_generation) {
-        prepared_esdf_ = prepared;
-      } else {
-        prepared_esdf_.reset();
-      }
-    }
-    generation_lock.unlock();
-    if (!coherent_generation) {
-      rejected_world_generation_publications_.fetch_add(1U, std::memory_order_relaxed);
-      if (world_ready_.exchange(false, std::memory_order_acq_rel)) {
-        publishWorldReadiness(false);
-      }
-      RCLCPP_ERROR(get_logger(),
-                   "PRODUCTION_MPPI_ESDF rejected revision=%" PRIu64
-                   " reason=mixed_local_world_generation",
-                   raw_world->version.revision);
-      continue;
-    }
-    auto guide_world = std::make_shared<const ProductionMppiPreparedEsdf>(prepared);
-    {
-      const std::scoped_lock lock{guide_queue_mutex_};
-      if (pending_guide_world_) {
-        dropped_guide_worlds_.fetch_add(1U, std::memory_order_relaxed);
-      }
-      pending_guide_world_ = std::move(guide_world);
-    }
-    guide_queue_condition_.notify_all();
-    if (!world_ready_.exchange(true, std::memory_order_acq_rel)) {
-      publishWorldReadiness(true);
-    }
-
-    RCLCPP_INFO(
-        get_logger(),
-        "PRODUCTION_MPPI_ESDF revision=%" PRIu64 " raw_revision=%" PRIu64
-        " build_ms=%.2f conversion_ms=%.2f upload_ms=%.2f "
-        "raw_to_ready_ms=%.2f full_cells=%zu local_cells=%zu dimensions=%dx%d "
-        "recenter=%s builds=%" PRIu64 " throttled=%" PRIu64 " dropped_raw=%" PRIu64
-        " dropped_guide_worlds=%" PRIu64,
-        prepared.revision, raw_world->version.revision, prepared.build_ms,
-        prepared.conversion_ms, prepared.upload_ms,
-        static_cast<double>(prepared.ready_stamp_ns - prepared.source_stamp_ns) / 1.0e6,
-        raw_occupancy->cellCount(), local_occupancy.cellCount(), prepared.grid.width,
-        prepared.grid.height, recenter ? "true" : "false",
-        no_static_esdf_builds_.load(std::memory_order_relaxed),
-        no_static_esdf_throttled_updates_.load(std::memory_order_relaxed),
-        dropped_raw_snapshots_.load(std::memory_order_relaxed),
-        dropped_guide_worlds_.load(std::memory_order_relaxed));
   }
 }
 

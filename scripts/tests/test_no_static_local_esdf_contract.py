@@ -18,18 +18,7 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
         config = yaml.safe_load((PACKAGE / "config/urban_mvp.yaml").read_text())
         parameters = config["production_mppi_node"]["ros__parameters"]
 
-        self.assertGreater(parameters["no_static_esdf_update_rate_hz"], 0.0)
-        self.assertGreater(parameters["no_static_esdf_half_extent_m"], 0.0)
-        self.assertGreaterEqual(parameters["no_static_esdf_recenter_margin_m"], 0.0)
-        self.assertLess(
-            parameters["no_static_esdf_recenter_margin_m"],
-            parameters["no_static_esdf_half_extent_m"],
-        )
         self.assertGreater(parameters["no_static_3d_esdf_update_rate_hz"], 0.0)
-        self.assertLessEqual(
-            parameters["no_static_3d_esdf_update_rate_hz"],
-            parameters["no_static_esdf_update_rate_hz"],
-        )
         self.assertGreater(parameters["no_static_3d_esdf_horizontal_half_extent_m"], 0.0)
         self.assertGreater(parameters["no_static_3d_esdf_vertical_half_extent_m"], 0.0)
         self.assertGreaterEqual(
@@ -47,13 +36,13 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
             parameters["no_static_3d_esdf_vertical_half_extent_m"],
         )
 
-    def test_no_static_build_crops_before_distance_transform(self) -> None:
-        source = (PACKAGE / "src/production_mppi_node_esdf.cpp").read_text()
+    def test_no_static_build_selects_local_3d_window_before_distance_update(self) -> None:
+        source = (PACKAGE / "src/production_mppi_node_observed_esdf.cpp").read_text()
 
-        crop = source.index("cropOccupancyGrid")
-        distance_field = source.index("DistanceField2D::build", crop)
-        self.assertLess(crop, distance_field)
-        self.assertIn("localEsdfNeedsRecenter", source)
+        local_window = source.index("selectLocalObservedEsdfBounds")
+        distance_field = source.index("updateObservedEsdf3D", local_window)
+        self.assertLess(local_window, distance_field)
+        self.assertIn("localObservedEsdfNeedsRecenter", source)
         self.assertIn("source_occupied_fingerprint", source)
 
     def test_execution_validates_latest_reconstructed_raw_world_independently(
@@ -69,10 +58,11 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
             )
         )
 
-        self.assertIn("latest_raw_world_.store", raw_input)
-        self.assertIn("latest_raw_world_.load", execution)
-        self.assertIn("latest_raw_world->occupancy.get()", execution)
-        self.assertIn("latest_raw_occupancy", execution)
+        self.assertIn("latest_raw_world_3d_.store", raw_input)
+        self.assertIn("latest_raw_world_3d_.load", execution)
+        self.assertIn("committed_world_current", execution)
+        self.assertIn("execution_owner", execution)
+        self.assertNotIn("ProductionMppiRawWorld2D", raw_input)
         self.assertNotIn("rawOccupancyGridViewFromRos", execution)
 
     def test_latest_lidar_safety_age_covers_pose_alignment_wait(self) -> None:

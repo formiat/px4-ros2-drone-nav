@@ -36,9 +36,7 @@ void ProductionMppiNode::planningTick() {
   const bool direct_tracking_interception =
       objective && objective->continuous_tracking && tracking_objective != nullptr &&
       tracking_objective->direct_interception_active;
-  const bool observed_3d_world =
-      !use_static_map_ &&
-      no_static_world_model_ == ProductionNoStaticWorldModel::kObservedOccupancy3D;
+  const bool observed_3d_world = !use_static_map_;
   if (handleRequestedExecutionRevocation(tick_entry_ns)) {
     // A callback-requested epoch is a hard barrier; retain it until revoke
     // publication has linearized with the exact snapshot.
@@ -51,8 +49,6 @@ void ProductionMppiNode::planningTick() {
                                       line_of_sight_generation);
   const std::uint64_t effective_guide_generation = directTrackingGuideGeneration(
       direct_tracking_interception, line_of_sight_generation);
-  const StaticRouteObjective current_route_objective =
-      objective ? makeStaticRouteObjective(*objective) : StaticRouteObjective{};
   const std::uint64_t required_route_epoch =
       minimum_tracking_route_mission_epoch_.load(std::memory_order_acquire);
   const std::uint64_t required_route_sample =
@@ -103,8 +99,6 @@ void ProductionMppiNode::planningTick() {
     const std::scoped_lock lock{world_generation_publication_mutex_, esdf_state_mutex_};
     esdf = prepared_esdf_;
   }
-  const std::shared_ptr<const ProductionMppiRawWorld2D> latest_raw_world =
-      latest_raw_world_.load(std::memory_order_acquire);
   const std::shared_ptr<const ProductionMppiRawWorld3D> latest_raw_world_3d =
       latest_raw_world_3d_.load(std::memory_order_acquire);
   const bool latest_lidar_evidence_identity_conflicted =
@@ -113,11 +107,8 @@ void ProductionMppiNode::planningTick() {
       latest_lidar_evidence_identity_conflicted
           ? nullptr
           : latest_lidar_evidence_.load(std::memory_order_acquire);
-  const bool uses_3d_route =
-      use_static_map_ ||
-      no_static_world_model_ == ProductionNoStaticWorldModel::kObservedOccupancy3D;
   const std::shared_ptr<const ExecutionRouteSnapshot3D> execution_snapshot =
-      uses_3d_route ? execution_route_store_.snapshot() : nullptr;
+      execution_route_store_.snapshot();
   // Timestamp the immutable planning view only after all callback-owned inputs
   // have been captured. A concurrently published evidence value may have a
   // receive stamp later than tick entry, but never later than this boundary.
@@ -134,14 +125,10 @@ void ProductionMppiNode::planningTick() {
   if (use_static_map_) {
     observation_age_ms = 0.0;
   } else if (esdf.has_value() && !raw_world_identity_conflicted) {
-    if (observed_3d_world && latest_raw_world_3d != nullptr &&
+    if (latest_raw_world_3d != nullptr &&
         latest_raw_world_3d->version.producer_instance_id ==
             esdf->producer_instance_id) {
       observation_age_ms = committedRawWorldAgeMs(latest_raw_world_3d.get(), now_ns);
-    } else if (!observed_3d_world && latest_raw_world != nullptr &&
-               latest_raw_world->version.producer_instance_id ==
-                   esdf->producer_instance_id) {
-      observation_age_ms = committedRawWorldAgeMs(latest_raw_world.get(), now_ns);
     }
   }
   const double control_feedback_age_ms =
@@ -152,11 +139,9 @@ void ProductionMppiNode::planningTick() {
       world_ready_.load(std::memory_order_acquire) && esdf.has_value() &&
       observation_age_ms >= 0.0 &&
       observation_age_ms <= maximum_esdf_age_ms_ + stale_esdf_execution_window_ms_;
-  const NavigationHealthAssessment navigation_health = updateNavigationHealth(
-      objective, applied_control, execution_horizon_owner, execution_snapshot,
-      !uses_3d_route && esdf.has_value() && esdf->global_guide_generation != 0U &&
-          esdf->route_2d_projection != nullptr && !esdf->route_2d_projection->empty(),
-      world_current, now_ns);
+  const NavigationHealthAssessment navigation_health =
+      updateNavigationHealth(objective, applied_control, execution_horizon_owner,
+                             execution_snapshot, false, world_current, now_ns);
   if (navigation_health.terminal) {
     publishFailClosedExecutionRevocation(
         terminalExecutionReason(navigation_health.failure), now_ns);
@@ -354,78 +339,29 @@ void ProductionMppiNode::planningTick() {
       clampToFlightEnvelope(navigation.state.z, flight_envelope_config_)
           .value_or(flight_envelope_config_.minimum_target_z_m),
   };
-  if (uses_3d_route) {
-    route_execution = resolveRouteExecution3D(
-        *esdf, objective.get(), navigation, execution_input, latest_raw_world_3d,
-        required_route_sample, direct_tracking_identity, observed_3d_world);
-    const PendingCertifiedRouteRecoveryResult3D pending_recovery =
-        recoverPendingCertifiedRouteLiveness3D(
-            pending_certified_route_mailbox_, route_execution.pending_route,
-            PendingCertifiedRouteRecoveryObservation3D{
-                .direct_tracking_requested =
-                    route_execution.direct_tracking_identity.has_value(),
-                .execution_owner_available = route_execution.execution_owner_available,
-                .pending_activation = route_execution.pending_activation,
-            });
-    if (pending_recovery.pending_acknowledged) {
-      recordPendingRouteStrategyOutcome(route_execution.pending_route, false);
-    }
-    if (pending_recovery.request_successor) {
-      requestGuideRelease(GlobalGuideReleaseReason::kNoActiveGuide, 0U);
-    }
-    route_usable = route_execution.route_usable;
-    route_execution_status = route_execution.status;
-    measured_route_projection = route_execution.projection;
-    route_hold_position = route_execution.hold_position;
-  } else {
-    const bool route_objective_matches = staticRouteObjectiveMatches(
-        esdf->route_objective, current_route_objective, required_route_sample,
-        std::numeric_limits<double>::infinity());
-    route_usable = !direct_tracking_interception && route_objective_matches;
-    if (!direct_tracking_interception && objective && objective->continuous_tracking &&
-        !route_objective_matches) {
-      RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 1000,
-          "ROUTE_HANDOFF status=waiting_for_current_route continuous_tracking=true "
-          "current_epoch=%" PRIu64 " current_sample=%" PRIu64
-          " required_sample=%" PRIu64 " route_epoch=%" PRIu64 " route_sample=%" PRIu64,
-          objective->mission_epoch, objective->sample_sequence, required_route_sample,
-          esdf->route_objective.mission_epoch, esdf->route_objective.sample_sequence);
-    }
-    if (tracked_route_generation_ != esdf->global_guide_generation) {
-      tracked_route_generation_ = esdf->global_guide_generation;
-      tracked_route_station_m_ = 0.0;
-    }
-    if (route_usable && esdf->route_2d_projection) {
-      measured_route_projection = projectOntoGlobalGuide(
-          *esdf->route_2d_projection, Point2{navigation.state.x, navigation.state.y},
-          tracked_route_station_m_);
-    }
-    if (measured_route_projection.valid) {
-      tracked_route_station_m_ =
-          std::max(tracked_route_station_m_, measured_route_projection.station_m);
-    }
-    if (measured_route_projection.valid &&
-        measured_route_projection.cross_track_m >
-            active_guide_config_.maximum_cross_track_m) {
-      route_usable = false;
-      route_execution_status = RouteExecutionStatus3D::kExcessiveCrossTrack;
-      requestGuideRelease(GlobalGuideReleaseReason::kObjectiveChanged,
-                          esdf->global_guide_generation);
-      measured_route_projection = {};
-    } else if (route_usable && !measured_route_projection.valid) {
-      route_usable = false;
-      route_execution_status = RouteExecutionStatus3D::kInvalidProjection;
-      requestGuideRelease(GlobalGuideReleaseReason::kObjectiveChanged,
-                          esdf->global_guide_generation);
-    } else if (route_usable) {
-      route_execution_status = RouteExecutionStatus3D::kUsable;
-    } else if (!route_objective_matches) {
-      route_execution_status = RouteExecutionStatus3D::kObjectiveMismatch;
-    }
+  route_execution = resolveRouteExecution3D(
+      *esdf, objective.get(), navigation, execution_input, latest_raw_world_3d,
+      required_route_sample, direct_tracking_identity, observed_3d_world);
+  const PendingCertifiedRouteRecoveryResult3D pending_recovery =
+      recoverPendingCertifiedRouteLiveness3D(
+          pending_certified_route_mailbox_, route_execution.pending_route,
+          PendingCertifiedRouteRecoveryObservation3D{
+              .direct_tracking_requested =
+                  route_execution.direct_tracking_identity.has_value(),
+              .execution_owner_available = route_execution.execution_owner_available,
+              .pending_activation = route_execution.pending_activation,
+          });
+  if (pending_recovery.pending_acknowledged) {
+    recordPendingRouteStrategyOutcome(route_execution.pending_route, false);
   }
-  const CertifiedRouteSuffix3D* const activated_route =
-      uses_3d_route ? route_execution.route.get() : nullptr;
+  if (pending_recovery.request_successor) {
+    requestGuideRelease(GlobalGuideReleaseReason::kNoActiveGuide, 0U);
+  }
+  route_usable = route_execution.route_usable;
+  route_execution_status = route_execution.status;
+  measured_route_projection = route_execution.projection;
+  route_hold_position = route_execution.hold_position;
+  const CertifiedRouteSuffix3D* const activated_route = route_execution.route.get();
   const ProductionRouteGeometry3D* const route_geometry =
       activated_route != nullptr ? activated_route->geometry.get() : nullptr;
   const std::uint64_t route_generation = activated_route != nullptr
@@ -472,8 +408,7 @@ void ProductionMppiNode::planningTick() {
           : std::span<const Point2>{};
   const bool route_execution_blocked =
       !direct_tracking_interception && objective && !route_usable;
-  const double route_station_m =
-      uses_3d_route ? route_execution.station_m : tracked_route_station_m_;
+  const double route_station_m = route_execution.station_m;
   GlobalGuideProjection route_projection = measured_route_projection;
   if (route_projection.valid) {
     route_projection.station_m = route_station_m;
@@ -889,8 +824,7 @@ void ProductionMppiNode::planningTick() {
       .target = target,
       .pose_revision = execution_input->poseRevision(),
       .obstacle_revision =
-          planningRawRevision(use_static_map_, no_static_world_model_, esdf->revision,
-                              latest_raw_world, latest_raw_world_3d),
+          planningRawRevision(use_static_map_, esdf->revision, latest_raw_world_3d),
       .expected_esdf_revision = esdf->local_world_generation.gpu_esdf_revision,
       .planning_stamp_ns = now_ns,
       .previous_applied_control = execution_input->previousControl(),
@@ -947,7 +881,6 @@ void ProductionMppiNode::planningTick() {
           .route_cross_track_m = route_projection.cross_track_m,
           .planning_state = planning_state,
           .direct_tracking_interception = direct_tracking_interception,
-          .uses_3d_route = uses_3d_route,
       });
   if (!controller_tick.has_value()) {
     return;
@@ -994,7 +927,6 @@ void ProductionMppiNode::planningTick() {
       .planning_state = planning_state,
       .previous_control_source = execution_input_preparation.previous_control_source,
       .route_required_risk_tier = route_required_risk_tier,
-      .uses_3d_route = uses_3d_route,
       .route_usable = route_usable,
       .direct_tracking_interception = direct_tracking_interception,
       .temporary_frontier_is_terminal = temporary_frontier_is_terminal,

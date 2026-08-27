@@ -106,23 +106,7 @@ namespace drone_city_nav {
 
 enum class ProductionPlanningSearchKind : std::uint8_t {
   kNone,
-  kLattice2D,
   kLattice3D,
-};
-
-enum class ProductionNoStaticWorldModel : std::uint8_t {
-  kOccupancy2D,
-  kObservedOccupancy3D,
-};
-
-enum class ProductionGuideCandidateValidationStatus : std::uint8_t {
-  kNotAttempted,
-  kAccepted,
-  kUnavailableLatestWorld,
-  kInvalidProjection,
-  kExcessiveCrossTrack,
-  kRawValidationRejected,
-  kLifecycleRejected,
 };
 
 struct ProductionMppiPreparedEsdf;
@@ -136,16 +120,6 @@ struct ProductionMppiExecutionCycle;
 struct ProductionMppiHorizonCommit;
 enum class ProductionMppiHoldOwnershipTransition3D : std::uint8_t;
 enum class ProductionMppiHorizonCommitStatus : std::uint8_t;
-
-struct ProductionGuideCandidateValidation {
-  std::shared_ptr<const ProductionMppiPreparedEsdf> publication_world;
-  RawGuideValidationResult raw_validation{};
-  Point2 validation_position{};
-  std::uint64_t validation_revision{0U};
-  ProductionGuideCandidateValidationStatus status{
-      ProductionGuideCandidateValidationStatus::kNotAttempted};
-  bool accepted{false};
-};
 
 struct ProductionMaterializedRouteProposal3D {
   MaterializedRouteProposal3D identity{};
@@ -191,7 +165,6 @@ struct ProductionMppiPreparedEsdf {
   RouteInstanceId3D bound_route_instance_id{};
   mppi::EsdfGrid grid{};
   std::shared_ptr<const std::vector<float>> distances_m;
-  std::shared_ptr<const OccupancyGrid2D> raw_occupancy;
   std::shared_ptr<const ObservedOccupancyGrid3D> observed_occupancy;
   std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_world_owner;
   ObservedEsdfResource3D observed_esdf_resource{};
@@ -303,8 +276,6 @@ struct ProductionMppiPreparedEsdf {
   std::uint64_t lattice_validation_revision{0U};
   RawGuideValidationStatus lattice_raw_validation_status{
       RawGuideValidationStatus::kInvalidGuide};
-  ProductionGuideCandidateValidationStatus guide_candidate_validation_status{
-      ProductionGuideCandidateValidationStatus::kNotAttempted};
   bool static_route_extension_request{false};
   std::uint64_t static_route_extension_base_generation{0U};
   bool static_route_replan_request{false};
@@ -374,8 +345,6 @@ struct ProductionMppiDiagnosticsSnapshot {
 
 [[nodiscard]] const char*
 productionPlanningSearchKindName(ProductionPlanningSearchKind kind) noexcept;
-[[nodiscard]] const char* productionGuideCandidateValidationStatusName(
-    ProductionGuideCandidateValidationStatus status) noexcept;
 
 class ProductionMppiNode final : public rclcpp::Node {
 public:
@@ -392,12 +361,9 @@ private:
   void onVehicleStatus(const px4_msgs::msg::VehicleStatus& message);
   void onVehicleLandDetected(const px4_msgs::msg::VehicleLandDetected& message);
   void onNavigationReadiness(const std_msgs::msg::Bool& message);
-  void onRawObstacleSnapshot(msg::RawObstacleSnapshot::ConstSharedPtr message);
-  void onRawObstacleDelta(msg::RawObstacleDelta::ConstSharedPtr message);
   void onRawObstacleSnapshot3D(msg::RawObstacleSnapshot3D::ConstSharedPtr message);
   void onRawObstacleDelta3D(msg::RawObstacleDelta3D::ConstSharedPtr message);
   void onLatestLidarObstacleScan(const msg::LatestLidarObstacleScan& message);
-  void queueRawWorld(const RawObstacleGridUpdate& update, double reconstruction_ms);
   void queueRawWorld3D(const RawObstacleGridUpdate3D& update, double reconstruction_ms);
   void onMemoryStatus(const msg::ObstacleMemoryStatus& message);
   void onAppliedControl(const msg::MppiControlFeedback& message);
@@ -464,9 +430,6 @@ private:
   processObservedTopology3D(const ProductionMppiRawWorld3D& raw_world);
   void queueLatestObservedWorldForPose(const ProductionMppiNavigation& navigation);
   void guideWorker(std::stop_token stop_token);
-  [[nodiscard]] ProductionGuideCandidateValidation validateGuideCandidateOnLatestWorld(
-      const std::shared_ptr<const std::vector<Point2>>& candidate,
-      bool reaches_mission_goal);
   void processGuideSearch3D(const ProductionMppiPreparedEsdf& world,
                             const ProductionMppiNavigation& navigation);
   [[nodiscard]] RouteSegmentCompletionAssessment3D
@@ -684,7 +647,6 @@ private:
   double maximum_control_feedback_age_ms_{200.0};
   double latest_lidar_obstacle_maximum_age_ms_{250.0};
   double no_static_guide_lookahead_m_{30.0};
-  bool frontier_blacklist_enabled_{false};
   double frontier_blacklist_ttl_s_{15.0};
   double no_static_soft_tabu_penalty_{40.0};
   double no_static_soft_tabu_sample_spacing_m_{4.0};
@@ -692,9 +654,6 @@ private:
   double no_static_adaptive_minimum_guide_length_m_{24.0};
   double no_static_adaptive_minimum_endpoint_displacement_m_{12.0};
   std::size_t no_static_adaptive_validation_states_{8192U};
-  double no_static_esdf_update_rate_hz_{2.5};
-  double no_static_esdf_half_extent_m_{100.0};
-  double no_static_esdf_recenter_margin_m_{70.0};
   double no_static_3d_esdf_update_rate_hz_{1.0};
   LocalObservedEsdfWindow3D no_static_3d_esdf_window_{};
   double no_static_3d_esdf_incremental_maximum_rebuild_ratio_{0.15};
@@ -719,8 +678,6 @@ private:
   DirectTrackingManeuverLifecycle direct_tracking_maneuver_lifecycle_{};
   std::string target_mode_{"active_route_guide"};
   bool use_static_map_{true};
-  ProductionNoStaticWorldModel no_static_world_model_{
-      ProductionNoStaticWorldModel::kObservedOccupancy3D};
   bool cooperative_traffic_enabled_{false};
   bool noncooperative_avoidance_enabled_{false};
   std::string noncooperative_tracks_topic_;
@@ -808,8 +765,6 @@ private:
   std::shared_ptr<const std::vector<float>> static_esdf_3d_;
   mppi::EsdfGrid static_esdf_grid_{};
   bool static_esdf_uploaded_{false};
-  std::uint64_t tracked_route_generation_{0U};
-  double tracked_route_station_m_{0.0};
   std::mutex static_route_extension_mutex_;
   bool static_route_extension_request_in_flight_{false};
   std::uint64_t static_route_extension_in_flight_generation_{0U};
@@ -855,11 +810,8 @@ private:
 
   std::mutex raw_queue_mutex_;
   std::condition_variable_any raw_queue_condition_;
-  LatestWinsDeferredScheduler<std::shared_ptr<const ProductionMppiRawWorld2D>>
-      raw_world_scheduler_{};
   // The committed immutable payload remains authoritative while an announced
   // successor is still pending its status/payload join.
-  std::atomic<std::shared_ptr<const ProductionMppiRawWorld2D>> latest_raw_world_;
   LatestWinsDeferredScheduler<std::shared_ptr<const ProductionMppiRawWorld3D>>
       raw_world_scheduler_3d_{};
   std::atomic<std::shared_ptr<const ProductionMppiRawWorld3D>> latest_raw_world_3d_;
@@ -883,9 +835,8 @@ private:
   std::atomic<std::shared_ptr<const VersionedLatestLidarEvidence3D>>
       latest_lidar_evidence_;
   std::mutex raw_reconstruction_mutex_;
-  RawObstacleDeltaAccumulator raw_delta_accumulator_;
   RawObstacleDeltaAccumulator3D raw_delta_accumulator_3d_;
-  std::chrono::steady_clock::time_point no_static_esdf_last_build_time_{};
+  std::chrono::steady_clock::time_point no_static_3d_esdf_last_build_time_{};
   LocalWorldGenerationCounter local_world_generation_counter_{};
   bool launch_support_evaluated_{false};
   std::optional<ProprioceptiveFreeSpaceSeed3D> launch_support_seed_;
@@ -909,11 +860,6 @@ private:
   std::shared_ptr<const ProductionMppiPreparedEsdf> pending_guide_world_;
   std::atomic<std::uint64_t> dropped_guide_worlds_{0U};
   std::jthread guide_worker_;
-  std::atomic<std::uint64_t> guide_release_generation_{0U};
-  std::atomic<GlobalGuideReleaseReason> guide_release_reason_{
-      GlobalGuideReleaseReason::kStalled};
-  std::optional<GlobalGuideCandidate> pending_global_guide_;
-  std::vector<LatticeFrontierBlacklistEntry> frontier_blacklist_;
   std::vector<TimedLattice3DSoftTabuEntry> no_static_soft_tabu_3d_;
   std::int64_t no_static_adaptive_search_until_ns_{0};
 
@@ -988,8 +934,6 @@ private:
   rclcpp::Subscription<px4_msgs::msg::VehicleLandDetected>::SharedPtr
       vehicle_land_detected_sub_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr navigation_readiness_sub_;
-  rclcpp::Subscription<msg::RawObstacleSnapshot>::SharedPtr raw_snapshot_sub_;
-  rclcpp::Subscription<msg::RawObstacleDelta>::SharedPtr raw_delta_sub_;
   rclcpp::Subscription<msg::RawObstacleSnapshot3D>::SharedPtr raw_snapshot_3d_sub_;
   rclcpp::Subscription<msg::RawObstacleDelta3D>::SharedPtr raw_delta_3d_sub_;
   rclcpp::Subscription<msg::LatestLidarObstacleScan>::SharedPtr

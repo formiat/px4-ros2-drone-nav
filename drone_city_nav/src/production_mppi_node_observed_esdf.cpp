@@ -175,11 +175,11 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
       completed_esdf_builds, no_static_3d_esdf_full_audit_interval_builds_);
   const auto build_started_at = std::chrono::steady_clock::now();
   const bool first_build =
-      no_static_esdf_last_build_time_ == std::chrono::steady_clock::time_point{};
+      no_static_3d_esdf_last_build_time_ == std::chrono::steady_clock::time_point{};
   const bool build_rate_due =
-      first_build ||
-      std::chrono::duration<double>(build_started_at - no_static_esdf_last_build_time_)
-              .count() >= 1.0 / no_static_3d_esdf_update_rate_hz_;
+      first_build || std::chrono::duration<double>(build_started_at -
+                                                   no_static_3d_esdf_last_build_time_)
+                             .count() >= 1.0 / no_static_3d_esdf_update_rate_hz_;
   const std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_world_owner =
       execution_owner->deriveRouteEvidence(free_space_seed, launch_support_contact_);
   if (!observed_raw_world_owner ||
@@ -241,7 +241,7 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
     const auto update_period =
         std::chrono::duration<double>{1.0 / no_static_3d_esdf_update_rate_hz_};
     const auto retry_not_before =
-        no_static_esdf_last_build_time_ +
+        no_static_3d_esdf_last_build_time_ +
         std::chrono::duration_cast<std::chrono::steady_clock::duration>(update_period);
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 1000,
@@ -487,7 +487,7 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
     return std::nullopt;
   }
   if (field.stats.mode != ObservedEsdf3DBuildMode::kReused) {
-    no_static_esdf_last_build_time_ = build_started_at;
+    no_static_3d_esdf_last_build_time_ = build_started_at;
     no_static_esdf_builds_.fetch_add(1U, std::memory_order_relaxed);
   }
   std::atomic<std::uint64_t>* mode_counter = nullptr;

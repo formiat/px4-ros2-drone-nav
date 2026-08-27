@@ -434,12 +434,6 @@ bool ProductionMppiNode::handleRequestedExecutionRevocation(const std::int64_t n
 
 void ProductionMppiNode::publishFailClosedExecutionRevocation(
     const ProductionMppiExecutionReason reason, const std::int64_t now_ns) {
-  const bool snapshot_execution_enabled =
-      use_static_map_ ||
-      no_static_world_model_ == ProductionNoStaticWorldModel::kObservedOccupancy3D;
-  if (!snapshot_execution_enabled) {
-    return;
-  }
   const std::shared_ptr<const ExecutionRouteSnapshot3D> snapshot =
       execution_route_store_.snapshot();
   const bool authority_present =

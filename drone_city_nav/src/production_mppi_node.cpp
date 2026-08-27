@@ -77,12 +77,6 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   configureOptionalNavigationConstraints();
   no_static_guide_lookahead_m_ =
       declare_parameter<double>("no_static_guide_lookahead_m", 30.0);
-  no_static_esdf_update_rate_hz_ =
-      declare_parameter<double>("no_static_esdf_update_rate_hz", 2.5);
-  no_static_esdf_half_extent_m_ =
-      declare_parameter<double>("no_static_esdf_half_extent_m", 100.0);
-  no_static_esdf_recenter_margin_m_ =
-      declare_parameter<double>("no_static_esdf_recenter_margin_m", 70.0);
   no_static_3d_esdf_update_rate_hz_ =
       declare_parameter<double>("no_static_3d_esdf_update_rate_hz", 1.0);
   no_static_3d_esdf_window_.horizontal_half_extent_m =
@@ -486,8 +480,6 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       static_cast<std::size_t>(frontier_validation_expansion_interval);
   lattice_config_.frontier_goal_distance_weight =
       declare_parameter<double>("global_lattice_frontier_goal_distance_weight", 0.25);
-  frontier_blacklist_enabled_ =
-      declare_parameter<bool>("global_lattice_frontier_blacklist_enabled", false);
   lattice_config_.frontier_blacklist_radius_m =
       declare_parameter<double>("global_lattice_frontier_blacklist_radius_m", 6.0);
   lattice_config_.frontier_blacklist_heading_tolerance_bins =
@@ -778,10 +770,6 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       !(no_static_adaptive_minimum_guide_length_m_ > 0.0) ||
       !(no_static_adaptive_minimum_endpoint_displacement_m_ > 0.0) ||
       no_static_adaptive_validation_states_ == 0U ||
-      !(no_static_esdf_update_rate_hz_ > 0.0) ||
-      !(no_static_esdf_half_extent_m_ > 0.0) ||
-      !(no_static_esdf_recenter_margin_m_ >= 0.0) ||
-      no_static_esdf_recenter_margin_m_ >= no_static_esdf_half_extent_m_ ||
       !(no_static_3d_esdf_update_rate_hz_ > 0.0) ||
       !localObservedEsdfWindow3DIsValid(no_static_3d_esdf_window_) ||
       !(no_static_3d_esdf_incremental_maximum_rebuild_ratio_ > 0.0) ||
@@ -939,11 +927,10 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       "acceleration_cap=%.1fmps2 jerk_cap=%.1fmps3 speed_tracking_weight=%.2f "
       "constrained_route_speed_limit=%.1fmps head_progress=%.2fs "
       "far_cost_sampling=(%.2fs,%u) liveness=%s "
-      "sticky_guide=true frontier_blacklist=%s guide_replan_remaining=%.1fm "
+      "sticky_guide=true guide_replan_remaining=%.1fm "
       "guide_heading_blend=(%.1f,%.1f)mps planner_workers=%zu "
-      "planner_tick_phase_ms=%.1f no_static_world=%s "
-      "no_static_esdf=(2d=%.1fHz/%.1f/%.1fm,"
-      "3d=%.1fHz/h%.1f/v%.1f/hm%.1f/vm%.1fm/incremental_ratio=%.2f/"
+      "planner_tick_phase_ms=%.1f no_static_world=observed_occupancy_3d "
+      "no_static_esdf=(%.1fHz/h%.1f/v%.1f/hm%.1f/vm%.1fm/incremental_ratio=%.2f/"
       "audit_builds=%zu)",
       mppi_config_.rollouts, rollout_budget_config_.open_static_rollouts,
       rollout_budget_config_.direct_tracking_rollouts,
@@ -960,13 +947,10 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       mppi_config_.horizon_sampling.full_rate_duration_s,
       mppi_config_.horizon_sampling.far_cost_stride,
       liveness_config_.enabled ? "true" : "false",
-      frontier_blacklist_enabled_ ? "true" : "false",
       active_guide_config_.minimum_remaining_m,
       active_guide_config_.velocity_heading_low_speed_mps,
       active_guide_config_.velocity_heading_high_speed_mps, planner_worker_count_,
-      planning_tick_phase_offset_s_ * 1000.0, "observed_occupancy_3d",
-      no_static_esdf_update_rate_hz_, no_static_esdf_half_extent_m_,
-      no_static_esdf_recenter_margin_m_, no_static_3d_esdf_update_rate_hz_,
+      planning_tick_phase_offset_s_ * 1000.0, no_static_3d_esdf_update_rate_hz_,
       no_static_3d_esdf_window_.horizontal_half_extent_m,
       no_static_3d_esdf_window_.vertical_half_extent_m,
       no_static_3d_esdf_window_.horizontal_recenter_margin_m,

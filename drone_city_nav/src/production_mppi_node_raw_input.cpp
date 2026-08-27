@@ -88,144 +88,9 @@ statusAnnouncesRawUpdate(const msg::ObstacleMemoryStatus& message) noexcept {
 
 } // namespace
 
-void ProductionMppiNode::onRawObstacleSnapshot(
-    msg::RawObstacleSnapshot::ConstSharedPtr message) {
-  if (use_static_map_) {
-    return;
-  }
-  const auto started = std::chrono::steady_clock::now();
-  const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
-  const ProducerEpochAdmissionConfig config =
-      production_mppi_raw_input_detail::producerEpochConfig(
-          maximum_esdf_age_ms_, stale_esdf_execution_window_ms_);
-  RawObstacleGridUpdate update;
-  {
-    const std::scoped_lock lock{execution_evidence_commit_mutex_, input_mutex_,
-                                raw_reconstruction_mutex_};
-    update = raw_delta_accumulator_.apply(
-        *message, latest_observation_tracker_.admissionState(), receive_stamp_ns,
-        receive_stamp_ns, config, message->grid.header.frame_id == frame_id_);
-    if (update.current_identity_conflict && !raw_world_identity_conflicted_) {
-      raw_world_identity_conflicted_ = true;
-      latest_raw_world_.store(nullptr, std::memory_order_release);
-      invalidateAppliedControlWitnessLocked();
-      requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
-    }
-  }
-  if (!update.accepted()) {
-    RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 1000,
-        "RAW_OBSTACLE_FULL rejected status=%s producer=%" PRIu64 " revision=%" PRIu64,
-        rawObstacleGridUpdateStatusName(update.status), message->producer_instance_id,
-        message->obstacle_snapshot_revision);
-    return;
-  }
-  const double reconstruction_ms = std::chrono::duration<double, std::milli>(
-                                       std::chrono::steady_clock::now() - started)
-                                       .count();
-  queueRawWorld(update, reconstruction_ms);
-}
-
-void ProductionMppiNode::onRawObstacleDelta(
-    msg::RawObstacleDelta::ConstSharedPtr message) {
-  if (use_static_map_) {
-    return;
-  }
-  const auto started = std::chrono::steady_clock::now();
-  const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
-  const ProducerEpochAdmissionConfig config =
-      production_mppi_raw_input_detail::producerEpochConfig(
-          maximum_esdf_age_ms_, stale_esdf_execution_window_ms_);
-  RawObstacleGridUpdate update;
-  {
-    const std::scoped_lock lock{execution_evidence_commit_mutex_, input_mutex_,
-                                raw_reconstruction_mutex_};
-    update = raw_delta_accumulator_.apply(
-        *message, latest_observation_tracker_.admissionState(), receive_stamp_ns,
-        receive_stamp_ns, config, message->header.frame_id == frame_id_);
-    if (update.current_identity_conflict && !raw_world_identity_conflicted_) {
-      raw_world_identity_conflicted_ = true;
-      latest_raw_world_.store(nullptr, std::memory_order_release);
-      invalidateAppliedControlWitnessLocked();
-      requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
-    }
-  }
-  if (!update.accepted()) {
-    if (update.status == RawObstacleGridUpdateStatus::kInvalidMessage ||
-        update.status == RawObstacleGridUpdateStatus::kIdentityConflict) {
-      RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 1000,
-          "RAW_OBSTACLE_DELTA rejected status=%s producer=%" PRIu64 " base=%" PRIu64
-          " revision=%" PRIu64,
-          rawObstacleGridUpdateStatusName(update.status), message->producer_instance_id,
-          message->base_snapshot_revision, message->obstacle_snapshot_revision);
-    }
-    return;
-  }
-  const double reconstruction_ms = std::chrono::duration<double, std::milli>(
-                                       std::chrono::steady_clock::now() - started)
-                                       .count();
-  queueRawWorld(update, reconstruction_ms);
-}
-
-void ProductionMppiNode::queueRawWorld(const RawObstacleGridUpdate& update,
-                                       const double reconstruction_ms) {
-  const std::int64_t ready_stamp_ns = get_clock()->now().nanoseconds();
-  const ProducerEpochAdmissionConfig config =
-      production_mppi_raw_input_detail::producerEpochConfig(
-          maximum_esdf_age_ms_, stale_esdf_execution_window_ms_);
-  auto world =
-      std::make_shared<const ProductionMppiRawWorld2D>(ProductionMppiRawWorld2D{
-          .version =
-              RawMapVersion{
-                  .producer_instance_id = update.state.producer_instance_id,
-                  .base_snapshot_revision = update.state.base_snapshot_revision,
-                  .revision = update.state.obstacle_snapshot_revision,
-              },
-          .source_stamp_ns = update.evidence_observation.source_stamp_ns,
-          .receive_stamp_ns = update.evidence_observation.receive_stamp_ns,
-          .ready_stamp_ns = ready_stamp_ns,
-          .reconstruction_ms = reconstruction_ms,
-          .occupancy = update.state.occupancy,
-      });
-  bool installed{false};
-  {
-    const std::scoped_lock lock{execution_evidence_commit_mutex_, input_mutex_,
-                                raw_reconstruction_mutex_, raw_queue_mutex_};
-    const ProducerEpochAuthority authority = latest_observation_tracker_.authority();
-    const LatestObservation& status = latest_observation_tracker_.latest();
-    const ProducerEvidenceAdmissionState& evidence =
-        raw_delta_accumulator_.evidenceAdmissionState();
-    if (update.accepted() && status.available() &&
-        status.producer_instance_id == authority.producer_instance_id &&
-        status.producer_epoch_generation == authority.generation &&
-        update.authority_generation == authority.generation &&
-        evidenceMatches(evidence, authority, update.evidence_observation) &&
-        producerEpochObservationFresh(config, update.evidence_observation,
-                                      ready_stamp_ns)) {
-      latest_raw_world_.store(world, std::memory_order_release);
-      raw_world_identity_conflicted_ = false;
-      if (pending_raw_world_update_.satisfiedBy(evidence, world->version)) {
-        pending_raw_world_update_ = {};
-      }
-      const auto submission = raw_world_scheduler_.submit(world);
-      if (submission.replaced_pending) {
-        ++dropped_raw_snapshots_;
-      }
-      installed = true;
-    }
-  }
-  if (!installed) {
-    return;
-  }
-  no_static_raw_updates_.fetch_add(1U, std::memory_order_relaxed);
-  raw_queue_condition_.notify_all();
-}
-
 void ProductionMppiNode::onRawObstacleSnapshot3D(
     msg::RawObstacleSnapshot3D::ConstSharedPtr message) {
-  if (use_static_map_ ||
-      no_static_world_model_ != ProductionNoStaticWorldModel::kObservedOccupancy3D) {
+  if (use_static_map_) {
     return;
   }
   const auto started = std::chrono::steady_clock::now();
@@ -264,8 +129,7 @@ void ProductionMppiNode::onRawObstacleSnapshot3D(
 
 void ProductionMppiNode::onRawObstacleDelta3D(
     msg::RawObstacleDelta3D::ConstSharedPtr message) {
-  if (use_static_map_ ||
-      no_static_world_model_ != ProductionNoStaticWorldModel::kObservedOccupancy3D) {
+  if (use_static_map_) {
     return;
   }
   const auto started = std::chrono::steady_clock::now();
@@ -401,8 +265,7 @@ void ProductionMppiNode::onMemoryStatus(const msg::ObstacleMemoryStatus& message
       .receive_stamp_ns = now_ns,
       .content_fingerprint = memoryStatusFingerprint(message),
   };
-  std::optional<RawObstacleGridUpdate> synchronized_2d;
-  std::optional<RawObstacleGridUpdate3D> synchronized_3d;
+  std::optional<RawObstacleGridUpdate3D> synchronized;
   {
     const std::scoped_lock lock{execution_evidence_commit_mutex_, input_mutex_,
                                 raw_reconstruction_mutex_};
@@ -413,12 +276,7 @@ void ProductionMppiNode::onMemoryStatus(const msg::ObstacleMemoryStatus& message
         admission.producer_handoff;
     bool request_revocation = admission.current_identity_conflict;
     const auto clear_current_raw = [this]() noexcept {
-      if (no_static_world_model_ ==
-          ProductionNoStaticWorldModel::kObservedOccupancy3D) {
-        latest_raw_world_3d_.store(nullptr, std::memory_order_release);
-      } else {
-        latest_raw_world_.store(nullptr, std::memory_order_release);
-      }
+      latest_raw_world_3d_.store(nullptr, std::memory_order_release);
     };
     if (authority_boundary) {
       raw_world_identity_conflicted_ = false;
@@ -431,23 +289,13 @@ void ProductionMppiNode::onMemoryStatus(const msg::ObstacleMemoryStatus& message
     if (admission.install_observation && statusAnnouncesRawUpdate(message)) {
       const ProducerEpochAuthority authority = latest_observation_tracker_.authority();
       const ProducerEvidenceAdmissionState& evidence =
-          no_static_world_model_ == ProductionNoStaticWorldModel::kObservedOccupancy3D
-              ? raw_delta_accumulator_3d_.evidenceAdmissionState()
-              : raw_delta_accumulator_.evidenceAdmissionState();
-      const std::shared_ptr<const ProductionMppiRawWorld2D> raw_world_2d =
-          latest_raw_world_.load(std::memory_order_acquire);
-      const std::shared_ptr<const ProductionMppiRawWorld3D> raw_world_3d =
+          raw_delta_accumulator_3d_.evidenceAdmissionState();
+      const std::shared_ptr<const ProductionMppiRawWorld3D> raw_world =
           latest_raw_world_3d_.load(std::memory_order_acquire);
       const bool raw_pointer_current =
-          no_static_world_model_ == ProductionNoStaticWorldModel::kObservedOccupancy3D
-              ? (raw_world_3d != nullptr &&
-                 raw_world_3d->version.producer_instance_id ==
-                     authority.producer_instance_id &&
-                 raw_world_3d->version.revision == evidence.sequence)
-              : (raw_world_2d != nullptr &&
-                 raw_world_2d->version.producer_instance_id ==
-                     authority.producer_instance_id &&
-                 raw_world_2d->version.revision == evidence.sequence);
+          raw_world != nullptr &&
+          raw_world->version.producer_instance_id == authority.producer_instance_id &&
+          raw_world->version.revision == evidence.sequence;
       const bool installed_through_status =
           authority.valid() && !evidence.current_identity_conflicted &&
           evidence.authority_generation == authority.generation &&
@@ -460,52 +308,25 @@ void ProductionMppiNode::onMemoryStatus(const msg::ObstacleMemoryStatus& message
             .announced_sequence = message.sequence,
             .minimum_source_stamp_ns = source_stamp_ns,
         };
-      } else {
-        const RawMapVersion* committed_version = nullptr;
-        if (no_static_world_model_ ==
-                ProductionNoStaticWorldModel::kObservedOccupancy3D &&
-            raw_world_3d != nullptr) {
-          committed_version = std::addressof(raw_world_3d->version);
-        } else if (no_static_world_model_ ==
-                       ProductionNoStaticWorldModel::kOccupancy2D &&
-                   raw_world_2d != nullptr) {
-          committed_version = std::addressof(raw_world_2d->version);
-        }
-        if (committed_version != nullptr &&
-            pending_raw_world_update_.satisfiedBy(evidence, *committed_version)) {
-          pending_raw_world_update_ = {};
-        }
+      } else if (raw_world != nullptr &&
+                 pending_raw_world_update_.satisfiedBy(evidence, raw_world->version)) {
+        pending_raw_world_update_ = {};
       }
     }
-    if (no_static_world_model_ == ProductionNoStaticWorldModel::kObservedOccupancy3D) {
-      synchronized_3d = raw_delta_accumulator_3d_.synchronizeProducerEpoch(
-          latest_observation_tracker_.admissionState(), now_ns, config);
-      if (synchronized_3d->current_identity_conflict &&
-          !raw_world_identity_conflicted_) {
-        raw_world_identity_conflicted_ = true;
-        clear_current_raw();
-        request_revocation = true;
-      }
-    } else {
-      synchronized_2d = raw_delta_accumulator_.synchronizeProducerEpoch(
-          latest_observation_tracker_.admissionState(), now_ns, config);
-      if (synchronized_2d->current_identity_conflict &&
-          !raw_world_identity_conflicted_) {
-        raw_world_identity_conflicted_ = true;
-        clear_current_raw();
-        request_revocation = true;
-      }
+    synchronized = raw_delta_accumulator_3d_.synchronizeProducerEpoch(
+        latest_observation_tracker_.admissionState(), now_ns, config);
+    if (synchronized->current_identity_conflict && !raw_world_identity_conflicted_) {
+      raw_world_identity_conflicted_ = true;
+      clear_current_raw();
+      request_revocation = true;
     }
     if (request_revocation) {
       invalidateAppliedControlWitnessLocked();
       requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
     }
   }
-  if (synchronized_2d.has_value() && synchronized_2d->accepted()) {
-    queueRawWorld(*synchronized_2d, 0.0);
-  }
-  if (synchronized_3d.has_value() && synchronized_3d->accepted()) {
-    queueRawWorld3D(*synchronized_3d, 0.0);
+  if (synchronized.has_value() && synchronized->accepted()) {
+    queueRawWorld3D(*synchronized, 0.0);
   }
 }
 

@@ -175,9 +175,6 @@ void ProductionMppiNode::processDiagnostics(
       << " lattice_validation_revision=" << esdf.lattice_validation_revision
       << " lattice_raw_validation="
       << rawGuideValidationStatusName(esdf.lattice_raw_validation_status)
-      << " guide_candidate_validation="
-      << productionGuideCandidateValidationStatusName(
-             esdf.guide_candidate_validation_status)
       << " lattice_risk_stage=" << planningRiskStageName(esdf)
       << " lattice_route_purpose=" << planningRoutePurposeName(esdf)
       << " observation_frontier_id="
@@ -703,10 +700,7 @@ void ProductionMppiNode::processDiagnostics(
          << ",\"lattice_validation_revision\":" << esdf.lattice_validation_revision
          << ",\"lattice_raw_validation\":\""
          << rawGuideValidationStatusName(esdf.lattice_raw_validation_status) << '"'
-         << ",\"guide_candidate_validation\":\""
-         << productionGuideCandidateValidationStatusName(
-                esdf.guide_candidate_validation_status)
-         << '"' << ",\"lattice_risk_stage\":\"" << planningRiskStageName(esdf) << '"'
+         << ",\"lattice_risk_stage\":\"" << planningRiskStageName(esdf) << '"'
          << ",\"lattice_route_purpose\":\"" << planningRoutePurposeName(esdf) << '"'
          << ",\"observation_frontier_id\":"
          << (esdf.lattice_3d_observation_frontier

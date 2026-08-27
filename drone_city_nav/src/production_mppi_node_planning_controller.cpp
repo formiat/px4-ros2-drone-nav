@@ -54,22 +54,13 @@ ProductionMppiNode::runPlanningController(const ProductionMppiControllerTick& ti
     // A route-directed seed is only one controller candidate. Its rejection does
     // not invalidate the certified route geometry while the remaining MPPI
     // rollouts can still provide an executable control result.
-    bool event_applied{false};
-    const RouteLifecycleEvent3D event{
-        .kind = RouteLifecycleEventKind3D::kControlCandidateRejected,
-        .generation = tick.route_generation,
-    };
-    if (!tick.uses_3d_route) {
-      event_applied = legacy_execution_arbiter_.observe(event);
-    }
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "ROUTE_EXECUTION status=seed_not_executable route_generation=%" PRIu64
         " cross_track_m=%.2f alternative_rollout_available=%s "
-        "event_applied=%s action=reject_control_candidate",
+        "action=reject_control_candidate",
         tick.route_generation, tick.route_cross_track_m,
-        result.feasibility_contract.available ? "true" : "false",
-        event_applied ? "true" : "false");
+        result.feasibility_contract.available ? "true" : "false");
   }
   output.no_eligible_recovery = nominal_reseed_tracker_.observeEligibleRolloutResult(
       result.feasibility_contract.available, result.nominal_reseeded);

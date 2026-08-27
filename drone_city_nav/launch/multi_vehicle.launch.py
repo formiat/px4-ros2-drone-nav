@@ -479,8 +479,6 @@ def generate_multi_vehicle_launch_description(mission_kind):
                         f"{px4}/out/vehicle_land_detected"
                     ),
                     "navigation_readiness_topic": f"{prefix}/navigation_ready",
-                    "raw_obstacle_snapshot_topic": raw_snapshot,
-                    "raw_obstacle_delta_topic": raw_delta,
                     "raw_obstacle_snapshot_3d_topic": (
                         f"{prefix}/raw_obstacle_snapshot_3d"
                     ),
