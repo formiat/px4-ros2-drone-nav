@@ -258,6 +258,10 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       declare_parameter<double>("absolute_speed_limit_mps", 10.0);
   const double maximum_horizontal_acceleration_mps2 =
       declare_parameter<double>("maximum_horizontal_acceleration_mps2", 4.0);
+  const double maximum_vertical_acceleration_mps2 =
+      declare_parameter<double>("maximum_vertical_acceleration_mps2", 4.0);
+  const double maximum_control_jerk_mps3 =
+      declare_parameter<double>("maximum_control_jerk_mps3", 12.0);
   speed_policy_config.maximum_lateral_acceleration_mps2 =
       maximum_horizontal_acceleration_mps2;
   speed_policy_config.stopping_capability
@@ -269,10 +273,16 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       declare_parameter<double>("guaranteed_vertical_stopping_deceleration_mps2", 2.0);
   speed_policy_config.stopping_capability.reaction_latency_s =
       declare_parameter<double>("speed_reaction_latency_s", 0.10);
-  speed_policy_config.observation_distance_m =
-      declare_parameter<double>("observation_distance_m", 30.0);
-  speed_policy_config.observation_margin_m =
-      declare_parameter<double>("observation_margin_m", 3.0);
+  speed_policy_config.sensor_braking_contract = SensorBrakingContract3D{
+      .guaranteed_detection_range_m =
+          declare_parameter<double>("guaranteed_lidar_detection_range_m", 30.0),
+      .maximum_evidence_age_s = latest_lidar_obstacle_maximum_age_ms_ * 1.0e-3,
+      .physical_margin_m =
+          declare_parameter<double>("sensor_braking_physical_margin_m", 3.0),
+      .maximum_forward_acceleration_mps2 = std::hypot(
+          maximum_horizontal_acceleration_mps2, maximum_vertical_acceleration_mps2),
+      .maximum_control_jerk_mps3 = maximum_control_jerk_mps3,
+  };
   speed_policy_config.goal_margin_m =
       declare_parameter<double>("goal_braking_margin_m", 2.0);
   speed_policy_config.curvature_preview_distance_m =
@@ -287,14 +297,20 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   mppi_config_.stopping_capability = speed_policy_config_.stopping_capability;
   mppi_config_.dynamics.maximum_horizontal_speed_mps =
       static_cast<float>(speed_policy_config_.absolute_speed_limit_mps);
+  const double sensor_braking_speed_limit_mps =
+      sensorBrakingMaximumSpeedMps(speed_policy_config_.sensor_braking_contract,
+                                   speed_policy_config_.stopping_capability,
+                                   speed_policy_config_.absolute_speed_limit_mps);
+  mppi_config_.dynamics.maximum_translational_speed_mps =
+      std::nextafter(static_cast<float>(sensor_braking_speed_limit_mps), 0.0F);
   mppi_config_.dynamics.maximum_horizontal_acceleration_mps2 =
       static_cast<float>(maximum_horizontal_acceleration_mps2);
   finite_horizon_config_ =
       mppi::makeFiniteHorizonConfig(speed_policy_config_.stopping_capability);
   mppi_config_.dynamics.maximum_control_jerk_mps3 =
-      static_cast<float>(declare_parameter<double>("maximum_control_jerk_mps3", 12.0));
-  mppi_config_.dynamics.maximum_vertical_acceleration_mps2 = static_cast<float>(
-      declare_parameter<double>("maximum_vertical_acceleration_mps2", 4.0));
+      static_cast<float>(maximum_control_jerk_mps3);
+  mppi_config_.dynamics.maximum_vertical_acceleration_mps2 =
+      static_cast<float>(maximum_vertical_acceleration_mps2);
   mppi_config_.altitude_envelope.guaranteed_vertical_deceleration_mps2 =
       static_cast<float>(speed_policy_config_.stopping_capability
                              .guaranteed_vertical_deceleration_mps2);
@@ -543,6 +559,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       !(mppi_config_.risk.obstacle_approach_response_time_s >= 0.0F) ||
       !(mppi_config_.risk.obstacle_approach_deceleration_mps2 > 0.0F) ||
       !stoppingCapabilityIsValid(speed_policy_config_.stopping_capability) ||
+      !sensorBrakingContract3DIsValid(speed_policy_config_.sensor_braking_contract,
+                                      speed_policy_config_.stopping_capability) ||
       speed_policy_config_.stopping_capability
               .maximum_commanded_horizontal_deceleration_mps2 >
           static_cast<double>(
@@ -701,6 +719,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
                    speed_policy_config_.absolute_speed_limit_mps),
       .maximum_vertical_speed_mps =
           static_cast<double>(mppi_config_.dynamics.maximum_vertical_speed_mps),
+      .maximum_translational_speed_mps =
+          static_cast<double>(mppi_config_.dynamics.maximum_translational_speed_mps),
       .maximum_horizontal_acceleration_mps2 = static_cast<double>(
           mppi_config_.dynamics.maximum_horizontal_acceleration_mps2),
       .maximum_vertical_acceleration_mps2 =
@@ -731,7 +751,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       "direct_tracking_rollouts=%zu adaptive_clearance_m=%.1f "
       "steps=%zu rate=%.1fHz "
       "deadline=%.1fms known_solids=%zu static_map=%s route3d=%s "
-      "horizon=%.1fs static_esdf_lookahead=%.1fm cruise=%.1fmps speed_cap=%.1fmps "
+      "horizon=%.1fs static_esdf_lookahead=%.1fm cruise=%.1fmps "
+      "horizontal_speed_cap=%.1fmps translational_speed_cap=%.1fmps "
       "acceleration_cap=%.1fmps2 jerk_cap=%.1fmps3 speed_tracking_weight=%.2f "
       "constrained_route_speed_limit=%.1fmps head_progress=%.2fs "
       "far_cost_sampling=(%.2fs,%u) liveness=%s "
@@ -747,6 +768,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s,
       static_esdf_route_lookahead_m_, speed_policy_config_.cruise_speed_mps,
       mppi_config_.dynamics.maximum_horizontal_speed_mps,
+      mppi_config_.dynamics.maximum_translational_speed_mps,
       mppi_config_.dynamics.maximum_horizontal_acceleration_mps2,
       mppi_config_.dynamics.maximum_control_jerk_mps3,
       mppi_config_.costs.speed_tracking_weight,

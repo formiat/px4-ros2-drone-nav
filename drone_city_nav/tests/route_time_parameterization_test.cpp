@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 #include <vector>
 
 namespace drone_city_nav {
@@ -66,6 +67,37 @@ TEST(RouteTimeParameterizationTest, CurvatureAndVerticalMotionCapTheSameProfile)
   ASSERT_TRUE(vertical_profile.valid);
   EXPECT_LE(vertical_profile.reference_speeds_mps.front(), 2.0);
   EXPECT_LE(vertical_profile.reference_speeds_mps.back(), 2.0);
+}
+
+TEST(RouteTimeParameterizationTest,
+     DiagonalMotionHonorsTheCompleteTranslationalSpeedLimit) {
+  constexpr double kLengthM{20.0};
+  const double station_m = std::numbers::sqrt2 * kLengthM;
+  const std::vector<RouteSample3D> route{
+      {.position = {0.0, 0.0, 0.0},
+       .tangent = {std::sqrt(0.5), 0.0, std::sqrt(0.5)},
+       .station_m = 0.0},
+      {.position = {kLengthM, 0.0, kLengthM},
+       .tangent = {std::sqrt(0.5), 0.0, std::sqrt(0.5)},
+       .station_m = station_m},
+  };
+  MppiSpeedPolicyConfig speed_policy;
+  speed_policy.cruise_speed_mps = 10.0;
+  speed_policy.absolute_speed_limit_mps = 10.0;
+  mppi::DynamicsConfig dynamics;
+  dynamics.maximum_horizontal_speed_mps = 10.0F;
+  dynamics.maximum_vertical_speed_mps = 10.0F;
+  dynamics.maximum_translational_speed_mps = 2.0F;
+
+  const RouteTimeParameterization3D profile = parameterizeRouteTime3D(
+      route, {}, 10.0, 3.0, RouteEndpointSemantics3D::kContinuation, speed_policy,
+      dynamics);
+
+  ASSERT_TRUE(profile.valid);
+  EXPECT_TRUE(
+      std::ranges::all_of(profile.reference_speeds_mps,
+                          [](const double speed_mps) { return speed_mps <= 2.0; }));
+  EXPECT_GE(profile.translation_time_s, station_m / 2.0);
 }
 
 TEST(RouteTimeParameterizationTest, StopAndTurnStartsAnIndependentJerkLimitedLeg) {

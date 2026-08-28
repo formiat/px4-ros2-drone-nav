@@ -128,7 +128,8 @@ RouteCompilationResult3D compileExecutionRoute3D(RouteCompilerInput3D input) {
   const double maximum_profile_speed_mps = std::min(
       {input.config.unconstrained_speed_mps, input.config.speed_policy.cruise_speed_mps,
        input.config.speed_policy.absolute_speed_limit_mps,
-       static_cast<double>(input.config.dynamics.maximum_horizontal_speed_mps)});
+       static_cast<double>(input.config.dynamics.maximum_horizontal_speed_mps),
+       static_cast<double>(input.config.dynamics.maximum_translational_speed_mps)});
   result.tracking_error_tube =
       std::make_shared<const TrackingErrorTubeProfile3D>(makeTrackingErrorTubeProfile3D(
           input.route, input.tracking_world, input.config.physical_footprint,

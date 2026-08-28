@@ -343,6 +343,10 @@ suffix ACK, partial-replan, safe-truncation, or moving/after-hold protocol.
 - Route targets and execution horizons must remain in `1.0 <= z < 32.0 m` and
   retain enough vertical stopping room under the configured acceleration and
   jerk limits.
+- Sensor-limited motion must fit evidence-age and reaction latency, shared
+  jerk-limited 3D stopping distance, and physical margin inside the guaranteed
+  lidar detection range. The resulting cap applies to the full translational
+  velocity norm in planning and control. Stale required evidence fails closed.
 - Risk-band exposure ranks candidates but is not physical crash detection.
 - Critical and planning clearance exposure remain strong soft costs and never
   create a hold or reachability gate by themselves.

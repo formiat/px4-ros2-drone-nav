@@ -414,6 +414,20 @@ speed * total_latency + stopping_distance + physical_margin
 Stale sensing prevents publication of new motion. Fresh sensing applies the
 same speed and admission rules to free and unknown space.
 
+The production speed policy now enforces this inequality directly. Total
+latency is the configured maximum age of timestamp-aligned lidar evidence plus
+control reaction latency. Its shared jerk-limited stopping model starts from
+the worst configured forward 3D acceleration and uses the weaker guaranteed
+horizontal or vertical deceleration. Configuration contract tests bind the
+guaranteed range to both the 3D lidar model and obstacle-memory range, while
+runtime diagnostics publish every distance term and the remaining reserve. The
+solved limit is a hard complete-translational-speed bound in host and CUDA
+dynamics and the shared strategic/route ETA model. Measured overspeed requests
+braking while retaining physically continuous inherited velocity. The
+organized lidar covers the complete vertical sphere, including pure climb and
+descent directions, instead of leaving polar blind cones outside the range
+contract.
+
 ### Persistent Strategic Planner
 
 Use one persistent sparse D* Lite planner over an adaptive world-fixed

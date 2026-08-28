@@ -69,6 +69,8 @@ RouteTimeParameterization3D parameterizeRouteTime3D(
                     static_cast<double>(dynamics.maximum_horizontal_speed_mps)}),
       .maximum_vertical_speed_mps =
           static_cast<double>(dynamics.maximum_vertical_speed_mps),
+      .maximum_translational_speed_mps =
+          static_cast<double>(dynamics.maximum_translational_speed_mps),
       .maximum_horizontal_acceleration_mps2 =
           static_cast<double>(dynamics.maximum_horizontal_acceleration_mps2),
       .maximum_vertical_acceleration_mps2 =
@@ -115,6 +117,7 @@ RouteTimeParameterization3D parameterizeRouteTime3D(
     points.push_back(route[index].position);
     speed_limits.push_back(std::min(
         {time_model.maximum_horizontal_speed_mps,
+         time_model.maximum_translational_speed_mps,
          constrainedLimit(route[index], constrained_spans, constrained_speed_mps),
          curvature_limit, tracking_limit}));
     stop_turn_flags.push_back(

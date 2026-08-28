@@ -187,15 +187,15 @@ public:
     scan_config_.horizontal_samples = static_cast<std::size_t>(std::clamp<std::int64_t>(
         declare_parameter<std::int64_t>("lidar_3d_horizontal_samples", 240), 1, 4096));
     scan_config_.vertical_samples = static_cast<std::size_t>(std::clamp<std::int64_t>(
-        declare_parameter<std::int64_t>("lidar_3d_vertical_samples", 17), 1, 1024));
+        declare_parameter<std::int64_t>("lidar_3d_vertical_samples", 19), 1, 1024));
     scan_config_.horizontal_min_angle_rad = declare_parameter<double>(
         "lidar_3d_horizontal_min_angle_rad", -std::numbers::pi);
     scan_config_.horizontal_max_angle_rad = declare_parameter<double>(
         "lidar_3d_horizontal_max_angle_rad", std::numbers::pi);
     scan_config_.vertical_min_angle_rad =
-        declare_parameter<double>("lidar_3d_vertical_min_angle_rad", -1.3962634016);
+        declare_parameter<double>("lidar_3d_vertical_min_angle_rad", -1.5707963268);
     scan_config_.vertical_max_angle_rad =
-        declare_parameter<double>("lidar_3d_vertical_max_angle_rad", 1.3962634016);
+        declare_parameter<double>("lidar_3d_vertical_max_angle_rad", 1.5707963268);
     scan_config_.minimum_range_m =
         declare_parameter<double>("lidar_3d_minimum_range_m", 0.2);
     scan_config_.maximum_range_m = declare_parameter<double>("max_lidar_range_m", 35.0);

@@ -134,12 +134,17 @@ class DroneModelSdfContractTest(unittest.TestCase):
         self.assertIsNotNone(horizontal)
         self.assertIsNotNone(vertical)
         self.assertEqual(240, int(horizontal.findtext("samples", "0")))
-        self.assertEqual(17, int(vertical.findtext("samples", "0")))
+        self.assertEqual(19, int(vertical.findtext("samples", "0")))
         self.assertEqual(1, int(vertical.findtext("samples", "0")) % 2)
         vertical_min = float(vertical.findtext("min_angle", "nan"))
         vertical_max = float(vertical.findtext("max_angle", "nan"))
-        self.assertLessEqual(vertical_min, math.radians(-80.0))
-        self.assertGreaterEqual(vertical_max, math.radians(80.0))
+        self.assertAlmostEqual(vertical_min, -0.5 * math.pi, places=12)
+        self.assertAlmostEqual(vertical_max, 0.5 * math.pi, places=12)
+        self.assertLessEqual(
+            (vertical_max - vertical_min)
+            / (int(vertical.findtext("samples", "0")) - 1),
+            math.radians(10.0),
+        )
         for visual in root.iter("visual"):
             self.assertEqual(
                 DRONE_MARKER_VISIBILITY_FLAG,

@@ -63,6 +63,8 @@ void hashValue(std::uint64_t& hash, const std::uint64_t value) noexcept {
          config.maximum_horizontal_speed_mps > 0.0F &&
          std::isfinite(config.maximum_vertical_speed_mps) &&
          config.maximum_vertical_speed_mps > 0.0F &&
+         std::isfinite(config.maximum_translational_speed_mps) &&
+         config.maximum_translational_speed_mps > 0.0F &&
          std::isfinite(config.maximum_yaw_acceleration_radps2) &&
          config.maximum_yaw_acceleration_radps2 > 0.0F &&
          std::isfinite(config.maximum_yaw_rate_radps) &&
@@ -127,6 +129,7 @@ void hashDynamics(std::uint64_t& hash, const mppi::DynamicsConfig& config) noexc
   hashValue(hash, canonicalFloatBits(config.maximum_vertical_acceleration_mps2));
   hashValue(hash, canonicalFloatBits(config.maximum_horizontal_speed_mps));
   hashValue(hash, canonicalFloatBits(config.maximum_vertical_speed_mps));
+  hashValue(hash, canonicalFloatBits(config.maximum_translational_speed_mps));
   hashValue(hash, canonicalFloatBits(config.maximum_yaw_acceleration_radps2));
   hashValue(hash, canonicalFloatBits(config.maximum_yaw_rate_radps));
   hashValue(hash, canonicalFloatBits(config.maximum_control_jerk_mps3));

@@ -465,8 +465,10 @@ void PersistentDStarLitePlanner3DImpl::populatePathMetrics(
   if (result.points.size() < 2U) {
     return;
   }
-  std::vector<double> speed_limits(result.points.size(),
-                                   config_.time_model.maximum_horizontal_speed_mps);
+  std::vector<double> speed_limits(
+      result.points.size(),
+      std::min(config_.time_model.maximum_horizontal_speed_mps,
+               config_.time_model.maximum_translational_speed_mps));
   std::vector<std::uint8_t> stop_turn_flags(result.points.size(), 0U);
   for (std::size_t index = 1U; index + 1U < result.points.size(); ++index) {
     const Point3& first = result.points[index - 1U];

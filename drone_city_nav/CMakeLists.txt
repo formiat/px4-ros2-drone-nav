@@ -250,11 +250,13 @@ add_library(
   src/route_lifecycle_3d.cpp
   src/route_planning_3d.cpp
   src/rolling_route_telemetry_3d.cpp
+  src/sensor_braking_contract_3d.cpp
   src/simulation_truth_alignment.cpp
   src/spectator_selection.cpp
   src/static_route_extension.cpp
   src/static_route_geometry.cpp
   src/static_esdf_cache.cpp
+  src/stopping_distance.cpp
   src/swept_footprint.cpp
   src/tracking_error_tube_3d.cpp
   src/swept_footprint_2d.cpp
@@ -946,6 +948,12 @@ if(BUILD_TESTING)
   target_compile_features(mppi_speed_policy_test_current PRIVATE cxx_std_20)
   target_link_libraries(mppi_speed_policy_test_current drone_city_nav_core)
   enable_project_warnings(mppi_speed_policy_test_current)
+
+  ament_add_gtest(sensor_braking_contract_3d_test
+                  tests/sensor_braking_contract_3d_test.cpp)
+  target_compile_features(sensor_braking_contract_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(sensor_braking_contract_3d_test drone_city_nav_core)
+  enable_project_warnings(sensor_braking_contract_3d_test)
 
   ament_add_gtest(route_time_parameterization_test tests/route_time_parameterization_test.cpp)
   target_compile_features(route_time_parameterization_test PRIVATE cxx_std_20)

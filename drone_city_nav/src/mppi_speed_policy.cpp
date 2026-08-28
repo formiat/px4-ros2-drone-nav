@@ -77,9 +77,9 @@ void validateConfig(const MppiSpeedPolicyConfig& config) {
   if (!(config.cruise_speed_mps > 0.0) || !(config.absolute_speed_limit_mps > 0.0) ||
       !(config.maximum_lateral_acceleration_mps2 > 0.0) ||
       !stoppingCapabilityIsValid(config.stopping_capability) ||
-      !(config.observation_distance_m > config.observation_margin_m) ||
-      !(config.observation_margin_m >= 0.0) || !(config.goal_margin_m >= 0.0) ||
-      !(config.curvature_preview_distance_m > 0.0) ||
+      !sensorBrakingContract3DIsValid(config.sensor_braking_contract,
+                                      config.stopping_capability) ||
+      !(config.goal_margin_m >= 0.0) || !(config.curvature_preview_distance_m > 0.0) ||
       !(config.curvature_measurement_window_m > 0.0) ||
       !(config.horizon_duration_s > 0.0) ||
       !(config.minimum_target_lookahead_m > 0.0) ||
@@ -118,9 +118,9 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
   result.route_endpoint_stop_required =
       routeEndpointHasTerminalStop3D(input.route_endpoint_semantics);
   result.terminal_goal_limit_enabled = input.terminal_goal_limit_enabled;
-  result.observation_limit_mps =
-      stoppingLimitedSpeed(config.observation_distance_m - config.observation_margin_m,
-                           0.0, config.stopping_capability);
+  result.sensor_braking_limit_mps = sensorBrakingMaximumSpeedMps(
+      config.sensor_braking_contract, config.stopping_capability,
+      config.absolute_speed_limit_mps);
   if (input.terminal_goal_limit_enabled) {
     const double goal_distance =
         std::max(0.0, distance3D(input.mission_goal,
@@ -167,13 +167,13 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
 
   result.reference_speed_mps = std::min(
       {result.cruise_limit_mps, result.absolute_limit_mps, result.curvature_limit_mps,
-       result.observation_limit_mps, result.goal_limit_mps,
+       result.sensor_braking_limit_mps, result.goal_limit_mps,
        result.route_endpoint_limit_mps, result.route_constraint_limit_mps});
   const std::array limits{
       std::pair{result.cruise_limit_mps, MppiSpeedLimiter::kCruise},
       std::pair{result.absolute_limit_mps, MppiSpeedLimiter::kAbsolute},
       std::pair{result.curvature_limit_mps, MppiSpeedLimiter::kCurvature},
-      std::pair{result.observation_limit_mps, MppiSpeedLimiter::kObservation},
+      std::pair{result.sensor_braking_limit_mps, MppiSpeedLimiter::kSensorBraking},
       std::pair{result.goal_limit_mps, MppiSpeedLimiter::kGoal},
       std::pair{result.route_endpoint_limit_mps, MppiSpeedLimiter::kRouteEndpoint},
       std::pair{result.route_constraint_limit_mps, MppiSpeedLimiter::kRouteConstraint},
@@ -183,6 +183,17 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
                                              return first.first < second.first;
                                            })
                               ->second;
+  const double measured_speed_mps =
+      std::hypot(std::hypot(static_cast<double>(input.state.vx),
+                            static_cast<double>(input.state.vy)),
+                 static_cast<double>(input.state.vz));
+  result.sensor_braking_assessment = assessSensorBrakingContract3D(
+      config.sensor_braking_contract, config.stopping_capability,
+      std::max(result.reference_speed_mps, measured_speed_mps));
+  if (!result.sensor_braking_assessment.accepted()) {
+    result.reference_speed_mps = 0.0;
+    result.active_limiter = MppiSpeedLimiter::kSensorBraking;
+  }
   result.target_lookahead_m =
       std::clamp(result.reference_speed_mps * config.horizon_duration_s,
                  config.minimum_target_lookahead_m, config.maximum_target_lookahead_m);
@@ -197,8 +208,8 @@ const char* mppiSpeedLimiterName(const MppiSpeedLimiter limiter) noexcept {
       return "absolute";
     case MppiSpeedLimiter::kCurvature:
       return "curvature";
-    case MppiSpeedLimiter::kObservation:
-      return "observation";
+    case MppiSpeedLimiter::kSensorBraking:
+      return "sensor_braking";
     case MppiSpeedLimiter::kGoal:
       return "goal";
     case MppiSpeedLimiter::kRouteEndpoint:

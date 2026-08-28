@@ -3,6 +3,7 @@
 #include "drone_city_nav/types.hpp"
 
 #include <cstdint>
+#include <limits>
 #include <span>
 #include <vector>
 
@@ -15,6 +16,7 @@ namespace drone_city_nav {
 struct FlightTimeModel3D {
   double maximum_horizontal_speed_mps{5.0};
   double maximum_vertical_speed_mps{3.0};
+  double maximum_translational_speed_mps{std::numeric_limits<double>::max()};
   double maximum_horizontal_acceleration_mps2{4.0};
   double maximum_vertical_acceleration_mps2{4.0};
   double maximum_control_jerk_mps3{12.0};

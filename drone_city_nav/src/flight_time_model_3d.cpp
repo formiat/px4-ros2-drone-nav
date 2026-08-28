@@ -33,7 +33,8 @@ constexpr double kEpsilon{1.0e-9};
   const double vertical_limit = vertical_share > kEpsilon
                                     ? model.maximum_vertical_speed_mps / vertical_share
                                     : std::numeric_limits<double>::infinity();
-  return std::min(horizontal_limit, vertical_limit);
+  return std::min(
+      {horizontal_limit, vertical_limit, model.maximum_translational_speed_mps});
 }
 
 [[nodiscard]] double scalarAccelerationLimit(const Vec3& tangent,
@@ -174,6 +175,7 @@ segmentTravelTime(const double distance_m, const double first_speed_mps,
 bool FlightTimeModel3D::valid() const noexcept {
   return finitePositive(maximum_horizontal_speed_mps) &&
          finitePositive(maximum_vertical_speed_mps) &&
+         finitePositive(maximum_translational_speed_mps) &&
          finitePositive(maximum_horizontal_acceleration_mps2) &&
          finitePositive(maximum_vertical_acceleration_mps2) &&
          finitePositive(maximum_control_jerk_mps3) &&
@@ -188,8 +190,10 @@ double minimumFlightTranslationTime3D(const Point3& first, const Point3& second,
   }
   const double horizontal = std::hypot(second.x - first.x, second.y - first.y);
   const double vertical = std::abs(second.z - first.z);
-  return std::max(horizontal / model.maximum_horizontal_speed_mps,
-                  vertical / model.maximum_vertical_speed_mps);
+  const double translation = distance3D(first, second);
+  return std::max({horizontal / model.maximum_horizontal_speed_mps,
+                   vertical / model.maximum_vertical_speed_mps,
+                   translation / model.maximum_translational_speed_mps});
 }
 
 FlightPathTimeProfile3D

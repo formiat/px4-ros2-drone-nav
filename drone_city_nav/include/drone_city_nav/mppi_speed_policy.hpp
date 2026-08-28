@@ -3,6 +3,7 @@
 #include "drone_city_nav/mppi/mppi_types.hpp"
 #include "drone_city_nav/route_3d.hpp"
 #include "drone_city_nav/route_execution_contract_3d.hpp"
+#include "drone_city_nav/sensor_braking_contract_3d.hpp"
 #include "drone_city_nav/stopping_capability.hpp"
 #include "drone_city_nav/types.hpp"
 
@@ -18,7 +19,7 @@ enum class MppiSpeedLimiter : std::uint8_t {
   kCruise,
   kAbsolute,
   kCurvature,
-  kObservation,
+  kSensorBraking,
   kGoal,
   kRouteEndpoint,
   kRouteConstraint,
@@ -29,8 +30,7 @@ struct MppiSpeedPolicyConfig {
   double absolute_speed_limit_mps{10.0};
   double maximum_lateral_acceleration_mps2{4.0};
   StoppingCapability stopping_capability{};
-  double observation_distance_m{30.0};
-  double observation_margin_m{3.0};
+  SensorBrakingContract3D sensor_braking_contract{};
   double goal_margin_m{2.0};
   double curvature_preview_distance_m{60.0};
   double curvature_measurement_window_m{5.0};
@@ -56,12 +56,13 @@ struct MppiSpeedPolicyResult {
   double cruise_limit_mps{0.0};
   double absolute_limit_mps{0.0};
   double curvature_limit_mps{std::numeric_limits<double>::infinity()};
-  double observation_limit_mps{std::numeric_limits<double>::infinity()};
+  double sensor_braking_limit_mps{0.0};
   double goal_limit_mps{std::numeric_limits<double>::infinity()};
   double route_endpoint_limit_mps{std::numeric_limits<double>::infinity()};
   double route_constraint_limit_mps{std::numeric_limits<double>::infinity()};
   double maximum_preview_curvature_1pm{0.0};
   double target_lookahead_m{0.0};
+  SensorBrakingAssessment3D sensor_braking_assessment{};
   MppiSpeedLimiter active_limiter{MppiSpeedLimiter::kGoal};
   RouteEndpointSemantics3D route_endpoint_semantics{
       RouteEndpointSemantics3D::kContinuation};

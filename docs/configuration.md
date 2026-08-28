@@ -63,7 +63,8 @@ No-static direct raw validation:
   receipt age as the freshness authority so executor load does not discard
   current evidence while `/clock` delivery catches up. Receipt age is evaluated
   after selecting the atomic latest scan rather than against the older planning
-  tick start. Stale or missing data does not create an obstacle.
+  tick start. Stale or missing data does not create an obstacle; no-static
+  execution instead fails closed and publishes no new motion from that evidence.
 
 No-static 3D world:
 
@@ -90,7 +91,31 @@ Mode policy:
 - the conservative terminal-path horizontal deceleration limit, independently
   of the larger acceleration available to ordinary manoeuvres;
 - route lookahead and curvature preview;
-- observation and goal limits.
+- sensor-braking and goal limits.
+
+`guaranteed_lidar_detection_range_m` and
+`sensor_braking_physical_margin_m` define the physical sensor side of the
+speed contract. The guaranteed range must not exceed either the modeled 3D
+lidar range or the range admitted by obstacle memory. The organized scan spans
+the complete vertical `[-90 deg, +90 deg]` interval so pure climb and descent
+do not enter a polar blind cone. The speed policy adds
+`latest_lidar_obstacle_maximum_age_ms` to `speed_reaction_latency_s`, then
+requires
+
+```text
+speed * total_latency + jerk_limited_stopping_distance + physical_margin
+  <= guaranteed_lidar_detection_range
+```
+
+The stopping term uses the weaker of the guaranteed horizontal and vertical
+decelerations, the worst forward 3D acceleration derived from the configured
+horizontal and vertical acceleration limits, and
+`maximum_control_jerk_mps3`. The same jerk-limited stopping implementation is
+used by route-reserve certification. The resulting speed is a hard norm limit
+for the complete `(vx, vy, vz)` vector in CPU and CUDA dynamics and is also part
+of strategic ETA and route time parameterization. A measured speed above the
+contract requests braking instead of new motion. Free and unknown space use the
+same limit; freshness changes admission, not occupancy semantics.
 
 Risk:
 
@@ -148,7 +173,8 @@ the measured altitude has not reached the retained capture window.
 
 Speed policy and liveness:
 
-- reaction latency and available stopping acceleration;
+- lidar evidence age, reaction latency, guaranteed 3D deceleration, worst
+  forward acceleration, control jerk, detection range, and physical margin;
 - finite-route reserve and mission-goal stopping margins;
 - actual-displacement and predicted-progress thresholds.
 

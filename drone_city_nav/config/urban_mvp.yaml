@@ -141,11 +141,11 @@ obstacle_memory_3d_node:
     lidar_extrinsic_translation_body_frd_m: [0.12, 0.0, -0.315]
     lidar_extrinsic_quaternion_lidar_flu_to_body_frd: [0.0, 1.0, 0.0, 0.0]
     lidar_3d_horizontal_samples: 240
-    lidar_3d_vertical_samples: 17
+    lidar_3d_vertical_samples: 19
     lidar_3d_horizontal_min_angle_rad: -3.141592653589793
     lidar_3d_horizontal_max_angle_rad: 3.141592653589793
-    lidar_3d_vertical_min_angle_rad: -1.3962634015954636
-    lidar_3d_vertical_max_angle_rad: 1.3962634015954636
+    lidar_3d_vertical_min_angle_rad: -1.5707963267948966
+    lidar_3d_vertical_max_angle_rad: 1.5707963267948966
     lidar_3d_minimum_range_m: 0.2
     max_lidar_range_m: 35.0
     range_hit_epsilon_m: 0.05
@@ -252,8 +252,8 @@ production_mppi_node:
     guaranteed_vertical_stopping_deceleration_mps2: 2.0
     maximum_control_jerk_mps3: 12.0
     speed_reaction_latency_s: 0.10
-    observation_distance_m: 30.0
-    observation_margin_m: 3.0
+    guaranteed_lidar_detection_range_m: 30.0
+    sensor_braking_physical_margin_m: 3.0
     goal_braking_margin_m: 2.0
     curvature_preview_distance_m: 60.0
     route_curvature_measurement_window_m: 5.0

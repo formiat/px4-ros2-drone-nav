@@ -28,6 +28,8 @@ void ProductionMppiNode::processDiagnostics(
   const ProductionMppiPredictionError& prediction = snapshot.prediction;
   const MppiLivenessResult& liveness = snapshot.liveness;
   const MppiSpeedPolicyResult& speed_policy = snapshot.speed_policy;
+  const SensorBrakingAssessment3D& sensor_braking =
+      speed_policy.sensor_braking_assessment;
   const detail::TrackingPursuitDiagnostics pursuit_diagnostics =
       detail::trackingPursuitDiagnostics(objective.get(), input, snapshot.execution);
   const ConstrainedRouteObservation route_constraint = diagnosticRouteConstraint(
@@ -162,8 +164,19 @@ void ProductionMppiNode::processDiagnostics(
       << detail::trackingPursuitInfoFields(pursuit_diagnostics, speed_policy, result)
       << " curvature_speed_limit_mps="
       << finiteOrNegative(speed_policy.curvature_limit_mps)
-      << " observation_speed_limit_mps="
-      << finiteOrNegative(speed_policy.observation_limit_mps)
+      << " sensor_braking_speed_limit_mps="
+      << finiteOrNegative(speed_policy.sensor_braking_limit_mps)
+      << " sensor_braking_assessed_speed_mps=" << sensor_braking.speed_mps
+      << " sensor_braking_total_latency_s=" << sensor_braking.total_latency_s
+      << " sensor_braking_latency_distance_m=" << sensor_braking.latency_distance_m
+      << " sensor_braking_stopping_distance_m=" << sensor_braking.stopping_distance_m
+      << " sensor_braking_physical_margin_m=" << sensor_braking.physical_margin_m
+      << " sensor_braking_required_detection_range_m="
+      << sensor_braking.required_detection_range_m
+      << " sensor_braking_guaranteed_detection_range_m="
+      << sensor_braking.guaranteed_detection_range_m
+      << " sensor_braking_reserve_m=" << sensor_braking.reserve_m
+      << " sensor_braking_accepted=" << (sensor_braking.accepted() ? "true" : "false")
       << " goal_speed_limit_mps=" << finiteOrNegative(speed_policy.goal_limit_mps)
       << " route_endpoint_speed_limit_mps="
       << finiteOrNegative(speed_policy.route_endpoint_limit_mps)
@@ -354,7 +367,10 @@ void ProductionMppiNode::processDiagnostics(
          << detail::trackingObjectiveJsonFields(objective.get(), mission_goal, now_ns)
          << ",\"horizon_s\":"
          << static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s
-         << ",\"speed_cap_mps\":" << mppi_config_.dynamics.maximum_horizontal_speed_mps
+         << ",\"horizontal_speed_cap_mps\":"
+         << mppi_config_.dynamics.maximum_horizontal_speed_mps
+         << ",\"translational_speed_cap_mps\":"
+         << mppi_config_.dynamics.maximum_translational_speed_mps
          << ",\"acceleration_cap_mps2\":"
          << mppi_config_.dynamics.maximum_horizontal_acceleration_mps2
          << ",\"jerk_cap_mps3\":" << mppi_config_.dynamics.maximum_control_jerk_mps3
@@ -495,8 +511,22 @@ void ProductionMppiNode::processDiagnostics(
          << detail::trackingPursuitJsonFields(pursuit_diagnostics, speed_policy, result)
          << ",\"curvature_speed_limit_mps\":"
          << finiteOrNegative(speed_policy.curvature_limit_mps)
-         << ",\"observation_speed_limit_mps\":"
-         << finiteOrNegative(speed_policy.observation_limit_mps)
+         << ",\"sensor_braking_speed_limit_mps\":"
+         << finiteOrNegative(speed_policy.sensor_braking_limit_mps)
+         << ",\"sensor_braking_assessed_speed_mps\":" << sensor_braking.speed_mps
+         << ",\"sensor_braking_total_latency_s\":" << sensor_braking.total_latency_s
+         << ",\"sensor_braking_latency_distance_m\":"
+         << sensor_braking.latency_distance_m
+         << ",\"sensor_braking_stopping_distance_m\":"
+         << sensor_braking.stopping_distance_m
+         << ",\"sensor_braking_physical_margin_m\":" << sensor_braking.physical_margin_m
+         << ",\"sensor_braking_required_detection_range_m\":"
+         << sensor_braking.required_detection_range_m
+         << ",\"sensor_braking_guaranteed_detection_range_m\":"
+         << sensor_braking.guaranteed_detection_range_m
+         << ",\"sensor_braking_reserve_m\":" << sensor_braking.reserve_m
+         << ",\"sensor_braking_accepted\":"
+         << (sensor_braking.accepted() ? "true" : "false")
          << ",\"goal_speed_limit_mps\":"
          << finiteOrNegative(speed_policy.goal_limit_mps)
          << ",\"route_endpoint_speed_limit_mps\":"

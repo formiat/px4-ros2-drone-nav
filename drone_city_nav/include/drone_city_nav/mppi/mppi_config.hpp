@@ -18,6 +18,7 @@ struct DynamicsConfig {
   float maximum_vertical_acceleration_mps2{4.0F};
   float maximum_horizontal_speed_mps{10.0F};
   float maximum_vertical_speed_mps{5.0F};
+  float maximum_translational_speed_mps{std::numeric_limits<float>::max()};
   float maximum_yaw_acceleration_radps2{2.0F};
   float maximum_yaw_rate_radps{1.5F};
   float maximum_control_jerk_mps3{12.0F};

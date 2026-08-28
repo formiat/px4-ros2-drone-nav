@@ -176,6 +176,12 @@ TEST(ExecutionEvidence3DTest, ValidationPolicyRejectsInvalidConfiguration) {
             nullptr);
   dynamics = mppi::DynamicsConfig{};
 
+  dynamics.maximum_translational_speed_mps = 0.0F;
+  EXPECT_EQ(VersionedExecutionValidationPolicy3D::capture(flight, dynamics, altitude,
+                                                          footprint),
+            nullptr);
+  dynamics = mppi::DynamicsConfig{};
+
   altitude.maximum_z_m = altitude.minimum_z_m;
   EXPECT_EQ(VersionedExecutionValidationPolicy3D::capture(flight, dynamics, altitude,
                                                           footprint),

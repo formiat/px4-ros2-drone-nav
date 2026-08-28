@@ -41,6 +41,24 @@ TEST(MppiReferenceTest, DynamicsClampsAccelerationAndVelocity) {
   EXPECT_NEAR(state.yaw, 0.75F, 1.0e-5F);
 }
 
+TEST(MppiReferenceTest, DynamicsClampsTheCompleteTranslationalSpeedVector) {
+  DynamicsConfig config{};
+  config.dt_s = 1.0F;
+  config.linear_drag_1ps = 0.0F;
+  config.maximum_horizontal_acceleration_mps2 = 10.0F;
+  config.maximum_vertical_acceleration_mps2 = 10.0F;
+  config.maximum_horizontal_speed_mps = 10.0F;
+  config.maximum_vertical_speed_mps = 10.0F;
+  config.maximum_translational_speed_mps = 2.0F;
+
+  const State state =
+      integrateReference(State{}, Control{4.0F, 0.0F, 4.0F, 0.0F}, config);
+
+  EXPECT_NEAR(std::hypot(std::hypot(state.vx, state.vy), state.vz), 2.0F, 1.0e-5F);
+  EXPECT_GT(state.vx, 0.0F);
+  EXPECT_GT(state.vz, 0.0F);
+}
+
 TEST(MppiReferenceTest, MeasuredAccelerationResolvesEquivalentDynamicControl) {
   DynamicsConfig config{};
   config.linear_drag_1ps = 0.1F;
@@ -368,6 +386,7 @@ TEST(MppiReferenceTest, InheritedSpeedAboveModelLimitDecaysWithoutTeleporting) {
   dynamics.linear_drag_1ps = 0.0F;
   dynamics.maximum_horizontal_speed_mps = 10.0F;
   dynamics.maximum_vertical_speed_mps = 5.0F;
+  dynamics.maximum_translational_speed_mps = 10.0F;
   dynamics.maximum_yaw_rate_radps = 1.5F;
 
   const State initial{
@@ -387,6 +406,8 @@ TEST(MppiReferenceTest, InheritedSpeedAboveModelLimitDecaysWithoutTeleporting) {
   EXPECT_LT(recovering.yaw_rate, initial.yaw_rate);
   EXPECT_GT(recovering.vx, dynamics.maximum_horizontal_speed_mps);
   EXPECT_LT(recovering.vz, -dynamics.maximum_vertical_speed_mps);
+  EXPECT_GT(std::hypot(std::hypot(recovering.vx, recovering.vy), recovering.vz),
+            dynamics.maximum_translational_speed_mps);
   EXPECT_GT(recovering.yaw_rate, dynamics.maximum_yaw_rate_radps);
 }
 

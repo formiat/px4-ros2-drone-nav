@@ -83,16 +83,33 @@ additional prohibited inflation layer.
 
 ## Static And No-Static Geometry Profiles
 
-World profile may select different horizon, target-lookahead,
-distance-evidence-window, and observation-range geometry. Cruise speed,
-absolute speed, and horizontal acceleration are map-independent explicit
-parameters.
+World profile may select different horizon, target-lookahead, and
+distance-evidence-window geometry. Cruise speed, absolute speed, and dynamics
+limits are map-independent explicit parameters.
 
 In no-static 3D mode, unknown space remains distinct from raw occupied space but
 has the same strategic traversability and base cost as confirmed free space.
 Sensor range, physical stopping capability, route reserve, and the finite
 zero-speed braking fallback bound motion before unobserved obstacles can become
-unavoidable.
+unavoidable. The production speed cap is the largest speed satisfying
+
+```text
+speed * (maximum_lidar_evidence_age + reaction_latency)
+  + jerk_limited_stopping_distance
+  + physical_margin
+  <= guaranteed_lidar_detection_range
+```
+
+The stopping calculation starts with the worst permitted forward 3D
+acceleration, reverses it under the configured jerk limit, and uses the weaker
+guaranteed horizontal or vertical deceleration. Stale direct evidence fails
+closed; a fresh `Unknown` voxel has the same strategic cost and admission rule
+as a fresh `Free` voxel. The solved limit bounds the full translational velocity
+norm in both host and CUDA integration, not independent XY and Z components.
+Strategic ETA and compiled route speed profiles use that same limit. If measured
+motion is already above it, the reference speed becomes zero while the dynamics
+preserve the inherited velocity for physically continuous braking instead of
+teleporting it down to the cap.
 
 Exact defaults live in `config/urban_mvp.yaml`.
 

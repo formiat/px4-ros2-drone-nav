@@ -14,6 +14,17 @@ __device__ void clampHorizontalDevice(float& x, float& y, const float limit) {
   }
 }
 
+__device__ void clampTranslationalDevice(float& x, float& y, float& z,
+                                         const float limit) {
+  const float magnitude = hypotf(hypotf(x, y), z);
+  if (magnitude > limit && magnitude > 0.0F) {
+    const float scale = limit / magnitude;
+    x *= scale;
+    y *= scale;
+    z *= scale;
+  }
+}
+
 __device__ std::uint64_t mixBits(std::uint64_t value) {
   value += 0x9e3779b97f4a7c15ULL;
   value = (value ^ (value >> 30U)) * 0xbf58476d1ce4e5b9ULL;
@@ -68,6 +79,8 @@ __device__ State integrateDevice(State state, Control control,
   const float drag = fmaxf(0.0F, 1.0F - config.linear_drag_1ps * config.dt_s);
   const float inherited_horizontal_speed_mps = hypotf(state.vx, state.vy);
   const float inherited_vertical_speed_mps = fabsf(state.vz);
+  const float inherited_translational_speed_mps =
+      hypotf(inherited_horizontal_speed_mps, inherited_vertical_speed_mps);
   const float inherited_yaw_rate_radps = fabsf(state.yaw_rate);
   state.vx = state.vx * drag + control.ax * config.dt_s;
   state.vy = state.vy * drag + control.ay * config.dt_s;
@@ -78,6 +91,9 @@ __device__ State integrateDevice(State state, Control control,
   const float vertical_speed_limit_mps =
       fmaxf(config.maximum_vertical_speed_mps, inherited_vertical_speed_mps);
   state.vz = clampValue(state.vz, -vertical_speed_limit_mps, vertical_speed_limit_mps);
+  clampTranslationalDevice(
+      state.vx, state.vy, state.vz,
+      fmaxf(config.maximum_translational_speed_mps, inherited_translational_speed_mps));
   const float yaw_rate_limit_radps =
       fmaxf(config.maximum_yaw_rate_radps, inherited_yaw_rate_radps);
   state.yaw_rate = clampValue(state.yaw_rate + control.yaw_accel * config.dt_s,

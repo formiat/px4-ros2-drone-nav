@@ -27,6 +27,16 @@ void clampHorizontal(float& x, float& y, const float limit) noexcept {
   }
 }
 
+void clampTranslational(float& x, float& y, float& z, const float limit) noexcept {
+  const float magnitude = std::hypot(std::hypot(x, y), z);
+  if (magnitude > limit && magnitude > 0.0F) {
+    const float scale = limit / magnitude;
+    x *= scale;
+    y *= scale;
+    z *= scale;
+  }
+}
+
 [[nodiscard]] SweptFootprintConfig sweptConfig(const FootprintConfig& footprint,
                                                const float sweep_step_m,
                                                const float safe_clearance_m) noexcept {
@@ -137,6 +147,8 @@ bool benchmarkConfigIsValid(const BenchmarkConfig& config) noexcept {
              config.dynamics.maximum_horizontal_acceleration_mps2 &&
          config.stopping_capability.guaranteed_vertical_deceleration_mps2 <=
              config.dynamics.maximum_vertical_acceleration_mps2 &&
+         std::isfinite(config.dynamics.maximum_translational_speed_mps) &&
+         config.dynamics.maximum_translational_speed_mps > 0.0F &&
          std::isfinite(config.altitude_envelope.reaction_latency_s) &&
          config.altitude_envelope.reaction_latency_s >= 0.0F &&
          std::isfinite(config.cooperative.desired_minimum_separation_m) &&
@@ -185,6 +197,8 @@ State integrateReference(State state, Control control,
   const float drag = std::max(0.0F, 1.0F - config.linear_drag_1ps * config.dt_s);
   const float inherited_horizontal_speed_mps = std::hypot(state.vx, state.vy);
   const float inherited_vertical_speed_mps = std::abs(state.vz);
+  const float inherited_translational_speed_mps =
+      std::hypot(inherited_horizontal_speed_mps, inherited_vertical_speed_mps);
   const float inherited_yaw_rate_radps = std::abs(state.yaw_rate);
   state.vx = state.vx * drag + control.ax * config.dt_s;
   state.vy = state.vy * drag + control.ay * config.dt_s;
@@ -194,6 +208,9 @@ State integrateReference(State state, Control control,
       std::max(config.maximum_horizontal_speed_mps, inherited_horizontal_speed_mps));
   state.vz = clampMagnitude(state.vz, std::max(config.maximum_vertical_speed_mps,
                                                inherited_vertical_speed_mps));
+  clampTranslational(state.vx, state.vy, state.vz,
+                     std::max(config.maximum_translational_speed_mps,
+                              inherited_translational_speed_mps));
 
   state.yaw_rate =
       clampMagnitude(state.yaw_rate + control.yaw_accel * config.dt_s,

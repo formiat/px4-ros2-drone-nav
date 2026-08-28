@@ -28,6 +28,16 @@ void clampHorizontal(float& x, float& y, const float limit) noexcept {
   }
 }
 
+void clampTranslational(float& x, float& y, float& z, const float limit) noexcept {
+  const float magnitude = std::hypot(std::hypot(x, y), z);
+  if (magnitude > limit && magnitude > 0.0F) {
+    const float scale = limit / magnitude;
+    x *= scale;
+    y *= scale;
+    z *= scale;
+  }
+}
+
 struct RouteSample {
   float x_m{0.0F};
   float y_m{0.0F};
@@ -260,6 +270,9 @@ buildGuideDirectedSeed(const State& initial, const State& target,
       desired_vz =
           clampMagnitude(desired_vz, std::min(requested_speed_mps,
                                               dynamics.maximum_vertical_speed_mps));
+      clampTranslational(
+          route_desired_vx, desired_vy, desired_vz,
+          std::min(requested_speed_mps, dynamics.maximum_translational_speed_mps));
     }
     const float route_velocity_gain =
         1.0F / std::max(dynamics.dt_s, std::numeric_limits<float>::epsilon());

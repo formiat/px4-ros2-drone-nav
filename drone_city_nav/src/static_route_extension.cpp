@@ -1,6 +1,7 @@
 #include "drone_city_nav/static_route_extension.hpp"
 
 #include "drone_city_nav/esdf_query.hpp"
+#include "drone_city_nav/stopping_distance.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -47,56 +48,6 @@ template<std::size_t Size>
   const double measured_s = std::max(0.0, latency_ms) / 1000.0;
   return std::clamp(measured_s + std::max(0.0, config.latency_margin_s), 0.0,
                     std::max(0.0, config.maximum_latency_s));
-}
-
-[[nodiscard]] double jerkLimitedAxisStoppingDistanceM(
-    const double speed_mps, const double forward_acceleration_mps2,
-    const double guaranteed_deceleration_mps2, const double maximum_acceleration_mps2,
-    const double maximum_jerk_mps3, const double reaction_latency_s) noexcept {
-  if (!std::isfinite(speed_mps) || speed_mps < 0.0 ||
-      !std::isfinite(forward_acceleration_mps2) ||
-      !std::isfinite(guaranteed_deceleration_mps2) ||
-      !(guaranteed_deceleration_mps2 > 0.0) ||
-      !std::isfinite(maximum_acceleration_mps2) || !(maximum_acceleration_mps2 > 0.0) ||
-      !std::isfinite(maximum_jerk_mps3) || !(maximum_jerk_mps3 > 0.0) ||
-      !std::isfinite(reaction_latency_s) || reaction_latency_s < 0.0) {
-    return std::numeric_limits<double>::infinity();
-  }
-  if (!(speed_mps > 0.0)) {
-    return 0.0;
-  }
-
-  const double forward_acceleration = std::clamp(
-      std::max(0.0, forward_acceleration_mps2), 0.0, maximum_acceleration_mps2);
-  const double reaction_distance_m =
-      speed_mps * reaction_latency_s +
-      0.5 * forward_acceleration * reaction_latency_s * reaction_latency_s;
-  const double speed_after_reaction_mps =
-      speed_mps + forward_acceleration * reaction_latency_s;
-  const double ramp_time_s =
-      (forward_acceleration + guaranteed_deceleration_mps2) / maximum_jerk_mps3;
-  const double stop_during_ramp_s =
-      (forward_acceleration +
-       std::sqrt(forward_acceleration * forward_acceleration +
-                 2.0 * maximum_jerk_mps3 * speed_after_reaction_mps)) /
-      maximum_jerk_mps3;
-  const double applied_ramp_time_s = std::min(ramp_time_s, stop_during_ramp_s);
-  const double ramp_time_squared_s2 = applied_ramp_time_s * applied_ramp_time_s;
-  const double ramp_distance_m =
-      speed_after_reaction_mps * applied_ramp_time_s +
-      0.5 * forward_acceleration * ramp_time_squared_s2 -
-      maximum_jerk_mps3 * ramp_time_squared_s2 * applied_ramp_time_s / 6.0;
-  if (stop_during_ramp_s <= ramp_time_s) {
-    return std::max(0.0, reaction_distance_m + ramp_distance_m);
-  }
-  const double speed_after_ramp_mps =
-      speed_after_reaction_mps + forward_acceleration * ramp_time_s -
-      0.5 * maximum_jerk_mps3 * ramp_time_s * ramp_time_s;
-  const double constant_deceleration_distance_m = speed_after_ramp_mps *
-                                                  speed_after_ramp_mps /
-                                                  (2.0 * guaranteed_deceleration_mps2);
-  return std::max(0.0, reaction_distance_m + ramp_distance_m +
-                           constant_deceleration_distance_m);
 }
 
 [[nodiscard]] unsigned
@@ -169,9 +120,13 @@ double jerkLimitedHorizontalStoppingDistanceM(
   }
   return jerkLimitedAxisStoppingDistanceM(
       horizontal_speed_mps, forward_acceleration_mps2,
-      capability.guaranteed_horizontal_deceleration_mps2,
-      maximum_horizontal_acceleration_mps2, maximum_control_jerk_mps3,
-      capability.reaction_latency_s);
+      JerkLimitedAxisStoppingConfig{
+          .guaranteed_deceleration_mps2 =
+              capability.guaranteed_horizontal_deceleration_mps2,
+          .maximum_acceleration_mps2 = maximum_horizontal_acceleration_mps2,
+          .maximum_jerk_mps3 = maximum_control_jerk_mps3,
+          .reaction_latency_s = capability.reaction_latency_s,
+      });
 }
 
 bool JerkLimitedStoppingDistance3D::valid() const noexcept {
@@ -194,14 +149,22 @@ jerkLimitedStoppingDistance3D(const double horizontal_speed_mps,
   }
   const double horizontal_m = jerkLimitedAxisStoppingDistanceM(
       horizontal_speed_mps, forward_horizontal_acceleration_mps2,
-      config.stopping_capability.guaranteed_horizontal_deceleration_mps2,
-      config.maximum_horizontal_acceleration_mps2, config.maximum_control_jerk_mps3,
-      config.stopping_capability.reaction_latency_s);
+      JerkLimitedAxisStoppingConfig{
+          .guaranteed_deceleration_mps2 =
+              config.stopping_capability.guaranteed_horizontal_deceleration_mps2,
+          .maximum_acceleration_mps2 = config.maximum_horizontal_acceleration_mps2,
+          .maximum_jerk_mps3 = config.maximum_control_jerk_mps3,
+          .reaction_latency_s = config.stopping_capability.reaction_latency_s,
+      });
   const double vertical_m = jerkLimitedAxisStoppingDistanceM(
       vertical_speed_mps, forward_vertical_acceleration_mps2,
-      config.stopping_capability.guaranteed_vertical_deceleration_mps2,
-      config.maximum_vertical_acceleration_mps2, config.maximum_control_jerk_mps3,
-      config.stopping_capability.reaction_latency_s);
+      JerkLimitedAxisStoppingConfig{
+          .guaranteed_deceleration_mps2 =
+              config.stopping_capability.guaranteed_vertical_deceleration_mps2,
+          .maximum_acceleration_mps2 = config.maximum_vertical_acceleration_mps2,
+          .maximum_jerk_mps3 = config.maximum_control_jerk_mps3,
+          .reaction_latency_s = config.stopping_capability.reaction_latency_s,
+      });
   return {.horizontal_m = horizontal_m,
           .vertical_m = vertical_m,
           .route_station_m = horizontal_m + vertical_m};
