@@ -436,6 +436,7 @@ def generate_multi_vehicle_launch_description(mission_kind):
                 document,
                 "production_mppi_node",
                 {
+                    "configured_mission_objective_enabled": False,
                     "use_static_map": use_static_map,
                     "liveness_enabled": liveness_enabled,
                     "route_stall_recovery_enabled": (

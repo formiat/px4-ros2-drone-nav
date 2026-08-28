@@ -155,6 +155,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   const std::vector<Point3> mission_waypoints =
       missionWaypointsFromFlatParameters(declare_parameter<std::vector<double>>(
           "mission_goal_sequence_xyz_m", std::vector<double>{}));
+  const bool configured_mission_objective_enabled =
+      declare_parameter<bool>("configured_mission_objective_enabled", false);
   for (const Point3& waypoint : mission_waypoints) {
     if (!insideFlightEnvelope(waypoint, flight_envelope_config_)) {
       throw std::invalid_argument{"mission waypoint is outside the flight envelope"};
@@ -198,12 +200,15 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       !insideFlightEnvelope(mission_goal_, flight_envelope_config_)) {
     throw std::invalid_argument{"invalid navigation objective configuration"};
   }
-  navigation_objective_.store(std::make_shared<const ProductionNavigationObjective>(
-                                  ProductionNavigationObjective{
-                                      .goal = mission_goal_,
-                                      .tracking = std::nullopt,
-                                  }),
-                              std::memory_order_release);
+  navigation_objective_.store(
+      std::make_shared<const ProductionNavigationObjective>(
+          ProductionNavigationObjective{
+              .goal = mission_goal_,
+              .tracking = std::nullopt,
+              .mission_epoch = configured_mission_objective_enabled ? 1U : 0U,
+              .sample_sequence = 0U,
+          }),
+      std::memory_order_release);
   objective_replan_anchor_ = mission_goal_;
   mppi_config_.rollouts =
       static_cast<std::size_t>(declare_parameter<int>("rollouts", 8192));

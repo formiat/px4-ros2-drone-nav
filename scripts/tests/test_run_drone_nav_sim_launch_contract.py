@@ -163,6 +163,31 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn("target_action=mission_monitor", self.launch_text)
         self.assertIn('Shutdown(reason="point-to-point mission result")', self.launch_text)
 
+    def test_only_point_to_point_activates_the_configured_mission_objective(
+        self,
+    ) -> None:
+        startup_objective = self.production_mppi_source_text.split(
+            "navigation_objective_.store", maxsplit=1
+        )[1].split("objective_replan_anchor_", maxsplit=1)[0]
+        normalized_startup_objective = " ".join(startup_objective.split())
+
+        self.assertIn(
+            '"configured_mission_objective_enabled", false',
+            self.production_mppi_source_text,
+        )
+        self.assertIn(
+            ".mission_epoch = configured_mission_objective_enabled ? 1U : 0U,",
+            normalized_startup_objective,
+        )
+        self.assertIn(".sample_sequence = 0U", startup_objective)
+        self.assertIn(
+            '"configured_mission_objective_enabled": True', self.launch_text
+        )
+        self.assertIn(
+            '"configured_mission_objective_enabled": False',
+            self.intercept_launch_text,
+        )
+
     def test_intercept_spectator_selection_is_launch_configurable(self) -> None:
         for variable in (
             "INTERCEPT_SPECTATOR_INITIAL_VEHICLE_ID",

@@ -257,7 +257,10 @@ def generate_launch_description():
             obstacle_memory_parameters.append(obstacle_memory_overrides)
         production_mppi_parameters = [
             params_file.perform(context),
-            {"use_sim_time": True},
+            {
+                "use_sim_time": True,
+                "configured_mission_objective_enabled": True,
+            },
         ]
         mission_monitor_parameters = [
             params_file.perform(context),
