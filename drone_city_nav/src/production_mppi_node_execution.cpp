@@ -118,17 +118,21 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
         "EXECUTION_HORIZON published=false reason=offboard_session_unavailable");
     return publication;
   }
+  if (route_execution.source_snapshot == nullptr) {
+    RCLCPP_ERROR_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "EXECUTION_HORIZON published=false reason=missing_snapshot_owner");
+    requestExecutionRevocation(ProductionMppiExecutionReason::kNoExecutableHorizon);
+    return publication;
+  }
   const std::int64_t lidar_validation_now_ns = get_clock()->now().nanoseconds();
   const Point3 mission_goal = objective->goal;
   const std::shared_ptr<const ProductionMppiRawWorld3D> latest_raw_world_3d =
       latest_raw_world_3d_.load(std::memory_order_acquire);
-  const bool snapshot_owner_required = route_execution.source_snapshot != nullptr;
   const bool direct_tracking_requested =
       route_execution.direct_tracking_identity.has_value();
   const CertifiedRouteSuffix3D* const selected_snapshot_route =
-      snapshot_owner_required && !direct_tracking_requested
-          ? route_execution.route.get()
-          : nullptr;
+      !direct_tracking_requested ? route_execution.route.get() : nullptr;
   const ProprioceptiveFreeSpaceSeed3D proprioceptive_free_space_seed{
       .position =
           Point3{exact_initial_state.x, exact_initial_state.y, exact_initial_state.z},
@@ -139,8 +143,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   };
   std::shared_ptr<const VersionedObservedRawWorld3D> direct_observed_world;
   std::shared_ptr<const VersionedStaticWorld3D> direct_static_world;
-  if (snapshot_owner_required &&
-      (direct_tracking_requested || stationary_capture_rearm)) {
+  if (direct_tracking_requested || stationary_capture_rearm) {
     if (use_static_map_ && static_occupancy_3d_ != nullptr) {
       if (route_execution.source_snapshot->direct_tracking_execution.has_value() &&
           route_execution.source_snapshot->direct_tracking_execution->static_world !=
@@ -199,8 +202,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   const std::uint64_t latest_lidar_obstacle_sequence =
       latest_lidar_evidence != nullptr ? latest_lidar_evidence->sequence() : 0U;
   const bool exact_snapshot_world =
-      snapshot_owner_required && selected_policy != nullptr &&
-      selected_policy->valid() &&
+      selected_policy != nullptr && selected_policy->valid() &&
       ((selected_snapshot_route != nullptr &&
         (selected_snapshot_route->static_world != nullptr) !=
             (selected_snapshot_route->observed_raw_world != nullptr)) ||
@@ -219,8 +221,6 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       : exact_snapshot_world && selected_snapshot_route != nullptr &&
               selected_snapshot_route->static_world != nullptr
           ? &selected_snapshot_route->static_world->occupancy()
-      : !snapshot_owner_required && use_static_map_ && static_occupancy_3d_
-          ? &*static_occupancy_3d_
           : nullptr;
   const ObservedOccupancyGrid3D* observed_occupancy =
       exact_snapshot_world && direct_observed_world != nullptr
@@ -228,9 +228,6 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       : exact_snapshot_world && selected_snapshot_route != nullptr &&
               selected_snapshot_route->observed_raw_world != nullptr
           ? &selected_snapshot_route->observed_raw_world->occupancy()
-      : !snapshot_owner_required && latest_raw_world_3d != nullptr &&
-              latest_raw_world_3d->occupancy != nullptr
-          ? latest_raw_world_3d->occupancy.get()
           : nullptr;
   RouteEndpointSemantics3D finite_boundary_endpoint_semantics =
       esdf.route_reaches_mission_goal ? RouteEndpointSemantics3D::kMissionStop
@@ -253,8 +250,6 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
               selected_snapshot_route->observed_raw_world->proprioceptiveFreeSpaceSeed()
                   .has_value()
           ? &*selected_snapshot_route->observed_raw_world->proprioceptiveFreeSpaceSeed()
-      : !snapshot_owner_required && observed_occupancy != nullptr
-          ? &proprioceptive_free_space_seed
           : nullptr;
   const LaunchSupportContact3D* launch_support_contact_owner =
       exact_snapshot_world && direct_observed_world != nullptr &&
@@ -265,25 +260,15 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
               selected_snapshot_route->observed_raw_world->launchSupportContact()
                   .has_value()
           ? &*selected_snapshot_route->observed_raw_world->launchSupportContact()
-      : !snapshot_owner_required && esdf.launch_support_contact
-          ? &*esdf.launch_support_contact
           : nullptr;
   const FlightEnvelopeConfig* const execution_flight_envelope =
-      snapshot_owner_required
-          ? exact_snapshot_world ? &selected_policy->flightEnvelope() : nullptr
-          : &flight_envelope_config_;
+      exact_snapshot_world ? &selected_policy->flightEnvelope() : nullptr;
   const mppi::DynamicsConfig* const execution_dynamics =
-      snapshot_owner_required
-          ? exact_snapshot_world ? &selected_policy->dynamics() : nullptr
-          : &mppi_config_.dynamics;
+      exact_snapshot_world ? &selected_policy->dynamics() : nullptr;
   const mppi::AltitudeEnvelopeConfig* const execution_altitude_envelope =
-      snapshot_owner_required
-          ? exact_snapshot_world ? &selected_policy->altitudeEnvelope() : nullptr
-          : &mppi_config_.altitude_envelope;
+      exact_snapshot_world ? &selected_policy->altitudeEnvelope() : nullptr;
   const SweptFootprintConfig* const execution_footprint =
-      snapshot_owner_required
-          ? exact_snapshot_world ? &selected_policy->sweptFootprint() : nullptr
-          : &physical_footprint_config_;
+      exact_snapshot_world ? &selected_policy->sweptFootprint() : nullptr;
   const mppi::FiniteExecutionPathWorld execution_path_world{
       .flight_envelope = execution_flight_envelope,
       .dynamics = execution_dynamics,
@@ -312,8 +297,6 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
              selected_snapshot_route->observed_raw_world != nullptr) {
     latest_obstacle_revision =
         selected_snapshot_route->observed_raw_world->version().revision;
-  } else if (!snapshot_owner_required && latest_raw_world_3d) {
-    latest_obstacle_revision = latest_raw_world_3d->version.revision;
   }
 
   const ProductionMppiExecutionCycle cycle{
@@ -335,7 +318,6 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       .lidar_validation_now_ns = lidar_validation_now_ns,
       .mission_goal = mission_goal,
       .latest_raw_world_3d = latest_raw_world_3d,
-      .snapshot_owner_required = snapshot_owner_required,
       .direct_tracking_requested = direct_tracking_requested,
       .selected_snapshot_route = selected_snapshot_route,
       .direct_observed_world = direct_observed_world,
@@ -472,26 +454,24 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
         result.known_solid_collision ? "true" : "false");
   }
 
-  std::shared_ptr<const ExecutionRouteSnapshot3D> expected_snapshot;
-  std::shared_ptr<const ExecutionRouteSnapshot3D> execution_certification_snapshot;
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> expected_snapshot =
+      route_execution.source_snapshot;
+  const std::shared_ptr<const ExecutionRouteSnapshot3D>
+      execution_certification_snapshot =
+          route_execution.certification_snapshot != nullptr
+              ? route_execution.certification_snapshot
+              : expected_snapshot;
   const CertifiedRouteSuffix3D* route_certification_target{nullptr};
   std::uint64_t route_trajectory_revision{0U};
   std::optional<FiniteExecutionPlanCertificationResult3D> route_candidate_certification;
   mppi::FiniteExecutionPathCandidateValidator route_candidate_validator;
-  if (snapshot_owner_required) {
-    expected_snapshot = route_execution.source_snapshot;
-    execution_certification_snapshot = route_execution.certification_snapshot != nullptr
-                                           ? route_execution.certification_snapshot
-                                           : expected_snapshot;
-    const std::shared_ptr<const ExecutionRouteSnapshot3D> resident =
-        execution_route_store_.snapshot();
-    if (expected_snapshot == nullptr || execution_certification_snapshot == nullptr ||
-        resident != expected_snapshot) {
-      return publishNoExecutablePathHold(
-          cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
-    }
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> resident =
+      execution_route_store_.snapshot();
+  if (execution_certification_snapshot == nullptr || resident != expected_snapshot) {
+    return publishNoExecutablePathHold(
+        cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
   }
-  if (snapshot_owner_required && !direct_tracking_requested) {
+  if (!direct_tracking_requested) {
     if (route_execution.pending_activation) {
       route_certification_target = route_execution.route.get();
     } else {
@@ -599,156 +579,143 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   }
   mppi::FiniteHorizon executable_path =
       std::move(validated_path.horizon).value_or(mppi::FiniteHorizon{});
-  if (!snapshot_owner_required &&
-      legacy_execution_arbiter_.noExecutableHoldPosition().has_value()) {
-    const double speed_mps =
-        std::hypot(std::hypot(exact_initial_state.vx, exact_initial_state.vy),
-                   exact_initial_state.vz);
-    RCLCPP_INFO(get_logger(),
-                "MPPI_EXECUTION_CONTRACT transition=leave_no_executable_path_hold "
-                "reason=executable_path_available pose_revision=%" PRIu64
-                " speed_mps=%.3f",
-                input.pose_revision, speed_mps);
-    legacy_execution_arbiter_.leaveNoExecutableHold();
-  }
 
   std::shared_ptr<const ExecutionRouteSnapshot3D> committed_snapshot;
   std::optional<ExecutionRouteTransitionResult3D> snapshot_transition;
-  if (snapshot_owner_required) {
-    const std::shared_ptr<const ExecutionRouteSnapshot3D>& expected = expected_snapshot;
-    if (direct_tracking_requested) {
-      if (!route_execution.direct_tracking_identity->valid() ||
-          execution_validation_policy_ == nullptr ||
-          (direct_observed_world == nullptr) == (direct_static_world == nullptr)) {
-        return publishNoExecutablePathHold(
-            cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
-      }
-      const std::uint64_t previous_trajectory_revision =
-          expected->direct_tracking_execution.has_value()
-              ? expected->direct_tracking_execution->trajectory_revision
-          : expected->finite_execution.has_value()
-              ? expected->finite_execution->trajectory_revision
-              : 0U;
-      if (previous_trajectory_revision == std::numeric_limits<std::uint64_t>::max()) {
-        return publishNoExecutablePathHold(
-            cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
-      }
-      const std::optional<DirectTrackingFiniteExecution3D> certified_execution =
-          certifyDirectTrackingExecution3D(
-              *expected,
-              DirectTrackingExecutionCertification3D{
-                  .identity = *route_execution.direct_tracking_identity,
-                  .trajectory_revision = previous_trajectory_revision + 1U,
-                  .target = Point3{input.target.x, input.target.y, input.target.z},
-                  .horizon = std::move(executable_path),
-                  .observed_raw_world = direct_observed_world,
-                  .static_world = direct_static_world,
-                  .validation_policy = execution_validation_policy_,
-                  .execution_input = execution_input,
-                  .latest_lidar_evidence = latest_lidar_evidence,
-                  .valid_from_ns = now_ns,
-                  .kind = FiniteExecutionKind3D::kNominal,
-              });
-      if (!certified_execution.has_value()) {
-        return publishNoExecutablePathHold(
-            cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
-      }
-      const ExecutionRouteTransitionResult3D transition =
-          expected->phase == ExecutionRoutePhase3D::kDirectTracking
-              ? replaceDirectTrackingExecution3D(*expected, expected->version,
-                                                 *certified_execution)
-              : transferToDirectTracking3D(*expected, expected->version,
-                                           *certified_execution);
-      if (!transition.applied() || transition.next == nullptr ||
-          !transition.next->direct_tracking_execution.has_value()) {
-        return publishNoExecutablePathHold(
-            cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
-      }
-      committed_snapshot = transition.next;
-      snapshot_transition.emplace(transition);
-    } else {
-      const CertifiedRouteSuffix3D* const target_route = route_certification_target;
-      if (target_route == nullptr || !route_candidate_certification.has_value() ||
-          !route_candidate_certification->certified()) {
-        return publishNoExecutablePathHold(
-            cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
-      }
-      const FiniteExecutionPlanCertificationResult3D& certified_execution =
-          *route_candidate_certification;
-      const FiniteExecutionPlan3D& execution = *certified_execution.plan;
-      const std::shared_ptr<const ExecutionRouteSnapshot3D>& transition_base =
-          execution_certification_snapshot;
-      if (transition_base == nullptr) {
-        return publishNoExecutablePathHold(
-            cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
-      }
-      if (route_execution.pending_activation && transition_base->route.has_value() &&
-          (route_execution.pending_route == nullptr ||
-           (route_execution.pending_route->base_kind ==
-                PendingExecutionBaseKind3D::kRoute &&
-            !route_execution.pending_route->route_splice.has_value()))) {
-        return publishNoExecutablePathHold(
-            cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
-      }
-      const ExecutionRouteTransitionResult3D prepared_transition = [&] {
-        if (transition_base->phase == ExecutionRoutePhase3D::kDirectTracking) {
-          return transferDirectTrackingToCertifiedRoute3D(
-              *transition_base, transition_base->version, *target_route, execution);
-        }
-        if (!transition_base->route.has_value()) {
-          return activateCertifiedRoute3D(*transition_base, transition_base->version,
-                                          *target_route, execution);
-        }
-        const ExecutionRouteTransitionGuard3D guard{
-            .expected_snapshot_version = transition_base->version,
-            .expected_route_generation = transition_base->route->identity.generation,
-            .expected_geometry_revision =
-                transition_base->route->geometry->executable_geometry_revision,
-        };
-        if (!route_execution.pending_activation) {
-          return replaceFiniteExecutionPlan3D(*transition_base, guard, execution);
-        }
-        if (route_execution.pending_route->base_kind ==
-            PendingExecutionBaseKind3D::kRouteHandoff) {
-          return replaceCertifiedRouteAtHandoff3D(*transition_base, guard,
-                                                  *target_route, execution);
-        }
-        return replaceCertifiedRoute3D(*transition_base, guard, *target_route,
-                                       execution,
-                                       *route_execution.pending_route->route_splice);
-      }();
-      const ExecutionRouteTransitionResult3D transition =
-          route_execution.progress_preparation != nullptr
-              ? composeExecutionPlanTransition3D(*expected,
-                                                 *route_execution.progress_preparation,
-                                                 prepared_transition)
-              : prepared_transition;
-      if (!transition.applied() || transition.next == nullptr ||
-          !transition.next->route.has_value() ||
-          !transition.next->finite_execution.has_value() ||
-          !transition.next->braking_fallback.has_value()) {
-        const std::string_view status_name =
-            executionRouteTransitionStatus3DName(transition.status);
-        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
-                             "FINITE_EXECUTION_TRANSITION applied=false status=%.*s "
-                             "snapshot_version=%" PRIu64 " route_generation=%" PRIu64,
-                             static_cast<int>(status_name.size()), status_name.data(),
-                             expected->version, target_route->identity.generation);
-        return publishNoExecutablePathHold(
-            cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
-      }
-      committed_snapshot = transition.next;
-      snapshot_transition.emplace(transition);
+  const std::shared_ptr<const ExecutionRouteSnapshot3D>& expected = expected_snapshot;
+  if (direct_tracking_requested) {
+    if (!route_execution.direct_tracking_identity->valid() ||
+        execution_validation_policy_ == nullptr ||
+        (direct_observed_world == nullptr) == (direct_static_world == nullptr)) {
+      return publishNoExecutablePathHold(
+          cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
     }
+    const std::uint64_t previous_trajectory_revision =
+        expected->direct_tracking_execution.has_value()
+            ? expected->direct_tracking_execution->trajectory_revision
+        : expected->finite_execution.has_value()
+            ? expected->finite_execution->trajectory_revision
+            : 0U;
+    if (previous_trajectory_revision == std::numeric_limits<std::uint64_t>::max()) {
+      return publishNoExecutablePathHold(
+          cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
+    }
+    const std::optional<DirectTrackingFiniteExecution3D> certified_execution =
+        certifyDirectTrackingExecution3D(
+            *expected,
+            DirectTrackingExecutionCertification3D{
+                .identity = *route_execution.direct_tracking_identity,
+                .trajectory_revision = previous_trajectory_revision + 1U,
+                .target = Point3{input.target.x, input.target.y, input.target.z},
+                .horizon = std::move(executable_path),
+                .observed_raw_world = direct_observed_world,
+                .static_world = direct_static_world,
+                .validation_policy = execution_validation_policy_,
+                .execution_input = execution_input,
+                .latest_lidar_evidence = latest_lidar_evidence,
+                .valid_from_ns = now_ns,
+                .kind = FiniteExecutionKind3D::kNominal,
+            });
+    if (!certified_execution.has_value()) {
+      return publishNoExecutablePathHold(
+          cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
+    }
+    const ExecutionRouteTransitionResult3D transition =
+        expected->phase == ExecutionRoutePhase3D::kDirectTracking
+            ? replaceDirectTrackingExecution3D(*expected, expected->version,
+                                               *certified_execution)
+            : transferToDirectTracking3D(*expected, expected->version,
+                                         *certified_execution);
+    if (!transition.applied() || transition.next == nullptr ||
+        !transition.next->direct_tracking_execution.has_value()) {
+      return publishNoExecutablePathHold(
+          cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
+    }
+    committed_snapshot = transition.next;
+    snapshot_transition.emplace(transition);
+  } else {
+    const CertifiedRouteSuffix3D* const target_route = route_certification_target;
+    if (target_route == nullptr || !route_candidate_certification.has_value() ||
+        !route_candidate_certification->certified()) {
+      return publishNoExecutablePathHold(
+          cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
+    }
+    const FiniteExecutionPlanCertificationResult3D& certified_execution =
+        *route_candidate_certification;
+    const FiniteExecutionPlan3D& execution = *certified_execution.plan;
+    const std::shared_ptr<const ExecutionRouteSnapshot3D>& transition_base =
+        execution_certification_snapshot;
+    if (transition_base == nullptr) {
+      return publishNoExecutablePathHold(
+          cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
+    }
+    if (route_execution.pending_activation && transition_base->route.has_value() &&
+        (route_execution.pending_route == nullptr ||
+         (route_execution.pending_route->base_kind ==
+              PendingExecutionBaseKind3D::kRoute &&
+          !route_execution.pending_route->route_splice.has_value()))) {
+      return publishNoExecutablePathHold(
+          cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
+    }
+    const ExecutionRouteTransitionResult3D prepared_transition = [&] {
+      if (transition_base->phase == ExecutionRoutePhase3D::kDirectTracking) {
+        return transferDirectTrackingToCertifiedRoute3D(
+            *transition_base, transition_base->version, *target_route, execution);
+      }
+      if (!transition_base->route.has_value()) {
+        return activateCertifiedRoute3D(*transition_base, transition_base->version,
+                                        *target_route, execution);
+      }
+      const ExecutionRouteTransitionGuard3D guard{
+          .expected_snapshot_version = transition_base->version,
+          .expected_route_generation = transition_base->route->identity.generation,
+          .expected_geometry_revision =
+              transition_base->route->geometry->executable_geometry_revision,
+      };
+      if (!route_execution.pending_activation) {
+        return replaceFiniteExecutionPlan3D(*transition_base, guard, execution);
+      }
+      if (route_execution.pending_route->base_kind ==
+          PendingExecutionBaseKind3D::kRouteHandoff) {
+        return replaceCertifiedRouteAtHandoff3D(*transition_base, guard, *target_route,
+                                                execution);
+      }
+      return replaceCertifiedRoute3D(*transition_base, guard, *target_route, execution,
+                                     *route_execution.pending_route->route_splice);
+    }();
+    const ExecutionRouteTransitionResult3D transition =
+        route_execution.progress_preparation != nullptr
+            ? composeExecutionPlanTransition3D(
+                  *expected, *route_execution.progress_preparation, prepared_transition)
+            : prepared_transition;
+    if (!transition.applied() || transition.next == nullptr ||
+        !transition.next->route.has_value() ||
+        !transition.next->finite_execution.has_value() ||
+        !transition.next->braking_fallback.has_value()) {
+      const std::string_view status_name =
+          executionRouteTransitionStatus3DName(transition.status);
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+                           "FINITE_EXECUTION_TRANSITION applied=false status=%.*s "
+                           "snapshot_version=%" PRIu64 " route_generation=%" PRIu64,
+                           static_cast<int>(status_name.size()), status_name.data(),
+                           expected->version, target_route->identity.generation);
+      return publishNoExecutablePathHold(
+          cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
+    }
+    committed_snapshot = transition.next;
+    snapshot_transition.emplace(transition);
   }
 
+  if (committed_snapshot == nullptr) {
+    return publishNoExecutablePathHold(
+        cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
+  }
   const mppi::FiniteHorizon* committed_path =
-      committed_snapshot != nullptr && committed_snapshot->finite_execution.has_value()
+      committed_snapshot->finite_execution.has_value()
           ? committed_snapshot->finite_execution->horizon.get()
-      : committed_snapshot != nullptr &&
-              committed_snapshot->direct_tracking_execution.has_value()
+      : committed_snapshot->direct_tracking_execution.has_value()
           ? committed_snapshot->direct_tracking_execution->horizon.get()
-          : std::addressof(executable_path);
+          : nullptr;
   if (committed_path == nullptr) {
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
@@ -777,32 +744,14 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
         latest_lidar_obstacle_points.size());
   }
 
-  std::int64_t committed_valid_until_ns{0};
-  if (committed_snapshot != nullptr) {
-    committed_valid_until_ns =
-        committed_snapshot->finite_execution.has_value()
-            ? committed_snapshot->finite_execution->valid_until_ns
-            : committed_snapshot->direct_tracking_execution->valid_until_ns;
-  } else {
-    const std::optional<std::int64_t> terminal_offset_ns =
-        executionHorizonTerminalOffsetNs(execution_states.size(),
-                                         finite_path_control_interval_ns);
-    const std::optional<std::int64_t> valid_until_ns =
-        terminal_offset_ns.has_value()
-            ? production_mppi_execution_detail::canonicalHorizonEndTime(
-                  now_ns, *terminal_offset_ns)
-            : std::nullopt;
-    if (!valid_until_ns.has_value()) {
-      return publishNoExecutablePathHold(
-          cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
-    }
-    committed_valid_until_ns = *valid_until_ns;
-  }
+  const std::int64_t committed_valid_until_ns =
+      committed_snapshot->finite_execution.has_value()
+          ? committed_snapshot->finite_execution->valid_until_ns
+          : committed_snapshot->direct_tracking_execution->valid_until_ns;
   msg::MppiTrajectoryHorizon horizon = makeExecutionHorizon(
       cycle, committed_valid_until_ns, ProductionMppiExecutionMode::kPlanned,
       ProductionMppiExecutionReason::kNone);
-  if (committed_snapshot != nullptr &&
-      committed_snapshot->direct_tracking_execution.has_value()) {
+  if (committed_snapshot->direct_tracking_execution.has_value()) {
     const DirectTrackingFiniteExecution3D& committed_direct =
         *committed_snapshot->direct_tracking_execution;
     horizon.route_constrained = false;
@@ -813,7 +762,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       horizon.obstacle_revision =
           committed_direct.observed_raw_world->version().revision;
     }
-  } else if (committed_snapshot != nullptr && committed_snapshot->route.has_value() &&
+  } else if (committed_snapshot->route.has_value() &&
              committed_snapshot->finite_execution.has_value()) {
     if (!production_mppi_execution_detail::bindHorizonRouteMetadata(
             horizon, *committed_snapshot->route)) {
@@ -839,40 +788,31 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
     return publishNoExecutablePathHold(
         cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
   }
-  if (snapshot_owner_required) {
-    if (!snapshot_transition.has_value() ||
-        (route_execution.pending_activation &&
-         route_execution.pending_route == nullptr) ||
-        commitExecutionSnapshotHorizon(
-            cycle, route_execution.source_snapshot, *snapshot_transition, horizon,
-            route_execution.pending_activation ? route_execution.pending_route
-                                               : nullptr,
-            route_execution.certification_snapshot,
-            route_execution.progress_preparation) !=
-            ProductionMppiHorizonCommitStatus::kPublished) {
-      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
-                           "FINITE_EXECUTION_PUBLICATION published=false "
-                           "stage=snapshot_horizon_commit pending_activation=%s",
-                           route_execution.pending_activation ? "true" : "false");
-      return publishNoExecutablePathHold(
-          cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
-    }
-    if (route_execution.pending_activation &&
-        route_execution.pending_route != nullptr) {
-      if (committed_snapshot != nullptr && committed_snapshot->route.has_value() &&
-          committed_snapshot->route->observed_raw_world != nullptr) {
-        const std::uint64_t blocked_raw_revision =
-            observed_route_blocked_raw_revision_.load(std::memory_order_acquire);
-        if (blocked_raw_revision != 0U &&
-            blocked_raw_revision <=
-                committed_snapshot->route->observed_raw_world->version().revision) {
-          observed_route_blocked_raw_revision_.store(0U, std::memory_order_release);
-        }
-      }
-    }
-  } else {
-    if (!publishLegacyExecutionHorizon(cycle, horizon)) {
-      return publication;
+  if (!snapshot_transition.has_value() ||
+      (route_execution.pending_activation &&
+       route_execution.pending_route == nullptr) ||
+      commitExecutionSnapshotHorizon(
+          cycle, route_execution.source_snapshot, *snapshot_transition, horizon,
+          route_execution.pending_activation ? route_execution.pending_route : nullptr,
+          route_execution.certification_snapshot,
+          route_execution.progress_preparation) !=
+          ProductionMppiHorizonCommitStatus::kPublished) {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+                         "FINITE_EXECUTION_PUBLICATION published=false "
+                         "stage=snapshot_horizon_commit pending_activation=%s",
+                         route_execution.pending_activation ? "true" : "false");
+    return publishNoExecutablePathHold(
+        cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
+  }
+  if (route_execution.pending_activation && route_execution.pending_route != nullptr &&
+      committed_snapshot->route.has_value() &&
+      committed_snapshot->route->observed_raw_world != nullptr) {
+    const std::uint64_t blocked_raw_revision =
+        observed_route_blocked_raw_revision_.load(std::memory_order_acquire);
+    if (blocked_raw_revision != 0U &&
+        blocked_raw_revision <=
+            committed_snapshot->route->observed_raw_world->version().revision) {
+      observed_route_blocked_raw_revision_.store(0U, std::memory_order_release);
     }
   }
   publication.horizon.assign(execution_states.begin(), execution_states.end());
@@ -899,14 +839,6 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       validated_path.latest_lidar_path_validation_backoff;
   publication.terminal_rest_state = true;
   publication.published = true;
-  if (!snapshot_owner_required) {
-    legacy_execution_arbiter_.activate(esdf.route_generation,
-                                       ProductionMppiActiveFiniteExecutionPath{
-                                           .message = std::move(horizon),
-                                           .publication = publication,
-                                           .terminal_boundary = route_terminal_boundary,
-                                       });
-  }
   return publication;
 }
 

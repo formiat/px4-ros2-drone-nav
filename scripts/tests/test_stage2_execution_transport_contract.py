@@ -533,7 +533,7 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
 
         owner_commit = publication.split(
             "ProductionMppiNode::commitAndPublishExecutionHorizon", maxsplit=1
-        )[1].split("ProductionMppiNode::publishLegacyExecutionHorizon", maxsplit=1)[0]
+        )[1].split("ProductionMppiNode::commitExecutionSnapshotHorizon", maxsplit=1)[0]
         commit_lock = owner_commit.index("input_lock{input_mutex_}")
         status_state = owner_commit.index("const bool vehicle_status_epoch_stable")
         commit_status = owner_commit.index("vehicleStatusAuthoritativeForExecution(")
@@ -637,7 +637,7 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         )
         owner_commit = execution_publication.split(
             "ProductionMppiNode::commitAndPublishExecutionHorizon", maxsplit=1
-        )[1].split("ProductionMppiNode::publishLegacyExecutionHorizon", maxsplit=1)[0]
+        )[1].split("ProductionMppiNode::commitExecutionSnapshotHorizon", maxsplit=1)[0]
         owner_callback = owner_commit.index("switch (publication_commit.kind)")
         owner_control_revoke = owner_commit.index("applied_control_ = {};")
         owner_install = owner_commit.index("execution_horizon_owner_ = owner;")
@@ -856,7 +856,7 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
 
         owner_commit = publication.split(
             "ProductionMppiNode::commitAndPublishExecutionHorizon", maxsplit=1
-        )[1].split("ProductionMppiNode::publishLegacyExecutionHorizon", maxsplit=1)[0]
+        )[1].split("ProductionMppiNode::commitExecutionSnapshotHorizon", maxsplit=1)[0]
         request_currentness = owner_commit.index(
             "requested_execution_revocation_.load(std::memory_order_acquire)"
         )

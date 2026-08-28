@@ -215,10 +215,10 @@ class PlannerReadinessContractTest(unittest.TestCase):
         )
         self.assertLess(hold_overflow_guard, hold_interval_double)
         self.assertLess(hold_interval_double, hold_canonical_end)
-        self.assertRegex(
-            execution,
-            r"canonicalHorizonEndTime\(\s*now_ns,\s*\*terminal_offset_ns\s*\)",
+        self.assertIn(
+            "committed_snapshot->finite_execution->valid_until_ns", execution
         )
+        self.assertNotIn("terminal_offset_ns", execution)
         self.assertNotIn("ProductionMppiExecutionMode::kBraking", execution)
         self.assertNotIn("EXECUTION_MODE_BRAKING", horizon_message)
         self.assertNotIn("dynamicStopRequested", offboard)
@@ -257,11 +257,12 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self.assertIn("validateFiniteExecutionTrajectoryContinuation", execution)
         self.assertIn("validateFiniteExecutionPathContinuation", execution)
         self.assertIn("actual_state_validation", execution)
-        self.assertIn("rebased_from_actual=true", execution)
+        self.assertIn("rebuildFiniteExecutionPathContinuation", execution)
+        self.assertIn("recertified=true", execution)
         self.assertIn("retainSnapshotFinitePath", execution)
         self.assertIn("retainDirectFinitePath", execution)
         self.assertIn("FiniteExecutionPathTerminalBoundary", execution)
-        self.assertIn("original_valid_until_ns", execution)
+        self.assertNotIn("original_valid_until_ns", execution)
         self.assertIn("assessExecutionHorizonPayload", offboard)
         self.assertIn("kMissingTerminalRestState", horizon_contract)
         self.assertNotIn("route_free_", planning_tick)
@@ -721,7 +722,7 @@ class PlannerReadinessContractTest(unittest.TestCase):
         )[0]
         owner_commit = EXECUTION_PUBLICATION.read_text(encoding="utf-8").split(
             "ProductionMppiNode::commitAndPublishExecutionHorizon", maxsplit=1
-        )[1].split("ProductionMppiNode::publishLegacyExecutionHorizon", maxsplit=1)[0]
+        )[1].split("ProductionMppiNode::commitExecutionSnapshotHorizon", maxsplit=1)[0]
         self.assertIn("offboard_session.latest_source_stamp_ns", target_selection)
         self.assertIn("offboard_session_receive_stamp_ns", target_selection)
         self.assertNotIn("offboard_session_admission_", target_selection)

@@ -52,133 +52,131 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
                                        latest_lidar_evidence_commit_mutex_};
   std::shared_ptr<const ExecutionRouteSnapshot3D> hold_expected;
   std::optional<ExecutionRouteTransitionResult3D> hold_transition;
-  if (cycle.snapshot_owner_required) {
-    const std::shared_ptr<const VersionedLatestLidarEvidence3D> current_lidar =
-        latest_lidar_evidence_.load(std::memory_order_acquire);
-    if (!cycle.latest_lidar_obstacle_fresh || cycle.latest_lidar_evidence == nullptr ||
-        current_lidar == nullptr ||
-        current_lidar->evidenceId() != cycle.latest_lidar_evidence->evidenceId() ||
-        current_lidar->contentFingerprint() !=
-            cycle.latest_lidar_evidence->contentFingerprint()) {
-      return publication;
-    }
-    hold_expected = execution_route_store_.snapshot();
-    if (hold_expected == nullptr ||
-        hold_expected != cycle.route_execution.source_snapshot) {
-      RCLCPP_ERROR_THROTTLE(
-          get_logger(), *get_clock(), 1000,
-          "EXECUTION_HORIZON published=false reason=hold_source_not_current "
-          "snapshot_present=%s",
-          hold_expected != nullptr ? "true" : "false");
-      return publication;
-    }
-    const bool stationary_capture_rearm =
-        reason == ProductionMppiExecutionReason::kGoalCapture &&
-        ownership_transition ==
-            ProductionMppiHoldOwnershipTransition3D::kExplicitTransfer &&
-        hold_expected->phase == ExecutionRoutePhase3D::kRevoked &&
-        !hold_expected->route.has_value() &&
-        !hold_expected->finite_execution.has_value() &&
-        !hold_expected->direct_tracking_execution.has_value() &&
-        !hold_expected->stationary_hold.has_value() &&
-        cycle.planning_state == ProductionMppiPlanningState::kMissionGoalPositionHold &&
-        cycle.execution_input != nullptr &&
-        cycle.execution_input->stationaryCaptureStateAuthoritative() &&
-        cycle.selected_policy != nullptr && execution_validation_policy_ != nullptr &&
-        cycle.selected_policy->policyId() == execution_validation_policy_->policyId() &&
-        (cycle.direct_observed_world == nullptr) !=
-            (cycle.direct_static_world == nullptr);
-    if (cycle.execution_input != nullptr &&
-        cycle.execution_input->stationaryCaptureStateAuthoritative() &&
-        !stationary_capture_rearm) {
-      return publication;
-    }
-    if (stationary_capture_rearm && cycle.direct_observed_world != nullptr &&
-        latest_raw_world_3d_.load(std::memory_order_acquire) !=
-            cycle.latest_raw_world_3d) {
-      return publication;
-    }
-    if (hold_expected->stationary_hold.has_value() &&
-        ownership_transition ==
-            ProductionMppiHoldOwnershipTransition3D::kEnterEmptyOwner) {
-      owned_hold_position = hold_expected->stationary_hold->position;
-    }
-    const StationaryExecutionHold3D* const resident_hold =
-        hold_expected->stationary_hold.has_value()
-            ? std::addressof(*hold_expected->stationary_hold)
-            : nullptr;
-    const FiniteExecutionState3D* const route_execution =
-        hold_expected->finite_execution.has_value()
-            ? std::addressof(*hold_expected->finite_execution)
-            : nullptr;
-    const DirectTrackingFiniteExecution3D* const direct_execution =
-        hold_expected->direct_tracking_execution.has_value()
-            ? std::addressof(*hold_expected->direct_tracking_execution)
-            : nullptr;
-    const std::shared_ptr<const VersionedObservedRawWorld3D> source_observed =
-        stationary_capture_rearm      ? cycle.direct_observed_world
-        : resident_hold != nullptr    ? resident_hold->observed_raw_world
-        : route_execution != nullptr  ? route_execution->observed_raw_world
-        : direct_execution != nullptr ? direct_execution->observed_raw_world
-                                      : nullptr;
-    std::shared_ptr<const VersionedObservedRawWorld3D> current_observed;
-    if (stationary_capture_rearm) {
-      current_observed = source_observed;
-    } else if (source_observed != nullptr) {
-      const std::shared_ptr<const ProductionMppiRawWorld3D> current_raw =
-          latest_raw_world_3d_.load(std::memory_order_acquire);
-      if (current_raw == nullptr || current_raw->execution_owner == nullptr ||
-          current_raw->execution_owner->version().producer_instance_id !=
-              source_observed->version().producer_instance_id) {
-        return publication;
-      }
-      current_observed = current_raw->execution_owner;
-    }
-    const std::shared_ptr<const VersionedStaticWorld3D> current_static =
-        stationary_capture_rearm      ? cycle.direct_static_world
-        : resident_hold != nullptr    ? resident_hold->static_world
-        : route_execution != nullptr  ? route_execution->static_world
-        : direct_execution != nullptr ? direct_execution->static_world
-                                      : nullptr;
-    const std::shared_ptr<const VersionedExecutionValidationPolicy3D> policy =
-        stationary_capture_rearm      ? execution_validation_policy_
-        : resident_hold != nullptr    ? resident_hold->validation_policy
-        : route_execution != nullptr  ? route_execution->validation_policy
-        : direct_execution != nullptr ? direct_execution->validation_policy
-                                      : nullptr;
-    const auto make_hold_certification = [&]() {
-      return StationaryExecutionHoldCertification3D{
-          .position = owned_hold_position,
-          .execution_input = cycle.execution_input,
-          .observed_raw_world = current_observed,
-          .static_world = current_static,
-          .validation_policy = policy,
-          .latest_lidar_evidence = cycle.latest_lidar_evidence,
-      };
-    };
-    const ExecutionRouteTransitionResult3D hold =
-        stationary_capture_rearm
-            ? armStationaryCaptureHold3D(*hold_expected, hold_expected->version,
-                                         make_hold_certification())
-            : transferToExecutionHold3D(*hold_expected, hold_expected->version,
-                                        make_hold_certification());
-    std::shared_ptr<const ExecutionRouteSnapshot3D> owned_snapshot;
-    if (hold.applied()) {
-      hold_transition.emplace(hold);
-      owned_snapshot = hold.next;
-    } else if (hold.status == ExecutionRouteTransitionStatus3D::kNoChange) {
-      owned_snapshot = hold_expected;
-    } else {
-      return publication;
-    }
-    if (owned_snapshot == nullptr || !owned_snapshot->stationary_hold.has_value() ||
-        owned_snapshot->route.has_value() ||
-        owned_snapshot->finite_execution.has_value() ||
-        owned_snapshot->direct_tracking_execution.has_value()) {
-      return publication;
-    }
-    owned_hold_position = owned_snapshot->stationary_hold->position;
+  const std::shared_ptr<const VersionedLatestLidarEvidence3D> current_lidar =
+      latest_lidar_evidence_.load(std::memory_order_acquire);
+  if (!cycle.latest_lidar_obstacle_fresh || cycle.latest_lidar_evidence == nullptr ||
+      current_lidar == nullptr ||
+      current_lidar->evidenceId() != cycle.latest_lidar_evidence->evidenceId() ||
+      current_lidar->contentFingerprint() !=
+          cycle.latest_lidar_evidence->contentFingerprint()) {
+    return publication;
   }
+  hold_expected = execution_route_store_.snapshot();
+  if (hold_expected == nullptr ||
+      hold_expected != cycle.route_execution.source_snapshot) {
+    RCLCPP_ERROR_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "EXECUTION_HORIZON published=false reason=hold_source_not_current "
+        "snapshot_present=%s",
+        hold_expected != nullptr ? "true" : "false");
+    return publication;
+  }
+  const bool stationary_capture_rearm =
+      reason == ProductionMppiExecutionReason::kGoalCapture &&
+      ownership_transition ==
+          ProductionMppiHoldOwnershipTransition3D::kExplicitTransfer &&
+      hold_expected->phase == ExecutionRoutePhase3D::kRevoked &&
+      !hold_expected->route.has_value() &&
+      !hold_expected->finite_execution.has_value() &&
+      !hold_expected->direct_tracking_execution.has_value() &&
+      !hold_expected->stationary_hold.has_value() &&
+      cycle.planning_state == ProductionMppiPlanningState::kMissionGoalPositionHold &&
+      cycle.execution_input != nullptr &&
+      cycle.execution_input->stationaryCaptureStateAuthoritative() &&
+      cycle.selected_policy != nullptr && execution_validation_policy_ != nullptr &&
+      cycle.selected_policy->policyId() == execution_validation_policy_->policyId() &&
+      (cycle.direct_observed_world == nullptr) !=
+          (cycle.direct_static_world == nullptr);
+  if (cycle.execution_input != nullptr &&
+      cycle.execution_input->stationaryCaptureStateAuthoritative() &&
+      !stationary_capture_rearm) {
+    return publication;
+  }
+  if (stationary_capture_rearm && cycle.direct_observed_world != nullptr &&
+      latest_raw_world_3d_.load(std::memory_order_acquire) !=
+          cycle.latest_raw_world_3d) {
+    return publication;
+  }
+  if (hold_expected->stationary_hold.has_value() &&
+      ownership_transition ==
+          ProductionMppiHoldOwnershipTransition3D::kEnterEmptyOwner) {
+    owned_hold_position = hold_expected->stationary_hold->position;
+  }
+  const StationaryExecutionHold3D* const resident_hold =
+      hold_expected->stationary_hold.has_value()
+          ? std::addressof(*hold_expected->stationary_hold)
+          : nullptr;
+  const FiniteExecutionState3D* const route_execution =
+      hold_expected->finite_execution.has_value()
+          ? std::addressof(*hold_expected->finite_execution)
+          : nullptr;
+  const DirectTrackingFiniteExecution3D* const direct_execution =
+      hold_expected->direct_tracking_execution.has_value()
+          ? std::addressof(*hold_expected->direct_tracking_execution)
+          : nullptr;
+  const std::shared_ptr<const VersionedObservedRawWorld3D> source_observed =
+      stationary_capture_rearm      ? cycle.direct_observed_world
+      : resident_hold != nullptr    ? resident_hold->observed_raw_world
+      : route_execution != nullptr  ? route_execution->observed_raw_world
+      : direct_execution != nullptr ? direct_execution->observed_raw_world
+                                    : nullptr;
+  std::shared_ptr<const VersionedObservedRawWorld3D> current_observed;
+  if (stationary_capture_rearm) {
+    current_observed = source_observed;
+  } else if (source_observed != nullptr) {
+    const std::shared_ptr<const ProductionMppiRawWorld3D> current_raw =
+        latest_raw_world_3d_.load(std::memory_order_acquire);
+    if (current_raw == nullptr || current_raw->execution_owner == nullptr ||
+        current_raw->execution_owner->version().producer_instance_id !=
+            source_observed->version().producer_instance_id) {
+      return publication;
+    }
+    current_observed = current_raw->execution_owner;
+  }
+  const std::shared_ptr<const VersionedStaticWorld3D> current_static =
+      stationary_capture_rearm      ? cycle.direct_static_world
+      : resident_hold != nullptr    ? resident_hold->static_world
+      : route_execution != nullptr  ? route_execution->static_world
+      : direct_execution != nullptr ? direct_execution->static_world
+                                    : nullptr;
+  const std::shared_ptr<const VersionedExecutionValidationPolicy3D> policy =
+      stationary_capture_rearm      ? execution_validation_policy_
+      : resident_hold != nullptr    ? resident_hold->validation_policy
+      : route_execution != nullptr  ? route_execution->validation_policy
+      : direct_execution != nullptr ? direct_execution->validation_policy
+                                    : nullptr;
+  const auto make_hold_certification = [&]() {
+    return StationaryExecutionHoldCertification3D{
+        .position = owned_hold_position,
+        .execution_input = cycle.execution_input,
+        .observed_raw_world = current_observed,
+        .static_world = current_static,
+        .validation_policy = policy,
+        .latest_lidar_evidence = cycle.latest_lidar_evidence,
+    };
+  };
+  const ExecutionRouteTransitionResult3D hold =
+      stationary_capture_rearm
+          ? armStationaryCaptureHold3D(*hold_expected, hold_expected->version,
+                                       make_hold_certification())
+          : transferToExecutionHold3D(*hold_expected, hold_expected->version,
+                                      make_hold_certification());
+  std::shared_ptr<const ExecutionRouteSnapshot3D> owned_snapshot;
+  if (hold.applied()) {
+    hold_transition.emplace(hold);
+    owned_snapshot = hold.next;
+  } else if (hold.status == ExecutionRouteTransitionStatus3D::kNoChange) {
+    owned_snapshot = hold_expected;
+  } else {
+    return publication;
+  }
+  if (owned_snapshot == nullptr || !owned_snapshot->stationary_hold.has_value() ||
+      owned_snapshot->route.has_value() ||
+      owned_snapshot->finite_execution.has_value() ||
+      owned_snapshot->direct_tracking_execution.has_value()) {
+    return publication;
+  }
+  owned_hold_position = owned_snapshot->stationary_hold->position;
   if (!insideFlightEnvelope(owned_hold_position, flight_envelope_config_)) {
     RCLCPP_ERROR(get_logger(),
                  "EXECUTION_HORIZON rejected reason=hold_outside_flight_envelope "
@@ -217,9 +215,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
       cycle.exact_initial_state.yaw);
 
   ProductionMppiHorizonCommit commit;
-  if (!cycle.snapshot_owner_required) {
-    commit.kind = ProductionMppiHorizonCommitKind::kRejectLegacyTrajectory;
-  } else if (hold_expected == nullptr) {
+  if (hold_expected == nullptr) {
     return publication;
   } else if (hold_transition.has_value()) {
     commit.kind = ProductionMppiHorizonCommitKind::kPublishSnapshotTransition;
@@ -259,8 +255,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
 ProductionMppiExecutionPublication ProductionMppiNode::publishNoExecutablePathHold(
     const ProductionMppiExecutionCycle& cycle,
     const ProductionMppiExecutionReason reason) {
-  if (cycle.snapshot_owner_required &&
-      cycle.route_execution.source_snapshot != nullptr &&
+  if (cycle.route_execution.source_snapshot != nullptr &&
       cycle.route_execution.source_snapshot->stationary_hold.has_value()) {
     ProductionMppiExecutionPublication hold = publishPositionHold(
         cycle, cycle.route_execution.source_snapshot->stationary_hold->position, reason,
@@ -274,29 +269,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishNoExecutablePathHo
       retained.has_value()) {
     return *retained;
   }
-  if (cycle.snapshot_owner_required) {
-    return publishExecutionRevocation(reason, cycle.now_ns);
-  }
-  if (!legacy_execution_arbiter_.noExecutableHoldPosition().has_value()) {
-    legacy_execution_arbiter_.enterNoExecutableHold(Point3{
-        cycle.exact_initial_state.x,
-        cycle.exact_initial_state.y,
-        clampToFlightEnvelope(cycle.exact_initial_state.z, flight_envelope_config_)
-            .value_or(flight_envelope_config_.minimum_target_z_m),
-    });
-    const Point3& hold_position = *legacy_execution_arbiter_.noExecutableHoldPosition();
-    RCLCPP_WARN(get_logger(),
-                "MPPI_EXECUTION_CONTRACT transition=enter_no_executable_path_hold "
-                "reason=%s origin=(%.3f,%.3f,%.3f) "
-                "velocity=(%.3f,%.3f,%.3f) previous_acceleration_z=%.3f",
-                productionMppiExecutionReasonName(reason), hold_position.x,
-                hold_position.y, hold_position.z, cycle.exact_initial_state.vx,
-                cycle.exact_initial_state.vy, cycle.exact_initial_state.vz,
-                cycle.exact_previous_control.az);
-  }
-  return publishPositionHold(
-      cycle, *legacy_execution_arbiter_.noExecutableHoldPosition(), reason,
-      ProductionMppiHoldOwnershipTransition3D::kEnterEmptyOwner);
+  return publishExecutionRevocation(reason, cycle.now_ns);
 }
 
 ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionRevocation(
@@ -470,9 +443,6 @@ ProductionMppiExecutionPublication
 ProductionMppiNode::publishExplicitHold(const ProductionMppiExecutionCycle& cycle,
                                         const Point3& hold_position,
                                         const ProductionMppiExecutionReason reason) {
-  if (!cycle.snapshot_owner_required) {
-    legacy_execution_arbiter_.leaveNoExecutableHold();
-  }
   return publishPositionHold(
       cycle, hold_position, reason,
       ProductionMppiHoldOwnershipTransition3D::kExplicitTransfer);

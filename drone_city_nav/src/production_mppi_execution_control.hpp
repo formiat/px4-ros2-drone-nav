@@ -140,12 +140,6 @@ struct ProductionMppiExecutionPublication {
   bool published{false};
 };
 
-struct ProductionMppiActiveFiniteExecutionPath {
-  msg::MppiTrajectoryHorizon message;
-  ProductionMppiExecutionPublication publication;
-  std::optional<mppi::FiniteExecutionPathTerminalBoundary> terminal_boundary;
-};
-
 enum class ProductionMppiPlanningState {
   kPlanned,
   kMissionCommandPositionHold,

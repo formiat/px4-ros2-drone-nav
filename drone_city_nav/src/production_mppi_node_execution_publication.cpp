@@ -686,49 +686,36 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
         previous_control_evidence_current ? "false" : "true");
   }
   const ExecutionRouteSnapshot3D* publication_snapshot{nullptr};
-  if (cycle.snapshot_owner_required) {
-    if ((publication_commit.kind ==
-             ProductionMppiHorizonCommitKind::kPublishSnapshotTransition ||
-         publication_commit.kind ==
-             ProductionMppiHorizonCommitKind::kCommitPendingSnapshotTransition) &&
-        publication_commit.transition != nullptr &&
-        publication_commit.transition->applied() &&
-        publication_commit.transition->next != nullptr) {
-      publication_snapshot = publication_commit.transition->next.get();
-    } else if (publication_commit.kind ==
-                   ProductionMppiHorizonCommitKind::kConfirmSnapshotUnchanged &&
-               publication_commit.expected_snapshot != nullptr) {
-      publication_snapshot = publication_commit.expected_snapshot.get();
-    } else {
-      report_commit_failure("invalid_snapshot_commit_contract");
-      return ProductionMppiHorizonCommitStatus::kRejected;
-    }
+  if ((publication_commit.kind ==
+           ProductionMppiHorizonCommitKind::kPublishSnapshotTransition ||
+       publication_commit.kind ==
+           ProductionMppiHorizonCommitKind::kCommitPendingSnapshotTransition) &&
+      publication_commit.transition != nullptr &&
+      publication_commit.transition->applied() &&
+      publication_commit.transition->next != nullptr) {
+    publication_snapshot = publication_commit.transition->next.get();
+  } else if (publication_commit.kind ==
+                 ProductionMppiHorizonCommitKind::kConfirmSnapshotUnchanged &&
+             publication_commit.expected_snapshot != nullptr) {
+    publication_snapshot = publication_commit.expected_snapshot.get();
+  } else {
+    report_commit_failure("invalid_snapshot_commit_contract");
+    return ProductionMppiHorizonCommitStatus::kRejected;
   }
-  owner.snapshot_execution_owner_epoch =
-      publication_snapshot != nullptr ? publication_snapshot->execution_owner_epoch
-                                      : 0U;
+  owner.snapshot_execution_owner_epoch = publication_snapshot->execution_owner_epoch;
   const std::shared_ptr<const VersionedExecutionValidationPolicy3D>
-      snapshot_publication_policy =
-          publication_snapshot != nullptr
-              ? snapshotValidationPolicy(*publication_snapshot)
-              : nullptr;
+      snapshot_publication_policy = snapshotValidationPolicy(*publication_snapshot);
   const VersionedExecutionValidationPolicy3D* const publication_policy =
-      snapshot_publication_policy != nullptr ? snapshot_publication_policy.get()
-      : cycle.selected_policy != nullptr && cycle.selected_policy->valid()
-          ? cycle.selected_policy
-          : execution_validation_policy_.get();
+      snapshot_publication_policy.get();
   if (publication_policy == nullptr || !publication_policy->valid() ||
       !executionInputFreshAt(*publication_execution_input, *publication_policy,
                              publication_now_ns)) {
-    if (cycle.snapshot_owner_required || execution_horizon_owner_.valid) {
-      requestExecutionRevocation(ProductionMppiExecutionReason::kNoExecutableHorizon);
-    }
+    requestExecutionRevocation(ProductionMppiExecutionReason::kNoExecutableHorizon);
     report_commit_failure("execution_input_not_fresh");
     return ProductionMppiHorizonCommitStatus::kRejected;
   }
   const std::shared_ptr<const VersionedLatestLidarEvidence3D> publication_lidar =
-      publication_snapshot != nullptr ? snapshotLidarOwner(*publication_snapshot)
-                                      : cycle.latest_lidar_evidence;
+      snapshotLidarOwner(*publication_snapshot);
   const std::shared_ptr<const VersionedLatestLidarEvidence3D> current_lidar =
       latest_lidar_evidence_.load(std::memory_order_acquire);
   if (latest_lidar_evidence_identity_conflicted_.load(std::memory_order_acquire) ||
@@ -814,13 +801,6 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
 
   bool owner_committed{false};
   switch (publication_commit.kind) {
-    case ProductionMppiHorizonCommitKind::kNoOp:
-      owner_committed = true;
-      break;
-    case ProductionMppiHorizonCommitKind::kRejectLegacyTrajectory:
-      legacy_execution_arbiter_.rejectTrajectory();
-      owner_committed = true;
-      break;
     case ProductionMppiHorizonCommitKind::kPublishSnapshotTransition:
       owner_committed =
           publication_commit.expected_snapshot != nullptr &&
@@ -860,16 +840,6 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
                   ? "planned"
                   : "non_planned");
   return ProductionMppiHorizonCommitStatus::kPublished;
-}
-
-bool ProductionMppiNode::publishLegacyExecutionHorizon(
-    const ProductionMppiExecutionCycle& cycle,
-    const msg::MppiTrajectoryHorizon& horizon) {
-  const std::scoped_lock evidence_lock{execution_evidence_commit_mutex_,
-                                       latest_lidar_evidence_commit_mutex_};
-  return commitAndPublishExecutionHorizon(cycle, horizon,
-                                          ProductionMppiHorizonCommit{}) ==
-         ProductionMppiHorizonCommitStatus::kPublished;
 }
 
 ProductionMppiHorizonCommitStatus ProductionMppiNode::commitExecutionSnapshotHorizon(

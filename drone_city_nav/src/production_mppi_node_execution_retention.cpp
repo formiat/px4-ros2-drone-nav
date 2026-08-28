@@ -5,11 +5,9 @@
 #include <algorithm>
 #include <cinttypes>
 #include <cmath>
-#include <iterator>
 #include <limits>
 #include <memory>
 #include <optional>
-#include <ranges>
 #include <span>
 #include <utility>
 #include <vector>
@@ -19,41 +17,6 @@
 namespace drone_city_nav {
 
 namespace {
-
-[[nodiscard]] mppi::TimedExecutionPathPoint
-executionPathPoint(const msg::MppiHorizonPoint& point) noexcept {
-  return mppi::TimedExecutionPathPoint{
-      .time_from_start_s =
-          static_cast<double>(point.time_from_start_ns) / 1'000'000'000.0,
-      .state =
-          mppi::State{
-              .x = static_cast<float>(point.position.x),
-              .y = static_cast<float>(point.position.y),
-              .z = static_cast<float>(point.position.z),
-              .vx = static_cast<float>(point.velocity.x),
-              .vy = static_cast<float>(point.velocity.y),
-              .vz = static_cast<float>(point.velocity.z),
-              .yaw = point.yaw_rad,
-              .yaw_rate = point.yaw_rate_radps,
-          },
-      .control =
-          mppi::Control{
-              .ax = static_cast<float>(point.acceleration.x),
-              .ay = static_cast<float>(point.acceleration.y),
-              .az = static_cast<float>(point.acceleration.z),
-              .yaw_accel = point.yaw_acceleration_radps2,
-          },
-  };
-}
-
-[[nodiscard]] std::vector<mppi::TimedExecutionPathPoint>
-executionPathPoints(const msg::MppiTrajectoryHorizon& horizon) {
-  std::vector<mppi::TimedExecutionPathPoint> points;
-  points.reserve(horizon.points.size());
-  std::ranges::transform(horizon.points, std::back_inserter(points),
-                         executionPathPoint);
-  return points;
-}
 
 [[nodiscard]] std::vector<mppi::TimedExecutionPathPoint>
 executionPathPoints(const FiniteExecutionState3D& execution) {
@@ -703,162 +666,12 @@ std::optional<ProductionMppiExecutionPublication>
 ProductionMppiNode::retainActiveFinitePath(
     const ProductionMppiExecutionCycle& cycle,
     const ProductionMppiExecutionReason replacement_failure_reason) {
-  const bool snapshot_owner_required = cycle.snapshot_owner_required;
-  const bool latest_lidar_obstacle_fresh = cycle.latest_lidar_obstacle_fresh;
-  const std::int64_t now_ns = cycle.now_ns;
-  const mppi::State& exact_initial_state = cycle.exact_initial_state;
-  const mppi::Control& exact_previous_control = cycle.exact_previous_control;
-  const auto& execution_path_world = cycle.execution_path_world;
-  const mppi::DynamicsConfig* const execution_dynamics = cycle.execution_dynamics;
-  const std::size_t arrival_search_step_controls = cycle.arrival_search_step_controls;
-  const auto& latest_lidar_evidence = cycle.latest_lidar_evidence;
-  const auto latest_lidar_obstacle_points = cycle.latest_lidar_obstacle_points;
-  const double latest_lidar_obstacle_age_ms = cycle.latest_lidar_obstacle_age_ms;
-  const bool latest_lidar_obstacle_receive_time_fallback =
-      cycle.latest_lidar_obstacle_receive_time_fallback;
-  const std::int64_t finite_path_control_interval_ns =
-      cycle.finite_path_control_interval_ns;
-  if (snapshot_owner_required) {
-    if (const std::shared_ptr<const ExecutionRouteSnapshot3D> resident =
-            execution_route_store_.snapshot();
-        resident != nullptr && resident->direct_tracking_execution.has_value()) {
-      return retainDirectFinitePath(cycle, replacement_failure_reason);
-    }
-    return retainSnapshotFinitePath(cycle, replacement_failure_reason);
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> resident =
+      execution_route_store_.snapshot();
+  if (resident != nullptr && resident->direct_tracking_execution.has_value()) {
+    return retainDirectFinitePath(cycle, replacement_failure_reason);
   }
-  if (!latest_lidar_obstacle_fresh) {
-    legacy_execution_arbiter_.rejectTrajectory();
-    return std::nullopt;
-  }
-  ProductionMppiActiveFiniteExecutionPath* const active_trajectory =
-      legacy_execution_arbiter_.activeTrajectory();
-  if (active_trajectory == nullptr) {
-    return std::nullopt;
-  }
-  ProductionMppiActiveFiniteExecutionPath& active = *active_trajectory;
-  if (active.message.execution_mode !=
-          msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED ||
-      active.message.stationary_position_hold) {
-    legacy_execution_arbiter_.rejectTrajectory();
-    return std::nullopt;
-  }
-  const std::vector<mppi::TimedExecutionPathPoint> points =
-      executionPathPoints(active.message);
-  if (points.empty()) {
-    legacy_execution_arbiter_.rejectTrajectory();
-    return std::nullopt;
-  }
-  const std::int64_t original_valid_until_ns =
-      production_mppi_execution_detail::timeToNanoseconds(active.message.valid_until);
-  mppi::FiniteExecutionPathWorld continuation_world = execution_path_world;
-  continuation_world.terminal_boundary = active.terminal_boundary;
-  const mppi::FiniteExecutionPathValidation actual_state_validation =
-      mppi::validateFiniteExecutionPathContinuation(
-          points,
-          production_mppi_execution_detail::timeToNanoseconds(
-              active.message.valid_from),
-          original_valid_until_ns, now_ns, exact_initial_state, exact_previous_control,
-          continuation_world);
-  const mppi::FiniteExecutionPathValidation trajectory_validation =
-      mppi::validateFiniteExecutionTrajectoryContinuation(
-          points,
-          production_mppi_execution_detail::timeToNanoseconds(
-              active.message.valid_from),
-          original_valid_until_ns, now_ns, exact_initial_state, exact_previous_control,
-          continuation_world);
-
-  const mppi::RebuiltFiniteExecutionPathContinuation rebuilt =
-      mppi::rebuildFiniteExecutionPathContinuation(
-          points,
-          production_mppi_execution_detail::timeToNanoseconds(
-              active.message.valid_from),
-          original_valid_until_ns, now_ns, exact_initial_state, exact_previous_control,
-          active.publication.nominal_prefix_control_count,
-          // Preserve every still-active certified control before falling back to
-          // arrival reshaping under newly observed constraints.
-          points.size() - 1U, *execution_dynamics, arrival_search_step_controls,
-          finite_horizon_config_, continuation_world);
-  const std::size_t expected_index =
-      std::min(rebuilt.source_control_index, points.size() - 1U);
-  const mppi::State& expected_state = points[expected_index].state;
-  const double tracking_error_m = distance3D(
-      Point3{exact_initial_state.x, exact_initial_state.y, exact_initial_state.z},
-      Point3{expected_state.x, expected_state.y, expected_state.z});
-  if (!rebuilt.accepted()) {
-    RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 1000,
-        "FINITE_EXECUTION_PATH retained=false replacement_failure_reason=%s "
-        "rebuild_validation=%s failure_segment=%zu "
-        "failure=(%.3f,%.3f,%.3f) current_z=%.3f expected_z=%.3f "
-        "tracking_error_m=%.3f trajectory_validation=%s "
-        "trajectory_failure_segment=%zu actual_state_validation=%s "
-        "actual_state_failure_segment=%zu arrival_shaping_attempts=%zu",
-        productionMppiExecutionReasonName(replacement_failure_reason),
-        mppi::finiteExecutionPathStatusName(rebuilt.validation.status),
-        rebuilt.validation.failure_segment_index, rebuilt.validation.failure_point.x,
-        rebuilt.validation.failure_point.y, rebuilt.validation.failure_point.z,
-        exact_initial_state.z, expected_state.z, tracking_error_m,
-        mppi::finiteExecutionPathStatusName(trajectory_validation.status),
-        trajectory_validation.failure_segment_index,
-        mppi::finiteExecutionPathStatusName(actual_state_validation.status),
-        actual_state_validation.failure_segment_index,
-        rebuilt.arrival_shaping_attempts);
-    legacy_execution_arbiter_.rejectTrajectory();
-    return std::nullopt;
-  }
-
-  const mppi::FiniteHorizon& finite_horizon = *rebuilt.horizon;
-  msg::MppiTrajectoryHorizon horizon = makeExecutionHorizon(
-      cycle, rebuilt.valid_until_ns, ProductionMppiExecutionMode::kPlanned,
-      ProductionMppiExecutionReason::kNone);
-  horizon.risk_tier = active.message.risk_tier;
-  if (!production_mppi_execution_detail::appendFiniteExecutionPoints(
-          horizon, finite_horizon.states, finite_horizon.controls,
-          exact_previous_control, finite_path_control_interval_ns)) {
-    return std::nullopt;
-  }
-  if (!publishLegacyExecutionHorizon(cycle, horizon)) {
-    return std::nullopt;
-  }
-
-  ProductionMppiExecutionPublication retained = active.publication;
-  retained.horizon = finite_horizon.states;
-  retained.planned_control_count = finite_horizon.controls.size();
-  retained.nominal_prefix_control_count = finite_horizon.nominal_prefix_control_count;
-  retained.arrival_control_count = finite_horizon.arrival_control_count;
-  retained.arrival_shaping_attempts = rebuilt.arrival_shaping_attempts;
-  retained.first_control = finite_horizon.controls.front();
-  retained.first_control_available = true;
-  retained.latest_lidar_obstacle_sequence = latest_lidar_evidence->sequence();
-  retained.latest_lidar_obstacle_hit_count = latest_lidar_obstacle_points.size();
-  retained.latest_lidar_obstacle_age_ms = latest_lidar_obstacle_age_ms;
-  retained.latest_lidar_obstacle_fresh = latest_lidar_obstacle_fresh;
-  retained.latest_lidar_obstacle_receive_time_fallback =
-      latest_lidar_obstacle_receive_time_fallback;
-  retained.finite_path_validation_backoff = rebuilt.path_validation_backoff;
-  retained.latest_lidar_path_validation_backoff =
-      rebuilt.latest_lidar_path_validation_backoff;
-  retained.retained_previous_finite_path = true;
-  retained.terminal_rest_state = true;
-  retained.published = true;
-  active.message = std::move(horizon);
-  active.publication = retained;
-  legacy_execution_arbiter_.confirmRetainedTrajectory();
-  RCLCPP_INFO_THROTTLE(
-      get_logger(), *get_clock(), 1000,
-      "FINITE_EXECUTION_PATH retained=true replacement_failure_reason=%s "
-      "rebased_from_actual=true source_trajectory_validation=%s "
-      "source_actual_state_validation=%s source_control=%zu tracking_error_m=%.3f "
-      "vertical_error_m=%.3f arrival_shaping_attempts=%zu "
-      "original_valid_until_ns=%" PRId64 " rebuilt_valid_until_ns=%" PRId64,
-      productionMppiExecutionReasonName(replacement_failure_reason),
-      mppi::finiteExecutionPathStatusName(trajectory_validation.status),
-      mppi::finiteExecutionPathStatusName(actual_state_validation.status),
-      rebuilt.source_control_index, tracking_error_m,
-      static_cast<double>(exact_initial_state.z - expected_state.z),
-      rebuilt.arrival_shaping_attempts, original_valid_until_ns,
-      rebuilt.valid_until_ns);
-  return retained;
+  return retainSnapshotFinitePath(cycle, replacement_failure_reason);
 }
 
 } // namespace drone_city_nav

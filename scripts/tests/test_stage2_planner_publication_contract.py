@@ -58,7 +58,7 @@ class Stage2PlannerPublicationContractTest(unittest.TestCase):
         commit = publication.split(
             "ProductionMppiNode::commitAndPublishExecutionHorizon", maxsplit=1
         )[1].split(
-            "ProductionMppiNode::publishLegacyExecutionHorizon", maxsplit=1
+            "ProductionMppiNode::commitExecutionSnapshotHorizon", maxsplit=1
         )[0]
         input_lock = commit.index("input_mutex_")
         request_generation = commit.index("requested_execution_revocation_.load")
@@ -83,7 +83,8 @@ class Stage2PlannerPublicationContractTest(unittest.TestCase):
             self.assertLess(barrier, snapshot_cas)
             self.assertLess(barrier, wire_publication)
         self.assertIn("kConfirmSnapshotUnchanged", commit)
-        self.assertIn("cycle.latest_lidar_evidence", commit)
+        self.assertIn("snapshotLidarOwner(*publication_snapshot)", commit)
+        self.assertNotIn("cycle.latest_lidar_evidence", commit)
         self.assertIn("publication_lidar->evidenceId()", commit)
         self.assertIn("current_lidar->evidenceId()", commit)
         self.assertIn("publication_lidar->contentFingerprint()", commit)
@@ -92,15 +93,8 @@ class Stage2PlannerPublicationContractTest(unittest.TestCase):
         self.assertIn("latest_lidar_evidence_identity_conflicted_", commit)
         self.assertIn("publication_now_ns", commit)
 
-        legacy_commit = publication.split(
-            "ProductionMppiNode::publishLegacyExecutionHorizon", maxsplit=1
-        )[1].split(
-            "ProductionMppiNode::commitExecutionSnapshotHorizon", maxsplit=1
-        )[0]
-        self.assertLess(
-            legacy_commit.index("execution_evidence_commit_mutex_"),
-            legacy_commit.index("commitAndPublishExecutionHorizon"),
-        )
+        self.assertNotIn("publishLegacyExecutionHorizon", publication)
+        self.assertNotIn("legacy_execution_arbiter_", publication)
         hold_commit = publication.split(
             "ProductionMppiNode::publishPositionHold", maxsplit=1
         )[1].split(

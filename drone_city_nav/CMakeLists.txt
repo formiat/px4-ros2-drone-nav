@@ -1300,11 +1300,6 @@ if(BUILD_TESTING)
   target_link_libraries(rolling_route_telemetry_3d_test drone_city_nav_core)
   enable_project_warnings(rolling_route_telemetry_3d_test)
 
-  ament_add_gtest(execution_arbiter_3d_test tests/execution_arbiter_3d_test.cpp)
-  target_compile_features(execution_arbiter_3d_test PRIVATE cxx_std_20)
-  target_link_libraries(execution_arbiter_3d_test drone_city_nav_core)
-  enable_project_warnings(execution_arbiter_3d_test)
-
   ament_add_gtest(passage_traversal_evidence_test
                   tests/passage_traversal_evidence_test.cpp)
   target_compile_features(passage_traversal_evidence_test PRIVATE cxx_std_20)

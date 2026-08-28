@@ -141,7 +141,7 @@ void ProductionMppiNode::planningTick() {
       observation_age_ms <= maximum_esdf_age_ms_ + stale_esdf_execution_window_ms_;
   const NavigationHealthAssessment navigation_health =
       updateNavigationHealth(objective, applied_control, execution_horizon_owner,
-                             execution_snapshot, false, world_current, now_ns);
+                             execution_snapshot, world_current, now_ns);
   if (navigation_health.terminal) {
     publishFailClosedExecutionRevocation(
         terminalExecutionReason(navigation_health.failure), now_ns);

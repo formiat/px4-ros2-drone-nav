@@ -17,8 +17,6 @@ enum class ProductionMppiHoldOwnershipTransition3D : std::uint8_t {
 };
 
 enum class ProductionMppiHorizonCommitKind : std::uint8_t {
-  kNoOp,
-  kRejectLegacyTrajectory,
   kPublishSnapshotTransition,
   kConfirmSnapshotUnchanged,
   kCommitPendingSnapshotTransition,
@@ -31,7 +29,8 @@ enum class ProductionMppiHorizonCommitStatus : std::uint8_t {
 };
 
 struct ProductionMppiHorizonCommit {
-  ProductionMppiHorizonCommitKind kind{ProductionMppiHorizonCommitKind::kNoOp};
+  ProductionMppiHorizonCommitKind kind{
+      ProductionMppiHorizonCommitKind::kConfirmSnapshotUnchanged};
   std::shared_ptr<const ExecutionRouteSnapshot3D> expected_snapshot;
   std::shared_ptr<const ExecutionRouteSnapshot3D> certification_snapshot;
   std::shared_ptr<const ExecutionRouteTransitionResult3D> progress_preparation;
@@ -59,7 +58,6 @@ struct ProductionMppiExecutionCycle {
   std::int64_t lidar_validation_now_ns;
   const Point3& mission_goal;
   const std::shared_ptr<const ProductionMppiRawWorld3D>& latest_raw_world_3d;
-  bool snapshot_owner_required;
   bool direct_tracking_requested;
   const CertifiedRouteSuffix3D* selected_snapshot_route;
   const std::shared_ptr<const VersionedObservedRawWorld3D>& direct_observed_world;

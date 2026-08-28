@@ -7,7 +7,6 @@
 #include "drone_city_nav/cooperative_passage_route.hpp"
 #include "drone_city_nav/direct_tracking_maneuver_lifecycle.hpp"
 #include "drone_city_nav/distance_field_3d.hpp"
-#include "drone_city_nav/execution_arbiter_3d.hpp"
 #include "drone_city_nav/execution_evidence_3d.hpp"
 #include "drone_city_nav/execution_route_geometry_3d.hpp"
 #include "drone_city_nav/execution_route_snapshot_3d.hpp"
@@ -338,7 +337,7 @@ private:
       const ProductionMppiAppliedControl& applied_control,
       const ProductionMppiExecutionHorizonOwner& execution_horizon_owner,
       const std::shared_ptr<const ExecutionRouteSnapshot3D>& execution_snapshot,
-      bool legacy_route_ready, bool world_current, std::int64_t now_ns);
+      bool world_current, std::int64_t now_ns);
   void publishNavigationHealth(const NavigationHealthAssessment& assessment);
   [[nodiscard]] std::shared_ptr<const ProductionNavigationObjective>
   navigationObjective() const;
@@ -501,9 +500,6 @@ private:
   commitAndPublishExecutionHorizon(const ProductionMppiExecutionCycle& cycle,
                                    const msg::MppiTrajectoryHorizon& horizon,
                                    const ProductionMppiHorizonCommit& commit);
-  [[nodiscard]] bool
-  publishLegacyExecutionHorizon(const ProductionMppiExecutionCycle& cycle,
-                                const msg::MppiTrajectoryHorizon& horizon);
   [[nodiscard]] ProductionMppiHorizonCommitStatus commitExecutionSnapshotHorizon(
       const ProductionMppiExecutionCycle& cycle,
       const std::shared_ptr<const ExecutionRouteSnapshot3D>& expected,
@@ -765,8 +761,6 @@ private:
   std::atomic<std::uint64_t> pending_certified_route_sequence_{0U};
   std::atomic<std::uint64_t> requested_execution_revocation_{0U};
   std::uint64_t handled_execution_revocation_request_{0U};
-  ExecutionArbiter3D<ProductionMppiActiveFiniteExecutionPath>
-      legacy_execution_arbiter_{};
   std::optional<mppi::State> previous_predicted_next_state_;
   std::int64_t previous_prediction_stamp_ns_{0};
   ProductionMppiPredictionError latest_prediction_error_{};
