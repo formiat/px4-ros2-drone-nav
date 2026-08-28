@@ -68,11 +68,15 @@ void ProductionMppiNode::processRouteSearch3D(
     RCLCPP_INFO(get_logger(),
                 "PERSISTENT_PLANNER3D stage=continuation "
                 "queued=%s raw_revision=%" PRIu64 " search_generation=%" PRIu64
-                " repair_generation=%" PRIu64 " route_planning_ms=%.3f",
+                " repair_generation=%" PRIu64 " repair_processed=%zu "
+                "repair_pending=%zu route_planning_ms=%.3f",
                 continuation_queued ? "true" : "newer_world_pending",
                 candidate_set.planner_result.planned_on_revision,
                 candidate_set.planner_result.search_generation,
-                candidate_set.planner_result.repair_generation, route_planning_ms);
+                candidate_set.planner_result.repair_generation,
+                candidate_set.planner_result.repair_lattice_states_processed,
+                candidate_set.planner_result.repair_lattice_states_pending,
+                route_planning_ms);
     return;
   }
 
@@ -144,7 +148,8 @@ void ProductionMppiNode::processRouteSearch3D(
       "route_reaches_mission_goal=%s route_generation=%" PRIu64
       " base_route_instance_id=%" PRIu64 " stitch_station_m=%.3f "
       "points=%zu samples=%zu expansions=%zu time_expansions=%zu "
-      "changed_occupied=%zu affected_states=%zu records=%zu open=%zu "
+      "changed_occupied=%zu affected_states=%zu repair_processed=%zu "
+      "repair_pending=%zu records=%zu open=%zu "
       "time_records=%zu time_open=%zu shortcuts=%zu/%zu "
       "edge_queries=%zu raw_edge_checks=%zu adaptive_edge_queries=%zu "
       "adaptive_path_edges=%zu maximum_adaptive_level=%zu "
@@ -184,7 +189,8 @@ void ProductionMppiNode::processRouteSearch3D(
       prepared.planning_search_base_stitch_station_m.value_or(-1.0), plan.points.size(),
       prepared.route_3d ? prepared.route_3d->size() : 0U, plan.expansions,
       plan.execution_time_search_expansions, plan.changed_occupied_voxels,
-      plan.affected_lattice_states, plan.records, plan.open_entries,
+      plan.affected_lattice_states, plan.repair_lattice_states_processed,
+      plan.repair_lattice_states_pending, plan.records, plan.open_entries,
       plan.execution_time_search_records, plan.execution_time_search_open_entries,
       plan.shortcuts_applied, plan.shortcut_checks, plan.lattice_edge_queries,
       plan.raw_edge_validation_checks, plan.adaptive_edge_queries,

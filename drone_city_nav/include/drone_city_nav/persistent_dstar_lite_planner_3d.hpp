@@ -49,6 +49,8 @@ struct PersistentPlannerConfig3D {
   double minimum_continuous_turn_alignment{0.7071067811865476};
   double goal_tolerance_m{1.0};
   std::size_t connector_search_radius_cells{2U};
+  // Shared per-call graph-work cap. Pending repair vertices consume this
+  // budget before new shortest-path expansions are allowed.
   std::size_t maximum_expansions_per_update{200000U};
   std::size_t maximum_incremental_changed_voxels{32768U};
   std::size_t maximum_extracted_path_nodes{8192U};
@@ -77,6 +79,8 @@ struct PersistentPlannerResult3D {
   std::size_t expansions{0U};
   std::size_t changed_occupied_voxels{0U};
   std::size_t affected_lattice_states{0U};
+  std::size_t repair_lattice_states_processed{0U};
+  std::size_t repair_lattice_states_pending{0U};
   std::size_t records{0U};
   std::size_t open_entries{0U};
   std::size_t shortcut_checks{0U};
@@ -99,6 +103,7 @@ struct PersistentPlannerResult3D {
   bool search_state_reused{false};
   bool occupied_world_unchanged{false};
   bool incumbent_retained{false};
+  bool repair_pending{false};
   bool execution_time_search_complete{false};
   bool search_complete{false};
 

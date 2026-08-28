@@ -181,6 +181,8 @@ void PersistentDStarLitePlanner3DImpl::reset() noexcept {
   open_ = {};
   records_.clear();
   edge_cost_cache_.clear();
+  pending_repair_nodes_.clear();
+  pending_repair_members_.clear();
   resetExecutionTimeSearch();
   incumbent_.clear();
   lattice_edge_queries_ = 0U;
@@ -230,6 +232,10 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   if (!validRequest(request)) {
     return result;
   }
+  const auto deadline =
+      operation_started +
+      std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+          std::chrono::duration<double, std::milli>{config_.maximum_compute_time_ms});
 
   const std::uint64_t previous_producer = world_.producer_instance_id;
   const std::uint64_t previous_mission_epoch = mission_epoch_;
@@ -290,8 +296,8 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     start_ = *start_anchor;
     last_start_ = *start_anchor;
     if (!world_update.changed_cells.empty()) {
-      updateAffectedVertices(world_update.changed_cells,
-                             result.affected_lattice_states);
+      scheduleAffectedVertices(world_update.changed_cells,
+                               result.affected_lattice_states);
       if (world_update.occupied_cells_removed) {
         // A cost-to-go retained across an obstacle removal can overestimate a
         // newly opened route until every affected label settles. Keep the
@@ -309,12 +315,19 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     }
   }
 
-  const auto deadline =
-      operation_started +
-      std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-          std::chrono::duration<double, std::milli>{config_.maximum_compute_time_ms});
-  const bool spatial_search_complete = computeShortestPath(
-      deadline, config_.maximum_expansions_per_update, result.expansions);
+  const bool repair_complete =
+      continueAffectedVertexRepair(deadline, config_.maximum_expansions_per_update,
+                                   result.repair_lattice_states_processed);
+  result.repair_lattice_states_pending = pending_repair_nodes_.size();
+  result.repair_pending = !repair_complete;
+  const std::size_t remaining_expansions =
+      result.repair_lattice_states_processed < config_.maximum_expansions_per_update
+          ? config_.maximum_expansions_per_update -
+                result.repair_lattice_states_processed
+          : 0U;
+  const bool spatial_search_complete =
+      repair_complete && remaining_expansions > 0U &&
+      computeShortestPath(deadline, remaining_expansions, result.expansions);
   const auto spatial_start_record = records_.find(start_);
   const bool spatial_route_available = spatial_search_complete &&
                                        spatial_start_record != records_.end() &&

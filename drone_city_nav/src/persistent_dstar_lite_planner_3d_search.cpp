@@ -73,6 +73,8 @@ void PersistentDStarLitePlanner3DImpl::initializeSearch(
   open_ = {};
   records_.clear();
   edge_cost_cache_.clear();
+  pending_repair_nodes_.clear();
+  pending_repair_members_.clear();
   resetExecutionTimeSearch();
   search_generation_ = search_generation_ == std::numeric_limits<std::uint64_t>::max()
                            ? 1U
@@ -195,9 +197,10 @@ void PersistentDStarLitePlanner3DImpl::updateVertex(
   }
 }
 
-void PersistentDStarLitePlanner3DImpl::updateAffectedVertices(
+void PersistentDStarLitePlanner3DImpl::scheduleAffectedVertices(
     const std::vector<GridIndex3D>& changed_cells, std::size_t& affected_states) {
-  std::unordered_set<PersistentPlannerNode3D, PersistentPlannerNode3DHash> affected;
+  std::unordered_set<PersistentPlannerNode3D, PersistentPlannerNode3DHash>
+      resident_candidates;
   const double raw_half_diagonal = 0.5 * std::numbers::sqrt3 * raw_bounds_.resolution_m;
   const double horizontal_reach =
       config_.physical_footprint.radius_m + raw_half_diagonal +
@@ -228,34 +231,53 @@ void PersistentDStarLitePlanner3DImpl::updateAffectedVertices(
               nearest.x + x_offset, nearest.y + y_offset, nearest.z + z_offset};
           if (nodeInside(candidate) && (candidate == start_ || candidate == goal_ ||
                                         records_.contains(candidate))) {
-            affected.insert(candidate);
+            resident_candidates.insert(candidate);
           }
         }
       }
     }
   }
-  // A newly traversable edge must update both endpoints even when only one was
-  // resident before the obstacle disappeared. Expanding one graph hop is
-  // sufficient because D* Lite propagates the resulting inconsistency through
-  // the open queue.
-  const std::vector<PersistentPlannerNode3D> resident_affected{affected.begin(),
-                                                               affected.end()};
-  for (const PersistentPlannerNode3D node : resident_affected) {
+  // A D* label can depend only on an edge whose cost was evaluated. Invalidate
+  // those exact cached dependencies instead of eagerly creating and validating
+  // every geometrically possible neighbor in the conservative change radius.
+  // Both endpoints are scheduled because an obstacle removal may make a
+  // previously infinite undirected edge traversable.
+  std::unordered_set<PersistentPlannerNode3D, PersistentPlannerNode3DHash> affected;
+  for (const PersistentPlannerNode3D node : resident_candidates) {
     for (const PersistentPlannerNode3D neighbor : adjacentNodes(node)) {
-      affected.insert(neighbor);
+      const PersistentPlannerEdge3D edge = canonicalEdge(node, neighbor);
+      const auto cached = edge_cost_cache_.find(edge);
+      if (cached == edge_cost_cache_.end()) {
+        continue;
+      }
+      edge_cost_cache_.erase(cached);
+      affected.insert(edge.first);
+      affected.insert(edge.second);
     }
   }
   std::vector<PersistentPlannerNode3D> ordered{affected.begin(), affected.end()};
   std::ranges::sort(ordered, nodeLess);
   for (const PersistentPlannerNode3D node : ordered) {
-    for (const PersistentPlannerNode3D neighbor : adjacentNodes(node)) {
-      edge_cost_cache_.erase(canonicalEdge(node, neighbor));
+    if (pending_repair_members_.insert(node).second) {
+      pending_repair_nodes_.push_back(node);
     }
   }
-  for (const PersistentPlannerNode3D node : ordered) {
-    updateVertex(node);
-  }
   affected_states = ordered.size();
+}
+
+bool PersistentDStarLitePlanner3DImpl::continueAffectedVertexRepair(
+    const std::chrono::steady_clock::time_point deadline,
+    const std::size_t maximum_vertices, std::size_t& processed_vertices) {
+  processed_vertices = 0U;
+  while (!pending_repair_nodes_.empty() && processed_vertices < maximum_vertices &&
+         std::chrono::steady_clock::now() < deadline) {
+    const PersistentPlannerNode3D node = pending_repair_nodes_.front();
+    pending_repair_nodes_.pop_front();
+    pending_repair_members_.erase(node);
+    updateVertex(node);
+    ++processed_vertices;
+  }
+  return pending_repair_nodes_.empty();
 }
 
 std::optional<DStarLiteQueueEntry3D> PersistentDStarLitePlanner3DImpl::currentTop() {

@@ -208,6 +208,50 @@ TEST(PersistentDStarLitePlanner3DTest,
 }
 
 TEST(PersistentDStarLitePlanner3DTest,
+     BoundedWorldRepairResumesBeforeContinuingTheShortestPathSearch) {
+  auto initial_occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 1.0, 14, 10, 6});
+  PersistentPlannerConfig3D config = testConfig();
+  config.maximum_expansions_per_update = 1U;
+  PersistentDStarLitePlanner3D planner{config};
+  const Point3 start{1.5, 5.5, 2.5};
+  const Point3 goal{12.5, 5.5, 2.5};
+  PersistentPlannerResult3D initial =
+      planner.plan(request(start, goal, world(initial_occupancy, 1U)));
+  for (std::size_t attempt = 0U; attempt < 5000U && !initial.executable(); ++attempt) {
+    initial = planner.plan(request(start, goal, world(initial_occupancy, 1U)));
+  }
+  ASSERT_TRUE(initial.executable());
+
+  auto changed = std::make_shared<ObservedOccupancyGrid3D>(*initial_occupancy);
+  const GridIndex3D obstacle{7, 5, 2};
+  ASSERT_TRUE(changed->setState(obstacle, ObservedVoxelState::kOccupied));
+  PersistentPlannerResult3D repaired = planner.plan(
+      request(start, goal,
+              world(changed, 2U, {ObservedOccupancyGrid3D::chunkIndex(obstacle)})));
+
+  EXPECT_TRUE(repaired.search_state_reused);
+  EXPECT_EQ(repaired.search_generation, initial.search_generation);
+  EXPECT_EQ(repaired.repair_generation, 1U);
+  EXPECT_GT(repaired.affected_lattice_states, 1U);
+  EXPECT_EQ(repaired.repair_lattice_states_processed, 1U);
+  EXPECT_TRUE(repaired.repair_pending);
+  EXPECT_GT(repaired.repair_lattice_states_pending, 0U);
+  EXPECT_EQ(repaired.expansions, 0U);
+
+  for (std::size_t attempt = 0U; attempt < 5000U && !repaired.executable(); ++attempt) {
+    repaired = planner.plan(
+        request(start, goal,
+                world(changed, 2U, {ObservedOccupancyGrid3D::chunkIndex(obstacle)})));
+  }
+
+  ASSERT_TRUE(repaired.executable());
+  EXPECT_FALSE(repaired.repair_pending);
+  EXPECT_EQ(repaired.repair_lattice_states_pending, 0U);
+  expectRawValid(repaired.points, *changed, planner.config().physical_footprint);
+}
+
+TEST(PersistentDStarLitePlanner3DTest,
      PropagatesANewlyOpenedAdaptiveEdgeIntoPreviouslyUnseenStates) {
   auto blocked = std::make_shared<ObservedOccupancyGrid3D>(
       GridBounds3D{0.0, 0.0, 0.0, 1.0, 14, 10, 6});

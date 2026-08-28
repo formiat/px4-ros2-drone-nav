@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <limits>
 #include <optional>
 #include <queue>
@@ -158,8 +159,12 @@ private:
   [[nodiscard]] DStarLiteKey3D calculateKey(PersistentPlannerNode3D node);
   void enqueue(PersistentPlannerNode3D node, DStarLiteRecord3D& record);
   void updateVertex(PersistentPlannerNode3D node);
-  void updateAffectedVertices(const std::vector<GridIndex3D>& changed_cells,
-                              std::size_t& affected_states);
+  void scheduleAffectedVertices(const std::vector<GridIndex3D>& changed_cells,
+                                std::size_t& affected_states);
+  [[nodiscard]] bool
+  continueAffectedVertexRepair(std::chrono::steady_clock::time_point deadline,
+                               std::size_t maximum_vertices,
+                               std::size_t& processed_vertices);
   [[nodiscard]] std::optional<DStarLiteQueueEntry3D> currentTop();
   [[nodiscard]] bool shortestPathComplete();
   [[nodiscard]] bool computeShortestPath(std::chrono::steady_clock::time_point deadline,
@@ -233,6 +238,9 @@ private:
       records_;
   std::unordered_map<PersistentPlannerEdge3D, double, PersistentPlannerEdge3DHash>
       edge_cost_cache_;
+  std::deque<PersistentPlannerNode3D> pending_repair_nodes_;
+  std::unordered_set<PersistentPlannerNode3D, PersistentPlannerNode3DHash>
+      pending_repair_members_;
   bool execution_time_search_initialized_{false};
   bool execution_time_search_complete_{false};
   bool execution_time_start_from_rest_{false};
