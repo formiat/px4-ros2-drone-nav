@@ -41,6 +41,45 @@ struct PersistentPlannerEdge3DHash {
   operator()(const PersistentPlannerEdge3D& edge) const noexcept;
 };
 
+struct PersistentPlannerDirection3D {
+  std::int8_t x{0};
+  std::int8_t y{0};
+  std::int8_t z{0};
+
+  [[nodiscard]] bool empty() const noexcept {
+    return x == 0 && y == 0 && z == 0;
+  }
+
+  [[nodiscard]] bool
+  operator==(const PersistentPlannerDirection3D&) const noexcept = default;
+};
+
+struct PersistentPlannerTimeState3D {
+  PersistentPlannerNode3D position{};
+  PersistentPlannerDirection3D incoming{};
+
+  [[nodiscard]] bool
+  operator==(const PersistentPlannerTimeState3D&) const noexcept = default;
+};
+
+struct PersistentPlannerTimeState3DHash {
+  [[nodiscard]] std::size_t
+  operator()(const PersistentPlannerTimeState3D& state) const noexcept;
+};
+
+struct PersistentPlannerTimeQueueEntry3D {
+  double estimated_total_s{std::numeric_limits<double>::infinity()};
+  double cost_from_start_s{std::numeric_limits<double>::infinity()};
+  PersistentPlannerTimeState3D state{};
+  std::uint64_t sequence{0U};
+};
+
+struct PersistentPlannerTimeQueueEntryCompare3D {
+  [[nodiscard]] bool
+  operator()(const PersistentPlannerTimeQueueEntry3D& first,
+             const PersistentPlannerTimeQueueEntry3D& second) const noexcept;
+};
+
 struct DStarLiteKey3D {
   double first{std::numeric_limits<double>::infinity()};
   double second{std::numeric_limits<double>::infinity()};
@@ -68,6 +107,7 @@ struct PersistentPlannerWorldUpdate3D {
   bool accepted{false};
   bool requires_reset{false};
   bool occupied_world_unchanged{false};
+  bool occupied_cells_removed{false};
   std::vector<GridIndex3D> changed_cells;
 };
 
@@ -84,6 +124,10 @@ private:
   using OpenQueue =
       std::priority_queue<DStarLiteQueueEntry3D, std::vector<DStarLiteQueueEntry3D>,
                           DStarLiteQueueEntryCompare3D>;
+  using TimeOpenQueue =
+      std::priority_queue<PersistentPlannerTimeQueueEntry3D,
+                          std::vector<PersistentPlannerTimeQueueEntry3D>,
+                          PersistentPlannerTimeQueueEntryCompare3D>;
 
   [[nodiscard]] bool validRequest(const PersistentPlannerRequest3D& request) const;
   [[nodiscard]] PersistentPlannerWorldUpdate3D
@@ -122,12 +166,42 @@ private:
   [[nodiscard]] std::vector<Point3> extractPath();
   [[nodiscard]] std::vector<Point3> shortcutPath(const std::vector<Point3>& path,
                                                  std::size_t& checks,
-                                                 std::size_t& applied) const;
+                                                 std::size_t& applied,
+                                                 const Vec3& initial_velocity) const;
   [[nodiscard]] std::optional<std::vector<Point3>>
   rebaseIncumbent(const Point3& start, const Point3& goal) const;
   [[nodiscard]] bool pathRawValid(const std::vector<Point3>& path) const;
+  [[nodiscard]] FlightPathTimeProfile3D
+  pathTimeProfile(const std::vector<Point3>& path, const Vec3& initial_velocity) const;
   void populatePathMetrics(PersistentPlannerResult3D& result,
                            const Vec3& initial_velocity) const;
+  void resetExecutionTimeSearch() noexcept;
+  [[nodiscard]] PersistentPlannerDirection3D
+  directionForVector(const Vec3& vector) const noexcept;
+  [[nodiscard]] PersistentPlannerDirection3D
+  directionForEdge(PersistentPlannerNode3D first,
+                   PersistentPlannerNode3D second) const noexcept;
+  [[nodiscard]] Vec3
+  directionVector(PersistentPlannerDirection3D direction) const noexcept;
+  [[nodiscard]] PersistentPlannerTimeState3D
+  executionTimeStartState(const PersistentPlannerRequest3D& request,
+                          PersistentPlannerNode3D start_anchor) const noexcept;
+  void initializeExecutionTimeSearch(const PersistentPlannerRequest3D& request,
+                                     PersistentPlannerTimeState3D start_state);
+  void seedExecutionTimeIncumbent();
+  [[nodiscard]] bool hasExecutionTimeIncumbent() const noexcept;
+  [[nodiscard]] std::vector<Point3> bestExecutionTimePath();
+  [[nodiscard]] double
+  executionTimeHeuristic(const PersistentPlannerTimeState3D& state) const noexcept;
+  [[nodiscard]] double
+  executionTimeTransitionCost(const PersistentPlannerTimeState3D& first,
+                              const PersistentPlannerTimeState3D& second);
+  [[nodiscard]] double
+  executionTimeTerminalCost(const PersistentPlannerTimeState3D& state) const noexcept;
+  [[nodiscard]] std::optional<std::vector<Point3>>
+  continueExecutionTimeSearch(std::chrono::steady_clock::time_point deadline,
+                              std::size_t maximum_expansions, std::size_t& expansions);
+  [[nodiscard]] std::vector<Point3> extractExecutionTimePath();
   [[nodiscard]] std::vector<GridIndex3D>
   changedOccupiedCells(const PersistentPlannerWorld3D& previous,
                        const PersistentPlannerWorld3D& current) const;
@@ -150,12 +224,28 @@ private:
   std::uint64_t queue_sequence_{0U};
   double key_modifier_{0.0};
   bool initialized_{false};
+  bool dstar_cost_to_goal_heuristic_admissible_{true};
   OpenQueue open_{};
   std::unordered_map<PersistentPlannerNode3D, DStarLiteRecord3D,
                      PersistentPlannerNode3DHash>
       records_;
   std::unordered_map<PersistentPlannerEdge3D, double, PersistentPlannerEdge3DHash>
       edge_cost_cache_;
+  bool execution_time_search_initialized_{false};
+  bool execution_time_search_complete_{false};
+  bool execution_time_start_from_rest_{false};
+  PersistentPlannerTimeState3D execution_time_start_{};
+  std::optional<PersistentPlannerTimeState3D> execution_time_goal_;
+  std::vector<Point3> execution_time_spatial_incumbent_;
+  double execution_time_goal_cost_s_{std::numeric_limits<double>::infinity()};
+  std::uint64_t execution_time_queue_sequence_{0U};
+  TimeOpenQueue execution_time_open_{};
+  std::unordered_map<PersistentPlannerTimeState3D, double,
+                     PersistentPlannerTimeState3DHash>
+      execution_time_costs_;
+  std::unordered_map<PersistentPlannerTimeState3D, PersistentPlannerTimeState3D,
+                     PersistentPlannerTimeState3DHash>
+      execution_time_parents_;
   std::vector<Point3> incumbent_;
   std::size_t lattice_edge_queries_{0U};
   std::size_t raw_edge_validation_checks_{0U};

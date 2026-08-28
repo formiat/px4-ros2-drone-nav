@@ -262,6 +262,85 @@ TEST(PersistentDStarLitePlanner3DTest,
 }
 
 TEST(PersistentDStarLitePlanner3DTest,
+     ExecutionTimeRefinementPrefersFewerStopsOverTheShortestZigzag) {
+  auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 1.0, 14, 9, 3});
+  for (int z = 0; z < 3; ++z) {
+    for (int y = 0; y < 9; ++y) {
+      for (int x = 0; x < 14; ++x) {
+        ASSERT_TRUE(
+            occupancy->setState(GridIndex3D{x, y, z}, ObservedVoxelState::kOccupied));
+      }
+    }
+  }
+  const auto open = [&](const int x, const int y) {
+    static_cast<void>(
+        occupancy->setState(GridIndex3D{x, y, 1}, ObservedVoxelState::kUnknown));
+  };
+
+  // The lower corridor is shorter but forces a repeated stop-and-turn zigzag.
+  for (int x = 1; x <= 3; ++x) {
+    open(x, 3);
+  }
+  for (int x = 3; x <= 5; ++x) {
+    open(x, 2);
+  }
+  for (int x = 5; x <= 7; ++x) {
+    open(x, 3);
+  }
+  for (int x = 7; x <= 9; ++x) {
+    open(x, 2);
+  }
+  for (int x = 9; x <= 12; ++x) {
+    open(x, 3);
+  }
+
+  // The upper corridor is longer but has only two right-angle stops.
+  for (int y = 3; y <= 7; ++y) {
+    open(1, y);
+    open(12, y);
+  }
+  for (int x = 1; x <= 12; ++x) {
+    open(x, 7);
+  }
+
+  PersistentPlannerConfig3D timed_config = testConfig();
+  timed_config.maximum_adaptive_lattice_level = 0U;
+  timed_config.time_model.maximum_horizontal_acceleration_mps2 = 0.75;
+  timed_config.time_model.maximum_vertical_acceleration_mps2 = 0.75;
+  timed_config.time_model.maximum_control_jerk_mps3 = 1.5;
+  timed_config.time_model.maximum_yaw_rate_radps = 0.5;
+  timed_config.time_model.maximum_yaw_acceleration_radps2 = 0.5;
+  PersistentDStarLitePlanner3D timed_planner{timed_config};
+  const Point3 start{1.5, 3.5, 1.5};
+  const Point3 goal{12.5, 3.5, 1.5};
+
+  const PersistentPlannerResult3D timed =
+      timed_planner.plan(request(start, goal, world(occupancy, 1U)));
+
+  ASSERT_TRUE(timed.executable());
+  EXPECT_TRUE(timed.execution_time_search_complete);
+  EXPECT_TRUE(timed.search_complete);
+  EXPECT_GT(timed.execution_time_search_expansions, 0U);
+  EXPECT_GT(timed.execution_time_search_objective_s, 0.0);
+  EXPECT_TRUE(std::ranges::any_of(timed.points,
+                                  [](const Point3& point) { return point.y > 6.5; }));
+  EXPECT_GT(timed.estimated_stationary_turn_time_s, 0.0);
+
+  PersistentPlannerConfig3D translation_only_config = timed_config;
+  translation_only_config.minimum_continuous_turn_alignment = -1.0;
+  PersistentDStarLitePlanner3D translation_only_planner{translation_only_config};
+  const PersistentPlannerResult3D translation_only =
+      translation_only_planner.plan(request(start, goal, world(occupancy, 1U)));
+
+  ASSERT_TRUE(translation_only.executable());
+  EXPECT_LT(translation_only.path_length_m, timed.path_length_m);
+  EXPECT_FALSE(std::ranges::any_of(translation_only.points,
+                                   [](const Point3& point) { return point.y > 6.5; }));
+  expectRawValid(timed.points, *occupancy, timed_planner.config().physical_footprint);
+}
+
+TEST(PersistentDStarLitePlanner3DTest,
      MovingStartReusesTheSameBackwardSearchAndReturnsACurrentConnector) {
   auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
       GridBounds3D{0.0, 0.0, 0.0, 1.0, 16, 8, 6});
@@ -300,11 +379,14 @@ TEST(PersistentDStarLitePlanner3DTest,
   ASSERT_EQ(result.status, PersistentPlannerStatus3D::kSearchInProgress);
   EXPECT_TRUE(result.points.empty());
   const std::uint64_t generation = result.search_generation;
-  for (std::size_t attempt = 0U; attempt < 200U && !result.executable(); ++attempt) {
+  for (std::size_t attempt = 0U; attempt < 5000U && !result.executable(); ++attempt) {
     result = planner.plan(request(start, goal, world(occupancy, 1U)));
   }
 
-  ASSERT_TRUE(result.executable());
+  ASSERT_TRUE(result.executable())
+      << "spatial_expansions=" << result.expansions
+      << " time_expansions=" << result.execution_time_search_expansions
+      << " time_records=" << result.execution_time_search_records;
   EXPECT_TRUE(result.search_state_reused);
   EXPECT_EQ(result.search_generation, generation);
 }

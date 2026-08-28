@@ -435,7 +435,21 @@ Use one persistent sparse D* Lite planner over an adaptive world-fixed
 occupied updates, repairs only affected vertices, and preserves the incumbent
 mission route while bounded repair is incomplete. Lazy exact swept-footprint
 validation is authoritative; any-angle shortcutting may reduce lattice artifacts
-only after the shortcut passes the same raw validation.
+only after the shortcut passes the same raw validation and the shared complete
+path-time profile proves that predicted execution time does not increase.
+
+The planner has one route-producing pipeline with two cooperating search layers.
+Persistent D* Lite owns raw-safe connectivity, incremental repair, and admissible
+anisotropic translation-time labels. A resumable direction-labelled refinement
+uses those labels inside the same planner to minimize predicted execution time;
+its transition cost includes jerk-limited braking and restart plus physically
+bounded stationary yaw whenever the compiler's 3D tangent threshold requires a
+`StopAndTurn`. A complete raw-safe D* route is the refinement's initial upper
+bound, never a competing publication. The refinement may resume across bounded
+calls and no new route is published until its proof completes or a previously
+admitted raw-valid incumbent is retained. An occupied-cell removal disables any
+retained D* label that could overestimate a newly opened alternative and falls
+back to the geometric admissible heuristic until the next full search lineage.
 
 The strategic objective is predicted 3D execution time to the mission goal.
 Preparatory climb, descent, lateral detour, and justified backtracking are valid
@@ -501,11 +515,12 @@ fresh read and retry; only an exact raw collision result may report
    latest-lidar protection, PX4 execution, and truthful diagnostics.
 
 The current implementation now includes the persistent adaptive lattice and the
-immutable sparse `KnownObstacleDistance3D` cache. The observed path structurally
-shares unaffected 8-cubed chunks, uses an exact capped source halo, and creates a
-dense float projection only for the controller upload boundary. Item 12 remains
-in progress until the complete static audit and unchanged three-run Manhattan
-mission gate below are finished.
+direction-labelled execution-time refinement, together with the immutable sparse
+`KnownObstacleDistance3D` cache. The observed path structurally shares unaffected
+8-cubed chunks, uses an exact capped source halo, and creates a dense float
+projection only for the controller upload boundary. Item 12 remains in progress
+until the complete static audit and unchanged three-run Manhattan mission gate
+below are finished.
 
 ### Validation
 
@@ -520,6 +535,9 @@ They prove:
 - frequent world revisions and better competing candidates do not change the
   valid active route identity;
 - a climb-first or drop-first intent remains owner through the passage;
+- a longer raw-safe route with fewer mandatory stops defeats a shorter zigzag
+  when the shared jerk, acceleration, and yaw model predicts lower execution
+  time, while bounded refinement resumes without publishing a greedy frontier;
 - successor reserve includes measured p99 latency, stopping distance, and
   overlap, with continuous braking ownership at every commit boundary;
 - newer raw occupied evidence repairs or brakes the affected suffix without

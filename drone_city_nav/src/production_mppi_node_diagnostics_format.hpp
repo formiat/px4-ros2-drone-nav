@@ -69,8 +69,16 @@ persistentPlannerInfoFields(const ProductionMppiPreparedEsdf& esdf) {
          << planner.adaptive_edges_in_extracted_path
          << " planner_maximum_queried_lattice_level="
          << planner.maximum_queried_lattice_level
+         << " planner_execution_time_search_expansions="
+         << planner.execution_time_search_expansions
+         << " planner_execution_time_search_records="
+         << planner.execution_time_search_records
+         << " planner_execution_time_search_open_entries="
+         << planner.execution_time_search_open_entries
          << " planner_path_length_m=" << planner.path_length_m
          << " planner_remaining_goal_distance_m=" << planner.remaining_goal_distance_m
+         << " planner_execution_time_search_objective_s="
+         << planner.execution_time_search_objective_s
          << " planner_estimated_execution_time_s=" << planner.estimated_execution_time_s
          << " planner_estimated_translation_time_s="
          << planner.estimated_translation_time_s
@@ -97,6 +105,8 @@ persistentPlannerJsonFields(const ProductionMppiPreparedEsdf& esdf) {
          << (planner.occupied_world_unchanged ? "true" : "false")
          << ",\"planner_incumbent_retained\":"
          << (planner.incumbent_retained ? "true" : "false")
+         << ",\"planner_execution_time_search_complete\":"
+         << (planner.execution_time_search_complete ? "true" : "false")
          << ",\"planner_mission_epoch\":" << planner.mission_epoch
          << ",\"planner_planned_on_revision\":" << planner.planned_on_revision
          << ",\"planner_occupied_fingerprint\":" << planner.occupied_fingerprint
@@ -117,9 +127,17 @@ persistentPlannerJsonFields(const ProductionMppiPreparedEsdf& esdf) {
          << planner.adaptive_edges_in_extracted_path
          << ",\"planner_maximum_queried_lattice_level\":"
          << planner.maximum_queried_lattice_level
+         << ",\"planner_execution_time_search_expansions\":"
+         << planner.execution_time_search_expansions
+         << ",\"planner_execution_time_search_records\":"
+         << planner.execution_time_search_records
+         << ",\"planner_execution_time_search_open_entries\":"
+         << planner.execution_time_search_open_entries
          << ",\"planner_path_length_m\":" << planner.path_length_m
          << ",\"planner_remaining_goal_distance_m\":"
          << planner.remaining_goal_distance_m
+         << ",\"planner_execution_time_search_objective_s\":"
+         << planner.execution_time_search_objective_s
          << ",\"planner_estimated_execution_time_s\":"
          << planner.estimated_execution_time_s
          << ",\"planner_estimated_translation_time_s\":"

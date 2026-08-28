@@ -86,7 +86,11 @@ struct PersistentPlannerResult3D {
   std::size_t adaptive_edge_queries{0U};
   std::size_t adaptive_edges_in_extracted_path{0U};
   std::size_t maximum_queried_lattice_level{0U};
+  std::size_t execution_time_search_expansions{0U};
+  std::size_t execution_time_search_records{0U};
+  std::size_t execution_time_search_open_entries{0U};
   double path_length_m{0.0};
+  double execution_time_search_objective_s{0.0};
   double estimated_execution_time_s{0.0};
   double estimated_translation_time_s{0.0};
   double estimated_stationary_turn_time_s{0.0};
@@ -95,6 +99,7 @@ struct PersistentPlannerResult3D {
   bool search_state_reused{false};
   bool occupied_world_unchanged{false};
   bool incumbent_retained{false};
+  bool execution_time_search_complete{false};
   bool search_complete{false};
 
   [[nodiscard]] bool executable() const noexcept;

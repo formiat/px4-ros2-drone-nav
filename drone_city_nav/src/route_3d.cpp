@@ -1,6 +1,7 @@
 #include "drone_city_nav/route_3d.hpp"
 
 #include "drone_city_nav/esdf_query.hpp"
+#include "drone_city_nav/flight_time_model_3d.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -622,9 +623,8 @@ bool canonicalizeRouteKinematics3D(const std::span<RouteSample3D> route,
     }
     const Vec3& incoming = directions[index - 1U];
     const Vec3& outgoing = directions[index];
-    const double alignment =
-        incoming.x * outgoing.x + incoming.y * outgoing.y + incoming.z * outgoing.z;
-    if (alignment < minimum_continuous_turn_alignment) {
+    if (requiresFlightStopAndTurn3D(incoming, outgoing,
+                                    minimum_continuous_turn_alignment)) {
       route[index].transition = RouteKinematicTransition3D::kStopAndTurn;
       route[index].reference_speed_mps = 0.0;
       if (stop_turn_count != nullptr) {

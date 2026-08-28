@@ -114,6 +114,19 @@ std::size_t PersistentPlannerEdge3DHash::operator()(
   return seed;
 }
 
+std::size_t PersistentPlannerTimeState3DHash::operator()(
+    const PersistentPlannerTimeState3D& state) const noexcept {
+  std::size_t seed = PersistentPlannerNode3DHash{}(state.position);
+  const auto mix = [&seed](const std::int8_t value) {
+    seed ^= std::hash<int>{}(static_cast<int>(value)) + 0x9e3779b9U + (seed << 6U) +
+            (seed >> 2U);
+  };
+  mix(state.incoming.x);
+  mix(state.incoming.y);
+  mix(state.incoming.z);
+  return seed;
+}
+
 bool DStarLiteQueueEntryCompare3D::operator()(
     const DStarLiteQueueEntry3D& first,
     const DStarLiteQueueEntry3D& second) const noexcept {
@@ -122,6 +135,18 @@ bool DStarLiteQueueEntryCompare3D::operator()(
   }
   if (first.key.second != second.key.second) {
     return first.key.second > second.key.second;
+  }
+  return first.sequence > second.sequence;
+}
+
+bool PersistentPlannerTimeQueueEntryCompare3D::operator()(
+    const PersistentPlannerTimeQueueEntry3D& first,
+    const PersistentPlannerTimeQueueEntry3D& second) const noexcept {
+  if (first.estimated_total_s != second.estimated_total_s) {
+    return first.estimated_total_s > second.estimated_total_s;
+  }
+  if (first.cost_from_start_s != second.cost_from_start_s) {
+    return first.cost_from_start_s > second.cost_from_start_s;
   }
   return first.sequence > second.sequence;
 }
@@ -150,11 +175,13 @@ void PersistentDStarLitePlanner3DImpl::reset() noexcept {
   exact_goal_ = {};
   mission_epoch_ = 0U;
   key_modifier_ = 0.0;
+  dstar_cost_to_goal_heuristic_admissible_ = true;
   queue_token_ = 0U;
   queue_sequence_ = 0U;
   open_ = {};
   records_.clear();
   edge_cost_cache_.clear();
+  resetExecutionTimeSearch();
   incumbent_.clear();
   lattice_edge_queries_ = 0U;
   raw_edge_validation_checks_ = 0U;
@@ -230,6 +257,11 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     result.status = PersistentPlannerStatus3D::kGoalUnavailable;
     return result;
   }
+  const PersistentPlannerTimeState3D time_start_state =
+      executionTimeStartState(request, *start_anchor);
+  const bool starts_from_rest =
+      std::hypot(std::hypot(request.velocity.x, request.velocity.y),
+                 request.velocity.z) <= 1.0e-9;
 
   const bool mission_changed =
       initialized_ &&
@@ -244,6 +276,13 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     }
     initializeSearch(request, *start_anchor, *goal_anchor);
   } else {
+    const bool execution_time_start_changed =
+        execution_time_search_initialized_ &&
+        (execution_time_start_ != time_start_state ||
+         execution_time_start_from_rest_ != starts_from_rest);
+    const bool execution_time_goal_changed =
+        execution_time_search_initialized_ &&
+        distance3D(request.mission_goal, previous_goal) > 1.0e-9;
     result.search_state_reused = true;
     exact_start_ = request.start;
     exact_goal_ = request.mission_goal;
@@ -253,10 +292,20 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     if (!world_update.changed_cells.empty()) {
       updateAffectedVertices(world_update.changed_cells,
                              result.affected_lattice_states);
+      if (world_update.occupied_cells_removed) {
+        // A cost-to-go retained across an obstacle removal can overestimate a
+        // newly opened route until every affected label settles. Keep the
+        // refinement heuristic strictly Euclidean in that case.
+        dstar_cost_to_goal_heuristic_admissible_ = false;
+      }
       repair_generation_ =
           repair_generation_ == std::numeric_limits<std::uint64_t>::max()
               ? 1U
               : repair_generation_ + 1U;
+    }
+    if (!world_update.changed_cells.empty() || execution_time_start_changed ||
+        execution_time_goal_changed) {
+      resetExecutionTimeSearch();
     }
   }
 
@@ -264,22 +313,37 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
       operation_started +
       std::chrono::duration_cast<std::chrono::steady_clock::duration>(
           std::chrono::duration<double, std::milli>{config_.maximum_compute_time_ms});
-  result.search_complete = computeShortestPath(
+  const bool spatial_search_complete = computeShortestPath(
       deadline, config_.maximum_expansions_per_update, result.expansions);
-  if (result.search_complete) {
-    std::vector<Point3> path = extractPath();
-    if (!path.empty()) {
-      path = shortcutPath(path, result.shortcut_checks, result.shortcuts_applied);
+  const auto spatial_start_record = records_.find(start_);
+  const bool spatial_route_available = spatial_search_complete &&
+                                       spatial_start_record != records_.end() &&
+                                       std::isfinite(spatial_start_record->second.g);
+  if (spatial_route_available) {
+    if (!execution_time_search_initialized_) {
+      initializeExecutionTimeSearch(request, time_start_state);
     }
-    if (path.size() >= 2U && pathRawValid(path) &&
-        distance3D(path.back(), request.mission_goal) <= config_.goal_tolerance_m) {
+    std::optional<std::vector<Point3>> path =
+        continueExecutionTimeSearch(deadline, config_.maximum_expansions_per_update,
+                                    result.execution_time_search_expansions);
+    if (path.has_value() && !path->empty()) {
+      *path = shortcutPath(*path, result.shortcut_checks, result.shortcuts_applied,
+                           request.velocity);
+    }
+    if (path.has_value() && path->size() >= 2U && pathRawValid(*path) &&
+        distance3D(path->back(), request.mission_goal) <= config_.goal_tolerance_m) {
       result.status = PersistentPlannerStatus3D::kReachedMissionGoal;
-      result.points = std::move(path);
+      result.points = std::move(*path);
       incumbent_ = result.points;
-    } else {
+    } else if (execution_time_search_complete_) {
       result.status = PersistentPlannerStatus3D::kNoRoute;
     }
-  } else {
+  } else if (spatial_search_complete) {
+    resetExecutionTimeSearch();
+    result.status = PersistentPlannerStatus3D::kNoRoute;
+  }
+
+  if (result.status == PersistentPlannerStatus3D::kInvalidInput) {
     const std::optional<std::vector<Point3>> retained =
         rebaseIncumbent(request.start, request.mission_goal);
     if (retained.has_value()) {
@@ -291,6 +355,9 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     }
   }
 
+  result.execution_time_search_complete = execution_time_search_complete_;
+  result.search_complete = spatial_search_complete && (!spatial_route_available ||
+                                                       execution_time_search_complete_);
   result.search_generation = search_generation_;
   result.repair_generation = repair_generation_;
   result.records = records_.size();
@@ -300,6 +367,10 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   result.adaptive_edge_queries = adaptive_edge_queries_;
   result.adaptive_edges_in_extracted_path = adaptive_edges_in_extracted_path_;
   result.maximum_queried_lattice_level = maximum_queried_lattice_level_;
+  result.execution_time_search_records = execution_time_costs_.size();
+  result.execution_time_search_open_entries = execution_time_open_.size();
+  result.execution_time_search_objective_s =
+      std::isfinite(execution_time_goal_cost_s_) ? execution_time_goal_cost_s_ : 0.0;
   populatePathMetrics(result, request.velocity);
   result.search_ms = std::chrono::duration<double, std::milli>(
                          std::chrono::steady_clock::now() - operation_started)

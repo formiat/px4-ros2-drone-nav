@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <optional>
 #include <vector>
 
 namespace drone_city_nav {
@@ -20,6 +21,14 @@ constexpr double kEpsilon{1.0e-9};
              ? Vec3{(second.x - first.x) / length, (second.y - first.y) / length,
                     (second.z - first.z) / length}
              : Vec3{};
+}
+
+[[nodiscard]] std::optional<Vec3> normalized(const Vec3& value) noexcept {
+  const double norm = std::hypot(std::hypot(value.x, value.y), value.z);
+  if (!(norm > kEpsilon) || !std::isfinite(norm)) {
+    return std::nullopt;
+  }
+  return Vec3{value.x / norm, value.y / norm, value.z / norm};
 }
 
 [[nodiscard]] double scalarSpeedLimit(const Vec3& tangent,
@@ -194,6 +203,56 @@ double minimumFlightTranslationTime3D(const Point3& first, const Point3& second,
   return std::max({horizontal / model.maximum_horizontal_speed_mps,
                    vertical / model.maximum_vertical_speed_mps,
                    translation / model.maximum_translational_speed_mps});
+}
+
+bool requiresFlightStopAndTurn3D(const Vec3& incoming, const Vec3& outgoing,
+                                 const double minimum_continuous_alignment) noexcept {
+  const std::optional<Vec3> normalized_incoming = normalized(incoming);
+  const std::optional<Vec3> normalized_outgoing = normalized(outgoing);
+  if (!normalized_incoming.has_value() || !normalized_outgoing.has_value() ||
+      !std::isfinite(minimum_continuous_alignment) ||
+      minimum_continuous_alignment < -1.0 || minimum_continuous_alignment > 1.0) {
+    return false;
+  }
+  const double alignment = normalized_incoming->x * normalized_outgoing->x +
+                           normalized_incoming->y * normalized_outgoing->y +
+                           normalized_incoming->z * normalized_outgoing->z;
+  return alignment < minimum_continuous_alignment;
+}
+
+double estimatedFlightRestTransitionDelay3D(const Vec3& tangent,
+                                            const FlightTimeModel3D& model) noexcept {
+  const std::optional<Vec3> normalized_tangent = normalized(tangent);
+  if (!model.valid() || !normalized_tangent.has_value()) {
+    return std::numeric_limits<double>::infinity();
+  }
+  const double speed_limit = scalarSpeedLimit(*normalized_tangent, model);
+  const double acceleration_limit = scalarAccelerationLimit(*normalized_tangent, model);
+  if (!finitePositive(speed_limit) || !finitePositive(acceleration_limit)) {
+    return std::numeric_limits<double>::infinity();
+  }
+  // The shared S-curve transition travels at the mean endpoint speed. Against
+  // an instantaneous full-speed translation lower bound, half of its duration
+  // is therefore the incremental delay.
+  return 0.5 * velocityTransitionTime(speed_limit, acceleration_limit,
+                                      model.maximum_control_jerk_mps3);
+}
+
+double estimatedFlightStopAndTurnDelay3D(const Vec3& incoming, const Vec3& outgoing,
+                                         const FlightTimeModel3D& model) noexcept {
+  const std::optional<Vec3> normalized_incoming = normalized(incoming);
+  const std::optional<Vec3> normalized_outgoing = normalized(outgoing);
+  if (!model.valid() || !normalized_incoming.has_value() ||
+      !normalized_outgoing.has_value()) {
+    return std::numeric_limits<double>::infinity();
+  }
+  const double braking_delay =
+      estimatedFlightRestTransitionDelay3D(*normalized_incoming, model);
+  const double restart_delay =
+      estimatedFlightRestTransitionDelay3D(*normalized_outgoing, model);
+  const double yaw_time =
+      stationaryYawTurnTime(*normalized_incoming, *normalized_outgoing, model);
+  return braking_delay + yaw_time + restart_delay;
 }
 
 FlightPathTimeProfile3D

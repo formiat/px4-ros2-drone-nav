@@ -211,6 +211,7 @@ add_library(
   src/offboard_session_admission.cpp
   src/persistent_dstar_lite_planner_3d.cpp
   src/persistent_dstar_lite_planner_3d_search.cpp
+  src/persistent_dstar_lite_planner_3d_time_search.cpp
   src/persistent_dstar_lite_planner_3d_world.cpp
   src/px4_ros_time_mapper.cpp
   src/radar_cadence.cpp

@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <limits>
 #include <numbers>
 #include <optional>
@@ -65,12 +66,14 @@ void PersistentDStarLitePlanner3DImpl::initializeSearch(
   exact_start_ = request.start;
   exact_goal_ = request.mission_goal;
   mission_epoch_ = request.mission_epoch;
+  dstar_cost_to_goal_heuristic_admissible_ = true;
   key_modifier_ = 0.0;
   queue_token_ = 0U;
   queue_sequence_ = 0U;
   open_ = {};
   records_.clear();
   edge_cost_cache_.clear();
+  resetExecutionTimeSearch();
   search_generation_ = search_generation_ == std::numeric_limits<std::uint64_t>::max()
                            ? 1U
                            : search_generation_ + 1U;
@@ -379,30 +382,46 @@ std::vector<Point3> PersistentDStarLitePlanner3DImpl::extractPath() {
 }
 
 std::vector<Point3> PersistentDStarLitePlanner3DImpl::shortcutPath(
-    const std::vector<Point3>& path, std::size_t& checks, std::size_t& applied) const {
+    const std::vector<Point3>& path, std::size_t& checks, std::size_t& applied,
+    const Vec3& initial_velocity) const {
   if (path.size() < 3U || config_.maximum_shortcut_checks == 0U) {
     return path;
   }
-  std::vector<Point3> result;
-  result.reserve(path.size());
+  std::vector<Point3> result = path;
+  FlightPathTimeProfile3D current_profile = pathTimeProfile(result, initial_velocity);
+  if (!current_profile.valid) {
+    return path;
+  }
   std::size_t anchor = 0U;
-  result.push_back(path.front());
-  while (anchor + 1U < path.size()) {
-    std::size_t selected = anchor + 1U;
-    for (std::size_t candidate = path.size() - 1U; candidate > anchor + 1U;
+  while (anchor + 2U < result.size()) {
+    bool shortcut_applied{false};
+    for (std::size_t candidate = result.size() - 1U; candidate > anchor + 1U;
          --candidate) {
       if (checks >= config_.maximum_shortcut_checks) {
         break;
       }
       ++checks;
-      if (rawSegmentValid(path[anchor], path[candidate])) {
-        selected = candidate;
-        break;
+      if (!rawSegmentValid(result[anchor], result[candidate])) {
+        continue;
       }
+      std::vector<Point3> trial = result;
+      trial.erase(std::next(trial.begin(), static_cast<std::ptrdiff_t>(anchor + 1U)),
+                  std::next(trial.begin(), static_cast<std::ptrdiff_t>(candidate)));
+      FlightPathTimeProfile3D trial_profile = pathTimeProfile(trial, initial_velocity);
+      if (!trial_profile.valid || trial_profile.travel_time_s >
+                                      current_profile.travel_time_s + kCostTolerance) {
+        continue;
+      }
+      applied += candidate - anchor - 1U;
+      result = std::move(trial);
+      current_profile = std::move(trial_profile);
+      shortcut_applied = true;
+      break;
     }
-    applied += selected - anchor - 1U;
-    result.push_back(path[selected]);
-    anchor = selected;
+    ++anchor;
+    if (checks >= config_.maximum_shortcut_checks && !shortcut_applied) {
+      break;
+    }
   }
   return result;
 }
@@ -457,6 +476,33 @@ bool PersistentDStarLitePlanner3DImpl::pathRawValid(
   return true;
 }
 
+FlightPathTimeProfile3D
+PersistentDStarLitePlanner3DImpl::pathTimeProfile(const std::vector<Point3>& path,
+                                                  const Vec3& initial_velocity) const {
+  if (path.size() < 2U) {
+    return {};
+  }
+  std::vector<double> speed_limits(
+      path.size(), std::min(config_.time_model.maximum_horizontal_speed_mps,
+                            config_.time_model.maximum_translational_speed_mps));
+  std::vector<std::uint8_t> stop_turn_flags(path.size(), 0U);
+  for (std::size_t index = 1U; index + 1U < path.size(); ++index) {
+    const Vec3 incoming{path[index].x - path[index - 1U].x,
+                        path[index].y - path[index - 1U].y,
+                        path[index].z - path[index - 1U].z};
+    const Vec3 outgoing{path[index + 1U].x - path[index].x,
+                        path[index + 1U].y - path[index].y,
+                        path[index + 1U].z - path[index].z};
+    stop_turn_flags[index] =
+        requiresFlightStopAndTurn3D(incoming, outgoing,
+                                    config_.minimum_continuous_turn_alignment)
+            ? 1U
+            : 0U;
+  }
+  return parameterizeFlightPathTime3D(path, speed_limits, stop_turn_flags,
+                                      initial_velocity, true, config_.time_model);
+}
+
 void PersistentDStarLitePlanner3DImpl::populatePathMetrics(
     PersistentPlannerResult3D& result, const Vec3& initial_velocity) const {
   for (std::size_t index = 1U; index < result.points.size(); ++index) {
@@ -465,31 +511,8 @@ void PersistentDStarLitePlanner3DImpl::populatePathMetrics(
   if (result.points.size() < 2U) {
     return;
   }
-  std::vector<double> speed_limits(
-      result.points.size(),
-      std::min(config_.time_model.maximum_horizontal_speed_mps,
-               config_.time_model.maximum_translational_speed_mps));
-  std::vector<std::uint8_t> stop_turn_flags(result.points.size(), 0U);
-  for (std::size_t index = 1U; index + 1U < result.points.size(); ++index) {
-    const Point3& first = result.points[index - 1U];
-    const Point3& center = result.points[index];
-    const Point3& last = result.points[index + 1U];
-    const double first_length = distance3D(first, center);
-    const double second_length = distance3D(center, last);
-    if (!(first_length > kCostTolerance) || !(second_length > kCostTolerance)) {
-      continue;
-    }
-    const double alignment = ((center.x - first.x) * (last.x - center.x) +
-                              (center.y - first.y) * (last.y - center.y) +
-                              (center.z - first.z) * (last.z - center.z)) /
-                             (first_length * second_length);
-    if (alignment < config_.minimum_continuous_turn_alignment) {
-      stop_turn_flags[index] = 1U;
-    }
-  }
   const FlightPathTimeProfile3D profile =
-      parameterizeFlightPathTime3D(result.points, speed_limits, stop_turn_flags,
-                                   initial_velocity, true, config_.time_model);
+      pathTimeProfile(result.points, initial_velocity);
   if (!profile.valid) {
     return;
   }

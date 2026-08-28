@@ -150,6 +150,11 @@ PersistentDStarLitePlanner3DImpl::updateWorld(const PersistentPlannerWorld3D& wo
   }
 
   update.changed_cells = changedOccupiedCells(world_, world);
+  update.occupied_cells_removed =
+      std::ranges::any_of(update.changed_cells, [&](const GridIndex3D cell) {
+        return world_.observed_occupancy->isOccupied(cell) &&
+               !world.observed_occupancy->isOccupied(cell);
+      });
   if (update.changed_cells.empty() ||
       update.changed_cells.size() > config_.maximum_incremental_changed_voxels) {
     update.changed_cells.clear();

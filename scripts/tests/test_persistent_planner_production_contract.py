@@ -26,6 +26,12 @@ class PersistentPlannerProductionContractTest(unittest.TestCase):
         cls.materialization = (
             SOURCE / "production_mppi_route_materialization.cpp"
         ).read_text(encoding="utf-8")
+        cls.time_refinement = (
+            SOURCE / "persistent_dstar_lite_planner_3d_time_search.cpp"
+        ).read_text(encoding="utf-8")
+        cls.spatial_search = (
+            SOURCE / "persistent_dstar_lite_planner_3d_search.cpp"
+        ).read_text(encoding="utf-8")
         cls.diagnostics = (
             SOURCE / "production_mppi_node_diagnostics.cpp"
         ).read_text(encoding="utf-8")
@@ -96,6 +102,19 @@ class PersistentPlannerProductionContractTest(unittest.TestCase):
         activation = self.planning.index("commitRouteActivation3D")
         self.assertLess(continuation, activation)
 
+    def test_execution_time_refinement_is_inside_the_single_planner(self) -> None:
+        for contract in (
+            "continueExecutionTimeSearch",
+            "estimatedFlightStopAndTurnDelay3D",
+            "requiresFlightStopAndTurn3D",
+            "seedExecutionTimeIncumbent",
+            "execution_time_goal_cost_s_",
+        ):
+            self.assertIn(contract, self.time_refinement)
+        self.assertIn(
+            "pathTimeProfile(trial, initial_velocity)", self.spatial_search
+        )
+
     def test_successor_search_starts_at_certified_future_station(self) -> None:
         self.assertIn("search_base_stitch_station_m", self.selection)
         self.assertIn("sampleRoute3DAtStation(active_geometry, stitch_station_m)", self.selection)
@@ -123,6 +142,9 @@ class PersistentPlannerProductionContractTest(unittest.TestCase):
             "plan.changed_occupied_voxels",
             "plan.affected_lattice_states",
             "plan.estimated_execution_time_s",
+            "plan.execution_time_search_expansions",
+            "plan.execution_time_search_objective_s",
+            "plan.execution_time_search_complete",
             "plan.world_update_ms",
             "plan.search_ms",
             "plan.search_state_reused",

@@ -218,11 +218,23 @@ TEST(PersistentPlannerAcceptanceFixture,
     ASSERT_FALSE(fixture.missions.empty()) << fixture.name;
     for (const PersistentPlannerAcceptanceMission& mission : fixture.missions) {
       PersistentDStarLitePlanner3D planner{acceptancePlannerConfig()};
-      const PersistentPlannerResult3D result =
+      PersistentPlannerResult3D result =
           planMission(planner, mission, fixture.occupancy);
+      for (std::size_t continuation = 0U;
+           continuation < 16U &&
+           result.status == PersistentPlannerStatus3D::kSearchInProgress;
+           ++continuation) {
+        result = planMission(planner, mission, fixture.occupancy);
+      }
       ASSERT_TRUE(result.executable())
           << fixture.name << " status=" << persistentPlannerStatus3DName(result.status)
-          << " expansions=" << result.expansions << " search_ms=" << result.search_ms;
+          << " expansions=" << result.expansions
+          << " time_expansions=" << result.execution_time_search_expansions
+          << " time_records=" << result.execution_time_search_records
+          << " time_objective=" << result.execution_time_search_objective_s
+          << " spatial_complete=" << result.search_complete
+          << " time_complete=" << result.execution_time_search_complete
+          << " search_ms=" << result.search_ms;
       EXPECT_EQ(result.status, PersistentPlannerStatus3D::kReachedMissionGoal)
           << fixture.name;
       EXPECT_TRUE(result.search_complete) << fixture.name;

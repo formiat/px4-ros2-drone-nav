@@ -136,24 +136,27 @@ void ProductionMppiNode::processRouteSearch3D(
       "PRODUCTION_MPPI_ROUTE3D planner=persistent_dstar_lite "
       "raw_revision=%" PRIu64 " mission_epoch=%" PRIu64
       " status=%s search_complete=%s search_state_reused=%s "
-      "incumbent_retained=%s certified_pending=%s "
+      "time_search_complete=%s incumbent_retained=%s certified_pending=%s "
       "activation_status=%.*s publication_status=%.*s "
       "validation=%.*s handoff=%s splice=%.*s "
       "certified_reserve=%.*s reserve_available_m=%.3f "
       "reserve_required_m=%.3f reserve_shortfall_m=%.3f "
       "route_reaches_mission_goal=%s route_generation=%" PRIu64
       " base_route_instance_id=%" PRIu64 " stitch_station_m=%.3f "
-      "points=%zu samples=%zu expansions=%zu changed_occupied=%zu "
-      "affected_states=%zu records=%zu open=%zu shortcuts=%zu/%zu "
+      "points=%zu samples=%zu expansions=%zu time_expansions=%zu "
+      "changed_occupied=%zu affected_states=%zu records=%zu open=%zu "
+      "time_records=%zu time_open=%zu shortcuts=%zu/%zu "
       "edge_queries=%zu raw_edge_checks=%zu adaptive_edge_queries=%zu "
       "adaptive_path_edges=%zu maximum_adaptive_level=%zu "
-      "path_length_m=%.3f eta_s=%.3f translation_s=%.3f turn_s=%.3f "
+      "path_length_m=%.3f time_objective_s=%.3f eta_s=%.3f "
+      "translation_s=%.3f turn_s=%.3f "
       "search_ms=%.3f route_planning_ms=%.3f validation_ms=%.3f "
       "smoothing_ms=%.3f raw_connector_validated=%s "
       "raw_suffix_validated=%s route_fingerprint=%" PRIu64,
       plan.planned_on_revision, plan.mission_epoch, planner_status,
       plan.search_complete ? "true" : "false",
       plan.search_state_reused ? "true" : "false",
+      plan.execution_time_search_complete ? "true" : "false",
       plan.incumbent_retained ? "true" : "false",
       activation.certified_pending ? "true" : "false",
       static_cast<int>(
@@ -180,11 +183,13 @@ void ProductionMppiNode::processRouteSearch3D(
       prepared.planning_search_base_route_instance_id.value,
       prepared.planning_search_base_stitch_station_m.value_or(-1.0), plan.points.size(),
       prepared.route_3d ? prepared.route_3d->size() : 0U, plan.expansions,
-      plan.changed_occupied_voxels, plan.affected_lattice_states, plan.records,
-      plan.open_entries, plan.shortcuts_applied, plan.shortcut_checks,
-      plan.lattice_edge_queries, plan.raw_edge_validation_checks,
-      plan.adaptive_edge_queries, plan.adaptive_edges_in_extracted_path,
-      plan.maximum_queried_lattice_level, plan.path_length_m,
+      plan.execution_time_search_expansions, plan.changed_occupied_voxels,
+      plan.affected_lattice_states, plan.records, plan.open_entries,
+      plan.execution_time_search_records, plan.execution_time_search_open_entries,
+      plan.shortcuts_applied, plan.shortcut_checks, plan.lattice_edge_queries,
+      plan.raw_edge_validation_checks, plan.adaptive_edge_queries,
+      plan.adaptive_edges_in_extracted_path, plan.maximum_queried_lattice_level,
+      plan.path_length_m, plan.execution_time_search_objective_s,
       plan.estimated_execution_time_s, plan.estimated_translation_time_s,
       plan.estimated_stationary_turn_time_s, candidate_set.search_ms, route_planning_ms,
       prepared.candidate_validation_ms, prepared.route_smoothing_ms,

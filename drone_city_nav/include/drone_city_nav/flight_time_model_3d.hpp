@@ -40,6 +40,27 @@ struct FlightPathTimeProfile3D {
 minimumFlightTranslationTime3D(const Point3& first, const Point3& second,
                                const FlightTimeModel3D& model) noexcept;
 
+// Returns true when the three-dimensional tangent change requires the same
+// full translational stop used by route compilation. The threshold is the
+// minimum normalized tangent alignment that may remain continuous.
+[[nodiscard]] bool
+requiresFlightStopAndTurn3D(const Vec3& incoming, const Vec3& outgoing,
+                            double minimum_continuous_alignment) noexcept;
+
+// Incremental delay, relative to translation at the directional speed limit,
+// for one jerk-limited transition between rest and that speed. Acceleration
+// and braking are symmetric under the shared zero-boundary-acceleration model.
+[[nodiscard]] double
+estimatedFlightRestTransitionDelay3D(const Vec3& tangent,
+                                     const FlightTimeModel3D& model) noexcept;
+
+// Incremental strategic cost of a mandatory stop-and-turn: jerk-limited
+// braking, physically bounded stationary yaw, and jerk-limited restart. The
+// full path parameterizer below remains authoritative for the final ETA.
+[[nodiscard]] double
+estimatedFlightStopAndTurnDelay3D(const Vec3& incoming, const Vec3& outgoing,
+                                  const FlightTimeModel3D& model) noexcept;
+
 // Time-parameterizes one spatial path. speed_limits_mps and stop_turn_flags
 // are point-aligned; a nonzero flag requires zero translational speed and a
 // physically bounded stationary yaw turn at that point.

@@ -76,9 +76,13 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
       .adaptive_edge_queries = plan.adaptive_edge_queries,
       .adaptive_edges_in_extracted_path = plan.adaptive_edges_in_extracted_path,
       .maximum_queried_lattice_level = plan.maximum_queried_lattice_level,
+      .execution_time_search_expansions = plan.execution_time_search_expansions,
+      .execution_time_search_records = plan.execution_time_search_records,
+      .execution_time_search_open_entries = plan.execution_time_search_open_entries,
       .path_length_m = plan.path_length_m,
       .remaining_goal_distance_m =
           distance3D(prepared.planning_candidate_endpoint, mission_goal),
+      .execution_time_search_objective_s = plan.execution_time_search_objective_s,
       .estimated_execution_time_s = plan.estimated_execution_time_s,
       .estimated_translation_time_s = plan.estimated_translation_time_s,
       .estimated_stationary_turn_time_s = plan.estimated_stationary_turn_time_s,
@@ -89,6 +93,7 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
       .search_state_reused = plan.search_state_reused,
       .occupied_world_unchanged = plan.occupied_world_unchanged,
       .incumbent_retained = plan.incumbent_retained,
+      .execution_time_search_complete = plan.execution_time_search_complete,
       .search_complete = plan.search_complete,
   };
   prepared.route_reaches_mission_goal = plan.executable();
