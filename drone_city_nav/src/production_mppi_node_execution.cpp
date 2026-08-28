@@ -21,15 +21,6 @@
 
 namespace drone_city_nav {
 
-static_assert(static_cast<std::uint8_t>(Lattice3DRoutePurpose::kMissionTransit) ==
-              msg::MppiTrajectoryHorizon::ROUTE_PURPOSE_MISSION_TRANSIT);
-static_assert(static_cast<std::uint8_t>(Lattice3DRoutePurpose::kLaunchDeparture) ==
-              msg::MppiTrajectoryHorizon::ROUTE_PURPOSE_LAUNCH_DEPARTURE);
-static_assert(static_cast<std::uint8_t>(Lattice3DRoutePurpose::kObservationFrontier) ==
-              msg::MppiTrajectoryHorizon::ROUTE_PURPOSE_OBSERVATION_FRONTIER);
-static_assert(static_cast<std::uint8_t>(Lattice3DRoutePurpose::kTopologicalBacktrack) ==
-              msg::MppiTrajectoryHorizon::ROUTE_PURPOSE_TOPOLOGICAL_BACKTRACK);
-
 namespace {
 
 template<typename T>
@@ -215,12 +206,6 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
             (selected_snapshot_route->observed_raw_world != nullptr)) ||
        ((direct_tracking_requested || stationary_capture_rearm) &&
         (direct_static_world != nullptr) != (direct_observed_world != nullptr)));
-  const Lattice3DRoutePurpose publication_route_purpose =
-      direct_tracking_requested ? Lattice3DRoutePurpose::kMissionTransit
-      : selected_snapshot_route != nullptr &&
-              selected_snapshot_route->geometry != nullptr
-          ? selected_snapshot_route->geometry->route_purpose
-          : esdf.route_purpose;
   const bool publication_route_constrained =
       direct_tracking_requested ? false
       : selected_snapshot_route != nullptr &&
@@ -363,7 +348,6 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       .latest_lidar_obstacle_points = latest_lidar_obstacle_points,
       .latest_lidar_obstacle_sequence = latest_lidar_obstacle_sequence,
       .exact_snapshot_world = exact_snapshot_world,
-      .publication_route_purpose = publication_route_purpose,
       .publication_route_constrained = publication_route_constrained,
       .route_terminal_boundary = route_terminal_boundary,
       .execution_flight_envelope = execution_flight_envelope,
@@ -821,8 +805,6 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       committed_snapshot->direct_tracking_execution.has_value()) {
     const DirectTrackingFiniteExecution3D& committed_direct =
         *committed_snapshot->direct_tracking_execution;
-    horizon.route_purpose =
-        static_cast<std::uint8_t>(Lattice3DRoutePurpose::kMissionTransit);
     horizon.route_constrained = false;
     horizon.route_target.x = committed_direct.target.x;
     horizon.route_target.y = committed_direct.target.y;

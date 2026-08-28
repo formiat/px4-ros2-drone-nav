@@ -29,7 +29,6 @@ void setTime(builtin_interfaces::msg::Time& time, const std::int64_t nanoseconds
   horizon.control_interval_ns = kIntervalNs;
   horizon.execution_mode = msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED;
   horizon.execution_reason = msg::MppiTrajectoryHorizon::EXECUTION_REASON_NONE;
-  horizon.route_purpose = msg::MppiTrajectoryHorizon::ROUTE_PURPOSE_MISSION_TRANSIT;
   horizon.route_target.x = 2.0;
   horizon.route_target.y = 3.0;
   horizon.route_target.z = 5.0;
@@ -154,8 +153,7 @@ TEST(ExecutionHorizonContractRosTest,
             ExecutionHorizonPayloadStatus::kInconsistentRevocation);
 
   horizon = validRevocation();
-  horizon.route_purpose =
-      msg::MppiTrajectoryHorizon::ROUTE_PURPOSE_OBSERVATION_FRONTIER;
+  horizon.route_constrained = true;
   EXPECT_EQ(assessExecutionHorizonPayload(horizon, config()),
             ExecutionHorizonPayloadStatus::kInconsistentRevocation);
 }
@@ -211,11 +209,6 @@ TEST(ExecutionHorizonContractRosTest, RejectsNonfiniteAndOutOfEnvelopePayloads) 
 
 TEST(ExecutionHorizonContractRosTest, RejectsModeTerminalAndHoldInconsistency) {
   msg::MppiTrajectoryHorizon horizon = validPlannedHorizon();
-  horizon.route_purpose = 255U;
-  EXPECT_EQ(assessExecutionHorizonPayload(horizon, config()),
-            ExecutionHorizonPayloadStatus::kInvalidEnum);
-
-  horizon = validPlannedHorizon();
   horizon.execution_mode = 255U;
   horizon.stationary_position_hold = true;
   EXPECT_EQ(assessExecutionHorizonPayload(horizon, config()),

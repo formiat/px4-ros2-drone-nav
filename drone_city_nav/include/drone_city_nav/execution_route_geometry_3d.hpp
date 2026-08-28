@@ -1,16 +1,13 @@
 #pragma once
 
 #include "drone_city_nav/cooperative_passage_route.hpp"
-#include "drone_city_nav/observation_frontier.hpp"
 #include "drone_city_nav/passage_volume.hpp"
-#include "drone_city_nav/risk_aware_lattice_3d.hpp"
 #include "drone_city_nav/route_3d.hpp"
 #include "drone_city_nav/tracking_error_tube_3d.hpp"
 
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <span>
 #include <vector>
 
@@ -27,8 +24,6 @@ struct ExecutionRouteGeometry3D {
       cooperative_passage_assignments;
   std::shared_ptr<const std::vector<PassageTraversalId>> selected_passage_traversal_ids;
   PassageVolumeConfig passage_volume_config{};
-  Lattice3DRoutePurpose route_purpose{Lattice3DRoutePurpose::kMissionTransit};
-  std::optional<ObservationFrontier> observation_frontier;
   std::uint64_t materialized_route_fingerprint{0U};
   std::uint64_t physical_route_fingerprint{0U};
   std::uint64_t executable_geometry_revision{0U};

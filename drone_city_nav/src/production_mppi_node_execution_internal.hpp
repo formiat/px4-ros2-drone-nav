@@ -71,7 +71,6 @@ struct ProductionMppiExecutionCycle {
   std::span<const Point3> latest_lidar_obstacle_points;
   std::uint64_t latest_lidar_obstacle_sequence;
   bool exact_snapshot_world;
-  Lattice3DRoutePurpose publication_route_purpose;
   bool publication_route_constrained;
   const std::optional<mppi::FiniteExecutionPathTerminalBoundary>&
       route_terminal_boundary;

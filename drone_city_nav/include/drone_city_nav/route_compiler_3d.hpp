@@ -9,7 +9,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <vector>
 
 namespace drone_city_nav {
@@ -31,8 +30,6 @@ struct RouteCompilerInput3D {
   std::vector<CooperativePassageAssignment> cooperative_passage_assignments;
   std::vector<PassageTraversalId> selected_passage_traversal_ids;
   PassageVolumeConfig passage_volume_config{};
-  Lattice3DRoutePurpose route_purpose{Lattice3DRoutePurpose::kMissionTransit};
-  std::optional<ObservationFrontier> observation_frontier;
   RouteEndpointSemantics3D endpoint_semantics{RouteEndpointSemantics3D::kContinuation};
   std::uint64_t materialized_route_fingerprint{0U};
   TrackingErrorTubeWorld3D tracking_world{};

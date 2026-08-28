@@ -106,15 +106,18 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_TRUE(suffix.has_value());
   ASSERT_NE(suffix->geometry->route, mutable_route);
   const Point3 captured_middle = suffix->geometry->route->at(1U).position;
+  const std::uint64_t captured_materialized_fingerprint =
+      suffix->geometry->materialized_route_fingerprint;
 
   mutable_route->at(1U).position.y = 99.0;
-  mutable_geometry->route_purpose = Lattice3DRoutePurpose::kObservationFrontier;
+  ++mutable_geometry->materialized_route_fingerprint;
 
   EXPECT_TRUE(suffix->valid());
   EXPECT_DOUBLE_EQ(suffix->geometry->route->at(1U).position.x, captured_middle.x);
   EXPECT_DOUBLE_EQ(suffix->geometry->route->at(1U).position.y, captured_middle.y);
   EXPECT_DOUBLE_EQ(suffix->geometry->route->at(1U).position.z, captured_middle.z);
-  EXPECT_EQ(suffix->geometry->route_purpose, Lattice3DRoutePurpose::kMissionTransit);
+  EXPECT_EQ(suffix->geometry->materialized_route_fingerprint,
+            captured_materialized_fingerprint);
 }
 
 TEST(ExecutionRouteSnapshot3DTest,

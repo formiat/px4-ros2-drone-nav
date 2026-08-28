@@ -354,11 +354,10 @@ TEST(StaticRouteExtensionTest,
   const StaticRouteSearchRequestIdentity replan =
       identifyStaticRouteSearchRequest(7U, false, 0U, true, 7U);
 
-  EXPECT_TRUE(staticRouteSearchFailureLatchEligible(replan, 7U, true, true, false));
-  EXPECT_FALSE(staticRouteSearchFailureLatchEligible(replan, 8U, true, true, false));
-  EXPECT_FALSE(staticRouteSearchFailureLatchEligible(replan, 7U, false, true, false));
-  EXPECT_FALSE(staticRouteSearchFailureLatchEligible(replan, 7U, true, false, false));
-  EXPECT_FALSE(staticRouteSearchFailureLatchEligible(replan, 7U, true, true, true));
+  EXPECT_TRUE(staticRouteSearchFailureLatchEligible(replan, 7U, true, true));
+  EXPECT_FALSE(staticRouteSearchFailureLatchEligible(replan, 8U, true, true));
+  EXPECT_FALSE(staticRouteSearchFailureLatchEligible(replan, 7U, false, true));
+  EXPECT_FALSE(staticRouteSearchFailureLatchEligible(replan, 7U, true, false));
 }
 
 TEST(StaticRouteExtensionTest, ReplaysDeferredReplanAfterRejectedExtension) {

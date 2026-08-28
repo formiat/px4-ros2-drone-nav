@@ -73,7 +73,6 @@ bool bindHorizonRouteMetadata(msg::MppiTrajectoryHorizon& horizon,
   if (route.geometry == nullptr || route.geometry->constrained_spans == nullptr) {
     return false;
   }
-  horizon.route_purpose = static_cast<std::uint8_t>(route.geometry->route_purpose);
   horizon.route_constrained = !route.geometry->constrained_spans->empty();
   return true;
 }
@@ -344,7 +343,6 @@ ProductionMppiNode::makeExecutionHorizon(const ProductionMppiExecutionCycle& cyc
   horizon.risk_tier = static_cast<std::uint8_t>(cycle.result.selected_tier);
   horizon.execution_mode = static_cast<std::uint8_t>(mode);
   horizon.execution_reason = static_cast<std::uint8_t>(reason);
-  horizon.route_purpose = static_cast<std::uint8_t>(cycle.publication_route_purpose);
   horizon.route_target.x = cycle.input.target.x;
   horizon.route_target.y = cycle.input.target.y;
   horizon.route_target.z = cycle.input.target.z;

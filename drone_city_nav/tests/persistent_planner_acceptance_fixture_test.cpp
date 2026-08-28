@@ -134,8 +134,6 @@ compileMissionRoute(const PersistentPlannerResult3D& plan,
       .cooperative_passage_assignments = {},
       .selected_passage_traversal_ids = {},
       .passage_volume_config = {},
-      .route_purpose = Lattice3DRoutePurpose::kMissionTransit,
-      .observation_frontier = std::nullopt,
       .endpoint_semantics = RouteEndpointSemantics3D::kMissionStop,
       .materialized_route_fingerprint = fingerprint,
       .tracking_world =

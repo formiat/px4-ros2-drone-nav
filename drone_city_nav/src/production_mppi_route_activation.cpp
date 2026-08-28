@@ -282,8 +282,6 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
               .selected_passage_traversal_ids =
                   *candidate.selected_passage_traversal_ids,
               .passage_volume_config = cooperative_passage_volume_config_,
-              .route_purpose = candidate.route_purpose,
-              .observation_frontier = std::nullopt,
               .endpoint_semantics = endpoint_semantics,
               .materialized_route_fingerprint = candidate.route_fingerprint,
               .tracking_world = trackingErrorTubeWorld3D(candidate),

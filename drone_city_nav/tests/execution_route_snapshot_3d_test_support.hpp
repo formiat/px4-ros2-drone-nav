@@ -82,8 +82,6 @@ makeGeometry(const std::vector<RouteSample3D>& route,
       .selected_passage_traversal_ids =
           std::make_shared<const std::vector<PassageTraversalId>>(),
       .passage_volume_config = testPassageVolumeConfig(),
-      .route_purpose = Lattice3DRoutePurpose::kMissionTransit,
-      .observation_frontier = std::nullopt,
       .materialized_route_fingerprint = physical_route_fingerprint,
       .physical_route_fingerprint = physical_route_fingerprint,
       .executable_geometry_revision = 0U,

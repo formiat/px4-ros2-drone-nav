@@ -50,8 +50,6 @@ captureExecutionRouteGeometry3D(const ExecutionRouteGeometry3D& source) {
           std::make_shared<const std::vector<PassageTraversalId>>(
               *source.selected_passage_traversal_ids),
       .passage_volume_config = source.passage_volume_config,
-      .route_purpose = source.route_purpose,
-      .observation_frontier = source.observation_frontier,
       .materialized_route_fingerprint = source.materialized_route_fingerprint,
       .physical_route_fingerprint = source.physical_route_fingerprint,
       .executable_geometry_revision = source.executable_geometry_revision,

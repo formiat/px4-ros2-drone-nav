@@ -658,8 +658,6 @@ ProductionMppiNode::retainDirectFinitePath(
   msg::MppiTrajectoryHorizon horizon = makeExecutionHorizon(
       cycle, committed.valid_until_ns, ProductionMppiExecutionMode::kPlanned,
       ProductionMppiExecutionReason::kNone);
-  horizon.route_purpose =
-      static_cast<std::uint8_t>(Lattice3DRoutePurpose::kMissionTransit);
   horizon.route_constrained = false;
   horizon.route_target.x = committed.target.x;
   horizon.route_target.y = committed.target.y;

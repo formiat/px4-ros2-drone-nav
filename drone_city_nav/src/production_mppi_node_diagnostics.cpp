@@ -147,7 +147,6 @@ void ProductionMppiNode::processDiagnostics(
       << esdf.planning_search_direction.y << ',' << esdf.planning_search_direction.z
       << ')' << " planning_candidate_points=" << esdf.planning_candidate_points
       << " planning_candidate_samples=" << esdf.planning_candidate_samples
-      << " route_purpose=" << lattice3DRoutePurposeName(esdf.route_purpose)
       << persistentPlannerInfoFields(esdf) << " static_route_candidate="
       << staticRouteCandidateStatusName(esdf.static_route_candidate_status)
       << certifiedRouteReserveInfoFields(esdf) << trackingErrorTubeInfoFields(esdf)
@@ -484,8 +483,7 @@ void ProductionMppiNode::processDiagnostics(
          << ",\"planning_search_direction_z\":" << esdf.planning_search_direction.z
          << ",\"planning_candidate_points\":" << esdf.planning_candidate_points
          << ",\"planning_candidate_samples\":" << esdf.planning_candidate_samples
-         << ",\"route_purpose\":\"" << lattice3DRoutePurposeName(esdf.route_purpose)
-         << '"' << persistentPlannerJsonFields(esdf) << ",\"static_route_candidate\":\""
+         << persistentPlannerJsonFields(esdf) << ",\"static_route_candidate\":\""
          << staticRouteCandidateStatusName(esdf.static_route_candidate_status) << '"'
          << certifiedRouteReserveJsonFields(esdf) << trackingErrorTubeJsonFields(esdf)
          << ",\"static_route_activation\":\""

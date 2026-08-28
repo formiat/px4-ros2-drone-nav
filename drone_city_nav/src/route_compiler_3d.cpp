@@ -169,8 +169,6 @@ RouteCompilationResult3D compileExecutionRoute3D(RouteCompilerInput3D input) {
           std::make_shared<const std::vector<PassageTraversalId>>(
               std::move(input.selected_passage_traversal_ids)),
       .passage_volume_config = input.passage_volume_config,
-      .route_purpose = input.route_purpose,
-      .observation_frontier = input.observation_frontier,
       .materialized_route_fingerprint = input.materialized_route_fingerprint,
   });
   geometry->physical_route_fingerprint = routeFingerprint(*geometry->route);

@@ -217,20 +217,6 @@ void hashPassageResources(GeometryHasher& hash,
   hashPassageVolumeConfig(hash, geometry.passage_volume_config);
 }
 
-void hashObservationFrontier(GeometryHasher& hash,
-                             const ObservationFrontier& frontier) noexcept {
-  hash.value(frontier.id.value);
-  hash.point(frontier.supporting_viewpoint);
-  hash.point(frontier.observation_pose);
-  hash.point(frontier.boundary_centroid);
-  hash.vector(frontier.observation_direction);
-  hash.value(frontier.supporting_map_revision);
-  hash.value(static_cast<std::uint64_t>(frontier.supporting_rays));
-  hash.value(static_cast<std::uint64_t>(frontier.information_gain_voxels));
-  hash.value(static_cast<std::uint64_t>(frontier.required_information_gain_voxels));
-  hash.number(frontier.minimum_known_free_ray_m);
-}
-
 void hashTrackingErrorTube(GeometryHasher& hash,
                            const TrackingErrorTubeProfile3D& profile) noexcept {
   hash.boolean(profile.valid);
@@ -294,11 +280,6 @@ executionRouteGeometryRevision3D(const ExecutionRouteGeometry3D& geometry) noexc
   }
 
   hashPassageResources(hash, geometry);
-  hash.value(static_cast<std::uint64_t>(geometry.route_purpose));
-  hash.boolean(geometry.observation_frontier.has_value());
-  if (geometry.observation_frontier.has_value()) {
-    hashObservationFrontier(hash, *geometry.observation_frontier);
-  }
   hash.value(geometry.materialized_route_fingerprint);
   return hash.result();
 }

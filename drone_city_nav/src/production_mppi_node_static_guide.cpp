@@ -226,7 +226,7 @@ void ProductionMppiNode::processGuideSearch3D(
       static_route_failed_search_latch_.clear();
     } else if (staticRouteSearchFailureLatchEligible(
                    search_request, resident_route_generation,
-                   activation.world_compatible, activation.objective_matches, false)) {
+                   activation.world_compatible, activation.objective_matches)) {
       const std::uint64_t failed_generation =
           world.static_route_replan_request ? world.static_route_replan_base_generation
                                             : 0U;

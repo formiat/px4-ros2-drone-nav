@@ -97,7 +97,6 @@ void ProductionMppiNode::bindStaticRouteRequestToExecution(
   request.passage_volumes = geometry.passage_volumes;
   request.cooperative_passage_assignments = geometry.cooperative_passage_assignments;
   request.selected_passage_traversal_ids = geometry.selected_passage_traversal_ids;
-  request.route_purpose = geometry.route_purpose;
 }
 
 void ProductionMppiNode::maybeRequestStaticRouteExtensionFromExecution(
@@ -141,8 +140,7 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
     const GlobalGuideProjection& route_projection, const std::int64_t now_ns) {
   if (!active_route.valid() || active_route.geometry == nullptr ||
       active_route.geometry->route == nullptr ||
-      active_route.geometry->route->size() < 2U ||
-      active_route.geometry->route_purpose == Lattice3DRoutePurpose::kLaunchDeparture) {
+      active_route.geometry->route->size() < 2U) {
     return;
   }
   const std::shared_ptr<const ProductionNavigationObjective> objective =

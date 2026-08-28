@@ -103,15 +103,12 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self.assertIn("require_planner_health_", offboard)
         self.assertIn("planner_authorized", offboard)
         self.assertLess(offboard.index("if (!planner_authorized)"), offboard.index("if (auto_offboard_"))
-    def test_execution_horizon_carries_typed_route_purpose(self) -> None:
+    def test_execution_horizon_omits_retired_route_classification(self) -> None:
         text = HORIZON_MESSAGE.read_text(encoding="utf-8")
         point = HORIZON_POINT_MESSAGE.read_text(encoding="utf-8")
         feedback = CONTROL_FEEDBACK_MESSAGE.read_text(encoding="utf-8")
-        self.assertIn("uint8 ROUTE_PURPOSE_MISSION_TRANSIT=0", text)
-        self.assertIn("uint8 ROUTE_PURPOSE_LAUNCH_DEPARTURE=1", text)
-        self.assertIn("uint8 ROUTE_PURPOSE_OBSERVATION_FRONTIER=2", text)
-        self.assertIn("uint8 ROUTE_PURPOSE_TOPOLOGICAL_BACKTRACK=3", text)
-        self.assertIn("uint8 route_purpose", text)
+        self.assertNotIn("ROUTE_PURPOSE_", text)
+        self.assertNotIn("uint8 route_purpose", text)
         self.assertIn("geometry_msgs/Point route_target", text)
         self.assertIn("uint64 producer_instance_id", text)
         self.assertIn("uint64 target_offboard_instance_id", text)
@@ -159,15 +156,10 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self.assertIn("use_static_map_ || observed_3d_world", planning_tick)
         self.assertIn("observed_world", extension)
         self.assertIn('"observed_resident_esdf"', extension)
-        self.assertIn(
-            "Lattice3DRoutePurpose::kLaunchDeparture", extension
-        )
+        self.assertNotIn("Lattice3DRoutePurpose", extension)
         self.assertRegex(
             planning_tick,
-            r"guide_progress_tracker_\s*&&\s*!direct_tracking_interception\s*&&\s*"
-            r"route_purpose\s*!=\s*Lattice3DRoutePurpose::kLaunchDeparture\s*&&\s*"
-            r"route_purpose\s*!=\s*"
-            r"Lattice3DRoutePurpose::kObservationFrontier",
+            r"guide_progress_tracker_\s*&&\s*!direct_tracking_interception",
         )
 
     def test_missing_executable_route_holds_without_a_clearance_gate(self) -> None:
@@ -343,7 +335,7 @@ class PlannerReadinessContractTest(unittest.TestCase):
 
         stationary = offboard.split(
             "[[nodiscard]] bool publishStationaryPositionHoldSetpoint()", maxsplit=1
-        )[1].split("publishLaunchDepartureSetpoint", maxsplit=1)[0]
+        )[1].split("publishCompletedFinitePathHoldSetpoint", maxsplit=1)[0]
         setpoint = stationary.index("setpoint_pub_->publish")
         exact_feedback = stationary.index("publishAppliedControlFeedback")
         self.assertLess(setpoint, exact_feedback)

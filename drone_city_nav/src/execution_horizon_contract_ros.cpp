@@ -235,7 +235,6 @@ executionHorizonContentFingerprint(const msg::MppiTrajectoryHorizon& horizon) no
   hashValue(hash, horizon.risk_tier);
   hashValue(hash, horizon.execution_mode);
   hashValue(hash, horizon.execution_reason);
-  hashValue(hash, horizon.route_purpose);
   hashPoint(hash, horizon.route_target);
   hashValue(hash, horizon.route_constrained ? 1U : 0U);
   hashValue(hash, horizon.stationary_position_hold ? 1U : 0U);
@@ -270,9 +269,7 @@ ExecutionHorizonPayloadStatus assessExecutionHorizonPayload(
   }
   if (horizon.execution_mode > msg::MppiTrajectoryHorizon::EXECUTION_MODE_REVOKED ||
       horizon.execution_reason >
-          msg::MppiTrajectoryHorizon::EXECUTION_REASON_UNAVAILABLE_WORLD ||
-      horizon.route_purpose >
-          msg::MppiTrajectoryHorizon::ROUTE_PURPOSE_TOPOLOGICAL_BACKTRACK) {
+          msg::MppiTrajectoryHorizon::EXECUTION_REASON_UNAVAILABLE_WORLD) {
     return ExecutionHorizonPayloadStatus::kInvalidEnum;
   }
   const bool revoked =
@@ -284,10 +281,7 @@ ExecutionHorizonPayloadStatus assessExecutionHorizonPayload(
     if (!failClosedReason(horizon.execution_reason) ||
         horizon.stationary_position_hold || horizon.route_constrained ||
         horizon.pose_revision != 0U || horizon.obstacle_revision != 0U ||
-        horizon.risk_tier != 0U ||
-        horizon.route_purpose !=
-            msg::MppiTrajectoryHorizon::ROUTE_PURPOSE_MISSION_TRANSIT ||
-        !zeroPoint(horizon.route_target) ||
+        horizon.risk_tier != 0U || !zeroPoint(horizon.route_target) ||
         !zeroPoint(horizon.stationary_hold_position)) {
       return ExecutionHorizonPayloadStatus::kInconsistentRevocation;
     }

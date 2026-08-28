@@ -14,7 +14,6 @@
 #include "drone_city_nav/execution_route_snapshot_3d.hpp"
 #include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/free_space_topology_3d.hpp"
-#include "drone_city_nav/global_guide_candidate.hpp"
 #include "drone_city_nav/intercept_guidance.hpp"
 #include "drone_city_nav/latest_value_mailbox.hpp"
 #include "drone_city_nav/mission_goal_capture.hpp"
@@ -54,7 +53,6 @@
 #include "drone_city_nav/px4_map_frame_transform.hpp"
 #include "drone_city_nav/raw_obstacle_3d_ros.hpp"
 #include "drone_city_nav/raw_obstacle_delta.hpp"
-#include "drone_city_nav/risk_aware_lattice_3d.hpp"
 #include "drone_city_nav/rolling_route_telemetry_3d.hpp"
 #include "drone_city_nav/route_3d.hpp"
 #include "drone_city_nav/route_lifecycle_3d.hpp"
@@ -212,7 +210,6 @@ struct ProductionMppiPreparedEsdf {
   GlobalGuideReleaseReason route_release_reason{
       GlobalGuideReleaseReason::kNoActiveGuide};
   GlobalGuideProjection route_projection{};
-  Lattice3DRoutePurpose route_purpose{Lattice3DRoutePurpose::kMissionTransit};
   ProductionPlanningSearchKind planning_search_kind{
       ProductionPlanningSearchKind::kNone};
   ProductionPersistentPlannerTelemetry3D planner{};

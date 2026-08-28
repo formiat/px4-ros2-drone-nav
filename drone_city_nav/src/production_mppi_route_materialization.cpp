@@ -86,7 +86,6 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
       .incumbent_retained = plan.incumbent_retained,
       .search_complete = plan.search_complete,
   };
-  prepared.route_purpose = Lattice3DRoutePurpose::kMissionTransit;
   prepared.route_reaches_mission_goal = plan.executable();
   prepared.continuation_validation_ms = 0.0;
   prepared.route_fingerprint = routeFingerprint(candidate.route);
@@ -415,8 +414,6 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
       .cooperative_passage_assignments = std::move(passage_assignments),
       .selected_passage_traversal_ids = std::move(selected_passage_traversal_ids),
       .passage_volume_config = cooperative_passage_volume_config_,
-      .route_purpose = prepared.route_purpose,
-      .observation_frontier = std::nullopt,
       .endpoint_semantics = endpoint_semantics,
       .materialized_route_fingerprint = prepared.route_fingerprint,
       .tracking_world = trackingErrorTubeWorld3D(world),

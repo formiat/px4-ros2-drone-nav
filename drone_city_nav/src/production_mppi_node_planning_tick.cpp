@@ -382,8 +382,6 @@ void ProductionMppiNode::planningTick() {
                                    ? RouteEndpointSemantics3D::kMissionStop
                                    : RouteEndpointSemantics3D::kContinuation;
   }
-  const Lattice3DRoutePurpose route_purpose =
-      route_geometry != nullptr ? route_geometry->route_purpose : esdf->route_purpose;
   const std::shared_ptr<const std::vector<RouteSample3D>> execution_route =
       route_geometry != nullptr ? route_geometry->route : esdf->route_3d;
   const std::shared_ptr<const std::vector<mppi::RouteSample3D>> execution_mppi_route =
@@ -682,9 +680,7 @@ void ProductionMppiNode::planningTick() {
     });
   }
   GlobalGuideProgressUpdate guide_progress;
-  if (guide_progress_tracker_ && !direct_tracking_interception &&
-      route_purpose != Lattice3DRoutePurpose::kLaunchDeparture &&
-      route_purpose != Lattice3DRoutePurpose::kObservationFrontier) {
+  if (guide_progress_tracker_ && !direct_tracking_interception) {
     const GlobalGuideProjection& projection = route_projection;
     guide_progress = guide_progress_tracker_->evaluate(GlobalGuideProgressObservation{
         .stamp_ns = now_ns,
