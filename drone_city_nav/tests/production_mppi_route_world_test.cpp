@@ -12,8 +12,8 @@ namespace {
 
 [[nodiscard]] ProductionMppiPreparedEsdf coherentObservedWorld() {
   ProductionMppiPreparedEsdf world;
+  const GridBounds3D bounds{0.0, 0.0, 0.0, 1.0, 4, 4, 4};
   world.producer_instance_id = 7U;
-  world.revision = 99U;
   world.source_raw_revision = 451U;
   world.source_occupied_fingerprint = 88U;
   world.grid = mppi::EsdfGrid{.width = 4,
@@ -21,18 +21,18 @@ namespace {
                               .resolution_m = 1.0F,
                               .depth = 4,
                               .outside_is_unknown = true};
-  world.distances_m = std::make_shared<const std::vector<float>>(64U, 2.0F);
-  world.observed_occupancy = std::make_shared<const ObservedOccupancyGrid3D>(
-      GridBounds3D{0.0, 0.0, 0.0, 1.0, 4, 4, 4});
+  world.observed_occupancy = std::make_shared<const ObservedOccupancyGrid3D>(bounds);
+  const KnownObstacleDistance3DBuildResult distance =
+      buildKnownObstacleDistance3D(*world.observed_occupancy, bounds, 7.0);
+  world.revision = distance.field->sourceFingerprint();
+  world.distances_m = distance.field->materializeDense();
   world.observed_raw_world_owner = VersionedObservedRawWorld3D::captureOwned(
       RawMapVersion{
           .producer_instance_id = 7U, .base_snapshot_revision = 400U, .revision = 451U},
       world.observed_occupancy, std::nullopt, std::nullopt);
   world.observed_esdf_resource = ObservedEsdfResource3D{
-      .local_occupancy = std::make_shared<const ObservedOccupancyGrid3D>(
-          GridBounds3D{0.0, 0.0, 0.0, 1.0, 4, 4, 4}),
-      .nearest_obstacle_indices =
-          std::make_shared<const std::vector<std::size_t>>(64U, 0U),
+      .local_occupancy = std::make_shared<const ObservedOccupancyGrid3D>(bounds),
+      .known_obstacle_distance = distance.field,
       .classification_override_cells =
           std::make_shared<const std::vector<GridIndex3D>>(),
       .coverage =
@@ -41,7 +41,7 @@ namespace {
                                      .base_snapshot_revision = 400U,
                                      .revision = 451U},
               .raw_local_fingerprint = 88U,
-              .esdf_fingerprint = 99U,
+              .esdf_fingerprint = world.revision,
               .total_voxels = 64U,
               .recomputed_voxels = 64U,
               .maximum_distance_m = 7.0,
@@ -54,8 +54,8 @@ namespace {
                   .base_snapshot_revision = 400U,
                   .revision = 451U},
       .pose_revision = 21U,
-      .esdf_revision = 99U,
-      .gpu_esdf_revision = 99U,
+      .esdf_revision = world.revision,
+      .gpu_esdf_revision = world.revision,
   };
   return world;
 }
@@ -189,8 +189,10 @@ TEST(ProductionMppiRouteWorldTest,
   completed_world_build.observed_raw_world_owner = observed_owner;
   completed_world_build.observed_esdf_resource = ObservedEsdfResource3D{
       .local_occupancy = observed_occupancy,
-      .nearest_obstacle_indices =
-          std::make_shared<const std::vector<std::size_t>>(64U, 0U),
+      .known_obstacle_distance =
+          buildKnownObstacleDistance3D(*observed_occupancy,
+                                       observed_occupancy->bounds(), 7.0)
+              .field,
       .classification_override_cells =
           std::make_shared<const std::vector<GridIndex3D>>(),
       .coverage = ObservedEsdfCoverage3D{.raw_local_fingerprint = 91U},
@@ -241,10 +243,11 @@ TEST(ProductionMppiRouteWorldTest,
   const std::optional<FootprintBodyAxis> selected = authoritativeBodyAxisForExecution(
       applied, owner, navigation, 1'030'000'000, 100.0, 100.0);
   ASSERT_TRUE(selected.has_value());
+  const FootprintBodyAxis selected_value = selected.value_or(FootprintBodyAxis{});
   const FootprintBodyAxis expected = bodyAxisFromWorldAcceleration(Vec3{4.0, 0.0, 0.0});
-  EXPECT_DOUBLE_EQ(selected->x, expected.x);
-  EXPECT_DOUBLE_EQ(selected->y, expected.y);
-  EXPECT_DOUBLE_EQ(selected->z, expected.z);
+  EXPECT_DOUBLE_EQ(selected_value.x, expected.x);
+  EXPECT_DOUBLE_EQ(selected_value.y, expected.y);
+  EXPECT_DOUBLE_EQ(selected_value.z, expected.z);
 }
 
 TEST(ProductionMppiRouteWorldTest,
@@ -278,11 +281,12 @@ TEST(ProductionMppiRouteWorldTest,
   const std::optional<FootprintBodyAxis> selected = authoritativeBodyAxisForExecution(
       applied, owner, navigation, 1'030'000'000, 100.0, 100.0);
   ASSERT_TRUE(selected.has_value());
+  const FootprintBodyAxis selected_value = selected.value_or(FootprintBodyAxis{});
   const FootprintBodyAxis expected =
       bodyAxisFromWorldAcceleration(Vec3{-4.0, 1.0, 0.5});
-  EXPECT_DOUBLE_EQ(selected->x, expected.x);
-  EXPECT_DOUBLE_EQ(selected->y, expected.y);
-  EXPECT_DOUBLE_EQ(selected->z, expected.z);
+  EXPECT_DOUBLE_EQ(selected_value.x, expected.x);
+  EXPECT_DOUBLE_EQ(selected_value.y, expected.y);
+  EXPECT_DOUBLE_EQ(selected_value.z, expected.z);
 }
 
 TEST(ProductionMppiRouteWorldTest,

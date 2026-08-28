@@ -1,6 +1,6 @@
 #pragma once
 
-#include "drone_city_nav/distance_field_3d.hpp"
+#include "drone_city_nav/known_obstacle_distance_3d.hpp"
 #include "drone_city_nav/mppi/mppi_types.hpp"
 #include "drone_city_nav/observed_occupancy_grid_3d.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
@@ -25,7 +25,7 @@ enum class ObservedEsdf3DBuildMode : std::uint8_t {
 using ObservedEsdfDirtyRegion3D = mppi::EsdfDirtyRegion;
 
 struct ObservedEsdf3DBuildStats {
-  DistanceField3DBuildStats distance_field{};
+  KnownObstacleDistance3DBuildStats distance_cache{};
   std::size_t known_voxels{0U};
   std::size_t free_voxels{0U};
   std::size_t occupied_voxels{0U};
@@ -37,8 +37,6 @@ struct ObservedEsdf3DBuildStats {
   std::size_t changed_voxels{0U};
   std::size_t recomputed_voxels{0U};
   std::size_t reused_voxels{0U};
-  std::size_t dependency_invalidated_voxels{0U};
-  std::size_t lowered_voxels{0U};
   std::size_t dirty_chunks{0U};
   double classification_ms{0.0};
   ObservedEsdf3DBuildMode mode{ObservedEsdf3DBuildMode::kFull};
@@ -47,8 +45,8 @@ struct ObservedEsdf3DBuildStats {
 
 struct ObservedEsdf3D {
   mppi::EsdfGrid grid{};
-  std::vector<float> distances_m;
-  std::vector<std::size_t> nearest_obstacle_indices;
+  std::shared_ptr<const std::vector<float>> distances_m;
+  std::shared_ptr<const KnownObstacleDistance3D> known_obstacle_distance;
   std::shared_ptr<const ObservedOccupancyGrid3D> local_occupancy;
   std::vector<GridIndex3D> classification_override_cells;
   std::vector<ObservedEsdfDirtyRegion3D> dirty_regions;
@@ -59,8 +57,8 @@ struct ObservedEsdf3D {
 
 struct PreviousObservedEsdf3D {
   mppi::EsdfGrid grid{};
-  std::span<const float> distances_m;
-  std::span<const std::size_t> nearest_obstacle_indices;
+  std::shared_ptr<const std::vector<float>> distances_m;
+  std::shared_ptr<const KnownObstacleDistance3D> known_obstacle_distance;
   std::shared_ptr<const ObservedOccupancyGrid3D> source_occupancy;
   std::shared_ptr<const ObservedOccupancyGrid3D> local_occupancy;
   std::span<const GridIndex3D> classification_override_cells;
@@ -85,7 +83,7 @@ struct ObservedEsdfCoverage3D {
 
 struct ObservedEsdfResource3D {
   std::shared_ptr<const ObservedOccupancyGrid3D> local_occupancy;
-  std::shared_ptr<const std::vector<std::size_t>> nearest_obstacle_indices;
+  std::shared_ptr<const KnownObstacleDistance3D> known_obstacle_distance;
   std::shared_ptr<const std::vector<GridIndex3D>> classification_override_cells;
   ObservedEsdfCoverage3D coverage{};
 };
@@ -117,7 +115,7 @@ localObservedEsdfNeedsRecenter(const GridBounds3D& local_bounds,
 [[nodiscard]] bool
 localObservedEsdfWindow3DIsValid(const LocalObservedEsdfWindow3D& window) noexcept;
 
-// Identifies only confirmed occupied geometry inside the local distance window.
+// Identifies only confirmed occupied geometry inside the supplied distance region.
 // Free and unknown labels are deliberately absent from this identity: they are
 // equivalent inputs to KnownObstacleDistance3D.
 [[nodiscard]] std::uint64_t

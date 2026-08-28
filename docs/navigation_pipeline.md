@@ -32,18 +32,25 @@ revisions.
 ## 2. ESDF Preparation
 
 The production MPPI node prepares a mode-specific occupied-distance field
-asynchronously. Static mode extracts a local dense distance window from the precomputed
-chunked cache associated with canonical Occupancy3D. Fingerprint or format
+asynchronously. Static mode extracts a local dense distance window from the
+precomputed chunked cache associated with canonical Occupancy3D. Fingerprint or format
 mismatch falls back to the exact runtime EDT. No-static mode reconstructs the
 revisioned observed occupancy and builds a recentered local
 `KnownObstacleDistance3D` window. Distances are defined in both free and unknown
 voxels from confirmed occupied sources only; a missing or out-of-window value is
-neutral. A dirty update verifies occupied changes against the dirty-chunk
-lineage and recomputes only the bounded EDT region affected by inserted or
-removed obstacles. A second source halo makes obstacle removal exact. Broad,
-reset, incompatible, or incomplete-lineage work falls back to a full local
-rebuild. Free/unknown relabeling reuses the same field, which is rebound to the
-new raw revision without another GPU upload. MPPI continues
+neutral.
+
+The no-static cache stores immutable sparse 8-cubed source and distance chunks.
+An exact occupied-source index covers the capped influence halo around the local
+output window. A dirty update verifies occupied changes against the dirty-chunk
+lineage, structurally shares unaffected chunks, and recomputes only output chunks
+within the inserted or removed source's exact distance cap. Broad, reset,
+incompatible, over-budget, or incomplete-lineage work falls back to a full sparse
+cache rebuild, not the retired dense three-pass observed EDT. Free/unknown
+relabeling still refreshes the local observed classification while reusing the
+same distance cache and dense GPU buffer. Only the immutable controller upload
+boundary materializes a dense float projection; no dense nearest-source array is
+retained. MPPI continues
 using the last complete immutable field until a newer coherent generation is
 ready.
 
@@ -60,7 +67,7 @@ sensor message appears. A pose-driven recenter request is urgent and may build a
 new local generation before that deadline. Planning starts only when the
 captured CPU generation names the ESDF revision active in the GPU engine.
 Observed generations additionally carry a coverage certificate naming their
-exact raw source and incremental parent, local/raw fingerprints, maximum
+exact raw source and incremental parent, influence-halo/raw fingerprints, maximum
 distance, and recomputed versus reused voxel counts.
 
 Distance classifications are:

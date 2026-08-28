@@ -28,7 +28,7 @@ previousField(const ObservedEsdf3D& field,
   return PreviousObservedEsdf3D{
       .grid = field.grid,
       .distances_m = field.distances_m,
-      .nearest_obstacle_indices = field.nearest_obstacle_indices,
+      .known_obstacle_distance = field.known_obstacle_distance,
       .source_occupancy =
           std::make_shared<const ObservedOccupancyGrid3D>(source_occupancy),
       .local_occupancy = field.local_occupancy,
@@ -56,11 +56,15 @@ TEST(ObservedEsdf3DTest, MeasuresKnownObstaclesEquallyInFreeAndUnknownSpace) {
   };
 
   EXPECT_TRUE(field.grid.outside_is_unknown);
+  ASSERT_TRUE(field.distances_m);
+  ASSERT_TRUE(field.known_obstacle_distance);
   ASSERT_TRUE(field.local_occupancy);
   EXPECT_EQ(field.grid.depth, bounds.depth_cells);
-  EXPECT_FLOAT_EQ(field.distances_m.at(index(0, 0, 0)), std::sqrt(6.0F));
-  EXPECT_GT(field.distances_m.at(index(1, 1, 1)), 0.0F);
-  EXPECT_FLOAT_EQ(field.distances_m.at(index(2, 1, 1)), 0.0F);
+  EXPECT_FLOAT_EQ(field.distances_m->at(index(0, 0, 0)), std::sqrt(6.0F));
+  EXPECT_GT(field.distances_m->at(index(1, 1, 1)), 0.0F);
+  EXPECT_FLOAT_EQ(field.distances_m->at(index(2, 1, 1)), 0.0F);
+  EXPECT_FLOAT_EQ(field.known_obstacle_distance->distanceAt({0, 0, 0}),
+                  std::sqrt(6.0F));
   EXPECT_EQ(field.stats.known_voxels, 2U);
   EXPECT_EQ(field.stats.free_voxels, 1U);
   EXPECT_EQ(field.stats.occupied_voxels, 1U);
@@ -179,9 +183,11 @@ TEST(ObservedEsdf3DTest,
   const std::optional<LaunchSupportContact3D> support =
       detectLaunchSupportContact3D(occupancy, seed);
   ASSERT_TRUE(support.has_value());
+  const LaunchSupportContact3D support_value =
+      support.value_or(LaunchSupportContact3D{});
 
   const ObservedEsdf3D field =
-      buildObservedEsdf3D(occupancy, bounds, 10.0, nullptr, &*support);
+      buildObservedEsdf3D(occupancy, bounds, 10.0, nullptr, &support_value);
   const ObservedEsdf3D unmasked = buildObservedEsdf3D(occupancy, bounds, 10.0);
 
   ASSERT_TRUE(field.local_occupancy);
@@ -233,7 +239,7 @@ TEST(ObservedEsdf3DTest, DetectsQuantizedSupportAtTheEdgeOfTheLaunchFootprint) {
       detectLaunchSupportContact3D(occupancy, seed);
 
   ASSERT_TRUE(support.has_value());
-  EXPECT_EQ(support->occupied_evidence_cells, 1U);
+  EXPECT_EQ(support.value_or(LaunchSupportContact3D{}).occupied_evidence_cells, 1U);
 }
 
 TEST(ObservedEsdf3DTest, LaunchSupportCoversTheBoundedDepartureEnvelope) {
@@ -254,9 +260,11 @@ TEST(ObservedEsdf3DTest, LaunchSupportCoversTheBoundedDepartureEnvelope) {
       detectLaunchSupportContact3D(occupancy, seed);
 
   ASSERT_TRUE(support.has_value());
-  EXPECT_EQ(support->occupied_evidence_cells, 1U);
+  const LaunchSupportContact3D support_value =
+      support.value_or(LaunchSupportContact3D{});
+  EXPECT_EQ(support_value.occupied_evidence_cells, 1U);
   const ObservedEsdf3D field =
-      buildObservedEsdf3D(occupancy, bounds, 10.0, nullptr, &*support);
+      buildObservedEsdf3D(occupancy, bounds, 10.0, nullptr, &support_value);
   ASSERT_TRUE(field.local_occupancy);
   EXPECT_EQ(field.local_occupancy->state(swept_support_cell),
             ObservedVoxelState::kFree);
@@ -279,8 +287,8 @@ TEST(ObservedEsdf3DTest, IncrementalInsertAndRemoveExactlyMatchFullRebuilds) {
 
   EXPECT_EQ(inserted.stats.mode, ObservedEsdf3DBuildMode::kIncremental);
   EXPECT_GT(inserted.stats.reused_voxels, 0U);
-  EXPECT_LT(inserted.stats.recomputed_voxels, inserted.distances_m.size());
-  EXPECT_EQ(inserted.distances_m, inserted_full.distances_m);
+  EXPECT_LT(inserted.stats.recomputed_voxels, inserted.distances_m->size());
+  EXPECT_EQ(*inserted.distances_m, *inserted_full.distances_m);
   EXPECT_EQ(inserted.occupancy_fingerprint, inserted_full.occupancy_fingerprint);
 
   const PreviousObservedEsdf3D inserted_previous = previousField(inserted, occupancy);
@@ -290,7 +298,7 @@ TEST(ObservedEsdf3DTest, IncrementalInsertAndRemoveExactlyMatchFullRebuilds) {
   const ObservedEsdf3D removed_full = buildObservedEsdf3D(occupancy, bounds, 3.0);
 
   EXPECT_EQ(removed.stats.mode, ObservedEsdf3DBuildMode::kIncremental);
-  EXPECT_EQ(removed.distances_m, removed_full.distances_m);
+  EXPECT_EQ(*removed.distances_m, *removed_full.distances_m);
   EXPECT_EQ(removed.occupancy_fingerprint, removed_full.occupancy_fingerprint);
 }
 
@@ -311,7 +319,9 @@ TEST(ObservedEsdf3DTest, FreeUnknownRelabelReusesTheSameKnownObstacleDistance) {
   const ObservedEsdf3D full = buildObservedEsdf3D(occupancy, bounds, 3.0);
 
   EXPECT_EQ(incremental.stats.mode, ObservedEsdf3DBuildMode::kReused);
-  EXPECT_EQ(incremental.distances_m, full.distances_m);
+  EXPECT_EQ(*incremental.distances_m, *full.distances_m);
+  EXPECT_EQ(incremental.distances_m, initial.distances_m);
+  EXPECT_EQ(incremental.known_obstacle_distance, initial.known_obstacle_distance);
   EXPECT_EQ(incremental.local_occupancy->state(changed_cell),
             ObservedVoxelState::kUnknown);
 }
@@ -338,7 +348,7 @@ TEST(ObservedEsdf3DTest,
                            std::span{&second_dirty, 1U}, false, 0.75);
   const ObservedEsdf3D first_full = buildObservedEsdf3D(occupancy, bounds, 8.0);
   ASSERT_EQ(first_update.stats.mode, ObservedEsdf3DBuildMode::kIncremental);
-  EXPECT_EQ(first_update.distances_m, first_full.distances_m);
+  EXPECT_EQ(*first_update.distances_m, *first_full.distances_m);
 
   const PreviousObservedEsdf3D first_previous = previousField(first_update, occupancy);
   ASSERT_TRUE(occupancy.setState(first, ObservedVoxelState::kFree));
@@ -349,8 +359,8 @@ TEST(ObservedEsdf3DTest,
   const ObservedEsdf3D second_full = buildObservedEsdf3D(occupancy, bounds, 8.0);
 
   EXPECT_EQ(second_update.stats.mode, ObservedEsdf3DBuildMode::kIncremental);
-  EXPECT_GT(second_update.stats.dependency_invalidated_voxels, 0U);
-  EXPECT_EQ(second_update.distances_m, second_full.distances_m);
+  EXPECT_EQ(second_update.stats.distance_cache.removed_sources, 1U);
+  EXPECT_EQ(*second_update.distances_m, *second_full.distances_m);
 }
 
 TEST(ObservedEsdf3DTest,
@@ -374,8 +384,8 @@ TEST(ObservedEsdf3DTest,
   const ObservedEsdf3D full = buildObservedEsdf3D(occupancy, bounds, 3.0);
 
   EXPECT_EQ(incremental.stats.mode, ObservedEsdf3DBuildMode::kIncremental);
-  EXPECT_EQ(incremental.distances_m, full.distances_m);
-  EXPECT_LT(incremental.stats.recomputed_voxels, incremental.distances_m.size());
+  EXPECT_EQ(*incremental.distances_m, *full.distances_m);
+  EXPECT_LT(incremental.stats.recomputed_voxels, incremental.distances_m->size());
   EXPECT_EQ(incremental.stats.changed_voxels, 2U);
 }
 
@@ -411,9 +421,11 @@ TEST(ObservedEsdf3DTest, LaunchSupportRelabelWithoutObstacleChangeReusesDistance
 
   EXPECT_EQ(incremental.stats.mode, ObservedEsdf3DBuildMode::kReused);
   EXPECT_EQ(incremental.stats.changed_voxels, 0U);
-  EXPECT_LT(incremental.stats.classified_voxels, incremental.distances_m.size());
+  EXPECT_LT(incremental.stats.classified_voxels, incremental.distances_m->size());
   EXPECT_GT(incremental.stats.reused_classification_voxels, 0U);
-  EXPECT_EQ(incremental.distances_m, full.distances_m);
+  EXPECT_EQ(*incremental.distances_m, *full.distances_m);
+  EXPECT_EQ(incremental.distances_m, initial.distances_m);
+  EXPECT_EQ(incremental.known_obstacle_distance, initial.known_obstacle_distance);
   EXPECT_EQ(incremental.occupancy_fingerprint, full.occupancy_fingerprint);
 }
 
@@ -476,7 +488,7 @@ TEST(ObservedEsdf3DTest, ReusesAnExactlyUnchangedClassifiedWorld) {
 
   EXPECT_EQ(reused.stats.mode, ObservedEsdf3DBuildMode::kReused);
   EXPECT_EQ(reused.stats.recomputed_voxels, 0U);
-  EXPECT_EQ(reused.stats.reused_voxels, reused.distances_m.size());
+  EXPECT_EQ(reused.stats.reused_voxels, reused.distances_m->size());
   EXPECT_EQ(reused.distances_m, initial.distances_m);
   ASSERT_TRUE(reused.local_occupancy);
   EXPECT_EQ(reused.local_occupancy->knownVoxelCount(),

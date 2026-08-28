@@ -188,6 +188,8 @@ add_library(
   src/intercept_guidance.cpp
   src/intercept_mission.cpp
   src/known_static_lidar_hit_classifier.cpp
+  src/known_obstacle_distance_3d.cpp
+  src/known_obstacle_distance_3d_update.cpp
   src/latest_lidar_obstacle_scan.cpp
   src/lidar_acquisition_pose.cpp
   src/lidar_debug_renderer.cpp
@@ -280,7 +282,6 @@ add_library(
   src/obstacle_memory_3d.cpp
   src/obstacle_memory_transport_policy_3d.cpp
     src/observed_esdf_3d.cpp
-    src/observed_esdf_3d_regions.cpp
     src/observed_esdf_3d_window.cpp
   src/observed_esdf_3d_fingerprint.cpp
   src/observed_esdf_3d_metadata.cpp
@@ -1159,6 +1160,12 @@ if(BUILD_TESTING)
   target_compile_features(distance_field_3d_test PRIVATE cxx_std_20)
   target_link_libraries(distance_field_3d_test drone_city_nav_core)
   enable_project_warnings(distance_field_3d_test)
+
+  ament_add_gtest(known_obstacle_distance_3d_test
+                  tests/known_obstacle_distance_3d_test.cpp)
+  target_compile_features(known_obstacle_distance_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(known_obstacle_distance_3d_test drone_city_nav_core)
+  enable_project_warnings(known_obstacle_distance_3d_test)
 
   ament_add_gtest(observed_esdf_3d_test tests/observed_esdf_3d_test.cpp)
   target_compile_features(observed_esdf_3d_test PRIVATE cxx_std_20)

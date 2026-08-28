@@ -19,6 +19,12 @@ class Stage8IncrementalWorldContractTest(unittest.TestCase):
         implementation = (SOURCE / "observed_esdf_3d.cpp").read_text(
             encoding="utf-8"
         )
+        distance_header = (INCLUDE / "known_obstacle_distance_3d.hpp").read_text(
+            encoding="utf-8"
+        )
+        distance_update = (
+            SOURCE / "known_obstacle_distance_3d_update.cpp"
+        ).read_text(encoding="utf-8")
         window = (SOURCE / "observed_esdf_3d_window.cpp").read_text(
             encoding="utf-8"
         )
@@ -34,21 +40,29 @@ class Stage8IncrementalWorldContractTest(unittest.TestCase):
             "PreviousObservedEsdf3D",
             "ObservedEsdfCoverage3D",
             "updateObservedEsdf3D",
-            "nearest_obstacle_indices",
+            "KnownObstacleDistance3D",
+            "known_obstacle_distance",
             "classification_override_cells",
         ):
             self.assertIn(token, header)
         for token in (
             "classifyObservedGrid3DIncremental",
-            "rawChangesCoveredByDirtyChunks",
+            "rawClassificationChangesCoveredByDirtyChunks",
             "inserted_sources",
             "removed_sources",
-            "nearest_obstacle_indices",
-            "dependency_invalidated_voxels",
             "maximum_rebuild_ratio",
         ):
             self.assertIn(token, implementation)
         self.assertNotIn("DistanceField3D::buildLocal", implementation)
+        self.assertNotIn("nearest_obstacle_indices", header)
+        self.assertIn("immutable", distance_header.lower())
+        for token in (
+            "knownObstacleRawChangesCovered3D",
+            "affected_output_chunks",
+            "reused_chunks",
+            "maximum_rebuild_ratio",
+        ):
+            self.assertIn(token, distance_update)
         self.assertIn("source_occupancy", header)
         self.assertIn("field.stats.mode != ObservedEsdf3DBuildMode::kReused", production)
         parent_validation = production.index("resident_parent_valid")

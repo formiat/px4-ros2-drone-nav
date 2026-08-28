@@ -486,6 +486,13 @@ fresh read and retry; only an exact raw collision result may report
    boundaries while retaining raw obstacle memory, exact validation, MPPI,
    latest-lidar protection, PX4 execution, and truthful diagnostics.
 
+The current implementation now includes the persistent adaptive lattice and the
+immutable sparse `KnownObstacleDistance3D` cache. The observed path structurally
+shares unaffected 8-cubed chunks, uses an exact capped source halo, and creates a
+dense float projection only for the controller upload boundary. Item 12 remains
+in progress until the complete static audit and unchanged three-run Manhattan
+mission gate below are finished.
+
 ### Validation
 
 Deterministic generic sensor-to-execution regressions cover unobstructed motion,

@@ -48,8 +48,8 @@ Gazebo contact involving the drone
 - maintains 2D occupancy memory and sparse 3D diagnostic provenance;
 - publishes a lightweight `/drone_city_nav/obstacle_memory_status` after every
   accepted update;
-- publishes `/drone_city_nav/raw_obstacle_snapshot` on every no-static update and
-  at the debug cadence in static mode;
+- publishes the compatibility 2D `/drone_city_nav/raw_obstacle_snapshot` for
+  diagnostics; production no-static navigation does not consume it;
 - publishes the full atomic memory/provenance snapshot at the debug cadence;
 - publishes timestamp-aligned raw lidar hit endpoints independently of
   persistent-memory integration;
@@ -68,6 +68,9 @@ snapshot/delta transport, and selected-spectator 3D clouds.
   precomputed cache as soon as navigation state and the configured objective are
   ready, independently of lidar snapshots;
 - falls back to the exact runtime EDT when the cache is unavailable or invalid;
+- derives no-static soft distance evidence from immutable sparse
+  `KnownObstacleDistance3D` chunks and materializes only the controller upload
+  projection;
 - publishes latched planner-world readiness after successful ESDF activation;
 - owns the single persistent D* Lite strategic planner and active route intent;
 - certifies route geometry, tracking-error tube, successor reserve, and suffix

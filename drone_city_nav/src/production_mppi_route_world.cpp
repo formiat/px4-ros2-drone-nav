@@ -10,12 +10,13 @@ namespace {
 [[nodiscard]] bool observedEsdfCoverageMatches(const ProductionMppiPreparedEsdf& world,
                                                const RawMapVersion& raw) noexcept {
   const ObservedEsdfResource3D& resource = world.observed_esdf_resource;
-  if (!resource.local_occupancy || !resource.nearest_obstacle_indices ||
+  if (!resource.local_occupancy || !resource.known_obstacle_distance ||
       !resource.classification_override_cells || !resource.coverage.coherent()) {
     return false;
   }
   const ObservedEsdfCoverage3D& coverage = resource.coverage;
   const GridBounds3D& bounds = resource.local_occupancy->bounds();
+  const GridBounds3D& distance_bounds = resource.known_obstacle_distance->bounds();
   const std::size_t voxel_count = static_cast<std::size_t>(world.grid.width) *
                                   static_cast<std::size_t>(world.grid.height) *
                                   static_cast<std::size_t>(world.grid.depth);
@@ -27,8 +28,18 @@ namespace {
          coverage.raw_local_fingerprint == world.source_occupied_fingerprint &&
          coverage.esdf_fingerprint == world.revision &&
          coverage.total_voxels == world.distances_m->size() &&
-         coverage.total_voxels == resource.nearest_obstacle_indices->size() &&
          coverage.total_voxels == voxel_count && world.grid.outside_is_unknown &&
+         resource.known_obstacle_distance->valid() &&
+         resource.known_obstacle_distance->sourceFingerprint() == world.revision &&
+         std::abs(resource.known_obstacle_distance->maximumDistanceM() -
+                  coverage.maximum_distance_m) <= kTolerance &&
+         distance_bounds.width_cells == bounds.width_cells &&
+         distance_bounds.height_cells == bounds.height_cells &&
+         distance_bounds.depth_cells == bounds.depth_cells &&
+         std::abs(distance_bounds.resolution_m - bounds.resolution_m) <= kTolerance &&
+         std::abs(distance_bounds.origin_x - bounds.origin_x) <= kTolerance &&
+         std::abs(distance_bounds.origin_y - bounds.origin_y) <= kTolerance &&
+         std::abs(distance_bounds.origin_z - bounds.origin_z) <= kTolerance &&
          bounds.width_cells == world.grid.width &&
          bounds.height_cells == world.grid.height &&
          bounds.depth_cells == world.grid.depth &&

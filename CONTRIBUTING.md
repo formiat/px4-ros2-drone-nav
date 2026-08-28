@@ -68,8 +68,9 @@ All C++ development must follow `CPP_BEST_PRACTICES.md`.
 - Keep generated files, build outputs, logs, bags, and simulator runtime data
   out of version control.
 - Treat `external/` as a local dependency checkout area, not project source.
-- Keep planner obstacle inputs raw. The planner builds one immutable raw obstacle
-  snapshot and one occupied-distance field per cycle, then publishes the matching
-  `/drone_city_nav/raw_obstacle_snapshot` for offboard activation validation.
-  `/drone_city_nav/raw_obstacle_grid` is visualization-only and must not be
-  connected back to planner inputs.
+- Keep planner obstacle inputs raw. The no-static planner consumes one immutable
+  revisioned 3D raw-obstacle snapshot and derives a sparse occupied-distance cache
+  for soft queries; exact raw occupancy remains the hard validator. The matching
+  `/drone_city_nav/raw_obstacle_snapshot_3d` and cumulative dirty chunks provide
+  activation provenance. Visualization grids must not be connected back to
+  planner inputs.

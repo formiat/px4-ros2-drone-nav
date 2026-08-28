@@ -62,6 +62,15 @@ Relevant stages include:
 ESDF build latency is asynchronous and must not be interpreted as part of
 `gpu_total_ms`.
 
+For no-static observed worlds, `PRODUCTION_MPPI_ESDF3D_ONLINE` reports the
+effective occupied-source count, sparse source and distance chunks, finite
+distance voxels, inserted and removed sources, recomputed/reused/changed chunks,
+queried voxels, source-index time, and distance-query time. These are sparse
+`KnownObstacleDistance3D` measurements. Legacy dense x/y/z pass,
+nearest-source, dependency-invalidation, and lowering counters are not valid for
+this path and must not be inferred from them. `mode=reused` can still include a
+new raw revision and refreshed free/unknown classification without a GPU upload.
+
 ## Persistent Planner And Route Diagnostics
 
 Inspect:

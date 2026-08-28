@@ -372,8 +372,10 @@ keeps observed obstacles available after they leave the instantaneous scan.
 
 These are the two production planning sources, selected by mode:
 
-- static: canonical Occupancy3D + precomputed chunked ESDF3D -> local ESDF3D;
-- no-static 3D: revisioned observed Occupancy3D -> local ESDF3D.
+- static: canonical Occupancy3D + precomputed chunked ESDF3D -> local dense
+  controller projection;
+- no-static 3D: revisioned observed Occupancy3D -> sparse incremental
+  `KnownObstacleDistance3D` -> local dense controller projection.
 
 They are not merged in the current implementation. Each occupied distance
 field turns its selected raw source into risk tiers.
@@ -395,6 +397,12 @@ Raw occupied samples and the physical flight envelope remain hard rejects.
 Missing or outside-cache distance evidence is neutral. The derived field
 supplies soft risk exposure and bounded controller queries; exact raw occupancy
 remains authoritative for hard swept-footprint validation.
+
+The no-static field indexes only confirmed occupied sources that can influence
+the capped local output window. Immutable 8-cubed chunks are shared across
+compatible revisions, while inserted or removed sources invalidate only their
+bounded output chunks. Free and unknown labels are deliberately absent from this
+cache identity and remain equal distance-query inputs.
 
 ## Motion Compensation Diagnostics
 
