@@ -145,7 +145,8 @@ void ProductionMppiNode::processRouteSearch3D(
       "raw_revision=%" PRIu64 " mission_epoch=%" PRIu64
       " status=%s search_complete=%s search_state_reused=%s "
       "time_search_complete=%s incumbent_retained=%s certified_pending=%s "
-      "activation_status=%.*s publication_status=%.*s "
+      "activation_status=%.*s activation_raw_snapshot_current=%s "
+      "publication_status=%.*s "
       "validation=%.*s handoff=%s splice=%.*s "
       "certified_reserve=%.*s reserve_available_m=%.3f "
       "reserve_required_m=%.3f reserve_shortfall_m=%.3f "
@@ -172,6 +173,7 @@ void ProductionMppiNode::processRouteSearch3D(
       static_cast<int>(
           staticRouteActivationStatusName(activation.activation_status).size()),
       staticRouteActivationStatusName(activation.activation_status).data(),
+      activation.raw_snapshot_current ? "true" : "false",
       static_cast<int>(
           routePublicationStatus3DName(activation.assessment.publication.status)
               .size()),

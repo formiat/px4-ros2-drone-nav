@@ -144,6 +144,12 @@ bool ProductionRouteActivationResult3D::executionGeometryValid() const noexcept 
   return geometry_validation.valid();
 }
 
+bool pendingRoutePublicationBaseCurrent3D(
+    const PendingRoutePublicationCurrentness3D& currentness) noexcept {
+  return currentness.resident_world_current && currentness.objective_current &&
+         currentness.execution_base_current && currentness.candidate_world_coherent;
+}
+
 bool ProductionRouteActivationResult3D::readyForArbitration() const noexcept {
   const ProductionRouteGeometry3D& geometry = proposal.geometry;
   return proposal.identity.activation_eligible && assessment.accepted() &&
@@ -808,9 +814,15 @@ void ProductionMppiNode::commitRouteActivation3D(
     const bool execution_base_current =
         sameExecutionRouteBase(current_execution, execution_route_store_.snapshot());
     const bool candidate_world_coherent = productionWorldGenerationCoherent(candidate);
-    result.snapshot_current = resident_world_current && objective_current &&
-                              raw_world_current && execution_base_current &&
-                              candidate_world_coherent;
+    result.raw_snapshot_current = raw_world_current;
+    result.snapshot_current =
+        pendingRoutePublicationBaseCurrent3D(PendingRoutePublicationCurrentness3D{
+            .resident_world_current = resident_world_current,
+            .objective_current = objective_current,
+            .raw_world_current = raw_world_current,
+            .execution_base_current = execution_base_current,
+            .candidate_world_coherent = candidate_world_coherent,
+        });
     if (pending != nullptr && result.snapshot_current) {
       published_pending = pending_certified_route_mailbox_.publish(pending);
     }

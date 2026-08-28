@@ -19,6 +19,21 @@ struct ProductionRouteActivationSnapshot3D {
   std::int64_t stamp_ns{0};
 };
 
+struct PendingRoutePublicationCurrentness3D {
+  bool resident_world_current{false};
+  bool objective_current{false};
+  bool raw_world_current{false};
+  bool execution_base_current{false};
+  bool candidate_world_coherent{false};
+};
+
+// Pending publication only reserves an execution transaction. The planning
+// tick recertifies it against the latest raw world before it can become an
+// execution owner, so raw snapshot churn is diagnostic rather than a
+// transaction-base invalidation here.
+[[nodiscard]] bool pendingRoutePublicationBaseCurrent3D(
+    const PendingRoutePublicationCurrentness3D& currentness) noexcept;
+
 struct ProductionRouteActivationResult3D {
   ProductionMppiPreparedEsdf prepared{};
   ProductionMaterializedRouteProposal3D proposal{};
@@ -38,6 +53,7 @@ struct ProductionRouteActivationResult3D {
   bool generation_matches{false};
   bool objective_matches{false};
   bool snapshot_current{false};
+  bool raw_snapshot_current{false};
   bool observed_world_rebased{false};
   bool publication_world_advanced{false};
   bool certified_pending{false};

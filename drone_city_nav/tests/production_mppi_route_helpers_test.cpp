@@ -146,5 +146,33 @@ TEST(ProductionMppiRouteHelpersTest,
   EXPECT_TRUE(prepared.readyForArbitration());
 }
 
+TEST(ProductionMppiRouteHelpersTest,
+     PendingPublicationAllowsRawAdvanceButRejectsTransactionBaseChanges) {
+  PendingRoutePublicationCurrentness3D currentness{
+      .resident_world_current = true,
+      .objective_current = true,
+      .raw_world_current = true,
+      .execution_base_current = true,
+      .candidate_world_coherent = true,
+  };
+  EXPECT_TRUE(pendingRoutePublicationBaseCurrent3D(currentness));
+
+  currentness.raw_world_current = false;
+  EXPECT_TRUE(pendingRoutePublicationBaseCurrent3D(currentness));
+  currentness.raw_world_current = true;
+
+  currentness.resident_world_current = false;
+  EXPECT_FALSE(pendingRoutePublicationBaseCurrent3D(currentness));
+  currentness.resident_world_current = true;
+  currentness.objective_current = false;
+  EXPECT_FALSE(pendingRoutePublicationBaseCurrent3D(currentness));
+  currentness.objective_current = true;
+  currentness.execution_base_current = false;
+  EXPECT_FALSE(pendingRoutePublicationBaseCurrent3D(currentness));
+  currentness.execution_base_current = true;
+  currentness.candidate_world_coherent = false;
+  EXPECT_FALSE(pendingRoutePublicationBaseCurrent3D(currentness));
+}
+
 } // namespace
 } // namespace drone_city_nav

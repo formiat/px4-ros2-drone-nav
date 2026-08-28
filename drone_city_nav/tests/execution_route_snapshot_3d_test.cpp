@@ -147,6 +147,50 @@ TEST(ExecutionRouteSnapshot3DTest,
   EXPECT_FALSE(recertifyExecutionRoute3D(*sealed, observation, nullptr).has_value());
 }
 
+TEST(ExecutionRouteSnapshot3DTest,
+     PendingRecertificationAdmitsASafeNewRawRevisionAndRejectsANewCollision) {
+  SnapshotFixture3D fixture;
+  const std::optional<CertifiedRouteSuffix3D> sealed = fixture.certify();
+  ASSERT_TRUE(sealed.has_value());
+  const CertifiedRouteSuffix3D& sealed_route = sealed.value();
+  constexpr std::uint64_t kSafeRevision{SnapshotFixture3D::kLatestRawRevision + 1U};
+  RouteActivationObservation3D safe_observation = fixture.observation();
+  safe_observation.latest_raw_revision = kSafeRevision;
+  const std::shared_ptr<const VersionedObservedRawWorld3D> safe_world =
+      fixture.rawWorld(kSafeRevision);
+  ASSERT_NE(safe_world, nullptr);
+  safe_observation.latest_raw_occupancy = &safe_world->occupancy();
+
+  const std::optional<CertifiedRouteSuffix3D> refreshed =
+      recertifyExecutionRoute3D(sealed_route, safe_observation, safe_world);
+
+  ASSERT_TRUE(refreshed.has_value());
+  const CertifiedRouteSuffix3D& refreshed_route = refreshed.value();
+  const auto* const refreshed_certificate =
+      std::get_if<ObservedRawRouteCertificate3D>(&refreshed_route.certificate);
+  ASSERT_NE(refreshed_certificate, nullptr);
+  EXPECT_EQ(refreshed_certificate->validated_through_revision, kSafeRevision);
+  EXPECT_EQ(refreshed_route.observed_raw_world, safe_world);
+
+  ObservedOccupancyGrid3D blocked_occupancy = fixture.raw_occupancy;
+  const std::optional<GridIndex3D> blocked_cell =
+      blocked_occupancy.worldToCell(Point3{5.0, 0.0, 5.0});
+  ASSERT_TRUE(blocked_cell.has_value());
+  ASSERT_TRUE(
+      blocked_occupancy.setState(blocked_cell.value(), ObservedVoxelState::kOccupied));
+  constexpr std::uint64_t kBlockedRevision{kSafeRevision + 1U};
+  const std::shared_ptr<const VersionedObservedRawWorld3D> blocked_world =
+      fixture.rawWorld(kBlockedRevision, &blocked_occupancy);
+  ASSERT_NE(blocked_world, nullptr);
+  RouteActivationObservation3D blocked_observation = safe_observation;
+  blocked_observation.latest_raw_revision = kBlockedRevision;
+  blocked_observation.latest_raw_occupancy = &blocked_world->occupancy();
+
+  EXPECT_FALSE(
+      recertifyExecutionRoute3D(sealed_route, blocked_observation, blocked_world)
+          .has_value());
+}
+
 TEST(ExecutionRouteSnapshot3DTest, RejectsSameSizeGeometryWithAStaleFingerprint) {
   SnapshotFixture3D fixture;
   std::vector<RouteSample3D> changed = fixture.route;
