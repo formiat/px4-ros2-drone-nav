@@ -86,7 +86,6 @@ TEST(ExecutionRouteSnapshot3DTest,
           .base_continuity_id = active->route->continuity_id,
           .base_direct_tracking_identity = std::nullopt,
           .route_splice = testRouteSplice(*active->route, *successor),
-          .strategy_decision = std::nullopt,
           .route = *successor,
       });
   auto second_value = *first;
@@ -139,7 +138,6 @@ TEST(ExecutionRouteSnapshot3DTest,
           .base_continuity_id = active->route->continuity_id,
           .base_direct_tracking_identity = std::nullopt,
           .route_splice = testRouteSplice(*active->route, *successor),
-          .strategy_decision = std::nullopt,
           .route = *successor,
       });
   const std::shared_ptr<const PendingCertifiedRoute3D> const_alias = mutable_candidate;
@@ -180,7 +178,6 @@ TEST(ExecutionRouteSnapshot3DTest,
           .base_continuity_id = active->route->continuity_id,
           .base_direct_tracking_identity = std::nullopt,
           .route_splice = std::nullopt,
-          .strategy_decision = std::nullopt,
           .route = *successor,
       });
 
@@ -205,7 +202,6 @@ TEST(ExecutionRouteSnapshot3DTest,
           .base_continuity_id = 0U,
           .base_direct_tracking_identity = std::nullopt,
           .route_splice = std::nullopt,
-          .strategy_decision = std::nullopt,
           .route = *suffix,
       });
 
@@ -347,7 +343,6 @@ TEST(ExecutionRouteSnapshot3DTest, RouteSplicePendingSurvivesExecutionProgressCa
           .base_continuity_id = active->route->continuity_id,
           .base_direct_tracking_identity = std::nullopt,
           .route_splice = splice,
-          .strategy_decision = std::nullopt,
           .route = *successor,
       });
   PendingCertifiedRouteMailbox3D mailbox;
@@ -389,7 +384,6 @@ TEST(ExecutionRouteSnapshot3DTest,
           .base_continuity_id = 0U,
           .base_direct_tracking_identity = std::nullopt,
           .route_splice = std::nullopt,
-          .strategy_decision = std::nullopt,
           .route = *suffix,
       });
   auto newer_value = *first;
@@ -459,7 +453,6 @@ TEST(ExecutionRouteSnapshot3DTest,
       .base_continuity_id = active->route->continuity_id,
       .base_direct_tracking_identity = std::nullopt,
       .route_splice = testRouteSplice(*active->route, *successor),
-      .strategy_decision = std::nullopt,
       .route = *successor,
   };
   ASSERT_TRUE(pending.valid());
@@ -509,7 +502,6 @@ TEST(ExecutionRouteSnapshot3DTest,
       .base_continuity_id = active->route->continuity_id,
       .base_direct_tracking_identity = std::nullopt,
       .route_splice = std::nullopt,
-      .strategy_decision = std::nullopt,
       .route = *successor,
   };
 
@@ -536,7 +528,6 @@ TEST(ExecutionRouteSnapshot3DTest, PendingInitialLineageDoesNotAliasRevokedOwner
       .base_continuity_id = 0U,
       .base_direct_tracking_identity = std::nullopt,
       .route_splice = std::nullopt,
-      .strategy_decision = std::nullopt,
       .route = *first_route,
   };
   ASSERT_TRUE(initial_pending.valid());
@@ -580,7 +571,6 @@ TEST(ExecutionRouteSnapshot3DTest,
       .base_continuity_id = 0U,
       .base_direct_tracking_identity = std::nullopt,
       .route_splice = std::nullopt,
-      .strategy_decision = std::nullopt,
       .route = *successor,
   };
   ASSERT_TRUE(pending.valid());
@@ -700,7 +690,6 @@ TEST(ExecutionRouteSnapshot3DTest,
       .base_continuity_id = active->route->continuity_id,
       .base_direct_tracking_identity = std::nullopt,
       .route_splice = testRouteSplice(*active->route, *successor),
-      .strategy_decision = std::nullopt,
       .route = *successor,
   };
   ASSERT_TRUE(route_pending.valid());
@@ -723,7 +712,6 @@ TEST(ExecutionRouteSnapshot3DTest,
       .base_continuity_id = 0U,
       .base_direct_tracking_identity = direct_identity,
       .route_splice = std::nullopt,
-      .strategy_decision = std::nullopt,
       .route = *successor,
   };
   ASSERT_TRUE(direct_pending.valid());
@@ -776,7 +764,6 @@ TEST(ExecutionRouteSnapshot3DTest, PendingRouteIsObsoleteAtMissionTerminalStop) 
       .base_continuity_id = stopped.next->route->continuity_id,
       .base_direct_tracking_identity = std::nullopt,
       .route_splice = std::nullopt,
-      .strategy_decision = std::nullopt,
       .route = *successor,
   };
   ASSERT_FALSE(pending.valid());
@@ -918,7 +905,6 @@ TEST(ExecutionRouteSnapshot3DTest,
       .base_continuity_id = 0U,
       .base_direct_tracking_identity = updated_identity,
       .route_splice = std::nullopt,
-      .strategy_decision = std::nullopt,
       .route = *successor,
   };
   ASSERT_TRUE(pending.valid());
@@ -938,7 +924,6 @@ TEST(ExecutionRouteSnapshot3DTest,
       .base_continuity_id = route_owner->route->continuity_id,
       .base_direct_tracking_identity = std::nullopt,
       .route_splice = testRouteSplice(*route_owner->route, *successor),
-      .strategy_decision = std::nullopt,
       .route = *successor,
   };
   ASSERT_TRUE(pre_direct_pending.valid());

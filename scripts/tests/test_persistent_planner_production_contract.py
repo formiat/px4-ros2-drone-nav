@@ -46,8 +46,12 @@ class PersistentPlannerProductionContractTest(unittest.TestCase):
             "RouteIntentPurpose3D::kTopologicalBacktrack",
         ):
             self.assertNotIn(legacy_producer, self.selection)
-        self.assertNotIn("route_strategy_arbitrator_3d_.evaluate", self.guide)
-        self.assertNotIn("ROUTE_STRATEGY_ARBITRATION3D", self.guide)
+        for retired_source in (
+            "route_strategy_arbitrator_3d.cpp",
+            "production_mppi_node_route_strategy.cpp",
+            "production_mppi_node_pending_strategy.cpp",
+        ):
+            self.assertFalse((SOURCE / retired_source).exists())
 
     def test_incremental_search_is_resumed_without_discarding_newer_worlds(
         self,

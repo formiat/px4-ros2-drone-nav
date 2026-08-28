@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <bit>
 #include <cmath>
-#include <tuple>
 
 namespace drone_city_nav {
 namespace {
@@ -72,68 +71,6 @@ rejectedStatus(const SweptFootprintResult& result, const bool require_known_free
   return SegmentEvidenceStatus3D::kValid;
 }
 
-[[nodiscard]] double finiteCost(const double value) noexcept {
-  return std::isfinite(value) ? value : std::numeric_limits<double>::infinity();
-}
-
-[[nodiscard]] double maximumValueRank(const double value) noexcept {
-  return std::isfinite(value) ? -value : std::numeric_limits<double>::infinity();
-}
-
-[[nodiscard]] double netCoordinateProgress(const SegmentEvidence3D& evidence) noexcept {
-  if (std::isfinite(evidence.net_coordinate_progress_m)) {
-    return evidence.net_coordinate_progress_m;
-  }
-  if (!std::isfinite(evidence.endpoint_displacement_m) ||
-      !std::isfinite(evidence.mission_progress_m)) {
-    return -std::numeric_limits<double>::infinity();
-  }
-  return evidence.endpoint_displacement_m + evidence.mission_progress_m;
-}
-
-[[nodiscard]] int purposeRank(const RouteIntentPurpose3D purpose) noexcept {
-  switch (purpose) {
-    case RouteIntentPurpose3D::kLaunchDeparture:
-    case RouteIntentPurpose3D::kMissionTransit:
-      return 0;
-    case RouteIntentPurpose3D::kObservationFrontier:
-      return 1;
-    case RouteIntentPurpose3D::kTopologicalBacktrack:
-      return 2;
-  }
-  return 3;
-}
-
-[[nodiscard]] auto proposalRank(const RouteProposal3D& proposal,
-                                const RouteProposalSelection3DConfig& config) noexcept {
-  const SegmentEvidence3D& evidence = proposal.evidence;
-  const bool heuristic_precedence = config.heuristic_precedence_enabled;
-  // Coordinate displacement plus signed radial mission progress rewards
-  // forward motion twice, lateral detours once, and pure reversal not at all.
-  // Only the endpoints participate, so route length cannot reward zigzags or
-  // loops. Objective cost remains a late tie-breaker among equally productive
-  // endpoint choices.
-  const double permissive_progress = netCoordinateProgress(evidence);
-  return std::tuple{
-      evidence.reaches_mission_target ? 0 : 1,
-      heuristic_precedence && evidence.reaches_intent_target ? 0 : 1,
-      heuristic_precedence && isProductiveDirectTransit3D(proposal, config) ? 0 : 1,
-      heuristic_precedence && isStrategicMissionContinuation3D(proposal) ? 0 : 1,
-      heuristic_precedence && proposal.intent.strategic_continuation_available ? 0 : 1,
-      heuristic_precedence ? purposeRank(proposal.intent.purpose) : 0,
-      heuristic_precedence && evidence.reaches_segment_target ? 0 : 1,
-      heuristic_precedence ? maximumValueRank(evidence.mission_progress_m)
-                           : maximumValueRank(permissive_progress),
-      heuristic_precedence ? maximumValueRank(evidence.endpoint_displacement_m)
-                           : maximumValueRank(evidence.mission_progress_m),
-      heuristic_precedence ? 0.0 : maximumValueRank(evidence.endpoint_displacement_m),
-      finiteCost(evidence.objective_cost),
-      finiteCost(evidence.route_length_m),
-      proposal.route_fingerprint,
-      proposal.intent.id,
-  };
-}
-
 } // namespace
 
 double routeNetCoordinateProgress3D(const Point3& start, const Point3& endpoint,
@@ -158,51 +95,6 @@ std::uint64_t makeRouteIntentId3D(const RouteIntentSource3D source,
   hashPoint(hash, mission_target);
   hashPoint(hash, intent_target);
   return hash == 0U ? 1U : hash;
-}
-
-bool RouteStrategyReturnLineage3D::valid() const noexcept {
-  return id != 0U && strategic_plan_id != 0U && topology_lineage_id != 0U &&
-         planned_on_revision != 0U && return_anchor_identity != 0U &&
-         excursion_target_identity != 0U;
-}
-
-bool RouteStrategyReturnLineage3D::validForMission(
-    const Point3& mission_target) const noexcept {
-  if (!valid()) {
-    return false;
-  }
-  return makeRouteStrategyReturnLineage3D(strategic_plan_id, topology_lineage_id,
-                                          planned_on_revision, return_anchor_identity,
-                                          excursion_target_identity, mission_target)
-             .id == id;
-}
-
-RouteStrategyReturnLineage3D makeRouteStrategyReturnLineage3D(
-    const std::uint64_t strategic_plan_id, const std::uint64_t topology_lineage_id,
-    const std::uint64_t planned_on_revision, const std::uint64_t return_anchor_identity,
-    const std::uint64_t excursion_target_identity,
-    const Point3& mission_target) noexcept {
-  if (strategic_plan_id == 0U || topology_lineage_id == 0U ||
-      planned_on_revision == 0U || return_anchor_identity == 0U ||
-      excursion_target_identity == 0U || !std::isfinite(mission_target.x) ||
-      !std::isfinite(mission_target.y) || !std::isfinite(mission_target.z)) {
-    return {};
-  }
-  std::uint64_t hash{kFnvOffset};
-  hashValue(hash, strategic_plan_id);
-  hashValue(hash, topology_lineage_id);
-  hashValue(hash, planned_on_revision);
-  hashValue(hash, return_anchor_identity);
-  hashValue(hash, excursion_target_identity);
-  hashPoint(hash, mission_target);
-  return RouteStrategyReturnLineage3D{
-      .id = hash == 0U ? 1U : hash,
-      .strategic_plan_id = strategic_plan_id,
-      .topology_lineage_id = topology_lineage_id,
-      .planned_on_revision = planned_on_revision,
-      .return_anchor_identity = return_anchor_identity,
-      .excursion_target_identity = excursion_target_identity,
-  };
 }
 
 SegmentEvidence3D evaluateSegmentEvidence3D(
@@ -312,102 +204,6 @@ SegmentEvidence3D evaluateSegmentEvidence3D(
   return result;
 }
 
-bool routeProposalSelection3DConfigIsValid(
-    const RouteProposalSelection3DConfig& config) noexcept {
-  return std::isfinite(config.productive_direct_minimum_mission_progress_m) &&
-         config.productive_direct_minimum_mission_progress_m >= 0.0 &&
-         std::isfinite(config.productive_direct_minimum_progress_ratio) &&
-         config.productive_direct_minimum_progress_ratio >= 0.0 &&
-         config.productive_direct_minimum_progress_ratio <= 1.0;
-}
-
-bool routeProposalEligible3D(const RouteProposal3D& proposal) noexcept {
-  return proposal.intent.valid && proposal.activation_eligible &&
-         proposal.evidence.physical_executable;
-}
-
-bool isProductiveDirectTransit3D(
-    const RouteProposal3D& proposal,
-    const RouteProposalSelection3DConfig& config) noexcept {
-  if (!routeProposalSelection3DConfigIsValid(config) ||
-      !routeProposalEligible3D(proposal) ||
-      proposal.intent.source != RouteIntentSource3D::kDirect ||
-      proposal.intent.purpose != RouteIntentPurpose3D::kMissionTransit ||
-      !(proposal.evidence.route_length_m > 0.0) ||
-      !std::isfinite(proposal.evidence.route_length_m) ||
-      !std::isfinite(proposal.evidence.mission_progress_m)) {
-    return false;
-  }
-  const double progress_ratio =
-      proposal.evidence.mission_progress_m / proposal.evidence.route_length_m;
-  return proposal.evidence.mission_progress_m >=
-             config.productive_direct_minimum_mission_progress_m &&
-         progress_ratio >= config.productive_direct_minimum_progress_ratio;
-}
-
-bool isStrategicMissionContinuation3D(const RouteProposal3D& proposal) noexcept {
-  return proposal.intent.valid && proposal.intent.strategic_plan_id != 0U &&
-         proposal.intent.source == RouteIntentSource3D::kTopology &&
-         proposal.intent.purpose == RouteIntentPurpose3D::kMissionTransit &&
-         proposal.intent.strategic_continuation_available &&
-         proposal.intent.strategic_mission_continuation;
-}
-
-bool betterRouteProposal3D(const RouteProposal3D& candidate,
-                           const RouteProposal3D& current,
-                           const RouteProposalSelection3DConfig& config) noexcept {
-  if (routeProposalEligible3D(candidate) != routeProposalEligible3D(current)) {
-    return routeProposalEligible3D(candidate);
-  }
-  return proposalRank(candidate, config) < proposalRank(current, config);
-}
-
-RouteProposalSelection3D
-selectRouteProposal3D(const std::span<const RouteProposal3D> proposals,
-                      const RouteProposalSelection3DConfig& config) noexcept {
-  RouteProposalSelection3D result{
-      .selected_index = std::nullopt,
-      .reason = RouteProposalSelectionReason3D::kNoEligibleCandidate,
-      .considered_candidates = proposals.size(),
-      .eligible_candidates = 0U,
-  };
-  for (std::size_t index = 0U; index < proposals.size(); ++index) {
-    if (!routeProposalEligible3D(proposals[index])) {
-      continue;
-    }
-    ++result.eligible_candidates;
-    if (!result.selected_index.has_value() ||
-        betterRouteProposal3D(proposals[index], proposals[*result.selected_index],
-                              config)) {
-      result.selected_index = index;
-    }
-  }
-  if (!result.selected_index.has_value()) {
-    return result;
-  }
-  if (result.eligible_candidates == 1U) {
-    result.reason = RouteProposalSelectionReason3D::kOnlyEligibleCandidate;
-    return result;
-  }
-  const RouteProposal3D& selected = proposals[*result.selected_index];
-  if (selected.evidence.reaches_mission_target) {
-    result.reason = RouteProposalSelectionReason3D::kMissionTarget;
-  } else if (!config.heuristic_precedence_enabled) {
-    result.reason = RouteProposalSelectionReason3D::kNetCoordinateProgress;
-  } else if (selected.evidence.reaches_intent_target) {
-    result.reason = RouteProposalSelectionReason3D::kIntentTarget;
-  } else if (isStrategicMissionContinuation3D(selected)) {
-    result.reason = RouteProposalSelectionReason3D::kStrategicMissionContinuation;
-  } else if (isProductiveDirectTransit3D(selected, config)) {
-    result.reason = RouteProposalSelectionReason3D::kProductiveDirectTransit;
-  } else if (selected.intent.strategic_continuation_available) {
-    result.reason = RouteProposalSelectionReason3D::kStrategicContinuation;
-  } else {
-    result.reason = RouteProposalSelectionReason3D::kRouteQuality;
-  }
-  return result;
-}
-
 const char* routeIntentSource3DName(const RouteIntentSource3D source) noexcept {
   switch (source) {
     case RouteIntentSource3D::kPersistentPlanner:
@@ -436,25 +232,6 @@ const char* routeIntentPurpose3DName(const RouteIntentPurpose3D purpose) noexcep
   return "unknown";
 }
 
-const char*
-routeStrategyLeaseReason3DName(const RouteStrategyLeaseReason3D reason) noexcept {
-  switch (reason) {
-    case RouteStrategyLeaseReason3D::kNone:
-      return "none";
-    case RouteStrategyLeaseReason3D::kMissionTopologyContinuation:
-      return "mission_topology_continuation";
-    case RouteStrategyLeaseReason3D::kObservationFrontier:
-      return "observation_frontier";
-    case RouteStrategyLeaseReason3D::kBacktrackConfirmedTerminal:
-      return "backtrack_confirmed_terminal";
-    case RouteStrategyLeaseReason3D::kBacktrackNoReachableFrontier:
-      return "backtrack_no_reachable_frontier";
-    case RouteStrategyLeaseReason3D::kBacktrackAllReachableBranchesExplored:
-      return "backtrack_all_reachable_branches_explored";
-  }
-  return "unknown";
-}
-
 const char* segmentEvidenceStatus3DName(const SegmentEvidenceStatus3D status) noexcept {
   switch (status) {
     case SegmentEvidenceStatus3D::kValid:
@@ -475,41 +252,6 @@ const char* segmentEvidenceStatus3DName(const SegmentEvidenceStatus3D status) no
       return "invalid_esdf";
     case SegmentEvidenceStatus3D::kRawCollision:
       return "raw_collision";
-  }
-  return "unknown";
-}
-
-const char* routeProposalSelectionReason3DName(
-    const RouteProposalSelectionReason3D reason) noexcept {
-  switch (reason) {
-    case RouteProposalSelectionReason3D::kNoEligibleCandidate:
-      return "no_eligible_candidate";
-    case RouteProposalSelectionReason3D::kOnlyEligibleCandidate:
-      return "only_eligible_candidate";
-    case RouteProposalSelectionReason3D::kMissionTarget:
-      return "mission_target";
-    case RouteProposalSelectionReason3D::kMissionProgress:
-      return "mission_progress";
-    case RouteProposalSelectionReason3D::kNetCoordinateProgress:
-      return "net_coordinate_progress";
-    case RouteProposalSelectionReason3D::kIntentTarget:
-      return "intent_target";
-    case RouteProposalSelectionReason3D::kStrategicMissionContinuation:
-      return "strategic_mission_continuation";
-    case RouteProposalSelectionReason3D::kProductiveDirectTransit:
-      return "productive_direct_transit";
-    case RouteProposalSelectionReason3D::kStrategicContinuation:
-      return "strategic_continuation";
-    case RouteProposalSelectionReason3D::kRouteQuality:
-      return "route_quality";
-    case RouteProposalSelectionReason3D::kActiveStrategyLease:
-      return "active_strategy_lease";
-    case RouteProposalSelectionReason3D::kStrategyLeaseHysteresis:
-      return "strategy_lease_hysteresis";
-    case RouteProposalSelectionReason3D::kStrategyReturnRequired:
-      return "strategy_return_required";
-    case RouteProposalSelectionReason3D::kInvalidStrategyLineageFallback:
-      return "invalid_strategy_lineage_fallback";
   }
   return "unknown";
 }

@@ -99,20 +99,8 @@ void ProductionMppiNode::processGuideSearch3D(
         world, std::move(materialization.prepared), planned_world_certificate,
         materialization.validation, materialization.replacement_policy, mission_goal,
         candidate_generation, activation_snapshot);
-    activation.prepared.route_proposal_selection_reason =
-        activation.readyForArbitration()
-            ? RouteProposalSelectionReason3D::kOnlyEligibleCandidate
-            : RouteProposalSelectionReason3D::kNoEligibleCandidate;
-    activation.prepared.route_proposal_candidate_count = 1U;
-    activation.prepared.route_proposal_eligible_count =
-        activation.readyForArbitration() ? 1U : 0U;
     commitRouteActivation3D(world, activation_snapshot, candidate_generation,
                             activation);
-  } else {
-    activation.prepared.route_proposal_selection_reason =
-        RouteProposalSelectionReason3D::kNoEligibleCandidate;
-    activation.prepared.route_proposal_candidate_count = 0U;
-    activation.prepared.route_proposal_eligible_count = 0U;
   }
   activation.prepared.global_guide_search_ms = candidate_set.search_ms;
 

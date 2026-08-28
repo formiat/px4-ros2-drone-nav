@@ -540,7 +540,6 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       optional_constraints_.reject_invalid_esdf_routes;
   lattice_3d_config_.reject_invalid_esdf =
       optional_constraints_.reject_invalid_esdf_routes;
-  configureRouteStrategyArbitration();
   lattice_3d_config_.nominal_horizontal_speed_mps =
       speed_policy_config_.cruise_speed_mps;
   lattice_3d_config_.nominal_vertical_speed_mps =
@@ -712,7 +711,6 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       constrained_route_speed_limit_mps_ < 0.0F ||
       !(route_constraint_diagnostics_distance_m_ >= 0.0) ||
       !(lattice_3d_config_.nominal_horizontal_speed_mps > 0.0) ||
-      !routeProposalSelection3DConfigIsValid(route_proposal_selection_3d_config_) ||
       !(lattice_3d_config_.nominal_vertical_speed_mps > 0.0) ||
       !(lattice_3d_config_.vertical_alignment_cost_weight >= 0.0) ||
       !(lattice_3d_config_.route_shape_turn_cost_per_rad >= 0.0) ||

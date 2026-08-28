@@ -168,7 +168,6 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
       .base_continuity_id = active_route.continuity_id,
       .base_direct_tracking_identity = std::nullopt,
       .route_splice = std::nullopt,
-      .strategy_decision = std::nullopt,
       .route = successor_route,
   };
   ASSERT_TRUE(pending.valid());

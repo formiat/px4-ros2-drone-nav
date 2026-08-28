@@ -62,7 +62,6 @@
 #include "drone_city_nav/route_3d.hpp"
 #include "drone_city_nav/route_lifecycle_3d.hpp"
 #include "drone_city_nav/route_planning_3d.hpp"
-#include "drone_city_nav/route_strategy_arbitrator_3d.hpp"
 #include "drone_city_nav/static_esdf_cache.hpp"
 #include "drone_city_nav/static_route_extension.hpp"
 #include "drone_city_nav/static_route_geometry.hpp"
@@ -178,10 +177,6 @@ struct ProductionMppiPreparedEsdf {
   std::size_t route_stop_turn_count{0U};
   RouteIntent3D route_intent{};
   SegmentEvidence3D route_segment_evidence{};
-  RouteProposalSelectionReason3D route_proposal_selection_reason{
-      RouteProposalSelectionReason3D::kNoEligibleCandidate};
-  std::size_t route_proposal_candidate_count{0U};
-  std::size_t route_proposal_eligible_count{0U};
   std::shared_ptr<const std::vector<Point2>> route_2d_projection;
   std::shared_ptr<const std::vector<ConstrainedRouteSpan>> constrained_spans;
   std::shared_ptr<const std::vector<PassageTraversalEdge>> passage_traversals;
@@ -394,7 +389,6 @@ private:
   void configureSensorObservability();
   void configureStaticRouteGeometry();
   void configureStaticRouteExtension(double maximum_horizontal_acceleration_mps2);
-  void configureRouteStrategyArbitration();
   [[nodiscard]] RouteCompilerConfig3D routeCompilerConfig3D() const noexcept;
   [[nodiscard]] TrackingErrorTubeWorld3D
   trackingErrorTubeWorld3D(const ProductionMppiPreparedEsdf& world) const noexcept;
@@ -558,12 +552,6 @@ private:
       const std::shared_ptr<const ExecutionRouteSnapshot3D>& certification_snapshot,
       const std::shared_ptr<const ExecutionRouteTransitionResult3D>&
           progress_preparation);
-  void recordPendingRouteStrategyOutcome(
-      const std::shared_ptr<const PendingCertifiedRoute3D>& pending,
-      bool selection_committed) noexcept;
-  void recordPendingRouteStrategyOutcomeLocked(
-      const std::shared_ptr<const PendingCertifiedRoute3D>& pending,
-      bool selection_committed) noexcept;
   [[nodiscard]] std::optional<mppi::FiniteExecutionPathWorld>
   exactSnapshotValidationWorld(
       const ProductionMppiExecutionCycle& cycle, const CertifiedRouteSuffix3D& route,
@@ -701,12 +689,6 @@ private:
   std::unique_ptr<NoStaticRouteCycleDetector> no_static_cycle_detector_;
   RiskAwareLatticeConfig lattice_config_{};
   RiskAwareLattice3DConfig lattice_3d_config_{};
-  RouteProposalSelection3DConfig route_proposal_selection_3d_config_{};
-  RouteStrategyArbitrator3D route_strategy_arbitrator_3d_{};
-  // Serializes the observable pending-route transaction with strategy and
-  // topology effects.  The execution-store/mailbox CAS is its linearization.
-  std::mutex pending_route_transaction_mutex_;
-  std::mutex route_strategy_arbitrator_mutex_;
   RouteEnvelopeConfig route_envelope_config_{};
   ConstrainedRouteControlConfig constrained_route_control_config_{};
   ConstrainedRouteCoordinator constrained_route_coordinator_{};

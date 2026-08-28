@@ -20,7 +20,6 @@ certifySuccessor(SnapshotFixture3D& fixture, const std::vector<RouteSample3D>& r
   continuation_route.back().reference_speed_mps = 4.0;
   ExecutionRouteActivation3D activation = fixture.activation();
   activation.route_generation = SnapshotFixture3D::kRouteGeneration + 1U;
-  activation.proposal.intent.intent_reaches_mission_target = false;
   activation.proposal.evidence.reaches_mission_target = false;
   activation.proposal.reaches_mission_goal = false;
   activation.proposal.route_fingerprint = routeFingerprint(continuation_route);

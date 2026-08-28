@@ -99,14 +99,6 @@ void ProductionMppiNode::processDiagnostics(
       << (esdf.route_segment_evidence.known_clearance_observed ? "true" : "false")
       << " route_intent_target_reached="
       << (esdf.route_segment_evidence.reaches_intent_target ? "true" : "false")
-      << " route_intent_reaches_mission_target="
-      << (esdf.route_intent.intent_reaches_mission_target ? "true" : "false")
-      << " route_strategic_mission_continuation="
-      << (esdf.route_intent.strategic_mission_continuation ? "true" : "false")
-      << " route_proposal_candidates=" << esdf.route_proposal_candidate_count
-      << " route_proposal_eligible=" << esdf.route_proposal_eligible_count
-      << " route_proposal_selection="
-      << routeProposalSelectionReason3DName(esdf.route_proposal_selection_reason)
       << " goal_capture_latched=" << (snapshot.goal_capture.latched ? "true" : "false")
       << " goal_distance_m=" << snapshot.goal_capture.distance_m << " guide_release="
       << globalGuideReleaseReasonName(esdf.global_guide_release_reason)
@@ -584,15 +576,7 @@ void ProductionMppiNode::processDiagnostics(
          << (esdf.route_segment_evidence.known_clearance_observed ? "true" : "false")
          << ",\"route_intent_target_reached\":"
          << (esdf.route_segment_evidence.reaches_intent_target ? "true" : "false")
-         << ",\"route_intent_reaches_mission_target\":"
-         << (esdf.route_intent.intent_reaches_mission_target ? "true" : "false")
-         << ",\"route_strategic_mission_continuation\":"
-         << (esdf.route_intent.strategic_mission_continuation ? "true" : "false")
-         << ",\"route_proposal_candidates\":" << esdf.route_proposal_candidate_count
-         << ",\"route_proposal_eligible\":" << esdf.route_proposal_eligible_count
-         << ",\"route_proposal_selection\":\""
-         << routeProposalSelectionReason3DName(esdf.route_proposal_selection_reason)
-         << '"' << ",\"goal_capture_latched\":"
+         << ",\"goal_capture_latched\":"
          << (snapshot.goal_capture.latched ? "true" : "false")
          << ",\"goal_distance_m\":" << snapshot.goal_capture.distance_m
          << ",\"guide_release\":\""

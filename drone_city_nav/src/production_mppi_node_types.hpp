@@ -19,8 +19,6 @@ struct ProductionNavigationOptionalConstraints {
   bool route_shape_costs_enabled{false};
   bool frontier_viability_enabled{false};
   bool topological_history_costs_enabled{false};
-  bool route_proposal_precedence_enabled{false};
-  bool route_strategy_leases_enabled{false};
   bool static_route_shortcut_optimization_enabled{false};
   bool stochastic_trajectory_selection_enabled{false};
   bool observation_frontier_stops_enabled{false};

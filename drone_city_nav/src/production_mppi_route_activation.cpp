@@ -789,7 +789,6 @@ void ProductionMppiNode::commitRouteActivation3D(
                                                                            ->identity}
                         : std::nullopt,
                 .route_splice = overlap_search ? result.splice.splice : std::nullopt,
-                .strategy_decision = std::nullopt,
                 .route = certified_route.value(),
             })
           : nullptr;

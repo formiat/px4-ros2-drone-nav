@@ -272,7 +272,6 @@ add_library(
   src/route_execution_contract_3d.cpp
   src/route_lifecycle_3d.cpp
   src/route_planning_3d.cpp
-  src/route_strategy_arbitrator_3d.cpp
   src/rolling_route_telemetry_3d.cpp
   src/simulation_truth_alignment.cpp
   src/spectator_selection.cpp
@@ -631,7 +630,6 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     drone_city_nav_production_mppi_component SHARED
     src/production_mppi_node.cpp
     src/production_mppi_node_optional_constraints.cpp
-    src/production_mppi_node_route_strategy.cpp
     src/production_mppi_node_route_compilation.cpp
     src/production_mppi_node_interfaces.cpp
     src/production_mppi_node_health.cpp
@@ -651,7 +649,6 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     src/production_mppi_node_raw_input.cpp
     src/production_mppi_node_planning_tick.cpp
     src/production_mppi_node_planning_controller.cpp
-    src/production_mppi_node_pending_strategy.cpp
     src/production_mppi_node_world_generation.cpp
     src/production_mppi_node_planning_tick_finalize.cpp
     src/production_mppi_node_planning_tick_rearm.cpp
@@ -1312,12 +1309,6 @@ if(BUILD_TESTING)
   target_compile_features(route_planning_3d_test PRIVATE cxx_std_20)
   target_link_libraries(route_planning_3d_test drone_city_nav_core)
   enable_project_warnings(route_planning_3d_test)
-
-  ament_add_gtest(route_strategy_arbitrator_3d_test
-                  tests/route_strategy_arbitrator_3d_test.cpp)
-  target_compile_features(route_strategy_arbitrator_3d_test PRIVATE cxx_std_20)
-  target_link_libraries(route_strategy_arbitrator_3d_test drone_city_nav_core)
-  enable_project_warnings(route_strategy_arbitrator_3d_test)
 
   ament_add_gtest(route_lifecycle_3d_test tests/route_lifecycle_3d_test.cpp)
   target_compile_features(route_lifecycle_3d_test PRIVATE cxx_std_20)

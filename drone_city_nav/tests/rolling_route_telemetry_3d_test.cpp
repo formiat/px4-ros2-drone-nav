@@ -52,7 +52,6 @@ TEST(RollingRouteTelemetry3DTest, KeepsPartialTopologySegmentsNonTerminal) {
   const RouteIntent3D topology{
       .strategic_plan_id = 81U,
       .purpose = RouteIntentPurpose3D::kMissionTransit,
-      .intent_reaches_mission_target = true,
       .valid = true,
   };
   const RouteIntent3D observation{

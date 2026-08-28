@@ -355,8 +355,6 @@ production_mppi_node:
     route_shape_costs_enabled: false
     frontier_viability_constraints_enabled: false
     topological_history_costs_enabled: false
-    route_proposal_precedence_enabled: false
-    route_strategy_leases_enabled: false
     static_route_shortcut_optimization_enabled: false
     stochastic_trajectory_selection_enabled: false
     observation_frontier_stops_enabled: false
@@ -364,16 +362,6 @@ production_mppi_node:
     route_replacement_progress_enabled: false
     clearance_tier_constraints_enabled: false
     execution_route_cross_track_constraints_enabled: false
-    route_proposal_productive_direct_minimum_mission_progress_m: 2.0
-    route_proposal_productive_direct_minimum_progress_ratio: 0.15
-    route_strategy_topology_mission_lease_budget_m: 160.0
-    route_strategy_observation_frontier_lease_budget_m: 80.0
-    route_strategy_topological_backtrack_lease_budget_m: 120.0
-    route_strategy_minimum_lease_commitment_m: 5.0
-    route_strategy_minimum_return_mission_progress_m: 8.0
-    route_strategy_direct_release_minimum_progress_advantage_m: 5.0
-    route_strategy_direct_release_minimum_progress_ratio_advantage: 0.10
-    route_strategy_direct_release_confirmation_count: 2
     global_lattice_3d_nominal_vertical_speed_mps: 4.0
     # Vertical motion is possible when a certified opening requires it, but it
     # is no longer free while horizontal motion dominates travel time.

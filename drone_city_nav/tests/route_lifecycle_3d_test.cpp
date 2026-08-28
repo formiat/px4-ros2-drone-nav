@@ -63,7 +63,6 @@ namespace {
   proposal.intent.strategic_plan_id = proposal.objective.mission_epoch;
   proposal.intent.intent_target = proposal.intent.mission_target;
   proposal.intent.segment_target = proposal.intent.mission_target;
-  proposal.intent.intent_reaches_mission_target = true;
   return proposal;
 }
 

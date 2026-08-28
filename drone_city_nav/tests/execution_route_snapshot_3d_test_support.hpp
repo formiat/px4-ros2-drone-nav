@@ -274,7 +274,6 @@ struct SnapshotFixture3D {
               .segment_target = {10.0, 0.0, 5.0},
               .purpose = RouteIntentPurpose3D::kMissionTransit,
               .segment_reaches_intent_target = true,
-              .intent_reaches_mission_target = true,
               .valid = true,
           },
       .evidence =

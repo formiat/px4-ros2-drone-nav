@@ -19,10 +19,6 @@ void ProductionMppiNode::configureOptionalNavigationConstraints() {
           declare_parameter<bool>("frontier_viability_constraints_enabled", false),
       .topological_history_costs_enabled =
           declare_parameter<bool>("topological_history_costs_enabled", false),
-      .route_proposal_precedence_enabled =
-          declare_parameter<bool>("route_proposal_precedence_enabled", false),
-      .route_strategy_leases_enabled =
-          declare_parameter<bool>("route_strategy_leases_enabled", false),
       .static_route_shortcut_optimization_enabled =
           declare_parameter<bool>("static_route_shortcut_optimization_enabled", false),
       .stochastic_trajectory_selection_enabled =

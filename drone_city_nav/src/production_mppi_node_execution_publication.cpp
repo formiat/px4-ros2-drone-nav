@@ -836,8 +836,7 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
           publication_commit.expected_snapshot != nullptr &&
           execution_route_store_.snapshot() == publication_commit.expected_snapshot;
       break;
-    case ProductionMppiHorizonCommitKind::kCommitPendingSnapshotTransition: {
-      const std::scoped_lock transaction_lock{pending_route_transaction_mutex_};
+    case ProductionMppiHorizonCommitKind::kCommitPendingSnapshotTransition:
       owner_committed =
           publication_commit.expected_snapshot != nullptr &&
           publication_commit.transition != nullptr &&
@@ -845,11 +844,7 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
           pending_certified_route_mailbox_.commitExecutionIfSame(
               publication_commit.expected_pending, execution_route_store_,
               publication_commit.expected_snapshot, *publication_commit.transition);
-      if (owner_committed) {
-        recordPendingRouteStrategyOutcomeLocked(publication_commit.expected_pending,
-                                                true);
-      }
-    } break;
+      break;
   }
   if (!owner_committed) {
     report_commit_failure("snapshot_owner_commit_rejected");

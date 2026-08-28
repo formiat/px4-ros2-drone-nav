@@ -1,7 +1,6 @@
 #pragma once
 
 #include "drone_city_nav/certified_route_splice_3d.hpp"
-#include "drone_city_nav/route_strategy_arbitrator_3d.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -28,9 +27,6 @@ struct PendingCertifiedRoute3D {
   std::uint64_t base_continuity_id{0U};
   std::optional<DirectTrackingOwnerIdentity3D> base_direct_tracking_identity;
   std::optional<CertifiedRouteSplice3D> route_splice;
-  // Exact strategy token resolved with the mailbox/execution CAS, not a
-  // node-local sidecar installed after the route becomes observable.
-  std::optional<RouteStrategyArbitrationDecision3D> strategy_decision;
   CertifiedRouteSuffix3D route{};
 
   [[nodiscard]] bool valid() const noexcept;

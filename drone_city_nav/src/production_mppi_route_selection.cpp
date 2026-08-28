@@ -212,7 +212,6 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
         .source = RouteIntentSource3D::kPersistentPlanner,
         .purpose = RouteIntentPurpose3D::kMissionTransit,
         .segment_reaches_intent_target = true,
-        .intent_reaches_mission_target = true,
         .observation_stop_required = false,
         .valid = true,
     };
