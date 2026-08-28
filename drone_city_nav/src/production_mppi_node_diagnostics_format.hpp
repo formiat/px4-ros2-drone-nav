@@ -58,6 +58,16 @@ persistentPlannerInfoFields(const ProductionMppiPreparedEsdf& esdf) {
          << " planner_expansions=" << planner.expansions
          << " planner_changed_occupied_voxels=" << planner.changed_occupied_voxels
          << " planner_affected_lattice_states=" << planner.affected_lattice_states
+         << " planner_repair_lattice_states_processed="
+         << planner.repair_lattice_states_processed
+         << " planner_repair_lattice_states_pending="
+         << planner.repair_lattice_states_pending
+         << " planner_repair_pending=" << (planner.repair_pending ? "true" : "false")
+         << " planner_feasibility_attempted="
+         << (planner.feasibility_attempted ? "true" : "false")
+         << " planner_feasibility_route_found="
+         << (planner.feasibility_route_found ? "true" : "false")
+         << " planner_feasibility_expansions=" << planner.feasibility_expansions
          << " planner_records=" << planner.records
          << " planner_open_entries=" << planner.open_entries
          << " planner_shortcut_checks=" << planner.shortcut_checks
@@ -115,6 +125,16 @@ persistentPlannerJsonFields(const ProductionMppiPreparedEsdf& esdf) {
          << ",\"planner_expansions\":" << planner.expansions
          << ",\"planner_changed_occupied_voxels\":" << planner.changed_occupied_voxels
          << ",\"planner_affected_lattice_states\":" << planner.affected_lattice_states
+         << ",\"planner_repair_lattice_states_processed\":"
+         << planner.repair_lattice_states_processed
+         << ",\"planner_repair_lattice_states_pending\":"
+         << planner.repair_lattice_states_pending << ",\"planner_repair_pending\":"
+         << (planner.repair_pending ? "true" : "false")
+         << ",\"planner_feasibility_attempted\":"
+         << (planner.feasibility_attempted ? "true" : "false")
+         << ",\"planner_feasibility_route_found\":"
+         << (planner.feasibility_route_found ? "true" : "false")
+         << ",\"planner_feasibility_expansions\":" << planner.feasibility_expansions
          << ",\"planner_records\":" << planner.records
          << ",\"planner_open_entries\":" << planner.open_entries
          << ",\"planner_shortcut_checks\":" << planner.shortcut_checks

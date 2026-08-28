@@ -457,6 +457,14 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   }
   persistent_planner_config_.connector_search_radius_cells =
       static_cast<std::size_t>(connector_search_radius_cells);
+  persistent_planner_config_.feasibility_first_enabled =
+      declare_parameter<bool>("persistent_planner_feasibility_first_enabled", true);
+  persistent_planner_config_.maximum_feasibility_expansions_per_update =
+      declare_positive_size(
+          "persistent_planner_maximum_feasibility_expansions_per_update", 4'096);
+  persistent_planner_config_.maximum_feasibility_compute_time_ms =
+      declare_parameter<double>(
+          "persistent_planner_maximum_feasibility_compute_time_ms", 50.0);
   persistent_planner_config_.maximum_expansions_per_update = declare_positive_size(
       "persistent_planner_maximum_expansions_per_update", 200'000);
   persistent_planner_config_.maximum_incremental_changed_voxels = declare_positive_size(
@@ -520,6 +528,12 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   diagnostics_file_period_ns_ =
       static_cast<std::int64_t>(1.0e9 / std::max(0.1, diagnostics_file_rate_hz_));
 
+  const bool feasibility_budget_valid =
+      !persistent_planner_config_.feasibility_first_enabled ||
+      (std::isfinite(persistent_planner_config_.maximum_feasibility_compute_time_ms) &&
+       persistent_planner_config_.maximum_feasibility_compute_time_ms > 0.0 &&
+       persistent_planner_config_.maximum_feasibility_compute_time_ms <
+           persistent_planner_config_.maximum_compute_time_ms);
   if (!(tick_rate_hz_ > 0.0) || !(rviz_rate_hz_ > 0.0) ||
       !(diagnostics_info_rate_hz_ > 0.0) || !(deadline_ms_ > 0.0) ||
       !(diagnostics_file_rate_hz_ > 0.0) || !(diagnostics_flush_period_s_ > 0.0) ||
@@ -541,7 +555,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       persistent_planner_config_.maximum_shortcut_checks == 0U ||
       !std::isfinite(persistent_planner_config_.maximum_compute_time_ms) ||
       !(persistent_planner_config_.maximum_compute_time_ms > 0.0) ||
-      !std::isfinite(route_sampling_step_m_) || !(route_sampling_step_m_ > 0.0) ||
+      !feasibility_budget_valid || !std::isfinite(route_sampling_step_m_) ||
+      !(route_sampling_step_m_ > 0.0) ||
       !std::isfinite(route_completion_tolerance_m_) ||
       !(route_completion_tolerance_m_ > 0.0) ||
       !std::isfinite(static_esdf_route_lookahead_m_) ||

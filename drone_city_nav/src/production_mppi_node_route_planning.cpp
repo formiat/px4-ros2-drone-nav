@@ -69,14 +69,18 @@ void ProductionMppiNode::processRouteSearch3D(
                 "PERSISTENT_PLANNER3D stage=continuation "
                 "queued=%s raw_revision=%" PRIu64 " search_generation=%" PRIu64
                 " repair_generation=%" PRIu64 " repair_processed=%zu "
-                "repair_pending=%zu route_planning_ms=%.3f",
+                "repair_pending=%zu feasibility_attempted=%s "
+                "feasibility_found=%s feasibility_expansions=%zu "
+                "route_planning_ms=%.3f",
                 continuation_queued ? "true" : "newer_world_pending",
                 candidate_set.planner_result.planned_on_revision,
                 candidate_set.planner_result.search_generation,
                 candidate_set.planner_result.repair_generation,
                 candidate_set.planner_result.repair_lattice_states_processed,
                 candidate_set.planner_result.repair_lattice_states_pending,
-                route_planning_ms);
+                candidate_set.planner_result.feasibility_attempted ? "true" : "false",
+                candidate_set.planner_result.feasibility_route_found ? "true" : "false",
+                candidate_set.planner_result.feasibility_expansions, route_planning_ms);
     return;
   }
 
@@ -149,7 +153,8 @@ void ProductionMppiNode::processRouteSearch3D(
       " base_route_instance_id=%" PRIu64 " stitch_station_m=%.3f "
       "points=%zu samples=%zu expansions=%zu time_expansions=%zu "
       "changed_occupied=%zu affected_states=%zu repair_processed=%zu "
-      "repair_pending=%zu records=%zu open=%zu "
+      "repair_pending=%zu feasibility_attempted=%s feasibility_found=%s "
+      "feasibility_expansions=%zu records=%zu open=%zu "
       "time_records=%zu time_open=%zu shortcuts=%zu/%zu "
       "edge_queries=%zu raw_edge_checks=%zu adaptive_edge_queries=%zu "
       "adaptive_path_edges=%zu maximum_adaptive_level=%zu "
@@ -190,15 +195,17 @@ void ProductionMppiNode::processRouteSearch3D(
       prepared.route_3d ? prepared.route_3d->size() : 0U, plan.expansions,
       plan.execution_time_search_expansions, plan.changed_occupied_voxels,
       plan.affected_lattice_states, plan.repair_lattice_states_processed,
-      plan.repair_lattice_states_pending, plan.records, plan.open_entries,
-      plan.execution_time_search_records, plan.execution_time_search_open_entries,
-      plan.shortcuts_applied, plan.shortcut_checks, plan.lattice_edge_queries,
-      plan.raw_edge_validation_checks, plan.adaptive_edge_queries,
-      plan.adaptive_edges_in_extracted_path, plan.maximum_queried_lattice_level,
-      plan.path_length_m, plan.execution_time_search_objective_s,
-      plan.estimated_execution_time_s, plan.estimated_translation_time_s,
-      plan.estimated_stationary_turn_time_s, candidate_set.search_ms, route_planning_ms,
-      prepared.candidate_validation_ms, prepared.route_smoothing_ms,
+      plan.repair_lattice_states_pending, plan.feasibility_attempted ? "true" : "false",
+      plan.feasibility_route_found ? "true" : "false", plan.feasibility_expansions,
+      plan.records, plan.open_entries, plan.execution_time_search_records,
+      plan.execution_time_search_open_entries, plan.shortcuts_applied,
+      plan.shortcut_checks, plan.lattice_edge_queries, plan.raw_edge_validation_checks,
+      plan.adaptive_edge_queries, plan.adaptive_edges_in_extracted_path,
+      plan.maximum_queried_lattice_level, plan.path_length_m,
+      plan.execution_time_search_objective_s, plan.estimated_execution_time_s,
+      plan.estimated_translation_time_s, plan.estimated_stationary_turn_time_s,
+      candidate_set.search_ms, route_planning_ms, prepared.candidate_validation_ms,
+      prepared.route_smoothing_ms,
       activation.assessment.raw_validation.connector_validated ? "true" : "false",
       activation.assessment.raw_validation.suffix_validated ? "true" : "false",
       prepared.route_fingerprint);

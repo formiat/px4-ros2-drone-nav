@@ -111,6 +111,9 @@ struct ProductionPersistentPlannerTelemetry3D {
   std::size_t expansions{0U};
   std::size_t changed_occupied_voxels{0U};
   std::size_t affected_lattice_states{0U};
+  std::size_t repair_lattice_states_processed{0U};
+  std::size_t repair_lattice_states_pending{0U};
+  std::size_t feasibility_expansions{0U};
   std::size_t records{0U};
   std::size_t open_entries{0U};
   std::size_t shortcut_checks{0U};
@@ -136,6 +139,9 @@ struct ProductionPersistentPlannerTelemetry3D {
   bool search_state_reused{false};
   bool occupied_world_unchanged{false};
   bool incumbent_retained{false};
+  bool repair_pending{false};
+  bool feasibility_attempted{false};
+  bool feasibility_route_found{false};
   bool execution_time_search_complete{false};
   bool search_complete{false};
 };

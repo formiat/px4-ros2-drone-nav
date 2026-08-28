@@ -49,6 +49,11 @@ struct PersistentPlannerConfig3D {
   double minimum_continuous_turn_alignment{0.7071067811865476};
   double goal_tolerance_m{1.0};
   std::size_t connector_search_radius_cells{2U};
+  // Feasibility-first search may publish any complete raw-valid route before
+  // the persistent graph proves translation- or execution-time optimality.
+  bool feasibility_first_enabled{true};
+  std::size_t maximum_feasibility_expansions_per_update{4096U};
+  double maximum_feasibility_compute_time_ms{50.0};
   // Shared per-call graph-work cap. Pending repair vertices consume this
   // budget before new shortest-path expansions are allowed.
   std::size_t maximum_expansions_per_update{200000U};
@@ -81,6 +86,7 @@ struct PersistentPlannerResult3D {
   std::size_t affected_lattice_states{0U};
   std::size_t repair_lattice_states_processed{0U};
   std::size_t repair_lattice_states_pending{0U};
+  std::size_t feasibility_expansions{0U};
   std::size_t records{0U};
   std::size_t open_entries{0U};
   std::size_t shortcut_checks{0U};
@@ -104,6 +110,8 @@ struct PersistentPlannerResult3D {
   bool occupied_world_unchanged{false};
   bool incumbent_retained{false};
   bool repair_pending{false};
+  bool feasibility_attempted{false};
+  bool feasibility_route_found{false};
   bool execution_time_search_complete{false};
   bool search_complete{false};
 

@@ -286,7 +286,12 @@ PersistentDStarLitePlanner3DImpl::continueExecutionTimeSearch(
     }
     if (expansions >= maximum_expansions ||
         std::chrono::steady_clock::now() >= deadline) {
-      return std::nullopt;
+      // The spatial incumbent is already a complete raw-valid route. Publish
+      // it as the anytime result while the direction-aware search continues
+      // refining the execution-time objective on later calls.
+      return hasExecutionTimeIncumbent()
+                 ? std::optional<std::vector<Point3>>{bestExecutionTimePath()}
+                 : std::nullopt;
     }
 
     const PersistentPlannerTimeQueueEntry3D current = execution_time_open_.top();

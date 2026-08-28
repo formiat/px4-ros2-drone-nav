@@ -21,6 +21,7 @@ namespace {
   config.time_model.maximum_horizontal_speed_mps = 5.0;
   config.time_model.maximum_vertical_speed_mps = 2.0;
   config.goal_tolerance_m = 0.01;
+  config.feasibility_first_enabled = false;
   config.maximum_compute_time_ms = 1000.0;
   config.maximum_expansions_per_update = 100000U;
   config.physical_footprint.radius_m = 0.0;
@@ -462,7 +463,7 @@ TEST(PersistentDStarLitePlanner3DTest,
 }
 
 TEST(PersistentDStarLitePlanner3DTest,
-     BoundedSearchResumesInsteadOfPublishingAGreedyFrontier) {
+     BoundedSearchPublishesTheSpatialIncumbentBeforeTimeOptimality) {
   auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
       GridBounds3D{0.0, 0.0, 0.0, 1.0, 18, 18, 8});
   PersistentPlannerConfig3D config = testConfig();
@@ -486,6 +487,151 @@ TEST(PersistentDStarLitePlanner3DTest,
       << " time_records=" << result.execution_time_search_records;
   EXPECT_TRUE(result.search_state_reused);
   EXPECT_EQ(result.search_generation, generation);
+  EXPECT_FALSE(result.execution_time_search_complete);
+  EXPECT_FALSE(result.search_complete);
+  EXPECT_EQ(result.shortcut_checks, 0U);
+  expectRawValid(result.points, *occupancy, planner.config().physical_footprint);
+}
+
+TEST(PersistentDStarLitePlanner3DTest,
+     LongAnisotropicUnknownMissionPublishesAnAnytimeRouteWithinTheHealthBudget) {
+  auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{-30.0, -30.0, 0.0, 0.25, 1380, 2100, 160});
+  PersistentPlannerConfig3D config = testConfig();
+  config.minimum_horizontal_step_m = 2.0;
+  config.minimum_vertical_step_m = 1.0;
+  config.maximum_adaptive_lattice_level = 2U;
+  config.time_model.maximum_horizontal_speed_mps = 6.567;
+  config.time_model.maximum_vertical_speed_mps = 5.0;
+  config.time_model.maximum_translational_speed_mps = 6.567;
+  config.goal_tolerance_m = 2.0;
+  config.feasibility_first_enabled = true;
+  config.maximum_compute_time_ms = 150.0;
+  config.flight_envelope.minimum_target_z_m = 1.0;
+  config.flight_envelope.maximum_target_z_m = 39.0;
+  PersistentDStarLitePlanner3D planner{config};
+
+  PersistentPlannerResult3D result = planner.plan(request(
+      Point3{54.0, 54.0, 18.0}, Point3{216.0, 378.0, 18.0}, world(occupancy, 1U)));
+  std::size_t slices = 1U;
+  for (; slices < 30U && !result.executable(); ++slices) {
+    result = planner.plan(request(Point3{54.0, 54.0, 18.0}, Point3{216.0, 378.0, 18.0},
+                                  world(occupancy, 1U)));
+  }
+
+  EXPECT_TRUE(result.executable())
+      << "slices=" << slices << " records=" << result.records
+      << " open=" << result.open_entries << " expansions=" << result.expansions
+      << " time_expansions=" << result.execution_time_search_expansions
+      << " search_ms=" << result.search_ms;
+  EXPECT_TRUE(result.feasibility_attempted);
+  EXPECT_TRUE(result.feasibility_route_found);
+  EXPECT_GT(result.feasibility_expansions, 0U);
+  EXPECT_FALSE(result.execution_time_search_complete);
+  EXPECT_FALSE(result.search_complete);
+  expectRawValid(result.points, *occupancy, planner.config().physical_footprint);
+}
+
+TEST(PersistentDStarLitePlanner3DTest,
+     FeasibilityFirstSearchDetoursBeforePublishingACompleteRawValidRoute) {
+  auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 1.0, 30, 20, 5});
+  for (int z = 0; z < 5; ++z) {
+    for (int y = 3; y < 20; ++y) {
+      ASSERT_TRUE(
+          occupancy->setState(GridIndex3D{12, y, z}, ObservedVoxelState::kOccupied));
+    }
+  }
+  PersistentPlannerConfig3D config = testConfig();
+  config.feasibility_first_enabled = true;
+  config.physical_footprint.radius_m = 0.4;
+  config.physical_footprint.lower_extent_m = 0.2;
+  config.physical_footprint.upper_extent_m = 0.2;
+  config.physical_footprint.perimeter_samples = 8U;
+  config.physical_footprint.radial_rings = 1U;
+  config.physical_footprint.axial_samples = 3U;
+  config.physical_footprint.sweep_step_m = 0.25;
+  const Point3 start{2.5, 3.5, 2.5};
+  const Point3 goal{27.5, 17.5, 2.5};
+  ASSERT_FALSE(
+      validateObservedSweptFootprint(*occupancy, start, FootprintBodyAxis{}, goal,
+                                     FootprintBodyAxis{}, config.physical_footprint,
+                                     ObservedSpaceValidationPolicy::kAllowUnknown)
+          .accepted());
+
+  PersistentDStarLitePlanner3D planner{config};
+  const PersistentPlannerResult3D result =
+      planner.plan(request(start, goal, world(occupancy, 1U)));
+
+  ASSERT_TRUE(result.executable());
+  EXPECT_TRUE(result.feasibility_attempted);
+  EXPECT_TRUE(result.feasibility_route_found);
+  EXPECT_GT(result.feasibility_expansions, 1U);
+  EXPECT_GT(result.points.size(), 2U);
+  expectRawValid(result.points, *occupancy, planner.config().physical_footprint);
+}
+
+TEST(PersistentDStarLitePlanner3DTest,
+     ExhaustedFeasibilitySliceStillAdvancesTheResidentOptimalSearch) {
+  auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 1.0, 24, 16, 5});
+  for (int z = 0; z < 5; ++z) {
+    for (int y = 2; y < 16; ++y) {
+      ASSERT_TRUE(
+          occupancy->setState(GridIndex3D{11, y, z}, ObservedVoxelState::kOccupied));
+    }
+  }
+  PersistentPlannerConfig3D config = testConfig();
+  config.feasibility_first_enabled = true;
+  config.maximum_feasibility_expansions_per_update = 1U;
+  config.maximum_expansions_per_update = 4U;
+  PersistentDStarLitePlanner3D planner{config};
+  const Point3 start{2.5, 3.5, 2.5};
+  const Point3 goal{21.5, 13.5, 2.5};
+
+  const PersistentPlannerResult3D initial =
+      planner.plan(request(start, goal, world(occupancy, 1U)));
+  ASSERT_EQ(initial.status, PersistentPlannerStatus3D::kSearchInProgress);
+  EXPECT_TRUE(initial.feasibility_attempted);
+  EXPECT_FALSE(initial.feasibility_route_found);
+  EXPECT_EQ(initial.feasibility_expansions, 1U);
+  EXPECT_GT(initial.expansions, 0U);
+
+  const PersistentPlannerResult3D continued =
+      planner.plan(request(start, goal, world(occupancy, 1U)));
+  EXPECT_TRUE(continued.search_state_reused);
+  EXPECT_EQ(continued.search_generation, initial.search_generation);
+  EXPECT_GE(continued.records, initial.records);
+  EXPECT_GT(continued.expansions, 0U);
+}
+
+TEST(PersistentDStarLitePlanner3DTest,
+     FeasibilityFirstSearchReplacesAnIncumbentBlockedByNewRawEvidence) {
+  auto initial_occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 1.0, 22, 12, 5});
+  PersistentPlannerConfig3D config = testConfig();
+  config.feasibility_first_enabled = true;
+  PersistentDStarLitePlanner3D planner{config};
+  const Point3 start{1.5, 5.5, 2.5};
+  const Point3 goal{20.5, 5.5, 2.5};
+  const PersistentPlannerResult3D initial =
+      planner.plan(request(start, goal, world(initial_occupancy, 1U)));
+  ASSERT_TRUE(initial.executable());
+  ASSERT_TRUE(initial.feasibility_route_found);
+
+  auto changed = std::make_shared<ObservedOccupancyGrid3D>(*initial_occupancy);
+  const GridIndex3D obstacle{11, 5, 2};
+  ASSERT_TRUE(changed->setState(obstacle, ObservedVoxelState::kOccupied));
+  const PersistentPlannerResult3D replacement = planner.plan(
+      request(start, goal,
+              world(changed, 2U, {ObservedOccupancyGrid3D::chunkIndex(obstacle)})));
+
+  ASSERT_TRUE(replacement.executable());
+  EXPECT_FALSE(replacement.incumbent_retained);
+  EXPECT_TRUE(replacement.feasibility_attempted);
+  EXPECT_TRUE(replacement.feasibility_route_found);
+  EXPECT_GT(replacement.points.size(), initial.points.size());
+  expectRawValid(replacement.points, *changed, planner.config().physical_footprint);
 }
 
 } // namespace

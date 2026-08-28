@@ -170,6 +170,9 @@ private:
   [[nodiscard]] bool computeShortestPath(std::chrono::steady_clock::time_point deadline,
                                          std::size_t maximum_expansions,
                                          std::size_t& expansions);
+  [[nodiscard]] std::optional<std::vector<Point3>>
+  findFeasiblePath(std::chrono::steady_clock::time_point deadline,
+                   std::size_t maximum_expansions, std::size_t& expansions);
   [[nodiscard]] std::vector<Point3> extractPath();
   [[nodiscard]] std::vector<Point3> shortcutPath(const std::vector<Point3>& path,
                                                  std::size_t& checks,

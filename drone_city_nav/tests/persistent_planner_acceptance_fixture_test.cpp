@@ -42,6 +42,7 @@ namespace {
   config.time_model.maximum_vertical_acceleration_mps2 = 3.0;
   config.time_model.maximum_control_jerk_mps3 = 12.0;
   config.goal_tolerance_m = 0.01;
+  config.feasibility_first_enabled = false;
   config.maximum_compute_time_ms = 2000.0;
   config.maximum_expansions_per_update = 500000U;
   config.maximum_extracted_path_nodes = 4096U;
@@ -220,9 +221,7 @@ TEST(PersistentPlannerAcceptanceFixture,
       PersistentDStarLitePlanner3D planner{acceptancePlannerConfig()};
       PersistentPlannerResult3D result =
           planMission(planner, mission, fixture.occupancy);
-      for (std::size_t continuation = 0U;
-           continuation < 16U &&
-           result.status == PersistentPlannerStatus3D::kSearchInProgress;
+      for (std::size_t continuation = 0U; continuation < 16U && !result.search_complete;
            ++continuation) {
         result = planMission(planner, mission, fixture.occupancy);
       }

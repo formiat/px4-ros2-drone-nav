@@ -54,6 +54,26 @@ canonicalEdge(const PersistentPlannerNode3D first,
   return PersistentPlannerEdge3D{second, first};
 }
 
+struct FeasibilityQueueEntry3D {
+  double estimated_remaining_s{std::numeric_limits<double>::infinity()};
+  std::size_t depth{0U};
+  PersistentPlannerNode3D node{};
+  std::uint64_t sequence{0U};
+};
+
+struct FeasibilityQueueEntryCompare3D {
+  [[nodiscard]] bool operator()(const FeasibilityQueueEntry3D& first,
+                                const FeasibilityQueueEntry3D& second) const noexcept {
+    if (first.estimated_remaining_s != second.estimated_remaining_s) {
+      return first.estimated_remaining_s > second.estimated_remaining_s;
+    }
+    if (first.depth != second.depth) {
+      return first.depth < second.depth;
+    }
+    return first.sequence > second.sequence;
+  }
+};
+
 } // namespace
 
 void PersistentDStarLitePlanner3DImpl::initializeSearch(
@@ -116,8 +136,25 @@ std::vector<PersistentPlannerNode3D> PersistentDStarLitePlanner3DImpl::adjacentN
 double PersistentDStarLitePlanner3DImpl::heuristic(
     const PersistentPlannerNode3D first,
     const PersistentPlannerNode3D second) const noexcept {
-  return minimumFlightTranslationTime3D(pointFor(first), pointFor(second),
-                                        config_.time_model);
+  // Every horizontal graph edge is axial or diagonal. Its obstacle-free
+  // lattice distance is therefore an admissible, consistent lower bound that
+  // is strictly tighter than continuous Euclidean distance for non-45-degree
+  // missions. Adaptive edges preserve the same per-metre cost.
+  const double delta_x_m = static_cast<double>(std::abs(first.x - second.x)) *
+                           config_.minimum_horizontal_step_m;
+  const double delta_y_m = static_cast<double>(std::abs(first.y - second.y)) *
+                           config_.minimum_horizontal_step_m;
+  const double horizontal_diagonal_m =
+      std::max(delta_x_m, delta_y_m) +
+      (std::numbers::sqrt2 - 1.0) * std::min(delta_x_m, delta_y_m);
+  const double vertical_m = static_cast<double>(std::abs(first.z - second.z)) *
+                            config_.minimum_vertical_step_m;
+  const double euclidean_m = std::hypot(std::hypot(delta_x_m, delta_y_m), vertical_m);
+  return std::max(
+      {horizontal_diagonal_m / config_.time_model.maximum_horizontal_speed_mps,
+       vertical_m / config_.time_model.maximum_vertical_speed_mps,
+       horizontal_diagonal_m / config_.time_model.maximum_translational_speed_mps,
+       euclidean_m / config_.time_model.maximum_translational_speed_mps});
 }
 
 double
@@ -342,6 +379,115 @@ bool PersistentDStarLitePlanner3DImpl::computeShortestPath(
     ++expansions;
   }
   return true;
+}
+
+std::optional<std::vector<Point3>> PersistentDStarLitePlanner3DImpl::findFeasiblePath(
+    const std::chrono::steady_clock::time_point deadline,
+    const std::size_t maximum_expansions, std::size_t& expansions) {
+  expansions = 0U;
+  std::priority_queue<FeasibilityQueueEntry3D, std::vector<FeasibilityQueueEntry3D>,
+                      FeasibilityQueueEntryCompare3D>
+      open;
+  std::unordered_set<PersistentPlannerNode3D, PersistentPlannerNode3DHash> discovered;
+  std::unordered_map<PersistentPlannerNode3D, PersistentPlannerNode3D,
+                     PersistentPlannerNode3DHash>
+      parents;
+  std::uint64_t sequence = 1U;
+  discovered.insert(start_);
+  open.push(FeasibilityQueueEntry3D{
+      .estimated_remaining_s = heuristic(start_, goal_),
+      .depth = 0U,
+      .node = start_,
+      .sequence = sequence,
+  });
+
+  const auto reconstruct = [&](const PersistentPlannerNode3D terminal)
+      -> std::optional<std::vector<Point3>> {
+    std::vector<PersistentPlannerNode3D> nodes;
+    nodes.reserve(std::min(config_.maximum_extracted_path_nodes, discovered.size()));
+    PersistentPlannerNode3D current = terminal;
+    while (true) {
+      nodes.push_back(current);
+      if (current == start_) {
+        break;
+      }
+      if (nodes.size() >= config_.maximum_extracted_path_nodes) {
+        return std::nullopt;
+      }
+      const auto parent = parents.find(current);
+      if (parent == parents.end()) {
+        return std::nullopt;
+      }
+      current = parent->second;
+    }
+    std::ranges::reverse(nodes);
+    std::vector<Point3> path;
+    path.reserve(nodes.size() + 2U);
+    path.push_back(exact_start_);
+    for (const PersistentPlannerNode3D node : nodes) {
+      const Point3 point = pointFor(node);
+      if (distance3D(path.back(), point) > kCostTolerance) {
+        path.push_back(point);
+      }
+    }
+    if (distance3D(path.back(), exact_goal_) > kCostTolerance) {
+      path.push_back(exact_goal_);
+    }
+    return path.size() >= 2U ? std::optional<std::vector<Point3>>{std::move(path)}
+                             : std::nullopt;
+  };
+
+  while (!open.empty() && expansions < maximum_expansions &&
+         std::chrono::steady_clock::now() < deadline) {
+    const FeasibilityQueueEntry3D current = open.top();
+    open.pop();
+    ++expansions;
+
+    const Point3 current_point = pointFor(current.node);
+    const bool direct_departure =
+        current.node == start_ &&
+        distance3D(exact_start_, current_point) <= kCostTolerance;
+    const bool goal_connector_valid =
+        direct_departure ? departureSegmentValid(exact_start_, exact_goal_)
+                         : rawSegmentValid(current_point, exact_goal_);
+    if (goal_connector_valid) {
+      std::optional<std::vector<Point3>> candidate = reconstruct(current.node);
+      if (candidate.has_value() && pathRawValid(*candidate)) {
+        return candidate;
+      }
+    }
+
+    for (const PersistentPlannerNode3D neighbor : adjacentNodes(current.node)) {
+      if (discovered.contains(neighbor)) {
+        continue;
+      }
+      ++lattice_edge_queries_;
+      const std::size_t level = latticeLevel(current.node, neighbor);
+      if (level > 0U) {
+        ++adaptive_edge_queries_;
+        maximum_queried_lattice_level_ =
+            std::max(maximum_queried_lattice_level_, level);
+      }
+      ++raw_edge_validation_checks_;
+      if (!rawSegmentValid(pointFor(current.node), pointFor(neighbor))) {
+        continue;
+      }
+      discovered.insert(neighbor);
+      parents.emplace(neighbor, current.node);
+      const std::size_t depth = current.depth + 1U;
+      ++sequence;
+      if (sequence == 0U) {
+        sequence = 1U;
+      }
+      open.push(FeasibilityQueueEntry3D{
+          .estimated_remaining_s = heuristic(neighbor, goal_),
+          .depth = depth,
+          .node = neighbor,
+          .sequence = sequence,
+      });
+    }
+  }
+  return std::nullopt;
 }
 
 std::vector<Point3> PersistentDStarLitePlanner3DImpl::extractPath() {

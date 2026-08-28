@@ -186,7 +186,8 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
       "occupied_unchanged=%s incumbent_retained=%s search_complete=%s "
       "time_search_complete=%s points=%zu expansions=%zu time_expansions=%zu "
       "changed_occupied=%zu affected_states=%zu repair_processed=%zu "
-      "repair_pending=%zu repair_in_progress=%s records=%zu open=%zu "
+      "repair_pending=%zu repair_in_progress=%s feasibility_attempted=%s "
+      "feasibility_found=%s feasibility_expansions=%zu records=%zu open=%zu "
       "time_records=%zu time_open=%zu shortcuts=%zu/%zu edge_queries=%zu "
       "raw_edge_checks=%zu adaptive_edge_queries=%zu adaptive_path_edges=%zu "
       "maximum_adaptive_level=%zu time_objective_s=%.3f eta_s=%.3f "
@@ -201,14 +202,16 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
       plan.expansions, plan.execution_time_search_expansions,
       plan.changed_occupied_voxels, plan.affected_lattice_states,
       plan.repair_lattice_states_processed, plan.repair_lattice_states_pending,
-      plan.repair_pending ? "true" : "false", plan.records, plan.open_entries,
-      plan.execution_time_search_records, plan.execution_time_search_open_entries,
-      plan.shortcuts_applied, plan.shortcut_checks, plan.lattice_edge_queries,
-      plan.raw_edge_validation_checks, plan.adaptive_edge_queries,
-      plan.adaptive_edges_in_extracted_path, plan.maximum_queried_lattice_level,
-      plan.execution_time_search_objective_s, plan.estimated_execution_time_s,
-      plan.estimated_translation_time_s, plan.estimated_stationary_turn_time_s,
-      plan.world_update_ms, plan.search_ms);
+      plan.repair_pending ? "true" : "false",
+      plan.feasibility_attempted ? "true" : "false",
+      plan.feasibility_route_found ? "true" : "false", plan.feasibility_expansions,
+      plan.records, plan.open_entries, plan.execution_time_search_records,
+      plan.execution_time_search_open_entries, plan.shortcuts_applied,
+      plan.shortcut_checks, plan.lattice_edge_queries, plan.raw_edge_validation_checks,
+      plan.adaptive_edge_queries, plan.adaptive_edges_in_extracted_path,
+      plan.maximum_queried_lattice_level, plan.execution_time_search_objective_s,
+      plan.estimated_execution_time_s, plan.estimated_translation_time_s,
+      plan.estimated_stationary_turn_time_s, plan.world_update_ms, plan.search_ms);
 
   if (plan.executable()) {
     std::vector<RouteSample3D> route = sampleRoute3D(
