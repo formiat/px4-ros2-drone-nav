@@ -388,8 +388,8 @@ struct SnapshotFixture3D {
     if (!initial) {
       return nullptr;
     }
-    FiniteExecutionState3D initial_execution = finiteExecutionForRoute(
-        *initial, *suffix, FiniteExecutionKind3D::kNominal, true, 100U);
+    FiniteExecutionPlan3D initial_execution =
+        finitePlanForRoute(*initial, *suffix, FiniteExecutionKind3D::kNominal, 100U);
     return activateCertifiedRoute3D(*initial, initial->version, *suffix,
                                     std::move(initial_execution))
         .next;
@@ -513,6 +513,14 @@ struct SnapshotFixture3D {
       throw std::logic_error{"failed to build finite execution fixture"};
     }
     mppi::FiniteHorizon horizon = std::move(*built_horizon);
+    if (kind == FiniteExecutionKind3D::kEmergencyBrakeTail) {
+      built_horizon = mppi::buildFiniteBrakingHorizon(
+          horizon.states.front(), horizon.controls.size(), dynamics, mppi::Control{});
+      if (!built_horizon.has_value()) {
+        throw std::logic_error{"failed to build braking execution fixture"};
+      }
+      horizon = std::move(*built_horizon);
+    }
     const VersionedExecutionInput3D* const progress_input =
         suffix.progress.execution_input != nullptr
             ? suffix.progress.execution_input.get()
@@ -697,6 +705,14 @@ struct SnapshotFixture3D {
     }
     return result;
   }
+
+  [[nodiscard]] static FiniteExecutionPlan3D finitePlanForRoute(
+      const ExecutionRouteSnapshot3D& snapshot, const CertifiedRouteSuffix3D& suffix,
+      const FiniteExecutionKind3D command_kind = FiniteExecutionKind3D::kNominal,
+      const std::uint64_t trajectory_revision = 101U,
+      const std::uint64_t source_navigation_revision = 55U,
+      const std::size_t extra_stationary_control_count = 0U,
+      const double begin_station_m = -1.0);
 
   [[nodiscard]] static FiniteExecutionState3D rawInvalidatedFiniteExecution(
       const ExecutionRouteSnapshot3D& snapshot,

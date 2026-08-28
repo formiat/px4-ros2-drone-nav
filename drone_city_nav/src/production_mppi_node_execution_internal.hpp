@@ -33,6 +33,8 @@ enum class ProductionMppiHorizonCommitStatus : std::uint8_t {
 struct ProductionMppiHorizonCommit {
   ProductionMppiHorizonCommitKind kind{ProductionMppiHorizonCommitKind::kNoOp};
   std::shared_ptr<const ExecutionRouteSnapshot3D> expected_snapshot;
+  std::shared_ptr<const ExecutionRouteSnapshot3D> certification_snapshot;
+  std::shared_ptr<const ExecutionRouteTransitionResult3D> progress_preparation;
   const ExecutionRouteTransitionResult3D* transition{nullptr};
   std::shared_ptr<const PendingCertifiedRoute3D> expected_pending;
   bool latest_evidence_revalidated{false};

@@ -14,6 +14,7 @@ std::shared_ptr<const ExecutionRouteSnapshot3D> makeInitialExecutionRouteSnapsho
       .phase = ExecutionRoutePhase3D::kAwaitingSuccessor,
       .route = std::nullopt,
       .finite_execution = std::nullopt,
+      .braking_fallback = std::nullopt,
       .direct_tracking_execution = std::nullopt,
       .stationary_hold = std::nullopt,
       .execution_owner_epoch = 1U,
@@ -125,9 +126,9 @@ ExecutionRoutePublicationStatus3D ExecutionRouteSnapshotStore3D::publish(
       snapshot_ != expected_snapshot) {
     return ExecutionRoutePublicationStatus3D::kStaleSnapshotVersion;
   }
-  if (!transition.applied() || !transition.next->valid() ||
+  if (!transition.applied() || !transition.next->publishable() ||
       expected_snapshot->version == std::numeric_limits<std::uint64_t>::max() ||
-      transition.next->version != expected_snapshot->version + 1U) {
+      transition.next->version <= expected_snapshot->version) {
     return ExecutionRoutePublicationStatus3D::kInvalidCandidate;
   }
   if (transition.predecessor != expected_snapshot.get()) {

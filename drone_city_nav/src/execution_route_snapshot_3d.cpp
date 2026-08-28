@@ -369,6 +369,11 @@ bool FiniteExecutionState3D::validFor(
                                  source_physical_route_fingerprint)) {
     return false;
   }
+  if (kind == FiniteExecutionKind3D::kEmergencyBrakeTail &&
+      (horizon->nominal_prefix_control_count != 0U ||
+       horizon->arrival_control_count != horizon->controls.size())) {
+    return false;
+  }
   if (!std::all_of(horizon->states.begin(), horizon->states.end(), finiteState) ||
       !std::all_of(horizon->controls.begin(), horizon->controls.end(), finiteControl) ||
       !terminalStopBoundaryValid(stop_boundary, *this) ||
@@ -403,7 +408,8 @@ bool FiniteExecutionState3D::validFor(
       source_physical_route_fingerprint !=
           route->geometry->physical_route_fingerprint ||
       begin_route_station_m > route->progress.station_m + kExecutionBindingToleranceM ||
-      stop_boundary.station_m + kStationToleranceM < route->progress.station_m ||
+      (!revalidation_required &&
+       stop_boundary.station_m + kStationToleranceM < route->progress.station_m) ||
       !(revalidation_required
             ? certificateEligibleForRevalidation(certificate, route->certificate)
             : certificateNotNewerThan(certificate, route->certificate))) {
@@ -413,13 +419,49 @@ bool FiniteExecutionState3D::validFor(
       sampleRoute3DAtStation(*route->geometry->route, stop_boundary.station_m);
   // A strict route corridor is optional because the complete finite horizon is
   // independently swept against its immutable world and latest lidar evidence.
-  if (validation_policy->routeCrossTrackConstraintsEnabled() &&
+  if (kind != FiniteExecutionKind3D::kEmergencyBrakeTail &&
+      validation_policy->routeCrossTrackConstraintsEnabled() &&
       distance3D(stop_boundary.position, expected_stop.position) >
           kMaximumRouteCrossTrackM) {
     return false;
   }
   return sameTerminalBoundary(terminal_boundary, canonicalFiniteRouteTerminalBoundary(
                                                      *route, begin_route_station_m));
+}
+
+bool FiniteExecutionPlan3D::validFor(
+    const CertifiedRouteSuffix3D& route) const noexcept {
+  const bool shared_binding =
+      command_horizon.trajectory_revision == braking_tail.trajectory_revision &&
+      command_horizon.source_snapshot_version == braking_tail.source_snapshot_version &&
+      command_horizon.source_navigation_revision ==
+          braking_tail.source_navigation_revision &&
+      command_horizon.source_route_instance_id ==
+          braking_tail.source_route_instance_id &&
+      command_horizon.source_route_generation == braking_tail.source_route_generation &&
+      command_horizon.source_geometry_revision ==
+          braking_tail.source_geometry_revision &&
+      command_horizon.source_physical_route_fingerprint ==
+          braking_tail.source_physical_route_fingerprint &&
+      command_horizon.execution_input == braking_tail.execution_input &&
+      command_horizon.latest_lidar_evidence == braking_tail.latest_lidar_evidence &&
+      command_horizon.observed_raw_world == braking_tail.observed_raw_world &&
+      command_horizon.static_world == braking_tail.static_world &&
+      command_horizon.validation_policy == braking_tail.validation_policy &&
+      command_horizon.valid_from_ns == braking_tail.valid_from_ns &&
+      command_horizon.control_interval_ns == braking_tail.control_interval_ns &&
+      command_horizon.revalidation_required == braking_tail.revalidation_required &&
+      sameCertificate(command_horizon.certificate, braking_tail.certificate) &&
+      std::abs(command_horizon.begin_route_station_m -
+               braking_tail.begin_route_station_m) <= kStationToleranceM;
+  return (command_horizon.kind == FiniteExecutionKind3D::kNominal ||
+          command_horizon.kind == FiniteExecutionKind3D::kRetained) &&
+         braking_tail.kind == FiniteExecutionKind3D::kEmergencyBrakeTail &&
+         shared_binding && command_horizon.validFor(&route) &&
+         braking_tail.validFor(&route) &&
+         braking_tail.valid_until_ns <= command_horizon.valid_until_ns &&
+         braking_tail.stop_boundary.station_m <=
+             command_horizon.stop_boundary.station_m + kStationToleranceM;
 }
 
 bool DirectTrackingOwnerIdentity3D::valid() const noexcept {
@@ -512,7 +554,7 @@ bool ExecutionRouteSnapshot3D::valid() const noexcept {
   const bool direct_owner_conflict =
       direct_tracking_execution.has_value() &&
       (route.has_value() || finite_execution.has_value() ||
-       stationary_hold.has_value());
+       braking_fallback.has_value() || stationary_hold.has_value());
   if (version == 0U || execution_owner_epoch == 0U || direct_owner_conflict ||
       (route.has_value() &&
        (!route->valid() || route->progress.execution_input == nullptr)) ||
@@ -520,6 +562,9 @@ bool ExecutionRouteSnapshot3D::valid() const noexcept {
        !finite_execution->validFor(route ? &route.value() : nullptr)) ||
       (finite_execution.has_value() &&
        finite_execution->source_snapshot_version >= version) ||
+      (braking_fallback.has_value() &&
+       (!route.has_value() || !braking_fallback->validFor(std::addressof(*route)) ||
+        braking_fallback->source_snapshot_version >= version)) ||
       (direct_tracking_execution.has_value() &&
        (!direct_tracking_execution->valid() ||
         direct_tracking_execution->source_snapshot_version >= version)) ||
@@ -527,6 +572,8 @@ bool ExecutionRouteSnapshot3D::valid() const noexcept {
       (stationary_hold.has_value() &&
        stationary_hold->hold_id != execution_owner_epoch) ||
       (finite_execution.has_value() && stationary_hold.has_value()) ||
+      (braking_fallback.has_value() && stationary_hold.has_value()) ||
+      (braking_fallback.has_value() != finite_execution.has_value()) ||
       (route.has_value() && route_generation_high_water != 0U &&
        route_generation_high_water < route->identity.generation)) {
     return false;
@@ -534,9 +581,15 @@ bool ExecutionRouteSnapshot3D::valid() const noexcept {
   if (route.has_value() && finite_execution.has_value()) {
     const ExecutionInputProgressRelation3D relation = executionInputProgressRelation(
         *route->progress.execution_input, *finite_execution->execution_input);
+    const ExecutionInputProgressRelation3D braking_relation =
+        executionInputProgressRelation(*route->progress.execution_input,
+                                       *braking_fallback->execution_input);
     if (relation == ExecutionInputProgressRelation3D::kInvalid ||
+        braking_relation == ExecutionInputProgressRelation3D::kInvalid ||
         (!finite_execution->revalidation_required &&
-         relation != ExecutionInputProgressRelation3D::kReplay)) {
+         relation != ExecutionInputProgressRelation3D::kReplay) ||
+        (!braking_fallback->revalidation_required &&
+         braking_relation != ExecutionInputProgressRelation3D::kReplay)) {
       return false;
     }
   }
@@ -550,8 +603,14 @@ bool ExecutionRouteSnapshot3D::valid() const noexcept {
       (finite_execution->kind == FiniteExecutionKind3D::kNominal ||
        finite_execution->kind == FiniteExecutionKind3D::kRetained) &&
       !finiteExecutionValidatedAgainstNewerRawWorld(*finite_execution);
+  const bool complete_following_plan =
+      route.has_value() && finite_execution.has_value() &&
+      braking_fallback.has_value() &&
+      FiniteExecutionPlan3D{.command_horizon = *finite_execution,
+                            .braking_tail = *braking_fallback}
+          .validFor(*route);
   const bool certified_endpoint_stop =
-      route_at_endpoint && current_nominal_execution &&
+      route_at_endpoint && current_nominal_execution && complete_following_plan &&
       !finite_execution->revalidation_required &&
       finite_execution->terminal_boundary.has_value() &&
       finite_execution->stop_boundary.station_m + kCompletionStationToleranceM >=
@@ -559,33 +618,60 @@ bool ExecutionRouteSnapshot3D::valid() const noexcept {
   switch (phase) {
     case ExecutionRoutePhase3D::kFollowing:
       return route.has_value() && !stationary_hold.has_value() &&
-             !direct_tracking_execution.has_value() && current_following_execution;
+             !direct_tracking_execution.has_value() && current_following_execution &&
+             complete_following_plan;
     case ExecutionRoutePhase3D::kDirectTracking:
       return direct_tracking_execution.has_value() && !route.has_value() &&
-             !finite_execution.has_value() && !stationary_hold.has_value();
+             !finite_execution.has_value() && !braking_fallback.has_value() &&
+             !stationary_hold.has_value();
     case ExecutionRoutePhase3D::kAwaitingSuccessor:
       return !direct_tracking_execution.has_value() && !stationary_hold.has_value() &&
-             ((!route.has_value() && !finite_execution.has_value()) ||
+             ((!route.has_value() && !finite_execution.has_value() &&
+               !braking_fallback.has_value()) ||
               (route.has_value() &&
                route->planned_endpoint_semantics ==
                    RouteEndpointSemantics3D::kContinuation &&
                certified_endpoint_stop));
     case ExecutionRoutePhase3D::kBraking:
       return !direct_tracking_execution.has_value() && route.has_value() &&
-             finite_execution.has_value() &&
-             finite_execution->kind != FiniteExecutionKind3D::kNominal &&
-             !finite_execution->revalidation_required;
+             finite_execution.has_value() && braking_fallback.has_value() &&
+             finite_execution->kind == FiniteExecutionKind3D::kEmergencyBrakeTail &&
+             !finite_execution->revalidation_required &&
+             finiteExecutionArtifactFingerprint(*finite_execution) ==
+                 finiteExecutionArtifactFingerprint(*braking_fallback);
     case ExecutionRoutePhase3D::kStopped:
       return !direct_tracking_execution.has_value() &&
              ((stationary_hold.has_value() && !route.has_value() &&
-               !finite_execution.has_value()) ||
+               !finite_execution.has_value() && !braking_fallback.has_value()) ||
               (certified_endpoint_stop && route->planned_endpoint_semantics !=
                                               RouteEndpointSemantics3D::kContinuation));
     case ExecutionRoutePhase3D::kRevoked:
       return !route.has_value() && !finite_execution.has_value() &&
-             !direct_tracking_execution.has_value() && !stationary_hold.has_value();
+             !braking_fallback.has_value() && !direct_tracking_execution.has_value() &&
+             !stationary_hold.has_value();
   }
   return false;
+}
+
+bool ExecutionRouteSnapshot3D::publishable() const noexcept {
+  if (!valid()) {
+    return false;
+  }
+  if (!route.has_value()) {
+    return !braking_fallback.has_value();
+  }
+  if (!finite_execution.has_value() || !braking_fallback.has_value() ||
+      finite_execution->revalidation_required ||
+      braking_fallback->revalidation_required) {
+    return false;
+  }
+  if (phase == ExecutionRoutePhase3D::kBraking) {
+    return finiteExecutionArtifactFingerprint(*finite_execution) ==
+           finiteExecutionArtifactFingerprint(*braking_fallback);
+  }
+  return FiniteExecutionPlan3D{.command_horizon = *finite_execution,
+                               .braking_tail = *braking_fallback}
+      .validFor(*route);
 }
 
 std::uint64_t ExecutionRouteSnapshot3D::routeGenerationHighWater() const noexcept {

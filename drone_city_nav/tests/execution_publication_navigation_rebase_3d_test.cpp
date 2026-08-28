@@ -6,7 +6,7 @@
 #include <optional>
 
 #include "execution_publication_navigation_rebase_3d.hpp"
-#include "execution_route_snapshot_3d_test_support.hpp"
+#include "execution_route_snapshot_3d_plan_test_support.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -513,6 +513,182 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
   EXPECT_EQ(rebased_execution.execution_input, current_input);
   EXPECT_GT(rebased_route.progress.station_m, active_route.progress.station_m + 0.25);
   EXPECT_EQ(rebased_route.progress.execution_input, current_input);
+}
+
+TEST(ExecutionPublicationNavigationRebase3DTest,
+     PreparedProgressAndRawCertificateSurviveLateRebaseComposition) {
+  SnapshotFixture3D fixture;
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> resident =
+      fixture.activeSnapshot();
+  ASSERT_NE(resident, nullptr);
+  ASSERT_TRUE(resident->route.has_value());
+  constexpr std::uint64_t kAdvancedRawRevision =
+      SnapshotFixture3D::kLatestRawRevision + 1U;
+  const ExecutionRouteTransitionResult3D progress = advanceCertifiedRoute3D(
+      *resident, SnapshotFixture3D::guard(*resident),
+      fixture.executionObservation({4.0, 0.0, 5.0}, kAdvancedRawRevision,
+                                   &fixture.raw_occupancy),
+      SnapshotFixture3D::progressInput(*resident, {4.0, 0.0, 5.0}),
+      fixture.rawWorld(kAdvancedRawRevision));
+  ASSERT_TRUE(progress.applied());
+  ASSERT_NE(progress.next, nullptr);
+  ASSERT_TRUE(progress.next->route.has_value());
+  ASSERT_NE(progress.next->route->observed_raw_world, nullptr);
+  ASSERT_EQ(progress.next->route->observed_raw_world->version().revision,
+            kAdvancedRawRevision);
+  ASSERT_FALSE(progress.next->publishable());
+
+  const ExecutionRouteTransitionResult3D prepared = replaceFiniteExecutionPlan3D(
+      *progress.next, SnapshotFixture3D::guard(*progress.next),
+      SnapshotFixture3D::finitePlanForRoute(*progress.next, *progress.next->route,
+                                            FiniteExecutionKind3D::kNominal, 101U));
+  ASSERT_TRUE(prepared.applied());
+  const ExecutionRouteTransitionResult3D candidate =
+      composeExecutionPlanTransition3D(*resident, progress, prepared);
+  ASSERT_TRUE(candidate.applied());
+  ASSERT_NE(candidate.next, nullptr);
+  ASSERT_TRUE(candidate.next->finite_execution.has_value());
+  const FiniteExecutionState3D& candidate_execution = *candidate.next->finite_execution;
+  ASSERT_NE(candidate_execution.execution_input, nullptr);
+  ASSERT_NE(candidate_execution.latest_lidar_evidence, nullptr);
+  ASSERT_NE(candidate_execution.observed_raw_world, nullptr);
+  const std::int64_t publication_now_ns =
+      candidate_execution.valid_from_ns + 20'000'000LL;
+  const std::shared_ptr<const VersionedExecutionInput3D> current_input =
+      advanceExecutionInput(*candidate_execution.execution_input, publication_now_ns);
+  const std::shared_ptr<const VersionedLatestLidarEvidence3D> current_lidar =
+      advanceLidarEvidence(*candidate_execution.latest_lidar_evidence,
+                           publication_now_ns);
+  ASSERT_NE(current_input, nullptr);
+  ASSERT_NE(current_lidar, nullptr);
+  mppi::FiniteHorizonConfig finite_horizon_config;
+
+  const ExecutionPublicationNavigationRebaseResult3D result =
+      rebaseExecutionPublicationForCurrentNavigation3D(
+          ExecutionPublicationNavigationRebaseRequest3D{
+              .expected_snapshot = resident.get(),
+              .certification_snapshot = progress.next.get(),
+              .progress_preparation = &progress,
+              .candidate_snapshot = candidate.next.get(),
+              .current_execution_input = current_input,
+              .current_lidar_evidence = current_lidar,
+              .current_observed_raw_world = candidate_execution.observed_raw_world,
+              .publication_now_ns = publication_now_ns,
+              .arrival_search_step_controls = 5U,
+              .finite_horizon_config = &finite_horizon_config,
+              .terminal_boundary = std::nullopt,
+          });
+
+  ASSERT_TRUE(result.rebased())
+      << executionPublicationNavigationRebaseStatus3DName(result.status) << ' '
+      << mppi::finiteExecutionPathStatusName(result.path_validation_status) << ' '
+      << finiteExecutionCertificationStatus3DName(result.route_certification_status)
+      << ' ' << executionRouteTransitionStatus3DName(result.transition_status);
+  ASSERT_TRUE(result.transition.has_value());
+  const ExecutionRouteTransitionResult3D& rebased = *result.transition;
+  ASSERT_NE(rebased.next, nullptr);
+  ASSERT_TRUE(rebased.next->route.has_value());
+  ASSERT_TRUE(rebased.next->finite_execution.has_value());
+  ASSERT_TRUE(rebased.next->braking_fallback.has_value());
+  EXPECT_EQ(rebased.predecessor, resident.get());
+  EXPECT_EQ(rebased.next->version, resident->version + 2U);
+  EXPECT_TRUE(rebased.next->publishable());
+  EXPECT_EQ(rebased.next->route->progress.execution_input, current_input);
+  EXPECT_EQ(rebased.next->route->observed_raw_world,
+            progress.next->route->observed_raw_world);
+  EXPECT_EQ(rebased.next->route->observed_raw_world->version().revision,
+            kAdvancedRawRevision);
+  EXPECT_EQ(rebased.next->finite_execution->execution_input, current_input);
+  EXPECT_EQ(rebased.next->braking_fallback->execution_input, current_input);
+  EXPECT_EQ(rebased.next->finite_execution->observed_raw_world,
+            progress.next->route->observed_raw_world);
+  EXPECT_EQ(rebased.next->braking_fallback->observed_raw_world,
+            progress.next->route->observed_raw_world);
+}
+
+TEST(ExecutionPublicationNavigationRebase3DTest,
+     LifecycleBrakingOwnerSurvivesTheFinalNavigationRace) {
+  SnapshotFixture3D fixture;
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
+      fixture.activeSnapshot();
+  ASSERT_NE(active, nullptr);
+  ASSERT_TRUE(active->route.has_value());
+  ASSERT_TRUE(active->finite_execution.has_value());
+  FiniteExecutionCertification3D braking_certification =
+      SnapshotFixture3D::finiteCertificationForRoute(
+          *active->route, FiniteExecutionKind3D::kEmergencyBrakeTail, 101U, 56U);
+  ASSERT_GT(braking_certification.horizon.controls.size(), 1U);
+  braking_certification.horizon.controls.pop_back();
+  braking_certification.horizon.states.pop_back();
+  --braking_certification.horizon.arrival_control_count;
+  const RouteLifecycleEvent3D superseded{
+      .kind = RouteLifecycleEventKind3D::kObjectiveSuperseded,
+      .generation = active->route->identity.generation,
+  };
+  const FiniteExecutionCertificationResult3D certified =
+      certifyLifecycleBrakingFiniteExecution3DDetailed(
+          *active, LifecycleBrakingFiniteExecutionCertification3D{
+                       .lifecycle_event = superseded,
+                       .finite_execution = std::move(braking_certification),
+                   });
+  ASSERT_TRUE(certified.certified())
+      << finiteExecutionCertificationStatus3DName(certified.status);
+  const ExecutionRouteTransitionResult3D candidate = retireCertifiedRoute3D(
+      *active, SnapshotFixture3D::guard(*active), superseded, certified.execution);
+  ASSERT_TRUE(candidate.applied())
+      << executionRouteTransitionStatus3DName(candidate.status);
+  ASSERT_NE(candidate.next, nullptr);
+  ASSERT_TRUE(candidate.next->finite_execution.has_value());
+  ASSERT_TRUE(candidate.next->braking_fallback.has_value());
+  const FiniteExecutionState3D& candidate_execution = *candidate.next->finite_execution;
+  ASSERT_NE(candidate_execution.execution_input, nullptr);
+  ASSERT_NE(candidate_execution.latest_lidar_evidence, nullptr);
+  ASSERT_NE(candidate_execution.observed_raw_world, nullptr);
+  const std::int64_t publication_now_ns =
+      candidate_execution.valid_from_ns + 20'000'000LL;
+  const std::shared_ptr<const VersionedExecutionInput3D> current_input =
+      advanceExecutionInput(*candidate_execution.execution_input, publication_now_ns,
+                            std::nullopt, true);
+  const std::shared_ptr<const VersionedLatestLidarEvidence3D> current_lidar =
+      advanceLidarEvidence(*candidate_execution.latest_lidar_evidence,
+                           publication_now_ns);
+  ASSERT_NE(current_input, nullptr);
+  ASSERT_NE(current_lidar, nullptr);
+  mppi::FiniteHorizonConfig finite_horizon_config;
+
+  const ExecutionPublicationNavigationRebaseResult3D result =
+      rebaseExecutionPublicationForCurrentNavigation3D(
+          ExecutionPublicationNavigationRebaseRequest3D{
+              .expected_snapshot = active.get(),
+              .candidate_snapshot = candidate.next.get(),
+              .lifecycle_event = &superseded,
+              .current_execution_input = current_input,
+              .current_lidar_evidence = current_lidar,
+              .current_observed_raw_world = candidate_execution.observed_raw_world,
+              .publication_now_ns = publication_now_ns,
+              .arrival_search_step_controls = 5U,
+              .finite_horizon_config = &finite_horizon_config,
+              .terminal_boundary = std::nullopt,
+          });
+
+  ASSERT_TRUE(result.rebased())
+      << executionPublicationNavigationRebaseStatus3DName(result.status) << ' '
+      << mppi::finiteExecutionPathStatusName(result.path_validation_status) << ' '
+      << finiteExecutionCertificationStatus3DName(result.route_certification_status)
+      << ' ' << executionRouteTransitionStatus3DName(result.transition_status);
+  ASSERT_TRUE(result.transition.has_value());
+  ASSERT_NE(result.transition->next, nullptr);
+  const ExecutionRouteSnapshot3D& rebased = *result.transition->next;
+  ASSERT_TRUE(rebased.finite_execution.has_value());
+  ASSERT_TRUE(rebased.braking_fallback.has_value());
+  EXPECT_EQ(rebased.phase, ExecutionRoutePhase3D::kBraking);
+  EXPECT_EQ(rebased.finite_execution->kind, FiniteExecutionKind3D::kEmergencyBrakeTail);
+  EXPECT_EQ(rebased.finite_execution->execution_input, current_input);
+  EXPECT_EQ(rebased.braking_fallback->execution_input, current_input);
+  EXPECT_LE(rebased.finite_execution->valid_until_ns,
+            candidate_execution.valid_until_ns);
+  EXPECT_EQ(rebased.finite_execution->validation_proof.artifact_fingerprint,
+            rebased.braking_fallback->validation_proof.artifact_fingerprint);
 }
 
 TEST(ExecutionPublicationNavigationRebase3DTest,

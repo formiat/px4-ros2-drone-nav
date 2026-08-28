@@ -143,6 +143,7 @@ makeStationaryHoldSnapshot(const ExecutionRouteSnapshot3D& current,
   next.route_generation_high_water = current.routeGenerationHighWater();
   next.route.reset();
   next.finite_execution.reset();
+  next.braking_fallback.reset();
   next.direct_tracking_execution.reset();
   next.stationary_hold = StationaryExecutionHold3D{
       .hold_id = hold_id,
@@ -286,7 +287,7 @@ armStationaryCaptureHold3D(const ExecutionRouteSnapshot3D& current,
     return transitionFailure(status);
   }
   if (current.phase != ExecutionRoutePhase3D::kRevoked || current.route.has_value() ||
-      current.finite_execution.has_value() ||
+      current.finite_execution.has_value() || current.braking_fallback.has_value() ||
       current.direct_tracking_execution.has_value() ||
       current.stationary_hold.has_value()) {
     return transitionFailure(
@@ -327,6 +328,7 @@ revokeExecution3D(const ExecutionRouteSnapshot3D& current,
   next.route_generation_high_water = current.routeGenerationHighWater();
   next.route.reset();
   next.finite_execution.reset();
+  next.braking_fallback.reset();
   next.direct_tracking_execution.reset();
   next.stationary_hold.reset();
   return finishTransition(current, std::move(next));

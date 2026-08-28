@@ -80,7 +80,13 @@ struct ProductionRouteCandidateSet3D {
 
 struct ProductionRouteExecutionSelection3D {
   std::shared_ptr<const CertifiedRouteSuffix3D> route;
+  // The resident snapshot remains the single CAS predecessor. A successful
+  // progress assessment is retained only as an immutable certification base
+  // and cannot become controller-visible until a complete execution plan is
+  // composed with it.
   std::shared_ptr<const ExecutionRouteSnapshot3D> source_snapshot;
+  std::shared_ptr<const ExecutionRouteSnapshot3D> certification_snapshot;
+  std::shared_ptr<const ExecutionRouteTransitionResult3D> progress_preparation;
   std::shared_ptr<const PendingCertifiedRoute3D> pending_route;
   std::shared_ptr<const VersionedObservedRawWorld3D> lifecycle_observed_raw_world;
   GlobalGuideProjection projection{};

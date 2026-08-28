@@ -127,72 +127,150 @@ rebaseRouteExecution(const ExecutionPublicationNavigationRebaseRequest3D& reques
                      const mppi::FiniteHorizon& horizon,
                      FiniteExecutionCertificationResult3D& diagnostic,
                      ExecutionRouteTransitionStatus3D& transition_diagnostic) {
-  const ExecutionRouteSnapshot3D& expected = *request.expected_snapshot;
+  const ExecutionRouteSnapshot3D& resident = *request.expected_snapshot;
+  const ExecutionRouteSnapshot3D& certification_base =
+      request.certification_snapshot != nullptr ? *request.certification_snapshot
+                                                : resident;
   const ExecutionRouteSnapshot3D& candidate = *request.candidate_snapshot;
-  if (!candidate.finite_execution.has_value() || !candidate.route.has_value()) {
+  if (!candidate.finite_execution.has_value() ||
+      !candidate.braking_fallback.has_value() || !candidate.route.has_value() ||
+      request.finite_horizon_config == nullptr) {
     return {};
   }
   const FiniteExecutionState3D& candidate_execution =
       candidate.finite_execution.value();
-  const bool retaining_route =
-      expected.route.has_value() &&
-      expected.route->route_instance_id == candidate.route.value().route_instance_id;
-  const CertifiedRouteSuffix3D* const target_route =
-      retaining_route ? std::addressof(expected.route.value())
-                      : std::addressof(candidate.route.value());
-  const FiniteExecutionCertificationResult3D certified =
-      certifyFiniteExecution3DDetailed(
-          expected, *target_route,
-          FiniteExecutionCertification3D{
-              .trajectory_revision = candidate_execution.trajectory_revision,
-              .horizon = horizon,
-              .execution_input = request.current_execution_input,
-              .latest_lidar_evidence = request.current_lidar_evidence,
-              .valid_from_ns = request.publication_now_ns,
-              .kind = candidate_execution.kind,
+  if (horizon.states.empty() || horizon.controls.empty()) {
+    return {};
+  }
+  const bool retaining_route = certification_base.route.has_value() &&
+                               certification_base.route->route_instance_id ==
+                                   candidate.route.value().route_instance_id;
+  const CertifiedRouteSuffix3D& target_route = candidate.route.value();
+  const ExecutionRouteTransitionGuard3D guard{
+      .expected_snapshot_version = certification_base.version,
+      .expected_route_generation = certification_base.route.has_value()
+                                       ? certification_base.route->identity.generation
+                                       : 0U,
+      .expected_geometry_revision =
+          certification_base.route.has_value()
+              ? certification_base.route->geometry->executable_geometry_revision
+              : 0U,
+  };
+  if (candidate_execution.kind == FiniteExecutionKind3D::kEmergencyBrakeTail) {
+    if (!retaining_route || candidate.phase != ExecutionRoutePhase3D::kBraking ||
+        request.lifecycle_event == nullptr || request.progress_preparation != nullptr ||
+        request.expected_pending != nullptr || !certification_base.route.has_value() ||
+        request.lifecycle_event->generation != target_route.identity.generation) {
+      return {};
+    }
+    FiniteExecutionCertification3D braking_certification{
+        .trajectory_revision = candidate_execution.trajectory_revision,
+        .horizon = horizon,
+        .execution_input = request.current_execution_input,
+        .latest_lidar_evidence = request.current_lidar_evidence,
+        .valid_from_ns = request.publication_now_ns,
+        .kind = FiniteExecutionKind3D::kEmergencyBrakeTail,
+    };
+    RouteLifecycleEvent3D current_event = *request.lifecycle_event;
+    FiniteExecutionCertificationResult3D certified;
+    if (current_event.kind == RouteLifecycleEventKind3D::kRawInvalidated) {
+      if (request.current_observed_raw_world == nullptr ||
+          !request.current_observed_raw_world->valid()) {
+        return {};
+      }
+      current_event.raw_producer_instance_id =
+          request.current_observed_raw_world->version().producer_instance_id;
+      current_event.raw_revision =
+          request.current_observed_raw_world->version().revision;
+      certified = certifyRawInvalidatedFiniteExecution3DDetailed(
+          certification_base,
+          RawInvalidatedFiniteExecutionCertification3D{
+              .invalidation = current_event,
+              .invalidating_observed_raw_world = request.current_observed_raw_world,
+              .finite_execution = std::move(braking_certification),
           });
-  diagnostic.status = certified.status;
-  diagnostic.route_adherence_status = certified.route_adherence_status;
+    } else {
+      certified = certifyLifecycleBrakingFiniteExecution3DDetailed(
+          certification_base, LifecycleBrakingFiniteExecutionCertification3D{
+                                  .lifecycle_event = current_event,
+                                  .finite_execution = std::move(braking_certification),
+                              });
+    }
+    diagnostic = certified;
+    if (!certified.certified() || !certified.execution.has_value()) {
+      return {};
+    }
+    const ExecutionRouteTransitionResult3D transition = retireCertifiedRoute3D(
+        certification_base, guard, current_event, certified.execution);
+    transition_diagnostic = transition.status;
+    return transition;
+  }
+  const std::optional<mppi::FiniteHorizon> braking_tail =
+      mppi::buildFiniteBrakingHorizon(
+          horizon.states.front(), horizon.controls.size(),
+          candidate_execution.validation_policy->dynamics(),
+          request.current_execution_input->previousControl(),
+          *request.finite_horizon_config);
+  if (!braking_tail.has_value()) {
+    return {};
+  }
+  const FiniteExecutionPlanCertificationResult3D certified =
+      certifyFiniteExecutionPlan3DDetailed(
+          certification_base, target_route,
+          FiniteExecutionPlanCertification3D{
+              .command_horizon =
+                  FiniteExecutionCertification3D{
+                      .trajectory_revision = candidate_execution.trajectory_revision,
+                      .horizon = horizon,
+                      .execution_input = request.current_execution_input,
+                      .latest_lidar_evidence = request.current_lidar_evidence,
+                      .valid_from_ns = request.publication_now_ns,
+                      .kind = candidate_execution.kind,
+                  },
+              .braking_tail = *braking_tail,
+          });
+  diagnostic.status = certified.command_horizon.status;
+  diagnostic.route_adherence_status = certified.command_horizon.route_adherence_status;
   diagnostic.route_adherence_failure_state_index =
-      certified.route_adherence_failure_state_index;
+      certified.command_horizon.route_adherence_failure_state_index;
   diagnostic.route_adherence_failure_distance_m =
-      certified.route_adherence_failure_distance_m;
-  if (!certified.certified() || !certified.execution.has_value()) {
+      certified.command_horizon.route_adherence_failure_distance_m;
+  if (!certified.certified() || !certified.plan.has_value()) {
     return {};
   }
   const auto make_transition = [&]() -> ExecutionRouteTransitionResult3D {
-    if (expected.phase == ExecutionRoutePhase3D::kDirectTracking) {
+    if (certification_base.phase == ExecutionRoutePhase3D::kDirectTracking) {
       return transferDirectTrackingToCertifiedRoute3D(
-          expected, expected.version, *target_route, certified.execution.value());
+          certification_base, certification_base.version, target_route,
+          certified.plan.value());
     }
-    if (!expected.route.has_value()) {
-      return activateCertifiedRoute3D(expected, expected.version, *target_route,
-                                      *certified.execution);
+    if (!certification_base.route.has_value()) {
+      return activateCertifiedRoute3D(certification_base, certification_base.version,
+                                      target_route, *certified.plan);
     }
-    const ExecutionRouteTransitionGuard3D guard{
-        .expected_snapshot_version = expected.version,
-        .expected_route_generation = expected.route->identity.generation,
-        .expected_geometry_revision =
-            expected.route->geometry->executable_geometry_revision,
-    };
     if (retaining_route) {
-      return replaceFiniteExecution3D(expected, guard, certified.execution);
+      return replaceFiniteExecutionPlan3D(certification_base, guard, *certified.plan);
     }
     if (request.expected_pending != nullptr &&
         request.expected_pending->base_kind ==
             PendingExecutionBaseKind3D::kRouteHandoff) {
-      return replaceCertifiedRouteAtHandoff3D(expected, guard, *target_route,
-                                              certified.execution);
+      return replaceCertifiedRouteAtHandoff3D(certification_base, guard, target_route,
+                                              *certified.plan);
     }
     if (request.expected_pending != nullptr &&
         request.expected_pending->route_splice.has_value()) {
-      return replaceCertifiedRoute3D(expected, guard, *target_route,
-                                     certified.execution,
+      return replaceCertifiedRoute3D(certification_base, guard, target_route,
+                                     *certified.plan,
                                      *request.expected_pending->route_splice);
     }
     return {};
   };
-  const ExecutionRouteTransitionResult3D transition = make_transition();
+  const ExecutionRouteTransitionResult3D prepared_transition = make_transition();
+  const ExecutionRouteTransitionResult3D transition =
+      request.progress_preparation != nullptr
+          ? composeExecutionPlanTransition3D(resident, *request.progress_preparation,
+                                             prepared_transition)
+          : prepared_transition;
   transition_diagnostic = transition.status;
   return transition;
 }
@@ -252,7 +330,20 @@ rebaseExecutionPublicationForCurrentNavigation3D(
         result.status = status;
         return result;
       };
-  if (request.expected_snapshot == nullptr || request.candidate_snapshot == nullptr ||
+  const ExecutionRouteSnapshot3D* const certification_base =
+      request.certification_snapshot != nullptr ? request.certification_snapshot
+                                                : request.expected_snapshot;
+  const bool progress_preparation_valid =
+      request.progress_preparation != nullptr && request.expected_snapshot != nullptr &&
+      certification_base != nullptr && request.progress_preparation->applied() &&
+      request.progress_preparation->predecessor == request.expected_snapshot &&
+      request.progress_preparation->next.get() == certification_base;
+  const bool certification_base_valid =
+      request.progress_preparation != nullptr
+          ? progress_preparation_valid
+          : certification_base == request.expected_snapshot;
+  if (request.expected_snapshot == nullptr || !certification_base_valid ||
+      request.candidate_snapshot == nullptr ||
       request.current_execution_input == nullptr ||
       !request.current_execution_input->valid() ||
       !request.current_execution_input->nominalStateAuthoritative() ||
@@ -280,6 +371,10 @@ rebaseExecutionPublicationForCurrentNavigation3D(
           FiniteExecutionKind3D::kRetained &&
       request.expected_snapshot->route->route_instance_id ==
           request.candidate_snapshot->route->route_instance_id;
+  const bool emergency_braking_candidate =
+      request.candidate_snapshot->finite_execution.has_value() &&
+      request.candidate_snapshot->finite_execution->kind ==
+          FiniteExecutionKind3D::kEmergencyBrakeTail;
   const std::optional<FiniteExecutionCandidateView3D> published_view =
       retained_published_route_continuation ? candidateView(*request.expected_snapshot)
                                             : std::nullopt;
@@ -288,10 +383,15 @@ rebaseExecutionPublicationForCurrentNavigation3D(
                                  : std::addressof(*candidate_view);
   const std::vector<mppi::TimedExecutionPathPoint> points =
       timedPathPoints(*path_source);
-  const std::optional<std::int64_t> reset_valid_until_ns =
-      retained_published_route_continuation
-          ? std::optional<std::int64_t>{path_source->valid_until_ns}
-          : publicationValidUntilNs(*path_source, request.publication_now_ns);
+  std::optional<std::int64_t> reset_valid_until_ns;
+  if (retained_published_route_continuation) {
+    reset_valid_until_ns = path_source->valid_until_ns;
+  } else if (emergency_braking_candidate) {
+    reset_valid_until_ns = candidate_view->valid_until_ns;
+  } else {
+    reset_valid_until_ns =
+        publicationValidUntilNs(*path_source, request.publication_now_ns);
+  }
   if (points.empty() || !reset_valid_until_ns.has_value()) {
     return reject(ExecutionPublicationNavigationRebaseStatus3D::kPathUnavailable);
   }
@@ -344,7 +444,8 @@ rebaseExecutionPublicationForCurrentNavigation3D(
           launch_support ? std::addressof(*launch_support) : nullptr,
       .raw_occupancy = nullptr,
       .latest_lidar_obstacle_points = request.current_lidar_evidence->hitPointsMapM(),
-      .terminal_boundary = request.terminal_boundary,
+      .terminal_boundary =
+          emergency_braking_candidate ? std::nullopt : request.terminal_boundary,
   };
   std::optional<ExecutionRouteTransitionResult3D> transition;
   FiniteExecutionCertificationResult3D route_certification_diagnostic;

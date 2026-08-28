@@ -1,6 +1,6 @@
 #include "drone_city_nav/execution_route_geometry_3d.hpp"
 
-#include "execution_route_snapshot_3d_test_support.hpp"
+#include "execution_route_snapshot_3d_plan_test_support.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -957,34 +957,6 @@ TEST(ExecutionRouteSnapshot3DTest, RejectsUnknownFiniteAndLifecycleEnumValues) {
                                    unknown_event, std::nullopt)
                 .status,
             ExecutionRouteTransitionStatus3D::kInvalidCandidate);
-}
-
-TEST(ExecutionRouteSnapshot3DTest, SafeReplacementCannotExtendDeadline) {
-  SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
-  ASSERT_TRUE(active);
-  ASSERT_TRUE(active->finite_execution.has_value());
-  const RouteLifecycleEvent3D superseded{
-      .kind = RouteLifecycleEventKind3D::kObjectiveSuperseded,
-      .generation = SnapshotFixture3D::kRouteGeneration,
-  };
-
-  const FiniteExecutionState3D equal_deadline = SnapshotFixture3D::finiteExecution(
-      *active, FiniteExecutionKind3D::kRetained, true, 101U);
-  EXPECT_EQ(equal_deadline.valid_until_ns, active->finite_execution->valid_until_ns);
-  const ExecutionRouteTransitionResult3D accepted = retireCertifiedRoute3D(
-      *active, SnapshotFixture3D::guard(*active), superseded, equal_deadline);
-  ASSERT_TRUE(accepted.applied());
-  EXPECT_EQ(accepted.next->phase, ExecutionRoutePhase3D::kBraking);
-
-  const FiniteExecutionState3D extended_deadline = SnapshotFixture3D::finiteExecution(
-      *active, FiniteExecutionKind3D::kEmergencyBrakeTail, true, 102U, 55U, 1U);
-  EXPECT_GT(extended_deadline.valid_until_ns, active->finite_execution->valid_until_ns);
-  EXPECT_EQ(retireCertifiedRoute3D(*active, SnapshotFixture3D::guard(*active),
-                                   superseded, extended_deadline)
-                .status,
-            ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
 }
 
 TEST(ExecutionRouteSnapshot3DTest,

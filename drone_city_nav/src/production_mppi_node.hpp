@@ -579,7 +579,10 @@ private:
       const std::shared_ptr<const ExecutionRouteSnapshot3D>& expected,
       const ExecutionRouteTransitionResult3D& transition,
       const msg::MppiTrajectoryHorizon& horizon,
-      const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending);
+      const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending,
+      const std::shared_ptr<const ExecutionRouteSnapshot3D>& certification_snapshot,
+      const std::shared_ptr<const ExecutionRouteTransitionResult3D>&
+          progress_preparation);
   void recordPendingRouteStrategyOutcome(
       const std::shared_ptr<const PendingCertifiedRoute3D>& pending,
       bool selection_committed) noexcept;

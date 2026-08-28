@@ -526,6 +526,6 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
     const ExecutionRouteSnapshot3D& current, const CertifiedRouteSuffix3D& target_route,
     FiniteExecutionCertification3D certification,
     std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_validation_world,
-    const RouteLifecycleEvent3D* const raw_invalidation);
+    const RouteLifecycleEvent3D* const lifecycle_event);
 
 } // namespace drone_city_nav::execution_route_snapshot_3d_internal

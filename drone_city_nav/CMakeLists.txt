@@ -1316,7 +1316,9 @@ if(BUILD_TESTING)
                   tests/execution_route_snapshot_3d_test.cpp
                   tests/execution_route_snapshot_3d_certification_test.cpp
                   tests/execution_route_snapshot_3d_edge_cases_test.cpp
+                  tests/execution_route_snapshot_3d_lifecycle_braking_test.cpp
                   tests/execution_route_snapshot_3d_optional_constraints_test.cpp
+                  tests/execution_route_snapshot_3d_plan_test.cpp
                   tests/execution_route_snapshot_3d_transitions_test.cpp
                   tests/execution_route_snapshot_3d_validation_test.cpp)
   target_compile_features(execution_route_snapshot_3d_test PRIVATE cxx_std_20)

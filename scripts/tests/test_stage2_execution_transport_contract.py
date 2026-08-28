@@ -198,17 +198,30 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
             "RouteLifecycleEventKind3D::kRawInvalidated"
         )
         recertification = invalidation_consumer.index(
-            "certifyRawInvalidatedFiniteExecution3D"
+            "certifyRawInvalidatedFiniteExecution3DDetailed"
         )
         retirement = invalidation_consumer.index("retireCertifiedRoute3D")
         publication = invalidation_consumer.index("commitExecutionSnapshotHorizon")
-        raw_recertification = invalidation_consumer.split(
-            "if (raw_invalidation != nullptr)", maxsplit=2
-        )[2].split("return recertified.has_value()", maxsplit=1)[0]
-        self.assertIn("certifyRawInvalidatedFiniteExecution3D", raw_recertification)
+        candidate_validator = invalidation_consumer.split(
+            "const mppi::FiniteExecutionPathCandidateValidator candidate_validator",
+            maxsplit=1,
+        )[1].split(
+            "const mppi::RebuiltFiniteExecutionPathContinuation rebuilt", maxsplit=1
+        )[0]
+        raw_recertification = candidate_validator.split(
+            "if (raw_invalidation != nullptr)", maxsplit=1
+        )[1].split("if (lifecycle_braking != nullptr)", maxsplit=1)[0]
+        self.assertIn(
+            "certifyRawInvalidatedFiniteExecution3DDetailed", raw_recertification
+        )
+        self.assertIn("invalidating_observed_raw_world", raw_recertification)
+        self.assertIn("recertified_braking_tail", raw_recertification)
+        self.assertIn(
+            "const RouteLifecycleEvent3D* const braking_event", invalidation_consumer
+        )
         self.assertRegex(
             invalidation_consumer,
-            r"raw_invalidation != nullptr\s*\?\s*retireCertifiedRoute3D\(",
+            r"braking_event != nullptr\s*\?\s*retireCertifiedRoute3D\(",
         )
         evidence_derivation = route_execution.split(
             "deriveLatestObservedRouteEvidence", maxsplit=1
@@ -762,28 +775,42 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         self.assertIn("pendingCertifiedRouteEligible3D", pending_cleanup)
         self.assertNotIn("base_hold_snapshot_version", pending_cleanup)
 
-        route_progress_commit = route_execution.split(
-            "ExecutionRoutePublicationStatus3D publication_status", maxsplit=1
+        route_progress_preparation = route_execution.split(
+            "const ExecutionRouteTransitionResult3D advanced =", maxsplit=1
         )[1].split(
-            "if (!publication_raw_current",
+            "const std::shared_ptr<const ExecutionRouteSnapshot3D>& route_state",
             maxsplit=1,
         )[0]
-        route_lock = route_progress_commit.index(
-            "const std::scoped_lock lock{execution_evidence_commit_mutex_};"
+        route_advance = route_progress_preparation.index("advanceCertifiedRoute3D")
+        route_preparation = route_progress_preparation.index(
+            "result.progress_preparation ="
         )
-        route_raw_load = route_progress_commit.index(
+        certification_snapshot = route_progress_preparation.index(
+            "result.certification_snapshot = advanced.next"
+        )
+        self.assertLess(route_advance, route_preparation)
+        self.assertLess(route_preparation, certification_snapshot)
+        self.assertNotIn("execution_route_store_.publish", route_progress_preparation)
+
+        atomic_plan_commit = execution.split(
+            "const ExecutionRouteTransitionResult3D prepared_transition", maxsplit=1
+        )[1].split("const mppi::FiniteHorizon* committed_path", maxsplit=1)[0]
+        plan_preparation = atomic_plan_commit.index("replaceFiniteExecutionPlan3D")
+        plan_composition = atomic_plan_commit.index("composeExecutionPlanTransition3D")
+        self.assertIn("route_execution.progress_preparation != nullptr", atomic_plan_commit)
+        self.assertLess(plan_preparation, plan_composition)
+
+        route_raw_load = snapshot_commit.index(
             "latest_raw_world_3d_.load(std::memory_order_acquire)"
         )
-        route_cas = route_progress_commit.index(
-            "execution_route_store_.publish(result.source_snapshot, advanced)"
+        route_currentness = snapshot_commit.index(
+            "assessExecutionPublicationCurrentness3D"
         )
-        self.assertIn(
-            "bool publication_raw_current{active_route.observed_raw_world == nullptr};",
-            route_progress_commit,
-        )
-        self.assertIn("observedRouteEvidenceIsCurrent", route_progress_commit)
-        self.assertLess(route_lock, route_raw_load)
-        self.assertLess(route_raw_load, route_cas)
+        self.assertIn("transition.next->publishable()", snapshot_commit)
+        self.assertIn("progress_preparation == nullptr", snapshot_commit)
+        self.assertLess(snapshot_lock, route_raw_load)
+        self.assertLess(route_raw_load, route_currentness)
+        self.assertLess(route_currentness, snapshot_owner_commit)
 
         pending_refresh = route_execution.split(
             "refreshPendingRoute", maxsplit=1

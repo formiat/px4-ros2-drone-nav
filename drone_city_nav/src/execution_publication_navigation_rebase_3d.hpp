@@ -22,8 +22,17 @@ enum class ExecutionPublicationNavigationRebaseStatus3D : std::uint8_t {
 
 struct ExecutionPublicationNavigationRebaseRequest3D {
   const ExecutionRouteSnapshot3D* expected_snapshot{nullptr};
+  // A progress-only preparation is a valid certification base, but never a
+  // publishable owner. When present it must be composed back onto the resident
+  // expected_snapshot in the same atomic publication transition.
+  const ExecutionRouteSnapshot3D* certification_snapshot{nullptr};
+  const ExecutionRouteTransitionResult3D* progress_preparation{nullptr};
   const ExecutionRouteSnapshot3D* candidate_snapshot{nullptr};
   const PendingCertifiedRoute3D* expected_pending{nullptr};
+  // Required when the candidate has already transferred ownership to an
+  // emergency braking tail. The event is replayed against the exact navigation
+  // and sensor evidence captured under the publication lock.
+  const RouteLifecycleEvent3D* lifecycle_event{nullptr};
   std::shared_ptr<const VersionedExecutionInput3D> current_execution_input;
   std::shared_ptr<const VersionedLatestLidarEvidence3D> current_lidar_evidence;
   std::shared_ptr<const VersionedObservedRawWorld3D> current_observed_raw_world;

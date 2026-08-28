@@ -49,6 +49,15 @@ makeFiniteHorizonConfig(const StoppingCapability& capability) noexcept;
     std::size_t nominal_prefix_control_count, const DynamicsConfig& dynamics,
     Control previous_applied_control, const FiniteHorizonConfig& config = {});
 
+// Builds an immediate jerk-limited stop from the exact current state. The
+// control budget is explicit so the caller can certify the fallback inside the
+// same finite execution window as its command horizon.
+[[nodiscard]] std::optional<FiniteHorizon>
+buildFiniteBrakingHorizon(const State& initial_state, std::size_t maximum_control_count,
+                          const DynamicsConfig& dynamics,
+                          Control previous_applied_control,
+                          const FiniteHorizonConfig& config = {});
+
 [[nodiscard]] RouteConvergentFiniteHorizon buildRouteConvergentFiniteHorizon(
     std::span<const State> planned_states, std::span<const Control> planned_controls,
     Control previous_applied_control, const DynamicsConfig& dynamics,

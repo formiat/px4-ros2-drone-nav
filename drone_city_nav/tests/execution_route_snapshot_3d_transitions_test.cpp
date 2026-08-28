@@ -1,4 +1,4 @@
-#include "execution_route_snapshot_3d_test_support.hpp"
+#include "execution_route_snapshot_3d_plan_test_support.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -267,6 +267,22 @@ TEST(ExecutionRouteSnapshot3DTest,
       unsafe_occupancy.worldToCell(Point3{4.0, 0.0, 5.0});
   ASSERT_TRUE(blocked_cell.has_value());
   ASSERT_TRUE(unsafe_occupancy.setState(*blocked_cell, ObservedVoxelState::kOccupied));
+  // The newly occupied voxel lies on the invalidated nominal suffix, but the
+  // permanent immediate braking tail stops before reaching it and remains a
+  // valid safety fallback.
+  EXPECT_TRUE(
+      certify_against(invalidation,
+                      fixture.rawWorld(invalidation.raw_revision, &unsafe_occupancy),
+                      FiniteExecutionKind3D::kEmergencyBrakeTail)
+          .has_value());
+
+  const mppi::State& current_state =
+      following.next->route->progress.execution_input->state();
+  const Point3 current_position{current_state.x, current_state.y, current_state.z};
+  const std::optional<GridIndex3D> current_cell =
+      unsafe_occupancy.worldToCell(current_position);
+  ASSERT_TRUE(current_cell.has_value());
+  ASSERT_TRUE(unsafe_occupancy.setState(*current_cell, ObservedVoxelState::kOccupied));
   EXPECT_FALSE(
       certify_against(invalidation,
                       fixture.rawWorld(invalidation.raw_revision, &unsafe_occupancy),

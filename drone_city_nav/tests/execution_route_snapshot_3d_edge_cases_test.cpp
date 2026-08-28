@@ -1,4 +1,4 @@
-#include "execution_route_snapshot_3d_test_support.hpp"
+#include "execution_route_snapshot_3d_plan_test_support.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -369,12 +369,14 @@ TEST(ExecutionRouteSnapshot3DTest, RouteSplicePendingSurvivesExecutionProgressCa
       SnapshotFixture3D::progressInput(*active, {4.0, 0.0, 5.0}),
       fixture.rawWorld(kAdvancedRawRevision));
   ASSERT_TRUE(advanced.applied());
+  // A progress-only preparation no longer crosses the controller-visible CAS
+  // boundary. It must be combined with a complete command/braking plan.
   ASSERT_EQ(store.publish(active, advanced),
-            ExecutionRoutePublicationStatus3D::kPublished);
+            ExecutionRoutePublicationStatus3D::kInvalidCandidate);
 
-  EXPECT_FALSE(mailbox.commitExecutionIfSame(sealed, store, active, replacement));
-  EXPECT_EQ(store.snapshot(), advanced.next);
-  EXPECT_EQ(mailbox.snapshot(), sealed);
+  EXPECT_TRUE(mailbox.commitExecutionIfSame(sealed, store, active, replacement));
+  EXPECT_EQ(store.snapshot(), replacement.next);
+  EXPECT_EQ(mailbox.snapshot(), nullptr);
 }
 
 TEST(ExecutionRouteSnapshot3DTest,

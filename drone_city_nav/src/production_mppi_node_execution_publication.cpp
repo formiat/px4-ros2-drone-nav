@@ -188,6 +188,26 @@ struct FiniteExecutionEvidenceView {
   std::int64_t control_interval_ns{0};
 };
 
+template<typename Execution>
+[[nodiscard]] std::optional<FiniteExecutionEvidenceView>
+finiteExecutionArtifactEvidenceView(const Execution& execution) noexcept {
+  if (execution.horizon == nullptr || execution.execution_input == nullptr ||
+      execution.validation_policy == nullptr ||
+      (execution.observed_raw_world == nullptr) ==
+          (execution.static_world == nullptr)) {
+    return std::nullopt;
+  }
+  return FiniteExecutionEvidenceView{
+      .horizon = execution.horizon.get(),
+      .execution_input = execution.execution_input.get(),
+      .policy = execution.validation_policy.get(),
+      .static_world = execution.static_world.get(),
+      .valid_from_ns = execution.valid_from_ns,
+      .valid_until_ns = execution.valid_until_ns,
+      .control_interval_ns = execution.control_interval_ns,
+  };
+}
+
 [[nodiscard]] std::vector<mppi::TimedExecutionPathPoint>
 timedExecutionPathPoints(const FiniteExecutionEvidenceView& view) {
   std::vector<mppi::TimedExecutionPathPoint> points;
@@ -214,55 +234,34 @@ timedExecutionPathPoints(const FiniteExecutionEvidenceView& view) {
 
 [[nodiscard]] std::optional<FiniteExecutionEvidenceView>
 finiteExecutionEvidenceView(const ExecutionRouteSnapshot3D& snapshot) noexcept {
-  const auto make_view =
-      [](const auto& execution) noexcept -> std::optional<FiniteExecutionEvidenceView> {
-    if (execution.horizon == nullptr || execution.execution_input == nullptr ||
-        execution.validation_policy == nullptr ||
-        (execution.observed_raw_world == nullptr) ==
-            (execution.static_world == nullptr)) {
-      return std::nullopt;
-    }
-    return FiniteExecutionEvidenceView{
-        .horizon = execution.horizon.get(),
-        .execution_input = execution.execution_input.get(),
-        .policy = execution.validation_policy.get(),
-        .static_world = execution.static_world.get(),
-        .valid_from_ns = execution.valid_from_ns,
-        .valid_until_ns = execution.valid_until_ns,
-        .control_interval_ns = execution.control_interval_ns,
-    };
-  };
   if (snapshot.finite_execution.has_value()) {
-    return make_view(*snapshot.finite_execution);
+    return finiteExecutionArtifactEvidenceView(*snapshot.finite_execution);
   }
   if (snapshot.direct_tracking_execution.has_value()) {
-    return make_view(*snapshot.direct_tracking_execution);
+    return finiteExecutionArtifactEvidenceView(*snapshot.direct_tracking_execution);
   }
   return std::nullopt;
 }
 
 [[nodiscard]] bool revalidateFiniteExecutionAgainstLatestEvidence(
-    const ExecutionRouteSnapshot3D& snapshot,
+    const FiniteExecutionEvidenceView& view,
     const std::shared_ptr<const VersionedObservedRawWorld3D>& latest_raw,
     const std::shared_ptr<const VersionedLatestLidarEvidence3D>&
         latest_lidar) noexcept {
-  const std::optional<FiniteExecutionEvidenceView> view =
-      finiteExecutionEvidenceView(snapshot);
-  if (!view.has_value() || view->horizon == nullptr ||
-      view->execution_input == nullptr || view->policy == nullptr ||
-      !view->policy->valid() || latest_lidar == nullptr || !latest_lidar->valid() ||
-      view->control_interval_ns <= 0 ||
-      view->horizon->states.size() != view->horizon->controls.size() + 1U ||
-      view->horizon->controls.empty()) {
+  if (view.horizon == nullptr || view.execution_input == nullptr ||
+      view.policy == nullptr || !view.policy->valid() || latest_lidar == nullptr ||
+      !latest_lidar->valid() || view.control_interval_ns <= 0 ||
+      view.horizon->states.size() != view.horizon->controls.size() + 1U ||
+      view.horizon->controls.empty()) {
     return false;
   }
-  const bool static_world = view->static_world != nullptr;
+  const bool static_world = view.static_world != nullptr;
   if ((!static_world && (latest_raw == nullptr || !latest_raw->valid())) ||
-      (static_world && !view->static_world->valid())) {
+      (static_world && !view.static_world->valid())) {
     return false;
   }
   const std::vector<mppi::TimedExecutionPathPoint> points =
-      timedExecutionPathPoints(*view);
+      timedExecutionPathPoints(view);
   if (points.empty()) {
     return false;
   }
@@ -273,11 +272,11 @@ finiteExecutionEvidenceView(const ExecutionRouteSnapshot3D& snapshot) noexcept {
       !static_world ? latest_raw->launchSupportContact()
                     : std::optional<LaunchSupportContact3D>{};
   const mppi::FiniteExecutionPathWorld world{
-      .flight_envelope = &view->policy->flightEnvelope(),
-      .dynamics = &view->policy->dynamics(),
-      .altitude_envelope = &view->policy->altitudeEnvelope(),
-      .footprint = &view->policy->sweptFootprint(),
-      .static_occupancy = static_world ? &view->static_world->occupancy() : nullptr,
+      .flight_envelope = &view.policy->flightEnvelope(),
+      .dynamics = &view.policy->dynamics(),
+      .altitude_envelope = &view.policy->altitudeEnvelope(),
+      .footprint = &view.policy->sweptFootprint(),
+      .static_occupancy = static_world ? &view.static_world->occupancy() : nullptr,
       .observed_occupancy = !static_world ? &latest_raw->occupancy() : nullptr,
       .require_known_free_space = static_world,
       .proprioceptive_free_space_seed = seed ? std::addressof(*seed) : nullptr,
@@ -288,8 +287,36 @@ finiteExecutionEvidenceView(const ExecutionRouteSnapshot3D& snapshot) noexcept {
       .terminal_boundary = std::nullopt,
   };
   return mppi::validateCompleteFiniteExecutionPath(
-             points, view->execution_input->previousControl(), world)
+             points, view.execution_input->previousControl(), world)
       .accepted();
+}
+
+[[nodiscard]] bool revalidateFiniteExecutionAgainstLatestEvidence(
+    const ExecutionRouteSnapshot3D& snapshot,
+    const std::shared_ptr<const VersionedObservedRawWorld3D>& latest_raw,
+    const std::shared_ptr<const VersionedLatestLidarEvidence3D>&
+        latest_lidar) noexcept {
+  if (snapshot.finite_execution.has_value()) {
+    if (!snapshot.braking_fallback.has_value()) {
+      return false;
+    }
+    const std::optional<FiniteExecutionEvidenceView> command_view =
+        finiteExecutionArtifactEvidenceView(*snapshot.finite_execution);
+    const std::optional<FiniteExecutionEvidenceView> braking_view =
+        finiteExecutionArtifactEvidenceView(*snapshot.braking_fallback);
+    return command_view.has_value() && braking_view.has_value() &&
+           revalidateFiniteExecutionAgainstLatestEvidence(*command_view, latest_raw,
+                                                          latest_lidar) &&
+           revalidateFiniteExecutionAgainstLatestEvidence(*braking_view, latest_raw,
+                                                          latest_lidar);
+  }
+  if (!snapshot.direct_tracking_execution.has_value()) {
+    return false;
+  }
+  const std::optional<FiniteExecutionEvidenceView> direct_view =
+      finiteExecutionArtifactEvidenceView(*snapshot.direct_tracking_execution);
+  return direct_view.has_value() && revalidateFiniteExecutionAgainstLatestEvidence(
+                                        *direct_view, latest_raw, latest_lidar);
 }
 
 } // namespace
@@ -520,8 +547,14 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
           rebaseExecutionPublicationForCurrentNavigation3D(
               ExecutionPublicationNavigationRebaseRequest3D{
                   .expected_snapshot = commit.expected_snapshot.get(),
+                  .certification_snapshot = commit.certification_snapshot.get(),
+                  .progress_preparation = commit.progress_preparation.get(),
                   .candidate_snapshot = commit.transition->next.get(),
                   .expected_pending = commit.expected_pending.get(),
+                  .lifecycle_event =
+                      cycle.route_execution.lifecycle_event.has_value()
+                          ? std::addressof(*cycle.route_execution.lifecycle_event)
+                          : nullptr,
                   .current_execution_input = current_input,
                   .current_lidar_evidence = current_lidar,
                   .current_observed_raw_world = current_raw,
@@ -851,8 +884,21 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitExecutionSnapshotHor
     const std::shared_ptr<const ExecutionRouteSnapshot3D>& expected,
     const ExecutionRouteTransitionResult3D& transition,
     const msg::MppiTrajectoryHorizon& horizon,
-    const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending) {
-  if (expected == nullptr || !transition.applied() || transition.next == nullptr) {
+    const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending,
+    const std::shared_ptr<const ExecutionRouteSnapshot3D>& certification_snapshot,
+    const std::shared_ptr<const ExecutionRouteTransitionResult3D>&
+        progress_preparation) {
+  const bool prepared_progress_valid =
+      progress_preparation != nullptr && certification_snapshot != nullptr &&
+      progress_preparation->applied() &&
+      progress_preparation->predecessor == expected.get() &&
+      progress_preparation->next == certification_snapshot;
+  const bool certification_base_valid = progress_preparation != nullptr
+                                            ? prepared_progress_valid
+                                            : certification_snapshot == expected;
+  if (expected == nullptr || !certification_base_valid || !transition.applied() ||
+      transition.predecessor != expected.get() || transition.next == nullptr ||
+      !transition.next->publishable()) {
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "EXECUTION_SNAPSHOT_COMMIT committed=false stage=invalid_transition");
@@ -898,7 +944,12 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitExecutionSnapshotHor
           .publication_now_ns = get_clock()->now().nanoseconds(),
           .maximum_lidar_age_ms = policy->latestLidarMaximumAgeMs(),
       });
+  // A progress preparation also advances the route certificate and possibly
+  // constrained-passage evidence. Rechecking only the two finite paths cannot
+  // rebind that larger immutable contract, so an evidence race must retry the
+  // whole preparation from the newer world on the next tick.
   const bool latest_evidence_revalidated =
+      progress_preparation == nullptr &&
       currentness == ExecutionPublicationCurrentnessStatus3D::kRevalidationRequired &&
       revalidateFiniteExecutionAgainstLatestEvidence(
           *transition.next, current_raw,
@@ -920,6 +971,8 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitExecutionSnapshotHor
                   ? ProductionMppiHorizonCommitKind::kCommitPendingSnapshotTransition
                   : ProductionMppiHorizonCommitKind::kPublishSnapshotTransition,
       .expected_snapshot = expected,
+      .certification_snapshot = certification_snapshot,
+      .progress_preparation = progress_preparation,
       .transition = &transition,
       .expected_pending = expected_pending,
       .latest_evidence_revalidated = latest_evidence_revalidated,

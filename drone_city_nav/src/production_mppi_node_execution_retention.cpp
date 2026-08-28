@@ -260,6 +260,16 @@ ProductionMppiNode::retainSnapshotFinitePath(
                   RouteLifecycleEventKind3D::kRawInvalidated
           ? std::addressof(*route_execution.lifecycle_event)
           : nullptr;
+  const RouteLifecycleEvent3D* const lifecycle_braking =
+      route_execution.lifecycle_event.has_value() &&
+              (route_execution.lifecycle_event->kind ==
+                   RouteLifecycleEventKind3D::kObjectiveSuperseded ||
+               route_execution.lifecycle_event->kind ==
+                   RouteLifecycleEventKind3D::kCrossTrackExceeded)
+          ? std::addressof(*route_execution.lifecycle_event)
+          : nullptr;
+  const RouteLifecycleEvent3D* const braking_event =
+      raw_invalidation != nullptr ? raw_invalidation : lifecycle_braking;
   const std::shared_ptr<const VersionedObservedRawWorld3D>&
       invalidating_observed_world = route_execution.lifecycle_observed_raw_world;
   if (raw_invalidation != nullptr) {
@@ -285,6 +295,18 @@ ProductionMppiNode::retainSnapshotFinitePath(
     // The exact lifecycle version above and the full certification below prove
     // stream lineage and validate the replacement world contents.
   }
+  if (lifecycle_braking != nullptr &&
+      (route_execution.source_snapshot != expected ||
+       lifecycle_braking->generation != route.identity.generation ||
+       lifecycle_braking->raw_producer_instance_id != 0U ||
+       lifecycle_braking->raw_revision != 0U)) {
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "FINITE_EXECUTION_SNAPSHOT retained=false "
+        "stage=lifecycle_braking_owner_mismatch snapshot_version=%" PRIu64,
+        expected->version);
+    return std::nullopt;
+  }
   const std::vector<mppi::TimedExecutionPathPoint> points = executionPathPoints(active);
   if (points.empty()) {
     RCLCPP_WARN_THROTTLE(
@@ -296,7 +318,9 @@ ProductionMppiNode::retainSnapshotFinitePath(
   }
   const std::optional<mppi::FiniteExecutionPathWorld> continuation_world =
       exactSnapshotValidationWorld(cycle, route,
-                                   validationTerminalBoundary(active, route),
+                                   lifecycle_braking != nullptr
+                                       ? std::nullopt
+                                       : validationTerminalBoundary(active, route),
                                    invalidating_observed_world);
   if (!continuation_world.has_value()) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
@@ -329,34 +353,65 @@ ProductionMppiNode::retainSnapshotFinitePath(
     return std::nullopt;
   }
   const std::uint64_t next_trajectory_revision = active.trajectory_revision + 1U;
-  std::optional<FiniteExecutionState3D> recertified;
+  std::optional<FiniteExecutionState3D> recertified_braking_tail;
+  std::optional<FiniteExecutionPlan3D> recertified_plan;
   FiniteExecutionCertificationResult3D certification_diagnostic;
   const mppi::FiniteExecutionPathCandidateValidator candidate_validator =
       [&](const mppi::FiniteHorizon& candidate) {
-        const FiniteExecutionCertification3D finite_execution{
+        if (candidate.states.empty() || candidate.controls.empty()) {
+          return false;
+        }
+        const std::optional<mppi::FiniteHorizon> braking_tail =
+            mppi::buildFiniteBrakingHorizon(
+                candidate.states.front(), candidate.controls.size(),
+                route.validation_policy->dynamics(), exact_previous_control,
+                finite_horizon_config_);
+        if (!braking_tail.has_value()) {
+          return false;
+        }
+        FiniteExecutionCertification3D finite_execution{
             .trajectory_revision = next_trajectory_revision,
             .horizon = candidate,
             .execution_input = execution_input,
             .latest_lidar_evidence = latest_lidar_evidence,
             .valid_from_ns = now_ns,
-            .kind = raw_invalidation != nullptr
-                        ? FiniteExecutionKind3D::kEmergencyBrakeTail
-                        : FiniteExecutionKind3D::kRetained,
+            .kind = FiniteExecutionKind3D::kRetained,
         };
         if (raw_invalidation != nullptr) {
-          recertified = certifyRawInvalidatedFiniteExecution3D(
+          finite_execution.horizon = *braking_tail;
+          finite_execution.kind = FiniteExecutionKind3D::kEmergencyBrakeTail;
+          certification_diagnostic = certifyRawInvalidatedFiniteExecution3DDetailed(
               *expected,
               RawInvalidatedFiniteExecutionCertification3D{
                   .invalidation = *raw_invalidation,
                   .invalidating_observed_raw_world = invalidating_observed_world,
                   .finite_execution = finite_execution,
               });
-          return recertified.has_value();
+          recertified_braking_tail = certification_diagnostic.execution;
+          return certification_diagnostic.certified();
         }
-        certification_diagnostic =
-            certifyFiniteExecution3DDetailed(*expected, route, finite_execution);
-        recertified = certification_diagnostic.execution;
-        return certification_diagnostic.certified();
+        if (lifecycle_braking != nullptr) {
+          finite_execution.horizon = *braking_tail;
+          finite_execution.kind = FiniteExecutionKind3D::kEmergencyBrakeTail;
+          certification_diagnostic = certifyLifecycleBrakingFiniteExecution3DDetailed(
+              *expected, LifecycleBrakingFiniteExecutionCertification3D{
+                             .lifecycle_event = *lifecycle_braking,
+                             .finite_execution = std::move(finite_execution),
+                         });
+          recertified_braking_tail = certification_diagnostic.execution;
+          return recertified_braking_tail.has_value();
+        }
+        FiniteExecutionPlanCertificationResult3D certification =
+            certifyFiniteExecutionPlan3DDetailed(
+                *expected, route,
+                FiniteExecutionPlanCertification3D{
+                    .command_horizon = std::move(finite_execution),
+                    .braking_tail = *braking_tail,
+                });
+        const bool certified = certification.certified();
+        certification_diagnostic = certification.command_horizon;
+        recertified_plan = std::move(certification.plan);
+        return certified;
       };
   const mppi::RebuiltFiniteExecutionPathContinuation rebuilt =
       mppi::rebuildFiniteExecutionPathContinuation(
@@ -369,7 +424,9 @@ ProductionMppiNode::retainSnapshotFinitePath(
           active.horizon->controls.size(), route.validation_policy->dynamics(),
           route_arrival_search_step_controls, finite_horizon_config_,
           *continuation_world, candidate_validator);
-  if (!rebuilt.accepted() || !recertified.has_value()) {
+  if (!rebuilt.accepted() ||
+      (braking_event != nullptr ? !recertified_braking_tail.has_value()
+                                : !recertified_plan.has_value())) {
     const std::string_view certification_status =
         finiteExecutionCertificationStatus3DName(certification_diagnostic.status);
     const std::string_view adherence_status = finiteExecutionRouteAdherenceStatus3DName(
@@ -397,14 +454,16 @@ ProductionMppiNode::retainSnapshotFinitePath(
       .expected_geometry_revision = route.geometry->executable_geometry_revision,
   };
   const ExecutionRouteTransitionResult3D transition =
-      raw_invalidation != nullptr
-          ? retireCertifiedRoute3D(*expected, guard, *raw_invalidation, *recertified)
-          : replaceFiniteExecution3D(*expected, guard, *recertified);
+      braking_event != nullptr
+          ? retireCertifiedRoute3D(*expected, guard, *braking_event,
+                                   *recertified_braking_tail)
+          : replaceFiniteExecutionPlan3D(*expected, guard, *recertified_plan);
   if (!transition.applied() || transition.next == nullptr ||
       !transition.next->finite_execution.has_value() ||
+      !transition.next->braking_fallback.has_value() ||
       transition.next->finite_execution->horizon == nullptr ||
       !transition.next->route.has_value() ||
-      (raw_invalidation != nullptr &&
+      (braking_event != nullptr &&
        transition.next->phase != ExecutionRoutePhase3D::kBraking)) {
     const std::string_view transition_status =
         executionRouteTransitionStatus3DName(transition.status);
@@ -447,7 +506,8 @@ ProductionMppiNode::retainSnapshotFinitePath(
     return std::nullopt;
   }
   const ProductionMppiHorizonCommitStatus commit_status =
-      commitExecutionSnapshotHorizon(cycle, expected, transition, horizon, nullptr);
+      commitExecutionSnapshotHorizon(cycle, expected, transition, horizon, nullptr,
+                                     expected, nullptr);
   if (commit_status == ProductionMppiHorizonCommitStatus::kRejected) {
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
@@ -479,16 +539,19 @@ ProductionMppiNode::retainSnapshotFinitePath(
   retained.resident_owner_continues = !published;
   retained.terminal_rest_state = true;
   retained.published = published;
+  const std::string_view braking_event_name =
+      braking_event != nullptr ? routeLifecycleEventKind3DName(braking_event->kind)
+                               : std::string_view{"none"};
   RCLCPP_INFO_THROTTLE(
       get_logger(), *get_clock(), 1000,
       "FINITE_EXECUTION_SNAPSHOT retained=true recertified=true published=%s "
       "snapshot_version=%" PRIu64 " trajectory_revision=%" PRIu64
-      " raw_invalidation=%s actual_state_validation=%s "
+      " braking_event=%.*s actual_state_validation=%s "
       "trajectory_validation=%s",
       published ? "true" : "false",
       published ? transition.next->version : expected->version,
       published ? next_trajectory_revision : active.trajectory_revision,
-      raw_invalidation != nullptr ? "true" : "false",
+      static_cast<int>(braking_event_name.size()), braking_event_name.data(),
       mppi::finiteExecutionPathStatusName(actual_state_validation.status),
       mppi::finiteExecutionPathStatusName(trajectory_validation.status));
   return retained;
@@ -605,7 +668,8 @@ ProductionMppiNode::retainDirectFinitePath(
     return std::nullopt;
   }
   const ProductionMppiHorizonCommitStatus commit_status =
-      commitExecutionSnapshotHorizon(cycle, expected, transition, horizon, nullptr);
+      commitExecutionSnapshotHorizon(cycle, expected, transition, horizon, nullptr,
+                                     expected, nullptr);
   if (commit_status == ProductionMppiHorizonCommitStatus::kRejected) {
     return std::nullopt;
   }

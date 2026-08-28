@@ -198,6 +198,17 @@ struct FiniteExecutionState3D {
   [[nodiscard]] bool validFor(const CertifiedRouteSuffix3D* route) const noexcept;
 };
 
+// The controller-facing route execution authority is certified as one unit.
+// The command horizon may be nominal or a retained continuation, while the
+// braking tail always starts from the same immutable execution input and can be
+// selected without replanning or assembling another partial snapshot.
+struct FiniteExecutionPlan3D {
+  FiniteExecutionState3D command_horizon{};
+  FiniteExecutionState3D braking_tail{};
+
+  [[nodiscard]] bool validFor(const CertifiedRouteSuffix3D& route) const noexcept;
+};
+
 struct DirectTrackingOwnerIdentity3D {
   std::uint64_t mission_epoch{0U};
   std::uint64_t assignment_generation{0U};
@@ -273,14 +284,21 @@ struct ExecutionRouteSnapshot3D {
   ExecutionRoutePhase3D phase{ExecutionRoutePhase3D::kAwaitingSuccessor};
   std::optional<CertifiedRouteSuffix3D> route;
   std::optional<FiniteExecutionState3D> finite_execution;
+  std::optional<FiniteExecutionState3D> braking_fallback;
   std::optional<DirectTrackingFiniteExecution3D> direct_tracking_execution;
   std::optional<StationaryExecutionHold3D> stationary_hold;
   std::uint64_t execution_owner_epoch{0U};
   std::uint64_t route_generation_high_water{0U};
 
   [[nodiscard]] bool valid() const noexcept;
+  // Prepared progress/certificate updates are valid inputs for certification,
+  // but only a complete, current execution plan may cross the atomic store
+  // boundary and become controller-visible.
+  [[nodiscard]] bool publishable() const noexcept;
   [[nodiscard]] std::uint64_t routeGenerationHighWater() const noexcept;
 };
+
+using ExecutionPlan3D = ExecutionRouteSnapshot3D;
 
 struct ExecutionRouteActivation3D {
   std::uint64_t route_generation{0U};
@@ -384,12 +402,18 @@ struct FiniteExecutionCertification3D {
   FiniteExecutionKind3D kind{FiniteExecutionKind3D::kNominal};
 };
 
+struct FiniteExecutionPlanCertification3D {
+  FiniteExecutionCertification3D command_horizon{};
+  mppi::FiniteHorizon braking_tail{};
+};
+
 enum class FiniteExecutionCertificationStatus3D : std::uint8_t {
   kCertified,
   kInvalidInput,
   kTargetRelationRejected,
   kProgressRelationRejected,
   kRawInvalidationContractRejected,
+  kLifecycleBrakingContractRejected,
   kEvidenceContractRejected,
   kCollisionPolicyInvalid,
   kHorizonContractRejected,
@@ -435,9 +459,26 @@ struct FiniteExecutionCertificationResult3D {
   [[nodiscard]] bool certified() const noexcept;
 };
 
+struct FiniteExecutionPlanCertificationResult3D {
+  FiniteExecutionCertificationResult3D command_horizon{};
+  FiniteExecutionCertificationResult3D braking_tail{};
+  std::optional<FiniteExecutionPlan3D> plan;
+
+  [[nodiscard]] bool certified() const noexcept;
+};
+
 struct RawInvalidatedFiniteExecutionCertification3D {
   RouteLifecycleEvent3D invalidation{};
   std::shared_ptr<const VersionedObservedRawWorld3D> invalidating_observed_raw_world;
+  FiniteExecutionCertification3D finite_execution{};
+};
+
+// Objective replacement and confirmed divergence terminate route-following,
+// but they must never terminate execution ownership. This contract certifies an
+// immediate physical stop while retaining the immutable route identity as the
+// lifecycle owner until a successor is atomically installed.
+struct LifecycleBrakingFiniteExecutionCertification3D {
+  RouteLifecycleEvent3D lifecycle_event{};
   FiniteExecutionCertification3D finite_execution{};
 };
 
@@ -541,6 +582,11 @@ certifyFiniteExecution3DDetailed(const ExecutionRouteSnapshot3D& current,
                                  const CertifiedRouteSuffix3D& target_route,
                                  FiniteExecutionCertification3D certification);
 
+[[nodiscard]] FiniteExecutionPlanCertificationResult3D
+certifyFiniteExecutionPlan3DDetailed(const ExecutionRouteSnapshot3D& current,
+                                     const CertifiedRouteSuffix3D& target_route,
+                                     FiniteExecutionPlanCertification3D certification);
+
 [[nodiscard]] std::optional<FiniteExecutionState3D>
 certifyFiniteExecution3D(const ExecutionRouteSnapshot3D& current,
                          FiniteExecutionCertification3D certification);
@@ -549,6 +595,21 @@ certifyFiniteExecution3D(const ExecutionRouteSnapshot3D& current,
 certifyRawInvalidatedFiniteExecution3D(
     const ExecutionRouteSnapshot3D& current,
     RawInvalidatedFiniteExecutionCertification3D certification);
+
+[[nodiscard]] FiniteExecutionCertificationResult3D
+certifyRawInvalidatedFiniteExecution3DDetailed(
+    const ExecutionRouteSnapshot3D& current,
+    RawInvalidatedFiniteExecutionCertification3D certification);
+
+[[nodiscard]] std::optional<FiniteExecutionState3D>
+certifyLifecycleBrakingFiniteExecution3D(
+    const ExecutionRouteSnapshot3D& current,
+    LifecycleBrakingFiniteExecutionCertification3D certification);
+
+[[nodiscard]] FiniteExecutionCertificationResult3D
+certifyLifecycleBrakingFiniteExecution3DDetailed(
+    const ExecutionRouteSnapshot3D& current,
+    LifecycleBrakingFiniteExecutionCertification3D certification);
 
 [[nodiscard]] std::optional<DirectTrackingFiniteExecution3D>
 certifyDirectTrackingExecution3D(const ExecutionRouteSnapshot3D& current,
@@ -559,7 +620,7 @@ makeInitialExecutionRouteSnapshot3D();
 
 [[nodiscard]] ExecutionRouteTransitionResult3D activateCertifiedRoute3D(
     const ExecutionRouteSnapshot3D& current, std::uint64_t expected_snapshot_version,
-    CertifiedRouteSuffix3D candidate, FiniteExecutionState3D candidate_execution);
+    CertifiedRouteSuffix3D candidate, FiniteExecutionPlan3D candidate_execution);
 
 [[nodiscard]] ExecutionRouteTransitionResult3D advanceCertifiedRoute3D(
     const ExecutionRouteSnapshot3D& current,
@@ -569,13 +630,9 @@ makeInitialExecutionRouteSnapshot3D();
     std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_world);
 
 [[nodiscard]] ExecutionRouteTransitionResult3D
-replaceFiniteExecution3D(const ExecutionRouteSnapshot3D& current,
-                         const ExecutionRouteTransitionGuard3D& guard,
-                         std::optional<FiniteExecutionState3D> execution);
-
-[[nodiscard]] ExecutionRouteTransitionResult3D
-requireFiniteExecutionRevalidation3D(const ExecutionRouteSnapshot3D& current,
-                                     const ExecutionRouteTransitionGuard3D& guard);
+replaceFiniteExecutionPlan3D(const ExecutionRouteSnapshot3D& current,
+                             const ExecutionRouteTransitionGuard3D& guard,
+                             FiniteExecutionPlan3D execution);
 
 [[nodiscard]] ExecutionRouteTransitionResult3D
 retireCertifiedRoute3D(const ExecutionRouteSnapshot3D& current,
@@ -583,21 +640,20 @@ retireCertifiedRoute3D(const ExecutionRouteSnapshot3D& current,
                        const RouteLifecycleEvent3D& event,
                        std::optional<FiniteExecutionState3D> retained_safe_execution);
 
-[[nodiscard]] ExecutionRouteTransitionResult3D
-replaceCertifiedRoute3D(const ExecutionRouteSnapshot3D& current,
-                        const ExecutionRouteTransitionGuard3D& guard,
-                        CertifiedRouteSuffix3D successor,
-                        std::optional<FiniteExecutionState3D> successor_execution,
-                        const CertifiedRouteSplice3D& splice);
+[[nodiscard]] ExecutionRouteTransitionResult3D replaceCertifiedRoute3D(
+    const ExecutionRouteSnapshot3D& current,
+    const ExecutionRouteTransitionGuard3D& guard, CertifiedRouteSuffix3D successor,
+    FiniteExecutionPlan3D successor_execution, const CertifiedRouteSplice3D& splice);
 
 // Replaces a still-resident route with a successor independently certified
 // from the current execution state.  This transition is for candidates that
 // were not planned as overlapping continuations and therefore have no splice
 // proof; the exact resident owner and fresh finite execution remain mandatory.
-[[nodiscard]] ExecutionRouteTransitionResult3D replaceCertifiedRouteAtHandoff3D(
-    const ExecutionRouteSnapshot3D& current,
-    const ExecutionRouteTransitionGuard3D& guard, CertifiedRouteSuffix3D successor,
-    std::optional<FiniteExecutionState3D> successor_execution);
+[[nodiscard]] ExecutionRouteTransitionResult3D
+replaceCertifiedRouteAtHandoff3D(const ExecutionRouteSnapshot3D& current,
+                                 const ExecutionRouteTransitionGuard3D& guard,
+                                 CertifiedRouteSuffix3D successor,
+                                 FiniteExecutionPlan3D successor_execution);
 
 [[nodiscard]] ExecutionRouteTransitionResult3D
 transferToDirectTracking3D(const ExecutionRouteSnapshot3D& current,
@@ -611,7 +667,16 @@ replaceDirectTrackingExecution3D(const ExecutionRouteSnapshot3D& current,
 
 [[nodiscard]] ExecutionRouteTransitionResult3D transferDirectTrackingToCertifiedRoute3D(
     const ExecutionRouteSnapshot3D& current, std::uint64_t expected_snapshot_version,
-    CertifiedRouteSuffix3D successor, FiniteExecutionState3D successor_execution);
+    CertifiedRouteSuffix3D successor, FiniteExecutionPlan3D successor_execution);
+
+// Combines a non-publishable progress preparation with the execution-plan
+// transition certified from that exact prepared snapshot. The returned
+// transition is rooted at the original resident snapshot, so the store performs
+// one CAS and can never expose the intermediate generation.
+[[nodiscard]] ExecutionRouteTransitionResult3D composeExecutionPlanTransition3D(
+    const ExecutionRouteSnapshot3D& resident,
+    const ExecutionRouteTransitionResult3D& prepared_progress,
+    const ExecutionRouteTransitionResult3D& prepared_execution_plan);
 
 // A stationary hold may replace a finite execution owner only after its
 // certified terminal-rest state has actually been reached. Revalidation of an

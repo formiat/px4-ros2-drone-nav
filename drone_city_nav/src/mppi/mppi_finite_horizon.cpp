@@ -241,6 +241,23 @@ std::optional<FiniteHorizon> buildFiniteHorizon(
   return horizon;
 }
 
+std::optional<FiniteHorizon> buildFiniteBrakingHorizon(
+    const State& initial_state, const std::size_t maximum_control_count,
+    const DynamicsConfig& dynamics, const Control previous_applied_control,
+    const FiniteHorizonConfig& config) {
+  if (maximum_control_count == 0U) {
+    return std::nullopt;
+  }
+  // buildFiniteHorizon deliberately ignores the unpreserved source states and
+  // controls. Supplying a zero-length nominal prefix therefore exercises the
+  // same jerk-limited arrival generator used by normal finite horizons while
+  // making the safety artifact independent of the planned command sequence.
+  std::vector<State> capacity_states(maximum_control_count + 1U, initial_state);
+  std::vector<Control> capacity_controls(maximum_control_count);
+  return buildFiniteHorizon(capacity_states, capacity_controls, 0U, dynamics,
+                            previous_applied_control, config);
+}
+
 RouteConvergentFiniteHorizon buildRouteConvergentFiniteHorizon(
     const std::span<const State> planned_states,
     const std::span<const Control> planned_controls,
