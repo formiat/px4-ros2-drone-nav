@@ -54,4 +54,11 @@ struct RouteCompilationResult3D {
 [[nodiscard]] RouteCompilationResult3D
 compileExecutionRoute3D(RouteCompilerInput3D input);
 
+// Recompile the dynamic tracking tube and time profile for an unchanged spatial
+// route. Passage resources remain sealed to the source geometry and are still
+// checked against the activation world by route certification.
+[[nodiscard]] RouteCompilationResult3D recompileExecutionRouteDynamics3D(
+    const ExecutionRouteGeometry3D& source, RouteEndpointSemantics3D endpoint_semantics,
+    TrackingErrorTubeWorld3D tracking_world, const RouteCompilerConfig3D& config);
+
 } // namespace drone_city_nav

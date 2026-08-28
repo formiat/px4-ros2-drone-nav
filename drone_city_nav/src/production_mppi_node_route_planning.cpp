@@ -86,12 +86,12 @@ void ProductionMppiNode::processRouteSearch3D(
 
   const std::uint64_t candidate_generation =
       candidate_set.candidates.empty() ? 0U : nextRouteGeneration3D();
-  const ProductionRouteActivationSnapshot3D activation_snapshot =
+  const ProductionRouteActivationSnapshot3D materialization_snapshot =
       captureRouteActivationSnapshot3D();
   const CertifiedRouteSuffix3D* const activation_active_route =
-      activation_snapshot.execution_snapshot &&
-              activation_snapshot.execution_snapshot->route.has_value()
-          ? activation_snapshot.execution_snapshot->route.operator->()
+      materialization_snapshot.execution_snapshot &&
+              materialization_snapshot.execution_snapshot->route.has_value()
+          ? materialization_snapshot.execution_snapshot->route.operator->()
           : nullptr;
 
   ProductionRouteMaterialization3D materialization{.prepared = world};
@@ -101,8 +101,14 @@ void ProductionMppiNode::processRouteSearch3D(
         candidate_set.candidates.front();
     materialization = materializeRouteCandidate3D(
         world, navigation, mission_goal, candidate, candidate_generation,
-        activation_active_route, activation_snapshot.raw_world.get());
+        activation_active_route, materialization_snapshot.raw_world.get());
     materialization.prepared.route_search_ms = candidate_set.search_ms;
+  }
+  // Materialization owns the expensive spatial validation. Capture the
+  // transaction base afterwards so it is not stale before activation begins.
+  const ProductionRouteActivationSnapshot3D activation_snapshot =
+      captureRouteActivationSnapshot3D();
+  if (!candidate_set.candidates.empty() && candidate_generation != 0U) {
     activation = prepareRouteActivation3D(
         world, std::move(materialization.prepared), planned_world_certificate,
         materialization.validation, materialization.replacement_policy, mission_goal,
@@ -136,6 +142,10 @@ void ProductionMppiNode::processRouteSearch3D(
   const ProductionMppiPreparedEsdf& prepared = activation.prepared;
   const StaticRouteCandidateValidation& validation = activation.validation;
   const mppi::StaticRouteHandoffResult& handoff = activation.handoff;
+  const TrackingErrorTubeProfile3D* const tracking_profile =
+      prepared.compiled_route_geometry != nullptr
+          ? prepared.compiled_route_geometry->tracking_error_tube.get()
+          : nullptr;
   const char* const planner_status = candidate_set.planner_invoked
                                          ? persistentPlannerStatus3DName(plan.status)
                                          : "not_invoked";
@@ -143,9 +153,14 @@ void ProductionMppiNode::processRouteSearch3D(
       get_logger(),
       "PRODUCTION_MPPI_ROUTE3D planner=persistent_dstar_lite "
       "raw_revision=%" PRIu64 " mission_epoch=%" PRIu64
+      " activation_raw_revision=%" PRIu64
       " status=%s search_complete=%s search_state_reused=%s "
       "time_search_complete=%s incumbent_retained=%s certified_pending=%s "
-      "activation_status=%.*s activation_raw_snapshot_current=%s "
+      "activation_status=%.*s route_certified=%s "
+      "activation_currentness=(resident=%s,objective=%s,raw=%s,execution=%s,"
+      "candidate=%s,certification_execution=%s) "
+      "tracking_recompile=%s/%s tracking_source_occupied=%" PRIu64
+      " tracking_activation_occupied=%" PRIu64 " tracking_min_speed_mps=%.3f "
       "publication_status=%.*s "
       "validation=%.*s handoff=%s splice=%.*s "
       "certified_reserve=%.*s reserve_available_m=%.3f "
@@ -164,8 +179,8 @@ void ProductionMppiNode::processRouteSearch3D(
       "search_ms=%.3f route_planning_ms=%.3f validation_ms=%.3f "
       "smoothing_ms=%.3f raw_connector_validated=%s "
       "raw_suffix_validated=%s route_fingerprint=%" PRIu64,
-      plan.planned_on_revision, plan.mission_epoch, planner_status,
-      plan.search_complete ? "true" : "false",
+      plan.planned_on_revision, plan.mission_epoch, activation.snapshot_raw_revision,
+      planner_status, plan.search_complete ? "true" : "false",
       plan.search_state_reused ? "true" : "false",
       plan.execution_time_search_complete ? "true" : "false",
       plan.incumbent_retained ? "true" : "false",
@@ -173,7 +188,18 @@ void ProductionMppiNode::processRouteSearch3D(
       static_cast<int>(
           staticRouteActivationStatusName(activation.activation_status).size()),
       staticRouteActivationStatusName(activation.activation_status).data(),
+      activation.route_certified ? "true" : "false",
+      activation.resident_world_snapshot_current ? "true" : "false",
+      activation.objective_snapshot_current ? "true" : "false",
       activation.raw_snapshot_current ? "true" : "false",
+      activation.execution_base_snapshot_current ? "true" : "false",
+      activation.candidate_world_coherent ? "true" : "false",
+      activation.certification_execution_base_current ? "true" : "false",
+      activation.tracking_geometry_recompile_attempted ? "attempted" : "not_needed",
+      activation.tracking_geometry_recompiled ? "compiled" : "not_compiled",
+      activation.tracking_geometry_source_occupied_fingerprint,
+      activation.tracking_geometry_activation_occupied_fingerprint,
+      tracking_profile != nullptr ? tracking_profile->minimum_speed_limit_mps : -1.0,
       static_cast<int>(
           routePublicationStatus3DName(activation.assessment.publication.status)
               .size()),

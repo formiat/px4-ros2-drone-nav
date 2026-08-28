@@ -27,6 +27,43 @@ template<typename T>
   return std::addressof(value.value());
 }
 
+[[nodiscard]] bool sameRawMapVersion(const RawMapVersion& first,
+                                     const RawMapVersion& second) noexcept {
+  return first.producer_instance_id == second.producer_instance_id &&
+         first.base_snapshot_revision == second.base_snapshot_revision &&
+         first.revision == second.revision;
+}
+
+[[nodiscard]] bool
+rawWorldExecutionOwnerExact(const ProductionMppiRawWorld3D& raw_world) noexcept {
+  return raw_world.version.valid() && raw_world.occupancy != nullptr &&
+         raw_world.execution_owner != nullptr && raw_world.execution_owner->valid() &&
+         sameRawMapVersion(raw_world.version, raw_world.execution_owner->version()) &&
+         std::addressof(raw_world.execution_owner->occupancy()) ==
+             raw_world.occupancy.get();
+}
+
+void adoptRouteCompilation(ProductionMppiPreparedEsdf& candidate,
+                           RouteCompilationResult3D compilation) {
+  candidate.route_compilation_validation = compilation.validation;
+  candidate.route_stop_turn_count = compilation.stop_turn_count;
+  candidate.compiled_route_geometry = std::move(compilation.geometry);
+  if (candidate.compiled_route_geometry == nullptr) {
+    candidate.mppi_route.reset();
+    return;
+  }
+  candidate.mppi_route = candidate.compiled_route_geometry->mppi_route;
+  candidate.route_3d = candidate.compiled_route_geometry->route;
+  candidate.route_2d_projection =
+      candidate.compiled_route_geometry->route_2d_projection;
+  candidate.constrained_spans = candidate.compiled_route_geometry->constrained_spans;
+  candidate.passage_volumes = candidate.compiled_route_geometry->passage_volumes;
+  candidate.cooperative_passage_assignments =
+      candidate.compiled_route_geometry->cooperative_passage_assignments;
+  candidate.selected_passage_traversal_ids =
+      candidate.compiled_route_geometry->selected_passage_traversal_ids;
+}
+
 [[nodiscard]] StaticRouteCandidateStatus
 candidateStatusFromRiskAssignment(const RouteRiskTierAssignmentStatus status) noexcept {
   if (status == RouteRiskTierAssignmentStatus::kRawCollision) {
@@ -207,6 +244,7 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
           ? StaticRouteActivationStatus::kCandidateValidationRejected
           : StaticRouteActivationStatus::kCandidateNotExecutable;
   ProductionMppiPreparedEsdf& candidate = result.prepared;
+  const bool raw_validation_required = candidate.observed_occupancy != nullptr;
 
   result.snapshot_pose_revision = snapshot.navigation.revision;
   result.snapshot_raw_revision =
@@ -291,22 +329,7 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
               .tracking_world = trackingErrorTubeWorld3D(candidate),
               .config = routeCompilerConfig3D(),
           });
-      candidate.route_compilation_validation = compilation.validation;
-      candidate.route_stop_turn_count = compilation.stop_turn_count;
-      candidate.compiled_route_geometry = std::move(compilation.geometry);
-      if (candidate.compiled_route_geometry != nullptr) {
-        candidate.mppi_route = candidate.compiled_route_geometry->mppi_route;
-        candidate.route_3d = candidate.compiled_route_geometry->route;
-        candidate.route_2d_projection =
-            candidate.compiled_route_geometry->route_2d_projection;
-        candidate.constrained_spans =
-            candidate.compiled_route_geometry->constrained_spans;
-        candidate.passage_volumes = candidate.compiled_route_geometry->passage_volumes;
-        candidate.cooperative_passage_assignments =
-            candidate.compiled_route_geometry->cooperative_passage_assignments;
-        candidate.selected_passage_traversal_ids =
-            candidate.compiled_route_geometry->selected_passage_traversal_ids;
-      }
+      adoptRouteCompilation(candidate, std::move(compilation));
       candidate.route_projection = projectOntoRouteProgress3D(
           *candidate.route_3d,
           Point3{snapshot.navigation.state.x, snapshot.navigation.state.y,
@@ -315,6 +338,49 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
           snapshot.resident_world->observed_occupancy != nullptr;
       result.publication_world_advanced = true;
     }
+  }
+
+  const std::shared_ptr<const VersionedObservedRawWorld3D> activation_raw_owner =
+      snapshot.raw_world != nullptr && rawWorldExecutionOwnerExact(*snapshot.raw_world)
+          ? snapshot.raw_world->execution_owner
+          : nullptr;
+  result.tracking_geometry_source_occupied_fingerprint =
+      candidate.observed_raw_world_owner != nullptr
+          ? candidate.observed_raw_world_owner->occupiedContentFingerprint()
+          : 0U;
+  result.tracking_geometry_activation_occupied_fingerprint =
+      activation_raw_owner != nullptr
+          ? activation_raw_owner->occupiedContentFingerprint()
+          : 0U;
+  const bool tracking_geometry_world_changed =
+      raw_validation_required &&
+      result.tracking_geometry_activation_occupied_fingerprint != 0U &&
+      result.tracking_geometry_activation_occupied_fingerprint !=
+          result.tracking_geometry_source_occupied_fingerprint;
+  if (result.validation.accepted && tracking_geometry_world_changed &&
+      activation_raw_owner != nullptr && candidate.compiled_route_geometry != nullptr) {
+    result.tracking_geometry_recompile_attempted = true;
+    const RouteEndpointSemantics3D endpoint_semantics =
+        routeEndpointSemantics3D(candidate.route_reaches_mission_goal,
+                                 !search_world.search_objective.continuous_tracking);
+    RouteCompilationResult3D compilation = recompileExecutionRouteDynamics3D(
+        *candidate.compiled_route_geometry, endpoint_semantics,
+        TrackingErrorTubeWorld3D{
+            .observed_occupancy = &activation_raw_owner->occupancy(),
+            .occupied_content_fingerprint =
+                activation_raw_owner->occupiedContentFingerprint(),
+            .free_space_seed =
+                candidate.proprioceptive_free_space_seed.has_value()
+                    ? std::addressof(*candidate.proprioceptive_free_space_seed)
+                    : nullptr,
+            .launch_support_contact =
+                candidate.launch_support_contact.has_value()
+                    ? std::addressof(*candidate.launch_support_contact)
+                    : nullptr,
+        },
+        routeCompilerConfig3D());
+    result.tracking_geometry_recompiled = compilation.compiled();
+    adoptRouteCompilation(candidate, std::move(compilation));
   }
   if (candidate.route_2d_projection) {
     candidate.route_projection = projectOntoRouteProgress3D(
@@ -436,7 +502,6 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
       .activation_eligible = activation_evidence.physical_executable,
   };
 
-  const bool raw_validation_required = candidate.observed_occupancy != nullptr;
   const std::uint64_t required_objective_sample =
       snapshot.objective && snapshot.objective->mission_epoch ==
                                 snapshot.minimum_tracking_route_mission_epoch
@@ -634,7 +699,7 @@ void ProductionMppiNode::commitRouteActivation3D(
       base_generation != std::numeric_limits<std::uint64_t>::max() &&
       candidate_generation == base_generation + 1U;
   result.generation_matches = base_generation_matches && allocation_generation_matches;
-  result.snapshot_current =
+  result.certification_execution_base_current =
       sameExecutionRouteBase(snapshot.execution_snapshot, current_execution);
   const ActivatedRouteIdentity3D* const active_identity =
       current_route != nullptr ? std::addressof(current_route->identity) : nullptr;
@@ -698,8 +763,8 @@ void ProductionMppiNode::commitRouteActivation3D(
           : std::nullopt;
   const std::optional<CertifiedRouteSuffix3D> certified_route =
       result.readyForArbitration() && result.generation_matches &&
-              result.snapshot_current && result.replacement.replacementAllowed() &&
-              execution_geometry_valid
+              result.certification_execution_base_current &&
+              result.replacement.replacementAllowed() && execution_geometry_valid
           ? certifyExecutionRoute3D(ExecutionRouteActivation3D{
                 .route_generation = candidate_generation,
                 .proposal = materialized_proposal.identity,
@@ -746,6 +811,7 @@ void ProductionMppiNode::commitRouteActivation3D(
                 .retained_route_owner = retained_route_owner,
             })
           : std::nullopt;
+  result.route_certified = certified_route.has_value();
 
   const bool overlap_search = candidate.required_splice_base_route_instance_id.valid();
   const bool overlap_base_matches =
@@ -814,7 +880,11 @@ void ProductionMppiNode::commitRouteActivation3D(
     const bool execution_base_current =
         sameExecutionRouteBase(current_execution, execution_route_store_.snapshot());
     const bool candidate_world_coherent = productionWorldGenerationCoherent(candidate);
+    result.resident_world_snapshot_current = resident_world_current;
+    result.objective_snapshot_current = objective_current;
     result.raw_snapshot_current = raw_world_current;
+    result.execution_base_snapshot_current = execution_base_current;
+    result.candidate_world_coherent = candidate_world_coherent;
     result.snapshot_current =
         pendingRoutePublicationBaseCurrent3D(PendingRoutePublicationCurrentness3D{
             .resident_world_current = resident_world_current,

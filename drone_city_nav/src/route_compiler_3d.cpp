@@ -185,4 +185,36 @@ RouteCompilationResult3D compileExecutionRoute3D(RouteCompilerInput3D input) {
   return result;
 }
 
+RouteCompilationResult3D
+recompileExecutionRouteDynamics3D(const ExecutionRouteGeometry3D& source,
+                                  const RouteEndpointSemantics3D endpoint_semantics,
+                                  TrackingErrorTubeWorld3D tracking_world,
+                                  const RouteCompilerConfig3D& config) {
+  using Failure = ExecutionRouteGeometryFailureReason3D;
+  if (source.route == nullptr || source.constrained_spans == nullptr ||
+      source.passage_volumes == nullptr ||
+      source.cooperative_passage_assignments == nullptr ||
+      source.selected_passage_traversal_ids == nullptr ||
+      source.materialized_route_fingerprint == 0U) {
+    return RouteCompilationResult3D{
+        .geometry = nullptr,
+        .validation = {Failure::kDerivedResourceMismatch, 0U},
+        .stop_turn_count = 0U,
+        .tracking_error_tube = nullptr,
+    };
+  }
+  return compileExecutionRoute3D(RouteCompilerInput3D{
+      .route = *source.route,
+      .constrained_spans = *source.constrained_spans,
+      .passage_volumes = *source.passage_volumes,
+      .cooperative_passage_assignments = *source.cooperative_passage_assignments,
+      .selected_passage_traversal_ids = *source.selected_passage_traversal_ids,
+      .passage_volume_config = source.passage_volume_config,
+      .endpoint_semantics = endpoint_semantics,
+      .materialized_route_fingerprint = source.materialized_route_fingerprint,
+      .tracking_world = tracking_world,
+      .config = config,
+  });
+}
+
 } // namespace drone_city_nav
