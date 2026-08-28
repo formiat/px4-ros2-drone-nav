@@ -28,25 +28,6 @@ constexpr double kGeometryTolerance{1.0e-9};
          first.depth_cells == second.depth_cells;
 }
 
-[[nodiscard]] bool
-sameTransientExecutionEvidence(const PersistentPlannerWorld3D& first,
-                               const PersistentPlannerWorld3D& second) noexcept {
-  if (first.proprioceptive_free_space_seed.has_value() !=
-          second.proprioceptive_free_space_seed.has_value() ||
-      first.launch_support_contact.has_value() !=
-          second.launch_support_contact.has_value()) {
-    return false;
-  }
-  const bool same_seed =
-      !first.proprioceptive_free_space_seed.has_value() ||
-      sameProprioceptiveFreeSpaceSeed3D(*first.proprioceptive_free_space_seed,
-                                        *second.proprioceptive_free_space_seed);
-  const bool same_support = !first.launch_support_contact.has_value() ||
-                            sameLaunchSupportContact3D(*first.launch_support_contact,
-                                                       *second.launch_support_contact);
-  return same_seed && same_support;
-}
-
 [[nodiscard]] bool nodeLess(const PersistentPlannerNode3D& first,
                             const PersistentPlannerNode3D& second) noexcept {
   return std::tuple{first.z, first.y, first.x} <
@@ -109,8 +90,7 @@ PersistentDStarLitePlanner3DImpl::updateWorld(const PersistentPlannerWorld3D& wo
       world.producer_instance_id != world_.producer_instance_id ||
       !sameGridGeometry(*world.bounds()) || world.revision < world_.revision ||
       (world.revision == world_.revision &&
-       world.occupied_fingerprint != world_.occupied_fingerprint) ||
-      !sameTransientExecutionEvidence(world_, world)) {
+       world.occupied_fingerprint != world_.occupied_fingerprint)) {
     if (world.revision < world_.revision &&
         world.producer_instance_id == world_.producer_instance_id) {
       return update;
@@ -302,8 +282,8 @@ PersistentDStarLitePlanner3DImpl::selectAnchor(const Point3& point,
     if (!nodeValid(candidate)) {
       continue;
     }
-    const bool connector_valid =
-        start_anchor ? rawSegmentValid(point, anchor) : rawSegmentValid(anchor, point);
+    const bool connector_valid = start_anchor ? departureSegmentValid(point, anchor)
+                                              : rawSegmentValid(anchor, point);
     if (connector_valid) {
       return candidate;
     }
@@ -320,6 +300,29 @@ bool PersistentDStarLitePlanner3DImpl::pointInsideFlightEnvelope(
 
 bool PersistentDStarLitePlanner3DImpl::rawSegmentValid(const Point3& first,
                                                        const Point3& second) const {
+  if (!pointInsideFlightEnvelope(first) || !pointInsideFlightEnvelope(second)) {
+    return false;
+  }
+  if (world_.observed_occupancy != nullptr) {
+    // The resident graph represents persistent raw occupancy only. A moving
+    // proprioceptive seed and launch support are local execution evidence; if
+    // they changed graph edge costs, every pose refresh would invalidate the
+    // complete backward search and its edge cache.
+    return validateObservedSweptFootprint(
+               *world_.observed_occupancy, first, FootprintBodyAxis{}, second,
+               FootprintBodyAxis{}, config_.physical_footprint,
+               ObservedSpaceValidationPolicy::kAllowUnknown)
+        .accepted();
+  }
+  return world_.static_occupancy != nullptr &&
+         validateKnownStaticSweptFootprint(
+             *world_.static_occupancy, first, FootprintBodyAxis{}, second,
+             FootprintBodyAxis{}, config_.physical_footprint)
+             .accepted();
+}
+
+bool PersistentDStarLitePlanner3DImpl::departureSegmentValid(
+    const Point3& first, const Point3& second) const {
   if (!pointInsideFlightEnvelope(first) || !pointInsideFlightEnvelope(second)) {
     return false;
   }

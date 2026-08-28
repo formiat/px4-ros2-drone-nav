@@ -401,7 +401,10 @@ std::vector<Point3> PersistentDStarLitePlanner3DImpl::shortcutPath(
         break;
       }
       ++checks;
-      if (!rawSegmentValid(result[anchor], result[candidate])) {
+      const bool shortcut_valid =
+          anchor == 0U ? departureSegmentValid(result[anchor], result[candidate])
+                       : rawSegmentValid(result[anchor], result[candidate]);
+      if (!shortcut_valid) {
         continue;
       }
       std::vector<Point3> trial = result;
@@ -441,7 +444,7 @@ PersistentDStarLitePlanner3DImpl::rebaseIncumbent(const Point3& start,
     return distance3D(start, incumbent_[first]) < distance3D(start, incumbent_[second]);
   });
   for (const std::size_t candidate : candidates) {
-    if (!rawSegmentValid(start, incumbent_[candidate])) {
+    if (!departureSegmentValid(start, incumbent_[candidate])) {
       continue;
     }
     std::vector<Point3> rebased;
@@ -469,7 +472,10 @@ bool PersistentDStarLitePlanner3DImpl::pathRawValid(
     return false;
   }
   for (std::size_t index = 1U; index < path.size(); ++index) {
-    if (!rawSegmentValid(path[index - 1U], path[index])) {
+    const bool segment_valid =
+        index == 1U ? departureSegmentValid(path[index - 1U], path[index])
+                    : rawSegmentValid(path[index - 1U], path[index]);
+    if (!segment_valid) {
       return false;
     }
   }

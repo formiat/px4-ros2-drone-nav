@@ -146,6 +146,8 @@ private:
   selectAnchor(const Point3& point, bool start_anchor) const;
   [[nodiscard]] bool pointInsideFlightEnvelope(const Point3& point) const noexcept;
   [[nodiscard]] bool rawSegmentValid(const Point3& first, const Point3& second) const;
+  [[nodiscard]] bool departureSegmentValid(const Point3& first,
+                                           const Point3& second) const;
   [[nodiscard]] bool nodeValid(PersistentPlannerNode3D node) const;
   [[nodiscard]] std::vector<PersistentPlannerNode3D>
   adjacentNodes(PersistentPlannerNode3D node) const;

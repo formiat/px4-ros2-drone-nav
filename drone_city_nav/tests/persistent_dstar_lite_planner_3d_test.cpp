@@ -365,6 +365,59 @@ TEST(PersistentDStarLitePlanner3DTest,
 }
 
 TEST(PersistentDStarLitePlanner3DTest,
+     MovingTransientDepartureEvidenceDoesNotResetThePersistentRawSearch) {
+  auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 1.0, 18, 18, 8});
+  PersistentPlannerConfig3D config = testConfig();
+  config.maximum_expansions_per_update = 1U;
+  PersistentDStarLitePlanner3D planner{config};
+  const Point3 start{1.5, 1.5, 1.5};
+  const Point3 goal{16.5, 16.5, 6.5};
+  const ProprioceptiveFreeSpaceSeed3D initial_seed{
+      .position = start,
+      .body_axis = FootprintBodyAxis{},
+      .footprint = SweptFootprintConfig{},
+  };
+  const LaunchSupportContact3D initial_support{
+      .seed = initial_seed,
+      .contact_cells = {AxisAlignedBox3D{
+          .minimum = Point3{1.0, 1.0, 1.0},
+          .maximum = Point3{2.0, 2.0, 2.0},
+      }},
+      .occupied_evidence_cells = 0U,
+      .evidence_source = LaunchSupportEvidenceSource::kVehicleLandDetector,
+      .maximum_lateral_departure_m = 1.0,
+      .minimum_axial_departure_m = 0.0,
+      .maximum_axial_settling_m = 1.0,
+  };
+  ASSERT_TRUE(launchSupportContactValid3D(initial_support));
+  PersistentPlannerWorld3D initial_world = world(occupancy, 1U);
+  initial_world.proprioceptive_free_space_seed = initial_seed;
+  initial_world.launch_support_contact = initial_support;
+
+  const PersistentPlannerResult3D initial =
+      planner.plan(request(start, goal, std::move(initial_world)));
+  ASSERT_EQ(initial.status, PersistentPlannerStatus3D::kSearchInProgress);
+  ASSERT_FALSE(initial.search_state_reused);
+
+  ProprioceptiveFreeSpaceSeed3D moved_seed = initial_seed;
+  moved_seed.position.x += 0.25;
+  LaunchSupportContact3D moved_support = initial_support;
+  moved_support.seed = moved_seed;
+  ASSERT_TRUE(launchSupportContactValid3D(moved_support));
+  PersistentPlannerWorld3D refreshed_world = world(occupancy, 1U);
+  refreshed_world.proprioceptive_free_space_seed = moved_seed;
+  refreshed_world.launch_support_contact = moved_support;
+  const PersistentPlannerResult3D refreshed =
+      planner.plan(request(start, goal, std::move(refreshed_world)));
+
+  EXPECT_TRUE(refreshed.search_state_reused);
+  EXPECT_TRUE(refreshed.occupied_world_unchanged);
+  EXPECT_EQ(refreshed.search_generation, initial.search_generation);
+  EXPECT_GE(refreshed.records, initial.records);
+}
+
+TEST(PersistentDStarLitePlanner3DTest,
      BoundedSearchResumesInsteadOfPublishingAGreedyFrontier) {
   auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
       GridBounds3D{0.0, 0.0, 0.0, 1.0, 18, 18, 8});
