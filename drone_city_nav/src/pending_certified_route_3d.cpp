@@ -141,7 +141,12 @@ bool PendingCertifiedRouteMailbox3D::publish(
     return false;
   }
   const std::scoped_lock lock{mutex_};
-  if (sealed->publication_sequence <= last_accepted_publication_sequence_) {
+  // A certified candidate is an execution transaction, not a latest-value
+  // estimate. Keep the first resident identity until execution either commits
+  // or explicitly acknowledges it; a newer planning completion cannot silently
+  // displace a route that is already waiting for admission.
+  if (pending_ != nullptr ||
+      sealed->publication_sequence <= last_accepted_publication_sequence_) {
     return false;
   }
   pending_ = sealed;

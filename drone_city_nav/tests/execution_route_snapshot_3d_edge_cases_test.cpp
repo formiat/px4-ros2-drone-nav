@@ -62,7 +62,7 @@ TEST(ExecutionRouteSnapshot3DTest,
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
-     PendingMailboxIsLatestWinsAndAcknowledgementCannotClearANewerRoute) {
+     PendingMailboxRetainsFirstCertifiedRouteUntilExactAcknowledgement) {
   SnapshotFixture3D fixture;
   const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
       fixture.activeSnapshot();
@@ -102,19 +102,18 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_NE(sealed_first, nullptr);
   EXPECT_NE(sealed_first, first);
   EXPECT_FALSE(mailbox.publish(first));
-  EXPECT_TRUE(mailbox.publish(second));
+  EXPECT_FALSE(mailbox.publish(second));
   EXPECT_FALSE(mailbox.acknowledgeIfSame(first));
-  EXPECT_FALSE(mailbox.acknowledgeIfSame(sealed_first));
+  EXPECT_EQ(mailbox.snapshot(), sealed_first);
+  EXPECT_TRUE(mailbox.acknowledgeIfSame(sealed_first));
+  EXPECT_EQ(mailbox.snapshot(), nullptr);
+  EXPECT_FALSE(mailbox.publish(first));
+  EXPECT_TRUE(mailbox.publish(second));
   const std::shared_ptr<const PendingCertifiedRoute3D> sealed_second =
       mailbox.snapshot();
   ASSERT_NE(sealed_second, nullptr);
   EXPECT_NE(sealed_second, second);
   EXPECT_EQ(sealed_second->publication_sequence, second->publication_sequence);
-  EXPECT_TRUE(mailbox.acknowledgeIfSame(sealed_second));
-  EXPECT_EQ(mailbox.snapshot(), nullptr);
-  EXPECT_FALSE(mailbox.publish(first));
-  EXPECT_FALSE(mailbox.publish(second));
-  EXPECT_EQ(mailbox.snapshot(), nullptr);
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
@@ -379,7 +378,7 @@ TEST(ExecutionRouteSnapshot3DTest, RouteSplicePendingSurvivesExecutionProgressCa
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
-     ConcurrentNewerPendingPublicationRejectsCapturedActivation) {
+     ConcurrentNewerPlanningCompletionCannotDisplaceCapturedActivation) {
   SnapshotFixture3D fixture;
   const std::optional<CertifiedRouteSuffix3D> suffix = fixture.certify();
   ASSERT_TRUE(suffix.has_value());
@@ -436,12 +435,10 @@ TEST(ExecutionRouteSnapshot3DTest,
 
   ASSERT_NE(captured, nullptr);
   EXPECT_EQ(captured->publication_sequence, 1U);
-  EXPECT_TRUE(newer_published);
-  EXPECT_FALSE(committed);
-  EXPECT_EQ(store.snapshot(), initial);
-  const std::shared_ptr<const PendingCertifiedRoute3D> resident = mailbox.snapshot();
-  ASSERT_NE(resident, nullptr);
-  EXPECT_EQ(resident->publication_sequence, 2U);
+  EXPECT_FALSE(newer_published);
+  EXPECT_TRUE(committed);
+  EXPECT_EQ(store.snapshot(), activation.next);
+  EXPECT_EQ(mailbox.snapshot(), nullptr);
 }
 
 TEST(ExecutionRouteSnapshot3DTest,

@@ -2,6 +2,8 @@
 
 #include <cmath>
 #include <span>
+#include <sstream>
+#include <string>
 
 #include "production_mppi_node.hpp"
 
@@ -63,6 +65,34 @@ diagnosticRouteConstraint(const ProductionMppiDiagnosticsSnapshot& snapshot,
       Point3{input.initial_state.x, input.initial_state.y, input.initial_state.z},
       Vec3{input.initial_state.vx, input.initial_state.vy, input.initial_state.vz},
       route_envelope_config, diagnostics_distance_m);
+}
+
+[[nodiscard]] std::string
+certifiedRouteReserveInfoFields(const ProductionMppiPreparedEsdf& esdf) {
+  std::ostringstream fields;
+  fields << " certified_route_reserve="
+         << certifiedRouteReserveStatus3DName(esdf.certified_route_reserve_status)
+         << " certified_route_reserve_available_m="
+         << esdf.certified_route_reserve_available_m
+         << " certified_route_reserve_required_m="
+         << esdf.certified_route_reserve_required_m
+         << " certified_route_reserve_shortfall_m="
+         << esdf.certified_route_reserve_shortfall_m;
+  return fields.str();
+}
+
+[[nodiscard]] std::string
+certifiedRouteReserveJsonFields(const ProductionMppiPreparedEsdf& esdf) {
+  std::ostringstream fields;
+  fields << ",\"certified_route_reserve\":\""
+         << certifiedRouteReserveStatus3DName(esdf.certified_route_reserve_status)
+         << '"' << ",\"certified_route_reserve_available_m\":"
+         << esdf.certified_route_reserve_available_m
+         << ",\"certified_route_reserve_required_m\":"
+         << esdf.certified_route_reserve_required_m
+         << ",\"certified_route_reserve_shortfall_m\":"
+         << esdf.certified_route_reserve_shortfall_m;
+  return fields.str();
 }
 
 } // namespace

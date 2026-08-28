@@ -72,12 +72,8 @@ rawCollision(const ObservedOccupancyGrid3D& occupancy, const Point3& first,
   return true;
 }
 
-[[nodiscard]] bool isStrategicMissionIntent(const RouteIntent3D& intent) noexcept {
-  return intent.valid && intent.id != 0U && intent.strategic_plan_id != 0U &&
-         intent.source == RouteIntentSource3D::kTopology &&
-         intent.purpose == RouteIntentPurpose3D::kMissionTransit &&
-         intent.strategic_continuation_available &&
-         intent.strategic_mission_continuation;
+[[nodiscard]] bool finitePoint(const Point3& point) noexcept {
+  return std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z);
 }
 
 [[nodiscard]] bool samePoint(const Point3& first, const Point3& second,
@@ -120,6 +116,53 @@ rawCollision(const ObservedOccupancyGrid3D& occupancy, const Point3& first,
 bool NavigationWorldCertificate3D::valid() const noexcept {
   return esdf_fingerprint != 0U &&
          raw_validated_through_revision >= esdf_source_raw_revision;
+}
+
+bool ActiveIntent3D::valid() const noexcept {
+  return route_intent_id != 0U && mission_epoch != 0U && finitePoint(mission_target);
+}
+
+bool RouteOwnerIdentity3D::valid() const noexcept {
+  return id != 0U && active_intent.valid();
+}
+
+std::optional<ActiveIntent3D>
+activeIntent3D(const MaterializedRouteProposal3D& proposal) noexcept {
+  if (!proposal.objective.available || proposal.objective.mission_epoch == 0U ||
+      !proposal.intent.valid || proposal.intent.id == 0U ||
+      proposal.intent.purpose != RouteIntentPurpose3D::kMissionTransit ||
+      !finitePoint(proposal.intent.mission_target) ||
+      (!proposal.objective.continuous_tracking &&
+       !samePoint(proposal.objective.goal, proposal.intent.mission_target, 1.0e-6))) {
+    return std::nullopt;
+  }
+  ActiveIntent3D intent{
+      .route_intent_id = proposal.intent.id,
+      .mission_epoch = proposal.objective.mission_epoch,
+      .assignment_generation = proposal.objective.assignment_generation,
+      .target_detection_id = proposal.objective.target_detection_id,
+      .target_track_id = proposal.objective.target_track_id,
+      .mission_target = proposal.intent.mission_target,
+      .continuous_tracking = proposal.objective.continuous_tracking,
+  };
+  return intent.valid() ? std::optional<ActiveIntent3D>{intent} : std::nullopt;
+}
+
+bool sameActiveIntent3D(const ActiveIntent3D& first, const ActiveIntent3D& second,
+                        const double target_tolerance_m) noexcept {
+  if (!first.valid() || !second.valid() || !std::isfinite(target_tolerance_m) ||
+      target_tolerance_m < 0.0 || first.mission_epoch != second.mission_epoch ||
+      first.assignment_generation != second.assignment_generation ||
+      first.target_detection_id != second.target_detection_id ||
+      first.target_track_id != second.target_track_id ||
+      first.continuous_tracking != second.continuous_tracking) {
+    return false;
+  }
+  if (first.continuous_tracking) {
+    return true;
+  }
+  return first.route_intent_id == second.route_intent_id &&
+         samePoint(first.mission_target, second.mission_target, target_tolerance_m);
 }
 
 bool RawRouteSuffixValidation3D::accepted() const noexcept {
@@ -186,26 +229,38 @@ RouteProposalReplacementAssessment3D assessRouteProposalReplacement3D(
     const ActivatedRouteIdentity3D* const active_route,
     const MaterializedRouteProposal3D& candidate,
     const RouteProposalReplacementObservation3D& observation) noexcept {
-  if (active_route == nullptr || observation.safety_replan_requested ||
-      !std::isfinite(observation.segment_target_tolerance_m) ||
+  if (active_route == nullptr) {
+    return {};
+  }
+  if (!std::isfinite(observation.segment_target_tolerance_m) ||
       observation.segment_target_tolerance_m < 0.0) {
+    return {.status = RouteProposalReplacementStatus3D::kRejectIntentConflict};
+  }
+  const std::optional<ActiveIntent3D> active = activeIntent3D(active_route->proposal);
+  const std::optional<ActiveIntent3D> replacement = activeIntent3D(candidate);
+  if (!active.has_value() || !replacement.has_value()) {
+    return {.status = RouteProposalReplacementStatus3D::kRejectIntentConflict};
+  }
+  if (sameActiveIntent3D(*active, *replacement,
+                         observation.segment_target_tolerance_m)) {
+    if (observation.continuity_preserving_successor) {
+      return {};
+    }
+    if (observation.safety_replan_requested) {
+      return {.status = RouteProposalReplacementStatus3D::kRejectIntentConflict};
+    }
+    return {.status = RouteProposalReplacementStatus3D::kRetainEquivalentActiveSegment};
+  }
+  const bool ownership_lineage_changed =
+      active->mission_epoch != replacement->mission_epoch ||
+      active->assignment_generation != replacement->assignment_generation ||
+      active->target_detection_id != replacement->target_detection_id ||
+      active->target_track_id != replacement->target_track_id ||
+      active->continuous_tracking != replacement->continuous_tracking;
+  if (ownership_lineage_changed) {
     return {};
   }
-  const RouteIntent3D& active = active_route->proposal.intent;
-  const RouteIntent3D& replacement = candidate.intent;
-  if (!isStrategicMissionIntent(active) || !isStrategicMissionIntent(replacement) ||
-      active.strategic_plan_id != replacement.strategic_plan_id ||
-      active.id != replacement.id ||
-      active.target_identity != replacement.target_identity ||
-      !samePoint(active.mission_target, replacement.mission_target,
-                 observation.segment_target_tolerance_m) ||
-      !samePoint(active.intent_target, replacement.intent_target,
-                 observation.segment_target_tolerance_m) ||
-      !samePoint(active.segment_target, replacement.segment_target,
-                 observation.segment_target_tolerance_m)) {
-    return {};
-  }
-  return {.status = RouteProposalReplacementStatus3D::kRetainEquivalentActiveSegment};
+  return {.status = RouteProposalReplacementStatus3D::kRejectIntentConflict};
 }
 
 RoutePublicationAssessment3D

@@ -94,6 +94,7 @@ using RouteSuffixCertificate3D =
 
 struct CertifiedRouteSuffix3D {
   RouteInstanceId3D route_instance_id{};
+  RouteOwnerIdentity3D owner{};
   // A recertified route is a new immutable semantic revision, but it retains
   // explicit provenance to the sealed route revision from which it was
   // derived. Copies preserve both identities.
@@ -291,6 +292,7 @@ struct ExecutionRouteActivation3D {
   std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_world;
   std::shared_ptr<const VersionedStaticWorld3D> static_world;
   std::shared_ptr<const VersionedExecutionValidationPolicy3D> validation_policy;
+  std::optional<RouteOwnerIdentity3D> retained_route_owner;
 };
 
 class VersionedObservedRawWorld3D final {

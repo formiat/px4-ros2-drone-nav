@@ -595,13 +595,16 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_TRUE(accepted.next->route.has_value());
   EXPECT_EQ(accepted.next->route->identity.generation,
             SnapshotFixture3D::kRouteGeneration + 1U);
+  EXPECT_EQ(accepted.next->route->owner.id, following.next->route->owner.id);
+  EXPECT_EQ(accepted.next->execution_owner_epoch,
+            following.next->execution_owner_epoch);
   ASSERT_TRUE(accepted.next->finite_execution.has_value());
   EXPECT_EQ(accepted.next->finite_execution->source_route_generation,
             SnapshotFixture3D::kRouteGeneration + 1U);
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
-     AtomicRouteHandoffReplacesExactOwnerWithoutInventingASplice) {
+     AtomicNewObjectiveHandoffChangesOwnerWithoutInventingASplice) {
   SnapshotFixture3D fixture;
   const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
       fixture.activeSnapshot();
@@ -614,6 +617,13 @@ TEST(ExecutionRouteSnapshot3DTest,
 
   ExecutionRouteActivation3D successor_activation = fixture.activation();
   successor_activation.route_generation = SnapshotFixture3D::kRouteGeneration + 1U;
+  ++successor_activation.proposal.objective.mission_epoch;
+  successor_activation.proposal.intent.strategic_plan_id =
+      successor_activation.proposal.objective.mission_epoch;
+  successor_activation.observation.current_objective =
+      successor_activation.proposal.objective;
+  successor_activation.continuity_lineage.mission_epoch =
+      successor_activation.proposal.objective.mission_epoch;
   const std::optional<CertifiedRouteSuffix3D> successor =
       certifyExecutionRoute3D(successor_activation);
   ASSERT_TRUE(successor.has_value());
@@ -631,6 +641,7 @@ TEST(ExecutionRouteSnapshot3DTest,
             SnapshotFixture3D::kRouteGeneration + 1U);
   EXPECT_GT(accepted.next->execution_owner_epoch,
             following.next->execution_owner_epoch);
+  EXPECT_NE(accepted.next->route->owner.id, following.next->route->owner.id);
 }
 
 TEST(ExecutionRouteSnapshot3DTest,

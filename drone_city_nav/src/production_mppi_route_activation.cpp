@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cinttypes>
+#include <cmath>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -323,6 +324,65 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
         Point2{snapshot.navigation.state.x, snapshot.navigation.state.y});
   }
 
+  if (result.validation.accepted && candidate.route_3d &&
+      candidate.route_3d->size() >= 2U) {
+    const Point3 snapshot_position{snapshot.navigation.state.x,
+                                   snapshot.navigation.state.y,
+                                   snapshot.navigation.state.z};
+    const RouteProjection3D reserve_projection = projectOntoRoute3DWithinStationWindow(
+        *candidate.route_3d, snapshot_position, candidate.route_3d->front().station_m,
+        candidate.route_3d->back().station_m);
+    StaticRoutePlanningLatencyStats latency;
+    {
+      const std::scoped_lock lock{static_route_extension_mutex_};
+      latency = static_route_planning_latency_tracker_.stats();
+    }
+    if (latency.sample_count == 0U) {
+      latency.planning_p95_ms = std::max(0.0, candidate.global_guide_search_ms);
+      latency.planning_p99_ms =
+          std::max(latency.planning_p95_ms,
+                   1000.0 * static_route_extension_config_.maximum_latency_s);
+      latency.build_and_planning_p99_ms = latency.planning_p99_ms;
+    }
+    const ProductionMppiForwardAcceleration3D forward_acceleration =
+        productionMppiForwardAcceleration3D(snapshot.navigation);
+    const StaticRouteExtensionDecision reserve_decision = evaluateStaticRouteExtension(
+        static_route_extension_config_,
+        StaticRouteExtensionObservation{
+            .route_generation = candidate_generation,
+            .route_station_m = reserve_projection.station_m,
+            .route_remaining_m = reserve_projection.remaining_m,
+            .horizontal_speed_mps =
+                std::hypot(snapshot.navigation.state.vx, snapshot.navigation.state.vy),
+            .forward_acceleration_mps2 = forward_acceleration.horizontal_mps2,
+            .vertical_speed_mps = std::abs(snapshot.navigation.state.vz),
+            .forward_vertical_acceleration_mps2 = forward_acceleration.vertical_mps2,
+            .planning_latency_p95_ms = latency.planning_p95_ms,
+            .planning_latency_p99_ms = latency.planning_p99_ms,
+            .build_and_planning_latency_p99_ms = latency.build_and_planning_p99_ms,
+            .route_reaches_mission_goal = candidate.global_guide_reaches_mission_goal,
+        });
+    const RouteEndpointSemantics3D endpoint_semantics = routeEndpointSemantics3D(
+        candidate.route_intent, candidate.route_segment_evidence.reaches_intent_target,
+        candidate.global_guide_reaches_mission_goal,
+        !search_world.search_objective.continuous_tracking);
+    const CertifiedRouteReserveAssessment3D reserve = assessCertifiedRouteReserve3D(
+        reserve_decision,
+        reserve_projection.valid ? reserve_projection.remaining_m
+                                 : std::numeric_limits<double>::quiet_NaN(),
+        endpoint_semantics);
+    candidate.certified_route_reserve_status = reserve.status;
+    candidate.certified_route_reserve_available_m = reserve.available_m;
+    candidate.certified_route_reserve_required_m = reserve.required_m;
+    candidate.certified_route_reserve_shortfall_m = reserve.shortfall_m;
+    if (!reserve.accepted()) {
+      result.validation = StaticRouteCandidateValidation{
+          .status = reserve.status == CertifiedRouteReserveStatus3D::kInvalid
+                        ? StaticRouteCandidateStatus::kInvalidCertifiedReserve
+                        : StaticRouteCandidateStatus::kInsufficientCertifiedReserve};
+    }
+  }
+
   NavigationWorldCertificate3D validated_world_certificate =
       navigationWorldCertificate3D(candidate);
   SegmentEvidence3D activation_evidence = candidate.route_segment_evidence;
@@ -581,7 +641,9 @@ void ProductionMppiNode::commitRouteActivation3D(
       RouteProposalReplacementObservation3D{
           .safety_replan_requested = search_world.static_route_replan_request &&
                                      search_world.static_route_replan_reason ==
-                                         GlobalGuideReleaseReason::kBlocked});
+                                         GlobalGuideReleaseReason::kBlocked,
+          .continuity_preserving_successor =
+              candidate.required_splice_base_route_instance_id.valid()});
 
   const ActivatedRouteIdentity3D candidate_identity{
       .generation = candidate_generation,
@@ -627,6 +689,11 @@ void ProductionMppiNode::commitRouteActivation3D(
           materialized_proposal.identity.objective.target_detection_id,
       .target_track_id = materialized_proposal.identity.objective.target_track_id,
   };
+  const std::optional<RouteOwnerIdentity3D> retained_route_owner =
+      current_route != nullptr && candidate.required_splice_base_route_instance_id ==
+                                      current_route->route_instance_id
+          ? std::optional<RouteOwnerIdentity3D>{current_route->owner}
+          : std::nullopt;
   const std::optional<CertifiedRouteSuffix3D> certified_route =
       result.readyForArbitration() && result.generation_matches &&
               result.snapshot_current && result.replacement.replacementAllowed() &&
@@ -674,6 +741,7 @@ void ProductionMppiNode::commitRouteActivation3D(
                 .observed_raw_world = observed_owner,
                 .static_world = static_owner,
                 .validation_policy = execution_validation_policy_,
+                .retained_route_owner = retained_route_owner,
             })
           : std::nullopt;
 

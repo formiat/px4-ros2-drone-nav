@@ -56,21 +56,20 @@ namespace {
   return activated.value();
 }
 
-[[nodiscard]] MaterializedRouteProposal3D strategicMissionProposal() {
+[[nodiscard]] MaterializedRouteProposal3D persistentMissionProposal() {
   MaterializedRouteProposal3D proposal = validProposal();
-  proposal.intent.source = RouteIntentSource3D::kTopology;
+  proposal.intent.source = RouteIntentSource3D::kPersistentPlanner;
   proposal.intent.purpose = RouteIntentPurpose3D::kMissionTransit;
-  proposal.intent.strategic_plan_id = 17U;
-  proposal.intent.target_identity = 42U;
-  proposal.intent.strategic_continuation_available = true;
-  proposal.intent.strategic_mission_continuation = true;
+  proposal.intent.strategic_plan_id = proposal.objective.mission_epoch;
+  proposal.intent.intent_target = proposal.intent.mission_target;
+  proposal.intent.segment_target = proposal.intent.mission_target;
   proposal.intent.intent_reaches_mission_target = true;
   return proposal;
 }
 
-[[nodiscard]] ActivatedRouteIdentity3D strategicMissionActivatedRoute() {
+[[nodiscard]] ActivatedRouteIdentity3D persistentMissionActivatedRoute() {
   const std::optional<ActivatedRouteIdentity3D> activated =
-      activateRouteProposal3D(strategicMissionProposal(), 5U);
+      activateRouteProposal3D(persistentMissionProposal(), 5U);
   if (!activated.has_value()) {
     throw std::logic_error{"valid strategic mission proposal was rejected"};
   }
@@ -135,9 +134,9 @@ TEST(RouteLifecycle3DTest, ActivationRejectsAnOlderValidatedWorld) {
   EXPECT_FALSE(activateRouteProposal3D(proposal, 5U).has_value());
 }
 
-TEST(RouteLifecycle3DTest, EquivalentStrategicSegmentRetainsTheActiveRoute) {
-  const MaterializedRouteProposal3D active_proposal = strategicMissionProposal();
-  const ActivatedRouteIdentity3D active = strategicMissionActivatedRoute();
+TEST(RouteLifecycle3DTest, SameActiveIntentRetainsAnUnsolicitedCandidate) {
+  const MaterializedRouteProposal3D active_proposal = persistentMissionProposal();
+  const ActivatedRouteIdentity3D active = persistentMissionActivatedRoute();
   MaterializedRouteProposal3D replacement = active_proposal;
   replacement.route_fingerprint += 1U;
   replacement.planned_world.esdf_source_raw_revision += 1U;
@@ -153,11 +152,26 @@ TEST(RouteLifecycle3DTest, EquivalentStrategicSegmentRetainsTheActiveRoute) {
             RouteProposalReplacementStatus3D::kRetainEquivalentActiveSegment);
 }
 
-TEST(RouteLifecycle3DTest, AdvancedStrategicSegmentCanReplaceTheActiveRoute) {
-  const MaterializedRouteProposal3D active_proposal = strategicMissionProposal();
-  const ActivatedRouteIdentity3D active = strategicMissionActivatedRoute();
+TEST(RouteLifecycle3DTest, CertifiedSuccessorCanAppendToTheSameActiveIntent) {
+  const MaterializedRouteProposal3D active_proposal = persistentMissionProposal();
+  const ActivatedRouteIdentity3D active = persistentMissionActivatedRoute();
   MaterializedRouteProposal3D replacement = active_proposal;
-  replacement.intent.segment_target.x += 0.75;
+  replacement.route_fingerprint += 1U;
+
+  const RouteProposalReplacementAssessment3D assessment =
+      assessRouteProposalReplacement3D(&active, replacement,
+                                       RouteProposalReplacementObservation3D{
+                                           .continuity_preserving_successor = true});
+
+  EXPECT_TRUE(assessment.replacementAllowed());
+}
+
+TEST(RouteLifecycle3DTest, NewMissionEpochCanReplaceTheActiveIntent) {
+  const MaterializedRouteProposal3D active_proposal = persistentMissionProposal();
+  const ActivatedRouteIdentity3D active = persistentMissionActivatedRoute();
+  MaterializedRouteProposal3D replacement = active_proposal;
+  ++replacement.objective.mission_epoch;
+  replacement.intent.strategic_plan_id = replacement.objective.mission_epoch;
 
   const RouteProposalReplacementAssessment3D assessment =
       assessRouteProposalReplacement3D(&active, replacement, {});
@@ -165,28 +179,17 @@ TEST(RouteLifecycle3DTest, AdvancedStrategicSegmentCanReplaceTheActiveRoute) {
   EXPECT_TRUE(assessment.replacementAllowed());
 }
 
-TEST(RouteLifecycle3DTest, SupersedingStrategicPlanCanReplaceEquivalentSegment) {
-  const MaterializedRouteProposal3D active_proposal = strategicMissionProposal();
-  const ActivatedRouteIdentity3D active = strategicMissionActivatedRoute();
-  MaterializedRouteProposal3D replacement = active_proposal;
-  ++replacement.intent.strategic_plan_id;
-
-  const RouteProposalReplacementAssessment3D assessment =
-      assessRouteProposalReplacement3D(&active, replacement, {});
-
-  EXPECT_TRUE(assessment.replacementAllowed());
-}
-
-TEST(RouteLifecycle3DTest, SafetyReplanCanReplaceAnEquivalentStrategicSegment) {
-  const MaterializedRouteProposal3D active_proposal = strategicMissionProposal();
-  const ActivatedRouteIdentity3D active = strategicMissionActivatedRoute();
+TEST(RouteLifecycle3DTest, SafetyReplanWithoutCertifiedContinuityIsRejected) {
+  const MaterializedRouteProposal3D active_proposal = persistentMissionProposal();
+  const ActivatedRouteIdentity3D active = persistentMissionActivatedRoute();
 
   const RouteProposalReplacementAssessment3D assessment =
       assessRouteProposalReplacement3D(
           &active, active_proposal,
           RouteProposalReplacementObservation3D{.safety_replan_requested = true});
 
-  EXPECT_TRUE(assessment.replacementAllowed());
+  EXPECT_FALSE(assessment.replacementAllowed());
+  EXPECT_EQ(assessment.status, RouteProposalReplacementStatus3D::kRejectIntentConflict);
 }
 
 TEST(RouteLifecycle3DTest, ProposalCanPublishOnANewerResidentWorld) {

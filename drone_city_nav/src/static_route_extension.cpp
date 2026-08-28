@@ -20,6 +20,8 @@ extensionConfigValidImpl(const StaticRouteExtensionConfig& config) noexcept {
          std::isfinite(config.maximum_latency_s) && config.maximum_latency_s > 0.0 &&
          std::isfinite(config.maximum_horizontal_acceleration_mps2) &&
          config.maximum_horizontal_acceleration_mps2 > 0.0 &&
+         std::isfinite(config.maximum_vertical_acceleration_mps2) &&
+         config.maximum_vertical_acceleration_mps2 > 0.0 &&
          std::isfinite(config.maximum_control_jerk_mps3) &&
          config.maximum_control_jerk_mps3 > 0.0 &&
          stoppingCapabilityIsValid(config.stopping_capability);
@@ -45,6 +47,56 @@ template<std::size_t Size>
   const double measured_s = std::max(0.0, latency_ms) / 1000.0;
   return std::clamp(measured_s + std::max(0.0, config.latency_margin_s), 0.0,
                     std::max(0.0, config.maximum_latency_s));
+}
+
+[[nodiscard]] double jerkLimitedAxisStoppingDistanceM(
+    const double speed_mps, const double forward_acceleration_mps2,
+    const double guaranteed_deceleration_mps2, const double maximum_acceleration_mps2,
+    const double maximum_jerk_mps3, const double reaction_latency_s) noexcept {
+  if (!std::isfinite(speed_mps) || speed_mps < 0.0 ||
+      !std::isfinite(forward_acceleration_mps2) ||
+      !std::isfinite(guaranteed_deceleration_mps2) ||
+      !(guaranteed_deceleration_mps2 > 0.0) ||
+      !std::isfinite(maximum_acceleration_mps2) || !(maximum_acceleration_mps2 > 0.0) ||
+      !std::isfinite(maximum_jerk_mps3) || !(maximum_jerk_mps3 > 0.0) ||
+      !std::isfinite(reaction_latency_s) || reaction_latency_s < 0.0) {
+    return std::numeric_limits<double>::infinity();
+  }
+  if (!(speed_mps > 0.0)) {
+    return 0.0;
+  }
+
+  const double forward_acceleration = std::clamp(
+      std::max(0.0, forward_acceleration_mps2), 0.0, maximum_acceleration_mps2);
+  const double reaction_distance_m =
+      speed_mps * reaction_latency_s +
+      0.5 * forward_acceleration * reaction_latency_s * reaction_latency_s;
+  const double speed_after_reaction_mps =
+      speed_mps + forward_acceleration * reaction_latency_s;
+  const double ramp_time_s =
+      (forward_acceleration + guaranteed_deceleration_mps2) / maximum_jerk_mps3;
+  const double stop_during_ramp_s =
+      (forward_acceleration +
+       std::sqrt(forward_acceleration * forward_acceleration +
+                 2.0 * maximum_jerk_mps3 * speed_after_reaction_mps)) /
+      maximum_jerk_mps3;
+  const double applied_ramp_time_s = std::min(ramp_time_s, stop_during_ramp_s);
+  const double ramp_time_squared_s2 = applied_ramp_time_s * applied_ramp_time_s;
+  const double ramp_distance_m =
+      speed_after_reaction_mps * applied_ramp_time_s +
+      0.5 * forward_acceleration * ramp_time_squared_s2 -
+      maximum_jerk_mps3 * ramp_time_squared_s2 * applied_ramp_time_s / 6.0;
+  if (stop_during_ramp_s <= ramp_time_s) {
+    return std::max(0.0, reaction_distance_m + ramp_distance_m);
+  }
+  const double speed_after_ramp_mps =
+      speed_after_reaction_mps + forward_acceleration * ramp_time_s -
+      0.5 * maximum_jerk_mps3 * ramp_time_s * ramp_time_s;
+  const double constant_deceleration_distance_m = speed_after_ramp_mps *
+                                                  speed_after_ramp_mps /
+                                                  (2.0 * guaranteed_deceleration_mps2);
+  return std::max(0.0, reaction_distance_m + ramp_distance_m +
+                           constant_deceleration_distance_m);
 }
 
 [[nodiscard]] unsigned
@@ -112,51 +164,47 @@ double jerkLimitedHorizontalStoppingDistanceM(
     const StoppingCapability& capability,
     const double maximum_horizontal_acceleration_mps2,
     const double maximum_control_jerk_mps3) noexcept {
-  if (!std::isfinite(horizontal_speed_mps) || horizontal_speed_mps < 0.0 ||
-      !std::isfinite(forward_acceleration_mps2) ||
-      !std::isfinite(maximum_horizontal_acceleration_mps2) ||
-      !(maximum_horizontal_acceleration_mps2 > 0.0) ||
-      !std::isfinite(maximum_control_jerk_mps3) || !(maximum_control_jerk_mps3 > 0.0) ||
-      !stoppingCapabilityIsValid(capability)) {
+  if (!stoppingCapabilityIsValid(capability)) {
     return std::numeric_limits<double>::infinity();
   }
-  if (!(horizontal_speed_mps > 0.0)) {
-    return 0.0;
-  }
+  return jerkLimitedAxisStoppingDistanceM(
+      horizontal_speed_mps, forward_acceleration_mps2,
+      capability.guaranteed_horizontal_deceleration_mps2,
+      maximum_horizontal_acceleration_mps2, maximum_control_jerk_mps3,
+      capability.reaction_latency_s);
+}
 
-  const double deceleration_mps2 = capability.guaranteed_horizontal_deceleration_mps2;
-  const double forward_acceleration =
-      std::clamp(std::max(0.0, forward_acceleration_mps2), 0.0,
-                 maximum_horizontal_acceleration_mps2);
-  const double reaction_s = capability.reaction_latency_s;
-  const double reaction_distance_m =
-      horizontal_speed_mps * reaction_s +
-      0.5 * forward_acceleration * reaction_s * reaction_s;
-  const double speed_after_reaction_mps =
-      horizontal_speed_mps + forward_acceleration * reaction_s;
-  const double ramp_time_s =
-      (forward_acceleration + deceleration_mps2) / maximum_control_jerk_mps3;
-  const double stop_during_ramp_s =
-      (forward_acceleration +
-       std::sqrt(forward_acceleration * forward_acceleration +
-                 2.0 * maximum_control_jerk_mps3 * speed_after_reaction_mps)) /
-      maximum_control_jerk_mps3;
-  const double applied_ramp_time_s = std::min(ramp_time_s, stop_during_ramp_s);
-  const double ramp_time_squared_s2 = applied_ramp_time_s * applied_ramp_time_s;
-  const double ramp_distance_m =
-      speed_after_reaction_mps * applied_ramp_time_s +
-      0.5 * forward_acceleration * ramp_time_squared_s2 -
-      maximum_control_jerk_mps3 * ramp_time_squared_s2 * applied_ramp_time_s / 6.0;
-  if (stop_during_ramp_s <= ramp_time_s) {
-    return std::max(0.0, reaction_distance_m + ramp_distance_m);
+bool JerkLimitedStoppingDistance3D::valid() const noexcept {
+  return std::isfinite(horizontal_m) && horizontal_m >= 0.0 &&
+         std::isfinite(vertical_m) && vertical_m >= 0.0 &&
+         std::isfinite(route_station_m) && route_station_m >= horizontal_m &&
+         route_station_m >= vertical_m;
+}
+
+JerkLimitedStoppingDistance3D
+jerkLimitedStoppingDistance3D(const double horizontal_speed_mps,
+                              const double forward_horizontal_acceleration_mps2,
+                              const double vertical_speed_mps,
+                              const double forward_vertical_acceleration_mps2,
+                              const StaticRouteExtensionConfig& config) noexcept {
+  if (!staticRouteExtensionConfigValid(config)) {
+    return {.horizontal_m = std::numeric_limits<double>::infinity(),
+            .vertical_m = std::numeric_limits<double>::infinity(),
+            .route_station_m = std::numeric_limits<double>::infinity()};
   }
-  const double speed_after_ramp_mps =
-      speed_after_reaction_mps + forward_acceleration * ramp_time_s -
-      0.5 * maximum_control_jerk_mps3 * ramp_time_s * ramp_time_s;
-  const double constant_deceleration_distance_m =
-      speed_after_ramp_mps * speed_after_ramp_mps / (2.0 * deceleration_mps2);
-  return std::max(0.0, reaction_distance_m + ramp_distance_m +
-                           constant_deceleration_distance_m);
+  const double horizontal_m = jerkLimitedAxisStoppingDistanceM(
+      horizontal_speed_mps, forward_horizontal_acceleration_mps2,
+      config.stopping_capability.guaranteed_horizontal_deceleration_mps2,
+      config.maximum_horizontal_acceleration_mps2, config.maximum_control_jerk_mps3,
+      config.stopping_capability.reaction_latency_s);
+  const double vertical_m = jerkLimitedAxisStoppingDistanceM(
+      vertical_speed_mps, forward_vertical_acceleration_mps2,
+      config.stopping_capability.guaranteed_vertical_deceleration_mps2,
+      config.maximum_vertical_acceleration_mps2, config.maximum_control_jerk_mps3,
+      config.stopping_capability.reaction_latency_s);
+  return {.horizontal_m = horizontal_m,
+          .vertical_m = vertical_m,
+          .route_station_m = horizontal_m + vertical_m};
 }
 
 bool StaticRouteReplanGate::tryBegin(const std::uint64_t route_generation) noexcept {
@@ -437,6 +485,57 @@ void StaticRouteRoiRefreshLifecycle::complete(const std::uint64_t sequence) noex
   }
 }
 
+bool CertifiedRouteReserveAssessment3D::accepted() const noexcept {
+  return status == CertifiedRouteReserveStatus3D::kSufficient ||
+         status == CertifiedRouteReserveStatus3D::kTerminalExempt;
+}
+
+CertifiedRouteReserveAssessment3D assessCertifiedRouteReserve3D(
+    const StaticRouteExtensionDecision& decision, const double available_route_m,
+    const RouteEndpointSemantics3D endpoint_semantics) noexcept {
+  CertifiedRouteReserveAssessment3D result{
+      .available_m = available_route_m,
+      .required_m = decision.extension_trigger_remaining_m,
+  };
+  if (!std::isfinite(result.available_m) || result.available_m < 0.0 ||
+      !decision.valid || !std::isfinite(result.required_m) || result.required_m < 0.0 ||
+      !std::isfinite(decision.braking_path_m) ||
+      !std::isfinite(decision.required_certified_overlap_m)) {
+    return result;
+  }
+  switch (endpoint_semantics) {
+    case RouteEndpointSemantics3D::kMissionStop:
+    case RouteEndpointSemantics3D::kEmergencyBrakeTail:
+      result.status = CertifiedRouteReserveStatus3D::kTerminalExempt;
+      return result;
+    case RouteEndpointSemantics3D::kContinuation:
+    case RouteEndpointSemantics3D::kObservationStop:
+      break;
+    default:
+      return result;
+  }
+  result.shortfall_m = std::max(0.0, result.required_m - result.available_m);
+  result.status = result.shortfall_m <= 1.0e-6
+                      ? CertifiedRouteReserveStatus3D::kSufficient
+                      : CertifiedRouteReserveStatus3D::kInsufficient;
+  return result;
+}
+
+std::string_view
+certifiedRouteReserveStatus3DName(const CertifiedRouteReserveStatus3D status) noexcept {
+  switch (status) {
+    case CertifiedRouteReserveStatus3D::kSufficient:
+      return "sufficient";
+    case CertifiedRouteReserveStatus3D::kTerminalExempt:
+      return "terminal_exempt";
+    case CertifiedRouteReserveStatus3D::kInsufficient:
+      return "insufficient";
+    case CertifiedRouteReserveStatus3D::kInvalid:
+      return "invalid";
+  }
+  return "invalid";
+}
+
 StaticRouteExtensionDecision evaluateStaticRouteExtension(
     const StaticRouteExtensionConfig& config,
     const StaticRouteExtensionObservation& observation) noexcept {
@@ -444,12 +543,16 @@ StaticRouteExtensionDecision evaluateStaticRouteExtension(
   if (!staticRouteExtensionConfigValid(config) ||
       !std::isfinite(observation.horizontal_speed_mps) ||
       !std::isfinite(observation.forward_acceleration_mps2) ||
+      !std::isfinite(observation.vertical_speed_mps) ||
+      !std::isfinite(observation.forward_vertical_acceleration_mps2) ||
       !std::isfinite(observation.planning_latency_p95_ms) ||
       !std::isfinite(observation.planning_latency_p99_ms) ||
       !std::isfinite(observation.build_and_planning_latency_p99_ms)) {
     return decision;
   }
-  const double speed_mps = std::max(0.0, observation.horizontal_speed_mps);
+  const double horizontal_speed_mps = std::max(0.0, observation.horizontal_speed_mps);
+  const double vertical_speed_mps = std::max(0.0, observation.vertical_speed_mps);
+  const double speed_mps = std::hypot(horizontal_speed_mps, vertical_speed_mps);
   const double planning_p95_s =
       boundedLatencySeconds(observation.planning_latency_p95_ms, config);
   const double planning_p99_s =
@@ -460,11 +563,14 @@ StaticRouteExtensionDecision evaluateStaticRouteExtension(
       boundedLatencySeconds(std::max(observation.planning_latency_p99_ms,
                                      observation.build_and_planning_latency_p99_ms),
                             config);
-  decision.braking_path_m = jerkLimitedHorizontalStoppingDistanceM(
-      speed_mps, observation.forward_acceleration_mps2, config.stopping_capability,
-      config.maximum_horizontal_acceleration_mps2, config.maximum_control_jerk_mps3);
+  const JerkLimitedStoppingDistance3D stopping = jerkLimitedStoppingDistance3D(
+      horizontal_speed_mps, observation.forward_acceleration_mps2, vertical_speed_mps,
+      observation.forward_vertical_acceleration_mps2, config);
+  decision.horizontal_braking_path_m = stopping.horizontal_m;
+  decision.vertical_braking_path_m = stopping.vertical_m;
+  decision.braking_path_m = stopping.route_station_m;
   decision.required_certified_overlap_m = config.required_certified_overlap_m;
-  if (!std::isfinite(decision.braking_path_m)) {
+  if (!stopping.valid()) {
     return {};
   }
   const double protected_distance_m =
@@ -476,6 +582,7 @@ StaticRouteExtensionDecision evaluateStaticRouteExtension(
   decision.roi_refresh_trigger_remaining_m =
       std::max(config.minimum_remaining_m,
                protected_distance_m + speed_mps * build_and_planning_p99_s);
+  decision.valid = true;
 
   if (observation.route_generation == 0U || observation.route_reaches_mission_goal ||
       observation.request_in_flight || !std::isfinite(observation.route_station_m) ||
@@ -776,6 +883,10 @@ staticRouteCandidateStatusName(const StaticRouteCandidateStatus status) noexcept
       return "invalid_passage_span";
     case StaticRouteCandidateStatus::kProtectedConstrainedSuffix:
       return "protected_constrained_suffix";
+    case StaticRouteCandidateStatus::kInvalidCertifiedReserve:
+      return "invalid_certified_reserve";
+    case StaticRouteCandidateStatus::kInsufficientCertifiedReserve:
+      return "insufficient_certified_reserve";
     case StaticRouteCandidateStatus::kNoEndpointImprovement:
       return "no_endpoint_improvement";
     case StaticRouteCandidateStatus::kNoExplorationProgress:

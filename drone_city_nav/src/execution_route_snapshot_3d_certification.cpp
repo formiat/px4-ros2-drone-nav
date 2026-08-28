@@ -28,6 +28,7 @@ using namespace execution_route_snapshot_3d_internal;
 namespace execution_route_snapshot_3d_internal {
 
 constexpr std::uint64_t kCertifiedRouteInstanceDomain{0x525445494e535433ULL};
+constexpr std::uint64_t kRouteOwnerDomain{0x5254454f574e5233ULL};
 
 [[nodiscard]] std::optional<CertifiedRouteSuffix3D>
 certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
@@ -87,7 +88,27 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
       !activation.proposal.objective.continuous_tracking);
   const std::optional<ActivatedRouteIdentity3D> identity =
       activateRouteProposal3D(activation.proposal, activation.route_generation);
-  if (!identity.has_value() || activation.geometry == nullptr) {
+  const std::optional<ActiveIntent3D> active_intent =
+      activeIntent3D(activation.proposal);
+  if (!identity.has_value() || !active_intent.has_value() ||
+      activation.geometry == nullptr) {
+    return std::nullopt;
+  }
+  RouteOwnerIdentity3D route_owner;
+  if (activation.retained_route_owner.has_value()) {
+    if (!activation.retained_route_owner->valid() ||
+        !sameActiveIntent3D(activation.retained_route_owner->active_intent,
+                            *active_intent)) {
+      return std::nullopt;
+    }
+    route_owner = *activation.retained_route_owner;
+  } else {
+    route_owner = RouteOwnerIdentity3D{
+        .id = createProducerInstanceId(kRouteOwnerDomain),
+        .active_intent = *active_intent,
+    };
+  }
+  if (!route_owner.valid()) {
     return std::nullopt;
   }
   const std::shared_ptr<const ExecutionRouteGeometry3D> geometry =
@@ -201,6 +222,7 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
 
   CertifiedRouteSuffix3D result{
       .route_instance_id = route_instance_id,
+      .owner = route_owner,
       .parent_route_instance_id =
           sealed_source != nullptr
               ? std::optional<RouteInstanceId3D>{sealed_source->route_instance_id}
@@ -254,6 +276,7 @@ std::optional<CertifiedRouteSuffix3D> recertifyExecutionRoute3D(
           .observed_raw_world = std::move(observed_raw_world),
           .static_world = sealed_source.static_world,
           .validation_policy = sealed_source.validation_policy,
+          .retained_route_owner = sealed_source.owner,
       },
       std::addressof(sealed_source));
 }

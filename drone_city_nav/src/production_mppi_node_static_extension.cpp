@@ -12,25 +12,6 @@
 #include "production_mppi_route_world.hpp"
 
 namespace drone_city_nav {
-namespace {
-
-[[nodiscard]] double
-forwardHorizontalAcceleration(const ProductionMppiNavigation& navigation) noexcept {
-  if (!navigation.measured_acceleration_valid) {
-    return 0.0;
-  }
-  const double speed_mps = std::hypot(navigation.state.vx, navigation.state.vy);
-  if (!(speed_mps > 1.0e-6)) {
-    return 0.0;
-  }
-  return (static_cast<double>(navigation.state.vx) *
-              navigation.measured_equivalent_control.ax +
-          static_cast<double>(navigation.state.vy) *
-              navigation.measured_equivalent_control.ay) /
-         speed_mps;
-}
-
-} // namespace
 
 void ProductionMppiNode::configureStaticRouteExtension(
     const double maximum_horizontal_acceleration_mps2) {
@@ -45,6 +26,8 @@ void ProductionMppiNode::configureStaticRouteExtension(
       declare_parameter<double>("static_global_guide_extension_maximum_latency_s", 8.0);
   static_route_extension_config_.maximum_horizontal_acceleration_mps2 =
       maximum_horizontal_acceleration_mps2;
+  static_route_extension_config_.maximum_vertical_acceleration_mps2 =
+      mppi_config_.dynamics.maximum_vertical_acceleration_mps2;
   static_route_extension_config_.maximum_control_jerk_mps3 =
       mppi_config_.dynamics.maximum_control_jerk_mps3;
   static_route_extension_config_.stopping_capability =
@@ -171,6 +154,8 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
       current, mission_goal, lattice_3d_config_.planning_goal_distance_m);
   const bool observed_world = !use_static_map_;
   const bool pending_successor = pending_certified_route_mailbox_.snapshot() != nullptr;
+  const ProductionMppiForwardAcceleration3D forward_acceleration =
+      productionMppiForwardAcceleration3D(navigation);
 
   std::scoped_lock extension_lock{static_route_extension_mutex_};
   StaticRoutePlanningLatencyStats latency =
@@ -188,7 +173,9 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
           .route_station_m = route_projection.station_m,
           .route_remaining_m = route_projection.remaining_m,
           .horizontal_speed_mps = std::hypot(navigation.state.vx, navigation.state.vy),
-          .forward_acceleration_mps2 = forwardHorizontalAcceleration(navigation),
+          .forward_acceleration_mps2 = forward_acceleration.horizontal_mps2,
+          .vertical_speed_mps = std::abs(navigation.state.vz),
+          .forward_vertical_acceleration_mps2 = forward_acceleration.vertical_mps2,
           .planning_latency_p95_ms = latency.planning_p95_ms,
           .planning_latency_p99_ms = latency.planning_p99_ms,
           .build_and_planning_latency_p99_ms = latency.build_and_planning_p99_ms,
@@ -248,6 +235,7 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
       "STATIC_ROUTE_EXTENSION_REQUEST status=queued generation=%" PRIu64
       " station_m=%.2f remaining_m=%.2f mode=%s extension_trigger_m=%.2f "
       "p95_trigger_m=%.2f roi_trigger_m=%.2f braking_path_m=%.2f "
+      "horizontal_braking_m=%.2f vertical_braking_m=%.2f "
       "required_overlap_m=%.2f roi_request_sequence=%" PRIu64
       " latency_samples=%zu planning_p95_ms=%.2f planning_p99_ms=%.2f "
       "build_and_planning_p99_ms=%.2f",
@@ -257,6 +245,7 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
                      : (decision.request_roi_refresh ? "roi_refresh" : "resident_esdf"),
       decision.extension_trigger_remaining_m, decision.planning_p95_trigger_remaining_m,
       decision.roi_refresh_trigger_remaining_m, decision.braking_path_m,
+      decision.horizontal_braking_path_m, decision.vertical_braking_path_m,
       decision.required_certified_overlap_m, roi_refresh_sequence, latency.sample_count,
       latency.planning_p95_ms, latency.planning_p99_ms,
       latency.build_and_planning_p99_ms);

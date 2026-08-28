@@ -152,15 +152,9 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
       }
     }
     if (!frozen_prefix.has_value()) {
-      frozen_prefix = materializeRouteHandoffAtStation3D(
-          *active_route->geometry->route, candidate.route, current_position,
-          *candidate.search_base_stitch_station_m);
-      if (!frozen_prefix.has_value()) {
-        result.validation = StaticRouteCandidateValidation{
-            .status = StaticRouteCandidateStatus::kInvalidPassageSpan};
-        return result;
-      }
-      prepared.required_splice_base_route_instance_id = {};
+      result.validation = StaticRouteCandidateValidation{
+          .status = StaticRouteCandidateStatus::kInvalidPassageSpan};
+      return result;
     }
     const FrozenRoutePrefix3D& materialized_prefix = frozen_prefix.value();
     const std::vector<ConstrainedRouteSpan> active_prefix_spans =

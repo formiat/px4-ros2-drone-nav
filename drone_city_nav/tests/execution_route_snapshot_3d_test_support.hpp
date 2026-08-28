@@ -341,6 +341,7 @@ struct SnapshotFixture3D {
         .observed_raw_world = observed_raw_world,
         .static_world = nullptr,
         .validation_policy = validation_policy,
+        .retained_route_owner = std::nullopt,
     };
   }
 

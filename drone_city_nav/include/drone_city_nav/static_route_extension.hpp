@@ -5,6 +5,7 @@
 #include "drone_city_nav/mppi/mppi_types.hpp"
 #include "drone_city_nav/observation_frontier.hpp"
 #include "drone_city_nav/route_3d.hpp"
+#include "drone_city_nav/route_execution_contract_3d.hpp"
 #include "drone_city_nav/stopping_capability.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
 #include "drone_city_nav/types.hpp"
@@ -27,6 +28,7 @@ struct StaticRouteExtensionConfig {
   double latency_margin_s{0.5};
   double maximum_latency_s{8.0};
   double maximum_horizontal_acceleration_mps2{4.0};
+  double maximum_vertical_acceleration_mps2{3.0};
   double maximum_control_jerk_mps3{12.0};
   StoppingCapability stopping_capability{};
   double minimum_retry_progress_m{15.0};
@@ -64,6 +66,20 @@ private:
     double horizontal_speed_mps, double forward_acceleration_mps2,
     const StoppingCapability& capability, double maximum_horizontal_acceleration_mps2,
     double maximum_control_jerk_mps3) noexcept;
+
+struct JerkLimitedStoppingDistance3D {
+  double horizontal_m{0.0};
+  double vertical_m{0.0};
+  // Safe upper bound for travelled 3D station while both components stop.
+  double route_station_m{0.0};
+
+  [[nodiscard]] bool valid() const noexcept;
+};
+
+[[nodiscard]] JerkLimitedStoppingDistance3D jerkLimitedStoppingDistance3D(
+    double horizontal_speed_mps, double forward_horizontal_acceleration_mps2,
+    double vertical_speed_mps, double forward_vertical_acceleration_mps2,
+    const StaticRouteExtensionConfig& config) noexcept;
 
 struct StaticRouteObjective {
   Point3 goal{};
@@ -130,6 +146,8 @@ struct StaticRouteExtensionObservation {
   double route_remaining_m{0.0};
   double horizontal_speed_mps{0.0};
   double forward_acceleration_mps2{0.0};
+  double vertical_speed_mps{0.0};
+  double forward_vertical_acceleration_mps2{0.0};
   double planning_latency_p95_ms{0.0};
   double planning_latency_p99_ms{0.0};
   double build_and_planning_latency_p99_ms{0.0};
@@ -143,14 +161,41 @@ struct StaticRouteExtensionObservation {
 };
 
 struct StaticRouteExtensionDecision {
+  bool valid{false};
   bool request_extension{false};
   bool request_roi_refresh{false};
   double planning_p95_trigger_remaining_m{0.0};
   double extension_trigger_remaining_m{0.0};
   double roi_refresh_trigger_remaining_m{0.0};
   double braking_path_m{0.0};
+  double horizontal_braking_path_m{0.0};
+  double vertical_braking_path_m{0.0};
   double required_certified_overlap_m{0.0};
 };
+
+enum class CertifiedRouteReserveStatus3D : std::uint8_t {
+  kSufficient,
+  kTerminalExempt,
+  kInsufficient,
+  kInvalid,
+};
+
+struct CertifiedRouteReserveAssessment3D {
+  CertifiedRouteReserveStatus3D status{CertifiedRouteReserveStatus3D::kInvalid};
+  double available_m{0.0};
+  double required_m{0.0};
+  double shortfall_m{0.0};
+
+  [[nodiscard]] bool accepted() const noexcept;
+};
+
+[[nodiscard]] CertifiedRouteReserveAssessment3D
+assessCertifiedRouteReserve3D(const StaticRouteExtensionDecision& decision,
+                              double available_route_m,
+                              RouteEndpointSemantics3D endpoint_semantics) noexcept;
+
+[[nodiscard]] std::string_view
+certifiedRouteReserveStatus3DName(CertifiedRouteReserveStatus3D status) noexcept;
 
 class StaticRouteReplanGate {
 public:
@@ -277,6 +322,8 @@ enum class StaticRouteCandidateStatus : std::uint8_t {
   kOutsideFlightEnvelope,
   kInvalidPassageSpan,
   kProtectedConstrainedSuffix,
+  kInvalidCertifiedReserve,
+  kInsufficientCertifiedReserve,
   kNoEndpointImprovement,
   kNoExplorationProgress,
 };

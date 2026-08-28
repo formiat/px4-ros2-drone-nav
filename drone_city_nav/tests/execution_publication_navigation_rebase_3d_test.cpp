@@ -147,6 +147,13 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
 
   ExecutionRouteActivation3D successor_activation = fixture.activation();
   successor_activation.route_generation = active->routeGenerationHighWater() + 1U;
+  ++successor_activation.proposal.objective.mission_epoch;
+  successor_activation.proposal.intent.strategic_plan_id =
+      successor_activation.proposal.objective.mission_epoch;
+  successor_activation.observation.current_objective =
+      successor_activation.proposal.objective;
+  successor_activation.continuity_lineage.mission_epoch =
+      successor_activation.proposal.objective.mission_epoch;
   const std::optional<CertifiedRouteSuffix3D> successor =
       certifyExecutionRoute3D(successor_activation);
   ASSERT_TRUE(successor.has_value());

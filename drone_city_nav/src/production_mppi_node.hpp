@@ -229,6 +229,11 @@ struct ProductionMppiPreparedEsdf {
   Vec3 planning_search_direction{};
   std::size_t planning_candidate_points{0U};
   std::size_t planning_candidate_samples{0U};
+  CertifiedRouteReserveStatus3D certified_route_reserve_status{
+      CertifiedRouteReserveStatus3D::kInvalid};
+  double certified_route_reserve_available_m{0.0};
+  double certified_route_reserve_required_m{0.0};
+  double certified_route_reserve_shortfall_m{0.0};
   bool lattice_search_performed{false};
   bool lattice_executable{false};
   LatticePlanStatus lattice_status{LatticePlanStatus::kInvalidInput};

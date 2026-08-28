@@ -45,6 +45,8 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_TRUE(suffix.has_value());
   EXPECT_TRUE(suffix->valid());
   EXPECT_TRUE(suffix->route_instance_id.valid());
+  EXPECT_TRUE(suffix->owner.valid());
+  EXPECT_EQ(suffix->owner.active_intent.mission_epoch, fixture.objective.mission_epoch);
   EXPECT_NE(suffix->geometry, original_geometry);
   EXPECT_NE(suffix->geometry->route, original_geometry->route);
   EXPECT_EQ(routeFingerprint(*suffix->geometry->route),
@@ -87,6 +89,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       fixture.certify();
   ASSERT_TRUE(independently_certified.has_value());
   EXPECT_NE(independently_certified->route_instance_id, suffix->route_instance_id);
+  EXPECT_NE(independently_certified->owner.id, suffix->owner.id);
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
@@ -134,6 +137,9 @@ TEST(ExecutionRouteSnapshot3DTest,
             std::optional<RouteInstanceId3D>{sealed->route_instance_id});
   EXPECT_EQ(refreshed->geometry, sealed->geometry);
   EXPECT_EQ(refreshed->geometry->route, sealed->geometry->route);
+  EXPECT_EQ(refreshed->owner.id, sealed->owner.id);
+  EXPECT_TRUE(
+      sameActiveIntent3D(refreshed->owner.active_intent, sealed->owner.active_intent));
   EXPECT_DOUBLE_EQ(refreshed->progress.station_m, 3.0);
   EXPECT_TRUE(refreshed->valid());
 
@@ -750,7 +756,7 @@ TEST(ExecutionRouteSnapshot3DTest,
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
-     PendingRecoveryPreservesANewerPublicationAndSuppressesAStaleRequest) {
+     PendingRecoveryAcknowledgesTheStableResidentBeforeAcceptingANewerRoute) {
   SnapshotFixture3D fixture;
   const std::optional<CertifiedRouteSuffix3D> route = fixture.certify();
   ASSERT_TRUE(route.has_value());
@@ -767,14 +773,16 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_TRUE(mailbox.publish(first));
   const std::shared_ptr<const PendingCertifiedRoute3D> captured = mailbox.snapshot();
   ASSERT_NE(captured, nullptr);
-  ASSERT_TRUE(mailbox.publish(newer));
+  ASSERT_FALSE(mailbox.publish(newer));
 
   const PendingCertifiedRouteRecoveryResult3D recovery =
       recoverPendingCertifiedRouteLiveness3D(
           mailbox, captured, PendingCertifiedRouteRecoveryObservation3D{});
 
-  EXPECT_FALSE(recovery.pending_acknowledged);
-  EXPECT_FALSE(recovery.request_successor);
+  EXPECT_TRUE(recovery.pending_acknowledged);
+  EXPECT_TRUE(recovery.request_successor);
+  EXPECT_EQ(mailbox.snapshot(), nullptr);
+  ASSERT_TRUE(mailbox.publish(newer));
   const std::shared_ptr<const PendingCertifiedRoute3D> resident = mailbox.snapshot();
   ASSERT_NE(resident, nullptr);
   EXPECT_EQ(resident->publication_sequence, 2U);

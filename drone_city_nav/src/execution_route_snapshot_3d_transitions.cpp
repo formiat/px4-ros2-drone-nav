@@ -42,6 +42,17 @@ replaceCertifiedRouteImpl(const ExecutionRouteSnapshot3D& current,
   if (current_route == nullptr) {
     return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCurrentSnapshot);
   }
+  const bool same_active_intent = sameActiveIntent3D(current_route->owner.active_intent,
+                                                     successor.owner.active_intent);
+  if ((splice != nullptr && !same_active_intent) ||
+      (splice == nullptr && same_active_intent) ||
+      (!same_active_intent && successor.owner.id == current_route->owner.id)) {
+    return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
+  }
+  if (same_active_intent) {
+    successor.owner = current_route->owner;
+  }
+  const bool route_owner_changes = successor.owner.id != current_route->owner.id;
   if (!successor.valid() ||
       current_route->identity.generation == std::numeric_limits<std::uint64_t>::max() ||
       current.execution_owner_epoch == std::numeric_limits<std::uint64_t>::max() ||
@@ -94,7 +105,9 @@ replaceCertifiedRouteImpl(const ExecutionRouteSnapshot3D& current,
   next.finite_execution = std::move(successor_execution);
   next.direct_tracking_execution.reset();
   next.stationary_hold.reset();
-  ++next.execution_owner_epoch;
+  if (route_owner_changes) {
+    ++next.execution_owner_epoch;
+  }
   next.route_generation_high_water = next.route->identity.generation;
   return finishTransition(current, std::move(next));
 }

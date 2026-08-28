@@ -39,6 +39,34 @@ struct MaterializedRouteProposal3D {
   bool activation_eligible{false};
 };
 
+// Stable mission-level intent owned by the route lifecycle. Geometry may be
+// appended or repaired while this identity remains unchanged.
+struct ActiveIntent3D {
+  std::uint64_t route_intent_id{0U};
+  std::uint64_t mission_epoch{0U};
+  std::uint64_t assignment_generation{0U};
+  std::uint64_t target_detection_id{0U};
+  std::uint64_t target_track_id{0U};
+  Point3 mission_target{};
+  bool continuous_tracking{false};
+
+  [[nodiscard]] bool valid() const noexcept;
+};
+
+struct RouteOwnerIdentity3D {
+  std::uint64_t id{0U};
+  ActiveIntent3D active_intent{};
+
+  [[nodiscard]] bool valid() const noexcept;
+};
+
+[[nodiscard]] std::optional<ActiveIntent3D>
+activeIntent3D(const MaterializedRouteProposal3D& proposal) noexcept;
+
+[[nodiscard]] bool sameActiveIntent3D(const ActiveIntent3D& first,
+                                      const ActiveIntent3D& second,
+                                      double target_tolerance_m = 1.0e-6) noexcept;
+
 enum class RoutePublicationStatus3D : std::uint8_t {
   kNotAssessed,
   kCompatible,
@@ -94,11 +122,13 @@ struct RouteLifecycleEvent3D {
 enum class RouteProposalReplacementStatus3D : std::uint8_t {
   kReplace,
   kRetainEquivalentActiveSegment,
+  kRejectIntentConflict,
 };
 
 struct RouteProposalReplacementObservation3D {
   double segment_target_tolerance_m{1.0e-6};
   bool safety_replan_requested{false};
+  bool continuity_preserving_successor{false};
 };
 
 struct RouteProposalReplacementAssessment3D {

@@ -7,6 +7,7 @@
 #include "drone_city_nav/tracking_objective.hpp"
 #include "drone_city_nav/types.hpp"
 
+#include <cmath>
 #include <cstdint>
 #include <optional>
 
@@ -55,6 +56,36 @@ struct ProductionMppiNavigation {
   bool measured_acceleration_valid{false};
   bool valid{false};
 };
+
+struct ProductionMppiForwardAcceleration3D {
+  double horizontal_mps2{0.0};
+  double vertical_mps2{0.0};
+};
+
+[[nodiscard]] inline ProductionMppiForwardAcceleration3D
+productionMppiForwardAcceleration3D(
+    const ProductionMppiNavigation& navigation) noexcept {
+  if (!navigation.measured_acceleration_valid) {
+    return {};
+  }
+  ProductionMppiForwardAcceleration3D result;
+  const double horizontal_speed_mps =
+      std::hypot(navigation.state.vx, navigation.state.vy);
+  if (horizontal_speed_mps > 1.0e-6) {
+    result.horizontal_mps2 = (static_cast<double>(navigation.state.vx) *
+                                  navigation.measured_equivalent_control.ax +
+                              static_cast<double>(navigation.state.vy) *
+                                  navigation.measured_equivalent_control.ay) /
+                             horizontal_speed_mps;
+  }
+  if (std::abs(navigation.state.vz) > 1.0e-6) {
+    result.vertical_mps2 =
+        navigation.state.vz > 0.0F
+            ? static_cast<double>(navigation.measured_equivalent_control.az)
+            : -static_cast<double>(navigation.measured_equivalent_control.az);
+  }
+  return result;
+}
 
 struct ProductionMppiVehicleStatus {
   std::int64_t receive_stamp_ns{0};

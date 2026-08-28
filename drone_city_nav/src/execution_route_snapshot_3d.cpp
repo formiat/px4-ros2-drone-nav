@@ -239,7 +239,11 @@ bool executionRouteGeometryValid3D(const ExecutionRouteGeometry3D& geometry,
 }
 
 bool CertifiedRouteSuffix3D::valid() const noexcept {
-  if (!route_instance_id.valid() || geometry == nullptr || !progress.valid() ||
+  const std::optional<ActiveIntent3D> proposal_intent =
+      activeIntent3D(identity.proposal);
+  if (!route_instance_id.valid() || !owner.valid() || !proposal_intent.has_value() ||
+      !sameActiveIntent3D(owner.active_intent, *proposal_intent) ||
+      geometry == nullptr || !progress.valid() ||
       (parent_route_instance_id.has_value() &&
        (!parent_route_instance_id->valid() ||
         *parent_route_instance_id == route_instance_id)) ||

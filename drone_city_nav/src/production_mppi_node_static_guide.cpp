@@ -94,6 +94,7 @@ void ProductionMppiNode::processGuideSearch3D(
     materialization = materializeRouteCandidate3D(
         world, navigation, mission_goal, candidate, candidate_generation,
         activation_active_route, activation_snapshot.raw_world.get());
+    materialization.prepared.global_guide_search_ms = candidate_set.search_ms;
     activation = prepareRouteActivation3D(
         world, std::move(materialization.prepared), planned_world_certificate,
         materialization.validation, materialization.replacement_policy, mission_goal,
@@ -150,6 +151,8 @@ void ProductionMppiNode::processGuideSearch3D(
       "incumbent_retained=%s certified_pending=%s "
       "activation_status=%.*s publication_status=%.*s "
       "validation=%.*s handoff=%s splice=%.*s "
+      "certified_reserve=%.*s reserve_available_m=%.3f "
+      "reserve_required_m=%.3f reserve_shortfall_m=%.3f "
       "guide_reaches_mission_goal=%s route_generation=%" PRIu64
       " base_route_instance_id=%" PRIu64 " stitch_station_m=%.3f "
       "points=%zu samples=%zu expansions=%zu changed_occupied=%zu "
@@ -176,6 +179,13 @@ void ProductionMppiNode::processGuideSearch3D(
       static_cast<int>(
           routeSpliceCertificationStatus3DName(activation.splice.status).size()),
       routeSpliceCertificationStatus3DName(activation.splice.status).data(),
+      static_cast<int>(
+          certifiedRouteReserveStatus3DName(prepared.certified_route_reserve_status)
+              .size()),
+      certifiedRouteReserveStatus3DName(prepared.certified_route_reserve_status).data(),
+      prepared.certified_route_reserve_available_m,
+      prepared.certified_route_reserve_required_m,
+      prepared.certified_route_reserve_shortfall_m,
       prepared.global_guide_reaches_mission_goal ? "true" : "false",
       prepared.global_guide_generation,
       prepared.planning_search_base_route_instance_id.value,

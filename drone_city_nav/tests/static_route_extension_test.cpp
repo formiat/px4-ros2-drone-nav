@@ -27,6 +27,7 @@ TEST(StaticRouteExtensionTest, RequestsResidentExtensionUsingSearchLatency) {
                                       .build_and_planning_latency_p99_ms = 6250.0});
 
   EXPECT_TRUE(decision.request_extension);
+  EXPECT_TRUE(decision.valid);
   EXPECT_FALSE(decision.request_roi_refresh);
   EXPECT_GE(decision.extension_trigger_remaining_m,
             decision.planning_p95_trigger_remaining_m);
@@ -127,6 +128,97 @@ TEST(StaticRouteExtensionTest, JerkAndForwardAccelerationIncreaseBrakingPath) {
   EXPECT_GT(nominal, 12.5);
   EXPECT_GT(accelerating, nominal);
   EXPECT_GT(lower_jerk, nominal);
+}
+
+TEST(StaticRouteExtensionTest, Full3DReserveIncludesVerticalBrakingAndLatencyTravel) {
+  StaticRouteExtensionConfig config;
+  config.minimum_remaining_m = 0.0;
+  const JerkLimitedStoppingDistance3D vertical_stop =
+      jerkLimitedStoppingDistance3D(0.0, 0.0, 4.0, 0.0, config);
+  const JerkLimitedStoppingDistance3D combined_stop =
+      jerkLimitedStoppingDistance3D(5.0, 0.0, 4.0, 0.0, config);
+
+  ASSERT_TRUE(vertical_stop.valid());
+  ASSERT_TRUE(combined_stop.valid());
+  EXPECT_DOUBLE_EQ(vertical_stop.horizontal_m, 0.0);
+  EXPECT_GT(vertical_stop.vertical_m, 0.0);
+  EXPECT_DOUBLE_EQ(combined_stop.route_station_m,
+                   combined_stop.horizontal_m + combined_stop.vertical_m);
+
+  const StaticRouteExtensionObservation horizontal_only{
+      .route_generation = 4U,
+      .route_remaining_m = 1000.0,
+      .horizontal_speed_mps = 5.0,
+      .planning_latency_p95_ms = 1000.0,
+      .planning_latency_p99_ms = 2000.0,
+      .build_and_planning_latency_p99_ms = 2000.0,
+  };
+  StaticRouteExtensionObservation full_3d = horizontal_only;
+  full_3d.vertical_speed_mps = 4.0;
+  const StaticRouteExtensionDecision horizontal_decision =
+      evaluateStaticRouteExtension(config, horizontal_only);
+  const StaticRouteExtensionDecision full_3d_decision =
+      evaluateStaticRouteExtension(config, full_3d);
+
+  EXPECT_DOUBLE_EQ(horizontal_decision.vertical_braking_path_m, 0.0);
+  EXPECT_GT(full_3d_decision.vertical_braking_path_m, 0.0);
+  EXPECT_GT(full_3d_decision.braking_path_m, horizontal_decision.braking_path_m);
+  EXPECT_GT(full_3d_decision.extension_trigger_remaining_m,
+            horizontal_decision.extension_trigger_remaining_m);
+}
+
+TEST(StaticRouteExtensionTest, ContinuationRequiresFullCertifiedReserve) {
+  StaticRouteExtensionConfig config;
+  config.minimum_remaining_m = 0.0;
+  const StaticRouteExtensionDecision decision = evaluateStaticRouteExtension(
+      config, StaticRouteExtensionObservation{
+                  .route_generation = 4U,
+                  .route_remaining_m = 1000.0,
+                  .horizontal_speed_mps = 8.0,
+                  .vertical_speed_mps = 3.0,
+                  .planning_latency_p95_ms = 500.0,
+                  .planning_latency_p99_ms = 1000.0,
+                  .build_and_planning_latency_p99_ms = 2000.0,
+              });
+  ASSERT_TRUE(decision.valid);
+
+  const CertifiedRouteReserveAssessment3D short_reserve = assessCertifiedRouteReserve3D(
+      decision, decision.extension_trigger_remaining_m - 0.1,
+      RouteEndpointSemantics3D::kContinuation);
+  const CertifiedRouteReserveAssessment3D exact_reserve =
+      assessCertifiedRouteReserve3D(decision, decision.extension_trigger_remaining_m,
+                                    RouteEndpointSemantics3D::kContinuation);
+
+  EXPECT_EQ(short_reserve.status, CertifiedRouteReserveStatus3D::kInsufficient);
+  EXPECT_FALSE(short_reserve.accepted());
+  EXPECT_NEAR(short_reserve.shortfall_m, 0.1, 1.0e-9);
+  EXPECT_EQ(exact_reserve.status, CertifiedRouteReserveStatus3D::kSufficient);
+  EXPECT_TRUE(exact_reserve.accepted());
+}
+
+TEST(StaticRouteExtensionTest, TrueTerminalEndpointIsReserveExempt) {
+  const StaticRouteExtensionDecision decision = evaluateStaticRouteExtension(
+      StaticRouteExtensionConfig{},
+      StaticRouteExtensionObservation{.route_generation = 4U,
+                                      .route_remaining_m = 0.0,
+                                      .horizontal_speed_mps = 8.0,
+                                      .route_reaches_mission_goal = true});
+  ASSERT_TRUE(decision.valid);
+
+  const CertifiedRouteReserveAssessment3D assessment = assessCertifiedRouteReserve3D(
+      decision, 0.0, RouteEndpointSemantics3D::kMissionStop);
+  EXPECT_EQ(assessment.status, CertifiedRouteReserveStatus3D::kTerminalExempt);
+  EXPECT_TRUE(assessment.accepted());
+}
+
+TEST(StaticRouteExtensionTest, InvalidReserveEvidenceFailsClosed) {
+  StaticRouteExtensionDecision invalid_decision;
+  const CertifiedRouteReserveAssessment3D invalid_decision_assessment =
+      assessCertifiedRouteReserve3D(invalid_decision, 100.0,
+                                    RouteEndpointSemantics3D::kContinuation);
+  EXPECT_EQ(invalid_decision_assessment.status,
+            CertifiedRouteReserveStatus3D::kInvalid);
+  EXPECT_FALSE(invalid_decision_assessment.accepted());
 }
 
 TEST(StaticRouteExtensionTest, TriggerDistanceScalesWithLatencyOverlapAndJerkLimits) {
