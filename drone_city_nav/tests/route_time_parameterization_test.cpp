@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <vector>
 
@@ -103,6 +104,24 @@ TEST(RouteTimeParameterizationTest,
   EXPECT_DOUBLE_EQ(from_rest.reference_speeds_mps.front(), 0.0);
   EXPECT_DOUBLE_EQ(already_moving.reference_speeds_mps.front(), 5.0);
   EXPECT_LT(already_moving.travel_time_s, from_rest.travel_time_s);
+}
+
+TEST(RouteTimeParameterizationTest,
+     TrackingTubeCeilingConstrainsTheCompleteStopToStopLeg) {
+  const std::vector<RouteSample3D> route = straightRoute(20.0);
+  const std::vector<double> tracking_speed_limits_mps(route.size(), 1.0);
+
+  const RouteTimeParameterization3D profile = parameterizeRouteTime3D(
+      route, {}, 8.0, 3.0, RouteEndpointSemantics3D::kMissionStop,
+      MppiSpeedPolicyConfig{}, mppi::DynamicsConfig{}, Vec3{},
+      tracking_speed_limits_mps);
+
+  ASSERT_TRUE(profile.valid);
+  ASSERT_EQ(profile.reference_speeds_mps.size(), route.size());
+  EXPECT_TRUE(
+      std::ranges::all_of(profile.reference_speeds_mps,
+                          [](const double speed_mps) { return speed_mps <= 1.0; }));
+  EXPECT_GE(profile.translation_time_s, 20.0);
 }
 
 } // namespace

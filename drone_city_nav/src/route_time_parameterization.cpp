@@ -59,7 +59,8 @@ RouteTimeParameterization3D parameterizeRouteTime3D(
     const double unconstrained_speed_mps, const double constrained_speed_mps,
     const RouteEndpointSemantics3D endpoint_semantics,
     const MppiSpeedPolicyConfig& speed_policy, const mppi::DynamicsConfig& dynamics,
-    const std::optional<Vec3>& initial_velocity) {
+    const std::optional<Vec3>& initial_velocity,
+    const std::span<const double> tracking_speed_limits_mps) {
   RouteTimeParameterization3D result;
   const FlightTimeModel3D time_model{
       .maximum_horizontal_speed_mps =
@@ -83,6 +84,8 @@ RouteTimeParameterization3D parameterizeRouteTime3D(
       !(speed_policy.cruise_speed_mps > kEpsilon) ||
       !(speed_policy.absolute_speed_limit_mps > kEpsilon) ||
       !(speed_policy.maximum_lateral_acceleration_mps2 > kEpsilon) ||
+      (!tracking_speed_limits_mps.empty() &&
+       tracking_speed_limits_mps.size() != route.size()) ||
       !time_model.valid()) {
     return result;
   }
@@ -102,11 +105,18 @@ RouteTimeParameterization3D parameterizeRouteTime3D(
         curvature > kEpsilon
             ? std::sqrt(speed_policy.maximum_lateral_acceleration_mps2 / curvature)
             : std::numeric_limits<double>::infinity();
+    const double tracking_limit = tracking_speed_limits_mps.empty()
+                                      ? std::numeric_limits<double>::infinity()
+                                      : tracking_speed_limits_mps[index];
+    if (!tracking_speed_limits_mps.empty() &&
+        (!std::isfinite(tracking_limit) || tracking_limit < 0.0)) {
+      return {};
+    }
     points.push_back(route[index].position);
     speed_limits.push_back(std::min(
         {time_model.maximum_horizontal_speed_mps,
          constrainedLimit(route[index], constrained_spans, constrained_speed_mps),
-         curvature_limit}));
+         curvature_limit, tracking_limit}));
     stop_turn_flags.push_back(
         route[index].transition == RouteKinematicTransition3D::kStopAndTurn ? 1U : 0U);
   }

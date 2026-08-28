@@ -29,6 +29,7 @@ parameterizeRouteTime3D(std::span<const RouteSample3D> route,
                         RouteEndpointSemantics3D endpoint_semantics,
                         const MppiSpeedPolicyConfig& speed_policy,
                         const mppi::DynamicsConfig& dynamics,
-                        const std::optional<Vec3>& initial_velocity = std::nullopt);
+                        const std::optional<Vec3>& initial_velocity = std::nullopt,
+                        std::span<const double> tracking_speed_limits_mps = {});
 
 } // namespace drone_city_nav

@@ -4,7 +4,7 @@ namespace drone_city_nav {
 namespace {
 
 TEST(ExecutionRouteSnapshot3DTest,
-     OptionalCrossTrackConstraintDoesNotRejectAnIndependentlySafeHorizon) {
+     DisablingLegacyCrossTrackConstraintDoesNotDisableTheTrackingTube) {
   SnapshotFixture3D fixture;
   fixture.validation_policy = VersionedExecutionValidationPolicy3D::capture(
       fixture.validation_policy->flightEnvelope(),
@@ -47,12 +47,16 @@ TEST(ExecutionRouteSnapshot3DTest,
   const FiniteExecutionCertificationResult3D result =
       certifyFiniteExecution3DDetailed(*initial, *suffix, std::move(certification));
 
-  EXPECT_TRUE(result.certified())
+  EXPECT_FALSE(result.certified())
       << "status=" << finiteExecutionCertificationStatus3DName(result.status)
       << " route_adherence_status="
       << finiteExecutionRouteAdherenceStatus3DName(result.route_adherence_status)
       << " route_adherence_failure_distance_m="
       << result.route_adherence_failure_distance_m;
+  EXPECT_EQ(result.status,
+            FiniteExecutionCertificationStatus3D::kRouteAdherenceRejected);
+  EXPECT_EQ(result.route_adherence_status,
+            FiniteExecutionRouteAdherenceStatus3D::kTrackingTubeExceeded);
 }
 
 } // namespace

@@ -207,6 +207,11 @@ parameterizeFlightPathTime3D(const std::span<const Point3> points,
   }
 
   const std::size_t segment_count = points.size() - 1U;
+  if (std::ranges::any_of(speed_limits_mps, [](const double speed_limit_mps) {
+        return !std::isfinite(speed_limit_mps) || speed_limit_mps < 0.0;
+      })) {
+    return result;
+  }
   std::vector<double> lengths(segment_count);
   std::vector<Vec3> tangents(segment_count);
   std::vector<double> acceleration_limits(segment_count);
@@ -215,7 +220,9 @@ parameterizeFlightPathTime3D(const std::span<const Point3> points,
     lengths[index] = distance3D(points[index], points[index + 1U]);
     tangents[index] = direction(points[index], points[index + 1U]);
     acceleration_limits[index] = scalarAccelerationLimit(tangents[index], model);
-    segment_speed_limits[index] = scalarSpeedLimit(tangents[index], model);
+    segment_speed_limits[index] =
+        std::min({scalarSpeedLimit(tangents[index], model), speed_limits_mps[index],
+                  speed_limits_mps[index + 1U]});
     if (!finitePositive(lengths[index]) ||
         !finitePositive(acceleration_limits[index]) ||
         !finitePositive(segment_speed_limits[index])) {
@@ -225,9 +232,6 @@ parameterizeFlightPathTime3D(const std::span<const Point3> points,
 
   result.reference_speeds_mps.resize(points.size());
   for (std::size_t index = 0U; index < points.size(); ++index) {
-    if (!std::isfinite(speed_limits_mps[index]) || speed_limits_mps[index] < 0.0) {
-      return {};
-    }
     const double incoming_limit = index > 0U ? segment_speed_limits[index - 1U]
                                              : std::numeric_limits<double>::infinity();
     const double outgoing_limit = index < segment_count

@@ -199,7 +199,8 @@ void ProductionMppiNode::processDiagnostics(
       << " lattice_3d_minimum_clearance_m=" << esdf.lattice_3d_minimum_clearance_m
       << " static_route_candidate="
       << staticRouteCandidateStatusName(esdf.static_route_candidate_status)
-      << certifiedRouteReserveInfoFields(esdf) << " static_route_activation="
+      << certifiedRouteReserveInfoFields(esdf) << trackingErrorTubeInfoFields(esdf)
+      << " static_route_activation="
       << staticRouteActivationStatusName(esdf.static_route_activation_status)
       << " static_route_publication_status="
       << routePublicationStatus3DName(esdf.static_route_publication_status)
@@ -724,7 +725,8 @@ void ProductionMppiNode::processDiagnostics(
          << '"' << ",\"lattice_3d_minimum_clearance_m\":"
          << esdf.lattice_3d_minimum_clearance_m << ",\"static_route_candidate\":\""
          << staticRouteCandidateStatusName(esdf.static_route_candidate_status) << '"'
-         << certifiedRouteReserveJsonFields(esdf) << ",\"static_route_activation\":\""
+         << certifiedRouteReserveJsonFields(esdf) << trackingErrorTubeJsonFields(esdf)
+         << ",\"static_route_activation\":\""
          << staticRouteActivationStatusName(esdf.static_route_activation_status) << '"'
          << ",\"static_route_publication_status\":\""
          << routePublicationStatus3DName(esdf.static_route_publication_status) << '"'

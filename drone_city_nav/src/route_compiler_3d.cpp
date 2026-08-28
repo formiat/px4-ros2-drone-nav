@@ -65,11 +65,13 @@ passageResourcesStructurallyValid(const RouteCompilerInput3D& input) noexcept {
 }
 
 [[nodiscard]] std::shared_ptr<const std::vector<mppi::RouteSample3D>>
-compileTimeProfile(const RouteCompilerInput3D& input) {
+compileTimeProfile(const RouteCompilerInput3D& input,
+                   const std::span<const double> tracking_speed_limits_mps) {
   const RouteTimeParameterization3D timing = parameterizeRouteTime3D(
       input.route, input.constrained_spans, input.config.unconstrained_speed_mps,
       input.config.constrained_speed_mps, input.endpoint_semantics,
-      input.config.speed_policy, input.config.dynamics);
+      input.config.speed_policy, input.config.dynamics, std::nullopt,
+      tracking_speed_limits_mps);
   if (!timing.valid || timing.reference_speeds_mps.size() != input.route.size()) {
     return nullptr;
   }
@@ -123,8 +125,20 @@ RouteCompilationResult3D compileExecutionRoute3D(RouteCompilerInput3D input) {
     result.validation = {Failure::kInvalidFingerprint, 0U};
     return result;
   }
+  const double maximum_profile_speed_mps = std::min(
+      {input.config.unconstrained_speed_mps, input.config.speed_policy.cruise_speed_mps,
+       input.config.speed_policy.absolute_speed_limit_mps,
+       static_cast<double>(input.config.dynamics.maximum_horizontal_speed_mps)});
+  result.tracking_error_tube =
+      std::make_shared<const TrackingErrorTubeProfile3D>(makeTrackingErrorTubeProfile3D(
+          input.route, input.tracking_world, input.config.physical_footprint,
+          input.config.tracking_error_tube, maximum_profile_speed_mps));
+  if (!result.tracking_error_tube->valid) {
+    result.validation = {Failure::kInvalidTimeProfile, 0U};
+    return result;
+  }
   const std::shared_ptr<const std::vector<mppi::RouteSample3D>> mppi_route =
-      compileTimeProfile(input);
+      compileTimeProfile(input, result.tracking_error_tube->speed_limits_mps);
   if (mppi_route == nullptr || mppi_route->size() != input.route.size()) {
     result.validation = {Failure::kInvalidTimeProfile, 0U};
     return result;
@@ -142,6 +156,7 @@ RouteCompilationResult3D compileExecutionRoute3D(RouteCompilerInput3D input) {
       .mppi_route = mppi_route,
       .route =
           std::make_shared<const std::vector<RouteSample3D>>(std::move(input.route)),
+      .tracking_error_tube = result.tracking_error_tube,
       .route_2d_projection = std::move(projection),
       .constrained_spans = std::make_shared<const std::vector<ConstrainedRouteSpan>>(
           std::move(input.constrained_spans)),

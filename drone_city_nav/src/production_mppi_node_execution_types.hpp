@@ -90,11 +90,14 @@ struct ProductionRouteExecutionSelection3D {
   std::shared_ptr<const PendingCertifiedRoute3D> pending_route;
   std::shared_ptr<const VersionedObservedRawWorld3D> lifecycle_observed_raw_world;
   GlobalGuideProjection projection{};
+  TrackingErrorTubeExecutionAssessment3D tracking_error_tube{};
+  TrackingErrorTubeHandoffAssessment3D tracking_error_tube_handoff{};
   RouteExecutionStatus3D status{RouteExecutionStatus3D::kNoActiveRoute};
   std::optional<RouteLifecycleEvent3D> lifecycle_event;
   Point3 hold_position{};
   double station_m{0.0};
   bool route_usable{false};
+  bool tracking_error_tube_handoff_active{false};
   bool execution_owner_available{false};
   bool pending_activation{false};
   std::optional<DirectTrackingOwnerIdentity3D> direct_tracking_identity;

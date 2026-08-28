@@ -349,6 +349,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       declare_parameter<std::int64_t>("physical_footprint_radial_rings", 2));
   physical_footprint_config_.axial_samples = static_cast<std::size_t>(
       declare_parameter<std::int64_t>("physical_footprint_axial_samples", 3));
+  tracking_error_tube_config_.response_time_s =
+      declare_parameter<double>("tracking_error_tube_response_time_s", 0.15);
   mppi_config_.footprint = mppi::FootprintConfig{
       .radius_m = static_cast<float>(physical_footprint_config_.radius_m),
       .lower_extent_m = static_cast<float>(physical_footprint_config_.lower_extent_m),
@@ -733,6 +735,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       !(lattice_3d_config_.observation_frontier_replacement_minimum_score_improvement >=
         0.0) ||
       !sensorObservabilityConfigIsValid(lattice_3d_config_.sensor_observability) ||
+      !trackingErrorTubeConfig3DIsValid(tracking_error_tube_config_) ||
       !(physical_footprint_config_.sweep_step_m > 0.0) ||
       !(physical_footprint_config_.radius_m >= 0.0) ||
       !(physical_footprint_config_.lower_extent_m >= 0.0) ||

@@ -119,9 +119,38 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
   }
   if (!samePassageVolumeConfig(geometry->passage_volume_config,
                                activation.passage_volume_config) ||
+      !footprintConservativelyContains(
+          geometry->tracking_error_tube->physical_footprint,
+          activation.validation_policy->sweptFootprint()) ||
       (!geometry->constrained_spans->empty() &&
        !sameFootprintConfig(activation.passage_volume_config.footprint,
                             owned_observation.footprint))) {
+    return std::nullopt;
+  }
+  TrackingErrorTubeWorld3D tracking_tube_world;
+  if (requires_observed_raw_certificate) {
+    tracking_tube_world = TrackingErrorTubeWorld3D{
+        .observed_occupancy = &activation.observed_raw_world->occupancy(),
+        .occupied_content_fingerprint =
+            activation.observed_raw_world->occupiedContentFingerprint(),
+        .free_space_seed =
+            activation.observed_raw_world->proprioceptiveFreeSpaceSeed().has_value()
+                ? &*activation.observed_raw_world->proprioceptiveFreeSpaceSeed()
+                : nullptr,
+        .launch_support_contact =
+            activation.observed_raw_world->launchSupportContact().has_value()
+                ? &*activation.observed_raw_world->launchSupportContact()
+                : nullptr,
+    };
+  } else {
+    tracking_tube_world = TrackingErrorTubeWorld3D{
+        .occupancy = &activation.static_world->occupancy(),
+        .occupied_content_fingerprint = activation.static_world->contentFingerprint(),
+        .occupancy_policy = TrackingErrorTubeOccupancyPolicy3D::kKnownStaticBounds,
+    };
+  }
+  if (!trackingErrorTubeProfile3DMatchesWorld(
+          *geometry->route, *geometry->tracking_error_tube, tracking_tube_world)) {
     return std::nullopt;
   }
   const bool passage_geometry_matches_world =
@@ -139,12 +168,12 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
       executionPassageGeometryRevision3D(*geometry);
   const std::uint64_t passage_config_fingerprint =
       passageVolumeConfigFingerprint(activation.passage_volume_config);
-  const std::uint64_t passage_derivation_occupancy_content_fingerprint =
+  const std::uint64_t geometry_derivation_occupancy_content_fingerprint =
       requires_observed_raw_certificate
           ? activation.observed_raw_world->occupiedContentFingerprint()
           : activation.static_world->contentFingerprint();
   if (passage_geometry_revision == 0U || passage_config_fingerprint == 0U ||
-      passage_derivation_occupancy_content_fingerprint == 0U) {
+      geometry_derivation_occupancy_content_fingerprint == 0U) {
     return std::nullopt;
   }
 
@@ -186,8 +215,8 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
             activation.observed_raw_world->contentFingerprint(),
         .passage_geometry_revision = passage_geometry_revision,
         .passage_volume_config_fingerprint = passage_config_fingerprint,
-        .passage_derivation_occupancy_content_fingerprint =
-            passage_derivation_occupancy_content_fingerprint,
+        .geometry_derivation_occupancy_content_fingerprint =
+            geometry_derivation_occupancy_content_fingerprint,
         .suffix_start_station_m = assessment.raw_validation.validated_from_station_m,
         .certified_end_station_m = end_station_m,
     };
@@ -212,8 +241,8 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
             activation.validation_policy->contentFingerprint(),
         .passage_geometry_revision = passage_geometry_revision,
         .passage_volume_config_fingerprint = passage_config_fingerprint,
-        .passage_derivation_occupancy_content_fingerprint =
-            passage_derivation_occupancy_content_fingerprint,
+        .geometry_derivation_occupancy_content_fingerprint =
+            geometry_derivation_occupancy_content_fingerprint,
         .world_certificate = identity->proposal.validated_world,
         .suffix_start_station_m = assessment.projection.station_m,
         .certified_end_station_m = end_station_m,

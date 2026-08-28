@@ -357,6 +357,12 @@ void ProductionMppiNode::planningTick() {
   if (pending_recovery.request_successor) {
     requestGuideRelease(GlobalGuideReleaseReason::kNoActiveGuide, 0U);
   }
+  if (route_execution.tracking_error_tube_handoff_active) {
+    // The controller is still consuming the exact finite connector certified
+    // in the resident immutable plan. Replanning would reset its execution
+    // clock and turn a bounded handoff into an open-ended exemption.
+    return;
+  }
   route_usable = route_execution.route_usable;
   route_execution_status = route_execution.status;
   measured_route_projection = route_execution.projection;

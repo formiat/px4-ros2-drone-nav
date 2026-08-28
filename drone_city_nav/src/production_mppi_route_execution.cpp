@@ -62,6 +62,58 @@ deriveLatestObservedRouteEvidence(
   return derived;
 }
 
+[[nodiscard]] bool trackingTubeProfileMatchesCurrentWorld(
+    const CertifiedRouteSuffix3D& route,
+    const std::shared_ptr<const VersionedObservedRawWorld3D>& observed_world) {
+  if (route.geometry == nullptr || route.geometry->route == nullptr ||
+      route.geometry->tracking_error_tube == nullptr ||
+      !route.geometry->tracking_error_tube->obstacle_evidence_available) {
+    return false;
+  }
+
+  TrackingErrorTubeWorld3D world;
+  std::uint64_t certified_occupied_fingerprint{0U};
+  if (const auto* const raw_certificate =
+          std::get_if<ObservedRawRouteCertificate3D>(&route.certificate)) {
+    if (observed_world == nullptr) {
+      return false;
+    }
+    certified_occupied_fingerprint =
+        raw_certificate->geometry_derivation_occupancy_content_fingerprint;
+    world = TrackingErrorTubeWorld3D{
+        .observed_occupancy = &observed_world->occupancy(),
+        .occupied_content_fingerprint = observed_world->occupiedContentFingerprint(),
+        .free_space_seed = observed_world->proprioceptiveFreeSpaceSeed().has_value()
+                               ? &*observed_world->proprioceptiveFreeSpaceSeed()
+                               : nullptr,
+        .launch_support_contact = observed_world->launchSupportContact().has_value()
+                                      ? &*observed_world->launchSupportContact()
+                                      : nullptr,
+    };
+  } else {
+    const auto* const static_certificate =
+        std::get_if<StaticRouteCertificate3D>(&route.certificate);
+    if (static_certificate == nullptr || route.static_world == nullptr) {
+      return false;
+    }
+    certified_occupied_fingerprint =
+        static_certificate->geometry_derivation_occupancy_content_fingerprint;
+    world = TrackingErrorTubeWorld3D{
+        .occupancy = &route.static_world->occupancy(),
+        .occupied_content_fingerprint = route.static_world->contentFingerprint(),
+        .occupancy_policy = TrackingErrorTubeOccupancyPolicy3D::kKnownStaticBounds,
+    };
+  }
+
+  if (world.occupied_content_fingerprint == 0U ||
+      certified_occupied_fingerprint == 0U) {
+    return false;
+  }
+  return world.occupied_content_fingerprint == certified_occupied_fingerprint ||
+         trackingErrorTubeProfile3DMatchesWorld(
+             *route.geometry->route, *route.geometry->tracking_error_tube, world);
+}
+
 [[nodiscard]] RouteExecutionObservation3D
 makeExecutionObservation(const ProductionMppiPreparedEsdf& world,
                          const ProductionNavigationObjective* const objective,
@@ -186,6 +238,8 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
       .pending_route = nullptr,
       .lifecycle_observed_raw_world = nullptr,
       .projection = {},
+      .tracking_error_tube = {},
+      .tracking_error_tube_handoff = {},
       .status = RouteExecutionStatus3D::kNoActiveRoute,
       .lifecycle_event = std::nullopt,
       .hold_position =
@@ -194,6 +248,7 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
                      .value_or(flight_envelope_config_.minimum_target_z_m)},
       .station_m = 0.0,
       .route_usable = false,
+      .tracking_error_tube_handoff_active = false,
       .execution_owner_available = false,
       .pending_activation = false,
       .direct_tracking_identity = std::move(direct_tracking_identity),
@@ -278,11 +333,71 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
                        distance3D(active_route.progress.last_observed_position,
                                   observation.position) +
                        1.0e-6);
-      const RouteExecutionAssessment3D diagnostic_assessment = assessRouteExecution3D(
+      RouteExecutionAssessment3D diagnostic_assessment = assessRouteExecution3D(
           &active_route.identity, *active_route.geometry->route, observation);
-      const ExecutionRouteTransitionResult3D advanced = advanceCertifiedRoute3D(
-          *result.source_snapshot, guard, observation, execution_input, observed_owner);
-      if (!advanced.applied()) {
+      if (diagnostic_assessment.usable()) {
+        if (!trackingTubeProfileMatchesCurrentWorld(active_route, observed_owner)) {
+          result.tracking_error_tube.status =
+              TrackingErrorTubeExecutionStatus3D::kInvalidProfile;
+          diagnostic_assessment.status = RouteExecutionStatus3D::kInvalidRoute;
+        } else {
+          result.tracking_error_tube = assessTrackingErrorTubeExecution3D(
+              *active_route.geometry->route,
+              *active_route.geometry->tracking_error_tube,
+              TrackingErrorTubeExecutionObservation3D{
+                  .station_m = diagnostic_assessment.projection.station_m,
+                  .cross_track_error_m = diagnostic_assessment.projection.distance_m,
+                  .speed_mps = routeSpeed3D(Vec3{execution_navigation.state.vx,
+                                                 execution_navigation.state.vy,
+                                                 execution_navigation.state.vz}),
+              });
+        }
+        if (!result.tracking_error_tube.accepted()) {
+          if (result.tracking_error_tube.status ==
+                  TrackingErrorTubeExecutionStatus3D::kSpeedLimitExceeded ||
+              result.tracking_error_tube.status ==
+                  TrackingErrorTubeExecutionStatus3D::kCrossTrackExceeded) {
+            result.tracking_error_tube_handoff = assessCertifiedTrackingTubeHandoff3D(
+                *active_source_snapshot, active_route, *execution_input);
+          }
+          result.tracking_error_tube_handoff_active =
+              result.tracking_error_tube_handoff.active();
+          if (!result.tracking_error_tube_handoff_active) {
+            diagnostic_assessment.status =
+                result.tracking_error_tube.status ==
+                        TrackingErrorTubeExecutionStatus3D::kInvalidObservation
+                    ? RouteExecutionStatus3D::kInvalidRoute
+                    : RouteExecutionStatus3D::kTrackingTubeViolation;
+          }
+        }
+      }
+      const ExecutionRouteTransitionResult3D advanced =
+          diagnostic_assessment.usable() && !result.tracking_error_tube_handoff_active
+              ? advanceCertifiedRoute3D(*result.source_snapshot, guard, observation,
+                                        execution_input, observed_owner)
+              : ExecutionRouteTransitionResult3D{};
+      if (result.tracking_error_tube_handoff_active) {
+        active_usable = true;
+        result.status = RouteExecutionStatus3D::kUsable;
+        RCLCPP_INFO_THROTTLE(
+            get_logger(), *get_clock(), 1000,
+            "ROUTE_EXECUTION3D snapshot_version=%" PRIu64 " route_generation=%" PRIu64
+            " status=usable tracking_tube_handoff=%.*s "
+            "handoff_reference_state_index=%zu "
+            "handoff_speed_limit_mps=%.3f handoff_radius_m=%.3f "
+            "handoff_tracking_error_m=%.3f action=retain_immutable_handoff",
+            result.source_snapshot->version, active_route.identity.generation,
+            static_cast<int>(trackingErrorTubeHandoffStatus3DName(
+                                 result.tracking_error_tube_handoff.status)
+                                 .size()),
+            trackingErrorTubeHandoffStatus3DName(
+                result.tracking_error_tube_handoff.status)
+                .data(),
+            result.tracking_error_tube_handoff.reference_state_index,
+            result.tracking_error_tube_handoff.reference_speed_limit_mps,
+            result.tracking_error_tube_handoff.tracking_error_radius_m,
+            result.tracking_error_tube_handoff.actual_tracking_error_m);
+      } else if (!advanced.applied()) {
         if (advanced.status == ExecutionRouteTransitionStatus3D::kNoChange) {
           active_usable = diagnostic_assessment.usable();
         } else if (diagnostic_assessment.usable()) {
@@ -320,6 +435,9 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
           } else if (result.status == RouteExecutionStatus3D::kExcessiveCrossTrack) {
             event_kind = RouteLifecycleEventKind3D::kCrossTrackExceeded;
             release_reason = GlobalGuideReleaseReason::kDiverged;
+          } else if (result.status == RouteExecutionStatus3D::kTrackingTubeViolation) {
+            event_kind = RouteLifecycleEventKind3D::kTrackingTubeExceeded;
+            release_reason = GlobalGuideReleaseReason::kDiverged;
           }
           result.lifecycle_event = RouteLifecycleEvent3D{
               .kind = event_kind,
@@ -336,14 +454,35 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
           RCLCPP_WARN_THROTTLE(
               get_logger(), *get_clock(), 1000,
               "ROUTE_EXECUTION3D snapshot_version=%" PRIu64 " route_generation=%" PRIu64
-              " status=%.*s transition=%.*s "
+              " status=%.*s transition=%.*s tracking_tube_status=%.*s "
+              "tracking_tube_handoff_status=%.*s "
+              "tracking_tube_speed_limit_mps=%.3f "
+              "tracking_tube_radius_m=%.3f actual_speed_mps=%.3f "
+              "actual_cross_track_m=%.3f "
               "action=retain_certified_owner_and_request_successor",
               result.source_snapshot->version, generation,
               static_cast<int>(routeExecutionStatus3DName(result.status).size()),
               routeExecutionStatus3DName(result.status).data(),
               static_cast<int>(
                   executionRouteTransitionStatus3DName(advanced.status).size()),
-              executionRouteTransitionStatus3DName(advanced.status).data());
+              executionRouteTransitionStatus3DName(advanced.status).data(),
+              static_cast<int>(trackingErrorTubeExecutionStatus3DName(
+                                   result.tracking_error_tube.status)
+                                   .size()),
+              trackingErrorTubeExecutionStatus3DName(result.tracking_error_tube.status)
+                  .data(),
+              static_cast<int>(trackingErrorTubeHandoffStatus3DName(
+                                   result.tracking_error_tube_handoff.status)
+                                   .size()),
+              trackingErrorTubeHandoffStatus3DName(
+                  result.tracking_error_tube_handoff.status)
+                  .data(),
+              result.tracking_error_tube.speed_limit_mps,
+              result.tracking_error_tube.tube_radius_m,
+              routeSpeed3D(Vec3{execution_navigation.state.vx,
+                                execution_navigation.state.vy,
+                                execution_navigation.state.vz}),
+              diagnostic_assessment.projection.distance_m);
         }
       } else {
         // This transition intentionally remains caller-local. Publishing it would
@@ -452,7 +591,8 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
     result.station_m = result.route->progress.station_m;
     result.route_usable =
         result.route_usable && result.projection.valid &&
-        result.projection.cross_track_m <= active_guide_config_.maximum_cross_track_m;
+        (result.tracking_error_tube_handoff_active ||
+         result.projection.cross_track_m <= active_guide_config_.maximum_cross_track_m);
     if (!result.route_usable) {
       result.status = result.projection.valid
                           ? RouteExecutionStatus3D::kExcessiveCrossTrack

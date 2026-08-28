@@ -98,5 +98,34 @@ TEST(ExecutionRouteSnapshot3DTest,
       braking_snapshot.braking_fallback.value().validation_proof.artifact_fingerprint);
 }
 
+TEST(ExecutionRouteSnapshot3DTest,
+     TrackingTubeViolationAtomicallyActivatesTheResidentBrakingTail) {
+  SnapshotFixture3D fixture;
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
+      fixture.activeSnapshot();
+  ASSERT_NE(active, nullptr);
+  ASSERT_TRUE(active->route.has_value());
+  ASSERT_TRUE(active->finite_execution.has_value());
+  ASSERT_TRUE(active->braking_fallback.has_value());
+  const RouteLifecycleEvent3D violation{
+      .kind = RouteLifecycleEventKind3D::kTrackingTubeExceeded,
+      .generation = active->route->identity.generation,
+  };
+
+  const ExecutionRouteTransitionResult3D retired = retireCertifiedRoute3D(
+      *active, SnapshotFixture3D::guard(*active), violation, std::nullopt);
+
+  ASSERT_TRUE(retired.applied())
+      << executionRouteTransitionStatus3DName(retired.status);
+  ASSERT_NE(retired.next, nullptr);
+  ASSERT_TRUE(retired.next->route.has_value());
+  ASSERT_TRUE(retired.next->finite_execution.has_value());
+  ASSERT_TRUE(retired.next->braking_fallback.has_value());
+  EXPECT_EQ(retired.next->phase, ExecutionRoutePhase3D::kBraking);
+  EXPECT_EQ(retired.next->route->owner.id, active->route->owner.id);
+  EXPECT_EQ(retired.next->finite_execution->validation_proof.artifact_fingerprint,
+            retired.next->braking_fallback->validation_proof.artifact_fingerprint);
+}
+
 } // namespace
 } // namespace drone_city_nav

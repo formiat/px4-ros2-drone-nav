@@ -237,15 +237,35 @@ ExecutionRouteTransitionResult3D advanceCertifiedRoute3D(
         old_certificate.validation_policy_fingerprint) {
       return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
     }
-    const bool passage_world_changed =
+    const bool derived_geometry_world_changed =
         observed_raw_world->occupiedContentFingerprint() !=
-        old_certificate.passage_derivation_occupancy_content_fingerprint;
+        old_certificate.geometry_derivation_occupancy_content_fingerprint;
+    if (derived_geometry_world_changed &&
+        !trackingErrorTubeProfile3DMatchesWorld(
+            *route.geometry->route, *route.geometry->tracking_error_tube,
+            TrackingErrorTubeWorld3D{
+                .observed_occupancy = &observed_raw_world->occupancy(),
+                .occupied_content_fingerprint =
+                    observed_raw_world->occupiedContentFingerprint(),
+                .free_space_seed =
+                    observed_raw_world->proprioceptiveFreeSpaceSeed().has_value()
+                        ? &*observed_raw_world->proprioceptiveFreeSpaceSeed()
+                        : nullptr,
+                .launch_support_contact =
+                    observed_raw_world->launchSupportContact().has_value()
+                        ? &*observed_raw_world->launchSupportContact()
+                        : nullptr,
+            })) {
+      return transitionFailure(
+          ExecutionRouteTransitionStatus3D::kExecutionAssessmentRejected);
+    }
     if (!route.geometry->constrained_spans->empty() &&
         (!sameFootprintConfig(route.geometry->passage_volume_config.footprint,
                               observation.footprint) ||
-         (passage_world_changed && !canonicalPassageGeometryMatchesObservedWorld(
-                                       *route.geometry, *observed_raw_world,
-                                       route.geometry->passage_volume_config)))) {
+         (derived_geometry_world_changed &&
+          !canonicalPassageGeometryMatchesObservedWorld(
+              *route.geometry, *observed_raw_world,
+              route.geometry->passage_volume_config)))) {
       return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
     }
   } else {
@@ -276,18 +296,24 @@ ExecutionRouteTransitionResult3D advanceCertifiedRoute3D(
                                kMaximumStationCreditPerTravel * observed_travel_m +
                                kStationToleranceM);
   const std::array<mppi::State, 2U> observed_path{
-      mppi::State{.x = static_cast<float>(route.progress.last_observed_position.x),
-                  .y = static_cast<float>(route.progress.last_observed_position.y),
-                  .z = static_cast<float>(route.progress.last_observed_position.z)},
-      mppi::State{.x = static_cast<float>(observation.position.x),
-                  .y = static_cast<float>(observation.position.y),
-                  .z = static_cast<float>(observation.position.z)},
-  };
+      route.progress.execution_input->state(), execution_input->state()};
+  const bool acquiring_certified_tracking_tube =
+      certifiedTrackingTubeHandoffPending(current, route);
+  if (acquiring_certified_tracking_tube) {
+    const TrackingErrorTubeHandoffAssessment3D handoff =
+        assessCertifiedTrackingTubeHandoff3D(current, route, *execution_input);
+    if (!handoff.active() &&
+        handoff.status !=
+            TrackingErrorTubeHandoffStatus3D::kReferenceAcquiredRouteTube) {
+      return transitionFailure(
+          ExecutionRouteTransitionStatus3D::kExecutionAssessmentRejected);
+    }
+  }
   const RouteAdherenceAssessment3D observed_adherence = validateFiniteRouteAdherence(
       *route.geometry, observed_path, route.progress.station_m,
       old_certificate.suffix_start_station_m, old_certificate.certified_end_station_m,
       observation.maximum_cross_track_m, observation.maximum_cross_track_m,
-      observation.footprint.sweep_step_m, false);
+      observation.footprint.sweep_step_m, acquiring_certified_tracking_tube);
   if (!observed_adherence.accepted) {
     return transitionFailure(
         ExecutionRouteTransitionStatus3D::kExecutionAssessmentRejected);
@@ -354,7 +380,7 @@ ExecutionRouteTransitionResult3D advanceCertifiedRoute3D(
     renewed.validated_through_revision = assessment.validated_through_raw_revision;
     renewed.observed_world_content_fingerprint =
         observed_raw_world->contentFingerprint();
-    renewed.passage_derivation_occupancy_content_fingerprint =
+    renewed.geometry_derivation_occupancy_content_fingerprint =
         observed_raw_world->occupiedContentFingerprint();
     renewed.suffix_start_station_m = assessment.raw_validation.validated_from_station_m;
     advanced.observed_raw_world = std::move(observed_raw_world);
@@ -474,12 +500,14 @@ retireCertifiedRoute3D(const ExecutionRouteSnapshot3D& current,
   if (current.phase == ExecutionRoutePhase3D::kBraking &&
       !retained_safe_execution.has_value() &&
       (event.kind == RouteLifecycleEventKind3D::kObjectiveSuperseded ||
-       event.kind == RouteLifecycleEventKind3D::kCrossTrackExceeded)) {
+       event.kind == RouteLifecycleEventKind3D::kCrossTrackExceeded ||
+       event.kind == RouteLifecycleEventKind3D::kTrackingTubeExceeded)) {
     return transitionFailure(ExecutionRouteTransitionStatus3D::kNoChange);
   }
   if (!retained_safe_execution.has_value() &&
       (event.kind == RouteLifecycleEventKind3D::kObjectiveSuperseded ||
-       event.kind == RouteLifecycleEventKind3D::kCrossTrackExceeded)) {
+       event.kind == RouteLifecycleEventKind3D::kCrossTrackExceeded ||
+       event.kind == RouteLifecycleEventKind3D::kTrackingTubeExceeded)) {
     retained_safe_execution = current.braking_fallback;
   }
 
@@ -634,6 +662,7 @@ retireCertifiedRoute3D(const ExecutionRouteSnapshot3D& current,
     }
     case RouteLifecycleEventKind3D::kObjectiveSuperseded:
     case RouteLifecycleEventKind3D::kCrossTrackExceeded:
+    case RouteLifecycleEventKind3D::kTrackingTubeExceeded:
       if (!next.finite_execution.has_value() ||
           next.finite_execution->kind == FiniteExecutionKind3D::kNominal) {
         return transitionFailure(

@@ -73,7 +73,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   EXPECT_NE(raw_certificate->validation_policy_fingerprint, 0U);
   EXPECT_NE(raw_certificate->passage_geometry_revision, 0U);
   EXPECT_NE(raw_certificate->passage_volume_config_fingerprint, 0U);
-  EXPECT_EQ(raw_certificate->passage_derivation_occupancy_content_fingerprint,
+  EXPECT_EQ(raw_certificate->geometry_derivation_occupancy_content_fingerprint,
             suffix->observed_raw_world->occupiedContentFingerprint());
   EXPECT_DOUBLE_EQ(raw_certificate->suffix_start_station_m, 2.0);
   EXPECT_DOUBLE_EQ(raw_certificate->certified_end_station_m, 10.0);
@@ -177,6 +177,42 @@ TEST(ExecutionRouteSnapshot3DTest,
   changed_geometry->executable_geometry_revision =
       executionRouteGeometryRevision3D(*changed_geometry);
   EXPECT_TRUE(certifyExecutionRoute3D(activation).has_value());
+}
+
+TEST(ExecutionRouteSnapshot3DTest,
+     TrackingTubeIsCoveredByTheCanonicalGeometryRevision) {
+  SnapshotFixture3D fixture;
+  auto changed_geometry = std::make_shared<ExecutionRouteGeometry3D>(*fixture.geometry);
+  auto changed_tube = std::make_shared<TrackingErrorTubeProfile3D>(
+      *fixture.geometry->tracking_error_tube);
+  changed_tube->config.response_time_s = 0.2;
+  changed_tube->maximum_tracking_error_m = 1.0;
+  ASSERT_TRUE(trackingErrorTubeProfile3DIsValid(*changed_tube, fixture.route.size()));
+  changed_geometry->tracking_error_tube = changed_tube;
+  ExecutionRouteActivation3D activation = fixture.activation();
+  activation.geometry = changed_geometry;
+
+  EXPECT_FALSE(certifyExecutionRoute3D(activation).has_value());
+
+  changed_geometry->executable_geometry_revision =
+      executionRouteGeometryRevision3D(*changed_geometry);
+  EXPECT_TRUE(certifyExecutionRoute3D(activation).has_value());
+}
+
+TEST(ExecutionRouteSnapshot3DTest,
+     ExecutableSpeedProfileCannotExceedTheTrackingTubeCeiling) {
+  SnapshotFixture3D fixture;
+  auto changed_geometry = std::make_shared<ExecutionRouteGeometry3D>(*fixture.geometry);
+  auto changed_mppi_route =
+      std::make_shared<std::vector<mppi::RouteSample3D>>(*fixture.geometry->mppi_route);
+  changed_mppi_route->at(1).reference_speed_mps = 5.1F;
+  changed_geometry->mppi_route = std::move(changed_mppi_route);
+  changed_geometry->executable_geometry_revision =
+      executionRouteGeometryRevision3D(*changed_geometry);
+  ExecutionRouteActivation3D activation = fixture.activation();
+  activation.geometry = changed_geometry;
+
+  EXPECT_FALSE(certifyExecutionRoute3D(activation).has_value());
 }
 
 TEST(ExecutionRouteSnapshot3DTest,

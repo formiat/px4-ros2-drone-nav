@@ -127,8 +127,8 @@ def generate_launch_description():
     static_global_lattice_deadline_ms = LaunchConfiguration(
         "static_global_lattice_deadline_ms"
     )
-    static_route_tracking_margin_m = LaunchConfiguration(
-        "static_route_tracking_margin_m"
+    tracking_error_tube_response_time_s = LaunchConfiguration(
+        "tracking_error_tube_response_time_s"
     )
     cruise_speed_mps = LaunchConfiguration("cruise_speed_mps")
     absolute_speed_limit_mps = LaunchConfiguration("absolute_speed_limit_mps")
@@ -320,7 +320,10 @@ def generate_launch_description():
                 production_mppi_parameters.append({parameter_name: override})
         for argument_name, launch_config in (
             ("static_global_lattice_deadline_ms", static_global_lattice_deadline_ms),
-            ("static_route_tracking_margin_m", static_route_tracking_margin_m),
+            (
+                "tracking_error_tube_response_time_s",
+                tracking_error_tube_response_time_s,
+            ),
             ("cruise_speed_mps", cruise_speed_mps),
             ("absolute_speed_limit_mps", absolute_speed_limit_mps),
             (
@@ -699,9 +702,9 @@ def generate_launch_description():
                 description="Optional static global-planning deadline override.",
             ),
             DeclareLaunchArgument(
-                "static_route_tracking_margin_m",
+                "tracking_error_tube_response_time_s",
                 default_value="",
-                description="Optional static route footprint margin override.",
+                description="Optional tracking-error response horizon override.",
             ),
             DeclareLaunchArgument(
                 "cruise_speed_mps",

@@ -184,6 +184,7 @@ bool RouteExecutionAssessment3D::replacementRequired() const noexcept {
     case RouteExecutionStatus3D::kInvalidRoute:
     case RouteExecutionStatus3D::kInvalidProjection:
     case RouteExecutionStatus3D::kExcessiveCrossTrack:
+    case RouteExecutionStatus3D::kTrackingTubeViolation:
     case RouteExecutionStatus3D::kRawCollision:
       return true;
   }
@@ -627,6 +628,7 @@ bool RouteSupervisor3D::applyEvent(const RouteLifecycleEvent3D& event) noexcept 
     case RouteLifecycleEventKind3D::kRawInvalidated:
     case RouteLifecycleEventKind3D::kObjectiveSuperseded:
     case RouteLifecycleEventKind3D::kCrossTrackExceeded:
+    case RouteLifecycleEventKind3D::kTrackingTubeExceeded:
       active_route_.reset();
       execution_state_ = {};
       raw_certificate_ = {};
@@ -672,6 +674,8 @@ routeLifecycleEventKind3DName(const RouteLifecycleEventKind3D kind) noexcept {
       return "control_candidate_rejected";
     case RouteLifecycleEventKind3D::kCrossTrackExceeded:
       return "cross_track_exceeded";
+    case RouteLifecycleEventKind3D::kTrackingTubeExceeded:
+      return "tracking_tube_exceeded";
   }
   return "invalid_event";
 }
@@ -729,6 +733,8 @@ routeExecutionStatus3DName(const RouteExecutionStatus3D status) noexcept {
       return "invalid_projection";
     case RouteExecutionStatus3D::kExcessiveCrossTrack:
       return "excessive_cross_track";
+    case RouteExecutionStatus3D::kTrackingTubeViolation:
+      return "tracking_tube_violation";
     case RouteExecutionStatus3D::kRawCollision:
       return "raw_collision";
   }

@@ -110,6 +110,7 @@ enum class RouteLifecycleEventKind3D : std::uint8_t {
   kObjectiveSuperseded,
   kControlCandidateRejected,
   kCrossTrackExceeded,
+  kTrackingTubeExceeded,
 };
 
 struct RouteLifecycleEvent3D {
@@ -192,6 +193,7 @@ enum class RouteExecutionStatus3D : std::uint8_t {
   kInvalidRoute,
   kInvalidProjection,
   kExcessiveCrossTrack,
+  kTrackingTubeViolation,
   kRawCollision,
 };
 

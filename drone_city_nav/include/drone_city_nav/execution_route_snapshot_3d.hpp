@@ -54,7 +54,7 @@ struct StaticRouteCertificate3D {
   std::uint64_t execution_validation_policy_fingerprint{0U};
   std::uint64_t passage_geometry_revision{0U};
   std::uint64_t passage_volume_config_fingerprint{0U};
-  std::uint64_t passage_derivation_occupancy_content_fingerprint{0U};
+  std::uint64_t geometry_derivation_occupancy_content_fingerprint{0U};
   NavigationWorldCertificate3D world_certificate{};
   double suffix_start_station_m{0.0};
   double certified_end_station_m{0.0};
@@ -78,7 +78,7 @@ struct ObservedRawRouteCertificate3D {
   std::uint64_t observed_world_content_fingerprint{0U};
   std::uint64_t passage_geometry_revision{0U};
   std::uint64_t passage_volume_config_fingerprint{0U};
-  std::uint64_t passage_derivation_occupancy_content_fingerprint{0U};
+  std::uint64_t geometry_derivation_occupancy_content_fingerprint{0U};
   double suffix_start_station_m{0.0};
   double certified_end_station_m{0.0};
 
@@ -421,6 +421,7 @@ enum class FiniteExecutionCertificationStatus3D : std::uint8_t {
   kExecutionBindingRejected,
   kRawInvalidationConnectorRejected,
   kRouteAdherenceRejected,
+  kTrackingTubeHandoffRejected,
   kTerminalBoundaryInvalid,
   kPathValidationRejected,
   kStaticWorldFingerprintMismatch,
@@ -442,6 +443,7 @@ enum class FiniteExecutionRouteAdherenceStatus3D : std::uint8_t {
   kProjectionInvalid,
   kStationRegression,
   kCrossTrackExceeded,
+  kTrackingTubeExceeded,
   kConstraintRejected,
   kPassageCrossingRejected,
   kTerminalCrossTrackExceeded,
@@ -590,6 +592,13 @@ certifyFiniteExecutionPlan3DDetailed(const ExecutionRouteSnapshot3D& current,
 [[nodiscard]] std::optional<FiniteExecutionState3D>
 certifyFiniteExecution3D(const ExecutionRouteSnapshot3D& current,
                          FiniteExecutionCertification3D certification);
+
+// Assesses the exact resident off-route connector at the current immutable
+// execution clock. A caller cannot reset, replace, or replay the handoff by
+// selecting another horizon state.
+[[nodiscard]] TrackingErrorTubeHandoffAssessment3D assessCertifiedTrackingTubeHandoff3D(
+    const ExecutionRouteSnapshot3D& current, const CertifiedRouteSuffix3D& target_route,
+    const VersionedExecutionInput3D& current_execution_input) noexcept;
 
 [[nodiscard]] std::optional<FiniteExecutionState3D>
 certifyRawInvalidatedFiniteExecution3D(

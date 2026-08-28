@@ -60,7 +60,8 @@ makeMppiRoute(const std::vector<RouteSample3D>& route) {
 
 [[nodiscard]] std::shared_ptr<const ExecutionRouteGeometry3D>
 makeGeometry(const std::vector<RouteSample3D>& route,
-             const std::uint64_t physical_route_fingerprint) {
+             const std::uint64_t physical_route_fingerprint,
+             const TrackingErrorTubeWorld3D tracking_world = {}) {
   std::vector<Point2> projection;
   projection.reserve(route.size());
   for (const RouteSample3D& sample : route) {
@@ -69,6 +70,9 @@ makeGeometry(const std::vector<RouteSample3D>& route,
   auto geometry = std::make_shared<ExecutionRouteGeometry3D>(ExecutionRouteGeometry3D{
       .mppi_route = makeMppiRoute(route),
       .route = std::make_shared<const std::vector<RouteSample3D>>(route),
+      .tracking_error_tube = std::make_shared<const TrackingErrorTubeProfile3D>(
+          makeTrackingErrorTubeProfile3D(route, tracking_world, SweptFootprintConfig{},
+                                         TrackingErrorTubeConfig3D{}, 5.0)),
       .route_2d_projection =
           std::make_shared<const std::vector<Point2>>(std::move(projection)),
       .constrained_spans = std::make_shared<const std::vector<ConstrainedRouteSpan>>(),
@@ -127,7 +131,11 @@ makeConstrainedGeometry(const std::vector<RouteSample3D>& route,
                         const double constrained_begin_station_m = 0.0,
                         const double constrained_end_station_m = -1.0) {
   auto geometry = std::make_shared<ExecutionRouteGeometry3D>(
-      *makeGeometry(route, physical_route_fingerprint));
+      *makeGeometry(route, physical_route_fingerprint,
+                    TrackingErrorTubeWorld3D{
+                        .occupancy = &occupancy,
+                        .occupied_content_fingerprint = occupancy.contentFingerprint(),
+                    }));
   const PassageTraversalId passage_traversal_id{"test_passage:forward"};
   const double route_end_station_m = route.back().station_m;
   const double span_end_station_m = constrained_end_station_m >= 0.0
@@ -288,10 +296,15 @@ struct SnapshotFixture3D {
       .reaches_mission_goal = true,
       .activation_eligible = true,
   };
-  std::shared_ptr<const ExecutionRouteGeometry3D> geometry{
-      makeGeometry(route, physical_route_fingerprint)};
-  std::uint64_t geometry_revision{geometry->executable_geometry_revision};
   ObservedOccupancyGrid3D raw_occupancy{GridBounds3D{-5.0, -5.0, 0.0, 1.0, 20, 10, 10}};
+  std::shared_ptr<const ExecutionRouteGeometry3D> geometry{
+      makeGeometry(route, physical_route_fingerprint,
+                   TrackingErrorTubeWorld3D{
+                       .observed_occupancy = &raw_occupancy,
+                       .occupied_content_fingerprint =
+                           raw_occupancy.occupiedSnapshot().contentFingerprint(),
+                   })};
+  std::uint64_t geometry_revision{geometry->executable_geometry_revision};
   PassageVolumeConfig passage_volume_config{testPassageVolumeConfig()};
   SweptFootprintConfig execution_footprint{testPassageVolumeConfig().footprint};
   std::shared_ptr<const VersionedExecutionValidationPolicy3D> validation_policy = [] {

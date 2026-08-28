@@ -185,7 +185,7 @@ default_city_nav_params_file="${repo_root}/drone_city_nav/config/urban_mvp.yaml"
 city_nav_params_file="${CITY_NAV_PARAMS_FILE:-${default_city_nav_params_file}}"
 static_global_lattice_deadline_ms="${STATIC_GLOBAL_LATTICE_DEADLINE_MS:-}"
 cruise_speed_override="${CRUISE_SPEED_MPS:-}"
-static_route_tracking_margin_override="${STATIC_ROUTE_TRACKING_MARGIN_M:-}"
+tracking_error_tube_response_time_override="${TRACKING_ERROR_TUBE_RESPONSE_TIME_S:-}"
 speed_limit_override="${ABSOLUTE_SPEED_LIMIT_MPS:-}"
 horizontal_acceleration_override="${MAXIMUM_HORIZONTAL_ACCELERATION_MPS2:-}"
 enable_lidar_debug_override=""
@@ -950,9 +950,9 @@ if [[ -n "${static_global_lattice_deadline_ms}" ]]; then
     static_global_lattice_deadline_ms:="${static_global_lattice_deadline_ms}"
   )
 fi
-if [[ -n "${static_route_tracking_margin_override}" ]]; then
+if [[ -n "${tracking_error_tube_response_time_override}" ]]; then
   ros_launch_args+=(
-    static_route_tracking_margin_m:="${static_route_tracking_margin_override}"
+    tracking_error_tube_response_time_s:="${tracking_error_tube_response_time_override}"
   )
 fi
 if [[ -n "${cruise_speed_override}" ]]; then

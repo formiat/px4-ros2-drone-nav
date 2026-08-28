@@ -60,6 +60,7 @@ knownRouteLifecycleEventKind(const RouteLifecycleEventKind3D kind) noexcept {
     case RouteLifecycleEventKind3D::kObjectiveSuperseded:
     case RouteLifecycleEventKind3D::kControlCandidateRejected:
     case RouteLifecycleEventKind3D::kCrossTrackExceeded:
+    case RouteLifecycleEventKind3D::kTrackingTubeExceeded:
       return true;
   }
   return false;

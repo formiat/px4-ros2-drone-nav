@@ -22,117 +22,6 @@
 
 namespace drone_city_nav::execution_route_snapshot_3d_internal {
 
-} // namespace drone_city_nav::execution_route_snapshot_3d_internal
-
-namespace drone_city_nav {
-
-const char* executionRouteGeometryFailureReasonName3D(
-    const ExecutionRouteGeometryFailureReason3D reason) noexcept {
-  switch (reason) {
-    case ExecutionRouteGeometryFailureReason3D::kNotAttempted:
-      return "not_attempted";
-    case ExecutionRouteGeometryFailureReason3D::kValid:
-      return "valid";
-    case ExecutionRouteGeometryFailureReason3D::kMissingRoute:
-      return "missing_route";
-    case ExecutionRouteGeometryFailureReason3D::kTooFewSamples:
-      return "too_few_samples";
-    case ExecutionRouteGeometryFailureReason3D::kNonFiniteSample:
-      return "non_finite_sample";
-    case ExecutionRouteGeometryFailureReason3D::kInvalidTangent:
-      return "invalid_tangent";
-    case ExecutionRouteGeometryFailureReason3D::kNonMonotonicStation:
-      return "non_monotonic_station";
-    case ExecutionRouteGeometryFailureReason3D::kSegmentStationMismatch:
-      return "segment_station_mismatch";
-    case ExecutionRouteGeometryFailureReason3D::kIncomingTangentMismatch:
-      return "incoming_tangent_mismatch";
-    case ExecutionRouteGeometryFailureReason3D::kTerminalTangentMismatch:
-      return "terminal_tangent_mismatch";
-    case ExecutionRouteGeometryFailureReason3D::kInvalidTimeProfile:
-      return "invalid_time_profile";
-    case ExecutionRouteGeometryFailureReason3D::kInvalidProjection:
-      return "invalid_projection";
-    case ExecutionRouteGeometryFailureReason3D::kInvalidConstrainedSpans:
-      return "invalid_constrained_spans";
-    case ExecutionRouteGeometryFailureReason3D::kInvalidPassageResources:
-      return "invalid_passage_resources";
-    case ExecutionRouteGeometryFailureReason3D::kInvalidFingerprint:
-      return "invalid_fingerprint";
-    case ExecutionRouteGeometryFailureReason3D::kDerivedResourceMismatch:
-      return "derived_resource_mismatch";
-  }
-  return "unknown";
-}
-
-ExecutionRouteGeometryValidation3D validateExecutionRouteGeometrySamples3D(
-    const std::span<const RouteSample3D> route) noexcept {
-  using Failure = ExecutionRouteGeometryFailureReason3D;
-  if (route.size() < 2U) {
-    return {Failure::kTooFewSamples, route.size()};
-  }
-  double previous_station_m{-std::numeric_limits<double>::infinity()};
-  Point3 previous_position{};
-  Vec3 previous_tangent{};
-  for (std::size_t index = 0U; index < route.size(); ++index) {
-    const RouteSample3D& sample = route[index];
-    const double tangent_norm =
-        std::hypot(std::hypot(sample.tangent.x, sample.tangent.y), sample.tangent.z);
-    if (!execution_route_snapshot_3d_internal::finitePoint(sample.position) ||
-        !execution_route_snapshot_3d_internal::finiteVector(sample.tangent) ||
-        !std::isfinite(sample.station_m) ||
-        !std::isfinite(sample.reference_speed_mps) || sample.station_m < 0.0 ||
-        sample.reference_speed_mps < 0.0 ||
-        (sample.transition == RouteKinematicTransition3D::kStopAndTurn &&
-         sample.reference_speed_mps > 1.0e-6)) {
-      return {Failure::kNonFiniteSample, index};
-    }
-    if (!execution_route_snapshot_3d_internal::nearlyEqual(tangent_norm, 1.0, 1.0e-3)) {
-      return {Failure::kInvalidTangent, index};
-    }
-    if (sample.station_m <= previous_station_m) {
-      return {Failure::kNonMonotonicStation, index};
-    }
-    if (index == 0U) {
-      if (!execution_route_snapshot_3d_internal::nearlyEqual(
-              sample.station_m, 0.0,
-              execution_route_snapshot_3d_internal::kStationToleranceM)) {
-        return {Failure::kSegmentStationMismatch, index};
-      }
-    } else {
-      const double segment_length_m = distance3D(previous_position, sample.position);
-      const double station_delta_m = sample.station_m - previous_station_m;
-      if (segment_length_m <=
-              execution_route_snapshot_3d_internal::kStationToleranceM ||
-          !execution_route_snapshot_3d_internal::nearlyEqual(
-              station_delta_m, segment_length_m, 1.0e-4)) {
-        return {Failure::kSegmentStationMismatch, index};
-      }
-      const Vec3 segment_direction{
-          (sample.position.x - previous_position.x) / segment_length_m,
-          (sample.position.y - previous_position.y) / segment_length_m,
-          (sample.position.z - previous_position.z) / segment_length_m};
-      const auto dot = [](const Vec3& first, const Vec3& second) noexcept {
-        return first.x * second.x + first.y * second.y + first.z * second.z;
-      };
-      if (dot(previous_tangent, segment_direction) <= 0.0) {
-        return {Failure::kIncomingTangentMismatch, index};
-      }
-      if (index + 1U == route.size() && dot(sample.tangent, segment_direction) <= 0.0) {
-        return {Failure::kTerminalTangentMismatch, index};
-      }
-    }
-    previous_station_m = sample.station_m;
-    previous_position = sample.position;
-    previous_tangent = sample.tangent;
-  }
-  return {Failure::kValid, route.size() - 1U};
-}
-
-} // namespace drone_city_nav
-
-namespace drone_city_nav::execution_route_snapshot_3d_internal {
-
 [[nodiscard]] bool
 validRouteSamples(const std::span<const RouteSample3D> route) noexcept {
   return validateExecutionRouteGeometrySamples3D(route).valid();
@@ -875,6 +764,28 @@ validateOrderedPassageCrossings(const ExecutionRouteGeometry3D& geometry,
     result.failure_distance_m = previous_projection.distance_m;
     return result;
   }
+  const auto tracking_tube_assessment = [&](const mppi::State& state,
+                                            const RouteProjection3D& projection,
+                                            const double cross_track_error_m) {
+    return assessTrackingErrorTubeExecution3D(
+        route, *geometry.tracking_error_tube,
+        TrackingErrorTubeExecutionObservation3D{
+            .station_m = projection.station_m,
+            .cross_track_error_m = cross_track_error_m,
+            .speed_mps = std::hypot(std::hypot(static_cast<double>(state.vx),
+                                               static_cast<double>(state.vy)),
+                                    static_cast<double>(state.vz)),
+        });
+  };
+  bool tracking_tube_acquired =
+      tracking_tube_assessment(states.front(), previous_projection,
+                               previous_projection.distance_m)
+          .accepted();
+  if (!tracking_tube_acquired && !allow_initial_handoff) {
+    result.status = FiniteExecutionRouteAdherenceStatus3D::kTrackingTubeExceeded;
+    result.failure_distance_m = previous_projection.distance_m;
+    return result;
+  }
   std::vector<StationedRoutePoint3D> stationed_path{StationedRoutePoint3D{
       .point = initial_point, .station_m = previous_projection.station_m}};
   Point3 previous_point = initial_point;
@@ -896,6 +807,19 @@ validateOrderedPassageCrossings(const ExecutionRouteGeometry3D& geometry,
       const double ratio =
           static_cast<double>(subdivision) / static_cast<double>(subdivision_count);
       const Point3 sample = interpolatePoint(previous_point, state_position, ratio);
+      const mppi::State& previous_state = states[state_index - 1U];
+      const mppi::State& current_state = states[state_index];
+      const mppi::State sample_state{
+          .vx = static_cast<float>(std::lerp(static_cast<double>(previous_state.vx),
+                                             static_cast<double>(current_state.vx),
+                                             ratio)),
+          .vy = static_cast<float>(std::lerp(static_cast<double>(previous_state.vy),
+                                             static_cast<double>(current_state.vy),
+                                             ratio)),
+          .vz = static_cast<float>(std::lerp(static_cast<double>(previous_state.vz),
+                                             static_cast<double>(current_state.vz),
+                                             ratio)),
+      };
       const double allowed_end_station_m =
           std::min(maximum_station_m, previous_projection.station_m +
                                           physical_increment_m + kStationToleranceM);
@@ -925,6 +849,16 @@ validateOrderedPassageCrossings(const ExecutionRouteGeometry3D& geometry,
         result.status = FiniteExecutionRouteAdherenceStatus3D::kCrossTrackExceeded;
         result.failure_state_index = state_index;
         result.failure_distance_m = cross_track_with_margin_m;
+        return result;
+      }
+      const TrackingErrorTubeExecutionAssessment3D tube =
+          tracking_tube_assessment(sample_state, projection, cross_track_with_margin_m);
+      if (tube.accepted()) {
+        tracking_tube_acquired = true;
+      } else if (tracking_tube_acquired || !allow_initial_handoff) {
+        result.status = FiniteExecutionRouteAdherenceStatus3D::kTrackingTubeExceeded;
+        result.failure_state_index = state_index;
+        result.failure_distance_m = projection.distance_m;
         return result;
       }
       if (!constrainedPointAccepted(geometry, sample, projection.station_m) ||
@@ -963,6 +897,12 @@ validateOrderedPassageCrossings(const ExecutionRouteGeometry3D& geometry,
     previous_point = state_position;
   }
   result.stop = previous_projection;
+  if (!tracking_tube_acquired) {
+    result.status = FiniteExecutionRouteAdherenceStatus3D::kTrackingTubeExceeded;
+    result.failure_state_index = states.size() - 1U;
+    result.failure_distance_m = previous_projection.distance_m;
+    return result;
+  }
   if (terminal_cross_track_tolerance_m.has_value() &&
       previous_projection.distance_m > *terminal_cross_track_tolerance_m) {
     result.status = FiniteExecutionRouteAdherenceStatus3D::kTerminalCrossTrackExceeded;

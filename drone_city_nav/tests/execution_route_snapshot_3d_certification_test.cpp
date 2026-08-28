@@ -1,3 +1,4 @@
+
 #include "execution_route_snapshot_3d_plan_test_support.hpp"
 
 namespace drone_city_nav {
@@ -195,6 +196,19 @@ TEST(ExecutionRouteSnapshot3DTest,
   SweptFootprintConfig greater_clearance = fixture.validation_policy->sweptFootprint();
   greater_clearance.safe_clearance_threshold_m += 0.1;
   expect_uncovered_policy_rejected(greater_clearance);
+
+  SweptFootprintConfig larger_than_tube_profile =
+      fixture.geometry->tracking_error_tube->physical_footprint;
+  larger_than_tube_profile.radius_m += 0.1;
+  ExecutionRouteActivation3D profile_uncovered = fixture.activation();
+  profile_uncovered.observation.footprint = larger_than_tube_profile;
+  profile_uncovered.validation_policy = VersionedExecutionValidationPolicy3D::capture(
+      fixture.validation_policy->flightEnvelope(),
+      fixture.validation_policy->dynamics(),
+      fixture.validation_policy->altitudeEnvelope(), larger_than_tube_profile,
+      fixture.validation_policy->latestLidarMaximumAgeMs());
+  ASSERT_NE(profile_uncovered.validation_policy, nullptr);
+  EXPECT_FALSE(certifyExecutionRoute3D(profile_uncovered).has_value());
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
@@ -667,156 +681,6 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_TRUE(activation.applied())
       << "transition_status="
       << executionRouteTransitionStatus3DName(activation.status);
-}
-
-TEST(ExecutionRouteSnapshot3DTest,
-     InitialFiniteCertificationUsesTheCertifiedHandoffEnvelope) {
-  SnapshotFixture3D fixture;
-  ExecutionRouteActivation3D route_activation = fixture.activation();
-  route_activation.observation.position = Point3{2.0, 4.0, 5.0};
-  route_activation.observation.maximum_cross_track_m = 15.0;
-  const std::optional<CertifiedRouteSuffix3D> suffix =
-      certifyExecutionRoute3D(route_activation);
-  ASSERT_TRUE(suffix.has_value());
-  EXPECT_DOUBLE_EQ(suffix->progress.last_observed_position.y, 4.0);
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> initial =
-      makeInitialExecutionRouteSnapshot3D();
-  ASSERT_NE(initial, nullptr);
-
-  const auto handoff_certification =
-      [&suffix](const bool converge_to_route, const std::uint64_t revision,
-                const FiniteExecutionKind3D kind = FiniteExecutionKind3D::kNominal,
-                const std::size_t extra_stationary_control_count = 0U) {
-        FiniteExecutionCertification3D certification =
-            SnapshotFixture3D::finiteCertificationForRoute(
-                *suffix, kind, revision, revision, extra_stationary_control_count);
-        constexpr std::size_t kAccelerationControlCount{50U};
-        constexpr float kInitialCrossTrackM{4.0F};
-        const float lateral_acceleration_mps2 = kInitialCrossTrackM / 25.0F;
-        for (std::size_t index = 0U; index < kAccelerationControlCount; ++index) {
-          certification.horizon.controls[index].ay =
-              converge_to_route ? -lateral_acceleration_mps2 : 0.0F;
-        }
-        for (std::size_t index = kAccelerationControlCount;
-             index < 2U * kAccelerationControlCount; ++index) {
-          certification.horizon.controls[index].ay =
-              converge_to_route ? lateral_acceleration_mps2 : 0.0F;
-        }
-        certification.horizon.states.front().y = kInitialCrossTrackM;
-        for (std::size_t index = 0U; index < certification.horizon.controls.size();
-             ++index) {
-          certification.horizon.states[index + 1U] =
-              mppi::integrateReference(certification.horizon.states[index],
-                                       certification.horizon.controls[index],
-                                       suffix->validation_policy->dynamics());
-        }
-        const std::shared_ptr<const VersionedExecutionInput3D> source_input =
-            certification.execution_input;
-        if (source_input == nullptr) {
-          return FiniteExecutionCertification3D{};
-        }
-        certification.execution_input =
-            VersionedExecutionInput3D::capture(ExecutionInputCapture3D{
-                .capture_sequence = source_input->captureSequence(),
-                .pose_revision = source_input->poseRevision(),
-                .pose_source_timestamp_us = source_input->poseSourceTimestampUs(),
-                .pose_receive_stamp_ns = source_input->poseReceiveStampNs(),
-                .effective_stamp_ns = source_input->effectiveStampNs(),
-                .state = certification.horizon.states.front(),
-                .full_state_authoritative = source_input->fullStateAuthoritative(),
-                .state_provenance = source_input->stateProvenance(),
-                .previous_control = source_input->previousControl(),
-                .previous_control_source = source_input->previousControlSource(),
-                .previous_control_source_producer_instance_id =
-                    source_input->previousControlSourceProducerInstanceId(),
-                .previous_control_source_sequence =
-                    source_input->previousControlSourceSequence(),
-                .previous_control_source_stamp_ns =
-                    source_input->previousControlSourceStampNs(),
-                .previous_control_receive_stamp_ns =
-                    source_input->previousControlReceiveStampNs(),
-            });
-        return certification;
-      };
-
-  FiniteExecutionCertificationResult3D accepted = certifyFiniteExecution3DDetailed(
-      *initial, *suffix,
-      handoff_certification(true, 102U, FiniteExecutionKind3D::kNominal, 10U));
-  ASSERT_TRUE(accepted.certified())
-      << "status=" << finiteExecutionCertificationStatus3DName(accepted.status)
-      << " route_adherence_status="
-      << finiteExecutionRouteAdherenceStatus3DName(accepted.route_adherence_status)
-      << " route_adherence_failure_distance_m="
-      << accepted.route_adherence_failure_distance_m;
-  ASSERT_TRUE(accepted.execution.has_value());
-  EXPECT_TRUE(accepted.execution->validFor(&*suffix));
-  EXPECT_LT(accepted.execution->stop_boundary.position.y, 0.01);
-
-  const ExecutionRouteTransitionResult3D activated = activateCertifiedRoute3D(
-      *initial, initial->version, *suffix, *accepted.execution);
-  ASSERT_TRUE(activated.applied());
-  ASSERT_NE(activated.next, nullptr);
-  ASSERT_TRUE(activated.next->route.has_value());
-  const FiniteExecutionCertificationResult3D continued =
-      certifyFiniteExecution3DDetailed(*activated.next, *activated.next->route,
-                                       handoff_certification(true, 103U));
-  EXPECT_TRUE(continued.certified())
-      << "status=" << finiteExecutionCertificationStatus3DName(continued.status)
-      << " route_adherence_status="
-      << finiteExecutionRouteAdherenceStatus3DName(continued.route_adherence_status)
-      << " route_adherence_failure_distance_m="
-      << continued.route_adherence_failure_distance_m;
-
-  const FiniteExecutionCertificationResult3D retained =
-      certifyFiniteExecution3DDetailed(
-          *activated.next, *activated.next->route,
-          handoff_certification(true, 104U, FiniteExecutionKind3D::kRetained));
-  ASSERT_TRUE(retained.certified());
-  ASSERT_TRUE(retained.execution.has_value());
-  EXPECT_EQ(retained.execution->source_snapshot_version, activated.next->version);
-  EXPECT_TRUE(retained.execution->validFor(&*activated.next->route));
-  EXPECT_NEAR(retained.execution->begin_route_station_m,
-              activated.next->route->progress.station_m, 0.25);
-  ASSERT_NE(retained.execution->horizon, nullptr);
-  EXPECT_LE(distance3D(Point3{retained.execution->horizon->states.front().x,
-                              retained.execution->horizon->states.front().y,
-                              retained.execution->horizon->states.front().z},
-                       activated.next->route->progress.last_observed_position),
-            0.25);
-  EXPECT_GT(retained.execution->trajectory_revision,
-            activated.next->finite_execution->trajectory_revision);
-  EXPECT_GE(retained.execution->source_navigation_revision,
-            activated.next->finite_execution->source_navigation_revision);
-  EXPECT_GE(retained.execution->valid_from_ns,
-            activated.next->finite_execution->valid_from_ns);
-  EXPECT_LE(retained.execution->valid_until_ns,
-            activated.next->finite_execution->valid_until_ns);
-  const ExecutionRouteTransitionResult3D retained_transition = replaceFiniteExecution3D(
-      *activated.next, SnapshotFixture3D::guard(*activated.next), retained.execution);
-  ASSERT_TRUE(retained_transition.applied());
-  ASSERT_NE(retained_transition.next, nullptr);
-  ASSERT_TRUE(retained_transition.next->route.has_value());
-  const FiniteExecutionCertificationResult3D retained_continuation =
-      certifyFiniteExecution3DDetailed(
-          *retained_transition.next, *retained_transition.next->route,
-          handoff_certification(true, 105U, FiniteExecutionKind3D::kRetained));
-  EXPECT_TRUE(retained_continuation.certified())
-      << "status="
-      << finiteExecutionCertificationStatus3DName(retained_continuation.status)
-      << " route_adherence_status="
-      << finiteExecutionRouteAdherenceStatus3DName(
-             retained_continuation.route_adherence_status)
-      << " route_adherence_failure_distance_m="
-      << retained_continuation.route_adherence_failure_distance_m;
-
-  const FiniteExecutionCertificationResult3D nonconverging =
-      certifyFiniteExecution3DDetailed(*initial, *suffix,
-                                       handoff_certification(false, 103U));
-  EXPECT_FALSE(nonconverging.certified());
-  EXPECT_EQ(nonconverging.status,
-            FiniteExecutionCertificationStatus3D::kRouteAdherenceRejected);
-  EXPECT_EQ(nonconverging.route_adherence_status,
-            FiniteExecutionRouteAdherenceStatus3D::kTerminalCrossTrackExceeded);
 }
 
 TEST(ExecutionRouteSnapshot3DTest,

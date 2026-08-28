@@ -993,6 +993,15 @@ TEST(ExecutionRouteSnapshot3DTest, ProgressConnectorUsesExactPreviousControlBody
   fixture.passage_volume_config.footprint = oriented_footprint;
   auto geometry = std::make_shared<ExecutionRouteGeometry3D>(*fixture.geometry);
   geometry->passage_volume_config = fixture.passage_volume_config;
+  geometry->tracking_error_tube =
+      std::make_shared<const TrackingErrorTubeProfile3D>(makeTrackingErrorTubeProfile3D(
+          fixture.route,
+          TrackingErrorTubeWorld3D{
+              .observed_occupancy = &fixture.raw_occupancy,
+              .occupied_content_fingerprint =
+                  fixture.raw_occupancy.occupiedSnapshot().contentFingerprint(),
+          },
+          oriented_footprint, TrackingErrorTubeConfig3D{}, 5.0));
   geometry->executable_geometry_revision = executionRouteGeometryRevision3D(*geometry);
   fixture.geometry = std::move(geometry);
   fixture.geometry_revision = fixture.geometry->executable_geometry_revision;

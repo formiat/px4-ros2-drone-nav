@@ -345,7 +345,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--scenario", type=Path, required=True)
     parser.add_argument("--occupancy", type=Path, required=True)
     parser.add_argument("--planner-config", type=Path, default=DEFAULT_PLANNER_CONFIG)
-    parser.add_argument("--static-route-tracking-margin-m", type=float)
     parser.add_argument("--minimum-route-length-m", type=float, default=150.0)
     parser.add_argument(
         "--route-contract",
@@ -356,9 +355,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_footprints(
-    config_path: Path, tracking_margin_override_m: float | None = None
-) -> tuple[Footprint, Footprint]:
+def load_physical_footprint(config_path: Path) -> Footprint:
     config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     parameters = config["production_mppi_node"]["ros__parameters"]
     physical = Footprint(
@@ -366,19 +363,7 @@ def load_footprints(
         lower_extent_m=float(parameters["physical_footprint_lower_extent_m"]),
         upper_extent_m=float(parameters["physical_footprint_upper_extent_m"]),
     )
-    margin = (
-        float(parameters["static_route_tracking_margin_m"])
-        if tracking_margin_override_m is None
-        else tracking_margin_override_m
-    )
-    if not math.isfinite(margin) or margin < 0.0:
-        raise ScenarioValidationError("static route tracking margin must be non-negative")
-    route = Footprint(
-        radius_m=physical.radius_m + margin,
-        lower_extent_m=physical.lower_extent_m + margin,
-        upper_extent_m=physical.upper_extent_m + margin,
-    )
-    return physical, route
+    return physical
 
 
 def canonical_world_path(scenario_path: Path, scenario: dict) -> Path:
@@ -563,9 +548,7 @@ def validate(args: argparse.Namespace) -> None:
     )
     initial_altitude_m = float(world["navigation"]["initial_altitude_m"])
     occupancy = Occupancy3D.load(args.occupancy.resolve())
-    physical_footprint, route_footprint = load_footprints(
-        args.planner_config.resolve(), args.static_route_tracking_margin_m
-    )
+    physical_footprint = load_physical_footprint(args.planner_config.resolve())
     vehicles = scenario["vehicles"]
     if len(vehicles) < 2 or len(vehicles) % 2 != 0:
         raise ScenarioValidationError("cooperative crossing scenario needs two equal groups")
@@ -625,21 +608,21 @@ def validate(args: argparse.Namespace) -> None:
             raise ScenarioValidationError(
                 f"{vehicle_id} vertical takeoff footprint intersects Occupancy3D"
             )
-        if not occupancy.center_is_clear(takeoff, route_footprint):
+        if not occupancy.center_is_clear(takeoff, physical_footprint):
             raise ScenarioValidationError(
                 f"{vehicle_id} route footprint is blocked at takeoff"
             )
-        if not occupancy.center_is_clear(goal, route_footprint):
+        if not occupancy.center_is_clear(goal, physical_footprint):
             raise ScenarioValidationError(
                 f"{vehicle_id} route footprint is blocked at goal"
             )
         equal_altitude = math.isclose(takeoff[2], goal[2], abs_tol=1e-6)
         direct_clear = swept_segment_is_clear(
-            occupancy, takeoff, goal, route_footprint
+            occupancy, takeoff, goal, physical_footprint
         )
         if equal_altitude:
             route_length_m = shortest_planar_route_m(
-                occupancy, takeoff, goal, route_footprint
+                occupancy, takeoff, goal, physical_footprint
             )
             if route_length_m is None:
                 raise ScenarioValidationError(
@@ -657,7 +640,7 @@ def validate(args: argparse.Namespace) -> None:
             )
         if equal_altitude:
             direct_clear = planar_segment_is_clear(
-                occupancy, takeoff, goal, route_footprint
+                occupancy, takeoff, goal, physical_footprint
             )
         if args.route_contract == "direct" and not direct_clear:
             raise ScenarioValidationError(

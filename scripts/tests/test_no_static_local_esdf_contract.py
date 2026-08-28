@@ -77,8 +77,11 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
 
     def test_hard_planning_footprint_is_the_physical_hull(self) -> None:
         source = (PACKAGE / "src/production_mppi_node.cpp").read_text()
+        config = yaml.safe_load((PACKAGE / "config/urban_mvp.yaml").read_text())
+        parameters = config["production_mppi_node"]["ros__parameters"]
 
-        self.assertNotIn("+ static_route_tracking_margin_m", source)
+        self.assertNotIn("static_route_tracking_margin_m", parameters)
+        self.assertGreater(parameters["tracking_error_tube_response_time_s"], 0.0)
         self.assertIn(
             "lattice_config_.physical_footprint_radius_m = "
             "physical_footprint_config_.radius_m;",
@@ -90,6 +93,33 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
             source,
         )
         self.assertIn(".physical_footprint = physical_footprint_config_", source)
+
+    def test_tracking_uncertainty_caps_speed_from_raw_occupied_evidence(self) -> None:
+        tube = (PACKAGE / "src/tracking_error_tube_3d.cpp").read_text()
+        compiler = (PACKAGE / "src/route_compiler_3d.cpp").read_text()
+        materialization = (
+            PACKAGE / "src/production_mppi_route_materialization.cpp"
+        ).read_text()
+        world_binding = (
+            PACKAGE / "src/production_mppi_node_route_compilation.cpp"
+        ).read_text()
+        parameterization = (
+            PACKAGE / "src/route_time_parameterization.cpp"
+        ).read_text()
+
+        self.assertIn("ObservedSpaceValidationPolicy::kAllowUnknown", tube)
+        self.assertIn("inflatedFootprint(physical_footprint", tube)
+        self.assertIn("trackingErrorTubeRadiusM(config, maximum_speed_mps)", tube)
+        self.assertIn("makeTrackingErrorTubeProfile3D", compiler)
+        self.assertIn(".tracking_world = trackingErrorTubeWorld3D(world)", materialization)
+        self.assertIn(
+            "observed_raw_world_owner->occupiedContentFingerprint()", world_binding
+        )
+        self.assertNotIn(
+            ".occupied_content_fingerprint = world.source_occupied_fingerprint",
+            world_binding,
+        )
+        self.assertIn("tracking_speed_limits_mps[index]", parameterization)
 
 
 if __name__ == "__main__":

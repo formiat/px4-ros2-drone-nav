@@ -173,6 +173,18 @@ void hashPassageVolumeConfig(GeometryHasher& hash,
   hash.number(config.footprint.safe_clearance_threshold_m);
 }
 
+void hashSweptFootprint(GeometryHasher& hash,
+                        const SweptFootprintConfig& footprint) noexcept {
+  hash.number(footprint.radius_m);
+  hash.number(footprint.lower_extent_m);
+  hash.number(footprint.upper_extent_m);
+  hash.value(static_cast<std::uint64_t>(footprint.perimeter_samples));
+  hash.value(static_cast<std::uint64_t>(footprint.radial_rings));
+  hash.value(static_cast<std::uint64_t>(footprint.axial_samples));
+  hash.number(footprint.sweep_step_m);
+  hash.number(footprint.safe_clearance_threshold_m);
+}
+
 void hashRoute(GeometryHasher& hash, const std::vector<RouteSample3D>& route) noexcept {
   hash.value(static_cast<std::uint64_t>(route.size()));
   for (const RouteSample3D& sample : route) {
@@ -219,21 +231,41 @@ void hashObservationFrontier(GeometryHasher& hash,
   hash.number(frontier.minimum_known_free_ray_m);
 }
 
+void hashTrackingErrorTube(GeometryHasher& hash,
+                           const TrackingErrorTubeProfile3D& profile) noexcept {
+  hash.boolean(profile.valid);
+  hash.boolean(profile.obstacle_evidence_available);
+  hash.number(profile.config.response_time_s);
+  hashSweptFootprint(hash, profile.physical_footprint);
+  hash.value(static_cast<std::uint64_t>(profile.speed_limits_mps.size()));
+  for (const double speed_limit_mps : profile.speed_limits_mps) {
+    hash.number(speed_limit_mps);
+  }
+  hash.number(profile.unconstrained_speed_limit_mps);
+  hash.number(profile.minimum_speed_limit_mps);
+  hash.number(profile.maximum_tracking_error_m);
+  hash.value(static_cast<std::uint64_t>(profile.constrained_segment_count));
+}
+
 } // namespace
 
 std::uint64_t
 executionRouteGeometryRevision3D(const ExecutionRouteGeometry3D& geometry) noexcept {
   if (geometry.mppi_route == nullptr || geometry.route == nullptr ||
+      geometry.tracking_error_tube == nullptr ||
       geometry.route_2d_projection == nullptr ||
       geometry.constrained_spans == nullptr || geometry.passage_volumes == nullptr ||
       geometry.cooperative_passage_assignments == nullptr ||
       geometry.selected_passage_traversal_ids == nullptr ||
-      !passageVolumeConfigIsValid(geometry.passage_volume_config)) {
+      !passageVolumeConfigIsValid(geometry.passage_volume_config) ||
+      !trackingErrorTubeProfile3DIsValid(*geometry.tracking_error_tube,
+                                         geometry.route->size())) {
     return 0U;
   }
 
   GeometryHasher hash;
   hashRoute(hash, *geometry.route);
+  hashTrackingErrorTube(hash, *geometry.tracking_error_tube);
 
   hash.value(static_cast<std::uint64_t>(geometry.mppi_route->size()));
   for (const mppi::RouteSample3D& sample : *geometry.mppi_route) {

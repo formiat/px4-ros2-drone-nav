@@ -215,8 +215,8 @@ def generate_multi_vehicle_launch_description(mission_kind):
         static_lattice_deadline_override = LaunchConfiguration(
             "static_global_lattice_deadline_ms"
         ).perform(context)
-        static_route_tracking_margin_override = LaunchConfiguration(
-            "static_route_tracking_margin_m"
+        tracking_error_tube_response_time_override = LaunchConfiguration(
+            "tracking_error_tube_response_time_s"
         ).perform(context)
         cruise_speed_override = LaunchConfiguration("cruise_speed_mps").perform(
             context
@@ -541,9 +541,9 @@ def generate_multi_vehicle_launch_description(mission_kind):
                 planner_params["static_global_lattice_deadline_ms"] = float(
                     static_lattice_deadline_override
                 )
-            if static_route_tracking_margin_override:
-                planner_params["static_route_tracking_margin_m"] = float(
-                    static_route_tracking_margin_override
+            if tracking_error_tube_response_time_override:
+                planner_params["tracking_error_tube_response_time_s"] = float(
+                    tracking_error_tube_response_time_override
                 )
             if cruise_speed_override:
                 planner_params["cruise_speed_mps"] = (
@@ -962,7 +962,7 @@ def generate_multi_vehicle_launch_description(mission_kind):
             ),
             DeclareLaunchArgument("cruise_speed_mps", default_value=""),
             DeclareLaunchArgument(
-                "static_route_tracking_margin_m", default_value=""
+                "tracking_error_tube_response_time_s", default_value=""
             ),
             DeclareLaunchArgument("absolute_speed_limit_mps", default_value=""),
             DeclareLaunchArgument(

@@ -25,8 +25,8 @@ namespace drone_city_nav::execution_route_snapshot_3d_internal {
 [[nodiscard]] std::shared_ptr<const ExecutionRouteGeometry3D>
 captureExecutionRouteGeometry3D(const ExecutionRouteGeometry3D& source) {
   if (source.mppi_route == nullptr || source.route == nullptr ||
-      source.route_2d_projection == nullptr || source.constrained_spans == nullptr ||
-      source.passage_volumes == nullptr ||
+      source.tracking_error_tube == nullptr || source.route_2d_projection == nullptr ||
+      source.constrained_spans == nullptr || source.passage_volumes == nullptr ||
       source.cooperative_passage_assignments == nullptr ||
       source.selected_passage_traversal_ids == nullptr) {
     return nullptr;
@@ -35,6 +35,8 @@ captureExecutionRouteGeometry3D(const ExecutionRouteGeometry3D& source) {
       .mppi_route =
           std::make_shared<const std::vector<mppi::RouteSample3D>>(*source.mppi_route),
       .route = std::make_shared<const std::vector<RouteSample3D>>(*source.route),
+      .tracking_error_tube = std::make_shared<const TrackingErrorTubeProfile3D>(
+          *source.tracking_error_tube),
       .route_2d_projection =
           std::make_shared<const std::vector<Point2>>(*source.route_2d_projection),
       .constrained_spans = std::make_shared<const std::vector<ConstrainedRouteSpan>>(
@@ -96,8 +98,8 @@ certificateView(const RouteSuffixCertificate3D& certificate) noexcept {
         .passage_geometry_revision = static_certificate->passage_geometry_revision,
         .passage_volume_config_fingerprint =
             static_certificate->passage_volume_config_fingerprint,
-        .passage_derivation_occupancy_content_fingerprint =
-            static_certificate->passage_derivation_occupancy_content_fingerprint,
+        .geometry_derivation_occupancy_content_fingerprint =
+            static_certificate->geometry_derivation_occupancy_content_fingerprint,
         .suffix_start_station_m = static_certificate->suffix_start_station_m,
         .certified_end_station_m = static_certificate->certified_end_station_m,
         .observed_raw = false,
@@ -122,8 +124,8 @@ certificateView(const RouteSuffixCertificate3D& certificate) noexcept {
       .passage_geometry_revision = raw_certificate->passage_geometry_revision,
       .passage_volume_config_fingerprint =
           raw_certificate->passage_volume_config_fingerprint,
-      .passage_derivation_occupancy_content_fingerprint =
-          raw_certificate->passage_derivation_occupancy_content_fingerprint,
+      .geometry_derivation_occupancy_content_fingerprint =
+          raw_certificate->geometry_derivation_occupancy_content_fingerprint,
       .suffix_start_station_m = raw_certificate->suffix_start_station_m,
       .certified_end_station_m = raw_certificate->certified_end_station_m,
       .observed_raw = true,
@@ -160,7 +162,7 @@ void hashCertificate(std::uint64_t& hash,
   hashValue(hash, view.world_content_fingerprint);
   hashValue(hash, view.passage_geometry_revision);
   hashValue(hash, view.passage_volume_config_fingerprint);
-  hashValue(hash, view.passage_derivation_occupancy_content_fingerprint);
+  hashValue(hash, view.geometry_derivation_occupancy_content_fingerprint);
   hashDouble(hash, view.suffix_start_station_m);
   hashDouble(hash, view.certified_end_station_m);
   hashValue(hash, view.observed_raw ? 1U : 0U);
@@ -410,7 +412,7 @@ certificateValidForSource(const RouteSuffixCertificate3D& certificate,
       view.passage_geometry_revision == 0U ||
       view.execution_validation_policy_fingerprint == 0U ||
       view.passage_volume_config_fingerprint == 0U ||
-      view.passage_derivation_occupancy_content_fingerprint == 0U ||
+      view.geometry_derivation_occupancy_content_fingerprint == 0U ||
       !std::isfinite(view.suffix_start_station_m) ||
       !std::isfinite(view.certified_end_station_m) ||
       view.suffix_start_station_m < 0.0 ||
@@ -446,8 +448,8 @@ sameCertificateBinding(const RouteSuffixCertificate3D& first,
       first_view.passage_geometry_revision != second_view.passage_geometry_revision ||
       first_view.passage_volume_config_fingerprint !=
           second_view.passage_volume_config_fingerprint ||
-      first_view.passage_derivation_occupancy_content_fingerprint !=
-          second_view.passage_derivation_occupancy_content_fingerprint ||
+      first_view.geometry_derivation_occupancy_content_fingerprint !=
+          second_view.geometry_derivation_occupancy_content_fingerprint ||
       first_view.observed_raw != second_view.observed_raw) {
     return false;
   }

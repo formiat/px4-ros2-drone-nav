@@ -428,13 +428,8 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
       .observation_frontier = prepared.lattice_3d_observation_frontier,
       .endpoint_semantics = endpoint_semantics,
       .materialized_route_fingerprint = prepared.route_fingerprint,
-      .config =
-          RouteCompilerConfig3D{
-              .unconstrained_speed_mps = speed_policy_config_.cruise_speed_mps,
-              .constrained_speed_mps = constrained_route_speed_limit_mps_,
-              .speed_policy = speed_policy_config_,
-              .dynamics = mppi_config_.dynamics,
-          },
+      .tracking_world = trackingErrorTubeWorld3D(world),
+      .config = routeCompilerConfig3D(),
   });
   prepared.route_compilation_validation = compilation.validation;
   prepared.route_stop_turn_count = compilation.stop_turn_count;

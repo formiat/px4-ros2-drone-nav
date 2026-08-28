@@ -51,38 +51,6 @@ template<typename T>
   };
 }
 
-[[nodiscard]] bool
-continuesCertifiedInitialHandoff(const ExecutionRouteSnapshot3D& current,
-                                 const CertifiedRouteSuffix3D& target_route) noexcept {
-  const FiniteExecutionState3D* const execution =
-      optionalAddress(current.finite_execution);
-  // Retention recertifies the same published handoff while the vehicle is still
-  // converging to the route. The connector provenance ends naturally once the
-  // resident execution begins inside the route corridor; emergency tails do not
-  // inherit it.
-  if (execution == nullptr ||
-      (execution->kind != FiniteExecutionKind3D::kNominal &&
-       execution->kind != FiniteExecutionKind3D::kRetained) ||
-      execution->source_route_instance_id != target_route.route_instance_id ||
-      execution->source_route_generation != target_route.identity.generation ||
-      execution->source_geometry_revision !=
-          target_route.geometry->executable_geometry_revision ||
-      execution->horizon == nullptr || execution->horizon->states.empty()) {
-    return false;
-  }
-  const mppi::State& initial_state = execution->horizon->states.front();
-  const RouteProjection3D initial_projection = projectOntoRoute3DWithinStationWindow(
-      *target_route.geometry->route,
-      Point3{initial_state.x, initial_state.y, initial_state.z},
-      std::max(certificateView(target_route.certificate).suffix_start_station_m,
-               execution->begin_route_station_m - kExecutionBindingToleranceM),
-      std::min(target_route.endStationM(),
-               execution->begin_route_station_m + kExecutionBindingToleranceM));
-  return target_route.validation_policy->routeCrossTrackConstraintsEnabled() &&
-         initial_projection.valid &&
-         initial_projection.distance_m > kMaximumRouteCrossTrackM;
-}
-
 [[nodiscard]] std::optional<RouteAdherenceAssessment3D>
 validateExecutionProgressConnector(
     const CertifiedRouteSuffix3D& route, const Point3& execution_position,
@@ -171,15 +139,19 @@ validateExecutionProgressConnector(
   return adherence;
 }
 
-[[nodiscard]] RouteAdherenceAssessment3D lifecycleBrakingRouteOwnershipBinding(
-    const CertifiedRouteSuffix3D& route,
-    const std::span<const mppi::State> states) noexcept {
+[[nodiscard]] RouteAdherenceAssessment3D
+brakingRouteOwnershipBinding(const CertifiedRouteSuffix3D& route,
+                             const std::span<const mppi::State> states,
+                             const double station_m) noexcept {
   RouteAdherenceAssessment3D binding;
-  if (route.geometry == nullptr || route.geometry->route == nullptr || states.empty()) {
+  if (route.geometry == nullptr || route.geometry->route == nullptr || states.empty() ||
+      !std::isfinite(station_m) ||
+      station_m < certificateView(route.certificate).suffix_start_station_m -
+                      kStationToleranceM ||
+      station_m > route.endStationM() + kStationToleranceM) {
     binding.status = FiniteExecutionRouteAdherenceStatus3D::kInvalidInput;
     return binding;
   }
-  const double station_m = route.progress.station_m;
   const RouteSample3D owner_sample =
       sampleRoute3DAtStation(*route.geometry->route, station_m);
   const auto projection = [&](const mppi::State& state) {
@@ -209,7 +181,8 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
     const ExecutionRouteSnapshot3D& current, const CertifiedRouteSuffix3D& target_route,
     FiniteExecutionCertification3D certification,
     std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_validation_world,
-    const RouteLifecycleEvent3D* const lifecycle_event) {
+    const RouteLifecycleEvent3D* const lifecycle_event,
+    const std::optional<double> atomic_plan_begin_station_m = std::nullopt) {
   const CertifiedRouteSuffix3D* const current_route = routePointer(current);
   const bool certifies_raw_invalidation =
       lifecycle_event != nullptr &&
@@ -217,7 +190,10 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
   const bool certifies_lifecycle_braking =
       lifecycle_event != nullptr &&
       (lifecycle_event->kind == RouteLifecycleEventKind3D::kObjectiveSuperseded ||
-       lifecycle_event->kind == RouteLifecycleEventKind3D::kCrossTrackExceeded);
+       lifecycle_event->kind == RouteLifecycleEventKind3D::kCrossTrackExceeded ||
+       lifecycle_event->kind == RouteLifecycleEventKind3D::kTrackingTubeExceeded);
+  const bool certifies_braking_execution =
+      certification.kind == FiniteExecutionKind3D::kEmergencyBrakeTail;
   if (!current.valid() || !target_route.valid() ||
       certification.trajectory_revision == 0U ||
       certification.execution_input == nullptr ||
@@ -430,6 +406,18 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
     return rejectedFiniteExecution(
         FiniteExecutionCertificationStatus3D::kExecutionBindingRejected);
   }
+  if (atomic_plan_begin_station_m.has_value()) {
+    if (!std::isfinite(*atomic_plan_begin_station_m) ||
+        std::abs(*atomic_plan_begin_station_m - execution_begin_station_m) >
+            kExecutionBindingToleranceM) {
+      return rejectedFiniteExecution(
+          FiniteExecutionCertificationStatus3D::kExecutionBindingRejected);
+    }
+    // Both artifacts in an atomic plan must use one bit-identical station
+    // binding. Independent projections can differ by floating-point noise and
+    // must not make the resident braking tail invalid after publication.
+    execution_begin_station_m = *atomic_plan_begin_station_m;
+  }
   // Route-following paths preserve station order and constrained-passage
   // geometry. The generic centerline corridor is an opt-in behavioral
   // constraint because physical safety is independently certified below. A
@@ -440,9 +428,9 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
           ? std::optional<double>{kMaximumRouteCrossTrackM}
           : std::nullopt;
   const RouteAdherenceAssessment3D route_adherence =
-      certifies_lifecycle_braking
-          ? lifecycleBrakingRouteOwnershipBinding(target_route,
-                                                  validated_horizon.states)
+      certifies_braking_execution
+          ? brakingRouteOwnershipBinding(target_route, validated_horizon.states,
+                                         execution_begin_station_m)
           : validateFiniteRouteAdherence(
                 *target_route.geometry, validated_horizon.states,
                 execution_begin_station_m, certificate_view.suffix_start_station_m,
@@ -450,7 +438,7 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
                 cross_track_limit, policy->sweptFootprint().sweep_step_m,
                 targets_initial_route || targets_direct_successor ||
                     (targets_current_route &&
-                     continuesCertifiedInitialHandoff(current, target_route)));
+                     certifiedTrackingTubeHandoffPending(current, target_route)));
   if (!route_adherence.accepted) {
     return rejectedFiniteExecution(
         FiniteExecutionCertificationStatus3D::kRouteAdherenceRejected,
@@ -482,13 +470,20 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
       .latest_lidar_obstacle_points = latest_lidar_obstacle_points,
       .terminal_boundary = std::nullopt,
   };
-  // A lifecycle brake is a physical safety maneuver, not an attempt to capture
-  // the superseded route endpoint. Flight envelope, dynamics, swept occupancy,
-  // and latest lidar remain mandatory below.
+  // A braking tail is a physical safety maneuver, not a route-following attempt
+  // to capture the endpoint. It remains bound to the immutable route owner and
+  // station, while dynamics, swept occupancy, and latest lidar stay mandatory.
   validation_world.terminal_boundary =
-      certifies_lifecycle_braking
+      certifies_braking_execution
           ? std::nullopt
           : makeValidationTerminalBoundary(terminal_boundary, target_route);
+  if (!certifies_braking_execution &&
+      !validateTrackingTubeHandoffClearance(
+          target_route, validated_horizon, begin_projection.station_m,
+          certification.execution_input->previousControl(), validation_world)) {
+    return rejectedFiniteExecution(
+        FiniteExecutionCertificationStatus3D::kTrackingTubeHandoffRejected);
+  }
   const std::vector<mppi::TimedExecutionPathPoint> validation_points =
       timedExecutionPathPoints(validated_horizon,
                                certification.execution_input->previousControl(),
@@ -636,97 +631,6 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
 
 } // namespace execution_route_snapshot_3d_internal
 
-bool FiniteExecutionCertificationResult3D::certified() const noexcept {
-  return status == FiniteExecutionCertificationStatus3D::kCertified &&
-         execution.has_value();
-}
-
-bool FiniteExecutionPlanCertificationResult3D::certified() const noexcept {
-  return command_horizon.certified() && braking_tail.certified() && plan.has_value();
-}
-
-std::string_view finiteExecutionCertificationStatus3DName(
-    const FiniteExecutionCertificationStatus3D status) noexcept {
-  switch (status) {
-    case FiniteExecutionCertificationStatus3D::kCertified:
-      return "certified";
-    case FiniteExecutionCertificationStatus3D::kInvalidInput:
-      return "invalid_input";
-    case FiniteExecutionCertificationStatus3D::kTargetRelationRejected:
-      return "target_relation_rejected";
-    case FiniteExecutionCertificationStatus3D::kProgressRelationRejected:
-      return "progress_relation_rejected";
-    case FiniteExecutionCertificationStatus3D::kRawInvalidationContractRejected:
-      return "raw_invalidation_contract_rejected";
-    case FiniteExecutionCertificationStatus3D::kLifecycleBrakingContractRejected:
-      return "lifecycle_braking_contract_rejected";
-    case FiniteExecutionCertificationStatus3D::kEvidenceContractRejected:
-      return "evidence_contract_rejected";
-    case FiniteExecutionCertificationStatus3D::kCollisionPolicyInvalid:
-      return "collision_policy_invalid";
-    case FiniteExecutionCertificationStatus3D::kHorizonContractRejected:
-      return "horizon_contract_rejected";
-    case FiniteExecutionCertificationStatus3D::kInitialStateMismatch:
-      return "initial_state_mismatch";
-    case FiniteExecutionCertificationStatus3D::kExecutionBindingRejected:
-      return "execution_binding_rejected";
-    case FiniteExecutionCertificationStatus3D::kRawInvalidationConnectorRejected:
-      return "raw_invalidation_connector_rejected";
-    case FiniteExecutionCertificationStatus3D::kRouteAdherenceRejected:
-      return "route_adherence_rejected";
-    case FiniteExecutionCertificationStatus3D::kTerminalBoundaryInvalid:
-      return "terminal_boundary_invalid";
-    case FiniteExecutionCertificationStatus3D::kPathValidationRejected:
-      return "path_validation_rejected";
-    case FiniteExecutionCertificationStatus3D::kStaticWorldFingerprintMismatch:
-      return "static_world_fingerprint_mismatch";
-    case FiniteExecutionCertificationStatus3D::kRawValidationLineageRejected:
-      return "raw_validation_lineage_rejected";
-    case FiniteExecutionCertificationStatus3D::kValidationLineageRejected:
-      return "validation_lineage_rejected";
-    case FiniteExecutionCertificationStatus3D::kValidationContractInvalid:
-      return "validation_contract_invalid";
-    case FiniteExecutionCertificationStatus3D::kInvalidArtifact:
-      return "invalid_artifact";
-  }
-  return "unknown";
-}
-
-std::string_view finiteExecutionRouteAdherenceStatus3DName(
-    const FiniteExecutionRouteAdherenceStatus3D status) noexcept {
-  switch (status) {
-    case FiniteExecutionRouteAdherenceStatus3D::kNotEvaluated:
-      return "not_evaluated";
-    case FiniteExecutionRouteAdherenceStatus3D::kAccepted:
-      return "accepted";
-    case FiniteExecutionRouteAdherenceStatus3D::kInvalidInput:
-      return "invalid_input";
-    case FiniteExecutionRouteAdherenceStatus3D::kInitialProjectionInvalid:
-      return "initial_projection_invalid";
-    case FiniteExecutionRouteAdherenceStatus3D::kInitialCrossTrackExceeded:
-      return "initial_cross_track_exceeded";
-    case FiniteExecutionRouteAdherenceStatus3D::kInitialStationMismatch:
-      return "initial_station_mismatch";
-    case FiniteExecutionRouteAdherenceStatus3D::kInitialConstraintRejected:
-      return "initial_constraint_rejected";
-    case FiniteExecutionRouteAdherenceStatus3D::kNonFiniteSegment:
-      return "non_finite_segment";
-    case FiniteExecutionRouteAdherenceStatus3D::kProjectionInvalid:
-      return "projection_invalid";
-    case FiniteExecutionRouteAdherenceStatus3D::kStationRegression:
-      return "station_regression";
-    case FiniteExecutionRouteAdherenceStatus3D::kCrossTrackExceeded:
-      return "cross_track_exceeded";
-    case FiniteExecutionRouteAdherenceStatus3D::kConstraintRejected:
-      return "constraint_rejected";
-    case FiniteExecutionRouteAdherenceStatus3D::kPassageCrossingRejected:
-      return "passage_crossing_rejected";
-    case FiniteExecutionRouteAdherenceStatus3D::kTerminalCrossTrackExceeded:
-      return "terminal_cross_track_exceeded";
-  }
-  return "unknown";
-}
-
 std::optional<FiniteExecutionState3D>
 certifyFiniteExecution3D(const ExecutionRouteSnapshot3D& current,
                          const CertifiedRouteSuffix3D& target_route,
@@ -742,7 +646,7 @@ certifyFiniteExecution3DDetailed(const ExecutionRouteSnapshot3D& current,
                                  FiniteExecutionCertification3D certification) {
   return certifyFiniteExecutionAgainstOwnedWorld3D(
       current, target_route, std::move(certification), target_route.observed_raw_world,
-      nullptr);
+      nullptr, std::nullopt);
 }
 
 FiniteExecutionPlanCertificationResult3D
@@ -764,11 +668,15 @@ certifyFiniteExecutionPlan3DDetailed(const ExecutionRouteSnapshot3D& current,
   };
   result.command_horizon = certifyFiniteExecution3DDetailed(
       current, target_route, std::move(certification.command_horizon));
-  result.braking_tail = certifyFiniteExecution3DDetailed(
-      current, target_route, std::move(braking_certification));
-  if (!result.command_horizon.certified() || !result.braking_tail.certified() ||
-      !result.command_horizon.execution.has_value() ||
-      !result.braking_tail.execution.has_value()) {
+  if (!result.command_horizon.certified() ||
+      !result.command_horizon.execution.has_value()) {
+    return result;
+  }
+  result.braking_tail = certifyFiniteExecutionAgainstOwnedWorld3D(
+      current, target_route, std::move(braking_certification),
+      target_route.observed_raw_world, nullptr,
+      result.command_horizon.execution->begin_route_station_m);
+  if (!result.braking_tail.certified() || !result.braking_tail.execution.has_value()) {
     return result;
   }
   FiniteExecutionPlan3D plan{
@@ -814,7 +722,8 @@ FiniteExecutionCertificationResult3D certifyRawInvalidatedFiniteExecution3DDetai
   const RouteLifecycleEvent3D invalidation = certification.invalidation;
   return certifyFiniteExecutionAgainstOwnedWorld3D(
       current, *route, std::move(certification.finite_execution),
-      std::move(certification.invalidating_observed_raw_world), &invalidation);
+      std::move(certification.invalidating_observed_raw_world), &invalidation,
+      std::nullopt);
 }
 
 std::optional<FiniteExecutionState3D> certifyLifecycleBrakingFiniteExecution3D(
@@ -836,7 +745,7 @@ FiniteExecutionCertificationResult3D certifyLifecycleBrakingFiniteExecution3DDet
   const RouteLifecycleEvent3D lifecycle_event = certification.lifecycle_event;
   return certifyFiniteExecutionAgainstOwnedWorld3D(
       current, *route, std::move(certification.finite_execution),
-      route->observed_raw_world, &lifecycle_event);
+      route->observed_raw_world, &lifecycle_event, std::nullopt);
 }
 
 std::optional<DirectTrackingFiniteExecution3D>

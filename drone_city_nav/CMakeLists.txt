@@ -249,14 +249,17 @@ add_library(
   src/execution_publication_currentness_3d.cpp
   src/certified_route_splice_3d.cpp
   src/execution_route_geometry_3d.cpp
+  src/execution_route_geometry_validation_3d.cpp
   src/execution_route_snapshot_3d.cpp
   src/execution_route_snapshot_3d_certificates.cpp
   src/execution_route_snapshot_3d_certification.cpp
   src/execution_route_snapshot_3d_finite_execution.cpp
+  src/execution_route_snapshot_3d_finite_execution_diagnostics.cpp
   src/execution_route_snapshot_3d_geometry.cpp
   src/execution_route_snapshot_3d_hold.cpp
   src/execution_route_snapshot_3d_progress.cpp
   src/execution_route_snapshot_3d_store.cpp
+  src/execution_route_snapshot_3d_tracking_tube.cpp
   src/execution_route_snapshot_3d_transitions.cpp
   src/execution_route_snapshot_3d_validation.cpp
   src/producer_epoch_admission.cpp
@@ -278,6 +281,7 @@ add_library(
   src/static_esdf_cache.cpp
   src/successor_profiling_diagnostics.cpp
   src/swept_footprint.cpp
+  src/tracking_error_tube_3d.cpp
   src/swept_footprint_2d.cpp
   src/swept_footprint_contract.cpp
   src/swept_footprint_esdf.cpp
@@ -628,6 +632,7 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     src/production_mppi_node.cpp
     src/production_mppi_node_optional_constraints.cpp
     src/production_mppi_node_route_strategy.cpp
+    src/production_mppi_node_route_compilation.cpp
     src/production_mppi_node_interfaces.cpp
     src/production_mppi_node_health.cpp
     src/production_mppi_node_mission.cpp
@@ -985,6 +990,11 @@ if(BUILD_TESTING)
   target_link_libraries(route_time_parameterization_test drone_city_nav_core)
   enable_project_warnings(route_time_parameterization_test)
 
+  ament_add_gtest(tracking_error_tube_3d_test tests/tracking_error_tube_3d_test.cpp)
+  target_compile_features(tracking_error_tube_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(tracking_error_tube_3d_test drone_city_nav_core)
+  enable_project_warnings(tracking_error_tube_3d_test)
+
   ament_add_gtest(mppi_rollout_budget_test tests/mppi_rollout_budget_test.cpp)
   target_compile_features(mppi_rollout_budget_test PRIVATE cxx_std_20)
   target_link_libraries(mppi_rollout_budget_test drone_city_nav_core)
@@ -1319,8 +1329,10 @@ if(BUILD_TESTING)
                   tests/execution_route_snapshot_3d_lifecycle_braking_test.cpp
                   tests/execution_route_snapshot_3d_optional_constraints_test.cpp
                   tests/execution_route_snapshot_3d_plan_test.cpp
+                  tests/execution_route_snapshot_3d_tracking_tube_test.cpp
                   tests/execution_route_snapshot_3d_transitions_test.cpp
-                  tests/execution_route_snapshot_3d_validation_test.cpp)
+                  tests/execution_route_snapshot_3d_validation_test.cpp
+                  tests/execution_route_snapshot_3d_world_transition_test.cpp)
   target_compile_features(execution_route_snapshot_3d_test PRIVATE cxx_std_20)
   target_link_libraries(execution_route_snapshot_3d_test drone_city_nav_core)
   enable_project_warnings(execution_route_snapshot_3d_test)

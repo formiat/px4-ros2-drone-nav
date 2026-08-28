@@ -5,6 +5,7 @@
 #include "drone_city_nav/passage_volume.hpp"
 #include "drone_city_nav/risk_aware_lattice_3d.hpp"
 #include "drone_city_nav/route_3d.hpp"
+#include "drone_city_nav/tracking_error_tube_3d.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -18,6 +19,7 @@ namespace drone_city_nav {
 struct ExecutionRouteGeometry3D {
   std::shared_ptr<const std::vector<mppi::RouteSample3D>> mppi_route;
   std::shared_ptr<const std::vector<RouteSample3D>> route;
+  std::shared_ptr<const TrackingErrorTubeProfile3D> tracking_error_tube;
   std::shared_ptr<const std::vector<Point2>> route_2d_projection;
   std::shared_ptr<const std::vector<ConstrainedRouteSpan>> constrained_spans;
   std::shared_ptr<const std::vector<PassageVolume>> passage_volumes;

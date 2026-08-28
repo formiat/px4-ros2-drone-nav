@@ -95,5 +95,41 @@ certifiedRouteReserveJsonFields(const ProductionMppiPreparedEsdf& esdf) {
   return fields.str();
 }
 
+[[nodiscard]] std::string
+trackingErrorTubeInfoFields(const ProductionMppiPreparedEsdf& esdf) {
+  const TrackingErrorTubeProfile3D* const tube =
+      esdf.compiled_route_geometry != nullptr
+          ? esdf.compiled_route_geometry->tracking_error_tube.get()
+          : nullptr;
+  std::ostringstream fields;
+  fields << " tracking_tube_obstacle_evidence="
+         << (tube != nullptr && tube->obstacle_evidence_available ? "true" : "false")
+         << " tracking_tube_minimum_speed_limit_mps="
+         << (tube != nullptr ? tube->minimum_speed_limit_mps : 0.0)
+         << " tracking_tube_maximum_error_m="
+         << (tube != nullptr ? tube->maximum_tracking_error_m : 0.0)
+         << " tracking_tube_constrained_segments="
+         << (tube != nullptr ? tube->constrained_segment_count : 0U);
+  return fields.str();
+}
+
+[[nodiscard]] std::string
+trackingErrorTubeJsonFields(const ProductionMppiPreparedEsdf& esdf) {
+  const TrackingErrorTubeProfile3D* const tube =
+      esdf.compiled_route_geometry != nullptr
+          ? esdf.compiled_route_geometry->tracking_error_tube.get()
+          : nullptr;
+  std::ostringstream fields;
+  fields << ",\"tracking_tube_obstacle_evidence\":"
+         << (tube != nullptr && tube->obstacle_evidence_available ? "true" : "false")
+         << ",\"tracking_tube_minimum_speed_limit_mps\":"
+         << (tube != nullptr ? tube->minimum_speed_limit_mps : 0.0)
+         << ",\"tracking_tube_maximum_error_m\":"
+         << (tube != nullptr ? tube->maximum_tracking_error_m : 0.0)
+         << ",\"tracking_tube_constrained_segments\":"
+         << (tube != nullptr ? tube->constrained_segment_count : 0U);
+  return fields.str();
+}
+
 } // namespace
 } // namespace drone_city_nav

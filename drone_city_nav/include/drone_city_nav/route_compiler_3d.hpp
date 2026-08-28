@@ -4,6 +4,7 @@
 #include "drone_city_nav/mppi/mppi_config.hpp"
 #include "drone_city_nav/mppi_speed_policy.hpp"
 #include "drone_city_nav/route_execution_contract_3d.hpp"
+#include "drone_city_nav/tracking_error_tube_3d.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -19,6 +20,8 @@ struct RouteCompilerConfig3D {
   double minimum_continuous_turn_alignment{0.7071067811865476};
   MppiSpeedPolicyConfig speed_policy{};
   mppi::DynamicsConfig dynamics{};
+  SweptFootprintConfig physical_footprint{};
+  TrackingErrorTubeConfig3D tracking_error_tube{};
 };
 
 struct RouteCompilerInput3D {
@@ -32,6 +35,7 @@ struct RouteCompilerInput3D {
   std::optional<ObservationFrontier> observation_frontier;
   RouteEndpointSemantics3D endpoint_semantics{RouteEndpointSemantics3D::kContinuation};
   std::uint64_t materialized_route_fingerprint{0U};
+  TrackingErrorTubeWorld3D tracking_world{};
   RouteCompilerConfig3D config{};
 };
 
@@ -39,9 +43,11 @@ struct RouteCompilationResult3D {
   std::shared_ptr<const ExecutionRouteGeometry3D> geometry;
   ExecutionRouteGeometryValidation3D validation{};
   std::size_t stop_turn_count{0U};
+  std::shared_ptr<const TrackingErrorTubeProfile3D> tracking_error_tube;
 
   [[nodiscard]] bool compiled() const noexcept {
-    return geometry != nullptr && validation.valid();
+    return geometry != nullptr && validation.valid() &&
+           tracking_error_tube != nullptr && tracking_error_tube->valid;
   }
 };
 

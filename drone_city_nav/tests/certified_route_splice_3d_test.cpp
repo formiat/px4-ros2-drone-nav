@@ -26,8 +26,13 @@ certifySuccessor(SnapshotFixture3D& fixture, const std::vector<RouteSample3D>& r
   activation.proposal.route_fingerprint = routeFingerprint(continuation_route);
   activation.proposal.route_sample_count = continuation_route.size();
   activation.proposal.evidence.route_length_m = continuation_route.back().station_m;
-  activation.geometry =
-      makeGeometry(continuation_route, activation.proposal.route_fingerprint);
+  activation.geometry = makeGeometry(
+      continuation_route, activation.proposal.route_fingerprint,
+      TrackingErrorTubeWorld3D{
+          .observed_occupancy = &fixture.raw_occupancy,
+          .occupied_content_fingerprint =
+              fixture.raw_occupancy.occupiedSnapshot().contentFingerprint(),
+      });
   return certifyExecutionRoute3D(activation);
 }
 

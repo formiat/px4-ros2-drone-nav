@@ -792,6 +792,11 @@ TEST(RouteLifecycle3DTest, LifecycleEventsHaveStableDiagnosticNames) {
       routeLifecycleEventKind3DName(RouteLifecycleEventKind3D::kCrossTrackExceeded),
       "cross_track_exceeded");
   EXPECT_EQ(
+      routeLifecycleEventKind3DName(RouteLifecycleEventKind3D::kTrackingTubeExceeded),
+      "tracking_tube_exceeded");
+  EXPECT_EQ(routeExecutionStatus3DName(RouteExecutionStatus3D::kTrackingTubeViolation),
+            "tracking_tube_violation");
+  EXPECT_EQ(
       routeExecutionStatus3DName(RouteExecutionStatus3D::kSupervisorOwnershipMismatch),
       "supervisor_ownership_mismatch");
 }

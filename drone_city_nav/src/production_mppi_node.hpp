@@ -70,6 +70,7 @@
 #include "drone_city_nav/static_route_extension.hpp"
 #include "drone_city_nav/static_route_geometry.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
+#include "drone_city_nav/tracking_error_tube_3d.hpp"
 #include "drone_city_nav/tracking_objective.hpp"
 #include "drone_city_nav/types.hpp"
 #include "drone_city_nav/world_generation.hpp"
@@ -118,6 +119,7 @@ struct ProductionRouteActivationSnapshot3D;
 struct ProductionRouteActivationResult3D;
 struct ProductionRouteMaterialization3D;
 struct ProductionMppiExecutionCycle;
+struct RouteCompilerConfig3D;
 struct ProductionMppiHorizonCommit;
 enum class ProductionMppiHoldOwnershipTransition3D : std::uint8_t;
 enum class ProductionMppiHorizonCommitStatus : std::uint8_t;
@@ -399,6 +401,9 @@ private:
   void configureStaticRouteGeometry();
   void configureStaticRouteExtension(double maximum_horizontal_acceleration_mps2);
   void configureRouteStrategyArbitration();
+  [[nodiscard]] RouteCompilerConfig3D routeCompilerConfig3D() const noexcept;
+  [[nodiscard]] TrackingErrorTubeWorld3D
+  trackingErrorTubeWorld3D(const ProductionMppiPreparedEsdf& world) const noexcept;
   static void
   bindStaticRouteRequestToExecution(ProductionMppiPreparedEsdf& request,
                                     const CertifiedRouteSuffix3D& active_route,
@@ -702,6 +707,7 @@ private:
   ProductionNavigationOptionalConstraints optional_constraints_{};
   NavigationAngularDerivativeConfig navigation_angular_derivative_config_{};
   SweptFootprintConfig physical_footprint_config_{};
+  TrackingErrorTubeConfig3D tracking_error_tube_config_{};
   std::shared_ptr<const VersionedExecutionValidationPolicy3D>
       execution_validation_policy_;
   MppiLivenessConfig liveness_config_{};

@@ -286,13 +286,8 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
               .observation_frontier = candidate.lattice_3d_observation_frontier,
               .endpoint_semantics = endpoint_semantics,
               .materialized_route_fingerprint = candidate.route_fingerprint,
-              .config =
-                  RouteCompilerConfig3D{
-                      .unconstrained_speed_mps = speed_policy_config_.cruise_speed_mps,
-                      .constrained_speed_mps = constrained_route_speed_limit_mps_,
-                      .speed_policy = speed_policy_config_,
-                      .dynamics = mppi_config_.dynamics,
-                  },
+              .tracking_world = trackingErrorTubeWorld3D(candidate),
+              .config = routeCompilerConfig3D(),
           });
       candidate.route_compilation_validation = compilation.validation;
       candidate.route_stop_turn_count = compilation.stop_turn_count;
@@ -406,7 +401,12 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
         endpoint_semantics, speed_policy_config_, mppi_config_.dynamics,
         Vec3{static_cast<double>(snapshot.navigation.state.vx),
              static_cast<double>(snapshot.navigation.state.vy),
-             static_cast<double>(snapshot.navigation.state.vz)});
+             static_cast<double>(snapshot.navigation.state.vz)},
+        candidate.compiled_route_geometry != nullptr &&
+                candidate.compiled_route_geometry->tracking_error_tube != nullptr
+            ? std::span<const double>{candidate.compiled_route_geometry
+                                          ->tracking_error_tube->speed_limits_mps}
+            : std::span<const double>{});
     activation_evidence.objective_cost = time_parameterization.valid
                                              ? time_parameterization.travel_time_s
                                              : std::numeric_limits<double>::infinity();

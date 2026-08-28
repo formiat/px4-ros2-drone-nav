@@ -203,7 +203,7 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
             "px4_to_map_m11",
         ):
             self.assertGreaterEqual(launch.count(f'"{parameter}"'), 4)
-        self.assertIn('"static_route_tracking_margin_m"', launch)
+        self.assertIn('"tracking_error_tube_response_time_s"', launch)
 
 
 if __name__ == "__main__":

@@ -265,7 +265,9 @@ ProductionMppiNode::retainSnapshotFinitePath(
               (route_execution.lifecycle_event->kind ==
                    RouteLifecycleEventKind3D::kObjectiveSuperseded ||
                route_execution.lifecycle_event->kind ==
-                   RouteLifecycleEventKind3D::kCrossTrackExceeded)
+                   RouteLifecycleEventKind3D::kCrossTrackExceeded ||
+               route_execution.lifecycle_event->kind ==
+                   RouteLifecycleEventKind3D::kTrackingTubeExceeded)
           ? std::addressof(*route_execution.lifecycle_event)
           : nullptr;
   const RouteLifecycleEvent3D* const braking_event =

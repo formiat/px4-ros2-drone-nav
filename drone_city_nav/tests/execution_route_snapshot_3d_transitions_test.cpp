@@ -574,8 +574,13 @@ TEST(ExecutionRouteSnapshot3DTest,
 
   ExecutionRouteActivation3D successor_activation = fixture.activation();
   successor_activation.route_generation = SnapshotFixture3D::kRouteGeneration + 1U;
-  successor_activation.geometry =
-      makeGeometry(fixture.route, fixture.physical_route_fingerprint);
+  successor_activation.geometry = makeGeometry(
+      fixture.route, fixture.physical_route_fingerprint,
+      TrackingErrorTubeWorld3D{
+          .observed_occupancy = &fixture.raw_occupancy,
+          .occupied_content_fingerprint =
+              fixture.raw_occupancy.occupiedSnapshot().contentFingerprint(),
+      });
   const std::optional<CertifiedRouteSuffix3D> successor =
       certifyExecutionRoute3D(successor_activation);
   ASSERT_TRUE(successor.has_value());

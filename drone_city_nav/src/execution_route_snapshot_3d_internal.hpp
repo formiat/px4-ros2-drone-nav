@@ -75,7 +75,7 @@ struct CertificateView3D {
   std::uint64_t world_content_fingerprint{0U};
   std::uint64_t passage_geometry_revision{0U};
   std::uint64_t passage_volume_config_fingerprint{0U};
-  std::uint64_t passage_derivation_occupancy_content_fingerprint{0U};
+  std::uint64_t geometry_derivation_occupancy_content_fingerprint{0U};
   double suffix_start_station_m{0.0};
   double certified_end_station_m{0.0};
   bool observed_raw{false};
@@ -332,6 +332,15 @@ validateOrderedPassageCrossings(const ExecutionRouteGeometry3D& geometry,
     const double maximum_station_m, std::optional<double> maximum_cross_track_m,
     std::optional<double> terminal_cross_track_tolerance_m,
     double requested_sweep_step_m, bool allow_initial_handoff);
+
+[[nodiscard]] bool certifiedTrackingTubeHandoffPending(
+    const ExecutionRouteSnapshot3D& current,
+    const CertifiedRouteSuffix3D& target_route) noexcept;
+
+[[nodiscard]] bool validateTrackingTubeHandoffClearance(
+    const CertifiedRouteSuffix3D& route, const mppi::FiniteHorizon& horizon,
+    double begin_route_station_m, const mppi::Control& previous_control,
+    const mppi::FiniteExecutionPathWorld& world) noexcept;
 
 [[nodiscard]] bool validMppiRoute(const std::span<const mppi::RouteSample3D> mppi_route,
                                   const std::span<const RouteSample3D> route) noexcept;

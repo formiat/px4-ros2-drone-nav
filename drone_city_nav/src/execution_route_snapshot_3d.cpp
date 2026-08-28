@@ -76,7 +76,7 @@ bool StaticRouteCertificate3D::validFor(
          validation_policy_fingerprint != 0U &&
          execution_validation_policy_fingerprint != 0U &&
          passage_geometry_revision != 0U && passage_volume_config_fingerprint != 0U &&
-         passage_derivation_occupancy_content_fingerprint ==
+         geometry_derivation_occupancy_content_fingerprint ==
              static_occupancy_content_fingerprint &&
          sameWorldCertificate(world_certificate, identity.proposal.validated_world) &&
          validStationInterval(suffix_start_station_m, certified_end_station_m,
@@ -103,7 +103,7 @@ bool ObservedRawRouteCertificate3D::validFor(
          execution_validation_policy_fingerprint != 0U &&
          observed_world_content_fingerprint != 0U && passage_geometry_revision != 0U &&
          passage_volume_config_fingerprint != 0U &&
-         passage_derivation_occupancy_content_fingerprint != 0U &&
+         geometry_derivation_occupancy_content_fingerprint != 0U &&
          validStationInterval(suffix_start_station_m, certified_end_station_m,
                               route_end_station_m);
 }
@@ -111,6 +111,7 @@ bool ObservedRawRouteCertificate3D::validFor(
 bool executionRouteGeometryValid3D(const ExecutionRouteGeometry3D& geometry,
                                    const ActivatedRouteIdentity3D& identity) noexcept {
   if (geometry.mppi_route == nullptr || geometry.route == nullptr ||
+      geometry.tracking_error_tube == nullptr ||
       geometry.route_2d_projection == nullptr ||
       geometry.constrained_spans == nullptr || geometry.passage_volumes == nullptr ||
       geometry.cooperative_passage_assignments == nullptr ||
@@ -124,6 +125,8 @@ bool executionRouteGeometryValid3D(const ExecutionRouteGeometry3D& geometry,
       geometry.physical_route_fingerprint == 0U ||
       geometry.route->size() != identity.proposal.route_sample_count ||
       geometry.route_2d_projection->size() != geometry.route->size() ||
+      !trackingErrorTubeProfile3DIsValid(*geometry.tracking_error_tube,
+                                         geometry.route->size()) ||
       !validRouteSamples(*geometry.route) ||
       routeFingerprint(*geometry.route) != geometry.physical_route_fingerprint ||
       !validMppiRoute(*geometry.mppi_route, *geometry.route) ||
@@ -136,7 +139,11 @@ bool executionRouteGeometryValid3D(const ExecutionRouteGeometry3D& geometry,
   for (std::size_t index = 0U; index < geometry.route->size(); ++index) {
     const Point2& point = (*geometry.route_2d_projection)[index];
     const Point3& route_point = (*geometry.route)[index].position;
-    if (!nearlyEqual(point.x, route_point.x) || !nearlyEqual(point.y, route_point.y)) {
+    const double executable_speed_mps =
+        static_cast<double>((*geometry.mppi_route)[index].reference_speed_mps);
+    if (!nearlyEqual(point.x, route_point.x) || !nearlyEqual(point.y, route_point.y) ||
+        executable_speed_mps > geometry.tracking_error_tube->speed_limits_mps[index] +
+                                   kGeometryTolerance) {
       return false;
     }
   }
@@ -253,6 +260,9 @@ bool CertifiedRouteSuffix3D::valid() const noexcept {
                               progress.execution_input->effectiveStampNs())) ||
       !footprintConservativelyContains(geometry->passage_volume_config.footprint,
                                        validation_policy->sweptFootprint()) ||
+      !footprintConservativelyContains(
+          geometry->tracking_error_tube->physical_footprint,
+          validation_policy->sweptFootprint()) ||
       progress.route_generation != identity.generation ||
       progress.geometry_revision != geometry->executable_geometry_revision ||
       !executionRouteGeometryValid3D(*geometry, identity) || continuity_id == 0U ||
@@ -300,7 +310,7 @@ bool CertifiedRouteSuffix3D::valid() const noexcept {
          passage_config_fingerprint != 0U &&
          certificate_view.passage_volume_config_fingerprint ==
              passage_config_fingerprint &&
-         certificate_view.passage_derivation_occupancy_content_fingerprint ==
+         certificate_view.geometry_derivation_occupancy_content_fingerprint ==
              (certificate_view.observed_raw
                   ? observed_raw_world->occupiedContentFingerprint()
                   : static_world->contentFingerprint()) &&
