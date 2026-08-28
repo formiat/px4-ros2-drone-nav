@@ -3,9 +3,13 @@
 
 from __future__ import annotations
 
+import contextlib
 import importlib.util
+import io
+import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 VALIDATOR_PATH = (
@@ -15,6 +19,29 @@ SPEC = importlib.util.spec_from_file_location("validate_drone_nav_headless", VAL
 assert SPEC is not None and SPEC.loader is not None
 VALIDATOR = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(VALIDATOR)
+
+
+class ValidatorCliTest(unittest.TestCase):
+    def test_main_runs_with_current_required_arguments(self) -> None:
+        stderr = io.StringIO()
+        argv = [
+            str(VALIDATOR_PATH),
+            "--ros-log",
+            "ros.log",
+            "--px4-log",
+            "px4.log",
+        ]
+
+        with (
+            mock.patch.object(sys, "argv", argv),
+            mock.patch.object(VALIDATOR, "read_text", return_value=""),
+            contextlib.redirect_stdout(io.StringIO()),
+            contextlib.redirect_stderr(stderr),
+        ):
+            result = VALIDATOR.main()
+
+        self.assertEqual(result, 1)
+        self.assertIn("FAIL: production MPPI is ready", stderr.getvalue())
 
 
 class MappingPipelineValidationTest(unittest.TestCase):

@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import math
 import re
 import sys
 from pathlib import Path
@@ -857,11 +856,6 @@ def main() -> int:
             "--require-observed-3d-route-volume-crossing requires "
             "--observed-3d-route-volume-bounds-m"
         )
-    if (
-        not math.isfinite(args.maximum_no_executable_route_age_ms)
-        or args.maximum_no_executable_route_age_ms < 0.0
-    ):
-        parser.error("--maximum-no-executable-route-age-ms must be non-negative")
     if args.require_persistent_3d_acceptance and args.runtime_manifest is None:
         parser.error(
             "--require-persistent-3d-acceptance requires --runtime-manifest"
