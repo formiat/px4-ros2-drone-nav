@@ -57,22 +57,6 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
     const std::scoped_lock lock{esdf_state_mutex_};
     active_prepared = prepared_esdf_;
   }
-  std::shared_ptr<const IncrementalTopologyGraph3DSnapshot> latest_topology_graph;
-  IncrementalTopologyGraph3DUpdate latest_topology_graph_update;
-  const auto capture_compatible_topology = [&]() {
-    const std::scoped_lock lock{topology_state_mutex_};
-    if (latest_observed_topological_graph_ &&
-        observedTopologyCanAdvanceWorld(
-            latest_observed_topological_producer_instance_id_,
-            latest_observed_topological_graph_->revision(), raw_world.version,
-            latest_topology_graph ? latest_topology_graph->revision() : 0U)) {
-      latest_topology_graph = latest_observed_topological_graph_;
-      latest_topology_graph_update = latest_observed_topological_graph_update_;
-    }
-  };
-  // Preserve the newest topology compatible with this exact raw snapshot before
-  // ESDF construction gives the faster topology worker time to overtake it.
-  capture_compatible_topology();
   const GridBounds3D& world_bounds = occupancy->bounds();
   const Point3 position{navigation.state.x, navigation.state.y, navigation.state.z};
   const std::optional<ProprioceptiveFreeSpaceSeed3D> free_space_seed =
@@ -369,8 +353,6 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
   world_update.launch_support_contact = launch_support_contact_;
   world_update.launch_support_resolution_pending = launch_support_resolution_pending;
 
-  capture_compatible_topology();
-
   const std::shared_ptr<const ProductionNavigationObjective> current_objective =
       navigationObjective();
   ProductionMppiPreparedEsdf prepared;
@@ -431,32 +413,9 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
     // Route activation and coherent-world publication share this mutex. Merge the
     // completed world build into the latest resident route state so a build that
     // started before activation cannot restore an older route generation.
-    const bool resident_topology_is_compatible =
-        prepared.topological_graph &&
-        prepared.producer_instance_id == raw_world.version.producer_instance_id &&
-        prepared.topology_source_raw_revision <= raw_world.version.revision;
-    const bool latest_topology_is_newer =
-        latest_topology_graph &&
-        (!resident_topology_is_compatible ||
-         latest_topology_graph->revision() >= prepared.topology_source_raw_revision);
-    if (latest_topology_is_newer) {
-      world_update.topological_graph = std::move(latest_topology_graph);
-      world_update.topological_graph_update = latest_topology_graph_update;
-      world_update.topology_source_raw_revision =
-          world_update.topological_graph->revision();
-    } else if (resident_topology_is_compatible) {
-      world_update.topological_graph = prepared.topological_graph;
-      world_update.topological_graph_update = prepared.topological_graph_update;
-      world_update.topology_source_raw_revision = prepared.topology_source_raw_revision;
-    }
-
-    const std::uint64_t topology_revision =
-        world_update.topological_graph ? world_update.topological_graph->revision()
-                                       : 0U;
     const std::optional<LocalWorldGeneration> local_world_generation =
         local_world_generation_counter_.issue(raw_world.version, navigation.revision,
-                                              world_update.revision, upload.revision,
-                                              topology_revision);
+                                              world_update.revision, upload.revision);
     if (local_world_generation.has_value()) {
       world_update.local_world_generation = *local_world_generation;
       adoptWorldResources(prepared, world_update);

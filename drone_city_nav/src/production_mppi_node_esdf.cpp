@@ -335,24 +335,14 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       prepared.grid = static_esdf_grid_;
       prepared.distances_m = static_esdf_3d_;
       prepared.passage_traversals = static_portal_edges_;
-      prepared.topological_graph = topological_navigation_3d_->snapshot();
-      if (prepared.topological_graph) {
-        prepared.topological_graph_update.revision =
-            prepared.topological_graph->revision();
-        prepared.topological_graph_update.node_count =
-            prepared.topological_graph->nodes().size();
-        prepared.topological_graph_update.edge_count =
-            prepared.topological_graph->edges().size();
-        prepared.topology_source_raw_revision = prepared.topological_graph->revision();
-      }
       const RawMapVersion static_world_version{
           .base_snapshot_revision = prepared.revision,
           .revision = prepared.revision,
       };
       const std::optional<LocalWorldGeneration> local_world_generation =
-          local_world_generation_counter_.issue(
-              static_world_version, activation_navigation.revision, prepared.revision,
-              upload.revision, prepared.topology_source_raw_revision);
+          local_world_generation_counter_.issue(static_world_version,
+                                                activation_navigation.revision,
+                                                prepared.revision, upload.revision);
       if (!local_world_generation.has_value()) {
         {
           const std::scoped_lock lock{esdf_state_mutex_};

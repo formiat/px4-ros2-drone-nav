@@ -108,17 +108,20 @@ class ContainerEntrypointTest(unittest.TestCase):
 
         for variable in (
             "POINT_TO_POINT_SCENARIO_PATH",
-            "REQUIRE_INCREMENTAL_TOPOLOGY_EVIDENCE",
             "REQUIRE_OBSERVED_3D_ROUTE_VOLUME_CROSSING",
             "OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M",
-            "MAXIMUM_NO_EXECUTABLE_ROUTE_AGE_MS",
-            "ENABLE_TOPOLOGICAL_BACKTRACKING",
             "ENABLE_LIVENESS_RECOVERY",
             "ENABLE_GLOBAL_GUIDE_STALL_RECOVERY",
             "ENABLE_NO_STATIC_CYCLE_RECOVERY",
         ):
             with self.subTest(variable=variable):
                 self.assertRegex(text, rf"(?m)^  {variable}$")
+        for legacy_variable in (
+            "REQUIRE_INCREMENTAL_TOPOLOGY_EVIDENCE",
+            "MAXIMUM_NO_EXECUTABLE_ROUTE_AGE_MS",
+            "ENABLE_TOPOLOGICAL_BACKTRACKING",
+        ):
+            self.assertNotIn(legacy_variable, text)
 
 
 if __name__ == "__main__":

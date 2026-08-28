@@ -202,14 +202,6 @@ check_headless_run() {
       validation_args+=(--require-persistent-3d-acceptance)
     fi
   fi
-  if bool_is_true "${require_incremental_topology_evidence}"; then
-    validation_args+=(
-      --require-incremental-topology-evidence
-      --maximum-no-executable-route-age-ms
-      "${maximum_no_executable_route_age_ms}"
-    )
-  fi
-
   if ! python3 "${repo_root}/scripts/validate_drone_nav_headless.py" \
     "${validation_args[@]}"; then
     print_log_tail "Gazebo" "${gz_log_file}"

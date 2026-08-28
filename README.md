@@ -225,19 +225,12 @@ the measured planner p95 target, and every admitted successor-reserve proof.
 Set `DRONE_GAZEBO_RUN_ID` and `DRONE_GAZEBO_LOG_DIR` when several acceptance
 runs must remain independently discoverable.
 
-Run the complete sequential incremental-topology acceptance matrix with one
-container and no parallel simulations:
-
-```bash
-./scripts/validate_incremental_topology_headless.sh
-```
-
-The matrix runs the Manhattan low-altitude smoke, the full four-waypoint
-Manhattan mission, Manhattan cooperative traffic, Urban point-to-point, and
-Urban cooperative traffic. Every stage uses no static map and the 3D lidar;
-the imported-world stages additionally prove that one physical vehicle crosses
-the evaluation-only natural-tunnel volume. Those bounds are consumed only by
-the headless evaluator and are never supplied to mapping or planning.
+No-static single-vehicle headless runs automatically enable the persistent-3D
+acceptance gate. Repeated acceptance runs must be sequential and use distinct
+`DRONE_GAZEBO_RUN_ID` and `DRONE_GAZEBO_LOG_DIR` values so their manifests,
+metrics, and raw-volume snapshots remain independently auditable. Optional
+route-volume bounds are consumed only by the headless evaluator and are never
+supplied to mapping or planning.
 
 When `POINT_TO_POINT_SCENARIO_PATH` is set, the scenario owns its waypoint
 sequence unless `MISSION_GOALS_XYZ_M` is also supplied explicitly.
@@ -411,9 +404,9 @@ The scenario is defined once in
 `drone_city_nav/config/urban_circuit_practice_01_point_to_point_scenario.json`.
 Its map-space launch pose is transformed by the canonical world contract for
 Gazebo, while the same pose sets the PX4 origin and the navigation start. The
-headless target additionally validates adaptive online topology updates, stable
-graph identities, physical graph traversal, route continuity, and measured 3D
-clearance.
+headless target additionally validates the persistent full-3D planner, route
+ownership continuity, successor reserve, physical route-volume traversal, and
+measured runtime latency.
 
 The finite scenario in
 `drone_city_nav/config/cooperative_traffic_scenario.json` launches two pairs of
@@ -563,11 +556,11 @@ Static mode loads raw `generated_city.occupancy3d`, its fingerprint-bound
 generated from the same canonical world specification. The current city is a `5 x 8` Manhattan
 building grid with two horizontal L-shaped air-passage structures, one
 straight-through structure, and one T junction. Static planning loads the
-separate free-space topology index and objectively compares ordinary lattice
-routes with lazy sparse-graph traversals; no passage is mandatory. Selected
-traversals directly create typed route spans with varying 3D cross-sections.
-There is no hand-authored planner centerline, semantic lane, or nearest-portal
-selector.
+separate free-space topology index as optional static passage metadata. Route
+production remains owned by the same persistent full-3D planner used in
+no-static mode; the topology artifact does not instantiate a competing search
+or route owner. There is no hand-authored planner centerline, semantic lane, or
+nearest-portal selector.
 No-static mode has one production perception pipeline. The 3D profile decodes
 every organized scan into hit and miss beams, resolves the full 6DoF acquisition
 pose, and integrates the rays into revisioned `unknown/free/occupied`

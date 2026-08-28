@@ -317,14 +317,7 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             "OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M",
             self.intercept_runtime_text,
         )
-        self.assertIn(
-            "REQUIRE_INCREMENTAL_TOPOLOGY_EVIDENCE",
-            self.intercept_runtime_text,
-        )
-        self.assertIn(
-            "MAXIMUM_NO_EXECUTABLE_ROUTE_AGE_MS",
-            self.intercept_runtime_text,
-        )
+        self.assertNotIn("REQUIRE_INCREMENTAL_TOPOLOGY_EVIDENCE", self.intercept_runtime_text)
         self.assertNotIn("REQUIRE_ONLINE_3D_PASSAGE", self.intercept_runtime_text)
         self.assertIn(
             '"current_lidar_3d_pointcloud_topics": [', self.intercept_launch_text

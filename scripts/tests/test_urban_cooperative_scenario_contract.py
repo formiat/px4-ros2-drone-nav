@@ -172,9 +172,7 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
         )
         self.assertEqual(makefile.count("--runtime-map-mode no-static"), 4)
         self.assertEqual(makefile.count("ENABLE_STATIC_MAP=false LIDAR_PROFILE=3d"), 4)
-        self.assertEqual(
-            makefile.count("REQUIRE_INCREMENTAL_TOPOLOGY_EVIDENCE=true"), 2
-        )
+        self.assertNotIn("REQUIRE_INCREMENTAL_TOPOLOGY_EVIDENCE", makefile)
         self.assertNotIn("scripts/run_static_scenario_preflight.sh", makefile)
         self.assertEqual(
             makefile.count("--scenario drone_city_nav/config/cooperative_traffic_urban_scenario.json"),

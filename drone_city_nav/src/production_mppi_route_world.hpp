@@ -18,7 +18,6 @@ enum class ProductionWorldGenerationStatus : std::uint8_t {
   kRawVersionMismatch,
   kObservedOwnerMismatch,
   kObservedEsdfCoverageMismatch,
-  kTopologyRevisionMismatch,
 };
 
 [[nodiscard]] ProductionWorldGenerationStatus
@@ -30,12 +29,6 @@ productionWorldGenerationStatusName(ProductionWorldGenerationStatus status) noex
 
 [[nodiscard]] NavigationWorldCertificate3D
 navigationWorldCertificate3D(const ProductionMppiPreparedEsdf& world) noexcept;
-
-[[nodiscard]] bool
-observedTopologyCanAdvanceWorld(std::uint64_t topology_producer_instance_id,
-                                std::uint64_t topology_revision,
-                                const RawMapVersion& world_raw_version,
-                                std::uint64_t retained_topology_revision) noexcept;
 
 void adoptWorldResources(ProductionMppiPreparedEsdf& target,
                          const ProductionMppiPreparedEsdf& source);

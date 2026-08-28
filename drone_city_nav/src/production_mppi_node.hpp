@@ -15,9 +15,6 @@
 #include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/free_space_topology_3d.hpp"
 #include "drone_city_nav/global_guide_candidate.hpp"
-#include "drone_city_nav/incremental_topological_lattice_adapter_3d.hpp"
-#include "drone_city_nav/incremental_topological_navigation_3d.hpp"
-#include "drone_city_nav/incremental_topology_block_scheduler_3d.hpp"
 #include "drone_city_nav/intercept_guidance.hpp"
 #include "drone_city_nav/latest_value_mailbox.hpp"
 #include "drone_city_nav/mission_goal_capture.hpp"
@@ -174,9 +171,6 @@ struct ProductionMppiPreparedEsdf {
   std::optional<ProprioceptiveFreeSpaceSeed3D> proprioceptive_free_space_seed;
   std::optional<LaunchSupportContact3D> launch_support_contact;
   bool launch_support_resolution_pending{false};
-  std::shared_ptr<const IncrementalTopologyGraph3DSnapshot> topological_graph;
-  std::uint64_t topology_source_raw_revision{0U};
-  IncrementalTopologyGraph3DUpdate topological_graph_update{};
   std::shared_ptr<const std::vector<mppi::RouteSample3D>> mppi_route;
   std::shared_ptr<const std::vector<RouteSample3D>> route_3d;
   std::shared_ptr<const ProductionRouteGeometry3D> compiled_route_geometry;
@@ -428,7 +422,6 @@ private:
   void finishStaticRouteSearch(const ProductionMppiPreparedEsdf& world,
                                bool route_activated = false);
   void esdfWorker(std::stop_token stop_token);
-  void topologyWorker(std::stop_token stop_token);
   [[nodiscard]] std::optional<std::chrono::steady_clock::time_point>
   processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_world);
   [[nodiscard]] std::optional<ProprioceptiveFreeSpaceSeed3D>
@@ -437,8 +430,6 @@ private:
       const ProductionMppiNavigation& navigation,
       const ProductionMppiAppliedControl& applied_control,
       const ProductionMppiExecutionHorizonOwner& execution_horizon_owner);
-  [[nodiscard]] IncrementalTopologyGraph3DUpdate
-  processObservedTopology3D(const ProductionMppiRawWorld3D& raw_world);
   void queueLatestObservedWorldForPose(const ProductionMppiNavigation& navigation);
   void guideWorker(std::stop_token stop_token);
   void processGuideSearch3D(const ProductionMppiPreparedEsdf& world,
@@ -475,27 +466,6 @@ private:
   void diagnosticsWorker(std::stop_token stop_token);
   void startPlanningTimer();
   void initializeRuntimeInterfaces();
-  void configureIncrementalTopology3D();
-  void initializeStaticTopology3D();
-  [[nodiscard]] std::shared_ptr<const IncrementalTopologyGraph3DSnapshot>
-  strategicTopologyGraphFor(const ProductionMppiPreparedEsdf& world);
-  [[nodiscard]] ProductionIncrementalTopologySearch3D
-  selectIncrementalTopologyRoute3D(const ProductionMppiPreparedEsdf& world,
-                                   const Point3& position, const Point3& mission_goal,
-                                   std::chrono::steady_clock::duration planning_budget);
-  void commitIncrementalTopologyRoute3D(ProductionIncrementalTopologySearch3D& search);
-  void rejectIncrementalTopologyRoute3D(
-      const ProductionIncrementalTopologySearch3D& search,
-      ProductionIncrementalTopologyRejectionReason3D reason);
-  void
-  logIncrementalTopologyRoute3D(const ProductionIncrementalTopologySearch3D& search,
-                                const RiskAwareLattice3DResult& lattice,
-                                const StaticRouteCandidateValidation& validation,
-                                StaticRouteActivationStatus activation_status,
-                                bool certified_pending);
-  void maybeObserveIncrementalTopology3D(const ProductionMppiPreparedEsdf& world,
-                                         const ProductionMppiNavigation& navigation,
-                                         std::int64_t now_ns);
   [[nodiscard]] ProductionRouteExecutionSelection3D resolveRouteExecution3D(
       const ProductionMppiPreparedEsdf& world,
       const ProductionNavigationObjective* objective,
@@ -737,14 +707,6 @@ private:
   // topology effects.  The execution-store/mailbox CAS is its linearization.
   std::mutex pending_route_transaction_mutex_;
   std::mutex route_strategy_arbitrator_mutex_;
-  IncrementalTopologyGraph3DConfig topological_graph_3d_config_{};
-  IncrementalTopologicalPlanner3DConfig topological_planner_3d_config_{};
-  TopologicalExplorationMemory3DConfig topological_memory_3d_config_{};
-  IncrementalTopologicalLatticeAdapter3DConfig topological_lattice_adapter_3d_config_{};
-  double topological_strategy_budget_ms_{100.0};
-  double topological_graph_update_budget_ms_{50.0};
-  IncrementalTopologyProgressWatchdog3D topology_progress_watchdog_{};
-  bool topological_backtracking_enabled_{false};
   RouteEnvelopeConfig route_envelope_config_{};
   ConstrainedRouteControlConfig constrained_route_control_config_{};
   ConstrainedRouteCoordinator constrained_route_coordinator_{};
@@ -764,11 +726,6 @@ private:
   std::unique_ptr<BoundedWorkerPool> planning_worker_pool_;
   std::unique_ptr<PersistentDStarLitePlanner3D> persistent_planner_3d_;
   std::unique_ptr<mppi::MppiCudaEngine> engine_;
-  std::unique_ptr<IncrementalTopologicalNavigation3D> topological_navigation_3d_;
-  std::atomic<std::int64_t> last_topological_observation_stamp_ns_{0};
-  std::atomic<std::uint64_t> last_topological_observation_graph_revision_{0U};
-  std::int64_t topological_observation_period_ns_{200000000};
-  std::chrono::steady_clock::time_point topological_no_executable_route_since_{};
   std::shared_ptr<const OccupancyGrid3D> static_occupancy_3d_;
   std::optional<FreeSpaceTopology3D> static_free_space_topology_3d_;
   std::optional<StaticEsdfCache> static_esdf_cache_;
@@ -828,15 +785,6 @@ private:
   std::atomic<std::shared_ptr<const ProductionMppiRawWorld3D>> latest_raw_world_3d_;
   std::atomic<std::uint64_t> observed_route_blocked_raw_revision_{0U};
   std::atomic<std::uint64_t> observed_route_replan_dispatched_raw_revision_{0U};
-  std::mutex topology_queue_mutex_;
-  std::condition_variable_any topology_queue_condition_;
-  std::shared_ptr<const ProductionMppiRawWorld3D> pending_topology_world_3d_;
-  std::jthread topology_worker_;
-  std::mutex topology_state_mutex_;
-  std::shared_ptr<const IncrementalTopologyGraph3DSnapshot>
-      latest_observed_topological_graph_;
-  std::uint64_t latest_observed_topological_producer_instance_id_{0U};
-  IncrementalTopologyGraph3DUpdate latest_observed_topological_graph_update_;
   std::mutex execution_evidence_commit_mutex_;
   // Latest-lidar admission is independent from raw-world reconstruction. Active
   // execution publication locks both domains to validate one coherent boundary.

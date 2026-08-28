@@ -212,11 +212,6 @@ void ProductionMppiNode::startPlanningTimer() {
 }
 
 ProductionMppiNode::~ProductionMppiNode() {
-  if (topology_worker_.joinable()) {
-    topology_worker_.request_stop();
-    topology_queue_condition_.notify_all();
-    topology_worker_.join();
-  }
   if (diagnostics_worker_.joinable()) {
     diagnostics_worker_.request_stop();
     diagnostics_mailbox_.notifyAll();

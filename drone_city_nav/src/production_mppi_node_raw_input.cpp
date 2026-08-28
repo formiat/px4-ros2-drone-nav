@@ -234,19 +234,7 @@ void ProductionMppiNode::queueRawWorld3D(const RawObstacleGridUpdate3D& update,
     }
   }
   no_static_raw_updates_.fetch_add(1U, std::memory_order_relaxed);
-  std::shared_ptr<const ProductionMppiRawWorld3D> topology_world = immutable_world;
-  {
-    const std::scoped_lock lock{topology_queue_mutex_};
-    if (pending_topology_world_3d_) {
-      auto merged = std::make_shared<ProductionMppiRawWorld3D>(*topology_world);
-      merged->full_reset = merged->full_reset || pending_topology_world_3d_->full_reset;
-      mergeDirtyChunks(merged->dirty_chunks, pending_topology_world_3d_->dirty_chunks);
-      topology_world = std::move(merged);
-    }
-    pending_topology_world_3d_ = std::move(topology_world);
-  }
   raw_queue_condition_.notify_all();
-  topology_queue_condition_.notify_all();
 }
 
 void ProductionMppiNode::onMemoryStatus(const msg::ObstacleMemoryStatus& message) {

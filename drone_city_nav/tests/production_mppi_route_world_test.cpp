@@ -69,17 +69,6 @@ TEST(ProductionMppiRouteWorldTest, ExactObservedResourcesFormOneCoherentGenerati
   EXPECT_NE(navigationWorldCertificate3D(world).local_world_generation, 0U);
 }
 
-TEST(ProductionMppiRouteWorldTest, RetainsPreBuildTopologyWhenWorkerOvertakesRawWorld) {
-  const RawMapVersion raw{
-      .producer_instance_id = 7U, .base_snapshot_revision = 400U, .revision = 451U};
-
-  EXPECT_TRUE(observedTopologyCanAdvanceWorld(7U, 447U, raw, 1U));
-  EXPECT_FALSE(observedTopologyCanAdvanceWorld(7U, 459U, raw, 447U));
-  EXPECT_FALSE(observedTopologyCanAdvanceWorld(8U, 449U, raw, 447U));
-  EXPECT_TRUE(observedTopologyCanAdvanceWorld(7U, 451U, raw, 447U));
-  EXPECT_FALSE(observedTopologyCanAdvanceWorld(7U, 451U, raw, 451U));
-}
-
 TEST(ProductionMppiRouteWorldTest, MixedEsdfAndRawGenerationsFailClosed) {
   ProductionMppiPreparedEsdf world = coherentObservedWorld();
   ++world.local_world_generation.gpu_esdf_revision;

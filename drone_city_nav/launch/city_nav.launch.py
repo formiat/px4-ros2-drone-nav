@@ -116,9 +116,6 @@ def generate_launch_description():
     no_static_cycle_recovery_enabled = LaunchConfiguration(
         "no_static_cycle_recovery_enabled"
     )
-    topological_backtracking_enabled = LaunchConfiguration(
-        "topological_backtracking_enabled"
-    )
     static_occupancy_3d_path = LaunchConfiguration("static_occupancy_3d_path")
     static_esdf_3d_cache_path = LaunchConfiguration("static_esdf_3d_cache_path")
     static_free_space_topology_3d_path = LaunchConfiguration(
@@ -224,12 +221,6 @@ def generate_launch_description():
             no_static_cycle_recovery_enabled,
             "no_static_cycle_recovery_enabled",
         )
-        topological_backtracking_override = optional_bool_override(
-            context,
-            topological_backtracking_enabled,
-            "topological_backtracking_enabled",
-        )
-
         scenario_path = point_to_point_scenario_path.perform(context).strip()
         if scenario_path:
             scenario = load_point_to_point_scenario(scenario_path, profile)
@@ -314,7 +305,6 @@ def generate_launch_description():
                 guide_stall_recovery_override,
             ),
             ("no_static_cycle_recovery_enabled", cycle_recovery_override),
-            ("topological_backtracking_enabled", topological_backtracking_override),
         ):
             if override is not None:
                 production_mppi_parameters.append({parameter_name: override})
@@ -666,11 +656,6 @@ def generate_launch_description():
                 "no_static_cycle_recovery_enabled",
                 default_value="",
                 description="Enable no-static cycle detection and soft tabu recovery.",
-            ),
-            DeclareLaunchArgument(
-                "topological_backtracking_enabled",
-                default_value="",
-                description="Enable routes that temporarily move away from the mission goal.",
             ),
             DeclareLaunchArgument(
                 "static_occupancy_3d_path",

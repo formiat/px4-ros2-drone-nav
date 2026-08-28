@@ -267,9 +267,6 @@ MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
     return update;
   }
 
-  if (topological_navigation_3d_) {
-    topological_navigation_3d_->beginMissionLeg();
-  }
   requestGuideRelease(GlobalGuideReleaseReason::kObjectiveChanged);
   RCLCPP_INFO(get_logger(),
               "MISSION_WAYPOINT_ACKNOWLEDGED completed_index=%zu waypoint_count=%zu "

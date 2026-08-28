@@ -54,15 +54,6 @@ assessProductionWorldGeneration(const ProductionMppiPreparedEsdf& world) noexcep
       generation.gpu_esdf_revision != world.revision) {
     return ProductionWorldGenerationStatus::kEsdfRevisionMismatch;
   }
-  const bool topology_present = world.topological_graph != nullptr;
-  if (topology_present != (world.topology_source_raw_revision != 0U) ||
-      (topology_present &&
-       (world.topological_graph->revision() != world.topology_source_raw_revision ||
-        world.topological_graph_update.revision !=
-            world.topology_source_raw_revision))) {
-    return ProductionWorldGenerationStatus::kTopologyRevisionMismatch;
-  }
-
   const RawMapVersion& raw = generation.raw_map;
   if (world.observed_occupancy) {
     if (world.producer_instance_id != raw.producer_instance_id ||
@@ -113,8 +104,6 @@ std::string_view productionWorldGenerationStatusName(
       return "observed_owner_mismatch";
     case ProductionWorldGenerationStatus::kObservedEsdfCoverageMismatch:
       return "observed_esdf_coverage_mismatch";
-    case ProductionWorldGenerationStatus::kTopologyRevisionMismatch:
-      return "topology_revision_mismatch";
   }
   return "unknown";
 }
@@ -131,18 +120,8 @@ navigationWorldCertificate3D(const ProductionMppiPreparedEsdf& world) noexcept {
       .esdf_source_occupied_fingerprint = world.source_occupied_fingerprint,
       .raw_validated_through_revision = world.source_raw_revision,
       .local_world_generation = world.local_world_generation.generation,
-      .topology_revision = world.topology_source_raw_revision,
+      .topology_revision = 0U,
   };
-}
-
-bool observedTopologyCanAdvanceWorld(
-    const std::uint64_t topology_producer_instance_id,
-    const std::uint64_t topology_revision, const RawMapVersion& world_raw_version,
-    const std::uint64_t retained_topology_revision) noexcept {
-  return topology_revision != 0U &&
-         topology_producer_instance_id == world_raw_version.producer_instance_id &&
-         topology_revision <= world_raw_version.revision &&
-         topology_revision > retained_topology_revision;
 }
 
 void adoptWorldResources(ProductionMppiPreparedEsdf& target,
@@ -169,9 +148,6 @@ void adoptWorldResources(ProductionMppiPreparedEsdf& target,
   target.proprioceptive_free_space_seed = source.proprioceptive_free_space_seed;
   target.launch_support_contact = source.launch_support_contact;
   target.launch_support_resolution_pending = source.launch_support_resolution_pending;
-  target.topological_graph = source.topological_graph;
-  target.topology_source_raw_revision = source.topology_source_raw_revision;
-  target.topological_graph_update = source.topological_graph_update;
 }
 
 } // namespace drone_city_nav

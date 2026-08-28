@@ -328,7 +328,6 @@ void ProductionMppiNode::planningTick() {
         ProductionMppiExecutionReason::kNoExecutableHorizon, now_ns);
     return;
   }
-  maybeObserveIncrementalTopology3D(*esdf, navigation, now_ns);
   ProductionRouteExecutionSelection3D route_execution;
   bool route_usable{false};
   RouteExecutionStatus3D route_execution_status{RouteExecutionStatus3D::kNoActiveRoute};

@@ -74,7 +74,7 @@ class Stage6WorldGenerationContractTest(unittest.TestCase):
         )
 
         self.assertIn("generation.gpu_esdf_revision != world.revision", world)
-        self.assertIn("world.topological_graph->revision()", world)
+        self.assertNotIn("topological_graph", world)
         self.assertIn("owner->version().base_snapshot_revision", world)
         self.assertIn("productionWorldGenerationCoherent", runtime)
         self.assertIn("sameSnapshot", generation)

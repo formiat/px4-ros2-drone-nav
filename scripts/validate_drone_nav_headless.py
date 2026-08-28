@@ -16,7 +16,6 @@ if str(SCRIPT_DIRECTORY) not in sys.path:
 
 from headless_topology_validation import (
     parse_route_volume_bounds,
-    validate_incremental_topology_evidence,
     validate_observed_3d_route_volume,
 )
 from headless_runtime_evidence import (
@@ -834,12 +833,6 @@ def main() -> int:
         "--require-observed-3d-route-volume-crossing", action="store_true"
     )
     parser.add_argument(
-        "--require-incremental-topology-evidence", action="store_true"
-    )
-    parser.add_argument(
-        "--maximum-no-executable-route-age-ms", type=float, default=10000.0
-    )
-    parser.add_argument(
         "--observed-3d-route-volume-bounds-m",
         type=parse_route_volume_bounds,
     )
@@ -984,18 +977,6 @@ def main() -> int:
                 args.observed_3d_route_volume_bounds_m,
                 errors,
             )
-    if args.require_incremental_topology_evidence:
-        if args.lidar_profile != "3d" or expected_static is not False:
-            errors.append(
-                "FAIL: incremental topology evidence requires no-static 3D lidar"
-            )
-        else:
-            validate_incremental_topology_evidence(
-                ros_log,
-                args.maximum_no_executable_route_age_ms,
-                errors,
-            )
-
     if args.mission_type in {"intercept", "multi_intercept"}:
         validate_intercept_physical_losses(safety_ros_log, errors)
     elif re.search(r"CRASH_EVENT|cause=physical_collision", safety_ros_log):

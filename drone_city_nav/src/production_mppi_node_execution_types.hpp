@@ -43,23 +43,6 @@ struct ProductionMppiNonCooperativeUpdate {
   bool enabled{false};
 };
 
-struct ProductionIncrementalTopologySearch3D {
-  IncrementalTopologicalNavigationObservation3D observation{};
-  IncrementalTopologicalPlan3D plan{};
-  std::optional<IncrementalTopologicalLatticeDirective3D> directive;
-  IncrementalTopologicalPlanCommit3D commit{};
-  std::size_t graph_node_count{0U};
-  std::size_t graph_edge_count{0U};
-  double observation_ms{0.0};
-  double planning_ms{0.0};
-  double no_executable_route_age_ms{0.0};
-};
-
-enum class ProductionIncrementalTopologyRejectionReason3D : std::uint8_t {
-  kSegmentEvidenceRawCollision,
-  kMaterializedRouteRawCollision,
-};
-
 struct ProductionRouteSearchCandidate3D {
   Point3 search_start{};
   Vec3 search_velocity{};

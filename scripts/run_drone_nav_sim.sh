@@ -147,10 +147,6 @@ smoke_duration_s="${SMOKE_DURATION_S:-0}"
 require_observed_3d_route_volume_crossing="$(
   normalize_bool "${REQUIRE_OBSERVED_3D_ROUTE_VOLUME_CROSSING:-false}"
 )"
-require_incremental_topology_evidence="$(
-  normalize_bool "${REQUIRE_INCREMENTAL_TOPOLOGY_EVIDENCE:-false}"
-)"
-maximum_no_executable_route_age_ms="${MAXIMUM_NO_EXECUTABLE_ROUTE_AGE_MS:-10000}"
 observed_3d_route_volume_bounds_m=""
 if [[ -n "${OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M:-}" ]]; then
   if ! observed_3d_route_volume_bounds_m="$(
@@ -212,7 +208,6 @@ enable_global_guide_stall_recovery="$(
 enable_no_static_cycle_recovery="$(
   normalize_bool "${ENABLE_NO_STATIC_CYCLE_RECOVERY:-false}"
 )"
-enable_topological_backtracking="$(normalize_bool "${ENABLE_TOPOLOGICAL_BACKTRACKING:-false}")"
 px4_param_delay_s="${PX4_PARAM_DELAY_S:-6}"
 mission_check="${MISSION_CHECK:-}"
 allow_mission_failure="$(normalize_bool "${ALLOW_MISSION_FAILURE:-false}")"
@@ -441,15 +436,6 @@ fi
 if bool_is_true "${require_observed_3d_route_volume_crossing}" &&
   [[ -z "${observed_3d_route_volume_bounds_m}" ]]; then
   echo "REQUIRE_OBSERVED_3D_ROUTE_VOLUME_CROSSING requires OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M" >&2
-  exit 1
-fi
-if bool_is_true "${require_incremental_topology_evidence}" &&
-  { bool_is_true "${active_static_map}" || [[ "${lidar_profile}" != "3d" ]]; }; then
-  echo "REQUIRE_INCREMENTAL_TOPOLOGY_EVIDENCE requires no-static LIDAR_PROFILE=3d" >&2
-  exit 1
-fi
-if ! [[ "${maximum_no_executable_route_age_ms}" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
-  echo "MAXIMUM_NO_EXECUTABLE_ROUTE_AGE_MS must be a non-negative number" >&2
   exit 1
 fi
 if bool_is_true "${enable_lidar_debug}" &&
@@ -948,7 +934,6 @@ ros_launch_args+=(use_static_map:="${active_static_map}")
 ros_launch_args+=(liveness_enabled:="${enable_liveness_recovery}")
 ros_launch_args+=(global_guide_stall_recovery_enabled:="${enable_global_guide_stall_recovery}")
 ros_launch_args+=(no_static_cycle_recovery_enabled:="${enable_no_static_cycle_recovery}")
-ros_launch_args+=(topological_backtracking_enabled:="${enable_topological_backtracking}")
 if [[ -n "${static_global_lattice_deadline_ms}" ]]; then
   ros_launch_args+=(
     static_global_lattice_deadline_ms:="${static_global_lattice_deadline_ms}"

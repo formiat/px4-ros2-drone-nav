@@ -230,30 +230,6 @@ production_mppi_node:
     # Prefer the bounded full distance transform once that region is material.
     no_static_3d_esdf_incremental_maximum_rebuild_ratio: 0.15
     no_static_3d_esdf_full_audit_interval_builds: 120
-    topological_graph_3d_coarse_sample_stride_cells: 2
-    topological_graph_3d_refined_sample_stride_cells: 1
-    topological_graph_3d_block_size_cells: 16
-    # Region graph updates preserve local safety, then the forward mission corridor,
-    # plus oldest pending work. Large backlogs receive a bounded catch-up budget.
-    topological_graph_3d_maximum_observed_blocks_per_update: 16
-    topological_graph_3d_maximum_backlog_blocks_per_update: 64
-    topological_graph_3d_backlog_boost_threshold_blocks: 256
-    topological_graph_3d_minimum_oldest_blocks_per_update: 4
-    topological_graph_3d_local_priority_radius_m: 12.0
-    topological_graph_3d_forward_corridor_radius_m: 8.0
-    topological_graph_3d_forward_corridor_lookahead_m: 60.0
-    topological_graph_3d_update_budget_ms: 50.0
-    topological_graph_3d_zero_progress_initial_backoff_ms: 5
-    topological_graph_3d_zero_progress_maximum_backoff_ms: 250
-    topological_graph_3d_zero_progress_warning_streak: 3
-    # Strategic selection owns this budget independently of direct lattice search.
-    # It must cover raw start anchoring plus both mission and exploration graph
-    # searches on the incrementally observed Manhattan intersection.
-    topological_strategy_budget_ms: 100.0
-    topological_planner_3d_start_anchor_distance_m: 20.0
-    # Return routes from confirmed topological dead ends are opt-in. Normal
-    # Manhattan validation keeps goal-directed navigation only.
-    topological_backtracking_enabled: false
     raw_obstacle_snapshot_3d_topic: /drone_city_nav/raw_obstacle_snapshot_3d
     raw_obstacle_delta_3d_topic: /drone_city_nav/raw_obstacle_delta_3d
     latest_lidar_obstacle_scan_topic: /drone_city_nav/latest_lidar_obstacle_scan
@@ -438,24 +414,6 @@ production_mppi_node:
     # beyond the local terminal-control neighbourhood so sensing advances
     # while the vehicle is moving instead of creating a repeated micro-route.
     global_lattice_3d_observation_frontier_minimum_pose_advance_m: 2.0
-    # Goal progress remains a soft term: a confirmed dead end can still be
-    # left through a temporarily goal-opposed branch. It must nevertheless
-    # outweigh a small information-gain difference when forward frontiers are
-    # available, otherwise an open world is explored sideways indefinitely.
-    topological_planner_3d_goal_progress_reward: 6.0
-    topological_planner_3d_minimum_mission_continuation_goal_progress_m: 8.0
-    topological_planner_3d_information_gain_reward: 1.0
-    topological_planner_3d_dead_end_penalty: 100.0
-    topological_planner_3d_frontier_completion_penalty: 48.0
-    # Fresh lidar observations may extend beyond an asynchronously rebuilt
-    # topology snapshot. Bound that raw-safe overlay by the connector horizon.
-    topological_planner_3d_maximum_fresh_frontier_anchor_distance_m: 36.0
-    topological_planner_3d_minimum_observation_target_displacement_m: 2.0
-    topological_planner_3d_maximum_fresh_frontier_evaluations: 64
-    topological_lattice_3d_maximum_lookahead_m: 60.0
-    topological_lattice_3d_minimum_collinear_direction_cosine: 0.95
-    topological_memory_3d_coverage_influence_radius_m: 4.0
-    topological_memory_3d_maximum_observed_transition_m: 4.0
     no_static_global_lattice_deadline_ms: 500.0
     static_global_lattice_roi_halo_m: 90.0
     no_static_global_lattice_roi_halo_m: 45.0

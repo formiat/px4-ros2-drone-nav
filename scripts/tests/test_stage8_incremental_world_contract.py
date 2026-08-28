@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static regressions for incremental ESDF and topology catch-up scheduling."""
+"""Static regressions for bounded incremental world updates."""
 
 from __future__ import annotations
 
@@ -71,7 +71,7 @@ class Stage8IncrementalWorldContractTest(unittest.TestCase):
             "observed_esdf_resource.local_occupancy->bounds()", pose_recenter
         )
 
-    def test_topology_prioritizes_corridor_and_bounds_backlog_catchup(self) -> None:
+    def test_topology_library_is_not_a_production_route_pipeline(self) -> None:
         graph = (INCLUDE / "incremental_topology_graph_3d.hpp").read_text(
             encoding="utf-8"
         )
@@ -82,6 +82,8 @@ class Stage8IncrementalWorldContractTest(unittest.TestCase):
             encoding="utf-8"
         )
         yaml = (PACKAGE / "config" / "urban_mvp.yaml").read_text(encoding="utf-8")
+        node = (SOURCE / "production_mppi_node.hpp").read_text(encoding="utf-8")
+        cmake = (PACKAGE / "CMakeLists.txt").read_text(encoding="utf-8")
 
         for token in (
             "maximum_backlog_blocks_per_update",
@@ -95,10 +97,9 @@ class Stage8IncrementalWorldContractTest(unittest.TestCase):
         self.assertIn("kForwardCorridor", scheduler)
         self.assertIn("minimum_oldest_blocks_per_update", lifecycle)
         self.assertIn("backlog_boosted", lifecycle)
-        self.assertIn(
-            "topological_graph_3d_maximum_backlog_blocks_per_update: 64", yaml
-        )
-        self.assertIn("topological_graph_3d_forward_corridor_lookahead_m: 60.0", yaml)
+        self.assertNotIn("topological_graph_3d_", yaml)
+        self.assertNotIn("topologyWorker", node)
+        self.assertNotIn("production_mppi_node_topology.cpp", cmake)
 
 
 if __name__ == "__main__":

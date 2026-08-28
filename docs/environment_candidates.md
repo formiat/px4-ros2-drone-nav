@@ -305,7 +305,7 @@ installations before compilation.
 - Urban Circuit Practice 01 retains the previously validated static artifacts
   and historical three-run result. Its current point-to-point and cooperative
   entrypoints intentionally use no static map, 3D lidar, online obstacle memory,
-  and incremental topology evidence. The environment preparer materializes the
+  and persistent full-3D planning evidence. The environment preparer materializes the
   physical and visual worlds without installing or exporting static navigation
   artifacts in this mode.
 - Urban visual resources are materialized into a local Harmonic world. Finals
@@ -314,8 +314,8 @@ installations before compilation.
 - Finals Prize Round World 07 and Cave Circuit Practice 01 do not yet define
   production mission starts, goals, launch selection, or flight-envelope bounds.
 - Interception has not been validated in an imported environment. The current
-  Urban no-static point-to-point and cooperative entrypoints are the external
-  environment acceptance targets for incremental topological exploration.
+  Urban no-static point-to-point and cooperative entrypoints are external
+  environment acceptance targets for persistent full-3D navigation.
 - A valid static topology proves deterministic extraction and raw-safe internal
   segments. End-to-end reachability still requires a scenario-level run and a
   completed passage lifecycle or geometry event.

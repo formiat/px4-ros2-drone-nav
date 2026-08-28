@@ -208,10 +208,6 @@ def generate_multi_vehicle_launch_description(mission_kind):
             LaunchConfiguration("no_static_cycle_recovery_enabled").perform(context),
             False,
         )
-        topological_backtracking_enabled = _optional_bool(
-            LaunchConfiguration("topological_backtracking_enabled").perform(context),
-            False,
-        )
         static_lattice_deadline_override = LaunchConfiguration(
             "static_global_lattice_deadline_ms"
         ).perform(context)
@@ -454,9 +450,6 @@ def generate_multi_vehicle_launch_description(mission_kind):
                     ),
                     "no_static_cycle_recovery_enabled": (
                         no_static_cycle_recovery_enabled
-                    ),
-                    "topological_backtracking_enabled": (
-                        topological_backtracking_enabled
                     ),
                     "static_occupancy_3d_path": static_path,
                     "static_free_space_topology_3d_path": static_topology_path,
@@ -862,9 +855,6 @@ def generate_multi_vehicle_launch_description(mission_kind):
             ),
             DeclareLaunchArgument(
                 "no_static_cycle_recovery_enabled", default_value="false"
-            ),
-            DeclareLaunchArgument(
-                "topological_backtracking_enabled", default_value="false"
             ),
             DeclareLaunchArgument(
                 "static_global_lattice_deadline_ms", default_value=""
