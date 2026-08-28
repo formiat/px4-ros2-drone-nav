@@ -73,71 +73,39 @@ Distance classifications are:
 The current defaults are defined in `config/urban_mvp.yaml`; documentation must
 not duplicate YAML as a second parameter source of truth.
 
-## 3. Global Lattice Guide
+## 3. Persistent Full-3D Route Planning
 
-Static mode uses a 3D lattice over physical free voxels and produces
-`RouteSample3D` samples. No-static 2D retains the planar lidar-driven lattice.
-No-static 3D uses the same generic 3D lattice over observed known-free voxels;
-it does not classify a separate online passage domain or consume static
-topology.
+Production point-to-point navigation has one strategic route producer:
+`PersistentDStarLitePlanner3D`. Static and no-static profiles both search a sparse
+`(x, y, z)` motion graph. The authoritative raw occupied set and the physical
+swept footprint are the only hard collision constraints; unknown space remains
+traversable and has neither a penalty nor an eligibility gate.
 
-Lattice output is classified as reached-goal, viable frontier, search
-incomplete, or exhausted. Only reached-goal and viable-frontier results are
-executable. Incomplete search is continued when possible; exhausted output is
-not accepted as a guide.
+The planner retains its D* Lite state across compatible world revisions. Occupied
+voxel deltas update only affected vertices, while unchanged raw occupancy reuses
+the existing search state. Search that reaches its per-tick budget remains
+`search_in_progress` and resumes on a later tick. An incomplete prefix is not
+published as a substitute mission route.
 
-No-static frontier selection keeps candidates from distinct departure
-directions before evaluating continuation depth. Temporary zero or negative
-Euclidean progress toward the mission goal is allowed when it provides a
-locally viable detour. Goal distance is a soft ranking term, not a frontier
-eligibility condition.
+Every edge uses the shared `FlightTimeModel3D`, so horizontal and vertical speed,
+acceleration, jerk, and stationary turn limits contribute to one time objective.
+The materialized result is then geometry-optimized, assigned a speed-dependent
+tracking tube, compiled into immutable execution geometry, and certified against
+the exact raw world lineage before activation.
 
-An accepted guide is sticky. It is retained across ESDF revisions while its
-remaining portion is valid and useful. Replacement reasons include blocking,
-exhaustion, excessive cross-track error, and observed stall.
+`ActiveIntent3D` and `RouteManager3D` retain the accepted mission intent and route
+identity across ordinary world updates. Successor search starts from a certified
+future station and must preserve stopping distance, measured p99 planning latency,
+and overlap reserve. A newer occupied observation repairs only the affected suffix
+or transfers ownership to the certified braking plan; it never clears a still-valid
+prefix.
 
-Direct and incremental-topology searches produce at most two plan-level
-candidates. Both are materialized, geometry-optimized, certified, rebased onto
-one immutable resident generation, and checked for dynamic handoff before route
-arbitration. A failed final check makes that candidate ineligible, so another
-fully prepared candidate can win; an empty selection publishes no route.
-
-The `StrategicRouteManager3D` owns the complete accepted incremental-topology
-intent and corridor under a nonzero monotonically allocated plan identifier. It
-also owns a monotonic station/segment cursor, so local replanning cannot move
-backward along that corridor. The lattice adapter materializes only the next
-finite segment from this persistent plan. A partial mission-continuation segment
-therefore retains strategic priority without claiming that its local endpoint is
-the mission endpoint. Direct search remains an independent plan-level candidate
-in the same preparation and arbitration pipeline.
-
-Semantic frontier discovery belongs only to the incremental topological
-planner. The 3D lattice receives a typed strategic directive and materializes
-that local target; it does not run a competing observation-frontier search.
-Compiled static topology contributes passage traversal evidence directly and
-does not instantiate a separate route owner.
-
-Incremental-topology edges and connectors carry typed transition evidence.
-`observed_free` means the swept transition is supported without unknown-space
-exposure; `optimistic_unknown` records that the same raw-collision-free
-transition crosses unknown space. Each record also carries its supporting
-segment count, validation revision, last complete geometry revision, and
-geometry lineage. Route steps preserve those records and the plan reports their
-minimum revisions and aggregate unknown exposure. Unknown remains traversable
-and receives no topology cost or execution penalty.
-
-Dirty topology blocks are scheduled in three tiers: the vehicle's local safety
-envelope, the bounded forward mission corridor, and the remaining backlog. A
-reserved oldest-work share prevents recurrent local updates from starving older
-regions. When the pending queue crosses its configured threshold, one update may
-use a larger bounded catch-up budget; coverage revisions still expose every
-block that remains pending.
-
-An observation-frontier connector follows the sampled component's stored
-parent-cell path from its supporting viewpoint back to the representative. It
-does not substitute a straight representative chord that may cross an obstacle
-inside a non-convex component. Every segment remains subject to the same raw
-swept-footprint validation policy.
+Offline `FreeSpaceTopology3D` remains optional static evidence for passage
+identities and constrained spans. It is not an online route producer, does not
+arbitrate against the persistent planner, and cannot make unknown space hard or
+costly. The retired 2D/3D risk lattices, online incremental topology/frontier
+planner, strategic lattice adapter, and plan-level route arbitration are not part
+of the production graph.
 
 Route activation is then a single optimistic transaction over that immutable
 resident world plus the jointly captured pose/applied-control snapshot. The
@@ -157,19 +125,20 @@ resident geometry behind when a successor loses the optimistic activation race.
 That ownership mismatch is a typed non-executable state: execution holds the
 current position and requests a gated recovery search for the resident
 generation until a successor commits. Repeated requests are coalesced, and a
-successful recovery drops the now-obsolete deferred `no_active_guide` request.
+successful recovery drops the now-obsolete deferred `no_active_route` request.
 
 Initial search heading uses a cascade:
 
 1. velocity heading at normal speed;
-2. previous accepted-guide tangent at low speed;
-3. mission direction when no accepted guide exists.
+2. previous accepted-route tangent at low speed;
+3. mission direction when no accepted route exists.
 
 ## 4. Target And Speed Policy
 
-The planner selects a lookahead point on the active guide. Sensor and map mode
-select guide geometry and observation limits, while cruise speed, absolute
-speed, and acceleration are explicit map-independent parameters.
+The planner selects a lookahead point on the active persistent route. World
+profile selects distance-evidence preparation and observation limits, while
+cruise speed, absolute speed, and acceleration are explicit map-independent
+parameters.
 
 Reference speed is bounded by:
 
@@ -177,13 +146,12 @@ Reference speed is bounded by:
 - curvature preview;
 - sensor-observation range and physical stopping capability;
 - goal approach;
-- an unresolved route frontier, whose terminal speed is zero until an actual
-  route extension is accepted;
+- the finite certified route endpoint and the reserve needed to stop before it;
 - constrained-route span limits.
 
 When no executable route exists in either mode, direct flight to the distant
 mission goal is forbidden. The planner publishes a typed stationary hold while
-route search continues. Direct interception remains valid without a global route
+route search continues. Direct interception remains valid without a persistent route
 only when the current target is visible and the direct swept path is physically
 validated.
 
@@ -198,18 +166,19 @@ rebuilt path. Either continuation retains the previous validity deadline and
 ends at rest. Only when neither path is executable does the planner publish a
 `no_executable_horizon` position hold. A newly validated finite path supersedes
 that hold immediately;
-recovery does not wait for the vehicle to become stationary. Loss of the global
-route first preserves any still-executable finite path, and clearance tiers do
+recovery does not wait for the vehicle to become stationary. Loss of the
+persistent route first preserves any still-executable finite path, and clearance tiers do
 not trigger this hold.
 
 ## 5. Constrained Route Spans
 
-Static air passages are ordinary physical free space represented by traversal
-edges in the separately loaded FreeSpaceTopology3D index. Global search explicitly evaluates
-`start -> entry -> passage -> exit -> planning goal` topology candidates. A
-selected traversal edge creates its constrained station interval directly;
-local clearance analysis remains a validation step rather than a
-nearest-opening selector or separate passage lifecycle.
+Static air passages are ordinary physical free space. The separately loaded
+`FreeSpaceTopology3D` index provides optional passage identities, volumes, and
+cooperative conflict evidence after the persistent planner produces raw-safe
+route geometry. It does not add strategic successors or compete with D* Lite.
+Intersection of the certified route with derived passage volume creates a typed
+constrained station interval; local clearance analysis remains validation rather
+than a nearest-opening selector or separate route lifecycle.
 
 ## 6. GPU MPPI
 
@@ -255,15 +224,16 @@ reshape the arrival profile in the remaining duration, and validate the
 complete rebuilt path. The rebuilt command starts at the current timestamp, but
 its deadline never exceeds the previous `valid_until`.
 
-Route validity is checked separately. An unresolved frontier receives a zero
-terminal speed so normal speed policy can stop before its endpoint. If no
+Route validity is checked separately. Every non-terminal execution plan includes
+a certified braking fallback and admits motion only while its remaining route
+reserve covers stopping, measured planning latency, and required overlap. If no
 physically executable route remains, the planner latches the current admissible
 position and publishes `no_executable_route` hold horizons until a replacement
 route is atomically accepted.
 
-The liveness monitor compares predicted and actual progress. Persistent
-prediction without real movement can reseed the MPPI nominal controls and
-release a stalled guide.
+The liveness monitor compares predicted and actual full-3D route progress.
+Persistent prediction without real movement can reseed the MPPI nominal controls
+and, when explicitly enabled, request release and repair of a stalled route.
 
 ## 8. Horizon Publication And Execution
 
@@ -286,8 +256,10 @@ The production runtime no longer contains:
 - post-corridor trajectory optimization;
 - separate turn smoothing;
 - partial-replan races;
-- prefix/suffix stitching;
-- safe truncation;
+- legacy partial-path prefix/suffix races;
+- uncertified safe truncation;
 - planner/prohibited inflated grids;
 - inflation relaxation or escape tunnels;
-- the legacy speed planner and terminal-capture path lifecycle.
+- the legacy speed planner and terminal-capture path lifecycle;
+- 2D/3D risk-lattice, online-topology, semantic-frontier, and strategic
+  arbitration route producers.

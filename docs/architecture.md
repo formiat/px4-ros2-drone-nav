@@ -12,18 +12,16 @@ Gazebo GPU lidar + PX4 pose
 
 static:
   canonical Occupancy3D + precomputed chunked ESDF3D
-  -> extracted local dense ESDF3D -> 3D lattice route
-
-no-static 2D:
-  raw obstacle snapshot -> dense ESDF2D -> sticky 2D lattice guide
+  -> extracted local distance evidence
 
 no-static 3D:
-  observed Occupancy3D -> local ESDF3D -> generic 3D lattice route
+  revisioned observed Occupancy3D -> local occupied-distance evidence
 
-selected route/guide
+selected raw world
+  -> persistent sparse D* Lite route + certified execution geometry
   -> GPU MPPI local horizon
-  -> post-update physical validation + route-availability state
-  -> timestamped execution horizon
+  -> post-update raw physical validation + atomic ExecutionPlan3D publication
+  -> timestamped MppiTrajectoryHorizon
   -> mppi_offboard_node
   -> PX4 trajectory setpoints
 ```
@@ -71,7 +69,9 @@ snapshot/delta transport, and selected-spectator 3D clouds.
   ready, independently of lidar snapshots;
 - falls back to the exact runtime EDT when the cache is unavailable or invalid;
 - publishes latched planner-world readiness after successful ESDF activation;
-- builds and maintains the active global lattice guide;
+- owns the single persistent D* Lite strategic planner and active route intent;
+- certifies route geometry, tracking-error tube, successor reserve, and suffix
+  repair against exact raw-world lineage;
 - selects local lookahead targets;
 - runs the persistent CUDA MPPI engine;
 - follows typed 3D route samples and constrained passage spans;
@@ -132,45 +132,48 @@ the mission referee, and radar simulators.
 ### Visualization And Observation
 
 `world_visualization_node` publishes downsampled static Occupancy3D points, the
-raw 2D world grid, and stale legacy-marker cleanup. The production MPPI markers
-include mission start, mission goal, global guide, and local target.
+raw compatibility grid, and stale legacy-marker cleanup. The production MPPI
+markers include mission start, mission goal, persistent route, and local target.
 `lidar_debug_node` writes synchronized diagnostic snapshots.
 `mission_monitor_node` and `collision_crash_node` observe the mission without
 participating in route selection.
 
 ## World Representation
 
-Static production planning uses:
+Static production planning consumes canonical sparse Occupancy3D. Its chunked
+global ESDF and compiled `FreeSpaceTopology3D` share the same world fingerprint
+and provide derived distance and passage evidence, but neither can override raw
+occupied evidence.
 
-- sparse physical 3D occupancy generated from the canonical world;
-- an offline-generated chunked global ESDF carrying the same world fingerprint;
-- a local dense ESDF3D resident on the GPU;
-- preferred, planning, critical, and collision risk tiers;
-- typed 3D routes with constrained spans inferred from the route envelope.
+No-static production planning requires revisioned observed Occupancy3D produced
+from timestamped 3D lidar. A recentered distance resource may accelerate local
+queries, while the persistent route graph itself is sparse and survives compatible
+world revisions. The raw occupied set plus the drone's swept physical footprint is
+the only hard collision boundary in both profiles.
 
-No-static production planning uses either the raw 2D obstacle snapshot and a 2D
-distance field or revisioned observed Occupancy3D and a recentered local ESDF3D.
-The 3D profile searches one known-free volume and does not load static topology
-or the canonical 3D map.
-
-There are no separately materialized planner/prohibited inflated grids,
-artificial hard collision envelopes around raw cells, inflation relaxation, or
-escape tunnels. Conservative ESDF clearance is used only to classify the
-critical and planning risk bands and compute soft exposure cost. A rollout
-remains executable at low clearance unless the drone's actual swept physical
-footprint intersects a raw occupied cell.
+Unknown space remains traversable without a penalty or gate. There are no
+planner/prohibited inflated grids, relaxed inflation modes, escape tunnels, or
+location-specific opening rules. Derived clearance can shape speed and tracking
+margins, but low clearance remains executable whenever the physical swept
+footprint is raw-collision-free.
 
 ## Global And Local Planning
 
-The risk-aware lattice produces a route from motion primitives. Static and
-no-static 3D modes search `(x, y, z)` against their local ESDF3D and sample the
-accepted result as `RouteSample3D`; no-static 2D produces a planar guide. An
-active guide is sticky: new snapshots validate it instead of replacing it
-solely because another route scores slightly better. Blocked, exhausted, or
-stalled guides can be replaced.
+`PersistentDStarLitePlanner3D` is the single production strategic route producer.
+It searches `(x, y, z)`, incrementally repairs changed occupied evidence, and uses
+the shared `FlightTimeModel3D` for anisotropic translation and bounded turn time.
+An incomplete search resumes; it does not publish an opportunistic frontier
+prefix.
 
-The lattice guide chooses route direction. GPU MPPI owns the executable local
-motion and continuously warm-starts from its previous control sequence.
+`ActiveIntent3D` and `RouteManager3D` keep a valid route sticky, start successor
+planning from a certified future station, splice with measured latency and braking
+reserve, and repair only invalid suffixes. Route geometry, tracking tube, nominal
+horizon, braking fallback, and evidence revisions cross the execution boundary as
+one immutable plan.
+
+GPU MPPI owns executable local motion and continuously warm-starts from its
+previous control sequence. Latest raw lidar evidence validates the finite swept
+path before publication, independently of strategic planner reuse.
 
 ## Mission Layer
 
@@ -251,19 +254,19 @@ intercept equation, caps the result at 15 s, and caps the horizon at 1 s while
 ahead inside the target corridor. Vertical coasting applies bounded
 deceleration until vertical speed reaches zero and clips altitude to the flight
 envelope instead of rejecting the complete tracking objective. Vehicle yaw is
-not used to choose the global route.
+not used to choose the persistent route.
 
 Guidance does not read occupancy. The production planner resolves the predicted
 segment against its immutable raw world, stopping at the first occupied cell and
-retaining the last confirmed free sample as the ordinary planning goal. Unknown
-no-static space is neither occupied nor executable known-free space, and no
-inflation or prohibited region is introduced.
+retaining the last raw-clear sample as the ordinary planning goal. Unknown
+no-static space remains traversable with the same base cost as confirmed free
+space, and no inflation or prohibited region is introduced.
 The planner separately validates swept visibility of the coasted current target
 and the path to the full predicted intercept point. Current-target visibility
 keeps direct interception active; blockage of only the full prediction shortens
 the lead to the farthest directly reachable point, down to the current target.
 Current-target occlusion exits direct mode immediately and atomically hands off
-to a current-generation global route. MPPI minimizes
+to a current-generation persistent route. MPPI minimizes
 closest approach to the target trajectory over its horizon, while raw collision
 remains forbidden. Continuous objectives disable terminal goal capture. Swept
 relative-motion evaluation over physical Gazebo poses detects a 5 m intercept
@@ -372,12 +375,12 @@ scheduling.
 
 ## Current Architectural Limits
 
-- The lattice is not incremental AD*.
-- Static planning is not incremental AD* yet.
+- The persistent D* Lite graph currently uses fixed horizontal and vertical
+  steps; adaptive spatial refinement remains pending.
 - Static mode currently plans only against canonical Occupancy3D; lidar memory
   is not fused into its 3D collision map.
-- No-static supports independent 2D and 3D perception profiles. The 3D profile
-  deliberately has no open-space-versus-passage partition.
+- No-static production navigation requires revisioned 3D-lidar Occupancy3D and
+  has no open-space-versus-passage partition.
 - Collision validation uses a swept oriented 3D footprint against physical raw
   occupancy. No additional artificial footprint inflation is part of the
   planning contract.

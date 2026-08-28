@@ -17,8 +17,8 @@ class PersistentPlannerProductionContractTest(unittest.TestCase):
         cls.selection = (
             SOURCE / "production_mppi_route_selection.cpp"
         ).read_text(encoding="utf-8")
-        cls.guide = (
-            SOURCE / "production_mppi_node_static_guide.cpp"
+        cls.planning = (
+            SOURCE / "production_mppi_node_route_planning.cpp"
         ).read_text(encoding="utf-8")
         cls.header = (SOURCE / "production_mppi_node.hpp").read_text(
             encoding="utf-8"
@@ -32,6 +32,13 @@ class PersistentPlannerProductionContractTest(unittest.TestCase):
         cls.diagnostics_format = (
             SOURCE / "production_mppi_node_diagnostics_format.hpp"
         ).read_text(encoding="utf-8")
+        cls.route_intent = (
+            ROOT
+            / "drone_city_nav"
+            / "include"
+            / "drone_city_nav"
+            / "route_planning_3d.hpp"
+        ).read_text(encoding="utf-8")
 
     def test_selection_invokes_exactly_one_persistent_mission_planner(self) -> None:
         self.assertEqual(self.selection.count("persistent_planner_3d_->plan("), 1)
@@ -39,12 +46,8 @@ class PersistentPlannerProductionContractTest(unittest.TestCase):
         self.assertIn(
             ".mission_epoch = world.search_objective.mission_epoch", self.selection
         )
-        self.assertIn(
-            ".source = RouteIntentSource3D::kPersistentPlanner", self.selection
-        )
-        self.assertIn(
-            ".purpose = RouteIntentPurpose3D::kMissionTransit", self.selection
-        )
+        self.assertIn("intent.id =", self.selection)
+        self.assertIn("makeRouteIntentId3D(", self.selection)
 
     def test_competing_production_route_producers_are_absent(self) -> None:
         for legacy_producer in (
@@ -58,21 +61,39 @@ class PersistentPlannerProductionContractTest(unittest.TestCase):
             "RouteIntentPurpose3D::kTopologicalBacktrack",
         ):
             self.assertNotIn(legacy_producer, self.selection)
+        for retired_contract in (
+            "RouteIntentSource3D",
+            "RouteIntentPurpose3D",
+            "intent_target",
+            "segment_target",
+            "observation_stop_required",
+        ):
+            self.assertNotIn(retired_contract, self.route_intent)
         for retired_source in (
             "route_strategy_arbitrator_3d.cpp",
             "production_mppi_node_route_strategy.cpp",
             "production_mppi_node_pending_strategy.cpp",
+            "risk_aware_lattice.cpp",
+            "risk_aware_lattice_3d.cpp",
+            "incremental_topological_planner_3d.cpp",
+            "incremental_topology_graph_3d.cpp",
+            "observation_frontier.cpp",
+            "global_guide_candidate.cpp",
+            "no_static_route_cycle.cpp",
         ):
             self.assertFalse((SOURCE / retired_source).exists())
 
     def test_incremental_search_is_resumed_without_discarding_newer_worlds(
         self,
     ) -> None:
-        self.assertIn("PersistentPlannerStatus3D::kSearchInProgress", self.guide)
-        self.assertIn("if (!pending_guide_world_)", self.guide)
-        self.assertIn("continuation_queued ? \"true\" : \"newer_world_pending\"", self.guide)
-        continuation = self.guide.index("PersistentPlannerStatus3D::kSearchInProgress")
-        activation = self.guide.index("commitRouteActivation3D")
+        self.assertIn("PersistentPlannerStatus3D::kSearchInProgress", self.planning)
+        self.assertIn("if (!pending_route_planning_world_)", self.planning)
+        self.assertIn(
+            "continuation_queued ? \"true\" : \"newer_world_pending\"",
+            self.planning,
+        )
+        continuation = self.planning.index("PersistentPlannerStatus3D::kSearchInProgress")
+        activation = self.planning.index("commitRouteActivation3D")
         self.assertLess(continuation, activation)
 
     def test_successor_search_starts_at_certified_future_station(self) -> None:

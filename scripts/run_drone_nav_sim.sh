@@ -201,8 +201,8 @@ active_static_map="$(normalize_bool "${ENABLE_STATIC_MAP:-false}")"
 enable_liveness_recovery="$(
   normalize_bool "${ENABLE_LIVENESS_RECOVERY:-false}"
 )"
-enable_global_guide_stall_recovery="$(
-  normalize_bool "${ENABLE_GLOBAL_GUIDE_STALL_RECOVERY:-false}"
+enable_route_stall_recovery="$(
+  normalize_bool "${ENABLE_ROUTE_STALL_RECOVERY:-false}"
 )"
 px4_param_delay_s="${PX4_PARAM_DELAY_S:-6}"
 mission_check="${MISSION_CHECK:-}"
@@ -928,7 +928,7 @@ else
 fi
 ros_launch_args+=(use_static_map:="${active_static_map}")
 ros_launch_args+=(liveness_enabled:="${enable_liveness_recovery}")
-ros_launch_args+=(global_guide_stall_recovery_enabled:="${enable_global_guide_stall_recovery}")
+ros_launch_args+=(route_stall_recovery_enabled:="${enable_route_stall_recovery}")
 if [[ -n "${tracking_error_tube_response_time_override}" ]]; then
   ros_launch_args+=(
     tracking_error_tube_response_time_s:="${tracking_error_tube_response_time_override}"

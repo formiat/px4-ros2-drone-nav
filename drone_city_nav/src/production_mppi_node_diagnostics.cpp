@@ -83,9 +83,6 @@ void ProductionMppiNode::processDiagnostics(
       << " route_reaches_mission_goal="
       << (esdf.route_reaches_mission_goal ? "true" : "false")
       << " route_intent_id=" << esdf.route_intent.id
-      << " strategic_plan_id=" << esdf.route_intent.strategic_plan_id
-      << " route_intent_source=" << routeIntentSource3DName(esdf.route_intent.source)
-      << " route_intent_purpose=" << routeIntentPurpose3DName(esdf.route_intent.purpose)
       << " route_intent_planned_on=" << esdf.route_intent.planned_on_revision
       << " route_validated_through="
       << esdf.route_segment_evidence.validated_through_revision
@@ -95,11 +92,9 @@ void ProductionMppiNode::processDiagnostics(
       << (esdf.route_segment_evidence.unknown_exposure ? "true" : "false")
       << " route_known_clearance="
       << (esdf.route_segment_evidence.known_clearance_observed ? "true" : "false")
-      << " route_intent_target_reached="
-      << (esdf.route_segment_evidence.reaches_intent_target ? "true" : "false")
       << " goal_capture_latched=" << (snapshot.goal_capture.latched ? "true" : "false")
       << " goal_distance_m=" << snapshot.goal_capture.distance_m
-      << " route_release=" << globalGuideReleaseReasonName(esdf.route_release_reason)
+      << " route_release=" << routeReleaseReason3DName(esdf.route_release_reason)
       << " route_station_m=" << snapshot.route_station_m
       << " route_remaining_m=" << snapshot.route_remaining_m
       << " route_constraint_phase=" << constrainedRoutePhaseName(route_constraint.phase)
@@ -126,10 +121,10 @@ void ProductionMppiNode::processDiagnostics(
       << " route_constraint_cross_track_error_m="
       << route_constraint.cross_track_error_m << " route_constraint_vertical_window_ok="
       << (route_constraint.within_vertical_window ? "true" : "false")
-      << " guide_progress_action="
-      << globalGuideProgressActionName(snapshot.guide_progress.action)
-      << " guide_local_reseed_generation="
-      << snapshot.guide_progress.local_reseed_generation << " planning_search_kind="
+      << " route_progress_action="
+      << routeProgressAction3DName(snapshot.route_progress.action)
+      << " route_local_reseed_generation="
+      << snapshot.route_progress.local_reseed_generation << " planning_search_kind="
       << productionPlanningSearchKindName(esdf.planning_search_kind)
       << " planning_search_base_route_instance_id="
       << esdf.planning_search_base_route_instance_id.value
@@ -254,15 +249,14 @@ void ProductionMppiNode::processDiagnostics(
       << (result.route_directed_candidate_best_feasible ? "true" : "false")
       << " route_directed_candidate_weight=" << result.route_directed_candidate_weight
       << " route_directed_candidate_generation="
-      << result.route_directed_candidate_generation
-      << " temporary_frontier_is_terminal="
-      << (snapshot.temporary_frontier_is_terminal ? "true" : "false")
+      << result.route_directed_candidate_generation << " local_route_stop_is_terminal="
+      << (snapshot.local_route_stop_is_terminal ? "true" : "false")
       << detail::rollingRouteInfoFields(snapshot.rolling_route) << " no_eligible_phase="
       << mppiNoEligiblePhaseName(snapshot.no_eligible_recovery.phase)
       << " no_eligible_recovery_generation="
       << snapshot.no_eligible_recovery.no_eligible_recovery_generation
-      << " no_eligible_guide_replan="
-      << (snapshot.no_eligible_recovery.guide_replan_requested ? "true" : "false")
+      << " no_eligible_route_replan="
+      << (snapshot.no_eligible_recovery.route_replan_requested ? "true" : "false")
       << " liveness_state=" << mppiLivenessStateName(liveness.state)
       << " liveness_recovery_active=" << (liveness.recovery_active ? "true" : "false")
       << " liveness_window_s=" << liveness.observation_age_s
@@ -383,11 +377,6 @@ void ProductionMppiNode::processDiagnostics(
          << ",\"route_reaches_mission_goal\":"
          << (esdf.route_reaches_mission_goal ? "true" : "false")
          << ",\"route_intent_id\":" << esdf.route_intent.id
-         << ",\"route_intent_source\":\""
-         << routeIntentSource3DName(esdf.route_intent.source) << '"'
-         << ",\"strategic_plan_id\":" << esdf.route_intent.strategic_plan_id
-         << ",\"route_intent_purpose\":\""
-         << routeIntentPurpose3DName(esdf.route_intent.purpose) << '"'
          << ",\"route_intent_planned_on\":" << esdf.route_intent.planned_on_revision
          << ",\"route_validated_through\":"
          << esdf.route_segment_evidence.validated_through_revision
@@ -397,13 +386,11 @@ void ProductionMppiNode::processDiagnostics(
          << (esdf.route_segment_evidence.unknown_exposure ? "true" : "false")
          << ",\"route_known_clearance\":"
          << (esdf.route_segment_evidence.known_clearance_observed ? "true" : "false")
-         << ",\"route_intent_target_reached\":"
-         << (esdf.route_segment_evidence.reaches_intent_target ? "true" : "false")
          << ",\"goal_capture_latched\":"
          << (snapshot.goal_capture.latched ? "true" : "false")
          << ",\"goal_distance_m\":" << snapshot.goal_capture.distance_m
          << ",\"route_release\":\""
-         << globalGuideReleaseReasonName(esdf.route_release_reason) << '"'
+         << routeReleaseReason3DName(esdf.route_release_reason) << '"'
          << ",\"route_station_m\":" << snapshot.route_station_m
          << ",\"route_remaining_m\":" << snapshot.route_remaining_m
          << ",\"route_constraint_phase\":\""
@@ -457,10 +444,10 @@ void ProductionMppiNode::processDiagnostics(
          << route_constraint.actual_horizontal_speed_mps
          << ",\"route_constraint_actual_vertical_speed_mps\":"
          << route_constraint.actual_vertical_speed_mps
-         << ",\"guide_progress_action\":\""
-         << globalGuideProgressActionName(snapshot.guide_progress.action) << '"'
-         << ",\"guide_local_reseed_generation\":"
-         << snapshot.guide_progress.local_reseed_generation
+         << ",\"route_progress_action\":\""
+         << routeProgressAction3DName(snapshot.route_progress.action) << '"'
+         << ",\"route_local_reseed_generation\":"
+         << snapshot.route_progress.local_reseed_generation
          << ",\"planning_search_kind\":\""
          << productionPlanningSearchKindName(esdf.planning_search_kind) << '"'
          << ",\"planning_search_base_route_instance_id\":"
@@ -599,15 +586,15 @@ void ProductionMppiNode::processDiagnostics(
          << result.route_directed_candidate_weight
          << ",\"route_directed_candidate_generation\":"
          << result.route_directed_candidate_generation
-         << ",\"temporary_frontier_is_terminal\":"
-         << (snapshot.temporary_frontier_is_terminal ? "true" : "false")
+         << ",\"local_route_stop_is_terminal\":"
+         << (snapshot.local_route_stop_is_terminal ? "true" : "false")
          << detail::rollingRouteJsonFields(snapshot.rolling_route)
          << ",\"no_eligible_phase\":\""
          << mppiNoEligiblePhaseName(snapshot.no_eligible_recovery.phase) << '"'
          << ",\"no_eligible_recovery_generation\":"
          << snapshot.no_eligible_recovery.no_eligible_recovery_generation
-         << ",\"no_eligible_guide_replan\":"
-         << (snapshot.no_eligible_recovery.guide_replan_requested ? "true" : "false")
+         << ",\"no_eligible_route_replan\":"
+         << (snapshot.no_eligible_recovery.route_replan_requested ? "true" : "false")
          << ",\"liveness_state\":\"" << mppiLivenessStateName(liveness.state) << '"'
          << ",\"liveness_recovery_active\":"
          << (liveness.recovery_active ? "true" : "false")

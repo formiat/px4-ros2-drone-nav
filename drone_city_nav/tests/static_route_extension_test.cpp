@@ -299,14 +299,14 @@ TEST(StaticRouteExtensionTest, MissionTerminalRouteIsNeverExtended) {
 }
 
 TEST(StaticRouteExtensionTest, DefersLifecycleReleaseButNeverRawBlockedRelease) {
+  EXPECT_TRUE(
+      deferStaticRouteReleaseDuringExtension(true, RouteReleaseReason3D::kExhausted));
   EXPECT_TRUE(deferStaticRouteReleaseDuringExtension(
-      true, GlobalGuideReleaseReason::kExhausted));
-  EXPECT_TRUE(deferStaticRouteReleaseDuringExtension(
-      true, GlobalGuideReleaseReason::kNoEligibleRollouts));
+      true, RouteReleaseReason3D::kNoEligibleRollouts));
   EXPECT_FALSE(
-      deferStaticRouteReleaseDuringExtension(true, GlobalGuideReleaseReason::kBlocked));
-  EXPECT_FALSE(deferStaticRouteReleaseDuringExtension(
-      false, GlobalGuideReleaseReason::kStalled));
+      deferStaticRouteReleaseDuringExtension(true, RouteReleaseReason3D::kBlocked));
+  EXPECT_FALSE(
+      deferStaticRouteReleaseDuringExtension(false, RouteReleaseReason3D::kStalled));
 }
 
 TEST(StaticRouteExtensionTest, InitialSearchIsSupersededByActivatedResidentRoute) {
@@ -362,7 +362,7 @@ TEST(StaticRouteExtensionTest,
 
 TEST(StaticRouteExtensionTest, ReplaysDeferredReplanAfterRejectedExtension) {
   StaticRouteDeferredReplanLatch latch;
-  latch.defer(StaticRouteDeferredReplan{.reason = GlobalGuideReleaseReason::kStalled,
+  latch.defer(StaticRouteDeferredReplan{.reason = RouteReleaseReason3D::kStalled,
                                         .route_generation = 12U});
 
   const std::optional<StaticRouteDeferredReplan> replay =
@@ -371,16 +371,15 @@ TEST(StaticRouteExtensionTest, ReplaysDeferredReplanAfterRejectedExtension) {
   ASSERT_NE(replay, std::nullopt);
   const StaticRouteDeferredReplan replayed =
       replay.value_or(StaticRouteDeferredReplan{});
-  EXPECT_EQ(replayed.reason, GlobalGuideReleaseReason::kStalled);
+  EXPECT_EQ(replayed.reason, RouteReleaseReason3D::kStalled);
   EXPECT_EQ(replayed.route_generation, 12U);
   EXPECT_FALSE(latch.pending());
 }
 
 TEST(StaticRouteExtensionTest, DropsDeferredReplanAfterActivatedExtension) {
   StaticRouteDeferredReplanLatch latch;
-  latch.defer(
-      StaticRouteDeferredReplan{.reason = GlobalGuideReleaseReason::kNoEligibleRollouts,
-                                .route_generation = 12U});
+  latch.defer(StaticRouteDeferredReplan{
+      .reason = RouteReleaseReason3D::kNoEligibleRollouts, .route_generation = 12U});
 
   EXPECT_FALSE(latch.finishExtension(12U, true).has_value());
   EXPECT_FALSE(latch.pending());
@@ -388,7 +387,7 @@ TEST(StaticRouteExtensionTest, DropsDeferredReplanAfterActivatedExtension) {
 
 TEST(StaticRouteExtensionTest, ReplaysDeferredReplanAfterCompletedReplan) {
   StaticRouteDeferredReplanLatch latch;
-  latch.defer(StaticRouteDeferredReplan{.reason = GlobalGuideReleaseReason::kExhausted,
+  latch.defer(StaticRouteDeferredReplan{.reason = RouteReleaseReason3D::kExhausted,
                                         .route_generation = 12U});
 
   const std::optional<StaticRouteDeferredReplan> replay =
@@ -397,7 +396,7 @@ TEST(StaticRouteExtensionTest, ReplaysDeferredReplanAfterCompletedReplan) {
   ASSERT_NE(replay, std::nullopt);
   const StaticRouteDeferredReplan replayed =
       replay.value_or(StaticRouteDeferredReplan{});
-  EXPECT_EQ(replayed.reason, GlobalGuideReleaseReason::kExhausted);
+  EXPECT_EQ(replayed.reason, RouteReleaseReason3D::kExhausted);
   EXPECT_EQ(replayed.route_generation, 12U);
   EXPECT_FALSE(latch.pending());
 }
@@ -405,7 +404,7 @@ TEST(StaticRouteExtensionTest, ReplaysDeferredReplanAfterCompletedReplan) {
 TEST(StaticRouteExtensionTest, DropsDeferredMissingRouteRecoveryAfterSuccessfulReplan) {
   StaticRouteDeferredReplanLatch latch;
   latch.defer(StaticRouteDeferredReplan{
-      .reason = GlobalGuideReleaseReason::kNoActiveGuide,
+      .reason = RouteReleaseReason3D::kNoActiveRoute,
       .route_generation = 12U,
   });
 
@@ -416,7 +415,7 @@ TEST(StaticRouteExtensionTest, DropsDeferredMissingRouteRecoveryAfterSuccessfulR
 TEST(StaticRouteExtensionTest, ReplaysDeferredMissingRouteRecoveryAfterRejectedReplan) {
   StaticRouteDeferredReplanLatch latch;
   latch.defer(StaticRouteDeferredReplan{
-      .reason = GlobalGuideReleaseReason::kNoActiveGuide,
+      .reason = RouteReleaseReason3D::kNoActiveRoute,
       .route_generation = 12U,
   });
 
@@ -426,19 +425,18 @@ TEST(StaticRouteExtensionTest, ReplaysDeferredMissingRouteRecoveryAfterRejectedR
   ASSERT_TRUE(replay.has_value());
   const StaticRouteDeferredReplan replayed =
       replay.value_or(StaticRouteDeferredReplan{});
-  EXPECT_EQ(replayed.reason, GlobalGuideReleaseReason::kNoActiveGuide);
+  EXPECT_EQ(replayed.reason, RouteReleaseReason3D::kNoActiveRoute);
   EXPECT_EQ(replayed.route_generation, 12U);
   EXPECT_FALSE(latch.pending());
 }
 
 TEST(StaticRouteExtensionTest, KeepsStrongestDeferredReplanReason) {
   StaticRouteDeferredReplanLatch latch;
-  latch.defer(StaticRouteDeferredReplan{.reason = GlobalGuideReleaseReason::kStalled,
+  latch.defer(StaticRouteDeferredReplan{.reason = RouteReleaseReason3D::kStalled,
                                         .route_generation = 12U});
-  latch.defer(
-      StaticRouteDeferredReplan{.reason = GlobalGuideReleaseReason::kNoEligibleRollouts,
-                                .route_generation = 12U});
-  latch.defer(StaticRouteDeferredReplan{.reason = GlobalGuideReleaseReason::kExhausted,
+  latch.defer(StaticRouteDeferredReplan{
+      .reason = RouteReleaseReason3D::kNoEligibleRollouts, .route_generation = 12U});
+  latch.defer(StaticRouteDeferredReplan{.reason = RouteReleaseReason3D::kExhausted,
                                         .route_generation = 12U});
 
   const std::optional<StaticRouteDeferredReplan> replay =
@@ -446,7 +444,7 @@ TEST(StaticRouteExtensionTest, KeepsStrongestDeferredReplanReason) {
 
   ASSERT_NE(replay, std::nullopt);
   EXPECT_EQ(replay.value_or(StaticRouteDeferredReplan{}).reason,
-            GlobalGuideReleaseReason::kNoEligibleRollouts);
+            RouteReleaseReason3D::kNoEligibleRollouts);
 }
 
 TEST(StaticRouteExtensionTest, CandidateMustImproveEndpointAndAvoidRawOccupancy) {
@@ -498,238 +496,17 @@ TEST(StaticRouteExtensionTest, OrdinaryExtensionCannotReplaceRouteWithoutProgres
   EXPECT_EQ(result.status, StaticRouteCandidateStatus::kNoEndpointImprovement);
 }
 
-TEST(StaticRouteExtensionTest, TopologicalRouteMayMoveAwayFromGoal) {
+TEST(StaticRouteExtensionTest, SuccessorRouteMayMoveAwayFromGoal) {
   const mppi::EsdfGrid grid{12, 4, 1.0F, 0.0F, 0.0F, 4, 0.0F};
   const std::vector<float> esdf(static_cast<std::size_t>(12U) * 4U * 4U,
                                 std::numeric_limits<float>::infinity());
 
   const StaticRouteCandidateValidation result = validateStaticRouteCandidate(
       route(8.5), route(6.5), grid, esdf, Point3{11.5, 1.5, 1.5}, 5.0, false,
-      FlightEnvelopeConfig{}, StaticRouteReplacementPolicy::kAllowTopologicalProgress);
+      FlightEnvelopeConfig{}, StaticRouteReplacementPolicy::kAllowSuccessorProgress);
 
   EXPECT_TRUE(result.accepted);
   EXPECT_LT(result.endpoint_improvement_m, 0.0);
-}
-
-TEST(StaticRouteExtensionTest, PermissiveReplacementMayMoveAwayFromGoal) {
-  const mppi::EsdfGrid grid{12, 4, 1.0F, 0.0F, 0.0F, 4, 0.0F};
-  const std::vector<float> esdf(static_cast<std::size_t>(12U) * 4U * 4U,
-                                std::numeric_limits<float>::infinity());
-
-  const StaticRouteCandidateValidation result = validateStaticRouteCandidate(
-      route(8.5), route(6.5), grid, esdf, Point3{11.5, 1.5, 1.5}, 5.0, false,
-      FlightEnvelopeConfig{},
-      StaticRouteReplacementPolicy::kAllowAnyValidatedReplacement);
-
-  EXPECT_TRUE(result.accepted);
-  EXPECT_LT(result.endpoint_improvement_m, 0.0);
-}
-
-[[nodiscard]] ObservationFrontier testFrontier(const std::uint64_t id,
-                                               const std::uint64_t revision) {
-  return ObservationFrontier{
-      .id = ObservationFrontierId{id},
-      .supporting_map_revision = revision,
-  };
-}
-
-TEST(StaticRouteExtensionTest, ObservationReplacementRetainsSameFrontier) {
-  const ObservationRouteReplacementDecision decision =
-      evaluateObservationRouteReplacement(ObservationRouteReplacementObservation{
-          .active_frontier = testFrontier(7U, 10U),
-          .candidate_frontier = testFrontier(7U, 11U),
-          .active_score = 12.0,
-          .candidate_score = 20.0,
-          .minimum_score_improvement = 0.5,
-          .active_frontier_still_valid = true,
-      });
-
-  EXPECT_FALSE(decision.accepted);
-  EXPECT_EQ(decision.status, ObservationRouteReplacementStatus::kSameFrontierRetained);
-}
-
-TEST(StaticRouteExtensionTest, ObservationRecoveryHasNoFrontierWithoutResidentOwner) {
-  const ObservationRouteReplacementDecision decision =
-      evaluateObservationRouteReplacement(ObservationRouteReplacementObservation{
-          .active_frontier = std::nullopt,
-          .candidate_frontier = testFrontier(7U, 11U),
-          .active_score = 12.0,
-          .candidate_score = 20.0,
-          .minimum_score_improvement = 0.5,
-          .active_frontier_still_valid = true,
-      });
-
-  EXPECT_TRUE(decision.accepted);
-  EXPECT_EQ(decision.status, ObservationRouteReplacementStatus::kNoActiveFrontier);
-}
-
-TEST(StaticRouteExtensionTest, ObservationReplacementRequiresMeasuredProgress) {
-  const ObservationRouteReplacementDecision decision =
-      evaluateObservationRouteReplacement(ObservationRouteReplacementObservation{
-          .active_frontier = testFrontier(7U, 10U),
-          .candidate_frontier = testFrontier(8U, 11U),
-          .active_score = 12.0,
-          .candidate_score = 12.0,
-          .minimum_score_improvement = 0.5,
-          .active_frontier_still_valid = true,
-      });
-
-  EXPECT_FALSE(decision.accepted);
-  EXPECT_EQ(decision.status, ObservationRouteReplacementStatus::kInsufficientProgress);
-}
-
-TEST(StaticRouteExtensionTest, ObservationReplacementDoesNotChurnSameFrontier) {
-  const ObservationRouteReplacementDecision decision =
-      evaluateObservationRouteReplacement(ObservationRouteReplacementObservation{
-          .active_frontier = testFrontier(7U, 10U),
-          .candidate_frontier = testFrontier(7U, 11U),
-          .active_score = 12.0,
-          .candidate_score = 12.0,
-          .minimum_score_improvement = 0.5,
-          .active_frontier_still_valid = true,
-      });
-
-  EXPECT_FALSE(decision.accepted);
-  EXPECT_EQ(decision.status, ObservationRouteReplacementStatus::kSameFrontierRetained);
-}
-
-TEST(StaticRouteExtensionTest,
-     RetiredFrontierRefreshesEvenWhenTheRegionalIdentityIsUnchanged) {
-  const ObservationRouteReplacementDecision decision =
-      evaluateObservationRouteReplacement(ObservationRouteReplacementObservation{
-          .active_frontier = testFrontier(7U, 10U),
-          .candidate_frontier = testFrontier(7U, 11U),
-          .active_score = 12.0,
-          .candidate_score = 12.0,
-          .minimum_score_improvement = 0.5,
-          .active_frontier_still_valid = false,
-      });
-
-  EXPECT_TRUE(decision.accepted);
-  EXPECT_EQ(decision.status, ObservationRouteReplacementStatus::kActiveFrontierRetired);
-}
-
-TEST(StaticRouteExtensionTest, ObservationReplacementAdvancesFromReachedFrontier) {
-  const ObservationRouteReplacementDecision decision =
-      evaluateObservationRouteReplacement(ObservationRouteReplacementObservation{
-          .active_frontier = testFrontier(7U, 10U),
-          .candidate_frontier = testFrontier(8U, 11U),
-          .active_score = 12.0,
-          .candidate_score = 20.0,
-          .minimum_score_improvement = 0.5,
-          .active_frontier_still_valid = true,
-          .active_frontier_reached = true,
-      });
-
-  EXPECT_TRUE(decision.accepted);
-  EXPECT_EQ(decision.status, ObservationRouteReplacementStatus::kActiveFrontierReached);
-}
-
-TEST(StaticRouteExtensionTest, ExhaustedFiniteObservationRouteAcceptsNextFrontier) {
-  const ObservationRouteReplacementDecision decision =
-      evaluateObservationRouteReplacement(ObservationRouteReplacementObservation{
-          .active_frontier = testFrontier(7U, 10U),
-          .candidate_frontier = testFrontier(8U, 11U),
-          .active_score = 12.0,
-          .candidate_score = 40.0,
-          .minimum_score_improvement = 0.5,
-          .active_frontier_still_valid = true,
-          .active_route_exhausted = true,
-      });
-
-  EXPECT_TRUE(decision.accepted);
-  EXPECT_EQ(decision.status, ObservationRouteReplacementStatus::kActiveRouteExhausted);
-}
-
-TEST(StaticRouteExtensionTest, ExhaustedFiniteRouteMayContinueSameFrontier) {
-  const ObservationRouteReplacementDecision decision =
-      evaluateObservationRouteReplacement(ObservationRouteReplacementObservation{
-          .active_frontier = testFrontier(7U, 10U),
-          .candidate_frontier = testFrontier(7U, 11U),
-          .active_score = 12.0,
-          .candidate_score = 40.0,
-          .minimum_score_improvement = 0.5,
-          .active_frontier_still_valid = true,
-          .active_route_exhausted = true,
-      });
-
-  EXPECT_TRUE(decision.accepted);
-  EXPECT_EQ(decision.status, ObservationRouteReplacementStatus::kActiveRouteExhausted);
-}
-
-TEST(StaticRouteExtensionTest, ReachedFrontierIsNotReactivated) {
-  const ObservationRouteReplacementDecision decision =
-      evaluateObservationRouteReplacement(ObservationRouteReplacementObservation{
-          .active_frontier = testFrontier(7U, 10U),
-          .candidate_frontier = testFrontier(7U, 11U),
-          .active_score = 12.0,
-          .candidate_score = 10.0,
-          .minimum_score_improvement = 0.5,
-          .active_frontier_still_valid = true,
-          .active_frontier_reached = true,
-      });
-
-  EXPECT_FALSE(decision.accepted);
-  EXPECT_EQ(decision.status, ObservationRouteReplacementStatus::kSameFrontierRetained);
-}
-
-TEST(StaticRouteExtensionTest, ObservationReplacementRequiresScoreImprovement) {
-  const ObservationRouteReplacementDecision rejected =
-      evaluateObservationRouteReplacement(ObservationRouteReplacementObservation{
-          .active_frontier = testFrontier(7U, 10U),
-          .candidate_frontier = testFrontier(8U, 11U),
-          .active_score = 12.0,
-          .candidate_score = 11.75,
-          .minimum_score_improvement = 0.5,
-          .active_frontier_still_valid = true,
-      });
-  const ObservationRouteReplacementDecision accepted =
-      evaluateObservationRouteReplacement(ObservationRouteReplacementObservation{
-          .active_frontier = testFrontier(7U, 10U),
-          .candidate_frontier = testFrontier(8U, 11U),
-          .active_score = 12.0,
-          .candidate_score = 11.5,
-          .minimum_score_improvement = 0.5,
-          .active_frontier_still_valid = true,
-      });
-
-  EXPECT_FALSE(rejected.accepted);
-  EXPECT_EQ(rejected.status, ObservationRouteReplacementStatus::kInsufficientProgress);
-  EXPECT_DOUBLE_EQ(rejected.score_improvement, 0.25);
-  EXPECT_TRUE(accepted.accepted);
-  EXPECT_EQ(accepted.status, ObservationRouteReplacementStatus::kScoreImproved);
-  EXPECT_DOUBLE_EQ(accepted.score_improvement, 0.5);
-}
-
-TEST(StaticRouteExtensionTest,
-     ObservationReplacementDoesNotReplaceAUsefulRouteForEndpointAdvanceAlone) {
-  const ObservationRouteReplacementDecision decision =
-      evaluateObservationRouteReplacement(ObservationRouteReplacementObservation{
-          .active_frontier = testFrontier(7U, 10U),
-          .candidate_frontier = testFrontier(8U, 11U),
-          .active_score = 12.0,
-          .candidate_score = 20.0,
-          .minimum_score_improvement = 0.5,
-          .active_frontier_still_valid = true,
-      });
-
-  EXPECT_FALSE(decision.accepted);
-  EXPECT_EQ(decision.status, ObservationRouteReplacementStatus::kInsufficientProgress);
-}
-
-TEST(StaticRouteExtensionTest, ObservationReplacementKeepsSoftGoalProgress) {
-  const ObservationRouteReplacementDecision decision =
-      evaluateObservationRouteReplacement(ObservationRouteReplacementObservation{
-          .active_frontier = testFrontier(7U, 10U),
-          .candidate_frontier = testFrontier(8U, 11U),
-          .active_score = 12.0,
-          .candidate_score = 11.5,
-          .minimum_score_improvement = 0.5,
-          .active_frontier_still_valid = true,
-      });
-
-  EXPECT_TRUE(decision.accepted);
-  EXPECT_EQ(decision.status, ObservationRouteReplacementStatus::kScoreImproved);
 }
 
 TEST(StaticRouteExtensionTest, ReplacementPoliciesHaveStableDiagnosticNames) {
@@ -737,14 +514,11 @@ TEST(StaticRouteExtensionTest, ReplacementPoliciesHaveStableDiagnosticNames) {
                 StaticRouteReplacementPolicy::kRequireEndpointImprovement),
             "require_endpoint_improvement");
   EXPECT_EQ(staticRouteReplacementPolicyName(
-                StaticRouteReplacementPolicy::kAllowAnyValidatedReplacement),
-            "allow_any_validated_replacement");
-  EXPECT_EQ(staticRouteReplacementPolicyName(
                 StaticRouteReplacementPolicy::kAllowSafetyReplan),
             "allow_safety_replan");
   EXPECT_EQ(staticRouteReplacementPolicyName(
-                StaticRouteReplacementPolicy::kAllowTopologicalProgress),
-            "allow_topological_progress");
+                StaticRouteReplacementPolicy::kAllowSuccessorProgress),
+            "allow_successor_progress");
 }
 
 TEST(StaticRouteExtensionTest, RejectsRouteOutsideFlightEnvelope) {

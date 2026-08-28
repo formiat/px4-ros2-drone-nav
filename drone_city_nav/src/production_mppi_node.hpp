@@ -1,6 +1,5 @@
 #pragma once
 
-#include "drone_city_nav/active_global_guide.hpp"
 #include "drone_city_nav/applied_control_admission.hpp"
 #include "drone_city_nav/bounded_worker_pool.hpp"
 #include "drone_city_nav/cooperative_mppi_adapter.hpp"
@@ -57,6 +56,7 @@
 #include "drone_city_nav/route_3d.hpp"
 #include "drone_city_nav/route_lifecycle_3d.hpp"
 #include "drone_city_nav/route_planning_3d.hpp"
+#include "drone_city_nav/route_progress_3d.hpp"
 #include "drone_city_nav/static_esdf_cache.hpp"
 #include "drone_city_nav/static_route_extension.hpp"
 #include "drone_city_nav/static_route_geometry.hpp"
@@ -207,9 +207,8 @@ struct ProductionMppiPreparedEsdf {
   StaticRouteObjective route_objective{};
   std::uint64_t route_generation{0U};
   bool route_reaches_mission_goal{false};
-  GlobalGuideReleaseReason route_release_reason{
-      GlobalGuideReleaseReason::kNoActiveGuide};
-  GlobalGuideProjection route_projection{};
+  RouteReleaseReason3D route_release_reason{RouteReleaseReason3D::kNoActiveRoute};
+  RouteProgressProjection3D route_projection{};
   ProductionPlanningSearchKind planning_search_kind{
       ProductionPlanningSearchKind::kNone};
   ProductionPersistentPlannerTelemetry3D planner{};
@@ -234,7 +233,7 @@ struct ProductionMppiPreparedEsdf {
   std::uint64_t static_route_extension_base_generation{0U};
   bool static_route_replan_request{false};
   std::uint64_t static_route_replan_base_generation{0U};
-  GlobalGuideReleaseReason static_route_replan_reason{GlobalGuideReleaseReason::kNone};
+  RouteReleaseReason3D static_route_replan_reason{RouteReleaseReason3D::kNone};
   StaticRouteCandidateStatus static_route_candidate_status{
       StaticRouteCandidateStatus::kEmpty};
   StaticRouteActivationStatus static_route_activation_status{
@@ -266,7 +265,7 @@ struct ProductionMppiDiagnosticsSnapshot {
   MppiLivenessResult liveness{};
   DirectTrackingManeuverUpdate direct_tracking_maneuver{};
   MppiSpeedPolicyResult speed_policy{};
-  GlobalGuideProgressUpdate guide_progress{};
+  RouteProgressUpdate3D route_progress{};
   MppiEligibleRolloutUpdate no_eligible_recovery{};
   MissionGoalCaptureResult goal_capture{};
   ProductionMppiExecutionPublication execution{};
@@ -286,7 +285,7 @@ struct ProductionMppiDiagnosticsSnapshot {
   double stability_ms{0.0};
   RollingRouteTelemetryObservation3D rolling_route{};
   bool route_projection_valid{false};
-  bool temporary_frontier_is_terminal{false};
+  bool local_route_stop_is_terminal{false};
   bool liveness_reseed_requested{false};
   bool pose_predicted{false};
   ProductionMppiPreviousControlSource previous_control_source{
@@ -338,10 +337,10 @@ private:
   void publishNavigationHealth(const NavigationHealthAssessment& assessment);
   [[nodiscard]] std::shared_ptr<const ProductionNavigationObjective>
   navigationObjective() const;
-  void requestGuideRelease(GlobalGuideReleaseReason reason,
-                           std::uint64_t guide_generation = 0U);
-  void requestStaticRouteReplan(GlobalGuideReleaseReason reason,
-                                std::uint64_t guide_generation);
+  void requestRouteRelease(RouteReleaseReason3D reason,
+                           std::uint64_t route_generation = 0U);
+  void requestStaticRouteReplan(RouteReleaseReason3D reason,
+                                std::uint64_t route_generation);
   void configureOptionalNavigationConstraints();
   void configureStaticRouteGeometry();
   void configureStaticRouteExtension(double maximum_horizontal_acceleration_mps2);
@@ -351,16 +350,17 @@ private:
   static void
   bindStaticRouteRequestToExecution(ProductionMppiPreparedEsdf& request,
                                     const CertifiedRouteSuffix3D& active_route,
-                                    const GlobalGuideProjection& projection);
+                                    const RouteProgressProjection3D& projection);
   void maybeRequestStaticRouteExtensionFromExecution(
       const ProductionMppiPreparedEsdf& esdf,
       const ProductionRouteExecutionSelection3D& route_execution,
       const ProductionMppiNavigation& navigation, std::int64_t now_ns);
-  void maybeRequestStaticRouteExtension(const ProductionMppiPreparedEsdf& esdf,
-                                        const CertifiedRouteSuffix3D& active_route,
-                                        const ProductionMppiNavigation& navigation,
-                                        const GlobalGuideProjection& route_projection,
-                                        std::int64_t now_ns);
+  void
+  maybeRequestStaticRouteExtension(const ProductionMppiPreparedEsdf& esdf,
+                                   const CertifiedRouteSuffix3D& active_route,
+                                   const ProductionMppiNavigation& navigation,
+                                   const RouteProgressProjection3D& route_projection,
+                                   std::int64_t now_ns);
   void
   maybeRequestStaticTrackingWorldRefresh(const ProductionMppiPreparedEsdf& esdf,
                                          const ProductionMppiNavigation& navigation,
@@ -381,8 +381,8 @@ private:
       const ProductionMppiAppliedControl& applied_control,
       const ProductionMppiExecutionHorizonOwner& execution_horizon_owner);
   void queueLatestObservedWorldForPose(const ProductionMppiNavigation& navigation);
-  void guideWorker(std::stop_token stop_token);
-  void processGuideSearch3D(const ProductionMppiPreparedEsdf& world,
+  void routePlanningWorker(std::stop_token stop_token);
+  void processRouteSearch3D(const ProductionMppiPreparedEsdf& world,
                             const ProductionMppiNavigation& navigation);
   [[nodiscard]] RouteSegmentCompletionAssessment3D
   assessActiveRouteCompletion3D(const ProductionMppiPreparedEsdf& world,
@@ -569,7 +569,6 @@ private:
   double stale_esdf_execution_window_ms_{4000.0};
   double maximum_control_feedback_age_ms_{200.0};
   double latest_lidar_obstacle_maximum_age_ms_{250.0};
-  double no_static_guide_lookahead_m_{30.0};
   double no_static_3d_esdf_update_rate_hz_{1.0};
   LocalObservedEsdfWindow3D no_static_3d_esdf_window_{};
   double no_static_3d_esdf_incremental_maximum_rebuild_ratio_{0.15};
@@ -591,7 +590,6 @@ private:
   double static_tracking_esdf_refresh_margin_m_{15.0};
   TrackingLineOfSightLifecycle tracking_line_of_sight_lifecycle_{};
   DirectTrackingManeuverLifecycle direct_tracking_maneuver_lifecycle_{};
-  std::string target_mode_{"active_route_guide"};
   bool use_static_map_{true};
   bool cooperative_traffic_enabled_{false};
   bool noncooperative_avoidance_enabled_{false};
@@ -622,14 +620,13 @@ private:
   double stationary_hold_validity_s_{1.0};
   std::int64_t stationary_hold_validity_ns_{1'000'000'000LL};
   std::int64_t mission_goal_capture_hold_validity_ns_{0};
-  ActiveGlobalGuideConfig active_guide_config_{};
-  GlobalGuideProgressConfig guide_progress_config_{};
-  bool global_guide_stall_recovery_enabled_{false};
+  RouteTrackingPolicy3D route_tracking_policy_{};
+  RouteProgressConfig3D route_progress_config_{};
+  bool route_stall_recovery_enabled_{false};
   std::unique_ptr<MppiLivenessSupervisor> liveness_supervisor_;
   std::unique_ptr<NavigationHealthSupervisor> navigation_health_supervisor_;
   MppiNominalReseedTracker nominal_reseed_tracker_{};
-  std::unique_ptr<ActiveGlobalGuideLifecycle> active_guide_lifecycle_;
-  std::unique_ptr<GlobalGuideProgressTracker> guide_progress_tracker_;
+  std::unique_ptr<RouteProgressTracker3D> route_progress_tracker_;
   std::unique_ptr<MissionGoalCaptureLatch> mission_goal_capture_latch_;
   std::unique_ptr<MissionWaypointSequence> mission_waypoint_sequence_;
   std::unique_ptr<MissionWaypointCaptureGate> mission_waypoint_capture_gate_;
@@ -744,11 +741,11 @@ private:
   std::atomic_bool world_ready_{false};
   std::atomic<std::uint64_t> dropped_raw_snapshots_{0U};
   std::jthread esdf_worker_;
-  std::mutex guide_queue_mutex_;
-  std::condition_variable_any guide_queue_condition_;
-  std::shared_ptr<const ProductionMppiPreparedEsdf> pending_guide_world_;
-  std::atomic<std::uint64_t> dropped_guide_worlds_{0U};
-  std::jthread guide_worker_;
+  std::mutex route_planning_queue_mutex_;
+  std::condition_variable_any route_planning_queue_condition_;
+  std::shared_ptr<const ProductionMppiPreparedEsdf> pending_route_planning_world_;
+  std::atomic<std::uint64_t> dropped_route_planning_worlds_{0U};
+  std::jthread route_planning_worker_;
 
   // Linearizes the active GPU ESDF with its exact immutable CPU world.
   mutable std::mutex world_generation_publication_mutex_;

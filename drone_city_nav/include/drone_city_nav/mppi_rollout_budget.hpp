@@ -19,7 +19,7 @@ struct MppiRolloutBudgetConfig {
 
 struct MppiRolloutBudgetObservation {
   bool static_world{false};
-  bool guide_available{false};
+  bool route_available{false};
   bool direct_tracking{false};
   bool clearance_valid{false};
   float clearance_m{0.0F};
@@ -30,7 +30,7 @@ struct MppiRolloutBudgetObservation {
 
 enum class MppiRolloutBudgetReason : std::uint8_t {
   kFullInvalidConfiguration,
-  kFullUnavailableGuide,
+  kFullUnavailableRoute,
   kFullWorldUncertain,
   kFullTrackingUncertain,
   kFullElevatedRisk,

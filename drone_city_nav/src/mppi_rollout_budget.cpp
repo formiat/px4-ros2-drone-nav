@@ -26,8 +26,8 @@ selectMppiRolloutBudget(const MppiRolloutBudgetConfig& config,
   if (!validConfig(config)) {
     return decision;
   }
-  if (!observation.guide_available) {
-    decision.reason = MppiRolloutBudgetReason::kFullUnavailableGuide;
+  if (!observation.route_available) {
+    decision.reason = MppiRolloutBudgetReason::kFullUnavailableRoute;
     return decision;
   }
   if (!std::isfinite(observation.world_age_ms) || observation.world_age_ms < 0.0 ||
@@ -71,8 +71,8 @@ mppiRolloutBudgetReasonName(const MppiRolloutBudgetReason reason) noexcept {
   switch (reason) {
     case MppiRolloutBudgetReason::kFullInvalidConfiguration:
       return "full_invalid_configuration";
-    case MppiRolloutBudgetReason::kFullUnavailableGuide:
-      return "full_unavailable_guide";
+    case MppiRolloutBudgetReason::kFullUnavailableRoute:
+      return "full_unavailable_route";
     case MppiRolloutBudgetReason::kFullWorldUncertain:
       return "full_world_uncertain";
     case MppiRolloutBudgetReason::kFullTrackingUncertain:

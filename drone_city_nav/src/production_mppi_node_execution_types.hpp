@@ -72,7 +72,7 @@ struct ProductionRouteExecutionSelection3D {
   std::shared_ptr<const ExecutionRouteTransitionResult3D> progress_preparation;
   std::shared_ptr<const PendingCertifiedRoute3D> pending_route;
   std::shared_ptr<const VersionedObservedRawWorld3D> lifecycle_observed_raw_world;
-  GlobalGuideProjection projection{};
+  RouteProgressProjection3D projection{};
   TrackingErrorTubeExecutionAssessment3D tracking_error_tube{};
   TrackingErrorTubeHandoffAssessment3D tracking_error_tube_handoff{};
   RouteExecutionStatus3D status{RouteExecutionStatus3D::kNoActiveRoute};

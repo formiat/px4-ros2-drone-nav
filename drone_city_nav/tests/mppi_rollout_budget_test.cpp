@@ -8,7 +8,7 @@ namespace {
 [[nodiscard]] MppiRolloutBudgetObservation safeStaticObservation() {
   return MppiRolloutBudgetObservation{
       .static_world = true,
-      .guide_available = true,
+      .route_available = true,
       .clearance_valid = true,
       .clearance_m = 12.0F,
       .world_age_ms = 0.0,

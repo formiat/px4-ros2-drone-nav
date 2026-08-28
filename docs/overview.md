@@ -1,9 +1,9 @@
 # Project Overview
 
 This repository is a ROS 2 workspace for PX4/Gazebo drone navigation. Its
-production navigation stack uses raw occupancy, a distance field, a
-risk-aware motion-primitive lattice guide, and GPU MPPI with explicit route
-availability and execution-horizon contracts.
+production navigation stack uses revisioned raw Occupancy3D, one persistent
+full-3D strategic planner, and GPU MPPI with explicit route ownership, safety
+evidence, and execution-horizon contracts.
 
 The project is a simulation-oriented research system. It is not certified for
 real-aircraft operation.
@@ -14,8 +14,10 @@ real-aircraft operation.
 - Static-map and no-static operating modes.
 - Map-frame lidar projection and accumulated obstacle memory.
 - Atomic raw-obstacle snapshots with provenance and revisions.
-- ESDF-based collision queries and categorical risk bands.
-- A sticky global lattice guide for route direction.
+- Raw swept-footprint collision validation plus distance-based soft risk bands.
+- A persistent sparse D* Lite route repaired across compatible world revisions.
+- Full-3D route progress, certified successor reserve, and atomic suffix repair.
+- Speed-dependent tracking-error tubes attached to immutable route geometry.
 - CUDA MPPI local planning at a receding horizon.
 - Map-independent parameterized speed policy.
 - Timestamped execution horizons consumed by the MPPI offboard node.
@@ -32,8 +34,8 @@ real-aircraft operation.
 
 - `obstacle_memory_node` owns lidar ingestion, memory, and raw world snapshots.
 - `world_visualization_node` publishes static and raw world geometry.
-- `production_mppi_node` owns ESDF preparation, 3D lattice routes, MPPI, and
-  horizon publication.
+- `production_mppi_node` owns distance preparation, persistent full-3D routes,
+  route certification, MPPI, and atomic horizon publication.
 - `mppi_offboard_node` executes fresh timestamped horizons through PX4.
 - `collision_crash_node` converts Gazebo contacts into typed physical-destruction
   events.
@@ -51,9 +53,10 @@ Runs default to `ENABLE_STATIC_MAP=false` and use the selected lidar memory as
 the world source. Set `ENABLE_STATIC_MAP=true` explicitly to use the known city
 map. Speed is configured explicitly and does not depend on map mode.
 
-No-static 2D is limited to planar observed free space. No-static 3D integrates
-hit and miss rays into observed Occupancy3D and executes ordinary 3D routes
-through any confirmed known-free volume, without a separate passage mode.
+No-static navigation requires the 3D lidar profile. It integrates hit and miss
+rays into revisioned observed Occupancy3D. Unknown and confirmed-free voxels
+have the same strategic traversability and base cost; only raw occupied evidence
+and the physical flight envelope can reject a strategic edge.
 
 All build, test, quality, and simulation commands must run through the
 repository container workflow.
@@ -62,11 +65,13 @@ repository container workflow.
 
 - **Raw occupancy**: direct static-map or sensor evidence. Raw collision is a
   hard reject.
-- **ESDF**: occupied-distance field used for collision queries and risk-band
-  classification.
+- **Occupied-distance field**: derived evidence used for soft clearance ranking
+  and controller queries. It cannot create hard occupied geometry.
 - **Risk tier**: preferred, planning, critical, or collision.
-- **Global lattice guide**: a locally planned route-direction polyline. It is
-  not a persistent topological street graph.
+- **Persistent route**: immutable certified full-3D geometry owned across
+  compatible updates and incrementally repaired by the D* Lite planner.
+- **Execution plan**: an atomic bundle containing route geometry, tracking tube,
+  nominal horizon, braking fallback, and exact evidence revisions.
 - **MPPI horizon**: the short dynamically simulated trajectory recomputed on
   every planning tick.
 - **Execution horizon**: a timestamped MPPI horizon published to offboard.
@@ -75,11 +80,12 @@ repository container workflow.
 
 ## Explicit Non-Capabilities
 
-- The lattice search is recomputed; it is not AD*, LPA*, or D* Lite.
-- No persistent no-static topological memory exists yet.
-- No-static 3D navigation does not infer special passages; it plans over one
-  continuous observed known-free volume. Persistent exploration topology is
-  intentionally deferred to Roadmap 12.
+- Offline `FreeSpaceTopology3D` is optional static passage evidence; it is not a
+  competing route producer or a source of hard occupancy.
+- There is no 2D production navigation branch, online frontier planner,
+  direct-versus-topology arbitration, or location-specific opening logic.
+- The persistent graph currently uses fixed horizontal and vertical steps;
+  adaptive spatial refinement remains Roadmap 12 work.
 - Current-position hold is not a substitute for finding a physically executable
   route.
 
@@ -94,7 +100,7 @@ repository container workflow.
 - `environment_candidates.md`: external world selection, versioned artifact
   distribution, static-map import, and sparse-topology evidence.
 - `trajectory_optimization.md`: GPU MPPI optimization.
-- `replanning.md`: receding-horizon updates, guide replacement, and liveness.
+- `replanning.md`: persistent route repair, atomic execution plans, and liveness.
 - `obstacle_mapping.md`: static, lidar, memory, and raw snapshot sources.
 - `configuration.md`: parameter groups and source-of-truth guidance.
 - `diagnostics.md`: current logs, metrics, and artifacts.

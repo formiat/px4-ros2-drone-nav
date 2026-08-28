@@ -215,48 +215,6 @@ TEST(ObservedEsdf3DTest, VehicleLandDetectorCreatesBoundedSupportWithoutLidarEvi
   EXPECT_DOUBLE_EQ(support.maximum_axial_settling_m, bounds.resolution_m);
 }
 
-TEST(ObservedEsdf3DTest, LaunchSupportDepartureLeavesObservedFloorAlongTheBodyAxis) {
-  const GridBounds3D bounds{0.0, 0.0, 0.0, 0.25, 20, 20, 20};
-  ObservedOccupancyGrid3D occupancy{bounds};
-  for (int z = 0; z < bounds.depth_cells; ++z) {
-    for (int y = 0; y < bounds.height_cells; ++y) {
-      for (int x = 0; x < bounds.width_cells; ++x) {
-        static_cast<void>(
-            occupancy.setState(GridIndex3D{x, y, z}, ObservedVoxelState::kFree));
-      }
-    }
-  }
-  for (int y = 0; y < bounds.height_cells; ++y) {
-    for (int x = 0; x < bounds.width_cells; ++x) {
-      static_cast<void>(
-          occupancy.setState(GridIndex3D{x, y, 7}, ObservedVoxelState::kOccupied));
-    }
-  }
-  const ProprioceptiveFreeSpaceSeed3D seed{
-      .position = Point3{2.0, 2.0, 2.0},
-      .body_axis = FootprintBodyAxis{},
-      .footprint = SweptFootprintConfig{.radius_m = 0.5,
-                                        .lower_extent_m = 0.25,
-                                        .upper_extent_m = 0.25},
-  };
-  const LaunchSupportContact3D support =
-      makeVehicleLandedSupportContact3D(bounds, seed);
-
-  const LaunchSupportDeparture3D departure =
-      planLaunchSupportDeparture3D(occupancy, seed.position, support, 1.0);
-
-  ASSERT_TRUE(departure.executable);
-  EXPECT_GT(departure.target.z, seed.position.z);
-  EXPECT_GE(departure.axial_departure_m, 1.0);
-  EXPECT_TRUE(validateRawFootprintAt(occupancy, departure.target, seed.body_axis,
-                                     seed.footprint)
-                  .accepted());
-  EXPECT_TRUE(validateRawSweptFootprint(occupancy, seed.position, seed.body_axis,
-                                        departure.target, seed.body_axis,
-                                        seed.footprint, &seed, &support)
-                  .accepted());
-}
-
 TEST(ObservedEsdf3DTest, DetectsQuantizedSupportAtTheEdgeOfTheLaunchFootprint) {
   const GridBounds3D bounds{0.0, 0.0, 0.0, 0.25, 16, 16, 16};
   ObservedOccupancyGrid3D occupancy{bounds};

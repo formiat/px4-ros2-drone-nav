@@ -47,7 +47,7 @@ void ProductionMppiNode::finalizePlanningTick(
   const DirectTrackingManeuverUpdate& direct_tracking_maneuver =
       finalization.direct_tracking_maneuver;
   const MppiSpeedPolicyResult& speed_policy = finalization.speed_policy;
-  const GlobalGuideProgressUpdate& guide_progress = finalization.guide_progress;
+  const RouteProgressUpdate3D& route_progress = finalization.route_progress;
   const MppiEligibleRolloutUpdate& no_eligible_recovery =
       finalization.no_eligible_recovery;
   const MissionGoalCaptureResult& goal_capture = finalization.goal_capture;
@@ -55,7 +55,7 @@ void ProductionMppiNode::finalizePlanningTick(
   const ProductionMppiCooperativeUpdate& cooperative = finalization.cooperative;
   const ProductionMppiNonCooperativeUpdate& noncooperative =
       finalization.noncooperative;
-  const GlobalGuideProjection& route_projection = finalization.route_projection;
+  const RouteProgressProjection3D& route_projection = finalization.route_projection;
   const Point3& mission_goal = finalization.mission_goal;
   const std::string& target_source = finalization.target_source;
   const std::uint64_t route_generation = finalization.route_generation;
@@ -74,8 +74,7 @@ void ProductionMppiNode::finalizePlanningTick(
   const mppi::RiskTier route_required_risk_tier = finalization.route_required_risk_tier;
   const bool route_usable = finalization.route_usable;
   const bool direct_tracking_interception = finalization.direct_tracking_interception;
-  const bool temporary_frontier_is_terminal =
-      finalization.temporary_frontier_is_terminal;
+  const bool local_route_stop_is_terminal = finalization.local_route_stop_is_terminal;
   const bool pose_predicted = finalization.pose_predicted;
 
   if (result.cooperative_acquisition_reseeded) {
@@ -174,7 +173,7 @@ void ProductionMppiNode::finalizePlanningTick(
   };
   recordTickStatistics(result, planning_state, execution,
                        liveness.reseed_requested ||
-                           guide_progress.local_reseed_requested,
+                           route_progress.local_reseed_requested,
                        rolling_route);
 
   const auto stability_started = std::chrono::steady_clock::now();
@@ -237,7 +236,7 @@ void ProductionMppiNode::finalizePlanningTick(
       .liveness = liveness,
       .direct_tracking_maneuver = direct_tracking_maneuver,
       .speed_policy = speed_policy,
-      .guide_progress = guide_progress,
+      .route_progress = route_progress,
       .no_eligible_recovery = no_eligible_recovery,
       .goal_capture = goal_capture,
       .execution = std::move(execution),
@@ -257,7 +256,7 @@ void ProductionMppiNode::finalizePlanningTick(
       .stability_ms = stability_ms,
       .rolling_route = rolling_route,
       .route_projection_valid = route_projection.valid,
-      .temporary_frontier_is_terminal = temporary_frontier_is_terminal,
+      .local_route_stop_is_terminal = local_route_stop_is_terminal,
       .liveness_reseed_requested = liveness.reseed_requested,
       .pose_predicted = pose_predicted,
       .previous_control_source = previous_control_source,

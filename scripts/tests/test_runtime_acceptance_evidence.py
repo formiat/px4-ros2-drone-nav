@@ -134,7 +134,7 @@ class RuntimeManifestTest(unittest.TestCase):
         self,
     ) -> None:
         log = (
-            "PRODUCTION_MPPI_GUIDE3D certified_pending=true "
+            "PRODUCTION_MPPI_ROUTE3D certified_pending=true "
             "certified_reserve=sufficient reserve_available_m=20.0 "
             "reserve_required_m=19.0\n"
             "PRODUCTION_MPPI_SUMMARY ticks=1000 ownership_gap_ticks=0 "
@@ -153,7 +153,7 @@ class RuntimeManifestTest(unittest.TestCase):
 
     def test_acceptance_metrics_reject_an_ownership_gap_and_short_reserve(self) -> None:
         log = (
-            "PRODUCTION_MPPI_GUIDE3D certified_pending=true "
+            "PRODUCTION_MPPI_ROUTE3D certified_pending=true "
             "certified_reserve=insufficient reserve_available_m=10.0 "
             "reserve_required_m=20.0\n"
             "PRODUCTION_MPPI_SUMMARY ticks=100 ownership_gap_ticks=1 "
@@ -172,7 +172,7 @@ class RuntimeManifestTest(unittest.TestCase):
 
     def test_acceptance_metrics_reject_a_ratio_that_disagrees_with_ticks(self) -> None:
         log = (
-            "PRODUCTION_MPPI_GUIDE3D certified_pending=true "
+            "PRODUCTION_MPPI_ROUTE3D certified_pending=true "
             "certified_reserve=terminal_exempt reserve_available_m=0.0 "
             "reserve_required_m=0.0\n"
             "PRODUCTION_MPPI_SUMMARY ownership_gap_ticks=0 "

@@ -21,7 +21,7 @@ constexpr std::string_view kObservedTrackingTargetNamespace{"tracking_target_obs
 constexpr std::string_view kPredictedTrackingTargetNamespace{
     "tracking_target_predicted"};
 constexpr std::string_view kResolvedTrackingTargetNamespace{"tracking_target_resolved"};
-constexpr std::string_view kGlobalGuideNamespace{"global_lattice_guide"};
+constexpr std::string_view kPersistentRouteNamespace{"persistent_route"};
 constexpr std::string_view kPassageCandidateNamespace{"passage_candidate_traversals"};
 constexpr std::string_view kSelectedPassageNamespace{"selected_passage_traversals"};
 
@@ -142,18 +142,18 @@ previousHorizonMarker(const MppiDebugMarkerInput& input) {
 }
 
 [[nodiscard]] visualization_msgs::msg::Marker
-globalGuideMarker(const MppiDebugMarkerInput& input) {
-  if (input.global_route.empty()) {
-    return deleteMarker(input.header, kGlobalGuideNamespace, 0,
+persistentRouteMarker(const MppiDebugMarkerInput& input) {
+  if (input.persistent_route.empty()) {
+    return deleteMarker(input.header, kPersistentRouteNamespace, 0,
                         visualization_msgs::msg::Marker::LINE_STRIP);
   }
   visualization_msgs::msg::Marker marker =
-      makeMarker(input.header, kGlobalGuideNamespace, 0,
+      makeMarker(input.header, kPersistentRouteNamespace, 0,
                  visualization_msgs::msg::Marker::LINE_STRIP);
   marker.scale.x = 0.28;
   marker.color = rgba(1.0F, 0.52F, 0.08F, 0.95F);
-  marker.points.reserve(input.global_route.size());
-  for (const mppi::RouteSample3D& sample : input.global_route) {
+  marker.points.reserve(input.persistent_route.size());
+  for (const mppi::RouteSample3D& sample : input.persistent_route) {
     marker.points.push_back(
         gazeboAlignedRvizMarkerPoint(Point3{sample.x_m, sample.y_m, sample.z_m}));
   }
@@ -203,7 +203,7 @@ buildMppiDebugMarkers(const MppiDebugMarkerInput& input) {
       rgba(0.15F, 1.0F, 0.35F, 0.95F)));
   markers.markers.push_back(missionMarker(input, true));
   markers.markers.push_back(missionMarker(input, false));
-  markers.markers.push_back(globalGuideMarker(input));
+  markers.markers.push_back(persistentRouteMarker(input));
   for (std::size_t index = 0U; index < input.passage_traversals.size(); ++index) {
     const int marker_id = static_cast<int>(index);
     const PassageTraversalEdge& passage = input.passage_traversals[index];

@@ -179,16 +179,16 @@ stages:
 This pass covers the complete static Occupancy3D artifact, not only the current
 mission route. Portal semantics are therefore reusable by every vehicle and
 every static mission. The compiler never creates occupied or prohibited cells;
-the graph is an immutable acceleration and topology index over raw geometry.
-Runtime lattice and route activation still validate all traversal segments with
-the physical swept footprint against raw Occupancy3D and ESDF3D.
+the graph is an immutable evidence index over raw geometry. Runtime route
+association and activation still validate physical geometry with the swept
+footprint against raw Occupancy3D.
 
 The canonical `free_space_topology.validation_capsule` is the minimum vehicle
 profile used to compile useful sparse segments. The configured Z range bounds
 only the offline acceleration index. Neither setting inflates or modifies
 Occupancy3D, defines a hard clearance envelope, or replaces runtime validation.
-Every selected traversal is checked again with the current vehicle's swept
-footprint against raw Occupancy3D.
+Every route-associated traversal is checked again with the current vehicle's
+swept footprint against raw Occupancy3D.
 
 ## Advanced Passage Fixtures
 
@@ -212,49 +212,40 @@ implementation that they validate.
 
 ## Static Planning Contract
 
-Static global search operates on a hybrid graph:
+Static point-to-point search uses the same persistent sparse D* Lite graph as
+no-static navigation. The graph is world-fixed and full-3D; its edges use the
+shared flight-time objective and are accepted only after exact swept-footprint
+validation against canonical raw Occupancy3D. Physical occupied voxels and the
+flight envelope remain the only hard geometry. The ESDF cache supplies derived
+distance evidence but cannot create an occupied or prohibited region.
 
-```text
-ordinary omnidirectional 3D lattice edges
-+ derived bidirectional portal traversal edges
-```
+`FreeSpaceTopology3D` is an offline, fingerprint-bound passage evidence index.
+It does not add a second strategic search, inject macro-edges into D* Lite, or
+arbitrate route ownership. Its candidate traversal geometry remains available
+to RViz and physical passage diagnostics. A route is valid regardless of whether
+it is represented by that optional index.
 
-Every edge is validated against the current raw Occupancy3D/ESDF3D before use.
-At the root, search explicitly evaluates collision-free
-`start -> entry -> passage -> exit` candidates for every passage direction;
-ordinary lattice expansion remains available for entries that cannot be reached
-directly. Partial lattice frontiers require measured continuation depth beyond
-their endpoint before they can be executed.
-Physical occupied voxels remain the only hard geometry. Preferred, planning, and
-critical stages all run, and all complete routes are compared by finite objective
-cost instead of returning the first preferred route. The objective records travel
-time, vertical-alignment time, risk exposure, and turn cost. The extra vertical
-alignment weight is intentionally `0.0` during passage development; vertical
-motion still contributes through physical travel time.
-
-No passage is mandatory and there is no required passage sequence. A passage is
-selected only when its validated route has the better objective cost. The accepted
-points are sampled as `RouteSample3D` values containing:
+The persistent planner returns `RouteSample3D` values containing:
 
 - 3D position;
 - route tangent;
 - cumulative route station;
 - a reference-speed field populated for MPPI route execution.
 
-When the selected graph path uses a lazy passage traversal, that transition directly
-creates a typed `ConstrainedRouteSpan` with `approach -> traversal -> departure`
-station semantics. The complete route and span are revalidated against the latest
-raw ESDF before atomic activation. A span contains:
+If certified route geometry is associated with a derived passage traversal, the
+association is execution evidence rather than a route choice. Its typed
+`ConstrainedRouteSpan` has `approach -> traversal -> departure` station semantics
+and is included in the same immutable route geometry. A span contains:
 
 - free distance left and right;
 - minimum, maximum, and reference Z;
 - constrained reference speed;
 - begin and end route stations.
 
-The derived traversal and ordered segment identifiers are retained for lifecycle
-diagnostics, cooperative conflict resources, and RViz. Geometric ESDF queries
-validate the selected traversal; they no longer infer passage lifecycle
-postfactum from arbitrary narrow route samples.
+Derived traversal and ordered segment identifiers are retained for lifecycle
+diagnostics, cooperative conflict resources, and RViz. Exact raw geometry
+validates the route; topology identity cannot weaken or strengthen collision
+semantics.
 
 MPPI follows the complete typed route and applies the span speed/reference data.
 The observable lifecycle is derived from route station:
@@ -271,41 +262,38 @@ geometry, so a physical topology change may produce a new ID.
 
 ## No-Static Contract
 
-No-static mode selects one lidar profile. The 2D compatibility profile builds a
-planar memory and cannot prove vertically traversable free volume. The 3D
-profile builds online observed `Occupancy3D`, a local ESDF3D, and ordinary
-`RouteSample3D` routes over every confirmed known-free voxel. It does not divide
-the world into open space and semantic passages and does not load the static
-topology artifact.
+No-static production navigation requires `LIDAR_PROFILE=3d`. It builds
+revisioned observed Occupancy3D, local occupied-distance evidence, and persistent
+`RouteSample3D` routes. Confirmed free and unknown voxels have identical
+strategic traversability and base cost. The mode does not divide the world into
+open space and semantic passages and does not load the static topology artifact.
 
 The generated SDF gives passage lower/upper/middle masses one dedicated
 visibility flag and adds transparent, collisionless lidar occluders across each
 intersection and open bridge. Before each run,
 `scripts/configure_lidar_visibility.py` changes the GPU lidar mask:
 
-- static mode hides both passage masses and no-static occluders from the 2D
-  lidar because Occupancy3D is authoritative;
-- no-static 2D mode exposes both sets, making every connector appear as an
-  ordinary obstacle to planar lidar memory;
-- no-static 3D mode hides the compatibility occluders but exposes physical
+- static mode hides both passage masses and no-static occluders from its
+  optional diagnostic lidar because canonical Occupancy3D is authoritative;
+- no-static 3D mode hides the simulation-only occluders but exposes physical
   geometry, allowing hit and miss rays to establish the real free volume.
 
 Occluders have no Gazebo collision element and are not written to Occupancy3D.
-They are a simulation-only compatibility contract used to prevent unsupported
-2D traversal. Physical geometry remains real Gazebo collision in every mode.
+They are simulation-only scene resources and are never planning evidence.
+Physical geometry remains real Gazebo collision in every mode.
 
 ## Visualization
 
 Planning occupancy remains at `0.5 m`. RViz samples the static map with
 `static_map_visualization_stride_cells=4`, producing `2 m` point spacing. This
-reduces rendering load only; it does not change Occupancy3D, ESDF3D, lattice, or
-collision resolution.
+reduces rendering load only; it does not change Occupancy3D, ESDF3D,
+persistent-planner step, or collision resolution.
 
 RViz shows the accepted route at its planned Z through the MPPI marker array.
-Derived sparse passage segments are thin translucent blue lines; traversals
-selected lazily for the active route are thicker green lines. Tick JSONL and guide logs
-include selected topology, objective cost, route length, travel time, vertical
-alignment time, risk exposure, passage id, and acceptance/rejection reason.
+Derived sparse passage segments are thin translucent blue lines; route-associated
+traversal evidence is thicker green. Tick JSONL and route logs include persistent
+planner status, route length, execution-time estimate, raw evidence lineage,
+reserve, compilation, publication, and activation status.
 
 ## Change Checklist
 
@@ -317,6 +305,5 @@ When changing static geometry or physical passage structures:
 4. Check Occupancy3D points against Gazebo geometry in RViz.
 5. If passages are derived, verify static route Z and constrained-span
    diagnostics through each changed passage.
-6. If static traversals are derived, verify the no-static 2D profile sees each
-   compatibility occluder as blocked, while the no-static 3D profile observes
-   and traverses the real free volume.
+6. Verify the no-static 3D profile ignores simulation-only occluders, observes
+   physical geometry, and validates the real free volume from raw lidar evidence.

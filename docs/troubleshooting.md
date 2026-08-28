@@ -29,9 +29,9 @@ Inspect in this order:
 
 1. raw obstacle grid and lidar projection;
 2. ESDF revision and age;
-3. lattice guide status and target source;
+3. persistent-planner status, raw-world lineage, and target source;
 4. post-update collision classification;
-5. route availability and unresolved-frontier terminal speed;
+5. active route generation, certified reserve, and braking fallback;
 6. `no_executable_horizon` entry and exit transitions;
 7. offboard deadline and applied command.
 
@@ -41,22 +41,23 @@ For air passages, inspect the 3D route samples and constrained route spans.
 
 Compare:
 
-- active global guide endpoint;
-- lattice reached/frontier/dead-end classification;
-- guide remaining length;
+- active persistent-route endpoint and remaining length;
+- D* Lite search/repair status and incumbent-retained state;
+- certified reserve versus stopping and measured planning-latency reserve;
 - head and terminal predicted progress;
 - actual displacement;
-- liveness reseed and guide-stall generations.
+- liveness reseed and route-stall generations.
 
-A short frontier aimed at a wall and repeatedly high predicted progress indicate
-guide/recovery failure, not a speed-policy problem.
+A route repeatedly predicting progress while measured full-3D progress remains
+flat indicates route tracking or recovery failure, not a speed-policy problem.
 
 ## Route Flaps Left And Right
 
-Check whether the global guide generation changes. If it does, inspect sticky
-guide release reasons. If the guide remains stable but the blue MPPI horizon
-flaps, inspect warm-start shift, first-control delta, horizon stability, and
-local cost hierarchy.
+Check whether the persistent route generation changes. If it does, inspect the
+typed release reason, objective identity, raw-world lineage, and suffix-repair
+result. If the route remains stable but the blue MPPI horizon flaps, inspect
+warm-start shift, first-control delta, horizon stability, and local cost
+hierarchy.
 
 ## Constrained Passage Traversal Stalls
 
@@ -78,7 +79,7 @@ Confirm:
 - `use_static_map=false` reached both obstacle memory and MPPI;
 - no-static horizon duration, cruise, cap, acceleration, and jerk values;
 - PX4 `MPC_XY_VEL_MAX` and acceleration parameters were set for the run;
-- target source is never distant `mission_goal_direct` without a guide.
+- target source is never distant `mission_goal_direct` without a certified route.
 
 ## Lidar Is Rotated At Startup
 

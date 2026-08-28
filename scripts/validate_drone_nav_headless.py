@@ -65,12 +65,12 @@ def read_text(path: Path) -> str:
 def validate_execution_chain(ros_log: str, errors: list[str]) -> None:
     """Require a mission route, publication, offboard admission, and application."""
     require(
-        "mission-reaching global route is active",
+        "mission-reaching persistent route is active",
         ros_log,
-        r"PRODUCTION_MPPI_TICK .*target_source=global_route_3d.*"
+        r"PRODUCTION_MPPI_TICK .*target_source=persistent_route_3d.*"
         r"route_reaches_mission_goal=true|"
         r"PRODUCTION_MPPI_TICK .*route_reaches_mission_goal=true.*"
-        r"target_source=global_route_3d",
+        r"target_source=persistent_route_3d",
         errors,
     )
     require(

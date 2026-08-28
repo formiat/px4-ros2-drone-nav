@@ -76,7 +76,7 @@ Inspect:
   translation/stationary-turn estimates;
 - planner world-update, planner-search, route-search, and end-to-end
   route-planning latency;
-- route fingerprint, generation, purpose, and release reason;
+- route fingerprint, generation, mission-target identity, and release reason;
 - current route station and remaining distance;
 - certified-reserve, compilation, validation, publication, and activation
   status.
@@ -85,7 +85,7 @@ Planner evidence describes the search that produced the resident route.
 Candidate validation and activation fields describe later contracts and must
 not be inferred from `planner_executable` alone.
 
-For no-static 3D runs, `PRODUCTION_MPPI_GUIDE3D` also reports
+For no-static 3D runs, `PRODUCTION_MPPI_ROUTE3D` also reports
 the same persistent-planner result together with certified-route reserve,
 publication, activation, raw-connector, and raw-suffix evidence. Acceptance
 uses these fields together with measured `state_position` samples; it does not
@@ -100,7 +100,7 @@ Compare:
 - predicted terminal progress;
 - observation age;
 - reseed generation;
-- guide stall generation.
+- route stall generation and action.
 
 High terminal progress with no actual displacement indicates an ineffective
 horizon, not successful navigation.
@@ -144,7 +144,7 @@ event is the durable evidence that the vehicle crossed the full passage span.
 
 `PASSAGE_GEOMETRY_EVENT` provides independent physical-path evidence when a
 static route passes through geometry represented by the optional static
-topology index without selecting a topology transition. It projects the
+topology index. It projects the
 measured vehicle position onto every runtime static traversal candidate on each
 planning tick and requires continuous entry-to-exit progression inside the
 extracted clearance tube.
@@ -192,7 +192,8 @@ verify:
 3. Inspect the active route, persistent-planner provenance, and target source.
 4. Inspect selected MPPI tier and collision flags.
 5. Inspect head progress, actual motion, and liveness.
-6. Inspect a constrained span only when a static topology route uses one.
+6. Inspect constrained-span evidence only when the certified route intersects a
+   derived static passage volume.
 7. Inspect the finite-path deadline, in-path arrival profile, and final hold.
 8. Only then tune costs or dynamics.
 
@@ -201,6 +202,6 @@ For constrained no-static 3D-lidar acceptance, begin with the per-run
 and retained raw volume before log interpretation. The final
 `PRODUCTION_MPPI_SUMMARY` reports `post_bootstrap_route_availability_ratio`,
 post-bootstrap no-route holds, ownership gaps, and persistent-planner p95/p99.
-An admitted `PRODUCTION_MPPI_GUIDE3D` entry must report either `sufficient` or
+An admitted `PRODUCTION_MPPI_ROUTE3D` entry must report either `sufficient` or
 `terminal_exempt` reserve; a sufficient continuation must have
 `reserve_available_m >= reserve_required_m`.

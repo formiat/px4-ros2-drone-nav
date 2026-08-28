@@ -41,8 +41,7 @@ TEST(ProductionMppiRouteHelpersTest,
 
 TEST(ProductionMppiRouteHelpersTest, RealStopsTaperTheNominalProfileToRest) {
   for (const RouteEndpointSemantics3D semantics :
-       {RouteEndpointSemantics3D::kObservationStop,
-        RouteEndpointSemantics3D::kMissionStop,
+       {RouteEndpointSemantics3D::kLocalStop, RouteEndpointSemantics3D::kMissionStop,
         RouteEndpointSemantics3D::kEmergencyBrakeTail}) {
     const auto route = profile(semantics);
 
@@ -86,7 +85,7 @@ TEST(ProductionMppiRouteHelpersTest,
                             Point3{10.0, 0.0, 10.0}, Point3{0.0, 0.0, 10.0}},
       1.0, 4.0);
 
-  const GlobalGuideProjection projection =
+  const RouteProgressProjection3D projection =
       projectOntoRouteProgress3D(route, Point3{5.0, 0.0, 9.8});
 
   ASSERT_TRUE(projection.valid);

@@ -66,39 +66,26 @@ class Stage8IncrementalWorldContractTest(unittest.TestCase):
         self.assertIn("TRANSIENT_EXECUTION_EVIDENCE_REFRESHED", production)
         self.assertIn("observedEsdfFullAuditDue", production)
         self.assertNotIn("preferred_distance_m) + 20.0", production)
-        self.assertIn("planLaunchSupportDeparture3D", window)
+        self.assertNotIn("planLaunchSupportDeparture3D", window)
         self.assertIn(
             "observed_esdf_resource.local_occupancy->bounds()", pose_recenter
         )
 
-    def test_topology_library_is_not_a_production_route_pipeline(self) -> None:
-        graph = (INCLUDE / "incremental_topology_graph_3d.hpp").read_text(
-            encoding="utf-8"
-        )
-        scheduler = (SOURCE / "incremental_topology_block_scheduler_3d.cpp").read_text(
-            encoding="utf-8"
-        )
-        lifecycle = (SOURCE / "incremental_topology_observed_blocks_3d.cpp").read_text(
-            encoding="utf-8"
-        )
+    def test_online_topology_library_is_removed_from_production(self) -> None:
         yaml = (PACKAGE / "config" / "urban_mvp.yaml").read_text(encoding="utf-8")
         node = (SOURCE / "production_mppi_node.hpp").read_text(encoding="utf-8")
         cmake = (PACKAGE / "CMakeLists.txt").read_text(encoding="utf-8")
 
-        for token in (
-            "maximum_backlog_blocks_per_update",
-            "backlog_boost_threshold_blocks",
-            "local_priority_radius_m",
-            "forward_corridor_radius_m",
-            "forward_corridor_lookahead_m",
+        for retired_path in (
+            INCLUDE / "incremental_topology_graph_3d.hpp",
+            INCLUDE / "incremental_topological_planner_3d.hpp",
+            SOURCE / "incremental_topology_block_scheduler_3d.cpp",
+            SOURCE / "incremental_topology_observed_blocks_3d.cpp",
         ):
-            self.assertIn(token, graph)
-        self.assertIn("kLocalSafety", scheduler)
-        self.assertIn("kForwardCorridor", scheduler)
-        self.assertIn("minimum_oldest_blocks_per_update", lifecycle)
-        self.assertIn("backlog_boosted", lifecycle)
+            self.assertFalse(retired_path.exists())
         self.assertNotIn("topological_graph_3d_", yaml)
         self.assertNotIn("topologyWorker", node)
+        self.assertNotIn("incremental_topology", cmake)
         self.assertNotIn("production_mppi_node_topology.cpp", cmake)
 
 

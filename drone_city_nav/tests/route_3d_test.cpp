@@ -1,7 +1,4 @@
-#include "drone_city_nav/bounded_worker_pool.hpp"
-#include "drone_city_nav/distance_field_3d.hpp"
 #include "drone_city_nav/esdf_query.hpp"
-#include "drone_city_nav/risk_aware_lattice_3d.hpp"
 #include "drone_city_nav/route_3d.hpp"
 
 #include <gtest/gtest.h>
@@ -10,9 +7,6 @@
 #include <cmath>
 #include <limits>
 #include <vector>
-
-#include "risk_aware_lattice_3d_continuation.hpp"
-#include "risk_aware_lattice_3d_geometry.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -532,171 +526,6 @@ TEST(Route3DTest, RiskTierAssignmentReportsRawCollision) {
   EXPECT_EQ(result.status, RouteRiskTierAssignmentStatus::kRawCollision);
   EXPECT_EQ(result.failure_sample_index, 1U);
   EXPECT_DOUBLE_EQ(result.failure_point.x, 1.5);
-}
-
-TEST(Route3DTest, LatticeUsesVerticalFreeOpeningWithoutYawConstraint) {
-  OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 12, 12, 8}};
-  for (int y = 0; y < 12; ++y) {
-    for (int z = 0; z < 8; ++z) {
-      if (z < 3 || z > 5) {
-        occupancy.setOccupied(GridIndex3D{5, y, z});
-      }
-    }
-  }
-  const DistanceField3D field = DistanceField3D::build(occupancy, 20.0);
-  const GridBounds3D& bounds = field.bounds();
-  const mppi::EsdfGrid grid{bounds.width_cells,
-                            bounds.height_cells,
-                            static_cast<float>(bounds.resolution_m),
-                            static_cast<float>(bounds.origin_x),
-                            static_cast<float>(bounds.origin_y),
-                            bounds.depth_cells,
-                            static_cast<float>(bounds.origin_z)};
-  RiskAwareLattice3DConfig config;
-  config.horizontal_step_m = 1.0;
-  config.vertical_step_m = 1.0;
-  config.planning_goal_distance_m = 10.0;
-  config.preferred_distance_m = 0.0;
-  config.critical_distance_m = 0.0;
-  config.maximum_search_time_ms = 1000.0;
-  const RiskAwareLattice3DResult result =
-      planRiskAwareLattice3D(grid, field.distancesM(), Point3{2.5, 5.5, 2.5},
-                             Vec3{-1.0, 0.0, 0.0}, Point3{9.5, 5.5, 4.5}, {}, config);
-
-  ASSERT_EQ(result.status, Lattice3DStatus::kReachedPlanningGoal);
-  EXPECT_EQ(result.termination, Lattice3DSearchTermination::kPlanningGoalReached);
-  EXPECT_GT(result.records_peak, 0U);
-  EXPECT_GT(result.successor_diagnostics.lattice_generated, 0U);
-  EXPECT_GT(result.successor_profiling.search.collection_calls, 0U);
-  EXPECT_GT(result.successor_profiling.search.candidates, 0U);
-  EXPECT_GT(result.successor_profiling.search.maximum_candidates, 0U);
-  EXPECT_GE(result.successor_profiling.search.worker_ms, 0.0);
-  ASSERT_FALSE(result.points.empty());
-  EXPECT_NEAR(result.points.back().x, 9.5, 1.0e-6);
-  EXPECT_TRUE(result.reached_mission_goal);
-}
-
-TEST(Route3DTest, ReportsExpansionBudgetWithoutCallingItGraphExhaustion) {
-  OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 12, 12, 4}};
-  const DistanceField3D field = DistanceField3D::build(occupancy, 20.0);
-  const GridBounds3D& bounds = field.bounds();
-  const mppi::EsdfGrid grid{bounds.width_cells,
-                            bounds.height_cells,
-                            static_cast<float>(bounds.resolution_m),
-                            static_cast<float>(bounds.origin_x),
-                            static_cast<float>(bounds.origin_y),
-                            bounds.depth_cells,
-                            static_cast<float>(bounds.origin_z)};
-  RiskAwareLattice3DConfig config;
-  config.maximum_expansions = 0U;
-  config.maximum_search_time_ms = 1000.0;
-
-  const RiskAwareLattice3DResult result =
-      planRiskAwareLattice3D(grid, field.distancesM(), Point3{1.5, 1.5, 1.5},
-                             Vec3{1.0, 0.0, 0.0}, Point3{10.5, 10.5, 1.5}, {}, config);
-
-  EXPECT_EQ(result.status, Lattice3DStatus::kSearchIncomplete);
-  EXPECT_EQ(result.termination, Lattice3DSearchTermination::kExpansionBudgetExhausted);
-  EXPECT_STREQ(lattice3DSearchTerminationName(result.termination),
-               "expansion_budget_exhausted");
-}
-
-TEST(Route3DTest, ParallelSuccessorEvaluationPreservesDeterministicRoute) {
-  OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 20, 20, 8}};
-  for (int z = 0; z < 8; ++z) {
-    for (int y = 5; y <= 14; ++y) {
-      occupancy.setOccupied(GridIndex3D{10, y, z});
-    }
-  }
-  const DistanceField3D field = DistanceField3D::build(occupancy, 30.0);
-  const GridBounds3D& bounds = field.bounds();
-  const mppi::EsdfGrid grid{bounds.width_cells,
-                            bounds.height_cells,
-                            static_cast<float>(bounds.resolution_m),
-                            static_cast<float>(bounds.origin_x),
-                            static_cast<float>(bounds.origin_y),
-                            bounds.depth_cells,
-                            static_cast<float>(bounds.origin_z)};
-  RiskAwareLattice3DConfig config;
-  config.horizontal_step_m = 1.0;
-  config.vertical_step_m = 1.0;
-  config.planning_goal_distance_m = 30.0;
-  config.preferred_distance_m = 0.0;
-  config.critical_distance_m = 0.0;
-  config.maximum_search_time_ms = 3000.0;
-  const Point3 start{2.5, 9.5, 3.5};
-  const Point3 goal{17.5, 9.5, 3.5};
-
-  const RiskAwareLattice3DResult serial = planRiskAwareLattice3D(
-      grid, field.distancesM(), start, Vec3{1.0, 0.0, 0.0}, goal, {}, config);
-  BoundedWorkerPool worker_pool{4U};
-  const RiskAwareLattice3DResult parallel =
-      planRiskAwareLattice3D(grid, field.distancesM(), start, Vec3{1.0, 0.0, 0.0}, goal,
-                             {}, config, &worker_pool);
-
-  EXPECT_EQ(parallel.status, serial.status);
-  EXPECT_EQ(parallel.risk_stage, serial.risk_stage);
-  EXPECT_EQ(parallel.route_fingerprint, serial.route_fingerprint);
-  EXPECT_EQ(parallel.successor_diagnostics.lattice_generated,
-            serial.successor_diagnostics.lattice_generated);
-  EXPECT_GT(parallel.successor_profiling.search.parallel_collection_calls, 0U);
-  EXPECT_GT(parallel.successor_profiling.search.parallel_candidates, 0U);
-}
-
-TEST(Route3DTest, ReportsRawCollisionSuccessorRejectionsWhenGraphIsExhausted) {
-  const mppi::EsdfGrid grid{6, 6, 1.0F, 0.0F, 0.0F, 4, 0.0F};
-  const std::vector<float> occupied(
-      static_cast<std::size_t>(grid.width * grid.height * grid.depth), 0.0F);
-  RiskAwareLattice3DConfig config;
-  config.horizontal_step_m = 1.0;
-  config.vertical_step_m = 1.0;
-  config.maximum_search_time_ms = 1000.0;
-
-  const RiskAwareLattice3DResult result =
-      planRiskAwareLattice3D(grid, occupied, Point3{2.5, 2.5, 1.5}, Vec3{1.0, 0.0, 0.0},
-                             Point3{4.5, 4.5, 1.5}, {}, config);
-
-  EXPECT_EQ(result.status, Lattice3DStatus::kMotionGraphExhausted);
-  EXPECT_EQ(result.termination, Lattice3DSearchTermination::kOpenSetExhausted);
-  EXPECT_GT(result.successor_diagnostics.lattice_rejected_raw_collision, 0U);
-  EXPECT_EQ(lattice3DRiskStageName(result.risk_stage), std::string_view{"critical"});
-}
-
-TEST(Route3DTest, DistinguishesUnknownSpaceFromLocalRoiBoundary) {
-  const mppi::EsdfGrid grid{6, 6, 1.0F, 0.0F, 0.0F, 4, 0.0F, true};
-  std::vector<float> esdf(
-      static_cast<std::size_t>(grid.width * grid.height * grid.depth), 20.0F);
-  const std::size_t unknown_index =
-      (std::size_t{1U} * static_cast<std::size_t>(grid.height) + std::size_t{2U}) *
-          static_cast<std::size_t>(grid.width) +
-      std::size_t{2U};
-  esdf.at(unknown_index) = mppi::kUnknownEsdfDistanceM;
-  RiskAwareLattice3DConfig config;
-  config.preferred_distance_m = 0.0;
-  config.critical_distance_m = 0.0;
-  config.physical_footprint_radius_m = 0.0;
-  config.physical_footprint_lower_extent_m = 0.0;
-  config.physical_footprint_upper_extent_m = 0.0;
-  config.physical_footprint_samples = 0U;
-  config.require_known_free_space = true;
-  EXPECT_EQ(detail::evaluateLattice3DEdge(grid, esdf, Point3{1.5, 2.5, 1.5},
-                                          Point3{2.5, 2.5, 1.5},
-                                          Lattice3DRiskStage::kCriticalAllowed, config)
-                .status,
-            detail::Lattice3DEdgeEvaluationStatus::kUnknownSpace);
-  config.require_known_free_space = false;
-  const detail::Lattice3DEdgeEvaluation optimistic_unknown =
-      detail::evaluateLattice3DEdge(grid, esdf, Point3{1.5, 2.5, 1.5},
-                                    Point3{2.5, 2.5, 1.5},
-                                    Lattice3DRiskStage::kCriticalAllowed, config);
-  EXPECT_EQ(optimistic_unknown.status, detail::Lattice3DEdgeEvaluationStatus::kValid);
-  EXPECT_TRUE(optimistic_unknown.evidence.unknown_exposure);
-  EXPECT_FALSE(optimistic_unknown.evidence.raw_collision);
-  EXPECT_EQ(detail::evaluateLattice3DEdge(grid, esdf, Point3{4.5, 2.5, 1.5},
-                                          Point3{6.5, 2.5, 1.5},
-                                          Lattice3DRiskStage::kCriticalAllowed, config)
-                .status,
-            detail::Lattice3DEdgeEvaluationStatus::kOutsideGrid);
 }
 
 } // namespace

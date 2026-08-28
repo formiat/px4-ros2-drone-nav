@@ -1,145 +1,83 @@
-# Receding-Horizon Updates And Guide Replacement
+# Persistent Route Repair And Receding-Horizon Execution
 
-The current stack does not perform legacy full/partial path replanning.
+Production navigation separates persistent strategic route ownership from the
+short executable horizon. It does not use the retired full/partial A* repair,
+risk-lattice replacement, or online-topology arbitration protocols.
+
+## Persistent Strategic Route
+
+`PersistentDStarLitePlanner3D` is the only production strategic route producer.
+It keeps search state across compatible raw-world revisions and incrementally
+updates affected graph vertices when occupied voxels change. Unknown space is
+traversable and contributes neither a hard gate nor a cost.
+
+`ActiveIntent3D` preserves the mission intent while `RouteManager3D` owns the
+accepted immutable route identity, full-3D progress, and certified reserve.
+Ordinary world updates do not replace a still-valid route. Planning starts from
+the current mission coordinate or from a certified future stitch station; vehicle
+yaw is never a strategic search constraint.
+
+## Successors And Suffix Repair
+
+A non-terminal route must retain enough certified suffix for:
+
+```text
+stopping_distance + speed * measured_p99_planning_latency + certified_overlap
+```
+
+Successor planning begins before that boundary. A successor is compiled and
+certified independently, then spliced only where the old and new immutable
+geometries have verified overlap. A compare-and-swap conflict requests a fresh
+snapshot; it does not clear the current owner.
+
+When newer raw occupied evidence intersects the unexecuted route, validation
+keeps the valid prefix and repairs only the affected suffix. If repair cannot
+finish before the braking boundary, ownership transfers to the already certified
+braking plan. Only exact raw collision evidence may report `raw_collision`;
+unknown labels, distance-cache boundaries, or a failed search may not.
 
 ## Local Horizon Updates
 
-GPU MPPI recomputes a local horizon at the configured planning frequency. It
-uses:
+GPU MPPI recomputes a finite local horizon at the configured control cadence
+using:
 
-- current pose and velocity;
-- the latest complete ESDF revision;
-- a matching CPU/GPU local-world generation;
-- the active global lattice guide;
-- the previous control sequence as a warm start;
-- the latest applied-control feedback.
+- the jointly captured pose, velocity, and applied control;
+- the exact immutable route geometry and tracking-error tube;
+- a coherent CPU/GPU world generation;
+- latest raw lidar evidence for final swept-footprint validation;
+- the previous control sequence as a warm start.
 
-Only a fresh timestamped horizon is executable. Offboard never continues an
-expired horizon as though it were a long accepted route.
+Route geometry, nominal finite horizon, braking fallback, raw-validation
+certificate, and all evidence revisions cross the publication boundary as one
+atomic execution plan. A mixed generation or stale owner fails closed.
 
-## Sticky Global Guide
+Only a fresh timestamped `MppiTrajectoryHorizon` is executable. Offboard tracks
+its position, velocity, and acceleration feed-forward and publishes exact applied-
+control feedback. A finite path contains its own terminal deceleration; after the
+last zero-velocity sample, offboard holds that same terminal position.
 
-The global lattice guide is persistent across ordinary ESDF revisions. A newly
-calculated guide does not replace it merely because it has a slightly different
-score.
+## Liveness And Safety
 
-The active guide can be released when it is:
+The liveness monitor compares predicted route progress with measured full-3D
+motion. Recovery may reseed MPPI, request strategic suffix repair, or publish a
+typed hold while persistent search continues. It cannot manufacture direct goal
+motion or revive an expired horizon.
 
-- blocked by current raw occupancy;
-- exhausted below the mode-specific remaining-distance threshold;
-- too far from the current vehicle position;
-- stalled according to along-guide progress;
-- superseded by mission-goal completion.
-
-The guide is revalidated on each immutable world revision. If its remaining
-risk becomes worse than the level at which it was accepted, the guide remains
-executable while a background replacement search starts. A replacement is
-activated only after validation; risk degradation does not become a movement
-prohibition.
-
-An unchanged scene remains live through the obstacle-memory heartbeat without
-pretending that ESDF content changed. Raw-map revisions and local-world
-generations therefore remain stable until new content or a pose-driven local
-window recenter produces a new immutable planning snapshot.
-
-A replacement search prepares both direct and incremental-topology candidates
-when available. Geometry optimization, final certification, and dynamic handoff
-all precede arbitration, so a preferred candidate rejected at the final check
-does not hide an executable fallback. `selected_index == nullopt` means that no
-route is eligible.
-
-Accepted incremental-topology strategy is persistent separately from its local
-geometry. `StrategicRouteManager3D` owns the complete intent/corridor, a stable
-plan identifier, and a monotonic progress cursor. The lattice planner consumes
-that state by materializing only the next finite segment. A partial mission
-continuation remains strategic even though that segment does not yet reach the
-mission target; direct routes compete as independent plan-level candidates.
-
-The selected replacement is activated from one immutable bundle containing the
-resident CPU occupancy/ESDF/topology generation, the linked GPU ESDF revision,
-current raw occupancy, objective, pose, and applied control. Final validation
-starts at the current route projection: it checks the connector and remaining
-suffix, then runs dynamic handoff from the same pose/control snapshot. If newer
-same-lineage raw content is available, it may strengthen the connector and
-suffix check without changing the coherent resident CPU/GPU planning
-generation. Activation is abandoned if that captured raw snapshot changes
-before commit.
-
-Topology evidence remains explicit when bounded updates leave locally valid
-blocks at different revisions. `validated_through` can advance when observation
-evidence changes without rebuilding geometry; `complete_through` advances only
-when that transition's supporting geometry is rebuilt. Transition lineage stays
-stable across evidence-only refreshes and changes with geometry. Plans aggregate
-the conservative minimum instead of claiming that every transition matches the
-newest graph revision.
-
-Heading bias for a replacement guide comes from velocity at speed, the previous
-accepted-guide tangent at low speed, or mission-goal direction as the final
-fallback. Vehicle yaw is not a global-search direction constraint.
-
-## Liveness
-
-The liveness monitor distinguishes predicted progress from actual vehicle
-motion. A horizon that repeatedly predicts useful terminal motion while the
-vehicle remains stationary is considered ineffective.
-
-Recovery can:
-
-- reseed the local MPPI nominal control sequence;
-- release a stalled active guide so the lattice can build another guide;
-- hold when no executable route exists while route search continues.
-
-Even with an available route, a failed physical validation of the next local
-horizon checks both the unchanged remaining trajectory of the previously
-published finite path and its remaining controls from the measured state. If
-either continuation became invalid, the planner may
-rebuild its unexecuted control intent from the measured state and embed endpoint
-deceleration within the remaining duration. Either continuation is raw-world
-validated and may continue only up to the previous deadline. If it is expired
-or no longer physically executable, a `no_executable_horizon` position hold
-supersedes it. A newly validated finite path releases the hold immediately; low
-clearance by itself does not activate it.
-
-The current lattice still has limited recovery primitives. The accepted
-topological corridor and its progress are persistent, but there is not yet a
-region-portal multigraph with split/merge lineage and fair frontier scheduling.
-A dead end may therefore end in hold rather than a complete route around the
-obstacle.
-
-## Safety During Updates
-
-There is no prefix/suffix stitch or safe truncation. Safety comes from:
-
-- short overlapping horizons;
-- collision evaluation against the active raw occupancy/ESDF contract;
-- first-control continuity relative to the command actually sent;
-- zero terminal speed at an unresolved route frontier;
-- horizon validity deadlines.
-
-Every newly published planned path is finite and self-contained. Its existing
-control slots include the deceleration required to reach zero speed at the final
-point; no continuation is appended after that endpoint. Receding-horizon updates
-normally replace the path before its endpoint, but if updates cease the last
-valid path still terminates at rest.
-
-Offboard tracks both the finite path geometry and its velocity/acceleration
-feed-forward. After the final zero-velocity sample it holds that same terminal
-position; path expiry does not create a second motion phase.
-
-If a replacement route is invalid, the system publishes a typed
-`no_executable_route` position hold. It does not preserve a physically blocked
-old trajectory or fly directly toward the mission goal just because a new plan
-failed. A finite path that reaches its deadline is already at rest, after which
-offboard holds its terminal point.
+Every retained or rebuilt continuation is validated from the measured state
+against current raw occupied evidence and the physical swept footprint. Low
+clearance by itself does not prohibit motion. If neither a nominal continuation
+nor its certified fallback remains executable, `no_executable_horizon` or
+`no_executable_route` hold owns execution until a new atomic plan is admitted.
 
 ## Removed Protocols
 
 The following concepts are not part of production runtime:
 
-- partial A* repair;
-- repair margins and parallel repair races;
-- blocked-span suffix stitching;
-- safe truncation;
-- truncation generation or fingerprints;
+- 2D or 3D risk-aware lattice route producers;
+- online incremental topology, semantic frontier, and strategic lattice adapters;
+- plan-level route-strategy arbitration;
+- partial A* repair and parallel repair races;
+- unsafe truncation generations or fingerprints;
 - moving/after-hold successor negotiation;
-- path-id ACK/coalescing lifecycle.
+- path-id ACK/coalescing lifecycle;
+- launch-departure route-purpose dispatch.

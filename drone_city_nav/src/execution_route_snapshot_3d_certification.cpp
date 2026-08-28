@@ -82,10 +82,9 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
     owned_observation.proprioceptive_free_space_seed = nullptr;
     owned_observation.launch_support_contact = nullptr;
   }
-  const RouteEndpointSemantics3D planned_endpoint_semantics = routeEndpointSemantics3D(
-      activation.proposal.intent, activation.proposal.evidence.reaches_intent_target,
-      activation.proposal.reaches_mission_goal,
-      !activation.proposal.objective.continuous_tracking);
+  const RouteEndpointSemantics3D planned_endpoint_semantics =
+      routeEndpointSemantics3D(activation.proposal.reaches_mission_goal,
+                               !activation.proposal.objective.continuous_tracking);
   const std::optional<ActivatedRouteIdentity3D> identity =
       activateRouteProposal3D(activation.proposal, activation.route_generation);
   const std::optional<ActiveIntent3D> active_intent =

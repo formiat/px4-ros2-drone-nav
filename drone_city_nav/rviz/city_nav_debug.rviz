@@ -100,7 +100,7 @@ Visualization Manager:
       Enabled: true
       Name: Selected MPPI Markers
       Namespaces:
-        global_lattice_guide: true
+        persistent_route: true
         mppi_candidate: true
         mppi_execution: true
         mppi_target: true

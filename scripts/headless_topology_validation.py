@@ -57,7 +57,7 @@ def validate_observed_3d_route_volume(
     require_pattern(
         "a raw-safe persistent 3D route is certified",
         ros_log,
-        r"PRODUCTION_MPPI_GUIDE3D planner=persistent_dstar_lite .*"
+        r"PRODUCTION_MPPI_ROUTE3D planner=persistent_dstar_lite .*"
         r"certified_pending=true .*validation=valid",
         errors,
     )

@@ -103,16 +103,18 @@ occupancy.
 
 Persistent 3D planner and route lifecycle:
 
-- horizontal and vertical lattice resolution;
+- persistent graph horizontal and vertical step;
 - per-update expansion, changed-voxel, extracted-path, shortcut, and compute
   budgets;
 - connector radius and mission-goal tolerance;
 - route sampling and completion tolerances;
 - static derived-distance lookahead;
 - raw validation sampling;
-- remaining-distance replacement thresholds;
+- remaining-distance successor trigger, certified overlap, measured-latency
+  reserve, splice, and retry thresholds;
 - cross-track and stall thresholds;
-- velocity/previous-route heading cascade thresholds.
+- velocity/previous-route heading cascade thresholds;
+- speed-dependent tracking-error response horizon.
 
 Static world:
 
@@ -146,7 +148,7 @@ the measured altitude has not reached the retained capture window.
 Speed policy and liveness:
 
 - reaction latency and available stopping acceleration;
-- unresolved-frontier and mission-goal stopping margins;
+- finite-route reserve and mission-goal stopping margins;
 - actual-displacement and predicted-progress thresholds.
 
 ## `mppi_offboard_node`
@@ -200,7 +202,7 @@ overrides.
    is a bounded soft cost inside the critical band; it must not be used as a
    reachability or hold threshold.
 6. Tune smoothness and control costs.
-7. Tune liveness and guide lifecycle only from observed failure cases.
+7. Tune liveness and route-recovery lifecycle only from observed failure cases.
 
 Do not compensate for frame, collision, or stale-input failures by changing
 soft MPPI weights.

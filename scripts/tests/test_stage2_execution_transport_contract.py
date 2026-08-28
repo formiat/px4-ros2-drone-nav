@@ -814,7 +814,7 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
 
         pending_refresh = route_execution.split(
             "refreshPendingRoute", maxsplit=1
-        )[1].split("GlobalGuideProjection", maxsplit=1)[0]
+        )[1].split("RouteProgressProjection3D", maxsplit=1)[0]
         self.assertIn("recertifyExecutionRoute3D", pending_refresh)
         self.assertNotIn(
             "certifyExecutionRoute3D(ExecutionRouteActivation3D", pending_refresh

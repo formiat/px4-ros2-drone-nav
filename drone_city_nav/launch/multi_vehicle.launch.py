@@ -200,8 +200,8 @@ def generate_multi_vehicle_launch_description(mission_kind):
         liveness_enabled = _optional_bool(
             LaunchConfiguration("liveness_enabled").perform(context), False
         )
-        global_guide_stall_recovery_enabled = _optional_bool(
-            LaunchConfiguration("global_guide_stall_recovery_enabled").perform(context),
+        route_stall_recovery_enabled = _optional_bool(
+            LaunchConfiguration("route_stall_recovery_enabled").perform(context),
             False,
         )
         tracking_error_tube_response_time_override = LaunchConfiguration(
@@ -438,8 +438,8 @@ def generate_multi_vehicle_launch_description(mission_kind):
                 {
                     "use_static_map": use_static_map,
                     "liveness_enabled": liveness_enabled,
-                    "global_guide_stall_recovery_enabled": (
-                        global_guide_stall_recovery_enabled
+                    "route_stall_recovery_enabled": (
+                        route_stall_recovery_enabled
                     ),
                     "static_occupancy_3d_path": static_path,
                     "static_free_space_topology_3d_path": static_topology_path,
@@ -837,7 +837,7 @@ def generate_multi_vehicle_launch_description(mission_kind):
             DeclareLaunchArgument("use_static_map", default_value="false"),
             DeclareLaunchArgument("liveness_enabled", default_value="false"),
             DeclareLaunchArgument(
-                "global_guide_stall_recovery_enabled", default_value="false"
+                "route_stall_recovery_enabled", default_value="false"
             ),
             DeclareLaunchArgument("static_occupancy_3d_path", default_value=""),
             DeclareLaunchArgument(

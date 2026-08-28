@@ -54,16 +54,15 @@ The marker array includes:
 
 - selected local horizon;
 - previous/nominal horizon context;
-- active global lattice guide;
+- active persistent full-3D route;
 - current MPPI target;
 - mission start and goal;
 - risk and collision annotations.
 
-The global lattice guide is a route-direction polyline, not a complete
-topological street graph. The MPPI horizon is the short executable local
-trajectory. In static mode the guide is rendered at its planned Z. Constrained
-span boundaries are currently exposed through diagnostics rather than separate
-RViz markers.
+The persistent route is immutable certified strategic geometry, while the MPPI
+horizon is the short executable local trajectory. The route is rendered at its
+planned Z in both world profiles. Constrained-span boundaries are currently
+exposed through diagnostics rather than separate RViz markers.
 
 ## Reading Lidar Layers
 
@@ -95,10 +94,10 @@ layers represent different lifecycle stages.
 ## Common Misreads
 
 - A short blue horizon is expected; MPPI executes receding horizons.
-- A distant global guide is not the command currently sent to PX4.
+- A distant persistent route is not the command currently sent to PX4.
 - The current static city contains four physical air-passage structures. Thin
   blue lines show the generated sparse medial segments; thicker green lines show
-  route-specific traversals selected lazily from that topology.
+  route-intersecting traversals used as passage evidence.
 - RViz path publication can be throttled below MPPI tick rate.
 - A follow-camera failure is a visualization problem unless vehicle state or
   control diagnostics are also stale.

@@ -112,7 +112,7 @@ void ProductionMppiNode::publishRviz(
 
   const std::span<const mppi::State> previous_horizon{rviz.previous_horizon};
   const std::span<const mppi::State> execution_horizon{rviz.execution_horizon};
-  const std::span<const mppi::RouteSample3D> global_route =
+  const std::span<const mppi::RouteSample3D> persistent_route =
       rviz.route ? std::span<const mppi::RouteSample3D>{*rviz.route}
                  : std::span<const mppi::RouteSample3D>{};
   const std::span<const PassageTraversalEdge> passage_traversals =
@@ -128,7 +128,7 @@ void ProductionMppiNode::publishRviz(
       .horizon = rviz.candidate_horizon,
       .previous_horizon = previous_horizon,
       .execution_horizon = execution_horizon,
-      .global_route = global_route,
+      .persistent_route = persistent_route,
       .passage_traversals = passage_traversals,
       .selected_passage_traversal_ids = selected_passage_traversal_ids,
       .initial_state = snapshot.input.initial_state,

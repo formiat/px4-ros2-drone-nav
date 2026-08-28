@@ -375,7 +375,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
             active_route.progress.station_m, active_route.endStationM());
         bindStaticRouteRequestToExecution(
             prepared, active_route,
-            GlobalGuideProjection{
+            RouteProgressProjection3D{
                 .valid = projection.valid,
                 .station_m = projection.station_m,
                 .total_length_m = active_route.endStationM(),
@@ -397,8 +397,8 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       prepared.static_route_replan_base_generation =
           tracking_roi_refresh ? roi_refresh.base_route_generation : 0U;
       prepared.static_route_replan_reason =
-          tracking_roi_refresh ? GlobalGuideReleaseReason::kObjectiveChanged
-                               : GlobalGuideReleaseReason::kNone;
+          tracking_roi_refresh ? RouteReleaseReason3D::kObjectiveChanged
+                               : RouteReleaseReason3D::kNone;
       const bool coherent_generation = productionWorldGenerationCoherent(prepared);
       {
         const std::scoped_lock lock{esdf_state_mutex_};
@@ -447,20 +447,21 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       if (route_search_required) {
         bool queued = false;
         {
-          const std::scoped_lock lock{guide_queue_mutex_};
-          if (pending_guide_world_ && (prepared.static_route_extension_request ||
-                                       prepared.static_route_replan_request)) {
-            dropped_guide_worlds_.fetch_add(1U, std::memory_order_relaxed);
-            pending_guide_world_.reset();
+          const std::scoped_lock lock{route_planning_queue_mutex_};
+          if (pending_route_planning_world_ &&
+              (prepared.static_route_extension_request ||
+               prepared.static_route_replan_request)) {
+            dropped_route_planning_worlds_.fetch_add(1U, std::memory_order_relaxed);
+            pending_route_planning_world_.reset();
           }
-          if (!pending_guide_world_) {
-            pending_guide_world_ =
+          if (!pending_route_planning_world_) {
+            pending_route_planning_world_ =
                 std::make_shared<const ProductionMppiPreparedEsdf>(prepared);
             queued = true;
           }
         }
         if (queued) {
-          guide_queue_condition_.notify_all();
+          route_planning_queue_condition_.notify_all();
         }
       } else {
         RCLCPP_INFO(get_logger(), "STATIC_ESDF3D_PREWARMED route_search_deferred=true "

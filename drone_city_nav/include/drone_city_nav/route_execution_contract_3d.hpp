@@ -16,7 +16,7 @@ inline constexpr double kFiniteExecutionRouteCrossTrackToleranceM3D{2.0};
 
 enum class RouteEndpointSemantics3D : std::uint8_t {
   kContinuation,
-  kObservationStop,
+  kLocalStop,
   kMissionStop,
   kEmergencyBrakeTail,
 };
@@ -29,8 +29,7 @@ struct RouteContinuityLineage3D {
 };
 
 [[nodiscard]] RouteEndpointSemantics3D
-routeEndpointSemantics3D(const RouteIntent3D& intent, bool reaches_intent_target,
-                         bool reaches_mission_goal,
+routeEndpointSemantics3D(bool reaches_mission_goal,
                          bool mission_endpoint_is_terminal) noexcept;
 
 // Only true endpoint semantics may shape the nominal route speed to zero.

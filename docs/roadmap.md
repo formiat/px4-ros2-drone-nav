@@ -479,8 +479,8 @@ fresh read and retry; only an exact raw collision result may report
    retire competing route pipelines and XY-only fallbacks.
 4. Introduce `ActiveIntent3D`, `RouteManager3D`, reserve admission, future-station
    splice, suffix repair, and the atomic `ExecutionPlan3D` boundary.
-5. Replace the dense observed-ESDF/topology hot path with bounded sparse
-   incremental updates and retain topology only as optional heuristic memory.
+5. Replace the dense observed-distance hot path with bounded sparse occupied-set
+   updates; retain compiled static topology only as offline passage evidence.
 6. Remove superseded flags, configuration, diagnostics states, code paths, and
    tests. Split oversized production-node sources along the new ownership
    boundaries while retaining raw obstacle memory, exact validation, MPPI,
@@ -525,9 +525,9 @@ Item 13 is accepted only in the complex environments introduced after the
 original Manhattan world. Manhattan is not a localization acceptance
 environment because its repetitive geometry creates severe position and
 heading ambiguity. Autonomous test flights in the selected labyrinths, caves,
-and tunnel networks require item 12's incremental topological exploration
+and tunnel networks require item 12's persistent full-3D route and repair
 backend. This roadmap dependency must not create a code dependency between the
-localization estimator and the exploration planner.
+localization estimator and the route planner.
 
 Add an optional navigation profile in which the aircraft does not use GNSS or
 magnetometer fusion. This stage begins after item 8 provides production 3D

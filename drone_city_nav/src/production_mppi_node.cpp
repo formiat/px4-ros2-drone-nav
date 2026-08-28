@@ -75,8 +75,6 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       declare_parameter<double>("planning_tick_phase_offset_s", 0.0);
   use_static_map_ = declare_parameter<bool>("use_static_map", true);
   configureOptionalNavigationConstraints();
-  no_static_guide_lookahead_m_ =
-      declare_parameter<double>("no_static_guide_lookahead_m", 30.0);
   no_static_3d_esdf_update_rate_hz_ =
       declare_parameter<double>("no_static_3d_esdf_update_rate_hz", 1.0);
   no_static_3d_esdf_window_.horizontal_half_extent_m =
@@ -102,7 +100,6 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       declare_parameter<double>("constrained_route_speed_limit_mps", 10.0));
   route_constraint_diagnostics_distance_m_ =
       declare_parameter<double>("route_constraint_diagnostics_distance_m", 30.0);
-  target_mode_ = declare_parameter<std::string>("target_mode", "active_route_guide");
   frame_id_ = declare_parameter<std::string>("frame_id", "map");
   diagnostics_output_dir_ =
       declare_parameter<std::string>("diagnostics_output_dir", "log/mppi");
@@ -447,45 +444,35 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   static_esdf_route_lookahead_m_ =
       declare_parameter<double>("static_esdf_route_lookahead_m", 180.0);
   configureStaticRouteGeometry();
-  active_guide_config_.critical_distance_m = mppi_config_.risk.critical_distance_m;
-  active_guide_config_.preferred_distance_m = mppi_config_.risk.preferred_distance_m;
-  active_guide_config_.validation_sample_step_m =
-      declare_parameter<double>("global_guide_validation_sample_step_m", 0.5);
-  const double static_guide_replan_remaining_m =
-      declare_parameter<double>("static_global_guide_replan_remaining_m", 45.0);
-  const double no_static_guide_replan_remaining_m =
-      declare_parameter<double>("no_static_global_guide_replan_remaining_m", 15.0);
-  active_guide_config_.minimum_remaining_m = use_static_map_
-                                                 ? static_guide_replan_remaining_m
-                                                 : no_static_guide_replan_remaining_m;
+  const double static_route_replan_remaining_m =
+      declare_parameter<double>("static_route_replan_remaining_m", 45.0);
+  const double no_static_route_replan_remaining_m =
+      declare_parameter<double>("no_static_route_replan_remaining_m", 15.0);
+  route_tracking_policy_.minimum_remaining_m = use_static_map_
+                                                   ? static_route_replan_remaining_m
+                                                   : no_static_route_replan_remaining_m;
   configureStaticRouteExtension(maximum_horizontal_acceleration_mps2);
   static_route_search_retry_config_.minimum_pose_change_m =
-      declare_parameter<double>("static_global_guide_failed_search_pose_change_m", 2.0);
+      declare_parameter<double>("route_failed_search_pose_change_m", 2.0);
   static_route_search_retry_config_.minimum_objective_change_m =
-      declare_parameter<double>("static_global_guide_failed_search_objective_change_m",
-                                5.0);
+      declare_parameter<double>("route_failed_search_objective_change_m", 5.0);
   static_route_search_retry_config_.minimum_retry_interval_s =
-      declare_parameter<double>("static_global_guide_failed_search_retry_interval_s",
-                                1.0);
+      declare_parameter<double>("route_failed_search_retry_interval_s", 1.0);
   if (!(static_route_search_retry_config_.minimum_pose_change_m > 0.0) ||
       !(static_route_search_retry_config_.minimum_objective_change_m > 0.0) ||
       !(static_route_search_retry_config_.minimum_retry_interval_s > 0.0)) {
     throw std::invalid_argument{"invalid static route search retry configuration"};
   }
-  active_guide_config_.maximum_cross_track_m =
-      declare_parameter<double>("global_guide_maximum_cross_track_m", 15.0);
-  active_guide_config_.velocity_heading_low_speed_mps =
-      declare_parameter<double>("global_guide_heading_low_speed_mps", 0.5);
-  active_guide_config_.velocity_heading_high_speed_mps =
-      declare_parameter<double>("global_guide_heading_high_speed_mps", 1.5);
-  guide_progress_config_.observation_window_s =
-      declare_parameter<double>("global_guide_stall_observation_window_s", 1.0);
-  guide_progress_config_.minimum_progress_m =
-      declare_parameter<double>("global_guide_stall_minimum_progress_m", 0.5);
-  guide_progress_config_.minimum_predicted_head_progress_m = declare_parameter<double>(
-      "global_guide_stall_minimum_predicted_head_progress_m", 0.5);
-  global_guide_stall_recovery_enabled_ =
-      declare_parameter<bool>("global_guide_stall_recovery_enabled", false);
+  route_tracking_policy_.maximum_cross_track_m =
+      declare_parameter<double>("route_maximum_cross_track_m", 15.0);
+  route_progress_config_.observation_window_s =
+      declare_parameter<double>("route_stall_observation_window_s", 1.0);
+  route_progress_config_.minimum_progress_m =
+      declare_parameter<double>("route_stall_minimum_progress_m", 0.5);
+  route_progress_config_.minimum_predicted_head_progress_m =
+      declare_parameter<double>("route_stall_minimum_predicted_head_progress_m", 0.5);
+  route_stall_recovery_enabled_ =
+      declare_parameter<bool>("route_stall_recovery_enabled", false);
   mppi_config_.early_exit_on_collision = true;
   physical_footprint_config_.sweep_step_m =
       declare_parameter<double>("physical_footprint_sweep_step_m", 0.25);
@@ -586,11 +573,9 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   }
 
   liveness_supervisor_ = std::make_unique<MppiLivenessSupervisor>(liveness_config_);
-  active_guide_lifecycle_ =
-      std::make_unique<ActiveGlobalGuideLifecycle>(active_guide_config_);
-  if (global_guide_stall_recovery_enabled_) {
-    guide_progress_tracker_ =
-        std::make_unique<GlobalGuideProgressTracker>(guide_progress_config_);
+  if (route_stall_recovery_enabled_) {
+    route_progress_tracker_ =
+        std::make_unique<RouteProgressTracker3D>(route_progress_config_);
   }
   mission_goal_capture_latch_ =
       std::make_unique<MissionGoalCaptureLatch>(mission_goal_capture_config_);
@@ -742,8 +727,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       "acceleration_cap=%.1fmps2 jerk_cap=%.1fmps3 speed_tracking_weight=%.2f "
       "constrained_route_speed_limit=%.1fmps head_progress=%.2fs "
       "far_cost_sampling=(%.2fs,%u) liveness=%s "
-      "sticky_guide=true guide_replan_remaining=%.1fm "
-      "guide_heading_blend=(%.1f,%.1f)mps planner_workers=%zu "
+      "persistent_route=true route_replan_remaining=%.1fm "
+      "planner_workers=%zu "
       "planner_tick_phase_ms=%.1f no_static_world=observed_occupancy_3d "
       "no_static_esdf=(%.1fHz/h%.1f/v%.1f/hm%.1f/vm%.1fm/incremental_ratio=%.2f/"
       "audit_builds=%zu)",
@@ -762,9 +747,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       mppi_config_.horizon_sampling.full_rate_duration_s,
       mppi_config_.horizon_sampling.far_cost_stride,
       liveness_config_.enabled ? "true" : "false",
-      active_guide_config_.minimum_remaining_m,
-      active_guide_config_.velocity_heading_low_speed_mps,
-      active_guide_config_.velocity_heading_high_speed_mps, planner_worker_count_,
+      route_tracking_policy_.minimum_remaining_m, planner_worker_count_,
       planning_tick_phase_offset_s_ * 1000.0, no_static_3d_esdf_update_rate_hz_,
       no_static_3d_esdf_window_.horizontal_half_extent_m,
       no_static_3d_esdf_window_.vertical_half_extent_m,

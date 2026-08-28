@@ -132,17 +132,6 @@ detectLaunchSupportContact3D(const ObservedOccupancyGrid3D& occupancy,
 makeVehicleLandedSupportContact3D(const GridBounds3D& bounds,
                                   const ProprioceptiveFreeSpaceSeed3D& seed);
 
-struct LaunchSupportDeparture3D {
-  Point3 target{};
-  SweptFootprintResult validation{};
-  double axial_departure_m{0.0};
-  bool executable{false};
-};
-
-[[nodiscard]] LaunchSupportDeparture3D planLaunchSupportDeparture3D(
-    const ObservedOccupancyGrid3D& occupancy, const Point3& current_position,
-    const LaunchSupportContact3D& contact, double minimum_departure_m);
-
 [[nodiscard]] ObservedEsdf3D
 buildObservedEsdf3D(const ObservedOccupancyGrid3D& occupancy,
                     const GridBounds3D& local_bounds, double maximum_distance_m,

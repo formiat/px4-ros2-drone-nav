@@ -267,11 +267,9 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
       adoptWorldResources(candidate, *snapshot.resident_world);
       candidate.route_3d = rebased_route;
       candidate.route_2d_projection = projectRouteTo2D(*rebased_route);
-      const RouteEndpointSemantics3D endpoint_semantics = routeEndpointSemantics3D(
-          candidate.route_intent,
-          candidate.route_segment_evidence.reaches_intent_target,
-          candidate.route_reaches_mission_goal,
-          !search_world.search_objective.continuous_tracking);
+      const RouteEndpointSemantics3D endpoint_semantics =
+          routeEndpointSemantics3D(candidate.route_reaches_mission_goal,
+                                   !search_world.search_objective.continuous_tracking);
       RouteCompilationResult3D compilation =
           compileExecutionRoute3D(RouteCompilerInput3D{
               .route = *rebased_route,
@@ -357,10 +355,9 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
             .build_and_planning_latency_p99_ms = latency.build_and_planning_p99_ms,
             .route_reaches_mission_goal = candidate.route_reaches_mission_goal,
         });
-    const RouteEndpointSemantics3D endpoint_semantics = routeEndpointSemantics3D(
-        candidate.route_intent, candidate.route_segment_evidence.reaches_intent_target,
-        candidate.route_reaches_mission_goal,
-        !search_world.search_objective.continuous_tracking);
+    const RouteEndpointSemantics3D endpoint_semantics =
+        routeEndpointSemantics3D(candidate.route_reaches_mission_goal,
+                                 !search_world.search_objective.continuous_tracking);
     const CertifiedRouteReserveAssessment3D reserve = assessCertifiedRouteReserve3D(
         reserve_decision,
         reserve_projection.valid ? reserve_projection.remaining_m
@@ -391,10 +388,9 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
           distance3D((*candidate.route_3d)[index - 1U].position,
                      (*candidate.route_3d)[index].position);
     }
-    const RouteEndpointSemantics3D endpoint_semantics = routeEndpointSemantics3D(
-        candidate.route_intent, candidate.route_segment_evidence.reaches_intent_target,
-        candidate.route_reaches_mission_goal,
-        !search_world.search_objective.continuous_tracking);
+    const RouteEndpointSemantics3D endpoint_semantics =
+        routeEndpointSemantics3D(candidate.route_reaches_mission_goal,
+                                 !search_world.search_objective.continuous_tracking);
     const RouteTimeParameterization3D time_parameterization = parameterizeRouteTime3D(
         *candidate.route_3d, *candidate.constrained_spans,
         speed_policy_config_.cruise_speed_mps, constrained_route_speed_limit_mps_,
@@ -455,7 +451,7 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
           .minimum_tracking_sample_sequence = required_objective_sample,
           .position = {snapshot.navigation.state.x, snapshot.navigation.state.y,
                        snapshot.navigation.state.z},
-          .maximum_cross_track_m = active_guide_config_.maximum_cross_track_m,
+          .maximum_cross_track_m = route_tracking_policy_.maximum_cross_track_m,
           .latest_raw_occupancy = snapshot.raw_world && snapshot.raw_world->occupancy
                                       ? snapshot.raw_world->occupancy.get()
                                       : nullptr,
@@ -573,7 +569,7 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
         handoff_control_fresh ? snapshot.applied_control.control : mppi::Control{},
         *candidate.mppi_route,
         static_cast<float>(speed_policy_config_.cruise_speed_mps),
-        static_cast<float>(active_guide_config_.maximum_cross_track_m),
+        static_cast<float>(route_tracking_policy_.maximum_cross_track_m),
         static_cast<float>(kFiniteExecutionRouteCrossTrackToleranceM3D), mppi_config_,
         candidate.grid, *candidate.distances_m);
   }
@@ -639,9 +635,9 @@ void ProductionMppiNode::commitRouteActivation3D(
   result.replacement = assessRouteProposalReplacement3D(
       active_identity, materialized_proposal.identity,
       RouteProposalReplacementObservation3D{
-          .safety_replan_requested = search_world.static_route_replan_request &&
-                                     search_world.static_route_replan_reason ==
-                                         GlobalGuideReleaseReason::kBlocked,
+          .safety_replan_requested =
+              search_world.static_route_replan_request &&
+              search_world.static_route_replan_reason == RouteReleaseReason3D::kBlocked,
           .continuity_preserving_successor =
               candidate.required_splice_base_route_instance_id.valid()});
 
@@ -719,7 +715,7 @@ void ProductionMppiNode::commitRouteActivation3D(
                                      snapshot.navigation.state.y,
                                      snapshot.navigation.state.z},
                         .maximum_cross_track_m =
-                            active_guide_config_.maximum_cross_track_m,
+                            route_tracking_policy_.maximum_cross_track_m,
                         .footprint =
                             SweptFootprintConfig{
                                 .radius_m = physical_footprint_config_.radius_m,
@@ -824,12 +820,12 @@ void ProductionMppiNode::commitRouteActivation3D(
       candidate.static_route_world_compatible = true;
       candidate.route_generation = candidate_generation;
       candidate.route_objective = search_world.search_objective;
-      candidate.route_release_reason = GlobalGuideReleaseReason::kNone;
+      candidate.route_release_reason = RouteReleaseReason3D::kNone;
       candidate.static_route_extension_request = false;
       candidate.static_route_extension_base_generation = 0U;
       candidate.static_route_replan_request = false;
       candidate.static_route_replan_base_generation = 0U;
-      candidate.static_route_replan_reason = GlobalGuideReleaseReason::kNone;
+      candidate.static_route_replan_reason = RouteReleaseReason3D::kNone;
       prepared_esdf_ = candidate;
       result.certified_pending = true;
     }

@@ -35,7 +35,6 @@ namespace {
     return false;
   }
   const RouteEndpointSemantics3D semantics = routeEndpointSemantics3D(
-      proposal.intent, proposal.evidence.reaches_intent_target,
       proposal.reaches_mission_goal, !proposal.objective.continuous_tracking);
   constexpr float kTerminalSpeedToleranceMps{1.0e-4F};
   const float terminal_speed_mps = geometry.mppi_route->back().reference_speed_mps;
@@ -269,9 +268,7 @@ bool CertifiedRouteSuffix3D::valid() const noexcept {
       continuity_id !=
           routeContinuityId3D(identity.proposal.intent, continuity_lineage) ||
       planned_endpoint_semantics !=
-          routeEndpointSemantics3D(identity.proposal.intent,
-                                   identity.proposal.evidence.reaches_intent_target,
-                                   identity.proposal.reaches_mission_goal,
+          routeEndpointSemantics3D(identity.proposal.reaches_mission_goal,
                                    !identity.proposal.objective.continuous_tracking)) {
     return false;
   }

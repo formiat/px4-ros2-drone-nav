@@ -169,10 +169,10 @@ makeActivationObservation(const ProductionMppiPreparedEsdf& world,
              : nullptr;
 }
 
-[[nodiscard]] GlobalGuideProjection
+[[nodiscard]] RouteProgressProjection3D
 routeProjection(const CertifiedRouteSuffix3D& route,
                 const Point3& current_position) noexcept {
-  GlobalGuideProjection projection;
+  RouteProgressProjection3D projection;
   if (route.geometry == nullptr || route.geometry->route == nullptr ||
       route.geometry->route->empty()) {
     return projection;
@@ -286,7 +286,7 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
     {
       RouteExecutionObservation3D observation = makeExecutionObservation(
           world, objective, execution_navigation, minimum_tracking_sample_sequence,
-          active_guide_config_.maximum_cross_track_m, footprint);
+          route_tracking_policy_.maximum_cross_track_m, footprint);
       std::shared_ptr<const VersionedObservedRawWorld3D> observed_owner;
       if (observed_route) {
         observed_owner =
@@ -410,18 +410,18 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
           }
           RouteLifecycleEventKind3D event_kind =
               RouteLifecycleEventKind3D::kControlCandidateRejected;
-          GlobalGuideReleaseReason release_reason = GlobalGuideReleaseReason::kBlocked;
+          RouteReleaseReason3D release_reason = RouteReleaseReason3D::kBlocked;
           if (raw_invalidated) {
             event_kind = RouteLifecycleEventKind3D::kRawInvalidated;
           } else if (result.status == RouteExecutionStatus3D::kObjectiveMismatch) {
             event_kind = RouteLifecycleEventKind3D::kObjectiveSuperseded;
-            release_reason = GlobalGuideReleaseReason::kObjectiveChanged;
+            release_reason = RouteReleaseReason3D::kObjectiveChanged;
           } else if (result.status == RouteExecutionStatus3D::kExcessiveCrossTrack) {
             event_kind = RouteLifecycleEventKind3D::kCrossTrackExceeded;
-            release_reason = GlobalGuideReleaseReason::kDiverged;
+            release_reason = RouteReleaseReason3D::kDiverged;
           } else if (result.status == RouteExecutionStatus3D::kTrackingTubeViolation) {
             event_kind = RouteLifecycleEventKind3D::kTrackingTubeExceeded;
-            release_reason = GlobalGuideReleaseReason::kDiverged;
+            release_reason = RouteReleaseReason3D::kDiverged;
           }
           result.lifecycle_event = RouteLifecycleEvent3D{
               .kind = event_kind,
@@ -434,7 +434,7 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
                                   ? observed_owner->version().revision
                                   : 0U,
           };
-          requestGuideRelease(release_reason, generation);
+          requestRouteRelease(release_reason, generation);
           RCLCPP_WARN_THROTTLE(
               get_logger(), *get_clock(), 1000,
               "ROUTE_EXECUTION3D snapshot_version=%" PRIu64 " route_generation=%" PRIu64
@@ -504,7 +504,7 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
         refreshPendingRoute(*result.pending_route, world, objective,
                             execution_navigation, latest_raw_world,
                             minimum_tracking_sample_sequence,
-                            active_guide_config_.maximum_cross_track_m, footprint);
+                            route_tracking_policy_.maximum_cross_track_m, footprint);
     RouteSpliceReadiness3D splice_readiness{.status =
                                                 RouteSpliceReadinessStatus3D::kReady};
     const bool route_splice_required =
@@ -571,10 +571,10 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
         *result.route, Point3{execution_input->state().x, execution_input->state().y,
                               execution_input->state().z});
     result.station_m = result.route->progress.station_m;
-    result.route_usable =
-        result.route_usable && result.projection.valid &&
-        (result.tracking_error_tube_handoff_active ||
-         result.projection.cross_track_m <= active_guide_config_.maximum_cross_track_m);
+    result.route_usable = result.route_usable && result.projection.valid &&
+                          (result.tracking_error_tube_handoff_active ||
+                           result.projection.cross_track_m <=
+                               route_tracking_policy_.maximum_cross_track_m);
     if (!result.route_usable) {
       result.status = result.projection.valid
                           ? RouteExecutionStatus3D::kExcessiveCrossTrack

@@ -18,7 +18,7 @@ struct MppiDebugMarkerInput {
   std::span<const mppi::State> horizon;
   std::span<const mppi::State> previous_horizon;
   std::span<const mppi::State> execution_horizon;
-  std::span<const mppi::RouteSample3D> global_route;
+  std::span<const mppi::RouteSample3D> persistent_route;
   std::span<const PassageTraversalEdge> passage_traversals;
   std::span<const PassageTraversalId> selected_passage_traversal_ids;
   mppi::State initial_state{};

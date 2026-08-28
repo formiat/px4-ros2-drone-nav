@@ -9,7 +9,6 @@ struct ProductionRouteMaterialization3D {
   StaticRouteCandidateValidation validation{};
   StaticRouteReplacementPolicy replacement_policy{
       StaticRouteReplacementPolicy::kRequireEndpointImprovement};
-  ObservationRouteReplacementDecision observation_replacement{};
 };
 
 } // namespace drone_city_nav

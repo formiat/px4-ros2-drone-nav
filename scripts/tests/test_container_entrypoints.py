@@ -111,7 +111,7 @@ class ContainerEntrypointTest(unittest.TestCase):
             "REQUIRE_OBSERVED_3D_ROUTE_VOLUME_CROSSING",
             "OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M",
             "ENABLE_LIVENESS_RECOVERY",
-            "ENABLE_GLOBAL_GUIDE_STALL_RECOVERY",
+            "ENABLE_ROUTE_STALL_RECOVERY",
         ):
             with self.subTest(variable=variable):
                 self.assertRegex(text, rf"(?m)^  {variable}$")

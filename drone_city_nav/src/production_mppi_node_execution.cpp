@@ -234,7 +234,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
           : nullptr;
   RouteEndpointSemantics3D finite_boundary_endpoint_semantics =
       esdf.route_reaches_mission_goal ? RouteEndpointSemantics3D::kMissionStop
-                                      : RouteEndpointSemantics3D::kObservationStop;
+                                      : RouteEndpointSemantics3D::kLocalStop;
   if (selected_snapshot_route != nullptr) {
     finite_boundary_endpoint_semantics =
         selected_snapshot_route->planned_endpoint_semantics;

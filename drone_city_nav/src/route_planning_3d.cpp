@@ -79,38 +79,31 @@ double routeNetCoordinateProgress3D(const Point3& start, const Point3& endpoint,
          distance3D(endpoint, mission_target);
 }
 
-std::uint64_t makeRouteIntentId3D(const RouteIntentSource3D source,
-                                  const RouteIntentPurpose3D purpose,
-                                  const Point3& mission_target,
-                                  const Point3& intent_target,
-                                  const std::uint64_t target_identity,
-                                  const bool observation_stop_required) noexcept {
+std::uint64_t makeRouteIntentId3D(const Point3& mission_target,
+                                  const std::uint64_t mission_epoch,
+                                  const std::uint64_t assignment_generation,
+                                  const std::uint64_t target_detection_id,
+                                  const std::uint64_t target_track_id) noexcept {
   std::uint64_t hash{kFnvOffset};
-  hashValue(hash, static_cast<std::uint64_t>(source));
-  hashValue(hash, static_cast<std::uint64_t>(purpose));
-  hashValue(hash, target_identity);
-  if (purpose == RouteIntentPurpose3D::kObservationFrontier) {
-    hashValue(hash, observation_stop_required ? 1U : 0U);
-  }
+  hashValue(hash, mission_epoch);
+  hashValue(hash, assignment_generation);
+  hashValue(hash, target_detection_id);
+  hashValue(hash, target_track_id);
   hashPoint(hash, mission_target);
-  hashPoint(hash, intent_target);
   return hash == 0U ? 1U : hash;
 }
 
 SegmentEvidence3D evaluateSegmentEvidence3D(
     const RouteIntent3D& intent, const std::span<const RouteSample3D> route,
     const Point3& search_start, const bool planner_executable,
-    const bool reaches_segment_target, const bool reaches_mission_target,
-    const double objective_cost, const SegmentEvidenceWorld3D& world) noexcept {
+    const bool reaches_mission_target, const double objective_cost,
+    const SegmentEvidenceWorld3D& world) noexcept {
   SegmentEvidence3D result{
       .planned_on_revision = intent.planned_on_revision,
       .validated_through_revision = world.validated_through_revision,
       .status = SegmentEvidenceStatus3D::kInvalidWorld,
       .objective_cost = objective_cost,
       .planner_executable = planner_executable,
-      .reaches_segment_target = reaches_segment_target,
-      .reaches_intent_target =
-          reaches_segment_target && intent.segment_reaches_intent_target,
       .reaches_mission_target = reaches_mission_target,
   };
   if (!planner_executable) {
@@ -202,34 +195,6 @@ SegmentEvidence3D evaluateSegmentEvidence3D(
   result.status = SegmentEvidenceStatus3D::kValid;
   result.physical_executable = true;
   return result;
-}
-
-const char* routeIntentSource3DName(const RouteIntentSource3D source) noexcept {
-  switch (source) {
-    case RouteIntentSource3D::kPersistentPlanner:
-      return "persistent_planner";
-    case RouteIntentSource3D::kDirect:
-      return "direct";
-    case RouteIntentSource3D::kTopology:
-      return "topology";
-    case RouteIntentSource3D::kLaunchDeparture:
-      return "launch_departure";
-  }
-  return "unknown";
-}
-
-const char* routeIntentPurpose3DName(const RouteIntentPurpose3D purpose) noexcept {
-  switch (purpose) {
-    case RouteIntentPurpose3D::kMissionTransit:
-      return "mission_transit";
-    case RouteIntentPurpose3D::kLaunchDeparture:
-      return "launch_departure";
-    case RouteIntentPurpose3D::kObservationFrontier:
-      return "observation_frontier";
-    case RouteIntentPurpose3D::kTopologicalBacktrack:
-      return "topological_backtrack";
-  }
-  return "unknown";
 }
 
 const char* segmentEvidenceStatus3DName(const SegmentEvidenceStatus3D status) noexcept {

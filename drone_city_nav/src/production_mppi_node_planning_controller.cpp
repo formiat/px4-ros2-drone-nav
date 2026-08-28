@@ -64,9 +64,9 @@ ProductionMppiNode::runPlanningController(const ProductionMppiControllerTick& ti
   }
   output.no_eligible_recovery = nominal_reseed_tracker_.observeEligibleRolloutResult(
       result.feasibility_contract.available, result.nominal_reseeded);
-  if (output.no_eligible_recovery.guide_replan_requested &&
+  if (output.no_eligible_recovery.route_replan_requested &&
       !tick.direct_tracking_interception) {
-    requestGuideRelease(GlobalGuideReleaseReason::kNoEligibleRollouts,
+    requestRouteRelease(RouteReleaseReason3D::kNoEligibleRollouts,
                         tick.route_generation);
   }
   return output;

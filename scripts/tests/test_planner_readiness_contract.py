@@ -152,14 +152,14 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self.assertIn("prepared.route_generation == 0U", observed_esdf)
         self.assertIn('"active_route_preserved"', observed_esdf)
         self.assertIn("initial_route_search_already_pending", observed_esdf)
-        self.assertNotIn("dropped_guide_worlds_", observed_esdf)
+        self.assertNotIn("dropped_route_planning_worlds_", observed_esdf)
         self.assertIn("use_static_map_ || observed_3d_world", planning_tick)
         self.assertIn("observed_world", extension)
         self.assertIn('"observed_resident_esdf"', extension)
         self.assertNotIn("Lattice3DRoutePurpose", extension)
         self.assertRegex(
             planning_tick,
-            r"guide_progress_tracker_\s*&&\s*!direct_tracking_interception",
+            r"route_progress_tracker_\s*&&\s*!direct_tracking_interception",
         )
 
     def test_missing_executable_route_holds_without_a_clearance_gate(self) -> None:
@@ -183,7 +183,7 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self.assertIn(".hold_position =", route_execution)
         self.assertIn("active_usable = true", route_execution)
         self.assertIn("result.route_usable = true", route_execution)
-        self.assertIn("temporary_frontier_is_terminal", planning_tick)
+        self.assertIn("local_route_stop_is_terminal", planning_tick)
         self.assertIn("ProductionMppiExecutionReason::kNoExecutableRoute", execution)
         self.assertIn(
             "ProductionMppiExecutionReason::kNoExecutableHorizon", execution

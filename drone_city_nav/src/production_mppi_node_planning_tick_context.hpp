@@ -55,7 +55,7 @@ makeDirectTrackingOwnerIdentity(const ProductionNavigationObjective* const objec
 }
 
 [[nodiscard]] inline std::uint64_t
-directTrackingGuideGeneration(const bool direct_tracking_interception,
+directTrackingRouteGeneration(const bool direct_tracking_interception,
                               const std::uint64_t line_of_sight_generation) noexcept {
   return direct_tracking_interception
              ? (std::uint64_t{1} << 63U) | line_of_sight_generation

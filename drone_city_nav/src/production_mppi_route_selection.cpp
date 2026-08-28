@@ -202,24 +202,20 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
     std::vector<RouteSample3D> route = sampleRoute3D(
         plan.points, route_sampling_step_m_, speed_policy_config_.cruise_speed_mps);
     RouteIntent3D intent{
-        .strategic_plan_id = world.search_objective.mission_epoch,
         .planned_on_revision = plan.planned_on_revision,
         .mission_target = mission_goal,
-        .intent_target = mission_goal,
-        .segment_target = mission_goal,
-        .source = RouteIntentSource3D::kPersistentPlanner,
-        .purpose = RouteIntentPurpose3D::kMissionTransit,
-        .segment_reaches_intent_target = true,
-        .observation_stop_required = false,
         .valid = true,
     };
-    intent.id = makeRouteIntentId3D(intent.source, intent.purpose,
-                                    intent.mission_target, intent.intent_target);
+    intent.id =
+        makeRouteIntentId3D(intent.mission_target, world.search_objective.mission_epoch,
+                            world.search_objective.assignment_generation,
+                            world.search_objective.target_detection_id,
+                            world.search_objective.target_track_id);
     const SegmentEvidenceWorld3D evidence_world =
         evidenceWorld(world, latest_raw_world, static_occupancy_3d_.get(),
                       physical_footprint_config_, flight_envelope_config_);
     SegmentEvidence3D evidence =
-        evaluateSegmentEvidence3D(intent, route, search_start, true, true, true,
+        evaluateSegmentEvidence3D(intent, route, search_start, true, true,
                                   plan.estimated_execution_time_s, evidence_world);
     result.candidates.push_back(ProductionRouteSearchCandidate3D{
         .search_start = search_start,

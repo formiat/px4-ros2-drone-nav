@@ -27,34 +27,34 @@ void ProductionMppiNode::logDiagnosticsEvents(
                 liveness.actual_speed_mps, liveness.predicted_head_progress_m,
                 liveness.predicted_terminal_progress_m);
   }
-  if (snapshot.guide_progress.local_reseed_requested) {
+  if (snapshot.route_progress.local_reseed_requested) {
     RCLCPP_WARN(get_logger(),
-                "GLOBAL_GUIDE_LOCAL_RESEED guide_generation=%" PRIu64
+                "PERSISTENT_ROUTE_LOCAL_RESEED route_generation=%" PRIu64
                 " reseed_generation=%" PRIu64
-                " observation_age_s=%.3f along_guide_progress_m=%.3f "
+                " observation_age_s=%.3f along_route_progress_m=%.3f "
                 "predicted_head_progress_m=%.3f",
-                esdf.route_generation, snapshot.guide_progress.local_reseed_generation,
-                snapshot.guide_progress.observation_age_s,
-                snapshot.guide_progress.progress_m,
-                snapshot.guide_progress.predicted_head_progress_m);
+                esdf.route_generation, snapshot.route_progress.local_reseed_generation,
+                snapshot.route_progress.observation_age_s,
+                snapshot.route_progress.progress_m,
+                snapshot.route_progress.predicted_head_progress_m);
   }
-  if (snapshot.guide_progress.stalled) {
+  if (snapshot.route_progress.stalled) {
     RCLCPP_WARN(get_logger(),
-                "GLOBAL_GUIDE_STALL guide_generation=%" PRIu64 " reason=%s"
+                "PERSISTENT_ROUTE_STALL route_generation=%" PRIu64 " reason=%s"
                 " stall_generation=%" PRIu64
-                " observation_age_s=%.3f along_guide_progress_m=%.3f "
+                " observation_age_s=%.3f along_route_progress_m=%.3f "
                 "predicted_head_progress_m=%.3f",
                 esdf.route_generation,
-                globalGuideProgressActionName(snapshot.guide_progress.action),
-                snapshot.guide_progress.stall_generation,
-                snapshot.guide_progress.observation_age_s,
-                snapshot.guide_progress.progress_m,
-                snapshot.guide_progress.predicted_head_progress_m);
+                routeProgressAction3DName(snapshot.route_progress.action),
+                snapshot.route_progress.stall_generation,
+                snapshot.route_progress.observation_age_s,
+                snapshot.route_progress.progress_m,
+                snapshot.route_progress.predicted_head_progress_m);
   }
-  if (snapshot.no_eligible_recovery.guide_replan_requested) {
+  if (snapshot.no_eligible_recovery.route_replan_requested) {
     RCLCPP_WARN(get_logger(),
-                "MPPI_NO_ELIGIBLE_RECOVERY action=release_global_guide"
-                " recovery_generation=%" PRIu64 " phase=%s guide_generation=%" PRIu64,
+                "MPPI_NO_ELIGIBLE_RECOVERY action=release_persistent_route"
+                " recovery_generation=%" PRIu64 " phase=%s route_generation=%" PRIu64,
                 snapshot.no_eligible_recovery.no_eligible_recovery_generation,
                 mppiNoEligiblePhaseName(snapshot.no_eligible_recovery.phase),
                 esdf.route_generation);

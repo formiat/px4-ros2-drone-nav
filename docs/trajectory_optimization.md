@@ -71,7 +71,7 @@ Critical and planning clearance exposure are strong soft costs. Inside the
 critical band, a bounded quadratic proximity term additionally distinguishes a
 shallow exposure from a trajectory that nearly touches a wall. The term is
 integrated over time, so remaining stationary near a wall does not avoid its
-cost. These terms rank safe rollouts together with guide deviation, mission
+cost. These terms rank safe rollouts together with route deviation, mission
 progress, early/head progress, altitude error, speed tracking, acceleration,
 jerk, yaw motion, terminal error, and control effort. Low clearance alone cannot
 make a rollout unreachable or force a position hold.
@@ -83,13 +83,16 @@ additional prohibited inflation layer.
 
 ## Static And No-Static Geometry Profiles
 
-Map mode may select different horizon, target-lookahead, lattice-window, and
-observation-range geometry. Cruise speed, absolute speed, and horizontal
-acceleration are map-independent explicit parameters.
+World profile may select different horizon, target-lookahead,
+distance-evidence-window, and observation-range geometry. Cruise speed,
+absolute speed, and horizontal acceleration are map-independent explicit
+parameters.
 
 In no-static 3D mode, unknown space remains distinct from raw occupied space but
-is not executable known-free space. Sensor range, physical stopping capability,
-and the finite zero-speed route endpoint bound motion at the observed frontier.
+has the same strategic traversability and base cost as confirmed free space.
+Sensor range, physical stopping capability, route reserve, and the finite
+zero-speed braking fallback bound motion before unobserved obstacles can become
+unavoidable.
 
 Exact defaults live in `config/urban_mvp.yaml`.
 
@@ -121,8 +124,8 @@ prevents a finite path from claiming stopping performance that PX4 cannot track.
 - The first command is bounded relative to applied-control feedback.
 - Early predicted progress is measured separately from terminal progress.
 - Neighboring horizons are compared through warm-start continuity metrics.
-- Persistent prediction without actual displacement triggers reseeding and can
-  release a stalled global guide.
+- Persistent prediction without actual displacement triggers reseeding and can,
+  when recovery is enabled, release and repair a stalled persistent route.
 
 ## Performance
 

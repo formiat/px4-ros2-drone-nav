@@ -31,28 +31,28 @@ findMarker(const visualization_msgs::msg::MarkerArray& markers,
   return input;
 }
 
-TEST(MppiDebugMarkers, PublishesCompleteGlobalLatticeGuide) {
-  const std::vector<mppi::RouteSample3D> guide{
+TEST(MppiDebugMarkers, PublishesCompletePersistentRoute) {
+  const std::vector<mppi::RouteSample3D> route{
       mppi::RouteSample3D{.x_m = 10.0F, .y_m = 20.0F, .z_m = 18.0F},
       mppi::RouteSample3D{.x_m = 14.0F, .y_m = 24.0F, .z_m = 19.0F},
       mppi::RouteSample3D{.x_m = 18.0F, .y_m = 28.0F, .z_m = 20.0F}};
   MppiDebugMarkerInput input = markerInput();
-  input.global_route = guide;
+  input.persistent_route = route;
 
   const auto markers = buildMppiDebugMarkers(input);
 
-  const auto& marker = findMarker(markers, "global_lattice_guide", 0);
+  const auto& marker = findMarker(markers, "persistent_route", 0);
   EXPECT_EQ(marker.action, visualization_msgs::msg::Marker::ADD);
-  ASSERT_EQ(marker.points.size(), guide.size());
+  ASSERT_EQ(marker.points.size(), route.size());
   EXPECT_DOUBLE_EQ(marker.points.front().x, 10.0);
   EXPECT_DOUBLE_EQ(marker.points.back().y, 28.0);
   EXPECT_DOUBLE_EQ(marker.points.front().z, -18.0);
 }
 
-TEST(MppiDebugMarkers, DeletesGlobalGuideWhenSnapshotHasNoGuide) {
+TEST(MppiDebugMarkers, DeletesPersistentRouteWhenSnapshotHasNoRoute) {
   const auto markers = buildMppiDebugMarkers(markerInput());
 
-  const auto& marker = findMarker(markers, "global_lattice_guide", 0);
+  const auto& marker = findMarker(markers, "persistent_route", 0);
   EXPECT_EQ(marker.action, visualization_msgs::msg::Marker::DELETE);
 }
 

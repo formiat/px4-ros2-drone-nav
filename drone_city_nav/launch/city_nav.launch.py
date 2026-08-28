@@ -110,8 +110,8 @@ def generate_launch_description():
     )
     use_static_map = LaunchConfiguration("use_static_map")
     liveness_enabled = LaunchConfiguration("liveness_enabled")
-    global_guide_stall_recovery_enabled = LaunchConfiguration(
-        "global_guide_stall_recovery_enabled"
+    route_stall_recovery_enabled = LaunchConfiguration(
+        "route_stall_recovery_enabled"
     )
     static_occupancy_3d_path = LaunchConfiguration("static_occupancy_3d_path")
     static_esdf_3d_cache_path = LaunchConfiguration("static_esdf_3d_cache_path")
@@ -205,10 +205,10 @@ def generate_launch_description():
         liveness_override = optional_bool_override(
             context, liveness_enabled, "liveness_enabled"
         )
-        guide_stall_recovery_override = optional_bool_override(
+        route_stall_recovery_override = optional_bool_override(
             context,
-            global_guide_stall_recovery_enabled,
-            "global_guide_stall_recovery_enabled",
+            route_stall_recovery_enabled,
+            "route_stall_recovery_enabled",
         )
         scenario_path = point_to_point_scenario_path.perform(context).strip()
         if scenario_path:
@@ -290,8 +290,8 @@ def generate_launch_description():
         for parameter_name, override in (
             ("liveness_enabled", liveness_override),
             (
-                "global_guide_stall_recovery_enabled",
-                guide_stall_recovery_override,
+                "route_stall_recovery_enabled",
+                route_stall_recovery_override,
             ),
         ):
             if override is not None:
@@ -635,9 +635,9 @@ def generate_launch_description():
                 description="Enable progress-based nominal reseeding.",
             ),
             DeclareLaunchArgument(
-                "global_guide_stall_recovery_enabled",
+                "route_stall_recovery_enabled",
                 default_value="",
-                description="Enable release of a guide after a perceived stall.",
+                description="Enable route release after a perceived stall.",
             ),
             DeclareLaunchArgument(
                 "static_occupancy_3d_path",

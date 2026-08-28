@@ -127,7 +127,7 @@ enum class RouteProposalReplacementStatus3D : std::uint8_t {
 };
 
 struct RouteProposalReplacementObservation3D {
-  double segment_target_tolerance_m{1.0e-6};
+  double mission_target_tolerance_m{1.0e-6};
   bool safety_replan_requested{false};
   bool continuity_preserving_successor{false};
 };

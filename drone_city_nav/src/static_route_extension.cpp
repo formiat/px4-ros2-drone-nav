@@ -100,22 +100,22 @@ template<std::size_t Size>
 }
 
 [[nodiscard]] unsigned
-deferredReplanPriority(const GlobalGuideReleaseReason reason) noexcept {
+deferredReplanPriority(const RouteReleaseReason3D reason) noexcept {
   switch (reason) {
-    case GlobalGuideReleaseReason::kObjectiveChanged:
+    case RouteReleaseReason3D::kObjectiveChanged:
       return 7U;
-    case GlobalGuideReleaseReason::kNoEligibleRollouts:
+    case RouteReleaseReason3D::kNoEligibleRollouts:
       return 5U;
-    case GlobalGuideReleaseReason::kDiverged:
+    case RouteReleaseReason3D::kDiverged:
       return 4U;
-    case GlobalGuideReleaseReason::kExhausted:
+    case RouteReleaseReason3D::kExhausted:
       return 3U;
-    case GlobalGuideReleaseReason::kStalled:
+    case RouteReleaseReason3D::kStalled:
       return 2U;
-    case GlobalGuideReleaseReason::kBlocked:
-    case GlobalGuideReleaseReason::kNoActiveGuide:
+    case RouteReleaseReason3D::kBlocked:
+    case RouteReleaseReason3D::kNoActiveRoute:
       return 1U;
-    case GlobalGuideReleaseReason::kNone:
+    case RouteReleaseReason3D::kNone:
       return 0U;
   }
   return 0U;
@@ -231,10 +231,10 @@ std::uint64_t StaticRouteReplanGate::generation() const noexcept {
 
 std::uint64_t
 staticRouteSearchGeneration(const bool snapshot_owned_execution,
-                            const std::uint64_t prepared_guide_generation,
+                            const std::uint64_t prepared_route_generation,
                             const std::uint64_t committed_route_generation) noexcept {
   return snapshot_owned_execution ? committed_route_generation
-                                  : prepared_guide_generation;
+                                  : prepared_route_generation;
 }
 
 bool StaticRouteSearchRequestIdentity::valid() const noexcept {
@@ -340,8 +340,7 @@ std::string_view staticRouteSearchCurrencyStatusName(
 
 void StaticRouteDeferredReplanLatch::defer(
     const StaticRouteDeferredReplan request) noexcept {
-  if (request.reason == GlobalGuideReleaseReason::kNone ||
-      request.route_generation == 0U) {
+  if (request.reason == RouteReleaseReason3D::kNone || request.route_generation == 0U) {
     return;
   }
   if (!request_.has_value() || request_->route_generation != request.route_generation ||
@@ -370,8 +369,7 @@ StaticRouteDeferredReplanLatch::finishReplan(const std::uint64_t route_generatio
   }
   std::optional<StaticRouteDeferredReplan> completed = request_;
   request_.reset();
-  if (route_activated &&
-      completed->reason == GlobalGuideReleaseReason::kNoActiveGuide) {
+  if (route_activated && completed->reason == RouteReleaseReason3D::kNoActiveRoute) {
     return std::nullopt;
   }
   return completed;
@@ -508,7 +506,7 @@ CertifiedRouteReserveAssessment3D assessCertifiedRouteReserve3D(
       result.status = CertifiedRouteReserveStatus3D::kTerminalExempt;
       return result;
     case RouteEndpointSemantics3D::kContinuation:
-    case RouteEndpointSemantics3D::kObservationStop:
+    case RouteEndpointSemantics3D::kLocalStop:
       break;
     default:
       return result;
@@ -615,88 +613,10 @@ StaticRouteExtensionDecision evaluateStaticRouteExtension(
 }
 
 bool deferStaticRouteReleaseDuringExtension(
-    const bool request_in_flight, const GlobalGuideReleaseReason reason) noexcept {
-  return request_in_flight && reason != GlobalGuideReleaseReason::kNone &&
-         reason != GlobalGuideReleaseReason::kNoActiveGuide &&
-         reason != GlobalGuideReleaseReason::kBlocked;
-}
-
-ObservationRouteReplacementDecision evaluateObservationRouteReplacement(
-    const ObservationRouteReplacementObservation& observation) noexcept {
-  ObservationRouteReplacementDecision decision;
-  decision.score_improvement = observation.active_score - observation.candidate_score;
-  if (!observation.candidate_frontier.has_value() ||
-      observation.candidate_frontier->id.value == 0U) {
-    return decision;
-  }
-  if (!observation.active_frontier.has_value() ||
-      observation.active_frontier->id.value == 0U) {
-    decision.status = ObservationRouteReplacementStatus::kNoActiveFrontier;
-    decision.accepted = true;
-    return decision;
-  }
-  if (observation.candidate_frontier->supporting_map_revision <
-      observation.active_frontier->supporting_map_revision) {
-    decision.status = ObservationRouteReplacementStatus::kStaleCandidate;
-    return decision;
-  }
-  if (observation.active_route_exhausted) {
-    decision.status = ObservationRouteReplacementStatus::kActiveRouteExhausted;
-    decision.accepted = true;
-    return decision;
-  }
-  if (!observation.active_frontier_still_valid) {
-    decision.status = ObservationRouteReplacementStatus::kActiveFrontierRetired;
-    decision.accepted = true;
-    return decision;
-  }
-  if (observation.candidate_frontier->id == observation.active_frontier->id) {
-    decision.status = ObservationRouteReplacementStatus::kSameFrontierRetained;
-    decision.accepted = observation.route_extension_requested;
-    return decision;
-  }
-  if (observation.active_frontier_reached) {
-    decision.status = ObservationRouteReplacementStatus::kActiveFrontierReached;
-    decision.accepted = true;
-    return decision;
-  }
-  // Mission-goal proximity is only a soft term in the frontier score. A
-  // separate endpoint gate reintroduces goal-monotonic replacement and can
-  // discard a still-useful observation route before it has exposed its
-  // boundary. Completed, retired, and exhausted routes are handled above.
-  if (decision.score_improvement + 1.0e-9 >=
-      std::max(0.0, observation.minimum_score_improvement)) {
-    decision.status = ObservationRouteReplacementStatus::kScoreImproved;
-    decision.accepted = true;
-    return decision;
-  }
-  decision.status = ObservationRouteReplacementStatus::kInsufficientProgress;
-  return decision;
-}
-
-std::string_view observationRouteReplacementStatusName(
-    const ObservationRouteReplacementStatus status) noexcept {
-  switch (status) {
-    case ObservationRouteReplacementStatus::kInvalidCandidate:
-      return "invalid_candidate";
-    case ObservationRouteReplacementStatus::kNoActiveFrontier:
-      return "no_active_frontier";
-    case ObservationRouteReplacementStatus::kActiveFrontierRetired:
-      return "active_frontier_retired";
-    case ObservationRouteReplacementStatus::kActiveFrontierReached:
-      return "active_frontier_reached";
-    case ObservationRouteReplacementStatus::kActiveRouteExhausted:
-      return "active_route_exhausted";
-    case ObservationRouteReplacementStatus::kScoreImproved:
-      return "score_improved";
-    case ObservationRouteReplacementStatus::kSameFrontierRetained:
-      return "same_frontier_retained";
-    case ObservationRouteReplacementStatus::kStaleCandidate:
-      return "stale_candidate";
-    case ObservationRouteReplacementStatus::kInsufficientProgress:
-      return "insufficient_progress";
-  }
-  return "unknown";
+    const bool request_in_flight, const RouteReleaseReason3D reason) noexcept {
+  return request_in_flight && reason != RouteReleaseReason3D::kNone &&
+         reason != RouteReleaseReason3D::kNoActiveRoute &&
+         reason != RouteReleaseReason3D::kBlocked;
 }
 
 Point3 staticRoutePlanningGoal(const Point3& start, const Point3& mission_goal,
@@ -853,12 +773,10 @@ staticRouteReplacementPolicyName(const StaticRouteReplacementPolicy policy) noex
   switch (policy) {
     case StaticRouteReplacementPolicy::kRequireEndpointImprovement:
       return "require_endpoint_improvement";
-    case StaticRouteReplacementPolicy::kAllowAnyValidatedReplacement:
-      return "allow_any_validated_replacement";
     case StaticRouteReplacementPolicy::kAllowSafetyReplan:
       return "allow_safety_replan";
-    case StaticRouteReplacementPolicy::kAllowTopologicalProgress:
-      return "allow_topological_progress";
+    case StaticRouteReplacementPolicy::kAllowSuccessorProgress:
+      return "allow_successor_progress";
   }
   return "unknown";
 }
@@ -888,8 +806,6 @@ staticRouteCandidateStatusName(const StaticRouteCandidateStatus status) noexcept
       return "insufficient_certified_reserve";
     case StaticRouteCandidateStatus::kNoEndpointImprovement:
       return "no_endpoint_improvement";
-    case StaticRouteCandidateStatus::kNoExplorationProgress:
-      return "no_exploration_progress";
   }
   return "unknown";
 }

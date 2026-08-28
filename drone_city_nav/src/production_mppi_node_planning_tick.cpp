@@ -47,7 +47,7 @@ void ProductionMppiNode::planningTick() {
   const std::optional<DirectTrackingOwnerIdentity3D> direct_tracking_identity =
       makeDirectTrackingOwnerIdentity(objective.get(), direct_tracking_interception,
                                       line_of_sight_generation);
-  const std::uint64_t effective_guide_generation = directTrackingGuideGeneration(
+  const std::uint64_t effective_route_generation = directTrackingRouteGeneration(
       direct_tracking_interception, line_of_sight_generation);
   const std::uint64_t required_route_epoch =
       minimum_tracking_route_mission_epoch_.load(std::memory_order_acquire);
@@ -331,7 +331,7 @@ void ProductionMppiNode::planningTick() {
   ProductionRouteExecutionSelection3D route_execution;
   bool route_usable{false};
   RouteExecutionStatus3D route_execution_status{RouteExecutionStatus3D::kNoActiveRoute};
-  GlobalGuideProjection measured_route_projection;
+  RouteProgressProjection3D measured_route_projection;
   Point3 route_hold_position{
       navigation.state.x,
       navigation.state.y,
@@ -351,7 +351,7 @@ void ProductionMppiNode::planningTick() {
               .pending_activation = route_execution.pending_activation,
           });
   if (pending_recovery.request_successor) {
-    requestGuideRelease(GlobalGuideReleaseReason::kNoActiveGuide, 0U);
+    requestRouteRelease(RouteReleaseReason3D::kNoActiveRoute, 0U);
   }
   if (route_execution.tracking_error_tube_handoff_active) {
     // The controller is still consuming the exact finite connector certified
@@ -374,7 +374,7 @@ void ProductionMppiNode::planningTick() {
           ? activated_route->identity.proposal.reaches_mission_goal
           : esdf->route_reaches_mission_goal;
   RouteEndpointSemantics3D route_endpoint_semantics =
-      RouteEndpointSemantics3D::kObservationStop;
+      RouteEndpointSemantics3D::kLocalStop;
   if (activated_route != nullptr) {
     route_endpoint_semantics = activated_route->planned_endpoint_semantics;
   } else if (route_reaches_mission_goal) {
@@ -401,7 +401,7 @@ void ProductionMppiNode::planningTick() {
   const bool route_execution_blocked =
       !direct_tracking_interception && objective && !route_usable;
   const double route_station_m = route_execution.station_m;
-  GlobalGuideProjection route_projection = measured_route_projection;
+  RouteProgressProjection3D route_projection = measured_route_projection;
   if (route_projection.valid) {
     route_projection.station_m = route_station_m;
     route_projection.remaining_m =
@@ -523,9 +523,9 @@ void ProductionMppiNode::planningTick() {
                 .terminal_route_available = route_reaches_mission_goal,
             })
           : MissionGoalCaptureResult{};
-  const bool temporary_frontier_is_terminal =
+  const bool local_route_stop_is_terminal =
       route_usable && route_projection.valid &&
-      route_endpoint_semantics == RouteEndpointSemantics3D::kObservationStop;
+      route_endpoint_semantics == RouteEndpointSemantics3D::kLocalStop;
   MppiSpeedPolicyResult speed_policy = evaluateMppiSpeedPolicy(
       speed_policy_config_,
       MppiSpeedPolicyInput{
@@ -679,12 +679,12 @@ void ProductionMppiNode::planningTick() {
         .route_station_valid = route_projection.valid,
     });
   }
-  GlobalGuideProgressUpdate guide_progress;
-  if (guide_progress_tracker_ && !direct_tracking_interception) {
-    const GlobalGuideProjection& projection = route_projection;
-    guide_progress = guide_progress_tracker_->evaluate(GlobalGuideProgressObservation{
+  RouteProgressUpdate3D route_progress;
+  if (route_progress_tracker_ && !direct_tracking_interception) {
+    const RouteProgressProjection3D& projection = route_projection;
+    route_progress = route_progress_tracker_->evaluate(RouteProgressObservation3D{
         .stamp_ns = now_ns,
-        .guide_generation =
+        .route_generation =
             projection.valid && planning_state == ProductionMppiPlanningState::kPlanned
                 ? route_generation
                 : 0U,
@@ -697,8 +697,8 @@ void ProductionMppiNode::planningTick() {
                              planning_state == ProductionMppiPlanningState::kPlanned &&
                              !route_control.hold_xy,
     });
-    if (guide_progress.stalled) {
-      requestGuideRelease(GlobalGuideReleaseReason::kStalled, route_generation);
+    if (route_progress.stalled) {
+      requestRouteRelease(RouteReleaseReason3D::kStalled, route_generation);
     }
   }
   mppi::RiskTier route_required_risk_tier = mppi::RiskTier::kPreferred;
@@ -774,10 +774,10 @@ void ProductionMppiNode::planningTick() {
   }
   const MppiNominalReseedUpdate nominal_reseed =
       nominal_reseed_tracker_.update(MppiNominalReseedObservation{
-          .guide_generation = direct_tracking_interception ? effective_guide_generation
+          .route_generation = direct_tracking_interception ? effective_route_generation
                                                            : route_generation,
           .local_liveness_generation = liveness.reseed_generation,
-          .guide_liveness_generation = guide_progress.local_reseed_generation,
+          .route_liveness_generation = route_progress.local_reseed_generation,
           .direct_tracking_maneuver_generation =
               direct_tracking_maneuver.reseed_generation,
       });
@@ -794,7 +794,7 @@ void ProductionMppiNode::planningTick() {
       rollout_budget_config_,
       MppiRolloutBudgetObservation{
           .static_world = use_static_map_,
-          .guide_available =
+          .route_available =
               direct_tracking_interception || (route_usable && route_projection.valid),
           .direct_tracking = direct_tracking_interception,
           .clearance_valid = current_clearance.status == EsdfQueryStatus::kValid,
@@ -852,7 +852,7 @@ void ProductionMppiNode::planningTick() {
       .deterministic_candidate = deterministic_candidate,
       .prefer_route_directed_candidate =
           !optional_constraints_.stochastic_trajectory_selection_enabled ||
-          liveness.recovery_active || guide_progress.local_reseed_requested,
+          liveness.recovery_active || route_progress.local_reseed_requested,
       .cooperative_avoidance_active = cooperative.mppi.avoidance_active,
       .noncooperative_avoidance_active = noncooperative_evasive_maneuver_active,
   };
@@ -896,7 +896,7 @@ void ProductionMppiNode::planningTick() {
       .liveness = liveness,
       .direct_tracking_maneuver = direct_tracking_maneuver,
       .speed_policy = speed_policy,
-      .guide_progress = guide_progress,
+      .route_progress = route_progress,
       .no_eligible_recovery = no_eligible_recovery,
       .goal_capture = goal_capture,
       .rollout_budget = rollout_budget,
@@ -919,7 +919,7 @@ void ProductionMppiNode::planningTick() {
       .route_required_risk_tier = route_required_risk_tier,
       .route_usable = route_usable,
       .direct_tracking_interception = direct_tracking_interception,
-      .temporary_frontier_is_terminal = temporary_frontier_is_terminal,
+      .local_route_stop_is_terminal = local_route_stop_is_terminal,
       .pose_predicted = pose_predicted,
   });
 }

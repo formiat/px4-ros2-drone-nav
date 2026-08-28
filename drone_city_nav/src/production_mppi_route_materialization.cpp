@@ -95,7 +95,7 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
   if (world.static_route_replan_request) {
     result.replacement_policy = StaticRouteReplacementPolicy::kAllowSafetyReplan;
   } else if (world.static_route_extension_request) {
-    result.replacement_policy = StaticRouteReplacementPolicy::kAllowTopologicalProgress;
+    result.replacement_policy = StaticRouteReplacementPolicy::kAllowSuccessorProgress;
   }
 
   result.validation =
@@ -404,7 +404,6 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
     }
   }
   const RouteEndpointSemantics3D endpoint_semantics = routeEndpointSemantics3D(
-      prepared.route_intent, prepared.route_segment_evidence.reaches_intent_target,
       prepared.route_reaches_mission_goal, !world.search_objective.continuous_tracking);
   prepared.route_fingerprint = routeFingerprint(*route, route_traversals);
   RouteCompilationResult3D compilation = compileExecutionRoute3D(RouteCompilerInput3D{

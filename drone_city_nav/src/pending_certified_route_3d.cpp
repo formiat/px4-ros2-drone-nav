@@ -85,7 +85,7 @@ bool pendingCertifiedRouteEligible3D(
               (snapshot.phase == ExecutionRoutePhase3D::kStopped &&
                snapshot.route.has_value() &&
                snapshot.route->planned_endpoint_semantics ==
-                   RouteEndpointSemantics3D::kObservationStop)) &&
+                   RouteEndpointSemantics3D::kLocalStop)) &&
              snapshot.route.has_value() && snapshot.route->geometry != nullptr &&
              snapshot.route->identity.generation == pending.base_route_generation &&
              snapshot.route->geometry->executable_geometry_revision ==
@@ -100,7 +100,7 @@ bool pendingCertifiedRouteEligible3D(
               (snapshot.phase == ExecutionRoutePhase3D::kStopped &&
                snapshot.route.has_value() &&
                snapshot.route->planned_endpoint_semantics ==
-                   RouteEndpointSemantics3D::kObservationStop)) &&
+                   RouteEndpointSemantics3D::kLocalStop)) &&
              snapshot.route.has_value() && snapshot.route->geometry != nullptr &&
              snapshot.route->identity.generation == pending.base_route_generation &&
              snapshot.route->geometry->executable_geometry_revision ==

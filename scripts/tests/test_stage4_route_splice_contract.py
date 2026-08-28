@@ -19,7 +19,7 @@ class Stage4RouteSpliceContractTest(unittest.TestCase):
         implementation = (SOURCE / "static_route_extension.cpp").read_text(
             encoding="utf-8"
         )
-        guide = (SOURCE / "production_mppi_node_static_guide.cpp").read_text(
+        planning = (SOURCE / "production_mppi_node_route_planning.cpp").read_text(
             encoding="utf-8"
         )
 
@@ -36,7 +36,7 @@ class Stage4RouteSpliceContractTest(unittest.TestCase):
         )
         self.assertIn(
             "static_route_planning_latency_tracker_.record(route_planning_ms, world.build_ms)",
-            guide,
+            planning,
         )
         self.assertNotIn("maximum_trigger_fraction_of_route", header + implementation)
 

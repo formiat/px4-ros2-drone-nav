@@ -435,10 +435,11 @@ Static-map passage topology is derived offline from matching raw `Occupancy3D`
 and `ESDF3D` artifacts. The generalized compiler classifies footprint-feasible
 clearance topology, extracts arbitrarily oriented portal voxel patches, and
 stores a sparse medial segment graph. It does not use roof presence, axis-aligned
-portal assumptions, or all-pairs portal edges. A route-specific
-`PassageTraversal` is resolved lazily and cached only when global search needs it.
+portal assumptions, or all-pairs portal edges. This fingerprint-bound topology
+is offline passage evidence for visualization, diagnostics, and optional
+execution metadata; it is not a competing strategic route producer.
 
-After route selection, the planner samples route-orthogonal cross-sections from
+For route-associated passage execution, the planner samples route-orthogonal cross-sections from
 raw `Occupancy3D`, validates the full drone footprint in both transverse axes,
 and builds a varying local free-space envelope. Opposing traffic coordinates by
 shared sparse segment resources and uses deterministic continuous offsets when

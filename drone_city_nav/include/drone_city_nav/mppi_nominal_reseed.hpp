@@ -8,13 +8,13 @@ enum class MppiNoEligiblePhase : std::uint8_t {
   kHealthy,
   kReseedPending,
   kAwaitingReseedResult,
-  kAwaitingGuideChange,
+  kAwaitingRouteChange,
 };
 
 struct MppiNominalReseedObservation {
-  std::uint64_t guide_generation{0U};
+  std::uint64_t route_generation{0U};
   std::uint64_t local_liveness_generation{0U};
-  std::uint64_t guide_liveness_generation{0U};
+  std::uint64_t route_liveness_generation{0U};
   std::uint64_t direct_tracking_maneuver_generation{0U};
 };
 
@@ -28,7 +28,7 @@ struct MppiNominalReseedUpdate {
 struct MppiEligibleRolloutUpdate {
   std::uint64_t no_eligible_recovery_generation{0U};
   MppiNoEligiblePhase phase{MppiNoEligiblePhase::kHealthy};
-  bool guide_replan_requested{false};
+  bool route_replan_requested{false};
 };
 
 class MppiNominalReseedTracker {
@@ -41,9 +41,9 @@ public:
 
 private:
   std::uint64_t generation_{0U};
-  std::uint64_t guide_generation_{0U};
+  std::uint64_t route_generation_{0U};
   std::uint64_t local_liveness_generation_{0U};
-  std::uint64_t guide_liveness_generation_{0U};
+  std::uint64_t route_liveness_generation_{0U};
   std::uint64_t direct_tracking_maneuver_generation_{0U};
   std::uint64_t no_eligible_recovery_generation_{0U};
   MppiNoEligiblePhase no_eligible_phase_{MppiNoEligiblePhase::kHealthy};

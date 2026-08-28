@@ -41,7 +41,7 @@ TEST(RoutePlanning3D, NetCoordinateProgressUsesTheFullThreeDimensionalMission) {
   };
 }
 
-TEST(RoutePlanning3DTest, ReachingLocalBendDoesNotCompleteGlobalIntent) {
+TEST(RoutePlanning3DTest, PartialRouteDoesNotCompleteMissionIntent) {
   mppi::EsdfGrid grid{.width = 4,
                       .height = 2,
                       .resolution_m = 1.0F,
@@ -54,21 +54,14 @@ TEST(RoutePlanning3DTest, ReachingLocalBendDoesNotCompleteGlobalIntent) {
   RouteIntent3D intent{.id = 1U,
                        .planned_on_revision = 10U,
                        .mission_target = {20.0, 0.0, 0.0},
-                       .intent_target = {10.0, 0.0, 0.0},
-                       .segment_target = {2.0, 0.0, 0.0},
-                       .source = RouteIntentSource3D::kTopology,
-                       .purpose = RouteIntentPurpose3D::kObservationFrontier,
-                       .segment_reaches_intent_target = false,
                        .valid = true};
   const std::vector<RouteSample3D> route{{.position = {0.5, 0.5, 0.5}},
                                          {.position = {2.0, 0.5, 0.5}}};
 
   const SegmentEvidence3D evidence = evaluateSegmentEvidence3D(
-      intent, route, route.front().position, true, true, false, 1.0, world(grid, esdf));
+      intent, route, route.front().position, true, false, 1.0, world(grid, esdf));
 
   EXPECT_TRUE(evidence.physical_executable);
-  EXPECT_TRUE(evidence.reaches_segment_target);
-  EXPECT_FALSE(evidence.reaches_intent_target);
   EXPECT_FALSE(evidence.reaches_mission_target);
 }
 
@@ -85,14 +78,12 @@ TEST(RoutePlanning3DTest, UnknownIsTraversableAndDoesNotInventKnownClearance) {
   RouteIntent3D intent{.id = 2U,
                        .planned_on_revision = 11U,
                        .mission_target = {3.0, 0.5, 0.5},
-                       .intent_target = {3.0, 0.5, 0.5},
-                       .segment_target = {3.0, 0.5, 0.5},
                        .valid = true};
   const std::vector<RouteSample3D> route{{.position = {0.5, 0.5, 0.5}},
                                          {.position = {2.5, 0.5, 0.5}}};
 
   const SegmentEvidence3D evidence = evaluateSegmentEvidence3D(
-      intent, route, route.front().position, true, true, false, 1.0, world(grid, esdf));
+      intent, route, route.front().position, true, false, 1.0, world(grid, esdf));
 
   EXPECT_TRUE(evidence.physical_executable);
   EXPECT_TRUE(evidence.unknown_exposure);
@@ -114,14 +105,12 @@ TEST(RoutePlanning3DTest, CollisionWinsWhenAnotherSampleIsUnknown) {
   RouteIntent3D intent{.id = 3U,
                        .planned_on_revision = 11U,
                        .mission_target = {3.0, 0.5, 0.5},
-                       .intent_target = {3.0, 0.5, 0.5},
-                       .segment_target = {3.0, 0.5, 0.5},
                        .valid = true};
   const std::vector<RouteSample3D> route{{.position = {0.5, 0.5, 0.5}},
                                          {.position = {2.5, 0.5, 0.5}}};
 
   const SegmentEvidence3D evidence = evaluateSegmentEvidence3D(
-      intent, route, route.front().position, true, true, false, 1.0, world(grid, esdf));
+      intent, route, route.front().position, true, false, 1.0, world(grid, esdf));
 
   EXPECT_FALSE(evidence.physical_executable);
   EXPECT_TRUE(evidence.raw_collision);
@@ -144,8 +133,6 @@ TEST(RoutePlanning3DTest, LatestRawCollisionRejectsAStaleUnknownEsdfRoute) {
   const RouteIntent3D intent{.id = 4U,
                              .planned_on_revision = 11U,
                              .mission_target = {3.0, 0.5, 0.5},
-                             .intent_target = {3.0, 0.5, 0.5},
-                             .segment_target = {3.0, 0.5, 0.5},
                              .valid = true};
   const std::vector<RouteSample3D> route{{.position = {0.5, 0.5, 0.5}},
                                          {.position = {2.5, 0.5, 0.5}}};
@@ -153,7 +140,7 @@ TEST(RoutePlanning3DTest, LatestRawCollisionRejectsAStaleUnknownEsdfRoute) {
   evidence_world.latest_observed_occupancy = &latest_raw;
 
   const SegmentEvidence3D evidence = evaluateSegmentEvidence3D(
-      intent, route, route.front().position, true, true, false, 1.0, evidence_world);
+      intent, route, route.front().position, true, false, 1.0, evidence_world);
 
   EXPECT_FALSE(evidence.physical_executable);
   EXPECT_TRUE(evidence.raw_collision);
@@ -178,8 +165,6 @@ TEST(RoutePlanning3DTest, RawAuthorityMakesInvalidDerivedDistanceNonBlocking) {
   const RouteIntent3D intent{.id = 5U,
                              .planned_on_revision = 12U,
                              .mission_target = {3.0, 0.5, 0.5},
-                             .intent_target = {3.0, 0.5, 0.5},
-                             .segment_target = {3.0, 0.5, 0.5},
                              .valid = true};
   const std::vector<RouteSample3D> route{{.position = {0.5, 0.5, 0.5}},
                                          {.position = {2.5, 0.5, 0.5}}};
@@ -187,11 +172,11 @@ TEST(RoutePlanning3DTest, RawAuthorityMakesInvalidDerivedDistanceNonBlocking) {
   permissive_world.latest_observed_occupancy = &latest_raw;
 
   const SegmentEvidence3D permissive = evaluateSegmentEvidence3D(
-      intent, route, route.front().position, true, true, false, 1.0, permissive_world);
+      intent, route, route.front().position, true, false, 1.0, permissive_world);
   SegmentEvidenceWorld3D strict_world = permissive_world;
   strict_world.reject_invalid_esdf = true;
   const SegmentEvidence3D strict = evaluateSegmentEvidence3D(
-      intent, route, route.front().position, true, true, false, 1.0, strict_world);
+      intent, route, route.front().position, true, false, 1.0, strict_world);
 
   EXPECT_TRUE(permissive.physical_executable);
   EXPECT_TRUE(permissive.invalid_esdf_exposure);
@@ -215,8 +200,6 @@ TEST(RoutePlanning3DTest, RouteBeyondLocalDistanceCacheUsesRawAuthority) {
   const RouteIntent3D intent{.id = 6U,
                              .planned_on_revision = 13U,
                              .mission_target = {6.5, 0.5, 0.5},
-                             .intent_target = {6.5, 0.5, 0.5},
-                             .segment_target = {6.5, 0.5, 0.5},
                              .valid = true};
   const std::vector<RouteSample3D> route{{.position = {0.5, 0.5, 0.5}},
                                          {.position = {6.5, 0.5, 0.5}}};
@@ -224,7 +207,7 @@ TEST(RoutePlanning3DTest, RouteBeyondLocalDistanceCacheUsesRawAuthority) {
   evidence_world.latest_observed_occupancy = &raw;
 
   const SegmentEvidence3D evidence = evaluateSegmentEvidence3D(
-      intent, route, route.front().position, true, true, true, 6.0, evidence_world);
+      intent, route, route.front().position, true, true, 6.0, evidence_world);
 
   EXPECT_TRUE(evidence.physical_executable);
   EXPECT_EQ(evidence.status, SegmentEvidenceStatus3D::kValid);

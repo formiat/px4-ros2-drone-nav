@@ -267,7 +267,7 @@ MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
     return update;
   }
 
-  requestGuideRelease(GlobalGuideReleaseReason::kObjectiveChanged);
+  requestRouteRelease(RouteReleaseReason3D::kObjectiveChanged);
   RCLCPP_INFO(get_logger(),
               "MISSION_WAYPOINT_ACKNOWLEDGED completed_index=%zu waypoint_count=%zu "
               "horizon=%" PRIu64 " offboard=%" PRIu64 " next_goal=(%.2f,%.2f,%.2f)",

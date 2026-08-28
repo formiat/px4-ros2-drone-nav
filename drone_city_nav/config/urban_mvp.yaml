@@ -219,7 +219,6 @@ production_mppi_node:
     static_stale_esdf_execution_window_s: 6.0
     no_static_stale_esdf_execution_window_s: 4.0
     maximum_control_feedback_age_ms: 200.0
-    no_static_guide_lookahead_m: 30.0
     no_static_3d_esdf_update_rate_hz: 1.0
     no_static_3d_esdf_horizontal_half_extent_m: 20.0
     no_static_3d_esdf_vertical_half_extent_m: 15.0
@@ -362,30 +361,27 @@ production_mppi_node:
     static_route_shortcut_validation_batch_size: 4
     static_route_corner_smoothing_distance_m: 2.0
     static_route_corner_curve_samples: 4
-    global_guide_validation_sample_step_m: 0.5
-    static_global_guide_replan_remaining_m: 45.0
-    no_static_global_guide_replan_remaining_m: 15.0
-    static_global_guide_required_certified_overlap_m: 8.0
-    static_global_guide_extension_latency_margin_s: 0.5
-    static_global_guide_extension_maximum_latency_s: 8.0
-    static_global_guide_extension_retry_progress_m: 15.0
-    static_global_guide_extension_retry_interval_s: 1.0
-    static_global_guide_extension_minimum_endpoint_improvement_m: 5.0
-    static_global_guide_splice_sample_step_m: 0.5
-    static_global_guide_splice_maximum_position_separation_m: 2.0
-    static_global_guide_splice_minimum_tangent_alignment: 0.5
-    static_global_guide_splice_activation_station_tolerance_m: 1.0
-    static_global_guide_failed_search_pose_change_m: 2.0
-    static_global_guide_failed_search_objective_change_m: 5.0
-    static_global_guide_failed_search_retry_interval_s: 1.0
+    static_route_replan_remaining_m: 45.0
+    no_static_route_replan_remaining_m: 15.0
+    route_required_certified_overlap_m: 8.0
+    route_extension_latency_margin_s: 0.5
+    route_extension_maximum_latency_s: 8.0
+    route_extension_retry_progress_m: 15.0
+    route_extension_retry_interval_s: 1.0
+    route_extension_minimum_endpoint_improvement_m: 5.0
+    route_splice_sample_step_m: 0.5
+    route_splice_maximum_position_separation_m: 2.0
+    route_splice_minimum_tangent_alignment: 0.5
+    route_splice_activation_station_tolerance_m: 1.0
+    route_failed_search_pose_change_m: 2.0
+    route_failed_search_objective_change_m: 5.0
+    route_failed_search_retry_interval_s: 1.0
     mission_goal_capture_radius_m: 2.0
-    global_guide_maximum_cross_track_m: 15.0
-    global_guide_heading_low_speed_mps: 0.5
-    global_guide_heading_high_speed_mps: 1.5
-    global_guide_stall_observation_window_s: 1.0
-    global_guide_stall_minimum_progress_m: 0.5
-    global_guide_stall_minimum_predicted_head_progress_m: 0.5
-    global_guide_stall_recovery_enabled: false
+    route_maximum_cross_track_m: 15.0
+    route_stall_observation_window_s: 1.0
+    route_stall_minimum_progress_m: 0.5
+    route_stall_minimum_predicted_head_progress_m: 0.5
+    route_stall_recovery_enabled: false
 
 mppi_offboard_node:
   ros__parameters:

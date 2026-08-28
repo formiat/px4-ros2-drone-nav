@@ -4,31 +4,31 @@ namespace drone_city_nav {
 
 MppiNominalReseedUpdate MppiNominalReseedTracker::update(
     const MppiNominalReseedObservation& observation) noexcept {
-  const bool guide_changed = observation.guide_generation != 0U &&
-                             observation.guide_generation != guide_generation_;
+  const bool route_changed = observation.route_generation != 0U &&
+                             observation.route_generation != route_generation_;
   const bool local_liveness_changed =
       observation.local_liveness_generation > local_liveness_generation_;
-  const bool guide_liveness_changed =
-      observation.guide_liveness_generation > guide_liveness_generation_;
+  const bool route_liveness_changed =
+      observation.route_liveness_generation > route_liveness_generation_;
   const bool direct_tracking_maneuver_changed =
       observation.direct_tracking_maneuver_generation >
       direct_tracking_maneuver_generation_;
   const bool no_eligible_reseed_pending =
       no_eligible_phase_ == MppiNoEligiblePhase::kReseedPending;
-  const bool requested = guide_changed || local_liveness_changed ||
-                         guide_liveness_changed || direct_tracking_maneuver_changed ||
+  const bool requested = route_changed || local_liveness_changed ||
+                         route_liveness_changed || direct_tracking_maneuver_changed ||
                          no_eligible_reseed_pending;
 
-  guide_generation_ = observation.guide_generation;
+  route_generation_ = observation.route_generation;
   local_liveness_generation_ = observation.local_liveness_generation;
-  guide_liveness_generation_ = observation.guide_liveness_generation;
+  route_liveness_generation_ = observation.route_liveness_generation;
   direct_tracking_maneuver_generation_ =
       observation.direct_tracking_maneuver_generation;
   if (requested) {
     ++generation_;
     if (no_eligible_phase_ == MppiNoEligiblePhase::kReseedPending &&
-        recovery_reseed_pending_ && !guide_changed) {
-      no_eligible_phase_ = MppiNoEligiblePhase::kAwaitingGuideChange;
+        recovery_reseed_pending_ && !route_changed) {
+      no_eligible_phase_ = MppiNoEligiblePhase::kAwaitingRouteChange;
     } else if (no_eligible_phase_ != MppiNoEligiblePhase::kHealthy) {
       no_eligible_phase_ = MppiNoEligiblePhase::kAwaitingReseedResult;
     }
@@ -63,7 +63,7 @@ MppiEligibleRolloutUpdate MppiNominalReseedTracker::observeEligibleRolloutResult
     return {
         .no_eligible_recovery_generation = no_eligible_recovery_generation_,
         .phase = no_eligible_phase_,
-        .guide_replan_requested = true,
+        .route_replan_requested = true,
     };
   }
   return {
@@ -80,8 +80,8 @@ const char* mppiNoEligiblePhaseName(const MppiNoEligiblePhase phase) noexcept {
       return "reseed_pending";
     case MppiNoEligiblePhase::kAwaitingReseedResult:
       return "awaiting_reseed_result";
-    case MppiNoEligiblePhase::kAwaitingGuideChange:
-      return "awaiting_guide_change";
+    case MppiNoEligiblePhase::kAwaitingRouteChange:
+      return "awaiting_route_change";
   }
   return "unknown";
 }

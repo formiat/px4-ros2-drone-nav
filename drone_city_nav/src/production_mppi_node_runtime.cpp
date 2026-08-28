@@ -51,17 +51,18 @@ namespace {
 
 } // namespace
 
-void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
+void ProductionMppiNode::routePlanningWorker(const std::stop_token stop_token) {
   while (!stop_token.stop_requested()) {
     std::shared_ptr<const ProductionMppiPreparedEsdf> world;
     {
-      std::unique_lock lock{guide_queue_mutex_};
-      guide_queue_condition_.wait(lock, stop_token,
-                                  [this]() { return pending_guide_world_ != nullptr; });
+      std::unique_lock lock{route_planning_queue_mutex_};
+      route_planning_queue_condition_.wait(lock, stop_token, [this]() {
+        return pending_route_planning_world_ != nullptr;
+      });
       if (stop_token.stop_requested()) {
         return;
       }
-      world = std::exchange(pending_guide_world_, nullptr);
+      world = std::exchange(pending_route_planning_world_, nullptr);
     }
     if (!world) {
       continue;
@@ -71,7 +72,7 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
           assessProductionWorldGeneration(*world);
       const std::string_view status_name = productionWorldGenerationStatusName(status);
       RCLCPP_ERROR(get_logger(),
-                   "PRODUCTION_MPPI_GUIDE rejected local_world_generation=%" PRIu64
+                   "PRODUCTION_MPPI_ROUTE rejected local_world_generation=%" PRIu64
                    " reason=%.*s",
                    world->local_world_generation.generation,
                    static_cast<int>(status_name.size()), status_name.data());
@@ -80,7 +81,7 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
     }
     if (world->grid.depth <= 1) {
       RCLCPP_ERROR(get_logger(),
-                   "PRODUCTION_MPPI_GUIDE rejected local_world_generation=%" PRIu64
+                   "PRODUCTION_MPPI_ROUTE rejected local_world_generation=%" PRIu64
                    " reason=full_3d_world_required depth=%d",
                    world->local_world_generation.generation, world->grid.depth);
       finishStaticRouteSearch(*world);
@@ -122,7 +123,7 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
       finishStaticRouteSearch(*world);
       continue;
     }
-    processGuideSearch3D(*world, navigation);
+    processRouteSearch3D(*world, navigation);
   }
 }
 
@@ -147,7 +148,7 @@ ProductionMppiNode::selectTarget(const std::span<const RouteSample3D> route,
     target.y = static_cast<float>(sample.position.y);
     target.z = static_cast<float>(sample.position.z);
     target_station_m = sample.station_m;
-    target_source = "global_route_3d";
+    target_source = "persistent_route_3d";
     return target;
   }
   if (!mppi_route.empty()) {
@@ -160,15 +161,15 @@ ProductionMppiNode::selectTarget(const std::span<const RouteSample3D> route,
     target.y = sample.y_m;
     target.z = sample.z_m;
     target_station_m = sample.station_m;
-    target_source = "global_route_3d";
+    target_source = "persistent_route_3d";
     return target;
   }
   return target;
 }
 
-void ProductionMppiNode::requestGuideRelease(const GlobalGuideReleaseReason reason,
-                                             const std::uint64_t guide_generation) {
-  requestStaticRouteReplan(reason, guide_generation);
+void ProductionMppiNode::requestRouteRelease(const RouteReleaseReason3D reason,
+                                             const std::uint64_t route_generation) {
+  requestStaticRouteReplan(reason, route_generation);
 }
 
 ProductionMppiStability
@@ -222,10 +223,10 @@ ProductionMppiNode::~ProductionMppiNode() {
     raw_queue_condition_.notify_all();
     esdf_worker_.join();
   }
-  if (guide_worker_.joinable()) {
-    guide_worker_.request_stop();
-    guide_queue_condition_.notify_all();
-    guide_worker_.join();
+  if (route_planning_worker_.joinable()) {
+    route_planning_worker_.request_stop();
+    route_planning_queue_condition_.notify_all();
+    route_planning_worker_.join();
   }
   publishSummary();
 }

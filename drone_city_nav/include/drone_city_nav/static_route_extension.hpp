@@ -1,11 +1,10 @@
 #pragma once
 
-#include "drone_city_nav/active_global_guide.hpp"
 #include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/mppi/mppi_types.hpp"
-#include "drone_city_nav/observation_frontier.hpp"
 #include "drone_city_nav/route_3d.hpp"
 #include "drone_city_nav/route_execution_contract_3d.hpp"
+#include "drone_city_nav/route_progress_3d.hpp"
 #include "drone_city_nav/stopping_capability.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
 #include "drone_city_nav/types.hpp"
@@ -210,7 +209,7 @@ private:
 
 [[nodiscard]] std::uint64_t
 staticRouteSearchGeneration(bool snapshot_owned_execution,
-                            std::uint64_t prepared_guide_generation,
+                            std::uint64_t prepared_route_generation,
                             std::uint64_t committed_route_generation) noexcept;
 
 enum class StaticRouteSearchRequestKind : std::uint8_t {
@@ -267,7 +266,7 @@ staticRouteSearchRequestKindName(StaticRouteSearchRequestKind kind) noexcept;
 staticRouteSearchCurrencyStatusName(StaticRouteSearchCurrencyStatus status) noexcept;
 
 struct StaticRouteDeferredReplan {
-  GlobalGuideReleaseReason reason{GlobalGuideReleaseReason::kNone};
+  RouteReleaseReason3D reason{RouteReleaseReason3D::kNone};
   std::uint64_t route_generation{0U};
 };
 
@@ -325,45 +324,12 @@ enum class StaticRouteCandidateStatus : std::uint8_t {
   kInvalidCertifiedReserve,
   kInsufficientCertifiedReserve,
   kNoEndpointImprovement,
-  kNoExplorationProgress,
 };
 
 enum class StaticRouteReplacementPolicy : std::uint8_t {
   kRequireEndpointImprovement,
-  kAllowAnyValidatedReplacement,
   kAllowSafetyReplan,
-  kAllowTopologicalProgress,
-};
-
-enum class ObservationRouteReplacementStatus : std::uint8_t {
-  kInvalidCandidate,
-  kNoActiveFrontier,
-  kActiveFrontierRetired,
-  kActiveFrontierReached,
-  kActiveRouteExhausted,
-  kScoreImproved,
-  kSameFrontierRetained,
-  kStaleCandidate,
-  kInsufficientProgress,
-};
-
-struct ObservationRouteReplacementObservation {
-  std::optional<ObservationFrontier> active_frontier;
-  std::optional<ObservationFrontier> candidate_frontier;
-  double active_score{0.0};
-  double candidate_score{0.0};
-  double minimum_score_improvement{0.0};
-  bool active_frontier_still_valid{false};
-  bool active_frontier_reached{false};
-  bool active_route_exhausted{false};
-  bool route_extension_requested{false};
-};
-
-struct ObservationRouteReplacementDecision {
-  ObservationRouteReplacementStatus status{
-      ObservationRouteReplacementStatus::kInvalidCandidate};
-  double score_improvement{0.0};
-  bool accepted{false};
+  kAllowSuccessorProgress,
 };
 
 enum class StaticRouteActivationStatus : std::uint8_t {
@@ -390,12 +356,6 @@ struct StaticRouteCandidateValidation {
   bool accepted{false};
 };
 
-[[nodiscard]] ObservationRouteReplacementDecision evaluateObservationRouteReplacement(
-    const ObservationRouteReplacementObservation& observation) noexcept;
-
-[[nodiscard]] std::string_view observationRouteReplacementStatusName(
-    ObservationRouteReplacementStatus status) noexcept;
-
 struct StaticRouteCandidate {
   std::uint64_t search_revision{0U};
   std::uint64_t base_route_generation{0U};
@@ -414,7 +374,7 @@ struct StaticRouteCandidate {
 
 [[nodiscard]] bool
 deferStaticRouteReleaseDuringExtension(bool request_in_flight,
-                                       GlobalGuideReleaseReason reason) noexcept;
+                                       RouteReleaseReason3D reason) noexcept;
 
 [[nodiscard]] Point3 staticRoutePlanningGoal(const Point3& start,
                                              const Point3& mission_goal,

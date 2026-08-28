@@ -437,12 +437,12 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             self.text,
         )
         self.assertIn(
-            "ENABLE_GLOBAL_GUIDE_STALL_RECOVERY:-false",
+            "ENABLE_ROUTE_STALL_RECOVERY:-false",
             self.text,
         )
         self.assertNotIn("default_no_static_progress_recovery", self.text)
         self.assertNotIn("default_no_static_cycle_recovery", self.text)
-        self.assertIn("global_guide_stall_recovery_enabled", self.launch_text)
+        self.assertIn("route_stall_recovery_enabled", self.launch_text)
         self.assertNotIn("no_static_cycle_recovery_enabled", self.launch_text)
         self.assertNotIn("ENABLE_NO_STATIC_CYCLE_RECOVERY", self.text)
         self.assertIn(
@@ -692,13 +692,13 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertNotIn(parameter, self.nav_config_text)
         self.assertNotIn(parameter, self.production_mppi_source_text)
         self.assertNotIn("frontier_blacklist_enabled_", self.production_mppi_runtime_source_text)
-        guide = PRODUCTION_MPPI_SOURCE.with_name(
-            "production_mppi_node_static_guide.cpp"
+        planning = PRODUCTION_MPPI_SOURCE.with_name(
+            "production_mppi_node_route_planning.cpp"
         ).read_text()
-        self.assertNotIn("Lattice3DSoftTabuEntry", guide)
-        self.assertNotIn("observation_frontier", guide)
-        self.assertNotIn("cycle_classification", guide)
-        self.assertNotIn("no_static_cycle", guide)
+        self.assertNotIn("Lattice3DSoftTabuEntry", planning)
+        self.assertNotIn("observation_frontier", planning)
+        self.assertNotIn("cycle_classification", planning)
+        self.assertNotIn("no_static_cycle", planning)
         for retired_parameter in (
             "global_lattice_",
             "frontier_viability_constraints_enabled",

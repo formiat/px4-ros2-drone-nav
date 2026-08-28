@@ -1,9 +1,9 @@
 # Obstacle Mapping
 
-Obstacle mapping owns the selected 2D or 3D lidar-memory input used by no-static
-planning. Static Occupancy3D is a separate source loaded directly by the
-production planner. The main rule is that raw sources stay raw: distance-based
-risk tiers do not inflate hard occupancy.
+Obstacle mapping owns the revisioned 3D-lidar memory used by no-static
+production planning. Static Occupancy3D is a separate source loaded directly by
+the production planner. The main rule is that raw sources stay raw:
+distance-based risk tiers do not inflate hard occupancy.
 
 ## Static World
 
@@ -26,7 +26,7 @@ Gazebo SDF and is used only in static mode. `production_mppi_node`, not
 lidar memory into Occupancy3D. Derived regions, portals, and traversal edges are
 stored in the separate fingerprint-bound `generated_city.topology3d` artifact.
 
-## 2D Lidar Input
+## Compatibility 2D Lidar Input
 
 `obstacle_memory_node` first resolves one strict full-6DoF acquisition pose for
 every `/scan` beam. Only then does it integrate accepted beams into scored
@@ -48,10 +48,10 @@ profile remains a single horizontal 2D lidar. Complete azimuth coverage is
 required so a backwards or sideways stopping path cannot fall into a sensor
 blind sector.
 
-Lidar evidence is never filtered against hand-authored route geometry. Static
-planning reads Occupancy3D. The no-static 2D profile exposes collisionless
-connector occluders as ordinary obstacles because planar sensing cannot prove
-vertical free space. See `world3d.md` for that compatibility contract.
+Lidar evidence is never filtered against hand-authored route geometry. This
+planar node is retained for compatibility diagnostics; it is not a production
+strategic-planning source. Static planning reads canonical Occupancy3D, and
+no-static production navigation requires the 3D profile.
 
 ## 3D Lidar Input
 
@@ -99,7 +99,7 @@ the hit that first made the cell occupied, the latest accepted hit, the observed
 minimum/maximum endpoint Z, the accepted-hit count, the score transition that
 first crossed the occupied threshold, that threshold, and the number of
 independent scans supporting the trigger decision. This metadata never
-participates in risk scoring, lattice search, MPPI, or trajectory control. It is
+participates in risk scoring, persistent route search, MPPI, or trajectory control. It is
 published on `/drone_city_nav/obstacle_memory_provenance` and in the atomic
 `/drone_city_nav/obstacle_memory_snapshot` at the standalone debug cadence. The
 planner does not deserialize this provenance; it receives a lightweight status
@@ -283,12 +283,13 @@ cannot mutate the grid.
 
 ## Raw Occupancy And Soft Risk
 
-Raw obstacles are direct evidence. The planner merges raw sources once and
-builds an occupied-distance field. It does not materialize prohibited or
-planning-clearance occupancy grids.
+Raw obstacles are direct evidence. The planner selects the mode-authoritative
+raw source and builds derived occupied-distance evidence. It does not
+materialize prohibited or planning-clearance occupancy grids.
 
 The current default critical boundary is 1 m and the preferred boundary is 6 m.
-Raw occupied cells and evaluation bounds are hard rejects. MPPI applies strong
+Raw occupied cells and the physical flight envelope are hard rejects. Missing
+or outside-cache distance evidence is neutral. MPPI applies strong
 critical- and planning-exposure costs together with its dynamics and progress
 costs; a risk band does not independently remove a physically free rollout.
 
@@ -300,9 +301,9 @@ which larger artifacts were emitted for that update. The planner consumes this
 message for memory revision diagnostics without receiving the grid or sparse
 provenance payload.
 
-No-static 2D planning receives `RawObstacleSnapshot`, which contains the raw 2D
-grid and risk-policy identity but no sparse diagnostic provenance. No-static 3D
-planning receives an adaptive `RawObstacleSnapshot3D` base and the latest
+The compatibility 2D transport can still publish `RawObstacleSnapshot` for
+diagnostic consumers, but it is not a production strategic-planning input.
+No-static production planning receives an adaptive `RawObstacleSnapshot3D` base and the latest
 cumulative `RawObstacleDelta3D` dirty chunks relative to that base. The direct
 current-scan safety message is published before persistent-memory integration.
 Memory integration and DDS serialization run on separate coalescing workers, so
@@ -369,30 +370,31 @@ Static Occupancy3D represents known world geometry and remains stable across a
 static run. No-static obstacle memory integrates fresh sensor evidence and
 keeps observed obstacles available after they leave the instantaneous scan.
 
-These are alternative production planning sources, selected by mode:
+These are the two production planning sources, selected by mode:
 
 - static: canonical Occupancy3D + precomputed chunked ESDF3D -> local ESDF3D;
-- no-static 2D: accumulated planar lidar memory -> ESDF2D;
 - no-static 3D: revisioned observed Occupancy3D -> local ESDF3D.
 
 They are not merged in the current implementation. Each occupied distance
 field turns its selected raw source into risk tiers.
 
-The 2D ground provider follows the same shared decision path but does not add a
-3D planning layer. Its obstacle memory remains a scored planar grid. Accepted
-occupied cells carry sparse diagnostic 3D provenance from the observation that
-created and last confirmed the cell; rejected ground observations are kept only
-in bounded counters/log samples and never become obstacle-memory provenance.
+The compatibility 2D provider does not add a production planning layer. Its
+obstacle memory remains a scored planar diagnostic grid. Accepted occupied cells
+carry sparse diagnostic 3D provenance from the observation that created and last
+confirmed the cell; rejected ground observations are kept only in bounded
+counters/log samples and never become obstacle-memory provenance.
 
 ## Risk And Distance Fields
 
-The planner builds one occupied distance field from merged raw occupancy.
+The planner builds one occupied-distance field from the selected raw occupancy.
 Distance below `critical_distance_m` is the critical tier; distance below
 `preferred_distance_m` is the planning tier. These tiers are categorical
 preferences, not materialized occupied grids.
 
-Raw occupied and outside-grid samples remain hard rejects. The same field
-supplies GPU collision queries, risk exposure, and diagnostics.
+Raw occupied samples and the physical flight envelope remain hard rejects.
+Missing or outside-cache distance evidence is neutral. The derived field
+supplies soft risk exposure and bounded controller queries; exact raw occupancy
+remains authoritative for hard swept-footprint validation.
 
 ## Motion Compensation Diagnostics
 

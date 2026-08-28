@@ -13,32 +13,10 @@
 
 namespace drone_city_nav {
 
-enum class RouteIntentSource3D : std::uint8_t {
-  kDirect,
-  kTopology,
-  kLaunchDeparture,
-  kPersistentPlanner,
-};
-
-enum class RouteIntentPurpose3D : std::uint8_t {
-  kMissionTransit,
-  kLaunchDeparture,
-  kObservationFrontier,
-  kTopologicalBacktrack,
-};
-
 struct RouteIntent3D {
   std::uint64_t id{0U};
-  std::uint64_t strategic_plan_id{0U};
   std::uint64_t planned_on_revision{0U};
-  std::uint64_t target_identity{0U};
   Point3 mission_target{};
-  Point3 intent_target{};
-  Point3 segment_target{};
-  RouteIntentSource3D source{RouteIntentSource3D::kDirect};
-  RouteIntentPurpose3D purpose{RouteIntentPurpose3D::kMissionTransit};
-  bool segment_reaches_intent_target{false};
-  bool observation_stop_required{true};
   bool valid{false};
 };
 
@@ -69,8 +47,6 @@ struct SegmentEvidence3D {
   bool materialized{false};
   bool planner_executable{false};
   bool physical_executable{false};
-  bool reaches_segment_target{false};
-  bool reaches_intent_target{false};
   bool reaches_mission_target{false};
   bool raw_collision{false};
   bool outside_grid_exposure{false};
@@ -101,20 +77,16 @@ struct SegmentEvidenceWorld3D {
 };
 
 [[nodiscard]] std::uint64_t
-makeRouteIntentId3D(RouteIntentSource3D source, RouteIntentPurpose3D purpose,
-                    const Point3& mission_target, const Point3& intent_target,
-                    std::uint64_t target_identity = 0U,
-                    bool observation_stop_required = true) noexcept;
+makeRouteIntentId3D(const Point3& mission_target, std::uint64_t mission_epoch = 0U,
+                    std::uint64_t assignment_generation = 0U,
+                    std::uint64_t target_detection_id = 0U,
+                    std::uint64_t target_track_id = 0U) noexcept;
 
 [[nodiscard]] SegmentEvidence3D evaluateSegmentEvidence3D(
     const RouteIntent3D& intent, std::span<const RouteSample3D> route,
-    const Point3& search_start, bool planner_executable, bool reaches_segment_target,
-    bool reaches_mission_target, double objective_cost,
-    const SegmentEvidenceWorld3D& world) noexcept;
+    const Point3& search_start, bool planner_executable, bool reaches_mission_target,
+    double objective_cost, const SegmentEvidenceWorld3D& world) noexcept;
 
-[[nodiscard]] const char* routeIntentSource3DName(RouteIntentSource3D source) noexcept;
-[[nodiscard]] const char*
-routeIntentPurpose3DName(RouteIntentPurpose3D purpose) noexcept;
 [[nodiscard]] const char*
 segmentEvidenceStatus3DName(SegmentEvidenceStatus3D status) noexcept;
 

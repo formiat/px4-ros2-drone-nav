@@ -157,7 +157,7 @@ endif()
 
 add_library(
   drone_city_nav_core
-  src/active_global_guide.cpp
+  src/route_progress_3d.cpp
   src/ambiguous_lidar_hit_tracker.cpp
   src/bounded_worker_pool.cpp
   src/cooperative_passage_execution.cpp
@@ -167,7 +167,6 @@ add_library(
   src/cooperative_space_time.cpp
   src/cooperative_traffic.cpp
   src/cooperative_traffic_mission.cpp
-  src/regional_topology_graph_3d.cpp
   src/collision_voxelizer.cpp
   src/vehicle_destruction_disarm_lifecycle.cpp
   src/world_generation.cpp
@@ -184,22 +183,10 @@ add_library(
   src/free_space_topology_extractor_3d_api.cpp
   src/free_space_topology_extractor_3d_graph.cpp
   src/free_space_topology_extractor_3d_geometry.cpp
-  src/global_guide_candidate.cpp
   src/grid_config.cpp
   src/grid_overlay.cpp
   src/intercept_guidance.cpp
   src/intercept_mission.cpp
-  src/incremental_topological_navigation_3d.cpp
-  src/incremental_topological_navigation_3d_lifecycle.cpp
-  src/strategic_route_manager_3d.cpp
-  src/incremental_topological_lattice_adapter_3d.cpp
-  src/incremental_topological_planner_3d_contract.cpp
-  src/incremental_topological_planner_3d.cpp
-  src/incremental_topology_graph_3d.cpp
-  src/incremental_topology_graph_3d_snapshot.cpp
-  src/incremental_topology_block_scheduler_3d.cpp
-  src/incremental_topology_observed_blocks_3d.cpp
-  src/incremental_topology_graph_3d_types.cpp
   src/known_static_lidar_hit_classifier.cpp
   src/latest_lidar_obstacle_scan.cpp
   src/lidar_acquisition_pose.cpp
@@ -229,18 +216,6 @@ add_library(
   src/radar_target_tracker.cpp
   src/radar_visibility.cpp
   src/target_assignment.cpp
-  src/raw_guide_validation.cpp
-  src/risk_aware_lattice.cpp
-  src/risk_aware_lattice_geometry.cpp
-  src/risk_aware_lattice_names.cpp
-  src/risk_aware_lattice_successors.cpp
-  src/risk_aware_lattice_3d.cpp
-  src/risk_aware_lattice_3d_continuation.cpp
-  src/risk_aware_lattice_3d_cost.cpp
-  src/risk_aware_lattice_3d_geometry.cpp
-  src/risk_aware_lattice_3d_passage_index.cpp
-  src/risk_aware_lattice_3d_planner.cpp
-  src/risk_aware_lattice_3d_result.cpp
   src/execution_evidence_3d.cpp
   src/applied_control_admission.cpp
   src/execution_horizon_admission.cpp
@@ -278,13 +253,11 @@ add_library(
   src/static_route_extension.cpp
   src/static_route_geometry.cpp
   src/static_esdf_cache.cpp
-  src/successor_profiling_diagnostics.cpp
   src/swept_footprint.cpp
   src/tracking_error_tube_3d.cpp
   src/swept_footprint_2d.cpp
   src/swept_footprint_contract.cpp
   src/swept_footprint_esdf.cpp
-  src/topological_exploration_memory_3d.cpp
   src/tracked_agent_lidar_filter.cpp
   src/tracking_objective.cpp
   src/lidar_snapshot_writer.cpp
@@ -301,7 +274,6 @@ add_library(
   src/navigation_health_supervisor.cpp
   src/navigation_state_prediction.cpp
   src/noncooperative_collision_avoidance.cpp
-  src/no_static_route_cycle.cpp
   src/passage_volume.cpp
   src/navigation_pose.cpp
   src/obstacle_memory.cpp
@@ -313,7 +285,6 @@ add_library(
   src/observed_esdf_3d_fingerprint.cpp
   src/observed_esdf_3d_metadata.cpp
   src/observed_occupancy_grid_3d.cpp
-  src/observation_frontier.cpp
   src/occupancy_grid.cpp
   src/occupancy_grid_3d.cpp
   )
@@ -660,7 +631,7 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     src/production_mppi_route_world.cpp
     src/production_mppi_route_helpers.cpp
     src/production_mppi_node_static_extension.cpp
-    src/production_mppi_node_static_guide.cpp
+    src/production_mppi_node_route_planning.cpp
     src/production_mppi_node_route_lifecycle.cpp
     src/production_mppi_node_diagnostics.cpp
     src/production_mppi_node_diagnostics_events.cpp
@@ -941,12 +912,6 @@ if(BUILD_TESTING)
   target_link_libraries(navigation_angular_derivative_test drone_city_nav_core)
   enable_project_warnings(navigation_angular_derivative_test)
 
-  ament_add_gtest(no_static_route_cycle_test
-                  tests/no_static_route_cycle_test.cpp)
-  target_compile_features(no_static_route_cycle_test PRIVATE cxx_std_20)
-  target_link_libraries(no_static_route_cycle_test drone_city_nav_core)
-  enable_project_warnings(no_static_route_cycle_test)
-
   ament_add_gtest(latest_value_mailbox_test
                   tests/latest_value_mailbox_test.cpp)
   target_compile_features(latest_value_mailbox_test PRIVATE cxx_std_20)
@@ -1046,24 +1011,11 @@ if(BUILD_TESTING)
     enable_project_warnings(production_mppi_route_helpers_test)
   endif()
 
-  ament_add_gtest(risk_aware_lattice_test
-                  tests/risk_aware_lattice_test.cpp)
-  target_compile_features(risk_aware_lattice_test PRIVATE cxx_std_20)
-  target_include_directories(risk_aware_lattice_test PRIVATE src)
-  target_link_libraries(risk_aware_lattice_test drone_city_nav_core)
-  enable_project_warnings(risk_aware_lattice_test)
-
-  ament_add_gtest(active_global_guide_test
-                  tests/active_global_guide_test.cpp)
-  target_compile_features(active_global_guide_test PRIVATE cxx_std_20)
-  target_link_libraries(active_global_guide_test drone_city_nav_core)
-  enable_project_warnings(active_global_guide_test)
-
-  ament_add_gtest(global_guide_candidate_test
-                  tests/global_guide_candidate_test.cpp)
-  target_compile_features(global_guide_candidate_test PRIVATE cxx_std_20)
-  target_link_libraries(global_guide_candidate_test drone_city_nav_core)
-  enable_project_warnings(global_guide_candidate_test)
+  ament_add_gtest(route_progress_3d_test
+                  tests/route_progress_3d_test.cpp)
+  target_compile_features(route_progress_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(route_progress_3d_test drone_city_nav_core)
+  enable_project_warnings(route_progress_3d_test)
 
   ament_add_gtest(planning_contract_test tests/planning_contract_test.cpp)
   target_compile_features(planning_contract_test PRIVATE cxx_std_20)
@@ -1213,79 +1165,6 @@ if(BUILD_TESTING)
   target_link_libraries(observed_esdf_3d_test drone_city_nav_core)
   enable_project_warnings(observed_esdf_3d_test)
 
-  ament_add_gtest(observation_frontier_test
-                  tests/observation_frontier_test.cpp)
-  target_compile_features(observation_frontier_test PRIVATE cxx_std_20)
-  target_link_libraries(observation_frontier_test drone_city_nav_core)
-  enable_project_warnings(observation_frontier_test)
-
-  ament_add_gtest(risk_aware_lattice_3d_directive_test
-                  tests/risk_aware_lattice_3d_directive_test.cpp)
-  target_compile_features(risk_aware_lattice_3d_directive_test PRIVATE cxx_std_20)
-  target_link_libraries(risk_aware_lattice_3d_directive_test drone_city_nav_core)
-  enable_project_warnings(risk_aware_lattice_3d_directive_test)
-
-  ament_add_gtest(incremental_topology_graph_3d_test
-                  tests/incremental_topology_graph_3d_test.cpp)
-  target_compile_features(incremental_topology_graph_3d_test PRIVATE cxx_std_20)
-  target_link_libraries(incremental_topology_graph_3d_test drone_city_nav_core)
-  enable_project_warnings(incremental_topology_graph_3d_test)
-
-  ament_add_gtest(incremental_topology_block_scheduler_3d_test
-                  tests/incremental_topology_block_scheduler_3d_test.cpp)
-  target_compile_features(incremental_topology_block_scheduler_3d_test
-                          PRIVATE cxx_std_20)
-  target_link_libraries(incremental_topology_block_scheduler_3d_test
-                        drone_city_nav_core)
-  enable_project_warnings(incremental_topology_block_scheduler_3d_test)
-
-  ament_add_gtest(regional_topology_graph_3d_test
-                  tests/regional_topology_graph_3d_test.cpp)
-  target_compile_features(regional_topology_graph_3d_test PRIVATE cxx_std_20)
-  target_link_libraries(regional_topology_graph_3d_test drone_city_nav_core)
-  enable_project_warnings(regional_topology_graph_3d_test)
-
-  ament_add_gtest(incremental_topological_planner_3d_test
-                  tests/incremental_topological_planner_3d_test.cpp)
-  target_compile_features(incremental_topological_planner_3d_test PRIVATE cxx_std_20)
-  target_link_libraries(incremental_topological_planner_3d_test drone_city_nav_core)
-  enable_project_warnings(incremental_topological_planner_3d_test)
-
-  ament_add_gtest(incremental_topological_navigation_3d_test
-                  tests/incremental_topological_navigation_3d_test.cpp)
-  target_compile_features(incremental_topological_navigation_3d_test PRIVATE cxx_std_20)
-  target_link_libraries(incremental_topological_navigation_3d_test
-                        drone_city_nav_core)
-  enable_project_warnings(incremental_topological_navigation_3d_test)
-
-  ament_add_gtest(incremental_topological_navigation_3d_lifecycle_test
-                  tests/incremental_topological_navigation_3d_lifecycle_test.cpp)
-  target_compile_features(incremental_topological_navigation_3d_lifecycle_test
-                          PRIVATE cxx_std_20)
-  target_link_libraries(incremental_topological_navigation_3d_lifecycle_test
-                        drone_city_nav_core)
-  enable_project_warnings(incremental_topological_navigation_3d_lifecycle_test)
-
-  ament_add_gtest(strategic_route_manager_3d_test
-                  tests/strategic_route_manager_3d_test.cpp)
-  target_compile_features(strategic_route_manager_3d_test PRIVATE cxx_std_20)
-  target_link_libraries(strategic_route_manager_3d_test drone_city_nav_core)
-  enable_project_warnings(strategic_route_manager_3d_test)
-
-  ament_add_gtest(incremental_topological_lattice_adapter_3d_test
-                  tests/incremental_topological_lattice_adapter_3d_test.cpp)
-  target_compile_features(incremental_topological_lattice_adapter_3d_test
-                          PRIVATE cxx_std_20)
-  target_link_libraries(incremental_topological_lattice_adapter_3d_test
-                        drone_city_nav_core)
-  enable_project_warnings(incremental_topological_lattice_adapter_3d_test)
-
-  ament_add_gtest(topological_exploration_memory_3d_test
-                  tests/topological_exploration_memory_3d_test.cpp)
-  target_compile_features(topological_exploration_memory_3d_test PRIVATE cxx_std_20)
-  target_link_libraries(topological_exploration_memory_3d_test drone_city_nav_core)
-  enable_project_warnings(topological_exploration_memory_3d_test)
-
   ament_add_gtest(static_esdf_cache_test tests/static_esdf_cache_test.cpp)
   target_compile_features(static_esdf_cache_test PRIVATE cxx_std_20)
   target_link_libraries(static_esdf_cache_test drone_city_nav_core)
@@ -1296,10 +1175,7 @@ if(BUILD_TESTING)
       TEST_COMPACT_PASSAGE_ESDF3D_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../environments/fixtures/compact_3d_passage/world.esdf3d")
   enable_project_warnings(static_esdf_cache_test)
 
-  ament_add_gtest(route_3d_test tests/route_3d_test.cpp
-                  tests/route_3d_search_test.cpp
-                  tests/route_3d_lattice_geometry_test.cpp
-                  tests/risk_aware_lattice_3d_state_test.cpp)
+  ament_add_gtest(route_3d_test tests/route_3d_test.cpp)
   target_compile_features(route_3d_test PRIVATE cxx_std_20)
   target_include_directories(route_3d_test PRIVATE src)
   target_link_libraries(route_3d_test drone_city_nav_core)

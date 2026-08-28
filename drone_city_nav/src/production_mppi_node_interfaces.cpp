@@ -168,8 +168,8 @@ void ProductionMppiNode::initializeRuntimeInterfaces() {
       std::jthread([this](const std::stop_token token) { diagnosticsWorker(token); });
   esdf_worker_ =
       std::jthread([this](const std::stop_token token) { esdfWorker(token); });
-  guide_worker_ =
-      std::jthread([this](const std::stop_token token) { guideWorker(token); });
+  route_planning_worker_ =
+      std::jthread([this](const std::stop_token token) { routePlanningWorker(token); });
   if (planning_tick_phase_offset_s_ > 0.0) {
     planning_start_timer_ = create_wall_timer(
         std::chrono::duration<double>{planning_tick_phase_offset_s_},

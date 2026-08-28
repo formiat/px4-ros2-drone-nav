@@ -68,7 +68,7 @@ replaceCertifiedRouteImpl(const ExecutionRouteSnapshot3D& current,
       current.phase == ExecutionRoutePhase3D::kBraking ||
       (current.phase == ExecutionRoutePhase3D::kStopped &&
        current_route->planned_endpoint_semantics ==
-           RouteEndpointSemantics3D::kObservationStop);
+           RouteEndpointSemantics3D::kLocalStop);
   if (!replacement_phase_allowed || !current.finite_execution.has_value() ||
       successor_execution.command_horizon.execution_input == nullptr) {
     return transitionFailure(

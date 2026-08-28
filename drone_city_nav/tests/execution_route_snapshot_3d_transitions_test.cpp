@@ -639,8 +639,9 @@ TEST(ExecutionRouteSnapshot3DTest,
   ExecutionRouteActivation3D successor_activation = fixture.activation();
   successor_activation.route_generation = SnapshotFixture3D::kRouteGeneration + 1U;
   ++successor_activation.proposal.objective.mission_epoch;
-  successor_activation.proposal.intent.strategic_plan_id =
-      successor_activation.proposal.objective.mission_epoch;
+  successor_activation.proposal.intent.id =
+      makeRouteIntentId3D(successor_activation.proposal.intent.mission_target,
+                          successor_activation.proposal.objective.mission_epoch);
   successor_activation.observation.current_objective =
       successor_activation.proposal.objective;
   successor_activation.continuity_lineage.mission_epoch =

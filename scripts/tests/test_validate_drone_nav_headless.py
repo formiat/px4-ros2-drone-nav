@@ -24,7 +24,7 @@ class MappingPipelineValidationTest(unittest.TestCase):
         VALIDATOR.validate_execution_chain(
             "PRODUCTION_MPPI_TICK execution_published=false execution_mode=position_hold "
             "raw_collision=false known_solid_collision=false "
-            "target_source=global_route_3d route_reaches_mission_goal=false\n",
+            "target_source=persistent_route_3d route_reaches_mission_goal=false\n",
             errors,
         )
         self.assertIn("FAIL: exact planner horizon is accepted and applied", errors)
@@ -34,7 +34,7 @@ class MappingPipelineValidationTest(unittest.TestCase):
         VALIDATOR.validate_execution_chain(
             "PRODUCTION_MPPI_TICK execution_published=true execution_mode=planned "
             "raw_collision=false known_solid_collision=false "
-            "route_reaches_mission_goal=true target_source=global_route_3d\n"
+            "route_reaches_mission_goal=true target_source=persistent_route_3d\n"
             "EXECUTION_HORIZON published=true producer=7 sequence=9 mode=planned\n"
             "EXECUTION_HORIZON accepted=true producer=7 sequence=9 mode=planned\n"
             "OFFBOARD_PLANNED_HORIZON_APPLIED producer=7 sequence=9\n"
@@ -104,7 +104,7 @@ class MappingPipelineValidationTest(unittest.TestCase):
         self,
     ) -> None:
         log = (
-            "PRODUCTION_MPPI_GUIDE3D planner=persistent_dstar_lite "
+            "PRODUCTION_MPPI_ROUTE3D planner=persistent_dstar_lite "
             "certified_pending=true validation=valid route_generation=15\n"
             "PRODUCTION_MPPI_TICK tick=1 state_position=(54.0,120.0,5.8)\n"
             "PRODUCTION_MPPI_TICK tick=2 state_position=(54.0,124.0,5.8)\n"
@@ -124,7 +124,7 @@ class MappingPipelineValidationTest(unittest.TestCase):
 
     def test_observed_route_volume_rejects_a_roof_level_flyover(self) -> None:
         log = (
-            "PRODUCTION_MPPI_GUIDE3D planner=persistent_dstar_lite "
+            "PRODUCTION_MPPI_ROUTE3D planner=persistent_dstar_lite "
             "certified_pending=true validation=valid route_generation=8\n"
             "PRODUCTION_MPPI_TICK tick=1 state_position=(54.0,120.0,26.4)\n"
             "PRODUCTION_MPPI_TICK tick=2 state_position=(54.0,160.0,26.7)\n"

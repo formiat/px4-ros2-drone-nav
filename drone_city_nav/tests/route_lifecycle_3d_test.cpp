@@ -24,8 +24,6 @@ namespace {
       .intent = {.id = 9U,
                  .planned_on_revision = 100U,
                  .mission_target = {20.0, 2.0, 2.0},
-                 .intent_target = {10.0, 2.0, 2.0},
-                 .segment_target = {10.0, 2.0, 2.0},
                  .valid = true},
       .evidence = {.planned_on_revision = 100U,
                    .validated_through_revision = 110U,
@@ -57,13 +55,7 @@ namespace {
 }
 
 [[nodiscard]] MaterializedRouteProposal3D persistentMissionProposal() {
-  MaterializedRouteProposal3D proposal = validProposal();
-  proposal.intent.source = RouteIntentSource3D::kPersistentPlanner;
-  proposal.intent.purpose = RouteIntentPurpose3D::kMissionTransit;
-  proposal.intent.strategic_plan_id = proposal.objective.mission_epoch;
-  proposal.intent.intent_target = proposal.intent.mission_target;
-  proposal.intent.segment_target = proposal.intent.mission_target;
-  return proposal;
+  return validProposal();
 }
 
 [[nodiscard]] ActivatedRouteIdentity3D persistentMissionActivatedRoute() {
@@ -170,7 +162,8 @@ TEST(RouteLifecycle3DTest, NewMissionEpochCanReplaceTheActiveIntent) {
   const ActivatedRouteIdentity3D active = persistentMissionActivatedRoute();
   MaterializedRouteProposal3D replacement = active_proposal;
   ++replacement.objective.mission_epoch;
-  replacement.intent.strategic_plan_id = replacement.objective.mission_epoch;
+  replacement.intent.id = makeRouteIntentId3D(replacement.intent.mission_target,
+                                              replacement.objective.mission_epoch);
 
   const RouteProposalReplacementAssessment3D assessment =
       assessRouteProposalReplacement3D(&active, replacement, {});

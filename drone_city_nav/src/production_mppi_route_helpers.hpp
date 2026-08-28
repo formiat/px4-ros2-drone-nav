@@ -1,10 +1,10 @@
 #pragma once
 
-#include "drone_city_nav/active_global_guide.hpp"
 #include "drone_city_nav/mppi/mppi_engine.hpp"
 #include "drone_city_nav/mppi_speed_policy.hpp"
 #include "drone_city_nav/route_3d.hpp"
 #include "drone_city_nav/route_execution_contract_3d.hpp"
+#include "drone_city_nav/route_progress_3d.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <memory>
@@ -33,7 +33,7 @@ projectRouteTo2D(std::span<const RouteSample3D> route);
 // Bridges the full-3D route geometry into the remaining progress-tracker API.
 // Station and cross-track distance are always measured in XYZ; the Point2
 // members are visualization-only projections of the measured 3D result.
-[[nodiscard]] GlobalGuideProjection
+[[nodiscard]] RouteProgressProjection3D
 projectOntoRouteProgress3D(std::span<const RouteSample3D> route, const Point3& position,
                            double minimum_station_m = 0.0) noexcept;
 

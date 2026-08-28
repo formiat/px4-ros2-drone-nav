@@ -109,8 +109,8 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
           launch_support_resolution_pending;
   if (active_prepared && !launch_support_unchanged) {
     {
-      const std::scoped_lock lock{guide_queue_mutex_};
-      pending_guide_world_.reset();
+      const std::scoped_lock lock{route_planning_queue_mutex_};
+      pending_route_planning_world_.reset();
     }
     RCLCPP_INFO(get_logger(),
                 "EXECUTION_EVIDENCE_WORLD_CHANGED raw_revision=%" PRIu64
@@ -481,25 +481,24 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
                 " esdf_revision=%" PRIu64 " generation=%" PRIu64,
                 raw_world.version.revision, prepared.revision,
                 prepared.route_generation);
-    requestStaticRouteReplan(GlobalGuideReleaseReason::kBlocked,
-                             prepared.route_generation);
+    requestStaticRouteReplan(RouteReleaseReason3D::kBlocked, prepared.route_generation);
   }
   const bool initial_route_search_required = prepared.route_generation == 0U;
   bool initial_route_search_queued = false;
   bool initial_route_search_already_pending = false;
   if (initial_route_search_required) {
-    auto guide_world = std::make_shared<const ProductionMppiPreparedEsdf>(prepared);
+    auto planning_world = std::make_shared<const ProductionMppiPreparedEsdf>(prepared);
     {
-      const std::scoped_lock lock{guide_queue_mutex_};
-      if (pending_guide_world_) {
+      const std::scoped_lock lock{route_planning_queue_mutex_};
+      if (pending_route_planning_world_) {
         initial_route_search_already_pending = true;
       } else {
-        pending_guide_world_ = std::move(guide_world);
+        pending_route_planning_world_ = std::move(planning_world);
         initial_route_search_queued = true;
       }
     }
     if (initial_route_search_queued) {
-      guide_queue_condition_.notify_all();
+      route_planning_queue_condition_.notify_all();
     }
   }
   if (!world_ready_.exchange(true, std::memory_order_acq_rel)) {

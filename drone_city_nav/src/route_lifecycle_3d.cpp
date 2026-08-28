@@ -130,7 +130,6 @@ std::optional<ActiveIntent3D>
 activeIntent3D(const MaterializedRouteProposal3D& proposal) noexcept {
   if (!proposal.objective.available || proposal.objective.mission_epoch == 0U ||
       !proposal.intent.valid || proposal.intent.id == 0U ||
-      proposal.intent.purpose != RouteIntentPurpose3D::kMissionTransit ||
       !finitePoint(proposal.intent.mission_target) ||
       (!proposal.objective.continuous_tracking &&
        !samePoint(proposal.objective.goal, proposal.intent.mission_target, 1.0e-6))) {
@@ -233,8 +232,8 @@ RouteProposalReplacementAssessment3D assessRouteProposalReplacement3D(
   if (active_route == nullptr) {
     return {};
   }
-  if (!std::isfinite(observation.segment_target_tolerance_m) ||
-      observation.segment_target_tolerance_m < 0.0) {
+  if (!std::isfinite(observation.mission_target_tolerance_m) ||
+      observation.mission_target_tolerance_m < 0.0) {
     return {.status = RouteProposalReplacementStatus3D::kRejectIntentConflict};
   }
   const std::optional<ActiveIntent3D> active = activeIntent3D(active_route->proposal);
@@ -243,7 +242,7 @@ RouteProposalReplacementAssessment3D assessRouteProposalReplacement3D(
     return {.status = RouteProposalReplacementStatus3D::kRejectIntentConflict};
   }
   if (sameActiveIntent3D(*active, *replacement,
-                         observation.segment_target_tolerance_m)) {
+                         observation.mission_target_tolerance_m)) {
     if (observation.continuity_preserving_successor) {
       return {};
     }

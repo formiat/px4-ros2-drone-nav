@@ -32,14 +32,10 @@ class Stage6WorldGenerationContractTest(unittest.TestCase):
         distance_2d = (SOURCE / "distance_field.cpp").read_text(encoding="utf-8")
         distance_3d = (SOURCE / "distance_field_3d.cpp").read_text(encoding="utf-8")
         geometry = (SOURCE / "static_route_geometry.cpp").read_text(encoding="utf-8")
-        topology = (SOURCE / "risk_aware_lattice_3d_planner.cpp").read_text(
-            encoding="utf-8"
-        )
 
         self.assertIn("WorkerTaskLane::kWorldUpdate", distance_2d)
         self.assertIn("WorkerTaskLane::kWorldUpdate", distance_3d)
         self.assertIn("WorkerTaskLane::kRouteCritical", geometry)
-        self.assertIn("WorkerTaskLane::kBackground", topology)
 
     def test_cpu_world_and_gpu_esdf_share_one_publication_gate(self) -> None:
         node_header = (SOURCE / "production_mppi_node.hpp").read_text(

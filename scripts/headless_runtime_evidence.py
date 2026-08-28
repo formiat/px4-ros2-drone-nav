@@ -325,7 +325,7 @@ def validate_persistent_3d_acceptance_metrics(
 
     admitted_routes = [
         line
-        for line in re.findall(r"PRODUCTION_MPPI_GUIDE3D [^\n]+", ros_log)
+        for line in re.findall(r"PRODUCTION_MPPI_ROUTE3D [^\n]+", ros_log)
         if "certified_pending=true" in line
     ]
     if not admitted_routes:

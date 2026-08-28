@@ -67,11 +67,11 @@ projectRouteTo2D(const std::span<const RouteSample3D> route) {
   return points;
 }
 
-GlobalGuideProjection
+RouteProgressProjection3D
 projectOntoRouteProgress3D(const std::span<const RouteSample3D> route,
                            const Point3& position,
                            const double minimum_station_m) noexcept {
-  GlobalGuideProjection projection;
+  RouteProgressProjection3D projection;
   const RouteProjection3D measured =
       projectOntoRoute3D(route, position, minimum_station_m);
   if (!measured.valid || route.empty()) {

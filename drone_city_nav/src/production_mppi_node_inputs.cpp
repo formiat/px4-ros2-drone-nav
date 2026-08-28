@@ -264,14 +264,14 @@ void ProductionMppiNode::onNavigationReadiness(const std_msgs::msg::Bool& messag
   }
   bool queued = false;
   if (request) {
-    const std::scoped_lock lock{guide_queue_mutex_};
-    if (!pending_guide_world_) {
-      pending_guide_world_ = std::move(request);
+    const std::scoped_lock lock{route_planning_queue_mutex_};
+    if (!pending_route_planning_world_) {
+      pending_route_planning_world_ = std::move(request);
       queued = true;
     }
   }
   if (queued) {
-    guide_queue_condition_.notify_all();
+    route_planning_queue_condition_.notify_all();
     RCLCPP_INFO(get_logger(), "STATIC_ROUTE_SEARCH_REQUEST status=queued_after_takeoff "
                               "resident_esdf_ready=true");
   }
@@ -829,7 +829,7 @@ void ProductionMppiNode::onNavigationObjective(
     requestStaticEsdfWork();
   }
   if (request_replan) {
-    requestGuideRelease(GlobalGuideReleaseReason::kObjectiveChanged);
+    requestRouteRelease(RouteReleaseReason3D::kObjectiveChanged);
   }
   if (objective->tracking.has_value()) {
     const ProductionTrackingObjective tracking_data =

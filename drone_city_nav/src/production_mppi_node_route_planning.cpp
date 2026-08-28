@@ -24,7 +24,7 @@ elapsedMilliseconds(const std::chrono::steady_clock::time_point started) noexcep
 
 } // namespace
 
-void ProductionMppiNode::processGuideSearch3D(
+void ProductionMppiNode::processRouteSearch3D(
     const ProductionMppiPreparedEsdf& world,
     const ProductionMppiNavigation& navigation) {
   const auto planning_started = std::chrono::steady_clock::now();
@@ -50,15 +50,15 @@ void ProductionMppiNode::processGuideSearch3D(
           PersistentPlannerStatus3D::kSearchInProgress) {
     bool continuation_queued{false};
     {
-      const std::scoped_lock lock{guide_queue_mutex_};
-      if (!pending_guide_world_) {
-        pending_guide_world_ =
+      const std::scoped_lock lock{route_planning_queue_mutex_};
+      if (!pending_route_planning_world_) {
+        pending_route_planning_world_ =
             std::make_shared<const ProductionMppiPreparedEsdf>(world);
         continuation_queued = true;
       }
     }
     if (continuation_queued) {
-      guide_queue_condition_.notify_all();
+      route_planning_queue_condition_.notify_all();
     }
     const double route_planning_ms = elapsedMilliseconds(planning_started);
     {
@@ -133,7 +133,7 @@ void ProductionMppiNode::processGuideSearch3D(
                                          : "not_invoked";
   RCLCPP_INFO(
       get_logger(),
-      "PRODUCTION_MPPI_GUIDE3D planner=persistent_dstar_lite "
+      "PRODUCTION_MPPI_ROUTE3D planner=persistent_dstar_lite "
       "raw_revision=%" PRIu64 " mission_epoch=%" PRIu64
       " status=%s search_complete=%s search_state_reused=%s "
       "incumbent_retained=%s certified_pending=%s "
@@ -284,7 +284,7 @@ void ProductionMppiNode::processGuideSearch3D(
                   required_epoch, required_sample,
                   resident_route_objective.mission_epoch,
                   resident_route_objective.sample_sequence);
-      requestGuideRelease(GlobalGuideReleaseReason::kObjectiveChanged);
+      requestRouteRelease(RouteReleaseReason3D::kObjectiveChanged);
     }
   }
 }

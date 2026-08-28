@@ -10,8 +10,9 @@ distance, braking acceleration, reaction latency, and goal margin. MPPI
 therefore reduces speed before the mission goal instead of flying at cruise
 speed until the last horizon.
 
-The global guide also has a mission-goal hold distance. Near the goal, the
-target is the mission goal rather than another distant lattice frontier.
+The persistent route carries explicit mission-goal endpoint semantics. Near the
+goal, the target is the mission goal and the finite execution plan decelerates
+to rest instead of requesting another non-terminal successor.
 
 ## Final Hold
 

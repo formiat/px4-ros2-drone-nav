@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static regressions for sparse geometry and vertical route costs."""
+"""Static regressions for sparse geometry and the shared 3D time model."""
 
 from __future__ import annotations
 
@@ -50,21 +50,22 @@ class Stage7GeometryVerticalCostContractTest(unittest.TestCase):
         self.assertIn("maximum_shortcut_turn_increase_rad", implementation)
         self.assertIn("pointSegmentDistance", implementation)
 
-    def test_vertical_cost_is_nonzero_and_part_of_the_search_heuristic(self) -> None:
-        config = (INCLUDE / "risk_aware_lattice_3d.hpp").read_text(encoding="utf-8")
-        cost = (SOURCE / "risk_aware_lattice_3d_cost.cpp").read_text(encoding="utf-8")
+    def test_vertical_motion_is_part_of_the_persistent_search_time_model(self) -> None:
+        model = (INCLUDE / "flight_time_model_3d.hpp").read_text(encoding="utf-8")
+        implementation = (SOURCE / "flight_time_model_3d.cpp").read_text(
+            encoding="utf-8"
+        )
+        search = (SOURCE / "persistent_dstar_lite_planner_3d_search.cpp").read_text(
+            encoding="utf-8"
+        )
         yaml = (PACKAGE / "config" / "urban_mvp.yaml").read_text(encoding="utf-8")
 
-        self.assertIn("vertical_alignment_cost_weight{0.35}", config)
-        self.assertIn("route_shape_vertical_turn_cost_per_rad{0.20}", config)
-        self.assertIn(
-            "config.vertical_alignment_cost_weight * result.vertical_alignment_time_s",
-            cost,
-        )
-        self.assertIn("verticalFlightPathAngle", cost)
-        self.assertIn(
-            "config.vertical_alignment_cost_weight * vertical_time_s", cost
-        )
+        self.assertIn("maximum_vertical_speed_mps", model)
+        self.assertIn("maximum_vertical_acceleration_mps2", model)
+        self.assertIn("vertical / model.maximum_vertical_speed_mps", implementation)
+        self.assertIn("minimumFlightTranslationTime3D", search)
+        self.assertIn("parameterizeFlightPathTime3D", search)
+        self.assertIn("result.estimated_execution_time_s = profile.travel_time_s", search)
         self.assertIn("persistent_planner_horizontal_step_m: 2.0", yaml)
         self.assertIn("persistent_planner_vertical_step_m: 1.0", yaml)
         self.assertNotIn("global_lattice_3d_", yaml)

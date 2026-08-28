@@ -5,33 +5,12 @@
 namespace drone_city_nav {
 namespace {
 
-TEST(RollingRouteTelemetry3DTest, ClassifiesTypedEndpointSemantics) {
-  RouteIntent3D transit{.purpose = RouteIntentPurpose3D::kMissionTransit,
-                        .valid = true};
-  RouteIntent3D observation{
-      .purpose = RouteIntentPurpose3D::kObservationFrontier,
-      .valid = true,
-  };
-  RouteIntent3D continuous_observation = observation;
-  continuous_observation.observation_stop_required = false;
-
-  EXPECT_EQ(routeEndpointSemantics3D(transit, false, false, true),
+TEST(RollingRouteTelemetry3DTest, ClassifiesMissionEndpointSemantics) {
+  EXPECT_EQ(routeEndpointSemantics3D(false, true),
             RouteEndpointSemantics3D::kContinuation);
-  EXPECT_EQ(routeEndpointSemantics3D(observation, true, false, true),
-            RouteEndpointSemantics3D::kObservationStop);
-  EXPECT_EQ(routeEndpointSemantics3D(continuous_observation, true, false, true),
-            RouteEndpointSemantics3D::kContinuation);
-  EXPECT_NE(makeRouteIntentId3D(RouteIntentSource3D::kTopology,
-                                RouteIntentPurpose3D::kObservationFrontier, {}, {}, 7U,
-                                true),
-            makeRouteIntentId3D(RouteIntentSource3D::kTopology,
-                                RouteIntentPurpose3D::kObservationFrontier, {}, {}, 7U,
-                                false));
-  EXPECT_EQ(routeEndpointSemantics3D(transit, true, true, true),
+  EXPECT_EQ(routeEndpointSemantics3D(true, true),
             RouteEndpointSemantics3D::kMissionStop);
-  EXPECT_EQ(routeEndpointSemantics3D(transit, true, true, false),
-            RouteEndpointSemantics3D::kContinuation);
-  EXPECT_EQ(routeEndpointSemantics3D(observation, true, true, false),
+  EXPECT_EQ(routeEndpointSemantics3D(true, false),
             RouteEndpointSemantics3D::kContinuation);
   EXPECT_EQ(routeEndpointSemantics3DName(RouteEndpointSemantics3D::kEmergencyBrakeTail),
             "emergency_brake_tail");
@@ -48,20 +27,8 @@ TEST(RollingRouteTelemetry3DTest, IncludesVerticalMotionInRouteSpeed) {
   EXPECT_DOUBLE_EQ(routeSpeed3D(Vec3{3.0, 4.0, 12.0}), 13.0);
 }
 
-TEST(RollingRouteTelemetry3DTest, KeepsPartialTopologySegmentsNonTerminal) {
-  const RouteIntent3D topology{
-      .strategic_plan_id = 81U,
-      .purpose = RouteIntentPurpose3D::kMissionTransit,
-      .valid = true,
-  };
-  const RouteIntent3D observation{
-      .purpose = RouteIntentPurpose3D::kObservationFrontier,
-      .valid = true,
-  };
-
-  EXPECT_EQ(routeEndpointSemantics3D(topology, false, false, true),
-            RouteEndpointSemantics3D::kContinuation);
-  EXPECT_EQ(routeEndpointSemantics3D(observation, false, false, true),
+TEST(RollingRouteTelemetry3DTest, KeepsPartialMissionRoutesNonTerminal) {
+  EXPECT_EQ(routeEndpointSemantics3D(false, true),
             RouteEndpointSemantics3D::kContinuation);
 }
 
@@ -71,10 +38,8 @@ TEST(RollingRouteTelemetry3DTest,
   EXPECT_TRUE(
       routeEndpointUsesLocalBoundary3D(RouteEndpointSemantics3D::kContinuation));
 
-  EXPECT_TRUE(
-      routeEndpointHasTerminalStop3D(RouteEndpointSemantics3D::kObservationStop));
-  EXPECT_TRUE(
-      routeEndpointUsesLocalBoundary3D(RouteEndpointSemantics3D::kObservationStop));
+  EXPECT_TRUE(routeEndpointHasTerminalStop3D(RouteEndpointSemantics3D::kLocalStop));
+  EXPECT_TRUE(routeEndpointUsesLocalBoundary3D(RouteEndpointSemantics3D::kLocalStop));
 
   EXPECT_TRUE(routeEndpointHasTerminalStop3D(RouteEndpointSemantics3D::kMissionStop));
   EXPECT_FALSE(
@@ -90,23 +55,21 @@ TEST(RollingRouteTelemetry3DTest,
   EXPECT_TRUE(routeEndpointUsesLocalBoundary3D(invalid));
 }
 
-TEST(RollingRouteTelemetry3DTest, KeepsDirectReplansInOneContinuityLineage) {
+TEST(RollingRouteTelemetry3DTest, KeepsMovingTargetsInOneObjectiveLineage) {
   RouteIntent3D first{
+      .id = makeRouteIntentId3D({100.0, 20.0, 8.0}, 7U),
       .mission_target = {100.0, 20.0, 8.0},
-      .intent_target = {25.0, 5.0, 8.0},
-      .source = RouteIntentSource3D::kDirect,
-      .purpose = RouteIntentPurpose3D::kMissionTransit,
       .valid = true,
   };
   RouteIntent3D successor = first;
-  successor.intent_target = {40.0, 8.0, 8.0};
-  first.id = makeRouteIntentId3D(first.source, first.purpose, first.mission_target,
-                                 first.intent_target);
-  successor.id = makeRouteIntentId3D(successor.source, successor.purpose,
-                                     successor.mission_target, successor.intent_target);
+  successor.mission_target = {101.0, 21.0, 8.0};
+  successor.id = makeRouteIntentId3D(successor.mission_target, 7U);
 
   EXPECT_NE(first.id, successor.id);
-  EXPECT_EQ(routeContinuityId3D(first), routeContinuityId3D(successor));
+  EXPECT_NE(routeContinuityId3D(first), routeContinuityId3D(successor));
+  EXPECT_EQ(
+      routeContinuityId3D(first, RouteContinuityLineage3D{.mission_epoch = 7U}),
+      routeContinuityId3D(successor, RouteContinuityLineage3D{.mission_epoch = 7U}));
   EXPECT_NE(
       routeContinuityId3D(first, RouteContinuityLineage3D{.mission_epoch = 7U}),
       routeContinuityId3D(successor, RouteContinuityLineage3D{.mission_epoch = 8U}));
