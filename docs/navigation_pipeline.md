@@ -77,13 +77,19 @@ not duplicate YAML as a second parameter source of truth.
 
 Production point-to-point navigation has one strategic route producer:
 `PersistentDStarLitePlanner3D`. Static and no-static profiles both search a sparse
-`(x, y, z)` motion graph. The authoritative raw occupied set and the physical
+`(x, y, z)` motion graph. Its level-zero graph is a complete minimum-resolution
+26-connected lattice. World-aligned power-of-two overlays add 26-connected long
+edges at higher levels; lazy swept-footprint validation accepts them in open
+volume and the unchanged level-zero graph supplies local resolution around
+obstacles. The authoritative raw occupied set and the physical
 swept footprint are the only hard collision constraints; unknown space remains
 traversable and has neither a penalty nor an eligibility gate.
 
 The planner retains its D* Lite state across compatible world revisions. Occupied
 voxel deltas update only affected vertices, while unchanged raw occupancy reuses
-the existing search state. Search that reaches its per-tick budget remains
+the existing search state. An occupied delta invalidates only incident cached
+edges and already resident D* states inside the maximum-edge sweep reach. Search
+that reaches its per-tick budget remains
 `search_in_progress` and resumes on a later tick. An incomplete prefix is not
 published as a substitute mission route.
 

@@ -39,8 +39,12 @@ struct PersistentPlannerWorld3D {
 };
 
 struct PersistentPlannerConfig3D {
-  double horizontal_step_m{2.0};
-  double vertical_step_m{1.0};
+  // Level zero is the complete 26-connected lattice. Each higher level adds a
+  // world-aligned 26-connected overlay with twice the stride. Long edges remain
+  // lazy and are admitted only by exact raw swept-footprint validation.
+  double minimum_horizontal_step_m{2.0};
+  double minimum_vertical_step_m{1.0};
+  std::size_t maximum_adaptive_lattice_level{2U};
   FlightTimeModel3D time_model{};
   double minimum_continuous_turn_alignment{0.7071067811865476};
   double goal_tolerance_m{1.0};
@@ -77,6 +81,11 @@ struct PersistentPlannerResult3D {
   std::size_t open_entries{0U};
   std::size_t shortcut_checks{0U};
   std::size_t shortcuts_applied{0U};
+  std::size_t lattice_edge_queries{0U};
+  std::size_t raw_edge_validation_checks{0U};
+  std::size_t adaptive_edge_queries{0U};
+  std::size_t adaptive_edges_in_extracted_path{0U};
+  std::size_t maximum_queried_lattice_level{0U};
   double path_length_m{0.0};
   double estimated_execution_time_s{0.0};
   double estimated_translation_time_s{0.0};

@@ -414,10 +414,18 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
     }
     return static_cast<std::size_t>(value);
   };
-  persistent_planner_config_.horizontal_step_m =
-      declare_parameter<double>("persistent_planner_horizontal_step_m", 2.0);
-  persistent_planner_config_.vertical_step_m =
-      declare_parameter<double>("persistent_planner_vertical_step_m", 1.0);
+  persistent_planner_config_.minimum_horizontal_step_m =
+      declare_parameter<double>("persistent_planner_minimum_horizontal_step_m", 2.0);
+  persistent_planner_config_.minimum_vertical_step_m =
+      declare_parameter<double>("persistent_planner_minimum_vertical_step_m", 1.0);
+  const std::int64_t maximum_adaptive_lattice_level = declare_parameter<std::int64_t>(
+      "persistent_planner_maximum_adaptive_lattice_level", 2);
+  if (maximum_adaptive_lattice_level < 0 || maximum_adaptive_lattice_level > 10) {
+    throw std::invalid_argument{
+        "persistent_planner_maximum_adaptive_lattice_level must be in [0, 10]"};
+  }
+  persistent_planner_config_.maximum_adaptive_lattice_level =
+      static_cast<std::size_t>(maximum_adaptive_lattice_level);
   persistent_planner_config_.goal_tolerance_m =
       declare_parameter<double>("persistent_planner_goal_tolerance_m", 2.0);
   const std::int64_t connector_search_radius_cells = declare_parameter<std::int64_t>(
@@ -502,10 +510,10 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       constrained_route_speed_limit_mps_ < 0.0F ||
       !std::isfinite(route_constraint_diagnostics_distance_m_) ||
       route_constraint_diagnostics_distance_m_ < 0.0 ||
-      !std::isfinite(persistent_planner_config_.horizontal_step_m) ||
-      !(persistent_planner_config_.horizontal_step_m > 0.0) ||
-      !std::isfinite(persistent_planner_config_.vertical_step_m) ||
-      !(persistent_planner_config_.vertical_step_m > 0.0) ||
+      !std::isfinite(persistent_planner_config_.minimum_horizontal_step_m) ||
+      !(persistent_planner_config_.minimum_horizontal_step_m > 0.0) ||
+      !std::isfinite(persistent_planner_config_.minimum_vertical_step_m) ||
+      !(persistent_planner_config_.minimum_vertical_step_m > 0.0) ||
       !std::isfinite(persistent_planner_config_.goal_tolerance_m) ||
       persistent_planner_config_.goal_tolerance_m < 0.0 ||
       persistent_planner_config_.maximum_extracted_path_nodes < 2U ||

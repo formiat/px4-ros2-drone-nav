@@ -34,8 +34,8 @@ namespace {
 
 [[nodiscard]] PersistentPlannerConfig3D acceptancePlannerConfig() noexcept {
   PersistentPlannerConfig3D config;
-  config.horizontal_step_m = 1.0;
-  config.vertical_step_m = 1.0;
+  config.minimum_horizontal_step_m = 1.0;
+  config.minimum_vertical_step_m = 1.0;
   config.time_model.maximum_horizontal_speed_mps = 4.0;
   config.time_model.maximum_vertical_speed_mps = 2.0;
   config.time_model.maximum_horizontal_acceleration_mps2 = 4.0;

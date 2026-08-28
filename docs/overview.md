@@ -84,8 +84,10 @@ repository container workflow.
   competing route producer or a source of hard occupancy.
 - There is no 2D production navigation branch, online frontier planner,
   direct-versus-topology arbitration, or location-specific opening logic.
-- The persistent graph currently uses fixed horizontal and vertical steps;
-  adaptive spatial refinement remains Roadmap 12 work.
+- The persistent graph uses a complete minimum-resolution 26-connected lattice
+  plus world-aligned multiresolution overlays. Lazy exact raw validation admits
+  long open-volume edges and automatically leaves the fine lattice in control
+  around occupied geometry.
 - Current-position hold is not a substitute for finding a physically executable
   route.
 

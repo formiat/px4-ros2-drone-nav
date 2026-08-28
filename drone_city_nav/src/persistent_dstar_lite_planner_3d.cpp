@@ -156,14 +156,20 @@ void PersistentDStarLitePlanner3DImpl::reset() noexcept {
   records_.clear();
   edge_cost_cache_.clear();
   incumbent_.clear();
+  lattice_edge_queries_ = 0U;
+  raw_edge_validation_checks_ = 0U;
+  adaptive_edge_queries_ = 0U;
+  adaptive_edges_in_extracted_path_ = 0U;
+  maximum_queried_lattice_level_ = 0U;
 }
 
 bool PersistentDStarLitePlanner3DImpl::validRequest(
     const PersistentPlannerRequest3D& request) const {
   return finitePoint(request.start) && finitePoint(request.mission_goal) &&
          finiteVector(request.velocity) && request.mission_epoch != 0U &&
-         request.world.valid() && config_.horizontal_step_m > 0.0 &&
-         config_.vertical_step_m > 0.0 && config_.time_model.valid() &&
+         request.world.valid() && config_.minimum_horizontal_step_m > 0.0 &&
+         config_.minimum_vertical_step_m > 0.0 &&
+         config_.maximum_adaptive_lattice_level <= 10U && config_.time_model.valid() &&
          std::isfinite(config_.minimum_continuous_turn_alignment) &&
          config_.minimum_continuous_turn_alignment >= -1.0 &&
          config_.minimum_continuous_turn_alignment <= 1.0 &&
@@ -182,6 +188,11 @@ bool PersistentDStarLitePlanner3DImpl::validRequest(
 PersistentPlannerResult3D
 PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request) {
   const auto operation_started = std::chrono::steady_clock::now();
+  lattice_edge_queries_ = 0U;
+  raw_edge_validation_checks_ = 0U;
+  adaptive_edge_queries_ = 0U;
+  adaptive_edges_in_extracted_path_ = 0U;
+  maximum_queried_lattice_level_ = 0U;
   PersistentPlannerResult3D result{
       .status = PersistentPlannerStatus3D::kInvalidInput,
       .points = {},
@@ -284,6 +295,11 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   result.repair_generation = repair_generation_;
   result.records = records_.size();
   result.open_entries = open_.size();
+  result.lattice_edge_queries = lattice_edge_queries_;
+  result.raw_edge_validation_checks = raw_edge_validation_checks_;
+  result.adaptive_edge_queries = adaptive_edge_queries_;
+  result.adaptive_edges_in_extracted_path = adaptive_edges_in_extracted_path_;
+  result.maximum_queried_lattice_level = maximum_queried_lattice_level_;
   populatePathMetrics(result, request.velocity);
   result.search_ms = std::chrono::duration<double, std::milli>(
                          std::chrono::steady_clock::now() - operation_started)

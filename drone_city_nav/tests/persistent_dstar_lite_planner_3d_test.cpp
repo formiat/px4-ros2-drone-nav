@@ -16,8 +16,8 @@ namespace {
 
 [[nodiscard]] PersistentPlannerConfig3D testConfig() {
   PersistentPlannerConfig3D config;
-  config.horizontal_step_m = 1.0;
-  config.vertical_step_m = 1.0;
+  config.minimum_horizontal_step_m = 1.0;
+  config.minimum_vertical_step_m = 1.0;
   config.time_model.maximum_horizontal_speed_mps = 5.0;
   config.time_model.maximum_vertical_speed_mps = 2.0;
   config.goal_tolerance_m = 0.01;
@@ -117,6 +117,35 @@ TEST(PersistentDStarLitePlanner3DTest,
 }
 
 TEST(PersistentDStarLitePlanner3DTest,
+     UsesWorldFixedMultiresolutionEdgesWithoutChangingTheExactMissionPath) {
+  auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 1.0, 48, 12, 8});
+  const Point3 start{0.5, 4.5, 4.5};
+  const Point3 goal{40.5, 4.5, 4.5};
+  PersistentPlannerConfig3D adaptive_config = testConfig();
+  adaptive_config.maximum_adaptive_lattice_level = 2U;
+  PersistentDStarLitePlanner3D adaptive{adaptive_config};
+  PersistentPlannerConfig3D fixed_config = adaptive_config;
+  fixed_config.maximum_adaptive_lattice_level = 0U;
+  PersistentDStarLitePlanner3D fixed{fixed_config};
+
+  const PersistentPlannerResult3D adaptive_result =
+      adaptive.plan(request(start, goal, world(occupancy, 1U)));
+  const PersistentPlannerResult3D fixed_result =
+      fixed.plan(request(start, goal, world(occupancy, 1U)));
+
+  ASSERT_TRUE(adaptive_result.executable());
+  ASSERT_TRUE(fixed_result.executable());
+  expectSamePath(adaptive_result.points, fixed_result.points);
+  EXPECT_DOUBLE_EQ(adaptive_result.path_length_m, fixed_result.path_length_m);
+  EXPECT_GT(adaptive_result.adaptive_edge_queries, 0U);
+  EXPECT_GT(adaptive_result.adaptive_edges_in_extracted_path, 0U);
+  EXPECT_EQ(adaptive_result.maximum_queried_lattice_level, 2U);
+  EXPECT_EQ(fixed_result.adaptive_edge_queries, 0U);
+  EXPECT_EQ(fixed_result.maximum_queried_lattice_level, 0U);
+}
+
+TEST(PersistentDStarLitePlanner3DTest,
      FreeUnknownRelabelPreservesPathCostAndIncrementalSearchState) {
   auto first = std::make_shared<ObservedOccupancyGrid3D>(
       GridBounds3D{0.0, 0.0, 0.0, 1.0, 12, 8, 6});
@@ -171,10 +200,43 @@ TEST(PersistentDStarLitePlanner3DTest,
   EXPECT_TRUE(repaired.search_state_reused);
   EXPECT_EQ(repaired.changed_occupied_voxels, 1U);
   EXPECT_GT(repaired.affected_lattice_states, 0U);
+  EXPECT_GT(repaired.adaptive_edge_queries, 0U);
   EXPECT_EQ(repaired.search_generation, initial.search_generation);
   EXPECT_EQ(repaired.repair_generation, 1U);
   EXPECT_GT(repaired.path_length_m, initial.path_length_m);
   expectRawValid(repaired.points, *changed, planner.config().physical_footprint);
+}
+
+TEST(PersistentDStarLitePlanner3DTest,
+     PropagatesANewlyOpenedAdaptiveEdgeIntoPreviouslyUnseenStates) {
+  auto blocked = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 1.0, 14, 10, 6});
+  for (int z = 0; z < 6; ++z) {
+    for (int y = 0; y < 10; ++y) {
+      static_cast<void>(
+          blocked->setState(GridIndex3D{7, y, z}, ObservedVoxelState::kOccupied));
+    }
+  }
+  PersistentDStarLitePlanner3D planner{testConfig()};
+  const Point3 start{2.5, 5.5, 2.5};
+  const Point3 goal{11.5, 5.5, 2.5};
+  const PersistentPlannerResult3D initial =
+      planner.plan(request(start, goal, world(blocked, 1U)));
+  ASSERT_EQ(initial.status, PersistentPlannerStatus3D::kNoRoute);
+
+  auto opened = std::make_shared<ObservedOccupancyGrid3D>(*blocked);
+  const GridIndex3D opening{7, 5, 2};
+  ASSERT_TRUE(opened->setState(opening, ObservedVoxelState::kUnknown));
+  const PersistentPlannerResult3D repaired = planner.plan(request(
+      start, goal, world(opened, 2U, {ObservedOccupancyGrid3D::chunkIndex(opening)})));
+
+  ASSERT_TRUE(repaired.executable());
+  EXPECT_TRUE(repaired.search_state_reused);
+  EXPECT_EQ(repaired.changed_occupied_voxels, 1U);
+  EXPECT_GT(repaired.affected_lattice_states, 0U);
+  EXPECT_EQ(repaired.search_generation, initial.search_generation);
+  EXPECT_EQ(repaired.repair_generation, 1U);
+  expectRawValid(repaired.points, *opened, planner.config().physical_footprint);
 }
 
 TEST(PersistentDStarLitePlanner3DTest,

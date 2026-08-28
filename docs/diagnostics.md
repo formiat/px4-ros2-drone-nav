@@ -70,6 +70,9 @@ Inspect:
 - planner mission/world provenance, search and repair generations;
 - changed occupied voxels, affected lattice states, records, open entries, and
   expansions;
+- total lattice-edge queries, raw edge validations, adaptive-edge queries,
+  adaptive edges retained in the extracted lattice path, and maximum queried
+  resolution level;
 - whether search state was reused, the occupied world was unchanged, or an
   incumbent was retained;
 - path length, remaining goal distance, execution-time estimate, and split

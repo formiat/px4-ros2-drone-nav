@@ -11,6 +11,13 @@ It keeps search state across compatible raw-world revisions and incrementally
 updates affected graph vertices when occupied voxels change. Unknown space is
 traversable and contributes neither a hard gate nor a cost.
 
+The world-fixed graph keeps all minimum-resolution 26-connected edges and adds
+aligned 2x/4x overlays by configuration. Exact raw swept-footprint checks lazily
+admit every edge, so an open region can be crossed with few states while a narrow
+passage remains reachable through the complete fine graph. Occupied updates
+invalidate only cached edges whose endpoint reach can intersect the changed raw
+cells.
+
 `ActiveIntent3D` preserves the mission intent while `RouteManager3D` owns the
 accepted immutable route identity, full-3D progress, and certified reserve.
 Ordinary world updates do not replace a still-valid route. Planning starts from

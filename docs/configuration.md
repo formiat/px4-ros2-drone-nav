@@ -103,7 +103,8 @@ occupancy.
 
 Persistent 3D planner and route lifecycle:
 
-- persistent graph horizontal and vertical step;
+- persistent graph minimum horizontal/vertical step and maximum power-of-two
+  adaptive level;
 - per-update expansion, changed-voxel, extracted-path, shortcut, and compute
   budgets;
 - connector radius and mission-goal tolerance;

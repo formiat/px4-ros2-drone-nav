@@ -82,17 +82,25 @@ void PersistentDStarLitePlanner3DImpl::initializeSearch(
 std::vector<PersistentPlannerNode3D> PersistentDStarLitePlanner3DImpl::adjacentNodes(
     const PersistentPlannerNode3D node) const {
   std::vector<PersistentPlannerNode3D> result;
-  result.reserve(26U);
-  for (int z_offset = -1; z_offset <= 1; ++z_offset) {
-    for (int y_offset = -1; y_offset <= 1; ++y_offset) {
-      for (int x_offset = -1; x_offset <= 1; ++x_offset) {
-        if (x_offset == 0 && y_offset == 0 && z_offset == 0) {
-          continue;
-        }
-        const PersistentPlannerNode3D candidate{node.x + x_offset, node.y + y_offset,
-                                                node.z + z_offset};
-        if (nodeInside(candidate) && pointInsideFlightEnvelope(pointFor(candidate))) {
-          result.push_back(candidate);
+  result.reserve(26U * (config_.maximum_adaptive_lattice_level + 1U));
+  for (std::size_t level = 0U; level <= config_.maximum_adaptive_lattice_level;
+       ++level) {
+    const int scale = 1 << level;
+    if (node.x % scale != 0 || node.y % scale != 0 || node.z % scale != 0) {
+      continue;
+    }
+    for (int z_offset = -1; z_offset <= 1; ++z_offset) {
+      for (int y_offset = -1; y_offset <= 1; ++y_offset) {
+        for (int x_offset = -1; x_offset <= 1; ++x_offset) {
+          if (x_offset == 0 && y_offset == 0 && z_offset == 0) {
+            continue;
+          }
+          const PersistentPlannerNode3D candidate{node.x + x_offset * scale,
+                                                  node.y + y_offset * scale,
+                                                  node.z + z_offset * scale};
+          if (nodeInside(candidate) && pointInsideFlightEnvelope(pointFor(candidate))) {
+            result.push_back(candidate);
+          }
         }
       }
     }
@@ -110,8 +118,14 @@ double PersistentDStarLitePlanner3DImpl::heuristic(
 double
 PersistentDStarLitePlanner3DImpl::rawEdgeCost(const PersistentPlannerNode3D first,
                                               const PersistentPlannerNode3D second) {
+  ++lattice_edge_queries_;
   if (!nodeInside(first) || !nodeInside(second) || first == second) {
     return std::numeric_limits<double>::infinity();
+  }
+  const std::size_t level = latticeLevel(first, second);
+  if (level > 0U) {
+    ++adaptive_edge_queries_;
+    maximum_queried_lattice_level_ = std::max(maximum_queried_lattice_level_, level);
   }
   const PersistentPlannerEdge3D edge = canonicalEdge(first, second);
   if (const auto found = edge_cost_cache_.find(edge); found != edge_cost_cache_.end()) {
@@ -119,6 +133,7 @@ PersistentDStarLitePlanner3DImpl::rawEdgeCost(const PersistentPlannerNode3D firs
   }
   const Point3 first_point = pointFor(first);
   const Point3 second_point = pointFor(second);
+  ++raw_edge_validation_checks_;
   const double cost = rawSegmentValid(first_point, second_point)
                           ? minimumFlightTranslationTime3D(first_point, second_point,
                                                            config_.time_model)
@@ -181,16 +196,21 @@ void PersistentDStarLitePlanner3DImpl::updateAffectedVertices(
     const std::vector<GridIndex3D>& changed_cells, std::size_t& affected_states) {
   std::unordered_set<PersistentPlannerNode3D, PersistentPlannerNode3DHash> affected;
   const double raw_half_diagonal = 0.5 * std::numbers::sqrt3 * raw_bounds_.resolution_m;
-  const double horizontal_reach = config_.physical_footprint.radius_m +
-                                  raw_half_diagonal +
-                                  std::numbers::sqrt2 * config_.horizontal_step_m;
-  const double vertical_reach = std::max(config_.physical_footprint.lower_extent_m,
-                                         config_.physical_footprint.upper_extent_m) +
-                                raw_half_diagonal + config_.vertical_step_m;
+  const double horizontal_reach =
+      config_.physical_footprint.radius_m + raw_half_diagonal +
+      std::numbers::sqrt2 * config_.minimum_horizontal_step_m *
+          static_cast<double>(maximumLatticeScale());
+  const double vertical_reach =
+      std::max(config_.physical_footprint.lower_extent_m,
+               config_.physical_footprint.upper_extent_m) +
+      raw_half_diagonal +
+      config_.minimum_vertical_step_m * static_cast<double>(maximumLatticeScale());
   const int horizontal_radius =
-      static_cast<int>(std::ceil(horizontal_reach / config_.horizontal_step_m)) + 1;
+      static_cast<int>(
+          std::ceil(horizontal_reach / config_.minimum_horizontal_step_m)) +
+      1;
   const int vertical_radius =
-      static_cast<int>(std::ceil(vertical_reach / config_.vertical_step_m)) + 1;
+      static_cast<int>(std::ceil(vertical_reach / config_.minimum_vertical_step_m)) + 1;
   for (const GridIndex3D cell : changed_cells) {
     const Point3 center = world_.observed_occupancy != nullptr
                               ? world_.observed_occupancy->cellCenter(cell)
@@ -203,15 +223,32 @@ void PersistentDStarLitePlanner3DImpl::updateAffectedVertices(
              ++x_offset) {
           const PersistentPlannerNode3D candidate{
               nearest.x + x_offset, nearest.y + y_offset, nearest.z + z_offset};
-          if (nodeInside(candidate)) {
+          if (nodeInside(candidate) && (candidate == start_ || candidate == goal_ ||
+                                        records_.contains(candidate))) {
             affected.insert(candidate);
           }
         }
       }
     }
   }
+  // A newly traversable edge must update both endpoints even when only one was
+  // resident before the obstacle disappeared. Expanding one graph hop is
+  // sufficient because D* Lite propagates the resulting inconsistency through
+  // the open queue.
+  const std::vector<PersistentPlannerNode3D> resident_affected{affected.begin(),
+                                                               affected.end()};
+  for (const PersistentPlannerNode3D node : resident_affected) {
+    for (const PersistentPlannerNode3D neighbor : adjacentNodes(node)) {
+      affected.insert(neighbor);
+    }
+  }
   std::vector<PersistentPlannerNode3D> ordered{affected.begin(), affected.end()};
   std::ranges::sort(ordered, nodeLess);
+  for (const PersistentPlannerNode3D node : ordered) {
+    for (const PersistentPlannerNode3D neighbor : adjacentNodes(node)) {
+      edge_cost_cache_.erase(canonicalEdge(node, neighbor));
+    }
+  }
   for (const PersistentPlannerNode3D node : ordered) {
     updateVertex(node);
   }
@@ -322,7 +359,10 @@ std::vector<Point3> PersistentDStarLitePlanner3DImpl::extractPath() {
     if (!selected.has_value() || visited.contains(*selected)) {
       return {};
     }
+    const PersistentPlannerNode3D previous_node = node;
     node = *selected;
+    adaptive_edges_in_extracted_path_ +=
+        latticeLevel(previous_node, node) > 0U ? 1U : 0U;
     visited.insert(node);
     const Point3 point = pointFor(node);
     if (distance3D(path.back(), point) > 1.0e-9) {

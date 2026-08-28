@@ -116,6 +116,11 @@ struct ProductionPersistentPlannerTelemetry3D {
   std::size_t open_entries{0U};
   std::size_t shortcut_checks{0U};
   std::size_t shortcuts_applied{0U};
+  std::size_t lattice_edge_queries{0U};
+  std::size_t raw_edge_validation_checks{0U};
+  std::size_t adaptive_edge_queries{0U};
+  std::size_t adaptive_edges_in_extracted_path{0U};
+  std::size_t maximum_queried_lattice_level{0U};
   double path_length_m{0.0};
   double remaining_goal_distance_m{0.0};
   double estimated_execution_time_s{0.0};

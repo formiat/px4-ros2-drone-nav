@@ -145,6 +145,8 @@ void ProductionMppiNode::processRouteSearch3D(
       " base_route_instance_id=%" PRIu64 " stitch_station_m=%.3f "
       "points=%zu samples=%zu expansions=%zu changed_occupied=%zu "
       "affected_states=%zu records=%zu open=%zu shortcuts=%zu/%zu "
+      "edge_queries=%zu raw_edge_checks=%zu adaptive_edge_queries=%zu "
+      "adaptive_path_edges=%zu maximum_adaptive_level=%zu "
       "path_length_m=%.3f eta_s=%.3f translation_s=%.3f turn_s=%.3f "
       "search_ms=%.3f route_planning_ms=%.3f validation_ms=%.3f "
       "smoothing_ms=%.3f raw_connector_validated=%s "
@@ -180,10 +182,12 @@ void ProductionMppiNode::processRouteSearch3D(
       prepared.route_3d ? prepared.route_3d->size() : 0U, plan.expansions,
       plan.changed_occupied_voxels, plan.affected_lattice_states, plan.records,
       plan.open_entries, plan.shortcuts_applied, plan.shortcut_checks,
-      plan.path_length_m, plan.estimated_execution_time_s,
-      plan.estimated_translation_time_s, plan.estimated_stationary_turn_time_s,
-      candidate_set.search_ms, route_planning_ms, prepared.candidate_validation_ms,
-      prepared.route_smoothing_ms,
+      plan.lattice_edge_queries, plan.raw_edge_validation_checks,
+      plan.adaptive_edge_queries, plan.adaptive_edges_in_extracted_path,
+      plan.maximum_queried_lattice_level, plan.path_length_m,
+      plan.estimated_execution_time_s, plan.estimated_translation_time_s,
+      plan.estimated_stationary_turn_time_s, candidate_set.search_ms, route_planning_ms,
+      prepared.candidate_validation_ms, prepared.route_smoothing_ms,
       activation.assessment.raw_validation.connector_validated ? "true" : "false",
       activation.assessment.raw_validation.suffix_validated ? "true" : "false",
       prepared.route_fingerprint);

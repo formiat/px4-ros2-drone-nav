@@ -62,6 +62,13 @@ persistentPlannerInfoFields(const ProductionMppiPreparedEsdf& esdf) {
          << " planner_open_entries=" << planner.open_entries
          << " planner_shortcut_checks=" << planner.shortcut_checks
          << " planner_shortcuts_applied=" << planner.shortcuts_applied
+         << " planner_lattice_edge_queries=" << planner.lattice_edge_queries
+         << " planner_raw_edge_validation_checks=" << planner.raw_edge_validation_checks
+         << " planner_adaptive_edge_queries=" << planner.adaptive_edge_queries
+         << " planner_adaptive_edges_in_extracted_path="
+         << planner.adaptive_edges_in_extracted_path
+         << " planner_maximum_queried_lattice_level="
+         << planner.maximum_queried_lattice_level
          << " planner_path_length_m=" << planner.path_length_m
          << " planner_remaining_goal_distance_m=" << planner.remaining_goal_distance_m
          << " planner_estimated_execution_time_s=" << planner.estimated_execution_time_s
@@ -102,6 +109,14 @@ persistentPlannerJsonFields(const ProductionMppiPreparedEsdf& esdf) {
          << ",\"planner_open_entries\":" << planner.open_entries
          << ",\"planner_shortcut_checks\":" << planner.shortcut_checks
          << ",\"planner_shortcuts_applied\":" << planner.shortcuts_applied
+         << ",\"planner_lattice_edge_queries\":" << planner.lattice_edge_queries
+         << ",\"planner_raw_edge_validation_checks\":"
+         << planner.raw_edge_validation_checks
+         << ",\"planner_adaptive_edge_queries\":" << planner.adaptive_edge_queries
+         << ",\"planner_adaptive_edges_in_extracted_path\":"
+         << planner.adaptive_edges_in_extracted_path
+         << ",\"planner_maximum_queried_lattice_level\":"
+         << planner.maximum_queried_lattice_level
          << ",\"planner_path_length_m\":" << planner.path_length_m
          << ",\"planner_remaining_goal_distance_m\":"
          << planner.remaining_goal_distance_m

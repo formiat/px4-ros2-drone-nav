@@ -71,6 +71,11 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
       .open_entries = plan.open_entries,
       .shortcut_checks = plan.shortcut_checks,
       .shortcuts_applied = plan.shortcuts_applied,
+      .lattice_edge_queries = plan.lattice_edge_queries,
+      .raw_edge_validation_checks = plan.raw_edge_validation_checks,
+      .adaptive_edge_queries = plan.adaptive_edge_queries,
+      .adaptive_edges_in_extracted_path = plan.adaptive_edges_in_extracted_path,
+      .maximum_queried_lattice_level = plan.maximum_queried_lattice_level,
       .path_length_m = plan.path_length_m,
       .remaining_goal_distance_m =
           distance3D(prepared.planning_candidate_endpoint, mission_goal),

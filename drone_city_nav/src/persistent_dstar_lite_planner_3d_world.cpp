@@ -84,11 +84,12 @@ void PersistentDStarLitePlanner3DImpl::configureGridGeometry(
   const double height_m =
       static_cast<double>(bounds.height_cells) * bounds.resolution_m;
   const double depth_m = static_cast<double>(bounds.depth_cells) * bounds.resolution_m;
-  width_ =
-      std::max(1, static_cast<int>(std::floor(width_m / config_.horizontal_step_m)));
-  height_ =
-      std::max(1, static_cast<int>(std::floor(height_m / config_.horizontal_step_m)));
-  depth_ = std::max(1, static_cast<int>(std::floor(depth_m / config_.vertical_step_m)));
+  width_ = std::max(
+      1, static_cast<int>(std::floor(width_m / config_.minimum_horizontal_step_m)));
+  height_ = std::max(
+      1, static_cast<int>(std::floor(height_m / config_.minimum_horizontal_step_m)));
+  depth_ = std::max(
+      1, static_cast<int>(std::floor(depth_m / config_.minimum_vertical_step_m)));
 }
 
 PersistentPlannerWorldUpdate3D
@@ -155,7 +156,6 @@ PersistentDStarLitePlanner3DImpl::updateWorld(const PersistentPlannerWorld3D& wo
     update.requires_reset = true;
   }
   world_ = world;
-  edge_cost_cache_.clear();
   update.accepted = true;
   return update;
 }
@@ -220,15 +220,31 @@ bool PersistentDStarLitePlanner3DImpl::nodeInside(
          node.y < height_ && node.z < depth_;
 }
 
+int PersistentDStarLitePlanner3DImpl::maximumLatticeScale() const noexcept {
+  return 1 << config_.maximum_adaptive_lattice_level;
+}
+
+std::size_t PersistentDStarLitePlanner3DImpl::latticeLevel(
+    const PersistentPlannerNode3D first,
+    const PersistentPlannerNode3D second) const noexcept {
+  const int scale =
+      std::max({std::abs(first.x - second.x), std::abs(first.y - second.y),
+                std::abs(first.z - second.z)});
+  if (scale <= 1) {
+    return 0U;
+  }
+  return static_cast<std::size_t>(std::countr_zero(static_cast<unsigned int>(scale)));
+}
+
 Point3 PersistentDStarLitePlanner3DImpl::pointFor(
     const PersistentPlannerNode3D node) const noexcept {
   return Point3{
       raw_bounds_.origin_x +
-          (static_cast<double>(node.x) + 0.5) * config_.horizontal_step_m,
+          (static_cast<double>(node.x) + 0.5) * config_.minimum_horizontal_step_m,
       raw_bounds_.origin_y +
-          (static_cast<double>(node.y) + 0.5) * config_.horizontal_step_m,
+          (static_cast<double>(node.y) + 0.5) * config_.minimum_horizontal_step_m,
       raw_bounds_.origin_z +
-          (static_cast<double>(node.z) + 0.5) * config_.vertical_step_m,
+          (static_cast<double>(node.z) + 0.5) * config_.minimum_vertical_step_m,
   };
 }
 
@@ -240,9 +256,12 @@ PersistentDStarLitePlanner3DImpl::nearestNode(const Point3& point) const noexcep
     return std::clamp(index, 0, size - 1);
   };
   return PersistentPlannerNode3D{
-      clamp_index(point.x, raw_bounds_.origin_x, config_.horizontal_step_m, width_),
-      clamp_index(point.y, raw_bounds_.origin_y, config_.horizontal_step_m, height_),
-      clamp_index(point.z, raw_bounds_.origin_z, config_.vertical_step_m, depth_),
+      clamp_index(point.x, raw_bounds_.origin_x, config_.minimum_horizontal_step_m,
+                  width_),
+      clamp_index(point.y, raw_bounds_.origin_y, config_.minimum_horizontal_step_m,
+                  height_),
+      clamp_index(point.z, raw_bounds_.origin_z, config_.minimum_vertical_step_m,
+                  depth_),
   };
 }
 

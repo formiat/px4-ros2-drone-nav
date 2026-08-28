@@ -334,11 +334,14 @@ production_mppi_node:
     liveness_observation_window_s: 1.0
     liveness_minimum_actual_displacement_m: 0.5
     liveness_minimum_predicted_terminal_progress_m: 5.0
-    # Static and observed worlds feed the same persistent full-3D planner.
-    # Free and unknown are structurally identical; only raw occupied evidence
-    # and the physical flight envelope can reject a strategic edge.
-    persistent_planner_horizontal_step_m: 2.0
-    persistent_planner_vertical_step_m: 1.0
+    # Static and observed worlds feed the same persistent full-3D planner. The
+    # level-zero 26-connected lattice remains complete; aligned higher levels
+    # add lazy 2x/4x edges for open volume and fall back to level zero around
+    # occupied geometry. Free and unknown are structurally identical; only raw
+    # occupied evidence and the physical flight envelope can reject an edge.
+    persistent_planner_minimum_horizontal_step_m: 2.0
+    persistent_planner_minimum_vertical_step_m: 1.0
+    persistent_planner_maximum_adaptive_lattice_level: 2
     persistent_planner_goal_tolerance_m: 2.0
     persistent_planner_connector_search_radius_cells: 2
     persistent_planner_maximum_expansions_per_update: 200000

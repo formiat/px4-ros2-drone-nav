@@ -93,6 +93,9 @@ private:
   [[nodiscard]] bool sameGridGeometry(const GridBounds3D& bounds) const noexcept;
   void configureGridGeometry(const GridBounds3D& bounds);
   [[nodiscard]] bool nodeInside(PersistentPlannerNode3D node) const noexcept;
+  [[nodiscard]] int maximumLatticeScale() const noexcept;
+  [[nodiscard]] std::size_t latticeLevel(PersistentPlannerNode3D first,
+                                         PersistentPlannerNode3D second) const noexcept;
   [[nodiscard]] Point3 pointFor(PersistentPlannerNode3D node) const noexcept;
   [[nodiscard]] PersistentPlannerNode3D nearestNode(const Point3& point) const noexcept;
   [[nodiscard]] std::optional<PersistentPlannerNode3D>
@@ -154,6 +157,11 @@ private:
   std::unordered_map<PersistentPlannerEdge3D, double, PersistentPlannerEdge3DHash>
       edge_cost_cache_;
   std::vector<Point3> incumbent_;
+  std::size_t lattice_edge_queries_{0U};
+  std::size_t raw_edge_validation_checks_{0U};
+  std::size_t adaptive_edge_queries_{0U};
+  std::size_t adaptive_edges_in_extracted_path_{0U};
+  std::size_t maximum_queried_lattice_level_{0U};
 };
 
 } // namespace drone_city_nav::detail

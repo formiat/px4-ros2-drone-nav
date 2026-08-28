@@ -375,8 +375,9 @@ scheduling.
 
 ## Current Architectural Limits
 
-- The persistent D* Lite graph currently uses fixed horizontal and vertical
-  steps; adaptive spatial refinement remains pending.
+- The adaptive persistent D* Lite graph uses power-of-two world-aligned
+  resolution levels. It is not an octree and deliberately keeps the complete
+  minimum-resolution 26-connected lattice as its reachability baseline.
 - Static mode currently plans only against canonical Occupancy3D; lidar memory
   is not fused into its 3D collision map.
 - No-static production navigation requires revisioned 3D-lidar Occupancy3D and
