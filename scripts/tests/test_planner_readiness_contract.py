@@ -152,9 +152,7 @@ class PlannerReadinessContractTest(unittest.TestCase):
         planning_tick = PLANNING_TICK.read_text(encoding="utf-8")
         extension = STATIC_EXTENSION.read_text(encoding="utf-8")
 
-        self.assertIn(
-            "prepared.global_guide_generation == 0U", observed_esdf
-        )
+        self.assertIn("prepared.route_generation == 0U", observed_esdf)
         self.assertIn('"active_route_preserved"', observed_esdf)
         self.assertIn("initial_route_search_already_pending", observed_esdf)
         self.assertNotIn("dropped_guide_worlds_", observed_esdf)

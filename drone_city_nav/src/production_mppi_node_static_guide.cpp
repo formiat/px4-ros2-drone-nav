@@ -94,7 +94,7 @@ void ProductionMppiNode::processGuideSearch3D(
     materialization = materializeRouteCandidate3D(
         world, navigation, mission_goal, candidate, candidate_generation,
         activation_active_route, activation_snapshot.raw_world.get());
-    materialization.prepared.global_guide_search_ms = candidate_set.search_ms;
+    materialization.prepared.route_search_ms = candidate_set.search_ms;
     activation = prepareRouteActivation3D(
         world, std::move(materialization.prepared), planned_world_certificate,
         materialization.validation, materialization.replacement_policy, mission_goal,
@@ -102,7 +102,7 @@ void ProductionMppiNode::processGuideSearch3D(
     commitRouteActivation3D(world, activation_snapshot, candidate_generation,
                             activation);
   }
-  activation.prepared.global_guide_search_ms = candidate_set.search_ms;
+  activation.prepared.route_search_ms = candidate_set.search_ms;
 
   const bool recovery_without_active_route =
       (activation_snapshot.execution_snapshot == nullptr ||
@@ -141,7 +141,7 @@ void ProductionMppiNode::processGuideSearch3D(
       "validation=%.*s handoff=%s splice=%.*s "
       "certified_reserve=%.*s reserve_available_m=%.3f "
       "reserve_required_m=%.3f reserve_shortfall_m=%.3f "
-      "guide_reaches_mission_goal=%s route_generation=%" PRIu64
+      "route_reaches_mission_goal=%s route_generation=%" PRIu64
       " base_route_instance_id=%" PRIu64 " stitch_station_m=%.3f "
       "points=%zu samples=%zu expansions=%zu changed_occupied=%zu "
       "affected_states=%zu records=%zu open=%zu shortcuts=%zu/%zu "
@@ -174,8 +174,7 @@ void ProductionMppiNode::processGuideSearch3D(
       prepared.certified_route_reserve_available_m,
       prepared.certified_route_reserve_required_m,
       prepared.certified_route_reserve_shortfall_m,
-      prepared.global_guide_reaches_mission_goal ? "true" : "false",
-      prepared.global_guide_generation,
+      prepared.route_reaches_mission_goal ? "true" : "false", prepared.route_generation,
       prepared.planning_search_base_route_instance_id.value,
       prepared.planning_search_base_stitch_station_m.value_or(-1.0), plan.points.size(),
       prepared.route_3d ? prepared.route_3d->size() : 0U, plan.expansions,
@@ -209,10 +208,10 @@ void ProductionMppiNode::processGuideSearch3D(
 
   const bool initial_route_search = !world.static_route_extension_request &&
                                     !world.static_route_replan_request &&
-                                    world.global_guide_generation == 0U;
+                                    world.route_generation == 0U;
   if (world.static_route_replan_request || initial_route_search) {
     const StaticRouteSearchRequestIdentity search_request =
-        identifyStaticRouteSearchRequest(world.global_guide_generation,
+        identifyStaticRouteSearchRequest(world.route_generation,
                                          world.static_route_extension_request,
                                          world.static_route_extension_base_generation,
                                          world.static_route_replan_request,

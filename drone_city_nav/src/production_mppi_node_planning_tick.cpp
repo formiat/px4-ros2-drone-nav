@@ -368,11 +368,11 @@ void ProductionMppiNode::planningTick() {
       activated_route != nullptr ? activated_route->geometry.get() : nullptr;
   const std::uint64_t route_generation = activated_route != nullptr
                                              ? activated_route->identity.generation
-                                             : esdf->global_guide_generation;
+                                             : esdf->route_generation;
   const bool route_reaches_mission_goal =
       activated_route != nullptr
           ? activated_route->identity.proposal.reaches_mission_goal
-          : esdf->global_guide_reaches_mission_goal;
+          : esdf->route_reaches_mission_goal;
   RouteEndpointSemantics3D route_endpoint_semantics =
       RouteEndpointSemantics3D::kObservationStop;
   if (activated_route != nullptr) {
@@ -382,9 +382,8 @@ void ProductionMppiNode::planningTick() {
                                    ? RouteEndpointSemantics3D::kMissionStop
                                    : RouteEndpointSemantics3D::kContinuation;
   }
-  const Lattice3DRoutePurpose route_purpose = route_geometry != nullptr
-                                                  ? route_geometry->route_purpose
-                                                  : esdf->lattice_3d_route_purpose;
+  const Lattice3DRoutePurpose route_purpose =
+      route_geometry != nullptr ? route_geometry->route_purpose : esdf->route_purpose;
   const std::shared_ptr<const std::vector<RouteSample3D>> execution_route =
       route_geometry != nullptr ? route_geometry->route : esdf->route_3d;
   const std::shared_ptr<const std::vector<mppi::RouteSample3D>> execution_mppi_route =

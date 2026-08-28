@@ -88,7 +88,7 @@ void ProductionMppiNode::guideWorker(const std::stop_token stop_token) {
     }
 
     const StaticRouteSearchRequestIdentity request = identifyStaticRouteSearchRequest(
-        world->global_guide_generation, world->static_route_extension_request,
+        world->route_generation, world->static_route_extension_request,
         world->static_route_extension_base_generation,
         world->static_route_replan_request, world->static_route_replan_base_generation);
     std::uint64_t resident_route_generation = 0U;

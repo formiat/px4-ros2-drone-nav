@@ -68,8 +68,8 @@ def validate_execution_chain(ros_log: str, errors: list[str]) -> None:
         "mission-reaching global route is active",
         ros_log,
         r"PRODUCTION_MPPI_TICK .*target_source=global_route_3d.*"
-        r"guide_reaches_mission_goal=true|"
-        r"PRODUCTION_MPPI_TICK .*guide_reaches_mission_goal=true.*"
+        r"route_reaches_mission_goal=true|"
+        r"PRODUCTION_MPPI_TICK .*route_reaches_mission_goal=true.*"
         r"target_source=global_route_3d",
         errors,
     )

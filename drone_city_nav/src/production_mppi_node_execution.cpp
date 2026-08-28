@@ -220,7 +220,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       : selected_snapshot_route != nullptr &&
               selected_snapshot_route->geometry != nullptr
           ? selected_snapshot_route->geometry->route_purpose
-          : esdf.lattice_3d_route_purpose;
+          : esdf.route_purpose;
   const bool publication_route_constrained =
       direct_tracking_requested ? false
       : selected_snapshot_route != nullptr &&
@@ -248,9 +248,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
           ? latest_raw_world_3d->occupancy.get()
           : nullptr;
   RouteEndpointSemantics3D finite_boundary_endpoint_semantics =
-      esdf.global_guide_reaches_mission_goal
-          ? RouteEndpointSemantics3D::kMissionStop
-          : RouteEndpointSemantics3D::kObservationStop;
+      esdf.route_reaches_mission_goal ? RouteEndpointSemantics3D::kMissionStop
+                                      : RouteEndpointSemantics3D::kObservationStop;
   if (selected_snapshot_route != nullptr) {
     finite_boundary_endpoint_semantics =
         selected_snapshot_route->planned_endpoint_semantics;
@@ -919,7 +918,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   publication.terminal_rest_state = true;
   publication.published = true;
   if (!snapshot_owner_required) {
-    legacy_execution_arbiter_.activate(esdf.global_guide_generation,
+    legacy_execution_arbiter_.activate(esdf.route_generation,
                                        ProductionMppiActiveFiniteExecutionPath{
                                            .message = std::move(horizon),
                                            .publication = publication,

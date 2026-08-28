@@ -24,7 +24,7 @@ class MappingPipelineValidationTest(unittest.TestCase):
         VALIDATOR.validate_execution_chain(
             "PRODUCTION_MPPI_TICK execution_published=false execution_mode=position_hold "
             "raw_collision=false known_solid_collision=false "
-            "target_source=global_route_3d guide_reaches_mission_goal=false\n",
+            "target_source=global_route_3d route_reaches_mission_goal=false\n",
             errors,
         )
         self.assertIn("FAIL: exact planner horizon is accepted and applied", errors)
@@ -34,7 +34,7 @@ class MappingPipelineValidationTest(unittest.TestCase):
         VALIDATOR.validate_execution_chain(
             "PRODUCTION_MPPI_TICK execution_published=true execution_mode=planned "
             "raw_collision=false known_solid_collision=false "
-            "guide_reaches_mission_goal=true target_source=global_route_3d\n"
+            "route_reaches_mission_goal=true target_source=global_route_3d\n"
             "EXECUTION_HORIZON published=true producer=7 sequence=9 mode=planned\n"
             "EXECUTION_HORIZON accepted=true producer=7 sequence=9 mode=planned\n"
             "OFFBOARD_PLANNED_HORIZON_APPLIED producer=7 sequence=9\n"

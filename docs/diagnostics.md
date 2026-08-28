@@ -22,7 +22,7 @@ the script rather than assuming that `log/latest` belongs to the intended run.
 
 - pose, obstacle, memory, and ESDF revisions and ages;
 - target source and target position;
-- active guide generation, status, and remaining length;
+- active route generation, planner status, and remaining length;
 - static/no-static speed-policy limits;
 - constrained-route phase, route generation, and span index;
 - GPU and host stage timings;
@@ -62,25 +62,34 @@ Relevant stages include:
 ESDF build latency is asynchronous and must not be interpreted as part of
 `gpu_total_ms`.
 
-## Global Guide Diagnostics
+## Persistent Planner And Route Diagnostics
 
 Inspect:
 
-- lattice status and termination reason;
-- reached-goal/frontier/dead-end classification;
-- guide fingerprint and generation;
-- sticky-guide retain/release reason;
+- `planner_status` from the persistent D* Lite result;
+- planner mission/world provenance, search and repair generations;
+- changed occupied voxels, affected lattice states, records, open entries, and
+  expansions;
+- whether search state was reused, the occupied world was unchanged, or an
+  incumbent was retained;
+- path length, remaining goal distance, execution-time estimate, and split
+  translation/stationary-turn estimates;
+- planner world-update, planner-search, route-search, and end-to-end
+  route-planning latency;
+- route fingerprint, generation, purpose, and release reason;
 - current route station and remaining distance;
-- blocked, exhausted, cross-track, and stall state;
-- heading-source cascade.
+- certified-reserve, compilation, validation, publication, and activation
+  status.
 
-Diagnostic lattice classification is observational unless a separate lifecycle
-condition explicitly consumes it.
+Planner evidence describes the search that produced the resident route.
+Candidate validation and activation fields describe later contracts and must
+not be inferred from `planner_executable` alone.
 
 For no-static 3D runs, `PRODUCTION_MPPI_GUIDE3D` also reports
-`route_space=observed_known_free_3d` and `topology_acceleration=none`. Roadmap 8
-acceptance uses these fields together with measured `state_position` samples;
-it does not depend on a planner-defined passage event.
+the same persistent-planner result together with certified-route reserve,
+publication, activation, raw-connector, and raw-suffix evidence. Acceptance
+uses these fields together with measured `state_position` samples; it does not
+depend on a planner-defined passage event.
 
 ## Liveness Diagnostics
 
@@ -180,7 +189,7 @@ verify:
 1. Confirm mission outcome, typed destruction cause, disarm/hold settlement, and
    final pose.
 2. Confirm pose, heading, raw snapshot, and ESDF freshness.
-3. Inspect active global guide and target source.
+3. Inspect the active route, persistent-planner provenance, and target source.
 4. Inspect selected MPPI tier and collision flags.
 5. Inspect head progress, actual motion, and liveness.
 6. Inspect a constrained span only when a static topology route uses one.

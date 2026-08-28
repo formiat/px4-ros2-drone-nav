@@ -104,9 +104,8 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
                                               active_geometry.back().station_m);
     const double stitch_station_m =
         std::max({active_route->progress.station_m,
-                  world.global_guide_projection.valid
-                      ? world.global_guide_projection.station_m
-                      : active_route->progress.station_m,
+                  world.route_projection.valid ? world.route_projection.station_m
+                                               : active_route->progress.station_m,
                   navigation_projection.valid ? navigation_projection.station_m
                                               : active_route->progress.station_m}) +
         static_route_extension_config_.required_certified_overlap_m;

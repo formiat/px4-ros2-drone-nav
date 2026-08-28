@@ -57,39 +57,37 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
   prepared.planning_search_direction = candidate.search_velocity;
   prepared.planning_candidate_points = plan.points.size();
   prepared.planning_candidate_samples = candidate.route.size();
-  prepared.lattice_search_performed = true;
-  prepared.lattice_executable = plan.executable();
-  prepared.global_guide_expansions = plan.expansions;
-  prepared.lattice_3d_status = Lattice3DStatus::kReachedPlanningGoal;
-  prepared.lattice_3d_risk_stage = Lattice3DRiskStage::kPreferredOnly;
-  prepared.lattice_3d_termination = Lattice3DSearchTermination::kPlanningGoalReached;
-  prepared.lattice_3d_route_purpose = Lattice3DRoutePurpose::kMissionTransit;
-  prepared.lattice_3d_observation_frontier.reset();
-  prepared.lattice_search_session_complete = plan.search_complete;
-  prepared.lattice_search_revision = plan.planned_on_revision;
-  prepared.lattice_validation_revision = plan.planned_on_revision;
-  prepared.lattice_planning_goal_reached = plan.executable();
-  prepared.lattice_achieved_progress_m = plan.path_length_m;
-  prepared.lattice_guide_length_m = plan.path_length_m;
-  prepared.lattice_remaining_goal_distance_m =
-      distance3D(prepared.planning_candidate_endpoint, mission_goal);
-  prepared.lattice_open_peak = plan.open_entries;
-  prepared.lattice_records_peak = plan.records;
-  prepared.lattice_frontier_candidates_considered = 0U;
-  prepared.lattice_frontier_sampled_free_voxels = 0U;
-  prepared.lattice_frontier_boundary_candidates = 0U;
-  prepared.lattice_frontier_evaluated_candidates = 0U;
-  prepared.lattice_frontier_searches = 0U;
-  prepared.lattice_frontier_evaluation_budget_exhausted = false;
-  prepared.global_guide_cost = plan.estimated_execution_time_s;
-  prepared.global_guide_reaches_mission_goal = plan.executable();
-  prepared.topology_candidates.clear();
-  prepared.topology_objective_cost = plan.estimated_execution_time_s;
-  prepared.topology_route_length_m = plan.path_length_m;
-  prepared.topology_travel_time_s = plan.estimated_execution_time_s;
-  prepared.topology_vertical_alignment_time_s = 0.0;
-  prepared.topology_planning_exposure_m = 0.0;
-  prepared.topology_critical_exposure_m = 0.0;
+  prepared.planner = ProductionPersistentPlannerTelemetry3D{
+      .status = plan.status,
+      .mission_epoch = plan.mission_epoch,
+      .planned_on_revision = plan.planned_on_revision,
+      .occupied_fingerprint = plan.occupied_fingerprint,
+      .search_generation = plan.search_generation,
+      .repair_generation = plan.repair_generation,
+      .expansions = plan.expansions,
+      .changed_occupied_voxels = plan.changed_occupied_voxels,
+      .affected_lattice_states = plan.affected_lattice_states,
+      .records = plan.records,
+      .open_entries = plan.open_entries,
+      .shortcut_checks = plan.shortcut_checks,
+      .shortcuts_applied = plan.shortcuts_applied,
+      .path_length_m = plan.path_length_m,
+      .remaining_goal_distance_m =
+          distance3D(prepared.planning_candidate_endpoint, mission_goal),
+      .estimated_execution_time_s = plan.estimated_execution_time_s,
+      .estimated_translation_time_s = plan.estimated_translation_time_s,
+      .estimated_stationary_turn_time_s = plan.estimated_stationary_turn_time_s,
+      .world_update_ms = plan.world_update_ms,
+      .search_ms = plan.search_ms,
+      .invoked = true,
+      .executable = plan.executable(),
+      .search_state_reused = plan.search_state_reused,
+      .occupied_world_unchanged = plan.occupied_world_unchanged,
+      .incumbent_retained = plan.incumbent_retained,
+      .search_complete = plan.search_complete,
+  };
+  prepared.route_purpose = Lattice3DRoutePurpose::kMissionTransit;
+  prepared.route_reaches_mission_goal = plan.executable();
   prepared.continuation_validation_ms = 0.0;
   prepared.route_fingerprint = routeFingerprint(candidate.route);
   prepared.bound_route_instance_id = {};
@@ -101,12 +99,9 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
     result.replacement_policy = StaticRouteReplacementPolicy::kAllowTopologicalProgress;
   }
 
-  prepared.observation_route_replacement_status =
-      ObservationRouteReplacementStatus::kInvalidCandidate;
-
   result.validation =
       StaticRouteCandidateValidation{.status = StaticRouteCandidateStatus::kEmpty};
-  if (!prepared.lattice_executable) {
+  if (!prepared.planner.executable) {
     return result;
   }
 
@@ -411,8 +406,7 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
   }
   const RouteEndpointSemantics3D endpoint_semantics = routeEndpointSemantics3D(
       prepared.route_intent, prepared.route_segment_evidence.reaches_intent_target,
-      prepared.global_guide_reaches_mission_goal,
-      !world.search_objective.continuous_tracking);
+      prepared.route_reaches_mission_goal, !world.search_objective.continuous_tracking);
   prepared.route_fingerprint = routeFingerprint(*route, route_traversals);
   RouteCompilationResult3D compilation = compileExecutionRoute3D(RouteCompilerInput3D{
       .route = *route,
@@ -421,8 +415,8 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
       .cooperative_passage_assignments = std::move(passage_assignments),
       .selected_passage_traversal_ids = std::move(selected_passage_traversal_ids),
       .passage_volume_config = cooperative_passage_volume_config_,
-      .route_purpose = prepared.lattice_3d_route_purpose,
-      .observation_frontier = prepared.lattice_3d_observation_frontier,
+      .route_purpose = prepared.route_purpose,
+      .observation_frontier = std::nullopt,
       .endpoint_semantics = endpoint_semantics,
       .materialized_route_fingerprint = prepared.route_fingerprint,
       .tracking_world = trackingErrorTubeWorld3D(world),
@@ -430,7 +424,6 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
   });
   prepared.route_compilation_validation = compilation.validation;
   prepared.route_stop_turn_count = compilation.stop_turn_count;
-  const bool route_compiled = compilation.compiled();
   prepared.compiled_route_geometry = std::move(compilation.geometry);
   if (prepared.compiled_route_geometry != nullptr) {
     prepared.mppi_route = prepared.compiled_route_geometry->mppi_route;
@@ -444,14 +437,11 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
     prepared.selected_passage_traversal_ids =
         prepared.compiled_route_geometry->selected_passage_traversal_ids;
   }
-  if (result.validation.accepted && !route_compiled) {
-    prepared.lattice_executable = false;
-  }
   if (prepared.route_2d_projection == nullptr) {
     prepared.route_2d_projection = projectRouteTo2D(*route);
   }
-  prepared.global_guide_projection = projectOntoGlobalGuide(
-      *prepared.route_2d_projection, Point2{navigation.state.x, navigation.state.y});
+  prepared.route_projection = projectOntoRouteProgress3D(
+      *route, Point3{navigation.state.x, navigation.state.y, navigation.state.z});
   prepared.candidate_validation_ms =
       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                 validation_started)

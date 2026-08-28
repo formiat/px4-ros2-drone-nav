@@ -52,10 +52,8 @@
 #include "drone_city_nav/pending_certified_route_3d.hpp"
 #include "drone_city_nav/persistent_dstar_lite_planner_3d.hpp"
 #include "drone_city_nav/px4_map_frame_transform.hpp"
-#include "drone_city_nav/raw_guide_validation.hpp"
 #include "drone_city_nav/raw_obstacle_3d_ros.hpp"
 #include "drone_city_nav/raw_obstacle_delta.hpp"
-#include "drone_city_nav/risk_aware_lattice.hpp"
 #include "drone_city_nav/risk_aware_lattice_3d.hpp"
 #include "drone_city_nav/rolling_route_telemetry_3d.hpp"
 #include "drone_city_nav/route_3d.hpp"
@@ -106,6 +104,35 @@ enum class ProductionPlanningSearchKind : std::uint8_t {
   kPersistentDStarLite3D,
 };
 
+struct ProductionPersistentPlannerTelemetry3D {
+  PersistentPlannerStatus3D status{PersistentPlannerStatus3D::kInvalidInput};
+  std::uint64_t mission_epoch{0U};
+  std::uint64_t planned_on_revision{0U};
+  std::uint64_t occupied_fingerprint{0U};
+  std::uint64_t search_generation{0U};
+  std::uint64_t repair_generation{0U};
+  std::size_t expansions{0U};
+  std::size_t changed_occupied_voxels{0U};
+  std::size_t affected_lattice_states{0U};
+  std::size_t records{0U};
+  std::size_t open_entries{0U};
+  std::size_t shortcut_checks{0U};
+  std::size_t shortcuts_applied{0U};
+  double path_length_m{0.0};
+  double remaining_goal_distance_m{0.0};
+  double estimated_execution_time_s{0.0};
+  double estimated_translation_time_s{0.0};
+  double estimated_stationary_turn_time_s{0.0};
+  double world_update_ms{0.0};
+  double search_ms{0.0};
+  bool invoked{false};
+  bool executable{false};
+  bool search_state_reused{false};
+  bool occupied_world_unchanged{false};
+  bool incumbent_retained{false};
+  bool search_complete{false};
+};
+
 struct ProductionMppiPreparedEsdf;
 struct ProductionMppiPlanningTickFinalization;
 struct ProductionMppiControllerTick;
@@ -140,7 +167,7 @@ struct ProductionMppiPreparedEsdf {
   double esdf_finalize_ms{0.0};
   double conversion_ms{0.0};
   double upload_ms{0.0};
-  double global_guide_search_ms{0.0};
+  double route_search_ms{0.0};
   double continuation_validation_ms{0.0};
   double route_smoothing_ms{0.0};
   double route_shortcut_validation_ms{0.0};
@@ -180,28 +207,15 @@ struct ProductionMppiPreparedEsdf {
   std::shared_ptr<const std::vector<PassageTraversalId>> selected_passage_traversal_ids;
   StaticRouteObjective search_objective{};
   StaticRouteObjective route_objective{};
-  std::vector<Lattice3DTopologyCandidate> topology_candidates;
-  double topology_objective_cost{0.0};
-  double topology_route_length_m{0.0};
-  double topology_travel_time_s{0.0};
-  double topology_vertical_alignment_time_s{0.0};
-  double topology_planning_exposure_m{0.0};
-  double topology_critical_exposure_m{0.0};
-  std::size_t global_guide_expansions{0U};
-  double global_guide_cost{0.0};
-  std::uint64_t global_guide_generation{0U};
-  bool global_guide_reused{false};
-  bool global_guide_reaches_mission_goal{false};
-  GlobalGuideReleaseReason global_guide_release_reason{
+  std::uint64_t route_generation{0U};
+  bool route_reaches_mission_goal{false};
+  GlobalGuideReleaseReason route_release_reason{
       GlobalGuideReleaseReason::kNoActiveGuide};
-  GlobalGuideHeadingSource global_guide_heading_source{
-      GlobalGuideHeadingSource::kGoalDirection};
-  GlobalGuideRiskTier global_guide_risk{GlobalGuideRiskTier::kPreferred};
-  GlobalGuideAcceptanceReason global_guide_acceptance_reason{
-      GlobalGuideAcceptanceReason::kNotAttempted};
-  GlobalGuideProjection global_guide_projection{};
+  GlobalGuideProjection route_projection{};
+  Lattice3DRoutePurpose route_purpose{Lattice3DRoutePurpose::kMissionTransit};
   ProductionPlanningSearchKind planning_search_kind{
       ProductionPlanningSearchKind::kNone};
+  ProductionPersistentPlannerTelemetry3D planner{};
   RouteInstanceId3D planning_search_base_route_instance_id{};
   std::optional<double> planning_search_base_stitch_station_m;
   // Search provenance and activation continuity are separate contracts. A
@@ -219,51 +233,6 @@ struct ProductionMppiPreparedEsdf {
   double certified_route_reserve_available_m{0.0};
   double certified_route_reserve_required_m{0.0};
   double certified_route_reserve_shortfall_m{0.0};
-  bool lattice_search_performed{false};
-  bool lattice_executable{false};
-  LatticePlanStatus lattice_status{LatticePlanStatus::kInvalidInput};
-  LatticeSearchTermination lattice_termination{LatticeSearchTermination::kInvalidInput};
-  bool lattice_planning_goal_reached{false};
-  double lattice_achieved_progress_m{0.0};
-  double lattice_guide_length_m{0.0};
-  double lattice_remaining_goal_distance_m{0.0};
-  std::size_t lattice_terminal_successor_count{0U};
-  LatticeRiskStage lattice_risk_stage{LatticeRiskStage::kPreferredOnly};
-  std::size_t lattice_stale_queue_pops{0U};
-  std::size_t lattice_open_peak{0U};
-  std::size_t lattice_records_peak{0U};
-  std::size_t lattice_continuation_reachable_states{0U};
-  double lattice_reachable_depth_m{0.0};
-  double lattice_frontier_endpoint_displacement_m{0.0};
-  double lattice_frontier_selection_score{0.0};
-  std::size_t lattice_frontier_candidates_considered{0U};
-  std::size_t lattice_frontier_sampled_free_voxels{0U};
-  std::size_t lattice_frontier_boundary_candidates{0U};
-  std::size_t lattice_frontier_evaluated_candidates{0U};
-  std::size_t lattice_frontier_searches{0U};
-  bool lattice_frontier_evaluation_budget_exhausted{false};
-  LatticeSuccessorDiagnostics lattice_successor_diagnostics{};
-  LatticeSuccessorProfiling lattice_successor_profiling{};
-  Lattice3DStatus lattice_3d_status{Lattice3DStatus::kInvalidInput};
-  Lattice3DRiskStage lattice_3d_risk_stage{Lattice3DRiskStage::kPreferredOnly};
-  Lattice3DSearchTermination lattice_3d_termination{
-      Lattice3DSearchTermination::kInvalidInput};
-  Lattice3DRoutePurpose lattice_3d_route_purpose{
-      Lattice3DRoutePurpose::kMissionTransit};
-  std::optional<ObservationFrontier> lattice_3d_observation_frontier;
-  ObservationRouteReplacementStatus observation_route_replacement_status{
-      ObservationRouteReplacementStatus::kInvalidCandidate};
-  double lattice_3d_minimum_clearance_m{0.0};
-  Lattice3DSuccessorDiagnostics lattice_3d_successor_diagnostics{};
-  Lattice3DSuccessorProfiling lattice_3d_successor_profiling{};
-  std::size_t lattice_continuation_attempt{0U};
-  double lattice_search_session_age_ms{0.0};
-  bool lattice_search_session_resumed{false};
-  bool lattice_search_session_complete{true};
-  std::uint64_t lattice_search_revision{0U};
-  std::uint64_t lattice_validation_revision{0U};
-  RawGuideValidationStatus lattice_raw_validation_status{
-      RawGuideValidationStatus::kInvalidGuide};
   bool static_route_extension_request{false};
   std::uint64_t static_route_extension_base_generation{0U};
   bool static_route_replan_request{false};

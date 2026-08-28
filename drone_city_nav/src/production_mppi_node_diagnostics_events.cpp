@@ -28,15 +28,15 @@ void ProductionMppiNode::logDiagnosticsEvents(
                 liveness.predicted_terminal_progress_m);
   }
   if (snapshot.guide_progress.local_reseed_requested) {
-    RCLCPP_WARN(
-        get_logger(),
-        "GLOBAL_GUIDE_LOCAL_RESEED guide_generation=%" PRIu64
-        " reseed_generation=%" PRIu64
-        " observation_age_s=%.3f along_guide_progress_m=%.3f "
-        "predicted_head_progress_m=%.3f",
-        esdf.global_guide_generation, snapshot.guide_progress.local_reseed_generation,
-        snapshot.guide_progress.observation_age_s, snapshot.guide_progress.progress_m,
-        snapshot.guide_progress.predicted_head_progress_m);
+    RCLCPP_WARN(get_logger(),
+                "GLOBAL_GUIDE_LOCAL_RESEED guide_generation=%" PRIu64
+                " reseed_generation=%" PRIu64
+                " observation_age_s=%.3f along_guide_progress_m=%.3f "
+                "predicted_head_progress_m=%.3f",
+                esdf.route_generation, snapshot.guide_progress.local_reseed_generation,
+                snapshot.guide_progress.observation_age_s,
+                snapshot.guide_progress.progress_m,
+                snapshot.guide_progress.predicted_head_progress_m);
   }
   if (snapshot.guide_progress.stalled) {
     RCLCPP_WARN(get_logger(),
@@ -44,7 +44,7 @@ void ProductionMppiNode::logDiagnosticsEvents(
                 " stall_generation=%" PRIu64
                 " observation_age_s=%.3f along_guide_progress_m=%.3f "
                 "predicted_head_progress_m=%.3f",
-                esdf.global_guide_generation,
+                esdf.route_generation,
                 globalGuideProgressActionName(snapshot.guide_progress.action),
                 snapshot.guide_progress.stall_generation,
                 snapshot.guide_progress.observation_age_s,
@@ -57,7 +57,7 @@ void ProductionMppiNode::logDiagnosticsEvents(
                 " recovery_generation=%" PRIu64 " phase=%s guide_generation=%" PRIu64,
                 snapshot.no_eligible_recovery.no_eligible_recovery_generation,
                 mppiNoEligiblePhaseName(snapshot.no_eligible_recovery.phase),
-                esdf.global_guide_generation);
+                esdf.route_generation);
   }
   if (snapshot.planning_state == ProductionMppiPlanningState::kPlanned &&
       snapshot.esdf_age_ms > maximum_esdf_age_ms_) {

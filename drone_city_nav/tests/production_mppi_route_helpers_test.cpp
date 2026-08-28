@@ -79,6 +79,25 @@ TEST(ProductionMppiRouteHelpersTest,
 }
 
 TEST(ProductionMppiRouteHelpersTest,
+     RouteProgressProjectionDisambiguatesVerticallyOverlappingSegments) {
+  const std::vector<RouteSample3D> route = sampleRoute3D(
+      std::array<Point3, 6>{Point3{0.0, 0.0, 0.0}, Point3{10.0, 0.0, 0.0},
+                            Point3{10.0, 10.0, 0.0}, Point3{10.0, 10.0, 10.0},
+                            Point3{10.0, 0.0, 10.0}, Point3{0.0, 0.0, 10.0}},
+      1.0, 4.0);
+
+  const GlobalGuideProjection projection =
+      projectOntoRouteProgress3D(route, Point3{5.0, 0.0, 9.8});
+
+  ASSERT_TRUE(projection.valid);
+  EXPECT_NEAR(projection.station_m, 45.0, 1.0e-9);
+  EXPECT_NEAR(projection.total_length_m, 50.0, 1.0e-9);
+  EXPECT_NEAR(projection.remaining_m, 5.0, 1.0e-9);
+  EXPECT_NEAR(projection.cross_track_m, 0.2, 1.0e-9);
+  EXPECT_LT(projection.tangent.x, 0.0);
+}
+
+TEST(ProductionMppiRouteHelpersTest,
      CompiledCandidatePassesTheCompletePreArbitrationGeometryContract) {
   const std::vector<RouteSample3D> candidate =
       sampleRoute3D(std::array<Point3, 3>{Point3{0.0, 0.0, 5.0}, Point3{5.0, 0.0, 5.0},

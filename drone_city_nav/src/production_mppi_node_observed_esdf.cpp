@@ -422,8 +422,6 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
       if (current_objective) {
         prepared.search_objective = makeStaticRouteObjective(*current_objective);
       }
-      prepared.lattice_search_performed = false;
-      prepared.lattice_continuation_attempt = 0U;
       local_world_generation_valid = productionWorldGenerationCoherent(prepared);
       if (local_world_generation_valid) {
         prepared_esdf_ = prepared;
@@ -475,18 +473,18 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
   if (blocked_raw_revision != 0U &&
       blocked_raw_revision <= raw_world.version.revision &&
       dispatched_raw_revision < blocked_raw_revision &&
-      prepared.global_guide_generation != 0U) {
+      prepared.route_generation != 0U) {
     observed_route_replan_dispatched_raw_revision_.store(blocked_raw_revision,
                                                          std::memory_order_release);
     RCLCPP_INFO(get_logger(),
                 "OBSERVED_ROUTE_REPLAN status=esdf_caught_up raw_revision=%" PRIu64
                 " esdf_revision=%" PRIu64 " generation=%" PRIu64,
                 raw_world.version.revision, prepared.revision,
-                prepared.global_guide_generation);
+                prepared.route_generation);
     requestStaticRouteReplan(GlobalGuideReleaseReason::kBlocked,
-                             prepared.global_guide_generation);
+                             prepared.route_generation);
   }
-  const bool initial_route_search_required = prepared.global_guide_generation == 0U;
+  const bool initial_route_search_required = prepared.route_generation == 0U;
   bool initial_route_search_queued = false;
   bool initial_route_search_already_pending = false;
   if (initial_route_search_required) {
@@ -531,7 +529,7 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
       field.stats.dependency_invalidated_voxels, field.stats.lowered_voxels,
       field.stats.distance_field.voxel_count, maximum_distance_m,
       periodic_full_audit ? "true" : "false", recenter ? "true" : "false",
-      prepared.local_world_generation.generation, prepared.global_guide_generation,
+      prepared.local_world_generation.generation, prepared.route_generation,
       !initial_route_search_required
           ? "active_route_preserved"
           : (initial_route_search_queued

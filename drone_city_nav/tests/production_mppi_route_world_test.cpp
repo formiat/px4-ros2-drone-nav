@@ -145,7 +145,7 @@ TEST(ProductionMppiRouteWorldTest,
   completed_world_build.grid.width = 17;
   completed_world_build.distances_m =
       std::make_shared<const std::vector<float>>(4U, 2.0F);
-  completed_world_build.global_guide_generation = 33U;
+  completed_world_build.route_generation = 33U;
   completed_world_build.route_3d = generation_33_route;
   completed_world_build.route_intent.id = 33U;
   completed_world_build.static_route_extension_request = true;
@@ -154,7 +154,7 @@ TEST(ProductionMppiRouteWorldTest,
   resident.local_world_generation.generation = 117U;
   resident.revision = 9001U;
   resident.source_raw_revision = 447U;
-  resident.global_guide_generation = 34U;
+  resident.route_generation = 34U;
   resident.route_3d = generation_34_route;
   resident.route_intent.id = 1234U;
   resident.static_route_extension_request = false;
@@ -166,7 +166,7 @@ TEST(ProductionMppiRouteWorldTest,
   EXPECT_EQ(resident.source_raw_revision, 451U);
   EXPECT_EQ(resident.grid.width, 17);
   EXPECT_EQ(resident.distances_m, completed_world_build.distances_m);
-  EXPECT_EQ(resident.global_guide_generation, 34U);
+  EXPECT_EQ(resident.route_generation, 34U);
   EXPECT_EQ(resident.route_3d, generation_34_route);
   EXPECT_EQ(resident.route_intent.id, 1234U);
   EXPECT_FALSE(resident.static_route_extension_request);

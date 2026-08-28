@@ -12,7 +12,6 @@
 #include "production_mppi_node.hpp"
 #include "production_mppi_node_diagnostics_format.hpp"
 #include "production_mppi_noncooperative_diagnostics.hpp"
-#include "successor_profiling_diagnostics.hpp"
 #include "tracking_objective_diagnostics.hpp"
 
 namespace drone_city_nav {
@@ -70,7 +69,7 @@ void ProductionMppiNode::processDiagnostics(
       << static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s
       << " target_source=" << target_source << " target=(" << input.target.x << ','
       << input.target.y << ',' << input.target.z << ")"
-      << " guide_generation=" << esdf.global_guide_generation
+      << " route_generation=" << esdf.route_generation
       << " route_objective_epoch=" << esdf.route_objective.mission_epoch
       << " route_objective_sample=" << esdf.route_objective.sample_sequence
       << " route_assignment_generation=" << esdf.route_objective.assignment_generation
@@ -81,9 +80,8 @@ void ProductionMppiNode::processDiagnostics(
       << " search_assignment_generation=" << esdf.search_objective.assignment_generation
       << " search_target_detection_id=" << esdf.search_objective.target_detection_id
       << " search_target_track_id=" << esdf.search_objective.target_track_id
-      << " guide_reused=" << (esdf.global_guide_reused ? "true" : "false")
-      << " guide_reaches_mission_goal="
-      << (esdf.global_guide_reaches_mission_goal ? "true" : "false")
+      << " route_reaches_mission_goal="
+      << (esdf.route_reaches_mission_goal ? "true" : "false")
       << " route_intent_id=" << esdf.route_intent.id
       << " strategic_plan_id=" << esdf.route_intent.strategic_plan_id
       << " route_intent_source=" << routeIntentSource3DName(esdf.route_intent.source)
@@ -100,15 +98,10 @@ void ProductionMppiNode::processDiagnostics(
       << " route_intent_target_reached="
       << (esdf.route_segment_evidence.reaches_intent_target ? "true" : "false")
       << " goal_capture_latched=" << (snapshot.goal_capture.latched ? "true" : "false")
-      << " goal_distance_m=" << snapshot.goal_capture.distance_m << " guide_release="
-      << globalGuideReleaseReasonName(esdf.global_guide_release_reason)
-      << " guide_heading_source="
-      << globalGuideHeadingSourceName(esdf.global_guide_heading_source)
-      << " guide_risk=" << globalGuideRiskTierName(esdf.global_guide_risk)
-      << " guide_acceptance="
-      << globalGuideAcceptanceReasonName(esdf.global_guide_acceptance_reason)
-      << " guide_station_m=" << snapshot.route_station_m
-      << " guide_remaining_m=" << snapshot.route_remaining_m
+      << " goal_distance_m=" << snapshot.goal_capture.distance_m
+      << " route_release=" << globalGuideReleaseReasonName(esdf.route_release_reason)
+      << " route_station_m=" << snapshot.route_station_m
+      << " route_remaining_m=" << snapshot.route_remaining_m
       << " route_constraint_phase=" << constrainedRoutePhaseName(route_constraint.phase)
       << " route_constraint_passage="
       << (route_constraint.passage_traversal_id.empty()
@@ -154,42 +147,8 @@ void ProductionMppiNode::processDiagnostics(
       << esdf.planning_search_direction.y << ',' << esdf.planning_search_direction.z
       << ')' << " planning_candidate_points=" << esdf.planning_candidate_points
       << " planning_candidate_samples=" << esdf.planning_candidate_samples
-      << " lattice_search_performed="
-      << (esdf.lattice_search_performed ? "true" : "false")
-      << " lattice_status=" << planningStatusName(esdf)
-      << " lattice_termination=" << planningTerminationName(esdf)
-      << " lattice_continuation_attempt=" << esdf.lattice_continuation_attempt
-      << " lattice_search_session_resumed="
-      << (esdf.lattice_search_session_resumed ? "true" : "false")
-      << " lattice_search_session_complete="
-      << (esdf.lattice_search_session_complete ? "true" : "false")
-      << " lattice_search_revision=" << esdf.lattice_search_revision
-      << " lattice_validation_revision=" << esdf.lattice_validation_revision
-      << " lattice_raw_validation="
-      << rawGuideValidationStatusName(esdf.lattice_raw_validation_status)
-      << " lattice_risk_stage=" << planningRiskStageName(esdf)
-      << " lattice_route_purpose=" << planningRoutePurposeName(esdf)
-      << " observation_frontier_id="
-      << (esdf.lattice_3d_observation_frontier
-              ? esdf.lattice_3d_observation_frontier->id.value
-              : 0U)
-      << " observation_frontier_revision="
-      << (esdf.lattice_3d_observation_frontier
-              ? esdf.lattice_3d_observation_frontier->supporting_map_revision
-              : 0U)
-      << " observation_frontier_supporting_rays="
-      << (esdf.lattice_3d_observation_frontier
-              ? esdf.lattice_3d_observation_frontier->supporting_rays
-              : 0U)
-      << " observation_frontier_information_gain_voxels="
-      << (esdf.lattice_3d_observation_frontier
-              ? esdf.lattice_3d_observation_frontier->information_gain_voxels
-              : 0U)
-      << " observation_route_replacement="
-      << observationRouteReplacementStatusName(
-             esdf.observation_route_replacement_status)
-      << " lattice_3d_minimum_clearance_m=" << esdf.lattice_3d_minimum_clearance_m
-      << " static_route_candidate="
+      << " route_purpose=" << lattice3DRoutePurposeName(esdf.route_purpose)
+      << persistentPlannerInfoFields(esdf) << " static_route_candidate="
       << staticRouteCandidateStatusName(esdf.static_route_candidate_status)
       << certifiedRouteReserveInfoFields(esdf) << trackingErrorTubeInfoFields(esdf)
       << " static_route_activation="
@@ -199,82 +158,10 @@ void ProductionMppiNode::processDiagnostics(
       << " static_route_world_compatible="
       << (esdf.static_route_world_compatible ? "true" : "false")
       << " static_route_generation_matches=" << static_route_generation_matches
-      << " topology_objective=" << esdf.topology_objective_cost
-      << " topology_route_length_m=" << esdf.topology_route_length_m
-      << " topology_travel_time_s=" << esdf.topology_travel_time_s
-      << " topology_vertical_alignment_time_s="
-      << esdf.topology_vertical_alignment_time_s
-      << " topology_planning_exposure_m=" << esdf.topology_planning_exposure_m
-      << " topology_critical_exposure_m=" << esdf.topology_critical_exposure_m
-      << " topology_selected_passage_traversals="
+      << " route_selected_passage_traversals="
       << (esdf.selected_passage_traversal_ids
               ? esdf.selected_passage_traversal_ids->size()
               : 0U)
-      << " lattice_stale_pops=" << esdf.lattice_stale_queue_pops
-      << " lattice_open_peak=" << esdf.lattice_open_peak
-      << " lattice_records_peak=" << esdf.lattice_records_peak
-      << " lattice_continuation_states=" << esdf.lattice_continuation_reachable_states
-      << " lattice_reachable_depth_m=" << esdf.lattice_reachable_depth_m
-      << " lattice_frontier_endpoint_displacement_m="
-      << esdf.lattice_frontier_endpoint_displacement_m
-      << " lattice_frontier_selection_score=" << esdf.lattice_frontier_selection_score
-      << " lattice_frontier_candidates_considered="
-      << esdf.lattice_frontier_candidates_considered
-      << " lattice_frontier_sampled_free_voxels="
-      << esdf.lattice_frontier_sampled_free_voxels
-      << " lattice_frontier_boundary_candidates="
-      << esdf.lattice_frontier_boundary_candidates
-      << " lattice_frontier_evaluated_candidates="
-      << esdf.lattice_frontier_evaluated_candidates
-      << " lattice_frontier_searches=" << esdf.lattice_frontier_searches
-      << " lattice_frontier_evaluation_budget_exhausted="
-      << (esdf.lattice_frontier_evaluation_budget_exhausted ? "true" : "false")
-      << " lattice_3d_successor_generated="
-      << esdf.lattice_3d_successor_diagnostics.lattice_generated
-      << " lattice_3d_successor_accepted="
-      << esdf.lattice_3d_successor_diagnostics.lattice_accepted
-      << " lattice_3d_successor_reject_edge="
-      << esdf.lattice_3d_successor_diagnostics.lattice_rejected_edge
-      << " lattice_3d_successor_reject_zero="
-      << esdf.lattice_3d_successor_diagnostics.lattice_rejected_zero_length
-      << " lattice_3d_successor_reject_outside_roi="
-      << esdf.lattice_3d_successor_diagnostics.lattice_rejected_outside_grid
-      << " lattice_3d_successor_reject_unknown_space="
-      << esdf.lattice_3d_successor_diagnostics.lattice_rejected_unknown_space
-      << " lattice_3d_successor_reject_envelope="
-      << esdf.lattice_3d_successor_diagnostics.lattice_rejected_flight_envelope
-      << " lattice_3d_successor_reject_invalid="
-      << esdf.lattice_3d_successor_diagnostics.lattice_rejected_invalid_esdf
-      << " lattice_3d_successor_reject_collision="
-      << esdf.lattice_3d_successor_diagnostics.lattice_rejected_raw_collision
-      << " lattice_3d_successor_reject_risk="
-      << esdf.lattice_3d_successor_diagnostics.lattice_rejected_risk_stage
-      << " lattice_3d_successor_reject_cost="
-      << esdf.lattice_3d_successor_diagnostics.lattice_rejected_no_cost_improvement
-      << " lattice_3d_successor_soft_tabu="
-      << esdf.lattice_3d_successor_diagnostics.soft_tabu_penalties_applied
-      << " passage_successor_generated="
-      << esdf.lattice_3d_successor_diagnostics.passage_generated
-      << " passage_successor_accepted="
-      << esdf.lattice_3d_successor_diagnostics.passage_accepted
-      << " passage_successor_rejected="
-      << esdf.lattice_3d_successor_diagnostics.passage_rejected
-      << " passage_successor_reject_connection="
-      << esdf.lattice_3d_successor_diagnostics.passage_rejected_connection_distance
-      << " passage_successor_reject_outside_roi="
-      << esdf.lattice_3d_successor_diagnostics.passage_rejected_outside_grid
-      << " passage_successor_reject_unknown_space="
-      << esdf.lattice_3d_successor_diagnostics.passage_rejected_unknown_space
-      << " passage_successor_reject_envelope="
-      << esdf.lattice_3d_successor_diagnostics.passage_rejected_flight_envelope
-      << " passage_successor_reject_invalid="
-      << esdf.lattice_3d_successor_diagnostics.passage_rejected_invalid_esdf
-      << " passage_successor_reject_collision="
-      << esdf.lattice_3d_successor_diagnostics.passage_rejected_raw_collision
-      << " passage_successor_reject_risk="
-      << esdf.lattice_3d_successor_diagnostics.passage_rejected_risk_stage
-      << " passage_successor_reject_cost="
-      << esdf.lattice_3d_successor_diagnostics.passage_rejected_no_cost_improvement
       << " pose_predicted=" << (snapshot.pose_predicted ? "true" : "false")
       << " target_lookahead_m=" << speed_policy.target_lookahead_m
       << " reference_speed_mps=" << input.reference_speed_mps
@@ -400,68 +287,13 @@ void ProductionMppiNode::processDiagnostics(
       << " esdf_y_pass_ms=" << esdf.esdf_y_pass_ms
       << " esdf_z_pass_ms=" << esdf.esdf_z_pass_ms
       << " esdf_finalize_ms=" << esdf.esdf_finalize_ms
-      << " guide_search_ms=" << esdf.global_guide_search_ms
+      << " route_search_ms=" << esdf.route_search_ms
       << " continuation_validation_ms=" << esdf.continuation_validation_ms
-      << " successor_search_batches="
-      << esdf.lattice_successor_profiling.search.collection_calls
-      << " successor_search_parallel_batches="
-      << esdf.lattice_successor_profiling.search.parallel_collection_calls
-      << " successor_search_candidates="
-      << esdf.lattice_successor_profiling.search.candidates
-      << " successor_search_parallel_candidates="
-      << esdf.lattice_successor_profiling.search.parallel_candidates
-      << " successor_search_batch_max="
-      << esdf.lattice_successor_profiling.search.maximum_candidates
-      << " successor_search_worker_ms="
-      << esdf.lattice_successor_profiling.search.worker_ms
-      << " expansion_prefetch_batches="
-      << esdf.lattice_successor_profiling.expansion_prefetch.batches
-      << " expansion_prefetch_entries="
-      << esdf.lattice_successor_profiling.expansion_prefetch.entries
-      << " expansion_prefetch_parallel_entries="
-      << esdf.lattice_successor_profiling.expansion_prefetch.parallel_entries
-      << " expansion_prefetch_cache_hits="
-      << esdf.lattice_successor_profiling.expansion_prefetch.cache_hits
-      << " expansion_prefetch_discarded_entries="
-      << esdf.lattice_successor_profiling.expansion_prefetch.discarded_entries
-      << " expansion_prefetch_worker_ms="
-      << esdf.lattice_successor_profiling.expansion_prefetch.worker_ms
-      << " successor_continuation_batches="
-      << esdf.lattice_successor_profiling.continuation.collection_calls
-      << " successor_continuation_parallel_batches="
-      << esdf.lattice_successor_profiling.continuation.parallel_collection_calls
-      << " successor_continuation_candidates="
-      << esdf.lattice_successor_profiling.continuation.candidates
-      << " successor_continuation_batch_max="
-      << esdf.lattice_successor_profiling.continuation.maximum_candidates
-      << " successor_continuation_worker_ms="
-      << esdf.lattice_successor_profiling.continuation.worker_ms
-      << " successor_3d_search_batches="
-      << esdf.lattice_3d_successor_profiling.search.collection_calls
-      << " successor_3d_search_parallel_batches="
-      << esdf.lattice_3d_successor_profiling.search.parallel_collection_calls
-      << " successor_3d_search_candidates="
-      << esdf.lattice_3d_successor_profiling.search.candidates
-      << " successor_3d_search_batch_max="
-      << esdf.lattice_3d_successor_profiling.search.maximum_candidates
-      << " successor_3d_search_worker_ms="
-      << esdf.lattice_3d_successor_profiling.search.worker_ms
-      << " successor_3d_continuation_batches="
-      << esdf.lattice_3d_successor_profiling.continuation.collection_calls
-      << " successor_3d_continuation_parallel_batches="
-      << esdf.lattice_3d_successor_profiling.continuation.parallel_collection_calls
-      << " successor_3d_continuation_candidates="
-      << esdf.lattice_3d_successor_profiling.continuation.candidates
-      << " successor_3d_continuation_batch_max="
-      << esdf.lattice_3d_successor_profiling.continuation.maximum_candidates
-      << " successor_3d_continuation_worker_ms="
-      << esdf.lattice_3d_successor_profiling.continuation.worker_ms
       << " route_smoothing_ms=" << esdf.route_smoothing_ms
       << " route_shortcuts_applied=" << esdf.route_shortcuts_applied
       << " route_corners_smoothed=" << esdf.route_corners_smoothed
       << " candidate_validation_ms=" << esdf.candidate_validation_ms
       << " route_fingerprint=" << esdf.route_fingerprint
-      << " search_session_age_ms=" << esdf.lattice_search_session_age_ms
       << " esdf_upload_ms=" << esdf.upload_ms << " dropped_diagnostics="
       << dropped_diagnostics_snapshots_.load(std::memory_order_relaxed);
   const std::int64_t now_ns = get_clock()->now().nanoseconds();
@@ -510,10 +342,8 @@ void ProductionMppiNode::processDiagnostics(
          << ",\"esdf_y_pass_ms\":" << esdf.esdf_y_pass_ms
          << ",\"esdf_z_pass_ms\":" << esdf.esdf_z_pass_ms
          << ",\"esdf_finalize_ms\":" << esdf.esdf_finalize_ms
-         << ",\"guide_search_ms\":" << esdf.global_guide_search_ms
+         << ",\"route_search_ms\":" << esdf.route_search_ms
          << ",\"continuation_validation_ms\":" << esdf.continuation_validation_ms
-         << detail::successorProfilingJsonFields(esdf.lattice_successor_profiling,
-                                                 esdf.lattice_3d_successor_profiling)
          << ",\"route_smoothing_ms\":" << esdf.route_smoothing_ms
          << ",\"route_shortcuts_applied\":" << esdf.route_shortcuts_applied
          << ",\"route_corners_smoothed\":" << esdf.route_corners_smoothed
@@ -536,7 +366,7 @@ void ProductionMppiNode::processDiagnostics(
          << mppi_config_.dynamics.maximum_horizontal_acceleration_mps2
          << ",\"jerk_cap_mps3\":" << mppi_config_.dynamics.maximum_control_jerk_mps3
          << ",\"speed_tracking_weight\":" << mppi_config_.costs.speed_tracking_weight
-         << ",\"guide_generation\":" << esdf.global_guide_generation
+         << ",\"route_generation\":" << esdf.route_generation
          << ",\"route_objective_epoch\":" << esdf.route_objective.mission_epoch
          << ",\"route_objective_sample\":" << esdf.route_objective.sample_sequence
          << ",\"route_assignment_generation\":"
@@ -551,9 +381,8 @@ void ProductionMppiNode::processDiagnostics(
          << ",\"search_target_detection_id\":"
          << esdf.search_objective.target_detection_id
          << ",\"search_target_track_id\":" << esdf.search_objective.target_track_id
-         << ",\"guide_reused\":" << (esdf.global_guide_reused ? "true" : "false")
-         << ",\"guide_reaches_mission_goal\":"
-         << (esdf.global_guide_reaches_mission_goal ? "true" : "false")
+         << ",\"route_reaches_mission_goal\":"
+         << (esdf.route_reaches_mission_goal ? "true" : "false")
          << ",\"route_intent_id\":" << esdf.route_intent.id
          << ",\"route_intent_source\":\""
          << routeIntentSource3DName(esdf.route_intent.source) << '"'
@@ -574,15 +403,10 @@ void ProductionMppiNode::processDiagnostics(
          << ",\"goal_capture_latched\":"
          << (snapshot.goal_capture.latched ? "true" : "false")
          << ",\"goal_distance_m\":" << snapshot.goal_capture.distance_m
-         << ",\"guide_release\":\""
-         << globalGuideReleaseReasonName(esdf.global_guide_release_reason) << '"'
-         << ",\"guide_heading_source\":\""
-         << globalGuideHeadingSourceName(esdf.global_guide_heading_source) << '"'
-         << ",\"guide_risk\":\"" << globalGuideRiskTierName(esdf.global_guide_risk)
-         << '"' << ",\"guide_acceptance\":\""
-         << globalGuideAcceptanceReasonName(esdf.global_guide_acceptance_reason) << '"'
-         << ",\"guide_station_m\":" << snapshot.route_station_m
-         << ",\"guide_remaining_m\":" << snapshot.route_remaining_m
+         << ",\"route_release\":\""
+         << globalGuideReleaseReasonName(esdf.route_release_reason) << '"'
+         << ",\"route_station_m\":" << snapshot.route_station_m
+         << ",\"route_remaining_m\":" << snapshot.route_remaining_m
          << ",\"route_constraint_phase\":\""
          << constrainedRoutePhaseName(route_constraint.phase) << '"'
          << ",\"route_constraint_passage\":\""
@@ -660,44 +484,8 @@ void ProductionMppiNode::processDiagnostics(
          << ",\"planning_search_direction_z\":" << esdf.planning_search_direction.z
          << ",\"planning_candidate_points\":" << esdf.planning_candidate_points
          << ",\"planning_candidate_samples\":" << esdf.planning_candidate_samples
-         << ",\"lattice_search_performed\":"
-         << (esdf.lattice_search_performed ? "true" : "false")
-         << ",\"lattice_executable\":" << (esdf.lattice_executable ? "true" : "false")
-         << ",\"lattice_status\":\"" << planningStatusName(esdf) << '"'
-         << ",\"lattice_termination\":\"" << planningTerminationName(esdf) << '"'
-         << ",\"lattice_continuation_attempt\":" << esdf.lattice_continuation_attempt
-         << ",\"lattice_search_session_age_ms\":" << esdf.lattice_search_session_age_ms
-         << ",\"lattice_search_session_resumed\":"
-         << (esdf.lattice_search_session_resumed ? "true" : "false")
-         << ",\"lattice_search_session_complete\":"
-         << (esdf.lattice_search_session_complete ? "true" : "false")
-         << ",\"lattice_search_revision\":" << esdf.lattice_search_revision
-         << ",\"lattice_validation_revision\":" << esdf.lattice_validation_revision
-         << ",\"lattice_raw_validation\":\""
-         << rawGuideValidationStatusName(esdf.lattice_raw_validation_status) << '"'
-         << ",\"lattice_risk_stage\":\"" << planningRiskStageName(esdf) << '"'
-         << ",\"lattice_route_purpose\":\"" << planningRoutePurposeName(esdf) << '"'
-         << ",\"observation_frontier_id\":"
-         << (esdf.lattice_3d_observation_frontier
-                 ? esdf.lattice_3d_observation_frontier->id.value
-                 : 0U)
-         << ",\"observation_frontier_revision\":"
-         << (esdf.lattice_3d_observation_frontier
-                 ? esdf.lattice_3d_observation_frontier->supporting_map_revision
-                 : 0U)
-         << ",\"observation_frontier_supporting_rays\":"
-         << (esdf.lattice_3d_observation_frontier
-                 ? esdf.lattice_3d_observation_frontier->supporting_rays
-                 : 0U)
-         << ",\"observation_frontier_information_gain_voxels\":"
-         << (esdf.lattice_3d_observation_frontier
-                 ? esdf.lattice_3d_observation_frontier->information_gain_voxels
-                 : 0U)
-         << ",\"observation_route_replacement\":\""
-         << observationRouteReplacementStatusName(
-                esdf.observation_route_replacement_status)
-         << '"' << ",\"lattice_3d_minimum_clearance_m\":"
-         << esdf.lattice_3d_minimum_clearance_m << ",\"static_route_candidate\":\""
+         << ",\"route_purpose\":\"" << lattice3DRoutePurposeName(esdf.route_purpose)
+         << '"' << persistentPlannerJsonFields(esdf) << ",\"static_route_candidate\":\""
          << staticRouteCandidateStatusName(esdf.static_route_candidate_status) << '"'
          << certifiedRouteReserveJsonFields(esdf) << trackingErrorTubeJsonFields(esdf)
          << ",\"static_route_activation\":\""
@@ -712,112 +500,11 @@ void ProductionMppiNode::processDiagnostics(
     } else {
       json << "null";
     }
-    json << ",\"topology_objective\":" << esdf.topology_objective_cost
-         << ",\"topology_route_length_m\":" << esdf.topology_route_length_m
-         << ",\"topology_travel_time_s\":" << esdf.topology_travel_time_s
-         << ",\"topology_vertical_alignment_time_s\":"
-         << esdf.topology_vertical_alignment_time_s
-         << ",\"topology_planning_exposure_m\":" << esdf.topology_planning_exposure_m
-         << ",\"topology_critical_exposure_m\":" << esdf.topology_critical_exposure_m
-         << ",\"topology_selected_passage_count\":"
+    json << ",\"route_selected_passage_count\":"
          << (esdf.selected_passage_traversal_ids
                  ? esdf.selected_passage_traversal_ids->size()
                  : 0U)
-         << ",\"lattice_stale_queue_pops\":" << esdf.lattice_stale_queue_pops
-         << ",\"lattice_open_peak\":" << esdf.lattice_open_peak
-         << ",\"lattice_records_peak\":" << esdf.lattice_records_peak
-         << ",\"lattice_continuation_reachable_states\":"
-         << esdf.lattice_continuation_reachable_states
-         << ",\"lattice_reachable_depth_m\":" << esdf.lattice_reachable_depth_m
-         << ",\"lattice_frontier_endpoint_displacement_m\":"
-         << esdf.lattice_frontier_endpoint_displacement_m
-         << ",\"lattice_frontier_selection_score\":"
-         << esdf.lattice_frontier_selection_score
-         << ",\"lattice_frontier_candidates_considered\":"
-         << esdf.lattice_frontier_candidates_considered
-         << ",\"lattice_frontier_sampled_free_voxels\":"
-         << esdf.lattice_frontier_sampled_free_voxels
-         << ",\"lattice_frontier_boundary_candidates\":"
-         << esdf.lattice_frontier_boundary_candidates
-         << ",\"lattice_frontier_evaluated_candidates\":"
-         << esdf.lattice_frontier_evaluated_candidates
-         << ",\"lattice_frontier_searches\":" << esdf.lattice_frontier_searches
-         << ",\"lattice_frontier_evaluation_budget_exhausted\":"
-         << (esdf.lattice_frontier_evaluation_budget_exhausted ? "true" : "false")
-         << ",\"lattice_successors_generated\":"
-         << esdf.lattice_successor_diagnostics.generated
-         << ",\"lattice_successors_accepted\":"
-         << esdf.lattice_successor_diagnostics.accepted
-         << ",\"lattice_successors_rejected_outside_roi\":"
-         << esdf.lattice_successor_diagnostics.rejected_outside_roi
-         << ",\"lattice_successors_rejected_outside_grid\":"
-         << esdf.lattice_successor_diagnostics.rejected_outside_grid
-         << ",\"lattice_successors_rejected_invalid_clearance\":"
-         << esdf.lattice_successor_diagnostics.rejected_invalid_clearance
-         << ",\"lattice_successors_rejected_raw_collision\":"
-         << esdf.lattice_successor_diagnostics.rejected_raw_collision
-         << ",\"lattice_successors_rejected_risk_stage\":"
-         << esdf.lattice_successor_diagnostics.rejected_risk_stage
-         << ",\"lattice_successors_rejected_blacklisted_failure\":"
-         << esdf.lattice_successor_diagnostics.rejected_blacklisted_failure
-         << ",\"lattice_successors_rejected_no_cost_improvement\":"
-         << esdf.lattice_successor_diagnostics.rejected_no_cost_improvement
-         << ",\"lattice_successor_soft_tabu_penalties\":"
-         << esdf.lattice_successor_diagnostics.soft_tabu_penalties_applied
-         << ",\"lattice_3d_successors_generated\":"
-         << esdf.lattice_3d_successor_diagnostics.lattice_generated
-         << ",\"lattice_3d_successors_accepted\":"
-         << esdf.lattice_3d_successor_diagnostics.lattice_accepted
-         << ",\"lattice_3d_successors_rejected_edge\":"
-         << esdf.lattice_3d_successor_diagnostics.lattice_rejected_edge
-         << ",\"lattice_3d_successors_rejected_zero_length\":"
-         << esdf.lattice_3d_successor_diagnostics.lattice_rejected_zero_length
-         << ",\"lattice_3d_successors_rejected_outside_roi\":"
-         << esdf.lattice_3d_successor_diagnostics.lattice_rejected_outside_grid
-         << ",\"lattice_3d_successors_rejected_unknown_space\":"
-         << esdf.lattice_3d_successor_diagnostics.lattice_rejected_unknown_space
-         << ",\"lattice_3d_successors_rejected_flight_envelope\":"
-         << esdf.lattice_3d_successor_diagnostics.lattice_rejected_flight_envelope
-         << ",\"lattice_3d_successors_rejected_invalid_esdf\":"
-         << esdf.lattice_3d_successor_diagnostics.lattice_rejected_invalid_esdf
-         << ",\"lattice_3d_successors_rejected_raw_collision\":"
-         << esdf.lattice_3d_successor_diagnostics.lattice_rejected_raw_collision
-         << ",\"lattice_3d_successors_rejected_risk_stage\":"
-         << esdf.lattice_3d_successor_diagnostics.lattice_rejected_risk_stage
-         << ",\"lattice_3d_successors_rejected_no_cost_improvement\":"
-         << esdf.lattice_3d_successor_diagnostics.lattice_rejected_no_cost_improvement
-         << ",\"lattice_3d_successor_soft_tabu_penalties\":"
-         << esdf.lattice_3d_successor_diagnostics.soft_tabu_penalties_applied
-         << ",\"passage_successors_generated\":"
-         << esdf.lattice_3d_successor_diagnostics.passage_generated
-         << ",\"passage_successors_accepted\":"
-         << esdf.lattice_3d_successor_diagnostics.passage_accepted
-         << ",\"passage_successors_rejected\":"
-         << esdf.lattice_3d_successor_diagnostics.passage_rejected
-         << ",\"passage_successors_rejected_connection_distance\":"
-         << esdf.lattice_3d_successor_diagnostics.passage_rejected_connection_distance
-         << ",\"passage_successors_rejected_outside_roi\":"
-         << esdf.lattice_3d_successor_diagnostics.passage_rejected_outside_grid
-         << ",\"passage_successors_rejected_unknown_space\":"
-         << esdf.lattice_3d_successor_diagnostics.passage_rejected_unknown_space
-         << ",\"passage_successors_rejected_flight_envelope\":"
-         << esdf.lattice_3d_successor_diagnostics.passage_rejected_flight_envelope
-         << ",\"passage_successors_rejected_invalid_esdf\":"
-         << esdf.lattice_3d_successor_diagnostics.passage_rejected_invalid_esdf
-         << ",\"passage_successors_rejected_raw_collision\":"
-         << esdf.lattice_3d_successor_diagnostics.passage_rejected_raw_collision
-         << ",\"passage_successors_rejected_risk_stage\":"
-         << esdf.lattice_3d_successor_diagnostics.passage_rejected_risk_stage
-         << ",\"passage_successors_rejected_no_cost_improvement\":"
-         << esdf.lattice_3d_successor_diagnostics.passage_rejected_no_cost_improvement
          << ",\"pose_predicted\":" << (snapshot.pose_predicted ? "true" : "false")
-         << ",\"lattice_planning_goal_reached\":"
-         << (esdf.lattice_planning_goal_reached ? "true" : "false")
-         << ",\"lattice_achieved_progress_m\":" << esdf.lattice_achieved_progress_m
-         << ",\"lattice_guide_length_m\":" << esdf.lattice_guide_length_m
-         << ",\"lattice_remaining_goal_distance_m\":"
-         << esdf.lattice_remaining_goal_distance_m
-         << ",\"lattice_terminal_successors\":" << esdf.lattice_terminal_successor_count
          << ",\"target_lookahead_m\":" << speed_policy.target_lookahead_m
          << ",\"reference_speed_mps\":" << input.reference_speed_mps
          << detail::trackingPursuitJsonFields(pursuit_diagnostics, speed_policy, result)

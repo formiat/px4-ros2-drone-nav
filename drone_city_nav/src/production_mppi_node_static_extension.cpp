@@ -82,10 +82,10 @@ void ProductionMppiNode::bindStaticRouteRequestToExecution(
     const GlobalGuideProjection& projection) {
   const ExecutionRouteGeometry3D& geometry = *active_route.geometry;
   request.bound_route_instance_id = active_route.route_instance_id;
-  request.global_guide_generation = active_route.identity.generation;
-  request.global_guide_reaches_mission_goal =
+  request.route_generation = active_route.identity.generation;
+  request.route_reaches_mission_goal =
       active_route.identity.proposal.reaches_mission_goal;
-  request.global_guide_projection = projection;
+  request.route_projection = projection;
   request.route_fingerprint = active_route.identity.proposal.route_fingerprint;
   request.route_intent = active_route.identity.proposal.intent;
   request.route_segment_evidence = active_route.identity.proposal.evidence;
@@ -97,8 +97,7 @@ void ProductionMppiNode::bindStaticRouteRequestToExecution(
   request.passage_volumes = geometry.passage_volumes;
   request.cooperative_passage_assignments = geometry.cooperative_passage_assignments;
   request.selected_passage_traversal_ids = geometry.selected_passage_traversal_ids;
-  request.lattice_3d_route_purpose = geometry.route_purpose;
-  request.lattice_3d_observation_frontier = geometry.observation_frontier;
+  request.route_purpose = geometry.route_purpose;
 }
 
 void ProductionMppiNode::maybeRequestStaticRouteExtensionFromExecution(
@@ -161,7 +160,7 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
   StaticRoutePlanningLatencyStats latency =
       static_route_planning_latency_tracker_.stats();
   if (latency.sample_count == 0U) {
-    latency.planning_p95_ms = std::max(0.0, esdf.global_guide_search_ms);
+    latency.planning_p95_ms = std::max(0.0, esdf.route_search_ms);
     latency.planning_p99_ms = latency.planning_p95_ms;
     latency.build_and_planning_p99_ms =
         latency.planning_p99_ms + std::max(0.0, esdf.build_ms);
@@ -332,12 +331,11 @@ void ProductionMppiNode::requestStaticRouteReplan(
           get_logger(), *get_clock(), 1000,
           "STATIC_ROUTE_REPLAN_REQUEST status=rejected_generation_mismatch "
           "resident_generation=%" PRIu64 " requested_generation=%" PRIu64 " reason=%s",
-          prepared_esdf_ ? prepared_esdf_->global_guide_generation : 0U,
-          guide_generation, globalGuideReleaseReasonName(reason));
+          prepared_esdf_ ? prepared_esdf_->route_generation : 0U, guide_generation,
+          globalGuideReleaseReasonName(reason));
       return;
     }
-    const std::uint64_t prepared_guide_generation =
-        prepared_esdf_->global_guide_generation;
+    const std::uint64_t prepared_guide_generation = prepared_esdf_->route_generation;
     constexpr bool snapshot_owned_execution{true};
     const std::uint64_t search_generation =
         staticRouteSearchGeneration(snapshot_owned_execution, prepared_guide_generation,
@@ -362,8 +360,8 @@ void ProductionMppiNode::requestStaticRouteReplan(
     if (objective) {
       request->search_objective = makeStaticRouteObjective(*objective);
     }
-    request->global_guide_generation = search_generation;
-    request->global_guide_release_reason = reason;
+    request->route_generation = search_generation;
+    request->route_release_reason = reason;
     request->static_route_replan_request = true;
     request->static_route_replan_base_generation = search_generation;
     request->static_route_replan_reason = reason;

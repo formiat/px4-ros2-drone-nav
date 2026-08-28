@@ -14,38 +14,6 @@ namespace {
   return std::isfinite(value) ? value : -1.0;
 }
 
-[[nodiscard]] const char*
-planningStatusName(const ProductionMppiPreparedEsdf& esdf) noexcept {
-  return esdf.planning_search_kind ==
-                 ProductionPlanningSearchKind::kPersistentDStarLite3D
-             ? lattice3DStatusName(esdf.lattice_3d_status)
-             : latticePlanStatusName(esdf.lattice_status);
-}
-
-[[nodiscard]] const char*
-planningTerminationName(const ProductionMppiPreparedEsdf& esdf) noexcept {
-  return esdf.planning_search_kind ==
-                 ProductionPlanningSearchKind::kPersistentDStarLite3D
-             ? lattice3DSearchTerminationName(esdf.lattice_3d_termination)
-             : latticeSearchTerminationName(esdf.lattice_termination);
-}
-
-[[nodiscard]] const char*
-planningRiskStageName(const ProductionMppiPreparedEsdf& esdf) noexcept {
-  return esdf.planning_search_kind ==
-                 ProductionPlanningSearchKind::kPersistentDStarLite3D
-             ? lattice3DRiskStageName(esdf.lattice_3d_risk_stage)
-             : latticeRiskStageName(esdf.lattice_risk_stage);
-}
-
-[[nodiscard]] const char*
-planningRoutePurposeName(const ProductionMppiPreparedEsdf& esdf) noexcept {
-  return esdf.planning_search_kind ==
-                 ProductionPlanningSearchKind::kPersistentDStarLite3D
-             ? lattice3DRoutePurposeName(esdf.lattice_3d_route_purpose)
-             : "mission_transit";
-}
-
 [[nodiscard]] ConstrainedRouteObservation
 diagnosticRouteConstraint(const ProductionMppiDiagnosticsSnapshot& snapshot,
                           const RouteEnvelopeConfig& route_envelope_config,
@@ -61,10 +29,91 @@ diagnosticRouteConstraint(const ProductionMppiDiagnosticsSnapshot& snapshot,
           ? std::span<const ConstrainedRouteSpan>{*esdf.constrained_spans}
           : std::span<const ConstrainedRouteSpan>{};
   return observeConstrainedRoute(
-      route, spans, esdf.global_guide_generation, snapshot.route_station_m,
+      route, spans, esdf.route_generation, snapshot.route_station_m,
       Point3{input.initial_state.x, input.initial_state.y, input.initial_state.z},
       Vec3{input.initial_state.vx, input.initial_state.vy, input.initial_state.vz},
       route_envelope_config, diagnostics_distance_m);
+}
+
+[[nodiscard]] std::string
+persistentPlannerInfoFields(const ProductionMppiPreparedEsdf& esdf) {
+  const ProductionPersistentPlannerTelemetry3D& planner = esdf.planner;
+  std::ostringstream fields;
+  fields << " planner=persistent_dstar_lite_3d"
+         << " planner_invoked=" << (planner.invoked ? "true" : "false")
+         << " planner_status=" << persistentPlannerStatus3DName(planner.status)
+         << " planner_executable=" << (planner.executable ? "true" : "false")
+         << " planner_search_complete=" << (planner.search_complete ? "true" : "false")
+         << " planner_search_state_reused="
+         << (planner.search_state_reused ? "true" : "false")
+         << " planner_occupied_world_unchanged="
+         << (planner.occupied_world_unchanged ? "true" : "false")
+         << " planner_incumbent_retained="
+         << (planner.incumbent_retained ? "true" : "false")
+         << " planner_mission_epoch=" << planner.mission_epoch
+         << " planner_planned_on_revision=" << planner.planned_on_revision
+         << " planner_occupied_fingerprint=" << planner.occupied_fingerprint
+         << " planner_search_generation=" << planner.search_generation
+         << " planner_repair_generation=" << planner.repair_generation
+         << " planner_expansions=" << planner.expansions
+         << " planner_changed_occupied_voxels=" << planner.changed_occupied_voxels
+         << " planner_affected_lattice_states=" << planner.affected_lattice_states
+         << " planner_records=" << planner.records
+         << " planner_open_entries=" << planner.open_entries
+         << " planner_shortcut_checks=" << planner.shortcut_checks
+         << " planner_shortcuts_applied=" << planner.shortcuts_applied
+         << " planner_path_length_m=" << planner.path_length_m
+         << " planner_remaining_goal_distance_m=" << planner.remaining_goal_distance_m
+         << " planner_estimated_execution_time_s=" << planner.estimated_execution_time_s
+         << " planner_estimated_translation_time_s="
+         << planner.estimated_translation_time_s
+         << " planner_estimated_stationary_turn_time_s="
+         << planner.estimated_stationary_turn_time_s
+         << " planner_world_update_ms=" << planner.world_update_ms
+         << " planner_search_ms=" << planner.search_ms;
+  return fields.str();
+}
+
+[[nodiscard]] std::string
+persistentPlannerJsonFields(const ProductionMppiPreparedEsdf& esdf) {
+  const ProductionPersistentPlannerTelemetry3D& planner = esdf.planner;
+  std::ostringstream fields;
+  fields << ",\"planner\":\"persistent_dstar_lite_3d\""
+         << ",\"planner_invoked\":" << (planner.invoked ? "true" : "false")
+         << ",\"planner_status\":\"" << persistentPlannerStatus3DName(planner.status)
+         << '"' << ",\"planner_executable\":" << (planner.executable ? "true" : "false")
+         << ",\"planner_search_complete\":"
+         << (planner.search_complete ? "true" : "false")
+         << ",\"planner_search_state_reused\":"
+         << (planner.search_state_reused ? "true" : "false")
+         << ",\"planner_occupied_world_unchanged\":"
+         << (planner.occupied_world_unchanged ? "true" : "false")
+         << ",\"planner_incumbent_retained\":"
+         << (planner.incumbent_retained ? "true" : "false")
+         << ",\"planner_mission_epoch\":" << planner.mission_epoch
+         << ",\"planner_planned_on_revision\":" << planner.planned_on_revision
+         << ",\"planner_occupied_fingerprint\":" << planner.occupied_fingerprint
+         << ",\"planner_search_generation\":" << planner.search_generation
+         << ",\"planner_repair_generation\":" << planner.repair_generation
+         << ",\"planner_expansions\":" << planner.expansions
+         << ",\"planner_changed_occupied_voxels\":" << planner.changed_occupied_voxels
+         << ",\"planner_affected_lattice_states\":" << planner.affected_lattice_states
+         << ",\"planner_records\":" << planner.records
+         << ",\"planner_open_entries\":" << planner.open_entries
+         << ",\"planner_shortcut_checks\":" << planner.shortcut_checks
+         << ",\"planner_shortcuts_applied\":" << planner.shortcuts_applied
+         << ",\"planner_path_length_m\":" << planner.path_length_m
+         << ",\"planner_remaining_goal_distance_m\":"
+         << planner.remaining_goal_distance_m
+         << ",\"planner_estimated_execution_time_s\":"
+         << planner.estimated_execution_time_s
+         << ",\"planner_estimated_translation_time_s\":"
+         << planner.estimated_translation_time_s
+         << ",\"planner_estimated_stationary_turn_time_s\":"
+         << planner.estimated_stationary_turn_time_s
+         << ",\"planner_world_update_ms\":" << planner.world_update_ms
+         << ",\"planner_search_ms\":" << planner.search_ms;
+  return fields.str();
 }
 
 [[nodiscard]] std::string

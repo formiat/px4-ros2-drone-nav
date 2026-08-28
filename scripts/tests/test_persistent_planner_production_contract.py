@@ -20,6 +20,18 @@ class PersistentPlannerProductionContractTest(unittest.TestCase):
         cls.guide = (
             SOURCE / "production_mppi_node_static_guide.cpp"
         ).read_text(encoding="utf-8")
+        cls.header = (SOURCE / "production_mppi_node.hpp").read_text(
+            encoding="utf-8"
+        )
+        cls.materialization = (
+            SOURCE / "production_mppi_route_materialization.cpp"
+        ).read_text(encoding="utf-8")
+        cls.diagnostics = (
+            SOURCE / "production_mppi_node_diagnostics.cpp"
+        ).read_text(encoding="utf-8")
+        cls.diagnostics_format = (
+            SOURCE / "production_mppi_node_diagnostics_format.hpp"
+        ).read_text(encoding="utf-8")
 
     def test_selection_invokes_exactly_one_persistent_mission_planner(self) -> None:
         self.assertEqual(self.selection.count("persistent_planner_3d_->plan("), 1)
@@ -80,6 +92,44 @@ class PersistentPlannerProductionContractTest(unittest.TestCase):
         self.assertIn(".require_known_free_space = false", self.selection)
         self.assertIn(".reject_invalid_esdf = false", self.selection)
         self.assertNotIn("static_route_tracking_margin_m", self.selection)
+
+    def test_runtime_telemetry_reports_persistent_planner_evidence(self) -> None:
+        self.assertIn("ProductionPersistentPlannerTelemetry3D", self.header)
+        for field in (
+            "plan.status",
+            "plan.search_generation",
+            "plan.repair_generation",
+            "plan.changed_occupied_voxels",
+            "plan.affected_lattice_states",
+            "plan.estimated_execution_time_s",
+            "plan.world_update_ms",
+            "plan.search_ms",
+            "plan.search_state_reused",
+            "plan.occupied_world_unchanged",
+            "plan.incumbent_retained",
+        ):
+            self.assertIn(field, self.materialization)
+        self.assertIn(
+            '" planner=persistent_dstar_lite_3d"', self.diagnostics_format
+        )
+        self.assertIn("persistentPlannerJsonFields(esdf)", self.diagnostics)
+
+    def test_runtime_snapshot_has_no_retired_route_pipeline_telemetry(self) -> None:
+        for retired_field in (
+            "topology_candidates",
+            "topology_objective_cost",
+            "global_guide_expansions",
+            "global_guide_cost",
+            "lattice_search_performed",
+            "lattice_status",
+            "lattice_termination",
+            "lattice_frontier_candidates_considered",
+            "lattice_successor_diagnostics",
+            "lattice_3d_successor_diagnostics",
+            "observation_route_replacement_status",
+        ):
+            self.assertNotIn(retired_field, self.header)
+            self.assertNotIn(retired_field, self.diagnostics)
 
 
 if __name__ == "__main__":
