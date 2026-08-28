@@ -200,9 +200,8 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
       plan.estimated_stationary_turn_time_s, plan.world_update_ms, plan.search_ms);
 
   if (plan.executable()) {
-    std::vector<RouteSample3D> route =
-        sampleRoute3D(plan.points, lattice_3d_config_.sample_step_m,
-                      speed_policy_config_.cruise_speed_mps);
+    std::vector<RouteSample3D> route = sampleRoute3D(
+        plan.points, route_sampling_step_m_, speed_policy_config_.cruise_speed_mps);
     RouteIntent3D intent{
         .strategic_plan_id = world.search_objective.mission_epoch,
         .planned_on_revision = plan.planned_on_revision,
@@ -219,7 +218,7 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
                                     intent.mission_target, intent.intent_target);
     const SegmentEvidenceWorld3D evidence_world =
         evidenceWorld(world, latest_raw_world, static_occupancy_3d_.get(),
-                      physical_footprint_config_, lattice_3d_config_.flight_envelope);
+                      physical_footprint_config_, flight_envelope_config_);
     SegmentEvidence3D evidence =
         evaluateSegmentEvidence3D(intent, route, search_start, true, true, true,
                                   plan.estimated_execution_time_s, evidence_world);

@@ -44,7 +44,6 @@
 #include "drone_city_nav/navigation_angular_derivative.hpp"
 #include "drone_city_nav/navigation_health_supervisor.hpp"
 #include "drone_city_nav/navigation_state_prediction.hpp"
-#include "drone_city_nav/no_static_route_cycle.hpp"
 #include "drone_city_nav/noncooperative_collision_avoidance.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
 #include "drone_city_nav/occupancy_grid.hpp"
@@ -123,11 +122,6 @@ enum class ProductionMppiHorizonCommitStatus : std::uint8_t;
 struct ProductionMaterializedRouteProposal3D {
   MaterializedRouteProposal3D identity{};
   ProductionRouteGeometry3D geometry{};
-};
-
-struct TimedLattice3DSoftTabuEntry {
-  Lattice3DSoftTabuEntry entry{};
-  std::int64_t expires_at_ns{0};
 };
 
 struct ProductionMppiPreparedEsdf {
@@ -264,9 +258,6 @@ struct ProductionMppiPreparedEsdf {
   Lattice3DSuccessorProfiling lattice_3d_successor_profiling{};
   std::size_t lattice_continuation_attempt{0U};
   double lattice_search_session_age_ms{0.0};
-  bool no_static_cycle_detected{false};
-  bool no_static_adaptive_search{false};
-  std::size_t no_static_soft_tabu_entries{0U};
   bool lattice_search_session_resumed{false};
   bool lattice_search_session_complete{true};
   std::uint64_t lattice_search_revision{0U};
@@ -386,7 +377,6 @@ private:
   void requestStaticRouteReplan(GlobalGuideReleaseReason reason,
                                 std::uint64_t guide_generation);
   void configureOptionalNavigationConstraints();
-  void configureSensorObservability();
   void configureStaticRouteGeometry();
   void configureStaticRouteExtension(double maximum_horizontal_acceleration_mps2);
   [[nodiscard]] RouteCompilerConfig3D routeCompilerConfig3D() const noexcept;
@@ -614,13 +604,6 @@ private:
   double maximum_control_feedback_age_ms_{200.0};
   double latest_lidar_obstacle_maximum_age_ms_{250.0};
   double no_static_guide_lookahead_m_{30.0};
-  double frontier_blacklist_ttl_s_{15.0};
-  double no_static_soft_tabu_penalty_{40.0};
-  double no_static_soft_tabu_sample_spacing_m_{4.0};
-  double no_static_adaptive_reachable_depth_m_{40.0};
-  double no_static_adaptive_minimum_guide_length_m_{24.0};
-  double no_static_adaptive_minimum_endpoint_displacement_m_{12.0};
-  std::size_t no_static_adaptive_validation_states_{8192U};
   double no_static_3d_esdf_update_rate_hz_{1.0};
   LocalObservedEsdfWindow3D no_static_3d_esdf_window_{};
   double no_static_3d_esdf_incremental_maximum_rebuild_ratio_{0.15};
@@ -628,7 +611,6 @@ private:
   std::size_t planner_worker_count_{4U};
   MppiRolloutBudgetConfig rollout_budget_config_{};
   double planning_tick_phase_offset_s_{0.0};
-  NoStaticRouteCycleConfig no_static_cycle_config_{};
   MissionGoalCaptureConfig mission_goal_capture_config_{};
   MissionWaypointSequenceConfig mission_waypoint_sequence_config_{};
   MissionWaypointCaptureGateConfig mission_waypoint_capture_gate_config_{};
@@ -677,7 +659,6 @@ private:
   ActiveGlobalGuideConfig active_guide_config_{};
   GlobalGuideProgressConfig guide_progress_config_{};
   bool global_guide_stall_recovery_enabled_{false};
-  bool no_static_cycle_recovery_enabled_{false};
   std::unique_ptr<MppiLivenessSupervisor> liveness_supervisor_;
   std::unique_ptr<NavigationHealthSupervisor> navigation_health_supervisor_;
   MppiNominalReseedTracker nominal_reseed_tracker_{};
@@ -686,9 +667,10 @@ private:
   std::unique_ptr<MissionGoalCaptureLatch> mission_goal_capture_latch_;
   std::unique_ptr<MissionWaypointSequence> mission_waypoint_sequence_;
   std::unique_ptr<MissionWaypointCaptureGate> mission_waypoint_capture_gate_;
-  std::unique_ptr<NoStaticRouteCycleDetector> no_static_cycle_detector_;
-  RiskAwareLatticeConfig lattice_config_{};
-  RiskAwareLattice3DConfig lattice_3d_config_{};
+  PersistentPlannerConfig3D persistent_planner_config_{};
+  double route_sampling_step_m_{0.5};
+  double route_completion_tolerance_m_{2.0};
+  double static_esdf_route_lookahead_m_{180.0};
   RouteEnvelopeConfig route_envelope_config_{};
   ConstrainedRouteControlConfig constrained_route_control_config_{};
   ConstrainedRouteCoordinator constrained_route_coordinator_{};
@@ -801,8 +783,6 @@ private:
   std::shared_ptr<const ProductionMppiPreparedEsdf> pending_guide_world_;
   std::atomic<std::uint64_t> dropped_guide_worlds_{0U};
   std::jthread guide_worker_;
-  std::vector<TimedLattice3DSoftTabuEntry> no_static_soft_tabu_3d_;
-  std::int64_t no_static_adaptive_search_until_ns_{0};
 
   // Linearizes the active GPU ESDF with its exact immutable CPU world.
   mutable std::mutex world_generation_publication_mutex_;

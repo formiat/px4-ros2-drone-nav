@@ -9,20 +9,6 @@
 namespace drone_city_nav {
 namespace {
 
-[[nodiscard]] SweptFootprintConfig
-executionFootprint(const RiskAwareLattice3DConfig& lattice_config,
-                   const SweptFootprintConfig& physical_config) noexcept {
-  return SweptFootprintConfig{
-      .radius_m = lattice_config.physical_footprint_radius_m,
-      .lower_extent_m = lattice_config.physical_footprint_lower_extent_m,
-      .upper_extent_m = lattice_config.physical_footprint_upper_extent_m,
-      .perimeter_samples = physical_config.perimeter_samples,
-      .radial_rings = physical_config.radial_rings,
-      .axial_samples = physical_config.axial_samples,
-      .sweep_step_m = physical_config.sweep_step_m,
-  };
-}
-
 [[nodiscard]] bool sameRawMapVersion(const RawMapVersion& first,
                                      const RawMapVersion& second) noexcept {
   return first.producer_instance_id == second.producer_instance_id &&
@@ -281,8 +267,7 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
   ProductionMppiNavigation execution_navigation = navigation;
   execution_navigation.state = execution_input->state();
 
-  const SweptFootprintConfig footprint =
-      executionFootprint(lattice_3d_config_, physical_footprint_config_);
+  const SweptFootprintConfig& footprint = physical_footprint_config_;
   bool active_usable{false};
   if (result.source_snapshot->route.has_value()) {
     const std::shared_ptr<const ExecutionRouteSnapshot3D> active_source_snapshot =

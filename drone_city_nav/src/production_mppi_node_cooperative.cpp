@@ -26,9 +26,9 @@ void ProductionMppiNode::configureCooperativeTraffic() {
       declare_parameter<double>("cooperative_passage_maximum_probe_m", 30.0);
   cooperative_passage_volume_config_.flight_envelope = flight_envelope_config_;
   cooperative_passage_volume_config_.footprint = SweptFootprintConfig{
-      .radius_m = lattice_3d_config_.physical_footprint_radius_m,
-      .lower_extent_m = lattice_3d_config_.physical_footprint_lower_extent_m,
-      .upper_extent_m = lattice_3d_config_.physical_footprint_upper_extent_m,
+      .radius_m = physical_footprint_config_.radius_m,
+      .lower_extent_m = physical_footprint_config_.lower_extent_m,
+      .upper_extent_m = physical_footprint_config_.upper_extent_m,
       .perimeter_samples = physical_footprint_config_.perimeter_samples,
       .radial_rings = physical_footprint_config_.radial_rings,
       .axial_samples = physical_footprint_config_.axial_samples,

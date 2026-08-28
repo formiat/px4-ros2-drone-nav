@@ -146,7 +146,6 @@ obstacle_memory_3d_node:
     lidar_3d_horizontal_max_angle_rad: 3.141592653589793
     lidar_3d_vertical_min_angle_rad: -1.3962634015954636
     lidar_3d_vertical_max_angle_rad: 1.3962634015954636
-    global_lattice_3d_observation_frontier_directional_cluster_half_angle_rad: 0.7853981633974483
     lidar_3d_minimum_range_m: 0.2
     max_lidar_range_m: 35.0
     range_hit_epsilon_m: 0.05
@@ -336,97 +335,33 @@ production_mppi_node:
     liveness_observation_window_s: 1.0
     liveness_minimum_actual_displacement_m: 0.5
     liveness_minimum_predicted_terminal_progress_m: 5.0
-    global_lattice_heading_bins: 16
-    global_lattice_primitive_length_m: 4.0
-    global_lattice_short_primitive_length_m: 2.0
-    static_global_lattice_window_m: 180.0
-    no_static_global_lattice_window_m: 60.0
-    static_global_lattice_maximum_expansions: 120000
-    no_static_global_lattice_maximum_expansions: 60000
-    static_global_lattice_deadline_ms: 250.0
-    global_lattice_3d_horizontal_step_m: 2.0
-    global_lattice_3d_vertical_step_m: 1.0
-    global_lattice_3d_sample_step_m: 0.5
-    # Optional search and selection constraints are opt-in. Physical collision,
-    # flight-envelope, dynamics, terminal-rest, evidence, and ownership checks
-    # remain mandatory regardless of these switches.
-    reject_invalid_esdf_routes: false
+    # Static and observed worlds feed the same persistent full-3D planner.
+    # Free and unknown are structurally identical; only raw occupied evidence
+    # and the physical flight envelope can reject a strategic edge.
+    persistent_planner_horizontal_step_m: 2.0
+    persistent_planner_vertical_step_m: 1.0
+    persistent_planner_goal_tolerance_m: 2.0
+    persistent_planner_connector_search_radius_cells: 2
+    persistent_planner_maximum_expansions_per_update: 200000
+    persistent_planner_maximum_incremental_changed_voxels: 32768
+    persistent_planner_maximum_extracted_path_nodes: 8192
+    persistent_planner_maximum_shortcut_checks: 8192
+    persistent_planner_maximum_compute_time_ms: 150.0
+    route_sampling_step_m: 0.5
+    route_completion_tolerance_m: 2.0
+    static_esdf_route_lookahead_m: 180.0
+    # These switches affect optional soft costs, geometry refinement, or local
+    # controller behavior. They cannot change hard occupancy semantics.
     clearance_costs_enabled: false
-    route_shape_costs_enabled: false
-    frontier_viability_constraints_enabled: false
-    topological_history_costs_enabled: false
     static_route_shortcut_optimization_enabled: false
     stochastic_trajectory_selection_enabled: false
-    observation_frontier_stops_enabled: false
-    topological_segment_boundaries_enabled: false
-    route_replacement_progress_enabled: false
-    clearance_tier_constraints_enabled: false
     execution_route_cross_track_constraints_enabled: false
-    global_lattice_3d_nominal_vertical_speed_mps: 4.0
-    # Vertical motion is possible when a certified opening requires it, but it
-    # is no longer free while horizontal motion dominates travel time.
-    global_lattice_3d_vertical_alignment_cost_weight: 0.35
-    global_lattice_3d_route_shape_turn_cost_per_rad: 0.10
-    global_lattice_3d_route_shape_vertical_turn_cost_per_rad: 0.20
-    global_lattice_3d_passage_topology_transition_cost: 0.0
     static_route_maximum_shortcut_length_m: 30.0
     static_route_sparse_deviation_tolerance_m: 0.05
     static_route_maximum_shortcut_turn_increase_rad: 0.35
     static_route_shortcut_validation_batch_size: 4
     static_route_corner_smoothing_distance_m: 2.0
     static_route_corner_curve_samples: 4
-    global_lattice_3d_planning_exposure_cost_per_m: 0.05
-    global_lattice_3d_critical_exposure_cost_per_m: 0.50
-    global_lattice_3d_passage_connection_distance_m: 3.0
-    global_lattice_3d_frontier_reachable_depth_m: 8.0
-    global_lattice_3d_frontier_minimum_endpoint_displacement_m: 2.0
-    global_lattice_3d_frontier_validation_maximum_states: 2048
-    # Bound negative continuation proofs so an exhausted local branch cannot
-    # monopolize the route worker beyond the online replanning cadence.
-    global_lattice_3d_frontier_validation_maximum_time_ms: 50.0
-    global_lattice_3d_observation_frontier_replacement_minimum_score_improvement: 0.5
-    # Probe one voxel beyond the lidar miss boundary so the adjacent unknown
-    # volume becomes an observation frontier, not an artificial obstacle.
-    global_lattice_3d_observation_frontier_maximum_range_m: 36.0
-    global_lattice_3d_observation_frontier_minimum_known_free_ray_m: 1.0
-    global_lattice_3d_observation_frontier_identity_resolution_m: 8.0
-    lidar_3d_horizontal_min_angle_rad: -3.141592653589793
-    lidar_3d_horizontal_max_angle_rad: 3.141592653589793
-    lidar_3d_vertical_min_angle_rad: -1.3962634015954636
-    lidar_3d_vertical_max_angle_rad: 1.3962634015954636
-    lidar_3d_horizontal_samples: 240
-    lidar_3d_vertical_samples: 17
-    global_lattice_3d_observation_frontier_minimum_supporting_rays: 2
-    global_lattice_3d_observation_frontier_minimum_information_gain_voxels: 4
-    # Observation routes are finite and terminate at rest. Keep their target
-    # beyond the local terminal-control neighbourhood so sensing advances
-    # while the vehicle is moving instead of creating a repeated micro-route.
-    global_lattice_3d_observation_frontier_minimum_pose_advance_m: 2.0
-    no_static_global_lattice_deadline_ms: 500.0
-    static_global_lattice_roi_halo_m: 90.0
-    no_static_global_lattice_roi_halo_m: 45.0
-    global_lattice_frontier_candidates: 64
-    global_lattice_frontier_minimum_endpoint_displacement_m: 4.0
-    global_lattice_frontier_reachable_depth_m: 20.0
-    global_lattice_frontier_validation_maximum_states: 2048
-    global_lattice_frontier_validation_expansion_interval: 256
-    global_lattice_frontier_goal_distance_weight: 0.25
-    global_lattice_frontier_blacklist_radius_m: 6.0
-    global_lattice_frontier_blacklist_heading_bins: 1
-    global_lattice_frontier_blacklist_ttl_s: 120.0
-    global_lattice_soft_tabu_penalty: 40.0
-    global_lattice_soft_tabu_sample_spacing_m: 4.0
-    global_lattice_adaptive_reachable_depth_m: 40.0
-    global_lattice_adaptive_minimum_guide_length_m: 24.0
-    global_lattice_adaptive_minimum_endpoint_displacement_m: 12.0
-    global_lattice_adaptive_validation_states: 8192
-    global_lattice_cycle_observation_window_s: 60.0
-    global_lattice_cycle_minimum_generations: 4
-    global_lattice_cycle_endpoint_radius_m: 6.0
-    global_lattice_cycle_maximum_vehicle_displacement_m: 12.0
-    global_lattice_cycle_maximum_mission_progress_m: 4.0
-    global_lattice_planning_tie_break_per_m: 1.0
-    global_lattice_critical_tie_break_per_m: 10.0
     global_guide_validation_sample_step_m: 0.5
     static_global_guide_replan_remaining_m: 45.0
     no_static_global_guide_replan_remaining_m: 15.0
@@ -451,9 +386,6 @@ production_mppi_node:
     global_guide_stall_minimum_progress_m: 0.5
     global_guide_stall_minimum_predicted_head_progress_m: 0.5
     global_guide_stall_recovery_enabled: false
-    # Directed soft tabu prevents repeatedly materialized local routes from
-    # owning no-static navigation without measured mission progress.
-    no_static_cycle_recovery_enabled: false
 
 mppi_offboard_node:
   ros__parameters:

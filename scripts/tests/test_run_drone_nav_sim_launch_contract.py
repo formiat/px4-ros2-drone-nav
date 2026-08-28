@@ -440,14 +440,11 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             "ENABLE_GLOBAL_GUIDE_STALL_RECOVERY:-false",
             self.text,
         )
-        self.assertIn(
-            "ENABLE_NO_STATIC_CYCLE_RECOVERY:-false",
-            self.text,
-        )
         self.assertNotIn("default_no_static_progress_recovery", self.text)
         self.assertNotIn("default_no_static_cycle_recovery", self.text)
         self.assertIn("global_guide_stall_recovery_enabled", self.launch_text)
-        self.assertIn("no_static_cycle_recovery_enabled", self.launch_text)
+        self.assertNotIn("no_static_cycle_recovery_enabled", self.launch_text)
+        self.assertNotIn("ENABLE_NO_STATIC_CYCLE_RECOVERY", self.text)
         self.assertIn(
             'if [[ -n "${point_to_point_scenario_path}" ]]', self.text
         )
@@ -702,6 +699,13 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertNotIn("observation_frontier", guide)
         self.assertNotIn("cycle_classification", guide)
         self.assertNotIn("no_static_cycle", guide)
+        for retired_parameter in (
+            "global_lattice_",
+            "frontier_viability_constraints_enabled",
+            "observation_frontier_stops_enabled",
+            "route_replacement_progress_enabled",
+        ):
+            self.assertNotIn(retired_parameter, self.nav_config_text)
 
     def test_px4_vertical_velocity_limits_follow_active_ros_config(self) -> None:
         self.assertIn("read_ros_float_parameter()", self.text)

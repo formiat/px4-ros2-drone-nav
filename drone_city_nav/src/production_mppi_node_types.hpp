@@ -14,17 +14,9 @@
 namespace drone_city_nav {
 
 struct ProductionNavigationOptionalConstraints {
-  bool reject_invalid_esdf_routes{false};
   bool clearance_costs_enabled{false};
-  bool route_shape_costs_enabled{false};
-  bool frontier_viability_enabled{false};
-  bool topological_history_costs_enabled{false};
   bool static_route_shortcut_optimization_enabled{false};
   bool stochastic_trajectory_selection_enabled{false};
-  bool observation_frontier_stops_enabled{false};
-  bool topological_segment_boundaries_enabled{false};
-  bool route_replacement_progress_enabled{false};
-  bool clearance_tier_constraints_enabled{false};
   bool route_cross_track_constraints_enabled{false};
 };
 

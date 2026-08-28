@@ -244,8 +244,8 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
           *rebased_route, snapshot.resident_world->grid,
           *snapshot.resident_world->distances_m, mission_goal,
           static_route_extension_config_.minimum_endpoint_improvement_m,
-          candidate.global_guide_reaches_mission_goal,
-          lattice_3d_config_.flight_envelope, replacement_policy,
+          candidate.global_guide_reaches_mission_goal, flight_envelope_config_,
+          replacement_policy,
           SweptFootprintConfig{
               .radius_m = physical_footprint_config_.radius_m,
               .lower_extent_m = physical_footprint_config_.lower_extent_m,

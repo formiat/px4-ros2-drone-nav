@@ -99,9 +99,6 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
     result.replacement_policy = StaticRouteReplacementPolicy::kAllowSafetyReplan;
   } else if (world.static_route_extension_request) {
     result.replacement_policy = StaticRouteReplacementPolicy::kAllowTopologicalProgress;
-  } else if (!optional_constraints_.route_replacement_progress_enabled) {
-    result.replacement_policy =
-        StaticRouteReplacementPolicy::kAllowAnyValidatedReplacement;
   }
 
   prepared.observation_route_replacement_status =
@@ -365,8 +362,8 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
                        : std::span<const RouteSample3D>{},
         *mutable_route, world.grid, *world.distances_m, mission_goal,
         static_route_extension_config_.minimum_endpoint_improvement_m,
-        plan.executable(), lattice_3d_config_.flight_envelope,
-        result.replacement_policy, footprint_config, false, true);
+        plan.executable(), flight_envelope_config_, result.replacement_policy,
+        footprint_config, false, true);
   } else {
     StaticRouteCandidateStatus candidate_status =
         StaticRouteCandidateStatus::kInvalidEsdf;

@@ -65,10 +65,9 @@ class Stage7GeometryVerticalCostContractTest(unittest.TestCase):
         self.assertIn(
             "config.vertical_alignment_cost_weight * vertical_time_s", cost
         )
-        self.assertIn("global_lattice_3d_vertical_alignment_cost_weight: 0.35", yaml)
-        self.assertIn(
-            "global_lattice_3d_route_shape_vertical_turn_cost_per_rad: 0.20", yaml
-        )
+        self.assertIn("persistent_planner_horizontal_step_m: 2.0", yaml)
+        self.assertIn("persistent_planner_vertical_step_m: 1.0", yaml)
+        self.assertNotIn("global_lattice_3d_", yaml)
 
 
 if __name__ == "__main__":

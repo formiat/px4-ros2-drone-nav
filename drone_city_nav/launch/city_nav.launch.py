@@ -113,16 +113,10 @@ def generate_launch_description():
     global_guide_stall_recovery_enabled = LaunchConfiguration(
         "global_guide_stall_recovery_enabled"
     )
-    no_static_cycle_recovery_enabled = LaunchConfiguration(
-        "no_static_cycle_recovery_enabled"
-    )
     static_occupancy_3d_path = LaunchConfiguration("static_occupancy_3d_path")
     static_esdf_3d_cache_path = LaunchConfiguration("static_esdf_3d_cache_path")
     static_free_space_topology_3d_path = LaunchConfiguration(
         "static_free_space_topology_3d_path"
-    )
-    static_global_lattice_deadline_ms = LaunchConfiguration(
-        "static_global_lattice_deadline_ms"
     )
     tracking_error_tube_response_time_s = LaunchConfiguration(
         "tracking_error_tube_response_time_s"
@@ -216,11 +210,6 @@ def generate_launch_description():
             global_guide_stall_recovery_enabled,
             "global_guide_stall_recovery_enabled",
         )
-        cycle_recovery_override = optional_bool_override(
-            context,
-            no_static_cycle_recovery_enabled,
-            "no_static_cycle_recovery_enabled",
-        )
         scenario_path = point_to_point_scenario_path.perform(context).strip()
         if scenario_path:
             scenario = load_point_to_point_scenario(scenario_path, profile)
@@ -304,12 +293,10 @@ def generate_launch_description():
                 "global_guide_stall_recovery_enabled",
                 guide_stall_recovery_override,
             ),
-            ("no_static_cycle_recovery_enabled", cycle_recovery_override),
         ):
             if override is not None:
                 production_mppi_parameters.append({parameter_name: override})
         for argument_name, launch_config in (
-            ("static_global_lattice_deadline_ms", static_global_lattice_deadline_ms),
             (
                 "tracking_error_tube_response_time_s",
                 tracking_error_tube_response_time_s,
@@ -653,11 +640,6 @@ def generate_launch_description():
                 description="Enable release of a guide after a perceived stall.",
             ),
             DeclareLaunchArgument(
-                "no_static_cycle_recovery_enabled",
-                default_value="",
-                description="Enable no-static cycle detection and soft tabu recovery.",
-            ),
-            DeclareLaunchArgument(
                 "static_occupancy_3d_path",
                 default_value="",
                 description=(
@@ -680,11 +662,6 @@ def generate_launch_description():
                     "Optional FreeSpaceTopology3D path override. Leave empty to use "
                     "params_file."
                 ),
-            ),
-            DeclareLaunchArgument(
-                "static_global_lattice_deadline_ms",
-                default_value="",
-                description="Optional static global-planning deadline override.",
             ),
             DeclareLaunchArgument(
                 "tracking_error_tube_response_time_s",

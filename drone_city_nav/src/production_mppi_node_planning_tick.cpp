@@ -428,7 +428,7 @@ void ProductionMppiNode::planningTick() {
       route_3d, constrained_spans, route_generation, route_projection.station_m,
       Point3{navigation.state.x, navigation.state.y, navigation.state.z},
       Vec3{navigation.state.vx, navigation.state.vy, navigation.state.vz},
-      route_envelope_config_, lattice_3d_config_.planning_goal_distance_m);
+      route_envelope_config_, route_constraint_diagnostics_distance_m_);
   const Point3 actual_position{navigation.state.x, navigation.state.y,
                                navigation.state.z};
   for (const PassageTraversalEvidenceEvent& event :

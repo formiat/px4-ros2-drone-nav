@@ -195,7 +195,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         const GridBounds3D requested_bounds = localStaticEsdfBounds(
             *static_occupancy_3d_,
             Point3{navigation.state.x, navigation.state.y, navigation.state.z},
-            mission_goal, lattice_3d_config_.planning_goal_distance_m, 40.0);
+            mission_goal, static_esdf_route_lookahead_m_, 40.0);
         const GridBounds3D local_bounds = StaticEsdfCache::alignRegionToChunks(
             static_occupancy_3d_->bounds(), requested_bounds);
         const double maximum_distance_m =

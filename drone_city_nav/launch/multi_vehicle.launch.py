@@ -204,13 +204,6 @@ def generate_multi_vehicle_launch_description(mission_kind):
             LaunchConfiguration("global_guide_stall_recovery_enabled").perform(context),
             False,
         )
-        no_static_cycle_recovery_enabled = _optional_bool(
-            LaunchConfiguration("no_static_cycle_recovery_enabled").perform(context),
-            False,
-        )
-        static_lattice_deadline_override = LaunchConfiguration(
-            "static_global_lattice_deadline_ms"
-        ).perform(context)
         tracking_error_tube_response_time_override = LaunchConfiguration(
             "tracking_error_tube_response_time_s"
         ).perform(context)
@@ -448,9 +441,6 @@ def generate_multi_vehicle_launch_description(mission_kind):
                     "global_guide_stall_recovery_enabled": (
                         global_guide_stall_recovery_enabled
                     ),
-                    "no_static_cycle_recovery_enabled": (
-                        no_static_cycle_recovery_enabled
-                    ),
                     "static_occupancy_3d_path": static_path,
                     "static_free_space_topology_3d_path": static_topology_path,
                     "static_esdf_3d_cache_path": static_esdf_cache_path,
@@ -530,10 +520,6 @@ def generate_multi_vehicle_launch_description(mission_kind):
                     ]["ros__parameters"]["maximum_horizontal_acceleration_mps2"],
                 },
             )
-            if static_lattice_deadline_override:
-                planner_params["static_global_lattice_deadline_ms"] = float(
-                    static_lattice_deadline_override
-                )
             if tracking_error_tube_response_time_override:
                 planner_params["tracking_error_tube_response_time_s"] = float(
                     tracking_error_tube_response_time_override
@@ -852,12 +838,6 @@ def generate_multi_vehicle_launch_description(mission_kind):
             DeclareLaunchArgument("liveness_enabled", default_value="false"),
             DeclareLaunchArgument(
                 "global_guide_stall_recovery_enabled", default_value="false"
-            ),
-            DeclareLaunchArgument(
-                "no_static_cycle_recovery_enabled", default_value="false"
-            ),
-            DeclareLaunchArgument(
-                "static_global_lattice_deadline_ms", default_value=""
             ),
             DeclareLaunchArgument("static_occupancy_3d_path", default_value=""),
             DeclareLaunchArgument(

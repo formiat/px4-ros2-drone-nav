@@ -112,7 +112,6 @@ class ContainerEntrypointTest(unittest.TestCase):
             "OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M",
             "ENABLE_LIVENESS_RECOVERY",
             "ENABLE_GLOBAL_GUIDE_STALL_RECOVERY",
-            "ENABLE_NO_STATIC_CYCLE_RECOVERY",
         ):
             with self.subTest(variable=variable):
                 self.assertRegex(text, rf"(?m)^  {variable}$")
@@ -120,6 +119,8 @@ class ContainerEntrypointTest(unittest.TestCase):
             "REQUIRE_INCREMENTAL_TOPOLOGY_EVIDENCE",
             "MAXIMUM_NO_EXECUTABLE_ROUTE_AGE_MS",
             "ENABLE_TOPOLOGICAL_BACKTRACKING",
+            "ENABLE_NO_STATIC_CYCLE_RECOVERY",
+            "STATIC_GLOBAL_LATTICE_DEADLINE_MS",
         ):
             self.assertNotIn(legacy_variable, text)
 

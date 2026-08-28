@@ -60,7 +60,7 @@ void ProductionMppiNode::configureStaticRouteExtension(
   certified_route_splice_config_.required_overlap_m =
       static_route_extension_config_.required_certified_overlap_m;
   certified_route_splice_config_.sample_step_m = declare_parameter<double>(
-      "static_global_guide_splice_sample_step_m", lattice_3d_config_.sample_step_m);
+      "static_global_guide_splice_sample_step_m", route_sampling_step_m_);
   certified_route_splice_config_.maximum_position_separation_m =
       declare_parameter<double>(
           "static_global_guide_splice_maximum_position_separation_m", 0.05);
@@ -150,8 +150,8 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
       navigationObjective();
   const Point3 mission_goal = objective ? objective->goal : mission_goal_;
   const Point3 current{navigation.state.x, navigation.state.y, navigation.state.z};
-  const Point3 next_planning_goal = staticRoutePlanningGoal(
-      current, mission_goal, lattice_3d_config_.planning_goal_distance_m);
+  const Point3 next_planning_goal =
+      staticRoutePlanningGoal(current, mission_goal, static_esdf_route_lookahead_m_);
   const bool observed_world = !use_static_map_;
   const bool pending_successor = pending_certified_route_mailbox_.snapshot() != nullptr;
   const ProductionMppiForwardAcceleration3D forward_acceleration =
@@ -399,8 +399,7 @@ void ProductionMppiNode::requestStaticRouteReplan(
   };
   if (!navigation.valid ||
       (static_route_failed_search_latch_.latched() &&
-       !insideFlightEnvelope(retry_context.search_start,
-                             lattice_3d_config_.flight_envelope))) {
+       !insideFlightEnvelope(retry_context.search_start, flight_envelope_config_))) {
     RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
                          "STATIC_ROUTE_REPLAN_REQUEST status=suppressed_invalid_start "
                          "generation=%" PRIu64 " start=(%.2f,%.2f,%.2f) reason=%s",
@@ -479,8 +478,8 @@ void ProductionMppiNode::maybeRequestStaticTrackingWorldRefresh(
   }
   const std::uint64_t active_generation = active_route.identity.generation;
   const Point3 current{navigation.state.x, navigation.state.y, navigation.state.z};
-  const Point3 planning_goal = staticRoutePlanningGoal(
-      current, objective.goal, lattice_3d_config_.planning_goal_distance_m);
+  const Point3 planning_goal =
+      staticRoutePlanningGoal(current, objective.goal, static_esdf_route_lookahead_m_);
   if (staticRoutePointInsideEsdf(esdf.grid, current,
                                  static_tracking_esdf_refresh_margin_m_) &&
       staticRoutePointInsideEsdf(esdf.grid, planning_goal,

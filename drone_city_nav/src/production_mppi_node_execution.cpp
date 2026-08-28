@@ -307,9 +307,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       .footprint = execution_footprint,
       .static_occupancy = static_occupancy,
       .observed_occupancy = observed_occupancy,
-      .require_known_free_space = exact_snapshot_world
-                                      ? static_occupancy != nullptr
-                                      : lattice_3d_config_.require_known_free_space,
+      .require_known_free_space = false,
       .proprioceptive_free_space_seed = proprioceptive_free_space_seed_owner,
       .launch_support_contact = launch_support_contact_owner,
       .raw_occupancy = nullptr,

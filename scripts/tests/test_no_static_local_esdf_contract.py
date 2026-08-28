@@ -82,14 +82,11 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
 
         self.assertNotIn("static_route_tracking_margin_m", parameters)
         self.assertGreater(parameters["tracking_error_tube_response_time_s"], 0.0)
+        self.assertNotIn("lattice_config_", source)
+        self.assertNotIn("lattice_3d_config_", source)
         self.assertIn(
-            "lattice_config_.physical_footprint_radius_m = "
-            "physical_footprint_config_.radius_m;",
-            source,
-        )
-        self.assertIn(
-            "lattice_3d_config_.physical_footprint_radius_m = "
-            "physical_footprint_config_.radius_m;",
+            "persistent_planner_config_.physical_footprint = "
+            "physical_footprint_config_;",
             source,
         )
         self.assertIn(".physical_footprint = physical_footprint_config_", source)

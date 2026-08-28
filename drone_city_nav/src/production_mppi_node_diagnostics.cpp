@@ -462,11 +462,6 @@ void ProductionMppiNode::processDiagnostics(
       << " candidate_validation_ms=" << esdf.candidate_validation_ms
       << " route_fingerprint=" << esdf.route_fingerprint
       << " search_session_age_ms=" << esdf.lattice_search_session_age_ms
-      << " no_static_cycle_detected="
-      << (esdf.no_static_cycle_detected ? "true" : "false")
-      << " no_static_adaptive_search="
-      << (esdf.no_static_adaptive_search ? "true" : "false")
-      << " no_static_soft_tabu_entries=" << esdf.no_static_soft_tabu_entries
       << " esdf_upload_ms=" << esdf.upload_ms << " dropped_diagnostics="
       << dropped_diagnostics_snapshots_.load(std::memory_order_relaxed);
   const std::int64_t now_ns = get_clock()->now().nanoseconds();
@@ -672,11 +667,6 @@ void ProductionMppiNode::processDiagnostics(
          << ",\"lattice_termination\":\"" << planningTerminationName(esdf) << '"'
          << ",\"lattice_continuation_attempt\":" << esdf.lattice_continuation_attempt
          << ",\"lattice_search_session_age_ms\":" << esdf.lattice_search_session_age_ms
-         << ",\"no_static_cycle_detected\":"
-         << (esdf.no_static_cycle_detected ? "true" : "false")
-         << ",\"no_static_adaptive_search\":"
-         << (esdf.no_static_adaptive_search ? "true" : "false")
-         << ",\"no_static_soft_tabu_entries\":" << esdf.no_static_soft_tabu_entries
          << ",\"lattice_search_session_resumed\":"
          << (esdf.lattice_search_session_resumed ? "true" : "false")
          << ",\"lattice_search_session_complete\":"

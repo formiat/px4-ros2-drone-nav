@@ -75,13 +75,12 @@ No-static 3D world:
   `obstacle_memory_3d_snapshot_rebase_dirty_ratio` control adaptive base
   rebasing without coupling it to lidar cadence;
 - local ESDF half extent, recenter margin, update rate, and incremental rebuild
-  ratio bound the dense GPU resource built from sparse observed occupancy;
+  ratio bound the derived controller-distance resource built from sparse observed
+  occupancy;
 - the observed ESDF distance cap is derived from preferred clearance, the full
   oriented-footprint bounding radius, and conservative voxel-query correction;
-- topology block budgets, backlog threshold/catch-up budget, local radius, and
-  forward-corridor radius/lookahead control incremental coverage scheduling;
-- outside-ROI and unknown voxels remain unavailable for execution rather than
-  becoming occupied.
+- missing distance evidence, outside-cache volume, and unknown voxels are neutral
+  to strategic traversability. Exact raw occupied evidence remains authoritative.
 
 Mode policy:
 
@@ -90,8 +89,8 @@ Mode policy:
 - acceleration, lateral acceleration, braking, and jerk limits;
 - the conservative terminal-path horizontal deceleration limit, independently
   of the larger acceleration available to ordinary manoeuvres;
-- mode-specific lookahead and curvature preview;
-- mode-specific observation and goal limits.
+- route lookahead and curvature preview;
+- observation and goal limits.
 
 Risk:
 
@@ -102,16 +101,18 @@ Raw occupied cells or voxels are the only hard collision geometry. The distance
 thresholds classify free space for risk ranking; they do not inflate raw
 occupancy.
 
-Global guide:
+Persistent 3D planner and route lifecycle:
 
-- heading bins and primitive length;
-- static/no-static lattice window and expansion limits;
-- frontier endpoint displacement, continuation depth, candidate count, and the
-  soft goal-distance ranking weight;
-- validation sampling;
+- horizontal and vertical lattice resolution;
+- per-update expansion, changed-voxel, extracted-path, shortcut, and compute
+  budgets;
+- connector radius and mission-goal tolerance;
+- route sampling and completion tolerances;
+- static derived-distance lookahead;
+- raw validation sampling;
 - remaining-distance replacement thresholds;
 - cross-track and stall thresholds;
-- velocity/previous-guide heading cascade thresholds.
+- velocity/previous-route heading cascade thresholds.
 
 Static world:
 
@@ -122,24 +123,12 @@ Static world:
 - `static_esdf_3d_cache_path` selects its fingerprint-bound precomputed ESDF
   artifact; an empty value derives the `.esdf3d` path from Occupancy3D;
 - Occupancy3D contains only raw physical occupancy and never embeds topology;
-- `global_lattice_3d_nominal_vertical_speed_mps` participates in physical travel
-  time estimation;
-- `global_lattice_3d_vertical_alignment_cost_weight` is the additional vertical
-  travel-time preference; it ranks a level route ahead of an otherwise equal
-  climb without making a required certified vertical passage unreachable;
-- `global_lattice_3d_route_shape_vertical_turn_cost_per_rad` charges changes in
-  flight-path angle, including climb/descent reversals, while the horizontal
-  turn parameter continues to charge yaw-plane shape changes;
+- the persistent planner, route compiler, and controller use the same configured
+  horizontal/vertical dynamics and 3D execution-time model;
 - static-route sparse-deviation, turn-increase, and validation-batch parameters
   control bounded farthest-first shortcut validation before final resampling;
-- planning/critical exposure and turn-cost parameters rank complete route
-  candidates with finite costs;
-- `global_lattice_3d_passage_connection_distance_m` connects ordinary lattice
-  states to derived portal entries; root topology candidates also evaluate a
-  collision-free direct connection from the current start to each external
-  portal plane;
-- frontier continuation-depth parameters reject short endpoints that have no
-  locally reachable continuation;
+- optional static topology supplies fingerprint-bound passage metadata for
+  cooperative execution evidence; it is not a competing route producer;
 - route-envelope parameters control typed constrained-span execution data;
 - constrained-span speed is encoded in 3D route samples.
 - `minimum_target_z_m` and `maximum_target_z_m` define the half-open flight

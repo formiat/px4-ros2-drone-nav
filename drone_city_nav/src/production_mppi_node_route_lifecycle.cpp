@@ -22,7 +22,7 @@ ProductionMppiNode::assessActiveRouteCompletion3D(const ProductionMppiPreparedEs
           .minimum_station_m = snapshot->route->progress.station_m,
       },
       RouteSegmentCompletionConfig3D{
-          .capture_radius_m = lattice_3d_config_.goal_tolerance_m,
+          .capture_radius_m = route_completion_tolerance_m_,
       });
 }
 

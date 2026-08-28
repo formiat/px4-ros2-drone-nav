@@ -182,7 +182,6 @@ lidar_debug_dir="${LIDAR_DEBUG_DIR:-${run_log_dir}/lidar_debug/${run_id}}"
 lidar_memory_hit_dump_path="${LIDAR_MEMORY_HIT_DUMP_PATH:-${run_log_dir}/lidar_memory_hits/${run_id}.jsonl}"
 default_city_nav_params_file="${repo_root}/drone_city_nav/config/urban_mvp.yaml"
 city_nav_params_file="${CITY_NAV_PARAMS_FILE:-${default_city_nav_params_file}}"
-static_global_lattice_deadline_ms="${STATIC_GLOBAL_LATTICE_DEADLINE_MS:-}"
 cruise_speed_override="${CRUISE_SPEED_MPS:-}"
 tracking_error_tube_response_time_override="${TRACKING_ERROR_TUBE_RESPONSE_TIME_S:-}"
 speed_limit_override="${ABSOLUTE_SPEED_LIMIT_MPS:-}"
@@ -204,9 +203,6 @@ enable_liveness_recovery="$(
 )"
 enable_global_guide_stall_recovery="$(
   normalize_bool "${ENABLE_GLOBAL_GUIDE_STALL_RECOVERY:-false}"
-)"
-enable_no_static_cycle_recovery="$(
-  normalize_bool "${ENABLE_NO_STATIC_CYCLE_RECOVERY:-false}"
 )"
 px4_param_delay_s="${PX4_PARAM_DELAY_S:-6}"
 mission_check="${MISSION_CHECK:-}"
@@ -933,12 +929,6 @@ fi
 ros_launch_args+=(use_static_map:="${active_static_map}")
 ros_launch_args+=(liveness_enabled:="${enable_liveness_recovery}")
 ros_launch_args+=(global_guide_stall_recovery_enabled:="${enable_global_guide_stall_recovery}")
-ros_launch_args+=(no_static_cycle_recovery_enabled:="${enable_no_static_cycle_recovery}")
-if [[ -n "${static_global_lattice_deadline_ms}" ]]; then
-  ros_launch_args+=(
-    static_global_lattice_deadline_ms:="${static_global_lattice_deadline_ms}"
-  )
-fi
 if [[ -n "${tracking_error_tube_response_time_override}" ]]; then
   ros_launch_args+=(
     tracking_error_tube_response_time_s:="${tracking_error_tube_response_time_override}"
