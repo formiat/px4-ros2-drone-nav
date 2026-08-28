@@ -5,6 +5,8 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # shellcheck source=simulation_runtime_helpers.sh
 source "${repo_root}/scripts/simulation_runtime_helpers.sh"
+# shellcheck source=runtime_evidence_runtime.sh
+source "${repo_root}/scripts/runtime_evidence_runtime.sh"
 # shellcheck source=lidar_profile_runtime.sh
 source "${repo_root}/scripts/lidar_profile_runtime.sh"
 resolve_lidar_profile
@@ -67,6 +69,7 @@ colcon_install_base="$(make_abs_path "${COLCON_INSTALL_BASE:-install}")"
 colcon_log_base="$(make_abs_path "${COLCON_LOG_BASE:-log}")"
 run_log_dir="$(make_abs_path "${DRONE_GAZEBO_LOG_DIR:-log}")"
 run_id="${DRONE_GAZEBO_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)-$$}"
+initialize_runtime_evidence_paths
 mission_type="${MISSION_TYPE:-point_to_point}"
 multi_vehicle_scenario_override="${MULTI_VEHICLE_SCENARIO_PATH:-${INTERCEPT_SCENARIO_PATH:-}}"
 point_to_point_scenario_override="${POINT_TO_POINT_SCENARIO_PATH:-}"
@@ -523,6 +526,7 @@ source "${px4_msgs_setup_file}"
 set -u
 
 prepare_runtime_resources
+prepare_runtime_evidence
 mkdir -p "$(dirname "${px4_log_file}")"
 mkdir -p "$(dirname "${uxrce_log_file}")"
 mkdir -p "$(dirname "${ros_log_file}")"
@@ -985,6 +989,7 @@ if [[ -n "${static_free_space_topology_3d_path_override}" ]]; then
 fi
 echo "ROS launch log: ${ros_log_file}"
 echo "Lidar memory-hit diagnostics: ${lidar_memory_hit_dump_path}"
+start_runtime_evidence_capture
 if bool_is_true "${multi_vehicle_mission}" && [[ -z "${headless}" ]] &&
   bool_is_true "${enable_gazebo_gui_follow_camera}"; then
   python3 "${repo_root}/scripts/gazebo_spectator_follow.py" \

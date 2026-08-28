@@ -176,6 +176,7 @@ check_headless_run() {
     --lidar-profile "${lidar_profile}"
     --enable-lidar-debug "${enable_lidar_debug}"
     --expect-noncooperative-avoidance "${intercept_noncooperative_avoidance_enabled}"
+    --runtime-manifest "${runtime_manifest_path}"
   )
   if bool_is_true "${multi_vehicle_mission}"; then
     validation_args+=(--expected-vehicles "${#multi_vehicle_ids[@]}")
@@ -196,6 +197,10 @@ check_headless_run() {
       --observed-3d-route-volume-bounds-m
       "${observed_3d_route_volume_bounds_m}"
     )
+    if ! bool_is_true "${multi_vehicle_mission}" &&
+      ! bool_is_true "${active_static_map}" && [[ "${lidar_profile}" == "3d" ]]; then
+      validation_args+=(--require-persistent-3d-acceptance)
+    fi
   fi
   if bool_is_true "${require_incremental_topology_evidence}"; then
     validation_args+=(

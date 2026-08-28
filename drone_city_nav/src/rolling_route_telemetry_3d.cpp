@@ -30,6 +30,14 @@ bool RollingRouteTelemetrySnapshot3D::regressionFree() const noexcept {
          continuity_preserving_reseed_ticks == 0U;
 }
 
+double
+RollingRouteTelemetrySnapshot3D::postBootstrapRouteAvailabilityRatio() const noexcept {
+  return post_bootstrap_observations == 0U
+             ? 0.0
+             : static_cast<double>(post_bootstrap_route_available_ticks) /
+                   static_cast<double>(post_bootstrap_observations);
+}
+
 RollingRouteTelemetry3D::RollingRouteTelemetry3D(RollingRouteTelemetryConfig3D config)
     : config_{config} {
   if (!std::isfinite(config_.continuation_boundary_distance_m) ||
@@ -116,6 +124,16 @@ void RollingRouteTelemetry3D::observe(
     ++snapshot_.finite_braking_tail_activations;
   }
 
+  const bool route_available =
+      observation.resident_route_available && observation.execution_owner_available;
+  route_bootstrapped_ = route_bootstrapped_ || route_available;
+  if (route_bootstrapped_) {
+    ++snapshot_.post_bootstrap_observations;
+    snapshot_.post_bootstrap_route_available_ticks += route_available ? 1U : 0U;
+    snapshot_.post_bootstrap_no_executable_route_hold_ticks +=
+        observation.no_executable_route_hold ? 1U : 0U;
+  }
+
   snapshot_.nominal_reseed_ticks += observation.nominal_reseeded ? 1U : 0U;
   if (observation.nominal_reseeded && continuity_preserving_update) {
     ++snapshot_.continuity_preserving_reseed_ticks;
@@ -148,6 +166,7 @@ void RollingRouteTelemetry3D::reset() noexcept {
   previous_available_ = false;
   previous_ownership_gap_ = false;
   previous_braking_tail_active_ = false;
+  route_bootstrapped_ = false;
 }
 
 } // namespace drone_city_nav

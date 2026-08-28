@@ -191,6 +191,40 @@ TEST(RollingRouteTelemetry3DTest, DetectsOwnershipGapEpisodesAndDuration) {
   EXPECT_EQ(snapshot.maximum_consecutive_ownership_gap_ticks, 2U);
 }
 
+TEST(RollingRouteTelemetry3DTest,
+     MeasuresAvailabilityAndRouteHoldsOnlyAfterFirstExecutableOwner) {
+  RollingRouteTelemetry3D telemetry;
+  telemetry.observe(RollingRouteTelemetryObservation3D{
+      .no_executable_route_hold = true,
+  });
+  telemetry.observe(RollingRouteTelemetryObservation3D{
+      .route_generation = 7U,
+      .resident_route_available = true,
+      .execution_owner_available = true,
+  });
+  telemetry.observe(RollingRouteTelemetryObservation3D{
+      .route_generation = 7U,
+      .resident_route_available = true,
+      .execution_owner_available = false,
+      .no_executable_route_hold = true,
+  });
+  telemetry.observe(RollingRouteTelemetryObservation3D{
+      .route_generation = 7U,
+      .resident_route_available = true,
+      .execution_owner_available = true,
+  });
+
+  const RollingRouteTelemetrySnapshot3D& snapshot = telemetry.snapshot();
+  EXPECT_EQ(snapshot.post_bootstrap_observations, 3U);
+  EXPECT_EQ(snapshot.post_bootstrap_route_available_ticks, 2U);
+  EXPECT_EQ(snapshot.post_bootstrap_no_executable_route_hold_ticks, 1U);
+  EXPECT_DOUBLE_EQ(snapshot.postBootstrapRouteAvailabilityRatio(), 2.0 / 3.0);
+
+  telemetry.reset();
+  EXPECT_EQ(telemetry.snapshot().post_bootstrap_observations, 0U);
+  EXPECT_DOUBLE_EQ(telemetry.snapshot().postBootstrapRouteAvailabilityRatio(), 0.0);
+}
+
 TEST(RollingRouteTelemetry3DTest, MovingRawInvalidationRequiresAFiniteBrakingTail) {
   RollingRouteTelemetry3D missing_tail;
   missing_tail.observe(RollingRouteTelemetryObservation3D{

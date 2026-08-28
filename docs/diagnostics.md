@@ -186,3 +186,12 @@ verify:
 6. Inspect a constrained span only when a static topology route uses one.
 7. Inspect the finite-path deadline, in-path arrival profile, and final hold.
 8. Only then tune costs or dynamics.
+
+For constrained no-static 3D-lidar acceptance, begin with the per-run
+`manifest.json`. Its hashes identify the source, parameters, generated world,
+and retained raw volume before log interpretation. The final
+`PRODUCTION_MPPI_SUMMARY` reports `post_bootstrap_route_availability_ratio`,
+post-bootstrap no-route holds, ownership gaps, and persistent-planner p95/p99.
+An admitted `PRODUCTION_MPPI_GUIDE3D` entry must report either `sufficient` or
+`terminal_exempt` reserve; a sufficient continuation must have
+`reserve_available_m >= reserve_required_m`.

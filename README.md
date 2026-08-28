@@ -214,6 +214,17 @@ OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M='42,147,1.5,66,177,8.5' \
 ./scripts/sim_headless.sh
 ```
 
+Every run writes `log/runs/<run-id>/manifest.json`. The manifest binds the exact
+Git commit, navigation configuration, generated world, mission scenario, and
+runtime profile by SHA-256. When constrained-volume validation is enabled, a
+transient-local subscriber also retains the exact observed/occupied bit words
+for that volume in a revisioned `raw_snapshot_3d_revision_<revision>.json`
+artifact. The headless acceptance gate verifies the artifact hash and payload,
+zero ownership gaps, greater than 99 percent post-bootstrap route availability,
+the measured planner p95 target, and every admitted successor-reserve proof.
+Set `DRONE_GAZEBO_RUN_ID` and `DRONE_GAZEBO_LOG_DIR` when several acceptance
+runs must remain independently discoverable.
+
 Run the complete sequential incremental-topology acceptance matrix with one
 container and no parallel simulations:
 

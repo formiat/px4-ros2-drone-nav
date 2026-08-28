@@ -34,6 +34,7 @@ struct RollingRouteTelemetryObservation3D {
   bool finite_braking_tail_active{false};
   bool nominal_reseeded{false};
   bool continuity_preserving_update{false};
+  bool no_executable_route_hold{false};
 };
 
 struct RollingRouteTelemetrySnapshot3D {
@@ -54,6 +55,9 @@ struct RollingRouteTelemetrySnapshot3D {
   std::uint64_t route_generation_changes{0U};
   std::uint64_t continuity_preserving_generation_changes{0U};
   std::uint64_t geometry_revision_changes{0U};
+  std::uint64_t post_bootstrap_observations{0U};
+  std::uint64_t post_bootstrap_route_available_ticks{0U};
+  std::uint64_t post_bootstrap_no_executable_route_hold_ticks{0U};
   double minimum_continuation_boundary_speed_mps{
       std::numeric_limits<double>::infinity()};
   double minimum_continuity_transition_speed_mps{
@@ -61,6 +65,7 @@ struct RollingRouteTelemetrySnapshot3D {
   double maximum_continuity_transition_speed_drop_mps{0.0};
 
   [[nodiscard]] bool regressionFree() const noexcept;
+  [[nodiscard]] double postBootstrapRouteAvailabilityRatio() const noexcept;
 };
 
 class RollingRouteTelemetry3D final {
@@ -79,6 +84,7 @@ private:
   bool previous_available_{false};
   bool previous_ownership_gap_{false};
   bool previous_braking_tail_active_{false};
+  bool route_bootstrapped_{false};
 };
 
 } // namespace drone_city_nav

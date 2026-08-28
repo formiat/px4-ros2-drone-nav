@@ -19,12 +19,18 @@ from headless_topology_validation import (
     validate_incremental_topology_evidence,
     validate_observed_3d_route_volume,
 )
+from headless_runtime_evidence import (
+    validate_persistent_3d_acceptance_metrics,
+    validate_runtime_manifest,
+)
 
 
 CRITICAL_PX4_PATTERN = re.compile(
     r"(?:ERROR \[|Critical failure|Segmentation fault)",
     re.IGNORECASE,
 )
+
+
 def parse_bool(value: str) -> bool | None:
     normalized = value.strip().lower()
     if not normalized:
@@ -837,6 +843,10 @@ def main() -> int:
         "--observed-3d-route-volume-bounds-m",
         type=parse_route_volume_bounds,
     )
+    parser.add_argument("--runtime-manifest", type=Path)
+    parser.add_argument(
+        "--require-persistent-3d-acceptance", action="store_true"
+    )
     parser.add_argument("--enable-lidar-debug", default="true")
     parser.add_argument(
         "--expect-noncooperative-avoidance",
@@ -859,6 +869,10 @@ def main() -> int:
         or args.maximum_no_executable_route_age_ms < 0.0
     ):
         parser.error("--maximum-no-executable-route-age-ms must be non-negative")
+    if args.require_persistent_3d_acceptance and args.runtime_manifest is None:
+        parser.error(
+            "--require-persistent-3d-acceptance requires --runtime-manifest"
+        )
 
     ros_log = read_text(args.ros_log)
     px4_logs = [read_text(path) for path in args.px4_log]
@@ -904,6 +918,18 @@ def main() -> int:
         errors,
     )
     validate_execution_chain(ros_log, errors)
+    if args.runtime_manifest is not None:
+        validate_runtime_manifest(
+            args.runtime_manifest,
+            args.observed_3d_route_volume_bounds_m,
+            args.require_persistent_3d_acceptance,
+            errors,
+            expected_mission_type=args.mission_type,
+            expected_lidar_profile=args.lidar_profile,
+            expected_static_map=expected_static,
+        )
+    if args.require_persistent_3d_acceptance:
+        validate_persistent_3d_acceptance_metrics(ros_log, errors)
     require(
         "production offboard is ready",
         ros_log,

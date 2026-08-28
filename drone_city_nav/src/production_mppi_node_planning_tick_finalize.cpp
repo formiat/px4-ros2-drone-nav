@@ -5,11 +5,23 @@
 #include <cinttypes>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "production_mppi_route_helpers.hpp"
 
 namespace drone_city_nav {
+namespace {
+
+template<typename T>
+[[nodiscard]] const T* optionalAddress(const std::optional<T>& value) noexcept {
+  if (!value.has_value()) {
+    return nullptr;
+  }
+  return std::addressof(value.value());
+}
+
+} // namespace
 
 void ProductionMppiNode::finalizePlanningTick(
     const ProductionMppiPlanningTickFinalization& finalization) {
@@ -116,9 +128,8 @@ void ProductionMppiNode::finalizePlanningTick(
   const std::shared_ptr<const ExecutionRouteSnapshot3D> committed_execution_snapshot =
       execution_route_store_.snapshot();
   const CertifiedRouteSuffix3D* const committed_route =
-      committed_execution_snapshot != nullptr &&
-              committed_execution_snapshot->route.has_value()
-          ? std::addressof(*committed_execution_snapshot->route)
+      committed_execution_snapshot != nullptr
+          ? optionalAddress(committed_execution_snapshot->route)
           : nullptr;
   const bool committed_direct_owner =
       committed_execution_snapshot != nullptr &&
@@ -158,6 +169,8 @@ void ProductionMppiNode::finalizePlanningTick(
       .raw_invalidation_active = raw_invalidation_active,
       .finite_braking_tail_active = finite_braking_tail_active,
       .nominal_reseeded = result.nominal_reseeded,
+      .no_executable_route_hold =
+          planning_state == ProductionMppiPlanningState::kNoExecutableRouteHold,
   };
   recordTickStatistics(result, planning_state, execution,
                        liveness.reseed_requested ||

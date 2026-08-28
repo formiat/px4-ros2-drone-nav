@@ -101,6 +101,11 @@ void ProductionMppiNode::publishSummary() {
   const BoundedWorkerPoolSnapshot workers = planning_worker_pool_
                                                 ? planning_worker_pool_->snapshot()
                                                 : BoundedWorkerPoolSnapshot{};
+  StaticRoutePlanningLatencyStats planning_latency;
+  {
+    const std::scoped_lock lifecycle_lock{static_route_extension_mutex_};
+    planning_latency = static_route_planning_latency_tracker_.stats();
+  }
   RCLCPP_INFO(
       get_logger(),
       "PRODUCTION_MPPI_SUMMARY ticks=%" PRIu64
@@ -136,6 +141,12 @@ void ProductionMppiNode::publishSummary() {
       " route_generation_changes=%" PRIu64
       " continuity_preserving_generation_changes=%" PRIu64
       " geometry_revision_changes=%" PRIu64
+      " post_bootstrap_route_observations=%" PRIu64
+      " post_bootstrap_route_available_ticks=%" PRIu64
+      " post_bootstrap_route_availability_ratio=%.6f"
+      " post_bootstrap_no_executable_route_hold_ticks=%" PRIu64
+      " planner_latency_samples=%zu planner_p95_ms=%.3f planner_p99_ms=%.3f"
+      " planner_build_and_planning_p99_ms=%.3f"
       " worker_route_pending=%zu worker_world_pending=%zu "
       "worker_background_pending=%zu worker_route_capacity_waits=%" PRIu64
       " worker_world_capacity_waits=%" PRIu64
@@ -176,8 +187,14 @@ void ProductionMppiNode::publishSummary() {
       rolling_route.continuity_preserving_reseed_ticks,
       rolling_route.route_generation_changes,
       rolling_route.continuity_preserving_generation_changes,
-      rolling_route.geometry_revision_changes, workers.lanes[0U].pending,
-      workers.lanes[1U].pending, workers.lanes[2U].pending,
+      rolling_route.geometry_revision_changes,
+      rolling_route.post_bootstrap_observations,
+      rolling_route.post_bootstrap_route_available_ticks,
+      rolling_route.postBootstrapRouteAvailabilityRatio(),
+      rolling_route.post_bootstrap_no_executable_route_hold_ticks,
+      planning_latency.sample_count, planning_latency.planning_p95_ms,
+      planning_latency.planning_p99_ms, planning_latency.build_and_planning_p99_ms,
+      workers.lanes[0U].pending, workers.lanes[1U].pending, workers.lanes[2U].pending,
       workers.lanes[0U].capacity_waits, workers.lanes[1U].capacity_waits,
       workers.lanes[2U].capacity_waits,
       superseded_world_generation_ticks_.load(std::memory_order_relaxed),
