@@ -100,7 +100,15 @@ class Stage4RouteSpliceContractTest(unittest.TestCase):
         )
 
         self.assertIn("maybeRequestStaticRouteExtensionFromExecution", planning)
-        self.assertIn("route_execution.source_snapshot->route", extension)
+        self.assertIn(
+            "const ExecutionRouteSnapshot3D& source = "
+            "*route_execution.source_snapshot",
+            extension,
+        )
+        self.assertIn(
+            "const std::optional<CertifiedRouteSuffix3D>& route = source.route",
+            extension,
+        )
         self.assertIn("const CertifiedRouteSuffix3D& active_route", extension)
         self.assertIn("maybeRequestStaticRouteExtension(", extension)
         self.assertIn("bindStaticRouteRequestToExecution", extension)

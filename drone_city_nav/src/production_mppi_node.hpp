@@ -551,9 +551,10 @@ private:
   [[nodiscard]] bool handleRequestedExecutionRevocation(std::int64_t now_ns);
   void publishFailClosedExecutionRevocation(ProductionMppiExecutionReason reason,
                                             std::int64_t now_ns);
-  // Input callbacks only enqueue a monotonic request. The planning thread owns
-  // the snapshot CAS and ROS publication so epoch-reset handling cannot race a
-  // normal execution-owner commit.
+  // When the optional nonphysical revocation policy is enabled, input callbacks
+  // only enqueue a monotonic request. The planning thread owns the snapshot CAS
+  // and ROS publication so epoch-reset handling cannot race a normal owner
+  // commit. With the default policy, these advisory requests are ignored.
   void requestExecutionRevocation(ProductionMppiExecutionReason reason) noexcept;
   [[nodiscard]] ProductionMppiExecutionPublication
   publishExplicitHold(const ProductionMppiExecutionCycle& cycle,

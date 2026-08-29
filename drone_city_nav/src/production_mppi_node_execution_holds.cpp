@@ -285,6 +285,10 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionRevocatio
   ProductionMppiExecutionPublication publication;
   publication.mode = ProductionMppiExecutionMode::kRevoked;
   publication.reason = reason;
+  if (!retire_certified_route &&
+      !optional_constraints_.nonphysical_execution_revocation_enabled) {
+    return publication;
+  }
   if (!failClosedExecutionReason(reason) || execution_horizon_pub_ == nullptr ||
       now_ns <= 0 ||
       execution_horizon_sequence_ == std::numeric_limits<std::uint64_t>::max()) {
@@ -398,6 +402,13 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionRevocatio
 bool ProductionMppiNode::handleRequestedExecutionRevocation(const std::int64_t now_ns) {
   const std::uint64_t requested_revocation =
       requested_execution_revocation_.load(std::memory_order_acquire);
+  if (!optional_constraints_.nonphysical_execution_revocation_enabled) {
+    // Callback requests describe evidence/freshness discontinuities, not a
+    // certified raw-occupancy intersection. Drain them without turning a
+    // transient publication race into a permanent planning barrier.
+    handled_execution_revocation_request_ = requested_revocation;
+    return false;
+  }
   if (requested_revocation == handled_execution_revocation_request_) {
     return false;
   }
@@ -431,6 +442,9 @@ bool ProductionMppiNode::handleRequestedExecutionRevocation(const std::int64_t n
 
 void ProductionMppiNode::publishFailClosedExecutionRevocation(
     const ProductionMppiExecutionReason reason, const std::int64_t now_ns) {
+  if (!optional_constraints_.nonphysical_execution_revocation_enabled) {
+    return;
+  }
   const std::shared_ptr<const ExecutionRouteSnapshot3D> snapshot =
       execution_route_store_.snapshot();
   const bool authority_present =
@@ -445,7 +459,8 @@ void ProductionMppiNode::publishFailClosedExecutionRevocation(
 
 void ProductionMppiNode::requestExecutionRevocation(
     const ProductionMppiExecutionReason reason) noexcept {
-  if (!failClosedExecutionReason(reason)) {
+  if (!optional_constraints_.nonphysical_execution_revocation_enabled ||
+      !failClosedExecutionReason(reason)) {
     return;
   }
   const std::uint64_t encoded_reason = static_cast<std::uint8_t>(reason);

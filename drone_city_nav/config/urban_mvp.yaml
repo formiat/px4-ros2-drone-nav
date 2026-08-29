@@ -363,6 +363,9 @@ production_mppi_node:
     execution_route_cross_track_constraints_enabled: false
     execution_route_tracking_tube_constraints_enabled: false
     no_eligible_route_replan_enabled: false
+    # Keep a certified trajectory across freshness, authority, and publication
+    # races. Raw occupancy intersecting that trajectory remains unconditional.
+    execution_nonphysical_revocation_enabled: false
     # Latest-scan age is diagnostic only. Its exact owned points and persistent
     # raw occupancy remain conservative hard collision evidence.
     execution_latest_lidar_freshness_required: false

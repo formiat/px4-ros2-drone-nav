@@ -21,6 +21,7 @@ struct ProductionNavigationOptionalConstraints {
   bool route_tracking_tube_constraints_enabled{false};
   bool no_eligible_route_replan_enabled{false};
   bool latest_lidar_freshness_required{false};
+  bool nonphysical_execution_revocation_enabled{false};
 };
 
 struct ProductionMppiNavigation {

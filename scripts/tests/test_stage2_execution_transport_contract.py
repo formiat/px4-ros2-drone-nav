@@ -22,6 +22,7 @@ EXECUTION = SOURCE / "production_mppi_node_execution.cpp"
 EXECUTION_PUBLICATION = SOURCE / "production_mppi_node_execution_publication.cpp"
 EXECUTION_HOLDS = SOURCE / "production_mppi_node_execution_holds.cpp"
 EXECUTION_RETENTION = SOURCE / "production_mppi_node_execution_retention.cpp"
+OPTIONAL_CONSTRAINTS = SOURCE / "production_mppi_node_optional_constraints.cpp"
 ROUTE_ACTIVATION = SOURCE / "production_mppi_route_activation.cpp"
 ROUTE_EXECUTION = SOURCE / "production_mppi_route_execution.cpp"
 PENDING_CERTIFIED_ROUTE = SOURCE / "pending_certified_route_3d.cpp"
@@ -54,6 +55,63 @@ def read_execution_sources() -> str:
 
 
 class Stage2ExecutionTransportContractTest(unittest.TestCase):
+    def test_nonphysical_execution_revocation_is_optional_and_disabled(self) -> None:
+        config = CONFIG.read_text(encoding="utf-8")
+        optional_constraints = OPTIONAL_CONSTRAINTS.read_text(encoding="utf-8")
+        planning_tick = PLANNING_TICK.read_text(encoding="utf-8")
+        holds = EXECUTION_HOLDS.read_text(encoding="utf-8")
+
+        self.assertIn("execution_nonphysical_revocation_enabled: false", config)
+        self.assertIn(
+            'declare_parameter<bool>("execution_nonphysical_revocation_enabled", false)',
+            optional_constraints,
+        )
+        request = holds.split(
+            "ProductionMppiNode::requestExecutionRevocation", maxsplit=1
+        )[1]
+        self.assertIn(
+            "!optional_constraints_.nonphysical_execution_revocation_enabled",
+            request,
+        )
+        handler = holds.split(
+            "ProductionMppiNode::handleRequestedExecutionRevocation", maxsplit=1
+        )[1].split(
+            "ProductionMppiNode::publishFailClosedExecutionRevocation", maxsplit=1
+        )[0]
+        policy_gate = handler.index(
+            "!optional_constraints_.nonphysical_execution_revocation_enabled"
+        )
+        drain = handler.index(
+            "handled_execution_revocation_request_ = requested_revocation"
+        )
+        resume = handler.index("return false", drain)
+        self.assertLess(policy_gate, drain)
+        self.assertLess(drain, resume)
+
+        revoke = holds.split(
+            "ProductionMppiNode::publishExecutionRevocation", maxsplit=1
+        )[1].split(
+            "ProductionMppiNode::handleRequestedExecutionRevocation", maxsplit=1
+        )[0]
+        self.assertIn(
+            "!retire_certified_route &&\n"
+            "      !optional_constraints_.nonphysical_execution_revocation_enabled",
+            revoke,
+        )
+        no_path = holds.split(
+            "ProductionMppiNode::publishNoExecutablePathHold", maxsplit=1
+        )[1].split(
+            "ProductionMppiNode::publishExecutionRevocation", maxsplit=1
+        )[0]
+        self.assertIn("RouteLifecycleEventKind3D::kRawInvalidated", no_path)
+        self.assertIn("physical_route_invalidation", no_path)
+        self.assertIn(
+            "navigation_health.terminal &&\n"
+            "      optional_constraints_.nonphysical_execution_revocation_enabled",
+            planning_tick,
+        )
+        self.assertIn('"replace_expired_owner"', planning_tick)
+
     def test_offboard_disarm_and_timestamp_rewind_fail_closed(self) -> None:
         offboard = OFFBOARD.read_text(encoding="utf-8")
         status_callback = offboard.split("void onVehicleStatus", maxsplit=1)[1].split(

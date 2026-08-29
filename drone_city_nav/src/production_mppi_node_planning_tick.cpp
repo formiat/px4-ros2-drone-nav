@@ -142,7 +142,8 @@ void ProductionMppiNode::planningTick() {
   const NavigationHealthAssessment navigation_health =
       updateNavigationHealth(objective, applied_control, execution_horizon_owner,
                              execution_snapshot, world_current, now_ns);
-  if (navigation_health.terminal) {
+  if (navigation_health.terminal &&
+      optional_constraints_.nonphysical_execution_revocation_enabled) {
     publishFailClosedExecutionRevocation(
         terminalExecutionReason(navigation_health.failure), now_ns);
     return;
@@ -248,12 +249,19 @@ void ProductionMppiNode::planningTick() {
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 1000,
           "EXECUTION_HORIZON_SUPERSESSION rejected=true reason=owner_not_current "
+          "action=%s "
           "producer=%" PRIu64 " sequence=%" PRIu64,
+          optional_constraints_.nonphysical_execution_revocation_enabled
+              ? "revoke"
+              : "replace_expired_owner",
           execution_horizon_owner.producer_instance_id,
           execution_horizon_owner.sequence);
-      publishFailClosedExecutionRevocation(
-          ProductionMppiExecutionReason::kNoExecutableHorizon, now_ns);
-      return;
+      if (optional_constraints_.nonphysical_execution_revocation_enabled) {
+        publishFailClosedExecutionRevocation(
+            ProductionMppiExecutionReason::kNoExecutableHorizon, now_ns);
+        return;
+      }
+      break;
     case ProductionMppiHorizonSupersessionDecision::kAllowedNoPlannedOwner:
     case ProductionMppiHorizonSupersessionDecision::kAllowedWitnessedOwner:
       break;

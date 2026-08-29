@@ -21,6 +21,8 @@ void ProductionMppiNode::configureOptionalNavigationConstraints() {
           declare_parameter<bool>("no_eligible_route_replan_enabled", false),
       .latest_lidar_freshness_required =
           declare_parameter<bool>("execution_latest_lidar_freshness_required", false),
+      .nonphysical_execution_revocation_enabled =
+          declare_parameter<bool>("execution_nonphysical_revocation_enabled", false),
   };
 }
 
