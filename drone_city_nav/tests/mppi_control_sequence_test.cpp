@@ -276,6 +276,27 @@ TEST(MppiControlSequenceTest, FiniteRouteSeedStopsAtTemporaryFrontier) {
   EXPECT_LT(std::abs(terminal.vx), 0.5F);
 }
 
+TEST(MppiControlSequenceTest, FiniteRouteSeedFollowsABendInsteadOfCuttingItsChord) {
+  DynamicsConfig dynamics;
+  dynamics.dt_s = 0.1F;
+  dynamics.linear_drag_1ps = 0.0F;
+  dynamics.maximum_control_jerk_mps3 = 100.0F;
+  const State initial{};
+  const State target{.x = 5.0F, .y = 5.0F};
+  const std::array route{
+      RouteSample3D{.x_m = 0.0F, .y_m = 0.0F, .tangent_x = 1.0F, .station_m = 0.0F},
+      RouteSample3D{.x_m = 5.0F, .y_m = 0.0F, .tangent_x = 1.0F, .station_m = 5.0F},
+      RouteSample3D{.x_m = 5.0F, .y_m = 5.0F, .tangent_y = 1.0F, .station_m = 10.0F},
+  };
+
+  const std::vector<Control> controls = buildFiniteRouteDirectedSeed(
+      initial, target, route, 0.0F, 2.0F, dynamics, 80U, Control{});
+
+  ASSERT_EQ(controls.size(), 80U);
+  EXPECT_GT(controls.front().ax, 0.0F);
+  EXPECT_NEAR(controls.front().ay, 0.0F, 1.0e-6F);
+}
+
 TEST(MppiControlSequenceTest,
      SelectsBestFiniteRouteCandidateInsteadOfDilutingItInWeightedUpdate) {
   BenchmarkConfig config;

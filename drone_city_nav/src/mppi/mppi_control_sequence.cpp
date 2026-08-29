@@ -299,7 +299,7 @@ buildGuideDirectedSeed(const State& initial, const State& target,
   return seed;
 }
 
-std::vector<Control> buildTerminalRestRouteSeed(
+std::vector<Control> buildStraightRouteTerminalRestSeed(
     const State& initial, const State& target,
     const std::span<const RouteSample3D> route, const float initial_route_station_m,
     const float reference_speed_mps, const DynamicsConfig& dynamics,
@@ -312,14 +312,24 @@ std::vector<Control> buildTerminalRestRouteSeed(
   }
   const float horizon_duration_s = static_cast<float>(steps) * dynamics.dt_s;
   // A rest-to-rest finite maneuver has roughly half the cruise speed on average.
-  // Aim at that reachable route station instead of carrying lateral convergence
-  // velocity into the generic arrival brake.
   const float terminal_station_m =
       std::min(route.back().station_m,
                initial_route_station_m +
                    0.5F * std::max(0.0F, reference_speed_mps) * horizon_duration_s);
+  const RouteSample initial_route = sampleRoute(route, initial_route_station_m);
   const RouteSample terminal_route = sampleRoute(route, terminal_station_m);
-  if (!terminal_route.valid) {
+  if (!initial_route.valid || !terminal_route.valid) {
+    return buildGuideDirectedSeed(initial, target, route, initial_route_station_m,
+                                  reference_speed_mps, dynamics, steps,
+                                  previous_applied_control, stopping_capability);
+  }
+  const float route_interval_m = terminal_route.station_m - initial_route.station_m;
+  const float chord_length_m =
+      std::hypot(std::hypot(terminal_route.x_m - initial_route.x_m,
+                            terminal_route.y_m - initial_route.y_m),
+                 terminal_route.z_m - initial_route.z_m);
+  constexpr float kStraightRouteToleranceM{1.0e-3F};
+  if (route_interval_m > chord_length_m + kStraightRouteToleranceM) {
     return buildGuideDirectedSeed(initial, target, route, initial_route_station_m,
                                   reference_speed_mps, dynamics, steps,
                                   previous_applied_control, stopping_capability);
@@ -331,9 +341,9 @@ std::vector<Control> buildTerminalRestRouteSeed(
   for (std::size_t index = 0U; index < steps; ++index) {
     const float remaining_s = static_cast<float>(steps - index) * dynamics.dt_s;
     const float inverse_remaining_s = 1.0F / remaining_s;
-    // These are the receding-horizon gains of the cubic boundary-value solution
-    // for the selected position and zero terminal velocity. Drag compensation
-    // maps its physical acceleration back into the reference dynamics command.
+    // Receding-horizon gains for the cubic boundary-value solution with zero
+    // terminal velocity. This connector is valid only on a straight route
+    // interval; curved intervals must follow their geometry above.
     const float position_gain = 6.0F * inverse_remaining_s * inverse_remaining_s;
     const float velocity_gain = 4.0F * inverse_remaining_s;
     seed[index] = Control{
@@ -372,9 +382,12 @@ std::vector<Control> buildFiniteRouteDirectedSeed(
     const float reference_speed_mps, const DynamicsConfig& dynamics,
     const std::size_t steps, const Control previous_applied_control,
     const StoppingCapability& stopping_capability) {
-  return buildTerminalRestRouteSeed(initial, target, route, initial_route_station_m,
-                                    reference_speed_mps, dynamics, steps,
-                                    previous_applied_control, stopping_capability);
+  // A straight interval can use one rest-to-rest connector. Curved intervals
+  // retain the actual route geometry; the finite-execution admission layer then
+  // owns suffix backoff and the independently certified terminal braking tail.
+  return buildStraightRouteTerminalRestSeed(
+      initial, target, route, initial_route_station_m, reference_speed_mps, dynamics,
+      steps, previous_applied_control, stopping_capability);
 }
 
 std::vector<Control> buildCooperativeSeparationAcquisitionCandidates(
