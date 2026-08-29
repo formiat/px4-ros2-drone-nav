@@ -132,6 +132,87 @@ TEST(ExecutionRouteSnapshot3DTest,
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
+     SpliceFreeBrakingHandoffDoesNotTreatTheBrakeWorldAsRouteEvidence) {
+  SnapshotFixture3D fixture;
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
+      fixture.activeSnapshot();
+  ASSERT_NE(active, nullptr);
+  ASSERT_TRUE(active->route.has_value());
+  const CertifiedRouteSuffix3D active_route =
+      active->route.value_or(CertifiedRouteSuffix3D{});
+  ASSERT_TRUE(active_route.valid());
+
+  constexpr std::uint64_t kSuccessorRawRevision =
+      SnapshotFixture3D::kLatestRawRevision + 1U;
+  constexpr std::uint64_t kBrakeRawRevision = kSuccessorRawRevision + 1U;
+  const RouteLifecycleEvent3D invalidation{
+      .kind = RouteLifecycleEventKind3D::kRawInvalidated,
+      .generation = active_route.identity.generation,
+      .raw_producer_instance_id = SnapshotFixture3D::kRawProducer,
+      .raw_revision = kBrakeRawRevision,
+  };
+  const FiniteExecutionState3D braking =
+      SnapshotFixture3D::rawInvalidatedFiniteExecution(
+          *active, invalidation, fixture.rawWorld(kBrakeRawRevision),
+          FiniteExecutionKind3D::kEmergencyBrakeTail, true, 101U);
+  const ExecutionRouteTransitionResult3D retired = retireCertifiedRoute3D(
+      *active, SnapshotFixture3D::guard(*active), invalidation, braking);
+  ASSERT_TRUE(retired.applied());
+  ASSERT_NE(retired.next, nullptr);
+  ASSERT_EQ(retired.next->phase, ExecutionRoutePhase3D::kBraking);
+  ASSERT_TRUE(retired.next->route.has_value());
+  ASSERT_TRUE(retired.next->finite_execution.has_value());
+  const CertifiedRouteSuffix3D retired_route =
+      retired.next->route.value_or(CertifiedRouteSuffix3D{});
+  const FiniteExecutionState3D retired_execution =
+      retired.next->finite_execution.value_or(FiniteExecutionState3D{});
+  ASSERT_TRUE(retired_route.valid());
+  ASSERT_TRUE(retired_execution.validFor(nullptr));
+
+  ExecutionRouteActivation3D successor_activation = fixture.activation();
+  successor_activation.route_generation = SnapshotFixture3D::kRouteGeneration + 1U;
+  successor_activation.observation.latest_raw_revision = kSuccessorRawRevision;
+  successor_activation.observed_raw_world = fixture.rawWorld(kSuccessorRawRevision);
+  const std::optional<CertifiedRouteSuffix3D> successor =
+      certifyExecutionRoute3D(successor_activation);
+  ASSERT_TRUE(successor.has_value());
+  const CertifiedRouteSuffix3D successor_route =
+      successor.value_or(CertifiedRouteSuffix3D{});
+  ASSERT_TRUE(successor_route.valid());
+  const FiniteExecutionState3D successor_execution =
+      SnapshotFixture3D::finiteExecutionForRoute(
+          *retired.next, successor_route, FiniteExecutionKind3D::kNominal, true, 102U);
+
+  const auto* const braking_lineage =
+      std::get_if<ObservedRawFiniteExecutionValidationLineage3D>(
+          &retired_execution.validation_proof.lineage);
+  const auto* const successor_certificate =
+      std::get_if<ObservedRawRouteCertificate3D>(&successor_route.certificate);
+  ASSERT_NE(braking_lineage, nullptr);
+  ASSERT_NE(successor_certificate, nullptr);
+  ASSERT_LT(successor_certificate->validated_through_revision,
+            braking_lineage->validated_through_raw_revision);
+
+  EXPECT_EQ(replaceCertifiedRoute3D(
+                *retired.next, SnapshotFixture3D::guard(*retired.next), successor_route,
+                successor_execution, testRouteSplice(retired_route, successor_route))
+                .status,
+            ExecutionRouteTransitionStatus3D::kCertificateRegression);
+  const ExecutionRouteTransitionResult3D accepted = replaceCertifiedRouteAtHandoff3D(
+      *retired.next, SnapshotFixture3D::guard(*retired.next), successor_route,
+      successor_execution);
+  ASSERT_TRUE(accepted.applied());
+  ASSERT_NE(accepted.next, nullptr);
+  EXPECT_EQ(accepted.next->phase, ExecutionRoutePhase3D::kFollowing);
+  ASSERT_TRUE(accepted.next->route.has_value());
+  const CertifiedRouteSuffix3D accepted_route =
+      accepted.next->route.value_or(CertifiedRouteSuffix3D{});
+  ASSERT_TRUE(accepted_route.valid());
+  EXPECT_EQ(accepted_route.identity.generation,
+            SnapshotFixture3D::kRouteGeneration + 1U);
+}
+
+TEST(ExecutionRouteSnapshot3DTest,
      NewRawEvidenceInvalidatesOnlyTheRemainingPublishedFiniteTrajectory) {
   SnapshotFixture3D fixture;
   const std::shared_ptr<const ExecutionRouteSnapshot3D> active =

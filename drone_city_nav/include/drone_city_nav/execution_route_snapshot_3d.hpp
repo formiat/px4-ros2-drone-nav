@@ -680,7 +680,11 @@ retireCertifiedRoute3D(const ExecutionRouteSnapshot3D& current,
 // were not planned as overlapping continuations and therefore have no splice
 // proof. The exact resident owner remains mandatory; a suspended owner may be
 // replaced without retaining its expired finite horizon because the successor
-// carries a fresh, completely certified execution plan from the current state.
+// carries a completely certified execution plan from the current state. During
+// physical braking, the temporary brake may have a newer raw-world witness than
+// the immutable successor route certificate. That brake witness is not route
+// evidence: publication must revalidate both successor horizons against the
+// latest raw/lidar evidence before atomically replacing the resident owner.
 [[nodiscard]] ExecutionRouteTransitionResult3D
 replaceCertifiedRouteAtHandoff3D(const ExecutionRouteSnapshot3D& current,
                                  const ExecutionRouteTransitionGuard3D& guard,

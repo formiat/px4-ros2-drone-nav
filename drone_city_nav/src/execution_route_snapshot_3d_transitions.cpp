@@ -94,16 +94,24 @@ replaceCertifiedRouteImpl(const ExecutionRouteSnapshot3D& current,
   // both routes to share that stale position would reject the recovery path.
   // The successor finite plan and its raw-safe connector are validated below
   // against the exact current execution input before either route is replaced.
-  const bool successor_evidence_current =
-      current.finite_execution.has_value()
-          ? successorEvidenceNotOlder(*current_route, *current.finite_execution,
-                                      successor, successor_execution.command_horizon)
-          : current_route->progress.execution_input != nullptr &&
-                executionInputNotOlder(
-                    *successor_execution.command_horizon.execution_input,
-                    *current_route->progress.execution_input) &&
-                successorRouteEvidenceNotOlder(*current_route, successor,
-                                               successor_execution.command_horizon);
+  const bool splice_free_braking_handoff =
+      splice == nullptr && current.phase == ExecutionRoutePhase3D::kBraking;
+  bool successor_evidence_current{false};
+  if (current.finite_execution.has_value()) {
+    successor_evidence_current =
+        splice_free_braking_handoff
+            ? successorRouteEvidenceNotOlder(*current_route, successor,
+                                             successor_execution.command_horizon)
+            : successorEvidenceNotOlder(*current_route, *current.finite_execution,
+                                        successor, successor_execution.command_horizon);
+  } else {
+    successor_evidence_current =
+        current_route->progress.execution_input != nullptr &&
+        executionInputNotOlder(*successor_execution.command_horizon.execution_input,
+                               *current_route->progress.execution_input) &&
+        successorRouteEvidenceNotOlder(*current_route, successor,
+                                       successor_execution.command_horizon);
+  }
   if (successor_execution.command_horizon.kind != FiniteExecutionKind3D::kNominal) {
     return transitionFailure(
         ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
