@@ -334,16 +334,25 @@ std::vector<Control> buildStraightRouteTerminalRestSeed(
                                   reference_speed_mps, dynamics, steps,
                                   previous_applied_control, stopping_capability);
   }
+  const MppiRouteProjection3D current_projection =
+      projectOntoMppiRoute3D(initial, route, initial_route_station_m);
+  // Certified progress is a conservative lower bound and can lag the physical
+  // vehicle while its snapshot transition is being committed. Use that bound
+  // to constrain projection, but start the local maneuver at the vehicle's
+  // current route projection so a lagging ledger cannot command a backward
+  // terminal stop.
+  const float maneuver_begin_station_m =
+      current_projection.valid ? current_projection.station_m : initial_route_station_m;
   const float horizon_duration_s = static_cast<float>(steps) * dynamics.dt_s;
   // A rest-to-rest finite maneuver has roughly half the cruise speed on average.
   const float terminal_station_m =
       std::min(route.back().station_m,
-               initial_route_station_m +
+               maneuver_begin_station_m +
                    0.5F * std::max(0.0F, reference_speed_mps) * horizon_duration_s);
-  const RouteSample initial_route = sampleRoute(route, initial_route_station_m);
+  const RouteSample initial_route = sampleRoute(route, maneuver_begin_station_m);
   const RouteSample terminal_route = sampleRoute(route, terminal_station_m);
   if (!initial_route.valid || !terminal_route.valid) {
-    return buildGuideDirectedSeed(initial, target, route, initial_route_station_m,
+    return buildGuideDirectedSeed(initial, target, route, maneuver_begin_station_m,
                                   reference_speed_mps, dynamics, steps,
                                   previous_applied_control, stopping_capability);
   }
@@ -355,7 +364,7 @@ std::vector<Control> buildStraightRouteTerminalRestSeed(
   constexpr float kStraightRouteToleranceM{1.0e-3F};
   if (route_interval_m > chord_length_m + kStraightRouteToleranceM) {
     return buildGuideDirectedSeed(
-        initial, target, route, initial_route_station_m, reference_speed_mps, dynamics,
+        initial, target, route, maneuver_begin_station_m, reference_speed_mps, dynamics,
         steps, previous_applied_control, stopping_capability, terminal_station_m);
   }
 

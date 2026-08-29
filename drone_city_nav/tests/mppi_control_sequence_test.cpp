@@ -393,6 +393,37 @@ TEST(MppiControlSequenceTest, FiniteRouteSeedAdvancesAlongCurvedDescendingRoute)
 }
 
 TEST(MppiControlSequenceTest,
+     FiniteRouteSeedStartsFromCurrentProjectionWhenProgressLedgerLags) {
+  DynamicsConfig dynamics;
+  const std::array route{
+      RouteSample3D{.x_m = 0.0F, .tangent_x = 1.0F, .station_m = 0.0F},
+      RouteSample3D{.x_m = 30.0F, .tangent_x = 1.0F, .station_m = 30.0F},
+  };
+  const State initial{.x = 8.0F};
+  constexpr float kLedgerStationM{0.0F};
+  const MppiRouteProjection3D initial_projection =
+      projectOntoMppiRoute3D(initial, route, kLedgerStationM);
+  ASSERT_TRUE(initial_projection.valid);
+
+  const std::vector<Control> controls =
+      buildFiniteRouteDirectedSeed(initial, State{.x = 30.0F}, route, kLedgerStationM,
+                                   4.0F, dynamics, 80U, Control{});
+  std::vector<State> states;
+  states.reserve(controls.size() + 1U);
+  states.push_back(initial);
+  for (const Control& control : controls) {
+    states.push_back(integrateReference(states.back(), control, dynamics));
+  }
+  const FiniteHorizon horizon{.states = states, .controls = controls};
+  const MppiRouteProjection3D terminal_projection =
+      projectOntoMppiRoute3D(states.back(), route, kLedgerStationM);
+
+  EXPECT_TRUE(finiteHorizonHasTerminalRestState(horizon));
+  ASSERT_TRUE(terminal_projection.valid);
+  EXPECT_GT(terminal_projection.station_m, initial_projection.station_m + 1.0F);
+}
+
+TEST(MppiControlSequenceTest,
      SelectsBestFiniteRouteCandidateInsteadOfDilutingItInWeightedUpdate) {
   BenchmarkConfig config;
   config.rollouts = 512U;
