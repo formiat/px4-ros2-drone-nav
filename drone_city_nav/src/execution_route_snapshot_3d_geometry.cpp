@@ -730,8 +730,7 @@ validateOrderedPassageCrossings(const ExecutionRouteGeometry3D& geometry,
       constrainedStationEvents(geometry, minimum_station_m, maximum_station_m);
   const Point3 initial_point = statePoint(states.front());
   RouteProjection3D previous_projection = projectOntoRoute3DWithinStationWindow(
-      route, initial_point,
-      std::max(minimum_station_m, initial_station_m - kExecutionBindingToleranceM),
+      route, initial_point, std::max(minimum_station_m, initial_station_m),
       std::min(maximum_station_m, initial_station_m + kExecutionBindingToleranceM));
   result.begin = previous_projection;
   if (!previous_projection.valid) {

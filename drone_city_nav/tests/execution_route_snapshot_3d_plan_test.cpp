@@ -103,6 +103,113 @@ TEST(ExecutionRouteSnapshot3DTest,
   EXPECT_EQ(store.snapshot(), composed.next);
 }
 
+TEST(ExecutionRouteSnapshot3DTest,
+     SlightlyLaggingMeasuredPoseCannotRegressRetainedRouteProgress) {
+  SnapshotFixture3D fixture;
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
+      fixture.activeSnapshot();
+  ASSERT_NE(active, nullptr);
+
+  constexpr double kRetainedStationM{4.0};
+  constexpr std::uint64_t kAdvancedRawRevision =
+      SnapshotFixture3D::kLatestRawRevision + 1U;
+  const std::shared_ptr<const VersionedExecutionInput3D> progress_input =
+      SnapshotFixture3D::progressInput(*active, {kRetainedStationM, 0.0, 5.0});
+  const ExecutionRouteTransitionResult3D progress = advanceCertifiedRoute3D(
+      *active, SnapshotFixture3D::guard(*active),
+      fixture.executionObservation({kRetainedStationM, 0.0, 5.0}, kAdvancedRawRevision,
+                                   &fixture.raw_occupancy),
+      progress_input, fixture.rawWorld(kAdvancedRawRevision));
+  ASSERT_TRUE(progress.applied());
+  if (progress.next == nullptr || !progress.next->route.has_value() ||
+      !progress.next->finite_execution.has_value()) {
+    ADD_FAILURE() << "Progress must preserve the route and finite execution";
+    return;
+  }
+  const ExecutionRouteSnapshot3D& progressed = *progress.next;
+  const CertifiedRouteSuffix3D& route =
+      progressed.route.value(); // NOLINT(bugprone-unchecked-optional-access)
+  const FiniteExecutionState3D& resident_execution =
+      progressed.finite_execution.value(); // NOLINT(bugprone-unchecked-optional-access)
+  EXPECT_DOUBLE_EQ(route.progress.station_m, kRetainedStationM);
+
+  FiniteExecutionCertification3D command =
+      SnapshotFixture3D::finiteCertificationForRoute(
+          route, FiniteExecutionKind3D::kNominal, 102U, 56U, 0U, kRetainedStationM,
+          route.progress.execution_input.get(),
+          resident_execution.latest_lidar_evidence.get());
+  ASSERT_NE(command.execution_input, nullptr);
+  mppi::State lagging_state = command.execution_input->state();
+  lagging_state.x -= 0.1F;
+  const VersionedExecutionInput3D& generated_input = *command.execution_input;
+  command.execution_input = VersionedExecutionInput3D::capture(ExecutionInputCapture3D{
+      .capture_sequence = generated_input.captureSequence(),
+      .pose_revision = generated_input.poseRevision(),
+      .pose_source_timestamp_us = generated_input.poseSourceTimestampUs(),
+      .pose_receive_stamp_ns = generated_input.poseReceiveStampNs(),
+      .effective_stamp_ns = generated_input.effectiveStampNs(),
+      .state = lagging_state,
+      .full_state_authoritative = generated_input.fullStateAuthoritative(),
+      .state_provenance = generated_input.stateProvenance(),
+      .previous_control = generated_input.previousControl(),
+      .previous_control_source = generated_input.previousControlSource(),
+      .previous_control_source_producer_instance_id =
+          generated_input.previousControlSourceProducerInstanceId(),
+      .previous_control_source_sequence =
+          generated_input.previousControlSourceSequence(),
+      .previous_control_source_stamp_ns =
+          generated_input.previousControlSourceStampNs(),
+      .previous_control_receive_stamp_ns =
+          generated_input.previousControlReceiveStampNs(),
+  });
+  ASSERT_NE(command.execution_input, nullptr);
+
+  const std::optional<mppi::FiniteHorizon> stationary_horizon =
+      mppi::buildFiniteBrakingHorizon(lagging_state, command.horizon.controls.size(),
+                                      route.validation_policy->dynamics(),
+                                      command.execution_input->previousControl());
+  if (!stationary_horizon.has_value()) {
+    ADD_FAILURE() << "The lagging state must produce a finite braking horizon";
+    return;
+  }
+  command.horizon = stationary_horizon.value();
+
+  FiniteExecutionPlanCertificationResult3D certification =
+      certifyFiniteExecutionPlan3DDetailed(
+          progressed, route,
+          FiniteExecutionPlanCertification3D{
+              .command_horizon = std::move(command),
+              .braking_tail = stationary_horizon.value(),
+          });
+  ASSERT_TRUE(certification.certified())
+      << "command_status="
+      << finiteExecutionCertificationStatus3DName(certification.command_horizon.status)
+      << " braking_status="
+      << finiteExecutionCertificationStatus3DName(certification.braking_tail.status);
+  if (!certification.plan.has_value()) {
+    ADD_FAILURE() << "Certification must return the complete atomic plan";
+    return;
+  }
+  FiniteExecutionPlan3D plan = std::move(certification.plan.value());
+  EXPECT_DOUBLE_EQ(plan.command_horizon.begin_route_station_m, kRetainedStationM);
+  EXPECT_DOUBLE_EQ(plan.command_horizon.stop_boundary.station_m, kRetainedStationM);
+  EXPECT_DOUBLE_EQ(plan.braking_tail.stop_boundary.station_m, kRetainedStationM);
+
+  const ExecutionRouteTransitionResult3D installed = replaceFiniteExecutionPlan3D(
+      progressed, SnapshotFixture3D::guard(progressed), std::move(plan));
+  ASSERT_TRUE(installed.applied())
+      << "transition_status=" << executionRouteTransitionStatus3DName(installed.status);
+  if (installed.next == nullptr || !installed.next->route.has_value()) {
+    ADD_FAILURE() << "Installation must preserve the route owner";
+    return;
+  }
+  const ExecutionRouteSnapshot3D& installed_snapshot = *installed.next;
+  const CertifiedRouteSuffix3D& installed_route =
+      installed_snapshot.route.value(); // NOLINT(bugprone-unchecked-optional-access)
+  EXPECT_DOUBLE_EQ(installed_route.progress.station_m, kRetainedStationM);
+  EXPECT_TRUE(installed_snapshot.publishable());
+}
+
 TEST(ExecutionRouteSnapshot3DTest, SafeReplacementCannotExtendDeadline) {
   SnapshotFixture3D fixture;
   const std::shared_ptr<const ExecutionRouteSnapshot3D> active =

@@ -38,7 +38,7 @@ bool certifiedTrackingTubeHandoffPending(
       *target_route.geometry->route,
       Point3{initial_state.x, initial_state.y, initial_state.z},
       std::max(certificateView(target_route.certificate).suffix_start_station_m,
-               execution->begin_route_station_m - kExecutionBindingToleranceM),
+               execution->begin_route_station_m),
       std::min(target_route.endStationM(),
                execution->begin_route_station_m + kExecutionBindingToleranceM));
   if (!initial_projection.valid) {
@@ -110,8 +110,7 @@ bool validateTrackingTubeHandoffClearance(
                            horizon.states.front().z};
   RouteProjection3D previous_projection = projectOntoRoute3DWithinStationWindow(
       route_samples, previous_position,
-      std::max(route_samples.front().station_m,
-               begin_route_station_m - kExecutionBindingToleranceM),
+      std::max(route_samples.front().station_m, begin_route_station_m),
       std::min(route.endStationM(),
                begin_route_station_m + kExecutionBindingToleranceM));
   if (!previous_projection.valid) {

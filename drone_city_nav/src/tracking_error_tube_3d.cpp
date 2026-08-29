@@ -453,8 +453,7 @@ TrackingErrorTubeHandoffAssessment3D assessTrackingErrorTubeHandoff3D(
   projections.reserve(handoff_states.size());
   RouteProjection3D previous_projection = projectOntoRoute3DWithinStationWindow(
       route, statePosition(handoff_states.front()),
-      std::max(route.front().station_m,
-               begin_route_station_m - kHandoffStationToleranceM),
+      std::max(route.front().station_m, begin_route_station_m),
       std::min(route.back().station_m,
                begin_route_station_m + kHandoffStationToleranceM));
   if (!previous_projection.valid) {
