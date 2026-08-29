@@ -291,10 +291,28 @@ TEST(MppiControlSequenceTest, FiniteRouteSeedFollowsABendInsteadOfCuttingItsChor
 
   const std::vector<Control> controls = buildFiniteRouteDirectedSeed(
       initial, target, route, 0.0F, 2.0F, dynamics, 80U, Control{});
+  std::vector<State> states;
+  states.reserve(controls.size() + 1U);
+  states.push_back(initial);
+  for (const Control& control : controls) {
+    states.push_back(integrateReference(states.back(), control, dynamics));
+  }
+  const FiniteHorizon seed_horizon{.states = states, .controls = controls};
+  const RouteConvergentFiniteHorizon finite = buildRouteConvergentFiniteHorizon(
+      states, controls, Control{}, dynamics, route, 0.0F, 0.5F,
+      finiteHorizonArrivalSearchStepControls(dynamics.dt_s));
 
   ASSERT_EQ(controls.size(), 80U);
   EXPECT_GT(controls.front().ax, 0.0F);
   EXPECT_NEAR(controls.front().ay, 0.0F, 1.0e-6F);
+  ASSERT_TRUE(finite.accepted());
+  EXPECT_EQ(finite.nominal_prefix_control_count, controls.size());
+  EXPECT_TRUE(finiteHorizonHasTerminalRestState(seed_horizon));
+  const MppiRouteProjection3D terminal_projection =
+      projectOntoMppiRoute3D(states.back(), route, 0.0F);
+  ASSERT_TRUE(terminal_projection.valid);
+  EXPECT_GT(terminal_projection.station_m, 5.0F);
+  EXPECT_LE(terminal_projection.distance_m, 0.5F);
 }
 
 TEST(MppiControlSequenceTest,
@@ -486,8 +504,7 @@ TEST(MppiControlSequenceTest,
   EXPECT_GE(result.terminal_route_cross_track_m, 0.0F);
   EXPECT_LE(result.terminal_route_cross_track_m, 2.0F);
   EXPECT_GT(result.route_terminal_arrival_shaping_attempts, 0U);
-  EXPECT_GT(result.route_terminal_nominal_prefix_control_count, 0U);
-  EXPECT_LT(result.route_terminal_nominal_prefix_control_count, config.steps);
+  EXPECT_EQ(result.route_terminal_nominal_prefix_control_count, config.steps);
 }
 
 TEST(MppiControlSequenceTest,

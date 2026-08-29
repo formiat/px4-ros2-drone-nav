@@ -1,5 +1,6 @@
 #include "drone_city_nav/mppi/mppi_control_sequence.hpp"
 
+#include "drone_city_nav/mppi/mppi_finite_horizon.hpp"
 #include "drone_city_nav/mppi/mppi_reference.hpp"
 #include "drone_city_nav/mppi/mppi_route_projection.hpp"
 
@@ -197,13 +198,13 @@ void limitControlSequence(const std::span<Control> controls,
 
 namespace {
 
-std::vector<Control>
-buildGuideDirectedSeed(const State& initial, const State& target,
-                       const std::span<const RouteSample3D> route,
-                       const float initial_route_station_m,
-                       const float reference_speed_mps, const DynamicsConfig& dynamics,
-                       const std::size_t steps, const Control previous_applied_control,
-                       const StoppingCapability& stopping_capability) {
+std::vector<Control> buildGuideDirectedSeed(
+    const State& initial, const State& target,
+    const std::span<const RouteSample3D> route, const float initial_route_station_m,
+    const float reference_speed_mps, const DynamicsConfig& dynamics,
+    const std::size_t steps, const Control previous_applied_control,
+    const StoppingCapability& stopping_capability,
+    const std::optional<float> terminal_route_station_m = std::nullopt) {
   std::vector<Control> seed(steps);
   const float dx = target.x - initial.x;
   const float dy = target.y - initial.y;
@@ -216,12 +217,18 @@ buildGuideDirectedSeed(const State& initial, const State& target,
   Control previous = previous_applied_control;
   float route_target_station_m = initial_route_station_m;
   float route_projection_station_m = initial_route_station_m;
+  const float route_limit_station_m =
+      route.size() >= 2U
+          ? std::clamp(terminal_route_station_m.value_or(route.back().station_m),
+                       route.front().station_m, route.back().station_m)
+          : 0.0F;
   for (std::size_t index = 0U; index < steps; ++index) {
     if (route.size() >= 2U) {
       const MppiRouteProjection3D projection =
           projectOntoMppiRoute3D(predicted, route, route_projection_station_m);
       if (projection.valid) {
-        route_projection_station_m = projection.station_m;
+        route_projection_station_m =
+            std::min(projection.station_m, route_limit_station_m);
       }
     }
     const RouteSample current_route_sample =
@@ -230,13 +237,13 @@ buildGuideDirectedSeed(const State& initial, const State& target,
         current_route_sample.valid
             ? std::min(
                   requested_speed_mps,
-                  finiteRouteSpeedLimit(std::max(0.0F, route.back().station_m -
+                  finiteRouteSpeedLimit(std::max(0.0F, route_limit_station_m -
                                                            route_projection_station_m),
                                         current_route_sample, stopping_capability))
             : requested_speed_mps;
     route_target_station_m =
         current_route_sample.valid
-            ? std::min(route.back().station_m,
+            ? std::min(route_limit_station_m,
                        std::max(route_target_station_m, route_projection_station_m) +
                            route_speed_mps * dynamics.dt_s)
             : route_target_station_m;
@@ -330,9 +337,9 @@ std::vector<Control> buildStraightRouteTerminalRestSeed(
                  terminal_route.z_m - initial_route.z_m);
   constexpr float kStraightRouteToleranceM{1.0e-3F};
   if (route_interval_m > chord_length_m + kStraightRouteToleranceM) {
-    return buildGuideDirectedSeed(initial, target, route, initial_route_station_m,
-                                  reference_speed_mps, dynamics, steps,
-                                  previous_applied_control, stopping_capability);
+    return buildGuideDirectedSeed(
+        initial, target, route, initial_route_station_m, reference_speed_mps, dynamics,
+        steps, previous_applied_control, stopping_capability, terminal_station_m);
   }
 
   std::vector<Control> seed(steps);
@@ -363,6 +370,48 @@ std::vector<Control> buildStraightRouteTerminalRestSeed(
   return seed;
 }
 
+[[nodiscard]] std::vector<State>
+integrateControlSequence(const State& initial, const std::span<const Control> controls,
+                         const DynamicsConfig& dynamics) {
+  std::vector<State> states;
+  states.reserve(controls.size() + 1U);
+  states.push_back(initial);
+  for (const Control& control : controls) {
+    states.push_back(integrateReference(states.back(), control, dynamics));
+  }
+  return states;
+}
+
+[[nodiscard]] std::vector<Control>
+attachTerminalRestTail(const State& initial, std::vector<Control>&& route_controls,
+                       const DynamicsConfig& dynamics,
+                       const Control previous_applied_control,
+                       const StoppingCapability& stopping_capability) {
+  if (route_controls.empty()) {
+    return std::move(route_controls);
+  }
+  const std::vector<State> route_states =
+      integrateControlSequence(initial, route_controls, dynamics);
+  const std::size_t arrival_search_step_controls =
+      finiteHorizonArrivalSearchStepControls(dynamics.dt_s);
+  std::size_t preserved_prefix_control_count = route_controls.size();
+  while (true) {
+    std::optional<FiniteHorizon> finite = buildFiniteHorizon(
+        route_states, route_controls, preserved_prefix_control_count, dynamics,
+        previous_applied_control, makeFiniteHorizonConfig(stopping_capability));
+    if (finite.has_value()) {
+      return std::move(finite->controls);
+    }
+    if (preserved_prefix_control_count == 0U || arrival_search_step_controls == 0U) {
+      return std::move(route_controls);
+    }
+    preserved_prefix_control_count =
+        preserved_prefix_control_count > arrival_search_step_controls
+            ? preserved_prefix_control_count - arrival_search_step_controls
+            : 0U;
+  }
+}
+
 } // namespace
 
 std::vector<Control> buildGuideDirectedNominalSeed(
@@ -382,12 +431,15 @@ std::vector<Control> buildFiniteRouteDirectedSeed(
     const float reference_speed_mps, const DynamicsConfig& dynamics,
     const std::size_t steps, const Control previous_applied_control,
     const StoppingCapability& stopping_capability) {
-  // A straight interval can use one rest-to-rest connector. Curved intervals
-  // retain the actual route geometry; the finite-execution admission layer then
-  // owns suffix backoff and the independently certified terminal braking tail.
-  return buildStraightRouteTerminalRestSeed(
+  std::vector<Control> route_controls = buildStraightRouteTerminalRestSeed(
       initial, target, route, initial_route_station_m, reference_speed_mps, dynamics,
       steps, previous_applied_control, stopping_capability);
+  // The deterministic route candidate is itself a finite executable maneuver.
+  // Publishing code may shorten it for newly observed occupied evidence, but it
+  // must not have to discard the whole route-following prefix merely to obtain a
+  // certified terminal rest state.
+  return attachTerminalRestTail(initial, std::move(route_controls), dynamics,
+                                previous_applied_control, stopping_capability);
 }
 
 std::vector<Control> buildCooperativeSeparationAcquisitionCandidates(
