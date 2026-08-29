@@ -232,6 +232,7 @@ add_library(
   src/execution_route_snapshot_3d_certificates.cpp
   src/execution_route_snapshot_3d_certification.cpp
   src/execution_route_snapshot_3d_finite_execution.cpp
+  src/execution_route_snapshot_3d_continuation_validation.cpp
   src/execution_route_snapshot_3d_finite_execution_diagnostics.cpp
   src/execution_route_snapshot_3d_geometry.cpp
   src/execution_route_snapshot_3d_hold.cpp
