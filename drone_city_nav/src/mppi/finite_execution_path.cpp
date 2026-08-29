@@ -368,6 +368,8 @@ buildValidatedFiniteExecutionPathFromPreservedPrefix(
         result.first_failed_validation_status = result.validation.status;
       }
       result.path_validation_backoff = true;
+      result.persistent_raw_path_validation_backoff |=
+          result.validation.status == FiniteExecutionPathStatus::kRawCollision;
       result.latest_lidar_path_validation_backoff |=
           result.validation.status ==
           FiniteExecutionPathStatus::kLatestLidarRawCollision;
@@ -649,6 +651,8 @@ RebuiltFiniteExecutionPathContinuation rebuildFiniteExecutionPathContinuation(
   result.validation = rebuilt.validation;
   result.arrival_shaping_attempts = rebuilt.arrival_shaping_attempts;
   result.path_validation_backoff = rebuilt.path_validation_backoff;
+  result.persistent_raw_path_validation_backoff =
+      rebuilt.persistent_raw_path_validation_backoff;
   result.latest_lidar_path_validation_backoff =
       rebuilt.latest_lidar_path_validation_backoff;
   if (!rebuilt.accepted() || !rebuilt.horizon.has_value()) {

@@ -542,6 +542,13 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
           states, controls, exact_previous_control, *execution_dynamics,
           arrival_search_step_controls, finite_horizon_config_, execution_path_world,
           std::move(route_candidate_validator));
+  if (!direct_tracking_requested && !route_execution.pending_activation &&
+      selected_snapshot_route != nullptr &&
+      validated_path.persistent_raw_path_validation_backoff) {
+    requestRouteSuccessorForRawTrajectoryCollision(
+        selected_snapshot_route->identity.generation,
+        selected_snapshot_route->observed_raw_world, "selected_finite_candidate");
+  }
   if (!validated_path.accepted()) {
     if (route_candidate_certification.has_value() &&
         !route_candidate_certification->certified() &&

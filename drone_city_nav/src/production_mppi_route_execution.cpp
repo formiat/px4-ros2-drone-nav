@@ -533,18 +533,12 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
                       ? latest_lidar_evidence->evidenceId()
                       : LatestLidarEvidenceId3D{},
           };
-          if (raw_invalidated && observed_owner != nullptr) {
-            const std::uint64_t collision_raw_revision =
-                observed_owner->version().revision;
-            std::uint64_t blocked_raw_revision =
-                observed_route_blocked_raw_revision_.load(std::memory_order_relaxed);
-            while (blocked_raw_revision < collision_raw_revision &&
-                   !observed_route_blocked_raw_revision_.compare_exchange_weak(
-                       blocked_raw_revision, collision_raw_revision,
-                       std::memory_order_release, std::memory_order_relaxed)) {
-            }
+          if (raw_invalidated) {
+            requestRouteSuccessorForRawTrajectoryCollision(generation, observed_owner,
+                                                           "active_finite_trajectory");
+          } else {
+            requestRouteRelease(release_reason, generation);
           }
-          requestRouteRelease(release_reason, generation);
           RCLCPP_WARN_THROTTLE(
               get_logger(), *get_clock(), 1000,
               "ROUTE_EXECUTION3D snapshot_version=%" PRIu64 " route_generation=%" PRIu64

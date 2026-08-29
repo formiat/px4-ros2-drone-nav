@@ -85,6 +85,7 @@ struct RebuiltFiniteExecutionPathContinuation {
   std::size_t arrival_shaping_attempts{0U};
   std::int64_t valid_until_ns{0};
   bool path_validation_backoff{false};
+  bool persistent_raw_path_validation_backoff{false};
   bool latest_lidar_path_validation_backoff{false};
 
   [[nodiscard]] bool accepted() const noexcept {
@@ -99,6 +100,7 @@ struct ValidatedFiniteExecutionPath {
   bool path_validation_backoff{false};
   FiniteExecutionPathStatus first_failed_validation_status{
       FiniteExecutionPathStatus::kValid};
+  bool persistent_raw_path_validation_backoff{false};
   bool latest_lidar_path_validation_backoff{false};
 
   [[nodiscard]] bool accepted() const noexcept {

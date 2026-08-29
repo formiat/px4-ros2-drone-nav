@@ -172,6 +172,50 @@ void ProductionMppiNode::requestRouteRelease(const RouteReleaseReason3D reason,
   requestStaticRouteReplan(reason, route_generation);
 }
 
+void ProductionMppiNode::requestRouteSuccessorForRawTrajectoryCollision(
+    const std::uint64_t route_generation,
+    const std::shared_ptr<const VersionedObservedRawWorld3D>& observed_raw_world,
+    const std::string_view source) {
+  if (route_generation == 0U) {
+    return;
+  }
+
+  std::uint64_t collision_raw_revision{0U};
+  if (observed_raw_world != nullptr && observed_raw_world->valid()) {
+    collision_raw_revision = observed_raw_world->version().revision;
+    std::uint64_t blocked_raw_revision =
+        observed_route_blocked_raw_revision_.load(std::memory_order_relaxed);
+    while (blocked_raw_revision < collision_raw_revision &&
+           !observed_route_blocked_raw_revision_.compare_exchange_weak(
+               blocked_raw_revision, collision_raw_revision, std::memory_order_release,
+               std::memory_order_relaxed)) {
+    }
+  }
+
+  bool first_request_for_route{false};
+  std::uint64_t requested_generation =
+      raw_trajectory_replan_route_generation_.load(std::memory_order_relaxed);
+  while (requested_generation < route_generation) {
+    if (raw_trajectory_replan_route_generation_.compare_exchange_weak(
+            requested_generation, route_generation, std::memory_order_acq_rel,
+            std::memory_order_relaxed)) {
+      first_request_for_route = true;
+      break;
+    }
+  }
+  if (!first_request_for_route) {
+    return;
+  }
+
+  RCLCPP_WARN(get_logger(),
+              "TRAJECTORY_COLLISION_REPLAN source=%.*s route_generation=%" PRIu64
+              " raw_revision=%" PRIu64
+              " action=retain_certified_owner_and_request_successor",
+              static_cast<int>(source.size()), source.data(), route_generation,
+              collision_raw_revision);
+  requestRouteRelease(RouteReleaseReason3D::kBlocked, route_generation);
+}
+
 ProductionMppiStability
 ProductionMppiNode::compareWithPrevious(const mppi::MppiTickResult& result) const {
   ProductionMppiStability stability;
