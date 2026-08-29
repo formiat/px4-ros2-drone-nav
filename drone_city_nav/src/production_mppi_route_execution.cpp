@@ -709,8 +709,7 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
   if (result.pending_route != nullptr &&
       pendingCertifiedRouteEligible3D(*result.pending_route, *route_state)) {
     const bool snapshot_retention_authorized =
-        pendingCertifiedRouteRetainsSnapshotCertificate3D(
-            *result.pending_route, result.physical_trajectory_invalidated);
+        pendingCertifiedRouteRetainsSnapshotCertificate3D(*result.pending_route);
     const bool retain_snapshot_certificate =
         snapshot_retention_authorized &&
         pendingRouteSnapshotSemanticallyCurrent(*result.pending_route, world, objective,

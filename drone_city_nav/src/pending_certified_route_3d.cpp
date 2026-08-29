@@ -117,9 +117,8 @@ bool pendingCertifiedRouteEligible3D(
 }
 
 bool pendingCertifiedRouteRetainsSnapshotCertificate3D(
-    const PendingCertifiedRoute3D& pending,
-    const bool base_trajectory_physically_invalidated) noexcept {
-  return pending.valid() && base_trajectory_physically_invalidated &&
+    const PendingCertifiedRoute3D& pending) noexcept {
+  return pending.valid() &&
          pending.base_kind == PendingExecutionBaseKind3D::kRouteHandoff;
 }
 

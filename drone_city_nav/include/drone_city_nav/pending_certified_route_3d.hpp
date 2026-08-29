@@ -36,13 +36,14 @@ struct PendingCertifiedRoute3D {
 pendingCertifiedRouteEligible3D(const PendingCertifiedRoute3D& pending,
                                 const ExecutionRouteSnapshot3D& snapshot) noexcept;
 
-// A splice-free successor requested for a physical collision is already an
-// immutable current-state planning transaction. Preserve its route-wide
-// snapshot certificate while the actual command and braking horizons are
-// independently validated against the latest physical evidence at commit.
+// A splice-free successor is an immutable current-state planning transaction.
+// Preserve its route-wide snapshot certificate while the actual command and
+// braking horizons are independently validated against the latest physical
+// evidence at commit. This admission rule is independent of why the background
+// successor was requested: changing route guidance must not revoke or stall the
+// resident finite execution owner.
 [[nodiscard]] bool pendingCertifiedRouteRetainsSnapshotCertificate3D(
-    const PendingCertifiedRoute3D& pending,
-    bool base_trajectory_physically_invalidated) noexcept;
+    const PendingCertifiedRoute3D& pending) noexcept;
 
 class PendingCertifiedRouteMailbox3D final {
 public:
