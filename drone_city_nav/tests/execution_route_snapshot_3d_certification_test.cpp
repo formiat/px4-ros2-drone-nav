@@ -630,6 +630,62 @@ TEST(ExecutionRouteSnapshot3DTest,
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
+     FiniteCertificationDoesNotAccumulateSubToleranceStationRegression) {
+  SnapshotFixture3D fixture;
+  const std::optional<CertifiedRouteSuffix3D> suffix = fixture.certify();
+  ASSERT_TRUE(suffix.has_value());
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> initial =
+      makeInitialExecutionRouteSnapshot3D();
+  ASSERT_NE(initial, nullptr);
+  constexpr double kBeginStationM{2.0};
+  FiniteExecutionCertification3D certification =
+      SnapshotFixture3D::finiteCertificationForRoute(
+          *suffix, FiniteExecutionKind3D::kNominal, 102U, 55U, 0U, kBeginStationM);
+  ASSERT_NE(certification.execution_input, nullptr);
+  ASSERT_EQ(certification.horizon.controls.size(), 101U);
+
+  constexpr std::size_t kAccelerationControlCount{50U};
+  constexpr float kBackwardAccelerationMps2{2.0e-6F};
+  const mppi::DynamicsConfig& dynamics = suffix->validation_policy->dynamics();
+  const float drag = std::max(0.0F, 1.0F - dynamics.linear_drag_1ps * dynamics.dt_s);
+  const float recovery_acceleration_mps2 =
+      kBackwardAccelerationMps2 *
+      std::pow(drag, static_cast<float>(kAccelerationControlCount));
+  for (std::size_t index = 0U; index < kAccelerationControlCount; ++index) {
+    certification.horizon.controls[index].ax = -kBackwardAccelerationMps2;
+  }
+  for (std::size_t index = kAccelerationControlCount;
+       index < 2U * kAccelerationControlCount; ++index) {
+    certification.horizon.controls[index].ax = recovery_acceleration_mps2;
+  }
+  certification.horizon.controls.back() = {};
+  certification.horizon.states.front() = certification.execution_input->state();
+  for (std::size_t index = 0U; index < certification.horizon.controls.size(); ++index) {
+    certification.horizon.states[index + 1U] =
+        mppi::integrateReference(certification.horizon.states[index],
+                                 certification.horizon.controls[index], dynamics);
+  }
+  ASSERT_TRUE(mppi::finiteHorizonHasTerminalRestState(certification.horizon));
+  ASSERT_LT(certification.horizon.states.back().x,
+            certification.horizon.states.front().x - 1.0e-6F);
+  for (std::size_t index = 1U; index < certification.horizon.states.size(); ++index) {
+    EXPECT_GE(certification.horizon.states[index].x + 1.0e-6F,
+              certification.horizon.states[index - 1U].x);
+  }
+
+  const FiniteExecutionCertificationResult3D result =
+      certifyFiniteExecution3DDetailed(*initial, *suffix, std::move(certification));
+
+  ASSERT_TRUE(result.certified())
+      << "status=" << finiteExecutionCertificationStatus3DName(result.status)
+      << " route_adherence_status="
+      << finiteExecutionRouteAdherenceStatus3DName(result.route_adherence_status);
+  ASSERT_TRUE(result.execution.has_value());
+  EXPECT_DOUBLE_EQ(result.execution->begin_route_station_m, kBeginStationM);
+  EXPECT_DOUBLE_EQ(result.execution->stop_boundary.station_m, kBeginStationM);
+}
+
+TEST(ExecutionRouteSnapshot3DTest,
      FiniteCertificationKeepsTerminalRestInsideTheCertifiedRouteCorridor) {
   SnapshotFixture3D fixture;
   const std::optional<CertifiedRouteSuffix3D> suffix = fixture.certify();

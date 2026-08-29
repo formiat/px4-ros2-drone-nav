@@ -131,8 +131,7 @@ bool validateTrackingTubeHandoffClearance(
     }
     const RouteProjection3D projection = projectOntoRoute3DWithinStationWindow(
         route_samples, position,
-        std::max(route_samples.front().station_m,
-                 previous_projection.station_m - kStationToleranceM),
+        std::max(route_samples.front().station_m, previous_projection.station_m),
         std::min(route.endStationM(),
                  previous_projection.station_m + travel_m + kStationToleranceM));
     if (!projection.valid ||

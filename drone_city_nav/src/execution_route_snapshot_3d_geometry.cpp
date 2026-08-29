@@ -826,9 +826,7 @@ validateOrderedPassageCrossings(const ExecutionRouteGeometry3D& geometry,
           std::min(maximum_station_m, previous_projection.station_m +
                                           physical_increment_m + kStationToleranceM);
       const RouteProjection3D projection = projectOntoRoute3DWithinStationWindow(
-          route, sample,
-          std::max(minimum_station_m,
-                   previous_projection.station_m - kStationToleranceM),
+          route, sample, std::max(minimum_station_m, previous_projection.station_m),
           allowed_end_station_m);
       const double continuous_margin_m = 0.5 * physical_increment_m;
       if (!projection.valid) {
