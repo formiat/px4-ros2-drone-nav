@@ -269,6 +269,10 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
                                                              *snapshot.resident_world))
                               : RoutePublicationAssessment3D{};
   result.world_compatible = publication.compatible();
+  const std::shared_ptr<const VersionedObservedRawWorld3D> activation_raw_owner =
+      snapshot.raw_world != nullptr && rawWorldExecutionOwnerExact(*snapshot.raw_world)
+          ? snapshot.raw_world->execution_owner
+          : nullptr;
 
   if (result.validation.accepted && result.world_compatible &&
       snapshot.resident_world && candidate.route_3d && candidate.constrained_spans &&
@@ -320,41 +324,16 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
       adoptWorldResources(candidate, *snapshot.resident_world);
       candidate.route_3d = rebased_route;
       candidate.route_2d_projection = projectRouteTo2D(*rebased_route);
-      const RouteEndpointSemantics3D endpoint_semantics =
-          routeEndpointSemantics3D(candidate.route_reaches_mission_goal,
-                                   !search_world.search_objective.continuous_tracking);
-      RouteCompilationResult3D compilation =
-          compileExecutionRoute3D(RouteCompilerInput3D{
-              .route = *rebased_route,
-              .constrained_spans = *candidate.constrained_spans,
-              .passage_volumes = *candidate.passage_volumes,
-              .cooperative_passage_assignments =
-                  *candidate.cooperative_passage_assignments,
-              .selected_passage_traversal_ids =
-                  *candidate.selected_passage_traversal_ids,
-              .passage_volume_config = cooperative_passage_volume_config_,
-              .endpoint_semantics = endpoint_semantics,
-              .materialized_route_fingerprint = candidate.route_fingerprint,
-              .tracking_world = trackingErrorTubeWorld3D(candidate),
-              .config = routeCompilerConfig3D(),
-          });
-      adoptRouteCompilation3D(candidate, std::move(compilation));
-      if (candidate.route_3d) {
-        candidate.route_projection = projectOntoRouteProgress3D(
-            *candidate.route_3d,
-            Point3{snapshot.navigation.state.x, snapshot.navigation.state.y,
-                   snapshot.navigation.state.z});
-        result.observed_world_rebased =
-            snapshot.resident_world->observed_occupancy != nullptr;
-        result.publication_world_advanced = true;
-      }
+      candidate.route_projection = projectOntoRouteProgress3D(
+          *candidate.route_3d,
+          Point3{snapshot.navigation.state.x, snapshot.navigation.state.y,
+                 snapshot.navigation.state.z});
+      result.observed_world_rebased =
+          snapshot.resident_world->observed_occupancy != nullptr;
+      result.publication_world_advanced = true;
     }
   }
 
-  const std::shared_ptr<const VersionedObservedRawWorld3D> activation_raw_owner =
-      snapshot.raw_world != nullptr && rawWorldExecutionOwnerExact(*snapshot.raw_world)
-          ? snapshot.raw_world->execution_owner
-          : nullptr;
   result.tracking_geometry_source_occupied_fingerprint =
       candidate.observed_raw_world_owner != nullptr
           ? candidate.observed_raw_world_owner->occupiedContentFingerprint()
@@ -363,35 +342,56 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
       activation_raw_owner != nullptr
           ? activation_raw_owner->occupiedContentFingerprint()
           : 0U;
-  const bool tracking_geometry_world_changed =
-      raw_validation_required &&
-      result.tracking_geometry_activation_occupied_fingerprint != 0U &&
-      result.tracking_geometry_activation_occupied_fingerprint !=
-          result.tracking_geometry_source_occupied_fingerprint;
-  if (result.validation.accepted && tracking_geometry_world_changed &&
-      activation_raw_owner != nullptr && candidate.compiled_route_geometry != nullptr) {
-    result.tracking_geometry_recompile_attempted = true;
+  const bool spatial_route_available =
+      candidate.route_3d != nullptr && candidate.constrained_spans != nullptr &&
+      candidate.passage_volumes != nullptr &&
+      candidate.cooperative_passage_assignments != nullptr &&
+      candidate.selected_passage_traversal_ids != nullptr;
+  const bool activation_tracking_world_available =
+      !raw_validation_required || activation_raw_owner != nullptr;
+  // Spatial search and materialization are snapshot-bound. Compile their
+  // immutable executable sidecars exactly once, against the raw snapshot that
+  // is also used for activation validation below.
+  if (result.validation.accepted && spatial_route_available &&
+      activation_tracking_world_available) {
+    result.tracking_geometry_compile_attempted = true;
     const RouteEndpointSemantics3D endpoint_semantics =
         routeEndpointSemantics3D(candidate.route_reaches_mission_goal,
                                  !search_world.search_objective.continuous_tracking);
-    RouteCompilationResult3D compilation = recompileExecutionRouteDynamics3D(
-        *candidate.compiled_route_geometry, endpoint_semantics,
-        TrackingErrorTubeWorld3D{
-            .observed_occupancy = &activation_raw_owner->occupancy(),
-            .occupied_content_fingerprint =
-                activation_raw_owner->occupiedContentFingerprint(),
-            .free_space_seed =
-                candidate.proprioceptive_free_space_seed.has_value()
-                    ? std::addressof(*candidate.proprioceptive_free_space_seed)
-                    : nullptr,
-            .launch_support_contact =
-                candidate.launch_support_contact.has_value()
-                    ? std::addressof(*candidate.launch_support_contact)
-                    : nullptr,
-        },
-        routeCompilerConfig3D());
-    result.tracking_geometry_recompiled = compilation.compiled();
+    const TrackingErrorTubeWorld3D tracking_world =
+        raw_validation_required
+            ? TrackingErrorTubeWorld3D{
+                  .observed_occupancy = &activation_raw_owner->occupancy(),
+                  .occupied_content_fingerprint =
+                      activation_raw_owner->occupiedContentFingerprint(),
+                  .free_space_seed =
+                      candidate.proprioceptive_free_space_seed.has_value()
+                          ? std::addressof(*candidate.proprioceptive_free_space_seed)
+                          : nullptr,
+                  .launch_support_contact =
+                      candidate.launch_support_contact.has_value()
+                          ? std::addressof(*candidate.launch_support_contact)
+                          : nullptr,
+              }
+            : trackingErrorTubeWorld3D(candidate);
+    RouteCompilationResult3D compilation = compileExecutionRoute3D(RouteCompilerInput3D{
+        .route = *candidate.route_3d,
+        .constrained_spans = *candidate.constrained_spans,
+        .passage_volumes = *candidate.passage_volumes,
+        .cooperative_passage_assignments = *candidate.cooperative_passage_assignments,
+        .selected_passage_traversal_ids = *candidate.selected_passage_traversal_ids,
+        .passage_volume_config = cooperative_passage_volume_config_,
+        .endpoint_semantics = endpoint_semantics,
+        .materialized_route_fingerprint = candidate.route_fingerprint,
+        .tracking_world = tracking_world,
+        .config = routeCompilerConfig3D(),
+    });
+    result.tracking_geometry_compiled = compilation.compiled();
     adoptRouteCompilation3D(candidate, std::move(compilation));
+  } else if (result.validation.accepted && raw_validation_required &&
+             activation_raw_owner == nullptr) {
+    result.validation = StaticRouteCandidateValidation{
+        .status = StaticRouteCandidateStatus::kInvalidEsdf};
   }
   if (candidate.route_3d) {
     candidate.route_projection = projectOntoRouteProgress3D(

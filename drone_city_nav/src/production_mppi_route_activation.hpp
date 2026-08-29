@@ -69,8 +69,8 @@ struct ProductionRouteActivationResult3D {
   bool candidate_world_coherent{false};
   bool certification_execution_base_current{false};
   bool route_certified{false};
-  bool tracking_geometry_recompile_attempted{false};
-  bool tracking_geometry_recompiled{false};
+  bool tracking_geometry_compile_attempted{false};
+  bool tracking_geometry_compiled{false};
   bool observed_world_rebased{false};
   bool publication_world_advanced{false};
   bool certified_pending{false};

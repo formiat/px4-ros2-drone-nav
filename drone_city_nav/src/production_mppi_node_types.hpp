@@ -15,6 +15,7 @@ namespace drone_city_nav {
 
 struct ProductionNavigationOptionalConstraints {
   bool clearance_costs_enabled{false};
+  bool static_route_geometry_optimization_enabled{false};
   bool static_route_shortcut_optimization_enabled{false};
   bool stochastic_trajectory_selection_enabled{false};
   bool route_cross_track_constraints_enabled{false};

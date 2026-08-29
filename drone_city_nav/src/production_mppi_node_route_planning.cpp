@@ -164,7 +164,7 @@ void ProductionMppiNode::processRouteSearch3D(
       "activation_status=%.*s route_certified=%s "
       "activation_currentness=(resident=%s,objective=%s,raw=%s,execution=%s,"
       "candidate=%s,certification_execution=%s) "
-      "tracking_recompile=%s/%s tracking_source_occupied=%" PRIu64
+      "tracking_compile=%s/%s tracking_source_occupied=%" PRIu64
       " tracking_activation_occupied=%" PRIu64 " tracking_min_speed_mps=%.3f "
       "publication_status=%.*s "
       "validation=%.*s handoff=%s splice=%.*s "
@@ -200,8 +200,8 @@ void ProductionMppiNode::processRouteSearch3D(
       activation.execution_base_snapshot_current ? "true" : "false",
       activation.candidate_world_coherent ? "true" : "false",
       activation.certification_execution_base_current ? "true" : "false",
-      activation.tracking_geometry_recompile_attempted ? "attempted" : "not_needed",
-      activation.tracking_geometry_recompiled ? "compiled" : "not_compiled",
+      activation.tracking_geometry_compile_attempted ? "attempted" : "not_needed",
+      activation.tracking_geometry_compiled ? "compiled" : "not_compiled",
       activation.tracking_geometry_source_occupied_fingerprint,
       activation.tracking_geometry_activation_occupied_fingerprint,
       tracking_profile != nullptr ? tracking_profile->minimum_speed_limit_mps : -1.0,

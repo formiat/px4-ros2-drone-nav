@@ -1,7 +1,6 @@
 #include "production_mppi_route_materialization.hpp"
 
 #include "drone_city_nav/observed_esdf_3d.hpp"
-#include "drone_city_nav/route_compiler_3d.hpp"
 #include "drone_city_nav/static_route_extension.hpp"
 
 #include <algorithm>
@@ -13,7 +12,6 @@
 #include <utility>
 #include <vector>
 
-#include "production_mppi_route_activation.hpp"
 #include "production_mppi_route_helpers.hpp"
 
 namespace drone_city_nav {
@@ -420,22 +418,17 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
       selected_passage_traversal_ids.push_back(span.passage_traversal_id);
     }
   }
-  const RouteEndpointSemantics3D endpoint_semantics = routeEndpointSemantics3D(
-      prepared.route_reaches_mission_goal, !world.search_objective.continuous_tracking);
   prepared.route_fingerprint = routeFingerprint(*route, route_traversals);
-  RouteCompilationResult3D compilation = compileExecutionRoute3D(RouteCompilerInput3D{
-      .route = *route,
-      .constrained_spans = *spans,
-      .passage_volumes = *passage_volumes,
-      .cooperative_passage_assignments = std::move(passage_assignments),
-      .selected_passage_traversal_ids = std::move(selected_passage_traversal_ids),
-      .passage_volume_config = cooperative_passage_volume_config_,
-      .endpoint_semantics = endpoint_semantics,
-      .materialized_route_fingerprint = prepared.route_fingerprint,
-      .tracking_world = trackingErrorTubeWorld3D(world),
-      .config = routeCompilerConfig3D(),
-  });
-  adoptRouteCompilation3D(prepared, std::move(compilation));
+  prepared.route_3d = route;
+  prepared.route_2d_projection = projectRouteTo2D(*route);
+  prepared.constrained_spans = spans;
+  prepared.passage_volumes = passage_volumes;
+  prepared.cooperative_passage_assignments =
+      std::make_shared<const std::vector<CooperativePassageAssignment>>(
+          std::move(passage_assignments));
+  prepared.selected_passage_traversal_ids =
+      std::make_shared<const std::vector<PassageTraversalId>>(
+          std::move(selected_passage_traversal_ids));
   prepared.route_projection = projectOntoRouteProgress3D(
       *route, Point3{navigation.state.x, navigation.state.y, navigation.state.z});
   prepared.candidate_validation_ms =

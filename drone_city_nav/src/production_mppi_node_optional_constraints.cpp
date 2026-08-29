@@ -9,6 +9,8 @@ void ProductionMppiNode::configureOptionalNavigationConstraints() {
   optional_constraints_ = ProductionNavigationOptionalConstraints{
       .clearance_costs_enabled =
           declare_parameter<bool>("clearance_costs_enabled", false),
+      .static_route_geometry_optimization_enabled =
+          declare_parameter<bool>("static_route_geometry_optimization_enabled", false),
       .static_route_shortcut_optimization_enabled =
           declare_parameter<bool>("static_route_shortcut_optimization_enabled", false),
       .stochastic_trajectory_selection_enabled =
@@ -30,7 +32,8 @@ void ProductionMppiNode::configureOptionalNavigationConstraints() {
 
 void ProductionMppiNode::configureStaticRouteGeometry() {
   static_route_geometry_config_.sample_step_m = route_sampling_step_m_;
-  static_route_geometry_config_.enabled = true;
+  static_route_geometry_config_.enabled =
+      optional_constraints_.static_route_geometry_optimization_enabled;
   static_route_geometry_config_.shortcut_optimization_enabled =
       optional_constraints_.static_route_shortcut_optimization_enabled;
   static_route_geometry_config_.maximum_shortcut_length_m =
