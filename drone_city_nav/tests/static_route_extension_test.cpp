@@ -571,6 +571,22 @@ TEST(StaticRouteExtensionTest, CoalescesInitialRouteSearchGeneration) {
   EXPECT_FALSE(gate.inFlight());
 }
 
+TEST(StaticRouteExtensionTest, ResidentSuccessorClearsAnOlderReplanGate) {
+  StaticRouteReplanGate gate;
+
+  ASSERT_TRUE(gate.tryBegin(0U));
+  EXPECT_FALSE(gate.finishIfSupersededBy(0U).has_value());
+  EXPECT_TRUE(gate.inFlight());
+
+  const std::optional<std::uint64_t> superseded = gate.finishIfSupersededBy(1U);
+  EXPECT_EQ(superseded, std::optional<std::uint64_t>{0U});
+  EXPECT_FALSE(gate.inFlight());
+
+  ASSERT_TRUE(gate.tryBegin(1U));
+  EXPECT_FALSE(gate.finishIfSupersededBy(1U).has_value());
+  EXPECT_TRUE(gate.inFlight());
+}
+
 TEST(StaticRouteExtensionTest, SnapshotOwnedSearchUsesOnlyTheCommittedRouteGeneration) {
   EXPECT_EQ(staticRouteSearchGeneration(true, 1U, 0U), 0U);
   EXPECT_EQ(staticRouteSearchGeneration(true, 2U, 1U), 1U);

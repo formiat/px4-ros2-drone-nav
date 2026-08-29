@@ -184,6 +184,16 @@ void StaticRouteReplanGate::finish(const std::uint64_t route_generation) noexcep
   }
 }
 
+std::optional<std::uint64_t> StaticRouteReplanGate::finishIfSupersededBy(
+    const std::uint64_t resident_route_generation) noexcept {
+  if (!generation_.has_value() || resident_route_generation <= *generation_) {
+    return std::nullopt;
+  }
+  const std::uint64_t superseded_generation = *generation_;
+  generation_.reset();
+  return superseded_generation;
+}
+
 bool StaticRouteReplanGate::inFlight() const noexcept {
   return generation_.has_value();
 }

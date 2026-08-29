@@ -200,6 +200,8 @@ class StaticRouteReplanGate {
 public:
   [[nodiscard]] bool tryBegin(std::uint64_t route_generation) noexcept;
   void finish(std::uint64_t route_generation) noexcept;
+  [[nodiscard]] std::optional<std::uint64_t>
+  finishIfSupersededBy(std::uint64_t resident_route_generation) noexcept;
   [[nodiscard]] bool inFlight() const noexcept;
   [[nodiscard]] std::uint64_t generation() const noexcept;
 

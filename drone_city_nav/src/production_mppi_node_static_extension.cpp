@@ -302,6 +302,14 @@ void ProductionMppiNode::requestStaticRouteReplan(
 
   std::shared_ptr<ProductionMppiPreparedEsdf> request;
   std::scoped_lock lifecycle_lock{static_route_extension_mutex_};
+  const std::optional<std::uint64_t> superseded_gate =
+      static_route_replan_gate_.finishIfSupersededBy(committed_route_generation);
+  if (superseded_gate.has_value()) {
+    RCLCPP_INFO(get_logger(),
+                "STATIC_ROUTE_REPLAN_REQUEST status=cleared_superseded_gate "
+                "gate_generation=%" PRIu64 " resident_generation=%" PRIu64,
+                *superseded_gate, committed_route_generation);
+  }
   const bool replan_in_flight = static_route_replan_gate_.inFlight();
   if (deferStaticRouteReleaseDuringExtension(static_route_extension_request_in_flight_,
                                              reason)) {

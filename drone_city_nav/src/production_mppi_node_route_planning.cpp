@@ -70,6 +70,13 @@ void ProductionMppiNode::processRouteSearch3D(
     }
     if (continuation_queued) {
       route_planning_queue_condition_.notify_all();
+    } else {
+      // A newer world already owns the single planning queue slot, so this
+      // request can no longer deliver its continuation. Close its lifecycle
+      // gate now; the recurring physical/no-route source will rebind the
+      // request to the newer resident world instead of leaving a phantom
+      // in-flight generation behind.
+      finishStaticRouteSearch(world);
     }
     const double route_planning_ms = elapsedMilliseconds(planning_started);
     {
