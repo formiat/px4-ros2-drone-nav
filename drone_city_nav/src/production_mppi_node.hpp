@@ -364,10 +364,10 @@ private:
   navigationObjective() const;
   void requestRouteRelease(RouteReleaseReason3D reason,
                            std::uint64_t route_generation = 0U);
-  void requestRouteSuccessorForPhysicalTrajectoryCollision(
+  void handlePhysicalTrajectoryCollision(
       std::uint64_t route_generation,
       const std::shared_ptr<const VersionedObservedRawWorld3D>& observed_raw_world,
-      std::string_view source);
+      std::string_view source, ProductionMppiPhysicalTrajectoryAuthority authority);
   void requestStaticRouteReplan(RouteReleaseReason3D reason,
                                 std::uint64_t route_generation);
   void configureOptionalNavigationConstraints();

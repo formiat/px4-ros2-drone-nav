@@ -52,9 +52,14 @@ void ProductionMppiNode::logDiagnosticsEvents(
                 snapshot.route_progress.predicted_head_progress_m);
   }
   if (snapshot.no_eligible_recovery.route_replan_requested) {
+    const bool route_replan_enabled =
+        optional_constraints_.no_eligible_route_replan_enabled;
     RCLCPP_WARN(get_logger(),
-                "MPPI_NO_ELIGIBLE_RECOVERY action=release_persistent_route"
+                "MPPI_NO_ELIGIBLE_RECOVERY action=%s policy_enabled=%s"
                 " recovery_generation=%" PRIu64 " phase=%s route_generation=%" PRIu64,
+                route_replan_enabled ? "release_persistent_route"
+                                     : "retain_persistent_route",
+                route_replan_enabled ? "true" : "false",
                 snapshot.no_eligible_recovery.no_eligible_recovery_generation,
                 mppiNoEligiblePhaseName(snapshot.no_eligible_recovery.phase),
                 esdf.route_generation);

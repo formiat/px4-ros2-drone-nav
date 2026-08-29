@@ -547,12 +547,13 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       validated_path.physicalObstacleValidationBackoff()) {
     const bool persistent_raw_collision =
         validated_path.persistent_raw_path_validation_backoff;
-    requestRouteSuccessorForPhysicalTrajectoryCollision(
+    handlePhysicalTrajectoryCollision(
         selected_snapshot_route->identity.generation,
         persistent_raw_collision ? selected_snapshot_route->observed_raw_world
                                  : nullptr,
         persistent_raw_collision ? "selected_finite_candidate_persistent_raw"
-                                 : "selected_finite_candidate_latest_lidar");
+                                 : "selected_finite_candidate_latest_lidar",
+        ProductionMppiPhysicalTrajectoryAuthority::kUnownedCandidate);
   }
   if (!validated_path.accepted()) {
     if (route_candidate_certification.has_value() &&

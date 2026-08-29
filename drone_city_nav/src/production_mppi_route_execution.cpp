@@ -563,10 +563,11 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
                       : LatestLidarEvidenceId3D{},
           };
           if (raw_invalidated || latest_lidar_invalidated) {
-            requestRouteSuccessorForPhysicalTrajectoryCollision(
+            handlePhysicalTrajectoryCollision(
                 generation, raw_invalidated ? observed_owner : nullptr,
                 raw_invalidated ? "active_finite_trajectory_persistent_raw"
-                                : "active_finite_trajectory_latest_lidar");
+                                : "active_finite_trajectory_latest_lidar",
+                ProductionMppiPhysicalTrajectoryAuthority::kResidentExecutionOwner);
           } else {
             requestRouteRelease(release_reason, generation);
           }

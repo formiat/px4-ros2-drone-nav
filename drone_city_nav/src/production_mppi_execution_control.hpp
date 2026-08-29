@@ -113,6 +113,26 @@ enum class ProductionMppiExecutionReason : std::uint8_t {
   kUnavailableWorld = msg::MppiTrajectoryHorizon::EXECUTION_REASON_UNAVAILABLE_WORLD,
 };
 
+enum class ProductionMppiPhysicalTrajectoryAuthority : std::uint8_t {
+  kUnownedCandidate,
+  kResidentExecutionOwner,
+};
+
+enum class ProductionMppiPhysicalCollisionAction : std::uint8_t {
+  kRejectCandidate,
+  kRequestRouteSuccessor,
+};
+
+// A rejected candidate has never owned vehicle motion and therefore cannot
+// invalidate the resident route. Only physical evidence intersecting the
+// already-published finite execution proves that its route needs a successor.
+[[nodiscard]] constexpr ProductionMppiPhysicalCollisionAction physicalCollisionAction(
+    const ProductionMppiPhysicalTrajectoryAuthority authority) noexcept {
+  return authority == ProductionMppiPhysicalTrajectoryAuthority::kResidentExecutionOwner
+             ? ProductionMppiPhysicalCollisionAction::kRequestRouteSuccessor
+             : ProductionMppiPhysicalCollisionAction::kRejectCandidate;
+}
+
 struct ProductionMppiExecutionPublication {
   std::vector<mppi::State> horizon;
   ProductionMppiExecutionMode mode{ProductionMppiExecutionMode::kPlanned};

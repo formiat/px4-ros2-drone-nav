@@ -172,11 +172,22 @@ void ProductionMppiNode::requestRouteRelease(const RouteReleaseReason3D reason,
   requestStaticRouteReplan(reason, route_generation);
 }
 
-void ProductionMppiNode::requestRouteSuccessorForPhysicalTrajectoryCollision(
+void ProductionMppiNode::handlePhysicalTrajectoryCollision(
     const std::uint64_t route_generation,
     const std::shared_ptr<const VersionedObservedRawWorld3D>& observed_raw_world,
-    const std::string_view source) {
+    const std::string_view source,
+    const ProductionMppiPhysicalTrajectoryAuthority authority) {
   if (route_generation == 0U) {
+    return;
+  }
+
+  if (physicalCollisionAction(authority) ==
+      ProductionMppiPhysicalCollisionAction::kRejectCandidate) {
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "TRAJECTORY_COLLISION_CANDIDATE source=%.*s route_generation=%" PRIu64
+        " action=reject_candidate_and_retain_resident_owner",
+        static_cast<int>(source.size()), source.data(), route_generation);
     return;
   }
 

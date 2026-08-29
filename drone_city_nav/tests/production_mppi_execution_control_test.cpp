@@ -47,6 +47,16 @@ TEST(ProductionMppiExecutionControlTest, RejectsOwnerOutsideItsLease) {
 }
 
 TEST(ProductionMppiExecutionControlTest,
+     RequestsRouteSuccessorOnlyForResidentExecutionCollision) {
+  EXPECT_EQ(physicalCollisionAction(
+                ProductionMppiPhysicalTrajectoryAuthority::kUnownedCandidate),
+            ProductionMppiPhysicalCollisionAction::kRejectCandidate);
+  EXPECT_EQ(physicalCollisionAction(
+                ProductionMppiPhysicalTrajectoryAuthority::kResidentExecutionOwner),
+            ProductionMppiPhysicalCollisionAction::kRequestRouteSuccessor);
+}
+
+TEST(ProductionMppiExecutionControlTest,
      ContinuesExactWitnessedResidentForRetainedRetry) {
   const ProductionMppiExecutionHorizonOwner owner = plannedOwner();
   EXPECT_TRUE(
