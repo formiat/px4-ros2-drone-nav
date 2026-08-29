@@ -837,6 +837,28 @@ TEST(ExecutionRouteSnapshot3DTest,
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
+     PhysicalInvalidationMakesAnUnrefreshableRouteHandoffTerminal) {
+  SnapshotFixture3D fixture;
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
+      fixture.activeSnapshot();
+  ASSERT_NE(active, nullptr);
+  ExecutionRouteActivation3D successor_activation = fixture.activation();
+  successor_activation.route_generation = active->routeGenerationHighWater() + 1U;
+  const std::optional<CertifiedRouteSuffix3D> successor =
+      certifyExecutionRoute3D(successor_activation);
+  ASSERT_TRUE(successor.has_value());
+  const CertifiedRouteSuffix3D successor_route =
+      successor.value_or(CertifiedRouteSuffix3D{});
+  ASSERT_TRUE(successor_route.valid());
+  const PendingCertifiedRoute3D pending = pendingForSnapshot(
+      *active, PendingExecutionBaseKind3D::kRouteHandoff, successor_route, 1U);
+  ASSERT_TRUE(pending.valid());
+
+  EXPECT_FALSE(pendingCertifiedRouteRefreshFailureTerminal3D(pending, false));
+  EXPECT_TRUE(pendingCertifiedRouteRefreshFailureTerminal3D(pending, true));
+}
+
+TEST(ExecutionRouteSnapshot3DTest,
      PendingRecoveryAcknowledgesTheStableResidentBeforeAcceptingANewerRoute) {
   SnapshotFixture3D fixture;
   const std::optional<CertifiedRouteSuffix3D> route = fixture.certify();

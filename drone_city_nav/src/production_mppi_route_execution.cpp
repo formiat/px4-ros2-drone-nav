@@ -677,6 +677,24 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
           pending_certified_route_mailbox_.acknowledgeIfSame(result.pending_route)) {
         result.pending_route.reset();
       }
+    } else if (pendingCertifiedRouteRefreshFailureTerminal3D(
+                   *result.pending_route, result.physical_trajectory_invalidated)) {
+      const std::uint64_t pending_generation =
+          result.pending_route->route.identity.generation;
+      const std::uint64_t base_generation = result.pending_route->base_route_generation;
+      const bool acknowledged =
+          pending_certified_route_mailbox_.acknowledgeIfSame(result.pending_route);
+      if (acknowledged) {
+        result.pending_route.reset();
+      } else {
+        result.pending_route = pending_certified_route_mailbox_.snapshot();
+      }
+      RCLCPP_INFO(get_logger(),
+                  "ROUTE_HANDOFF3D pending_generation=%" PRIu64
+                  " base_generation=%" PRIu64
+                  " status=refresh_rejected physical_trajectory_invalidated=true "
+                  "acknowledged=%s action=release_for_fresh_current_state_successor",
+                  pending_generation, base_generation, acknowledged ? "true" : "false");
     }
   }
 

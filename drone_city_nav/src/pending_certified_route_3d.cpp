@@ -128,6 +128,13 @@ bool pendingCertifiedRouteEligible3D(
   return false;
 }
 
+bool pendingCertifiedRouteRefreshFailureTerminal3D(
+    const PendingCertifiedRoute3D& pending,
+    const bool base_trajectory_physically_invalidated) noexcept {
+  return pending.valid() && base_trajectory_physically_invalidated &&
+         pending.base_kind == PendingExecutionBaseKind3D::kRouteHandoff;
+}
+
 bool PendingCertifiedRouteMailbox3D::publish(
     std::shared_ptr<const PendingCertifiedRoute3D> candidate) {
   if (candidate == nullptr || !candidate->valid()) {
