@@ -52,8 +52,23 @@ TEST(ProductionMppiExecutionControlTest,
                 ProductionMppiPhysicalTrajectoryAuthority::kUnownedCandidate),
             ProductionMppiPhysicalCollisionAction::kRejectCandidate);
   EXPECT_EQ(physicalCollisionAction(
-                ProductionMppiPhysicalTrajectoryAuthority::kResidentExecutionOwner),
+                ProductionMppiPhysicalTrajectoryAuthority::kResidentOwner),
             ProductionMppiPhysicalCollisionAction::kRequestRouteSuccessor);
+}
+
+TEST(ProductionMppiExecutionControlTest,
+     ClassifiesOnlyResidentRouteOrFiniteExecutionCollisions) {
+  EXPECT_EQ(residentCollisionScope({}), ProductionMppiResidentCollisionScope::kNone);
+  EXPECT_EQ(residentCollisionScope({.route_suffix_persistent_raw = true}),
+            ProductionMppiResidentCollisionScope::kPersistentRawRouteSuffix);
+  EXPECT_EQ(residentCollisionScope({.finite_execution_latest_lidar = true}),
+            ProductionMppiResidentCollisionScope::kLatestLidarFiniteExecution);
+  EXPECT_EQ(residentCollisionScope({
+                .route_suffix_persistent_raw = true,
+                .finite_execution_persistent_raw = true,
+                .finite_execution_latest_lidar = true,
+            }),
+            ProductionMppiResidentCollisionScope::kPersistentRawFiniteExecution);
 }
 
 TEST(ProductionMppiExecutionControlTest,
