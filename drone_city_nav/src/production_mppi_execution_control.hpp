@@ -124,8 +124,8 @@ enum class ProductionMppiPhysicalCollisionAction : std::uint8_t {
 };
 
 // A rejected candidate has never owned vehicle motion and therefore cannot
-// invalidate the resident route. Only physical evidence intersecting the
-// already-published resident trajectory proves that its route needs a successor.
+// invalidate the resident finite execution. Only physical evidence intersecting
+// the already-published finite trajectory authorizes its emergency successor.
 [[nodiscard]] constexpr ProductionMppiPhysicalCollisionAction physicalCollisionAction(
     const ProductionMppiPhysicalTrajectoryAuthority authority) noexcept {
   return authority == ProductionMppiPhysicalTrajectoryAuthority::kResidentOwner
@@ -133,34 +133,38 @@ enum class ProductionMppiPhysicalCollisionAction : std::uint8_t {
              : ProductionMppiPhysicalCollisionAction::kRejectCandidate;
 }
 
-enum class ProductionMppiResidentCollisionScope : std::uint8_t {
-  kNone,
-  kPersistentRawRouteSuffix,
-  kPersistentRawFiniteExecution,
-  kLatestLidarFiniteExecution,
+enum class ProductionMppiResidentObstacleDisposition : std::uint8_t {
+  kClear,
+  kRouteSuffixReplacementRequired,
+  kPersistentRawFiniteExecutionInvalidated,
+  kLatestLidarFiniteExecutionInvalidated,
 };
 
-struct ProductionMppiResidentCollisionEvidence {
+struct ProductionMppiResidentObstacleEvidence {
   bool route_suffix_persistent_raw{false};
   bool finite_execution_persistent_raw{false};
   bool finite_execution_latest_lidar{false};
 };
 
-// Persistent raw evidence has owned map lineage and takes precedence over the
-// latest scan. A finite-execution hit is the most precise witness; otherwise a
-// hit on the remaining resident route is sufficient to request its successor.
-[[nodiscard]] constexpr ProductionMppiResidentCollisionScope residentCollisionScope(
-    const ProductionMppiResidentCollisionEvidence& evidence) noexcept {
+// Only a hit on the published finite execution invalidates its owner. A hit on
+// the farther route suffix requests a background replacement while that owner
+// keeps executing. Persistent raw evidence takes precedence over the latest
+// scan when both invalidate the finite execution.
+[[nodiscard]] constexpr ProductionMppiResidentObstacleDisposition
+residentObstacleDisposition(
+    const ProductionMppiResidentObstacleEvidence& evidence) noexcept {
   if (evidence.finite_execution_persistent_raw) {
-    return ProductionMppiResidentCollisionScope::kPersistentRawFiniteExecution;
-  }
-  if (evidence.route_suffix_persistent_raw) {
-    return ProductionMppiResidentCollisionScope::kPersistentRawRouteSuffix;
+    return ProductionMppiResidentObstacleDisposition::
+        kPersistentRawFiniteExecutionInvalidated;
   }
   if (evidence.finite_execution_latest_lidar) {
-    return ProductionMppiResidentCollisionScope::kLatestLidarFiniteExecution;
+    return ProductionMppiResidentObstacleDisposition::
+        kLatestLidarFiniteExecutionInvalidated;
   }
-  return ProductionMppiResidentCollisionScope::kNone;
+  if (evidence.route_suffix_persistent_raw) {
+    return ProductionMppiResidentObstacleDisposition::kRouteSuffixReplacementRequired;
+  }
+  return ProductionMppiResidentObstacleDisposition::kClear;
 }
 
 struct ProductionMppiExecutionPublication {

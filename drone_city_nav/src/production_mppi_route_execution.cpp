@@ -69,16 +69,18 @@ void bindObservedRouteEvidence(
   }
 }
 
-[[nodiscard]] const char*
-residentCollisionSource(const ProductionMppiResidentCollisionScope scope) noexcept {
-  switch (scope) {
-    case ProductionMppiResidentCollisionScope::kPersistentRawRouteSuffix:
+[[nodiscard]] const char* residentObstacleSource(
+    const ProductionMppiResidentObstacleDisposition disposition) noexcept {
+  switch (disposition) {
+    case ProductionMppiResidentObstacleDisposition::kRouteSuffixReplacementRequired:
       return "resident_route_suffix_persistent_raw";
-    case ProductionMppiResidentCollisionScope::kPersistentRawFiniteExecution:
+    case ProductionMppiResidentObstacleDisposition::
+        kPersistentRawFiniteExecutionInvalidated:
       return "active_finite_trajectory_persistent_raw";
-    case ProductionMppiResidentCollisionScope::kLatestLidarFiniteExecution:
+    case ProductionMppiResidentObstacleDisposition::
+        kLatestLidarFiniteExecutionInvalidated:
       return "active_finite_trajectory_latest_lidar";
-    case ProductionMppiResidentCollisionScope::kNone:
+    case ProductionMppiResidentObstacleDisposition::kClear:
       return "none";
   }
   return "none";
@@ -414,41 +416,47 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
           &active_route.identity, *active_route.geometry->route, observation);
       const bool resident_route_raw_collision =
           diagnostic_assessment.status == RouteExecutionStatus3D::kRawCollision;
-      const ProductionMppiResidentCollisionScope collision_scope =
-          residentCollisionScope(ProductionMppiResidentCollisionEvidence{
+      const ProductionMppiResidentObstacleDisposition obstacle_disposition =
+          residentObstacleDisposition(ProductionMppiResidentObstacleEvidence{
               .route_suffix_persistent_raw = resident_route_raw_collision,
               .finite_execution_persistent_raw = active_trajectory_raw_collision,
               .finite_execution_latest_lidar = active_trajectory_latest_lidar_collision,
           });
-      const bool resident_physical_collision =
-          collision_scope != ProductionMppiResidentCollisionScope::kNone;
-      result.physical_trajectory_invalidated = resident_physical_collision;
+      const bool route_suffix_replacement_required =
+          obstacle_disposition ==
+          ProductionMppiResidentObstacleDisposition::kRouteSuffixReplacementRequired;
+      const bool finite_execution_physically_invalidated =
+          obstacle_disposition == ProductionMppiResidentObstacleDisposition::
+                                      kPersistentRawFiniteExecutionInvalidated ||
+          obstacle_disposition == ProductionMppiResidentObstacleDisposition::
+                                      kLatestLidarFiniteExecutionInvalidated;
+      result.physical_trajectory_invalidated = finite_execution_physically_invalidated;
       const bool persistent_raw_collision =
-          collision_scope ==
-              ProductionMppiResidentCollisionScope::kPersistentRawRouteSuffix ||
-          collision_scope ==
-              ProductionMppiResidentCollisionScope::kPersistentRawFiniteExecution;
+          obstacle_disposition == ProductionMppiResidentObstacleDisposition::
+                                      kPersistentRawFiniteExecutionInvalidated;
       if (persistent_raw_collision) {
         collision_observed_owner = latest_observed_owner != nullptr
                                        ? latest_observed_owner
                                        : active_route.observed_raw_world;
       }
-      if (collision_scope ==
-          ProductionMppiResidentCollisionScope::kPersistentRawRouteSuffix) {
+      if (route_suffix_replacement_required) {
         RCLCPP_WARN_THROTTLE(
             get_logger(), *get_clock(), 1000,
             "ROUTE_EXECUTION3D snapshot_version=%" PRIu64 " route_generation=%" PRIu64
-            " status=raw_collision scope=persistent_raw_route_suffix "
-            "failure_segment=%zu failure_point=(%.3f,%.3f,%.3f)",
+            " status=route_suffix_obstructed scope=persistent_raw_route_suffix "
+            "failure_segment=%zu failure_point=(%.3f,%.3f,%.3f) "
+            "action=retain_finite_execution_and_request_background_successor",
             result.source_snapshot->version, active_route.identity.generation,
             diagnostic_assessment.raw_validation.failure_route_segment,
             diagnostic_assessment.raw_validation.failure_point.x,
             diagnostic_assessment.raw_validation.failure_point.y,
             diagnostic_assessment.raw_validation.failure_point.z);
-      } else if (resident_physical_collision) {
+        requestRouteRelease(RouteReleaseReason3D::kBlocked,
+                            active_route.identity.generation);
+      } else if (finite_execution_physically_invalidated) {
         const mppi::FiniteExecutionPathValidation& physical_validation =
-            collision_scope ==
-                    ProductionMppiResidentCollisionScope::kPersistentRawFiniteExecution
+            obstacle_disposition == ProductionMppiResidentObstacleDisposition::
+                                        kPersistentRawFiniteExecutionInvalidated
                 ? active_trajectory_raw_validation
                 : active_trajectory_lidar_validation;
         diagnostic_assessment.status = RouteExecutionStatus3D::kRawCollision;
@@ -462,15 +470,15 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
             " status=raw_collision scope=%s "
             "failure_segment=%zu failure_point=(%.3f,%.3f,%.3f)",
             result.source_snapshot->version, active_route.identity.generation,
-            collision_scope ==
-                    ProductionMppiResidentCollisionScope::kPersistentRawFiniteExecution
+            obstacle_disposition == ProductionMppiResidentObstacleDisposition::
+                                        kPersistentRawFiniteExecutionInvalidated
                 ? "persistent_raw_finite_trajectory"
                 : "latest_lidar_finite_trajectory",
             physical_validation.failure_segment_index,
             physical_validation.failure_point.x, physical_validation.failure_point.y,
             physical_validation.failure_point.z);
       }
-      if (diagnostic_assessment.usable() &&
+      if ((diagnostic_assessment.usable() || route_suffix_replacement_required) &&
           optional_constraints_.route_tracking_tube_constraints_enabled) {
         if (!trackingTubeProfileMatchesCurrentWorld(active_route,
                                                     active_route.observed_raw_world)) {
@@ -508,8 +516,13 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
           }
         }
       }
+      const bool route_execution_assessment_usable =
+          diagnostic_assessment.usable() ||
+          (route_suffix_replacement_required &&
+           diagnostic_assessment.status == RouteExecutionStatus3D::kRawCollision);
       const ExecutionRouteTransitionResult3D advanced =
-          diagnostic_assessment.usable() && !result.tracking_error_tube_handoff_active
+          route_execution_assessment_usable &&
+                  !result.tracking_error_tube_handoff_active
               ? advanceCertifiedRoute3D(*result.source_snapshot, guard, observation,
                                         execution_input,
                                         active_route.observed_raw_world)
@@ -522,7 +535,7 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
            diagnostic_assessment.status ==
                RouteExecutionStatus3D::kTrackingTubeViolation);
       const bool route_invalidation_required =
-          resident_physical_collision ||
+          finite_execution_physically_invalidated ||
           diagnostic_assessment.status == RouteExecutionStatus3D::kObjectiveMismatch ||
           optional_policy_invalidation;
       if (result.tracking_error_tube_handoff_active) {
@@ -546,10 +559,10 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
             result.tracking_error_tube_handoff.reference_speed_limit_mps,
             result.tracking_error_tube_handoff.tracking_error_radius_m,
             result.tracking_error_tube_handoff.actual_tracking_error_m);
-      } else if (!diagnostic_assessment.usable() && !route_invalidation_required) {
+      } else if (!route_execution_assessment_usable && !route_invalidation_required) {
         // Contract/projection diagnostics and connector history do not describe
-        // a physical intersection of either the remaining resident route or its
-        // published finite execution. Keep the certified owner and retry.
+        // a physical intersection of the published finite execution. Keep the
+        // certified owner and retry.
         active_usable = true;
         result.status = RouteExecutionStatus3D::kUsable;
         RCLCPP_INFO_THROTTLE(
@@ -563,8 +576,8 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
             routeExecutionStatus3DName(diagnostic_assessment.status).data());
       } else if (!advanced.applied()) {
         if (advanced.status == ExecutionRouteTransitionStatus3D::kNoChange) {
-          active_usable = diagnostic_assessment.usable();
-        } else if (diagnostic_assessment.usable()) {
+          active_usable = route_execution_assessment_usable;
+        } else if (route_execution_assessment_usable) {
           // Progress and publication are optimistic transactions. A stale guard,
           // non-monotonic projection, or another snapshot conflict only means
           // that this observation must be retried against the current owner. It
@@ -585,8 +598,8 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
           const std::uint64_t generation = active_route.identity.generation;
           const bool raw_invalidated = persistent_raw_collision;
           const bool latest_lidar_invalidated =
-              collision_scope ==
-              ProductionMppiResidentCollisionScope::kLatestLidarFiniteExecution;
+              obstacle_disposition == ProductionMppiResidentObstacleDisposition::
+                                          kLatestLidarFiniteExecutionInvalidated;
           if (raw_invalidated) {
             result.lifecycle_observed_raw_world = collision_observed_owner;
           }
@@ -625,7 +638,7 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
           if (raw_invalidated || latest_lidar_invalidated) {
             handlePhysicalTrajectoryCollision(
                 generation, raw_invalidated ? collision_observed_owner : nullptr,
-                residentCollisionSource(collision_scope),
+                residentObstacleSource(obstacle_disposition),
                 ProductionMppiPhysicalTrajectoryAuthority::kResidentOwner);
           } else {
             requestRouteRelease(release_reason, generation);

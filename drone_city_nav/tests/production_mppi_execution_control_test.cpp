@@ -57,18 +57,21 @@ TEST(ProductionMppiExecutionControlTest,
 }
 
 TEST(ProductionMppiExecutionControlTest,
-     ClassifiesOnlyResidentRouteOrFiniteExecutionCollisions) {
-  EXPECT_EQ(residentCollisionScope({}), ProductionMppiResidentCollisionScope::kNone);
-  EXPECT_EQ(residentCollisionScope({.route_suffix_persistent_raw = true}),
-            ProductionMppiResidentCollisionScope::kPersistentRawRouteSuffix);
-  EXPECT_EQ(residentCollisionScope({.finite_execution_latest_lidar = true}),
-            ProductionMppiResidentCollisionScope::kLatestLidarFiniteExecution);
-  EXPECT_EQ(residentCollisionScope({
+     DistinguishesBackgroundRouteRepairFromFiniteExecutionInvalidation) {
+  EXPECT_EQ(residentObstacleDisposition({}),
+            ProductionMppiResidentObstacleDisposition::kClear);
+  EXPECT_EQ(residentObstacleDisposition({.route_suffix_persistent_raw = true}),
+            ProductionMppiResidentObstacleDisposition::kRouteSuffixReplacementRequired);
+  EXPECT_EQ(residentObstacleDisposition({.finite_execution_latest_lidar = true}),
+            ProductionMppiResidentObstacleDisposition::
+                kLatestLidarFiniteExecutionInvalidated);
+  EXPECT_EQ(residentObstacleDisposition({
                 .route_suffix_persistent_raw = true,
                 .finite_execution_persistent_raw = true,
                 .finite_execution_latest_lidar = true,
             }),
-            ProductionMppiResidentCollisionScope::kPersistentRawFiniteExecution);
+            ProductionMppiResidentObstacleDisposition::
+                kPersistentRawFiniteExecutionInvalidated);
 }
 
 TEST(ProductionMppiExecutionControlTest,
