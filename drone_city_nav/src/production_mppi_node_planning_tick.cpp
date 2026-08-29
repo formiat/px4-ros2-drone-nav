@@ -706,7 +706,7 @@ void ProductionMppiNode::planningTick() {
                              planning_state == ProductionMppiPlanningState::kPlanned &&
                              !route_control.hold_xy,
     });
-    if (route_progress.stalled) {
+    if (route_progress.stalled && optional_constraints_.route_progress_replan_enabled) {
       requestRouteRelease(RouteReleaseReason3D::kStalled, route_generation);
     }
   }

@@ -355,7 +355,7 @@ private:
   navigationObjective() const;
   void requestRouteRelease(RouteReleaseReason3D reason,
                            std::uint64_t route_generation = 0U);
-  void requestRouteSuccessorForRawTrajectoryCollision(
+  void requestRouteSuccessorForPhysicalTrajectoryCollision(
       std::uint64_t route_generation,
       const std::shared_ptr<const VersionedObservedRawWorld3D>& observed_raw_world,
       std::string_view source);
@@ -733,7 +733,7 @@ private:
   std::atomic<std::shared_ptr<const ProductionMppiRawWorld3D>> latest_raw_world_3d_;
   std::atomic<std::uint64_t> observed_route_blocked_raw_revision_{0U};
   std::atomic<std::uint64_t> observed_route_replan_dispatched_raw_revision_{0U};
-  std::atomic<std::uint64_t> raw_trajectory_replan_route_generation_{0U};
+  std::atomic<std::uint64_t> physical_trajectory_replan_route_generation_{0U};
   std::mutex execution_evidence_commit_mutex_;
   // Latest-lidar admission is independent from raw-world reconstruction. Active
   // execution publication locks both domains to validate one coherent boundary.

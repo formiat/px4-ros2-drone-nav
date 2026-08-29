@@ -172,7 +172,7 @@ void ProductionMppiNode::requestRouteRelease(const RouteReleaseReason3D reason,
   requestStaticRouteReplan(reason, route_generation);
 }
 
-void ProductionMppiNode::requestRouteSuccessorForRawTrajectoryCollision(
+void ProductionMppiNode::requestRouteSuccessorForPhysicalTrajectoryCollision(
     const std::uint64_t route_generation,
     const std::shared_ptr<const VersionedObservedRawWorld3D>& observed_raw_world,
     const std::string_view source) {
@@ -194,9 +194,9 @@ void ProductionMppiNode::requestRouteSuccessorForRawTrajectoryCollision(
 
   bool first_request_for_route{false};
   std::uint64_t requested_generation =
-      raw_trajectory_replan_route_generation_.load(std::memory_order_relaxed);
+      physical_trajectory_replan_route_generation_.load(std::memory_order_relaxed);
   while (requested_generation < route_generation) {
-    if (raw_trajectory_replan_route_generation_.compare_exchange_weak(
+    if (physical_trajectory_replan_route_generation_.compare_exchange_weak(
             requested_generation, route_generation, std::memory_order_acq_rel,
             std::memory_order_relaxed)) {
       first_request_for_route = true;

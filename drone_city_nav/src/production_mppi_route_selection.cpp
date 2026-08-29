@@ -1,3 +1,5 @@
+#include "production_mppi_route_selection.hpp"
+
 #include <algorithm>
 #include <chrono>
 #include <cinttypes>
@@ -79,14 +81,16 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
   RouteInstanceId3D search_base_route_instance_id{};
   std::optional<double> search_base_stitch_station_m;
 
-  const bool successor_search =
-      world.static_route_extension_request || world.static_route_replan_request;
+  const bool certified_stitch_required =
+      productionRouteSearchContinuity3D(world.static_route_extension_request,
+                                        world.static_route_replan_request) ==
+      ProductionRouteSearchContinuity3D::kCertifiedStitch;
   const bool certified_stitch_base_available =
       active_route != nullptr && active_route->route_instance_id.valid() &&
       active_route->route_instance_id == world.bound_route_instance_id &&
       active_route->geometry != nullptr && active_route->geometry->route != nullptr &&
       active_route->progress.valid();
-  if (successor_search && active_route != nullptr) {
+  if (certified_stitch_required) {
     if (!certified_stitch_base_available) {
       RCLCPP_INFO(get_logger(),
                   "PERSISTENT_PLANNER3D stage=deferred reason=stitch_base_unavailable "

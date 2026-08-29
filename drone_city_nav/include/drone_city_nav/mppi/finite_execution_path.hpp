@@ -91,6 +91,11 @@ struct RebuiltFiniteExecutionPathContinuation {
   [[nodiscard]] bool accepted() const noexcept {
     return horizon.has_value() && validation.accepted();
   }
+
+  [[nodiscard]] bool physicalObstacleValidationBackoff() const noexcept {
+    return persistent_raw_path_validation_backoff ||
+           latest_lidar_path_validation_backoff;
+  }
 };
 
 struct ValidatedFiniteExecutionPath {
@@ -105,6 +110,11 @@ struct ValidatedFiniteExecutionPath {
 
   [[nodiscard]] bool accepted() const noexcept {
     return horizon.has_value() && validation.accepted();
+  }
+
+  [[nodiscard]] bool physicalObstacleValidationBackoff() const noexcept {
+    return persistent_raw_path_validation_backoff ||
+           latest_lidar_path_validation_backoff;
   }
 };
 

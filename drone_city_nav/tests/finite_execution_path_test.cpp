@@ -306,6 +306,7 @@ TEST(FiniteExecutionPathTest,
   EXPECT_TRUE(path.path_validation_backoff);
   EXPECT_FALSE(path.persistent_raw_path_validation_backoff);
   EXPECT_TRUE(path.latest_lidar_path_validation_backoff);
+  EXPECT_TRUE(path.physicalObstacleValidationBackoff());
   EXPECT_TRUE(finiteHorizonHasTerminalRestState(horizon));
   EXPECT_LT(horizon.states.back().x, 4.75F);
 }
@@ -332,6 +333,7 @@ TEST(FiniteExecutionPathTest,
   EXPECT_TRUE(path.path_validation_backoff);
   EXPECT_TRUE(path.persistent_raw_path_validation_backoff);
   EXPECT_FALSE(path.latest_lidar_path_validation_backoff);
+  EXPECT_TRUE(path.physicalObstacleValidationBackoff());
   EXPECT_EQ(path.first_failed_validation_status,
             FiniteExecutionPathStatus::kRawCollision);
   EXPECT_LT(horizon.nominal_prefix_control_count, planned_controls.size());
