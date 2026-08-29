@@ -154,6 +154,11 @@ navigationWorldCertificate3D(const ProductionMppiPreparedEsdf& world) noexcept {
   };
 }
 
+bool routeSearchRequiresLatestRawOverlay3D(const RouteReleaseReason3D reason) noexcept {
+  return reason == RouteReleaseReason3D::kNoActiveRoute ||
+         reason == RouteReleaseReason3D::kBlocked;
+}
+
 std::shared_ptr<const PersistentPlannerWorld3D> captureObservedRouteSearchWorld3D(
     const ProductionMppiRawWorld3D& raw_world,
     std::optional<ProprioceptiveFreeSpaceSeed3D> proprioceptive_free_space_seed,

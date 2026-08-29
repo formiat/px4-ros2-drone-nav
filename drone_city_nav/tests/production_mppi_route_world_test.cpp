@@ -176,6 +176,17 @@ TEST(ProductionMppiRouteWorldTest, RawSearchOverlayRequiresExactExecutionOwner) 
             nullptr);
 }
 
+TEST(ProductionMppiRouteWorldTest,
+     OnlyMissingRouteAndPhysicalCollisionSearchesRequireLatestRaw) {
+  EXPECT_TRUE(
+      routeSearchRequiresLatestRawOverlay3D(RouteReleaseReason3D::kNoActiveRoute));
+  EXPECT_TRUE(routeSearchRequiresLatestRawOverlay3D(RouteReleaseReason3D::kBlocked));
+  EXPECT_FALSE(routeSearchRequiresLatestRawOverlay3D(RouteReleaseReason3D::kExhausted));
+  EXPECT_FALSE(routeSearchRequiresLatestRawOverlay3D(RouteReleaseReason3D::kDiverged));
+  EXPECT_FALSE(
+      routeSearchRequiresLatestRawOverlay3D(RouteReleaseReason3D::kObjectiveChanged));
+}
+
 TEST(ProductionMppiRouteWorldTest, ObservedCoverageMustMatchExactWorldResources) {
   ProductionMppiPreparedEsdf world = coherentObservedWorld();
   ++world.observed_esdf_resource.coverage.source_raw_version.revision;

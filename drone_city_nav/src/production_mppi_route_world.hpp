@@ -35,7 +35,12 @@ productionWorldGenerationStatusName(ProductionWorldGenerationStatus status) noex
 [[nodiscard]] NavigationWorldCertificate3D
 navigationWorldCertificate3D(const ProductionMppiPreparedEsdf& world) noexcept;
 
-// Captures an exact raw occupancy snapshot for a physical-collision search.
+// Initial recovery and physical-collision searches need current hard occupancy;
+// choosing it never schedules a search by itself.
+[[nodiscard]] bool
+routeSearchRequiresLatestRawOverlay3D(RouteReleaseReason3D reason) noexcept;
+
+// Captures an exact raw occupancy snapshot for one route-search transaction.
 // The overlay has no delta-lineage assumption relative to the persistent
 // planner's previous transaction, so it intentionally requests a full reset.
 [[nodiscard]] std::shared_ptr<const PersistentPlannerWorld3D>
