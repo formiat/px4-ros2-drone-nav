@@ -52,13 +52,15 @@ replaceCertifiedRouteImpl(const ExecutionRouteSnapshot3D& current,
     successor.owner = current_route->owner;
   }
   const bool route_owner_changes = successor.owner.id != current_route->owner.id;
+  const bool splice_binding_mismatch =
+      splice != nullptr && distance3D(successor.progress.last_observed_position,
+                                      current_route->progress.last_observed_position) >
+                               kExecutionBindingToleranceM;
   if (!successor.valid() ||
       current_route->identity.generation == std::numeric_limits<std::uint64_t>::max() ||
       current.execution_owner_epoch == std::numeric_limits<std::uint64_t>::max() ||
       successor.identity.generation != current_route->identity.generation + 1U ||
-      distance3D(successor.progress.last_observed_position,
-                 current_route->progress.last_observed_position) >
-          kExecutionBindingToleranceM) {
+      splice_binding_mismatch) {
     return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
   }
   const bool replacement_phase_allowed =
@@ -87,6 +89,11 @@ replaceCertifiedRouteImpl(const ExecutionRouteSnapshot3D& current,
       return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
     }
   }
+  // A splice-free handoff is certified from the vehicle's current state. The
+  // resident route progress can be older after a physical stop, so requiring
+  // both routes to share that stale position would reject the recovery path.
+  // The successor finite plan and its raw-safe connector are validated below
+  // against the exact current execution input before either route is replaced.
   const bool successor_evidence_current =
       current.finite_execution.has_value()
           ? successorEvidenceNotOlder(*current_route, *current.finite_execution,
