@@ -128,7 +128,7 @@ bool pendingCertifiedRouteEligible3D(
   return false;
 }
 
-bool pendingCertifiedRouteRefreshFailureTerminal3D(
+bool pendingCertifiedRouteRetainsSnapshotCertificate3D(
     const PendingCertifiedRoute3D& pending,
     const bool base_trajectory_physically_invalidated) noexcept {
   return pending.valid() && base_trajectory_physically_invalidated &&

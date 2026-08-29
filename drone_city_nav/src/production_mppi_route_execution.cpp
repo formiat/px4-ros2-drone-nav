@@ -170,6 +170,20 @@ makeActivationObservation(const ProductionMppiPreparedEsdf& world,
              : nullptr;
 }
 
+[[nodiscard]] bool pendingRouteSnapshotSemanticallyCurrent(
+    const PendingCertifiedRoute3D& pending, const ProductionMppiPreparedEsdf& world,
+    const ProductionNavigationObjective* const objective,
+    const std::uint64_t minimum_tracking_sample_sequence) noexcept {
+  return objective != nullptr &&
+         assessRoutePublication3D(pending.route.identity.proposal,
+                                  navigationWorldCertificate3D(world))
+             .compatible() &&
+         staticRouteObjectiveMatches(pending.route.identity.proposal.objective,
+                                     makeStaticRouteObjective(*objective),
+                                     minimum_tracking_sample_sequence,
+                                     std::numeric_limits<double>::infinity());
+}
+
 [[nodiscard]] RouteProgressProjection3D
 routeProjection(const CertifiedRouteSuffix3D& route,
                 const Point3& current_position) noexcept {
@@ -621,11 +635,30 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
   }
   if (result.pending_route != nullptr &&
       pendingCertifiedRouteEligible3D(*result.pending_route, *route_state)) {
+    const bool snapshot_retention_authorized =
+        pendingCertifiedRouteRetainsSnapshotCertificate3D(
+            *result.pending_route, result.physical_trajectory_invalidated);
+    const bool retain_snapshot_certificate =
+        snapshot_retention_authorized &&
+        pendingRouteSnapshotSemanticallyCurrent(*result.pending_route, world, objective,
+                                                minimum_tracking_sample_sequence);
     std::shared_ptr<const CertifiedRouteSuffix3D> refreshed_pending =
-        refreshPendingRoute(*result.pending_route, world, objective,
-                            execution_navigation, latest_raw_world,
-                            minimum_tracking_sample_sequence,
-                            route_tracking_policy_.maximum_cross_track_m, footprint);
+        retain_snapshot_certificate
+            ? std::make_shared<const CertifiedRouteSuffix3D>(
+                  result.pending_route->route)
+            : refreshPendingRoute(
+                  *result.pending_route, world, objective, execution_navigation,
+                  latest_raw_world, minimum_tracking_sample_sequence,
+                  route_tracking_policy_.maximum_cross_track_m, footprint);
+    if (retain_snapshot_certificate) {
+      RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "ROUTE_HANDOFF3D pending_generation=%" PRIu64 " base_generation=%" PRIu64
+          " status=snapshot_certificate_retained "
+          "action=validate_finite_horizons_against_latest_physical_evidence",
+          result.pending_route->route.identity.generation,
+          result.pending_route->base_route_generation);
+    }
     RouteSpliceReadiness3D splice_readiness{.status =
                                                 RouteSpliceReadinessStatus3D::kReady};
     const bool route_splice_required =
@@ -677,8 +710,7 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
           pending_certified_route_mailbox_.acknowledgeIfSame(result.pending_route)) {
         result.pending_route.reset();
       }
-    } else if (pendingCertifiedRouteRefreshFailureTerminal3D(
-                   *result.pending_route, result.physical_trajectory_invalidated)) {
+    } else if (snapshot_retention_authorized) {
       const std::uint64_t pending_generation =
           result.pending_route->route.identity.generation;
       const std::uint64_t base_generation = result.pending_route->base_route_generation;
@@ -692,8 +724,8 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
       RCLCPP_INFO(get_logger(),
                   "ROUTE_HANDOFF3D pending_generation=%" PRIu64
                   " base_generation=%" PRIu64
-                  " status=refresh_rejected physical_trajectory_invalidated=true "
-                  "acknowledged=%s action=release_for_fresh_current_state_successor",
+                  " status=semantic_refresh_rejected acknowledged=%s "
+                  "action=release_for_current_objective_successor",
                   pending_generation, base_generation, acknowledged ? "true" : "false");
     }
   }

@@ -36,11 +36,11 @@ struct PendingCertifiedRoute3D {
 pendingCertifiedRouteEligible3D(const PendingCertifiedRoute3D& pending,
                                 const ExecutionRouteSnapshot3D& snapshot) noexcept;
 
-// A splice-free handoff has no future splice window to wait for. Once the
-// resident finite trajectory is physically invalidated, a failed refresh makes
-// that immutable candidate terminal and its mailbox slot must be released for
-// a fresh current-state successor.
-[[nodiscard]] bool pendingCertifiedRouteRefreshFailureTerminal3D(
+// A splice-free successor requested for a physical collision is already an
+// immutable current-state planning transaction. Preserve its route-wide
+// snapshot certificate while the actual command and braking horizons are
+// independently validated against the latest physical evidence at commit.
+[[nodiscard]] bool pendingCertifiedRouteRetainsSnapshotCertificate3D(
     const PendingCertifiedRoute3D& pending,
     bool base_trajectory_physically_invalidated) noexcept;
 

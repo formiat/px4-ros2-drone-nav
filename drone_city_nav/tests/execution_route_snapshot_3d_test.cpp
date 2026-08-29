@@ -837,7 +837,7 @@ TEST(ExecutionRouteSnapshot3DTest,
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
-     PhysicalInvalidationMakesAnUnrefreshableRouteHandoffTerminal) {
+     PhysicalInvalidationRetainsTheRouteHandoffSnapshotCertificate) {
   SnapshotFixture3D fixture;
   const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
       fixture.activeSnapshot();
@@ -854,8 +854,14 @@ TEST(ExecutionRouteSnapshot3DTest,
       *active, PendingExecutionBaseKind3D::kRouteHandoff, successor_route, 1U);
   ASSERT_TRUE(pending.valid());
 
-  EXPECT_FALSE(pendingCertifiedRouteRefreshFailureTerminal3D(pending, false));
-  EXPECT_TRUE(pendingCertifiedRouteRefreshFailureTerminal3D(pending, true));
+  EXPECT_FALSE(pendingCertifiedRouteRetainsSnapshotCertificate3D(pending, false));
+  EXPECT_TRUE(pendingCertifiedRouteRetainsSnapshotCertificate3D(pending, true));
+
+  const PendingCertifiedRoute3D splice_candidate = pendingForSnapshot(
+      *active, PendingExecutionBaseKind3D::kRoute, successor_route, 2U);
+  ASSERT_TRUE(splice_candidate.valid());
+  EXPECT_FALSE(
+      pendingCertifiedRouteRetainsSnapshotCertificate3D(splice_candidate, true));
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
