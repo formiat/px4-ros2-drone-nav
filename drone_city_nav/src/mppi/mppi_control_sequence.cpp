@@ -29,6 +29,21 @@ void clampHorizontal(float& x, float& y, const float limit) noexcept {
   }
 }
 
+void limitHorizontalJerk(float& x, float& y, const float previous_x,
+                         const float previous_y, const float maximum_delta) noexcept {
+  const float delta_x = x - previous_x;
+  const float delta_y = y - previous_y;
+  float scale = 1.0F;
+  if (std::abs(delta_x) > maximum_delta) {
+    scale = std::min(scale, maximum_delta / std::abs(delta_x));
+  }
+  if (std::abs(delta_y) > maximum_delta) {
+    scale = std::min(scale, maximum_delta / std::abs(delta_y));
+  }
+  x = std::lerp(previous_x, x, scale);
+  y = std::lerp(previous_y, y, scale);
+}
+
 void clampTranslational(float& x, float& y, float& z, const float limit) noexcept {
   const float magnitude = std::hypot(std::hypot(x, y), z);
   if (magnitude > limit && magnitude > 0.0F) {
@@ -186,10 +201,12 @@ void limitControlSequence(const std::span<Control> controls,
         clampMagnitude(control.az, dynamics.maximum_vertical_acceleration_mps2);
     control.yaw_accel =
         clampMagnitude(control.yaw_accel, dynamics.maximum_yaw_acceleration_radps2);
-    control.ax = std::clamp(control.ax, previous.ax - maximum_delta,
-                            previous.ax + maximum_delta);
-    control.ay = std::clamp(control.ay, previous.ay - maximum_delta,
-                            previous.ay + maximum_delta);
+    // Both endpoints are inside the horizontal acceleration disk, so moving
+    // along their connecting segment preserves that limit while the common
+    // scale also satisfies each axis' jerk bound. Independent axis clamping
+    // can leave the disk during a direction change.
+    limitHorizontalJerk(control.ax, control.ay, previous.ax, previous.ay,
+                        maximum_delta);
     control.az = std::clamp(control.az, previous.az - maximum_delta,
                             previous.az + maximum_delta);
     previous = control;

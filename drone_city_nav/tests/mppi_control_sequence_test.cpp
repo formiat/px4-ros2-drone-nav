@@ -231,6 +231,23 @@ TEST(MppiControlSequenceTest, HostLimiterMatchesAccelerationAndJerkContract) {
   EXPECT_NEAR(controls[1].az, -0.5F, 1.0e-6F);
 }
 
+TEST(MppiControlSequenceTest, HostLimiterKeepsRotatingAccelerationInsideDisk) {
+  std::array controls{Control{.ax = 0.0F, .ay = 4.0F}};
+  DynamicsConfig dynamics;
+  dynamics.dt_s = 0.1F;
+  dynamics.maximum_horizontal_acceleration_mps2 = 4.0F;
+  dynamics.maximum_control_jerk_mps3 = 6.0F;
+  const Control previous{.ax = -2.4F, .ay = 3.2F};
+
+  limitControlSequence(controls, dynamics, previous, dynamics.dt_s);
+
+  EXPECT_LE(std::hypot(controls.front().ax, controls.front().ay), 4.0F);
+  EXPECT_LE(std::abs(controls.front().ax - previous.ax), 0.6F);
+  EXPECT_LE(std::abs(controls.front().ay - previous.ay), 0.6F);
+  EXPECT_NEAR(controls.front().ax, -1.8F, 1.0e-6F);
+  EXPECT_NEAR(controls.front().ay, 3.4F, 1.0e-6F);
+}
+
 TEST(MppiControlSequenceTest, BuildsAllDeterministicCooperativeCandidates) {
   DynamicsConfig dynamics;
   dynamics.dt_s = 0.1F;
@@ -312,6 +329,66 @@ TEST(MppiControlSequenceTest, FiniteRouteSeedFollowsABendInsteadOfCuttingItsChor
       projectOntoMppiRoute3D(states.back(), route, 0.0F);
   ASSERT_TRUE(terminal_projection.valid);
   EXPECT_GT(terminal_projection.station_m, 5.0F);
+  EXPECT_LE(terminal_projection.distance_m, 0.5F);
+}
+
+TEST(MppiControlSequenceTest, FiniteRouteSeedAdvancesAlongCurvedDescendingRoute) {
+  DynamicsConfig dynamics;
+  const std::array route_positions{
+      std::array{53.946346F, 54.038868F, 17.869816F},
+      std::array{53.662441F, 54.327209F, 17.758871F},
+      std::array{53.378540F, 54.615547F, 17.647926F},
+      std::array{53.236237F, 54.807056F, 17.571554F},
+      std::array{53.187874F, 54.997128F, 17.490362F},
+      std::array{53.233452F, 55.185764F, 17.404350F},
+      std::array{53.372963F, 55.372963F, 17.313519F},
+      std::array{53.701862F, 55.701862F, 17.149069F},
+      std::array{54.030758F, 56.030758F, 16.984621F},
+      std::array{54.359657F, 56.359657F, 16.820171F},
+      std::array{54.688557F, 56.688557F, 16.655722F},
+      std::array{55.017456F, 57.017456F, 16.491272F},
+      std::array{55.346352F, 57.346352F, 16.326824F},
+      std::array{55.675251F, 57.675251F, 16.162374F},
+      std::array{56.004150F, 58.004150F, 15.997925F},
+      std::array{56.333050F, 58.333050F, 15.833476F},
+  };
+  std::vector<RouteSample3D> route;
+  route.reserve(route_positions.size());
+  float station_m = 0.0F;
+  for (std::size_t index = 0U; index < route_positions.size(); ++index) {
+    if (index > 0U) {
+      const auto& previous = route_positions.at(index - 1U);
+      const auto& current = route_positions.at(index);
+      station_m += std::hypot(
+          std::hypot(current.at(0) - previous.at(0), current.at(1) - previous.at(1)),
+          current.at(2) - previous.at(2));
+    }
+    const auto& position = route_positions.at(index);
+    route.push_back(RouteSample3D{.x_m = position.at(0),
+                                  .y_m = position.at(1),
+                                  .z_m = position.at(2),
+                                  .station_m = station_m});
+  }
+  const State initial{
+      .x = route.front().x_m, .y = route.front().y_m, .z = route.front().z_m};
+  const State target{
+      .x = route.back().x_m, .y = route.back().y_m, .z = route.back().z_m};
+
+  const std::vector<Control> controls = buildFiniteRouteDirectedSeed(
+      initial, target, route, 0.0F, 2.566F, dynamics, 80U, Control{});
+  std::vector<State> states;
+  states.reserve(controls.size() + 1U);
+  states.push_back(initial);
+  for (const Control& control : controls) {
+    states.push_back(integrateReference(states.back(), control, dynamics));
+  }
+  const FiniteHorizon horizon{.states = states, .controls = controls};
+  const MppiRouteProjection3D terminal_projection =
+      projectOntoMppiRoute3D(states.back(), route, 0.0F);
+
+  EXPECT_TRUE(finiteHorizonHasTerminalRestState(horizon));
+  ASSERT_TRUE(terminal_projection.valid);
+  EXPECT_GT(terminal_projection.station_m, 1.0F);
   EXPECT_LE(terminal_projection.distance_m, 0.5F);
 }
 
