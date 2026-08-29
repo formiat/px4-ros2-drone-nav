@@ -93,35 +93,6 @@ publicationValidUntilNs(const FiniteExecutionCandidateView3D& view,
   return publication_now_ns + duration_ns;
 }
 
-[[nodiscard]] std::size_t closestDynamicStateIndex(const mppi::FiniteHorizon& horizon,
-                                                   const mppi::State& current_state,
-                                                   const float dt_s) noexcept {
-  if (horizon.controls.empty() ||
-      horizon.states.size() != horizon.controls.size() + 1U || !(dt_s > 0.0F)) {
-    return 0U;
-  }
-  std::size_t best_index{0U};
-  double best_score{std::numeric_limits<double>::infinity()};
-  const double velocity_scale_s = static_cast<double>(dt_s);
-  for (std::size_t index = 0U; index < horizon.controls.size(); ++index) {
-    const mppi::State& state = horizon.states[index];
-    const double dx = static_cast<double>(state.x - current_state.x);
-    const double dy = static_cast<double>(state.y - current_state.y);
-    const double dz = static_cast<double>(state.z - current_state.z);
-    const double dvx = static_cast<double>(state.vx - current_state.vx);
-    const double dvy = static_cast<double>(state.vy - current_state.vy);
-    const double dvz = static_cast<double>(state.vz - current_state.vz);
-    const double score =
-        dx * dx + dy * dy + dz * dz +
-        velocity_scale_s * velocity_scale_s * (dvx * dvx + dvy * dvy + dvz * dvz);
-    if (score < best_score) {
-      best_score = score;
-      best_index = index;
-    }
-  }
-  return best_index;
-}
-
 [[nodiscard]] ExecutionRouteTransitionResult3D
 rebaseRouteExecution(const ExecutionPublicationNavigationRebaseRequest3D& request,
                      const mppi::FiniteHorizon& horizon,
@@ -309,13 +280,6 @@ rebaseDirectExecution(const ExecutionPublicationNavigationRebaseRequest3D& reque
 
 } // namespace
 
-std::size_t
-closestFiniteExecutionRebaseControlIndex3D(const mppi::FiniteHorizon& horizon,
-                                           const mppi::State& current_state,
-                                           const float dt_s) noexcept {
-  return closestDynamicStateIndex(horizon, current_state, dt_s);
-}
-
 bool ExecutionPublicationNavigationRebaseResult3D::rebased() const noexcept {
   return status == ExecutionPublicationNavigationRebaseStatus3D::kRebased &&
          transition.has_value() && transition->applied();
@@ -396,28 +360,9 @@ rebaseExecutionPublicationForCurrentNavigation3D(
   if (points.empty() || !reset_valid_until_ns.has_value()) {
     return reject(ExecutionPublicationNavigationRebaseStatus3D::kPathUnavailable);
   }
-  const std::size_t nominal_source_control_index =
-      retained_published_route_continuation
-          ? 0U
-          : closestFiniteExecutionRebaseControlIndex3D(
-                *path_source->horizon, request.current_execution_input->state(),
-                candidate_view->policy->dynamics().dt_s);
-  if (nominal_source_control_index >
-      static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max() /
-                               path_source->control_interval_ns)) {
-    return reject(ExecutionPublicationNavigationRebaseStatus3D::kPathUnavailable);
-  }
-  const std::int64_t nominal_source_time_offset_ns =
-      static_cast<std::int64_t>(nominal_source_control_index) *
-      path_source->control_interval_ns;
-  if (!retained_published_route_continuation &&
-      request.publication_now_ns <= nominal_source_time_offset_ns) {
-    return reject(ExecutionPublicationNavigationRebaseStatus3D::kPathUnavailable);
-  }
-  const std::int64_t source_valid_from_ns =
-      retained_published_route_continuation
-          ? path_source->valid_from_ns
-          : request.publication_now_ns - nominal_source_time_offset_ns;
+  const std::int64_t source_valid_from_ns = retained_published_route_continuation
+                                                ? path_source->valid_from_ns
+                                                : request.publication_now_ns;
   const bool static_world = candidate_view->static_world != nullptr;
   if ((!static_world && (request.current_observed_raw_world == nullptr ||
                          !request.current_observed_raw_world->valid())) ||
@@ -470,12 +415,14 @@ rebaseExecutionPublicationForCurrentNavigation3D(
   }
   const mppi::RebuiltFiniteExecutionPathContinuation rebuilt =
       mppi::rebuildFiniteExecutionPathContinuation(
-          // A nominal candidate has never been published, so planning latency
-          // cannot consume its controls. A retained candidate is different: it
-          // is a freshly certified continuation of the resident wire owner,
-          // which keeps executing during commit. Rebuild that case from the
-          // resident path and its original clock so already executed controls
-          // are not replayed against the newer navigation state.
+          // Only a retained candidate is a continuation of controls that were
+          // actually published and may have executed during commit. A new
+          // candidate starts at control zero: motion under a different owner
+          // does not prove that any of its controls ran. Reintegrate the whole
+          // candidate from current navigation evidence and certify that result.
+          // Emergency candidates keep their original stopping deadline through
+          // reset_valid_until_ns even though their unpublished controls start
+          // here.
           points, source_valid_from_ns, *reset_valid_until_ns,
           request.publication_now_ns, request.current_execution_input->state(),
           request.current_execution_input->previousControl(),

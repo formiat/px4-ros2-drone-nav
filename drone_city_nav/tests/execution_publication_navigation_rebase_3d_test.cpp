@@ -246,7 +246,7 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
 }
 
 TEST(ExecutionPublicationNavigationRebase3DTest,
-     PlanningLatencyDoesNotConsumeUnpublishedControls) {
+     MotionUnderAnotherOwnerDoesNotConsumeUnpublishedControls) {
   SnapshotFixture3D fixture;
   const std::shared_ptr<const ExecutionRouteSnapshot3D> initial =
       makeInitialExecutionRouteSnapshot3D();
@@ -277,9 +277,13 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
 
   const std::int64_t publication_now_ns =
       candidate_owner.valid_from_ns + 1'500'000'000LL;
+  constexpr std::size_t kSpatiallyMatchingControlIndex{10U};
+  ASSERT_GT(candidate_owner.horizon->controls.size(), kSpatiallyMatchingControlIndex);
   const std::shared_ptr<const VersionedExecutionInput3D> current_input =
-      advanceExecutionInput(*candidate_owner.execution_input, publication_now_ns,
-                            std::nullopt, true);
+      advanceExecutionInput(
+          *candidate_owner.execution_input, publication_now_ns,
+          candidate_owner.horizon->states[kSpatiallyMatchingControlIndex], true,
+          candidate_owner.horizon->controls[kSpatiallyMatchingControlIndex - 1U]);
   const std::shared_ptr<const VersionedLatestLidarEvidence3D> current_lidar =
       VersionedLatestLidarEvidence3D::capture(LatestLidarEvidenceCapture3D{
           .producer_instance_id =
@@ -323,28 +327,9 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
   // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
   const FiniteExecutionState3D& rebased = transition.next->finite_execution.value();
   ASSERT_NE(rebased.horizon, nullptr);
+  EXPECT_EQ(result.source_control_index, 0U);
   EXPECT_EQ(rebased.horizon->controls.size(), candidate_owner.horizon->controls.size());
   EXPECT_EQ(rebased.valid_from_ns, publication_now_ns);
-}
-
-TEST(ExecutionPublicationNavigationRebase3DTest,
-     PhysicalProgressAlignsAnUnpublishedCandidateToItsControlSuffix) {
-  SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
-  ASSERT_NE(active, nullptr);
-  ASSERT_TRUE(active->finite_execution.has_value());
-  const FiniteExecutionState3D& execution = active->finite_execution.value();
-  ASSERT_NE(execution.horizon, nullptr);
-  ASSERT_GT(execution.horizon->controls.size(), 12U);
-  ASSERT_NE(execution.validation_policy, nullptr);
-
-  constexpr std::size_t kExpectedControlIndex{10U};
-  const mppi::State current_state = execution.horizon->states[kExpectedControlIndex];
-  EXPECT_EQ(closestFiniteExecutionRebaseControlIndex3D(
-                *execution.horizon, current_state,
-                execution.validation_policy->dynamics().dt_s),
-            kExpectedControlIndex);
 }
 
 TEST(ExecutionPublicationNavigationRebase3DTest,
