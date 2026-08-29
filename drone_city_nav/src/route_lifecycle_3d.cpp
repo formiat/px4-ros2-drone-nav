@@ -243,11 +243,12 @@ RouteProposalReplacementAssessment3D assessRouteProposalReplacement3D(
   }
   if (sameActiveIntent3D(*active, *replacement,
                          observation.mission_target_tolerance_m)) {
-    if (observation.continuity_preserving_successor) {
+    // A safety replan changes executable geometry, not mission ownership.
+    // Route/world certification and the finite current-state handoff remain
+    // mandatory before this replacement can be published.
+    if (observation.continuity_preserving_successor ||
+        observation.safety_replan_requested) {
       return {};
-    }
-    if (observation.safety_replan_requested) {
-      return {.status = RouteProposalReplacementStatus3D::kRejectIntentConflict};
     }
     return {.status = RouteProposalReplacementStatus3D::kRetainEquivalentActiveSegment};
   }

@@ -171,17 +171,18 @@ TEST(RouteLifecycle3DTest, NewMissionEpochCanReplaceTheActiveIntent) {
   EXPECT_TRUE(assessment.replacementAllowed());
 }
 
-TEST(RouteLifecycle3DTest, SafetyReplanWithoutCertifiedContinuityIsRejected) {
+TEST(RouteLifecycle3DTest, CertifiedCurrentStateSafetyReplanCanReplaceSameIntent) {
   const MaterializedRouteProposal3D active_proposal = persistentMissionProposal();
   const ActivatedRouteIdentity3D active = persistentMissionActivatedRoute();
+  MaterializedRouteProposal3D replacement = active_proposal;
+  replacement.route_fingerprint += 1U;
 
   const RouteProposalReplacementAssessment3D assessment =
       assessRouteProposalReplacement3D(
-          &active, active_proposal,
+          &active, replacement,
           RouteProposalReplacementObservation3D{.safety_replan_requested = true});
 
-  EXPECT_FALSE(assessment.replacementAllowed());
-  EXPECT_EQ(assessment.status, RouteProposalReplacementStatus3D::kRejectIntentConflict);
+  EXPECT_TRUE(assessment.replacementAllowed());
 }
 
 TEST(RouteLifecycle3DTest, ProposalCanPublishOnANewerResidentWorld) {
