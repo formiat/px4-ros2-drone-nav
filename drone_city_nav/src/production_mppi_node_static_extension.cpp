@@ -115,6 +115,15 @@ void ProductionMppiNode::maybeRequestStaticRouteExtensionFromExecution(
     return;
   }
   const CertifiedRouteSuffix3D& active_route = route.value();
+  if (route_execution.physical_trajectory_invalidated) {
+    // Physical invalidation is latched once per resident route generation, but
+    // finding and activating its replacement can require several bounded
+    // attempts against newer raw worlds. Keep supplying the request; the
+    // failed-search latch and replan gate own retry cadence and coalescing.
+    requestStaticRouteReplan(RouteReleaseReason3D::kBlocked,
+                             active_route.identity.generation);
+    return;
+  }
   const RouteProjection3D projection = projectOntoRoute3DWithinStationWindow(
       *active_route.geometry->route,
       Point3{navigation.state.x, navigation.state.y, navigation.state.z},

@@ -116,6 +116,35 @@ TEST(RouteCompiler3DTest, RejectsSpanWithoutCompleteBoundaryEnvelope) {
   EXPECT_EQ(compilation.geometry, nullptr);
 }
 
+TEST(RouteCompiler3DTest, DistinguishesInvalidTrackingWorldFromTimeProfileFailure) {
+  const std::vector<RouteSample3D> route =
+      sampleRoute3D(std::vector<Point3>{{0.0, 0.0, 2.0}, {5.0, 0.0, 2.0}}, 0.5, 5.0);
+  ObservedOccupancyGrid3D occupancy{observedBounds()};
+
+  const RouteCompilationResult3D compilation =
+      compileExecutionRoute3D(RouteCompilerInput3D{
+          .route = route,
+          .constrained_spans = {},
+          .passage_volumes = {},
+          .cooperative_passage_assignments = {},
+          .selected_passage_traversal_ids = {},
+          .passage_volume_config = PassageVolumeConfig{},
+          .endpoint_semantics = RouteEndpointSemantics3D::kContinuation,
+          .materialized_route_fingerprint = routeFingerprint(route),
+          .tracking_world =
+              TrackingErrorTubeWorld3D{
+                  .observed_occupancy = &occupancy,
+                  .occupied_content_fingerprint =
+                      occupancy.occupiedSnapshot().contentFingerprint() + 1U,
+              },
+          .config = RouteCompilerConfig3D{},
+      });
+
+  EXPECT_EQ(compilation.validation.reason,
+            ExecutionRouteGeometryFailureReason3D::kInvalidTrackingErrorTube);
+  EXPECT_EQ(compilation.geometry, nullptr);
+}
+
 TEST(RouteCompiler3DTest, RecompilesAnUnchangedSpatialRouteForNewTrackingEvidence) {
   const std::vector<RouteSample3D> route = sampleRoute3D(
       std::vector<Point3>{{0.0, 0.0, 2.0}, {5.0, 0.0, 2.0}, {9.0, 0.0, 2.0}}, 0.5, 5.0);

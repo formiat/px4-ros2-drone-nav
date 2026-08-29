@@ -32,6 +32,8 @@ const char* executionRouteGeometryFailureReasonName3D(
       return "incoming_tangent_mismatch";
     case ExecutionRouteGeometryFailureReason3D::kTerminalTangentMismatch:
       return "terminal_tangent_mismatch";
+    case ExecutionRouteGeometryFailureReason3D::kInvalidTrackingErrorTube:
+      return "invalid_tracking_error_tube";
     case ExecutionRouteGeometryFailureReason3D::kInvalidTimeProfile:
       return "invalid_time_profile";
     case ExecutionRouteGeometryFailureReason3D::kInvalidProjection:

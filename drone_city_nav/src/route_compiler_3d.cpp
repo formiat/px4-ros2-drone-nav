@@ -135,7 +135,7 @@ RouteCompilationResult3D compileExecutionRoute3D(RouteCompilerInput3D input) {
           input.route, input.tracking_world, input.config.physical_footprint,
           input.config.tracking_error_tube, maximum_profile_speed_mps));
   if (!result.tracking_error_tube->valid) {
-    result.validation = {Failure::kInvalidTimeProfile, 0U};
+    result.validation = {Failure::kInvalidTrackingErrorTube, 0U};
     return result;
   }
   const std::shared_ptr<const std::vector<mppi::RouteSample3D>> mppi_route =
