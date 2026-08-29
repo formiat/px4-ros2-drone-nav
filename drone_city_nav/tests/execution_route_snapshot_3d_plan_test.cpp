@@ -3,6 +3,69 @@
 namespace drone_city_nav {
 namespace {
 
+TEST(ExecutionRouteSnapshot3DTest, UnboundSuccessorBindsAtTheCurrentFinitePlanStart) {
+  SnapshotFixture3D fixture;
+  const std::optional<CertifiedRouteSuffix3D> suffix = fixture.certify();
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> initial =
+      makeInitialExecutionRouteSnapshot3D();
+  if (!suffix.has_value() || initial == nullptr) {
+    ADD_FAILURE() << "The fixture must provide an initial certified route";
+    return;
+  }
+  const CertifiedRouteSuffix3D& successor = suffix.value();
+  ASSERT_EQ(successor.progress.execution_input, nullptr);
+
+  constexpr double kCurrentStationM{3.0};
+  FiniteExecutionCertification3D command =
+      SnapshotFixture3D::finiteCertificationForRoute(
+          successor, FiniteExecutionKind3D::kNominal, 100U, 55U, 0U, kCurrentStationM);
+  const std::shared_ptr<const VersionedExecutionInput3D> current_input =
+      command.execution_input;
+  if (current_input == nullptr) {
+    ADD_FAILURE() << "The command must own an execution input";
+    return;
+  }
+  const std::optional<mppi::FiniteHorizon> braking_tail =
+      mppi::buildFiniteBrakingHorizon(
+          command.horizon.states.front(), command.horizon.controls.size(),
+          successor.validation_policy->dynamics(), current_input->previousControl());
+  if (!braking_tail.has_value()) {
+    ADD_FAILURE() << "The command must produce a finite braking tail";
+    return;
+  }
+
+  const FiniteExecutionPlanCertificationResult3D certification =
+      certifyFiniteExecutionPlan3DDetailed(*initial, successor,
+                                           FiniteExecutionPlanCertification3D{
+                                               .command_horizon = std::move(command),
+                                               .braking_tail = braking_tail.value(),
+                                           });
+  if (!certification.certified() || !certification.plan.has_value()) {
+    ADD_FAILURE() << finiteExecutionCertificationStatus3DName(
+        certification.command_horizon.status);
+    return;
+  }
+  const FiniteExecutionPlan3D& plan = certification.plan.value();
+  EXPECT_DOUBLE_EQ(plan.command_horizon.begin_route_station_m, kCurrentStationM);
+  EXPECT_DOUBLE_EQ(plan.braking_tail.begin_route_station_m, kCurrentStationM);
+
+  const ExecutionRouteTransitionResult3D activated =
+      activateCertifiedRoute3D(*initial, initial->version, successor, plan);
+  if (!activated.applied() || activated.next == nullptr) {
+    ADD_FAILURE() << "The certified successor must activate atomically";
+    return;
+  }
+  const ExecutionRouteSnapshot3D& active_snapshot = *activated.next;
+  if (!active_snapshot.route.has_value()) {
+    ADD_FAILURE() << "The activated snapshot must own the successor route";
+    return;
+  }
+  const CertifiedRouteSuffix3D& active_route = active_snapshot.route.value();
+  EXPECT_EQ(active_route.progress.execution_input, current_input);
+  EXPECT_DOUBLE_EQ(active_route.progress.station_m, kCurrentStationM);
+  EXPECT_TRUE(active_snapshot.publishable());
+}
+
 TEST(ExecutionRouteSnapshot3DTest,
      ProgressAndPermanentBrakingFallbackPublishAsOneAtomicPlan) {
   SnapshotFixture3D fixture;

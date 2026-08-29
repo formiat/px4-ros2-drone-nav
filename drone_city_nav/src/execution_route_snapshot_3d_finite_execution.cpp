@@ -139,6 +139,30 @@ std::optional<RouteAdherenceAssessment3D> validateExecutionProgressConnector(
   return adherence;
 }
 
+[[nodiscard]] std::optional<double>
+unboundSuccessorExecutionStation(const CertifiedRouteSuffix3D& route,
+                                 const Point3& execution_position) noexcept {
+  if (route.geometry == nullptr || route.geometry->route == nullptr ||
+      route.geometry->route->empty()) {
+    return std::nullopt;
+  }
+  const double planning_to_execution_travel_m =
+      distance3D(route.progress.last_observed_position, execution_position);
+  if (!std::isfinite(planning_to_execution_travel_m)) {
+    return std::nullopt;
+  }
+  const CertificateView3D certificate_view = certificateView(route.certificate);
+  const double maximum_station_m =
+      std::min(certificate_view.certified_end_station_m,
+               route.progress.station_m +
+                   kMaximumStationCreditPerTravel * planning_to_execution_travel_m +
+                   kStationToleranceM);
+  const RouteProjection3D projection = projectOntoRoute3DWithinStationWindow(
+      *route.geometry->route, execution_position, route.progress.station_m,
+      maximum_station_m);
+  return projection.valid ? std::optional<double>{projection.station_m} : std::nullopt;
+}
+
 [[nodiscard]] RouteAdherenceAssessment3D
 brakingRouteOwnershipBinding(const CertifiedRouteSuffix3D& route,
                              const std::span<const mppi::State> states,
@@ -409,10 +433,27 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
     // progress or reject the only physical execution owner because the vehicle
     // is already outside the old behavioral corridor.
     execution_begin_station_m = target_route.progress.station_m;
-  } else if (target_route.progress.execution_input != nullptr &&
-             distance3D(initial_state_position,
+  } else if (target_route.progress.execution_input == nullptr) {
+    // An asynchronous successor has not owned execution yet. Motion from its
+    // planning pose to this state was owned by the preceding finite trajectory,
+    // so establish only the new route's bounded forward station. The command
+    // and braking horizons beginning at this exact state remain subject to the
+    // complete swept-world and latest-lidar validation below.
+    if (!targets_successor_route && !targets_direct_successor &&
+        !targets_initial_route) {
+      return rejectedFiniteExecution(
+          FiniteExecutionCertificationStatus3D::kExecutionBindingRejected);
+    }
+    const std::optional<double> unbound_station =
+        unboundSuccessorExecutionStation(target_route, initial_state_position);
+    if (!unbound_station.has_value()) {
+      return rejectedFiniteExecution(
+          FiniteExecutionCertificationStatus3D::kExecutionBindingRejected);
+    }
+    execution_begin_station_m = *unbound_station;
+  } else if (distance3D(initial_state_position,
                         target_route.progress.last_observed_position) >
-                 kExecutionBindingToleranceM) {
+             kExecutionBindingToleranceM) {
     const std::optional<RouteAdherenceAssessment3D> connector_adherence =
         validateExecutionProgressConnector(
             target_route, initial_state_position, certification.execution_input,
@@ -422,11 +463,6 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
           FiniteExecutionCertificationStatus3D::kExecutionBindingRejected);
     }
     execution_begin_station_m = connector_adherence->stop.station_m;
-  } else if (distance3D(initial_state_position,
-                        target_route.progress.last_observed_position) >
-             kExecutionBindingToleranceM) {
-    return rejectedFiniteExecution(
-        FiniteExecutionCertificationStatus3D::kExecutionBindingRejected);
   }
   if (atomic_plan_begin_station_m.has_value()) {
     if (!std::isfinite(*atomic_plan_begin_station_m) ||
