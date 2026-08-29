@@ -54,6 +54,8 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       declare_parameter<double>("latest_lidar_obstacle_maximum_age_ms", 1000.0);
   navigation_health_supervisor_ =
       std::make_unique<NavigationHealthSupervisor>(NavigationHealthConfig{
+          .terminal_failure_enabled = declare_parameter<bool>(
+              "navigation_health_terminal_failure_enabled", false),
           .maximum_unavailable_world_age_ms =
               declare_parameter<double>("maximum_unavailable_world_age_ms", 30'000.0),
           .maximum_no_executable_route_age_ms =

@@ -42,6 +42,17 @@ void ProductionMppiNode::processRouteSearch3D(
       search_execution_snapshot && search_execution_snapshot->route.has_value()
           ? search_execution_snapshot->route.operator->()
           : nullptr;
+  const auto observe_recovery_episode = [this, &world] {
+    const std::shared_ptr<const ExecutionRouteSnapshot3D> current_execution =
+        execution_route_store_.snapshot();
+    const std::shared_ptr<const PendingCertifiedRoute3D> current_pending =
+        pending_certified_route_mailbox_.snapshot();
+    const bool recovery_active =
+        (current_execution == nullptr || !current_execution->route.has_value()) &&
+        current_pending == nullptr;
+    static_cast<void>(navigation_recovery_episodes_.observe(
+        world.search_objective.mission_epoch, recovery_active));
+  };
   ProductionRouteCandidateSet3D candidate_set = generateRouteCandidates3D(
       world, navigation, mission_goal, latest_raw_world, search_active_route);
 
@@ -65,6 +76,7 @@ void ProductionMppiNode::processRouteSearch3D(
       const std::scoped_lock lifecycle_lock{static_route_extension_mutex_};
       static_route_planning_latency_tracker_.record(route_planning_ms, world.build_ms);
     }
+    observe_recovery_episode();
     RCLCPP_INFO(get_logger(),
                 "PERSISTENT_PLANNER3D stage=continuation "
                 "queued=%s raw_revision=%" PRIu64 " search_generation=%" PRIu64
@@ -118,19 +130,7 @@ void ProductionMppiNode::processRouteSearch3D(
   }
   activation.prepared.route_search_ms = candidate_set.search_ms;
 
-  const bool recovery_without_active_route =
-      (activation_snapshot.execution_snapshot == nullptr ||
-       !activation_snapshot.execution_snapshot->route.has_value()) &&
-      !activation.certified_pending;
-  if (recovery_without_active_route) {
-    std::uint64_t current =
-        navigation_recovery_sequence_.load(std::memory_order_relaxed);
-    while (current != std::numeric_limits<std::uint64_t>::max() &&
-           !navigation_recovery_sequence_.compare_exchange_weak(
-               current, current + 1U, std::memory_order_release,
-               std::memory_order_relaxed)) {
-    }
-  }
+  observe_recovery_episode();
 
   const double route_planning_ms = elapsedMilliseconds(planning_started);
   {

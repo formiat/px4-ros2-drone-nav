@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <mutex>
 
 namespace drone_city_nav {
 
@@ -23,12 +24,27 @@ enum class NavigationTerminalFailure : std::uint8_t {
 };
 
 struct NavigationHealthConfig {
+  bool terminal_failure_enabled{false};
   double maximum_unavailable_world_age_ms{30'000.0};
   double maximum_no_executable_route_age_ms{30'000.0};
   double maximum_unacknowledged_horizon_age_ms{10'000.0};
   std::uint32_t maximum_recovery_attempts{64U};
 
   [[nodiscard]] bool valid() const noexcept;
+};
+
+// Planner workers report one recovery episode, independent of how many search
+// completions or retries occur while the route remains unavailable.
+class NavigationRecoveryEpisodeTracker final {
+public:
+  [[nodiscard]] bool observe(std::uint64_t mission_epoch, bool recovery_active);
+  [[nodiscard]] std::uint64_t sequence() const;
+
+private:
+  mutable std::mutex mutex_;
+  std::uint64_t latest_mission_epoch_{0U};
+  std::uint64_t active_recovery_mission_epoch_{0U};
+  std::uint64_t sequence_{0U};
 };
 
 struct NavigationHealthObservation {

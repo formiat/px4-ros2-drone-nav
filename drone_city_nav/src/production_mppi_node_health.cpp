@@ -42,8 +42,7 @@ NavigationHealthAssessment ProductionMppiNode::updateNavigationHealth(
   const NavigationHealthAssessment assessment =
       navigation_health_supervisor_->update(NavigationHealthObservation{
           .mission_epoch = objective != nullptr ? objective->mission_epoch : 0U,
-          .recovery_sequence =
-              navigation_recovery_sequence_.load(std::memory_order_acquire),
+          .recovery_sequence = navigation_recovery_episodes_.sequence(),
           .now_ns = now_ns,
           .mission_active = objective != nullptr,
           .process_alive = true,

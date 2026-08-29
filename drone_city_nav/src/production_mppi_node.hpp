@@ -785,7 +785,7 @@ private:
   std::uint64_t execution_horizon_producer_instance_id_{0U};
   std::uint64_t navigation_health_producer_instance_id_{0U};
   std::uint64_t navigation_health_sequence_{0U};
-  std::atomic<std::uint64_t> navigation_recovery_sequence_{0U};
+  NavigationRecoveryEpisodeTracker navigation_recovery_episodes_{};
   std::optional<NavigationHealthAssessment> last_navigation_health_assessment_;
   std::uint64_t mission_waypoint_acknowledgement_sequence_{0U};
   bool mission_goal_capture_attempt_invalidated_{false};

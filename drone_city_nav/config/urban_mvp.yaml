@@ -236,6 +236,9 @@ production_mppi_node:
     # mapper's allowed pose-alignment wait plus transport and executor jitter.
     latest_lidar_obstacle_maximum_age_ms: 1000.0
     navigation_health_topic: /drone_city_nav/mppi/navigation_health
+    # Readiness remains observable, but advisory time/attempt budgets must not
+    # abort a mission unless an operator explicitly enables that policy.
+    navigation_health_terminal_failure_enabled: false
     maximum_unavailable_world_age_ms: 30000.0
     maximum_no_executable_route_age_ms: 30000.0
     maximum_unacknowledged_horizon_age_ms: 10000.0

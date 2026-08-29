@@ -59,9 +59,14 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         config = CONFIG.read_text(encoding="utf-8")
         optional_constraints = OPTIONAL_CONSTRAINTS.read_text(encoding="utf-8")
         planning_tick = PLANNING_TICK.read_text(encoding="utf-8")
+        planner_node = PLANNER_NODE.read_text(encoding="utf-8")
         holds = EXECUTION_HOLDS.read_text(encoding="utf-8")
 
         self.assertIn("execution_nonphysical_revocation_enabled: false", config)
+        self.assertIn("navigation_health_terminal_failure_enabled: false", config)
+        self.assertIn(
+            '"navigation_health_terminal_failure_enabled", false', planner_node
+        )
         self.assertIn(
             'declare_parameter<bool>("execution_nonphysical_revocation_enabled", false)',
             optional_constraints,

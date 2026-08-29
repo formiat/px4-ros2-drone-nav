@@ -48,8 +48,53 @@ TEST(NavigationHealthSupervisorTest, ExposesEveryReadinessBoundary) {
   EXPECT_TRUE(ready.mission_ready);
 }
 
+TEST(NavigationHealthSupervisorTest, AdvisoryBudgetsDoNotTerminateMissionsByDefault) {
+  NavigationHealthSupervisor supervisor{NavigationHealthConfig{
+      .maximum_unavailable_world_age_ms = 1.0,
+      .maximum_no_executable_route_age_ms = 1.0,
+      .maximum_unacknowledged_horizon_age_ms = 1.0,
+      .maximum_recovery_attempts = 1U,
+  }};
+  NavigationHealthObservation observation = healthyObservation();
+  observation.certified_route_ready = false;
+  observation.horizon_acknowledged = false;
+  static_cast<void>(supervisor.update(observation));
+  observation.now_ns += 10'000'000;
+  observation.recovery_sequence = 10U;
+
+  const NavigationHealthAssessment advisory = supervisor.update(observation);
+  EXPECT_FALSE(advisory.terminal);
+  EXPECT_EQ(advisory.failure, NavigationTerminalFailure::kNone);
+  EXPECT_EQ(advisory.stage, NavigationReadinessStage::kCertifiedRouteReady);
+  EXPECT_EQ(advisory.recovery_attempts, 10U);
+}
+
+TEST(NavigationRecoveryEpisodeTrackerTest,
+     CountsContinuousRecoveryOnceAndIgnoresStaleMissions) {
+  NavigationRecoveryEpisodeTracker tracker;
+  EXPECT_TRUE(tracker.observe(7U, true));
+  EXPECT_FALSE(tracker.observe(7U, true));
+  EXPECT_FALSE(tracker.observe(7U, true));
+  EXPECT_EQ(tracker.sequence(), 1U);
+
+  EXPECT_FALSE(tracker.observe(7U, false));
+  EXPECT_TRUE(tracker.observe(7U, true));
+  EXPECT_EQ(tracker.sequence(), 2U);
+
+  EXPECT_TRUE(tracker.observe(8U, true));
+  EXPECT_FALSE(tracker.observe(7U, false));
+  EXPECT_FALSE(tracker.observe(7U, true));
+  EXPECT_FALSE(tracker.observe(8U, true));
+  EXPECT_EQ(tracker.sequence(), 3U);
+
+  EXPECT_FALSE(tracker.observe(8U, false));
+  EXPECT_TRUE(tracker.observe(8U, true));
+  EXPECT_EQ(tracker.sequence(), 4U);
+}
+
 TEST(NavigationHealthSupervisorTest, TerminatesBoundedNoRouteRecovery) {
   NavigationHealthSupervisor supervisor{NavigationHealthConfig{
+      .terminal_failure_enabled = true,
       .maximum_unavailable_world_age_ms = 100.0,
       .maximum_no_executable_route_age_ms = 100.0,
       .maximum_unacknowledged_horizon_age_ms = 100.0,
@@ -73,6 +118,7 @@ TEST(NavigationHealthSupervisorTest, TerminatesBoundedNoRouteRecovery) {
 
 TEST(NavigationHealthSupervisorTest, TerminatesNoRouteAtDeadline) {
   NavigationHealthSupervisor supervisor{NavigationHealthConfig{
+      .terminal_failure_enabled = true,
       .maximum_unavailable_world_age_ms = 100.0,
       .maximum_no_executable_route_age_ms = 100.0,
       .maximum_unacknowledged_horizon_age_ms = 100.0,
@@ -91,6 +137,7 @@ TEST(NavigationHealthSupervisorTest, TerminatesNoRouteAtDeadline) {
 
 TEST(NavigationHealthSupervisorTest, TerminatesUnavailableWorldAfterBootstrap) {
   NavigationHealthSupervisor supervisor{NavigationHealthConfig{
+      .terminal_failure_enabled = true,
       .maximum_unavailable_world_age_ms = 100.0,
       .maximum_no_executable_route_age_ms = 200.0,
       .maximum_unacknowledged_horizon_age_ms = 300.0,
@@ -110,6 +157,7 @@ TEST(NavigationHealthSupervisorTest, TerminatesUnavailableWorldAfterBootstrap) {
 
 TEST(NavigationHealthSupervisorTest, TerminatesUnacknowledgedHorizonAtDeadline) {
   NavigationHealthSupervisor supervisor{NavigationHealthConfig{
+      .terminal_failure_enabled = true,
       .maximum_unavailable_world_age_ms = 300.0,
       .maximum_no_executable_route_age_ms = 200.0,
       .maximum_unacknowledged_horizon_age_ms = 100.0,
@@ -127,6 +175,7 @@ TEST(NavigationHealthSupervisorTest, TerminatesUnacknowledgedHorizonAtDeadline) 
 
 TEST(NavigationHealthSupervisorTest, NewMissionResetsTerminalLatchAndAttempts) {
   NavigationHealthSupervisor supervisor{NavigationHealthConfig{
+      .terminal_failure_enabled = true,
       .maximum_unavailable_world_age_ms = 100.0,
       .maximum_no_executable_route_age_ms = 100.0,
       .maximum_unacknowledged_horizon_age_ms = 100.0,
