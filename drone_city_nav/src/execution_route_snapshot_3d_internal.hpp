@@ -491,6 +491,13 @@ void bindProgressToExecutionInput(
     const std::shared_ptr<const VersionedExecutionInput3D>& execution_input,
     const double station_m);
 
+[[nodiscard]] std::optional<RouteAdherenceAssessment3D>
+validateExecutionProgressConnector(
+    const CertifiedRouteSuffix3D& route, const Point3& execution_position,
+    const std::shared_ptr<const VersionedExecutionInput3D>& execution_input,
+    const std::shared_ptr<const VersionedObservedRawWorld3D>& observed_raw_world,
+    std::span<const Point3> latest_lidar_obstacle_points);
+
 [[nodiscard]] bool
 latestLidarEvidenceNotOlder(const VersionedLatestLidarEvidence3D& candidate,
                             const VersionedLatestLidarEvidence3D& previous) noexcept;

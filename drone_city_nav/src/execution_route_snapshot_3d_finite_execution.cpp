@@ -51,8 +51,7 @@ template<typename T>
   };
 }
 
-[[nodiscard]] std::optional<RouteAdherenceAssessment3D>
-validateExecutionProgressConnector(
+std::optional<RouteAdherenceAssessment3D> validateExecutionProgressConnector(
     const CertifiedRouteSuffix3D& route, const Point3& execution_position,
     const std::shared_ptr<const VersionedExecutionInput3D>& execution_input,
     const std::shared_ptr<const VersionedObservedRawWorld3D>& observed_raw_world,

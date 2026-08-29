@@ -595,23 +595,22 @@ retireCertifiedRoute3D(const ExecutionRouteSnapshot3D& current,
         return transitionFailure(
             ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
       }
-      const Point3 rebound_position =
-          executionInputPosition(*retained_safe_execution->execution_input);
-      const RouteProjection3D rebound_projection =
-          projectOntoRoute3DWithinStationWindow(
-              *current_route->geometry->route, rebound_position,
-              std::max(
-                  certificateView(current_route->certificate).suffix_start_station_m,
-                  retained_safe_execution->begin_route_station_m -
-                      kExecutionBindingToleranceM),
-              std::min(current_route->endStationM(),
-                       retained_safe_execution->begin_route_station_m +
-                           kExecutionBindingToleranceM));
-      if (!rebound_projection.valid ||
-          rebound_projection.distance_m > kExecutionBindingToleranceM ||
-          std::abs(rebound_projection.station_m -
+      const std::span<const Point3> latest_lidar_obstacle_points =
+          retained_safe_execution->latest_lidar_evidence != nullptr
+              ? std::span<const Point3>{retained_safe_execution->latest_lidar_evidence
+                                            ->hitPointsMapM()}
+              : std::span<const Point3>{};
+      const std::optional<RouteAdherenceAssessment3D> rebound_connector =
+          validateExecutionProgressConnector(
+              *current_route,
+              executionInputPosition(*retained_safe_execution->execution_input),
+              retained_safe_execution->execution_input,
+              retained_safe_execution->observed_raw_world,
+              latest_lidar_obstacle_points);
+      if (!rebound_connector.has_value() ||
+          std::abs(rebound_connector->stop.station_m -
                    retained_safe_execution->begin_route_station_m) >
-              kExecutionBindingToleranceM) {
+              kStationToleranceM) {
         return transitionFailure(
             ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
       }

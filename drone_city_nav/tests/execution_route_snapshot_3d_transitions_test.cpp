@@ -504,6 +504,91 @@ TEST(ExecutionRouteSnapshot3DTest,
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
+     RawInvalidationRetirementAcceptsACertifiedOffRouteConnector) {
+  SnapshotFixture3D fixture;
+  mppi::DynamicsConfig dynamics;
+  dynamics.dt_s = 0.1F;
+  dynamics.linear_drag_1ps = 0.0F;
+  fixture.validation_policy = VersionedExecutionValidationPolicy3D::capture(
+      FlightEnvelopeConfig{}, dynamics, mppi::AltitudeEnvelopeConfig{},
+      testPassageVolumeConfig().footprint, 100.0, 1000.0, 1000.0, false, true, false);
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
+      fixture.activeSnapshot();
+  ASSERT_NE(active, nullptr);
+  const ExecutionRouteTransitionResult3D following =
+      replaceFiniteExecution3D(*active, SnapshotFixture3D::guard(*active),
+                               SnapshotFixture3D::finiteExecution(*active));
+  ASSERT_TRUE(following.applied());
+  ASSERT_NE(following.next, nullptr);
+  ASSERT_TRUE(following.next->route.has_value());
+  const RouteLifecycleEvent3D invalidation{
+      .kind = RouteLifecycleEventKind3D::kRawInvalidated,
+      .generation = following.next->route->identity.generation,
+      .raw_producer_instance_id = SnapshotFixture3D::kRawProducer,
+      .raw_revision = SnapshotFixture3D::kLatestRawRevision + 1U,
+  };
+  const std::shared_ptr<const VersionedObservedRawWorld3D> invalidating_world =
+      fixture.rawWorld(invalidation.raw_revision);
+  ASSERT_NE(invalidating_world, nullptr);
+
+  FiniteExecutionCertification3D certification =
+      SnapshotFixture3D::finiteCertificationForRoute(
+          *following.next->route, FiniteExecutionKind3D::kEmergencyBrakeTail, 102U, 56U,
+          0U, 4.0);
+  for (mppi::State& state : certification.horizon.states) {
+    state.y = 1.0F;
+  }
+  const VersionedExecutionInput3D& source_input = *certification.execution_input;
+  certification
+      .execution_input = VersionedExecutionInput3D::capture(ExecutionInputCapture3D{
+      .capture_sequence = source_input.captureSequence(),
+      .pose_revision = source_input.poseRevision(),
+      .pose_source_timestamp_us = source_input.poseSourceTimestampUs(),
+      .pose_receive_stamp_ns = source_input.poseReceiveStampNs(),
+      .effective_stamp_ns = source_input.effectiveStampNs(),
+      .state = certification.horizon.states.front(),
+      .full_state_authoritative = source_input.fullStateAuthoritative(),
+      .state_provenance = source_input.stateProvenance(),
+      .purpose = source_input.purpose(),
+      .previous_control = source_input.previousControl(),
+      .previous_control_source = source_input.previousControlSource(),
+      .previous_control_source_producer_instance_id =
+          source_input.previousControlSourceProducerInstanceId(),
+      .previous_control_source_sequence = source_input.previousControlSourceSequence(),
+      .previous_control_source_stamp_ns = source_input.previousControlSourceStampNs(),
+      .previous_control_receive_stamp_ns = source_input.previousControlReceiveStampNs(),
+  });
+  ASSERT_NE(certification.execution_input, nullptr);
+  const std::optional<FiniteExecutionState3D> braking =
+      certifyRawInvalidatedFiniteExecution3D(
+          *following.next, RawInvalidatedFiniteExecutionCertification3D{
+                               .invalidation = invalidation,
+                               .invalidating_observed_raw_world = invalidating_world,
+                               .finite_execution = std::move(certification),
+                           });
+  ASSERT_TRUE(braking.has_value());
+  ASSERT_NE(braking->horizon, nullptr);
+  ASSERT_FALSE(braking->horizon->states.empty());
+  EXPECT_DOUBLE_EQ(braking->horizon->states.front().y, 1.0);
+
+  const ExecutionRouteTransitionResult3D retired =
+      retireCertifiedRoute3D(*following.next, SnapshotFixture3D::guard(*following.next),
+                             invalidation, braking);
+
+  ASSERT_TRUE(retired.applied());
+  ASSERT_NE(retired.next, nullptr);
+  ASSERT_TRUE(retired.next->route.has_value());
+  ASSERT_TRUE(retired.next->finite_execution.has_value());
+  EXPECT_TRUE(retired.next->valid());
+  EXPECT_EQ(retired.next->phase, ExecutionRoutePhase3D::kBraking);
+  EXPECT_DOUBLE_EQ(retired.next->route->progress.station_m,
+                   braking->begin_route_station_m);
+  EXPECT_DOUBLE_EQ(retired.next->route->progress.last_observed_position.y, 1.0);
+  EXPECT_EQ(retired.next->route->progress.execution_input,
+            retired.next->finite_execution->execution_input);
+}
+
+TEST(ExecutionRouteSnapshot3DTest,
      RetirementKeepsRouteOwnershipAndRequiresASafeBrakingArtifact) {
   SnapshotFixture3D fixture;
   const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
