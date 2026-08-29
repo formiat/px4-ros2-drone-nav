@@ -64,12 +64,7 @@ replaceCertifiedRouteImpl(const ExecutionRouteSnapshot3D& current,
     return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
   }
   const bool replacement_phase_allowed =
-      current.phase == ExecutionRoutePhase3D::kFollowing ||
-      current.phase == ExecutionRoutePhase3D::kAwaitingSuccessor ||
-      current.phase == ExecutionRoutePhase3D::kBraking ||
-      (current.phase == ExecutionRoutePhase3D::kStopped &&
-       current_route->planned_endpoint_semantics ==
-           RouteEndpointSemantics3D::kLocalStop);
+      executionRouteAcceptsCertifiedReplacement3D(current);
   const bool suspended_without_execution =
       splice == nullptr && current.phase == ExecutionRoutePhase3D::kAwaitingSuccessor &&
       !current.finite_execution.has_value() && !current.braking_fallback.has_value();

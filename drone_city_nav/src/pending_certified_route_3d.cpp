@@ -79,13 +79,7 @@ bool pendingCertifiedRouteEligible3D(
              !snapshot.direct_tracking_execution.has_value() &&
              !snapshot.stationary_hold.has_value();
     case PendingExecutionBaseKind3D::kRoute:
-      return (snapshot.phase == ExecutionRoutePhase3D::kFollowing ||
-              snapshot.phase == ExecutionRoutePhase3D::kAwaitingSuccessor ||
-              snapshot.phase == ExecutionRoutePhase3D::kBraking ||
-              (snapshot.phase == ExecutionRoutePhase3D::kStopped &&
-               snapshot.route.has_value() &&
-               snapshot.route->planned_endpoint_semantics ==
-                   RouteEndpointSemantics3D::kLocalStop)) &&
+      return executionRouteAcceptsCertifiedReplacement3D(snapshot) &&
              snapshot.route.has_value() && snapshot.route->geometry != nullptr &&
              snapshot.route->identity.generation == pending.base_route_generation &&
              snapshot.route->geometry->executable_geometry_revision ==
@@ -94,13 +88,7 @@ bool pendingCertifiedRouteEligible3D(
              pending.route_splice.has_value() &&
              pending.route_splice->validFor(*snapshot.route, pending.route);
     case PendingExecutionBaseKind3D::kRouteHandoff:
-      return (snapshot.phase == ExecutionRoutePhase3D::kFollowing ||
-              snapshot.phase == ExecutionRoutePhase3D::kAwaitingSuccessor ||
-              snapshot.phase == ExecutionRoutePhase3D::kBraking ||
-              (snapshot.phase == ExecutionRoutePhase3D::kStopped &&
-               snapshot.route.has_value() &&
-               snapshot.route->planned_endpoint_semantics ==
-                   RouteEndpointSemantics3D::kLocalStop)) &&
+      return executionRouteAcceptsCertifiedReplacement3D(snapshot) &&
              snapshot.route.has_value() && snapshot.route->geometry != nullptr &&
              snapshot.route->identity.generation == pending.base_route_generation &&
              snapshot.route->geometry->executable_geometry_revision ==

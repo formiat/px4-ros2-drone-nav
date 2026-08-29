@@ -103,6 +103,18 @@ void ProductionMppiNode::maybeRequestStaticRouteExtensionFromExecution(
     return;
   }
   const ExecutionRouteSnapshot3D& source = *route_execution.source_snapshot;
+  const std::optional<CertifiedRouteSuffix3D>& route = source.route;
+  const CertifiedRouteSuffix3D* const active_route =
+      route.has_value() ? std::addressof(route.value()) : nullptr;
+  if (route_execution.physical_trajectory_invalidated && active_route != nullptr &&
+      executionRouteAcceptsCertifiedReplacement3D(source)) {
+    // A physical invalidation is latched for the resident generation. Search
+    // must outlive its finite braking tail: a rejected candidate is retried by
+    // the failed-search latch while the safe resident owner brakes or holds.
+    requestStaticRouteReplan(RouteReleaseReason3D::kBlocked,
+                             active_route->identity.generation);
+    return;
+  }
   const bool suspended_route =
       source.phase == ExecutionRoutePhase3D::kAwaitingSuccessor &&
       source.route.has_value() && !source.finite_execution.has_value() &&
@@ -110,35 +122,24 @@ void ProductionMppiNode::maybeRequestStaticRouteExtensionFromExecution(
   if (source.phase != ExecutionRoutePhase3D::kFollowing && !suspended_route) {
     return;
   }
-  const std::optional<CertifiedRouteSuffix3D>& route = source.route;
-  if (!route.has_value()) {
-    return;
-  }
-  const CertifiedRouteSuffix3D& active_route = route.value();
-  if (route_execution.physical_trajectory_invalidated) {
-    // Physical invalidation is latched once per resident route generation, but
-    // finding and activating its replacement can require several bounded
-    // attempts against newer raw worlds. Keep supplying the request; the
-    // failed-search latch and replan gate own retry cadence and coalescing.
-    requestStaticRouteReplan(RouteReleaseReason3D::kBlocked,
-                             active_route.identity.generation);
+  if (active_route == nullptr) {
     return;
   }
   const RouteProjection3D projection = projectOntoRoute3DWithinStationWindow(
-      *active_route.geometry->route,
+      *active_route->geometry->route,
       Point3{navigation.state.x, navigation.state.y, navigation.state.z},
-      active_route.progress.station_m, active_route.endStationM());
+      active_route->progress.station_m, active_route->endStationM());
   if (!projection.valid ||
       (optional_constraints_.route_cross_track_constraints_enabled &&
        projection.distance_m > route_tracking_policy_.maximum_cross_track_m)) {
     return;
   }
   maybeRequestStaticRouteExtension(
-      esdf, active_route, navigation,
+      esdf, *active_route, navigation,
       RouteProgressProjection3D{
           .valid = true,
           .station_m = projection.station_m,
-          .total_length_m = active_route.endStationM(),
+          .total_length_m = active_route->endStationM(),
           .remaining_m = projection.remaining_m,
           .cross_track_m = projection.distance_m,
           .point = {projection.point.x, projection.point.y},

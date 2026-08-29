@@ -47,6 +47,20 @@ executionRouteEndpointSemantics3D(const ExecutionRouteSnapshot3D& snapshot) noex
                                     : RouteEndpointSemantics3D::kContinuation;
 }
 
+bool executionRouteAcceptsCertifiedReplacement3D(
+    const ExecutionRouteSnapshot3D& snapshot) noexcept {
+  const CertifiedRouteSuffix3D* const route =
+      snapshot.route.has_value() ? std::addressof(snapshot.route.value()) : nullptr;
+  if (route == nullptr) {
+    return false;
+  }
+  return snapshot.phase == ExecutionRoutePhase3D::kFollowing ||
+         snapshot.phase == ExecutionRoutePhase3D::kAwaitingSuccessor ||
+         snapshot.phase == ExecutionRoutePhase3D::kBraking ||
+         (snapshot.phase == ExecutionRoutePhase3D::kStopped &&
+          route->planned_endpoint_semantics == RouteEndpointSemantics3D::kLocalStop);
+}
+
 std::string_view finiteExecutionKind3DName(const FiniteExecutionKind3D kind) noexcept {
   switch (kind) {
     case FiniteExecutionKind3D::kNominal:

@@ -91,6 +91,40 @@ TEST(ExecutionRouteSnapshot3DTest,
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
+     PhysicalReplacementEligibilitySurvivesResidentBraking) {
+  SnapshotFixture3D fixture;
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
+      fixture.activeSnapshot();
+  ASSERT_NE(active, nullptr);
+  ASSERT_TRUE(active->route.has_value());
+
+  ExecutionRouteSnapshot3D snapshot = *active;
+  EXPECT_TRUE(executionRouteAcceptsCertifiedReplacement3D(snapshot));
+
+  snapshot.phase = ExecutionRoutePhase3D::kBraking;
+  EXPECT_TRUE(executionRouteAcceptsCertifiedReplacement3D(snapshot));
+
+  snapshot.phase = ExecutionRoutePhase3D::kAwaitingSuccessor;
+  EXPECT_TRUE(executionRouteAcceptsCertifiedReplacement3D(snapshot));
+
+  snapshot.phase = ExecutionRoutePhase3D::kDirectTracking;
+  EXPECT_FALSE(executionRouteAcceptsCertifiedReplacement3D(snapshot));
+
+  CertifiedRouteSuffix3D* const resident_route =
+      snapshot.route.has_value() ? std::addressof(snapshot.route.value()) : nullptr;
+  ASSERT_NE(resident_route, nullptr);
+  snapshot.phase = ExecutionRoutePhase3D::kStopped;
+  resident_route->planned_endpoint_semantics = RouteEndpointSemantics3D::kLocalStop;
+  EXPECT_TRUE(executionRouteAcceptsCertifiedReplacement3D(snapshot));
+
+  resident_route->planned_endpoint_semantics = RouteEndpointSemantics3D::kMissionStop;
+  EXPECT_FALSE(executionRouteAcceptsCertifiedReplacement3D(snapshot));
+
+  snapshot.route.reset();
+  EXPECT_FALSE(executionRouteAcceptsCertifiedReplacement3D(snapshot));
+}
+
+TEST(ExecutionRouteSnapshot3DTest,
      CertifiedGeometryIsIsolatedFromRetainedMutableAliases) {
   SnapshotFixture3D fixture;
   auto mutable_route = std::make_shared<std::vector<RouteSample3D>>(fixture.route);

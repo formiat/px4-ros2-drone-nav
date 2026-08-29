@@ -319,6 +319,12 @@ struct ExecutionRouteSnapshot3D {
   [[nodiscard]] std::uint64_t routeGenerationHighWater() const noexcept;
 };
 
+// True when the resident route may remain the lineage predecessor of a newly
+// certified successor. Candidate geometry, evidence, and finite execution are
+// still validated independently before the replacement can be published.
+[[nodiscard]] bool executionRouteAcceptsCertifiedReplacement3D(
+    const ExecutionRouteSnapshot3D& snapshot) noexcept;
+
 using ExecutionPlan3D = ExecutionRouteSnapshot3D;
 
 struct ExecutionRouteActivation3D {
