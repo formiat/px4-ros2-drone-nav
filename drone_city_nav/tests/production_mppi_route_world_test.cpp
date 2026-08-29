@@ -122,6 +122,60 @@ TEST(ProductionMppiRouteWorldTest,
             ProductionWorldGenerationStatus::kObservedPlannerWorldMismatch);
 }
 
+TEST(ProductionMppiRouteWorldTest,
+     PhysicalReplanOverlayDoesNotMisrepresentEsdfGeneration) {
+  ProductionMppiPreparedEsdf world = coherentObservedWorld();
+  const auto newer_occupancy = std::make_shared<const ObservedOccupancyGrid3D>(
+      world.observed_occupancy->bounds());
+  const RawMapVersion newer_version{
+      .producer_instance_id = 7U, .base_snapshot_revision = 400U, .revision = 470U};
+  const std::shared_ptr<const VersionedObservedRawWorld3D> newer_owner =
+      VersionedObservedRawWorld3D::captureOwned(newer_version, newer_occupancy,
+                                                std::nullopt, std::nullopt);
+  ASSERT_NE(newer_owner, nullptr);
+  const ProductionMppiRawWorld3D newer_raw{
+      .version = newer_version,
+      .occupancy = newer_occupancy,
+      .execution_owner = newer_owner,
+      .dirty_chunks = {},
+      .full_reset = false,
+  };
+
+  world.static_route_replan_request = true;
+  world.route_search_planner_world =
+      captureObservedRouteSearchWorld3D(newer_raw, std::nullopt, std::nullopt);
+
+  ASSERT_NE(world.route_search_planner_world, nullptr);
+  EXPECT_TRUE(world.route_search_planner_world->full_reset);
+  EXPECT_EQ(world.route_search_planner_world->revision, 470U);
+  EXPECT_EQ(routeSearchPlannerWorld3D(world), world.route_search_planner_world);
+  EXPECT_TRUE(productionWorldGenerationCoherent(world));
+  EXPECT_EQ(world.local_world_generation.raw_map.revision, 451U);
+  EXPECT_EQ(navigationWorldCertificate3D(world).esdf_source_raw_revision, 451U);
+}
+
+TEST(ProductionMppiRouteWorldTest, RawSearchOverlayRequiresExactExecutionOwner) {
+  const GridBounds3D bounds{0.0, 0.0, 0.0, 1.0, 4, 4, 4};
+  const auto occupancy = std::make_shared<const ObservedOccupancyGrid3D>(bounds);
+  const auto other_occupancy = std::make_shared<const ObservedOccupancyGrid3D>(bounds);
+  const RawMapVersion version{
+      .producer_instance_id = 7U, .base_snapshot_revision = 400U, .revision = 470U};
+  const std::shared_ptr<const VersionedObservedRawWorld3D> mismatched_owner =
+      VersionedObservedRawWorld3D::captureOwned(version, other_occupancy, std::nullopt,
+                                                std::nullopt);
+  ASSERT_NE(mismatched_owner, nullptr);
+  const ProductionMppiRawWorld3D raw{
+      .version = version,
+      .occupancy = occupancy,
+      .execution_owner = mismatched_owner,
+      .dirty_chunks = {},
+      .full_reset = false,
+  };
+
+  EXPECT_EQ(captureObservedRouteSearchWorld3D(raw, std::nullopt, std::nullopt),
+            nullptr);
+}
+
 TEST(ProductionMppiRouteWorldTest, ObservedCoverageMustMatchExactWorldResources) {
   ProductionMppiPreparedEsdf world = coherentObservedWorld();
   ++world.observed_esdf_resource.coverage.source_raw_version.revision;

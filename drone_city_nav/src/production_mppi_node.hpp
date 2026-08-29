@@ -205,6 +205,11 @@ struct ProductionMppiPreparedEsdf {
   // Continuations must not replace it with a newer obstacle-memory snapshot:
   // publication is revalidated against the latest raw world atomically.
   std::shared_ptr<const PersistentPlannerWorld3D> observed_planner_world;
+  // A physical-collision replan may use a newer immutable raw snapshot without
+  // pretending that the resident ESDF was built from that snapshot. This
+  // transaction-only overlay is a hard planning constraint and is deliberately
+  // excluded from LocalWorldGeneration coherence.
+  std::shared_ptr<const PersistentPlannerWorld3D> route_search_planner_world;
   ObservedEsdfResource3D observed_esdf_resource{};
   std::optional<ProprioceptiveFreeSpaceSeed3D> proprioceptive_free_space_seed;
   std::optional<LaunchSupportContact3D> launch_support_contact;

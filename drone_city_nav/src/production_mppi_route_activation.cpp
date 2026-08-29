@@ -919,6 +919,7 @@ void ProductionMppiNode::commitRouteActivation3D(
       candidate.static_route_replan_request = false;
       candidate.static_route_replan_base_generation = 0U;
       candidate.static_route_replan_reason = RouteReleaseReason3D::kNone;
+      candidate.route_search_planner_world.reset();
       prepared_esdf_ = candidate;
       result.certified_pending = true;
     }

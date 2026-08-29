@@ -383,19 +383,43 @@ void ProductionMppiNode::requestStaticRouteReplan(
     request->static_route_replan_request = true;
     request->static_route_replan_base_generation = search_generation;
     request->static_route_replan_reason = reason;
+    request->route_search_planner_world.reset();
   }
 
+  std::uint64_t dispatched_raw_revision{0U};
   if (!use_static_map_) {
     const std::uint64_t blocked_raw_revision =
         observed_route_blocked_raw_revision_.load(std::memory_order_acquire);
     if (blocked_raw_revision > request->source_raw_revision) {
-      RCLCPP_INFO_THROTTLE(
-          get_logger(), *get_clock(), 1000,
-          "OBSERVED_ROUTE_REPLAN status=deferred_waiting_for_esdf raw_revision=%" PRIu64
-          " esdf_source_raw_revision=%" PRIu64 " generation=%" PRIu64,
-          blocked_raw_revision, request->source_raw_revision,
-          request->static_route_replan_base_generation);
-      return;
+      const std::shared_ptr<const ProductionMppiRawWorld3D> latest_raw_world =
+          latest_raw_world_3d_.load(std::memory_order_acquire);
+      const std::shared_ptr<const PersistentPlannerWorld3D> search_world =
+          latest_raw_world != nullptr
+              ? captureObservedRouteSearchWorld3D(
+                    *latest_raw_world, request->proprioceptive_free_space_seed,
+                    request->launch_support_contact)
+              : nullptr;
+      if (search_world == nullptr ||
+          search_world->producer_instance_id != request->producer_instance_id ||
+          search_world->revision < blocked_raw_revision) {
+        RCLCPP_INFO_THROTTLE(
+            get_logger(), *get_clock(), 1000,
+            "OBSERVED_ROUTE_REPLAN status=deferred_waiting_for_raw_snapshot "
+            "blocked_raw_revision=%" PRIu64 " latest_raw_revision=%" PRIu64
+            " esdf_source_raw_revision=%" PRIu64 " generation=%" PRIu64,
+            blocked_raw_revision,
+            latest_raw_world != nullptr ? latest_raw_world->version.revision : 0U,
+            request->source_raw_revision, request->static_route_replan_base_generation);
+        return;
+      }
+      request->route_search_planner_world = search_world;
+      dispatched_raw_revision = search_world->revision;
+      RCLCPP_INFO(get_logger(),
+                  "OBSERVED_ROUTE_REPLAN status=using_raw_search_overlay "
+                  "raw_revision=%" PRIu64 " esdf_source_raw_revision=%" PRIu64
+                  " generation=%" PRIu64,
+                  dispatched_raw_revision, request->source_raw_revision,
+                  request->static_route_replan_base_generation);
     }
   }
 
@@ -461,6 +485,15 @@ void ProductionMppiNode::requestStaticRouteReplan(
       return;
     }
     pending_route_planning_world_ = request;
+  }
+  if (dispatched_raw_revision != 0U) {
+    std::uint64_t previous_dispatched =
+        observed_route_replan_dispatched_raw_revision_.load(std::memory_order_relaxed);
+    while (previous_dispatched < dispatched_raw_revision &&
+           !observed_route_replan_dispatched_raw_revision_.compare_exchange_weak(
+               previous_dispatched, dispatched_raw_revision, std::memory_order_release,
+               std::memory_order_relaxed)) {
+    }
   }
   route_planning_queue_condition_.notify_all();
   RCLCPP_INFO(get_logger(),
