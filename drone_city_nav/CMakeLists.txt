@@ -1220,6 +1220,7 @@ if(BUILD_TESTING)
                   tests/execution_route_snapshot_3d_lifecycle_braking_test.cpp
                   tests/execution_route_snapshot_3d_optional_constraints_test.cpp
                   tests/execution_route_snapshot_3d_plan_test.cpp
+                  tests/execution_route_snapshot_3d_successor_evidence_test.cpp
                   tests/execution_route_snapshot_3d_tracking_tube_test.cpp
                   tests/execution_route_snapshot_3d_transitions_test.cpp
                   tests/execution_route_snapshot_3d_validation_test.cpp

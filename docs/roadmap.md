@@ -438,16 +438,21 @@ validation is authoritative; any-angle shortcutting may reduce lattice artifacts
 only after the shortcut passes the same raw validation and the shared complete
 path-time profile proves that predicted execution time does not increase.
 
-The planner has one route-producing pipeline with two cooperating search layers.
-Persistent D* Lite owns raw-safe connectivity, incremental repair, and admissible
-anisotropic translation-time labels. A resumable direction-labelled refinement
-uses those labels inside the same planner to minimize predicted execution time;
-its transition cost includes jerk-limited braking and restart plus physically
+The planner has one route-producing pipeline with cooperating raw-connectivity,
+feasibility, and execution-time search sessions. Persistent D* Lite owns
+raw-safe connectivity, incremental repair, and admissible anisotropic
+translation-time labels. A resumable direction-labelled refinement uses those
+labels inside the same planner to minimize predicted execution time; its
+transition cost includes jerk-limited braking and restart plus physically
 bounded stationary yaw whenever the compiler's 3D tangent threshold requires a
-`StopAndTurn`. A complete raw-safe D* route is the refinement's initial upper
-bound, never a competing publication. The refinement may resume across bounded
-calls and no new route is published until its proof completes or a previously
-admitted raw-valid incumbent is retained. An occupied-cell removal disables any
+`StopAndTurn`.
+
+The planner contract must report a publishable incumbent independently from
+search progress. A first feasible raw-safe route may be admitted without being
+mistaken for convergence, and the same search session must continue until
+refinement converges, reports no route, or is invalidated. Goal-altitude-first
+queue ordering is forbidden because it can exhaust one horizontal layer before
+considering a required climb or descent. An occupied-cell removal disables any
 retained D* label that could overestimate a newly opened alternative and falls
 back to the geometric admissible heuristic until the next full search lineage.
 
@@ -474,9 +479,10 @@ inability to follow the route. A continuity-preserving successor may improve the
 route only after full certification and hysteresis; an extension does not change
 the active intent.
 
-One `RouteManager3D` owns immutable route chunks, monotonic progress, an
-overlapping future-station successor, and atomic suffix repair. Every admitted
-non-terminal route has certified remaining reserve of at least:
+One `RouteExecutionManager3D` owns immutable route chunks, monotonic progress,
+the pending and active route, an overlapping future-station successor, and
+atomic suffix repair. Every admitted non-terminal route has certified remaining
+reserve of at least:
 
 ```text
 stopping_distance + speed * p99_successor_latency + certified_overlap
@@ -489,38 +495,48 @@ repair misses the braking boundary, the certified braking plan becomes the
 execution owner; the owner is never cleared merely because repair or a compare-
 and-swap attempt failed.
 
-Publish one immutable atomic `ExecutionPlan3D` containing the mission and route
-identities, geometry revision, progress, finite nominal horizon, certified
-braking fallback, raw-validation certificate, and all required evidence
-revisions. MPPI may refresh its short horizon at control rate without changing
-route ownership. A progress projection mismatch or snapshot conflict requests a
-fresh read and retry; only an exact raw collision result may report
-`raw_collision`.
+Execution state is a tagged variant for following, direct tracking, braking,
+stationary hold, awaiting successor, and revocation. A pure reducer owns its
+transitions so conflicting route, direct, braking, and hold combinations cannot
+be constructed.
+
+Publish one immutable atomic `CommittedExecutionAuthority3D` containing the
+execution plan, owner identity, exact versioned execution input, and
+applied-control evidence. The plan contains mission and route identities,
+geometry revision, progress, finite nominal horizon, certified braking fallback,
+raw-validation certificate, and all required evidence revisions. MPPI may
+refresh its short horizon at control rate without changing route ownership. A
+progress projection mismatch or snapshot conflict requests a fresh read and
+retry; only an exact raw collision result may report `raw_collision`.
 
 ### Implementation Order And Cleanup
 
-1. Make production no-static navigation fail closed unless 3D lidar and the raw
-   3D world are active; remove strict-known and 2D production alternatives.
-2. Introduce the sparse raw world and known-obstacle distance interfaces, then
-   remove local-ESDF boundaries from hard planning and smoothing decisions.
-3. Add and integrate the persistent full-3D planner and one 3D ETA objective;
-   retire competing route pipelines and XY-only fallbacks.
-4. Introduce `ActiveIntent3D`, `RouteManager3D`, reserve admission, future-station
-   splice, suffix repair, and the atomic `ExecutionPlan3D` boundary.
-5. Replace the dense observed-distance hot path with bounded sparse occupied-set
-   updates; retain compiled static topology only as offline passage evidence.
-6. Remove superseded flags, configuration, diagnostics states, code paths, and
-   tests. Split oversized production-node sources along the new ownership
-   boundaries while retaining raw obstacle memory, exact validation, MPPI,
-   latest-lidar protection, PX4 execution, and truthful diagnostics.
+The detailed contracts and requirement checklist are maintained in
+[`navigation_architecture_remediation.md`](navigation_architecture_remediation.md).
+The implementation order is:
 
-The current implementation now includes the persistent adaptive lattice and the
-direction-labelled execution-time refinement, together with the immutable sparse
-`KnownObstacleDistance3D` cache. The observed path structurally shares unaffected
-8-cubed chunks, uses an exact capped source halo, and creates a dense float
-projection only for the controller upload boundary. Item 12 remains in progress
-until the complete static audit and unchanged three-run Manhattan mission gate
-below are finished.
+1. Separate planner incumbent publication from convergence, continue refinement,
+   and introduce explicit search/coordinator boundaries.
+2. Introduce the single raw-occupied collision oracle and immutable world and
+   route-stage artifacts; remove derived-ESDF hard-collision authority and route
+   state from the resident world.
+3. Move motion, dynamics, and risk types below route and MPPI, then compile once
+   from the exact initial vehicle state into a sealed `CompiledTrajectory3D`.
+4. Replace phase plus optionals with a tagged execution variant, one pure
+   reducer, one pending/active `RouteExecutionManager3D`, and one atomic
+   committed execution authority.
+5. Extract world, planning, trajectory, execution, control, and diagnostics
+   services from `ProductionMppiNode` so the ROS node becomes a composition root.
+6. Enforce the resulting dependency graph with internal CMake targets, register
+   every production-relevant test source, replace source-text transaction guards
+   with executable tests, and remove legacy lifecycle code and terminology.
+
+The current implementation already includes the persistent adaptive lattice,
+direction-labelled execution-time refinement, and immutable sparse
+`KnownObstacleDistance3D` cache. It still has the ownership and stage-contract
+debt tracked by the linked checklist. Item 12 remains in progress until that
+checklist, the complete static audit, and the unchanged three-run Manhattan
+mission gate below are finished.
 
 ### Validation
 

@@ -98,11 +98,7 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         )[1].split(
             "ProductionMppiNode::handleRequestedExecutionRevocation", maxsplit=1
         )[0]
-        self.assertIn(
-            "!retire_certified_route &&\n"
-            "      !optional_constraints_.nonphysical_execution_revocation_enabled",
-            revoke,
-        )
+        self.assertIn("executionRevocationAllowed(", revoke)
         no_path = holds.split(
             "ProductionMppiNode::publishNoExecutablePathHold", maxsplit=1
         )[1].split(

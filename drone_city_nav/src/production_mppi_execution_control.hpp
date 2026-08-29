@@ -123,6 +123,15 @@ enum class ProductionMppiPhysicalCollisionAction : std::uint8_t {
   kRequestRouteSuccessor,
 };
 
+// Physical invalidation always permits a fail-closed transport revocation.
+// Non-physical policy failures may revoke only when the explicit optional
+// constraint is enabled; otherwise the resident finite owner remains in force.
+[[nodiscard]] constexpr bool executionRevocationAllowed(
+    const bool physical_route_invalidation,
+    const bool nonphysical_execution_revocation_enabled) noexcept {
+  return physical_route_invalidation || nonphysical_execution_revocation_enabled;
+}
+
 // A rejected candidate has never owned vehicle motion and therefore cannot
 // invalidate the resident finite execution. Only physical evidence intersecting
 // the already-published finite trajectory authorizes its emergency successor.

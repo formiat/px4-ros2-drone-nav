@@ -57,6 +57,14 @@ TEST(ProductionMppiExecutionControlTest,
 }
 
 TEST(ProductionMppiExecutionControlTest,
+     AllowsPhysicalRevocationAndGatesNonphysicalRevocationByPolicy) {
+  EXPECT_TRUE(executionRevocationAllowed(true, false));
+  EXPECT_TRUE(executionRevocationAllowed(true, true));
+  EXPECT_TRUE(executionRevocationAllowed(false, true));
+  EXPECT_FALSE(executionRevocationAllowed(false, false));
+}
+
+TEST(ProductionMppiExecutionControlTest,
      DistinguishesBackgroundRouteRepairFromFiniteExecutionInvalidation) {
   EXPECT_EQ(residentObstacleDisposition({}),
             ProductionMppiResidentObstacleDisposition::kClear);

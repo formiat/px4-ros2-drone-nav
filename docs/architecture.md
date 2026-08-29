@@ -72,7 +72,9 @@ snapshot/delta transport, and selected-spectator 3D clouds.
   `KnownObstacleDistance3D` chunks and materializes only the controller upload
   projection;
 - publishes latched planner-world readiness after successful ESDF activation;
-- owns the single persistent D* Lite strategic planner and active route intent;
+- currently hosts the persistent D* Lite planner and the production route and
+  execution orchestration while those owners are extracted into internal
+  services;
 - certifies route geometry, tracking-error tube, successor reserve, and suffix
   repair against exact raw-world lineage;
 - selects local lookahead targets;
@@ -165,14 +167,22 @@ footprint is raw-collision-free.
 `PersistentDStarLitePlanner3D` is the single production strategic route producer.
 It searches `(x, y, z)`, incrementally repairs changed occupied evidence, and uses
 the shared `FlightTimeModel3D` for anisotropic translation and bounded turn time.
-An incomplete search resumes; it does not publish an opportunistic frontier
-prefix.
+The target anytime contract admits a complete feasible incumbent while
+continuing refinement independently. The current result/status coupling stops
+that refinement after the first executable route and is an active remediation
+item; no documentation claim should treat the planner as converged at that
+point.
 
-`ActiveIntent3D` and `RouteManager3D` keep a valid route sticky, start successor
-planning from a certified future station, splice with measured latency and braking
-reserve, and repair only invalid suffixes. Route geometry, tracking tube, nominal
-horizon, braking fallback, and evidence revisions cross the execution boundary as
-one immutable plan.
+The target ownership model is specified in
+[`navigation_architecture_remediation.md`](navigation_architecture_remediation.md).
+`RouteExecutionManager3D` will keep a valid route sticky, start successor
+planning from a certified future station, splice with measured latency and
+braking reserve, and repair only invalid suffixes. Route geometry, tracking
+tube, nominal horizon, braking fallback, owner, versioned input, applied-control
+evidence, and evidence revisions must cross the execution boundary as one
+immutable committed authority. Until that migration is complete, production
+ownership remains distributed across the node, snapshot store, pending mailbox,
+and prepared-world aggregate and must not be described as a finished boundary.
 
 GPU MPPI owns executable local motion and continuously warm-starts from its
 previous control sequence. Latest raw lidar evidence validates the finite swept

@@ -18,11 +18,14 @@ passage remains reachable through the complete fine graph. Occupied updates
 invalidate only cached edges whose endpoint reach can intersect the changed raw
 cells.
 
-`ActiveIntent3D` preserves the mission intent while `RouteManager3D` owns the
-accepted immutable route identity, full-3D progress, and certified reserve.
+The target `RouteExecutionManager3D` preserves the mission intent and owns the
+accepted immutable route identity, full-3D progress, pending successor, and
+certified reserve. The current production snapshot store, pending mailbox, and
+node-owned lifecycle fields are being consolidated under the remediation plan in
+[`navigation_architecture_remediation.md`](navigation_architecture_remediation.md).
 Ordinary world updates do not replace a still-valid route. Planning starts from
-the current mission coordinate or from a certified future stitch station; vehicle
-yaw is never a strategic search constraint.
+the current mission coordinate or from a certified future stitch station;
+vehicle yaw is never a strategic search constraint.
 
 ## Successors And Suffix Repair
 
@@ -55,8 +58,9 @@ using:
 - the previous control sequence as a warm start.
 
 Route geometry, nominal finite horizon, braking fallback, raw-validation
-certificate, and all evidence revisions cross the publication boundary as one
-atomic execution plan. A mixed generation or stale owner fails closed.
+certificate, owner identity, versioned input, applied-control evidence, and all
+evidence revisions cross the publication boundary as one atomic committed
+authority. A mixed generation or stale owner fails closed.
 
 Only a fresh timestamped `MppiTrajectoryHorizon` is executable. Offboard tracks
 its position, velocity, and acceleration feed-forward and publishes exact applied-

@@ -54,12 +54,12 @@ retained. MPPI continues
 using the last complete immutable field until a newer coherent generation is
 ready.
 
-Coherent-world publication and route activation serialize through the same
-resident-state transaction. A completed asynchronous ESDF build replaces only
-the linked world resources on the latest resident state; it cannot restore the
-route generation that was current when the build started. Whichever transaction
-wins first therefore leaves the CPU/GPU world generation and the route
-supervisor ownership mutually consistent.
+Coherent-world publication and route activation must serialize through explicit
+world and execution authorities. A completed asynchronous ESDF build replaces
+only immutable world resources and cannot copy, clear, or restore route state.
+The current `ProductionMppiPreparedEsdf` aggregate still mixes those stages; its
+removal is tracked by
+[`navigation_architecture_remediation.md`](navigation_architecture_remediation.md).
 
 Rate-limited work is retained by a latest-wins deferred scheduler. The newest
 pending state is processed when the rate deadline arrives even if no later
@@ -96,9 +96,12 @@ The planner retains its D* Lite state across compatible world revisions. Occupie
 voxel deltas update only affected vertices, while unchanged raw occupancy reuses
 the existing search state. An occupied delta invalidates only incident cached
 edges and already resident D* states inside the maximum-edge sweep reach. Search
-that reaches its per-tick budget remains
-`search_in_progress` and resumes on a later tick. An incomplete prefix is not
-published as a substitute mission route.
+that reaches its per-tick budget must remain running and resume on a later tick
+independently from whether it also produced a publishable complete incumbent.
+The current result/status coupling does not yet satisfy that anytime contract
+after the first feasible route; the migration is tracked by the active
+remediation checklist. An incomplete prefix is not published as a substitute
+mission route.
 
 Every edge uses the shared `FlightTimeModel3D`, so horizontal and vertical speed,
 acceleration, jerk, and stationary turn limits contribute to one time objective.
@@ -106,12 +109,13 @@ The materialized result is then geometry-optimized, assigned a speed-dependent
 tracking tube, compiled into immutable execution geometry, and certified against
 the exact raw world lineage before activation.
 
-`ActiveIntent3D` and `RouteManager3D` retain the accepted mission intent and route
-identity across ordinary world updates. Successor search starts from a certified
-future station and must preserve stopping distance, measured p99 planning latency,
-and overlap reserve. A newer occupied observation repairs only the affected suffix
-or transfers ownership to the certified braking plan; it never clears a still-valid
-prefix.
+The target `RouteExecutionManager3D` retains the accepted mission intent and
+route identity across ordinary world updates. Successor search starts from a
+certified future station and must preserve stopping distance, measured p99
+planning latency, and overlap reserve. A newer occupied observation repairs only
+the affected suffix or transfers ownership to the certified braking plan; it
+never clears a still-valid prefix. Production is still being migrated from the
+separate snapshot-store, pending-mailbox, and node-owned lifecycle fields.
 
 Offline `FreeSpaceTopology3D` remains optional static evidence for passage
 identities and constrained spans. It is not an online route producer, does not
@@ -129,16 +133,15 @@ resident CPU ESDF, GPU ESDF, and topology generation used for planning.
 Collisions in an already passed prefix do not reject the route. The same pose
 and applied control drive the dynamic handoff simulation. Publication is
 abandoned if the resident world, objective, or captured raw snapshot changes
-before the route supervisor commits it. Unknown voxels remain traversable
+before the execution manager commits it. Unknown voxels remain traversable
 during this raw check.
 
-The resident route and `RouteSupervisor3D` must name the same active generation
-at the execution boundary. A completed segment can temporarily leave its
-resident geometry behind when a successor loses the optimistic activation race.
-That ownership mismatch is a typed non-executable state: execution holds the
-current position and requests a gated recovery search for the resident
-generation until a successor commits. Repeated requests are coalesced, and a
-successful recovery drops the now-obsolete deferred `no_active_route` request.
+The production execution boundary must have one owner. The test-only
+`RouteSupervisor3D` is legacy and is not a production authority. The target
+manager atomically publishes the active plan, owner, input, and applied-control
+evidence; a successor that loses an optimistic race leaves the previous
+authority unchanged and requests a fresh read instead of constructing an
+ownership-mismatch state.
 
 Initial search heading uses a cascade:
 

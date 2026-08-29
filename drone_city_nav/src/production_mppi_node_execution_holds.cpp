@@ -288,8 +288,9 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionRevocatio
   ProductionMppiExecutionPublication publication;
   publication.mode = ProductionMppiExecutionMode::kRevoked;
   publication.reason = reason;
-  if (!physical_route_invalidation &&
-      !optional_constraints_.nonphysical_execution_revocation_enabled) {
+  if (!executionRevocationAllowed(
+          physical_route_invalidation,
+          optional_constraints_.nonphysical_execution_revocation_enabled)) {
     return publication;
   }
   if (!failClosedExecutionReason(reason) || execution_horizon_pub_ == nullptr ||

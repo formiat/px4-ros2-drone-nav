@@ -146,9 +146,7 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
     def test_tracking_uncertainty_caps_speed_from_raw_occupied_evidence(self) -> None:
         tube = (PACKAGE / "src/tracking_error_tube_3d.cpp").read_text()
         compiler = (PACKAGE / "src/route_compiler_3d.cpp").read_text()
-        materialization = (
-            PACKAGE / "src/production_mppi_route_materialization.cpp"
-        ).read_text()
+        activation = (PACKAGE / "src/production_mppi_route_activation.cpp").read_text()
         world_binding = (
             PACKAGE / "src/production_mppi_node_route_compilation.cpp"
         ).read_text()
@@ -160,7 +158,10 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
         self.assertIn("inflatedFootprint(physical_footprint", tube)
         self.assertIn("trackingErrorTubeRadiusM(config, maximum_speed_mps)", tube)
         self.assertIn("makeTrackingErrorTubeProfile3D", compiler)
-        self.assertIn(".tracking_world = trackingErrorTubeWorld3D(world)", materialization)
+        self.assertIn(
+            "activation_raw_owner->occupiedContentFingerprint()", activation
+        )
+        self.assertIn(".tracking_world = tracking_world", activation)
         self.assertIn(
             "observed_raw_world_owner->occupiedContentFingerprint()", world_binding
         )
