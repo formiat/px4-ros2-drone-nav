@@ -347,9 +347,11 @@ suspendFiniteExecution3D(const ExecutionRouteSnapshot3D& current,
       !current.braking_fallback.has_value()) {
     return transitionFailure(ExecutionRouteTransitionStatus3D::kNoChange);
   }
-  if (current.phase != ExecutionRoutePhase3D::kFollowing ||
-      !current.route.has_value() || !current.finite_execution.has_value() ||
-      !current.braking_fallback.has_value() ||
+  const bool suspendable_route_phase =
+      current.phase == ExecutionRoutePhase3D::kFollowing ||
+      current.phase == ExecutionRoutePhase3D::kBraking;
+  if (!suspendable_route_phase || !current.route.has_value() ||
+      !current.finite_execution.has_value() || !current.braking_fallback.has_value() ||
       current.execution_owner_epoch == std::numeric_limits<std::uint64_t>::max()) {
     return transitionFailure(
         ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);

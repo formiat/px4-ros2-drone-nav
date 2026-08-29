@@ -240,6 +240,7 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
       .tracking_error_tube_handoff_active = false,
       .execution_owner_available = false,
       .pending_activation = false,
+      .physical_trajectory_invalidated = false,
       .direct_tracking_identity = std::move(direct_tracking_identity),
   };
   result.source_snapshot = execution_route_store_.snapshot();
@@ -287,10 +288,23 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
             result.source_snapshot->route->geometry->executable_geometry_revision,
     };
     const bool observed_route = active_route.observed_raw_world != nullptr;
-    if (observed_route && !observed_3d_world) {
-      return result;
-    }
-    {
+    const std::uint64_t physically_invalidated_through_generation =
+        physical_trajectory_replan_route_generation_.load(std::memory_order_acquire);
+    const bool physical_invalidation_latched =
+        physically_invalidated_through_generation >= active_route.identity.generation;
+    if (physical_invalidation_latched) {
+      result.status = RouteExecutionStatus3D::kRawCollision;
+      result.physical_trajectory_invalidated = true;
+      RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "ROUTE_EXECUTION3D snapshot_version=%" PRIu64 " route_generation=%" PRIu64
+          " status=physical_trajectory_invalidated "
+          "action=hold_resident_owner_until_certified_successor",
+          result.source_snapshot->version, active_route.identity.generation);
+    } else {
+      if (observed_route && !observed_3d_world) {
+        return result;
+      }
       RouteExecutionObservation3D observation = makeExecutionObservation(
           world, objective, execution_navigation, minimum_tracking_sample_sequence,
           execution_maximum_cross_track_m, footprint);
@@ -349,6 +363,7 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
       }
       const bool active_trajectory_physical_collision =
           active_trajectory_raw_collision || active_trajectory_latest_lidar_collision;
+      result.physical_trajectory_invalidated = active_trajectory_physical_collision;
       const auto* const raw_certificate =
           std::get_if<ObservedRawRouteCertificate3D>(&active_route.certificate);
       observation.previously_validated_through_raw_revision =

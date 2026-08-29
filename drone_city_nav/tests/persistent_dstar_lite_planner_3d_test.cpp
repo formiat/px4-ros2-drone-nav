@@ -568,6 +568,9 @@ TEST(PersistentDStarLitePlanner3DTest,
   EXPECT_TRUE(result.feasibility_route_found);
   EXPECT_GT(result.feasibility_expansions, 1U);
   EXPECT_GT(result.points.size(), 2U);
+  for (const Point3& point : result.points) {
+    EXPECT_DOUBLE_EQ(point.z, start.z);
+  }
   expectRawValid(result.points, *occupancy, planner.config().physical_footprint);
 }
 

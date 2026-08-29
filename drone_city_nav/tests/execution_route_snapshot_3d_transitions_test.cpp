@@ -47,6 +47,43 @@ TEST(ExecutionRouteSnapshot3DTest,
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
+     SuspendedRouteAcceptsAFullyCertifiedSameIntentCurrentStateSuccessor) {
+  SnapshotFixture3D fixture;
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
+      fixture.activeSnapshot();
+  ASSERT_NE(active, nullptr);
+  const ExecutionRouteTransitionResult3D suspended =
+      suspendFiniteExecution3D(*active, active->version);
+  ASSERT_TRUE(suspended.applied());
+  ASSERT_NE(suspended.next, nullptr);
+  ASSERT_TRUE(suspended.next->route.has_value());
+
+  ExecutionRouteActivation3D successor_activation = fixture.activation();
+  successor_activation.route_generation = SnapshotFixture3D::kRouteGeneration + 1U;
+  const std::optional<CertifiedRouteSuffix3D> successor =
+      certifyExecutionRoute3D(successor_activation);
+  ASSERT_TRUE(successor.has_value());
+  const FiniteExecutionState3D successor_execution =
+      SnapshotFixture3D::finiteExecutionForRoute(
+          *suspended.next, *successor, FiniteExecutionKind3D::kNominal, true, 102U);
+
+  const ExecutionRouteTransitionResult3D replaced = replaceCertifiedRouteAtHandoff3D(
+      *suspended.next, SnapshotFixture3D::guard(*suspended.next), *successor,
+      successor_execution);
+
+  ASSERT_TRUE(replaced.applied());
+  ASSERT_NE(replaced.next, nullptr);
+  ASSERT_TRUE(replaced.next->route.has_value());
+  EXPECT_TRUE(replaced.next->publishable());
+  EXPECT_EQ(replaced.next->phase, ExecutionRoutePhase3D::kFollowing);
+  EXPECT_EQ(replaced.next->route->identity.generation,
+            SnapshotFixture3D::kRouteGeneration + 1U);
+  EXPECT_EQ(replaced.next->route->owner.id, suspended.next->route->owner.id);
+  EXPECT_EQ(replaced.next->execution_owner_epoch,
+            suspended.next->execution_owner_epoch);
+}
+
+TEST(ExecutionRouteSnapshot3DTest,
      NewRawEvidenceInvalidatesOnlyTheRemainingPublishedFiniteTrajectory) {
   SnapshotFixture3D fixture;
   const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
@@ -329,6 +366,14 @@ TEST(ExecutionRouteSnapshot3DTest,
   EXPECT_EQ(retained_retirement.next->phase, ExecutionRoutePhase3D::kBraking);
   EXPECT_EQ(retained_retirement.next->finite_execution->kind,
             FiniteExecutionKind3D::kEmergencyBrakeTail);
+  const ExecutionRouteTransitionResult3D suspended_brake = suspendFiniteExecution3D(
+      *retained_retirement.next, retained_retirement.next->version);
+  ASSERT_TRUE(suspended_brake.applied());
+  ASSERT_NE(suspended_brake.next, nullptr);
+  EXPECT_EQ(suspended_brake.next->phase, ExecutionRoutePhase3D::kAwaitingSuccessor);
+  EXPECT_TRUE(suspended_brake.next->route.has_value());
+  EXPECT_FALSE(suspended_brake.next->finite_execution.has_value());
+  EXPECT_FALSE(suspended_brake.next->braking_fallback.has_value());
   EXPECT_FALSE(
       certify_against(invalidation, nullptr, FiniteExecutionKind3D::kEmergencyBrakeTail)
           .has_value());

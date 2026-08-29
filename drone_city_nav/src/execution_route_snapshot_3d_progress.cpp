@@ -497,6 +497,77 @@ candidateFiniteExecutionValid(const FiniteExecutionState3D& candidate,
           sameCertificate(candidate.certificate, route->certificate));
 }
 
+[[nodiscard]] bool successorRouteEvidenceNotOlder(
+    const CertifiedRouteSuffix3D& current_route,
+    const CertifiedRouteSuffix3D& successor,
+    const FiniteExecutionState3D& successor_execution) noexcept {
+  if (current_route.validation_policy == nullptr ||
+      successor.validation_policy == nullptr ||
+      current_route.validation_policy->contentFingerprint() !=
+          successor.validation_policy->contentFingerprint()) {
+    return false;
+  }
+
+  const auto* const current_raw =
+      std::get_if<ObservedRawRouteCertificate3D>(&current_route.certificate);
+  const auto* const successor_raw =
+      std::get_if<ObservedRawRouteCertificate3D>(&successor.certificate);
+  if (current_raw != nullptr) {
+    const auto* const successor_execution_raw =
+        std::get_if<ObservedRawFiniteExecutionValidationLineage3D>(
+            &successor_execution.validation_proof.lineage);
+    if (successor_raw == nullptr || successor_execution_raw == nullptr ||
+        successor_raw->producer_instance_id != current_raw->producer_instance_id ||
+        successor_execution_raw->producer_instance_id !=
+            successor_raw->producer_instance_id ||
+        successor_raw->validated_through_revision <
+            current_raw->validated_through_revision ||
+        successor_execution_raw->validated_through_raw_revision <
+            current_raw->validated_through_revision) {
+      return false;
+    }
+    return successor_raw->validated_through_revision !=
+               current_raw->validated_through_revision ||
+           successor_raw->observed_world_content_fingerprint ==
+               current_raw->observed_world_content_fingerprint;
+  }
+
+  const auto* const current_static =
+      std::get_if<StaticRouteCertificate3D>(&current_route.certificate);
+  const auto* const successor_static =
+      std::get_if<StaticRouteCertificate3D>(&successor.certificate);
+  if (current_static == nullptr || successor_static == nullptr ||
+      !std::holds_alternative<StaticFiniteExecutionValidationLineage3D>(
+          successor_execution.validation_proof.lineage)) {
+    return false;
+  }
+  const NavigationWorldCertificate3D& current_world = current_static->world_certificate;
+  const NavigationWorldCertificate3D& successor_world =
+      successor_static->world_certificate;
+  const bool nondecreasing =
+      successor_world.producer_instance_id == current_world.producer_instance_id &&
+      successor_world.esdf_source_raw_revision >=
+          current_world.esdf_source_raw_revision &&
+      successor_world.raw_validated_through_revision >=
+          current_world.raw_validated_through_revision &&
+      successor_world.local_world_generation >= current_world.local_world_generation &&
+      successor_world.topology_revision >= current_world.topology_revision;
+  if (!nondecreasing) {
+    return false;
+  }
+  const bool strictly_advanced =
+      successor_world.esdf_source_raw_revision >
+          current_world.esdf_source_raw_revision ||
+      successor_world.raw_validated_through_revision >
+          current_world.raw_validated_through_revision ||
+      successor_world.local_world_generation > current_world.local_world_generation ||
+      successor_world.topology_revision > current_world.topology_revision;
+  return strictly_advanced ||
+         (sameWorldCertificate(successor_world, current_world) &&
+          successor_static->static_occupancy_content_fingerprint ==
+              current_static->static_occupancy_content_fingerprint);
+}
+
 [[nodiscard]] bool
 successorEvidenceNotOlder(const CertifiedRouteSuffix3D& current_route,
                           const FiniteExecutionState3D& current_execution,

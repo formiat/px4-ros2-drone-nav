@@ -538,6 +538,11 @@ successorEvidenceNotOlder(const CertifiedRouteSuffix3D& current_route,
                           const CertifiedRouteSuffix3D& successor,
                           const FiniteExecutionState3D& successor_execution) noexcept;
 
+[[nodiscard]] bool successorRouteEvidenceNotOlder(
+    const CertifiedRouteSuffix3D& current_route,
+    const CertifiedRouteSuffix3D& successor,
+    const FiniteExecutionState3D& successor_execution) noexcept;
+
 [[nodiscard]] std::optional<CertifiedRouteSuffix3D>
 certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
                             const bool reuse_sealed_geometry_owner);

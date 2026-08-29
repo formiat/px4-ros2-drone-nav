@@ -83,5 +83,6 @@ struct ProductionRouteExecutionSelection3D {
   bool tracking_error_tube_handoff_active{false};
   bool execution_owner_available{false};
   bool pending_activation{false};
+  bool physical_trajectory_invalidated{false};
   std::optional<DirectTrackingOwnerIdentity3D> direct_tracking_identity;
 };

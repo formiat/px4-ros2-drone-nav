@@ -255,9 +255,7 @@ assessStaticRouteSearchCurrency(const StaticRouteSearchRequestIdentity& request,
 
 [[nodiscard]] bool
 staticRouteSearchFailureLatchEligible(const StaticRouteSearchRequestIdentity& request,
-                                      std::uint64_t resident_route_generation,
-                                      bool world_compatible,
-                                      bool objective_matches) noexcept;
+                                      std::uint64_t resident_route_generation) noexcept;
 
 [[nodiscard]] std::string_view
 staticRouteSearchRequestKindName(StaticRouteSearchRequestKind kind) noexcept;

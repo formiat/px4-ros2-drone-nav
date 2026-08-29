@@ -56,6 +56,7 @@ canonicalEdge(const PersistentPlannerNode3D first,
 
 struct FeasibilityQueueEntry3D {
   double estimated_remaining_s{std::numeric_limits<double>::infinity()};
+  double goal_altitude_error_m{std::numeric_limits<double>::infinity()};
   std::size_t depth{0U};
   PersistentPlannerNode3D node{};
   std::uint64_t sequence{0U};
@@ -64,6 +65,13 @@ struct FeasibilityQueueEntry3D {
 struct FeasibilityQueueEntryCompare3D {
   [[nodiscard]] bool operator()(const FeasibilityQueueEntry3D& first,
                                 const FeasibilityQueueEntry3D& second) const noexcept {
+    // Feasibility-first deliberately searches the mission-altitude layer before
+    // widening vertically. This avoids a z-loop-order descent when horizontal
+    // travel dominates the time heuristic, while preserving full 3D fallback
+    // once the preferred layer cannot provide a route.
+    if (first.goal_altitude_error_m != second.goal_altitude_error_m) {
+      return first.goal_altitude_error_m > second.goal_altitude_error_m;
+    }
     if (first.estimated_remaining_s != second.estimated_remaining_s) {
       return first.estimated_remaining_s > second.estimated_remaining_s;
     }
@@ -396,6 +404,7 @@ std::optional<std::vector<Point3>> PersistentDStarLitePlanner3DImpl::findFeasibl
   discovered.insert(start_);
   open.push(FeasibilityQueueEntry3D{
       .estimated_remaining_s = heuristic(start_, goal_),
+      .goal_altitude_error_m = std::abs(pointFor(start_).z - pointFor(goal_).z),
       .depth = 0U,
       .node = start_,
       .sequence = sequence,
@@ -481,6 +490,7 @@ std::optional<std::vector<Point3>> PersistentDStarLitePlanner3DImpl::findFeasibl
       }
       open.push(FeasibilityQueueEntry3D{
           .estimated_remaining_s = heuristic(neighbor, goal_),
+          .goal_altitude_error_m = std::abs(pointFor(neighbor).z - pointFor(goal_).z),
           .depth = depth,
           .node = neighbor,
           .sequence = sequence,

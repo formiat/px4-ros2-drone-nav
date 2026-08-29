@@ -274,9 +274,8 @@ void ProductionMppiNode::processRouteSearch3D(
     const std::scoped_lock lifecycle_lock{static_route_extension_mutex_};
     if (activation.certified_pending) {
       static_route_failed_search_latch_.clear();
-    } else if (staticRouteSearchFailureLatchEligible(
-                   search_request, resident_route_generation,
-                   activation.world_compatible, activation.objective_matches)) {
+    } else if (staticRouteSearchFailureLatchEligible(search_request,
+                                                     resident_route_generation)) {
       const std::uint64_t failed_generation =
           world.static_route_replan_request ? world.static_route_replan_base_generation
                                             : 0U;

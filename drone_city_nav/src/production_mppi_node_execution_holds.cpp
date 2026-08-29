@@ -273,21 +273,22 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishNoExecutablePathHo
     return *retained;
   }
   const bool physical_route_invalidation =
-      cycle.route_execution.lifecycle_event.has_value() &&
-      (cycle.route_execution.lifecycle_event->kind ==
-           RouteLifecycleEventKind3D::kRawInvalidated ||
-       cycle.route_execution.lifecycle_event->kind ==
-           RouteLifecycleEventKind3D::kLatestLidarInvalidated);
+      cycle.route_execution.physical_trajectory_invalidated ||
+      (cycle.route_execution.lifecycle_event.has_value() &&
+       (cycle.route_execution.lifecycle_event->kind ==
+            RouteLifecycleEventKind3D::kRawInvalidated ||
+        cycle.route_execution.lifecycle_event->kind ==
+            RouteLifecycleEventKind3D::kLatestLidarInvalidated));
   return publishExecutionRevocation(reason, cycle.now_ns, physical_route_invalidation);
 }
 
 ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionRevocation(
     const ProductionMppiExecutionReason reason, const std::int64_t now_ns,
-    const bool retire_certified_route) {
+    const bool physical_route_invalidation) {
   ProductionMppiExecutionPublication publication;
   publication.mode = ProductionMppiExecutionMode::kRevoked;
   publication.reason = reason;
-  if (!retire_certified_route &&
+  if (!physical_route_invalidation &&
       !optional_constraints_.nonphysical_execution_revocation_enabled) {
     return publication;
   }
@@ -304,22 +305,22 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionRevocatio
     return publication;
   }
   const ExecutionRouteTransitionResult3D transition = [&] {
-    if (!retire_certified_route) {
+    if (expected->route.has_value()) {
       ExecutionRouteTransitionResult3D suspension =
           suspendFiniteExecution3D(*expected, expected->version);
       if (suspension.applied() ||
           suspension.status == ExecutionRouteTransitionStatus3D::kNoChange) {
         return suspension;
       }
+      return ExecutionRouteTransitionResult3D{};
     }
     return revokeExecution3D(*expected, expected->version);
   }();
   const bool certified_route_preserved =
-      !retire_certified_route &&
+      expected->route.has_value() &&
       ((transition.applied() && transition.next != nullptr &&
         transition.next->route.has_value()) ||
-       (transition.status == ExecutionRouteTransitionStatus3D::kNoChange &&
-        expected->route.has_value()));
+       (transition.status == ExecutionRouteTransitionStatus3D::kNoChange));
   const bool transition_required = transition.applied();
   if (!transition_required &&
       transition.status != ExecutionRouteTransitionStatus3D::kNoChange) {

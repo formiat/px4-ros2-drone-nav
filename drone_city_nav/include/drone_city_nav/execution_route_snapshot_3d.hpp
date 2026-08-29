@@ -676,9 +676,11 @@ retireCertifiedRoute3D(const ExecutionRouteSnapshot3D& current,
     FiniteExecutionPlan3D successor_execution, const CertifiedRouteSplice3D& splice);
 
 // Replaces a still-resident route with a successor independently certified
-// from the current execution state.  This transition is for candidates that
+// from the current execution state. This transition is for candidates that
 // were not planned as overlapping continuations and therefore have no splice
-// proof; the exact resident owner and fresh finite execution remain mandatory.
+// proof. The exact resident owner remains mandatory; a suspended owner may be
+// replaced without retaining its expired finite horizon because the successor
+// carries a fresh, completely certified execution plan from the current state.
 [[nodiscard]] ExecutionRouteTransitionResult3D
 replaceCertifiedRouteAtHandoff3D(const ExecutionRouteSnapshot3D& current,
                                  const ExecutionRouteTransitionGuard3D& guard,

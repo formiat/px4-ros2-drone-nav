@@ -260,11 +260,8 @@ StaticRouteSearchCurrencyAssessment assessStaticRouteSearchCurrency(
 
 bool staticRouteSearchFailureLatchEligible(
     const StaticRouteSearchRequestIdentity& request,
-    const std::uint64_t resident_route_generation, const bool world_compatible,
-    const bool objective_matches) noexcept {
-  return assessStaticRouteSearchCurrency(request, resident_route_generation)
-             .current() &&
-         world_compatible && objective_matches;
+    const std::uint64_t resident_route_generation) noexcept {
+  return assessStaticRouteSearchCurrency(request, resident_route_generation).current();
 }
 
 std::string_view

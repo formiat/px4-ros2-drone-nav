@@ -45,7 +45,6 @@ replaceCertifiedRouteImpl(const ExecutionRouteSnapshot3D& current,
   const bool same_active_intent = sameActiveIntent3D(current_route->owner.active_intent,
                                                      successor.owner.active_intent);
   if ((splice != nullptr && !same_active_intent) ||
-      (splice == nullptr && same_active_intent) ||
       (!same_active_intent && successor.owner.id == current_route->owner.id)) {
     return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
   }
@@ -69,7 +68,11 @@ replaceCertifiedRouteImpl(const ExecutionRouteSnapshot3D& current,
       (current.phase == ExecutionRoutePhase3D::kStopped &&
        current_route->planned_endpoint_semantics ==
            RouteEndpointSemantics3D::kLocalStop);
-  if (!replacement_phase_allowed || !current.finite_execution.has_value() ||
+  const bool suspended_without_execution =
+      splice == nullptr && current.phase == ExecutionRoutePhase3D::kAwaitingSuccessor &&
+      !current.finite_execution.has_value() && !current.braking_fallback.has_value();
+  if (!replacement_phase_allowed ||
+      (!current.finite_execution.has_value() && !suspended_without_execution) ||
       successor_execution.command_horizon.execution_input == nullptr) {
     return transitionFailure(
         ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
@@ -84,9 +87,18 @@ replaceCertifiedRouteImpl(const ExecutionRouteSnapshot3D& current,
       return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
     }
   }
+  const bool successor_evidence_current =
+      current.finite_execution.has_value()
+          ? successorEvidenceNotOlder(*current_route, *current.finite_execution,
+                                      successor, successor_execution.command_horizon)
+          : current_route->progress.execution_input != nullptr &&
+                executionInputNotOlder(
+                    *successor_execution.command_horizon.execution_input,
+                    *current_route->progress.execution_input) &&
+                successorRouteEvidenceNotOlder(*current_route, successor,
+                                               successor_execution.command_horizon);
   if (successor_execution.command_horizon.kind != FiniteExecutionKind3D::kNominal ||
-      !successorEvidenceNotOlder(*current_route, *current.finite_execution, successor,
-                                 successor_execution.command_horizon)) {
+      !successor_evidence_current) {
     return transitionFailure(
         ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
   }
