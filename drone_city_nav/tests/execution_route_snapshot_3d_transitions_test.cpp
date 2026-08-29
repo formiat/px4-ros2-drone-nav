@@ -4,6 +4,109 @@ namespace drone_city_nav {
 namespace {
 
 TEST(ExecutionRouteSnapshot3DTest,
+     NonphysicalRevocationSuspendsOnlyTheFiniteHorizonAndCanResume) {
+  SnapshotFixture3D fixture;
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
+      fixture.activeSnapshot();
+  ASSERT_NE(active, nullptr);
+  ASSERT_EQ(active->phase, ExecutionRoutePhase3D::kFollowing);
+  ASSERT_TRUE(active->route.has_value());
+  ASSERT_TRUE(active->finite_execution.has_value());
+  ASSERT_TRUE(active->braking_fallback.has_value());
+
+  const ExecutionRouteTransitionResult3D suspended =
+      suspendFiniteExecution3D(*active, active->version);
+
+  ASSERT_TRUE(suspended.applied());
+  ASSERT_NE(suspended.next, nullptr);
+  EXPECT_TRUE(suspended.next->valid());
+  EXPECT_FALSE(suspended.next->publishable());
+  EXPECT_EQ(suspended.next->phase, ExecutionRoutePhase3D::kAwaitingSuccessor);
+  ASSERT_TRUE(suspended.next->route.has_value());
+  EXPECT_EQ(suspended.next->route->route_instance_id, active->route->route_instance_id);
+  EXPECT_FALSE(suspended.next->finite_execution.has_value());
+  EXPECT_FALSE(suspended.next->braking_fallback.has_value());
+  EXPECT_EQ(suspendFiniteExecution3D(*suspended.next, suspended.next->version).status,
+            ExecutionRouteTransitionStatus3D::kNoChange);
+
+  FiniteExecutionPlan3D resumed_plan = SnapshotFixture3D::finitePlanForRoute(
+      *suspended.next, *suspended.next->route, FiniteExecutionKind3D::kNominal, 101U);
+  const ExecutionRouteTransitionResult3D resumed = replaceFiniteExecutionPlan3D(
+      *suspended.next, SnapshotFixture3D::guard(*suspended.next),
+      std::move(resumed_plan));
+
+  ASSERT_TRUE(resumed.applied());
+  ASSERT_NE(resumed.next, nullptr);
+  EXPECT_TRUE(resumed.next->valid());
+  EXPECT_TRUE(resumed.next->publishable());
+  EXPECT_EQ(resumed.next->phase, ExecutionRoutePhase3D::kFollowing);
+  ASSERT_TRUE(resumed.next->route.has_value());
+  EXPECT_EQ(resumed.next->route->route_instance_id, active->route->route_instance_id);
+  EXPECT_TRUE(resumed.next->finite_execution.has_value());
+  EXPECT_TRUE(resumed.next->braking_fallback.has_value());
+}
+
+TEST(ExecutionRouteSnapshot3DTest,
+     NewRawEvidenceInvalidatesOnlyTheRemainingPublishedFiniteTrajectory) {
+  SnapshotFixture3D fixture;
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
+      fixture.activeSnapshot();
+  ASSERT_NE(active, nullptr);
+  ASSERT_TRUE(active->route.has_value());
+
+  FiniteExecutionCertification3D stationary_certification =
+      SnapshotFixture3D::finiteCertificationForRoute(
+          *active->route, FiniteExecutionKind3D::kNominal, 101U);
+  const std::optional<mppi::FiniteHorizon> stationary_horizon =
+      mppi::buildFiniteBrakingHorizon(
+          stationary_certification.horizon.states.front(),
+          stationary_certification.horizon.controls.size(),
+          active->route->validation_policy->dynamics(),
+          stationary_certification.execution_input->previousControl());
+  ASSERT_TRUE(stationary_horizon.has_value());
+  stationary_certification.horizon = *stationary_horizon;
+  const std::optional<FiniteExecutionState3D> stationary_execution =
+      certifyFiniteExecution3D(*active, *active->route,
+                               std::move(stationary_certification));
+  ASSERT_TRUE(stationary_execution.has_value());
+  ASSERT_NE(stationary_execution->execution_input, nullptr);
+
+  ObservedOccupancyGrid3D far_route_obstacle = fixture.raw_occupancy;
+  const std::optional<GridIndex3D> far_route_cell =
+      far_route_obstacle.worldToCell(Point3{8.0, 0.0, 5.0});
+  ASSERT_TRUE(far_route_cell.has_value());
+  ASSERT_TRUE(
+      far_route_obstacle.setState(*far_route_cell, ObservedVoxelState::kOccupied));
+  const std::shared_ptr<const VersionedObservedRawWorld3D> far_route_world =
+      fixture.rawWorld(SnapshotFixture3D::kLatestRawRevision + 1U, &far_route_obstacle);
+  ASSERT_NE(far_route_world, nullptr);
+
+  const mppi::FiniteExecutionPathValidation unaffected =
+      validateRemainingFiniteExecutionAgainstObservedWorld3D(
+          *stationary_execution, *stationary_execution->execution_input,
+          *far_route_world, stationary_execution->valid_from_ns);
+  EXPECT_EQ(unaffected.status, mppi::FiniteExecutionPathStatus::kValid);
+
+  ObservedOccupancyGrid3D active_trajectory_obstacle = fixture.raw_occupancy;
+  const mppi::State& active_state = stationary_execution->execution_input->state();
+  const std::optional<GridIndex3D> active_cell = active_trajectory_obstacle.worldToCell(
+      Point3{active_state.x, active_state.y, active_state.z});
+  ASSERT_TRUE(active_cell.has_value());
+  ASSERT_TRUE(
+      active_trajectory_obstacle.setState(*active_cell, ObservedVoxelState::kOccupied));
+  const std::shared_ptr<const VersionedObservedRawWorld3D> active_world =
+      fixture.rawWorld(SnapshotFixture3D::kLatestRawRevision + 1U,
+                       &active_trajectory_obstacle);
+  ASSERT_NE(active_world, nullptr);
+
+  const mppi::FiniteExecutionPathValidation blocked =
+      validateRemainingFiniteExecutionAgainstObservedWorld3D(
+          *stationary_execution, *stationary_execution->execution_input, *active_world,
+          stationary_execution->valid_from_ns);
+  EXPECT_EQ(blocked.status, mppi::FiniteExecutionPathStatus::kRawCollision);
+}
+
+TEST(ExecutionRouteSnapshot3DTest,
      ControlEvidenceRefreshIsSourceAwareAndMonotonicWithinAHorizon) {
   SnapshotFixture3D fixture;
   const std::shared_ptr<const ExecutionRouteSnapshot3D> active =

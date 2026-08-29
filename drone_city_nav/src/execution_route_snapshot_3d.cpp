@@ -635,6 +635,8 @@ bool ExecutionRouteSnapshot3D::valid() const noexcept {
       return !direct_tracking_execution.has_value() && !stationary_hold.has_value() &&
              ((!route.has_value() && !finite_execution.has_value() &&
                !braking_fallback.has_value()) ||
+              (route.has_value() && !finite_execution.has_value() &&
+               !braking_fallback.has_value()) ||
               (route.has_value() &&
                route->planned_endpoint_semantics ==
                    RouteEndpointSemantics3D::kContinuation &&

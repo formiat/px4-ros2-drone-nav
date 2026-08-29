@@ -38,7 +38,9 @@ public:
           double latest_lidar_maximum_age_ms = 1000.0,
           double execution_input_maximum_pose_age_ms = 1000.0,
           double execution_input_maximum_control_age_ms = 1000.0,
-          bool route_cross_track_constraints_enabled = false);
+          bool route_cross_track_constraints_enabled = false,
+          bool latest_lidar_freshness_required = true,
+          bool route_tracking_tube_constraints_enabled = true);
 
   [[nodiscard]] const FlightEnvelopeConfig& flightEnvelope() const noexcept;
   [[nodiscard]] const mppi::DynamicsConfig& dynamics() const noexcept;
@@ -48,19 +50,20 @@ public:
   [[nodiscard]] double executionInputMaximumPoseAgeMs() const noexcept;
   [[nodiscard]] double executionInputMaximumControlAgeMs() const noexcept;
   [[nodiscard]] bool routeCrossTrackConstraintsEnabled() const noexcept;
+  [[nodiscard]] bool latestLidarFreshnessRequired() const noexcept;
+  [[nodiscard]] bool routeTrackingTubeConstraintsEnabled() const noexcept;
   [[nodiscard]] ExecutionValidationPolicyId3D policyId() const noexcept;
   [[nodiscard]] std::uint64_t contentFingerprint() const noexcept;
   [[nodiscard]] bool valid() const noexcept;
 
-  VersionedExecutionValidationPolicy3D(CaptureToken,
-                                       FlightEnvelopeConfig flight_envelope,
-                                       mppi::DynamicsConfig dynamics,
-                                       mppi::AltitudeEnvelopeConfig altitude_envelope,
-                                       SweptFootprintConfig swept_footprint,
-                                       double latest_lidar_maximum_age_ms,
-                                       double execution_input_maximum_pose_age_ms,
-                                       double execution_input_maximum_control_age_ms,
-                                       bool route_cross_track_constraints_enabled);
+  VersionedExecutionValidationPolicy3D(
+      CaptureToken, FlightEnvelopeConfig flight_envelope, mppi::DynamicsConfig dynamics,
+      mppi::AltitudeEnvelopeConfig altitude_envelope,
+      SweptFootprintConfig swept_footprint, double latest_lidar_maximum_age_ms,
+      double execution_input_maximum_pose_age_ms,
+      double execution_input_maximum_control_age_ms,
+      bool route_cross_track_constraints_enabled, bool latest_lidar_freshness_required,
+      bool route_tracking_tube_constraints_enabled);
 
 private:
   FlightEnvelopeConfig flight_envelope_{};
@@ -71,6 +74,8 @@ private:
   double execution_input_maximum_pose_age_ms_{0.0};
   double execution_input_maximum_control_age_ms_{0.0};
   bool route_cross_track_constraints_enabled_{false};
+  bool latest_lidar_freshness_required_{true};
+  bool route_tracking_tube_constraints_enabled_{true};
   std::uint64_t content_fingerprint_{0U};
 };
 

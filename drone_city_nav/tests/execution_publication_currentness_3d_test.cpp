@@ -271,6 +271,11 @@ TEST(ExecutionPublicationCurrentness3DTest,
   EXPECT_EQ(assessExecutionPublicationCurrentness3D(check),
             ExecutionPublicationCurrentnessStatus3D::kLidarNotFresh);
 
+  check.lidar_freshness_required = false;
+  EXPECT_EQ(assessExecutionPublicationCurrentness3D(check),
+            ExecutionPublicationCurrentnessStatus3D::kCurrent);
+  check.lidar_freshness_required = true;
+
   check.publication_now_ns = 0;
   EXPECT_EQ(assessExecutionPublicationCurrentness3D(check),
             ExecutionPublicationCurrentnessStatus3D::kInvalidPublicationTime);

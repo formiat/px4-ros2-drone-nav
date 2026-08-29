@@ -708,7 +708,8 @@ validateOrderedPassageCrossings(const ExecutionRouteGeometry3D& geometry,
     const double initial_station_m, const double minimum_station_m,
     const double maximum_station_m, const std::optional<double> maximum_cross_track_m,
     const std::optional<double> terminal_cross_track_tolerance_m,
-    const double requested_sweep_step_m, const bool allow_initial_handoff) {
+    const double requested_sweep_step_m, const bool allow_initial_handoff,
+    const bool enforce_tracking_tube) {
   RouteAdherenceAssessment3D result;
   if (states.empty() || !std::isfinite(initial_station_m) ||
       !std::isfinite(minimum_station_m) || !std::isfinite(maximum_station_m) ||
@@ -778,10 +779,11 @@ validateOrderedPassageCrossings(const ExecutionRouteGeometry3D& geometry,
         });
   };
   bool tracking_tube_acquired =
+      !enforce_tracking_tube ||
       tracking_tube_assessment(states.front(), previous_projection,
                                previous_projection.distance_m)
           .accepted();
-  if (!tracking_tube_acquired && !allow_initial_handoff) {
+  if (enforce_tracking_tube && !tracking_tube_acquired && !allow_initial_handoff) {
     result.status = FiniteExecutionRouteAdherenceStatus3D::kTrackingTubeExceeded;
     result.failure_distance_m = previous_projection.distance_m;
     return result;
@@ -851,15 +853,17 @@ validateOrderedPassageCrossings(const ExecutionRouteGeometry3D& geometry,
         result.failure_distance_m = cross_track_with_margin_m;
         return result;
       }
-      const TrackingErrorTubeExecutionAssessment3D tube =
-          tracking_tube_assessment(sample_state, projection, cross_track_with_margin_m);
-      if (tube.accepted()) {
-        tracking_tube_acquired = true;
-      } else if (tracking_tube_acquired || !allow_initial_handoff) {
-        result.status = FiniteExecutionRouteAdherenceStatus3D::kTrackingTubeExceeded;
-        result.failure_state_index = state_index;
-        result.failure_distance_m = projection.distance_m;
-        return result;
+      if (enforce_tracking_tube) {
+        const TrackingErrorTubeExecutionAssessment3D tube = tracking_tube_assessment(
+            sample_state, projection, cross_track_with_margin_m);
+        if (tube.accepted()) {
+          tracking_tube_acquired = true;
+        } else if (tracking_tube_acquired || !allow_initial_handoff) {
+          result.status = FiniteExecutionRouteAdherenceStatus3D::kTrackingTubeExceeded;
+          result.failure_state_index = state_index;
+          result.failure_distance_m = projection.distance_m;
+          return result;
+        }
       }
       if (!constrainedPointAccepted(geometry, sample, projection.station_m) ||
           !constrainedSegmentAccepted(geometry, sample_begin,
@@ -897,7 +901,7 @@ validateOrderedPassageCrossings(const ExecutionRouteGeometry3D& geometry,
     previous_point = state_position;
   }
   result.stop = previous_projection;
-  if (!tracking_tube_acquired) {
+  if (enforce_tracking_tube && !tracking_tube_acquired) {
     result.status = FiniteExecutionRouteAdherenceStatus3D::kTrackingTubeExceeded;
     result.failure_state_index = states.size() - 1U;
     result.failure_distance_m = previous_projection.distance_m;

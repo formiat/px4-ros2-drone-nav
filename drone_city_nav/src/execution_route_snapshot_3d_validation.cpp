@@ -605,6 +605,9 @@ latestLidarEvidenceFreshAt(const VersionedLatestLidarEvidence3D& evidence,
   if (!evidence.valid() || validation_stamp_ns <= 0) {
     return false;
   }
+  if (!policy.latestLidarFreshnessRequired()) {
+    return true;
+  }
   const double maximum_age_ns =
       policy.latestLidarMaximumAgeMs() * kNanosecondsPerMillisecond;
   const std::int64_t acquisition_age_ns =

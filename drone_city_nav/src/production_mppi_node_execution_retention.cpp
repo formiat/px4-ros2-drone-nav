@@ -98,10 +98,11 @@ ProductionMppiNode::exactSnapshotValidationWorld(
   const std::int64_t lidar_validation_now_ns = cycle.lidar_validation_now_ns;
   if (!route.valid() || route.validation_policy == nullptr ||
       !route.validation_policy->valid() || latest_lidar_evidence == nullptr ||
-      !production_mppi_execution_detail::latestLidarEvidenceFreshness(
-           latest_lidar_evidence, lidar_validation_now_ns,
-           route.validation_policy->latestLidarMaximumAgeMs())
-           .fresh) {
+      (route.validation_policy->latestLidarFreshnessRequired() &&
+       !production_mppi_execution_detail::latestLidarEvidenceFreshness(
+            latest_lidar_evidence, lidar_validation_now_ns,
+            route.validation_policy->latestLidarMaximumAgeMs())
+            .fresh)) {
     return std::nullopt;
   }
   const bool static_route = route.static_world != nullptr;
@@ -147,10 +148,11 @@ ProductionMppiNode::exactDirectValidationWorld(
   const std::int64_t lidar_validation_now_ns = cycle.lidar_validation_now_ns;
   if (!execution.valid() || execution.validation_policy == nullptr ||
       latest_lidar_evidence == nullptr ||
-      !production_mppi_execution_detail::latestLidarEvidenceFreshness(
-           latest_lidar_evidence, lidar_validation_now_ns,
-           execution.validation_policy->latestLidarMaximumAgeMs())
-           .fresh) {
+      (execution.validation_policy->latestLidarFreshnessRequired() &&
+       !production_mppi_execution_detail::latestLidarEvidenceFreshness(
+            latest_lidar_evidence, lidar_validation_now_ns,
+            execution.validation_policy->latestLidarMaximumAgeMs())
+            .fresh)) {
     return std::nullopt;
   }
   const bool static_world = execution.static_world != nullptr;

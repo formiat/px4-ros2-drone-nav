@@ -99,12 +99,18 @@ void ProductionMppiNode::maybeRequestStaticRouteExtensionFromExecution(
     const ProductionMppiPreparedEsdf& esdf,
     const ProductionRouteExecutionSelection3D& route_execution,
     const ProductionMppiNavigation& navigation, const std::int64_t now_ns) {
-  if (route_execution.source_snapshot == nullptr ||
-      route_execution.source_snapshot->phase != ExecutionRoutePhase3D::kFollowing) {
+  if (route_execution.source_snapshot == nullptr) {
     return;
   }
-  const std::optional<CertifiedRouteSuffix3D>& route =
-      route_execution.source_snapshot->route;
+  const ExecutionRouteSnapshot3D& source = *route_execution.source_snapshot;
+  const bool suspended_route =
+      source.phase == ExecutionRoutePhase3D::kAwaitingSuccessor &&
+      source.route.has_value() && !source.finite_execution.has_value() &&
+      !source.braking_fallback.has_value();
+  if (source.phase != ExecutionRoutePhase3D::kFollowing && !suspended_route) {
+    return;
+  }
+  const std::optional<CertifiedRouteSuffix3D>& route = source.route;
   if (!route.has_value()) {
     return;
   }
@@ -114,7 +120,8 @@ void ProductionMppiNode::maybeRequestStaticRouteExtensionFromExecution(
       Point3{navigation.state.x, navigation.state.y, navigation.state.z},
       active_route.progress.station_m, active_route.endStationM());
   if (!projection.valid ||
-      projection.distance_m > route_tracking_policy_.maximum_cross_track_m) {
+      (optional_constraints_.route_cross_track_constraints_enabled &&
+       projection.distance_m > route_tracking_policy_.maximum_cross_track_m)) {
     return;
   }
   maybeRequestStaticRouteExtension(

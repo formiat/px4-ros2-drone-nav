@@ -331,7 +331,8 @@ validateOrderedPassageCrossings(const ExecutionRouteGeometry3D& geometry,
     const double initial_station_m, const double minimum_station_m,
     const double maximum_station_m, std::optional<double> maximum_cross_track_m,
     std::optional<double> terminal_cross_track_tolerance_m,
-    double requested_sweep_step_m, bool allow_initial_handoff);
+    double requested_sweep_step_m, bool allow_initial_handoff,
+    bool enforce_tracking_tube);
 
 [[nodiscard]] bool certifiedTrackingTubeHandoffPending(
     const ExecutionRouteSnapshot3D& current,

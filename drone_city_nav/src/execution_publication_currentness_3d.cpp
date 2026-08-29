@@ -100,14 +100,17 @@ ExecutionPublicationCurrentnessStatus3D assessExecutionPublicationCurrentness3D(
     }
   }
 
-  const LatestLidarEvidenceFreshness3D freshness = assessLatestLidarEvidenceFreshness3D(
-      *check.current_lidar_evidence, check.publication_now_ns,
-      check.maximum_lidar_age_ms);
-  if (freshness.age_ms < 0.0) {
-    return ExecutionPublicationCurrentnessStatus3D::kInvalidPublicationTime;
-  }
-  if (!freshness.fresh) {
-    return ExecutionPublicationCurrentnessStatus3D::kLidarNotFresh;
+  if (check.lidar_freshness_required) {
+    const LatestLidarEvidenceFreshness3D freshness =
+        assessLatestLidarEvidenceFreshness3D(*check.current_lidar_evidence,
+                                             check.publication_now_ns,
+                                             check.maximum_lidar_age_ms);
+    if (freshness.age_ms < 0.0) {
+      return ExecutionPublicationCurrentnessStatus3D::kInvalidPublicationTime;
+    }
+    if (!freshness.fresh) {
+      return ExecutionPublicationCurrentnessStatus3D::kLidarNotFresh;
+    }
   }
   return revalidation_required
              ? ExecutionPublicationCurrentnessStatus3D::kRevalidationRequired

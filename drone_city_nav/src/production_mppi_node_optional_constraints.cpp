@@ -15,6 +15,12 @@ void ProductionMppiNode::configureOptionalNavigationConstraints() {
           declare_parameter<bool>("stochastic_trajectory_selection_enabled", false),
       .route_cross_track_constraints_enabled = declare_parameter<bool>(
           "execution_route_cross_track_constraints_enabled", false),
+      .route_tracking_tube_constraints_enabled = declare_parameter<bool>(
+          "execution_route_tracking_tube_constraints_enabled", false),
+      .no_eligible_route_replan_enabled =
+          declare_parameter<bool>("no_eligible_route_replan_enabled", false),
+      .latest_lidar_freshness_required =
+          declare_parameter<bool>("execution_latest_lidar_freshness_required", false),
   };
 }
 

@@ -356,10 +356,11 @@ rebaseExecutionPublicationForCurrentNavigation3D(
       candidateView(*request.candidate_snapshot);
   if (!candidate_view.has_value() || candidate_view->policy == nullptr ||
       !candidate_view->policy->valid() ||
-      !assessLatestLidarEvidenceFreshness3D(
-           *request.current_lidar_evidence, request.publication_now_ns,
-           candidate_view->policy->latestLidarMaximumAgeMs())
-           .fresh) {
+      (candidate_view->policy->latestLidarFreshnessRequired() &&
+       !assessLatestLidarEvidenceFreshness3D(
+            *request.current_lidar_evidence, request.publication_now_ns,
+            candidate_view->policy->latestLidarMaximumAgeMs())
+            .fresh)) {
     return reject(ExecutionPublicationNavigationRebaseStatus3D::kEvidenceUnavailable);
   }
   const bool retained_published_route_continuation =

@@ -95,10 +95,11 @@ bool stationaryCaptureRearmEligibleForPlanningTick(
                                          context.validation_policy->valid();
   const bool lidar_evidence_current =
       validation_policy_current && context.latest_lidar_evidence != nullptr &&
-      assessLatestLidarEvidenceFreshness3D(
-          *context.latest_lidar_evidence, context.now_ns,
-          context.validation_policy->latestLidarMaximumAgeMs())
-          .fresh;
+      (!context.validation_policy->latestLidarFreshnessRequired() ||
+       assessLatestLidarEvidenceFreshness3D(
+           *context.latest_lidar_evidence, context.now_ns,
+           context.validation_policy->latestLidarMaximumAgeMs())
+           .fresh);
   const bool static_world_current =
       stationary_rearm_candidate && context.use_static_map &&
       context.static_occupancy_3d != nullptr &&

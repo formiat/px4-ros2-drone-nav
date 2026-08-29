@@ -86,7 +86,8 @@ validateExecutionProgressConnector(
       *route.geometry, connector_states, route.progress.station_m,
       certificate_view.suffix_start_station_m, connector_maximum_station_m,
       cross_track_limit, cross_track_limit,
-      route.validation_policy->sweptFootprint().sweep_step_m, false);
+      route.validation_policy->sweptFootprint().sweep_step_m, false,
+      route.validation_policy->routeTrackingTubeConstraintsEnabled());
   if (!adherence.accepted) {
     return std::nullopt;
   }
@@ -438,7 +439,8 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
                 cross_track_limit, policy->sweptFootprint().sweep_step_m,
                 targets_initial_route || targets_direct_successor ||
                     (targets_current_route &&
-                     certifiedTrackingTubeHandoffPending(current, target_route)));
+                     certifiedTrackingTubeHandoffPending(current, target_route)),
+                policy->routeTrackingTubeConstraintsEnabled());
   if (!route_adherence.accepted) {
     return rejectedFiniteExecution(
         FiniteExecutionCertificationStatus3D::kRouteAdherenceRejected,
@@ -477,7 +479,7 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
       certifies_braking_execution
           ? std::nullopt
           : makeValidationTerminalBoundary(terminal_boundary, target_route);
-  if (!certifies_braking_execution &&
+  if (policy->routeTrackingTubeConstraintsEnabled() && !certifies_braking_execution &&
       !validateTrackingTubeHandoffClearance(
           target_route, validated_horizon, begin_projection.station_m,
           certification.execution_input->previousControl(), validation_world)) {
@@ -630,6 +632,57 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
 }
 
 } // namespace execution_route_snapshot_3d_internal
+
+mppi::FiniteExecutionPathValidation
+validateRemainingFiniteExecutionAgainstObservedWorld3D(
+    const FiniteExecutionState3D& execution,
+    const VersionedExecutionInput3D& current_input,
+    const VersionedObservedRawWorld3D& current_world,
+    const std::int64_t validation_stamp_ns) noexcept {
+  if (execution.horizon == nullptr || execution.validation_policy == nullptr ||
+      execution.execution_input == nullptr || execution.observed_raw_world == nullptr ||
+      execution.static_world != nullptr || !current_input.valid() ||
+      !current_input.nominalStateAuthoritative() || !current_world.valid() ||
+      validation_stamp_ns <= 0 ||
+      current_input.effectiveStampNs() != validation_stamp_ns ||
+      current_world.version().producer_instance_id !=
+          execution.observed_raw_world->version().producer_instance_id ||
+      current_world.version().revision <
+          execution.observed_raw_world->version().revision) {
+    return {};
+  }
+  const std::vector<mppi::TimedExecutionPathPoint> points = timedExecutionPathPoints(
+      *execution.horizon, execution.execution_input->previousControl(),
+      execution.control_interval_ns);
+  if (points.empty()) {
+    return {};
+  }
+  const ProprioceptiveFreeSpaceSeed3D* const free_space_seed =
+      current_world.proprioceptiveFreeSpaceSeed().has_value()
+          ? std::addressof(*current_world.proprioceptiveFreeSpaceSeed())
+          : nullptr;
+  const LaunchSupportContact3D* const launch_support_contact =
+      current_world.launchSupportContact().has_value()
+          ? std::addressof(*current_world.launchSupportContact())
+          : nullptr;
+  const mppi::FiniteExecutionPathWorld validation_world{
+      .flight_envelope = &execution.validation_policy->flightEnvelope(),
+      .dynamics = &execution.validation_policy->dynamics(),
+      .altitude_envelope = &execution.validation_policy->altitudeEnvelope(),
+      .footprint = &execution.validation_policy->sweptFootprint(),
+      .static_occupancy = nullptr,
+      .observed_occupancy = &current_world.occupancy(),
+      .require_known_free_space = false,
+      .proprioceptive_free_space_seed = free_space_seed,
+      .launch_support_contact = launch_support_contact,
+      .raw_occupancy = nullptr,
+      .latest_lidar_obstacle_points = {},
+      .terminal_boundary = std::nullopt,
+  };
+  return mppi::validateFiniteExecutionTrajectoryContinuation(
+      points, execution.valid_from_ns, execution.valid_until_ns, validation_stamp_ns,
+      current_input.state(), current_input.previousControl(), validation_world);
+}
 
 std::optional<FiniteExecutionState3D>
 certifyFiniteExecution3D(const ExecutionRouteSnapshot3D& current,

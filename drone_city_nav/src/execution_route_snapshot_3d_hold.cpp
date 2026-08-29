@@ -334,4 +334,33 @@ revokeExecution3D(const ExecutionRouteSnapshot3D& current,
   return finishTransition(current, std::move(next));
 }
 
+ExecutionRouteTransitionResult3D
+suspendFiniteExecution3D(const ExecutionRouteSnapshot3D& current,
+                         const std::uint64_t expected_snapshot_version) {
+  const ExecutionRouteTransitionStatus3D status =
+      checkCurrentAndVersion(current, expected_snapshot_version);
+  if (status != ExecutionRouteTransitionStatus3D::kApplied) {
+    return transitionFailure(status);
+  }
+  if (current.phase == ExecutionRoutePhase3D::kAwaitingSuccessor &&
+      current.route.has_value() && !current.finite_execution.has_value() &&
+      !current.braking_fallback.has_value()) {
+    return transitionFailure(ExecutionRouteTransitionStatus3D::kNoChange);
+  }
+  if (current.phase != ExecutionRoutePhase3D::kFollowing ||
+      !current.route.has_value() || !current.finite_execution.has_value() ||
+      !current.braking_fallback.has_value() ||
+      current.execution_owner_epoch == std::numeric_limits<std::uint64_t>::max()) {
+    return transitionFailure(
+        ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
+  }
+  ExecutionRouteSnapshot3D next = current;
+  ++next.version;
+  ++next.execution_owner_epoch;
+  next.phase = ExecutionRoutePhase3D::kAwaitingSuccessor;
+  next.finite_execution.reset();
+  next.braking_fallback.reset();
+  return finishTransition(current, std::move(next));
+}
+
 } // namespace drone_city_nav

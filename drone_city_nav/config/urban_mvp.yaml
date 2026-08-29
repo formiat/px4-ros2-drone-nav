@@ -361,6 +361,11 @@ production_mppi_node:
     static_route_shortcut_optimization_enabled: false
     stochastic_trajectory_selection_enabled: false
     execution_route_cross_track_constraints_enabled: false
+    execution_route_tracking_tube_constraints_enabled: false
+    no_eligible_route_replan_enabled: false
+    # Latest-scan age is diagnostic only. Its exact owned points and persistent
+    # raw occupancy remain conservative hard collision evidence.
+    execution_latest_lidar_freshness_required: false
     static_route_maximum_shortcut_length_m: 30.0
     static_route_sparse_deviation_tolerance_m: 0.05
     static_route_maximum_shortcut_turn_increase_rad: 0.35

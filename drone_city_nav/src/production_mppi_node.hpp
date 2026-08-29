@@ -546,7 +546,8 @@ private:
   publishNoExecutablePathHold(const ProductionMppiExecutionCycle& cycle,
                               ProductionMppiExecutionReason reason);
   [[nodiscard]] ProductionMppiExecutionPublication
-  publishExecutionRevocation(ProductionMppiExecutionReason reason, std::int64_t now_ns);
+  publishExecutionRevocation(ProductionMppiExecutionReason reason, std::int64_t now_ns,
+                             bool retire_certified_route = false);
   [[nodiscard]] bool handleRequestedExecutionRevocation(std::int64_t now_ns);
   void publishFailClosedExecutionRevocation(ProductionMppiExecutionReason reason,
                                             std::int64_t now_ns);

@@ -163,7 +163,9 @@ policyFingerprint(const FlightEnvelopeConfig& flight_envelope,
                   const double latest_lidar_maximum_age_ms,
                   const double execution_input_maximum_pose_age_ms,
                   const double execution_input_maximum_control_age_ms,
-                  const bool route_cross_track_constraints_enabled) noexcept {
+                  const bool route_cross_track_constraints_enabled,
+                  const bool latest_lidar_freshness_required,
+                  const bool route_tracking_tube_constraints_enabled) noexcept {
   if (!validPolicy(flight_envelope, dynamics, altitude_envelope, swept_footprint,
                    latest_lidar_maximum_age_ms, execution_input_maximum_pose_age_ms,
                    execution_input_maximum_control_age_ms)) {
@@ -179,6 +181,8 @@ policyFingerprint(const FlightEnvelopeConfig& flight_envelope,
   hashValue(hash, canonicalDoubleBits(execution_input_maximum_pose_age_ms));
   hashValue(hash, canonicalDoubleBits(execution_input_maximum_control_age_ms));
   hashValue(hash, route_cross_track_constraints_enabled ? 1U : 0U);
+  hashValue(hash, latest_lidar_freshness_required ? 1U : 0U);
+  hashValue(hash, route_tracking_tube_constraints_enabled ? 1U : 0U);
   return hash == 0U ? 1U : hash;
 }
 
@@ -392,7 +396,9 @@ VersionedExecutionValidationPolicy3D::VersionedExecutionValidationPolicy3D(
     SweptFootprintConfig swept_footprint, const double latest_lidar_maximum_age_ms,
     const double execution_input_maximum_pose_age_ms,
     const double execution_input_maximum_control_age_ms,
-    const bool route_cross_track_constraints_enabled)
+    const bool route_cross_track_constraints_enabled,
+    const bool latest_lidar_freshness_required,
+    const bool route_tracking_tube_constraints_enabled)
     : flight_envelope_{flight_envelope},
       dynamics_{dynamics},
       altitude_envelope_{altitude_envelope},
@@ -401,11 +407,14 @@ VersionedExecutionValidationPolicy3D::VersionedExecutionValidationPolicy3D(
       execution_input_maximum_pose_age_ms_{execution_input_maximum_pose_age_ms},
       execution_input_maximum_control_age_ms_{execution_input_maximum_control_age_ms},
       route_cross_track_constraints_enabled_{route_cross_track_constraints_enabled},
+      latest_lidar_freshness_required_{latest_lidar_freshness_required},
+      route_tracking_tube_constraints_enabled_{route_tracking_tube_constraints_enabled},
       content_fingerprint_{policyFingerprint(
           flight_envelope_, dynamics_, altitude_envelope_, swept_footprint_,
           latest_lidar_maximum_age_ms_, execution_input_maximum_pose_age_ms_,
           execution_input_maximum_control_age_ms_,
-          route_cross_track_constraints_enabled_)} {
+          route_cross_track_constraints_enabled_, latest_lidar_freshness_required_,
+          route_tracking_tube_constraints_enabled_)} {
 }
 
 std::shared_ptr<const VersionedExecutionValidationPolicy3D>
@@ -415,7 +424,9 @@ VersionedExecutionValidationPolicy3D::capture(
     SweptFootprintConfig swept_footprint, const double latest_lidar_maximum_age_ms,
     const double execution_input_maximum_pose_age_ms,
     const double execution_input_maximum_control_age_ms,
-    const bool route_cross_track_constraints_enabled) {
+    const bool route_cross_track_constraints_enabled,
+    const bool latest_lidar_freshness_required,
+    const bool route_tracking_tube_constraints_enabled) {
   if (!validPolicy(flight_envelope, dynamics, altitude_envelope, swept_footprint,
                    latest_lidar_maximum_age_ms, execution_input_maximum_pose_age_ms,
                    execution_input_maximum_control_age_ms)) {
@@ -424,7 +435,8 @@ VersionedExecutionValidationPolicy3D::capture(
   return std::make_shared<const VersionedExecutionValidationPolicy3D>(
       CaptureToken{}, flight_envelope, dynamics, altitude_envelope, swept_footprint,
       latest_lidar_maximum_age_ms, execution_input_maximum_pose_age_ms,
-      execution_input_maximum_control_age_ms, route_cross_track_constraints_enabled);
+      execution_input_maximum_control_age_ms, route_cross_track_constraints_enabled,
+      latest_lidar_freshness_required, route_tracking_tube_constraints_enabled);
 }
 
 const FlightEnvelopeConfig&
@@ -464,6 +476,16 @@ double VersionedExecutionValidationPolicy3D::executionInputMaximumControlAgeMs()
 bool VersionedExecutionValidationPolicy3D::routeCrossTrackConstraintsEnabled()
     const noexcept {
   return route_cross_track_constraints_enabled_;
+}
+
+bool VersionedExecutionValidationPolicy3D::latestLidarFreshnessRequired()
+    const noexcept {
+  return latest_lidar_freshness_required_;
+}
+
+bool VersionedExecutionValidationPolicy3D::routeTrackingTubeConstraintsEnabled()
+    const noexcept {
+  return route_tracking_tube_constraints_enabled_;
 }
 
 ExecutionValidationPolicyId3D

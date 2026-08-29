@@ -100,6 +100,8 @@ TEST(ExecutionEvidence3DTest,
   EXPECT_DOUBLE_EQ(policy->executionInputMaximumPoseAgeMs(), 1000.0);
   EXPECT_DOUBLE_EQ(policy->executionInputMaximumControlAgeMs(), 1000.0);
   EXPECT_FALSE(policy->routeCrossTrackConstraintsEnabled());
+  EXPECT_TRUE(policy->latestLidarFreshnessRequired());
+  EXPECT_TRUE(policy->routeTrackingTubeConstraintsEnabled());
 
   const auto changed = VersionedExecutionValidationPolicy3D::capture(
       FlightEnvelopeConfig{.minimum_target_z_m = 2.0, .maximum_target_z_m = 40.0},
@@ -121,13 +123,31 @@ TEST(ExecutionEvidence3DTest,
       policy->sweptFootprint(), policy->latestLidarMaximumAgeMs(),
       policy->executionInputMaximumPoseAgeMs(),
       policy->executionInputMaximumControlAgeMs(), true);
+  const auto diagnostic_lidar_freshness = VersionedExecutionValidationPolicy3D::capture(
+      policy->flightEnvelope(), policy->dynamics(), policy->altitudeEnvelope(),
+      policy->sweptFootprint(), policy->latestLidarMaximumAgeMs(),
+      policy->executionInputMaximumPoseAgeMs(),
+      policy->executionInputMaximumControlAgeMs(), false, false);
+  const auto diagnostic_tracking_tube = VersionedExecutionValidationPolicy3D::capture(
+      policy->flightEnvelope(), policy->dynamics(), policy->altitudeEnvelope(),
+      policy->sweptFootprint(), policy->latestLidarMaximumAgeMs(),
+      policy->executionInputMaximumPoseAgeMs(),
+      policy->executionInputMaximumControlAgeMs(), false, true, false);
   ASSERT_NE(changed_pose_age, nullptr);
   ASSERT_NE(changed_control_age, nullptr);
   ASSERT_NE(strict_route_adherence, nullptr);
+  ASSERT_NE(diagnostic_lidar_freshness, nullptr);
+  ASSERT_NE(diagnostic_tracking_tube, nullptr);
   EXPECT_NE(changed_pose_age->contentFingerprint(), policy->contentFingerprint());
   EXPECT_NE(changed_control_age->contentFingerprint(), policy->contentFingerprint());
   EXPECT_TRUE(strict_route_adherence->routeCrossTrackConstraintsEnabled());
   EXPECT_NE(strict_route_adherence->contentFingerprint(), policy->contentFingerprint());
+  EXPECT_FALSE(diagnostic_lidar_freshness->latestLidarFreshnessRequired());
+  EXPECT_NE(diagnostic_lidar_freshness->contentFingerprint(),
+            policy->contentFingerprint());
+  EXPECT_FALSE(diagnostic_tracking_tube->routeTrackingTubeConstraintsEnabled());
+  EXPECT_NE(diagnostic_tracking_tube->contentFingerprint(),
+            policy->contentFingerprint());
 }
 
 TEST(ExecutionEvidence3DTest,

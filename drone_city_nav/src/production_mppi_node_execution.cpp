@@ -194,7 +194,9 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
     latest_lidar_obstacle_fresh = latest_lidar_freshness.fresh;
     latest_lidar_obstacle_receive_time_fallback =
         latest_lidar_freshness.receive_time_fallback;
-    if (latest_lidar_obstacle_fresh) {
+    if (latest_lidar_obstacle_fresh ||
+        (selected_policy != nullptr &&
+         !selected_policy->latestLidarFreshnessRequired())) {
       latest_lidar_obstacle_points =
           std::span<const Point3>{latest_lidar_evidence->hitPointsMapM()};
     }
@@ -378,15 +380,24 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
     return publishNoExecutablePathHold(
         cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
   }
-  if (!latest_lidar_obstacle_fresh || execution_dynamics == nullptr ||
+  const bool latest_lidar_evidence_usable =
+      latest_lidar_evidence != nullptr &&
+      (latest_lidar_obstacle_fresh ||
+       (selected_policy != nullptr &&
+        !selected_policy->latestLidarFreshnessRequired()));
+  if (!latest_lidar_evidence_usable || execution_dynamics == nullptr ||
       execution_flight_envelope == nullptr || execution_altitude_envelope == nullptr ||
       execution_footprint == nullptr) {
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "FINITE_EXECUTION_HORIZON executable=false reason=missing_exact_owner "
-        "lidar_present=%s lidar_fresh=%s snapshot_world=%s action=hold",
+        "lidar_present=%s lidar_fresh=%s lidar_freshness_required=%s "
+        "snapshot_world=%s action=hold",
         latest_lidar_evidence != nullptr ? "true" : "false",
         latest_lidar_obstacle_fresh ? "true" : "false",
+        selected_policy != nullptr && selected_policy->latestLidarFreshnessRequired()
+            ? "true"
+            : "false",
         exact_snapshot_world ? "true" : "false");
     return publishNoExecutablePathHold(
         cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);

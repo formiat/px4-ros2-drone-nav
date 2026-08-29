@@ -198,6 +198,16 @@ struct FiniteExecutionState3D {
   [[nodiscard]] bool validFor(const CertifiedRouteSuffix3D* route) const noexcept;
 };
 
+// Raw-map changes are allowed to wake background planning, but they invalidate
+// an active route only when occupied evidence intersects the still-active
+// portion of its already-published finite command horizon.
+[[nodiscard]] mppi::FiniteExecutionPathValidation
+validateRemainingFiniteExecutionAgainstObservedWorld3D(
+    const FiniteExecutionState3D& execution,
+    const VersionedExecutionInput3D& current_input,
+    const VersionedObservedRawWorld3D& current_world,
+    std::int64_t validation_stamp_ns) noexcept;
+
 // The controller-facing route execution authority is certified as one unit.
 // The command horizon may be nominal or a retained continuation, while the
 // braking tail always starts from the same immutable execution input and can be
@@ -708,6 +718,10 @@ armStationaryCaptureHold3D(const ExecutionRouteSnapshot3D& current,
 [[nodiscard]] ExecutionRouteTransitionResult3D
 revokeExecution3D(const ExecutionRouteSnapshot3D& current,
                   std::uint64_t expected_snapshot_version);
+
+[[nodiscard]] ExecutionRouteTransitionResult3D
+suspendFiniteExecution3D(const ExecutionRouteSnapshot3D& current,
+                         std::uint64_t expected_snapshot_version);
 
 [[nodiscard]] RouteEndpointSemantics3D
 executionRouteEndpointSemantics3D(const ExecutionRouteSnapshot3D& snapshot) noexcept;

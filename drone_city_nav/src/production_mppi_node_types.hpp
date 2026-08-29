@@ -18,6 +18,9 @@ struct ProductionNavigationOptionalConstraints {
   bool static_route_shortcut_optimization_enabled{false};
   bool stochastic_trajectory_selection_enabled{false};
   bool route_cross_track_constraints_enabled{false};
+  bool route_tracking_tube_constraints_enabled{false};
+  bool no_eligible_route_replan_enabled{false};
+  bool latest_lidar_freshness_required{false};
 };
 
 struct ProductionMppiNavigation {

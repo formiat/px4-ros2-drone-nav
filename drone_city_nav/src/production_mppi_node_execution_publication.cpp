@@ -177,6 +177,25 @@ snapshotValidationPolicy(const ExecutionRouteSnapshot3D& snapshot) {
   return snapshot.route.has_value() ? snapshot.route->validation_policy : nullptr;
 }
 
+[[nodiscard]] bool progressPreparationPreservesCertifiedRouteEvidence(
+    const ExecutionRouteSnapshot3D& expected,
+    const ExecutionRouteSnapshot3D& prepared) noexcept {
+  if (!expected.route.has_value() || !prepared.route.has_value()) {
+    return false;
+  }
+  const CertifiedRouteSuffix3D& source = *expected.route;
+  const CertifiedRouteSuffix3D& next = *prepared.route;
+  return source.route_instance_id == next.route_instance_id &&
+         source.owner.id == next.owner.id &&
+         source.identity.generation == next.identity.generation &&
+         source.geometry == next.geometry &&
+         source.continuity_id == next.continuity_id &&
+         source.observed_raw_world == next.observed_raw_world &&
+         source.static_world == next.static_world &&
+         source.validation_policy == next.validation_policy &&
+         source.planned_endpoint_semantics == next.planned_endpoint_semantics;
+}
+
 struct FiniteExecutionEvidenceView {
   const mppi::FiniteHorizon* horizon{nullptr};
   const VersionedExecutionInput3D* execution_input{nullptr};
@@ -724,10 +743,11 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
         publication_lidar->contentFingerprint() !=
             current_lidar->contentFingerprint()) &&
        !publication_commit.latest_evidence_revalidated) ||
-      !assessLatestLidarEvidenceFreshness3D(
-           *publication_lidar, publication_now_ns,
-           publication_policy->latestLidarMaximumAgeMs())
-           .fresh) {
+      (publication_policy->latestLidarFreshnessRequired() &&
+       !assessLatestLidarEvidenceFreshness3D(
+            *publication_lidar, publication_now_ns,
+            publication_policy->latestLidarMaximumAgeMs())
+            .fresh)) {
     requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
     report_commit_failure("lidar_evidence_not_current");
     return ProductionMppiHorizonCommitStatus::kRejected;
@@ -906,13 +926,19 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitExecutionSnapshotHor
               latest_lidar_evidence_.load(std::memory_order_acquire),
           .publication_now_ns = get_clock()->now().nanoseconds(),
           .maximum_lidar_age_ms = policy->latestLidarMaximumAgeMs(),
+          .lidar_freshness_required = policy->latestLidarFreshnessRequired(),
       });
-  // A progress preparation also advances the route certificate and possibly
-  // constrained-passage evidence. Rechecking only the two finite paths cannot
-  // rebind that larger immutable contract, so an evidence race must retry the
-  // whole preparation from the newer world on the next tick.
+  // Progress may advance while the immutable route geometry and its certificate
+  // world remain unchanged. In that case a newer raw/lidar sample only needs to
+  // revalidate the two finite execution paths; it is not a reason to discard the
+  // route or retry the entire route suffix against every memory revision.
+  const bool progress_preserves_certified_route_evidence =
+      progress_preparation == nullptr ||
+      (certification_snapshot != nullptr &&
+       progressPreparationPreservesCertifiedRouteEvidence(*expected,
+                                                          *certification_snapshot));
   const bool latest_evidence_revalidated =
-      progress_preparation == nullptr &&
+      progress_preserves_certified_route_evidence &&
       currentness == ExecutionPublicationCurrentnessStatus3D::kRevalidationRequired &&
       revalidateFiniteExecutionAgainstLatestEvidence(
           *transition.next, current_raw,

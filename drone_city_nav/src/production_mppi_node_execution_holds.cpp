@@ -54,7 +54,10 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
   std::optional<ExecutionRouteTransitionResult3D> hold_transition;
   const std::shared_ptr<const VersionedLatestLidarEvidence3D> current_lidar =
       latest_lidar_evidence_.load(std::memory_order_acquire);
-  if (!cycle.latest_lidar_obstacle_fresh || cycle.latest_lidar_evidence == nullptr ||
+  if (cycle.latest_lidar_evidence == nullptr ||
+      (cycle.selected_policy != nullptr &&
+       cycle.selected_policy->latestLidarFreshnessRequired() &&
+       !cycle.latest_lidar_obstacle_fresh) ||
       current_lidar == nullptr ||
       current_lidar->evidenceId() != cycle.latest_lidar_evidence->evidenceId() ||
       current_lidar->contentFingerprint() !=
@@ -269,11 +272,16 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishNoExecutablePathHo
       retained.has_value()) {
     return *retained;
   }
-  return publishExecutionRevocation(reason, cycle.now_ns);
+  const bool physical_route_invalidation =
+      cycle.route_execution.lifecycle_event.has_value() &&
+      cycle.route_execution.lifecycle_event->kind ==
+          RouteLifecycleEventKind3D::kRawInvalidated;
+  return publishExecutionRevocation(reason, cycle.now_ns, physical_route_invalidation);
 }
 
 ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionRevocation(
-    const ProductionMppiExecutionReason reason, const std::int64_t now_ns) {
+    const ProductionMppiExecutionReason reason, const std::int64_t now_ns,
+    const bool retire_certified_route) {
   ProductionMppiExecutionPublication publication;
   publication.mode = ProductionMppiExecutionMode::kRevoked;
   publication.reason = reason;
@@ -289,8 +297,23 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionRevocatio
   if (expected == nullptr) {
     return publication;
   }
-  const ExecutionRouteTransitionResult3D transition =
-      revokeExecution3D(*expected, expected->version);
+  const ExecutionRouteTransitionResult3D transition = [&] {
+    if (!retire_certified_route) {
+      ExecutionRouteTransitionResult3D suspension =
+          suspendFiniteExecution3D(*expected, expected->version);
+      if (suspension.applied() ||
+          suspension.status == ExecutionRouteTransitionStatus3D::kNoChange) {
+        return suspension;
+      }
+    }
+    return revokeExecution3D(*expected, expected->version);
+  }();
+  const bool certified_route_preserved =
+      !retire_certified_route &&
+      ((transition.applied() && transition.next != nullptr &&
+        transition.next->route.has_value()) ||
+       (transition.status == ExecutionRouteTransitionStatus3D::kNoChange &&
+        expected->route.has_value()));
   const bool transition_required = transition.applied();
   if (!transition_required &&
       transition.status != ExecutionRouteTransitionStatus3D::kNoChange) {
@@ -360,14 +383,15 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionRevocatio
     execution_horizon_pub_->publish(revocation);
     publication.published = true;
   }
-  RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
-                       "EXECUTION_HORIZON revoked=true snapshot_version=%" PRIu64
-                       " owner_epoch=%" PRIu64 " sequence=%" PRIu64 " reason=%s",
-                       transition_required ? transition.next->version
-                                           : expected->version,
-                       transition_required ? transition.next->execution_owner_epoch
-                                           : expected->execution_owner_epoch,
-                       revocation.sequence, productionMppiExecutionReasonName(reason));
+  RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "EXECUTION_HORIZON revoked=true snapshot_version=%" PRIu64 " owner_epoch=%" PRIu64
+      " sequence=%" PRIu64 " reason=%s certified_route_preserved=%s",
+      transition_required ? transition.next->version : expected->version,
+      transition_required ? transition.next->execution_owner_epoch
+                          : expected->execution_owner_epoch,
+      revocation.sequence, productionMppiExecutionReasonName(reason),
+      certified_route_preserved ? "true" : "false");
   return publication;
 }
 

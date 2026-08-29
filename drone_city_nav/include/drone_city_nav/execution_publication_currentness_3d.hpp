@@ -47,6 +47,7 @@ struct ExecutionPublicationCurrentnessCheck3D {
   std::shared_ptr<const VersionedLatestLidarEvidence3D> current_lidar_evidence;
   std::int64_t publication_now_ns{0};
   double maximum_lidar_age_ms{0.0};
+  bool lidar_freshness_required{true};
 };
 
 [[nodiscard]] ExecutionPublicationCurrentnessStatus3D

@@ -298,6 +298,7 @@ ExecutionRouteTransitionResult3D advanceCertifiedRoute3D(
   const std::array<mppi::State, 2U> observed_path{
       route.progress.execution_input->state(), execution_input->state()};
   const bool acquiring_certified_tracking_tube =
+      route.validation_policy->routeTrackingTubeConstraintsEnabled() &&
       certifiedTrackingTubeHandoffPending(current, route);
   if (acquiring_certified_tracking_tube) {
     const TrackingErrorTubeHandoffAssessment3D handoff =
@@ -309,11 +310,16 @@ ExecutionRouteTransitionResult3D advanceCertifiedRoute3D(
           ExecutionRouteTransitionStatus3D::kExecutionAssessmentRejected);
     }
   }
+  const std::optional<double> cross_track_limit =
+      route.validation_policy->routeCrossTrackConstraintsEnabled()
+          ? std::optional<double>{observation.maximum_cross_track_m}
+          : std::nullopt;
   const RouteAdherenceAssessment3D observed_adherence = validateFiniteRouteAdherence(
       *route.geometry, observed_path, route.progress.station_m,
       old_certificate.suffix_start_station_m, old_certificate.certified_end_station_m,
-      observation.maximum_cross_track_m, observation.maximum_cross_track_m,
-      observation.footprint.sweep_step_m, acquiring_certified_tracking_tube);
+      cross_track_limit, cross_track_limit, observation.footprint.sweep_step_m,
+      acquiring_certified_tracking_tube,
+      route.validation_policy->routeTrackingTubeConstraintsEnabled());
   if (!observed_adherence.accepted) {
     return transitionFailure(
         ExecutionRouteTransitionStatus3D::kExecutionAssessmentRejected);
@@ -438,6 +444,10 @@ replaceFiniteExecutionPlan3D(const ExecutionRouteSnapshot3D& current,
         ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
   }
   ++next.version;
+  if (current.phase == ExecutionRoutePhase3D::kAwaitingSuccessor &&
+      !current.finite_execution.has_value() && !current.braking_fallback.has_value()) {
+    next.phase = ExecutionRoutePhase3D::kFollowing;
+  }
   next.finite_execution = std::move(execution.command_horizon);
   next.braking_fallback = std::move(execution.braking_tail);
   next.stationary_hold.reset();

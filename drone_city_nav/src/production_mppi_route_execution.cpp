@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cinttypes>
+#include <limits>
 #include <memory>
 #include <variant>
 
@@ -268,6 +269,10 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
   execution_navigation.state = execution_input->state();
 
   const SweptFootprintConfig& footprint = physical_footprint_config_;
+  const double execution_maximum_cross_track_m =
+      optional_constraints_.route_cross_track_constraints_enabled
+          ? route_tracking_policy_.maximum_cross_track_m
+          : std::numeric_limits<double>::max();
   bool active_usable{false};
   if (result.source_snapshot->route.has_value()) {
     const std::shared_ptr<const ExecutionRouteSnapshot3D> active_source_snapshot =
@@ -286,11 +291,32 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
     {
       RouteExecutionObservation3D observation = makeExecutionObservation(
           world, objective, execution_navigation, minimum_tracking_sample_sequence,
-          route_tracking_policy_.maximum_cross_track_m, footprint);
+          execution_maximum_cross_track_m, footprint);
+      std::shared_ptr<const VersionedObservedRawWorld3D> latest_observed_owner;
       std::shared_ptr<const VersionedObservedRawWorld3D> observed_owner;
+      bool active_trajectory_raw_collision{false};
+      mppi::FiniteExecutionPathValidation active_trajectory_raw_validation;
       if (observed_route) {
-        observed_owner =
+        latest_observed_owner =
             deriveLatestObservedRouteEvidence(latest_raw_world, active_route);
+        if (latest_observed_owner != nullptr &&
+            active_source_snapshot->phase == ExecutionRoutePhase3D::kFollowing &&
+            active_source_snapshot->finite_execution.has_value()) {
+          active_trajectory_raw_validation =
+              validateRemainingFiniteExecutionAgainstObservedWorld3D(
+                  *active_source_snapshot->finite_execution, *execution_input,
+                  *latest_observed_owner, execution_input->effectiveStampNs());
+          active_trajectory_raw_collision =
+              active_trajectory_raw_validation.status ==
+              mppi::FiniteExecutionPathStatus::kRawCollision;
+        }
+        // Progress remains bound to the immutable world that certified the route.
+        // Newer raw evidence may invalidate only the active finite trajectory;
+        // otherwise it is evidence for later finite horizons or a successor once
+        // one is explicitly requested.
+        observed_owner = active_trajectory_raw_collision
+                             ? latest_observed_owner
+                             : active_route.observed_raw_world;
         if (observed_owner != nullptr) {
           observation.latest_raw_occupancy = &observed_owner->occupancy();
           observation.latest_raw_producer_instance_id =
@@ -319,7 +345,25 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
                        1.0e-6);
       RouteExecutionAssessment3D diagnostic_assessment = assessRouteExecution3D(
           &active_route.identity, *active_route.geometry->route, observation);
-      if (diagnostic_assessment.usable()) {
+      if (active_trajectory_raw_collision) {
+        diagnostic_assessment.status = RouteExecutionStatus3D::kRawCollision;
+        diagnostic_assessment.raw_validation.status =
+            RawRouteSuffixStatus3D::kRawCollision;
+        diagnostic_assessment.raw_validation.failure_point =
+            active_trajectory_raw_validation.failure_point;
+        RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 1000,
+            "ROUTE_EXECUTION3D snapshot_version=%" PRIu64 " route_generation=%" PRIu64
+            " status=raw_collision scope=remaining_finite_trajectory "
+            "failure_segment=%zu failure_point=(%.3f,%.3f,%.3f)",
+            result.source_snapshot->version, active_route.identity.generation,
+            active_trajectory_raw_validation.failure_segment_index,
+            active_trajectory_raw_validation.failure_point.x,
+            active_trajectory_raw_validation.failure_point.y,
+            active_trajectory_raw_validation.failure_point.z);
+      }
+      if (diagnostic_assessment.usable() &&
+          optional_constraints_.route_tracking_tube_constraints_enabled) {
         if (!trackingTubeProfileMatchesCurrentWorld(active_route, observed_owner)) {
           result.tracking_error_tube.status =
               TrackingErrorTubeExecutionStatus3D::kInvalidProfile;
@@ -360,6 +404,17 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
               ? advanceCertifiedRoute3D(*result.source_snapshot, guard, observation,
                                         execution_input, observed_owner)
               : ExecutionRouteTransitionResult3D{};
+      const bool optional_policy_invalidation =
+          (optional_constraints_.route_cross_track_constraints_enabled &&
+           diagnostic_assessment.status ==
+               RouteExecutionStatus3D::kExcessiveCrossTrack) ||
+          (optional_constraints_.route_tracking_tube_constraints_enabled &&
+           diagnostic_assessment.status ==
+               RouteExecutionStatus3D::kTrackingTubeViolation);
+      const bool route_invalidation_required =
+          active_trajectory_raw_collision ||
+          diagnostic_assessment.status == RouteExecutionStatus3D::kObjectiveMismatch ||
+          optional_policy_invalidation;
       if (result.tracking_error_tube_handoff_active) {
         active_usable = true;
         result.status = RouteExecutionStatus3D::kUsable;
@@ -381,6 +436,22 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
             result.tracking_error_tube_handoff.reference_speed_limit_mps,
             result.tracking_error_tube_handoff.tracking_error_radius_m,
             result.tracking_error_tube_handoff.actual_tracking_error_m);
+      } else if (!diagnostic_assessment.usable() && !route_invalidation_required) {
+        // Contract/projection diagnostics and connector history do not describe
+        // the already-published command horizon. Keep the certified route and
+        // let its independently swept finite horizon remain the sole physical
+        // invalidation authority.
+        active_usable = true;
+        result.status = RouteExecutionStatus3D::kUsable;
+        RCLCPP_INFO_THROTTLE(
+            get_logger(), *get_clock(), 1000,
+            "ROUTE_EXECUTION3D snapshot_version=%" PRIu64 " route_generation=%" PRIu64
+            " diagnostic_status=%.*s "
+            "action=retain_certified_route_nonphysical_diagnostic",
+            result.source_snapshot->version, active_route.identity.generation,
+            static_cast<int>(
+                routeExecutionStatus3DName(diagnostic_assessment.status).size()),
+            routeExecutionStatus3DName(diagnostic_assessment.status).data());
       } else if (!advanced.applied()) {
         if (advanced.status == ExecutionRouteTransitionStatus3D::kNoChange) {
           active_usable = diagnostic_assessment.usable();
@@ -403,8 +474,7 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
         } else {
           result.status = diagnostic_assessment.status;
           const std::uint64_t generation = active_route.identity.generation;
-          const bool raw_invalidated =
-              result.status == RouteExecutionStatus3D::kRawCollision;
+          const bool raw_invalidated = active_trajectory_raw_collision;
           if (raw_invalidated) {
             result.lifecycle_observed_raw_world = observed_owner;
           }
@@ -434,6 +504,17 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
                                   ? observed_owner->version().revision
                                   : 0U,
           };
+          if (raw_invalidated && observed_owner != nullptr) {
+            const std::uint64_t collision_raw_revision =
+                observed_owner->version().revision;
+            std::uint64_t blocked_raw_revision =
+                observed_route_blocked_raw_revision_.load(std::memory_order_relaxed);
+            while (blocked_raw_revision < collision_raw_revision &&
+                   !observed_route_blocked_raw_revision_.compare_exchange_weak(
+                       blocked_raw_revision, collision_raw_revision,
+                       std::memory_order_release, std::memory_order_relaxed)) {
+            }
+          }
           requestRouteRelease(release_reason, generation);
           RCLCPP_WARN_THROTTLE(
               get_logger(), *get_clock(), 1000,
@@ -560,7 +641,8 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
   }
 
   if (result.route == nullptr && active_usable &&
-      route_state->phase == ExecutionRoutePhase3D::kFollowing &&
+      (route_state->phase == ExecutionRoutePhase3D::kFollowing ||
+       route_state->phase == ExecutionRoutePhase3D::kAwaitingSuccessor) &&
       route_state->route.has_value()) {
     result.route = std::make_shared<const CertifiedRouteSuffix3D>(*route_state->route);
     result.route_usable = true;
@@ -571,10 +653,12 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
         *result.route, Point3{execution_input->state().x, execution_input->state().y,
                               execution_input->state().z});
     result.station_m = result.route->progress.station_m;
-    result.route_usable = result.route_usable && result.projection.valid &&
-                          (result.tracking_error_tube_handoff_active ||
-                           result.projection.cross_track_m <=
-                               route_tracking_policy_.maximum_cross_track_m);
+    result.route_usable =
+        result.route_usable && result.projection.valid &&
+        (!optional_constraints_.route_cross_track_constraints_enabled ||
+         result.tracking_error_tube_handoff_active ||
+         result.projection.cross_track_m <=
+             route_tracking_policy_.maximum_cross_track_m);
     if (!result.route_usable) {
       result.status = result.projection.valid
                           ? RouteExecutionStatus3D::kExcessiveCrossTrack
