@@ -331,6 +331,66 @@ TEST(MppiControlSequenceTest,
   EXPECT_GT(result.terminal_progress_m, 1.0F);
 }
 
+TEST(MppiControlSequenceTest, LongRouteUsesRollingFiniteHorizonDeviceWindow) {
+  BenchmarkConfig config;
+  config.rollouts = 64U;
+  config.steps = 8U;
+  config.dynamics.dt_s = 0.05F;
+  config.dynamics.maximum_horizontal_speed_mps = 10.0F;
+  config.seed = 43U;
+  MppiCudaEngine engine{config};
+  const EsdfGrid grid{.width = 800,
+                      .height = 40,
+                      .resolution_m = 1.0F,
+                      .origin_x_m = 0.0F,
+                      .origin_y_m = 0.0F,
+                      .depth = 20,
+                      .origin_z_m = 0.0F};
+  constexpr std::size_t kEsdfCellCount = static_cast<std::size_t>(800U) * 40U * 20U;
+  const std::vector<float> esdf(kEsdfCellCount, 20.0F);
+  ASSERT_TRUE(engine.updateEsdf(EsdfSnapshot{grid, esdf, 1U}).accepted);
+
+  auto route = std::make_shared<std::vector<RouteSample3D>>();
+  constexpr std::size_t kRouteSampleCount{744U};
+  route->reserve(kRouteSampleCount);
+  for (std::size_t index = 0U; index < kRouteSampleCount; ++index) {
+    const float station_m = 0.5F * static_cast<float>(index);
+    route->push_back(RouteSample3D{
+        .x_m = 5.0F + station_m,
+        .y_m = 20.0F,
+        .z_m = 10.0F,
+        .tangent_x = 1.0F,
+        .station_m = station_m,
+        .reference_speed_mps = 5.0F,
+    });
+  }
+
+  MppiTickInput input;
+  input.initial_state = State{.x = 5.0F, .y = 20.0F, .z = 10.0F};
+  input.target = State{.x = 35.0F, .y = 20.0F, .z = 10.0F};
+  input.planning_stamp_ns = 1;
+  input.reference_speed_mps = 5.0F;
+  input.route = RouteReference{
+      .points = std::move(route),
+      .generation = 1U,
+      .initial_station_m = 0.0F,
+      .terminal_cross_track_tolerance_m = std::nullopt,
+  };
+
+  MppiTickResult result;
+  ASSERT_NO_THROW(result = engine.plan(input));
+  EXPECT_EQ(result.horizon.size(), config.steps + 1U);
+
+  input.initial_state = State{.x = 265.0F, .y = 20.0F, .z = 10.0F};
+  input.target = State{.x = 295.0F, .y = 20.0F, .z = 10.0F};
+  input.planning_stamp_ns = 100'000'001;
+  input.nominal_reseed_generation = 1U;
+  input.route->initial_station_m = 260.0F;
+
+  ASSERT_NO_THROW(result = engine.plan(input));
+  EXPECT_EQ(result.horizon.size(), config.steps + 1U);
+}
+
 TEST(MppiControlSequenceTest,
      RepairsPhysicallySafeWeightedUpdateWithRouteConvergentCandidate) {
   BenchmarkConfig config;

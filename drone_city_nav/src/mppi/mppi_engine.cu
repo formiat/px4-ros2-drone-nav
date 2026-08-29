@@ -24,6 +24,7 @@
 #include <utility>
 
 #include "mppi_cuda_resources.cuh"
+#include "mppi_device_route_window.hpp"
 
 namespace drone_city_nav::mppi {
 namespace {
@@ -33,7 +34,7 @@ constexpr std::size_t kControlUpdateStepTile{32U};
 constexpr std::size_t kControlUpdateRolloutLanes{8U};
 constexpr std::size_t kControlUpdatePartitions{16U};
 constexpr std::size_t kMaximumKnownSolids{2048U};
-constexpr std::size_t kMaximumRoutePoints{512U};
+constexpr std::size_t kMaximumDeviceRoutePoints{512U};
 constexpr std::size_t kMaximumDynamicAircraft{16U};
 constexpr std::size_t kMaximumRepairCandidateCount{7U};
 constexpr float kPi{3.14159265358979323846F};
@@ -70,7 +71,7 @@ struct DeviceBuffers {
   DeviceBuffer<float> minimum_soft;
   DeviceBuffer<float> weight_sum;
   DeviceBuffer<KnownSolid> solids{kMaximumKnownSolids};
-  DeviceBuffer<RouteSample3D> route_points{kMaximumRoutePoints};
+  DeviceBuffer<RouteSample3D> route_points{kMaximumDeviceRoutePoints};
   DeviceBuffer<DynamicAircraftSample> dynamic_aircraft_samples;
   DeviceBuffer<float> dynamic_aircraft_radii{kMaximumDynamicAircraft};
   DeviceBuffer<std::uint32_t> dynamic_aircraft_active_steps{kMaximumDynamicAircraft};
@@ -244,6 +245,11 @@ public:
     const std::span<const RouteSample3D> active_route =
         route_active ? std::span<const RouteSample3D>{*input.route->points}
                      : std::span<const RouteSample3D>{};
+    const detail::DeviceRouteWindow3D device_route =
+        route_active ? detail::selectDeviceRouteWindow3D(active_route,
+                                                         input.route->initial_station_m,
+                                                         kMaximumDeviceRoutePoints)
+                     : detail::DeviceRouteWindow3D{};
     const MovingTargetReference moving_target =
         input.moving_target.value_or(MovingTargetReference{});
     const bool moving_target_enabled = input.moving_target.has_value();
@@ -291,19 +297,27 @@ public:
       nominal_ = std::move(*acquisition_lifecycle.nominal_reseed);
     }
     if (route_active) {
-      if (input.route->points->size() > kMaximumRoutePoints) {
-        throw std::invalid_argument{"MPPI route exceeds device route capacity"};
+      const float required_end_station_m =
+          std::min(active_route.back().station_m,
+                   input.route->initial_station_m + detail::maximumFiniteHorizonTravelM(
+                                                        input.initial_state, config_));
+      if (!device_route.coversThroughStation(required_end_station_m)) {
+        throw std::invalid_argument{
+            "MPPI finite-horizon route window exceeds device route capacity"};
       }
       if (!route_uploaded_ || route_generation_ != input.route->generation ||
-          route_points_host_.get() != input.route->points.get()) {
+          route_points_host_.get() != input.route->points.get() ||
+          route_window_begin_index_ != device_route.begin_index ||
+          route_point_count_ != device_route.points.size()) {
         checkCuda(cudaMemcpyAsync(buffers_.route_points.get(),
-                                  input.route->points->data(),
-                                  input.route->points->size() * sizeof(RouteSample3D),
+                                  device_route.points.data(),
+                                  device_route.points.size() * sizeof(RouteSample3D),
                                   cudaMemcpyHostToDevice, stream_),
                   "upload semantic route");
         route_points_host_ = input.route->points;
         route_generation_ = input.route->generation;
-        route_point_count_ = input.route->points->size();
+        route_window_begin_index_ = device_route.begin_index;
+        route_point_count_ = device_route.points.size();
         route_uploaded_ = true;
       }
     }
@@ -939,6 +953,7 @@ private:
   std::vector<KnownSolid> known_solids_;
   std::size_t solid_count_{0U};
   std::shared_ptr<const std::vector<RouteSample3D>> route_points_host_;
+  std::size_t route_window_begin_index_{0U};
   std::size_t route_point_count_{0U};
   std::uint64_t route_generation_{0U};
   bool route_uploaded_{false};
