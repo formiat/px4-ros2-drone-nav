@@ -194,6 +194,15 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
             prepared_esdf_->revision == active_prepared->revision &&
             prepared_esdf_->observed_occupancy == active_prepared->observed_occupancy) {
           prepared_esdf_->observed_raw_world_owner = observed_raw_world_owner;
+          if (prepared_esdf_->observed_planner_world != nullptr) {
+            PersistentPlannerWorld3D planner_world =
+                *prepared_esdf_->observed_planner_world;
+            planner_world.proprioceptive_free_space_seed = free_space_seed;
+            planner_world.launch_support_contact = launch_support_contact_;
+            prepared_esdf_->observed_planner_world =
+                std::make_shared<const PersistentPlannerWorld3D>(
+                    std::move(planner_world));
+          }
           prepared_esdf_->proprioceptive_free_space_seed = free_space_seed;
           refreshed = true;
         }
@@ -315,6 +324,18 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
   world_update.distances_m = host_distances;
   world_update.observed_occupancy = occupancy;
   world_update.observed_raw_world_owner = observed_raw_world_owner;
+  world_update.observed_planner_world =
+      std::make_shared<const PersistentPlannerWorld3D>(PersistentPlannerWorld3D{
+          .observed_occupancy = occupancy,
+          .static_occupancy = nullptr,
+          .proprioceptive_free_space_seed = free_space_seed,
+          .launch_support_contact = launch_support_contact_,
+          .dirty_chunks = raw_world.dirty_chunks,
+          .producer_instance_id = raw_world.version.producer_instance_id,
+          .revision = raw_world.version.revision,
+          .occupied_fingerprint = execution_owner->occupiedContentFingerprint(),
+          .full_reset = raw_world.full_reset,
+      });
   world_update.observed_esdf_resource = ObservedEsdfResource3D{
       .local_occupancy = field.local_occupancy,
       .known_obstacle_distance = field.known_obstacle_distance,

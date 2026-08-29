@@ -32,8 +32,6 @@ void ProductionMppiNode::processRouteSearch3D(
       world.search_objective.available ? world.search_objective.goal : mission_goal_;
   const NavigationWorldCertificate3D planned_world_certificate =
       navigationWorldCertificate3D(world);
-  const std::shared_ptr<const ProductionMppiRawWorld3D> latest_raw_world =
-      latest_raw_world_3d_.load(std::memory_order_acquire);
   const Point3 search_start{navigation.state.x, navigation.state.y, navigation.state.z};
 
   const std::shared_ptr<const ExecutionRouteSnapshot3D> search_execution_snapshot =
@@ -53,8 +51,8 @@ void ProductionMppiNode::processRouteSearch3D(
     static_cast<void>(navigation_recovery_episodes_.observe(
         world.search_objective.mission_epoch, recovery_active));
   };
-  ProductionRouteCandidateSet3D candidate_set = generateRouteCandidates3D(
-      world, navigation, mission_goal, latest_raw_world, search_active_route);
+  ProductionRouteCandidateSet3D candidate_set =
+      generateRouteCandidates3D(world, navigation, mission_goal, search_active_route);
 
   if (candidate_set.planner_invoked &&
       candidate_set.planner_result.status ==

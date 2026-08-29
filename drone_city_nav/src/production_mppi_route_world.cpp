@@ -80,6 +80,15 @@ assessProductionWorldGeneration(const ProductionMppiPreparedEsdf& world) noexcep
         std::addressof(owner->occupancy()) != world.observed_occupancy.get()) {
       return ProductionWorldGenerationStatus::kObservedOwnerMismatch;
     }
+    const std::shared_ptr<const PersistentPlannerWorld3D>& planner_world =
+        world.observed_planner_world;
+    if (!planner_world || !planner_world->valid() ||
+        planner_world->observed_occupancy != world.observed_occupancy ||
+        planner_world->producer_instance_id != raw.producer_instance_id ||
+        planner_world->revision != raw.revision ||
+        planner_world->occupied_fingerprint != owner->occupiedContentFingerprint()) {
+      return ProductionWorldGenerationStatus::kObservedPlannerWorldMismatch;
+    }
     if (!observedEsdfCoverageMatches(world, raw)) {
       return ProductionWorldGenerationStatus::kObservedEsdfCoverageMismatch;
     }
@@ -113,6 +122,8 @@ std::string_view productionWorldGenerationStatusName(
       return "raw_version_mismatch";
     case ProductionWorldGenerationStatus::kObservedOwnerMismatch:
       return "observed_owner_mismatch";
+    case ProductionWorldGenerationStatus::kObservedPlannerWorldMismatch:
+      return "observed_planner_world_mismatch";
     case ProductionWorldGenerationStatus::kObservedEsdfCoverageMismatch:
       return "observed_esdf_coverage_mismatch";
   }
@@ -155,6 +166,7 @@ void adoptWorldResources(ProductionMppiPreparedEsdf& target,
   target.distances_m = source.distances_m;
   target.observed_occupancy = source.observed_occupancy;
   target.observed_raw_world_owner = source.observed_raw_world_owner;
+  target.observed_planner_world = source.observed_planner_world;
   target.observed_esdf_resource = source.observed_esdf_resource;
   target.proprioceptive_free_space_seed = source.proprioceptive_free_space_seed;
   target.launch_support_contact = source.launch_support_contact;

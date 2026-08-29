@@ -104,6 +104,19 @@ struct DStarLiteQueueEntryCompare3D {
                                 const DStarLiteQueueEntry3D& second) const noexcept;
 };
 
+struct FeasibilityQueueEntry3D {
+  double estimated_remaining_s{std::numeric_limits<double>::infinity()};
+  double goal_altitude_error_m{std::numeric_limits<double>::infinity()};
+  std::size_t depth{0U};
+  PersistentPlannerNode3D node{};
+  std::uint64_t sequence{0U};
+};
+
+struct FeasibilityQueueEntryCompare3D {
+  [[nodiscard]] bool operator()(const FeasibilityQueueEntry3D& first,
+                                const FeasibilityQueueEntry3D& second) const noexcept;
+};
+
 struct PersistentPlannerWorldUpdate3D {
   bool accepted{false};
   bool requires_reset{false};
@@ -129,6 +142,9 @@ private:
       std::priority_queue<PersistentPlannerTimeQueueEntry3D,
                           std::vector<PersistentPlannerTimeQueueEntry3D>,
                           PersistentPlannerTimeQueueEntryCompare3D>;
+  using FeasibilityOpenQueue =
+      std::priority_queue<FeasibilityQueueEntry3D, std::vector<FeasibilityQueueEntry3D>,
+                          FeasibilityQueueEntryCompare3D>;
 
   [[nodiscard]] bool validRequest(const PersistentPlannerRequest3D& request) const;
   [[nodiscard]] PersistentPlannerWorldUpdate3D
@@ -173,6 +189,8 @@ private:
   [[nodiscard]] std::optional<std::vector<Point3>>
   findFeasiblePath(std::chrono::steady_clock::time_point deadline,
                    std::size_t maximum_expansions, std::size_t& expansions);
+  void resetFeasibilitySearch() noexcept;
+  void initializeFeasibilitySearch();
   [[nodiscard]] std::vector<Point3> extractPath();
   [[nodiscard]] std::vector<Point3> shortcutPath(const std::vector<Point3>& path,
                                                  std::size_t& checks,
@@ -244,6 +262,14 @@ private:
   std::deque<PersistentPlannerNode3D> pending_repair_nodes_;
   std::unordered_set<PersistentPlannerNode3D, PersistentPlannerNode3DHash>
       pending_repair_members_;
+  bool feasibility_search_initialized_{false};
+  std::uint64_t feasibility_queue_sequence_{0U};
+  FeasibilityOpenQueue feasibility_open_{};
+  std::unordered_set<PersistentPlannerNode3D, PersistentPlannerNode3DHash>
+      feasibility_discovered_;
+  std::unordered_map<PersistentPlannerNode3D, PersistentPlannerNode3D,
+                     PersistentPlannerNode3DHash>
+      feasibility_parents_;
   bool execution_time_search_initialized_{false};
   bool execution_time_search_complete_{false};
   bool execution_time_start_from_rest_{false};

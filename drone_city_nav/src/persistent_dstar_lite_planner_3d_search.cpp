@@ -54,35 +54,26 @@ canonicalEdge(const PersistentPlannerNode3D first,
   return PersistentPlannerEdge3D{second, first};
 }
 
-struct FeasibilityQueueEntry3D {
-  double estimated_remaining_s{std::numeric_limits<double>::infinity()};
-  double goal_altitude_error_m{std::numeric_limits<double>::infinity()};
-  std::size_t depth{0U};
-  PersistentPlannerNode3D node{};
-  std::uint64_t sequence{0U};
-};
-
-struct FeasibilityQueueEntryCompare3D {
-  [[nodiscard]] bool operator()(const FeasibilityQueueEntry3D& first,
-                                const FeasibilityQueueEntry3D& second) const noexcept {
-    // Feasibility-first deliberately searches the mission-altitude layer before
-    // widening vertically. This avoids a z-loop-order descent when horizontal
-    // travel dominates the time heuristic, while preserving full 3D fallback
-    // once the preferred layer cannot provide a route.
-    if (first.goal_altitude_error_m != second.goal_altitude_error_m) {
-      return first.goal_altitude_error_m > second.goal_altitude_error_m;
-    }
-    if (first.estimated_remaining_s != second.estimated_remaining_s) {
-      return first.estimated_remaining_s > second.estimated_remaining_s;
-    }
-    if (first.depth != second.depth) {
-      return first.depth < second.depth;
-    }
-    return first.sequence > second.sequence;
-  }
-};
-
 } // namespace
+
+bool FeasibilityQueueEntryCompare3D::operator()(
+    const FeasibilityQueueEntry3D& first,
+    const FeasibilityQueueEntry3D& second) const noexcept {
+  // Feasibility-first deliberately searches the mission-altitude layer before
+  // widening vertically. This avoids a z-loop-order descent when horizontal
+  // travel dominates the time heuristic, while preserving full 3D fallback
+  // once the preferred layer cannot provide a route.
+  if (first.goal_altitude_error_m != second.goal_altitude_error_m) {
+    return first.goal_altitude_error_m > second.goal_altitude_error_m;
+  }
+  if (first.estimated_remaining_s != second.estimated_remaining_s) {
+    return first.estimated_remaining_s > second.estimated_remaining_s;
+  }
+  if (first.depth != second.depth) {
+    return first.depth < second.depth;
+  }
+  return first.sequence > second.sequence;
+}
 
 void PersistentDStarLitePlanner3DImpl::initializeSearch(
     const PersistentPlannerRequest3D& request, const PersistentPlannerNode3D start,
@@ -103,6 +94,7 @@ void PersistentDStarLitePlanner3DImpl::initializeSearch(
   edge_cost_cache_.clear();
   pending_repair_nodes_.clear();
   pending_repair_members_.clear();
+  resetFeasibilitySearch();
   resetExecutionTimeSearch();
   search_generation_ = search_generation_ == std::numeric_limits<std::uint64_t>::max()
                            ? 1U
@@ -393,27 +385,15 @@ std::optional<std::vector<Point3>> PersistentDStarLitePlanner3DImpl::findFeasibl
     const std::chrono::steady_clock::time_point deadline,
     const std::size_t maximum_expansions, std::size_t& expansions) {
   expansions = 0U;
-  std::priority_queue<FeasibilityQueueEntry3D, std::vector<FeasibilityQueueEntry3D>,
-                      FeasibilityQueueEntryCompare3D>
-      open;
-  std::unordered_set<PersistentPlannerNode3D, PersistentPlannerNode3DHash> discovered;
-  std::unordered_map<PersistentPlannerNode3D, PersistentPlannerNode3D,
-                     PersistentPlannerNode3DHash>
-      parents;
-  std::uint64_t sequence = 1U;
-  discovered.insert(start_);
-  open.push(FeasibilityQueueEntry3D{
-      .estimated_remaining_s = heuristic(start_, goal_),
-      .goal_altitude_error_m = std::abs(pointFor(start_).z - pointFor(goal_).z),
-      .depth = 0U,
-      .node = start_,
-      .sequence = sequence,
-  });
+  if (!feasibility_search_initialized_) {
+    initializeFeasibilitySearch();
+  }
 
   const auto reconstruct = [&](const PersistentPlannerNode3D terminal)
       -> std::optional<std::vector<Point3>> {
     std::vector<PersistentPlannerNode3D> nodes;
-    nodes.reserve(std::min(config_.maximum_extracted_path_nodes, discovered.size()));
+    nodes.reserve(
+        std::min(config_.maximum_extracted_path_nodes, feasibility_discovered_.size()));
     PersistentPlannerNode3D current = terminal;
     while (true) {
       nodes.push_back(current);
@@ -423,8 +403,8 @@ std::optional<std::vector<Point3>> PersistentDStarLitePlanner3DImpl::findFeasibl
       if (nodes.size() >= config_.maximum_extracted_path_nodes) {
         return std::nullopt;
       }
-      const auto parent = parents.find(current);
-      if (parent == parents.end()) {
+      const auto parent = feasibility_parents_.find(current);
+      if (parent == feasibility_parents_.end()) {
         return std::nullopt;
       }
       current = parent->second;
@@ -446,10 +426,10 @@ std::optional<std::vector<Point3>> PersistentDStarLitePlanner3DImpl::findFeasibl
                              : std::nullopt;
   };
 
-  while (!open.empty() && expansions < maximum_expansions &&
+  while (!feasibility_open_.empty() && expansions < maximum_expansions &&
          std::chrono::steady_clock::now() < deadline) {
-    const FeasibilityQueueEntry3D current = open.top();
-    open.pop();
+    const FeasibilityQueueEntry3D current = feasibility_open_.top();
+    feasibility_open_.pop();
     ++expansions;
 
     const Point3 current_point = pointFor(current.node);
@@ -467,7 +447,7 @@ std::optional<std::vector<Point3>> PersistentDStarLitePlanner3DImpl::findFeasibl
     }
 
     for (const PersistentPlannerNode3D neighbor : adjacentNodes(current.node)) {
-      if (discovered.contains(neighbor)) {
+      if (feasibility_discovered_.contains(neighbor)) {
         continue;
       }
       ++lattice_edge_queries_;
@@ -481,23 +461,45 @@ std::optional<std::vector<Point3>> PersistentDStarLitePlanner3DImpl::findFeasibl
       if (!rawSegmentValid(pointFor(current.node), pointFor(neighbor))) {
         continue;
       }
-      discovered.insert(neighbor);
-      parents.emplace(neighbor, current.node);
+      feasibility_discovered_.insert(neighbor);
+      feasibility_parents_.emplace(neighbor, current.node);
       const std::size_t depth = current.depth + 1U;
-      ++sequence;
-      if (sequence == 0U) {
-        sequence = 1U;
+      ++feasibility_queue_sequence_;
+      if (feasibility_queue_sequence_ == 0U) {
+        feasibility_queue_sequence_ = 1U;
       }
-      open.push(FeasibilityQueueEntry3D{
+      feasibility_open_.push(FeasibilityQueueEntry3D{
           .estimated_remaining_s = heuristic(neighbor, goal_),
           .goal_altitude_error_m = std::abs(pointFor(neighbor).z - pointFor(goal_).z),
           .depth = depth,
           .node = neighbor,
-          .sequence = sequence,
+          .sequence = feasibility_queue_sequence_,
       });
     }
   }
   return std::nullopt;
+}
+
+void PersistentDStarLitePlanner3DImpl::resetFeasibilitySearch() noexcept {
+  feasibility_search_initialized_ = false;
+  feasibility_queue_sequence_ = 0U;
+  feasibility_open_ = {};
+  feasibility_discovered_.clear();
+  feasibility_parents_.clear();
+}
+
+void PersistentDStarLitePlanner3DImpl::initializeFeasibilitySearch() {
+  resetFeasibilitySearch();
+  feasibility_search_initialized_ = true;
+  feasibility_queue_sequence_ = 1U;
+  feasibility_discovered_.insert(start_);
+  feasibility_open_.push(FeasibilityQueueEntry3D{
+      .estimated_remaining_s = heuristic(start_, goal_),
+      .goal_altitude_error_m = std::abs(pointFor(start_).z - pointFor(goal_).z),
+      .depth = 0U,
+      .node = start_,
+      .sequence = feasibility_queue_sequence_,
+  });
 }
 
 std::vector<Point3> PersistentDStarLitePlanner3DImpl::extractPath() {

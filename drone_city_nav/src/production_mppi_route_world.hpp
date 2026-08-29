@@ -17,6 +17,7 @@ enum class ProductionWorldGenerationStatus : std::uint8_t {
   kEsdfRevisionMismatch,
   kRawVersionMismatch,
   kObservedOwnerMismatch,
+  kObservedPlannerWorldMismatch,
   kObservedEsdfCoverageMismatch,
 };
 

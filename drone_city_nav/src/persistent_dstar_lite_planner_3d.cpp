@@ -183,6 +183,7 @@ void PersistentDStarLitePlanner3DImpl::reset() noexcept {
   edge_cost_cache_.clear();
   pending_repair_nodes_.clear();
   pending_repair_members_.clear();
+  resetFeasibilitySearch();
   resetExecutionTimeSearch();
   incumbent_.clear();
   lattice_edge_queries_ = 0U;
@@ -288,6 +289,7 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     }
     initializeSearch(request, *start_anchor, *goal_anchor);
   } else {
+    const bool feasibility_start_changed = *start_anchor != start_;
     const bool execution_time_start_changed =
         execution_time_search_initialized_ &&
         (execution_time_start_ != time_start_state ||
@@ -314,6 +316,9 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
           repair_generation_ == std::numeric_limits<std::uint64_t>::max()
               ? 1U
               : repair_generation_ + 1U;
+    }
+    if (!world_update.changed_cells.empty() || feasibility_start_changed) {
+      resetFeasibilitySearch();
     }
     if (!world_update.changed_cells.empty() || execution_time_start_changed ||
         execution_time_goal_changed) {

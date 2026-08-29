@@ -201,6 +201,10 @@ struct ProductionMppiPreparedEsdf {
   std::shared_ptr<const std::vector<float>> distances_m;
   std::shared_ptr<const ObservedOccupancyGrid3D> observed_occupancy;
   std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_world_owner;
+  // Immutable occupied-world input owned by this route-search transaction.
+  // Continuations must not replace it with a newer obstacle-memory snapshot:
+  // publication is revalidated against the latest raw world atomically.
+  std::shared_ptr<const PersistentPlannerWorld3D> observed_planner_world;
   ObservedEsdfResource3D observed_esdf_resource{};
   std::optional<ProprioceptiveFreeSpaceSeed3D> proprioceptive_free_space_seed;
   std::optional<LaunchSupportContact3D> launch_support_contact;
@@ -428,11 +432,11 @@ private:
       const ProductionRouteSearchCandidate3D& candidate,
       std::uint64_t candidate_generation, const CertifiedRouteSuffix3D* active_route,
       const ProductionMppiRawWorld3D* activation_raw_world);
-  [[nodiscard]] ProductionRouteCandidateSet3D generateRouteCandidates3D(
-      const ProductionMppiPreparedEsdf& world,
-      const ProductionMppiNavigation& navigation, const Point3& mission_goal,
-      const std::shared_ptr<const ProductionMppiRawWorld3D>& latest_raw_world,
-      const CertifiedRouteSuffix3D* active_route);
+  [[nodiscard]] ProductionRouteCandidateSet3D
+  generateRouteCandidates3D(const ProductionMppiPreparedEsdf& world,
+                            const ProductionMppiNavigation& navigation,
+                            const Point3& mission_goal,
+                            const CertifiedRouteSuffix3D* active_route);
   void diagnosticsWorker(std::stop_token stop_token);
   void startPlanningTimer();
   void initializeRuntimeInterfaces();

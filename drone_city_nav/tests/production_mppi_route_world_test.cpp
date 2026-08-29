@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "production_mppi_node.hpp"
@@ -30,6 +31,19 @@ namespace {
       RawMapVersion{
           .producer_instance_id = 7U, .base_snapshot_revision = 400U, .revision = 451U},
       world.observed_occupancy, std::nullopt, std::nullopt);
+  world.observed_planner_world =
+      std::make_shared<const PersistentPlannerWorld3D>(PersistentPlannerWorld3D{
+          .observed_occupancy = world.observed_occupancy,
+          .static_occupancy = nullptr,
+          .proprioceptive_free_space_seed = std::nullopt,
+          .launch_support_contact = std::nullopt,
+          .dirty_chunks = {},
+          .producer_instance_id = 7U,
+          .revision = 451U,
+          .occupied_fingerprint =
+              world.observed_raw_world_owner->occupiedContentFingerprint(),
+          .full_reset = true,
+      });
   world.observed_esdf_resource = ObservedEsdfResource3D{
       .local_occupancy = std::make_shared<const ObservedOccupancyGrid3D>(bounds),
       .known_obstacle_distance = distance.field,
@@ -94,6 +108,18 @@ TEST(ProductionMppiRouteWorldTest, ObservedOwnerMustMatchExactRawSnapshot) {
 
   EXPECT_EQ(assessProductionWorldGeneration(world),
             ProductionWorldGenerationStatus::kObservedOwnerMismatch);
+}
+
+TEST(ProductionMppiRouteWorldTest,
+     ObservedPlannerMustRemainBoundToThePreparedRawSnapshot) {
+  ProductionMppiPreparedEsdf world = coherentObservedWorld();
+  PersistentPlannerWorld3D newer_planner_world = *world.observed_planner_world;
+  ++newer_planner_world.revision;
+  world.observed_planner_world =
+      std::make_shared<const PersistentPlannerWorld3D>(std::move(newer_planner_world));
+
+  EXPECT_EQ(assessProductionWorldGeneration(world),
+            ProductionWorldGenerationStatus::kObservedPlannerWorldMismatch);
 }
 
 TEST(ProductionMppiRouteWorldTest, ObservedCoverageMustMatchExactWorldResources) {
@@ -187,6 +213,18 @@ TEST(ProductionMppiRouteWorldTest,
   ProductionMppiPreparedEsdf completed_world_build;
   completed_world_build.observed_occupancy = observed_occupancy;
   completed_world_build.observed_raw_world_owner = observed_owner;
+  completed_world_build.observed_planner_world =
+      std::make_shared<const PersistentPlannerWorld3D>(PersistentPlannerWorld3D{
+          .observed_occupancy = observed_occupancy,
+          .static_occupancy = nullptr,
+          .proprioceptive_free_space_seed = std::nullopt,
+          .launch_support_contact = std::nullopt,
+          .dirty_chunks = {},
+          .producer_instance_id = 7U,
+          .revision = 451U,
+          .occupied_fingerprint = observed_owner->occupiedContentFingerprint(),
+          .full_reset = true,
+      });
   completed_world_build.observed_esdf_resource = ObservedEsdfResource3D{
       .local_occupancy = observed_occupancy,
       .known_obstacle_distance =
@@ -203,6 +241,8 @@ TEST(ProductionMppiRouteWorldTest,
 
   EXPECT_EQ(resident.observed_occupancy, observed_occupancy);
   EXPECT_EQ(resident.observed_raw_world_owner, observed_owner);
+  EXPECT_EQ(resident.observed_planner_world,
+            completed_world_build.observed_planner_world);
   EXPECT_EQ(resident.observed_esdf_resource.local_occupancy, observed_occupancy);
   EXPECT_EQ(resident.observed_esdf_resource.coverage.raw_local_fingerprint, 91U);
   ASSERT_NE(resident.observed_raw_world_owner, nullptr);

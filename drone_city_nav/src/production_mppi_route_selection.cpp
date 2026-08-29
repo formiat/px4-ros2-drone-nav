@@ -16,7 +16,6 @@ namespace {
 
 [[nodiscard]] SegmentEvidenceWorld3D
 evidenceWorld(const ProductionMppiPreparedEsdf& world,
-              const std::shared_ptr<const ProductionMppiRawWorld3D>& latest_raw_world,
               const OccupancyGrid3D* const static_occupancy,
               const SweptFootprintConfig& physical_footprint,
               const FlightEnvelopeConfig& flight_envelope) noexcept {
@@ -24,9 +23,7 @@ evidenceWorld(const ProductionMppiPreparedEsdf& world,
       .grid = &world.grid,
       .esdf_m = world.distances_m ? std::span<const float>{*world.distances_m}
                                   : std::span<const float>{},
-      .latest_observed_occupancy = latest_raw_world && latest_raw_world->occupancy
-                                       ? latest_raw_world->occupancy.get()
-                                       : nullptr,
+      .latest_observed_occupancy = world.observed_occupancy.get(),
       .static_occupancy = static_occupancy,
       .proprioceptive_free_space_seed =
           world.proprioceptive_free_space_seed
@@ -37,25 +34,10 @@ evidenceWorld(const ProductionMppiPreparedEsdf& world,
                                     : nullptr,
       .footprint = physical_footprint,
       .flight_envelope = flight_envelope,
-      .validated_through_revision = latest_raw_world
-                                        ? latest_raw_world->version.revision
-                                        : world.source_raw_revision,
+      .validated_through_revision = world.source_raw_revision,
       .require_known_free_space = false,
       .reject_invalid_esdf = false,
   };
-}
-
-[[nodiscard]] bool observedPlannerWorldValid(
-    const std::shared_ptr<const ProductionMppiRawWorld3D>& raw_world) noexcept {
-  return raw_world != nullptr && raw_world->version.valid() &&
-         raw_world->occupancy != nullptr && raw_world->execution_owner != nullptr &&
-         raw_world->execution_owner->valid() &&
-         std::addressof(raw_world->execution_owner->occupancy()) ==
-             raw_world->occupancy.get() &&
-         raw_world->execution_owner->version().sameLineage(raw_world->version) &&
-         raw_world->execution_owner->version().revision ==
-             raw_world->version.revision &&
-         raw_world->execution_owner->occupiedContentFingerprint() != 0U;
 }
 
 [[nodiscard]] Vec3 velocityAtStitch(const RouteSample3D& stitch,
@@ -69,9 +51,7 @@ evidenceWorld(const ProductionMppiPreparedEsdf& world,
 
 ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
     const ProductionMppiPreparedEsdf& world, const ProductionMppiNavigation& navigation,
-    const Point3& mission_goal,
-    const std::shared_ptr<const ProductionMppiRawWorld3D>& latest_raw_world,
-    const CertifiedRouteSuffix3D* const active_route) {
+    const Point3& mission_goal, const CertifiedRouteSuffix3D* const active_route) {
   const auto search_started = std::chrono::steady_clock::now();
   ProductionRouteCandidateSet3D result;
   Point3 search_start{navigation.state.x, navigation.state.y, navigation.state.z};
@@ -145,7 +125,8 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
     planner_world.revision = 1U;
     planner_world.occupied_fingerprint = static_occupancy_3d_->contentFingerprint();
   } else {
-    if (!observedPlannerWorldValid(latest_raw_world)) {
+    if (world.observed_planner_world == nullptr ||
+        !world.observed_planner_world->valid()) {
       RCLCPP_INFO(get_logger(),
                   "PERSISTENT_PLANNER3D stage=deferred reason=raw_world_unavailable "
                   "revision=%" PRIu64,
@@ -155,13 +136,7 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
                              .count();
       return result;
     }
-    planner_world.observed_occupancy = latest_raw_world->occupancy;
-    planner_world.dirty_chunks = latest_raw_world->dirty_chunks;
-    planner_world.producer_instance_id = latest_raw_world->version.producer_instance_id;
-    planner_world.revision = latest_raw_world->version.revision;
-    planner_world.occupied_fingerprint =
-        latest_raw_world->execution_owner->occupiedContentFingerprint();
-    planner_world.full_reset = latest_raw_world->full_reset;
+    planner_world = *world.observed_planner_world;
   }
   planner_world.proprioceptive_free_space_seed = world.proprioceptive_free_space_seed;
   planner_world.launch_support_contact = world.launch_support_contact;
@@ -231,8 +206,8 @@ ProductionRouteCandidateSet3D ProductionMppiNode::generateRouteCandidates3D(
                             world.search_objective.target_detection_id,
                             world.search_objective.target_track_id);
     const SegmentEvidenceWorld3D evidence_world =
-        evidenceWorld(world, latest_raw_world, static_occupancy_3d_.get(),
-                      physical_footprint_config_, flight_envelope_config_);
+        evidenceWorld(world, static_occupancy_3d_.get(), physical_footprint_config_,
+                      flight_envelope_config_);
     SegmentEvidence3D evidence =
         evaluateSegmentEvidence3D(intent, route, search_start, true, true,
                                   plan.estimated_execution_time_s, evidence_world);
