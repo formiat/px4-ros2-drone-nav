@@ -1,10 +1,17 @@
 #pragma once
 
 #include "drone_city_nav/mppi/static_route_handoff.hpp"
+#include "drone_city_nav/route_compiler_3d.hpp"
 
 #include "production_mppi_node.hpp"
 
 namespace drone_city_nav {
+
+// Executable route sidecars form one immutable bundle. A failed compilation
+// must remove every previously derived resource so no consumer can observe a
+// projection or time profile without its owning 3D route.
+void adoptRouteCompilation3D(ProductionMppiPreparedEsdf& candidate,
+                             RouteCompilationResult3D compilation);
 
 struct ProductionRouteActivationSnapshot3D {
   std::optional<ProductionMppiPreparedEsdf> resident_world;

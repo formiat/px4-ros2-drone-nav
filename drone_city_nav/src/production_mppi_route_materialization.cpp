@@ -13,6 +13,7 @@
 #include <utility>
 #include <vector>
 
+#include "production_mppi_route_activation.hpp"
 #include "production_mppi_route_helpers.hpp"
 
 namespace drone_city_nav {
@@ -434,24 +435,7 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
       .tracking_world = trackingErrorTubeWorld3D(world),
       .config = routeCompilerConfig3D(),
   });
-  prepared.route_compilation_validation = compilation.validation;
-  prepared.route_stop_turn_count = compilation.stop_turn_count;
-  prepared.compiled_route_geometry = std::move(compilation.geometry);
-  if (prepared.compiled_route_geometry != nullptr) {
-    prepared.mppi_route = prepared.compiled_route_geometry->mppi_route;
-    prepared.route_3d = prepared.compiled_route_geometry->route;
-    prepared.route_2d_projection =
-        prepared.compiled_route_geometry->route_2d_projection;
-    prepared.constrained_spans = prepared.compiled_route_geometry->constrained_spans;
-    prepared.passage_volumes = prepared.compiled_route_geometry->passage_volumes;
-    prepared.cooperative_passage_assignments =
-        prepared.compiled_route_geometry->cooperative_passage_assignments;
-    prepared.selected_passage_traversal_ids =
-        prepared.compiled_route_geometry->selected_passage_traversal_ids;
-  }
-  if (prepared.route_2d_projection == nullptr) {
-    prepared.route_2d_projection = projectRouteTo2D(*route);
-  }
+  adoptRouteCompilation3D(prepared, std::move(compilation));
   prepared.route_projection = projectOntoRouteProgress3D(
       *route, Point3{navigation.state.x, navigation.state.y, navigation.state.z});
   prepared.candidate_validation_ms =

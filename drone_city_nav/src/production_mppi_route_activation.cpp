@@ -43,27 +43,6 @@ rawWorldExecutionOwnerExact(const ProductionMppiRawWorld3D& raw_world) noexcept 
              raw_world.occupancy.get();
 }
 
-void adoptRouteCompilation(ProductionMppiPreparedEsdf& candidate,
-                           RouteCompilationResult3D compilation) {
-  candidate.route_compilation_validation = compilation.validation;
-  candidate.route_stop_turn_count = compilation.stop_turn_count;
-  candidate.compiled_route_geometry = std::move(compilation.geometry);
-  if (candidate.compiled_route_geometry == nullptr) {
-    candidate.mppi_route.reset();
-    return;
-  }
-  candidate.mppi_route = candidate.compiled_route_geometry->mppi_route;
-  candidate.route_3d = candidate.compiled_route_geometry->route;
-  candidate.route_2d_projection =
-      candidate.compiled_route_geometry->route_2d_projection;
-  candidate.constrained_spans = candidate.compiled_route_geometry->constrained_spans;
-  candidate.passage_volumes = candidate.compiled_route_geometry->passage_volumes;
-  candidate.cooperative_passage_assignments =
-      candidate.compiled_route_geometry->cooperative_passage_assignments;
-  candidate.selected_passage_traversal_ids =
-      candidate.compiled_route_geometry->selected_passage_traversal_ids;
-}
-
 [[nodiscard]] StaticRouteCandidateStatus
 candidateStatusFromRiskAssignment(const RouteRiskTierAssignmentStatus status) noexcept {
   if (status == RouteRiskTierAssignmentStatus::kRawCollision) {
@@ -176,6 +155,36 @@ nextPendingPublicationSequence(std::atomic<std::uint64_t>& sequence) noexcept {
 }
 
 } // namespace
+
+void adoptRouteCompilation3D(ProductionMppiPreparedEsdf& candidate,
+                             RouteCompilationResult3D compilation) {
+  const bool compiled = compilation.compiled();
+  candidate.route_compilation_validation = compilation.validation;
+  candidate.route_stop_turn_count = compilation.stop_turn_count;
+  candidate.compiled_route_geometry =
+      compiled ? std::move(compilation.geometry) : nullptr;
+  candidate.mppi_route.reset();
+  candidate.route_3d.reset();
+  candidate.route_2d_projection.reset();
+  candidate.constrained_spans.reset();
+  candidate.passage_volumes.reset();
+  candidate.cooperative_passage_assignments.reset();
+  candidate.selected_passage_traversal_ids.reset();
+  candidate.route_projection = {};
+  if (candidate.compiled_route_geometry == nullptr) {
+    return;
+  }
+  candidate.mppi_route = candidate.compiled_route_geometry->mppi_route;
+  candidate.route_3d = candidate.compiled_route_geometry->route;
+  candidate.route_2d_projection =
+      candidate.compiled_route_geometry->route_2d_projection;
+  candidate.constrained_spans = candidate.compiled_route_geometry->constrained_spans;
+  candidate.passage_volumes = candidate.compiled_route_geometry->passage_volumes;
+  candidate.cooperative_passage_assignments =
+      candidate.compiled_route_geometry->cooperative_passage_assignments;
+  candidate.selected_passage_traversal_ids =
+      candidate.compiled_route_geometry->selected_passage_traversal_ids;
+}
 
 bool ProductionRouteActivationResult3D::executionGeometryValid() const noexcept {
   return geometry_validation.valid();
@@ -329,14 +338,16 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
               .tracking_world = trackingErrorTubeWorld3D(candidate),
               .config = routeCompilerConfig3D(),
           });
-      adoptRouteCompilation(candidate, std::move(compilation));
-      candidate.route_projection = projectOntoRouteProgress3D(
-          *candidate.route_3d,
-          Point3{snapshot.navigation.state.x, snapshot.navigation.state.y,
-                 snapshot.navigation.state.z});
-      result.observed_world_rebased =
-          snapshot.resident_world->observed_occupancy != nullptr;
-      result.publication_world_advanced = true;
+      adoptRouteCompilation3D(candidate, std::move(compilation));
+      if (candidate.route_3d) {
+        candidate.route_projection = projectOntoRouteProgress3D(
+            *candidate.route_3d,
+            Point3{snapshot.navigation.state.x, snapshot.navigation.state.y,
+                   snapshot.navigation.state.z});
+        result.observed_world_rebased =
+            snapshot.resident_world->observed_occupancy != nullptr;
+        result.publication_world_advanced = true;
+      }
     }
   }
 
@@ -380,9 +391,9 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
         },
         routeCompilerConfig3D());
     result.tracking_geometry_recompiled = compilation.compiled();
-    adoptRouteCompilation(candidate, std::move(compilation));
+    adoptRouteCompilation3D(candidate, std::move(compilation));
   }
-  if (candidate.route_2d_projection) {
+  if (candidate.route_3d) {
     candidate.route_projection = projectOntoRouteProgress3D(
         *candidate.route_3d,
         Point3{snapshot.navigation.state.x, snapshot.navigation.state.y,

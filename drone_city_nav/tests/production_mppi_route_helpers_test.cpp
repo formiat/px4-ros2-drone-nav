@@ -160,6 +160,58 @@ TEST(ProductionMppiRouteHelpersTest,
 }
 
 TEST(ProductionMppiRouteHelpersTest,
+     FailedRecompilationClearsTheEntireExecutableRouteBundle) {
+  const std::vector<RouteSample3D> candidate = straightRoute();
+  const std::uint64_t fingerprint = routeFingerprint(candidate);
+  RouteCompilationResult3D compilation = compileExecutionRoute3D(RouteCompilerInput3D{
+      .route = candidate,
+      .constrained_spans = {},
+      .passage_volumes = {},
+      .cooperative_passage_assignments = {},
+      .selected_passage_traversal_ids = {},
+      .passage_volume_config = PassageVolumeConfig{},
+      .endpoint_semantics = RouteEndpointSemantics3D::kContinuation,
+      .materialized_route_fingerprint = fingerprint,
+      .config = RouteCompilerConfig3D{},
+  });
+  ASSERT_TRUE(compilation.compiled());
+
+  ProductionMppiPreparedEsdf prepared;
+  adoptRouteCompilation3D(prepared, std::move(compilation));
+  ASSERT_NE(prepared.compiled_route_geometry, nullptr);
+  ASSERT_NE(prepared.mppi_route, nullptr);
+  ASSERT_NE(prepared.route_3d, nullptr);
+  ASSERT_NE(prepared.route_2d_projection, nullptr);
+  ASSERT_NE(prepared.constrained_spans, nullptr);
+  ASSERT_NE(prepared.passage_volumes, nullptr);
+  ASSERT_NE(prepared.cooperative_passage_assignments, nullptr);
+  ASSERT_NE(prepared.selected_passage_traversal_ids, nullptr);
+  prepared.route_projection.valid = true;
+
+  adoptRouteCompilation3D(
+      prepared,
+      RouteCompilationResult3D{
+          .geometry = nullptr,
+          .validation = {ExecutionRouteGeometryFailureReason3D::kInvalidTimeProfile,
+                         0U},
+          .stop_turn_count = 0U,
+          .tracking_error_tube = nullptr,
+      });
+
+  EXPECT_EQ(prepared.compiled_route_geometry, nullptr);
+  EXPECT_EQ(prepared.mppi_route, nullptr);
+  EXPECT_EQ(prepared.route_3d, nullptr);
+  EXPECT_EQ(prepared.route_2d_projection, nullptr);
+  EXPECT_EQ(prepared.constrained_spans, nullptr);
+  EXPECT_EQ(prepared.passage_volumes, nullptr);
+  EXPECT_EQ(prepared.cooperative_passage_assignments, nullptr);
+  EXPECT_EQ(prepared.selected_passage_traversal_ids, nullptr);
+  EXPECT_FALSE(prepared.route_projection.valid);
+  EXPECT_EQ(prepared.route_compilation_validation.reason,
+            ExecutionRouteGeometryFailureReason3D::kInvalidTimeProfile);
+}
+
+TEST(ProductionMppiRouteHelpersTest,
      PendingPublicationAllowsRawAdvanceButRejectsTransactionBaseChanges) {
   PendingRoutePublicationCurrentness3D currentness{
       .resident_world_current = true,
