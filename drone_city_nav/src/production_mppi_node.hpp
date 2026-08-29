@@ -437,7 +437,9 @@ private:
       const ProductionMppiNavigation& navigation,
       const std::shared_ptr<const VersionedExecutionInput3D>& execution_input,
       const std::shared_ptr<const ProductionMppiRawWorld3D>& latest_raw_world,
-      std::uint64_t minimum_tracking_sample_sequence,
+      const std::shared_ptr<const VersionedLatestLidarEvidence3D>&
+          latest_lidar_evidence,
+      std::int64_t validation_stamp_ns, std::uint64_t minimum_tracking_sample_sequence,
       std::optional<DirectTrackingOwnerIdentity3D> direct_tracking_identity,
       bool observed_3d_world);
   void configureCooperativeTraffic();

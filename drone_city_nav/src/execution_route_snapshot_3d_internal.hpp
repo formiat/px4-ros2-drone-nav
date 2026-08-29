@@ -433,6 +433,10 @@ rawInvalidationProofMatchesEvent(const FiniteExecutionState3D& execution,
                                  const RouteLifecycleEvent3D& event) noexcept;
 
 [[nodiscard]] bool
+latestLidarInvalidationProofMatchesEvent(const FiniteExecutionState3D& execution,
+                                         const RouteLifecycleEvent3D& event) noexcept;
+
+[[nodiscard]] bool
 terminalStopBoundaryValid(const CertifiedStopBoundary3D& boundary,
                           const FiniteExecutionState3D& execution) noexcept;
 

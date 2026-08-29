@@ -509,7 +509,8 @@ retireCertifiedRoute3D(const ExecutionRouteSnapshot3D& current,
   }
   if (current.phase == ExecutionRoutePhase3D::kBraking &&
       !retained_safe_execution.has_value() &&
-      (event.kind == RouteLifecycleEventKind3D::kObjectiveSuperseded ||
+      (event.kind == RouteLifecycleEventKind3D::kLatestLidarInvalidated ||
+       event.kind == RouteLifecycleEventKind3D::kObjectiveSuperseded ||
        event.kind == RouteLifecycleEventKind3D::kCrossTrackExceeded ||
        event.kind == RouteLifecycleEventKind3D::kTrackingTubeExceeded)) {
     return transitionFailure(ExecutionRouteTransitionStatus3D::kNoChange);
@@ -525,7 +526,7 @@ retireCertifiedRoute3D(const ExecutionRouteSnapshot3D& current,
       std::get_if<ObservedRawRouteCertificate3D>(&current_route->certificate);
   if (event.kind == RouteLifecycleEventKind3D::kRawInvalidated) {
     if (current_raw_certificate == nullptr || event.raw_producer_instance_id == 0U ||
-        event.raw_revision == 0U ||
+        event.raw_revision == 0U || event.latest_lidar_evidence.valid() ||
         event.raw_producer_instance_id !=
             current_raw_certificate->producer_instance_id) {
       return transitionFailure(
@@ -548,6 +549,13 @@ retireCertifiedRoute3D(const ExecutionRouteSnapshot3D& current,
         return transitionFailure(ExecutionRouteTransitionStatus3D::kNoChange);
       }
     }
+  }
+  if (event.kind == RouteLifecycleEventKind3D::kLatestLidarInvalidated &&
+      (event.raw_producer_instance_id != 0U || event.raw_revision != 0U ||
+       !event.latest_lidar_evidence.valid() || !retained_safe_execution.has_value() ||
+       !latestLidarInvalidationProofMatchesEvent(*retained_safe_execution, event))) {
+    return transitionFailure(
+        ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
   }
 
   const bool has_retained_safe_execution = retained_safe_execution.has_value();
@@ -670,6 +678,7 @@ retireCertifiedRoute3D(const ExecutionRouteSnapshot3D& current,
       next.phase = ExecutionRoutePhase3D::kBraking;
       break;
     }
+    case RouteLifecycleEventKind3D::kLatestLidarInvalidated:
     case RouteLifecycleEventKind3D::kObjectiveSuperseded:
     case RouteLifecycleEventKind3D::kCrossTrackExceeded:
     case RouteLifecycleEventKind3D::kTrackingTubeExceeded:

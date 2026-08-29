@@ -274,8 +274,10 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishNoExecutablePathHo
   }
   const bool physical_route_invalidation =
       cycle.route_execution.lifecycle_event.has_value() &&
-      cycle.route_execution.lifecycle_event->kind ==
-          RouteLifecycleEventKind3D::kRawInvalidated;
+      (cycle.route_execution.lifecycle_event->kind ==
+           RouteLifecycleEventKind3D::kRawInvalidated ||
+       cycle.route_execution.lifecycle_event->kind ==
+           RouteLifecycleEventKind3D::kLatestLidarInvalidated);
   return publishExecutionRevocation(reason, cycle.now_ns, physical_route_invalidation);
 }
 

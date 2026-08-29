@@ -225,9 +225,16 @@ ProductionMppiNode::retainSnapshotFinitePath(
                   RouteLifecycleEventKind3D::kRawInvalidated
           ? std::addressof(*route_execution.lifecycle_event)
           : nullptr;
+  const RouteLifecycleEvent3D* const latest_lidar_invalidation =
+      route_execution.lifecycle_event.has_value() &&
+              route_execution.lifecycle_event->kind ==
+                  RouteLifecycleEventKind3D::kLatestLidarInvalidated
+          ? std::addressof(*route_execution.lifecycle_event)
+          : nullptr;
   const RouteLifecycleEvent3D* const lifecycle_braking =
       route_execution.lifecycle_event.has_value() &&
-              (route_execution.lifecycle_event->kind ==
+              (latest_lidar_invalidation != nullptr ||
+               route_execution.lifecycle_event->kind ==
                    RouteLifecycleEventKind3D::kObjectiveSuperseded ||
                route_execution.lifecycle_event->kind ==
                    RouteLifecycleEventKind3D::kCrossTrackExceeded ||

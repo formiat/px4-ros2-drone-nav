@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/execution_evidence_3d.hpp"
 #include "drone_city_nav/observed_occupancy_grid_3d.hpp"
 #include "drone_city_nav/route_3d.hpp"
 #include "drone_city_nav/route_planning_3d.hpp"
@@ -107,6 +108,7 @@ struct RouteExecutionOwnershipAssessment3D {
 enum class RouteLifecycleEventKind3D : std::uint8_t {
   kCompleted,
   kRawInvalidated,
+  kLatestLidarInvalidated,
   kObjectiveSuperseded,
   kControlCandidateRejected,
   kCrossTrackExceeded,
@@ -118,6 +120,7 @@ struct RouteLifecycleEvent3D {
   std::uint64_t generation{0U};
   std::uint64_t raw_producer_instance_id{0U};
   std::uint64_t raw_revision{0U};
+  LatestLidarEvidenceId3D latest_lidar_evidence{};
 };
 
 enum class RouteProposalReplacementStatus3D : std::uint8_t {

@@ -57,6 +57,7 @@ knownRouteLifecycleEventKind(const RouteLifecycleEventKind3D kind) noexcept {
   switch (kind) {
     case RouteLifecycleEventKind3D::kCompleted:
     case RouteLifecycleEventKind3D::kRawInvalidated:
+    case RouteLifecycleEventKind3D::kLatestLidarInvalidated:
     case RouteLifecycleEventKind3D::kObjectiveSuperseded:
     case RouteLifecycleEventKind3D::kControlCandidateRejected:
     case RouteLifecycleEventKind3D::kCrossTrackExceeded:

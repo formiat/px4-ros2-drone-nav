@@ -214,6 +214,8 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
     const ProductionMppiNavigation& navigation,
     const std::shared_ptr<const VersionedExecutionInput3D>& execution_input,
     const std::shared_ptr<const ProductionMppiRawWorld3D>& latest_raw_world,
+    const std::shared_ptr<const VersionedLatestLidarEvidence3D>& latest_lidar_evidence,
+    const std::int64_t validation_stamp_ns,
     const std::uint64_t minimum_tracking_sample_sequence,
     std::optional<DirectTrackingOwnerIdentity3D> direct_tracking_identity,
     const bool observed_3d_world) {
@@ -295,7 +297,9 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
       std::shared_ptr<const VersionedObservedRawWorld3D> latest_observed_owner;
       std::shared_ptr<const VersionedObservedRawWorld3D> observed_owner;
       bool active_trajectory_raw_collision{false};
+      bool active_trajectory_latest_lidar_collision{false};
       mppi::FiniteExecutionPathValidation active_trajectory_raw_validation;
+      mppi::FiniteExecutionPathValidation active_trajectory_lidar_validation;
       if (observed_route) {
         latest_observed_owner =
             deriveLatestObservedRouteEvidence(latest_raw_world, active_route);
@@ -332,6 +336,19 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
                   : nullptr;
         }
       }
+      if (latest_lidar_evidence != nullptr &&
+          active_source_snapshot->phase == ExecutionRoutePhase3D::kFollowing &&
+          active_source_snapshot->finite_execution.has_value()) {
+        active_trajectory_lidar_validation =
+            validateRemainingFiniteExecutionAgainstLatestLidar3D(
+                *active_source_snapshot->finite_execution, *execution_input,
+                *latest_lidar_evidence, validation_stamp_ns);
+        active_trajectory_latest_lidar_collision =
+            active_trajectory_lidar_validation.status ==
+            mppi::FiniteExecutionPathStatus::kLatestLidarRawCollision;
+      }
+      const bool active_trajectory_physical_collision =
+          active_trajectory_raw_collision || active_trajectory_latest_lidar_collision;
       const auto* const raw_certificate =
           std::get_if<ObservedRawRouteCertificate3D>(&active_route.certificate);
       observation.previously_validated_through_raw_revision =
@@ -345,22 +362,26 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
                        1.0e-6);
       RouteExecutionAssessment3D diagnostic_assessment = assessRouteExecution3D(
           &active_route.identity, *active_route.geometry->route, observation);
-      if (active_trajectory_raw_collision) {
+      if (active_trajectory_physical_collision) {
+        const mppi::FiniteExecutionPathValidation& physical_validation =
+            active_trajectory_raw_collision ? active_trajectory_raw_validation
+                                            : active_trajectory_lidar_validation;
         diagnostic_assessment.status = RouteExecutionStatus3D::kRawCollision;
         diagnostic_assessment.raw_validation.status =
             RawRouteSuffixStatus3D::kRawCollision;
         diagnostic_assessment.raw_validation.failure_point =
-            active_trajectory_raw_validation.failure_point;
+            physical_validation.failure_point;
         RCLCPP_WARN_THROTTLE(
             get_logger(), *get_clock(), 1000,
             "ROUTE_EXECUTION3D snapshot_version=%" PRIu64 " route_generation=%" PRIu64
-            " status=raw_collision scope=remaining_finite_trajectory "
+            " status=raw_collision scope=%s "
             "failure_segment=%zu failure_point=(%.3f,%.3f,%.3f)",
             result.source_snapshot->version, active_route.identity.generation,
-            active_trajectory_raw_validation.failure_segment_index,
-            active_trajectory_raw_validation.failure_point.x,
-            active_trajectory_raw_validation.failure_point.y,
-            active_trajectory_raw_validation.failure_point.z);
+            active_trajectory_raw_collision ? "persistent_raw_finite_trajectory"
+                                            : "latest_lidar_finite_trajectory",
+            physical_validation.failure_segment_index,
+            physical_validation.failure_point.x, physical_validation.failure_point.y,
+            physical_validation.failure_point.z);
       }
       if (diagnostic_assessment.usable() &&
           optional_constraints_.route_tracking_tube_constraints_enabled) {
@@ -412,7 +433,7 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
            diagnostic_assessment.status ==
                RouteExecutionStatus3D::kTrackingTubeViolation);
       const bool route_invalidation_required =
-          active_trajectory_raw_collision ||
+          active_trajectory_physical_collision ||
           diagnostic_assessment.status == RouteExecutionStatus3D::kObjectiveMismatch ||
           optional_policy_invalidation;
       if (result.tracking_error_tube_handoff_active) {
@@ -475,6 +496,8 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
           result.status = diagnostic_assessment.status;
           const std::uint64_t generation = active_route.identity.generation;
           const bool raw_invalidated = active_trajectory_raw_collision;
+          const bool latest_lidar_invalidated =
+              !raw_invalidated && active_trajectory_latest_lidar_collision;
           if (raw_invalidated) {
             result.lifecycle_observed_raw_world = observed_owner;
           }
@@ -483,6 +506,8 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
           RouteReleaseReason3D release_reason = RouteReleaseReason3D::kBlocked;
           if (raw_invalidated) {
             event_kind = RouteLifecycleEventKind3D::kRawInvalidated;
+          } else if (latest_lidar_invalidated) {
+            event_kind = RouteLifecycleEventKind3D::kLatestLidarInvalidated;
           } else if (result.status == RouteExecutionStatus3D::kObjectiveMismatch) {
             event_kind = RouteLifecycleEventKind3D::kObjectiveSuperseded;
             release_reason = RouteReleaseReason3D::kObjectiveChanged;
@@ -503,6 +528,10 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
               .raw_revision = raw_invalidated && observed_owner != nullptr
                                   ? observed_owner->version().revision
                                   : 0U,
+              .latest_lidar_evidence =
+                  latest_lidar_invalidated && latest_lidar_evidence != nullptr
+                      ? latest_lidar_evidence->evidenceId()
+                      : LatestLidarEvidenceId3D{},
           };
           if (raw_invalidated && observed_owner != nullptr) {
             const std::uint64_t collision_raw_revision =

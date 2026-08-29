@@ -188,9 +188,13 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
   const bool certifies_raw_invalidation =
       lifecycle_event != nullptr &&
       lifecycle_event->kind == RouteLifecycleEventKind3D::kRawInvalidated;
+  const bool certifies_latest_lidar_invalidation =
+      lifecycle_event != nullptr &&
+      lifecycle_event->kind == RouteLifecycleEventKind3D::kLatestLidarInvalidated;
   const bool certifies_lifecycle_braking =
       lifecycle_event != nullptr &&
-      (lifecycle_event->kind == RouteLifecycleEventKind3D::kObjectiveSuperseded ||
+      (certifies_latest_lidar_invalidation ||
+       lifecycle_event->kind == RouteLifecycleEventKind3D::kObjectiveSuperseded ||
        lifecycle_event->kind == RouteLifecycleEventKind3D::kCrossTrackExceeded ||
        lifecycle_event->kind == RouteLifecycleEventKind3D::kTrackingTubeExceeded);
   const bool certifies_braking_execution =
@@ -238,6 +242,17 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
     return rejectedFiniteExecution(
         FiniteExecutionCertificationStatus3D::kTargetRelationRejected);
   }
+  if (certifies_latest_lidar_invalidation &&
+      (current.phase != ExecutionRoutePhase3D::kFollowing ||
+       !current.finite_execution.has_value() ||
+       certification.latest_lidar_evidence == nullptr ||
+       validateRemainingFiniteExecutionAgainstLatestLidar3D(
+           *current.finite_execution, *certification.execution_input,
+           *certification.latest_lidar_evidence, certification.valid_from_ns)
+               .status != mppi::FiniteExecutionPathStatus::kLatestLidarRawCollision)) {
+    return rejectedFiniteExecution(
+        FiniteExecutionCertificationStatus3D::kLifecycleBrakingContractRejected);
+  }
   if (targets_current_route) {
     if (target_route.progress.execution_input == nullptr) {
       return rejectedFiniteExecution(
@@ -280,6 +295,7 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
             lifecycle_event->raw_producer_instance_id ||
         observed_raw_validation_world->version().revision !=
             lifecycle_event->raw_revision ||
+        lifecycle_event->latest_lidar_evidence.valid() ||
         certification.kind != FiniteExecutionKind3D::kEmergencyBrakeTail ||
         (previous_raw_lineage != nullptr &&
          (lifecycle_event->raw_revision <
@@ -300,6 +316,12 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
        lifecycle_event->generation != target_route.identity.generation ||
        lifecycle_event->raw_producer_instance_id != 0U ||
        lifecycle_event->raw_revision != 0U ||
+       (certifies_latest_lidar_invalidation
+            ? (!lifecycle_event->latest_lidar_evidence.valid() ||
+               certification.latest_lidar_evidence == nullptr ||
+               certification.latest_lidar_evidence->evidenceId() !=
+                   lifecycle_event->latest_lidar_evidence)
+            : lifecycle_event->latest_lidar_evidence.valid()) ||
        certification.kind != FiniteExecutionKind3D::kEmergencyBrakeTail)) {
     return rejectedFiniteExecution(
         FiniteExecutionCertificationStatus3D::kLifecycleBrakingContractRejected);
@@ -677,6 +699,65 @@ validateRemainingFiniteExecutionAgainstObservedWorld3D(
       .launch_support_contact = launch_support_contact,
       .raw_occupancy = nullptr,
       .latest_lidar_obstacle_points = {},
+      .terminal_boundary = std::nullopt,
+  };
+  return mppi::validateFiniteExecutionTrajectoryContinuation(
+      points, execution.valid_from_ns, execution.valid_until_ns, validation_stamp_ns,
+      current_input.state(), current_input.previousControl(), validation_world);
+}
+
+mppi::FiniteExecutionPathValidation
+validateRemainingFiniteExecutionAgainstLatestLidar3D(
+    const FiniteExecutionState3D& execution,
+    const VersionedExecutionInput3D& current_input,
+    const VersionedLatestLidarEvidence3D& current_lidar,
+    const std::int64_t validation_stamp_ns) noexcept {
+  const bool observed_mode = execution.observed_raw_world != nullptr;
+  const bool static_mode = execution.static_world != nullptr;
+  if (execution.horizon == nullptr || execution.validation_policy == nullptr ||
+      execution.execution_input == nullptr ||
+      execution.latest_lidar_evidence == nullptr || observed_mode == static_mode ||
+      !current_input.valid() || !current_input.nominalStateAuthoritative() ||
+      !current_lidar.valid() || validation_stamp_ns <= 0 ||
+      current_input.effectiveStampNs() != validation_stamp_ns ||
+      !latestLidarEvidenceFreshAt(current_lidar, *execution.validation_policy,
+                                  validation_stamp_ns) ||
+      (current_lidar.producerInstanceId() ==
+           execution.latest_lidar_evidence->producerInstanceId() &&
+       !latestLidarEvidenceNotOlder(current_lidar, *execution.latest_lidar_evidence)) ||
+      (observed_mode && !execution.observed_raw_world->valid()) ||
+      (static_mode && !execution.static_world->valid())) {
+    return {};
+  }
+  const std::vector<mppi::TimedExecutionPathPoint> points = timedExecutionPathPoints(
+      *execution.horizon, execution.execution_input->previousControl(),
+      execution.control_interval_ns);
+  if (points.empty()) {
+    return {};
+  }
+  const ProprioceptiveFreeSpaceSeed3D* const free_space_seed =
+      observed_mode &&
+              execution.observed_raw_world->proprioceptiveFreeSpaceSeed().has_value()
+          ? std::addressof(*execution.observed_raw_world->proprioceptiveFreeSpaceSeed())
+          : nullptr;
+  const LaunchSupportContact3D* const launch_support_contact =
+      observed_mode && execution.observed_raw_world->launchSupportContact().has_value()
+          ? std::addressof(*execution.observed_raw_world->launchSupportContact())
+          : nullptr;
+  const mppi::FiniteExecutionPathWorld validation_world{
+      .flight_envelope = &execution.validation_policy->flightEnvelope(),
+      .dynamics = &execution.validation_policy->dynamics(),
+      .altitude_envelope = &execution.validation_policy->altitudeEnvelope(),
+      .footprint = &execution.validation_policy->sweptFootprint(),
+      .static_occupancy = static_mode ? &execution.static_world->occupancy() : nullptr,
+      .observed_occupancy =
+          observed_mode ? &execution.observed_raw_world->occupancy() : nullptr,
+      .require_known_free_space = static_mode,
+      .proprioceptive_free_space_seed = free_space_seed,
+      .launch_support_contact = launch_support_contact,
+      .raw_occupancy = nullptr,
+      .latest_lidar_obstacle_points =
+          std::span<const Point3>{current_lidar.hitPointsMapM()},
       .terminal_boundary = std::nullopt,
   };
   return mppi::validateFiniteExecutionTrajectoryContinuation(

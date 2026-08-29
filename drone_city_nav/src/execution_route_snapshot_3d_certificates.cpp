@@ -716,8 +716,8 @@ rawInvalidationProofMatchesEvent(const FiniteExecutionState3D& execution,
       std::get_if<ObservedRawFiniteExecutionValidationLineage3D>(
           &execution.validation_proof.lineage);
   return event.kind == RouteLifecycleEventKind3D::kRawInvalidated &&
-         raw_certificate != nullptr && raw_lineage != nullptr &&
-         execution.observed_raw_world != nullptr &&
+         !event.latest_lidar_evidence.valid() && raw_certificate != nullptr &&
+         raw_lineage != nullptr && execution.observed_raw_world != nullptr &&
          raw_certificate->producer_instance_id == event.raw_producer_instance_id &&
          raw_lineage->producer_instance_id == event.raw_producer_instance_id &&
          raw_lineage->validated_through_raw_revision == event.raw_revision &&
@@ -726,6 +726,16 @@ rawInvalidationProofMatchesEvent(const FiniteExecutionState3D& execution,
          execution.observed_raw_world->version().revision == event.raw_revision &&
          execution.observed_raw_world->contentFingerprint() ==
              raw_lineage->observed_world_content_fingerprint;
+}
+
+[[nodiscard]] bool
+latestLidarInvalidationProofMatchesEvent(const FiniteExecutionState3D& execution,
+                                         const RouteLifecycleEvent3D& event) noexcept {
+  return event.kind == RouteLifecycleEventKind3D::kLatestLidarInvalidated &&
+         event.raw_producer_instance_id == 0U && event.raw_revision == 0U &&
+         event.latest_lidar_evidence.valid() &&
+         execution.latest_lidar_evidence != nullptr &&
+         execution.latest_lidar_evidence->evidenceId() == event.latest_lidar_evidence;
 }
 
 [[nodiscard]] bool

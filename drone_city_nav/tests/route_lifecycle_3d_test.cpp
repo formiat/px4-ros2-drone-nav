@@ -775,6 +775,9 @@ TEST(RouteLifecycle3DTest, LifecycleEventsHaveStableDiagnosticNames) {
   EXPECT_EQ(routeLifecycleEventKind3DName(RouteLifecycleEventKind3D::kRawInvalidated),
             "raw_invalidated");
   EXPECT_EQ(
+      routeLifecycleEventKind3DName(RouteLifecycleEventKind3D::kLatestLidarInvalidated),
+      "latest_lidar_invalidated");
+  EXPECT_EQ(
       routeLifecycleEventKind3DName(RouteLifecycleEventKind3D::kObjectiveSuperseded),
       "objective_superseded");
   EXPECT_EQ(routeLifecycleEventKind3DName(

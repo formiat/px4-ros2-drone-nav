@@ -208,6 +208,17 @@ validateRemainingFiniteExecutionAgainstObservedWorld3D(
     const VersionedObservedRawWorld3D& current_world,
     std::int64_t validation_stamp_ns) noexcept;
 
+// Latest acquisition-aligned lidar evidence is a lower-latency physical
+// invalidation source than the persistent raw map. It may stop only the
+// already-published finite trajectory; unrelated scan changes do not revoke a
+// route.
+[[nodiscard]] mppi::FiniteExecutionPathValidation
+validateRemainingFiniteExecutionAgainstLatestLidar3D(
+    const FiniteExecutionState3D& execution,
+    const VersionedExecutionInput3D& current_input,
+    const VersionedLatestLidarEvidence3D& current_lidar,
+    std::int64_t validation_stamp_ns) noexcept;
+
 // The controller-facing route execution authority is certified as one unit.
 // The command horizon may be nominal or a retained continuation, while the
 // braking tail always starts from the same immutable execution input and can be

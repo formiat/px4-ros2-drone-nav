@@ -3,6 +3,139 @@
 namespace drone_city_nav {
 namespace {
 
+[[nodiscard]] std::shared_ptr<const VersionedLatestLidarEvidence3D>
+lidarEvidenceWithPoints(const VersionedLatestLidarEvidence3D& identity_source,
+                        std::vector<Point3> hit_points_map_m) {
+  return VersionedLatestLidarEvidence3D::capture(LatestLidarEvidenceCapture3D{
+      .producer_instance_id = identity_source.producerInstanceId(),
+      .sequence = identity_source.sequence(),
+      .pose_generation = identity_source.poseGeneration(),
+      .acquisition_stamp_ns = identity_source.acquisitionStampNs(),
+      .receive_stamp_ns = identity_source.receiveStampNs(),
+      .source_beam_count = std::max<std::size_t>(1U, hit_points_map_m.size()),
+      .invalid_beam_count = identity_source.invalidBeamCount(),
+      .hit_points_map_m = std::move(hit_points_map_m),
+  });
+}
+
+TEST(ExecutionRouteSnapshot3DTest,
+     FreshLidarInvalidatesOnlyAnIntersectedPublishedFiniteTrajectory) {
+  SnapshotFixture3D fixture;
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
+      fixture.activeSnapshot();
+  ASSERT_NE(active, nullptr);
+  ASSERT_TRUE(active->route.has_value());
+  ASSERT_TRUE(active->finite_execution.has_value());
+  const FiniteExecutionState3D& resident = *active->finite_execution;
+  ASSERT_NE(resident.horizon, nullptr);
+  ASSERT_FALSE(resident.horizon->states.empty());
+
+  FiniteExecutionCertification3D current =
+      SnapshotFixture3D::finiteCertificationForRoute(
+          *active->route, FiniteExecutionKind3D::kEmergencyBrakeTail,
+          resident.trajectory_revision + 2U);
+  ASSERT_NE(current.execution_input, nullptr);
+  ASSERT_NE(current.latest_lidar_evidence, nullptr);
+  const std::shared_ptr<const VersionedLatestLidarEvidence3D> clear_lidar =
+      lidarEvidenceWithPoints(*current.latest_lidar_evidence,
+                              {Point3{-4.0, -4.0, 1.0}});
+  ASSERT_NE(clear_lidar, nullptr);
+
+  const mppi::FiniteExecutionPathValidation clear =
+      validateRemainingFiniteExecutionAgainstLatestLidar3D(
+          resident, *current.execution_input, *clear_lidar, current.valid_from_ns);
+  EXPECT_EQ(clear.status, mppi::FiniteExecutionPathStatus::kValid);
+
+  const mppi::State& intersected_state =
+      resident.horizon->states[resident.horizon->states.size() / 2U];
+  const std::shared_ptr<const VersionedLatestLidarEvidence3D> blocking_lidar =
+      SnapshotFixture3D::newerLidarEvidence(
+          *clear_lidar,
+          {Point3{intersected_state.x, intersected_state.y, intersected_state.z}});
+  ASSERT_NE(blocking_lidar, nullptr);
+  const mppi::FiniteExecutionPathValidation blocked =
+      validateRemainingFiniteExecutionAgainstLatestLidar3D(
+          resident, *current.execution_input, *blocking_lidar, current.valid_from_ns);
+  EXPECT_EQ(blocked.status, mppi::FiniteExecutionPathStatus::kLatestLidarRawCollision);
+}
+
+TEST(ExecutionRouteSnapshot3DTest,
+     LatestLidarInvalidationBindsEmergencyBrakingToExactPhysicalEvidence) {
+  SnapshotFixture3D fixture;
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
+      fixture.activeSnapshot();
+  ASSERT_NE(active, nullptr);
+  ASSERT_TRUE(active->route.has_value());
+  ASSERT_TRUE(active->finite_execution.has_value());
+  ASSERT_NE(active->finite_execution->horizon, nullptr);
+
+  FiniteExecutionCertification3D braking =
+      SnapshotFixture3D::finiteCertificationForRoute(
+          *active->route, FiniteExecutionKind3D::kEmergencyBrakeTail,
+          active->finite_execution->trajectory_revision + 2U);
+  ASSERT_NE(braking.latest_lidar_evidence, nullptr);
+  const mppi::State& intersected_state =
+      active->finite_execution->horizon
+          ->states[active->finite_execution->horizon->states.size() / 2U];
+  braking.latest_lidar_evidence = lidarEvidenceWithPoints(
+      *braking.latest_lidar_evidence,
+      {Point3{intersected_state.x, intersected_state.y, intersected_state.z}});
+  ASSERT_NE(braking.latest_lidar_evidence, nullptr);
+  const RouteLifecycleEvent3D invalidation{
+      .kind = RouteLifecycleEventKind3D::kLatestLidarInvalidated,
+      .generation = active->route->identity.generation,
+      .latest_lidar_evidence = braking.latest_lidar_evidence->evidenceId(),
+  };
+
+  RouteLifecycleEvent3D wrong_evidence = invalidation;
+  ++wrong_evidence.latest_lidar_evidence.sequence;
+  EXPECT_FALSE(certifyLifecycleBrakingFiniteExecution3D(
+                   *active,
+                   LifecycleBrakingFiniteExecutionCertification3D{
+                       .lifecycle_event = wrong_evidence,
+                       .finite_execution = braking,
+                   })
+                   .has_value());
+
+  FiniteExecutionCertification3D clear_braking = braking;
+  clear_braking.latest_lidar_evidence = SnapshotFixture3D::newerLidarEvidence(
+      *braking.latest_lidar_evidence, {Point3{-4.0, -4.0, 1.0}});
+  ASSERT_NE(clear_braking.latest_lidar_evidence, nullptr);
+  const RouteLifecycleEvent3D nonintersecting_evidence{
+      .kind = RouteLifecycleEventKind3D::kLatestLidarInvalidated,
+      .generation = active->route->identity.generation,
+      .latest_lidar_evidence = clear_braking.latest_lidar_evidence->evidenceId(),
+  };
+  EXPECT_FALSE(certifyLifecycleBrakingFiniteExecution3D(
+                   *active,
+                   LifecycleBrakingFiniteExecutionCertification3D{
+                       .lifecycle_event = nonintersecting_evidence,
+                       .finite_execution = std::move(clear_braking),
+                   })
+                   .has_value());
+
+  const std::optional<FiniteExecutionState3D> certified =
+      certifyLifecycleBrakingFiniteExecution3D(
+          *active, LifecycleBrakingFiniteExecutionCertification3D{
+                       .lifecycle_event = invalidation,
+                       .finite_execution = std::move(braking),
+                   });
+  ASSERT_TRUE(certified.has_value());
+  ASSERT_NE(certified->latest_lidar_evidence, nullptr);
+  EXPECT_EQ(certified->latest_lidar_evidence->evidenceId(),
+            invalidation.latest_lidar_evidence);
+
+  const ExecutionRouteTransitionResult3D retired = retireCertifiedRoute3D(
+      *active, SnapshotFixture3D::guard(*active), invalidation, certified);
+  ASSERT_TRUE(retired.applied())
+      << executionRouteTransitionStatus3DName(retired.status);
+  ASSERT_NE(retired.next, nullptr);
+  ASSERT_TRUE(retired.next->finite_execution.has_value());
+  EXPECT_EQ(retired.next->phase, ExecutionRoutePhase3D::kBraking);
+  EXPECT_EQ(retired.next->finite_execution->kind,
+            FiniteExecutionKind3D::kEmergencyBrakeTail);
+}
+
 TEST(ExecutionRouteSnapshot3DTest,
      LifecycleBrakingRetainsPhysicalOwnershipOutsideTheOldRouteCorridor) {
   SnapshotFixture3D fixture;

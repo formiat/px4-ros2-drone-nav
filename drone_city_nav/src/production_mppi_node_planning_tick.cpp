@@ -348,7 +348,8 @@ void ProductionMppiNode::planningTick() {
   };
   route_execution = resolveRouteExecution3D(
       *esdf, objective.get(), navigation, execution_input, latest_raw_world_3d,
-      required_route_sample, direct_tracking_identity, observed_3d_world);
+      latest_lidar_evidence, now_ns, required_route_sample, direct_tracking_identity,
+      observed_3d_world);
   const PendingCertifiedRouteRecoveryResult3D pending_recovery =
       recoverPendingCertifiedRouteLiveness3D(
           pending_certified_route_mailbox_, route_execution.pending_route,
