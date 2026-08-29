@@ -104,10 +104,12 @@ replaceCertifiedRouteImpl(const ExecutionRouteSnapshot3D& current,
                     *current_route->progress.execution_input) &&
                 successorRouteEvidenceNotOlder(*current_route, successor,
                                                successor_execution.command_horizon);
-  if (successor_execution.command_horizon.kind != FiniteExecutionKind3D::kNominal ||
-      !successor_evidence_current) {
+  if (successor_execution.command_horizon.kind != FiniteExecutionKind3D::kNominal) {
     return transitionFailure(
         ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
+  }
+  if (!successor_evidence_current) {
+    return transitionFailure(ExecutionRouteTransitionStatus3D::kCertificateRegression);
   }
 
   bindProgressToExecutionInput(

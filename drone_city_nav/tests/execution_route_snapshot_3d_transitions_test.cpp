@@ -981,7 +981,7 @@ TEST(ExecutionRouteSnapshot3DTest,
                               *stale_successor, stale_execution,
                               testRouteSplice(*advanced.next->route, *stale_successor))
           .status,
-      ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
+      ExecutionRouteTransitionStatus3D::kCertificateRegression);
 
   ExecutionRouteActivation3D fresh_activation = stale_activation;
   fresh_activation.observation.latest_raw_revision = current_raw_revision;
@@ -1023,7 +1023,7 @@ TEST(ExecutionRouteSnapshot3DTest,
                 *switched_successor, switched_execution,
                 testRouteSplice(*advanced.next->route, *switched_successor))
                 .status,
-            ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
+            ExecutionRouteTransitionStatus3D::kCertificateRegression);
 }
 
 } // namespace
