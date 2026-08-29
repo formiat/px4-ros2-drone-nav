@@ -75,7 +75,8 @@ new raw revision and refreshed free/unknown classification without a GPU upload.
 
 Inspect:
 
-- `planner_status` from the persistent D* Lite result;
+- independent `planner_input` and `planner_progress` values, plus whether this
+  update published an improved candidate and whether any incumbent is resident;
 - planner mission/world provenance, search and repair generations;
 - changed occupied voxels, affected lattice states, records, open entries, and
   expansions;

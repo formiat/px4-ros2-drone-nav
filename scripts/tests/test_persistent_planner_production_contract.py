@@ -92,13 +92,14 @@ class PersistentPlannerProductionContractTest(unittest.TestCase):
     def test_incremental_search_is_resumed_without_discarding_newer_worlds(
         self,
     ) -> None:
-        self.assertIn("PersistentPlannerStatus3D::kSearchInProgress", self.planning)
-        self.assertIn("if (!pending_route_planning_world_)", self.planning)
+        self.assertIn("planner_update.dispatch.continue_search", self.planning)
+        self.assertIn("planner_update.improved_incumbent", self.planning)
+        self.assertIn("if (!pending_route_planning_work_)", self.planning)
         self.assertIn(
             "continuation_queued ? \"true\" : \"newer_world_pending\"",
             self.planning,
         )
-        continuation = self.planning.index("PersistentPlannerStatus3D::kSearchInProgress")
+        continuation = self.planning.index("planner_update.dispatch.continue_search")
         activation = self.planning.index("commitRouteActivation3D")
         self.assertLess(continuation, activation)
 
@@ -108,12 +109,11 @@ class PersistentPlannerProductionContractTest(unittest.TestCase):
             "estimatedFlightStopAndTurnDelay3D",
             "requiresFlightStopAndTurn3D",
             "seedExecutionTimeIncumbent",
-            "execution_time_goal_cost_s_",
+            "execution_time_refiner_.goal_cost_s_",
         ):
             self.assertIn(contract, self.time_refinement)
-        self.assertIn(
-            "pathTimeProfile(trial, initial_velocity)", self.spatial_search
-        )
+        self.assertIn("PathPostprocessor3D::shortcut", self.spatial_search)
+        self.assertIn("context.time_profile(trial)", self.spatial_search)
 
     def test_successor_search_starts_at_certified_future_station(self) -> None:
         self.assertIn("search_base_stitch_station_m", self.selection)
@@ -136,12 +136,13 @@ class PersistentPlannerProductionContractTest(unittest.TestCase):
     def test_runtime_telemetry_reports_persistent_planner_evidence(self) -> None:
         self.assertIn("ProductionPersistentPlannerTelemetry3D", self.header)
         for field in (
-            "plan.status",
+            "candidate.planner_input_status",
+            "candidate.planner_progress",
             "plan.search_generation",
             "plan.repair_generation",
             "plan.changed_occupied_voxels",
             "plan.affected_lattice_states",
-            "plan.estimated_execution_time_s",
+            "spatial_route.estimated_execution_time_s",
             "plan.execution_time_search_expansions",
             "plan.execution_time_search_objective_s",
             "plan.execution_time_search_complete",

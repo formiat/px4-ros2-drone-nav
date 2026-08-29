@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <limits>
 #include <optional>
 #include <queue>
@@ -14,6 +15,8 @@
 #include <vector>
 
 namespace drone_city_nav::detail {
+
+class PersistentDStarLitePlanner3DImpl;
 
 struct PersistentPlannerNode3D {
   int x{0};
@@ -105,8 +108,8 @@ struct DStarLiteQueueEntryCompare3D {
 };
 
 struct FeasibilityQueueEntry3D {
-  double estimated_remaining_s{std::numeric_limits<double>::infinity()};
-  double goal_altitude_error_m{std::numeric_limits<double>::infinity()};
+  double estimated_total_s{std::numeric_limits<double>::infinity()};
+  double cost_from_start_s{std::numeric_limits<double>::infinity()};
   std::size_t depth{0U};
   PersistentPlannerNode3D node{};
   std::uint64_t sequence{0U};
@@ -125,27 +128,130 @@ struct PersistentPlannerWorldUpdate3D {
   std::vector<GridIndex3D> changed_cells;
 };
 
+using DStarLiteOpenQueue3D =
+    std::priority_queue<DStarLiteQueueEntry3D, std::vector<DStarLiteQueueEntry3D>,
+                        DStarLiteQueueEntryCompare3D>;
+using ExecutionTimeOpenQueue3D =
+    std::priority_queue<PersistentPlannerTimeQueueEntry3D,
+                        std::vector<PersistentPlannerTimeQueueEntry3D>,
+                        PersistentPlannerTimeQueueEntryCompare3D>;
+using FeasibilityOpenQueue3D =
+    std::priority_queue<FeasibilityQueueEntry3D, std::vector<FeasibilityQueueEntry3D>,
+                        FeasibilityQueueEntryCompare3D>;
+
+class Lattice3D final {
+public:
+  void reset() noexcept;
+
+private:
+  friend class PersistentDStarLitePlanner3DImpl;
+
+  GridBounds3D raw_bounds_{};
+  int width_{0};
+  int height_{0};
+  int depth_{0};
+};
+
+class DStarLiteSession3D final {
+public:
+  void reset() noexcept;
+
+private:
+  friend class PersistentDStarLitePlanner3DImpl;
+
+  std::uint64_t search_generation_{0U};
+  std::uint64_t repair_generation_{0U};
+  std::uint64_t queue_token_{0U};
+  std::uint64_t queue_sequence_{0U};
+  double key_modifier_{0.0};
+  bool cost_to_goal_heuristic_admissible_{true};
+  DStarLiteOpenQueue3D open_{};
+  std::unordered_map<PersistentPlannerNode3D, DStarLiteRecord3D,
+                     PersistentPlannerNode3DHash>
+      records_;
+  std::unordered_map<PersistentPlannerEdge3D, double, PersistentPlannerEdge3DHash>
+      edge_cost_cache_;
+  std::deque<PersistentPlannerNode3D> pending_repair_nodes_;
+  std::unordered_set<PersistentPlannerNode3D, PersistentPlannerNode3DHash>
+      pending_repair_members_;
+};
+
+class FeasiblePathSearch3D final {
+public:
+  void reset() noexcept;
+
+private:
+  friend class PersistentDStarLitePlanner3DImpl;
+
+  bool initialized_{false};
+  std::uint64_t queue_sequence_{0U};
+  FeasibilityOpenQueue3D open_{};
+  std::unordered_map<PersistentPlannerNode3D, double, PersistentPlannerNode3DHash>
+      costs_;
+  std::unordered_map<PersistentPlannerNode3D, PersistentPlannerNode3D,
+                     PersistentPlannerNode3DHash>
+      parents_;
+};
+
+class ExecutionTimeRefiner3D final {
+public:
+  void reset() noexcept;
+
+private:
+  friend class PersistentDStarLitePlanner3DImpl;
+
+  bool initialized_{false};
+  bool complete_{false};
+  bool start_from_rest_{false};
+  PersistentPlannerTimeState3D start_{};
+  std::optional<PersistentPlannerTimeState3D> goal_;
+  std::vector<Point3> spatial_incumbent_;
+  double goal_cost_s_{std::numeric_limits<double>::infinity()};
+  std::uint64_t queue_sequence_{0U};
+  ExecutionTimeOpenQueue3D open_{};
+  std::unordered_map<PersistentPlannerTimeState3D, double,
+                     PersistentPlannerTimeState3DHash>
+      costs_;
+  std::unordered_map<PersistentPlannerTimeState3D, PersistentPlannerTimeState3D,
+                     PersistentPlannerTimeState3DHash>
+      parents_;
+};
+
+struct PathPostprocessorContext3D {
+  std::size_t maximum_shortcut_checks{0U};
+  std::function<bool(const Point3&, const Point3&, bool)> segment_valid;
+  std::function<FlightPathTimeProfile3D(const std::vector<Point3>&)> time_profile;
+};
+
+class PathPostprocessor3D final {
+public:
+  [[nodiscard]] std::vector<Point3> shortcut(const std::vector<Point3>& path,
+                                             const PathPostprocessorContext3D& context,
+                                             std::size_t& checks,
+                                             std::size_t& applied) const;
+};
+
+class AnytimePlannerCoordinator3D final {
+public:
+  void reset() noexcept;
+  void retain(SpatialRouteCandidate3D candidate);
+  [[nodiscard]] std::optional<SpatialRouteCandidate3D>
+  consider(SpatialRouteCandidate3D candidate);
+  [[nodiscard]] const SpatialRouteCandidate3D* incumbent() const noexcept;
+
+private:
+  std::optional<SpatialRouteCandidate3D> incumbent_;
+};
+
 class PersistentDStarLitePlanner3DImpl final {
 public:
   explicit PersistentDStarLitePlanner3DImpl(const PersistentPlannerConfig3D& config);
 
-  [[nodiscard]] PersistentPlannerResult3D
-  plan(const PersistentPlannerRequest3D& request);
+  [[nodiscard]] PlannerUpdate3D plan(const PersistentPlannerRequest3D& request);
   void reset() noexcept;
   [[nodiscard]] const PersistentPlannerConfig3D& config() const noexcept;
 
 private:
-  using OpenQueue =
-      std::priority_queue<DStarLiteQueueEntry3D, std::vector<DStarLiteQueueEntry3D>,
-                          DStarLiteQueueEntryCompare3D>;
-  using TimeOpenQueue =
-      std::priority_queue<PersistentPlannerTimeQueueEntry3D,
-                          std::vector<PersistentPlannerTimeQueueEntry3D>,
-                          PersistentPlannerTimeQueueEntryCompare3D>;
-  using FeasibilityOpenQueue =
-      std::priority_queue<FeasibilityQueueEntry3D, std::vector<FeasibilityQueueEntry3D>,
-                          FeasibilityQueueEntryCompare3D>;
-
   [[nodiscard]] bool validRequest(const PersistentPlannerRequest3D& request) const;
   [[nodiscard]] PersistentPlannerWorldUpdate3D
   updateWorld(const PersistentPlannerWorld3D& world);
@@ -192,17 +298,15 @@ private:
   void resetFeasibilitySearch() noexcept;
   void initializeFeasibilitySearch();
   [[nodiscard]] std::vector<Point3> extractPath();
-  [[nodiscard]] std::vector<Point3> shortcutPath(const std::vector<Point3>& path,
-                                                 std::size_t& checks,
-                                                 std::size_t& applied,
-                                                 const Vec3& initial_velocity) const;
   [[nodiscard]] std::optional<std::vector<Point3>>
-  rebaseIncumbent(const Point3& start, const Point3& goal) const;
+  rebaseIncumbent(const std::vector<Point3>& incumbent, const Point3& start,
+                  const Point3& goal) const;
   [[nodiscard]] bool pathRawValid(const std::vector<Point3>& path) const;
   [[nodiscard]] FlightPathTimeProfile3D
   pathTimeProfile(const std::vector<Point3>& path, const Vec3& initial_velocity) const;
-  void populatePathMetrics(PersistentPlannerResult3D& result,
-                           const Vec3& initial_velocity) const;
+  [[nodiscard]] std::optional<SpatialRouteCandidate3D>
+  makeCandidate(std::vector<Point3> path, SpatialRouteCandidateSource3D source,
+                const Vec3& initial_velocity) const;
   void resetExecutionTimeSearch() noexcept;
   [[nodiscard]] PersistentPlannerDirection3D
   directionForVector(const Vec3& vector) const noexcept;
@@ -236,56 +340,19 @@ private:
 
   PersistentPlannerConfig3D config_{};
   PersistentPlannerWorld3D world_{};
-  GridBounds3D raw_bounds_{};
-  int width_{0};
-  int height_{0};
-  int depth_{0};
+  Lattice3D lattice_{};
   PersistentPlannerNode3D start_{};
   PersistentPlannerNode3D last_start_{};
   PersistentPlannerNode3D goal_{};
   Point3 exact_start_{};
   Point3 exact_goal_{};
   std::uint64_t mission_epoch_{0U};
-  std::uint64_t search_generation_{0U};
-  std::uint64_t repair_generation_{0U};
-  std::uint64_t queue_token_{0U};
-  std::uint64_t queue_sequence_{0U};
-  double key_modifier_{0.0};
   bool initialized_{false};
-  bool dstar_cost_to_goal_heuristic_admissible_{true};
-  OpenQueue open_{};
-  std::unordered_map<PersistentPlannerNode3D, DStarLiteRecord3D,
-                     PersistentPlannerNode3DHash>
-      records_;
-  std::unordered_map<PersistentPlannerEdge3D, double, PersistentPlannerEdge3DHash>
-      edge_cost_cache_;
-  std::deque<PersistentPlannerNode3D> pending_repair_nodes_;
-  std::unordered_set<PersistentPlannerNode3D, PersistentPlannerNode3DHash>
-      pending_repair_members_;
-  bool feasibility_search_initialized_{false};
-  std::uint64_t feasibility_queue_sequence_{0U};
-  FeasibilityOpenQueue feasibility_open_{};
-  std::unordered_set<PersistentPlannerNode3D, PersistentPlannerNode3DHash>
-      feasibility_discovered_;
-  std::unordered_map<PersistentPlannerNode3D, PersistentPlannerNode3D,
-                     PersistentPlannerNode3DHash>
-      feasibility_parents_;
-  bool execution_time_search_initialized_{false};
-  bool execution_time_search_complete_{false};
-  bool execution_time_start_from_rest_{false};
-  PersistentPlannerTimeState3D execution_time_start_{};
-  std::optional<PersistentPlannerTimeState3D> execution_time_goal_;
-  std::vector<Point3> execution_time_spatial_incumbent_;
-  double execution_time_goal_cost_s_{std::numeric_limits<double>::infinity()};
-  std::uint64_t execution_time_queue_sequence_{0U};
-  TimeOpenQueue execution_time_open_{};
-  std::unordered_map<PersistentPlannerTimeState3D, double,
-                     PersistentPlannerTimeState3DHash>
-      execution_time_costs_;
-  std::unordered_map<PersistentPlannerTimeState3D, PersistentPlannerTimeState3D,
-                     PersistentPlannerTimeState3DHash>
-      execution_time_parents_;
-  std::vector<Point3> incumbent_;
+  DStarLiteSession3D dstar_session_{};
+  FeasiblePathSearch3D feasibility_search_{};
+  ExecutionTimeRefiner3D execution_time_refiner_{};
+  PathPostprocessor3D path_postprocessor_{};
+  AnytimePlannerCoordinator3D coordinator_;
   std::size_t lattice_edge_queries_{0U};
   std::size_t raw_edge_validation_checks_{0U};
   std::size_t adaptive_edge_queries_{0U};

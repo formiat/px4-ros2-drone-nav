@@ -25,7 +25,8 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
   const Point3 current_position{navigation.state.x, navigation.state.y,
                                 navigation.state.z};
   const Point3 search_start = candidate.search_start;
-  const PersistentPlannerResult3D& plan = candidate.plan;
+  const PlannerTelemetry3D& plan = candidate.planner_telemetry;
+  const SpatialRouteCandidate3D& spatial_route = candidate.spatial_route;
   ProductionRouteMaterialization3D result;
   ProductionMppiPreparedEsdf& prepared = result.prepared;
   prepared = world;
@@ -52,12 +53,13 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
   prepared.planning_search_start = search_start;
   prepared.planning_search_goal = mission_goal;
   prepared.planning_candidate_endpoint =
-      plan.points.empty() ? search_start : plan.points.back();
+      spatial_route.points.empty() ? search_start : spatial_route.points.back();
   prepared.planning_search_direction = candidate.search_velocity;
-  prepared.planning_candidate_points = plan.points.size();
+  prepared.planning_candidate_points = spatial_route.points.size();
   prepared.planning_candidate_samples = candidate.route.size();
   prepared.planner = ProductionPersistentPlannerTelemetry3D{
-      .status = plan.status,
+      .input_status = candidate.planner_input_status,
+      .progress = candidate.planner_progress,
       .mission_epoch = plan.mission_epoch,
       .planned_on_revision = plan.planned_on_revision,
       .occupied_fingerprint = plan.occupied_fingerprint,
@@ -81,17 +83,18 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
       .execution_time_search_expansions = plan.execution_time_search_expansions,
       .execution_time_search_records = plan.execution_time_search_records,
       .execution_time_search_open_entries = plan.execution_time_search_open_entries,
-      .path_length_m = plan.path_length_m,
+      .path_length_m = spatial_route.path_length_m,
       .remaining_goal_distance_m =
           distance3D(prepared.planning_candidate_endpoint, mission_goal),
       .execution_time_search_objective_s = plan.execution_time_search_objective_s,
-      .estimated_execution_time_s = plan.estimated_execution_time_s,
-      .estimated_translation_time_s = plan.estimated_translation_time_s,
-      .estimated_stationary_turn_time_s = plan.estimated_stationary_turn_time_s,
+      .estimated_execution_time_s = spatial_route.estimated_execution_time_s,
+      .estimated_translation_time_s = spatial_route.estimated_translation_time_s,
+      .estimated_stationary_turn_time_s =
+          spatial_route.estimated_stationary_turn_time_s,
       .world_update_ms = plan.world_update_ms,
       .search_ms = plan.search_ms,
       .invoked = true,
-      .executable = plan.executable(),
+      .executable = spatial_route.valid(),
       .search_state_reused = plan.search_state_reused,
       .occupied_world_unchanged = plan.occupied_world_unchanged,
       .incumbent_retained = plan.incumbent_retained,
@@ -99,9 +102,9 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
       .feasibility_attempted = plan.feasibility_attempted,
       .feasibility_route_found = plan.feasibility_route_found,
       .execution_time_search_complete = plan.execution_time_search_complete,
-      .search_complete = plan.search_complete,
+      .incumbent_available = plan.incumbent_available,
   };
-  prepared.route_reaches_mission_goal = plan.executable();
+  prepared.route_reaches_mission_goal = spatial_route.valid();
   prepared.continuation_validation_ms = 0.0;
   prepared.route_fingerprint = routeFingerprint(candidate.route);
   prepared.bound_route_instance_id = {};
@@ -371,7 +374,7 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
                        : std::span<const RouteSample3D>{},
         *mutable_route, world.grid, *world.distances_m, mission_goal,
         static_route_extension_config_.minimum_endpoint_improvement_m,
-        plan.executable(), flight_envelope_config_, result.replacement_policy,
+        spatial_route.valid(), flight_envelope_config_, result.replacement_policy,
         footprint_config, false, true);
   } else {
     StaticRouteCandidateStatus candidate_status =

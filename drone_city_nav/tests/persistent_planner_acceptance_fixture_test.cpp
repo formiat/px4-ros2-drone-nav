@@ -13,6 +13,7 @@
 #include <optional>
 #include <ranges>
 #include <span>
+#include <stdexcept>
 #include <vector>
 
 #include "persistent_planner_acceptance_fixture.hpp"
@@ -71,7 +72,7 @@ acceptanceWorld(std::shared_ptr<const ObservedOccupancyGrid3D> occupancy,
   };
 }
 
-[[nodiscard]] PersistentPlannerResult3D
+[[nodiscard]] PlannerUpdate3D
 planMission(PersistentDStarLitePlanner3D& planner,
             const PersistentPlannerAcceptanceMission& mission,
             std::shared_ptr<const ObservedOccupancyGrid3D> occupancy,
@@ -84,6 +85,13 @@ planMission(PersistentDStarLitePlanner3D& planner,
       .mission_epoch = 11U,
       .world = acceptanceWorld(std::move(occupancy), revision, std::move(dirty_chunks)),
   });
+}
+
+[[nodiscard]] const SpatialRouteCandidate3D& candidate(const PlannerUpdate3D& update) {
+  if (!update.improved_incumbent.has_value()) {
+    throw std::logic_error{"planner update has no improved incumbent"};
+  }
+  return *update.improved_incumbent;
 }
 
 void expectRawSafe(const std::span<const Point3> path,
@@ -114,7 +122,7 @@ void expectRawSafe(const std::span<const Point3> path,
 }
 
 [[nodiscard]] RouteCompilationResult3D
-compileMissionRoute(const PersistentPlannerResult3D& plan,
+compileMissionRoute(const SpatialRouteCandidate3D& plan,
                     const ObservedOccupancyGrid3D& occupancy) {
   std::vector<RouteSample3D> route = sampleRoute3D(plan.points, 0.5, 4.0);
   const std::uint64_t fingerprint = routeFingerprint(route);
@@ -151,7 +159,7 @@ compileMissionRoute(const PersistentPlannerResult3D& plan,
 }
 
 void expectRequiredMotion(const PersistentPlannerAcceptanceMission& mission,
-                          const PersistentPlannerResult3D& plan,
+                          const SpatialRouteCandidate3D& plan,
                           const std::optional<GridBounds3D>& local_cache) {
   ASSERT_GE(plan.points.size(), 2U);
   const auto [minimum_z, maximum_z] =
@@ -219,31 +227,38 @@ TEST(PersistentPlannerAcceptanceFixture,
     ASSERT_FALSE(fixture.missions.empty()) << fixture.name;
     for (const PersistentPlannerAcceptanceMission& mission : fixture.missions) {
       PersistentDStarLitePlanner3D planner{acceptancePlannerConfig()};
-      PersistentPlannerResult3D result =
-          planMission(planner, mission, fixture.occupancy);
-      for (std::size_t continuation = 0U; continuation < 16U && !result.search_complete;
+      PlannerUpdate3D result = planMission(planner, mission, fixture.occupancy);
+      std::optional<SpatialRouteCandidate3D> incumbent = result.improved_incumbent;
+      for (std::size_t continuation = 0U;
+           continuation < 16U && result.progress == SearchProgress3D::kRunning;
            ++continuation) {
         result = planMission(planner, mission, fixture.occupancy);
+        if (result.improved_incumbent) {
+          incumbent = result.improved_incumbent;
+        }
       }
-      ASSERT_TRUE(result.executable())
-          << fixture.name << " status=" << persistentPlannerStatus3DName(result.status)
-          << " expansions=" << result.expansions
-          << " time_expansions=" << result.execution_time_search_expansions
-          << " time_records=" << result.execution_time_search_records
-          << " time_objective=" << result.execution_time_search_objective_s
-          << " spatial_complete=" << result.search_complete
-          << " time_complete=" << result.execution_time_search_complete
-          << " search_ms=" << result.search_ms;
-      EXPECT_EQ(result.status, PersistentPlannerStatus3D::kReachedMissionGoal)
-          << fixture.name;
-      EXPECT_TRUE(result.search_complete) << fixture.name;
-      EXPECT_DOUBLE_EQ(result.points.front().x, mission.start.x) << fixture.name;
-      EXPECT_DOUBLE_EQ(result.points.back().x, mission.goal.x) << fixture.name;
-      expectRawSafe(result.points, *fixture.occupancy);
-      expectRequiredMotion(mission, result, fixture.local_distance_cache_bounds);
+      ASSERT_TRUE(incumbent.has_value())
+          << fixture.name << " input=" << plannerInputStatus3DName(result.input_status)
+          << " progress=" << searchProgress3DName(result.progress)
+          << " expansions=" << result.telemetry.expansions
+          << " time_expansions=" << result.telemetry.execution_time_search_expansions
+          << " time_records=" << result.telemetry.execution_time_search_records
+          << " time_objective=" << result.telemetry.execution_time_search_objective_s
+          << " time_complete=" << result.telemetry.execution_time_search_complete
+          << " search_ms=" << result.telemetry.search_ms;
+      EXPECT_EQ(result.input_status, PlannerInputStatus3D::kAccepted) << fixture.name;
+      EXPECT_EQ(result.progress, SearchProgress3D::kConverged) << fixture.name;
+      if (!incumbent.has_value()) {
+        continue;
+      }
+      const SpatialRouteCandidate3D& converged = *incumbent;
+      EXPECT_DOUBLE_EQ(converged.points.front().x, mission.start.x) << fixture.name;
+      EXPECT_DOUBLE_EQ(converged.points.back().x, mission.goal.x) << fixture.name;
+      expectRawSafe(converged.points, *fixture.occupancy);
+      expectRequiredMotion(mission, converged, fixture.local_distance_cache_bounds);
 
       const RouteCompilationResult3D compilation =
-          compileMissionRoute(result, *fixture.occupancy);
+          compileMissionRoute(converged, *fixture.occupancy);
       ASSERT_TRUE(compilation.compiled())
           << fixture.name << " reason="
           << executionRouteGeometryFailureReasonName3D(compilation.validation.reason);
@@ -271,28 +286,28 @@ TEST(PersistentPlannerAcceptanceFixture,
   ASSERT_EQ(fixture.missions.size(), 1U);
   const PersistentPlannerAcceptanceMission& mission = fixture.missions.front();
   PersistentDStarLitePlanner3D planner{acceptancePlannerConfig()};
-  const PersistentPlannerResult3D initial =
-      planMission(planner, mission, fixture.occupancy);
-  ASSERT_TRUE(initial.executable());
-  ASSERT_GE(initial.points.size(), 3U);
+  const PlannerUpdate3D initial = planMission(planner, mission, fixture.occupancy);
+  ASSERT_TRUE(initial.publishable());
+  ASSERT_GE(candidate(initial).points.size(), 3U);
 
   auto changed = std::make_shared<ObservedOccupancyGrid3D>(*fixture.occupancy);
-  const Point3 blocked_point = initial.points[initial.points.size() / 2U];
+  const Point3 blocked_point =
+      candidate(initial).points[candidate(initial).points.size() / 2U];
   const std::optional<GridIndex3D> blocked_cell = changed->worldToCell(blocked_point);
   const GridIndex3D changed_cell = blocked_cell.value_or(GridIndex3D{-1, -1, -1});
   ASSERT_TRUE(blocked_cell.has_value());
   ASSERT_TRUE(changed->setState(changed_cell, ObservedVoxelState::kOccupied));
-  const PersistentPlannerResult3D repaired =
+  const PlannerUpdate3D repaired =
       planMission(planner, mission, changed, 2U,
                   {ObservedOccupancyGrid3D::chunkIndex(changed_cell)});
 
-  ASSERT_TRUE(repaired.executable()) << persistentPlannerStatus3DName(repaired.status);
-  EXPECT_TRUE(repaired.search_state_reused);
-  EXPECT_EQ(repaired.search_generation, initial.search_generation);
-  EXPECT_EQ(repaired.changed_occupied_voxels, 1U);
-  EXPECT_GT(repaired.affected_lattice_states, 0U);
-  EXPECT_TRUE(pathsDiffer(repaired.points, initial.points));
-  expectRawSafe(repaired.points, *changed);
+  ASSERT_TRUE(repaired.publishable()) << searchProgress3DName(repaired.progress);
+  EXPECT_TRUE(repaired.telemetry.search_state_reused);
+  EXPECT_EQ(repaired.telemetry.search_generation, initial.telemetry.search_generation);
+  EXPECT_EQ(repaired.telemetry.changed_occupied_voxels, 1U);
+  EXPECT_GT(repaired.telemetry.affected_lattice_states, 0U);
+  EXPECT_TRUE(pathsDiffer(candidate(repaired).points, candidate(initial).points));
+  expectRawSafe(candidate(repaired).points, *changed);
 }
 
 } // namespace

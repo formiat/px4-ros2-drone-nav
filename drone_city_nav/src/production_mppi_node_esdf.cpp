@@ -448,15 +448,17 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         bool queued = false;
         {
           const std::scoped_lock lock{route_planning_queue_mutex_};
-          if (pending_route_planning_world_ &&
+          if (pending_route_planning_work_ &&
               (prepared.static_route_extension_request ||
                prepared.static_route_replan_request)) {
             dropped_route_planning_worlds_.fetch_add(1U, std::memory_order_relaxed);
-            pending_route_planning_world_.reset();
+            pending_route_planning_work_.reset();
           }
-          if (!pending_route_planning_world_) {
-            pending_route_planning_world_ =
-                std::make_shared<const ProductionMppiPreparedEsdf>(prepared);
+          if (!pending_route_planning_work_) {
+            pending_route_planning_work_ = ProductionRoutePlanningWork3D{
+                .world = std::make_shared<const ProductionMppiPreparedEsdf>(prepared),
+                .continuation_session = nullptr,
+            };
             queued = true;
           }
         }

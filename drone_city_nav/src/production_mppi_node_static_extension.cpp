@@ -217,7 +217,7 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
     request->static_route_extension_base_generation = active_route.identity.generation;
     {
       const std::scoped_lock queue_lock{route_planning_queue_mutex_};
-      if (pending_route_planning_world_) {
+      if (pending_route_planning_work_) {
         RCLCPP_INFO_THROTTLE(
             get_logger(), *get_clock(), 1000,
             "STATIC_ROUTE_EXTENSION_REQUEST status=deferred_route_queue_busy "
@@ -226,7 +226,10 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
             route_projection.remaining_m);
         return;
       }
-      pending_route_planning_world_ = std::move(request);
+      pending_route_planning_work_ = ProductionRoutePlanningWork3D{
+          .world = std::move(request),
+          .continuation_session = nullptr,
+      };
     }
     route_planning_queue_condition_.notify_all();
   } else {
@@ -475,7 +478,7 @@ void ProductionMppiNode::requestStaticRouteReplan(
 
   {
     const std::scoped_lock queue_lock{route_planning_queue_mutex_};
-    if (pending_route_planning_world_) {
+    if (pending_route_planning_work_) {
       RCLCPP_INFO_THROTTLE(
           get_logger(), *get_clock(), 1000,
           "STATIC_ROUTE_REPLAN_REQUEST status=deferred_route_queue_busy "
@@ -494,7 +497,10 @@ void ProductionMppiNode::requestStaticRouteReplan(
           static_route_replan_gate_.generation(), routeReleaseReason3DName(reason));
       return;
     }
-    pending_route_planning_world_ = request;
+    pending_route_planning_work_ = ProductionRoutePlanningWork3D{
+        .world = request,
+        .continuation_session = nullptr,
+    };
   }
   if (dispatched_raw_revision != 0U) {
     std::uint64_t previous_dispatched =

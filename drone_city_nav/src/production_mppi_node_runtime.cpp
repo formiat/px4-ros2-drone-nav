@@ -53,20 +53,21 @@ namespace {
 
 void ProductionMppiNode::routePlanningWorker(const std::stop_token stop_token) {
   while (!stop_token.stop_requested()) {
-    std::shared_ptr<const ProductionMppiPreparedEsdf> world;
+    std::optional<ProductionRoutePlanningWork3D> work;
     {
       std::unique_lock lock{route_planning_queue_mutex_};
       route_planning_queue_condition_.wait(lock, stop_token, [this]() {
-        return pending_route_planning_world_ != nullptr;
+        return pending_route_planning_work_.has_value();
       });
       if (stop_token.stop_requested()) {
         return;
       }
-      world = std::exchange(pending_route_planning_world_, nullptr);
+      work = std::exchange(pending_route_planning_work_, std::nullopt);
     }
-    if (!world) {
+    if (!work || !work->valid()) {
       continue;
     }
+    const std::shared_ptr<const ProductionMppiPreparedEsdf>& world = work->world;
     if (!productionWorldGenerationCoherent(*world)) {
       const ProductionWorldGenerationStatus status =
           assessProductionWorldGeneration(*world);
@@ -100,7 +101,7 @@ void ProductionMppiNode::routePlanningWorker(const std::stop_token stop_token) {
     }
     const StaticRouteSearchCurrencyAssessment currency =
         assessStaticRouteSearchCurrency(request, resident_route_generation);
-    if (!currency.current()) {
+    if (!work->continuation_session && !currency.current()) {
       RCLCPP_INFO(
           get_logger(),
           "STATIC_ROUTE_SEARCH_REQUEST status=%.*s kind=%.*s "
@@ -123,7 +124,7 @@ void ProductionMppiNode::routePlanningWorker(const std::stop_token stop_token) {
       finishStaticRouteSearch(*world);
       continue;
     }
-    processRouteSearch3D(*world, navigation);
+    processRouteSearch3D(*world, navigation, std::move(work->continuation_session));
   }
 }
 

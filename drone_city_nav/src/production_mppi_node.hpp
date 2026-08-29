@@ -103,7 +103,8 @@ enum class ProductionPlanningSearchKind : std::uint8_t {
 };
 
 struct ProductionPersistentPlannerTelemetry3D {
-  PersistentPlannerStatus3D status{PersistentPlannerStatus3D::kInvalidInput};
+  PlannerInputStatus3D input_status{PlannerInputStatus3D::kInvalidInput};
+  SearchProgress3D progress{SearchProgress3D::kInvalidated};
   std::uint64_t mission_epoch{0U};
   std::uint64_t planned_on_revision{0U};
   std::uint64_t occupied_fingerprint{0U};
@@ -144,7 +145,7 @@ struct ProductionPersistentPlannerTelemetry3D {
   bool feasibility_attempted{false};
   bool feasibility_route_found{false};
   bool execution_time_search_complete{false};
-  bool search_complete{false};
+  bool incumbent_available{false};
 };
 
 struct ProductionMppiPreparedEsdf;
@@ -411,8 +412,10 @@ private:
       const ProductionMppiExecutionHorizonOwner& execution_horizon_owner);
   void queueLatestObservedWorldForPose(const ProductionMppiNavigation& navigation);
   void routePlanningWorker(std::stop_token stop_token);
-  void processRouteSearch3D(const ProductionMppiPreparedEsdf& world,
-                            const ProductionMppiNavigation& navigation);
+  void processRouteSearch3D(
+      const ProductionMppiPreparedEsdf& world,
+      const ProductionMppiNavigation& navigation,
+      std::shared_ptr<const ProductionPlannerSession3D> continuation_session);
   [[nodiscard]] RouteSegmentCompletionAssessment3D
   assessActiveRouteCompletion3D(const ProductionMppiPreparedEsdf& world,
                                 const Point3& position);
@@ -437,11 +440,11 @@ private:
       const ProductionRouteSearchCandidate3D& candidate,
       std::uint64_t candidate_generation, const CertifiedRouteSuffix3D* active_route,
       const ProductionMppiRawWorld3D* activation_raw_world);
-  [[nodiscard]] ProductionRouteCandidateSet3D
-  generateRouteCandidates3D(const ProductionMppiPreparedEsdf& world,
-                            const ProductionMppiNavigation& navigation,
-                            const Point3& mission_goal,
-                            const CertifiedRouteSuffix3D* active_route);
+  [[nodiscard]] ProductionPlannerUpdate3D generatePlannerUpdate3D(
+      const ProductionMppiPreparedEsdf& world,
+      const ProductionMppiNavigation& navigation, const Point3& mission_goal,
+      const CertifiedRouteSuffix3D* active_route,
+      std::shared_ptr<const ProductionPlannerSession3D> continuation_session);
   void diagnosticsWorker(std::stop_token stop_token);
   void startPlanningTimer();
   void initializeRuntimeInterfaces();
@@ -774,7 +777,7 @@ private:
   std::jthread esdf_worker_;
   std::mutex route_planning_queue_mutex_;
   std::condition_variable_any route_planning_queue_condition_;
-  std::shared_ptr<const ProductionMppiPreparedEsdf> pending_route_planning_world_;
+  std::optional<ProductionRoutePlanningWork3D> pending_route_planning_work_;
   std::atomic<std::uint64_t> dropped_route_planning_worlds_{0U};
   std::jthread route_planning_worker_;
 

@@ -41,9 +41,11 @@ persistentPlannerInfoFields(const ProductionMppiPreparedEsdf& esdf) {
   std::ostringstream fields;
   fields << " planner=persistent_dstar_lite_3d"
          << " planner_invoked=" << (planner.invoked ? "true" : "false")
-         << " planner_status=" << persistentPlannerStatus3DName(planner.status)
-         << " planner_executable=" << (planner.executable ? "true" : "false")
-         << " planner_search_complete=" << (planner.search_complete ? "true" : "false")
+         << " planner_input=" << plannerInputStatus3DName(planner.input_status)
+         << " planner_progress=" << searchProgress3DName(planner.progress)
+         << " planner_candidate_published=" << (planner.executable ? "true" : "false")
+         << " planner_incumbent_available="
+         << (planner.incumbent_available ? "true" : "false")
          << " planner_search_state_reused="
          << (planner.search_state_reused ? "true" : "false")
          << " planner_occupied_world_unchanged="
@@ -105,10 +107,12 @@ persistentPlannerJsonFields(const ProductionMppiPreparedEsdf& esdf) {
   std::ostringstream fields;
   fields << ",\"planner\":\"persistent_dstar_lite_3d\""
          << ",\"planner_invoked\":" << (planner.invoked ? "true" : "false")
-         << ",\"planner_status\":\"" << persistentPlannerStatus3DName(planner.status)
-         << '"' << ",\"planner_executable\":" << (planner.executable ? "true" : "false")
-         << ",\"planner_search_complete\":"
-         << (planner.search_complete ? "true" : "false")
+         << ",\"planner_input\":\"" << plannerInputStatus3DName(planner.input_status)
+         << '"' << ",\"planner_progress\":\"" << searchProgress3DName(planner.progress)
+         << '"' << ",\"planner_candidate_published\":"
+         << (planner.executable ? "true" : "false")
+         << ",\"planner_incumbent_available\":"
+         << (planner.incumbent_available ? "true" : "false")
          << ",\"planner_search_state_reused\":"
          << (planner.search_state_reused ? "true" : "false")
          << ",\"planner_occupied_world_unchanged\":"

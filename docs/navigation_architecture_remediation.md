@@ -178,11 +178,11 @@ route, trajectory, or execution artifact.
 
 ## Completion Checklist
 
-- [ ] Split publishable incumbent from search progress and continue anytime
+- [x] Split publishable incumbent from search progress and continue anytime
   refinement after the first feasible route.
-- [ ] Remove goal-altitude-first feasibility ordering and decompose the three
+- [x] Remove goal-altitude-first feasibility ordering and decompose the three
   planner searches behind explicit session interfaces.
-- [ ] Replace the one-element production candidate set with one typed planner
+- [x] Replace the one-element production candidate set with one typed planner
   update and an explicit coordinator result.
 - [ ] Introduce immutable world/search/materialization/trajectory/admission
   artifacts and remove route state from the resident world object.

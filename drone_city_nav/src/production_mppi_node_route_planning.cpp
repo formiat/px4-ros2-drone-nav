@@ -25,14 +25,13 @@ elapsedMilliseconds(const std::chrono::steady_clock::time_point started) noexcep
 } // namespace
 
 void ProductionMppiNode::processRouteSearch3D(
-    const ProductionMppiPreparedEsdf& world,
-    const ProductionMppiNavigation& navigation) {
+    const ProductionMppiPreparedEsdf& world, const ProductionMppiNavigation& navigation,
+    std::shared_ptr<const ProductionPlannerSession3D> continuation_session) {
   const auto planning_started = std::chrono::steady_clock::now();
   const Point3 mission_goal =
       world.search_objective.available ? world.search_objective.goal : mission_goal_;
   const NavigationWorldCertificate3D planned_world_certificate =
       navigationWorldCertificate3D(world);
-  const Point3 search_start{navigation.state.x, navigation.state.y, navigation.state.z};
 
   const std::shared_ptr<const ExecutionRouteSnapshot3D> search_execution_snapshot =
       execution_route_store_.snapshot();
@@ -51,58 +50,76 @@ void ProductionMppiNode::processRouteSearch3D(
     static_cast<void>(navigation_recovery_episodes_.observe(
         world.search_objective.mission_epoch, recovery_active));
   };
-  ProductionRouteCandidateSet3D candidate_set =
-      generateRouteCandidates3D(world, navigation, mission_goal, search_active_route);
+  ProductionPlannerUpdate3D planner_update =
+      generatePlannerUpdate3D(world, navigation, mission_goal, search_active_route,
+                              std::move(continuation_session));
+  const Point3 search_start =
+      planner_update.planner_session
+          ? planner_update.planner_session->search_start
+          : Point3{navigation.state.x, navigation.state.y, navigation.state.z};
 
-  if (candidate_set.planner_invoked &&
-      candidate_set.planner_result.status ==
-          PersistentPlannerStatus3D::kSearchInProgress) {
-    bool continuation_queued{false};
-    {
-      const std::scoped_lock lock{route_planning_queue_mutex_};
-      if (!pending_route_planning_world_) {
-        pending_route_planning_world_ =
-            std::make_shared<const ProductionMppiPreparedEsdf>(world);
-        continuation_queued = true;
-      }
-    }
-    if (continuation_queued) {
-      route_planning_queue_condition_.notify_all();
-    } else {
-      // A newer world already owns the single planning queue slot, so this
-      // request can no longer deliver its continuation. Close its lifecycle
-      // gate now; the recurring physical/no-route source will rebind the
-      // request to the newer resident world instead of leaving a phantom
-      // in-flight generation behind.
+  const bool search_running =
+      planner_update.planner_invoked && planner_update.dispatch.continue_search;
+  const auto queue_continuation =
+      [this, &planner_update](const ProductionMppiPreparedEsdf& continuation_world) {
+        if (!planner_update.planner_session) {
+          return false;
+        }
+        bool queued{false};
+        {
+          const std::scoped_lock lock{route_planning_queue_mutex_};
+          if (!pending_route_planning_work_) {
+            pending_route_planning_work_ = ProductionRoutePlanningWork3D{
+                .world = std::make_shared<const ProductionMppiPreparedEsdf>(
+                    continuation_world),
+                .continuation_session = planner_update.planner_session,
+            };
+            queued = true;
+          }
+        }
+        if (queued) {
+          route_planning_queue_condition_.notify_all();
+        }
+        return queued;
+      };
+  bool continuation_queued{false};
+  if (search_running && !planner_update.improved_incumbent) {
+    continuation_queued = queue_continuation(world);
+    const double continuation_planning_ms = elapsedMilliseconds(planning_started);
+    RCLCPP_INFO(
+        get_logger(),
+        "PERSISTENT_PLANNER3D stage=continuation "
+        "queued=%s raw_revision=%" PRIu64 " search_generation=%" PRIu64
+        " repair_generation=%" PRIu64 " repair_processed=%zu "
+        "repair_pending=%zu feasibility_attempted=%s "
+        "feasibility_found=%s feasibility_expansions=%zu "
+        "route_planning_ms=%.3f",
+        continuation_queued ? "true" : "newer_world_pending",
+        planner_update.planner_telemetry.planned_on_revision,
+        planner_update.planner_telemetry.search_generation,
+        planner_update.planner_telemetry.repair_generation,
+        planner_update.planner_telemetry.repair_lattice_states_processed,
+        planner_update.planner_telemetry.repair_lattice_states_pending,
+        planner_update.planner_telemetry.feasibility_attempted ? "true" : "false",
+        planner_update.planner_telemetry.feasibility_route_found ? "true" : "false",
+        planner_update.planner_telemetry.feasibility_expansions,
+        continuation_planning_ms);
+    if (!continuation_queued) {
+      // A newer world owns the single queue slot. Close this request's gate;
+      // the newer request will continue against its own immutable snapshot.
       finishStaticRouteSearch(world);
     }
-    const double route_planning_ms = elapsedMilliseconds(planning_started);
     {
       const std::scoped_lock lifecycle_lock{static_route_extension_mutex_};
-      static_route_planning_latency_tracker_.record(route_planning_ms, world.build_ms);
+      static_route_planning_latency_tracker_.record(continuation_planning_ms,
+                                                    world.build_ms);
     }
     observe_recovery_episode();
-    RCLCPP_INFO(get_logger(),
-                "PERSISTENT_PLANNER3D stage=continuation "
-                "queued=%s raw_revision=%" PRIu64 " search_generation=%" PRIu64
-                " repair_generation=%" PRIu64 " repair_processed=%zu "
-                "repair_pending=%zu feasibility_attempted=%s "
-                "feasibility_found=%s feasibility_expansions=%zu "
-                "route_planning_ms=%.3f",
-                continuation_queued ? "true" : "newer_world_pending",
-                candidate_set.planner_result.planned_on_revision,
-                candidate_set.planner_result.search_generation,
-                candidate_set.planner_result.repair_generation,
-                candidate_set.planner_result.repair_lattice_states_processed,
-                candidate_set.planner_result.repair_lattice_states_pending,
-                candidate_set.planner_result.feasibility_attempted ? "true" : "false",
-                candidate_set.planner_result.feasibility_route_found ? "true" : "false",
-                candidate_set.planner_result.feasibility_expansions, route_planning_ms);
     return;
   }
 
   const std::uint64_t candidate_generation =
-      candidate_set.candidates.empty() ? 0U : nextRouteGeneration3D();
+      planner_update.improved_incumbent ? nextRouteGeneration3D() : 0U;
   const ProductionRouteActivationSnapshot3D materialization_snapshot =
       captureRouteActivationSnapshot3D();
   const CertifiedRouteSuffix3D* const activation_active_route =
@@ -113,19 +130,19 @@ void ProductionMppiNode::processRouteSearch3D(
 
   ProductionRouteMaterialization3D materialization{.prepared = world};
   ProductionRouteActivationResult3D activation{.prepared = world};
-  if (!candidate_set.candidates.empty() && candidate_generation != 0U) {
+  if (planner_update.improved_incumbent && candidate_generation != 0U) {
     const ProductionRouteSearchCandidate3D& candidate =
-        candidate_set.candidates.front();
+        *planner_update.improved_incumbent;
     materialization = materializeRouteCandidate3D(
         world, navigation, mission_goal, candidate, candidate_generation,
         activation_active_route, materialization_snapshot.raw_world.get());
-    materialization.prepared.route_search_ms = candidate_set.search_ms;
+    materialization.prepared.route_search_ms = planner_update.search_ms;
   }
   // Materialization owns the expensive spatial validation. Capture the
   // transaction base afterwards so it is not stale before activation begins.
   const ProductionRouteActivationSnapshot3D activation_snapshot =
       captureRouteActivationSnapshot3D();
-  if (!candidate_set.candidates.empty() && candidate_generation != 0U) {
+  if (planner_update.improved_incumbent && candidate_generation != 0U) {
     activation = prepareRouteActivation3D(
         world, std::move(materialization.prepared), planned_world_certificate,
         materialization.validation, materialization.replacement_policy, mission_goal,
@@ -133,7 +150,19 @@ void ProductionMppiNode::processRouteSearch3D(
     commitRouteActivation3D(world, activation_snapshot, candidate_generation,
                             activation);
   }
-  activation.prepared.route_search_ms = candidate_set.search_ms;
+  activation.prepared.route_search_ms = planner_update.search_ms;
+
+  if (search_running) {
+    const ProductionMppiPreparedEsdf& continuation_world =
+        activation.certified_pending ? activation.prepared : world;
+    continuation_queued = queue_continuation(continuation_world);
+    RCLCPP_INFO(get_logger(),
+                "PERSISTENT_PLANNER3D stage=continuation_after_incumbent "
+                "queued=%s raw_revision=%" PRIu64 " search_generation=%" PRIu64,
+                continuation_queued ? "true" : "newer_world_pending",
+                planner_update.planner_telemetry.planned_on_revision,
+                planner_update.planner_telemetry.search_generation);
+  }
 
   observe_recovery_episode();
 
@@ -143,7 +172,11 @@ void ProductionMppiNode::processRouteSearch3D(
     static_route_planning_latency_tracker_.record(route_planning_ms, world.build_ms);
   }
 
-  const PersistentPlannerResult3D& plan = candidate_set.planner_result;
+  const PlannerTelemetry3D& plan = planner_update.planner_telemetry;
+  const SpatialRouteCandidate3D* const spatial_route =
+      planner_update.improved_incumbent
+          ? std::addressof(planner_update.improved_incumbent->spatial_route)
+          : nullptr;
   const ProductionMppiPreparedEsdf& prepared = activation.prepared;
   const StaticRouteCandidateValidation& validation = activation.validation;
   const mppi::StaticRouteHandoffResult& handoff = activation.handoff;
@@ -151,15 +184,20 @@ void ProductionMppiNode::processRouteSearch3D(
       prepared.compiled_route_geometry != nullptr
           ? prepared.compiled_route_geometry->tracking_error_tube.get()
           : nullptr;
-  const char* const planner_status = candidate_set.planner_invoked
-                                         ? persistentPlannerStatus3DName(plan.status)
-                                         : "not_invoked";
+  const char* const planner_input =
+      planner_update.planner_invoked
+          ? plannerInputStatus3DName(planner_update.planner_input_status)
+          : "not_invoked";
+  const char* const planner_progress =
+      planner_update.planner_invoked
+          ? searchProgress3DName(planner_update.planner_progress)
+          : "not_invoked";
   RCLCPP_INFO(
       get_logger(),
       "PRODUCTION_MPPI_ROUTE3D planner=persistent_dstar_lite "
       "raw_revision=%" PRIu64 " mission_epoch=%" PRIu64
       " activation_raw_revision=%" PRIu64
-      " status=%s search_complete=%s search_state_reused=%s "
+      " input=%s progress=%s search_state_reused=%s "
       "time_search_complete=%s incumbent_retained=%s certified_pending=%s "
       "activation_status=%.*s route_certified=%s "
       "activation_currentness=(resident=%s,objective=%s,raw=%s,execution=%s,"
@@ -185,8 +223,7 @@ void ProductionMppiNode::processRouteSearch3D(
       "smoothing_ms=%.3f raw_connector_validated=%s "
       "raw_suffix_validated=%s route_fingerprint=%" PRIu64,
       plan.planned_on_revision, plan.mission_epoch, activation.snapshot_raw_revision,
-      planner_status, plan.search_complete ? "true" : "false",
-      plan.search_state_reused ? "true" : "false",
+      planner_input, planner_progress, plan.search_state_reused ? "true" : "false",
       plan.execution_time_search_complete ? "true" : "false",
       plan.incumbent_retained ? "true" : "false",
       activation.certified_pending ? "true" : "false",
@@ -224,7 +261,8 @@ void ProductionMppiNode::processRouteSearch3D(
       prepared.certified_route_reserve_shortfall_m,
       prepared.route_reaches_mission_goal ? "true" : "false", prepared.route_generation,
       prepared.planning_search_base_route_instance_id.value,
-      prepared.planning_search_base_stitch_station_m.value_or(-1.0), plan.points.size(),
+      prepared.planning_search_base_stitch_station_m.value_or(-1.0),
+      spatial_route ? spatial_route->points.size() : 0U,
       prepared.route_3d ? prepared.route_3d->size() : 0U, plan.expansions,
       plan.execution_time_search_expansions, plan.changed_occupied_voxels,
       plan.affected_lattice_states, plan.repair_lattice_states_processed,
@@ -234,10 +272,13 @@ void ProductionMppiNode::processRouteSearch3D(
       plan.execution_time_search_open_entries, plan.shortcuts_applied,
       plan.shortcut_checks, plan.lattice_edge_queries, plan.raw_edge_validation_checks,
       plan.adaptive_edge_queries, plan.adaptive_edges_in_extracted_path,
-      plan.maximum_queried_lattice_level, plan.path_length_m,
-      plan.execution_time_search_objective_s, plan.estimated_execution_time_s,
-      plan.estimated_translation_time_s, plan.estimated_stationary_turn_time_s,
-      candidate_set.search_ms, route_planning_ms, prepared.candidate_validation_ms,
+      plan.maximum_queried_lattice_level,
+      spatial_route ? spatial_route->path_length_m : 0.0,
+      plan.execution_time_search_objective_s,
+      spatial_route ? spatial_route->estimated_execution_time_s : 0.0,
+      spatial_route ? spatial_route->estimated_translation_time_s : 0.0,
+      spatial_route ? spatial_route->estimated_stationary_turn_time_s : 0.0,
+      planner_update.search_ms, route_planning_ms, prepared.candidate_validation_ms,
       prepared.route_smoothing_ms,
       activation.assessment.raw_validation.connector_validated ? "true" : "false",
       activation.assessment.raw_validation.suffix_validated ? "true" : "false",
@@ -279,8 +320,8 @@ void ProductionMppiNode::processRouteSearch3D(
     const std::scoped_lock lifecycle_lock{static_route_extension_mutex_};
     if (activation.certified_pending) {
       static_route_failed_search_latch_.clear();
-    } else if (staticRouteSearchFailureLatchEligible(search_request,
-                                                     resident_route_generation)) {
+    } else if (!search_running && staticRouteSearchFailureLatchEligible(
+                                      search_request, resident_route_generation)) {
       const std::uint64_t failed_generation =
           world.static_route_replan_request ? world.static_route_replan_base_generation
                                             : 0U;
@@ -294,10 +335,12 @@ void ProductionMppiNode::processRouteSearch3D(
       RCLCPP_INFO(
           get_logger(),
           "STATIC_ROUTE_SEARCH_OUTCOME status=failed_latched "
-          "generation=%" PRIu64 " initial=%s planner_status=%s "
+          "generation=%" PRIu64 " initial=%s planner_input=%s "
+          "planner_progress=%s "
           "activation_status=%.*s candidate_status=%.*s "
           "start=(%.2f,%.2f,%.2f)",
-          failed_generation, initial_route_search ? "true" : "false", planner_status,
+          failed_generation, initial_route_search ? "true" : "false", planner_input,
+          planner_progress,
           static_cast<int>(
               staticRouteActivationStatusName(activation.activation_status).size()),
           staticRouteActivationStatusName(activation.activation_status).data(),
@@ -310,7 +353,9 @@ void ProductionMppiNode::processRouteSearch3D(
     static_route_failed_search_latch_.clear();
   }
 
-  finishStaticRouteSearch(world, activation.certified_pending);
+  if (!continuation_queued) {
+    finishStaticRouteSearch(world, activation.certified_pending);
+  }
   const std::shared_ptr<const ProductionNavigationObjective> current_objective =
       navigationObjective();
   if (current_objective && current_objective->continuous_tracking) {

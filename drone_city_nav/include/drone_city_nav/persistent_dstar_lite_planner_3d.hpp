@@ -14,13 +14,23 @@
 
 namespace drone_city_nav {
 
-enum class PersistentPlannerStatus3D : std::uint8_t {
+enum class PlannerInputStatus3D : std::uint8_t {
+  kAccepted,
   kInvalidInput,
-  kReachedMissionGoal,
-  kSearchInProgress,
-  kNoRoute,
   kStartUnavailable,
   kGoalUnavailable,
+};
+
+enum class SearchProgress3D : std::uint8_t {
+  kRunning,
+  kConverged,
+  kNoRoute,
+  kInvalidated,
+};
+
+enum class SpatialRouteCandidateSource3D : std::uint8_t {
+  kFeasibilitySearch,
+  kExecutionTimeRefinement,
 };
 
 struct PersistentPlannerWorld3D {
@@ -73,9 +83,19 @@ struct PersistentPlannerRequest3D {
   PersistentPlannerWorld3D world{};
 };
 
-struct PersistentPlannerResult3D {
-  PersistentPlannerStatus3D status{PersistentPlannerStatus3D::kInvalidInput};
+struct SpatialRouteCandidate3D {
   std::vector<Point3> points;
+  SpatialRouteCandidateSource3D source{
+      SpatialRouteCandidateSource3D::kFeasibilitySearch};
+  double path_length_m{0.0};
+  double estimated_execution_time_s{0.0};
+  double estimated_translation_time_s{0.0};
+  double estimated_stationary_turn_time_s{0.0};
+
+  [[nodiscard]] bool valid() const noexcept;
+};
+
+struct PlannerTelemetry3D {
   std::uint64_t mission_epoch{0U};
   std::uint64_t planned_on_revision{0U};
   std::uint64_t occupied_fingerprint{0U};
@@ -99,11 +119,7 @@ struct PersistentPlannerResult3D {
   std::size_t execution_time_search_expansions{0U};
   std::size_t execution_time_search_records{0U};
   std::size_t execution_time_search_open_entries{0U};
-  double path_length_m{0.0};
   double execution_time_search_objective_s{0.0};
-  double estimated_execution_time_s{0.0};
-  double estimated_translation_time_s{0.0};
-  double estimated_stationary_turn_time_s{0.0};
   double world_update_ms{0.0};
   double search_ms{0.0};
   bool search_state_reused{false};
@@ -113,10 +129,27 @@ struct PersistentPlannerResult3D {
   bool feasibility_attempted{false};
   bool feasibility_route_found{false};
   bool execution_time_search_complete{false};
-  bool search_complete{false};
-
-  [[nodiscard]] bool executable() const noexcept;
+  bool incumbent_available{false};
 };
+
+struct PlannerUpdate3D {
+  std::optional<SpatialRouteCandidate3D> improved_incumbent;
+  PlannerInputStatus3D input_status{PlannerInputStatus3D::kInvalidInput};
+  SearchProgress3D progress{SearchProgress3D::kInvalidated};
+  PlannerTelemetry3D telemetry{};
+
+  [[nodiscard]] bool publishable() const noexcept;
+  [[nodiscard]] bool running() const noexcept;
+};
+
+struct PlannerDispatch3D {
+  bool publish_incumbent{false};
+  bool continue_search{false};
+  bool terminal{false};
+};
+
+[[nodiscard]] PlannerDispatch3D
+coordinatePlannerUpdate3D(const PlannerUpdate3D& update) noexcept;
 
 namespace detail {
 class PersistentDStarLitePlanner3DImpl;
@@ -132,8 +165,7 @@ public:
   PersistentDStarLitePlanner3D(PersistentDStarLitePlanner3D&&) noexcept;
   PersistentDStarLitePlanner3D& operator=(PersistentDStarLitePlanner3D&&) noexcept;
 
-  [[nodiscard]] PersistentPlannerResult3D
-  plan(const PersistentPlannerRequest3D& request);
+  [[nodiscard]] PlannerUpdate3D plan(const PersistentPlannerRequest3D& request);
   void reset() noexcept;
   [[nodiscard]] const PersistentPlannerConfig3D& config() const noexcept;
 
@@ -142,6 +174,9 @@ private:
 };
 
 [[nodiscard]] const char*
-persistentPlannerStatus3DName(PersistentPlannerStatus3D status) noexcept;
+plannerInputStatus3DName(PlannerInputStatus3D status) noexcept;
+[[nodiscard]] const char* searchProgress3DName(SearchProgress3D progress) noexcept;
+[[nodiscard]] const char*
+spatialRouteCandidateSource3DName(SpatialRouteCandidateSource3D source) noexcept;
 
 } // namespace drone_city_nav

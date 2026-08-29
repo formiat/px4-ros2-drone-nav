@@ -115,7 +115,7 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
   if (active_prepared && !launch_support_unchanged) {
     {
       const std::scoped_lock lock{route_planning_queue_mutex_};
-      pending_route_planning_world_.reset();
+      pending_route_planning_work_.reset();
     }
     RCLCPP_INFO(get_logger(),
                 "EXECUTION_EVIDENCE_WORLD_CHANGED raw_revision=%" PRIu64
@@ -484,10 +484,13 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
     auto planning_world = std::make_shared<const ProductionMppiPreparedEsdf>(prepared);
     {
       const std::scoped_lock lock{route_planning_queue_mutex_};
-      if (pending_route_planning_world_) {
+      if (pending_route_planning_work_) {
         initial_route_search_already_pending = true;
       } else {
-        pending_route_planning_world_ = std::move(planning_world);
+        pending_route_planning_work_ = ProductionRoutePlanningWork3D{
+            .world = std::move(planning_world),
+            .continuation_session = nullptr,
+        };
         initial_route_search_queued = true;
       }
     }

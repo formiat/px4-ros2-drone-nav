@@ -265,8 +265,11 @@ void ProductionMppiNode::onNavigationReadiness(const std_msgs::msg::Bool& messag
   bool queued = false;
   if (request) {
     const std::scoped_lock lock{route_planning_queue_mutex_};
-    if (!pending_route_planning_world_) {
-      pending_route_planning_world_ = std::move(request);
+    if (!pending_route_planning_work_) {
+      pending_route_planning_work_ = ProductionRoutePlanningWork3D{
+          .world = std::move(request),
+          .continuation_session = nullptr,
+      };
       queued = true;
     }
   }

@@ -96,12 +96,10 @@ The planner retains its D* Lite state across compatible world revisions. Occupie
 voxel deltas update only affected vertices, while unchanged raw occupancy reuses
 the existing search state. An occupied delta invalidates only incident cached
 edges and already resident D* states inside the maximum-edge sweep reach. Search
-that reaches its per-tick budget must remain running and resume on a later tick
-independently from whether it also produced a publishable complete incumbent.
-The current result/status coupling does not yet satisfy that anytime contract
-after the first feasible route; the migration is tracked by the active
-remediation checklist. An incomplete prefix is not published as a substitute
-mission route.
+that reaches its per-tick budget remains running and resumes through the typed
+planner-session queue independently from whether the same update produced a
+publishable complete incumbent. An incomplete prefix is not published as a
+substitute mission route.
 
 Every edge uses the shared `FlightTimeModel3D`, so horizontal and vertical speed,
 acceleration, jerk, and stationary turn limits contribute to one time objective.

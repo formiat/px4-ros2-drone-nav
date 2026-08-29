@@ -65,7 +65,6 @@ class Stage7GeometryVerticalCostContractTest(unittest.TestCase):
         self.assertIn("vertical / model.maximum_vertical_speed_mps", implementation)
         self.assertIn("minimumFlightTranslationTime3D", search)
         self.assertIn("parameterizeFlightPathTime3D", search)
-        self.assertIn("result.estimated_execution_time_s = profile.travel_time_s", search)
         self.assertIn("persistent_planner_minimum_horizontal_step_m: 2.0", yaml)
         self.assertIn("persistent_planner_minimum_vertical_step_m: 1.0", yaml)
         self.assertIn("persistent_planner_maximum_adaptive_lattice_level: 2", yaml)

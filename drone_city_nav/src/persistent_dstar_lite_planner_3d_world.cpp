@@ -55,21 +55,22 @@ constexpr double kGeometryTolerance{1.0e-9};
 
 bool PersistentDStarLitePlanner3DImpl::sameGridGeometry(
     const GridBounds3D& bounds) const noexcept {
-  return width_ > 0 && height_ > 0 && depth_ > 0 && sameBounds(raw_bounds_, bounds);
+  return lattice_.width_ > 0 && lattice_.height_ > 0 && lattice_.depth_ > 0 &&
+         sameBounds(lattice_.raw_bounds_, bounds);
 }
 
 void PersistentDStarLitePlanner3DImpl::configureGridGeometry(
     const GridBounds3D& bounds) {
-  raw_bounds_ = bounds;
+  lattice_.raw_bounds_ = bounds;
   const double width_m = static_cast<double>(bounds.width_cells) * bounds.resolution_m;
   const double height_m =
       static_cast<double>(bounds.height_cells) * bounds.resolution_m;
   const double depth_m = static_cast<double>(bounds.depth_cells) * bounds.resolution_m;
-  width_ = std::max(
+  lattice_.width_ = std::max(
       1, static_cast<int>(std::floor(width_m / config_.minimum_horizontal_step_m)));
-  height_ = std::max(
+  lattice_.height_ = std::max(
       1, static_cast<int>(std::floor(height_m / config_.minimum_horizontal_step_m)));
-  depth_ = std::max(
+  lattice_.depth_ = std::max(
       1, static_cast<int>(std::floor(depth_m / config_.minimum_vertical_step_m)));
 }
 
@@ -97,7 +98,7 @@ PersistentDStarLitePlanner3DImpl::updateWorld(const PersistentPlannerWorld3D& wo
     }
     world_ = world;
     configureGridGeometry(*world.bounds());
-    edge_cost_cache_.clear();
+    dstar_session_.edge_cost_cache_.clear();
     update.accepted = true;
     update.requires_reset = true;
     return update;
@@ -110,7 +111,7 @@ PersistentDStarLitePlanner3DImpl::updateWorld(const PersistentPlannerWorld3D& wo
   }
   if (world.full_reset) {
     world_ = world;
-    edge_cost_cache_.clear();
+    dstar_session_.edge_cost_cache_.clear();
     update.accepted = true;
     update.requires_reset = true;
     return update;
@@ -123,7 +124,7 @@ PersistentDStarLitePlanner3DImpl::updateWorld(const PersistentPlannerWorld3D& wo
   }
   if (world.observed_occupancy == nullptr || world_.observed_occupancy == nullptr) {
     world_ = world;
-    edge_cost_cache_.clear();
+    dstar_session_.edge_cost_cache_.clear();
     update.accepted = true;
     update.requires_reset = true;
     return update;
@@ -201,8 +202,8 @@ std::vector<GridIndex3D> PersistentDStarLitePlanner3DImpl::changedOccupiedCells(
 
 bool PersistentDStarLitePlanner3DImpl::nodeInside(
     const PersistentPlannerNode3D node) const noexcept {
-  return node.x >= 0 && node.y >= 0 && node.z >= 0 && node.x < width_ &&
-         node.y < height_ && node.z < depth_;
+  return node.x >= 0 && node.y >= 0 && node.z >= 0 && node.x < lattice_.width_ &&
+         node.y < lattice_.height_ && node.z < lattice_.depth_;
 }
 
 int PersistentDStarLitePlanner3DImpl::maximumLatticeScale() const noexcept {
@@ -224,11 +225,11 @@ std::size_t PersistentDStarLitePlanner3DImpl::latticeLevel(
 Point3 PersistentDStarLitePlanner3DImpl::pointFor(
     const PersistentPlannerNode3D node) const noexcept {
   return Point3{
-      raw_bounds_.origin_x +
+      lattice_.raw_bounds_.origin_x +
           (static_cast<double>(node.x) + 0.5) * config_.minimum_horizontal_step_m,
-      raw_bounds_.origin_y +
+      lattice_.raw_bounds_.origin_y +
           (static_cast<double>(node.y) + 0.5) * config_.minimum_horizontal_step_m,
-      raw_bounds_.origin_z +
+      lattice_.raw_bounds_.origin_z +
           (static_cast<double>(node.z) + 0.5) * config_.minimum_vertical_step_m,
   };
 }
@@ -241,12 +242,12 @@ PersistentDStarLitePlanner3DImpl::nearestNode(const Point3& point) const noexcep
     return std::clamp(index, 0, size - 1);
   };
   return PersistentPlannerNode3D{
-      clamp_index(point.x, raw_bounds_.origin_x, config_.minimum_horizontal_step_m,
-                  width_),
-      clamp_index(point.y, raw_bounds_.origin_y, config_.minimum_horizontal_step_m,
-                  height_),
-      clamp_index(point.z, raw_bounds_.origin_z, config_.minimum_vertical_step_m,
-                  depth_),
+      clamp_index(point.x, lattice_.raw_bounds_.origin_x,
+                  config_.minimum_horizontal_step_m, lattice_.width_),
+      clamp_index(point.y, lattice_.raw_bounds_.origin_y,
+                  config_.minimum_horizontal_step_m, lattice_.height_),
+      clamp_index(point.z, lattice_.raw_bounds_.origin_z,
+                  config_.minimum_vertical_step_m, lattice_.depth_),
   };
 }
 

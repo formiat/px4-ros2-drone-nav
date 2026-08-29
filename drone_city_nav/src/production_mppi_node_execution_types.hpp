@@ -50,15 +50,41 @@ struct ProductionRouteSearchCandidate3D {
   std::optional<double> search_base_stitch_station_m;
   RouteIntent3D intent{};
   SegmentEvidence3D evidence{};
-  PersistentPlannerResult3D plan{};
+  SpatialRouteCandidate3D spatial_route{};
+  PlannerInputStatus3D planner_input_status{PlannerInputStatus3D::kInvalidInput};
+  SearchProgress3D planner_progress{SearchProgress3D::kInvalidated};
+  PlannerTelemetry3D planner_telemetry{};
   std::vector<RouteSample3D> route;
 };
 
-struct ProductionRouteCandidateSet3D {
-  std::vector<ProductionRouteSearchCandidate3D> candidates;
-  PersistentPlannerResult3D planner_result{};
+struct ProductionPlannerSession3D {
+  PersistentPlannerRequest3D request{};
+  Point3 mission_goal{};
+  Point3 search_start{};
+  Vec3 search_velocity{};
+  RouteInstanceId3D search_base_route_instance_id{};
+  std::optional<double> search_base_stitch_station_m;
+  RouteIntent3D intent{};
+};
+
+struct ProductionPlannerUpdate3D {
+  std::optional<ProductionRouteSearchCandidate3D> improved_incumbent;
+  std::shared_ptr<const ProductionPlannerSession3D> planner_session;
+  PlannerDispatch3D dispatch{};
+  PlannerInputStatus3D planner_input_status{PlannerInputStatus3D::kInvalidInput};
+  SearchProgress3D planner_progress{SearchProgress3D::kInvalidated};
+  PlannerTelemetry3D planner_telemetry{};
   bool planner_invoked{false};
   double search_ms{0.0};
+};
+
+struct ProductionRoutePlanningWork3D {
+  std::shared_ptr<const ProductionMppiPreparedEsdf> world;
+  std::shared_ptr<const ProductionPlannerSession3D> continuation_session;
+
+  [[nodiscard]] bool valid() const noexcept {
+    return world != nullptr;
+  }
 };
 
 struct ProductionRouteExecutionSelection3D {
