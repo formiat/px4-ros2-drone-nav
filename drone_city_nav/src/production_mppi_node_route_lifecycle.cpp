@@ -5,8 +5,7 @@
 namespace drone_city_nav {
 
 RouteSegmentCompletionAssessment3D
-ProductionMppiNode::assessActiveRouteCompletion3D(const ProductionMppiPreparedEsdf&,
-                                                  const Point3& position) {
+ProductionMppiNode::assessActiveRouteCompletion3D(const Point3& position) {
   const std::shared_ptr<const ExecutionRouteSnapshot3D> snapshot =
       execution_route_store_.snapshot();
   if (snapshot == nullptr || !snapshot->route.has_value() ||

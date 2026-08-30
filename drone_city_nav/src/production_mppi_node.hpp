@@ -96,160 +96,20 @@
 #include "production_mppi_node_types.hpp"
 #include "production_mppi_raw_world.hpp"
 #include "production_planner_search_transaction_3d.hpp"
+#include "production_route_pipeline_artifacts_3d.hpp"
 
 namespace drone_city_nav {
 
-enum class ProductionPlanningSearchKind : std::uint8_t {
-  kNone,
-  kPersistentDStarLite3D,
-};
-
-struct ProductionPersistentPlannerTelemetry3D {
-  PlannerInputStatus3D input_status{PlannerInputStatus3D::kInvalidInput};
-  SearchProgress3D progress{SearchProgress3D::kInvalidated};
-  std::uint64_t mission_epoch{0U};
-  std::uint64_t planned_on_revision{0U};
-  std::uint64_t occupied_fingerprint{0U};
-  std::uint64_t search_generation{0U};
-  std::uint64_t repair_generation{0U};
-  std::size_t expansions{0U};
-  std::size_t changed_occupied_voxels{0U};
-  std::size_t affected_lattice_states{0U};
-  std::size_t repair_lattice_states_processed{0U};
-  std::size_t repair_lattice_states_pending{0U};
-  std::size_t feasibility_expansions{0U};
-  std::size_t records{0U};
-  std::size_t open_entries{0U};
-  std::size_t shortcut_checks{0U};
-  std::size_t shortcuts_applied{0U};
-  std::size_t lattice_edge_queries{0U};
-  std::size_t raw_edge_validation_checks{0U};
-  std::size_t adaptive_edge_queries{0U};
-  std::size_t adaptive_edges_in_extracted_path{0U};
-  std::size_t maximum_queried_lattice_level{0U};
-  std::size_t execution_time_search_expansions{0U};
-  std::size_t execution_time_search_records{0U};
-  std::size_t execution_time_search_open_entries{0U};
-  double path_length_m{0.0};
-  double remaining_goal_distance_m{0.0};
-  double execution_time_search_objective_s{0.0};
-  double estimated_execution_time_s{0.0};
-  double estimated_translation_time_s{0.0};
-  double estimated_stationary_turn_time_s{0.0};
-  double world_update_ms{0.0};
-  double search_ms{0.0};
-  bool invoked{false};
-  bool executable{false};
-  bool search_state_reused{false};
-  bool occupied_world_unchanged{false};
-  bool incumbent_retained{false};
-  bool repair_pending{false};
-  bool feasibility_attempted{false};
-  bool feasibility_route_found{false};
-  bool execution_time_search_complete{false};
-  bool incumbent_available{false};
-};
-
-struct ProductionMppiPreparedEsdf;
 struct ProductionMppiPlanningTickFinalization;
 struct ProductionMppiControllerTick;
 struct ProductionMppiControllerTickResult;
 struct ProductionRouteActivationSnapshot3D;
-struct ProductionRouteActivationResult3D;
 struct ProductionRouteMaterialization3D;
 struct ProductionMppiExecutionCycle;
 struct RouteCompilerConfig3D;
 struct ProductionMppiHorizonCommit;
 enum class ProductionMppiHoldOwnershipTransition3D : std::uint8_t;
 enum class ProductionMppiHorizonCommitStatus : std::uint8_t;
-
-struct ProductionMaterializedRouteProposal3D {
-  MaterializedRouteProposal3D identity{};
-  ProductionRouteGeometry3D geometry{};
-};
-
-struct ProductionWorldBuildTelemetry3D {
-  double build_ms{0.0};
-  double esdf_x_pass_ms{0.0};
-  double esdf_y_pass_ms{0.0};
-  double esdf_z_pass_ms{0.0};
-  double esdf_finalize_ms{0.0};
-  double conversion_ms{0.0};
-  double upload_ms{0.0};
-};
-
-struct ProductionMppiPreparedEsdf {
-  std::shared_ptr<const WorldSnapshot3D> world{
-      std::make_shared<const WorldSnapshot3D>()};
-  double build_ms{0.0};
-  double esdf_x_pass_ms{0.0};
-  double esdf_y_pass_ms{0.0};
-  double esdf_z_pass_ms{0.0};
-  double esdf_finalize_ms{0.0};
-  double conversion_ms{0.0};
-  double upload_ms{0.0};
-  double route_search_ms{0.0};
-  double continuation_validation_ms{0.0};
-  double route_smoothing_ms{0.0};
-  double route_shortcut_validation_ms{0.0};
-  double route_corner_validation_ms{0.0};
-  double passage_volume_build_ms{0.0};
-  std::size_t route_shortcuts_applied{0U};
-  std::size_t route_corners_smoothed{0U};
-  std::size_t route_shortcut_candidates{0U};
-  std::size_t route_parallel_shortcut_candidates{0U};
-  std::size_t route_corner_candidates{0U};
-  std::size_t route_parallel_corner_candidates{0U};
-  bool passage_volume_resource_reused{false};
-  double candidate_validation_ms{0.0};
-  std::uint64_t route_fingerprint{0U};
-  std::shared_ptr<const std::vector<mppi::RouteSample3D>> mppi_route;
-  std::shared_ptr<const std::vector<RouteSample3D>> route_3d;
-  std::shared_ptr<const ProductionRouteGeometry3D> compiled_route_geometry;
-  ExecutionRouteGeometryValidation3D route_compilation_validation{};
-  std::size_t route_stop_turn_count{0U};
-  RouteIntent3D route_intent{};
-  SegmentEvidence3D route_segment_evidence{};
-  std::shared_ptr<const std::vector<Point2>> route_2d_projection;
-  std::shared_ptr<const std::vector<ConstrainedRouteSpan>> constrained_spans;
-  std::shared_ptr<const std::vector<PassageVolume>> passage_volumes;
-  std::shared_ptr<const std::vector<CooperativePassageAssignment>>
-      cooperative_passage_assignments;
-  std::shared_ptr<const std::vector<PassageTraversalId>> selected_passage_traversal_ids;
-  StaticRouteObjective route_objective{};
-  std::uint64_t route_generation{0U};
-  bool route_reaches_mission_goal{false};
-  RouteProgressProjection3D route_projection{};
-  ProductionPlanningSearchKind planning_search_kind{
-      ProductionPlanningSearchKind::kNone};
-  ProductionPersistentPlannerTelemetry3D planner{};
-  RouteInstanceId3D planning_search_base_route_instance_id{};
-  std::optional<double> planning_search_base_stitch_station_m;
-  // Search provenance and activation continuity are separate contracts. A
-  // valid ID requires certified overlap with this exact route at activation;
-  // an empty ID permits a dynamically validated atomic route handoff.
-  RouteInstanceId3D required_splice_base_route_instance_id{};
-  Point3 planning_search_start{};
-  Point3 planning_search_goal{};
-  Point3 planning_candidate_endpoint{};
-  Vec3 planning_search_direction{};
-  std::size_t planning_candidate_points{0U};
-  std::size_t planning_candidate_samples{0U};
-  CertifiedRouteReserveStatus3D certified_route_reserve_status{
-      CertifiedRouteReserveStatus3D::kInvalid};
-  double certified_route_reserve_available_m{0.0};
-  double certified_route_reserve_required_m{0.0};
-  double certified_route_reserve_shortfall_m{0.0};
-  StaticRouteCandidateStatus static_route_candidate_status{
-      StaticRouteCandidateStatus::kEmpty};
-  StaticRouteActivationStatus static_route_activation_status{
-      StaticRouteActivationStatus::kNotAttempted};
-  RoutePublicationStatus3D static_route_publication_status{
-      RoutePublicationStatus3D::kNotAssessed};
-  bool static_route_world_compatible{false};
-  bool static_route_generation_assessed{false};
-  bool static_route_generation_matches{false};
-};
 
 #include "production_mppi_node_execution_types.hpp"
 
@@ -265,7 +125,10 @@ struct ProductionMppiRvizSnapshot {
 struct ProductionMppiDiagnosticsSnapshot {
   mppi::MppiTickInput input{};
   mppi::MppiTickResult result{};
-  ProductionMppiPreparedEsdf esdf{};
+  std::shared_ptr<const WorldSnapshot3D> world;
+  ProductionWorldBuildTelemetry3D world_build{};
+  std::shared_ptr<const ProductionRouteActivationResult3D> route_pipeline;
+  std::shared_ptr<const CertifiedRouteSuffix3D> execution_route;
   ProductionMppiStability stability{};
   ProductionMppiPredictionError prediction{};
   MppiLivenessResult liveness{};
@@ -356,26 +219,23 @@ private:
   void configureStaticRouteExtension(double maximum_horizontal_acceleration_mps2);
   [[nodiscard]] RouteCompilerConfig3D routeCompilerConfig3D() const noexcept;
   [[nodiscard]] TrackingErrorTubeWorld3D
-  trackingErrorTubeWorld3D(const ProductionMppiPreparedEsdf& world) const noexcept;
-  static void
-  bindStaticRouteRequestToExecution(ProductionMppiPreparedEsdf& request,
-                                    const CertifiedRouteSuffix3D& active_route,
-                                    const RouteProgressProjection3D& projection);
+  trackingErrorTubeWorld3D(const WorldSnapshot3D& world) const noexcept;
   void maybeRequestStaticRouteExtensionFromExecution(
-      const ProductionMppiPreparedEsdf& esdf,
+      const std::shared_ptr<const WorldSnapshot3D>& world,
+      const ProductionWorldBuildTelemetry3D& world_build,
       const ProductionRouteExecutionSelection3D& route_execution,
       const ProductionMppiNavigation& navigation, std::int64_t now_ns);
   void
-  maybeRequestStaticRouteExtension(const ProductionMppiPreparedEsdf& esdf,
+  maybeRequestStaticRouteExtension(const std::shared_ptr<const WorldSnapshot3D>& world,
+                                   const ProductionWorldBuildTelemetry3D& world_build,
                                    const CertifiedRouteSuffix3D& active_route,
                                    const ProductionMppiNavigation& navigation,
                                    const RouteProgressProjection3D& route_projection,
                                    std::int64_t now_ns);
-  void
-  maybeRequestStaticTrackingWorldRefresh(const ProductionMppiPreparedEsdf& esdf,
-                                         const ProductionMppiNavigation& navigation,
-                                         const ProductionNavigationObjective& objective,
-                                         std::int64_t now_ns);
+  void maybeRequestStaticTrackingWorldRefresh(
+      const std::shared_ptr<const WorldSnapshot3D>& world,
+      const ProductionMppiNavigation& navigation,
+      const ProductionNavigationObjective& objective, std::int64_t now_ns);
   void finishStaticRouteExtension(std::uint64_t base_generation,
                                   bool extension_activated = false);
   void finishStaticRouteReplan(std::uint64_t base_generation, bool route_activated);
@@ -398,13 +258,12 @@ private:
       const ProductionMppiNavigation& navigation,
       std::shared_ptr<const ProductionPlannerSession3D> continuation_session);
   [[nodiscard]] RouteSegmentCompletionAssessment3D
-  assessActiveRouteCompletion3D(const ProductionMppiPreparedEsdf& world,
-                                const Point3& position);
+  assessActiveRouteCompletion3D(const Point3& position);
   [[nodiscard]] std::uint64_t nextRouteGeneration3D();
   [[nodiscard]] ProductionRouteActivationSnapshot3D captureRouteActivationSnapshot3D();
   [[nodiscard]] ProductionRouteActivationResult3D
   prepareRouteActivation3D(const PlannerSearchTransaction3D& transaction,
-                           ProductionMppiPreparedEsdf prepared,
+                           ProductionRouteMaterialization3D materialization,
                            NavigationWorldCertificate3D planned_world_certificate,
                            StaticRouteCandidateValidation validation,
                            StaticRouteReplacementPolicy replacement_policy,
@@ -430,8 +289,7 @@ private:
   void startPlanningTimer();
   void initializeRuntimeInterfaces();
   [[nodiscard]] ProductionRouteExecutionSelection3D resolveRouteExecution3D(
-      const ProductionMppiPreparedEsdf& world,
-      const ProductionNavigationObjective* objective,
+      const WorldSnapshot3D& world, const ProductionNavigationObjective* objective,
       const ProductionMppiNavigation& navigation,
       const std::shared_ptr<const VersionedExecutionInput3D>& execution_input,
       const std::shared_ptr<const ProductionMppiRawWorld3D>& latest_raw_world,
@@ -472,11 +330,10 @@ private:
       const ProductionMppiExecutionHorizonOwner& execution_horizon_owner,
       std::int64_t now_ns);
   void planningTick();
-  [[nodiscard]] bool
-  worldGenerationAvailableForPlanning(const ProductionMppiPreparedEsdf& world,
-                                      std::int64_t now_ns);
+  [[nodiscard]] bool worldGenerationAvailableForPlanning(const WorldSnapshot3D& world,
+                                                         std::int64_t now_ns);
   [[nodiscard]] std::optional<mppi::MppiTickResult>
-  planOnCapturedWorldGeneration(const ProductionMppiPreparedEsdf& world,
+  planOnCapturedWorldGeneration(const WorldSnapshot3D& world,
                                 const mppi::MppiTickInput& input);
   void finalizePlanningTick(const ProductionMppiPlanningTickFinalization& finalization);
   [[nodiscard]] std::optional<ProductionMppiControllerTickResult>
@@ -494,7 +351,7 @@ private:
   void publishSummary();
   [[nodiscard]] ProductionMppiExecutionPublication publishExecutionHorizon(
       const mppi::MppiTickInput& input, const mppi::MppiTickResult& result,
-      const ProductionMppiPreparedEsdf& esdf,
+      const WorldSnapshot3D& world,
       const ProductionRouteExecutionSelection3D& route_execution,
       const std::shared_ptr<const ProductionNavigationObjective>& objective,
       const std::shared_ptr<const VersionedExecutionInput3D>& execution_input,
@@ -765,7 +622,10 @@ private:
   // Linearizes the active GPU ESDF with its exact immutable CPU world.
   mutable std::mutex world_generation_publication_mutex_;
   mutable std::mutex esdf_state_mutex_;
-  std::optional<ProductionMppiPreparedEsdf> prepared_esdf_;
+  std::shared_ptr<const WorldSnapshot3D> resident_world_;
+  ProductionWorldBuildTelemetry3D resident_world_build_telemetry_{};
+  std::atomic<std::shared_ptr<const ProductionRouteActivationResult3D>>
+      latest_route_pipeline_event_;
   std::atomic<std::uint64_t> superseded_world_generation_ticks_{0U};
   std::atomic<std::uint64_t> rejected_world_generation_publications_{0U};
 

@@ -7,7 +7,9 @@ namespace drone_city_nav {
 struct ProductionMppiPlanningTickFinalization {
   const mppi::MppiTickInput& input;
   mppi::MppiTickResult& result;
-  const ProductionMppiPreparedEsdf& esdf;
+  const std::shared_ptr<const WorldSnapshot3D>& world;
+  const ProductionWorldBuildTelemetry3D& world_build;
+  const std::shared_ptr<const ProductionRouteActivationResult3D>& route_pipeline;
   const ProductionRouteExecutionSelection3D& route_execution;
   const std::shared_ptr<const VersionedExecutionInput3D>& execution_input;
   const std::shared_ptr<const VersionedLatestLidarEvidence3D>& latest_lidar_evidence;

@@ -54,26 +54,25 @@ executionHorizonOwnerEmpty(const ProductionMppiExecutionHorizonOwner& owner) noe
 }
 
 [[nodiscard]] bool observedWorldCurrentForStationaryRearm(
-    const ProductionMppiPreparedEsdf& esdf,
-    const ProductionMppiRawWorld3D* raw_world) noexcept {
+    const WorldSnapshot3D& world, const ProductionMppiRawWorld3D* raw_world) noexcept {
   if (raw_world == nullptr || !raw_world->version.valid() ||
       raw_world->occupancy == nullptr || raw_world->execution_owner == nullptr ||
       !raw_world->execution_owner->valid() ||
       !sameRawMapVersion(raw_world->version, raw_world->execution_owner->version()) ||
       std::addressof(raw_world->execution_owner->occupancy()) !=
           raw_world->occupancy.get() ||
-      esdf.world->observed_raw_world_owner == nullptr ||
-      !esdf.world->observed_raw_world_owner->valid() ||
-      !sameRawMapVersion(esdf.world->observed_raw_world_owner->version(),
+      world.observed_raw_world_owner == nullptr ||
+      !world.observed_raw_world_owner->valid() ||
+      !sameRawMapVersion(world.observed_raw_world_owner->version(),
                          raw_world->version) ||
-      std::addressof(esdf.world->observed_raw_world_owner->occupancy()) !=
+      std::addressof(world.observed_raw_world_owner->occupancy()) !=
           raw_world->occupancy.get()) {
     return false;
   }
   return raw_world->execution_owner->sharesObservationOwner(
-             *esdf.world->observed_raw_world_owner) &&
+             *world.observed_raw_world_owner) &&
          raw_world->execution_owner->occupiedSnapshot() ==
-             esdf.world->observed_raw_world_owner->occupiedSnapshot();
+             world.observed_raw_world_owner->occupiedSnapshot();
 }
 
 } // namespace
@@ -84,7 +83,7 @@ bool stationaryCaptureRearmEligibleForPlanningTick(
       context.navigation == nullptr || context.vehicle_status == nullptr ||
       context.applied_control == nullptr ||
       context.execution_horizon_owner == nullptr ||
-      context.offboard_session == nullptr || context.esdf == nullptr) {
+      context.offboard_session == nullptr || context.world == nullptr) {
     return false;
   }
   const bool stationary_rearm_candidate =
@@ -103,13 +102,12 @@ bool stationaryCaptureRearmEligibleForPlanningTick(
   const bool static_world_current =
       stationary_rearm_candidate && context.use_static_map &&
       context.static_occupancy_3d != nullptr &&
-      VersionedStaticWorld3D::captureOwned(
-          navigationWorldCertificate3D(*context.esdf->world),
-          context.static_occupancy_3d) != nullptr;
+      VersionedStaticWorld3D::captureOwned(navigationWorldCertificate3D(*context.world),
+                                           context.static_occupancy_3d) != nullptr;
   const bool observed_world_current =
       stationary_rearm_candidate && context.observed_3d_world &&
       context.observation_age_ms <= context.maximum_esdf_age_ms &&
-      observedWorldCurrentForStationaryRearm(*context.esdf,
+      observedWorldCurrentForStationaryRearm(*context.world,
                                              context.latest_raw_world_3d.get());
 
   return missionWaypointStationaryRearmEligible(

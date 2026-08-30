@@ -253,19 +253,23 @@ void ProductionMppiNode::onNavigationReadiness(const std_msgs::msg::Bool& messag
 
   std::shared_ptr<const PlannerSearchTransaction3D> transaction;
   ProductionWorldBuildTelemetry3D world_telemetry;
+  const std::shared_ptr<const ExecutionRouteSnapshot3D> execution_snapshot =
+      execution_route_store_.snapshot();
+  const bool initial_route_required =
+      execution_snapshot == nullptr ||
+      execution_snapshot->routeGenerationHighWater() == 0U;
   {
     const std::scoped_lock lock{world_generation_publication_mutex_, esdf_state_mutex_};
-    if (prepared_esdf_ && productionWorldGenerationCoherent(*prepared_esdf_->world) &&
-        prepared_esdf_->route_generation == 0U) {
+    if (resident_world_ && productionWorldGenerationCoherent(*resident_world_) &&
+        initial_route_required) {
       if (const auto objective = navigationObjective()) {
         transaction = makePlannerSearchTransaction3D(
-            prepared_esdf_->world,
-            captureResidentPlannerWorld3D(*prepared_esdf_->world),
+            resident_world_, captureResidentPlannerWorld3D(*resident_world_),
             makeStaticRouteObjective(*objective),
             StaticRouteSearchRequestIdentity{
                 .kind = StaticRouteSearchRequestKind::kInitial,
             });
-        world_telemetry = captureWorldBuildTelemetry3D(*prepared_esdf_);
+        world_telemetry = resident_world_build_telemetry_;
       }
     }
   }

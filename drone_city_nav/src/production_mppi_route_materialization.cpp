@@ -31,25 +31,30 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
   const PlannerTelemetry3D& plan = candidate.planner_telemetry;
   const SpatialRouteCandidate3D& spatial_route = candidate.spatial_route;
   ProductionRouteMaterialization3D result;
-  ProductionMppiPreparedEsdf& prepared = result.prepared;
-  prepared = makePlannerSearchArtifact3D(transaction, world_telemetry);
-  prepared.route_intent = candidate.intent;
-  prepared.route_segment_evidence = candidate.evidence;
-  prepared.planning_search_kind = ProductionPlanningSearchKind::kPersistentDStarLite3D;
-  prepared.planning_search_base_route_instance_id =
+  MaterializedRoute3D& route = result.route;
+  ProductionRoutePipelineTelemetry3D& telemetry = result.telemetry;
+  ProductionRouteMaterializationTelemetry3D& materialization =
+      telemetry.materialization;
+  ProductionRouteSearchProvenance3D& provenance = route.provenance;
+  route.world = transaction.world;
+  route.objective = transaction.objective;
+  route.candidate_generation = candidate_generation;
+  route.intent = candidate.intent;
+  route.segment_evidence = candidate.evidence;
+  provenance.kind = ProductionPlanningSearchKind::kPersistentDStarLite3D;
+  provenance.base_route_instance_id = candidate.search_base_route_instance_id;
+  provenance.base_stitch_station_m = candidate.search_base_stitch_station_m;
+  provenance.required_splice_base_route_instance_id =
       candidate.search_base_route_instance_id;
-  prepared.planning_search_base_stitch_station_m =
-      candidate.search_base_stitch_station_m;
-  prepared.required_splice_base_route_instance_id =
-      candidate.search_base_route_instance_id;
-  prepared.planning_search_start = search_start;
-  prepared.planning_search_goal = mission_goal;
-  prepared.planning_candidate_endpoint =
+  provenance.start = search_start;
+  provenance.goal = mission_goal;
+  provenance.candidate_endpoint =
       spatial_route.points.empty() ? search_start : spatial_route.points.back();
-  prepared.planning_search_direction = candidate.search_velocity;
-  prepared.planning_candidate_points = spatial_route.points.size();
-  prepared.planning_candidate_samples = candidate.route.size();
-  prepared.planner = ProductionPersistentPlannerTelemetry3D{
+  provenance.direction = candidate.search_velocity;
+  provenance.candidate_points = spatial_route.points.size();
+  provenance.candidate_samples = candidate.route.size();
+  telemetry.world_build = world_telemetry;
+  telemetry.planner = ProductionPersistentPlannerTelemetry3D{
       .input_status = candidate.planner_input_status,
       .progress = candidate.planner_progress,
       .mission_epoch = plan.mission_epoch,
@@ -77,7 +82,7 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
       .execution_time_search_open_entries = plan.execution_time_search_open_entries,
       .path_length_m = spatial_route.path_length_m,
       .remaining_goal_distance_m =
-          distance3D(prepared.planning_candidate_endpoint, mission_goal),
+          distance3D(provenance.candidate_endpoint, mission_goal),
       .execution_time_search_objective_s = plan.execution_time_search_objective_s,
       .estimated_execution_time_s = spatial_route.estimated_execution_time_s,
       .estimated_translation_time_s = spatial_route.estimated_translation_time_s,
@@ -96,9 +101,10 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
       .execution_time_search_complete = plan.execution_time_search_complete,
       .incumbent_available = plan.incumbent_available,
   };
-  prepared.route_reaches_mission_goal = spatial_route.valid();
-  prepared.continuation_validation_ms = 0.0;
-  prepared.route_fingerprint = routeFingerprint(candidate.route);
+  route.reaches_mission_goal = spatial_route.valid();
+  route.planner_executable = telemetry.planner.executable;
+  materialization.continuation_validation_ms = 0.0;
+  route.fingerprint = routeFingerprint(candidate.route);
 
   const std::span<const PassageTraversalEdge> topology_traversals =
       transaction.world->topology_passage_traversals
@@ -115,7 +121,7 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
 
   result.validation =
       StaticRouteCandidateValidation{.status = StaticRouteCandidateStatus::kEmpty};
-  if (!prepared.planner.executable) {
+  if (!route.planner_executable) {
     return result;
   }
 
@@ -209,18 +215,20 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
   StaticRouteGeometryResult geometry = optimizeStaticRouteGeometry(
       *mutable_route, initial_spans, geometry_collision_world, geometry_config,
       route_envelope_config_, planning_worker_pool_.get());
-  prepared.route_smoothing_ms =
+  materialization.route_smoothing_ms =
       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                 smoothing_started)
           .count();
-  prepared.route_shortcuts_applied = geometry.shortcuts_applied;
-  prepared.route_corners_smoothed = geometry.corners_smoothed;
-  prepared.route_shortcut_candidates = geometry.shortcut_candidates;
-  prepared.route_parallel_shortcut_candidates = geometry.parallel_shortcut_candidates;
-  prepared.route_corner_candidates = geometry.corner_candidates;
-  prepared.route_parallel_corner_candidates = geometry.parallel_corner_candidates;
-  prepared.route_shortcut_validation_ms = geometry.shortcut_validation_ms;
-  prepared.route_corner_validation_ms = geometry.corner_validation_ms;
+  materialization.route_shortcuts_applied = geometry.shortcuts_applied;
+  materialization.route_corners_smoothed = geometry.corners_smoothed;
+  materialization.route_shortcut_candidates = geometry.shortcut_candidates;
+  materialization.route_parallel_shortcut_candidates =
+      geometry.parallel_shortcut_candidates;
+  materialization.route_corner_candidates = geometry.corner_candidates;
+  materialization.route_parallel_corner_candidates =
+      geometry.parallel_corner_candidates;
+  materialization.route_shortcut_validation_ms = geometry.shortcut_validation_ms;
+  materialization.route_corner_validation_ms = geometry.corner_validation_ms;
   if (geometry.route.size() >= 2U) {
     *mutable_route = std::move(geometry.route);
   }
@@ -231,8 +239,8 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
   if (!optimized_risk_assignment.accepted()) {
     *mutable_route = canonical_route;
     geometry.constrained_spans = initial_spans;
-    prepared.route_shortcuts_applied = 0U;
-    prepared.route_corners_smoothed = 0U;
+    materialization.route_shortcuts_applied = 0U;
+    materialization.route_corners_smoothed = 0U;
     const std::string_view optimization_failure =
         routeRiskTierAssignmentStatusName(optimized_risk_assignment.status);
     RCLCPP_INFO(get_logger(),
@@ -263,7 +271,8 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
     PassageVolumeResource volume_resource = acquireDerivedPassageVolumes(
         *mutable_route, geometry.constrained_spans, *passage_occupancy,
         passage_occupancy_content_fingerprint, cooperative_passage_volume_config_);
-    prepared.passage_volume_resource_reused = volume_resource.shared_resource_reused;
+    materialization.passage_volume_resource_reused =
+        volume_resource.shared_resource_reused;
     passage_volumes = std::move(volume_resource.volumes);
     const std::span<const PassageVolume> volumes =
         passage_volumes ? std::span<const PassageVolume>{*passage_volumes}
@@ -287,8 +296,8 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
       PassageVolumeResource final_volume_resource = acquireDerivedPassageVolumes(
           *mutable_route, geometry.constrained_spans, *passage_occupancy,
           passage_occupancy_content_fingerprint, cooperative_passage_volume_config_);
-      prepared.passage_volume_resource_reused =
-          prepared.passage_volume_resource_reused ||
+      materialization.passage_volume_resource_reused =
+          materialization.passage_volume_resource_reused ||
           final_volume_resource.shared_resource_reused;
       passage_volumes = std::move(final_volume_resource.volumes);
       const std::span<const PassageVolume> final_volumes =
@@ -324,7 +333,7 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
         assignment.passage_volume_raw_validated = volume.raw_validated;
       }
     }
-    prepared.passage_volume_build_ms =
+    materialization.passage_volume_build_ms =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                   passage_started)
             .count();
@@ -360,14 +369,16 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
         .failure_point = risk_assignment.failure_point};
   }
 
-  const std::shared_ptr<const std::vector<RouteSample3D>> route = mutable_route;
+  const std::shared_ptr<const std::vector<RouteSample3D>> materialized_route =
+      mutable_route;
   const std::shared_ptr<const std::vector<ConstrainedRouteSpan>> spans = mutable_spans;
   if (result.validation.accepted && spans->size() != expected_span_count) {
     result.validation = StaticRouteCandidateValidation{
         .status = StaticRouteCandidateStatus::kInvalidPassageSpan};
   }
   if (result.validation.accepted &&
-      !validateConstrainedRouteSpans(*route, *spans, transaction.world->grid,
+      !validateConstrainedRouteSpans(*materialized_route, *spans,
+                                     transaction.world->grid,
                                      *transaction.world->distances_m)) {
     result.validation = StaticRouteCandidateValidation{
         .status = StaticRouteCandidateStatus::kInvalidPassageSpan};
@@ -393,20 +404,21 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
       selected_passage_traversal_ids.push_back(span.passage_traversal_id);
     }
   }
-  prepared.route_fingerprint = routeFingerprint(*route, route_traversals);
-  prepared.route_3d = route;
-  prepared.route_2d_projection = projectRouteTo2D(*route);
-  prepared.constrained_spans = spans;
-  prepared.passage_volumes = passage_volumes;
-  prepared.cooperative_passage_assignments =
+  route.fingerprint = routeFingerprint(*materialized_route, route_traversals);
+  route.route = materialized_route;
+  route.route_2d_projection = projectRouteTo2D(*materialized_route);
+  route.constrained_spans = spans;
+  route.passage_volumes = passage_volumes;
+  route.cooperative_passage_assignments =
       std::make_shared<const std::vector<CooperativePassageAssignment>>(
           std::move(passage_assignments));
-  prepared.selected_passage_traversal_ids =
+  route.selected_passage_traversal_ids =
       std::make_shared<const std::vector<PassageTraversalId>>(
           std::move(selected_passage_traversal_ids));
-  prepared.route_projection = projectOntoRouteProgress3D(
-      *route, Point3{navigation.state.x, navigation.state.y, navigation.state.z});
-  prepared.candidate_validation_ms =
+  route.initial_projection = projectOntoRouteProgress3D(
+      *materialized_route,
+      Point3{navigation.state.x, navigation.state.y, navigation.state.z});
+  materialization.candidate_validation_ms =
       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                 validation_started)
           .count();

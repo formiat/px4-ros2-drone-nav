@@ -18,26 +18,29 @@ namespace {
 diagnosticRouteConstraint(const ProductionMppiDiagnosticsSnapshot& snapshot,
                           const RouteEnvelopeConfig& route_envelope_config,
                           const double diagnostics_distance_m) {
-  const ProductionMppiPreparedEsdf& esdf = snapshot.esdf;
   const mppi::MppiTickInput& input = snapshot.input;
+  const CertifiedRouteSuffix3D* const execution_route = snapshot.execution_route.get();
+  const ProductionRouteGeometry3D* const geometry =
+      execution_route != nullptr ? execution_route->geometry.get() : nullptr;
   const std::span<const RouteSample3D> route =
-      snapshot.route_projection_valid && esdf.route_3d
-          ? std::span<const RouteSample3D>{*esdf.route_3d}
+      snapshot.route_projection_valid && geometry != nullptr && geometry->route
+          ? std::span<const RouteSample3D>{*geometry->route}
           : std::span<const RouteSample3D>{};
   const std::span<const ConstrainedRouteSpan> spans =
-      esdf.constrained_spans
-          ? std::span<const ConstrainedRouteSpan>{*esdf.constrained_spans}
+      geometry != nullptr && geometry->constrained_spans
+          ? std::span<const ConstrainedRouteSpan>{*geometry->constrained_spans}
           : std::span<const ConstrainedRouteSpan>{};
   return observeConstrainedRoute(
-      route, spans, esdf.route_generation, snapshot.route_station_m,
+      route, spans,
+      execution_route != nullptr ? execution_route->identity.generation : 0U,
+      snapshot.route_station_m,
       Point3{input.initial_state.x, input.initial_state.y, input.initial_state.z},
       Vec3{input.initial_state.vx, input.initial_state.vy, input.initial_state.vz},
       route_envelope_config, diagnostics_distance_m);
 }
 
 [[nodiscard]] std::string
-persistentPlannerInfoFields(const ProductionMppiPreparedEsdf& esdf) {
-  const ProductionPersistentPlannerTelemetry3D& planner = esdf.planner;
+persistentPlannerInfoFields(const ProductionPersistentPlannerTelemetry3D& planner) {
   std::ostringstream fields;
   fields << " planner=persistent_dstar_lite_3d"
          << " planner_invoked=" << (planner.invoked ? "true" : "false")
@@ -102,8 +105,7 @@ persistentPlannerInfoFields(const ProductionMppiPreparedEsdf& esdf) {
 }
 
 [[nodiscard]] std::string
-persistentPlannerJsonFields(const ProductionMppiPreparedEsdf& esdf) {
-  const ProductionPersistentPlannerTelemetry3D& planner = esdf.planner;
+persistentPlannerJsonFields(const ProductionPersistentPlannerTelemetry3D& planner) {
   std::ostringstream fields;
   fields << ",\"planner\":\"persistent_dstar_lite_3d\""
          << ",\"planner_invoked\":" << (planner.invoked ? "true" : "false")
@@ -174,38 +176,34 @@ persistentPlannerJsonFields(const ProductionMppiPreparedEsdf& esdf) {
 }
 
 [[nodiscard]] std::string
-certifiedRouteReserveInfoFields(const ProductionMppiPreparedEsdf& esdf) {
+certifiedRouteReserveInfoFields(const RouteAdmissionReport3D& admission) {
+  const CertifiedRouteReserveAssessment3D& reserve = admission.certified_reserve;
   std::ostringstream fields;
   fields << " certified_route_reserve="
-         << certifiedRouteReserveStatus3DName(esdf.certified_route_reserve_status)
-         << " certified_route_reserve_available_m="
-         << esdf.certified_route_reserve_available_m
-         << " certified_route_reserve_required_m="
-         << esdf.certified_route_reserve_required_m
-         << " certified_route_reserve_shortfall_m="
-         << esdf.certified_route_reserve_shortfall_m;
+         << certifiedRouteReserveStatus3DName(reserve.status)
+         << " certified_route_reserve_available_m=" << reserve.available_m
+         << " certified_route_reserve_required_m=" << reserve.required_m
+         << " certified_route_reserve_shortfall_m=" << reserve.shortfall_m;
   return fields.str();
 }
 
 [[nodiscard]] std::string
-certifiedRouteReserveJsonFields(const ProductionMppiPreparedEsdf& esdf) {
+certifiedRouteReserveJsonFields(const RouteAdmissionReport3D& admission) {
+  const CertifiedRouteReserveAssessment3D& reserve = admission.certified_reserve;
   std::ostringstream fields;
   fields << ",\"certified_route_reserve\":\""
-         << certifiedRouteReserveStatus3DName(esdf.certified_route_reserve_status)
-         << '"' << ",\"certified_route_reserve_available_m\":"
-         << esdf.certified_route_reserve_available_m
-         << ",\"certified_route_reserve_required_m\":"
-         << esdf.certified_route_reserve_required_m
-         << ",\"certified_route_reserve_shortfall_m\":"
-         << esdf.certified_route_reserve_shortfall_m;
+         << certifiedRouteReserveStatus3DName(reserve.status) << '"'
+         << ",\"certified_route_reserve_available_m\":" << reserve.available_m
+         << ",\"certified_route_reserve_required_m\":" << reserve.required_m
+         << ",\"certified_route_reserve_shortfall_m\":" << reserve.shortfall_m;
   return fields.str();
 }
 
 [[nodiscard]] std::string
-trackingErrorTubeInfoFields(const ProductionMppiPreparedEsdf& esdf) {
+trackingErrorTubeInfoFields(const CertifiedRouteSuffix3D* const execution_route) {
   const TrackingErrorTubeProfile3D* const tube =
-      esdf.compiled_route_geometry != nullptr
-          ? esdf.compiled_route_geometry->tracking_error_tube.get()
+      execution_route != nullptr && execution_route->geometry != nullptr
+          ? execution_route->geometry->tracking_error_tube.get()
           : nullptr;
   std::ostringstream fields;
   fields << " tracking_tube_obstacle_evidence="
@@ -220,10 +218,10 @@ trackingErrorTubeInfoFields(const ProductionMppiPreparedEsdf& esdf) {
 }
 
 [[nodiscard]] std::string
-trackingErrorTubeJsonFields(const ProductionMppiPreparedEsdf& esdf) {
+trackingErrorTubeJsonFields(const CertifiedRouteSuffix3D* const execution_route) {
   const TrackingErrorTubeProfile3D* const tube =
-      esdf.compiled_route_geometry != nullptr
-          ? esdf.compiled_route_geometry->tracking_error_tube.get()
+      execution_route != nullptr && execution_route->geometry != nullptr
+          ? execution_route->geometry->tracking_error_tube.get()
           : nullptr;
   std::ostringstream fields;
   fields << ",\"tracking_tube_obstacle_evidence\":"

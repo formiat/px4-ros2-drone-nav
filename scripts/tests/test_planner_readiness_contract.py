@@ -140,7 +140,7 @@ class PlannerReadinessContractTest(unittest.TestCase):
 
         self.assertRegex(
             planning_tick,
-            r"if \(esdf\.has_value\(\)\)\s*\{\s*"
+            r"if \(world\)\s*\{\s*"
             r"esdf_age_ms\s*=\s*use_static_map_\s*\?\s*0\.0",
         )
 
@@ -149,7 +149,11 @@ class PlannerReadinessContractTest(unittest.TestCase):
         planning_tick = PLANNING_TICK.read_text(encoding="utf-8")
         extension = STATIC_EXTENSION.read_text(encoding="utf-8")
 
-        self.assertIn("prepared.route_generation == 0U", observed_esdf)
+        self.assertIn(
+            "const bool initial_route_search_required = resident_route_generation == 0U",
+            observed_esdf,
+        )
+        self.assertIn("execution_route_store_.snapshot()", observed_esdf)
         self.assertIn('"active_route_preserved"', observed_esdf)
         self.assertIn("initial_route_search_already_pending", observed_esdf)
         self.assertNotIn("dropped_route_planning_worlds_", observed_esdf)

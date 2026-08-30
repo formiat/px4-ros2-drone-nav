@@ -4,8 +4,8 @@
 
 This is the active architecture-completion plan for roadmap item 12. It replaces
 the former mixture of aspirational `RouteManager3D` documentation, the test-only
-`RouteSupervisor3D`, and production ownership split across
-`ProductionMppiPreparedEsdf`, `ExecutionRouteSnapshotStore3D`,
+`RouteSupervisor3D`, and production ownership split across the retired
+world/route aggregate, `ExecutionRouteSnapshotStore3D`,
 `PendingCertifiedRouteMailbox3D`, and `ProductionMppiNode` fields.
 
 The migration is incomplete until every checklist item below is implemented,
@@ -185,24 +185,27 @@ route, trajectory, or execution artifact.
 
 ## Completion Checklist
 
-The immutable-world portion is now implemented: a resident publication swaps
-one `shared_ptr<const WorldSnapshot3D>`, topology is an explicitly optional
-derived cache on that snapshot, and route artifacts cannot clear it. Route
-materialization geometrically associates matching topology traversals instead
-of constructing an unconditionally empty decorator list. The checklist item
-remains open until materialized routes and admission reports no longer share the
-legacy production aggregate.
+The immutable world/search/materialization/admission boundaries are now
+implemented. A resident publication swaps one
+`shared_ptr<const WorldSnapshot3D>`; topology is an explicitly optional derived
+cache on that snapshot; and `MaterializedRoute3D`, compilation candidates,
+`RouteAdmissionReport3D`, and pipeline telemetry are distinct values. World
+publication cannot copy, clear, or restore route state. Route materialization
+geometrically associates matching topology traversals instead of constructing
+an unconditionally empty decorator list. The combined checklist item remains
+open only because the sealed trajectory artifact is implemented in the next
+stage.
 
 Planner search now owns an immutable `PlannerSearchTransaction3D` containing
 the exact world publication, derived resident planner input or explicit newer
 raw overlay, mission objective, typed request identity, release reason, and an
 optional certified continuity base. Continuation work retains the same
-transaction pointer instead of copying `ProductionMppiPreparedEsdf`. The world
-snapshot also carries the raw occupied fingerprint and exact incremental
+transaction pointer instead of copying a mutable world/route aggregate. The
+world snapshot also carries the raw occupied fingerprint and exact incremental
 planner predecessor; a skipped publication forces a safe full planner repair
 rather than applying an incomplete dirty-chunk delta. Planner request flags,
-parallel planner-world copies, and search objectives have been removed from the
-legacy aggregate.
+parallel planner-world copies, and search objectives no longer reside on the
+published world.
 
 - [x] Split publishable incumbent from search progress and continue anytime
   refinement after the first feasible route.

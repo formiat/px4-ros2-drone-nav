@@ -5,7 +5,8 @@
 namespace drone_city_nav {
 
 struct ProductionRouteMaterialization3D {
-  ProductionMppiPreparedEsdf prepared{};
+  MaterializedRoute3D route{};
+  ProductionRoutePipelineTelemetry3D telemetry{};
   StaticRouteCandidateValidation validation{};
   StaticRouteReplacementPolicy replacement_policy{
       StaticRouteReplacementPolicy::kRequireEndpointImprovement};

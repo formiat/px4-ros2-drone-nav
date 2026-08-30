@@ -334,33 +334,36 @@ TEST(ProductionMppiRouteWorldTest,
   new_world_value.topology_passage_traversals = topology;
   auto new_world = std::make_shared<const WorldSnapshot3D>(std::move(new_world_value));
   const auto route = std::make_shared<const std::vector<RouteSample3D>>(3U);
-  ProductionMppiPreparedEsdf resident;
-  resident.world = old_world;
-  resident.route_generation = 34U;
-  resident.route_3d = route;
-  resident.route_intent.id = 1234U;
+  MaterializedRoute3D materialized;
+  materialized.world = old_world;
+  materialized.candidate_generation = 34U;
+  materialized.route = route;
+  materialized.intent.id = 1234U;
+  std::shared_ptr<const WorldSnapshot3D> resident_world = old_world;
 
-  resident.world = new_world;
+  resident_world = new_world;
 
-  EXPECT_EQ(resident.world, new_world);
-  EXPECT_EQ(resident.world->topology_passage_traversals, topology);
+  EXPECT_EQ(resident_world, new_world);
+  EXPECT_EQ(resident_world->topology_passage_traversals, topology);
   EXPECT_EQ(old_world->revision, 9001U);
-  EXPECT_EQ(resident.route_generation, 34U);
-  EXPECT_EQ(resident.route_3d, route);
-  EXPECT_EQ(resident.route_intent.id, 1234U);
+  EXPECT_EQ(materialized.world, old_world);
+  EXPECT_EQ(materialized.candidate_generation, 34U);
+  EXPECT_EQ(materialized.route, route);
+  EXPECT_EQ(materialized.intent.id, 1234U);
 }
 
 TEST(ProductionMppiRouteWorldTest,
      RouteArtifactCopiesShareTheExactImmutableWorldAndTopology) {
   const auto topology = std::make_shared<const std::vector<PassageTraversalEdge>>(1U);
-  ProductionMppiPreparedEsdf source;
   WorldSnapshot3D world;
   world.revision = 91U;
   world.topology_passage_traversals = topology;
+  MaterializedRoute3D source;
   source.world = std::make_shared<const WorldSnapshot3D>(std::move(world));
+  source.route = std::make_shared<const std::vector<RouteSample3D>>(2U);
 
-  ProductionMppiPreparedEsdf candidate = source;
-  candidate.route_3d.reset();
+  MaterializedRoute3D candidate = source;
+  candidate.route.reset();
   candidate.constrained_spans.reset();
 
   EXPECT_EQ(candidate.world, source.world);

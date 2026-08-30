@@ -73,7 +73,7 @@ struct PreviousControlEvidence3D {
 };
 
 struct ProductionMppiControllerTick {
-  const ProductionMppiPreparedEsdf& esdf;
+  const WorldSnapshot3D& world;
   const mppi::MppiTickInput& input;
   const MppiNominalReseedUpdate& nominal_reseed;
   mppi::State target{};

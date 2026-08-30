@@ -27,7 +27,7 @@ void ProductionMppiNode::finalizePlanningTick(
     const ProductionMppiPlanningTickFinalization& finalization) {
   const mppi::MppiTickInput& input = finalization.input;
   mppi::MppiTickResult& result = finalization.result;
-  const ProductionMppiPreparedEsdf* const esdf = std::addressof(finalization.esdf);
+  const std::shared_ptr<const WorldSnapshot3D>& world = finalization.world;
   const ProductionRouteExecutionSelection3D& route_execution =
       finalization.route_execution;
   const std::shared_ptr<const VersionedExecutionInput3D>& execution_input =
@@ -121,7 +121,7 @@ void ProductionMppiNode::finalizePlanningTick(
   }
   ++tick_sequence_;
   ProductionMppiExecutionPublication execution = publishExecutionHorizon(
-      input, result, *esdf, route_execution, objective, execution_input,
+      input, result, *world, route_execution, objective, execution_input,
       latest_lidar_evidence, finalization.offboard_session,
       finalization.offboard_session_receive_stamp_ns, planning_state, now_ns);
   const std::shared_ptr<const ExecutionRouteSnapshot3D> committed_execution_snapshot =
@@ -205,7 +205,7 @@ void ProductionMppiNode::finalizePlanningTick(
                                                          : std::vector<mppi::State>{},
         .execution_horizon = execution.horizon,
         .route = std::move(rviz_route),
-        .passage_traversals = esdf->world->topology_passage_traversals,
+        .passage_traversals = world->topology_passage_traversals,
         .selected_passage_traversal_ids = execution_selected_passage_traversal_ids,
     };
     last_rviz_stamp_ns_ = now_ns;
@@ -222,14 +222,13 @@ void ProductionMppiNode::finalizePlanningTick(
   mppi::MppiTickResult diagnostic_result = std::move(result);
   diagnostic_result.horizon.clear();
   diagnostic_result.controls.clear();
-  ProductionMppiPreparedEsdf diagnostic_esdf = *esdf;
-  if (!rviz.has_value()) {
-    diagnostic_esdf.mppi_route.reset();
-  }
   enqueueDiagnostics(ProductionMppiDiagnosticsSnapshot{
       .input = input,
       .result = std::move(diagnostic_result),
-      .esdf = std::move(diagnostic_esdf),
+      .world = world,
+      .world_build = finalization.world_build,
+      .route_pipeline = finalization.route_pipeline,
+      .execution_route = route_execution.route,
       .stability = stability,
       .prediction = prediction,
       .liveness = liveness,

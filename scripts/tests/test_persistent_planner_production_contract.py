@@ -23,11 +23,9 @@ class PersistentPlannerProductionContractTest(unittest.TestCase):
         cls.header = (SOURCE / "production_mppi_node.hpp").read_text(
             encoding="utf-8"
         )
-        cls.prepared = cls.header.split(
-            "struct ProductionMppiPreparedEsdf {", maxsplit=1
-        )[1].split(
-            '#include "production_mppi_node_execution_types.hpp"', maxsplit=1
-        )[0]
+        cls.artifacts = (
+            SOURCE / "production_route_pipeline_artifacts_3d.hpp"
+        ).read_text(encoding="utf-8")
         cls.execution_types = (
             SOURCE / "production_mppi_node_execution_types.hpp"
         ).read_text(encoding="utf-8")
@@ -132,6 +130,15 @@ class PersistentPlannerProductionContractTest(unittest.TestCase):
             "std::shared_ptr<const ProductionMppiPreparedEsdf> world",
             self.execution_types,
         )
+        self.assertNotIn("ProductionMppiPreparedEsdf", self.header)
+        self.assertNotIn("ProductionMppiPreparedEsdf", self.artifacts)
+        for stage_type in (
+            "MaterializedRoute3D",
+            "ProductionCompiledRouteCandidate3D",
+            "RouteAdmissionReport3D",
+            "ProductionRouteActivationResult3D",
+        ):
+            self.assertIn(stage_type, self.artifacts)
         for retired_request_field in (
             "observed_planner_world",
             "route_search_planner_world",
@@ -140,7 +147,7 @@ class PersistentPlannerProductionContractTest(unittest.TestCase):
             "static_route_replan_request",
             "search_objective{}",
         ):
-            self.assertNotIn(retired_request_field, self.prepared)
+            self.assertNotIn(retired_request_field, self.artifacts)
 
     def test_execution_time_refinement_is_inside_the_single_planner(self) -> None:
         for contract in (
@@ -175,7 +182,7 @@ class PersistentPlannerProductionContractTest(unittest.TestCase):
         self.assertNotIn("static_route_tracking_margin_m", self.selection)
 
     def test_runtime_telemetry_reports_persistent_planner_evidence(self) -> None:
-        self.assertIn("ProductionPersistentPlannerTelemetry3D", self.header)
+        self.assertIn("ProductionPersistentPlannerTelemetry3D", self.artifacts)
         for field in (
             "candidate.planner_input_status",
             "candidate.planner_progress",
@@ -197,7 +204,9 @@ class PersistentPlannerProductionContractTest(unittest.TestCase):
         self.assertIn(
             '" planner=persistent_dstar_lite_3d"', self.diagnostics_format
         )
-        self.assertIn("persistentPlannerJsonFields(esdf)", self.diagnostics)
+        self.assertIn(
+            "persistentPlannerJsonFields(planner_telemetry)", self.diagnostics
+        )
 
     def test_runtime_snapshot_has_no_retired_route_pipeline_telemetry(self) -> None:
         for retired_field in (

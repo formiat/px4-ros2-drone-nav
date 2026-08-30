@@ -57,8 +57,10 @@ ready.
 Coherent-world publication and route activation must serialize through explicit
 world and execution authorities. A completed asynchronous ESDF build replaces
 only immutable world resources and cannot copy, clear, or restore route state.
-The current `ProductionMppiPreparedEsdf` aggregate still mixes those stages; its
-removal is tracked by
+The resident world, planner transaction, materialized route, compilation
+candidate, admission report, and pipeline telemetry are separate immutable or
+value-stage artifacts. Their remaining migration into a sealed trajectory and
+single execution manager is tracked by
 [`navigation_architecture_remediation.md`](navigation_architecture_remediation.md).
 
 Rate-limited work is retained by a latest-wins deferred scheduler. The newest

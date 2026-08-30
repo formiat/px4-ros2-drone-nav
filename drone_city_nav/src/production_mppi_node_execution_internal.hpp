@@ -42,7 +42,7 @@ struct ProductionMppiHorizonCommit {
 struct ProductionMppiExecutionCycle {
   const mppi::MppiTickInput& input;
   const mppi::MppiTickResult& result;
-  const ProductionMppiPreparedEsdf& esdf;
+  const WorldSnapshot3D& world;
   const ProductionRouteExecutionSelection3D& route_execution;
   const std::shared_ptr<const ProductionNavigationObjective>& objective;
   const std::shared_ptr<const VersionedExecutionInput3D>& execution_input;

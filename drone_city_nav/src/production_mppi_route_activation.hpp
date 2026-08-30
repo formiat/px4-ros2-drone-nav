@@ -7,10 +7,8 @@
 
 namespace drone_city_nav {
 
-// Executable route sidecars form one immutable bundle. A failed compilation
-// must remove every previously derived resource so no consumer can observe a
-// projection or time profile without its owning 3D route.
-void adoptRouteCompilation3D(ProductionMppiPreparedEsdf& candidate,
+[[nodiscard]] ProductionCompiledRouteCandidate3D
+makeCompiledRouteCandidate3D(MaterializedRoute3D materialized,
                              RouteCompilationResult3D compilation);
 
 struct ProductionRouteActivationSnapshot3D {
@@ -40,44 +38,5 @@ struct PendingRoutePublicationCurrentness3D {
 // transaction-base invalidation here.
 [[nodiscard]] bool pendingRoutePublicationBaseCurrent3D(
     const PendingRoutePublicationCurrentness3D& currentness) noexcept;
-
-struct ProductionRouteActivationResult3D {
-  ProductionMppiPreparedEsdf prepared{};
-  ProductionMaterializedRouteProposal3D proposal{};
-  StaticRouteCandidateValidation validation{};
-  RouteActivationAssessment3D assessment{};
-  RouteProposalReplacementAssessment3D replacement{};
-  mppi::StaticRouteHandoffResult handoff{};
-  RouteSpliceCertificationResult3D splice{};
-  ExecutionRouteGeometryValidation3D geometry_validation{};
-  StaticRouteActivationStatus activation_status{
-      StaticRouteActivationStatus::kNotAttempted};
-  std::uint64_t candidate_generation{0U};
-  std::uint64_t snapshot_pose_revision{0U};
-  std::uint64_t snapshot_raw_revision{0U};
-  std::uint64_t required_objective_sample{0U};
-  std::uint64_t tracking_geometry_source_occupied_fingerprint{0U};
-  std::uint64_t tracking_geometry_activation_occupied_fingerprint{0U};
-  bool world_compatible{false};
-  bool generation_matches{false};
-  bool objective_matches{false};
-  bool snapshot_current{false};
-  bool resident_world_snapshot_current{false};
-  bool objective_snapshot_current{false};
-  bool raw_snapshot_current{false};
-  bool execution_base_snapshot_current{false};
-  bool candidate_world_coherent{false};
-  bool certification_execution_base_current{false};
-  bool route_certified{false};
-  bool tracking_geometry_compile_attempted{false};
-  bool tracking_geometry_compiled{false};
-  bool observed_world_rebased{false};
-  bool publication_world_advanced{false};
-  bool certified_pending{false};
-  bool commit_assessment_performed{false};
-
-  [[nodiscard]] bool executionGeometryValid() const noexcept;
-  [[nodiscard]] bool readyForArbitration() const noexcept;
-};
 
 } // namespace drone_city_nav

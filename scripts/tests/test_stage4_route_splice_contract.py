@@ -66,7 +66,7 @@ class Stage4RouteSpliceContractTest(unittest.TestCase):
         self.assertIn("assessRouteSpliceReadiness3D", replacement)
         self.assertIn("certifyRouteSplice3D", activation)
         self.assertIn(
-            ".route_splice = overlap_search ? result.splice.splice", activation
+            ".route_splice = overlap_search ? report.splice.splice", activation
         )
 
     def test_runtime_waits_for_the_proof_window_and_keeps_pending_on_cas_loss(self) -> None:

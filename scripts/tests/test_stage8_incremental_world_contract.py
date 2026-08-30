@@ -69,13 +69,15 @@ class Stage8IncrementalWorldContractTest(unittest.TestCase):
         gpu_upload = production.index("engine_->updateEsdf", parent_validation)
         self.assertLess(parent_validation, gpu_upload)
         self.assertIn("reason=superseded_esdf_parent", production)
-        evidence_change = production.index("if (active_prepared && !launch_support_unchanged)")
+        evidence_change = production.index(
+            "if (active_world && !launch_support_unchanged)"
+        )
         parent_selection = production.index(
             "active_incremental_parent_available", evidence_change
         )
         evidence_refresh = production[evidence_change:parent_selection]
         self.assertIn("incremental_refresh=true", evidence_refresh)
-        self.assertNotIn("prepared_esdf_.reset()", evidence_refresh)
+        self.assertNotIn("resident_world_.reset()", evidence_refresh)
         self.assertIn("TRANSIENT_EXECUTION_EVIDENCE_CHANGED", production)
         self.assertIn("TRANSIENT_EXECUTION_EVIDENCE_REFRESHED", production)
         self.assertIn("observedEsdfFullAuditDue", production)

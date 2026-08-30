@@ -26,7 +26,7 @@ ProductionMppiNode::runPlanningController(const ProductionMppiControllerTick& ti
     result.horizon = {tick.target, tick.target};
     result.controls = {mppi::Control{}};
     result.selected_tier = mppi::RiskTier::kPreferred;
-    result.esdf_revision = tick.esdf.world->revision;
+    result.esdf_revision = tick.world.revision;
     result.timings.host_total_ms =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                   tick.snapshot_started)
@@ -36,7 +36,7 @@ ProductionMppiNode::runPlanningController(const ProductionMppiControllerTick& ti
 
   try {
     std::optional<mppi::MppiTickResult> planned =
-        planOnCapturedWorldGeneration(tick.esdf, tick.input);
+        planOnCapturedWorldGeneration(tick.world, tick.input);
     if (!planned.has_value()) {
       return std::nullopt;
     }

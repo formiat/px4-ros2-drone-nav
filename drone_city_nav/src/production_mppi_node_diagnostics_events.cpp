@@ -12,7 +12,10 @@ void ProductionMppiNode::logDiagnosticsEvents(
       snapshot.objective;
   const Point3 mission_goal = objective ? objective->goal : mission_goal_;
   const mppi::MppiTickInput& input = snapshot.input;
-  const ProductionMppiPreparedEsdf& esdf = snapshot.esdf;
+  const std::uint64_t route_generation =
+      snapshot.execution_route != nullptr
+          ? snapshot.execution_route->identity.generation
+          : 0U;
   const MppiLivenessResult& liveness = snapshot.liveness;
 
   if (snapshot.liveness_reseed_requested) {
@@ -33,36 +36,34 @@ void ProductionMppiNode::logDiagnosticsEvents(
                 " reseed_generation=%" PRIu64
                 " observation_age_s=%.3f along_route_progress_m=%.3f "
                 "predicted_head_progress_m=%.3f",
-                esdf.route_generation, snapshot.route_progress.local_reseed_generation,
+                route_generation, snapshot.route_progress.local_reseed_generation,
                 snapshot.route_progress.observation_age_s,
                 snapshot.route_progress.progress_m,
                 snapshot.route_progress.predicted_head_progress_m);
   }
   if (snapshot.route_progress.stalled) {
-    RCLCPP_WARN(get_logger(),
-                "PERSISTENT_ROUTE_STALL route_generation=%" PRIu64 " reason=%s"
-                " stall_generation=%" PRIu64
-                " observation_age_s=%.3f along_route_progress_m=%.3f "
-                "predicted_head_progress_m=%.3f",
-                esdf.route_generation,
-                routeProgressAction3DName(snapshot.route_progress.action),
-                snapshot.route_progress.stall_generation,
-                snapshot.route_progress.observation_age_s,
-                snapshot.route_progress.progress_m,
-                snapshot.route_progress.predicted_head_progress_m);
+    RCLCPP_WARN(
+        get_logger(),
+        "PERSISTENT_ROUTE_STALL route_generation=%" PRIu64 " reason=%s"
+        " stall_generation=%" PRIu64
+        " observation_age_s=%.3f along_route_progress_m=%.3f "
+        "predicted_head_progress_m=%.3f",
+        route_generation, routeProgressAction3DName(snapshot.route_progress.action),
+        snapshot.route_progress.stall_generation,
+        snapshot.route_progress.observation_age_s, snapshot.route_progress.progress_m,
+        snapshot.route_progress.predicted_head_progress_m);
   }
   if (snapshot.no_eligible_recovery.route_replan_requested) {
     const bool route_replan_enabled =
         optional_constraints_.no_eligible_route_replan_enabled;
-    RCLCPP_WARN(get_logger(),
-                "MPPI_NO_ELIGIBLE_RECOVERY action=%s policy_enabled=%s"
-                " recovery_generation=%" PRIu64 " phase=%s route_generation=%" PRIu64,
-                route_replan_enabled ? "release_persistent_route"
-                                     : "retain_persistent_route",
-                route_replan_enabled ? "true" : "false",
-                snapshot.no_eligible_recovery.no_eligible_recovery_generation,
-                mppiNoEligiblePhaseName(snapshot.no_eligible_recovery.phase),
-                esdf.route_generation);
+    RCLCPP_WARN(
+        get_logger(),
+        "MPPI_NO_ELIGIBLE_RECOVERY action=%s policy_enabled=%s"
+        " recovery_generation=%" PRIu64 " phase=%s route_generation=%" PRIu64,
+        route_replan_enabled ? "release_persistent_route" : "retain_persistent_route",
+        route_replan_enabled ? "true" : "false",
+        snapshot.no_eligible_recovery.no_eligible_recovery_generation,
+        mppiNoEligiblePhaseName(snapshot.no_eligible_recovery.phase), route_generation);
   }
   if (snapshot.planning_state == ProductionMppiPlanningState::kPlanned &&
       snapshot.esdf_age_ms > maximum_esdf_age_ms_) {
@@ -70,7 +71,7 @@ void ProductionMppiNode::logDiagnosticsEvents(
                          "PRODUCTION_MPPI_STALE_WORLD action=continue_resident_esdf "
                          "esdf_age_ms=%.1f warning_age_ms=%.1f revision=%" PRIu64,
                          snapshot.esdf_age_ms, maximum_esdf_age_ms_,
-                         esdf.world->revision);
+                         snapshot.world != nullptr ? snapshot.world->revision : 0U);
   }
   if (snapshot.cooperative.yield.active) {
     RCLCPP_INFO_THROTTLE(

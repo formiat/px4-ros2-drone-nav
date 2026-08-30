@@ -66,7 +66,7 @@ finiteRouteTerminalBoundary(
 
 ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
     const mppi::MppiTickInput& input, const mppi::MppiTickResult& result,
-    const ProductionMppiPreparedEsdf& esdf,
+    const WorldSnapshot3D& world,
     const ProductionRouteExecutionSelection3D& route_execution,
     const std::shared_ptr<const ProductionNavigationObjective>& objective,
     const std::shared_ptr<const VersionedExecutionInput3D>& execution_input,
@@ -155,7 +155,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
         direct_static_world = route_execution.source_snapshot->route->static_world;
       } else {
         direct_static_world = VersionedStaticWorld3D::captureOwned(
-            navigationWorldCertificate3D(*esdf.world), static_occupancy_3d_);
+            navigationWorldCertificate3D(world), world.static_occupancy);
       }
     } else if (latest_raw_world_3d != nullptr &&
                latest_raw_world_3d->execution_owner != nullptr &&
@@ -170,7 +170,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
                latest_raw_world_3d->execution_owner->version().revision ==
                    latest_raw_world_3d->version.revision) {
       direct_observed_world = latest_raw_world_3d->execution_owner->deriveRouteEvidence(
-          proprioceptive_free_space_seed, esdf.world->launch_support_contact);
+          proprioceptive_free_space_seed, world.launch_support_contact);
     }
   }
   const VersionedExecutionValidationPolicy3D* const selected_policy =
@@ -216,7 +216,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
               selected_snapshot_route->geometry != nullptr &&
               selected_snapshot_route->geometry->constrained_spans != nullptr
           ? !selected_snapshot_route->geometry->constrained_spans->empty()
-          : esdf.constrained_spans != nullptr && !esdf.constrained_spans->empty();
+          : false;
   const OccupancyGrid3D* static_occupancy =
       exact_snapshot_world && direct_static_world != nullptr
           ? &direct_static_world->occupancy()
@@ -232,8 +232,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
           ? &selected_snapshot_route->observed_raw_world->occupancy()
           : nullptr;
   RouteEndpointSemantics3D finite_boundary_endpoint_semantics =
-      esdf.route_reaches_mission_goal ? RouteEndpointSemantics3D::kMissionStop
-                                      : RouteEndpointSemantics3D::kLocalStop;
+      RouteEndpointSemantics3D::kContinuation;
   if (selected_snapshot_route != nullptr) {
     finite_boundary_endpoint_semantics =
         selected_snapshot_route->planned_endpoint_semantics;
@@ -292,7 +291,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   const ProductionMppiExecutionCycle cycle{
       .input = input,
       .result = result,
-      .esdf = esdf,
+      .world = world,
       .route_execution = route_execution,
       .objective = objective,
       .execution_input = execution_input,

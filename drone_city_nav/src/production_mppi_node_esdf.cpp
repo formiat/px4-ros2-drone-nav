@@ -145,10 +145,12 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
           finishStaticRouteExtension(roi_refresh.base_route_generation);
         }
       };
-      std::optional<ProductionMppiPreparedEsdf> active_prepared;
+      std::shared_ptr<const WorldSnapshot3D> active_world;
+      ProductionWorldBuildTelemetry3D active_world_build;
       {
         const std::scoped_lock lock{esdf_state_mutex_};
-        active_prepared = prepared_esdf_;
+        active_world = resident_world_;
+        active_world_build = resident_world_build_telemetry_;
       }
       const bool roi_refresh_pending =
           static_roi_refresh_lifecycle_.pending(roi_refresh);
@@ -159,17 +161,16 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
           refresh_execution->route.has_value() &&
           refresh_execution->route->identity.generation ==
               roi_refresh.base_route_generation;
-      double static_build_ms = active_prepared ? active_prepared->build_ms : 0.0;
-      double static_x_pass_ms = active_prepared ? active_prepared->esdf_x_pass_ms : 0.0;
-      double static_y_pass_ms = active_prepared ? active_prepared->esdf_y_pass_ms : 0.0;
-      double static_z_pass_ms = active_prepared ? active_prepared->esdf_z_pass_ms : 0.0;
-      double static_finalize_ms =
-          active_prepared ? active_prepared->esdf_finalize_ms : 0.0;
+      double static_build_ms = active_world_build.build_ms;
+      double static_x_pass_ms = active_world_build.esdf_x_pass_ms;
+      double static_y_pass_ms = active_world_build.esdf_y_pass_ms;
+      double static_z_pass_ms = active_world_build.esdf_z_pass_ms;
+      double static_finalize_ms = active_world_build.esdf_finalize_ms;
       if (roi_refresh_pending && !proactive_roi_refresh) {
         finish_roi_refresh();
       }
       if (static_esdf_3d_ && static_esdf_uploaded_ && !proactive_roi_refresh &&
-          active_prepared) {
+          active_world) {
         const bool readiness_transition = !world_ready_.load(std::memory_order_acquire);
         completeStaticEsdfWork(true);
         if (readiness_transition) {
@@ -317,24 +318,23 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
             binding_execution != nullptr ? binding_execution->routeGenerationHighWater()
                                          : 0U);
       }
-      ProductionMppiPreparedEsdf prepared;
-      if (proactive_roi_refresh && active_prepared) {
-        prepared = *active_prepared;
-      }
+      ProductionWorldBuildTelemetry3D world_build =
+          proactive_roi_refresh ? active_world_build
+                                : ProductionWorldBuildTelemetry3D{};
       WorldSnapshot3D world;
       world.producer_instance_id =
-          active_prepared ? active_prepared->world->producer_instance_id : 0U;
+          active_world ? active_world->producer_instance_id : 0U;
       world.revision = static_occupancy_3d_->fingerprint();
       world.source_occupied_fingerprint = static_occupancy_3d_->contentFingerprint();
       world.raw_occupied_fingerprint = static_occupancy_3d_->contentFingerprint();
       world.source_stamp_ns = source_stamp_ns;
       world.ready_stamp_ns = get_clock()->now().nanoseconds();
-      prepared.build_ms = static_build_ms;
-      prepared.esdf_x_pass_ms = static_x_pass_ms;
-      prepared.esdf_y_pass_ms = static_y_pass_ms;
-      prepared.esdf_z_pass_ms = static_z_pass_ms;
-      prepared.esdf_finalize_ms = static_finalize_ms;
-      prepared.upload_ms = upload.upload_ms;
+      world_build.build_ms = static_build_ms;
+      world_build.esdf_x_pass_ms = static_x_pass_ms;
+      world_build.esdf_y_pass_ms = static_y_pass_ms;
+      world_build.esdf_z_pass_ms = static_z_pass_ms;
+      world_build.esdf_finalize_ms = static_finalize_ms;
+      world_build.upload_ms = upload.upload_ms;
       world.grid = static_esdf_grid_;
       world.distances_m = static_esdf_3d_;
       world.static_occupancy = static_occupancy_3d_;
@@ -350,7 +350,8 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       if (!local_world_generation.has_value()) {
         {
           const std::scoped_lock lock{esdf_state_mutex_};
-          prepared_esdf_.reset();
+          resident_world_.reset();
+          resident_world_build_telemetry_ = {};
         }
         generation_lock.unlock();
         rejected_world_generation_publications_.fetch_add(1U,
@@ -367,7 +368,8 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         continue;
       }
       world.local_world_generation = *local_world_generation;
-      prepared.world = std::make_shared<const WorldSnapshot3D>(std::move(world));
+      const std::shared_ptr<const WorldSnapshot3D> world_snapshot =
+          std::make_shared<const WorldSnapshot3D>(std::move(world));
       const bool tracking_roi_refresh =
           refresh_base_current &&
           roi_refresh.purpose ==
@@ -389,7 +391,6 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
             .cross_track_m = projection.distance_m,
             .point = {projection.point.x, projection.point.y},
         };
-        bindStaticRouteRequestToExecution(prepared, active_route, request_projection);
         if (extension_search) {
           continuity_base = PlannerSearchContinuityBase3D{
               .route = std::make_shared<const CertifiedRouteSuffix3D>(active_route),
@@ -398,13 +399,15 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         }
       }
       const bool coherent_generation =
-          productionWorldGenerationCoherent(*prepared.world);
+          productionWorldGenerationCoherent(*world_snapshot);
       {
         const std::scoped_lock lock{esdf_state_mutex_};
         if (coherent_generation) {
-          prepared_esdf_ = prepared;
+          resident_world_ = world_snapshot;
+          resident_world_build_telemetry_ = world_build;
         } else {
-          prepared_esdf_.reset();
+          resident_world_.reset();
+          resident_world_build_telemetry_ = {};
         }
       }
       generation_lock.unlock();
@@ -443,6 +446,13 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
           (extension_search || tracking_roi_refresh ||
            vehicle_navigation_ready_.load(std::memory_order_acquire));
       if (route_search_required) {
+        const std::shared_ptr<const ExecutionRouteSnapshot3D> resident_execution =
+            binding_execution != nullptr ? binding_execution
+                                         : execution_route_store_.snapshot();
+        const std::uint64_t resident_route_generation =
+            resident_execution != nullptr
+                ? resident_execution->routeGenerationHighWater()
+                : 0U;
         StaticRouteSearchRequestIdentity request_identity;
         if (extension_search) {
           request_identity = StaticRouteSearchRequestIdentity{
@@ -456,16 +466,16 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
           };
         } else {
           request_identity = StaticRouteSearchRequestIdentity{
-              .kind = prepared.route_generation == 0U
+              .kind = resident_route_generation == 0U
                           ? StaticRouteSearchRequestKind::kInitial
                           : StaticRouteSearchRequestKind::kResidentRefresh,
-              .base_route_generation = prepared.route_generation,
+              .base_route_generation = resident_route_generation,
           };
         }
         const std::shared_ptr<const PlannerSearchTransaction3D> transaction =
             objective
                 ? makePlannerSearchTransaction3D(
-                      prepared.world, captureResidentPlannerWorld3D(*prepared.world),
+                      world_snapshot, captureResidentPlannerWorld3D(*world_snapshot),
                       makeStaticRouteObjective(*objective), request_identity,
                       std::move(continuity_base),
                       tracking_roi_refresh ? RouteReleaseReason3D::kObjectiveChanged
@@ -484,7 +494,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
           if (!pending_route_planning_work_ && transaction != nullptr) {
             pending_route_planning_work_ = ProductionRoutePlanningWork3D{
                 .transaction = transaction,
-                .world_telemetry = captureWorldBuildTelemetry3D(prepared),
+                .world_telemetry = world_build,
                 .continuation_session = nullptr,
             };
             queued = true;
@@ -518,9 +528,9 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       RCLCPP_INFO(get_logger(),
                   "PRODUCTION_MPPI_ESDF3D revision=%" PRIu64
                   " upload_ms=%.2f dimensions=%dx%dx%d",
-                  prepared.world->revision, prepared.upload_ms,
-                  prepared.world->grid.width, prepared.world->grid.height,
-                  prepared.world->grid.depth);
+                  world_snapshot->revision, world_build.upload_ms,
+                  world_snapshot->grid.width, world_snapshot->grid.height,
+                  world_snapshot->grid.depth);
       continue;
     }
   }

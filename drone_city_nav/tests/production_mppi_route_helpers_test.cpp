@@ -124,7 +124,7 @@ TEST(ProductionMppiRouteHelpersTest,
       .activation_eligible = true,
   };
   prepared.proposal.geometry = *compilation.geometry;
-  prepared.assessment = RouteActivationAssessment3D{
+  prepared.admission.assessment = RouteActivationAssessment3D{
       .publication =
           RoutePublicationAssessment3D{.status = RoutePublicationStatus3D::kCompatible},
       .projection = RouteProjection3D{.valid = true},
@@ -134,20 +134,20 @@ TEST(ProductionMppiRouteHelpersTest,
       .cross_track_accepted = true,
       .raw_world_compatible = true,
   };
-  prepared.handoff = mppi::StaticRouteHandoffResult{
+  prepared.admission.handoff = mppi::StaticRouteHandoffResult{
       .status = mppi::StaticRouteHandoffStatus::kAccepted,
       .accepted = true,
   };
-  prepared.geometry_validation = compilation.validation;
-  prepared.world_compatible = true;
-  prepared.objective_matches = true;
+  prepared.admission.geometry_validation = compilation.validation;
+  prepared.admission.world_compatible = true;
+  prepared.admission.objective_matches = true;
 
-  EXPECT_TRUE(prepared.executionGeometryValid());
-  EXPECT_TRUE(prepared.readyForArbitration());
+  EXPECT_TRUE(prepared.admission.executionGeometryValid());
+  EXPECT_TRUE(prepared.admission.readyForArbitration(prepared.proposal));
 }
 
 TEST(ProductionMppiRouteHelpersTest,
-     FailedRecompilationClearsTheEntireExecutableRouteBundle) {
+     FailedCompilationCannotMutateAnEarlierCompiledCandidate) {
   const std::vector<RouteSample3D> candidate = straightRoute();
   const std::uint64_t fingerprint = routeFingerprint(candidate);
   RouteCompilationResult3D compilation = compileExecutionRoute3D(RouteCompilerInput3D{
@@ -163,20 +163,12 @@ TEST(ProductionMppiRouteHelpersTest,
   });
   ASSERT_TRUE(compilation.compiled());
 
-  ProductionMppiPreparedEsdf prepared;
-  adoptRouteCompilation3D(prepared, std::move(compilation));
-  ASSERT_NE(prepared.compiled_route_geometry, nullptr);
-  ASSERT_NE(prepared.mppi_route, nullptr);
-  ASSERT_NE(prepared.route_3d, nullptr);
-  ASSERT_NE(prepared.route_2d_projection, nullptr);
-  ASSERT_NE(prepared.constrained_spans, nullptr);
-  ASSERT_NE(prepared.passage_volumes, nullptr);
-  ASSERT_NE(prepared.cooperative_passage_assignments, nullptr);
-  ASSERT_NE(prepared.selected_passage_traversal_ids, nullptr);
-  prepared.route_projection.valid = true;
+  const ProductionCompiledRouteCandidate3D compiled =
+      makeCompiledRouteCandidate3D(MaterializedRoute3D{}, std::move(compilation));
+  ASSERT_NE(compiled.geometry, nullptr);
 
-  adoptRouteCompilation3D(
-      prepared,
+  const ProductionCompiledRouteCandidate3D rejected = makeCompiledRouteCandidate3D(
+      compiled.materialized,
       RouteCompilationResult3D{
           .geometry = nullptr,
           .validation = {ExecutionRouteGeometryFailureReason3D::kInvalidTimeProfile,
@@ -185,16 +177,9 @@ TEST(ProductionMppiRouteHelpersTest,
           .tracking_error_tube = nullptr,
       });
 
-  EXPECT_EQ(prepared.compiled_route_geometry, nullptr);
-  EXPECT_EQ(prepared.mppi_route, nullptr);
-  EXPECT_EQ(prepared.route_3d, nullptr);
-  EXPECT_EQ(prepared.route_2d_projection, nullptr);
-  EXPECT_EQ(prepared.constrained_spans, nullptr);
-  EXPECT_EQ(prepared.passage_volumes, nullptr);
-  EXPECT_EQ(prepared.cooperative_passage_assignments, nullptr);
-  EXPECT_EQ(prepared.selected_passage_traversal_ids, nullptr);
-  EXPECT_FALSE(prepared.route_projection.valid);
-  EXPECT_EQ(prepared.route_compilation_validation.reason,
+  EXPECT_NE(compiled.geometry, nullptr);
+  EXPECT_EQ(rejected.geometry, nullptr);
+  EXPECT_EQ(rejected.geometry_validation.reason,
             ExecutionRouteGeometryFailureReason3D::kInvalidTimeProfile);
 }
 

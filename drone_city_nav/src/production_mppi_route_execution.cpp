@@ -128,14 +128,12 @@ void bindObservedRouteEvidence(
              *route.geometry->route, *route.geometry->tracking_error_tube, world);
 }
 
-[[nodiscard]] RouteExecutionObservation3D
-makeExecutionObservation(const ProductionMppiPreparedEsdf& world,
-                         const ProductionNavigationObjective* const objective,
-                         const ProductionMppiNavigation& navigation,
-                         const std::uint64_t minimum_tracking_sample_sequence,
-                         const double maximum_cross_track_m,
-                         const SweptFootprintConfig& footprint,
-                         const FlightEnvelopeConfig& flight_envelope) {
+[[nodiscard]] RouteExecutionObservation3D makeExecutionObservation(
+    const WorldSnapshot3D& world, const ProductionNavigationObjective* const objective,
+    const ProductionMppiNavigation& navigation,
+    const std::uint64_t minimum_tracking_sample_sequence,
+    const double maximum_cross_track_m, const SweptFootprintConfig& footprint,
+    const FlightEnvelopeConfig& flight_envelope) {
   return RouteExecutionObservation3D{
       .current_objective = objective != nullptr ? makeStaticRouteObjective(*objective)
                                                 : StaticRouteObjective{},
@@ -143,23 +141,21 @@ makeExecutionObservation(const ProductionMppiPreparedEsdf& world,
       .position = {navigation.state.x, navigation.state.y, navigation.state.z},
       .maximum_cross_track_m = maximum_cross_track_m,
       .footprint = footprint,
-      .launch_support_contact =
-          world.world->launch_support_contact
-              ? std::addressof(*world.world->launch_support_contact)
-              : nullptr,
+      .launch_support_contact = world.launch_support_contact
+                                    ? std::addressof(*world.launch_support_contact)
+                                    : nullptr,
       .flight_envelope = flight_envelope,
   };
 }
 
 [[nodiscard]] RouteActivationObservation3D makeActivationObservation(
-    const ProductionMppiPreparedEsdf& world,
-    const ProductionNavigationObjective* const objective,
+    const WorldSnapshot3D& world, const ProductionNavigationObjective* const objective,
     const ProductionMppiNavigation& navigation,
     const std::uint64_t minimum_tracking_sample_sequence,
     const double maximum_cross_track_m, const SweptFootprintConfig& footprint,
     const FlightEnvelopeConfig& flight_envelope, const bool raw_validation_required) {
   return RouteActivationObservation3D{
-      .resident_world = navigationWorldCertificate3D(*world.world),
+      .resident_world = navigationWorldCertificate3D(world),
       .current_objective = objective != nullptr ? makeStaticRouteObjective(*objective)
                                                 : StaticRouteObjective{},
       .minimum_tracking_sample_sequence = minimum_tracking_sample_sequence,
@@ -172,7 +168,7 @@ makeExecutionObservation(const ProductionMppiPreparedEsdf& world,
 }
 
 [[nodiscard]] std::shared_ptr<const CertifiedRouteSuffix3D> refreshPendingRoute(
-    const PendingCertifiedRoute3D& pending, const ProductionMppiPreparedEsdf& world,
+    const PendingCertifiedRoute3D& pending, const WorldSnapshot3D& world,
     const ProductionNavigationObjective* const objective,
     const ProductionMppiNavigation& navigation,
     const std::shared_ptr<const ProductionMppiRawWorld3D>& latest_raw_world,
@@ -198,12 +194,12 @@ makeExecutionObservation(const ProductionMppiPreparedEsdf& world,
 }
 
 [[nodiscard]] bool pendingRouteSnapshotSemanticallyCurrent(
-    const PendingCertifiedRoute3D& pending, const ProductionMppiPreparedEsdf& world,
+    const PendingCertifiedRoute3D& pending, const WorldSnapshot3D& world,
     const ProductionNavigationObjective* const objective,
     const std::uint64_t minimum_tracking_sample_sequence) noexcept {
   return objective != nullptr &&
          assessRoutePublication3D(pending.route.identity.proposal,
-                                  navigationWorldCertificate3D(*world.world))
+                                  navigationWorldCertificate3D(world))
              .compatible() &&
          staticRouteObjectiveMatches(pending.route.identity.proposal.objective,
                                      makeStaticRouteObjective(*objective),
@@ -250,8 +246,7 @@ pendingRoutePermanentlyObsolete(const PendingCertifiedRoute3D& pending,
 } // namespace
 
 ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
-    const ProductionMppiPreparedEsdf& world,
-    const ProductionNavigationObjective* const objective,
+    const WorldSnapshot3D& world, const ProductionNavigationObjective* const objective,
     const ProductionMppiNavigation& navigation,
     const std::shared_ptr<const VersionedExecutionInput3D>& execution_input,
     const std::shared_ptr<const ProductionMppiRawWorld3D>& latest_raw_world,

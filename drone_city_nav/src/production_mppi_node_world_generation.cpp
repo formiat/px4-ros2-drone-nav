@@ -8,9 +8,8 @@
 namespace drone_city_nav {
 
 bool ProductionMppiNode::worldGenerationAvailableForPlanning(
-    const ProductionMppiPreparedEsdf& world, const std::int64_t now_ns) {
-  const ProductionWorldGenerationStatus status =
-      assessProductionWorldGeneration(*world.world);
+    const WorldSnapshot3D& world, const std::int64_t now_ns) {
+  const ProductionWorldGenerationStatus status = assessProductionWorldGeneration(world);
   if (status == ProductionWorldGenerationStatus::kCoherent) {
     return true;
   }
@@ -19,27 +18,28 @@ bool ProductionMppiNode::worldGenerationAvailableForPlanning(
       get_logger(), *get_clock(), 1000,
       "PRODUCTION_MPPI_UNAVAILABLE_WORLD action=wait_for_coherent_generation "
       "local_world_generation=%" PRIu64 " reason=%.*s",
-      world.world->local_world_generation.generation,
-      static_cast<int>(status_name.size()), status_name.data());
+      world.local_world_generation.generation, static_cast<int>(status_name.size()),
+      status_name.data());
   publishFailClosedExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld,
                                        now_ns);
   return false;
 }
 
-std::optional<mppi::MppiTickResult> ProductionMppiNode::planOnCapturedWorldGeneration(
-    const ProductionMppiPreparedEsdf& world, const mppi::MppiTickInput& input) {
+std::optional<mppi::MppiTickResult>
+ProductionMppiNode::planOnCapturedWorldGeneration(const WorldSnapshot3D& world,
+                                                  const mppi::MppiTickInput& input) {
   std::unique_lock world_generation_lock{world_generation_publication_mutex_};
   ProductionWorldGenerationStatus resident_status{
       ProductionWorldGenerationStatus::kInvalidGeneration};
   bool captured_generation_is_resident{false};
   {
     const std::scoped_lock lock{esdf_state_mutex_};
-    if (prepared_esdf_) {
-      resident_status = assessProductionWorldGeneration(*prepared_esdf_->world);
+    if (resident_world_) {
+      resident_status = assessProductionWorldGeneration(*resident_world_);
       captured_generation_is_resident =
           resident_status == ProductionWorldGenerationStatus::kCoherent &&
-          prepared_esdf_->world->local_world_generation.sameSnapshot(
-              world.world->local_world_generation);
+          resident_world_->local_world_generation.sameSnapshot(
+              world.local_world_generation);
     }
   }
   if (!captured_generation_is_resident) {
@@ -51,7 +51,7 @@ std::optional<mppi::MppiTickResult> ProductionMppiNode::planOnCapturedWorldGener
                          "PRODUCTION_MPPI_WORLD_SNAPSHOT status=superseded "
                          "captured_generation=%" PRIu64 " resident_status=%.*s "
                          "action=retry_next_tick",
-                         world.world->local_world_generation.generation,
+                         world.local_world_generation.generation,
                          static_cast<int>(status_name.size()), status_name.data());
     return std::nullopt;
   }

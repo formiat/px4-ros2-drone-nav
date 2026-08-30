@@ -32,25 +32,25 @@ RouteCompilerConfig3D ProductionMppiNode::routeCompilerConfig3D() const noexcept
 }
 
 TrackingErrorTubeWorld3D ProductionMppiNode::trackingErrorTubeWorld3D(
-    const ProductionMppiPreparedEsdf& world) const noexcept {
-  if (world.world->observed_occupancy != nullptr) {
+    const WorldSnapshot3D& world) const noexcept {
+  if (world.observed_occupancy != nullptr) {
     const bool exact_observation_owner =
-        world.world->observed_raw_world_owner != nullptr &&
-        std::addressof(world.world->observed_raw_world_owner->occupancy()) ==
-            world.world->observed_occupancy.get();
+        world.observed_raw_world_owner != nullptr &&
+        std::addressof(world.observed_raw_world_owner->occupancy()) ==
+            world.observed_occupancy.get();
     return TrackingErrorTubeWorld3D{
-        .observed_occupancy = world.world->observed_occupancy.get(),
+        .observed_occupancy = world.observed_occupancy.get(),
         .occupied_content_fingerprint =
             exact_observation_owner
-                ? world.world->observed_raw_world_owner->occupiedContentFingerprint()
+                ? world.observed_raw_world_owner->occupiedContentFingerprint()
                 : 0U,
-        .launch_support_contact = optionalAddress(world.world->launch_support_contact),
+        .launch_support_contact = optionalAddress(world.launch_support_contact),
     };
   }
   return TrackingErrorTubeWorld3D{
-      .occupancy = static_occupancy_3d_.get(),
-      .occupied_content_fingerprint = static_occupancy_3d_ != nullptr
-                                          ? static_occupancy_3d_->contentFingerprint()
+      .occupancy = world.static_occupancy.get(),
+      .occupied_content_fingerprint = world.static_occupancy != nullptr
+                                          ? world.static_occupancy->contentFingerprint()
                                           : 0U,
   };
 }

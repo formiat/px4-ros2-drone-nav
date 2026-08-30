@@ -73,29 +73,9 @@ void ProductionMppiNode::configureStaticRouteExtension(
   }
 }
 
-void ProductionMppiNode::bindStaticRouteRequestToExecution(
-    ProductionMppiPreparedEsdf& request, const CertifiedRouteSuffix3D& active_route,
-    const RouteProgressProjection3D& projection) {
-  const ExecutionRouteGeometry3D& geometry = *active_route.geometry;
-  request.route_generation = active_route.identity.generation;
-  request.route_reaches_mission_goal =
-      active_route.identity.proposal.reaches_mission_goal;
-  request.route_projection = projection;
-  request.route_fingerprint = active_route.identity.proposal.route_fingerprint;
-  request.route_intent = active_route.identity.proposal.intent;
-  request.route_segment_evidence = active_route.identity.proposal.evidence;
-  request.route_objective = active_route.identity.proposal.objective;
-  request.mppi_route = geometry.mppi_route;
-  request.route_3d = geometry.route;
-  request.route_2d_projection = geometry.route_2d_projection;
-  request.constrained_spans = geometry.constrained_spans;
-  request.passage_volumes = geometry.passage_volumes;
-  request.cooperative_passage_assignments = geometry.cooperative_passage_assignments;
-  request.selected_passage_traversal_ids = geometry.selected_passage_traversal_ids;
-}
-
 void ProductionMppiNode::maybeRequestStaticRouteExtensionFromExecution(
-    const ProductionMppiPreparedEsdf& esdf,
+    const std::shared_ptr<const WorldSnapshot3D>& world,
+    const ProductionWorldBuildTelemetry3D& world_build,
     const ProductionRouteExecutionSelection3D& route_execution,
     const ProductionMppiNavigation& navigation, const std::int64_t now_ns) {
   if (route_execution.source_snapshot == nullptr) {
@@ -134,7 +114,7 @@ void ProductionMppiNode::maybeRequestStaticRouteExtensionFromExecution(
     return;
   }
   maybeRequestStaticRouteExtension(
-      esdf, *active_route, navigation,
+      world, world_build, *active_route, navigation,
       RouteProgressProjection3D{
           .valid = true,
           .station_m = projection.station_m,
@@ -147,7 +127,9 @@ void ProductionMppiNode::maybeRequestStaticRouteExtensionFromExecution(
 }
 
 void ProductionMppiNode::maybeRequestStaticRouteExtension(
-    const ProductionMppiPreparedEsdf& esdf, const CertifiedRouteSuffix3D& active_route,
+    const std::shared_ptr<const WorldSnapshot3D>& world,
+    const ProductionWorldBuildTelemetry3D& world_build,
+    const CertifiedRouteSuffix3D& active_route,
     const ProductionMppiNavigation& navigation,
     const RouteProgressProjection3D& route_projection, const std::int64_t now_ns) {
   if (!active_route.valid() || active_route.geometry == nullptr ||
@@ -173,10 +155,15 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
   StaticRoutePlanningLatencyStats latency =
       static_route_planning_latency_tracker_.stats();
   if (latency.sample_count == 0U) {
-    latency.planning_p95_ms = std::max(0.0, esdf.route_search_ms);
+    const std::shared_ptr<const ProductionRouteActivationResult3D> latest_route_event =
+        latest_route_pipeline_event_.load(std::memory_order_acquire);
+    latency.planning_p95_ms =
+        latest_route_event != nullptr
+            ? std::max(0.0, latest_route_event->telemetry.route_search_ms)
+            : 0.0;
     latency.planning_p99_ms = latency.planning_p95_ms;
     latency.build_and_planning_p99_ms =
-        latency.planning_p99_ms + std::max(0.0, esdf.build_ms);
+        latency.planning_p99_ms + std::max(0.0, world_build.build_ms);
   }
   const StaticRouteExtensionDecision decision = evaluateStaticRouteExtension(
       static_route_extension_config_,
@@ -195,7 +182,7 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
               active_route.identity.proposal.reaches_mission_goal,
           .next_planning_goal_inside_esdf =
               observed_world ||
-              staticRoutePointInsideEsdf(esdf.world->grid, next_planning_goal),
+              staticRoutePointInsideEsdf(world->grid, next_planning_goal),
           .request_in_flight = static_route_extension_request_in_flight_ ||
                                static_route_replan_gate_.inFlight() ||
                                pending_successor,
@@ -216,7 +203,7 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
     };
     const std::shared_ptr<const PlannerSearchTransaction3D> transaction =
         makePlannerSearchTransaction3D(
-            esdf.world, captureResidentPlannerWorld3D(*esdf.world),
+            world, captureResidentPlannerWorld3D(*world),
             makeStaticRouteObjective(*objective), request_identity,
             PlannerSearchContinuityBase3D{
                 .route = std::make_shared<const CertifiedRouteSuffix3D>(active_route),
@@ -242,7 +229,7 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
       }
       pending_route_planning_work_ = ProductionRoutePlanningWork3D{
           .transaction = transaction,
-          .world_telemetry = captureWorldBuildTelemetry3D(esdf),
+          .world_telemetry = world_build,
           .continuation_session = nullptr,
       };
     }
@@ -369,21 +356,20 @@ void ProductionMppiNode::requestStaticRouteReplan(
   {
     const std::scoped_lock esdf_lock{world_generation_publication_mutex_,
                                      esdf_state_mutex_};
-    if (!prepared_esdf_ || !productionWorldGenerationCoherent(*prepared_esdf_->world)) {
+    if (!resident_world_ || !productionWorldGenerationCoherent(*resident_world_)) {
       RCLCPP_INFO_THROTTLE(
           get_logger(), *get_clock(), 1000,
           "STATIC_ROUTE_REPLAN_REQUEST status=rejected_generation_mismatch "
           "resident_generation=%" PRIu64 " requested_generation=%" PRIu64 " reason=%s",
-          prepared_esdf_ ? prepared_esdf_->route_generation : 0U, route_generation,
+          committed_route_generation, route_generation,
           routeReleaseReason3DName(reason));
       return;
     }
-    const std::uint64_t prepared_route_generation = prepared_esdf_->route_generation;
     constexpr bool snapshot_owned_execution{true};
-    search_generation =
-        staticRouteSearchGeneration(snapshot_owned_execution, prepared_route_generation,
-                                    committed_route_generation);
-    if (prepared_route_generation == 0U &&
+    search_generation = staticRouteSearchGeneration(snapshot_owned_execution,
+                                                    committed_route_generation,
+                                                    committed_route_generation);
+    if (committed_route_generation == 0U &&
         !static_route_failed_search_latch_.latched()) {
       RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
                            "STATIC_ROUTE_REPLAN_REQUEST status=waiting_initial_search "
@@ -399,8 +385,8 @@ void ProductionMppiNode::requestStaticRouteReplan(
           search_generation, route_generation, routeReleaseReason3DName(reason));
       return;
     }
-    world_snapshot = prepared_esdf_->world;
-    world_telemetry = captureWorldBuildTelemetry3D(*prepared_esdf_);
+    world_snapshot = resident_world_;
+    world_telemetry = resident_world_build_telemetry_;
     planner_world = captureResidentPlannerWorld3D(*world_snapshot);
   }
 
@@ -552,7 +538,8 @@ void ProductionMppiNode::requestStaticRouteReplan(
 }
 
 void ProductionMppiNode::maybeRequestStaticTrackingWorldRefresh(
-    const ProductionMppiPreparedEsdf& esdf, const ProductionMppiNavigation& navigation,
+    const std::shared_ptr<const WorldSnapshot3D>& world,
+    const ProductionMppiNavigation& navigation,
     const ProductionNavigationObjective& objective, const std::int64_t now_ns) {
   if (!navigation.valid) {
     return;
@@ -574,9 +561,9 @@ void ProductionMppiNode::maybeRequestStaticTrackingWorldRefresh(
   const Point3 current{navigation.state.x, navigation.state.y, navigation.state.z};
   const Point3 planning_goal =
       staticRoutePlanningGoal(current, objective.goal, static_esdf_route_lookahead_m_);
-  if (staticRoutePointInsideEsdf(esdf.world->grid, current,
+  if (staticRoutePointInsideEsdf(world->grid, current,
                                  static_tracking_esdf_refresh_margin_m_) &&
-      staticRoutePointInsideEsdf(esdf.world->grid, planning_goal,
+      staticRoutePointInsideEsdf(world->grid, planning_goal,
                                  static_tracking_esdf_refresh_margin_m_)) {
     return;
   }

@@ -94,11 +94,15 @@ void ProductionMppiNode::planningTick() {
     memory_sequence = latest_observation.sequence;
     raw_world_identity_conflicted = raw_world_identity_conflicted_;
   }
-  std::optional<ProductionMppiPreparedEsdf> esdf;
+  std::shared_ptr<const WorldSnapshot3D> world;
+  ProductionWorldBuildTelemetry3D world_build;
   {
     const std::scoped_lock lock{world_generation_publication_mutex_, esdf_state_mutex_};
-    esdf = prepared_esdf_;
+    world = resident_world_;
+    world_build = resident_world_build_telemetry_;
   }
+  const std::shared_ptr<const ProductionRouteActivationResult3D> route_pipeline =
+      latest_route_pipeline_event_.load(std::memory_order_acquire);
   const std::shared_ptr<const ProductionMppiRawWorld3D> latest_raw_world_3d =
       latest_raw_world_3d_.load(std::memory_order_acquire);
   const bool latest_lidar_evidence_identity_conflicted =
@@ -116,19 +120,18 @@ void ProductionMppiNode::planningTick() {
   const double pose_age_ms =
       static_cast<double>(now_ns - navigation.receive_stamp_ns) / 1.0e6;
   double esdf_age_ms = std::numeric_limits<double>::infinity();
-  if (esdf.has_value()) {
-    esdf_age_ms =
-        use_static_map_
-            ? 0.0
-            : static_cast<double>(now_ns - esdf->world->ready_stamp_ns) / 1.0e6;
+  if (world) {
+    esdf_age_ms = use_static_map_
+                      ? 0.0
+                      : static_cast<double>(now_ns - world->ready_stamp_ns) / 1.0e6;
   }
   double observation_age_ms = std::numeric_limits<double>::infinity();
   if (use_static_map_) {
     observation_age_ms = 0.0;
-  } else if (esdf.has_value() && !raw_world_identity_conflicted) {
+  } else if (world && !raw_world_identity_conflicted) {
     if (latest_raw_world_3d != nullptr &&
         latest_raw_world_3d->version.producer_instance_id ==
-            esdf->world->producer_instance_id) {
+            world->producer_instance_id) {
       observation_age_ms = committedRawWorldAgeMs(latest_raw_world_3d.get(), now_ns);
     }
   }
@@ -137,7 +140,7 @@ void ProductionMppiNode::planningTick() {
           ? static_cast<double>(now_ns - applied_control.receive_stamp_ns) / 1.0e6
           : std::numeric_limits<double>::infinity();
   const bool world_current =
-      world_ready_.load(std::memory_order_acquire) && esdf.has_value() &&
+      world_ready_.load(std::memory_order_acquire) && world &&
       observation_age_ms >= 0.0 &&
       observation_age_ms <= maximum_esdf_age_ms_ + stale_esdf_execution_window_ms_;
   const NavigationHealthAssessment navigation_health =
@@ -213,7 +216,7 @@ void ProductionMppiNode::planningTick() {
     navigation.state = predicted.state;
     pose_predicted = predicted.predicted;
   }
-  if (!esdf.has_value() || observation_age_ms < 0.0 ||
+  if (!world || observation_age_ms < 0.0 ||
       observation_age_ms > maximum_esdf_age_ms_ + stale_esdf_execution_window_ms_) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
                          "PRODUCTION_MPPI_UNAVAILABLE_WORLD action=wait_for_world "
@@ -225,7 +228,7 @@ void ProductionMppiNode::planningTick() {
         ProductionMppiExecutionReason::kUnavailableWorld, now_ns);
     return;
   }
-  if (!worldGenerationAvailableForPlanning(*esdf, now_ns)) {
+  if (!worldGenerationAvailableForPlanning(*world, now_ns)) {
     return;
   }
   if (!engine_->ready()) {
@@ -285,12 +288,12 @@ void ProductionMppiNode::planningTick() {
           .applied_control = &applied_control,
           .execution_horizon_owner = &execution_horizon_owner,
           .offboard_session = &offboard_session,
-          .esdf = std::addressof(*esdf),
+          .world = world.get(),
           .latest_raw_world_3d = latest_raw_world_3d,
           .latest_lidar_evidence = latest_lidar_evidence,
           .execution_snapshot = execution_snapshot,
           .validation_policy = execution_validation_policy_,
-          .static_occupancy_3d = static_occupancy_3d_,
+          .static_occupancy_3d = world->static_occupancy,
           .capture_gate_config = mission_waypoint_capture_gate_config_,
           .mission_goal = mission_goal,
           .now_ns = now_ns,
@@ -348,7 +351,7 @@ void ProductionMppiNode::planningTick() {
           .value_or(flight_envelope_config_.minimum_target_z_m),
   };
   route_execution = resolveRouteExecution3D(
-      *esdf, objective.get(), navigation, execution_input, latest_raw_world_3d,
+      *world, objective.get(), navigation, execution_input, latest_raw_world_3d,
       latest_lidar_evidence, now_ns, required_route_sample, direct_tracking_identity,
       observed_3d_world);
   const PendingCertifiedRouteRecoveryResult3D pending_recovery =
@@ -376,13 +379,12 @@ void ProductionMppiNode::planningTick() {
   const CertifiedRouteSuffix3D* const activated_route = route_execution.route.get();
   const ProductionRouteGeometry3D* const route_geometry =
       activated_route != nullptr ? activated_route->geometry.get() : nullptr;
-  const std::uint64_t route_generation = activated_route != nullptr
-                                             ? activated_route->identity.generation
-                                             : esdf->route_generation;
+  const std::uint64_t route_generation =
+      activated_route != nullptr ? activated_route->identity.generation : 0U;
   const bool route_reaches_mission_goal =
       activated_route != nullptr
           ? activated_route->identity.proposal.reaches_mission_goal
-          : esdf->route_reaches_mission_goal;
+          : false;
   RouteEndpointSemantics3D route_endpoint_semantics =
       RouteEndpointSemantics3D::kLocalStop;
   if (activated_route != nullptr) {
@@ -393,21 +395,20 @@ void ProductionMppiNode::planningTick() {
                                    : RouteEndpointSemantics3D::kContinuation;
   }
   const std::shared_ptr<const std::vector<RouteSample3D>> execution_route =
-      route_geometry != nullptr ? route_geometry->route : esdf->route_3d;
+      route_geometry != nullptr ? route_geometry->route : nullptr;
   const std::shared_ptr<const std::vector<mppi::RouteSample3D>> execution_mppi_route =
-      route_geometry != nullptr ? route_geometry->mppi_route : esdf->mppi_route;
+      route_geometry != nullptr ? route_geometry->mppi_route : nullptr;
   const std::shared_ptr<const std::vector<ConstrainedRouteSpan>>
       execution_constrained_spans =
-          route_geometry != nullptr ? route_geometry->constrained_spans
-                                    : esdf->constrained_spans;
+          route_geometry != nullptr ? route_geometry->constrained_spans : nullptr;
   const std::shared_ptr<const std::vector<CooperativePassageAssignment>>
       execution_cooperative_passage_assignments =
           route_geometry != nullptr ? route_geometry->cooperative_passage_assignments
-                                    : esdf->cooperative_passage_assignments;
+                                    : nullptr;
   const std::shared_ptr<const std::vector<PassageTraversalId>>
       execution_selected_passage_traversal_ids =
           route_geometry != nullptr ? route_geometry->selected_passage_traversal_ids
-                                    : esdf->selected_passage_traversal_ids;
+                                    : nullptr;
   const bool route_execution_blocked =
       !direct_tracking_interception && objective && !route_usable;
   const double route_station_m = route_execution.station_m;
@@ -418,11 +419,11 @@ void ProductionMppiNode::planningTick() {
         std::max(0.0, route_projection.total_length_m - route_station_m);
   }
   if (use_static_map_ && objective && objective->continuous_tracking) {
-    maybeRequestStaticTrackingWorldRefresh(*esdf, navigation, *objective, now_ns);
+    maybeRequestStaticTrackingWorldRefresh(world, navigation, *objective, now_ns);
   }
   if (use_static_map_ || observed_3d_world) {
-    maybeRequestStaticRouteExtensionFromExecution(*esdf, route_execution, navigation,
-                                                  now_ns);
+    maybeRequestStaticRouteExtensionFromExecution(world, world_build, route_execution,
+                                                  navigation, now_ns);
   }
   const std::span<const RouteSample3D> route_3d =
       route_usable && execution_route ? std::span<const RouteSample3D>{*execution_route}
@@ -463,11 +464,9 @@ void ProductionMppiNode::planningTick() {
   const PassageTraversalEdge* nearest_passage_entry = nullptr;
   RouteProjection3D nearest_passage_projection;
   double nearest_passage_entry_distance_m = std::numeric_limits<double>::infinity();
-  if (esdf->world->topology_passage_traversals) {
-    passage_geometry_observations.reserve(
-        esdf->world->topology_passage_traversals->size());
-    for (const PassageTraversalEdge& passage :
-         *esdf->world->topology_passage_traversals) {
+  if (world->topology_passage_traversals) {
+    passage_geometry_observations.reserve(world->topology_passage_traversals->size());
+    for (const PassageTraversalEdge& passage : *world->topology_passage_traversals) {
       const RouteProjection3D projection =
           projectOntoRoute3D(passage.centerline, actual_position);
       const double entry_distance_m = distance3D(actual_position, passage.entry);
@@ -793,9 +792,9 @@ void ProductionMppiNode::planningTick() {
           .direct_tracking_maneuver_generation =
               direct_tracking_maneuver.reseed_generation,
       });
-  const EsdfQueryResult current_clearance = queryConservativeEsdf3D(
-      esdf->world->grid, *esdf->world->distances_m, navigation.state.x,
-      navigation.state.y, navigation.state.z);
+  const EsdfQueryResult current_clearance =
+      queryConservativeEsdf3D(world->grid, *world->distances_m, navigation.state.x,
+                              navigation.state.y, navigation.state.z);
   const double tracking_age_ms =
       tracking_objective != nullptr && tracking_objective->observation_stamp_ns > 0
           ? static_cast<double>(std::max<std::int64_t>(
@@ -825,9 +824,9 @@ void ProductionMppiNode::planningTick() {
       .initial_state = execution_input->state(),
       .target = target,
       .pose_revision = execution_input->poseRevision(),
-      .obstacle_revision = planningRawRevision(use_static_map_, esdf->world->revision,
-                                               latest_raw_world_3d),
-      .expected_esdf_revision = esdf->world->local_world_generation.gpu_esdf_revision,
+      .obstacle_revision =
+          planningRawRevision(use_static_map_, world->revision, latest_raw_world_3d),
+      .expected_esdf_revision = world->local_world_generation.gpu_esdf_revision,
       .planning_stamp_ns = now_ns,
       .previous_applied_control = execution_input->previousControl(),
       .nominal_reseed_generation = nominal_reseed.generation,
@@ -873,7 +872,7 @@ void ProductionMppiNode::planningTick() {
                                  .count();
   std::optional<ProductionMppiControllerTickResult> controller_tick =
       runPlanningController(ProductionMppiControllerTick{
-          .esdf = *esdf,
+          .world = *world,
           .input = input,
           .nominal_reseed = nominal_reseed,
           .target = target,
@@ -893,7 +892,9 @@ void ProductionMppiNode::planningTick() {
   finalizePlanningTick(ProductionMppiPlanningTickFinalization{
       .input = input,
       .result = result,
-      .esdf = *esdf,
+      .world = world,
+      .world_build = world_build,
+      .route_pipeline = route_pipeline,
       .route_execution = route_execution,
       .execution_input = execution_input,
       .latest_lidar_evidence = latest_lidar_evidence,

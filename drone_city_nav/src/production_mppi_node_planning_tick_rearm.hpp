@@ -15,7 +15,7 @@ struct ProductionMppiStationaryCaptureRearmContext {
   const ProductionMppiAppliedControl* applied_control{nullptr};
   const ProductionMppiExecutionHorizonOwner* execution_horizon_owner{nullptr};
   const OffboardSessionAdmissionState* offboard_session{nullptr};
-  const ProductionMppiPreparedEsdf* esdf{nullptr};
+  const WorldSnapshot3D* world{nullptr};
   std::shared_ptr<const ProductionMppiRawWorld3D> latest_raw_world_3d;
   std::shared_ptr<const VersionedLatestLidarEvidence3D> latest_lidar_evidence;
   std::shared_ptr<const ExecutionRouteSnapshot3D> execution_snapshot;

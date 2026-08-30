@@ -19,24 +19,23 @@ void ProductionMppiNode::queueLatestObservedWorldForPose(
   bool local_world_required{false};
   {
     const std::scoped_lock lock{world_generation_publication_mutex_, esdf_state_mutex_};
-    if (!prepared_esdf_ || !productionWorldGenerationCoherent(*prepared_esdf_->world) ||
-        prepared_esdf_->world->producer_instance_id !=
+    if (!resident_world_ || !productionWorldGenerationCoherent(*resident_world_) ||
+        resident_world_->producer_instance_id !=
             raw_world->version.producer_instance_id ||
-        prepared_esdf_->world->grid.depth <= 1 ||
-        !prepared_esdf_->world->grid.outside_is_unknown) {
+        resident_world_->grid.depth <= 1 || !resident_world_->grid.outside_is_unknown) {
       local_world_required = true;
     } else {
       const GridBounds3D local_bounds =
-          prepared_esdf_->world->observed_esdf_resource.local_occupancy
-              ? prepared_esdf_->world->observed_esdf_resource.local_occupancy->bounds()
+          resident_world_->observed_esdf_resource.local_occupancy
+              ? resident_world_->observed_esdf_resource.local_occupancy->bounds()
               : GridBounds3D{
-                    .origin_x = prepared_esdf_->world->grid.origin_x_m,
-                    .origin_y = prepared_esdf_->world->grid.origin_y_m,
-                    .origin_z = prepared_esdf_->world->grid.origin_z_m,
-                    .resolution_m = prepared_esdf_->world->grid.resolution_m,
-                    .width_cells = prepared_esdf_->world->grid.width,
-                    .height_cells = prepared_esdf_->world->grid.height,
-                    .depth_cells = prepared_esdf_->world->grid.depth,
+                    .origin_x = resident_world_->grid.origin_x_m,
+                    .origin_y = resident_world_->grid.origin_y_m,
+                    .origin_z = resident_world_->grid.origin_z_m,
+                    .resolution_m = resident_world_->grid.resolution_m,
+                    .width_cells = resident_world_->grid.width,
+                    .height_cells = resident_world_->grid.height,
+                    .depth_cells = resident_world_->grid.depth,
                 };
       const Point3 position{navigation.state.x, navigation.state.y, navigation.state.z};
       local_world_required =

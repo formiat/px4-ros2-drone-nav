@@ -41,7 +41,7 @@ class Stage2PlannerPublicationContractTest(unittest.TestCase):
             "ProductionMppiExecutionPublication execution = publishExecutionHorizon(",
             maxsplit=1,
         )[1]
-        self.assertIn("input, result, *esdf,", execution_call)
+        self.assertIn("input, result, *world,", execution_call)
         self.assertIn("route_execution, objective,", execution_call)
 
         execution_publication = execution.split(
