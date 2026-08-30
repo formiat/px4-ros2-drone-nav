@@ -141,7 +141,7 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self.assertRegex(
             planning_tick,
             r"if \(esdf\.has_value\(\)\)\s*\{\s*"
-            r"esdf_age_ms = use_static_map_\s*\?\s*0\.0",
+            r"esdf_age_ms\s*=\s*use_static_map_\s*\?\s*0\.0",
         )
 
     def test_observed_esdf_refresh_preserves_an_active_route(self) -> None:

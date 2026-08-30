@@ -1,9 +1,12 @@
 #include "production_mppi_route_world.hpp"
 
+#include "drone_city_nav/execution_route_snapshot_3d.hpp"
+#include "drone_city_nav/persistent_dstar_lite_planner_3d.hpp"
+
 #include <cmath>
 #include <utility>
 
-#include "production_mppi_node.hpp"
+#include "production_mppi_raw_world.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -15,7 +18,7 @@ namespace {
          first.revision == second.revision;
 }
 
-[[nodiscard]] bool observedEsdfCoverageMatches(const ProductionMppiPreparedEsdf& world,
+[[nodiscard]] bool observedEsdfCoverageMatches(const WorldSnapshot3D& world,
                                                const RawMapVersion& raw) noexcept {
   const ObservedEsdfResource3D& resource = world.observed_esdf_resource;
   if (!resource.local_occupancy || !resource.known_obstacle_distance ||
@@ -60,7 +63,7 @@ namespace {
 } // namespace
 
 ProductionWorldGenerationStatus
-assessProductionWorldGeneration(const ProductionMppiPreparedEsdf& world) noexcept {
+assessProductionWorldGeneration(const WorldSnapshot3D& world) noexcept {
   const LocalWorldGeneration& generation = world.local_world_generation;
   if (!generation.coherent()) {
     return ProductionWorldGenerationStatus::kInvalidGeneration;
@@ -88,15 +91,6 @@ assessProductionWorldGeneration(const ProductionMppiPreparedEsdf& world) noexcep
         std::addressof(owner->occupancy()) != world.observed_occupancy.get()) {
       return ProductionWorldGenerationStatus::kObservedOwnerMismatch;
     }
-    const std::shared_ptr<const PersistentPlannerWorld3D>& planner_world =
-        world.observed_planner_world;
-    if (!planner_world || !planner_world->valid() ||
-        planner_world->observed_occupancy != world.observed_occupancy ||
-        planner_world->producer_instance_id != raw.producer_instance_id ||
-        planner_world->revision != raw.revision ||
-        planner_world->occupied_fingerprint != owner->occupiedContentFingerprint()) {
-      return ProductionWorldGenerationStatus::kObservedPlannerWorldMismatch;
-    }
     if (!observedEsdfCoverageMatches(world, raw)) {
       return ProductionWorldGenerationStatus::kObservedEsdfCoverageMismatch;
     }
@@ -109,8 +103,7 @@ assessProductionWorldGeneration(const ProductionMppiPreparedEsdf& world) noexcep
   return ProductionWorldGenerationStatus::kCoherent;
 }
 
-bool productionWorldGenerationCoherent(
-    const ProductionMppiPreparedEsdf& world) noexcept {
+bool productionWorldGenerationCoherent(const WorldSnapshot3D& world) noexcept {
   return assessProductionWorldGeneration(world) ==
          ProductionWorldGenerationStatus::kCoherent;
 }
@@ -130,8 +123,6 @@ std::string_view productionWorldGenerationStatusName(
       return "raw_version_mismatch";
     case ProductionWorldGenerationStatus::kObservedOwnerMismatch:
       return "observed_owner_mismatch";
-    case ProductionWorldGenerationStatus::kObservedPlannerWorldMismatch:
-      return "observed_planner_world_mismatch";
     case ProductionWorldGenerationStatus::kObservedEsdfCoverageMismatch:
       return "observed_esdf_coverage_mismatch";
   }
@@ -139,7 +130,7 @@ std::string_view productionWorldGenerationStatusName(
 }
 
 NavigationWorldCertificate3D
-navigationWorldCertificate3D(const ProductionMppiPreparedEsdf& world) noexcept {
+navigationWorldCertificate3D(const WorldSnapshot3D& world) noexcept {
   if (!productionWorldGenerationCoherent(world)) {
     return {};
   }
@@ -188,40 +179,14 @@ std::shared_ptr<const PersistentPlannerWorld3D> captureObservedRouteSearchWorld3
   });
 }
 
-std::shared_ptr<const PersistentPlannerWorld3D>
-routeSearchPlannerWorld3D(const ProductionMppiPreparedEsdf& world) noexcept {
-  if (world.static_route_replan_request &&
-      world.route_search_planner_world != nullptr) {
-    return world.route_search_planner_world;
+std::shared_ptr<const PersistentPlannerWorld3D> routeSearchPlannerWorld3D(
+    const std::shared_ptr<const PersistentPlannerWorld3D>& resident_world,
+    const std::shared_ptr<const PersistentPlannerWorld3D>& raw_overlay,
+    const bool use_raw_overlay) noexcept {
+  if (use_raw_overlay && raw_overlay != nullptr) {
+    return raw_overlay;
   }
-  return world.observed_planner_world;
-}
-
-void adoptWorldResources(ProductionMppiPreparedEsdf& target,
-                         const ProductionMppiPreparedEsdf& source) {
-  target.local_world_generation = source.local_world_generation;
-  target.producer_instance_id = source.producer_instance_id;
-  target.revision = source.revision;
-  target.source_raw_revision = source.source_raw_revision;
-  target.source_occupied_fingerprint = source.source_occupied_fingerprint;
-  target.source_stamp_ns = source.source_stamp_ns;
-  target.ready_stamp_ns = source.ready_stamp_ns;
-  target.build_ms = source.build_ms;
-  target.esdf_x_pass_ms = source.esdf_x_pass_ms;
-  target.esdf_y_pass_ms = source.esdf_y_pass_ms;
-  target.esdf_z_pass_ms = source.esdf_z_pass_ms;
-  target.esdf_finalize_ms = source.esdf_finalize_ms;
-  target.conversion_ms = source.conversion_ms;
-  target.upload_ms = source.upload_ms;
-  target.grid = source.grid;
-  target.distances_m = source.distances_m;
-  target.observed_occupancy = source.observed_occupancy;
-  target.observed_raw_world_owner = source.observed_raw_world_owner;
-  target.observed_planner_world = source.observed_planner_world;
-  target.observed_esdf_resource = source.observed_esdf_resource;
-  target.proprioceptive_free_space_seed = source.proprioceptive_free_space_seed;
-  target.launch_support_contact = source.launch_support_contact;
-  target.launch_support_resolution_pending = source.launch_support_resolution_pending;
+  return resident_world;
 }
 
 } // namespace drone_city_nav

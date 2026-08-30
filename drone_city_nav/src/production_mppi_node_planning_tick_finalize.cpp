@@ -205,7 +205,7 @@ void ProductionMppiNode::finalizePlanningTick(
                                                          : std::vector<mppi::State>{},
         .execution_horizon = execution.horizon,
         .route = std::move(rviz_route),
-        .passage_traversals = esdf->passage_traversals,
+        .passage_traversals = esdf->world->topology_passage_traversals,
         .selected_passage_traversal_ids = execution_selected_passage_traversal_ids,
     };
     last_rviz_stamp_ns_ = now_ns;
@@ -223,7 +223,6 @@ void ProductionMppiNode::finalizePlanningTick(
   diagnostic_result.horizon.clear();
   diagnostic_result.controls.clear();
   ProductionMppiPreparedEsdf diagnostic_esdf = *esdf;
-  diagnostic_esdf.distances_m.reset();
   if (!rviz.has_value()) {
     diagnostic_esdf.mppi_route.reset();
   }

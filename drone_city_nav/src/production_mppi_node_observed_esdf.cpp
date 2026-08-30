@@ -10,6 +10,17 @@
 #include "production_mppi_route_world.hpp"
 
 namespace drone_city_nav {
+namespace {
+
+template<typename T>
+[[nodiscard]] const T* optionalAddress(const std::optional<T>& value) noexcept {
+  if (!value.has_value()) {
+    return nullptr;
+  }
+  return std::addressof(value.value());
+}
+
+} // namespace
 
 std::optional<std::chrono::steady_clock::time_point>
 ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_world) {
@@ -63,22 +74,23 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
       prepareObservedExecutionEvidence3D(raw_world, navigation, applied_control,
                                          execution_horizon_owner);
   const LaunchSupportContact3D* const launch_support_contact =
-      launch_support_contact_ ? &*launch_support_contact_ : nullptr;
+      optionalAddress(launch_support_contact_);
   GridBounds3D local_bounds;
   bool recenter = true;
-  if (active_prepared && active_prepared->distances_m &&
-      active_prepared->grid.depth > 1 && active_prepared->grid.outside_is_unknown) {
+  if (active_prepared && active_prepared->world->distances_m &&
+      active_prepared->world->grid.depth > 1 &&
+      active_prepared->world->grid.outside_is_unknown) {
     local_bounds =
-        active_prepared->observed_esdf_resource.local_occupancy
-            ? active_prepared->observed_esdf_resource.local_occupancy->bounds()
+        active_prepared->world->observed_esdf_resource.local_occupancy
+            ? active_prepared->world->observed_esdf_resource.local_occupancy->bounds()
             : GridBounds3D{
-                  .origin_x = active_prepared->grid.origin_x_m,
-                  .origin_y = active_prepared->grid.origin_y_m,
-                  .origin_z = active_prepared->grid.origin_z_m,
-                  .resolution_m = active_prepared->grid.resolution_m,
-                  .width_cells = active_prepared->grid.width,
-                  .height_cells = active_prepared->grid.height,
-                  .depth_cells = active_prepared->grid.depth,
+                  .origin_x = active_prepared->world->grid.origin_x_m,
+                  .origin_y = active_prepared->world->grid.origin_y_m,
+                  .origin_z = active_prepared->world->grid.origin_z_m,
+                  .resolution_m = active_prepared->world->grid.resolution_m,
+                  .width_cells = active_prepared->world->grid.width,
+                  .height_cells = active_prepared->world->grid.height,
+                  .depth_cells = active_prepared->world->grid.depth,
               };
     recenter = localObservedEsdfNeedsRecenter(local_bounds, world_bounds, position,
                                               no_static_3d_esdf_window_);
@@ -96,21 +108,28 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
   const std::uint64_t local_fingerprint =
       knownObstacleFingerprint3D(*occupancy, source_bounds);
   const bool launch_support_resolution_pending = !launch_support_evaluated_;
+  const ProprioceptiveFreeSpaceSeed3D* const resident_free_space_seed =
+      active_prepared
+          ? optionalAddress(active_prepared->world->proprioceptive_free_space_seed)
+          : nullptr;
+  const ProprioceptiveFreeSpaceSeed3D* const current_free_space_seed =
+      optionalAddress(free_space_seed);
   const bool transient_seed_unchanged =
       active_prepared &&
-      active_prepared->proprioceptive_free_space_seed.has_value() ==
-          free_space_seed.has_value() &&
-      (!free_space_seed.has_value() ||
-       sameProprioceptiveFreeSpaceSeed3D(
-           *active_prepared->proprioceptive_free_space_seed, *free_space_seed));
+      ((resident_free_space_seed == nullptr && current_free_space_seed == nullptr) ||
+       (resident_free_space_seed != nullptr && current_free_space_seed != nullptr &&
+        sameProprioceptiveFreeSpaceSeed3D(*resident_free_space_seed,
+                                          *current_free_space_seed)));
+  const LaunchSupportContact3D* const resident_launch_support =
+      active_prepared ? optionalAddress(active_prepared->world->launch_support_contact)
+                      : nullptr;
   const bool launch_support_unchanged =
       active_prepared &&
-      active_prepared->launch_support_contact.has_value() ==
-          launch_support_contact_.has_value() &&
-      (!launch_support_contact_.has_value() ||
-       sameLaunchSupportContact3D(*active_prepared->launch_support_contact,
-                                  *launch_support_contact_)) &&
-      active_prepared->launch_support_resolution_pending ==
+      ((resident_launch_support == nullptr && launch_support_contact == nullptr) ||
+       (resident_launch_support != nullptr && launch_support_contact != nullptr &&
+        sameLaunchSupportContact3D(*resident_launch_support,
+                                   *launch_support_contact))) &&
+      active_prepared->world->launch_support_resolution_pending ==
           launch_support_resolution_pending;
   if (active_prepared && !launch_support_unchanged) {
     {
@@ -133,28 +152,28 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
                 free_space_seed.has_value() ? "true" : "false");
   }
   const bool active_incremental_parent_available =
-      active_prepared && active_prepared->distances_m && !recenter &&
-      active_prepared->observed_occupancy &&
-      productionWorldGenerationCoherent(*active_prepared) &&
-      active_prepared->observed_esdf_resource.local_occupancy &&
-      active_prepared->observed_esdf_resource.known_obstacle_distance &&
-      active_prepared->observed_esdf_resource.classification_override_cells &&
-      active_prepared->observed_esdf_resource.coverage.coherent() &&
-      active_prepared->observed_esdf_resource.coverage.source_raw_version.revision ==
-          active_prepared->source_raw_revision &&
-      active_prepared->observed_esdf_resource.coverage.maximum_distance_m ==
+      active_prepared && active_prepared->world->distances_m && !recenter &&
+      active_prepared->world->observed_occupancy &&
+      productionWorldGenerationCoherent(*active_prepared->world) &&
+      active_prepared->world->observed_esdf_resource.local_occupancy &&
+      active_prepared->world->observed_esdf_resource.known_obstacle_distance &&
+      active_prepared->world->observed_esdf_resource.classification_override_cells &&
+      active_prepared->world->observed_esdf_resource.coverage.coherent() &&
+      active_prepared->world->observed_esdf_resource.coverage.source_raw_version
+              .revision == active_prepared->world->source_raw_revision &&
+      active_prepared->world->observed_esdf_resource.coverage.maximum_distance_m ==
           maximum_distance_m;
   const bool same_raw_lineage =
       active_incremental_parent_available && !raw_world.full_reset &&
-      active_prepared->observed_esdf_resource.coverage.source_raw_version
+      active_prepared->world->observed_esdf_resource.coverage.source_raw_version
               .producer_instance_id == raw_world.version.producer_instance_id &&
-      active_prepared->observed_esdf_resource.coverage.source_raw_version
+      active_prepared->world->observed_esdf_resource.coverage.source_raw_version
               .base_snapshot_revision == raw_world.version.base_snapshot_revision &&
-      active_prepared->observed_esdf_resource.coverage.source_raw_version.revision <=
-          raw_world.version.revision;
+      active_prepared->world->observed_esdf_resource.coverage.source_raw_version
+              .revision <= raw_world.version.revision;
   const bool known_obstacle_sources_unchanged =
       same_raw_lineage && launch_support_unchanged &&
-      active_prepared->source_occupied_fingerprint == local_fingerprint;
+      active_prepared->world->source_occupied_fingerprint == local_fingerprint;
   const std::uint64_t completed_esdf_builds =
       no_static_esdf_builds_.load(std::memory_order_relaxed);
   const bool periodic_full_audit = observedEsdfFullAuditDue(
@@ -181,19 +200,22 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
   }
   const bool already_current =
       known_obstacle_sources_unchanged && !periodic_full_audit &&
-      active_prepared->source_raw_revision == raw_world.version.revision;
+      active_prepared->world->source_raw_revision == raw_world.version.revision;
   if (already_current) {
     if (!transient_seed_unchanged) {
       bool refreshed{false};
       {
         const std::scoped_lock lock{world_generation_publication_mutex_,
                                     esdf_state_mutex_};
-        if (prepared_esdf_ && productionWorldGenerationCoherent(*prepared_esdf_) &&
-            prepared_esdf_->local_world_generation.sameSnapshot(
-                active_prepared->local_world_generation) &&
-            prepared_esdf_->revision == active_prepared->revision &&
-            prepared_esdf_->observed_occupancy == active_prepared->observed_occupancy) {
-          prepared_esdf_->observed_raw_world_owner = observed_raw_world_owner;
+        if (prepared_esdf_ &&
+            productionWorldGenerationCoherent(*prepared_esdf_->world) &&
+            prepared_esdf_->world->local_world_generation.sameSnapshot(
+                active_prepared->world->local_world_generation) &&
+            prepared_esdf_->world->revision == active_prepared->world->revision &&
+            prepared_esdf_->world->observed_occupancy ==
+                active_prepared->world->observed_occupancy) {
+          WorldSnapshot3D refreshed_world = *prepared_esdf_->world;
+          refreshed_world.observed_raw_world_owner = observed_raw_world_owner;
           if (prepared_esdf_->observed_planner_world != nullptr) {
             PersistentPlannerWorld3D planner_world =
                 *prepared_esdf_->observed_planner_world;
@@ -203,7 +225,9 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
                 std::make_shared<const PersistentPlannerWorld3D>(
                     std::move(planner_world));
           }
-          prepared_esdf_->proprioceptive_free_space_seed = free_space_seed;
+          refreshed_world.proprioceptive_free_space_seed = free_space_seed;
+          prepared_esdf_->world =
+              std::make_shared<const WorldSnapshot3D>(std::move(refreshed_world));
           refreshed = true;
         }
       }
@@ -217,7 +241,7 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
       RCLCPP_INFO(get_logger(),
                   "TRANSIENT_EXECUTION_EVIDENCE_REFRESHED raw_revision=%" PRIu64
                   " esdf_revision=%" PRIu64 " gpu_upload=false",
-                  raw_world.version.revision, active_prepared->revision);
+                  raw_world.version.revision, active_prepared->world->revision);
     }
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 1000,
@@ -253,17 +277,18 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
   std::optional<PreviousObservedEsdf3D> previous;
   if (same_raw_lineage) {
     previous = PreviousObservedEsdf3D{
-        .grid = active_prepared->grid,
-        .distances_m = active_prepared->distances_m,
+        .grid = active_prepared->world->grid,
+        .distances_m = active_prepared->world->distances_m,
         .known_obstacle_distance =
-            active_prepared->observed_esdf_resource.known_obstacle_distance,
-        .source_occupancy = active_prepared->observed_occupancy,
-        .local_occupancy = active_prepared->observed_esdf_resource.local_occupancy,
-        .classification_override_cells =
-            *active_prepared->observed_esdf_resource.classification_override_cells,
-        .occupancy_fingerprint = active_prepared->revision,
+            active_prepared->world->observed_esdf_resource.known_obstacle_distance,
+        .source_occupancy = active_prepared->world->observed_occupancy,
+        .local_occupancy =
+            active_prepared->world->observed_esdf_resource.local_occupancy,
+        .classification_override_cells = *active_prepared->world->observed_esdf_resource
+                                              .classification_override_cells,
+        .occupancy_fingerprint = active_prepared->world->revision,
         .maximum_distance_m =
-            active_prepared->observed_esdf_resource.coverage.maximum_distance_m,
+            active_prepared->world->observed_esdf_resource.coverage.maximum_distance_m,
     };
   }
   ObservedEsdf3D field = updateObservedEsdf3D(
@@ -280,10 +305,11 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
   const RawMapVersion parent_raw_version =
       field.stats.mode == ObservedEsdf3DBuildMode::kFull
           ? RawMapVersion{}
-          : active_prepared->observed_esdf_resource.coverage.source_raw_version;
+          : active_prepared->world->observed_esdf_resource.coverage.source_raw_version;
   const std::uint64_t parent_esdf_fingerprint =
-      field.stats.mode == ObservedEsdf3DBuildMode::kFull ? 0U
-                                                         : active_prepared->revision;
+      field.stats.mode == ObservedEsdf3DBuildMode::kFull
+          ? 0U
+          : active_prepared->world->revision;
   const ObservedEsdfCoverage3D coverage{
       .source_raw_version = raw_world.version,
       .parent_raw_version = parent_raw_version,
@@ -306,12 +332,13 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
   }
 
   ProductionMppiPreparedEsdf world_update;
-  world_update.producer_instance_id = raw_world.version.producer_instance_id;
-  world_update.revision = field.occupancy_fingerprint;
-  world_update.source_raw_revision = raw_world.version.revision;
-  world_update.source_occupied_fingerprint = local_fingerprint;
-  world_update.source_stamp_ns = raw_world.source_stamp_ns;
-  world_update.ready_stamp_ns = get_clock()->now().nanoseconds();
+  WorldSnapshot3D mutable_world;
+  mutable_world.producer_instance_id = raw_world.version.producer_instance_id;
+  mutable_world.revision = field.occupancy_fingerprint;
+  mutable_world.source_raw_revision = raw_world.version.revision;
+  mutable_world.source_occupied_fingerprint = local_fingerprint;
+  mutable_world.source_stamp_ns = raw_world.source_stamp_ns;
+  mutable_world.ready_stamp_ns = get_clock()->now().nanoseconds();
   world_update.build_ms =
       field.stats.distance_cache.duration_ms + field.stats.classification_ms;
   world_update.esdf_x_pass_ms = 0.0;
@@ -320,10 +347,10 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
   world_update.esdf_finalize_ms = 0.0;
   world_update.conversion_ms =
       raw_world.reconstruction_ms + field.stats.classification_ms;
-  world_update.grid = field.grid;
-  world_update.distances_m = host_distances;
-  world_update.observed_occupancy = occupancy;
-  world_update.observed_raw_world_owner = observed_raw_world_owner;
+  mutable_world.grid = field.grid;
+  mutable_world.distances_m = host_distances;
+  mutable_world.observed_occupancy = occupancy;
+  mutable_world.observed_raw_world_owner = observed_raw_world_owner;
   world_update.observed_planner_world =
       std::make_shared<const PersistentPlannerWorld3D>(PersistentPlannerWorld3D{
           .observed_occupancy = occupancy,
@@ -336,14 +363,14 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
           .occupied_fingerprint = execution_owner->occupiedContentFingerprint(),
           .full_reset = raw_world.full_reset,
       });
-  world_update.observed_esdf_resource = ObservedEsdfResource3D{
+  mutable_world.observed_esdf_resource = ObservedEsdfResource3D{
       .local_occupancy = field.local_occupancy,
       .known_obstacle_distance = field.known_obstacle_distance,
       .classification_override_cells = std::move(classification_override_cells),
       .coverage = coverage};
-  world_update.proprioceptive_free_space_seed = free_space_seed;
-  world_update.launch_support_contact = launch_support_contact_;
-  world_update.launch_support_resolution_pending = launch_support_resolution_pending;
+  mutable_world.proprioceptive_free_space_seed = free_space_seed;
+  mutable_world.launch_support_contact = launch_support_contact_;
+  mutable_world.launch_support_resolution_pending = launch_support_resolution_pending;
 
   const std::shared_ptr<const ProductionNavigationObjective> current_objective =
       navigationObjective();
@@ -360,24 +387,26 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
     }
     if (parent_required) {
       const ObservedEsdfCoverage3D& resident_coverage =
-          prepared.observed_esdf_resource.coverage;
+          prepared.world->observed_esdf_resource.coverage;
       resident_parent_valid =
           active_prepared.has_value() && prepared_esdf_.has_value() &&
-          productionWorldGenerationCoherent(prepared) &&
-          prepared.revision == parent_esdf_fingerprint &&
-          prepared.distances_m == active_prepared->distances_m &&
-          prepared.observed_occupancy == active_prepared->observed_occupancy &&
-          prepared.observed_esdf_resource.local_occupancy ==
-              active_prepared->observed_esdf_resource.local_occupancy &&
-          prepared.observed_esdf_resource.known_obstacle_distance ==
-              active_prepared->observed_esdf_resource.known_obstacle_distance &&
+          productionWorldGenerationCoherent(*prepared.world) &&
+          prepared.world->revision == parent_esdf_fingerprint &&
+          prepared.world->distances_m == active_prepared->world->distances_m &&
+          prepared.world->observed_occupancy ==
+              active_prepared->world->observed_occupancy &&
+          prepared.world->observed_esdf_resource.local_occupancy ==
+              active_prepared->world->observed_esdf_resource.local_occupancy &&
+          prepared.world->observed_esdf_resource.known_obstacle_distance ==
+              active_prepared->world->observed_esdf_resource.known_obstacle_distance &&
           resident_coverage.source_raw_version.producer_instance_id ==
               parent_raw_version.producer_instance_id &&
           resident_coverage.source_raw_version.base_snapshot_revision ==
               parent_raw_version.base_snapshot_revision &&
           resident_coverage.source_raw_version.revision ==
               parent_raw_version.revision &&
-          prepared.local_world_generation.gpu_esdf_revision == parent_esdf_fingerprint;
+          prepared.world->local_world_generation.gpu_esdf_revision ==
+              parent_esdf_fingerprint;
     }
   }
   if (!resident_parent_valid) {
@@ -409,14 +438,23 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
     // started before activation cannot restore an older route generation.
     const std::optional<LocalWorldGeneration> local_world_generation =
         local_world_generation_counter_.issue(raw_world.version, navigation.revision,
-                                              world_update.revision, upload.revision);
+                                              mutable_world.revision, upload.revision);
     if (local_world_generation.has_value()) {
-      world_update.local_world_generation = *local_world_generation;
-      adoptWorldResources(prepared, world_update);
+      mutable_world.local_world_generation = *local_world_generation;
+      prepared.world =
+          std::make_shared<const WorldSnapshot3D>(std::move(mutable_world));
+      prepared.build_ms = world_update.build_ms;
+      prepared.esdf_x_pass_ms = world_update.esdf_x_pass_ms;
+      prepared.esdf_y_pass_ms = world_update.esdf_y_pass_ms;
+      prepared.esdf_z_pass_ms = world_update.esdf_z_pass_ms;
+      prepared.esdf_finalize_ms = world_update.esdf_finalize_ms;
+      prepared.conversion_ms = world_update.conversion_ms;
+      prepared.upload_ms = world_update.upload_ms;
+      prepared.observed_planner_world = world_update.observed_planner_world;
       if (current_objective) {
         prepared.search_objective = makeStaticRouteObjective(*current_objective);
       }
-      local_world_generation_valid = productionWorldGenerationCoherent(prepared);
+      local_world_generation_valid = productionWorldGenerationCoherent(*prepared.world);
       if (local_world_generation_valid) {
         prepared_esdf_ = prepared;
       }
@@ -473,7 +511,7 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
     RCLCPP_INFO(get_logger(),
                 "OBSERVED_ROUTE_REPLAN status=esdf_caught_up raw_revision=%" PRIu64
                 " esdf_revision=%" PRIu64 " generation=%" PRIu64,
-                raw_world.version.revision, prepared.revision,
+                raw_world.version.revision, prepared.world->revision,
                 prepared.route_generation);
     requestStaticRouteReplan(RouteReleaseReason3D::kBlocked, prepared.route_generation);
   }
@@ -516,9 +554,9 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
       "recenter=%s local_world_generation=%" PRIu64 " route_generation=%" PRIu64
       " route_search=%s builds=%" PRIu64 " throttled=%" PRIu64 " dropped_raw=%" PRIu64
       " mode_totals=(full=%" PRIu64 ",incremental=%" PRIu64 ",reused=%" PRIu64 ")",
-      prepared.revision, raw_world.version.revision, prepared.build_ms,
-      field.stats.classification_ms, prepared.upload_ms, prepared.grid.width,
-      prepared.grid.height, prepared.grid.depth, field.stats.known_voxels,
+      prepared.world->revision, raw_world.version.revision, prepared.build_ms,
+      field.stats.classification_ms, prepared.upload_ms, prepared.world->grid.width,
+      prepared.world->grid.height, prepared.world->grid.depth, field.stats.known_voxels,
       field.stats.free_voxels, field.stats.occupied_voxels, field.stats.unknown_voxels,
       field.stats.proprioceptive_free_voxels, field.stats.launch_support_voxels,
       observedEsdf3DBuildModeName(field.stats.mode),
@@ -538,7 +576,7 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
       field.stats.distance_cache.source_index_ms,
       field.stats.distance_cache.distance_query_ms, maximum_distance_m,
       periodic_full_audit ? "true" : "false", recenter ? "true" : "false",
-      prepared.local_world_generation.generation, prepared.route_generation,
+      prepared.world->local_world_generation.generation, prepared.route_generation,
       !initial_route_search_required
           ? "active_route_preserved"
           : (initial_route_search_queued

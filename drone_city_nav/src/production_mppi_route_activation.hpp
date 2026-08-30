@@ -14,7 +14,7 @@ void adoptRouteCompilation3D(ProductionMppiPreparedEsdf& candidate,
                              RouteCompilationResult3D compilation);
 
 struct ProductionRouteActivationSnapshot3D {
-  std::optional<ProductionMppiPreparedEsdf> resident_world;
+  std::shared_ptr<const WorldSnapshot3D> resident_world;
   std::shared_ptr<const ExecutionRouteSnapshot3D> execution_snapshot;
   ProductionMppiNavigation navigation{};
   ProductionMppiAppliedControl applied_control{};

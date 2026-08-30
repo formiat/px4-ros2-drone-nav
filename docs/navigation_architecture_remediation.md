@@ -185,6 +185,14 @@ route, trajectory, or execution artifact.
 
 ## Completion Checklist
 
+The immutable-world portion is now implemented: a resident publication swaps
+one `shared_ptr<const WorldSnapshot3D>`, topology is an explicitly optional
+derived cache on that snapshot, and route artifacts cannot clear it. Route
+materialization geometrically associates matching topology traversals instead
+of constructing an unconditionally empty decorator list. The checklist item
+remains open until planner transactions, materialized routes, and admission
+reports no longer share the legacy production aggregate.
+
 - [x] Split publishable incumbent from search progress and continue anytime
   refinement after the first feasible route.
 - [x] Remove goal-altitude-first feasibility ordering and decompose the three

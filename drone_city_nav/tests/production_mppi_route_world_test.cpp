@@ -11,8 +11,8 @@
 namespace drone_city_nav {
 namespace {
 
-[[nodiscard]] ProductionMppiPreparedEsdf coherentObservedWorld() {
-  ProductionMppiPreparedEsdf world;
+[[nodiscard]] WorldSnapshot3D coherentObservedWorld() {
+  WorldSnapshot3D world;
   const GridBounds3D bounds{0.0, 0.0, 0.0, 1.0, 4, 4, 4};
   world.producer_instance_id = 7U;
   world.source_raw_revision = 451U;
@@ -31,19 +31,6 @@ namespace {
       RawMapVersion{
           .producer_instance_id = 7U, .base_snapshot_revision = 400U, .revision = 451U},
       world.observed_occupancy, std::nullopt, std::nullopt);
-  world.observed_planner_world =
-      std::make_shared<const PersistentPlannerWorld3D>(PersistentPlannerWorld3D{
-          .observed_occupancy = world.observed_occupancy,
-          .static_occupancy = nullptr,
-          .proprioceptive_free_space_seed = std::nullopt,
-          .launch_support_contact = std::nullopt,
-          .dirty_chunks = {},
-          .producer_instance_id = 7U,
-          .revision = 451U,
-          .occupied_fingerprint =
-              world.observed_raw_world_owner->occupiedContentFingerprint(),
-          .full_reset = true,
-      });
   world.observed_esdf_resource = ObservedEsdfResource3D{
       .local_occupancy = std::make_shared<const ObservedOccupancyGrid3D>(bounds),
       .known_obstacle_distance = distance.field,
@@ -74,8 +61,24 @@ namespace {
   return world;
 }
 
+[[nodiscard]] std::shared_ptr<const PersistentPlannerWorld3D>
+observedPlannerWorld(const WorldSnapshot3D& world) {
+  return std::make_shared<const PersistentPlannerWorld3D>(PersistentPlannerWorld3D{
+      .observed_occupancy = world.observed_occupancy,
+      .static_occupancy = nullptr,
+      .proprioceptive_free_space_seed = std::nullopt,
+      .launch_support_contact = std::nullopt,
+      .dirty_chunks = {},
+      .producer_instance_id = world.producer_instance_id,
+      .revision = world.source_raw_revision,
+      .occupied_fingerprint =
+          world.observed_raw_world_owner->occupiedContentFingerprint(),
+      .full_reset = true,
+  });
+}
+
 TEST(ProductionMppiRouteWorldTest, ExactObservedResourcesFormOneCoherentGeneration) {
-  const ProductionMppiPreparedEsdf world = coherentObservedWorld();
+  const WorldSnapshot3D world = coherentObservedWorld();
 
   EXPECT_EQ(assessProductionWorldGeneration(world),
             ProductionWorldGenerationStatus::kCoherent);
@@ -84,7 +87,7 @@ TEST(ProductionMppiRouteWorldTest, ExactObservedResourcesFormOneCoherentGenerati
 }
 
 TEST(ProductionMppiRouteWorldTest, MixedEsdfAndRawGenerationsFailClosed) {
-  ProductionMppiPreparedEsdf world = coherentObservedWorld();
+  WorldSnapshot3D world = coherentObservedWorld();
   ++world.local_world_generation.gpu_esdf_revision;
 
   EXPECT_EQ(assessProductionWorldGeneration(world),
@@ -99,7 +102,7 @@ TEST(ProductionMppiRouteWorldTest, MixedEsdfAndRawGenerationsFailClosed) {
 }
 
 TEST(ProductionMppiRouteWorldTest, ObservedOwnerMustMatchExactRawSnapshot) {
-  ProductionMppiPreparedEsdf world = coherentObservedWorld();
+  WorldSnapshot3D world = coherentObservedWorld();
   const auto other_occupancy = std::make_shared<const ObservedOccupancyGrid3D>(
       GridBounds3D{0.0, 0.0, 0.0, 1.0, 4, 4, 4});
   world.observed_raw_world_owner = VersionedObservedRawWorld3D::captureOwned(
@@ -111,20 +114,17 @@ TEST(ProductionMppiRouteWorldTest, ObservedOwnerMustMatchExactRawSnapshot) {
 }
 
 TEST(ProductionMppiRouteWorldTest,
-     ObservedPlannerMustRemainBoundToThePreparedRawSnapshot) {
-  ProductionMppiPreparedEsdf world = coherentObservedWorld();
-  PersistentPlannerWorld3D newer_planner_world = *world.observed_planner_world;
-  ++newer_planner_world.revision;
-  world.observed_planner_world =
-      std::make_shared<const PersistentPlannerWorld3D>(std::move(newer_planner_world));
+     RouteSearchUsesResidentPlannerInputWhenOverlayIsNotRequested) {
+  const WorldSnapshot3D world = coherentObservedWorld();
+  const std::shared_ptr<const PersistentPlannerWorld3D> resident =
+      observedPlannerWorld(world);
 
-  EXPECT_EQ(assessProductionWorldGeneration(world),
-            ProductionWorldGenerationStatus::kObservedPlannerWorldMismatch);
+  EXPECT_EQ(routeSearchPlannerWorld3D(resident, nullptr, false), resident);
 }
 
 TEST(ProductionMppiRouteWorldTest,
      PhysicalReplanOverlayDoesNotMisrepresentEsdfGeneration) {
-  ProductionMppiPreparedEsdf world = coherentObservedWorld();
+  WorldSnapshot3D world = coherentObservedWorld();
   const auto newer_occupancy = std::make_shared<const ObservedOccupancyGrid3D>(
       world.observed_occupancy->bounds());
   const RawMapVersion newer_version{
@@ -141,14 +141,18 @@ TEST(ProductionMppiRouteWorldTest,
       .full_reset = false,
   };
 
-  world.static_route_replan_request = true;
-  world.route_search_planner_world =
+  const std::shared_ptr<const PersistentPlannerWorld3D> route_search_planner_world =
       captureObservedRouteSearchWorld3D(newer_raw, std::nullopt, std::nullopt);
+  const std::shared_ptr<const PersistentPlannerWorld3D> resident =
+      observedPlannerWorld(world);
 
-  ASSERT_NE(world.route_search_planner_world, nullptr);
-  EXPECT_TRUE(world.route_search_planner_world->full_reset);
-  EXPECT_EQ(world.route_search_planner_world->revision, 470U);
-  EXPECT_EQ(routeSearchPlannerWorld3D(world), world.route_search_planner_world);
+  ASSERT_NE(route_search_planner_world, nullptr);
+  EXPECT_TRUE(route_search_planner_world->full_reset);
+  EXPECT_EQ(route_search_planner_world->revision, 470U);
+  EXPECT_EQ(routeSearchPlannerWorld3D(resident, route_search_planner_world, true),
+            route_search_planner_world);
+  EXPECT_EQ(routeSearchPlannerWorld3D(resident, route_search_planner_world, false),
+            resident);
   EXPECT_TRUE(productionWorldGenerationCoherent(world));
   EXPECT_EQ(world.local_world_generation.raw_map.revision, 451U);
   EXPECT_EQ(navigationWorldCertificate3D(world).esdf_source_raw_revision, 451U);
@@ -188,7 +192,7 @@ TEST(ProductionMppiRouteWorldTest,
 }
 
 TEST(ProductionMppiRouteWorldTest, ObservedCoverageMustMatchExactWorldResources) {
-  ProductionMppiPreparedEsdf world = coherentObservedWorld();
+  WorldSnapshot3D world = coherentObservedWorld();
   ++world.observed_esdf_resource.coverage.source_raw_version.revision;
   EXPECT_EQ(assessProductionWorldGeneration(world),
             ProductionWorldGenerationStatus::kObservedEsdfCoverageMismatch);
@@ -205,7 +209,7 @@ TEST(ProductionMppiRouteWorldTest, ObservedCoverageMustMatchExactWorldResources)
 }
 
 TEST(ProductionMppiRouteWorldTest, StaticWorldUsesItsEsdfAsRawGenerationAnchor) {
-  ProductionMppiPreparedEsdf world;
+  WorldSnapshot3D world;
   world.revision = 77U;
   world.grid = mppi::EsdfGrid{4, 4, 1.0F, 0.0F, 0.0F, 4, 0.0F};
   world.distances_m = std::make_shared<const std::vector<float>>(64U, 2.0F);
@@ -224,97 +228,55 @@ TEST(ProductionMppiRouteWorldTest, StaticWorldUsesItsEsdfAsRawGenerationAnchor) 
 }
 
 TEST(ProductionMppiRouteWorldTest,
-     CompletedWorldBuildPreservesNewerRoutePlanningCache) {
-  auto generation_33_route = std::make_shared<const std::vector<RouteSample3D>>(2U);
-  auto generation_34_route = std::make_shared<const std::vector<RouteSample3D>>(3U);
-
-  ProductionMppiPreparedEsdf completed_world_build;
-  completed_world_build.local_world_generation.generation = 118U;
-  completed_world_build.producer_instance_id = 7U;
-  completed_world_build.revision = 9002U;
-  completed_world_build.source_raw_revision = 451U;
-  completed_world_build.grid.width = 17;
-  completed_world_build.distances_m =
-      std::make_shared<const std::vector<float>>(4U, 2.0F);
-  completed_world_build.route_generation = 33U;
-  completed_world_build.route_3d = generation_33_route;
-  completed_world_build.route_intent.id = 33U;
-  completed_world_build.static_route_extension_request = true;
-
-  ProductionMppiPreparedEsdf resident = completed_world_build;
-  resident.local_world_generation.generation = 117U;
-  resident.revision = 9001U;
-  resident.source_raw_revision = 447U;
+     WorldPublicationIsOnePointerSwapAndCannotOverwriteRouteState) {
+  WorldSnapshot3D old_world_value;
+  old_world_value.local_world_generation.generation = 117U;
+  old_world_value.revision = 9001U;
+  old_world_value.source_raw_revision = 447U;
+  auto old_world = std::make_shared<const WorldSnapshot3D>(std::move(old_world_value));
+  const auto topology = std::make_shared<const std::vector<PassageTraversalEdge>>(1U);
+  WorldSnapshot3D new_world_value;
+  new_world_value.local_world_generation.generation = 118U;
+  new_world_value.producer_instance_id = 7U;
+  new_world_value.revision = 9002U;
+  new_world_value.source_raw_revision = 451U;
+  new_world_value.grid.width = 17;
+  new_world_value.distances_m = std::make_shared<const std::vector<float>>(4U, 2.0F);
+  new_world_value.topology_passage_traversals = topology;
+  auto new_world = std::make_shared<const WorldSnapshot3D>(std::move(new_world_value));
+  const auto route = std::make_shared<const std::vector<RouteSample3D>>(3U);
+  ProductionMppiPreparedEsdf resident;
+  resident.world = old_world;
   resident.route_generation = 34U;
-  resident.route_3d = generation_34_route;
+  resident.route_3d = route;
   resident.route_intent.id = 1234U;
-  resident.static_route_extension_request = false;
 
-  adoptWorldResources(resident, completed_world_build);
+  resident.world = new_world;
 
-  EXPECT_EQ(resident.local_world_generation.generation, 118U);
-  EXPECT_EQ(resident.revision, 9002U);
-  EXPECT_EQ(resident.source_raw_revision, 451U);
-  EXPECT_EQ(resident.grid.width, 17);
-  EXPECT_EQ(resident.distances_m, completed_world_build.distances_m);
+  EXPECT_EQ(resident.world, new_world);
+  EXPECT_EQ(resident.world->topology_passage_traversals, topology);
+  EXPECT_EQ(old_world->revision, 9001U);
   EXPECT_EQ(resident.route_generation, 34U);
-  EXPECT_EQ(resident.route_3d, generation_34_route);
+  EXPECT_EQ(resident.route_3d, route);
   EXPECT_EQ(resident.route_intent.id, 1234U);
-  EXPECT_FALSE(resident.static_route_extension_request);
 }
 
 TEST(ProductionMppiRouteWorldTest,
-     CompletedObservedWorldBuildRetainsExactRawObservationOwner) {
-  const auto observed_occupancy = std::make_shared<const ObservedOccupancyGrid3D>(
-      GridBounds3D{0.0, 0.0, 0.0, 1.0, 4, 4, 4});
-  const std::shared_ptr<const VersionedObservedRawWorld3D> observed_owner =
-      VersionedObservedRawWorld3D::captureOwned(
-          RawMapVersion{.producer_instance_id = 7U,
-                        .base_snapshot_revision = 451U,
-                        .revision = 451U},
-          observed_occupancy, std::nullopt, std::nullopt);
-  ASSERT_NE(observed_owner, nullptr);
+     RouteArtifactCopiesShareTheExactImmutableWorldAndTopology) {
+  const auto topology = std::make_shared<const std::vector<PassageTraversalEdge>>(1U);
+  ProductionMppiPreparedEsdf source;
+  WorldSnapshot3D world;
+  world.revision = 91U;
+  world.topology_passage_traversals = topology;
+  source.world = std::make_shared<const WorldSnapshot3D>(std::move(world));
 
-  ProductionMppiPreparedEsdf completed_world_build;
-  completed_world_build.observed_occupancy = observed_occupancy;
-  completed_world_build.observed_raw_world_owner = observed_owner;
-  completed_world_build.observed_planner_world =
-      std::make_shared<const PersistentPlannerWorld3D>(PersistentPlannerWorld3D{
-          .observed_occupancy = observed_occupancy,
-          .static_occupancy = nullptr,
-          .proprioceptive_free_space_seed = std::nullopt,
-          .launch_support_contact = std::nullopt,
-          .dirty_chunks = {},
-          .producer_instance_id = 7U,
-          .revision = 451U,
-          .occupied_fingerprint = observed_owner->occupiedContentFingerprint(),
-          .full_reset = true,
-      });
-  completed_world_build.observed_esdf_resource = ObservedEsdfResource3D{
-      .local_occupancy = observed_occupancy,
-      .known_obstacle_distance =
-          buildKnownObstacleDistance3D(*observed_occupancy,
-                                       observed_occupancy->bounds(), 7.0)
-              .field,
-      .classification_override_cells =
-          std::make_shared<const std::vector<GridIndex3D>>(),
-      .coverage = ObservedEsdfCoverage3D{.raw_local_fingerprint = 91U},
-  };
-  ProductionMppiPreparedEsdf resident;
+  ProductionMppiPreparedEsdf candidate = source;
+  candidate.route_3d.reset();
+  candidate.constrained_spans.reset();
 
-  adoptWorldResources(resident, completed_world_build);
-
-  EXPECT_EQ(resident.observed_occupancy, observed_occupancy);
-  EXPECT_EQ(resident.observed_raw_world_owner, observed_owner);
-  EXPECT_EQ(resident.observed_planner_world,
-            completed_world_build.observed_planner_world);
-  EXPECT_EQ(resident.observed_esdf_resource.local_occupancy, observed_occupancy);
-  EXPECT_EQ(resident.observed_esdf_resource.coverage.raw_local_fingerprint, 91U);
-  ASSERT_NE(resident.observed_raw_world_owner, nullptr);
-  EXPECT_EQ(std::addressof(resident.observed_raw_world_owner->occupancy()),
-            resident.observed_occupancy.get());
-  EXPECT_EQ(resident.observed_raw_world_owner->occupiedSnapshot(),
-            observed_owner->occupiedSnapshot());
+  EXPECT_EQ(candidate.world, source.world);
+  EXPECT_EQ(candidate.world->revision, 91U);
+  EXPECT_EQ(candidate.world->topology_passage_traversals, topology);
 }
 
 TEST(ProductionMppiRouteWorldTest,

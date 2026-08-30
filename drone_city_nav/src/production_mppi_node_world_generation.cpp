@@ -9,7 +9,8 @@ namespace drone_city_nav {
 
 bool ProductionMppiNode::worldGenerationAvailableForPlanning(
     const ProductionMppiPreparedEsdf& world, const std::int64_t now_ns) {
-  const ProductionWorldGenerationStatus status = assessProductionWorldGeneration(world);
+  const ProductionWorldGenerationStatus status =
+      assessProductionWorldGeneration(*world.world);
   if (status == ProductionWorldGenerationStatus::kCoherent) {
     return true;
   }
@@ -18,8 +19,8 @@ bool ProductionMppiNode::worldGenerationAvailableForPlanning(
       get_logger(), *get_clock(), 1000,
       "PRODUCTION_MPPI_UNAVAILABLE_WORLD action=wait_for_coherent_generation "
       "local_world_generation=%" PRIu64 " reason=%.*s",
-      world.local_world_generation.generation, static_cast<int>(status_name.size()),
-      status_name.data());
+      world.world->local_world_generation.generation,
+      static_cast<int>(status_name.size()), status_name.data());
   publishFailClosedExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld,
                                        now_ns);
   return false;
@@ -34,11 +35,11 @@ std::optional<mppi::MppiTickResult> ProductionMppiNode::planOnCapturedWorldGener
   {
     const std::scoped_lock lock{esdf_state_mutex_};
     if (prepared_esdf_) {
-      resident_status = assessProductionWorldGeneration(*prepared_esdf_);
+      resident_status = assessProductionWorldGeneration(*prepared_esdf_->world);
       captured_generation_is_resident =
           resident_status == ProductionWorldGenerationStatus::kCoherent &&
-          prepared_esdf_->local_world_generation.sameSnapshot(
-              world.local_world_generation);
+          prepared_esdf_->world->local_world_generation.sameSnapshot(
+              world.world->local_world_generation);
     }
   }
   if (!captured_generation_is_resident) {
@@ -50,7 +51,7 @@ std::optional<mppi::MppiTickResult> ProductionMppiNode::planOnCapturedWorldGener
                          "PRODUCTION_MPPI_WORLD_SNAPSHOT status=superseded "
                          "captured_generation=%" PRIu64 " resident_status=%.*s "
                          "action=retry_next_tick",
-                         world.local_world_generation.generation,
+                         world.world->local_world_generation.generation,
                          static_cast<int>(status_name.size()), status_name.data());
     return std::nullopt;
   }

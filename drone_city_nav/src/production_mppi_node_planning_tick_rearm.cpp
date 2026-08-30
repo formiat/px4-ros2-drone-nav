@@ -62,18 +62,18 @@ executionHorizonOwnerEmpty(const ProductionMppiExecutionHorizonOwner& owner) noe
       !sameRawMapVersion(raw_world->version, raw_world->execution_owner->version()) ||
       std::addressof(raw_world->execution_owner->occupancy()) !=
           raw_world->occupancy.get() ||
-      esdf.observed_raw_world_owner == nullptr ||
-      !esdf.observed_raw_world_owner->valid() ||
-      !sameRawMapVersion(esdf.observed_raw_world_owner->version(),
+      esdf.world->observed_raw_world_owner == nullptr ||
+      !esdf.world->observed_raw_world_owner->valid() ||
+      !sameRawMapVersion(esdf.world->observed_raw_world_owner->version(),
                          raw_world->version) ||
-      std::addressof(esdf.observed_raw_world_owner->occupancy()) !=
+      std::addressof(esdf.world->observed_raw_world_owner->occupancy()) !=
           raw_world->occupancy.get()) {
     return false;
   }
   return raw_world->execution_owner->sharesObservationOwner(
-             *esdf.observed_raw_world_owner) &&
+             *esdf.world->observed_raw_world_owner) &&
          raw_world->execution_owner->occupiedSnapshot() ==
-             esdf.observed_raw_world_owner->occupiedSnapshot();
+             esdf.world->observed_raw_world_owner->occupiedSnapshot();
 }
 
 } // namespace
@@ -103,8 +103,9 @@ bool stationaryCaptureRearmEligibleForPlanningTick(
   const bool static_world_current =
       stationary_rearm_candidate && context.use_static_map &&
       context.static_occupancy_3d != nullptr &&
-      VersionedStaticWorld3D::captureOwned(navigationWorldCertificate3D(*context.esdf),
-                                           context.static_occupancy_3d) != nullptr;
+      VersionedStaticWorld3D::captureOwned(
+          navigationWorldCertificate3D(*context.esdf->world),
+          context.static_occupancy_3d) != nullptr;
   const bool observed_world_current =
       stationary_rearm_candidate && context.observed_3d_world &&
       context.observation_age_ms <= context.maximum_esdf_age_ms &&

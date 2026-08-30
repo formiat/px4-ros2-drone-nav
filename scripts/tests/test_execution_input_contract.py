@@ -246,7 +246,7 @@ class ExecutionInputContractTest(unittest.TestCase):
         self.assertLess(input_lock, raw_currentness)
         self.assertLess(raw_currentness, snapshot_commit)
         self.assertIn("committedRawWorldAgeMs", commit)
-        self.assertIn("cycle.esdf.producer_instance_id", commit)
+        self.assertIn("cycle.esdf.world->producer_instance_id", commit)
 
     def test_producer_claims_raise_exact_once_sequence_high_water(self) -> None:
         admission = PRODUCER_ADMISSION.read_text(encoding="utf-8")

@@ -60,7 +60,7 @@ void ProductionMppiNode::processDiagnostics(
       << " pose_age_ms=" << snapshot.pose_age_ms
       << " observation_age_ms=" << snapshot.observation_age_ms
       << " esdf_content_age_ms=" << snapshot.esdf_age_ms
-      << " local_world_generation=" << esdf.local_world_generation.generation
+      << " local_world_generation=" << esdf.world->local_world_generation.generation
       << " control_feedback_age_ms=" << snapshot.control_feedback_age_ms
       << " state_position=(" << input.initial_state.x << ',' << input.initial_state.y
       << ',' << input.initial_state.z << ") state_velocity=(" << input.initial_state.vx
@@ -326,7 +326,8 @@ void ProductionMppiNode::processDiagnostics(
          << ",\"pose_age_ms\":" << snapshot.pose_age_ms
          << ",\"observation_age_ms\":" << snapshot.observation_age_ms
          << ",\"esdf_content_age_ms\":" << snapshot.esdf_age_ms
-         << ",\"local_world_generation\":" << esdf.local_world_generation.generation
+         << ",\"local_world_generation\":"
+         << esdf.world->local_world_generation.generation
          << ",\"control_feedback_age_ms\":" << snapshot.control_feedback_age_ms
          << ",\"previous_control_source\":\""
          << productionMppiPreviousControlSourceName(snapshot.previous_control_source)

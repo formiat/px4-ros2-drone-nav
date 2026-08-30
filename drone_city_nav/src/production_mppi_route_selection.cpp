@@ -16,7 +16,7 @@ namespace drone_city_nav {
 namespace {
 
 [[nodiscard]] SegmentEvidenceWorld3D
-evidenceWorld(const ProductionMppiPreparedEsdf& world,
+evidenceWorld(const WorldSnapshot3D& world,
               const ObservedOccupancyGrid3D* const route_search_occupancy,
               const std::uint64_t route_search_raw_revision,
               const OccupancyGrid3D* const static_occupancy,
@@ -80,7 +80,7 @@ ProductionPlannerUpdate3D ProductionMppiNode::generatePlannerUpdate3D(
         RCLCPP_INFO(get_logger(),
                     "PERSISTENT_PLANNER3D stage=deferred "
                     "reason=stitch_base_unavailable revision=%" PRIu64,
-                    world.revision);
+                    world.world->revision);
         result.search_ms = std::chrono::duration<double, std::milli>(
                                std::chrono::steady_clock::now() - search_started)
                                .count();
@@ -104,7 +104,8 @@ ProductionPlannerUpdate3D ProductionMppiNode::generatePlannerUpdate3D(
                     "PERSISTENT_PLANNER3D stage=deferred "
                     "reason=future_stitch_beyond_certified_route revision=%" PRIu64
                     " stitch_station_m=%.3f route_end_station_m=%.3f",
-                    world.revision, stitch_station_m, active_geometry.back().station_m);
+                    world.world->revision, stitch_station_m,
+                    active_geometry.back().station_m);
         result.search_ms = std::chrono::duration<double, std::milli>(
                                std::chrono::steady_clock::now() - search_started)
                                .count();
@@ -132,12 +133,14 @@ ProductionPlannerUpdate3D ProductionMppiNode::generatePlannerUpdate3D(
       planner_world.occupied_fingerprint = static_occupancy_3d_->contentFingerprint();
     } else {
       const std::shared_ptr<const PersistentPlannerWorld3D> search_world =
-          routeSearchPlannerWorld3D(world);
+          routeSearchPlannerWorld3D(world.observed_planner_world,
+                                    world.route_search_planner_world,
+                                    world.static_route_replan_request);
       if (search_world == nullptr || !search_world->valid()) {
         RCLCPP_INFO(get_logger(),
                     "PERSISTENT_PLANNER3D stage=deferred reason=raw_world_unavailable "
                     "revision=%" PRIu64,
-                    world.revision);
+                    world.world->revision);
         result.search_ms = std::chrono::duration<double, std::milli>(
                                std::chrono::steady_clock::now() - search_started)
                                .count();
@@ -145,8 +148,9 @@ ProductionPlannerUpdate3D ProductionMppiNode::generatePlannerUpdate3D(
       }
       planner_world = *search_world;
     }
-    planner_world.proprioceptive_free_space_seed = world.proprioceptive_free_space_seed;
-    planner_world.launch_support_contact = world.launch_support_contact;
+    planner_world.proprioceptive_free_space_seed =
+        world.world->proprioceptive_free_space_seed;
+    planner_world.launch_support_contact = world.world->launch_support_contact;
     if (persistent_planner_3d_ == nullptr || !world.search_objective.available ||
         world.search_objective.mission_epoch == 0U || !planner_world.valid()) {
       result.search_ms = std::chrono::duration<double, std::milli>(
@@ -263,7 +267,7 @@ ProductionPlannerUpdate3D ProductionMppiNode::generatePlannerUpdate3D(
     RouteIntent3D intent = continuation_session->intent;
     intent.planned_on_revision = telemetry.planned_on_revision;
     const SegmentEvidenceWorld3D evidence_world =
-        evidenceWorld(world, route_search_occupancy, route_search_raw_revision,
+        evidenceWorld(*world.world, route_search_occupancy, route_search_raw_revision,
                       static_occupancy_3d_.get(), physical_footprint_config_,
                       flight_envelope_config_);
     SegmentEvidence3D evidence = evaluateSegmentEvidence3D(

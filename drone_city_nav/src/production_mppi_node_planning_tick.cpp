@@ -117,9 +117,10 @@ void ProductionMppiNode::planningTick() {
       static_cast<double>(now_ns - navigation.receive_stamp_ns) / 1.0e6;
   double esdf_age_ms = std::numeric_limits<double>::infinity();
   if (esdf.has_value()) {
-    esdf_age_ms = use_static_map_
-                      ? 0.0
-                      : static_cast<double>(now_ns - esdf->ready_stamp_ns) / 1.0e6;
+    esdf_age_ms =
+        use_static_map_
+            ? 0.0
+            : static_cast<double>(now_ns - esdf->world->ready_stamp_ns) / 1.0e6;
   }
   double observation_age_ms = std::numeric_limits<double>::infinity();
   if (use_static_map_) {
@@ -127,7 +128,7 @@ void ProductionMppiNode::planningTick() {
   } else if (esdf.has_value() && !raw_world_identity_conflicted) {
     if (latest_raw_world_3d != nullptr &&
         latest_raw_world_3d->version.producer_instance_id ==
-            esdf->producer_instance_id) {
+            esdf->world->producer_instance_id) {
       observation_age_ms = committedRawWorldAgeMs(latest_raw_world_3d.get(), now_ns);
     }
   }
@@ -462,9 +463,11 @@ void ProductionMppiNode::planningTick() {
   const PassageTraversalEdge* nearest_passage_entry = nullptr;
   RouteProjection3D nearest_passage_projection;
   double nearest_passage_entry_distance_m = std::numeric_limits<double>::infinity();
-  if (esdf->passage_traversals) {
-    passage_geometry_observations.reserve(esdf->passage_traversals->size());
-    for (const PassageTraversalEdge& passage : *esdf->passage_traversals) {
+  if (esdf->world->topology_passage_traversals) {
+    passage_geometry_observations.reserve(
+        esdf->world->topology_passage_traversals->size());
+    for (const PassageTraversalEdge& passage :
+         *esdf->world->topology_passage_traversals) {
       const RouteProjection3D projection =
           projectOntoRoute3D(passage.centerline, actual_position);
       const double entry_distance_m = distance3D(actual_position, passage.entry);
@@ -790,9 +793,9 @@ void ProductionMppiNode::planningTick() {
           .direct_tracking_maneuver_generation =
               direct_tracking_maneuver.reseed_generation,
       });
-  const EsdfQueryResult current_clearance =
-      queryConservativeEsdf3D(esdf->grid, *esdf->distances_m, navigation.state.x,
-                              navigation.state.y, navigation.state.z);
+  const EsdfQueryResult current_clearance = queryConservativeEsdf3D(
+      esdf->world->grid, *esdf->world->distances_m, navigation.state.x,
+      navigation.state.y, navigation.state.z);
   const double tracking_age_ms =
       tracking_objective != nullptr && tracking_objective->observation_stamp_ns > 0
           ? static_cast<double>(std::max<std::int64_t>(
@@ -822,9 +825,9 @@ void ProductionMppiNode::planningTick() {
       .initial_state = execution_input->state(),
       .target = target,
       .pose_revision = execution_input->poseRevision(),
-      .obstacle_revision =
-          planningRawRevision(use_static_map_, esdf->revision, latest_raw_world_3d),
-      .expected_esdf_revision = esdf->local_world_generation.gpu_esdf_revision,
+      .obstacle_revision = planningRawRevision(use_static_map_, esdf->world->revision,
+                                               latest_raw_world_3d),
+      .expected_esdf_revision = esdf->world->local_world_generation.gpu_esdf_revision,
       .planning_stamp_ns = now_ns,
       .previous_applied_control = execution_input->previousControl(),
       .nominal_reseed_generation = nominal_reseed.generation,

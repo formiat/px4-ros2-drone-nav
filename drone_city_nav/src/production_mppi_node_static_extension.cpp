@@ -193,7 +193,7 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
               active_route.identity.proposal.reaches_mission_goal,
           .next_planning_goal_inside_esdf =
               observed_world ||
-              staticRoutePointInsideEsdf(esdf.grid, next_planning_goal),
+              staticRoutePointInsideEsdf(esdf.world->grid, next_planning_goal),
           .request_in_flight = static_route_extension_request_in_flight_ ||
                                static_route_replan_gate_.inFlight() ||
                                pending_successor,
@@ -348,7 +348,7 @@ void ProductionMppiNode::requestStaticRouteReplan(
   {
     const std::scoped_lock esdf_lock{world_generation_publication_mutex_,
                                      esdf_state_mutex_};
-    if (!prepared_esdf_ || !productionWorldGenerationCoherent(*prepared_esdf_)) {
+    if (!prepared_esdf_ || !productionWorldGenerationCoherent(*prepared_esdf_->world)) {
       RCLCPP_INFO_THROTTLE(
           get_logger(), *get_clock(), 1000,
           "STATIC_ROUTE_REPLAN_REQUEST status=rejected_generation_mismatch "
@@ -396,20 +396,20 @@ void ProductionMppiNode::requestStaticRouteReplan(
         observed_route_blocked_raw_revision_.load(std::memory_order_acquire);
     const bool latest_raw_overlay_required =
         routeSearchRequiresLatestRawOverlay3D(reason) ||
-        blocked_raw_revision > request->source_raw_revision;
+        blocked_raw_revision > request->world->source_raw_revision;
     if (latest_raw_overlay_required) {
       const std::uint64_t minimum_search_raw_revision =
-          std::max(blocked_raw_revision, request->source_raw_revision);
+          std::max(blocked_raw_revision, request->world->source_raw_revision);
       const std::shared_ptr<const ProductionMppiRawWorld3D> latest_raw_world =
           latest_raw_world_3d_.load(std::memory_order_acquire);
       const std::shared_ptr<const PersistentPlannerWorld3D> search_world =
           latest_raw_world != nullptr
               ? captureObservedRouteSearchWorld3D(
-                    *latest_raw_world, request->proprioceptive_free_space_seed,
-                    request->launch_support_contact)
+                    *latest_raw_world, request->world->proprioceptive_free_space_seed,
+                    request->world->launch_support_contact)
               : nullptr;
       if (search_world == nullptr ||
-          search_world->producer_instance_id != request->producer_instance_id ||
+          search_world->producer_instance_id != request->world->producer_instance_id ||
           search_world->revision < minimum_search_raw_revision) {
         RCLCPP_INFO_THROTTLE(
             get_logger(), *get_clock(), 1000,
@@ -418,7 +418,8 @@ void ProductionMppiNode::requestStaticRouteReplan(
             " esdf_source_raw_revision=%" PRIu64 " generation=%" PRIu64 " reason=%s",
             blocked_raw_revision,
             latest_raw_world != nullptr ? latest_raw_world->version.revision : 0U,
-            request->source_raw_revision, request->static_route_replan_base_generation,
+            request->world->source_raw_revision,
+            request->static_route_replan_base_generation,
             routeReleaseReason3DName(reason));
         return;
       }
@@ -430,7 +431,7 @@ void ProductionMppiNode::requestStaticRouteReplan(
                   "OBSERVED_ROUTE_REPLAN status=using_raw_search_overlay "
                   "raw_revision=%" PRIu64 " esdf_source_raw_revision=%" PRIu64
                   " blocked_raw_revision=%" PRIu64 " generation=%" PRIu64 " reason=%s",
-                  search_world->revision, request->source_raw_revision,
+                  search_world->revision, request->world->source_raw_revision,
                   blocked_raw_revision, request->static_route_replan_base_generation,
                   routeReleaseReason3DName(reason));
     }
@@ -515,7 +516,7 @@ void ProductionMppiNode::requestStaticRouteReplan(
   RCLCPP_INFO(get_logger(),
               "STATIC_ROUTE_REPLAN_REQUEST status=queued generation=%" PRIu64
               " resident_esdf_revision=%" PRIu64 " retry_trigger=%.*s reason=%s",
-              request->static_route_replan_base_generation, request->revision,
+              request->static_route_replan_base_generation, request->world->revision,
               static_cast<int>(staticRouteSearchRetryTriggerName(retry.trigger).size()),
               staticRouteSearchRetryTriggerName(retry.trigger).data(),
               routeReleaseReason3DName(reason));
@@ -544,9 +545,9 @@ void ProductionMppiNode::maybeRequestStaticTrackingWorldRefresh(
   const Point3 current{navigation.state.x, navigation.state.y, navigation.state.z};
   const Point3 planning_goal =
       staticRoutePlanningGoal(current, objective.goal, static_esdf_route_lookahead_m_);
-  if (staticRoutePointInsideEsdf(esdf.grid, current,
+  if (staticRoutePointInsideEsdf(esdf.world->grid, current,
                                  static_tracking_esdf_refresh_margin_m_) &&
-      staticRoutePointInsideEsdf(esdf.grid, planning_goal,
+      staticRoutePointInsideEsdf(esdf.world->grid, planning_goal,
                                  static_tracking_esdf_refresh_margin_m_)) {
     return;
   }

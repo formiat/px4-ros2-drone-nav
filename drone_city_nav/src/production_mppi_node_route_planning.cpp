@@ -31,7 +31,7 @@ void ProductionMppiNode::processRouteSearch3D(
   const Point3 mission_goal =
       world.search_objective.available ? world.search_objective.goal : mission_goal_;
   const NavigationWorldCertificate3D planned_world_certificate =
-      navigationWorldCertificate3D(world);
+      navigationWorldCertificate3D(*world.world);
 
   const std::shared_ptr<const ExecutionRouteSnapshot3D> search_execution_snapshot =
       execution_route_store_.snapshot();
@@ -369,7 +369,7 @@ void ProductionMppiNode::processRouteSearch3D(
     {
       const std::scoped_lock lock{world_generation_publication_mutex_,
                                   esdf_state_mutex_};
-      if (prepared_esdf_ && productionWorldGenerationCoherent(*prepared_esdf_)) {
+      if (prepared_esdf_ && productionWorldGenerationCoherent(*prepared_esdf_->world)) {
         resident_route_objective = prepared_esdf_->route_objective;
       }
     }

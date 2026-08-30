@@ -64,6 +64,7 @@
 #include "drone_city_nav/tracking_objective.hpp"
 #include "drone_city_nav/types.hpp"
 #include "drone_city_nav/world_generation.hpp"
+#include "drone_city_nav/world_snapshot_3d.hpp"
 
 #include <nav_msgs/msg/path.hpp>
 #include <px4_msgs/msg/vehicle_land_detected.hpp>
@@ -167,14 +168,8 @@ struct ProductionMaterializedRouteProposal3D {
 };
 
 struct ProductionMppiPreparedEsdf {
-  LocalWorldGeneration local_world_generation{};
-  std::uint64_t producer_instance_id{0U};
-  std::uint64_t revision{0U};
-  // Raw observation that causally anchors this local ESDF generation.
-  std::uint64_t source_raw_revision{0U};
-  std::uint64_t source_occupied_fingerprint{0U};
-  std::int64_t source_stamp_ns{0};
-  std::int64_t ready_stamp_ns{0};
+  std::shared_ptr<const WorldSnapshot3D> world{
+      std::make_shared<const WorldSnapshot3D>()};
   double build_ms{0.0};
   double esdf_x_pass_ms{0.0};
   double esdf_y_pass_ms{0.0};
@@ -198,23 +193,14 @@ struct ProductionMppiPreparedEsdf {
   double candidate_validation_ms{0.0};
   std::uint64_t route_fingerprint{0U};
   RouteInstanceId3D bound_route_instance_id{};
-  mppi::EsdfGrid grid{};
-  std::shared_ptr<const std::vector<float>> distances_m;
-  std::shared_ptr<const ObservedOccupancyGrid3D> observed_occupancy;
-  std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_world_owner;
-  // Immutable occupied-world input owned by this route-search transaction.
-  // Continuations must not replace it with a newer obstacle-memory snapshot:
-  // publication is revalidated against the latest raw world atomically.
-  std::shared_ptr<const PersistentPlannerWorld3D> observed_planner_world;
   // A physical-collision replan may use a newer immutable raw snapshot without
   // pretending that the resident ESDF was built from that snapshot. This
   // transaction-only overlay is a hard planning constraint and is deliberately
   // excluded from LocalWorldGeneration coherence.
   std::shared_ptr<const PersistentPlannerWorld3D> route_search_planner_world;
-  ObservedEsdfResource3D observed_esdf_resource{};
-  std::optional<ProprioceptiveFreeSpaceSeed3D> proprioceptive_free_space_seed;
-  std::optional<LaunchSupportContact3D> launch_support_contact;
-  bool launch_support_resolution_pending{false};
+  // Immutable planner input derived from the resident world publication. It is
+  // search state, not part of WorldSnapshot3D or its coherence identity.
+  std::shared_ptr<const PersistentPlannerWorld3D> observed_planner_world;
   std::shared_ptr<const std::vector<mppi::RouteSample3D>> mppi_route;
   std::shared_ptr<const std::vector<RouteSample3D>> route_3d;
   std::shared_ptr<const ProductionRouteGeometry3D> compiled_route_geometry;
@@ -224,7 +210,6 @@ struct ProductionMppiPreparedEsdf {
   SegmentEvidence3D route_segment_evidence{};
   std::shared_ptr<const std::vector<Point2>> route_2d_projection;
   std::shared_ptr<const std::vector<ConstrainedRouteSpan>> constrained_spans;
-  std::shared_ptr<const std::vector<PassageTraversalEdge>> passage_traversals;
   std::shared_ptr<const std::vector<PassageVolume>> passage_volumes;
   std::shared_ptr<const std::vector<CooperativePassageAssignment>>
       cooperative_passage_assignments;

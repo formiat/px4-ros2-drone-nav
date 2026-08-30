@@ -143,9 +143,10 @@ makeExecutionObservation(const ProductionMppiPreparedEsdf& world,
       .position = {navigation.state.x, navigation.state.y, navigation.state.z},
       .maximum_cross_track_m = maximum_cross_track_m,
       .footprint = footprint,
-      .launch_support_contact = world.launch_support_contact
-                                    ? std::addressof(*world.launch_support_contact)
-                                    : nullptr,
+      .launch_support_contact =
+          world.world->launch_support_contact
+              ? std::addressof(*world.world->launch_support_contact)
+              : nullptr,
       .flight_envelope = flight_envelope,
   };
 }
@@ -158,7 +159,7 @@ makeExecutionObservation(const ProductionMppiPreparedEsdf& world,
     const double maximum_cross_track_m, const SweptFootprintConfig& footprint,
     const FlightEnvelopeConfig& flight_envelope, const bool raw_validation_required) {
   return RouteActivationObservation3D{
-      .resident_world = navigationWorldCertificate3D(world),
+      .resident_world = navigationWorldCertificate3D(*world.world),
       .current_objective = objective != nullptr ? makeStaticRouteObjective(*objective)
                                                 : StaticRouteObjective{},
       .minimum_tracking_sample_sequence = minimum_tracking_sample_sequence,
@@ -202,7 +203,7 @@ makeExecutionObservation(const ProductionMppiPreparedEsdf& world,
     const std::uint64_t minimum_tracking_sample_sequence) noexcept {
   return objective != nullptr &&
          assessRoutePublication3D(pending.route.identity.proposal,
-                                  navigationWorldCertificate3D(world))
+                                  navigationWorldCertificate3D(*world.world))
              .compatible() &&
          staticRouteObjectiveMatches(pending.route.identity.proposal.objective,
                                      makeStaticRouteObjective(*objective),

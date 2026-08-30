@@ -2,6 +2,7 @@
 
 #include "drone_city_nav/route_lifecycle_3d.hpp"
 #include "drone_city_nav/world_generation.hpp"
+#include "drone_city_nav/world_snapshot_3d.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -11,7 +12,6 @@
 namespace drone_city_nav {
 
 struct PersistentPlannerWorld3D;
-struct ProductionMppiPreparedEsdf;
 struct ProductionMppiRawWorld3D;
 
 enum class ProductionWorldGenerationStatus : std::uint8_t {
@@ -21,19 +21,18 @@ enum class ProductionWorldGenerationStatus : std::uint8_t {
   kEsdfRevisionMismatch,
   kRawVersionMismatch,
   kObservedOwnerMismatch,
-  kObservedPlannerWorldMismatch,
   kObservedEsdfCoverageMismatch,
 };
 
 [[nodiscard]] ProductionWorldGenerationStatus
-assessProductionWorldGeneration(const ProductionMppiPreparedEsdf& world) noexcept;
+assessProductionWorldGeneration(const WorldSnapshot3D& world) noexcept;
 [[nodiscard]] bool
-productionWorldGenerationCoherent(const ProductionMppiPreparedEsdf& world) noexcept;
+productionWorldGenerationCoherent(const WorldSnapshot3D& world) noexcept;
 [[nodiscard]] std::string_view
 productionWorldGenerationStatusName(ProductionWorldGenerationStatus status) noexcept;
 
 [[nodiscard]] NavigationWorldCertificate3D
-navigationWorldCertificate3D(const ProductionMppiPreparedEsdf& world) noexcept;
+navigationWorldCertificate3D(const WorldSnapshot3D& world) noexcept;
 
 // Initial recovery and physical-collision searches need current hard occupancy;
 // choosing it never schedules a search by itself.
@@ -49,10 +48,9 @@ captureObservedRouteSearchWorld3D(
     std::optional<ProprioceptiveFreeSpaceSeed3D> proprioceptive_free_space_seed,
     std::optional<LaunchSupportContact3D> launch_support_contact);
 
-[[nodiscard]] std::shared_ptr<const PersistentPlannerWorld3D>
-routeSearchPlannerWorld3D(const ProductionMppiPreparedEsdf& world) noexcept;
-
-void adoptWorldResources(ProductionMppiPreparedEsdf& target,
-                         const ProductionMppiPreparedEsdf& source);
+[[nodiscard]] std::shared_ptr<const PersistentPlannerWorld3D> routeSearchPlannerWorld3D(
+    const std::shared_ptr<const PersistentPlannerWorld3D>& resident_world,
+    const std::shared_ptr<const PersistentPlannerWorld3D>& raw_overlay,
+    bool use_raw_overlay) noexcept;
 
 } // namespace drone_city_nav

@@ -68,23 +68,24 @@ void ProductionMppiNode::routePlanningWorker(const std::stop_token stop_token) {
       continue;
     }
     const std::shared_ptr<const ProductionMppiPreparedEsdf>& world = work->world;
-    if (!productionWorldGenerationCoherent(*world)) {
+    if (!productionWorldGenerationCoherent(*world->world)) {
       const ProductionWorldGenerationStatus status =
-          assessProductionWorldGeneration(*world);
+          assessProductionWorldGeneration(*world->world);
       const std::string_view status_name = productionWorldGenerationStatusName(status);
       RCLCPP_ERROR(get_logger(),
                    "PRODUCTION_MPPI_ROUTE rejected local_world_generation=%" PRIu64
                    " reason=%.*s",
-                   world->local_world_generation.generation,
+                   world->world->local_world_generation.generation,
                    static_cast<int>(status_name.size()), status_name.data());
       finishStaticRouteSearch(*world);
       continue;
     }
-    if (world->grid.depth <= 1) {
+    if (world->world->grid.depth <= 1) {
       RCLCPP_ERROR(get_logger(),
                    "PRODUCTION_MPPI_ROUTE rejected local_world_generation=%" PRIu64
                    " reason=full_3d_world_required depth=%d",
-                   world->local_world_generation.generation, world->grid.depth);
+                   world->world->local_world_generation.generation,
+                   world->world->grid.depth);
       finishStaticRouteSearch(*world);
       continue;
     }

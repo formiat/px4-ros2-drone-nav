@@ -54,9 +54,8 @@ candidateStatusFromRiskAssignment(const RouteRiskTierAssignmentStatus status) no
   return StaticRouteCandidateStatus::kInvalidInput;
 }
 
-[[nodiscard]] bool
-sameActivationWorld(const ProductionMppiPreparedEsdf& current,
-                    const ProductionMppiPreparedEsdf& captured) noexcept {
+[[nodiscard]] bool sameActivationWorld(const WorldSnapshot3D& current,
+                                       const WorldSnapshot3D& captured) noexcept {
   return productionWorldGenerationCoherent(current) &&
          productionWorldGenerationCoherent(captured) &&
          current.local_world_generation.sameSnapshot(captured.local_world_generation);
@@ -221,7 +220,7 @@ ProductionMppiNode::captureRouteActivationSnapshot3D() {
   {
     const std::scoped_lock lock{world_generation_publication_mutex_, input_mutex_,
                                 esdf_state_mutex_};
-    snapshot.resident_world = prepared_esdf_;
+    snapshot.resident_world = prepared_esdf_ ? prepared_esdf_->world : nullptr;
     snapshot.navigation = navigation_;
     snapshot.applied_control = applied_control_;
     snapshot.execution_horizon_owner = execution_horizon_owner_;
@@ -252,7 +251,7 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
           ? StaticRouteActivationStatus::kCandidateValidationRejected
           : StaticRouteActivationStatus::kCandidateNotExecutable;
   ProductionMppiPreparedEsdf& candidate = result.prepared;
-  const bool raw_validation_required = candidate.observed_occupancy != nullptr;
+  const bool raw_validation_required = candidate.world->observed_occupancy != nullptr;
 
   result.snapshot_pose_revision = snapshot.navigation.revision;
   result.snapshot_raw_revision =
@@ -260,7 +259,7 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
 
   const MaterializedRouteProposal3D publication_proposal{
       .planned_world = planned_world_certificate,
-      .validated_world = navigationWorldCertificate3D(candidate),
+      .validated_world = navigationWorldCertificate3D(*candidate.world),
   };
   const RoutePublicationAssessment3D publication =
       snapshot.resident_world ? assessRoutePublication3D(publication_proposal,
@@ -279,7 +278,7 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
       candidate.selected_passage_traversal_ids &&
       snapshot.resident_world->distances_m &&
       snapshot.resident_world->local_world_generation.generation !=
-          candidate.local_world_generation.generation) {
+          candidate.world->local_world_generation.generation) {
     auto rebased_route =
         std::make_shared<std::vector<RouteSample3D>>(*candidate.route_3d);
     const RouteRiskTierAssignmentResult risk_assignment = assignRouteRiskTiers(
@@ -293,9 +292,14 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
           .failure_point = risk_assignment.failure_point,
       };
     } else {
+      const CertifiedRouteSuffix3D* const resident_route =
+          snapshot.execution_snapshot
+              ? optionalAddress(snapshot.execution_snapshot->route)
+              : nullptr;
       result.validation = validateStaticRouteCandidate(
-          snapshot.resident_world->route_3d
-              ? std::span<const RouteSample3D>{*snapshot.resident_world->route_3d}
+          resident_route != nullptr && resident_route->geometry != nullptr &&
+                  resident_route->geometry->route != nullptr
+              ? std::span<const RouteSample3D>{*resident_route->geometry->route}
               : std::span<const RouteSample3D>{},
           *rebased_route, mission_goal,
           static_route_extension_config_.minimum_endpoint_improvement_m,
@@ -310,7 +314,7 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
           .status = StaticRouteCandidateStatus::kInvalidPassageSpan};
     }
     if (result.validation.accepted) {
-      adoptWorldResources(candidate, *snapshot.resident_world);
+      candidate.world = snapshot.resident_world;
       candidate.route_3d = rebased_route;
       candidate.route_2d_projection = projectRouteTo2D(*rebased_route);
       candidate.route_projection = projectOntoRouteProgress3D(
@@ -324,8 +328,8 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
   }
 
   result.tracking_geometry_source_occupied_fingerprint =
-      candidate.observed_raw_world_owner != nullptr
-          ? candidate.observed_raw_world_owner->occupiedContentFingerprint()
+      candidate.world->observed_raw_world_owner != nullptr
+          ? candidate.world->observed_raw_world_owner->occupiedContentFingerprint()
           : 0U;
   result.tracking_geometry_activation_occupied_fingerprint =
       activation_raw_owner != nullptr
@@ -354,9 +358,7 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
                   .occupied_content_fingerprint =
                       activation_raw_owner->occupiedContentFingerprint(),
                   .launch_support_contact =
-                      candidate.launch_support_contact.has_value()
-                          ? std::addressof(*candidate.launch_support_contact)
-                          : nullptr,
+                      optionalAddress(candidate.world->launch_support_contact),
               }
             : trackingErrorTubeWorld3D(candidate);
     RouteCompilationResult3D compilation = compileExecutionRoute3D(RouteCompilerInput3D{
@@ -444,7 +446,7 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
   }
 
   NavigationWorldCertificate3D validated_world_certificate =
-      navigationWorldCertificate3D(candidate);
+      navigationWorldCertificate3D(*candidate.world);
   SegmentEvidence3D activation_evidence = candidate.route_segment_evidence;
   if (candidate.route_3d && candidate.route_3d->size() >= 2U) {
     const Point3 snapshot_position{snapshot.navigation.state.x,
@@ -537,9 +539,7 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
                   .axial_samples = physical_footprint_config_.axial_samples,
                   .sweep_step_m = physical_footprint_config_.sweep_step_m},
           .launch_support_contact =
-              candidate.launch_support_contact
-                  ? std::addressof(*candidate.launch_support_contact)
-                  : nullptr,
+              optionalAddress(candidate.world->launch_support_contact),
           .flight_envelope = flight_envelope_config_,
           .raw_validation_required = raw_validation_required,
       });
@@ -626,7 +626,8 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
       snapshot.applied_control, snapshot.execution_horizon_owner, snapshot.stamp_ns,
       maximum_control_feedback_age_ms_);
   if (result.proposal.identity.activation_eligible && result.assessment.accepted() &&
-      candidate.mppi_route && candidate.distances_m && snapshot.navigation.valid) {
+      candidate.mppi_route && candidate.world->distances_m &&
+      snapshot.navigation.valid) {
     result.handoff = mppi::validateStaticRouteHandoff(
         snapshot.navigation.state,
         handoff_control_fresh ? snapshot.applied_control.control : mppi::Control{},
@@ -634,7 +635,7 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
         static_cast<float>(speed_policy_config_.cruise_speed_mps),
         static_cast<float>(route_tracking_policy_.maximum_cross_track_m),
         static_cast<float>(kFiniteExecutionRouteCrossTrackToleranceM3D), mppi_config_,
-        candidate.grid, *candidate.distances_m);
+        candidate.world->grid, *candidate.world->distances_m);
   }
 
   result.proposal.identity.activation_eligible =
@@ -665,7 +666,7 @@ void ProductionMppiNode::commitRouteActivation3D(
     ProductionRouteActivationResult3D& result) {
   ProductionMppiPreparedEsdf& candidate = result.prepared;
   const ProductionMaterializedRouteProposal3D& materialized_proposal = result.proposal;
-  const bool raw_validation_required = candidate.observed_occupancy != nullptr;
+  const bool raw_validation_required = candidate.world->observed_occupancy != nullptr;
   result.commit_assessment_performed = true;
   candidate.static_route_generation_assessed = true;
 
@@ -735,7 +736,8 @@ void ProductionMppiNode::commitRouteActivation3D(
       snapshot.raw_world->execution_owner->version().revision ==
           snapshot.raw_world->version.revision) {
     observed_owner = snapshot.raw_world->execution_owner->deriveRouteEvidence(
-        candidate.proprioceptive_free_space_seed, candidate.launch_support_contact);
+        candidate.world->proprioceptive_free_space_seed,
+        candidate.world->launch_support_contact);
   } else if (!raw_validation_required && static_occupancy_3d_ != nullptr) {
     static_owner = VersionedStaticWorld3D::captureOwned(
         materialized_proposal.identity.validated_world, static_occupancy_3d_);
@@ -860,7 +862,7 @@ void ProductionMppiNode::commitRouteActivation3D(
                                 world_generation_publication_mutex_, esdf_state_mutex_};
     const bool resident_world_current =
         prepared_esdf_ && snapshot.resident_world &&
-        sameActivationWorld(*prepared_esdf_, *snapshot.resident_world);
+        sameActivationWorld(*prepared_esdf_->world, *snapshot.resident_world);
     const bool objective_current =
         navigationObjective() == snapshot.objective &&
         minimum_tracking_route_mission_epoch_.load(std::memory_order_acquire) ==
@@ -872,7 +874,8 @@ void ProductionMppiNode::commitRouteActivation3D(
         latest_raw_world_3d_.load(std::memory_order_acquire) == snapshot.raw_world;
     const bool execution_base_current =
         sameExecutionRouteBase(current_execution, execution_route_store_.snapshot());
-    const bool candidate_world_coherent = productionWorldGenerationCoherent(candidate);
+    const bool candidate_world_coherent =
+        productionWorldGenerationCoherent(*candidate.world);
     result.resident_world_snapshot_current = resident_world_current;
     result.objective_snapshot_current = objective_current;
     result.raw_snapshot_current = raw_world_current;

@@ -69,7 +69,8 @@ void ProductionMppiNode::logDiagnosticsEvents(
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
                          "PRODUCTION_MPPI_STALE_WORLD action=continue_resident_esdf "
                          "esdf_age_ms=%.1f warning_age_ms=%.1f revision=%" PRIu64,
-                         snapshot.esdf_age_ms, maximum_esdf_age_ms_, esdf.revision);
+                         snapshot.esdf_age_ms, maximum_esdf_age_ms_,
+                         esdf.world->revision);
   }
   if (snapshot.cooperative.yield.active) {
     RCLCPP_INFO_THROTTLE(

@@ -1,10 +1,22 @@
 #include "drone_city_nav/route_compiler_3d.hpp"
 
 #include <memory>
+#include <optional>
 
 #include "production_mppi_node.hpp"
 
 namespace drone_city_nav {
+namespace {
+
+template<typename T>
+[[nodiscard]] const T* optionalAddress(const std::optional<T>& value) noexcept {
+  if (!value.has_value()) {
+    return nullptr;
+  }
+  return std::addressof(value.value());
+}
+
+} // namespace
 
 RouteCompilerConfig3D ProductionMppiNode::routeCompilerConfig3D() const noexcept {
   return RouteCompilerConfig3D{
@@ -21,20 +33,18 @@ RouteCompilerConfig3D ProductionMppiNode::routeCompilerConfig3D() const noexcept
 
 TrackingErrorTubeWorld3D ProductionMppiNode::trackingErrorTubeWorld3D(
     const ProductionMppiPreparedEsdf& world) const noexcept {
-  if (world.observed_occupancy != nullptr) {
+  if (world.world->observed_occupancy != nullptr) {
     const bool exact_observation_owner =
-        world.observed_raw_world_owner != nullptr &&
-        std::addressof(world.observed_raw_world_owner->occupancy()) ==
-            world.observed_occupancy.get();
+        world.world->observed_raw_world_owner != nullptr &&
+        std::addressof(world.world->observed_raw_world_owner->occupancy()) ==
+            world.world->observed_occupancy.get();
     return TrackingErrorTubeWorld3D{
-        .observed_occupancy = world.observed_occupancy.get(),
+        .observed_occupancy = world.world->observed_occupancy.get(),
         .occupied_content_fingerprint =
             exact_observation_owner
-                ? world.observed_raw_world_owner->occupiedContentFingerprint()
+                ? world.world->observed_raw_world_owner->occupiedContentFingerprint()
                 : 0U,
-        .launch_support_contact = world.launch_support_contact.has_value()
-                                      ? std::addressof(*world.launch_support_contact)
-                                      : nullptr,
+        .launch_support_contact = optionalAddress(world.world->launch_support_contact),
     };
   }
   return TrackingErrorTubeWorld3D{

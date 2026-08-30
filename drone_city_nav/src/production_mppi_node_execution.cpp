@@ -155,7 +155,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
         direct_static_world = route_execution.source_snapshot->route->static_world;
       } else {
         direct_static_world = VersionedStaticWorld3D::captureOwned(
-            navigationWorldCertificate3D(esdf), static_occupancy_3d_);
+            navigationWorldCertificate3D(*esdf.world), static_occupancy_3d_);
       }
     } else if (latest_raw_world_3d != nullptr &&
                latest_raw_world_3d->execution_owner != nullptr &&
@@ -170,7 +170,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
                latest_raw_world_3d->execution_owner->version().revision ==
                    latest_raw_world_3d->version.revision) {
       direct_observed_world = latest_raw_world_3d->execution_owner->deriveRouteEvidence(
-          proprioceptive_free_space_seed, esdf.launch_support_contact);
+          proprioceptive_free_space_seed, esdf.world->launch_support_contact);
     }
   }
   const VersionedExecutionValidationPolicy3D* const selected_policy =

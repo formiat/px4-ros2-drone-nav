@@ -210,6 +210,7 @@ add_library(
   src/lidar_self_filter.cpp
   src/offboard_session_admission.cpp
   src/occupied_collision_oracle_3d.cpp
+  src/passage_traversal_selection_3d.cpp
   src/persistent_dstar_lite_planner_3d.cpp
   src/persistent_dstar_lite_planner_3d_search.cpp
   src/persistent_dstar_lite_planner_3d_time_search.cpp
@@ -1204,6 +1205,12 @@ if(BUILD_TESTING)
   target_include_directories(route_3d_test PRIVATE src)
   target_link_libraries(route_3d_test drone_city_nav_core)
   enable_project_warnings(route_3d_test)
+
+  ament_add_gtest(passage_traversal_selection_3d_test
+                  tests/passage_traversal_selection_3d_test.cpp)
+  target_compile_features(passage_traversal_selection_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(passage_traversal_selection_3d_test drone_city_nav_core)
+  enable_project_warnings(passage_traversal_selection_3d_test)
 
   ament_add_gtest(route_planning_3d_test tests/route_planning_3d_test.cpp)
   target_compile_features(route_planning_3d_test PRIVATE cxx_std_20)

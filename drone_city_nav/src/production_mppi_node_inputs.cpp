@@ -254,7 +254,7 @@ void ProductionMppiNode::onNavigationReadiness(const std_msgs::msg::Bool& messag
   std::shared_ptr<ProductionMppiPreparedEsdf> request;
   {
     const std::scoped_lock lock{world_generation_publication_mutex_, esdf_state_mutex_};
-    if (prepared_esdf_ && productionWorldGenerationCoherent(*prepared_esdf_) &&
+    if (prepared_esdf_ && productionWorldGenerationCoherent(*prepared_esdf_->world) &&
         prepared_esdf_->route_generation == 0U) {
       request = std::make_shared<ProductionMppiPreparedEsdf>(*prepared_esdf_);
       if (const auto objective = navigationObjective()) {

@@ -321,28 +321,29 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       if (proactive_roi_refresh && active_prepared) {
         prepared = *active_prepared;
       }
-      prepared.producer_instance_id =
-          active_prepared ? active_prepared->producer_instance_id : 0U;
-      prepared.revision = static_occupancy_3d_->fingerprint();
-      prepared.source_stamp_ns = source_stamp_ns;
-      prepared.ready_stamp_ns = get_clock()->now().nanoseconds();
+      WorldSnapshot3D world;
+      world.producer_instance_id =
+          active_prepared ? active_prepared->world->producer_instance_id : 0U;
+      world.revision = static_occupancy_3d_->fingerprint();
+      world.source_stamp_ns = source_stamp_ns;
+      world.ready_stamp_ns = get_clock()->now().nanoseconds();
       prepared.build_ms = static_build_ms;
       prepared.esdf_x_pass_ms = static_x_pass_ms;
       prepared.esdf_y_pass_ms = static_y_pass_ms;
       prepared.esdf_z_pass_ms = static_z_pass_ms;
       prepared.esdf_finalize_ms = static_finalize_ms;
       prepared.upload_ms = upload.upload_ms;
-      prepared.grid = static_esdf_grid_;
-      prepared.distances_m = static_esdf_3d_;
-      prepared.passage_traversals = static_portal_edges_;
+      world.grid = static_esdf_grid_;
+      world.distances_m = static_esdf_3d_;
+      world.topology_passage_traversals = static_portal_edges_;
       const RawMapVersion static_world_version{
-          .base_snapshot_revision = prepared.revision,
-          .revision = prepared.revision,
+          .base_snapshot_revision = world.revision,
+          .revision = world.revision,
       };
       const std::optional<LocalWorldGeneration> local_world_generation =
           local_world_generation_counter_.issue(static_world_version,
                                                 activation_navigation.revision,
-                                                prepared.revision, upload.revision);
+                                                world.revision, upload.revision);
       if (!local_world_generation.has_value()) {
         {
           const std::scoped_lock lock{esdf_state_mutex_};
@@ -362,7 +363,8 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         completeStaticEsdfWork(false);
         continue;
       }
-      prepared.local_world_generation = *local_world_generation;
+      world.local_world_generation = *local_world_generation;
+      prepared.world = std::make_shared<const WorldSnapshot3D>(std::move(world));
       if (objective) {
         prepared.search_objective = makeStaticRouteObjective(*objective);
       }
@@ -399,7 +401,8 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       prepared.static_route_replan_reason =
           tracking_roi_refresh ? RouteReleaseReason3D::kObjectiveChanged
                                : RouteReleaseReason3D::kNone;
-      const bool coherent_generation = productionWorldGenerationCoherent(prepared);
+      const bool coherent_generation =
+          productionWorldGenerationCoherent(*prepared.world);
       {
         const std::scoped_lock lock{esdf_state_mutex_};
         if (coherent_generation) {
@@ -472,8 +475,9 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       RCLCPP_INFO(get_logger(),
                   "PRODUCTION_MPPI_ESDF3D revision=%" PRIu64
                   " upload_ms=%.2f dimensions=%dx%dx%d",
-                  prepared.revision, prepared.upload_ms, prepared.grid.width,
-                  prepared.grid.height, prepared.grid.depth);
+                  prepared.world->revision, prepared.upload_ms,
+                  prepared.world->grid.width, prepared.world->grid.height,
+                  prepared.world->grid.depth);
       continue;
     }
   }

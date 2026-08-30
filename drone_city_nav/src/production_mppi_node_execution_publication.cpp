@@ -436,7 +436,8 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
     committed_3d = latest_raw_world_3d_.load(std::memory_order_acquire);
     const bool committed_world_current =
         committed_3d != nullptr &&
-        committed_3d->version.producer_instance_id == cycle.esdf.producer_instance_id &&
+        committed_3d->version.producer_instance_id ==
+            cycle.esdf.world->producer_instance_id &&
         committedRawWorldAgeMs(committed_3d.get(), publication_now_ns) <=
             maximum_observation_age_ms;
     if (raw_world_identity_conflicted_ || !committed_world_current) {
