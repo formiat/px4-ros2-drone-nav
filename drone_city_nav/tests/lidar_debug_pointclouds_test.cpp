@@ -37,7 +37,7 @@ buildTriggerCloud(const Point3 endpoint, const bool endpoint_xyz_valid = true) {
   return buildObstacleMemoryTriggerPointCloud(provenance, stamp, "map");
 }
 
-TEST(LidarDebugPointcloudsTest, CollectsOnlyRequestedOccupancyRange) {
+TEST(LidarDebugPointcloudsTest, CollectsOnlyOccupiedCells) {
   nav_msgs::msg::OccupancyGrid grid;
   grid.info.resolution = 0.5F;
   grid.info.width = 3U;
@@ -47,13 +47,6 @@ TEST(LidarDebugPointcloudsTest, CollectsOnlyRequestedOccupancyRange) {
   grid.data = {
       -1, 0, 80, 99, 100, 42,
   };
-
-  const std::vector<Point2> prohibited = collectProhibitedGridPoints(grid);
-  ASSERT_EQ(prohibited.size(), 2U);
-  EXPECT_DOUBLE_EQ(prohibited[0].x, 11.25);
-  EXPECT_DOUBLE_EQ(prohibited[0].y, -1.75);
-  EXPECT_DOUBLE_EQ(prohibited[1].x, 10.25);
-  EXPECT_DOUBLE_EQ(prohibited[1].y, -1.25);
 
   const std::vector<Point2> occupied = collectOccupiedGridPoints(grid);
   ASSERT_EQ(occupied.size(), 1U);

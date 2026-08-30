@@ -89,9 +89,8 @@ TEST_F(LidarDebugNodeConfigTest, LoadsDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.lidar_pose_latency_s, 0.05);
   EXPECT_DOUBLE_EQ(config.hit_memory_resolution_m, 0.25);
   EXPECT_EQ(config.topics.lidar, "/scan");
-  EXPECT_EQ(config.topics.path, "/drone_city_nav/final_trajectory_path");
-  EXPECT_EQ(config.topics.prohibited_pointcloud,
-            "/drone_city_nav/prohibited_obstacle_points");
+  EXPECT_EQ(config.topics.path, "/drone_city_nav/mppi/path");
+  EXPECT_EQ(config.topics.occupied_pointcloud, "/drone_city_nav/raw_occupied_cells");
   EXPECT_EQ(config.topics.raw_lidar_3d_pointcloud,
             "/drone_city_nav/raw_lidar_hit_points_3d");
   EXPECT_EQ(config.topics.px4_local_position, "/fmu/out/vehicle_local_position_v1");
@@ -108,7 +107,7 @@ TEST_F(LidarDebugNodeConfigTest, LoadsCustomTopicsAndProjectionParams) {
        rclcpp::Parameter{"pointcloud_topic", "/custom/current_points"},
        rclcpp::Parameter{"raw_lidar_3d_pointcloud_topic", "/custom/raw_lidar_3d"},
        rclcpp::Parameter{"remembered_pointcloud_topic", "/custom/remembered"},
-       rclcpp::Parameter{"prohibited_pointcloud_topic", "/custom/prohibited_points"},
+       rclcpp::Parameter{"occupied_pointcloud_topic", "/custom/occupied_points"},
        rclcpp::Parameter{"raw_memory_pointcloud_topic", "/custom/raw_memory"},
        rclcpp::Parameter{"px4_local_position_topic", "/custom/local_position"},
        rclcpp::Parameter{"px4_vehicle_attitude_topic", "/custom/attitude"},
@@ -129,7 +128,7 @@ TEST_F(LidarDebugNodeConfigTest, LoadsCustomTopicsAndProjectionParams) {
   EXPECT_EQ(config.topics.pointcloud, "/custom/current_points");
   EXPECT_EQ(config.topics.raw_lidar_3d_pointcloud, "/custom/raw_lidar_3d");
   EXPECT_EQ(config.topics.remembered_pointcloud, "/custom/remembered");
-  EXPECT_EQ(config.topics.prohibited_pointcloud, "/custom/prohibited_points");
+  EXPECT_EQ(config.topics.occupied_pointcloud, "/custom/occupied_points");
   EXPECT_EQ(config.topics.raw_memory_pointcloud, "/custom/raw_memory");
   EXPECT_EQ(config.topics.px4_local_position, "/custom/local_position");
   EXPECT_EQ(config.topics.px4_vehicle_attitude, "/custom/attitude");

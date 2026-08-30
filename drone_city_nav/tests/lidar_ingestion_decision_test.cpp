@@ -57,48 +57,6 @@ namespace {
   return count;
 }
 
-[[nodiscard]] KnownStaticLidarHitClassifier horizontalKnownSurface() {
-  std::vector<KnownPassageSolidVolume> volumes;
-  volumes.push_back(KnownPassageSolidVolume{
-      .structure_id = "building",
-      .opening_id = "opening",
-      .part_id = "upper_mass",
-      .part_kind = KnownPassageSolidPartKind::kUpper,
-      .center = Point2{6.0, 0.0},
-      .normal_xy = Point2{1.0, 0.0},
-      .lateral_xy = Point2{0.0, 1.0},
-      .depth_m = 2.0,
-      .width_m = 4.0,
-      .min_z_m = 8.0,
-      .max_z_m = 12.0,
-  });
-  return KnownStaticLidarHitClassifier{std::move(volumes)};
-}
-
-[[nodiscard]] KnownStaticLidarHitClassifier knownSurfaceAtRange(const Point3 direction,
-                                                                const double range_m) {
-  const double horizontal_norm = std::hypot(direction.x, direction.y);
-  const Point2 normal{direction.x / horizontal_norm, direction.y / horizontal_norm};
-  const Point2 lateral{-normal.y, normal.x};
-  constexpr double kDepthM = 2.0;
-  std::vector<KnownPassageSolidVolume> volumes;
-  volumes.push_back(KnownPassageSolidVolume{
-      .structure_id = "tied_building",
-      .opening_id = "tied_opening",
-      .part_id = "lower_mass",
-      .part_kind = KnownPassageSolidPartKind::kLower,
-      .center = Point2{normal.x * (range_m * horizontal_norm + kDepthM / 2.0),
-                       normal.y * (range_m * horizontal_norm + kDepthM / 2.0)},
-      .normal_xy = normal,
-      .lateral_xy = lateral,
-      .depth_m = kDepthM,
-      .width_m = 4.0,
-      .min_z_m = -100.0,
-      .max_z_m = 100.0,
-  });
-  return KnownStaticLidarHitClassifier{std::move(volumes)};
-}
-
 } // namespace
 
 TEST(LidarIngestionDecision, SuppressesExpectedGroundHitWithoutFreeClearing) {
@@ -394,8 +352,8 @@ TEST(LidarIngestionDecision, DisabledGroundIsDistinctFromUnavailableGround) {
   EXPECT_EQ(invalid_decision.action, LidarIngestionAction::kIntegrateFreeAndHit);
 }
 
-TEST(LidarIngestionDecision, InvalidGroundDoesNotDisableKnownStaticProvider) {
-  const KnownStaticLidarHitClassifier classifier = horizontalKnownSurface();
+TEST(LidarIngestionDecision, InvalidGroundDoesNotDiscardUnknownObstacleEvidence) {
+  const KnownStaticLidarHitClassifier classifier;
   GroundLidarRejectionConfig invalid{};
   invalid.closer_range_tolerance_m = -1.0;
   const LidarIngestionDecision decision = evaluateLidarIngestion(
@@ -403,23 +361,23 @@ TEST(LidarIngestionDecision, InvalidGroundDoesNotDisableKnownStaticProvider) {
 
   EXPECT_EQ(decision.ground_provider, LidarExpectedSurfaceProviderStatus::kUnavailable);
   EXPECT_EQ(decision.known_static_provider, LidarExpectedSurfaceProviderStatus::kReady);
-  EXPECT_EQ(decision.action, LidarIngestionAction::kSuppressAllUpdates);
-  ASSERT_TRUE(decision.known_static_result_available);
-  EXPECT_EQ(decision.known_static_result.classification,
-            KnownStaticLidarHitClassification::kExpectedStatic);
+  EXPECT_EQ(decision.action, LidarIngestionAction::kIntegrateFreeAndHit);
+  EXPECT_EQ(decision.reason, LidarIngestionReason::kNoExpectedSurface);
+  EXPECT_FALSE(decision.known_static_result_available);
 }
 
 TEST(LidarIngestionDecision, CloserSideStaticCountersDistinguishDecisionState) {
-  const KnownStaticLidarHitClassifier classifier = horizontalKnownSurface();
   const LidarBeamObservation suppressed_beam = observation(Point3{1.0, 0.0, 0.0}, 4.7);
-  const LidarIngestionDecision suppressed =
-      evaluateLidarIngestion(suppressed_beam, &classifier, nullptr);
-  ASSERT_EQ(suppressed.reason, LidarIngestionReason::kExpectedKnownStatic);
-
   const LidarBeamObservation pending_beam = observation(Point3{1.0, 0.0, 0.0}, 4.34);
-  const LidarIngestionDecision pending =
-      evaluateLidarIngestion(pending_beam, &classifier, nullptr);
-  ASSERT_EQ(pending.reason, LidarIngestionReason::kAmbiguousKnownStatic);
+  LidarIngestionDecision suppressed{};
+  suppressed.reason = LidarIngestionReason::kExpectedKnownStatic;
+  suppressed.known_static_result_available = true;
+  suppressed.known_static_result.distance_before_solid_m = 0.3;
+
+  LidarIngestionDecision pending{};
+  pending.reason = LidarIngestionReason::kAmbiguousKnownStatic;
+  pending.known_static_result_available = true;
+  pending.known_static_result.distance_before_solid_m = 0.66;
 
   LidarIngestionDecision confirmed = pending;
   confirmed.reason = LidarIngestionReason::kExpectedKnownStatic;
@@ -462,30 +420,9 @@ TEST(LidarIngestionDecision, OpeningBoundaryDetachedResolutionHasDedicatedCounte
 }
 
 TEST(LidarIngestionDecision,
-     EndpointNearKnownSurfaceBeyondEffectiveRangeIsStillSuppressed) {
-  constexpr double kMeasuredRangeM = 34.94;
-  constexpr double kEffectiveMaxRangeM = 35.0;
-  constexpr double kKnownSurfaceRangeM = 35.1;
+     RetiredStaticClassifierLeavesUnknownObstacleEvidenceUntouched) {
   const Point3 direction{1.0, 0.0, 0.0};
-  const KnownStaticLidarHitClassifier classifier =
-      knownSurfaceAtRange(direction, kKnownSurfaceRangeM);
-  LidarBeamObservation beam = observation(direction, kMeasuredRangeM);
-  beam.effective_max_range_m = kEffectiveMaxRangeM;
-
-  const LidarIngestionDecision decision =
-      evaluateLidarIngestion(beam, &classifier, nullptr);
-
-  EXPECT_EQ(decision.expected_surface, LidarExpectedSurfaceKind::kKnownStatic);
-  EXPECT_EQ(decision.reason, LidarIngestionReason::kExpectedKnownStatic);
-  EXPECT_EQ(decision.action, LidarIngestionAction::kSuppressAllUpdates);
-  EXPECT_TRUE(decision.known_static_result_available);
-}
-
-TEST(LidarIngestionDecision,
-     DistantKnownSurfaceOutsideLidarRangeIsAnOrdinaryUnknownObstacle) {
-  const Point3 direction{1.0, 0.0, 0.0};
-  const KnownStaticLidarHitClassifier classifier =
-      knownSurfaceAtRange(direction, 212.0);
+  const KnownStaticLidarHitClassifier classifier;
   LidarBeamObservation beam = observation(direction, 29.0);
   beam.effective_max_range_m = 30.0;
 
@@ -538,34 +475,15 @@ TEST(LidarIngestionDecision, AcceptedEvaluatorDecisionsSatisfySharedInvariant) {
   const Point3 horizontal{1.0, 0.0, 0.0};
   const Point3 downward{0.6, 0.0, -0.8};
   const GroundLidarRejectionConfig ground{};
-  const KnownStaticLidarHitClassifier known_surface = horizontalKnownSurface();
-
-  std::vector<KnownPassageSolidVolume> opening_volumes;
-  opening_volumes.push_back(KnownPassageSolidVolume{
-      .structure_id = "opening_building",
-      .opening_id = "opening",
-      .part_id = "upper_mass",
-      .part_kind = KnownPassageSolidPartKind::kUpper,
-      .center = Point2{6.0, 0.0},
-      .normal_xy = Point2{1.0, 0.0},
-      .lateral_xy = Point2{0.0, 1.0},
-      .depth_m = 2.0,
-      .width_m = 4.0,
-      .min_z_m = 12.0,
-      .max_z_m = 16.0,
-      .opening_center = Point2{6.0, 0.0},
-      .opening_depth_m = 2.0,
-      .opening_width_m = 4.0,
-      .opening_min_z_m = 8.0,
-      .opening_max_z_m = 12.0,
-  });
-  const KnownStaticLidarHitClassifier opening_surface{std::move(opening_volumes)};
+  const KnownStaticLidarHitClassifier retired_classifier;
 
   const std::array<LidarIngestionDecision, 4U> decisions{
       evaluateLidarIngestion(observation(horizontal, 8.0), nullptr, nullptr),
       evaluateLidarIngestion(observation(downward, 9.0), nullptr, &ground),
-      evaluateLidarIngestion(observation(horizontal, 3.0), &known_surface, nullptr),
-      evaluateLidarIngestion(observation(horizontal, 6.0), &opening_surface, nullptr),
+      evaluateLidarIngestion(observation(horizontal, 3.0), &retired_classifier,
+                             nullptr),
+      evaluateLidarIngestion(observation(horizontal, 6.0), &retired_classifier,
+                             nullptr),
   };
   for (const LidarIngestionDecision& decision : decisions) {
     ASSERT_EQ(decision.action, LidarIngestionAction::kIntegrateFreeAndHit);
@@ -588,63 +506,13 @@ TEST(LidarIngestionDecision, MissingRequiredAttitudeMakesGroundUnavailable) {
   EXPECT_EQ(decision.action, LidarIngestionAction::kIntegrateFreeAndHit);
 }
 
-TEST(LidarIngestionDecision, TiedExpectedSurfacesSuppressAmbiguousHit) {
-  const Point3 direction{0.6, 0.0, -0.8};
-  constexpr double kExpectedGroundRangeM = 12.4375;
-  const KnownStaticLidarHitClassifier classifier =
-      knownSurfaceAtRange(direction, kExpectedGroundRangeM);
-  const GroundLidarRejectionConfig ground{};
-  const LidarIngestionDecision decision = evaluateLidarIngestion(
-      observation(direction, kExpectedGroundRangeM), &classifier, &ground);
-
-  EXPECT_EQ(decision.expected_surface, LidarExpectedSurfaceKind::kTied);
-  EXPECT_EQ(decision.reason, LidarIngestionReason::kTiedExpectedSurfaces);
-  EXPECT_EQ(decision.action, LidarIngestionAction::kSuppressAllUpdates);
-}
-
-TEST(LidarIngestionDecision, NearestProviderSelectionUsesNearestSurface) {
-  const Point3 direction{0.6, 0.0, -0.8};
-  const GroundLidarRejectionConfig ground{};
-
-  const KnownStaticLidarHitClassifier nearer_known =
-      knownSurfaceAtRange(direction, 8.0);
-  const LidarIngestionDecision known_decision =
-      evaluateLidarIngestion(observation(direction, 8.0), &nearer_known, &ground);
-  EXPECT_EQ(known_decision.expected_surface, LidarExpectedSurfaceKind::kKnownStatic);
-  EXPECT_EQ(known_decision.reason, LidarIngestionReason::kExpectedKnownStatic);
-  EXPECT_EQ(known_decision.action, LidarIngestionAction::kSuppressAllUpdates);
-
-  const KnownStaticLidarHitClassifier farther_known =
-      knownSurfaceAtRange(direction, 20.0);
-  const LidarIngestionDecision ground_decision =
-      evaluateLidarIngestion(observation(direction, 12.4375), &farther_known, &ground);
-  EXPECT_EQ(ground_decision.expected_surface, LidarExpectedSurfaceKind::kGround);
-  EXPECT_EQ(ground_decision.reason, LidarIngestionReason::kExpectedGround);
-  EXPECT_EQ(ground_decision.action, LidarIngestionAction::kSuppressAllUpdates);
-}
-
-TEST(LidarIngestionDecision, ClearlyCloserHitWinsBeforeTiedExpectedSurfaces) {
-  const Point3 direction{0.6, 0.0, -0.8};
-  constexpr double kExpectedGroundRangeM = 12.4375;
-  const KnownStaticLidarHitClassifier classifier =
-      knownSurfaceAtRange(direction, kExpectedGroundRangeM);
-  const GroundLidarRejectionConfig ground{};
-  const LidarIngestionDecision decision =
-      evaluateLidarIngestion(observation(direction, 10.0), &classifier, &ground);
-
-  EXPECT_EQ(decision.reason, LidarIngestionReason::kObstacleBeforeExpectedSurface);
-  EXPECT_EQ(decision.action, LidarIngestionAction::kIntegrateFreeAndHit);
-}
-
 TEST(LidarIngestionDecision, TiedGroundAltitudeRejectionIsNotCountedAsNonGround) {
   const Point3 direction{0.6, 0.0, -0.8};
   constexpr double kExpectedGroundRangeM = 12.4375;
-  const KnownStaticLidarHitClassifier classifier =
-      knownSurfaceAtRange(direction, kExpectedGroundRangeM);
-  const GroundLidarRejectionConfig ground{};
   const LidarBeamObservation beam = observation(direction, kExpectedGroundRangeM);
-  const LidarIngestionDecision decision =
-      evaluateLidarIngestion(beam, &classifier, &ground);
+  LidarIngestionDecision decision{};
+  decision.reason = LidarIngestionReason::kTiedExpectedSurfaces;
+  decision.expected_surface = LidarExpectedSurfaceKind::kTied;
   LidarIngestionDecisionStats stats;
 
   recordLidarIngestionDecision(beam, decision, true, stats);
@@ -674,7 +542,7 @@ TEST(LidarIngestionDecision, DiagnosticClassesHaveIndependentBounds) {
 
   GroundLidarRejectionConfig invalid_ground{};
   invalid_ground.ground_altitude_m = std::numeric_limits<double>::quiet_NaN();
-  const KnownStaticLidarHitClassifier classifier = horizontalKnownSurface();
+  const KnownStaticLidarHitClassifier classifier;
   const LidarBeamObservation known_beam = observation(Point3{1.0, 0.0, 0.0}, 5.0);
   const LidarIngestionDecision known_decision =
       evaluateLidarIngestion(known_beam, &classifier, &invalid_ground);
@@ -696,7 +564,7 @@ TEST(LidarIngestionDecision, DiagnosticClassesHaveIndependentBounds) {
   EXPECT_EQ(representatives.count, 4U);
   const std::string formatted = formatLidarIngestionRepresentativeDiagnostics(stats);
   EXPECT_NE(
-      formatted.find("class=classification_unavailable reason=expected_known_static"),
+      formatted.find("class=classification_unavailable reason=no_expected_surface"),
       std::string::npos);
   EXPECT_EQ(countOccurrences(formatted, "ray_origin=("), representatives.count);
   EXPECT_EQ(countOccurrences(formatted, "ray_dir=("), representatives.count);

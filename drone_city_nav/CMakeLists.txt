@@ -729,6 +729,53 @@ install(DIRECTORY config launch models rviz worlds DESTINATION share/${PROJECT_N
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
+
+  function(add_drone_city_nav_core_gtest target_name source_path)
+    ament_add_gtest(${target_name} ${source_path})
+    target_compile_features(${target_name} PRIVATE cxx_std_20)
+    target_link_libraries(${target_name} drone_city_nav_core)
+    enable_project_warnings(${target_name})
+  endfunction()
+
+  function(add_drone_city_nav_ros_adapter_gtest target_name source_path)
+    ament_add_gtest(${target_name} ${source_path})
+    target_compile_features(${target_name} PRIVATE cxx_std_20)
+    target_link_libraries(${target_name} drone_city_nav_ros_adapters)
+    set_tests_properties(
+      ${target_name}
+      PROPERTIES ENVIRONMENT
+                 "LD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}:$ENV{LD_LIBRARY_PATH}")
+    enable_project_warnings(${target_name})
+  endfunction()
+
+  add_drone_city_nav_core_gtest(ambiguous_lidar_hit_tracker_test
+                                tests/ambiguous_lidar_hit_tracker_test.cpp)
+  add_drone_city_nav_core_gtest(debug_image_test tests/debug_image_test.cpp)
+  add_drone_city_nav_ros_adapter_gtest(
+    lidar_debug_node_config_test tests/lidar_debug_node_config_test.cpp)
+  add_drone_city_nav_ros_adapter_gtest(
+    lidar_debug_pointclouds_test tests/lidar_debug_pointclouds_test.cpp)
+  add_drone_city_nav_core_gtest(lidar_debug_renderer_test
+                                tests/lidar_debug_renderer_test.cpp)
+  add_drone_city_nav_core_gtest(
+    lidar_debug_snapshot_pipeline_test
+    tests/lidar_debug_snapshot_pipeline_test.cpp)
+  add_drone_city_nav_core_gtest(lidar_ingestion_decision_test
+                                tests/lidar_ingestion_decision_test.cpp)
+  add_drone_city_nav_core_gtest(lidar_memory_hit_diagnostics_test
+                                tests/lidar_memory_hit_diagnostics_test.cpp)
+  add_drone_city_nav_core_gtest(lidar_motion_compensation_test
+                                tests/lidar_motion_compensation_test.cpp)
+  add_drone_city_nav_core_gtest(lidar_snapshot_writer_test
+                                tests/lidar_snapshot_writer_test.cpp)
+  add_drone_city_nav_ros_adapter_gtest(
+    obstacle_memory_provenance_ros_test
+    tests/obstacle_memory_provenance_ros_test.cpp)
+  add_drone_city_nav_core_gtest(obstacle_memory_test
+                                tests/obstacle_memory_test.cpp)
+  add_drone_city_nav_core_gtest(px4_ros_time_mapper_test
+                                tests/px4_ros_time_mapper_test.cpp)
+
   ament_add_gtest(intercept_mission_test tests/intercept_mission_test.cpp)
   target_compile_features(intercept_mission_test PRIVATE cxx_std_20)
   target_link_libraries(intercept_mission_test drone_city_nav_core)

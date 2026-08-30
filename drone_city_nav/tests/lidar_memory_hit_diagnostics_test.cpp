@@ -56,7 +56,7 @@ namespace {
               .volume_matched = true,
               .confident_face_interior = true,
               .part_kind_valid = true,
-              .part_kind = KnownPassageSolidPartKind::kUpper,
+              .part_kind = LegacyStaticPartKind::kUpper,
               .structure_id = "connector",
               .opening_id = "opening",
               .part_id = "upper_mass",
@@ -86,7 +86,7 @@ namespace {
           KnownStaticExpectedSurface{
               .range_m = 9.0,
               .intersection_map_m = Point3{14.0, 6.0, 7.0},
-              .part_kind = KnownPassageSolidPartKind::kUpper,
+              .part_kind = LegacyStaticPartKind::kUpper,
               .structure_id = "connector",
               .opening_id = "opening",
               .part_id = "upper_mass",

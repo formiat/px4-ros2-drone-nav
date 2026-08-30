@@ -257,8 +257,10 @@ no mixed authority revision is observable.
   `ProductionMppiNode`; retain only composition and ROS I/O in the node.
 - [ ] Enforce the internal dependency graph with CMake targets and stop
   installing private implementation headers as public API.
-- [ ] Register every production-relevant GTest source and replace source-text
-  transaction checks with executable state-machine and concurrency tests.
+- [x] Register every production-relevant GTest source and remove the stale test
+  for the retired raw-snapshot/risk-field protocol.
+- [ ] Replace source-text transaction checks with executable state-machine and
+  concurrency tests.
 - [ ] Keep public and private headers self-contained and retain a temporary
   umbrella include only where migration compatibility requires it.
 - [ ] Pass formatting, static analysis, C++ tests, and script tests after every

@@ -56,7 +56,7 @@ namespace {
   hit.known_static.volume_matched = true;
   hit.known_static.confident_face_interior = true;
   hit.known_static.part_kind_valid = true;
-  hit.known_static.part_kind = KnownPassageSolidPartKind::kUpper;
+  hit.known_static.part_kind = LegacyStaticPartKind::kUpper;
   hit.known_static.structure_id = "building";
   hit.known_static.opening_id = "opening";
   hit.known_static.part_id = "upper_mass";
