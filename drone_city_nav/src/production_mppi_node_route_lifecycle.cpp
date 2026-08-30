@@ -7,7 +7,7 @@ namespace drone_city_nav {
 RouteSegmentCompletionAssessment3D
 ProductionMppiNode::assessActiveRouteCompletion3D(const Point3& position) {
   const std::shared_ptr<const ExecutionPlan3D> snapshot =
-      execution_route_store_.snapshot();
+      route_execution_manager_.plan();
   const CertifiedRouteSuffix3D* const route =
       snapshot != nullptr ? snapshot->route() : nullptr;
   if (route == nullptr || route->geometry == nullptr ||
@@ -28,7 +28,7 @@ ProductionMppiNode::assessActiveRouteCompletion3D(const Point3& position) {
 
 std::uint64_t ProductionMppiNode::nextRouteGeneration3D() {
   const std::shared_ptr<const ExecutionPlan3D> snapshot =
-      execution_route_store_.snapshot();
+      route_execution_manager_.plan();
   const std::uint64_t current_generation =
       snapshot != nullptr ? snapshot->routeGenerationHighWater() : 0U;
   return current_generation == std::numeric_limits<std::uint64_t>::max()

@@ -64,7 +64,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
           cycle.latest_lidar_evidence->contentFingerprint()) {
     return publication;
   }
-  hold_expected = execution_route_store_.snapshot();
+  hold_expected = route_execution_manager_.plan();
   if (hold_expected == nullptr ||
       hold_expected != cycle.route_execution.source_snapshot) {
     RCLCPP_ERROR_THROTTLE(
@@ -295,7 +295,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionRevocatio
 
   const std::scoped_lock evidence_lock{execution_evidence_commit_mutex_};
   const std::shared_ptr<const ExecutionPlan3D> expected =
-      execution_route_store_.snapshot();
+      route_execution_manager_.plan();
   if (expected == nullptr) {
     return publication;
   }
@@ -372,8 +372,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionRevocatio
     }
 
     const ExecutionRoutePublicationStatus3D snapshot_status =
-        transition_required ? execution_route_store_.publish(expected, transition)
-        : execution_route_store_.snapshot() == expected
+        transition_required ? route_execution_manager_.publishPlan(expected, transition)
+        : route_execution_manager_.plan() == expected
             ? ExecutionRoutePublicationStatus3D::kPublished
             : ExecutionRoutePublicationStatus3D::kStaleSnapshotVersion;
     if (snapshot_status != ExecutionRoutePublicationStatus3D::kPublished) {
@@ -424,7 +424,7 @@ bool ProductionMppiNode::handleRequestedExecutionRevocation(const std::int64_t n
   {
     const std::scoped_lock lock{execution_evidence_commit_mutex_, input_mutex_};
     const std::shared_ptr<const ExecutionPlan3D> snapshot =
-        execution_route_store_.snapshot();
+        route_execution_manager_.plan();
     const bool snapshot_has_executable_authority =
         snapshot != nullptr && (snapshot->finiteExecution() != nullptr ||
                                 snapshot->directTrackingExecution() != nullptr ||
@@ -444,7 +444,7 @@ void ProductionMppiNode::publishFailClosedExecutionRevocation(
     return;
   }
   const std::shared_ptr<const ExecutionPlan3D> snapshot =
-      execution_route_store_.snapshot();
+      route_execution_manager_.plan();
   const bool authority_present =
       snapshot != nullptr && (snapshot->phase() == ExecutionRoutePhase3D::kRevoked ||
                               snapshot->finiteExecution() != nullptr ||

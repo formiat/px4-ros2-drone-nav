@@ -279,7 +279,9 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
       .physical_trajectory_invalidated = false,
       .direct_tracking_identity = std::move(direct_tracking_identity),
   };
-  result.source_snapshot = execution_route_store_.snapshot();
+  const RouteExecutionManagerSnapshot3D manager_snapshot =
+      route_execution_manager_.snapshot();
+  result.source_snapshot = manager_snapshot.plan;
   result.certification_snapshot = result.source_snapshot;
   result.execution_owner_available =
       result.source_snapshot != nullptr &&
@@ -289,13 +291,12 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
   if (result.source_snapshot == nullptr) {
     return result;
   }
-  const std::shared_ptr<const PendingCertifiedRoute3D> stale_pending =
-      pending_certified_route_mailbox_.snapshot();
+  const std::shared_ptr<const PendingCertifiedRoute3D>& stale_pending =
+      manager_snapshot.pending;
   if (stale_pending != nullptr &&
       !pendingCertifiedRouteEligible3D(*stale_pending, *result.source_snapshot) &&
       pendingRoutePermanentlyObsolete(*stale_pending, *result.source_snapshot)) {
-    static_cast<void>(
-        pending_certified_route_mailbox_.acknowledgeIfSame(stale_pending));
+    static_cast<void>(route_execution_manager_.acknowledgePendingIfSame(stale_pending));
   }
   if (result.direct_tracking_identity.has_value()) {
     return result;
@@ -668,7 +669,7 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
         // expose progress and route-certificate generations without the finite
         // command horizon and its immediate braking fallback. The planning stage
         // certifies both against this exact snapshot and composes the two
-        // transitions into one store CAS rooted at source_snapshot.
+        // transitions into one manager publication rooted at source_snapshot.
         result.progress_preparation =
             std::make_shared<const ExecutionRouteTransitionResult3D>(advanced);
         result.certification_snapshot = advanced.next;
@@ -680,17 +681,17 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
   const std::shared_ptr<const ExecutionPlan3D>& route_state =
       result.certification_snapshot != nullptr ? result.certification_snapshot
                                                : result.source_snapshot;
-  result.pending_route = pending_certified_route_mailbox_.snapshot();
+  result.pending_route = route_execution_manager_.pending();
   if (result.pending_route != nullptr &&
       !pendingCertifiedRouteEligible3D(*result.pending_route, *route_state) &&
       pendingRoutePermanentlyObsolete(*result.pending_route, *route_state)) {
-    if (pending_certified_route_mailbox_.acknowledgeIfSame(result.pending_route)) {
+    if (route_execution_manager_.acknowledgePendingIfSame(result.pending_route)) {
       result.pending_route.reset();
     } else {
       // A newer publication defeated the exact acknowledgement. Preserve that
       // resident identity so this tick may assess it and recovery cannot
-      // mistake the caller-local stale pointer for an empty mailbox.
-      result.pending_route = pending_certified_route_mailbox_.snapshot();
+      // mistake the caller-local stale pointer for an empty pending slot.
+      result.pending_route = route_execution_manager_.pending();
     }
   }
   if (result.pending_route != nullptr &&
@@ -767,7 +768,7 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
           splice_readiness.tangent_alignment,
           permanently_unavailable ? "discard_and_replan" : "retain_active_route");
       if (permanently_unavailable &&
-          pending_certified_route_mailbox_.acknowledgeIfSame(result.pending_route)) {
+          route_execution_manager_.acknowledgePendingIfSame(result.pending_route)) {
         result.pending_route.reset();
       }
     } else if (snapshot_retention_authorized) {
@@ -775,11 +776,11 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
           result.pending_route->route.identity.generation;
       const std::uint64_t base_generation = result.pending_route->base_route_generation;
       const bool acknowledged =
-          pending_certified_route_mailbox_.acknowledgeIfSame(result.pending_route);
+          route_execution_manager_.acknowledgePendingIfSame(result.pending_route);
       if (acknowledged) {
         result.pending_route.reset();
       } else {
-        result.pending_route = pending_certified_route_mailbox_.snapshot();
+        result.pending_route = route_execution_manager_.pending();
       }
       RCLCPP_INFO(get_logger(),
                   "ROUTE_HANDOFF3D pending_generation=%" PRIu64

@@ -109,13 +109,13 @@ The materialized result is then geometry-optimized, assigned a speed-dependent
 tracking tube, compiled into immutable execution geometry, and certified against
 the exact raw world lineage before activation.
 
-The target `RouteExecutionManager3D` retains the accepted mission intent and
-route identity across ordinary world updates. Successor search starts from a
+`RouteExecutionManager3D` retains the accepted mission intent and route identity
+across ordinary world updates and owns the pending successor and resident plan
+under one lock. Successor search starts from a
 certified future station and must preserve stopping distance, measured p99
 planning latency, and overlap reserve. A newer occupied observation repairs only
 the affected suffix or transfers ownership to the certified braking plan; it
-never clears a still-valid prefix. Production is still being migrated from the
-separate snapshot-store, pending-mailbox, and node-owned lifecycle fields.
+never clears a still-valid prefix.
 
 Offline `FreeSpaceTopology3D` remains optional static evidence for passage
 identities and constrained spans. It is not an online route producer, does not
@@ -136,12 +136,11 @@ abandoned if the resident world, objective, or captured raw snapshot changes
 before the execution manager commits it. Unknown voxels remain traversable
 during this raw check.
 
-The production execution boundary must have one owner. The test-only
-`RouteSupervisor3D` is legacy and is not a production authority. The target
-manager atomically publishes the active plan, owner, input, and applied-control
-evidence; a successor that loses an optimistic race leaves the previous
-authority unchanged and requests a fresh read instead of constructing an
-ownership-mismatch state.
+The production execution boundary has one plan owner. The manager atomically
+replaces a captured pending successor and resident plan; a successor that loses
+an optimistic race leaves both unchanged and requests a fresh read. The remaining
+remediation step is to publish the manager plan together with horizon owner,
+versioned input, and applied-control evidence as one committed authority.
 
 Initial search heading uses a cascade:
 

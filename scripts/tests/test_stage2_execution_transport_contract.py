@@ -25,7 +25,7 @@ EXECUTION_RETENTION = SOURCE / "production_mppi_node_execution_retention.cpp"
 OPTIONAL_CONSTRAINTS = SOURCE / "production_mppi_node_optional_constraints.cpp"
 ROUTE_ACTIVATION = SOURCE / "production_mppi_route_activation.cpp"
 ROUTE_EXECUTION = SOURCE / "production_mppi_route_execution.cpp"
-PENDING_CERTIFIED_ROUTE = SOURCE / "pending_certified_route_3d.cpp"
+ROUTE_EXECUTION_MANAGER = SOURCE / "route_execution_manager_3d.cpp"
 CONTROL_FEEDBACK = SOURCE / "production_mppi_node_control_feedback.cpp"
 ROUTE_WORLD_TEST = PACKAGE / "tests" / "production_mppi_route_world_test.cpp"
 OFFBOARD = SOURCE / "mppi_offboard_node.cpp"
@@ -619,7 +619,7 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         activation = ROUTE_ACTIVATION.read_text(encoding="utf-8")
         execution = read_execution_sources()
         route_execution = ROUTE_EXECUTION.read_text(encoding="utf-8")
-        pending_mailbox = PENDING_CERTIFIED_ROUTE.read_text(encoding="utf-8")
+        execution_manager = ROUTE_EXECUTION_MANAGER.read_text(encoding="utf-8")
 
         raw_producer = raw_input.split(
             "void ProductionMppiNode::queueRawWorld3D", maxsplit=1
@@ -675,7 +675,7 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
             "const std::scoped_lock evidence_lock{execution_evidence_commit_mutex_};"
         )
         activation_snapshot = activation_capture.index(
-            "snapshot.execution_snapshot = execution_route_store_.snapshot();"
+            "snapshot.execution_snapshot = route_execution_manager_.plan();"
         )
         activation_raw = activation_capture.index(
             "snapshot.raw_world = latest_raw_world_3d_.load(std::memory_order_acquire);"
@@ -712,9 +712,9 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         self.assertIn("assessOffboardSessionPublicationCurrentness", owner_commit)
         self.assertIn("cycle.offboard_session", owner_commit)
 
-        pending_snapshot_cas = owner_commit.index("commitExecutionIfSame")
+        pending_snapshot_cas = owner_commit.index("commitPendingTransitionIfSame")
         fallback_snapshot_cas = owner_commit.index(
-            "execution_route_store_.publish(publication_commit.expected_snapshot"
+            "route_execution_manager_.publishPlan(publication_commit.expected_snapshot"
         )
         self.assertLess(pending_snapshot_cas, owner_control_revoke)
         self.assertLess(fallback_snapshot_cas, owner_control_revoke)
@@ -736,8 +736,8 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         self.assertLess(snapshot_currentness, snapshot_owner_commit)
         self.assertNotIn("evidence_lock.unlock", snapshot_commit)
 
-        atomic_pending_commit = pending_mailbox.split(
-            "PendingCertifiedRouteMailbox3D::commitExecutionIfSame", maxsplit=1
+        atomic_pending_commit = execution_manager.split(
+            "RouteExecutionManager3D::commitPendingTransitionIfSame", maxsplit=1
         )[1].split("} // namespace drone_city_nav", maxsplit=1)[0]
         pending_mutex = atomic_pending_commit.index(
             "const std::scoped_lock lock{mutex_};"
@@ -745,13 +745,13 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         pending_identity = atomic_pending_commit.index(
             "pending_ != expected_pending"
         )
-        pending_store_cas = atomic_pending_commit.index(
-            "execution_store.publish(expected_snapshot, transition)"
+        pending_plan_cas = atomic_pending_commit.index(
+            "publishPlanLocked(expected_plan, transition)"
         )
         pending_consume = atomic_pending_commit.index("pending_.reset();")
         self.assertLess(pending_mutex, pending_identity)
-        self.assertLess(pending_identity, pending_store_cas)
-        self.assertLess(pending_store_cas, pending_consume)
+        self.assertLess(pending_identity, pending_plan_cas)
+        self.assertLess(pending_plan_cas, pending_consume)
 
         hold_commit = execution_publication.split(
             "ProductionMppiNode::publishPositionHold", maxsplit=1
@@ -760,7 +760,7 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
             "current_lidar->evidenceId() != cycle.latest_lidar_evidence->evidenceId()"
         )
         hold_snapshot_load = hold_commit.index(
-            "hold_expected = execution_route_store_.snapshot();"
+            "hold_expected = route_execution_manager_.plan();"
         )
         hold_transition = hold_commit.index("transferToExecutionHold3D")
         hold_horizon = hold_commit.index("makeExecutionHorizon(")
@@ -849,7 +849,7 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         )
         self.assertLess(route_advance, route_preparation)
         self.assertLess(route_preparation, certification_snapshot)
-        self.assertNotIn("execution_route_store_.publish", route_progress_preparation)
+        self.assertNotIn("route_execution_manager_.publishPlan", route_progress_preparation)
 
         atomic_plan_commit = execution.split(
             "const ExecutionRouteTransitionResult3D prepared_transition", maxsplit=1
@@ -925,7 +925,7 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         )
         self.assertLess(request_currentness, snapshot_cas)
         self.assertLess(request_currentness, dds_publish)
-        snapshot_owner_commit = owner_commit.index("execution_route_store_.publish")
+        snapshot_owner_commit = owner_commit.index("route_execution_manager_.publishPlan")
         executable_owner_install = owner_commit.index("execution_horizon_owner_ = owner")
         self.assertLess(snapshot_owner_commit, executable_owner_install)
 
@@ -951,7 +951,7 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         )[1].split("ProductionMppiNode::requestExecutionRevocation", maxsplit=1)[0]
         self.assertIn("ExecutionRouteTransitionStatus3D::kNoChange", revoke)
         session_gate = revoke.index("if (!current_session)")
-        revoke_cas = revoke.index("execution_route_store_.publish(expected, transition)")
+        revoke_cas = revoke.index("route_execution_manager_.publishPlan(expected, transition)")
         sequence_commit = revoke.index(
             "execution_horizon_sequence_ = revocation.sequence"
         )

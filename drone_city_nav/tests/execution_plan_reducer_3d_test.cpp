@@ -77,6 +77,7 @@ TEST(ExecutionPlanReducer3DTest, MalformedTaggedCommandFailsClosed) {
   const ExecutionRouteTransitionResult3D rejected =
       reduceExecutionPlan3D(*active, ReplaceCertifiedRouteCommand3D{
                                          .guard = SnapshotFixture3D::guard(*active),
+                                         .splice = nullptr,
                                      });
 
   EXPECT_EQ(rejected.status, ExecutionRouteTransitionStatus3D::kInvalidCandidate);

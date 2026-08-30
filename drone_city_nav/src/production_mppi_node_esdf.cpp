@@ -155,7 +155,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       const bool roi_refresh_pending =
           static_roi_refresh_lifecycle_.pending(roi_refresh);
       const std::shared_ptr<const ExecutionPlan3D> refresh_execution =
-          roi_refresh_pending ? execution_route_store_.snapshot() : nullptr;
+          roi_refresh_pending ? route_execution_manager_.plan() : nullptr;
       const bool proactive_roi_refresh =
           roi_refresh_pending && refresh_execution != nullptr &&
           refresh_execution->route() != nullptr &&
@@ -301,7 +301,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       }
       static_esdf_uploaded_ = true;
       const std::shared_ptr<const ExecutionPlan3D> binding_execution =
-          proactive_roi_refresh ? execution_route_store_.snapshot() : nullptr;
+          proactive_roi_refresh ? route_execution_manager_.plan() : nullptr;
       const bool refresh_base_current =
           proactive_roi_refresh && binding_execution != nullptr &&
           binding_execution->route() != nullptr &&
@@ -448,7 +448,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       if (route_search_required) {
         const std::shared_ptr<const ExecutionPlan3D> resident_execution =
             binding_execution != nullptr ? binding_execution
-                                         : execution_route_store_.snapshot();
+                                         : route_execution_manager_.plan();
         const std::uint64_t resident_route_generation =
             resident_execution != nullptr
                 ? resident_execution->routeGenerationHighWater()

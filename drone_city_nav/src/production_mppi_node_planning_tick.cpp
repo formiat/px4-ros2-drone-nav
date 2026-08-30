@@ -112,7 +112,7 @@ void ProductionMppiNode::planningTick() {
           ? nullptr
           : latest_lidar_evidence_.load(std::memory_order_acquire);
   const std::shared_ptr<const ExecutionPlan3D> execution_snapshot =
-      execution_route_store_.snapshot();
+      route_execution_manager_.plan();
   // Timestamp the immutable planning view only after all callback-owned inputs
   // have been captured. A concurrently published evidence value may have a
   // receive stamp later than tick entry, but never later than this boundary.
@@ -356,7 +356,7 @@ void ProductionMppiNode::planningTick() {
       observed_3d_world);
   const PendingCertifiedRouteRecoveryResult3D pending_recovery =
       recoverPendingCertifiedRouteLiveness3D(
-          pending_certified_route_mailbox_, route_execution.pending_route,
+          route_execution_manager_, route_execution.pending_route,
           PendingCertifiedRouteRecoveryObservation3D{
               .direct_tracking_requested =
                   route_execution.direct_tracking_identity.has_value(),

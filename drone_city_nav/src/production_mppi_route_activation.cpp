@@ -202,7 +202,7 @@ ProductionMppiNode::captureRouteActivationSnapshot3D() {
   ProductionRouteActivationSnapshot3D snapshot;
   {
     const std::scoped_lock evidence_lock{execution_evidence_commit_mutex_};
-    snapshot.execution_snapshot = execution_route_store_.snapshot();
+    snapshot.execution_snapshot = route_execution_manager_.plan();
     snapshot.raw_world = latest_raw_world_3d_.load(std::memory_order_acquire);
   }
   {
@@ -644,7 +644,7 @@ void ProductionMppiNode::commitRouteActivation3D(
   report.generation_assessed = true;
 
   const std::shared_ptr<const ExecutionPlan3D> current_execution =
-      execution_route_store_.snapshot();
+      route_execution_manager_.plan();
   const CertifiedRouteSuffix3D* const current_route =
       current_execution != nullptr ? current_execution->route() : nullptr;
   const DirectTrackingFiniteExecution3D* const current_direct =
@@ -844,7 +844,7 @@ void ProductionMppiNode::commitRouteActivation3D(
         !raw_validation_required ||
         latest_raw_world_3d_.load(std::memory_order_acquire) == snapshot.raw_world;
     const bool execution_base_current =
-        sameExecutionRouteBase(current_execution, execution_route_store_.snapshot());
+        sameExecutionRouteBase(current_execution, route_execution_manager_.plan());
     const bool candidate_world_coherent =
         productionWorldGenerationCoherent(*candidate.world);
     report.resident_world_snapshot_current = resident_world_current;
@@ -861,7 +861,7 @@ void ProductionMppiNode::commitRouteActivation3D(
             .candidate_world_coherent = candidate_world_coherent,
         });
     if (pending != nullptr && report.snapshot_current) {
-      published_pending = pending_certified_route_mailbox_.publish(pending);
+      published_pending = route_execution_manager_.publishPending(pending);
     }
     if (published_pending) {
       report.activation_status = StaticRouteActivationStatus::kCertifiedPending;

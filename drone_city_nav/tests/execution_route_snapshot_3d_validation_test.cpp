@@ -624,8 +624,8 @@ TEST(ExecutionRouteSnapshot3DTest, GuardsAndStoreEnforceVersionedCasPublication)
   static_assert(std::is_const_v<std::remove_reference_t<
                     decltype(std::declval<ExecutionRouteTransitionResult3D&>().next)>>);
   SnapshotFixture3D fixture;
-  ExecutionRouteSnapshotStore3D store;
-  const std::shared_ptr<const ExecutionPlan3D> initial = store.snapshot();
+  RouteExecutionManager3D manager;
+  const std::shared_ptr<const ExecutionPlan3D> initial = manager.plan();
   const std::optional<CertifiedRouteSuffix3D> suffix = fixture.certify();
   ASSERT_TRUE(initial);
   ASSERT_TRUE(suffix.has_value());
@@ -636,20 +636,20 @@ TEST(ExecutionRouteSnapshot3DTest, GuardsAndStoreEnforceVersionedCasPublication)
       *initial, initial->version, *suffix, std::move(initial_execution));
   ASSERT_TRUE(activation.applied());
   ASSERT_TRUE(activation.next);
-  EXPECT_EQ(store.publish(initial, activation),
+  EXPECT_EQ(manager.publishPlan(initial, activation),
             ExecutionRoutePublicationStatus3D::kPublished);
-  EXPECT_EQ(store.publish(initial, activation),
+  EXPECT_EQ(manager.publishPlan(initial, activation),
             ExecutionRoutePublicationStatus3D::kStaleSnapshotVersion);
-  EXPECT_EQ(store.snapshot(), activation.next);
+  EXPECT_EQ(manager.plan(), activation.next);
 
-  ExecutionRouteSnapshotStore3D other_store;
-  const std::shared_ptr<const ExecutionPlan3D> other_initial = other_store.snapshot();
+  RouteExecutionManager3D other_manager;
+  const std::shared_ptr<const ExecutionPlan3D> other_initial = other_manager.plan();
   ASSERT_TRUE(other_initial);
   EXPECT_EQ(other_initial->version, initial->version);
-  EXPECT_EQ(other_store.publish(other_initial, activation),
+  EXPECT_EQ(other_manager.publishPlan(other_initial, activation),
             ExecutionRoutePublicationStatus3D::kStaleSnapshotVersion);
 
-  const std::shared_ptr<const ExecutionPlan3D> resident = store.snapshot();
+  const std::shared_ptr<const ExecutionPlan3D> resident = manager.plan();
   ASSERT_EQ(resident, activation.next);
   const ExecutionRouteTransitionResult3D first_replacement = replaceFiniteExecution3D(
       *resident, SnapshotFixture3D::guard(*resident),
@@ -662,9 +662,9 @@ TEST(ExecutionRouteSnapshot3DTest, GuardsAndStoreEnforceVersionedCasPublication)
                                              true, 102U));
   ASSERT_TRUE(first_replacement.applied());
   ASSERT_TRUE(competing_replacement.applied());
-  EXPECT_EQ(store.publish(resident, first_replacement),
+  EXPECT_EQ(manager.publishPlan(resident, first_replacement),
             ExecutionRoutePublicationStatus3D::kPublished);
-  EXPECT_EQ(store.publish(resident, competing_replacement),
+  EXPECT_EQ(manager.publishPlan(resident, competing_replacement),
             ExecutionRoutePublicationStatus3D::kStaleSnapshotVersion);
 
   FiniteExecutionState3D finite = SnapshotFixture3D::finiteExecution(*activation.next);
@@ -686,7 +686,7 @@ TEST(ExecutionRouteSnapshot3DTest, GuardsAndStoreEnforceVersionedCasPublication)
   EXPECT_EQ(replaceFiniteExecution3D(*activation.next, geometry_guard, finite).status,
             ExecutionRouteTransitionStatus3D::kGeometryRevisionMismatch);
 
-  EXPECT_EQ(store.publish(store.snapshot(), ExecutionRouteTransitionResult3D{}),
+  EXPECT_EQ(manager.publishPlan(manager.plan(), ExecutionRouteTransitionResult3D{}),
             ExecutionRoutePublicationStatus3D::kInvalidCandidate);
 }
 

@@ -70,8 +70,8 @@ TEST(ExecutionRouteSnapshot3DTest,
      ProgressAndPermanentBrakingFallbackPublishAsOneAtomicPlan) {
   SnapshotFixture3D fixture;
   const std::optional<CertifiedRouteSuffix3D> suffix = fixture.certify();
-  ExecutionRouteSnapshotStore3D store;
-  const std::shared_ptr<const ExecutionPlan3D> initial = store.snapshot();
+  RouteExecutionManager3D manager;
+  const std::shared_ptr<const ExecutionPlan3D> initial = manager.plan();
   if (!suffix.has_value() || initial == nullptr) {
     ADD_FAILURE() << "The fixture must provide an initial certified route";
     return;
@@ -81,9 +81,9 @@ TEST(ExecutionRouteSnapshot3DTest,
       SnapshotFixture3D::finitePlanForRoute(*initial, suffix.value(),
                                             FiniteExecutionKind3D::kNominal, 100U));
   ASSERT_TRUE(activation.applied());
-  ASSERT_EQ(store.publish(initial, activation),
+  ASSERT_EQ(manager.publishPlan(initial, activation),
             ExecutionRoutePublicationStatus3D::kPublished);
-  const std::shared_ptr<const ExecutionPlan3D> resident = store.snapshot();
+  const std::shared_ptr<const ExecutionPlan3D> resident = manager.plan();
   if (resident == nullptr || resident->route() == nullptr) {
     ADD_FAILURE() << "Activation must publish a route owner";
     return;
@@ -113,9 +113,9 @@ TEST(ExecutionRouteSnapshot3DTest,
   EXPECT_FALSE(progressed.publishable());
   EXPECT_TRUE(progressed.finiteExecution()[0].revalidation_required);
   EXPECT_TRUE(progressed.brakingFallback()[0].revalidation_required);
-  EXPECT_EQ(store.publish(resident, progress),
+  EXPECT_EQ(manager.publishPlan(resident, progress),
             ExecutionRoutePublicationStatus3D::kInvalidCandidate);
-  EXPECT_EQ(store.snapshot(), resident);
+  EXPECT_EQ(manager.plan(), resident);
 
   const FiniteExecutionPlan3D plan = SnapshotFixture3D::finitePlanForRoute(
       progressed, *progressed.route(), FiniteExecutionKind3D::kNominal, 101U);
@@ -162,9 +162,9 @@ TEST(ExecutionRouteSnapshot3DTest,
   EXPECT_EQ(std::addressof(following->execution.braking_tail),
             composed_snapshot.brakingFallback());
 
-  ASSERT_EQ(store.publish(resident, composed),
+  ASSERT_EQ(manager.publishPlan(resident, composed),
             ExecutionRoutePublicationStatus3D::kPublished);
-  EXPECT_EQ(store.snapshot(), composed.next);
+  EXPECT_EQ(manager.plan(), composed.next);
 }
 
 TEST(ExecutionRouteSnapshot3DTest,

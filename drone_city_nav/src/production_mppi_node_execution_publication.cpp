@@ -672,7 +672,7 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
           handled_execution_revocation_request_;
       const bool exact_resident_snapshot =
           commit.expected_snapshot != nullptr &&
-          execution_route_store_.snapshot() == commit.expected_snapshot;
+          route_execution_manager_.plan() == commit.expected_snapshot;
       const bool resident_execution_owner_matches =
           commit.expected_snapshot != nullptr &&
           execution_horizon_owner_.snapshot_execution_owner_epoch ==
@@ -830,23 +830,23 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
       owner_committed =
           publication_commit.expected_snapshot != nullptr &&
           publication_commit.transition != nullptr &&
-          execution_route_store_.publish(publication_commit.expected_snapshot,
-                                         *publication_commit.transition) ==
+          route_execution_manager_.publishPlan(publication_commit.expected_snapshot,
+                                               *publication_commit.transition) ==
               ExecutionRoutePublicationStatus3D::kPublished;
       break;
     case ProductionMppiHorizonCommitKind::kConfirmSnapshotUnchanged:
       owner_committed =
           publication_commit.expected_snapshot != nullptr &&
-          execution_route_store_.snapshot() == publication_commit.expected_snapshot;
+          route_execution_manager_.plan() == publication_commit.expected_snapshot;
       break;
     case ProductionMppiHorizonCommitKind::kCommitPendingSnapshotTransition:
       owner_committed =
           publication_commit.expected_snapshot != nullptr &&
           publication_commit.transition != nullptr &&
           publication_commit.expected_pending != nullptr &&
-          pending_certified_route_mailbox_.commitExecutionIfSame(
-              publication_commit.expected_pending, execution_route_store_,
-              publication_commit.expected_snapshot, *publication_commit.transition);
+          route_execution_manager_.commitPendingTransitionIfSame(
+              publication_commit.expected_pending, publication_commit.expected_snapshot,
+              *publication_commit.transition);
       break;
   }
   if (!owner_committed) {
@@ -920,7 +920,7 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitExecutionSnapshotHor
   const ExecutionPublicationCurrentnessStatus3D currentness =
       assessExecutionPublicationCurrentness3D(ExecutionPublicationCurrentnessCheck3D{
           .expected_snapshot = expected,
-          .current_snapshot = execution_route_store_.snapshot(),
+          .current_snapshot = route_execution_manager_.plan(),
           .raw_requirement = raw_required
                                  ? ExecutionPublicationRawRequirement3D::kRequired
                                  : ExecutionPublicationRawRequirement3D::kOptional,

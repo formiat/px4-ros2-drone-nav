@@ -3,10 +3,8 @@
 ## Status
 
 This is the active architecture-completion plan for roadmap item 12. It replaces
-the former mixture of aspirational `RouteManager3D` documentation, the test-only
-`RouteSupervisor3D`, and production ownership split across the retired
-world/route aggregate, `ExecutionRouteSnapshotStore3D`,
-`PendingCertifiedRouteMailbox3D`, and `ProductionMppiNode` fields.
+the former mixture of aspirational manager documentation, test-only lifecycle
+state, and split production ownership across world, route, and runtime fields.
 
 The migration is incomplete until every checklist item below is implemented,
 covered by executable tests, and the unchanged Manhattan acceptance gate in
@@ -229,9 +227,11 @@ published world.
   controller-neutral `CompiledTrajectory3D`.
 - [x] Replace execution phase plus optionals with the tagged variant and one pure
   transition reducer.
-- [ ] Make `RouteExecutionManager3D` the sole pending/active owner and publish
-  plan, owner, input, and applied-control evidence as one atomic authority.
-- [ ] Remove the test-only `RouteSupervisor3D` and all competing lifecycle
+- [x] Make `RouteExecutionManager3D` the sole pending/active plan owner and
+  linearize pending-to-active replacement under the same mutex.
+- [ ] Publish plan, owner, input, and applied-control evidence as one atomic
+  committed authority.
+- [x] Remove the test-only parallel lifecycle state and all competing lifecycle
   ownership terminology.
 - [ ] Extract world, planning, trajectory, execution, and control services from
   `ProductionMppiNode`; retain only composition and ROS I/O in the node.

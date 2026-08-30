@@ -69,7 +69,7 @@ class Stage2PlannerPublicationContractTest(unittest.TestCase):
         lidar_owner = commit.index("publication_lidar")
         lidar_freshness = commit.index("assessLatestLidarEvidenceFreshness3D")
         raw_currentness = commit.index("committed_world_current")
-        snapshot_cas = commit.index("execution_route_store_.publish")
+        snapshot_cas = commit.index("route_execution_manager_.publishPlan")
         wire_publication = commit.index("execution_horizon_pub_->publish")
         for barrier in (
             request_generation,

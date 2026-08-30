@@ -4,7 +4,6 @@
 
 #include <cstdint>
 #include <memory>
-#include <mutex>
 #include <optional>
 
 namespace drone_city_nav {
@@ -45,28 +44,7 @@ pendingCertifiedRouteEligible3D(const PendingCertifiedRoute3D& pending,
 [[nodiscard]] bool pendingCertifiedRouteRetainsSnapshotCertificate3D(
     const PendingCertifiedRoute3D& pending) noexcept;
 
-class PendingCertifiedRouteMailbox3D final {
-public:
-  [[nodiscard]] bool publish(std::shared_ptr<const PendingCertifiedRoute3D> candidate);
-
-  [[nodiscard]] std::shared_ptr<const PendingCertifiedRoute3D> snapshot() const;
-
-  [[nodiscard]] bool
-  acknowledgeIfSame(const std::shared_ptr<const PendingCertifiedRoute3D>& expected);
-
-  // Linearizes the exact pending-route identity with the execution-store CAS.
-  // A failed store publication leaves the pending route resident.
-  [[nodiscard]] bool commitExecutionIfSame(
-      const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending,
-      ExecutionRouteSnapshotStore3D& execution_store,
-      const std::shared_ptr<const ExecutionPlan3D>& expected_snapshot,
-      const ExecutionRouteTransitionResult3D& transition);
-
-private:
-  mutable std::mutex mutex_;
-  std::shared_ptr<const PendingCertifiedRoute3D> pending_;
-  std::uint64_t last_accepted_publication_sequence_{0U};
-};
+class RouteExecutionManager3D;
 
 struct PendingCertifiedRouteRecoveryObservation3D {
   bool direct_tracking_requested{false};
@@ -79,12 +57,12 @@ struct PendingCertifiedRouteRecoveryResult3D {
   bool request_successor{false};
 };
 
-// Resolves the no-owner mailbox liveness edge after pending-route
+// Resolves the no-owner pending-plan liveness edge after pending-route
 // recertification. A successor request is authorized only when there was no
 // pending route or the exact failed pending identity was acknowledged.
 [[nodiscard]] PendingCertifiedRouteRecoveryResult3D
 recoverPendingCertifiedRouteLiveness3D(
-    PendingCertifiedRouteMailbox3D& mailbox,
+    RouteExecutionManager3D& manager,
     const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending,
     const PendingCertifiedRouteRecoveryObservation3D& observation);
 

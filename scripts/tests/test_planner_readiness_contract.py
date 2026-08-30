@@ -63,7 +63,6 @@ HORIZON_CONTRACT_ROS_HEADER = (
 HORIZON_WITNESS = SOURCE / "execution_horizon_witness.cpp"
 APPLIED_CONTROL_ADMISSION = SOURCE / "applied_control_admission.cpp"
 OFFBOARD_SESSION_ADMISSION = SOURCE / "offboard_session_admission.cpp"
-PENDING_CERTIFIED_ROUTE = SOURCE / "pending_certified_route_3d.cpp"
 MISSION_WAYPOINT_SEQUENCE = SOURCE / "mission_waypoint_sequence.cpp"
 SPEED_POLICY = PACKAGE / "include" / "drone_city_nav" / "mppi_speed_policy.hpp"
 FINITE_HORIZON_HEADER = (
@@ -153,7 +152,7 @@ class PlannerReadinessContractTest(unittest.TestCase):
             "const bool initial_route_search_required = resident_route_generation == 0U",
             observed_esdf,
         )
-        self.assertIn("execution_route_store_.snapshot()", observed_esdf)
+        self.assertIn("route_execution_manager_.plan()", observed_esdf)
         self.assertIn('"active_route_preserved"', observed_esdf)
         self.assertIn("initial_route_search_already_pending", observed_esdf)
         self.assertNotIn("dropped_route_planning_worlds_", observed_esdf)

@@ -172,16 +172,16 @@ the shared `FlightTimeModel3D` for anisotropic translation and bounded turn time
 typed `ProductionPlannerSession3D` preserves the exact request and requeues
 bounded D* repair and execution-time refinement until convergence or no-route.
 
-The target ownership model is specified in
+The ownership model is specified in
 [`navigation_architecture_remediation.md`](navigation_architecture_remediation.md).
-`RouteExecutionManager3D` will keep a valid route sticky, start successor
-planning from a certified future station, splice with measured latency and
-braking reserve, and repair only invalid suffixes. Route geometry, tracking
-tube, nominal horizon, braking fallback, owner, versioned input, applied-control
-evidence, and evidence revisions must cross the execution boundary as one
-immutable committed authority. Until that migration is complete, production
-ownership remains distributed across the node, snapshot store, pending mailbox,
-and prepared-world aggregate and must not be described as a finished boundary.
+`RouteExecutionManager3D` keeps a valid route sticky and owns the resident plan
+and pending successor under one lock. Planning starts from a certified future
+station, splices with measured latency and braking reserve, and repairs only
+invalid suffixes. Route geometry, tracking tube, nominal horizon, braking
+fallback, owner, versioned input, applied-control evidence, and evidence
+revisions must still be combined into one immutable committed authority; those
+controller-publication fields remain in the node until that next migration is
+complete.
 
 GPU MPPI owns executable local motion and continuously warm-starts from its
 previous control sequence. Latest raw lidar evidence validates the finite swept

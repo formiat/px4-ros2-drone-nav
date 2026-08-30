@@ -243,7 +243,7 @@ add_library(
   src/execution_route_snapshot_3d_geometry.cpp
   src/execution_route_snapshot_3d_hold.cpp
   src/execution_route_snapshot_3d_progress.cpp
-  src/execution_route_snapshot_3d_store.cpp
+  src/execution_plan_3d.cpp
   src/execution_route_snapshot_3d_tracking_tube.cpp
   src/execution_route_snapshot_3d_transitions.cpp
   src/execution_route_snapshot_3d_validation.cpp
@@ -255,6 +255,7 @@ add_library(
   src/trajectory_compiler_3d.cpp
   src/route_time_parameterization.cpp
   src/route_execution_contract_3d.cpp
+  src/route_execution_manager_3d.cpp
   src/route_lifecycle_3d.cpp
   src/route_planning_3d.cpp
   src/rolling_route_telemetry_3d.cpp

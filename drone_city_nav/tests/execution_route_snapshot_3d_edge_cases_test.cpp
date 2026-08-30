@@ -24,8 +24,8 @@ TEST(ExecutionRouteSnapshot3DTest,
   SnapshotFixture3D fixture;
   const std::optional<CertifiedRouteSuffix3D> suffix = fixture.certify();
   ASSERT_TRUE(suffix.has_value());
-  ExecutionRouteSnapshotStore3D store;
-  const std::shared_ptr<const ExecutionPlan3D> initial = store.snapshot();
+  RouteExecutionManager3D manager;
+  const std::shared_ptr<const ExecutionPlan3D> initial = manager.plan();
   ASSERT_NE(initial, nullptr);
   CertifiedRouteSuffix3D copied_route = *suffix;
   ASSERT_EQ(copied_route.geometry, suffix->geometry);
@@ -36,20 +36,20 @@ TEST(ExecutionRouteSnapshot3DTest,
   const ExecutionRouteTransitionResult3D activation = activateCertifiedRoute3D(
       *initial, initial->version, copied_route, std::move(execution));
   ASSERT_TRUE(activation.applied());
-  ASSERT_EQ(store.publish(initial, activation),
+  ASSERT_EQ(manager.publishPlan(initial, activation),
             ExecutionRoutePublicationStatus3D::kPublished);
-  const std::shared_ptr<const ExecutionPlan3D> active = store.snapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = manager.plan();
   ASSERT_EQ(active, activation.next);
   const ExecutionRouteTransitionResult3D revocation =
       revokeExecution3D(*active, active->version);
   ASSERT_TRUE(revocation.applied());
 
-  EXPECT_EQ(store.publish(initial, revocation),
+  EXPECT_EQ(manager.publishPlan(initial, revocation),
             ExecutionRoutePublicationStatus3D::kStaleSnapshotVersion);
-  EXPECT_EQ(store.snapshot(), active);
-  ASSERT_EQ(store.publish(active, revocation),
+  EXPECT_EQ(manager.plan(), active);
+  ASSERT_EQ(manager.publishPlan(active, revocation),
             ExecutionRoutePublicationStatus3D::kPublished);
-  const std::shared_ptr<const ExecutionPlan3D> revoked = store.snapshot();
+  const std::shared_ptr<const ExecutionPlan3D> revoked = manager.plan();
   ASSERT_EQ(revoked, revocation.next);
   EXPECT_EQ(revoked->phase(), ExecutionRoutePhase3D::kRevoked);
   EXPECT_EQ(revoked->routeGenerationHighWater(), active->routeGenerationHighWater());
@@ -59,7 +59,7 @@ TEST(ExecutionRouteSnapshot3DTest,
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
-     PendingMailboxRetainsFirstCertifiedRouteUntilExactAcknowledgement) {
+     ManagerRetainsFirstCertifiedRouteUntilExactAcknowledgement) {
   SnapshotFixture3D fixture;
   const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_TRUE(active);
@@ -89,29 +89,28 @@ TEST(ExecutionRouteSnapshot3DTest,
   const auto second =
       std::make_shared<const PendingCertifiedRoute3D>(std::move(second_value));
 
-  PendingCertifiedRouteMailbox3D mailbox;
-  EXPECT_TRUE(mailbox.publish(first));
-  const std::shared_ptr<const PendingCertifiedRoute3D> sealed_first =
-      mailbox.snapshot();
+  RouteExecutionManager3D manager;
+  EXPECT_TRUE(manager.publishPending(first));
+  const std::shared_ptr<const PendingCertifiedRoute3D> sealed_first = manager.pending();
   ASSERT_NE(sealed_first, nullptr);
   EXPECT_NE(sealed_first, first);
-  EXPECT_FALSE(mailbox.publish(first));
-  EXPECT_FALSE(mailbox.publish(second));
-  EXPECT_FALSE(mailbox.acknowledgeIfSame(first));
-  EXPECT_EQ(mailbox.snapshot(), sealed_first);
-  EXPECT_TRUE(mailbox.acknowledgeIfSame(sealed_first));
-  EXPECT_EQ(mailbox.snapshot(), nullptr);
-  EXPECT_FALSE(mailbox.publish(first));
-  EXPECT_TRUE(mailbox.publish(second));
+  EXPECT_FALSE(manager.publishPending(first));
+  EXPECT_FALSE(manager.publishPending(second));
+  EXPECT_FALSE(manager.acknowledgePendingIfSame(first));
+  EXPECT_EQ(manager.pending(), sealed_first);
+  EXPECT_TRUE(manager.acknowledgePendingIfSame(sealed_first));
+  EXPECT_EQ(manager.pending(), nullptr);
+  EXPECT_FALSE(manager.publishPending(first));
+  EXPECT_TRUE(manager.publishPending(second));
   const std::shared_ptr<const PendingCertifiedRoute3D> sealed_second =
-      mailbox.snapshot();
+      manager.pending();
   ASSERT_NE(sealed_second, nullptr);
   EXPECT_NE(sealed_second, second);
   EXPECT_EQ(sealed_second->publication_sequence, second->publication_sequence);
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
-     PendingMailboxSealsTheRouteAgainstAMutableSharedAlias) {
+     ManagerSealsThePendingRouteAgainstAMutableSharedAlias) {
   SnapshotFixture3D fixture;
   const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);
@@ -136,9 +135,9 @@ TEST(ExecutionRouteSnapshot3DTest,
           .route = *successor,
       });
   const std::shared_ptr<const PendingCertifiedRoute3D> const_alias = mutable_candidate;
-  PendingCertifiedRouteMailbox3D mailbox;
-  ASSERT_TRUE(mailbox.publish(const_alias));
-  const std::shared_ptr<const PendingCertifiedRoute3D> sealed = mailbox.snapshot();
+  RouteExecutionManager3D manager;
+  ASSERT_TRUE(manager.publishPending(const_alias));
+  const std::shared_ptr<const PendingCertifiedRoute3D> sealed = manager.pending();
   ASSERT_NE(sealed, nullptr);
   ASSERT_NE(sealed, const_alias);
 
@@ -175,10 +174,10 @@ TEST(ExecutionRouteSnapshot3DTest,
           .route = *successor,
       });
 
-  PendingCertifiedRouteMailbox3D mailbox;
+  RouteExecutionManager3D manager;
   EXPECT_FALSE(pending->valid());
-  EXPECT_FALSE(mailbox.publish(pending));
-  EXPECT_EQ(mailbox.snapshot(), nullptr);
+  EXPECT_FALSE(manager.publishPending(pending));
+  EXPECT_EQ(manager.pending(), nullptr);
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
@@ -199,8 +198,8 @@ TEST(ExecutionRouteSnapshot3DTest,
           .route = *suffix,
       });
 
-  ExecutionRouteSnapshotStore3D store;
-  const std::shared_ptr<const ExecutionPlan3D> initial = store.snapshot();
+  RouteExecutionManager3D manager;
+  const std::shared_ptr<const ExecutionPlan3D> initial = manager.plan();
   ASSERT_NE(initial, nullptr);
   FiniteExecutionState3D execution = SnapshotFixture3D::finiteExecutionForRoute(
       *initial, *suffix, FiniteExecutionKind3D::kNominal, true, 100U);
@@ -208,13 +207,18 @@ TEST(ExecutionRouteSnapshot3DTest,
       *initial, initial->version, *suffix, std::move(execution));
   ASSERT_TRUE(activation.applied());
 
-  PendingCertifiedRouteMailbox3D mailbox;
-  ASSERT_TRUE(mailbox.publish(pending));
-  const std::shared_ptr<const PendingCertifiedRoute3D> sealed = mailbox.snapshot();
+  ASSERT_TRUE(manager.publishPending(pending));
+  const std::shared_ptr<const PendingCertifiedRoute3D> sealed = manager.pending();
   ASSERT_NE(sealed, nullptr);
-  EXPECT_TRUE(mailbox.commitExecutionIfSame(sealed, store, initial, activation));
-  EXPECT_EQ(store.snapshot(), activation.next);
-  EXPECT_EQ(mailbox.snapshot(), nullptr);
+  const RouteExecutionManagerSnapshot3D before_commit = manager.snapshot();
+  ASSERT_TRUE(before_commit.valid());
+  EXPECT_EQ(before_commit.plan, initial);
+  EXPECT_EQ(before_commit.pending, sealed);
+  EXPECT_TRUE(manager.commitPendingTransitionIfSame(sealed, initial, activation));
+  const RouteExecutionManagerSnapshot3D after_commit = manager.snapshot();
+  ASSERT_TRUE(after_commit.valid());
+  EXPECT_EQ(after_commit.plan, activation.next);
+  EXPECT_EQ(after_commit.pending, nullptr);
 
   const std::optional<CertifiedRouteSuffix3D> recertified = recertifyExecutionRoute3D(
       *suffix, fixture.activation().observation, suffix->observed_raw_world);
@@ -222,9 +226,9 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_NE(recertified->route_instance_id, suffix->route_instance_id);
   ASSERT_EQ(recertified->parent_route_instance_id,
             std::optional<RouteInstanceId3D>{suffix->route_instance_id});
-  ExecutionRouteSnapshotStore3D recertified_store;
+  RouteExecutionManager3D recertified_manager;
   const std::shared_ptr<const ExecutionPlan3D> recertified_initial =
-      recertified_store.snapshot();
+      recertified_manager.plan();
   ASSERT_NE(recertified_initial, nullptr);
   FiniteExecutionState3D recertified_execution =
       SnapshotFixture3D::finiteExecutionForRoute(*recertified_initial, *recertified,
@@ -234,23 +238,20 @@ TEST(ExecutionRouteSnapshot3DTest,
       activateCertifiedRoute3D(*recertified_initial, recertified_initial->version,
                                *recertified, std::move(recertified_execution));
   ASSERT_TRUE(recertified_activation.applied());
-  PendingCertifiedRouteMailbox3D recertified_mailbox;
-  ASSERT_TRUE(recertified_mailbox.publish(pending));
+  ASSERT_TRUE(recertified_manager.publishPending(pending));
   const std::shared_ptr<const PendingCertifiedRoute3D> recertified_pending =
-      recertified_mailbox.snapshot();
+      recertified_manager.pending();
   ASSERT_NE(recertified_pending, nullptr);
-  EXPECT_TRUE(recertified_mailbox.commitExecutionIfSame(
-      recertified_pending, recertified_store, recertified_initial,
-      recertified_activation));
-  EXPECT_EQ(recertified_store.snapshot(), recertified_activation.next);
-  EXPECT_EQ(recertified_mailbox.snapshot(), nullptr);
+  EXPECT_TRUE(recertified_manager.commitPendingTransitionIfSame(
+      recertified_pending, recertified_initial, recertified_activation));
+  EXPECT_EQ(recertified_manager.plan(), recertified_activation.next);
+  EXPECT_EQ(recertified_manager.pending(), nullptr);
 
-  ExecutionRouteSnapshotStore3D rejected_store;
-  ExecutionRouteSnapshotStore3D foreign_store;
+  RouteExecutionManager3D retained_manager;
+  RouteExecutionManager3D foreign_manager;
   const std::shared_ptr<const ExecutionPlan3D> rejected_initial =
-      rejected_store.snapshot();
-  const std::shared_ptr<const ExecutionPlan3D> foreign_initial =
-      foreign_store.snapshot();
+      retained_manager.plan();
+  const std::shared_ptr<const ExecutionPlan3D> foreign_initial = foreign_manager.plan();
   ASSERT_NE(rejected_initial, nullptr);
   ASSERT_NE(foreign_initial, nullptr);
   FiniteExecutionState3D foreign_execution = SnapshotFixture3D::finiteExecutionForRoute(
@@ -260,23 +261,22 @@ TEST(ExecutionRouteSnapshot3DTest,
                                std::move(foreign_execution));
   ASSERT_TRUE(foreign_activation.applied());
 
-  PendingCertifiedRouteMailbox3D retained_mailbox;
-  ASSERT_TRUE(retained_mailbox.publish(pending));
+  ASSERT_TRUE(retained_manager.publishPending(pending));
   const std::shared_ptr<const PendingCertifiedRoute3D> retained =
-      retained_mailbox.snapshot();
+      retained_manager.pending();
   ASSERT_NE(retained, nullptr);
-  EXPECT_FALSE(retained_mailbox.commitExecutionIfSame(
-      retained, rejected_store, foreign_initial, foreign_activation));
-  EXPECT_EQ(rejected_store.snapshot(), rejected_initial);
-  EXPECT_EQ(retained_mailbox.snapshot(), retained);
+  EXPECT_FALSE(retained_manager.commitPendingTransitionIfSame(retained, foreign_initial,
+                                                              foreign_activation));
+  EXPECT_EQ(retained_manager.plan(), rejected_initial);
+  EXPECT_EQ(retained_manager.pending(), retained);
 
   const std::optional<CertifiedRouteSuffix3D> unrelated = fixture.certify();
   ASSERT_TRUE(unrelated.has_value());
   ASSERT_NE(unrelated->route_instance_id, suffix->route_instance_id);
   ASSERT_FALSE(unrelated->parent_route_instance_id.has_value());
-  ExecutionRouteSnapshotStore3D unrelated_store;
+  RouteExecutionManager3D unrelated_manager;
   const std::shared_ptr<const ExecutionPlan3D> unrelated_initial =
-      unrelated_store.snapshot();
+      unrelated_manager.plan();
   ASSERT_NE(unrelated_initial, nullptr);
   FiniteExecutionState3D unrelated_execution =
       SnapshotFixture3D::finiteExecutionForRoute(
@@ -285,32 +285,31 @@ TEST(ExecutionRouteSnapshot3DTest,
       activateCertifiedRoute3D(*unrelated_initial, unrelated_initial->version,
                                *unrelated, std::move(unrelated_execution));
   ASSERT_TRUE(unrelated_activation.applied());
-  PendingCertifiedRouteMailbox3D unrelated_mailbox;
-  ASSERT_TRUE(unrelated_mailbox.publish(pending));
+  ASSERT_TRUE(unrelated_manager.publishPending(pending));
   const std::shared_ptr<const PendingCertifiedRoute3D> unrelated_pending =
-      unrelated_mailbox.snapshot();
+      unrelated_manager.pending();
   ASSERT_NE(unrelated_pending, nullptr);
-  EXPECT_FALSE(unrelated_mailbox.commitExecutionIfSame(
-      unrelated_pending, unrelated_store, unrelated_initial, unrelated_activation));
-  EXPECT_EQ(unrelated_store.snapshot(), unrelated_initial);
-  EXPECT_EQ(unrelated_mailbox.snapshot(), unrelated_pending);
+  EXPECT_FALSE(unrelated_manager.commitPendingTransitionIfSame(
+      unrelated_pending, unrelated_initial, unrelated_activation));
+  EXPECT_EQ(unrelated_manager.plan(), unrelated_initial);
+  EXPECT_EQ(unrelated_manager.pending(), unrelated_pending);
 }
 
 TEST(ExecutionRouteSnapshot3DTest, RouteSplicePendingSurvivesExecutionProgressCasLoss) {
   SnapshotFixture3D fixture;
   const std::optional<CertifiedRouteSuffix3D> base = fixture.certify();
   ASSERT_TRUE(base.has_value());
-  ExecutionRouteSnapshotStore3D store;
-  const std::shared_ptr<const ExecutionPlan3D> initial = store.snapshot();
+  RouteExecutionManager3D manager;
+  const std::shared_ptr<const ExecutionPlan3D> initial = manager.plan();
   ASSERT_NE(initial, nullptr);
   const ExecutionRouteTransitionResult3D activation = activateCertifiedRoute3D(
       *initial, initial->version, *base,
       SnapshotFixture3D::finiteExecutionForRoute(
           *initial, *base, FiniteExecutionKind3D::kNominal, true, 100U));
   ASSERT_TRUE(activation.applied());
-  ASSERT_EQ(store.publish(initial, activation),
+  ASSERT_EQ(manager.publishPlan(initial, activation),
             ExecutionRoutePublicationStatus3D::kPublished);
-  const std::shared_ptr<const ExecutionPlan3D> active = store.snapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = manager.plan();
   ASSERT_NE(active, nullptr);
   ASSERT_TRUE(active->route() != nullptr);
 
@@ -339,9 +338,8 @@ TEST(ExecutionRouteSnapshot3DTest, RouteSplicePendingSurvivesExecutionProgressCa
           .route_splice = splice,
           .route = *successor,
       });
-  PendingCertifiedRouteMailbox3D mailbox;
-  ASSERT_TRUE(mailbox.publish(pending));
-  const std::shared_ptr<const PendingCertifiedRoute3D> sealed = mailbox.snapshot();
+  ASSERT_TRUE(manager.publishPending(pending));
+  const std::shared_ptr<const PendingCertifiedRoute3D> sealed = manager.pending();
   ASSERT_NE(sealed, nullptr);
 
   constexpr std::uint64_t kAdvancedRawRevision =
@@ -355,12 +353,12 @@ TEST(ExecutionRouteSnapshot3DTest, RouteSplicePendingSurvivesExecutionProgressCa
   ASSERT_TRUE(advanced.applied());
   // A progress-only preparation no longer crosses the controller-visible CAS
   // boundary. It must be combined with a complete command/braking plan.
-  ASSERT_EQ(store.publish(active, advanced),
+  ASSERT_EQ(manager.publishPlan(active, advanced),
             ExecutionRoutePublicationStatus3D::kInvalidCandidate);
 
-  EXPECT_TRUE(mailbox.commitExecutionIfSame(sealed, store, active, replacement));
-  EXPECT_EQ(store.snapshot(), replacement.next);
-  EXPECT_EQ(mailbox.snapshot(), nullptr);
+  EXPECT_TRUE(manager.commitPendingTransitionIfSame(sealed, active, replacement));
+  EXPECT_EQ(manager.plan(), replacement.next);
+  EXPECT_EQ(manager.pending(), nullptr);
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
@@ -385,8 +383,8 @@ TEST(ExecutionRouteSnapshot3DTest,
   const auto newer =
       std::make_shared<const PendingCertifiedRoute3D>(std::move(newer_value));
 
-  ExecutionRouteSnapshotStore3D store;
-  const std::shared_ptr<const ExecutionPlan3D> initial = store.snapshot();
+  RouteExecutionManager3D manager;
+  const std::shared_ptr<const ExecutionPlan3D> initial = manager.plan();
   ASSERT_NE(initial, nullptr);
   FiniteExecutionState3D execution = SnapshotFixture3D::finiteExecutionForRoute(
       *initial, *suffix, FiniteExecutionKind3D::kNominal, true, 100U);
@@ -394,8 +392,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       *initial, initial->version, *suffix, std::move(execution));
   ASSERT_TRUE(activation.applied());
 
-  PendingCertifiedRouteMailbox3D mailbox;
-  ASSERT_TRUE(mailbox.publish(first));
+  ASSERT_TRUE(manager.publishPending(first));
   std::barrier pending_captured{2};
   std::barrier pending_replaced{2};
   std::shared_ptr<const PendingCertifiedRoute3D> captured;
@@ -403,14 +400,14 @@ TEST(ExecutionRouteSnapshot3DTest,
   bool newer_published{false};
 
   std::thread consumer{[&] {
-    captured = mailbox.snapshot();
+    captured = manager.pending();
     pending_captured.arrive_and_wait();
     pending_replaced.arrive_and_wait();
-    committed = mailbox.commitExecutionIfSame(captured, store, initial, activation);
+    committed = manager.commitPendingTransitionIfSame(captured, initial, activation);
   }};
   std::thread producer{[&] {
     pending_captured.arrive_and_wait();
-    newer_published = mailbox.publish(newer);
+    newer_published = manager.publishPending(newer);
     pending_replaced.arrive_and_wait();
   }};
 
@@ -421,8 +418,8 @@ TEST(ExecutionRouteSnapshot3DTest,
   EXPECT_EQ(captured->publication_sequence, 1U);
   EXPECT_FALSE(newer_published);
   EXPECT_TRUE(committed);
-  EXPECT_EQ(store.snapshot(), activation.next);
-  EXPECT_EQ(mailbox.snapshot(), nullptr);
+  EXPECT_EQ(manager.plan(), activation.next);
+  EXPECT_EQ(manager.pending(), nullptr);
 }
 
 TEST(ExecutionRouteSnapshot3DTest,

@@ -73,17 +73,17 @@ class Stage4RouteSpliceContractTest(unittest.TestCase):
         execution = (SOURCE / "production_mppi_route_execution.cpp").read_text(
             encoding="utf-8"
         )
-        mailbox = (SOURCE / "pending_certified_route_3d.cpp").read_text(
+        manager = (SOURCE / "route_execution_manager_3d.cpp").read_text(
             encoding="utf-8"
         )
 
         self.assertIn("assessRouteSpliceReadiness3D", execution)
         self.assertIn("routeSpliceWindowExpired3D", execution)
         self.assertIn('"retain_active_route"', execution)
-        commit = mailbox.split(
-            "PendingCertifiedRouteMailbox3D::commitExecutionIfSame", maxsplit=1
-        )[1].split("recoverPendingCertifiedRouteLiveness3D", maxsplit=1)[0]
-        publish = commit.index("execution_store.publish")
+        commit = manager.split(
+            "RouteExecutionManager3D::commitPendingTransitionIfSame", maxsplit=1
+        )[1].split("} // namespace drone_city_nav", maxsplit=1)[0]
+        publish = commit.index("publishPlanLocked(expected_plan, transition)")
         clear = commit.index("pending_.reset()")
         self.assertLess(publish, clear)
         self.assertIn("return false;", commit[publish:clear])
@@ -118,8 +118,8 @@ class Stage4RouteSpliceContractTest(unittest.TestCase):
             "std::make_shared<const CertifiedRouteSuffix3D>(active_route)",
             extension,
         )
-        self.assertIn("execution_route_store_.snapshot()", extension)
-        self.assertIn("execution_route_store_.snapshot()", esdf)
+        self.assertIn("route_execution_manager_.plan()", extension)
+        self.assertIn("route_execution_manager_.plan()", esdf)
         self.assertIn("refresh_execution->route()->identity.generation", esdf)
         self.assertIn("PlannerSearchContinuityBase3D", esdf)
         self.assertIn("refresh_superseded", esdf)

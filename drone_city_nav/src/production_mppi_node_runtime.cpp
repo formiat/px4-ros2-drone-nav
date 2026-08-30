@@ -94,7 +94,7 @@ void ProductionMppiNode::routePlanningWorker(const std::stop_token stop_token) {
     const StaticRouteSearchRequestIdentity& request = transaction->request;
     std::uint64_t resident_route_generation = 0U;
     const std::shared_ptr<const ExecutionPlan3D> execution_snapshot =
-        execution_route_store_.snapshot();
+        route_execution_manager_.plan();
     if (execution_snapshot != nullptr) {
       resident_route_generation = execution_snapshot->routeGenerationHighWater();
     }

@@ -11,7 +11,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <mutex>
 #include <optional>
 #include <string_view>
 #include <variant>
@@ -360,7 +359,7 @@ struct ExecutionPlan3D {
 
   [[nodiscard]] bool valid() const noexcept;
   // Prepared progress/certificate updates are valid inputs for certification,
-  // but only a complete, current execution plan may cross the atomic store
+  // but only a complete, current execution plan may cross the manager publication
   // boundary and become controller-visible.
   [[nodiscard]] bool publishable() const noexcept;
   [[nodiscard]] std::uint64_t routeGenerationHighWater() const noexcept;
@@ -601,12 +600,6 @@ enum class ExecutionRouteTransitionStatus3D : std::uint8_t {
   kVersionExhausted,
 };
 
-enum class ExecutionRoutePublicationStatus3D : std::uint8_t {
-  kPublished,
-  kInvalidCandidate,
-  kStaleSnapshotVersion,
-};
-
 struct ExecutionRouteTransitionGuard3D {
   std::uint64_t expected_snapshot_version{0U};
   std::uint64_t expected_route_generation{0U};
@@ -694,6 +687,7 @@ using ExecutionPlanTransitionCommand3D = std::variant<
     SuspendFiniteExecutionCommand3D>;
 
 class ExecutionRouteTransitionFactory3D;
+class RouteExecutionManager3D;
 
 struct ExecutionRouteTransitionResult3D {
   ExecutionRouteTransitionResult3D() = default;
@@ -713,7 +707,7 @@ private:
   bool authorized_{false};
 
   friend class ExecutionRouteTransitionFactory3D;
-  friend class ExecutionRouteSnapshotStore3D;
+  friend class RouteExecutionManager3D;
 };
 
 [[nodiscard]] bool
@@ -849,8 +843,8 @@ replaceDirectTrackingExecution3D(const ExecutionPlan3D& current,
 
 // Combines a non-publishable progress preparation with the execution-plan
 // transition certified from that exact prepared snapshot. The returned
-// transition is rooted at the original resident snapshot, so the store performs
-// one CAS and can never expose the intermediate generation.
+// transition is rooted at the original resident snapshot, so the manager performs
+// one publication and can never expose the intermediate generation.
 [[nodiscard]] ExecutionRouteTransitionResult3D composeExecutionPlanTransition3D(
     const ExecutionPlan3D& resident,
     const ExecutionRouteTransitionResult3D& prepared_progress,
@@ -899,19 +893,5 @@ executionRoutePhase3DName(ExecutionRoutePhase3D phase) noexcept;
 
 [[nodiscard]] std::string_view
 executionRouteTransitionStatus3DName(ExecutionRouteTransitionStatus3D status) noexcept;
-
-class ExecutionRouteSnapshotStore3D final {
-public:
-  ExecutionRouteSnapshotStore3D();
-
-  [[nodiscard]] std::shared_ptr<const ExecutionPlan3D> snapshot() const;
-  [[nodiscard]] ExecutionRoutePublicationStatus3D
-  publish(const std::shared_ptr<const ExecutionPlan3D>& expected_snapshot,
-          const ExecutionRouteTransitionResult3D& transition);
-
-private:
-  mutable std::mutex mutex_;
-  std::shared_ptr<const ExecutionPlan3D> snapshot_;
-};
 
 } // namespace drone_city_nav

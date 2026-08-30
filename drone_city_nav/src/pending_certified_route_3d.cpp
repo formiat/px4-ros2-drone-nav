@@ -1,5 +1,7 @@
 #include "drone_city_nav/pending_certified_route_3d.hpp"
 
+#include "drone_city_nav/route_execution_manager_3d.hpp"
+
 #include <limits>
 #include <utility>
 
@@ -119,83 +121,8 @@ bool pendingCertifiedRouteRetainsSnapshotCertificate3D(
          pending.base_kind == PendingExecutionBaseKind3D::kRouteHandoff;
 }
 
-bool PendingCertifiedRouteMailbox3D::publish(
-    std::shared_ptr<const PendingCertifiedRoute3D> candidate) {
-  if (candidate == nullptr || !candidate->valid()) {
-    return false;
-  }
-  // Seal the publication at the mailbox boundary. A shared_ptr<const T> can
-  // still have a mutable alias owned by the caller; retaining the caller's
-  // control block would therefore not make the pending route immutable.
-  const auto sealed = std::make_shared<const PendingCertifiedRoute3D>(*candidate);
-  if (!sealed->valid()) {
-    return false;
-  }
-  const std::scoped_lock lock{mutex_};
-  // A certified candidate is an execution transaction, not a latest-value
-  // estimate. Keep the first resident identity until execution either commits
-  // or explicitly acknowledges it; a newer planning completion cannot silently
-  // displace a route that is already waiting for admission.
-  if (pending_ != nullptr ||
-      sealed->publication_sequence <= last_accepted_publication_sequence_) {
-    return false;
-  }
-  pending_ = sealed;
-  last_accepted_publication_sequence_ = sealed->publication_sequence;
-  return true;
-}
-
-std::shared_ptr<const PendingCertifiedRoute3D>
-PendingCertifiedRouteMailbox3D::snapshot() const {
-  const std::scoped_lock lock{mutex_};
-  return pending_;
-}
-
-bool PendingCertifiedRouteMailbox3D::acknowledgeIfSame(
-    const std::shared_ptr<const PendingCertifiedRoute3D>& expected) {
-  if (expected == nullptr) {
-    return false;
-  }
-  const std::scoped_lock lock{mutex_};
-  if (pending_ != expected) {
-    return false;
-  }
-  pending_.reset();
-  return true;
-}
-
-bool PendingCertifiedRouteMailbox3D::commitExecutionIfSame(
-    const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending,
-    ExecutionRouteSnapshotStore3D& execution_store,
-    const std::shared_ptr<const ExecutionPlan3D>& expected_snapshot,
-    const ExecutionRouteTransitionResult3D& transition) {
-  if (expected_pending == nullptr || expected_snapshot == nullptr ||
-      transition.next == nullptr) {
-    return false;
-  }
-  const std::scoped_lock lock{mutex_};
-  const CertifiedRouteSuffix3D* const committed_route = transition.next->route();
-  const bool committed_route_is_pending_revision =
-      committed_route != nullptr &&
-      (committed_route->route_instance_id ==
-           expected_pending->route.route_instance_id ||
-       committed_route->parent_route_instance_id ==
-           std::optional<RouteInstanceId3D>{expected_pending->route.route_instance_id});
-  if (pending_ != expected_pending ||
-      !pendingCertifiedRouteEligible3D(*expected_pending, *expected_snapshot) ||
-      !committed_route_is_pending_revision) {
-    return false;
-  }
-  if (execution_store.publish(expected_snapshot, transition) !=
-      ExecutionRoutePublicationStatus3D::kPublished) {
-    return false;
-  }
-  pending_.reset();
-  return true;
-}
-
 PendingCertifiedRouteRecoveryResult3D recoverPendingCertifiedRouteLiveness3D(
-    PendingCertifiedRouteMailbox3D& mailbox,
+    RouteExecutionManager3D& manager,
     const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending,
     const PendingCertifiedRouteRecoveryObservation3D& observation) {
   if (observation.direct_tracking_requested || observation.execution_owner_available ||
@@ -203,17 +130,17 @@ PendingCertifiedRouteRecoveryResult3D recoverPendingCertifiedRouteLiveness3D(
     return {};
   }
   if (expected_pending == nullptr) {
-    // A caller-local null does not prove that the shared mailbox is empty: a
+    // A caller-local null does not prove that the shared pending slot is empty: a
     // newer route may have won publication after the caller's earlier read or
     // failed acknowledgement. Confirm the shared state at this linearization
     // point before authorizing another successor request.
-    const bool mailbox_empty = mailbox.snapshot() == nullptr;
+    const bool mailbox_empty = manager.pending() == nullptr;
     return PendingCertifiedRouteRecoveryResult3D{
         .pending_acknowledged = false,
         .request_successor = mailbox_empty,
     };
   }
-  const bool acknowledged = mailbox.acknowledgeIfSame(expected_pending);
+  const bool acknowledged = manager.acknowledgePendingIfSame(expected_pending);
   return PendingCertifiedRouteRecoveryResult3D{
       .pending_acknowledged = acknowledged,
       .request_successor = acknowledged,

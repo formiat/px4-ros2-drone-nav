@@ -575,20 +575,20 @@ TEST(ExecutionRouteSnapshot3DTest,
         pendingForSnapshot(*base, base_kind, *route, 1U));
     ASSERT_TRUE(pending->valid());
     ASSERT_TRUE(pendingCertifiedRouteEligible3D(*pending, *base));
-    PendingCertifiedRouteMailbox3D mailbox;
-    ASSERT_TRUE(mailbox.publish(pending));
-    const std::shared_ptr<const PendingCertifiedRoute3D> expected = mailbox.snapshot();
+    RouteExecutionManager3D manager;
+    ASSERT_TRUE(manager.publishPending(pending));
+    const std::shared_ptr<const PendingCertifiedRoute3D> expected = manager.pending();
     ASSERT_NE(expected, nullptr);
 
     // pending_activation=false is the post-resolve signal that current
     // recertification could not produce an executable activation.
     const PendingCertifiedRouteRecoveryResult3D recovery =
         recoverPendingCertifiedRouteLiveness3D(
-            mailbox, expected, PendingCertifiedRouteRecoveryObservation3D{});
+            manager, expected, PendingCertifiedRouteRecoveryObservation3D{});
 
     EXPECT_TRUE(recovery.pending_acknowledged);
     EXPECT_TRUE(recovery.request_successor);
-    EXPECT_EQ(mailbox.snapshot(), nullptr);
+    EXPECT_EQ(manager.pending(), nullptr);
   };
 
   exercise_recovery(initial, PendingExecutionBaseKind3D::kEmpty);
@@ -634,21 +634,21 @@ TEST(ExecutionRouteSnapshot3DTest,
   newer_value.publication_sequence = 2U;
   const auto newer =
       std::make_shared<const PendingCertifiedRoute3D>(std::move(newer_value));
-  PendingCertifiedRouteMailbox3D mailbox;
-  ASSERT_TRUE(mailbox.publish(first));
-  const std::shared_ptr<const PendingCertifiedRoute3D> captured = mailbox.snapshot();
+  RouteExecutionManager3D manager;
+  ASSERT_TRUE(manager.publishPending(first));
+  const std::shared_ptr<const PendingCertifiedRoute3D> captured = manager.pending();
   ASSERT_NE(captured, nullptr);
-  ASSERT_FALSE(mailbox.publish(newer));
+  ASSERT_FALSE(manager.publishPending(newer));
 
   const PendingCertifiedRouteRecoveryResult3D recovery =
       recoverPendingCertifiedRouteLiveness3D(
-          mailbox, captured, PendingCertifiedRouteRecoveryObservation3D{});
+          manager, captured, PendingCertifiedRouteRecoveryObservation3D{});
 
   EXPECT_TRUE(recovery.pending_acknowledged);
   EXPECT_TRUE(recovery.request_successor);
-  EXPECT_EQ(mailbox.snapshot(), nullptr);
-  ASSERT_TRUE(mailbox.publish(newer));
-  const std::shared_ptr<const PendingCertifiedRoute3D> resident = mailbox.snapshot();
+  EXPECT_EQ(manager.pending(), nullptr);
+  ASSERT_TRUE(manager.publishPending(newer));
+  const std::shared_ptr<const PendingCertifiedRoute3D> resident = manager.pending();
   ASSERT_NE(resident, nullptr);
   EXPECT_EQ(resident->publication_sequence, 2U);
 }
@@ -663,15 +663,15 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_NE(initial, nullptr);
   const auto pending = std::make_shared<const PendingCertifiedRoute3D>(
       pendingForSnapshot(*initial, PendingExecutionBaseKind3D::kEmpty, *route, 1U));
-  PendingCertifiedRouteMailbox3D mailbox;
-  ASSERT_TRUE(mailbox.publish(pending));
+  RouteExecutionManager3D manager;
+  ASSERT_TRUE(manager.publishPending(pending));
 
   const PendingCertifiedRouteRecoveryResult3D occupied =
       recoverPendingCertifiedRouteLiveness3D(
-          mailbox, nullptr, PendingCertifiedRouteRecoveryObservation3D{});
+          manager, nullptr, PendingCertifiedRouteRecoveryObservation3D{});
   EXPECT_FALSE(occupied.pending_acknowledged);
   EXPECT_FALSE(occupied.request_successor);
-  const std::shared_ptr<const PendingCertifiedRoute3D> resident = mailbox.snapshot();
+  const std::shared_ptr<const PendingCertifiedRoute3D> resident = manager.pending();
   ASSERT_NE(resident, nullptr);
   EXPECT_EQ(resident->publication_sequence, pending->publication_sequence);
   EXPECT_EQ(resident->route.identity.generation, pending->route.identity.generation);
@@ -680,10 +680,10 @@ TEST(ExecutionRouteSnapshot3DTest,
   EXPECT_EQ(resident->route.geometry->compiled_trajectory_revision,
             pending->route.geometry->compiled_trajectory_revision);
 
-  ASSERT_TRUE(mailbox.acknowledgeIfSame(resident));
+  ASSERT_TRUE(manager.acknowledgePendingIfSame(resident));
   const PendingCertifiedRouteRecoveryResult3D empty =
       recoverPendingCertifiedRouteLiveness3D(
-          mailbox, nullptr, PendingCertifiedRouteRecoveryObservation3D{});
+          manager, nullptr, PendingCertifiedRouteRecoveryObservation3D{});
   EXPECT_FALSE(empty.pending_acknowledged);
   EXPECT_TRUE(empty.request_successor);
 }
@@ -698,18 +698,18 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_NE(initial, nullptr);
   const auto pending = std::make_shared<const PendingCertifiedRoute3D>(
       pendingForSnapshot(*initial, PendingExecutionBaseKind3D::kEmpty, *route, 1U));
-  PendingCertifiedRouteMailbox3D mailbox;
-  ASSERT_TRUE(mailbox.publish(pending));
+  RouteExecutionManager3D manager;
+  ASSERT_TRUE(manager.publishPending(pending));
 
   const PendingCertifiedRouteRecoveryResult3D recovery =
-      recoverPendingCertifiedRouteLiveness3D(mailbox, nullptr,
+      recoverPendingCertifiedRouteLiveness3D(manager, nullptr,
                                              PendingCertifiedRouteRecoveryObservation3D{
                                                  .direct_tracking_requested = true,
                                              });
 
   EXPECT_FALSE(recovery.pending_acknowledged);
   EXPECT_FALSE(recovery.request_successor);
-  EXPECT_NE(mailbox.snapshot(), nullptr);
+  EXPECT_NE(manager.pending(), nullptr);
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
@@ -736,9 +736,9 @@ TEST(ExecutionRouteSnapshot3DTest,
         pendingForSnapshot(*owner, base_kind, *successor, 1U));
     ASSERT_TRUE(pending->valid());
     ASSERT_TRUE(pendingCertifiedRouteEligible3D(*pending, *owner));
-    PendingCertifiedRouteMailbox3D mailbox;
-    ASSERT_TRUE(mailbox.publish(pending));
-    const std::shared_ptr<const PendingCertifiedRoute3D> expected = mailbox.snapshot();
+    RouteExecutionManager3D manager;
+    ASSERT_TRUE(manager.publishPending(pending));
+    const std::shared_ptr<const PendingCertifiedRoute3D> expected = manager.pending();
     ASSERT_NE(expected, nullptr);
 
     const bool execution_owner_available =
@@ -747,14 +747,14 @@ TEST(ExecutionRouteSnapshot3DTest,
         owner->stationaryHold() != nullptr;
     const PendingCertifiedRouteRecoveryResult3D recovery =
         recoverPendingCertifiedRouteLiveness3D(
-            mailbox, expected,
+            manager, expected,
             PendingCertifiedRouteRecoveryObservation3D{
                 .execution_owner_available = execution_owner_available,
             });
 
     EXPECT_FALSE(recovery.pending_acknowledged);
     EXPECT_FALSE(recovery.request_successor);
-    EXPECT_EQ(mailbox.snapshot(), expected);
+    EXPECT_EQ(manager.pending(), expected);
   };
 
   exercise_owner(active, PendingExecutionBaseKind3D::kRoute);

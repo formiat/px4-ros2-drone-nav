@@ -1,8 +1,6 @@
 #include "drone_city_nav/execution_route_snapshot_3d.hpp"
 
-#include <limits>
 #include <memory>
-#include <mutex>
 #include <string_view>
 #include <utility>
 
@@ -116,35 +114,6 @@ std::string_view executionRouteTransitionStatus3DName(
       return "version_exhausted";
   }
   return "invalid";
-}
-
-ExecutionRouteSnapshotStore3D::ExecutionRouteSnapshotStore3D()
-    : snapshot_(makeInitialExecutionRouteSnapshot3D()) {
-}
-
-std::shared_ptr<const ExecutionPlan3D> ExecutionRouteSnapshotStore3D::snapshot() const {
-  const std::scoped_lock lock{mutex_};
-  return snapshot_;
-}
-
-ExecutionRoutePublicationStatus3D ExecutionRouteSnapshotStore3D::publish(
-    const std::shared_ptr<const ExecutionPlan3D>& expected_snapshot,
-    const ExecutionRouteTransitionResult3D& transition) {
-  const std::scoped_lock lock{mutex_};
-  if (snapshot_ == nullptr || expected_snapshot == nullptr ||
-      snapshot_ != expected_snapshot) {
-    return ExecutionRoutePublicationStatus3D::kStaleSnapshotVersion;
-  }
-  if (!transition.applied() || !transition.next->publishable() ||
-      expected_snapshot->version == std::numeric_limits<std::uint64_t>::max() ||
-      transition.next->version <= expected_snapshot->version) {
-    return ExecutionRoutePublicationStatus3D::kInvalidCandidate;
-  }
-  if (transition.predecessor != expected_snapshot.get()) {
-    return ExecutionRoutePublicationStatus3D::kStaleSnapshotVersion;
-  }
-  snapshot_ = transition.next;
-  return ExecutionRoutePublicationStatus3D::kPublished;
 }
 
 } // namespace drone_city_nav

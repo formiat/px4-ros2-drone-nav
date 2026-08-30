@@ -47,13 +47,13 @@
 #include "drone_city_nav/occupancy_grid.hpp"
 #include "drone_city_nav/offboard_session_admission.hpp"
 #include "drone_city_nav/passage_volume.hpp"
-#include "drone_city_nav/pending_certified_route_3d.hpp"
 #include "drone_city_nav/persistent_dstar_lite_planner_3d.hpp"
 #include "drone_city_nav/px4_map_frame_transform.hpp"
 #include "drone_city_nav/raw_obstacle_3d_ros.hpp"
 #include "drone_city_nav/raw_obstacle_delta.hpp"
 #include "drone_city_nav/rolling_route_telemetry_3d.hpp"
 #include "drone_city_nav/route_3d.hpp"
+#include "drone_city_nav/route_execution_manager_3d.hpp"
 #include "drone_city_nav/route_lifecycle_3d.hpp"
 #include "drone_city_nav/route_planning_3d.hpp"
 #include "drone_city_nav/route_progress_3d.hpp"
@@ -632,8 +632,7 @@ private:
   std::atomic<std::uint64_t> rejected_world_generation_publications_{0U};
 
   std::optional<mppi::MppiTickResult> previous_result_;
-  ExecutionRouteSnapshotStore3D execution_route_store_{};
-  PendingCertifiedRouteMailbox3D pending_certified_route_mailbox_{};
+  RouteExecutionManager3D route_execution_manager_{};
   std::atomic<std::uint64_t> pending_certified_route_sequence_{0U};
   std::atomic<std::uint64_t> requested_execution_revocation_{0U};
   std::uint64_t handled_execution_revocation_request_{0U};

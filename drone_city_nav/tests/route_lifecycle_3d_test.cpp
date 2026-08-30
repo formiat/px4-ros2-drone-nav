@@ -531,83 +531,6 @@ TEST(RouteLifecycle3DTest, MissingRouteWaitsForInitialPlanningWithoutReplacement
   EXPECT_FALSE(assessment.replacementRequired());
 }
 
-TEST(RouteLifecycle3DTest, MatchingResidentAndSupervisorGenerationOwnsExecution) {
-  RouteSupervisor3D supervisor;
-  const std::optional<std::uint64_t> generation = supervisor.activate(validProposal());
-  ASSERT_EQ(generation.value_or(0U), 1U);
-
-  const RouteExecutionOwnershipAssessment3D assessment =
-      assessRouteExecutionOwnership3D(supervisor.activeRoute(),
-                                      supervisor.activeRoute());
-
-  EXPECT_TRUE(assessment.matched());
-  EXPECT_FALSE(assessment.recoveryRequired());
-  EXPECT_EQ(assessment.status, RouteExecutionOwnershipStatus3D::kMatched);
-  EXPECT_EQ(assessment.resident_generation, 1U);
-  EXPECT_EQ(assessment.supervised_generation, 1U);
-}
-
-TEST(RouteLifecycle3DTest,
-     CompletedSupervisorWithResidentGeometryRequiresRecoverySearch) {
-  RouteSupervisor3D supervisor;
-  const std::optional<std::uint64_t> generation = supervisor.activate(validProposal());
-  ASSERT_EQ(generation.value_or(0U), 1U);
-  ASSERT_NE(supervisor.activeRoute(), nullptr);
-  const ActivatedRouteIdentity3D resident_route = *supervisor.activeRoute();
-  ASSERT_TRUE(supervisor.applyEvent(RouteLifecycleEvent3D{
-      .kind = RouteLifecycleEventKind3D::kCompleted,
-      .generation = generation.value_or(0U),
-  }));
-
-  const RouteExecutionOwnershipAssessment3D assessment =
-      assessRouteExecutionOwnership3D(&resident_route, supervisor.activeRoute());
-
-  EXPECT_FALSE(assessment.matched());
-  EXPECT_TRUE(assessment.recoveryRequired());
-  EXPECT_EQ(assessment.status, RouteExecutionOwnershipStatus3D::kNoSupervisedRoute);
-  EXPECT_EQ(assessment.resident_generation, 1U);
-  EXPECT_EQ(assessment.supervised_generation, 0U);
-  EXPECT_EQ(routeExecutionOwnershipStatus3DName(assessment.status),
-            "no_supervised_route");
-}
-
-TEST(RouteLifecycle3DTest, StaleResidentGenerationRequiresRecoverySearch) {
-  RouteSupervisor3D supervisor;
-  const std::optional<std::uint64_t> first_generation =
-      supervisor.activate(validProposal());
-  ASSERT_EQ(first_generation.value_or(0U), 1U);
-  ASSERT_NE(supervisor.activeRoute(), nullptr);
-  const ActivatedRouteIdentity3D stale_resident = *supervisor.activeRoute();
-  MaterializedRouteProposal3D replacement = validProposal();
-  ++replacement.route_fingerprint;
-  const std::optional<std::uint64_t> second_generation =
-      supervisor.activate(replacement);
-  ASSERT_EQ(second_generation.value_or(0U), 2U);
-
-  const RouteExecutionOwnershipAssessment3D assessment =
-      assessRouteExecutionOwnership3D(&stale_resident, supervisor.activeRoute());
-
-  EXPECT_FALSE(assessment.matched());
-  EXPECT_TRUE(assessment.recoveryRequired());
-  EXPECT_EQ(assessment.status, RouteExecutionOwnershipStatus3D::kGenerationMismatch);
-  EXPECT_EQ(assessment.resident_generation, 1U);
-  EXPECT_EQ(assessment.supervised_generation, 2U);
-}
-
-TEST(RouteLifecycle3DTest, MissingResidentRouteDoesNotRequestOwnershipRecovery) {
-  RouteSupervisor3D supervisor;
-  ASSERT_TRUE(supervisor.activate(validProposal()).has_value());
-
-  const RouteExecutionOwnershipAssessment3D assessment =
-      assessRouteExecutionOwnership3D(nullptr, supervisor.activeRoute());
-
-  EXPECT_FALSE(assessment.matched());
-  EXPECT_FALSE(assessment.recoveryRequired());
-  EXPECT_EQ(assessment.status, RouteExecutionOwnershipStatus3D::kNoResidentRoute);
-  EXPECT_EQ(assessment.resident_generation, 0U);
-  EXPECT_EQ(assessment.supervised_generation, 1U);
-}
-
 TEST(RouteLifecycle3DTest, ExecutionRejectsRawWorldFromAnotherProducerLineage) {
   const std::vector<RouteSample3D> route = straightRoute();
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 12, 4, 4}};
@@ -645,129 +568,47 @@ TEST(RouteLifecycle3DTest,
   const std::vector<RouteSample3D> route = straightRoute();
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 12, 5, 4}};
   ASSERT_TRUE(occupancy.setState({6, 2, 1}, ObservedVoxelState::kOccupied));
-  RouteSupervisor3D supervisor;
-  const std::optional<std::uint64_t> generation = supervisor.activate(validProposal());
-  ASSERT_TRUE(generation.has_value());
+  const ActivatedRouteIdentity3D activated = validActivatedRoute();
 
-  const RouteExecutionAssessment3D certified = supervisor.assessExecution(
-      route, observation(supervisor.activeRoute()->proposal.objective, &occupancy));
+  const RouteExecutionAssessment3D certified = assessRouteExecution3D(
+      &activated, route, observation(activated.proposal.objective, &occupancy));
   ASSERT_TRUE(certified.usable());
   ASSERT_TRUE(certified.raw_validation.suffix_validated);
-  ASSERT_EQ(supervisor.executionState().raw_validated_through_revision, 13U);
+  ASSERT_EQ(certified.validated_through_raw_revision, 13U);
 
   RouteExecutionObservation3D displaced =
-      observation(supervisor.activeRoute()->proposal.objective, &occupancy);
+      observation(activated.proposal.objective, &occupancy);
+  displaced.previously_validated_through_raw_revision =
+      certified.validated_through_raw_revision;
   displaced.position = {6.5, 3.5, 1.5};
   displaced.maximum_cross_track_m = 3.0;
   const RouteExecutionAssessment3D reassessed =
-      supervisor.assessExecution(route, displaced);
+      assessRouteExecution3D(&activated, route, displaced);
 
   EXPECT_EQ(reassessed.status, RouteExecutionStatus3D::kRawCollision);
   EXPECT_TRUE(reassessed.raw_validation.connector_validated);
   EXPECT_FALSE(reassessed.raw_validation.suffix_validated);
-  EXPECT_EQ(supervisor.executionState().raw_validated_through_revision, 13U);
+  EXPECT_EQ(reassessed.validated_through_raw_revision, 13U);
 }
 
 TEST(RouteLifecycle3DTest, UnknownSameRevisionConnectorRemainsTraversable) {
   const std::vector<RouteSample3D> route = straightRoute();
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 12, 5, 4}};
-  RouteSupervisor3D supervisor;
-  const std::optional<std::uint64_t> generation = supervisor.activate(validProposal());
-  ASSERT_TRUE(generation.has_value());
+  const ActivatedRouteIdentity3D activated = validActivatedRoute();
   RouteExecutionObservation3D displaced =
-      observation(supervisor.activeRoute()->proposal.objective, &occupancy);
+      observation(activated.proposal.objective, &occupancy);
+  displaced.previously_validated_through_raw_revision = 12U;
   displaced.latest_raw_revision = 12U;
   displaced.position = {6.5, 3.5, 1.5};
   displaced.maximum_cross_track_m = 3.0;
 
   const RouteExecutionAssessment3D assessment =
-      supervisor.assessExecution(route, displaced);
+      assessRouteExecution3D(&activated, route, displaced);
 
   EXPECT_TRUE(assessment.usable());
   EXPECT_TRUE(assessment.raw_validation.connector_validated);
   EXPECT_FALSE(assessment.raw_validation.suffix_validated);
-  EXPECT_EQ(supervisor.executionState().raw_validated_through_revision, 12U);
-}
-
-TEST(RouteLifecycle3DTest, SupervisorAllocatesGenerationsAndResetsOwnedProgress) {
-  const std::vector<RouteSample3D> route = straightRoute();
-  RouteSupervisor3D supervisor;
-  const std::optional<std::uint64_t> first_generation =
-      supervisor.activate(validProposal());
-  ASSERT_EQ(first_generation.value_or(0U), 1U);
-
-  const RouteExecutionAssessment3D progressed = supervisor.assessExecution(
-      route, observation(supervisor.activeRoute()->proposal.objective));
-  ASSERT_TRUE(progressed.usable());
-  ASSERT_GT(supervisor.executionState().station_m, 0.0);
-
-  MaterializedRouteProposal3D replacement = validProposal();
-  replacement.route_fingerprint += 1U;
-  const std::optional<std::uint64_t> second_generation =
-      supervisor.activate(replacement);
-
-  ASSERT_EQ(second_generation.value_or(0U), 2U);
-  ASSERT_NE(supervisor.activeRoute(), nullptr);
-  EXPECT_EQ(supervisor.activeRoute()->generation, 2U);
-  EXPECT_EQ(supervisor.executionState().generation, 2U);
-  EXPECT_DOUBLE_EQ(supervisor.executionState().station_m, 0.0);
-  EXPECT_EQ(supervisor.executionState().raw_validated_through_revision, 12U);
-  EXPECT_EQ(supervisor.lastAllocatedGeneration(), 2U);
-}
-
-TEST(RouteLifecycle3DTest, ControlCandidateRejectionPreservesActiveRouteState) {
-  const std::vector<RouteSample3D> route = straightRoute();
-  ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 12, 4, 4}};
-  RouteSupervisor3D supervisor;
-  const std::optional<std::uint64_t> generation = supervisor.activate(validProposal());
-  ASSERT_EQ(generation.value_or(0U), 1U);
-  const RouteExecutionAssessment3D progressed = supervisor.assessExecution(
-      route, observation(supervisor.activeRoute()->proposal.objective, &occupancy));
-  ASSERT_TRUE(progressed.usable());
-  const RouteExecutionState3D state_before_rejection = supervisor.executionState();
-  const std::uint64_t fingerprint_before_rejection =
-      supervisor.activeRoute()->proposal.route_fingerprint;
-
-  EXPECT_TRUE(supervisor.rejectControlCandidate(generation.value_or(0U)));
-
-  ASSERT_NE(supervisor.activeRoute(), nullptr);
-  EXPECT_EQ(supervisor.activeRoute()->generation, generation.value_or(0U));
-  EXPECT_EQ(supervisor.activeRoute()->proposal.route_fingerprint,
-            fingerprint_before_rejection);
-  EXPECT_EQ(supervisor.executionState().generation, state_before_rejection.generation);
-  EXPECT_EQ(supervisor.executionState().raw_validated_through_revision,
-            state_before_rejection.raw_validated_through_revision);
-  EXPECT_DOUBLE_EQ(supervisor.executionState().station_m,
-                   state_before_rejection.station_m);
-}
-
-TEST(RouteLifecycle3DTest, StaleLifecycleEventCannotRetireActiveRoute) {
-  RouteSupervisor3D supervisor;
-  const std::optional<std::uint64_t> generation = supervisor.activate(validProposal());
-  ASSERT_EQ(generation.value_or(0U), 1U);
-
-  EXPECT_FALSE(supervisor.applyEvent(RouteLifecycleEvent3D{
-      .kind = RouteLifecycleEventKind3D::kRawInvalidated,
-      .generation = generation.value_or(0U) + 1U,
-  }));
-
-  ASSERT_NE(supervisor.activeRoute(), nullptr);
-  EXPECT_EQ(supervisor.activeRoute()->generation, generation.value_or(0U));
-}
-
-TEST(RouteLifecycle3DTest, MatchingTerminalLifecycleEventRetiresActiveRoute) {
-  RouteSupervisor3D supervisor;
-  const std::optional<std::uint64_t> generation = supervisor.activate(validProposal());
-  ASSERT_EQ(generation.value_or(0U), 1U);
-
-  EXPECT_TRUE(supervisor.applyEvent(RouteLifecycleEvent3D{
-      .kind = RouteLifecycleEventKind3D::kRawInvalidated,
-      .generation = generation.value_or(0U),
-  }));
-
-  EXPECT_EQ(supervisor.activeRoute(), nullptr);
-  EXPECT_EQ(supervisor.executionState().generation, 0U);
-  EXPECT_EQ(supervisor.lastAllocatedGeneration(), generation.value_or(0U));
+  EXPECT_EQ(assessment.validated_through_raw_revision, 12U);
 }
 
 TEST(RouteLifecycle3DTest, LifecycleEventsHaveStableDiagnosticNames) {
@@ -792,29 +633,23 @@ TEST(RouteLifecycle3DTest, LifecycleEventsHaveStableDiagnosticNames) {
       "tracking_tube_exceeded");
   EXPECT_EQ(routeExecutionStatus3DName(RouteExecutionStatus3D::kTrackingTubeViolation),
             "tracking_tube_violation");
-  EXPECT_EQ(
-      routeExecutionStatus3DName(RouteExecutionStatus3D::kSupervisorOwnershipMismatch),
-      "supervisor_ownership_mismatch");
 }
 
 TEST(RouteLifecycle3DTest, SegmentCompletionRequiresTheObservedGeneration) {
   const std::vector<RouteSample3D> route = straightRoute();
-  RouteSupervisor3D supervisor;
-  const std::optional<std::uint64_t> generation = supervisor.activate(validProposal());
-  ASSERT_EQ(generation.value_or(0U), 1U);
+  const ActivatedRouteIdentity3D activated = validActivatedRoute();
 
   const RouteSegmentCompletionAssessment3D assessment =
-      supervisor.assessCompletion(route,
-                                  RouteSegmentCompletionObservation3D{
-                                      .route_generation = generation.value_or(0U) + 1U,
-                                      .position = route.back().position,
-                                  },
-                                  RouteSegmentCompletionConfig3D{});
+      assessRouteSegmentCompletion3D(route, activated.generation,
+                                     RouteSegmentCompletionObservation3D{
+                                         .route_generation = activated.generation + 1U,
+                                         .position = route.back().position,
+                                     },
+                                     RouteSegmentCompletionConfig3D{});
 
   EXPECT_FALSE(assessment.generation_matches);
   EXPECT_FALSE(assessment.projection.valid);
   EXPECT_FALSE(assessment.captured);
-  EXPECT_DOUBLE_EQ(supervisor.executionState().station_m, 0.0);
 }
 
 TEST(RouteLifecycle3DTest, EndpointCaptureBeforeTerminalStationDoesNotComplete) {
@@ -844,46 +679,45 @@ TEST(RouteLifecycle3DTest, MonotonicStationDisambiguatesAFoldedRouteEndpoint) {
       {.position = {9.5, 1.5, 1.5}, .station_m = 8.0},
       {.position = {1.5, 1.5, 1.5}, .station_m = 16.0},
   };
-  RouteSupervisor3D supervisor;
-  const std::optional<std::uint64_t> generation = supervisor.activate(validProposal());
-  ASSERT_EQ(generation.value_or(0U), 1U);
+  const ActivatedRouteIdentity3D activated = validActivatedRoute();
   const RouteSegmentCompletionConfig3D completion_config{
       .capture_radius_m = 0.25,
       .terminal_station_tolerance_m = 0.25,
   };
 
   const RouteSegmentCompletionAssessment3D premature =
-      supervisor.assessCompletion(route,
-                                  RouteSegmentCompletionObservation3D{
-                                      .route_generation = generation.value_or(0U),
-                                      .position = route.back().position,
-                                  },
-                                  completion_config);
+      assessRouteSegmentCompletion3D(route, activated.generation,
+                                     RouteSegmentCompletionObservation3D{
+                                         .route_generation = activated.generation,
+                                         .position = route.back().position,
+                                     },
+                                     completion_config);
   ASSERT_TRUE(premature.generation_matches);
   ASSERT_TRUE(premature.projection.valid);
   EXPECT_DOUBLE_EQ(premature.endpoint_distance_m, 0.0);
   EXPECT_FALSE(premature.terminal_station_reached);
   EXPECT_FALSE(premature.captured);
 
-  RouteExecutionObservation3D progress =
-      observation(supervisor.activeRoute()->proposal.objective);
+  RouteExecutionObservation3D progress = observation(activated.proposal.objective);
   progress.position = route[1U].position;
   const RouteExecutionAssessment3D progressed =
-      supervisor.assessExecution(route, progress);
+      assessRouteExecution3D(&activated, route, progress);
   ASSERT_TRUE(progressed.usable());
-  ASSERT_GE(supervisor.executionState().station_m, 8.0);
+  ASSERT_TRUE(progressed.projection.valid);
+  ASSERT_GE(progressed.projection.station_m, 8.0);
 
-  const RouteSegmentCompletionAssessment3D completed =
-      supervisor.assessCompletion(route,
-                                  RouteSegmentCompletionObservation3D{
-                                      .route_generation = generation.value_or(0U),
-                                      .position = route.back().position,
-                                  },
-                                  completion_config);
+  const RouteSegmentCompletionAssessment3D completed = assessRouteSegmentCompletion3D(
+      route, activated.generation,
+      RouteSegmentCompletionObservation3D{
+          .route_generation = activated.generation,
+          .position = route.back().position,
+          .minimum_station_m = progressed.projection.station_m,
+      },
+      completion_config);
 
   EXPECT_TRUE(completed.terminal_station_reached);
   EXPECT_TRUE(completed.captured);
-  EXPECT_DOUBLE_EQ(supervisor.executionState().station_m, 16.0);
+  EXPECT_DOUBLE_EQ(completed.monotonic_station_m, 16.0);
 }
 
 TEST(RouteLifecycle3DTest, SegmentCompletionUsesTheConfiguredCaptureRadius) {

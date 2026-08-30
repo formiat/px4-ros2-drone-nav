@@ -13,7 +13,7 @@ namespace drone_city_nav {
 
 // Immutable execution evidence used only by a certified successor search.
 // It deliberately captures route geometry and progress without retaining an
-// execution snapshot, mailbox, diagnostics payload, or resident world owner.
+// execution plan, pending slot, diagnostics payload, or resident world owner.
 struct PlannerSearchContinuityBase3D {
   std::shared_ptr<const CertifiedRouteSuffix3D> route;
   RouteProgressProjection3D request_projection{};

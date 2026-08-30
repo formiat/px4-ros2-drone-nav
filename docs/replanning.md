@@ -18,10 +18,10 @@ passage remains reachable through the complete fine graph. Occupied updates
 invalidate only cached edges whose endpoint reach can intersect the changed raw
 cells.
 
-The target `RouteExecutionManager3D` preserves the mission intent and owns the
-accepted immutable route identity, full-3D progress, pending successor, and
-certified reserve. The current production snapshot store, pending mailbox, and
-node-owned lifecycle fields are being consolidated under the remediation plan in
+`RouteExecutionManager3D` preserves the mission intent and solely owns the
+accepted immutable route plan, full-3D progress, pending successor, and certified
+reserve. Controller-publication evidence is being consolidated with that plan
+under the remediation plan in
 [`navigation_architecture_remediation.md`](navigation_architecture_remediation.md).
 Ordinary world updates do not replace a still-valid route. Planning starts from
 the current mission coordinate or from a certified future stitch station;
