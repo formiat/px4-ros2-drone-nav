@@ -1,5 +1,7 @@
 #include "drone_city_nav/passage_volume.hpp"
 
+#include "drone_city_nav/occupied_collision_oracle_3d.hpp"
+
 #include <algorithm>
 #include <bit>
 #include <cmath>
@@ -148,36 +150,19 @@ struct CrossSectionFrame {
   };
 }
 
-[[nodiscard]] bool footprintInsideWorld(const Point3& position,
-                                        const OccupancyGrid3D& occupancy,
-                                        const PassageVolumeConfig& config) noexcept {
-  if (!insideFlightEnvelope(position, config.flight_envelope)) {
-    return false;
-  }
-  const GridBounds3D& bounds = occupancy.bounds();
-  const double radius_m = config.footprint.radius_m;
-  const double minimum_x = bounds.origin_x;
-  const double maximum_x =
-      bounds.origin_x + bounds.resolution_m * static_cast<double>(bounds.width_cells);
-  const double minimum_y = bounds.origin_y;
-  const double maximum_y =
-      bounds.origin_y + bounds.resolution_m * static_cast<double>(bounds.height_cells);
-  const double minimum_z = bounds.origin_z;
-  const double maximum_z =
-      bounds.origin_z + bounds.resolution_m * static_cast<double>(bounds.depth_cells);
-  return position.x - radius_m >= minimum_x && position.x + radius_m < maximum_x &&
-         position.y - radius_m >= minimum_y && position.y + radius_m < maximum_y &&
-         position.z - config.footprint.lower_extent_m - radius_m >= minimum_z &&
-         position.z + config.footprint.upper_extent_m + radius_m < maximum_z;
-}
-
 [[nodiscard]] bool rawFootprintAccepted(const Point3& position,
                                         const OccupancyGrid3D& occupancy,
                                         const PassageVolumeConfig& config) noexcept {
-  return footprintInsideWorld(position, occupancy, config) &&
-         validateRawFootprintAt(occupancy, position, FootprintBodyAxis{},
-                                config.footprint)
-             .accepted();
+  const OccupiedCollisionOracle3D oracle{OccupiedCollisionWorld3D{
+      .observed_occupancy = nullptr,
+      .static_occupancy = std::addressof(occupancy),
+      .planar_occupancy = nullptr,
+      .raw_point_cloud = {},
+      .launch_support_contact = nullptr,
+      .footprint = config.footprint,
+      .flight_envelope = config.flight_envelope,
+  }};
+  return oracle.validatePoint(position).clear();
 }
 
 [[nodiscard]] double probeFreeDistance(const Point3& center, const Vec3& axis,

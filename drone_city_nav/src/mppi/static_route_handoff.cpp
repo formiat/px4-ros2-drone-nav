@@ -99,10 +99,6 @@ StaticRouteHandoffResult validateStaticRouteHandoff(
     result.status = StaticRouteHandoffStatus::kAltitudeEnvelopeViolation;
     return result;
   }
-  if (metrics.collision) {
-    result.status = StaticRouteHandoffStatus::kRawCollision;
-    return result;
-  }
   result.status = StaticRouteHandoffStatus::kAccepted;
   result.accepted = true;
   return result;
@@ -125,8 +121,6 @@ staticRouteHandoffStatusName(const StaticRouteHandoffStatus status) noexcept {
       return "no_route_convergent_finite_horizon";
     case StaticRouteHandoffStatus::kAltitudeEnvelopeViolation:
       return "altitude_envelope_violation";
-    case StaticRouteHandoffStatus::kRawCollision:
-      return "raw_collision";
   }
   return "unknown";
 }

@@ -56,12 +56,6 @@ void bindObservedRouteEvidence(
   observation.latest_raw_producer_instance_id =
       observed_world.version().producer_instance_id;
   observation.latest_raw_revision = observed_world.version().revision;
-  observation.proprioceptive_free_space_seed = nullptr;
-  const auto& free_space_seed = observed_world.proprioceptiveFreeSpaceSeed();
-  if (free_space_seed.has_value()) {
-    observation.proprioceptive_free_space_seed =
-        std::addressof(free_space_seed.value());
-  }
   observation.launch_support_contact = nullptr;
   const auto& launch_support_contact = observed_world.launchSupportContact();
   if (launch_support_contact.has_value()) {
@@ -107,9 +101,6 @@ void bindObservedRouteEvidence(
     world = TrackingErrorTubeWorld3D{
         .observed_occupancy = &observed_world->occupancy(),
         .occupied_content_fingerprint = observed_world->occupiedContentFingerprint(),
-        .free_space_seed = observed_world->proprioceptiveFreeSpaceSeed().has_value()
-                               ? &*observed_world->proprioceptiveFreeSpaceSeed()
-                               : nullptr,
         .launch_support_contact = observed_world->launchSupportContact().has_value()
                                       ? &*observed_world->launchSupportContact()
                                       : nullptr,
@@ -125,7 +116,6 @@ void bindObservedRouteEvidence(
     world = TrackingErrorTubeWorld3D{
         .occupancy = &route.static_world->occupancy(),
         .occupied_content_fingerprint = route.static_world->contentFingerprint(),
-        .occupancy_policy = TrackingErrorTubeOccupancyPolicy3D::kKnownStaticBounds,
     };
   }
 
@@ -144,7 +134,8 @@ makeExecutionObservation(const ProductionMppiPreparedEsdf& world,
                          const ProductionMppiNavigation& navigation,
                          const std::uint64_t minimum_tracking_sample_sequence,
                          const double maximum_cross_track_m,
-                         const SweptFootprintConfig& footprint) {
+                         const SweptFootprintConfig& footprint,
+                         const FlightEnvelopeConfig& flight_envelope) {
   return RouteExecutionObservation3D{
       .current_objective = objective != nullptr ? makeStaticRouteObjective(*objective)
                                                 : StaticRouteObjective{},
@@ -152,24 +143,20 @@ makeExecutionObservation(const ProductionMppiPreparedEsdf& world,
       .position = {navigation.state.x, navigation.state.y, navigation.state.z},
       .maximum_cross_track_m = maximum_cross_track_m,
       .footprint = footprint,
-      .proprioceptive_free_space_seed =
-          world.proprioceptive_free_space_seed
-              ? std::addressof(*world.proprioceptive_free_space_seed)
-              : nullptr,
       .launch_support_contact = world.launch_support_contact
                                     ? std::addressof(*world.launch_support_contact)
                                     : nullptr,
+      .flight_envelope = flight_envelope,
   };
 }
 
-[[nodiscard]] RouteActivationObservation3D
-makeActivationObservation(const ProductionMppiPreparedEsdf& world,
-                          const ProductionNavigationObjective* const objective,
-                          const ProductionMppiNavigation& navigation,
-                          const std::uint64_t minimum_tracking_sample_sequence,
-                          const double maximum_cross_track_m,
-                          const SweptFootprintConfig& footprint,
-                          const bool raw_validation_required) {
+[[nodiscard]] RouteActivationObservation3D makeActivationObservation(
+    const ProductionMppiPreparedEsdf& world,
+    const ProductionNavigationObjective* const objective,
+    const ProductionMppiNavigation& navigation,
+    const std::uint64_t minimum_tracking_sample_sequence,
+    const double maximum_cross_track_m, const SweptFootprintConfig& footprint,
+    const FlightEnvelopeConfig& flight_envelope, const bool raw_validation_required) {
   return RouteActivationObservation3D{
       .resident_world = navigationWorldCertificate3D(world),
       .current_objective = objective != nullptr ? makeStaticRouteObjective(*objective)
@@ -178,6 +165,7 @@ makeActivationObservation(const ProductionMppiPreparedEsdf& world,
       .position = {navigation.state.x, navigation.state.y, navigation.state.z},
       .maximum_cross_track_m = maximum_cross_track_m,
       .footprint = footprint,
+      .flight_envelope = flight_envelope,
       .raw_validation_required = raw_validation_required,
   };
 }
@@ -188,7 +176,8 @@ makeActivationObservation(const ProductionMppiPreparedEsdf& world,
     const ProductionMppiNavigation& navigation,
     const std::shared_ptr<const ProductionMppiRawWorld3D>& latest_raw_world,
     const std::uint64_t minimum_tracking_sample_sequence,
-    const double maximum_cross_track_m, const SweptFootprintConfig& footprint) {
+    const double maximum_cross_track_m, const SweptFootprintConfig& footprint,
+    const FlightEnvelopeConfig& flight_envelope) {
   const bool observed = pending.route.observed_raw_world != nullptr;
   std::shared_ptr<const VersionedObservedRawWorld3D> observed_owner;
   if (observed) {
@@ -199,7 +188,7 @@ makeActivationObservation(const ProductionMppiPreparedEsdf& world,
   }
   const RouteActivationObservation3D observation = makeActivationObservation(
       world, objective, navigation, minimum_tracking_sample_sequence,
-      maximum_cross_track_m, footprint, observed);
+      maximum_cross_track_m, footprint, flight_envelope, observed);
   const std::optional<CertifiedRouteSuffix3D> refreshed =
       recertifyExecutionRoute3D(pending.route, observation, std::move(observed_owner));
   return refreshed.has_value()
@@ -358,7 +347,7 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
       }
       RouteExecutionObservation3D observation = makeExecutionObservation(
           world, objective, execution_navigation, minimum_tracking_sample_sequence,
-          execution_maximum_cross_track_m, footprint);
+          execution_maximum_cross_track_m, footprint, flight_envelope_config_);
       std::shared_ptr<const VersionedObservedRawWorld3D> latest_observed_owner;
       std::shared_ptr<const VersionedObservedRawWorld3D> collision_observed_owner;
       bool active_trajectory_raw_collision{false};
@@ -718,10 +707,11 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
         retain_snapshot_certificate
             ? std::make_shared<const CertifiedRouteSuffix3D>(
                   result.pending_route->route)
-            : refreshPendingRoute(
-                  *result.pending_route, world, objective, execution_navigation,
-                  latest_raw_world, minimum_tracking_sample_sequence,
-                  route_tracking_policy_.maximum_cross_track_m, footprint);
+            : refreshPendingRoute(*result.pending_route, world, objective,
+                                  execution_navigation, latest_raw_world,
+                                  minimum_tracking_sample_sequence,
+                                  route_tracking_policy_.maximum_cross_track_m,
+                                  footprint, flight_envelope_config_);
     if (retain_snapshot_certificate) {
       RCLCPP_INFO_THROTTLE(
           get_logger(), *get_clock(), 1000,

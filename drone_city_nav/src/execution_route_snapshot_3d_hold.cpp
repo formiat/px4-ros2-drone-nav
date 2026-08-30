@@ -2,6 +2,7 @@
 #include "drone_city_nav/mppi/mppi_altitude_envelope.hpp"
 #include "drone_city_nav/mppi/mppi_reference.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
+#include "drone_city_nav/occupied_collision_oracle_3d.hpp"
 
 #include <cmath>
 #include <limits>
@@ -28,34 +29,24 @@ bool stationaryHoldRawSafe(
   const mppi::Control& control = execution_input.previousControl();
   const FootprintBodyAxis axis =
       bodyAxisFromWorldAcceleration(Vec3{control.ax, control.ay, control.az});
-  SweptFootprintResult world_validation;
-  if (static_world != nullptr) {
-    world_validation = validateKnownStaticSweptFootprint(
-        static_world->occupancy(), position, axis, position, axis,
-        validation_policy.sweptFootprint());
-  } else {
-    world_validation = validateObservedSweptFootprint(
-        observed_raw_world->occupancy(), position, axis, position, axis,
-        validation_policy.sweptFootprint(),
-        ObservedSpaceValidationPolicy::kAllowUnknown,
-        observed_raw_world->proprioceptiveFreeSpaceSeed().has_value()
-            ? std::addressof(*observed_raw_world->proprioceptiveFreeSpaceSeed())
-            : nullptr,
-        observed_raw_world->launchSupportContact().has_value()
-            ? std::addressof(*observed_raw_world->launchSupportContact())
-            : nullptr);
-  }
-  if (!world_validation.accepted()) {
-    return false;
-  }
-  return validateRawPointCloudSweptFootprint(
-             latest_lidar_evidence.hitPointsMapM(), position, axis, position, axis,
-             validation_policy.sweptFootprint(),
-             observed_raw_world != nullptr &&
-                     observed_raw_world->launchSupportContact().has_value()
-                 ? std::addressof(*observed_raw_world->launchSupportContact())
-                 : nullptr)
-      .accepted();
+  const LaunchSupportContact3D* const launch_support =
+      observed_raw_world != nullptr &&
+              observed_raw_world->launchSupportContact().has_value()
+          ? std::addressof(*observed_raw_world->launchSupportContact())
+          : nullptr;
+  const OccupiedCollisionOracle3D oracle{OccupiedCollisionWorld3D{
+      .observed_occupancy = observed_raw_world != nullptr
+                                ? std::addressof(observed_raw_world->occupancy())
+                                : nullptr,
+      .static_occupancy =
+          static_world != nullptr ? std::addressof(static_world->occupancy()) : nullptr,
+      .planar_occupancy = nullptr,
+      .raw_point_cloud = latest_lidar_evidence.hitPointsMapM(),
+      .launch_support_contact = launch_support,
+      .footprint = validation_policy.sweptFootprint(),
+      .flight_envelope = validation_policy.flightEnvelope(),
+  }};
+  return oracle.validatePoint(position, axis).clear();
 }
 
 } // namespace execution_route_snapshot_3d_internal

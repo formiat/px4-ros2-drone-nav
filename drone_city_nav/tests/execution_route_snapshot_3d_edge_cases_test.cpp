@@ -996,13 +996,11 @@ TEST(ExecutionRouteSnapshot3DTest, ProgressConnectorUsesExactPreviousControlBody
   const FootprintBodyAxis tilted_axis = bodyAxisFromWorldAcceleration(
       Vec3{tilted_control.ax, tilted_control.ay, tilted_control.az});
   const Point3 position{old_input.state().x, old_input.state().y, old_input.state().z};
-  EXPECT_TRUE(validateObservedSweptFootprint(
-                  latest_occupancy, position, old_axis, position, old_axis,
-                  oriented_footprint, ObservedSpaceValidationPolicy::kAllowUnknown)
+  EXPECT_TRUE(validateRawSweptFootprint(latest_occupancy, position, old_axis, position,
+                                        old_axis, oriented_footprint)
                   .accepted());
-  EXPECT_FALSE(validateObservedSweptFootprint(
-                   latest_occupancy, position, old_axis, position, tilted_axis,
-                   oriented_footprint, ObservedSpaceValidationPolicy::kAllowUnknown)
+  EXPECT_FALSE(validateRawSweptFootprint(latest_occupancy, position, old_axis, position,
+                                         tilted_axis, oriented_footprint)
                    .accepted());
 
   const std::shared_ptr<const VersionedExecutionInput3D> current_input =

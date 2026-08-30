@@ -11,9 +11,6 @@ enum class MppiPostUpdateClassification : std::uint8_t {
   kNoFeasibleRollout,
   kInvalidMetrics,
   kAltitudeEnvelopeViolation,
-  kRawCollision,
-  kUnknownSpaceViolation,
-  kKnownSolidCollision,
   kRouteTerminalCrossTrackViolation,
 };
 
@@ -24,9 +21,6 @@ struct MppiFeasibilityContract {
 
 struct MppiPostUpdateObservation {
   bool altitude_envelope_violation{false};
-  bool raw_collision{true};
-  bool unknown_space_violation{false};
-  bool known_solid_collision{false};
   bool route_terminal_cross_track_violation{false};
 };
 

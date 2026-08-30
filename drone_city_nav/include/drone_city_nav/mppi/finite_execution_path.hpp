@@ -7,6 +7,7 @@
 #include "drone_city_nav/observed_occupancy_grid_3d.hpp"
 #include "drone_city_nav/occupancy_grid.hpp"
 #include "drone_city_nav/occupancy_grid_3d.hpp"
+#include "drone_city_nav/occupied_collision_oracle_3d.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
 
 #include <cstddef>
@@ -36,7 +37,6 @@ enum class FiniteExecutionPathStatus {
   kDynamicFlightEnvelopeViolation,
   kRawWorldUnavailable,
   kRawCollision,
-  kUnknownSpace,
   kLatestLidarRawCollision,
 };
 
@@ -70,8 +70,6 @@ struct FiniteExecutionPathWorld {
   const SweptFootprintConfig* footprint{nullptr};
   const OccupancyGrid3D* static_occupancy{nullptr};
   const ObservedOccupancyGrid3D* observed_occupancy{nullptr};
-  bool require_known_free_space{false};
-  const ProprioceptiveFreeSpaceSeed3D* proprioceptive_free_space_seed{nullptr};
   const LaunchSupportContact3D* launch_support_contact{nullptr};
   const OccupancyGrid2D* raw_occupancy{nullptr};
   std::span<const Point3> latest_lidar_obstacle_points;

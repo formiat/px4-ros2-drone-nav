@@ -75,6 +75,13 @@ blocked(segment) = outside_flight_envelope
                 OR swept_footprint_intersects_raw_occupied
 ```
 
+This boundary is implemented. Low-level raw occupancy and point-cloud queries
+are confined to the collision implementation and focused primitive tests;
+production consumers use the oracle. Unknown and cells outside a finite raw
+snapshot are traversable; invalid or missing derived clearance is neutral.
+ESDF/MPPI types cannot express `raw_collision`, and the unused controller-local
+`KnownSolid` hard-collision path has been removed.
+
 ### `nav_planning`
 
 Owns `Lattice3D`, `DStarLiteSession3D`, `FeasiblePathSearch3D`,
@@ -186,7 +193,7 @@ route, trajectory, or execution artifact.
   update and an explicit coordinator result.
 - [ ] Introduce immutable world/search/materialization/trajectory/admission
   artifacts and remove route state from the resident world object.
-- [ ] Introduce the single unknown-neutral occupied-collision oracle and prove
+- [x] Introduce the single unknown-neutral occupied-collision oracle and prove
   that invalid or missing derived evidence cannot become `raw_collision`.
 - [ ] Compile once from the exact initial vehicle state into one sealed,
   controller-neutral `CompiledTrajectory3D`.

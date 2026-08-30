@@ -469,7 +469,7 @@ TEST(MppiControlSequenceTest,
 
   const MppiTickResult result = engine.plan(input);
 
-  EXPECT_TRUE(result.route_directed_candidate_raw_safe);
+  EXPECT_TRUE(result.route_directed_candidate_device_feasible);
   EXPECT_TRUE(result.route_directed_candidate_best_feasible);
   EXPECT_EQ(result.control_selection, MppiControlSelection::kRouteDirectedCandidate);
   ASSERT_FALSE(result.controls.empty());
@@ -603,7 +603,7 @@ TEST(MppiControlSequenceTest,
 
   const MppiTickResult result = engine.plan(input);
 
-  EXPECT_TRUE(result.route_directed_candidate_raw_safe);
+  EXPECT_TRUE(result.route_directed_candidate_device_feasible);
   EXPECT_FALSE(result.route_directed_candidate_best_feasible);
   EXPECT_EQ(result.post_update_repair, MppiPostUpdateRepair::kDeterministicCandidate);
   EXPECT_EQ(result.control_selection, MppiControlSelection::kRouteDirectedCandidate);
@@ -668,7 +668,7 @@ TEST(MppiControlSequenceTest,
 
   const MppiTickResult result = engine.plan(input);
 
-  EXPECT_TRUE(result.route_directed_candidate_raw_safe);
+  EXPECT_TRUE(result.route_directed_candidate_device_feasible);
   EXPECT_FALSE(result.route_directed_candidate_best_feasible);
   EXPECT_EQ(result.control_selection, MppiControlSelection::kRouteDirectedCandidate);
   EXPECT_EQ(result.post_update_repair, MppiPostUpdateRepair::kNotRequired);
@@ -789,7 +789,6 @@ TEST(MppiControlSequenceTest, ReverseAcquisitionIsOnlyABackwardFallback) {
               .first_control_interval_s = config.dynamics.dt_s,
               .grid = grid,
               .esdf = esdf,
-              .known_solids = {},
               .aircraft = peers,
               .acquisition = CooperativeSeparationAcquisition{},
               .config = config,

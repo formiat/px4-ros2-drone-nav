@@ -445,48 +445,30 @@ TEST(StaticRouteExtensionTest, KeepsStrongestDeferredReplanReason) {
             RouteReleaseReason3D::kNoEligibleRollouts);
 }
 
-TEST(StaticRouteExtensionTest, CandidateMustImproveEndpointAndAvoidRawOccupancy) {
-  const mppi::EsdfGrid grid{12, 4, 1.0F, 0.0F, 0.0F, 4, 0.0F};
-  std::vector<float> esdf(static_cast<std::size_t>(12U) * 4U * 4U,
-                          std::numeric_limits<float>::infinity());
+TEST(StaticRouteExtensionTest, CandidatePolicyOnlyOwnsEnvelopeAndReplacementRules) {
   const std::vector<RouteSample3D> active = route(5.5);
   const std::vector<RouteSample3D> improved = route(8.5);
 
-  EXPECT_TRUE(validateStaticRouteCandidate(active, improved, grid, esdf,
-                                           Point3{11.5, 1.5, 1.5}, 2.0, false, {})
+  EXPECT_TRUE(validateStaticRouteCandidate(active, improved, Point3{11.5, 1.5, 1.5},
+                                           2.0, false, {})
                   .accepted);
-  EXPECT_EQ(validateStaticRouteCandidate(active, route(6.5), grid, esdf,
-                                         Point3{11.5, 1.5, 1.5}, 2.0, false, {})
+  EXPECT_EQ(validateStaticRouteCandidate(active, route(6.5), Point3{11.5, 1.5, 1.5},
+                                         2.0, false, {})
                 .status,
             StaticRouteCandidateStatus::kNoEndpointImprovement);
-
-  const std::size_t occupied_index = (1U * 4U + 1U) * 12U + 8U;
-  esdf[occupied_index] = 0.0F;
-  EXPECT_EQ(validateStaticRouteCandidate(active, improved, grid, esdf,
-                                         Point3{11.5, 1.5, 1.5}, 2.0, false, {})
-                .status,
-            StaticRouteCandidateStatus::kRawCollision);
 }
 
 TEST(StaticRouteExtensionTest, SafetyReplanMayTemporarilyLoseGoalProgress) {
-  const mppi::EsdfGrid grid{12, 4, 1.0F, 0.0F, 0.0F, 4, 0.0F};
-  const std::vector<float> esdf(static_cast<std::size_t>(12U) * 4U * 4U,
-                                std::numeric_limits<float>::infinity());
-
   const StaticRouteCandidateValidation result = validateStaticRouteCandidate(
-      route(8.5), route(6.5), grid, esdf, Point3{11.5, 1.5, 1.5}, 5.0, false,
+      route(8.5), route(6.5), Point3{11.5, 1.5, 1.5}, 5.0, false,
       FlightEnvelopeConfig{}, StaticRouteReplacementPolicy::kAllowSafetyReplan);
 
   EXPECT_TRUE(result.accepted);
 }
 
 TEST(StaticRouteExtensionTest, OrdinaryExtensionCannotReplaceRouteWithoutProgress) {
-  const mppi::EsdfGrid grid{12, 4, 1.0F, 0.0F, 0.0F, 4, 0.0F};
-  const std::vector<float> esdf(static_cast<std::size_t>(12U) * 4U * 4U,
-                                std::numeric_limits<float>::infinity());
-
   const StaticRouteCandidateValidation result = validateStaticRouteCandidate(
-      route(8.5), route(6.5), grid, esdf, Point3{11.5, 1.5, 1.5}, 5.0, false,
+      route(8.5), route(6.5), Point3{11.5, 1.5, 1.5}, 5.0, false,
       FlightEnvelopeConfig{},
       StaticRouteReplacementPolicy::kRequireEndpointImprovement);
 
@@ -495,12 +477,8 @@ TEST(StaticRouteExtensionTest, OrdinaryExtensionCannotReplaceRouteWithoutProgres
 }
 
 TEST(StaticRouteExtensionTest, SuccessorRouteMayMoveAwayFromGoal) {
-  const mppi::EsdfGrid grid{12, 4, 1.0F, 0.0F, 0.0F, 4, 0.0F};
-  const std::vector<float> esdf(static_cast<std::size_t>(12U) * 4U * 4U,
-                                std::numeric_limits<float>::infinity());
-
   const StaticRouteCandidateValidation result = validateStaticRouteCandidate(
-      route(8.5), route(6.5), grid, esdf, Point3{11.5, 1.5, 1.5}, 5.0, false,
+      route(8.5), route(6.5), Point3{11.5, 1.5, 1.5}, 5.0, false,
       FlightEnvelopeConfig{}, StaticRouteReplacementPolicy::kAllowSuccessorProgress);
 
   EXPECT_TRUE(result.accepted);
@@ -520,15 +498,12 @@ TEST(StaticRouteExtensionTest, ReplacementPoliciesHaveStableDiagnosticNames) {
 }
 
 TEST(StaticRouteExtensionTest, RejectsRouteOutsideFlightEnvelope) {
-  const mppi::EsdfGrid grid{12, 4, 1.0F, 0.0F, 0.0F, 40, 0.0F};
-  const std::vector<float> esdf(static_cast<std::size_t>(12U) * 4U * 40U,
-                                std::numeric_limits<float>::infinity());
   std::vector<RouteSample3D> invalid = route(8.5);
   invalid.back().position.z = 32.0;
-  EXPECT_EQ(validateStaticRouteCandidate({}, invalid, grid, esdf,
-                                         Point3{11.5, 1.5, 1.5}, 0.0, false, {})
-                .status,
-            StaticRouteCandidateStatus::kOutsideFlightEnvelope);
+  EXPECT_EQ(
+      validateStaticRouteCandidate({}, invalid, Point3{11.5, 1.5, 1.5}, 0.0, false, {})
+          .status,
+      StaticRouteCandidateStatus::kOutsideFlightEnvelope);
 }
 
 TEST(StaticRouteExtensionTest, PlanningGoalAndEsdfBoundaryAreExplicit) {

@@ -1,9 +1,12 @@
 #include "drone_city_nav/tracking_objective.hpp"
 
+#include "drone_city_nav/occupied_collision_oracle_3d.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <functional>
+#include <memory>
 #include <stdexcept>
 
 namespace drone_city_nav {
@@ -235,23 +238,49 @@ bool trackingLineOfSightRawClear(const ObservedOccupancyGrid3D& raw_occupancy,
 bool trackingLineOfSightSweptRawClear(const OccupancyGrid2D& raw_occupancy,
                                       const Point3& from, const Point3& to,
                                       const SweptFootprintConfig& footprint) {
-  return validateRawSweptFootprint(raw_occupancy, from, to, footprint).accepted();
+  const OccupiedCollisionOracle3D oracle{OccupiedCollisionWorld3D{
+      .observed_occupancy = nullptr,
+      .static_occupancy = nullptr,
+      .planar_occupancy = std::addressof(raw_occupancy),
+      .raw_point_cloud = {},
+      .launch_support_contact = nullptr,
+      .footprint = footprint,
+      .flight_envelope = std::nullopt,
+  }};
+  return oracle.validateSegment(from, FootprintBodyAxis{}, to, FootprintBodyAxis{})
+      .clear();
 }
 
 bool trackingLineOfSightSweptRawClear(const OccupancyGrid3D& raw_occupancy,
                                       const Point3& from, const Point3& to,
                                       const SweptFootprintConfig& footprint) {
-  return validateRawSweptFootprint(raw_occupancy, from, FootprintBodyAxis{}, to,
-                                   FootprintBodyAxis{}, footprint)
-      .accepted();
+  const OccupiedCollisionOracle3D oracle{OccupiedCollisionWorld3D{
+      .observed_occupancy = nullptr,
+      .static_occupancy = std::addressof(raw_occupancy),
+      .planar_occupancy = nullptr,
+      .raw_point_cloud = {},
+      .launch_support_contact = nullptr,
+      .footprint = footprint,
+      .flight_envelope = std::nullopt,
+  }};
+  return oracle.validateSegment(from, FootprintBodyAxis{}, to, FootprintBodyAxis{})
+      .clear();
 }
 
 bool trackingLineOfSightSweptRawClear(const ObservedOccupancyGrid3D& raw_occupancy,
                                       const Point3& from, const Point3& to,
                                       const SweptFootprintConfig& footprint) {
-  return validateRawSweptFootprint(raw_occupancy, from, FootprintBodyAxis{}, to,
-                                   FootprintBodyAxis{}, footprint)
-      .accepted();
+  const OccupiedCollisionOracle3D oracle{OccupiedCollisionWorld3D{
+      .observed_occupancy = std::addressof(raw_occupancy),
+      .static_occupancy = nullptr,
+      .planar_occupancy = nullptr,
+      .raw_point_cloud = {},
+      .launch_support_contact = nullptr,
+      .footprint = footprint,
+      .flight_envelope = std::nullopt,
+  }};
+  return oracle.validateSegment(from, FootprintBodyAxis{}, to, FootprintBodyAxis{})
+      .clear();
 }
 
 DirectTrackingTargetResolution resolveDirectTrackingTarget(

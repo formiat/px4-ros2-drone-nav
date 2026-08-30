@@ -1,7 +1,10 @@
 #include "drone_city_nav/cooperative_passage_route.hpp"
 
+#include "drone_city_nav/occupied_collision_oracle_3d.hpp"
+
 #include <algorithm>
 #include <cmath>
+#include <memory>
 #include <optional>
 #include <ranges>
 #include <utility>
@@ -154,10 +157,20 @@ void recomputeRouteGeometry(std::vector<RouteSample3D>& route) noexcept {
                                     const OccupancyGrid3D& occupancy,
                                     const SweptFootprintConfig& footprint) noexcept {
   const FootprintBodyAxis body_axis{};
+  const OccupiedCollisionOracle3D oracle{OccupiedCollisionWorld3D{
+      .observed_occupancy = nullptr,
+      .static_occupancy = std::addressof(occupancy),
+      .planar_occupancy = nullptr,
+      .raw_point_cloud = {},
+      .launch_support_contact = nullptr,
+      .footprint = footprint,
+      .flight_envelope = std::nullopt,
+  }};
   for (std::size_t index = 1U; index < route.size(); ++index) {
-    if (!validateRawSweptFootprint(occupancy, route[index - 1U].position, body_axis,
-                                   route[index].position, body_axis, footprint)
-             .accepted()) {
+    if (!oracle
+             .validateSegment(route[index - 1U].position, body_axis,
+                              route[index].position, body_axis)
+             .clear()) {
       return false;
     }
   }

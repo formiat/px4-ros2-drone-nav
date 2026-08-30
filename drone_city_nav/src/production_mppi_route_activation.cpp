@@ -45,14 +45,13 @@ rawWorldExecutionOwnerExact(const ProductionMppiRawWorld3D& raw_world) noexcept 
 
 [[nodiscard]] StaticRouteCandidateStatus
 candidateStatusFromRiskAssignment(const RouteRiskTierAssignmentStatus status) noexcept {
-  if (status == RouteRiskTierAssignmentStatus::kRawCollision) {
-    return StaticRouteCandidateStatus::kRawCollision;
+  switch (status) {
+    case RouteRiskTierAssignmentStatus::kAccepted:
+      return StaticRouteCandidateStatus::kAccepted;
+    case RouteRiskTierAssignmentStatus::kInvalidInput:
+      return StaticRouteCandidateStatus::kInvalidInput;
   }
-  if (status == RouteRiskTierAssignmentStatus::kOutsideGrid ||
-      status == RouteRiskTierAssignmentStatus::kUnknownSpace) {
-    return StaticRouteCandidateStatus::kOutsideEsdf;
-  }
-  return StaticRouteCandidateStatus::kInvalidEsdf;
+  return StaticRouteCandidateStatus::kInvalidInput;
 }
 
 [[nodiscard]] bool
@@ -286,7 +285,7 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
     const RouteRiskTierAssignmentResult risk_assignment = assignRouteRiskTiers(
         *rebased_route, snapshot.resident_world->grid,
         *snapshot.resident_world->distances_m, mppi_config_.risk.critical_distance_m,
-        mppi_config_.risk.preferred_distance_m, false);
+        mppi_config_.risk.preferred_distance_m);
     if (!risk_assignment.accepted()) {
       result.validation = StaticRouteCandidateValidation{
           .status = candidateStatusFromRiskAssignment(risk_assignment.status),
@@ -298,20 +297,10 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
           snapshot.resident_world->route_3d
               ? std::span<const RouteSample3D>{*snapshot.resident_world->route_3d}
               : std::span<const RouteSample3D>{},
-          *rebased_route, snapshot.resident_world->grid,
-          *snapshot.resident_world->distances_m, mission_goal,
+          *rebased_route, mission_goal,
           static_route_extension_config_.minimum_endpoint_improvement_m,
           candidate.route_reaches_mission_goal, flight_envelope_config_,
-          replacement_policy,
-          SweptFootprintConfig{
-              .radius_m = physical_footprint_config_.radius_m,
-              .lower_extent_m = physical_footprint_config_.lower_extent_m,
-              .upper_extent_m = physical_footprint_config_.upper_extent_m,
-              .perimeter_samples = physical_footprint_config_.perimeter_samples,
-              .radial_rings = physical_footprint_config_.radial_rings,
-              .axial_samples = physical_footprint_config_.axial_samples,
-              .sweep_step_m = physical_footprint_config_.sweep_step_m},
-          false, true);
+          replacement_policy);
     }
     if (result.validation.accepted &&
         !validateConstrainedRouteSpans(*rebased_route, *candidate.constrained_spans,
@@ -364,10 +353,6 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
                   .observed_occupancy = &activation_raw_owner->occupancy(),
                   .occupied_content_fingerprint =
                       activation_raw_owner->occupiedContentFingerprint(),
-                  .free_space_seed =
-                      candidate.proprioceptive_free_space_seed.has_value()
-                          ? std::addressof(*candidate.proprioceptive_free_space_seed)
-                          : nullptr,
                   .launch_support_contact =
                       candidate.launch_support_contact.has_value()
                           ? std::addressof(*candidate.launch_support_contact)
@@ -391,7 +376,7 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
   } else if (result.validation.accepted && raw_validation_required &&
              activation_raw_owner == nullptr) {
     result.validation = StaticRouteCandidateValidation{
-        .status = StaticRouteCandidateStatus::kInvalidEsdf};
+        .status = StaticRouteCandidateStatus::kRawWorldUnavailable};
   }
   if (candidate.route_3d) {
     candidate.route_projection = projectOntoRouteProgress3D(
@@ -551,14 +536,11 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
                   .radial_rings = physical_footprint_config_.radial_rings,
                   .axial_samples = physical_footprint_config_.axial_samples,
                   .sweep_step_m = physical_footprint_config_.sweep_step_m},
-          .proprioceptive_free_space_seed =
-              candidate.proprioceptive_free_space_seed
-                  ? std::addressof(*candidate.proprioceptive_free_space_seed)
-                  : nullptr,
           .launch_support_contact =
               candidate.launch_support_contact
                   ? std::addressof(*candidate.launch_support_contact)
                   : nullptr,
+          .flight_envelope = flight_envelope_config_,
           .raw_validation_required = raw_validation_required,
       });
   result.world_compatible = result.assessment.publication.compatible();
@@ -566,7 +548,7 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
   if (raw_validation_required && !result.assessment.raw_world_compatible &&
       result.world_compatible && result.objective_matches) {
     result.validation = StaticRouteCandidateValidation{
-        .status = StaticRouteCandidateStatus::kInvalidEsdf};
+        .status = StaticRouteCandidateStatus::kRawWorldUnavailable};
   } else if (result.assessment.raw_validation.status ==
              RawRouteSuffixStatus3D::kRawCollision) {
     result.validation = StaticRouteCandidateValidation{
@@ -589,7 +571,6 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
     activation_evidence.status = SegmentEvidenceStatus3D::kValid;
   } else if (result.validation.status == StaticRouteCandidateStatus::kRawCollision) {
     activation_evidence.status = SegmentEvidenceStatus3D::kRawCollision;
-    activation_evidence.raw_collision = true;
     activation_evidence.failure_segment_index = result.validation.failure_segment_index;
     activation_evidence.failure_point = result.validation.failure_point;
   } else if (raw_validation_required && !result.assessment.raw_world_compatible) {
@@ -812,6 +793,7 @@ void ProductionMppiNode::commitRouteActivation3D(
                                     physical_footprint_config_.axial_samples,
                                 .sweep_step_m =
                                     physical_footprint_config_.sweep_step_m},
+                        .flight_envelope = flight_envelope_config_,
                         .raw_validation_required = raw_validation_required,
                     },
                 .passage_volume_config = cooperative_passage_volume_config_,

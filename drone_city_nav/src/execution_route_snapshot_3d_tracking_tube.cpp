@@ -1,4 +1,5 @@
 #include "drone_city_nav/execution_route_snapshot_3d.hpp"
+#include "drone_city_nav/occupied_collision_oracle_3d.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -84,7 +85,7 @@ bool validateTrackingTubeHandoffClearance(
   if (route.geometry == nullptr || route.geometry->route == nullptr ||
       route.geometry->tracking_error_tube == nullptr || horizon.states.size() < 2U ||
       horizon.controls.size() + 1U != horizon.states.size() ||
-      world.footprint == nullptr ||
+      world.footprint == nullptr || world.flight_envelope == nullptr ||
       (world.observed_occupancy == nullptr) == (world.static_occupancy == nullptr)) {
     return false;
   }
@@ -162,24 +163,17 @@ bool validateTrackingTubeHandoffClearance(
         Vec3{start_control.ax, start_control.ay, start_control.az});
     const FootprintBodyAxis stop_axis = bodyAxisFromWorldAcceleration(
         Vec3{stop_control.ax, stop_control.ay, stop_control.az});
-    const bool occupancy_safe =
-        world.observed_occupancy != nullptr
-            ? validateObservedSweptFootprint(
-                  *world.observed_occupancy, previous_position, start_axis, position,
-                  stop_axis, inflated, ObservedSpaceValidationPolicy::kAllowUnknown,
-                  world.proprioceptive_free_space_seed, world.launch_support_contact)
-                  .accepted()
-            : validateKnownStaticSweptFootprint(*world.static_occupancy,
-                                                previous_position, start_axis, position,
-                                                stop_axis, inflated)
-                  .accepted();
-    const bool lidar_safe =
-        world.latest_lidar_obstacle_points.empty() ||
-        validateRawPointCloudSweptFootprint(
-            world.latest_lidar_obstacle_points, previous_position, start_axis, position,
-            stop_axis, inflated, world.launch_support_contact)
-            .accepted();
-    if (!occupancy_safe || !lidar_safe) {
+    const OccupiedCollisionOracle3D oracle{OccupiedCollisionWorld3D{
+        .observed_occupancy = world.observed_occupancy,
+        .static_occupancy = world.static_occupancy,
+        .planar_occupancy = world.raw_occupancy,
+        .raw_point_cloud = world.latest_lidar_obstacle_points,
+        .launch_support_contact = world.launch_support_contact,
+        .footprint = inflated,
+        .flight_envelope = *world.flight_envelope,
+    }};
+    if (!oracle.validateSegment(previous_position, start_axis, position, stop_axis)
+             .clear()) {
       return false;
     }
     if (assessment(state, projection).accepted()) {

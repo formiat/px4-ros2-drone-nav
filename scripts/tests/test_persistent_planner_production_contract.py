@@ -127,10 +127,12 @@ class PersistentPlannerProductionContractTest(unittest.TestCase):
         self.assertLess(deferred, planner_call)
 
     def test_hard_validation_uses_physical_footprint_and_allows_unknown(self) -> None:
+        self.assertIn("OccupiedCollisionWorld3D", self.selection)
         self.assertIn(".footprint = physical_footprint", self.selection)
+        self.assertIn(".flight_envelope = flight_envelope", self.selection)
         self.assertIn("physical_footprint_config_", self.selection)
-        self.assertIn(".require_known_free_space = false", self.selection)
-        self.assertIn(".reject_invalid_esdf = false", self.selection)
+        self.assertNotIn("require_known_free_space", self.selection)
+        self.assertNotIn("reject_invalid_esdf", self.selection)
         self.assertNotIn("static_route_tracking_margin_m", self.selection)
 
     def test_runtime_telemetry_reports_persistent_planner_evidence(self) -> None:

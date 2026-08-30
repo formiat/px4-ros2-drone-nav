@@ -57,15 +57,13 @@ struct TestWorld {
     };
   }
 
-  [[nodiscard]] FiniteExecutionPathWorld
-  observedView(const bool require_known_free_space = false) const noexcept {
+  [[nodiscard]] FiniteExecutionPathWorld observedView() const noexcept {
     return FiniteExecutionPathWorld{
         .flight_envelope = &envelope,
         .dynamics = &dynamics,
         .altitude_envelope = &altitude_envelope,
         .footprint = &footprint,
         .observed_occupancy = &observed_occupancy,
-        .require_known_free_space = require_known_free_space,
         .latest_lidar_obstacle_points = {},
         .terminal_boundary = std::nullopt,
     };
@@ -211,7 +209,7 @@ TEST(FiniteExecutionPathTest,
             FiniteExecutionPathStatus::kLatestLidarRawCollision);
 }
 
-TEST(FiniteExecutionPathTest, ConservativeModeStopsAtUnknownObservedFrontier) {
+TEST(FiniteExecutionPathTest, UnknownObservedFrontierIsAlwaysTraversable) {
   TestWorld world;
   const GridBounds3D& bounds = world.observed_occupancy.bounds();
   for (int z = 0; z < bounds.depth_cells; ++z) {
@@ -225,11 +223,10 @@ TEST(FiniteExecutionPathTest, ConservativeModeStopsAtUnknownObservedFrontier) {
   static_cast<void>(world.observed_occupancy.setState(GridIndex3D{7, 2, 10},
                                                       ObservedVoxelState::kUnknown));
 
-  const FiniteExecutionPathValidation result = validateCompleteFiniteExecutionPath(
-      testPath(), Control{}, world.observedView(true));
+  const FiniteExecutionPathValidation result =
+      validateCompleteFiniteExecutionPath(testPath(), Control{}, world.observedView());
 
-  EXPECT_EQ(result.status, FiniteExecutionPathStatus::kUnknownSpace);
-  EXPECT_STREQ(finiteExecutionPathStatusName(result.status), "unknown_space");
+  EXPECT_TRUE(result.accepted());
 }
 
 TEST(FiniteExecutionPathTest, DefaultModeAllowsUnknownObservedFrontier) {

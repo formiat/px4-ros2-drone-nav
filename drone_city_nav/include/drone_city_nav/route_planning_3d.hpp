@@ -2,6 +2,7 @@
 
 #include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/observed_occupancy_grid_3d.hpp"
+#include "drone_city_nav/occupied_collision_oracle_3d.hpp"
 #include "drone_city_nav/route_3d.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
 #include "drone_city_nav/types.hpp"
@@ -26,9 +27,6 @@ enum class SegmentEvidenceStatus3D : std::uint8_t {
   kPlannerRejected,
   kInvalidWorld,
   kOutsideFlightEnvelope,
-  kOutsideGrid,
-  kUnknownRejected,
-  kInvalidEsdf,
   kRawCollision,
 };
 
@@ -48,7 +46,6 @@ struct SegmentEvidence3D {
   bool planner_executable{false};
   bool physical_executable{false};
   bool reaches_mission_target{false};
-  bool raw_collision{false};
   bool outside_grid_exposure{false};
   bool unknown_exposure{false};
   bool invalid_esdf_exposure{false};
@@ -65,15 +62,8 @@ routeNetCoordinateProgress3D(const Point3& start, const Point3& endpoint,
 struct SegmentEvidenceWorld3D {
   const mppi::EsdfGrid* grid{nullptr};
   std::span<const float> esdf_m;
-  const ObservedOccupancyGrid3D* latest_observed_occupancy{nullptr};
-  const OccupancyGrid3D* static_occupancy{nullptr};
-  const ProprioceptiveFreeSpaceSeed3D* proprioceptive_free_space_seed{nullptr};
-  const LaunchSupportContact3D* launch_support_contact{nullptr};
-  SweptFootprintConfig footprint{};
-  FlightEnvelopeConfig flight_envelope{};
+  OccupiedCollisionWorld3D collision{};
   std::uint64_t validated_through_revision{0U};
-  bool require_known_free_space{false};
-  bool reject_invalid_esdf{false};
 };
 
 [[nodiscard]] std::uint64_t

@@ -136,53 +136,8 @@ __device__ DeviceBodyAxis bodyAxisFromControl(const Control control) {
       DeviceBodyAxis{control.ax, control.ay, control.az + kGravityMps2});
 }
 
-__device__ bool cylinderProjectionOverlaps(const float center_projection,
-                                           const float axis_projection,
-                                           const float solid_min, const float solid_max,
-                                           const FootprintConfig footprint) {
-  const float projection = clampValue(axis_projection, -1.0F, 1.0F);
-  const float radial_projection =
-      footprint.radius_m * sqrtf(fmaxf(0.0F, 1.0F - projection * projection));
-  const float maximum_axial = projection >= 0.0F
-                                  ? footprint.upper_extent_m * projection
-                                  : -footprint.lower_extent_m * projection;
-  const float minimum_axial = projection >= 0.0F
-                                  ? -footprint.lower_extent_m * projection
-                                  : footprint.upper_extent_m * projection;
-  return center_projection + maximum_axial + radial_projection >= solid_min &&
-         center_projection + minimum_axial - radial_projection <= solid_max;
-}
-
-__device__ bool intersectsSolid(const State& state, const DeviceBodyAxis body_axis,
-                                const FootprintConfig footprint,
-                                const KnownSolid& solid) {
-  if (!(footprint.radius_m > 0.0F)) {
-    if (state.z < solid.min_z_m || state.z > solid.max_z_m) {
-      return false;
-    }
-    const float dx = state.x - solid.center_x_m;
-    const float dy = state.y - solid.center_y_m;
-    return fabsf(dx * solid.normal_x + dy * solid.normal_y) <= solid.half_depth_m &&
-           fabsf(dx * solid.lateral_x + dy * solid.lateral_y) <= solid.half_width_m;
-  }
-  const float dx = state.x - solid.center_x_m;
-  const float dy = state.y - solid.center_y_m;
-  const float depth = dx * solid.normal_x + dy * solid.normal_y;
-  const float lateral = dx * solid.lateral_x + dy * solid.lateral_y;
-  const float axis_depth = body_axis.x * solid.normal_x + body_axis.y * solid.normal_y;
-  const float axis_lateral =
-      body_axis.x * solid.lateral_x + body_axis.y * solid.lateral_y;
-  return cylinderProjectionOverlaps(depth, axis_depth, -solid.half_depth_m,
-                                    solid.half_depth_m, footprint) &&
-         cylinderProjectionOverlaps(lateral, axis_lateral, -solid.half_width_m,
-                                    solid.half_width_m, footprint) &&
-         cylinderProjectionOverlaps(state.z, body_axis.z, solid.min_z_m, solid.max_z_m,
-                                    footprint);
-}
-
 struct DeviceEsdfQuery {
   float clearance_m;
-  bool raw_collision;
   bool unknown_space;
 };
 
@@ -199,19 +154,19 @@ __device__ DeviceEsdfQuery queryEsdfPoint(const float x, const float y, const fl
                 : 0;
   if (cell_x < 0 || cell_y < 0 || cell_z < 0 || cell_x >= grid.width ||
       cell_y >= grid.height || cell_z >= depth) {
-    return {grid.outside_is_unknown ? 0.0F : kInfinity, false, grid.outside_is_unknown};
+    return {grid.outside_is_unknown ? 0.0F : kInfinity, grid.outside_is_unknown};
   }
   const float center_distance_m = tex3D<float>(
       esdf_texture, static_cast<float>(cell_x) + 0.5F,
       static_cast<float>(cell_y) + 0.5F, static_cast<float>(cell_z) + 0.5F);
   if (center_distance_m == kUnknownEsdfDistanceM) {
-    return {0.0F, false, true};
+    return {0.0F, true};
   }
   if (isinf(center_distance_m) && center_distance_m > 0.0F) {
-    return {center_distance_m, false, false};
+    return {center_distance_m, false};
   }
   if (!isfinite(center_distance_m) || center_distance_m < 0.0F) {
-    return {0.0F, true, false};
+    return {0.0F, true};
   }
   const float center_x_m =
       grid.origin_x_m + (static_cast<float>(cell_x) + 0.5F) * grid.resolution_m;
@@ -226,8 +181,7 @@ __device__ DeviceEsdfQuery queryEsdfPoint(const float x, const float y, const fl
       depth > 1 ? 0.86602540378443864676F : 0.70710678118654752440F;
   const float correction_m =
       sqrtf(dx * dx + dy * dy + dz * dz) + half_diagonal_scale * grid.resolution_m;
-  return {fmaxf(0.0F, center_distance_m - correction_m), center_distance_m == 0.0F,
-          false};
+  return {fmaxf(0.0F, center_distance_m - correction_m), false};
 }
 
 __device__ DeviceBodyAxis crossAxis(const DeviceBodyAxis first,
@@ -245,7 +199,7 @@ __device__ DeviceEsdfQuery queryFootprint(const State& state,
                                           const cudaTextureObject_t esdf_texture) {
   DeviceEsdfQuery result =
       queryEsdfPoint(state.x, state.y, state.z, grid, esdf_texture);
-  if (result.raw_collision || result.unknown_space || !(footprint.radius_m > 0.0F) ||
+  if (result.unknown_space || !(footprint.radius_m > 0.0F) ||
       footprint.perimeter_samples == 0U) {
     return result;
   }
@@ -277,7 +231,7 @@ __device__ DeviceEsdfQuery queryFootprint(const State& state,
         if ((!isfinite(center_distance_m) &&
              !(isinf(center_distance_m) && center_distance_m > 0.0F)) ||
             center_distance_m < 0.0F) {
-          result.raw_collision = true;
+          result.unknown_space = true;
           return result;
         }
         if (center_distance_m != 0.0F) {
@@ -295,8 +249,6 @@ __device__ DeviceEsdfQuery queryFootprint(const State& state,
         const float dy = state.y - nearest_y;
         if (dx * dx + dy * dy <= radius_squared) {
           result.clearance_m = 0.0F;
-          result.raw_collision = true;
-          return result;
         }
       }
     }
@@ -346,9 +298,8 @@ __device__ DeviceEsdfQuery queryFootprint(const State& state,
             state.y + axial_offset * axis.y + radial_y_offset,
             state.z + axial_offset * axis.z + radial_z_offset, grid, esdf_texture);
         result.clearance_m = fminf(result.clearance_m, query.clearance_m);
-        result.raw_collision = result.raw_collision || query.raw_collision;
         result.unknown_space = result.unknown_space || query.unknown_space;
-        if (result.raw_collision || result.unknown_space) {
+        if (result.unknown_space) {
           return result;
         }
       }
@@ -362,14 +313,12 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
          const float* noise_yaw, const Control* nominal, float* soft_cost,
          float* critical_exposure, float* planning_exposure, float* minimum_clearance,
          std::uint8_t* altitude_envelope_violation, std::uint8_t* worst_tier,
-         std::uint8_t* raw_collision, std::uint8_t* solid_collision,
          std::size_t rollouts, std::size_t steps, State initial, State target,
          MovingTargetReference moving_target, bool moving_target_enabled,
          DynamicsConfig dynamics, RiskConfig risk, FootprintConfig footprint,
          AltitudeEnvelopeConfig altitude_envelope, CostConfig costs,
          HorizonSamplingConfig horizon_sampling, EsdfGrid grid,
-         cudaTextureObject_t esdf_texture, const KnownSolid* solids,
-         std::size_t solid_count, const RouteSample3D* route_points,
+         cudaTextureObject_t esdf_texture, const RouteSample3D* route_points,
          std::size_t route_point_count, float initial_route_station_m,
          const DynamicAircraftSample* dynamic_aircraft_samples,
          const float* dynamic_aircraft_radii,
@@ -401,8 +350,6 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
   float obstacle_approach_m2_s = 0.0F;
   float minimum_clearance_m = kInfinity;
   float previous_clearance_m = kInfinity;
-  bool raw_hit = false;
-  bool solid_hit = false;
   bool altitude_envelope_hit = !altitudeEnvelopeDynamicallyRecoverable(
       initial, previous_applied_control, dynamics, altitude_envelope);
   std::uint8_t tier = static_cast<std::uint8_t>(RiskTier::kPreferred);
@@ -447,7 +394,6 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
     const int validation_samples =
         max(1, static_cast<int>(ceilf(segment_length_m / validation_step_m)));
     float clearance = kInfinity;
-    bool segment_raw_hit = false;
     const DeviceBodyAxis body_axis = bodyAxisFromControl(control);
     for (int sample = 1; sample <= validation_samples; ++sample) {
       const float ratio =
@@ -463,21 +409,11 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
       if (!esdf_query.unknown_space) {
         clearance = fminf(clearance, esdf_query.clearance_m);
       }
-      segment_raw_hit = segment_raw_hit || esdf_query.raw_collision ||
-                        (risk.require_known_free_space && esdf_query.unknown_space);
-      for (std::size_t solid_index = 0U; solid_index < solid_count && !solid_hit;
-           ++solid_index) {
-        solid_hit =
-            intersectsSolid(swept_state, body_axis, footprint, solids[solid_index]);
-      }
     }
     minimum_clearance_m = fminf(minimum_clearance_m, clearance);
-    raw_hit = raw_hit || segment_raw_hit;
     const float segment_speed_mps = hypotf(hypotf(state.vx, state.vy), state.vz);
     const float segment_m = dynamics.dt_s * segment_speed_mps;
-    if (raw_hit || solid_hit) {
-      tier = static_cast<std::uint8_t>(RiskTier::kCollision);
-    } else if (clearance < risk.critical_distance_m) {
+    if (clearance < risk.critical_distance_m) {
       tier = max(tier, static_cast<std::uint8_t>(RiskTier::kCritical));
       critical_m += segment_m;
       critical_clearance_proximity_s +=
@@ -605,7 +541,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
                  (control.az - previous.az) * (control.az - previous.az);
     yaw_cost += control.yaw_accel * control.yaw_accel;
     previous = control;
-    if ((raw_hit || solid_hit || altitude_envelope_hit) && early_exit) {
+    if (altitude_envelope_hit && early_exit) {
       break;
     }
   }
@@ -638,8 +574,6 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
   minimum_clearance[rollout] = minimum_clearance_m;
   altitude_envelope_violation[rollout] = altitude_envelope_hit ? 1U : 0U;
   worst_tier[rollout] = tier;
-  raw_collision[rollout] = raw_hit ? 1U : 0U;
-  solid_collision[rollout] = solid_hit ? 1U : 0U;
 }
 
 __device__ float atomicMinFloat(float* address, float value) {
@@ -751,15 +685,12 @@ __global__ void buildBestFeasibleControls(
 
 __global__ void reduceSoft(const float* soft,
                            const std::uint8_t* altitude_envelope_violation,
-                           const std::uint8_t* raw_collision,
-                           const std::uint8_t* solid_collision, std::size_t count,
-                           float* minimum_soft) {
+                           std::size_t count, float* minimum_soft) {
   const std::size_t index =
       static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   const bool valid = index < count;
   float candidate = kInfinity;
-  if (valid && altitude_envelope_violation[index] == 0U && raw_collision[index] == 0U &&
-      solid_collision[index] == 0U) {
+  if (valid && altitude_envelope_violation[index] == 0U) {
     candidate = soft[index];
   }
   const float block_candidate = blockMinimum(candidate, kInfinity);
@@ -770,16 +701,14 @@ __global__ void reduceSoft(const float* soft,
 
 __global__ void calculateWeights(const float* soft,
                                  const std::uint8_t* altitude_envelope_violation,
-                                 const std::uint8_t* raw_collision,
-                                 const std::uint8_t* solid_collision, float* weights,
-                                 std::size_t count, const float* minimum_soft,
-                                 float temperature, float* weight_sum) {
+                                 float* weights, std::size_t count,
+                                 const float* minimum_soft, float temperature,
+                                 float* weight_sum) {
   const std::size_t index =
       static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   const bool valid = index < count;
   float weight = 0.0F;
-  if (valid && altitude_envelope_violation[index] == 0U && raw_collision[index] == 0U &&
-      solid_collision[index] == 0U) {
+  if (valid && altitude_envelope_violation[index] == 0U) {
     weight = expf(-(soft[index] - *minimum_soft) / temperature);
   }
   if (valid) {

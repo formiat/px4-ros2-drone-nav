@@ -19,19 +19,6 @@ struct EsdfSnapshot {
   std::span<const EsdfDirtyRegion> dirty_regions{};
 };
 
-struct KnownSolid {
-  float center_x_m{0.0F};
-  float center_y_m{0.0F};
-  float normal_x{1.0F};
-  float normal_y{0.0F};
-  float lateral_x{0.0F};
-  float lateral_y{1.0F};
-  float half_depth_m{0.0F};
-  float half_width_m{0.0F};
-  float min_z_m{0.0F};
-  float max_z_m{0.0F};
-};
-
 struct RouteReference {
   std::shared_ptr<const std::vector<RouteSample3D>> points;
   std::uint64_t generation{0U};
@@ -151,9 +138,6 @@ struct MppiTickResult {
   float post_update_backtrack_ratio{1.0F};
   RiskTier selected_tier{RiskTier::kCollision};
   bool altitude_envelope_violation{false};
-  bool raw_collision{true};
-  bool unknown_space_violation{false};
-  bool known_solid_collision{false};
   bool route_terminal_cross_track_violation{false};
   float terminal_route_cross_track_m{-1.0F};
   std::size_t route_terminal_arrival_shaping_attempts{0U};
@@ -179,11 +163,11 @@ struct MppiTickResult {
   double warm_start_shift_s{0.0};
   bool nominal_reseeded{false};
   bool target_directed_candidate_injected{false};
-  bool target_directed_candidate_raw_safe{false};
+  bool target_directed_candidate_device_feasible{false};
   bool target_directed_candidate_best_feasible{false};
   float target_directed_candidate_weight{0.0F};
   bool route_directed_candidate_injected{false};
-  bool route_directed_candidate_raw_safe{false};
+  bool route_directed_candidate_device_feasible{false};
   bool route_directed_candidate_best_feasible{false};
   float route_directed_candidate_weight{0.0F};
   std::uint64_t route_directed_candidate_generation{0U};
@@ -230,7 +214,6 @@ public:
   MppiCudaEngine& operator=(MppiCudaEngine&&) noexcept;
 
   [[nodiscard]] EsdfUploadResult updateEsdf(const EsdfSnapshot& snapshot);
-  void updateKnownSolids(std::span<const KnownSolid> solids);
   [[nodiscard]] MppiTickResult plan(const MppiTickInput& input);
   [[nodiscard]] std::size_t allocatedBytes() const noexcept;
   [[nodiscard]] bool ready() const noexcept;

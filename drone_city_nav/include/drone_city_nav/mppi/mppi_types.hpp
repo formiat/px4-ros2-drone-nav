@@ -242,8 +242,6 @@ struct RolloutMetrics {
   float minimum_peer_separation_m{0.0F};
   float predicted_capture_time_s{-1.0F};
   RiskTier worst_tier{RiskTier::kPreferred};
-  bool collision{false};
-  bool unknown_space_violation{false};
   bool altitude_envelope_violation{false};
 };
 

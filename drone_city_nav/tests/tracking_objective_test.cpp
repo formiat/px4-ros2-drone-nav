@@ -147,7 +147,7 @@ TEST(TrackingObjective, SweptThreeDimensionalLineOfSightUsesVehicleVolume) {
       grid, from, to, SweptFootprintConfig{.radius_m = 0.82, .sweep_step_m = 0.25}));
 }
 
-TEST(TrackingObjective, SweptObservedLineOfSightRejectsUnknownSpace) {
+TEST(TrackingObjective, SweptObservedLineOfSightTreatsUnknownAsTraversable) {
   ObservedOccupancyGrid3D grid{GridBounds3D{0.0, 0.0, 0.0, 1.0, 10, 6, 6}};
   for (int x = 1; x <= 3; ++x) {
     for (int y = 0; y <= 2; ++y) {
@@ -157,7 +157,7 @@ TEST(TrackingObjective, SweptObservedLineOfSightRejectsUnknownSpace) {
     }
   }
 
-  EXPECT_FALSE(trackingLineOfSightSweptRawClear(
+  EXPECT_TRUE(trackingLineOfSightSweptRawClear(
       grid, Point3{1.5, 1.5, 2.5}, Point3{8.5, 1.5, 2.5},
       SweptFootprintConfig{.radius_m = 0.1, .sweep_step_m = 0.25}));
 }

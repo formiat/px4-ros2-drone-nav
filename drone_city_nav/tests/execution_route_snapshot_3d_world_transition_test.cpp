@@ -68,10 +68,9 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_TRUE(
       changed_occupancy.setState(*tube_only_obstacle, ObservedVoxelState::kOccupied));
   EXPECT_TRUE(
-      validateObservedSweptFootprint(changed_occupancy, fixture.route.front().position,
-                                     FootprintBodyAxis{}, fixture.route.back().position,
-                                     FootprintBodyAxis{}, SweptFootprintConfig{},
-                                     ObservedSpaceValidationPolicy::kAllowUnknown)
+      validateRawSweptFootprint(changed_occupancy, fixture.route.front().position,
+                                FootprintBodyAxis{}, fixture.route.back().position,
+                                FootprintBodyAxis{}, SweptFootprintConfig{})
           .accepted());
   const auto changed_world =
       fixture.rawWorld(SnapshotFixture3D::kLatestRawRevision + 1U, &changed_occupancy);

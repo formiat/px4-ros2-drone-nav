@@ -1,6 +1,7 @@
 #include "drone_city_nav/free_space_topology_extractor_3d.hpp"
 
 #include "drone_city_nav/distance_field_3d.hpp"
+#include "drone_city_nav/occupied_collision_oracle_3d.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -9,6 +10,7 @@
 #include <functional>
 #include <limits>
 #include <map>
+#include <memory>
 #include <numbers>
 #include <numeric>
 #include <queue>
@@ -153,6 +155,15 @@ void classifyVoxels(const Occupancy& occupancy,
   const double bounding_radius_m =
       std::hypot(config.footprint.radius_m, std::max(config.footprint.lower_extent_m,
                                                      config.footprint.upper_extent_m));
+  const OccupiedCollisionOracle3D point_oracle{OccupiedCollisionWorld3D{
+      .observed_occupancy = nullptr,
+      .static_occupancy = std::addressof(occupancy),
+      .planar_occupancy = nullptr,
+      .raw_point_cloud = {},
+      .launch_support_contact = nullptr,
+      .footprint = config.footprint,
+      .flight_envelope = std::nullopt,
+  }};
   const int chunk_size = static_cast<int>(config.chunk_size_cells);
   for (int core_z = 0; core_z < bounds.depth_cells; core_z += chunk_size) {
     for (int core_y = 0; core_y < bounds.height_cells; core_y += chunk_size) {
@@ -185,9 +196,7 @@ void classifyVoxels(const Occupancy& occupancy,
               const bool clearance_proves_feasible =
                   cell_clearance_m + 1.0e-6 >= bounding_radius_m;
               if (!clearance_proves_feasible &&
-                  !validateRawFootprintAt(occupancy, center, FootprintBodyAxis{},
-                                          config.footprint)
-                       .accepted()) {
+                  !point_oracle.validatePoint(center).clear()) {
                 continue;
               }
               ++stats.footprint_feasible_voxels;
@@ -754,11 +763,20 @@ template<typename Occupancy>
   if (centerline.size() < 2U) {
     return false;
   }
+  const OccupiedCollisionOracle3D oracle{OccupiedCollisionWorld3D{
+      .observed_occupancy = nullptr,
+      .static_occupancy = std::addressof(occupancy),
+      .planar_occupancy = nullptr,
+      .raw_point_cloud = {},
+      .launch_support_contact = nullptr,
+      .footprint = footprint,
+      .flight_envelope = std::nullopt,
+  }};
   for (std::size_t index = 1U; index < centerline.size(); ++index) {
-    if (!validateRawSweptFootprint(occupancy, centerline[index - 1U].position,
-                                   FootprintBodyAxis{}, centerline[index].position,
-                                   FootprintBodyAxis{}, footprint)
-             .accepted()) {
+    if (!oracle
+             .validateSegment(centerline[index - 1U].position, FootprintBodyAxis{},
+                              centerline[index].position, FootprintBodyAxis{})
+             .clear()) {
       return false;
     }
   }

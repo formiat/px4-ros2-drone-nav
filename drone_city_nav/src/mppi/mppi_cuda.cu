@@ -331,7 +331,6 @@ struct DeviceRolloutBuffers {
   DeviceBuffer<float> planning_exposure;
   DeviceBuffer<float> minimum_clearance;
   DeviceBuffer<std::uint8_t> worst_tier;
-  DeviceBuffer<std::uint8_t> collision;
   DeviceBuffer<float> weights;
   DeviceBuffer<Control> nominal;
   DeviceBuffer<Control> updated;
@@ -351,7 +350,6 @@ struct DeviceRolloutBuffers {
         planning_exposure{rollouts},
         minimum_clearance{rollouts},
         worst_tier{rollouts},
-        collision{rollouts},
         weights{rollouts},
         nominal{steps},
         updated{steps},
@@ -365,8 +363,8 @@ struct DeviceRolloutBuffers {
   [[nodiscard]] std::size_t bytes() const noexcept {
     return noise_ax.bytes() + noise_ay.bytes() + noise_az.bytes() + noise_yaw.bytes() +
            soft_cost.bytes() + critical_exposure.bytes() + planning_exposure.bytes() +
-           minimum_clearance.bytes() + worst_tier.bytes() + collision.bytes() +
-           weights.bytes() + nominal.bytes() + updated.bytes() + best_tier.bytes() +
+           minimum_clearance.bytes() + worst_tier.bytes() + weights.bytes() +
+           nominal.bytes() + updated.bytes() + best_tier.bytes() +
            best_critical.bytes() + best_planning.bytes() + minimum_soft.bytes() +
            weight_sum.bytes();
   }
@@ -471,39 +469,34 @@ BenchmarkResult runCudaBenchmark(const BenchmarkConfig& config) {
         buffers.noise_ax.get(), buffers.noise_ay.get(), buffers.noise_az.get(),
         buffers.noise_yaw.get(), buffers.nominal.get(), buffers.soft_cost.get(),
         buffers.critical_exposure.get(), buffers.planning_exposure.get(),
-        buffers.minimum_clearance.get(), buffers.worst_tier.get(),
-        buffers.collision.get(), config.rollouts, config.steps, scenario.initial,
-        scenario.target_x_m, scenario.target_y_m, config.dynamics, config.risk,
-        config.costs, scenario.grid, texture.get(), config.early_exit_on_collision);
+        buffers.minimum_clearance.get(), buffers.worst_tier.get(), config.rollouts,
+        config.steps, scenario.initial, scenario.target_x_m, scenario.target_y_m,
+        config.dynamics, config.risk, config.costs, scenario.grid, texture.get());
     after_simulation.record();
     initializeReductionKernel<<<1, 1>>>(
         buffers.best_tier.get(), buffers.best_critical.get(),
         buffers.best_planning.get(), buffers.minimum_soft.get(),
         buffers.weight_sum.get());
     reduceTierKernel<<<rollout_blocks, kThreadsPerBlock>>>(
-        buffers.worst_tier.get(), buffers.collision.get(), config.rollouts,
-        buffers.best_tier.get());
+        buffers.worst_tier.get(), config.rollouts, buffers.best_tier.get());
     reduceCriticalKernel<<<rollout_blocks, kThreadsPerBlock>>>(
-        buffers.worst_tier.get(), buffers.critical_exposure.get(),
-        buffers.collision.get(), config.rollouts, buffers.best_tier.get(),
-        buffers.best_critical.get());
+        buffers.worst_tier.get(), buffers.critical_exposure.get(), config.rollouts,
+        buffers.best_tier.get(), buffers.best_critical.get());
     reducePlanningKernel<<<rollout_blocks, kThreadsPerBlock>>>(
         buffers.worst_tier.get(), buffers.critical_exposure.get(),
-        buffers.planning_exposure.get(), buffers.collision.get(), config.rollouts,
-        buffers.best_tier.get(), buffers.best_critical.get(),
-        config.risk.critical_exposure_tolerance_m, buffers.best_planning.get());
+        buffers.planning_exposure.get(), config.rollouts, buffers.best_tier.get(),
+        buffers.best_critical.get(), config.risk.critical_exposure_tolerance_m,
+        buffers.best_planning.get());
     reduceSoftKernel<<<rollout_blocks, kThreadsPerBlock>>>(
         buffers.worst_tier.get(), buffers.critical_exposure.get(),
-        buffers.planning_exposure.get(), buffers.soft_cost.get(),
-        buffers.collision.get(), config.rollouts, buffers.best_tier.get(),
-        buffers.best_critical.get(), buffers.best_planning.get(), config.risk,
-        buffers.minimum_soft.get());
+        buffers.planning_exposure.get(), buffers.soft_cost.get(), config.rollouts,
+        buffers.best_tier.get(), buffers.best_critical.get(),
+        buffers.best_planning.get(), config.risk, buffers.minimum_soft.get());
     after_risk.record();
     calculateWeightsKernel<<<rollout_blocks, kThreadsPerBlock>>>(
         buffers.worst_tier.get(), buffers.critical_exposure.get(),
-        buffers.planning_exposure.get(), buffers.soft_cost.get(),
-        buffers.collision.get(), buffers.weights.get(), config.rollouts,
-        buffers.best_tier.get(), buffers.best_critical.get(),
+        buffers.planning_exposure.get(), buffers.soft_cost.get(), buffers.weights.get(),
+        config.rollouts, buffers.best_tier.get(), buffers.best_critical.get(),
         buffers.best_planning.get(), buffers.minimum_soft.get(), config.risk,
         config.costs.temperature, buffers.weight_sum.get());
     after_weights.record();
@@ -553,7 +546,7 @@ BenchmarkResult runCudaBenchmark(const BenchmarkConfig& config) {
   result.selected = simulateReference(
       scenario.initial, nominal, zero_noise, config.dynamics, config.risk, config.costs,
       scenario.grid, scenario.esdf, scenario.target_x_m, scenario.target_y_m,
-      config.early_exit_on_collision);
+      config.early_exit_on_altitude_envelope_violation);
 
   const std::size_t check_steps = std::min<std::size_t>(config.steps, 10U);
   std::vector<Control> check_noise(check_steps);
@@ -586,10 +579,9 @@ BenchmarkResult runCudaBenchmark(const BenchmarkConfig& config) {
       buffers.noise_ax.get(), buffers.noise_ay.get(), buffers.noise_az.get(),
       buffers.noise_yaw.get(), buffers.nominal.get(), buffers.soft_cost.get(),
       buffers.critical_exposure.get(), buffers.planning_exposure.get(),
-      buffers.minimum_clearance.get(), buffers.worst_tier.get(),
-      buffers.collision.get(), 1U, check_steps, scenario.initial, scenario.target_x_m,
-      scenario.target_y_m, config.dynamics, config.risk, config.costs, scenario.grid,
-      texture.get(), config.early_exit_on_collision);
+      buffers.minimum_clearance.get(), buffers.worst_tier.get(), 1U, check_steps,
+      scenario.initial, scenario.target_x_m, scenario.target_y_m, config.dynamics,
+      config.risk, config.costs, scenario.grid, texture.get());
   checkCuda(cudaDeviceSynchronize(), "synchronize reference rollout");
 
   float gpu_soft_cost = 0.0F;
@@ -597,7 +589,6 @@ BenchmarkResult runCudaBenchmark(const BenchmarkConfig& config) {
   float gpu_planning_exposure = 0.0F;
   float gpu_minimum_clearance = 0.0F;
   std::uint8_t gpu_tier = 0U;
-  std::uint8_t gpu_collision = 0U;
   checkCuda(cudaMemcpy(&gpu_soft_cost, buffers.soft_cost.get(), sizeof(float),
                        cudaMemcpyDeviceToHost),
             "copy reference soft cost");
@@ -613,13 +604,10 @@ BenchmarkResult runCudaBenchmark(const BenchmarkConfig& config) {
   checkCuda(cudaMemcpy(&gpu_tier, buffers.worst_tier.get(), sizeof(std::uint8_t),
                        cudaMemcpyDeviceToHost),
             "copy reference risk tier");
-  checkCuda(cudaMemcpy(&gpu_collision, buffers.collision.get(), sizeof(std::uint8_t),
-                       cudaMemcpyDeviceToHost),
-            "copy reference collision");
   const RolloutMetrics reference = simulateReference(
       scenario.initial, check_nominal, check_noise, config.dynamics, config.risk,
       config.costs, scenario.grid, scenario.esdf, scenario.target_x_m,
-      scenario.target_y_m, config.early_exit_on_collision);
+      scenario.target_y_m, config.early_exit_on_altitude_envelope_violation);
   const auto approximately_equal = [](const float lhs, const float rhs) {
     const float scale = std::max({1.0F, std::abs(lhs), std::abs(rhs)});
     return std::abs(lhs - rhs) <= 2.0e-3F * scale;
@@ -629,8 +617,7 @@ BenchmarkResult runCudaBenchmark(const BenchmarkConfig& config) {
       approximately_equal(gpu_critical_exposure, reference.critical_exposure_m) &&
       approximately_equal(gpu_planning_exposure, reference.planning_exposure_m) &&
       approximately_equal(gpu_minimum_clearance, reference.minimum_clearance_m) &&
-      gpu_tier == static_cast<std::uint8_t>(reference.worst_tier) &&
-      (gpu_collision != 0U) == reference.collision;
+      gpu_tier == static_cast<std::uint8_t>(reference.worst_tier);
 
   constexpr std::size_t kReplayValues{256U};
   const std::size_t replay_values = std::min(kReplayValues, noise_count);
@@ -729,9 +716,8 @@ BenchmarkResult runPersistentCudaBenchmark(const BenchmarkConfig& config) {
   result.selected = simulateReference(
       scenario.initial, selected.controls, zero_noise, config.dynamics, config.risk,
       config.costs, scenario.grid, scenario.esdf, scenario.target_x_m,
-      scenario.target_y_m, config.early_exit_on_collision);
-  result.reference_check_passed = result.selected.collision == selected.raw_collision &&
-                                  result.selected.worst_tier == selected.selected_tier;
+      scenario.target_y_m, config.early_exit_on_altitude_envelope_violation);
+  result.reference_check_passed = result.selected.worst_tier == selected.selected_tier;
 
   MppiCudaEngine replay_engine{config};
   const EsdfUploadResult replay_upload =

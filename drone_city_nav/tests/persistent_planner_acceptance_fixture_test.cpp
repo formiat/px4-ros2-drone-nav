@@ -99,11 +99,10 @@ void expectRawSafe(const std::span<const Point3> path,
   ASSERT_GE(path.size(), 2U);
   const SweptFootprintConfig footprint = acceptanceFootprint();
   for (std::size_t index = 1U; index < path.size(); ++index) {
-    EXPECT_TRUE(
-        validateObservedSweptFootprint(occupancy, path[index - 1U], FootprintBodyAxis{},
-                                       path[index], FootprintBodyAxis{}, footprint,
-                                       ObservedSpaceValidationPolicy::kAllowUnknown)
-            .accepted())
+    EXPECT_TRUE(validateRawSweptFootprint(occupancy, path[index - 1U],
+                                          FootprintBodyAxis{}, path[index],
+                                          FootprintBodyAxis{}, footprint)
+                    .accepted())
         << "segment=" << index;
   }
 }
@@ -150,8 +149,6 @@ compileMissionRoute(const SpatialRouteCandidate3D& plan,
               .observed_occupancy = &occupancy,
               .occupancy = nullptr,
               .occupied_content_fingerprint = occupied.contentFingerprint(),
-              .occupancy_policy = TrackingErrorTubeOccupancyPolicy3D::kRawOccupiedOnly,
-              .free_space_seed = nullptr,
               .launch_support_contact = nullptr,
           },
       .config = compiler,
@@ -270,8 +267,6 @@ TEST(PersistentPlannerAcceptanceFixture,
               .occupancy = nullptr,
               .occupied_content_fingerprint =
                   fixture.occupancy->occupiedSnapshot().contentFingerprint(),
-              .occupancy_policy = TrackingErrorTubeOccupancyPolicy3D::kRawOccupiedOnly,
-              .free_space_seed = nullptr,
               .launch_support_contact = nullptr,
           }))
           << fixture.name;

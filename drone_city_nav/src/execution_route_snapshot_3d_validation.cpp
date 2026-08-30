@@ -295,18 +295,14 @@ void hashFootprint(std::uint64_t& hash,
 
 [[nodiscard]] std::uint64_t validationPolicyFingerprint(
     const SweptFootprintConfig& footprint,
-    const ObservedSpaceValidationPolicy observed_policy,
-    const ProprioceptiveFreeSpaceSeed3D* const free_space_seed,
     const LaunchSupportContact3D* const launch_support_contact) noexcept {
   if (!footprintValid(footprint)) {
     return 0U;
   }
 
   std::uint64_t hash{kFnvOffset};
-  hashValue(hash, static_cast<std::uint64_t>(observed_policy));
   hashFootprint(hash, footprint);
-  if (!hashProprioceptiveFreeSpaceSeed(hash, free_space_seed) ||
-      !hashLaunchSupportContact(hash, launch_support_contact)) {
+  if (!hashLaunchSupportContact(hash, launch_support_contact)) {
     return 0U;
   }
   return hash == 0U ? 1U : hash;
@@ -408,10 +404,6 @@ validationWorldOwnerContent(const mppi::FiniteExecutionPathWorld& world,
   }
   if (owners.observed_raw_world != nullptr) {
     const VersionedObservedRawWorld3D& owner = *owners.observed_raw_world;
-    const ProprioceptiveFreeSpaceSeed3D* const owned_seed =
-        owner.proprioceptiveFreeSpaceSeed().has_value()
-            ? std::addressof(*owner.proprioceptiveFreeSpaceSeed())
-            : nullptr;
     const LaunchSupportContact3D* const owned_support =
         owner.launchSupportContact().has_value()
             ? std::addressof(*owner.launchSupportContact())
@@ -420,8 +412,6 @@ validationWorldOwnerContent(const mppi::FiniteExecutionPathWorld& world,
     if (!owner.valid() || content_fingerprint == 0U ||
         world.static_occupancy != nullptr ||
         world.observed_occupancy != std::addressof(owner.occupancy()) ||
-        world.require_known_free_space ||
-        world.proprioceptive_free_space_seed != owned_seed ||
         world.launch_support_contact != owned_support) {
       return std::nullopt;
     }
@@ -435,9 +425,7 @@ validationWorldOwnerContent(const mppi::FiniteExecutionPathWorld& world,
   const std::uint64_t content_fingerprint = owner.contentFingerprint();
   if (!owner.valid() || content_fingerprint == 0U ||
       world.static_occupancy != std::addressof(owner.occupancy()) ||
-      world.observed_occupancy != nullptr || !world.require_known_free_space ||
-      world.proprioceptive_free_space_seed != nullptr ||
-      world.launch_support_contact != nullptr) {
+      world.observed_occupancy != nullptr || world.launch_support_contact != nullptr) {
     return std::nullopt;
   }
   return ValidationWorldOwnerContent3D{
@@ -492,12 +480,8 @@ validationContractFingerprint(const mppi::FiniteExecutionPathWorld& world,
   hashValue(hash, canonicalDoubleBits(altitude.maximum_z_m));
   hashValue(hash, canonicalDoubleBits(altitude.guaranteed_vertical_deceleration_mps2));
   hashValue(hash, canonicalDoubleBits(altitude.reaction_latency_s));
-  const ObservedSpaceValidationPolicy policy =
-      world.require_known_free_space ? ObservedSpaceValidationPolicy::kRequireKnownFree
-                                     : ObservedSpaceValidationPolicy::kAllowUnknown;
-  const std::uint64_t policy_fingerprint = validationPolicyFingerprint(
-      *world.footprint, policy, world.proprioceptive_free_space_seed,
-      world.launch_support_contact);
+  const std::uint64_t policy_fingerprint =
+      validationPolicyFingerprint(*world.footprint, world.launch_support_contact);
   if (policy_fingerprint == 0U) {
     return 0U;
   }

@@ -157,8 +157,6 @@ void hashFootprint(std::uint64_t& hash, const SweptFootprintConfig& footprint) n
 
 [[nodiscard]] std::uint64_t validationPolicyFingerprint(
     const SweptFootprintConfig& footprint,
-    const ObservedSpaceValidationPolicy observed_policy,
-    const ProprioceptiveFreeSpaceSeed3D* const free_space_seed,
     const LaunchSupportContact3D* const launch_support_contact) noexcept;
 
 void hashGridBounds(std::uint64_t& hash, const GridBounds3D& bounds) noexcept;
@@ -414,7 +412,8 @@ certificateEligibleForRevalidation(const RouteSuffixCertificate3D& artifact,
 [[nodiscard]] bool validateStaticRouteSuffixAgainstOwner(
     const VersionedStaticWorld3D& world, const std::span<const RouteSample3D> route,
     const RouteProjection3D& projection,
-    const RouteActivationObservation3D& observation) noexcept;
+    const RouteActivationObservation3D& observation,
+    const FlightEnvelopeConfig& flight_envelope) noexcept;
 
 [[nodiscard]] bool
 finiteWorldOwnerMatchesProof(const FiniteExecutionState3D& execution) noexcept;

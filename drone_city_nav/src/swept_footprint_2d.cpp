@@ -144,7 +144,7 @@ validateRawCapsule2D(const Occupancy& occupancy, const Point3& first,
   if (!std::isfinite(first.x) || !std::isfinite(first.y) || !std::isfinite(first.z) ||
       !std::isfinite(second.x) || !std::isfinite(second.y) ||
       !std::isfinite(second.z) || !std::isfinite(config.radius_m)) {
-    return makeStatusResult(SweptFootprintStatus::kInvalidEsdf, first);
+    return makeStatusResult(SweptFootprintStatus::kInvalidInput, first);
   }
   const double radius_m = std::max(0.0, config.radius_m);
   const double radius_squared = radius_m * radius_m;
@@ -168,7 +168,7 @@ validateRawCapsule2D(const Occupancy& occupancy, const Point3& first,
       !std::isfinite(direction.y) || !std::isfinite(query_minimum_x) ||
       !std::isfinite(query_maximum_x) || !std::isfinite(query_minimum_y) ||
       !std::isfinite(query_maximum_y)) {
-    return makeStatusResult(SweptFootprintStatus::kInvalidEsdf, first);
+    return makeStatusResult(SweptFootprintStatus::kInvalidInput, first);
   }
 
   const std::optional<ContactCellRange> x_range =

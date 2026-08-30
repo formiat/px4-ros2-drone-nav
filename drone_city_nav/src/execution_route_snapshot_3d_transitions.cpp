@@ -4,6 +4,7 @@
 #include "drone_city_nav/mppi/mppi_altitude_envelope.hpp"
 #include "drone_city_nav/mppi/mppi_reference.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
+#include "drone_city_nav/occupied_collision_oracle_3d.hpp"
 
 #include <algorithm>
 #include <array>
@@ -229,6 +230,7 @@ ExecutionRouteTransitionResult3D advanceCertifiedRoute3D(
     return transitionFailure(ExecutionRouteTransitionStatus3D::kNoChange);
   }
   observation.position = executionInputPosition(*execution_input);
+  observation.flight_envelope = route.validation_policy->flightEnvelope();
   const CertificateView3D old_certificate = certificateView(route.certificate);
   if (old_certificate.observed_raw) {
     if (observed_raw_world == nullptr || !observed_raw_world->valid() ||
@@ -246,17 +248,11 @@ ExecutionRouteTransitionResult3D advanceCertifiedRoute3D(
     observation.latest_raw_producer_instance_id =
         observed_raw_world->version().producer_instance_id;
     observation.latest_raw_revision = observed_raw_world->version().revision;
-    observation.proprioceptive_free_space_seed =
-        observed_raw_world->proprioceptiveFreeSpaceSeed().has_value()
-            ? &*observed_raw_world->proprioceptiveFreeSpaceSeed()
-            : nullptr;
     observation.launch_support_contact =
         observed_raw_world->launchSupportContact().has_value()
             ? &*observed_raw_world->launchSupportContact()
             : nullptr;
     if (validationPolicyFingerprint(observation.footprint,
-                                    ObservedSpaceValidationPolicy::kAllowUnknown,
-                                    observation.proprioceptive_free_space_seed,
                                     observation.launch_support_contact) !=
         old_certificate.validation_policy_fingerprint) {
       return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
@@ -271,10 +267,6 @@ ExecutionRouteTransitionResult3D advanceCertifiedRoute3D(
                 .observed_occupancy = &observed_raw_world->occupancy(),
                 .occupied_content_fingerprint =
                     observed_raw_world->occupiedContentFingerprint(),
-                .free_space_seed =
-                    observed_raw_world->proprioceptiveFreeSpaceSeed().has_value()
-                        ? &*observed_raw_world->proprioceptiveFreeSpaceSeed()
-                        : nullptr,
                 .launch_support_contact =
                     observed_raw_world->launchSupportContact().has_value()
                         ? &*observed_raw_world->launchSupportContact()
@@ -299,11 +291,9 @@ ExecutionRouteTransitionResult3D advanceCertifiedRoute3D(
     observation.latest_raw_occupancy = nullptr;
     observation.latest_raw_producer_instance_id = 0U;
     observation.latest_raw_revision = 0U;
-    observation.proprioceptive_free_space_seed = nullptr;
     observation.launch_support_contact = nullptr;
-    if (validationPolicyFingerprint(
-            observation.footprint, ObservedSpaceValidationPolicy::kRequireKnownFree,
-            nullptr, nullptr) != old_certificate.validation_policy_fingerprint) {
+    if (validationPolicyFingerprint(observation.footprint, nullptr) !=
+        old_certificate.validation_policy_fingerprint) {
       return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
     }
   }
@@ -356,21 +346,23 @@ ExecutionRouteTransitionResult3D advanceCertifiedRoute3D(
   const FootprintBodyAxis current_execution_axis = bodyAxisFromWorldAcceleration(
       Vec3{current_execution_control.ax, current_execution_control.ay,
            current_execution_control.az});
-  const bool observed_segment_world_safe =
-      old_certificate.observed_raw
-          ? validateObservedSweptFootprint(
-                observed_raw_world->occupancy(), route.progress.last_observed_position,
-                previous_route_axis, observation.position, current_execution_axis,
-                observation.footprint, ObservedSpaceValidationPolicy::kAllowUnknown,
-                observation.proprioceptive_free_space_seed,
-                observation.launch_support_contact)
-                .accepted()
-          : validateKnownStaticSweptFootprint(
-                route.static_world->occupancy(), route.progress.last_observed_position,
-                previous_route_axis, observation.position, current_execution_axis,
-                observation.footprint)
-                .accepted();
-  if (!observed_segment_world_safe) {
+  const OccupiedCollisionOracle3D collision_oracle{OccupiedCollisionWorld3D{
+      .observed_occupancy = old_certificate.observed_raw
+                                ? std::addressof(observed_raw_world->occupancy())
+                                : nullptr,
+      .static_occupancy = !old_certificate.observed_raw
+                              ? std::addressof(route.static_world->occupancy())
+                              : nullptr,
+      .planar_occupancy = nullptr,
+      .raw_point_cloud = {},
+      .launch_support_contact = observation.launch_support_contact,
+      .footprint = observation.footprint,
+      .flight_envelope = route.validation_policy->flightEnvelope(),
+  }};
+  if (!collision_oracle
+           .validateSegment(route.progress.last_observed_position, previous_route_axis,
+                            observation.position, current_execution_axis)
+           .clear()) {
     return transitionFailure(
         ExecutionRouteTransitionStatus3D::kExecutionAssessmentRejected);
   }

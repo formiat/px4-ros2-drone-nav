@@ -157,46 +157,36 @@ validatePhysicalSegment(const Point3& first, const FootprintBodyAxis& first_axis
                         const Point3& second, const FootprintBodyAxis& second_axis,
                         const FiniteExecutionPathWorld& world,
                         Point3& failure_point) noexcept {
-  SweptFootprintResult raw_validation;
-  if (world.static_occupancy != nullptr) {
-    raw_validation =
-        validateKnownStaticSweptFootprint(*world.static_occupancy, first, first_axis,
-                                          second, second_axis, *world.footprint);
-  } else if (world.observed_occupancy != nullptr) {
-    const ObservedSpaceValidationPolicy observed_policy =
-        world.require_known_free_space
-            ? ObservedSpaceValidationPolicy::kRequireKnownFree
-            : ObservedSpaceValidationPolicy::kAllowUnknown;
-    raw_validation = validateObservedSweptFootprint(
-        *world.observed_occupancy, first, first_axis, second, second_axis,
-        *world.footprint, observed_policy, world.proprioceptive_free_space_seed,
-        world.launch_support_contact);
-  } else if (world.raw_occupancy != nullptr) {
-    raw_validation = validateRawSweptFootprint(*world.raw_occupancy, first, second,
-                                               *world.footprint);
-  } else {
+  if (world.static_occupancy == nullptr && world.observed_occupancy == nullptr &&
+      world.raw_occupancy == nullptr && world.latest_lidar_obstacle_points.empty()) {
     failure_point = first;
     return FiniteExecutionPathStatus::kRawWorldUnavailable;
   }
-  if (!raw_validation.accepted()) {
-    failure_point = raw_validation.failure_point;
-    if (raw_validation.status == SweptFootprintStatus::kUnknownSpace) {
-      return world.require_known_free_space ? FiniteExecutionPathStatus::kUnknownSpace
-                                            : FiniteExecutionPathStatus::kValid;
-    }
-    return FiniteExecutionPathStatus::kRawCollision;
-  }
-  if (world.latest_lidar_obstacle_points.empty()) {
+  const OccupiedCollisionOracle3D oracle{OccupiedCollisionWorld3D{
+      .observed_occupancy = world.observed_occupancy,
+      .static_occupancy = world.static_occupancy,
+      .planar_occupancy = world.raw_occupancy,
+      .raw_point_cloud = world.latest_lidar_obstacle_points,
+      .launch_support_contact = world.launch_support_contact,
+      .footprint = *world.footprint,
+      .flight_envelope = *world.flight_envelope,
+  }};
+  const OccupiedCollisionResult3D validation =
+      oracle.validateSegment(first, first_axis, second, second_axis);
+  if (validation.clear()) {
     return FiniteExecutionPathStatus::kValid;
   }
-  const SweptFootprintResult lidar_validation = validateRawPointCloudSweptFootprint(
-      world.latest_lidar_obstacle_points, first, first_axis, second, second_axis,
-      *world.footprint, world.launch_support_contact);
-  if (!lidar_validation.accepted()) {
-    failure_point = lidar_validation.failure_point;
+  failure_point = validation.failure_point;
+  if (validation.status == OccupiedCollisionStatus3D::kOutsideFlightEnvelope) {
+    return FiniteExecutionPathStatus::kFlightEnvelopeViolation;
+  }
+  if (validation.status == OccupiedCollisionStatus3D::kInvalidInput) {
+    return FiniteExecutionPathStatus::kRawWorldUnavailable;
+  }
+  if (validation.source == OccupiedCollisionSource3D::kRawPointCloud) {
     return FiniteExecutionPathStatus::kLatestLidarRawCollision;
   }
-  return FiniteExecutionPathStatus::kValid;
+  return FiniteExecutionPathStatus::kRawCollision;
 }
 
 [[nodiscard]] FiniteExecutionPathValidation
@@ -688,8 +678,6 @@ finiteExecutionPathStatusName(const FiniteExecutionPathStatus status) noexcept {
       return "raw_world_unavailable";
     case FiniteExecutionPathStatus::kRawCollision:
       return "raw_collision";
-    case FiniteExecutionPathStatus::kUnknownSpace:
-      return "unknown_space";
     case FiniteExecutionPathStatus::kLatestLidarRawCollision:
       return "latest_lidar_raw_collision";
   }

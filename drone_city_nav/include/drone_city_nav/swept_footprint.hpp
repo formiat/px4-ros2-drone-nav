@@ -7,7 +7,6 @@
 #include "drone_city_nav/types.hpp"
 
 #include <cstddef>
-#include <limits>
 #include <span>
 #include <vector>
 
@@ -78,59 +77,21 @@ updateLaunchSupportSettling(LaunchSupportContact3D& contact,
 
 enum class SweptFootprintStatus {
   kValid,
-  kOutsideGrid,
-  kUnknownSpace,
-  kInvalidEsdf,
+  kInvalidInput,
   kRawCollision,
 };
 
 [[nodiscard]] const char*
 sweptFootprintStatusName(SweptFootprintStatus status) noexcept;
 
-struct SweptFootprintEvidence {
-  bool raw_collision{false};
-  bool outside_grid_exposure{false};
-  bool unknown_exposure{false};
-  bool invalid_esdf_exposure{false};
-  bool known_clearance_observed{false};
-  double minimum_known_clearance_m{std::numeric_limits<double>::infinity()};
-};
-
 struct SweptFootprintResult {
-  SweptFootprintStatus status{SweptFootprintStatus::kInvalidEsdf};
+  SweptFootprintStatus status{SweptFootprintStatus::kInvalidInput};
   Point3 failure_point{};
-  SweptFootprintEvidence evidence{};
 
   [[nodiscard]] bool accepted() const noexcept {
     return status == SweptFootprintStatus::kValid;
   }
 };
-
-struct SweptFootprintClearanceProfile {
-  SweptFootprintResult validation{};
-  double planning_exposure_m{0.0};
-  double critical_exposure_m{0.0};
-};
-
-[[nodiscard]] SweptFootprintResult
-validateFootprintAt(const mppi::EsdfGrid& grid, std::span<const float> esdf_m,
-                    const Point3& position,
-                    const SweptFootprintConfig& config) noexcept;
-
-[[nodiscard]] SweptFootprintResult
-validateFootprintAt(const mppi::EsdfGrid& grid, std::span<const float> esdf_m,
-                    const Point3& position, const FootprintBodyAxis& body_axis,
-                    const SweptFootprintConfig& config) noexcept;
-
-[[nodiscard]] SweptFootprintResult
-validateSweptFootprint(const mppi::EsdfGrid& grid, std::span<const float> esdf_m,
-                       const Point3& first, const Point3& second,
-                       const SweptFootprintConfig& config) noexcept;
-
-[[nodiscard]] SweptFootprintClearanceProfile profileSweptFootprintClearance(
-    const mppi::EsdfGrid& grid, std::span<const float> esdf_m, const Point3& first,
-    const Point3& second, const SweptFootprintConfig& config,
-    double critical_distance_m, double preferred_distance_m) noexcept;
 
 [[nodiscard]] SweptFootprintResult
 validateRawFootprintAt(const OccupancyGrid2D& occupancy, const Point3& position,
@@ -157,87 +118,16 @@ validateRawSweptFootprint(const OccupancyGrid3D& occupancy, const Point3& first,
                           const FootprintBodyAxis& second_body_axis,
                           const SweptFootprintConfig& config) noexcept;
 
-// Static occupancy is complete only inside its declared bounds. Unlike a raw
-// occupied-only snapshot, leaving those bounds cannot be treated as free space.
-[[nodiscard]] SweptFootprintResult
-validateKnownStaticFootprintAt(const OccupancyGrid3D& occupancy, const Point3& position,
-                               const FootprintBodyAxis& body_axis,
-                               const SweptFootprintConfig& config) noexcept;
-
-[[nodiscard]] SweptFootprintResult
-validateKnownStaticSweptFootprint(const OccupancyGrid3D& occupancy, const Point3& first,
-                                  const FootprintBodyAxis& first_body_axis,
-                                  const Point3& second,
-                                  const FootprintBodyAxis& second_body_axis,
-                                  const SweptFootprintConfig& config) noexcept;
-
 [[nodiscard]] SweptFootprintResult validateRawFootprintAt(
     const ObservedOccupancyGrid3D& occupancy, const Point3& position,
     const FootprintBodyAxis& body_axis, const SweptFootprintConfig& config,
-    const ProprioceptiveFreeSpaceSeed3D* free_space_seed = nullptr,
-    const LaunchSupportContact3D* launch_support_contact = nullptr) noexcept;
-
-enum class ObservedSpaceValidationPolicy : std::uint8_t {
-  kRequireKnownFree,
-  kAllowUnknown,
-};
-
-[[nodiscard]] SweptFootprintResult validateObservedFootprintAt(
-    const ObservedOccupancyGrid3D& occupancy, const Point3& position,
-    const FootprintBodyAxis& body_axis, const SweptFootprintConfig& config,
-    ObservedSpaceValidationPolicy policy,
-    const ProprioceptiveFreeSpaceSeed3D* free_space_seed = nullptr,
     const LaunchSupportContact3D* launch_support_contact = nullptr) noexcept;
 
 [[nodiscard]] SweptFootprintResult validateRawSweptFootprint(
     const ObservedOccupancyGrid3D& occupancy, const Point3& first,
     const FootprintBodyAxis& first_body_axis, const Point3& second,
     const FootprintBodyAxis& second_body_axis, const SweptFootprintConfig& config,
-    const ProprioceptiveFreeSpaceSeed3D* free_space_seed = nullptr,
     const LaunchSupportContact3D* launch_support_contact = nullptr) noexcept;
-
-[[nodiscard]] SweptFootprintResult validateObservedSweptFootprint(
-    const ObservedOccupancyGrid3D& occupancy, const Point3& first,
-    const FootprintBodyAxis& first_body_axis, const Point3& second,
-    const FootprintBodyAxis& second_body_axis, const SweptFootprintConfig& config,
-    ObservedSpaceValidationPolicy policy,
-    const ProprioceptiveFreeSpaceSeed3D* free_space_seed = nullptr,
-    const LaunchSupportContact3D* launch_support_contact = nullptr) noexcept;
-
-[[nodiscard]] bool
-rawFootprintIsNavigableAt(const OccupancyGrid3D& occupancy, const Point3& position,
-                          const FootprintBodyAxis& body_axis,
-                          const SweptFootprintConfig& config) noexcept;
-
-[[nodiscard]] bool
-rawSweptFootprintIsNavigable(const OccupancyGrid3D& occupancy, const Point3& first,
-                             const FootprintBodyAxis& first_body_axis,
-                             const Point3& second,
-                             const FootprintBodyAxis& second_body_axis,
-                             const SweptFootprintConfig& config) noexcept;
-
-[[nodiscard]] bool rawFootprintIsNavigableAt(
-    const ObservedOccupancyGrid3D& occupancy, const Point3& position,
-    const FootprintBodyAxis& body_axis, const SweptFootprintConfig& config,
-    const ProprioceptiveFreeSpaceSeed3D* free_space_seed = nullptr,
-    const LaunchSupportContact3D* launch_support_contact = nullptr) noexcept;
-
-[[nodiscard]] bool rawSweptFootprintIsNavigable(
-    const ObservedOccupancyGrid3D& occupancy, const Point3& first,
-    const FootprintBodyAxis& first_body_axis, const Point3& second,
-    const FootprintBodyAxis& second_body_axis, const SweptFootprintConfig& config,
-    const ProprioceptiveFreeSpaceSeed3D* free_space_seed = nullptr,
-    const LaunchSupportContact3D* launch_support_contact = nullptr) noexcept;
-
-[[nodiscard]] bool rawOccupiedFootprintIsClearAt(
-    const ObservedOccupancyGrid3D& occupancy, const Point3& position,
-    const FootprintBodyAxis& body_axis, const SweptFootprintConfig& config) noexcept;
-
-[[nodiscard]] bool rawOccupiedSweptFootprintIsClear(
-    const ObservedOccupancyGrid3D& occupancy, const Point3& first,
-    const FootprintBodyAxis& first_body_axis, const Point3& second,
-    const FootprintBodyAxis& second_body_axis,
-    const SweptFootprintConfig& config) noexcept;
 
 [[nodiscard]] bool footprintIntersectsAxisAlignedBox(
     const Point3& position, const FootprintBodyAxis& body_axis,
@@ -254,12 +144,6 @@ rawSweptFootprintIsNavigable(const OccupancyGrid3D& occupancy, const Point3& fir
     const FootprintBodyAxis& first_body_axis, const Point3& second,
     const FootprintBodyAxis& second_body_axis, const SweptFootprintConfig& config,
     const LaunchSupportContact3D* launch_support_contact = nullptr) noexcept;
-
-[[nodiscard]] SweptFootprintResult
-validateSweptFootprint(const mppi::EsdfGrid& grid, std::span<const float> esdf_m,
-                       const Point3& first, const FootprintBodyAxis& first_body_axis,
-                       const Point3& second, const FootprintBodyAxis& second_body_axis,
-                       const SweptFootprintConfig& config) noexcept;
 
 [[nodiscard]] FootprintBodyAxis
 bodyAxisFromWorldAcceleration(const Vec3& acceleration_mps2,

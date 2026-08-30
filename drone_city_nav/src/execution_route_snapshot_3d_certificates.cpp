@@ -2,6 +2,7 @@
 #include "drone_city_nav/execution_route_snapshot_3d.hpp"
 #include "drone_city_nav/mppi/mppi_reference.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
+#include "drone_city_nav/occupied_collision_oracle_3d.hpp"
 
 #include <algorithm>
 #include <array>
@@ -548,25 +549,35 @@ certificateEligibleForRevalidation(const RouteSuffixCertificate3D& artifact,
 [[nodiscard]] bool validateStaticRouteSuffixAgainstOwner(
     const VersionedStaticWorld3D& world, const std::span<const RouteSample3D> route,
     const RouteProjection3D& projection,
-    const RouteActivationObservation3D& observation) noexcept {
+    const RouteActivationObservation3D& observation,
+    const FlightEnvelopeConfig& flight_envelope) noexcept {
   if (!projection.valid || route.size() < 2U) {
     return false;
   }
   RouteSample3D previous = sampleRoute3DAtStation(route, projection.station_m);
   const FootprintBodyAxis footprint_axis{};
-  if (!validateKnownStaticSweptFootprint(world.occupancy(), observation.position,
-                                         footprint_axis, projection.point,
-                                         footprint_axis, observation.footprint)
-           .accepted()) {
+  const OccupiedCollisionOracle3D oracle{OccupiedCollisionWorld3D{
+      .observed_occupancy = nullptr,
+      .static_occupancy = std::addressof(world.occupancy()),
+      .planar_occupancy = nullptr,
+      .raw_point_cloud = {},
+      .launch_support_contact = nullptr,
+      .footprint = observation.footprint,
+      .flight_envelope = flight_envelope,
+  }};
+  if (!oracle
+           .validateSegment(observation.position, footprint_axis, projection.point,
+                            footprint_axis)
+           .clear()) {
     return false;
   }
   const auto first = std::ranges::upper_bound(route, projection.station_m, {},
                                               &RouteSample3D::station_m);
   for (auto sample = first; sample != route.end(); ++sample) {
-    if (!validateKnownStaticSweptFootprint(world.occupancy(), previous.position,
-                                           footprint_axis, sample->position,
-                                           footprint_axis, observation.footprint)
-             .accepted()) {
+    if (!oracle
+             .validateSegment(previous.position, footprint_axis, sample->position,
+                              footprint_axis)
+             .clear()) {
       return false;
     }
     previous = *sample;
@@ -662,12 +673,6 @@ finiteWorldOwnerMatchesProof(const FiniteExecutionState3D& execution) noexcept {
            raw_lineage->validation_policy_fingerprint ==
                validationPolicyFingerprint(
                    execution.validation_policy->sweptFootprint(),
-                   ObservedSpaceValidationPolicy::kAllowUnknown,
-                   execution.observed_raw_world->proprioceptiveFreeSpaceSeed()
-                           .has_value()
-                       ? std::addressof(*execution.observed_raw_world
-                                             ->proprioceptiveFreeSpaceSeed())
-                       : nullptr,
                    execution.observed_raw_world->launchSupportContact().has_value()
                        ? std::addressof(
                              *execution.observed_raw_world->launchSupportContact())
@@ -683,9 +688,8 @@ finiteWorldOwnerMatchesProof(const FiniteExecutionState3D& execution) noexcept {
          static_lineage->static_occupancy_content_fingerprint ==
              execution.static_world->contentFingerprint() &&
          static_lineage->validation_policy_fingerprint ==
-             validationPolicyFingerprint(
-                 execution.validation_policy->sweptFootprint(),
-                 ObservedSpaceValidationPolicy::kRequireKnownFree, nullptr, nullptr);
+             validationPolicyFingerprint(execution.validation_policy->sweptFootprint(),
+                                         nullptr);
 }
 
 [[nodiscard]] std::uint64_t

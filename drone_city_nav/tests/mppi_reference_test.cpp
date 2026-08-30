@@ -106,13 +106,12 @@ TEST(MppiReferenceTest, SimulationClassifiesPlanningExposure) {
       simulateReference(State{1.5F, 1.5F, 0.0F}, nominal, noise, dynamics, RiskConfig{},
                         CostConfig{}, grid, esdf, 3.0F, 1.5F, false);
 
-  EXPECT_FALSE(metrics.collision);
   EXPECT_EQ(metrics.worst_tier, RiskTier::kPlanning);
   EXPECT_GT(metrics.planning_exposure_m, 0.0F);
   EXPECT_FLOAT_EQ(metrics.critical_exposure_m, 0.0F);
 }
 
-TEST(MppiReferenceTest, CollisionIsHardAndStopsEarly) {
+TEST(MppiReferenceTest, DerivedZeroClearanceIsCriticalButNotHardCollision) {
   constexpr int kWidth = 4;
   constexpr int kHeight = 4;
   const EsdfGrid grid{kWidth, kHeight, 1.0F, 0.0F, 0.0F};
@@ -124,12 +123,12 @@ TEST(MppiReferenceTest, CollisionIsHardAndStopsEarly) {
       simulateReference(State{1.5F, 1.5F, 0.0F}, nominal, noise, DynamicsConfig{},
                         RiskConfig{}, CostConfig{}, grid, esdf, 3.0F, 1.5F, true);
 
-  EXPECT_TRUE(metrics.collision);
-  EXPECT_EQ(metrics.worst_tier, RiskTier::kCollision);
+  EXPECT_EQ(metrics.worst_tier, RiskTier::kCritical);
+  EXPECT_GT(metrics.costs.critical_clearance_proximity_s, 0.0F);
   EXPECT_FLOAT_EQ(metrics.minimum_clearance_m, 0.0F);
 }
 
-TEST(MppiReferenceTest, TraceKeepsFullHorizonAfterEarlyCollision) {
+TEST(MppiReferenceTest, DerivedZeroClearanceKeepsFullHorizon) {
   constexpr int kWidth = 4;
   constexpr int kHeight = 4;
   const EsdfGrid grid{kWidth, kHeight, 1.0F, 0.0F, 0.0F};
@@ -147,7 +146,7 @@ TEST(MppiReferenceTest, TraceKeepsFullHorizonAfterEarlyCollision) {
                         RiskConfig{}, CostConfig{}, grid, esdf, 3.0F, 1.5F, true,
                         Control{}, -1.0F, FootprintConfig{}, std::nullopt, &trace);
 
-  ASSERT_TRUE(metrics.collision);
+  EXPECT_EQ(metrics.worst_tier, RiskTier::kCritical);
   ASSERT_EQ(trace.horizon.size(), controls.size() + 1U);
   EXPECT_GT(trace.horizon.back().x, trace.horizon.at(1U).x);
 }
@@ -165,7 +164,6 @@ TEST(MppiReferenceTest, NearWallFreeCellIsCriticalRatherThanCollision) {
       simulateReference(initial, controls, noise, dynamics, RiskConfig{}, CostConfig{},
                         grid, esdf, 0.99F, 0.5F, false);
 
-  EXPECT_FALSE(metrics.collision);
   EXPECT_EQ(metrics.worst_tier, RiskTier::kCritical);
 }
 
@@ -194,9 +192,6 @@ TEST(MppiReferenceTest, ClearanceExposureIsStronglyPenalizedWithoutBlockingMotio
   const RolloutMetrics planning = simulate(planning_esdf);
   const RolloutMetrics critical = simulate(critical_esdf);
 
-  EXPECT_FALSE(clear.collision);
-  EXPECT_FALSE(planning.collision);
-  EXPECT_FALSE(critical.collision);
   EXPECT_EQ(planning.worst_tier, RiskTier::kPlanning);
   EXPECT_EQ(critical.worst_tier, RiskTier::kCritical);
   EXPECT_GT(planning.soft_cost, clear.soft_cost);
@@ -229,7 +224,6 @@ TEST(MppiReferenceTest, CriticalClearanceProximityCostIsContinuousAndMonotonic) 
   EXPECT_FLOAT_EQ(outside.costs.critical_clearance_proximity_s, 0.0F);
   EXPECT_GT(deep.costs.critical_clearance_proximity_s, 0.0F);
   EXPECT_GT(deep.soft_cost, outside.soft_cost);
-  EXPECT_FALSE(deep.collision);
 }
 
 TEST(MppiReferenceTest, ObstacleApproachCostIsSoftAndDirectionSensitive) {
@@ -247,7 +241,7 @@ TEST(MppiReferenceTest, ObstacleApproachCostIsSoftAndDirectionSensitive) {
   EXPECT_GT(close, moderate);
 }
 
-TEST(MppiReferenceTest, PhysicalFootprintRejectsAdjacentRawCell) {
+TEST(MppiReferenceTest, PhysicalFootprintAnnotatesAdjacentDerivedZeroClearance) {
   const EsdfGrid grid{4, 4, 1.0F, 0.0F, 0.0F};
   std::vector<float> esdf(16U, 10.0F);
   esdf[1U * 4U + 2U] = 0.0F;
@@ -264,11 +258,10 @@ TEST(MppiReferenceTest, PhysicalFootprintRejectsAdjacentRawCell) {
       State{1.5F, 1.5F, 0.0F}, controls, noise, DynamicsConfig{}, RiskConfig{},
       CostConfig{}, grid, esdf, 3.0F, 1.5F, false, Control{}, -1.0F, footprint);
 
-  EXPECT_TRUE(metrics.collision);
-  EXPECT_EQ(metrics.worst_tier, RiskTier::kCollision);
+  EXPECT_EQ(metrics.worst_tier, RiskTier::kCritical);
 }
 
-TEST(MppiReferenceTest, ComputationalBoundaryIsNotRawCollision) {
+TEST(MppiReferenceTest, ComputationalBoundaryDoesNotEscalateDerivedRisk) {
   const EsdfGrid grid{4, 4, 1.0F, 0.0F, 0.0F};
   const std::vector<float> esdf(16U, 10.0F);
   const std::array<Control, 1> controls{};
@@ -284,7 +277,8 @@ TEST(MppiReferenceTest, ComputationalBoundaryIsNotRawCollision) {
       State{0.1F, 1.5F, 0.0F}, controls, noise, DynamicsConfig{}, RiskConfig{},
       CostConfig{}, grid, esdf, 3.0F, 1.5F, false, Control{}, -1.0F, footprint);
 
-  EXPECT_FALSE(metrics.collision);
+  EXPECT_GE(metrics.minimum_clearance_m, 0.0F);
+  EXPECT_EQ(metrics.worst_tier, RiskTier::kPreferred);
 }
 
 TEST(MppiReferenceTest, HeadProgressIsMeasuredAtConfiguredEarlyHorizon) {
@@ -440,7 +434,6 @@ TEST(MppiReferenceTest, PeerSeparationIsSoftAndTimeIndexed) {
                         grid, esdf, 30.0F, 0.0F, false, Control{}, -1.0F,
                         FootprintConfig{}, std::nullopt, nullptr, far_peer);
 
-  EXPECT_FALSE(near.collision);
   EXPECT_GT(near.costs.peer_separation, 0.0F);
   EXPECT_LT(near.minimum_peer_separation_m, 5.0F);
   EXPECT_FLOAT_EQ(far.costs.peer_separation, 0.0F);
@@ -592,7 +585,6 @@ TEST(MppiReferenceTest, DetectsAltitudeEnvelopeViolationInsideRollout) {
       std::nullopt, AltitudeEnvelopeConfig{.minimum_z_m = 1.0F, .maximum_z_m = 32.0F});
 
   EXPECT_TRUE(metrics.altitude_envelope_violation);
-  EXPECT_FALSE(metrics.collision);
 }
 
 TEST(MppiReferenceTest, FlightEnvelopeRequiresJerkLimitedVerticalStoppingRoom) {

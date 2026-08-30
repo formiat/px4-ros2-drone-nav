@@ -83,8 +83,6 @@ std::string benchmarkResultJson(const BenchmarkConfig& config,
          << "  \"deterministic_replay_passed\": "
          << (result.deterministic_replay_passed ? "true" : "false") << ",\n"
          << "  \"selected\": {\n"
-         << "    \"collision\": " << (result.selected.collision ? "true" : "false")
-         << ",\n"
          << "    \"worst_tier\": " << static_cast<int>(result.selected.worst_tier)
          << ",\n"
          << "    \"critical_exposure_m\": " << result.selected.critical_exposure_m

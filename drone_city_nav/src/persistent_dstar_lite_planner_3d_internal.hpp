@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/occupied_collision_oracle_3d.hpp"
 #include "drone_city_nav/persistent_dstar_lite_planner_3d.hpp"
 
 #include <chrono>
@@ -255,6 +256,7 @@ private:
   [[nodiscard]] bool validRequest(const PersistentPlannerRequest3D& request) const;
   [[nodiscard]] PersistentPlannerWorldUpdate3D
   updateWorld(const PersistentPlannerWorld3D& world);
+  void installWorld(const PersistentPlannerWorld3D& world);
   void initializeSearch(const PersistentPlannerRequest3D& request,
                         PersistentPlannerNode3D start, PersistentPlannerNode3D goal);
   [[nodiscard]] bool sameGridGeometry(const GridBounds3D& bounds) const noexcept;
@@ -340,6 +342,8 @@ private:
 
   PersistentPlannerConfig3D config_{};
   PersistentPlannerWorld3D world_{};
+  std::optional<OccupiedCollisionOracle3D> resident_collision_oracle_;
+  std::optional<OccupiedCollisionOracle3D> departure_collision_oracle_;
   Lattice3D lattice_{};
   PersistentPlannerNode3D start_{};
   PersistentPlannerNode3D last_start_{};

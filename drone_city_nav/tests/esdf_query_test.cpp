@@ -16,7 +16,6 @@ TEST(EsdfQueryTest, ConvertsCenterDistanceToConservativeOccupiedCellClearance) {
   const EsdfQueryResult result = queryConservativeEsdf(grid, esdf, 0.5F, 0.5F);
 
   EXPECT_EQ(result.status, EsdfQueryStatus::kValid);
-  EXPECT_FALSE(result.raw_occupied);
   EXPECT_NEAR(result.clearance_m, 2.0F - 0.70710678F, 1.0e-5F);
 }
 
@@ -43,15 +42,12 @@ TEST(EsdfQueryTest, PreservesPositiveInfinityAndRejectsInvalidSamples) {
 
   EXPECT_EQ(unbounded.status, EsdfQueryStatus::kValid);
   EXPECT_TRUE(std::isinf(unbounded.clearance_m));
-  EXPECT_FALSE(unbounded.raw_occupied);
   EXPECT_EQ(invalid.status, EsdfQueryStatus::kInvalidDistance);
-  EXPECT_TRUE(invalid.raw_occupied);
   EXPECT_EQ(outside.status, EsdfQueryStatus::kOutsideGrid);
-  EXPECT_FALSE(outside.raw_occupied);
   EXPECT_TRUE(std::isinf(outside.clearance_m));
 }
 
-TEST(EsdfQueryTest, SeparatesRawOccupancyFromConservativeRiskClearance) {
+TEST(EsdfQueryTest, ReportsOnlyConservativeDerivedClearance) {
   const mppi::EsdfGrid grid{2, 1, 1.0F, 0.0F, 0.0F};
   const std::vector<float> esdf{1.0F, 0.0F};
 
@@ -59,10 +55,9 @@ TEST(EsdfQueryTest, SeparatesRawOccupancyFromConservativeRiskClearance) {
   const EsdfQueryResult occupied = queryConservativeEsdf(grid, esdf, 1.5F, 0.5F);
 
   ASSERT_EQ(free_near_wall.status, EsdfQueryStatus::kValid);
-  EXPECT_FALSE(free_near_wall.raw_occupied);
   EXPECT_FLOAT_EQ(free_near_wall.clearance_m, 0.0F);
   ASSERT_EQ(occupied.status, EsdfQueryStatus::kValid);
-  EXPECT_TRUE(occupied.raw_occupied);
+  EXPECT_FLOAT_EQ(occupied.clearance_m, 0.0F);
 }
 
 TEST(EsdfQueryTest, QueriesThreeDimensionalGridUsingZMajorStorage) {
@@ -80,12 +75,10 @@ TEST(EsdfQueryTest, QueriesThreeDimensionalGridUsingZMajorStorage) {
       queryConservativeEsdf3D(grid, esdf, 10.5F, 20.5F, 32.5F);
 
   ASSERT_EQ(free.status, EsdfQueryStatus::kValid);
-  EXPECT_FALSE(free.raw_occupied);
   EXPECT_NEAR(free.clearance_m, 3.0F - 0.8660254F, 1.0e-5F);
   ASSERT_EQ(occupied.status, EsdfQueryStatus::kValid);
-  EXPECT_TRUE(occupied.raw_occupied);
+  EXPECT_FLOAT_EQ(occupied.clearance_m, 0.0F);
   EXPECT_EQ(outside.status, EsdfQueryStatus::kOutsideGrid);
-  EXPECT_FALSE(outside.raw_occupied);
   EXPECT_TRUE(std::isinf(outside.clearance_m));
 }
 
@@ -98,10 +91,18 @@ TEST(EsdfQueryTest, ReportsObservedUnknownVoxelWithoutCallingItOccupied) {
   const EsdfQueryResult outside = queryConservativeEsdf(grid, esdf, 2.5F, 0.5F);
 
   EXPECT_EQ(unknown.status, EsdfQueryStatus::kUnknownSpace);
-  EXPECT_FALSE(unknown.raw_occupied);
   EXPECT_FLOAT_EQ(unknown.clearance_m, 0.0F);
   EXPECT_EQ(outside.status, EsdfQueryStatus::kUnknownSpace);
-  EXPECT_FALSE(outside.raw_occupied);
+}
+
+TEST(EsdfQueryTest, InvalidDerivedDistanceNeverManufacturesRawOccupancy) {
+  const mppi::EsdfGrid grid{2, 1, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> esdf{std::numeric_limits<float>::quiet_NaN(), -2.0F};
+
+  EXPECT_EQ(queryConservativeEsdf(grid, esdf, 0.5F, 0.5F).status,
+            EsdfQueryStatus::kInvalidDistance);
+  EXPECT_EQ(queryConservativeEsdf(grid, esdf, 1.5F, 0.5F).status,
+            EsdfQueryStatus::kInvalidDistance);
 }
 
 } // namespace

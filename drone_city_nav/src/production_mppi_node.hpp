@@ -810,8 +810,6 @@ private:
   std::uint64_t completed_ticks_{0U};
   std::uint64_t deadline_misses_{0U};
   std::uint64_t altitude_envelope_violation_horizons_{0U};
-  std::uint64_t raw_collision_horizons_{0U};
-  std::uint64_t solid_collision_horizons_{0U};
   std::uint64_t post_update_contract_violations_{0U};
   std::uint64_t no_progress_horizons_{0U};
   std::uint64_t liveness_reseeds_{0U};

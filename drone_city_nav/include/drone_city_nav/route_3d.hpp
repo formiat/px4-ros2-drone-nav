@@ -393,14 +393,11 @@ routeFingerprint(std::span<const RouteSample3D> route,
 
 enum class RouteRiskTierAssignmentStatus : std::uint8_t {
   kAccepted,
-  kOutsideGrid,
-  kUnknownSpace,
-  kInvalidEsdf,
-  kRawCollision,
+  kInvalidInput,
 };
 
 struct RouteRiskTierAssignmentResult {
-  RouteRiskTierAssignmentStatus status{RouteRiskTierAssignmentStatus::kInvalidEsdf};
+  RouteRiskTierAssignmentStatus status{RouteRiskTierAssignmentStatus::kInvalidInput};
   std::size_t failure_sample_index{0U};
   Point3 failure_point{};
 
@@ -412,8 +409,7 @@ struct RouteRiskTierAssignmentResult {
 [[nodiscard]] RouteRiskTierAssignmentResult
 assignRouteRiskTiers(std::span<RouteSample3D> route, const mppi::EsdfGrid& grid,
                      std::span<const float> esdf_m, double critical_distance_m,
-                     double preferred_distance_m,
-                     bool require_known_free_space = false) noexcept;
+                     double preferred_distance_m) noexcept;
 
 [[nodiscard]] std::string_view
 routeRiskTierAssignmentStatusName(RouteRiskTierAssignmentStatus status) noexcept;

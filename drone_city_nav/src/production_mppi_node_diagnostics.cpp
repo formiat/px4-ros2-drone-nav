@@ -202,8 +202,6 @@ void ProductionMppiNode::processDiagnostics(
       << " risk_tier=" << mppi::mppiRiskTierName(result.selected_tier)
       << " altitude_envelope_violation="
       << (result.altitude_envelope_violation ? "true" : "false")
-      << " raw_collision=" << (result.raw_collision ? "true" : "false")
-      << " known_solid_collision=" << (result.known_solid_collision ? "true" : "false")
       << " route_terminal_cross_track_violation="
       << (result.route_terminal_cross_track_violation ? "true" : "false")
       << " terminal_route_cross_track_m=" << result.terminal_route_cross_track_m
@@ -249,15 +247,15 @@ void ProductionMppiNode::processDiagnostics(
       << snapshot.direct_tracking_maneuver.no_closing_duration_s
       << " target_directed_candidate_injected="
       << (result.target_directed_candidate_injected ? "true" : "false")
-      << " target_directed_candidate_raw_safe="
-      << (result.target_directed_candidate_raw_safe ? "true" : "false")
+      << " target_directed_candidate_device_feasible="
+      << (result.target_directed_candidate_device_feasible ? "true" : "false")
       << " target_directed_candidate_best_feasible="
       << (result.target_directed_candidate_best_feasible ? "true" : "false")
       << " target_directed_candidate_weight=" << result.target_directed_candidate_weight
       << " route_directed_candidate_injected="
       << (result.route_directed_candidate_injected ? "true" : "false")
-      << " route_directed_candidate_raw_safe="
-      << (result.route_directed_candidate_raw_safe ? "true" : "false")
+      << " route_directed_candidate_device_feasible="
+      << (result.route_directed_candidate_device_feasible ? "true" : "false")
       << " route_directed_candidate_best_feasible="
       << (result.route_directed_candidate_best_feasible ? "true" : "false")
       << " route_directed_candidate_weight=" << result.route_directed_candidate_weight
@@ -310,8 +308,7 @@ void ProductionMppiNode::processDiagnostics(
     status_pub_->publish(status);
     last_diagnostics_info_stamp_ns_ = now_ns;
   }
-  const bool diagnostics_error = result.altitude_envelope_violation ||
-                                 result.raw_collision || result.known_solid_collision;
+  const bool diagnostics_error = result.altitude_envelope_violation;
   const bool new_error_episode = diagnostics_error && !diagnostics_error_active_;
   if (!diagnostics_error) {
     diagnostics_error_active_ = false;
@@ -553,9 +550,6 @@ void ProductionMppiNode::processDiagnostics(
          << ",\"stability_ms\":" << snapshot.stability_ms << ",\"rviz_ms\":" << rviz_ms
          << ",\"altitude_envelope_violation\":"
          << (result.altitude_envelope_violation ? "true" : "false")
-         << ",\"raw_collision\":" << (result.raw_collision ? "true" : "false")
-         << ",\"known_solid_collision\":"
-         << (result.known_solid_collision ? "true" : "false")
          << ",\"route_terminal_cross_track_violation\":"
          << (result.route_terminal_cross_track_violation ? "true" : "false")
          << ",\"terminal_route_cross_track_m\":" << result.terminal_route_cross_track_m
@@ -600,16 +594,16 @@ void ProductionMppiNode::processDiagnostics(
          << snapshot.direct_tracking_maneuver.no_closing_duration_s
          << ",\"target_directed_candidate_injected\":"
          << (result.target_directed_candidate_injected ? "true" : "false")
-         << ",\"target_directed_candidate_raw_safe\":"
-         << (result.target_directed_candidate_raw_safe ? "true" : "false")
+         << ",\"target_directed_candidate_device_feasible\":"
+         << (result.target_directed_candidate_device_feasible ? "true" : "false")
          << ",\"target_directed_candidate_best_feasible\":"
          << (result.target_directed_candidate_best_feasible ? "true" : "false")
          << ",\"target_directed_candidate_weight\":"
          << result.target_directed_candidate_weight
          << ",\"route_directed_candidate_injected\":"
          << (result.route_directed_candidate_injected ? "true" : "false")
-         << ",\"route_directed_candidate_raw_safe\":"
-         << (result.route_directed_candidate_raw_safe ? "true" : "false")
+         << ",\"route_directed_candidate_device_feasible\":"
+         << (result.route_directed_candidate_device_feasible ? "true" : "false")
          << ",\"route_directed_candidate_best_feasible\":"
          << (result.route_directed_candidate_best_feasible ? "true" : "false")
          << ",\"route_directed_candidate_weight\":"

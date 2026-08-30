@@ -149,12 +149,8 @@ const char* sweptFootprintStatusName(const SweptFootprintStatus status) noexcept
   switch (status) {
     case SweptFootprintStatus::kValid:
       return "valid";
-    case SweptFootprintStatus::kOutsideGrid:
-      return "outside_grid";
-    case SweptFootprintStatus::kUnknownSpace:
-      return "unknown_space";
-    case SweptFootprintStatus::kInvalidEsdf:
-      return "invalid_esdf";
+    case SweptFootprintStatus::kInvalidInput:
+      return "invalid_input";
     case SweptFootprintStatus::kRawCollision:
       return "raw_collision";
   }

@@ -315,8 +315,13 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self.assertIn("latestLidarEvidenceFreshness", execution)
         self.assertIn("buildValidatedFiniteExecutionPath", execution)
         self.assertIn("validateCompleteFiniteExecutionPath", finite_execution_path)
+        self.assertIn("OccupiedCollisionOracle3D", finite_execution_path)
         self.assertIn(
-            "validateRawPointCloudSweptFootprint", finite_execution_path
+            ".raw_point_cloud = world.latest_lidar_obstacle_points",
+            finite_execution_path,
+        )
+        self.assertIn(
+            "OccupiedCollisionSource3D::kRawPointCloud", finite_execution_path
         )
         self.assertIn(
             'return "latest_lidar_raw_collision"', finite_execution_path

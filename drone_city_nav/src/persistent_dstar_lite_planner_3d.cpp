@@ -284,6 +284,8 @@ PersistentDStarLitePlanner3DImpl::config() const noexcept {
 void PersistentDStarLitePlanner3DImpl::reset() noexcept {
   initialized_ = false;
   world_ = {};
+  resident_collision_oracle_.reset();
+  departure_collision_oracle_.reset();
   lattice_.reset();
   start_ = {};
   last_start_ = {};

@@ -45,6 +45,7 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
     return std::nullopt;
   }
   RouteActivationObservation3D owned_observation = activation.observation;
+  owned_observation.flight_envelope = activation.validation_policy->flightEnvelope();
   if (requires_observed_raw_certificate) {
     if (activation.static_world != nullptr ||
         activation.observed_raw_world == nullptr ||
@@ -61,10 +62,6 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
         activation.observed_raw_world->version().producer_instance_id;
     owned_observation.latest_raw_revision =
         activation.observed_raw_world->version().revision;
-    owned_observation.proprioceptive_free_space_seed =
-        activation.observed_raw_world->proprioceptiveFreeSpaceSeed().has_value()
-            ? &*activation.observed_raw_world->proprioceptiveFreeSpaceSeed()
-            : nullptr;
     owned_observation.launch_support_contact =
         activation.observed_raw_world->launchSupportContact().has_value()
             ? &*activation.observed_raw_world->launchSupportContact()
@@ -79,7 +76,6 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
     owned_observation.latest_raw_occupancy = nullptr;
     owned_observation.latest_raw_producer_instance_id = 0U;
     owned_observation.latest_raw_revision = 0U;
-    owned_observation.proprioceptive_free_space_seed = nullptr;
     owned_observation.launch_support_contact = nullptr;
   }
   const RouteEndpointSemantics3D planned_endpoint_semantics =
@@ -132,10 +128,6 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
         .observed_occupancy = &activation.observed_raw_world->occupancy(),
         .occupied_content_fingerprint =
             activation.observed_raw_world->occupiedContentFingerprint(),
-        .free_space_seed =
-            activation.observed_raw_world->proprioceptiveFreeSpaceSeed().has_value()
-                ? &*activation.observed_raw_world->proprioceptiveFreeSpaceSeed()
-                : nullptr,
         .launch_support_contact =
             activation.observed_raw_world->launchSupportContact().has_value()
                 ? &*activation.observed_raw_world->launchSupportContact()
@@ -145,7 +137,6 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
     tracking_tube_world = TrackingErrorTubeWorld3D{
         .occupancy = &activation.static_world->occupancy(),
         .occupied_content_fingerprint = activation.static_world->contentFingerprint(),
-        .occupancy_policy = TrackingErrorTubeOccupancyPolicy3D::kKnownStaticBounds,
     };
   }
   if (!trackingErrorTubeProfile3DMatchesWorld(
@@ -194,9 +185,7 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
       return std::nullopt;
     }
     const std::uint64_t policy_fingerprint = validationPolicyFingerprint(
-        owned_observation.footprint, ObservedSpaceValidationPolicy::kAllowUnknown,
-        owned_observation.proprioceptive_free_space_seed,
-        owned_observation.launch_support_contact);
+        owned_observation.footprint, owned_observation.launch_support_contact);
     if (policy_fingerprint == 0U) {
       return std::nullopt;
     }
@@ -220,12 +209,12 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
         .certified_end_station_m = end_station_m,
     };
   } else {
-    const std::uint64_t policy_fingerprint = validationPolicyFingerprint(
-        owned_observation.footprint, ObservedSpaceValidationPolicy::kRequireKnownFree,
-        nullptr, nullptr);
-    if (policy_fingerprint == 0U || !validateStaticRouteSuffixAgainstOwner(
-                                        *activation.static_world, *geometry->route,
-                                        assessment.projection, owned_observation)) {
+    const std::uint64_t policy_fingerprint =
+        validationPolicyFingerprint(owned_observation.footprint, nullptr);
+    if (policy_fingerprint == 0U ||
+        !validateStaticRouteSuffixAgainstOwner(
+            *activation.static_world, *geometry->route, assessment.projection,
+            owned_observation, activation.validation_policy->flightEnvelope())) {
       return std::nullopt;
     }
     certificate = StaticRouteCertificate3D{

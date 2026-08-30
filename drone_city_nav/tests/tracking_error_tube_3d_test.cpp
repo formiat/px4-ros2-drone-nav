@@ -64,10 +64,9 @@ TEST(TrackingErrorTube3DTest, NarrowPhysicalPassageReducesSpeedInsteadOfPathClea
   addPassageWalls(occupancy);
   const std::vector<RouteSample3D> route = passageRoute();
 
-  const SweptFootprintResult physical = validateObservedSweptFootprint(
+  const SweptFootprintResult physical = validateRawSweptFootprint(
       occupancy, route.front().position, FootprintBodyAxis{}, route.back().position,
-      FootprintBodyAxis{}, SweptFootprintConfig{},
-      ObservedSpaceValidationPolicy::kAllowUnknown);
+      FootprintBodyAxis{}, SweptFootprintConfig{});
   const TrackingErrorTubeProfile3D tube = profile(occupancy);
 
   ASSERT_TRUE(physical.accepted());
@@ -135,16 +134,14 @@ TEST(TrackingErrorTube3DTest, RejectsInvalidWorldAndFootprintContracts) {
   const std::uint64_t occupied_fingerprint =
       occupancy.occupiedSnapshot().contentFingerprint();
 
-  EXPECT_FALSE(makeTrackingErrorTubeProfile3D(
-                   passageRoute(),
-                   TrackingErrorTubeWorld3D{
-                       .observed_occupancy = &occupancy,
-                       .occupied_content_fingerprint = occupied_fingerprint,
-                       .occupancy_policy =
-                           TrackingErrorTubeOccupancyPolicy3D::kKnownStaticBounds,
-                   },
-                   SweptFootprintConfig{}, TrackingErrorTubeConfig3D{}, 5.0)
-                   .valid);
+  EXPECT_TRUE(makeTrackingErrorTubeProfile3D(
+                  passageRoute(),
+                  TrackingErrorTubeWorld3D{
+                      .observed_occupancy = &occupancy,
+                      .occupied_content_fingerprint = occupied_fingerprint,
+                  },
+                  SweptFootprintConfig{}, TrackingErrorTubeConfig3D{}, 5.0)
+                  .valid);
   SweptFootprintConfig invalid_footprint;
   invalid_footprint.safe_clearance_threshold_m =
       std::numeric_limits<double>::quiet_NaN();

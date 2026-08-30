@@ -36,7 +36,7 @@ TEST(ExecutionRouteSnapshot3DTest,
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
-     StaticCertificationSweepsTheExactWorldAndBindsProgressFootprint) {
+     StaticCertificationUsesOccupiedEvidenceAndBindsProgressFootprint) {
   SnapshotFixture3D fixture;
   OccupancyGrid3D blocked_static{fixture.raw_occupancy.bounds(),
                                  fixture.validated_world.esdf_fingerprint};
@@ -49,7 +49,7 @@ TEST(ExecutionRouteSnapshot3DTest,
 
   const OccupancyGrid3D truncated_static{GridBounds3D{-5.0, -5.0, 0.0, 1.0, 15, 10, 10},
                                          fixture.validated_world.esdf_fingerprint};
-  EXPECT_FALSE(
+  EXPECT_TRUE(
       certifyExecutionRoute3D(staticActivation(fixture, truncated_static)).has_value());
 
   const OccupancyGrid3D clear_static{fixture.raw_occupancy.bounds(),

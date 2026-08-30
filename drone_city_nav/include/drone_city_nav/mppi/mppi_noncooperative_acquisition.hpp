@@ -18,7 +18,6 @@ struct NonCooperativeAcquisitionEvaluationInput {
   float first_control_interval_s{0.0F};
   EsdfGrid grid{};
   std::span<const float> esdf;
-  std::span<const KnownSolid> known_solids;
   std::span<const DynamicAircraftTrajectory> aircraft;
   NonCooperativeSeparationAcquisition acquisition{};
   DynamicAircraftCostPolicy cost_policy{};

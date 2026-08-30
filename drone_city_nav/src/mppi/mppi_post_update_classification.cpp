@@ -27,18 +27,6 @@ classifyMppiPostUpdate(const MppiFeasibilityContract& feasibility,
     result.classification = MppiPostUpdateClassification::kAltitudeEnvelopeViolation;
     return result;
   }
-  if (observation.raw_collision) {
-    result.classification = MppiPostUpdateClassification::kRawCollision;
-    return result;
-  }
-  if (observation.unknown_space_violation) {
-    result.classification = MppiPostUpdateClassification::kUnknownSpaceViolation;
-    return result;
-  }
-  if (observation.known_solid_collision) {
-    result.classification = MppiPostUpdateClassification::kKnownSolidCollision;
-    return result;
-  }
   if (observation.route_terminal_cross_track_violation) {
     result.classification =
         MppiPostUpdateClassification::kRouteTerminalCrossTrackViolation;
@@ -60,12 +48,6 @@ const char* mppiPostUpdateClassificationName(
       return "invalid_metrics";
     case MppiPostUpdateClassification::kAltitudeEnvelopeViolation:
       return "altitude_envelope_violation";
-    case MppiPostUpdateClassification::kRawCollision:
-      return "raw_collision";
-    case MppiPostUpdateClassification::kUnknownSpaceViolation:
-      return "unknown_space_violation";
-    case MppiPostUpdateClassification::kKnownSolidCollision:
-      return "known_solid_collision";
     case MppiPostUpdateClassification::kRouteTerminalCrossTrackViolation:
       return "route_terminal_cross_track_violation";
   }

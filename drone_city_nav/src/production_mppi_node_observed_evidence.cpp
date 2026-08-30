@@ -1,3 +1,5 @@
+#include "drone_city_nav/occupied_collision_oracle_3d.hpp"
+
 #include <algorithm>
 #include <cinttypes>
 #include <cmath>
@@ -8,6 +10,25 @@
 #include "production_mppi_node.hpp"
 
 namespace drone_city_nav {
+namespace {
+
+[[nodiscard]] OccupiedCollisionResult3D validateObservedPoint(
+    const ObservedOccupancyGrid3D& occupancy, const Point3& position,
+    const FootprintBodyAxis& body_axis, const SweptFootprintConfig& footprint,
+    const LaunchSupportContact3D* const launch_support_contact) noexcept {
+  const OccupiedCollisionOracle3D oracle{OccupiedCollisionWorld3D{
+      .observed_occupancy = std::addressof(occupancy),
+      .static_occupancy = nullptr,
+      .planar_occupancy = nullptr,
+      .raw_point_cloud = {},
+      .launch_support_contact = launch_support_contact,
+      .footprint = footprint,
+      .flight_envelope = std::nullopt,
+  }};
+  return oracle.validatePoint(position, body_axis);
+}
+
+} // namespace
 
 std::optional<ProprioceptiveFreeSpaceSeed3D>
 ProductionMppiNode::prepareObservedExecutionEvidence3D(
@@ -48,10 +69,10 @@ ProductionMppiNode::prepareObservedExecutionEvidence3D(
       launch_support_contact_ =
           detectLaunchSupportContact3D(*occupancy, *launch_support_seed_);
       if (!launch_support_contact_ && vehicle_land_contact_received) {
-        const SweptFootprintResult without_support = validateRawFootprintAt(
+        const OccupiedCollisionResult3D without_support = validateObservedPoint(
             *occupancy, launch_support_seed_->position, launch_support_seed_->body_axis,
-            physical_footprint_config_);
-        if (without_support.accepted()) {
+            physical_footprint_config_, nullptr);
+        if (without_support.clear()) {
           launch_support_evaluated_ = true;
           RCLCPP_INFO(get_logger(),
                       "LAUNCH_SUPPORT_CONTACT state=not_present source="
@@ -102,9 +123,9 @@ ProductionMppiNode::prepareObservedExecutionEvidence3D(
                   position.y, position.z);
     }
     if (current_body_axis.has_value() && free_space_seed.has_value()) {
-      const SweptFootprintResult without_support =
-          validateRawFootprintAt(*occupancy, position, *current_body_axis,
-                                 physical_footprint_config_, &*free_space_seed);
+      const OccupiedCollisionResult3D without_support =
+          validateObservedPoint(*occupancy, position, *current_body_axis,
+                                physical_footprint_config_, nullptr);
       const FootprintBodyAxis support_axis = launch_support_contact_->seed.body_axis;
       const Point3 support_delta{
           position.x - launch_support_contact_->seed.position.x,
@@ -114,7 +135,7 @@ ProductionMppiNode::prepareObservedExecutionEvidence3D(
       const double support_axial_departure_m = support_delta.x * support_axis.x +
                                                support_delta.y * support_axis.y +
                                                support_delta.z * support_axis.z;
-      if (without_support.accepted() &&
+      if (without_support.clear() &&
           support_axial_departure_m > occupancy->bounds().resolution_m) {
         RCLCPP_INFO(get_logger(),
                     "LAUNCH_SUPPORT_CONTACT state=released revision=%" PRIu64
@@ -127,11 +148,11 @@ ProductionMppiNode::prepareObservedExecutionEvidence3D(
   }
   const LaunchSupportContact3D* const launch_support_contact =
       launch_support_contact_ ? &*launch_support_contact_ : nullptr;
-  const std::optional<SweptFootprintResult> current_footprint =
+  const std::optional<OccupiedCollisionResult3D> current_footprint =
       current_body_axis.has_value() && free_space_seed.has_value()
-          ? std::optional<SweptFootprintResult>{validateRawFootprintAt(
+          ? std::optional<OccupiedCollisionResult3D>{validateObservedPoint(
                 *occupancy, position, *current_body_axis, physical_footprint_config_,
-                &*free_space_seed, launch_support_contact)}
+                launch_support_contact)}
           : std::nullopt;
   double support_axial_departure_m{0.0};
   double support_lateral_departure_m{0.0};
@@ -172,8 +193,9 @@ ProductionMppiNode::prepareObservedExecutionEvidence3D(
         " support_maximum_lateral_departure_m=%.3f"
         " support_minimum_axial_departure_m=%.3f"
         " support_maximum_axial_settling_m=%.3f",
-        raw_world.version.revision, sweptFootprintStatusName(current_footprint->status),
-        position.x, position.y, position.z, current_footprint->failure_point.x,
+        raw_world.version.revision,
+        occupiedCollisionStatus3DName(current_footprint->status), position.x,
+        position.y, position.z, current_footprint->failure_point.x,
         current_footprint->failure_point.y, current_footprint->failure_point.z,
         launch_support_contact != nullptr ? "true" : "false",
         failure_is_launch_support_cell ? "true" : "false", support_axial_departure_m,

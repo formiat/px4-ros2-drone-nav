@@ -107,7 +107,7 @@ __device__ State integrateDevice(State state, Control control,
 
 struct DeviceEsdfQuery {
   float clearance_m;
-  bool raw_collision;
+  bool available;
 };
 
 __device__ DeviceEsdfQuery queryEsdf(const State& state, const EsdfGrid grid,
@@ -117,7 +117,7 @@ __device__ DeviceEsdfQuery queryEsdf(const State& state, const EsdfGrid grid,
   const int cell_x = static_cast<int>(floorf(cell_x_float));
   const int cell_y = static_cast<int>(floorf(cell_y_float));
   if (cell_x < 0 || cell_y < 0 || cell_x >= grid.width || cell_y >= grid.height) {
-    return {0.0F, true};
+    return {kInfinity, false};
   }
   const float center_distance_m =
       tex2D<float>(esdf_texture, static_cast<float>(cell_x) + 0.5F,
@@ -126,7 +126,7 @@ __device__ DeviceEsdfQuery queryEsdf(const State& state, const EsdfGrid grid,
     return {center_distance_m, false};
   }
   if (!isfinite(center_distance_m) || center_distance_m < 0.0F) {
-    return {0.0F, true};
+    return {kInfinity, false};
   }
   const float center_x_m =
       grid.origin_x_m + (static_cast<float>(cell_x) + 0.5F) * grid.resolution_m;
@@ -135,7 +135,7 @@ __device__ DeviceEsdfQuery queryEsdf(const State& state, const EsdfGrid grid,
   constexpr float kHalfDiagonalScale{0.70710678118654752440F};
   const float correction_m = hypotf(state.x - center_x_m, state.y - center_y_m) +
                              kHalfDiagonalScale * grid.resolution_m;
-  return {fmaxf(0.0F, center_distance_m - correction_m), center_distance_m == 0.0F};
+  return {fmaxf(0.0F, center_distance_m - correction_m), true};
 }
 
 __global__ void
@@ -144,11 +144,11 @@ simulateKernel(const float* const noise_ax, const float* const noise_ay,
                const Control* const nominal, float* const soft_cost,
                float* const critical_exposure, float* const planning_exposure,
                float* const minimum_clearance, std::uint8_t* const worst_tier,
-               std::uint8_t* const collision, const std::size_t rollouts,
-               const std::size_t steps, const State initial, const float target_x,
-               const float target_y, const DynamicsConfig dynamics,
-               const RiskConfig risk, const CostConfig costs, const EsdfGrid grid,
-               const cudaTextureObject_t esdf_texture, const bool early_exit) {
+               const std::size_t rollouts, const std::size_t steps, const State initial,
+               const float target_x, const float target_y,
+               const DynamicsConfig dynamics, const RiskConfig risk,
+               const CostConfig costs, const EsdfGrid grid,
+               const cudaTextureObject_t esdf_texture) {
   const std::size_t rollout =
       static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (rollout >= rollouts) {
@@ -168,7 +168,6 @@ simulateKernel(const float* const noise_ax, const float* const noise_ay,
   float minimum_clearance_m = kInfinity;
   float previous_clearance_m = kInfinity;
   std::uint8_t tier = static_cast<std::uint8_t>(RiskTier::kPreferred);
-  bool collided = false;
   const float initial_distance = hypotf(target_x - state.x, target_y - state.y);
   float head_progress = 0.0F;
   const std::size_t requested_head_steps =
@@ -187,14 +186,11 @@ simulateKernel(const float* const noise_ax, const float* const noise_ay,
     };
     state = integrateDevice(state, control, dynamics);
     const DeviceEsdfQuery esdf_query = queryEsdf(state, grid, esdf_texture);
-    const float clearance = esdf_query.clearance_m;
+    const float clearance = esdf_query.available ? esdf_query.clearance_m : kInfinity;
     minimum_clearance_m = fminf(minimum_clearance_m, clearance);
     const float segment_speed_mps = hypotf(state.vx, state.vy);
     const float segment_m = dynamics.dt_s * segment_speed_mps;
-    if (esdf_query.raw_collision) {
-      collided = true;
-      tier = static_cast<std::uint8_t>(RiskTier::kCollision);
-    } else if (clearance < risk.critical_distance_m) {
+    if (clearance < risk.critical_distance_m) {
       tier = max(tier, static_cast<std::uint8_t>(RiskTier::kCritical));
       critical_m += segment_m;
       critical_clearance_proximity_s +=
@@ -224,9 +220,6 @@ simulateKernel(const float* const noise_ax, const float* const noise_ay,
       head_progress = initial_distance - hypotf(target_x - state.x, target_y - state.y);
     }
     previous = control;
-    if (collided && early_exit) {
-      break;
-    }
   }
   const float terminal_distance = hypotf(target_x - state.x, target_y - state.y);
   const float progress_cost = -(initial_distance - terminal_distance);
@@ -246,7 +239,6 @@ simulateKernel(const float* const noise_ax, const float* const noise_ay,
   planning_exposure[rollout] = planning_m;
   minimum_clearance[rollout] = minimum_clearance_m;
   worst_tier[rollout] = tier;
-  collision[rollout] = collided ? 1U : 0U;
 }
 
 __device__ float atomicMinFloat(float* const address, const float value) {
@@ -278,37 +270,34 @@ __global__ void initializeReductionKernel(int* const best_tier,
 }
 
 __global__ void reduceTierKernel(const std::uint8_t* const tier,
-                                 const std::uint8_t* const collision,
                                  const std::size_t count, int* const best_tier) {
   const std::size_t index =
       static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (index < count && collision[index] == 0U) {
+  if (index < count) {
     atomicMin(best_tier, static_cast<int>(tier[index]));
   }
 }
 
-__global__ void
-reduceCriticalKernel(const std::uint8_t* const tier, const float* const critical,
-                     const std::uint8_t* const collision, const std::size_t count,
-                     const int* const best_tier, float* const best_critical) {
+__global__ void reduceCriticalKernel(const std::uint8_t* const tier,
+                                     const float* const critical,
+                                     const std::size_t count,
+                                     const int* const best_tier,
+                                     float* const best_critical) {
   const std::size_t index =
       static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (index < count && collision[index] == 0U &&
-      static_cast<int>(tier[index]) == *best_tier) {
+  if (index < count && static_cast<int>(tier[index]) == *best_tier) {
     atomicMinFloat(best_critical, critical[index]);
   }
 }
 
 __global__ void
 reducePlanningKernel(const std::uint8_t* const tier, const float* const critical,
-                     const float* const planning, const std::uint8_t* const collision,
-                     const std::size_t count, const int* const best_tier,
-                     const float* const best_critical, const float critical_tolerance,
-                     float* const best_planning) {
+                     const float* const planning, const std::size_t count,
+                     const int* const best_tier, const float* const best_critical,
+                     const float critical_tolerance, float* const best_planning) {
   const std::size_t index =
       static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (index < count && collision[index] == 0U &&
-      static_cast<int>(tier[index]) == *best_tier &&
+  if (index < count && static_cast<int>(tier[index]) == *best_tier &&
       critical[index] <= *best_critical + critical_tolerance) {
     atomicMinFloat(best_planning, planning[index]);
   }
@@ -317,35 +306,34 @@ reducePlanningKernel(const std::uint8_t* const tier, const float* const critical
 __global__ void reduceSoftKernel(const std::uint8_t* const tier,
                                  const float* const critical,
                                  const float* const planning, const float* const soft,
-                                 const std::uint8_t* const collision,
                                  const std::size_t count, const int* const best_tier,
                                  const float* const best_critical,
                                  const float* const best_planning,
                                  const RiskConfig risk, float* const minimum_soft) {
   const std::size_t index =
       static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (index < count && collision[index] == 0U &&
-      static_cast<int>(tier[index]) == *best_tier &&
+  if (index < count && static_cast<int>(tier[index]) == *best_tier &&
       critical[index] <= *best_critical + risk.critical_exposure_tolerance_m &&
       planning[index] <= *best_planning + risk.planning_exposure_tolerance_m) {
     atomicMinFloat(minimum_soft, soft[index]);
   }
 }
 
-__global__ void calculateWeightsKernel(
-    const std::uint8_t* const tier, const float* const critical,
-    const float* const planning, const float* const soft,
-    const std::uint8_t* const collision, float* const weights, const std::size_t count,
-    const int* const best_tier, const float* const best_critical,
-    const float* const best_planning, const float* const minimum_soft,
-    const RiskConfig risk, const float temperature, float* const weight_sum) {
+__global__ void
+calculateWeightsKernel(const std::uint8_t* const tier, const float* const critical,
+                       const float* const planning, const float* const soft,
+                       float* const weights, const std::size_t count,
+                       const int* const best_tier, const float* const best_critical,
+                       const float* const best_planning,
+                       const float* const minimum_soft, const RiskConfig risk,
+                       const float temperature, float* const weight_sum) {
   const std::size_t index =
       static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (index >= count) {
     return;
   }
   float weight = 0.0F;
-  if (collision[index] == 0U && static_cast<int>(tier[index]) == *best_tier &&
+  if (static_cast<int>(tier[index]) == *best_tier &&
       critical[index] <= *best_critical + risk.critical_exposure_tolerance_m &&
       planning[index] <= *best_planning + risk.planning_exposure_tolerance_m) {
     weight = expf(-(soft[index] - *minimum_soft) / temperature);

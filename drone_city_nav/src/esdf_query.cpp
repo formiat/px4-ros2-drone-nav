@@ -21,8 +21,7 @@ EsdfQueryResult queryConservativeEsdf(const mppi::EsdfGrid& grid,
     return {.clearance_m =
                 grid.outside_is_unknown ? 0.0F : std::numeric_limits<float>::infinity(),
             .status = grid.outside_is_unknown ? EsdfQueryStatus::kUnknownSpace
-                                              : EsdfQueryStatus::kOutsideGrid,
-            .raw_occupied = false};
+                                              : EsdfQueryStatus::kOutsideGrid};
   }
   const std::size_t index =
       static_cast<std::size_t>(cell_y) * static_cast<std::size_t>(grid.width) +
@@ -32,19 +31,14 @@ EsdfQueryResult queryConservativeEsdf(const mppi::EsdfGrid& grid,
   }
   const float center_distance_m = esdf_m[index];
   if (center_distance_m == mppi::kUnknownEsdfDistanceM) {
-    return {.clearance_m = 0.0F,
-            .status = EsdfQueryStatus::kUnknownSpace,
-            .raw_occupied = false};
+    return {.clearance_m = 0.0F, .status = EsdfQueryStatus::kUnknownSpace};
   }
   if (std::isinf(center_distance_m) && center_distance_m > 0.0F) {
     return {.clearance_m = std::numeric_limits<float>::infinity(),
-            .status = EsdfQueryStatus::kValid,
-            .raw_occupied = false};
+            .status = EsdfQueryStatus::kValid};
   }
   if (!std::isfinite(center_distance_m) || center_distance_m < 0.0F) {
-    return {.clearance_m = 0.0F,
-            .status = EsdfQueryStatus::kInvalidDistance,
-            .raw_occupied = true};
+    return {.clearance_m = 0.0F, .status = EsdfQueryStatus::kInvalidDistance};
   }
 
   const float center_x_m =
@@ -58,7 +52,6 @@ EsdfQueryResult queryConservativeEsdf(const mppi::EsdfGrid& grid,
       .clearance_m = std::max(0.0F, center_distance_m - query_to_center_m -
                                         occupied_cell_radius_m),
       .status = EsdfQueryStatus::kValid,
-      .raw_occupied = center_distance_m == 0.0F,
   };
 }
 
@@ -85,8 +78,7 @@ EsdfQueryResult queryConservativeEsdf3D(const mppi::EsdfGrid& grid,
     return {.clearance_m =
                 grid.outside_is_unknown ? 0.0F : std::numeric_limits<float>::infinity(),
             .status = grid.outside_is_unknown ? EsdfQueryStatus::kUnknownSpace
-                                              : EsdfQueryStatus::kOutsideGrid,
-            .raw_occupied = false};
+                                              : EsdfQueryStatus::kOutsideGrid};
   }
   const std::size_t index =
       (static_cast<std::size_t>(cell_z) * static_cast<std::size_t>(grid.height) +
@@ -98,19 +90,14 @@ EsdfQueryResult queryConservativeEsdf3D(const mppi::EsdfGrid& grid,
   }
   const float center_distance_m = esdf_m[index];
   if (center_distance_m == mppi::kUnknownEsdfDistanceM) {
-    return {.clearance_m = 0.0F,
-            .status = EsdfQueryStatus::kUnknownSpace,
-            .raw_occupied = false};
+    return {.clearance_m = 0.0F, .status = EsdfQueryStatus::kUnknownSpace};
   }
   if (std::isinf(center_distance_m) && center_distance_m > 0.0F) {
     return {.clearance_m = std::numeric_limits<float>::infinity(),
-            .status = EsdfQueryStatus::kValid,
-            .raw_occupied = false};
+            .status = EsdfQueryStatus::kValid};
   }
   if (!std::isfinite(center_distance_m) || center_distance_m < 0.0F) {
-    return {.clearance_m = 0.0F,
-            .status = EsdfQueryStatus::kInvalidDistance,
-            .raw_occupied = true};
+    return {.clearance_m = 0.0F, .status = EsdfQueryStatus::kInvalidDistance};
   }
   const float center_x_m =
       grid.origin_x_m + (static_cast<float>(cell_x) + 0.5F) * grid.resolution_m;
@@ -125,8 +112,7 @@ EsdfQueryResult queryConservativeEsdf3D(const mppi::EsdfGrid& grid,
   const float correction_m = std::sqrt(dx * dx + dy * dy + dz * dz) +
                              kHalfVoxelDiagonalScale * grid.resolution_m;
   return {.clearance_m = std::max(0.0F, center_distance_m - correction_m),
-          .status = EsdfQueryStatus::kValid,
-          .raw_occupied = center_distance_m == 0.0F};
+          .status = EsdfQueryStatus::kValid};
 }
 
 } // namespace drone_city_nav

@@ -283,9 +283,6 @@ finiteExecutionEvidenceView(const ExecutionRouteSnapshot3D& snapshot) noexcept {
   if (points.empty()) {
     return false;
   }
-  const std::optional<ProprioceptiveFreeSpaceSeed3D>& seed =
-      !static_world ? latest_raw->proprioceptiveFreeSpaceSeed()
-                    : std::optional<ProprioceptiveFreeSpaceSeed3D>{};
   const std::optional<LaunchSupportContact3D>& launch_support =
       !static_world ? latest_raw->launchSupportContact()
                     : std::optional<LaunchSupportContact3D>{};
@@ -296,8 +293,6 @@ finiteExecutionEvidenceView(const ExecutionRouteSnapshot3D& snapshot) noexcept {
       .footprint = &view.policy->sweptFootprint(),
       .static_occupancy = static_world ? &view.static_world->occupancy() : nullptr,
       .observed_occupancy = !static_world ? &latest_raw->occupancy() : nullptr,
-      .require_known_free_space = static_world,
-      .proprioceptive_free_space_seed = seed ? std::addressof(*seed) : nullptr,
       .launch_support_contact =
           launch_support ? std::addressof(*launch_support) : nullptr,
       .raw_occupancy = nullptr,

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/mppi/mppi_types.hpp"
+#include "drone_city_nav/occupied_collision_oracle_3d.hpp"
 #include "drone_city_nav/route_3d.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
 
@@ -25,11 +26,6 @@ trackingErrorTubeConfig3DIsValid(const TrackingErrorTubeConfig3D& config) noexce
 [[nodiscard]] double trackingErrorTubeRadiusM(const TrackingErrorTubeConfig3D& config,
                                               double speed_mps) noexcept;
 
-enum class TrackingErrorTubeOccupancyPolicy3D {
-  kRawOccupiedOnly,
-  kKnownStaticBounds,
-};
-
 // Exactly one occupancy source may be present. An unavailable source is
 // deliberately neutral: missing distance evidence must not make unknown space
 // less traversable than free space.
@@ -39,9 +35,6 @@ struct TrackingErrorTubeWorld3D {
   // Fingerprint of occupied voxels only. Free/unknown relabeling deliberately
   // preserves this identity and therefore preserves the executable profile.
   std::uint64_t occupied_content_fingerprint{0U};
-  TrackingErrorTubeOccupancyPolicy3D occupancy_policy{
-      TrackingErrorTubeOccupancyPolicy3D::kRawOccupiedOnly};
-  const ProprioceptiveFreeSpaceSeed3D* free_space_seed{nullptr};
   const LaunchSupportContact3D* launch_support_contact{nullptr};
 };
 

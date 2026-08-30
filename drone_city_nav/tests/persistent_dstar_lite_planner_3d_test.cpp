@@ -90,11 +90,10 @@ void expectRawValid(const std::vector<Point3>& path,
                     const SweptFootprintConfig& footprint) {
   ASSERT_GE(path.size(), 2U);
   for (std::size_t index = 1U; index < path.size(); ++index) {
-    EXPECT_TRUE(
-        validateObservedSweptFootprint(occupancy, path[index - 1U], FootprintBodyAxis{},
-                                       path[index], FootprintBodyAxis{}, footprint,
-                                       ObservedSpaceValidationPolicy::kAllowUnknown)
-            .accepted());
+    EXPECT_TRUE(validateRawSweptFootprint(occupancy, path[index - 1U],
+                                          FootprintBodyAxis{}, path[index],
+                                          FootprintBodyAxis{}, footprint)
+                    .accepted());
   }
 }
 
@@ -646,11 +645,9 @@ TEST(PersistentDStarLitePlanner3DTest,
   config.physical_footprint.sweep_step_m = 0.25;
   const Point3 start{2.5, 3.5, 2.5};
   const Point3 goal{27.5, 17.5, 2.5};
-  ASSERT_FALSE(
-      validateObservedSweptFootprint(*occupancy, start, FootprintBodyAxis{}, goal,
-                                     FootprintBodyAxis{}, config.physical_footprint,
-                                     ObservedSpaceValidationPolicy::kAllowUnknown)
-          .accepted());
+  ASSERT_FALSE(validateRawSweptFootprint(*occupancy, start, FootprintBodyAxis{}, goal,
+                                         FootprintBodyAxis{}, config.physical_footprint)
+                   .accepted());
 
   PersistentDStarLitePlanner3D planner{config};
   const PlannerUpdate3D result =
@@ -658,7 +655,13 @@ TEST(PersistentDStarLitePlanner3DTest,
 
   ASSERT_TRUE(result.publishable());
   EXPECT_TRUE(result.telemetry.feasibility_attempted);
-  EXPECT_TRUE(result.telemetry.feasibility_route_found);
+  EXPECT_TRUE(result.telemetry.feasibility_route_found)
+      << "feasibility_expansions=" << result.telemetry.feasibility_expansions
+      << " raw_checks=" << result.telemetry.raw_edge_validation_checks
+      << " graph_expansions=" << result.telemetry.expansions
+      << " records=" << result.telemetry.records
+      << " open=" << result.telemetry.open_entries
+      << " search_ms=" << result.telemetry.search_ms;
   EXPECT_GT(result.telemetry.feasibility_expansions, 1U);
   EXPECT_GT(candidate(result).points.size(), 2U);
   expectRawValid(candidate(result).points, *occupancy,

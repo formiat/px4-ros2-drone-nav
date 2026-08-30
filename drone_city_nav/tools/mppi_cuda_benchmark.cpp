@@ -89,8 +89,7 @@ void printSummary(const BenchmarkConfig& config, const BenchmarkResult& result) 
             << "deadline: target=" << config.deadline_ms
             << " missed=" << result.deadline_misses
             << " ratio=" << result.deadline_miss_ratio << '\n'
-            << "selected: collision=" << (result.selected.collision ? "true" : "false")
-            << " tier=" << static_cast<int>(result.selected.worst_tier)
+            << "selected: tier=" << static_cast<int>(result.selected.worst_tier)
             << " critical_m=" << result.selected.critical_exposure_m
             << " planning_m=" << result.selected.planning_exposure_m
             << " min_clearance_m=" << result.selected.minimum_clearance_m
@@ -151,7 +150,7 @@ void writeJson(const std::filesystem::path& path, const BenchmarkConfig& config,
     } else if (argument == "--no-footprint-clearance-broad-phase") {
       config.footprint.clearance_broad_phase_enabled = false;
     } else if (argument == "--no-early-exit") {
-      config.early_exit_on_collision = false;
+      config.early_exit_on_altitude_envelope_violation = false;
     } else if (argument == "--json") {
       json_path = requireValue(argc, argv, index);
     } else if (argument == "--matrix") {

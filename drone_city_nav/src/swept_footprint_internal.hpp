@@ -9,81 +9,10 @@
 
 namespace drone_city_nav::swept_footprint_detail {
 
-[[nodiscard]] inline int statusPriority(const SweptFootprintStatus status) noexcept {
-  switch (status) {
-    case SweptFootprintStatus::kValid:
-      return 0;
-    case SweptFootprintStatus::kUnknownSpace:
-      return 1;
-    case SweptFootprintStatus::kOutsideGrid:
-      return 2;
-    case SweptFootprintStatus::kInvalidEsdf:
-      return 3;
-    case SweptFootprintStatus::kRawCollision:
-      return 4;
-  }
-  return 3;
-}
-
 [[nodiscard]] inline SweptFootprintResult
 makeStatusResult(const SweptFootprintStatus status,
                  const Point3& failure_point) noexcept {
-  SweptFootprintResult result{.status = status, .failure_point = failure_point};
-  switch (status) {
-    case SweptFootprintStatus::kValid:
-      break;
-    case SweptFootprintStatus::kOutsideGrid:
-      result.evidence.outside_grid_exposure = true;
-      break;
-    case SweptFootprintStatus::kUnknownSpace:
-      result.evidence.unknown_exposure = true;
-      break;
-    case SweptFootprintStatus::kInvalidEsdf:
-      result.evidence.invalid_esdf_exposure = true;
-      break;
-    case SweptFootprintStatus::kRawCollision:
-      result.evidence.raw_collision = true;
-      break;
-  }
-  return result;
-}
-
-[[nodiscard]] inline SweptFootprintResult
-makeKnownClearanceResult(const double clearance_m) noexcept {
-  SweptFootprintResult result{.status = SweptFootprintStatus::kValid};
-  result.evidence.known_clearance_observed = true;
-  result.evidence.minimum_known_clearance_m = clearance_m;
-  return result;
-}
-
-inline void mergeEvidence(SweptFootprintResult& target,
-                          const SweptFootprintResult& source) noexcept {
-  target.evidence.raw_collision =
-      target.evidence.raw_collision || source.evidence.raw_collision;
-  target.evidence.outside_grid_exposure =
-      target.evidence.outside_grid_exposure || source.evidence.outside_grid_exposure;
-  target.evidence.unknown_exposure =
-      target.evidence.unknown_exposure || source.evidence.unknown_exposure;
-  target.evidence.invalid_esdf_exposure =
-      target.evidence.invalid_esdf_exposure || source.evidence.invalid_esdf_exposure;
-  if (source.evidence.known_clearance_observed) {
-    target.evidence.known_clearance_observed = true;
-    target.evidence.minimum_known_clearance_m =
-        std::min(target.evidence.minimum_known_clearance_m,
-                 source.evidence.minimum_known_clearance_m);
-  }
-  if (statusPriority(source.status) > statusPriority(target.status)) {
-    target.status = source.status;
-    target.failure_point = source.failure_point;
-  }
-}
-
-inline void subtractKnownClearance(SweptFootprintResult& result,
-                                   const double extent_m) noexcept {
-  if (result.evidence.known_clearance_observed) {
-    result.evidence.minimum_known_clearance_m =
-        std::max(0.0, result.evidence.minimum_known_clearance_m - extent_m);
-  }
+  return SweptFootprintResult{.status = status, .failure_point = failure_point};
 }
 
 [[nodiscard]] inline FootprintBodyAxis

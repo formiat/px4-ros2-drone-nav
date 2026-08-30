@@ -154,7 +154,10 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
             PACKAGE / "src/route_time_parameterization.cpp"
         ).read_text()
 
-        self.assertIn("ObservedSpaceValidationPolicy::kAllowUnknown", tube)
+        self.assertIn("OccupiedCollisionOracle3D", tube)
+        self.assertIn(".observed_occupancy = world.observed_occupancy", tube)
+        self.assertNotIn("ObservedSpaceValidationPolicy", tube)
+        self.assertNotIn("require_known_free_space", tube)
         self.assertIn("inflatedFootprint(physical_footprint", tube)
         self.assertIn("trackingErrorTubeRadiusM(config, maximum_speed_mps)", tube)
         self.assertIn("makeTrackingErrorTubeProfile3D", compiler)

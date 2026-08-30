@@ -115,10 +115,6 @@ ProductionMppiNode::exactSnapshotValidationWorld(
       (observed_route && (observed_world == nullptr || !observed_world->valid()))) {
     return std::nullopt;
   }
-  const ProprioceptiveFreeSpaceSeed3D* free_space_seed =
-      observed_route && observed_world->proprioceptiveFreeSpaceSeed().has_value()
-          ? &*observed_world->proprioceptiveFreeSpaceSeed()
-          : nullptr;
   const LaunchSupportContact3D* launch_support_contact =
       observed_route && observed_world->launchSupportContact().has_value()
           ? &*observed_world->launchSupportContact()
@@ -130,8 +126,6 @@ ProductionMppiNode::exactSnapshotValidationWorld(
       .footprint = &route.validation_policy->sweptFootprint(),
       .static_occupancy = static_route ? &route.static_world->occupancy() : nullptr,
       .observed_occupancy = observed_route ? &observed_world->occupancy() : nullptr,
-      .require_known_free_space = static_route,
-      .proprioceptive_free_space_seed = free_space_seed,
       .launch_support_contact = launch_support_contact,
       .raw_occupancy = nullptr,
       .latest_lidar_obstacle_points =
@@ -160,11 +154,6 @@ ProductionMppiNode::exactDirectValidationWorld(
   if (static_world == observed_world) {
     return std::nullopt;
   }
-  const ProprioceptiveFreeSpaceSeed3D* free_space_seed =
-      observed_world &&
-              execution.observed_raw_world->proprioceptiveFreeSpaceSeed().has_value()
-          ? &*execution.observed_raw_world->proprioceptiveFreeSpaceSeed()
-          : nullptr;
   const LaunchSupportContact3D* launch_support_contact =
       observed_world && execution.observed_raw_world->launchSupportContact().has_value()
           ? &*execution.observed_raw_world->launchSupportContact()
@@ -177,8 +166,6 @@ ProductionMppiNode::exactDirectValidationWorld(
       .static_occupancy = static_world ? &execution.static_world->occupancy() : nullptr,
       .observed_occupancy =
           observed_world ? &execution.observed_raw_world->occupancy() : nullptr,
-      .require_known_free_space = static_world,
-      .proprioceptive_free_space_seed = free_space_seed,
       .launch_support_contact = launch_support_contact,
       .raw_occupancy = nullptr,
       .latest_lidar_obstacle_points =

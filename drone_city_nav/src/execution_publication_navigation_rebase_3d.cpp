@@ -369,9 +369,6 @@ rebaseExecutionPublicationForCurrentNavigation3D(
       (static_world && !candidate_view->static_world->valid())) {
     return reject(ExecutionPublicationNavigationRebaseStatus3D::kEvidenceUnavailable);
   }
-  const std::optional<ProprioceptiveFreeSpaceSeed3D>& seed =
-      !static_world ? request.current_observed_raw_world->proprioceptiveFreeSpaceSeed()
-                    : std::optional<ProprioceptiveFreeSpaceSeed3D>{};
   const std::optional<LaunchSupportContact3D>& launch_support =
       !static_world ? request.current_observed_raw_world->launchSupportContact()
                     : std::optional<LaunchSupportContact3D>{};
@@ -384,8 +381,6 @@ rebaseExecutionPublicationForCurrentNavigation3D(
           static_world ? &candidate_view->static_world->occupancy() : nullptr,
       .observed_occupancy =
           !static_world ? &request.current_observed_raw_world->occupancy() : nullptr,
-      .require_known_free_space = static_world,
-      .proprioceptive_free_space_seed = seed ? std::addressof(*seed) : nullptr,
       .launch_support_contact =
           launch_support ? std::addressof(*launch_support) : nullptr,
       .raw_occupancy = nullptr,

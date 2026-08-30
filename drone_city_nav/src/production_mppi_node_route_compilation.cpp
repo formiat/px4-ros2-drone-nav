@@ -32,9 +32,6 @@ TrackingErrorTubeWorld3D ProductionMppiNode::trackingErrorTubeWorld3D(
             exact_observation_owner
                 ? world.observed_raw_world_owner->occupiedContentFingerprint()
                 : 0U,
-        .free_space_seed = world.proprioceptive_free_space_seed.has_value()
-                               ? std::addressof(*world.proprioceptive_free_space_seed)
-                               : nullptr,
         .launch_support_contact = world.launch_support_contact.has_value()
                                       ? std::addressof(*world.launch_support_contact)
                                       : nullptr,
@@ -45,7 +42,6 @@ TrackingErrorTubeWorld3D ProductionMppiNode::trackingErrorTubeWorld3D(
       .occupied_content_fingerprint = static_occupancy_3d_ != nullptr
                                           ? static_occupancy_3d_->contentFingerprint()
                                           : 0U,
-      .occupancy_policy = TrackingErrorTubeOccupancyPolicy3D::kKnownStaticBounds,
   };
 }
 

@@ -94,22 +94,10 @@ inflatedFootprint(const SweptFootprintConfig& physical,
 
 [[nodiscard]] bool
 worldConfigurationIsValid(const TrackingErrorTubeWorld3D& world) noexcept {
-  switch (world.occupancy_policy) {
-    case TrackingErrorTubeOccupancyPolicy3D::kRawOccupiedOnly:
-    case TrackingErrorTubeOccupancyPolicy3D::kKnownStaticBounds:
-      break;
-    default:
-      return false;
-  }
   if (world.observed_occupancy != nullptr && world.occupancy != nullptr) {
     return false;
   }
-  if (world.observed_occupancy != nullptr &&
-      world.occupancy_policy != TrackingErrorTubeOccupancyPolicy3D::kRawOccupiedOnly) {
-    return false;
-  }
-  if (world.observed_occupancy == nullptr &&
-      (world.free_space_seed != nullptr || world.launch_support_contact != nullptr)) {
+  if (world.observed_occupancy == nullptr && world.launch_support_contact != nullptr) {
     return false;
   }
   const bool evidence_available =
@@ -129,25 +117,16 @@ worldConfigurationIsValid(const TrackingErrorTubeWorld3D& world) noexcept {
                                    const Point3& first, const Point3& second,
                                    const SweptFootprintConfig& footprint) noexcept {
   constexpr FootprintBodyAxis kBodyAxis{};
-  if (world.observed_occupancy != nullptr) {
-    return validateObservedSweptFootprint(
-               *world.observed_occupancy, first, kBodyAxis, second, kBodyAxis,
-               footprint, ObservedSpaceValidationPolicy::kAllowUnknown,
-               world.free_space_seed, world.launch_support_contact)
-        .accepted();
-  }
-  if (world.occupancy == nullptr) {
-    return true;
-  }
-  if (world.occupancy_policy ==
-      TrackingErrorTubeOccupancyPolicy3D::kKnownStaticBounds) {
-    return validateKnownStaticSweptFootprint(*world.occupancy, first, kBodyAxis, second,
-                                             kBodyAxis, footprint)
-        .accepted();
-  }
-  return validateRawSweptFootprint(*world.occupancy, first, kBodyAxis, second,
-                                   kBodyAxis, footprint)
-      .accepted();
+  const OccupiedCollisionOracle3D oracle{OccupiedCollisionWorld3D{
+      .observed_occupancy = world.observed_occupancy,
+      .static_occupancy = world.occupancy,
+      .planar_occupancy = nullptr,
+      .raw_point_cloud = {},
+      .launch_support_contact = world.launch_support_contact,
+      .footprint = footprint,
+      .flight_envelope = std::nullopt,
+  }};
+  return oracle.validateSegment(first, kBodyAxis, second, kBodyAxis).clear();
 }
 
 [[nodiscard]] double segmentSpeedLimitMps(

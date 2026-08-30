@@ -29,8 +29,6 @@ void ProductionMppiNode::publishSummary() {
   std::uint64_t completed_ticks{0U};
   std::uint64_t deadline_misses{0U};
   std::uint64_t altitude_envelope_violation_horizons{0U};
-  std::uint64_t raw_collision_horizons{0U};
-  std::uint64_t solid_collision_horizons{0U};
   std::uint64_t post_update_contract_violations{0U};
   std::uint64_t no_progress_horizons{0U};
   std::uint64_t liveness_reseeds{0U};
@@ -53,8 +51,6 @@ void ProductionMppiNode::publishSummary() {
     completed_ticks = completed_ticks_;
     deadline_misses = deadline_misses_;
     altitude_envelope_violation_horizons = altitude_envelope_violation_horizons_;
-    raw_collision_horizons = raw_collision_horizons_;
-    solid_collision_horizons = solid_collision_horizons_;
     post_update_contract_violations = post_update_contract_violations_;
     no_progress_horizons = no_progress_horizons_;
     liveness_reseeds = liveness_reseeds_;
@@ -111,7 +107,6 @@ void ProductionMppiNode::publishSummary() {
       "PRODUCTION_MPPI_SUMMARY ticks=%" PRIu64
       " runtime_p50=%.3f runtime_p95=%.3f runtime_p99=%.3f runtime_max=%.3f "
       "deadline_misses=%" PRIu64 " altitude_envelope_violation_horizons=%" PRIu64
-      " raw_collision_horizons=%" PRIu64 " solid_collision_horizons=%" PRIu64
       " post_update_contract_violations=%" PRIu64 " no_progress_horizons=%" PRIu64
       " liveness_reseeds=%" PRIu64 " mission_goal_position_hold_ticks=%" PRIu64
       " no_executable_route_hold_ticks=%" PRIu64
@@ -156,12 +151,12 @@ void ProductionMppiNode::publishSummary() {
       completed_ticks, percentile(runtime_samples_ms, 0.50),
       percentile(runtime_samples_ms, 0.95), percentile(runtime_samples_ms, 0.99),
       maximum, deadline_misses, altitude_envelope_violation_horizons,
-      raw_collision_horizons, solid_collision_horizons, post_update_contract_violations,
-      no_progress_horizons, liveness_reseeds, mission_goal_position_hold_ticks,
-      no_executable_route_hold_ticks, no_executable_horizon_hold_ticks,
-      terminal_rest_horizon_ticks, finite_path_validation_backoff_ticks,
-      latest_lidar_path_validation_backoff_ticks, retained_previous_finite_path_ticks,
-      average_arrival_controls, average_arrival_shaping_attempts, dropped_esdf_updates,
+      post_update_contract_violations, no_progress_horizons, liveness_reseeds,
+      mission_goal_position_hold_ticks, no_executable_route_hold_ticks,
+      no_executable_horizon_hold_ticks, terminal_rest_horizon_ticks,
+      finite_path_validation_backoff_ticks, latest_lidar_path_validation_backoff_ticks,
+      retained_previous_finite_path_ticks, average_arrival_controls,
+      average_arrival_shaping_attempts, dropped_esdf_updates,
       no_static_raw_updates_.load(std::memory_order_relaxed),
       no_static_esdf_builds_.load(std::memory_order_relaxed),
       no_static_esdf_throttled_updates_.load(std::memory_order_relaxed),

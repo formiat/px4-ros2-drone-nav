@@ -55,9 +55,6 @@ validateRemainingFiniteExecutionAgainstObservedWorld3D(
       .footprint = &execution.validation_policy->sweptFootprint(),
       .static_occupancy = nullptr,
       .observed_occupancy = &current_world.occupancy(),
-      .require_known_free_space = false,
-      .proprioceptive_free_space_seed =
-          optionalAddress(current_world.proprioceptiveFreeSpaceSeed()),
       .launch_support_contact = optionalAddress(current_world.launchSupportContact()),
       .raw_occupancy = nullptr,
       .latest_lidar_obstacle_points = {},
@@ -106,10 +103,6 @@ validateRemainingFiniteExecutionAgainstLatestLidar3D(
       .footprint = &execution.validation_policy->sweptFootprint(),
       .static_occupancy = static_mode ? &execution.static_world->occupancy() : nullptr,
       .observed_occupancy = observed_mode ? &observed_world->occupancy() : nullptr,
-      .require_known_free_space = static_mode,
-      .proprioceptive_free_space_seed =
-          observed_mode ? optionalAddress(observed_world->proprioceptiveFreeSpaceSeed())
-                        : nullptr,
       .launch_support_contact =
           observed_mode ? optionalAddress(observed_world->launchSupportContact())
                         : nullptr,

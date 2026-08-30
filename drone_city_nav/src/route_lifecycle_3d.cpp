@@ -55,21 +55,34 @@ routeSegmentAtStation(const std::span<const RouteSample3D> route,
   return std::min(next == 0U ? 0U : next - 1U, route.size() - 2U);
 }
 
-[[nodiscard]] bool
-rawCollision(const ObservedOccupancyGrid3D& occupancy, const Point3& first,
-             const Point3& second, const SweptFootprintConfig& footprint,
-             const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_free_space_seed,
-             const LaunchSupportContact3D* const launch_support_contact,
-             Point3& failure_point) {
-  const SweptFootprintResult validation = validateObservedSweptFootprint(
-      occupancy, first, FootprintBodyAxis{}, second, FootprintBodyAxis{}, footprint,
-      ObservedSpaceValidationPolicy::kAllowUnknown, proprioceptive_free_space_seed,
-      launch_support_contact);
-  if (validation.status != SweptFootprintStatus::kRawCollision) {
-    return false;
+[[nodiscard]] RawRouteSuffixStatus3D
+collisionStatus(const OccupiedCollisionStatus3D status) noexcept {
+  switch (status) {
+    case OccupiedCollisionStatus3D::kClear:
+      return RawRouteSuffixStatus3D::kValid;
+    case OccupiedCollisionStatus3D::kOutsideFlightEnvelope:
+      return RawRouteSuffixStatus3D::kOutsideFlightEnvelope;
+    case OccupiedCollisionStatus3D::kRawCollision:
+      return RawRouteSuffixStatus3D::kRawCollision;
+    case OccupiedCollisionStatus3D::kInvalidInput:
+      return RawRouteSuffixStatus3D::kInvalidCollisionWorld;
   }
-  failure_point = validation.failure_point;
-  return true;
+  return RawRouteSuffixStatus3D::kInvalidCollisionWorld;
+}
+
+[[nodiscard]] bool
+validateCollisionSegment(const OccupiedCollisionOracle3D& oracle, const Point3& first,
+                         const Point3& second, const std::size_t failure_route_segment,
+                         RawRouteSuffixValidation3D& result) noexcept {
+  const OccupiedCollisionResult3D validation =
+      oracle.validateSegment(first, FootprintBodyAxis{}, second, FootprintBodyAxis{});
+  if (validation.clear()) {
+    return true;
+  }
+  result.status = collisionStatus(validation.status);
+  result.failure_route_segment = failure_route_segment;
+  result.failure_point = validation.failure_point;
+  return false;
 }
 
 [[nodiscard]] bool finitePoint(const Point3& point) noexcept {
@@ -83,10 +96,8 @@ rawCollision(const ObservedOccupancyGrid3D& occupancy, const Point3& first,
 
 [[nodiscard]] RawRouteSuffixValidation3D validateRawRouteConnector3D(
     const std::span<const RouteSample3D> route, const Point3& position,
-    const RouteProjection3D& projection, const ObservedOccupancyGrid3D& occupancy,
-    const SweptFootprintConfig& footprint,
-    const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_free_space_seed,
-    const LaunchSupportContact3D* const launch_support_contact) noexcept {
+    const RouteProjection3D& projection,
+    const OccupiedCollisionOracle3D& collision_oracle) noexcept {
   if (route.size() < 2U) {
     return {.status = RawRouteSuffixStatus3D::kInvalidRoute};
   }
@@ -102,11 +113,9 @@ rawCollision(const ObservedOccupancyGrid3D& occupancy, const Point3& first,
       .validated_from_station_m = projection.station_m,
       .connector_validated = true,
   };
-  if (rawCollision(occupancy, position, projection.point, footprint,
-                   proprioceptive_free_space_seed, launch_support_contact,
-                   result.failure_point)) {
-    result.status = RawRouteSuffixStatus3D::kRawCollision;
-    result.failure_route_segment = first_route_segment;
+  if (!validateCollisionSegment(collision_oracle, position, projection.point,
+                                first_route_segment, result)) {
+    return result;
   }
   return result;
 }
@@ -344,9 +353,16 @@ assessRouteActivation3D(const MaterializedRouteProposal3D& proposal,
   }
 
   result.raw_validation = validateRawRouteSuffix3D(
-      route, observation.position, result.projection, *observation.latest_raw_occupancy,
-      observation.footprint, observation.proprioceptive_free_space_seed,
-      observation.launch_support_contact);
+      route, observation.position, result.projection,
+      OccupiedCollisionWorld3D{
+          .observed_occupancy = observation.latest_raw_occupancy,
+          .static_occupancy = nullptr,
+          .planar_occupancy = nullptr,
+          .raw_point_cloud = {},
+          .launch_support_contact = observation.launch_support_contact,
+          .footprint = observation.footprint,
+          .flight_envelope = observation.flight_envelope,
+      });
   if (result.raw_validation.accepted() && result.raw_validation.connector_validated &&
       result.raw_validation.suffix_validated) {
     result.raw_validated_through_revision = std::max(
@@ -355,15 +371,13 @@ assessRouteActivation3D(const MaterializedRouteProposal3D& proposal,
   return result;
 }
 
-RawRouteSuffixValidation3D validateRawRouteSuffix3D(
-    const std::span<const RouteSample3D> route, const Point3& position,
-    const RouteProjection3D& projection, const ObservedOccupancyGrid3D& occupancy,
-    const SweptFootprintConfig& footprint,
-    const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_free_space_seed,
-    const LaunchSupportContact3D* const launch_support_contact) noexcept {
-  RawRouteSuffixValidation3D result = validateRawRouteConnector3D(
-      route, position, projection, occupancy, footprint, proprioceptive_free_space_seed,
-      launch_support_contact);
+RawRouteSuffixValidation3D
+validateRawRouteSuffix3D(const std::span<const RouteSample3D> route,
+                         const Point3& position, const RouteProjection3D& projection,
+                         const OccupiedCollisionWorld3D& collision_world) noexcept {
+  const OccupiedCollisionOracle3D collision_oracle{collision_world};
+  RawRouteSuffixValidation3D result =
+      validateRawRouteConnector3D(route, position, projection, collision_oracle);
   if (!result.accepted()) {
     return result;
   }
@@ -371,11 +385,8 @@ RawRouteSuffixValidation3D validateRawRouteSuffix3D(
       firstRouteSampleAfter(route, projection.station_m);
   Point3 previous = projection.point;
   for (std::size_t index = first_route_sample; index < route.size(); ++index) {
-    if (rawCollision(occupancy, previous, route[index].position, footprint,
-                     proprioceptive_free_space_seed, launch_support_contact,
-                     result.failure_point)) {
-      result.status = RawRouteSuffixStatus3D::kRawCollision;
-      result.failure_route_segment = index == 0U ? 0U : index - 1U;
+    if (!validateCollisionSegment(collision_oracle, previous, route[index].position,
+                                  index == 0U ? 0U : index - 1U, result)) {
       return result;
     }
     previous = route[index].position;
@@ -449,18 +460,22 @@ assessRouteExecution3D(const ActivatedRouteIdentity3D* const active_route,
       validation_projection.remaining_m =
           std::max(0.0, route.back().station_m - validation_projection.station_m);
     }
+    const OccupiedCollisionWorld3D collision_world{
+        .observed_occupancy = observation.latest_raw_occupancy,
+        .static_occupancy = nullptr,
+        .planar_occupancy = nullptr,
+        .raw_point_cloud = {},
+        .launch_support_contact = observation.launch_support_contact,
+        .footprint = observation.footprint,
+        .flight_envelope = observation.flight_envelope,
+    };
+    const OccupiedCollisionOracle3D collision_oracle{collision_world};
     result.raw_validation =
         suffix_validation_required
-            ? validateRawRouteSuffix3D(
-                  route, observation.position, validation_projection,
-                  *observation.latest_raw_occupancy, observation.footprint,
-                  observation.proprioceptive_free_space_seed,
-                  observation.launch_support_contact)
-            : validateRawRouteConnector3D(
-                  route, observation.position, validation_projection,
-                  *observation.latest_raw_occupancy, observation.footprint,
-                  observation.proprioceptive_free_space_seed,
-                  observation.launch_support_contact);
+            ? validateRawRouteSuffix3D(route, observation.position,
+                                       validation_projection, collision_world)
+            : validateRawRouteConnector3D(route, observation.position,
+                                          validation_projection, collision_oracle);
     if (!result.raw_validation.accepted()) {
       result.status =
           result.raw_validation.status == RawRouteSuffixStatus3D::kRawCollision
@@ -711,8 +726,12 @@ rawRouteSuffixStatus3DName(const RawRouteSuffixStatus3D status) noexcept {
       return "invalid_route";
     case RawRouteSuffixStatus3D::kInvalidProjection:
       return "invalid_projection";
+    case RawRouteSuffixStatus3D::kOutsideFlightEnvelope:
+      return "outside_flight_envelope";
     case RawRouteSuffixStatus3D::kRawCollision:
       return "raw_collision";
+    case RawRouteSuffixStatus3D::kInvalidCollisionWorld:
+      return "invalid_collision_world";
   }
   return "invalid_status";
 }

@@ -13,10 +13,7 @@ namespace {
 }
 
 [[nodiscard]] MppiPostUpdateObservation safeObservation() {
-  return MppiPostUpdateObservation{
-      .raw_collision = false,
-      .known_solid_collision = false,
-  };
+  return MppiPostUpdateObservation{};
 }
 
 TEST(MppiPostUpdateClassification, AcceptsPhysicallyFeasibleSequence) {
@@ -48,16 +45,6 @@ TEST(MppiPostUpdateClassification, ReportsInvalidContractMetrics) {
   EXPECT_EQ(result.classification, MppiPostUpdateClassification::kInvalidMetrics);
 }
 
-TEST(MppiPostUpdateClassification, ReportsRawCollision) {
-  MppiPostUpdateObservation observation = safeObservation();
-  observation.raw_collision = true;
-
-  const MppiPostUpdateClassificationResult result =
-      classifyMppiPostUpdate(feasibleContract(), observation);
-
-  EXPECT_EQ(result.classification, MppiPostUpdateClassification::kRawCollision);
-}
-
 TEST(MppiPostUpdateClassification, ReportsAltitudeEnvelopeViolation) {
   MppiPostUpdateObservation observation = safeObservation();
   observation.altitude_envelope_violation = true;
@@ -68,30 +55,6 @@ TEST(MppiPostUpdateClassification, ReportsAltitudeEnvelopeViolation) {
   EXPECT_EQ(result.classification,
             MppiPostUpdateClassification::kAltitudeEnvelopeViolation);
   EXPECT_FALSE(result.executable);
-}
-
-TEST(MppiPostUpdateClassification, ReportsKnownSolidCollision) {
-  MppiPostUpdateObservation observation = safeObservation();
-  observation.known_solid_collision = true;
-
-  const MppiPostUpdateClassificationResult result =
-      classifyMppiPostUpdate(feasibleContract(), observation);
-
-  EXPECT_EQ(result.classification, MppiPostUpdateClassification::kKnownSolidCollision);
-}
-
-TEST(MppiPostUpdateClassification, ReportsUnknownSpaceSeparatelyFromCollision) {
-  MppiPostUpdateObservation observation = safeObservation();
-  observation.unknown_space_violation = true;
-
-  const MppiPostUpdateClassificationResult result =
-      classifyMppiPostUpdate(feasibleContract(), observation);
-
-  EXPECT_EQ(result.classification,
-            MppiPostUpdateClassification::kUnknownSpaceViolation);
-  EXPECT_FALSE(result.executable);
-  EXPECT_STREQ(mppiPostUpdateClassificationName(result.classification),
-               "unknown_space_violation");
 }
 
 TEST(MppiPostUpdateClassification, ReportsRouteTerminalCrossTrackViolation) {

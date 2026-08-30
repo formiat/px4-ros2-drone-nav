@@ -1,3 +1,5 @@
+#include "drone_city_nav/occupied_collision_oracle_3d.hpp"
+
 #include <algorithm>
 #include <bit>
 #include <cmath>
@@ -74,6 +76,31 @@ void PersistentDStarLitePlanner3DImpl::configureGridGeometry(
       1, static_cast<int>(std::floor(depth_m / config_.minimum_vertical_step_m)));
 }
 
+void PersistentDStarLitePlanner3DImpl::installWorld(
+    const PersistentPlannerWorld3D& world) {
+  world_ = world;
+  resident_collision_oracle_.emplace(OccupiedCollisionWorld3D{
+      .observed_occupancy = world_.observed_occupancy.get(),
+      .static_occupancy = world_.static_occupancy.get(),
+      .planar_occupancy = nullptr,
+      .raw_point_cloud = {},
+      .launch_support_contact = nullptr,
+      .footprint = config_.physical_footprint,
+      .flight_envelope = config_.flight_envelope,
+  });
+  departure_collision_oracle_.emplace(OccupiedCollisionWorld3D{
+      .observed_occupancy = world_.observed_occupancy.get(),
+      .static_occupancy = world_.static_occupancy.get(),
+      .planar_occupancy = nullptr,
+      .raw_point_cloud = {},
+      .launch_support_contact = world_.launch_support_contact
+                                    ? std::addressof(*world_.launch_support_contact)
+                                    : nullptr,
+      .footprint = config_.physical_footprint,
+      .flight_envelope = config_.flight_envelope,
+  });
+}
+
 PersistentPlannerWorldUpdate3D
 PersistentDStarLitePlanner3DImpl::updateWorld(const PersistentPlannerWorld3D& world) {
   PersistentPlannerWorldUpdate3D update;
@@ -81,7 +108,7 @@ PersistentDStarLitePlanner3DImpl::updateWorld(const PersistentPlannerWorld3D& wo
     return update;
   }
   if (!initialized_ && world_.producer_instance_id == 0U) {
-    world_ = world;
+    installWorld(world);
     configureGridGeometry(*world.bounds());
     update.accepted = true;
     update.requires_reset = true;
@@ -96,7 +123,7 @@ PersistentDStarLitePlanner3DImpl::updateWorld(const PersistentPlannerWorld3D& wo
         world.producer_instance_id == world_.producer_instance_id) {
       return update;
     }
-    world_ = world;
+    installWorld(world);
     configureGridGeometry(*world.bounds());
     dstar_session_.edge_cost_cache_.clear();
     update.accepted = true;
@@ -106,24 +133,24 @@ PersistentDStarLitePlanner3DImpl::updateWorld(const PersistentPlannerWorld3D& wo
   if (world.revision == world_.revision) {
     update.accepted = true;
     update.occupied_world_unchanged = true;
-    world_ = world;
+    installWorld(world);
     return update;
   }
   if (world.full_reset) {
-    world_ = world;
+    installWorld(world);
     dstar_session_.edge_cost_cache_.clear();
     update.accepted = true;
     update.requires_reset = true;
     return update;
   }
   if (world.occupied_fingerprint == world_.occupied_fingerprint) {
-    world_ = world;
+    installWorld(world);
     update.accepted = true;
     update.occupied_world_unchanged = true;
     return update;
   }
   if (world.observed_occupancy == nullptr || world_.observed_occupancy == nullptr) {
-    world_ = world;
+    installWorld(world);
     dstar_session_.edge_cost_cache_.clear();
     update.accepted = true;
     update.requires_reset = true;
@@ -141,7 +168,7 @@ PersistentDStarLitePlanner3DImpl::updateWorld(const PersistentPlannerWorld3D& wo
     update.changed_cells.clear();
     update.requires_reset = true;
   }
-  world_ = world;
+  installWorld(world);
   update.accepted = true;
   return update;
 }
@@ -301,52 +328,22 @@ bool PersistentDStarLitePlanner3DImpl::pointInsideFlightEnvelope(
 
 bool PersistentDStarLitePlanner3DImpl::rawSegmentValid(const Point3& first,
                                                        const Point3& second) const {
-  if (!pointInsideFlightEnvelope(first) || !pointInsideFlightEnvelope(second)) {
-    return false;
-  }
-  if (world_.observed_occupancy != nullptr) {
-    // The resident graph represents persistent raw occupancy only. A moving
-    // proprioceptive seed and launch support are local execution evidence; if
-    // they changed graph edge costs, every pose refresh would invalidate the
-    // complete backward search and its edge cache.
-    return validateObservedSweptFootprint(
-               *world_.observed_occupancy, first, FootprintBodyAxis{}, second,
-               FootprintBodyAxis{}, config_.physical_footprint,
-               ObservedSpaceValidationPolicy::kAllowUnknown)
-        .accepted();
-  }
-  return world_.static_occupancy != nullptr &&
-         validateKnownStaticSweptFootprint(
-             *world_.static_occupancy, first, FootprintBodyAxis{}, second,
-             FootprintBodyAxis{}, config_.physical_footprint)
-             .accepted();
+  // The resident graph represents persistent raw occupancy only. A moving
+  // proprioceptive seed and launch support are local execution evidence; if
+  // they changed graph edge costs, every pose refresh would invalidate the
+  // complete backward search and its edge cache.
+  return resident_collision_oracle_.has_value() &&
+         resident_collision_oracle_
+             ->validateSegment(first, FootprintBodyAxis{}, second, FootprintBodyAxis{})
+             .clear();
 }
 
 bool PersistentDStarLitePlanner3DImpl::departureSegmentValid(
     const Point3& first, const Point3& second) const {
-  if (!pointInsideFlightEnvelope(first) || !pointInsideFlightEnvelope(second)) {
-    return false;
-  }
-  if (world_.observed_occupancy != nullptr) {
-    const ProprioceptiveFreeSpaceSeed3D* const seed =
-        world_.proprioceptive_free_space_seed.has_value()
-            ? std::addressof(*world_.proprioceptive_free_space_seed)
-            : nullptr;
-    const LaunchSupportContact3D* const support =
-        world_.launch_support_contact.has_value()
-            ? std::addressof(*world_.launch_support_contact)
-            : nullptr;
-    return validateObservedSweptFootprint(
-               *world_.observed_occupancy, first, FootprintBodyAxis{}, second,
-               FootprintBodyAxis{}, config_.physical_footprint,
-               ObservedSpaceValidationPolicy::kAllowUnknown, seed, support)
-        .accepted();
-  }
-  return world_.static_occupancy != nullptr &&
-         validateKnownStaticSweptFootprint(
-             *world_.static_occupancy, first, FootprintBodyAxis{}, second,
-             FootprintBodyAxis{}, config_.physical_footprint)
-             .accepted();
+  return departure_collision_oracle_.has_value() &&
+         departure_collision_oracle_
+             ->validateSegment(first, FootprintBodyAxis{}, second, FootprintBodyAxis{})
+             .clear();
 }
 
 bool PersistentDStarLitePlanner3DImpl::nodeValid(

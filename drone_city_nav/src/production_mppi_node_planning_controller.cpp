@@ -26,8 +26,6 @@ ProductionMppiNode::runPlanningController(const ProductionMppiControllerTick& ti
     result.horizon = {tick.target, tick.target};
     result.controls = {mppi::Control{}};
     result.selected_tier = mppi::RiskTier::kPreferred;
-    result.raw_collision = false;
-    result.known_solid_collision = false;
     result.esdf_revision = tick.esdf.revision;
     result.timings.host_total_ms =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
@@ -50,7 +48,8 @@ ProductionMppiNode::runPlanningController(const ProductionMppiControllerTick& ti
     return std::nullopt;
   }
   if (result.route_directed_candidate_injected &&
-      !result.route_directed_candidate_raw_safe && !tick.direct_tracking_interception) {
+      !result.route_directed_candidate_device_feasible &&
+      !tick.direct_tracking_interception) {
     // A route-directed seed is only one controller candidate. Its rejection does
     // not invalidate the certified route geometry while the remaining MPPI
     // rollouts can still provide an executable control result.

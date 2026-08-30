@@ -635,38 +635,26 @@ bool canonicalizeRouteKinematics3D(const std::span<RouteSample3D> route,
   return true;
 }
 
-RouteRiskTierAssignmentResult assignRouteRiskTiers(
-    const std::span<RouteSample3D> route, const mppi::EsdfGrid& grid,
-    const std::span<const float> esdf_m, const double critical_distance_m,
-    const double preferred_distance_m, const bool require_known_free_space) noexcept {
+RouteRiskTierAssignmentResult
+assignRouteRiskTiers(const std::span<RouteSample3D> route, const mppi::EsdfGrid& grid,
+                     const std::span<const float> esdf_m,
+                     const double critical_distance_m,
+                     const double preferred_distance_m) noexcept {
+  if (!std::isfinite(critical_distance_m) || !std::isfinite(preferred_distance_m) ||
+      critical_distance_m < 0.0 || preferred_distance_m < critical_distance_m) {
+    return {};
+  }
   for (std::size_t index = 0U; index < route.size(); ++index) {
     RouteSample3D& sample = route[index];
+    if (!std::isfinite(sample.position.x) || !std::isfinite(sample.position.y) ||
+        !std::isfinite(sample.position.z)) {
+      return {.status = RouteRiskTierAssignmentStatus::kInvalidInput,
+              .failure_sample_index = index,
+              .failure_point = sample.position};
+    }
     const EsdfQueryResult query = queryConservativeEsdf3D(
         grid, esdf_m, static_cast<float>(sample.position.x),
         static_cast<float>(sample.position.y), static_cast<float>(sample.position.z));
-    if (query.raw_occupied) {
-      return {.status = RouteRiskTierAssignmentStatus::kRawCollision,
-              .failure_sample_index = index,
-              .failure_point = sample.position};
-    }
-    if (query.status != EsdfQueryStatus::kValid && require_known_free_space) {
-      const RouteRiskTierAssignmentStatus status = [&]() noexcept {
-        switch (query.status) {
-          case EsdfQueryStatus::kOutsideGrid:
-            return RouteRiskTierAssignmentStatus::kOutsideGrid;
-          case EsdfQueryStatus::kUnknownSpace:
-            return RouteRiskTierAssignmentStatus::kUnknownSpace;
-          case EsdfQueryStatus::kInvalidDistance:
-            return RouteRiskTierAssignmentStatus::kInvalidEsdf;
-          case EsdfQueryStatus::kValid:
-            break;
-        }
-        return RouteRiskTierAssignmentStatus::kInvalidEsdf;
-      }();
-      return {.status = status,
-              .failure_sample_index = index,
-              .failure_point = sample.position};
-    }
     if (query.status != EsdfQueryStatus::kValid) {
       sample.required_risk_tier = mppi::RiskTier::kPreferred;
       continue;
@@ -687,14 +675,8 @@ routeRiskTierAssignmentStatusName(const RouteRiskTierAssignmentStatus status) no
   switch (status) {
     case RouteRiskTierAssignmentStatus::kAccepted:
       return "accepted";
-    case RouteRiskTierAssignmentStatus::kOutsideGrid:
-      return "outside_grid";
-    case RouteRiskTierAssignmentStatus::kUnknownSpace:
-      return "unknown_space";
-    case RouteRiskTierAssignmentStatus::kInvalidEsdf:
-      return "invalid_esdf";
-    case RouteRiskTierAssignmentStatus::kRawCollision:
-      return "raw_collision";
+    case RouteRiskTierAssignmentStatus::kInvalidInput:
+      return "invalid_input";
   }
   return "invalid_status";
 }
@@ -822,6 +804,11 @@ bool validateConstrainedRouteSpans(const std::span<const RouteSample3D> route,
                                    const std::span<const ConstrainedRouteSpan> spans,
                                    const mppi::EsdfGrid& grid,
                                    const std::span<const float> esdf_m) noexcept {
+  // Clearance is a derived annotation, never a hard constrained-span gate.
+  // The parameters remain temporarily for source compatibility while callers
+  // migrate to the stage-typed trajectory contract.
+  static_cast<void>(grid);
+  static_cast<void>(esdf_m);
   for (const ConstrainedRouteSpan& span : spans) {
     if (span.envelope.empty() || !(span.end_station_m > span.begin_station_m)) {
       return false;
@@ -835,12 +822,6 @@ bool validateConstrainedRouteSpans(const std::span<const RouteSample3D> route,
           nearestEnvelopeSample(span, sample.station_m);
       if (sample.position.z < envelope.min_z_m ||
           sample.position.z > envelope.max_z_m) {
-        return false;
-      }
-      const EsdfQueryResult query = queryConservativeEsdf3D(
-          grid, esdf_m, static_cast<float>(sample.position.x),
-          static_cast<float>(sample.position.y), static_cast<float>(sample.position.z));
-      if (query.status != EsdfQueryStatus::kValid || query.raw_occupied) {
         return false;
       }
     }

@@ -36,8 +36,9 @@ class Stage7GeometryVerticalCostContractTest(unittest.TestCase):
         self.assertLess(sparse, candidates)
         self.assertLess(candidates, batches)
         self.assertLess(batches, raw_validation)
-        self.assertIn("validateSweptFootprint", segment_validator)
-        self.assertIn("validateObservedSweptFootprint", segment_validator)
+        self.assertIn("const OccupiedCollisionOracle3D& oracle", segment_validator)
+        self.assertIn("oracle.validateSegment", segment_validator)
+        self.assertNotIn("validateRawSweptFootprint", implementation)
         self.assertIn("std::ranges::sort(candidates, std::greater<>{})", implementation)
 
     def test_sparse_shortcuts_remain_curvature_and_corridor_aware(self) -> None:

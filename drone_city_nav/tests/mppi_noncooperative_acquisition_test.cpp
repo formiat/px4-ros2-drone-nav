@@ -51,7 +51,6 @@ TEST(MppiNonCooperativeAcquisitionTest,
           .first_control_interval_s = config.dynamics.dt_s,
           .grid = grid,
           .esdf = esdf,
-          .known_solids = {},
           .aircraft = aircraft,
           .acquisition =
               NonCooperativeSeparationAcquisition{
@@ -123,7 +122,6 @@ TEST(MppiNonCooperativeAcquisitionTest,
           .first_control_interval_s = config.dynamics.dt_s,
           .grid = grid,
           .esdf = esdf,
-          .known_solids = {},
           .aircraft = aircraft,
           .acquisition =
               NonCooperativeSeparationAcquisition{

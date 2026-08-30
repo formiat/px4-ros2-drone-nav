@@ -53,27 +53,10 @@ namespace {
   return std::acos(cosine);
 }
 
-[[nodiscard]] bool
-segmentValid(const Point3& first, const Point3& second, const mppi::EsdfGrid& grid,
-             const std::span<const float> esdf_m,
-             const SweptFootprintConfig& footprint_config,
-             const StaticRouteGeometryRawValidation* const raw_validation) noexcept {
-  if (raw_validation != nullptr && raw_validation->occupancy != nullptr) {
-    return validateObservedSweptFootprint(
-               *raw_validation->occupancy, first, FootprintBodyAxis{}, second,
-               FootprintBodyAxis{}, footprint_config, raw_validation->policy,
-               raw_validation->proprioceptive_free_space_seed,
-               raw_validation->launch_support_contact)
-        .accepted();
-  }
-  if (raw_validation != nullptr && raw_validation->static_occupancy != nullptr) {
-    return validateKnownStaticSweptFootprint(*raw_validation->static_occupancy, first,
-                                             FootprintBodyAxis{}, second,
-                                             FootprintBodyAxis{}, footprint_config)
-        .accepted();
-  }
-  return validateSweptFootprint(grid, esdf_m, first, second, footprint_config)
-      .accepted();
+[[nodiscard]] bool segmentValid(const Point3& first, const Point3& second,
+                                const OccupiedCollisionOracle3D& oracle) noexcept {
+  return oracle.validateSegment(first, FootprintBodyAxis{}, second, FootprintBodyAxis{})
+      .clear();
 }
 
 [[nodiscard]] double pointSegmentDistance(const Point3& point, const Point3& first,
@@ -253,10 +236,8 @@ maximumShortcutIndex(const std::span<const RouteSample3D> route,
 
 [[nodiscard]] std::optional<std::vector<Point3>>
 smoothCorner(const Point3& previous, const Point3& corner, const Point3& next,
-             const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
-             const SweptFootprintConfig& footprint_config,
-             const StaticRouteGeometryConfig& geometry_config,
-             const StaticRouteGeometryRawValidation* const raw_validation) {
+             const OccupiedCollisionOracle3D& collision_oracle,
+             const StaticRouteGeometryConfig& geometry_config) {
   const double incoming_length = distance3D(previous, corner);
   const double outgoing_length = distance3D(corner, next);
   const double smoothing_m = std::min({geometry_config.corner_smoothing_distance_m,
@@ -287,8 +268,7 @@ smoothCorner(const Point3& previous, const Point3& corner, const Point3& next,
     });
   }
   for (std::size_t index = 1U; index < curve.size(); ++index) {
-    if (!segmentValid(curve[index - 1U], curve[index], grid, esdf_m, footprint_config,
-                      raw_validation)) {
+    if (!segmentValid(curve[index - 1U], curve[index], collision_oracle)) {
       return std::nullopt;
     }
   }
@@ -300,11 +280,9 @@ smoothCorner(const Point3& previous, const Point3& corner, const Point3& next,
 StaticRouteGeometryResult optimizeStaticRouteGeometry(
     const std::span<const RouteSample3D> route,
     const std::span<const ConstrainedRouteSpan> constrained_spans,
-    const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
-    const SweptFootprintConfig& footprint_config,
+    const OccupiedCollisionWorld3D& collision_world,
     const StaticRouteGeometryConfig& geometry_config,
-    const RouteEnvelopeConfig& envelope_config, BoundedWorkerPool* const worker_pool,
-    const StaticRouteGeometryRawValidation* const raw_validation) {
+    const RouteEnvelopeConfig& envelope_config, BoundedWorkerPool* const worker_pool) {
   StaticRouteGeometryResult result;
   if (!geometry_config.enabled) {
     result.route.assign(route.begin(), route.end());
@@ -317,6 +295,7 @@ StaticRouteGeometryResult optimizeStaticRouteGeometry(
     result.sparse_anchor_count = route.size();
     return result;
   }
+  const OccupiedCollisionOracle3D collision_oracle{collision_world};
 
   const std::vector<std::size_t> sparse_indices = sparseRouteIndices(
       route, constrained_spans, geometry_config.sparse_deviation_tolerance_m,
@@ -351,9 +330,8 @@ StaticRouteGeometryResult optimizeStaticRouteGeometry(
         std::vector<std::uint8_t> accepted(candidate_count, 0U);
         const auto validate_candidate = [&](const std::size_t batch_index) {
           const std::size_t candidate = candidates[batch_begin + batch_index];
-          accepted[batch_index] = static_cast<std::uint8_t>(
-              segmentValid(route[current].position, route[candidate].position, grid,
-                           esdf_m, footprint_config, raw_validation));
+          accepted[batch_index] = static_cast<std::uint8_t>(segmentValid(
+              route[current].position, route[candidate].position, collision_oracle));
         };
         const bool parallel = worker_pool != nullptr &&
                               worker_pool->canParallelizeFromCurrentThread() &&
@@ -407,8 +385,8 @@ StaticRouteGeometryResult optimizeStaticRouteGeometry(
   const auto validate_corner = [&](const std::size_t candidate_index) {
     const std::size_t index = corner_candidates[candidate_index];
     curves[index] =
-        smoothCorner(anchors[index - 1U], anchors[index], anchors[index + 1U], grid,
-                     esdf_m, footprint_config, geometry_config, raw_validation);
+        smoothCorner(anchors[index - 1U], anchors[index], anchors[index + 1U],
+                     collision_oracle, geometry_config);
   };
   const bool corners_parallel = worker_pool != nullptr &&
                                 worker_pool->canParallelizeFromCurrentThread() &&

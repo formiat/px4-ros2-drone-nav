@@ -195,36 +195,23 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
         materialized_prefix.stitch_station_m -
         materialized_prefix.active_begin_station_m;
   }
-  const StaticRouteGeometryRawValidation raw_geometry_validation{
-      .occupancy =
+  const OccupiedCollisionWorld3D geometry_collision_world{
+      .observed_occupancy =
           activation_raw_world != nullptr && activation_raw_world->occupancy != nullptr
               ? activation_raw_world->occupancy.get()
               : nullptr,
       .static_occupancy = static_occupancy_3d_.get(),
-      .proprioceptive_free_space_seed =
-          world.proprioceptive_free_space_seed
-              ? std::addressof(*world.proprioceptive_free_space_seed)
-              : nullptr,
+      .planar_occupancy = nullptr,
+      .raw_point_cloud = {},
       .launch_support_contact = world.launch_support_contact
                                     ? std::addressof(*world.launch_support_contact)
                                     : nullptr,
-      .policy = ObservedSpaceValidationPolicy::kAllowUnknown,
+      .footprint = physical_footprint_config_,
+      .flight_envelope = flight_envelope_config_,
   };
   StaticRouteGeometryResult geometry = optimizeStaticRouteGeometry(
-      *mutable_route, initial_spans, world.grid, *world.distances_m,
-      SweptFootprintConfig{.radius_m = physical_footprint_config_.radius_m,
-                           .lower_extent_m = physical_footprint_config_.lower_extent_m,
-                           .upper_extent_m = physical_footprint_config_.upper_extent_m,
-                           .perimeter_samples =
-                               physical_footprint_config_.perimeter_samples,
-                           .radial_rings = physical_footprint_config_.radial_rings,
-                           .axial_samples = physical_footprint_config_.axial_samples,
-                           .sweep_step_m = physical_footprint_config_.sweep_step_m},
-      geometry_config, route_envelope_config_, planning_worker_pool_.get(),
-      raw_geometry_validation.occupancy != nullptr ||
-              raw_geometry_validation.static_occupancy != nullptr
-          ? &raw_geometry_validation
-          : nullptr);
+      *mutable_route, initial_spans, geometry_collision_world, geometry_config,
+      route_envelope_config_, planning_worker_pool_.get());
   prepared.route_smoothing_ms =
       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                 smoothing_started)
@@ -241,18 +228,9 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
     *mutable_route = std::move(geometry.route);
   }
 
-  const SweptFootprintConfig footprint_config{
-      .radius_m = physical_footprint_config_.radius_m,
-      .lower_extent_m = physical_footprint_config_.lower_extent_m,
-      .upper_extent_m = physical_footprint_config_.upper_extent_m,
-      .perimeter_samples = physical_footprint_config_.perimeter_samples,
-      .radial_rings = physical_footprint_config_.radial_rings,
-      .axial_samples = physical_footprint_config_.axial_samples,
-      .sweep_step_m = physical_footprint_config_.sweep_step_m};
-  const RouteRiskTierAssignmentResult optimized_risk_assignment =
-      assignRouteRiskTiers(*mutable_route, world.grid, *world.distances_m,
-                           mppi_config_.risk.critical_distance_m,
-                           mppi_config_.risk.preferred_distance_m, false);
+  const RouteRiskTierAssignmentResult optimized_risk_assignment = assignRouteRiskTiers(
+      *mutable_route, world.grid, *world.distances_m,
+      mppi_config_.risk.critical_distance_m, mppi_config_.risk.preferred_distance_m);
   if (!optimized_risk_assignment.accepted()) {
     *mutable_route = canonical_route;
     geometry.constrained_spans = initial_spans;
@@ -367,26 +345,17 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
   } else if (const RouteRiskTierAssignmentResult risk_assignment =
                  assignRouteRiskTiers(*mutable_route, world.grid, *world.distances_m,
                                       mppi_config_.risk.critical_distance_m,
-                                      mppi_config_.risk.preferred_distance_m, false);
+                                      mppi_config_.risk.preferred_distance_m);
              risk_assignment.accepted()) {
     result.validation = validateStaticRouteCandidate(
         world.route_3d ? std::span<const RouteSample3D>{*world.route_3d}
                        : std::span<const RouteSample3D>{},
-        *mutable_route, world.grid, *world.distances_m, mission_goal,
+        *mutable_route, mission_goal,
         static_route_extension_config_.minimum_endpoint_improvement_m,
-        spatial_route.valid(), flight_envelope_config_, result.replacement_policy,
-        footprint_config, false, true);
+        spatial_route.valid(), flight_envelope_config_, result.replacement_policy);
   } else {
-    StaticRouteCandidateStatus candidate_status =
-        StaticRouteCandidateStatus::kInvalidEsdf;
-    if (risk_assignment.status == RouteRiskTierAssignmentStatus::kRawCollision) {
-      candidate_status = StaticRouteCandidateStatus::kRawCollision;
-    } else if (risk_assignment.status == RouteRiskTierAssignmentStatus::kOutsideGrid ||
-               risk_assignment.status == RouteRiskTierAssignmentStatus::kUnknownSpace) {
-      candidate_status = StaticRouteCandidateStatus::kOutsideEsdf;
-    }
     result.validation = StaticRouteCandidateValidation{
-        .status = candidate_status,
+        .status = StaticRouteCandidateStatus::kInvalidInput,
         .failure_segment_index = risk_assignment.failure_sample_index,
         .failure_point = risk_assignment.failure_point};
   }

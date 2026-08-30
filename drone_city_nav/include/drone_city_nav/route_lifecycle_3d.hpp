@@ -2,6 +2,7 @@
 
 #include "drone_city_nav/execution_evidence_3d.hpp"
 #include "drone_city_nav/observed_occupancy_grid_3d.hpp"
+#include "drone_city_nav/occupied_collision_oracle_3d.hpp"
 #include "drone_city_nav/route_3d.hpp"
 #include "drone_city_nav/route_planning_3d.hpp"
 #include "drone_city_nav/static_route_extension.hpp"
@@ -145,7 +146,9 @@ enum class RawRouteSuffixStatus3D : std::uint8_t {
   kValid,
   kInvalidRoute,
   kInvalidProjection,
+  kOutsideFlightEnvelope,
   kRawCollision,
+  kInvalidCollisionWorld,
 };
 
 struct RawRouteSuffixValidation3D {
@@ -170,8 +173,8 @@ struct RouteActivationObservation3D {
   std::uint64_t latest_raw_producer_instance_id{0U};
   std::uint64_t latest_raw_revision{0U};
   SweptFootprintConfig footprint{};
-  const ProprioceptiveFreeSpaceSeed3D* proprioceptive_free_space_seed{nullptr};
   const LaunchSupportContact3D* launch_support_contact{nullptr};
+  std::optional<FlightEnvelopeConfig> flight_envelope{};
   bool raw_validation_required{false};
 };
 
@@ -212,8 +215,8 @@ struct RouteExecutionObservation3D {
   std::uint64_t latest_raw_producer_instance_id{0U};
   std::uint64_t latest_raw_revision{0U};
   SweptFootprintConfig footprint{};
-  const ProprioceptiveFreeSpaceSeed3D* proprioceptive_free_space_seed{nullptr};
   const LaunchSupportContact3D* launch_support_contact{nullptr};
+  std::optional<FlightEnvelopeConfig> flight_envelope{};
 };
 
 struct RouteExecutionAssessment3D {
@@ -306,12 +309,10 @@ assessRouteActivation3D(const MaterializedRouteProposal3D& proposal,
                         std::span<const RouteSample3D> route,
                         const RouteActivationObservation3D& observation) noexcept;
 
-[[nodiscard]] RawRouteSuffixValidation3D validateRawRouteSuffix3D(
-    std::span<const RouteSample3D> route, const Point3& position,
-    const RouteProjection3D& projection, const ObservedOccupancyGrid3D& occupancy,
-    const SweptFootprintConfig& footprint,
-    const ProprioceptiveFreeSpaceSeed3D* proprioceptive_free_space_seed = nullptr,
-    const LaunchSupportContact3D* launch_support_contact = nullptr) noexcept;
+[[nodiscard]] RawRouteSuffixValidation3D
+validateRawRouteSuffix3D(std::span<const RouteSample3D> route, const Point3& position,
+                         const RouteProjection3D& projection,
+                         const OccupiedCollisionWorld3D& collision_world) noexcept;
 
 [[nodiscard]] RouteExecutionAssessment3D
 assessRouteExecution3D(const ActivatedRouteIdentity3D* active_route,

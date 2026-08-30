@@ -683,13 +683,10 @@ bool staticRouteReplacementProtected(
 
 StaticRouteCandidateValidation validateStaticRouteCandidate(
     const std::span<const RouteSample3D> active_route,
-    const std::span<const RouteSample3D> candidate_route, const mppi::EsdfGrid& grid,
-    const std::span<const float> esdf_m, const Point3& mission_goal,
+    const std::span<const RouteSample3D> candidate_route, const Point3& mission_goal,
     const double minimum_endpoint_improvement_m, const bool reaches_mission_goal,
     const FlightEnvelopeConfig& flight_envelope,
-    const StaticRouteReplacementPolicy replacement_policy,
-    const SweptFootprintConfig& footprint_config, const bool require_known_free_space,
-    const bool raw_occupancy_authoritative) noexcept {
+    const StaticRouteReplacementPolicy replacement_policy) noexcept {
   if (candidate_route.size() < 2U) {
     return {.status = StaticRouteCandidateStatus::kEmpty};
   }
@@ -697,29 +694,6 @@ StaticRouteCandidateValidation validateStaticRouteCandidate(
         return insideFlightEnvelope(sample.position, flight_envelope);
       })) {
     return {.status = StaticRouteCandidateStatus::kOutsideFlightEnvelope};
-  }
-  for (std::size_t index = 1U;
-       !raw_occupancy_authoritative && index < candidate_route.size(); ++index) {
-    const SweptFootprintResult footprint =
-        validateSweptFootprint(grid, esdf_m, candidate_route[index - 1U].position,
-                               candidate_route[index].position, footprint_config);
-    if (footprint.status == SweptFootprintStatus::kOutsideGrid ||
-        (footprint.status == SweptFootprintStatus::kUnknownSpace &&
-         require_known_free_space)) {
-      return {.status = StaticRouteCandidateStatus::kOutsideEsdf,
-              .failure_segment_index = index - 1U,
-              .failure_point = footprint.failure_point};
-    }
-    if (footprint.status == SweptFootprintStatus::kInvalidEsdf) {
-      return {.status = StaticRouteCandidateStatus::kInvalidEsdf,
-              .failure_segment_index = index - 1U,
-              .failure_point = footprint.failure_point};
-    }
-    if (footprint.status == SweptFootprintStatus::kRawCollision) {
-      return {.status = StaticRouteCandidateStatus::kRawCollision,
-              .failure_segment_index = index - 1U,
-              .failure_point = footprint.failure_point};
-    }
   }
   double improvement_m = 0.0;
   if (!active_route.empty()) {
@@ -758,10 +732,10 @@ staticRouteCandidateStatusName(const StaticRouteCandidateStatus status) noexcept
       return "accepted";
     case StaticRouteCandidateStatus::kEmpty:
       return "empty";
-    case StaticRouteCandidateStatus::kOutsideEsdf:
-      return "outside_esdf";
-    case StaticRouteCandidateStatus::kInvalidEsdf:
-      return "invalid_esdf";
+    case StaticRouteCandidateStatus::kInvalidInput:
+      return "invalid_input";
+    case StaticRouteCandidateStatus::kRawWorldUnavailable:
+      return "raw_world_unavailable";
     case StaticRouteCandidateStatus::kRawCollision:
       return "raw_collision";
     case StaticRouteCandidateStatus::kOutsideFlightEnvelope:

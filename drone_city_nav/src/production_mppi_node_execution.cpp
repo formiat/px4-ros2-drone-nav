@@ -243,16 +243,6 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
           direct_tracking_requested
               ? std::nullopt
               : finiteRouteTerminalBoundary(input, finite_boundary_endpoint_semantics);
-  const ProprioceptiveFreeSpaceSeed3D* proprioceptive_free_space_seed_owner =
-      exact_snapshot_world && direct_observed_world != nullptr &&
-              direct_observed_world->proprioceptiveFreeSpaceSeed().has_value()
-          ? &*direct_observed_world->proprioceptiveFreeSpaceSeed()
-      : exact_snapshot_world && selected_snapshot_route != nullptr &&
-              selected_snapshot_route->observed_raw_world != nullptr &&
-              selected_snapshot_route->observed_raw_world->proprioceptiveFreeSpaceSeed()
-                  .has_value()
-          ? &*selected_snapshot_route->observed_raw_world->proprioceptiveFreeSpaceSeed()
-          : nullptr;
   const LaunchSupportContact3D* launch_support_contact_owner =
       exact_snapshot_world && direct_observed_world != nullptr &&
               direct_observed_world->launchSupportContact().has_value()
@@ -278,8 +268,6 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       .footprint = execution_footprint,
       .static_occupancy = static_occupancy,
       .observed_occupancy = observed_occupancy,
-      .require_known_free_space = false,
-      .proprioceptive_free_space_seed = proprioceptive_free_space_seed_owner,
       .launch_support_contact = launch_support_contact_owner,
       .raw_occupancy = nullptr,
       .latest_lidar_obstacle_points = latest_lidar_obstacle_points,
@@ -449,20 +437,16 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   }
 
   const bool nominal_candidate_degraded =
-      nominal_altitude_violation || result.raw_collision ||
-      result.known_solid_collision || !result.post_update_classification.executable;
+      nominal_altitude_violation || !result.post_update_classification.executable;
   if (nominal_candidate_degraded) {
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "MPPI_EXECUTION_CONTRACT nominal_degraded=true classification=%s repair=%s "
-        "altitude_violation=%s raw_collision=%s solid_collision=%s "
-        "action=shape_and_validate_finite_path",
+        "altitude_violation=%s action=shape_and_validate_finite_path",
         mppi::mppiPostUpdateClassificationName(
             result.post_update_classification.classification),
         mppi::mppiPostUpdateRepairName(result.post_update_repair),
-        nominal_altitude_violation ? "true" : "false",
-        result.raw_collision ? "true" : "false",
-        result.known_solid_collision ? "true" : "false");
+        nominal_altitude_violation ? "true" : "false");
   }
 
   const std::shared_ptr<const ExecutionRouteSnapshot3D> expected_snapshot =

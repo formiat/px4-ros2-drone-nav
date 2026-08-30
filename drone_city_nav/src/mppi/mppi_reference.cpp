@@ -1,9 +1,8 @@
 #include "drone_city_nav/mppi/mppi_reference.hpp"
 
-#include "drone_city_nav/esdf_query.hpp"
+#include "drone_city_nav/derived_clearance_3d.hpp"
 #include "drone_city_nav/mppi/mppi_altitude_envelope.hpp"
 #include "drone_city_nav/mppi/mppi_clearance_cost.hpp"
-#include "drone_city_nav/swept_footprint.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -241,8 +240,9 @@ RolloutMetrics simulateReference(
     const std::span<const Control> noise_controls, const DynamicsConfig& dynamics,
     const RiskConfig& risk, const CostConfig& costs, const EsdfGrid& grid,
     const std::span<const float> esdf, const float target_x_m, const float target_y_m,
-    const bool early_exit_on_collision, const Control previous_applied_control,
-    const float reference_speed_mps, const FootprintConfig& footprint,
+    const bool early_exit_on_altitude_envelope_violation,
+    const Control previous_applied_control, const float reference_speed_mps,
+    const FootprintConfig& footprint,
     const std::optional<MovingTargetReference> moving_target,
     ReferenceSimulationTrace* const trace,
     const std::span<const DynamicAircraftTrajectory> dynamic_aircraft,
@@ -330,31 +330,24 @@ RolloutMetrics simulateReference(
     const float validation_step_m = std::max(0.05F, 0.5F * grid.resolution_m);
     const FootprintBodyAxis body_axis =
         bodyAxisFromWorldAcceleration(Vec3{control.ax, control.ay, control.az});
-    const SweptFootprintResult footprint_result = validateSweptFootprint(
-        grid, esdf, Point3{previous_state.x, previous_state.y, previous_state.z},
-        body_axis, Point3{state.x, state.y, state.z}, body_axis,
-        sweptConfig(footprint, validation_step_m,
-                    footprint.clearance_broad_phase_enabled ? risk.preferred_distance_m
-                                                            : 0.0F));
-    const bool raw_collision = footprint_result.evidence.raw_collision ||
-                               footprint_result.evidence.invalid_esdf_exposure;
-    const bool unknown_space = footprint_result.evidence.unknown_exposure;
-    const bool known_clearance = footprint_result.evidence.known_clearance_observed;
+    const DerivedFootprintClearance3D footprint_clearance =
+        querySweptFootprintClearance3D(
+            grid, esdf, Point3{previous_state.x, previous_state.y, previous_state.z},
+            body_axis, Point3{state.x, state.y, state.z}, body_axis,
+            sweptConfig(footprint, validation_step_m,
+                        footprint.clearance_broad_phase_enabled
+                            ? risk.preferred_distance_m
+                            : 0.0F));
+    const bool known_clearance = footprint_clearance.evidence.known_clearance_observed;
     const float clearance =
         known_clearance
-            ? static_cast<float>(footprint_result.evidence.minimum_known_clearance_m)
+            ? static_cast<float>(footprint_clearance.evidence.minimum_known_clearance_m)
             : std::numeric_limits<float>::infinity();
     metrics.minimum_clearance_m = std::min(metrics.minimum_clearance_m, clearance);
     const float segment_speed_mps =
         std::hypot(std::hypot(state.vx, state.vy), state.vz);
     const float segment_m = dynamics.dt_s * segment_speed_mps;
-    if (raw_collision) {
-      metrics.collision = true;
-      metrics.worst_tier = RiskTier::kCollision;
-    } else if (unknown_space && risk.require_known_free_space) {
-      metrics.unknown_space_violation = true;
-      metrics.worst_tier = RiskTier::kCollision;
-    } else if (known_clearance && clearance < risk.critical_distance_m) {
+    if (known_clearance && clearance < risk.critical_distance_m) {
       metrics.worst_tier = std::max(metrics.worst_tier, RiskTier::kCritical);
       metrics.critical_exposure_m += segment_m;
       metrics.costs.critical_clearance_proximity_s +=
@@ -435,10 +428,8 @@ RolloutMetrics simulateReference(
                                                       moving_target->capture_radius_m)
                                  : target_distance;
     previous = control;
-    if ((metrics.collision ||
-         (metrics.unknown_space_violation && risk.require_known_free_space) ||
-         metrics.altitude_envelope_violation) &&
-        early_exit_on_collision) {
+    if (metrics.altitude_envelope_violation &&
+        early_exit_on_altitude_envelope_violation) {
       break;
     }
   }

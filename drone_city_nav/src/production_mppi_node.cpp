@@ -512,7 +512,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       declare_parameter<double>("route_stall_minimum_predicted_head_progress_m", 0.5);
   route_stall_recovery_enabled_ =
       declare_parameter<bool>("route_stall_recovery_enabled", false);
-  mppi_config_.early_exit_on_collision = true;
+  mppi_config_.early_exit_on_altitude_envelope_violation = true;
   physical_footprint_config_.sweep_step_m =
       declare_parameter<double>("physical_footprint_sweep_step_m", 0.25);
   configureCooperativeTraffic();
@@ -774,7 +774,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       "Production MPPI ready: rollouts=%zu open_static_rollouts=%zu "
       "direct_tracking_rollouts=%zu adaptive_clearance_m=%.1f "
       "steps=%zu rate=%.1fHz "
-      "deadline=%.1fms known_solids=%zu static_map=%s route3d=%s "
+      "deadline=%.1fms static_map=%s route3d=%s "
       "horizon=%.1fs static_esdf_lookahead=%.1fm cruise=%.1fmps "
       "horizontal_speed_cap=%.1fmps translational_speed_cap=%.1fmps "
       "acceleration_cap=%.1fmps2 jerk_cap=%.1fmps3 speed_tracking_weight=%.2f "
@@ -788,7 +788,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       mppi_config_.rollouts, rollout_budget_config_.open_static_rollouts,
       rollout_budget_config_.direct_tracking_rollouts,
       rollout_budget_config_.minimum_reduced_clearance_m, mppi_config_.steps,
-      tick_rate_hz_, deadline_ms_, 0UL, use_static_map_ ? "true" : "false", "true",
+      tick_rate_hz_, deadline_ms_, use_static_map_ ? "true" : "false", "true",
       static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s,
       static_esdf_route_lookahead_m_, speed_policy_config_.cruise_speed_mps,
       mppi_config_.dynamics.maximum_horizontal_speed_mps,

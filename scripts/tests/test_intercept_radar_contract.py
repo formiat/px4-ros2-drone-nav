@@ -275,6 +275,9 @@ class InterceptRadarContractTest(unittest.TestCase):
         planning_tick = PLANNING_TICK.read_text(encoding="utf-8")
         execution = read_execution_sources()
         engine = MPPI_ENGINE.read_text(encoding="utf-8")
+        finite_execution = (
+            SOURCE / "mppi" / "finite_execution_path.cpp"
+        ).read_text(encoding="utf-8")
 
         self.assertNotIn("maximum_eligible_risk_tier", planning_tick)
         self.assertNotIn("MppiRiskEscalation", planning_tick)
@@ -284,8 +287,11 @@ class InterceptRadarContractTest(unittest.TestCase):
         self.assertIn("result.feasibility_contract.available", engine)
         self.assertIn("evaluate_controls", engine)
         self.assertIn("altitude_envelope_violation", engine)
-        self.assertIn("result.raw_collision = metrics.collision", engine)
-        self.assertIn("result.known_solid_collision", engine)
+        self.assertNotIn("raw_collision", engine)
+        self.assertNotIn("KnownSolid", engine)
+        self.assertIn("OccupiedCollisionOracle3D", finite_execution)
+        self.assertIn("OccupiedCollisionSource3D::kRawPointCloud", finite_execution)
+        self.assertIn("FiniteExecutionPathStatus::kRawCollision", finite_execution)
         self.assertIn("action=hold_no_executable_path", execution)
         self.assertNotIn("action=execute_soft_risk_ranked_sequence", execution)
 

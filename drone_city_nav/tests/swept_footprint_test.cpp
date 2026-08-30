@@ -1,3 +1,4 @@
+#include "drone_city_nav/derived_clearance_3d.hpp"
 #include "drone_city_nav/distance_field.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
@@ -15,7 +16,7 @@
 namespace drone_city_nav {
 namespace {
 
-TEST(SweptFootprintTest, RejectsRotorSweepWhileCenterlineRemainsFree) {
+TEST(SweptFootprintTest, AnnotatesRotorSweepAsDerivedClearanceOnly) {
   OccupancyGrid2D occupancy{GridBounds{0.0, 0.0, 1.0, 12, 6}};
   occupancy.reset(CellState::kFree);
   occupancy.setOccupied(GridIndex{6, 3});
@@ -26,89 +27,91 @@ TEST(SweptFootprintTest, RejectsRotorSweepWhileCenterlineRemainsFree) {
                          [](const double value) { return static_cast<float>(value); });
   const mppi::EsdfGrid grid{12, 6, 1.0F, 0.0F, 0.0F};
 
-  const SweptFootprintResult point_mass = validateSweptFootprint(
+  const DerivedFootprintClearance3D point_mass = querySweptFootprintClearance3D(
       grid, esdf, Point3{1.5, 2.5, 0.0}, Point3{10.5, 2.5, 0.0},
       SweptFootprintConfig{.radius_m = 0.0, .perimeter_samples = 0U});
-  const SweptFootprintResult physical = validateSweptFootprint(
+  const DerivedFootprintClearance3D physical = querySweptFootprintClearance3D(
       grid, esdf, Point3{1.5, 2.5, 0.0}, Point3{10.5, 2.5, 0.0},
       SweptFootprintConfig{
           .radius_m = 1.0, .perimeter_samples = 8U, .sweep_step_m = 0.25});
 
-  EXPECT_TRUE(point_mass.accepted());
-  EXPECT_EQ(physical.status, SweptFootprintStatus::kRawCollision);
+  EXPECT_TRUE(point_mass.fullyAvailable());
+  EXPECT_EQ(physical.status, EsdfQueryStatus::kValid);
+  EXPECT_DOUBLE_EQ(physical.evidence.minimum_known_clearance_m, 0.0);
 }
 
 TEST(SweptFootprintTest, ReportsOutsideGridSeparatelyFromPhysicalCollision) {
   const mppi::EsdfGrid grid{4, 4, 1.0F, 0.0F, 0.0F};
   const std::vector<float> esdf(16U, 10.0F);
 
-  const SweptFootprintResult result = validateFootprintAt(
+  const DerivedFootprintClearance3D result = queryFootprintClearance3D(
       grid, esdf, Point3{0.1, 2.0, 0.0},
       SweptFootprintConfig{.radius_m = 0.5, .perimeter_samples = 8U});
 
-  EXPECT_EQ(result.status, SweptFootprintStatus::kOutsideGrid);
+  EXPECT_EQ(result.status, EsdfQueryStatus::kOutsideGrid);
 }
 
-TEST(SweptFootprintTest, DetectsCollisionAboveVehicleReferencePoint) {
+TEST(SweptFootprintTest, AnnotatesZeroClearanceAboveVehicleReferencePoint) {
   const mppi::EsdfGrid grid{8, 8, 1.0F, 0.0F, 0.0F, 8, 0.0F};
   std::vector<float> esdf(std::size_t{8U} * 8U * 8U,
                           std::numeric_limits<float>::infinity());
   esdf[(4U * 8U + 3U) * 8U + 3U] = 0.0F;
   const Point3 position{3.5, 3.5, 3.5};
 
-  EXPECT_TRUE(validateFootprintAt(
+  EXPECT_TRUE(queryFootprintClearance3D(
                   grid, esdf, position,
                   SweptFootprintConfig{.radius_m = 0.0, .perimeter_samples = 0U})
-                  .accepted());
-  EXPECT_EQ(validateFootprintAt(grid, esdf, position,
+                  .fullyAvailable());
+  const DerivedFootprintClearance3D physical =
+      queryFootprintClearance3D(grid, esdf, position,
                                 SweptFootprintConfig{.radius_m = 0.2,
                                                      .lower_extent_m = 0.2,
                                                      .upper_extent_m = 1.0,
                                                      .perimeter_samples = 8U,
                                                      .radial_rings = 1U,
-                                                     .axial_samples = 3U})
-                .status,
-            SweptFootprintStatus::kRawCollision);
+                                                     .axial_samples = 3U});
+  EXPECT_EQ(physical.status, EsdfQueryStatus::kValid);
+  EXPECT_DOUBLE_EQ(physical.evidence.minimum_known_clearance_m, 0.0);
 }
 
-TEST(SweptFootprintTest, EsdfUnknownSampleDoesNotHideOccupiedFootprintSample) {
+TEST(SweptFootprintTest, EsdfUnknownAndZeroClearanceRemainDerivedEvidence) {
   const mppi::EsdfGrid grid{8, 8, 1.0F, 0.0F, 0.0F, 8, 0.0F};
   std::vector<float> esdf(std::size_t{8U} * 8U * 8U,
                           std::numeric_limits<float>::infinity());
   esdf[(3U * 8U + 3U) * 8U + 3U] = mppi::kUnknownEsdfDistanceM;
   esdf[(4U * 8U + 3U) * 8U + 3U] = 0.0F;
 
-  const SweptFootprintResult result =
-      validateFootprintAt(grid, esdf, Point3{3.5, 3.5, 3.5},
-                          SweptFootprintConfig{.radius_m = 0.2,
-                                               .lower_extent_m = 0.2,
-                                               .upper_extent_m = 1.0,
-                                               .perimeter_samples = 8U,
-                                               .radial_rings = 1U,
-                                               .axial_samples = 3U});
+  const DerivedFootprintClearance3D result =
+      queryFootprintClearance3D(grid, esdf, Point3{3.5, 3.5, 3.5},
+                                SweptFootprintConfig{.radius_m = 0.2,
+                                                     .lower_extent_m = 0.2,
+                                                     .upper_extent_m = 1.0,
+                                                     .perimeter_samples = 8U,
+                                                     .radial_rings = 1U,
+                                                     .axial_samples = 3U});
 
-  EXPECT_EQ(result.status, SweptFootprintStatus::kRawCollision);
-  EXPECT_TRUE(result.evidence.raw_collision);
+  EXPECT_EQ(result.status, EsdfQueryStatus::kUnknownSpace);
   EXPECT_TRUE(result.evidence.unknown_exposure);
   EXPECT_TRUE(result.evidence.known_clearance_observed);
   EXPECT_DOUBLE_EQ(result.evidence.minimum_known_clearance_m, 0.0);
 }
 
-TEST(SweptFootprintTest, EsdfUnknownPrefixDoesNotHideLaterSegmentCollision) {
+TEST(SweptFootprintTest, EsdfUnknownPrefixPreservesLaterZeroClearanceEvidence) {
   const mppi::EsdfGrid grid{8, 4, 1.0F, 0.0F, 0.0F, 4, 0.0F};
   std::vector<float> esdf(std::size_t{8U} * 4U * 4U,
                           std::numeric_limits<float>::infinity());
   esdf[(1U * 4U + 1U) * 8U + 1U] = mppi::kUnknownEsdfDistanceM;
   esdf[(1U * 4U + 1U) * 8U + 5U] = 0.0F;
 
-  const SweptFootprintResult result = validateSweptFootprint(
+  const DerivedFootprintClearance3D result = querySweptFootprintClearance3D(
       grid, esdf, Point3{1.5, 1.5, 1.5}, Point3{5.5, 1.5, 1.5},
       SweptFootprintConfig{
           .radius_m = 0.0, .perimeter_samples = 0U, .sweep_step_m = 0.25});
 
-  EXPECT_EQ(result.status, SweptFootprintStatus::kRawCollision);
-  EXPECT_TRUE(result.evidence.raw_collision);
+  EXPECT_EQ(result.status, EsdfQueryStatus::kUnknownSpace);
   EXPECT_TRUE(result.evidence.unknown_exposure);
+  EXPECT_TRUE(result.evidence.known_clearance_observed);
+  EXPECT_DOUBLE_EQ(result.evidence.minimum_known_clearance_m, 0.0);
 }
 
 TEST(SweptFootprintTest, UnknownWithoutKnownSamplesHasNoClearanceEvidence) {
@@ -117,17 +120,16 @@ TEST(SweptFootprintTest, UnknownWithoutKnownSamplesHasNoClearanceEvidence) {
                           std::numeric_limits<float>::infinity());
   esdf[(1U * 4U + 1U) * 4U + 1U] = mppi::kUnknownEsdfDistanceM;
 
-  const SweptFootprintResult result = validateFootprintAt(
+  const DerivedFootprintClearance3D result = queryFootprintClearance3D(
       grid, esdf, Point3{1.5, 1.5, 1.5},
       SweptFootprintConfig{.radius_m = 0.0, .perimeter_samples = 0U});
 
-  EXPECT_EQ(result.status, SweptFootprintStatus::kUnknownSpace);
+  EXPECT_EQ(result.status, EsdfQueryStatus::kUnknownSpace);
   EXPECT_TRUE(result.evidence.unknown_exposure);
-  EXPECT_FALSE(result.evidence.raw_collision);
   EXPECT_FALSE(result.evidence.known_clearance_observed);
 }
 
-TEST(SweptFootprintTest, RotatesPhysicalVolumeWithBodyAxis) {
+TEST(SweptFootprintTest, RotatesDerivedClearanceSamplingWithBodyAxis) {
   const mppi::EsdfGrid grid{8, 8, 1.0F, 0.0F, 0.0F, 8, 0.0F};
   std::vector<float> esdf(std::size_t{8U} * 8U * 8U,
                           std::numeric_limits<float>::infinity());
@@ -140,12 +142,13 @@ TEST(SweptFootprintTest, RotatesPhysicalVolumeWithBodyAxis) {
                                     .axial_samples = 3U};
   const Point3 position{3.5, 3.5, 3.5};
 
-  EXPECT_TRUE(validateFootprintAt(grid, esdf, position, FootprintBodyAxis{}, config)
-                  .accepted());
-  EXPECT_EQ(validateFootprintAt(grid, esdf, position, FootprintBodyAxis{1.0, 0.0, 0.0},
-                                config)
-                .status,
-            SweptFootprintStatus::kRawCollision);
+  EXPECT_TRUE(
+      queryFootprintClearance3D(grid, esdf, position, FootprintBodyAxis{}, config)
+          .fullyAvailable());
+  const DerivedFootprintClearance3D rotated = queryFootprintClearance3D(
+      grid, esdf, position, FootprintBodyAxis{1.0, 0.0, 0.0}, config);
+  EXPECT_EQ(rotated.status, EsdfQueryStatus::kValid);
+  EXPECT_DOUBLE_EQ(rotated.evidence.minimum_known_clearance_m, 0.0);
 }
 
 TEST(SweptFootprintTest, ClearanceBroadPhaseReturnsAConservativeSafeBound) {
@@ -161,13 +164,13 @@ TEST(SweptFootprintTest, ClearanceBroadPhaseReturnsAConservativeSafeBound) {
   SweptFootprintConfig broad_phase_config = exact_config;
   broad_phase_config.safe_clearance_threshold_m = 6.0;
 
-  const SweptFootprintResult exact =
-      validateFootprintAt(grid, esdf, position, exact_config);
-  const SweptFootprintResult broad_phase =
-      validateFootprintAt(grid, esdf, position, broad_phase_config);
+  const DerivedFootprintClearance3D exact =
+      queryFootprintClearance3D(grid, esdf, position, exact_config);
+  const DerivedFootprintClearance3D broad_phase =
+      queryFootprintClearance3D(grid, esdf, position, broad_phase_config);
 
-  ASSERT_TRUE(exact.accepted());
-  ASSERT_TRUE(broad_phase.accepted());
+  ASSERT_TRUE(exact.fullyAvailable());
+  ASSERT_TRUE(broad_phase.fullyAvailable());
   ASSERT_TRUE(exact.evidence.known_clearance_observed);
   ASSERT_TRUE(broad_phase.evidence.known_clearance_observed);
   EXPECT_GE(broad_phase.evidence.minimum_known_clearance_m, 6.0);
@@ -338,48 +341,6 @@ TEST(SweptFootprintTest, RawWorldBoundaryIsNotAnArtificialObstacle) {
                   .accepted());
 }
 
-TEST(SweptFootprintTest, KnownStaticWorldRejectsPartialAndCompleteBoundsExposure) {
-  const OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 4, 4, 4}};
-  const SweptFootprintConfig footprint{
-      .radius_m = 0.82,
-      .lower_extent_m = 0.23,
-      .upper_extent_m = 0.35,
-      .sweep_step_m = 0.25,
-  };
-
-  EXPECT_EQ(validateKnownStaticFootprintAt(occupancy, Point3{0.5, 1.5, 1.5},
-                                           FootprintBodyAxis{}, footprint)
-                .status,
-            SweptFootprintStatus::kOutsideGrid);
-  EXPECT_EQ(validateKnownStaticSweptFootprint(
-                occupancy, Point3{1.5, 1.5, 1.5}, FootprintBodyAxis{},
-                Point3{8.0, 1.5, 1.5}, FootprintBodyAxis{}, footprint)
-                .status,
-            SweptFootprintStatus::kOutsideGrid);
-}
-
-TEST(SweptFootprintTest, RotatingStaticSweepRejectsIntermediateBoundsExposure) {
-  const OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 0.1, 45, 40, 20}};
-  const Point3 position{3.0, 2.0, 1.0};
-  const double lateral_axis = std::sqrt(0.75);
-  const FootprintBodyAxis first_axis{0.5, lateral_axis, 0.0};
-  const FootprintBodyAxis second_axis{0.5, -lateral_axis, 0.0};
-  const SweptFootprintConfig footprint{.radius_m = 0.1,
-                                       .lower_extent_m = 2.0,
-                                       .upper_extent_m = 2.0,
-                                       .sweep_step_m = 0.25};
-
-  ASSERT_TRUE(validateKnownStaticFootprintAt(occupancy, position, first_axis, footprint)
-                  .accepted());
-  ASSERT_TRUE(
-      validateKnownStaticFootprintAt(occupancy, position, second_axis, footprint)
-          .accepted());
-  EXPECT_EQ(validateKnownStaticSweptFootprint(occupancy, position, first_axis, position,
-                                              second_axis, footprint)
-                .status,
-            SweptFootprintStatus::kOutsideGrid);
-}
-
 TEST(SweptFootprintTest, RotatingRawSweepRejectsIntermediateOccupiedVoxelContact) {
   OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 0.1, 60, 40, 20}};
   occupancy.setOccupied(GridIndex3D{44, 20, 10});
@@ -410,10 +371,10 @@ TEST(SweptFootprintTest, AmbiguousAntipodalBodyAxisSweepFailsClosed) {
                 Point3{2.0, 2.0, 2.0}, FootprintBodyAxis{-1.0, 0.0, 0.0},
                 SweptFootprintConfig{})
                 .status,
-            SweptFootprintStatus::kInvalidEsdf);
+            SweptFootprintStatus::kInvalidInput);
 }
 
-TEST(SweptFootprintTest, ObservedWorldRequiresEntireSweptBodyToBeKnownFree) {
+TEST(SweptFootprintTest, ObservedWorldTreatsUnknownLikeKnownFree) {
   const GridBounds3D bounds{0.0, 0.0, 0.0, 1.0, 10, 4, 6};
   ObservedOccupancyGrid3D occupancy{bounds};
   for (int z = 0; z < bounds.depth_cells; ++z) {
@@ -439,7 +400,7 @@ TEST(SweptFootprintTest, ObservedWorldRequiresEntireSweptBodyToBeKnownFree) {
   const SweptFootprintResult unknown =
       validateRawSweptFootprint(occupancy, Point3{1.5, 1.5, 2.5}, FootprintBodyAxis{},
                                 Point3{8.5, 1.5, 2.5}, FootprintBodyAxis{}, footprint);
-  EXPECT_EQ(unknown.status, SweptFootprintStatus::kUnknownSpace);
+  EXPECT_TRUE(unknown.accepted());
 
   static_cast<void>(
       occupancy.setState(GridIndex3D{4, 1, 3}, ObservedVoxelState::kOccupied));
@@ -457,21 +418,24 @@ TEST(SweptFootprintTest, RawOccupiedQueriesAllowUnknownButStillRejectCollision) 
                                        .upper_extent_m = 0.2,
                                        .sweep_step_m = 0.125};
 
-  EXPECT_TRUE(rawOccupiedFootprintIsClearAt(occupancy, Point3{2.0, 2.125, 2.125},
-                                            FootprintBodyAxis{}, footprint));
-  EXPECT_TRUE(rawOccupiedSweptFootprintIsClear(
-      occupancy, Point3{1.0, 2.125, 2.125}, FootprintBodyAxis{},
-      Point3{8.0, 2.125, 2.125}, FootprintBodyAxis{}, footprint));
+  EXPECT_TRUE(validateRawFootprintAt(occupancy, Point3{2.0, 2.125, 2.125},
+                                     FootprintBodyAxis{}, footprint)
+                  .accepted());
+  EXPECT_TRUE(validateRawSweptFootprint(occupancy, Point3{1.0, 2.125, 2.125},
+                                        FootprintBodyAxis{}, Point3{8.0, 2.125, 2.125},
+                                        FootprintBodyAxis{}, footprint)
+                  .accepted());
 
   static_cast<void>(
       occupancy.setState(GridIndex3D{20, 8, 8}, ObservedVoxelState::kOccupied));
 
-  EXPECT_FALSE(rawOccupiedSweptFootprintIsClear(
-      occupancy, Point3{1.0, 2.125, 2.125}, FootprintBodyAxis{},
-      Point3{8.0, 2.125, 2.125}, FootprintBodyAxis{}, footprint));
+  EXPECT_FALSE(validateRawSweptFootprint(occupancy, Point3{1.0, 2.125, 2.125},
+                                         FootprintBodyAxis{}, Point3{8.0, 2.125, 2.125},
+                                         FootprintBodyAxis{}, footprint)
+                   .accepted());
 }
 
-TEST(SweptFootprintTest, ObservedSpacePolicySeparatesUnknownFromRawCollision) {
+TEST(SweptFootprintTest, ObservedRawValidationIsAlwaysUnknownNeutral) {
   ObservedOccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 0.25, 40, 16, 16}};
   const SweptFootprintConfig footprint{.radius_m = 0.2,
                                        .lower_extent_m = 0.2,
@@ -480,21 +444,14 @@ TEST(SweptFootprintTest, ObservedSpacePolicySeparatesUnknownFromRawCollision) {
   const Point3 first{1.0, 2.125, 2.125};
   const Point3 second{8.0, 2.125, 2.125};
 
-  EXPECT_EQ(validateObservedSweptFootprint(
-                occupancy, first, FootprintBodyAxis{}, second, FootprintBodyAxis{},
-                footprint, ObservedSpaceValidationPolicy::kRequireKnownFree)
-                .status,
-            SweptFootprintStatus::kUnknownSpace);
-  EXPECT_TRUE(validateObservedSweptFootprint(
-                  occupancy, first, FootprintBodyAxis{}, second, FootprintBodyAxis{},
-                  footprint, ObservedSpaceValidationPolicy::kAllowUnknown)
+  EXPECT_TRUE(validateRawSweptFootprint(occupancy, first, FootprintBodyAxis{}, second,
+                                        FootprintBodyAxis{}, footprint)
                   .accepted());
 
   static_cast<void>(
       occupancy.setState(GridIndex3D{20, 8, 8}, ObservedVoxelState::kOccupied));
-  EXPECT_EQ(validateObservedSweptFootprint(occupancy, first, FootprintBodyAxis{},
-                                           second, FootprintBodyAxis{}, footprint,
-                                           ObservedSpaceValidationPolicy::kAllowUnknown)
+  EXPECT_EQ(validateRawSweptFootprint(occupancy, first, FootprintBodyAxis{}, second,
+                                      FootprintBodyAxis{}, footprint)
                 .status,
             SweptFootprintStatus::kRawCollision);
 }
@@ -522,7 +479,7 @@ TEST(SweptFootprintTest, ObservedWorldIgnoresUnknownCellsBeyondAxialCaps) {
                   .accepted());
 }
 
-TEST(SweptFootprintTest, ObservedWorldReportsCollisionBeforeUnknownSpace) {
+TEST(SweptFootprintTest, OccupiedEvidenceIsAuthoritativeAlongsideUnknownCells) {
   const GridBounds3D bounds{0.0, 0.0, 0.0, 0.25, 16, 16, 16};
   ObservedOccupancyGrid3D occupancy{bounds};
   for (int z = 0; z < bounds.depth_cells; ++z) {
@@ -546,11 +503,9 @@ TEST(SweptFootprintTest, ObservedWorldReportsCollisionBeforeUnknownSpace) {
                                                   .sweep_step_m = 0.25});
 
   EXPECT_EQ(result.status, SweptFootprintStatus::kRawCollision);
-  EXPECT_TRUE(result.evidence.raw_collision);
-  EXPECT_TRUE(result.evidence.unknown_exposure);
 }
 
-TEST(SweptFootprintTest, ObservedWorldReportsLaterCollisionAfterUnknownSweepPrefix) {
+TEST(SweptFootprintTest, SweepFindsOccupiedEvidenceAfterUnknownPrefix) {
   const GridBounds3D bounds{0.0, 0.0, 0.0, 0.25, 40, 16, 16};
   ObservedOccupancyGrid3D occupancy{bounds};
   for (int z = 0; z < bounds.depth_cells; ++z) {
@@ -575,11 +530,9 @@ TEST(SweptFootprintTest, ObservedWorldReportsLaterCollisionAfterUnknownSweepPref
                            .sweep_step_m = 0.125});
 
   EXPECT_EQ(result.status, SweptFootprintStatus::kRawCollision);
-  EXPECT_TRUE(result.evidence.raw_collision);
-  EXPECT_TRUE(result.evidence.unknown_exposure);
 }
 
-TEST(SweptFootprintTest, ObservedWorldBoundaryIsOutsideGridRatherThanUnknown) {
+TEST(SweptFootprintTest, ObservedWorldBoundaryIsTraversableUnknownSpace) {
   const GridBounds3D bounds{0.0, 0.0, 0.0, 1.0, 4, 4, 4};
   ObservedOccupancyGrid3D occupancy{bounds};
   for (int z = 0; z < bounds.depth_cells; ++z) {
@@ -596,7 +549,7 @@ TEST(SweptFootprintTest, ObservedWorldBoundaryIsOutsideGridRatherThanUnknown) {
       FootprintBodyAxis{},
       SweptFootprintConfig{.radius_m = 0.82, .sweep_step_m = 0.25});
 
-  EXPECT_EQ(result.status, SweptFootprintStatus::kOutsideGrid);
+  EXPECT_TRUE(result.accepted());
 }
 
 TEST(SweptFootprintTest, ExactObservedWorldBoundaryContactRemainsInsideGrid) {
@@ -618,85 +571,18 @@ TEST(SweptFootprintTest, ExactObservedWorldBoundaryContactRemainsInsideGrid) {
                   .accepted());
 }
 
-TEST(SweptFootprintTest, ProprioceptiveSeedCoversOnlyTheAlreadyOccupiedBodyVolume) {
-  const GridBounds3D bounds{0.0, 0.0, 0.0, 0.25, 20, 20, 20};
-  ObservedOccupancyGrid3D occupancy{bounds};
-  const SweptFootprintConfig footprint{.radius_m = 0.5,
-                                       .lower_extent_m = 0.25,
-                                       .upper_extent_m = 0.25,
-                                       .sweep_step_m = 0.125};
-  const ProprioceptiveFreeSpaceSeed3D seed{
-      .position = Point3{2.0, 2.0, 2.0},
-      .body_axis = FootprintBodyAxis{},
-      .footprint = footprint,
-  };
-
-  EXPECT_TRUE(
-      validateRawFootprintAt(occupancy, seed.position, seed.body_axis, footprint, &seed)
-          .accepted());
-  EXPECT_EQ(validateRawFootprintAt(occupancy, Point3{2.25, 2.0, 2.0},
-                                   FootprintBodyAxis{}, footprint, &seed)
-                .status,
-            SweptFootprintStatus::kUnknownSpace);
-  EXPECT_EQ(validateRawFootprintAt(occupancy, Point3{2.0, 2.0, 1.75},
-                                   FootprintBodyAxis{}, footprint, &seed)
-                .status,
-            SweptFootprintStatus::kUnknownSpace);
-}
-
-TEST(SweptFootprintTest,
-     ProprioceptiveSeedAllowsObservedAxialDepartureButNotUnknownDescent) {
-  const GridBounds3D bounds{0.0, 0.0, 0.0, 0.25, 20, 20, 20};
-  ObservedOccupancyGrid3D occupancy{bounds};
-  for (int z = 9; z <= 10; ++z) {
-    for (int y = 0; y < bounds.height_cells; ++y) {
-      for (int x = 0; x < bounds.width_cells; ++x) {
-        static_cast<void>(
-            occupancy.setState(GridIndex3D{x, y, z}, ObservedVoxelState::kFree));
-      }
-    }
-  }
-  const SweptFootprintConfig footprint{.radius_m = 0.5,
-                                       .lower_extent_m = 0.25,
-                                       .upper_extent_m = 0.25,
-                                       .sweep_step_m = 0.125};
-  const ProprioceptiveFreeSpaceSeed3D seed{
-      .position = Point3{2.0, 2.0, 2.0},
-      .body_axis = FootprintBodyAxis{},
-      .footprint = footprint,
-  };
-
-  ASSERT_TRUE(validateRawFootprintAt(occupancy, Point3{2.0, 2.0, 2.25},
-                                     FootprintBodyAxis{}, footprint, &seed)
-                  .accepted());
-  EXPECT_TRUE(validateRawSweptFootprint(occupancy, seed.position, seed.body_axis,
-                                        Point3{2.0, 2.0, 2.25}, FootprintBodyAxis{},
-                                        footprint, &seed)
-                  .accepted());
-  EXPECT_EQ(validateRawSweptFootprint(occupancy, seed.position, seed.body_axis,
-                                      Point3{2.0, 2.0, 1.75}, FootprintBodyAxis{},
-                                      footprint, &seed)
-                .status,
-            SweptFootprintStatus::kUnknownSpace);
-}
-
-TEST(SweptFootprintTest, OccupiedEvidenceOverridesProprioceptiveSeed) {
+TEST(SweptFootprintTest, OccupiedEvidenceRemainsAuthoritative) {
   const GridBounds3D bounds{0.0, 0.0, 0.0, 0.25, 20, 20, 20};
   ObservedOccupancyGrid3D occupancy{bounds};
   const SweptFootprintConfig footprint{
       .radius_m = 0.5, .lower_extent_m = 0.25, .upper_extent_m = 0.25};
-  const ProprioceptiveFreeSpaceSeed3D seed{
-      .position = Point3{2.0, 2.0, 2.0},
-      .body_axis = FootprintBodyAxis{},
-      .footprint = footprint,
-  };
   static_cast<void>(
       occupancy.setState(GridIndex3D{8, 8, 8}, ObservedVoxelState::kOccupied));
 
-  EXPECT_EQ(
-      validateRawFootprintAt(occupancy, seed.position, seed.body_axis, footprint, &seed)
-          .status,
-      SweptFootprintStatus::kRawCollision);
+  EXPECT_EQ(validateRawFootprintAt(occupancy, Point3{2.0, 2.0, 2.0},
+                                   FootprintBodyAxis{}, footprint)
+                .status,
+            SweptFootprintStatus::kRawCollision);
 }
 
 TEST(SweptFootprintTest, AnchoredLaunchSupportAllowsBoundedNonDescendingDeparture) {
@@ -733,50 +619,34 @@ TEST(SweptFootprintTest, AnchoredLaunchSupportAllowsBoundedNonDescendingDepartur
   EXPECT_DOUBLE_EQ(support->maximum_axial_settling_m, bounds.resolution_m);
 
   EXPECT_TRUE(validateRawFootprintAt(occupancy, seed.position, seed.body_axis,
-                                     footprint, &seed, &*support)
+                                     footprint, &*support)
                   .accepted());
   const SweptFootprintResult departure = validateRawSweptFootprint(
       occupancy, seed.position, seed.body_axis, Point3{2.1, 2.0, 2.25}, seed.body_axis,
-      footprint, &seed, &*support);
+      footprint, &*support);
   EXPECT_TRUE(departure.accepted())
       << "status=" << static_cast<int>(departure.status) << " failure=("
       << departure.failure_point.x << ',' << departure.failure_point.y << ','
       << departure.failure_point.z << ')';
   EXPECT_TRUE(updateLaunchSupportSettling(*support, Point3{2.0, 2.0, 1.95}));
   EXPECT_TRUE(validateRawFootprintAt(occupancy, Point3{2.0, 2.0, 1.95}, seed.body_axis,
-                                     footprint, nullptr, &*support)
+                                     footprint, &*support)
                   .accepted());
   EXPECT_EQ(validateRawFootprintAt(occupancy, Point3{2.0, 2.0, 1.90}, seed.body_axis,
-                                   footprint, nullptr, &*support)
+                                   footprint, &*support)
                 .status,
             SweptFootprintStatus::kRawCollision);
   EXPECT_FALSE(updateLaunchSupportSettling(*support, Point3{2.0, 2.0, 1.50}));
   EXPECT_EQ(validateRawSweptFootprint(occupancy, seed.position, seed.body_axis,
                                       Point3{2.0, 2.0, 1.75}, seed.body_axis, footprint,
-                                      &seed, &*support)
+                                      &*support)
                 .status,
             SweptFootprintStatus::kRawCollision);
   EXPECT_EQ(validateRawSweptFootprint(occupancy, seed.position, seed.body_axis,
                                       Point3{2.75, 2.0, 2.0}, seed.body_axis, footprint,
-                                      &seed, &*support)
+                                      &*support)
                 .status,
             SweptFootprintStatus::kRawCollision);
-}
-
-TEST(SweptFootprintTest, ProprioceptiveSeedSupportsArbitraryBodyAxis) {
-  const GridBounds3D bounds{0.0, 0.0, 0.0, 0.25, 20, 20, 20};
-  ObservedOccupancyGrid3D occupancy{bounds};
-  const SweptFootprintConfig footprint{
-      .radius_m = 0.25, .lower_extent_m = 0.5, .upper_extent_m = 0.75};
-  const ProprioceptiveFreeSpaceSeed3D seed{
-      .position = Point3{2.0, 2.0, 2.0},
-      .body_axis = FootprintBodyAxis{1.0, 1.0, 0.0},
-      .footprint = footprint,
-  };
-
-  EXPECT_TRUE(
-      validateRawFootprintAt(occupancy, seed.position, seed.body_axis, footprint, &seed)
-          .accepted());
 }
 
 TEST(SweptFootprintTest, RawPointCloudSweepRejectsPhysicalSideContact) {

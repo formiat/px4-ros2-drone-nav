@@ -33,7 +33,6 @@ struct NoiseConfig {
 struct RiskConfig {
   float critical_distance_m{1.0F};
   float preferred_distance_m{6.0F};
-  bool require_known_free_space{false};
   float obstacle_approach_response_time_s{0.25F};
   float obstacle_approach_deceleration_mps2{4.0F};
   float critical_exposure_tolerance_m{0.5F};
@@ -93,7 +92,7 @@ struct BenchmarkConfig {
   std::size_t measured_ticks{1000U};
   double deadline_ms{50.0};
   std::uint64_t seed{42U};
-  bool early_exit_on_collision{true};
+  bool early_exit_on_altitude_envelope_violation{true};
   DynamicsConfig dynamics{};
   NoiseConfig noise{};
   RiskConfig risk{};

@@ -2,6 +2,7 @@
 #include "drone_city_nav/execution_route_snapshot_3d.hpp"
 #include "drone_city_nav/mppi/mppi_reference.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
+#include "drone_city_nav/occupied_collision_oracle_3d.hpp"
 
 #include <algorithm>
 #include <array>
@@ -101,39 +102,29 @@ std::optional<RouteAdherenceAssessment3D> validateExecutionProgressConnector(
            current_execution_control.az});
   const auto* const raw_certificate =
       std::get_if<ObservedRawRouteCertificate3D>(&route.certificate);
-  const ProprioceptiveFreeSpaceSeed3D* const free_space_seed =
-      raw_certificate != nullptr && observed_raw_world != nullptr
-          ? optionalAddress(observed_raw_world->proprioceptiveFreeSpaceSeed())
-          : nullptr;
   const LaunchSupportContact3D* const launch_support_contact =
       raw_certificate != nullptr && observed_raw_world != nullptr
           ? optionalAddress(observed_raw_world->launchSupportContact())
           : nullptr;
-  const bool world_safe =
-      raw_certificate != nullptr
-          ? observed_raw_world != nullptr &&
-                validateObservedSweptFootprint(
-                    observed_raw_world->occupancy(),
-                    route.progress.last_observed_position, previous_route_axis,
-                    execution_position, current_execution_axis,
-                    route.validation_policy->sweptFootprint(),
-                    ObservedSpaceValidationPolicy::kAllowUnknown, free_space_seed,
-                    launch_support_contact)
-                    .accepted()
-          : route.static_world != nullptr &&
-                validateKnownStaticSweptFootprint(
-                    route.static_world->occupancy(),
-                    route.progress.last_observed_position, previous_route_axis,
-                    execution_position, current_execution_axis,
-                    route.validation_policy->sweptFootprint())
-                    .accepted();
-  if (!world_safe ||
-      (!latest_lidar_obstacle_points.empty() &&
-       !validateRawPointCloudSweptFootprint(
-            latest_lidar_obstacle_points, route.progress.last_observed_position,
-            previous_route_axis, execution_position, current_execution_axis,
-            route.validation_policy->sweptFootprint(), launch_support_contact)
-            .accepted())) {
+  const OccupiedCollisionOracle3D collision_oracle{OccupiedCollisionWorld3D{
+      .observed_occupancy = raw_certificate != nullptr && observed_raw_world != nullptr
+                                ? std::addressof(observed_raw_world->occupancy())
+                                : nullptr,
+      .static_occupancy = raw_certificate == nullptr && route.static_world != nullptr
+                              ? std::addressof(route.static_world->occupancy())
+                              : nullptr,
+      .planar_occupancy = nullptr,
+      .raw_point_cloud = latest_lidar_obstacle_points,
+      .launch_support_contact = launch_support_contact,
+      .footprint = route.validation_policy->sweptFootprint(),
+      .flight_envelope = route.validation_policy->flightEnvelope(),
+  }};
+  if ((raw_certificate != nullptr && observed_raw_world == nullptr) ||
+      (raw_certificate == nullptr && route.static_world == nullptr) ||
+      !collision_oracle
+           .validateSegment(route.progress.last_observed_position, previous_route_axis,
+                            execution_position, current_execution_axis)
+           .clear()) {
     return std::nullopt;
   }
   return adherence;
@@ -368,19 +359,11 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
         FiniteExecutionCertificationStatus3D::kEvidenceContractRejected);
   }
 
-  const ProprioceptiveFreeSpaceSeed3D* const free_space_seed =
-      raw_mode ? optionalAddress(
-                     observed_raw_validation_world->proprioceptiveFreeSpaceSeed())
-               : nullptr;
   const LaunchSupportContact3D* const launch_support_contact =
       raw_mode ? optionalAddress(observed_raw_validation_world->launchSupportContact())
                : nullptr;
-  const ObservedSpaceValidationPolicy observed_policy =
-      raw_mode ? ObservedSpaceValidationPolicy::kAllowUnknown
-               : ObservedSpaceValidationPolicy::kRequireKnownFree;
   const std::uint64_t execution_collision_policy_fingerprint =
-      validationPolicyFingerprint(policy->sweptFootprint(), observed_policy,
-                                  free_space_seed, launch_support_contact);
+      validationPolicyFingerprint(policy->sweptFootprint(), launch_support_contact);
   if (execution_collision_policy_fingerprint == 0U) {
     return rejectedFiniteExecution(
         FiniteExecutionCertificationStatus3D::kCollisionPolicyInvalid);
@@ -522,8 +505,6 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
           static_mode ? &target_route.static_world->occupancy() : nullptr,
       .observed_occupancy =
           raw_mode ? &observed_raw_validation_world->occupancy() : nullptr,
-      .require_known_free_space = static_mode,
-      .proprioceptive_free_space_seed = free_space_seed,
       .launch_support_contact = launch_support_contact,
       .raw_occupancy = nullptr,
       .latest_lidar_obstacle_points = latest_lidar_obstacle_points,
@@ -572,10 +553,8 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
   FiniteExecutionValidationLineage3D validation_lineage{
       StaticFiniteExecutionValidationLineage3D{}};
   if (raw_mode) {
-    const std::uint64_t policy_fingerprint =
-        validationPolicyFingerprint(*validation_world.footprint, observed_policy,
-                                    validation_world.proprioceptive_free_space_seed,
-                                    validation_world.launch_support_contact);
+    const std::uint64_t policy_fingerprint = validationPolicyFingerprint(
+        *validation_world.footprint, validation_world.launch_support_contact);
     if (policy_fingerprint == 0U ||
         observed_raw_validation_world->version().producer_instance_id !=
             raw_certificate->producer_instance_id ||
@@ -860,10 +839,6 @@ certifyDirectTrackingExecution3D(const ExecutionRouteSnapshot3D& current,
     return std::nullopt;
   }
 
-  const ProprioceptiveFreeSpaceSeed3D* const free_space_seed =
-      raw_mode ? optionalAddress(
-                     certification.observed_raw_world->proprioceptiveFreeSpaceSeed())
-               : nullptr;
   const LaunchSupportContact3D* const launch_support_contact =
       raw_mode
           ? optionalAddress(certification.observed_raw_world->launchSupportContact())
@@ -879,8 +854,6 @@ certifyDirectTrackingExecution3D(const ExecutionRouteSnapshot3D& current,
           static_mode ? &certification.static_world->occupancy() : nullptr,
       .observed_occupancy =
           raw_mode ? &certification.observed_raw_world->occupancy() : nullptr,
-      .require_known_free_space = static_mode,
-      .proprioceptive_free_space_seed = free_space_seed,
       .launch_support_contact = launch_support_contact,
       .raw_occupancy = nullptr,
       .latest_lidar_obstacle_points = latest_lidar_obstacle_points,
@@ -897,12 +870,8 @@ certifyDirectTrackingExecution3D(const ExecutionRouteSnapshot3D& current,
     return std::nullopt;
   }
 
-  const ObservedSpaceValidationPolicy observed_policy =
-      raw_mode ? ObservedSpaceValidationPolicy::kAllowUnknown
-               : ObservedSpaceValidationPolicy::kRequireKnownFree;
   const std::uint64_t collision_policy_fingerprint = validationPolicyFingerprint(
-      certification.validation_policy->sweptFootprint(), observed_policy,
-      free_space_seed, launch_support_contact);
+      certification.validation_policy->sweptFootprint(), launch_support_contact);
   const std::uint64_t validation_contract_fingerprint = validationContractFingerprint(
       validation_world, certification.execution_input->previousControl(),
       ValidationContractOwners3D{

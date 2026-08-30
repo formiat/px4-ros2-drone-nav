@@ -38,7 +38,7 @@ TEST(StaticRouteHandoff, AcceptsRawSafeRouteFromCurrentMotion) {
   EXPECT_TRUE(result.accepted);
 }
 
-TEST(StaticRouteHandoff, RejectsRawCollisionWithoutClearanceGate) {
+TEST(StaticRouteHandoff, DerivedZeroClearanceRemainsAControllerAnnotation) {
   const EsdfGrid grid{24, 8, 1.0F, 0.0F, 0.0F};
   std::vector<float> esdf(
       static_cast<std::size_t>(grid.width * grid.height * grid.depth), 20.0F);
@@ -52,8 +52,9 @@ TEST(StaticRouteHandoff, RejectsRawCollisionWithoutClearanceGate) {
       State{.x = 3.0F, .y = 2.0F, .z = 10.0F, .vx = 6.0F}, Control{}, route, 20.0F,
       15.0F, 2.0F, config(), grid, esdf);
 
-  EXPECT_EQ(result.status, StaticRouteHandoffStatus::kRawCollision);
-  EXPECT_FALSE(result.accepted);
+  EXPECT_EQ(result.status, StaticRouteHandoffStatus::kAccepted);
+  EXPECT_TRUE(result.accepted);
+  EXPECT_FLOAT_EQ(result.minimum_clearance_m, 0.0F);
 }
 
 TEST(StaticRouteHandoff, CriticalClearanceRemainsExecutable) {

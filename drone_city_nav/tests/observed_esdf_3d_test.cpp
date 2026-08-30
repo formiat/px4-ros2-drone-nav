@@ -116,57 +116,6 @@ TEST(ObservedEsdf3DTest, FingerprintIgnoresCellsOutsideExactLocalBounds) {
   EXPECT_NE(knownObstacleFingerprint3D(occupancy, local), empty);
 }
 
-TEST(ObservedEsdf3DTest, ProprioceptiveSeedRemainsTransientRawValidationEvidence) {
-  const GridBounds3D bounds{0.0, 0.0, 0.0, 0.25, 16, 16, 16};
-  ObservedOccupancyGrid3D occupancy{bounds};
-  static_cast<void>(
-      occupancy.setState(GridIndex3D{12, 12, 12}, ObservedVoxelState::kOccupied));
-  const ProprioceptiveFreeSpaceSeed3D seed{
-      .position = Point3{2.0, 2.0, 2.0},
-      .body_axis = FootprintBodyAxis{},
-      .footprint = SweptFootprintConfig{.radius_m = 0.5,
-                                        .lower_extent_m = 0.25,
-                                        .upper_extent_m = 0.25},
-  };
-  const ObservedEsdf3D field = buildObservedEsdf3D(occupancy, bounds, 10.0);
-
-  ASSERT_TRUE(field.local_occupancy);
-  EXPECT_EQ(field.stats.proprioceptive_free_voxels, 0U);
-  EXPECT_EQ(occupancy.state(GridIndex3D{7, 8, 8}), ObservedVoxelState::kUnknown);
-  EXPECT_EQ(field.local_occupancy->state(GridIndex3D{7, 8, 8}),
-            ObservedVoxelState::kUnknown);
-  EXPECT_FALSE(validateObservedFootprintAt(
-                   occupancy, seed.position, seed.body_axis, seed.footprint,
-                   ObservedSpaceValidationPolicy::kRequireKnownFree)
-                   .accepted());
-  EXPECT_TRUE(validateObservedFootprintAt(
-                  occupancy, seed.position, seed.body_axis, seed.footprint,
-                  ObservedSpaceValidationPolicy::kRequireKnownFree, &seed)
-                  .accepted());
-}
-
-TEST(ObservedEsdf3DTest, TiltedProprioceptiveSeedIsBoundedToItsBodyVolume) {
-  const GridBounds3D bounds{0.0, 0.0, 0.0, 0.25, 16, 16, 16};
-  const ObservedOccupancyGrid3D occupancy{bounds};
-  const ProprioceptiveFreeSpaceSeed3D tilted_seed{
-      .position = Point3{2.125, 2.125, 2.125},
-      .body_axis = FootprintBodyAxis{0.6, 0.0, 0.8},
-      .footprint = SweptFootprintConfig{.radius_m = 0.2,
-                                        .lower_extent_m = 0.2,
-                                        .upper_extent_m = 1.0},
-  };
-  EXPECT_TRUE(validateObservedFootprintAt(
-                  occupancy, tilted_seed.position, tilted_seed.body_axis,
-                  tilted_seed.footprint,
-                  ObservedSpaceValidationPolicy::kRequireKnownFree, &tilted_seed)
-                  .accepted());
-  EXPECT_FALSE(validateObservedFootprintAt(
-                   occupancy, Point3{3.5, 2.125, 2.125}, tilted_seed.body_axis,
-                   tilted_seed.footprint,
-                   ObservedSpaceValidationPolicy::kRequireKnownFree, &tilted_seed)
-                   .accepted());
-}
-
 TEST(ObservedEsdf3DTest,
      ProprioceptiveSupportContactIsFreeOnlyInThePreparedPlanningWorld) {
   const GridBounds3D bounds{0.0, 0.0, 0.0, 0.25, 16, 16, 16};

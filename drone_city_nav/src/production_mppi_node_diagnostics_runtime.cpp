@@ -53,8 +53,6 @@ void ProductionMppiNode::recordTickStatistics(
   runtime_samples_ms_.push_back(result.timings.host_total_ms);
   deadline_misses_ += result.timings.host_total_ms > deadline_ms_ ? 1U : 0U;
   altitude_envelope_violation_horizons_ += result.altitude_envelope_violation ? 1U : 0U;
-  raw_collision_horizons_ += result.raw_collision ? 1U : 0U;
-  solid_collision_horizons_ += result.known_solid_collision ? 1U : 0U;
   post_update_contract_violations_ +=
       planning_state == ProductionMppiPlanningState::kPlanned &&
               !result.post_update_classification.executable

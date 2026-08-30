@@ -209,6 +209,7 @@ add_library(
   src/lidar_scan_3d.cpp
   src/lidar_self_filter.cpp
   src/offboard_session_admission.cpp
+  src/occupied_collision_oracle_3d.cpp
   src/persistent_dstar_lite_planner_3d.cpp
   src/persistent_dstar_lite_planner_3d_search.cpp
   src/persistent_dstar_lite_planner_3d_time_search.cpp
@@ -839,6 +840,12 @@ if(BUILD_TESTING)
   target_compile_features(swept_footprint_test PRIVATE cxx_std_20)
   target_link_libraries(swept_footprint_test drone_city_nav_core)
   enable_project_warnings(swept_footprint_test)
+
+  ament_add_gtest(occupied_collision_oracle_3d_test
+                  tests/occupied_collision_oracle_3d_test.cpp)
+  target_compile_features(occupied_collision_oracle_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(occupied_collision_oracle_3d_test drone_city_nav_core)
+  enable_project_warnings(occupied_collision_oracle_3d_test)
 
   ament_add_gtest(finite_execution_path_test
                   tests/finite_execution_path_test.cpp)

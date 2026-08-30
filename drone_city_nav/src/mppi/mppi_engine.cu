@@ -8,7 +8,6 @@
 #include "drone_city_nav/mppi/mppi_reference.hpp"
 #include "drone_city_nav/mppi/mppi_route_projection.hpp"
 #include "drone_city_nav/mppi/mppi_separation_acquisition_coordinator.hpp"
-#include "drone_city_nav/swept_footprint.hpp"
 
 #include <algorithm>
 #include <array>
@@ -33,7 +32,6 @@ constexpr int kThreadsPerBlock{256};
 constexpr std::size_t kControlUpdateStepTile{32U};
 constexpr std::size_t kControlUpdateRolloutLanes{8U};
 constexpr std::size_t kControlUpdatePartitions{16U};
-constexpr std::size_t kMaximumKnownSolids{2048U};
 constexpr std::size_t kMaximumDeviceRoutePoints{512U};
 constexpr std::size_t kMaximumDynamicAircraft{16U};
 constexpr std::size_t kMaximumRepairCandidateCount{7U};
@@ -59,8 +57,6 @@ struct DeviceBuffers {
   DeviceBuffer<float> minimum_clearance;
   DeviceBuffer<std::uint8_t> altitude_envelope_violation;
   DeviceBuffer<std::uint8_t> worst_tier;
-  DeviceBuffer<std::uint8_t> raw_collision;
-  DeviceBuffer<std::uint8_t> solid_collision;
   DeviceBuffer<float> weights;
   DeviceBuffer<Control> nominal;
   DeviceBuffer<Control> updated;
@@ -70,7 +66,6 @@ struct DeviceBuffers {
   DeviceBuffer<int> best_rollout;
   DeviceBuffer<float> minimum_soft;
   DeviceBuffer<float> weight_sum;
-  DeviceBuffer<KnownSolid> solids{kMaximumKnownSolids};
   DeviceBuffer<RouteSample3D> route_points{kMaximumDeviceRoutePoints};
   DeviceBuffer<DynamicAircraftSample> dynamic_aircraft_samples;
   DeviceBuffer<float> dynamic_aircraft_radii{kMaximumDynamicAircraft};
@@ -87,8 +82,6 @@ struct DeviceBuffers {
         minimum_clearance{rollouts},
         altitude_envelope_violation{rollouts},
         worst_tier{rollouts},
-        raw_collision{rollouts},
-        solid_collision{rollouts},
         weights{rollouts},
         nominal{steps},
         updated{steps},
@@ -105,17 +98,25 @@ struct DeviceBuffers {
     return noise_ax.bytes() + noise_ay.bytes() + noise_az.bytes() + noise_yaw.bytes() +
            soft_cost.bytes() + critical_exposure.bytes() + planning_exposure.bytes() +
            minimum_clearance.bytes() + altitude_envelope_violation.bytes() +
-           worst_tier.bytes() + raw_collision.bytes() + solid_collision.bytes() +
-           weights.bytes() + nominal.bytes() + updated.bytes() +
+           worst_tier.bytes() + weights.bytes() + nominal.bytes() + updated.bytes() +
            control_update_partials.bytes() + best_feasible.bytes() +
            repair_candidates.bytes() + best_rollout.bytes() + minimum_soft.bytes() +
-           weight_sum.bytes() + solids.bytes() + route_points.bytes() +
+           weight_sum.bytes() + route_points.bytes() +
            dynamic_aircraft_samples.bytes() + dynamic_aircraft_radii.bytes() +
            dynamic_aircraft_active_steps.bytes();
   }
 };
 
-#include "mppi_engine_host_validation.hpp"
+struct EvaluatedControlSequence {
+  ReferenceSimulationTrace trace;
+  RolloutMetrics metrics{};
+  MppiPostUpdateClassificationResult classification{};
+  bool route_terminal_cross_track_violation{false};
+  float terminal_route_cross_track_m{-1.0F};
+  std::size_t route_terminal_arrival_shaping_attempts{0U};
+  std::size_t route_terminal_nominal_prefix_control_count{0U};
+};
+
 #include "mppi_engine_kernels.cuh"
 
 } // namespace
@@ -181,21 +182,6 @@ public:
     esdf_host_[target].assign(snapshot.distances_m.begin(), snapshot.distances_m.end());
     active_texture_ = target;
     return EsdfUploadResult{true, upload_ms, snapshot.revision};
-  }
-
-  void updateKnownSolids(std::span<const KnownSolid> solids) {
-    std::scoped_lock lock{mutex_};
-    if (solids.size() > kMaximumKnownSolids) {
-      throw std::invalid_argument{"too many known solids for MPPI engine"};
-    }
-    known_solids_.assign(solids.begin(), solids.end());
-    solid_count_ = solids.size();
-    if (!solids.empty()) {
-      checkCuda(cudaMemcpyAsync(buffers_.solids.get(), solids.data(),
-                                solids.size_bytes(), cudaMemcpyHostToDevice, stream_),
-                "upload known solids");
-      checkCuda(cudaStreamSynchronize(stream_), "synchronize known solids upload");
-    }
   }
 
   MppiTickResult plan(const MppiTickInput& input) {
@@ -288,7 +274,6 @@ public:
             .first_control_interval_s = first_control_interval_s,
             .grid = textures_[active_texture_].grid(),
             .esdf = activeEsdfHost(),
-            .known_solids = known_solids_,
             .aircraft = input.dynamic_aircraft,
             .dynamic_aircraft_cost_policy = dynamic_aircraft_cost_policy,
             .config = config_,
@@ -470,13 +455,12 @@ public:
         buffers_.noise_yaw.get(), buffers_.nominal.get(), buffers_.soft_cost.get(),
         buffers_.critical_exposure.get(), buffers_.planning_exposure.get(),
         buffers_.minimum_clearance.get(), buffers_.altitude_envelope_violation.get(),
-        buffers_.worst_tier.get(), buffers_.raw_collision.get(),
-        buffers_.solid_collision.get(), active_rollouts, config_.steps,
-        input.initial_state, input.target, moving_target, moving_target_enabled,
-        config_.dynamics, config_.risk, config_.footprint, config_.altitude_envelope,
-        config_.costs, config_.horizon_sampling, textures_[active_texture_].grid(),
-        textures_[active_texture_].texture(), buffers_.solids.get(), solid_count_,
-        buffers_.route_points.get(), route_active ? route_point_count_ : 0U,
+        buffers_.worst_tier.get(), active_rollouts, config_.steps, input.initial_state,
+        input.target, moving_target, moving_target_enabled, config_.dynamics,
+        config_.risk, config_.footprint, config_.altitude_envelope, config_.costs,
+        config_.horizon_sampling, textures_[active_texture_].grid(),
+        textures_[active_texture_].texture(), buffers_.route_points.get(),
+        route_active ? route_point_count_ : 0U,
         route_active ? input.route->initial_station_m : 0.0F,
         buffers_.dynamic_aircraft_samples.get(), buffers_.dynamic_aircraft_radii.get(),
         buffers_.dynamic_aircraft_active_steps.get(), dynamic_aircraft_count,
@@ -484,19 +468,17 @@ public:
         cooperative_preferred_acceleration, cooperative_preference_steps,
         input.cooperative_maneuver.has_value(), previous_applied_control,
         first_control_interval_s, input.reference_speed_mps,
-        config_.early_exit_on_collision, nullptr);
+        config_.early_exit_on_altitude_envelope_violation, nullptr);
     simulation_done_.record(stream_);
     initializeReduction<<<1, 1, 0U, stream_>>>(buffers_.minimum_soft.get(),
                                                buffers_.weight_sum.get(),
                                                buffers_.best_rollout.get());
     reduceSoft<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
         buffers_.soft_cost.get(), buffers_.altitude_envelope_violation.get(),
-        buffers_.raw_collision.get(), buffers_.solid_collision.get(), active_rollouts,
-        buffers_.minimum_soft.get());
+        active_rollouts, buffers_.minimum_soft.get());
     reduction_done_.record(stream_);
     calculateWeights<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
         buffers_.soft_cost.get(), buffers_.altitude_envelope_violation.get(),
-        buffers_.raw_collision.get(), buffers_.solid_collision.get(),
         buffers_.weights.get(), active_rollouts, buffers_.minimum_soft.get(),
         config_.costs.temperature, buffers_.weight_sum.get());
     selectBestFeasibleRollout<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
@@ -527,8 +509,6 @@ public:
     float feasible_weight_sum = 0.0F;
     int best_rollout_index = -1;
     std::uint8_t reacquisition_altitude_envelope_violation = 1U;
-    std::uint8_t reacquisition_raw_collision = 1U;
-    std::uint8_t reacquisition_solid_collision = 1U;
     float reacquisition_weight = 0.0F;
     checkCuda(cudaMemcpyAsync(updated_.data(), buffers_.updated.get(),
                               updated_.size() * sizeof(Control), cudaMemcpyDeviceToHost,
@@ -552,16 +532,6 @@ public:
                                 sizeof(reacquisition_altitude_envelope_violation),
                                 cudaMemcpyDeviceToHost, stream_),
                 "copy deterministic candidate altitude envelope status");
-      checkCuda(cudaMemcpyAsync(&reacquisition_raw_collision,
-                                buffers_.raw_collision.get(),
-                                sizeof(reacquisition_raw_collision),
-                                cudaMemcpyDeviceToHost, stream_),
-                "copy target-directed raw collision");
-      checkCuda(cudaMemcpyAsync(&reacquisition_solid_collision,
-                                buffers_.solid_collision.get(),
-                                sizeof(reacquisition_solid_collision),
-                                cudaMemcpyDeviceToHost, stream_),
-                "copy target-directed solid collision");
       checkCuda(cudaMemcpyAsync(&reacquisition_weight, buffers_.weights.get(),
                                 sizeof(reacquisition_weight), cudaMemcpyDeviceToHost,
                                 stream_),
@@ -577,17 +547,15 @@ public:
         .weight_sum = feasible_weight_sum,
     };
     result.target_directed_candidate_injected = target_directed_candidate;
-    result.target_directed_candidate_raw_safe =
-        target_directed_candidate && reacquisition_altitude_envelope_violation == 0U &&
-        reacquisition_raw_collision == 0U && reacquisition_solid_collision == 0U;
+    result.target_directed_candidate_device_feasible =
+        target_directed_candidate && reacquisition_altitude_envelope_violation == 0U;
     result.target_directed_candidate_best_feasible =
         target_directed_candidate && best_rollout_index == 0;
     result.target_directed_candidate_weight =
         target_directed_candidate ? reacquisition_weight : 0.0F;
     result.route_directed_candidate_injected = route_directed_candidate;
-    result.route_directed_candidate_raw_safe =
-        route_directed_candidate && reacquisition_altitude_envelope_violation == 0U &&
-        reacquisition_raw_collision == 0U && reacquisition_solid_collision == 0U;
+    result.route_directed_candidate_device_feasible =
+        route_directed_candidate && reacquisition_altitude_envelope_violation == 0U;
     result.route_directed_candidate_best_feasible =
         route_directed_candidate && best_rollout_index == 0;
     result.route_directed_candidate_weight =
@@ -596,12 +564,12 @@ public:
         route_directed_candidate ? input.route->generation : 0U;
     const bool policy_prefers_route_candidate =
         input.prefer_route_directed_candidate && input.dynamic_aircraft.empty();
-    if (result.route_directed_candidate_raw_safe &&
+    if (result.route_directed_candidate_device_feasible &&
         (result.route_directed_candidate_best_feasible ||
          policy_prefers_route_candidate)) {
       // The single explicit route candidate must not be diluted by many
       // individually worse rollouts when it is the objective winner. The
-      // caller may also make the certified raw-safe trajectory authoritative
+      // caller may also make the independently certified trajectory authoritative
       // to avoid a stationary weighted-update fixed point. Dynamic-aircraft
       // arbitration always remains stochastic and is excluded above.
       std::ranges::copy(reacquisition_candidate_, updated_.begin());
@@ -617,13 +585,12 @@ public:
       evaluation.metrics = simulateReference(
           input.initial_state, controls, zero_noise_, config_.dynamics, config_.risk,
           config_.costs, textures_[active_texture_].grid(), activeEsdfHost(),
-          input.target.x, input.target.y, config_.early_exit_on_collision,
-          previous_applied_control, input.reference_speed_mps, config_.footprint,
-          input.moving_target, &evaluation.trace, input.dynamic_aircraft,
-          input.cooperative_maneuver, config_.cooperative, dynamic_aircraft_cost_policy,
-          config_.altitude_envelope, input.target.z);
-      evaluation.known_solid_collision = hostSweptSolidCollision(
-          evaluation.trace.horizon, controls, config_.footprint, known_solids_);
+          input.target.x, input.target.y,
+          config_.early_exit_on_altitude_envelope_violation, previous_applied_control,
+          input.reference_speed_mps, config_.footprint, input.moving_target,
+          &evaluation.trace, input.dynamic_aircraft, input.cooperative_maneuver,
+          config_.cooperative, dynamic_aircraft_cost_policy, config_.altitude_envelope,
+          input.target.z);
       if (route_active && input.route->terminal_cross_track_tolerance_m &&
           !evaluation.trace.horizon.empty()) {
         const RouteConvergentFiniteHorizon finite_route =
@@ -648,10 +615,6 @@ public:
           MppiPostUpdateObservation{
               .altitude_envelope_violation =
                   evaluation.metrics.altitude_envelope_violation,
-              .raw_collision = evaluation.metrics.collision,
-              .unknown_space_violation = evaluation.metrics.unknown_space_violation &&
-                                         config_.risk.require_known_free_space,
-              .known_solid_collision = evaluation.known_solid_collision,
               .route_terminal_cross_track_violation =
                   evaluation.route_terminal_cross_track_violation,
           });
@@ -704,13 +667,12 @@ public:
           buffers_.noise_yaw.get(), buffers_.nominal.get(), buffers_.soft_cost.get(),
           buffers_.critical_exposure.get(), buffers_.planning_exposure.get(),
           buffers_.minimum_clearance.get(), buffers_.altitude_envelope_violation.get(),
-          buffers_.worst_tier.get(), buffers_.raw_collision.get(),
-          buffers_.solid_collision.get(), candidate_count, config_.steps,
+          buffers_.worst_tier.get(), candidate_count, config_.steps,
           input.initial_state, input.target, moving_target, moving_target_enabled,
           config_.dynamics, config_.risk, config_.footprint, config_.altitude_envelope,
           config_.costs, config_.horizon_sampling, textures_[active_texture_].grid(),
-          textures_[active_texture_].texture(), buffers_.solids.get(), solid_count_,
-          buffers_.route_points.get(), route_active ? route_point_count_ : 0U,
+          textures_[active_texture_].texture(), buffers_.route_points.get(),
+          route_active ? route_point_count_ : 0U,
           route_active ? input.route->initial_station_m : 0.0F,
           buffers_.dynamic_aircraft_samples.get(),
           buffers_.dynamic_aircraft_radii.get(),
@@ -719,22 +681,13 @@ public:
           cooperative_preferred_acceleration, cooperative_preference_steps,
           input.cooperative_maneuver.has_value(), previous_applied_control,
           first_control_interval_s, input.reference_speed_mps,
-          config_.early_exit_on_collision, buffers_.repair_candidates.get());
+          config_.early_exit_on_altitude_envelope_violation,
+          buffers_.repair_candidates.get());
       checkCuda(cudaMemcpyAsync(repair_altitude_envelope_violation_.data(),
                                 buffers_.altitude_envelope_violation.get(),
                                 candidate_count * sizeof(std::uint8_t),
                                 cudaMemcpyDeviceToHost, stream_),
                 "copy repair altitude envelope status");
-      checkCuda(cudaMemcpyAsync(repair_raw_collision_.data(),
-                                buffers_.raw_collision.get(),
-                                candidate_count * sizeof(std::uint8_t),
-                                cudaMemcpyDeviceToHost, stream_),
-                "copy repair raw collisions");
-      checkCuda(cudaMemcpyAsync(repair_solid_collision_.data(),
-                                buffers_.solid_collision.get(),
-                                candidate_count * sizeof(std::uint8_t),
-                                cudaMemcpyDeviceToHost, stream_),
-                "copy repair solid collisions");
       repair_done_.record(stream_);
       repair_done_.synchronize();
       checkCuda(cudaGetLastError(), "post-update repair validation");
@@ -743,15 +696,12 @@ public:
       bool repaired{false};
       for (std::size_t candidate_index = 0U; candidate_index < candidate_count;
            ++candidate_index) {
-        const bool solid_collision = repair_solid_collision_[candidate_index] != 0U;
         const MppiPostUpdateClassificationResult gpu_classification =
             classifyMppiPostUpdate(
                 result.feasibility_contract,
                 MppiPostUpdateObservation{
                     .altitude_envelope_violation =
                         repair_altitude_envelope_violation_[candidate_index] != 0U,
-                    .raw_collision = repair_raw_collision_[candidate_index] != 0U,
-                    .known_solid_collision = solid_collision,
                 });
         if (!gpu_classification.executable) {
           continue;
@@ -823,9 +773,6 @@ public:
     float latest_credited_route_progress_m = 0.0F;
     const RolloutMetrics& metrics = selected_evaluation.metrics;
     result.altitude_envelope_violation = metrics.altitude_envelope_violation;
-    result.raw_collision = metrics.collision;
-    result.unknown_space_violation = metrics.unknown_space_violation;
-    result.known_solid_collision = selected_evaluation.known_solid_collision;
     result.route_terminal_cross_track_violation =
         selected_evaluation.route_terminal_cross_track_violation;
     result.terminal_route_cross_track_m =
@@ -852,10 +799,7 @@ public:
     result.dynamic_aircraft_survival_cost_ratio =
         result.dynamic_aircraft_survival_cost / std::max(1.0e-3F, non_survival_cost);
     result.predicted_capture_time_s = metrics.predicted_capture_time_s;
-    result.selected_tier =
-        result.known_solid_collision || result.unknown_space_violation
-            ? RiskTier::kCollision
-            : metrics.worst_tier;
+    result.selected_tier = metrics.worst_tier;
     result.post_update_classification = selected_evaluation.classification;
     Control previous_control = previous_applied_control;
     if (!updated_.empty()) {
@@ -950,8 +894,6 @@ private:
   EsdfTexture textures_[2];
   std::vector<float> esdf_host_[2];
   std::size_t active_texture_{0U};
-  std::vector<KnownSolid> known_solids_;
-  std::size_t solid_count_{0U};
   std::shared_ptr<const std::vector<RouteSample3D>> route_points_host_;
   std::size_t route_window_begin_index_{0U};
   std::size_t route_point_count_{0U};
@@ -976,8 +918,6 @@ private:
   std::vector<float> cooperative_noise_yaw_;
   std::array<std::uint8_t, kMaximumRepairCandidateCount>
       repair_altitude_envelope_violation_{};
-  std::array<std::uint8_t, kMaximumRepairCandidateCount> repair_raw_collision_{};
-  std::array<std::uint8_t, kMaximumRepairCandidateCount> repair_solid_collision_{};
   std::vector<Control> zero_noise_;
   std::optional<Control> last_output_control_;
   std::int64_t last_planning_stamp_ns_{0};
@@ -1009,10 +949,6 @@ MppiCudaEngine& MppiCudaEngine::operator=(MppiCudaEngine&&) noexcept = default;
 
 EsdfUploadResult MppiCudaEngine::updateEsdf(const EsdfSnapshot& snapshot) {
   return impl_->updateEsdf(snapshot);
-}
-
-void MppiCudaEngine::updateKnownSolids(std::span<const KnownSolid> solids) {
-  impl_->updateKnownSolids(solids);
 }
 
 MppiTickResult MppiCudaEngine::plan(const MppiTickInput& input) {

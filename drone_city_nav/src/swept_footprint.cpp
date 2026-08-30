@@ -19,7 +19,6 @@ using swept_footprint_detail::interpolateSweepAxis;
 using swept_footprint_detail::interpolateSweepPosition;
 using swept_footprint_detail::makeConservativeSweepCover3D;
 using swept_footprint_detail::makeStatusResult;
-using swept_footprint_detail::mergeEvidence;
 using swept_footprint_detail::normalized;
 
 [[nodiscard]] double squaredDistanceToBox(const Point3& point, const Point3& minimum,
@@ -189,39 +188,6 @@ using swept_footprint_detail::normalized;
       radius_squared);
 }
 
-[[nodiscard]] bool
-pointInsideFiniteCylinder(const Point3& point, const Point3& center,
-                          const FootprintBodyAxis& axis,
-                          const SweptFootprintConfig& config) noexcept {
-  const Point3 delta{point.x - center.x, point.y - center.y, point.z - center.z};
-  const double axial = delta.x * axis.x + delta.y * axis.y + delta.z * axis.z;
-  if (axial < -std::max(0.0, config.lower_extent_m) ||
-      axial > std::max(0.0, config.upper_extent_m)) {
-    return false;
-  }
-  const double distance_squared =
-      delta.x * delta.x + delta.y * delta.y + delta.z * delta.z;
-  const double radial_squared = std::max(0.0, distance_squared - axial * axial);
-  const double radius_m = std::max(0.0, config.radius_m);
-  return radial_squared <= radius_m * radius_m;
-}
-
-[[nodiscard]] bool
-boxInsideFiniteCylinder(const Point3& minimum, const Point3& maximum,
-                        const Point3& center, const FootprintBodyAxis& axis,
-                        const SweptFootprintConfig& config) noexcept {
-  for (const double z : {minimum.z, maximum.z}) {
-    for (const double y : {minimum.y, maximum.y}) {
-      for (const double x : {minimum.x, maximum.x}) {
-        if (!pointInsideFiniteCylinder(Point3{x, y, z}, center, axis, config)) {
-          return false;
-        }
-      }
-    }
-  }
-  return true;
-}
-
 [[nodiscard]] std::pair<double, double>
 projectedBoxInterval(const Point3& minimum, const Point3& maximum, const Point3& origin,
                      const FootprintBodyAxis& axis) noexcept {
@@ -237,114 +203,6 @@ projectedBoxInterval(const Point3& minimum, const Point3& maximum, const Point3&
                                        half_extent.z * std::abs(axis.z);
   return {projected_center - projected_half_extent,
           projected_center + projected_half_extent};
-}
-
-[[nodiscard]] bool alignedCandidateIntersectionCoveredBySeed(
-    const Point3& box_minimum, const Point3& box_maximum,
-    const Point3& candidate_position, const FootprintBodyAxis& candidate_axis,
-    const SweptFootprintConfig& candidate_config,
-    const ProprioceptiveFreeSpaceSeed3D& seed) noexcept {
-  FootprintBodyAxis seed_axis = normalized(seed.body_axis);
-  double seed_lower_extent_m = std::max(0.0, seed.footprint.lower_extent_m);
-  double seed_upper_extent_m = std::max(0.0, seed.footprint.upper_extent_m);
-  double alignment = candidate_axis.x * seed_axis.x + candidate_axis.y * seed_axis.y +
-                     candidate_axis.z * seed_axis.z;
-  if (alignment < 0.0) {
-    seed_axis = FootprintBodyAxis{-seed_axis.x, -seed_axis.y, -seed_axis.z};
-    std::swap(seed_lower_extent_m, seed_upper_extent_m);
-    alignment = -alignment;
-  }
-  constexpr double kAxisAlignmentTolerance{1.0e-9};
-  if (alignment < 1.0 - kAxisAlignmentTolerance) {
-    return false;
-  }
-
-  const Point3 center_delta{candidate_position.x - seed.position.x,
-                            candidate_position.y - seed.position.y,
-                            candidate_position.z - seed.position.z};
-  const double axial_offset = center_delta.x * seed_axis.x +
-                              center_delta.y * seed_axis.y +
-                              center_delta.z * seed_axis.z;
-  const double center_distance_squared = center_delta.x * center_delta.x +
-                                         center_delta.y * center_delta.y +
-                                         center_delta.z * center_delta.z;
-  const double perpendicular_offset =
-      std::sqrt(std::max(0.0, center_distance_squared - axial_offset * axial_offset));
-  const double candidate_radius_m = std::max(0.0, candidate_config.radius_m);
-  const double seed_radius_m = std::max(0.0, seed.footprint.radius_m);
-  constexpr double kContainmentToleranceM{1.0e-9};
-  if (perpendicular_offset + candidate_radius_m >
-      seed_radius_m + kContainmentToleranceM) {
-    return false;
-  }
-
-  const double candidate_minimum =
-      axial_offset - std::max(0.0, candidate_config.lower_extent_m);
-  const double candidate_maximum =
-      axial_offset + std::max(0.0, candidate_config.upper_extent_m);
-  const auto [box_minimum_axial, box_maximum_axial] =
-      projectedBoxInterval(box_minimum, box_maximum, seed.position, seed_axis);
-  const double intersection_minimum = std::max(candidate_minimum, box_minimum_axial);
-  const double intersection_maximum = std::min(candidate_maximum, box_maximum_axial);
-  if (intersection_minimum > intersection_maximum + kContainmentToleranceM) {
-    return true;
-  }
-  return intersection_minimum >= -seed_lower_extent_m - kContainmentToleranceM &&
-         intersection_maximum <= seed_upper_extent_m + kContainmentToleranceM;
-}
-
-[[nodiscard]] bool
-candidateIntersectionCoveredBySeed(const Point3& box_minimum, const Point3& box_maximum,
-                                   const Point3& candidate_position,
-                                   const FootprintBodyAxis& candidate_axis,
-                                   const SweptFootprintConfig& candidate_config,
-                                   const ProprioceptiveFreeSpaceSeed3D& seed,
-                                   const std::size_t subdivision_depth = 0U) noexcept {
-  if (!boxIntersectsFiniteCylinder(candidate_position, candidate_axis, box_minimum,
-                                   box_maximum,
-                                   std::max(0.0, candidate_config.lower_extent_m),
-                                   std::max(0.0, candidate_config.upper_extent_m),
-                                   std::max(0.0, candidate_config.radius_m) *
-                                       std::max(0.0, candidate_config.radius_m))) {
-    return true;
-  }
-  if (alignedCandidateIntersectionCoveredBySeed(box_minimum, box_maximum,
-                                                candidate_position, candidate_axis,
-                                                candidate_config, seed)) {
-    return true;
-  }
-
-  const FootprintBodyAxis seed_axis = normalized(seed.body_axis);
-  if (boxInsideFiniteCylinder(box_minimum, box_maximum, seed.position, seed_axis,
-                              seed.footprint)) {
-    return true;
-  }
-  constexpr std::size_t kMaximumSubdivisionDepth{4U};
-  if (subdivision_depth >= kMaximumSubdivisionDepth) {
-    return false;
-  }
-
-  const Point3 midpoint{0.5 * (box_minimum.x + box_maximum.x),
-                        0.5 * (box_minimum.y + box_maximum.y),
-                        0.5 * (box_minimum.z + box_maximum.z)};
-  for (int z = 0; z < 2; ++z) {
-    for (int y = 0; y < 2; ++y) {
-      for (int x = 0; x < 2; ++x) {
-        const Point3 child_minimum{x == 0 ? box_minimum.x : midpoint.x,
-                                   y == 0 ? box_minimum.y : midpoint.y,
-                                   z == 0 ? box_minimum.z : midpoint.z};
-        const Point3 child_maximum{x == 0 ? midpoint.x : box_maximum.x,
-                                   y == 0 ? midpoint.y : box_maximum.y,
-                                   z == 0 ? midpoint.z : box_maximum.z};
-        if (!candidateIntersectionCoveredBySeed(
-                child_minimum, child_maximum, candidate_position, candidate_axis,
-                candidate_config, seed, subdivision_depth + 1U)) {
-          return false;
-        }
-      }
-    }
-  }
-  return true;
 }
 
 [[nodiscard]] bool
@@ -459,27 +317,16 @@ candidateRemainsInsideLaunchSupportEnvelope(const LaunchSupportContact3D& contac
   return radial_squared <= radius * radius;
 }
 
-template<bool RequireKnownFree, bool PreserveFailureCategory, typename Occupancy>
+template<typename Occupancy>
 [[nodiscard]] SweptFootprintResult validateRawFootprintAt3D(
     const Occupancy& occupancy, const Point3& position,
     const FootprintBodyAxis& requested_body_axis, const SweptFootprintConfig& config,
-    const ProprioceptiveFreeSpaceSeed3D* const free_space_seed = nullptr,
     const LaunchSupportContact3D* const launch_support_contact = nullptr) noexcept {
   const double radius_m = std::max(0.0, config.radius_m);
   if (!(radius_m > 0.0)) {
     const std::optional<GridIndex3D> cell = occupancy.worldToCell(position);
     if (!cell.has_value()) {
-      if constexpr (RequireKnownFree) {
-        return makeStatusResult(SweptFootprintStatus::kUnknownSpace, position);
-      }
       return validRawFootprint();
-    }
-    if constexpr (RequireKnownFree) {
-      if constexpr (std::is_same_v<Occupancy, ObservedOccupancyGrid3D>) {
-        if (!occupancy.isKnown(*cell)) {
-          return makeStatusResult(SweptFootprintStatus::kUnknownSpace, position);
-        }
-      }
     }
     return occupancy.isOccupied(*cell)
                ? makeStatusResult(SweptFootprintStatus::kRawCollision, position)
@@ -518,22 +365,6 @@ template<bool RequireKnownFree, bool PreserveFailureCategory, typename Occupancy
       minimumContactCell(body_minimum.z, bounds.origin_z, bounds.resolution_m);
   const int requested_maximum_z =
       maximumContactCell(body_maximum.z, bounds.origin_z, bounds.resolution_m);
-  SweptFootprintResult result = validRawFootprint();
-  if constexpr (RequireKnownFree) {
-    const Point3 world_maximum{
-        bounds.origin_x + bounds.width_cells * bounds.resolution_m,
-        bounds.origin_y + bounds.height_cells * bounds.resolution_m,
-        bounds.origin_z + bounds.depth_cells * bounds.resolution_m};
-    if (body_minimum.x < bounds.origin_x || body_minimum.y < bounds.origin_y ||
-        body_minimum.z < bounds.origin_z || body_maximum.x > world_maximum.x ||
-        body_maximum.y > world_maximum.y || body_maximum.z > world_maximum.z) {
-      if constexpr (!PreserveFailureCategory) {
-        return makeStatusResult(SweptFootprintStatus::kOutsideGrid, position);
-      }
-      mergeEvidence(result,
-                    makeStatusResult(SweptFootprintStatus::kOutsideGrid, position));
-    }
-  }
   const int minimum_x = std::max(0, requested_minimum_x);
   const int maximum_x = std::min(bounds.width_cells - 1, requested_maximum_x);
   const int minimum_y = std::max(0, requested_minimum_y);
@@ -544,10 +375,9 @@ template<bool RequireKnownFree, bool PreserveFailureCategory, typename Occupancy
   OccupancyChunkIndex3D cached_chunk_index{};
   const ObservedOccupancyGrid3D::Chunk* cached_chunk{nullptr};
   bool cached_chunk_initialized{false};
-  const auto observed_state_at = [&](const GridIndex3D cell) noexcept {
+  const auto occupied_at = [&](const GridIndex3D cell) noexcept {
     if constexpr (!std::is_same_v<Occupancy, ObservedOccupancyGrid3D>) {
-      return occupancy.isOccupied(cell) ? ObservedVoxelState::kOccupied
-                                        : ObservedVoxelState::kFree;
+      return occupancy.isOccupied(cell);
     } else {
       const OccupancyChunkIndex3D chunk_index =
           ObservedOccupancyGrid3D::chunkIndex(cell);
@@ -556,26 +386,18 @@ template<bool RequireKnownFree, bool PreserveFailureCategory, typename Occupancy
         cached_chunk = occupancy.findChunk(chunk_index);
         cached_chunk_initialized = true;
       }
-      return cached_chunk == nullptr
-                 ? ObservedVoxelState::kUnknown
-                 : ObservedOccupancyGrid3D::chunkState(
-                       *cached_chunk, ObservedOccupancyGrid3D::localBitIndex(cell));
+      return cached_chunk != nullptr &&
+             ObservedOccupancyGrid3D::chunkState(
+                 *cached_chunk, ObservedOccupancyGrid3D::localBitIndex(cell)) ==
+                 ObservedVoxelState::kOccupied;
     }
   };
   for (int z = minimum_z; z <= maximum_z; ++z) {
     for (int y = minimum_y; y <= maximum_y; ++y) {
       for (int x = minimum_x; x <= maximum_x; ++x) {
         const GridIndex3D cell{x, y, z};
-        ObservedVoxelState observed_state{ObservedVoxelState::kUnknown};
-        if constexpr (RequireKnownFree) {
-          observed_state = observed_state_at(cell);
-          if (observed_state == ObservedVoxelState::kFree) {
-            continue;
-          }
-        } else {
-          if (observed_state_at(cell) != ObservedVoxelState::kOccupied) {
-            continue;
-          }
+        if (!occupied_at(cell)) {
+          continue;
         }
         const Point3 cell_minimum{bounds.origin_x + x * bounds.resolution_m,
                                   bounds.origin_y + y * bounds.resolution_m,
@@ -594,66 +416,32 @@ template<bool RequireKnownFree, bool PreserveFailureCategory, typename Occupancy
                                                         position) &&
             launchSupportContainsCell(*launch_support_contact, cell_minimum,
                                       cell_maximum);
-        if constexpr (RequireKnownFree) {
-          if (observed_state == ObservedVoxelState::kUnknown &&
-              !launch_support_cell_allowed &&
-              (free_space_seed == nullptr ||
-               !candidateIntersectionCoveredBySeed(cell_minimum, cell_maximum, position,
-                                                   axis, config, *free_space_seed))) {
-            if constexpr (!PreserveFailureCategory) {
-              return makeStatusResult(SweptFootprintStatus::kUnknownSpace,
-                                      occupancy.cellCenter(cell));
-            }
-            mergeEvidence(result, makeStatusResult(SweptFootprintStatus::kUnknownSpace,
-                                                   occupancy.cellCenter(cell)));
-          }
+        if (launch_support_cell_allowed) {
+          continue;
         }
-        const bool occupied = [&]() noexcept {
-          if constexpr (RequireKnownFree) {
-            return observed_state == ObservedVoxelState::kOccupied;
-          }
-          return true;
-        }();
-        if (occupied) {
-          if (launch_support_cell_allowed) {
-            continue;
-          }
-          mergeEvidence(result, makeStatusResult(SweptFootprintStatus::kRawCollision,
-                                                 occupancy.cellCenter(cell)));
-          return result;
-        }
+        return makeStatusResult(SweptFootprintStatus::kRawCollision,
+                                occupancy.cellCenter(cell));
       }
     }
   }
-  return result;
+  return validRawFootprint();
 }
 
-template<bool RequireKnownFree, bool PreserveFailureCategory, typename Occupancy>
+template<typename Occupancy>
 [[nodiscard]] SweptFootprintResult validateRawSweptFootprint3D(
     const Occupancy& occupancy, const Point3& first,
     const FootprintBodyAxis& first_body_axis, const Point3& second,
     const FootprintBodyAxis& second_body_axis, const SweptFootprintConfig& config,
-    const ProprioceptiveFreeSpaceSeed3D* const free_space_seed = nullptr,
     const LaunchSupportContact3D* const launch_support_contact = nullptr) noexcept {
   const auto cover = makeConservativeSweepCover3D(first, first_body_axis, second,
                                                   second_body_axis, config);
   if (!cover.valid()) {
-    return makeStatusResult(SweptFootprintStatus::kInvalidEsdf, first);
+    return makeStatusResult(SweptFootprintStatus::kInvalidInput, first);
   }
-  SweptFootprintResult aggregate = validRawFootprint();
-  const SweptFootprintResult first_result =
-      validateRawFootprintAt3D<RequireKnownFree, PreserveFailureCategory>(
-          occupancy, cover.first, cover.first_axis, config, free_space_seed,
-          launch_support_contact);
-  if constexpr (!PreserveFailureCategory) {
-    if (!first_result.accepted()) {
-      return first_result;
-    }
-  } else {
-    mergeEvidence(aggregate, first_result);
-    if (first_result.evidence.raw_collision) {
-      return aggregate;
-    }
+  const SweptFootprintResult first_result = validateRawFootprintAt3D(
+      occupancy, cover.first, cover.first_axis, config, launch_support_contact);
+  if (!first_result.accepted()) {
+    return first_result;
   }
   for (std::size_t interval = 0U; interval < cover.interval_count; ++interval) {
     const double interval_begin_ratio =
@@ -676,36 +464,19 @@ template<bool RequireKnownFree, bool PreserveFailureCategory, typename Occupancy
       // before its contact cells can be exempted for the complete interval.
       interval_launch_support = nullptr;
     }
-    const SweptFootprintResult result =
-        validateRawFootprintAt3D<RequireKnownFree, PreserveFailureCategory>(
-            occupancy, interpolateSweepPosition(cover, ratio), midpoint_axis,
-            inflated_config, free_space_seed, interval_launch_support);
-    if constexpr (!PreserveFailureCategory) {
-      if (!result.accepted()) {
-        return result;
-      }
-    } else {
-      mergeEvidence(aggregate, result);
-      if (result.evidence.raw_collision) {
-        return aggregate;
-      }
+    const SweptFootprintResult result = validateRawFootprintAt3D(
+        occupancy, interpolateSweepPosition(cover, ratio), midpoint_axis,
+        inflated_config, interval_launch_support);
+    if (!result.accepted()) {
+      return result;
     }
   }
-  const SweptFootprintResult second_result =
-      validateRawFootprintAt3D<RequireKnownFree, PreserveFailureCategory>(
-          occupancy, cover.second, cover.second_axis, config, free_space_seed,
-          launch_support_contact);
-  if constexpr (!PreserveFailureCategory) {
-    if (!second_result.accepted()) {
-      return second_result;
-    }
-  } else {
-    mergeEvidence(aggregate, second_result);
-    if (second_result.evidence.raw_collision) {
-      return aggregate;
-    }
+  const SweptFootprintResult second_result = validateRawFootprintAt3D(
+      occupancy, cover.second, cover.second_axis, config, launch_support_contact);
+  if (!second_result.accepted()) {
+    return second_result;
   }
-  return aggregate;
+  return validRawFootprint();
 }
 
 } // namespace
@@ -721,8 +492,7 @@ SweptFootprintResult
 validateRawFootprintAt(const OccupancyGrid3D& occupancy, const Point3& position,
                        const FootprintBodyAxis& requested_body_axis,
                        const SweptFootprintConfig& config) noexcept {
-  return validateRawFootprintAt3D<false, true>(occupancy, position, requested_body_axis,
-                                               config);
+  return validateRawFootprintAt3D(occupancy, position, requested_body_axis, config);
 }
 
 SweptFootprintResult
@@ -731,156 +501,33 @@ validateRawSweptFootprint(const OccupancyGrid3D& occupancy, const Point3& first,
                           const Point3& second,
                           const FootprintBodyAxis& second_body_axis,
                           const SweptFootprintConfig& config) noexcept {
-  return validateRawSweptFootprint3D<false, true>(occupancy, first, first_body_axis,
-                                                  second, second_body_axis, config);
-}
-
-SweptFootprintResult
-validateKnownStaticFootprintAt(const OccupancyGrid3D& occupancy, const Point3& position,
-                               const FootprintBodyAxis& body_axis,
-                               const SweptFootprintConfig& config) noexcept {
-  return validateRawFootprintAt3D<true, false>(occupancy, position, body_axis, config);
-}
-
-SweptFootprintResult
-validateKnownStaticSweptFootprint(const OccupancyGrid3D& occupancy, const Point3& first,
-                                  const FootprintBodyAxis& first_body_axis,
-                                  const Point3& second,
-                                  const FootprintBodyAxis& second_body_axis,
-                                  const SweptFootprintConfig& config) noexcept {
-  return validateRawSweptFootprint3D<true, false>(occupancy, first, first_body_axis,
-                                                  second, second_body_axis, config);
+  return validateRawSweptFootprint3D(occupancy, first, first_body_axis, second,
+                                     second_body_axis, config);
 }
 
 SweptFootprintResult validateRawFootprintAt(
     const ObservedOccupancyGrid3D& occupancy, const Point3& position,
     const FootprintBodyAxis& requested_body_axis, const SweptFootprintConfig& config,
-    const ProprioceptiveFreeSpaceSeed3D* const free_space_seed,
-    const LaunchSupportContact3D* const launch_support_contact) noexcept {
-  return validateObservedFootprintAt(occupancy, position, requested_body_axis, config,
-                                     ObservedSpaceValidationPolicy::kRequireKnownFree,
-                                     free_space_seed, launch_support_contact);
-}
-
-SweptFootprintResult validateObservedFootprintAt(
-    const ObservedOccupancyGrid3D& occupancy, const Point3& position,
-    const FootprintBodyAxis& requested_body_axis, const SweptFootprintConfig& config,
-    const ObservedSpaceValidationPolicy policy,
-    const ProprioceptiveFreeSpaceSeed3D* const free_space_seed,
     const LaunchSupportContact3D* const launch_support_contact) noexcept {
   if (launch_support_contact != nullptr &&
       !launchSupportContactValid3D(*launch_support_contact)) {
-    return makeStatusResult(SweptFootprintStatus::kInvalidEsdf, position);
+    return makeStatusResult(SweptFootprintStatus::kInvalidInput, position);
   }
-  if (policy == ObservedSpaceValidationPolicy::kAllowUnknown) {
-    return validateRawFootprintAt3D<false, true>(
-        occupancy, position, requested_body_axis, config, free_space_seed,
-        launch_support_contact);
-  }
-  return validateRawFootprintAt3D<true, true>(occupancy, position, requested_body_axis,
-                                              config, free_space_seed,
-                                              launch_support_contact);
+  return validateRawFootprintAt3D(occupancy, position, requested_body_axis, config,
+                                  launch_support_contact);
 }
 
 SweptFootprintResult validateRawSweptFootprint(
     const ObservedOccupancyGrid3D& occupancy, const Point3& first,
     const FootprintBodyAxis& first_body_axis, const Point3& second,
     const FootprintBodyAxis& second_body_axis, const SweptFootprintConfig& config,
-    const ProprioceptiveFreeSpaceSeed3D* const free_space_seed,
-    const LaunchSupportContact3D* const launch_support_contact) noexcept {
-  return validateObservedSweptFootprint(
-      occupancy, first, first_body_axis, second, second_body_axis, config,
-      ObservedSpaceValidationPolicy::kRequireKnownFree, free_space_seed,
-      launch_support_contact);
-}
-
-SweptFootprintResult validateObservedSweptFootprint(
-    const ObservedOccupancyGrid3D& occupancy, const Point3& first,
-    const FootprintBodyAxis& first_body_axis, const Point3& second,
-    const FootprintBodyAxis& second_body_axis, const SweptFootprintConfig& config,
-    const ObservedSpaceValidationPolicy policy,
-    const ProprioceptiveFreeSpaceSeed3D* const free_space_seed,
     const LaunchSupportContact3D* const launch_support_contact) noexcept {
   if (launch_support_contact != nullptr &&
       !launchSupportContactValid3D(*launch_support_contact)) {
-    return makeStatusResult(SweptFootprintStatus::kInvalidEsdf, first);
+    return makeStatusResult(SweptFootprintStatus::kInvalidInput, first);
   }
-  if (policy == ObservedSpaceValidationPolicy::kAllowUnknown) {
-    return validateRawSweptFootprint3D<false, true>(
-        occupancy, first, first_body_axis, second, second_body_axis, config,
-        free_space_seed, launch_support_contact);
-  }
-  return validateRawSweptFootprint3D<true, true>(
-      occupancy, first, first_body_axis, second, second_body_axis, config,
-      free_space_seed, launch_support_contact);
-}
-
-bool rawFootprintIsNavigableAt(const OccupancyGrid3D& occupancy, const Point3& position,
-                               const FootprintBodyAxis& body_axis,
-                               const SweptFootprintConfig& config) noexcept {
-  return validateRawFootprintAt3D<false, false>(occupancy, position, body_axis, config)
-      .accepted();
-}
-
-bool rawSweptFootprintIsNavigable(const OccupancyGrid3D& occupancy, const Point3& first,
-                                  const FootprintBodyAxis& first_body_axis,
-                                  const Point3& second,
-                                  const FootprintBodyAxis& second_body_axis,
-                                  const SweptFootprintConfig& config) noexcept {
-  return validateRawSweptFootprint3D<false, false>(occupancy, first, first_body_axis,
-                                                   second, second_body_axis, config)
-      .accepted();
-}
-
-bool rawFootprintIsNavigableAt(
-    const ObservedOccupancyGrid3D& occupancy, const Point3& position,
-    const FootprintBodyAxis& body_axis, const SweptFootprintConfig& config,
-    const ProprioceptiveFreeSpaceSeed3D* const free_space_seed,
-    const LaunchSupportContact3D* const launch_support_contact) noexcept {
-  if (launch_support_contact != nullptr &&
-      !launchSupportContactValid3D(*launch_support_contact)) {
-    return false;
-  }
-  return validateRawFootprintAt3D<true, false>(occupancy, position, body_axis, config,
-                                               free_space_seed, launch_support_contact)
-      .accepted();
-}
-
-bool rawSweptFootprintIsNavigable(
-    const ObservedOccupancyGrid3D& occupancy, const Point3& first,
-    const FootprintBodyAxis& first_body_axis, const Point3& second,
-    const FootprintBodyAxis& second_body_axis, const SweptFootprintConfig& config,
-    const ProprioceptiveFreeSpaceSeed3D* const free_space_seed,
-    const LaunchSupportContact3D* const launch_support_contact) noexcept {
-  if (launch_support_contact != nullptr &&
-      !launchSupportContactValid3D(*launch_support_contact)) {
-    return false;
-  }
-  return validateRawSweptFootprint3D<true, false>(
-             occupancy, first, first_body_axis, second, second_body_axis, config,
-             free_space_seed, launch_support_contact)
-      .accepted();
-}
-
-bool rawOccupiedFootprintIsClearAt(const ObservedOccupancyGrid3D& occupancy,
-                                   const Point3& position,
-                                   const FootprintBodyAxis& body_axis,
-                                   const SweptFootprintConfig& config) noexcept {
-  return validateObservedFootprintAt(occupancy, position, body_axis, config,
-                                     ObservedSpaceValidationPolicy::kAllowUnknown)
-      .accepted();
-}
-
-bool rawOccupiedSweptFootprintIsClear(const ObservedOccupancyGrid3D& occupancy,
-                                      const Point3& first,
-                                      const FootprintBodyAxis& first_body_axis,
-                                      const Point3& second,
-                                      const FootprintBodyAxis& second_body_axis,
-                                      const SweptFootprintConfig& config) noexcept {
-  return validateObservedSweptFootprint(occupancy, first, first_body_axis, second,
-                                        second_body_axis, config,
-                                        ObservedSpaceValidationPolicy::kAllowUnknown)
-      .accepted();
+  return validateRawSweptFootprint3D(occupancy, first, first_body_axis, second,
+                                     second_body_axis, config, launch_support_contact);
 }
 
 bool footprintIntersectsAxisAlignedBox(const Point3& position,
@@ -901,7 +548,7 @@ SweptFootprintResult validateRawPointCloudFootprintAt(
     const LaunchSupportContact3D* const launch_support_contact) noexcept {
   if (launch_support_contact != nullptr &&
       !launchSupportContactValid3D(*launch_support_contact)) {
-    return makeStatusResult(SweptFootprintStatus::kInvalidEsdf, position);
+    return makeStatusResult(SweptFootprintStatus::kInvalidInput, position);
   }
   for (const Point3& point : obstacle_points) {
     if (pointIntersectsBody(point, position, body_axis, config)) {
@@ -922,12 +569,12 @@ SweptFootprintResult validateRawPointCloudSweptFootprint(
     const LaunchSupportContact3D* const launch_support_contact) noexcept {
   if (launch_support_contact != nullptr &&
       !launchSupportContactValid3D(*launch_support_contact)) {
-    return makeStatusResult(SweptFootprintStatus::kInvalidEsdf, first);
+    return makeStatusResult(SweptFootprintStatus::kInvalidInput, first);
   }
   const auto cover = makeConservativeSweepCover3D(first, first_body_axis, second,
                                                   second_body_axis, config);
   if (!cover.valid()) {
-    return makeStatusResult(SweptFootprintStatus::kInvalidEsdf, first);
+    return makeStatusResult(SweptFootprintStatus::kInvalidInput, first);
   }
   const SweptFootprintResult first_result = validateRawPointCloudFootprintAt(
       obstacle_points, cover.first, cover.first_axis, config, launch_support_contact);

@@ -315,8 +315,8 @@ private:
 enum class StaticRouteCandidateStatus : std::uint8_t {
   kAccepted,
   kEmpty,
-  kOutsideEsdf,
-  kInvalidEsdf,
+  kInvalidInput,
+  kRawWorldUnavailable,
   kRawCollision,
   kOutsideFlightEnvelope,
   kInvalidPassageSpan,
@@ -405,15 +405,11 @@ staticRouteReplacementProtected(std::span<const RouteSample3D> route,
 
 [[nodiscard]] StaticRouteCandidateValidation validateStaticRouteCandidate(
     std::span<const RouteSample3D> active_route,
-    std::span<const RouteSample3D> candidate_route, const mppi::EsdfGrid& grid,
-    std::span<const float> esdf_m, const Point3& mission_goal,
+    std::span<const RouteSample3D> candidate_route, const Point3& mission_goal,
     double minimum_endpoint_improvement_m, bool reaches_mission_goal,
     const FlightEnvelopeConfig& flight_envelope,
     StaticRouteReplacementPolicy replacement_policy =
-        StaticRouteReplacementPolicy::kRequireEndpointImprovement,
-    const SweptFootprintConfig& footprint_config = {},
-    bool require_known_free_space = false,
-    bool raw_occupancy_authoritative = false) noexcept;
+        StaticRouteReplacementPolicy::kRequireEndpointImprovement) noexcept;
 
 [[nodiscard]] std::string_view
 staticRouteReplacementPolicyName(StaticRouteReplacementPolicy policy) noexcept;

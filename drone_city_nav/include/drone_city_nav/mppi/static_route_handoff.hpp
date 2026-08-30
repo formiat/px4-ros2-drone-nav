@@ -16,7 +16,6 @@ enum class StaticRouteHandoffStatus : std::uint8_t {
   kExcessiveCrossTrack,
   kNoRouteConvergentFiniteHorizon,
   kAltitudeEnvelopeViolation,
-  kRawCollision,
 };
 
 struct StaticRouteHandoffResult {

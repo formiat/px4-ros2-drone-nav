@@ -26,20 +26,20 @@ evidenceWorld(const ProductionMppiPreparedEsdf& world,
       .grid = &world.grid,
       .esdf_m = world.distances_m ? std::span<const float>{*world.distances_m}
                                   : std::span<const float>{},
-      .latest_observed_occupancy = route_search_occupancy,
-      .static_occupancy = static_occupancy,
-      .proprioceptive_free_space_seed =
-          world.proprioceptive_free_space_seed
-              ? std::addressof(*world.proprioceptive_free_space_seed)
-              : nullptr,
-      .launch_support_contact = world.launch_support_contact
-                                    ? std::addressof(*world.launch_support_contact)
-                                    : nullptr,
-      .footprint = physical_footprint,
-      .flight_envelope = flight_envelope,
+      .collision =
+          OccupiedCollisionWorld3D{
+              .observed_occupancy = route_search_occupancy,
+              .static_occupancy = static_occupancy,
+              .planar_occupancy = nullptr,
+              .raw_point_cloud = {},
+              .launch_support_contact =
+                  world.launch_support_contact
+                      ? std::addressof(*world.launch_support_contact)
+                      : nullptr,
+              .footprint = physical_footprint,
+              .flight_envelope = flight_envelope,
+          },
       .validated_through_revision = route_search_raw_revision,
-      .require_known_free_space = false,
-      .reject_invalid_esdf = false,
   };
 }
 

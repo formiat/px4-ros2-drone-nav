@@ -2,7 +2,6 @@
 
 #include "drone_city_nav/mppi/mppi_control_sequence.hpp"
 #include "drone_city_nav/mppi/mppi_reference.hpp"
-#include "drone_city_nav/swept_footprint.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -15,14 +14,12 @@
 namespace drone_city_nav::mppi {
 namespace {
 
-#include "mppi_engine_host_validation.hpp"
-
 struct CandidateEvaluation {
   std::size_t index{0U};
   float head_progress_m{0.0F};
   float terminal_progress_m{0.0F};
   float separation_gain_m{-std::numeric_limits<float>::infinity()};
-  bool raw_safe{false};
+  bool device_feasible{false};
   bool separating{false};
   bool positive_progress{false};
   bool backward_candidate{false};
@@ -81,13 +78,11 @@ evaluateCandidate(const CooperativeSeparationAcquisitionEvaluationInput& input,
   const RolloutMetrics metrics = simulateReference(
       input.initial_state, controls, zero_noise, input.config.dynamics,
       input.config.risk, input.config.costs, input.grid, input.esdf, input.target.x,
-      input.target.y, input.config.early_exit_on_collision,
+      input.target.y, input.config.early_exit_on_altitude_envelope_violation,
       input.previous_applied_control, input.reference_speed_mps, input.config.footprint,
       std::nullopt, &trace, input.aircraft, input.acquisition.preference,
       input.config.cooperative, std::nullopt, input.config.altitude_envelope,
       input.target.z);
-  const bool solid_collision = hostSweptSolidCollision(
-      trace.horizon, controls, input.config.footprint, input.known_solids);
   const std::size_t head_step = std::clamp<std::size_t>(
       static_cast<std::size_t>(std::ceil(input.config.costs.head_progress_horizon_s /
                                          input.config.dynamics.dt_s)),
@@ -107,8 +102,7 @@ evaluateCandidate(const CooperativeSeparationAcquisitionEvaluationInput& input,
       .head_progress_m = head_progress_m,
       .terminal_progress_m = progress(terminal),
       .separation_gain_m = separation_gain_m,
-      .raw_safe = !metrics.altitude_envelope_violation && !metrics.collision &&
-                  !solid_collision,
+      .device_feasible = !metrics.altitude_envelope_violation,
       .separating = std::isfinite(separation_gain_m) &&
                     separation_gain_m >= input.acquisition.minimum_separation_gain_m,
       .positive_progress =
@@ -161,7 +155,7 @@ CooperativeSeparationAcquisitionResult evaluateCooperativeSeparationAcquisition(
                                                      input.config.steps);
     const CandidateEvaluation evaluation =
         evaluateCandidate(input, controls, index, direction, zero_noise);
-    if (!evaluation.raw_safe || !evaluation.separating) {
+    if (!evaluation.device_feasible || !evaluation.separating) {
       continue;
     }
     if (evaluation.positive_progress &&

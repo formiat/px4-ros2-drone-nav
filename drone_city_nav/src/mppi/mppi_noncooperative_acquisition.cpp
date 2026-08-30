@@ -2,7 +2,6 @@
 
 #include "drone_city_nav/mppi/mppi_control_sequence.hpp"
 #include "drone_city_nav/mppi/mppi_reference.hpp"
-#include "drone_city_nav/swept_footprint.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -15,14 +14,12 @@
 namespace drone_city_nav::mppi {
 namespace {
 
-#include "mppi_engine_host_validation.hpp"
-
 struct CandidateEvaluation {
   std::size_t index{0U};
   float minimum_separation_m{-std::numeric_limits<float>::infinity()};
   float head_progress_m{0.0F};
   float terminal_progress_m{0.0F};
-  bool raw_safe{false};
+  bool device_feasible{false};
   bool preserves_required_separation{false};
   bool positive_progress{false};
   bool backward_candidate{false};
@@ -69,12 +66,10 @@ evaluateCandidate(const NonCooperativeAcquisitionEvaluationInput& input,
   const RolloutMetrics metrics = simulateReference(
       input.initial_state, controls, zero_noise, input.config.dynamics,
       input.config.risk, input.config.costs, input.grid, input.esdf, input.target.x,
-      input.target.y, input.config.early_exit_on_collision,
+      input.target.y, input.config.early_exit_on_altitude_envelope_violation,
       input.previous_applied_control, input.reference_speed_mps, input.config.footprint,
       std::nullopt, &trace, input.aircraft, std::nullopt, input.config.cooperative,
       input.cost_policy, input.config.altitude_envelope, input.target.z);
-  const bool solid_collision = hostSweptSolidCollision(
-      trace.horizon, controls, input.config.footprint, input.known_solids);
   const std::size_t head_step = std::clamp<std::size_t>(
       static_cast<std::size_t>(std::ceil(input.config.costs.head_progress_horizon_s /
                                          input.config.dynamics.dt_s)),
@@ -92,8 +87,7 @@ evaluateCandidate(const NonCooperativeAcquisitionEvaluationInput& input,
       .minimum_separation_m = metrics.minimum_peer_separation_m,
       .head_progress_m = head_progress_m,
       .terminal_progress_m = terminal_progress_m,
-      .raw_safe = !metrics.altitude_envelope_violation && !metrics.collision &&
-                  !solid_collision,
+      .device_feasible = !metrics.altitude_envelope_violation,
       .preserves_required_separation =
           metrics.minimum_peer_separation_m >= required_separation_m,
       .positive_progress =
@@ -161,7 +155,7 @@ NonCooperativeAcquisitionResult evaluateNonCooperativeAcquisition(
     if (index == static_cast<std::size_t>(NonCooperativeManeuver::kRouteCruise)) {
       baseline = evaluation;
     }
-    if (!evaluation.raw_safe) {
+    if (!evaluation.device_feasible) {
       continue;
     }
     if (!survival_fallback || betterSurvivalFallback(evaluation, *survival_fallback)) {
