@@ -1,6 +1,6 @@
 #pragma once
 
-#include "drone_city_nav/execution_route_snapshot_3d.hpp"
+#include "drone_city_nav/execution_route_certificates_3d.hpp"
 #include "drone_city_nav/persistent_dstar_lite_planner_3d.hpp"
 #include "drone_city_nav/static_route_extension.hpp"
 #include "drone_city_nav/world_snapshot_3d.hpp"

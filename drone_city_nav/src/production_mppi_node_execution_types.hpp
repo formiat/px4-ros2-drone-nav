@@ -1,6 +1,24 @@
 #pragma once
 
-// Included inside namespace drone_city_nav after the route pipeline contracts.
+#include "drone_city_nav/cooperative_mppi_adapter.hpp"
+#include "drone_city_nav/cooperative_passage_execution.hpp"
+#include "drone_city_nav/cooperative_traffic.hpp"
+#include "drone_city_nav/execution_route_store_3d.hpp"
+#include "drone_city_nav/noncooperative_collision_avoidance.hpp"
+#include "drone_city_nav/persistent_dstar_lite_planner_3d.hpp"
+#include "drone_city_nav/route_progress_3d.hpp"
+#include "drone_city_nav/tracking_error_tube_3d.hpp"
+#include "drone_city_nav/tracking_error_tube_handoff_3d.hpp"
+
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <vector>
+
+#include "production_planner_search_transaction_3d.hpp"
+#include "production_route_pipeline_artifacts_3d.hpp"
+
+namespace drone_city_nav {
 
 struct ProductionMppiStability {
   double first_control_delta{0.0};
@@ -113,3 +131,5 @@ struct ProductionRouteExecutionSelection3D {
   bool physical_trajectory_invalidated{false};
   std::optional<DirectTrackingOwnerIdentity3D> direct_tracking_identity;
 };
+
+} // namespace drone_city_nav

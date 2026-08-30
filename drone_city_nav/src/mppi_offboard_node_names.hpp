@@ -1,5 +1,10 @@
 #pragma once
 
+#include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
+#include "drone_city_nav/msg/vehicle_destroyed.hpp"
+
+#include <cstdint>
+
 namespace drone_city_nav {
 namespace {
 

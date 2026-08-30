@@ -1,5 +1,11 @@
 #pragma once
 
+#include <cmath>
+#include <cstdint>
+#include <limits>
+#include <stdexcept>
+#include <string>
+
 namespace drone_city_nav {
 namespace {
 

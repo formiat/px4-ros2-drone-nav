@@ -1,5 +1,5 @@
 #include "drone_city_nav/execution_horizon_timing.hpp"
-#include "drone_city_nav/execution_route_snapshot_3d.hpp"
+#include "drone_city_nav/execution_route_certification_3d.hpp"
 #include "drone_city_nav/mppi/mppi_reference.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
 
@@ -404,10 +404,10 @@ validationWorldOwnerContent(const mppi::FiniteExecutionPathWorld& world,
   }
   if (owners.observed_raw_world != nullptr) {
     const VersionedObservedRawWorld3D& owner = *owners.observed_raw_world;
+    const std::optional<LaunchSupportContact3D>& launch_support =
+        owner.launchSupportContact();
     const LaunchSupportContact3D* const owned_support =
-        owner.launchSupportContact().has_value()
-            ? std::addressof(*owner.launchSupportContact())
-            : nullptr;
+        launch_support.has_value() ? std::addressof(*launch_support) : nullptr;
     const std::uint64_t content_fingerprint = owner.contentFingerprint();
     if (!owner.valid() || content_fingerprint == 0U ||
         world.static_occupancy != nullptr ||

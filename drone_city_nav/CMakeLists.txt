@@ -149,7 +149,6 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
       $<$<COMPILE_LANGUAGE:CUDA>:--use_fast_math>)
   install(
     TARGETS drone_city_nav_mppi_cuda mppi_cuda_benchmark
-    EXPORT drone_city_nav_targets
     ARCHIVE DESTINATION lib
     LIBRARY DESTINATION lib
     RUNTIME DESTINATION lib/${PROJECT_NAME})
@@ -771,7 +770,6 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
   enable_project_warnings(production_mppi_node)
   install(
     TARGETS production_mppi_node drone_city_nav_production_mppi_component
-    EXPORT drone_city_nav_targets
     ARCHIVE DESTINATION lib
     LIBRARY DESTINATION lib
     RUNTIME DESTINATION lib/${PROJECT_NAME})
@@ -787,7 +785,6 @@ install(
     drone_city_nav_execution
     drone_city_nav_control
     drone_city_nav_runtime
-    drone_city_nav_core
     drone_city_nav_ros_adapters
     drone_contact_system
     collision_crash_node
@@ -812,16 +809,69 @@ install(
     generate_static_esdf_cache
     free_space_topology_compiler
     voxelize_sdf_collisions
-  EXPORT drone_city_nav_targets
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME})
 
-install(DIRECTORY include/ DESTINATION include)
+# Hand-written navigation headers are package-private contracts between the
+# enforced internal layers. ROS messages remain the supported external API and
+# are installed/exported by rosidl_generate_interfaces().
 install(DIRECTORY config launch models rviz worlds DESTINATION share/${PROJECT_NAME})
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
+
+  # Compile every hand-written header as the first and only include in an
+  # independent translation unit. Generated sources live in the build tree;
+  # CONFIGURE_DEPENDS makes newly added contracts join the check automatically.
+  file(
+    GLOB_RECURSE drone_city_nav_handwritten_headers
+    CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp")
+  set(drone_city_nav_header_check_sources "")
+  foreach(header_path IN LISTS drone_city_nav_handwritten_headers)
+    file(RELATIVE_PATH header_relative_path "${CMAKE_CURRENT_SOURCE_DIR}"
+         "${header_path}")
+    string(MAKE_C_IDENTIFIER "${header_relative_path}" header_identifier)
+    set(header_check_source
+        "${CMAKE_CURRENT_BINARY_DIR}/header_self_containment/${header_identifier}.cpp")
+    file(
+      GENERATE
+      OUTPUT "${header_check_source}"
+      CONTENT "#include \"${header_path}\"\n")
+    list(APPEND drone_city_nav_header_check_sources "${header_check_source}")
+  endforeach()
+  add_library(drone_city_nav_header_self_containment OBJECT
+              ${drone_city_nav_header_check_sources})
+  target_compile_features(drone_city_nav_header_self_containment PRIVATE cxx_std_20)
+  target_include_directories(
+    drone_city_nav_header_self_containment
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src")
+  target_link_libraries(
+    drone_city_nav_header_self_containment
+    drone_city_nav_core drone_city_nav_ros_adapters ${cpp_typesupport_target})
+  if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
+    target_link_libraries(drone_city_nav_header_self_containment
+                          drone_city_nav_mppi_cuda)
+  endif()
+  ament_target_dependencies(
+    drone_city_nav_header_self_containment
+    ament_index_cpp
+    geometry_msgs
+    nav_msgs
+    px4_msgs
+    rclcpp
+    rclcpp_components
+    ros_gz_interfaces
+    sensor_msgs
+    std_msgs
+    tf2_ros
+    visualization_msgs)
+  enable_project_warnings(drone_city_nav_header_self_containment)
+  target_compile_options(drone_city_nav_header_self_containment
+                         PRIVATE -Wno-unused-function)
 
   function(add_drone_city_nav_core_gtest target_name source_path)
     ament_add_gtest(${target_name} ${source_path})
@@ -1373,6 +1423,23 @@ if(BUILD_TESTING)
   target_link_libraries(trajectory_compiler_3d_test drone_city_nav_core)
   enable_project_warnings(trajectory_compiler_3d_test)
 
+  # Each contract is compiled as the first include in an independent
+  # translation unit. This prevents the compatibility umbrella or another
+  # header from hiding missing includes.
+  ament_add_gtest(
+    execution_route_public_headers_test
+    tests/execution_route_public_headers_test.cpp
+    tests/execution_route_model_header_compile.cpp
+    tests/execution_route_certificates_header_compile.cpp
+    tests/execution_plan_header_compile.cpp
+    tests/execution_route_certification_header_compile.cpp
+    tests/execution_route_transitions_header_compile.cpp
+    tests/execution_route_store_header_compile.cpp
+    tests/execution_route_compatibility_headers_compile.cpp)
+  target_compile_features(execution_route_public_headers_test PRIVATE cxx_std_20)
+  target_link_libraries(execution_route_public_headers_test drone_city_nav_execution)
+  enable_project_warnings(execution_route_public_headers_test)
+
   ament_add_gtest(execution_route_snapshot_3d_test
                   tests/committed_execution_authority_3d_test.cpp
                   tests/execution_plan_reducer_3d_test.cpp
@@ -1571,7 +1638,5 @@ if(BUILD_TESTING)
   enable_project_warnings(spectator_reselection_lifecycle_test)
 endif()
 
-ament_export_include_directories(include)
-ament_export_targets(drone_city_nav_targets HAS_LIBRARY_TARGET)
 ament_export_dependencies(rosidl_default_runtime)
 ament_package()

@@ -1,12 +1,14 @@
-#include "drone_city_nav/execution_route_snapshot_3d.hpp"
+#include "drone_city_nav/execution_route_transitions_3d.hpp"
 #include "drone_city_nav/mppi/mppi_altitude_envelope.hpp"
 #include "drone_city_nav/mppi/mppi_reference.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
 #include "drone_city_nav/occupied_collision_oracle_3d.hpp"
 
 #include <cmath>
+#include <cstddef>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "execution_route_snapshot_3d_internal.hpp"
@@ -29,10 +31,13 @@ bool stationaryHoldRawSafe(
   const mppi::Control& control = execution_input.previousControl();
   const FootprintBodyAxis axis =
       bodyAxisFromWorldAcceleration(Vec3{control.ax, control.ay, control.az});
+  const std::optional<LaunchSupportContact3D>* const launch_support_owner =
+      observed_raw_world != nullptr
+          ? std::addressof(observed_raw_world->launchSupportContact())
+          : nullptr;
   const LaunchSupportContact3D* const launch_support =
-      observed_raw_world != nullptr &&
-              observed_raw_world->launchSupportContact().has_value()
-          ? std::addressof(*observed_raw_world->launchSupportContact())
+      launch_support_owner != nullptr && launch_support_owner->has_value()
+          ? std::addressof(**launch_support_owner)
           : nullptr;
   const OccupiedCollisionOracle3D oracle{OccupiedCollisionWorld3D{
       .observed_occupancy = observed_raw_world != nullptr
@@ -163,36 +168,41 @@ execution_route_snapshot_3d_internal::applyTransferToExecutionHoldCommand3D(
   const DirectTrackingFiniteExecution3D* const direct_execution =
       current.directTrackingExecution();
   const StationaryExecutionHold3D* const resident_hold = current.stationaryHold();
-  if ((route_execution != nullptr) + (direct_execution != nullptr) +
-          (resident_hold != nullptr) !=
-      1) {
+  const std::size_t source_count =
+      static_cast<std::size_t>(route_execution != nullptr) +
+      static_cast<std::size_t>(direct_execution != nullptr) +
+      static_cast<std::size_t>(resident_hold != nullptr);
+  if (source_count != 1U) {
     return transitionFailure(
         ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
   }
-  const mppi::FiniteHorizon* const source_horizon =
-      route_execution != nullptr    ? route_execution->horizon.get()
-      : direct_execution != nullptr ? direct_execution->horizon.get()
-                                    : nullptr;
-  const std::shared_ptr<const VersionedExecutionInput3D> source_input =
-      route_execution != nullptr    ? route_execution->execution_input
-      : direct_execution != nullptr ? direct_execution->execution_input
-                                    : resident_hold->terminal_execution_input;
-  const VersionedObservedRawWorld3D* const source_observed =
-      route_execution != nullptr    ? route_execution->observed_raw_world.get()
-      : direct_execution != nullptr ? direct_execution->observed_raw_world.get()
-                                    : resident_hold->observed_raw_world.get();
-  const VersionedStaticWorld3D* const source_static =
-      route_execution != nullptr    ? route_execution->static_world.get()
-      : direct_execution != nullptr ? direct_execution->static_world.get()
-                                    : resident_hold->static_world.get();
-  const VersionedLatestLidarEvidence3D* const source_lidar =
-      route_execution != nullptr    ? route_execution->latest_lidar_evidence.get()
-      : direct_execution != nullptr ? direct_execution->latest_lidar_evidence.get()
-                                    : resident_hold->latest_lidar_evidence.get();
-  const VersionedExecutionValidationPolicy3D* const source_policy =
-      route_execution != nullptr    ? route_execution->validation_policy.get()
-      : direct_execution != nullptr ? direct_execution->validation_policy.get()
-                                    : resident_hold->validation_policy.get();
+  const mppi::FiniteHorizon* source_horizon{nullptr};
+  std::shared_ptr<const VersionedExecutionInput3D> source_input;
+  const VersionedObservedRawWorld3D* source_observed{nullptr};
+  const VersionedStaticWorld3D* source_static{nullptr};
+  const VersionedLatestLidarEvidence3D* source_lidar{nullptr};
+  const VersionedExecutionValidationPolicy3D* source_policy{nullptr};
+  if (route_execution != nullptr) {
+    source_horizon = route_execution->horizon.get();
+    source_input = route_execution->execution_input;
+    source_observed = route_execution->observed_raw_world.get();
+    source_static = route_execution->static_world.get();
+    source_lidar = route_execution->latest_lidar_evidence.get();
+    source_policy = route_execution->validation_policy.get();
+  } else if (direct_execution != nullptr) {
+    source_horizon = direct_execution->horizon.get();
+    source_input = direct_execution->execution_input;
+    source_observed = direct_execution->observed_raw_world.get();
+    source_static = direct_execution->static_world.get();
+    source_lidar = direct_execution->latest_lidar_evidence.get();
+    source_policy = direct_execution->validation_policy.get();
+  } else {
+    source_input = resident_hold->terminal_execution_input;
+    source_observed = resident_hold->observed_raw_world.get();
+    source_static = resident_hold->static_world.get();
+    source_lidar = resident_hold->latest_lidar_evidence.get();
+    source_policy = resident_hold->validation_policy.get();
+  }
   if (source_input == nullptr || source_lidar == nullptr || source_policy == nullptr ||
       certification.execution_input == nullptr ||
       executionInputProgressRelation(*certification.execution_input, *source_input) ==

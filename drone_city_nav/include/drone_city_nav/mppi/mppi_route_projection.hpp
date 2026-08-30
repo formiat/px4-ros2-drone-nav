@@ -5,6 +5,7 @@
 #include <cfloat>
 #include <cmath>
 #include <cstddef>
+#include <span>
 
 namespace drone_city_nav::mppi {
 

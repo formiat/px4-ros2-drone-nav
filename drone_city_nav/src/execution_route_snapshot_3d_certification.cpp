@@ -1,5 +1,5 @@
 #include "drone_city_nav/execution_horizon_timing.hpp"
-#include "drone_city_nav/execution_route_snapshot_3d.hpp"
+#include "drone_city_nav/execution_route_certification_3d.hpp"
 #include "drone_city_nav/mppi/mppi_reference.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
 #include "drone_city_nav/producer_instance_id.hpp"
@@ -46,6 +46,7 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
   }
   RouteActivationObservation3D owned_observation = activation.observation;
   owned_observation.flight_envelope = activation.validation_policy->flightEnvelope();
+  const LaunchSupportContact3D* observed_launch_support{nullptr};
   if (requires_observed_raw_certificate) {
     if (activation.static_world != nullptr ||
         activation.observed_raw_world == nullptr ||
@@ -62,10 +63,11 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
         activation.observed_raw_world->version().producer_instance_id;
     owned_observation.latest_raw_revision =
         activation.observed_raw_world->version().revision;
-    owned_observation.launch_support_contact =
-        activation.observed_raw_world->launchSupportContact().has_value()
-            ? &*activation.observed_raw_world->launchSupportContact()
-            : nullptr;
+    const std::optional<LaunchSupportContact3D>& launch_support =
+        activation.observed_raw_world->launchSupportContact();
+    observed_launch_support =
+        launch_support.has_value() ? std::addressof(*launch_support) : nullptr;
+    owned_observation.launch_support_contact = observed_launch_support;
   } else {
     if (activation.observed_raw_world != nullptr ||
         activation.static_world == nullptr || !activation.static_world->valid() ||
@@ -126,10 +128,7 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
         .observed_occupancy = &activation.observed_raw_world->occupancy(),
         .occupied_content_fingerprint =
             activation.observed_raw_world->occupiedContentFingerprint(),
-        .launch_support_contact =
-            activation.observed_raw_world->launchSupportContact().has_value()
-                ? &*activation.observed_raw_world->launchSupportContact()
-                : nullptr,
+        .launch_support_contact = observed_launch_support,
     };
   } else {
     tracking_tube_world = TrackingErrorTubeWorld3D{

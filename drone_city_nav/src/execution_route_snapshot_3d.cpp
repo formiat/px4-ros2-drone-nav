@@ -1,6 +1,5 @@
-#include "drone_city_nav/execution_route_snapshot_3d.hpp"
-
 #include "drone_city_nav/execution_horizon_timing.hpp"
+#include "drone_city_nav/execution_route_certification_3d.hpp"
 #include "drone_city_nav/mppi/mppi_altitude_envelope.hpp"
 #include "drone_city_nav/mppi/mppi_reference.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
@@ -108,18 +107,18 @@ bool ObservedRawRouteCertificate3D::validFor(
                               route_end_station_m);
 }
 
-bool compiledTrajectoryValid3D(const CompiledTrajectory3D& trajectory,
+bool compiledTrajectoryValid3D(const CompiledTrajectory3D& geometry,
                                const ActivatedRouteIdentity3D& identity) noexcept {
-  return compiledTrajectoryResourcesValid3D(trajectory, identity.generation) &&
+  return compiledTrajectoryResourcesValid3D(geometry, identity.generation) &&
          identity.generation != 0U && identity.proposal.route_fingerprint != 0U &&
-         trajectory.materialized_route_fingerprint ==
+         geometry.materialized_route_fingerprint ==
              identity.proposal.route_fingerprint &&
-         trajectory.route->size() == identity.proposal.route_sample_count &&
-         trajectory.compiled_trajectory_revision != 0U &&
-         trajectory.compiled_trajectory_revision ==
-             compiledTrajectoryRevision3D(trajectory) &&
-         endpointSpeedProfileMatchesSemantics3D(trajectory, identity.proposal) &&
-         compiledTrajectoryPassageRevision3D(trajectory) != 0U;
+         geometry.route->size() == identity.proposal.route_sample_count &&
+         geometry.compiled_trajectory_revision != 0U &&
+         geometry.compiled_trajectory_revision ==
+             compiledTrajectoryRevision3D(geometry) &&
+         endpointSpeedProfileMatchesSemantics3D(geometry, identity.proposal) &&
+         compiledTrajectoryPassageRevision3D(geometry) != 0U;
 }
 
 bool CertifiedRouteSuffix3D::valid() const noexcept {
@@ -579,57 +578,58 @@ bool ExecutionPlan3D::valid() const noexcept {
                    candidate_route.endStationM();
       };
 
-  return std::visit(
-      [this, &route_execution_valid,
-       &certified_endpoint_stop](const auto& plan) noexcept {
-        using Plan = std::remove_cvref_t<decltype(plan)>;
-        if constexpr (std::is_same_v<Plan, FollowingPlan3D>) {
-          return route_execution_valid(plan.route, plan.execution) &&
-                 (plan.execution.command_horizon.kind ==
-                      FiniteExecutionKind3D::kNominal ||
-                  plan.execution.command_horizon.kind ==
-                      FiniteExecutionKind3D::kRetained) &&
-                 !finiteExecutionValidatedAgainstNewerRawWorld(
-                     plan.execution.command_horizon);
-        } else if constexpr (std::is_same_v<Plan, DirectTrackingPlan3D>) {
-          return plan.execution.valid() &&
-                 plan.execution.source_snapshot_version < version;
-        } else if constexpr (std::is_same_v<Plan, BrakingPlan3D>) {
-          if (!plan.execution.validFor(std::addressof(plan.route)) ||
-              plan.execution.source_snapshot_version >= version ||
-              plan.execution.kind != FiniteExecutionKind3D::kEmergencyBrakeTail ||
-              plan.execution.revalidation_required) {
-            return false;
-          }
-          const ExecutionInputProgressRelation3D relation =
-              executionInputProgressRelation(*plan.route.progress.execution_input,
-                                             *plan.execution.execution_input);
-          return relation == ExecutionInputProgressRelation3D::kReplay;
-        } else if constexpr (std::is_same_v<Plan, StationaryHoldPlan3D>) {
-          if (const auto* hold = std::get_if<StationaryExecutionHold3D>(&plan.owner)) {
-            return hold->valid() && hold->hold_id == execution_owner_epoch;
-          }
-          const auto& certified = std::get<CertifiedTerminalHoldPlan3D>(plan.owner);
-          return certified.route.planned_endpoint_semantics !=
-                     RouteEndpointSemantics3D::kContinuation &&
-                 certified_endpoint_stop(certified.route, certified.execution);
-        } else if constexpr (std::is_same_v<Plan, AwaitingSuccessorPlan3D>) {
-          if (std::holds_alternative<EmptyAwaitingSuccessorPlan3D>(plan.owner)) {
-            return true;
-          }
-          if (const auto* suspended = std::get_if<SuspendedRoutePlan3D>(&plan.owner)) {
-            return suspended->route.valid() &&
-                   suspended->route.progress.execution_input != nullptr;
-          }
-          const auto& continuation = std::get<ContinuationStopPlan3D>(plan.owner);
-          return continuation.route.planned_endpoint_semantics ==
-                     RouteEndpointSemantics3D::kContinuation &&
-                 certified_endpoint_stop(continuation.route, continuation.execution);
-        } else {
-          return true;
-        }
-      },
-      state);
+  if (const auto* plan = std::get_if<FollowingPlan3D>(&state)) {
+    return route_execution_valid(plan->route, plan->execution) &&
+           (plan->execution.command_horizon.kind == FiniteExecutionKind3D::kNominal ||
+            plan->execution.command_horizon.kind == FiniteExecutionKind3D::kRetained) &&
+           !finiteExecutionValidatedAgainstNewerRawWorld(
+               plan->execution.command_horizon);
+  }
+  if (const auto* plan = std::get_if<DirectTrackingPlan3D>(&state)) {
+    return plan->execution.valid() && plan->execution.source_snapshot_version < version;
+  }
+  if (const auto* plan = std::get_if<BrakingPlan3D>(&state)) {
+    if (!plan->execution.validFor(std::addressof(plan->route)) ||
+        plan->execution.source_snapshot_version >= version ||
+        plan->execution.kind != FiniteExecutionKind3D::kEmergencyBrakeTail ||
+        plan->execution.revalidation_required) {
+      return false;
+    }
+    const ExecutionInputProgressRelation3D relation = executionInputProgressRelation(
+        *plan->route.progress.execution_input, *plan->execution.execution_input);
+    return relation == ExecutionInputProgressRelation3D::kReplay;
+  }
+  if (const auto* plan = std::get_if<StationaryHoldPlan3D>(&state)) {
+    if (plan->owner.valueless_by_exception()) {
+      return false;
+    }
+    if (const auto* hold = std::get_if<StationaryExecutionHold3D>(&plan->owner)) {
+      return hold->valid() && hold->hold_id == execution_owner_epoch;
+    }
+    const auto* certified = std::get_if<CertifiedTerminalHoldPlan3D>(&plan->owner);
+    return certified != nullptr &&
+           certified->route.planned_endpoint_semantics !=
+               RouteEndpointSemantics3D::kContinuation &&
+           certified_endpoint_stop(certified->route, certified->execution);
+  }
+  if (const auto* plan = std::get_if<AwaitingSuccessorPlan3D>(&state)) {
+    if (plan->owner.valueless_by_exception()) {
+      return false;
+    }
+    if (std::holds_alternative<EmptyAwaitingSuccessorPlan3D>(plan->owner)) {
+      return true;
+    }
+    if (const auto* suspended = std::get_if<SuspendedRoutePlan3D>(&plan->owner)) {
+      return suspended->route.valid() &&
+             suspended->route.progress.execution_input != nullptr;
+    }
+    const auto* continuation = std::get_if<ContinuationStopPlan3D>(&plan->owner);
+    return continuation != nullptr &&
+           continuation->route.planned_endpoint_semantics ==
+               RouteEndpointSemantics3D::kContinuation &&
+           certified_endpoint_stop(continuation->route, continuation->execution);
+  }
+  return std::holds_alternative<RevokedPlan3D>(state);
 }
 
 bool ExecutionPlan3D::publishable() const noexcept {
@@ -655,7 +655,7 @@ std::uint64_t ExecutionPlan3D::routeGenerationHighWater() const noexcept {
 }
 
 VersionedObservedRawWorld3D::VersionedObservedRawWorld3D(
-    CaptureToken, RawMapVersion version,
+    CaptureToken /*capture_token*/, RawMapVersion version,
     std::shared_ptr<const ObservedOccupancyGrid3D> occupancy,
     std::shared_ptr<const OccupancyGrid3D> occupied_snapshot,
     const std::uint64_t observation_content_fingerprint,
@@ -667,7 +667,7 @@ VersionedObservedRawWorld3D::VersionedObservedRawWorld3D(
       occupied_snapshot_{std::move(occupied_snapshot)},
       observation_content_fingerprint_{observation_content_fingerprint},
       occupied_content_fingerprint_{occupied_content_fingerprint},
-      proprioceptive_free_space_seed_{std::move(proprioceptive_free_space_seed)},
+      proprioceptive_free_space_seed_{proprioceptive_free_space_seed},
       launch_support_contact_{std::move(launch_support_contact)} {
   content_fingerprint_ =
       occupancy_ == nullptr
@@ -687,7 +687,7 @@ std::shared_ptr<const VersionedObservedRawWorld3D> VersionedObservedRawWorld3D::
     std::optional<LaunchSupportContact3D> launch_support_contact) {
   return captureOwned(
       version, std::make_shared<const ObservedOccupancyGrid3D>(occupancy),
-      std::move(proprioceptive_free_space_seed), std::move(launch_support_contact));
+      proprioceptive_free_space_seed, std::move(launch_support_contact));
 }
 
 std::shared_ptr<const VersionedObservedRawWorld3D>
@@ -720,7 +720,7 @@ VersionedObservedRawWorld3D::captureOwned(
   auto result = std::make_shared<const VersionedObservedRawWorld3D>(
       CaptureToken{}, version, std::move(occupancy), occupied_snapshot,
       observation_content_fingerprint, occupied_content_fingerprint,
-      std::move(proprioceptive_free_space_seed), std::move(launch_support_contact));
+      proprioceptive_free_space_seed, std::move(launch_support_contact));
   if (!result->valid()) {
     return nullptr;
   }
@@ -774,7 +774,7 @@ VersionedObservedRawWorld3D::deriveRouteEvidence(
   auto result = std::make_shared<const VersionedObservedRawWorld3D>(
       CaptureToken{}, version_, occupancy_, occupied_snapshot_,
       observation_content_fingerprint_, occupied_content_fingerprint_,
-      std::move(proprioceptive_free_space_seed), std::move(launch_support_contact));
+      proprioceptive_free_space_seed, std::move(launch_support_contact));
   return result->valid() && result->sharesObservationOwner(*this) &&
                  result->occupied_snapshot_ == occupied_snapshot_
              ? result
@@ -803,7 +803,7 @@ bool VersionedObservedRawWorld3D::valid() const noexcept {
 }
 
 VersionedStaticWorld3D::VersionedStaticWorld3D(
-    CaptureToken, NavigationWorldCertificate3D certificate,
+    CaptureToken /*capture_token*/, NavigationWorldCertificate3D certificate,
     std::shared_ptr<const OccupancyGrid3D> occupancy,
     const std::uint64_t content_fingerprint)
     : certificate_{certificate},

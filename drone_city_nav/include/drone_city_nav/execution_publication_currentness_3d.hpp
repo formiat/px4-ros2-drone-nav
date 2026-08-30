@@ -1,6 +1,6 @@
 #pragma once
 
-#include "drone_city_nav/execution_route_snapshot_3d.hpp"
+#include "drone_city_nav/execution_plan_3d.hpp"
 
 #include <cstdint>
 #include <memory>

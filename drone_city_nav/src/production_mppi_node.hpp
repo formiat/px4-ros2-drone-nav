@@ -9,7 +9,7 @@
 #include "drone_city_nav/direct_tracking_maneuver_lifecycle.hpp"
 #include "drone_city_nav/distance_field_3d.hpp"
 #include "drone_city_nav/execution_evidence_3d.hpp"
-#include "drone_city_nav/execution_route_snapshot_3d.hpp"
+#include "drone_city_nav/execution_route_store_3d.hpp"
 #include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/free_space_topology_3d.hpp"
 #include "drone_city_nav/intercept_guidance.hpp"
@@ -53,7 +53,6 @@
 #include "drone_city_nav/raw_obstacle_delta.hpp"
 #include "drone_city_nav/rolling_route_telemetry_3d.hpp"
 #include "drone_city_nav/route_3d.hpp"
-#include "drone_city_nav/route_execution_manager_3d.hpp"
 #include "drone_city_nav/route_lifecycle_3d.hpp"
 #include "drone_city_nav/route_planning_3d.hpp"
 #include "drone_city_nav/route_progress_3d.hpp"
@@ -94,6 +93,7 @@
 #include <vector>
 
 #include "production_mppi_execution_control.hpp"
+#include "production_mppi_node_execution_types.hpp"
 #include "production_mppi_node_types.hpp"
 #include "production_mppi_raw_world.hpp"
 #include "production_planner_search_transaction_3d.hpp"
@@ -111,8 +111,6 @@ struct TrajectoryCompilerConfig3D;
 struct ProductionMppiHorizonCommit;
 enum class ProductionMppiHoldOwnershipTransition3D : std::uint8_t;
 enum class ProductionMppiHorizonCommitStatus : std::uint8_t;
-
-#include "production_mppi_node_execution_types.hpp"
 
 struct ProductionMppiRvizSnapshot {
   std::vector<mppi::State> candidate_horizon;

@@ -1,5 +1,5 @@
 #include "drone_city_nav/certified_route_splice_3d.hpp"
-#include "drone_city_nav/execution_route_snapshot_3d.hpp"
+#include "drone_city_nav/execution_route_transitions_3d.hpp"
 
 #include <memory>
 #include <utility>
@@ -21,8 +21,8 @@ applyCommand(const ExecutionPlan3D& current, ActivateCertifiedRouteCommand3D com
 [[nodiscard]] ExecutionRouteTransitionResult3D
 applyCommand(const ExecutionPlan3D& current, AdvanceCertifiedRouteCommand3D command) {
   return applyAdvanceCertifiedRouteCommand3D(
-      current, command.guard, std::move(command.observation),
-      std::move(command.execution_input), std::move(command.observed_raw_world));
+      current, command.guard, command.observation, std::move(command.execution_input),
+      std::move(command.observed_raw_world));
 }
 
 [[nodiscard]] ExecutionRouteTransitionResult3D
@@ -134,7 +134,7 @@ ExecutionRouteTransitionResult3D advanceCertifiedRoute3D(
   return reduceExecutionPlan3D(current,
                                AdvanceCertifiedRouteCommand3D{
                                    .guard = guard,
-                                   .observation = std::move(observation),
+                                   .observation = observation,
                                    .execution_input = std::move(execution_input),
                                    .observed_raw_world = std::move(observed_raw_world),
                                });

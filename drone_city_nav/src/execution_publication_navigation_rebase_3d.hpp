@@ -1,6 +1,6 @@
 #pragma once
 
-#include "drone_city_nav/execution_route_snapshot_3d.hpp"
+#include "drone_city_nav/execution_route_transitions_3d.hpp"
 #include "drone_city_nav/mppi/finite_execution_path.hpp"
 #include "drone_city_nav/pending_certified_route_3d.hpp"
 

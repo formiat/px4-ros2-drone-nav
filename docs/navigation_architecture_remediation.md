@@ -54,8 +54,20 @@ These boundaries are now enforced by the shared-library targets
 `drone_city_nav_control`, and `drone_city_nav_runtime`. Every layer links
 only its immediate predecessor and uses `--no-undefined`; configure-time
 guards reject any additional internal edge. `drone_city_nav_core` remains an
-interface-only compatibility umbrella for downstream targets during API
-migration and owns no translation units.
+interface-only compatibility umbrella for in-package targets during API
+migration and owns no translation units. The internal layer targets and
+hand-written headers are not exported as a downstream CMake API; rosidl-generated
+messages and installed ROS nodes/components are the package's supported external
+surface.
+
+Execution contracts are physically split into
+`execution_route_model_3d.hpp`, `execution_route_certificates_3d.hpp`,
+`execution_plan_3d.hpp`, `execution_route_certification_3d.hpp`,
+`execution_route_transitions_3d.hpp`, and `execution_route_store_3d.hpp`.
+`RouteExecutionManager3D` is the canonical store owner. The former snapshot and
+manager headers remain include-only compatibility umbrellas and have no internal
+production consumers. Every hand-written public-path and private header is
+compiled as an independent translation unit in test builds.
 
 Optional passage and cooperative metadata decorate a compiled route downstream;
 they are not mandatory members of the base trajectory and do not produce a
@@ -266,12 +278,12 @@ no mixed authority revision is observable.
 - [ ] Extract world, planning, trajectory, execution, and control services from
   `ProductionMppiNode`; retain only composition and ROS I/O in the node.
 - [x] Enforce the internal dependency graph with CMake targets.
-- [ ] Stop installing private implementation headers as public API.
+- [x] Stop installing private implementation headers as public API.
 - [x] Register every production-relevant GTest source and remove the stale test
   for the retired raw-snapshot/risk-field protocol.
 - [ ] Replace source-text transaction checks with executable state-machine and
   concurrency tests.
-- [ ] Keep public and private headers self-contained and retain a temporary
+- [x] Keep public and private headers self-contained and retain a temporary
   umbrella include only where migration compatibility requires it.
 - [ ] Pass formatting, static analysis, C++ tests, and script tests after every
   coherent stage.
