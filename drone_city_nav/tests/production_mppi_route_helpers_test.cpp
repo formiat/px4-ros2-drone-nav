@@ -9,7 +9,6 @@
 
 #include "production_mppi_route_activation.hpp"
 #include "production_mppi_route_helpers.hpp"
-#include "production_mppi_route_selection.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -38,18 +37,6 @@ TEST(ProductionMppiRouteHelpersTest,
   ASSERT_EQ(route->size(), 3U);
   EXPECT_FLOAT_EQ(route->front().reference_speed_mps, 5.0F);
   EXPECT_FLOAT_EQ(route->back().reference_speed_mps, 5.0F);
-}
-
-TEST(ProductionMppiRouteHelpersTest,
-     OnlyNormalExtensionRequiresAResidentCertifiedStitch) {
-  EXPECT_EQ(productionRouteSearchContinuity3D(true, false),
-            ProductionRouteSearchContinuity3D::kCertifiedStitch);
-  EXPECT_EQ(productionRouteSearchContinuity3D(false, true),
-            ProductionRouteSearchContinuity3D::kCurrentState);
-  EXPECT_EQ(productionRouteSearchContinuity3D(false, false),
-            ProductionRouteSearchContinuity3D::kCurrentState);
-  EXPECT_EQ(productionRouteSearchContinuity3D(true, true),
-            ProductionRouteSearchContinuity3D::kCurrentState);
 }
 
 TEST(ProductionMppiRouteHelpersTest, RealStopsTaperTheNominalProfileToRest) {

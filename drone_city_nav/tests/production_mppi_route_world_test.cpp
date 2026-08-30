@@ -31,6 +31,9 @@ namespace {
       RawMapVersion{
           .producer_instance_id = 7U, .base_snapshot_revision = 400U, .revision = 451U},
       world.observed_occupancy, std::nullopt, std::nullopt);
+  world.raw_occupied_fingerprint =
+      world.observed_raw_world_owner->occupiedContentFingerprint();
+  world.planner_full_reset = true;
   world.observed_esdf_resource = ObservedEsdfResource3D{
       .local_occupancy = std::make_shared<const ObservedOccupancyGrid3D>(bounds),
       .known_obstacle_distance = distance.field,
@@ -63,18 +66,7 @@ namespace {
 
 [[nodiscard]] std::shared_ptr<const PersistentPlannerWorld3D>
 observedPlannerWorld(const WorldSnapshot3D& world) {
-  return std::make_shared<const PersistentPlannerWorld3D>(PersistentPlannerWorld3D{
-      .observed_occupancy = world.observed_occupancy,
-      .static_occupancy = nullptr,
-      .proprioceptive_free_space_seed = std::nullopt,
-      .launch_support_contact = std::nullopt,
-      .dirty_chunks = {},
-      .producer_instance_id = world.producer_instance_id,
-      .revision = world.source_raw_revision,
-      .occupied_fingerprint =
-          world.observed_raw_world_owner->occupiedContentFingerprint(),
-      .full_reset = true,
-  });
+  return captureResidentPlannerWorld3D(world);
 }
 
 TEST(ProductionMppiRouteWorldTest, ExactObservedResourcesFormOneCoherentGeneration) {
@@ -119,7 +111,82 @@ TEST(ProductionMppiRouteWorldTest,
   const std::shared_ptr<const PersistentPlannerWorld3D> resident =
       observedPlannerWorld(world);
 
-  EXPECT_EQ(routeSearchPlannerWorld3D(resident, nullptr, false), resident);
+  ASSERT_NE(resident, nullptr);
+  EXPECT_EQ(resident->observed_occupancy, world.observed_occupancy);
+  EXPECT_EQ(resident->revision, world.source_raw_revision);
+  EXPECT_EQ(resident->occupied_fingerprint, world.raw_occupied_fingerprint);
+  EXPECT_TRUE(resident->full_reset);
+}
+
+TEST(ProductionMppiRouteWorldTest,
+     InitialPlannerTransactionOwnsOnlyExactImmutableInputs) {
+  auto world = std::make_shared<const WorldSnapshot3D>(coherentObservedWorld());
+  const std::shared_ptr<const PersistentPlannerWorld3D> planner_world =
+      captureResidentPlannerWorld3D(*world);
+  const StaticRouteObjective objective{
+      .goal = {10.0, 20.0, 30.0},
+      .mission_epoch = 9U,
+      .available = true,
+  };
+
+  const std::shared_ptr<const PlannerSearchTransaction3D> transaction =
+      makePlannerSearchTransaction3D(world, planner_world, objective,
+                                     StaticRouteSearchRequestIdentity{
+                                         .kind = StaticRouteSearchRequestKind::kInitial,
+                                     });
+
+  ASSERT_NE(transaction, nullptr);
+  EXPECT_EQ(transaction->world, world);
+  EXPECT_EQ(transaction->planner_world, planner_world);
+  EXPECT_EQ(transaction->objective.mission_epoch, 9U);
+  EXPECT_TRUE(transaction->initial());
+  EXPECT_FALSE(transaction->extension());
+  EXPECT_FALSE(transaction->replacement());
+}
+
+TEST(ProductionMppiRouteWorldTest,
+     ExtensionPlannerTransactionRequiresAnExactContinuityBase) {
+  auto world = std::make_shared<const WorldSnapshot3D>(coherentObservedWorld());
+  const StaticRouteObjective objective{
+      .goal = {10.0, 20.0, 30.0},
+      .mission_epoch = 9U,
+      .available = true,
+  };
+
+  EXPECT_EQ(makePlannerSearchTransaction3D(
+                world, captureResidentPlannerWorld3D(*world), objective,
+                StaticRouteSearchRequestIdentity{
+                    .kind = StaticRouteSearchRequestKind::kExtension,
+                    .base_route_generation = 4U,
+                }),
+            nullptr);
+}
+
+TEST(ProductionMppiRouteWorldTest,
+     PlannerTransactionRejectsIncoherentRequestIdentityAndReason) {
+  auto world = std::make_shared<const WorldSnapshot3D>(coherentObservedWorld());
+  const std::shared_ptr<const PersistentPlannerWorld3D> planner_world =
+      captureResidentPlannerWorld3D(*world);
+  const StaticRouteObjective objective{
+      .goal = {10.0, 20.0, 30.0},
+      .mission_epoch = 9U,
+      .available = true,
+  };
+
+  EXPECT_EQ(
+      makePlannerSearchTransaction3D(world, planner_world, objective,
+                                     StaticRouteSearchRequestIdentity{
+                                         .kind = StaticRouteSearchRequestKind::kInitial,
+                                         .base_route_generation = 4U,
+                                     }),
+      nullptr);
+  EXPECT_EQ(
+      makePlannerSearchTransaction3D(world, planner_world, objective,
+                                     StaticRouteSearchRequestIdentity{
+                                         .kind = StaticRouteSearchRequestKind::kReplan,
+                                         .base_route_generation = 4U,
+                                     }),
+      nullptr);
 }
 
 TEST(ProductionMppiRouteWorldTest,
@@ -149,10 +216,23 @@ TEST(ProductionMppiRouteWorldTest,
   ASSERT_NE(route_search_planner_world, nullptr);
   EXPECT_TRUE(route_search_planner_world->full_reset);
   EXPECT_EQ(route_search_planner_world->revision, 470U);
-  EXPECT_EQ(routeSearchPlannerWorld3D(resident, route_search_planner_world, true),
-            route_search_planner_world);
-  EXPECT_EQ(routeSearchPlannerWorld3D(resident, route_search_planner_world, false),
-            resident);
+  EXPECT_NE(route_search_planner_world, resident);
+  const std::shared_ptr<const PlannerSearchTransaction3D> transaction =
+      makePlannerSearchTransaction3D(std::make_shared<const WorldSnapshot3D>(world),
+                                     route_search_planner_world,
+                                     StaticRouteObjective{
+                                         .goal = {10.0, 20.0, 30.0},
+                                         .mission_epoch = 9U,
+                                         .available = true,
+                                     },
+                                     StaticRouteSearchRequestIdentity{
+                                         .kind = StaticRouteSearchRequestKind::kReplan,
+                                         .base_route_generation = 4U,
+                                     },
+                                     std::nullopt, RouteReleaseReason3D::kBlocked);
+  ASSERT_NE(transaction, nullptr);
+  EXPECT_TRUE(transaction->replacement());
+  EXPECT_EQ(transaction->planner_world, route_search_planner_world);
   EXPECT_TRUE(productionWorldGenerationCoherent(world));
   EXPECT_EQ(world.local_world_generation.raw_map.revision, 451U);
   EXPECT_EQ(navigationWorldCertificate3D(world).esdf_source_raw_revision, 451U);
@@ -210,7 +290,11 @@ TEST(ProductionMppiRouteWorldTest, ObservedCoverageMustMatchExactWorldResources)
 
 TEST(ProductionMppiRouteWorldTest, StaticWorldUsesItsEsdfAsRawGenerationAnchor) {
   WorldSnapshot3D world;
-  world.revision = 77U;
+  world.static_occupancy = std::make_shared<const OccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 1.0, 4, 4, 4}, 77U);
+  world.revision = world.static_occupancy->fingerprint();
+  world.source_occupied_fingerprint = world.static_occupancy->contentFingerprint();
+  world.raw_occupied_fingerprint = world.source_occupied_fingerprint;
   world.grid = mppi::EsdfGrid{4, 4, 1.0F, 0.0F, 0.0F, 4, 0.0F};
   world.distances_m = std::make_shared<const std::vector<float>>(64U, 2.0F);
   world.local_world_generation = LocalWorldGeneration{
@@ -222,6 +306,11 @@ TEST(ProductionMppiRouteWorldTest, StaticWorldUsesItsEsdfAsRawGenerationAnchor) 
   };
 
   EXPECT_TRUE(productionWorldGenerationCoherent(world));
+  const std::shared_ptr<const PersistentPlannerWorld3D> planner_world =
+      captureResidentPlannerWorld3D(world);
+  ASSERT_NE(planner_world, nullptr);
+  EXPECT_EQ(planner_world->static_occupancy, world.static_occupancy);
+  EXPECT_EQ(planner_world->occupied_fingerprint, world.raw_occupied_fingerprint);
   --world.local_world_generation.raw_map.base_snapshot_revision;
   EXPECT_EQ(assessProductionWorldGeneration(world),
             ProductionWorldGenerationStatus::kRawVersionMismatch);

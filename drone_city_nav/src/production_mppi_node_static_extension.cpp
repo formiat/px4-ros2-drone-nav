@@ -77,7 +77,6 @@ void ProductionMppiNode::bindStaticRouteRequestToExecution(
     ProductionMppiPreparedEsdf& request, const CertifiedRouteSuffix3D& active_route,
     const RouteProgressProjection3D& projection) {
   const ExecutionRouteGeometry3D& geometry = *active_route.geometry;
-  request.bound_route_instance_id = active_route.route_instance_id;
   request.route_generation = active_route.identity.generation;
   request.route_reaches_mission_goal =
       active_route.identity.proposal.reaches_mission_goal;
@@ -158,7 +157,10 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
   }
   const std::shared_ptr<const ProductionNavigationObjective> objective =
       navigationObjective();
-  const Point3 mission_goal = objective ? objective->goal : mission_goal_;
+  if (!objective) {
+    return;
+  }
+  const Point3 mission_goal = objective->goal;
   const Point3 current{navigation.state.x, navigation.state.y, navigation.state.z};
   const Point3 next_planning_goal =
       staticRoutePlanningGoal(current, mission_goal, static_esdf_route_lookahead_m_);
@@ -208,13 +210,25 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
 
   std::uint64_t roi_refresh_sequence = 0U;
   if (decision.request_extension) {
-    auto request = std::make_shared<ProductionMppiPreparedEsdf>(esdf);
-    bindStaticRouteRequestToExecution(*request, active_route, route_projection);
-    if (objective) {
-      request->search_objective = makeStaticRouteObjective(*objective);
+    const StaticRouteSearchRequestIdentity request_identity{
+        .kind = StaticRouteSearchRequestKind::kExtension,
+        .base_route_generation = active_route.identity.generation,
+    };
+    const std::shared_ptr<const PlannerSearchTransaction3D> transaction =
+        makePlannerSearchTransaction3D(
+            esdf.world, captureResidentPlannerWorld3D(*esdf.world),
+            makeStaticRouteObjective(*objective), request_identity,
+            PlannerSearchContinuityBase3D{
+                .route = std::make_shared<const CertifiedRouteSuffix3D>(active_route),
+                .request_projection = route_projection,
+            });
+    if (transaction == nullptr) {
+      RCLCPP_ERROR(get_logger(),
+                   "STATIC_ROUTE_EXTENSION_REQUEST status=rejected_invalid_transaction "
+                   "generation=%" PRIu64,
+                   active_route.identity.generation);
+      return;
     }
-    request->static_route_extension_request = true;
-    request->static_route_extension_base_generation = active_route.identity.generation;
     {
       const std::scoped_lock queue_lock{route_planning_queue_mutex_};
       if (pending_route_planning_work_) {
@@ -227,7 +241,8 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
         return;
       }
       pending_route_planning_work_ = ProductionRoutePlanningWork3D{
-          .world = std::move(request),
+          .transaction = transaction,
+          .world_telemetry = captureWorldBuildTelemetry3D(esdf),
           .continuation_session = nullptr,
       };
     }
@@ -297,6 +312,9 @@ void ProductionMppiNode::requestStaticRouteReplan(
   }
   const std::shared_ptr<const ProductionNavigationObjective> objective =
       navigationObjective();
+  if (!objective) {
+    return;
+  }
   const std::int64_t now_ns = get_clock()->now().nanoseconds();
   const std::shared_ptr<const ExecutionRouteSnapshot3D> execution_snapshot =
       execution_route_store_.snapshot();
@@ -304,7 +322,10 @@ void ProductionMppiNode::requestStaticRouteReplan(
       execution_snapshot != nullptr ? execution_snapshot->routeGenerationHighWater()
                                     : 0U;
 
-  std::shared_ptr<ProductionMppiPreparedEsdf> request;
+  std::shared_ptr<const WorldSnapshot3D> world_snapshot;
+  std::shared_ptr<const PersistentPlannerWorld3D> planner_world;
+  ProductionWorldBuildTelemetry3D world_telemetry;
+  std::uint64_t search_generation{0U};
   std::scoped_lock lifecycle_lock{static_route_extension_mutex_};
   const std::optional<std::uint64_t> superseded_gate =
       static_route_replan_gate_.finishIfSupersededBy(committed_route_generation);
@@ -359,7 +380,7 @@ void ProductionMppiNode::requestStaticRouteReplan(
     }
     const std::uint64_t prepared_route_generation = prepared_esdf_->route_generation;
     constexpr bool snapshot_owned_execution{true};
-    const std::uint64_t search_generation =
+    search_generation =
         staticRouteSearchGeneration(snapshot_owned_execution, prepared_route_generation,
                                     committed_route_generation);
     if (prepared_route_generation == 0U &&
@@ -378,16 +399,9 @@ void ProductionMppiNode::requestStaticRouteReplan(
           search_generation, route_generation, routeReleaseReason3DName(reason));
       return;
     }
-    request = std::make_shared<ProductionMppiPreparedEsdf>(*prepared_esdf_);
-    if (objective) {
-      request->search_objective = makeStaticRouteObjective(*objective);
-    }
-    request->route_generation = search_generation;
-    request->route_release_reason = reason;
-    request->static_route_replan_request = true;
-    request->static_route_replan_base_generation = search_generation;
-    request->static_route_replan_reason = reason;
-    request->route_search_planner_world.reset();
+    world_snapshot = prepared_esdf_->world;
+    world_telemetry = captureWorldBuildTelemetry3D(*prepared_esdf_);
+    planner_world = captureResidentPlannerWorld3D(*world_snapshot);
   }
 
   std::uint64_t dispatched_raw_revision{0U};
@@ -396,21 +410,21 @@ void ProductionMppiNode::requestStaticRouteReplan(
         observed_route_blocked_raw_revision_.load(std::memory_order_acquire);
     const bool latest_raw_overlay_required =
         routeSearchRequiresLatestRawOverlay3D(reason) ||
-        blocked_raw_revision > request->world->source_raw_revision;
+        blocked_raw_revision > world_snapshot->source_raw_revision;
     if (latest_raw_overlay_required) {
       const std::uint64_t minimum_search_raw_revision =
-          std::max(blocked_raw_revision, request->world->source_raw_revision);
+          std::max(blocked_raw_revision, world_snapshot->source_raw_revision);
       const std::shared_ptr<const ProductionMppiRawWorld3D> latest_raw_world =
           latest_raw_world_3d_.load(std::memory_order_acquire);
-      const std::shared_ptr<const PersistentPlannerWorld3D> search_world =
+      const std::shared_ptr<const PersistentPlannerWorld3D> raw_overlay =
           latest_raw_world != nullptr
               ? captureObservedRouteSearchWorld3D(
-                    *latest_raw_world, request->world->proprioceptive_free_space_seed,
-                    request->world->launch_support_contact)
+                    *latest_raw_world, world_snapshot->proprioceptive_free_space_seed,
+                    world_snapshot->launch_support_contact)
               : nullptr;
-      if (search_world == nullptr ||
-          search_world->producer_instance_id != request->world->producer_instance_id ||
-          search_world->revision < minimum_search_raw_revision) {
+      if (raw_overlay == nullptr ||
+          raw_overlay->producer_instance_id != world_snapshot->producer_instance_id ||
+          raw_overlay->revision < minimum_search_raw_revision) {
         RCLCPP_INFO_THROTTLE(
             get_logger(), *get_clock(), 1000,
             "OBSERVED_ROUTE_REPLAN status=deferred_waiting_for_raw_snapshot "
@@ -418,21 +432,20 @@ void ProductionMppiNode::requestStaticRouteReplan(
             " esdf_source_raw_revision=%" PRIu64 " generation=%" PRIu64 " reason=%s",
             blocked_raw_revision,
             latest_raw_world != nullptr ? latest_raw_world->version.revision : 0U,
-            request->world->source_raw_revision,
-            request->static_route_replan_base_generation,
+            world_snapshot->source_raw_revision, search_generation,
             routeReleaseReason3DName(reason));
         return;
       }
-      request->route_search_planner_world = search_world;
+      planner_world = raw_overlay;
       if (blocked_raw_revision != 0U) {
-        dispatched_raw_revision = search_world->revision;
+        dispatched_raw_revision = raw_overlay->revision;
       }
       RCLCPP_INFO(get_logger(),
                   "OBSERVED_ROUTE_REPLAN status=using_raw_search_overlay "
                   "raw_revision=%" PRIu64 " esdf_source_raw_revision=%" PRIu64
                   " blocked_raw_revision=%" PRIu64 " generation=%" PRIu64 " reason=%s",
-                  search_world->revision, request->world->source_raw_revision,
-                  blocked_raw_revision, request->static_route_replan_base_generation,
+                  raw_overlay->revision, world_snapshot->source_raw_revision,
+                  blocked_raw_revision, search_generation,
                   routeReleaseReason3DName(reason));
     }
   }
@@ -440,14 +453,14 @@ void ProductionMppiNode::requestStaticRouteReplan(
   const std::uint64_t required_epoch =
       minimum_tracking_route_mission_epoch_.load(std::memory_order_acquire);
   const std::uint64_t required_sample =
-      objective && objective->mission_epoch == required_epoch
+      objective->mission_epoch == required_epoch
           ? minimum_tracking_route_sample_sequence_.load(std::memory_order_acquire)
           : 0U;
   const StaticRouteSearchContext retry_context{
-      .base_route_generation = request->static_route_replan_base_generation,
+      .base_route_generation = search_generation,
       .search_start =
           Point3{navigation.state.x, navigation.state.y, navigation.state.z},
-      .objective = request->search_objective,
+      .objective = makeStaticRouteObjective(*objective),
       .minimum_tracking_sample_sequence = required_sample,
       .stamp_ns = now_ns,
   };
@@ -477,6 +490,23 @@ void ProductionMppiNode::requestStaticRouteReplan(
     return;
   }
 
+  const StaticRouteSearchRequestIdentity request_identity{
+      .kind = search_generation == 0U ? StaticRouteSearchRequestKind::kInitialRetry
+                                      : StaticRouteSearchRequestKind::kReplan,
+      .base_route_generation = search_generation,
+  };
+  const std::shared_ptr<const PlannerSearchTransaction3D> transaction =
+      makePlannerSearchTransaction3D(world_snapshot, std::move(planner_world),
+                                     makeStaticRouteObjective(*objective),
+                                     request_identity, std::nullopt, reason);
+  if (transaction == nullptr) {
+    RCLCPP_ERROR(get_logger(),
+                 "STATIC_ROUTE_REPLAN_REQUEST status=rejected_invalid_transaction "
+                 "generation=%" PRIu64 " reason=%s",
+                 search_generation, routeReleaseReason3DName(reason));
+    return;
+  }
+
   {
     const std::scoped_lock queue_lock{route_planning_queue_mutex_};
     if (pending_route_planning_work_) {
@@ -484,22 +514,21 @@ void ProductionMppiNode::requestStaticRouteReplan(
           get_logger(), *get_clock(), 1000,
           "STATIC_ROUTE_REPLAN_REQUEST status=deferred_route_queue_busy "
           "generation=%" PRIu64 " reason=%s",
-          request->static_route_replan_base_generation,
-          routeReleaseReason3DName(reason));
+          search_generation, routeReleaseReason3DName(reason));
       return;
     }
-    if (!static_route_replan_gate_.tryBegin(
-            request->static_route_replan_base_generation)) {
-      RCLCPP_INFO_THROTTLE(
-          get_logger(), *get_clock(), 1000,
-          "STATIC_ROUTE_REPLAN_REQUEST status=coalesced_gate_rejected "
-          "generation=%" PRIu64 " in_flight_generation=%" PRIu64 " reason=%s",
-          request->static_route_replan_base_generation,
-          static_route_replan_gate_.generation(), routeReleaseReason3DName(reason));
+    if (!static_route_replan_gate_.tryBegin(search_generation)) {
+      RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
+                           "STATIC_ROUTE_REPLAN_REQUEST status=coalesced_gate_rejected "
+                           "generation=%" PRIu64 " in_flight_generation=%" PRIu64
+                           " reason=%s",
+                           search_generation, static_route_replan_gate_.generation(),
+                           routeReleaseReason3DName(reason));
       return;
     }
     pending_route_planning_work_ = ProductionRoutePlanningWork3D{
-        .world = request,
+        .transaction = transaction,
+        .world_telemetry = world_telemetry,
         .continuation_session = nullptr,
     };
   }
@@ -516,7 +545,7 @@ void ProductionMppiNode::requestStaticRouteReplan(
   RCLCPP_INFO(get_logger(),
               "STATIC_ROUTE_REPLAN_REQUEST status=queued generation=%" PRIu64
               " resident_esdf_revision=%" PRIu64 " retry_trigger=%.*s reason=%s",
-              request->static_route_replan_base_generation, request->world->revision,
+              search_generation, world_snapshot->revision,
               static_cast<int>(staticRouteSearchRetryTriggerName(retry.trigger).size()),
               staticRouteSearchRetryTriggerName(retry.trigger).data(),
               routeReleaseReason3DName(reason));
@@ -592,13 +621,13 @@ void ProductionMppiNode::finishStaticRouteReplan(const std::uint64_t base_genera
 }
 
 void ProductionMppiNode::finishStaticRouteSearch(
-    const ProductionMppiPreparedEsdf& world, const bool route_activated) {
-  if (world.static_route_extension_request) {
-    finishStaticRouteExtension(world.static_route_extension_base_generation,
+    const PlannerSearchTransaction3D& transaction, const bool route_activated) {
+  if (transaction.extension()) {
+    finishStaticRouteExtension(transaction.request.base_route_generation,
                                route_activated);
   }
-  if (world.static_route_replan_request) {
-    finishStaticRouteReplan(world.static_route_replan_base_generation, route_activated);
+  if (transaction.replacement()) {
+    finishStaticRouteReplan(transaction.request.base_route_generation, route_activated);
   }
 }
 

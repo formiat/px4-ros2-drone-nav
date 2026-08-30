@@ -190,8 +190,19 @@ one `shared_ptr<const WorldSnapshot3D>`, topology is an explicitly optional
 derived cache on that snapshot, and route artifacts cannot clear it. Route
 materialization geometrically associates matching topology traversals instead
 of constructing an unconditionally empty decorator list. The checklist item
-remains open until planner transactions, materialized routes, and admission
-reports no longer share the legacy production aggregate.
+remains open until materialized routes and admission reports no longer share the
+legacy production aggregate.
+
+Planner search now owns an immutable `PlannerSearchTransaction3D` containing
+the exact world publication, derived resident planner input or explicit newer
+raw overlay, mission objective, typed request identity, release reason, and an
+optional certified continuity base. Continuation work retains the same
+transaction pointer instead of copying `ProductionMppiPreparedEsdf`. The world
+snapshot also carries the raw occupied fingerprint and exact incremental
+planner predecessor; a skipped publication forces a safe full planner repair
+rather than applying an incomplete dirty-chunk delta. Planner request flags,
+parallel planner-world copies, and search objectives have been removed from the
+legacy aggregate.
 
 - [x] Split publishable incumbent from search progress and continue anytime
   refinement after the first feasible route.

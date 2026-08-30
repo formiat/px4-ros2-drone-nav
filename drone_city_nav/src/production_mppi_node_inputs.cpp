@@ -251,23 +251,31 @@ void ProductionMppiNode::onNavigationReadiness(const std_msgs::msg::Bool& messag
     return;
   }
 
-  std::shared_ptr<ProductionMppiPreparedEsdf> request;
+  std::shared_ptr<const PlannerSearchTransaction3D> transaction;
+  ProductionWorldBuildTelemetry3D world_telemetry;
   {
     const std::scoped_lock lock{world_generation_publication_mutex_, esdf_state_mutex_};
     if (prepared_esdf_ && productionWorldGenerationCoherent(*prepared_esdf_->world) &&
         prepared_esdf_->route_generation == 0U) {
-      request = std::make_shared<ProductionMppiPreparedEsdf>(*prepared_esdf_);
       if (const auto objective = navigationObjective()) {
-        request->search_objective = makeStaticRouteObjective(*objective);
+        transaction = makePlannerSearchTransaction3D(
+            prepared_esdf_->world,
+            captureResidentPlannerWorld3D(*prepared_esdf_->world),
+            makeStaticRouteObjective(*objective),
+            StaticRouteSearchRequestIdentity{
+                .kind = StaticRouteSearchRequestKind::kInitial,
+            });
+        world_telemetry = captureWorldBuildTelemetry3D(*prepared_esdf_);
       }
     }
   }
   bool queued = false;
-  if (request) {
+  if (transaction) {
     const std::scoped_lock lock{route_planning_queue_mutex_};
     if (!pending_route_planning_work_) {
       pending_route_planning_work_ = ProductionRoutePlanningWork3D{
-          .world = std::move(request),
+          .transaction = std::move(transaction),
+          .world_telemetry = world_telemetry,
           .continuation_session = nullptr,
       };
       queued = true;

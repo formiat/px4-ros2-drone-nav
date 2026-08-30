@@ -77,11 +77,6 @@ void ProductionMppiNode::processDiagnostics(
       << " route_assignment_generation=" << esdf.route_objective.assignment_generation
       << " route_target_detection_id=" << esdf.route_objective.target_detection_id
       << " route_target_track_id=" << esdf.route_objective.target_track_id
-      << " search_objective_epoch=" << esdf.search_objective.mission_epoch
-      << " search_objective_sample=" << esdf.search_objective.sample_sequence
-      << " search_assignment_generation=" << esdf.search_objective.assignment_generation
-      << " search_target_detection_id=" << esdf.search_objective.target_detection_id
-      << " search_target_track_id=" << esdf.search_objective.target_track_id
       << " route_reaches_mission_goal="
       << (esdf.route_reaches_mission_goal ? "true" : "false")
       << " route_intent_id=" << esdf.route_intent.id
@@ -96,7 +91,6 @@ void ProductionMppiNode::processDiagnostics(
       << (esdf.route_segment_evidence.known_clearance_observed ? "true" : "false")
       << " goal_capture_latched=" << (snapshot.goal_capture.latched ? "true" : "false")
       << " goal_distance_m=" << snapshot.goal_capture.distance_m
-      << " route_release=" << routeReleaseReason3DName(esdf.route_release_reason)
       << " route_station_m=" << snapshot.route_station_m
       << " route_remaining_m=" << snapshot.route_remaining_m
       << " route_constraint_phase=" << constrainedRoutePhaseName(route_constraint.phase)
@@ -381,13 +375,6 @@ void ProductionMppiNode::processDiagnostics(
          << ",\"route_target_detection_id\":"
          << esdf.route_objective.target_detection_id
          << ",\"route_target_track_id\":" << esdf.route_objective.target_track_id
-         << ",\"search_objective_epoch\":" << esdf.search_objective.mission_epoch
-         << ",\"search_objective_sample\":" << esdf.search_objective.sample_sequence
-         << ",\"search_assignment_generation\":"
-         << esdf.search_objective.assignment_generation
-         << ",\"search_target_detection_id\":"
-         << esdf.search_objective.target_detection_id
-         << ",\"search_target_track_id\":" << esdf.search_objective.target_track_id
          << ",\"route_reaches_mission_goal\":"
          << (esdf.route_reaches_mission_goal ? "true" : "false")
          << ",\"route_intent_id\":" << esdf.route_intent.id
@@ -403,8 +390,6 @@ void ProductionMppiNode::processDiagnostics(
          << ",\"goal_capture_latched\":"
          << (snapshot.goal_capture.latched ? "true" : "false")
          << ",\"goal_distance_m\":" << snapshot.goal_capture.distance_m
-         << ",\"route_release\":\""
-         << routeReleaseReason3DName(esdf.route_release_reason) << '"'
          << ",\"route_station_m\":" << snapshot.route_station_m
          << ",\"route_remaining_m\":" << snapshot.route_remaining_m
          << ",\"route_constraint_phase\":\""

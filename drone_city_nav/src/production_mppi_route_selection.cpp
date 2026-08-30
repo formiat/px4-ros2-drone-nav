@@ -1,5 +1,3 @@
-#include "production_mppi_route_selection.hpp"
-
 #include <algorithm>
 #include <chrono>
 #include <cinttypes>
@@ -53,8 +51,8 @@ evidenceWorld(const WorldSnapshot3D& world,
 } // namespace
 
 ProductionPlannerUpdate3D ProductionMppiNode::generatePlannerUpdate3D(
-    const ProductionMppiPreparedEsdf& world, const ProductionMppiNavigation& navigation,
-    const Point3& mission_goal, const CertifiedRouteSuffix3D* const active_route,
+    const PlannerSearchTransaction3D& transaction,
+    const ProductionMppiNavigation& navigation, const Point3& mission_goal,
     std::shared_ptr<const ProductionPlannerSession3D> continuation_session) {
   const auto search_started = std::chrono::steady_clock::now();
   ProductionPlannerUpdate3D result;
@@ -66,13 +64,14 @@ ProductionPlannerUpdate3D ProductionMppiNode::generatePlannerUpdate3D(
     RouteInstanceId3D search_base_route_instance_id{};
     std::optional<double> search_base_stitch_station_m;
 
-    const bool certified_stitch_required =
-        productionRouteSearchContinuity3D(world.static_route_extension_request,
-                                          world.static_route_replan_request) ==
-        ProductionRouteSearchContinuity3D::kCertifiedStitch;
+    const bool certified_stitch_required = transaction.extension();
+    const PlannerSearchContinuityBase3D* const continuity_base =
+        transaction.continuity_base ? std::addressof(*transaction.continuity_base)
+                                    : nullptr;
+    const CertifiedRouteSuffix3D* const active_route =
+        continuity_base != nullptr ? continuity_base->route.get() : nullptr;
     const bool certified_stitch_base_available =
         active_route != nullptr && active_route->route_instance_id.valid() &&
-        active_route->route_instance_id == world.bound_route_instance_id &&
         active_route->geometry != nullptr && active_route->geometry->route != nullptr &&
         active_route->progress.valid();
     if (certified_stitch_required) {
@@ -80,7 +79,7 @@ ProductionPlannerUpdate3D ProductionMppiNode::generatePlannerUpdate3D(
         RCLCPP_INFO(get_logger(),
                     "PERSISTENT_PLANNER3D stage=deferred "
                     "reason=stitch_base_unavailable revision=%" PRIu64,
-                    world.world->revision);
+                    transaction.world->revision);
         result.search_ms = std::chrono::duration<double, std::milli>(
                                std::chrono::steady_clock::now() - search_started)
                                .count();
@@ -94,8 +93,9 @@ ProductionPlannerUpdate3D ProductionMppiNode::generatePlannerUpdate3D(
                                                 active_geometry.back().station_m);
       const double stitch_station_m =
           std::max({active_route->progress.station_m,
-                    world.route_projection.valid ? world.route_projection.station_m
-                                                 : active_route->progress.station_m,
+                    continuity_base->request_projection.valid
+                        ? continuity_base->request_projection.station_m
+                        : active_route->progress.station_m,
                     navigation_projection.valid ? navigation_projection.station_m
                                                 : active_route->progress.station_m}) +
           static_route_extension_config_.required_certified_overlap_m;
@@ -104,7 +104,7 @@ ProductionPlannerUpdate3D ProductionMppiNode::generatePlannerUpdate3D(
                     "PERSISTENT_PLANNER3D stage=deferred "
                     "reason=future_stitch_beyond_certified_route revision=%" PRIu64
                     " stitch_station_m=%.3f route_end_station_m=%.3f",
-                    world.world->revision, stitch_station_m,
+                    transaction.world->revision, stitch_station_m,
                     active_geometry.back().station_m);
         result.search_ms = std::chrono::duration<double, std::milli>(
                                std::chrono::steady_clock::now() - search_started)
@@ -119,40 +119,9 @@ ProductionPlannerUpdate3D ProductionMppiNode::generatePlannerUpdate3D(
       search_base_stitch_station_m = stitch_station_m;
     }
 
-    PersistentPlannerWorld3D planner_world;
-    if (use_static_map_) {
-      if (static_occupancy_3d_ == nullptr) {
-        result.search_ms = std::chrono::duration<double, std::milli>(
-                               std::chrono::steady_clock::now() - search_started)
-                               .count();
-        return result;
-      }
-      planner_world.static_occupancy = static_occupancy_3d_;
-      planner_world.producer_instance_id = static_occupancy_3d_->fingerprint();
-      planner_world.revision = 1U;
-      planner_world.occupied_fingerprint = static_occupancy_3d_->contentFingerprint();
-    } else {
-      const std::shared_ptr<const PersistentPlannerWorld3D> search_world =
-          routeSearchPlannerWorld3D(world.observed_planner_world,
-                                    world.route_search_planner_world,
-                                    world.static_route_replan_request);
-      if (search_world == nullptr || !search_world->valid()) {
-        RCLCPP_INFO(get_logger(),
-                    "PERSISTENT_PLANNER3D stage=deferred reason=raw_world_unavailable "
-                    "revision=%" PRIu64,
-                    world.world->revision);
-        result.search_ms = std::chrono::duration<double, std::milli>(
-                               std::chrono::steady_clock::now() - search_started)
-                               .count();
-        return result;
-      }
-      planner_world = *search_world;
-    }
-    planner_world.proprioceptive_free_space_seed =
-        world.world->proprioceptive_free_space_seed;
-    planner_world.launch_support_contact = world.world->launch_support_contact;
-    if (persistent_planner_3d_ == nullptr || !world.search_objective.available ||
-        world.search_objective.mission_epoch == 0U || !planner_world.valid()) {
+    PersistentPlannerWorld3D planner_world = *transaction.planner_world;
+    if (persistent_planner_3d_ == nullptr || !transaction.objective.available ||
+        transaction.objective.mission_epoch == 0U || !planner_world.valid()) {
       result.search_ms = std::chrono::duration<double, std::milli>(
                              std::chrono::steady_clock::now() - search_started)
                              .count();
@@ -164,10 +133,10 @@ ProductionPlannerUpdate3D ProductionMppiNode::generatePlannerUpdate3D(
         .valid = true,
     };
     intent.id =
-        makeRouteIntentId3D(intent.mission_target, world.search_objective.mission_epoch,
-                            world.search_objective.assignment_generation,
-                            world.search_objective.target_detection_id,
-                            world.search_objective.target_track_id);
+        makeRouteIntentId3D(intent.mission_target, transaction.objective.mission_epoch,
+                            transaction.objective.assignment_generation,
+                            transaction.objective.target_detection_id,
+                            transaction.objective.target_track_id);
     continuation_session =
         std::make_shared<const ProductionPlannerSession3D>(ProductionPlannerSession3D{
             .request =
@@ -175,7 +144,7 @@ ProductionPlannerUpdate3D ProductionMppiNode::generatePlannerUpdate3D(
                     .start = search_start,
                     .velocity = search_velocity,
                     .mission_goal = mission_goal,
-                    .mission_epoch = world.search_objective.mission_epoch,
+                    .mission_epoch = transaction.objective.mission_epoch,
                     .world = std::move(planner_world),
                 },
             .mission_goal = mission_goal,
@@ -189,8 +158,8 @@ ProductionPlannerUpdate3D ProductionMppiNode::generatePlannerUpdate3D(
 
   if (persistent_planner_3d_ == nullptr || !continuation_session ||
       !continuation_session->request.world.valid() ||
-      !world.search_objective.available ||
-      world.search_objective.mission_epoch !=
+      !transaction.objective.available ||
+      transaction.objective.mission_epoch !=
           continuation_session->request.mission_epoch ||
       distance3D(mission_goal, continuation_session->mission_goal) > 1.0e-9) {
     result.search_ms = std::chrono::duration<double, std::milli>(
@@ -266,10 +235,10 @@ ProductionPlannerUpdate3D ProductionMppiNode::generatePlannerUpdate3D(
                       speed_policy_config_.cruise_speed_mps);
     RouteIntent3D intent = continuation_session->intent;
     intent.planned_on_revision = telemetry.planned_on_revision;
-    const SegmentEvidenceWorld3D evidence_world =
-        evidenceWorld(*world.world, route_search_occupancy, route_search_raw_revision,
-                      static_occupancy_3d_.get(), physical_footprint_config_,
-                      flight_envelope_config_);
+    const SegmentEvidenceWorld3D evidence_world = evidenceWorld(
+        *transaction.world, route_search_occupancy, route_search_raw_revision,
+        transaction.world->static_occupancy.get(), physical_footprint_config_,
+        flight_envelope_config_);
     SegmentEvidence3D evidence = evaluateSegmentEvidence3D(
         intent, route, continuation_session->search_start, true, true,
         spatial_route.estimated_execution_time_s, evidence_world);

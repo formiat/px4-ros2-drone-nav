@@ -91,14 +91,25 @@ assessProductionWorldGeneration(const WorldSnapshot3D& world) noexcept {
         std::addressof(owner->occupancy()) != world.observed_occupancy.get()) {
       return ProductionWorldGenerationStatus::kObservedOwnerMismatch;
     }
+    if (world.static_occupancy != nullptr || world.raw_occupied_fingerprint == 0U ||
+        owner->occupiedContentFingerprint() != world.raw_occupied_fingerprint) {
+      return ProductionWorldGenerationStatus::kObservedOwnerMismatch;
+    }
     if (!observedEsdfCoverageMatches(world, raw)) {
       return ProductionWorldGenerationStatus::kObservedEsdfCoverageMismatch;
     }
-  } else if (world.producer_instance_id != 0U || world.source_raw_revision != 0U ||
-             raw.producer_instance_id != 0U ||
-             raw.base_snapshot_revision != world.revision ||
-             raw.revision != world.revision) {
-    return ProductionWorldGenerationStatus::kRawVersionMismatch;
+  } else {
+    if (world.static_occupancy == nullptr || world.producer_instance_id != 0U ||
+        world.source_raw_revision != 0U || raw.producer_instance_id != 0U ||
+        raw.base_snapshot_revision != world.revision ||
+        raw.revision != world.revision) {
+      return ProductionWorldGenerationStatus::kRawVersionMismatch;
+    }
+    if (world.static_occupancy->fingerprint() != world.revision ||
+        world.static_occupancy->contentFingerprint() !=
+            world.raw_occupied_fingerprint) {
+      return ProductionWorldGenerationStatus::kRawVersionMismatch;
+    }
   }
   return ProductionWorldGenerationStatus::kCoherent;
 }
@@ -174,19 +185,43 @@ std::shared_ptr<const PersistentPlannerWorld3D> captureObservedRouteSearchWorld3
       .dirty_chunks = {},
       .producer_instance_id = raw_world.version.producer_instance_id,
       .revision = raw_world.version.revision,
+      .incremental_parent_revision = 0U,
       .occupied_fingerprint = occupied_fingerprint,
       .full_reset = true,
   });
 }
 
-std::shared_ptr<const PersistentPlannerWorld3D> routeSearchPlannerWorld3D(
-    const std::shared_ptr<const PersistentPlannerWorld3D>& resident_world,
-    const std::shared_ptr<const PersistentPlannerWorld3D>& raw_overlay,
-    const bool use_raw_overlay) noexcept {
-  if (use_raw_overlay && raw_overlay != nullptr) {
-    return raw_overlay;
+std::shared_ptr<const PersistentPlannerWorld3D>
+captureResidentPlannerWorld3D(const WorldSnapshot3D& world) {
+  if (!productionWorldGenerationCoherent(world)) {
+    return nullptr;
   }
-  return resident_world;
+  if (world.observed_occupancy != nullptr) {
+    return std::make_shared<const PersistentPlannerWorld3D>(PersistentPlannerWorld3D{
+        .observed_occupancy = world.observed_occupancy,
+        .static_occupancy = nullptr,
+        .proprioceptive_free_space_seed = world.proprioceptive_free_space_seed,
+        .launch_support_contact = world.launch_support_contact,
+        .dirty_chunks = world.planner_dirty_chunks,
+        .producer_instance_id = world.producer_instance_id,
+        .revision = world.source_raw_revision,
+        .incremental_parent_revision = world.planner_parent_raw_revision,
+        .occupied_fingerprint = world.raw_occupied_fingerprint,
+        .full_reset = world.planner_full_reset,
+    });
+  }
+  return std::make_shared<const PersistentPlannerWorld3D>(PersistentPlannerWorld3D{
+      .observed_occupancy = nullptr,
+      .static_occupancy = world.static_occupancy,
+      .proprioceptive_free_space_seed = world.proprioceptive_free_space_seed,
+      .launch_support_contact = world.launch_support_contact,
+      .dirty_chunks = {},
+      .producer_instance_id = world.static_occupancy->fingerprint(),
+      .revision = 1U,
+      .incremental_parent_revision = 0U,
+      .occupied_fingerprint = world.raw_occupied_fingerprint,
+      .full_reset = false,
+  });
 }
 
 } // namespace drone_city_nav

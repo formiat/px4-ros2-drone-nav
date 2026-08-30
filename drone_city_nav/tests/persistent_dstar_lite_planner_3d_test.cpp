@@ -51,6 +51,7 @@ world(std::shared_ptr<const ObservedOccupancyGrid3D> occupancy,
       .dirty_chunks = std::move(dirty_chunks),
       .producer_instance_id = 17U,
       .revision = revision,
+      .incremental_parent_revision = revision > 1U ? revision - 1U : 0U,
       .occupied_fingerprint = occupied.contentFingerprint(),
       .full_reset = full_reset,
   };
@@ -245,6 +246,36 @@ TEST(PersistentDStarLitePlanner3DTest,
   EXPECT_EQ(repaired.telemetry.repair_generation, 1U);
   EXPECT_GT(candidate(repaired).path_length_m, candidate(initial).path_length_m);
   expectRawValid(candidate(repaired).points, *changed,
+                 planner.config().physical_footprint);
+}
+
+TEST(PersistentDStarLitePlanner3DTest,
+     MissingIncrementalPredecessorForcesAnExactWorldReset) {
+  auto initial_occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 1.0, 14, 10, 6});
+  PersistentDStarLitePlanner3D planner{testConfig()};
+  const Point3 start{1.5, 5.5, 2.5};
+  const Point3 goal{12.5, 5.5, 2.5};
+  const PlannerUpdate3D initial =
+      planner.plan(request(start, goal, world(initial_occupancy, 1U)));
+  ASSERT_TRUE(initial.publishable());
+
+  auto changed = std::make_shared<ObservedOccupancyGrid3D>(*initial_occupancy);
+  const GridIndex3D obstacle{7, 5, 2};
+  ASSERT_TRUE(changed->setState(obstacle, ObservedVoxelState::kOccupied));
+  PersistentPlannerWorld3D skipped_predecessor =
+      world(changed, 3U, {ObservedOccupancyGrid3D::chunkIndex(obstacle)});
+  skipped_predecessor.incremental_parent_revision = 2U;
+  const PlannerUpdate3D reset =
+      planner.plan(request(start, goal, std::move(skipped_predecessor)));
+
+  ASSERT_TRUE(reset.publishable());
+  EXPECT_FALSE(reset.telemetry.search_state_reused);
+  EXPECT_EQ(reset.telemetry.changed_occupied_voxels, 0U);
+  EXPECT_EQ(reset.telemetry.search_generation,
+            initial.telemetry.search_generation + 1U);
+  EXPECT_GT(candidate(reset).path_length_m, candidate(initial).path_length_m);
+  expectRawValid(candidate(reset).points, *changed,
                  planner.config().physical_footprint);
 }
 

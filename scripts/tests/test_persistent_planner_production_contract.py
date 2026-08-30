@@ -23,6 +23,17 @@ class PersistentPlannerProductionContractTest(unittest.TestCase):
         cls.header = (SOURCE / "production_mppi_node.hpp").read_text(
             encoding="utf-8"
         )
+        cls.prepared = cls.header.split(
+            "struct ProductionMppiPreparedEsdf {", maxsplit=1
+        )[1].split(
+            '#include "production_mppi_node_execution_types.hpp"', maxsplit=1
+        )[0]
+        cls.execution_types = (
+            SOURCE / "production_mppi_node_execution_types.hpp"
+        ).read_text(encoding="utf-8")
+        cls.transaction = (
+            SOURCE / "production_planner_search_transaction_3d.hpp"
+        ).read_text(encoding="utf-8")
         cls.materialization = (
             SOURCE / "production_mppi_route_materialization.cpp"
         ).read_text(encoding="utf-8")
@@ -50,7 +61,7 @@ class PersistentPlannerProductionContractTest(unittest.TestCase):
         self.assertEqual(self.selection.count("persistent_planner_3d_->plan("), 1)
         self.assertIn(".mission_goal = mission_goal", self.selection)
         self.assertIn(
-            ".mission_epoch = world.search_objective.mission_epoch", self.selection
+            ".mission_epoch = transaction.objective.mission_epoch", self.selection
         )
         self.assertIn("intent.id =", self.selection)
         self.assertIn("makeRouteIntentId3D(", self.selection)
@@ -95,6 +106,7 @@ class PersistentPlannerProductionContractTest(unittest.TestCase):
         self.assertIn("planner_update.dispatch.continue_search", self.planning)
         self.assertIn("planner_update.improved_incumbent", self.planning)
         self.assertIn("if (!pending_route_planning_work_)", self.planning)
+        self.assertIn(".transaction = transaction", self.planning)
         self.assertIn(
             "continuation_queued ? \"true\" : \"newer_world_pending\"",
             self.planning,
@@ -102,6 +114,33 @@ class PersistentPlannerProductionContractTest(unittest.TestCase):
         continuation = self.planning.index("planner_update.dispatch.continue_search")
         activation = self.planning.index("commitRouteActivation3D")
         self.assertLess(continuation, activation)
+
+    def test_search_request_is_an_immutable_typed_transaction(self) -> None:
+        self.assertIn("struct PlannerSearchTransaction3D", self.transaction)
+        self.assertIn("std::shared_ptr<const WorldSnapshot3D> world", self.transaction)
+        self.assertIn(
+            "std::shared_ptr<const PersistentPlannerWorld3D> planner_world",
+            self.transaction,
+        )
+        self.assertIn("StaticRouteSearchRequestIdentity request", self.transaction)
+        self.assertIn("PlannerSearchContinuityBase3D", self.transaction)
+        self.assertIn(
+            "std::shared_ptr<const PlannerSearchTransaction3D> transaction",
+            self.execution_types,
+        )
+        self.assertNotIn(
+            "std::shared_ptr<const ProductionMppiPreparedEsdf> world",
+            self.execution_types,
+        )
+        for retired_request_field in (
+            "observed_planner_world",
+            "route_search_planner_world",
+            "bound_route_instance_id",
+            "static_route_extension_request",
+            "static_route_replan_request",
+            "search_objective{}",
+        ):
+            self.assertNotIn(retired_request_field, self.prepared)
 
     def test_execution_time_refinement_is_inside_the_single_planner(self) -> None:
         for contract in (

@@ -18,8 +18,10 @@
 namespace drone_city_nav {
 
 ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D(
-    const ProductionMppiPreparedEsdf& world, const ProductionMppiNavigation& navigation,
-    const Point3& mission_goal, const ProductionRouteSearchCandidate3D& candidate,
+    const PlannerSearchTransaction3D& transaction,
+    const ProductionWorldBuildTelemetry3D& world_telemetry,
+    const ProductionMppiNavigation& navigation, const Point3& mission_goal,
+    const ProductionRouteSearchCandidate3D& candidate,
     const std::uint64_t candidate_generation,
     const CertifiedRouteSuffix3D* const active_route,
     const ProductionMppiRawWorld3D* const activation_raw_world) {
@@ -30,17 +32,7 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
   const SpatialRouteCandidate3D& spatial_route = candidate.spatial_route;
   ProductionRouteMaterialization3D result;
   ProductionMppiPreparedEsdf& prepared = result.prepared;
-  prepared = world;
-  prepared.mppi_route.reset();
-  prepared.route_3d.reset();
-  prepared.compiled_route_geometry.reset();
-  prepared.route_compilation_validation = {};
-  prepared.route_stop_turn_count = 0U;
-  prepared.route_2d_projection.reset();
-  prepared.constrained_spans.reset();
-  prepared.passage_volumes.reset();
-  prepared.cooperative_passage_assignments.reset();
-  prepared.selected_passage_traversal_ids.reset();
+  prepared = makePlannerSearchArtifact3D(transaction, world_telemetry);
   prepared.route_intent = candidate.intent;
   prepared.route_segment_evidence = candidate.evidence;
   prepared.planning_search_kind = ProductionPlanningSearchKind::kPersistentDStarLite3D;
@@ -107,18 +99,17 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
   prepared.route_reaches_mission_goal = spatial_route.valid();
   prepared.continuation_validation_ms = 0.0;
   prepared.route_fingerprint = routeFingerprint(candidate.route);
-  prepared.bound_route_instance_id = {};
 
   const std::span<const PassageTraversalEdge> topology_traversals =
-      world.world->topology_passage_traversals
-          ? std::span<const PassageTraversalEdge>{*world.world
+      transaction.world->topology_passage_traversals
+          ? std::span<const PassageTraversalEdge>{*transaction.world
                                                        ->topology_passage_traversals}
           : std::span<const PassageTraversalEdge>{};
   const std::vector<SelectedPassageTraversal> route_traversals =
       selectRoutePassageTraversals3D(candidate.route, topology_traversals);
-  if (world.static_route_replan_request) {
+  if (transaction.replacement()) {
     result.replacement_policy = StaticRouteReplacementPolicy::kAllowSafetyReplan;
-  } else if (world.static_route_extension_request) {
+  } else if (transaction.extension()) {
     result.replacement_policy = StaticRouteReplacementPolicy::kAllowSuccessorProgress;
   }
 
@@ -134,8 +125,7 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
       *mutable_route, route_traversals, candidate_generation, route_envelope_config_);
   std::optional<FrozenRoutePrefix3D> frozen_prefix;
   const bool overlap_search = candidate.search_base_route_instance_id.valid();
-  if ((world.static_route_extension_request || world.static_route_replan_request) &&
-      overlap_search) {
+  if ((transaction.extension() || transaction.replacement()) && overlap_search) {
     if (!candidate.search_base_stitch_station_m.has_value() ||
         active_route == nullptr ||
         active_route->route_instance_id != candidate.search_base_route_instance_id ||
@@ -206,12 +196,12 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
           activation_raw_world != nullptr && activation_raw_world->occupancy != nullptr
               ? activation_raw_world->occupancy.get()
               : nullptr,
-      .static_occupancy = static_occupancy_3d_.get(),
+      .static_occupancy = transaction.world->static_occupancy.get(),
       .planar_occupancy = nullptr,
       .raw_point_cloud = {},
       .launch_support_contact =
-          world.world->launch_support_contact
-              ? std::addressof(*world.world->launch_support_contact)
+          transaction.world->launch_support_contact
+              ? std::addressof(*transaction.world->launch_support_contact)
               : nullptr,
       .footprint = physical_footprint_config_,
       .flight_envelope = flight_envelope_config_,
@@ -236,7 +226,7 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
   }
 
   const RouteRiskTierAssignmentResult optimized_risk_assignment = assignRouteRiskTiers(
-      *mutable_route, world.world->grid, *world.world->distances_m,
+      *mutable_route, transaction.world->grid, *transaction.world->distances_m,
       mppi_config_.risk.critical_distance_m, mppi_config_.risk.preferred_distance_m);
   if (!optimized_risk_assignment.accepted()) {
     *mutable_route = canonical_route;
@@ -262,9 +252,10 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
   bool cooperative_route_valid = true;
   const OccupancyGrid3D* passage_occupancy = nullptr;
   std::uint64_t passage_occupancy_content_fingerprint{0U};
-  if (static_occupancy_3d_ != nullptr) {
-    passage_occupancy = &*static_occupancy_3d_;
-    passage_occupancy_content_fingerprint = static_occupancy_3d_->contentFingerprint();
+  if (transaction.world->static_occupancy != nullptr) {
+    passage_occupancy = transaction.world->static_occupancy.get();
+    passage_occupancy_content_fingerprint =
+        transaction.world->static_occupancy->contentFingerprint();
   }
   const bool passage_geometry_required = !geometry.constrained_spans.empty();
   if (passage_geometry_required && passage_occupancy != nullptr) {
@@ -350,8 +341,8 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
     result.validation = StaticRouteCandidateValidation{
         .status = StaticRouteCandidateStatus::kInvalidPassageSpan};
   } else if (const RouteRiskTierAssignmentResult risk_assignment = assignRouteRiskTiers(
-                 *mutable_route, world.world->grid, *world.world->distances_m,
-                 mppi_config_.risk.critical_distance_m,
+                 *mutable_route, transaction.world->grid,
+                 *transaction.world->distances_m, mppi_config_.risk.critical_distance_m,
                  mppi_config_.risk.preferred_distance_m);
              risk_assignment.accepted()) {
     result.validation = validateStaticRouteCandidate(
@@ -376,8 +367,8 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
         .status = StaticRouteCandidateStatus::kInvalidPassageSpan};
   }
   if (result.validation.accepted &&
-      !validateConstrainedRouteSpans(*route, *spans, world.world->grid,
-                                     *world.world->distances_m)) {
+      !validateConstrainedRouteSpans(*route, *spans, transaction.world->grid,
+                                     *transaction.world->distances_m)) {
     result.validation = StaticRouteCandidateValidation{
         .status = StaticRouteCandidateStatus::kInvalidPassageSpan};
   }
@@ -388,7 +379,7 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
       staticRouteReplacementProtected(
           *active_route->geometry->route, *active_route->geometry->constrained_spans,
           current_position, active_route->identity.proposal.objective,
-          world.search_objective, static_route_extension_config_.protected_departure_m);
+          transaction.objective, static_route_extension_config_.protected_departure_m);
   if (result.validation.accepted && protected_suffix) {
     result.validation = StaticRouteCandidateValidation{
         .status = StaticRouteCandidateStatus::kProtectedConstrainedSuffix};

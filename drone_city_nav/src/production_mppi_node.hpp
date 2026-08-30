@@ -95,6 +95,7 @@
 #include "production_mppi_execution_control.hpp"
 #include "production_mppi_node_types.hpp"
 #include "production_mppi_raw_world.hpp"
+#include "production_planner_search_transaction_3d.hpp"
 
 namespace drone_city_nav {
 
@@ -167,6 +168,16 @@ struct ProductionMaterializedRouteProposal3D {
   ProductionRouteGeometry3D geometry{};
 };
 
+struct ProductionWorldBuildTelemetry3D {
+  double build_ms{0.0};
+  double esdf_x_pass_ms{0.0};
+  double esdf_y_pass_ms{0.0};
+  double esdf_z_pass_ms{0.0};
+  double esdf_finalize_ms{0.0};
+  double conversion_ms{0.0};
+  double upload_ms{0.0};
+};
+
 struct ProductionMppiPreparedEsdf {
   std::shared_ptr<const WorldSnapshot3D> world{
       std::make_shared<const WorldSnapshot3D>()};
@@ -192,15 +203,6 @@ struct ProductionMppiPreparedEsdf {
   bool passage_volume_resource_reused{false};
   double candidate_validation_ms{0.0};
   std::uint64_t route_fingerprint{0U};
-  RouteInstanceId3D bound_route_instance_id{};
-  // A physical-collision replan may use a newer immutable raw snapshot without
-  // pretending that the resident ESDF was built from that snapshot. This
-  // transaction-only overlay is a hard planning constraint and is deliberately
-  // excluded from LocalWorldGeneration coherence.
-  std::shared_ptr<const PersistentPlannerWorld3D> route_search_planner_world;
-  // Immutable planner input derived from the resident world publication. It is
-  // search state, not part of WorldSnapshot3D or its coherence identity.
-  std::shared_ptr<const PersistentPlannerWorld3D> observed_planner_world;
   std::shared_ptr<const std::vector<mppi::RouteSample3D>> mppi_route;
   std::shared_ptr<const std::vector<RouteSample3D>> route_3d;
   std::shared_ptr<const ProductionRouteGeometry3D> compiled_route_geometry;
@@ -214,11 +216,9 @@ struct ProductionMppiPreparedEsdf {
   std::shared_ptr<const std::vector<CooperativePassageAssignment>>
       cooperative_passage_assignments;
   std::shared_ptr<const std::vector<PassageTraversalId>> selected_passage_traversal_ids;
-  StaticRouteObjective search_objective{};
   StaticRouteObjective route_objective{};
   std::uint64_t route_generation{0U};
   bool route_reaches_mission_goal{false};
-  RouteReleaseReason3D route_release_reason{RouteReleaseReason3D::kNoActiveRoute};
   RouteProgressProjection3D route_projection{};
   ProductionPlanningSearchKind planning_search_kind{
       ProductionPlanningSearchKind::kNone};
@@ -240,11 +240,6 @@ struct ProductionMppiPreparedEsdf {
   double certified_route_reserve_available_m{0.0};
   double certified_route_reserve_required_m{0.0};
   double certified_route_reserve_shortfall_m{0.0};
-  bool static_route_extension_request{false};
-  std::uint64_t static_route_extension_base_generation{0U};
-  bool static_route_replan_request{false};
-  std::uint64_t static_route_replan_base_generation{0U};
-  RouteReleaseReason3D static_route_replan_reason{RouteReleaseReason3D::kNone};
   StaticRouteCandidateStatus static_route_candidate_status{
       StaticRouteCandidateStatus::kEmpty};
   StaticRouteActivationStatus static_route_activation_status{
@@ -384,7 +379,7 @@ private:
   void finishStaticRouteExtension(std::uint64_t base_generation,
                                   bool extension_activated = false);
   void finishStaticRouteReplan(std::uint64_t base_generation, bool route_activated);
-  void finishStaticRouteSearch(const ProductionMppiPreparedEsdf& world,
+  void finishStaticRouteSearch(const PlannerSearchTransaction3D& transaction,
                                bool route_activated = false);
   void esdfWorker(std::stop_token stop_token);
   [[nodiscard]] std::optional<std::chrono::steady_clock::time_point>
@@ -398,7 +393,8 @@ private:
   void queueLatestObservedWorldForPose(const ProductionMppiNavigation& navigation);
   void routePlanningWorker(std::stop_token stop_token);
   void processRouteSearch3D(
-      const ProductionMppiPreparedEsdf& world,
+      std::shared_ptr<const PlannerSearchTransaction3D> transaction,
+      const ProductionWorldBuildTelemetry3D& world_telemetry,
       const ProductionMppiNavigation& navigation,
       std::shared_ptr<const ProductionPlannerSession3D> continuation_session);
   [[nodiscard]] RouteSegmentCompletionAssessment3D
@@ -407,7 +403,7 @@ private:
   [[nodiscard]] std::uint64_t nextRouteGeneration3D();
   [[nodiscard]] ProductionRouteActivationSnapshot3D captureRouteActivationSnapshot3D();
   [[nodiscard]] ProductionRouteActivationResult3D
-  prepareRouteActivation3D(const ProductionMppiPreparedEsdf& search_world,
+  prepareRouteActivation3D(const PlannerSearchTransaction3D& transaction,
                            ProductionMppiPreparedEsdf prepared,
                            NavigationWorldCertificate3D planned_world_certificate,
                            StaticRouteCandidateValidation validation,
@@ -415,20 +411,20 @@ private:
                            const Point3& mission_goal,
                            std::uint64_t candidate_generation,
                            const ProductionRouteActivationSnapshot3D& snapshot);
-  void commitRouteActivation3D(const ProductionMppiPreparedEsdf& search_world,
+  void commitRouteActivation3D(const PlannerSearchTransaction3D& transaction,
                                const ProductionRouteActivationSnapshot3D& snapshot,
                                std::uint64_t candidate_generation,
                                ProductionRouteActivationResult3D& result);
   [[nodiscard]] ProductionRouteMaterialization3D materializeRouteCandidate3D(
-      const ProductionMppiPreparedEsdf& world,
+      const PlannerSearchTransaction3D& transaction,
+      const ProductionWorldBuildTelemetry3D& world_telemetry,
       const ProductionMppiNavigation& navigation, const Point3& mission_goal,
       const ProductionRouteSearchCandidate3D& candidate,
       std::uint64_t candidate_generation, const CertifiedRouteSuffix3D* active_route,
       const ProductionMppiRawWorld3D* activation_raw_world);
   [[nodiscard]] ProductionPlannerUpdate3D generatePlannerUpdate3D(
-      const ProductionMppiPreparedEsdf& world,
+      const PlannerSearchTransaction3D& transaction,
       const ProductionMppiNavigation& navigation, const Point3& mission_goal,
-      const CertifiedRouteSuffix3D* active_route,
       std::shared_ptr<const ProductionPlannerSession3D> continuation_session);
   void diagnosticsWorker(std::stop_token stop_token);
   void startPlanningTimer();

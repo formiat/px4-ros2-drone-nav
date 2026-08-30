@@ -35,9 +35,10 @@ class Stage4RouteSpliceContractTest(unittest.TestCase):
             implementation,
         )
         self.assertIn(
-            "static_route_planning_latency_tracker_.record(route_planning_ms, world.build_ms)",
+            "static_route_planning_latency_tracker_.record(route_planning_ms,",
             planning,
         )
+        self.assertIn("world_telemetry.build_ms", planning)
         self.assertNotIn("maximum_trigger_fraction_of_route", header + implementation)
 
     def test_pending_route_and_atomic_replacement_require_the_same_splice_proof(self) -> None:
@@ -111,11 +112,16 @@ class Stage4RouteSpliceContractTest(unittest.TestCase):
         )
         self.assertIn("const CertifiedRouteSuffix3D& active_route", extension)
         self.assertIn("maybeRequestStaticRouteExtension(", extension)
-        self.assertIn("bindStaticRouteRequestToExecution", extension)
+        self.assertIn("PlannerSearchContinuityBase3D", extension)
+        self.assertIn("makePlannerSearchTransaction3D", extension)
+        self.assertIn(
+            "std::make_shared<const CertifiedRouteSuffix3D>(active_route)",
+            extension,
+        )
         self.assertIn("execution_route_store_.snapshot()", extension)
         self.assertIn("execution_route_store_.snapshot()", esdf)
         self.assertIn("refresh_execution->route->identity.generation", esdf)
-        self.assertIn("bindStaticRouteRequestToExecution", esdf)
+        self.assertIn("PlannerSearchContinuityBase3D", esdf)
         self.assertIn("refresh_superseded", esdf)
         self.assertIn("execution_snapshot->routeGenerationHighWater()", runtime)
 

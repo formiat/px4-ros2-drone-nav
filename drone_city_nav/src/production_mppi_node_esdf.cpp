@@ -325,6 +325,8 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       world.producer_instance_id =
           active_prepared ? active_prepared->world->producer_instance_id : 0U;
       world.revision = static_occupancy_3d_->fingerprint();
+      world.source_occupied_fingerprint = static_occupancy_3d_->contentFingerprint();
+      world.raw_occupied_fingerprint = static_occupancy_3d_->contentFingerprint();
       world.source_stamp_ns = source_stamp_ns;
       world.ready_stamp_ns = get_clock()->now().nanoseconds();
       prepared.build_ms = static_build_ms;
@@ -335,6 +337,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       prepared.upload_ms = upload.upload_ms;
       world.grid = static_esdf_grid_;
       world.distances_m = static_esdf_3d_;
+      world.static_occupancy = static_occupancy_3d_;
       world.topology_passage_traversals = static_portal_edges_;
       const RawMapVersion static_world_version{
           .base_snapshot_revision = world.revision,
@@ -365,9 +368,12 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       }
       world.local_world_generation = *local_world_generation;
       prepared.world = std::make_shared<const WorldSnapshot3D>(std::move(world));
-      if (objective) {
-        prepared.search_objective = makeStaticRouteObjective(*objective);
-      }
+      const bool tracking_roi_refresh =
+          refresh_base_current &&
+          roi_refresh.purpose ==
+              StaticRouteRoiRefreshRequest::Purpose::kTrackingObjective;
+      const bool extension_search = refresh_base_current && !tracking_roi_refresh;
+      std::optional<PlannerSearchContinuityBase3D> continuity_base;
       if (refresh_base_current) {
         const CertifiedRouteSuffix3D& active_route = *binding_execution->route;
         const RouteProjection3D projection = projectOntoRoute3DWithinStationWindow(
@@ -375,32 +381,22 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
             Point3{activation_navigation.state.x, activation_navigation.state.y,
                    activation_navigation.state.z},
             active_route.progress.station_m, active_route.endStationM());
-        bindStaticRouteRequestToExecution(
-            prepared, active_route,
-            RouteProgressProjection3D{
-                .valid = projection.valid,
-                .station_m = projection.station_m,
-                .total_length_m = active_route.endStationM(),
-                .remaining_m = projection.remaining_m,
-                .cross_track_m = projection.distance_m,
-                .point = {projection.point.x, projection.point.y},
-            });
+        const RouteProgressProjection3D request_projection{
+            .valid = projection.valid,
+            .station_m = projection.station_m,
+            .total_length_m = active_route.endStationM(),
+            .remaining_m = projection.remaining_m,
+            .cross_track_m = projection.distance_m,
+            .point = {projection.point.x, projection.point.y},
+        };
+        bindStaticRouteRequestToExecution(prepared, active_route, request_projection);
+        if (extension_search) {
+          continuity_base = PlannerSearchContinuityBase3D{
+              .route = std::make_shared<const CertifiedRouteSuffix3D>(active_route),
+              .request_projection = request_projection,
+          };
+        }
       }
-      const bool tracking_roi_refresh =
-          refresh_base_current &&
-          roi_refresh.purpose ==
-              StaticRouteRoiRefreshRequest::Purpose::kTrackingObjective;
-      prepared.static_route_extension_request =
-          refresh_base_current && !tracking_roi_refresh;
-      prepared.static_route_extension_base_generation =
-          prepared.static_route_extension_request ? roi_refresh.base_route_generation
-                                                  : 0U;
-      prepared.static_route_replan_request = tracking_roi_refresh;
-      prepared.static_route_replan_base_generation =
-          tracking_roi_refresh ? roi_refresh.base_route_generation : 0U;
-      prepared.static_route_replan_reason =
-          tracking_roi_refresh ? RouteReleaseReason3D::kObjectiveChanged
-                               : RouteReleaseReason3D::kNone;
       const bool coherent_generation =
           productionWorldGenerationCoherent(*prepared.world);
       {
@@ -444,29 +440,76 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       }
       const bool route_search_required =
           !refresh_superseded &&
-          (prepared.static_route_extension_request ||
-           prepared.static_route_replan_request ||
+          (extension_search || tracking_roi_refresh ||
            vehicle_navigation_ready_.load(std::memory_order_acquire));
       if (route_search_required) {
+        StaticRouteSearchRequestIdentity request_identity;
+        if (extension_search) {
+          request_identity = StaticRouteSearchRequestIdentity{
+              .kind = StaticRouteSearchRequestKind::kExtension,
+              .base_route_generation = roi_refresh.base_route_generation,
+          };
+        } else if (tracking_roi_refresh) {
+          request_identity = StaticRouteSearchRequestIdentity{
+              .kind = StaticRouteSearchRequestKind::kReplan,
+              .base_route_generation = roi_refresh.base_route_generation,
+          };
+        } else {
+          request_identity = StaticRouteSearchRequestIdentity{
+              .kind = prepared.route_generation == 0U
+                          ? StaticRouteSearchRequestKind::kInitial
+                          : StaticRouteSearchRequestKind::kResidentRefresh,
+              .base_route_generation = prepared.route_generation,
+          };
+        }
+        const std::shared_ptr<const PlannerSearchTransaction3D> transaction =
+            objective
+                ? makePlannerSearchTransaction3D(
+                      prepared.world, captureResidentPlannerWorld3D(*prepared.world),
+                      makeStaticRouteObjective(*objective), request_identity,
+                      std::move(continuity_base),
+                      tracking_roi_refresh ? RouteReleaseReason3D::kObjectiveChanged
+                                           : RouteReleaseReason3D::kNone)
+                : nullptr;
         bool queued = false;
+        std::shared_ptr<const PlannerSearchTransaction3D> superseded_transaction;
         {
           const std::scoped_lock lock{route_planning_queue_mutex_};
           if (pending_route_planning_work_ &&
-              (prepared.static_route_extension_request ||
-               prepared.static_route_replan_request)) {
+              (extension_search || tracking_roi_refresh) && transaction != nullptr) {
             dropped_route_planning_worlds_.fetch_add(1U, std::memory_order_relaxed);
+            superseded_transaction = pending_route_planning_work_->transaction;
             pending_route_planning_work_.reset();
           }
-          if (!pending_route_planning_work_) {
+          if (!pending_route_planning_work_ && transaction != nullptr) {
             pending_route_planning_work_ = ProductionRoutePlanningWork3D{
-                .world = std::make_shared<const ProductionMppiPreparedEsdf>(prepared),
+                .transaction = transaction,
+                .world_telemetry = captureWorldBuildTelemetry3D(prepared),
                 .continuation_session = nullptr,
             };
             queued = true;
           }
         }
+        const bool lifecycle_transferred =
+            superseded_transaction != nullptr && transaction != nullptr &&
+            superseded_transaction->request.kind == transaction->request.kind &&
+            superseded_transaction->request.base_route_generation ==
+                transaction->request.base_route_generation;
+        if (superseded_transaction != nullptr && !lifecycle_transferred) {
+          finishStaticRouteSearch(*superseded_transaction);
+        }
         if (queued) {
           route_planning_queue_condition_.notify_all();
+        } else if (transaction == nullptr) {
+          RCLCPP_ERROR(get_logger(),
+                       "STATIC_ROUTE_SEARCH_REQUEST "
+                       "status=rejected_invalid_transaction generation=%" PRIu64,
+                       request_identity.base_route_generation);
+          if (extension_search) {
+            finishStaticRouteExtension(request_identity.base_route_generation);
+          } else if (tracking_roi_refresh) {
+            finishStaticRouteReplan(request_identity.base_route_generation, false);
+          }
         }
       } else {
         RCLCPP_INFO(get_logger(), "STATIC_ESDF3D_PREWARMED route_search_deferred=true "

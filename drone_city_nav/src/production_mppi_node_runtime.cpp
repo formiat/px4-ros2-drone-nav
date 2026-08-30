@@ -67,33 +67,31 @@ void ProductionMppiNode::routePlanningWorker(const std::stop_token stop_token) {
     if (!work || !work->valid()) {
       continue;
     }
-    const std::shared_ptr<const ProductionMppiPreparedEsdf>& world = work->world;
-    if (!productionWorldGenerationCoherent(*world->world)) {
+    const std::shared_ptr<const PlannerSearchTransaction3D>& transaction =
+        work->transaction;
+    if (!productionWorldGenerationCoherent(*transaction->world)) {
       const ProductionWorldGenerationStatus status =
-          assessProductionWorldGeneration(*world->world);
+          assessProductionWorldGeneration(*transaction->world);
       const std::string_view status_name = productionWorldGenerationStatusName(status);
       RCLCPP_ERROR(get_logger(),
                    "PRODUCTION_MPPI_ROUTE rejected local_world_generation=%" PRIu64
                    " reason=%.*s",
-                   world->world->local_world_generation.generation,
+                   transaction->world->local_world_generation.generation,
                    static_cast<int>(status_name.size()), status_name.data());
-      finishStaticRouteSearch(*world);
+      finishStaticRouteSearch(*transaction);
       continue;
     }
-    if (world->world->grid.depth <= 1) {
+    if (transaction->world->grid.depth <= 1) {
       RCLCPP_ERROR(get_logger(),
                    "PRODUCTION_MPPI_ROUTE rejected local_world_generation=%" PRIu64
                    " reason=full_3d_world_required depth=%d",
-                   world->world->local_world_generation.generation,
-                   world->world->grid.depth);
-      finishStaticRouteSearch(*world);
+                   transaction->world->local_world_generation.generation,
+                   transaction->world->grid.depth);
+      finishStaticRouteSearch(*transaction);
       continue;
     }
 
-    const StaticRouteSearchRequestIdentity request = identifyStaticRouteSearchRequest(
-        world->route_generation, world->static_route_extension_request,
-        world->static_route_extension_base_generation,
-        world->static_route_replan_request, world->static_route_replan_base_generation);
+    const StaticRouteSearchRequestIdentity& request = transaction->request;
     std::uint64_t resident_route_generation = 0U;
     const std::shared_ptr<const ExecutionRouteSnapshot3D> execution_snapshot =
         execution_route_store_.snapshot();
@@ -112,7 +110,7 @@ void ProductionMppiNode::routePlanningWorker(const std::stop_token stop_token) {
           static_cast<int>(staticRouteSearchRequestKindName(request.kind).size()),
           staticRouteSearchRequestKindName(request.kind).data(),
           request.base_route_generation, resident_route_generation);
-      finishStaticRouteSearch(*world);
+      finishStaticRouteSearch(*transaction);
       continue;
     }
 
@@ -122,10 +120,11 @@ void ProductionMppiNode::routePlanningWorker(const std::stop_token stop_token) {
       navigation = navigation_;
     }
     if (!navigation.valid) {
-      finishStaticRouteSearch(*world);
+      finishStaticRouteSearch(*transaction);
       continue;
     }
-    processRouteSearch3D(*world, navigation, std::move(work->continuation_session));
+    processRouteSearch3D(transaction, work->world_telemetry, navigation,
+                         std::move(work->continuation_session));
   }
 }
 

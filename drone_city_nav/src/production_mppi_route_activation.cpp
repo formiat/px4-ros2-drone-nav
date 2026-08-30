@@ -235,7 +235,7 @@ ProductionMppiNode::captureRouteActivationSnapshot3D() {
 }
 
 ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
-    const ProductionMppiPreparedEsdf& search_world, ProductionMppiPreparedEsdf prepared,
+    const PlannerSearchTransaction3D& transaction, ProductionMppiPreparedEsdf prepared,
     const NavigationWorldCertificate3D planned_world_certificate,
     StaticRouteCandidateValidation validation,
     const StaticRouteReplacementPolicy replacement_policy, const Point3& mission_goal,
@@ -350,7 +350,7 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
     result.tracking_geometry_compile_attempted = true;
     const RouteEndpointSemantics3D endpoint_semantics =
         routeEndpointSemantics3D(candidate.route_reaches_mission_goal,
-                                 !search_world.search_objective.continuous_tracking);
+                                 !transaction.objective.continuous_tracking);
     const TrackingErrorTubeWorld3D tracking_world =
         raw_validation_required
             ? TrackingErrorTubeWorld3D{
@@ -427,7 +427,7 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
         });
     const RouteEndpointSemantics3D endpoint_semantics =
         routeEndpointSemantics3D(candidate.route_reaches_mission_goal,
-                                 !search_world.search_objective.continuous_tracking);
+                                 !transaction.objective.continuous_tracking);
     const CertifiedRouteReserveAssessment3D reserve = assessCertifiedRouteReserve3D(
         reserve_decision,
         reserve_projection.valid ? reserve_projection.remaining_m
@@ -460,7 +460,7 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
     }
     const RouteEndpointSemantics3D endpoint_semantics =
         routeEndpointSemantics3D(candidate.route_reaches_mission_goal,
-                                 !search_world.search_objective.continuous_tracking);
+                                 !transaction.objective.continuous_tracking);
     const RouteTimeParameterization3D time_parameterization = parameterizeRouteTime3D(
         *candidate.route_3d, *candidate.constrained_spans,
         speed_policy_config_.cruise_speed_mps, constrained_route_speed_limit_mps_,
@@ -491,7 +491,7 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
   const MaterializedRouteProposal3D activation_identity{
       .planned_world = planned_world_certificate,
       .validated_world = validated_world_certificate,
-      .objective = search_world.search_objective,
+      .objective = transaction.objective,
       .intent = candidate.route_intent,
       .evidence = activation_evidence,
       .route_fingerprint = candidate.route_fingerprint,
@@ -590,7 +590,7 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
           MaterializedRouteProposal3D{
               .planned_world = planned_world_certificate,
               .validated_world = validated_world_certificate,
-              .objective = search_world.search_objective,
+              .objective = transaction.objective,
               .intent = candidate.route_intent,
               .evidence = activation_evidence,
               .route_fingerprint = candidate.route_fingerprint,
@@ -660,7 +660,7 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
 }
 
 void ProductionMppiNode::commitRouteActivation3D(
-    const ProductionMppiPreparedEsdf& search_world,
+    const PlannerSearchTransaction3D& transaction,
     const ProductionRouteActivationSnapshot3D& snapshot,
     const std::uint64_t candidate_generation,
     ProductionRouteActivationResult3D& result) {
@@ -681,13 +681,11 @@ void ProductionMppiNode::commitRouteActivation3D(
           : nullptr;
   const std::uint64_t base_generation =
       current_execution != nullptr ? current_execution->routeGenerationHighWater() : 0U;
-  const std::uint64_t required_base_generation =
-      search_world.static_route_replan_request
-          ? search_world.static_route_replan_base_generation
-          : search_world.static_route_extension_base_generation;
-  const bool base_generation_matches = (!search_world.static_route_extension_request &&
-                                        !search_world.static_route_replan_request) ||
-                                       required_base_generation == base_generation;
+  const bool request_requires_base =
+      transaction.extension() || transaction.replacement();
+  const bool base_generation_matches =
+      !request_requires_base ||
+      transaction.request.base_route_generation == base_generation;
   const bool allocation_generation_matches =
       base_generation != std::numeric_limits<std::uint64_t>::max() &&
       candidate_generation == base_generation + 1U;
@@ -700,8 +698,8 @@ void ProductionMppiNode::commitRouteActivation3D(
       active_identity, materialized_proposal.identity,
       RouteProposalReplacementObservation3D{
           .safety_replan_requested =
-              search_world.static_route_replan_request &&
-              search_world.static_route_replan_reason == RouteReleaseReason3D::kBlocked,
+              transaction.replacement() &&
+              transaction.release_reason == RouteReleaseReason3D::kBlocked,
           .continuity_preserving_successor =
               candidate.required_splice_base_route_instance_id.valid()});
 
@@ -897,14 +895,7 @@ void ProductionMppiNode::commitRouteActivation3D(
       candidate.static_route_generation_matches = true;
       candidate.static_route_world_compatible = true;
       candidate.route_generation = candidate_generation;
-      candidate.route_objective = search_world.search_objective;
-      candidate.route_release_reason = RouteReleaseReason3D::kNone;
-      candidate.static_route_extension_request = false;
-      candidate.static_route_extension_base_generation = 0U;
-      candidate.static_route_replan_request = false;
-      candidate.static_route_replan_base_generation = 0U;
-      candidate.static_route_replan_reason = RouteReleaseReason3D::kNone;
-      candidate.route_search_planner_world.reset();
+      candidate.route_objective = transaction.objective;
       prepared_esdf_ = candidate;
       result.certified_pending = true;
     }

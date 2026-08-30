@@ -78,12 +78,48 @@ struct ProductionPlannerUpdate3D {
   double search_ms{0.0};
 };
 
+[[nodiscard]] inline ProductionWorldBuildTelemetry3D
+captureWorldBuildTelemetry3D(const ProductionMppiPreparedEsdf& prepared) noexcept {
+  return ProductionWorldBuildTelemetry3D{
+      .build_ms = prepared.build_ms,
+      .esdf_x_pass_ms = prepared.esdf_x_pass_ms,
+      .esdf_y_pass_ms = prepared.esdf_y_pass_ms,
+      .esdf_z_pass_ms = prepared.esdf_z_pass_ms,
+      .esdf_finalize_ms = prepared.esdf_finalize_ms,
+      .conversion_ms = prepared.conversion_ms,
+      .upload_ms = prepared.upload_ms,
+  };
+}
+
+inline void
+applyWorldBuildTelemetry3D(ProductionMppiPreparedEsdf& prepared,
+                           const ProductionWorldBuildTelemetry3D& telemetry) noexcept {
+  prepared.build_ms = telemetry.build_ms;
+  prepared.esdf_x_pass_ms = telemetry.esdf_x_pass_ms;
+  prepared.esdf_y_pass_ms = telemetry.esdf_y_pass_ms;
+  prepared.esdf_z_pass_ms = telemetry.esdf_z_pass_ms;
+  prepared.esdf_finalize_ms = telemetry.esdf_finalize_ms;
+  prepared.conversion_ms = telemetry.conversion_ms;
+  prepared.upload_ms = telemetry.upload_ms;
+}
+
+[[nodiscard]] inline ProductionMppiPreparedEsdf
+makePlannerSearchArtifact3D(const PlannerSearchTransaction3D& transaction,
+                            const ProductionWorldBuildTelemetry3D& world_telemetry) {
+  ProductionMppiPreparedEsdf prepared;
+  prepared.world = transaction.world;
+  prepared.route_generation = transaction.request.base_route_generation;
+  applyWorldBuildTelemetry3D(prepared, world_telemetry);
+  return prepared;
+}
+
 struct ProductionRoutePlanningWork3D {
-  std::shared_ptr<const ProductionMppiPreparedEsdf> world;
+  std::shared_ptr<const PlannerSearchTransaction3D> transaction;
+  ProductionWorldBuildTelemetry3D world_telemetry{};
   std::shared_ptr<const ProductionPlannerSession3D> continuation_session;
 
   [[nodiscard]] bool valid() const noexcept {
-    return world != nullptr;
+    return transaction != nullptr && transaction->valid();
   }
 };
 

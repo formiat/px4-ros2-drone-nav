@@ -48,9 +48,9 @@ captureObservedRouteSearchWorld3D(
     std::optional<ProprioceptiveFreeSpaceSeed3D> proprioceptive_free_space_seed,
     std::optional<LaunchSupportContact3D> launch_support_contact);
 
-[[nodiscard]] std::shared_ptr<const PersistentPlannerWorld3D> routeSearchPlannerWorld3D(
-    const std::shared_ptr<const PersistentPlannerWorld3D>& resident_world,
-    const std::shared_ptr<const PersistentPlannerWorld3D>& raw_overlay,
-    bool use_raw_overlay) noexcept;
+// Derives the resident planner input from one exact immutable world
+// publication. No mutable production aggregate owns a parallel copy.
+[[nodiscard]] std::shared_ptr<const PersistentPlannerWorld3D>
+captureResidentPlannerWorld3D(const WorldSnapshot3D& world);
 
 } // namespace drone_city_nav

@@ -67,6 +67,7 @@ acceptanceWorld(std::shared_ptr<const ObservedOccupancyGrid3D> occupancy,
       .dirty_chunks = std::move(dirty_chunks),
       .producer_instance_id = 0xA11CEU,
       .revision = revision,
+      .incremental_parent_revision = revision > 1U ? revision - 1U : 0U,
       .occupied_fingerprint = occupied.contentFingerprint(),
       .full_reset = false,
   };

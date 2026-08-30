@@ -132,9 +132,16 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
       active_prepared->world->launch_support_resolution_pending ==
           launch_support_resolution_pending;
   if (active_prepared && !launch_support_unchanged) {
+    std::shared_ptr<const PlannerSearchTransaction3D> superseded_transaction;
     {
       const std::scoped_lock lock{route_planning_queue_mutex_};
-      pending_route_planning_work_.reset();
+      if (pending_route_planning_work_) {
+        superseded_transaction = pending_route_planning_work_->transaction;
+        pending_route_planning_work_.reset();
+      }
+    }
+    if (superseded_transaction != nullptr) {
+      finishStaticRouteSearch(*superseded_transaction);
     }
     RCLCPP_INFO(get_logger(),
                 "EXECUTION_EVIDENCE_WORLD_CHANGED raw_revision=%" PRIu64
@@ -216,15 +223,6 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
                 active_prepared->world->observed_occupancy) {
           WorldSnapshot3D refreshed_world = *prepared_esdf_->world;
           refreshed_world.observed_raw_world_owner = observed_raw_world_owner;
-          if (prepared_esdf_->observed_planner_world != nullptr) {
-            PersistentPlannerWorld3D planner_world =
-                *prepared_esdf_->observed_planner_world;
-            planner_world.proprioceptive_free_space_seed = free_space_seed;
-            planner_world.launch_support_contact = launch_support_contact_;
-            prepared_esdf_->observed_planner_world =
-                std::make_shared<const PersistentPlannerWorld3D>(
-                    std::move(planner_world));
-          }
           refreshed_world.proprioceptive_free_space_seed = free_space_seed;
           prepared_esdf_->world =
               std::make_shared<const WorldSnapshot3D>(std::move(refreshed_world));
@@ -337,6 +335,11 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
   mutable_world.revision = field.occupancy_fingerprint;
   mutable_world.source_raw_revision = raw_world.version.revision;
   mutable_world.source_occupied_fingerprint = local_fingerprint;
+  mutable_world.raw_occupied_fingerprint =
+      execution_owner->occupiedContentFingerprint();
+  mutable_world.planner_parent_raw_revision =
+      same_raw_lineage && active_prepared ? active_prepared->world->source_raw_revision
+                                          : 0U;
   mutable_world.source_stamp_ns = raw_world.source_stamp_ns;
   mutable_world.ready_stamp_ns = get_clock()->now().nanoseconds();
   world_update.build_ms =
@@ -351,26 +354,16 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
   mutable_world.distances_m = host_distances;
   mutable_world.observed_occupancy = occupancy;
   mutable_world.observed_raw_world_owner = observed_raw_world_owner;
-  world_update.observed_planner_world =
-      std::make_shared<const PersistentPlannerWorld3D>(PersistentPlannerWorld3D{
-          .observed_occupancy = occupancy,
-          .static_occupancy = nullptr,
-          .proprioceptive_free_space_seed = free_space_seed,
-          .launch_support_contact = launch_support_contact_,
-          .dirty_chunks = raw_world.dirty_chunks,
-          .producer_instance_id = raw_world.version.producer_instance_id,
-          .revision = raw_world.version.revision,
-          .occupied_fingerprint = execution_owner->occupiedContentFingerprint(),
-          .full_reset = raw_world.full_reset,
-      });
   mutable_world.observed_esdf_resource = ObservedEsdfResource3D{
       .local_occupancy = field.local_occupancy,
       .known_obstacle_distance = field.known_obstacle_distance,
       .classification_override_cells = std::move(classification_override_cells),
       .coverage = coverage};
+  mutable_world.planner_dirty_chunks = raw_world.dirty_chunks;
   mutable_world.proprioceptive_free_space_seed = free_space_seed;
   mutable_world.launch_support_contact = launch_support_contact_;
   mutable_world.launch_support_resolution_pending = launch_support_resolution_pending;
+  mutable_world.planner_full_reset = raw_world.full_reset || !same_raw_lineage;
 
   const std::shared_ptr<const ProductionNavigationObjective> current_objective =
       navigationObjective();
@@ -450,10 +443,6 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
       prepared.esdf_finalize_ms = world_update.esdf_finalize_ms;
       prepared.conversion_ms = world_update.conversion_ms;
       prepared.upload_ms = world_update.upload_ms;
-      prepared.observed_planner_world = world_update.observed_planner_world;
-      if (current_objective) {
-        prepared.search_objective = makeStaticRouteObjective(*current_objective);
-      }
       local_world_generation_valid = productionWorldGenerationCoherent(*prepared.world);
       if (local_world_generation_valid) {
         prepared_esdf_ = prepared;
@@ -518,15 +507,28 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
   const bool initial_route_search_required = prepared.route_generation == 0U;
   bool initial_route_search_queued = false;
   bool initial_route_search_already_pending = false;
-  if (initial_route_search_required) {
-    auto planning_world = std::make_shared<const ProductionMppiPreparedEsdf>(prepared);
+  if (initial_route_search_required && current_objective) {
+    const std::shared_ptr<const PlannerSearchTransaction3D> transaction =
+        makePlannerSearchTransaction3D(
+            prepared.world, captureResidentPlannerWorld3D(*prepared.world),
+            makeStaticRouteObjective(*current_objective),
+            StaticRouteSearchRequestIdentity{
+                .kind = StaticRouteSearchRequestKind::kInitial,
+            });
+    if (transaction == nullptr) {
+      RCLCPP_ERROR(get_logger(),
+                   "PRODUCTION_MPPI_ROUTE3D status=invalid_initial_transaction "
+                   "raw_revision=%" PRIu64,
+                   prepared.world->source_raw_revision);
+    }
     {
       const std::scoped_lock lock{route_planning_queue_mutex_};
       if (pending_route_planning_work_) {
         initial_route_search_already_pending = true;
-      } else {
+      } else if (transaction != nullptr) {
         pending_route_planning_work_ = ProductionRoutePlanningWork3D{
-            .world = std::move(planning_world),
+            .transaction = transaction,
+            .world_telemetry = captureWorldBuildTelemetry3D(prepared),
             .continuation_session = nullptr,
         };
         initial_route_search_queued = true;

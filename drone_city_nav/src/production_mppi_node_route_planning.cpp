@@ -25,21 +25,16 @@ elapsedMilliseconds(const std::chrono::steady_clock::time_point started) noexcep
 } // namespace
 
 void ProductionMppiNode::processRouteSearch3D(
-    const ProductionMppiPreparedEsdf& world, const ProductionMppiNavigation& navigation,
+    std::shared_ptr<const PlannerSearchTransaction3D> transaction,
+    const ProductionWorldBuildTelemetry3D& world_telemetry,
+    const ProductionMppiNavigation& navigation,
     std::shared_ptr<const ProductionPlannerSession3D> continuation_session) {
   const auto planning_started = std::chrono::steady_clock::now();
-  const Point3 mission_goal =
-      world.search_objective.available ? world.search_objective.goal : mission_goal_;
+  const Point3 mission_goal = transaction->objective.goal;
   const NavigationWorldCertificate3D planned_world_certificate =
-      navigationWorldCertificate3D(*world.world);
+      navigationWorldCertificate3D(*transaction->world);
 
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> search_execution_snapshot =
-      execution_route_store_.snapshot();
-  const CertifiedRouteSuffix3D* const search_active_route =
-      search_execution_snapshot && search_execution_snapshot->route.has_value()
-          ? search_execution_snapshot->route.operator->()
-          : nullptr;
-  const auto observe_recovery_episode = [this, &world] {
+  const auto observe_recovery_episode = [this, &transaction] {
     const std::shared_ptr<const ExecutionRouteSnapshot3D> current_execution =
         execution_route_store_.snapshot();
     const std::shared_ptr<const PendingCertifiedRoute3D> current_pending =
@@ -48,11 +43,10 @@ void ProductionMppiNode::processRouteSearch3D(
         (current_execution == nullptr || !current_execution->route.has_value()) &&
         current_pending == nullptr;
     static_cast<void>(navigation_recovery_episodes_.observe(
-        world.search_objective.mission_epoch, recovery_active));
+        transaction->objective.mission_epoch, recovery_active));
   };
-  ProductionPlannerUpdate3D planner_update =
-      generatePlannerUpdate3D(world, navigation, mission_goal, search_active_route,
-                              std::move(continuation_session));
+  ProductionPlannerUpdate3D planner_update = generatePlannerUpdate3D(
+      *transaction, navigation, mission_goal, std::move(continuation_session));
   const Point3 search_start =
       planner_update.planner_session
           ? planner_update.planner_session->search_start
@@ -60,31 +54,31 @@ void ProductionMppiNode::processRouteSearch3D(
 
   const bool search_running =
       planner_update.planner_invoked && planner_update.dispatch.continue_search;
-  const auto queue_continuation =
-      [this, &planner_update](const ProductionMppiPreparedEsdf& continuation_world) {
-        if (!planner_update.planner_session) {
-          return false;
-        }
-        bool queued{false};
-        {
-          const std::scoped_lock lock{route_planning_queue_mutex_};
-          if (!pending_route_planning_work_) {
-            pending_route_planning_work_ = ProductionRoutePlanningWork3D{
-                .world = std::make_shared<const ProductionMppiPreparedEsdf>(
-                    continuation_world),
-                .continuation_session = planner_update.planner_session,
-            };
-            queued = true;
-          }
-        }
-        if (queued) {
-          route_planning_queue_condition_.notify_all();
-        }
-        return queued;
-      };
+  const auto queue_continuation = [this, &planner_update, &transaction,
+                                   &world_telemetry]() {
+    if (!planner_update.planner_session) {
+      return false;
+    }
+    bool queued{false};
+    {
+      const std::scoped_lock lock{route_planning_queue_mutex_};
+      if (!pending_route_planning_work_) {
+        pending_route_planning_work_ = ProductionRoutePlanningWork3D{
+            .transaction = transaction,
+            .world_telemetry = world_telemetry,
+            .continuation_session = planner_update.planner_session,
+        };
+        queued = true;
+      }
+    }
+    if (queued) {
+      route_planning_queue_condition_.notify_all();
+    }
+    return queued;
+  };
   bool continuation_queued{false};
   if (search_running && !planner_update.improved_incumbent) {
-    continuation_queued = queue_continuation(world);
+    continuation_queued = queue_continuation();
     const double continuation_planning_ms = elapsedMilliseconds(planning_started);
     RCLCPP_INFO(
         get_logger(),
@@ -107,12 +101,12 @@ void ProductionMppiNode::processRouteSearch3D(
     if (!continuation_queued) {
       // A newer world owns the single queue slot. Close this request's gate;
       // the newer request will continue against its own immutable snapshot.
-      finishStaticRouteSearch(world);
+      finishStaticRouteSearch(*transaction);
     }
     {
       const std::scoped_lock lifecycle_lock{static_route_extension_mutex_};
       static_route_planning_latency_tracker_.record(continuation_planning_ms,
-                                                    world.build_ms);
+                                                    world_telemetry.build_ms);
     }
     observe_recovery_episode();
     return;
@@ -128,14 +122,17 @@ void ProductionMppiNode::processRouteSearch3D(
           ? materialization_snapshot.execution_snapshot->route.operator->()
           : nullptr;
 
-  ProductionRouteMaterialization3D materialization{.prepared = world};
-  ProductionRouteActivationResult3D activation{.prepared = world};
+  const ProductionMppiPreparedEsdf search_artifact =
+      makePlannerSearchArtifact3D(*transaction, world_telemetry);
+  ProductionRouteMaterialization3D materialization{.prepared = search_artifact};
+  ProductionRouteActivationResult3D activation{.prepared = search_artifact};
   if (planner_update.improved_incumbent && candidate_generation != 0U) {
     const ProductionRouteSearchCandidate3D& candidate =
         *planner_update.improved_incumbent;
     materialization = materializeRouteCandidate3D(
-        world, navigation, mission_goal, candidate, candidate_generation,
-        activation_active_route, materialization_snapshot.raw_world.get());
+        *transaction, world_telemetry, navigation, mission_goal, candidate,
+        candidate_generation, activation_active_route,
+        materialization_snapshot.raw_world.get());
     materialization.prepared.route_search_ms = planner_update.search_ms;
   }
   // Materialization owns the expensive spatial validation. Capture the
@@ -144,18 +141,16 @@ void ProductionMppiNode::processRouteSearch3D(
       captureRouteActivationSnapshot3D();
   if (planner_update.improved_incumbent && candidate_generation != 0U) {
     activation = prepareRouteActivation3D(
-        world, std::move(materialization.prepared), planned_world_certificate,
+        *transaction, std::move(materialization.prepared), planned_world_certificate,
         materialization.validation, materialization.replacement_policy, mission_goal,
         candidate_generation, activation_snapshot);
-    commitRouteActivation3D(world, activation_snapshot, candidate_generation,
+    commitRouteActivation3D(*transaction, activation_snapshot, candidate_generation,
                             activation);
   }
   activation.prepared.route_search_ms = planner_update.search_ms;
 
   if (search_running) {
-    const ProductionMppiPreparedEsdf& continuation_world =
-        activation.certified_pending ? activation.prepared : world;
-    continuation_queued = queue_continuation(continuation_world);
+    continuation_queued = queue_continuation();
     RCLCPP_INFO(get_logger(),
                 "PERSISTENT_PLANNER3D stage=continuation_after_incumbent "
                 "queued=%s raw_revision=%" PRIu64 " search_generation=%" PRIu64,
@@ -169,7 +164,8 @@ void ProductionMppiNode::processRouteSearch3D(
   const double route_planning_ms = elapsedMilliseconds(planning_started);
   {
     const std::scoped_lock lifecycle_lock{static_route_extension_mutex_};
-    static_route_planning_latency_tracker_.record(route_planning_ms, world.build_ms);
+    static_route_planning_latency_tracker_.record(route_planning_ms,
+                                                  world_telemetry.build_ms);
   }
 
   const PlannerTelemetry3D& plan = planner_update.planner_telemetry;
@@ -302,16 +298,9 @@ void ProductionMppiNode::processRouteSearch3D(
     }
   }
 
-  const bool initial_route_search = !world.static_route_extension_request &&
-                                    !world.static_route_replan_request &&
-                                    world.route_generation == 0U;
-  if (world.static_route_replan_request || initial_route_search) {
-    const StaticRouteSearchRequestIdentity search_request =
-        identifyStaticRouteSearchRequest(world.route_generation,
-                                         world.static_route_extension_request,
-                                         world.static_route_extension_base_generation,
-                                         world.static_route_replan_request,
-                                         world.static_route_replan_base_generation);
+  const bool initial_route_search = transaction->initial();
+  if (transaction->replacement() || initial_route_search) {
+    const StaticRouteSearchRequestIdentity& search_request = transaction->request;
     const std::shared_ptr<const ExecutionRouteSnapshot3D> resident_execution =
         execution_route_store_.snapshot();
     const std::uint64_t resident_route_generation =
@@ -323,12 +312,11 @@ void ProductionMppiNode::processRouteSearch3D(
     } else if (!search_running && staticRouteSearchFailureLatchEligible(
                                       search_request, resident_route_generation)) {
       const std::uint64_t failed_generation =
-          world.static_route_replan_request ? world.static_route_replan_base_generation
-                                            : 0U;
+          transaction->replacement() ? transaction->request.base_route_generation : 0U;
       static_route_failed_search_latch_.recordFailure(StaticRouteSearchContext{
           .base_route_generation = failed_generation,
           .search_start = search_start,
-          .objective = world.search_objective,
+          .objective = transaction->objective,
           .minimum_tracking_sample_sequence = activation.required_objective_sample,
           .stamp_ns = get_clock()->now().nanoseconds(),
       });
@@ -354,7 +342,7 @@ void ProductionMppiNode::processRouteSearch3D(
   }
 
   if (!continuation_queued) {
-    finishStaticRouteSearch(world, activation.certified_pending);
+    finishStaticRouteSearch(*transaction, activation.certified_pending);
   }
   const std::shared_ptr<const ProductionNavigationObjective> current_objective =
       navigationObjective();

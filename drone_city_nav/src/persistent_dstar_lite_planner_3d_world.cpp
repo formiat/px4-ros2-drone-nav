@@ -149,6 +149,13 @@ PersistentDStarLitePlanner3DImpl::updateWorld(const PersistentPlannerWorld3D& wo
     update.occupied_world_unchanged = true;
     return update;
   }
+  if (world.incremental_parent_revision != world_.revision) {
+    installWorld(world);
+    dstar_session_.edge_cost_cache_.clear();
+    update.accepted = true;
+    update.requires_reset = true;
+    return update;
+  }
   if (world.observed_occupancy == nullptr || world_.observed_occupancy == nullptr) {
     installWorld(world);
     dstar_session_.edge_cost_cache_.clear();

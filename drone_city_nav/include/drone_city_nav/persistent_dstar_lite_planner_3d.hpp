@@ -41,6 +41,10 @@ struct PersistentPlannerWorld3D {
   std::vector<OccupancyChunkIndex3D> dirty_chunks;
   std::uint64_t producer_instance_id{0U};
   std::uint64_t revision{0U};
+  // Exact predecessor for which dirty_chunks is complete. A skipped world
+  // publication therefore forces a full repair instead of applying an
+  // incomplete delta to an older resident planner world.
+  std::uint64_t incremental_parent_revision{0U};
   std::uint64_t occupied_fingerprint{0U};
   bool full_reset{false};
 
