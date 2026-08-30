@@ -81,9 +81,9 @@ class Stage4RouteSpliceContractTest(unittest.TestCase):
         self.assertIn("routeSpliceWindowExpired3D", execution)
         self.assertIn('"retain_active_route"', execution)
         commit = manager.split(
-            "RouteExecutionManager3D::commitPendingTransitionIfSame", maxsplit=1
+            "RouteExecutionManager3D::commitPendingLeasedTransitionIfSame", maxsplit=1
         )[1].split("} // namespace drone_city_nav", maxsplit=1)[0]
-        publish = commit.index("publishPlanLocked(expected_plan, transition)")
+        publish = commit.index("publishTransitionLocked(expected_authority, transition")
         clear = commit.index("pending_.reset()")
         self.assertLess(publish, clear)
         self.assertIn("return false;", commit[publish:clear])

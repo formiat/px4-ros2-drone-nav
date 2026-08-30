@@ -281,7 +281,7 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
   };
   const RouteExecutionManagerSnapshot3D manager_snapshot =
       route_execution_manager_.snapshot();
-  result.source_snapshot = manager_snapshot.plan;
+  result.source_snapshot = manager_snapshot.plan();
   result.certification_snapshot = result.source_snapshot;
   result.execution_owner_available =
       result.source_snapshot != nullptr &&

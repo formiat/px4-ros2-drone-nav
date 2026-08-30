@@ -20,25 +20,30 @@ static_assert(
 
 NavigationHealthAssessment ProductionMppiNode::updateNavigationHealth(
     const std::shared_ptr<const ProductionNavigationObjective>& objective,
-    const ProductionMppiAppliedControl& applied_control,
-    const ProductionMppiExecutionHorizonOwner& execution_horizon_owner,
-    const std::shared_ptr<const ExecutionPlan3D>& execution_snapshot,
+    const std::shared_ptr<const CommittedExecutionAuthority3D>& execution_authority,
     const bool world_current, const std::int64_t now_ns) {
   if (navigation_health_supervisor_ == nullptr) {
     return {};
   }
-  const bool certified_route_ready = execution_snapshot != nullptr &&
-                                     execution_snapshot->valid() &&
-                                     execution_snapshot->route() != nullptr;
+  const std::shared_ptr<const ExecutionPlan3D> execution_snapshot =
+      execution_authority != nullptr ? execution_authority->plan() : nullptr;
+  const AppliedControlEvidence3D applied_control = execution_authority != nullptr
+                                                       ? execution_authority->control()
+                                                       : AppliedControlEvidence3D{};
+  const ExecutionOwnerIdentity3D execution_horizon_owner =
+      execution_authority != nullptr ? execution_authority->owner()
+                                     : ExecutionOwnerIdentity3D{};
+  const bool certified_route_ready =
+      execution_authority != nullptr && execution_authority->valid() &&
+      execution_snapshot != nullptr && execution_snapshot->valid() &&
+      execution_snapshot->route() != nullptr;
   const bool horizon_acknowledged =
       certified_route_ready && execution_horizon_owner.valid &&
-      execution_horizon_owner.execution_mode ==
-          msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED &&
+      execution_horizon_owner.execution_mode == ExecutionAuthorityMode3D::kPlanned &&
       appliedControlAuthoritativeForExecution(applied_control, execution_horizon_owner,
                                               now_ns,
                                               maximum_control_feedback_age_ms_) &&
-      applied_control.execution_mode ==
-          msg::MppiControlFeedback::EXECUTION_MODE_PLANNED;
+      applied_control.execution_mode == ExecutionAuthorityMode3D::kPlanned;
   const NavigationHealthAssessment assessment =
       navigation_health_supervisor_->update(NavigationHealthObservation{
           .mission_epoch = objective != nullptr ? objective->mission_epoch : 0U,

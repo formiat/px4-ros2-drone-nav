@@ -293,9 +293,13 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionRevocatio
     return publication;
   }
 
-  const std::scoped_lock evidence_lock{execution_evidence_commit_mutex_};
-  const std::shared_ptr<const ExecutionPlan3D> expected =
-      route_execution_manager_.plan();
+  const std::scoped_lock lock{execution_evidence_commit_mutex_, input_mutex_};
+  const std::shared_ptr<const CommittedExecutionAuthority3D> expected_authority =
+      route_execution_manager_.authority();
+  if (expected_authority == nullptr || !expected_authority->valid()) {
+    return publication;
+  }
+  const std::shared_ptr<const ExecutionPlan3D> expected = expected_authority->plan();
   if (expected == nullptr) {
     return publication;
   }
@@ -315,76 +319,73 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionRevocatio
       expected->route() != nullptr &&
       ((transition.applied() && transition.next != nullptr &&
         transition.next->route() != nullptr) ||
-       (transition.status == ExecutionRouteTransitionStatus3D::kNoChange));
+       transition.status == ExecutionRouteTransitionStatus3D::kNoChange);
   const bool transition_required = transition.applied();
   if (!transition_required &&
       transition.status != ExecutionRouteTransitionStatus3D::kNoChange) {
     return publication;
   }
+  const std::int64_t publication_now_ns = get_clock()->now().nanoseconds();
+  // A revoked snapshot with no live horizon owner already represents the
+  // requested tombstone. Do not emit a fresh transport sequence for every
+  // duplicate callback; publish only while there is an owner to revoke.
+  if (!transition_required && !expected_authority->owner().valid) {
+    return publication;
+  }
+  const bool current_session =
+      offboard_session_admission_.valid() &&
+      offboard_session_admission_.latest_source_stamp_ns > 0 &&
+      offboard_session_receive_stamp_ns_ > 0 &&
+      publication_now_ns >= offboard_session_admission_.latest_source_stamp_ns &&
+      publication_now_ns >= offboard_session_receive_stamp_ns_ &&
+      static_cast<double>(publication_now_ns -
+                          offboard_session_admission_.latest_source_stamp_ns) *
+              1.0e-6 <=
+          maximum_control_feedback_age_ms_ &&
+      static_cast<double>(publication_now_ns - offboard_session_receive_stamp_ns_) *
+              1.0e-6 <=
+          maximum_control_feedback_age_ms_;
+  if (!current_session) {
+    return publication;
+  }
+  const std::uint64_t target_offboard_instance_id =
+      offboard_session_admission_.current_producer_instance_id;
+  if (target_offboard_instance_id == 0U) {
+    return publication;
+  }
 
   msg::MppiTrajectoryHorizon revocation;
-  {
-    const std::scoped_lock input_lock{input_mutex_};
-    const std::int64_t publication_now_ns = get_clock()->now().nanoseconds();
-    // A revoked snapshot with no live horizon owner already represents the
-    // requested tombstone. Do not emit a fresh transport sequence for every
-    // duplicate callback; publish only while there is an owner to revoke.
-    if (!transition_required && !execution_horizon_owner_.valid) {
-      return publication;
-    }
-    const bool current_session =
-        offboard_session_admission_.valid() &&
-        offboard_session_admission_.latest_source_stamp_ns > 0 &&
-        offboard_session_receive_stamp_ns_ > 0 &&
-        publication_now_ns >= offboard_session_admission_.latest_source_stamp_ns &&
-        publication_now_ns >= offboard_session_receive_stamp_ns_ &&
-        static_cast<double>(publication_now_ns -
-                            offboard_session_admission_.latest_source_stamp_ns) *
-                1.0e-6 <=
-            maximum_control_feedback_age_ms_ &&
-        static_cast<double>(publication_now_ns - offboard_session_receive_stamp_ns_) *
-                1.0e-6 <=
-            maximum_control_feedback_age_ms_;
-    if (!current_session) {
-      return publication;
-    }
-    const std::uint64_t target_offboard_instance_id =
-        offboard_session_admission_.current_producer_instance_id;
-    if (target_offboard_instance_id == 0U) {
-      return publication;
-    }
-
-    revocation.header.stamp = now();
-    revocation.header.frame_id = frame_id_;
-    revocation.producer_instance_id = execution_horizon_producer_instance_id_;
-    revocation.target_offboard_instance_id = target_offboard_instance_id;
-    revocation.sequence = execution_horizon_sequence_ + 1U;
-    revocation.valid_from =
-        production_mppi_execution_detail::timeFromNanoseconds(now_ns);
-    revocation.valid_until = revocation.valid_from;
-    revocation.execution_mode = msg::MppiTrajectoryHorizon::EXECUTION_MODE_REVOKED;
-    revocation.execution_reason = static_cast<std::uint8_t>(reason);
-    if (assessExecutionHorizonPayload(
-            revocation,
-            ExecutionHorizonPayloadValidationConfig{.expected_frame_id = frame_id_}) !=
-        ExecutionHorizonPayloadStatus::kValid) {
-      return publication;
-    }
-
-    const ExecutionRoutePublicationStatus3D snapshot_status =
-        transition_required ? route_execution_manager_.publishPlan(expected, transition)
-        : route_execution_manager_.plan() == expected
-            ? ExecutionRoutePublicationStatus3D::kPublished
-            : ExecutionRoutePublicationStatus3D::kStaleSnapshotVersion;
-    if (snapshot_status != ExecutionRoutePublicationStatus3D::kPublished) {
-      return publication;
-    }
-    execution_horizon_sequence_ = revocation.sequence;
-    applied_control_ = {};
-    execution_horizon_owner_ = {};
-    execution_horizon_pub_->publish(revocation);
-    publication.published = true;
+  revocation.header.stamp = now();
+  revocation.header.frame_id = frame_id_;
+  revocation.producer_instance_id = execution_horizon_producer_instance_id_;
+  revocation.target_offboard_instance_id = target_offboard_instance_id;
+  revocation.sequence = execution_horizon_sequence_ + 1U;
+  revocation.valid_from = production_mppi_execution_detail::timeFromNanoseconds(now_ns);
+  revocation.valid_until = revocation.valid_from;
+  revocation.execution_mode = msg::MppiTrajectoryHorizon::EXECUTION_MODE_REVOKED;
+  revocation.execution_reason = static_cast<std::uint8_t>(reason);
+  if (assessExecutionHorizonPayload(
+          revocation,
+          ExecutionHorizonPayloadValidationConfig{.expected_frame_id = frame_id_}) !=
+      ExecutionHorizonPayloadStatus::kValid) {
+    return publication;
   }
+
+  const bool authority_cleared =
+      transition_required
+          ? route_execution_manager_.publishDetachedTransition(expected_authority,
+                                                               transition) ==
+                ExecutionRoutePublicationStatus3D::kPublished
+          : route_execution_manager_.clearLeaseIfSame(expected_authority);
+  if (!authority_cleared) {
+    return publication;
+  }
+  execution_horizon_sequence_ = revocation.sequence;
+  if (expected_authority->control().valid) {
+    recordAppliedControlDiscontinuityLocked();
+  }
+  execution_horizon_pub_->publish(revocation);
+  publication.published = true;
   RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 1000,
       "EXECUTION_HORIZON revoked=true snapshot_version=%" PRIu64 " owner_epoch=%" PRIu64
@@ -423,14 +424,16 @@ bool ProductionMppiNode::handleRequestedExecutionRevocation(const std::int64_t n
   bool revocation_already_satisfied{false};
   {
     const std::scoped_lock lock{execution_evidence_commit_mutex_, input_mutex_};
+    const std::shared_ptr<const CommittedExecutionAuthority3D> authority =
+        route_execution_manager_.authority();
     const std::shared_ptr<const ExecutionPlan3D> snapshot =
-        route_execution_manager_.plan();
+        authority != nullptr ? authority->plan() : nullptr;
     const bool snapshot_has_executable_authority =
         snapshot != nullptr && (snapshot->finiteExecution() != nullptr ||
                                 snapshot->directTrackingExecution() != nullptr ||
                                 snapshot->stationaryHold() != nullptr);
-    revocation_already_satisfied =
-        !snapshot_has_executable_authority && !execution_horizon_owner_.valid;
+    revocation_already_satisfied = !snapshot_has_executable_authority &&
+                                   authority != nullptr && !authority->owner().valid;
   }
   if (revocation_already_satisfied) {
     handled_execution_revocation_request_ = requested_revocation;

@@ -730,6 +730,54 @@ struct SnapshotFixture3D {
         .hit_points_map_m = std::move(hit_points_map_m),
     });
   }
+
+  [[nodiscard]] static std::shared_ptr<const VersionedExecutionInput3D>
+  committedInput(const ExecutionPlan3D& plan) {
+    if (const FiniteExecutionState3D* const execution = plan.finiteExecution()) {
+      return execution->execution_input;
+    }
+    if (const DirectTrackingFiniteExecution3D* const execution =
+            plan.directTrackingExecution()) {
+      return execution->execution_input;
+    }
+    if (const StationaryExecutionHold3D* const hold = plan.stationaryHold()) {
+      return hold->terminal_execution_input;
+    }
+    return nullptr;
+  }
+
+  [[nodiscard]] static ExecutionOwnerIdentity3D
+  committedOwner(const ExecutionPlan3D& plan, const std::uint64_t sequence = 1U) {
+    return ExecutionOwnerIdentity3D{
+        .route_target = {10.0, 0.0, 5.0},
+        .stationary_hold_position = {10.0, 0.0, 5.0},
+        .valid_from_ns = 1'000'000'000LL,
+        .valid_until_ns = 2'000'000'000LL,
+        .producer_instance_id = 17U,
+        .target_offboard_instance_id = 23U,
+        .sequence = sequence,
+        .execution_owner_epoch = plan.execution_owner_epoch,
+        .execution_mode = ExecutionAuthorityMode3D::kPlanned,
+        .execution_reason = ExecutionAuthorityReason3D::kNone,
+        .valid = true,
+    };
+  }
+
+  [[nodiscard]] static AppliedControlEvidence3D
+  committedControl(const ExecutionOwnerIdentity3D& owner) {
+    return AppliedControlEvidence3D{
+        .source_stamp_ns = owner.valid_from_ns,
+        .receive_stamp_ns = owner.valid_from_ns,
+        .producer_instance_id = owner.target_offboard_instance_id,
+        .horizon_producer_instance_id = owner.producer_instance_id,
+        .horizon_sequence = owner.sequence,
+        .content_fingerprint = owner.sequence,
+        .execution_mode = owner.execution_mode,
+        .yaw_acceleration_authoritative = true,
+        .control_authoritative = true,
+        .valid = true,
+    };
+  }
 };
 
 [[nodiscard, maybe_unused]] ExecutionRouteActivation3D

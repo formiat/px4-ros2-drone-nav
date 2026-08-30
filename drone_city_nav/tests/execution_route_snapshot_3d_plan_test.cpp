@@ -71,6 +71,8 @@ TEST(ExecutionRouteSnapshot3DTest,
   SnapshotFixture3D fixture;
   const std::optional<CertifiedRouteSuffix3D> suffix = fixture.certify();
   RouteExecutionManager3D manager;
+  const std::shared_ptr<const CommittedExecutionAuthority3D> initial_authority =
+      manager.authority();
   const std::shared_ptr<const ExecutionPlan3D> initial = manager.plan();
   if (!suffix.has_value() || initial == nullptr) {
     ADD_FAILURE() << "The fixture must provide an initial certified route";
@@ -81,8 +83,10 @@ TEST(ExecutionRouteSnapshot3DTest,
       SnapshotFixture3D::finitePlanForRoute(*initial, suffix.value(),
                                             FiniteExecutionKind3D::kNominal, 100U));
   ASSERT_TRUE(activation.applied());
-  ASSERT_EQ(manager.publishPlan(initial, activation),
+  ASSERT_EQ(manager.publishDetachedTransition(initial_authority, activation),
             ExecutionRoutePublicationStatus3D::kPublished);
+  const std::shared_ptr<const CommittedExecutionAuthority3D> resident_authority =
+      manager.authority();
   const std::shared_ptr<const ExecutionPlan3D> resident = manager.plan();
   if (resident == nullptr || resident->route() == nullptr) {
     ADD_FAILURE() << "Activation must publish a route owner";
@@ -113,7 +117,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   EXPECT_FALSE(progressed.publishable());
   EXPECT_TRUE(progressed.finiteExecution()[0].revalidation_required);
   EXPECT_TRUE(progressed.brakingFallback()[0].revalidation_required);
-  EXPECT_EQ(manager.publishPlan(resident, progress),
+  EXPECT_EQ(manager.publishDetachedTransition(resident_authority, progress),
             ExecutionRoutePublicationStatus3D::kInvalidCandidate);
   EXPECT_EQ(manager.plan(), resident);
 
@@ -162,7 +166,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   EXPECT_EQ(std::addressof(following->execution.braking_tail),
             composed_snapshot.brakingFallback());
 
-  ASSERT_EQ(manager.publishPlan(resident, composed),
+  ASSERT_EQ(manager.publishDetachedTransition(resident_authority, composed),
             ExecutionRoutePublicationStatus3D::kPublished);
   EXPECT_EQ(manager.plan(), composed.next);
 }

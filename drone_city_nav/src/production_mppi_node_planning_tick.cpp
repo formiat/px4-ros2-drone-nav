@@ -59,8 +59,9 @@ void ProductionMppiNode::planningTick() {
   ProductionMppiNavigation navigation;
   ProductionMppiVehicleStatus vehicle_status;
   ProductionMppiPredictionError prediction;
-  ProductionMppiAppliedControl applied_control;
-  ProductionMppiExecutionHorizonOwner execution_horizon_owner;
+  std::shared_ptr<const CommittedExecutionAuthority3D> execution_authority;
+  AppliedControlEvidence3D applied_control;
+  ExecutionOwnerIdentity3D execution_horizon_owner;
   std::uint64_t applied_control_discontinuity_generation{0U};
   bool applied_control_discontinuity_generation_valid{false};
   OffboardSessionAdmissionState offboard_session;
@@ -78,8 +79,11 @@ void ProductionMppiNode::planningTick() {
                        !navigation_frame_reset_unresolved_;
     vehicle_status = vehicle_status_;
     prediction = latest_prediction_error_;
-    applied_control = applied_control_;
-    execution_horizon_owner = execution_horizon_owner_;
+    execution_authority = route_execution_manager_.authority();
+    if (execution_authority != nullptr && execution_authority->valid()) {
+      applied_control = execution_authority->control();
+      execution_horizon_owner = execution_authority->owner();
+    }
     applied_control_discontinuity_generation =
         applied_control_discontinuity_generation_;
     applied_control_discontinuity_generation_valid =
@@ -112,7 +116,7 @@ void ProductionMppiNode::planningTick() {
           ? nullptr
           : latest_lidar_evidence_.load(std::memory_order_acquire);
   const std::shared_ptr<const ExecutionPlan3D> execution_snapshot =
-      route_execution_manager_.plan();
+      execution_authority != nullptr ? execution_authority->plan() : nullptr;
   // Timestamp the immutable planning view only after all callback-owned inputs
   // have been captured. A concurrently published evidence value may have a
   // receive stamp later than tick entry, but never later than this boundary.
@@ -144,8 +148,7 @@ void ProductionMppiNode::planningTick() {
       observation_age_ms >= 0.0 &&
       observation_age_ms <= maximum_esdf_age_ms_ + stale_esdf_execution_window_ms_;
   const NavigationHealthAssessment navigation_health =
-      updateNavigationHealth(objective, applied_control, execution_horizon_owner,
-                             execution_snapshot, world_current, now_ns);
+      updateNavigationHealth(objective, execution_authority, world_current, now_ns);
   if (navigation_health.terminal &&
       optional_constraints_.nonphysical_execution_revocation_enabled) {
     publishFailClosedExecutionRevocation(
@@ -164,11 +167,11 @@ void ProductionMppiNode::planningTick() {
   const bool goal_capture_latched =
       mission_goal_capture_latch_ && objective && terminal_hold_enabled &&
       mission_goal_capture_latch_->latchedFor(mission_goal);
-  const MissionWaypointUpdate early_waypoint_update = updateMissionWaypoint(
-      objective, navigation, vehicle_status, applied_control, execution_horizon_owner,
-      applied_control_discontinuity_generation,
-      applied_control_discontinuity_generation_valid, vehicle_status_epoch_stable,
-      goal_capture_latched, now_ns);
+  const MissionWaypointUpdate early_waypoint_update =
+      updateMissionWaypoint(objective, navigation, vehicle_status, execution_authority,
+                            applied_control_discontinuity_generation,
+                            applied_control_discontinuity_generation_valid,
+                            vehicle_status_epoch_stable, goal_capture_latched, now_ns);
   if (early_waypoint_update.waypoint_completed) {
     // The planner published the aggregate acknowledgement before replacing the
     // objective. Replan the newly active leg on the next tick.
@@ -182,9 +185,9 @@ void ProductionMppiNode::planningTick() {
   const bool matching_goal_capture_attempt =
       goal_capture_latched && execution_horizon_owner.valid &&
       execution_horizon_owner.execution_mode ==
-          msg::MppiTrajectoryHorizon::EXECUTION_MODE_POSITION_HOLD &&
+          ExecutionAuthorityMode3D::kPositionHold &&
       execution_horizon_owner.execution_reason ==
-          msg::MppiTrajectoryHorizon::EXECUTION_REASON_GOAL_CAPTURE &&
+          ExecutionAuthorityReason3D::kGoalCapture &&
       execution_horizon_owner.stationary_position_hold &&
       now_ns >= execution_horizon_owner.valid_from_ns &&
       now_ns < execution_horizon_owner.valid_until_ns &&
@@ -285,13 +288,11 @@ void ProductionMppiNode::planningTick() {
           .mission_waypoint_sequence = mission_waypoint_sequence_.get(),
           .navigation = &navigation,
           .vehicle_status = &vehicle_status,
-          .applied_control = &applied_control,
-          .execution_horizon_owner = &execution_horizon_owner,
+          .execution_authority = execution_authority,
           .offboard_session = &offboard_session,
           .world = world.get(),
           .latest_raw_world_3d = latest_raw_world_3d,
           .latest_lidar_evidence = latest_lidar_evidence,
-          .execution_snapshot = execution_snapshot,
           .validation_policy = execution_validation_policy_,
           .static_occupancy_3d = world->static_occupancy,
           .capture_gate_config = mission_waypoint_capture_gate_config_,
@@ -310,9 +311,8 @@ void ProductionMppiNode::planningTick() {
       });
   const ProductionMppiExecutionInputPreparation execution_input_preparation =
       prepareExecutionInputForPlanningTick(
-          navigation, applied_control, execution_horizon_owner,
-          execution_input_sequence, now_ns, maximum_control_feedback_age_ms_,
-          pose_predicted, stationary_capture_rearm);
+          navigation, execution_authority, execution_input_sequence, now_ns,
+          maximum_control_feedback_age_ms_, pose_predicted, stationary_capture_rearm);
   if (!execution_input_preparation.previous_control_available ||
       tick_sequence_ == std::numeric_limits<std::uint64_t>::max()) {
     RCLCPP_WARN_THROTTLE(

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/committed_execution_authority_3d.hpp"
 #include "drone_city_nav/mppi/finite_execution_path.hpp"
 #include "drone_city_nav/mppi/mppi_types.hpp"
 #include "drone_city_nav/msg/mppi_control_feedback.hpp"
@@ -16,36 +17,6 @@ namespace drone_city_nav {
 struct ProductionMppiNavigation;
 struct ProductionMppiVehicleStatus;
 
-struct ProductionMppiAppliedControl {
-  mppi::Control control{};
-  float yaw_rate_radps{0.0F};
-  std::int64_t source_stamp_ns{0};
-  std::int64_t receive_stamp_ns{0};
-  std::uint64_t producer_instance_id{0U};
-  std::uint64_t horizon_producer_instance_id{0U};
-  std::uint64_t horizon_sequence{0U};
-  std::uint64_t content_fingerprint{0U};
-  std::uint8_t execution_mode{msg::MppiControlFeedback::EXECUTION_MODE_POSITION_HOLD};
-  bool yaw_acceleration_authoritative{false};
-  bool control_authoritative{false};
-  bool valid{false};
-};
-
-struct ProductionMppiExecutionHorizonOwner {
-  Point3 route_target{};
-  Point3 stationary_hold_position{};
-  std::int64_t valid_from_ns{0};
-  std::int64_t valid_until_ns{0};
-  std::uint64_t producer_instance_id{0U};
-  std::uint64_t target_offboard_instance_id{0U};
-  std::uint64_t sequence{0U};
-  std::uint64_t snapshot_execution_owner_epoch{0U};
-  std::uint8_t execution_mode{msg::MppiTrajectoryHorizon::EXECUTION_MODE_POSITION_HOLD};
-  std::uint8_t execution_reason{msg::MppiTrajectoryHorizon::EXECUTION_REASON_NONE};
-  bool stationary_position_hold{false};
-  bool valid{false};
-};
-
 enum class ProductionMppiHorizonSupersessionDecision : std::uint8_t {
   kAllowedNoPlannedOwner,
   kAllowedWitnessedOwner,
@@ -57,11 +28,10 @@ enum class ProductionMppiHorizonSupersessionDecision : std::uint8_t {
 // witnessed that exact tuple. Replacing an unwitnessed lease at planner rate
 // can keep every real feedback sample one generation behind forever.
 [[nodiscard]] constexpr ProductionMppiHorizonSupersessionDecision
-assessPlannedHorizonSupersession(const ProductionMppiExecutionHorizonOwner& owner,
+assessPlannedHorizonSupersession(const ExecutionOwnerIdentity3D& owner,
                                  const bool owner_witnessed,
                                  const std::int64_t now_ns) noexcept {
-  if (!owner.valid ||
-      owner.execution_mode != msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED) {
+  if (!owner.valid || owner.execution_mode != ExecutionAuthorityMode3D::kPlanned) {
     return ProductionMppiHorizonSupersessionDecision::kAllowedNoPlannedOwner;
   }
   if (owner.valid_from_ns <= 0 || owner.valid_until_ns <= owner.valid_from_ns ||
@@ -74,7 +44,7 @@ assessPlannedHorizonSupersession(const ProductionMppiExecutionHorizonOwner& owne
 }
 
 struct ProductionMppiResidentOwnerContinuationCheck {
-  const ProductionMppiExecutionHorizonOwner* owner{nullptr};
+  const ExecutionOwnerIdentity3D* owner{nullptr};
   std::int64_t now_ns{0};
   bool retained_candidate{false};
   bool exact_snapshot_current{false};
@@ -96,22 +66,18 @@ struct ProductionMppiResidentOwnerContinuationCheck {
              ProductionMppiHorizonSupersessionDecision::kAllowedWitnessedOwner;
 }
 
-enum class ProductionMppiExecutionMode : std::uint8_t {
-  kPlanned = msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED,
-  kPositionHold = msg::MppiTrajectoryHorizon::EXECUTION_MODE_POSITION_HOLD,
-  kRevoked = msg::MppiTrajectoryHorizon::EXECUTION_MODE_REVOKED,
-};
+using ProductionMppiExecutionMode = ExecutionAuthorityMode3D;
+using ProductionMppiExecutionReason = ExecutionAuthorityReason3D;
 
-enum class ProductionMppiExecutionReason : std::uint8_t {
-  kNone = msg::MppiTrajectoryHorizon::EXECUTION_REASON_NONE,
-  kNoExecutableHorizon =
-      msg::MppiTrajectoryHorizon::EXECUTION_REASON_NO_EXECUTABLE_HORIZON,
-  kCooperativePassageYield =
-      msg::MppiTrajectoryHorizon::EXECUTION_REASON_COOPERATIVE_PASSAGE_YIELD,
-  kGoalCapture = msg::MppiTrajectoryHorizon::EXECUTION_REASON_GOAL_CAPTURE,
-  kNoExecutableRoute = msg::MppiTrajectoryHorizon::EXECUTION_REASON_NO_EXECUTABLE_ROUTE,
-  kUnavailableWorld = msg::MppiTrajectoryHorizon::EXECUTION_REASON_UNAVAILABLE_WORLD,
-};
+static_assert(static_cast<std::uint8_t>(ExecutionAuthorityMode3D::kPlanned) ==
+              msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED);
+static_assert(static_cast<std::uint8_t>(ExecutionAuthorityMode3D::kPositionHold) ==
+              msg::MppiTrajectoryHorizon::EXECUTION_MODE_POSITION_HOLD);
+static_assert(static_cast<std::uint8_t>(ExecutionAuthorityMode3D::kRevoked) ==
+              msg::MppiTrajectoryHorizon::EXECUTION_MODE_REVOKED);
+static_assert(
+    static_cast<std::uint8_t>(ExecutionAuthorityReason3D::kUnavailableWorld) ==
+    msg::MppiTrajectoryHorizon::EXECUTION_REASON_UNAVAILABLE_WORLD);
 
 enum class ProductionMppiPhysicalTrajectoryAuthority : std::uint8_t {
   kUnownedCandidate,
@@ -229,9 +195,8 @@ productionMppiPlanningStateName(ProductionMppiPlanningState state) noexcept;
     ProductionMppiPreviousControlSource source) noexcept;
 
 [[nodiscard]] bool appliedControlAuthoritativeForExecution(
-    const ProductionMppiAppliedControl& control,
-    const ProductionMppiExecutionHorizonOwner& owner, std::int64_t now_ns,
-    double maximum_age_ms) noexcept;
+    const AppliedControlEvidence3D& control, const ExecutionOwnerIdentity3D& owner,
+    std::int64_t now_ns, double maximum_age_ms) noexcept;
 
 // Execution ownership is allowed only while the latest admitted PX4 status is
 // from a stable timestamp epoch, is armed, and is fresh at the commit instant.
@@ -245,8 +210,8 @@ vehicleStatusAuthoritativeForExecution(const ProductionMppiVehicleStatus& status
 // horizon; an invented vertical axis must never authorize unknown-space
 // promotion.
 [[nodiscard]] std::optional<FootprintBodyAxis>
-authoritativeBodyAxisForExecution(const ProductionMppiAppliedControl& applied_control,
-                                  const ProductionMppiExecutionHorizonOwner& owner,
+authoritativeBodyAxisForExecution(const AppliedControlEvidence3D& applied_control,
+                                  const ExecutionOwnerIdentity3D& owner,
                                   const ProductionMppiNavigation& navigation,
                                   std::int64_t now_ns, double maximum_control_age_ms,
                                   double maximum_pose_age_ms) noexcept;

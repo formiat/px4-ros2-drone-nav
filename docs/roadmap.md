@@ -531,14 +531,15 @@ The implementation order is:
    every production-relevant test source, replace source-text transaction guards
    with executable tests, and remove legacy lifecycle code and terminology.
 
-The current implementation already includes the persistent adaptive lattice,
+The current implementation includes the persistent adaptive lattice,
 direction-labelled execution-time refinement, immutable sparse
 `KnownObstacleDistance3D` cache, immutable world/search/materialization
-artifacts, and the sealed exact-state `CompiledTrajectory3D` described in steps
-1-3. It still has the execution-ownership, service-extraction, and target-DAG
-debt tracked by the linked checklist. Item 12 remains in progress until that
-checklist, the complete static audit, and the unchanged three-run Manhattan
-mission gate below are finished.
+artifacts, the sealed exact-state `CompiledTrajectory3D`, the tagged execution
+variant and reducer, and one atomic `CommittedExecutionAuthority3D` described in
+steps 1-4. It still has the service-extraction, target-DAG, test-registration,
+and header-API debt tracked by the linked checklist. Item 12 remains in progress
+until that checklist, the complete static audit, and the unchanged three-run
+Manhattan mission gate below are finished.
 
 ### Validation
 

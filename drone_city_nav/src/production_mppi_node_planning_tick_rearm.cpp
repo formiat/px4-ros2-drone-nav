@@ -8,35 +8,6 @@
 namespace drone_city_nav {
 namespace {
 
-[[nodiscard]] bool exactZeroControl(const mppi::Control& control) noexcept {
-  return control.ax == 0.0F && control.ay == 0.0F && control.az == 0.0F &&
-         control.yaw_accel == 0.0F;
-}
-
-[[nodiscard]] bool
-appliedControlEmpty(const ProductionMppiAppliedControl& control) noexcept {
-  return !control.valid && !control.control_authoritative &&
-         !control.yaw_acceleration_authoritative && exactZeroControl(control.control) &&
-         control.yaw_rate_radps == 0.0F && control.source_stamp_ns == 0 &&
-         control.receive_stamp_ns == 0 && control.producer_instance_id == 0U &&
-         control.horizon_producer_instance_id == 0U && control.horizon_sequence == 0U &&
-         control.content_fingerprint == 0U;
-}
-
-[[nodiscard]] bool
-executionHorizonOwnerEmpty(const ProductionMppiExecutionHorizonOwner& owner) noexcept {
-  return !owner.valid && !owner.stationary_position_hold &&
-         owner.route_target.x == 0.0 && owner.route_target.y == 0.0 &&
-         owner.route_target.z == 0.0 && owner.stationary_hold_position.x == 0.0 &&
-         owner.stationary_hold_position.y == 0.0 &&
-         owner.stationary_hold_position.z == 0.0 && owner.valid_from_ns == 0 &&
-         owner.valid_until_ns == 0 && owner.producer_instance_id == 0U &&
-         owner.target_offboard_instance_id == 0U && owner.sequence == 0U &&
-         owner.execution_mode ==
-             msg::MppiTrajectoryHorizon::EXECUTION_MODE_POSITION_HOLD &&
-         owner.execution_reason == msg::MppiTrajectoryHorizon::EXECUTION_REASON_NONE;
-}
-
 [[nodiscard]] bool executionSnapshotRevokedEmpty(
     const std::shared_ptr<const ExecutionPlan3D>& snapshot) noexcept {
   return snapshot != nullptr && snapshot->valid() &&
@@ -81,11 +52,14 @@ bool stationaryCaptureRearmEligibleForPlanningTick(
     const ProductionMppiStationaryCaptureRearmContext& context) {
   if (context.objective == nullptr || context.mission_waypoint_sequence == nullptr ||
       context.navigation == nullptr || context.vehicle_status == nullptr ||
-      context.applied_control == nullptr ||
-      context.execution_horizon_owner == nullptr ||
+      context.execution_authority == nullptr || !context.execution_authority->valid() ||
       context.offboard_session == nullptr || context.world == nullptr) {
     return false;
   }
+  const AppliedControlEvidence3D& applied_control =
+      context.execution_authority->control();
+  const ExecutionOwnerIdentity3D& execution_owner =
+      context.execution_authority->owner();
   const bool stationary_rearm_candidate =
       !context.objective->tracking.has_value() && !context.objective->immediate_hold &&
       context.terminal_hold_enabled && context.goal_capture_latched;
@@ -149,11 +123,10 @@ bool stationaryCaptureRearmEligibleForPlanningTick(
           .vehicle_status_epoch_stable = context.vehicle_status_epoch_stable,
           .armed = context.vehicle_status->armed,
           .offboard_session_valid = context.offboard_session->valid(),
-          .applied_control_empty = appliedControlEmpty(*context.applied_control),
-          .horizon_owner_empty =
-              executionHorizonOwnerEmpty(*context.execution_horizon_owner),
+          .applied_control_empty = applied_control.empty(),
+          .horizon_owner_empty = execution_owner.empty(),
           .execution_snapshot_revoked_empty =
-              executionSnapshotRevokedEmpty(context.execution_snapshot),
+              executionSnapshotRevokedEmpty(context.execution_authority->plan()),
           .validation_policy_current = validation_policy_current,
           .world_evidence_current = static_world_current || observed_world_current,
           .lidar_evidence_current = lidar_evidence_current,
@@ -162,12 +135,17 @@ bool stationaryCaptureRearmEligibleForPlanningTick(
 
 ProductionMppiExecutionInputPreparation prepareExecutionInputForPlanningTick(
     const ProductionMppiNavigation& navigation,
-    const ProductionMppiAppliedControl& applied_control,
-    const ProductionMppiExecutionHorizonOwner& execution_horizon_owner,
+    const std::shared_ptr<const CommittedExecutionAuthority3D>& execution_authority,
     const std::uint64_t execution_input_sequence, const std::int64_t now_ns,
     const double maximum_control_feedback_age_ms, const bool pose_predicted,
     const bool stationary_capture_rearm) {
   ProductionMppiExecutionInputPreparation result;
+  if (execution_authority == nullptr || !execution_authority->valid()) {
+    return result;
+  }
+  const AppliedControlEvidence3D& applied_control = execution_authority->control();
+  const ExecutionOwnerIdentity3D& execution_horizon_owner =
+      execution_authority->owner();
   result.control_feedback_fresh =
       appliedControlAuthoritativeForExecution(applied_control, execution_horizon_owner,
                                               now_ns, maximum_control_feedback_age_ms);

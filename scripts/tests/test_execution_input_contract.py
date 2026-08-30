@@ -80,7 +80,7 @@ class ExecutionInputContractTest(unittest.TestCase):
             "if (angular_derivative.source_identity_conflicted)", maxsplit=1
         )[1].split("if (!navigationAngularUpdateAccepted", maxsplit=1)[0]
         self.assertIn("navigation_.valid = false", identity_conflict)
-        self.assertIn("applied_control_ = {}", identity_conflict)
+        self.assertIn("invalidateAppliedControlWitnessLocked()", identity_conflict)
         self.assertIn("requestExecutionRevocation", identity_conflict)
         self.assertNotIn("execution_horizon_owner_ = {}", identity_conflict)
 
@@ -93,7 +93,7 @@ class ExecutionInputContractTest(unittest.TestCase):
             rejected_navigation,
         )
         self.assertIn("navigation_.valid = false", rejected_navigation)
-        self.assertIn("applied_control_ = {}", rejected_navigation)
+        self.assertIn("invalidateAppliedControlWitnessLocked()", rejected_navigation)
         self.assertIn("if (navigation_was_valid)", rejected_navigation)
         self.assertIn("requestExecutionRevocation", rejected_navigation)
         self.assertNotIn("execution_horizon_owner_ = {}", rejected_navigation)
@@ -109,7 +109,7 @@ class ExecutionInputContractTest(unittest.TestCase):
         self.assertIn("state_reset.frame_compensation_required", callback)
         self.assertIn("navigation_frame_reset_unresolved_ = true", callback)
         self.assertIn("execution_lineage_discontinuity", callback)
-        self.assertIn("applied_control_ = {}", callback)
+        self.assertIn("invalidateAppliedControlWitnessLocked()", callback)
         self.assertIn("requestExecutionRevocation", callback)
         self.assertNotIn("publishExecutionRevocation", callback)
         self.assertNotIn("execution_horizon_owner_ = {}", callback)

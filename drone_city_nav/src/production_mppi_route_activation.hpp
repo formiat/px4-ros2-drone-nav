@@ -9,10 +9,8 @@ namespace drone_city_nav {
 
 struct ProductionRouteActivationSnapshot3D {
   std::shared_ptr<const WorldSnapshot3D> resident_world;
-  std::shared_ptr<const ExecutionPlan3D> execution_snapshot;
+  std::shared_ptr<const CommittedExecutionAuthority3D> execution_authority;
   ProductionMppiNavigation navigation{};
-  ProductionMppiAppliedControl applied_control{};
-  ProductionMppiExecutionHorizonOwner execution_horizon_owner{};
   std::shared_ptr<const ProductionNavigationObjective> objective;
   std::shared_ptr<const ProductionMppiRawWorld3D> raw_world;
   std::uint64_t minimum_tracking_route_mission_epoch{0U};

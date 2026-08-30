@@ -34,12 +34,17 @@ std::optional<ProprioceptiveFreeSpaceSeed3D>
 ProductionMppiNode::prepareObservedExecutionEvidence3D(
     const ProductionMppiRawWorld3D& raw_world,
     const ProductionMppiNavigation& navigation,
-    const ProductionMppiAppliedControl& applied_control,
-    const ProductionMppiExecutionHorizonOwner& execution_horizon_owner) {
+    const std::shared_ptr<const CommittedExecutionAuthority3D>& execution_authority) {
   const std::shared_ptr<const ObservedOccupancyGrid3D>& occupancy = raw_world.occupancy;
   if (!occupancy) {
     return std::nullopt;
   }
+  const AppliedControlEvidence3D applied_control = execution_authority != nullptr
+                                                       ? execution_authority->control()
+                                                       : AppliedControlEvidence3D{};
+  const ExecutionOwnerIdentity3D execution_horizon_owner =
+      execution_authority != nullptr ? execution_authority->owner()
+                                     : ExecutionOwnerIdentity3D{};
   const Point3 position{navigation.state.x, navigation.state.y, navigation.state.z};
   const std::optional<FootprintBodyAxis> current_body_axis =
       authoritativeBodyAxisForExecution(applied_control, execution_horizon_owner,

@@ -175,13 +175,14 @@ bounded D* repair and execution-time refinement until convergence or no-route.
 The ownership model is specified in
 [`navigation_architecture_remediation.md`](navigation_architecture_remediation.md).
 `RouteExecutionManager3D` keeps a valid route sticky and owns the resident plan
-and pending successor under one lock. Planning starts from a certified future
-station, splices with measured latency and braking reserve, and repairs only
-invalid suffixes. Route geometry, tracking tube, nominal horizon, braking
-fallback, owner, versioned input, applied-control evidence, and evidence
-revisions must still be combined into one immutable committed authority; those
-controller-publication fields remain in the node until that next migration is
-complete.
+and pending successor under one lock. It publishes the resident plan together
+with its typed horizon owner, exact immutable versioned input, and matching
+applied-control evidence as one atomic `CommittedExecutionAuthority3D` pointer.
+Planning ticks and activation capture that pointer once; feedback, horizon
+refresh, revocation, and mission capture use exact-pointer compare-and-swap
+transitions, so an old plan cannot be paired with a newer lease or control
+witness. Planning starts from a certified future station, splices with measured
+latency and braking reserve, and repairs only invalid suffixes.
 
 GPU MPPI owns executable local motion and continuously warm-starts from its
 previous control sequence. Latest raw lidar evidence validates the finite swept

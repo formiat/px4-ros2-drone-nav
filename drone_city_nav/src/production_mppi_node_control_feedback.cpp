@@ -26,17 +26,17 @@ bool vehicleStatusAuthoritativeForExecution(const ProductionMppiVehicleStatus& s
          maximum_age_ms;
 }
 
-bool appliedControlAuthoritativeForExecution(
-    const ProductionMppiAppliedControl& control,
-    const ProductionMppiExecutionHorizonOwner& owner, const std::int64_t now_ns,
-    const double maximum_age_ms) noexcept {
+bool appliedControlAuthoritativeForExecution(const AppliedControlEvidence3D& control,
+                                             const ExecutionOwnerIdentity3D& owner,
+                                             const std::int64_t now_ns,
+                                             const double maximum_age_ms) noexcept {
   if (!control.valid || !control.control_authoritative || !owner.valid ||
       control.producer_instance_id == 0U ||
       control.horizon_producer_instance_id == 0U ||
       control.horizon_producer_instance_id != owner.producer_instance_id ||
       control.producer_instance_id != owner.target_offboard_instance_id ||
-      control.execution_mode != msg::MppiControlFeedback::EXECUTION_MODE_PLANNED ||
-      owner.execution_mode != msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED ||
+      control.execution_mode != ExecutionAuthorityMode3D::kPlanned ||
+      owner.execution_mode != ExecutionAuthorityMode3D::kPlanned ||
       control.horizon_sequence == 0U || control.horizon_sequence != owner.sequence ||
       control.source_stamp_ns <= 0 || control.receive_stamp_ns <= 0 || now_ns < 0 ||
       owner.valid_from_ns <= 0 || owner.valid_until_ns <= owner.valid_from_ns ||
@@ -58,10 +58,10 @@ bool appliedControlAuthoritativeForExecution(
 }
 
 std::optional<FootprintBodyAxis> authoritativeBodyAxisForExecution(
-    const ProductionMppiAppliedControl& applied_control,
-    const ProductionMppiExecutionHorizonOwner& owner,
-    const ProductionMppiNavigation& navigation, const std::int64_t now_ns,
-    const double maximum_control_age_ms, const double maximum_pose_age_ms) noexcept {
+    const AppliedControlEvidence3D& applied_control,
+    const ExecutionOwnerIdentity3D& owner, const ProductionMppiNavigation& navigation,
+    const std::int64_t now_ns, const double maximum_control_age_ms,
+    const double maximum_pose_age_ms) noexcept {
   const auto finite_linear_control = [](const mppi::Control& control) noexcept {
     return std::isfinite(control.ax) && std::isfinite(control.ay) &&
            std::isfinite(control.az);
@@ -90,19 +90,31 @@ std::optional<FootprintBodyAxis> authoritativeBodyAxisForExecution(
   return std::nullopt;
 }
 
+void ProductionMppiNode::recordAppliedControlDiscontinuityLocked() noexcept {
+  if (applied_control_discontinuity_generation_ ==
+      std::numeric_limits<std::uint64_t>::max()) {
+    applied_control_discontinuity_generation_exhausted_ = true;
+  } else {
+    ++applied_control_discontinuity_generation_;
+  }
+}
+
 void ProductionMppiNode::invalidateAppliedControlWitnessLocked() noexcept {
   // Every caller holds input_mutex_. A valid-to-empty transition is a sticky
   // discontinuity even if a later callback reinstalls the exact same horizon
   // tuple before the next planning tick observes it.
-  if (applied_control_.valid) {
-    if (applied_control_discontinuity_generation_ ==
-        std::numeric_limits<std::uint64_t>::max()) {
-      applied_control_discontinuity_generation_exhausted_ = true;
-    } else {
-      ++applied_control_discontinuity_generation_;
-    }
+  const std::shared_ptr<const CommittedExecutionAuthority3D> expected =
+      route_execution_manager_.authority();
+  if (expected == nullptr || !expected->control().valid) {
+    return;
   }
-  applied_control_ = {};
+  if (!route_execution_manager_.clearAppliedControlIfSame(expected)) {
+    if (route_execution_manager_.authority() == expected) {
+      applied_control_discontinuity_generation_exhausted_ = true;
+    }
+    return;
+  }
+  recordAppliedControlDiscontinuityLocked();
 }
 
 void ProductionMppiNode::onAppliedControl(const msg::MppiControlFeedback& message) {
@@ -133,14 +145,15 @@ void ProductionMppiNode::onAppliedControl(const msg::MppiControlFeedback& messag
     return;
   }
 
-  ProductionMppiAppliedControl feedback;
+  AppliedControlEvidence3D feedback;
   feedback.receive_stamp_ns = assessment.candidate.receive_stamp_ns;
   feedback.source_stamp_ns = assessment.candidate.source_stamp_ns;
   feedback.producer_instance_id = assessment.candidate.offboard_producer_instance_id;
   feedback.horizon_producer_instance_id =
       assessment.candidate.horizon_producer_instance_id;
   feedback.horizon_sequence = assessment.candidate.horizon_sequence;
-  feedback.execution_mode = message.execution_mode;
+  feedback.execution_mode =
+      static_cast<ExecutionAuthorityMode3D>(message.execution_mode);
   feedback.control_authoritative = assessment.candidate.control_authoritative;
   if (assessment.valid()) {
     feedback.control.ax = static_cast<float>(message.acceleration.x);
@@ -159,15 +172,19 @@ void ProductionMppiNode::onAppliedControl(const msg::MppiControlFeedback& messag
   const bool control_payload_valid = assessment.valid() && feedback.valid;
   const bool session_heartbeat = assessment.candidate.heartbeat();
   const std::scoped_lock lock{input_mutex_};
+  const std::shared_ptr<const CommittedExecutionAuthority3D> execution_authority =
+      route_execution_manager_.authority();
+  const ExecutionOwnerIdentity3D execution_owner = execution_authority != nullptr
+                                                       ? execution_authority->owner()
+                                                       : ExecutionOwnerIdentity3D{};
   const AppliedControlAdmissionResult control_admission = admitAppliedControlEvidence(
       applied_control_admission_state_, assessment.candidate,
       AppliedControlExecutionOwner{
-          .offboard_producer_instance_id =
-              execution_horizon_owner_.target_offboard_instance_id,
-          .horizon_producer_instance_id = execution_horizon_owner_.producer_instance_id,
-          .horizon_sequence = execution_horizon_owner_.sequence,
-          .execution_mode = static_cast<ExecutionHorizonWitnessMode>(
-              execution_horizon_owner_.execution_mode),
+          .offboard_producer_instance_id = execution_owner.target_offboard_instance_id,
+          .horizon_producer_instance_id = execution_owner.producer_instance_id,
+          .horizon_sequence = execution_owner.sequence,
+          .execution_mode =
+              static_cast<ExecutionHorizonWitnessMode>(execution_owner.execution_mode),
       },
       control_payload_valid);
   const ExecutionHorizonWitnessAdmissionResult& admission = control_admission.feedback;
@@ -209,7 +226,12 @@ void ProductionMppiNode::onAppliedControl(const msg::MppiControlFeedback& messag
     if (control_admission.revoke_control) {
       invalidateAppliedControlWitnessLocked();
       if (admission.session_transitioned) {
-        execution_horizon_owner_ = {};
+        const std::shared_ptr<const CommittedExecutionAuthority3D> current_authority =
+            route_execution_manager_.authority();
+        if (current_authority != nullptr && current_authority->owner().valid) {
+          static_cast<void>(
+              route_execution_manager_.clearLeaseIfSame(current_authority));
+        }
       }
       if (!control_payload_valid) {
         RCLCPP_WARN_THROTTLE(
@@ -231,15 +253,22 @@ void ProductionMppiNode::onAppliedControl(const msg::MppiControlFeedback& messag
         " expected_horizon=%" PRIu64,
         control_payload_valid ? "non_owning_horizon" : "invalid_control_payload",
         feedback.producer_instance_id, feedback.horizon_producer_instance_id,
-        feedback.horizon_sequence, execution_horizon_owner_.producer_instance_id,
-        execution_horizon_owner_.sequence);
+        feedback.horizon_sequence, execution_owner.producer_instance_id,
+        execution_owner.sequence);
     return;
   }
   if (!control_admission.install_control) {
     invalidateAppliedControlWitnessLocked();
     return;
   }
-  applied_control_ = feedback;
+  if (!route_execution_manager_.publishAppliedControlIfSame(execution_authority,
+                                                            feedback)) {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+                         "APPLIED_CONTROL rejected=true reason=authority_changed "
+                         "horizon_producer=%" PRIu64 " horizon=%" PRIu64,
+                         feedback.horizon_producer_instance_id,
+                         feedback.horizon_sequence);
+  }
 }
 
 } // namespace drone_city_nav

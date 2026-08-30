@@ -373,23 +373,23 @@ TEST(ProductionMppiRouteWorldTest,
 
 TEST(ProductionMppiRouteWorldTest,
      ExactAppliedControlBodyAxisTakesPriorityOverMeasuredAcceleration) {
-  ProductionMppiAppliedControl applied;
+  AppliedControlEvidence3D applied;
   applied.control = mppi::Control{.ax = 4.0F, .ay = 0.0F, .az = 0.0F};
   applied.source_stamp_ns = 1'010'000'000;
   applied.receive_stamp_ns = 1'020'000'000;
   applied.producer_instance_id = 91U;
   applied.horizon_producer_instance_id = 92U;
   applied.horizon_sequence = 17U;
-  applied.execution_mode = msg::MppiControlFeedback::EXECUTION_MODE_PLANNED;
+  applied.execution_mode = ExecutionAuthorityMode3D::kPlanned;
   applied.control_authoritative = true;
   applied.valid = true;
-  const ProductionMppiExecutionHorizonOwner owner{
+  const ExecutionOwnerIdentity3D owner{
       .valid_from_ns = 1'000'000'000,
       .valid_until_ns = 2'000'000'000,
       .producer_instance_id = 92U,
       .target_offboard_instance_id = 91U,
       .sequence = 17U,
-      .execution_mode = msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED,
+      .execution_mode = ExecutionAuthorityMode3D::kPlanned,
       .valid = true,
   };
   ProductionMppiNavigation navigation;
@@ -411,23 +411,23 @@ TEST(ProductionMppiRouteWorldTest,
 
 TEST(ProductionMppiRouteWorldTest,
      MeasuredBodyAxisIsFallbackForNonOwningAppliedControl) {
-  ProductionMppiAppliedControl applied;
+  AppliedControlEvidence3D applied;
   applied.control = mppi::Control{.ax = 4.0F};
   applied.source_stamp_ns = 1'010'000'000;
   applied.receive_stamp_ns = 1'020'000'000;
   applied.producer_instance_id = 91U;
   applied.horizon_producer_instance_id = 92U;
   applied.horizon_sequence = 16U;
-  applied.execution_mode = msg::MppiControlFeedback::EXECUTION_MODE_PLANNED;
+  applied.execution_mode = ExecutionAuthorityMode3D::kPlanned;
   applied.control_authoritative = true;
   applied.valid = true;
-  const ProductionMppiExecutionHorizonOwner owner{
+  const ExecutionOwnerIdentity3D owner{
       .valid_from_ns = 1'000'000'000,
       .valid_until_ns = 2'000'000'000,
       .producer_instance_id = 92U,
       .target_offboard_instance_id = 91U,
       .sequence = 17U,
-      .execution_mode = msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED,
+      .execution_mode = ExecutionAuthorityMode3D::kPlanned,
       .valid = true,
   };
   ProductionMppiNavigation navigation;
@@ -450,8 +450,8 @@ TEST(ProductionMppiRouteWorldTest,
 
 TEST(ProductionMppiRouteWorldTest,
      MissingOrStaleAccelerationEvidenceDoesNotInventBodyAxis) {
-  ProductionMppiAppliedControl applied;
-  ProductionMppiExecutionHorizonOwner owner;
+  AppliedControlEvidence3D applied;
+  ExecutionOwnerIdentity3D owner;
   ProductionMppiNavigation navigation;
   navigation.receive_stamp_ns = 1'000'000'000;
   navigation.valid = true;
@@ -468,55 +468,55 @@ TEST(ProductionMppiRouteWorldTest,
 
 TEST(ProductionMppiRouteWorldTest,
      AppliedControlAuthorityRequiresExactTwoSidedLiveOwnership) {
-  ProductionMppiAppliedControl applied;
+  AppliedControlEvidence3D applied;
   applied.source_stamp_ns = 1'010'000'000;
   applied.receive_stamp_ns = 1'020'000'000;
   applied.producer_instance_id = 91U;
   applied.horizon_producer_instance_id = 92U;
   applied.horizon_sequence = 17U;
-  applied.execution_mode = msg::MppiControlFeedback::EXECUTION_MODE_PLANNED;
+  applied.execution_mode = ExecutionAuthorityMode3D::kPlanned;
   applied.control_authoritative = true;
   applied.valid = true;
-  const ProductionMppiExecutionHorizonOwner owner{
+  const ExecutionOwnerIdentity3D owner{
       .valid_from_ns = 1'000'000'000,
       .valid_until_ns = 2'000'000'000,
       .producer_instance_id = 92U,
       .target_offboard_instance_id = 91U,
       .sequence = 17U,
-      .execution_mode = msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED,
+      .execution_mode = ExecutionAuthorityMode3D::kPlanned,
       .valid = true,
   };
 
   EXPECT_TRUE(
       appliedControlAuthoritativeForExecution(applied, owner, 1'030'000'000, 100.0));
 
-  ProductionMppiAppliedControl bounded_clock_skew = applied;
+  AppliedControlEvidence3D bounded_clock_skew = applied;
   bounded_clock_skew.source_stamp_ns = 1'050'000'000;
   bounded_clock_skew.receive_stamp_ns = 1'045'000'000;
   EXPECT_TRUE(appliedControlAuthoritativeForExecution(bounded_clock_skew, owner,
                                                       1'040'000'000, 100.0));
 
-  ProductionMppiAppliedControl future_feedback = bounded_clock_skew;
+  AppliedControlEvidence3D future_feedback = bounded_clock_skew;
   future_feedback.source_stamp_ns = 1'200'000'000;
   future_feedback.receive_stamp_ns = 1'200'000'000;
   EXPECT_FALSE(appliedControlAuthoritativeForExecution(future_feedback, owner,
                                                        1'040'000'000, 100.0));
 
-  ProductionMppiAppliedControl wrong_offboard = applied;
+  AppliedControlEvidence3D wrong_offboard = applied;
   ++wrong_offboard.producer_instance_id;
   EXPECT_FALSE(appliedControlAuthoritativeForExecution(wrong_offboard, owner,
                                                        1'030'000'000, 100.0));
 
-  ProductionMppiAppliedControl wrong_planner = applied;
+  AppliedControlEvidence3D wrong_planner = applied;
   ++wrong_planner.horizon_producer_instance_id;
   EXPECT_FALSE(appliedControlAuthoritativeForExecution(wrong_planner, owner,
                                                        1'030'000'000, 100.0));
 
-  ProductionMppiAppliedControl revoked = applied;
+  AppliedControlEvidence3D revoked = applied;
   revoked.control_authoritative = false;
   EXPECT_FALSE(
       appliedControlAuthoritativeForExecution(revoked, owner, 1'030'000'000, 100.0));
-  ProductionMppiAppliedControl delayed = applied;
+  AppliedControlEvidence3D delayed = applied;
   delayed.source_stamp_ns = 1'010'000'000;
   delayed.receive_stamp_ns = 1'490'000'000;
   EXPECT_FALSE(

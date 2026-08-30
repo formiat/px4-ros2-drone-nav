@@ -625,6 +625,8 @@ TEST(ExecutionRouteSnapshot3DTest, GuardsAndStoreEnforceVersionedCasPublication)
                     decltype(std::declval<ExecutionRouteTransitionResult3D&>().next)>>);
   SnapshotFixture3D fixture;
   RouteExecutionManager3D manager;
+  const std::shared_ptr<const CommittedExecutionAuthority3D> initial_authority =
+      manager.authority();
   const std::shared_ptr<const ExecutionPlan3D> initial = manager.plan();
   const std::optional<CertifiedRouteSuffix3D> suffix = fixture.certify();
   ASSERT_TRUE(initial);
@@ -636,19 +638,23 @@ TEST(ExecutionRouteSnapshot3DTest, GuardsAndStoreEnforceVersionedCasPublication)
       *initial, initial->version, *suffix, std::move(initial_execution));
   ASSERT_TRUE(activation.applied());
   ASSERT_TRUE(activation.next);
-  EXPECT_EQ(manager.publishPlan(initial, activation),
+  EXPECT_EQ(manager.publishDetachedTransition(initial_authority, activation),
             ExecutionRoutePublicationStatus3D::kPublished);
-  EXPECT_EQ(manager.publishPlan(initial, activation),
+  EXPECT_EQ(manager.publishDetachedTransition(initial_authority, activation),
             ExecutionRoutePublicationStatus3D::kStaleSnapshotVersion);
   EXPECT_EQ(manager.plan(), activation.next);
 
   RouteExecutionManager3D other_manager;
+  const std::shared_ptr<const CommittedExecutionAuthority3D> other_authority =
+      other_manager.authority();
   const std::shared_ptr<const ExecutionPlan3D> other_initial = other_manager.plan();
   ASSERT_TRUE(other_initial);
   EXPECT_EQ(other_initial->version, initial->version);
-  EXPECT_EQ(other_manager.publishPlan(other_initial, activation),
+  EXPECT_EQ(other_manager.publishDetachedTransition(other_authority, activation),
             ExecutionRoutePublicationStatus3D::kStaleSnapshotVersion);
 
+  const std::shared_ptr<const CommittedExecutionAuthority3D> resident_authority =
+      manager.authority();
   const std::shared_ptr<const ExecutionPlan3D> resident = manager.plan();
   ASSERT_EQ(resident, activation.next);
   const ExecutionRouteTransitionResult3D first_replacement = replaceFiniteExecution3D(
@@ -662,10 +668,11 @@ TEST(ExecutionRouteSnapshot3DTest, GuardsAndStoreEnforceVersionedCasPublication)
                                              true, 102U));
   ASSERT_TRUE(first_replacement.applied());
   ASSERT_TRUE(competing_replacement.applied());
-  EXPECT_EQ(manager.publishPlan(resident, first_replacement),
+  EXPECT_EQ(manager.publishDetachedTransition(resident_authority, first_replacement),
             ExecutionRoutePublicationStatus3D::kPublished);
-  EXPECT_EQ(manager.publishPlan(resident, competing_replacement),
-            ExecutionRoutePublicationStatus3D::kStaleSnapshotVersion);
+  EXPECT_EQ(
+      manager.publishDetachedTransition(resident_authority, competing_replacement),
+      ExecutionRoutePublicationStatus3D::kStaleSnapshotVersion);
 
   FiniteExecutionState3D finite = SnapshotFixture3D::finiteExecution(*activation.next);
   ExecutionRouteTransitionGuard3D stale_guard =
@@ -686,7 +693,8 @@ TEST(ExecutionRouteSnapshot3DTest, GuardsAndStoreEnforceVersionedCasPublication)
   EXPECT_EQ(replaceFiniteExecution3D(*activation.next, geometry_guard, finite).status,
             ExecutionRouteTransitionStatus3D::kGeometryRevisionMismatch);
 
-  EXPECT_EQ(manager.publishPlan(manager.plan(), ExecutionRouteTransitionResult3D{}),
+  EXPECT_EQ(manager.publishDetachedTransition(manager.authority(),
+                                              ExecutionRouteTransitionResult3D{}),
             ExecutionRoutePublicationStatus3D::kInvalidCandidate);
 }
 

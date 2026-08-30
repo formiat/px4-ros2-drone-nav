@@ -25,6 +25,8 @@ TEST(ExecutionRouteSnapshot3DTest,
   const std::optional<CertifiedRouteSuffix3D> suffix = fixture.certify();
   ASSERT_TRUE(suffix.has_value());
   RouteExecutionManager3D manager;
+  const std::shared_ptr<const CommittedExecutionAuthority3D> initial_authority =
+      manager.authority();
   const std::shared_ptr<const ExecutionPlan3D> initial = manager.plan();
   ASSERT_NE(initial, nullptr);
   CertifiedRouteSuffix3D copied_route = *suffix;
@@ -36,18 +38,20 @@ TEST(ExecutionRouteSnapshot3DTest,
   const ExecutionRouteTransitionResult3D activation = activateCertifiedRoute3D(
       *initial, initial->version, copied_route, std::move(execution));
   ASSERT_TRUE(activation.applied());
-  ASSERT_EQ(manager.publishPlan(initial, activation),
+  ASSERT_EQ(manager.publishDetachedTransition(initial_authority, activation),
             ExecutionRoutePublicationStatus3D::kPublished);
+  const std::shared_ptr<const CommittedExecutionAuthority3D> active_authority =
+      manager.authority();
   const std::shared_ptr<const ExecutionPlan3D> active = manager.plan();
   ASSERT_EQ(active, activation.next);
   const ExecutionRouteTransitionResult3D revocation =
       revokeExecution3D(*active, active->version);
   ASSERT_TRUE(revocation.applied());
 
-  EXPECT_EQ(manager.publishPlan(initial, revocation),
+  EXPECT_EQ(manager.publishDetachedTransition(initial_authority, revocation),
             ExecutionRoutePublicationStatus3D::kStaleSnapshotVersion);
   EXPECT_EQ(manager.plan(), active);
-  ASSERT_EQ(manager.publishPlan(active, revocation),
+  ASSERT_EQ(manager.publishDetachedTransition(active_authority, revocation),
             ExecutionRoutePublicationStatus3D::kPublished);
   const std::shared_ptr<const ExecutionPlan3D> revoked = manager.plan();
   ASSERT_EQ(revoked, revocation.next);
@@ -199,6 +203,8 @@ TEST(ExecutionRouteSnapshot3DTest,
       });
 
   RouteExecutionManager3D manager;
+  const std::shared_ptr<const CommittedExecutionAuthority3D> initial_authority =
+      manager.authority();
   const std::shared_ptr<const ExecutionPlan3D> initial = manager.plan();
   ASSERT_NE(initial, nullptr);
   FiniteExecutionState3D execution = SnapshotFixture3D::finiteExecutionForRoute(
@@ -212,12 +218,15 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_NE(sealed, nullptr);
   const RouteExecutionManagerSnapshot3D before_commit = manager.snapshot();
   ASSERT_TRUE(before_commit.valid());
-  EXPECT_EQ(before_commit.plan, initial);
+  EXPECT_EQ(before_commit.plan(), initial);
   EXPECT_EQ(before_commit.pending, sealed);
-  EXPECT_TRUE(manager.commitPendingTransitionIfSame(sealed, initial, activation));
+  EXPECT_TRUE(manager.commitPendingLeasedTransitionIfSame(
+      sealed, initial_authority, activation,
+      SnapshotFixture3D::committedOwner(*activation.next),
+      SnapshotFixture3D::committedInput(*activation.next)));
   const RouteExecutionManagerSnapshot3D after_commit = manager.snapshot();
   ASSERT_TRUE(after_commit.valid());
-  EXPECT_EQ(after_commit.plan, activation.next);
+  EXPECT_EQ(after_commit.plan(), activation.next);
   EXPECT_EQ(after_commit.pending, nullptr);
 
   const std::optional<CertifiedRouteSuffix3D> recertified = recertifyExecutionRoute3D(
@@ -227,6 +236,8 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_EQ(recertified->parent_route_instance_id,
             std::optional<RouteInstanceId3D>{suffix->route_instance_id});
   RouteExecutionManager3D recertified_manager;
+  const std::shared_ptr<const CommittedExecutionAuthority3D>
+      recertified_initial_authority = recertified_manager.authority();
   const std::shared_ptr<const ExecutionPlan3D> recertified_initial =
       recertified_manager.plan();
   ASSERT_NE(recertified_initial, nullptr);
@@ -242,13 +253,17 @@ TEST(ExecutionRouteSnapshot3DTest,
   const std::shared_ptr<const PendingCertifiedRoute3D> recertified_pending =
       recertified_manager.pending();
   ASSERT_NE(recertified_pending, nullptr);
-  EXPECT_TRUE(recertified_manager.commitPendingTransitionIfSame(
-      recertified_pending, recertified_initial, recertified_activation));
+  EXPECT_TRUE(recertified_manager.commitPendingLeasedTransitionIfSame(
+      recertified_pending, recertified_initial_authority, recertified_activation,
+      SnapshotFixture3D::committedOwner(*recertified_activation.next),
+      SnapshotFixture3D::committedInput(*recertified_activation.next)));
   EXPECT_EQ(recertified_manager.plan(), recertified_activation.next);
   EXPECT_EQ(recertified_manager.pending(), nullptr);
 
   RouteExecutionManager3D retained_manager;
   RouteExecutionManager3D foreign_manager;
+  const std::shared_ptr<const CommittedExecutionAuthority3D> retained_authority =
+      retained_manager.authority();
   const std::shared_ptr<const ExecutionPlan3D> rejected_initial =
       retained_manager.plan();
   const std::shared_ptr<const ExecutionPlan3D> foreign_initial = foreign_manager.plan();
@@ -265,8 +280,10 @@ TEST(ExecutionRouteSnapshot3DTest,
   const std::shared_ptr<const PendingCertifiedRoute3D> retained =
       retained_manager.pending();
   ASSERT_NE(retained, nullptr);
-  EXPECT_FALSE(retained_manager.commitPendingTransitionIfSame(retained, foreign_initial,
-                                                              foreign_activation));
+  EXPECT_FALSE(retained_manager.commitPendingLeasedTransitionIfSame(
+      retained, retained_authority, foreign_activation,
+      SnapshotFixture3D::committedOwner(*foreign_activation.next),
+      SnapshotFixture3D::committedInput(*foreign_activation.next)));
   EXPECT_EQ(retained_manager.plan(), rejected_initial);
   EXPECT_EQ(retained_manager.pending(), retained);
 
@@ -275,6 +292,8 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_NE(unrelated->route_instance_id, suffix->route_instance_id);
   ASSERT_FALSE(unrelated->parent_route_instance_id.has_value());
   RouteExecutionManager3D unrelated_manager;
+  const std::shared_ptr<const CommittedExecutionAuthority3D> unrelated_authority =
+      unrelated_manager.authority();
   const std::shared_ptr<const ExecutionPlan3D> unrelated_initial =
       unrelated_manager.plan();
   ASSERT_NE(unrelated_initial, nullptr);
@@ -289,8 +308,10 @@ TEST(ExecutionRouteSnapshot3DTest,
   const std::shared_ptr<const PendingCertifiedRoute3D> unrelated_pending =
       unrelated_manager.pending();
   ASSERT_NE(unrelated_pending, nullptr);
-  EXPECT_FALSE(unrelated_manager.commitPendingTransitionIfSame(
-      unrelated_pending, unrelated_initial, unrelated_activation));
+  EXPECT_FALSE(unrelated_manager.commitPendingLeasedTransitionIfSame(
+      unrelated_pending, unrelated_authority, unrelated_activation,
+      SnapshotFixture3D::committedOwner(*unrelated_activation.next),
+      SnapshotFixture3D::committedInput(*unrelated_activation.next)));
   EXPECT_EQ(unrelated_manager.plan(), unrelated_initial);
   EXPECT_EQ(unrelated_manager.pending(), unrelated_pending);
 }
@@ -300,6 +321,8 @@ TEST(ExecutionRouteSnapshot3DTest, RouteSplicePendingSurvivesExecutionProgressCa
   const std::optional<CertifiedRouteSuffix3D> base = fixture.certify();
   ASSERT_TRUE(base.has_value());
   RouteExecutionManager3D manager;
+  const std::shared_ptr<const CommittedExecutionAuthority3D> initial_authority =
+      manager.authority();
   const std::shared_ptr<const ExecutionPlan3D> initial = manager.plan();
   ASSERT_NE(initial, nullptr);
   const ExecutionRouteTransitionResult3D activation = activateCertifiedRoute3D(
@@ -307,8 +330,10 @@ TEST(ExecutionRouteSnapshot3DTest, RouteSplicePendingSurvivesExecutionProgressCa
       SnapshotFixture3D::finiteExecutionForRoute(
           *initial, *base, FiniteExecutionKind3D::kNominal, true, 100U));
   ASSERT_TRUE(activation.applied());
-  ASSERT_EQ(manager.publishPlan(initial, activation),
+  ASSERT_EQ(manager.publishDetachedTransition(initial_authority, activation),
             ExecutionRoutePublicationStatus3D::kPublished);
+  const std::shared_ptr<const CommittedExecutionAuthority3D> active_authority =
+      manager.authority();
   const std::shared_ptr<const ExecutionPlan3D> active = manager.plan();
   ASSERT_NE(active, nullptr);
   ASSERT_TRUE(active->route() != nullptr);
@@ -353,10 +378,13 @@ TEST(ExecutionRouteSnapshot3DTest, RouteSplicePendingSurvivesExecutionProgressCa
   ASSERT_TRUE(advanced.applied());
   // A progress-only preparation no longer crosses the controller-visible CAS
   // boundary. It must be combined with a complete command/braking plan.
-  ASSERT_EQ(manager.publishPlan(active, advanced),
+  ASSERT_EQ(manager.publishDetachedTransition(active_authority, advanced),
             ExecutionRoutePublicationStatus3D::kInvalidCandidate);
 
-  EXPECT_TRUE(manager.commitPendingTransitionIfSame(sealed, active, replacement));
+  EXPECT_TRUE(manager.commitPendingLeasedTransitionIfSame(
+      sealed, active_authority, replacement,
+      SnapshotFixture3D::committedOwner(*replacement.next),
+      SnapshotFixture3D::committedInput(*replacement.next)));
   EXPECT_EQ(manager.plan(), replacement.next);
   EXPECT_EQ(manager.pending(), nullptr);
 }
@@ -384,6 +412,8 @@ TEST(ExecutionRouteSnapshot3DTest,
       std::make_shared<const PendingCertifiedRoute3D>(std::move(newer_value));
 
   RouteExecutionManager3D manager;
+  const std::shared_ptr<const CommittedExecutionAuthority3D> initial_authority =
+      manager.authority();
   const std::shared_ptr<const ExecutionPlan3D> initial = manager.plan();
   ASSERT_NE(initial, nullptr);
   FiniteExecutionState3D execution = SnapshotFixture3D::finiteExecutionForRoute(
@@ -403,7 +433,10 @@ TEST(ExecutionRouteSnapshot3DTest,
     captured = manager.pending();
     pending_captured.arrive_and_wait();
     pending_replaced.arrive_and_wait();
-    committed = manager.commitPendingTransitionIfSame(captured, initial, activation);
+    committed = manager.commitPendingLeasedTransitionIfSame(
+        captured, initial_authority, activation,
+        SnapshotFixture3D::committedOwner(*activation.next),
+        SnapshotFixture3D::committedInput(*activation.next));
   }};
   std::thread producer{[&] {
     pending_captured.arrive_and_wait();

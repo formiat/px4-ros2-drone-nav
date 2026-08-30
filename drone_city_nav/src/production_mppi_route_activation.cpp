@@ -201,17 +201,13 @@ ProductionRouteActivationSnapshot3D
 ProductionMppiNode::captureRouteActivationSnapshot3D() {
   ProductionRouteActivationSnapshot3D snapshot;
   {
-    const std::scoped_lock evidence_lock{execution_evidence_commit_mutex_};
-    snapshot.execution_snapshot = route_execution_manager_.plan();
-    snapshot.raw_world = latest_raw_world_3d_.load(std::memory_order_acquire);
-  }
-  {
-    const std::scoped_lock lock{world_generation_publication_mutex_, input_mutex_,
+    const std::scoped_lock lock{execution_evidence_commit_mutex_,
+                                world_generation_publication_mutex_, input_mutex_,
                                 esdf_state_mutex_};
+    snapshot.execution_authority = route_execution_manager_.authority();
+    snapshot.raw_world = latest_raw_world_3d_.load(std::memory_order_acquire);
     snapshot.resident_world = resident_world_;
     snapshot.navigation = navigation_;
-    snapshot.applied_control = applied_control_;
-    snapshot.execution_horizon_owner = execution_horizon_owner_;
     snapshot.objective = navigationObjective();
   }
   snapshot.minimum_tracking_route_mission_epoch =
@@ -230,6 +226,15 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
     const StaticRouteReplacementPolicy replacement_policy, const Point3& mission_goal,
     const std::uint64_t candidate_generation,
     const ProductionRouteActivationSnapshot3D& snapshot) {
+  const std::shared_ptr<const ExecutionPlan3D> captured_execution =
+      snapshot.execution_authority != nullptr ? snapshot.execution_authority->plan()
+                                              : nullptr;
+  const AppliedControlEvidence3D captured_control =
+      snapshot.execution_authority != nullptr ? snapshot.execution_authority->control()
+                                              : AppliedControlEvidence3D{};
+  const ExecutionOwnerIdentity3D captured_owner =
+      snapshot.execution_authority != nullptr ? snapshot.execution_authority->owner()
+                                              : ExecutionOwnerIdentity3D{};
   ProductionRouteActivationResult3D result;
   result.materialized = std::move(materialization.route);
   result.telemetry = materialization.telemetry;
@@ -284,7 +289,7 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
       };
     } else {
       const CertifiedRouteSuffix3D* const resident_route =
-          snapshot.execution_snapshot ? snapshot.execution_snapshot->route() : nullptr;
+          captured_execution ? captured_execution->route() : nullptr;
       report.candidate_validation = validateStaticRouteCandidate(
           resident_route != nullptr && resident_route->geometry != nullptr &&
                   resident_route->geometry->route != nullptr
@@ -593,7 +598,7 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
   }
 
   const bool handoff_control_fresh = appliedControlAuthoritativeForExecution(
-      snapshot.applied_control, snapshot.execution_horizon_owner, snapshot.stamp_ns,
+      captured_control, captured_owner, snapshot.stamp_ns,
       maximum_control_feedback_age_ms_);
   const std::shared_ptr<const std::vector<mppi::RouteSample3D>> mppi_reference =
       result.proposal.trajectory != nullptr
@@ -603,7 +608,7 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
       mppi_reference && candidate.world->distances_m && snapshot.navigation.valid) {
     report.handoff = mppi::validateStaticRouteHandoff(
         snapshot.navigation.state,
-        handoff_control_fresh ? snapshot.applied_control.control : mppi::Control{},
+        handoff_control_fresh ? captured_control.control : mppi::Control{},
         *mppi_reference, static_cast<float>(speed_policy_config_.cruise_speed_mps),
         static_cast<float>(route_tracking_policy_.maximum_cross_track_m),
         static_cast<float>(kFiniteExecutionRouteCrossTrackToleranceM3D), mppi_config_,
@@ -661,8 +666,10 @@ void ProductionMppiNode::commitRouteActivation3D(
       base_generation != std::numeric_limits<std::uint64_t>::max() &&
       candidate_generation == base_generation + 1U;
   report.generation_matches = base_generation_matches && allocation_generation_matches;
-  report.certification_execution_base_current =
-      sameExecutionRouteBase(snapshot.execution_snapshot, current_execution);
+  report.certification_execution_base_current = sameExecutionRouteBase(
+      snapshot.execution_authority != nullptr ? snapshot.execution_authority->plan()
+                                              : nullptr,
+      current_execution);
   const ActivatedRouteIdentity3D* const active_identity =
       current_route != nullptr ? std::addressof(current_route->identity) : nullptr;
   report.replacement = assessRouteProposalReplacement3D(

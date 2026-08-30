@@ -12,13 +12,11 @@ struct ProductionMppiStationaryCaptureRearmContext {
   const MissionWaypointSequence* mission_waypoint_sequence{nullptr};
   const ProductionMppiNavigation* navigation{nullptr};
   const ProductionMppiVehicleStatus* vehicle_status{nullptr};
-  const ProductionMppiAppliedControl* applied_control{nullptr};
-  const ProductionMppiExecutionHorizonOwner* execution_horizon_owner{nullptr};
+  std::shared_ptr<const CommittedExecutionAuthority3D> execution_authority;
   const OffboardSessionAdmissionState* offboard_session{nullptr};
   const WorldSnapshot3D* world{nullptr};
   std::shared_ptr<const ProductionMppiRawWorld3D> latest_raw_world_3d;
   std::shared_ptr<const VersionedLatestLidarEvidence3D> latest_lidar_evidence;
-  std::shared_ptr<const ExecutionPlan3D> execution_snapshot;
   std::shared_ptr<const VersionedExecutionValidationPolicy3D> validation_policy;
   std::shared_ptr<const OccupancyGrid3D> static_occupancy_3d;
   MissionWaypointCaptureGateConfig capture_gate_config{};
@@ -51,8 +49,7 @@ struct ProductionMppiExecutionInputPreparation {
 [[nodiscard]] ProductionMppiExecutionInputPreparation
 prepareExecutionInputForPlanningTick(
     const ProductionMppiNavigation& navigation,
-    const ProductionMppiAppliedControl& applied_control,
-    const ProductionMppiExecutionHorizonOwner& execution_horizon_owner,
+    const std::shared_ptr<const CommittedExecutionAuthority3D>& execution_authority,
     std::uint64_t execution_input_sequence, std::int64_t now_ns,
     double maximum_control_feedback_age_ms, bool pose_predicted,
     bool stationary_capture_rearm);

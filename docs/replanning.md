@@ -20,9 +20,10 @@ cells.
 
 `RouteExecutionManager3D` preserves the mission intent and solely owns the
 accepted immutable route plan, full-3D progress, pending successor, and certified
-reserve. Controller-publication evidence is being consolidated with that plan
-under the remediation plan in
-[`navigation_architecture_remediation.md`](navigation_architecture_remediation.md).
+reserve. It also publishes the resident plan, controller lease, exact versioned
+execution input, and matching applied-control evidence together as one immutable
+`CommittedExecutionAuthority3D`. Readers capture a single atomic pointer, and
+writers replace it only when the exact expected authority is still current.
 Ordinary world updates do not replace a still-valid route. Planning starts from
 the current mission coordinate or from a certified future stitch station;
 vehicle yaw is never a strategic search constraint.

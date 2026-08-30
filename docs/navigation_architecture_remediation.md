@@ -127,13 +127,23 @@ One pure reducer validates transitions. The committed runtime authority is one
 immutable object published and captured atomically:
 
 ```cpp
-struct CommittedExecutionAuthority3D {
-  ExecutionPlan3D plan;
+class CommittedExecutionAuthority3D {
+  std::uint64_t revision;
+  std::shared_ptr<const ExecutionPlan3D> plan;
   ExecutionOwnerIdentity3D owner;
-  VersionedExecutionInput3D input;
+  std::shared_ptr<const VersionedExecutionInput3D> input;
   AppliedControlEvidence3D control;
 };
 ```
+
+`RouteExecutionManager3D` is the only constructor and publisher of this value.
+Every mutation is an exact-pointer compare-and-swap transaction against the
+captured authority, increments its monotonic revision, and validates that the
+lease belongs to the plan owner, the input is the plan's exact immutable input,
+and control feedback belongs to that lease. A plan transition clears prior
+control evidence. Lease revocation, feedback replacement, pending activation,
+and unchanged-plan horizon refresh each publish one complete replacement before
+the corresponding DDS message can become visible.
 
 ### `nav_control`
 
@@ -213,6 +223,16 @@ rather than applying an incomplete dirty-chunk delta. Planner request flags,
 parallel planner-world copies, and search objectives no longer reside on the
 published world.
 
+Execution publication now owns one immutable
+`CommittedExecutionAuthority3D`. `RouteExecutionManager3D` atomically publishes
+the plan, typed owner identity, pointer-identical versioned execution input, and
+matching applied-control evidence together. Activation and planning ticks load
+one authority pointer; mission capture, feedback, lease revocation, and horizon
+publication commit only against that exact pointer. The former node-owned
+`applied_control_` and `execution_horizon_owner_` fields have been removed, and
+executable concurrency tests exercise replacement while readers validate that
+no mixed authority revision is observable.
+
 - [x] Split publishable incumbent from search progress and continue anytime
   refinement after the first feasible route.
 - [x] Remove goal-altitude-first feasibility ordering and decompose the three
@@ -229,7 +249,7 @@ published world.
   transition reducer.
 - [x] Make `RouteExecutionManager3D` the sole pending/active plan owner and
   linearize pending-to-active replacement under the same mutex.
-- [ ] Publish plan, owner, input, and applied-control evidence as one atomic
+- [x] Publish plan, owner, input, and applied-control evidence as one atomic
   committed authority.
 - [x] Remove the test-only parallel lifecycle state and all competing lifecycle
   ownership terminology.

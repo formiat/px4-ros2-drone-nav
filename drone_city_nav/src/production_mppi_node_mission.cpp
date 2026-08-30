@@ -25,8 +25,7 @@ MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
     const std::shared_ptr<const ProductionNavigationObjective>& objective,
     const ProductionMppiNavigation& navigation,
     const ProductionMppiVehicleStatus& vehicle_status,
-    const ProductionMppiAppliedControl& applied_control,
-    const ProductionMppiExecutionHorizonOwner& execution_horizon_owner,
+    const std::shared_ptr<const CommittedExecutionAuthority3D>& execution_authority,
     const std::uint64_t applied_control_discontinuity_generation,
     const bool applied_control_discontinuity_generation_valid,
     const bool vehicle_status_epoch_stable, const bool goal_capture_latched,
@@ -34,12 +33,16 @@ MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
   mission_goal_capture_attempt_invalidated_ = false;
   if (!mission_waypoint_sequence_ || !mission_waypoint_capture_gate_ || !objective ||
       objective->tracking.has_value() || objective->immediate_hold ||
-      !mission_waypoint_acknowledgement_pub_) {
+      !mission_waypoint_acknowledgement_pub_ || execution_authority == nullptr ||
+      !execution_authority->valid()) {
     if (mission_waypoint_capture_gate_) {
       mission_waypoint_capture_gate_->reset();
     }
     return {};
   }
+  const AppliedControlEvidence3D& applied_control = execution_authority->control();
+  const ExecutionOwnerIdentity3D& execution_horizon_owner =
+      execution_authority->owner();
 
   const MissionWaypointCaptureGateResult capture =
       mission_waypoint_capture_gate_->update(MissionWaypointCaptureObservation{
@@ -72,18 +75,15 @@ MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
           .vehicle_status_epoch_stable = vehicle_status_epoch_stable,
           .armed = vehicle_status.armed,
           .horizon_valid = execution_horizon_owner.valid,
-          .horizon_position_hold =
-              execution_horizon_owner.execution_mode ==
-              msg::MppiTrajectoryHorizon::EXECUTION_MODE_POSITION_HOLD,
-          .horizon_goal_capture =
-              execution_horizon_owner.execution_reason ==
-              msg::MppiTrajectoryHorizon::EXECUTION_REASON_GOAL_CAPTURE,
+          .horizon_position_hold = execution_horizon_owner.execution_mode ==
+                                   ExecutionAuthorityMode3D::kPositionHold,
+          .horizon_goal_capture = execution_horizon_owner.execution_reason ==
+                                  ExecutionAuthorityReason3D::kGoalCapture,
           .horizon_stationary_position_hold =
               execution_horizon_owner.stationary_position_hold,
           .feedback_valid = applied_control.valid,
           .feedback_position_hold =
-              applied_control.execution_mode ==
-              msg::MppiControlFeedback::EXECUTION_MODE_POSITION_HOLD,
+              applied_control.execution_mode == ExecutionAuthorityMode3D::kPositionHold,
           .feedback_control_authoritative = applied_control.control_authoritative,
           .feedback_continuity_generation_valid =
               applied_control_discontinuity_generation_valid,
@@ -91,12 +91,8 @@ MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
   if (capture.continuity_broken) {
     mission_goal_capture_attempt_invalidated_ = true;
     const std::scoped_lock lock{input_mutex_};
-    if (execution_horizon_owner_.producer_instance_id ==
-            execution_horizon_owner.producer_instance_id &&
-        execution_horizon_owner_.sequence == execution_horizon_owner.sequence &&
-        execution_horizon_owner_.target_offboard_instance_id ==
-            execution_horizon_owner.target_offboard_instance_id) {
-      applied_control_ = {};
+    if (route_execution_manager_.authority() == execution_authority) {
+      invalidateAppliedControlWitnessLocked();
       requestExecutionRevocation(ProductionMppiExecutionReason::kNoExecutableHorizon);
     }
   }
@@ -144,63 +140,25 @@ MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
         !vehicle_status_epoch_probation_ && !vehicle_status_revision_exhausted_ &&
         vehicleStatusAuthoritativeForExecution(vehicle_status_, true, commit_now_ns,
                                                maximum_vehicle_status_age_ms_);
-    const bool owner_current =
-        execution_horizon_owner_.producer_instance_id ==
-            execution_horizon_owner.producer_instance_id &&
-        execution_horizon_owner_.target_offboard_instance_id ==
-            execution_horizon_owner.target_offboard_instance_id &&
-        execution_horizon_owner_.sequence == execution_horizon_owner.sequence &&
-        execution_horizon_owner_.valid_from_ns ==
-            execution_horizon_owner.valid_from_ns &&
-        execution_horizon_owner_.valid_until_ns ==
-            execution_horizon_owner.valid_until_ns &&
-        execution_horizon_owner_.execution_mode ==
-            execution_horizon_owner.execution_mode &&
-        execution_horizon_owner_.execution_reason ==
-            execution_horizon_owner.execution_reason &&
-        execution_horizon_owner_.stationary_position_hold ==
-            execution_horizon_owner.stationary_position_hold &&
-        execution_horizon_owner_.valid == execution_horizon_owner.valid &&
-        execution_horizon_owner_.route_target.x ==
-            execution_horizon_owner.route_target.x &&
-        execution_horizon_owner_.route_target.y ==
-            execution_horizon_owner.route_target.y &&
-        execution_horizon_owner_.route_target.z ==
-            execution_horizon_owner.route_target.z &&
-        execution_horizon_owner_.stationary_hold_position.x ==
-            execution_horizon_owner.stationary_hold_position.x &&
-        execution_horizon_owner_.stationary_hold_position.y ==
-            execution_horizon_owner.stationary_hold_position.y &&
-        execution_horizon_owner_.stationary_hold_position.z ==
-            execution_horizon_owner.stationary_hold_position.z &&
-        execution_horizon_owner_.valid_from_ns > 0 &&
-        execution_horizon_owner_.valid_until_ns >
-            execution_horizon_owner_.valid_from_ns &&
-        commit_now_ns >= execution_horizon_owner_.valid_from_ns &&
-        commit_now_ns < execution_horizon_owner_.valid_until_ns;
+    const bool authority_current =
+        route_execution_manager_.authority() == execution_authority;
+    const bool owner_current = authority_current && execution_horizon_owner.valid &&
+                               execution_horizon_owner.valid_from_ns > 0 &&
+                               execution_horizon_owner.valid_until_ns >
+                                   execution_horizon_owner.valid_from_ns &&
+                               commit_now_ns >= execution_horizon_owner.valid_from_ns &&
+                               commit_now_ns < execution_horizon_owner.valid_until_ns;
     const bool feedback_current =
-        applied_control_.producer_instance_id == applied_control.producer_instance_id &&
-        applied_control_.horizon_producer_instance_id ==
-            applied_control.horizon_producer_instance_id &&
-        applied_control_.horizon_sequence == applied_control.horizon_sequence &&
-        applied_control_.source_stamp_ns == applied_control.source_stamp_ns &&
-        applied_control_.receive_stamp_ns == applied_control.receive_stamp_ns &&
-        applied_control_.content_fingerprint == applied_control.content_fingerprint &&
-        applied_control_.execution_mode == applied_control.execution_mode &&
-        applied_control_.control_authoritative ==
-            applied_control.control_authoritative &&
-        applied_control_.valid == applied_control.valid && applied_control_.valid &&
-        !applied_control_.control_authoritative &&
-        applied_control_.execution_mode ==
-            msg::MppiControlFeedback::EXECUTION_MODE_POSITION_HOLD &&
-        applied_control_.source_stamp_ns > 0 &&
-        applied_control_.receive_stamp_ns >= applied_control_.source_stamp_ns &&
-        commit_now_ns >= applied_control_.source_stamp_ns &&
-        commit_now_ns >= applied_control_.receive_stamp_ns &&
-        static_cast<double>(commit_now_ns - applied_control_.source_stamp_ns) *
-                1.0e-6 <=
+        authority_current && applied_control.valid &&
+        !applied_control.control_authoritative &&
+        applied_control.execution_mode == ExecutionAuthorityMode3D::kPositionHold &&
+        applied_control.source_stamp_ns > 0 &&
+        applied_control.receive_stamp_ns >= applied_control.source_stamp_ns &&
+        commit_now_ns >= applied_control.source_stamp_ns &&
+        commit_now_ns >= applied_control.receive_stamp_ns &&
+        static_cast<double>(commit_now_ns - applied_control.source_stamp_ns) * 1.0e-6 <=
             maximum_control_feedback_age_ms_ &&
-        static_cast<double>(commit_now_ns - applied_control_.receive_stamp_ns) *
+        static_cast<double>(commit_now_ns - applied_control.receive_stamp_ns) *
                 1.0e-6 <=
             maximum_control_feedback_age_ms_;
     const bool revocation_current =
@@ -215,7 +173,7 @@ MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
         distance3D(mission_waypoint_sequence_->activeGoal(), objective->goal) <=
         mission_waypoint_capture_gate_config_.target_match_tolerance_m;
     if (!commit_time_valid || !objective_current || !navigation_current ||
-        !status_current || !owner_current || !feedback_current ||
+        !status_current || !authority_current || !owner_current || !feedback_current ||
         !feedback_continuity_current || !revocation_current || !active_goal_current) {
       return {};
     }
@@ -243,7 +201,7 @@ MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
       // its applied-control evidence unusable as soon as the objective epoch
       // advances. The next planning tick must linearize the queued revocation
       // before it can publish an owner for the successor leg.
-      applied_control_ = {};
+      invalidateAppliedControlWitnessLocked();
       requestExecutionRevocation(ProductionMppiExecutionReason::kNoExecutableHorizon);
       objective_replan_anchor_ = mission_goal_;
       objective_replan_stamp_ns_ = commit_now_ns;
@@ -281,8 +239,8 @@ MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
 void ProductionMppiNode::publishMissionWaypointAcknowledgement(
     const ProductionNavigationObjective& completed_objective,
     const MissionWaypointUpdate& update,
-    const ProductionMppiAppliedControl& applied_control,
-    const ProductionMppiExecutionHorizonOwner& execution_horizon_owner,
+    const AppliedControlEvidence3D& applied_control,
+    const ExecutionOwnerIdentity3D& execution_horizon_owner,
     const std::int64_t now_ns) {
   msg::MissionWaypointAcknowledgement acknowledgement;
   acknowledgement.header.stamp = timeFromNanoseconds(now_ns);

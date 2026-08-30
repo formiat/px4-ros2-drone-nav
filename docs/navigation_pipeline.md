@@ -125,7 +125,8 @@ planner, strategic lattice adapter, and plan-level route arbitration are not par
 of the production graph.
 
 Route activation is then a single optimistic transaction over that immutable
-resident world plus the jointly captured pose/applied-control snapshot. The
+resident world plus the jointly captured pose and
+`CommittedExecutionAuthority3D`. The
 current-pose connector and remaining suffix are swept against the raw occupancy
 from the same producer lineage at or beyond the resident ESDF source revision;
 this lets final validation consume newer obstacle evidence without mixing the
@@ -136,11 +137,13 @@ abandoned if the resident world, objective, or captured raw snapshot changes
 before the execution manager commits it. Unknown voxels remain traversable
 during this raw check.
 
-The production execution boundary has one plan owner. The manager atomically
-replaces a captured pending successor and resident plan; a successor that loses
-an optimistic race leaves both unchanged and requests a fresh read. The remaining
-remediation step is to publish the manager plan together with horizon owner,
-versioned input, and applied-control evidence as one committed authority.
+The production execution boundary has one authority owner. The manager
+atomically replaces a captured pending successor and resident authority; a
+successor that loses an optimistic race leaves both unchanged and requests a
+fresh read. Plan, horizon owner, pointer-identical versioned input, and matching
+applied-control evidence are read through one immutable atomic pointer. Every
+feedback, lease, revocation, and transition update validates the exact captured
+authority before publishing a complete successor revision.
 
 Initial search heading uses a cascade:
 

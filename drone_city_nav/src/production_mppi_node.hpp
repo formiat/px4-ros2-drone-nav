@@ -190,6 +190,7 @@ private:
   void queueRawWorld3D(const RawObstacleGridUpdate3D& update, double reconstruction_ms);
   void onMemoryStatus(const msg::ObstacleMemoryStatus& message);
   void onAppliedControl(const msg::MppiControlFeedback& message);
+  void recordAppliedControlDiscontinuityLocked() noexcept;
   void invalidateAppliedControlWitnessLocked() noexcept;
   void onNavigationObjective(const msg::NavigationObjective& message);
   void onCooperativeManeuverCommand(const msg::CooperativeManeuverCommand& message);
@@ -200,9 +201,7 @@ private:
   void publishWorldReadiness(bool ready);
   [[nodiscard]] NavigationHealthAssessment updateNavigationHealth(
       const std::shared_ptr<const ProductionNavigationObjective>& objective,
-      const ProductionMppiAppliedControl& applied_control,
-      const ProductionMppiExecutionHorizonOwner& execution_horizon_owner,
-      const std::shared_ptr<const ExecutionPlan3D>& execution_snapshot,
+      const std::shared_ptr<const CommittedExecutionAuthority3D>& execution_authority,
       bool world_current, std::int64_t now_ns);
   void publishNavigationHealth(const NavigationHealthAssessment& assessment);
   [[nodiscard]] std::shared_ptr<const ProductionNavigationObjective>
@@ -249,8 +248,7 @@ private:
   prepareObservedExecutionEvidence3D(
       const ProductionMppiRawWorld3D& raw_world,
       const ProductionMppiNavigation& navigation,
-      const ProductionMppiAppliedControl& applied_control,
-      const ProductionMppiExecutionHorizonOwner& execution_horizon_owner);
+      const std::shared_ptr<const CommittedExecutionAuthority3D>& execution_authority);
   void queueLatestObservedWorldForPose(const ProductionMppiNavigation& navigation);
   void routePlanningWorker(std::stop_token stop_token);
   void processRouteSearch3D(
@@ -319,17 +317,15 @@ private:
       const std::shared_ptr<const ProductionNavigationObjective>& objective,
       const ProductionMppiNavigation& navigation,
       const ProductionMppiVehicleStatus& vehicle_status,
-      const ProductionMppiAppliedControl& applied_control,
-      const ProductionMppiExecutionHorizonOwner& execution_horizon_owner,
+      const std::shared_ptr<const CommittedExecutionAuthority3D>& execution_authority,
       std::uint64_t applied_control_discontinuity_generation,
       bool applied_control_discontinuity_generation_valid,
       bool vehicle_status_epoch_stable, bool goal_capture_latched, std::int64_t now_ns);
   void publishMissionWaypointAcknowledgement(
       const ProductionNavigationObjective& completed_objective,
       const MissionWaypointUpdate& update,
-      const ProductionMppiAppliedControl& applied_control,
-      const ProductionMppiExecutionHorizonOwner& execution_horizon_owner,
-      std::int64_t now_ns);
+      const AppliedControlEvidence3D& applied_control,
+      const ExecutionOwnerIdentity3D& execution_horizon_owner, std::int64_t now_ns);
   void planningTick();
   [[nodiscard]] bool worldGenerationAvailableForPlanning(const WorldSnapshot3D& world,
                                                          std::int64_t now_ns);
@@ -556,10 +552,8 @@ private:
   bool vehicle_status_epoch_probation_{false};
   bool vehicle_status_revision_exhausted_{false};
   NavigationAngularDerivativeEstimator navigation_angular_derivative_estimator_{};
-  ProductionMppiAppliedControl applied_control_{};
   std::uint64_t applied_control_discontinuity_generation_{0U};
   bool applied_control_discontinuity_generation_exhausted_{false};
-  ProductionMppiExecutionHorizonOwner execution_horizon_owner_{};
   ExecutionHorizonWitnessState applied_control_admission_state_{};
   OffboardSessionAdmissionState offboard_session_admission_{};
   std::int64_t offboard_session_receive_stamp_ns_{0};

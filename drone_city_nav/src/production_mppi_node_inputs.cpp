@@ -183,7 +183,7 @@ void ProductionMppiNode::onVehicleStatus(const px4_msgs::msg::VehicleStatus& mes
     // repeated candidate in the same probation cannot rejuvenate status or
     // flood the monotonic revocation request token.
     invalidate_vehicle_status();
-    applied_control_ = {};
+    invalidateAppliedControlWitnessLocked();
     requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
   }
   if (!px4TimestampEpochAdmissionAccepted(admission.status)) {
@@ -194,7 +194,7 @@ void ProductionMppiNode::onVehicleStatus(const px4_msgs::msg::VehicleStatus& mes
         armed != vehicle_status_.armed;
     if (same_identity_conflict) {
       invalidate_vehicle_status();
-      applied_control_ = {};
+      invalidateAppliedControlWitnessLocked();
       requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
     }
     return;
@@ -203,7 +203,7 @@ void ProductionMppiNode::onVehicleStatus(const px4_msgs::msg::VehicleStatus& mes
     // The admitted timestamp high-water still advances, but the payload cannot
     // change without a new revision identity. Retain it and fail closed.
     vehicle_status_revision_exhausted_ = true;
-    applied_control_ = {};
+    invalidateAppliedControlWitnessLocked();
     requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
     return;
   }
@@ -213,7 +213,7 @@ void ProductionMppiNode::onVehicleStatus(const px4_msgs::msg::VehicleStatus& mes
     // A PX4 reboot invalidates applied-control evidence immediately. The owner
     // remains as the exact wire witness until the planning thread publishes
     // revoke. An admitted armed-to-disarmed transition has the same barrier.
-    applied_control_ = {};
+    invalidateAppliedControlWitnessLocked();
     requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
   }
   vehicle_status_ = ProductionMppiVehicleStatus{

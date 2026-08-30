@@ -7,14 +7,14 @@
 namespace drone_city_nav {
 namespace {
 
-[[nodiscard]] ProductionMppiExecutionHorizonOwner plannedOwner() {
+[[nodiscard]] ExecutionOwnerIdentity3D plannedOwner() {
   return {
       .valid_from_ns = 1'000,
       .valid_until_ns = 2'000,
       .producer_instance_id = 17U,
       .target_offboard_instance_id = 23U,
       .sequence = 31U,
-      .execution_mode = msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED,
+      .execution_mode = ExecutionAuthorityMode3D::kPlanned,
       .valid = true,
   };
 }
@@ -23,8 +23,8 @@ TEST(ProductionMppiExecutionControlTest, AllowsPublicationWithoutPlannedOwner) {
   EXPECT_EQ(assessPlannedHorizonSupersession({}, false, 1'500),
             ProductionMppiHorizonSupersessionDecision::kAllowedNoPlannedOwner);
 
-  ProductionMppiExecutionHorizonOwner hold = plannedOwner();
-  hold.execution_mode = msg::MppiTrajectoryHorizon::EXECUTION_MODE_POSITION_HOLD;
+  ExecutionOwnerIdentity3D hold = plannedOwner();
+  hold.execution_mode = ExecutionAuthorityMode3D::kPositionHold;
   EXPECT_EQ(assessPlannedHorizonSupersession(hold, false, 1'500),
             ProductionMppiHorizonSupersessionDecision::kAllowedNoPlannedOwner);
 }
@@ -84,7 +84,7 @@ TEST(ProductionMppiExecutionControlTest,
 
 TEST(ProductionMppiExecutionControlTest,
      ContinuesExactWitnessedResidentForRetainedRetry) {
-  const ProductionMppiExecutionHorizonOwner owner = plannedOwner();
+  const ExecutionOwnerIdentity3D owner = plannedOwner();
   EXPECT_TRUE(
       canContinueResidentPlannedOwner(ProductionMppiResidentOwnerContinuationCheck{
           .owner = &owner,
@@ -99,7 +99,7 @@ TEST(ProductionMppiExecutionControlTest,
 
 TEST(ProductionMppiExecutionControlTest,
      RejectsResidentContinuationWithoutEveryAuthorityWitness) {
-  const ProductionMppiExecutionHorizonOwner owner = plannedOwner();
+  const ExecutionOwnerIdentity3D owner = plannedOwner();
   ProductionMppiResidentOwnerContinuationCheck check{
       .owner = &owner,
       .now_ns = 1'500,

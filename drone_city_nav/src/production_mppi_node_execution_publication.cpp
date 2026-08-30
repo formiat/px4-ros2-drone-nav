@@ -398,7 +398,7 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
     report_commit_failure("invalid_input_or_payload");
     return ProductionMppiHorizonCommitStatus::kRejected;
   }
-  ProductionMppiExecutionHorizonOwner owner{
+  ExecutionOwnerIdentity3D owner{
       .route_target =
           Point3{publication_horizon.route_target.x, publication_horizon.route_target.y,
                  publication_horizon.route_target.z},
@@ -411,28 +411,41 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
       .producer_instance_id = publication_horizon.producer_instance_id,
       .target_offboard_instance_id = publication_horizon.target_offboard_instance_id,
       .sequence = publication_horizon.sequence,
-      .execution_mode = publication_horizon.execution_mode,
-      .execution_reason = publication_horizon.execution_reason,
+      .execution_mode =
+          static_cast<ExecutionAuthorityMode3D>(publication_horizon.execution_mode),
+      .execution_reason =
+          static_cast<ExecutionAuthorityReason3D>(publication_horizon.execution_reason),
       .stationary_position_hold = publication_horizon.stationary_position_hold,
   };
-  owner.valid =
-      owner.producer_instance_id == execution_horizon_producer_instance_id_ &&
-      owner.sequence != 0U && owner.valid_from_ns > 0 &&
-      owner.valid_until_ns > owner.valid_from_ns &&
-      owner.target_offboard_instance_id != 0U &&
-      owner.execution_mode <= msg::MppiTrajectoryHorizon::EXECUTION_MODE_POSITION_HOLD;
+  owner.valid = owner.producer_instance_id == execution_horizon_producer_instance_id_ &&
+                owner.sequence != 0U && owner.valid_from_ns > 0 &&
+                owner.valid_until_ns > owner.valid_from_ns &&
+                owner.target_offboard_instance_id != 0U &&
+                (owner.execution_mode == ExecutionAuthorityMode3D::kPlanned ||
+                 owner.execution_mode == ExecutionAuthorityMode3D::kPositionHold);
   if (!owner.valid) {
     report_commit_failure("invalid_owner");
     return ProductionMppiHorizonCommitStatus::kRejected;
   }
   const std::scoped_lock input_lock{input_mutex_};
+  const std::shared_ptr<const CommittedExecutionAuthority3D>
+      resident_execution_authority = route_execution_manager_.authority();
+  if (resident_execution_authority == nullptr ||
+      !resident_execution_authority->valid()) {
+    report_commit_failure("invalid_resident_authority");
+    return ProductionMppiHorizonCommitStatus::kRejected;
+  }
+  const AppliedControlEvidence3D& resident_control =
+      resident_execution_authority->control();
+  const ExecutionOwnerIdentity3D& resident_owner =
+      resident_execution_authority->owner();
   const std::int64_t publication_now_ns = get_clock()->now().nanoseconds();
   const bool vehicle_status_epoch_stable =
       !vehicle_status_epoch_probation_ && !vehicle_status_revision_exhausted_;
   if (!vehicleStatusAuthoritativeForExecution(
           vehicle_status_, vehicle_status_epoch_stable, publication_now_ns,
           maximum_vehicle_status_age_ms_)) {
-    if (execution_horizon_owner_.valid) {
+    if (resident_owner.valid) {
       requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
     }
     report_commit_failure("vehicle_status_not_authoritative");
@@ -495,18 +508,18 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
     switch (publication_execution_input->previousControlSource()) {
       case ExecutionPreviousControlEvidenceSource3D::kOffboardFeedback:
         return appliedControlAuthoritativeForExecution(
-                   applied_control_, execution_horizon_owner_, publication_now_ns,
+                   resident_control, resident_owner, publication_now_ns,
                    maximum_control_feedback_age_ms_) &&
-               applied_control_.horizon_producer_instance_id ==
+               resident_control.horizon_producer_instance_id ==
                    publication_execution_input
                        ->previousControlSourceProducerInstanceId() &&
-               applied_control_.horizon_sequence ==
+               resident_control.horizon_sequence ==
                    publication_execution_input->previousControlSourceSequence() &&
-               applied_control_.source_stamp_ns ==
+               resident_control.source_stamp_ns ==
                    publication_execution_input->previousControlSourceStampNs() &&
-               applied_control_.receive_stamp_ns ==
+               resident_control.receive_stamp_ns ==
                    publication_execution_input->previousControlReceiveStampNs() &&
-               sameControl(applied_control_.control,
+               sameControl(resident_control.control,
                            publication_execution_input->previousControl());
       case ExecutionPreviousControlEvidenceSource3D::kMeasuredAcceleration:
         return navigation_.measured_acceleration_valid &&
@@ -550,7 +563,7 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
       }
       const ProductionMppiExecutionInputPreparation current_input_preparation =
           prepareExecutionInputForPlanningTick(
-              navigation_, applied_control_, execution_horizon_owner_,
+              navigation_, resident_execution_authority,
               ++execution_input_capture_sequence_, publication_now_ns,
               maximum_control_feedback_age_ms_, false, false);
       const std::shared_ptr<const VersionedExecutionInput3D>& current_input =
@@ -665,21 +678,21 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
             retained_candidate->directTrackingExecution()->kind ==
                 FiniteExecutionKind3D::kRetained));
       const bool resident_owner_witnessed = appliedControlAuthoritativeForExecution(
-          applied_control_, execution_horizon_owner_, publication_now_ns,
+          resident_control, resident_owner, publication_now_ns,
           maximum_control_feedback_age_ms_);
       const bool no_revocation_pending =
           requested_execution_revocation_.load(std::memory_order_acquire) ==
           handled_execution_revocation_request_;
       const bool exact_resident_snapshot =
           commit.expected_snapshot != nullptr &&
-          route_execution_manager_.plan() == commit.expected_snapshot;
+          resident_execution_authority->plan() == commit.expected_snapshot;
       const bool resident_execution_owner_matches =
           commit.expected_snapshot != nullptr &&
-          execution_horizon_owner_.snapshot_execution_owner_epoch ==
+          resident_owner.execution_owner_epoch ==
               commit.expected_snapshot->execution_owner_epoch;
       const bool resident_owner_may_continue =
           canContinueResidentPlannedOwner(ProductionMppiResidentOwnerContinuationCheck{
-              .owner = &execution_horizon_owner_,
+              .owner = &resident_owner,
               .now_ns = publication_now_ns,
               .retained_candidate = retained_execution,
               .exact_snapshot_current = exact_resident_snapshot,
@@ -695,7 +708,7 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
         RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
                              "EXECUTION_HORIZON_COMMIT committed=false deferred=true "
                              "stage=%s resident_sequence=%" PRIu64,
-                             rebase_failure, execution_horizon_owner_.sequence);
+                             rebase_failure, resident_owner.sequence);
         return ProductionMppiHorizonCommitStatus::kDeferredResidentOwner;
       }
       return ProductionMppiHorizonCommitStatus::kRejected;
@@ -726,7 +739,7 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
     report_commit_failure("invalid_snapshot_commit_contract");
     return ProductionMppiHorizonCommitStatus::kRejected;
   }
-  owner.snapshot_execution_owner_epoch = publication_snapshot->execution_owner_epoch;
+  owner.execution_owner_epoch = publication_snapshot->execution_owner_epoch;
   const std::shared_ptr<const VersionedExecutionValidationPolicy3D>
       snapshot_publication_policy = snapshotValidationPolicy(*publication_snapshot);
   const VersionedExecutionValidationPolicy3D* const publication_policy =
@@ -778,30 +791,28 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
       capture_hold->position.x == owner.stationary_hold_position.x &&
       capture_hold->position.y == owner.stationary_hold_position.y &&
       capture_hold->position.z == owner.stationary_hold_position.z &&
-      owner.execution_mode ==
-          msg::MppiTrajectoryHorizon::EXECUTION_MODE_POSITION_HOLD &&
-      owner.execution_reason ==
-          msg::MppiTrajectoryHorizon::EXECUTION_REASON_GOAL_CAPTURE &&
-      owner.stationary_position_hold && !execution_horizon_owner_.valid &&
-      !applied_control_.valid &&
+      owner.execution_mode == ExecutionAuthorityMode3D::kPositionHold &&
+      owner.execution_reason == ExecutionAuthorityReason3D::kGoalCapture &&
+      owner.stationary_position_hold && !resident_owner.valid &&
+      !resident_control.valid &&
       production_mppi_execution_detail::sameState(navigation_.state,
                                                   publication_execution_input->state());
   bool control_evidence_current{false};
   if (publication_execution_input->previousControlSource() ==
       ExecutionPreviousControlEvidenceSource3D::kOffboardFeedback) {
     control_evidence_current =
-        appliedControlAuthoritativeForExecution(
-            applied_control_, execution_horizon_owner_, publication_now_ns,
-            maximum_control_feedback_age_ms_) &&
-        applied_control_.horizon_producer_instance_id ==
+        appliedControlAuthoritativeForExecution(resident_control, resident_owner,
+                                                publication_now_ns,
+                                                maximum_control_feedback_age_ms_) &&
+        resident_control.horizon_producer_instance_id ==
             publication_execution_input->previousControlSourceProducerInstanceId() &&
-        applied_control_.horizon_sequence ==
+        resident_control.horizon_sequence ==
             publication_execution_input->previousControlSourceSequence() &&
-        applied_control_.source_stamp_ns ==
+        resident_control.source_stamp_ns ==
             publication_execution_input->previousControlSourceStampNs() &&
-        applied_control_.receive_stamp_ns ==
+        resident_control.receive_stamp_ns ==
             publication_execution_input->previousControlReceiveStampNs() &&
-        sameControl(applied_control_.control,
+        sameControl(resident_control.control,
                     publication_execution_input->previousControl());
   } else if (publication_execution_input->previousControlSource() ==
              ExecutionPreviousControlEvidenceSource3D::kMeasuredAcceleration) {
@@ -823,6 +834,10 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
     report_commit_failure("control_evidence_not_current");
     return ProductionMppiHorizonCommitStatus::kRejected;
   }
+  if (!owner.validFor(*publication_snapshot)) {
+    report_commit_failure("owner_plan_identity_invalid");
+    return ProductionMppiHorizonCommitStatus::kRejected;
+  }
 
   bool owner_committed{false};
   switch (publication_commit.kind) {
@@ -830,31 +845,36 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
       owner_committed =
           publication_commit.expected_snapshot != nullptr &&
           publication_commit.transition != nullptr &&
-          route_execution_manager_.publishPlan(publication_commit.expected_snapshot,
-                                               *publication_commit.transition) ==
+          route_execution_manager_.publishLeasedTransition(
+              resident_execution_authority, *publication_commit.transition, owner,
+              publication_execution_input) ==
               ExecutionRoutePublicationStatus3D::kPublished;
       break;
     case ProductionMppiHorizonCommitKind::kConfirmSnapshotUnchanged:
       owner_committed =
           publication_commit.expected_snapshot != nullptr &&
-          route_execution_manager_.plan() == publication_commit.expected_snapshot;
+          route_execution_manager_.publishLeaseForUnchangedPlanIfSame(
+              resident_execution_authority, publication_commit.expected_snapshot, owner,
+              publication_execution_input) ==
+              ExecutionRoutePublicationStatus3D::kPublished;
       break;
     case ProductionMppiHorizonCommitKind::kCommitPendingSnapshotTransition:
       owner_committed =
           publication_commit.expected_snapshot != nullptr &&
           publication_commit.transition != nullptr &&
           publication_commit.expected_pending != nullptr &&
-          route_execution_manager_.commitPendingTransitionIfSame(
-              publication_commit.expected_pending, publication_commit.expected_snapshot,
-              *publication_commit.transition);
+          route_execution_manager_.commitPendingLeasedTransitionIfSame(
+              publication_commit.expected_pending, resident_execution_authority,
+              *publication_commit.transition, owner, publication_execution_input);
       break;
   }
   if (!owner_committed) {
     report_commit_failure("snapshot_owner_commit_rejected");
     return ProductionMppiHorizonCommitStatus::kRejected;
   }
-  applied_control_ = {};
-  execution_horizon_owner_ = owner;
+  if (resident_control.valid) {
+    recordAppliedControlDiscontinuityLocked();
+  }
   execution_horizon_pub_->publish(publication_horizon);
   RCLCPP_INFO(get_logger(),
               "EXECUTION_HORIZON published=true producer=%" PRIu64 " sequence=%" PRIu64

@@ -37,8 +37,10 @@ void ProductionMppiNode::processRouteSearch3D(
   const auto observe_recovery_episode = [this, &transaction] {
     const RouteExecutionManagerSnapshot3D execution_state =
         route_execution_manager_.snapshot();
+    const std::shared_ptr<const ExecutionPlan3D> execution_plan =
+        execution_state.plan();
     const bool recovery_active =
-        (execution_state.plan == nullptr || execution_state.plan->route() == nullptr) &&
+        (execution_plan == nullptr || execution_plan->route() == nullptr) &&
         execution_state.pending == nullptr;
     static_cast<void>(navigation_recovery_episodes_.observe(
         transaction->objective.mission_epoch, recovery_active));
@@ -114,10 +116,13 @@ void ProductionMppiNode::processRouteSearch3D(
       planner_update.improved_incumbent ? nextRouteGeneration3D() : 0U;
   const ProductionRouteActivationSnapshot3D materialization_snapshot =
       captureRouteActivationSnapshot3D();
-  const CertifiedRouteSuffix3D* const activation_active_route =
-      materialization_snapshot.execution_snapshot != nullptr
-          ? materialization_snapshot.execution_snapshot->route()
+  const std::shared_ptr<const ExecutionPlan3D> materialization_execution =
+      materialization_snapshot.execution_authority != nullptr
+          ? materialization_snapshot.execution_authority->plan()
           : nullptr;
+  const CertifiedRouteSuffix3D* const activation_active_route =
+      materialization_execution != nullptr ? materialization_execution->route()
+                                           : nullptr;
 
   ProductionRouteMaterialization3D materialization;
   materialization.route.world = transaction->world;

@@ -51,13 +51,11 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
   }
 
   ProductionMppiNavigation navigation;
-  ProductionMppiAppliedControl applied_control;
-  ProductionMppiExecutionHorizonOwner execution_horizon_owner;
+  std::shared_ptr<const CommittedExecutionAuthority3D> execution_authority;
   {
     const std::scoped_lock lock{input_mutex_};
     navigation = navigation_;
-    applied_control = applied_control_;
-    execution_horizon_owner = execution_horizon_owner_;
+    execution_authority = route_execution_manager_.authority();
   }
   if (!navigation.world_state_authoritative) {
     return std::nullopt;
@@ -71,8 +69,7 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
   const GridBounds3D& world_bounds = occupancy->bounds();
   const Point3 position{navigation.state.x, navigation.state.y, navigation.state.z};
   const std::optional<ProprioceptiveFreeSpaceSeed3D> free_space_seed =
-      prepareObservedExecutionEvidence3D(raw_world, navigation, applied_control,
-                                         execution_horizon_owner);
+      prepareObservedExecutionEvidence3D(raw_world, navigation, execution_authority);
   const LaunchSupportContact3D* const launch_support_contact =
       optionalAddress(launch_support_contact_);
   GridBounds3D local_bounds;

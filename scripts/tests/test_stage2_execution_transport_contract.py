@@ -362,7 +362,7 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
             transaction,
         )
         store = advance.index("navigation_objective_.store")
-        clear_applied = advance.index("applied_control_ = {};")
+        clear_applied = advance.index("invalidateAppliedControlWitnessLocked();")
         request_revoke = advance.index("requestExecutionRevocation(")
         self.assertLess(store, clear_applied)
         self.assertLess(clear_applied, request_revoke)
@@ -394,14 +394,13 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
             "navigation_objective_.load(std::memory_order_acquire) == objective",
             "navigation_.revision == navigation.revision",
             "vehicle_status_.revision == vehicle_status.revision",
-            "execution_horizon_owner_.sequence == execution_horizon_owner.sequence",
-            "applied_control_.content_fingerprint ==",
+            "route_execution_manager_.authority() == execution_authority",
             "requested_execution_revocation_.load(std::memory_order_acquire)",
-            "commit_now_ns >= execution_horizon_owner_.valid_from_ns",
-            "commit_now_ns < execution_horizon_owner_.valid_until_ns",
+            "commit_now_ns >= execution_horizon_owner.valid_from_ns",
+            "commit_now_ns < execution_horizon_owner.valid_until_ns",
             "commit_now_ns - navigation_.receive_stamp_ns",
-            "commit_now_ns - applied_control_.source_stamp_ns",
-            "commit_now_ns - applied_control_.receive_stamp_ns",
+            "commit_now_ns - applied_control.source_stamp_ns",
+            "commit_now_ns - applied_control.receive_stamp_ns",
         ):
             self.assertIn(exact_guard, transaction)
         self.assertIn(".stamp_ns = commit_now_ns", transaction)
@@ -416,7 +415,9 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         invalidation = feedback.split(
             "ProductionMppiNode::invalidateAppliedControlWitnessLocked", maxsplit=1
         )[1].split("ProductionMppiNode::onAppliedControl", maxsplit=1)[0]
-        self.assertIn("applied_control_.valid", invalidation)
+        self.assertIn("expected->control().valid", invalidation)
+        self.assertIn("clearAppliedControlIfSame(expected)", invalidation)
+        self.assertIn("recordAppliedControlDiscontinuityLocked()", invalidation)
         self.assertIn("applied_control_discontinuity_generation_", invalidation)
         self.assertIn(
             "applied_control_discontinuity_generation_exhausted_", invalidation
@@ -572,7 +573,7 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         self.assertIn("admission.next_state.pending_confirmation_count != 0U", probation)
         self.assertEqual(probation.count("if (timestamp_probation_opened)"), 1)
         self.assertIn("invalidate_vehicle_status();", probation)
-        self.assertIn("applied_control_ = {};", probation)
+        self.assertIn("invalidateAppliedControlWitnessLocked();", probation)
         self.assertIn("requestExecutionRevocation", probation)
         self.assertNotIn("execution_horizon_owner_ = {};", callback)
         self.assertNotIn("publishExecutionRevocation", callback)
@@ -606,7 +607,7 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         status_block = owner_commit[status_state:snapshot_commit]
         self.assertIn("!vehicle_status_epoch_probation_", status_block)
         self.assertIn("!vehicle_status_revision_exhausted_", status_block)
-        self.assertIn("if (execution_horizon_owner_.valid)", status_block)
+        self.assertIn("if (resident_owner.valid)", status_block)
 
         self.assertIn(
             "VehicleStatusAuthorityRequiresFreshStableArmedObservation",
@@ -672,23 +673,18 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
             maxsplit=1,
         )[0]
         activation_lock = activation_capture.index(
-            "const std::scoped_lock evidence_lock{execution_evidence_commit_mutex_};"
+            "const std::scoped_lock lock{execution_evidence_commit_mutex_,"
         )
         activation_snapshot = activation_capture.index(
-            "snapshot.execution_snapshot = route_execution_manager_.plan();"
+            "snapshot.execution_authority = route_execution_manager_.authority();"
         )
         activation_raw = activation_capture.index(
             "snapshot.raw_world = latest_raw_world_3d_.load(std::memory_order_acquire);"
         )
         self.assertLess(activation_lock, activation_snapshot)
         self.assertLess(activation_snapshot, activation_raw)
-        self.assertRegex(
-            activation_capture,
-            r"snapshot\.raw_world = latest_raw_world_3d_\.load\("
-            r"std::memory_order_acquire\);\s*\}\s*\{\s*"
-            r"const std::scoped_lock lock\{world_generation_publication_mutex_,\s*"
-            r"input_mutex_,\s*esdf_state_mutex_\};",
-        )
+        self.assertIn("world_generation_publication_mutex_, input_mutex_", activation_capture)
+        self.assertIn("esdf_state_mutex_", activation_capture)
 
         execution_publication = (
             EXECUTION_PUBLICATION.read_text(encoding="utf-8")
@@ -698,26 +694,38 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
             "ProductionMppiNode::commitAndPublishExecutionHorizon", maxsplit=1
         )[1].split("ProductionMppiNode::commitExecutionSnapshotHorizon", maxsplit=1)[0]
         owner_callback = owner_commit.index("switch (publication_commit.kind)")
-        owner_control_revoke = owner_commit.index("applied_control_ = {};")
-        owner_install = owner_commit.index("execution_horizon_owner_ = owner;")
+        transition_install = owner_commit.index(
+            "route_execution_manager_.publishLeasedTransition"
+        )
+        unchanged_install = owner_commit.index(
+            "route_execution_manager_.publishLeaseForUnchangedPlanIfSame"
+        )
+        pending_install = owner_commit.index(
+            "route_execution_manager_.commitPendingLeasedTransitionIfSame"
+        )
         owner_dds = owner_commit.index(
             "execution_horizon_pub_->publish(publication_horizon);"
         )
-        self.assertLess(owner_callback, owner_control_revoke)
-        self.assertLess(owner_control_revoke, owner_install)
-        self.assertLess(owner_install, owner_dds)
+        self.assertLess(owner_callback, transition_install)
+        self.assertLess(transition_install, owner_dds)
+        self.assertLess(unchanged_install, owner_dds)
+        self.assertLess(pending_install, owner_dds)
+        self.assertNotIn("applied_control_", owner_commit)
+        self.assertNotIn("execution_horizon_owner_", owner_commit)
         self.assertIn("owner.producer_instance_id ==", owner_commit)
         self.assertIn("execution_horizon_producer_instance_id_", owner_commit)
         self.assertIn("owner.target_offboard_instance_id", owner_commit)
         self.assertIn("assessOffboardSessionPublicationCurrentness", owner_commit)
         self.assertIn("cycle.offboard_session", owner_commit)
 
-        pending_snapshot_cas = owner_commit.index("commitPendingTransitionIfSame")
-        fallback_snapshot_cas = owner_commit.index(
-            "route_execution_manager_.publishPlan(publication_commit.expected_snapshot"
+        pending_snapshot_cas = owner_commit.index(
+            "commitPendingLeasedTransitionIfSame"
         )
-        self.assertLess(pending_snapshot_cas, owner_control_revoke)
-        self.assertLess(fallback_snapshot_cas, owner_control_revoke)
+        fallback_snapshot_cas = owner_commit.index(
+            "route_execution_manager_.publishLeasedTransition"
+        )
+        self.assertLess(pending_snapshot_cas, owner_dds)
+        self.assertLess(fallback_snapshot_cas, owner_dds)
 
         snapshot_commit = execution_publication.split(
             "ProductionMppiNode::commitExecutionSnapshotHorizon", maxsplit=1
@@ -737,7 +745,7 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         self.assertNotIn("evidence_lock.unlock", snapshot_commit)
 
         atomic_pending_commit = execution_manager.split(
-            "RouteExecutionManager3D::commitPendingTransitionIfSame", maxsplit=1
+            "RouteExecutionManager3D::commitPendingLeasedTransitionIfSame", maxsplit=1
         )[1].split("} // namespace drone_city_nav", maxsplit=1)[0]
         pending_mutex = atomic_pending_commit.index(
             "const std::scoped_lock lock{mutex_};"
@@ -746,7 +754,7 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
             "pending_ != expected_pending"
         )
         pending_plan_cas = atomic_pending_commit.index(
-            "publishPlanLocked(expected_plan, transition)"
+            "publishTransitionLocked(expected_authority, transition"
         )
         pending_consume = atomic_pending_commit.index("pending_.reset();")
         self.assertLess(pending_mutex, pending_identity)
@@ -802,8 +810,8 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         self.assertIn(
             "StationaryExecutionHoldOrigin3D::kStationaryCaptureRearm", owner_commit
         )
-        self.assertIn("!execution_horizon_owner_.valid", owner_commit)
-        self.assertIn("!applied_control_.valid", owner_commit)
+        self.assertIn("!resident_owner.valid", owner_commit)
+        self.assertIn("!resident_control.valid", owner_commit)
         self.assertNotIn("enterExecutionHold3D", hold_commit)
         self.assertNotIn("newerResident", hold_commit)
         self.assertNotIn(
@@ -910,7 +918,7 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         self.assertIn("if (revocation.published)", request_handler)
         self.assertIn("revocation_already_satisfied", request_handler)
         self.assertIn("snapshot_has_executable_authority", request_handler)
-        self.assertIn("!execution_horizon_owner_.valid", request_handler)
+        self.assertIn("!authority->owner().valid", request_handler)
         self.assertIn("handled_execution_revocation_request_", request_handler)
 
         owner_commit = publication.split(
@@ -925,8 +933,12 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         )
         self.assertLess(request_currentness, snapshot_cas)
         self.assertLess(request_currentness, dds_publish)
-        snapshot_owner_commit = owner_commit.index("route_execution_manager_.publishPlan")
-        executable_owner_install = owner_commit.index("execution_horizon_owner_ = owner")
+        snapshot_owner_commit = owner_commit.index(
+            "route_execution_manager_.publishLeasedTransition"
+        )
+        executable_owner_install = owner_commit.index(
+            "execution_horizon_pub_->publish(publication_horizon)"
+        )
         self.assertLess(snapshot_owner_commit, executable_owner_install)
 
         no_path = publication.split(
@@ -951,16 +963,17 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         )[1].split("ProductionMppiNode::requestExecutionRevocation", maxsplit=1)[0]
         self.assertIn("ExecutionRouteTransitionStatus3D::kNoChange", revoke)
         session_gate = revoke.index("if (!current_session)")
-        revoke_cas = revoke.index("route_execution_manager_.publishPlan(expected, transition)")
+        revoke_cas = revoke.index("route_execution_manager_.publishDetachedTransition")
         sequence_commit = revoke.index(
             "execution_horizon_sequence_ = revocation.sequence"
         )
-        owner_clear = revoke.index("execution_horizon_owner_ = {}")
         revoke_publish = revoke.index("execution_horizon_pub_->publish(revocation)")
         self.assertLess(session_gate, revoke_cas)
         self.assertLess(revoke_cas, sequence_commit)
-        self.assertLess(sequence_commit, owner_clear)
-        self.assertLess(owner_clear, revoke_publish)
+        self.assertLess(sequence_commit, revoke_publish)
+        self.assertIn("route_execution_manager_.clearLeaseIfSame", revoke)
+        self.assertNotIn("execution_horizon_owner_", revoke)
+        self.assertNotIn("applied_control_", revoke)
         self.assertIn(
             "offboard_session_admission_.current_producer_instance_id", revoke
         )

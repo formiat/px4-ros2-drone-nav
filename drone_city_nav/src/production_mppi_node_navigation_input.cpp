@@ -156,7 +156,7 @@ void ProductionMppiNode::onLocalPosition(
     if (angular_derivative.source_identity_conflicted) {
       navigation_.valid = false;
       latest_prediction_error_ = {};
-      applied_control_ = {};
+      invalidateAppliedControlWitnessLocked();
       if (angular_derivative.source_identity_conflict) {
         requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
       }
@@ -178,7 +178,7 @@ void ProductionMppiNode::onLocalPosition(
         const bool navigation_was_valid = navigation_.valid;
         navigation_.valid = false;
         latest_prediction_error_ = {};
-        applied_control_ = {};
+        invalidateAppliedControlWitnessLocked();
         if (navigation_was_valid) {
           requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
         }
@@ -236,13 +236,13 @@ void ProductionMppiNode::onLocalPosition(
           message.timestamp_sample, message.timestamp);
     }
     if (navigation_revision_exhausted_) {
-      applied_control_ = {};
+      invalidateAppliedControlWitnessLocked();
       return;
     }
     if (navigation_.revision == std::numeric_limits<std::uint64_t>::max()) {
       navigation_revision_exhausted_ = true;
       navigation_.valid = false;
-      applied_control_ = {};
+      invalidateAppliedControlWitnessLocked();
       requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
       return;
     }
@@ -258,7 +258,7 @@ void ProductionMppiNode::onLocalPosition(
       navigation_ = navigation;
       latest_prediction_error_ = {};
       if (execution_lineage_discontinuity) {
-        applied_control_ = {};
+        invalidateAppliedControlWitnessLocked();
         requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
       }
       RCLCPP_WARN_THROTTLE(
@@ -316,7 +316,7 @@ void ProductionMppiNode::onLocalPosition(
     navigation_ = navigation;
     latest_prediction_error_ = {};
     if (execution_lineage_discontinuity) {
-      applied_control_ = {};
+      invalidateAppliedControlWitnessLocked();
       requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
     }
     if (previous_predicted_next_state_.has_value() &&
