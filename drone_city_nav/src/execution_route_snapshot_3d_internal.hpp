@@ -537,4 +537,64 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
     std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_validation_world,
     const RouteLifecycleEvent3D* const lifecycle_event);
 
+[[nodiscard]] ExecutionRouteTransitionResult3D applyActivateCertifiedRouteCommand3D(
+    const ExecutionPlan3D& current, std::uint64_t expected_snapshot_version,
+    CertifiedRouteSuffix3D candidate, FiniteExecutionPlan3D candidate_execution);
+
+[[nodiscard]] ExecutionRouteTransitionResult3D applyAdvanceCertifiedRouteCommand3D(
+    const ExecutionPlan3D& current, const ExecutionRouteTransitionGuard3D& guard,
+    RouteExecutionObservation3D observation,
+    std::shared_ptr<const VersionedExecutionInput3D> execution_input,
+    std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_world);
+
+[[nodiscard]] ExecutionRouteTransitionResult3D
+applyReplaceFiniteExecutionPlanCommand3D(const ExecutionPlan3D& current,
+                                         const ExecutionRouteTransitionGuard3D& guard,
+                                         FiniteExecutionPlan3D execution);
+
+[[nodiscard]] ExecutionRouteTransitionResult3D applyRetireCertifiedRouteCommand3D(
+    const ExecutionPlan3D& current, const ExecutionRouteTransitionGuard3D& guard,
+    const RouteLifecycleEvent3D& event,
+    std::optional<FiniteExecutionState3D> retained_safe_execution);
+
+[[nodiscard]] ExecutionRouteTransitionResult3D applyReplaceCertifiedRouteCommand3D(
+    const ExecutionPlan3D& current, const ExecutionRouteTransitionGuard3D& guard,
+    CertifiedRouteSuffix3D successor, FiniteExecutionPlan3D successor_execution,
+    const CertifiedRouteSplice3D& splice);
+
+[[nodiscard]] ExecutionRouteTransitionResult3D
+applyReplaceCertifiedRouteAtHandoffCommand3D(
+    const ExecutionPlan3D& current, const ExecutionRouteTransitionGuard3D& guard,
+    CertifiedRouteSuffix3D successor, FiniteExecutionPlan3D successor_execution);
+
+[[nodiscard]] ExecutionRouteTransitionResult3D applyTransferToDirectTrackingCommand3D(
+    const ExecutionPlan3D& current, std::uint64_t expected_snapshot_version,
+    DirectTrackingFiniteExecution3D direct_execution);
+
+[[nodiscard]] ExecutionRouteTransitionResult3D
+applyReplaceDirectTrackingExecutionCommand3D(
+    const ExecutionPlan3D& current, std::uint64_t expected_snapshot_version,
+    DirectTrackingFiniteExecution3D direct_execution);
+
+[[nodiscard]] ExecutionRouteTransitionResult3D
+applyTransferDirectTrackingToCertifiedRouteCommand3D(
+    const ExecutionPlan3D& current, std::uint64_t expected_snapshot_version,
+    CertifiedRouteSuffix3D successor, FiniteExecutionPlan3D successor_execution);
+
+[[nodiscard]] ExecutionRouteTransitionResult3D applyTransferToExecutionHoldCommand3D(
+    const ExecutionPlan3D& current, std::uint64_t expected_snapshot_version,
+    StationaryExecutionHoldCertification3D certification);
+
+[[nodiscard]] ExecutionRouteTransitionResult3D applyArmStationaryCaptureHoldCommand3D(
+    const ExecutionPlan3D& current, std::uint64_t expected_snapshot_version,
+    StationaryExecutionHoldCertification3D certification);
+
+[[nodiscard]] ExecutionRouteTransitionResult3D
+applyRevokeExecutionCommand3D(const ExecutionPlan3D& current,
+                              std::uint64_t expected_snapshot_version);
+
+[[nodiscard]] ExecutionRouteTransitionResult3D
+applySuspendFiniteExecutionCommand3D(const ExecutionPlan3D& current,
+                                     std::uint64_t expected_snapshot_version);
+
 } // namespace drone_city_nav::execution_route_snapshot_3d_internal

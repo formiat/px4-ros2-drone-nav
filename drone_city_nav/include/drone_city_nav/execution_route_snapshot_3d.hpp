@@ -613,6 +613,86 @@ struct ExecutionRouteTransitionGuard3D {
   std::uint64_t expected_geometry_revision{0U};
 };
 
+struct ActivateCertifiedRouteCommand3D {
+  std::uint64_t expected_snapshot_version{0U};
+  CertifiedRouteSuffix3D candidate{};
+  FiniteExecutionPlan3D candidate_execution{};
+};
+
+struct AdvanceCertifiedRouteCommand3D {
+  ExecutionRouteTransitionGuard3D guard{};
+  RouteExecutionObservation3D observation{};
+  std::shared_ptr<const VersionedExecutionInput3D> execution_input;
+  std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_world;
+};
+
+struct ReplaceFiniteExecutionPlanCommand3D {
+  ExecutionRouteTransitionGuard3D guard{};
+  FiniteExecutionPlan3D execution{};
+};
+
+struct RetireCertifiedRouteCommand3D {
+  ExecutionRouteTransitionGuard3D guard{};
+  RouteLifecycleEvent3D event{};
+  std::optional<FiniteExecutionState3D> retained_safe_execution;
+};
+
+struct ReplaceCertifiedRouteCommand3D {
+  ExecutionRouteTransitionGuard3D guard{};
+  CertifiedRouteSuffix3D successor{};
+  FiniteExecutionPlan3D successor_execution{};
+  std::shared_ptr<const CertifiedRouteSplice3D> splice;
+};
+
+struct ReplaceCertifiedRouteAtHandoffCommand3D {
+  ExecutionRouteTransitionGuard3D guard{};
+  CertifiedRouteSuffix3D successor{};
+  FiniteExecutionPlan3D successor_execution{};
+};
+
+struct TransferToDirectTrackingCommand3D {
+  std::uint64_t expected_snapshot_version{0U};
+  DirectTrackingFiniteExecution3D direct_execution{};
+};
+
+struct ReplaceDirectTrackingExecutionCommand3D {
+  std::uint64_t expected_snapshot_version{0U};
+  DirectTrackingFiniteExecution3D direct_execution{};
+};
+
+struct TransferDirectTrackingToCertifiedRouteCommand3D {
+  std::uint64_t expected_snapshot_version{0U};
+  CertifiedRouteSuffix3D successor{};
+  FiniteExecutionPlan3D successor_execution{};
+};
+
+struct TransferToExecutionHoldCommand3D {
+  std::uint64_t expected_snapshot_version{0U};
+  StationaryExecutionHoldCertification3D certification{};
+};
+
+struct ArmStationaryCaptureHoldCommand3D {
+  std::uint64_t expected_snapshot_version{0U};
+  StationaryExecutionHoldCertification3D certification{};
+};
+
+struct RevokeExecutionCommand3D {
+  std::uint64_t expected_snapshot_version{0U};
+};
+
+struct SuspendFiniteExecutionCommand3D {
+  std::uint64_t expected_snapshot_version{0U};
+};
+
+using ExecutionPlanTransitionCommand3D = std::variant<
+    ActivateCertifiedRouteCommand3D, AdvanceCertifiedRouteCommand3D,
+    ReplaceFiniteExecutionPlanCommand3D, RetireCertifiedRouteCommand3D,
+    ReplaceCertifiedRouteCommand3D, ReplaceCertifiedRouteAtHandoffCommand3D,
+    TransferToDirectTrackingCommand3D, ReplaceDirectTrackingExecutionCommand3D,
+    TransferDirectTrackingToCertifiedRouteCommand3D, TransferToExecutionHoldCommand3D,
+    ArmStationaryCaptureHoldCommand3D, RevokeExecutionCommand3D,
+    SuspendFiniteExecutionCommand3D>;
+
 class ExecutionRouteTransitionFactory3D;
 
 struct ExecutionRouteTransitionResult3D {
@@ -704,6 +784,14 @@ certifyDirectTrackingExecution3D(const ExecutionPlan3D& current,
 
 [[nodiscard]] std::shared_ptr<const ExecutionPlan3D>
 makeInitialExecutionRouteSnapshot3D();
+
+// The sole semantic transition entry point. The reducer is pure: it validates
+// one owned command against one immutable predecessor and returns either a new
+// immutable plan or a failure status. Certification and atomic publication are
+// deliberately separate boundaries.
+[[nodiscard]] ExecutionRouteTransitionResult3D
+reduceExecutionPlan3D(const ExecutionPlan3D& current,
+                      ExecutionPlanTransitionCommand3D command);
 
 [[nodiscard]] ExecutionRouteTransitionResult3D activateCertifiedRoute3D(
     const ExecutionPlan3D& current, std::uint64_t expected_snapshot_version,

@@ -23,9 +23,7 @@
 
 #include "execution_route_snapshot_3d_internal.hpp"
 
-namespace drone_city_nav {
-
-using namespace execution_route_snapshot_3d_internal;
+namespace drone_city_nav::execution_route_snapshot_3d_internal {
 
 namespace {
 
@@ -140,7 +138,7 @@ namespace {
 
 } // namespace
 
-ExecutionRouteTransitionResult3D activateCertifiedRoute3D(
+ExecutionRouteTransitionResult3D applyActivateCertifiedRouteCommand3D(
     const ExecutionPlan3D& current, const std::uint64_t expected_snapshot_version,
     CertifiedRouteSuffix3D candidate, FiniteExecutionPlan3D candidate_execution) {
   const ExecutionRouteTransitionStatus3D status =
@@ -191,7 +189,7 @@ ExecutionRouteTransitionResult3D activateCertifiedRoute3D(
   return finishTransition(current, std::move(next));
 }
 
-ExecutionRouteTransitionResult3D advanceCertifiedRoute3D(
+ExecutionRouteTransitionResult3D applyAdvanceCertifiedRouteCommand3D(
     const ExecutionPlan3D& current, const ExecutionRouteTransitionGuard3D& guard,
     RouteExecutionObservation3D observation,
     std::shared_ptr<const VersionedExecutionInput3D> execution_input,
@@ -408,9 +406,9 @@ ExecutionRouteTransitionResult3D advanceCertifiedRoute3D(
 }
 
 ExecutionRouteTransitionResult3D
-replaceFiniteExecutionPlan3D(const ExecutionPlan3D& current,
-                             const ExecutionRouteTransitionGuard3D& guard,
-                             FiniteExecutionPlan3D execution) {
+applyReplaceFiniteExecutionPlanCommand3D(const ExecutionPlan3D& current,
+                                         const ExecutionRouteTransitionGuard3D& guard,
+                                         FiniteExecutionPlan3D execution) {
   const ExecutionRouteTransitionStatus3D guard_status = checkGuard(current, guard);
   if (guard_status != ExecutionRouteTransitionStatus3D::kApplied) {
     return transitionFailure(guard_status);
@@ -481,11 +479,10 @@ replaceFiniteExecutionPlan3D(const ExecutionPlan3D& current,
   return finishTransition(current, std::move(next));
 }
 
-ExecutionRouteTransitionResult3D
-retireCertifiedRoute3D(const ExecutionPlan3D& current,
-                       const ExecutionRouteTransitionGuard3D& guard,
-                       const RouteLifecycleEvent3D& event,
-                       std::optional<FiniteExecutionState3D> retained_safe_execution) {
+ExecutionRouteTransitionResult3D applyRetireCertifiedRouteCommand3D(
+    const ExecutionPlan3D& current, const ExecutionRouteTransitionGuard3D& guard,
+    const RouteLifecycleEvent3D& event,
+    std::optional<FiniteExecutionState3D> retained_safe_execution) {
   const ExecutionRouteTransitionStatus3D guard_status = checkGuard(current, guard);
   if (guard_status != ExecutionRouteTransitionStatus3D::kApplied) {
     return transitionFailure(guard_status);
@@ -747,7 +744,7 @@ retireCertifiedRoute3D(const ExecutionPlan3D& current,
   return finishTransition(current, std::move(next));
 }
 
-ExecutionRouteTransitionResult3D replaceCertifiedRoute3D(
+ExecutionRouteTransitionResult3D applyReplaceCertifiedRouteCommand3D(
     const ExecutionPlan3D& current, const ExecutionRouteTransitionGuard3D& guard,
     CertifiedRouteSuffix3D successor, FiniteExecutionPlan3D successor_execution,
     const CertifiedRouteSplice3D& splice) {
@@ -756,17 +753,16 @@ ExecutionRouteTransitionResult3D replaceCertifiedRoute3D(
                                    std::addressof(splice));
 }
 
-ExecutionRouteTransitionResult3D replaceCertifiedRouteAtHandoff3D(
+ExecutionRouteTransitionResult3D applyReplaceCertifiedRouteAtHandoffCommand3D(
     const ExecutionPlan3D& current, const ExecutionRouteTransitionGuard3D& guard,
     CertifiedRouteSuffix3D successor, FiniteExecutionPlan3D successor_execution) {
   return replaceCertifiedRouteImpl(current, guard, std::move(successor),
                                    std::move(successor_execution), nullptr);
 }
 
-ExecutionRouteTransitionResult3D
-transferToDirectTracking3D(const ExecutionPlan3D& current,
-                           const std::uint64_t expected_snapshot_version,
-                           DirectTrackingFiniteExecution3D direct_execution) {
+ExecutionRouteTransitionResult3D applyTransferToDirectTrackingCommand3D(
+    const ExecutionPlan3D& current, const std::uint64_t expected_snapshot_version,
+    DirectTrackingFiniteExecution3D direct_execution) {
   const ExecutionRouteTransitionStatus3D status =
       checkCurrentAndVersion(current, expected_snapshot_version);
   if (status != ExecutionRouteTransitionStatus3D::kApplied) {
@@ -800,10 +796,9 @@ transferToDirectTracking3D(const ExecutionPlan3D& current,
   return finishTransition(current, std::move(next));
 }
 
-ExecutionRouteTransitionResult3D
-replaceDirectTrackingExecution3D(const ExecutionPlan3D& current,
-                                 const std::uint64_t expected_snapshot_version,
-                                 DirectTrackingFiniteExecution3D direct_execution) {
+ExecutionRouteTransitionResult3D applyReplaceDirectTrackingExecutionCommand3D(
+    const ExecutionPlan3D& current, const std::uint64_t expected_snapshot_version,
+    DirectTrackingFiniteExecution3D direct_execution) {
   const ExecutionRouteTransitionStatus3D status =
       checkCurrentAndVersion(current, expected_snapshot_version);
   if (status != ExecutionRouteTransitionStatus3D::kApplied) {
@@ -823,21 +818,7 @@ replaceDirectTrackingExecution3D(const ExecutionPlan3D& current,
   return finishTransition(current, std::move(next));
 }
 
-ExecutionRouteTransitionResult3D composeExecutionPlanTransition3D(
-    const ExecutionPlan3D& resident,
-    const ExecutionRouteTransitionResult3D& prepared_progress,
-    const ExecutionRouteTransitionResult3D& prepared_execution_plan) {
-  if (!prepared_progress.applied() || prepared_progress.predecessor != &resident ||
-      prepared_progress.next == nullptr || !prepared_execution_plan.applied() ||
-      prepared_execution_plan.predecessor != prepared_progress.next.get() ||
-      prepared_execution_plan.next == nullptr ||
-      !prepared_execution_plan.next->publishable()) {
-    return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
-  }
-  return finishTransition(resident, *prepared_execution_plan.next);
-}
-
-ExecutionRouteTransitionResult3D transferDirectTrackingToCertifiedRoute3D(
+ExecutionRouteTransitionResult3D applyTransferDirectTrackingToCertifiedRouteCommand3D(
     const ExecutionPlan3D& current, const std::uint64_t expected_snapshot_version,
     CertifiedRouteSuffix3D successor, FiniteExecutionPlan3D successor_execution) {
   const ExecutionRouteTransitionStatus3D status =
@@ -880,4 +861,4 @@ ExecutionRouteTransitionResult3D transferDirectTrackingToCertifiedRoute3D(
   return finishTransition(current, std::move(next));
 }
 
-} // namespace drone_city_nav
+} // namespace drone_city_nav::execution_route_snapshot_3d_internal

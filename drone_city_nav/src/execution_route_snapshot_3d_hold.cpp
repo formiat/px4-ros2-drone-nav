@@ -151,9 +151,9 @@ makeStationaryHoldSnapshot(const ExecutionPlan3D& current,
 } // namespace
 
 ExecutionRouteTransitionResult3D
-transferToExecutionHold3D(const ExecutionPlan3D& current,
-                          const std::uint64_t expected_snapshot_version,
-                          StationaryExecutionHoldCertification3D certification) {
+execution_route_snapshot_3d_internal::applyTransferToExecutionHoldCommand3D(
+    const ExecutionPlan3D& current, const std::uint64_t expected_snapshot_version,
+    StationaryExecutionHoldCertification3D certification) {
   const ExecutionRouteTransitionStatus3D status =
       checkCurrentAndVersion(current, expected_snapshot_version);
   if (status != ExecutionRouteTransitionStatus3D::kApplied) {
@@ -263,9 +263,9 @@ transferToExecutionHold3D(const ExecutionPlan3D& current,
 }
 
 ExecutionRouteTransitionResult3D
-armStationaryCaptureHold3D(const ExecutionPlan3D& current,
-                           const std::uint64_t expected_snapshot_version,
-                           StationaryExecutionHoldCertification3D certification) {
+execution_route_snapshot_3d_internal::applyArmStationaryCaptureHoldCommand3D(
+    const ExecutionPlan3D& current, const std::uint64_t expected_snapshot_version,
+    StationaryExecutionHoldCertification3D certification) {
   const ExecutionRouteTransitionStatus3D status =
       checkCurrentAndVersion(current, expected_snapshot_version);
   if (status != ExecutionRouteTransitionStatus3D::kApplied) {
@@ -293,8 +293,8 @@ armStationaryCaptureHold3D(const ExecutionPlan3D& current,
 }
 
 ExecutionRouteTransitionResult3D
-revokeExecution3D(const ExecutionPlan3D& current,
-                  const std::uint64_t expected_snapshot_version) {
+execution_route_snapshot_3d_internal::applyRevokeExecutionCommand3D(
+    const ExecutionPlan3D& current, const std::uint64_t expected_snapshot_version) {
   const ExecutionRouteTransitionStatus3D status =
       checkCurrentAndVersion(current, expected_snapshot_version);
   if (status != ExecutionRouteTransitionStatus3D::kApplied) {
@@ -315,8 +315,8 @@ revokeExecution3D(const ExecutionPlan3D& current,
 }
 
 ExecutionRouteTransitionResult3D
-suspendFiniteExecution3D(const ExecutionPlan3D& current,
-                         const std::uint64_t expected_snapshot_version) {
+execution_route_snapshot_3d_internal::applySuspendFiniteExecutionCommand3D(
+    const ExecutionPlan3D& current, const std::uint64_t expected_snapshot_version) {
   const ExecutionRouteTransitionStatus3D status =
       checkCurrentAndVersion(current, expected_snapshot_version);
   if (status != ExecutionRouteTransitionStatus3D::kApplied) {

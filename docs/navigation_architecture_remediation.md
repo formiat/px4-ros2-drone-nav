@@ -227,7 +227,7 @@ published world.
   that invalid or missing derived evidence cannot become `raw_collision`.
 - [x] Compile once from the exact initial vehicle state into one sealed,
   controller-neutral `CompiledTrajectory3D`.
-- [ ] Replace execution phase plus optionals with the tagged variant and one pure
+- [x] Replace execution phase plus optionals with the tagged variant and one pure
   transition reducer.
 - [ ] Make `RouteExecutionManager3D` the sole pending/active owner and publish
   plan, owner, input, and applied-control evidence as one atomic authority.

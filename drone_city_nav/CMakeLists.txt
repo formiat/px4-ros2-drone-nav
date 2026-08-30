@@ -233,6 +233,7 @@ add_library(
   src/compiled_trajectory_views_3d.cpp
   src/compiled_trajectory_3d.cpp
   src/compiled_trajectory_validation_3d.cpp
+  src/execution_plan_reducer_3d.cpp
   src/execution_route_snapshot_3d.cpp
   src/execution_route_snapshot_3d_certificates.cpp
   src/execution_route_snapshot_3d_certification.cpp
@@ -1231,6 +1232,7 @@ if(BUILD_TESTING)
   enable_project_warnings(trajectory_compiler_3d_test)
 
   ament_add_gtest(execution_route_snapshot_3d_test
+                  tests/execution_plan_reducer_3d_test.cpp
                   tests/execution_route_snapshot_3d_test.cpp
                   tests/execution_route_snapshot_3d_certification_test.cpp
                   tests/execution_route_snapshot_3d_edge_cases_test.cpp
