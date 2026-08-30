@@ -6,19 +6,20 @@ namespace drone_city_nav {
 
 RouteSegmentCompletionAssessment3D
 ProductionMppiNode::assessActiveRouteCompletion3D(const Point3& position) {
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> snapshot =
+  const std::shared_ptr<const ExecutionPlan3D> snapshot =
       execution_route_store_.snapshot();
-  if (snapshot == nullptr || !snapshot->route.has_value() ||
-      snapshot->route->geometry == nullptr ||
-      snapshot->route->geometry->route == nullptr) {
+  const CertifiedRouteSuffix3D* const route =
+      snapshot != nullptr ? snapshot->route() : nullptr;
+  if (route == nullptr || route->geometry == nullptr ||
+      route->geometry->route == nullptr) {
     return {};
   }
   return assessRouteSegmentCompletion3D(
-      *snapshot->route->geometry->route, snapshot->route->identity.generation,
+      *route->geometry->route, route->identity.generation,
       RouteSegmentCompletionObservation3D{
-          .route_generation = snapshot->route->identity.generation,
+          .route_generation = route->identity.generation,
           .position = position,
-          .minimum_station_m = snapshot->route->progress.station_m,
+          .minimum_station_m = route->progress.station_m,
       },
       RouteSegmentCompletionConfig3D{
           .capture_radius_m = route_completion_tolerance_m_,
@@ -26,7 +27,7 @@ ProductionMppiNode::assessActiveRouteCompletion3D(const Point3& position) {
 }
 
 std::uint64_t ProductionMppiNode::nextRouteGeneration3D() {
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> snapshot =
+  const std::shared_ptr<const ExecutionPlan3D> snapshot =
       execution_route_store_.snapshot();
   const std::uint64_t current_generation =
       snapshot != nullptr ? snapshot->routeGenerationHighWater() : 0U;

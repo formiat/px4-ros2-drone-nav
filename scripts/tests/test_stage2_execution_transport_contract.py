@@ -811,7 +811,7 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         )
 
         execution_base = activation.split(
-            "bool sameExecutionRouteBase", maxsplit=1
+            "sameExecutionRouteBase(", maxsplit=1
         )[1].split("pendingExecutionBaseKind", maxsplit=1)[0]
         self.assertIn("exclusiveExecutionHold(*first)", execution_base)
         self.assertIn("first->execution_owner_epoch", execution_base)
@@ -837,7 +837,7 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         route_progress_preparation = route_execution.split(
             "const ExecutionRouteTransitionResult3D advanced =", maxsplit=1
         )[1].split(
-            "const std::shared_ptr<const ExecutionRouteSnapshot3D>& route_state",
+            "const std::shared_ptr<const ExecutionPlan3D>& route_state",
             maxsplit=1,
         )[0]
         route_advance = route_progress_preparation.index("advanceCertifiedRoute3D")

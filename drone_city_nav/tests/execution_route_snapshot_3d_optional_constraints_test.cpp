@@ -47,7 +47,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_NE(fixture.validation_policy, nullptr);
   const std::optional<CertifiedRouteSuffix3D> strict_suffix = fixture.certify();
   ASSERT_TRUE(strict_suffix.has_value());
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> strict_initial =
+  const std::shared_ptr<const ExecutionPlan3D> strict_initial =
       makeInitialExecutionRouteSnapshot3D();
   ASSERT_NE(strict_initial, nullptr);
   FiniteExecutionCertification3D strict_candidate =
@@ -78,7 +78,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_NE(fixture.validation_policy, nullptr);
   const std::optional<CertifiedRouteSuffix3D> permissive_suffix = fixture.certify();
   ASSERT_TRUE(permissive_suffix.has_value());
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> permissive_initial =
+  const std::shared_ptr<const ExecutionPlan3D> permissive_initial =
       makeInitialExecutionRouteSnapshot3D();
   ASSERT_NE(permissive_initial, nullptr);
   const FiniteExecutionCertificationResult3D permissive_result =

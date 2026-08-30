@@ -8,15 +8,10 @@
 
 namespace drone_city_nav {
 
-std::shared_ptr<const ExecutionRouteSnapshot3D> makeInitialExecutionRouteSnapshot3D() {
-  return std::make_shared<const ExecutionRouteSnapshot3D>(ExecutionRouteSnapshot3D{
+std::shared_ptr<const ExecutionPlan3D> makeInitialExecutionRouteSnapshot3D() {
+  return std::make_shared<const ExecutionPlan3D>(ExecutionPlan3D{
       .version = 1U,
-      .phase = ExecutionRoutePhase3D::kAwaitingSuccessor,
-      .route = std::nullopt,
-      .finite_execution = std::nullopt,
-      .braking_fallback = std::nullopt,
-      .direct_tracking_execution = std::nullopt,
-      .stationary_hold = std::nullopt,
+      .state = AwaitingSuccessorPlan3D{},
       .execution_owner_epoch = 1U,
       .route_generation_high_water = 0U,
   });
@@ -29,8 +24,8 @@ bool ExecutionRouteTransitionResult3D::applied() const noexcept {
 
 ExecutionRouteTransitionResult3D::ExecutionRouteTransitionResult3D(
     const ExecutionRouteTransitionStatus3D status_value,
-    const ExecutionRouteSnapshot3D* const predecessor_value,
-    std::shared_ptr<const ExecutionRouteSnapshot3D> next_value)
+    const ExecutionPlan3D* const predecessor_value,
+    std::shared_ptr<const ExecutionPlan3D> next_value)
     : status{status_value},
       predecessor{predecessor_value},
       next{std::move(next_value)},
@@ -38,26 +33,27 @@ ExecutionRouteTransitionResult3D::ExecutionRouteTransitionResult3D(
 }
 
 RouteEndpointSemantics3D
-executionRouteEndpointSemantics3D(const ExecutionRouteSnapshot3D& snapshot) noexcept {
-  if (snapshot.finite_execution.has_value() &&
-      snapshot.finite_execution->kind == FiniteExecutionKind3D::kEmergencyBrakeTail) {
+executionRouteEndpointSemantics3D(const ExecutionPlan3D& snapshot) noexcept {
+  const FiniteExecutionState3D* const finite_execution = snapshot.finiteExecution();
+  if (finite_execution != nullptr &&
+      finite_execution->kind == FiniteExecutionKind3D::kEmergencyBrakeTail) {
     return RouteEndpointSemantics3D::kEmergencyBrakeTail;
   }
-  return snapshot.route.has_value() ? snapshot.route->planned_endpoint_semantics
-                                    : RouteEndpointSemantics3D::kContinuation;
+  const CertifiedRouteSuffix3D* const route = snapshot.route();
+  return route != nullptr ? route->planned_endpoint_semantics
+                          : RouteEndpointSemantics3D::kContinuation;
 }
 
 bool executionRouteAcceptsCertifiedReplacement3D(
-    const ExecutionRouteSnapshot3D& snapshot) noexcept {
-  const CertifiedRouteSuffix3D* const route =
-      snapshot.route.has_value() ? std::addressof(snapshot.route.value()) : nullptr;
+    const ExecutionPlan3D& snapshot) noexcept {
+  const CertifiedRouteSuffix3D* const route = snapshot.route();
   if (route == nullptr) {
     return false;
   }
-  return snapshot.phase == ExecutionRoutePhase3D::kFollowing ||
-         snapshot.phase == ExecutionRoutePhase3D::kAwaitingSuccessor ||
-         snapshot.phase == ExecutionRoutePhase3D::kBraking ||
-         (snapshot.phase == ExecutionRoutePhase3D::kStopped &&
+  return snapshot.phase() == ExecutionRoutePhase3D::kFollowing ||
+         snapshot.phase() == ExecutionRoutePhase3D::kAwaitingSuccessor ||
+         snapshot.phase() == ExecutionRoutePhase3D::kBraking ||
+         (snapshot.phase() == ExecutionRoutePhase3D::kStopped &&
           route->planned_endpoint_semantics == RouteEndpointSemantics3D::kLocalStop);
 }
 
@@ -126,14 +122,13 @@ ExecutionRouteSnapshotStore3D::ExecutionRouteSnapshotStore3D()
     : snapshot_(makeInitialExecutionRouteSnapshot3D()) {
 }
 
-std::shared_ptr<const ExecutionRouteSnapshot3D>
-ExecutionRouteSnapshotStore3D::snapshot() const {
+std::shared_ptr<const ExecutionPlan3D> ExecutionRouteSnapshotStore3D::snapshot() const {
   const std::scoped_lock lock{mutex_};
   return snapshot_;
 }
 
 ExecutionRoutePublicationStatus3D ExecutionRouteSnapshotStore3D::publish(
-    const std::shared_ptr<const ExecutionRouteSnapshot3D>& expected_snapshot,
+    const std::shared_ptr<const ExecutionPlan3D>& expected_snapshot,
     const ExecutionRouteTransitionResult3D& transition) {
   const std::scoped_lock lock{mutex_};
   if (snapshot_ == nullptr || expected_snapshot == nullptr ||

@@ -30,8 +30,8 @@ public:
   }
 
   [[nodiscard]] static ExecutionRouteTransitionResult3D
-  success(const ExecutionRouteSnapshot3D& predecessor,
-          std::shared_ptr<const ExecutionRouteSnapshot3D> next) {
+  success(const ExecutionPlan3D& predecessor,
+          std::shared_ptr<const ExecutionPlan3D> next) {
     return {ExecutionRouteTransitionStatus3D::kApplied, &predecessor, std::move(next)};
   }
 };
@@ -44,7 +44,7 @@ transitionFailure(const ExecutionRouteTransitionStatus3D status) {
 }
 
 [[nodiscard]] ExecutionRouteTransitionStatus3D
-checkCurrentAndVersion(const ExecutionRouteSnapshot3D& current,
+checkCurrentAndVersion(const ExecutionPlan3D& current,
                        const std::uint64_t expected_snapshot_version) noexcept {
   if (!current.valid()) {
     return ExecutionRouteTransitionStatus3D::kInvalidCurrentSnapshot;
@@ -59,18 +59,19 @@ checkCurrentAndVersion(const ExecutionRouteSnapshot3D& current,
 }
 
 [[nodiscard]] ExecutionRouteTransitionStatus3D
-checkGuard(const ExecutionRouteSnapshot3D& current,
+checkGuard(const ExecutionPlan3D& current,
            const ExecutionRouteTransitionGuard3D& guard) noexcept {
   const ExecutionRouteTransitionStatus3D base =
       checkCurrentAndVersion(current, guard.expected_snapshot_version);
   if (base != ExecutionRouteTransitionStatus3D::kApplied) {
     return base;
   }
-  if (!current.route.has_value() ||
-      current.route->identity.generation != guard.expected_route_generation) {
+  const CertifiedRouteSuffix3D* const route = current.route();
+  if (route == nullptr ||
+      route->identity.generation != guard.expected_route_generation) {
     return ExecutionRouteTransitionStatus3D::kRouteGenerationMismatch;
   }
-  if (current.route->geometry->compiled_trajectory_revision !=
+  if (route->geometry->compiled_trajectory_revision !=
       guard.expected_geometry_revision) {
     return ExecutionRouteTransitionStatus3D::kGeometryRevisionMismatch;
   }
@@ -78,23 +79,80 @@ checkGuard(const ExecutionRouteSnapshot3D& current,
 }
 
 [[nodiscard]] ExecutionRouteTransitionResult3D
-finishTransition(const ExecutionRouteSnapshot3D& current,
-                 ExecutionRouteSnapshot3D next) {
+finishTransition(const ExecutionPlan3D& current, ExecutionPlan3D next) {
   if (!next.valid()) {
     return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
   }
   return ExecutionRouteTransitionFactory3D::success(
-      current, std::make_shared<const ExecutionRouteSnapshot3D>(std::move(next)));
+      current, std::make_shared<const ExecutionPlan3D>(std::move(next)));
 }
 
 [[nodiscard]] const CertifiedRouteSuffix3D*
-routePointer(const ExecutionRouteSnapshot3D& snapshot) noexcept {
-  return snapshot.route.has_value() ? snapshot.route.operator->() : nullptr;
+routePointer(const ExecutionPlan3D& snapshot) noexcept {
+  return snapshot.route();
 }
 
-[[nodiscard]] CertifiedRouteSuffix3D*
-routePointer(ExecutionRouteSnapshot3D& snapshot) noexcept {
-  return snapshot.route.has_value() ? snapshot.route.operator->() : nullptr;
+[[nodiscard]] CertifiedRouteSuffix3D* routePointer(ExecutionPlan3D& snapshot) noexcept {
+  if (auto* following = std::get_if<FollowingPlan3D>(&snapshot.state)) {
+    return std::addressof(following->route);
+  }
+  if (auto* braking = std::get_if<BrakingPlan3D>(&snapshot.state)) {
+    return std::addressof(braking->route);
+  }
+  if (auto* stationary = std::get_if<StationaryHoldPlan3D>(&snapshot.state)) {
+    auto* certified = std::get_if<CertifiedTerminalHoldPlan3D>(&stationary->owner);
+    return certified != nullptr ? std::addressof(certified->route) : nullptr;
+  }
+  auto* awaiting = std::get_if<AwaitingSuccessorPlan3D>(&snapshot.state);
+  if (awaiting == nullptr) {
+    return nullptr;
+  }
+  if (auto* suspended = std::get_if<SuspendedRoutePlan3D>(&awaiting->owner)) {
+    return std::addressof(suspended->route);
+  }
+  auto* continuation = std::get_if<ContinuationStopPlan3D>(&awaiting->owner);
+  return continuation != nullptr ? std::addressof(continuation->route) : nullptr;
+}
+
+FiniteExecutionState3D* finiteExecutionPointer(ExecutionPlan3D& snapshot) noexcept {
+  if (auto* following = std::get_if<FollowingPlan3D>(&snapshot.state)) {
+    return std::addressof(following->execution.command_horizon);
+  }
+  if (auto* braking = std::get_if<BrakingPlan3D>(&snapshot.state)) {
+    return std::addressof(braking->execution);
+  }
+  if (auto* stationary = std::get_if<StationaryHoldPlan3D>(&snapshot.state)) {
+    auto* certified = std::get_if<CertifiedTerminalHoldPlan3D>(&stationary->owner);
+    return certified != nullptr ? std::addressof(certified->execution.command_horizon)
+                                : nullptr;
+  }
+  auto* awaiting = std::get_if<AwaitingSuccessorPlan3D>(&snapshot.state);
+  auto* continuation = awaiting != nullptr
+                           ? std::get_if<ContinuationStopPlan3D>(&awaiting->owner)
+                           : nullptr;
+  return continuation != nullptr
+             ? std::addressof(continuation->execution.command_horizon)
+             : nullptr;
+}
+
+FiniteExecutionState3D* brakingFallbackPointer(ExecutionPlan3D& snapshot) noexcept {
+  if (auto* following = std::get_if<FollowingPlan3D>(&snapshot.state)) {
+    return std::addressof(following->execution.braking_tail);
+  }
+  if (auto* braking = std::get_if<BrakingPlan3D>(&snapshot.state)) {
+    return std::addressof(braking->execution);
+  }
+  if (auto* stationary = std::get_if<StationaryHoldPlan3D>(&snapshot.state)) {
+    auto* certified = std::get_if<CertifiedTerminalHoldPlan3D>(&stationary->owner);
+    return certified != nullptr ? std::addressof(certified->execution.braking_tail)
+                                : nullptr;
+  }
+  auto* awaiting = std::get_if<AwaitingSuccessorPlan3D>(&snapshot.state);
+  auto* continuation = awaiting != nullptr
+                           ? std::get_if<ContinuationStopPlan3D>(&awaiting->owner)
+                           : nullptr;
+  return continuation != nullptr ? std::addressof(continuation->execution.braking_tail)
+                                 : nullptr;
 }
 
 [[nodiscard]] bool sameControl(const mppi::Control& first,
@@ -447,7 +505,7 @@ bool directTrackingEvidenceNotOlderThanHold(
 
 [[nodiscard]] bool
 candidateFiniteExecutionValid(const FiniteExecutionState3D& candidate,
-                              const ExecutionRouteSnapshot3D& current,
+                              const ExecutionPlan3D& current,
                               const CertifiedRouteSuffix3D* route,
                               const bool require_current_certificate) noexcept {
   if (candidate.source_snapshot_version != current.version ||
@@ -468,18 +526,19 @@ candidateFiniteExecutionValid(const FiniteExecutionState3D& candidate,
            kExecutionBindingToleranceM)) {
     return false;
   }
-  if (current.finite_execution.has_value() &&
-      (candidate.trajectory_revision <= current.finite_execution->trajectory_revision ||
+  const FiniteExecutionState3D* const current_execution = current.finiteExecution();
+  if (current_execution != nullptr &&
+      (candidate.trajectory_revision <= current_execution->trajectory_revision ||
        candidate.source_navigation_revision <
-           current.finite_execution->source_navigation_revision ||
-       candidate.valid_from_ns < current.finite_execution->valid_from_ns ||
+           current_execution->source_navigation_revision ||
+       candidate.valid_from_ns < current_execution->valid_from_ns ||
        (candidate.kind != FiniteExecutionKind3D::kNominal &&
         !finiteExecutionValidatedAgainstNewerRawWorld(candidate) &&
-        candidate.valid_until_ns > current.finite_execution->valid_until_ns))) {
+        candidate.valid_until_ns > current_execution->valid_until_ns))) {
     return false;
   }
-  if (current.finite_execution.has_value()) {
-    const FiniteExecutionState3D& previous = *current.finite_execution;
+  if (current_execution != nullptr) {
+    const FiniteExecutionState3D& previous = *current_execution;
     if (candidate.execution_input == nullptr || previous.execution_input == nullptr ||
         !executionInputNotOlder(*candidate.execution_input,
                                 *previous.execution_input)) {

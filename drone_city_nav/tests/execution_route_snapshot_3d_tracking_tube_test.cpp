@@ -15,7 +15,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       certifyExecutionRoute3D(route_activation);
   ASSERT_TRUE(suffix.has_value());
   EXPECT_DOUBLE_EQ(suffix->progress.last_observed_position.y, 4.0);
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> initial =
+  const std::shared_ptr<const ExecutionPlan3D> initial =
       makeInitialExecutionRouteSnapshot3D();
   ASSERT_NE(initial, nullptr);
 
@@ -158,21 +158,21 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_TRUE(activated.applied())
       << "transition_status=" << executionRouteTransitionStatus3DName(activated.status);
   ASSERT_NE(activated.next, nullptr);
-  ASSERT_TRUE(activated.next->route.has_value());
-  ASSERT_TRUE(activated.next->finite_execution.has_value());
-  const FiniteExecutionState3D& resident_handoff = *activated.next->finite_execution;
+  ASSERT_TRUE(activated.next->route() != nullptr);
+  ASSERT_TRUE(activated.next->finiteExecution() != nullptr);
+  const FiniteExecutionState3D& resident_handoff = *activated.next->finiteExecution();
   ASSERT_NE(resident_handoff.horizon, nullptr);
   std::size_t acquisition_state_index{0U};
   for (std::size_t index = 1U; index < resident_handoff.horizon->states.size();
        ++index) {
     const mppi::State& state = resident_handoff.horizon->states[index];
     const RouteProjection3D projection = projectOntoRoute3D(
-        *activated.next->route->geometry->route, Point3{state.x, state.y, state.z});
+        *activated.next->route()->geometry->route, Point3{state.x, state.y, state.z});
     const TrackingErrorTubeExecutionAssessment3D tube =
         projection.valid
             ? assessTrackingErrorTubeExecution3D(
-                  *activated.next->route->geometry->route,
-                  *activated.next->route->geometry->tracking_error_tube,
+                  *activated.next->route()->geometry->route,
+                  *activated.next->route()->geometry->tracking_error_tube,
                   TrackingErrorTubeExecutionObservation3D{
                       .station_m = projection.station_m,
                       .cross_track_error_m = projection.distance_m,
@@ -189,7 +189,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_GT(acquisition_state_index, 1U);
   ASSERT_LT(acquisition_state_index, resident_handoff.horizon->controls.size());
   const VersionedExecutionInput3D& source_input =
-      *activated.next->route->progress.execution_input;
+      *activated.next->route()->progress.execution_input;
   const auto handoff_input_at = [&](const std::size_t clock_state_index,
                                     const mppi::State& state) {
     const std::int64_t effective_stamp_ns =
@@ -220,7 +220,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       handoff_input_at(1U, acquired_state);
   ASSERT_NE(premature_join, nullptr);
   const TrackingErrorTubeHandoffAssessment3D premature_assessment =
-      assessCertifiedTrackingTubeHandoff3D(*activated.next, *activated.next->route,
+      assessCertifiedTrackingTubeHandoff3D(*activated.next, *activated.next->route(),
                                            *premature_join);
   EXPECT_FALSE(premature_assessment.active());
   EXPECT_NE(premature_assessment.status,
@@ -230,7 +230,7 @@ TEST(ExecutionRouteSnapshot3DTest,
                 fixture.executionObservation(
                     Point3{acquired_state.x, acquired_state.y, acquired_state.z},
                     SnapshotFixture3D::kLatestRawRevision, &fixture.raw_occupancy),
-                premature_join, activated.next->route->observed_raw_world)
+                premature_join, activated.next->route()->observed_raw_world)
                 .status,
             ExecutionRouteTransitionStatus3D::kExecutionAssessmentRejected);
 
@@ -238,7 +238,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       handoff_input_at(acquisition_state_index, acquired_state);
   ASSERT_NE(acquired_input, nullptr);
   EXPECT_EQ(assessCertifiedTrackingTubeHandoff3D(
-                *activated.next, *activated.next->route, *acquired_input)
+                *activated.next, *activated.next->route(), *acquired_input)
                 .status,
             TrackingErrorTubeHandoffStatus3D::kReferenceAcquiredRouteTube);
   const ExecutionRouteTransitionResult3D acquired = advanceCertifiedRoute3D(
@@ -246,15 +246,15 @@ TEST(ExecutionRouteSnapshot3DTest,
       fixture.executionObservation(
           Point3{acquired_state.x, acquired_state.y, acquired_state.z},
           SnapshotFixture3D::kLatestRawRevision, &fixture.raw_occupancy),
-      acquired_input, activated.next->route->observed_raw_world);
+      acquired_input, activated.next->route()->observed_raw_world);
   ASSERT_TRUE(acquired.applied())
       << executionRouteTransitionStatus3DName(acquired.status);
   ASSERT_NE(acquired.next, nullptr);
-  ASSERT_TRUE(acquired.next->route.has_value());
-  EXPECT_EQ(acquired.next->route->progress.execution_input, acquired_input);
+  ASSERT_TRUE(acquired.next->route() != nullptr);
+  EXPECT_EQ(acquired.next->route()->progress.execution_input, acquired_input);
 
   const FiniteExecutionCertificationResult3D continued =
-      certifyFiniteExecution3DDetailed(*activated.next, *activated.next->route,
+      certifyFiniteExecution3DDetailed(*activated.next, *activated.next->route(),
                                        handoff_certification(true, 103U));
   EXPECT_TRUE(continued.certified())
       << "status=" << finiteExecutionCertificationStatus3DName(continued.status)
@@ -265,36 +265,36 @@ TEST(ExecutionRouteSnapshot3DTest,
 
   const FiniteExecutionCertificationResult3D retained =
       certifyFiniteExecution3DDetailed(
-          *activated.next, *activated.next->route,
+          *activated.next, *activated.next->route(),
           handoff_certification(true, 104U, FiniteExecutionKind3D::kRetained));
   ASSERT_TRUE(retained.certified());
   ASSERT_TRUE(retained.execution.has_value());
   EXPECT_EQ(retained.execution->source_snapshot_version, activated.next->version);
-  EXPECT_TRUE(retained.execution->validFor(&*activated.next->route));
+  EXPECT_TRUE(retained.execution->validFor(&*activated.next->route()));
   EXPECT_NEAR(retained.execution->begin_route_station_m,
-              activated.next->route->progress.station_m, 0.25);
+              activated.next->route()->progress.station_m, 0.25);
   ASSERT_NE(retained.execution->horizon, nullptr);
   EXPECT_LE(distance3D(Point3{retained.execution->horizon->states.front().x,
                               retained.execution->horizon->states.front().y,
                               retained.execution->horizon->states.front().z},
-                       activated.next->route->progress.last_observed_position),
+                       activated.next->route()->progress.last_observed_position),
             0.25);
   EXPECT_GT(retained.execution->trajectory_revision,
-            activated.next->finite_execution->trajectory_revision);
+            activated.next->finiteExecution()->trajectory_revision);
   EXPECT_GE(retained.execution->source_navigation_revision,
-            activated.next->finite_execution->source_navigation_revision);
+            activated.next->finiteExecution()->source_navigation_revision);
   EXPECT_GE(retained.execution->valid_from_ns,
-            activated.next->finite_execution->valid_from_ns);
+            activated.next->finiteExecution()->valid_from_ns);
   EXPECT_LE(retained.execution->valid_until_ns,
-            activated.next->finite_execution->valid_until_ns);
+            activated.next->finiteExecution()->valid_until_ns);
   const ExecutionRouteTransitionResult3D retained_transition = replaceFiniteExecution3D(
       *activated.next, SnapshotFixture3D::guard(*activated.next), retained.execution);
   ASSERT_TRUE(retained_transition.applied());
   ASSERT_NE(retained_transition.next, nullptr);
-  ASSERT_TRUE(retained_transition.next->route.has_value());
+  ASSERT_TRUE(retained_transition.next->route() != nullptr);
   const FiniteExecutionCertificationResult3D retained_continuation =
       certifyFiniteExecution3DDetailed(
-          *retained_transition.next, *retained_transition.next->route,
+          *retained_transition.next, *retained_transition.next->route(),
           handoff_certification(true, 105U, FiniteExecutionKind3D::kRetained));
   EXPECT_TRUE(retained_continuation.certified())
       << "status="

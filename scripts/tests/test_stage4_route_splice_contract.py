@@ -102,12 +102,12 @@ class Stage4RouteSpliceContractTest(unittest.TestCase):
 
         self.assertIn("maybeRequestStaticRouteExtensionFromExecution", planning)
         self.assertIn(
-            "const ExecutionRouteSnapshot3D& source = "
+            "const ExecutionPlan3D& source = "
             "*route_execution.source_snapshot",
             extension,
         )
         self.assertIn(
-            "const std::optional<CertifiedRouteSuffix3D>& route = source.route",
+            "const CertifiedRouteSuffix3D* const active_route = source.route();",
             extension,
         )
         self.assertIn("const CertifiedRouteSuffix3D& active_route", extension)
@@ -120,7 +120,7 @@ class Stage4RouteSpliceContractTest(unittest.TestCase):
         )
         self.assertIn("execution_route_store_.snapshot()", extension)
         self.assertIn("execution_route_store_.snapshot()", esdf)
-        self.assertIn("refresh_execution->route->identity.generation", esdf)
+        self.assertIn("refresh_execution->route()->identity.generation", esdf)
         self.assertIn("PlannerSearchContinuityBase3D", esdf)
         self.assertIn("refresh_superseded", esdf)
         self.assertIn("execution_snapshot->routeGenerationHighWater()", runtime)

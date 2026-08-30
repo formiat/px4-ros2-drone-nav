@@ -6,7 +6,7 @@ namespace {
 TEST(ExecutionRouteSnapshot3DTest, UnboundSuccessorBindsAtTheCurrentFinitePlanStart) {
   SnapshotFixture3D fixture;
   const std::optional<CertifiedRouteSuffix3D> suffix = fixture.certify();
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> initial =
+  const std::shared_ptr<const ExecutionPlan3D> initial =
       makeInitialExecutionRouteSnapshot3D();
   if (!suffix.has_value() || initial == nullptr) {
     ADD_FAILURE() << "The fixture must provide an initial certified route";
@@ -55,12 +55,12 @@ TEST(ExecutionRouteSnapshot3DTest, UnboundSuccessorBindsAtTheCurrentFinitePlanSt
     ADD_FAILURE() << "The certified successor must activate atomically";
     return;
   }
-  const ExecutionRouteSnapshot3D& active_snapshot = *activated.next;
-  if (!active_snapshot.route.has_value()) {
+  const ExecutionPlan3D& active_snapshot = *activated.next;
+  if (active_snapshot.route() == nullptr) {
     ADD_FAILURE() << "The activated snapshot must own the successor route";
     return;
   }
-  const CertifiedRouteSuffix3D& active_route = active_snapshot.route.value();
+  const CertifiedRouteSuffix3D& active_route = *active_snapshot.route();
   EXPECT_EQ(active_route.progress.execution_input, current_input);
   EXPECT_DOUBLE_EQ(active_route.progress.station_m, kCurrentStationM);
   EXPECT_TRUE(active_snapshot.publishable());
@@ -71,7 +71,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   SnapshotFixture3D fixture;
   const std::optional<CertifiedRouteSuffix3D> suffix = fixture.certify();
   ExecutionRouteSnapshotStore3D store;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> initial = store.snapshot();
+  const std::shared_ptr<const ExecutionPlan3D> initial = store.snapshot();
   if (!suffix.has_value() || initial == nullptr) {
     ADD_FAILURE() << "The fixture must provide an initial certified route";
     return;
@@ -83,8 +83,8 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_TRUE(activation.applied());
   ASSERT_EQ(store.publish(initial, activation),
             ExecutionRoutePublicationStatus3D::kPublished);
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> resident = store.snapshot();
-  if (resident == nullptr || !resident->route.has_value()) {
+  const std::shared_ptr<const ExecutionPlan3D> resident = store.snapshot();
+  if (resident == nullptr || resident->route() == nullptr) {
     ADD_FAILURE() << "Activation must publish a route owner";
     return;
   }
@@ -103,22 +103,22 @@ TEST(ExecutionRouteSnapshot3DTest,
     ADD_FAILURE() << "Progress must produce a successor snapshot";
     return;
   }
-  const ExecutionRouteSnapshot3D& progressed = *progress.next;
-  if (!progressed.route.has_value() || !progressed.finite_execution.has_value() ||
-      !progressed.braking_fallback.has_value()) {
+  const ExecutionPlan3D& progressed = *progress.next;
+  if (progressed.route() == nullptr || progressed.finiteExecution() == nullptr ||
+      progressed.brakingFallback() == nullptr) {
     ADD_FAILURE() << "Progress must preserve the complete resident plan";
     return;
   }
   EXPECT_TRUE(progressed.valid());
   EXPECT_FALSE(progressed.publishable());
-  EXPECT_TRUE(progressed.finite_execution.value().revalidation_required);
-  EXPECT_TRUE(progressed.braking_fallback.value().revalidation_required);
+  EXPECT_TRUE(progressed.finiteExecution()[0].revalidation_required);
+  EXPECT_TRUE(progressed.brakingFallback()[0].revalidation_required);
   EXPECT_EQ(store.publish(resident, progress),
             ExecutionRoutePublicationStatus3D::kInvalidCandidate);
   EXPECT_EQ(store.snapshot(), resident);
 
   const FiniteExecutionPlan3D plan = SnapshotFixture3D::finitePlanForRoute(
-      progressed, progressed.route.value(), FiniteExecutionKind3D::kNominal, 101U);
+      progressed, *progressed.route(), FiniteExecutionKind3D::kNominal, 101U);
   const ExecutionRouteTransitionResult3D prepared = replaceFiniteExecutionPlan3D(
       progressed, SnapshotFixture3D::guard(progressed), plan);
   ASSERT_TRUE(prepared.applied());
@@ -129,10 +129,10 @@ TEST(ExecutionRouteSnapshot3DTest,
     ADD_FAILURE() << "Composition must produce a successor snapshot";
     return;
   }
-  const ExecutionRouteSnapshot3D& composed_snapshot = *composed.next;
-  if (!composed_snapshot.route.has_value() ||
-      !composed_snapshot.finite_execution.has_value() ||
-      !composed_snapshot.braking_fallback.has_value()) {
+  const ExecutionPlan3D& composed_snapshot = *composed.next;
+  if (composed_snapshot.route() == nullptr ||
+      composed_snapshot.finiteExecution() == nullptr ||
+      composed_snapshot.brakingFallback() == nullptr) {
     ADD_FAILURE() << "Composition must produce a complete publishable plan";
     return;
   }
@@ -140,8 +140,8 @@ TEST(ExecutionRouteSnapshot3DTest,
   EXPECT_EQ(composed_snapshot.version, resident->version + 2U);
   EXPECT_TRUE(composed_snapshot.publishable());
 
-  const FiniteExecutionState3D& command = composed_snapshot.finite_execution.value();
-  const FiniteExecutionState3D& braking = composed_snapshot.braking_fallback.value();
+  const FiniteExecutionState3D& command = composed_snapshot.finiteExecution()[0];
+  const FiniteExecutionState3D& braking = composed_snapshot.brakingFallback()[0];
   ASSERT_NE(braking.horizon, nullptr);
   EXPECT_EQ(command.execution_input, braking.execution_input);
   EXPECT_EQ(command.latest_lidar_evidence, braking.latest_lidar_evidence);
@@ -153,13 +153,14 @@ TEST(ExecutionRouteSnapshot3DTest,
   EXPECT_EQ(braking.horizon->arrival_control_count, braking.horizon->controls.size());
   EXPECT_LE(braking.valid_until_ns, command.valid_until_ns);
   EXPECT_LE(braking.stop_boundary.station_m, command.stop_boundary.station_m);
-  EXPECT_EQ(composed_snapshot.route.value().progress.execution_input,
+  EXPECT_EQ(composed_snapshot.route()->progress.execution_input,
             command.execution_input);
-
-  ExecutionRouteSnapshot3D missing_fallback = composed_snapshot;
-  missing_fallback.braking_fallback.reset();
-  EXPECT_FALSE(missing_fallback.valid());
-  EXPECT_FALSE(missing_fallback.publishable());
+  const auto* const following = std::get_if<FollowingPlan3D>(&composed_snapshot.state);
+  ASSERT_NE(following, nullptr);
+  EXPECT_EQ(std::addressof(following->execution.command_horizon),
+            composed_snapshot.finiteExecution());
+  EXPECT_EQ(std::addressof(following->execution.braking_tail),
+            composed_snapshot.brakingFallback());
 
   ASSERT_EQ(store.publish(resident, composed),
             ExecutionRoutePublicationStatus3D::kPublished);
@@ -169,8 +170,7 @@ TEST(ExecutionRouteSnapshot3DTest,
 TEST(ExecutionRouteSnapshot3DTest,
      SlightlyLaggingMeasuredPoseCannotRegressRetainedRouteProgress) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);
 
   constexpr double kRetainedStationM{4.0};
@@ -184,16 +184,16 @@ TEST(ExecutionRouteSnapshot3DTest,
                                    &fixture.raw_occupancy),
       progress_input, fixture.rawWorld(kAdvancedRawRevision));
   ASSERT_TRUE(progress.applied());
-  if (progress.next == nullptr || !progress.next->route.has_value() ||
-      !progress.next->finite_execution.has_value()) {
+  if (progress.next == nullptr || progress.next->route() == nullptr ||
+      progress.next->finiteExecution() == nullptr) {
     ADD_FAILURE() << "Progress must preserve the route and finite execution";
     return;
   }
-  const ExecutionRouteSnapshot3D& progressed = *progress.next;
+  const ExecutionPlan3D& progressed = *progress.next;
   const CertifiedRouteSuffix3D& route =
-      progressed.route.value(); // NOLINT(bugprone-unchecked-optional-access)
+      *progressed.route(); // NOLINT(bugprone-unchecked-optional-access)
   const FiniteExecutionState3D& resident_execution =
-      progressed.finite_execution.value(); // NOLINT(bugprone-unchecked-optional-access)
+      progressed.finiteExecution()[0]; // NOLINT(bugprone-unchecked-optional-access)
   EXPECT_DOUBLE_EQ(route.progress.station_m, kRetainedStationM);
 
   FiniteExecutionCertification3D command =
@@ -262,28 +262,27 @@ TEST(ExecutionRouteSnapshot3DTest,
       progressed, SnapshotFixture3D::guard(progressed), std::move(plan));
   ASSERT_TRUE(installed.applied())
       << "transition_status=" << executionRouteTransitionStatus3DName(installed.status);
-  if (installed.next == nullptr || !installed.next->route.has_value()) {
+  if (installed.next == nullptr || installed.next->route() == nullptr) {
     ADD_FAILURE() << "Installation must preserve the route owner";
     return;
   }
-  const ExecutionRouteSnapshot3D& installed_snapshot = *installed.next;
+  const ExecutionPlan3D& installed_snapshot = *installed.next;
   const CertifiedRouteSuffix3D& installed_route =
-      installed_snapshot.route.value(); // NOLINT(bugprone-unchecked-optional-access)
+      *installed_snapshot.route(); // NOLINT(bugprone-unchecked-optional-access)
   EXPECT_DOUBLE_EQ(installed_route.progress.station_m, kRetainedStationM);
   EXPECT_TRUE(installed_snapshot.publishable());
 }
 
 TEST(ExecutionRouteSnapshot3DTest, SafeReplacementCannotExtendDeadline) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   if (active == nullptr) {
     ADD_FAILURE() << "The fixture must activate a route snapshot";
     return;
   }
-  const ExecutionRouteSnapshot3D& active_snapshot = *active;
-  if (!active_snapshot.finite_execution.has_value() ||
-      !active_snapshot.braking_fallback.has_value()) {
+  const ExecutionPlan3D& active_snapshot = *active;
+  if (active_snapshot.finiteExecution() == nullptr ||
+      active_snapshot.brakingFallback() == nullptr) {
     ADD_FAILURE() << "An active route must own a complete execution plan";
     return;
   }
@@ -292,7 +291,7 @@ TEST(ExecutionRouteSnapshot3DTest, SafeReplacementCannotExtendDeadline) {
       .generation = SnapshotFixture3D::kRouteGeneration,
   };
 
-  const FiniteExecutionState3D& fallback = active_snapshot.braking_fallback.value();
+  const FiniteExecutionState3D& fallback = active_snapshot.brakingFallback()[0];
   const ExecutionRouteTransitionResult3D accepted =
       retireCertifiedRoute3D(active_snapshot, SnapshotFixture3D::guard(active_snapshot),
                              superseded, std::nullopt);
@@ -300,15 +299,14 @@ TEST(ExecutionRouteSnapshot3DTest, SafeReplacementCannotExtendDeadline) {
     ADD_FAILURE() << "Retirement must produce a braking snapshot";
     return;
   }
-  const ExecutionRouteSnapshot3D& braking_snapshot = *accepted.next;
-  if (!braking_snapshot.finite_execution.has_value()) {
+  const ExecutionPlan3D& braking_snapshot = *accepted.next;
+  if (braking_snapshot.finiteExecution() == nullptr) {
     ADD_FAILURE() << "Retirement must select the permanent braking fallback";
     return;
   }
-  EXPECT_EQ(braking_snapshot.phase, ExecutionRoutePhase3D::kBraking);
-  EXPECT_EQ(
-      braking_snapshot.finite_execution.value().validation_proof.artifact_fingerprint,
-      fallback.validation_proof.artifact_fingerprint);
+  EXPECT_EQ(braking_snapshot.phase(), ExecutionRoutePhase3D::kBraking);
+  EXPECT_EQ(braking_snapshot.finiteExecution()[0].validation_proof.artifact_fingerprint,
+            fallback.validation_proof.artifact_fingerprint);
 
   const FiniteExecutionState3D retained = SnapshotFixture3D::finiteExecution(
       active_snapshot, FiniteExecutionKind3D::kRetained, true, 101U);
@@ -321,7 +319,7 @@ TEST(ExecutionRouteSnapshot3DTest, SafeReplacementCannotExtendDeadline) {
   const FiniteExecutionState3D extended_deadline = SnapshotFixture3D::finiteExecution(
       active_snapshot, FiniteExecutionKind3D::kEmergencyBrakeTail, true, 102U, 55U, 1U);
   EXPECT_GT(extended_deadline.valid_until_ns,
-            active_snapshot.finite_execution.value().valid_until_ns);
+            active_snapshot.finiteExecution()[0].valid_until_ns);
   EXPECT_EQ(retireCertifiedRoute3D(active_snapshot,
                                    SnapshotFixture3D::guard(active_snapshot),
                                    superseded, extended_deadline)

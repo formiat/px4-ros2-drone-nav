@@ -253,7 +253,7 @@ void ProductionMppiNode::onNavigationReadiness(const std_msgs::msg::Bool& messag
 
   std::shared_ptr<const PlannerSearchTransaction3D> transaction;
   ProductionWorldBuildTelemetry3D world_telemetry;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> execution_snapshot =
+  const std::shared_ptr<const ExecutionPlan3D> execution_snapshot =
       execution_route_store_.snapshot();
   const bool initial_route_required =
       execution_snapshot == nullptr ||

@@ -37,8 +37,8 @@ enum class ExecutionPublicationCurrentnessStatus3D : std::uint8_t {
 };
 
 struct ExecutionPublicationCurrentnessCheck3D {
-  std::shared_ptr<const ExecutionRouteSnapshot3D> expected_snapshot;
-  std::shared_ptr<const ExecutionRouteSnapshot3D> current_snapshot;
+  std::shared_ptr<const ExecutionPlan3D> expected_snapshot;
+  std::shared_ptr<const ExecutionPlan3D> current_snapshot;
   ExecutionPublicationRawRequirement3D raw_requirement{
       ExecutionPublicationRawRequirement3D::kRequired};
   std::shared_ptr<const VersionedObservedRawWorld3D> expected_raw_world;

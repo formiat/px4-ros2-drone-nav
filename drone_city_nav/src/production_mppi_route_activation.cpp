@@ -63,40 +63,37 @@ rawWorldExecutionOwnerExact(const ProductionMppiRawWorld3D& raw_world) noexcept 
          current.local_world_generation.sameSnapshot(captured.local_world_generation);
 }
 
-[[nodiscard]] bool
-exclusiveExecutionHold(const ExecutionRouteSnapshot3D& snapshot) noexcept {
-  return snapshot.phase == ExecutionRoutePhase3D::kStopped &&
-         snapshot.stationary_hold.has_value() && !snapshot.route.has_value() &&
-         !snapshot.finite_execution.has_value() &&
-         !snapshot.direct_tracking_execution.has_value();
+[[nodiscard]] bool exclusiveExecutionHold(const ExecutionPlan3D& snapshot) noexcept {
+  return snapshot.phase() == ExecutionRoutePhase3D::kStopped &&
+         snapshot.stationaryHold() != nullptr && snapshot.route() == nullptr &&
+         snapshot.finiteExecution() == nullptr &&
+         snapshot.directTrackingExecution() == nullptr;
 }
 
-[[nodiscard]] bool sameExecutionRouteBase(
-    const std::shared_ptr<const ExecutionRouteSnapshot3D>& first,
-    const std::shared_ptr<const ExecutionRouteSnapshot3D>& second) noexcept {
+[[nodiscard]] bool
+sameExecutionRouteBase(const std::shared_ptr<const ExecutionPlan3D>& first,
+                       const std::shared_ptr<const ExecutionPlan3D>& second) noexcept {
   if (first == nullptr || second == nullptr || !first->valid() || !second->valid()) {
     return false;
   }
   if (first->execution_owner_epoch != second->execution_owner_epoch ||
-      first->route.has_value() != second->route.has_value() ||
-      first->direct_tracking_execution.has_value() !=
-          second->direct_tracking_execution.has_value() ||
-      first->stationary_hold.has_value() != second->stationary_hold.has_value() ||
+      (first->route() != nullptr) != (second->route() != nullptr) ||
+      (first->directTrackingExecution() != nullptr) !=
+          (second->directTrackingExecution() != nullptr) ||
+      (first->stationaryHold() != nullptr) != (second->stationaryHold() != nullptr) ||
       first->routeGenerationHighWater() != second->routeGenerationHighWater()) {
     return false;
   }
-  const StationaryExecutionHold3D* const first_hold =
-      optionalAddress(first->stationary_hold);
-  const StationaryExecutionHold3D* const second_hold =
-      optionalAddress(second->stationary_hold);
+  const StationaryExecutionHold3D* const first_hold = first->stationaryHold();
+  const StationaryExecutionHold3D* const second_hold = second->stationaryHold();
   if (exclusiveExecutionHold(*first)) {
     return exclusiveExecutionHold(*second) && first_hold != nullptr &&
            second_hold != nullptr && first_hold->hold_id == second_hold->hold_id;
   }
   const DirectTrackingFiniteExecution3D* const first_direct =
-      optionalAddress(first->direct_tracking_execution);
+      first->directTrackingExecution();
   const DirectTrackingFiniteExecution3D* const second_direct =
-      optionalAddress(second->direct_tracking_execution);
+      second->directTrackingExecution();
   if (first_direct != nullptr) {
     if (second_direct == nullptr) {
       return false;
@@ -110,10 +107,10 @@ exclusiveExecutionHold(const ExecutionRouteSnapshot3D& snapshot) noexcept {
            left.objective_sample_sequence == right.objective_sample_sequence &&
            left.line_of_sight_generation == right.line_of_sight_generation;
   }
-  const CertifiedRouteSuffix3D* const first_route = optionalAddress(first->route);
-  const CertifiedRouteSuffix3D* const second_route = optionalAddress(second->route);
+  const CertifiedRouteSuffix3D* const first_route = first->route();
+  const CertifiedRouteSuffix3D* const second_route = second->route();
   if (first_route == nullptr) {
-    return first->phase == second->phase;
+    return first->phase() == second->phase();
   }
   return second_route != nullptr &&
          first_route->identity.generation == second_route->identity.generation &&
@@ -124,18 +121,18 @@ exclusiveExecutionHold(const ExecutionRouteSnapshot3D& snapshot) noexcept {
 }
 
 [[nodiscard]] PendingExecutionBaseKind3D
-pendingExecutionBaseKind(const ExecutionRouteSnapshot3D& snapshot,
+pendingExecutionBaseKind(const ExecutionPlan3D& snapshot,
                          const bool route_splice_required) noexcept {
-  if (snapshot.phase == ExecutionRoutePhase3D::kRevoked) {
+  if (snapshot.phase() == ExecutionRoutePhase3D::kRevoked) {
     return PendingExecutionBaseKind3D::kRevoked;
   }
   if (exclusiveExecutionHold(snapshot)) {
     return PendingExecutionBaseKind3D::kStationaryHold;
   }
-  if (snapshot.direct_tracking_execution.has_value()) {
+  if (snapshot.directTrackingExecution() != nullptr) {
     return PendingExecutionBaseKind3D::kDirectTracking;
   }
-  if (snapshot.route.has_value()) {
+  if (snapshot.route() != nullptr) {
     return route_splice_required ? PendingExecutionBaseKind3D::kRoute
                                  : PendingExecutionBaseKind3D::kRouteHandoff;
   }
@@ -287,9 +284,7 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
       };
     } else {
       const CertifiedRouteSuffix3D* const resident_route =
-          snapshot.execution_snapshot
-              ? optionalAddress(snapshot.execution_snapshot->route)
-              : nullptr;
+          snapshot.execution_snapshot ? snapshot.execution_snapshot->route() : nullptr;
       report.candidate_validation = validateStaticRouteCandidate(
           resident_route != nullptr && resident_route->geometry != nullptr &&
                   resident_route->geometry->route != nullptr
@@ -648,15 +643,13 @@ void ProductionMppiNode::commitRouteActivation3D(
   report.commit_assessment_performed = true;
   report.generation_assessed = true;
 
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> current_execution =
+  const std::shared_ptr<const ExecutionPlan3D> current_execution =
       execution_route_store_.snapshot();
   const CertifiedRouteSuffix3D* const current_route =
-      current_execution != nullptr ? optionalAddress(current_execution->route)
-                                   : nullptr;
+      current_execution != nullptr ? current_execution->route() : nullptr;
   const DirectTrackingFiniteExecution3D* const current_direct =
-      current_execution != nullptr
-          ? optionalAddress(current_execution->direct_tracking_execution)
-          : nullptr;
+      current_execution != nullptr ? current_execution->directTrackingExecution()
+                                   : nullptr;
   const std::uint64_t base_generation =
       current_execution != nullptr ? current_execution->routeGenerationHighWater() : 0U;
   const bool request_requires_base =

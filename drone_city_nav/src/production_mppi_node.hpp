@@ -202,7 +202,7 @@ private:
       const std::shared_ptr<const ProductionNavigationObjective>& objective,
       const ProductionMppiAppliedControl& applied_control,
       const ProductionMppiExecutionHorizonOwner& execution_horizon_owner,
-      const std::shared_ptr<const ExecutionRouteSnapshot3D>& execution_snapshot,
+      const std::shared_ptr<const ExecutionPlan3D>& execution_snapshot,
       bool world_current, std::int64_t now_ns);
   void publishNavigationHealth(const NavigationHealthAssessment& assessment);
   [[nodiscard]] std::shared_ptr<const ProductionNavigationObjective>
@@ -371,11 +371,11 @@ private:
                                    const ProductionMppiHorizonCommit& commit);
   [[nodiscard]] ProductionMppiHorizonCommitStatus commitExecutionSnapshotHorizon(
       const ProductionMppiExecutionCycle& cycle,
-      const std::shared_ptr<const ExecutionRouteSnapshot3D>& expected,
+      const std::shared_ptr<const ExecutionPlan3D>& expected,
       const ExecutionRouteTransitionResult3D& transition,
       const msg::MppiTrajectoryHorizon& horizon,
       const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending,
-      const std::shared_ptr<const ExecutionRouteSnapshot3D>& certification_snapshot,
+      const std::shared_ptr<const ExecutionPlan3D>& certification_snapshot,
       const std::shared_ptr<const ExecutionRouteTransitionResult3D>&
           progress_preparation);
   [[nodiscard]] std::optional<mppi::FiniteExecutionPathWorld>

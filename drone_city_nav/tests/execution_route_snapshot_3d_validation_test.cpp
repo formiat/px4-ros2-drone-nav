@@ -55,8 +55,7 @@ lidarAtAge(const VersionedLatestLidarEvidence3D& source,
 TEST(ExecutionRouteSnapshot3DTest,
      ProgressPositionComesOnlyFromTheExactExecutionInputOwner) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);
   RouteExecutionObservation3D poisoned = fixture.executionObservation(
       {100.0, 100.0, 100.0}, SnapshotFixture3D::kLatestRawRevision + 1U,
@@ -70,11 +69,11 @@ TEST(ExecutionRouteSnapshot3DTest,
       fixture.rawWorld(SnapshotFixture3D::kLatestRawRevision + 1U));
 
   ASSERT_TRUE(advanced.applied());
-  ASSERT_TRUE(advanced.next->route.has_value());
-  EXPECT_EQ(advanced.next->route->progress.execution_input, exact_input);
-  EXPECT_DOUBLE_EQ(advanced.next->route->progress.last_observed_position.x, 4.0);
-  EXPECT_DOUBLE_EQ(advanced.next->route->progress.last_observed_position.y, 0.0);
-  EXPECT_DOUBLE_EQ(advanced.next->route->progress.last_observed_position.z, 5.0);
+  ASSERT_TRUE(advanced.next->route() != nullptr);
+  EXPECT_EQ(advanced.next->route()->progress.execution_input, exact_input);
+  EXPECT_DOUBLE_EQ(advanced.next->route()->progress.last_observed_position.x, 4.0);
+  EXPECT_DOUBLE_EQ(advanced.next->route()->progress.last_observed_position.y, 0.0);
+  EXPECT_DOUBLE_EQ(advanced.next->route()->progress.last_observed_position.z, 5.0);
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
@@ -85,7 +84,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   const std::optional<CertifiedRouteSuffix3D> suffix =
       certifyExecutionRoute3D(staticActivation(fixture, static_occupancy));
   ASSERT_TRUE(suffix.has_value());
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> initial =
+  const std::shared_ptr<const ExecutionPlan3D> initial =
       makeInitialExecutionRouteSnapshot3D();
   ASSERT_NE(initial, nullptr);
   FiniteExecutionState3D initial_execution = SnapshotFixture3D::finiteExecutionForRoute(
@@ -102,10 +101,10 @@ TEST(ExecutionRouteSnapshot3DTest,
       nullptr);
 
   ASSERT_TRUE(advanced.applied());
-  ASSERT_TRUE(advanced.next->route.has_value());
-  ASSERT_TRUE(advanced.next->finite_execution.has_value());
-  EXPECT_EQ(advanced.next->route->progress.execution_input, exact_input);
-  EXPECT_TRUE(advanced.next->finite_execution->revalidation_required);
+  ASSERT_TRUE(advanced.next->route() != nullptr);
+  ASSERT_TRUE(advanced.next->finiteExecution() != nullptr);
+  EXPECT_EQ(advanced.next->route()->progress.execution_input, exact_input);
+  EXPECT_TRUE(advanced.next->finiteExecution()->revalidation_required);
   EXPECT_TRUE(advanced.next->valid());
 }
 
@@ -115,7 +114,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   const std::optional<CertifiedRouteSuffix3D> suffix = fixture.certify();
   ASSERT_TRUE(suffix.has_value());
   ASSERT_EQ(suffix->progress.execution_input, nullptr);
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> initial =
+  const std::shared_ptr<const ExecutionPlan3D> initial =
       makeInitialExecutionRouteSnapshot3D();
   const ExecutionRouteTransitionResult3D revoked =
       revokeExecution3D(*initial, initial->version);
@@ -130,36 +129,35 @@ TEST(ExecutionRouteSnapshot3DTest,
       *revoked.next, revoked.next->version, *suffix, std::move(candidate_execution));
 
   ASSERT_TRUE(activated.applied());
-  ASSERT_TRUE(activated.next->route.has_value());
-  EXPECT_FALSE(activated.next->stationary_hold.has_value());
+  ASSERT_TRUE(activated.next->route() != nullptr);
+  EXPECT_FALSE(activated.next->stationaryHold() != nullptr);
   EXPECT_GT(activated.next->execution_owner_epoch, revoked.next->execution_owner_epoch);
-  EXPECT_EQ(activated.next->route->progress.execution_input, exact_input);
-  EXPECT_DOUBLE_EQ(activated.next->route->progress.last_observed_position.x, 2.0);
+  EXPECT_EQ(activated.next->route()->progress.execution_input, exact_input);
+  EXPECT_DOUBLE_EQ(activated.next->route()->progress.last_observed_position.x, 2.0);
   EXPECT_TRUE(activated.next->valid());
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
      HoldTransferRequiresReachedCertifiedTerminalRestAndPreservesLineage) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);
-  ASSERT_TRUE(active->route.has_value());
-  ASSERT_TRUE(active->finite_execution.has_value());
+  ASSERT_TRUE(active->route() != nullptr);
+  ASSERT_TRUE(active->finiteExecution() != nullptr);
   StationaryExecutionHoldCertification3D moving =
       SnapshotFixture3D::holdCertification(*active, false);
   EXPECT_EQ(
       transferToExecutionHold3D(*active, active->version, std::move(moving)).status,
       ExecutionRouteTransitionStatus3D::kInvalidCandidate);
 
-  const std::int64_t before_terminal_ns = active->finite_execution->valid_until_ns - 1;
+  const std::int64_t before_terminal_ns = active->finiteExecution()->valid_until_ns - 1;
   StationaryExecutionHoldCertification3D early = SnapshotFixture3D::holdCertification(
       *active, true, std::nullopt, before_terminal_ns);
   EXPECT_EQ(
       transferToExecutionHold3D(*active, active->version, std::move(early)).status,
       ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
 
-  const mppi::State& terminal = active->finite_execution->horizon->states.back();
+  const mppi::State& terminal = active->finiteExecution()->horizon->states.back();
   const Point3 discontinuous_position{terminal.x + 1.0, terminal.y, terminal.z};
   StationaryExecutionHoldCertification3D discontinuous =
       SnapshotFixture3D::holdCertification(*active, true, discontinuous_position);
@@ -180,17 +178,17 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_TRUE(transferred.applied());
   ASSERT_NE(transferred.next, nullptr);
   EXPECT_EQ(transferred.next->version, active->version + 1U);
-  EXPECT_EQ(transferred.next->phase, ExecutionRoutePhase3D::kStopped);
-  EXPECT_FALSE(transferred.next->route.has_value());
-  EXPECT_FALSE(transferred.next->finite_execution.has_value());
-  EXPECT_FALSE(transferred.next->direct_tracking_execution.has_value());
-  ASSERT_TRUE(transferred.next->stationary_hold.has_value());
-  EXPECT_DOUBLE_EQ(transferred.next->stationary_hold->position.x, hold_position.x);
-  EXPECT_DOUBLE_EQ(transferred.next->stationary_hold->position.y, hold_position.y);
-  EXPECT_DOUBLE_EQ(transferred.next->stationary_hold->position.z, hold_position.z);
-  EXPECT_EQ(transferred.next->stationary_hold->hold_id,
+  EXPECT_EQ(transferred.next->phase(), ExecutionRoutePhase3D::kStopped);
+  EXPECT_FALSE(transferred.next->route() != nullptr);
+  EXPECT_FALSE(transferred.next->finiteExecution() != nullptr);
+  EXPECT_FALSE(transferred.next->directTrackingExecution() != nullptr);
+  ASSERT_TRUE(transferred.next->stationaryHold() != nullptr);
+  EXPECT_DOUBLE_EQ(transferred.next->stationaryHold()->position.x, hold_position.x);
+  EXPECT_DOUBLE_EQ(transferred.next->stationaryHold()->position.y, hold_position.y);
+  EXPECT_DOUBLE_EQ(transferred.next->stationaryHold()->position.z, hold_position.z);
+  EXPECT_EQ(transferred.next->stationaryHold()->hold_id,
             transferred.next->execution_owner_epoch);
-  EXPECT_EQ(transferred.next->stationary_hold->origin,
+  EXPECT_EQ(transferred.next->stationaryHold()->origin,
             StationaryExecutionHoldOrigin3D::kTerminalExecution);
   EXPECT_EQ(transferred.next->routeGenerationHighWater(),
             active->routeGenerationHighWater());
@@ -207,20 +205,19 @@ TEST(ExecutionRouteSnapshot3DTest,
 TEST(ExecutionRouteSnapshot3DTest,
      HoldTransferRequiresLidarFreshAtTheTerminalCertificationStamp) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);
-  ASSERT_TRUE(active->finite_execution.has_value());
+  ASSERT_TRUE(active->finiteExecution() != nullptr);
   StationaryExecutionHoldCertification3D boundary =
       SnapshotFixture3D::holdCertification(*active);
   ASSERT_NE(boundary.execution_input, nullptr);
   ASSERT_NE(boundary.validation_policy, nullptr);
-  ASSERT_NE(active->finite_execution->latest_lidar_evidence, nullptr);
+  ASSERT_NE(active->finiteExecution()->latest_lidar_evidence, nullptr);
   const std::int64_t maximum_age_ns = static_cast<std::int64_t>(
       boundary.validation_policy->latestLidarMaximumAgeMs() * 1.0e6);
   ASSERT_GT(maximum_age_ns, 0);
   boundary.latest_lidar_evidence =
-      lidarAtAge(*active->finite_execution->latest_lidar_evidence,
+      lidarAtAge(*active->finiteExecution()->latest_lidar_evidence,
                  boundary.execution_input->effectiveStampNs(), maximum_age_ns, 1U);
   ASSERT_NE(boundary.latest_lidar_evidence, nullptr);
   EXPECT_TRUE(transferToExecutionHold3D(*active, active->version, boundary).applied());
@@ -228,7 +225,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   StationaryExecutionHoldCertification3D expired =
       SnapshotFixture3D::holdCertification(*active);
   expired.latest_lidar_evidence =
-      lidarAtAge(*active->finite_execution->latest_lidar_evidence,
+      lidarAtAge(*active->finiteExecution()->latest_lidar_evidence,
                  expired.execution_input->effectiveStampNs(), maximum_age_ns + 1, 2U);
   ASSERT_NE(expired.latest_lidar_evidence, nullptr);
   EXPECT_EQ(
@@ -239,8 +236,7 @@ TEST(ExecutionRouteSnapshot3DTest,
 TEST(ExecutionRouteSnapshot3DTest,
      StationaryCaptureRearmIsNamedRevokedOnlyAndPreservesPhysicalContinuity) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);
   StationaryExecutionHoldCertification3D terminal =
       SnapshotFixture3D::holdCertification(*active);
@@ -261,12 +257,12 @@ TEST(ExecutionRouteSnapshot3DTest,
   const ExecutionRouteTransitionResult3D rearmed =
       armStationaryCaptureHold3D(*revoked.next, revoked.next->version, terminal);
   ASSERT_TRUE(rearmed.applied());
-  ASSERT_TRUE(rearmed.next->stationary_hold.has_value());
-  EXPECT_EQ(rearmed.next->phase, ExecutionRoutePhase3D::kStopped);
-  EXPECT_EQ(rearmed.next->stationary_hold->origin,
+  ASSERT_TRUE(rearmed.next->stationaryHold() != nullptr);
+  EXPECT_EQ(rearmed.next->phase(), ExecutionRoutePhase3D::kStopped);
+  EXPECT_EQ(rearmed.next->stationaryHold()->origin,
             StationaryExecutionHoldOrigin3D::kStationaryCaptureRearm);
-  EXPECT_EQ(rearmed.next->stationary_hold->source_trajectory_revision, 0U);
-  EXPECT_EQ(rearmed.next->stationary_hold->hold_id,
+  EXPECT_EQ(rearmed.next->stationaryHold()->source_trajectory_revision, 0U);
+  EXPECT_EQ(rearmed.next->stationaryHold()->hold_id,
             rearmed.next->execution_owner_epoch);
   EXPECT_TRUE(rearmed.next->valid());
 
@@ -315,10 +311,9 @@ TEST(ExecutionRouteSnapshot3DTest,
 TEST(ExecutionRouteSnapshot3DTest,
      HoldTransferReplacesDirectOwnerAndStableEvidenceReplayIsNoChange) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> route_owner =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> route_owner = fixture.activeSnapshot();
   ASSERT_NE(route_owner, nullptr);
-  ASSERT_TRUE(route_owner->route.has_value());
+  ASSERT_TRUE(route_owner->route() != nullptr);
   const DirectTrackingOwnerIdentity3D identity{
       .mission_epoch = fixture.objective.mission_epoch,
       .assignment_generation = fixture.objective.assignment_generation,
@@ -328,7 +323,8 @@ TEST(ExecutionRouteSnapshot3DTest,
       .line_of_sight_generation = 7U,
   };
   const std::optional<DirectTrackingFiniteExecution3D> direct_execution =
-      certifyDirectFixtureExecution(*route_owner, *route_owner->route, identity, 101U);
+      certifyDirectFixtureExecution(*route_owner, *route_owner->route(), identity,
+                                    101U);
   ASSERT_TRUE(direct_execution.has_value());
   const ExecutionRouteTransitionResult3D direct =
       transferToDirectTracking3D(*route_owner, route_owner->version, *direct_execution);
@@ -341,12 +337,12 @@ TEST(ExecutionRouteSnapshot3DTest,
 
   ASSERT_TRUE(transferred.applied());
   ASSERT_NE(transferred.next, nullptr);
-  EXPECT_FALSE(transferred.next->route.has_value());
-  EXPECT_FALSE(transferred.next->finite_execution.has_value());
-  EXPECT_FALSE(transferred.next->direct_tracking_execution.has_value());
+  EXPECT_FALSE(transferred.next->route() != nullptr);
+  EXPECT_FALSE(transferred.next->finiteExecution() != nullptr);
+  EXPECT_FALSE(transferred.next->directTrackingExecution() != nullptr);
   EXPECT_EQ(transferred.next->routeGenerationHighWater(),
             route_owner->routeGenerationHighWater());
-  ASSERT_TRUE(transferred.next->stationary_hold.has_value());
+  ASSERT_TRUE(transferred.next->stationaryHold() != nullptr);
   EXPECT_EQ(
       transferToExecutionHold3D(*transferred.next, transferred.next->version,
                                 SnapshotFixture3D::holdCertification(*transferred.next))
@@ -357,15 +353,14 @@ TEST(ExecutionRouteSnapshot3DTest,
 TEST(ExecutionRouteSnapshot3DTest,
      HoldOwnerReplacementRequiresContinuousNewerEvidenceAndDedicatedTransitions) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> route_owner =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> route_owner = fixture.activeSnapshot();
   ASSERT_NE(route_owner, nullptr);
-  ASSERT_TRUE(route_owner->route.has_value());
+  ASSERT_TRUE(route_owner->route() != nullptr);
   const ExecutionRouteTransitionResult3D held =
       transferToExecutionHold3D(*route_owner, route_owner->version,
                                 SnapshotFixture3D::holdCertification(*route_owner));
   ASSERT_TRUE(held.applied());
-  ASSERT_TRUE(held.next->stationary_hold.has_value());
+  ASSERT_TRUE(held.next->stationaryHold() != nullptr);
 
   const DirectTrackingOwnerIdentity3D identity{
       .mission_epoch = fixture.objective.mission_epoch,
@@ -380,7 +375,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   FiniteExecutionCertification3D discontinuous_finite =
       SnapshotFixture3D::finiteCertificationForRoute(
           *unbound_route, FiniteExecutionKind3D::kNominal, 101U, 101U, 0U, -1.0,
-          held.next->stationary_hold->terminal_execution_input.get());
+          held.next->stationaryHold()->terminal_execution_input.get());
   const std::optional<DirectTrackingFiniteExecution3D> discontinuous_direct =
       certifyDirectTrackingExecution3D(
           *held.next,
@@ -405,7 +400,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
 
   const std::optional<DirectTrackingFiniteExecution3D> continuous_direct =
-      certifyDirectFixtureExecution(*held.next, *route_owner->route, identity, 102U);
+      certifyDirectFixtureExecution(*held.next, *route_owner->route(), identity, 102U);
   ASSERT_TRUE(continuous_direct.has_value());
   const ExecutionRouteTransitionResult3D direct =
       transferToDirectTracking3D(*held.next, held.next->version, *continuous_direct);
@@ -414,9 +409,9 @@ TEST(ExecutionRouteSnapshot3DTest,
   ExecutionRouteActivation3D successor_activation = fixture.activation();
   successor_activation.route_generation = direct.next->routeGenerationHighWater() + 1U;
   successor_activation.observation.position = Point3{
-      direct.next->direct_tracking_execution->execution_input->state().x,
-      direct.next->direct_tracking_execution->execution_input->state().y,
-      direct.next->direct_tracking_execution->execution_input->state().z,
+      direct.next->directTrackingExecution()->execution_input->state().x,
+      direct.next->directTrackingExecution()->execution_input->state().y,
+      direct.next->directTrackingExecution()->execution_input->state().z,
   };
   const std::optional<CertifiedRouteSuffix3D> successor =
       certifyExecutionRoute3D(successor_activation);
@@ -433,8 +428,7 @@ TEST(ExecutionRouteSnapshot3DTest,
 TEST(ExecutionRouteSnapshot3DTest,
      HoldCertificationRejectsRawAndLatestLidarCollisions) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);
 
   StationaryExecutionHoldCertification3D raw_blocked =
@@ -465,13 +459,12 @@ TEST(ExecutionRouteSnapshot3DTest,
 TEST(ExecutionRouteSnapshot3DTest,
      HoldEvidenceRefreshPreservesStableOwnerIdentityAndTarget) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);
   const ExecutionRouteTransitionResult3D held = transferToExecutionHold3D(
       *active, active->version, SnapshotFixture3D::holdCertification(*active));
   ASSERT_TRUE(held.applied());
-  ASSERT_TRUE(held.next->stationary_hold.has_value());
+  ASSERT_TRUE(held.next->stationaryHold() != nullptr);
 
   StationaryExecutionHoldCertification3D refreshed =
       SnapshotFixture3D::holdCertification(*held.next);
@@ -482,22 +475,22 @@ TEST(ExecutionRouteSnapshot3DTest,
       transferToExecutionHold3D(*held.next, held.next->version, std::move(refreshed));
 
   ASSERT_TRUE(updated.applied());
-  ASSERT_TRUE(updated.next->stationary_hold.has_value());
+  ASSERT_TRUE(updated.next->stationaryHold() != nullptr);
   EXPECT_EQ(updated.next->version, held.next->version + 1U);
   EXPECT_EQ(updated.next->execution_owner_epoch, held.next->execution_owner_epoch);
-  EXPECT_EQ(updated.next->stationary_hold->hold_id,
-            held.next->stationary_hold->hold_id);
-  EXPECT_EQ(updated.next->stationary_hold->position.x,
-            held.next->stationary_hold->position.x);
-  EXPECT_EQ(updated.next->stationary_hold->position.y,
-            held.next->stationary_hold->position.y);
-  EXPECT_EQ(updated.next->stationary_hold->position.z,
-            held.next->stationary_hold->position.z);
+  EXPECT_EQ(updated.next->stationaryHold()->hold_id,
+            held.next->stationaryHold()->hold_id);
+  EXPECT_EQ(updated.next->stationaryHold()->position.x,
+            held.next->stationaryHold()->position.x);
+  EXPECT_EQ(updated.next->stationaryHold()->position.y,
+            held.next->stationaryHold()->position.y);
+  EXPECT_EQ(updated.next->stationaryHold()->position.z,
+            held.next->stationaryHold()->position.z);
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
      EmptyOwnerCannotInventAStationaryHoldAndRevocationIsIdempotent) {
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> initial =
+  const std::shared_ptr<const ExecutionPlan3D> initial =
       makeInitialExecutionRouteSnapshot3D();
   ASSERT_NE(initial, nullptr);
   EXPECT_THROW(SnapshotFixture3D::holdCertification(*initial), std::logic_error);
@@ -505,7 +498,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   const ExecutionRouteTransitionResult3D revoked =
       revokeExecution3D(*initial, initial->version);
   ASSERT_TRUE(revoked.applied());
-  EXPECT_EQ(revoked.next->phase, ExecutionRoutePhase3D::kRevoked);
+  EXPECT_EQ(revoked.next->phase(), ExecutionRoutePhase3D::kRevoked);
   EXPECT_EQ(revoked.next->routeGenerationHighWater(), 0U);
   EXPECT_EQ(revoked.next->execution_owner_epoch, initial->execution_owner_epoch + 1U);
   EXPECT_EQ(revokeExecution3D(*revoked.next, revoked.next->version).status,
@@ -513,7 +506,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   EXPECT_EQ(revokeExecution3D(*revoked.next, initial->version).status,
             ExecutionRouteTransitionStatus3D::kStaleSnapshotVersion);
 
-  ExecutionRouteSnapshot3D exhausted = *revoked.next;
+  ExecutionPlan3D exhausted = *revoked.next;
   exhausted.version = std::numeric_limits<std::uint64_t>::max();
   ASSERT_TRUE(exhausted.valid());
   EXPECT_EQ(revokeExecution3D(exhausted, exhausted.version).status,
@@ -523,8 +516,7 @@ TEST(ExecutionRouteSnapshot3DTest,
 TEST(ExecutionRouteSnapshot3DTest,
      ProgressCanAdvanceWhileAnEarlierFiniteHorizonRemainsTheOwner) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_TRUE(active);
   const ExecutionRouteTransitionResult3D following =
       replaceFiniteExecution3D(*active, SnapshotFixture3D::guard(*active),
@@ -540,10 +532,10 @@ TEST(ExecutionRouteSnapshot3DTest,
       fixture.rawWorld(SnapshotFixture3D::kLatestRawRevision + 1U));
 
   ASSERT_TRUE(advanced.applied());
-  ASSERT_TRUE(advanced.next->finite_execution.has_value());
-  EXPECT_TRUE(advanced.next->finite_execution->revalidation_required);
-  EXPECT_DOUBLE_EQ(advanced.next->finite_execution->begin_route_station_m, 2.0);
-  EXPECT_DOUBLE_EQ(advanced.next->route->progress.station_m, 4.0);
+  ASSERT_TRUE(advanced.next->finiteExecution() != nullptr);
+  EXPECT_TRUE(advanced.next->finiteExecution()->revalidation_required);
+  EXPECT_DOUBLE_EQ(advanced.next->finiteExecution()->begin_route_station_m, 2.0);
+  EXPECT_DOUBLE_EQ(advanced.next->route()->progress.station_m, 4.0);
   EXPECT_TRUE(advanced.next->valid());
 }
 
@@ -571,8 +563,7 @@ TEST(ExecutionRouteSnapshot3DTest, GeometryValidationReportsTypedTerminalFailure
 TEST(ExecutionRouteSnapshot3DTest,
      ExecutionAssessmentRejectsWrongRawLineageAndANewRawCollision) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_TRUE(active);
   RouteExecutionObservation3D wrong_producer = fixture.executionObservation(
       {4.0, 0.0, 5.0}, SnapshotFixture3D::kLatestRawRevision + 1U,
@@ -602,11 +593,10 @@ TEST(ExecutionRouteSnapshot3DTest,
 
 TEST(ExecutionRouteSnapshot3DTest,
      SnapshotOutlivesAllMutableActivationAndValidationInputs) {
-  std::shared_ptr<const ExecutionRouteSnapshot3D> survivor;
+  std::shared_ptr<const ExecutionPlan3D> survivor;
   {
     SnapshotFixture3D fixture;
-    const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-        fixture.activeSnapshot();
+    const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
     ASSERT_TRUE(active);
     const ExecutionRouteTransitionResult3D following =
         replaceFiniteExecution3D(*active, SnapshotFixture3D::guard(*active),
@@ -617,14 +607,14 @@ TEST(ExecutionRouteSnapshot3DTest,
 
   ASSERT_TRUE(survivor);
   EXPECT_TRUE(survivor->valid());
-  ASSERT_TRUE(survivor->route.has_value());
-  ASSERT_TRUE(survivor->finite_execution.has_value());
-  EXPECT_EQ(survivor->route->geometry->route->size(), 3U);
-  EXPECT_EQ(survivor->finite_execution->horizon->states.size(),
-            survivor->finite_execution->horizon->controls.size() + 1U);
+  ASSERT_TRUE(survivor->route() != nullptr);
+  ASSERT_TRUE(survivor->finiteExecution() != nullptr);
+  EXPECT_EQ(survivor->route()->geometry->route->size(), 3U);
+  EXPECT_EQ(survivor->finiteExecution()->horizon->states.size(),
+            survivor->finiteExecution()->horizon->controls.size() + 1U);
   EXPECT_FLOAT_EQ(
-      survivor->finite_execution->horizon->states.back().x,
-      static_cast<float>(survivor->finite_execution->stop_boundary.position.x));
+      survivor->finiteExecution()->horizon->states.back().x,
+      static_cast<float>(survivor->finiteExecution()->stop_boundary.position.x));
 }
 
 TEST(ExecutionRouteSnapshot3DTest, GuardsAndStoreEnforceVersionedCasPublication) {
@@ -635,7 +625,7 @@ TEST(ExecutionRouteSnapshot3DTest, GuardsAndStoreEnforceVersionedCasPublication)
                     decltype(std::declval<ExecutionRouteTransitionResult3D&>().next)>>);
   SnapshotFixture3D fixture;
   ExecutionRouteSnapshotStore3D store;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> initial = store.snapshot();
+  const std::shared_ptr<const ExecutionPlan3D> initial = store.snapshot();
   const std::optional<CertifiedRouteSuffix3D> suffix = fixture.certify();
   ASSERT_TRUE(initial);
   ASSERT_TRUE(suffix.has_value());
@@ -653,14 +643,13 @@ TEST(ExecutionRouteSnapshot3DTest, GuardsAndStoreEnforceVersionedCasPublication)
   EXPECT_EQ(store.snapshot(), activation.next);
 
   ExecutionRouteSnapshotStore3D other_store;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> other_initial =
-      other_store.snapshot();
+  const std::shared_ptr<const ExecutionPlan3D> other_initial = other_store.snapshot();
   ASSERT_TRUE(other_initial);
   EXPECT_EQ(other_initial->version, initial->version);
   EXPECT_EQ(other_store.publish(other_initial, activation),
             ExecutionRoutePublicationStatus3D::kStaleSnapshotVersion);
 
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> resident = store.snapshot();
+  const std::shared_ptr<const ExecutionPlan3D> resident = store.snapshot();
   ASSERT_EQ(resident, activation.next);
   const ExecutionRouteTransitionResult3D first_replacement = replaceFiniteExecution3D(
       *resident, SnapshotFixture3D::guard(*resident),
@@ -704,8 +693,7 @@ TEST(ExecutionRouteSnapshot3DTest, GuardsAndStoreEnforceVersionedCasPublication)
 TEST(ExecutionRouteSnapshot3DTest,
      FiniteExecutionRequiresBoundTerminalRestAndCertifiedStopBoundary) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_TRUE(active);
   FiniteExecutionState3D finite = SnapshotFixture3D::finiteExecution(*active);
 
@@ -714,11 +702,11 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_TRUE(accepted.applied());
   ASSERT_TRUE(accepted.next);
   EXPECT_TRUE(accepted.next->valid());
-  ASSERT_TRUE(accepted.next->finite_execution.has_value());
-  EXPECT_EQ(accepted.next->finite_execution->source_route_generation,
-            active->route->identity.generation);
+  ASSERT_TRUE(accepted.next->finiteExecution() != nullptr);
+  EXPECT_EQ(accepted.next->finiteExecution()->source_route_generation,
+            active->route()->identity.generation);
   EXPECT_TRUE(mppi::finiteHorizonHasTerminalRestState(
-      *accepted.next->finite_execution->horizon));
+      *accepted.next->finiteExecution()->horizon));
 
   FiniteExecutionState3D wrong_route = finite;
   ++wrong_route.source_route_generation;
@@ -761,8 +749,7 @@ TEST(ExecutionRouteSnapshot3DTest,
 TEST(ExecutionRouteSnapshot3DTest,
      FollowingAcceptsARecertifiedRetainedOwnerButNotAnEmergencyTail) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);
 
   const ExecutionRouteTransitionResult3D retained = replaceFiniteExecution3D(
@@ -772,9 +759,9 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_TRUE(retained.applied());
   ASSERT_NE(retained.next, nullptr);
   EXPECT_TRUE(retained.next->valid());
-  EXPECT_EQ(retained.next->phase, ExecutionRoutePhase3D::kFollowing);
-  ASSERT_TRUE(retained.next->finite_execution.has_value());
-  EXPECT_EQ(retained.next->finite_execution->kind, FiniteExecutionKind3D::kRetained);
+  EXPECT_EQ(retained.next->phase(), ExecutionRoutePhase3D::kFollowing);
+  ASSERT_TRUE(retained.next->finiteExecution() != nullptr);
+  EXPECT_EQ(retained.next->finiteExecution()->kind, FiniteExecutionKind3D::kRetained);
 
   const FiniteExecutionState3D emergency = SnapshotFixture3D::finiteExecution(
       *active, FiniteExecutionKind3D::kEmergencyBrakeTail, true, 101U);
@@ -786,15 +773,14 @@ TEST(ExecutionRouteSnapshot3DTest,
 
 TEST(ExecutionRouteSnapshot3DTest, RejectsUnknownFiniteAndLifecycleEnumValues) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_TRUE(active);
-  ASSERT_TRUE(active->route.has_value());
+  ASSERT_TRUE(active->route() != nullptr);
 
   FiniteExecutionState3D unknown_execution =
       SnapshotFixture3D::finiteExecution(*active);
   unknown_execution.kind = static_cast<FiniteExecutionKind3D>(255U);
-  EXPECT_FALSE(unknown_execution.validFor(&*active->route));
+  EXPECT_FALSE(unknown_execution.validFor(&*active->route()));
   EXPECT_EQ(replaceFiniteExecution3D(*active, SnapshotFixture3D::guard(*active),
                                      unknown_execution)
                 .status,
@@ -802,7 +788,7 @@ TEST(ExecutionRouteSnapshot3DTest, RejectsUnknownFiniteAndLifecycleEnumValues) {
 
   const RouteLifecycleEvent3D unknown_event{
       .kind = static_cast<RouteLifecycleEventKind3D>(255U),
-      .generation = active->route->identity.generation,
+      .generation = active->route()->identity.generation,
   };
   EXPECT_EQ(retireCertifiedRoute3D(*active, SnapshotFixture3D::guard(*active),
                                    unknown_event, std::nullopt)
@@ -813,12 +799,11 @@ TEST(ExecutionRouteSnapshot3DTest, RejectsUnknownFiniteAndLifecycleEnumValues) {
 TEST(ExecutionRouteSnapshot3DTest,
      FiniteReplacementEnforcesCompleteInputAndLidarIdentityMonotonicity) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);
-  ASSERT_TRUE(active->route.has_value());
-  ASSERT_TRUE(active->finite_execution.has_value());
-  const FiniteExecutionState3D& resident = *active->finite_execution;
+  ASSERT_TRUE(active->route() != nullptr);
+  ASSERT_TRUE(active->finiteExecution() != nullptr);
+  const FiniteExecutionState3D& resident = *active->finiteExecution();
   ASSERT_NE(resident.execution_input, nullptr);
   ASSERT_NE(resident.latest_lidar_evidence, nullptr);
 
@@ -864,7 +849,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       [&](std::shared_ptr<const VersionedExecutionInput3D> input,
           std::shared_ptr<const VersionedLatestLidarEvidence3D> lidar) {
         return certifyFiniteExecution3D(
-            *active, *active->route,
+            *active, *active->route(),
             FiniteExecutionCertification3D{
                 .trajectory_revision = resident.trajectory_revision + 1U,
                 .horizon = *resident.horizon,

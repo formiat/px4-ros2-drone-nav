@@ -20,7 +20,7 @@ struct FiniteExecutionCandidateView3D {
 };
 
 [[nodiscard]] std::optional<FiniteExecutionCandidateView3D>
-candidateView(const ExecutionRouteSnapshot3D& snapshot) noexcept {
+candidateView(const ExecutionPlan3D& snapshot) noexcept {
   const auto make_view =
       [](const auto& execution) -> std::optional<FiniteExecutionCandidateView3D> {
     if (execution.horizon == nullptr || execution.execution_input == nullptr ||
@@ -40,11 +40,12 @@ candidateView(const ExecutionRouteSnapshot3D& snapshot) noexcept {
         .nominal_prefix_control_count = execution.horizon->nominal_prefix_control_count,
     };
   };
-  if (snapshot.finite_execution.has_value()) {
-    return make_view(*snapshot.finite_execution);
+  if (const FiniteExecutionState3D* const execution = snapshot.finiteExecution()) {
+    return make_view(*execution);
   }
-  if (snapshot.direct_tracking_execution.has_value()) {
-    return make_view(*snapshot.direct_tracking_execution);
+  if (const DirectTrackingFiniteExecution3D* const execution =
+          snapshot.directTrackingExecution()) {
+    return make_view(*execution);
   }
   return std::nullopt;
 }
@@ -98,39 +99,41 @@ rebaseRouteExecution(const ExecutionPublicationNavigationRebaseRequest3D& reques
                      const mppi::FiniteHorizon& horizon,
                      FiniteExecutionCertificationResult3D& diagnostic,
                      ExecutionRouteTransitionStatus3D& transition_diagnostic) {
-  const ExecutionRouteSnapshot3D& resident = *request.expected_snapshot;
-  const ExecutionRouteSnapshot3D& certification_base =
-      request.certification_snapshot != nullptr ? *request.certification_snapshot
-                                                : resident;
-  const ExecutionRouteSnapshot3D& candidate = *request.candidate_snapshot;
-  if (!candidate.finite_execution.has_value() ||
-      !candidate.braking_fallback.has_value() || !candidate.route.has_value() ||
-      request.finite_horizon_config == nullptr) {
+  const ExecutionPlan3D& resident = *request.expected_snapshot;
+  const ExecutionPlan3D& certification_base = request.certification_snapshot != nullptr
+                                                  ? *request.certification_snapshot
+                                                  : resident;
+  const ExecutionPlan3D& candidate = *request.candidate_snapshot;
+  const FiniteExecutionState3D* const candidate_execution_ptr =
+      candidate.finiteExecution();
+  const CertifiedRouteSuffix3D* const candidate_route = candidate.route();
+  if (candidate_execution_ptr == nullptr || candidate.brakingFallback() == nullptr ||
+      candidate_route == nullptr || request.finite_horizon_config == nullptr) {
     return {};
   }
-  const FiniteExecutionState3D& candidate_execution =
-      candidate.finite_execution.value();
+  const FiniteExecutionState3D& candidate_execution = *candidate_execution_ptr;
   if (horizon.states.empty() || horizon.controls.empty()) {
     return {};
   }
-  const bool retaining_route = certification_base.route.has_value() &&
-                               certification_base.route->route_instance_id ==
-                                   candidate.route.value().route_instance_id;
-  const CertifiedRouteSuffix3D& target_route = candidate.route.value();
+  const CertifiedRouteSuffix3D* const certification_route = certification_base.route();
+  const bool retaining_route =
+      certification_route != nullptr &&
+      certification_route->route_instance_id == candidate_route->route_instance_id;
+  const CertifiedRouteSuffix3D& target_route = *candidate_route;
   const ExecutionRouteTransitionGuard3D guard{
       .expected_snapshot_version = certification_base.version,
-      .expected_route_generation = certification_base.route.has_value()
-                                       ? certification_base.route->identity.generation
+      .expected_route_generation = certification_route != nullptr
+                                       ? certification_route->identity.generation
                                        : 0U,
       .expected_geometry_revision =
-          certification_base.route.has_value()
-              ? certification_base.route->geometry->compiled_trajectory_revision
+          certification_route != nullptr
+              ? certification_route->geometry->compiled_trajectory_revision
               : 0U,
   };
   if (candidate_execution.kind == FiniteExecutionKind3D::kEmergencyBrakeTail) {
-    if (!retaining_route || candidate.phase != ExecutionRoutePhase3D::kBraking ||
+    if (!retaining_route || candidate.phase() != ExecutionRoutePhase3D::kBraking ||
         request.lifecycle_event == nullptr || request.progress_preparation != nullptr ||
-        request.expected_pending != nullptr || !certification_base.route.has_value() ||
+        request.expected_pending != nullptr || certification_route == nullptr ||
         request.lifecycle_event->generation != target_route.identity.generation) {
       return {};
     }
@@ -210,12 +213,12 @@ rebaseRouteExecution(const ExecutionPublicationNavigationRebaseRequest3D& reques
     return {};
   }
   const auto make_transition = [&]() -> ExecutionRouteTransitionResult3D {
-    if (certification_base.phase == ExecutionRoutePhase3D::kDirectTracking) {
+    if (certification_base.phase() == ExecutionRoutePhase3D::kDirectTracking) {
       return transferDirectTrackingToCertifiedRoute3D(
           certification_base, certification_base.version, target_route,
           certified.plan.value());
     }
-    if (!certification_base.route.has_value()) {
+    if (certification_route == nullptr) {
       return activateCertifiedRoute3D(certification_base, certification_base.version,
                                       target_route, *certified.plan);
     }
@@ -249,12 +252,13 @@ rebaseRouteExecution(const ExecutionPublicationNavigationRebaseRequest3D& reques
 [[nodiscard]] ExecutionRouteTransitionResult3D
 rebaseDirectExecution(const ExecutionPublicationNavigationRebaseRequest3D& request,
                       const mppi::FiniteHorizon& horizon) {
-  const ExecutionRouteSnapshot3D& expected = *request.expected_snapshot;
-  if (!request.candidate_snapshot->direct_tracking_execution.has_value()) {
+  const ExecutionPlan3D& expected = *request.expected_snapshot;
+  const DirectTrackingFiniteExecution3D* const candidate_execution =
+      request.candidate_snapshot->directTrackingExecution();
+  if (candidate_execution == nullptr) {
     return {};
   }
-  const DirectTrackingFiniteExecution3D& candidate =
-      request.candidate_snapshot->direct_tracking_execution.value();
+  const DirectTrackingFiniteExecution3D& candidate = *candidate_execution;
   const std::optional<DirectTrackingFiniteExecution3D> certified =
       certifyDirectTrackingExecution3D(
           expected, DirectTrackingExecutionCertification3D{
@@ -273,7 +277,7 @@ rebaseDirectExecution(const ExecutionPublicationNavigationRebaseRequest3D& reque
   if (!certified.has_value()) {
     return {};
   }
-  return expected.phase == ExecutionRoutePhase3D::kDirectTracking
+  return expected.phase() == ExecutionRoutePhase3D::kDirectTracking
              ? replaceDirectTrackingExecution3D(expected, expected.version, *certified)
              : transferToDirectTracking3D(expected, expected.version, *certified);
 }
@@ -294,7 +298,7 @@ rebaseExecutionPublicationForCurrentNavigation3D(
         result.status = status;
         return result;
       };
-  const ExecutionRouteSnapshot3D* const certification_base =
+  const ExecutionPlan3D* const certification_base =
       request.certification_snapshot != nullptr ? request.certification_snapshot
                                                 : request.expected_snapshot;
   const bool progress_preparation_valid =
@@ -327,19 +331,22 @@ rebaseExecutionPublicationForCurrentNavigation3D(
             .fresh)) {
     return reject(ExecutionPublicationNavigationRebaseStatus3D::kEvidenceUnavailable);
   }
+  const FiniteExecutionState3D* const expected_finite_execution =
+      request.expected_snapshot->finiteExecution();
+  const FiniteExecutionState3D* const candidate_finite_execution =
+      request.candidate_snapshot->finiteExecution();
+  const CertifiedRouteSuffix3D* const expected_route =
+      request.expected_snapshot->route();
+  const CertifiedRouteSuffix3D* const candidate_route =
+      request.candidate_snapshot->route();
   const bool retained_published_route_continuation =
-      request.expected_snapshot->finite_execution.has_value() &&
-      request.candidate_snapshot->finite_execution.has_value() &&
-      request.expected_snapshot->route.has_value() &&
-      request.candidate_snapshot->route.has_value() &&
-      request.candidate_snapshot->finite_execution->kind ==
-          FiniteExecutionKind3D::kRetained &&
-      request.expected_snapshot->route->route_instance_id ==
-          request.candidate_snapshot->route->route_instance_id;
+      expected_finite_execution != nullptr && candidate_finite_execution != nullptr &&
+      expected_route != nullptr && candidate_route != nullptr &&
+      candidate_finite_execution->kind == FiniteExecutionKind3D::kRetained &&
+      expected_route->route_instance_id == candidate_route->route_instance_id;
   const bool emergency_braking_candidate =
-      request.candidate_snapshot->finite_execution.has_value() &&
-      request.candidate_snapshot->finite_execution->kind ==
-          FiniteExecutionKind3D::kEmergencyBrakeTail;
+      candidate_finite_execution != nullptr &&
+      candidate_finite_execution->kind == FiniteExecutionKind3D::kEmergencyBrakeTail;
   const std::optional<FiniteExecutionCandidateView3D> published_view =
       retained_published_route_continuation ? candidateView(*request.expected_snapshot)
                                             : std::nullopt;
@@ -393,8 +400,7 @@ rebaseExecutionPublicationForCurrentNavigation3D(
   ExecutionRouteTransitionStatus3D route_transition_diagnostic{
       ExecutionRouteTransitionStatus3D::kInvalidCandidate};
   mppi::FiniteExecutionPathCandidateValidator route_candidate_validator;
-  if (request.candidate_snapshot->finite_execution.has_value() &&
-      request.candidate_snapshot->route.has_value()) {
+  if (candidate_finite_execution != nullptr && candidate_route != nullptr) {
     route_candidate_validator =
         [&request, &transition, &route_certification_diagnostic,
          &route_transition_diagnostic](const mppi::FiniteHorizon& candidate) {
@@ -441,7 +447,7 @@ rebaseExecutionPublicationForCurrentNavigation3D(
     return reject(ExecutionPublicationNavigationRebaseStatus3D::kPathRejected);
   }
   if (!transition.has_value() &&
-      request.candidate_snapshot->direct_tracking_execution.has_value()) {
+      request.candidate_snapshot->directTrackingExecution() != nullptr) {
     transition.emplace(rebaseDirectExecution(request, rebuilt.horizon.value()));
   }
   if (transition.has_value()) {

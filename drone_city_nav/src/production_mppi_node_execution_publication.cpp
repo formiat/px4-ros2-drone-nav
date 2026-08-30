@@ -135,56 +135,61 @@ bool appendFiniteExecutionPoints(msg::MppiTrajectoryHorizon& horizon,
 namespace {
 
 [[nodiscard]] std::shared_ptr<const VersionedObservedRawWorld3D>
-snapshotRawOwner(const ExecutionRouteSnapshot3D& snapshot) {
-  if (snapshot.stationary_hold.has_value()) {
-    return snapshot.stationary_hold->observed_raw_world;
+snapshotRawOwner(const ExecutionPlan3D& snapshot) {
+  if (const StationaryExecutionHold3D* const hold = snapshot.stationaryHold()) {
+    return hold->observed_raw_world;
   }
-  if (snapshot.finite_execution.has_value() &&
-      snapshot.finite_execution->observed_raw_world != nullptr) {
-    return snapshot.finite_execution->observed_raw_world;
+  if (const FiniteExecutionState3D* const execution = snapshot.finiteExecution();
+      execution != nullptr && execution->observed_raw_world != nullptr) {
+    return execution->observed_raw_world;
   }
-  if (snapshot.direct_tracking_execution.has_value() &&
-      snapshot.direct_tracking_execution->observed_raw_world != nullptr) {
-    return snapshot.direct_tracking_execution->observed_raw_world;
+  if (const DirectTrackingFiniteExecution3D* const execution =
+          snapshot.directTrackingExecution();
+      execution != nullptr && execution->observed_raw_world != nullptr) {
+    return execution->observed_raw_world;
   }
-  return snapshot.route.has_value() ? snapshot.route->observed_raw_world : nullptr;
+  const CertifiedRouteSuffix3D* const route = snapshot.route();
+  return route != nullptr ? route->observed_raw_world : nullptr;
 }
 
 [[nodiscard]] std::shared_ptr<const VersionedLatestLidarEvidence3D>
-snapshotLidarOwner(const ExecutionRouteSnapshot3D& snapshot) {
-  if (snapshot.stationary_hold.has_value()) {
-    return snapshot.stationary_hold->latest_lidar_evidence;
+snapshotLidarOwner(const ExecutionPlan3D& snapshot) {
+  if (const StationaryExecutionHold3D* const hold = snapshot.stationaryHold()) {
+    return hold->latest_lidar_evidence;
   }
-  if (snapshot.finite_execution.has_value()) {
-    return snapshot.finite_execution->latest_lidar_evidence;
+  if (const FiniteExecutionState3D* const execution = snapshot.finiteExecution()) {
+    return execution->latest_lidar_evidence;
   }
-  return snapshot.direct_tracking_execution.has_value()
-             ? snapshot.direct_tracking_execution->latest_lidar_evidence
-             : nullptr;
+  const DirectTrackingFiniteExecution3D* const execution =
+      snapshot.directTrackingExecution();
+  return execution != nullptr ? execution->latest_lidar_evidence : nullptr;
 }
 
 [[nodiscard]] std::shared_ptr<const VersionedExecutionValidationPolicy3D>
-snapshotValidationPolicy(const ExecutionRouteSnapshot3D& snapshot) {
-  if (snapshot.stationary_hold.has_value()) {
-    return snapshot.stationary_hold->validation_policy;
+snapshotValidationPolicy(const ExecutionPlan3D& snapshot) {
+  if (const StationaryExecutionHold3D* const hold = snapshot.stationaryHold()) {
+    return hold->validation_policy;
   }
-  if (snapshot.finite_execution.has_value()) {
-    return snapshot.finite_execution->validation_policy;
+  if (const FiniteExecutionState3D* const execution = snapshot.finiteExecution()) {
+    return execution->validation_policy;
   }
-  if (snapshot.direct_tracking_execution.has_value()) {
-    return snapshot.direct_tracking_execution->validation_policy;
+  if (const DirectTrackingFiniteExecution3D* const execution =
+          snapshot.directTrackingExecution()) {
+    return execution->validation_policy;
   }
-  return snapshot.route.has_value() ? snapshot.route->validation_policy : nullptr;
+  const CertifiedRouteSuffix3D* const route = snapshot.route();
+  return route != nullptr ? route->validation_policy : nullptr;
 }
 
 [[nodiscard]] bool progressPreparationPreservesCertifiedRouteEvidence(
-    const ExecutionRouteSnapshot3D& expected,
-    const ExecutionRouteSnapshot3D& prepared) noexcept {
-  if (!expected.route.has_value() || !prepared.route.has_value()) {
+    const ExecutionPlan3D& expected, const ExecutionPlan3D& prepared) noexcept {
+  const CertifiedRouteSuffix3D* const source_route = expected.route();
+  const CertifiedRouteSuffix3D* const prepared_route = prepared.route();
+  if (source_route == nullptr || prepared_route == nullptr) {
     return false;
   }
-  const CertifiedRouteSuffix3D& source = *expected.route;
-  const CertifiedRouteSuffix3D& next = *prepared.route;
+  const CertifiedRouteSuffix3D& source = *source_route;
+  const CertifiedRouteSuffix3D& next = *prepared_route;
   return source.route_instance_id == next.route_instance_id &&
          source.owner.id == next.owner.id &&
          source.identity.generation == next.identity.generation &&
@@ -251,12 +256,13 @@ timedExecutionPathPoints(const FiniteExecutionEvidenceView& view) {
 }
 
 [[nodiscard]] std::optional<FiniteExecutionEvidenceView>
-finiteExecutionEvidenceView(const ExecutionRouteSnapshot3D& snapshot) noexcept {
-  if (snapshot.finite_execution.has_value()) {
-    return finiteExecutionArtifactEvidenceView(*snapshot.finite_execution);
+finiteExecutionEvidenceView(const ExecutionPlan3D& snapshot) noexcept {
+  if (const FiniteExecutionState3D* const execution = snapshot.finiteExecution()) {
+    return finiteExecutionArtifactEvidenceView(*execution);
   }
-  if (snapshot.direct_tracking_execution.has_value()) {
-    return finiteExecutionArtifactEvidenceView(*snapshot.direct_tracking_execution);
+  if (const DirectTrackingFiniteExecution3D* const execution =
+          snapshot.directTrackingExecution()) {
+    return finiteExecutionArtifactEvidenceView(*execution);
   }
   return std::nullopt;
 }
@@ -305,29 +311,32 @@ finiteExecutionEvidenceView(const ExecutionRouteSnapshot3D& snapshot) noexcept {
 }
 
 [[nodiscard]] bool revalidateFiniteExecutionAgainstLatestEvidence(
-    const ExecutionRouteSnapshot3D& snapshot,
+    const ExecutionPlan3D& snapshot,
     const std::shared_ptr<const VersionedObservedRawWorld3D>& latest_raw,
     const std::shared_ptr<const VersionedLatestLidarEvidence3D>&
         latest_lidar) noexcept {
-  if (snapshot.finite_execution.has_value()) {
-    if (!snapshot.braking_fallback.has_value()) {
+  if (const FiniteExecutionState3D* const execution = snapshot.finiteExecution()) {
+    const FiniteExecutionState3D* const braking = snapshot.brakingFallback();
+    if (braking == nullptr) {
       return false;
     }
     const std::optional<FiniteExecutionEvidenceView> command_view =
-        finiteExecutionArtifactEvidenceView(*snapshot.finite_execution);
+        finiteExecutionArtifactEvidenceView(*execution);
     const std::optional<FiniteExecutionEvidenceView> braking_view =
-        finiteExecutionArtifactEvidenceView(*snapshot.braking_fallback);
+        finiteExecutionArtifactEvidenceView(*braking);
     return command_view.has_value() && braking_view.has_value() &&
            revalidateFiniteExecutionAgainstLatestEvidence(*command_view, latest_raw,
                                                           latest_lidar) &&
            revalidateFiniteExecutionAgainstLatestEvidence(*braking_view, latest_raw,
                                                           latest_lidar);
   }
-  if (!snapshot.direct_tracking_execution.has_value()) {
+  const DirectTrackingFiniteExecution3D* const direct =
+      snapshot.directTrackingExecution();
+  if (direct == nullptr) {
     return false;
   }
   const std::optional<FiniteExecutionEvidenceView> direct_view =
-      finiteExecutionArtifactEvidenceView(*snapshot.direct_tracking_execution);
+      finiteExecutionArtifactEvidenceView(*direct);
   return direct_view.has_value() && revalidateFiniteExecutionAgainstLatestEvidence(
                                         *direct_view, latest_raw, latest_lidar);
 }
@@ -643,17 +652,17 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
     if (const char* const rebase_failure = rebase_for_current_navigation();
         rebase_failure != nullptr) {
       report_commit_failure(rebase_failure);
-      const ExecutionRouteSnapshot3D* const retained_candidate =
+      const ExecutionPlan3D* const retained_candidate =
           commit.transition != nullptr && commit.transition->next != nullptr
               ? commit.transition->next.get()
               : nullptr;
       const bool retained_execution =
           retained_candidate != nullptr &&
-          ((retained_candidate->finite_execution.has_value() &&
-            retained_candidate->finite_execution->kind ==
+          ((retained_candidate->finiteExecution() != nullptr &&
+            retained_candidate->finiteExecution()->kind ==
                 FiniteExecutionKind3D::kRetained) ||
-           (retained_candidate->direct_tracking_execution.has_value() &&
-            retained_candidate->direct_tracking_execution->kind ==
+           (retained_candidate->directTrackingExecution() != nullptr &&
+            retained_candidate->directTrackingExecution()->kind ==
                 FiniteExecutionKind3D::kRetained));
       const bool resident_owner_witnessed = appliedControlAuthoritativeForExecution(
           applied_control_, execution_horizon_owner_, publication_now_ns,
@@ -700,7 +709,7 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
         publication_execution_input->poseRevision(), late_rebase_source_control_index,
         previous_control_evidence_current ? "false" : "true");
   }
-  const ExecutionRouteSnapshot3D* publication_snapshot{nullptr};
+  const ExecutionPlan3D* publication_snapshot{nullptr};
   if ((publication_commit.kind ==
            ProductionMppiHorizonCommitKind::kPublishSnapshotTransition ||
        publication_commit.kind ==
@@ -750,9 +759,8 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
   }
   const StationaryExecutionHold3D* const capture_hold =
       publication_commit.transition != nullptr &&
-              publication_commit.transition->next != nullptr &&
-              publication_commit.transition->next->stationary_hold.has_value()
-          ? std::addressof(*publication_commit.transition->next->stationary_hold)
+              publication_commit.transition->next != nullptr
+          ? publication_commit.transition->next->stationaryHold()
           : nullptr;
   const bool stationary_capture_rearm_commit =
       cycle.planning_state == ProductionMppiPlanningState::kMissionGoalPositionHold &&
@@ -760,7 +768,8 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
       publication_commit.kind ==
           ProductionMppiHorizonCommitKind::kPublishSnapshotTransition &&
       publication_commit.expected_snapshot != nullptr &&
-      publication_commit.expected_snapshot->phase == ExecutionRoutePhase3D::kRevoked &&
+      publication_commit.expected_snapshot->phase() ==
+          ExecutionRoutePhase3D::kRevoked &&
       publication_commit.transition != nullptr &&
       publication_commit.transition->applied() && capture_hold != nullptr &&
       capture_hold->origin ==
@@ -860,11 +869,11 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
 
 ProductionMppiHorizonCommitStatus ProductionMppiNode::commitExecutionSnapshotHorizon(
     const ProductionMppiExecutionCycle& cycle,
-    const std::shared_ptr<const ExecutionRouteSnapshot3D>& expected,
+    const std::shared_ptr<const ExecutionPlan3D>& expected,
     const ExecutionRouteTransitionResult3D& transition,
     const msg::MppiTrajectoryHorizon& horizon,
     const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending,
-    const std::shared_ptr<const ExecutionRouteSnapshot3D>& certification_snapshot,
+    const std::shared_ptr<const ExecutionPlan3D>& certification_snapshot,
     const std::shared_ptr<const ExecutionRouteTransitionResult3D>&
         progress_preparation) {
   const bool prepared_progress_valid =

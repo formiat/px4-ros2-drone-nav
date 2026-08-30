@@ -126,20 +126,19 @@ void ProductionMppiNode::finalizePlanningTick(
       input, result, *world, route_execution, objective, execution_input,
       latest_lidar_evidence, finalization.offboard_session,
       finalization.offboard_session_receive_stamp_ns, planning_state, now_ns);
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> committed_execution_snapshot =
+  const std::shared_ptr<const ExecutionPlan3D> committed_execution_snapshot =
       execution_route_store_.snapshot();
   const CertifiedRouteSuffix3D* const committed_route =
-      committed_execution_snapshot != nullptr
-          ? optionalAddress(committed_execution_snapshot->route)
-          : nullptr;
+      committed_execution_snapshot != nullptr ? committed_execution_snapshot->route()
+                                              : nullptr;
   const bool committed_direct_owner =
       committed_execution_snapshot != nullptr &&
-      committed_execution_snapshot->direct_tracking_execution.has_value();
+      committed_execution_snapshot->directTrackingExecution() != nullptr;
   const bool committed_execution_owner =
       committed_execution_snapshot != nullptr &&
-      (committed_execution_snapshot->finite_execution.has_value() ||
+      (committed_execution_snapshot->finiteExecution() != nullptr ||
        committed_direct_owner ||
-       committed_execution_snapshot->stationary_hold.has_value());
+       committed_execution_snapshot->stationaryHold() != nullptr);
   const bool raw_invalidation_active =
       committed_route != nullptr &&
       route_execution_status == RouteExecutionStatus3D::kRawCollision;

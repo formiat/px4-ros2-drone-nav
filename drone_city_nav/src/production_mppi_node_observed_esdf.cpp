@@ -465,7 +465,7 @@ ProductionMppiNode::processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_wo
       observed_route_blocked_raw_revision_.load(std::memory_order_acquire);
   const std::uint64_t dispatched_raw_revision =
       observed_route_replan_dispatched_raw_revision_.load(std::memory_order_acquire);
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> resident_execution =
+  const std::shared_ptr<const ExecutionPlan3D> resident_execution =
       execution_route_store_.snapshot();
   const std::uint64_t resident_route_generation =
       resident_execution != nullptr ? resident_execution->routeGenerationHighWater()

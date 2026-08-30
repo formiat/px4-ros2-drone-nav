@@ -9,7 +9,7 @@ namespace drone_city_nav {
 
 struct ProductionRouteActivationSnapshot3D {
   std::shared_ptr<const WorldSnapshot3D> resident_world;
-  std::shared_ptr<const ExecutionRouteSnapshot3D> execution_snapshot;
+  std::shared_ptr<const ExecutionPlan3D> execution_snapshot;
   ProductionMppiNavigation navigation{};
   ProductionMppiAppliedControl applied_control{};
   ProductionMppiExecutionHorizonOwner execution_horizon_owner{};

@@ -94,8 +94,8 @@ struct ProductionRouteExecutionSelection3D {
   // progress assessment is retained only as an immutable certification base
   // and cannot become controller-visible until a complete execution plan is
   // composed with it.
-  std::shared_ptr<const ExecutionRouteSnapshot3D> source_snapshot;
-  std::shared_ptr<const ExecutionRouteSnapshot3D> certification_snapshot;
+  std::shared_ptr<const ExecutionPlan3D> source_snapshot;
+  std::shared_ptr<const ExecutionPlan3D> certification_snapshot;
   std::shared_ptr<const ExecutionRouteTransitionResult3D> progress_preparation;
   std::shared_ptr<const PendingCertifiedRoute3D> pending_route;
   std::shared_ptr<const VersionedObservedRawWorld3D> lifecycle_observed_raw_world;

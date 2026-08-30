@@ -319,7 +319,7 @@ validateOrderedPassageCrossings(const CompiledTrajectory3D& geometry,
     bool enforce_tracking_tube);
 
 [[nodiscard]] bool certifiedTrackingTubeHandoffPending(
-    const ExecutionRouteSnapshot3D& current,
+    const ExecutionPlan3D& current,
     const CertifiedRouteSuffix3D& target_route) noexcept;
 
 [[nodiscard]] bool validateTrackingTubeHandoffClearance(
@@ -423,22 +423,26 @@ terminalStopBoundaryValid(const CertifiedStopBoundary3D& boundary,
 transitionFailure(const ExecutionRouteTransitionStatus3D status);
 
 [[nodiscard]] ExecutionRouteTransitionStatus3D
-checkCurrentAndVersion(const ExecutionRouteSnapshot3D& current,
+checkCurrentAndVersion(const ExecutionPlan3D& current,
                        const std::uint64_t expected_snapshot_version) noexcept;
 
 [[nodiscard]] ExecutionRouteTransitionStatus3D
-checkGuard(const ExecutionRouteSnapshot3D& current,
+checkGuard(const ExecutionPlan3D& current,
            const ExecutionRouteTransitionGuard3D& guard) noexcept;
 
 [[nodiscard]] ExecutionRouteTransitionResult3D
-finishTransition(const ExecutionRouteSnapshot3D& current,
-                 ExecutionRouteSnapshot3D next);
+finishTransition(const ExecutionPlan3D& current, ExecutionPlan3D next);
 
 [[nodiscard]] const CertifiedRouteSuffix3D*
-routePointer(const ExecutionRouteSnapshot3D& snapshot) noexcept;
+routePointer(const ExecutionPlan3D& snapshot) noexcept;
 
-[[nodiscard]] CertifiedRouteSuffix3D*
-routePointer(ExecutionRouteSnapshot3D& snapshot) noexcept;
+[[nodiscard]] CertifiedRouteSuffix3D* routePointer(ExecutionPlan3D& snapshot) noexcept;
+
+[[nodiscard]] FiniteExecutionState3D*
+finiteExecutionPointer(ExecutionPlan3D& snapshot) noexcept;
+
+[[nodiscard]] FiniteExecutionState3D*
+brakingFallbackPointer(ExecutionPlan3D& snapshot) noexcept;
 
 [[nodiscard]] bool sameControl(const mppi::Control& first,
                                const mppi::Control& second) noexcept;
@@ -507,7 +511,7 @@ directTrackingWorldNotOlder(const DirectTrackingFiniteExecution3D& candidate,
 
 [[nodiscard]] bool
 candidateFiniteExecutionValid(const FiniteExecutionState3D& candidate,
-                              const ExecutionRouteSnapshot3D& current,
+                              const ExecutionPlan3D& current,
                               const CertifiedRouteSuffix3D* route,
                               const bool require_current_certificate) noexcept;
 
@@ -528,7 +532,7 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
 
 [[nodiscard]] FiniteExecutionCertificationResult3D
 certifyFiniteExecutionAgainstOwnedWorld3D(
-    const ExecutionRouteSnapshot3D& current, const CertifiedRouteSuffix3D& target_route,
+    const ExecutionPlan3D& current, const CertifiedRouteSuffix3D& target_route,
     FiniteExecutionCertification3D certification,
     std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_validation_world,
     const RouteLifecycleEvent3D* const lifecycle_event);

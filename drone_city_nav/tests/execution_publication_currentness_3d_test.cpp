@@ -66,7 +66,7 @@ rawWorld(std::shared_ptr<const ObservedOccupancyGrid3D> observation,
 }
 
 [[nodiscard]] ExecutionPublicationCurrentnessCheck3D
-currentCheck(std::shared_ptr<const ExecutionRouteSnapshot3D> snapshot,
+currentCheck(std::shared_ptr<const ExecutionPlan3D> snapshot,
              std::shared_ptr<const VersionedLatestLidarEvidence3D> lidar) {
   return ExecutionPublicationCurrentnessCheck3D{
       .expected_snapshot = snapshot,
@@ -117,7 +117,7 @@ TEST(ExecutionPublicationCurrentness3DTest,
   EXPECT_EQ(assessExecutionPublicationCurrentness3D(check),
             ExecutionPublicationCurrentnessStatus3D::kSnapshotMissing);
 
-  auto invalid_snapshot = std::make_shared<ExecutionRouteSnapshot3D>(*snapshot);
+  auto invalid_snapshot = std::make_shared<ExecutionPlan3D>(*snapshot);
   invalid_snapshot->version = 0U;
   check = currentCheck(snapshot, lidar);
   check.current_snapshot = std::move(invalid_snapshot);

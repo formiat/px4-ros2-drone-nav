@@ -7,12 +7,11 @@ namespace {
 TEST(ExecutionRouteSnapshot3DTest,
      FiniteExecutionRecognizesACopiedCertificateByInstanceId) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);
-  ASSERT_TRUE(active->route.has_value());
-  CertifiedRouteSuffix3D copied_route = *active->route;
-  ASSERT_EQ(copied_route.geometry, active->route->geometry);
+  ASSERT_TRUE(active->route() != nullptr);
+  CertifiedRouteSuffix3D copied_route = *active->route();
+  ASSERT_EQ(copied_route.geometry, active->route()->geometry);
   ASSERT_TRUE(copied_route.valid());
 
   const std::optional<FiniteExecutionState3D> certified = certifyFiniteExecution3D(
@@ -20,13 +19,13 @@ TEST(ExecutionRouteSnapshot3DTest,
       SnapshotFixture3D::finiteCertificationForRoute(copied_route));
 
   ASSERT_TRUE(certified.has_value());
-  EXPECT_EQ(certified->source_route_instance_id, active->route->route_instance_id);
+  EXPECT_EQ(certified->source_route_instance_id, active->route()->route_instance_id);
 
   const std::optional<CertifiedRouteSuffix3D> independently_certified =
       fixture.certify();
   ASSERT_TRUE(independently_certified.has_value());
   ASSERT_NE(independently_certified->route_instance_id,
-            active->route->route_instance_id);
+            active->route()->route_instance_id);
   EXPECT_FALSE(certifyFiniteExecution3D(*active, *independently_certified,
                                         SnapshotFixture3D::finiteCertificationForRoute(
                                             *independently_certified))
@@ -55,7 +54,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   const std::optional<CertifiedRouteSuffix3D> suffix =
       certifyExecutionRoute3D(staticActivation(fixture, clear_static));
   ASSERT_TRUE(suffix.has_value());
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> initial =
+  const std::shared_ptr<const ExecutionPlan3D> initial =
       makeInitialExecutionRouteSnapshot3D();
   ASSERT_TRUE(initial);
   FiniteExecutionState3D initial_execution = SnapshotFixture3D::finiteExecutionForRoute(
@@ -230,11 +229,10 @@ TEST(ExecutionRouteSnapshot3DTest,
 TEST(ExecutionRouteSnapshot3DTest,
      FiniteCertificationUsesRouteOwnedWorldPolicyAndExactExecutionEvidence) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_TRUE(active);
-  ASSERT_TRUE(active->route.has_value());
-  const CertifiedRouteSuffix3D& route = *active->route;
+  ASSERT_TRUE(active->route() != nullptr);
+  const CertifiedRouteSuffix3D& route = *active->route();
   const FiniteExecutionState3D baseline = SnapshotFixture3D::finiteExecution(*active);
   ASSERT_TRUE(baseline.horizon);
 
@@ -360,11 +358,10 @@ TEST(ExecutionRouteSnapshot3DTest,
 
 TEST(ExecutionRouteSnapshot3DTest, ValidationProofBindsExactWorldAndLidarOwnerContent) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);
-  ASSERT_TRUE(active->route.has_value());
-  ASSERT_NE(active->route->observed_raw_world, nullptr);
+  ASSERT_TRUE(active->route() != nullptr);
+  ASSERT_NE(active->route()->observed_raw_world, nullptr);
 
   const DirectTrackingOwnerIdentity3D identity{
       .mission_epoch = fixture.objective.mission_epoch,
@@ -376,7 +373,7 @@ TEST(ExecutionRouteSnapshot3DTest, ValidationProofBindsExactWorldAndLidarOwnerCo
   };
   const FiniteExecutionCertification3D finite =
       SnapshotFixture3D::finiteCertificationForRoute(
-          *active->route, FiniteExecutionKind3D::kNominal, 101U, 101U);
+          *active->route(), FiniteExecutionKind3D::kNominal, 101U, 101U);
   ASSERT_NE(finite.execution_input, nullptr);
   ASSERT_NE(finite.latest_lidar_evidence, nullptr);
   const auto certify_with =
@@ -390,7 +387,7 @@ TEST(ExecutionRouteSnapshot3DTest, ValidationProofBindsExactWorldAndLidarOwnerCo
                          .horizon = finite.horizon,
                          .observed_raw_world = std::move(world),
                          .static_world = nullptr,
-                         .validation_policy = active->route->validation_policy,
+                         .validation_policy = active->route()->validation_policy,
                          .execution_input = finite.execution_input,
                          .latest_lidar_evidence = std::move(lidar),
                          .valid_from_ns = finite.valid_from_ns,
@@ -399,20 +396,20 @@ TEST(ExecutionRouteSnapshot3DTest, ValidationProofBindsExactWorldAndLidarOwnerCo
       };
 
   const std::optional<DirectTrackingFiniteExecution3D> baseline =
-      certify_with(active->route->observed_raw_world, finite.latest_lidar_evidence);
+      certify_with(active->route()->observed_raw_world, finite.latest_lidar_evidence);
   ASSERT_TRUE(baseline.has_value());
 
   ObservedOccupancyGrid3D changed_occupancy =
-      active->route->observed_raw_world->occupancy();
+      active->route()->observed_raw_world->occupancy();
   ASSERT_TRUE(
       changed_occupancy.setState(GridIndex3D{0, 0, 0}, ObservedVoxelState::kOccupied));
   const std::shared_ptr<const VersionedObservedRawWorld3D> changed_world =
-      VersionedObservedRawWorld3D::capture(active->route->observed_raw_world->version(),
-                                           changed_occupancy, std::nullopt,
-                                           std::nullopt);
+      VersionedObservedRawWorld3D::capture(
+          active->route()->observed_raw_world->version(), changed_occupancy,
+          std::nullopt, std::nullopt);
   ASSERT_NE(changed_world, nullptr);
   ASSERT_NE(changed_world->contentFingerprint(),
-            active->route->observed_raw_world->contentFingerprint());
+            active->route()->observed_raw_world->contentFingerprint());
   const std::optional<DirectTrackingFiniteExecution3D> changed_world_proof =
       certify_with(changed_world, finite.latest_lidar_evidence);
   ASSERT_TRUE(changed_world_proof.has_value());
@@ -434,7 +431,7 @@ TEST(ExecutionRouteSnapshot3DTest, ValidationProofBindsExactWorldAndLidarOwnerCo
   ASSERT_NE(changed_lidar, nullptr);
   ASSERT_NE(changed_lidar->contentFingerprint(), baseline_lidar.contentFingerprint());
   const std::optional<DirectTrackingFiniteExecution3D> changed_lidar_proof =
-      certify_with(active->route->observed_raw_world, changed_lidar);
+      certify_with(active->route()->observed_raw_world, changed_lidar);
   ASSERT_TRUE(changed_lidar_proof.has_value());
   EXPECT_NE(changed_lidar_proof->validation_proof.validation_contract_fingerprint,
             baseline->validation_proof.validation_contract_fingerprint);
@@ -443,42 +440,41 @@ TEST(ExecutionRouteSnapshot3DTest, ValidationProofBindsExactWorldAndLidarOwnerCo
 TEST(ExecutionRouteSnapshot3DTest,
      FiniteCertificationRejectsMissingOrMismatchedWorldOwners) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);
-  ASSERT_TRUE(active->route.has_value());
-  ASSERT_NE(active->route->observed_raw_world, nullptr);
+  ASSERT_TRUE(active->route() != nullptr);
+  ASSERT_NE(active->route()->observed_raw_world, nullptr);
 
   const auto certify_against = [&](const CertifiedRouteSuffix3D& route) {
     return certifyFiniteExecution3D(
         *active, route,
         SnapshotFixture3D::finiteCertificationForRoute(
-            *active->route, FiniteExecutionKind3D::kNominal, 101U));
+            *active->route(), FiniteExecutionKind3D::kNominal, 101U));
   };
-  CertifiedRouteSuffix3D missing_owner = *active->route;
+  CertifiedRouteSuffix3D missing_owner = *active->route();
   missing_owner.observed_raw_world.reset();
   EXPECT_FALSE(certify_against(missing_owner).has_value());
 
   ObservedOccupancyGrid3D changed_occupancy =
-      active->route->observed_raw_world->occupancy();
+      active->route()->observed_raw_world->occupancy();
   ASSERT_TRUE(
       changed_occupancy.setState(GridIndex3D{0, 0, 0}, ObservedVoxelState::kOccupied));
   const std::shared_ptr<const VersionedObservedRawWorld3D> changed_world =
-      VersionedObservedRawWorld3D::capture(active->route->observed_raw_world->version(),
-                                           changed_occupancy, std::nullopt,
-                                           std::nullopt);
+      VersionedObservedRawWorld3D::capture(
+          active->route()->observed_raw_world->version(), changed_occupancy,
+          std::nullopt, std::nullopt);
   ASSERT_NE(changed_world, nullptr);
   ASSERT_NE(changed_world->contentFingerprint(),
-            active->route->observed_raw_world->contentFingerprint());
+            active->route()->observed_raw_world->contentFingerprint());
 
-  CertifiedRouteSuffix3D mismatched_owner = *active->route;
+  CertifiedRouteSuffix3D mismatched_owner = *active->route();
   mismatched_owner.observed_raw_world = changed_world;
   EXPECT_FALSE(certify_against(mismatched_owner).has_value());
 
   FiniteExecutionState3D tampered_execution =
       SnapshotFixture3D::finiteExecution(*active);
   tampered_execution.observed_raw_world = changed_world;
-  EXPECT_FALSE(tampered_execution.validFor(&*active->route));
+  EXPECT_FALSE(tampered_execution.validFor(&*active->route()));
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
@@ -490,51 +486,53 @@ TEST(ExecutionRouteSnapshot3DTest,
       fixture.validation_policy->altitudeEnvelope(),
       fixture.validation_policy->sweptFootprint(), 100.0, 20.0, 10.0);
   ASSERT_NE(fixture.validation_policy, nullptr);
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);
-  ASSERT_TRUE(active->route.has_value());
+  ASSERT_TRUE(active->route() != nullptr);
 
-  const auto certify_with_receive_stamps = [&](const std::int64_t pose_receive_stamp_ns,
-                                               const std::int64_t
-                                                   control_receive_stamp_ns) {
-    FiniteExecutionCertification3D certification =
-        SnapshotFixture3D::finiteCertificationForRoute(
-            *active->route, FiniteExecutionKind3D::kNominal, 101U);
-    const std::shared_ptr<const VersionedExecutionInput3D>& source =
-        certification.execution_input;
-    if (source == nullptr) {
-      return std::optional<FiniteExecutionState3D>{};
-    }
-    certification.execution_input =
-        VersionedExecutionInput3D::capture(ExecutionInputCapture3D{
-            .capture_sequence = source->captureSequence(),
-            .pose_revision = source->poseRevision(),
-            .pose_source_timestamp_us = source->poseSourceTimestampUs(),
-            .pose_receive_stamp_ns = pose_receive_stamp_ns,
-            .effective_stamp_ns = source->effectiveStampNs(),
-            .state = source->state(),
-            .full_state_authoritative = source->fullStateAuthoritative(),
-            .state_provenance = source->stateProvenance(),
-            .previous_control = source->previousControl(),
-            .previous_control_source = source->previousControlSource(),
-            .previous_control_source_producer_instance_id =
-                source->previousControlSourceProducerInstanceId(),
-            .previous_control_source_sequence = source->previousControlSourceSequence(),
-            .previous_control_source_stamp_ns = source->previousControlSourceStampNs(),
-            .previous_control_receive_stamp_ns = control_receive_stamp_ns,
-        });
-    if (certification.execution_input == nullptr) {
-      return std::optional<FiniteExecutionState3D>{};
-    }
-    return certifyFiniteExecution3D(*active, *active->route, std::move(certification));
-  };
+  const auto certify_with_receive_stamps =
+      [&](const std::int64_t pose_receive_stamp_ns,
+          const std::int64_t control_receive_stamp_ns) {
+        FiniteExecutionCertification3D certification =
+            SnapshotFixture3D::finiteCertificationForRoute(
+                *active->route(), FiniteExecutionKind3D::kNominal, 101U);
+        const std::shared_ptr<const VersionedExecutionInput3D>& source =
+            certification.execution_input;
+        if (source == nullptr) {
+          return std::optional<FiniteExecutionState3D>{};
+        }
+        certification.execution_input =
+            VersionedExecutionInput3D::capture(ExecutionInputCapture3D{
+                .capture_sequence = source->captureSequence(),
+                .pose_revision = source->poseRevision(),
+                .pose_source_timestamp_us = source->poseSourceTimestampUs(),
+                .pose_receive_stamp_ns = pose_receive_stamp_ns,
+                .effective_stamp_ns = source->effectiveStampNs(),
+                .state = source->state(),
+                .full_state_authoritative = source->fullStateAuthoritative(),
+                .state_provenance = source->stateProvenance(),
+                .previous_control = source->previousControl(),
+                .previous_control_source = source->previousControlSource(),
+                .previous_control_source_producer_instance_id =
+                    source->previousControlSourceProducerInstanceId(),
+                .previous_control_source_sequence =
+                    source->previousControlSourceSequence(),
+                .previous_control_source_stamp_ns =
+                    source->previousControlSourceStampNs(),
+                .previous_control_receive_stamp_ns = control_receive_stamp_ns,
+            });
+        if (certification.execution_input == nullptr) {
+          return std::optional<FiniteExecutionState3D>{};
+        }
+        return certifyFiniteExecution3D(*active, *active->route(),
+                                        std::move(certification));
+      };
 
   constexpr std::int64_t kValidFromNs{1'000'000'000LL};
   const std::optional<FiniteExecutionState3D> at_limits = certify_with_receive_stamps(
       kValidFromNs - 20'000'000LL, kValidFromNs - 10'000'000LL);
   ASSERT_TRUE(at_limits.has_value());
-  EXPECT_TRUE(at_limits->validFor(&*active->route));
+  EXPECT_TRUE(at_limits->validFor(&*active->route()));
   EXPECT_FALSE(certify_with_receive_stamps(kValidFromNs - 20'000'001LL,
                                            kValidFromNs - 10'000'000LL)
                    .has_value());
@@ -551,7 +549,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   const std::optional<CertifiedRouteSuffix3D> suffix =
       certifyExecutionRoute3D(staticActivation(fixture, clear_static));
   ASSERT_TRUE(suffix.has_value());
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> initial =
+  const std::shared_ptr<const ExecutionPlan3D> initial =
       makeInitialExecutionRouteSnapshot3D();
   ASSERT_TRUE(initial);
   const FiniteExecutionState3D baseline = SnapshotFixture3D::finiteExecutionForRoute(
@@ -598,10 +596,9 @@ TEST(ExecutionRouteSnapshot3DTest,
 TEST(ExecutionRouteSnapshot3DTest,
      FiniteCertificationRejectsAPathThatCrossesTheEndpointThenReturnsToRest) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);
-  ASSERT_TRUE(active->route.has_value());
+  ASSERT_TRUE(active->route() != nullptr);
   const FiniteExecutionState3D baseline = SnapshotFixture3D::finiteExecution(*active);
   ASSERT_NE(baseline.execution_input, nullptr);
   ASSERT_NE(baseline.latest_lidar_evidence, nullptr);
@@ -625,15 +622,16 @@ TEST(ExecutionRouteSnapshot3DTest,
   crossing.states.reserve(crossing.controls.size() + 1U);
   crossing.states.push_back(baseline.execution_input->state());
   for (const mppi::Control& control : crossing.controls) {
-    crossing.states.push_back(mppi::integrateReference(
-        crossing.states.back(), control, active->route->validation_policy->dynamics()));
+    crossing.states.push_back(
+        mppi::integrateReference(crossing.states.back(), control,
+                                 active->route()->validation_policy->dynamics()));
   }
   ASSERT_TRUE(mppi::finiteHorizonHasTerminalRestState(crossing));
   EXPECT_GT(std::ranges::max(crossing.states, {}, &mppi::State::x).x, 10.5F);
   EXPECT_LT(crossing.states.back().x, 10.5F);
 
   EXPECT_FALSE(certifyFiniteExecution3D(
-                   *active, *active->route,
+                   *active, *active->route(),
                    FiniteExecutionCertification3D{
                        .trajectory_revision = 102U,
                        .horizon = std::move(crossing),
@@ -650,7 +648,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   SnapshotFixture3D fixture;
   const std::optional<CertifiedRouteSuffix3D> suffix = fixture.certify();
   ASSERT_TRUE(suffix.has_value());
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> initial =
+  const std::shared_ptr<const ExecutionPlan3D> initial =
       makeInitialExecutionRouteSnapshot3D();
   ASSERT_NE(initial, nullptr);
   constexpr double kBeginStationM{2.0};
@@ -706,7 +704,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   SnapshotFixture3D fixture;
   const std::optional<CertifiedRouteSuffix3D> suffix = fixture.certify();
   ASSERT_TRUE(suffix.has_value());
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> initial =
+  const std::shared_ptr<const ExecutionPlan3D> initial =
       makeInitialExecutionRouteSnapshot3D();
   ASSERT_NE(initial, nullptr);
   FiniteExecutionCertification3D certification =
@@ -758,8 +756,7 @@ TEST(ExecutionRouteSnapshot3DTest,
 TEST(ExecutionRouteSnapshot3DTest,
      ProgressAndRawCertificateAdvanceFromOneAcceptedAssessment) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_TRUE(active);
   constexpr std::uint64_t kRenewedRawRevision{SnapshotFixture3D::kLatestRawRevision +
                                               1U};
@@ -773,15 +770,15 @@ TEST(ExecutionRouteSnapshot3DTest,
 
   ASSERT_TRUE(advanced.applied());
   ASSERT_TRUE(advanced.next);
-  ASSERT_TRUE(advanced.next->route.has_value());
+  ASSERT_TRUE(advanced.next->route() != nullptr);
   EXPECT_EQ(advanced.next->version, active->version + 1U);
-  EXPECT_DOUBLE_EQ(advanced.next->route->progress.station_m, 4.0);
+  EXPECT_DOUBLE_EQ(advanced.next->route()->progress.station_m, 4.0);
   const ObservedRawRouteCertificate3D* const renewed =
-      std::get_if<ObservedRawRouteCertificate3D>(&advanced.next->route->certificate);
+      std::get_if<ObservedRawRouteCertificate3D>(&advanced.next->route()->certificate);
   ASSERT_NE(renewed, nullptr);
   EXPECT_EQ(renewed->validated_through_revision, kRenewedRawRevision);
   EXPECT_DOUBLE_EQ(renewed->suffix_start_station_m, 4.0);
-  EXPECT_DOUBLE_EQ(active->route->progress.station_m, 2.0);
+  EXPECT_DOUBLE_EQ(active->route()->progress.station_m, 2.0);
 
   const ExecutionRouteTransitionResult3D missing_raw = advanceCertifiedRoute3D(
       *advanced.next, SnapshotFixture3D::guard(*advanced.next),
@@ -803,12 +800,12 @@ TEST(ExecutionRouteSnapshot3DTest,
 TEST(ExecutionRouteSnapshot3DTest,
      ProgressRejectsReplayConflictingIdentityAndDelayedEvidence) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);
-  ASSERT_TRUE(active->route.has_value());
-  ASSERT_NE(active->route->progress.execution_input, nullptr);
-  const VersionedExecutionInput3D& resident = *active->route->progress.execution_input;
+  ASSERT_TRUE(active->route() != nullptr);
+  ASSERT_NE(active->route()->progress.execution_input, nullptr);
+  const VersionedExecutionInput3D& resident =
+      *active->route()->progress.execution_input;
   const auto recapture =
       [&](const std::uint64_t capture_sequence, const std::uint64_t pose_revision,
           const std::uint64_t pose_source_timestamp_us,
@@ -840,7 +837,7 @@ TEST(ExecutionRouteSnapshot3DTest,
 
   EXPECT_EQ(advanceCertifiedRoute3D(
                 *active, SnapshotFixture3D::guard(*active), observation,
-                active->route->progress.execution_input,
+                active->route()->progress.execution_input,
                 fixture.rawWorld(SnapshotFixture3D::kLatestRawRevision + 1U))
                 .status,
             ExecutionRouteTransitionStatus3D::kNoChange);

@@ -34,7 +34,7 @@ struct PendingCertifiedRoute3D {
 
 [[nodiscard]] bool
 pendingCertifiedRouteEligible3D(const PendingCertifiedRoute3D& pending,
-                                const ExecutionRouteSnapshot3D& snapshot) noexcept;
+                                const ExecutionPlan3D& snapshot) noexcept;
 
 // A splice-free successor is an immutable current-state planning transaction.
 // Preserve its route-wide snapshot certificate while the actual command and
@@ -59,7 +59,7 @@ public:
   [[nodiscard]] bool commitExecutionIfSame(
       const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending,
       ExecutionRouteSnapshotStore3D& execution_store,
-      const std::shared_ptr<const ExecutionRouteSnapshot3D>& expected_snapshot,
+      const std::shared_ptr<const ExecutionPlan3D>& expected_snapshot,
       const ExecutionRouteTransitionResult3D& transition);
 
 private:

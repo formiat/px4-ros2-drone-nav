@@ -435,135 +435,222 @@ bool StationaryExecutionHold3D::valid() const noexcept {
                                *validation_policy, *latest_lidar_evidence);
 }
 
-bool ExecutionRouteSnapshot3D::valid() const noexcept {
-  const bool direct_owner_conflict =
-      direct_tracking_execution.has_value() &&
-      (route.has_value() || finite_execution.has_value() ||
-       braking_fallback.has_value() || stationary_hold.has_value());
-  if (version == 0U || execution_owner_epoch == 0U || direct_owner_conflict ||
-      (route.has_value() &&
-       (!route->valid() || route->progress.execution_input == nullptr)) ||
-      (finite_execution.has_value() &&
-       !finite_execution->validFor(route ? &route.value() : nullptr)) ||
-      (finite_execution.has_value() &&
-       finite_execution->source_snapshot_version >= version) ||
-      (braking_fallback.has_value() &&
-       (!route.has_value() || !braking_fallback->validFor(std::addressof(*route)) ||
-        braking_fallback->source_snapshot_version >= version)) ||
-      (direct_tracking_execution.has_value() &&
-       (!direct_tracking_execution->valid() ||
-        direct_tracking_execution->source_snapshot_version >= version)) ||
-      (stationary_hold.has_value() && !stationary_hold->valid()) ||
-      (stationary_hold.has_value() &&
-       stationary_hold->hold_id != execution_owner_epoch) ||
-      (finite_execution.has_value() && stationary_hold.has_value()) ||
-      (braking_fallback.has_value() && stationary_hold.has_value()) ||
-      (braking_fallback.has_value() != finite_execution.has_value()) ||
-      (route.has_value() && route_generation_high_water != 0U &&
-       route_generation_high_water < route->identity.generation)) {
-    return false;
+ExecutionRoutePhase3D ExecutionPlan3D::phase() const noexcept {
+  if (std::holds_alternative<FollowingPlan3D>(state)) {
+    return ExecutionRoutePhase3D::kFollowing;
   }
-  if (route.has_value() && finite_execution.has_value()) {
-    const ExecutionInputProgressRelation3D relation = executionInputProgressRelation(
-        *route->progress.execution_input, *finite_execution->execution_input);
-    const ExecutionInputProgressRelation3D braking_relation =
-        executionInputProgressRelation(*route->progress.execution_input,
-                                       *braking_fallback->execution_input);
-    if (relation == ExecutionInputProgressRelation3D::kInvalid ||
-        braking_relation == ExecutionInputProgressRelation3D::kInvalid ||
-        (!finite_execution->revalidation_required &&
-         relation != ExecutionInputProgressRelation3D::kReplay) ||
-        (!braking_fallback->revalidation_required &&
-         braking_relation != ExecutionInputProgressRelation3D::kReplay)) {
-      return false;
-    }
+  if (std::holds_alternative<DirectTrackingPlan3D>(state)) {
+    return ExecutionRoutePhase3D::kDirectTracking;
   }
-  const bool route_at_endpoint =
-      route.has_value() && route->remainingM() <= kCompletionStationToleranceM;
-  const bool current_nominal_execution =
-      finite_execution.has_value() &&
-      finite_execution->kind == FiniteExecutionKind3D::kNominal;
-  const bool current_following_execution =
-      finite_execution.has_value() &&
-      (finite_execution->kind == FiniteExecutionKind3D::kNominal ||
-       finite_execution->kind == FiniteExecutionKind3D::kRetained) &&
-      !finiteExecutionValidatedAgainstNewerRawWorld(*finite_execution);
-  const bool complete_following_plan =
-      route.has_value() && finite_execution.has_value() &&
-      braking_fallback.has_value() &&
-      FiniteExecutionPlan3D{.command_horizon = *finite_execution,
-                            .braking_tail = *braking_fallback}
-          .validFor(*route);
-  const bool certified_endpoint_stop =
-      route_at_endpoint && current_nominal_execution && complete_following_plan &&
-      !finite_execution->revalidation_required &&
-      finite_execution->terminal_boundary.has_value() &&
-      finite_execution->stop_boundary.station_m + kCompletionStationToleranceM >=
-          route->endStationM();
-  switch (phase) {
-    case ExecutionRoutePhase3D::kFollowing:
-      return route.has_value() && !stationary_hold.has_value() &&
-             !direct_tracking_execution.has_value() && current_following_execution &&
-             complete_following_plan;
-    case ExecutionRoutePhase3D::kDirectTracking:
-      return direct_tracking_execution.has_value() && !route.has_value() &&
-             !finite_execution.has_value() && !braking_fallback.has_value() &&
-             !stationary_hold.has_value();
-    case ExecutionRoutePhase3D::kAwaitingSuccessor:
-      return !direct_tracking_execution.has_value() && !stationary_hold.has_value() &&
-             ((!route.has_value() && !finite_execution.has_value() &&
-               !braking_fallback.has_value()) ||
-              (route.has_value() && !finite_execution.has_value() &&
-               !braking_fallback.has_value()) ||
-              (route.has_value() &&
-               route->planned_endpoint_semantics ==
-                   RouteEndpointSemantics3D::kContinuation &&
-               certified_endpoint_stop));
-    case ExecutionRoutePhase3D::kBraking:
-      return !direct_tracking_execution.has_value() && route.has_value() &&
-             finite_execution.has_value() && braking_fallback.has_value() &&
-             finite_execution->kind == FiniteExecutionKind3D::kEmergencyBrakeTail &&
-             !finite_execution->revalidation_required &&
-             finiteExecutionArtifactFingerprint(*finite_execution) ==
-                 finiteExecutionArtifactFingerprint(*braking_fallback);
-    case ExecutionRoutePhase3D::kStopped:
-      return !direct_tracking_execution.has_value() &&
-             ((stationary_hold.has_value() && !route.has_value() &&
-               !finite_execution.has_value() && !braking_fallback.has_value()) ||
-              (certified_endpoint_stop && route->planned_endpoint_semantics !=
-                                              RouteEndpointSemantics3D::kContinuation));
-    case ExecutionRoutePhase3D::kRevoked:
-      return !route.has_value() && !finite_execution.has_value() &&
-             !braking_fallback.has_value() && !direct_tracking_execution.has_value() &&
-             !stationary_hold.has_value();
+  if (std::holds_alternative<BrakingPlan3D>(state)) {
+    return ExecutionRoutePhase3D::kBraking;
   }
-  return false;
+  if (std::holds_alternative<StationaryHoldPlan3D>(state)) {
+    return ExecutionRoutePhase3D::kStopped;
+  }
+  if (std::holds_alternative<AwaitingSuccessorPlan3D>(state)) {
+    return ExecutionRoutePhase3D::kAwaitingSuccessor;
+  }
+  return ExecutionRoutePhase3D::kRevoked;
 }
 
-bool ExecutionRouteSnapshot3D::publishable() const noexcept {
+const CertifiedRouteSuffix3D* ExecutionPlan3D::route() const noexcept {
+  if (const auto* following = std::get_if<FollowingPlan3D>(&state)) {
+    return std::addressof(following->route);
+  }
+  if (const auto* braking = std::get_if<BrakingPlan3D>(&state)) {
+    return std::addressof(braking->route);
+  }
+  if (const auto* stationary = std::get_if<StationaryHoldPlan3D>(&state)) {
+    const auto* certified =
+        std::get_if<CertifiedTerminalHoldPlan3D>(&stationary->owner);
+    return certified != nullptr ? std::addressof(certified->route) : nullptr;
+  }
+  const auto* awaiting = std::get_if<AwaitingSuccessorPlan3D>(&state);
+  if (awaiting == nullptr) {
+    return nullptr;
+  }
+  if (const auto* suspended = std::get_if<SuspendedRoutePlan3D>(&awaiting->owner)) {
+    return std::addressof(suspended->route);
+  }
+  const auto* continuation = std::get_if<ContinuationStopPlan3D>(&awaiting->owner);
+  return continuation != nullptr ? std::addressof(continuation->route) : nullptr;
+}
+
+const FiniteExecutionState3D* ExecutionPlan3D::finiteExecution() const noexcept {
+  if (const auto* following = std::get_if<FollowingPlan3D>(&state)) {
+    return std::addressof(following->execution.command_horizon);
+  }
+  if (const auto* braking = std::get_if<BrakingPlan3D>(&state)) {
+    return std::addressof(braking->execution);
+  }
+  if (const auto* stationary = std::get_if<StationaryHoldPlan3D>(&state)) {
+    const auto* certified =
+        std::get_if<CertifiedTerminalHoldPlan3D>(&stationary->owner);
+    return certified != nullptr ? std::addressof(certified->execution.command_horizon)
+                                : nullptr;
+  }
+  const auto* awaiting = std::get_if<AwaitingSuccessorPlan3D>(&state);
+  const auto* continuation = awaiting != nullptr
+                                 ? std::get_if<ContinuationStopPlan3D>(&awaiting->owner)
+                                 : nullptr;
+  return continuation != nullptr
+             ? std::addressof(continuation->execution.command_horizon)
+             : nullptr;
+}
+
+const FiniteExecutionState3D* ExecutionPlan3D::brakingFallback() const noexcept {
+  if (const auto* following = std::get_if<FollowingPlan3D>(&state)) {
+    return std::addressof(following->execution.braking_tail);
+  }
+  if (const auto* braking = std::get_if<BrakingPlan3D>(&state)) {
+    return std::addressof(braking->execution);
+  }
+  if (const auto* stationary = std::get_if<StationaryHoldPlan3D>(&state)) {
+    const auto* certified =
+        std::get_if<CertifiedTerminalHoldPlan3D>(&stationary->owner);
+    return certified != nullptr ? std::addressof(certified->execution.braking_tail)
+                                : nullptr;
+  }
+  const auto* awaiting = std::get_if<AwaitingSuccessorPlan3D>(&state);
+  const auto* continuation = awaiting != nullptr
+                                 ? std::get_if<ContinuationStopPlan3D>(&awaiting->owner)
+                                 : nullptr;
+  return continuation != nullptr ? std::addressof(continuation->execution.braking_tail)
+                                 : nullptr;
+}
+
+const DirectTrackingFiniteExecution3D*
+ExecutionPlan3D::directTrackingExecution() const noexcept {
+  const auto* direct = std::get_if<DirectTrackingPlan3D>(&state);
+  return direct != nullptr ? std::addressof(direct->execution) : nullptr;
+}
+
+const StationaryExecutionHold3D* ExecutionPlan3D::stationaryHold() const noexcept {
+  const auto* stationary = std::get_if<StationaryHoldPlan3D>(&state);
+  return stationary != nullptr
+             ? std::get_if<StationaryExecutionHold3D>(&stationary->owner)
+             : nullptr;
+}
+
+bool ExecutionPlan3D::valid() const noexcept {
+  if (version == 0U || execution_owner_epoch == 0U || state.valueless_by_exception()) {
+    return false;
+  }
+  const CertifiedRouteSuffix3D* const owned_route = route();
+  if (owned_route != nullptr &&
+      (!owned_route->valid() || owned_route->progress.execution_input == nullptr ||
+       (route_generation_high_water != 0U &&
+        route_generation_high_water < owned_route->identity.generation))) {
+    return false;
+  }
+
+  const auto route_execution_valid =
+      [this](const CertifiedRouteSuffix3D& candidate_route,
+             const FiniteExecutionPlan3D& execution) noexcept {
+        if (!execution.validFor(candidate_route) ||
+            execution.command_horizon.source_snapshot_version >= version ||
+            execution.braking_tail.source_snapshot_version >= version) {
+          return false;
+        }
+        const ExecutionInputProgressRelation3D command_relation =
+            executionInputProgressRelation(*candidate_route.progress.execution_input,
+                                           *execution.command_horizon.execution_input);
+        const ExecutionInputProgressRelation3D braking_relation =
+            executionInputProgressRelation(*candidate_route.progress.execution_input,
+                                           *execution.braking_tail.execution_input);
+        return command_relation != ExecutionInputProgressRelation3D::kInvalid &&
+               braking_relation != ExecutionInputProgressRelation3D::kInvalid &&
+               (execution.command_horizon.revalidation_required ||
+                command_relation == ExecutionInputProgressRelation3D::kReplay) &&
+               (execution.braking_tail.revalidation_required ||
+                braking_relation == ExecutionInputProgressRelation3D::kReplay);
+      };
+  const auto certified_endpoint_stop =
+      [&route_execution_valid](const CertifiedRouteSuffix3D& candidate_route,
+                               const FiniteExecutionPlan3D& execution) noexcept {
+        return candidate_route.remainingM() <= kCompletionStationToleranceM &&
+               execution.command_horizon.kind == FiniteExecutionKind3D::kNominal &&
+               route_execution_valid(candidate_route, execution) &&
+               !execution.command_horizon.revalidation_required &&
+               execution.command_horizon.terminal_boundary.has_value() &&
+               execution.command_horizon.stop_boundary.station_m +
+                       kCompletionStationToleranceM >=
+                   candidate_route.endStationM();
+      };
+
+  return std::visit(
+      [this, &route_execution_valid,
+       &certified_endpoint_stop](const auto& plan) noexcept {
+        using Plan = std::remove_cvref_t<decltype(plan)>;
+        if constexpr (std::is_same_v<Plan, FollowingPlan3D>) {
+          return route_execution_valid(plan.route, plan.execution) &&
+                 (plan.execution.command_horizon.kind ==
+                      FiniteExecutionKind3D::kNominal ||
+                  plan.execution.command_horizon.kind ==
+                      FiniteExecutionKind3D::kRetained) &&
+                 !finiteExecutionValidatedAgainstNewerRawWorld(
+                     plan.execution.command_horizon);
+        } else if constexpr (std::is_same_v<Plan, DirectTrackingPlan3D>) {
+          return plan.execution.valid() &&
+                 plan.execution.source_snapshot_version < version;
+        } else if constexpr (std::is_same_v<Plan, BrakingPlan3D>) {
+          if (!plan.execution.validFor(std::addressof(plan.route)) ||
+              plan.execution.source_snapshot_version >= version ||
+              plan.execution.kind != FiniteExecutionKind3D::kEmergencyBrakeTail ||
+              plan.execution.revalidation_required) {
+            return false;
+          }
+          const ExecutionInputProgressRelation3D relation =
+              executionInputProgressRelation(*plan.route.progress.execution_input,
+                                             *plan.execution.execution_input);
+          return relation == ExecutionInputProgressRelation3D::kReplay;
+        } else if constexpr (std::is_same_v<Plan, StationaryHoldPlan3D>) {
+          if (const auto* hold = std::get_if<StationaryExecutionHold3D>(&plan.owner)) {
+            return hold->valid() && hold->hold_id == execution_owner_epoch;
+          }
+          const auto& certified = std::get<CertifiedTerminalHoldPlan3D>(plan.owner);
+          return certified.route.planned_endpoint_semantics !=
+                     RouteEndpointSemantics3D::kContinuation &&
+                 certified_endpoint_stop(certified.route, certified.execution);
+        } else if constexpr (std::is_same_v<Plan, AwaitingSuccessorPlan3D>) {
+          if (std::holds_alternative<EmptyAwaitingSuccessorPlan3D>(plan.owner)) {
+            return true;
+          }
+          if (const auto* suspended = std::get_if<SuspendedRoutePlan3D>(&plan.owner)) {
+            return suspended->route.valid() &&
+                   suspended->route.progress.execution_input != nullptr;
+          }
+          const auto& continuation = std::get<ContinuationStopPlan3D>(plan.owner);
+          return continuation.route.planned_endpoint_semantics ==
+                     RouteEndpointSemantics3D::kContinuation &&
+                 certified_endpoint_stop(continuation.route, continuation.execution);
+        } else {
+          return true;
+        }
+      },
+      state);
+}
+
+bool ExecutionPlan3D::publishable() const noexcept {
   if (!valid()) {
     return false;
   }
-  if (!route.has_value()) {
-    return !braking_fallback.has_value();
+  const FiniteExecutionState3D* const command = finiteExecution();
+  const FiniteExecutionState3D* const braking = brakingFallback();
+  if (command != nullptr || braking != nullptr) {
+    return command != nullptr && braking != nullptr &&
+           !command->revalidation_required && !braking->revalidation_required;
   }
-  if (!finite_execution.has_value() || !braking_fallback.has_value() ||
-      finite_execution->revalidation_required ||
-      braking_fallback->revalidation_required) {
-    return false;
-  }
-  if (phase == ExecutionRoutePhase3D::kBraking) {
-    return finiteExecutionArtifactFingerprint(*finite_execution) ==
-           finiteExecutionArtifactFingerprint(*braking_fallback);
-  }
-  return FiniteExecutionPlan3D{.command_horizon = *finite_execution,
-                               .braking_tail = *braking_fallback}
-      .validFor(*route);
+  const auto* awaiting = std::get_if<AwaitingSuccessorPlan3D>(&state);
+  return awaiting == nullptr ||
+         !std::holds_alternative<SuspendedRoutePlan3D>(awaiting->owner);
 }
 
-std::uint64_t ExecutionRouteSnapshot3D::routeGenerationHighWater() const noexcept {
-  return route.has_value()
-             ? std::max(route_generation_high_water, route->identity.generation)
+std::uint64_t ExecutionPlan3D::routeGenerationHighWater() const noexcept {
+  const CertifiedRouteSuffix3D* const owned_route = route();
+  return owned_route != nullptr
+             ? std::max(route_generation_high_water, owned_route->identity.generation)
              : route_generation_high_water;
 }
 

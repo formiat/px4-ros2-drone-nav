@@ -15,10 +15,9 @@ using namespace execution_route_snapshot_3d_internal;
 namespace execution_route_snapshot_3d_internal {
 
 bool certifiedTrackingTubeHandoffPending(
-    const ExecutionRouteSnapshot3D& current,
+    const ExecutionPlan3D& current,
     const CertifiedRouteSuffix3D& target_route) noexcept {
-  const FiniteExecutionState3D* const execution =
-      current.finite_execution.has_value() ? &*current.finite_execution : nullptr;
+  const FiniteExecutionState3D* const execution = current.finiteExecution();
   // Retention recertifies the same published handoff while the vehicle is still
   // converging to the route. The connector provenance ends naturally once the
   // resident execution begins inside the route corridor; emergency tails do not
@@ -188,19 +187,18 @@ bool validateTrackingTubeHandoffClearance(
 } // namespace execution_route_snapshot_3d_internal
 
 TrackingErrorTubeHandoffAssessment3D assessCertifiedTrackingTubeHandoff3D(
-    const ExecutionRouteSnapshot3D& current, const CertifiedRouteSuffix3D& target_route,
+    const ExecutionPlan3D& current, const CertifiedRouteSuffix3D& target_route,
     const VersionedExecutionInput3D& current_execution_input) noexcept {
+  const FiniteExecutionState3D* const current_execution = current.finiteExecution();
   if (!current_execution_input.valid() ||
       !current_execution_input.nominalStateAuthoritative() ||
-      !current.finite_execution.has_value() ||
-      current.finite_execution->horizon == nullptr ||
-      current.finite_execution->horizon->states.empty() ||
-      (current.finite_execution->kind != FiniteExecutionKind3D::kNominal &&
-       current.finite_execution->kind != FiniteExecutionKind3D::kRetained) ||
-      !current.finite_execution->validFor(&target_route) ||
+      current_execution == nullptr || current_execution->horizon == nullptr ||
+      current_execution->horizon->states.empty() ||
+      (current_execution->kind != FiniteExecutionKind3D::kNominal &&
+       current_execution->kind != FiniteExecutionKind3D::kRetained) ||
+      !current_execution->validFor(&target_route) ||
       target_route.progress.execution_input == nullptr ||
-      target_route.progress.execution_input !=
-          current.finite_execution->execution_input ||
+      target_route.progress.execution_input != current_execution->execution_input ||
       executionInputProgressRelation(current_execution_input,
                                      *target_route.progress.execution_input) !=
           ExecutionInputProgressRelation3D::kStrictlyNewer ||
@@ -208,7 +206,7 @@ TrackingErrorTubeHandoffAssessment3D assessCertifiedTrackingTubeHandoff3D(
                              current_execution_input.effectiveStampNs())) {
     return {};
   }
-  const FiniteExecutionState3D& execution = *current.finite_execution;
+  const FiniteExecutionState3D& execution = *current_execution;
   const mppi::State& progress_state = target_route.progress.execution_input->state();
   const RouteProjection3D progress_projection = projectOntoRoute3DWithinStationWindow(
       *target_route.geometry->route,

@@ -198,7 +198,7 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self.assertIn("EXECUTION_REASON_NO_EXECUTABLE_HORIZON", offboard)
         self.assertIn("transferToExecutionHold3D", execution)
         self.assertIn("publishExecutionRevocation", execution)
-        self.assertIn("stationary_hold.has_value()", execution)
+        self.assertIn("stationaryHold() != nullptr", execution)
         self.assertIn("action=hold_no_executable_path", execution)
         self.assertIn("publishPositionHold", execution)
         self.assertRegex(
@@ -220,7 +220,7 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self.assertLess(hold_overflow_guard, hold_interval_double)
         self.assertLess(hold_interval_double, hold_canonical_end)
         self.assertIn(
-            "committed_snapshot->finite_execution->valid_until_ns", execution
+            "committed_valid_until_ns = committed_finite->valid_until_ns", execution
         )
         self.assertNotIn("terminal_offset_ns", execution)
         self.assertNotIn("ProductionMppiExecutionMode::kBraking", execution)
@@ -903,7 +903,9 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self.assertIn("enum class ExecutionInputPurpose3D", evidence)
         self.assertIn("stationaryCaptureStateAuthoritative", evidence)
         self.assertIn("armStationaryCaptureHold3D", snapshot_header)
-        self.assertIn("current.phase != ExecutionRoutePhase3D::kRevoked", snapshot_hold)
+        self.assertIn(
+            "current.phase() != ExecutionRoutePhase3D::kRevoked", snapshot_hold
+        )
         self.assertIn("stationaryHoldPointSafe(certification, true)", snapshot_hold)
         self.assertIn("armStationaryCaptureHold3D", publication)
         self.assertIn("StationaryExecutionHoldOrigin3D::kStationaryCaptureRearm", publication)

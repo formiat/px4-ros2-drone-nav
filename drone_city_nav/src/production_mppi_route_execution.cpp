@@ -232,7 +232,7 @@ routeProjection(const CertifiedRouteSuffix3D& route,
 
 [[nodiscard]] bool
 pendingRoutePermanentlyObsolete(const PendingCertifiedRoute3D& pending,
-                                const ExecutionRouteSnapshot3D& snapshot) noexcept {
+                                const ExecutionPlan3D& snapshot) noexcept {
   if (!pending.valid() || !snapshot.valid()) {
     return false;
   }
@@ -283,9 +283,9 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
   result.certification_snapshot = result.source_snapshot;
   result.execution_owner_available =
       result.source_snapshot != nullptr &&
-      (result.source_snapshot->finite_execution.has_value() ||
-       result.source_snapshot->direct_tracking_execution.has_value() ||
-       result.source_snapshot->stationary_hold.has_value());
+      (result.source_snapshot->finiteExecution() != nullptr ||
+       result.source_snapshot->directTrackingExecution() != nullptr ||
+       result.source_snapshot->stationaryHold() != nullptr);
   if (result.source_snapshot == nullptr) {
     return result;
   }
@@ -313,15 +313,17 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
           ? route_tracking_policy_.maximum_cross_track_m
           : std::numeric_limits<double>::max();
   bool active_usable{false};
-  if (result.source_snapshot->route.has_value()) {
-    const std::shared_ptr<const ExecutionRouteSnapshot3D> active_source_snapshot =
+  if (result.source_snapshot->route() != nullptr) {
+    const std::shared_ptr<const ExecutionPlan3D> active_source_snapshot =
         result.source_snapshot;
-    const CertifiedRouteSuffix3D& active_route = *active_source_snapshot->route;
+    const CertifiedRouteSuffix3D& active_route = *active_source_snapshot->route();
+    const FiniteExecutionState3D* const active_finite_execution =
+        active_source_snapshot->finiteExecution();
     const ExecutionRouteTransitionGuard3D guard{
         .expected_snapshot_version = result.source_snapshot->version,
-        .expected_route_generation = result.source_snapshot->route->identity.generation,
+        .expected_route_generation = active_route.identity.generation,
         .expected_geometry_revision =
-            result.source_snapshot->route->geometry->compiled_trajectory_revision,
+            active_route.geometry->compiled_trajectory_revision,
     };
     const bool observed_route = active_route.observed_raw_world != nullptr;
     const std::uint64_t physically_invalidated_through_generation =
@@ -354,12 +356,12 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
         latest_observed_owner =
             deriveLatestObservedRouteEvidence(latest_raw_world, active_route);
         if (latest_observed_owner != nullptr &&
-            active_source_snapshot->phase == ExecutionRoutePhase3D::kFollowing &&
-            active_source_snapshot->finite_execution.has_value()) {
+            active_source_snapshot->phase() == ExecutionRoutePhase3D::kFollowing &&
+            active_finite_execution != nullptr) {
           active_trajectory_raw_validation =
               validateRemainingFiniteExecutionAgainstObservedWorld3D(
-                  *active_source_snapshot->finite_execution, *execution_input,
-                  *latest_observed_owner, execution_input->effectiveStampNs());
+                  *active_finite_execution, *execution_input, *latest_observed_owner,
+                  execution_input->effectiveStampNs());
           active_trajectory_raw_collision =
               active_trajectory_raw_validation.status ==
               mppi::FiniteExecutionPathStatus::kRawCollision;
@@ -376,12 +378,12 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
         }
       }
       if (latest_lidar_evidence != nullptr &&
-          active_source_snapshot->phase == ExecutionRoutePhase3D::kFollowing &&
-          active_source_snapshot->finite_execution.has_value()) {
+          active_source_snapshot->phase() == ExecutionRoutePhase3D::kFollowing &&
+          active_finite_execution != nullptr) {
         active_trajectory_lidar_validation =
             validateRemainingFiniteExecutionAgainstLatestLidar3D(
-                *active_source_snapshot->finite_execution, *execution_input,
-                *latest_lidar_evidence, validation_stamp_ns);
+                *active_finite_execution, *execution_input, *latest_lidar_evidence,
+                validation_stamp_ns);
         active_trajectory_latest_lidar_collision =
             active_trajectory_lidar_validation.status ==
             mppi::FiniteExecutionPathStatus::kLatestLidarRawCollision;
@@ -675,7 +677,7 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
     }
   }
 
-  const std::shared_ptr<const ExecutionRouteSnapshot3D>& route_state =
+  const std::shared_ptr<const ExecutionPlan3D>& route_state =
       result.certification_snapshot != nullptr ? result.certification_snapshot
                                                : result.source_snapshot;
   result.pending_route = pending_certified_route_mailbox_.snapshot();
@@ -723,14 +725,14 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
         result.pending_route->base_kind == PendingExecutionBaseKind3D::kRoute;
     if (route_splice_required) {
       if (!result.pending_route->route_splice.has_value() ||
-          !route_state->route.has_value()) {
+          route_state->route() == nullptr) {
         splice_readiness.status = RouteSpliceReadinessStatus3D::kInvalidProof;
       } else if (refreshed_pending == nullptr) {
         splice_readiness.status =
             RouteSpliceReadinessStatus3D::kSuccessorProjectionUnavailable;
       } else {
         splice_readiness = assessRouteSpliceReadiness3D(
-            *result.pending_route->route_splice, *route_state->route,
+            *result.pending_route->route_splice, *route_state->route(),
             *refreshed_pending,
             Point3{execution_navigation.state.x, execution_navigation.state.y,
                    execution_navigation.state.z});
@@ -744,9 +746,9 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
     } else if (route_splice_required) {
       const bool splice_expired =
           result.pending_route->route_splice.has_value() &&
-          route_state->route.has_value() &&
+          route_state->route() != nullptr &&
           routeSpliceWindowExpired3D(*result.pending_route->route_splice,
-                                     *route_state->route);
+                                     *route_state->route());
       const bool permanently_unavailable =
           splice_expired || !splice_readiness.canStillBecomeReady();
       RCLCPP_INFO_THROTTLE(
@@ -789,10 +791,11 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
   }
 
   if (result.route == nullptr && active_usable &&
-      (route_state->phase == ExecutionRoutePhase3D::kFollowing ||
-       route_state->phase == ExecutionRoutePhase3D::kAwaitingSuccessor) &&
-      route_state->route.has_value()) {
-    result.route = std::make_shared<const CertifiedRouteSuffix3D>(*route_state->route);
+      (route_state->phase() == ExecutionRoutePhase3D::kFollowing ||
+       route_state->phase() == ExecutionRoutePhase3D::kAwaitingSuccessor) &&
+      route_state->route() != nullptr) {
+    result.route =
+        std::make_shared<const CertifiedRouteSuffix3D>(*route_state->route());
     result.route_usable = true;
     result.status = RouteExecutionStatus3D::kUsable;
   }

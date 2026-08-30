@@ -88,11 +88,15 @@ class Stage3EndpointExecutionContractTest(unittest.TestCase):
             "certification.kind != FiniteExecutionKind3D::kEmergencyBrakeTail",
             raw_certification,
         )
+        raw_transition = transitions.split(
+            "case RouteLifecycleEventKind3D::kRawInvalidated:", maxsplit=1
+        )[1].split("[[fallthrough]]", maxsplit=1)[0]
         self.assertRegex(
-            transitions,
-            r"next\.finite_execution->kind\s*!=\s*"
+            raw_transition,
+            r"retained_safe_execution->kind\s*!=\s*"
             r"FiniteExecutionKind3D::kEmergencyBrakeTail",
         )
+        self.assertIn("next.state = BrakingPlan3D{", transitions)
 
 
 if __name__ == "__main__":

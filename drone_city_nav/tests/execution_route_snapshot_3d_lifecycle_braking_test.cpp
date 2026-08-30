@@ -21,18 +21,17 @@ lidarEvidenceWithPoints(const VersionedLatestLidarEvidence3D& identity_source,
 TEST(ExecutionRouteSnapshot3DTest,
      FreshLidarInvalidatesOnlyAnIntersectedPublishedFiniteTrajectory) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);
-  ASSERT_TRUE(active->route.has_value());
-  ASSERT_TRUE(active->finite_execution.has_value());
-  const FiniteExecutionState3D& resident = *active->finite_execution;
+  ASSERT_TRUE(active->route() != nullptr);
+  ASSERT_TRUE(active->finiteExecution() != nullptr);
+  const FiniteExecutionState3D& resident = *active->finiteExecution();
   ASSERT_NE(resident.horizon, nullptr);
   ASSERT_FALSE(resident.horizon->states.empty());
 
   FiniteExecutionCertification3D current =
       SnapshotFixture3D::finiteCertificationForRoute(
-          *active->route, FiniteExecutionKind3D::kEmergencyBrakeTail,
+          *active->route(), FiniteExecutionKind3D::kEmergencyBrakeTail,
           resident.trajectory_revision + 2U);
   ASSERT_NE(current.execution_input, nullptr);
   ASSERT_NE(current.latest_lidar_evidence, nullptr);
@@ -62,28 +61,27 @@ TEST(ExecutionRouteSnapshot3DTest,
 TEST(ExecutionRouteSnapshot3DTest,
      LatestLidarInvalidationBindsEmergencyBrakingToExactPhysicalEvidence) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);
-  ASSERT_TRUE(active->route.has_value());
-  ASSERT_TRUE(active->finite_execution.has_value());
-  ASSERT_NE(active->finite_execution->horizon, nullptr);
+  ASSERT_TRUE(active->route() != nullptr);
+  ASSERT_TRUE(active->finiteExecution() != nullptr);
+  ASSERT_NE(active->finiteExecution()->horizon, nullptr);
 
   FiniteExecutionCertification3D braking =
       SnapshotFixture3D::finiteCertificationForRoute(
-          *active->route, FiniteExecutionKind3D::kEmergencyBrakeTail,
-          active->finite_execution->trajectory_revision + 2U);
+          *active->route(), FiniteExecutionKind3D::kEmergencyBrakeTail,
+          active->finiteExecution()->trajectory_revision + 2U);
   ASSERT_NE(braking.latest_lidar_evidence, nullptr);
   const mppi::State& intersected_state =
-      active->finite_execution->horizon
-          ->states[active->finite_execution->horizon->states.size() / 2U];
+      active->finiteExecution()
+          ->horizon->states[active->finiteExecution()->horizon->states.size() / 2U];
   braking.latest_lidar_evidence = lidarEvidenceWithPoints(
       *braking.latest_lidar_evidence,
       {Point3{intersected_state.x, intersected_state.y, intersected_state.z}});
   ASSERT_NE(braking.latest_lidar_evidence, nullptr);
   const RouteLifecycleEvent3D invalidation{
       .kind = RouteLifecycleEventKind3D::kLatestLidarInvalidated,
-      .generation = active->route->identity.generation,
+      .generation = active->route()->identity.generation,
       .latest_lidar_evidence = braking.latest_lidar_evidence->evidenceId(),
   };
 
@@ -103,7 +101,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_NE(clear_braking.latest_lidar_evidence, nullptr);
   const RouteLifecycleEvent3D nonintersecting_evidence{
       .kind = RouteLifecycleEventKind3D::kLatestLidarInvalidated,
-      .generation = active->route->identity.generation,
+      .generation = active->route()->identity.generation,
       .latest_lidar_evidence = clear_braking.latest_lidar_evidence->evidenceId(),
   };
   EXPECT_FALSE(certifyLifecycleBrakingFiniteExecution3D(
@@ -130,23 +128,22 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_TRUE(retired.applied())
       << executionRouteTransitionStatus3DName(retired.status);
   ASSERT_NE(retired.next, nullptr);
-  ASSERT_TRUE(retired.next->finite_execution.has_value());
-  EXPECT_EQ(retired.next->phase, ExecutionRoutePhase3D::kBraking);
-  EXPECT_EQ(retired.next->finite_execution->kind,
+  ASSERT_TRUE(retired.next->finiteExecution() != nullptr);
+  EXPECT_EQ(retired.next->phase(), ExecutionRoutePhase3D::kBraking);
+  EXPECT_EQ(retired.next->finiteExecution()->kind,
             FiniteExecutionKind3D::kEmergencyBrakeTail);
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
      LifecycleBrakingRetainsPhysicalOwnershipOutsideTheOldRouteCorridor) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
-  if (active == nullptr || !active->route.has_value() ||
-      !active->finite_execution.has_value()) {
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
+  if (active == nullptr || active->route() == nullptr ||
+      active->finiteExecution() == nullptr) {
     ADD_FAILURE() << "The fixture must activate a complete route owner";
     return;
   }
-  const CertifiedRouteSuffix3D& route = active->route.value();
+  const CertifiedRouteSuffix3D& route = *active->route();
   FiniteExecutionCertification3D certification =
       SnapshotFixture3D::finiteCertificationForRoute(
           route, FiniteExecutionKind3D::kEmergencyBrakeTail, 101U, 56U);
@@ -214,35 +211,34 @@ TEST(ExecutionRouteSnapshot3DTest,
       *active, SnapshotFixture3D::guard(*active), divergence, braking_execution);
   ASSERT_TRUE(retired.applied())
       << executionRouteTransitionStatus3DName(retired.status);
-  if (retired.next == nullptr || !retired.next->route.has_value() ||
-      !retired.next->finite_execution.has_value() ||
-      !retired.next->braking_fallback.has_value()) {
+  if (retired.next == nullptr || retired.next->route() == nullptr ||
+      retired.next->finiteExecution() == nullptr ||
+      retired.next->brakingFallback() == nullptr) {
     ADD_FAILURE() << "Retirement must preserve a complete braking owner";
     return;
   }
-  const ExecutionRouteSnapshot3D& braking_snapshot = *retired.next;
-  EXPECT_EQ(braking_snapshot.phase, ExecutionRoutePhase3D::kBraking);
-  EXPECT_DOUBLE_EQ(braking_snapshot.route.value().progress.station_m,
+  const ExecutionPlan3D& braking_snapshot = *retired.next;
+  EXPECT_EQ(braking_snapshot.phase(), ExecutionRoutePhase3D::kBraking);
+  EXPECT_DOUBLE_EQ(braking_snapshot.route()->progress.station_m,
                    route.progress.station_m);
-  EXPECT_DOUBLE_EQ(braking_snapshot.route.value().progress.last_observed_position.y,
+  EXPECT_DOUBLE_EQ(braking_snapshot.route()->progress.last_observed_position.y,
                    kDivergedY);
   EXPECT_EQ(
-      braking_snapshot.finite_execution.value().validation_proof.artifact_fingerprint,
-      braking_snapshot.braking_fallback.value().validation_proof.artifact_fingerprint);
+      braking_snapshot.finiteExecution()[0].validation_proof.artifact_fingerprint,
+      braking_snapshot.brakingFallback()[0].validation_proof.artifact_fingerprint);
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
      TrackingTubeViolationAtomicallyActivatesTheResidentBrakingTail) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);
-  ASSERT_TRUE(active->route.has_value());
-  ASSERT_TRUE(active->finite_execution.has_value());
-  ASSERT_TRUE(active->braking_fallback.has_value());
+  ASSERT_TRUE(active->route() != nullptr);
+  ASSERT_TRUE(active->finiteExecution() != nullptr);
+  ASSERT_TRUE(active->brakingFallback() != nullptr);
   const RouteLifecycleEvent3D violation{
       .kind = RouteLifecycleEventKind3D::kTrackingTubeExceeded,
-      .generation = active->route->identity.generation,
+      .generation = active->route()->identity.generation,
   };
 
   const ExecutionRouteTransitionResult3D retired = retireCertifiedRoute3D(
@@ -251,13 +247,13 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_TRUE(retired.applied())
       << executionRouteTransitionStatus3DName(retired.status);
   ASSERT_NE(retired.next, nullptr);
-  ASSERT_TRUE(retired.next->route.has_value());
-  ASSERT_TRUE(retired.next->finite_execution.has_value());
-  ASSERT_TRUE(retired.next->braking_fallback.has_value());
-  EXPECT_EQ(retired.next->phase, ExecutionRoutePhase3D::kBraking);
-  EXPECT_EQ(retired.next->route->owner.id, active->route->owner.id);
-  EXPECT_EQ(retired.next->finite_execution->validation_proof.artifact_fingerprint,
-            retired.next->braking_fallback->validation_proof.artifact_fingerprint);
+  ASSERT_TRUE(retired.next->route() != nullptr);
+  ASSERT_TRUE(retired.next->finiteExecution() != nullptr);
+  ASSERT_TRUE(retired.next->brakingFallback() != nullptr);
+  EXPECT_EQ(retired.next->phase(), ExecutionRoutePhase3D::kBraking);
+  EXPECT_EQ(retired.next->route()->owner.id, active->route()->owner.id);
+  EXPECT_EQ(retired.next->finiteExecution()->validation_proof.artifact_fingerprint,
+            retired.next->brakingFallback()->validation_proof.artifact_fingerprint);
 }
 
 } // namespace

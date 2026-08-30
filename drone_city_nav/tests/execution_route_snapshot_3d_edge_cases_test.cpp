@@ -5,10 +5,9 @@ namespace {
 
 TEST(ExecutionRouteSnapshot3DTest, RejectsSnapshotVersionOverflow) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_TRUE(active);
-  ExecutionRouteSnapshot3D exhausted = *active;
+  ExecutionPlan3D exhausted = *active;
   exhausted.version = std::numeric_limits<std::uint64_t>::max();
   ASSERT_TRUE(exhausted.valid());
   FiniteExecutionState3D finite = SnapshotFixture3D::finiteExecution(exhausted);
@@ -26,7 +25,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   const std::optional<CertifiedRouteSuffix3D> suffix = fixture.certify();
   ASSERT_TRUE(suffix.has_value());
   ExecutionRouteSnapshotStore3D store;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> initial = store.snapshot();
+  const std::shared_ptr<const ExecutionPlan3D> initial = store.snapshot();
   ASSERT_NE(initial, nullptr);
   CertifiedRouteSuffix3D copied_route = *suffix;
   ASSERT_EQ(copied_route.geometry, suffix->geometry);
@@ -39,7 +38,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_TRUE(activation.applied());
   ASSERT_EQ(store.publish(initial, activation),
             ExecutionRoutePublicationStatus3D::kPublished);
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active = store.snapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = store.snapshot();
   ASSERT_EQ(active, activation.next);
   const ExecutionRouteTransitionResult3D revocation =
       revokeExecution3D(*active, active->version);
@@ -50,9 +49,9 @@ TEST(ExecutionRouteSnapshot3DTest,
   EXPECT_EQ(store.snapshot(), active);
   ASSERT_EQ(store.publish(active, revocation),
             ExecutionRoutePublicationStatus3D::kPublished);
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> revoked = store.snapshot();
+  const std::shared_ptr<const ExecutionPlan3D> revoked = store.snapshot();
   ASSERT_EQ(revoked, revocation.next);
-  EXPECT_EQ(revoked->phase, ExecutionRoutePhase3D::kRevoked);
+  EXPECT_EQ(revoked->phase(), ExecutionRoutePhase3D::kRevoked);
   EXPECT_EQ(revoked->routeGenerationHighWater(), active->routeGenerationHighWater());
   EXPECT_EQ(revoked->execution_owner_epoch, active->execution_owner_epoch + 1U);
   EXPECT_EQ(revokeExecution3D(*revoked, revoked->version).status,
@@ -62,10 +61,9 @@ TEST(ExecutionRouteSnapshot3DTest,
 TEST(ExecutionRouteSnapshot3DTest,
      PendingMailboxRetainsFirstCertifiedRouteUntilExactAcknowledgement) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_TRUE(active);
-  ASSERT_TRUE(active->route.has_value());
+  ASSERT_TRUE(active->route() != nullptr);
 
   ExecutionRouteActivation3D successor_activation = fixture.activation();
   successor_activation.route_generation = SnapshotFixture3D::kRouteGeneration + 1U;
@@ -78,12 +76,12 @@ TEST(ExecutionRouteSnapshot3DTest,
           .publication_sequence = 1U,
           .base_execution_owner_epoch = active->execution_owner_epoch,
           .base_kind = PendingExecutionBaseKind3D::kRoute,
-          .base_route_generation = active->route->identity.generation,
+          .base_route_generation = active->route()->identity.generation,
           .base_geometry_revision =
-              active->route->geometry->compiled_trajectory_revision,
-          .base_continuity_id = active->route->continuity_id,
+              active->route()->geometry->compiled_trajectory_revision,
+          .base_continuity_id = active->route()->continuity_id,
           .base_direct_tracking_identity = std::nullopt,
-          .route_splice = testRouteSplice(*active->route, *successor),
+          .route_splice = testRouteSplice(*active->route(), *successor),
           .route = *successor,
       });
   auto second_value = *first;
@@ -115,10 +113,9 @@ TEST(ExecutionRouteSnapshot3DTest,
 TEST(ExecutionRouteSnapshot3DTest,
      PendingMailboxSealsTheRouteAgainstAMutableSharedAlias) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);
-  ASSERT_TRUE(active->route.has_value());
+  ASSERT_TRUE(active->route() != nullptr);
 
   ExecutionRouteActivation3D successor_activation = fixture.activation();
   successor_activation.route_generation = SnapshotFixture3D::kRouteGeneration + 1U;
@@ -130,12 +127,12 @@ TEST(ExecutionRouteSnapshot3DTest,
           .publication_sequence = 1U,
           .base_execution_owner_epoch = active->execution_owner_epoch,
           .base_kind = PendingExecutionBaseKind3D::kRoute,
-          .base_route_generation = active->route->identity.generation,
+          .base_route_generation = active->route()->identity.generation,
           .base_geometry_revision =
-              active->route->geometry->compiled_trajectory_revision,
-          .base_continuity_id = active->route->continuity_id,
+              active->route()->geometry->compiled_trajectory_revision,
+          .base_continuity_id = active->route()->continuity_id,
           .base_direct_tracking_identity = std::nullopt,
-          .route_splice = testRouteSplice(*active->route, *successor),
+          .route_splice = testRouteSplice(*active->route(), *successor),
           .route = *successor,
       });
   const std::shared_ptr<const PendingCertifiedRoute3D> const_alias = mutable_candidate;
@@ -156,10 +153,9 @@ TEST(ExecutionRouteSnapshot3DTest,
 TEST(ExecutionRouteSnapshot3DTest,
      RouteBasedPendingPublicationRequiresACertifiedSplice) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);
-  ASSERT_TRUE(active->route.has_value());
+  ASSERT_TRUE(active->route() != nullptr);
   ExecutionRouteActivation3D successor_activation = fixture.activation();
   successor_activation.route_generation = SnapshotFixture3D::kRouteGeneration + 1U;
   const std::optional<CertifiedRouteSuffix3D> successor =
@@ -170,10 +166,10 @@ TEST(ExecutionRouteSnapshot3DTest,
           .publication_sequence = 1U,
           .base_execution_owner_epoch = active->execution_owner_epoch,
           .base_kind = PendingExecutionBaseKind3D::kRoute,
-          .base_route_generation = active->route->identity.generation,
+          .base_route_generation = active->route()->identity.generation,
           .base_geometry_revision =
-              active->route->geometry->compiled_trajectory_revision,
-          .base_continuity_id = active->route->continuity_id,
+              active->route()->geometry->compiled_trajectory_revision,
+          .base_continuity_id = active->route()->continuity_id,
           .base_direct_tracking_identity = std::nullopt,
           .route_splice = std::nullopt,
           .route = *successor,
@@ -204,7 +200,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       });
 
   ExecutionRouteSnapshotStore3D store;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> initial = store.snapshot();
+  const std::shared_ptr<const ExecutionPlan3D> initial = store.snapshot();
   ASSERT_NE(initial, nullptr);
   FiniteExecutionState3D execution = SnapshotFixture3D::finiteExecutionForRoute(
       *initial, *suffix, FiniteExecutionKind3D::kNominal, true, 100U);
@@ -227,7 +223,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_EQ(recertified->parent_route_instance_id,
             std::optional<RouteInstanceId3D>{suffix->route_instance_id});
   ExecutionRouteSnapshotStore3D recertified_store;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> recertified_initial =
+  const std::shared_ptr<const ExecutionPlan3D> recertified_initial =
       recertified_store.snapshot();
   ASSERT_NE(recertified_initial, nullptr);
   FiniteExecutionState3D recertified_execution =
@@ -251,9 +247,9 @@ TEST(ExecutionRouteSnapshot3DTest,
 
   ExecutionRouteSnapshotStore3D rejected_store;
   ExecutionRouteSnapshotStore3D foreign_store;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> rejected_initial =
+  const std::shared_ptr<const ExecutionPlan3D> rejected_initial =
       rejected_store.snapshot();
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> foreign_initial =
+  const std::shared_ptr<const ExecutionPlan3D> foreign_initial =
       foreign_store.snapshot();
   ASSERT_NE(rejected_initial, nullptr);
   ASSERT_NE(foreign_initial, nullptr);
@@ -279,7 +275,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_NE(unrelated->route_instance_id, suffix->route_instance_id);
   ASSERT_FALSE(unrelated->parent_route_instance_id.has_value());
   ExecutionRouteSnapshotStore3D unrelated_store;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> unrelated_initial =
+  const std::shared_ptr<const ExecutionPlan3D> unrelated_initial =
       unrelated_store.snapshot();
   ASSERT_NE(unrelated_initial, nullptr);
   FiniteExecutionState3D unrelated_execution =
@@ -305,7 +301,7 @@ TEST(ExecutionRouteSnapshot3DTest, RouteSplicePendingSurvivesExecutionProgressCa
   const std::optional<CertifiedRouteSuffix3D> base = fixture.certify();
   ASSERT_TRUE(base.has_value());
   ExecutionRouteSnapshotStore3D store;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> initial = store.snapshot();
+  const std::shared_ptr<const ExecutionPlan3D> initial = store.snapshot();
   ASSERT_NE(initial, nullptr);
   const ExecutionRouteTransitionResult3D activation = activateCertifiedRoute3D(
       *initial, initial->version, *base,
@@ -314,16 +310,16 @@ TEST(ExecutionRouteSnapshot3DTest, RouteSplicePendingSurvivesExecutionProgressCa
   ASSERT_TRUE(activation.applied());
   ASSERT_EQ(store.publish(initial, activation),
             ExecutionRoutePublicationStatus3D::kPublished);
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active = store.snapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = store.snapshot();
   ASSERT_NE(active, nullptr);
-  ASSERT_TRUE(active->route.has_value());
+  ASSERT_TRUE(active->route() != nullptr);
 
   ExecutionRouteActivation3D successor_activation = fixture.activation();
   successor_activation.route_generation = SnapshotFixture3D::kRouteGeneration + 1U;
   const std::optional<CertifiedRouteSuffix3D> successor =
       certifyExecutionRoute3D(successor_activation);
   ASSERT_TRUE(successor.has_value());
-  const CertifiedRouteSplice3D splice = testRouteSplice(*active->route, *successor);
+  const CertifiedRouteSplice3D splice = testRouteSplice(*active->route(), *successor);
   const ExecutionRouteTransitionResult3D replacement = replaceCertifiedRoute3D(
       *active, SnapshotFixture3D::guard(*active), *successor,
       SnapshotFixture3D::finiteExecutionForRoute(
@@ -335,10 +331,10 @@ TEST(ExecutionRouteSnapshot3DTest, RouteSplicePendingSurvivesExecutionProgressCa
           .publication_sequence = 1U,
           .base_execution_owner_epoch = active->execution_owner_epoch,
           .base_kind = PendingExecutionBaseKind3D::kRoute,
-          .base_route_generation = active->route->identity.generation,
+          .base_route_generation = active->route()->identity.generation,
           .base_geometry_revision =
-              active->route->geometry->compiled_trajectory_revision,
-          .base_continuity_id = active->route->continuity_id,
+              active->route()->geometry->compiled_trajectory_revision,
+          .base_continuity_id = active->route()->continuity_id,
           .base_direct_tracking_identity = std::nullopt,
           .route_splice = splice,
           .route = *successor,
@@ -390,7 +386,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       std::make_shared<const PendingCertifiedRoute3D>(std::move(newer_value));
 
   ExecutionRouteSnapshotStore3D store;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> initial = store.snapshot();
+  const std::shared_ptr<const ExecutionPlan3D> initial = store.snapshot();
   ASSERT_NE(initial, nullptr);
   FiniteExecutionState3D execution = SnapshotFixture3D::finiteExecutionForRoute(
       *initial, *suffix, FiniteExecutionKind3D::kNominal, true, 100U);
@@ -432,10 +428,9 @@ TEST(ExecutionRouteSnapshot3DTest,
 TEST(ExecutionRouteSnapshot3DTest,
      PendingEligibilityAcceptsSemanticProgressButRejectsWrongBaseIdentity) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_TRUE(active);
-  ASSERT_TRUE(active->route.has_value());
+  ASSERT_TRUE(active->route() != nullptr);
 
   ExecutionRouteActivation3D successor_activation = fixture.activation();
   successor_activation.route_generation = SnapshotFixture3D::kRouteGeneration + 1U;
@@ -446,11 +441,11 @@ TEST(ExecutionRouteSnapshot3DTest,
       .publication_sequence = 1U,
       .base_execution_owner_epoch = active->execution_owner_epoch,
       .base_kind = PendingExecutionBaseKind3D::kRoute,
-      .base_route_generation = active->route->identity.generation,
-      .base_geometry_revision = active->route->geometry->compiled_trajectory_revision,
-      .base_continuity_id = active->route->continuity_id,
+      .base_route_generation = active->route()->identity.generation,
+      .base_geometry_revision = active->route()->geometry->compiled_trajectory_revision,
+      .base_continuity_id = active->route()->continuity_id,
       .base_direct_tracking_identity = std::nullopt,
-      .route_splice = testRouteSplice(*active->route, *successor),
+      .route_splice = testRouteSplice(*active->route(), *successor),
       .route = *successor,
   };
   ASSERT_TRUE(pending.valid());
@@ -481,10 +476,9 @@ TEST(ExecutionRouteSnapshot3DTest,
 TEST(ExecutionRouteSnapshot3DTest,
      PendingRouteHandoffTracksOwnerWithoutRequiringOverlapProof) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_TRUE(active);
-  ASSERT_TRUE(active->route.has_value());
+  ASSERT_TRUE(active->route() != nullptr);
 
   ExecutionRouteActivation3D successor_activation = fixture.activation();
   successor_activation.route_generation = active->routeGenerationHighWater() + 1U;
@@ -495,9 +489,9 @@ TEST(ExecutionRouteSnapshot3DTest,
       .publication_sequence = 1U,
       .base_execution_owner_epoch = active->execution_owner_epoch,
       .base_kind = PendingExecutionBaseKind3D::kRouteHandoff,
-      .base_route_generation = active->route->identity.generation,
-      .base_geometry_revision = active->route->geometry->compiled_trajectory_revision,
-      .base_continuity_id = active->route->continuity_id,
+      .base_route_generation = active->route()->identity.generation,
+      .base_geometry_revision = active->route()->geometry->compiled_trajectory_revision,
+      .base_continuity_id = active->route()->continuity_id,
       .base_direct_tracking_identity = std::nullopt,
       .route_splice = std::nullopt,
       .route = *successor,
@@ -506,7 +500,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_TRUE(pending.valid());
   EXPECT_TRUE(pendingCertifiedRouteEligible3D(pending, *active));
   PendingCertifiedRoute3D unexpected_splice = pending;
-  unexpected_splice.route_splice = testRouteSplice(*active->route, *successor);
+  unexpected_splice.route_splice = testRouteSplice(*active->route(), *successor);
   EXPECT_FALSE(unexpected_splice.valid());
 }
 
@@ -514,7 +508,7 @@ TEST(ExecutionRouteSnapshot3DTest, PendingInitialLineageDoesNotAliasRevokedOwner
   SnapshotFixture3D fixture;
   const std::optional<CertifiedRouteSuffix3D> first_route = fixture.certify();
   ASSERT_TRUE(first_route.has_value());
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> initial =
+  const std::shared_ptr<const ExecutionPlan3D> initial =
       makeInitialExecutionRouteSnapshot3D();
   ASSERT_NE(initial, nullptr);
   const PendingCertifiedRoute3D initial_pending{
@@ -546,8 +540,7 @@ TEST(ExecutionRouteSnapshot3DTest, PendingInitialLineageDoesNotAliasRevokedOwner
 TEST(ExecutionRouteSnapshot3DTest,
      PendingHoldLineageSurvivesEvidenceRefreshButNotOwnerReplacement) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);
   const ExecutionRouteTransitionResult3D held = transferToExecutionHold3D(
       *active, active->version, SnapshotFixture3D::holdCertification(*active));
@@ -556,7 +549,7 @@ TEST(ExecutionRouteSnapshot3DTest,
 
   ExecutionRouteActivation3D successor_activation = fixture.activation();
   successor_activation.route_generation = active->routeGenerationHighWater() + 1U;
-  successor_activation.observation.position = held.next->stationary_hold->position;
+  successor_activation.observation.position = held.next->stationaryHold()->position;
   const std::optional<CertifiedRouteSuffix3D> successor =
       certifyExecutionRoute3D(successor_activation);
   ASSERT_TRUE(successor.has_value());
@@ -590,14 +583,13 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_TRUE(wrong_owner.valid());
   EXPECT_FALSE(pendingCertifiedRouteEligible3D(wrong_owner, *refreshed.next));
 
-  ExecutionRouteSnapshot3D wrong_high_water = *refreshed.next;
+  ExecutionPlan3D wrong_high_water = *refreshed.next;
   ++wrong_high_water.route_generation_high_water;
   ASSERT_TRUE(wrong_high_water.valid());
   EXPECT_FALSE(pendingCertifiedRouteEligible3D(pending, wrong_high_water));
 
-  ExecutionRouteSnapshot3D empty_owner = *refreshed.next;
-  empty_owner.phase = ExecutionRoutePhase3D::kAwaitingSuccessor;
-  empty_owner.stationary_hold.reset();
+  ExecutionPlan3D empty_owner = *refreshed.next;
+  empty_owner.state = AwaitingSuccessorPlan3D{};
   ASSERT_TRUE(empty_owner.valid());
   EXPECT_FALSE(pendingCertifiedRouteEligible3D(pending, empty_owner));
 
@@ -654,9 +646,9 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_TRUE(activated.applied())
       << executionRouteTransitionStatus3DName(activated.status);
   ASSERT_NE(activated.next, nullptr);
-  EXPECT_FALSE(activated.next->stationary_hold.has_value());
-  ASSERT_TRUE(activated.next->route.has_value());
-  EXPECT_EQ(activated.next->route->identity.generation,
+  EXPECT_FALSE(activated.next->stationaryHold() != nullptr);
+  ASSERT_TRUE(activated.next->route() != nullptr);
+  EXPECT_EQ(activated.next->route()->identity.generation,
             active->routeGenerationHighWater() + 1U);
   EXPECT_EQ(activated.next->routeGenerationHighWater(),
             active->routeGenerationHighWater() + 1U);
@@ -666,10 +658,9 @@ TEST(ExecutionRouteSnapshot3DTest,
 TEST(ExecutionRouteSnapshot3DTest,
      HoldResidentRejectsRetiredRouteAndDirectPendingLineage) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);
-  ASSERT_TRUE(active->route.has_value());
+  ASSERT_TRUE(active->route() != nullptr);
   const ExecutionRouteTransitionResult3D held = transferToExecutionHold3D(
       *active, active->version, SnapshotFixture3D::holdCertification(*active));
   ASSERT_TRUE(held.applied());
@@ -683,11 +674,11 @@ TEST(ExecutionRouteSnapshot3DTest,
       .publication_sequence = 1U,
       .base_execution_owner_epoch = active->execution_owner_epoch,
       .base_kind = PendingExecutionBaseKind3D::kRoute,
-      .base_route_generation = active->route->identity.generation,
-      .base_geometry_revision = active->route->geometry->compiled_trajectory_revision,
-      .base_continuity_id = active->route->continuity_id,
+      .base_route_generation = active->route()->identity.generation,
+      .base_geometry_revision = active->route()->geometry->compiled_trajectory_revision,
+      .base_continuity_id = active->route()->continuity_id,
       .base_direct_tracking_identity = std::nullopt,
-      .route_splice = testRouteSplice(*active->route, *successor),
+      .route_splice = testRouteSplice(*active->route(), *successor),
       .route = *successor,
   };
   ASSERT_TRUE(route_pending.valid());
@@ -718,8 +709,7 @@ TEST(ExecutionRouteSnapshot3DTest,
 
 TEST(ExecutionRouteSnapshot3DTest, PendingRouteIsObsoleteAtMissionTerminalStop) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);
   const ExecutionRouteTransitionResult3D at_endpoint = advanceCertifiedRoute3D(
       *active, SnapshotFixture3D::guard(*active),
@@ -741,9 +731,9 @@ TEST(ExecutionRouteSnapshot3DTest, PendingRouteIsObsoleteAtMissionTerminalStop) 
       },
       std::nullopt);
   ASSERT_TRUE(stopped.applied());
-  ASSERT_EQ(stopped.next->phase, ExecutionRoutePhase3D::kStopped);
-  ASSERT_TRUE(stopped.next->route.has_value());
-  ASSERT_EQ(stopped.next->route->planned_endpoint_semantics,
+  ASSERT_EQ(stopped.next->phase(), ExecutionRoutePhase3D::kStopped);
+  ASSERT_TRUE(stopped.next->route() != nullptr);
+  ASSERT_EQ(stopped.next->route()->planned_endpoint_semantics,
             RouteEndpointSemantics3D::kMissionStop);
 
   ExecutionRouteActivation3D successor_activation = fixture.activation();
@@ -756,10 +746,10 @@ TEST(ExecutionRouteSnapshot3DTest, PendingRouteIsObsoleteAtMissionTerminalStop) 
       .publication_sequence = 1U,
       .base_execution_owner_epoch = stopped.next->execution_owner_epoch,
       .base_kind = PendingExecutionBaseKind3D::kRoute,
-      .base_route_generation = stopped.next->route->identity.generation,
+      .base_route_generation = stopped.next->route()->identity.generation,
       .base_geometry_revision =
-          stopped.next->route->geometry->compiled_trajectory_revision,
-      .base_continuity_id = stopped.next->route->continuity_id,
+          stopped.next->route()->geometry->compiled_trajectory_revision,
+      .base_continuity_id = stopped.next->route()->continuity_id,
       .base_direct_tracking_identity = std::nullopt,
       .route_splice = std::nullopt,
       .route = *successor,
@@ -803,10 +793,9 @@ TEST(ExecutionRouteSnapshot3DTest,
 TEST(ExecutionRouteSnapshot3DTest,
      DirectTrackingOwnerTransfersAtomicallyAndRejectsStaleLineage) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> route_owner =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> route_owner = fixture.activeSnapshot();
   ASSERT_NE(route_owner, nullptr);
-  ASSERT_TRUE(route_owner->route.has_value());
+  ASSERT_TRUE(route_owner->route() != nullptr);
   const DirectTrackingOwnerIdentity3D identity{
       .mission_epoch = fixture.objective.mission_epoch,
       .assignment_generation = fixture.objective.assignment_generation,
@@ -816,25 +805,26 @@ TEST(ExecutionRouteSnapshot3DTest,
       .line_of_sight_generation = 7U,
   };
   const std::optional<DirectTrackingFiniteExecution3D> first_execution =
-      certifyDirectFixtureExecution(*route_owner, *route_owner->route, identity, 101U);
+      certifyDirectFixtureExecution(*route_owner, *route_owner->route(), identity,
+                                    101U);
   ASSERT_TRUE(first_execution.has_value());
   const ExecutionRouteTransitionResult3D direct =
       transferToDirectTracking3D(*route_owner, route_owner->version, *first_execution);
   ASSERT_TRUE(direct.applied());
   ASSERT_NE(direct.next, nullptr);
   EXPECT_EQ(direct.next->version, route_owner->version + 1U);
-  EXPECT_EQ(direct.next->phase, ExecutionRoutePhase3D::kDirectTracking);
-  EXPECT_FALSE(direct.next->route.has_value());
-  EXPECT_FALSE(direct.next->finite_execution.has_value());
-  ASSERT_TRUE(direct.next->direct_tracking_execution.has_value());
+  EXPECT_EQ(direct.next->phase(), ExecutionRoutePhase3D::kDirectTracking);
+  EXPECT_FALSE(direct.next->route() != nullptr);
+  EXPECT_FALSE(direct.next->finiteExecution() != nullptr);
+  ASSERT_TRUE(direct.next->directTrackingExecution() != nullptr);
   EXPECT_EQ(direct.next->routeGenerationHighWater(),
-            route_owner->route->identity.generation);
+            route_owner->route()->identity.generation);
 
   DirectTrackingOwnerIdentity3D updated_identity = identity;
   ++updated_identity.objective_sample_sequence;
   const std::optional<DirectTrackingFiniteExecution3D> updated_execution =
-      certifyDirectFixtureExecution(*direct.next, *route_owner->route, updated_identity,
-                                    102U);
+      certifyDirectFixtureExecution(*direct.next, *route_owner->route(),
+                                    updated_identity, 102U);
   ASSERT_TRUE(updated_execution.has_value());
   const ExecutionRouteTransitionResult3D updated = replaceDirectTrackingExecution3D(
       *direct.next, direct.next->version, *updated_execution);
@@ -850,7 +840,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   DirectTrackingOwnerIdentity3D wrong_owner = updated_identity;
   ++wrong_owner.target_track_id;
   const std::optional<DirectTrackingFiniteExecution3D> wrong_owner_execution =
-      certifyDirectFixtureExecution(*updated.next, *route_owner->route, wrong_owner,
+      certifyDirectFixtureExecution(*updated.next, *route_owner->route(), wrong_owner,
                                     103U);
   ASSERT_TRUE(wrong_owner_execution.has_value());
   EXPECT_EQ(replaceDirectTrackingExecution3D(*updated.next, updated.next->version,
@@ -861,7 +851,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   DirectTrackingOwnerIdentity3D regressed_sample = updated_identity;
   --regressed_sample.objective_sample_sequence;
   const std::optional<DirectTrackingFiniteExecution3D> regressed_execution =
-      certifyDirectFixtureExecution(*updated.next, *route_owner->route,
+      certifyDirectFixtureExecution(*updated.next, *route_owner->route(),
                                     regressed_sample, 103U);
   ASSERT_TRUE(regressed_execution.has_value());
   EXPECT_EQ(replaceDirectTrackingExecution3D(*updated.next, updated.next->version,
@@ -870,25 +860,26 @@ TEST(ExecutionRouteSnapshot3DTest,
             ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
 
   const std::optional<DirectTrackingFiniteExecution3D> retained_execution =
-      certifyDirectFixtureExecution(*updated.next, *route_owner->route,
+      certifyDirectFixtureExecution(*updated.next, *route_owner->route(),
                                     updated_identity, 103U,
                                     FiniteExecutionKind3D::kRetained);
   ASSERT_TRUE(retained_execution.has_value());
   const ExecutionRouteTransitionResult3D retained = replaceDirectTrackingExecution3D(
       *updated.next, updated.next->version, *retained_execution);
   ASSERT_TRUE(retained.applied());
-  EXPECT_EQ(retained.next->direct_tracking_execution->kind,
+  EXPECT_EQ(retained.next->directTrackingExecution()->kind,
             FiniteExecutionKind3D::kRetained);
 
   ExecutionRouteActivation3D successor_activation = fixture.activation();
-  successor_activation.route_generation = route_owner->route->identity.generation + 1U;
+  successor_activation.route_generation =
+      route_owner->route()->identity.generation + 1U;
   const std::optional<CertifiedRouteSuffix3D> successor =
       certifyExecutionRoute3D(successor_activation);
   ASSERT_TRUE(successor.has_value());
   FiniteExecutionCertification3D successor_certification =
       SnapshotFixture3D::finiteCertificationForRoute(
           *successor, FiniteExecutionKind3D::kNominal, 104U, 104U, 0U, -1.0,
-          retained.next->direct_tracking_execution->execution_input.get());
+          retained.next->directTrackingExecution()->execution_input.get());
   const std::optional<FiniteExecutionState3D> successor_execution =
       certifyFiniteExecution3D(*retained.next, *successor,
                                std::move(successor_certification));
@@ -916,12 +907,12 @@ TEST(ExecutionRouteSnapshot3DTest,
       .publication_sequence = 2U,
       .base_execution_owner_epoch = route_owner->execution_owner_epoch,
       .base_kind = PendingExecutionBaseKind3D::kRoute,
-      .base_route_generation = route_owner->route->identity.generation,
+      .base_route_generation = route_owner->route()->identity.generation,
       .base_geometry_revision =
-          route_owner->route->geometry->compiled_trajectory_revision,
-      .base_continuity_id = route_owner->route->continuity_id,
+          route_owner->route()->geometry->compiled_trajectory_revision,
+      .base_continuity_id = route_owner->route()->continuity_id,
       .base_direct_tracking_identity = std::nullopt,
-      .route_splice = testRouteSplice(*route_owner->route, *successor),
+      .route_splice = testRouteSplice(*route_owner->route(), *successor),
       .route = *successor,
   };
   ASSERT_TRUE(pre_direct_pending.valid());
@@ -931,11 +922,11 @@ TEST(ExecutionRouteSnapshot3DTest,
       transferDirectTrackingToCertifiedRoute3D(*retained.next, retained.next->version,
                                                *successor, *successor_execution);
   ASSERT_TRUE(route_restored.applied());
-  EXPECT_EQ(route_restored.next->phase, ExecutionRoutePhase3D::kFollowing);
-  EXPECT_FALSE(route_restored.next->direct_tracking_execution.has_value());
-  ASSERT_TRUE(route_restored.next->route.has_value());
-  ASSERT_TRUE(route_restored.next->finite_execution.has_value());
-  EXPECT_EQ(route_restored.next->route->identity.generation,
+  EXPECT_EQ(route_restored.next->phase(), ExecutionRoutePhase3D::kFollowing);
+  EXPECT_FALSE(route_restored.next->directTrackingExecution() != nullptr);
+  ASSERT_TRUE(route_restored.next->route() != nullptr);
+  ASSERT_TRUE(route_restored.next->finiteExecution() != nullptr);
+  EXPECT_EQ(route_restored.next->route()->identity.generation,
             successor->identity.generation);
   EXPECT_EQ(route_restored.next->version, retained.next->version + 1U);
 }
@@ -984,12 +975,12 @@ TEST(ExecutionRouteSnapshot3DTest, ProgressConnectorUsesExactPreviousControlBody
   ASSERT_TRUE(compilation.compiled());
   fixture.geometry = compilation.trajectory;
   fixture.geometry_revision = fixture.geometry->compiled_trajectory_revision;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);
-  ASSERT_TRUE(active->route.has_value());
-  ASSERT_NE(active->route->progress.execution_input, nullptr);
-  const VersionedExecutionInput3D& old_input = *active->route->progress.execution_input;
+  ASSERT_TRUE(active->route() != nullptr);
+  ASSERT_NE(active->route()->progress.execution_input, nullptr);
+  const VersionedExecutionInput3D& old_input =
+      *active->route()->progress.execution_input;
 
   ObservedOccupancyGrid3D latest_occupancy{
       GridBounds3D{-5.0, -5.0, 0.0, 0.1, 200, 100, 100}};

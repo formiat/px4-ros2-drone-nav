@@ -6,8 +6,7 @@ namespace {
 TEST(ExecutionRouteSnapshot3DTest,
      SuccessorRequiresFreshEvidenceAndRejectsUnauthenticatedProducerSwitch) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_TRUE(active);
   const ExecutionRouteTransitionResult3D following =
       replaceFiniteExecution3D(*active, SnapshotFixture3D::guard(*active),
@@ -32,12 +31,12 @@ TEST(ExecutionRouteSnapshot3DTest,
       SnapshotFixture3D::finiteExecutionForRoute(*advanced.next, *stale_successor,
                                                  FiniteExecutionKind3D::kNominal, true,
                                                  102U);
-  EXPECT_EQ(
-      replaceCertifiedRoute3D(*advanced.next, SnapshotFixture3D::guard(*advanced.next),
-                              *stale_successor, stale_execution,
-                              testRouteSplice(*advanced.next->route, *stale_successor))
-          .status,
-      ExecutionRouteTransitionStatus3D::kCertificateRegression);
+  EXPECT_EQ(replaceCertifiedRoute3D(
+                *advanced.next, SnapshotFixture3D::guard(*advanced.next),
+                *stale_successor, stale_execution,
+                testRouteSplice(*advanced.next->route(), *stale_successor))
+                .status,
+            ExecutionRouteTransitionStatus3D::kCertificateRegression);
 
   ExecutionRouteActivation3D fresh_activation = stale_activation;
   fresh_activation.observation.latest_raw_revision = current_raw_revision;
@@ -51,7 +50,7 @@ TEST(ExecutionRouteSnapshot3DTest,
                                                  102U);
   const ExecutionRouteTransitionResult3D accepted = replaceCertifiedRoute3D(
       *advanced.next, SnapshotFixture3D::guard(*advanced.next), *fresh_successor,
-      fresh_execution, testRouteSplice(*advanced.next->route, *fresh_successor));
+      fresh_execution, testRouteSplice(*advanced.next->route(), *fresh_successor));
   EXPECT_TRUE(accepted.applied());
 
   constexpr std::uint64_t kUnauthenticatedProducer{SnapshotFixture3D::kRawProducer +
@@ -77,7 +76,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   EXPECT_EQ(replaceCertifiedRoute3D(
                 *advanced.next, SnapshotFixture3D::guard(*advanced.next),
                 *switched_successor, switched_execution,
-                testRouteSplice(*advanced.next->route, *switched_successor))
+                testRouteSplice(*advanced.next->route(), *switched_successor))
                 .status,
             ExecutionRouteTransitionStatus3D::kCertificateRegression);
 }

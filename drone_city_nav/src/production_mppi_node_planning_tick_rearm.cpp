@@ -38,12 +38,12 @@ executionHorizonOwnerEmpty(const ProductionMppiExecutionHorizonOwner& owner) noe
 }
 
 [[nodiscard]] bool executionSnapshotRevokedEmpty(
-    const std::shared_ptr<const ExecutionRouteSnapshot3D>& snapshot) noexcept {
+    const std::shared_ptr<const ExecutionPlan3D>& snapshot) noexcept {
   return snapshot != nullptr && snapshot->valid() &&
-         snapshot->phase == ExecutionRoutePhase3D::kRevoked &&
-         !snapshot->route.has_value() && !snapshot->finite_execution.has_value() &&
-         !snapshot->direct_tracking_execution.has_value() &&
-         !snapshot->stationary_hold.has_value();
+         snapshot->phase() == ExecutionRoutePhase3D::kRevoked &&
+         snapshot->route() == nullptr && snapshot->finiteExecution() == nullptr &&
+         snapshot->directTrackingExecution() == nullptr &&
+         snapshot->stationaryHold() == nullptr;
 }
 
 [[nodiscard]] bool sameRawMapVersion(const RawMapVersion& first,

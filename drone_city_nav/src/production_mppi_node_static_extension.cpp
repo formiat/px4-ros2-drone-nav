@@ -81,10 +81,8 @@ void ProductionMppiNode::maybeRequestStaticRouteExtensionFromExecution(
   if (route_execution.source_snapshot == nullptr) {
     return;
   }
-  const ExecutionRouteSnapshot3D& source = *route_execution.source_snapshot;
-  const std::optional<CertifiedRouteSuffix3D>& route = source.route;
-  const CertifiedRouteSuffix3D* const active_route =
-      route.has_value() ? std::addressof(route.value()) : nullptr;
+  const ExecutionPlan3D& source = *route_execution.source_snapshot;
+  const CertifiedRouteSuffix3D* const active_route = source.route();
   if (route_execution.physical_trajectory_invalidated && active_route != nullptr &&
       executionRouteAcceptsCertifiedReplacement3D(source)) {
     // A physical invalidation is latched for the resident generation. Search
@@ -95,10 +93,10 @@ void ProductionMppiNode::maybeRequestStaticRouteExtensionFromExecution(
     return;
   }
   const bool suspended_route =
-      source.phase == ExecutionRoutePhase3D::kAwaitingSuccessor &&
-      source.route.has_value() && !source.finite_execution.has_value() &&
-      !source.braking_fallback.has_value();
-  if (source.phase != ExecutionRoutePhase3D::kFollowing && !suspended_route) {
+      source.phase() == ExecutionRoutePhase3D::kAwaitingSuccessor &&
+      source.route() != nullptr && source.finiteExecution() == nullptr &&
+      source.brakingFallback() == nullptr;
+  if (source.phase() != ExecutionRoutePhase3D::kFollowing && !suspended_route) {
     return;
   }
   if (active_route == nullptr) {
@@ -303,7 +301,7 @@ void ProductionMppiNode::requestStaticRouteReplan(
     return;
   }
   const std::int64_t now_ns = get_clock()->now().nanoseconds();
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> execution_snapshot =
+  const std::shared_ptr<const ExecutionPlan3D> execution_snapshot =
       execution_route_store_.snapshot();
   const std::uint64_t committed_route_generation =
       execution_snapshot != nullptr ? execution_snapshot->routeGenerationHighWater()
@@ -544,16 +542,16 @@ void ProductionMppiNode::maybeRequestStaticTrackingWorldRefresh(
   if (!navigation.valid) {
     return;
   }
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> execution_snapshot =
+  const std::shared_ptr<const ExecutionPlan3D> execution_snapshot =
       execution_route_store_.snapshot();
   if (execution_snapshot == nullptr) {
     return;
   }
-  const std::optional<CertifiedRouteSuffix3D>& route = execution_snapshot->route;
-  if (!route.has_value()) {
+  const CertifiedRouteSuffix3D* const route = execution_snapshot->route();
+  if (route == nullptr) {
     return;
   }
-  const CertifiedRouteSuffix3D& active_route = route.value();
+  const CertifiedRouteSuffix3D& active_route = *route;
   if (!active_route.valid()) {
     return;
   }

@@ -6,17 +6,17 @@ namespace drone_city_nav {
 namespace {
 
 FiniteExecutionPlan3D SnapshotFixture3D::finitePlanForRoute(
-    const ExecutionRouteSnapshot3D& snapshot, const CertifiedRouteSuffix3D& suffix,
+    const ExecutionPlan3D& snapshot, const CertifiedRouteSuffix3D& suffix,
     const FiniteExecutionKind3D command_kind, const std::uint64_t trajectory_revision,
     const std::uint64_t source_navigation_revision,
     const std::size_t extra_stationary_control_count, const double begin_station_m) {
   FiniteExecutionCertification3D command = finiteCertificationForRoute(
       suffix, command_kind, trajectory_revision, source_navigation_revision,
       extra_stationary_control_count, begin_station_m,
-      snapshot.route.has_value() ? snapshot.route->progress.execution_input.get()
-                                 : nullptr,
-      snapshot.finite_execution.has_value()
-          ? snapshot.finite_execution->latest_lidar_evidence.get()
+      snapshot.route() != nullptr ? snapshot.route()->progress.execution_input.get()
+                                  : nullptr,
+      snapshot.finiteExecution() != nullptr
+          ? snapshot.finiteExecution()->latest_lidar_evidence.get()
           : nullptr);
   const std::optional<mppi::FiniteHorizon> braking = mppi::buildFiniteBrakingHorizon(
       command.horizon.states.front(), command.horizon.controls.size(),
@@ -39,7 +39,7 @@ FiniteExecutionPlan3D SnapshotFixture3D::finitePlanForRoute(
 // Test-only adapter for constructing intentionally valid or tampered command
 // horizons while the production API accepts only a complete atomic plan.
 [[nodiscard, maybe_unused]] FiniteExecutionPlan3D
-testExecutionPlanForCommand(const ExecutionRouteSnapshot3D& current,
+testExecutionPlanForCommand(const ExecutionPlan3D& current,
                             const CertifiedRouteSuffix3D& target_route,
                             FiniteExecutionState3D command_horizon) {
   const auto invalid_plan = [&command_horizon] {
@@ -77,11 +77,9 @@ testExecutionPlanForCommand(const ExecutionRouteSnapshot3D& current,
              : invalid_plan();
 }
 
-[[nodiscard, maybe_unused]] ExecutionRouteTransitionResult3D
-activateCertifiedRoute3D(const ExecutionRouteSnapshot3D& current,
-                         const std::uint64_t expected_snapshot_version,
-                         CertifiedRouteSuffix3D candidate,
-                         FiniteExecutionState3D candidate_execution) {
+[[nodiscard, maybe_unused]] ExecutionRouteTransitionResult3D activateCertifiedRoute3D(
+    const ExecutionPlan3D& current, const std::uint64_t expected_snapshot_version,
+    CertifiedRouteSuffix3D candidate, FiniteExecutionState3D candidate_execution) {
   FiniteExecutionPlan3D plan =
       testExecutionPlanForCommand(current, candidate, std::move(candidate_execution));
   return ::drone_city_nav::activateCertifiedRoute3D(
@@ -89,21 +87,22 @@ activateCertifiedRoute3D(const ExecutionRouteSnapshot3D& current,
 }
 
 [[nodiscard, maybe_unused]] ExecutionRouteTransitionResult3D
-replaceFiniteExecution3D(const ExecutionRouteSnapshot3D& current,
+replaceFiniteExecution3D(const ExecutionPlan3D& current,
                          const ExecutionRouteTransitionGuard3D& guard,
                          std::optional<FiniteExecutionState3D> candidate_execution) {
-  if (!candidate_execution.has_value() || !current.route.has_value()) {
+  const CertifiedRouteSuffix3D* const route = current.route();
+  if (!candidate_execution.has_value() || route == nullptr) {
     return ::drone_city_nav::replaceFiniteExecutionPlan3D(current, guard,
                                                           FiniteExecutionPlan3D{});
   }
   return ::drone_city_nav::replaceFiniteExecutionPlan3D(
       current, guard,
-      testExecutionPlanForCommand(current, current.route.value(),
+      testExecutionPlanForCommand(current, *route,
                                   std::move(candidate_execution.value())));
 }
 
 [[nodiscard, maybe_unused]] ExecutionRouteTransitionResult3D
-replaceCertifiedRoute3D(const ExecutionRouteSnapshot3D& current,
+replaceCertifiedRoute3D(const ExecutionPlan3D& current,
                         const ExecutionRouteTransitionGuard3D& guard,
                         CertifiedRouteSuffix3D successor,
                         std::optional<FiniteExecutionState3D> successor_execution,
@@ -119,8 +118,8 @@ replaceCertifiedRoute3D(const ExecutionRouteSnapshot3D& current,
 
 [[nodiscard, maybe_unused]] ExecutionRouteTransitionResult3D
 replaceCertifiedRouteAtHandoff3D(
-    const ExecutionRouteSnapshot3D& current,
-    const ExecutionRouteTransitionGuard3D& guard, CertifiedRouteSuffix3D successor,
+    const ExecutionPlan3D& current, const ExecutionRouteTransitionGuard3D& guard,
+    CertifiedRouteSuffix3D successor,
     std::optional<FiniteExecutionState3D> successor_execution) {
   FiniteExecutionPlan3D plan =
       successor_execution.has_value()
@@ -132,7 +131,7 @@ replaceCertifiedRouteAtHandoff3D(
 }
 
 [[nodiscard, maybe_unused]] ExecutionRouteTransitionResult3D
-transferDirectTrackingToCertifiedRoute3D(const ExecutionRouteSnapshot3D& current,
+transferDirectTrackingToCertifiedRoute3D(const ExecutionPlan3D& current,
                                          const std::uint64_t expected_snapshot_version,
                                          CertifiedRouteSuffix3D successor,
                                          FiniteExecutionState3D successor_execution) {

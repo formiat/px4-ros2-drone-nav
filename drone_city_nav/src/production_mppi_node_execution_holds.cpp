@@ -50,7 +50,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
   Point3 owned_hold_position = hold_position;
   const std::scoped_lock evidence_lock{execution_evidence_commit_mutex_,
                                        latest_lidar_evidence_commit_mutex_};
-  std::shared_ptr<const ExecutionRouteSnapshot3D> hold_expected;
+  std::shared_ptr<const ExecutionPlan3D> hold_expected;
   std::optional<ExecutionRouteTransitionResult3D> hold_transition;
   const std::shared_ptr<const VersionedLatestLidarEvidence3D> current_lidar =
       latest_lidar_evidence_.load(std::memory_order_acquire);
@@ -78,11 +78,11 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
       reason == ProductionMppiExecutionReason::kGoalCapture &&
       ownership_transition ==
           ProductionMppiHoldOwnershipTransition3D::kExplicitTransfer &&
-      hold_expected->phase == ExecutionRoutePhase3D::kRevoked &&
-      !hold_expected->route.has_value() &&
-      !hold_expected->finite_execution.has_value() &&
-      !hold_expected->direct_tracking_execution.has_value() &&
-      !hold_expected->stationary_hold.has_value() &&
+      hold_expected->phase() == ExecutionRoutePhase3D::kRevoked &&
+      hold_expected->route() == nullptr &&
+      hold_expected->finiteExecution() == nullptr &&
+      hold_expected->directTrackingExecution() == nullptr &&
+      hold_expected->stationaryHold() == nullptr &&
       cycle.planning_state == ProductionMppiPlanningState::kMissionGoalPositionHold &&
       cycle.execution_input != nullptr &&
       cycle.execution_input->stationaryCaptureStateAuthoritative() &&
@@ -100,23 +100,17 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
           cycle.latest_raw_world_3d) {
     return publication;
   }
-  if (hold_expected->stationary_hold.has_value() &&
+  if (hold_expected->stationaryHold() != nullptr &&
       ownership_transition ==
           ProductionMppiHoldOwnershipTransition3D::kEnterEmptyOwner) {
-    owned_hold_position = hold_expected->stationary_hold->position;
+    owned_hold_position = hold_expected->stationaryHold()->position;
   }
   const StationaryExecutionHold3D* const resident_hold =
-      hold_expected->stationary_hold.has_value()
-          ? std::addressof(*hold_expected->stationary_hold)
-          : nullptr;
+      hold_expected->stationaryHold();
   const FiniteExecutionState3D* const route_execution =
-      hold_expected->finite_execution.has_value()
-          ? std::addressof(*hold_expected->finite_execution)
-          : nullptr;
+      hold_expected->finiteExecution();
   const DirectTrackingFiniteExecution3D* const direct_execution =
-      hold_expected->direct_tracking_execution.has_value()
-          ? std::addressof(*hold_expected->direct_tracking_execution)
-          : nullptr;
+      hold_expected->directTrackingExecution();
   const std::shared_ptr<const VersionedObservedRawWorld3D> source_observed =
       stationary_capture_rearm      ? cycle.direct_observed_world
       : resident_hold != nullptr    ? resident_hold->observed_raw_world
@@ -164,7 +158,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
                                        make_hold_certification())
           : transferToExecutionHold3D(*hold_expected, hold_expected->version,
                                       make_hold_certification());
-  std::shared_ptr<const ExecutionRouteSnapshot3D> owned_snapshot;
+  std::shared_ptr<const ExecutionPlan3D> owned_snapshot;
   if (hold.applied()) {
     hold_transition.emplace(hold);
     owned_snapshot = hold.next;
@@ -173,13 +167,13 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
   } else {
     return publication;
   }
-  if (owned_snapshot == nullptr || !owned_snapshot->stationary_hold.has_value() ||
-      owned_snapshot->route.has_value() ||
-      owned_snapshot->finite_execution.has_value() ||
-      owned_snapshot->direct_tracking_execution.has_value()) {
+  if (owned_snapshot == nullptr || owned_snapshot->stationaryHold() == nullptr ||
+      owned_snapshot->route() != nullptr ||
+      owned_snapshot->finiteExecution() != nullptr ||
+      owned_snapshot->directTrackingExecution() != nullptr) {
     return publication;
   }
-  owned_hold_position = owned_snapshot->stationary_hold->position;
+  owned_hold_position = owned_snapshot->stationaryHold()->position;
   if (!insideFlightEnvelope(owned_hold_position, flight_envelope_config_)) {
     RCLCPP_ERROR(get_logger(),
                  "EXECUTION_HORIZON rejected reason=hold_outside_flight_envelope "
@@ -259,10 +253,10 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishNoExecutablePathHo
     const ProductionMppiExecutionCycle& cycle,
     const ProductionMppiExecutionReason reason) {
   if (cycle.route_execution.source_snapshot != nullptr &&
-      cycle.route_execution.source_snapshot->stationary_hold.has_value()) {
+      cycle.route_execution.source_snapshot->stationaryHold() != nullptr) {
     ProductionMppiExecutionPublication hold = publishPositionHold(
-        cycle, cycle.route_execution.source_snapshot->stationary_hold->position, reason,
-        ProductionMppiHoldOwnershipTransition3D::kEnterEmptyOwner);
+        cycle, cycle.route_execution.source_snapshot->stationaryHold()->position,
+        reason, ProductionMppiHoldOwnershipTransition3D::kEnterEmptyOwner);
     if (hold.published) {
       return hold;
     }
@@ -300,13 +294,13 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionRevocatio
   }
 
   const std::scoped_lock evidence_lock{execution_evidence_commit_mutex_};
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> expected =
+  const std::shared_ptr<const ExecutionPlan3D> expected =
       execution_route_store_.snapshot();
   if (expected == nullptr) {
     return publication;
   }
   const ExecutionRouteTransitionResult3D transition = [&] {
-    if (expected->route.has_value()) {
+    if (expected->route() != nullptr) {
       ExecutionRouteTransitionResult3D suspension =
           suspendFiniteExecution3D(*expected, expected->version);
       if (suspension.applied() ||
@@ -318,9 +312,9 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionRevocatio
     return revokeExecution3D(*expected, expected->version);
   }();
   const bool certified_route_preserved =
-      expected->route.has_value() &&
+      expected->route() != nullptr &&
       ((transition.applied() && transition.next != nullptr &&
-        transition.next->route.has_value()) ||
+        transition.next->route() != nullptr) ||
        (transition.status == ExecutionRouteTransitionStatus3D::kNoChange));
   const bool transition_required = transition.applied();
   if (!transition_required &&
@@ -429,12 +423,12 @@ bool ProductionMppiNode::handleRequestedExecutionRevocation(const std::int64_t n
   bool revocation_already_satisfied{false};
   {
     const std::scoped_lock lock{execution_evidence_commit_mutex_, input_mutex_};
-    const std::shared_ptr<const ExecutionRouteSnapshot3D> snapshot =
+    const std::shared_ptr<const ExecutionPlan3D> snapshot =
         execution_route_store_.snapshot();
     const bool snapshot_has_executable_authority =
-        snapshot != nullptr && (snapshot->finite_execution.has_value() ||
-                                snapshot->direct_tracking_execution.has_value() ||
-                                snapshot->stationary_hold.has_value());
+        snapshot != nullptr && (snapshot->finiteExecution() != nullptr ||
+                                snapshot->directTrackingExecution() != nullptr ||
+                                snapshot->stationaryHold() != nullptr);
     revocation_already_satisfied =
         !snapshot_has_executable_authority && !execution_horizon_owner_.valid;
   }
@@ -449,13 +443,13 @@ void ProductionMppiNode::publishFailClosedExecutionRevocation(
   if (!optional_constraints_.nonphysical_execution_revocation_enabled) {
     return;
   }
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> snapshot =
+  const std::shared_ptr<const ExecutionPlan3D> snapshot =
       execution_route_store_.snapshot();
   const bool authority_present =
-      snapshot != nullptr && (snapshot->phase == ExecutionRoutePhase3D::kRevoked ||
-                              snapshot->finite_execution.has_value() ||
-                              snapshot->direct_tracking_execution.has_value() ||
-                              snapshot->stationary_hold.has_value());
+      snapshot != nullptr && (snapshot->phase() == ExecutionRoutePhase3D::kRevoked ||
+                              snapshot->finiteExecution() != nullptr ||
+                              snapshot->directTrackingExecution() != nullptr ||
+                              snapshot->stationaryHold() != nullptr);
   if (authority_present) {
     static_cast<void>(publishExecutionRevocation(reason, now_ns));
   }

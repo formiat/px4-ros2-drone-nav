@@ -18,7 +18,7 @@ struct ProductionMppiStationaryCaptureRearmContext {
   const WorldSnapshot3D* world{nullptr};
   std::shared_ptr<const ProductionMppiRawWorld3D> latest_raw_world_3d;
   std::shared_ptr<const VersionedLatestLidarEvidence3D> latest_lidar_evidence;
-  std::shared_ptr<const ExecutionRouteSnapshot3D> execution_snapshot;
+  std::shared_ptr<const ExecutionPlan3D> execution_snapshot;
   std::shared_ptr<const VersionedExecutionValidationPolicy3D> validation_policy;
   std::shared_ptr<const OccupancyGrid3D> static_occupancy_3d;
   MissionWaypointCaptureGateConfig capture_gate_config{};

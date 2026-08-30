@@ -111,7 +111,7 @@ void ProductionMppiNode::planningTick() {
       latest_lidar_evidence_identity_conflicted
           ? nullptr
           : latest_lidar_evidence_.load(std::memory_order_acquire);
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> execution_snapshot =
+  const std::shared_ptr<const ExecutionPlan3D> execution_snapshot =
       execution_route_store_.snapshot();
   // Timestamp the immutable planning view only after all callback-owned inputs
   // have been captured. A concurrently published evidence value may have a

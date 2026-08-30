@@ -22,14 +22,14 @@ NavigationHealthAssessment ProductionMppiNode::updateNavigationHealth(
     const std::shared_ptr<const ProductionNavigationObjective>& objective,
     const ProductionMppiAppliedControl& applied_control,
     const ProductionMppiExecutionHorizonOwner& execution_horizon_owner,
-    const std::shared_ptr<const ExecutionRouteSnapshot3D>& execution_snapshot,
+    const std::shared_ptr<const ExecutionPlan3D>& execution_snapshot,
     const bool world_current, const std::int64_t now_ns) {
   if (navigation_health_supervisor_ == nullptr) {
     return {};
   }
   const bool certified_route_ready = execution_snapshot != nullptr &&
                                      execution_snapshot->valid() &&
-                                     execution_snapshot->route.has_value();
+                                     execution_snapshot->route() != nullptr;
   const bool horizon_acknowledged =
       certified_route_ready && execution_horizon_owner.valid &&
       execution_horizon_owner.execution_mode ==

@@ -62,9 +62,8 @@ bool PendingCertifiedRoute3D::valid() const noexcept {
   return false;
 }
 
-bool pendingCertifiedRouteEligible3D(
-    const PendingCertifiedRoute3D& pending,
-    const ExecutionRouteSnapshot3D& snapshot) noexcept {
+bool pendingCertifiedRouteEligible3D(const PendingCertifiedRoute3D& pending,
+                                     const ExecutionPlan3D& snapshot) noexcept {
   if (!pending.valid() || !snapshot.valid()) {
     return false;
   }
@@ -72,46 +71,44 @@ bool pendingCertifiedRouteEligible3D(
       snapshot.routeGenerationHighWater() != pending.base_route_generation) {
     return false;
   }
+  const CertifiedRouteSuffix3D* const route = snapshot.route();
+  const DirectTrackingFiniteExecution3D* const direct =
+      snapshot.directTrackingExecution();
+  const StationaryExecutionHold3D* const hold = snapshot.stationaryHold();
   switch (pending.base_kind) {
     case PendingExecutionBaseKind3D::kEmpty:
-      return snapshot.phase == ExecutionRoutePhase3D::kAwaitingSuccessor &&
-             !snapshot.route.has_value() && !snapshot.finite_execution.has_value() &&
-             !snapshot.direct_tracking_execution.has_value() &&
-             !snapshot.stationary_hold.has_value();
+      return snapshot.phase() == ExecutionRoutePhase3D::kAwaitingSuccessor &&
+             route == nullptr && snapshot.finiteExecution() == nullptr &&
+             direct == nullptr && hold == nullptr;
     case PendingExecutionBaseKind3D::kRoute:
       return executionRouteAcceptsCertifiedReplacement3D(snapshot) &&
-             snapshot.route.has_value() && snapshot.route->geometry != nullptr &&
-             snapshot.route->identity.generation == pending.base_route_generation &&
-             snapshot.route->geometry->compiled_trajectory_revision ==
+             route != nullptr && route->geometry != nullptr &&
+             route->identity.generation == pending.base_route_generation &&
+             route->geometry->compiled_trajectory_revision ==
                  pending.base_geometry_revision &&
-             snapshot.route->continuity_id == pending.base_continuity_id &&
+             route->continuity_id == pending.base_continuity_id &&
              pending.route_splice.has_value() &&
-             pending.route_splice->validFor(*snapshot.route, pending.route);
+             pending.route_splice->validFor(*route, pending.route);
     case PendingExecutionBaseKind3D::kRouteHandoff:
       return executionRouteAcceptsCertifiedReplacement3D(snapshot) &&
-             snapshot.route.has_value() && snapshot.route->geometry != nullptr &&
-             snapshot.route->identity.generation == pending.base_route_generation &&
-             snapshot.route->geometry->compiled_trajectory_revision ==
+             route != nullptr && route->geometry != nullptr &&
+             route->identity.generation == pending.base_route_generation &&
+             route->geometry->compiled_trajectory_revision ==
                  pending.base_geometry_revision &&
-             snapshot.route->continuity_id == pending.base_continuity_id &&
+             route->continuity_id == pending.base_continuity_id &&
              !pending.route_splice.has_value();
     case PendingExecutionBaseKind3D::kDirectTracking:
-      return snapshot.phase == ExecutionRoutePhase3D::kDirectTracking &&
-             snapshot.direct_tracking_execution.has_value() &&
-             pending.base_direct_tracking_identity.has_value() &&
+      return snapshot.phase() == ExecutionRoutePhase3D::kDirectTracking &&
+             direct != nullptr && pending.base_direct_tracking_identity.has_value() &&
              sameDirectTrackingIdentity(*pending.base_direct_tracking_identity,
-                                        snapshot.direct_tracking_execution->identity);
+                                        direct->identity);
     case PendingExecutionBaseKind3D::kStationaryHold:
-      return snapshot.phase == ExecutionRoutePhase3D::kStopped &&
-             snapshot.stationary_hold.has_value() &&
-             snapshot.stationary_hold->hold_id == pending.base_execution_owner_epoch &&
-             !snapshot.route.has_value() && !snapshot.finite_execution.has_value() &&
-             !snapshot.direct_tracking_execution.has_value();
+      return snapshot.phase() == ExecutionRoutePhase3D::kStopped && hold != nullptr &&
+             hold->hold_id == pending.base_execution_owner_epoch;
     case PendingExecutionBaseKind3D::kRevoked:
-      return snapshot.phase == ExecutionRoutePhase3D::kRevoked &&
-             !snapshot.route.has_value() && !snapshot.finite_execution.has_value() &&
-             !snapshot.direct_tracking_execution.has_value() &&
-             !snapshot.stationary_hold.has_value();
+      return snapshot.phase() == ExecutionRoutePhase3D::kRevoked && route == nullptr &&
+             snapshot.finiteExecution() == nullptr && direct == nullptr &&
+             hold == nullptr;
   }
   return false;
 }
@@ -170,17 +167,14 @@ bool PendingCertifiedRouteMailbox3D::acknowledgeIfSame(
 bool PendingCertifiedRouteMailbox3D::commitExecutionIfSame(
     const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending,
     ExecutionRouteSnapshotStore3D& execution_store,
-    const std::shared_ptr<const ExecutionRouteSnapshot3D>& expected_snapshot,
+    const std::shared_ptr<const ExecutionPlan3D>& expected_snapshot,
     const ExecutionRouteTransitionResult3D& transition) {
   if (expected_pending == nullptr || expected_snapshot == nullptr ||
       transition.next == nullptr) {
     return false;
   }
   const std::scoped_lock lock{mutex_};
-  const CertifiedRouteSuffix3D* committed_route = nullptr;
-  if (transition.next->route.has_value()) {
-    committed_route = transition.next->route.operator->();
-  }
+  const CertifiedRouteSuffix3D* const committed_route = transition.next->route();
   const bool committed_route_is_pending_revision =
       committed_route != nullptr &&
       (committed_route->route_instance_id ==

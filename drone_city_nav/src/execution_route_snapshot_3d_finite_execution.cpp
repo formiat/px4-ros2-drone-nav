@@ -194,12 +194,15 @@ brakingRouteOwnershipBinding(const CertifiedRouteSuffix3D& route,
 
 [[nodiscard]] FiniteExecutionCertificationResult3D
 certifyFiniteExecutionAgainstOwnedWorld3D(
-    const ExecutionRouteSnapshot3D& current, const CertifiedRouteSuffix3D& target_route,
+    const ExecutionPlan3D& current, const CertifiedRouteSuffix3D& target_route,
     FiniteExecutionCertification3D certification,
     std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_validation_world,
     const RouteLifecycleEvent3D* const lifecycle_event,
     const std::optional<double> atomic_plan_begin_station_m = std::nullopt) {
   const CertifiedRouteSuffix3D* const current_route = routePointer(current);
+  const FiniteExecutionState3D* const current_execution = current.finiteExecution();
+  const DirectTrackingFiniteExecution3D* const current_direct_execution =
+      current.directTrackingExecution();
   const bool certifies_raw_invalidation =
       lifecycle_event != nullptr &&
       lifecycle_event->kind == RouteLifecycleEventKind3D::kRawInvalidated;
@@ -222,12 +225,11 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
       certification.valid_from_ns <= 0 ||
       certification.execution_input->effectiveStampNs() !=
           certification.valid_from_ns ||
-      (current.finite_execution.has_value() &&
+      (current_execution != nullptr &&
+       certification.trajectory_revision <= current_execution->trajectory_revision) ||
+      (current_direct_execution != nullptr &&
        certification.trajectory_revision <=
-           current.finite_execution->trajectory_revision) ||
-      (current.direct_tracking_execution.has_value() &&
-       certification.trajectory_revision <=
-           current.direct_tracking_execution->trajectory_revision)) {
+           current_direct_execution->trajectory_revision)) {
     return rejectedFiniteExecution(FiniteExecutionCertificationStatus3D::kInvalidInput);
   }
 
@@ -239,13 +241,13 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
       current_route->identity.generation != std::numeric_limits<std::uint64_t>::max() &&
       target_route.identity.generation == current_route->identity.generation + 1U;
   const bool targets_direct_successor =
-      current.phase == ExecutionRoutePhase3D::kDirectTracking &&
-      current.direct_tracking_execution.has_value() && current_route == nullptr &&
+      current.phase() == ExecutionRoutePhase3D::kDirectTracking &&
+      current_direct_execution != nullptr && current_route == nullptr &&
       current.routeGenerationHighWater() != std::numeric_limits<std::uint64_t>::max() &&
       target_route.identity.generation == current.routeGenerationHighWater() + 1U;
   const bool targets_initial_route =
-      current_route == nullptr && !current.finite_execution.has_value() &&
-      !current.direct_tracking_execution.has_value() &&
+      current_route == nullptr && current_execution == nullptr &&
+      current_direct_execution == nullptr &&
       current.routeGenerationHighWater() != std::numeric_limits<std::uint64_t>::max() &&
       target_route.identity.generation == current.routeGenerationHighWater() + 1U;
   if (!targets_current_route && !targets_successor_route && !targets_direct_successor &&
@@ -258,11 +260,10 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
         FiniteExecutionCertificationStatus3D::kTargetRelationRejected);
   }
   if (certifies_latest_lidar_invalidation &&
-      (current.phase != ExecutionRoutePhase3D::kFollowing ||
-       !current.finite_execution.has_value() ||
-       certification.latest_lidar_evidence == nullptr ||
+      (current.phase() != ExecutionRoutePhase3D::kFollowing ||
+       current_execution == nullptr || certification.latest_lidar_evidence == nullptr ||
        validateRemainingFiniteExecutionAgainstLatestLidar3D(
-           *current.finite_execution, *certification.execution_input,
+           *current_execution, *certification.execution_input,
            *certification.latest_lidar_evidence, certification.valid_from_ns)
                .status != mppi::FiniteExecutionPathStatus::kLatestLidarRawCollision)) {
     return rejectedFiniteExecution(
@@ -295,9 +296,9 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
       target_route.validation_policy;
   if (certifies_raw_invalidation) {
     const auto* const previous_raw_lineage =
-        current.finite_execution.has_value()
+        current_execution != nullptr
             ? std::get_if<ObservedRawFiniteExecutionValidationLineage3D>(
-                  &current.finite_execution->validation_proof.lineage)
+                  &current_execution->validation_proof.lineage)
             : nullptr;
     if (!raw_mode || lifecycle_event->generation != target_route.identity.generation ||
         lifecycle_event->raw_producer_instance_id == 0U ||
@@ -680,7 +681,7 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
 } // namespace execution_route_snapshot_3d_internal
 
 std::optional<FiniteExecutionState3D>
-certifyFiniteExecution3D(const ExecutionRouteSnapshot3D& current,
+certifyFiniteExecution3D(const ExecutionPlan3D& current,
                          const CertifiedRouteSuffix3D& target_route,
                          FiniteExecutionCertification3D certification) {
   return certifyFiniteExecution3DDetailed(current, target_route,
@@ -689,7 +690,7 @@ certifyFiniteExecution3D(const ExecutionRouteSnapshot3D& current,
 }
 
 FiniteExecutionCertificationResult3D
-certifyFiniteExecution3DDetailed(const ExecutionRouteSnapshot3D& current,
+certifyFiniteExecution3DDetailed(const ExecutionPlan3D& current,
                                  const CertifiedRouteSuffix3D& target_route,
                                  FiniteExecutionCertification3D certification) {
   return certifyFiniteExecutionAgainstOwnedWorld3D(
@@ -698,7 +699,7 @@ certifyFiniteExecution3DDetailed(const ExecutionRouteSnapshot3D& current,
 }
 
 FiniteExecutionPlanCertificationResult3D
-certifyFiniteExecutionPlan3DDetailed(const ExecutionRouteSnapshot3D& current,
+certifyFiniteExecutionPlan3DDetailed(const ExecutionPlan3D& current,
                                      const CertifiedRouteSuffix3D& target_route,
                                      FiniteExecutionPlanCertification3D certification) {
   FiniteExecutionPlanCertificationResult3D result;
@@ -743,7 +744,7 @@ certifyFiniteExecutionPlan3DDetailed(const ExecutionRouteSnapshot3D& current,
 }
 
 std::optional<FiniteExecutionState3D>
-certifyFiniteExecution3D(const ExecutionRouteSnapshot3D& current,
+certifyFiniteExecution3D(const ExecutionPlan3D& current,
                          FiniteExecutionCertification3D certification) {
   const CertifiedRouteSuffix3D* const route = routePointer(current);
   return route == nullptr
@@ -752,7 +753,7 @@ certifyFiniteExecution3D(const ExecutionRouteSnapshot3D& current,
 }
 
 std::optional<FiniteExecutionState3D> certifyRawInvalidatedFiniteExecution3D(
-    const ExecutionRouteSnapshot3D& current,
+    const ExecutionPlan3D& current,
     RawInvalidatedFiniteExecutionCertification3D certification) {
   return certifyRawInvalidatedFiniteExecution3DDetailed(current,
                                                         std::move(certification))
@@ -760,7 +761,7 @@ std::optional<FiniteExecutionState3D> certifyRawInvalidatedFiniteExecution3D(
 }
 
 FiniteExecutionCertificationResult3D certifyRawInvalidatedFiniteExecution3DDetailed(
-    const ExecutionRouteSnapshot3D& current,
+    const ExecutionPlan3D& current,
     RawInvalidatedFiniteExecutionCertification3D certification) {
   const CertifiedRouteSuffix3D* const route = routePointer(current);
   if (route == nullptr) {
@@ -775,7 +776,7 @@ FiniteExecutionCertificationResult3D certifyRawInvalidatedFiniteExecution3DDetai
 }
 
 std::optional<FiniteExecutionState3D> certifyLifecycleBrakingFiniteExecution3D(
-    const ExecutionRouteSnapshot3D& current,
+    const ExecutionPlan3D& current,
     LifecycleBrakingFiniteExecutionCertification3D certification) {
   return certifyLifecycleBrakingFiniteExecution3DDetailed(current,
                                                           std::move(certification))
@@ -783,7 +784,7 @@ std::optional<FiniteExecutionState3D> certifyLifecycleBrakingFiniteExecution3D(
 }
 
 FiniteExecutionCertificationResult3D certifyLifecycleBrakingFiniteExecution3DDetailed(
-    const ExecutionRouteSnapshot3D& current,
+    const ExecutionPlan3D& current,
     LifecycleBrakingFiniteExecutionCertification3D certification) {
   const CertifiedRouteSuffix3D* const route = routePointer(current);
   if (route == nullptr) {
@@ -797,10 +798,13 @@ FiniteExecutionCertificationResult3D certifyLifecycleBrakingFiniteExecution3DDet
 }
 
 std::optional<DirectTrackingFiniteExecution3D>
-certifyDirectTrackingExecution3D(const ExecutionRouteSnapshot3D& current,
+certifyDirectTrackingExecution3D(const ExecutionPlan3D& current,
                                  DirectTrackingExecutionCertification3D certification) {
   const bool raw_mode = certification.observed_raw_world != nullptr;
   const bool static_mode = certification.static_world != nullptr;
+  const FiniteExecutionState3D* const current_execution = current.finiteExecution();
+  const DirectTrackingFiniteExecution3D* const current_direct_execution =
+      current.directTrackingExecution();
   if (!current.valid() || !certification.identity.valid() ||
       certification.trajectory_revision == 0U || !finitePoint(certification.target) ||
       raw_mode == static_mode || certification.validation_policy == nullptr ||
@@ -822,12 +826,11 @@ certifyDirectTrackingExecution3D(const ExecutionRouteSnapshot3D& current,
        certification.kind != FiniteExecutionKind3D::kRetained) ||
       (raw_mode && !certification.observed_raw_world->valid()) ||
       (static_mode && !certification.static_world->valid()) ||
-      (current.finite_execution.has_value() &&
+      (current_execution != nullptr &&
+       certification.trajectory_revision <= current_execution->trajectory_revision) ||
+      (current_direct_execution != nullptr &&
        certification.trajectory_revision <=
-           current.finite_execution->trajectory_revision) ||
-      (current.direct_tracking_execution.has_value() &&
-       certification.trajectory_revision <=
-           current.direct_tracking_execution->trajectory_revision)) {
+           current_direct_execution->trajectory_revision)) {
     return std::nullopt;
   }
 

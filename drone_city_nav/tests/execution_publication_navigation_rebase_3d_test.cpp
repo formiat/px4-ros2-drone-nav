@@ -62,7 +62,7 @@ advanceLidarEvidence(const VersionedLatestLidarEvidence3D& source,
 TEST(ExecutionPublicationNavigationRebase3DTest,
      RecertifiesPendingActivationFromTheCurrentNavigationInput) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> initial =
+  const std::shared_ptr<const ExecutionPlan3D> initial =
       makeInitialExecutionRouteSnapshot3D();
   const std::optional<CertifiedRouteSuffix3D> route = fixture.certify();
   ASSERT_NE(initial, nullptr);
@@ -79,10 +79,9 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
       std::move(candidate_execution));
   ASSERT_TRUE(candidate.applied());
   ASSERT_NE(candidate.next, nullptr);
-  ASSERT_TRUE(candidate.next->finite_execution.has_value());
+  ASSERT_TRUE(candidate.next->finiteExecution() != nullptr);
   // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
-  const FiniteExecutionState3D& candidate_owner =
-      candidate.next->finite_execution.value();
+  const FiniteExecutionState3D& candidate_owner = candidate.next->finiteExecution()[0];
   ASSERT_NE(candidate_owner.execution_input, nullptr);
   ASSERT_NE(candidate_owner.latest_lidar_evidence, nullptr);
   ASSERT_NE(candidate_owner.observed_raw_world, nullptr);
@@ -125,9 +124,9 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
   const ExecutionRouteTransitionResult3D& transition =
       result.transition.value(); // NOLINT(bugprone-unchecked-optional-access)
   ASSERT_NE(transition.next, nullptr);
-  ASSERT_TRUE(transition.next->finite_execution.has_value());
+  ASSERT_TRUE(transition.next->finiteExecution() != nullptr);
   // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
-  const FiniteExecutionState3D& rebased = transition.next->finite_execution.value();
+  const FiniteExecutionState3D& rebased = transition.next->finiteExecution()[0];
   EXPECT_EQ(rebased.execution_input, current_input);
   EXPECT_EQ(rebased.valid_from_ns, publication_now_ns);
   ASSERT_NE(rebased.horizon, nullptr);
@@ -138,12 +137,11 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
 TEST(ExecutionPublicationNavigationRebase3DTest,
      RecertifiesPendingRouteHandoffFromTheCurrentNavigationInput) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);
-  ASSERT_TRUE(active->route.has_value());
+  ASSERT_TRUE(active->route() != nullptr);
   const CertifiedRouteSuffix3D& active_route =
-      active->route.value(); // NOLINT(bugprone-unchecked-optional-access)
+      *active->route(); // NOLINT(bugprone-unchecked-optional-access)
 
   ExecutionRouteActivation3D successor_activation = fixture.activation();
   successor_activation.route_generation = active->routeGenerationHighWater() + 1U;
@@ -181,9 +179,9 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
                                        successor_route, std::move(candidate_execution));
   ASSERT_TRUE(candidate.applied());
   ASSERT_NE(candidate.next, nullptr);
-  ASSERT_TRUE(candidate.next->finite_execution.has_value());
+  ASSERT_TRUE(candidate.next->finiteExecution() != nullptr);
   // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
-  const auto& candidate_owner = candidate.next->finite_execution.value();
+  const auto& candidate_owner = candidate.next->finiteExecution()[0];
   ASSERT_NE(candidate_owner.execution_input, nullptr);
   ASSERT_NE(candidate_owner.latest_lidar_evidence, nullptr);
   ASSERT_NE(candidate_owner.observed_raw_world, nullptr);
@@ -229,16 +227,16 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
   const ExecutionRouteTransitionResult3D& transition =
       result.transition.value(); // NOLINT(bugprone-unchecked-optional-access)
   ASSERT_NE(transition.next, nullptr);
-  ASSERT_TRUE(transition.next->route.has_value());
-  ASSERT_TRUE(transition.next->finite_execution.has_value());
-  const ExecutionRouteSnapshot3D& rebased_snapshot = *transition.next;
+  ASSERT_TRUE(transition.next->route() != nullptr);
+  ASSERT_TRUE(transition.next->finiteExecution() != nullptr);
+  const ExecutionPlan3D& rebased_snapshot = *transition.next;
   // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
-  const auto& rebased_route = rebased_snapshot.route.value();
+  const auto& rebased_route = rebased_snapshot.route()[0];
   // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
-  EXPECT_EQ(rebased_snapshot.route->route_instance_id,
+  EXPECT_EQ(rebased_snapshot.route()->route_instance_id,
             successor_route.route_instance_id);
   // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
-  EXPECT_EQ(rebased_snapshot.finite_execution->execution_input, current_input);
+  EXPECT_EQ(rebased_snapshot.finiteExecution()->execution_input, current_input);
   EXPECT_GT(rebased_route.progress.station_m,
             successor_route.progress.station_m + 0.25);
   EXPECT_EQ(rebased_route.progress.execution_input, current_input);
@@ -248,7 +246,7 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
 TEST(ExecutionPublicationNavigationRebase3DTest,
      MotionUnderAnotherOwnerDoesNotConsumeUnpublishedControls) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> initial =
+  const std::shared_ptr<const ExecutionPlan3D> initial =
       makeInitialExecutionRouteSnapshot3D();
   const std::optional<CertifiedRouteSuffix3D> route = fixture.certify();
   ASSERT_NE(initial, nullptr);
@@ -265,11 +263,10 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
       std::move(candidate_execution));
   ASSERT_TRUE(candidate.applied());
   ASSERT_NE(candidate.next, nullptr);
-  ASSERT_TRUE(candidate.next->finite_execution.has_value());
+  ASSERT_TRUE(candidate.next->finiteExecution() != nullptr);
   const FiniteExecutionState3D& candidate_owner =
       candidate.next
-          ->finite_execution // NOLINT(bugprone-unchecked-optional-access)
-          .value();
+          ->finiteExecution()[0]; // NOLINT(bugprone-unchecked-optional-access)
   ASSERT_NE(candidate_owner.horizon, nullptr);
   ASSERT_NE(candidate_owner.execution_input, nullptr);
   ASSERT_NE(candidate_owner.latest_lidar_evidence, nullptr);
@@ -323,9 +320,9 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
   const ExecutionRouteTransitionResult3D& transition =
       result.transition.value(); // NOLINT(bugprone-unchecked-optional-access)
   ASSERT_NE(transition.next, nullptr);
-  ASSERT_TRUE(transition.next->finite_execution.has_value());
+  ASSERT_TRUE(transition.next->finiteExecution() != nullptr);
   // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
-  const FiniteExecutionState3D& rebased = transition.next->finite_execution.value();
+  const FiniteExecutionState3D& rebased = transition.next->finiteExecution()[0];
   ASSERT_NE(rebased.horizon, nullptr);
   EXPECT_EQ(result.source_control_index, 0U);
   EXPECT_EQ(rebased.horizon->controls.size(), candidate_owner.horizon->controls.size());
@@ -335,11 +332,10 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
 TEST(ExecutionPublicationNavigationRebase3DTest,
      RetainedCandidateContinuesThePublishedExecutionClock) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);
-  ASSERT_TRUE(active->finite_execution.has_value());
-  const FiniteExecutionState3D& active_execution = active->finite_execution.value();
+  ASSERT_TRUE(active->finiteExecution() != nullptr);
+  const FiniteExecutionState3D& active_execution = active->finiteExecution()[0];
   ASSERT_NE(active_execution.horizon, nullptr);
   ASSERT_GT(active_execution.horizon->controls.size(), 5U);
 
@@ -350,9 +346,9 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
                                    active_execution.trajectory_revision + 1U));
   ASSERT_TRUE(candidate.applied());
   ASSERT_NE(candidate.next, nullptr);
-  ASSERT_TRUE(candidate.next->finite_execution.has_value());
+  ASSERT_TRUE(candidate.next->finiteExecution() != nullptr);
   const FiniteExecutionState3D& candidate_execution =
-      candidate.next->finite_execution.value();
+      candidate.next->finiteExecution()[0];
   ASSERT_NE(candidate_execution.execution_input, nullptr);
   ASSERT_NE(candidate_execution.latest_lidar_evidence, nullptr);
   ASSERT_NE(candidate_execution.observed_raw_world, nullptr);
@@ -404,9 +400,9 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
   const auto& transition =
       result.transition.value(); // NOLINT(bugprone-unchecked-optional-access)
   ASSERT_NE(transition.next, nullptr);
-  ASSERT_TRUE(transition.next->finite_execution.has_value());
+  ASSERT_TRUE(transition.next->finiteExecution() != nullptr);
   const FiniteExecutionState3D& rebased =
-      transition.next->finite_execution.value(); // NOLINT
+      transition.next->finiteExecution()[0]; // NOLINT
   ASSERT_NE(rebased.horizon, nullptr);
   EXPECT_EQ(rebased.horizon->nominal_prefix_control_count,
             active_execution.horizon->nominal_prefix_control_count -
@@ -418,11 +414,10 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
 TEST(ExecutionPublicationNavigationRebase3DTest,
      RecertifiesAnAlreadyActiveRouteWithoutLosingItsOwnerIdentity) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);
-  ASSERT_TRUE(active->route.has_value());
-  ASSERT_TRUE(active->finite_execution.has_value());
+  ASSERT_TRUE(active->route() != nullptr);
+  ASSERT_TRUE(active->finiteExecution() != nullptr);
 
   const ExecutionRouteTransitionResult3D candidate = replaceFiniteExecution3D(
       *active, SnapshotFixture3D::guard(*active),
@@ -430,11 +425,11 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
                                          101U));
   ASSERT_TRUE(candidate.applied());
   ASSERT_NE(candidate.next, nullptr);
-  ASSERT_TRUE(candidate.next->finite_execution.has_value());
+  ASSERT_TRUE(candidate.next->finiteExecution() != nullptr);
   const FiniteExecutionState3D& candidate_owner =
       candidate
           .next // NOLINT(bugprone-unchecked-optional-access)
-          ->finite_execution.value();
+          ->finiteExecution()[0];
   ASSERT_NE(candidate_owner.execution_input, nullptr);
   ASSERT_NE(candidate_owner.latest_lidar_evidence, nullptr);
   ASSERT_NE(candidate_owner.observed_raw_world, nullptr);
@@ -485,15 +480,15 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
   const auto& transition =
       result.transition.value(); // NOLINT(bugprone-unchecked-optional-access)
   ASSERT_NE(transition.next, nullptr);
-  ASSERT_TRUE(transition.next->route.has_value());
-  ASSERT_TRUE(transition.next->finite_execution.has_value());
-  const ExecutionRouteSnapshot3D& rebased_snapshot = *transition.next;
+  ASSERT_TRUE(transition.next->route() != nullptr);
+  ASSERT_TRUE(transition.next->finiteExecution() != nullptr);
+  const ExecutionPlan3D& rebased_snapshot = *transition.next;
   // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
-  const auto& rebased_route = rebased_snapshot.route.value();
+  const auto& rebased_route = rebased_snapshot.route()[0];
   const CertifiedRouteSuffix3D& active_route =
-      active->route.value(); // NOLINT(bugprone-unchecked-optional-access)
+      *active->route(); // NOLINT(bugprone-unchecked-optional-access)
   EXPECT_EQ(rebased_route.identity.generation, active_route.identity.generation);
-  const auto& rebased_execution = rebased_snapshot.finite_execution.value(); // NOLINT
+  const auto& rebased_execution = rebased_snapshot.finiteExecution()[0]; // NOLINT
   EXPECT_EQ(rebased_execution.execution_input, current_input);
   EXPECT_GT(rebased_route.progress.station_m, active_route.progress.station_m + 0.25);
   EXPECT_EQ(rebased_route.progress.execution_input, current_input);
@@ -502,10 +497,9 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
 TEST(ExecutionPublicationNavigationRebase3DTest,
      PreparedProgressAndRawCertificateSurviveLateRebaseComposition) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> resident =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> resident = fixture.activeSnapshot();
   ASSERT_NE(resident, nullptr);
-  ASSERT_TRUE(resident->route.has_value());
+  ASSERT_TRUE(resident->route() != nullptr);
   constexpr std::uint64_t kAdvancedRawRevision =
       SnapshotFixture3D::kLatestRawRevision + 1U;
   const ExecutionRouteTransitionResult3D progress = advanceCertifiedRoute3D(
@@ -516,23 +510,24 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
       fixture.rawWorld(kAdvancedRawRevision));
   ASSERT_TRUE(progress.applied());
   ASSERT_NE(progress.next, nullptr);
-  ASSERT_TRUE(progress.next->route.has_value());
-  ASSERT_NE(progress.next->route->observed_raw_world, nullptr);
-  ASSERT_EQ(progress.next->route->observed_raw_world->version().revision,
+  ASSERT_TRUE(progress.next->route() != nullptr);
+  ASSERT_NE(progress.next->route()->observed_raw_world, nullptr);
+  ASSERT_EQ(progress.next->route()->observed_raw_world->version().revision,
             kAdvancedRawRevision);
   ASSERT_FALSE(progress.next->publishable());
 
   const ExecutionRouteTransitionResult3D prepared = replaceFiniteExecutionPlan3D(
       *progress.next, SnapshotFixture3D::guard(*progress.next),
-      SnapshotFixture3D::finitePlanForRoute(*progress.next, *progress.next->route,
+      SnapshotFixture3D::finitePlanForRoute(*progress.next, *progress.next->route(),
                                             FiniteExecutionKind3D::kNominal, 101U));
   ASSERT_TRUE(prepared.applied());
   const ExecutionRouteTransitionResult3D candidate =
       composeExecutionPlanTransition3D(*resident, progress, prepared);
   ASSERT_TRUE(candidate.applied());
   ASSERT_NE(candidate.next, nullptr);
-  ASSERT_TRUE(candidate.next->finite_execution.has_value());
-  const FiniteExecutionState3D& candidate_execution = *candidate.next->finite_execution;
+  ASSERT_TRUE(candidate.next->finiteExecution() != nullptr);
+  const FiniteExecutionState3D& candidate_execution =
+      *candidate.next->finiteExecution();
   ASSERT_NE(candidate_execution.execution_input, nullptr);
   ASSERT_NE(candidate_execution.latest_lidar_evidence, nullptr);
   ASSERT_NE(candidate_execution.observed_raw_world, nullptr);
@@ -571,43 +566,42 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
   ASSERT_TRUE(result.transition.has_value());
   const ExecutionRouteTransitionResult3D& rebased = *result.transition;
   ASSERT_NE(rebased.next, nullptr);
-  ASSERT_TRUE(rebased.next->route.has_value());
-  ASSERT_TRUE(rebased.next->finite_execution.has_value());
-  ASSERT_TRUE(rebased.next->braking_fallback.has_value());
+  ASSERT_TRUE(rebased.next->route() != nullptr);
+  ASSERT_TRUE(rebased.next->finiteExecution() != nullptr);
+  ASSERT_TRUE(rebased.next->brakingFallback() != nullptr);
   EXPECT_EQ(rebased.predecessor, resident.get());
   EXPECT_EQ(rebased.next->version, resident->version + 2U);
   EXPECT_TRUE(rebased.next->publishable());
-  EXPECT_EQ(rebased.next->route->progress.execution_input, current_input);
-  EXPECT_EQ(rebased.next->route->observed_raw_world,
-            progress.next->route->observed_raw_world);
-  EXPECT_EQ(rebased.next->route->observed_raw_world->version().revision,
+  EXPECT_EQ(rebased.next->route()->progress.execution_input, current_input);
+  EXPECT_EQ(rebased.next->route()->observed_raw_world,
+            progress.next->route()->observed_raw_world);
+  EXPECT_EQ(rebased.next->route()->observed_raw_world->version().revision,
             kAdvancedRawRevision);
-  EXPECT_EQ(rebased.next->finite_execution->execution_input, current_input);
-  EXPECT_EQ(rebased.next->braking_fallback->execution_input, current_input);
-  EXPECT_EQ(rebased.next->finite_execution->observed_raw_world,
-            progress.next->route->observed_raw_world);
-  EXPECT_EQ(rebased.next->braking_fallback->observed_raw_world,
-            progress.next->route->observed_raw_world);
+  EXPECT_EQ(rebased.next->finiteExecution()->execution_input, current_input);
+  EXPECT_EQ(rebased.next->brakingFallback()->execution_input, current_input);
+  EXPECT_EQ(rebased.next->finiteExecution()->observed_raw_world,
+            progress.next->route()->observed_raw_world);
+  EXPECT_EQ(rebased.next->brakingFallback()->observed_raw_world,
+            progress.next->route()->observed_raw_world);
 }
 
 TEST(ExecutionPublicationNavigationRebase3DTest,
      LifecycleBrakingOwnerSurvivesTheFinalNavigationRace) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);
-  ASSERT_TRUE(active->route.has_value());
-  ASSERT_TRUE(active->finite_execution.has_value());
+  ASSERT_TRUE(active->route() != nullptr);
+  ASSERT_TRUE(active->finiteExecution() != nullptr);
   FiniteExecutionCertification3D braking_certification =
       SnapshotFixture3D::finiteCertificationForRoute(
-          *active->route, FiniteExecutionKind3D::kEmergencyBrakeTail, 101U, 56U);
+          *active->route(), FiniteExecutionKind3D::kEmergencyBrakeTail, 101U, 56U);
   ASSERT_GT(braking_certification.horizon.controls.size(), 1U);
   braking_certification.horizon.controls.pop_back();
   braking_certification.horizon.states.pop_back();
   --braking_certification.horizon.arrival_control_count;
   const RouteLifecycleEvent3D superseded{
       .kind = RouteLifecycleEventKind3D::kObjectiveSuperseded,
-      .generation = active->route->identity.generation,
+      .generation = active->route()->identity.generation,
   };
   const FiniteExecutionCertificationResult3D certified =
       certifyLifecycleBrakingFiniteExecution3DDetailed(
@@ -622,9 +616,10 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
   ASSERT_TRUE(candidate.applied())
       << executionRouteTransitionStatus3DName(candidate.status);
   ASSERT_NE(candidate.next, nullptr);
-  ASSERT_TRUE(candidate.next->finite_execution.has_value());
-  ASSERT_TRUE(candidate.next->braking_fallback.has_value());
-  const FiniteExecutionState3D& candidate_execution = *candidate.next->finite_execution;
+  ASSERT_TRUE(candidate.next->finiteExecution() != nullptr);
+  ASSERT_TRUE(candidate.next->brakingFallback() != nullptr);
+  const FiniteExecutionState3D& candidate_execution =
+      *candidate.next->finiteExecution();
   ASSERT_NE(candidate_execution.execution_input, nullptr);
   ASSERT_NE(candidate_execution.latest_lidar_evidence, nullptr);
   ASSERT_NE(candidate_execution.observed_raw_world, nullptr);
@@ -662,23 +657,24 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
       << ' ' << executionRouteTransitionStatus3DName(result.transition_status);
   ASSERT_TRUE(result.transition.has_value());
   ASSERT_NE(result.transition->next, nullptr);
-  const ExecutionRouteSnapshot3D& rebased = *result.transition->next;
-  ASSERT_TRUE(rebased.finite_execution.has_value());
-  ASSERT_TRUE(rebased.braking_fallback.has_value());
-  EXPECT_EQ(rebased.phase, ExecutionRoutePhase3D::kBraking);
-  EXPECT_EQ(rebased.finite_execution->kind, FiniteExecutionKind3D::kEmergencyBrakeTail);
-  EXPECT_EQ(rebased.finite_execution->execution_input, current_input);
-  EXPECT_EQ(rebased.braking_fallback->execution_input, current_input);
-  EXPECT_LE(rebased.finite_execution->valid_until_ns,
+  const ExecutionPlan3D& rebased = *result.transition->next;
+  ASSERT_TRUE(rebased.finiteExecution() != nullptr);
+  ASSERT_TRUE(rebased.brakingFallback() != nullptr);
+  EXPECT_EQ(rebased.phase(), ExecutionRoutePhase3D::kBraking);
+  EXPECT_EQ(rebased.finiteExecution()->kind,
+            FiniteExecutionKind3D::kEmergencyBrakeTail);
+  EXPECT_EQ(rebased.finiteExecution()->execution_input, current_input);
+  EXPECT_EQ(rebased.brakingFallback()->execution_input, current_input);
+  EXPECT_LE(rebased.finiteExecution()->valid_until_ns,
             candidate_execution.valid_until_ns);
-  EXPECT_EQ(rebased.finite_execution->validation_proof.artifact_fingerprint,
-            rebased.braking_fallback->validation_proof.artifact_fingerprint);
+  EXPECT_EQ(rebased.finiteExecution()->validation_proof.artifact_fingerprint,
+            rebased.brakingFallback()->validation_proof.artifact_fingerprint);
 }
 
 TEST(ExecutionPublicationNavigationRebase3DTest,
      ReportsCertificationThatRejectsEveryPhysicalCandidate) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> initial =
+  const std::shared_ptr<const ExecutionPlan3D> initial =
       makeInitialExecutionRouteSnapshot3D();
   const std::optional<CertifiedRouteSuffix3D> route = fixture.certify();
   ASSERT_NE(initial, nullptr);
@@ -698,7 +694,7 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
   const FiniteExecutionState3D& candidate_owner =
       candidate
           .next // NOLINT(bugprone-unchecked-optional-access)
-          ->finite_execution.value();
+          ->finiteExecution()[0];
   ASSERT_NE(candidate_owner.execution_input, nullptr);
   ASSERT_NE(candidate_owner.latest_lidar_evidence, nullptr);
   ASSERT_NE(candidate_owner.observed_raw_world, nullptr);

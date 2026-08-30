@@ -8,14 +8,13 @@ namespace {
 TEST(ExecutionRouteSnapshot3DTest,
      ChangedContentAdvanceTransfersOnlyTheRouteWorldOwner) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_TRUE(active);
-  ASSERT_TRUE(active->route.has_value());
-  ASSERT_TRUE(active->finite_execution.has_value());
+  ASSERT_TRUE(active->route() != nullptr);
+  ASSERT_TRUE(active->finiteExecution() != nullptr);
   const std::uint64_t old_content =
-      active->route->observed_raw_world->contentFingerprint();
-  const auto old_finite_owner = active->finite_execution->observed_raw_world;
+      active->route()->observed_raw_world->contentFingerprint();
+  const auto old_finite_owner = active->finiteExecution()->observed_raw_world;
 
   ObservedOccupancyGrid3D changed_occupancy = fixture.raw_occupancy;
   ASSERT_TRUE(changed_occupancy.setState({0, 0, 0}, ObservedVoxelState::kOccupied));
@@ -33,33 +32,32 @@ TEST(ExecutionRouteSnapshot3DTest,
 
   ASSERT_TRUE(advanced.applied());
   ASSERT_TRUE(advanced.next);
-  ASSERT_TRUE(advanced.next->route.has_value());
-  ASSERT_TRUE(advanced.next->finite_execution.has_value());
-  EXPECT_EQ(advanced.next->route->observed_raw_world, changed_world);
-  EXPECT_EQ(advanced.next->route->observed_raw_world->contentFingerprint(),
+  ASSERT_TRUE(advanced.next->route() != nullptr);
+  ASSERT_TRUE(advanced.next->finiteExecution() != nullptr);
+  EXPECT_EQ(advanced.next->route()->observed_raw_world, changed_world);
+  EXPECT_EQ(advanced.next->route()->observed_raw_world->contentFingerprint(),
             changed_world->contentFingerprint());
-  EXPECT_EQ(advanced.next->finite_execution->observed_raw_world, old_finite_owner);
-  EXPECT_EQ(advanced.next->finite_execution->observed_raw_world->contentFingerprint(),
+  EXPECT_EQ(advanced.next->finiteExecution()->observed_raw_world, old_finite_owner);
+  EXPECT_EQ(advanced.next->finiteExecution()->observed_raw_world->contentFingerprint(),
             old_content);
-  EXPECT_TRUE(advanced.next->finite_execution->revalidation_required);
+  EXPECT_TRUE(advanced.next->finiteExecution()->revalidation_required);
   EXPECT_TRUE(advanced.next->valid());
 
   ASSERT_TRUE(changed_occupancy.setState({1, 0, 0}, ObservedVoxelState::kOccupied));
-  EXPECT_EQ(advanced.next->route->observed_raw_world->contentFingerprint(),
+  EXPECT_EQ(advanced.next->route()->observed_raw_world->contentFingerprint(),
             changed_world->contentFingerprint());
-  EXPECT_EQ(advanced.next->route->observed_raw_world->occupancy().state({1, 0, 0}),
+  EXPECT_EQ(advanced.next->route()->observed_raw_world->occupancy().state({1, 0, 0}),
             ObservedVoxelState::kUnknown);
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
      ChangedOccupancyRejectsOwnerTransferWhenItShrinksTheTrackingTube) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_TRUE(active);
-  ASSERT_TRUE(active->route.has_value());
-  ASSERT_NE(active->route->geometry, nullptr);
-  ASSERT_NE(active->route->geometry->tracking_error_tube, nullptr);
+  ASSERT_TRUE(active->route() != nullptr);
+  ASSERT_NE(active->route()->geometry, nullptr);
+  ASSERT_NE(active->route()->geometry->tracking_error_tube, nullptr);
 
   ObservedOccupancyGrid3D changed_occupancy = fixture.raw_occupancy;
   const std::optional<GridIndex3D> tube_only_obstacle =
@@ -76,7 +74,8 @@ TEST(ExecutionRouteSnapshot3DTest,
       fixture.rawWorld(SnapshotFixture3D::kLatestRawRevision + 1U, &changed_occupancy);
   ASSERT_TRUE(changed_world);
   EXPECT_FALSE(trackingErrorTubeProfile3DMatchesWorld(
-      *active->route->geometry->route, *active->route->geometry->tracking_error_tube,
+      *active->route()->geometry->route,
+      *active->route()->geometry->tracking_error_tube,
       TrackingErrorTubeWorld3D{
           .observed_occupancy = &changed_world->occupancy(),
           .occupied_content_fingerprint = changed_world->occupiedContentFingerprint(),
@@ -97,8 +96,7 @@ TEST(ExecutionRouteSnapshot3DTest,
 TEST(ExecutionRouteSnapshot3DTest,
      AdvanceRejectsDifferentContentAdvertisedAtTheCertifiedRevision) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_TRUE(active);
   ObservedOccupancyGrid3D changed_occupancy = fixture.raw_occupancy;
   ASSERT_TRUE(changed_occupancy.setState({0, 0, 0}, ObservedVoxelState::kOccupied));
@@ -123,11 +121,10 @@ TEST(ExecutionRouteSnapshot3DTest,
       SnapshotFixture3D::kRouteGeneration, fixture.raw_occupancy.occupiedSnapshot(),
       testPassageVolumeConfig());
   fixture.geometry_revision = fixture.geometry->compiled_trajectory_revision;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_TRUE(active);
-  ASSERT_TRUE(active->route.has_value());
-  ASSERT_FALSE(active->route->geometry->constrained_spans->empty());
+  ASSERT_TRUE(active->route() != nullptr);
+  ASSERT_FALSE(active->route()->geometry->constrained_spans->empty());
 
   ObservedOccupancyGrid3D changed_occupancy = fixture.raw_occupancy;
   const std::optional<GridIndex3D> lateral_wall =
@@ -138,7 +135,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       fixture.rawWorld(SnapshotFixture3D::kLatestRawRevision + 1U, &changed_occupancy);
   ASSERT_TRUE(changed_world);
   ASSERT_NE(changed_world->occupiedContentFingerprint(),
-            active->route->observed_raw_world->occupiedContentFingerprint());
+            active->route()->observed_raw_world->occupiedContentFingerprint());
 
   const ExecutionRouteTransitionResult3D rejected = advanceCertifiedRoute3D(
       *active, SnapshotFixture3D::guard(*active),

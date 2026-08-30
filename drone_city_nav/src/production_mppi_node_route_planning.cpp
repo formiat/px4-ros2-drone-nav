@@ -35,12 +35,12 @@ void ProductionMppiNode::processRouteSearch3D(
       navigationWorldCertificate3D(*transaction->world);
 
   const auto observe_recovery_episode = [this, &transaction] {
-    const std::shared_ptr<const ExecutionRouteSnapshot3D> current_execution =
+    const std::shared_ptr<const ExecutionPlan3D> current_execution =
         execution_route_store_.snapshot();
     const std::shared_ptr<const PendingCertifiedRoute3D> current_pending =
         pending_certified_route_mailbox_.snapshot();
     const bool recovery_active =
-        (current_execution == nullptr || !current_execution->route.has_value()) &&
+        (current_execution == nullptr || current_execution->route() == nullptr) &&
         current_pending == nullptr;
     static_cast<void>(navigation_recovery_episodes_.observe(
         transaction->objective.mission_epoch, recovery_active));
@@ -117,9 +117,8 @@ void ProductionMppiNode::processRouteSearch3D(
   const ProductionRouteActivationSnapshot3D materialization_snapshot =
       captureRouteActivationSnapshot3D();
   const CertifiedRouteSuffix3D* const activation_active_route =
-      materialization_snapshot.execution_snapshot &&
-              materialization_snapshot.execution_snapshot->route.has_value()
-          ? materialization_snapshot.execution_snapshot->route.operator->()
+      materialization_snapshot.execution_snapshot != nullptr
+          ? materialization_snapshot.execution_snapshot->route()
           : nullptr;
 
   ProductionRouteMaterialization3D materialization;
@@ -313,7 +312,7 @@ void ProductionMppiNode::processRouteSearch3D(
   const bool initial_route_search = transaction->initial();
   if (transaction->replacement() || initial_route_search) {
     const StaticRouteSearchRequestIdentity& search_request = transaction->request;
-    const std::shared_ptr<const ExecutionRouteSnapshot3D> resident_execution =
+    const std::shared_ptr<const ExecutionPlan3D> resident_execution =
         execution_route_store_.snapshot();
     const std::uint64_t resident_route_generation =
         resident_execution != nullptr ? resident_execution->routeGenerationHighWater()
@@ -366,10 +365,11 @@ void ProductionMppiNode::processRouteSearch3D(
             ? minimum_tracking_route_sample_sequence_.load(std::memory_order_acquire)
             : 0U;
     StaticRouteObjective resident_route_objective;
-    const std::shared_ptr<const ExecutionRouteSnapshot3D> resident_execution =
+    const std::shared_ptr<const ExecutionPlan3D> resident_execution =
         execution_route_store_.snapshot();
-    if (resident_execution != nullptr && resident_execution->route.has_value()) {
-      resident_route_objective = resident_execution->route->identity.proposal.objective;
+    if (resident_execution != nullptr && resident_execution->route() != nullptr) {
+      resident_route_objective =
+          resident_execution->route()->identity.proposal.objective;
     }
     if (!staticRouteObjectiveMatches(
             resident_route_objective, makeStaticRouteObjective(*current_objective),

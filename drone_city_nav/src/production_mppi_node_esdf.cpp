@@ -154,12 +154,12 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       }
       const bool roi_refresh_pending =
           static_roi_refresh_lifecycle_.pending(roi_refresh);
-      const std::shared_ptr<const ExecutionRouteSnapshot3D> refresh_execution =
+      const std::shared_ptr<const ExecutionPlan3D> refresh_execution =
           roi_refresh_pending ? execution_route_store_.snapshot() : nullptr;
       const bool proactive_roi_refresh =
           roi_refresh_pending && refresh_execution != nullptr &&
-          refresh_execution->route.has_value() &&
-          refresh_execution->route->identity.generation ==
+          refresh_execution->route() != nullptr &&
+          refresh_execution->route()->identity.generation ==
               roi_refresh.base_route_generation;
       double static_build_ms = active_world_build.build_ms;
       double static_x_pass_ms = active_world_build.esdf_x_pass_ms;
@@ -300,13 +300,13 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
         continue;
       }
       static_esdf_uploaded_ = true;
-      const std::shared_ptr<const ExecutionRouteSnapshot3D> binding_execution =
+      const std::shared_ptr<const ExecutionPlan3D> binding_execution =
           proactive_roi_refresh ? execution_route_store_.snapshot() : nullptr;
-      const bool refresh_base_current = proactive_roi_refresh &&
-                                        binding_execution != nullptr &&
-                                        binding_execution->route.has_value() &&
-                                        binding_execution->route->identity.generation ==
-                                            roi_refresh.base_route_generation;
+      const bool refresh_base_current =
+          proactive_roi_refresh && binding_execution != nullptr &&
+          binding_execution->route() != nullptr &&
+          binding_execution->route()->identity.generation ==
+              roi_refresh.base_route_generation;
       const bool refresh_superseded = proactive_roi_refresh && !refresh_base_current;
       if (refresh_superseded) {
         RCLCPP_INFO(
@@ -377,7 +377,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
       const bool extension_search = refresh_base_current && !tracking_roi_refresh;
       std::optional<PlannerSearchContinuityBase3D> continuity_base;
       if (refresh_base_current) {
-        const CertifiedRouteSuffix3D& active_route = *binding_execution->route;
+        const CertifiedRouteSuffix3D& active_route = *binding_execution->route();
         const RouteProjection3D projection = projectOntoRoute3DWithinStationWindow(
             *active_route.geometry->route,
             Point3{activation_navigation.state.x, activation_navigation.state.y,
@@ -446,7 +446,7 @@ void ProductionMppiNode::esdfWorker(const std::stop_token stop_token) {
           (extension_search || tracking_roi_refresh ||
            vehicle_navigation_ready_.load(std::memory_order_acquire));
       if (route_search_required) {
-        const std::shared_ptr<const ExecutionRouteSnapshot3D> resident_execution =
+        const std::shared_ptr<const ExecutionPlan3D> resident_execution =
             binding_execution != nullptr ? binding_execution
                                          : execution_route_store_.snapshot();
         const std::uint64_t resident_route_generation =

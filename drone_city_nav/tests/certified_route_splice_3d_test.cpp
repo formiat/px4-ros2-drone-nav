@@ -37,25 +37,24 @@ certifySuccessor(SnapshotFixture3D& fixture, const std::vector<RouteSample3D>& r
 
 TEST(CertifiedRouteSplice3DTest, CertifiesBoundOverlapAndAdmitsOnlyTheSharedWindow) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);
-  ASSERT_TRUE(active->route.has_value());
+  ASSERT_TRUE(active->route() != nullptr);
   const std::optional<CertifiedRouteSuffix3D> successor =
       certifySuccessor(fixture, fixture.route);
   ASSERT_TRUE(successor.has_value());
 
   const RouteSpliceCertificationResult3D certification = certifyRouteSplice3D(
-      *active->route, *successor, Point3{2.0, 0.0, 5.0}, spliceConfig());
+      *active->route(), *successor, Point3{2.0, 0.0, 5.0}, spliceConfig());
 
   ASSERT_TRUE(certification.certified());
   ASSERT_TRUE(certification.splice.has_value());
-  EXPECT_TRUE(certification.splice->validFor(*active->route, *successor));
+  EXPECT_TRUE(certification.splice->validFor(*active->route(), *successor));
   EXPECT_DOUBLE_EQ(certification.splice->base_begin_station_m, 2.0);
   EXPECT_DOUBLE_EQ(certification.splice->base_end_station_m, 4.0);
   EXPECT_DOUBLE_EQ(certification.splice->required_overlap_m, 2.0);
   const RouteSpliceReadiness3D readiness = assessRouteSpliceReadiness3D(
-      *certification.splice, *active->route, *successor, Point3{2.0, 0.0, 5.0});
+      *certification.splice, *active->route(), *successor, Point3{2.0, 0.0, 5.0});
   EXPECT_TRUE(readiness.ready());
   EXPECT_DOUBLE_EQ(readiness.position_separation_m, 0.0);
   EXPECT_DOUBLE_EQ(readiness.tangent_alignment, 1.0);
@@ -63,16 +62,15 @@ TEST(CertifiedRouteSplice3DTest, CertifiesBoundOverlapAndAdmitsOnlyTheSharedWind
 
 TEST(CertifiedRouteSplice3DTest, RejectsInsufficientCertifiedOverlap) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   const std::optional<CertifiedRouteSuffix3D> successor =
       certifySuccessor(fixture, fixture.route);
   ASSERT_NE(active, nullptr);
-  ASSERT_TRUE(active->route.has_value());
+  ASSERT_TRUE(active->route() != nullptr);
   ASSERT_TRUE(successor.has_value());
 
   const RouteSpliceCertificationResult3D certification = certifyRouteSplice3D(
-      *active->route, *successor, Point3{2.0, 0.0, 5.0}, spliceConfig(9.0));
+      *active->route(), *successor, Point3{2.0, 0.0, 5.0}, spliceConfig(9.0));
 
   EXPECT_EQ(certification.status,
             RouteSpliceCertificationStatus3D::kInsufficientOverlap);
@@ -84,16 +82,15 @@ TEST(CertifiedRouteSplice3DTest, RejectsACommonStartThatDivergesBeforeOverlapEnd
   const std::vector<RouteSample3D> diverged = sampleRoute3D(
       std::vector<Point3>{{0.0, 0.0, 5.0}, {5.0, 3.0, 5.0}, {10.0, 3.0, 5.0}}, 0.5,
       4.0);
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   const std::optional<CertifiedRouteSuffix3D> successor =
       certifySuccessor(fixture, diverged);
   ASSERT_NE(active, nullptr);
-  ASSERT_TRUE(active->route.has_value());
+  ASSERT_TRUE(active->route() != nullptr);
   ASSERT_TRUE(successor.has_value());
 
   const RouteSpliceCertificationResult3D certification = certifyRouteSplice3D(
-      *active->route, *successor, Point3{2.0, 0.0, 5.0}, spliceConfig());
+      *active->route(), *successor, Point3{2.0, 0.0, 5.0}, spliceConfig());
 
   EXPECT_EQ(certification.status, RouteSpliceCertificationStatus3D::kGeometryDiverged);
   EXPECT_FALSE(certification.splice.has_value());
@@ -104,19 +101,18 @@ TEST(CertifiedRouteSplice3DTest,
   SnapshotFixture3D fixture;
   const std::vector<RouteSample3D> displaced =
       sampleRoute3D(std::vector<Point3>{{0.0, 0.04, 5.0}, {10.0, 0.04, 5.0}}, 0.5, 4.0);
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   const std::optional<CertifiedRouteSuffix3D> successor =
       certifySuccessor(fixture, displaced);
   ASSERT_NE(active, nullptr);
-  ASSERT_TRUE(active->route.has_value());
+  ASSERT_TRUE(active->route() != nullptr);
   ASSERT_TRUE(successor.has_value());
 
   CertifiedRouteSpliceConfig3D strict = spliceConfig();
   strict.maximum_position_separation_m = 0.01;
   strict.minimum_tangent_alignment = 0.995;
   const RouteSpliceCertificationResult3D certification =
-      certifyRouteSplice3D(*active->route, *successor, Point3{2.0, 0.0, 5.0}, strict);
+      certifyRouteSplice3D(*active->route(), *successor, Point3{2.0, 0.0, 5.0}, strict);
 
   EXPECT_EQ(certification.status, RouteSpliceCertificationStatus3D::kGeometryDiverged);
   EXPECT_FALSE(certification.splice.has_value());
@@ -126,16 +122,15 @@ TEST(CertifiedRouteSplice3DTest, RejectsOpposedTangentsInsideSharedGeometry) {
   SnapshotFixture3D fixture;
   const std::vector<RouteSample3D> opposed =
       sampleRoute3D(std::vector<Point3>{{10.0, 0.0, 5.0}, {0.0, 0.0, 5.0}}, 0.5, 4.0);
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   const std::optional<CertifiedRouteSuffix3D> successor =
       certifySuccessor(fixture, opposed);
   ASSERT_NE(active, nullptr);
-  ASSERT_TRUE(active->route.has_value());
+  ASSERT_TRUE(active->route() != nullptr);
   ASSERT_TRUE(successor.has_value());
 
   const RouteSpliceCertificationResult3D certification = certifyRouteSplice3D(
-      *active->route, *successor, Point3{2.0, 0.0, 5.0}, spliceConfig());
+      *active->route(), *successor, Point3{2.0, 0.0, 5.0}, spliceConfig());
 
   EXPECT_EQ(certification.status,
             RouteSpliceCertificationStatus3D::kTangentDiscontinuity);
@@ -144,18 +139,17 @@ TEST(CertifiedRouteSplice3DTest, RejectsOpposedTangentsInsideSharedGeometry) {
 
 TEST(CertifiedRouteSplice3DTest, ExpiredWindowCannotAuthorizeReplacement) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
-      fixture.activeSnapshot();
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   const std::optional<CertifiedRouteSuffix3D> successor =
       certifySuccessor(fixture, fixture.route);
   ASSERT_NE(active, nullptr);
-  ASSERT_TRUE(active->route.has_value());
+  ASSERT_TRUE(active->route() != nullptr);
   ASSERT_TRUE(successor.has_value());
   const RouteSpliceCertificationResult3D certification = certifyRouteSplice3D(
-      *active->route, *successor, Point3{2.0, 0.0, 5.0}, spliceConfig());
+      *active->route(), *successor, Point3{2.0, 0.0, 5.0}, spliceConfig());
   ASSERT_TRUE(certification.certified());
 
-  CertifiedRouteSuffix3D advanced = *active->route;
+  CertifiedRouteSuffix3D advanced = *active->route();
   advanced.progress.station_m = 5.5;
   advanced.progress.last_observed_position = {5.5, 0.0, 5.0};
   EXPECT_TRUE(routeSpliceWindowExpired3D(*certification.splice, advanced));

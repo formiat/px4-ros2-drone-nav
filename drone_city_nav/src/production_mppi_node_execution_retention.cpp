@@ -190,23 +190,25 @@ ProductionMppiNode::retainSnapshotFinitePath(
   const bool latest_lidar_obstacle_fresh = cycle.latest_lidar_obstacle_fresh;
   const bool latest_lidar_obstacle_receive_time_fallback =
       cycle.latest_lidar_obstacle_receive_time_fallback;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> expected =
+  const std::shared_ptr<const ExecutionPlan3D> expected =
       execution_route_store_.snapshot();
-  if (expected == nullptr || !expected->route.has_value() ||
-      !expected->finite_execution.has_value() ||
-      expected->finite_execution->horizon == nullptr) {
+  const CertifiedRouteSuffix3D* const expected_route =
+      expected != nullptr ? expected->route() : nullptr;
+  const FiniteExecutionState3D* const expected_execution =
+      expected != nullptr ? expected->finiteExecution() : nullptr;
+  if (expected == nullptr || expected_route == nullptr ||
+      expected_execution == nullptr || expected_execution->horizon == nullptr) {
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "FINITE_EXECUTION_SNAPSHOT retained=false stage=missing_resident_owner "
         "snapshot_present=%s route_present=%s execution_present=%s",
         expected != nullptr ? "true" : "false",
-        expected != nullptr && expected->route.has_value() ? "true" : "false",
-        expected != nullptr && expected->finite_execution.has_value() ? "true"
-                                                                      : "false");
+        expected_route != nullptr ? "true" : "false",
+        expected_execution != nullptr ? "true" : "false");
     return std::nullopt;
   }
-  const CertifiedRouteSuffix3D& route = *expected->route;
-  const FiniteExecutionState3D& active = *expected->finite_execution;
+  const CertifiedRouteSuffix3D& route = *expected_route;
+  const FiniteExecutionState3D& active = *expected_execution;
   const RouteLifecycleEvent3D* const raw_invalidation =
       route_execution.lifecycle_event.has_value() &&
               route_execution.lifecycle_event->kind ==
@@ -423,13 +425,17 @@ ProductionMppiNode::retainSnapshotFinitePath(
           ? retireCertifiedRoute3D(*expected, guard, *braking_event,
                                    *recertified_braking_tail)
           : replaceFiniteExecutionPlan3D(*expected, guard, *recertified_plan);
+  const FiniteExecutionState3D* const transitioned_execution =
+      transition.next != nullptr ? transition.next->finiteExecution() : nullptr;
+  const FiniteExecutionState3D* const transitioned_braking =
+      transition.next != nullptr ? transition.next->brakingFallback() : nullptr;
+  const CertifiedRouteSuffix3D* const transitioned_route =
+      transition.next != nullptr ? transition.next->route() : nullptr;
   if (!transition.applied() || transition.next == nullptr ||
-      !transition.next->finite_execution.has_value() ||
-      !transition.next->braking_fallback.has_value() ||
-      transition.next->finite_execution->horizon == nullptr ||
-      !transition.next->route.has_value() ||
+      transitioned_execution == nullptr || transitioned_braking == nullptr ||
+      transitioned_execution->horizon == nullptr || transitioned_route == nullptr ||
       (braking_event != nullptr &&
-       transition.next->phase != ExecutionRoutePhase3D::kBraking)) {
+       transition.next->phase() != ExecutionRoutePhase3D::kBraking)) {
     const std::string_view transition_status =
         executionRouteTransitionStatus3DName(transition.status);
     RCLCPP_WARN_THROTTLE(
@@ -441,13 +447,12 @@ ProductionMppiNode::retainSnapshotFinitePath(
     return std::nullopt;
   }
 
-  const mppi::FiniteHorizon& finite_horizon =
-      *transition.next->finite_execution->horizon;
+  const mppi::FiniteHorizon& finite_horizon = *transitioned_execution->horizon;
   msg::MppiTrajectoryHorizon horizon = makeExecutionHorizon(
-      cycle, transition.next->finite_execution->valid_until_ns,
+      cycle, transitioned_execution->valid_until_ns,
       ProductionMppiExecutionMode::kPlanned, ProductionMppiExecutionReason::kNone);
   if (!production_mppi_execution_detail::bindHorizonRouteMetadata(
-          horizon, *transition.next->route)) {
+          horizon, *transitioned_route)) {
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "FINITE_EXECUTION_SNAPSHOT retained=false stage=route_metadata_rejected "
@@ -455,14 +460,13 @@ ProductionMppiNode::retainSnapshotFinitePath(
         transition.next->version);
     return std::nullopt;
   }
-  if (transition.next->finite_execution->observed_raw_world != nullptr) {
+  if (transitioned_execution->observed_raw_world != nullptr) {
     horizon.obstacle_revision =
-        transition.next->finite_execution->observed_raw_world->version().revision;
+        transitioned_execution->observed_raw_world->version().revision;
   }
   if (!production_mppi_execution_detail::appendFiniteExecutionPoints(
           horizon, finite_horizon.states, finite_horizon.controls,
-          exact_previous_control,
-          transition.next->finite_execution->control_interval_ns)) {
+          exact_previous_control, transitioned_execution->control_interval_ns)) {
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "FINITE_EXECUTION_SNAPSHOT retained=false stage=horizon_encoding_rejected "
@@ -536,15 +540,16 @@ ProductionMppiNode::retainDirectFinitePath(
   const bool latest_lidar_obstacle_fresh = cycle.latest_lidar_obstacle_fresh;
   const bool latest_lidar_obstacle_receive_time_fallback =
       cycle.latest_lidar_obstacle_receive_time_fallback;
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> expected =
+  const std::shared_ptr<const ExecutionPlan3D> expected =
       execution_route_store_.snapshot();
+  const DirectTrackingFiniteExecution3D* const expected_direct =
+      expected != nullptr ? expected->directTrackingExecution() : nullptr;
   if (expected == nullptr ||
-      expected->phase != ExecutionRoutePhase3D::kDirectTracking ||
-      !expected->direct_tracking_execution.has_value() ||
-      expected->direct_tracking_execution->horizon == nullptr) {
+      expected->phase() != ExecutionRoutePhase3D::kDirectTracking ||
+      expected_direct == nullptr || expected_direct->horizon == nullptr) {
     return std::nullopt;
   }
-  const DirectTrackingFiniteExecution3D& active = *expected->direct_tracking_execution;
+  const DirectTrackingFiniteExecution3D& active = *expected_direct;
   const std::vector<mppi::TimedExecutionPathPoint> points = executionPathPoints(active);
   const std::optional<mppi::FiniteExecutionPathWorld> continuation_world =
       exactDirectValidationWorld(cycle, active);
@@ -609,14 +614,14 @@ ProductionMppiNode::retainDirectFinitePath(
   }
   const ExecutionRouteTransitionResult3D transition =
       replaceDirectTrackingExecution3D(*expected, expected->version, *recertified);
+  const DirectTrackingFiniteExecution3D* const transitioned_direct =
+      transition.next != nullptr ? transition.next->directTrackingExecution() : nullptr;
   if (!transition.applied() || transition.next == nullptr ||
-      !transition.next->direct_tracking_execution.has_value() ||
-      transition.next->direct_tracking_execution->horizon == nullptr) {
+      transitioned_direct == nullptr || transitioned_direct->horizon == nullptr) {
     return std::nullopt;
   }
 
-  const DirectTrackingFiniteExecution3D& committed =
-      *transition.next->direct_tracking_execution;
+  const DirectTrackingFiniteExecution3D& committed = *transitioned_direct;
   const mppi::FiniteHorizon& finite_horizon = *committed.horizon;
   msg::MppiTrajectoryHorizon horizon = makeExecutionHorizon(
       cycle, committed.valid_until_ns, ProductionMppiExecutionMode::kPlanned,
@@ -666,9 +671,9 @@ std::optional<ProductionMppiExecutionPublication>
 ProductionMppiNode::retainActiveFinitePath(
     const ProductionMppiExecutionCycle& cycle,
     const ProductionMppiExecutionReason replacement_failure_reason) {
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> resident =
+  const std::shared_ptr<const ExecutionPlan3D> resident =
       execution_route_store_.snapshot();
-  if (resident != nullptr && resident->direct_tracking_execution.has_value()) {
+  if (resident != nullptr && resident->directTrackingExecution() != nullptr) {
     return retainDirectFinitePath(cycle, replacement_failure_reason);
   }
   return retainSnapshotFinitePath(cycle, replacement_failure_reason);
