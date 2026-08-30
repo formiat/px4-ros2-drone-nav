@@ -47,6 +47,16 @@ nav_model
   -> nav_runtime
 ```
 
+These boundaries are now enforced by the shared-library targets
+`drone_city_nav_model`, `drone_city_nav_world`,
+`drone_city_nav_collision`, `drone_city_nav_planning`,
+`drone_city_nav_trajectory`, `drone_city_nav_execution`,
+`drone_city_nav_control`, and `drone_city_nav_runtime`. Every layer links
+only its immediate predecessor and uses `--no-undefined`; configure-time
+guards reject any additional internal edge. `drone_city_nav_core` remains an
+interface-only compatibility umbrella for downstream targets during API
+migration and owns no translation units.
+
 Optional passage and cooperative metadata decorate a compiled route downstream;
 they are not mandatory members of the base trajectory and do not produce a
 competing strategic route.
@@ -255,8 +265,8 @@ no mixed authority revision is observable.
   ownership terminology.
 - [ ] Extract world, planning, trajectory, execution, and control services from
   `ProductionMppiNode`; retain only composition and ROS I/O in the node.
-- [ ] Enforce the internal dependency graph with CMake targets and stop
-  installing private implementation headers as public API.
+- [x] Enforce the internal dependency graph with CMake targets.
+- [ ] Stop installing private implementation headers as public API.
 - [x] Register every production-relevant GTest source and remove the stale test
   for the retired raw-snapshot/risk-field protocol.
 - [ ] Replace source-text transaction checks with executable state-machine and

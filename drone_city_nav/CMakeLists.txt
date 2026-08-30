@@ -155,160 +155,245 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     RUNTIME DESTINATION lib/${PROJECT_NAME})
 endif()
 
-add_library(
-  drone_city_nav_core
-  src/route_progress_3d.cpp
-  src/ambiguous_lidar_hit_tracker.cpp
+function(add_drone_city_nav_layer target_name)
+  add_library(${target_name} SHARED ${ARGN})
+  target_compile_features(${target_name} PUBLIC cxx_std_20)
+  target_include_directories(
+    ${target_name}
+    PUBLIC
+      "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+      "$<INSTALL_INTERFACE:include>")
+  target_link_options(${target_name} PRIVATE "LINKER:--no-undefined")
+  enable_project_warnings(${target_name})
+endfunction()
+
+# Enforced dependency direction: model -> world -> collision -> planning ->
+# trajectory -> execution -> control -> runtime.
+add_drone_city_nav_layer(
+  drone_city_nav_model
   src/bounded_worker_pool.cpp
-  src/cooperative_passage_execution.cpp
-  src/cooperative_passage_route.cpp
-  src/cooperative_passage_coordination.cpp
-  src/cooperative_mppi_adapter.cpp
-  src/cooperative_space_time.cpp
-  src/cooperative_traffic.cpp
-  src/cooperative_traffic_mission.cpp
+  src/flight_time_model_3d.cpp
+  src/navigation_angular_derivative.cpp
+  src/navigation_pose.cpp
+  src/navigation_state_prediction.cpp
+  src/producer_epoch_admission.cpp
+  src/producer_instance_id.cpp
+  src/px4_ros_time_mapper.cpp
+  src/radar_cadence.cpp
+  src/radar_model.cpp
+  src/simulation_truth_alignment.cpp
+  src/stopping_distance.cpp
+  src/world_generation.cpp)
+
+add_drone_city_nav_layer(
+  drone_city_nav_world
+  src/ambiguous_lidar_hit_tracker.cpp
   src/collision_voxelizer.cpp
-  src/vehicle_destruction_disarm_lifecycle.cpp
-  src/world_generation.cpp
   src/debug_image.cpp
   src/distance_field.cpp
   src/distance_field_3d.cpp
-  src/direct_tracking_maneuver_lifecycle.cpp
-  src/dynamic_agent_lidar_state.cpp
   src/esdf_query.cpp
-  src/flight_envelope.cpp
-  src/flight_time_model_3d.cpp
-  src/free_space_topology_3d.cpp
-  src/free_space_topology_extractor_3d.cpp
-  src/free_space_topology_extractor_3d_api.cpp
-  src/free_space_topology_extractor_3d_graph.cpp
-  src/free_space_topology_extractor_3d_geometry.cpp
   src/grid_config.cpp
   src/grid_overlay.cpp
-  src/intercept_guidance.cpp
-  src/intercept_mission.cpp
-  src/known_static_lidar_hit_classifier.cpp
   src/known_obstacle_distance_3d.cpp
   src/known_obstacle_distance_3d_update.cpp
+  src/known_static_lidar_hit_classifier.cpp
   src/latest_lidar_obstacle_scan.cpp
   src/lidar_acquisition_pose.cpp
+  src/lidar_beam_observation.cpp
   src/lidar_debug_renderer.cpp
   src/lidar_debug_snapshot_pipeline.cpp
-  src/lidar_beam_observation.cpp
-  src/lidar_ingestion_decision.cpp
   src/lidar_ingestion_confidence.cpp
+  src/lidar_ingestion_decision.cpp
   src/lidar_memory_hit_diagnostics.cpp
-  src/local_esdf_2d.cpp
-  src/mapping_lifecycle.cpp
-  src/mission_goal_capture.cpp
-  src/mission_waypoint_capture_gate.cpp
-  src/mission_waypoint_acknowledgement_admission.cpp
-  src/mission_waypoint_sequence.cpp
   src/lidar_pose_history.cpp
   src/lidar_projection.cpp
   src/lidar_scan_3d.cpp
   src/lidar_self_filter.cpp
-  src/offboard_session_admission.cpp
-  src/occupied_collision_oracle_3d.cpp
-  src/passage_traversal_selection_3d.cpp
-  src/persistent_dstar_lite_planner_3d.cpp
-  src/persistent_dstar_lite_planner_3d_search.cpp
-  src/persistent_dstar_lite_planner_3d_time_search.cpp
-  src/persistent_dstar_lite_planner_3d_world.cpp
-  src/mppi/route_risk_adapter_3d.cpp
-  src/mppi/trajectory_reference_adapter_3d.cpp
-  src/px4_ros_time_mapper.cpp
-  src/radar_cadence.cpp
-  src/radar_model.cpp
-  src/radar_target_tracker.cpp
-  src/radar_visibility.cpp
-  src/target_assignment.cpp
-  src/execution_evidence_3d.cpp
-  src/applied_control_admission.cpp
-  src/execution_horizon_admission.cpp
-  src/execution_horizon_witness.cpp
-  src/execution_horizon_timing.cpp
-  src/execution_publication_currentness_3d.cpp
-  src/certified_route_splice_3d.cpp
-  src/compiled_trajectory_views_3d.cpp
-  src/compiled_trajectory_3d.cpp
-  src/compiled_trajectory_validation_3d.cpp
-  src/execution_plan_reducer_3d.cpp
-  src/execution_route_snapshot_3d.cpp
-  src/execution_route_snapshot_3d_certificates.cpp
-  src/execution_route_snapshot_3d_certification.cpp
-  src/execution_route_snapshot_3d_finite_execution.cpp
-  src/execution_route_snapshot_3d_continuation_validation.cpp
-  src/execution_route_snapshot_3d_finite_execution_diagnostics.cpp
-  src/execution_route_snapshot_3d_geometry.cpp
-  src/execution_route_snapshot_3d_hold.cpp
-  src/execution_route_snapshot_3d_progress.cpp
-  src/committed_execution_authority_3d.cpp
-  src/execution_plan_3d.cpp
-  src/execution_route_snapshot_3d_tracking_tube.cpp
-  src/execution_route_snapshot_3d_transitions.cpp
-  src/execution_route_snapshot_3d_validation.cpp
-  src/producer_epoch_admission.cpp
-  src/producer_instance_id.cpp
-    src/route_3d.cpp
-    src/route_3d_passage.cpp
-  src/route_3d_spans.cpp
-  src/trajectory_compiler_3d.cpp
-  src/route_time_parameterization.cpp
-  src/route_execution_contract_3d.cpp
-  src/route_execution_manager_3d.cpp
-  src/route_lifecycle_3d.cpp
-  src/route_planning_3d.cpp
-  src/rolling_route_telemetry_3d.cpp
-  src/sensor_braking_contract_3d.cpp
-  src/simulation_truth_alignment.cpp
-  src/spectator_selection.cpp
-  src/static_route_extension.cpp
-  src/static_route_geometry.cpp
-  src/static_esdf_cache.cpp
-  src/stopping_distance.cpp
-  src/swept_footprint.cpp
-  src/tracking_error_tube_3d.cpp
-  src/swept_footprint_2d.cpp
-  src/swept_footprint_contract.cpp
-  src/swept_footprint_esdf.cpp
-  src/tracked_agent_lidar_filter.cpp
-  src/tracking_objective.cpp
   src/lidar_snapshot_writer.cpp
-  src/mppi/finite_execution_path.cpp
-  src/mppi/mppi_finite_horizon.cpp
-  src/mppi/mppi_post_update_classification.cpp
-  src/mppi/mppi_reference.cpp
-  src/mppi_liveness.cpp
-  src/mppi_nominal_reseed.cpp
-  src/mppi_rollout_budget.cpp
-  src/mppi_speed_policy.cpp
-  src/pending_certified_route_3d.cpp
-  src/navigation_angular_derivative.cpp
-  src/navigation_health_supervisor.cpp
-  src/navigation_state_prediction.cpp
-  src/noncooperative_collision_avoidance.cpp
-  src/passage_volume.cpp
-  src/navigation_pose.cpp
+  src/local_esdf_2d.cpp
+  src/mapping_lifecycle.cpp
   src/obstacle_memory.cpp
   src/obstacle_memory_3d.cpp
   src/obstacle_memory_transport_policy_3d.cpp
-    src/observed_esdf_3d.cpp
-    src/observed_esdf_3d_window.cpp
+  src/observed_esdf_3d.cpp
   src/observed_esdf_3d_fingerprint.cpp
   src/observed_esdf_3d_metadata.cpp
   src/observed_occupancy_grid_3d.cpp
   src/occupancy_grid.cpp
   src/occupancy_grid_3d.cpp
-  )
-target_compile_features(drone_city_nav_core PUBLIC cxx_std_20)
+  src/static_esdf_cache.cpp
+  src/tracked_agent_lidar_filter.cpp)
+target_link_libraries(drone_city_nav_world PUBLIC drone_city_nav_model
+                                               PRIVATE PkgConfig::ZSTD)
+
+add_drone_city_nav_layer(
+  drone_city_nav_collision
+  src/flight_envelope.cpp
+  src/observed_esdf_3d_window.cpp
+  src/occupied_collision_oracle_3d.cpp
+  src/sensor_braking_contract_3d.cpp
+  src/swept_footprint.cpp
+  src/swept_footprint_2d.cpp
+  src/swept_footprint_contract.cpp
+  src/swept_footprint_esdf.cpp)
+target_link_libraries(drone_city_nav_collision PUBLIC drone_city_nav_world)
+
+add_drone_city_nav_layer(
+  drone_city_nav_planning
+  src/free_space_topology_3d.cpp
+  src/free_space_topology_extractor_3d.cpp
+  src/free_space_topology_extractor_3d_api.cpp
+  src/free_space_topology_extractor_3d_geometry.cpp
+  src/free_space_topology_extractor_3d_graph.cpp
+  src/passage_traversal_selection_3d.cpp
+  src/persistent_dstar_lite_planner_3d.cpp
+  src/persistent_dstar_lite_planner_3d_search.cpp
+  src/persistent_dstar_lite_planner_3d_time_search.cpp
+  src/persistent_dstar_lite_planner_3d_world.cpp
+  src/route_3d.cpp
+  src/route_3d_passage.cpp
+  src/route_3d_spans.cpp
+  src/route_planning_3d.cpp
+  src/static_route_geometry.cpp
+  src/tracking_objective.cpp)
+target_link_libraries(drone_city_nav_planning PUBLIC drone_city_nav_collision)
+
+add_drone_city_nav_layer(
+  drone_city_nav_trajectory
+  src/compiled_trajectory_3d.cpp
+  src/compiled_trajectory_validation_3d.cpp
+  src/compiled_trajectory_views_3d.cpp
+  src/cooperative_passage_coordination.cpp
+  src/cooperative_passage_route.cpp
+  src/cooperative_space_time.cpp
+  src/cooperative_traffic.cpp
+  src/passage_volume.cpp
+  src/route_execution_contract_3d.cpp
+  src/route_time_parameterization.cpp
+  src/static_route_extension.cpp
+  src/tracking_error_tube_3d.cpp
+  src/trajectory_compiler_3d.cpp)
+target_link_libraries(drone_city_nav_trajectory PUBLIC drone_city_nav_planning)
+
+add_drone_city_nav_layer(
+  drone_city_nav_execution
+  src/applied_control_admission.cpp
+  src/certified_route_splice_3d.cpp
+  src/committed_execution_authority_3d.cpp
+  src/direct_tracking_maneuver_lifecycle.cpp
+  src/execution_evidence_3d.cpp
+  src/execution_horizon_admission.cpp
+  src/execution_horizon_timing.cpp
+  src/execution_horizon_witness.cpp
+  src/execution_plan_3d.cpp
+  src/execution_plan_reducer_3d.cpp
+  src/execution_publication_currentness_3d.cpp
+  src/execution_route_snapshot_3d.cpp
+  src/execution_route_snapshot_3d_certificates.cpp
+  src/execution_route_snapshot_3d_certification.cpp
+  src/execution_route_snapshot_3d_continuation_validation.cpp
+  src/execution_route_snapshot_3d_finite_execution.cpp
+  src/execution_route_snapshot_3d_finite_execution_diagnostics.cpp
+  src/execution_route_snapshot_3d_geometry.cpp
+  src/execution_route_snapshot_3d_hold.cpp
+  src/execution_route_snapshot_3d_progress.cpp
+  src/execution_route_snapshot_3d_tracking_tube.cpp
+  src/execution_route_snapshot_3d_transitions.cpp
+  src/execution_route_snapshot_3d_validation.cpp
+  src/mission_goal_capture.cpp
+  src/mission_waypoint_acknowledgement_admission.cpp
+  src/mission_waypoint_capture_gate.cpp
+  src/mission_waypoint_sequence.cpp
+  src/mppi/finite_execution_path.cpp
+  src/mppi/mppi_finite_horizon.cpp
+  src/mppi/mppi_reference.cpp
+  src/mppi/trajectory_reference_adapter_3d.cpp
+  src/offboard_session_admission.cpp
+  src/pending_certified_route_3d.cpp
+  src/rolling_route_telemetry_3d.cpp
+  src/route_execution_manager_3d.cpp
+  src/route_lifecycle_3d.cpp
+  src/route_progress_3d.cpp
+  src/vehicle_destruction_disarm_lifecycle.cpp)
+target_link_libraries(drone_city_nav_execution PUBLIC drone_city_nav_trajectory)
+
+add_drone_city_nav_layer(
+  drone_city_nav_control
+  src/cooperative_mppi_adapter.cpp
+  src/cooperative_passage_execution.cpp
+  src/mppi/mppi_post_update_classification.cpp
+  src/mppi/route_risk_adapter_3d.cpp
+  src/mppi_liveness.cpp
+  src/mppi_nominal_reseed.cpp
+  src/mppi_rollout_budget.cpp
+  src/mppi_speed_policy.cpp
+  src/noncooperative_collision_avoidance.cpp)
+target_link_libraries(drone_city_nav_control PUBLIC drone_city_nav_execution)
+
+add_drone_city_nav_layer(
+  drone_city_nav_runtime
+  src/cooperative_traffic_mission.cpp
+  src/dynamic_agent_lidar_state.cpp
+  src/intercept_guidance.cpp
+  src/intercept_mission.cpp
+  src/navigation_health_supervisor.cpp
+  src/radar_target_tracker.cpp
+  src/radar_visibility.cpp
+  src/spectator_selection.cpp
+  src/target_assignment.cpp)
+target_link_libraries(drone_city_nav_runtime PUBLIC drone_city_nav_control)
+
+function(assert_drone_city_nav_layer_dependency target_name expected_predecessor)
+  get_target_property(layer_links ${target_name} LINK_LIBRARIES)
+  if(NOT layer_links)
+    set(layer_links "")
+  endif()
+  foreach(layer_link IN LISTS layer_links)
+    if(layer_link MATCHES
+       "^drone_city_nav_(model|world|collision|planning|trajectory|execution|control|runtime)$"
+       AND NOT layer_link STREQUAL expected_predecessor)
+      message(
+        FATAL_ERROR
+          "${target_name} has forbidden internal dependency ${layer_link}; expected only ${expected_predecessor}"
+      )
+    endif()
+  endforeach()
+  if(NOT "${expected_predecessor}" STREQUAL "")
+    list(FIND layer_links "${expected_predecessor}" predecessor_index)
+    if(predecessor_index EQUAL -1)
+      message(
+        FATAL_ERROR
+          "${target_name} must link its predecessor ${expected_predecessor}")
+    endif()
+  endif()
+endfunction()
+
+assert_drone_city_nav_layer_dependency(drone_city_nav_model "")
+assert_drone_city_nav_layer_dependency(drone_city_nav_world drone_city_nav_model)
+assert_drone_city_nav_layer_dependency(drone_city_nav_collision
+                                       drone_city_nav_world)
+assert_drone_city_nav_layer_dependency(drone_city_nav_planning
+                                       drone_city_nav_collision)
+assert_drone_city_nav_layer_dependency(drone_city_nav_trajectory
+                                       drone_city_nav_planning)
+assert_drone_city_nav_layer_dependency(drone_city_nav_execution
+                                       drone_city_nav_trajectory)
+assert_drone_city_nav_layer_dependency(drone_city_nav_control
+                                       drone_city_nav_execution)
+assert_drone_city_nav_layer_dependency(drone_city_nav_runtime
+                                       drone_city_nav_control)
+
+# Compatibility umbrella while downstream targets migrate to the narrow layer
+# they actually consume.
+add_library(drone_city_nav_core INTERFACE)
+target_compile_features(drone_city_nav_core INTERFACE cxx_std_20)
 target_include_directories(
   drone_city_nav_core
-  PUBLIC
+  INTERFACE
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
     "$<INSTALL_INTERFACE:include>")
-enable_project_warnings(drone_city_nav_core)
-target_link_libraries(drone_city_nav_core PRIVATE PkgConfig::ZSTD)
+target_link_libraries(drone_city_nav_core INTERFACE drone_city_nav_runtime)
 
 add_executable(generate_static_esdf_cache tools/generate_static_esdf_cache.cpp)
 target_compile_features(generate_static_esdf_cache PRIVATE cxx_std_20)
@@ -329,7 +414,7 @@ target_link_libraries(
 enable_project_warnings(voxelize_sdf_collisions)
 
 if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
-  target_link_libraries(drone_city_nav_mppi_cuda PUBLIC drone_city_nav_core)
+  target_link_libraries(drone_city_nav_mppi_cuda PUBLIC drone_city_nav_control)
 endif()
 
 add_library(drone_contact_system SHARED src/drone_contact_system.cpp)
@@ -694,6 +779,14 @@ endif()
 
 install(
   TARGETS
+    drone_city_nav_model
+    drone_city_nav_world
+    drone_city_nav_collision
+    drone_city_nav_planning
+    drone_city_nav_trajectory
+    drone_city_nav_execution
+    drone_city_nav_control
+    drone_city_nav_runtime
     drone_city_nav_core
     drone_city_nav_ros_adapters
     drone_contact_system
