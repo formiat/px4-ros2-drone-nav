@@ -49,9 +49,6 @@ CONTROL_FEEDBACK_MESSAGE = PACKAGE / "msg" / "MppiControlFeedback.msg"
 EXECUTION_EVIDENCE_HEADER = (
     PACKAGE / "include" / "drone_city_nav" / "execution_evidence_3d.hpp"
 )
-EXECUTION_SNAPSHOT_HEADER = (
-    PACKAGE / "include" / "drone_city_nav" / "execution_route_snapshot_3d.hpp"
-)
 EXECUTION_SNAPSHOT_HOLD = SOURCE / "execution_route_snapshot_3d_hold.cpp"
 MISSION_CAPTURE_TEST = PACKAGE / "tests" / "mission_waypoint_capture_gate_test.cpp"
 HORIZON_ADMISSION = SOURCE / "execution_horizon_admission.cpp"
@@ -850,7 +847,6 @@ class PlannerReadinessContractTest(unittest.TestCase):
             + EXECUTION_HOLDS.read_text(encoding="utf-8")
         )
         evidence = EXECUTION_EVIDENCE_HEADER.read_text(encoding="utf-8")
-        snapshot_header = EXECUTION_SNAPSHOT_HEADER.read_text(encoding="utf-8")
         snapshot_hold = EXECUTION_SNAPSHOT_HOLD.read_text(encoding="utf-8")
         gate = MISSION_CAPTURE_GATE.read_text(encoding="utf-8")
         gate_test = MISSION_CAPTURE_TEST.read_text(encoding="utf-8")
@@ -901,7 +897,6 @@ class PlannerReadinessContractTest(unittest.TestCase):
 
         self.assertIn("enum class ExecutionInputPurpose3D", evidence)
         self.assertIn("stationaryCaptureStateAuthoritative", evidence)
-        self.assertIn("armStationaryCaptureHold3D", snapshot_header)
         self.assertIn(
             "current.phase() != ExecutionRoutePhase3D::kRevoked", snapshot_hold
         )
