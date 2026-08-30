@@ -1,15 +1,11 @@
 #pragma once
 
 #include "drone_city_nav/mppi/static_route_handoff.hpp"
-#include "drone_city_nav/route_compiler_3d.hpp"
+#include "drone_city_nav/trajectory_compiler_3d.hpp"
 
 #include "production_mppi_node.hpp"
 
 namespace drone_city_nav {
-
-[[nodiscard]] ProductionCompiledRouteCandidate3D
-makeCompiledRouteCandidate3D(MaterializedRoute3D materialized,
-                             RouteCompilationResult3D compilation);
 
 struct ProductionRouteActivationSnapshot3D {
   std::shared_ptr<const WorldSnapshot3D> resident_world;

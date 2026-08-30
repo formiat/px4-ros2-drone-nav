@@ -1,6 +1,6 @@
 #include "drone_city_nav/persistent_dstar_lite_planner_3d.hpp"
 #include "drone_city_nav/route_3d.hpp"
-#include "drone_city_nav/route_compiler_3d.hpp"
+#include "drone_city_nav/trajectory_compiler_3d.hpp"
 
 #include <gtest/gtest.h>
 
@@ -121,22 +121,31 @@ void expectRawSafe(const std::span<const Point3> path,
   return false;
 }
 
-[[nodiscard]] RouteCompilationResult3D
+[[nodiscard]] TrajectoryCompilationResult3D
 compileMissionRoute(const SpatialRouteCandidate3D& plan,
                     const ObservedOccupancyGrid3D& occupancy) {
   std::vector<RouteSample3D> route = sampleRoute3D(plan.points, 0.5, 4.0);
   const std::uint64_t fingerprint = routeFingerprint(route);
-  RouteCompilerConfig3D compiler;
+  TrajectoryCompilerConfig3D compiler;
   compiler.unconstrained_speed_mps = 4.0;
   compiler.constrained_speed_mps = 2.0;
-  compiler.speed_policy.cruise_speed_mps = 4.0;
-  compiler.speed_policy.absolute_speed_limit_mps = 6.0;
-  compiler.dynamics.maximum_horizontal_speed_mps = 6.0F;
-  compiler.dynamics.maximum_vertical_speed_mps = 3.0F;
+  compiler.time_model.maximum_horizontal_speed_mps = 6.0;
+  compiler.time_model.maximum_vertical_speed_mps = 3.0;
+  compiler.time_model.maximum_translational_speed_mps = 6.0;
   compiler.physical_footprint = acceptanceFootprint();
   compiler.tracking_error_tube.response_time_s = 0.10;
   const OccupancyGrid3D occupied = occupancy.occupiedSnapshot();
-  return compileExecutionRoute3D(RouteCompilerInput3D{
+  return TrajectoryCompiler3D::compile(TrajectoryCompilerInput3D{
+      .exact_initial_state =
+          VehicleState3D{
+              .identity =
+                  VehicleStateIdentity3D{
+                      .revision = 1U,
+                      .receive_stamp_ns = 1,
+                  },
+              .position = plan.points.front(),
+          },
+      .route_generation = 1U,
       .route = std::move(route),
       .constrained_spans = {},
       .passage_volumes = {},
@@ -255,14 +264,14 @@ TEST(PersistentPlannerAcceptanceFixture,
       expectRawSafe(converged.points, *fixture.occupancy);
       expectRequiredMotion(mission, converged, fixture.local_distance_cache_bounds);
 
-      const RouteCompilationResult3D compilation =
+      const TrajectoryCompilationResult3D compilation =
           compileMissionRoute(converged, *fixture.occupancy);
       ASSERT_TRUE(compilation.compiled())
           << fixture.name << " reason="
-          << executionRouteGeometryFailureReasonName3D(compilation.validation.reason);
-      ASSERT_NE(compilation.geometry, nullptr);
+          << compiledTrajectoryFailureReason3DName(compilation.validation.reason);
+      ASSERT_NE(compilation.trajectory, nullptr);
       EXPECT_TRUE(trackingErrorTubeProfile3DMatchesWorld(
-          *compilation.geometry->route, *compilation.tracking_error_tube,
+          *compilation.trajectory->route, *compilation.trajectory->tracking_error_tube,
           TrackingErrorTubeWorld3D{
               .observed_occupancy = fixture.occupancy.get(),
               .occupancy = nullptr,

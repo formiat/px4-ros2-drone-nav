@@ -192,9 +192,17 @@ cache on that snapshot; and `MaterializedRoute3D`, compilation candidates,
 `RouteAdmissionReport3D`, and pipeline telemetry are distinct values. World
 publication cannot copy, clear, or restore route state. Route materialization
 geometrically associates matching topology traversals instead of constructing
-an unconditionally empty decorator list. The combined checklist item remains
-open only because the sealed trajectory artifact is implemented in the next
-stage.
+an unconditionally empty decorator list.
+
+Trajectory compilation now requires one exact revisioned `VehicleState3D` and
+one route generation. `TrajectoryCompiler3D` canonicalizes the route once,
+derives one tracking tube, parameterizes one speed/time profile from the exact
+initial 3D velocity, validates the complete passage-resource graph, and is the
+only constructor of `CompiledTrajectory3D`. The sealed class is neither
+copyable nor movable; every owned collection is const. MPPI references and
+planar RViz views are derived adapters and carry no independent route identity.
+The former route compiler, execution-geometry wrappers, stored MPPI route, and
+stored 2D projection have been removed.
 
 Planner search now owns an immutable `PlannerSearchTransaction3D` containing
 the exact world publication, derived resident planner input or explicit newer
@@ -213,11 +221,11 @@ published world.
   planner searches behind explicit session interfaces.
 - [x] Replace the one-element production candidate set with one typed planner
   update and an explicit coordinator result.
-- [ ] Introduce immutable world/search/materialization/trajectory/admission
+- [x] Introduce immutable world/search/materialization/trajectory/admission
   artifacts and remove route state from the resident world object.
 - [x] Introduce the single unknown-neutral occupied-collision oracle and prove
   that invalid or missing derived evidence cannot become `raw_collision`.
-- [ ] Compile once from the exact initial vehicle state into one sealed,
+- [x] Compile once from the exact initial vehicle state into one sealed,
   controller-neutral `CompiledTrajectory3D`.
 - [ ] Replace execution phase plus optionals with the tagged variant and one pure
   transition reducer.

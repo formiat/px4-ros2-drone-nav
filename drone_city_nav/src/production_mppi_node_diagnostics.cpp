@@ -30,7 +30,7 @@ void ProductionMppiNode::processDiagnostics(
   const ProductionRouteActivationResult3D& route_pipeline =
       snapshot.route_pipeline != nullptr ? *snapshot.route_pipeline
                                          : empty_route_pipeline;
-  const MaterializedRoute3D& route_candidate = route_pipeline.candidate.materialized;
+  const MaterializedRoute3D& route_candidate = route_pipeline.materialized;
   const ProductionRoutePipelineTelemetry3D& route_telemetry = route_pipeline.telemetry;
   const ProductionRouteMaterializationTelemetry3D& materialization_telemetry =
       route_telemetry.materialization;

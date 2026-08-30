@@ -129,7 +129,7 @@ void ProductionMppiNode::processRouteSearch3D(
   materialization.telemetry.world_build = world_telemetry;
   materialization.telemetry.route_search_ms = planner_update.search_ms;
   ProductionRouteActivationResult3D activation;
-  activation.candidate.materialized = materialization.route;
+  activation.materialized = materialization.route;
   activation.telemetry = materialization.telemetry;
   if (planner_update.improved_incumbent && candidate_generation != 0U) {
     const ProductionRouteSearchCandidate3D& candidate =
@@ -182,7 +182,7 @@ void ProductionMppiNode::processRouteSearch3D(
       planner_update.improved_incumbent
           ? std::addressof(planner_update.improved_incumbent->spatial_route)
           : nullptr;
-  const MaterializedRoute3D& materialized = activation.candidate.materialized;
+  const MaterializedRoute3D& materialized = activation.materialized;
   const ProductionRoutePipelineTelemetry3D& telemetry = activation.telemetry;
   const ProductionRouteMaterializationTelemetry3D& materialization_telemetry =
       telemetry.materialization;
@@ -190,8 +190,8 @@ void ProductionMppiNode::processRouteSearch3D(
   const StaticRouteCandidateValidation& validation = admission.candidate_validation;
   const mppi::StaticRouteHandoffResult& handoff = admission.handoff;
   const TrackingErrorTubeProfile3D* const tracking_profile =
-      activation.candidate.geometry != nullptr
-          ? activation.candidate.geometry->tracking_error_tube.get()
+      activation.trajectory != nullptr
+          ? activation.trajectory->tracking_error_tube.get()
           : nullptr;
   const char* const planner_input =
       planner_update.planner_invoked
@@ -211,7 +211,7 @@ void ProductionMppiNode::processRouteSearch3D(
       "activation_status=%.*s route_certified=%s "
       "activation_currentness=(resident=%s,objective=%s,raw=%s,execution=%s,"
       "candidate=%s,certification_execution=%s) "
-      "tracking_compile=%s/%s tracking_source_occupied=%" PRIu64
+      "trajectory_compile=%s/%s tracking_source_occupied=%" PRIu64
       " tracking_activation_occupied=%" PRIu64 " tracking_min_speed_mps=%.3f "
       "publication_status=%.*s "
       "validation=%.*s handoff=%s splice=%.*s "
@@ -246,10 +246,10 @@ void ProductionMppiNode::processRouteSearch3D(
       admission.execution_base_snapshot_current ? "true" : "false",
       admission.candidate_world_coherent ? "true" : "false",
       admission.certification_execution_base_current ? "true" : "false",
-      admission.tracking_geometry_compile_attempted ? "attempted" : "not_needed",
-      admission.tracking_geometry_compiled ? "compiled" : "not_compiled",
-      admission.tracking_geometry_source_occupied_fingerprint,
-      admission.tracking_geometry_activation_occupied_fingerprint,
+      admission.trajectory_compile_attempted ? "attempted" : "not_needed",
+      admission.trajectory_compiled ? "compiled" : "not_compiled",
+      admission.tracking_profile_source_occupied_fingerprint,
+      admission.tracking_profile_activation_occupied_fingerprint,
       tracking_profile != nullptr ? tracking_profile->minimum_speed_limit_mps : -1.0,
       static_cast<int>(
           routePublicationStatus3DName(admission.assessment.publication.status).size()),

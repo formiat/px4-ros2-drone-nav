@@ -1,4 +1,5 @@
 #include "drone_city_nav/esdf_query.hpp"
+#include "drone_city_nav/mppi/route_risk_adapter_3d.hpp"
 #include "drone_city_nav/route_3d.hpp"
 
 #include <gtest/gtest.h>
@@ -490,10 +491,11 @@ TEST(Route3DTest, AssignsRequiredRiskTierFromRawEsdfClearance) {
       RouteSample3D{.position = Point3{2.5, 0.5, 0.5}},
   };
 
-  ASSERT_TRUE(assignRouteRiskTiers(route, grid, esdf, 1.0, 6.0).accepted());
-  EXPECT_EQ(route[0].required_risk_tier, mppi::RiskTier::kPreferred);
-  EXPECT_EQ(route[1].required_risk_tier, mppi::RiskTier::kPlanning);
-  EXPECT_EQ(route[2].required_risk_tier, mppi::RiskTier::kCritical);
+  ASSERT_TRUE(
+      assignRouteRiskTiersFromMppiEsdf3D(route, grid, esdf, 1.0, 6.0).accepted());
+  EXPECT_EQ(route[0].required_risk_tier, RouteRiskTier3D::kPreferred);
+  EXPECT_EQ(route[1].required_risk_tier, RouteRiskTier3D::kPlanning);
+  EXPECT_EQ(route[2].required_risk_tier, RouteRiskTier3D::kCritical);
 }
 
 TEST(Route3DTest, RiskTierAssignmentTreatsUnknownAsPreferredWithoutAStrictMode) {
@@ -505,8 +507,9 @@ TEST(Route3DTest, RiskTierAssignmentTreatsUnknownAsPreferredWithoutAStrictMode) 
       RouteSample3D{.position = Point3{1.5, 0.5, 0.5}},
   };
 
-  EXPECT_TRUE(assignRouteRiskTiers(route, grid, esdf, 1.0, 6.0).accepted());
-  EXPECT_EQ(route.front().required_risk_tier, mppi::RiskTier::kPreferred);
+  EXPECT_TRUE(
+      assignRouteRiskTiersFromMppiEsdf3D(route, grid, esdf, 1.0, 6.0).accepted());
+  EXPECT_EQ(route.front().required_risk_tier, RouteRiskTier3D::kPreferred);
 }
 
 TEST(Route3DTest, ZeroDerivedClearanceIsOnlyASoftCriticalRiskAnnotation) {
@@ -517,10 +520,10 @@ TEST(Route3DTest, ZeroDerivedClearanceIsOnlyASoftCriticalRiskAnnotation) {
       RouteSample3D{.position = Point3{1.5, 0.5, 0.5}},
   };
 
-  const RouteRiskTierAssignmentResult result =
-      assignRouteRiskTiers(route, grid, esdf, 1.0, 6.0);
+  const RouteRiskTierAssignmentResult3D result =
+      assignRouteRiskTiersFromMppiEsdf3D(route, grid, esdf, 1.0, 6.0);
   EXPECT_TRUE(result.accepted());
-  EXPECT_EQ(route.back().required_risk_tier, mppi::RiskTier::kCritical);
+  EXPECT_EQ(route.back().required_risk_tier, RouteRiskTier3D::kCritical);
 }
 
 } // namespace

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "drone_city_nav/mppi/mppi_types.hpp"
 #include "drone_city_nav/passage_ids.hpp"
+#include "drone_city_nav/route_risk_tier_3d.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <cstddef>
@@ -24,7 +24,7 @@ struct RouteSample3D {
   Vec3 tangent{};
   double station_m{0.0};
   double reference_speed_mps{0.0};
-  mppi::RiskTier required_risk_tier{mppi::RiskTier::kPreferred};
+  RouteRiskTier3D required_risk_tier{RouteRiskTier3D::kPreferred};
   RouteKinematicTransition3D transition{RouteKinematicTransition3D::kContinuous};
 };
 
@@ -391,29 +391,6 @@ routeFingerprint(std::span<const RouteSample3D> route,
 
 [[nodiscard]] std::uint64_t routeFingerprint(std::span<const Point2> route) noexcept;
 
-enum class RouteRiskTierAssignmentStatus : std::uint8_t {
-  kAccepted,
-  kInvalidInput,
-};
-
-struct RouteRiskTierAssignmentResult {
-  RouteRiskTierAssignmentStatus status{RouteRiskTierAssignmentStatus::kInvalidInput};
-  std::size_t failure_sample_index{0U};
-  Point3 failure_point{};
-
-  [[nodiscard]] bool accepted() const noexcept {
-    return status == RouteRiskTierAssignmentStatus::kAccepted;
-  }
-};
-
-[[nodiscard]] RouteRiskTierAssignmentResult
-assignRouteRiskTiers(std::span<RouteSample3D> route, const mppi::EsdfGrid& grid,
-                     std::span<const float> esdf_m, double critical_distance_m,
-                     double preferred_distance_m) noexcept;
-
-[[nodiscard]] std::string_view
-routeRiskTierAssignmentStatusName(RouteRiskTierAssignmentStatus status) noexcept;
-
 [[nodiscard]] RouteProjection3D
 projectOntoRoute3D(std::span<const RouteSample3D> route, const Point3& position,
                    double minimum_station_m = 0.0) noexcept;
@@ -443,8 +420,8 @@ clipConstrainedRouteSpans(std::span<const ConstrainedRouteSpan> spans,
 
 void mergeAdjacentConstrainedRouteSpans(std::vector<ConstrainedRouteSpan>& spans);
 
-[[nodiscard]] bool validateConstrainedRouteSpans(
-    std::span<const RouteSample3D> route, std::span<const ConstrainedRouteSpan> spans,
-    const mppi::EsdfGrid& grid, std::span<const float> esdf_m) noexcept;
+[[nodiscard]] bool
+validateConstrainedRouteSpans(std::span<const RouteSample3D> route,
+                              std::span<const ConstrainedRouteSpan> spans) noexcept;
 
 } // namespace drone_city_nav

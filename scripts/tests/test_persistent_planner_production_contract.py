@@ -134,7 +134,7 @@ class PersistentPlannerProductionContractTest(unittest.TestCase):
         self.assertNotIn("ProductionMppiPreparedEsdf", self.artifacts)
         for stage_type in (
             "MaterializedRoute3D",
-            "ProductionCompiledRouteCandidate3D",
+            "ProductionMaterializedRouteProposal3D",
             "RouteAdmissionReport3D",
             "ProductionRouteActivationResult3D",
         ):

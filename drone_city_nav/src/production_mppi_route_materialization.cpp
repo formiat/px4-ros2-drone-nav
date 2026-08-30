@@ -1,5 +1,6 @@
 #include "production_mppi_route_materialization.hpp"
 
+#include "drone_city_nav/mppi/route_risk_adapter_3d.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
 #include "drone_city_nav/passage_traversal_selection_3d.hpp"
 #include "drone_city_nav/static_route_extension.hpp"
@@ -233,16 +234,18 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
     *mutable_route = std::move(geometry.route);
   }
 
-  const RouteRiskTierAssignmentResult optimized_risk_assignment = assignRouteRiskTiers(
-      *mutable_route, transaction.world->grid, *transaction.world->distances_m,
-      mppi_config_.risk.critical_distance_m, mppi_config_.risk.preferred_distance_m);
+  const RouteRiskTierAssignmentResult3D optimized_risk_assignment =
+      assignRouteRiskTiersFromMppiEsdf3D(*mutable_route, transaction.world->grid,
+                                         *transaction.world->distances_m,
+                                         mppi_config_.risk.critical_distance_m,
+                                         mppi_config_.risk.preferred_distance_m);
   if (!optimized_risk_assignment.accepted()) {
     *mutable_route = canonical_route;
     geometry.constrained_spans = initial_spans;
     materialization.route_shortcuts_applied = 0U;
     materialization.route_corners_smoothed = 0U;
     const std::string_view optimization_failure =
-        routeRiskTierAssignmentStatusName(optimized_risk_assignment.status);
+        routeRiskTierAssignmentStatus3DName(optimized_risk_assignment.status);
     RCLCPP_INFO(get_logger(),
                 "STATIC_ROUTE_GEOMETRY status=fallback_to_lattice reason=%.*s "
                 "failure=(%.2f,%.2f,%.2f)",
@@ -349,10 +352,12 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
   if (!cooperative_route_valid) {
     result.validation = StaticRouteCandidateValidation{
         .status = StaticRouteCandidateStatus::kInvalidPassageSpan};
-  } else if (const RouteRiskTierAssignmentResult risk_assignment = assignRouteRiskTiers(
-                 *mutable_route, transaction.world->grid,
-                 *transaction.world->distances_m, mppi_config_.risk.critical_distance_m,
-                 mppi_config_.risk.preferred_distance_m);
+  } else if (const RouteRiskTierAssignmentResult3D risk_assignment =
+                 assignRouteRiskTiersFromMppiEsdf3D(
+                     *mutable_route, transaction.world->grid,
+                     *transaction.world->distances_m,
+                     mppi_config_.risk.critical_distance_m,
+                     mppi_config_.risk.preferred_distance_m);
              risk_assignment.accepted()) {
     result.validation = validateStaticRouteCandidate(
         active_route != nullptr && active_route->geometry != nullptr &&
@@ -377,9 +382,7 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
         .status = StaticRouteCandidateStatus::kInvalidPassageSpan};
   }
   if (result.validation.accepted &&
-      !validateConstrainedRouteSpans(*materialized_route, *spans,
-                                     transaction.world->grid,
-                                     *transaction.world->distances_m)) {
+      !validateConstrainedRouteSpans(*materialized_route, *spans)) {
     result.validation = StaticRouteCandidateValidation{
         .status = StaticRouteCandidateStatus::kInvalidPassageSpan};
   }
@@ -406,7 +409,6 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
   }
   route.fingerprint = routeFingerprint(*materialized_route, route_traversals);
   route.route = materialized_route;
-  route.route_2d_projection = projectRouteTo2D(*materialized_route);
   route.constrained_spans = spans;
   route.passage_volumes = passage_volumes;
   route.cooperative_passage_assignments =

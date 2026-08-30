@@ -1,8 +1,9 @@
 #include "production_mppi_route_activation.hpp"
 
 #include "drone_city_nav/execution_route_snapshot_3d.hpp"
-#include "drone_city_nav/route_compiler_3d.hpp"
-#include "drone_city_nav/route_time_parameterization.hpp"
+#include "drone_city_nav/mppi/route_risk_adapter_3d.hpp"
+#include "drone_city_nav/mppi/trajectory_reference_adapter_3d.hpp"
+#include "drone_city_nav/trajectory_compiler_3d.hpp"
 
 #include <algorithm>
 #include <cinttypes>
@@ -44,12 +45,12 @@ rawWorldExecutionOwnerExact(const ProductionMppiRawWorld3D& raw_world) noexcept 
              raw_world.occupancy.get();
 }
 
-[[nodiscard]] StaticRouteCandidateStatus
-candidateStatusFromRiskAssignment(const RouteRiskTierAssignmentStatus status) noexcept {
+[[nodiscard]] StaticRouteCandidateStatus candidateStatusFromRiskAssignment(
+    const RouteRiskTierAssignmentStatus3D status) noexcept {
   switch (status) {
-    case RouteRiskTierAssignmentStatus::kAccepted:
+    case RouteRiskTierAssignmentStatus3D::kAccepted:
       return StaticRouteCandidateStatus::kAccepted;
-    case RouteRiskTierAssignmentStatus::kInvalidInput:
+    case RouteRiskTierAssignmentStatus3D::kInvalidInput:
       return StaticRouteCandidateStatus::kInvalidInput;
   }
   return StaticRouteCandidateStatus::kInvalidInput;
@@ -117,8 +118,8 @@ exclusiveExecutionHold(const ExecutionRouteSnapshot3D& snapshot) noexcept {
   return second_route != nullptr &&
          first_route->identity.generation == second_route->identity.generation &&
          first_route->geometry != nullptr && second_route->geometry != nullptr &&
-         first_route->geometry->executable_geometry_revision ==
-             second_route->geometry->executable_geometry_revision &&
+         first_route->geometry->compiled_trajectory_revision ==
+             second_route->geometry->compiled_trajectory_revision &&
          first_route->continuity_id == second_route->continuity_id;
 }
 
@@ -153,21 +154,26 @@ nextPendingPublicationSequence(std::atomic<std::uint64_t>& sequence) noexcept {
   return std::nullopt;
 }
 
-} // namespace
-
-ProductionCompiledRouteCandidate3D
-makeCompiledRouteCandidate3D(MaterializedRoute3D materialized,
-                             RouteCompilationResult3D compilation) {
-  return ProductionCompiledRouteCandidate3D{
-      .materialized = std::move(materialized),
-      .geometry = compilation.compiled() ? std::move(compilation.geometry) : nullptr,
-      .geometry_validation = compilation.validation,
-      .stop_turn_count = compilation.stop_turn_count,
+[[nodiscard]] VehicleState3D
+exactVehicleState3D(const ProductionMppiNavigation& navigation) noexcept {
+  return VehicleState3D{
+      .identity =
+          VehicleStateIdentity3D{
+              .revision = navigation.revision,
+              .source_timestamp_us = navigation.source_timestamp_us,
+              .receive_stamp_ns = navigation.receive_stamp_ns,
+          },
+      .position = Point3{navigation.state.x, navigation.state.y, navigation.state.z},
+      .velocity = Vec3{navigation.state.vx, navigation.state.vy, navigation.state.vz},
+      .yaw_rad = navigation.state.yaw,
+      .yaw_rate_radps = navigation.state.yaw_rate,
   };
 }
 
-bool RouteAdmissionReport3D::executionGeometryValid() const noexcept {
-  return geometry_validation.valid();
+} // namespace
+
+bool RouteAdmissionReport3D::compiledTrajectoryValid() const noexcept {
+  return trajectory_validation.valid();
 }
 
 bool pendingRoutePublicationBaseCurrent3D(
@@ -178,18 +184,20 @@ bool pendingRoutePublicationBaseCurrent3D(
 
 bool RouteAdmissionReport3D::readyForArbitration(
     const ProductionMaterializedRouteProposal3D& proposal) const noexcept {
-  const ProductionRouteGeometry3D& geometry = proposal.geometry;
+  if (proposal.trajectory == nullptr) {
+    return false;
+  }
+  const CompiledTrajectory3D& trajectory = *proposal.trajectory;
   return proposal.identity.activation_eligible && assessment.accepted() &&
-         handoff.accepted && geometry.mppi_route && geometry.route &&
-         geometry.route_2d_projection && geometry.constrained_spans &&
-         geometry.passage_volumes && geometry.cooperative_passage_assignments &&
-         geometry.selected_passage_traversal_ids &&
-         geometry.materialized_route_fingerprint ==
+         handoff.accepted && trajectory.route && trajectory.constrained_spans &&
+         trajectory.passage_volumes && trajectory.cooperative_passage_assignments &&
+         trajectory.selected_passage_traversal_ids &&
+         trajectory.materialized_route_fingerprint ==
              proposal.identity.route_fingerprint &&
-         geometry.executable_geometry_revision != 0U &&
-         geometry.executable_geometry_revision ==
-             executionRouteGeometryRevision3D(geometry) &&
-         geometry_validation.valid() && world_compatible && objective_matches;
+         trajectory.compiled_trajectory_revision != 0U &&
+         trajectory.compiled_trajectory_revision ==
+             compiledTrajectoryRevision3D(trajectory) &&
+         trajectory_validation.valid() && world_compatible && objective_matches;
 }
 
 ProductionRouteActivationSnapshot3D
@@ -226,15 +234,15 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
     const std::uint64_t candidate_generation,
     const ProductionRouteActivationSnapshot3D& snapshot) {
   ProductionRouteActivationResult3D result;
-  result.candidate.materialized = std::move(materialization.route);
+  result.materialized = std::move(materialization.route);
   result.telemetry = materialization.telemetry;
   RouteAdmissionReport3D& report = result.admission;
   report.candidate_validation = validation;
   report.activation_status =
-      result.candidate.materialized.planner_executable
+      result.materialized.planner_executable
           ? StaticRouteActivationStatus::kCandidateValidationRejected
           : StaticRouteActivationStatus::kCandidateNotExecutable;
-  MaterializedRoute3D& candidate = result.candidate.materialized;
+  MaterializedRoute3D& candidate = result.materialized;
   candidate.candidate_generation = candidate_generation;
   const bool raw_validation_required = candidate.world->observed_occupancy != nullptr;
 
@@ -265,10 +273,12 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
       snapshot.resident_world->local_world_generation.generation !=
           candidate.world->local_world_generation.generation) {
     auto rebased_route = std::make_shared<std::vector<RouteSample3D>>(*candidate.route);
-    const RouteRiskTierAssignmentResult risk_assignment = assignRouteRiskTiers(
-        *rebased_route, snapshot.resident_world->grid,
-        *snapshot.resident_world->distances_m, mppi_config_.risk.critical_distance_m,
-        mppi_config_.risk.preferred_distance_m);
+    const RouteRiskTierAssignmentResult3D risk_assignment =
+        assignRouteRiskTiersFromMppiEsdf3D(*rebased_route,
+                                           snapshot.resident_world->grid,
+                                           *snapshot.resident_world->distances_m,
+                                           mppi_config_.risk.critical_distance_m,
+                                           mppi_config_.risk.preferred_distance_m);
     if (!risk_assignment.accepted()) {
       report.candidate_validation = StaticRouteCandidateValidation{
           .status = candidateStatusFromRiskAssignment(risk_assignment.status),
@@ -290,16 +300,13 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
           candidate.reaches_mission_goal, flight_envelope_config_, replacement_policy);
     }
     if (report.candidate_validation.accepted &&
-        !validateConstrainedRouteSpans(*rebased_route, *candidate.constrained_spans,
-                                       snapshot.resident_world->grid,
-                                       *snapshot.resident_world->distances_m)) {
+        !validateConstrainedRouteSpans(*rebased_route, *candidate.constrained_spans)) {
       report.candidate_validation = StaticRouteCandidateValidation{
           .status = StaticRouteCandidateStatus::kInvalidPassageSpan};
     }
     if (report.candidate_validation.accepted) {
       candidate.world = snapshot.resident_world;
       candidate.route = rebased_route;
-      candidate.route_2d_projection = projectRouteTo2D(*rebased_route);
       candidate.initial_projection = projectOntoRouteProgress3D(
           *candidate.route,
           Point3{snapshot.navigation.state.x, snapshot.navigation.state.y,
@@ -310,11 +317,11 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
     }
   }
 
-  report.tracking_geometry_source_occupied_fingerprint =
+  report.tracking_profile_source_occupied_fingerprint =
       candidate.world->observed_raw_world_owner != nullptr
           ? candidate.world->observed_raw_world_owner->occupiedContentFingerprint()
           : 0U;
-  report.tracking_geometry_activation_occupied_fingerprint =
+  report.tracking_profile_activation_occupied_fingerprint =
       activation_raw_owner != nullptr
           ? activation_raw_owner->occupiedContentFingerprint()
           : 0U;
@@ -330,7 +337,7 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
   // is also used for activation validation below.
   if (report.candidate_validation.accepted && spatial_route_available &&
       activation_tracking_world_available) {
-    report.tracking_geometry_compile_attempted = true;
+    report.trajectory_compile_attempted = true;
     const RouteEndpointSemantics3D endpoint_semantics = routeEndpointSemantics3D(
         candidate.reaches_mission_goal, !transaction.objective.continuous_tracking);
     const TrackingErrorTubeWorld3D tracking_world =
@@ -343,20 +350,27 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
                       optionalAddress(candidate.world->launch_support_contact),
               }
             : trackingErrorTubeWorld3D(*candidate.world);
-    RouteCompilationResult3D compilation = compileExecutionRoute3D(RouteCompilerInput3D{
-        .route = *candidate.route,
-        .constrained_spans = *candidate.constrained_spans,
-        .passage_volumes = *candidate.passage_volumes,
-        .cooperative_passage_assignments = *candidate.cooperative_passage_assignments,
-        .selected_passage_traversal_ids = *candidate.selected_passage_traversal_ids,
-        .passage_volume_config = cooperative_passage_volume_config_,
-        .endpoint_semantics = endpoint_semantics,
-        .materialized_route_fingerprint = candidate.fingerprint,
-        .tracking_world = tracking_world,
-        .config = routeCompilerConfig3D(),
-    });
-    report.tracking_geometry_compiled = compilation.compiled();
-    result.candidate = makeCompiledRouteCandidate3D(candidate, std::move(compilation));
+    TrajectoryCompilationResult3D compilation =
+        TrajectoryCompiler3D::compile(TrajectoryCompilerInput3D{
+            .exact_initial_state = exactVehicleState3D(snapshot.navigation),
+            .route_generation = candidate.candidate_generation,
+            .route = *candidate.route,
+            .constrained_spans = *candidate.constrained_spans,
+            .passage_volumes = *candidate.passage_volumes,
+            .cooperative_passage_assignments =
+                *candidate.cooperative_passage_assignments,
+            .selected_passage_traversal_ids = *candidate.selected_passage_traversal_ids,
+            .passage_volume_config = cooperative_passage_volume_config_,
+            .endpoint_semantics = endpoint_semantics,
+            .materialized_route_fingerprint = candidate.fingerprint,
+            .tracking_world = tracking_world,
+            .config = trajectoryCompilerConfig3D(),
+        });
+    report.trajectory_compiled = compilation.compiled();
+    report.trajectory_validation = compilation.validation;
+    result.stop_turn_count = compilation.stop_turn_count;
+    result.trajectory =
+        compilation.compiled() ? std::move(compilation.trajectory) : nullptr;
   } else if (report.candidate_validation.accepted && raw_validation_required &&
              activation_raw_owner == nullptr) {
     report.candidate_validation = StaticRouteCandidateValidation{
@@ -435,23 +449,10 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
       activation_evidence.route_length_m += distance3D(
           (*candidate.route)[index - 1U].position, (*candidate.route)[index].position);
     }
-    const RouteEndpointSemantics3D endpoint_semantics = routeEndpointSemantics3D(
-        candidate.reaches_mission_goal, !transaction.objective.continuous_tracking);
-    const RouteTimeParameterization3D time_parameterization = parameterizeRouteTime3D(
-        *candidate.route, *candidate.constrained_spans,
-        speed_policy_config_.cruise_speed_mps, constrained_route_speed_limit_mps_,
-        endpoint_semantics, speed_policy_config_, mppi_config_.dynamics,
-        Vec3{static_cast<double>(snapshot.navigation.state.vx),
-             static_cast<double>(snapshot.navigation.state.vy),
-             static_cast<double>(snapshot.navigation.state.vz)},
-        result.candidate.geometry != nullptr &&
-                result.candidate.geometry->tracking_error_tube != nullptr
-            ? std::span<const double>{result.candidate.geometry->tracking_error_tube
-                                          ->speed_limits_mps}
-            : std::span<const double>{});
-    activation_evidence.objective_cost = time_parameterization.valid
-                                             ? time_parameterization.travel_time_s
-                                             : std::numeric_limits<double>::infinity();
+    activation_evidence.objective_cost =
+        result.trajectory != nullptr && result.trajectory->time_profile.valid()
+            ? result.trajectory->time_profile.travel_time_s
+            : std::numeric_limits<double>::infinity();
     activation_evidence.endpoint_displacement_m =
         distance3D(snapshot_position, candidate.route->back().position);
     activation_evidence.mission_progress_m =
@@ -558,10 +559,6 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
   validated_world_certificate.raw_validated_through_revision =
       report.assessment.raw_validated_through_revision;
 
-  const ProductionRouteGeometry3D execution_geometry =
-      result.candidate.geometry != nullptr ? *result.candidate.geometry
-                                           : ProductionRouteGeometry3D{};
-
   result.proposal = ProductionMaterializedRouteProposal3D{
       .identity =
           MaterializedRouteProposal3D{
@@ -575,40 +572,44 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
               .reaches_mission_goal = candidate.reaches_mission_goal,
               .activation_eligible = activation_evidence.physical_executable,
           },
-      .geometry = execution_geometry,
+      .trajectory = result.trajectory,
   };
 
-  report.geometry_validation = result.candidate.geometry_validation;
-  if (result.proposal.geometry.route == nullptr &&
-      report.geometry_validation.reason ==
-          ExecutionRouteGeometryFailureReason3D::kNotAttempted) {
-    report.geometry_validation = {ExecutionRouteGeometryFailureReason3D::kMissingRoute,
-                                  0U};
-  } else if (result.proposal.geometry.route != nullptr) {
-    report.geometry_validation =
-        validateExecutionRouteGeometrySamples3D(*result.proposal.geometry.route);
+  if (result.proposal.trajectory == nullptr &&
+      report.trajectory_validation.reason ==
+          CompiledTrajectoryFailureReason3D::kNotAttempted) {
+    report.trajectory_validation = {CompiledTrajectoryFailureReason3D::kMissingRoute,
+                                    0U};
+  } else if (result.proposal.trajectory != nullptr &&
+             result.proposal.trajectory->route != nullptr) {
+    report.trajectory_validation =
+        validateCompiledTrajectorySamples3D(*result.proposal.trajectory->route);
     const ActivatedRouteIdentity3D candidate_identity{
         .generation = candidate_generation,
         .proposal = result.proposal.identity,
     };
-    if (report.geometry_validation.valid() &&
-        !executionRouteGeometryValid3D(result.proposal.geometry, candidate_identity)) {
-      report.geometry_validation.reason =
-          ExecutionRouteGeometryFailureReason3D::kDerivedResourceMismatch;
+    if (report.trajectory_validation.valid() &&
+        (!compiledTrajectoryValid3D(*result.proposal.trajectory, candidate_identity) ||
+         result.proposal.trajectory->exact_initial_state !=
+             exactVehicleState3D(snapshot.navigation))) {
+      report.trajectory_validation.reason =
+          CompiledTrajectoryFailureReason3D::kDerivedResourceMismatch;
     }
   }
 
   const bool handoff_control_fresh = appliedControlAuthoritativeForExecution(
       snapshot.applied_control, snapshot.execution_horizon_owner, snapshot.stamp_ns,
       maximum_control_feedback_age_ms_);
+  const std::shared_ptr<const std::vector<mppi::RouteSample3D>> mppi_reference =
+      result.proposal.trajectory != nullptr
+          ? mppi::adaptTrajectoryReference3D(*result.proposal.trajectory)
+          : nullptr;
   if (result.proposal.identity.activation_eligible && report.assessment.accepted() &&
-      result.proposal.geometry.mppi_route && candidate.world->distances_m &&
-      snapshot.navigation.valid) {
+      mppi_reference && candidate.world->distances_m && snapshot.navigation.valid) {
     report.handoff = mppi::validateStaticRouteHandoff(
         snapshot.navigation.state,
         handoff_control_fresh ? snapshot.applied_control.control : mppi::Control{},
-        *result.proposal.geometry.mppi_route,
-        static_cast<float>(speed_policy_config_.cruise_speed_mps),
+        *mppi_reference, static_cast<float>(speed_policy_config_.cruise_speed_mps),
         static_cast<float>(route_tracking_policy_.maximum_cross_track_m),
         static_cast<float>(kFiniteExecutionRouteCrossTrackToleranceM3D), mppi_config_,
         candidate.world->grid, *candidate.world->distances_m);
@@ -616,15 +617,17 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
 
   result.proposal.identity.activation_eligible =
       result.proposal.identity.activation_eligible && report.assessment.accepted() &&
-      report.handoff.accepted && result.proposal.geometry.route &&
-      result.proposal.geometry.constrained_spans && report.world_compatible &&
-      report.objective_matches && report.geometry_validation.valid();
+      report.handoff.accepted && result.proposal.trajectory != nullptr &&
+      result.proposal.trajectory->route &&
+      result.proposal.trajectory->constrained_spans && report.world_compatible &&
+      report.objective_matches && report.trajectory_validation.valid();
 
   if (report.candidate_validation.accepted && !report.world_compatible) {
     report.activation_status = StaticRouteActivationStatus::kWorldPublicationRejected;
   } else if (report.candidate_validation.accepted && !report.objective_matches) {
     report.activation_status = StaticRouteActivationStatus::kStaleObjective;
-  } else if (report.candidate_validation.accepted && !report.executionGeometryValid()) {
+  } else if (report.candidate_validation.accepted &&
+             !report.compiledTrajectoryValid()) {
     report.activation_status = StaticRouteActivationStatus::kInvalidExecutionGeometry;
   } else if (report.candidate_validation.accepted &&
              !report.readyForArbitration(result.proposal)) {
@@ -638,7 +641,7 @@ void ProductionMppiNode::commitRouteActivation3D(
     const ProductionRouteActivationSnapshot3D& snapshot,
     const std::uint64_t candidate_generation,
     ProductionRouteActivationResult3D& result) {
-  MaterializedRoute3D& candidate = result.candidate.materialized;
+  MaterializedRoute3D& candidate = result.materialized;
   RouteAdmissionReport3D& report = result.admission;
   const ProductionMaterializedRouteProposal3D& materialized_proposal = result.proposal;
   const bool raw_validation_required = candidate.world->observed_occupancy != nullptr;
@@ -682,17 +685,18 @@ void ProductionMppiNode::commitRouteActivation3D(
       .generation = candidate_generation,
       .proposal = materialized_proposal.identity,
   };
-  const bool execution_geometry_valid =
+  const bool compiled_trajectory_valid =
       candidate.candidate_generation == candidate_generation &&
-      report.geometry_validation.valid() &&
-      executionRouteGeometryValid3D(materialized_proposal.geometry, candidate_identity);
-  if (!execution_geometry_valid) {
+      report.trajectory_validation.valid() &&
+      materialized_proposal.trajectory != nullptr &&
+      compiledTrajectoryValid3D(*materialized_proposal.trajectory, candidate_identity);
+  if (!compiled_trajectory_valid) {
     RCLCPP_WARN(
         get_logger(),
-        "EXECUTION_ROUTE_GEOMETRY valid=false reason=%s sample_index=%zu "
+        "COMPILED_TRAJECTORY valid=false reason=%s sample_index=%zu "
         "route_generation=%" PRIu64,
-        executionRouteGeometryFailureReasonName3D(report.geometry_validation.reason),
-        report.geometry_validation.sample_index, candidate_generation);
+        compiledTrajectoryFailureReason3DName(report.trajectory_validation.reason),
+        report.trajectory_validation.sample_index, candidate_generation);
   }
   std::shared_ptr<const VersionedObservedRawWorld3D> observed_owner;
   std::shared_ptr<const VersionedStaticWorld3D> static_owner;
@@ -732,12 +736,11 @@ void ProductionMppiNode::commitRouteActivation3D(
   const std::optional<CertifiedRouteSuffix3D> certified_route =
       report.readyForArbitration(result.proposal) && report.generation_matches &&
               report.certification_execution_base_current &&
-              report.replacement.replacementAllowed() && execution_geometry_valid
+              report.replacement.replacementAllowed() && compiled_trajectory_valid
           ? certifyExecutionRoute3D(ExecutionRouteActivation3D{
                 .route_generation = candidate_generation,
                 .proposal = materialized_proposal.identity,
-                .geometry = std::make_shared<const ProductionRouteGeometry3D>(
-                    materialized_proposal.geometry),
+                .geometry = materialized_proposal.trajectory,
                 .observation =
                     RouteActivationObservation3D{
                         .resident_world =
@@ -817,7 +820,7 @@ void ProductionMppiNode::commitRouteActivation3D(
                 .base_route_generation = base_generation,
                 .base_geometry_revision =
                     current_route != nullptr && current_route->geometry != nullptr
-                        ? current_route->geometry->executable_geometry_revision
+                        ? current_route->geometry->compiled_trajectory_revision
                         : 0U,
                 .base_continuity_id =
                     current_route != nullptr ? current_route->continuity_id : 0U,
@@ -892,7 +895,7 @@ void ProductionMppiNode::commitRouteActivation3D(
              !report.objective_matches) {
     report.activation_status = StaticRouteActivationStatus::kStaleObjective;
   } else if (!published_pending && report.candidate_validation.accepted &&
-             !execution_geometry_valid) {
+             !compiled_trajectory_valid) {
     report.activation_status = StaticRouteActivationStatus::kInvalidExecutionGeometry;
   } else if (!published_pending && report.candidate_validation.accepted &&
              overlap_search && certified_route.has_value() &&

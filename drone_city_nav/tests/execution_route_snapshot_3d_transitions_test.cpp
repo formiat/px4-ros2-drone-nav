@@ -578,7 +578,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       fixture.route, fixture.physical_route_fingerprint,
       SnapshotFixture3D::kRouteGeneration, fixture.raw_occupancy.occupiedSnapshot(),
       testPassageVolumeConfig());
-  fixture.geometry_revision = fixture.geometry->executable_geometry_revision;
+  fixture.geometry_revision = fixture.geometry->compiled_trajectory_revision;
   const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
       fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);
@@ -849,8 +849,13 @@ TEST(ExecutionRouteSnapshot3DTest,
   ExecutionRouteActivation3D continuation_activation = fixture.activation();
   continuation_activation.proposal.reaches_mission_goal = false;
   continuation_activation.proposal.evidence.reaches_mission_target = false;
-  continuation_activation.geometry =
-      withTerminalMppiSpeed(continuation_activation.geometry, 4.0F);
+  continuation_activation.geometry = withEndpointSemantics(
+      continuation_activation.geometry, RouteEndpointSemantics3D::kContinuation,
+      TrackingErrorTubeWorld3D{
+          .observed_occupancy = &fixture.raw_occupancy,
+          .occupied_content_fingerprint =
+              fixture.raw_occupancy.occupiedSnapshot().contentFingerprint(),
+      });
   const std::optional<CertifiedRouteSuffix3D> suffix =
       certifyExecutionRoute3D(continuation_activation);
   ASSERT_TRUE(suffix.has_value());

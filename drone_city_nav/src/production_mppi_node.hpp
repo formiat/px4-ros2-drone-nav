@@ -2,13 +2,13 @@
 
 #include "drone_city_nav/applied_control_admission.hpp"
 #include "drone_city_nav/bounded_worker_pool.hpp"
+#include "drone_city_nav/compiled_trajectory_3d.hpp"
 #include "drone_city_nav/cooperative_mppi_adapter.hpp"
 #include "drone_city_nav/cooperative_passage_execution.hpp"
 #include "drone_city_nav/cooperative_passage_route.hpp"
 #include "drone_city_nav/direct_tracking_maneuver_lifecycle.hpp"
 #include "drone_city_nav/distance_field_3d.hpp"
 #include "drone_city_nav/execution_evidence_3d.hpp"
-#include "drone_city_nav/execution_route_geometry_3d.hpp"
 #include "drone_city_nav/execution_route_snapshot_3d.hpp"
 #include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/free_space_topology_3d.hpp"
@@ -19,6 +19,7 @@
 #include "drone_city_nav/mission_waypoint_sequence.hpp"
 #include "drone_city_nav/mppi/finite_execution_path.hpp"
 #include "drone_city_nav/mppi/mppi_engine.hpp"
+#include "drone_city_nav/mppi/trajectory_reference_adapter_3d.hpp"
 #include "drone_city_nav/mppi_liveness.hpp"
 #include "drone_city_nav/mppi_nominal_reseed.hpp"
 #include "drone_city_nav/mppi_rollout_budget.hpp"
@@ -106,7 +107,7 @@ struct ProductionMppiControllerTickResult;
 struct ProductionRouteActivationSnapshot3D;
 struct ProductionRouteMaterialization3D;
 struct ProductionMppiExecutionCycle;
-struct RouteCompilerConfig3D;
+struct TrajectoryCompilerConfig3D;
 struct ProductionMppiHorizonCommit;
 enum class ProductionMppiHoldOwnershipTransition3D : std::uint8_t;
 enum class ProductionMppiHorizonCommitStatus : std::uint8_t;
@@ -217,7 +218,7 @@ private:
   void configureOptionalNavigationConstraints();
   void configureStaticRouteGeometry();
   void configureStaticRouteExtension(double maximum_horizontal_acceleration_mps2);
-  [[nodiscard]] RouteCompilerConfig3D routeCompilerConfig3D() const noexcept;
+  [[nodiscard]] TrajectoryCompilerConfig3D trajectoryCompilerConfig3D() const noexcept;
   [[nodiscard]] TrackingErrorTubeWorld3D
   trackingErrorTubeWorld3D(const WorldSnapshot3D& world) const noexcept;
   void maybeRequestStaticRouteExtensionFromExecution(
@@ -524,6 +525,7 @@ private:
   std::unique_ptr<BoundedWorkerPool> planning_worker_pool_;
   std::unique_ptr<PersistentDStarLitePlanner3D> persistent_planner_3d_;
   std::unique_ptr<mppi::MppiCudaEngine> engine_;
+  mppi::TrajectoryReferenceAdapter3D trajectory_reference_adapter_;
   std::shared_ptr<const OccupancyGrid3D> static_occupancy_3d_;
   std::optional<FreeSpaceTopology3D> static_free_space_topology_3d_;
   std::optional<StaticEsdfCache> static_esdf_cache_;

@@ -4,6 +4,7 @@
 #include "drone_city_nav/mppi/mppi_reference.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
 #include "drone_city_nav/pending_certified_route_3d.hpp"
+#include "drone_city_nav/trajectory_compiler_3d.hpp"
 
 #include <gtest/gtest.h>
 
@@ -23,196 +24,10 @@
 #include <variant>
 #include <vector>
 
+#include "compiled_trajectory_3d_test_support.hpp"
+
 namespace drone_city_nav {
 namespace {
-
-[[nodiscard]] PassageVolumeConfig testPassageVolumeConfig() noexcept {
-  PassageVolumeConfig config;
-  config.footprint = SweptFootprintConfig{
-      .radius_m = 0.0,
-      .perimeter_samples = 0U,
-      .radial_rings = 0U,
-      .axial_samples = 1U,
-      .sweep_step_m = 0.25,
-  };
-  return config;
-}
-
-[[nodiscard]] std::shared_ptr<const std::vector<mppi::RouteSample3D>>
-makeMppiRoute(const std::vector<RouteSample3D>& route) {
-  std::vector<mppi::RouteSample3D> result;
-  result.reserve(route.size());
-  for (const RouteSample3D& sample : route) {
-    result.push_back(mppi::RouteSample3D{
-        .x_m = static_cast<float>(sample.position.x),
-        .y_m = static_cast<float>(sample.position.y),
-        .z_m = static_cast<float>(sample.position.z),
-        .tangent_x = static_cast<float>(sample.tangent.x),
-        .tangent_y = static_cast<float>(sample.tangent.y),
-        .tangent_z = static_cast<float>(sample.tangent.z),
-        .station_m = static_cast<float>(sample.station_m),
-        .reference_speed_mps = static_cast<float>(sample.reference_speed_mps),
-        .required_risk_tier = sample.required_risk_tier,
-    });
-  }
-  return std::make_shared<const std::vector<mppi::RouteSample3D>>(std::move(result));
-}
-
-[[nodiscard]] std::shared_ptr<const ExecutionRouteGeometry3D>
-makeGeometry(const std::vector<RouteSample3D>& route,
-             const std::uint64_t physical_route_fingerprint,
-             const TrackingErrorTubeWorld3D tracking_world = {}) {
-  std::vector<Point2> projection;
-  projection.reserve(route.size());
-  for (const RouteSample3D& sample : route) {
-    projection.push_back(Point2{sample.position.x, sample.position.y});
-  }
-  auto geometry = std::make_shared<ExecutionRouteGeometry3D>(ExecutionRouteGeometry3D{
-      .mppi_route = makeMppiRoute(route),
-      .route = std::make_shared<const std::vector<RouteSample3D>>(route),
-      .tracking_error_tube = std::make_shared<const TrackingErrorTubeProfile3D>(
-          makeTrackingErrorTubeProfile3D(route, tracking_world, SweptFootprintConfig{},
-                                         TrackingErrorTubeConfig3D{}, 5.0)),
-      .route_2d_projection =
-          std::make_shared<const std::vector<Point2>>(std::move(projection)),
-      .constrained_spans = std::make_shared<const std::vector<ConstrainedRouteSpan>>(),
-      .passage_volumes = std::make_shared<const std::vector<PassageVolume>>(),
-      .cooperative_passage_assignments =
-          std::make_shared<const std::vector<CooperativePassageAssignment>>(),
-      .selected_passage_traversal_ids =
-          std::make_shared<const std::vector<PassageTraversalId>>(),
-      .passage_volume_config = testPassageVolumeConfig(),
-      .materialized_route_fingerprint = physical_route_fingerprint,
-      .physical_route_fingerprint = physical_route_fingerprint,
-      .executable_geometry_revision = 0U,
-  });
-  geometry->executable_geometry_revision = executionRouteGeometryRevision3D(*geometry);
-  return geometry;
-}
-
-[[nodiscard, maybe_unused]] CertifiedRouteSplice3D
-testRouteSplice(const CertifiedRouteSuffix3D& base,
-                const CertifiedRouteSuffix3D& successor) {
-  const RouteSpliceCertificationResult3D certification =
-      certifyRouteSplice3D(base, successor, successor.progress.last_observed_position,
-                           CertifiedRouteSpliceConfig3D{
-                               .required_overlap_m = 2.0,
-                               .sample_step_m = 0.5,
-                               .maximum_position_separation_m = 2.0,
-                               .minimum_tangent_alignment = 0.5,
-                               .activation_station_tolerance_m = 1.0,
-                           });
-  if (!certification.certified()) {
-    throw std::runtime_error{"failed to create test route splice"};
-  }
-  return *certification.splice;
-}
-
-[[nodiscard, maybe_unused]] std::shared_ptr<const ExecutionRouteGeometry3D>
-withTerminalMppiSpeed(const std::shared_ptr<const ExecutionRouteGeometry3D>& source,
-                      const float terminal_speed_mps) {
-  auto geometry = std::make_shared<ExecutionRouteGeometry3D>(*source);
-  auto mppi_route =
-      std::make_shared<std::vector<mppi::RouteSample3D>>(*geometry->mppi_route);
-  mppi_route->back().reference_speed_mps = terminal_speed_mps;
-  geometry->mppi_route = std::move(mppi_route);
-  geometry->executable_geometry_revision = executionRouteGeometryRevision3D(*geometry);
-  return geometry;
-}
-
-[[nodiscard, maybe_unused]] std::shared_ptr<const ExecutionRouteGeometry3D>
-makeConstrainedGeometry(const std::vector<RouteSample3D>& route,
-                        const std::uint64_t physical_route_fingerprint,
-                        const std::uint64_t route_generation,
-                        const OccupancyGrid3D& occupancy,
-                        const PassageVolumeConfig& passage_volume_config,
-                        const double constrained_begin_station_m = 0.0,
-                        const double constrained_end_station_m = -1.0) {
-  auto geometry = std::make_shared<ExecutionRouteGeometry3D>(
-      *makeGeometry(route, physical_route_fingerprint,
-                    TrackingErrorTubeWorld3D{
-                        .occupancy = &occupancy,
-                        .occupied_content_fingerprint = occupancy.contentFingerprint(),
-                    }));
-  const PassageTraversalId passage_traversal_id{"test_passage:forward"};
-  const double route_end_station_m = route.back().station_m;
-  const double span_end_station_m = constrained_end_station_m >= 0.0
-                                        ? constrained_end_station_m
-                                        : route_end_station_m;
-  const RouteSample3D span_begin =
-      sampleRoute3DAtStation(route, constrained_begin_station_m);
-  const RouteSample3D span_end = sampleRoute3DAtStation(route, span_end_station_m);
-  const ConstrainedRouteSpan span{
-      .passage_traversal_id = passage_traversal_id,
-      .route_generation = route_generation,
-      .direction_sign = 1,
-      .begin_station_m = constrained_begin_station_m,
-      .end_station_m = span_end_station_m,
-      .envelope =
-          {
-              RouteEnvelopeSample{
-                  .station_m = constrained_begin_station_m,
-                  .lateral_free_left_m = 2.0,
-                  .lateral_free_right_m = 2.0,
-                  .min_z_m = 4.0,
-                  .max_z_m = 6.0,
-                  .minimum_clearance_m = 1.0,
-                  .reference_z_m = span_begin.position.z,
-                  .reference_speed_mps = span_begin.reference_speed_mps,
-              },
-              RouteEnvelopeSample{
-                  .station_m = span_end_station_m,
-                  .lateral_free_left_m = 2.0,
-                  .lateral_free_right_m = 2.0,
-                  .min_z_m = 4.0,
-                  .max_z_m = 6.0,
-                  .minimum_clearance_m = 1.0,
-                  .reference_z_m = span_end.position.z,
-                  .reference_speed_mps = span_end.reference_speed_mps,
-              },
-          },
-      .segment_spans = {},
-  };
-
-  std::vector<ConstrainedRouteSpan> spans{span};
-  std::vector<PassageVolume> volumes =
-      derivePassageVolumes(route, spans, occupancy, passage_volume_config);
-  if (volumes.size() == spans.size()) {
-    static_cast<void>(
-        projectPassageVolumeEnvelopes(spans, volumes, passage_volume_config.footprint));
-  }
-  const PassageVolume volume = volumes.front();
-  const CooperativePassageAssignment assignment{
-      .passage_traversal_id = passage_traversal_id,
-      .route_generation = route_generation,
-      .span_index = 0U,
-      .physical_width_m = volume.minimum_physical_width_m,
-      .minimum_lateral_offset_m = volume.minimum_lateral_offset_m,
-      .maximum_lateral_offset_m = volume.maximum_lateral_offset_m,
-      .minimum_secondary_offset_m = volume.minimum_secondary_offset_m,
-      .maximum_secondary_offset_m = volume.maximum_secondary_offset_m,
-      .requested_lateral_offset_m = 0.0,
-      .applied_lateral_offset_m = 0.0,
-      .desired_center_separation_m = 1.0,
-      .passage_cross_section_count = volume.cross_sections.size(),
-      .passage_volume_raw_validated = volume.raw_validated,
-      .status = CooperativePassageRouteStatus::kCentered,
-  };
-
-  geometry->constrained_spans =
-      std::make_shared<const std::vector<ConstrainedRouteSpan>>(std::move(spans));
-  geometry->passage_volumes =
-      std::make_shared<const std::vector<PassageVolume>>(std::move(volumes));
-  geometry->cooperative_passage_assignments =
-      std::make_shared<const std::vector<CooperativePassageAssignment>>(
-          std::vector<CooperativePassageAssignment>{assignment});
-  geometry->selected_passage_traversal_ids =
-      std::make_shared<const std::vector<PassageTraversalId>>(
-          std::vector<PassageTraversalId>{passage_traversal_id});
-  geometry->passage_volume_config = passage_volume_config;
-  geometry->executable_geometry_revision = executionRouteGeometryRevision3D(*geometry);
-  return geometry;
-}
 
 struct SnapshotFixture3D {
   static constexpr std::uint64_t kRouteGeneration{1U};
@@ -288,14 +103,14 @@ struct SnapshotFixture3D {
       .activation_eligible = true,
   };
   ObservedOccupancyGrid3D raw_occupancy{GridBounds3D{-5.0, -5.0, 0.0, 1.0, 20, 10, 10}};
-  std::shared_ptr<const ExecutionRouteGeometry3D> geometry{
+  std::shared_ptr<const CompiledTrajectory3D> geometry{
       makeGeometry(route, physical_route_fingerprint,
                    TrackingErrorTubeWorld3D{
                        .observed_occupancy = &raw_occupancy,
                        .occupied_content_fingerprint =
                            raw_occupancy.occupiedSnapshot().contentFingerprint(),
                    })};
-  std::uint64_t geometry_revision{geometry->executable_geometry_revision};
+  std::uint64_t geometry_revision{geometry->compiled_trajectory_revision};
   PassageVolumeConfig passage_volume_config{testPassageVolumeConfig()};
   SweptFootprintConfig execution_footprint{testPassageVolumeConfig().footprint};
   std::shared_ptr<const VersionedExecutionValidationPolicy3D> validation_policy = [] {
@@ -408,7 +223,7 @@ struct SnapshotFixture3D {
         .expected_snapshot_version = snapshot.version,
         .expected_route_generation = snapshot.route->identity.generation,
         .expected_geometry_revision =
-            snapshot.route->geometry->executable_geometry_revision,
+            snapshot.route->geometry->compiled_trajectory_revision,
     };
   }
 

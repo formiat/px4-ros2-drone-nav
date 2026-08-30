@@ -1,10 +1,11 @@
 #pragma once
 
+#include "drone_city_nav/compiled_trajectory_3d.hpp"
 #include "drone_city_nav/execution_evidence_3d.hpp"
-#include "drone_city_nav/execution_route_geometry_3d.hpp"
 #include "drone_city_nav/mppi/finite_execution_path.hpp"
 #include "drone_city_nav/route_execution_contract_3d.hpp"
 #include "drone_city_nav/route_lifecycle_3d.hpp"
+#include "drone_city_nav/tracking_error_tube_handoff_3d.hpp"
 #include "drone_city_nav/world_generation.hpp"
 
 #include <cstddef>
@@ -100,7 +101,7 @@ struct CertifiedRouteSuffix3D {
   // derived. Copies preserve both identities.
   std::optional<RouteInstanceId3D> parent_route_instance_id;
   ActivatedRouteIdentity3D identity{};
-  std::shared_ptr<const ExecutionRouteGeometry3D> geometry;
+  std::shared_ptr<const CompiledTrajectory3D> geometry;
   RouteSuffixCertificate3D certificate{StaticRouteCertificate3D{}};
   CertifiedRouteProgress3D progress{};
   RouteContinuityLineage3D continuity_lineage{};
@@ -330,7 +331,7 @@ using ExecutionPlan3D = ExecutionRouteSnapshot3D;
 struct ExecutionRouteActivation3D {
   std::uint64_t route_generation{0U};
   MaterializedRouteProposal3D proposal{};
-  std::shared_ptr<const ExecutionRouteGeometry3D> geometry;
+  std::shared_ptr<const CompiledTrajectory3D> geometry;
   RouteActivationObservation3D observation{};
   PassageVolumeConfig passage_volume_config{};
   RouteContinuityLineage3D continuity_lineage{};
@@ -586,8 +587,8 @@ private:
 };
 
 [[nodiscard]] bool
-executionRouteGeometryValid3D(const ExecutionRouteGeometry3D& geometry,
-                              const ActivatedRouteIdentity3D& identity) noexcept;
+compiledTrajectoryValid3D(const CompiledTrajectory3D& geometry,
+                          const ActivatedRouteIdentity3D& identity) noexcept;
 
 [[nodiscard]] std::optional<CertifiedRouteSuffix3D>
 certifyExecutionRoute3D(const ExecutionRouteActivation3D& activation);

@@ -1,10 +1,12 @@
+#include "drone_city_nav/compiled_trajectory_views_3d.hpp"
 #include "drone_city_nav/execution_route_snapshot_3d.hpp"
-#include "drone_city_nav/route_compiler_3d.hpp"
+#include "drone_city_nav/mppi/trajectory_reference_adapter_3d.hpp"
+#include "drone_city_nav/trajectory_compiler_3d.hpp"
 
 #include <gtest/gtest.h>
 
 #include <array>
-#include <span>
+#include <memory>
 #include <vector>
 
 #include "production_mppi_route_activation.hpp"
@@ -22,59 +24,101 @@ namespace {
   return sampleRoute3D(points, 5.0, 8.0);
 }
 
-[[nodiscard]] std::shared_ptr<const std::vector<mppi::RouteSample3D>>
-profile(const RouteEndpointSemantics3D semantics) {
-  const std::vector<RouteSample3D> route = straightRoute();
-  return makeMppiRoute3D(route, std::span<const ConstrainedRouteSpan>{}, 8.0, 4.0,
-                         semantics, MppiSpeedPolicyConfig{});
+[[nodiscard]] VehicleState3D initialState(const Point3& position) {
+  return VehicleState3D{
+      .identity =
+          VehicleStateIdentity3D{
+              .revision = 1U,
+              .source_timestamp_us = 2U,
+              .receive_stamp_ns = 3,
+          },
+      .position = position,
+  };
+}
+
+[[nodiscard]] TrajectoryCompilationResult3D
+compileProfile(const RouteEndpointSemantics3D semantics) {
+  std::vector<RouteSample3D> route = straightRoute();
+  const std::uint64_t fingerprint = routeFingerprint(route);
+  TrajectoryCompilerConfig3D config;
+  config.unconstrained_speed_mps = 8.0;
+  config.constrained_speed_mps = 4.0;
+  return TrajectoryCompiler3D::compile(TrajectoryCompilerInput3D{
+      .exact_initial_state = initialState(route.front().position),
+      .route_generation = 1U,
+      .route = std::move(route),
+      .constrained_spans = {},
+      .passage_volumes = {},
+      .cooperative_passage_assignments = {},
+      .selected_passage_traversal_ids = {},
+      .endpoint_semantics = semantics,
+      .materialized_route_fingerprint = fingerprint,
+      .config = config,
+  });
 }
 
 TEST(ProductionMppiRouteHelpersTest,
-     ContinuationUsesTheCanonicalPolicyLimitedSpeedAtTheLocalBoundary) {
-  const auto route = profile(RouteEndpointSemantics3D::kContinuation);
+     ControllerReferenceIsDerivedFromTheCanonicalSealedProfile) {
+  const TrajectoryCompilationResult3D continuation =
+      compileProfile(RouteEndpointSemantics3D::kContinuation);
+  ASSERT_TRUE(continuation.compiled());
 
-  ASSERT_NE(route, nullptr);
-  ASSERT_EQ(route->size(), 3U);
-  EXPECT_FLOAT_EQ(route->front().reference_speed_mps, 5.0F);
-  EXPECT_FLOAT_EQ(route->back().reference_speed_mps, 5.0F);
+  const auto reference = mppi::adaptTrajectoryReference3D(*continuation.trajectory);
+
+  ASSERT_NE(reference, nullptr);
+  ASSERT_EQ(reference->size(), continuation.trajectory->route->size());
+  for (std::size_t index = 0U; index < reference->size(); ++index) {
+    EXPECT_FLOAT_EQ((*reference)[index].reference_speed_mps,
+                    static_cast<float>(
+                        (*continuation.trajectory->route)[index].reference_speed_mps));
+  }
+  EXPECT_GT(reference->back().reference_speed_mps, 0.0F);
 }
 
-TEST(ProductionMppiRouteHelpersTest, RealStopsTaperTheNominalProfileToRest) {
+TEST(ProductionMppiRouteHelpersTest, RealStopsTaperTheSealedProfileToRest) {
   for (const RouteEndpointSemantics3D semantics :
        {RouteEndpointSemantics3D::kLocalStop, RouteEndpointSemantics3D::kMissionStop,
         RouteEndpointSemantics3D::kEmergencyBrakeTail}) {
-    const auto route = profile(semantics);
+    const TrajectoryCompilationResult3D compilation = compileProfile(semantics);
 
-    ASSERT_NE(route, nullptr);
-    ASSERT_EQ(route->size(), 3U);
-    EXPECT_GT(route->front().reference_speed_mps, 0.0F);
-    EXPECT_GT((*route)[1].reference_speed_mps, 0.0F);
-    EXPECT_FLOAT_EQ(route->back().reference_speed_mps, 0.0F);
+    ASSERT_TRUE(compilation.compiled());
+    ASSERT_FALSE(compilation.trajectory->route->empty());
+    EXPECT_DOUBLE_EQ(compilation.trajectory->route->back().reference_speed_mps, 0.0);
   }
 }
 
-TEST(ProductionMppiRouteHelpersTest, UnknownEndpointSemanticsFailsClosedToRest) {
-  const auto route = profile(static_cast<RouteEndpointSemantics3D>(255U));
+TEST(ProductionMppiRouteHelpersTest,
+     PlanarProjectionIsAnOnDemandViewWithoutIndependentAuthority) {
+  const TrajectoryCompilationResult3D compilation =
+      compileProfile(RouteEndpointSemantics3D::kContinuation);
+  ASSERT_TRUE(compilation.compiled());
 
-  ASSERT_NE(route, nullptr);
-  ASSERT_FALSE(route->empty());
-  EXPECT_FLOAT_EQ(route->back().reference_speed_mps, 0.0F);
+  const std::vector<Point2> projection =
+      projectCompiledTrajectoryTo2D(*compilation.trajectory);
+
+  ASSERT_EQ(projection.size(), compilation.trajectory->route->size());
+  for (std::size_t index = 0U; index < projection.size(); ++index) {
+    EXPECT_DOUBLE_EQ(projection[index].x,
+                     (*compilation.trajectory->route)[index].position.x);
+    EXPECT_DOUBLE_EQ(projection[index].y,
+                     (*compilation.trajectory->route)[index].position.y);
+  }
 }
 
-TEST(ProductionMppiRouteHelpersTest,
-     TwoDimensionalContinuationAlsoUsesTheCanonicalPolicyLimitedSpeed) {
-  const std::array<Point2, 3> points{
-      Point2{0.0, 0.0},
-      Point2{5.0, 0.0},
-      Point2{10.0, 0.0},
-  };
+TEST(ProductionMppiRouteHelpersTest, ControllerAdapterCachesByTrajectoryIdentity) {
+  const TrajectoryCompilationResult3D compilation =
+      compileProfile(RouteEndpointSemantics3D::kContinuation);
+  ASSERT_TRUE(compilation.compiled());
+  mppi::TrajectoryReferenceAdapter3D adapter;
 
-  const auto route =
-      makeMppiRoute2D(points, 5.0, 6.0, RouteEndpointSemantics3D::kContinuation);
+  const auto first = adapter.adapt(compilation.trajectory);
+  const auto second = adapter.adapt(compilation.trajectory);
 
-  ASSERT_NE(route, nullptr);
-  ASSERT_FALSE(route->empty());
-  EXPECT_FLOAT_EQ(route->back().reference_speed_mps, 5.0F);
+  ASSERT_NE(first, nullptr);
+  EXPECT_EQ(first, second);
+  adapter.clear();
+  EXPECT_NE(adapter.adapt(compilation.trajectory), nullptr);
+  EXPECT_EQ(adapter.adapt(nullptr), nullptr);
 }
 
 TEST(ProductionMppiRouteHelpersTest,
@@ -97,34 +141,24 @@ TEST(ProductionMppiRouteHelpersTest,
 }
 
 TEST(ProductionMppiRouteHelpersTest,
-     CompiledCandidatePassesTheCompletePreArbitrationGeometryContract) {
-  const std::vector<RouteSample3D> candidate =
-      sampleRoute3D(std::array<Point3, 3>{Point3{0.0, 0.0, 5.0}, Point3{5.0, 0.0, 5.0},
-                                          Point3{5.0, 5.0, 5.0}},
-                    0.5, 4.0);
-  const std::uint64_t fingerprint = routeFingerprint(candidate);
-  RouteCompilationResult3D compilation = compileExecutionRoute3D(RouteCompilerInput3D{
-      .route = candidate,
-      .constrained_spans = {},
-      .passage_volumes = {},
-      .cooperative_passage_assignments = {},
-      .selected_passage_traversal_ids = {},
-      .passage_volume_config = PassageVolumeConfig{},
-      .endpoint_semantics = RouteEndpointSemantics3D::kContinuation,
-      .materialized_route_fingerprint = fingerprint,
-      .config = RouteCompilerConfig3D{},
-  });
+     CompiledTrajectoryPassesTheCompletePreArbitrationContract) {
+  const TrajectoryCompilationResult3D compilation =
+      compileProfile(RouteEndpointSemantics3D::kContinuation);
   ASSERT_TRUE(compilation.compiled());
-  ASSERT_NE(compilation.geometry, nullptr);
+  const std::uint64_t fingerprint =
+      compilation.trajectory->materialized_route_fingerprint;
 
-  ProductionRouteActivationResult3D prepared;
-  prepared.proposal.identity = MaterializedRouteProposal3D{
-      .route_fingerprint = fingerprint,
-      .route_sample_count = compilation.geometry->route->size(),
-      .activation_eligible = true,
+  ProductionMaterializedRouteProposal3D proposal{
+      .identity =
+          MaterializedRouteProposal3D{
+              .route_fingerprint = fingerprint,
+              .route_sample_count = compilation.trajectory->route->size(),
+              .activation_eligible = true,
+          },
+      .trajectory = compilation.trajectory,
   };
-  prepared.proposal.geometry = *compilation.geometry;
-  prepared.admission.assessment = RouteActivationAssessment3D{
+  RouteAdmissionReport3D admission;
+  admission.assessment = RouteActivationAssessment3D{
       .publication =
           RoutePublicationAssessment3D{.status = RoutePublicationStatus3D::kCompatible},
       .projection = RouteProjection3D{.valid = true},
@@ -134,53 +168,43 @@ TEST(ProductionMppiRouteHelpersTest,
       .cross_track_accepted = true,
       .raw_world_compatible = true,
   };
-  prepared.admission.handoff = mppi::StaticRouteHandoffResult{
+  admission.handoff = mppi::StaticRouteHandoffResult{
       .status = mppi::StaticRouteHandoffStatus::kAccepted,
       .accepted = true,
   };
-  prepared.admission.geometry_validation = compilation.validation;
-  prepared.admission.world_compatible = true;
-  prepared.admission.objective_matches = true;
+  admission.trajectory_validation = compilation.validation;
+  admission.world_compatible = true;
+  admission.objective_matches = true;
 
-  EXPECT_TRUE(prepared.admission.executionGeometryValid());
-  EXPECT_TRUE(prepared.admission.readyForArbitration(prepared.proposal));
+  EXPECT_TRUE(admission.compiledTrajectoryValid());
+  EXPECT_TRUE(admission.readyForArbitration(proposal));
 }
 
 TEST(ProductionMppiRouteHelpersTest,
-     FailedCompilationCannotMutateAnEarlierCompiledCandidate) {
-  const std::vector<RouteSample3D> candidate = straightRoute();
-  const std::uint64_t fingerprint = routeFingerprint(candidate);
-  RouteCompilationResult3D compilation = compileExecutionRoute3D(RouteCompilerInput3D{
-      .route = candidate,
-      .constrained_spans = {},
-      .passage_volumes = {},
-      .cooperative_passage_assignments = {},
-      .selected_passage_traversal_ids = {},
-      .passage_volume_config = PassageVolumeConfig{},
-      .endpoint_semantics = RouteEndpointSemantics3D::kContinuation,
-      .materialized_route_fingerprint = fingerprint,
-      .config = RouteCompilerConfig3D{},
-  });
-  ASSERT_TRUE(compilation.compiled());
+     FailedCompilationCannotMutateAnEarlierSealedTrajectory) {
+  const TrajectoryCompilationResult3D compiled =
+      compileProfile(RouteEndpointSemantics3D::kContinuation);
+  ASSERT_TRUE(compiled.compiled());
+  const auto retained = compiled.trajectory;
+  const std::uint64_t retained_revision = retained->compiled_trajectory_revision;
 
-  const ProductionCompiledRouteCandidate3D compiled =
-      makeCompiledRouteCandidate3D(MaterializedRoute3D{}, std::move(compilation));
-  ASSERT_NE(compiled.geometry, nullptr);
-
-  const ProductionCompiledRouteCandidate3D rejected = makeCompiledRouteCandidate3D(
-      compiled.materialized,
-      RouteCompilationResult3D{
-          .geometry = nullptr,
-          .validation = {ExecutionRouteGeometryFailureReason3D::kInvalidTimeProfile,
-                         0U},
-          .stop_turn_count = 0U,
-          .tracking_error_tube = nullptr,
+  std::vector<RouteSample3D> invalid_route = straightRoute();
+  const TrajectoryCompilationResult3D rejected =
+      TrajectoryCompiler3D::compile(TrajectoryCompilerInput3D{
+          .route_generation = 1U,
+          .route = std::move(invalid_route),
+          .constrained_spans = {},
+          .passage_volumes = {},
+          .cooperative_passage_assignments = {},
+          .selected_passage_traversal_ids = {},
+          .materialized_route_fingerprint = retained->materialized_route_fingerprint,
       });
 
-  EXPECT_NE(compiled.geometry, nullptr);
-  EXPECT_EQ(rejected.geometry, nullptr);
-  EXPECT_EQ(rejected.geometry_validation.reason,
-            ExecutionRouteGeometryFailureReason3D::kInvalidTimeProfile);
+  EXPECT_FALSE(rejected.compiled());
+  EXPECT_EQ(rejected.validation.reason,
+            CompiledTrajectoryFailureReason3D::kInvalidInitialState);
+  EXPECT_EQ(retained, compiled.trajectory);
+  EXPECT_EQ(retained->compiled_trajectory_revision, retained_revision);
 }
 
 TEST(ProductionMppiRouteHelpersTest,

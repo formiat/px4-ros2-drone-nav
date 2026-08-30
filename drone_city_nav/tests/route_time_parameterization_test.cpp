@@ -10,6 +10,14 @@
 namespace drone_city_nav {
 namespace {
 
+[[nodiscard]] FlightTimeModel3D testTimeModel() {
+  FlightTimeModel3D model;
+  model.maximum_horizontal_speed_mps = 10.0;
+  model.maximum_vertical_speed_mps = 10.0;
+  model.maximum_translational_speed_mps = 10.0;
+  return model;
+}
+
 [[nodiscard]] std::vector<RouteSample3D> straightRoute(const double length_m) {
   return {
       {.position = {0.0, 0.0, 0.0}, .tangent = {1.0, 0.0, 0.0}, .station_m = 0.0},
@@ -26,8 +34,8 @@ TEST(RouteTimeParameterizationTest,
      TerminalStopProfilesBrakingIntoCanonicalTravelTime) {
   const std::vector<RouteSample3D> route = straightRoute(20.0);
   const RouteTimeParameterization3D profile = parameterizeRouteTime3D(
-      route, {}, 8.0, 3.0, RouteEndpointSemantics3D::kMissionStop,
-      MppiSpeedPolicyConfig{}, mppi::DynamicsConfig{}, Vec3{});
+      route, {}, 8.0, 3.0, RouteEndpointSemantics3D::kMissionStop, 4.0, testTimeModel(),
+      Vec3{});
 
   ASSERT_TRUE(profile.valid);
   ASSERT_EQ(profile.reference_speeds_mps.size(), route.size());
@@ -44,13 +52,9 @@ TEST(RouteTimeParameterizationTest, CurvatureAndVerticalMotionCapTheSameProfile)
       {.position = {2.0, 2.0, 0.0}, .tangent = {0.0, 1.0, 0.0}, .station_m = 4.0},
       {.position = {2.0, 4.0, 0.0}, .tangent = {0.0, 1.0, 0.0}, .station_m = 6.0},
   };
-  MppiSpeedPolicyConfig speed_policy;
-  speed_policy.cruise_speed_mps = 10.0;
-  speed_policy.absolute_speed_limit_mps = 10.0;
-  speed_policy.maximum_lateral_acceleration_mps2 = 1.0;
   const RouteTimeParameterization3D turn_profile = parameterizeRouteTime3D(
-      turn_route, {}, 10.0, 3.0, RouteEndpointSemantics3D::kContinuation, speed_policy,
-      mppi::DynamicsConfig{});
+      turn_route, {}, 10.0, 3.0, RouteEndpointSemantics3D::kContinuation, 1.0,
+      testTimeModel(), Vec3{});
 
   ASSERT_TRUE(turn_profile.valid);
   EXPECT_LT(turn_profile.reference_speeds_mps[1U], 3.0);
@@ -59,11 +63,11 @@ TEST(RouteTimeParameterizationTest, CurvatureAndVerticalMotionCapTheSameProfile)
       {.position = {0.0, 0.0, 0.0}, .tangent = {0.0, 0.0, 1.0}, .station_m = 0.0},
       {.position = {0.0, 0.0, 5.0}, .tangent = {0.0, 0.0, 1.0}, .station_m = 5.0},
   };
-  mppi::DynamicsConfig dynamics;
-  dynamics.maximum_vertical_speed_mps = 2.0F;
+  FlightTimeModel3D vertical_model = testTimeModel();
+  vertical_model.maximum_vertical_speed_mps = 2.0;
   const RouteTimeParameterization3D vertical_profile = parameterizeRouteTime3D(
-      vertical_route, {}, 10.0, 3.0, RouteEndpointSemantics3D::kContinuation,
-      speed_policy, dynamics);
+      vertical_route, {}, 10.0, 3.0, RouteEndpointSemantics3D::kContinuation, 4.0,
+      vertical_model, Vec3{});
   ASSERT_TRUE(vertical_profile.valid);
   EXPECT_LE(vertical_profile.reference_speeds_mps.front(), 2.0);
   EXPECT_LE(vertical_profile.reference_speeds_mps.back(), 2.0);
@@ -81,17 +85,12 @@ TEST(RouteTimeParameterizationTest,
        .tangent = {std::sqrt(0.5), 0.0, std::sqrt(0.5)},
        .station_m = station_m},
   };
-  MppiSpeedPolicyConfig speed_policy;
-  speed_policy.cruise_speed_mps = 10.0;
-  speed_policy.absolute_speed_limit_mps = 10.0;
-  mppi::DynamicsConfig dynamics;
-  dynamics.maximum_horizontal_speed_mps = 10.0F;
-  dynamics.maximum_vertical_speed_mps = 10.0F;
-  dynamics.maximum_translational_speed_mps = 2.0F;
+  FlightTimeModel3D model = testTimeModel();
+  model.maximum_translational_speed_mps = 2.0;
 
   const RouteTimeParameterization3D profile = parameterizeRouteTime3D(
-      route, {}, 10.0, 3.0, RouteEndpointSemantics3D::kContinuation, speed_policy,
-      dynamics);
+      route, {}, 10.0, 3.0, RouteEndpointSemantics3D::kContinuation, 4.0, model,
+      Vec3{});
 
   ASSERT_TRUE(profile.valid);
   EXPECT_TRUE(
@@ -109,8 +108,8 @@ TEST(RouteTimeParameterizationTest, StopAndTurnStartsAnIndependentJerkLimitedLeg
   ASSERT_EQ(route[1U].transition, RouteKinematicTransition3D::kStopAndTurn);
 
   const RouteTimeParameterization3D profile = parameterizeRouteTime3D(
-      route, {}, 5.0, 3.0, RouteEndpointSemantics3D::kContinuation,
-      MppiSpeedPolicyConfig{}, mppi::DynamicsConfig{});
+      route, {}, 5.0, 3.0, RouteEndpointSemantics3D::kContinuation, 4.0,
+      testTimeModel(), Vec3{});
 
   ASSERT_TRUE(profile.valid);
   ASSERT_EQ(profile.reference_speeds_mps.size(), route.size());
@@ -125,11 +124,11 @@ TEST(RouteTimeParameterizationTest,
      InitialThreeDimensionalVelocityChangesTheSharedEtaProfile) {
   const std::vector<RouteSample3D> route = straightRoute(40.0);
   const RouteTimeParameterization3D from_rest = parameterizeRouteTime3D(
-      route, {}, 8.0, 3.0, RouteEndpointSemantics3D::kContinuation,
-      MppiSpeedPolicyConfig{}, mppi::DynamicsConfig{}, Vec3{});
+      route, {}, 8.0, 3.0, RouteEndpointSemantics3D::kContinuation, 4.0,
+      testTimeModel(), Vec3{});
   const RouteTimeParameterization3D already_moving = parameterizeRouteTime3D(
-      route, {}, 8.0, 3.0, RouteEndpointSemantics3D::kContinuation,
-      MppiSpeedPolicyConfig{}, mppi::DynamicsConfig{}, Vec3{5.0, 0.0, 0.0});
+      route, {}, 8.0, 3.0, RouteEndpointSemantics3D::kContinuation, 4.0,
+      testTimeModel(), Vec3{5.0, 0.0, 0.0});
 
   ASSERT_TRUE(from_rest.valid);
   ASSERT_TRUE(already_moving.valid);
@@ -144,9 +143,8 @@ TEST(RouteTimeParameterizationTest,
   const std::vector<double> tracking_speed_limits_mps(route.size(), 1.0);
 
   const RouteTimeParameterization3D profile = parameterizeRouteTime3D(
-      route, {}, 8.0, 3.0, RouteEndpointSemantics3D::kMissionStop,
-      MppiSpeedPolicyConfig{}, mppi::DynamicsConfig{}, Vec3{},
-      tracking_speed_limits_mps);
+      route, {}, 8.0, 3.0, RouteEndpointSemantics3D::kMissionStop, 4.0, testTimeModel(),
+      Vec3{}, tracking_speed_limits_mps);
 
   ASSERT_TRUE(profile.valid);
   ASSERT_EQ(profile.reference_speeds_mps.size(), route.size());

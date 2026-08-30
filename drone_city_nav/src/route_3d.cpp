@@ -1,6 +1,5 @@
 #include "drone_city_nav/route_3d.hpp"
 
-#include "drone_city_nav/esdf_query.hpp"
 #include "drone_city_nav/flight_time_model_3d.hpp"
 
 #include <algorithm>
@@ -137,7 +136,7 @@ struct CubicBezierCurve3D {
       .station_m = std::lerp(first.station_m, second.station_m, ratio),
       .reference_speed_mps =
           std::lerp(first.reference_speed_mps, second.reference_speed_mps, ratio),
-      .required_risk_tier = static_cast<mppi::RiskTier>(
+      .required_risk_tier = static_cast<RouteRiskTier3D>(
           std::max(static_cast<std::uint8_t>(first.required_risk_tier),
                    static_cast<std::uint8_t>(second.required_risk_tier))),
       .transition = transition,
@@ -391,7 +390,7 @@ std::optional<FrozenRoutePrefix3D> materializeTangentContinuousRoutePrefixAtStat
 
   const double connector_speed_mps =
       std::min(active_stitch.reference_speed_mps, successor_join.reference_speed_mps);
-  const auto connector_risk_tier = static_cast<mppi::RiskTier>(
+  const auto connector_risk_tier = static_cast<RouteRiskTier3D>(
       std::max(static_cast<std::uint8_t>(active_stitch.required_risk_tier),
                static_cast<std::uint8_t>(successor_join.required_risk_tier)));
   const Point3 departure = translated(active_stitch.position, active_tangent,
@@ -635,52 +634,6 @@ bool canonicalizeRouteKinematics3D(const std::span<RouteSample3D> route,
   return true;
 }
 
-RouteRiskTierAssignmentResult
-assignRouteRiskTiers(const std::span<RouteSample3D> route, const mppi::EsdfGrid& grid,
-                     const std::span<const float> esdf_m,
-                     const double critical_distance_m,
-                     const double preferred_distance_m) noexcept {
-  if (!std::isfinite(critical_distance_m) || !std::isfinite(preferred_distance_m) ||
-      critical_distance_m < 0.0 || preferred_distance_m < critical_distance_m) {
-    return {};
-  }
-  for (std::size_t index = 0U; index < route.size(); ++index) {
-    RouteSample3D& sample = route[index];
-    if (!std::isfinite(sample.position.x) || !std::isfinite(sample.position.y) ||
-        !std::isfinite(sample.position.z)) {
-      return {.status = RouteRiskTierAssignmentStatus::kInvalidInput,
-              .failure_sample_index = index,
-              .failure_point = sample.position};
-    }
-    const EsdfQueryResult query = queryConservativeEsdf3D(
-        grid, esdf_m, static_cast<float>(sample.position.x),
-        static_cast<float>(sample.position.y), static_cast<float>(sample.position.z));
-    if (query.status != EsdfQueryStatus::kValid) {
-      sample.required_risk_tier = mppi::RiskTier::kPreferred;
-      continue;
-    }
-    if (query.clearance_m < critical_distance_m) {
-      sample.required_risk_tier = mppi::RiskTier::kCritical;
-    } else if (query.clearance_m < preferred_distance_m) {
-      sample.required_risk_tier = mppi::RiskTier::kPlanning;
-    } else {
-      sample.required_risk_tier = mppi::RiskTier::kPreferred;
-    }
-  }
-  return {.status = RouteRiskTierAssignmentStatus::kAccepted};
-}
-
-std::string_view
-routeRiskTierAssignmentStatusName(const RouteRiskTierAssignmentStatus status) noexcept {
-  switch (status) {
-    case RouteRiskTierAssignmentStatus::kAccepted:
-      return "accepted";
-    case RouteRiskTierAssignmentStatus::kInvalidInput:
-      return "invalid_input";
-  }
-  return "invalid_status";
-}
-
 RouteProjection3D projectOntoRoute3D(const std::span<const RouteSample3D> route,
                                      const Point3& position,
                                      const double minimum_station_m) noexcept {
@@ -800,15 +753,10 @@ RouteProjection3D projectOntoRoute3DWithinStationWindow(
   return best;
 }
 
-bool validateConstrainedRouteSpans(const std::span<const RouteSample3D> route,
-                                   const std::span<const ConstrainedRouteSpan> spans,
-                                   const mppi::EsdfGrid& grid,
-                                   const std::span<const float> esdf_m) noexcept {
+bool validateConstrainedRouteSpans(
+    const std::span<const RouteSample3D> route,
+    const std::span<const ConstrainedRouteSpan> spans) noexcept {
   // Clearance is a derived annotation, never a hard constrained-span gate.
-  // The parameters remain temporarily for source compatibility while callers
-  // migrate to the stage-typed trajectory contract.
-  static_cast<void>(grid);
-  static_cast<void>(esdf_m);
   for (const ConstrainedRouteSpan& span : spans) {
     if (span.envelope.empty() || !(span.end_station_m > span.begin_station_m)) {
       return false;

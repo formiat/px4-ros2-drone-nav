@@ -1,6 +1,7 @@
 #include "drone_city_nav/execution_horizon_timing.hpp"
 #include "drone_city_nav/execution_route_snapshot_3d.hpp"
 #include "drone_city_nav/mppi/mppi_reference.hpp"
+#include "drone_city_nav/mppi/trajectory_reference_adapter_3d.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
 #include "drone_city_nav/occupied_collision_oracle_3d.hpp"
 
@@ -496,6 +497,14 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
         FiniteExecutionCertificationStatus3D::kTerminalBoundaryInvalid);
   }
 
+  const std::shared_ptr<const std::vector<mppi::RouteSample3D>> mppi_reference =
+      certifies_braking_execution
+          ? nullptr
+          : mppi::adaptTrajectoryReference3D(*target_route.geometry);
+  if (!certifies_braking_execution && mppi_reference == nullptr) {
+    return rejectedFiniteExecution(
+        FiniteExecutionCertificationStatus3D::kTerminalBoundaryInvalid);
+  }
   mppi::FiniteExecutionPathWorld validation_world{
       .flight_envelope = &policy->flightEnvelope(),
       .dynamics = &policy->dynamics(),
@@ -516,7 +525,8 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
   validation_world.terminal_boundary =
       certifies_braking_execution
           ? std::nullopt
-          : makeValidationTerminalBoundary(terminal_boundary, target_route);
+          : makeValidationTerminalBoundary(terminal_boundary, target_route,
+                                           *mppi_reference);
   if (policy->routeTrackingTubeConstraintsEnabled() && !certifies_braking_execution &&
       !validateTrackingTubeHandoffClearance(
           target_route, validated_horizon, begin_projection.station_m,
@@ -612,7 +622,7 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
       .source_navigation_revision = certification.execution_input->poseRevision(),
       .source_route_instance_id = target_route.route_instance_id,
       .source_route_generation = target_route.identity.generation,
-      .source_geometry_revision = target_route.geometry->executable_geometry_revision,
+      .source_geometry_revision = target_route.geometry->compiled_trajectory_revision,
       .source_physical_route_fingerprint =
           target_route.geometry->physical_route_fingerprint,
       .certificate = target_route.certificate,
@@ -628,7 +638,7 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
           CertifiedStopBoundary3D{
               .route_instance_id = target_route.route_instance_id,
               .route_generation = target_route.identity.generation,
-              .geometry_revision = target_route.geometry->executable_geometry_revision,
+              .geometry_revision = target_route.geometry->compiled_trajectory_revision,
               .physical_route_fingerprint =
                   target_route.geometry->physical_route_fingerprint,
               .trajectory_revision = certification.trajectory_revision,

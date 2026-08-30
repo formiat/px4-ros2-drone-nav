@@ -29,18 +29,19 @@ using namespace execution_route_snapshot_3d_internal;
 namespace {
 
 [[nodiscard]] bool endpointSpeedProfileMatchesSemantics3D(
-    const ExecutionRouteGeometry3D& geometry,
+    const CompiledTrajectory3D& trajectory,
     const MaterializedRouteProposal3D& proposal) noexcept {
-  if (geometry.mppi_route == nullptr || geometry.mppi_route->empty()) {
+  if (trajectory.route == nullptr || trajectory.route->empty()) {
     return false;
   }
   const RouteEndpointSemantics3D semantics = routeEndpointSemantics3D(
       proposal.reaches_mission_goal, !proposal.objective.continuous_tracking);
-  constexpr float kTerminalSpeedToleranceMps{1.0e-4F};
-  const float terminal_speed_mps = geometry.mppi_route->back().reference_speed_mps;
-  return routeEndpointHasTerminalStop3D(semantics)
-             ? std::abs(terminal_speed_mps) <= kTerminalSpeedToleranceMps
-             : terminal_speed_mps > kTerminalSpeedToleranceMps;
+  constexpr double kTerminalSpeedToleranceMps{1.0e-4};
+  const double terminal_speed_mps = trajectory.route->back().reference_speed_mps;
+  return trajectory.endpoint_semantics == semantics &&
+         (routeEndpointHasTerminalStop3D(semantics)
+              ? std::abs(terminal_speed_mps) <= kTerminalSpeedToleranceMps
+              : terminal_speed_mps > kTerminalSpeedToleranceMps);
 }
 
 } // namespace
@@ -107,141 +108,18 @@ bool ObservedRawRouteCertificate3D::validFor(
                               route_end_station_m);
 }
 
-bool executionRouteGeometryValid3D(const ExecutionRouteGeometry3D& geometry,
-                                   const ActivatedRouteIdentity3D& identity) noexcept {
-  if (geometry.mppi_route == nullptr || geometry.route == nullptr ||
-      geometry.tracking_error_tube == nullptr ||
-      geometry.route_2d_projection == nullptr ||
-      geometry.constrained_spans == nullptr || geometry.passage_volumes == nullptr ||
-      geometry.cooperative_passage_assignments == nullptr ||
-      geometry.selected_passage_traversal_ids == nullptr || identity.generation == 0U ||
-      identity.proposal.route_fingerprint == 0U ||
-      !passageVolumeConfigIsValid(geometry.passage_volume_config) ||
-      geometry.materialized_route_fingerprint != identity.proposal.route_fingerprint ||
-      geometry.executable_geometry_revision == 0U ||
-      geometry.executable_geometry_revision !=
-          executionRouteGeometryRevision3D(geometry) ||
-      geometry.physical_route_fingerprint == 0U ||
-      geometry.route->size() != identity.proposal.route_sample_count ||
-      geometry.route_2d_projection->size() != geometry.route->size() ||
-      !trackingErrorTubeProfile3DIsValid(*geometry.tracking_error_tube,
-                                         geometry.route->size()) ||
-      !validRouteSamples(*geometry.route) ||
-      routeFingerprint(*geometry.route) != geometry.physical_route_fingerprint ||
-      !validMppiRoute(*geometry.mppi_route, *geometry.route) ||
-      !endpointSpeedProfileMatchesSemantics3D(geometry, identity.proposal) ||
-      executionPassageGeometryRevision3D(geometry) == 0U) {
-    return false;
-  }
-
-  const double route_end_station_m = geometry.route->back().station_m;
-  for (std::size_t index = 0U; index < geometry.route->size(); ++index) {
-    const Point2& point = (*geometry.route_2d_projection)[index];
-    const Point3& route_point = (*geometry.route)[index].position;
-    const double executable_speed_mps =
-        static_cast<double>((*geometry.mppi_route)[index].reference_speed_mps);
-    if (!nearlyEqual(point.x, route_point.x) || !nearlyEqual(point.y, route_point.y) ||
-        executable_speed_mps > geometry.tracking_error_tube->speed_limits_mps[index] +
-                                   kGeometryTolerance) {
-      return false;
-    }
-  }
-  const std::vector<ConstrainedRouteSpan>& constrained_spans =
-      *geometry.constrained_spans;
-  const std::vector<PassageTraversalId>& selected_traversal_ids =
-      *geometry.selected_passage_traversal_ids;
-  for (std::size_t index = 0U; index < selected_traversal_ids.size(); ++index) {
-    const PassageTraversalId& selected_id = selected_traversal_ids[index];
-    if (selected_id.empty() ||
-        std::ranges::find(selected_traversal_ids.begin(),
-                          selected_traversal_ids.begin() +
-                              static_cast<std::ptrdiff_t>(index),
-                          selected_id) !=
-            selected_traversal_ids.begin() + static_cast<std::ptrdiff_t>(index)) {
-      return false;
-    }
-  }
-  double previous_span_end_station_m{-std::numeric_limits<double>::infinity()};
-  std::vector<PassageTraversalId> expected_traversal_ids;
-  expected_traversal_ids.reserve(constrained_spans.size());
-  for (const ConstrainedRouteSpan& span : constrained_spans) {
-    if (span.route_generation != identity.generation ||
-        span.passage_traversal_id.empty() ||
-        (span.direction_sign != -1 && span.direction_sign != 1) ||
-        !std::isfinite(span.begin_station_m) || !std::isfinite(span.end_station_m) ||
-        span.begin_station_m < 0.0 || span.end_station_m <= span.begin_station_m ||
-        span.begin_station_m + kStationToleranceM < previous_span_end_station_m ||
-        span.end_station_m > route_end_station_m + kStationToleranceM ||
-        !validEnvelopeSamples(span) || !validTraversalSegmentSpans(span) ||
-        std::ranges::find(selected_traversal_ids, span.passage_traversal_id) ==
-            selected_traversal_ids.end()) {
-      return false;
-    }
-    if (std::ranges::find(expected_traversal_ids, span.passage_traversal_id) ==
-        expected_traversal_ids.end()) {
-      expected_traversal_ids.push_back(span.passage_traversal_id);
-    }
-    previous_span_end_station_m = span.end_station_m;
-  }
-  if (selected_traversal_ids != expected_traversal_ids) {
-    return false;
-  }
-  const std::vector<PassageVolume>& passage_volumes = *geometry.passage_volumes;
-  if (passage_volumes.size() != constrained_spans.size()) {
-    return false;
-  }
-  for (std::size_t index = 0U; index < passage_volumes.size(); ++index) {
-    const PassageVolume& volume = passage_volumes[index];
-    const ConstrainedRouteSpan& span = constrained_spans[index];
-    if (!validPassageVolume(volume, span, index)) {
-      return false;
-    }
-    for (const PassageCrossSection& section : volume.cross_sections) {
-      const RouteSample3D route_sample =
-          sampleRoute3DAtStation(*geometry.route, section.station_m);
-      if (vectorDot(route_sample.tangent, section.tangent) <= 0.0) {
-        return false;
-      }
-    }
-  }
-  const std::vector<CooperativePassageAssignment>& assignments =
-      *geometry.cooperative_passage_assignments;
-  if (!assignments.empty() && assignments.size() != constrained_spans.size()) {
-    return false;
-  }
-  for (std::size_t index = 0U; index < assignments.size(); ++index) {
-    const CooperativePassageAssignment& assignment = assignments[index];
-    const ConstrainedRouteSpan& span = constrained_spans[index];
-    const PassageVolume& volume = passage_volumes[index];
-    const double first_lateral_bound_m =
-        volume.minimum_lateral_offset_m * static_cast<double>(span.direction_sign) +
-        assignment.applied_lateral_offset_m;
-    const double second_lateral_bound_m =
-        volume.maximum_lateral_offset_m * static_cast<double>(span.direction_sign) +
-        assignment.applied_lateral_offset_m;
-    if (assignment.route_generation != identity.generation ||
-        assignment.span_index != index ||
-        assignment.passage_traversal_id != span.passage_traversal_id ||
-        !std::isfinite(assignment.requested_lateral_offset_m) ||
-        !std::isfinite(assignment.applied_lateral_offset_m) ||
-        !std::isfinite(assignment.desired_center_separation_m) ||
-        assignment.physical_width_m != volume.minimum_physical_width_m ||
-        assignment.minimum_lateral_offset_m !=
-            std::min(first_lateral_bound_m, second_lateral_bound_m) ||
-        assignment.maximum_lateral_offset_m !=
-            std::max(first_lateral_bound_m, second_lateral_bound_m) ||
-        assignment.minimum_secondary_offset_m != volume.minimum_secondary_offset_m ||
-        assignment.maximum_secondary_offset_m != volume.maximum_secondary_offset_m) {
-      return false;
-    }
-    if (assignment.passage_cross_section_count !=
-            passage_volumes[index].cross_sections.size() ||
-        assignment.passage_volume_raw_validated !=
-            passage_volumes[index].raw_validated) {
-      return false;
-    }
-  }
-  return true;
+bool compiledTrajectoryValid3D(const CompiledTrajectory3D& trajectory,
+                               const ActivatedRouteIdentity3D& identity) noexcept {
+  return compiledTrajectoryResourcesValid3D(trajectory, identity.generation) &&
+         identity.generation != 0U && identity.proposal.route_fingerprint != 0U &&
+         trajectory.materialized_route_fingerprint ==
+             identity.proposal.route_fingerprint &&
+         trajectory.route->size() == identity.proposal.route_sample_count &&
+         trajectory.compiled_trajectory_revision != 0U &&
+         trajectory.compiled_trajectory_revision ==
+             compiledTrajectoryRevision3D(trajectory) &&
+         endpointSpeedProfileMatchesSemantics3D(trajectory, identity.proposal) &&
+         compiledTrajectoryPassageRevision3D(trajectory) != 0U;
 }
 
 bool CertifiedRouteSuffix3D::valid() const noexcept {
@@ -263,8 +141,8 @@ bool CertifiedRouteSuffix3D::valid() const noexcept {
           geometry->tracking_error_tube->physical_footprint,
           validation_policy->sweptFootprint()) ||
       progress.route_generation != identity.generation ||
-      progress.geometry_revision != geometry->executable_geometry_revision ||
-      !executionRouteGeometryValid3D(*geometry, identity) || continuity_id == 0U ||
+      progress.geometry_revision != geometry->compiled_trajectory_revision ||
+      !compiledTrajectoryValid3D(*geometry, identity) || continuity_id == 0U ||
       continuity_id !=
           routeContinuityId3D(identity.proposal.intent, continuity_lineage) ||
       planned_endpoint_semantics !=
@@ -280,13 +158,13 @@ bool CertifiedRouteSuffix3D::valid() const noexcept {
   const bool certificate_valid =
       static_certificate != nullptr
           ? static_certificate->validFor(
-                route_instance_id, identity, geometry->executable_geometry_revision,
+                route_instance_id, identity, geometry->compiled_trajectory_revision,
                 geometry->physical_route_fingerprint, route_end_station_m) &&
                 observed_raw_world == nullptr &&
                 staticWorldMatchesCertificate(static_world, *static_certificate)
           : raw_certificate != nullptr &&
                 raw_certificate->validFor(
-                    route_instance_id, identity, geometry->executable_geometry_revision,
+                    route_instance_id, identity, geometry->compiled_trajectory_revision,
                     geometry->physical_route_fingerprint, route_end_station_m) &&
                 static_world == nullptr &&
                 rawWorldMatchesCertificate(observed_raw_world, *raw_certificate, true);
@@ -295,7 +173,7 @@ bool CertifiedRouteSuffix3D::valid() const noexcept {
   }
   const CertificateView3D certificate_view = certificateView(certificate);
   const std::uint64_t passage_geometry_revision =
-      executionPassageGeometryRevision3D(*geometry);
+      compiledTrajectoryPassageRevision3D(*geometry);
   const std::uint64_t passage_config_fingerprint =
       passageVolumeConfigFingerprint(geometry->passage_volume_config);
   return certificate_view.physical_route_fingerprint ==
@@ -411,7 +289,7 @@ bool FiniteExecutionState3D::validFor(
       validation_policy == nullptr ||
       validation_policy->contentFingerprint() !=
           route->validation_policy->contentFingerprint() ||
-      source_geometry_revision != route->geometry->executable_geometry_revision ||
+      source_geometry_revision != route->geometry->compiled_trajectory_revision ||
       source_physical_route_fingerprint !=
           route->geometry->physical_route_fingerprint ||
       begin_route_station_m > route->progress.station_m + kExecutionBindingToleranceM ||

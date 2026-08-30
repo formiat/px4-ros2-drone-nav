@@ -20,7 +20,7 @@ diagnosticRouteConstraint(const ProductionMppiDiagnosticsSnapshot& snapshot,
                           const double diagnostics_distance_m) {
   const mppi::MppiTickInput& input = snapshot.input;
   const CertifiedRouteSuffix3D* const execution_route = snapshot.execution_route.get();
-  const ProductionRouteGeometry3D* const geometry =
+  const CompiledTrajectory3D* const geometry =
       execution_route != nullptr ? execution_route->geometry.get() : nullptr;
   const std::span<const RouteSample3D> route =
       snapshot.route_projection_valid && geometry != nullptr && geometry->route

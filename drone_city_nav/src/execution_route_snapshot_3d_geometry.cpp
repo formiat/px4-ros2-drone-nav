@@ -22,135 +22,12 @@
 
 namespace drone_city_nav::execution_route_snapshot_3d_internal {
 
-[[nodiscard]] bool
-validRouteSamples(const std::span<const RouteSample3D> route) noexcept {
-  return validateExecutionRouteGeometrySamples3D(route).valid();
-}
-
 [[nodiscard]] double vectorNorm(const Vec3& vector) noexcept {
   return std::hypot(std::hypot(vector.x, vector.y), vector.z);
 }
 
 [[nodiscard]] double vectorDot(const Vec3& first, const Vec3& second) noexcept {
   return first.x * second.x + first.y * second.y + first.z * second.z;
-}
-
-[[nodiscard]] bool validEnvelopeSamples(const ConstrainedRouteSpan& span) noexcept {
-  if (span.envelope.empty()) {
-    return false;
-  }
-  double previous_station_m{-std::numeric_limits<double>::infinity()};
-  for (const RouteEnvelopeSample& sample : span.envelope) {
-    if (!std::isfinite(sample.station_m) ||
-        !std::isfinite(sample.lateral_free_left_m) ||
-        !std::isfinite(sample.lateral_free_right_m) || !std::isfinite(sample.min_z_m) ||
-        !std::isfinite(sample.max_z_m) || !std::isfinite(sample.minimum_clearance_m) ||
-        !std::isfinite(sample.reference_z_m) ||
-        !std::isfinite(sample.reference_speed_mps) ||
-        sample.station_m <= previous_station_m ||
-        sample.station_m + kStationToleranceM < span.begin_station_m ||
-        sample.station_m > span.end_station_m + kStationToleranceM ||
-        sample.lateral_free_left_m < 0.0 || sample.lateral_free_right_m < 0.0 ||
-        sample.min_z_m > sample.max_z_m ||
-        sample.reference_z_m < sample.min_z_m - kGeometryTolerance ||
-        sample.reference_z_m > sample.max_z_m + kGeometryTolerance ||
-        sample.minimum_clearance_m < 0.0 || sample.reference_speed_mps < 0.0) {
-      return false;
-    }
-    previous_station_m = sample.station_m;
-  }
-  return span.envelope.front().station_m <= span.begin_station_m + kStationToleranceM &&
-         span.envelope.back().station_m + kStationToleranceM >= span.end_station_m;
-}
-
-[[nodiscard]] bool
-validTraversalSegmentSpans(const ConstrainedRouteSpan& span) noexcept {
-  double previous_end_station_m{span.begin_station_m};
-  for (const PassageTraversalSegmentSpan& segment : span.segment_spans) {
-    if (segment.passage_segment_id.empty() || !std::isfinite(segment.begin_station_m) ||
-        !std::isfinite(segment.end_station_m) ||
-        segment.begin_station_m + kStationToleranceM < span.begin_station_m ||
-        segment.end_station_m > span.end_station_m + kStationToleranceM ||
-        segment.end_station_m <= segment.begin_station_m ||
-        segment.begin_station_m + kStationToleranceM < previous_end_station_m) {
-      return false;
-    }
-    previous_end_station_m = segment.end_station_m;
-  }
-  return true;
-}
-
-[[nodiscard]] bool
-validPassageCrossSection(const PassageCrossSection& section) noexcept {
-  const double tangent_norm = vectorNorm(section.tangent);
-  const double lateral_norm = vectorNorm(section.lateral_axis);
-  const double secondary_norm = vectorNorm(section.secondary_axis);
-  const Vec3 tangent_cross_lateral{section.tangent.y * section.lateral_axis.z -
-                                       section.tangent.z * section.lateral_axis.y,
-                                   section.tangent.z * section.lateral_axis.x -
-                                       section.tangent.x * section.lateral_axis.z,
-                                   section.tangent.x * section.lateral_axis.y -
-                                       section.tangent.y * section.lateral_axis.x};
-  return std::isfinite(section.station_m) && finitePoint(section.center) &&
-         finiteVector(section.tangent) && finiteVector(section.lateral_axis) &&
-         finiteVector(section.secondary_axis) &&
-         nearlyEqual(tangent_norm, 1.0, 1.0e-3) &&
-         nearlyEqual(lateral_norm, 1.0, 1.0e-3) &&
-         nearlyEqual(secondary_norm, 1.0, 1.0e-3) &&
-         std::abs(vectorDot(section.tangent, section.lateral_axis)) <= 1.0e-3 &&
-         std::abs(vectorDot(section.tangent, section.secondary_axis)) <= 1.0e-3 &&
-         std::abs(vectorDot(section.lateral_axis, section.secondary_axis)) <= 1.0e-3 &&
-         vectorDot(tangent_cross_lateral, section.secondary_axis) >= 0.999 &&
-         std::isfinite(section.minimum_lateral_offset_m) &&
-         std::isfinite(section.maximum_lateral_offset_m) &&
-         std::isfinite(section.minimum_secondary_offset_m) &&
-         std::isfinite(section.maximum_secondary_offset_m) &&
-         section.minimum_lateral_offset_m <= section.maximum_lateral_offset_m &&
-         section.minimum_secondary_offset_m <= section.maximum_secondary_offset_m &&
-         section.raw_validated;
-}
-
-[[nodiscard]] bool validPassageVolume(const PassageVolume& volume,
-                                      const ConstrainedRouteSpan& span,
-                                      const std::size_t span_index) noexcept {
-  if (volume.span_index != span_index ||
-      volume.passage_traversal_id != span.passage_traversal_id ||
-      !volume.raw_validated || volume.cross_sections.empty() ||
-      !std::isfinite(volume.begin_station_m) || !std::isfinite(volume.end_station_m) ||
-      !nearlyEqual(volume.begin_station_m, span.begin_station_m, kStationToleranceM) ||
-      !nearlyEqual(volume.end_station_m, span.end_station_m, kStationToleranceM) ||
-      !std::isfinite(volume.minimum_lateral_offset_m) ||
-      !std::isfinite(volume.maximum_lateral_offset_m) ||
-      !std::isfinite(volume.minimum_secondary_offset_m) ||
-      !std::isfinite(volume.maximum_secondary_offset_m) ||
-      volume.minimum_lateral_offset_m > volume.maximum_lateral_offset_m ||
-      volume.minimum_secondary_offset_m > volume.maximum_secondary_offset_m ||
-      !std::isfinite(volume.minimum_physical_width_m) ||
-      !std::isfinite(volume.minimum_physical_secondary_extent_m) ||
-      volume.minimum_physical_width_m < 0.0 ||
-      volume.minimum_physical_secondary_extent_m < 0.0 ||
-      volume.segment_spans != span.segment_spans) {
-    return false;
-  }
-  double previous_station_m{-std::numeric_limits<double>::infinity()};
-  const PassageCrossSection* previous_section{nullptr};
-  for (const PassageCrossSection& section : volume.cross_sections) {
-    if (!validPassageCrossSection(section) || section.station_m <= previous_station_m ||
-        section.station_m + kStationToleranceM < volume.begin_station_m ||
-        section.station_m > volume.end_station_m + kStationToleranceM ||
-        (previous_section != nullptr &&
-         (vectorDot(previous_section->lateral_axis, section.lateral_axis) <= 0.0 ||
-          vectorDot(previous_section->secondary_axis, section.secondary_axis) <=
-              0.0))) {
-      return false;
-    }
-    previous_station_m = section.station_m;
-    previous_section = &section;
-  }
-  return volume.cross_sections.front().station_m <=
-             volume.begin_station_m + kStationToleranceM &&
-         volume.cross_sections.back().station_m + kStationToleranceM >=
-             volume.end_station_m;
 }
 
 [[nodiscard]] bool samePointExact(const Point3& first, const Point3& second) noexcept {
@@ -208,7 +85,7 @@ sameRouteEnvelopeSampleExact(const RouteEnvelopeSample& first,
 }
 
 [[nodiscard]] bool
-canonicalPassageGeometryMatchesWorld(const ExecutionRouteGeometry3D& geometry,
+canonicalPassageGeometryMatchesWorld(const CompiledTrajectory3D& geometry,
                                      const OccupancyGrid3D& occupancy,
                                      const PassageVolumeConfig& expected_config) {
   if (!samePassageVolumeConfig(geometry.passage_volume_config, expected_config)) {
@@ -240,7 +117,7 @@ canonicalPassageGeometryMatchesWorld(const ExecutionRouteGeometry3D& geometry,
 }
 
 [[nodiscard]] bool canonicalPassageGeometryMatchesObservedWorld(
-    const ExecutionRouteGeometry3D& geometry, const VersionedObservedRawWorld3D& world,
+    const CompiledTrajectory3D& geometry, const VersionedObservedRawWorld3D& world,
     const PassageVolumeConfig& expected_config) {
   if (geometry.constrained_spans->empty()) {
     return geometry.passage_volumes->empty() &&
@@ -356,7 +233,7 @@ passageFrameBetweenSections(const PassageCrossSection& lower_section,
          secondary_offset_m <= frame.maximum_secondary_offset_m + kGeometryTolerance;
 }
 
-[[nodiscard]] bool constrainedPointAccepted(const ExecutionRouteGeometry3D& geometry,
+[[nodiscard]] bool constrainedPointAccepted(const CompiledTrajectory3D& geometry,
                                             const Point3& point,
                                             const double station_m) noexcept {
   const std::vector<ConstrainedRouteSpan>& spans = *geometry.constrained_spans;
@@ -376,7 +253,7 @@ passageFrameBetweenSections(const PassageCrossSection& lower_section,
 }
 
 [[nodiscard]] std::vector<double>
-constrainedStationEvents(const ExecutionRouteGeometry3D& geometry,
+constrainedStationEvents(const CompiledTrajectory3D& geometry,
                          const double begin_station_m, const double end_station_m) {
   std::vector<double> events;
   const auto add_event = [&](const double station_m) {
@@ -509,7 +386,7 @@ constrainedStationEvents(const ExecutionRouteGeometry3D& geometry,
                                         depth + 1U);
 }
 
-[[nodiscard]] bool constrainedSegmentAccepted(const ExecutionRouteGeometry3D& geometry,
+[[nodiscard]] bool constrainedSegmentAccepted(const CompiledTrajectory3D& geometry,
                                               const Point3& begin,
                                               const double begin_station_m,
                                               const Point3& end,
@@ -589,7 +466,7 @@ constrainedStationEvents(const ExecutionRouteGeometry3D& geometry,
 }
 
 [[nodiscard]] bool
-validateOrderedPassageCrossings(const ExecutionRouteGeometry3D& geometry,
+validateOrderedPassageCrossings(const CompiledTrajectory3D& geometry,
                                 const std::span<const StationedRoutePoint3D> path,
                                 const double begin_station_m,
                                 const double end_station_m) noexcept {
@@ -704,7 +581,7 @@ validateOrderedPassageCrossings(const ExecutionRouteGeometry3D& geometry,
 }
 
 [[nodiscard]] RouteAdherenceAssessment3D validateFiniteRouteAdherence(
-    const ExecutionRouteGeometry3D& geometry, const std::span<const mppi::State> states,
+    const CompiledTrajectory3D& geometry, const std::span<const mppi::State> states,
     const double initial_station_m, const double minimum_station_m,
     const double maximum_station_m, const std::optional<double> maximum_cross_track_m,
     const std::optional<double> terminal_cross_track_tolerance_m,
@@ -920,30 +797,6 @@ validateOrderedPassageCrossings(const ExecutionRouteGeometry3D& geometry,
   result.status = FiniteExecutionRouteAdherenceStatus3D::kAccepted;
   result.accepted = true;
   return result;
-}
-
-[[nodiscard]] bool validMppiRoute(const std::span<const mppi::RouteSample3D> mppi_route,
-                                  const std::span<const RouteSample3D> route) noexcept {
-  if (mppi_route.size() != route.size()) {
-    return false;
-  }
-  for (std::size_t index = 0U; index < route.size(); ++index) {
-    const RouteSample3D& source = route[index];
-    const mppi::RouteSample3D& executable = mppi_route[index];
-    if (!nearlyEqual(executable.x_m, source.position.x) ||
-        !nearlyEqual(executable.y_m, source.position.y) ||
-        !nearlyEqual(executable.z_m, source.position.z) ||
-        !nearlyEqual(executable.tangent_x, source.tangent.x) ||
-        !nearlyEqual(executable.tangent_y, source.tangent.y) ||
-        !nearlyEqual(executable.tangent_z, source.tangent.z) ||
-        !nearlyEqual(executable.station_m, source.station_m) ||
-        !std::isfinite(executable.reference_speed_mps) ||
-        executable.reference_speed_mps < 0.0F ||
-        executable.required_risk_tier != source.required_risk_tier) {
-      return false;
-    }
-  }
-  return true;
 }
 
 } // namespace drone_city_nav::execution_route_snapshot_3d_internal

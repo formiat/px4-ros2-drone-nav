@@ -1,7 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/certified_route_splice_3d.hpp"
-#include "drone_city_nav/execution_route_geometry_3d.hpp"
+#include "drone_city_nav/compiled_trajectory_3d.hpp"
 #include "drone_city_nav/mppi/static_route_handoff.hpp"
 #include "drone_city_nav/persistent_dstar_lite_planner_3d.hpp"
 #include "drone_city_nav/route_lifecycle_3d.hpp"
@@ -116,7 +116,6 @@ struct MaterializedRoute3D {
   RouteIntent3D intent{};
   SegmentEvidence3D segment_evidence{};
   std::shared_ptr<const std::vector<RouteSample3D>> route;
-  std::shared_ptr<const std::vector<Point2>> route_2d_projection;
   std::shared_ptr<const std::vector<ConstrainedRouteSpan>> constrained_spans;
   std::shared_ptr<const std::vector<PassageVolume>> passage_volumes;
   std::shared_ptr<const std::vector<CooperativePassageAssignment>>
@@ -139,19 +138,9 @@ struct ProductionRoutePipelineTelemetry3D {
   double route_search_ms{0.0};
 };
 
-// Transitional typed compilation boundary. The next remediation stage replaces
-// ProductionRouteGeometry3D with the sealed controller-neutral
-// CompiledTrajectory3D contract.
-struct ProductionCompiledRouteCandidate3D {
-  MaterializedRoute3D materialized{};
-  std::shared_ptr<const ProductionRouteGeometry3D> geometry;
-  ExecutionRouteGeometryValidation3D geometry_validation{};
-  std::size_t stop_turn_count{0U};
-};
-
 struct ProductionMaterializedRouteProposal3D {
   MaterializedRouteProposal3D identity{};
-  ProductionRouteGeometry3D geometry{};
+  std::shared_ptr<const CompiledTrajectory3D> trajectory;
 };
 
 // Admission is a report about a candidate. It does not mutate or own the
@@ -163,14 +152,14 @@ struct RouteAdmissionReport3D {
   RouteProposalReplacementAssessment3D replacement{};
   mppi::StaticRouteHandoffResult handoff{};
   RouteSpliceCertificationResult3D splice{};
-  ExecutionRouteGeometryValidation3D geometry_validation{};
+  CompiledTrajectoryValidation3D trajectory_validation{};
   StaticRouteActivationStatus activation_status{
       StaticRouteActivationStatus::kNotAttempted};
   std::uint64_t snapshot_pose_revision{0U};
   std::uint64_t snapshot_raw_revision{0U};
   std::uint64_t required_objective_sample{0U};
-  std::uint64_t tracking_geometry_source_occupied_fingerprint{0U};
-  std::uint64_t tracking_geometry_activation_occupied_fingerprint{0U};
+  std::uint64_t tracking_profile_source_occupied_fingerprint{0U};
+  std::uint64_t tracking_profile_activation_occupied_fingerprint{0U};
   bool world_compatible{false};
   bool generation_assessed{false};
   bool generation_matches{false};
@@ -183,20 +172,22 @@ struct RouteAdmissionReport3D {
   bool candidate_world_coherent{false};
   bool certification_execution_base_current{false};
   bool route_certified{false};
-  bool tracking_geometry_compile_attempted{false};
-  bool tracking_geometry_compiled{false};
+  bool trajectory_compile_attempted{false};
+  bool trajectory_compiled{false};
   bool observed_world_rebased{false};
   bool publication_world_advanced{false};
   bool certified_pending{false};
   bool commit_assessment_performed{false};
 
-  [[nodiscard]] bool executionGeometryValid() const noexcept;
+  [[nodiscard]] bool compiledTrajectoryValid() const noexcept;
   [[nodiscard]] bool readyForArbitration(
       const ProductionMaterializedRouteProposal3D& proposal) const noexcept;
 };
 
 struct ProductionRouteActivationResult3D {
-  ProductionCompiledRouteCandidate3D candidate{};
+  MaterializedRoute3D materialized{};
+  std::shared_ptr<const CompiledTrajectory3D> trajectory;
+  std::size_t stop_turn_count{0U};
   ProductionRoutePipelineTelemetry3D telemetry{};
   ProductionMaterializedRouteProposal3D proposal{};
   RouteAdmissionReport3D admission{};

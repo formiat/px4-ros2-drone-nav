@@ -58,37 +58,17 @@ RouteTimeParameterization3D parameterizeRouteTime3D(
     const std::span<const ConstrainedRouteSpan> constrained_spans,
     const double unconstrained_speed_mps, const double constrained_speed_mps,
     const RouteEndpointSemantics3D endpoint_semantics,
-    const MppiSpeedPolicyConfig& speed_policy, const mppi::DynamicsConfig& dynamics,
-    const std::optional<Vec3>& initial_velocity,
+    const double maximum_lateral_acceleration_mps2, const FlightTimeModel3D& time_model,
+    const Vec3& initial_velocity,
     const std::span<const double> tracking_speed_limits_mps) {
   RouteTimeParameterization3D result;
-  const FlightTimeModel3D time_model{
-      .maximum_horizontal_speed_mps =
-          std::min({unconstrained_speed_mps, speed_policy.cruise_speed_mps,
-                    speed_policy.absolute_speed_limit_mps,
-                    static_cast<double>(dynamics.maximum_horizontal_speed_mps)}),
-      .maximum_vertical_speed_mps =
-          static_cast<double>(dynamics.maximum_vertical_speed_mps),
-      .maximum_translational_speed_mps =
-          static_cast<double>(dynamics.maximum_translational_speed_mps),
-      .maximum_horizontal_acceleration_mps2 =
-          static_cast<double>(dynamics.maximum_horizontal_acceleration_mps2),
-      .maximum_vertical_acceleration_mps2 =
-          static_cast<double>(dynamics.maximum_vertical_acceleration_mps2),
-      .maximum_control_jerk_mps3 =
-          static_cast<double>(dynamics.maximum_control_jerk_mps3),
-      .maximum_yaw_acceleration_radps2 =
-          static_cast<double>(dynamics.maximum_yaw_acceleration_radps2),
-      .maximum_yaw_rate_radps = static_cast<double>(dynamics.maximum_yaw_rate_radps),
-  };
   if (route.size() < 2U || !(unconstrained_speed_mps > kEpsilon) ||
       !(constrained_speed_mps > kEpsilon) ||
-      !(speed_policy.cruise_speed_mps > kEpsilon) ||
-      !(speed_policy.absolute_speed_limit_mps > kEpsilon) ||
-      !(speed_policy.maximum_lateral_acceleration_mps2 > kEpsilon) ||
+      !(maximum_lateral_acceleration_mps2 > kEpsilon) ||
       (!tracking_speed_limits_mps.empty() &&
        tracking_speed_limits_mps.size() != route.size()) ||
-      !time_model.valid()) {
+      !time_model.valid() || !std::isfinite(initial_velocity.x) ||
+      !std::isfinite(initial_velocity.y) || !std::isfinite(initial_velocity.z)) {
     return result;
   }
   std::vector<Point3> points;
@@ -104,9 +84,8 @@ RouteTimeParameterization3D parameterizeRouteTime3D(
     }
     const double curvature = routeCurvature(route, index);
     const double curvature_limit =
-        curvature > kEpsilon
-            ? std::sqrt(speed_policy.maximum_lateral_acceleration_mps2 / curvature)
-            : std::numeric_limits<double>::infinity();
+        curvature > kEpsilon ? std::sqrt(maximum_lateral_acceleration_mps2 / curvature)
+                             : std::numeric_limits<double>::infinity();
     const double tracking_limit = tracking_speed_limits_mps.empty()
                                       ? std::numeric_limits<double>::infinity()
                                       : tracking_speed_limits_mps[index];
@@ -123,13 +102,8 @@ RouteTimeParameterization3D parameterizeRouteTime3D(
     stop_turn_flags.push_back(
         route[index].transition == RouteKinematicTransition3D::kStopAndTurn ? 1U : 0U);
   }
-  const Vec3 effective_initial_velocity = initial_velocity.value_or(Vec3{
-      .x = route.front().tangent.x * speed_limits.front(),
-      .y = route.front().tangent.y * speed_limits.front(),
-      .z = route.front().tangent.z * speed_limits.front(),
-  });
   FlightPathTimeProfile3D profile = parameterizeFlightPathTime3D(
-      points, speed_limits, stop_turn_flags, effective_initial_velocity,
+      points, speed_limits, stop_turn_flags, initial_velocity,
       routeEndpointHasTerminalStop3D(endpoint_semantics), time_model);
   result.valid = profile.valid;
   result.travel_time_s = profile.travel_time_s;

@@ -23,40 +23,6 @@
 
 namespace drone_city_nav::execution_route_snapshot_3d_internal {
 
-[[nodiscard]] std::shared_ptr<const ExecutionRouteGeometry3D>
-captureExecutionRouteGeometry3D(const ExecutionRouteGeometry3D& source) {
-  if (source.mppi_route == nullptr || source.route == nullptr ||
-      source.tracking_error_tube == nullptr || source.route_2d_projection == nullptr ||
-      source.constrained_spans == nullptr || source.passage_volumes == nullptr ||
-      source.cooperative_passage_assignments == nullptr ||
-      source.selected_passage_traversal_ids == nullptr) {
-    return nullptr;
-  }
-  return std::make_shared<const ExecutionRouteGeometry3D>(ExecutionRouteGeometry3D{
-      .mppi_route =
-          std::make_shared<const std::vector<mppi::RouteSample3D>>(*source.mppi_route),
-      .route = std::make_shared<const std::vector<RouteSample3D>>(*source.route),
-      .tracking_error_tube = std::make_shared<const TrackingErrorTubeProfile3D>(
-          *source.tracking_error_tube),
-      .route_2d_projection =
-          std::make_shared<const std::vector<Point2>>(*source.route_2d_projection),
-      .constrained_spans = std::make_shared<const std::vector<ConstrainedRouteSpan>>(
-          *source.constrained_spans),
-      .passage_volumes =
-          std::make_shared<const std::vector<PassageVolume>>(*source.passage_volumes),
-      .cooperative_passage_assignments =
-          std::make_shared<const std::vector<CooperativePassageAssignment>>(
-              *source.cooperative_passage_assignments),
-      .selected_passage_traversal_ids =
-          std::make_shared<const std::vector<PassageTraversalId>>(
-              *source.selected_passage_traversal_ids),
-      .passage_volume_config = source.passage_volume_config,
-      .materialized_route_fingerprint = source.materialized_route_fingerprint,
-      .physical_route_fingerprint = source.physical_route_fingerprint,
-      .executable_geometry_revision = source.executable_geometry_revision,
-  });
-}
-
 [[nodiscard]] bool validStationInterval(const double begin_station_m,
                                         const double end_station_m,
                                         const double route_end_station_m) noexcept {

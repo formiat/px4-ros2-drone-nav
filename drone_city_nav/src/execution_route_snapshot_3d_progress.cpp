@@ -70,7 +70,7 @@ checkGuard(const ExecutionRouteSnapshot3D& current,
       current.route->identity.generation != guard.expected_route_generation) {
     return ExecutionRouteTransitionStatus3D::kRouteGenerationMismatch;
   }
-  if (current.route->geometry->executable_geometry_revision !=
+  if (current.route->geometry->compiled_trajectory_revision !=
       guard.expected_geometry_revision) {
     return ExecutionRouteTransitionStatus3D::kGeometryRevisionMismatch;
   }

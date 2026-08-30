@@ -1,4 +1,4 @@
-#include "drone_city_nav/route_compiler_3d.hpp"
+#include "drone_city_nav/trajectory_compiler_3d.hpp"
 
 #include <algorithm>
 #include <cinttypes>
@@ -54,7 +54,7 @@ void ProductionMppiNode::configureStaticRouteExtension(
   future_route_connector_config_.minimum_continuous_turn_alignment =
       declare_parameter<double>(
           "route_connector_minimum_continuous_turn_alignment",
-          RouteCompilerConfig3D{}.minimum_continuous_turn_alignment);
+          TrajectoryCompilerConfig3D{}.minimum_continuous_turn_alignment);
   certified_route_splice_config_.required_overlap_m =
       static_route_extension_config_.required_certified_overlap_m;
   certified_route_splice_config_.sample_step_m =

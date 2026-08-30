@@ -1,5 +1,6 @@
-#include "drone_city_nav/route_compiler_3d.hpp"
+#include "drone_city_nav/trajectory_compiler_3d.hpp"
 
+#include <algorithm>
 #include <memory>
 #include <optional>
 
@@ -18,14 +19,37 @@ template<typename T>
 
 } // namespace
 
-RouteCompilerConfig3D ProductionMppiNode::routeCompilerConfig3D() const noexcept {
-  return RouteCompilerConfig3D{
+TrajectoryCompilerConfig3D
+ProductionMppiNode::trajectoryCompilerConfig3D() const noexcept {
+  return TrajectoryCompilerConfig3D{
       .unconstrained_speed_mps = speed_policy_config_.cruise_speed_mps,
       .constrained_speed_mps = constrained_route_speed_limit_mps_,
+      .maximum_lateral_acceleration_mps2 =
+          speed_policy_config_.maximum_lateral_acceleration_mps2,
       .minimum_continuous_turn_alignment =
           future_route_connector_config_.minimum_continuous_turn_alignment,
-      .speed_policy = speed_policy_config_,
-      .dynamics = mppi_config_.dynamics,
+      .time_model =
+          FlightTimeModel3D{
+              .maximum_horizontal_speed_mps =
+                  std::min({speed_policy_config_.cruise_speed_mps,
+                            speed_policy_config_.absolute_speed_limit_mps,
+                            static_cast<double>(
+                                mppi_config_.dynamics.maximum_horizontal_speed_mps)}),
+              .maximum_vertical_speed_mps =
+                  static_cast<double>(mppi_config_.dynamics.maximum_vertical_speed_mps),
+              .maximum_translational_speed_mps = static_cast<double>(
+                  mppi_config_.dynamics.maximum_translational_speed_mps),
+              .maximum_horizontal_acceleration_mps2 = static_cast<double>(
+                  mppi_config_.dynamics.maximum_horizontal_acceleration_mps2),
+              .maximum_vertical_acceleration_mps2 = static_cast<double>(
+                  mppi_config_.dynamics.maximum_vertical_acceleration_mps2),
+              .maximum_control_jerk_mps3 =
+                  static_cast<double>(mppi_config_.dynamics.maximum_control_jerk_mps3),
+              .maximum_yaw_acceleration_radps2 = static_cast<double>(
+                  mppi_config_.dynamics.maximum_yaw_acceleration_radps2),
+              .maximum_yaw_rate_radps =
+                  static_cast<double>(mppi_config_.dynamics.maximum_yaw_rate_radps),
+          },
       .physical_footprint = physical_footprint_config_,
       .tracking_error_tube = tracking_error_tube_config_,
   };

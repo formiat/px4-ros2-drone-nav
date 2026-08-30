@@ -59,7 +59,7 @@ configValidImpl(const CertifiedRouteSpliceConfig3D& config) noexcept {
   return route.valid() && route.geometry != nullptr &&
          route.route_instance_id == route_instance_id &&
          route.identity.generation == generation &&
-         route.geometry->executable_geometry_revision == geometry_revision &&
+         route.geometry->compiled_trajectory_revision == geometry_revision &&
          route.continuity_id == continuity_id;
 }
 
@@ -228,11 +228,11 @@ certifyRouteSplice3D(const CertifiedRouteSuffix3D& base,
   result.splice = CertifiedRouteSplice3D{
       .base_route_instance_id = base.route_instance_id,
       .base_route_generation = base.identity.generation,
-      .base_geometry_revision = base.geometry->executable_geometry_revision,
+      .base_geometry_revision = base.geometry->compiled_trajectory_revision,
       .base_continuity_id = base.continuity_id,
       .successor_route_instance_id = successor.route_instance_id,
       .successor_route_generation = successor.identity.generation,
-      .successor_geometry_revision = successor.geometry->executable_geometry_revision,
+      .successor_geometry_revision = successor.geometry->compiled_trajectory_revision,
       .successor_continuity_id = successor.continuity_id,
       .continuity_lineage = base.continuity_lineage,
       .base_begin_station_m = base_projection.station_m,
@@ -345,7 +345,7 @@ bool routeSpliceWindowExpired3D(const CertifiedRouteSplice3D& splice,
   return base.geometry != nullptr &&
          base.route_instance_id == splice.base_route_instance_id &&
          base.identity.generation == splice.base_route_generation &&
-         base.geometry->executable_geometry_revision == splice.base_geometry_revision &&
+         base.geometry->compiled_trajectory_revision == splice.base_geometry_revision &&
          base.continuity_id == splice.base_continuity_id &&
          std::isfinite(base.progress.station_m) &&
          base.progress.station_m >

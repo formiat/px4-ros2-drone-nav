@@ -1,4 +1,5 @@
 #include "drone_city_nav/tracking_error_tube_3d.hpp"
+#include "drone_city_nav/tracking_error_tube_handoff_3d.hpp"
 
 #include <gtest/gtest.h>
 

@@ -41,7 +41,7 @@ bool PendingCertifiedRoute3D::valid() const noexcept {
              route_splice->base_continuity_id == base_continuity_id &&
              route_splice->successor_route_generation == route.identity.generation &&
              route_splice->successor_geometry_revision ==
-                 route.geometry->executable_geometry_revision &&
+                 route.geometry->compiled_trajectory_revision &&
              route_splice->successor_continuity_id == route.continuity_id &&
              successor_generation;
     case PendingExecutionBaseKind3D::kRouteHandoff:
@@ -82,7 +82,7 @@ bool pendingCertifiedRouteEligible3D(
       return executionRouteAcceptsCertifiedReplacement3D(snapshot) &&
              snapshot.route.has_value() && snapshot.route->geometry != nullptr &&
              snapshot.route->identity.generation == pending.base_route_generation &&
-             snapshot.route->geometry->executable_geometry_revision ==
+             snapshot.route->geometry->compiled_trajectory_revision ==
                  pending.base_geometry_revision &&
              snapshot.route->continuity_id == pending.base_continuity_id &&
              pending.route_splice.has_value() &&
@@ -91,7 +91,7 @@ bool pendingCertifiedRouteEligible3D(
       return executionRouteAcceptsCertifiedReplacement3D(snapshot) &&
              snapshot.route.has_value() && snapshot.route->geometry != nullptr &&
              snapshot.route->identity.generation == pending.base_route_generation &&
-             snapshot.route->geometry->executable_geometry_revision ==
+             snapshot.route->geometry->compiled_trajectory_revision ==
                  pending.base_geometry_revision &&
              snapshot.route->continuity_id == pending.base_continuity_id &&
              !pending.route_splice.has_value();

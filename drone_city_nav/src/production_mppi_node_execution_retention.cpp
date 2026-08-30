@@ -67,10 +67,11 @@ executionPathPoints(const DirectTrackingFiniteExecution3D& execution) {
 }
 
 [[nodiscard]] std::optional<mppi::FiniteExecutionPathTerminalBoundary>
-validationTerminalBoundary(const FiniteExecutionState3D& execution,
-                           const CertifiedRouteSuffix3D& route) {
+validationTerminalBoundary(
+    const FiniteExecutionState3D& execution, const CertifiedRouteSuffix3D& route,
+    const std::shared_ptr<const std::vector<mppi::RouteSample3D>>& mppi_reference) {
   if (!execution.terminal_boundary.has_value() || route.geometry == nullptr ||
-      route.geometry->mppi_route == nullptr) {
+      mppi_reference == nullptr) {
     return std::nullopt;
   }
   const FiniteRouteTerminalBoundary3D& boundary = *execution.terminal_boundary;
@@ -80,7 +81,7 @@ validationTerminalBoundary(const FiniteExecutionState3D& execution,
       .tolerance_m = boundary.tolerance_m,
       .activation_distance_m = boundary.activation_distance_m,
       .maximum_cross_track_m = boundary.maximum_cross_track_m,
-      .activation_route = *route.geometry->mppi_route,
+      .activation_route = *mppi_reference,
       .initial_route_station_m = static_cast<float>(route.progress.station_m),
       .activation_route_station_m = static_cast<float>(
           std::max(route.progress.station_m, boundary.activation_route_station_m)),
@@ -277,12 +278,15 @@ ProductionMppiNode::retainSnapshotFinitePath(
         expected->version);
     return std::nullopt;
   }
+  const std::shared_ptr<const std::vector<mppi::RouteSample3D>> mppi_reference =
+      trajectory_reference_adapter_.adapt(route.geometry);
   const std::optional<mppi::FiniteExecutionPathWorld> continuation_world =
-      exactSnapshotValidationWorld(cycle, route,
-                                   lifecycle_braking != nullptr
-                                       ? std::nullopt
-                                       : validationTerminalBoundary(active, route),
-                                   invalidating_observed_world);
+      exactSnapshotValidationWorld(
+          cycle, route,
+          lifecycle_braking != nullptr
+              ? std::nullopt
+              : validationTerminalBoundary(active, route, mppi_reference),
+          invalidating_observed_world);
   if (!continuation_world.has_value()) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
                          "FINITE_EXECUTION_SNAPSHOT retained=false "
@@ -412,7 +416,7 @@ ProductionMppiNode::retainSnapshotFinitePath(
   const ExecutionRouteTransitionGuard3D guard{
       .expected_snapshot_version = expected->version,
       .expected_route_generation = route.identity.generation,
-      .expected_geometry_revision = route.geometry->executable_geometry_revision,
+      .expected_geometry_revision = route.geometry->compiled_trajectory_revision,
   };
   const ExecutionRouteTransitionResult3D transition =
       braking_event != nullptr

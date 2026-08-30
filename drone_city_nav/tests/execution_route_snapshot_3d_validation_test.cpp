@@ -1,4 +1,4 @@
-#include "drone_city_nav/execution_route_geometry_3d.hpp"
+#include "drone_city_nav/compiled_trajectory_3d.hpp"
 
 #include "execution_route_snapshot_3d_plan_test_support.hpp"
 
@@ -547,52 +547,6 @@ TEST(ExecutionRouteSnapshot3DTest,
   EXPECT_TRUE(advanced.next->valid());
 }
 
-TEST(ExecutionRouteSnapshot3DTest,
-     CertificationRejectsForgedRotatingPassageFramesAfterRevisionRecomputation) {
-  SnapshotFixture3D fixture;
-  fixture.route = {
-      RouteSample3D{.position = {0.0, 0.0, 5.0},
-                    .tangent = {1.0, 0.0, 0.0},
-                    .station_m = 0.0,
-                    .reference_speed_mps = 4.0},
-      RouteSample3D{.position = {4.0, 0.0, 5.0},
-                    .tangent = {1.0, 0.0, 0.0},
-                    .station_m = 4.0,
-                    .reference_speed_mps = 4.0},
-      RouteSample3D{.position = {4.09, 0.0, 5.0},
-                    .tangent = {1.0, 0.0, 0.0},
-                    .station_m = 4.09,
-                    .reference_speed_mps = 4.0},
-      RouteSample3D{.position = {10.0, 0.0, 5.0},
-                    .tangent = {1.0, 0.0, 0.0},
-                    .station_m = 10.0,
-                    .reference_speed_mps = 0.0},
-  };
-  fixture.physical_route_fingerprint = routeFingerprint(fixture.route);
-  fixture.proposal.route_fingerprint = fixture.physical_route_fingerprint;
-  fixture.proposal.route_sample_count = fixture.route.size();
-  auto geometry = std::make_shared<ExecutionRouteGeometry3D>(*makeConstrainedGeometry(
-      fixture.route, fixture.physical_route_fingerprint,
-      SnapshotFixture3D::kRouteGeneration, fixture.raw_occupancy.occupiedSnapshot(),
-      testPassageVolumeConfig()));
-  auto volumes =
-      std::make_shared<std::vector<PassageVolume>>(*geometry->passage_volumes);
-  ASSERT_GE(volumes->front().cross_sections.size(), 4U);
-  constexpr double kAngleRad{89.0 * std::numbers::pi / 180.0};
-  const Vec3 rotated_lateral{0.0, std::cos(kAngleRad), std::sin(kAngleRad)};
-  const Vec3 rotated_secondary{0.0, -std::sin(kAngleRad), std::cos(kAngleRad)};
-  for (std::size_t index = volumes->front().cross_sections.size() / 2U;
-       index < volumes->front().cross_sections.size(); ++index) {
-    volumes->front().cross_sections[index].lateral_axis = rotated_lateral;
-    volumes->front().cross_sections[index].secondary_axis = rotated_secondary;
-  }
-  geometry->passage_volumes = std::move(volumes);
-  geometry->executable_geometry_revision = executionRouteGeometryRevision3D(*geometry);
-  fixture.geometry = std::move(geometry);
-  fixture.geometry_revision = fixture.geometry->executable_geometry_revision;
-  EXPECT_FALSE(fixture.activeSnapshot());
-}
-
 TEST(ExecutionRouteSnapshot3DTest, GeometryValidationReportsTypedTerminalFailure) {
   const std::vector<RouteSample3D> route{RouteSample3D{.position = {0.0, 0.0, 5.0},
                                                        .tangent = {1.0, 0.0, 0.0},
@@ -603,14 +557,14 @@ TEST(ExecutionRouteSnapshot3DTest, GeometryValidationReportsTypedTerminalFailure
                                                        .station_m = 4.0,
                                                        .reference_speed_mps = 4.0}};
 
-  const ExecutionRouteGeometryValidation3D validation =
-      validateExecutionRouteGeometrySamples3D(route);
+  const CompiledTrajectoryValidation3D validation =
+      validateCompiledTrajectorySamples3D(route);
 
   EXPECT_FALSE(validation.valid());
   EXPECT_EQ(validation.reason,
-            ExecutionRouteGeometryFailureReason3D::kTerminalTangentMismatch);
+            CompiledTrajectoryFailureReason3D::kTerminalTangentMismatch);
   EXPECT_EQ(validation.sample_index, 1U);
-  EXPECT_STREQ(executionRouteGeometryFailureReasonName3D(validation.reason),
+  EXPECT_STREQ(compiledTrajectoryFailureReason3DName(validation.reason),
                "terminal_tangent_mismatch");
 }
 

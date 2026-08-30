@@ -106,10 +106,8 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
   if (!route_owner.valid()) {
     return std::nullopt;
   }
-  const std::shared_ptr<const ExecutionRouteGeometry3D> geometry =
-      sealed_source != nullptr ? activation.geometry
-                               : captureExecutionRouteGeometry3D(*activation.geometry);
-  if (geometry == nullptr || !executionRouteGeometryValid3D(*geometry, *identity)) {
+  const std::shared_ptr<const CompiledTrajectory3D> geometry = activation.geometry;
+  if (geometry == nullptr || !compiledTrajectoryValid3D(*geometry, *identity)) {
     return std::nullopt;
   }
   if (!samePassageVolumeConfig(geometry->passage_volume_config,
@@ -155,7 +153,7 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
     return std::nullopt;
   }
   const std::uint64_t passage_geometry_revision =
-      executionPassageGeometryRevision3D(*geometry);
+      compiledTrajectoryPassageRevision3D(*geometry);
   const std::uint64_t passage_config_fingerprint =
       passageVolumeConfigFingerprint(activation.passage_volume_config);
   const std::uint64_t geometry_derivation_occupancy_content_fingerprint =
@@ -192,7 +190,7 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
     certificate = ObservedRawRouteCertificate3D{
         .route_instance_id = route_instance_id,
         .route_generation = identity->generation,
-        .geometry_revision = geometry->executable_geometry_revision,
+        .geometry_revision = geometry->compiled_trajectory_revision,
         .physical_route_fingerprint = geometry->physical_route_fingerprint,
         .producer_instance_id = identity->proposal.validated_world.producer_instance_id,
         .validated_through_revision = assessment.raw_validated_through_revision,
@@ -220,7 +218,7 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
     certificate = StaticRouteCertificate3D{
         .route_instance_id = route_instance_id,
         .route_generation = identity->generation,
-        .geometry_revision = geometry->executable_geometry_revision,
+        .geometry_revision = geometry->compiled_trajectory_revision,
         .physical_route_fingerprint = geometry->physical_route_fingerprint,
         .static_occupancy_content_fingerprint =
             activation.static_world->contentFingerprint(),
@@ -248,7 +246,7 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
       .geometry = geometry,
       .certificate = certificate,
       .progress = {.route_generation = identity->generation,
-                   .geometry_revision = geometry->executable_geometry_revision,
+                   .geometry_revision = geometry->compiled_trajectory_revision,
                    .station_m = assessment.projection.station_m,
                    .last_observed_position = owned_observation.position,
                    .execution_input = nullptr},

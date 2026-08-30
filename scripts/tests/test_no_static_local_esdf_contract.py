@@ -145,7 +145,7 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
 
     def test_tracking_uncertainty_caps_speed_from_raw_occupied_evidence(self) -> None:
         tube = (PACKAGE / "src/tracking_error_tube_3d.cpp").read_text()
-        compiler = (PACKAGE / "src/route_compiler_3d.cpp").read_text()
+        compiler = (PACKAGE / "src/trajectory_compiler_3d.cpp").read_text()
         activation = (PACKAGE / "src/production_mppi_route_activation.cpp").read_text()
         world_binding = (
             PACKAGE / "src/production_mppi_node_route_compilation.cpp"

@@ -565,7 +565,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
           certification.route_adherence_failure_state_index,
           certification.route_adherence_failure_distance_m, expected_snapshot->version,
           route_certification_target->identity.generation,
-          route_certification_target->geometry->executable_geometry_revision,
+          route_certification_target->geometry->compiled_trajectory_revision,
           route_trajectory_revision);
     }
     RCLCPP_ERROR_THROTTLE(
@@ -677,7 +677,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
           .expected_snapshot_version = transition_base->version,
           .expected_route_generation = transition_base->route->identity.generation,
           .expected_geometry_revision =
-              transition_base->route->geometry->executable_geometry_revision,
+              transition_base->route->geometry->compiled_trajectory_revision,
       };
       if (!route_execution.pending_activation) {
         return replaceFiniteExecutionPlan3D(*transition_base, guard, execution);

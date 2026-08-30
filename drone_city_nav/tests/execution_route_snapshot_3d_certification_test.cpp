@@ -5,16 +5,14 @@ namespace drone_city_nav {
 namespace {
 
 TEST(ExecutionRouteSnapshot3DTest,
-     FiniteExecutionRecognizesACopiedCertifiedRouteByInstanceId) {
+     FiniteExecutionRecognizesACopiedCertificateByInstanceId) {
   SnapshotFixture3D fixture;
   const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
       fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);
   ASSERT_TRUE(active->route.has_value());
   CertifiedRouteSuffix3D copied_route = *active->route;
-  copied_route.geometry =
-      std::make_shared<const ExecutionRouteGeometry3D>(*active->route->geometry);
-  ASSERT_NE(copied_route.geometry, active->route->geometry);
+  ASSERT_EQ(copied_route.geometry, active->route->geometry);
   ASSERT_TRUE(copied_route.valid());
 
   const std::optional<FiniteExecutionState3D> certified = certifyFiniteExecution3D(
@@ -95,7 +93,13 @@ TEST(ExecutionRouteSnapshot3DTest, DerivesPlannedEndpointSemanticsFromTheProposa
 
   activation.proposal.reaches_mission_goal = false;
   activation.proposal.evidence.reaches_mission_target = false;
-  activation.geometry = withTerminalMppiSpeed(activation.geometry, 4.0F);
+  activation.geometry = withEndpointSemantics(
+      activation.geometry, RouteEndpointSemantics3D::kContinuation,
+      TrackingErrorTubeWorld3D{
+          .observed_occupancy = &fixture.raw_occupancy,
+          .occupied_content_fingerprint =
+              fixture.raw_occupancy.occupiedSnapshot().contentFingerprint(),
+      });
   const std::optional<CertifiedRouteSuffix3D> continuation =
       certifyExecutionRoute3D(activation);
   ASSERT_TRUE(continuation.has_value());
@@ -113,7 +117,13 @@ TEST(ExecutionRouteSnapshot3DTest,
   activation.observation.current_objective.continuous_tracking = true;
   activation.observation.current_objective.target_detection_id = 7U;
   activation.observation.current_objective.target_track_id = 8U;
-  activation.geometry = withTerminalMppiSpeed(activation.geometry, 4.0F);
+  activation.geometry = withEndpointSemantics(
+      activation.geometry, RouteEndpointSemantics3D::kContinuation,
+      TrackingErrorTubeWorld3D{
+          .observed_occupancy = &fixture.raw_occupancy,
+          .occupied_content_fingerprint =
+              fixture.raw_occupancy.occupiedSnapshot().contentFingerprint(),
+      });
 
   const std::optional<CertifiedRouteSuffix3D> continuation =
       certifyExecutionRoute3D(activation);
@@ -133,7 +143,13 @@ TEST(ExecutionRouteSnapshot3DTest,
   EXPECT_FALSE(certifyExecutionRoute3D(continuation).has_value());
 
   ExecutionRouteActivation3D mission = fixture.activation();
-  mission.geometry = withTerminalMppiSpeed(mission.geometry, 4.0F);
+  mission.geometry = withEndpointSemantics(
+      mission.geometry, RouteEndpointSemantics3D::kContinuation,
+      TrackingErrorTubeWorld3D{
+          .observed_occupancy = &fixture.raw_occupancy,
+          .occupied_content_fingerprint =
+              fixture.raw_occupancy.occupiedSnapshot().contentFingerprint(),
+      });
   EXPECT_FALSE(certifyExecutionRoute3D(mission).has_value());
 }
 
@@ -737,51 +753,6 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_TRUE(activation.applied())
       << "transition_status="
       << executionRouteTransitionStatus3DName(activation.status);
-}
-
-TEST(ExecutionRouteSnapshot3DTest,
-     FiniteCertificationDoesNotExtendAConstrainedSpanPastItsBoundary) {
-  SnapshotFixture3D fixture;
-  constexpr double kForwardTangentComponent{0.01};
-  fixture.route.at(1).tangent =
-      Vec3{kForwardTangentComponent,
-           std::sqrt(1.0 - kForwardTangentComponent * kForwardTangentComponent), 0.0};
-  PassageVolumeConfig passage_config = testPassageVolumeConfig();
-  passage_config.lateral_probe_step_m = 0.0005;
-  passage_config.secondary_probe_step_m = 0.0005;
-  passage_config.maximum_cross_section_probe_m = 0.0005;
-  passage_config.minimum_wall_clearance_m = 0.0;
-  fixture.geometry = makeConstrainedGeometry(
-      fixture.route, fixture.physical_route_fingerprint,
-      SnapshotFixture3D::kRouteGeneration, fixture.raw_occupancy.occupiedSnapshot(),
-      passage_config, 0.0, 4.0);
-  fixture.geometry_revision = fixture.geometry->executable_geometry_revision;
-
-  ExecutionRouteActivation3D activation = fixture.activation();
-  activation.geometry = fixture.geometry;
-  activation.observation.position = {4.0, 0.0, 5.0};
-  activation.passage_volume_config = passage_config;
-  const std::optional<CertifiedRouteSuffix3D> suffix =
-      certifyExecutionRoute3D(activation);
-  ASSERT_TRUE(suffix.has_value());
-  EXPECT_DOUBLE_EQ(suffix->progress.station_m, 4.0);
-
-  const std::shared_ptr<const ExecutionRouteSnapshot3D> initial =
-      makeInitialExecutionRouteSnapshot3D();
-  ASSERT_NE(initial, nullptr);
-  FiniteExecutionCertification3D certification =
-      SnapshotFixture3D::finiteCertificationForRoute(
-          *suffix, FiniteExecutionKind3D::kNominal, 100U);
-  ASSERT_GE(certification.horizon.states.size(), 2U);
-  EXPECT_GT(static_cast<double>(certification.horizon.states.at(1).x) - 4.0,
-            passage_config.maximum_cross_section_probe_m);
-  const std::optional<FiniteExecutionState3D> finite_execution =
-      certifyFiniteExecution3D(*initial, *suffix, std::move(certification));
-  ASSERT_TRUE(finite_execution.has_value());
-
-  const ExecutionRouteTransitionResult3D activated =
-      activateCertifiedRoute3D(*initial, initial->version, *suffix, *finite_execution);
-  EXPECT_TRUE(activated.applied());
 }
 
 TEST(ExecutionRouteSnapshot3DTest,

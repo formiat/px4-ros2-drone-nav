@@ -29,9 +29,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   const std::shared_ptr<const ExecutionRouteSnapshot3D> initial = store.snapshot();
   ASSERT_NE(initial, nullptr);
   CertifiedRouteSuffix3D copied_route = *suffix;
-  copied_route.geometry =
-      std::make_shared<const ExecutionRouteGeometry3D>(*suffix->geometry);
-  ASSERT_NE(copied_route.geometry, suffix->geometry);
+  ASSERT_EQ(copied_route.geometry, suffix->geometry);
   ASSERT_TRUE(copied_route.valid());
   ASSERT_EQ(copied_route.route_instance_id, suffix->route_instance_id);
   FiniteExecutionState3D execution = SnapshotFixture3D::finiteExecutionForRoute(
@@ -82,7 +80,7 @@ TEST(ExecutionRouteSnapshot3DTest,
           .base_kind = PendingExecutionBaseKind3D::kRoute,
           .base_route_generation = active->route->identity.generation,
           .base_geometry_revision =
-              active->route->geometry->executable_geometry_revision,
+              active->route->geometry->compiled_trajectory_revision,
           .base_continuity_id = active->route->continuity_id,
           .base_direct_tracking_identity = std::nullopt,
           .route_splice = testRouteSplice(*active->route, *successor),
@@ -134,7 +132,7 @@ TEST(ExecutionRouteSnapshot3DTest,
           .base_kind = PendingExecutionBaseKind3D::kRoute,
           .base_route_generation = active->route->identity.generation,
           .base_geometry_revision =
-              active->route->geometry->executable_geometry_revision,
+              active->route->geometry->compiled_trajectory_revision,
           .base_continuity_id = active->route->continuity_id,
           .base_direct_tracking_identity = std::nullopt,
           .route_splice = testRouteSplice(*active->route, *successor),
@@ -174,7 +172,7 @@ TEST(ExecutionRouteSnapshot3DTest,
           .base_kind = PendingExecutionBaseKind3D::kRoute,
           .base_route_generation = active->route->identity.generation,
           .base_geometry_revision =
-              active->route->geometry->executable_geometry_revision,
+              active->route->geometry->compiled_trajectory_revision,
           .base_continuity_id = active->route->continuity_id,
           .base_direct_tracking_identity = std::nullopt,
           .route_splice = std::nullopt,
@@ -339,7 +337,7 @@ TEST(ExecutionRouteSnapshot3DTest, RouteSplicePendingSurvivesExecutionProgressCa
           .base_kind = PendingExecutionBaseKind3D::kRoute,
           .base_route_generation = active->route->identity.generation,
           .base_geometry_revision =
-              active->route->geometry->executable_geometry_revision,
+              active->route->geometry->compiled_trajectory_revision,
           .base_continuity_id = active->route->continuity_id,
           .base_direct_tracking_identity = std::nullopt,
           .route_splice = splice,
@@ -449,7 +447,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       .base_execution_owner_epoch = active->execution_owner_epoch,
       .base_kind = PendingExecutionBaseKind3D::kRoute,
       .base_route_generation = active->route->identity.generation,
-      .base_geometry_revision = active->route->geometry->executable_geometry_revision,
+      .base_geometry_revision = active->route->geometry->compiled_trajectory_revision,
       .base_continuity_id = active->route->continuity_id,
       .base_direct_tracking_identity = std::nullopt,
       .route_splice = testRouteSplice(*active->route, *successor),
@@ -498,7 +496,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       .base_execution_owner_epoch = active->execution_owner_epoch,
       .base_kind = PendingExecutionBaseKind3D::kRouteHandoff,
       .base_route_generation = active->route->identity.generation,
-      .base_geometry_revision = active->route->geometry->executable_geometry_revision,
+      .base_geometry_revision = active->route->geometry->compiled_trajectory_revision,
       .base_continuity_id = active->route->continuity_id,
       .base_direct_tracking_identity = std::nullopt,
       .route_splice = std::nullopt,
@@ -686,7 +684,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       .base_execution_owner_epoch = active->execution_owner_epoch,
       .base_kind = PendingExecutionBaseKind3D::kRoute,
       .base_route_generation = active->route->identity.generation,
-      .base_geometry_revision = active->route->geometry->executable_geometry_revision,
+      .base_geometry_revision = active->route->geometry->compiled_trajectory_revision,
       .base_continuity_id = active->route->continuity_id,
       .base_direct_tracking_identity = std::nullopt,
       .route_splice = testRouteSplice(*active->route, *successor),
@@ -760,7 +758,7 @@ TEST(ExecutionRouteSnapshot3DTest, PendingRouteIsObsoleteAtMissionTerminalStop) 
       .base_kind = PendingExecutionBaseKind3D::kRoute,
       .base_route_generation = stopped.next->route->identity.generation,
       .base_geometry_revision =
-          stopped.next->route->geometry->executable_geometry_revision,
+          stopped.next->route->geometry->compiled_trajectory_revision,
       .base_continuity_id = stopped.next->route->continuity_id,
       .base_direct_tracking_identity = std::nullopt,
       .route_splice = std::nullopt,
@@ -920,7 +918,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       .base_kind = PendingExecutionBaseKind3D::kRoute,
       .base_route_generation = route_owner->route->identity.generation,
       .base_geometry_revision =
-          route_owner->route->geometry->executable_geometry_revision,
+          route_owner->route->geometry->compiled_trajectory_revision,
       .base_continuity_id = route_owner->route->continuity_id,
       .base_direct_tracking_identity = std::nullopt,
       .route_splice = testRouteSplice(*route_owner->route, *successor),
@@ -961,20 +959,31 @@ TEST(ExecutionRouteSnapshot3DTest, ProgressConnectorUsesExactPreviousControlBody
       oriented_footprint, 100.0);
   fixture.execution_footprint = oriented_footprint;
   fixture.passage_volume_config.footprint = oriented_footprint;
-  auto geometry = std::make_shared<ExecutionRouteGeometry3D>(*fixture.geometry);
-  geometry->passage_volume_config = fixture.passage_volume_config;
-  geometry->tracking_error_tube =
-      std::make_shared<const TrackingErrorTubeProfile3D>(makeTrackingErrorTubeProfile3D(
-          fixture.route,
-          TrackingErrorTubeWorld3D{
-              .observed_occupancy = &fixture.raw_occupancy,
-              .occupied_content_fingerprint =
-                  fixture.raw_occupancy.occupiedSnapshot().contentFingerprint(),
-          },
-          oriented_footprint, TrackingErrorTubeConfig3D{}, 5.0));
-  geometry->executable_geometry_revision = executionRouteGeometryRevision3D(*geometry);
-  fixture.geometry = std::move(geometry);
-  fixture.geometry_revision = fixture.geometry->executable_geometry_revision;
+  TrajectoryCompilerConfig3D compiler_config;
+  compiler_config.physical_footprint = oriented_footprint;
+  const TrajectoryCompilationResult3D compilation =
+      TrajectoryCompiler3D::compile(TrajectoryCompilerInput3D{
+          .exact_initial_state = testVehicleState(fixture.route.front().position),
+          .route_generation = SnapshotFixture3D::kRouteGeneration,
+          .route = fixture.route,
+          .constrained_spans = {},
+          .passage_volumes = {},
+          .cooperative_passage_assignments = {},
+          .selected_passage_traversal_ids = {},
+          .passage_volume_config = fixture.passage_volume_config,
+          .endpoint_semantics = RouteEndpointSemantics3D::kMissionStop,
+          .materialized_route_fingerprint = fixture.physical_route_fingerprint,
+          .tracking_world =
+              TrackingErrorTubeWorld3D{
+                  .observed_occupancy = &fixture.raw_occupancy,
+                  .occupied_content_fingerprint =
+                      fixture.raw_occupancy.occupiedSnapshot().contentFingerprint(),
+              },
+          .config = compiler_config,
+      });
+  ASSERT_TRUE(compilation.compiled());
+  fixture.geometry = compilation.trajectory;
+  fixture.geometry_revision = fixture.geometry->compiled_trajectory_revision;
   const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
       fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);

@@ -1,4 +1,4 @@
-#include "drone_city_nav/execution_route_geometry_3d.hpp"
+#include "drone_city_nav/compiled_trajectory_3d.hpp"
 
 #include "execution_route_snapshot_3d_plan_test_support.hpp"
 
@@ -122,7 +122,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       fixture.route, fixture.physical_route_fingerprint,
       SnapshotFixture3D::kRouteGeneration, fixture.raw_occupancy.occupiedSnapshot(),
       testPassageVolumeConfig());
-  fixture.geometry_revision = fixture.geometry->executable_geometry_revision;
+  fixture.geometry_revision = fixture.geometry->compiled_trajectory_revision;
   const std::shared_ptr<const ExecutionRouteSnapshot3D> active =
       fixture.activeSnapshot();
   ASSERT_TRUE(active);

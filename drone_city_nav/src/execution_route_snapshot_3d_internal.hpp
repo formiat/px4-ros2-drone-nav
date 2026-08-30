@@ -192,7 +192,8 @@ validationContractFingerprint(const mppi::FiniteExecutionPathWorld& world,
 [[nodiscard]] std::optional<mppi::FiniteExecutionPathTerminalBoundary>
 makeValidationTerminalBoundary(
     const std::optional<FiniteRouteTerminalBoundary3D>& boundary,
-    const CertifiedRouteSuffix3D& route);
+    const CertifiedRouteSuffix3D& route,
+    std::span<const mppi::RouteSample3D> mppi_reference);
 
 [[nodiscard]] std::optional<FiniteRouteTerminalBoundary3D>
 canonicalFiniteRouteTerminalBoundary(const CertifiedRouteSuffix3D& route,
@@ -227,24 +228,9 @@ finiteHorizonDynamicallyConsistent(const mppi::FiniteHorizon& horizon,
                                    const mppi::Control& previous_applied_control,
                                    const mppi::DynamicsConfig& dynamics) noexcept;
 
-[[nodiscard]] bool
-validRouteSamples(const std::span<const RouteSample3D> route) noexcept;
-
 [[nodiscard]] double vectorNorm(const Vec3& vector) noexcept;
 
 [[nodiscard]] double vectorDot(const Vec3& first, const Vec3& second) noexcept;
-
-[[nodiscard]] bool validEnvelopeSamples(const ConstrainedRouteSpan& span) noexcept;
-
-[[nodiscard]] bool
-validTraversalSegmentSpans(const ConstrainedRouteSpan& span) noexcept;
-
-[[nodiscard]] bool
-validPassageCrossSection(const PassageCrossSection& section) noexcept;
-
-[[nodiscard]] bool validPassageVolume(const PassageVolume& volume,
-                                      const ConstrainedRouteSpan& span,
-                                      const std::size_t span_index) noexcept;
 
 [[nodiscard]] bool samePointExact(const Point3& first, const Point3& second) noexcept;
 
@@ -262,12 +248,12 @@ sameRouteEnvelopeSampleExact(const RouteEnvelopeSample& first,
                              const RouteEnvelopeSample& second) noexcept;
 
 [[nodiscard]] bool
-canonicalPassageGeometryMatchesWorld(const ExecutionRouteGeometry3D& geometry,
+canonicalPassageGeometryMatchesWorld(const CompiledTrajectory3D& geometry,
                                      const OccupancyGrid3D& occupancy,
                                      const PassageVolumeConfig& expected_config);
 
 [[nodiscard]] bool canonicalPassageGeometryMatchesObservedWorld(
-    const ExecutionRouteGeometry3D& geometry, const VersionedObservedRawWorld3D& world,
+    const CompiledTrajectory3D& geometry, const VersionedObservedRawWorld3D& world,
     const PassageVolumeConfig& expected_config);
 
 [[nodiscard]] Vec3 normalizedVector(const Vec3& vector) noexcept;
@@ -284,12 +270,12 @@ passageFrameBetweenSections(const PassageCrossSection& lower_section,
                                             const Point3& point,
                                             const double station_m) noexcept;
 
-[[nodiscard]] bool constrainedPointAccepted(const ExecutionRouteGeometry3D& geometry,
+[[nodiscard]] bool constrainedPointAccepted(const CompiledTrajectory3D& geometry,
                                             const Point3& point,
                                             const double station_m) noexcept;
 
 [[nodiscard]] std::vector<double>
-constrainedStationEvents(const ExecutionRouteGeometry3D& geometry,
+constrainedStationEvents(const CompiledTrajectory3D& geometry,
                          const double begin_station_m, const double end_station_m);
 
 [[nodiscard]] bool pointInsidePassageFrame(const PassageFrame3D& frame,
@@ -310,7 +296,7 @@ constrainedStationEvents(const ExecutionRouteGeometry3D& geometry,
     const Point3& begin, const double begin_station_m, const Point3& end,
     const double end_station_m, const std::size_t depth = 0U) noexcept;
 
-[[nodiscard]] bool constrainedSegmentAccepted(const ExecutionRouteGeometry3D& geometry,
+[[nodiscard]] bool constrainedSegmentAccepted(const CompiledTrajectory3D& geometry,
                                               const Point3& begin,
                                               const double begin_station_m,
                                               const Point3& end,
@@ -319,13 +305,13 @@ constrainedStationEvents(const ExecutionRouteGeometry3D& geometry,
 [[nodiscard]] Point3 statePoint(const mppi::State& state) noexcept;
 
 [[nodiscard]] bool
-validateOrderedPassageCrossings(const ExecutionRouteGeometry3D& geometry,
+validateOrderedPassageCrossings(const CompiledTrajectory3D& geometry,
                                 const std::span<const StationedRoutePoint3D> path,
                                 const double begin_station_m,
                                 const double end_station_m) noexcept;
 
 [[nodiscard]] RouteAdherenceAssessment3D validateFiniteRouteAdherence(
-    const ExecutionRouteGeometry3D& geometry, const std::span<const mppi::State> states,
+    const CompiledTrajectory3D& geometry, const std::span<const mppi::State> states,
     const double initial_station_m, const double minimum_station_m,
     const double maximum_station_m, std::optional<double> maximum_cross_track_m,
     std::optional<double> terminal_cross_track_tolerance_m,
@@ -340,12 +326,6 @@ validateOrderedPassageCrossings(const ExecutionRouteGeometry3D& geometry,
     const CertifiedRouteSuffix3D& route, const mppi::FiniteHorizon& horizon,
     double begin_route_station_m, const mppi::Control& previous_control,
     const mppi::FiniteExecutionPathWorld& world) noexcept;
-
-[[nodiscard]] bool validMppiRoute(const std::span<const mppi::RouteSample3D> mppi_route,
-                                  const std::span<const RouteSample3D> route) noexcept;
-
-[[nodiscard]] std::shared_ptr<const ExecutionRouteGeometry3D>
-captureExecutionRouteGeometry3D(const ExecutionRouteGeometry3D& source);
 
 [[nodiscard]] bool validStationInterval(const double begin_station_m,
                                         const double end_station_m,

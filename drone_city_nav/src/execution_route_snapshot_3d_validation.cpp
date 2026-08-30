@@ -510,29 +510,6 @@ validationContractFingerprint(const mppi::FiniteExecutionPathWorld& world,
   return hash == 0U ? 1U : hash;
 }
 
-[[nodiscard]] std::optional<mppi::FiniteExecutionPathTerminalBoundary>
-makeValidationTerminalBoundary(
-    const std::optional<FiniteRouteTerminalBoundary3D>& boundary,
-    const CertifiedRouteSuffix3D& route) {
-  if (!boundary.has_value()) {
-    return std::nullopt;
-  }
-  if (route.geometry == nullptr || route.geometry->mppi_route == nullptr) {
-    return std::nullopt;
-  }
-  return mppi::FiniteExecutionPathTerminalBoundary{
-      .endpoint = boundary->endpoint,
-      .forward = boundary->forward,
-      .tolerance_m = boundary->tolerance_m,
-      .activation_distance_m = boundary->activation_distance_m,
-      .maximum_cross_track_m = boundary->maximum_cross_track_m,
-      .activation_route = *route.geometry->mppi_route,
-      .initial_route_station_m = static_cast<float>(boundary->initial_route_station_m),
-      .activation_route_station_m =
-          static_cast<float>(boundary->activation_route_station_m),
-  };
-}
-
 [[nodiscard]] std::optional<FiniteRouteTerminalBoundary3D>
 canonicalFiniteRouteTerminalBoundary(const CertifiedRouteSuffix3D& route,
                                      const double initial_station_m) noexcept {
@@ -559,6 +536,27 @@ canonicalFiniteRouteTerminalBoundary(const CertifiedRouteSuffix3D& route,
       .maximum_cross_track_m = kMaximumRouteCrossTrackM,
       .initial_route_station_m = initial_station_m,
       .activation_route_station_m = std::max(initial_station_m, previous.station_m),
+  };
+}
+
+std::optional<mppi::FiniteExecutionPathTerminalBoundary> makeValidationTerminalBoundary(
+    const std::optional<FiniteRouteTerminalBoundary3D>& boundary,
+    const CertifiedRouteSuffix3D& route,
+    const std::span<const mppi::RouteSample3D> mppi_reference) {
+  if (!boundary.has_value() || route.geometry == nullptr ||
+      mppi_reference.size() != route.geometry->route->size()) {
+    return std::nullopt;
+  }
+  return mppi::FiniteExecutionPathTerminalBoundary{
+      .endpoint = boundary->endpoint,
+      .forward = boundary->forward,
+      .tolerance_m = boundary->tolerance_m,
+      .activation_distance_m = boundary->activation_distance_m,
+      .maximum_cross_track_m = boundary->maximum_cross_track_m,
+      .activation_route = mppi_reference,
+      .initial_route_station_m = static_cast<float>(boundary->initial_route_station_m),
+      .activation_route_station_m =
+          static_cast<float>(boundary->activation_route_station_m),
   };
 }
 

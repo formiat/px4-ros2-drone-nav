@@ -215,6 +215,8 @@ add_library(
   src/persistent_dstar_lite_planner_3d_search.cpp
   src/persistent_dstar_lite_planner_3d_time_search.cpp
   src/persistent_dstar_lite_planner_3d_world.cpp
+  src/mppi/route_risk_adapter_3d.cpp
+  src/mppi/trajectory_reference_adapter_3d.cpp
   src/px4_ros_time_mapper.cpp
   src/radar_cadence.cpp
   src/radar_model.cpp
@@ -228,8 +230,9 @@ add_library(
   src/execution_horizon_timing.cpp
   src/execution_publication_currentness_3d.cpp
   src/certified_route_splice_3d.cpp
-  src/execution_route_geometry_3d.cpp
-  src/execution_route_geometry_validation_3d.cpp
+  src/compiled_trajectory_views_3d.cpp
+  src/compiled_trajectory_3d.cpp
+  src/compiled_trajectory_validation_3d.cpp
   src/execution_route_snapshot_3d.cpp
   src/execution_route_snapshot_3d_certificates.cpp
   src/execution_route_snapshot_3d_certification.cpp
@@ -248,7 +251,7 @@ add_library(
     src/route_3d.cpp
     src/route_3d_passage.cpp
   src/route_3d_spans.cpp
-  src/route_compiler_3d.cpp
+  src/trajectory_compiler_3d.cpp
   src/route_time_parameterization.cpp
   src/route_execution_contract_3d.cpp
   src/route_lifecycle_3d.cpp
@@ -1222,10 +1225,10 @@ if(BUILD_TESTING)
   target_link_libraries(route_lifecycle_3d_test drone_city_nav_core)
   enable_project_warnings(route_lifecycle_3d_test)
 
-  ament_add_gtest(route_compiler_3d_test tests/route_compiler_3d_test.cpp)
-  target_compile_features(route_compiler_3d_test PRIVATE cxx_std_20)
-  target_link_libraries(route_compiler_3d_test drone_city_nav_core)
-  enable_project_warnings(route_compiler_3d_test)
+  ament_add_gtest(trajectory_compiler_3d_test tests/trajectory_compiler_3d_test.cpp)
+  target_compile_features(trajectory_compiler_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(trajectory_compiler_3d_test drone_city_nav_core)
+  enable_project_warnings(trajectory_compiler_3d_test)
 
   ament_add_gtest(execution_route_snapshot_3d_test
                   tests/execution_route_snapshot_3d_test.cpp

@@ -124,7 +124,7 @@ rebaseRouteExecution(const ExecutionPublicationNavigationRebaseRequest3D& reques
                                        : 0U,
       .expected_geometry_revision =
           certification_base.route.has_value()
-              ? certification_base.route->geometry->executable_geometry_revision
+              ? certification_base.route->geometry->compiled_trajectory_revision
               : 0U,
   };
   if (candidate_execution.kind == FiniteExecutionKind3D::kEmergencyBrakeTail) {

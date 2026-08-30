@@ -1,11 +1,9 @@
 #pragma once
 
-#include "drone_city_nav/mppi/mppi_config.hpp"
-#include "drone_city_nav/mppi_speed_policy.hpp"
+#include "drone_city_nav/flight_time_model_3d.hpp"
 #include "drone_city_nav/route_3d.hpp"
 #include "drone_city_nav/route_execution_contract_3d.hpp"
 
-#include <optional>
 #include <span>
 #include <vector>
 
@@ -27,9 +25,9 @@ parameterizeRouteTime3D(std::span<const RouteSample3D> route,
                         std::span<const ConstrainedRouteSpan> constrained_spans,
                         double unconstrained_speed_mps, double constrained_speed_mps,
                         RouteEndpointSemantics3D endpoint_semantics,
-                        const MppiSpeedPolicyConfig& speed_policy,
-                        const mppi::DynamicsConfig& dynamics,
-                        const std::optional<Vec3>& initial_velocity = std::nullopt,
+                        double maximum_lateral_acceleration_mps2,
+                        const FlightTimeModel3D& time_model,
+                        const Vec3& initial_velocity,
                         std::span<const double> tracking_speed_limits_mps = {});
 
 } // namespace drone_city_nav

@@ -1,5 +1,7 @@
 #include "production_mppi_node_planning_tick_finalize.hpp"
 
+#include "drone_city_nav/mppi/trajectory_reference_adapter_3d.hpp"
+
 #include <algorithm>
 #include <chrono>
 #include <cinttypes>
@@ -148,7 +150,7 @@ void ProductionMppiNode::finalizePlanningTick(
           committed_route != nullptr ? committed_route->identity.generation : 0U,
       .continuity_id = committed_route != nullptr ? committed_route->continuity_id : 0U,
       .geometry_revision = committed_route != nullptr
-                               ? committed_route->geometry->executable_geometry_revision
+                               ? committed_route->geometry->compiled_trajectory_revision
                                : 0U,
       .endpoint_semantics =
           committed_execution_snapshot != nullptr
@@ -190,14 +192,10 @@ void ProductionMppiNode::finalizePlanningTick(
           Point3{navigation.state.x, navigation.state.y, navigation.state.z},
           mission_goal,
       };
-      rviz_route = makeMppiRoute3D(
-          sampleRoute3D(
-              direct_points,
-              std::max(0.5, distance3D(direct_points.front(), direct_points.back())),
-              speed_policy.reference_speed_mps),
-          {}, speed_policy.reference_speed_mps, speed_policy.reference_speed_mps,
-          RouteEndpointSemantics3D::kContinuation, speed_policy_config_,
-          mppi_config_.dynamics);
+      rviz_route = mppi::adaptRouteVisualization3D(sampleRoute3D(
+          direct_points,
+          std::max(0.5, distance3D(direct_points.front(), direct_points.back())),
+          speed_policy.reference_speed_mps));
     }
     rviz = ProductionMppiRvizSnapshot{
         .candidate_horizon = result.horizon,

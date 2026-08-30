@@ -377,8 +377,8 @@ void ProductionMppiNode::planningTick() {
   measured_route_projection = route_execution.projection;
   route_hold_position = route_execution.hold_position;
   const CertifiedRouteSuffix3D* const activated_route = route_execution.route.get();
-  const ProductionRouteGeometry3D* const route_geometry =
-      activated_route != nullptr ? activated_route->geometry.get() : nullptr;
+  const std::shared_ptr<const CompiledTrajectory3D> route_geometry =
+      activated_route != nullptr ? activated_route->geometry : nullptr;
   const std::uint64_t route_generation =
       activated_route != nullptr ? activated_route->identity.generation : 0U;
   const bool route_reaches_mission_goal =
@@ -397,7 +397,7 @@ void ProductionMppiNode::planningTick() {
   const std::shared_ptr<const std::vector<RouteSample3D>> execution_route =
       route_geometry != nullptr ? route_geometry->route : nullptr;
   const std::shared_ptr<const std::vector<mppi::RouteSample3D>> execution_mppi_route =
-      route_geometry != nullptr ? route_geometry->mppi_route : nullptr;
+      trajectory_reference_adapter_.adapt(route_geometry);
   const std::shared_ptr<const std::vector<ConstrainedRouteSpan>>
       execution_constrained_spans =
           route_geometry != nullptr ? route_geometry->constrained_spans : nullptr;

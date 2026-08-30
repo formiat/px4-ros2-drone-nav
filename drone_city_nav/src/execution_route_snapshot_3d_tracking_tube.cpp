@@ -29,7 +29,7 @@ bool certifiedTrackingTubeHandoffPending(
       execution->source_route_instance_id != target_route.route_instance_id ||
       execution->source_route_generation != target_route.identity.generation ||
       execution->source_geometry_revision !=
-          target_route.geometry->executable_geometry_revision ||
+          target_route.geometry->compiled_trajectory_revision ||
       execution->horizon == nullptr || execution->horizon->states.empty() ||
       target_route.progress.execution_input != execution->execution_input) {
     return false;

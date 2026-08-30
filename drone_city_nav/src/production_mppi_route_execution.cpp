@@ -321,7 +321,7 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
         .expected_snapshot_version = result.source_snapshot->version,
         .expected_route_generation = result.source_snapshot->route->identity.generation,
         .expected_geometry_revision =
-            result.source_snapshot->route->geometry->executable_geometry_revision,
+            result.source_snapshot->route->geometry->compiled_trajectory_revision,
     };
     const bool observed_route = active_route.observed_raw_world != nullptr;
     const std::uint64_t physically_invalidated_through_generation =
