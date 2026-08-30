@@ -5,6 +5,7 @@
 #include <sstream>
 #include <string>
 
+#include "production_mppi_diagnostics_snapshot.hpp"
 #include "production_mppi_node.hpp"
 
 namespace drone_city_nav {

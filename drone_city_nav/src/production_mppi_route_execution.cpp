@@ -1,3 +1,5 @@
+#include "drone_city_nav/rolling_route_telemetry_3d.hpp"
+
 #include <algorithm>
 #include <cinttypes>
 #include <limits>
@@ -34,7 +36,7 @@ deriveLatestObservedRouteEvidence(
       route.observed_raw_world == nullptr) {
     return nullptr;
   }
-  const std::shared_ptr<const VersionedObservedRawWorld3D> derived =
+  std::shared_ptr<const VersionedObservedRawWorld3D> derived =
       latest_raw_world->execution_owner->deriveRouteEvidence(
           route.observed_raw_world->proprioceptiveFreeSpaceSeed(),
           route.observed_raw_world->launchSupportContact());
@@ -98,11 +100,12 @@ void bindObservedRouteEvidence(
     }
     certified_occupied_fingerprint =
         raw_certificate->geometry_derivation_occupancy_content_fingerprint;
+    const auto& launch_support_contact = observed_world->launchSupportContact();
     world = TrackingErrorTubeWorld3D{
         .observed_occupancy = &observed_world->occupancy(),
         .occupied_content_fingerprint = observed_world->occupiedContentFingerprint(),
-        .launch_support_contact = observed_world->launchSupportContact().has_value()
-                                      ? &*observed_world->launchSupportContact()
+        .launch_support_contact = launch_support_contact.has_value()
+                                      ? std::addressof(launch_support_contact.value())
                                       : nullptr,
     };
   } else {
@@ -277,7 +280,7 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
       .execution_owner_available = false,
       .pending_activation = false,
       .physical_trajectory_invalidated = false,
-      .direct_tracking_identity = std::move(direct_tracking_identity),
+      .direct_tracking_identity = direct_tracking_identity,
   };
   const RouteExecutionManagerSnapshot3D manager_snapshot =
       route_execution_manager_.snapshot();
@@ -724,17 +727,22 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
                                                 RouteSpliceReadinessStatus3D::kReady};
     const bool route_splice_required =
         result.pending_route->base_kind == PendingExecutionBaseKind3D::kRoute;
+    const std::optional<CertifiedRouteSplice3D>& route_splice_candidate =
+        result.pending_route->route_splice;
+    const CertifiedRouteSplice3D* route_splice = nullptr;
+    if (route_splice_candidate.has_value()) {
+      route_splice = std::addressof(route_splice_candidate.value());
+    }
+    const CertifiedRouteSuffix3D* const resident_route = route_state->route();
     if (route_splice_required) {
-      if (!result.pending_route->route_splice.has_value() ||
-          route_state->route() == nullptr) {
+      if (route_splice == nullptr || resident_route == nullptr) {
         splice_readiness.status = RouteSpliceReadinessStatus3D::kInvalidProof;
       } else if (refreshed_pending == nullptr) {
         splice_readiness.status =
             RouteSpliceReadinessStatus3D::kSuccessorProjectionUnavailable;
       } else {
         splice_readiness = assessRouteSpliceReadiness3D(
-            *result.pending_route->route_splice, *route_state->route(),
-            *refreshed_pending,
+            *route_splice, *resident_route, *refreshed_pending,
             Point3{execution_navigation.state.x, execution_navigation.state.y,
                    execution_navigation.state.z});
       }
@@ -746,10 +754,8 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
       result.status = RouteExecutionStatus3D::kUsable;
     } else if (route_splice_required) {
       const bool splice_expired =
-          result.pending_route->route_splice.has_value() &&
-          route_state->route() != nullptr &&
-          routeSpliceWindowExpired3D(*result.pending_route->route_splice,
-                                     *route_state->route());
+          route_splice != nullptr && resident_route != nullptr &&
+          routeSpliceWindowExpired3D(*route_splice, *resident_route);
       const bool permanently_unavailable =
           splice_expired || !splice_readiness.canStillBecomeReady();
       RCLCPP_INFO_THROTTLE(

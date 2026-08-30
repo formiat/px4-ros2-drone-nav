@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "navigation_diagnostics_sink.hpp"
 #include "production_mppi_node.hpp"
 
 namespace drone_city_nav {
@@ -25,50 +26,37 @@ namespace {
 } // namespace
 
 void ProductionMppiNode::publishSummary() {
-  std::vector<double> runtime_samples_ms;
-  std::uint64_t completed_ticks{0U};
-  std::uint64_t deadline_misses{0U};
-  std::uint64_t altitude_envelope_violation_horizons{0U};
-  std::uint64_t post_update_contract_violations{0U};
-  std::uint64_t no_progress_horizons{0U};
-  std::uint64_t liveness_reseeds{0U};
-  std::uint64_t mission_goal_position_hold_ticks{0U};
-  std::uint64_t no_executable_route_hold_ticks{0U};
-  std::uint64_t no_executable_horizon_hold_ticks{0U};
-  std::uint64_t terminal_rest_horizon_ticks{0U};
-  std::uint64_t finite_path_validation_backoff_ticks{0U};
-  std::uint64_t latest_lidar_path_validation_backoff_ticks{0U};
-  std::uint64_t retained_previous_finite_path_ticks{0U};
-  std::uint64_t arrival_control_total{0U};
-  std::uint64_t arrival_shaping_attempt_total{0U};
-  std::uint64_t full_rollout_ticks{0U};
-  std::uint64_t reduced_rollout_ticks{0U};
-  std::uint64_t active_rollout_total{0U};
-  RollingRouteTelemetrySnapshot3D rolling_route;
-  {
-    const std::scoped_lock lock{statistics_mutex_};
-    runtime_samples_ms = runtime_samples_ms_;
-    completed_ticks = completed_ticks_;
-    deadline_misses = deadline_misses_;
-    altitude_envelope_violation_horizons = altitude_envelope_violation_horizons_;
-    post_update_contract_violations = post_update_contract_violations_;
-    no_progress_horizons = no_progress_horizons_;
-    liveness_reseeds = liveness_reseeds_;
-    mission_goal_position_hold_ticks = mission_goal_position_hold_ticks_;
-    no_executable_route_hold_ticks = no_executable_route_hold_ticks_;
-    no_executable_horizon_hold_ticks = no_executable_horizon_hold_ticks_;
-    terminal_rest_horizon_ticks = terminal_rest_horizon_ticks_;
-    finite_path_validation_backoff_ticks = finite_path_validation_backoff_ticks_;
-    latest_lidar_path_validation_backoff_ticks =
-        latest_lidar_path_validation_backoff_ticks_;
-    retained_previous_finite_path_ticks = retained_previous_finite_path_ticks_;
-    arrival_control_total = arrival_control_total_;
-    arrival_shaping_attempt_total = arrival_shaping_attempt_total_;
-    full_rollout_ticks = full_rollout_ticks_;
-    reduced_rollout_ticks = reduced_rollout_ticks_;
-    active_rollout_total = active_rollout_total_;
-    rolling_route = rolling_route_telemetry_.snapshot();
-  }
+  const NavigationDiagnosticsStatistics diagnostics = diagnostics_sink_->statistics();
+  const std::vector<double>& runtime_samples_ms = diagnostics.runtime_samples_ms;
+  const std::uint64_t completed_ticks = diagnostics.completed_ticks;
+  const std::uint64_t deadline_misses = diagnostics.deadline_misses;
+  const std::uint64_t altitude_envelope_violation_horizons =
+      diagnostics.altitude_envelope_violation_horizons;
+  const std::uint64_t post_update_contract_violations =
+      diagnostics.post_update_contract_violations;
+  const std::uint64_t no_progress_horizons = diagnostics.no_progress_horizons;
+  const std::uint64_t liveness_reseeds = diagnostics.liveness_reseeds;
+  const std::uint64_t mission_goal_position_hold_ticks =
+      diagnostics.mission_goal_position_hold_ticks;
+  const std::uint64_t no_executable_route_hold_ticks =
+      diagnostics.no_executable_route_hold_ticks;
+  const std::uint64_t no_executable_horizon_hold_ticks =
+      diagnostics.no_executable_horizon_hold_ticks;
+  const std::uint64_t terminal_rest_horizon_ticks =
+      diagnostics.terminal_rest_horizon_ticks;
+  const std::uint64_t finite_path_validation_backoff_ticks =
+      diagnostics.finite_path_validation_backoff_ticks;
+  const std::uint64_t latest_lidar_path_validation_backoff_ticks =
+      diagnostics.latest_lidar_path_validation_backoff_ticks;
+  const std::uint64_t retained_previous_finite_path_ticks =
+      diagnostics.retained_previous_finite_path_ticks;
+  const std::uint64_t arrival_control_total = diagnostics.arrival_control_total;
+  const std::uint64_t arrival_shaping_attempt_total =
+      diagnostics.arrival_shaping_attempt_total;
+  const std::uint64_t full_rollout_ticks = diagnostics.full_rollout_ticks;
+  const std::uint64_t reduced_rollout_ticks = diagnostics.reduced_rollout_ticks;
+  const std::uint64_t active_rollout_total = diagnostics.active_rollout_total;
+  const RollingRouteTelemetrySnapshot3D& rolling_route = diagnostics.rolling_route;
   if (runtime_samples_ms.empty()) {
     return;
   }
@@ -160,9 +148,9 @@ void ProductionMppiNode::publishSummary() {
       no_static_raw_updates_.load(std::memory_order_relaxed),
       no_static_esdf_builds_.load(std::memory_order_relaxed),
       no_static_esdf_throttled_updates_.load(std::memory_order_relaxed),
-      dropped_diagnostics_snapshots_.load(std::memory_order_relaxed),
-      full_rollout_ticks, reduced_rollout_ticks, average_active_rollouts,
-      rolling_route.observations, rolling_route.continuation_boundary_ticks,
+      diagnostics_sink_->droppedSnapshots(), full_rollout_ticks, reduced_rollout_ticks,
+      average_active_rollouts, rolling_route.observations,
+      rolling_route.continuation_boundary_ticks,
       std::isfinite(rolling_route.minimum_continuation_boundary_speed_mps)
           ? rolling_route.minimum_continuation_boundary_speed_mps
           : -1.0,

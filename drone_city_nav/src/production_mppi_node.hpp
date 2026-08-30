@@ -13,7 +13,6 @@
 #include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/free_space_topology_3d.hpp"
 #include "drone_city_nav/intercept_guidance.hpp"
-#include "drone_city_nav/latest_value_mailbox.hpp"
 #include "drone_city_nav/mission_goal_capture.hpp"
 #include "drone_city_nav/mission_waypoint_capture_gate.hpp"
 #include "drone_city_nav/mission_waypoint_sequence.hpp"
@@ -51,7 +50,6 @@
 #include "drone_city_nav/px4_map_frame_transform.hpp"
 #include "drone_city_nav/raw_obstacle_3d_ros.hpp"
 #include "drone_city_nav/raw_obstacle_delta.hpp"
-#include "drone_city_nav/rolling_route_telemetry_3d.hpp"
 #include "drone_city_nav/route_3d.hpp"
 #include "drone_city_nav/route_lifecycle_3d.hpp"
 #include "drone_city_nav/route_planning_3d.hpp"
@@ -79,9 +77,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
-#include <deque>
 #include <filesystem>
-#include <fstream>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -104,6 +100,7 @@ namespace drone_city_nav {
 struct ProductionMppiPlanningTickFinalization;
 struct ProductionMppiControllerTick;
 struct ProductionMppiControllerTickResult;
+struct ProductionMppiDiagnosticsSnapshot;
 struct ProductionRouteActivationSnapshot3D;
 struct ProductionRouteMaterialization3D;
 struct ProductionMppiExecutionCycle;
@@ -111,58 +108,7 @@ struct TrajectoryCompilerConfig3D;
 struct ProductionMppiHorizonCommit;
 enum class ProductionMppiHoldOwnershipTransition3D : std::uint8_t;
 enum class ProductionMppiHorizonCommitStatus : std::uint8_t;
-
-struct ProductionMppiRvizSnapshot {
-  std::vector<mppi::State> candidate_horizon;
-  std::vector<mppi::State> previous_horizon;
-  std::vector<mppi::State> execution_horizon;
-  std::shared_ptr<const std::vector<mppi::RouteSample3D>> route;
-  std::shared_ptr<const std::vector<PassageTraversalEdge>> passage_traversals;
-  std::shared_ptr<const std::vector<PassageTraversalId>> selected_passage_traversal_ids;
-};
-
-struct ProductionMppiDiagnosticsSnapshot {
-  mppi::MppiTickInput input{};
-  mppi::MppiTickResult result{};
-  std::shared_ptr<const WorldSnapshot3D> world;
-  ProductionWorldBuildTelemetry3D world_build{};
-  std::shared_ptr<const ProductionRouteActivationResult3D> route_pipeline;
-  std::shared_ptr<const CertifiedRouteSuffix3D> execution_route;
-  ProductionMppiStability stability{};
-  ProductionMppiPredictionError prediction{};
-  MppiLivenessResult liveness{};
-  DirectTrackingManeuverUpdate direct_tracking_maneuver{};
-  MppiSpeedPolicyResult speed_policy{};
-  RouteProgressUpdate3D route_progress{};
-  MppiEligibleRolloutUpdate no_eligible_recovery{};
-  MissionGoalCaptureResult goal_capture{};
-  ProductionMppiExecutionPublication execution{};
-  ProductionMppiPlanningState planning_state{ProductionMppiPlanningState::kPlanned};
-  std::optional<ProductionMppiRvizSnapshot> rviz;
-  std::shared_ptr<const ProductionNavigationObjective> objective;
-  std::string target_source;
-  std::uint64_t tick_sequence{0U};
-  std::uint64_t memory_sequence{0U};
-  double pose_age_ms{0.0};
-  double esdf_age_ms{0.0};
-  double observation_age_ms{0.0};
-  double control_feedback_age_ms{0.0};
-  double route_station_m{0.0};
-  double route_remaining_m{0.0};
-  double snapshot_ms{0.0};
-  double stability_ms{0.0};
-  RollingRouteTelemetryObservation3D rolling_route{};
-  bool route_projection_valid{false};
-  bool local_route_stop_is_terminal{false};
-  bool liveness_reseed_requested{false};
-  bool pose_predicted{false};
-  ProductionMppiPreviousControlSource previous_control_source{
-      ProductionMppiPreviousControlSource::kEngineFallback};
-  MppiRolloutBudgetDecision rollout_budget{};
-  ProductionMppiCooperativeUpdate cooperative{};
-  ProductionMppiNonCooperativeUpdate noncooperative{};
-  mppi::RiskTier route_required_risk_tier{mppi::RiskTier::kPreferred};
-};
+class NavigationDiagnosticsSink;
 
 [[nodiscard]] const char*
 productionPlanningSearchKindName(ProductionPlanningSearchKind kind) noexcept;
@@ -282,7 +228,6 @@ private:
       const PlannerSearchTransaction3D& transaction,
       const ProductionMppiNavigation& navigation, const Point3& mission_goal,
       std::shared_ptr<const ProductionPlannerSession3D> continuation_session);
-  void diagnosticsWorker(std::stop_token stop_token);
   void startPlanningTimer();
   void initializeRuntimeInterfaces();
   [[nodiscard]] ProductionRouteExecutionSelection3D resolveRouteExecution3D(
@@ -337,12 +282,6 @@ private:
   void logDiagnosticsEvents(const ProductionMppiDiagnosticsSnapshot& snapshot,
                             const ConstrainedRouteObservation& route_constraint);
   void publishRviz(const ProductionMppiDiagnosticsSnapshot& snapshot);
-  void enqueueDiagnostics(ProductionMppiDiagnosticsSnapshot snapshot);
-  void recordTickStatistics(const mppi::MppiTickResult& result,
-                            ProductionMppiPlanningState planning_state,
-                            const ProductionMppiExecutionPublication& execution,
-                            bool liveness_reseed_requested,
-                            const RollingRouteTelemetryObservation3D& rolling_route);
   void publishSummary();
   [[nodiscard]] ProductionMppiExecutionPublication publishExecutionHorizon(
       const mppi::MppiTickInput& input, const mppi::MppiTickResult& result,
@@ -470,7 +409,6 @@ private:
   std::int64_t diagnostics_file_period_ns_{200000000};
   std::int64_t last_rviz_stamp_ns_{0};
   std::int64_t last_diagnostics_info_stamp_ns_{0};
-  std::int64_t last_diagnostics_file_stamp_ns_{0};
   std::optional<ConstrainedRouteObservation> last_route_constraint_observation_;
 
   mppi::BenchmarkConfig mppi_config_{};
@@ -641,36 +579,8 @@ private:
   std::optional<NavigationHealthAssessment> last_navigation_health_assessment_;
   std::uint64_t mission_waypoint_acknowledgement_sequence_{0U};
   bool mission_goal_capture_attempt_invalidated_{false};
-  std::uint64_t completed_ticks_{0U};
-  std::uint64_t deadline_misses_{0U};
-  std::uint64_t altitude_envelope_violation_horizons_{0U};
-  std::uint64_t post_update_contract_violations_{0U};
-  std::uint64_t no_progress_horizons_{0U};
-  std::uint64_t liveness_reseeds_{0U};
-  std::uint64_t mission_goal_position_hold_ticks_{0U};
-  std::uint64_t no_executable_route_hold_ticks_{0U};
-  std::uint64_t no_executable_horizon_hold_ticks_{0U};
-  std::uint64_t terminal_rest_horizon_ticks_{0U};
-  std::uint64_t finite_path_validation_backoff_ticks_{0U};
-  std::uint64_t latest_lidar_path_validation_backoff_ticks_{0U};
-  std::uint64_t retained_previous_finite_path_ticks_{0U};
-  std::uint64_t arrival_control_total_{0U};
-  std::uint64_t arrival_shaping_attempt_total_{0U};
-  std::uint64_t full_rollout_ticks_{0U};
-  std::uint64_t reduced_rollout_ticks_{0U};
-  std::uint64_t active_rollout_total_{0U};
-  RollingRouteTelemetry3D rolling_route_telemetry_{};
-  std::vector<double> runtime_samples_ms_;
   std::int64_t last_summary_stamp_ns_{0};
-  mutable std::mutex statistics_mutex_;
-  std::ofstream diagnostics_stream_;
-  std::ofstream diagnostics_error_stream_;
-  std::deque<std::string> diagnostics_error_ring_;
-  std::chrono::steady_clock::time_point last_diagnostics_flush_time_{};
-  bool diagnostics_error_active_{false};
-  LatestValueMailbox<ProductionMppiDiagnosticsSnapshot> diagnostics_mailbox_;
-  std::atomic<std::uint64_t> dropped_diagnostics_snapshots_{0U};
-  std::jthread diagnostics_worker_;
+  std::unique_ptr<NavigationDiagnosticsSink> diagnostics_sink_;
 
   rclcpp::CallbackGroup::SharedPtr input_callback_group_;
   rclcpp::CallbackGroup::SharedPtr lidar_evidence_callback_group_;

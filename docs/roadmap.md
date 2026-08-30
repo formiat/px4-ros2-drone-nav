@@ -538,9 +538,12 @@ artifacts, the sealed exact-state `CompiledTrajectory3D`, the tagged execution
 variant and reducer, one atomic `CommittedExecutionAuthority3D`, the enforced
 eight-layer CMake DAG, complete registration of production-relevant GTests,
 split execution model/certification/transition/store contracts, a package-private
-hand-written C++ API, and independent compilation of every hand-written header.
-Service extraction and replacement of source-text transaction guards remain
-tracked by the linked checklist. Item 12 remains in progress until that
+hand-written C++ API, independent compilation of every hand-written header, and
+an independently tested `NavigationDiagnosticsSink` that owns its mailbox,
+worker, files, error context, and runtime statistics. The remaining world,
+planning, trajectory/control, and execution-facade extraction plus replacement
+of source-text transaction guards remain tracked by the linked checklist. Item
+12 remains in progress until that
 checklist, the complete static audit, and the unchanged three-run Manhattan
 mission gate below are finished.
 

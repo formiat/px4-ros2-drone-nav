@@ -179,6 +179,14 @@ diagnostics. `ProductionMppiNode` is the composition root and ROS I/O boundary;
 it does not own the mutable internals of world, planning, trajectory, or
 execution services.
 
+`NavigationDiagnosticsSink` now owns the bounded latest-value mailbox, worker
+lifetime, dropped/failure counters, rate-limited JSONL files, bounded error
+context, flushing, and the coherent runtime-statistics snapshot. The node
+supplies only the formatting/ROS-publication callback and explicitly stops the
+sink before its publishers are destroyed. Worker overload, stop-time draining,
+processor failure isolation, file/error-ring behavior, and statistics are
+covered by direct executable tests.
+
 ## Immutable Stage Pipeline
 
 ```text
@@ -277,6 +285,13 @@ no mixed authority revision is observable.
   ownership terminology.
 - [ ] Extract world, planning, trajectory, execution, and control services from
   `ProductionMppiNode`; retain only composition and ROS I/O in the node.
+  - [x] Extract `NavigationDiagnosticsSink` as the sole diagnostics worker,
+    mailbox, file, error-context, and statistics owner.
+  - [ ] Extract world publication and reconstruction ownership.
+  - [ ] Extract persistent planning and route-pipeline coordination.
+  - [ ] Extract trajectory compilation and controller ownership.
+  - [ ] Finish the execution-service facade around the existing sole
+    `RouteExecutionManager3D` owner.
 - [x] Enforce the internal dependency graph with CMake targets.
 - [x] Stop installing private implementation headers as public API.
 - [x] Register every production-relevant GTest source and remove the stale test

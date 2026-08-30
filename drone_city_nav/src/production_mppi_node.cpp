@@ -14,6 +14,7 @@
 #include <stdexcept>
 #include <string>
 
+#include "navigation_diagnostics_sink.hpp"
 #include "production_mppi_node_configuration.hpp"
 
 namespace drone_city_nav {

@@ -696,6 +696,7 @@ enable_project_warnings(lidar_debug_node)
 if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
   add_library(
     drone_city_nav_production_mppi_component SHARED
+    src/navigation_diagnostics_sink.cpp
     src/production_mppi_node.cpp
     src/production_mppi_node_optional_constraints.cpp
     src/production_mppi_node_route_compilation.cpp
@@ -1224,6 +1225,14 @@ if(BUILD_TESTING)
     target_link_libraries(production_mppi_route_helpers_test
                           drone_city_nav_production_mppi_component)
     enable_project_warnings(production_mppi_route_helpers_test)
+
+    ament_add_gtest(navigation_diagnostics_sink_test
+                    tests/navigation_diagnostics_sink_test.cpp)
+    target_compile_features(navigation_diagnostics_sink_test PRIVATE cxx_std_20)
+    target_include_directories(navigation_diagnostics_sink_test PRIVATE src)
+    target_link_libraries(navigation_diagnostics_sink_test
+                          drone_city_nav_production_mppi_component)
+    enable_project_warnings(navigation_diagnostics_sink_test)
   endif()
 
   ament_add_gtest(route_progress_3d_test

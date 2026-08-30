@@ -1,19 +1,37 @@
 #include <chrono>
-#include <filesystem>
+#include <exception>
 #include <string>
 #include <utility>
 
+#include "navigation_diagnostics_sink.hpp"
 #include "production_mppi_node.hpp"
 
 namespace drone_city_nav {
 
 void ProductionMppiNode::initializeRuntimeInterfaces() {
-  std::filesystem::create_directories(diagnostics_output_dir_);
-  diagnostics_stream_.open(diagnostics_output_dir_ / "mppi_ticks.jsonl",
-                           std::ios::trunc);
-  diagnostics_error_stream_.open(diagnostics_output_dir_ / "mppi_error_context.jsonl",
-                                 std::ios::trunc);
-  last_diagnostics_flush_time_ = std::chrono::steady_clock::now();
+  diagnostics_sink_ = std::make_unique<NavigationDiagnosticsSink>(
+      NavigationDiagnosticsSinkConfig{
+          .output_directory = diagnostics_output_dir_,
+          .file_period_ns = diagnostics_file_period_ns_,
+          .flush_period = std::chrono::duration<double>{diagnostics_flush_period_s_},
+          .error_ring_capacity = diagnostics_error_ring_capacity_,
+          .configured_rollouts = mppi_config_.rollouts,
+          .deadline_ms = deadline_ms_,
+      },
+      [this](const ProductionMppiDiagnosticsSnapshot& snapshot) {
+        processDiagnostics(snapshot);
+      },
+      [this](const std::exception_ptr& failure) {
+        try {
+          std::rethrow_exception(failure);
+        } catch (const std::exception& error) {
+          RCLCPP_ERROR(get_logger(), "NAVIGATION_DIAGNOSTICS failure: %s",
+                       error.what());
+        } catch (...) {
+          RCLCPP_ERROR(get_logger(),
+                       "NAVIGATION_DIAGNOSTICS failure: unknown exception");
+        }
+      });
 
   input_callback_group_ =
       create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
@@ -164,8 +182,7 @@ void ProductionMppiNode::initializeRuntimeInterfaces() {
     planner_health_pub_->publish(heartbeat);
   });
 
-  diagnostics_worker_ =
-      std::jthread([this](const std::stop_token token) { diagnosticsWorker(token); });
+  diagnostics_sink_->start();
   esdf_worker_ =
       std::jthread([this](const std::stop_token token) { esdfWorker(token); });
   route_planning_worker_ =

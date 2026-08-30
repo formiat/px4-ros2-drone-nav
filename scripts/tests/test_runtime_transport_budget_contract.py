@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static contracts for bounded memory and planner diagnostic transport."""
+"""Static architecture boundaries for lightweight planner transport wiring."""
 
 from __future__ import annotations
 
@@ -70,30 +70,6 @@ class RuntimeTransportBudgetContractTest(unittest.TestCase):
         self.assertNotIn(
             '"obstacle_memory_snapshot_topic": memory_snapshot', planner_parameters
         )
-
-    def test_json_diagnostics_are_rate_limited_and_error_buffered(self) -> None:
-        planner = _read_planner_sources()
-        diagnostics = (
-            PACKAGE / "src" / "production_mppi_node_diagnostics.cpp"
-        ).read_text(encoding="utf-8")
-
-        self.assertIn('"diagnostics_file_rate_hz"', planner)
-        self.assertIn('"diagnostics_flush_period_s"', planner)
-        self.assertIn("diagnostics_file_due", diagnostics)
-        self.assertIn("diagnostics_error_ring_", diagnostics)
-        for stage in (
-            "gpu_warm_start_ms",
-            "gpu_noise_generation_ms",
-            "gpu_rollout_simulation_ms",
-            "gpu_risk_reduction_ms",
-            "gpu_weight_calculation_ms",
-            "gpu_control_update_ms",
-            "gpu_repair_validation_ms",
-            "horizon_reconstruction_ms",
-        ):
-            self.assertIn(stage, diagnostics)
-        self.assertIn("mppi_error_context.jsonl", planner)
-
 
 if __name__ == "__main__":
     unittest.main()

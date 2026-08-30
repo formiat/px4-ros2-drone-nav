@@ -2,86 +2,14 @@
 #include "drone_city_nav/visualization_marker_helpers.hpp"
 
 #include <memory>
-#include <optional>
 #include <span>
-#include <stop_token>
 #include <string>
-#include <utility>
 
+#include "production_mppi_diagnostics_snapshot.hpp"
 #include "production_mppi_node.hpp"
 #include "tracking_objective_diagnostics.hpp"
 
 namespace drone_city_nav {
-
-void ProductionMppiNode::diagnosticsWorker(const std::stop_token stop_token) {
-  while (!stop_token.stop_requested()) {
-    std::optional<ProductionMppiDiagnosticsSnapshot> snapshot =
-        diagnostics_mailbox_.waitPop(stop_token);
-    if (!snapshot.has_value()) {
-      break;
-    }
-    processDiagnostics(*snapshot);
-  }
-  if (std::optional<ProductionMppiDiagnosticsSnapshot> pending =
-          diagnostics_mailbox_.tryPop();
-      pending.has_value()) {
-    processDiagnostics(*pending);
-  }
-  if (diagnostics_stream_) {
-    diagnostics_stream_.flush();
-  }
-  if (diagnostics_error_stream_) {
-    diagnostics_error_stream_.flush();
-  }
-}
-
-void ProductionMppiNode::enqueueDiagnostics(
-    ProductionMppiDiagnosticsSnapshot snapshot) {
-  if (diagnostics_mailbox_.push(std::move(snapshot))) {
-    dropped_diagnostics_snapshots_.fetch_add(1U, std::memory_order_relaxed);
-  }
-}
-
-void ProductionMppiNode::recordTickStatistics(
-    const mppi::MppiTickResult& result,
-    const ProductionMppiPlanningState planning_state,
-    const ProductionMppiExecutionPublication& execution,
-    const bool liveness_reseed_requested,
-    const RollingRouteTelemetryObservation3D& rolling_route) {
-  const std::scoped_lock lock{statistics_mutex_};
-  ++completed_ticks_;
-  runtime_samples_ms_.push_back(result.timings.host_total_ms);
-  deadline_misses_ += result.timings.host_total_ms > deadline_ms_ ? 1U : 0U;
-  altitude_envelope_violation_horizons_ += result.altitude_envelope_violation ? 1U : 0U;
-  post_update_contract_violations_ +=
-      planning_state == ProductionMppiPlanningState::kPlanned &&
-              !result.post_update_classification.executable
-          ? 1U
-          : 0U;
-  no_progress_horizons_ += result.head_progress_m <= 0.0F ? 1U : 0U;
-  liveness_reseeds_ += liveness_reseed_requested ? 1U : 0U;
-  mission_goal_position_hold_ticks_ +=
-      planning_state == ProductionMppiPlanningState::kMissionGoalPositionHold ? 1U : 0U;
-  no_executable_route_hold_ticks_ +=
-      planning_state == ProductionMppiPlanningState::kNoExecutableRouteHold ? 1U : 0U;
-  no_executable_horizon_hold_ticks_ +=
-      execution.reason == ProductionMppiExecutionReason::kNoExecutableHorizon ? 1U : 0U;
-  terminal_rest_horizon_ticks_ += execution.terminal_rest_state ? 1U : 0U;
-  finite_path_validation_backoff_ticks_ +=
-      execution.finite_path_validation_backoff ? 1U : 0U;
-  latest_lidar_path_validation_backoff_ticks_ +=
-      execution.latest_lidar_path_validation_backoff ? 1U : 0U;
-  retained_previous_finite_path_ticks_ +=
-      execution.retained_previous_finite_path ? 1U : 0U;
-  arrival_control_total_ += execution.arrival_control_count;
-  arrival_shaping_attempt_total_ += execution.arrival_shaping_attempts;
-  if (result.active_rollouts > 0U) {
-    active_rollout_total_ += result.active_rollouts;
-    full_rollout_ticks_ += result.active_rollouts == mppi_config_.rollouts ? 1U : 0U;
-    reduced_rollout_ticks_ += result.active_rollouts < mppi_config_.rollouts ? 1U : 0U;
-  }
-  rolling_route_telemetry_.observe(rolling_route);
-}
 
 void ProductionMppiNode::publishRviz(
     const ProductionMppiDiagnosticsSnapshot& snapshot) {

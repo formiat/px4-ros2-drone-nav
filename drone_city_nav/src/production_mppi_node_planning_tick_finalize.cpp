@@ -10,6 +10,8 @@
 #include <optional>
 #include <utility>
 
+#include "navigation_diagnostics_sink.hpp"
+#include "production_mppi_diagnostics_snapshot.hpp"
 #include "production_mppi_route_helpers.hpp"
 
 namespace drone_city_nav {
@@ -172,10 +174,10 @@ void ProductionMppiNode::finalizePlanningTick(
       .no_executable_route_hold =
           planning_state == ProductionMppiPlanningState::kNoExecutableRouteHold,
   };
-  recordTickStatistics(result, planning_state, execution,
-                       liveness.reseed_requested ||
-                           route_progress.local_reseed_requested,
-                       rolling_route);
+  diagnostics_sink_->recordTick(result, planning_state, execution,
+                                liveness.reseed_requested ||
+                                    route_progress.local_reseed_requested,
+                                rolling_route);
 
   const auto stability_started = std::chrono::steady_clock::now();
   const ProductionMppiStability stability = compareWithPrevious(result);
@@ -219,7 +221,7 @@ void ProductionMppiNode::finalizePlanningTick(
   mppi::MppiTickResult diagnostic_result = std::move(result);
   diagnostic_result.horizon.clear();
   diagnostic_result.controls.clear();
-  enqueueDiagnostics(ProductionMppiDiagnosticsSnapshot{
+  static_cast<void>(diagnostics_sink_->enqueue(ProductionMppiDiagnosticsSnapshot{
       .input = input,
       .result = std::move(diagnostic_result),
       .world = world,
@@ -259,7 +261,7 @@ void ProductionMppiNode::finalizePlanningTick(
       .cooperative = cooperative,
       .noncooperative = noncooperative,
       .route_required_risk_tier = route_required_risk_tier,
-  });
+  }));
 }
 
 } // namespace drone_city_nav

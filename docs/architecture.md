@@ -75,6 +75,8 @@ snapshot/delta transport, and selected-spectator 3D clouds.
 - currently hosts the persistent D* Lite planner and the production route and
   execution orchestration while those owners are extracted into internal
   services;
+- delegates diagnostics queuing, worker lifetime, JSONL/error-context files,
+  and coherent statistics to the package-private `NavigationDiagnosticsSink`;
 - certifies route geometry, tracking-error tube, successor reserve, and suffix
   repair against exact raw-world lineage;
 - selects local lookahead targets;

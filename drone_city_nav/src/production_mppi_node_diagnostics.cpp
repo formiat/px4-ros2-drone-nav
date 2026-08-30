@@ -7,7 +7,9 @@
 #include <numeric>
 #include <sstream>
 
+#include "navigation_diagnostics_sink.hpp"
 #include "production_mppi_cooperative_diagnostics.hpp"
+#include "production_mppi_diagnostics_snapshot.hpp"
 #include "production_mppi_execution_diagnostics.hpp"
 #include "production_mppi_node.hpp"
 #include "production_mppi_node_diagnostics_format.hpp"
@@ -63,258 +65,261 @@ void ProductionMppiNode::processDiagnostics(
   logDiagnosticsEvents(snapshot, route_constraint);
 
   std::ostringstream line;
-  line
-      << std::fixed << std::setprecision(3)
-      << "PRODUCTION_MPPI_TICK tick=" << snapshot.tick_sequence
-      << " pose_revision=" << input.pose_revision
-      << " raw_revision=" << input.obstacle_revision
-      << " esdf_revision=" << result.esdf_revision
-      << " memory_sequence=" << snapshot.memory_sequence
-      << " pose_age_ms=" << snapshot.pose_age_ms
-      << " observation_age_ms=" << snapshot.observation_age_ms
-      << " esdf_content_age_ms=" << snapshot.esdf_age_ms
-      << " local_world_generation=" << world.local_world_generation.generation
-      << " control_feedback_age_ms=" << snapshot.control_feedback_age_ms
-      << " state_position=(" << input.initial_state.x << ',' << input.initial_state.y
-      << ',' << input.initial_state.z << ") state_velocity=(" << input.initial_state.vx
-      << ',' << input.initial_state.vy << ',' << input.initial_state.vz << ')'
-      << " planning_mode=" << (use_static_map_ ? "static" : "no_static")
-      << " planning_state=" << productionMppiPlanningStateName(planning_state)
-      << detail::executionInfoFields(snapshot.execution) << " horizon_s="
-      << static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s
-      << " target_source=" << target_source << " target=(" << input.target.x << ','
-      << input.target.y << ',' << input.target.z << ")"
-      << " route_generation=" << route_candidate.candidate_generation
-      << " route_objective_epoch=" << route_candidate.objective.mission_epoch
-      << " route_objective_sample=" << route_candidate.objective.sample_sequence
-      << " route_assignment_generation="
-      << route_candidate.objective.assignment_generation
-      << " route_target_detection_id=" << route_candidate.objective.target_detection_id
-      << " route_target_track_id=" << route_candidate.objective.target_track_id
-      << " route_reaches_mission_goal="
-      << (route_candidate.reaches_mission_goal ? "true" : "false")
-      << " route_intent_id=" << route_candidate.intent.id
-      << " route_intent_planned_on=" << route_candidate.intent.planned_on_revision
-      << " route_validated_through="
-      << route_candidate.segment_evidence.validated_through_revision
-      << " route_segment_evidence="
-      << segmentEvidenceStatus3DName(route_candidate.segment_evidence.status)
-      << " route_unknown_exposure="
-      << (route_candidate.segment_evidence.unknown_exposure ? "true" : "false")
-      << " route_known_clearance="
-      << (route_candidate.segment_evidence.known_clearance_observed ? "true" : "false")
-      << " goal_capture_latched=" << (snapshot.goal_capture.latched ? "true" : "false")
-      << " goal_distance_m=" << snapshot.goal_capture.distance_m
-      << " route_station_m=" << snapshot.route_station_m
-      << " route_remaining_m=" << snapshot.route_remaining_m
-      << " route_constraint_phase=" << constrainedRoutePhaseName(route_constraint.phase)
-      << " route_constraint_passage="
-      << (route_constraint.passage_traversal_id.empty()
-              ? "none"
-              : route_constraint.passage_traversal_id)
-      << " route_constraint_span_index="
-      << (route_constraint.span_available
-              ? static_cast<std::ptrdiff_t>(route_constraint.span_index)
-              : static_cast<std::ptrdiff_t>(-1))
-      << " route_constraint_span_count=" << route_constraint.span_count
-      << " route_constraint_distance_to_entry_m="
-      << route_constraint.distance_to_entry_m
-      << " route_constraint_distance_to_exit_m=" << route_constraint.distance_to_exit_m
-      << " route_constraint_reference_z_m=" << route_constraint.reference_z_m
-      << " route_constraint_vertical_error_m=" << route_constraint.vertical_error_m
-      << " route_constraint_lateral_width_m=" << route_constraint.lateral_width_m
-      << " route_constraint_vertical_height_m=" << route_constraint.vertical_height_m
-      << " route_constraint_lateral="
-      << (route_constraint.lateral_constrained ? "true" : "false")
-      << " route_constraint_vertical="
-      << (route_constraint.vertical_constrained ? "true" : "false")
-      << " route_constraint_cross_track_error_m="
-      << route_constraint.cross_track_error_m << " route_constraint_vertical_window_ok="
-      << (route_constraint.within_vertical_window ? "true" : "false")
-      << " route_progress_action="
-      << routeProgressAction3DName(snapshot.route_progress.action)
-      << " route_local_reseed_generation="
-      << snapshot.route_progress.local_reseed_generation << " planning_search_kind="
-      << productionPlanningSearchKindName(route_candidate.provenance.kind)
-      << " planning_search_base_route_instance_id="
-      << route_candidate.provenance.base_route_instance_id.value
-      << " planning_search_base_stitch_station_m="
-      << route_candidate.provenance.base_stitch_station_m.value_or(-1.0)
-      << " required_splice_base_route_instance_id="
-      << route_candidate.provenance.required_splice_base_route_instance_id.value
-      << " planning_search_start=(" << route_candidate.provenance.start.x << ','
-      << route_candidate.provenance.start.y << ',' << route_candidate.provenance.start.z
-      << ')' << " planning_search_goal=(" << route_candidate.provenance.goal.x << ','
-      << route_candidate.provenance.goal.y << ',' << route_candidate.provenance.goal.z
-      << ") planning_candidate_endpoint=("
-      << route_candidate.provenance.candidate_endpoint.x << ','
-      << route_candidate.provenance.candidate_endpoint.y << ','
-      << route_candidate.provenance.candidate_endpoint.z << ')'
-      << " planning_search_direction=(" << route_candidate.provenance.direction.x << ','
-      << route_candidate.provenance.direction.y << ','
-      << route_candidate.provenance.direction.z << ')'
-      << " planning_candidate_points=" << route_candidate.provenance.candidate_points
-      << " planning_candidate_samples=" << route_candidate.provenance.candidate_samples
-      << persistentPlannerInfoFields(planner_telemetry) << " static_route_candidate="
-      << staticRouteCandidateStatusName(admission.candidate_validation.status)
-      << certifiedRouteReserveInfoFields(admission)
-      << trackingErrorTubeInfoFields(execution_route) << " static_route_activation="
-      << staticRouteActivationStatusName(admission.activation_status)
-      << " static_route_publication_status="
-      << routePublicationStatus3DName(admission.assessment.publication.status)
-      << " static_route_world_compatible="
-      << (admission.world_compatible ? "true" : "false")
-      << " static_route_generation_matches=" << static_route_generation_matches
-      << " route_selected_passage_traversals="
-      << (route_candidate.selected_passage_traversal_ids
-              ? route_candidate.selected_passage_traversal_ids->size()
-              : 0U)
-      << " pose_predicted=" << (snapshot.pose_predicted ? "true" : "false")
-      << " target_lookahead_m=" << speed_policy.target_lookahead_m
-      << " reference_speed_mps=" << input.reference_speed_mps
-      << detail::trackingPursuitInfoFields(pursuit_diagnostics, speed_policy, result)
-      << " curvature_speed_limit_mps="
-      << finiteOrNegative(speed_policy.curvature_limit_mps)
-      << " sensor_braking_speed_limit_mps="
-      << finiteOrNegative(speed_policy.sensor_braking_limit_mps)
-      << " sensor_braking_assessed_speed_mps=" << sensor_braking.speed_mps
-      << " sensor_braking_total_latency_s=" << sensor_braking.total_latency_s
-      << " sensor_braking_latency_distance_m=" << sensor_braking.latency_distance_m
-      << " sensor_braking_stopping_distance_m=" << sensor_braking.stopping_distance_m
-      << " sensor_braking_physical_margin_m=" << sensor_braking.physical_margin_m
-      << " sensor_braking_required_detection_range_m="
-      << sensor_braking.required_detection_range_m
-      << " sensor_braking_guaranteed_detection_range_m="
-      << sensor_braking.guaranteed_detection_range_m
-      << " sensor_braking_reserve_m=" << sensor_braking.reserve_m
-      << " sensor_braking_accepted=" << (sensor_braking.accepted() ? "true" : "false")
-      << " goal_speed_limit_mps=" << finiteOrNegative(speed_policy.goal_limit_mps)
-      << " route_endpoint_speed_limit_mps="
-      << finiteOrNegative(speed_policy.route_endpoint_limit_mps)
-      << " active_rollouts=" << result.active_rollouts << " rollout_budget_reason="
-      << mppiRolloutBudgetReasonName(snapshot.rollout_budget.reason)
-      << detail::cooperativeInfoFields(snapshot.cooperative, result)
-      << detail::nonCooperativeInfoFields(snapshot.noncooperative, result)
-      << " gpu_warm_start_ms=" << result.timings.warm_start_ms
-      << " gpu_noise_generation_ms=" << result.timings.noise_generation_ms
-      << " gpu_rollout_simulation_ms=" << result.timings.rollout_simulation_ms
-      << " gpu_risk_reduction_ms=" << result.timings.risk_reduction_ms
-      << " gpu_weight_calculation_ms=" << result.timings.weight_calculation_ms
-      << " gpu_control_update_ms=" << result.timings.control_update_ms
-      << " gpu_repair_validation_ms=" << result.timings.repair_validation_ms
-      << " post_update_evaluation_ms=" << result.timings.post_update_evaluation_ms
-      << " gpu_ms=" << result.timings.gpu_total_ms
-      << " horizon_reconstruction_ms=" << result.timings.horizon_reconstruction_ms
-      << " total_ms=" << result.timings.host_total_ms
-      << " snapshot_ms=" << snapshot.snapshot_ms
-      << " stability_ms=" << snapshot.stability_ms << " rviz_ms=" << rviz_ms
-      << " deadline_missed="
-      << (result.timings.host_total_ms > deadline_ms_ ? "true" : "false")
-      << " risk_tier=" << mppi::mppiRiskTierName(result.selected_tier)
-      << " altitude_envelope_violation="
-      << (result.altitude_envelope_violation ? "true" : "false")
-      << " route_terminal_cross_track_violation="
-      << (result.route_terminal_cross_track_violation ? "true" : "false")
-      << " terminal_route_cross_track_m=" << result.terminal_route_cross_track_m
-      << " route_terminal_arrival_shaping_attempts="
-      << result.route_terminal_arrival_shaping_attempts
-      << " route_terminal_nominal_prefix_controls="
-      << result.route_terminal_nominal_prefix_control_count
-      << " critical_exposure_m=" << result.critical_exposure_m
-      << " planning_exposure_m=" << result.planning_exposure_m
-      << " critical_clearance_proximity_s=" << result.critical_clearance_proximity_s
-      << " obstacle_approach_m2_s=" << result.obstacle_approach_m2_s
-      << " feasible_available="
-      << (result.feasibility_contract.available ? "true" : "false")
-      << " feasible_weight_sum="
-      << finiteOrNegative(result.feasibility_contract.weight_sum)
-      << " post_update_classification="
-      << mppi::mppiPostUpdateClassificationName(
-             result.post_update_classification.classification)
-      << " control_selection="
-      << mppi::mppiControlSelectionName(result.control_selection)
-      << " post_update_executable="
-      << (result.post_update_classification.executable ? "true" : "false")
-      << " post_update_repair="
-      << mppi::mppiPostUpdateRepairName(result.post_update_repair)
-      << " post_update_backtrack_ratio=" << result.post_update_backtrack_ratio
-      << " minimum_esdf_m=" << result.minimum_esdf_distance_m
-      << " head_progress_m=" << result.head_progress_m
-      << " terminal_progress_m=" << result.terminal_progress_m
-      << " route_progress_integral_m_s=" << result.route_progress_integral_m_s
-      << " warm_start_shift_ms=" << result.warm_start_shift_s * 1000.0
-      << " previous_control_source="
-      << productionMppiPreviousControlSourceName(snapshot.previous_control_source)
-      << " nominal_reseeded=" << (result.nominal_reseeded ? "true" : "false")
-      << " direct_maneuver_reseed="
-      << (snapshot.direct_tracking_maneuver.reseed_requested ? "true" : "false")
-      << " direct_maneuver_reason="
-      << directTrackingReseedReasonName(snapshot.direct_tracking_maneuver.reason)
-      << " direct_bearing_change_deg="
-      << snapshot.direct_tracking_maneuver.bearing_change_rad * 180.0 / std::acos(-1.0)
-      << " direct_closing_speed_mps="
-      << snapshot.direct_tracking_maneuver.closing_speed_mps
-      << " direct_no_closing_duration_s="
-      << snapshot.direct_tracking_maneuver.no_closing_duration_s
-      << " target_directed_candidate_injected="
-      << (result.target_directed_candidate_injected ? "true" : "false")
-      << " target_directed_candidate_device_feasible="
-      << (result.target_directed_candidate_device_feasible ? "true" : "false")
-      << " target_directed_candidate_best_feasible="
-      << (result.target_directed_candidate_best_feasible ? "true" : "false")
-      << " target_directed_candidate_weight=" << result.target_directed_candidate_weight
-      << " route_directed_candidate_injected="
-      << (result.route_directed_candidate_injected ? "true" : "false")
-      << " route_directed_candidate_device_feasible="
-      << (result.route_directed_candidate_device_feasible ? "true" : "false")
-      << " route_directed_candidate_best_feasible="
-      << (result.route_directed_candidate_best_feasible ? "true" : "false")
-      << " route_directed_candidate_weight=" << result.route_directed_candidate_weight
-      << " route_directed_candidate_generation="
-      << result.route_directed_candidate_generation << " local_route_stop_is_terminal="
-      << (snapshot.local_route_stop_is_terminal ? "true" : "false")
-      << detail::rollingRouteInfoFields(snapshot.rolling_route) << " no_eligible_phase="
-      << mppiNoEligiblePhaseName(snapshot.no_eligible_recovery.phase)
-      << " no_eligible_recovery_generation="
-      << snapshot.no_eligible_recovery.no_eligible_recovery_generation
-      << " no_eligible_route_replan="
-      << (snapshot.no_eligible_recovery.route_replan_requested ? "true" : "false")
-      << " liveness_state=" << mppiLivenessStateName(liveness.state)
-      << " liveness_recovery_active=" << (liveness.recovery_active ? "true" : "false")
-      << " liveness_window_s=" << liveness.observation_age_s
-      << " liveness_actual_displacement_m=" << liveness.actual_displacement_m
-      << " liveness_actual_route_progress_m=" << liveness.actual_route_progress_m
-      << " liveness_route_progress_used="
-      << (liveness.used_route_progress ? "true" : "false")
-      << " liveness_reseed_generation=" << liveness.reseed_generation
-      << " route_required_risk_tier="
-      << mppi::mppiRiskTierName(snapshot.route_required_risk_tier)
-      << " maximum_acceleration_mps2=" << result.maximum_acceleration_mps2
-      << " maximum_jerk_mps3=" << result.maximum_jerk_mps3
-      << " first_control_delta=" << result.first_control_delta
-      << " horizon_stability_rms="
-      << (stability.valid ? stability.position_rms_m : -1.0)
-      << " shifted_horizon_first_control_delta="
-      << (stability.valid ? stability.first_control_delta : -1.0)
-      << " prediction_position_error_m="
-      << (prediction.valid ? prediction.position_m : -1.0)
-      << " esdf_build_ms=" << snapshot.world_build.build_ms
-      << " esdf_x_pass_ms=" << snapshot.world_build.esdf_x_pass_ms
-      << " esdf_y_pass_ms=" << snapshot.world_build.esdf_y_pass_ms
-      << " esdf_z_pass_ms=" << snapshot.world_build.esdf_z_pass_ms
-      << " esdf_finalize_ms=" << snapshot.world_build.esdf_finalize_ms
-      << " route_search_ms=" << route_telemetry.route_search_ms
-      << " continuation_validation_ms="
-      << materialization_telemetry.continuation_validation_ms
-      << " route_smoothing_ms=" << materialization_telemetry.route_smoothing_ms
-      << " route_shortcuts_applied="
-      << materialization_telemetry.route_shortcuts_applied
-      << " route_corners_smoothed=" << materialization_telemetry.route_corners_smoothed
-      << " candidate_validation_ms="
-      << materialization_telemetry.candidate_validation_ms
-      << " route_fingerprint=" << route_candidate.fingerprint
-      << " esdf_upload_ms=" << snapshot.world_build.upload_ms << " dropped_diagnostics="
-      << dropped_diagnostics_snapshots_.load(std::memory_order_relaxed);
+  line << std::fixed << std::setprecision(3)
+       << "PRODUCTION_MPPI_TICK tick=" << snapshot.tick_sequence
+       << " pose_revision=" << input.pose_revision
+       << " raw_revision=" << input.obstacle_revision
+       << " esdf_revision=" << result.esdf_revision
+       << " memory_sequence=" << snapshot.memory_sequence
+       << " pose_age_ms=" << snapshot.pose_age_ms
+       << " observation_age_ms=" << snapshot.observation_age_ms
+       << " esdf_content_age_ms=" << snapshot.esdf_age_ms
+       << " local_world_generation=" << world.local_world_generation.generation
+       << " control_feedback_age_ms=" << snapshot.control_feedback_age_ms
+       << " state_position=(" << input.initial_state.x << ',' << input.initial_state.y
+       << ',' << input.initial_state.z << ") state_velocity=(" << input.initial_state.vx
+       << ',' << input.initial_state.vy << ',' << input.initial_state.vz << ')'
+       << " planning_mode=" << (use_static_map_ ? "static" : "no_static")
+       << " planning_state=" << productionMppiPlanningStateName(planning_state)
+       << detail::executionInfoFields(snapshot.execution) << " horizon_s="
+       << static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s
+       << " target_source=" << target_source << " target=(" << input.target.x << ','
+       << input.target.y << ',' << input.target.z << ")"
+       << " route_generation=" << route_candidate.candidate_generation
+       << " route_objective_epoch=" << route_candidate.objective.mission_epoch
+       << " route_objective_sample=" << route_candidate.objective.sample_sequence
+       << " route_assignment_generation="
+       << route_candidate.objective.assignment_generation
+       << " route_target_detection_id=" << route_candidate.objective.target_detection_id
+       << " route_target_track_id=" << route_candidate.objective.target_track_id
+       << " route_reaches_mission_goal="
+       << (route_candidate.reaches_mission_goal ? "true" : "false")
+       << " route_intent_id=" << route_candidate.intent.id
+       << " route_intent_planned_on=" << route_candidate.intent.planned_on_revision
+       << " route_validated_through="
+       << route_candidate.segment_evidence.validated_through_revision
+       << " route_segment_evidence="
+       << segmentEvidenceStatus3DName(route_candidate.segment_evidence.status)
+       << " route_unknown_exposure="
+       << (route_candidate.segment_evidence.unknown_exposure ? "true" : "false")
+       << " route_known_clearance="
+       << (route_candidate.segment_evidence.known_clearance_observed ? "true" : "false")
+       << " goal_capture_latched=" << (snapshot.goal_capture.latched ? "true" : "false")
+       << " goal_distance_m=" << snapshot.goal_capture.distance_m
+       << " route_station_m=" << snapshot.route_station_m
+       << " route_remaining_m=" << snapshot.route_remaining_m
+       << " route_constraint_phase="
+       << constrainedRoutePhaseName(route_constraint.phase)
+       << " route_constraint_passage="
+       << (route_constraint.passage_traversal_id.empty()
+               ? "none"
+               : route_constraint.passage_traversal_id)
+       << " route_constraint_span_index="
+       << (route_constraint.span_available
+               ? static_cast<std::ptrdiff_t>(route_constraint.span_index)
+               : static_cast<std::ptrdiff_t>(-1))
+       << " route_constraint_span_count=" << route_constraint.span_count
+       << " route_constraint_distance_to_entry_m="
+       << route_constraint.distance_to_entry_m
+       << " route_constraint_distance_to_exit_m=" << route_constraint.distance_to_exit_m
+       << " route_constraint_reference_z_m=" << route_constraint.reference_z_m
+       << " route_constraint_vertical_error_m=" << route_constraint.vertical_error_m
+       << " route_constraint_lateral_width_m=" << route_constraint.lateral_width_m
+       << " route_constraint_vertical_height_m=" << route_constraint.vertical_height_m
+       << " route_constraint_lateral="
+       << (route_constraint.lateral_constrained ? "true" : "false")
+       << " route_constraint_vertical="
+       << (route_constraint.vertical_constrained ? "true" : "false")
+       << " route_constraint_cross_track_error_m="
+       << route_constraint.cross_track_error_m
+       << " route_constraint_vertical_window_ok="
+       << (route_constraint.within_vertical_window ? "true" : "false")
+       << " route_progress_action="
+       << routeProgressAction3DName(snapshot.route_progress.action)
+       << " route_local_reseed_generation="
+       << snapshot.route_progress.local_reseed_generation << " planning_search_kind="
+       << productionPlanningSearchKindName(route_candidate.provenance.kind)
+       << " planning_search_base_route_instance_id="
+       << route_candidate.provenance.base_route_instance_id.value
+       << " planning_search_base_stitch_station_m="
+       << route_candidate.provenance.base_stitch_station_m.value_or(-1.0)
+       << " required_splice_base_route_instance_id="
+       << route_candidate.provenance.required_splice_base_route_instance_id.value
+       << " planning_search_start=(" << route_candidate.provenance.start.x << ','
+       << route_candidate.provenance.start.y << ','
+       << route_candidate.provenance.start.z << ')' << " planning_search_goal=("
+       << route_candidate.provenance.goal.x << ',' << route_candidate.provenance.goal.y
+       << ',' << route_candidate.provenance.goal.z << ") planning_candidate_endpoint=("
+       << route_candidate.provenance.candidate_endpoint.x << ','
+       << route_candidate.provenance.candidate_endpoint.y << ','
+       << route_candidate.provenance.candidate_endpoint.z << ')'
+       << " planning_search_direction=(" << route_candidate.provenance.direction.x
+       << ',' << route_candidate.provenance.direction.y << ','
+       << route_candidate.provenance.direction.z << ')'
+       << " planning_candidate_points=" << route_candidate.provenance.candidate_points
+       << " planning_candidate_samples=" << route_candidate.provenance.candidate_samples
+       << persistentPlannerInfoFields(planner_telemetry) << " static_route_candidate="
+       << staticRouteCandidateStatusName(admission.candidate_validation.status)
+       << certifiedRouteReserveInfoFields(admission)
+       << trackingErrorTubeInfoFields(execution_route) << " static_route_activation="
+       << staticRouteActivationStatusName(admission.activation_status)
+       << " static_route_publication_status="
+       << routePublicationStatus3DName(admission.assessment.publication.status)
+       << " static_route_world_compatible="
+       << (admission.world_compatible ? "true" : "false")
+       << " static_route_generation_matches=" << static_route_generation_matches
+       << " route_selected_passage_traversals="
+       << (route_candidate.selected_passage_traversal_ids
+               ? route_candidate.selected_passage_traversal_ids->size()
+               : 0U)
+       << " pose_predicted=" << (snapshot.pose_predicted ? "true" : "false")
+       << " target_lookahead_m=" << speed_policy.target_lookahead_m
+       << " reference_speed_mps=" << input.reference_speed_mps
+       << detail::trackingPursuitInfoFields(pursuit_diagnostics, speed_policy, result)
+       << " curvature_speed_limit_mps="
+       << finiteOrNegative(speed_policy.curvature_limit_mps)
+       << " sensor_braking_speed_limit_mps="
+       << finiteOrNegative(speed_policy.sensor_braking_limit_mps)
+       << " sensor_braking_assessed_speed_mps=" << sensor_braking.speed_mps
+       << " sensor_braking_total_latency_s=" << sensor_braking.total_latency_s
+       << " sensor_braking_latency_distance_m=" << sensor_braking.latency_distance_m
+       << " sensor_braking_stopping_distance_m=" << sensor_braking.stopping_distance_m
+       << " sensor_braking_physical_margin_m=" << sensor_braking.physical_margin_m
+       << " sensor_braking_required_detection_range_m="
+       << sensor_braking.required_detection_range_m
+       << " sensor_braking_guaranteed_detection_range_m="
+       << sensor_braking.guaranteed_detection_range_m
+       << " sensor_braking_reserve_m=" << sensor_braking.reserve_m
+       << " sensor_braking_accepted=" << (sensor_braking.accepted() ? "true" : "false")
+       << " goal_speed_limit_mps=" << finiteOrNegative(speed_policy.goal_limit_mps)
+       << " route_endpoint_speed_limit_mps="
+       << finiteOrNegative(speed_policy.route_endpoint_limit_mps)
+       << " active_rollouts=" << result.active_rollouts << " rollout_budget_reason="
+       << mppiRolloutBudgetReasonName(snapshot.rollout_budget.reason)
+       << detail::cooperativeInfoFields(snapshot.cooperative, result)
+       << detail::nonCooperativeInfoFields(snapshot.noncooperative, result)
+       << " gpu_warm_start_ms=" << result.timings.warm_start_ms
+       << " gpu_noise_generation_ms=" << result.timings.noise_generation_ms
+       << " gpu_rollout_simulation_ms=" << result.timings.rollout_simulation_ms
+       << " gpu_risk_reduction_ms=" << result.timings.risk_reduction_ms
+       << " gpu_weight_calculation_ms=" << result.timings.weight_calculation_ms
+       << " gpu_control_update_ms=" << result.timings.control_update_ms
+       << " gpu_repair_validation_ms=" << result.timings.repair_validation_ms
+       << " post_update_evaluation_ms=" << result.timings.post_update_evaluation_ms
+       << " gpu_ms=" << result.timings.gpu_total_ms
+       << " horizon_reconstruction_ms=" << result.timings.horizon_reconstruction_ms
+       << " total_ms=" << result.timings.host_total_ms
+       << " snapshot_ms=" << snapshot.snapshot_ms
+       << " stability_ms=" << snapshot.stability_ms << " rviz_ms=" << rviz_ms
+       << " deadline_missed="
+       << (result.timings.host_total_ms > deadline_ms_ ? "true" : "false")
+       << " risk_tier=" << mppi::mppiRiskTierName(result.selected_tier)
+       << " altitude_envelope_violation="
+       << (result.altitude_envelope_violation ? "true" : "false")
+       << " route_terminal_cross_track_violation="
+       << (result.route_terminal_cross_track_violation ? "true" : "false")
+       << " terminal_route_cross_track_m=" << result.terminal_route_cross_track_m
+       << " route_terminal_arrival_shaping_attempts="
+       << result.route_terminal_arrival_shaping_attempts
+       << " route_terminal_nominal_prefix_controls="
+       << result.route_terminal_nominal_prefix_control_count
+       << " critical_exposure_m=" << result.critical_exposure_m
+       << " planning_exposure_m=" << result.planning_exposure_m
+       << " critical_clearance_proximity_s=" << result.critical_clearance_proximity_s
+       << " obstacle_approach_m2_s=" << result.obstacle_approach_m2_s
+       << " feasible_available="
+       << (result.feasibility_contract.available ? "true" : "false")
+       << " feasible_weight_sum="
+       << finiteOrNegative(result.feasibility_contract.weight_sum)
+       << " post_update_classification="
+       << mppi::mppiPostUpdateClassificationName(
+              result.post_update_classification.classification)
+       << " control_selection="
+       << mppi::mppiControlSelectionName(result.control_selection)
+       << " post_update_executable="
+       << (result.post_update_classification.executable ? "true" : "false")
+       << " post_update_repair="
+       << mppi::mppiPostUpdateRepairName(result.post_update_repair)
+       << " post_update_backtrack_ratio=" << result.post_update_backtrack_ratio
+       << " minimum_esdf_m=" << result.minimum_esdf_distance_m
+       << " head_progress_m=" << result.head_progress_m
+       << " terminal_progress_m=" << result.terminal_progress_m
+       << " route_progress_integral_m_s=" << result.route_progress_integral_m_s
+       << " warm_start_shift_ms=" << result.warm_start_shift_s * 1000.0
+       << " previous_control_source="
+       << productionMppiPreviousControlSourceName(snapshot.previous_control_source)
+       << " nominal_reseeded=" << (result.nominal_reseeded ? "true" : "false")
+       << " direct_maneuver_reseed="
+       << (snapshot.direct_tracking_maneuver.reseed_requested ? "true" : "false")
+       << " direct_maneuver_reason="
+       << directTrackingReseedReasonName(snapshot.direct_tracking_maneuver.reason)
+       << " direct_bearing_change_deg="
+       << snapshot.direct_tracking_maneuver.bearing_change_rad * 180.0 / std::acos(-1.0)
+       << " direct_closing_speed_mps="
+       << snapshot.direct_tracking_maneuver.closing_speed_mps
+       << " direct_no_closing_duration_s="
+       << snapshot.direct_tracking_maneuver.no_closing_duration_s
+       << " target_directed_candidate_injected="
+       << (result.target_directed_candidate_injected ? "true" : "false")
+       << " target_directed_candidate_device_feasible="
+       << (result.target_directed_candidate_device_feasible ? "true" : "false")
+       << " target_directed_candidate_best_feasible="
+       << (result.target_directed_candidate_best_feasible ? "true" : "false")
+       << " target_directed_candidate_weight="
+       << result.target_directed_candidate_weight
+       << " route_directed_candidate_injected="
+       << (result.route_directed_candidate_injected ? "true" : "false")
+       << " route_directed_candidate_device_feasible="
+       << (result.route_directed_candidate_device_feasible ? "true" : "false")
+       << " route_directed_candidate_best_feasible="
+       << (result.route_directed_candidate_best_feasible ? "true" : "false")
+       << " route_directed_candidate_weight=" << result.route_directed_candidate_weight
+       << " route_directed_candidate_generation="
+       << result.route_directed_candidate_generation << " local_route_stop_is_terminal="
+       << (snapshot.local_route_stop_is_terminal ? "true" : "false")
+       << detail::rollingRouteInfoFields(snapshot.rolling_route)
+       << " no_eligible_phase="
+       << mppiNoEligiblePhaseName(snapshot.no_eligible_recovery.phase)
+       << " no_eligible_recovery_generation="
+       << snapshot.no_eligible_recovery.no_eligible_recovery_generation
+       << " no_eligible_route_replan="
+       << (snapshot.no_eligible_recovery.route_replan_requested ? "true" : "false")
+       << " liveness_state=" << mppiLivenessStateName(liveness.state)
+       << " liveness_recovery_active=" << (liveness.recovery_active ? "true" : "false")
+       << " liveness_window_s=" << liveness.observation_age_s
+       << " liveness_actual_displacement_m=" << liveness.actual_displacement_m
+       << " liveness_actual_route_progress_m=" << liveness.actual_route_progress_m
+       << " liveness_route_progress_used="
+       << (liveness.used_route_progress ? "true" : "false")
+       << " liveness_reseed_generation=" << liveness.reseed_generation
+       << " route_required_risk_tier="
+       << mppi::mppiRiskTierName(snapshot.route_required_risk_tier)
+       << " maximum_acceleration_mps2=" << result.maximum_acceleration_mps2
+       << " maximum_jerk_mps3=" << result.maximum_jerk_mps3
+       << " first_control_delta=" << result.first_control_delta
+       << " horizon_stability_rms="
+       << (stability.valid ? stability.position_rms_m : -1.0)
+       << " shifted_horizon_first_control_delta="
+       << (stability.valid ? stability.first_control_delta : -1.0)
+       << " prediction_position_error_m="
+       << (prediction.valid ? prediction.position_m : -1.0)
+       << " esdf_build_ms=" << snapshot.world_build.build_ms
+       << " esdf_x_pass_ms=" << snapshot.world_build.esdf_x_pass_ms
+       << " esdf_y_pass_ms=" << snapshot.world_build.esdf_y_pass_ms
+       << " esdf_z_pass_ms=" << snapshot.world_build.esdf_z_pass_ms
+       << " esdf_finalize_ms=" << snapshot.world_build.esdf_finalize_ms
+       << " route_search_ms=" << route_telemetry.route_search_ms
+       << " continuation_validation_ms="
+       << materialization_telemetry.continuation_validation_ms
+       << " route_smoothing_ms=" << materialization_telemetry.route_smoothing_ms
+       << " route_shortcuts_applied="
+       << materialization_telemetry.route_shortcuts_applied
+       << " route_corners_smoothed=" << materialization_telemetry.route_corners_smoothed
+       << " candidate_validation_ms="
+       << materialization_telemetry.candidate_validation_ms
+       << " route_fingerprint=" << route_candidate.fingerprint
+       << " esdf_upload_ms=" << snapshot.world_build.upload_ms
+       << " dropped_diagnostics=" << diagnostics_sink_->droppedSnapshots();
   const std::int64_t now_ns = get_clock()->now().nanoseconds();
   if (now_ns - last_diagnostics_info_stamp_ns_ >= diagnostics_info_period_ns_) {
     RCLCPP_INFO(get_logger(), "%s", line.str().c_str());
@@ -324,15 +329,9 @@ void ProductionMppiNode::processDiagnostics(
     last_diagnostics_info_stamp_ns_ = now_ns;
   }
   const bool diagnostics_error = result.altitude_envelope_violation;
-  const bool new_error_episode = diagnostics_error && !diagnostics_error_active_;
-  if (!diagnostics_error) {
-    diagnostics_error_active_ = false;
-  }
-  const bool diagnostics_file_due =
-      last_diagnostics_file_stamp_ns_ <= 0 ||
-      now_ns < last_diagnostics_file_stamp_ns_ ||
-      now_ns - last_diagnostics_file_stamp_ns_ >= diagnostics_file_period_ns_;
-  if (diagnostics_stream_ && (diagnostics_file_due || new_error_episode)) {
+  const NavigationDiagnosticsFileRecordDecision file_record =
+      diagnostics_sink_->assessFileRecord(now_ns, diagnostics_error);
+  if (file_record.required) {
     JsonOutputStream json;
     json
         << "{\"tick\":" << snapshot.tick_sequence
@@ -652,36 +651,12 @@ void ProductionMppiNode::processDiagnostics(
          << ",\"first_control_delta\":" << result.first_control_delta
          << ",\"stability_rms_m\":"
          << (stability.valid ? stability.position_rms_m : -1.0)
-         << ",\"dropped_diagnostics\":"
-         << dropped_diagnostics_snapshots_.load(std::memory_order_relaxed) << "}\n";
-    std::string json_line = json.str();
-    diagnostics_stream_ << json_line;
-    last_diagnostics_file_stamp_ns_ = now_ns;
-    diagnostics_error_ring_.push_back(std::move(json_line));
-    while (diagnostics_error_ring_.size() > diagnostics_error_ring_capacity_) {
-      diagnostics_error_ring_.pop_front();
-    }
-    if (new_error_episode && diagnostics_error_stream_) {
-      diagnostics_error_stream_
-          << "{\"event\":\"diagnostics_error_context\",\"trigger_tick\":"
-          << snapshot.tick_sequence << ",\"records\":" << diagnostics_error_ring_.size()
-          << "}\n";
-      for (const std::string& record : diagnostics_error_ring_) {
-        diagnostics_error_stream_ << record;
-      }
-      diagnostics_error_stream_.flush();
-      diagnostics_stream_.flush();
-      last_diagnostics_flush_time_ = std::chrono::steady_clock::now();
-    }
-    diagnostics_error_active_ = diagnostics_error;
+         << ",\"dropped_diagnostics\":" << diagnostics_sink_->droppedSnapshots()
+         << "}\n";
+    diagnostics_sink_->appendFileRecord(file_record, snapshot.tick_sequence,
+                                        json.str());
   }
-  const auto flush_now = std::chrono::steady_clock::now();
-  if (diagnostics_stream_ &&
-      flush_now - last_diagnostics_flush_time_ >=
-          std::chrono::duration<double>{diagnostics_flush_period_s_}) {
-    diagnostics_stream_.flush();
-    last_diagnostics_flush_time_ = flush_now;
-  }
+  diagnostics_sink_->flushFileIfDue();
   if (now_ns - last_summary_stamp_ns_ >= 5000000000LL) {
     publishSummary();
     last_summary_stamp_ns_ = now_ns;

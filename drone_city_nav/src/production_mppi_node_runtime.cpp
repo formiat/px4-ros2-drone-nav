@@ -7,6 +7,7 @@
 #include <span>
 #include <utility>
 
+#include "navigation_diagnostics_sink.hpp"
 #include "production_mppi_node.hpp"
 #include "production_mppi_route_helpers.hpp"
 #include "production_mppi_route_world.hpp"
@@ -269,10 +270,8 @@ void ProductionMppiNode::startPlanningTimer() {
 }
 
 ProductionMppiNode::~ProductionMppiNode() {
-  if (diagnostics_worker_.joinable()) {
-    diagnostics_worker_.request_stop();
-    diagnostics_mailbox_.notifyAll();
-    diagnostics_worker_.join();
+  if (diagnostics_sink_ != nullptr) {
+    diagnostics_sink_->stop();
   }
   if (esdf_worker_.joinable()) {
     esdf_worker_.request_stop();
