@@ -195,9 +195,16 @@ make GPU upload plus CPU world installation one linearizable transaction.
 Executable tests cover overload and dirty lineage, producer-identity conflict
 quarantine and recovery, publication/read exclusion, exact transient-evidence
 refresh, invalid-generation rejection, exception containment, and lifecycle
-reentry during stop. Static and observed ESDF construction policy is still
-implemented by `ProductionMppiNode` callbacks passed to this service; that
-remaining orchestration is not yet complete.
+reentry during stop. `ObservedWorldBuilder3D` and the world-service transaction
+now own observed local-window selection, recentering, full-audit/rate policy,
+full/incremental/reused construction, exact-parent admission, GPU upload, and
+immutable publication. The node supplies an immutable pose/execution-evidence
+request and consumes typed early-evidence and final update events. Persistent
+evidence-only changes issue a new exact-parent local generation without a GPU
+upload and force planner revalidation. Upload exceptions invalidate the resident
+world because a partially changed controller resource cannot remain paired with
+the prior CPU artifact. Static ESDF construction policy is still implemented by
+a `ProductionMppiNode` callback; that remaining orchestration is not yet complete.
 
 ## Immutable Stage Pipeline
 
@@ -305,6 +312,11 @@ no mixed authority revision is observable.
       issuance, and coherent world statistics into `WorldPipeline3D`.
     - [ ] Move static and observed ESDF construction policy and orchestration
       out of `ProductionMppiNode` callbacks and behind the world-service API.
+      - [x] Move observed full/incremental/reused construction, rate/audit/
+        recenter policy, exact-parent admission, upload, and publication behind
+        typed request/event ports.
+      - [ ] Move static ESDF/cache/topology construction and refresh policy
+        behind the same service boundary.
   - [ ] Extract persistent planning and route-pipeline coordination.
   - [ ] Extract trajectory compilation and controller ownership.
   - [ ] Finish the execution-service facade around the existing sole

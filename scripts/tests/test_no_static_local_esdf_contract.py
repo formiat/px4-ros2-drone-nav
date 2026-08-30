@@ -38,15 +38,6 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
             parameters["no_static_3d_esdf_vertical_half_extent_m"],
         )
 
-    def test_no_static_build_selects_local_3d_window_before_distance_update(self) -> None:
-        source = (PACKAGE / "src/production_mppi_node_observed_esdf.cpp").read_text()
-
-        local_window = source.index("selectLocalObservedEsdfBounds")
-        distance_field = source.index("updateObservedEsdf3D", local_window)
-        self.assertLess(local_window, distance_field)
-        self.assertIn("localObservedEsdfNeedsRecenter", source)
-        self.assertIn("source_occupied_fingerprint", source)
-
     def test_execution_uses_only_the_3d_raw_world_contract(self) -> None:
         raw_input = (PACKAGE / "src/production_mppi_node_raw_input.cpp").read_text()
         execution = "\n".join(

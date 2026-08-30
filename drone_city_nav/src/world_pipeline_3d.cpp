@@ -116,17 +116,26 @@ void WorldPipeline3D::PublicationLease::recordRejection() noexcept {
   owner_->rejected_world_publications_.fetch_add(1U, std::memory_order_relaxed);
 }
 
-WorldPipeline3D::WorldPipeline3D(const bool static_world,
-                                 ObservedWorldProcessor observed_processor,
-                                 StaticWorldProcessor static_processor,
+WorldPipeline3D::WorldPipeline3D(ObservedWorldRuntime3D runtime,
                                  ProcessingFailureHandler failure_handler)
-    : static_world_{static_world},
-      observed_processor_{std::move(observed_processor)},
-      static_processor_{std::move(static_processor)},
+    : observed_builder_{std::make_unique<ObservedWorldBuilder3D>(
+          runtime.builder_config)},
+      runtime_{std::move(runtime)},
       failure_handler_{std::move(failure_handler)} {
-  if ((static_world_ && !static_processor_) ||
-      (!static_world_ && !observed_processor_)) {
-    throw std::invalid_argument{"world pipeline processor does not match mode"};
+  const auto* observed_runtime = std::get_if<ObservedWorldRuntime3D>(&runtime_);
+  if (observed_runtime == nullptr || !observed_runtime->request_provider ||
+      !observed_runtime->uploader) {
+    throw std::invalid_argument{"observed world pipeline ports are incomplete"};
+  }
+}
+
+WorldPipeline3D::WorldPipeline3D(StaticWorldRuntime3D runtime,
+                                 ProcessingFailureHandler failure_handler)
+    : runtime_{std::move(runtime)},
+      failure_handler_{std::move(failure_handler)} {
+  const auto* static_runtime = std::get_if<StaticWorldRuntime3D>(&runtime_);
+  if (static_runtime == nullptr || !static_runtime->processor) {
+    throw std::invalid_argument{"static world pipeline processor is unavailable"};
   }
 }
 
@@ -371,6 +380,9 @@ WorldPipeline3D::latestRawWorld() const noexcept {
 }
 
 bool WorldPipeline3D::scheduleLatestRawWorldUrgently() {
+  if (!std::holds_alternative<ObservedWorldRuntime3D>(runtime_)) {
+    return false;
+  }
   const std::shared_ptr<const ProductionMppiRawWorld3D> raw_world = latestRawWorld();
   if (raw_world == nullptr) {
     return false;
@@ -388,8 +400,43 @@ bool WorldPipeline3D::scheduleLatestRawWorldUrgently() {
   return true;
 }
 
+bool WorldPipeline3D::observedWorldNeedsRefresh(const Point3& position) const {
+  if (!std::holds_alternative<ObservedWorldRuntime3D>(runtime_) ||
+      observed_builder_ == nullptr) {
+    return false;
+  }
+  const std::shared_ptr<const ProductionMppiRawWorld3D> raw_world = latestRawWorld();
+  if (raw_world == nullptr) {
+    return false;
+  }
+  return observed_builder_->needsRefresh(*raw_world, residentSnapshot().world,
+                                         position);
+}
+
+ObservedWorldUpdate3D
+WorldPipeline3D::updateObservedWorld(ObservedWorldBuildRequest3D request) {
+  ObservedWorldUpdate3D result;
+  result.raw_world = request.raw_world;
+  const auto* runtime = std::get_if<ObservedWorldRuntime3D>(&runtime_);
+  if (runtime == nullptr || observed_builder_ == nullptr) {
+    return result;
+  }
+  if (request.build_started_at == TimePoint{}) {
+    request.build_started_at = std::chrono::steady_clock::now();
+  }
+  ObservedWorldBuildAssessment3D assessment = observed_builder_->assess(
+      std::move(request), residentSnapshot().world, observedBuildHistory());
+  if (assessment.evidence_change.changed() && runtime->evidence_handler) {
+    runtime->evidence_handler(assessment.evidence_change);
+  }
+  return finishObservedWorldUpdate(std::move(assessment), *runtime);
+}
+
 bool WorldPipeline3D::requestStaticWork(const bool force_refresh,
                                         const bool world_ready) {
+  if (!std::holds_alternative<StaticWorldRuntime3D>(runtime_)) {
+    return false;
+  }
   const std::scoped_lock lifecycle_lock{lifecycle_mutex_};
   if (!accepting_.load(std::memory_order_acquire)) {
     rejected_after_stop_.fetch_add(1U, std::memory_order_relaxed);
@@ -457,9 +504,151 @@ bool WorldPipeline3D::refreshTransientEvidence(
   return true;
 }
 
-WorldPipelineObservedBuildState3D WorldPipeline3D::observedBuildState() const {
+bool WorldPipeline3D::residentParentMatches(
+    const PreparedObservedWorldBuild3D& build,
+    const std::shared_ptr<const WorldSnapshot3D>& resident_world) const noexcept {
+  if (!build.parent_required) {
+    return true;
+  }
+  if (build.expected_parent == nullptr || resident_world == nullptr ||
+      resident_world != build.expected_parent ||
+      !productionWorldGenerationCoherent(*resident_world)) {
+    return false;
+  }
+  const ObservedEsdfCoverage3D& resident_coverage =
+      resident_world->observed_esdf_resource.coverage;
+  return resident_world->revision == build.expected_parent_esdf_fingerprint &&
+         resident_world->distances_m == build.expected_parent->distances_m &&
+         resident_world->observed_occupancy ==
+             build.expected_parent->observed_occupancy &&
+         resident_world->observed_esdf_resource.local_occupancy ==
+             build.expected_parent->observed_esdf_resource.local_occupancy &&
+         resident_world->observed_esdf_resource.known_obstacle_distance ==
+             build.expected_parent->observed_esdf_resource.known_obstacle_distance &&
+         resident_coverage.source_raw_version.producer_instance_id ==
+             build.expected_parent_raw_version.producer_instance_id &&
+         resident_coverage.source_raw_version.base_snapshot_revision ==
+             build.expected_parent_raw_version.base_snapshot_revision &&
+         resident_coverage.source_raw_version.revision ==
+             build.expected_parent_raw_version.revision &&
+         resident_world->local_world_generation.gpu_esdf_revision ==
+             build.expected_parent_esdf_fingerprint;
+}
+
+ObservedWorldUpdate3D
+WorldPipeline3D::finishObservedWorldUpdate(ObservedWorldBuildAssessment3D assessment,
+                                           const ObservedWorldRuntime3D& runtime) {
+  ObservedWorldUpdate3D result{
+      .status = assessment.status,
+      .raw_world = assessment.request.raw_world,
+      .world = assessment.active_world,
+      .evidence_change = assessment.evidence_change,
+      .retry_not_before = assessment.retry_not_before,
+      .maximum_distance_m = assessment.maximum_distance_m,
+      .periodic_full_audit = assessment.periodic_full_audit,
+      .recentered = assessment.recentered,
+  };
+  if (assessment.status == ObservedWorldUpdateStatus3D::kAlreadyCurrent) {
+    if (!assessment.evidence_change.transient_changed) {
+      return result;
+    }
+    if (!refreshTransientEvidence(assessment.active_world,
+                                  assessment.observed_raw_world_owner,
+                                  assessment.request.free_space_seed)) {
+      result.status = ObservedWorldUpdateStatus3D::kSupersededTransientEvidenceParent;
+      result.retry_not_before = std::chrono::steady_clock::now();
+      result.world.reset();
+      return result;
+    }
+    result.world = residentSnapshot().world;
+    result.transient_evidence_refreshed = true;
+    return result;
+  }
+  if (assessment.status == ObservedWorldUpdateStatus3D::kRateLimited) {
+    recordObservedBuildThrottled();
+    return result;
+  }
+  if (!assessment.buildRequired()) {
+    return result;
+  }
+
+  PreparedObservedWorldBuild3D build =
+      observed_builder_->materialize(std::move(assessment));
+  result.status = build.status;
+  result.telemetry = build.telemetry;
+  result.stats = build.stats;
+  result.maximum_distance_m = build.maximum_distance_m;
+  result.periodic_full_audit = build.periodic_full_audit;
+  result.recentered = build.recentered;
+  if (!build.valid()) {
+    result.world.reset();
+    return result;
+  }
+
+  PublicationLease publication = lockPublication();
+  if (!residentParentMatches(build, publication.world())) {
+    result.status = ObservedWorldUpdateStatus3D::kSupersededEsdfParent;
+    result.retry_not_before = std::chrono::steady_clock::now();
+    result.world.reset();
+    return result;
+  }
+  std::shared_ptr<WorldSnapshot3D> publication_world =
+      std::make_shared<WorldSnapshot3D>(std::move(build.world));
+  WorldEsdfUploadResult3D upload{
+      .accepted = true,
+      .upload_ms = 0.0,
+      .revision = publication_world->revision,
+  };
+  if (build.upload_required) {
+    try {
+      upload = runtime.uploader(WorldEsdfUploadRequest3D{
+          .grid = publication_world->grid,
+          .distances_m = *publication_world->distances_m,
+          .revision = publication_world->revision,
+          .dirty_regions = build.dirty_regions,
+      });
+    } catch (...) {
+      publication.invalidateAndRecordRejection();
+      throw;
+    }
+    if (!upload.accepted) {
+      result.status = ObservedWorldUpdateStatus3D::kUploadRejected;
+      result.world.reset();
+      return result;
+    }
+  }
+  build.telemetry.upload_ms = upload.upload_ms;
+  result.telemetry = build.telemetry;
+  const std::optional<LocalWorldGeneration> generation = publication.issueGeneration(
+      build.request.raw_world->version, build.request.pose_revision,
+      publication_world->revision, upload.revision);
+  if (!generation.has_value()) {
+    if (build.upload_required) {
+      publication.invalidateAndRecordRejection();
+    } else {
+      publication.recordRejection();
+    }
+    result.status = ObservedWorldUpdateStatus3D::kMixedLocalWorldGeneration;
+    result.world.reset();
+    return result;
+  }
+  publication_world->local_world_generation = *generation;
+  std::shared_ptr<const WorldSnapshot3D> published_world = std::move(publication_world);
+  if (!publication.publish(published_world, build.telemetry)) {
+    result.status = ObservedWorldUpdateStatus3D::kMixedLocalWorldGeneration;
+    result.world.reset();
+    return result;
+  }
+  recordObservedBuild(build.request.build_started_at, build.stats.mode,
+                      build.stats.recomputed_voxels, build.stats.reused_voxels);
+  result.status = ObservedWorldUpdateStatus3D::kPublished;
+  result.world = std::move(published_world);
+  return result;
+}
+
+ObservedWorldBuildHistory3D WorldPipeline3D::observedBuildHistory() const {
   const std::scoped_lock lock{build_state_mutex_};
-  return WorldPipelineObservedBuildState3D{
+  return ObservedWorldBuildHistory3D{
       .last_build_time = last_observed_build_time_,
       .completed_builds = observed_full_builds_.load(std::memory_order_relaxed) +
                           observed_incremental_builds_.load(std::memory_order_relaxed),
@@ -522,7 +711,7 @@ WorldPipelineStatistics3D WorldPipeline3D::statistics() const noexcept {
 }
 
 void WorldPipeline3D::run(const std::stop_token stop_token) noexcept {
-  if (static_world_) {
+  if (std::holds_alternative<StaticWorldRuntime3D>(runtime_)) {
     runStatic(stop_token);
   } else {
     runObserved(stop_token);
@@ -530,6 +719,10 @@ void WorldPipeline3D::run(const std::stop_token stop_token) noexcept {
 }
 
 void WorldPipeline3D::runObserved(const std::stop_token stop_token) noexcept {
+  auto* runtime = std::get_if<ObservedWorldRuntime3D>(&runtime_);
+  if (runtime == nullptr) {
+    return;
+  }
   while (!stop_token.stop_requested()) {
     std::shared_ptr<const ProductionMppiRawWorld3D> raw_world;
     {
@@ -560,7 +753,28 @@ void WorldPipeline3D::runObserved(const std::stop_token stop_token) noexcept {
       continue;
     }
     try {
-      const std::optional<TimePoint> retry_not_before = observed_processor_(*raw_world);
+      const ObservedWorldUpdateStatus3D input_status =
+          ObservedWorldBuilder3D::assessRawWorld(*raw_world);
+      ObservedWorldUpdate3D update;
+      update.status = input_status;
+      update.raw_world = raw_world;
+      if (input_status == ObservedWorldUpdateStatus3D::kPrepared) {
+        std::optional<ObservedWorldBuildRequest3D> request =
+            runtime->request_provider(raw_world);
+        if (!request.has_value()) {
+          continue;
+        }
+        if (request->raw_world != raw_world) {
+          update.status = ObservedWorldUpdateStatus3D::kRawExecutionOwnerMismatch;
+        } else {
+          request->build_started_at = std::chrono::steady_clock::now();
+          update = updateObservedWorld(std::move(*request));
+        }
+      }
+      if (runtime->update_handler) {
+        runtime->update_handler(update);
+      }
+      const std::optional<TimePoint>& retry_not_before = update.retry_not_before;
       if (retry_not_before.has_value()) {
         {
           const std::scoped_lock lock{queue_mutex_};
@@ -575,6 +789,10 @@ void WorldPipeline3D::runObserved(const std::stop_token stop_token) noexcept {
 }
 
 void WorldPipeline3D::runStatic(const std::stop_token stop_token) noexcept {
+  auto* runtime = std::get_if<StaticWorldRuntime3D>(&runtime_);
+  if (runtime == nullptr) {
+    return;
+  }
   while (!stop_token.stop_requested()) {
     bool process{false};
     {
@@ -591,7 +809,7 @@ void WorldPipeline3D::runStatic(const std::stop_token stop_token) noexcept {
       continue;
     }
     try {
-      static_processor_();
+      runtime->processor();
     } catch (...) {
       handleProcessingFailure(std::current_exception());
     }

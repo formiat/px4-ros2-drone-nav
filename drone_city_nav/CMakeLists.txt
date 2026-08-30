@@ -697,6 +697,7 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
   add_library(
     drone_city_nav_production_mppi_component SHARED
     src/navigation_diagnostics_sink.cpp
+    src/observed_world_builder_3d.cpp
     src/world_pipeline_3d.cpp
     src/production_mppi_node.cpp
     src/production_mppi_node_optional_constraints.cpp

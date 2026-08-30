@@ -167,9 +167,17 @@ with snapshot/delta payloads, reconstructs an immutable raw world, and schedules
 only the newest pending revision. One publication lease linearizes the GPU ESDF
 revision, `LocalWorldGeneration`, immutable `WorldSnapshot3D`, build telemetry,
 and resident readers. A mixed generation fails closed instead of exposing a CPU
-world paired with another GPU upload. Static and observed ESDF construction
-policy is still supplied by the ROS runtime as a narrow callback; moving that
-policy into the service remains part of the active architecture remediation.
+world paired with another GPU upload. In observed mode the service owns local
+window selection, recentering, full-audit and rate policy, incremental parent
+selection, CPU construction, exact-parent admission, controller upload, and
+immutable publication. The ROS runtime supplies one immutable pose/evidence
+request and consumes typed evidence/update events. A persistent evidence-only
+change publishes a new local generation over the exact existing ESDF parent,
+forces planner revalidation, and performs no redundant GPU upload. Static ESDF
+construction is still supplied by a node callback. An uploader exception
+invalidates the resident world because the service cannot prove whether GPU
+state changed before the exception. Moving the remaining static policy into the
+service remains part of the active architecture remediation.
 
 Unknown space remains traversable without a penalty or gate. There are no
 planner/prohibited inflated grids, relaxed inflation modes, escape tunnels, or
@@ -392,12 +400,15 @@ horizon has been published.
 
 The world pipeline owns one stoppable worker. In observed mode its deferred
 scheduler retains only the newest immutable raw revision and records skipped
-lineage; in static mode it coalesces refresh requests. Producer ingestion,
-worker scheduling, resident publication, and build statistics have independent
-private synchronization. Publication and resident leases share one mutex, so a
-planner cannot validate one generation while another generation is being
-installed. Stop joins outside the lifecycle mutex and processing exceptions are
-contained at the service boundary.
+lineage, emits persistent evidence changes before expensive construction, and
+then executes the typed `ObservedWorldBuilder3D` transaction. In static mode it
+coalesces refresh requests. Producer ingestion, worker scheduling, resident
+publication, and build statistics have independent private synchronization.
+Publication and resident leases share one mutex, so a planner cannot validate
+one generation while another generation is being installed. Incremental and
+reused builds require the exact immutable parent captured before construction.
+Stop joins outside the lifecycle mutex and processing exceptions are contained
+at the service boundary.
 
 In the four-vehicle intercept mission, the planner component container has one
 executor thread per vehicle. CPU-heavy planner work remains bounded by the
@@ -426,6 +437,6 @@ scheduling.
 - Collision validation uses a swept oriented 3D footprint against physical raw
   occupancy. No additional artificial footprint inflation is part of the
   planning contract.
-- `WorldPipeline3D` owns raw reconstruction and publication, but the ROS node
-  still supplies static and observed ESDF build-policy callbacks. The active
+- `WorldPipeline3D` owns raw reconstruction, observed ESDF build policy, and
+  publication. The ROS node still supplies static ESDF build policy; the active
   remediation moves that remaining orchestration behind the service API.

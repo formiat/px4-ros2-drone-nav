@@ -14,9 +14,12 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <string_view>
 #include <thread>
+#include <variant>
 
+#include "observed_world_builder_3d.hpp"
 #include "production_mppi_raw_world.hpp"
 #include "production_route_pipeline_artifacts_3d.hpp"
 
@@ -64,9 +67,50 @@ struct WorldPipelineResidentSnapshot3D {
   ProductionWorldBuildTelemetry3D telemetry{};
 };
 
-struct WorldPipelineObservedBuildState3D {
-  std::chrono::steady_clock::time_point last_build_time{};
-  std::uint64_t completed_builds{0U};
+struct WorldEsdfUploadRequest3D {
+  mppi::EsdfGrid grid{};
+  std::span<const float> distances_m;
+  std::uint64_t revision{0U};
+  std::span<const ObservedEsdfDirtyRegion3D> dirty_regions;
+};
+
+struct WorldEsdfUploadResult3D {
+  bool accepted{false};
+  double upload_ms{0.0};
+  std::uint64_t revision{0U};
+};
+
+struct ObservedWorldUpdate3D {
+  ObservedWorldUpdateStatus3D status{
+      ObservedWorldUpdateStatus3D::kUnavailableObservedGrid};
+  std::shared_ptr<const ProductionMppiRawWorld3D> raw_world;
+  std::shared_ptr<const WorldSnapshot3D> world;
+  ProductionWorldBuildTelemetry3D telemetry{};
+  ObservedEsdf3DBuildStats stats{};
+  ObservedWorldEvidenceChange3D evidence_change{};
+  std::optional<std::chrono::steady_clock::time_point> retry_not_before;
+  double maximum_distance_m{0.0};
+  bool periodic_full_audit{false};
+  bool recentered{false};
+  bool transient_evidence_refreshed{false};
+
+  [[nodiscard]] bool published() const noexcept {
+    return status == ObservedWorldUpdateStatus3D::kPublished && world != nullptr;
+  }
+};
+
+struct ObservedWorldRuntime3D {
+  ObservedWorldBuilderConfig3D builder_config{};
+  std::function<std::optional<ObservedWorldBuildRequest3D>(
+      std::shared_ptr<const ProductionMppiRawWorld3D>)>
+      request_provider;
+  std::function<WorldEsdfUploadResult3D(const WorldEsdfUploadRequest3D&)> uploader;
+  std::function<void(const ObservedWorldEvidenceChange3D&)> evidence_handler;
+  std::function<void(const ObservedWorldUpdate3D&)> update_handler;
+};
+
+struct StaticWorldRuntime3D {
+  std::function<void()> processor;
 };
 
 struct WorldPipelineStatistics3D {
@@ -92,9 +136,6 @@ struct WorldPipelineStatistics3D {
 class WorldPipeline3D final {
 public:
   using TimePoint = std::chrono::steady_clock::time_point;
-  using ObservedWorldProcessor =
-      std::function<std::optional<TimePoint>(const ProductionMppiRawWorld3D&)>;
-  using StaticWorldProcessor = std::function<void()>;
   using ProcessingFailureHandler = std::function<void(const std::exception_ptr&)>;
 
   class ResidentLease final {
@@ -142,9 +183,10 @@ public:
     std::unique_lock<std::mutex> lock_;
   };
 
-  WorldPipeline3D(bool static_world, ObservedWorldProcessor observed_processor,
-                  StaticWorldProcessor static_processor,
-                  ProcessingFailureHandler failure_handler = {});
+  explicit WorldPipeline3D(ObservedWorldRuntime3D runtime,
+                           ProcessingFailureHandler failure_handler = {});
+  explicit WorldPipeline3D(StaticWorldRuntime3D runtime,
+                           ProcessingFailureHandler failure_handler = {});
   ~WorldPipeline3D();
 
   WorldPipeline3D(const WorldPipeline3D&) = delete;
@@ -176,6 +218,9 @@ public:
   [[nodiscard]] std::shared_ptr<const ProductionMppiRawWorld3D>
   latestRawWorld() const noexcept;
   [[nodiscard]] bool scheduleLatestRawWorldUrgently();
+  [[nodiscard]] bool observedWorldNeedsRefresh(const Point3& position) const;
+  [[nodiscard]] ObservedWorldUpdate3D
+  updateObservedWorld(ObservedWorldBuildRequest3D request);
 
   [[nodiscard]] bool requestStaticWork(bool force_refresh, bool world_ready);
 
@@ -187,11 +232,6 @@ public:
       std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_world_owner,
       std::optional<ProprioceptiveFreeSpaceSeed3D> free_space_seed);
 
-  [[nodiscard]] WorldPipelineObservedBuildState3D observedBuildState() const;
-  void recordObservedBuild(TimePoint build_time, ObservedEsdf3DBuildMode mode,
-                           std::size_t recomputed_voxels,
-                           std::size_t reused_voxels) noexcept;
-  void recordObservedBuildThrottled() noexcept;
   void recordSupersededPlanningGeneration() noexcept;
   [[nodiscard]] WorldPipelineStatistics3D statistics() const noexcept;
 
@@ -201,12 +241,22 @@ private:
   void run(std::stop_token stop_token) noexcept;
   void runObserved(std::stop_token stop_token) noexcept;
   void runStatic(std::stop_token stop_token) noexcept;
+  [[nodiscard]] ObservedWorldUpdate3D
+  finishObservedWorldUpdate(ObservedWorldBuildAssessment3D assessment,
+                            const ObservedWorldRuntime3D& runtime);
+  [[nodiscard]] bool residentParentMatches(
+      const PreparedObservedWorldBuild3D& build,
+      const std::shared_ptr<const WorldSnapshot3D>& resident_world) const noexcept;
+  [[nodiscard]] ObservedWorldBuildHistory3D observedBuildHistory() const;
+  void recordObservedBuild(TimePoint build_time, ObservedEsdf3DBuildMode mode,
+                           std::size_t recomputed_voxels,
+                           std::size_t reused_voxels) noexcept;
+  void recordObservedBuildThrottled() noexcept;
   void completeStaticWork() noexcept;
   void handleProcessingFailure(std::exception_ptr failure) noexcept;
 
-  bool static_world_{false};
-  ObservedWorldProcessor observed_processor_;
-  StaticWorldProcessor static_processor_;
+  std::unique_ptr<ObservedWorldBuilder3D> observed_builder_;
+  std::variant<ObservedWorldRuntime3D, StaticWorldRuntime3D> runtime_;
   ProcessingFailureHandler failure_handler_;
 
   mutable std::mutex lifecycle_mutex_;

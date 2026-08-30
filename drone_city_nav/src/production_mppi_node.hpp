@@ -106,6 +106,9 @@ struct ProductionRouteMaterialization3D;
 struct ProductionMppiExecutionCycle;
 struct TrajectoryCompilerConfig3D;
 struct ProductionMppiHorizonCommit;
+struct ObservedWorldBuildRequest3D;
+struct ObservedWorldEvidenceChange3D;
+struct ObservedWorldUpdate3D;
 enum class ProductionMppiHoldOwnershipTransition3D : std::uint8_t;
 enum class ProductionMppiHorizonCommitStatus : std::uint8_t;
 class NavigationDiagnosticsSink;
@@ -187,8 +190,11 @@ private:
   void finishStaticRouteSearch(const PlannerSearchTransaction3D& transaction,
                                bool route_activated = false);
   void processStaticEsdf3D();
-  [[nodiscard]] std::optional<std::chrono::steady_clock::time_point>
-  processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_world);
+  [[nodiscard]] std::optional<ObservedWorldBuildRequest3D>
+  makeObservedWorldBuildRequest3D(
+      std::shared_ptr<const ProductionMppiRawWorld3D> raw_world);
+  void handleObservedWorldEvidenceChange3D(const ObservedWorldEvidenceChange3D& change);
+  void handleObservedWorldUpdate3D(const ObservedWorldUpdate3D& update);
   [[nodiscard]] std::optional<ProprioceptiveFreeSpaceSeed3D>
   prepareObservedExecutionEvidence3D(
       const ProductionMppiRawWorld3D& raw_world,

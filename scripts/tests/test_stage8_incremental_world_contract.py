@@ -28,12 +28,6 @@ class Stage8IncrementalWorldContractTest(unittest.TestCase):
         window = (SOURCE / "observed_esdf_3d_window.cpp").read_text(
             encoding="utf-8"
         )
-        production = (SOURCE / "production_mppi_node_observed_esdf.cpp").read_text(
-            encoding="utf-8"
-        )
-        pose_recenter = (SOURCE / "production_mppi_node_inputs_3d.cpp").read_text(
-            encoding="utf-8"
-        )
 
         for token in (
             "ObservedEsdf3DBuildMode",
@@ -64,27 +58,7 @@ class Stage8IncrementalWorldContractTest(unittest.TestCase):
         ):
             self.assertIn(token, distance_update)
         self.assertIn("source_occupancy", header)
-        self.assertIn("field.stats.mode != ObservedEsdf3DBuildMode::kReused", production)
-        parent_validation = production.index("resident_parent_valid")
-        gpu_upload = production.index("engine_->updateEsdf", parent_validation)
-        self.assertLess(parent_validation, gpu_upload)
-        self.assertIn("reason=superseded_esdf_parent", production)
-        evidence_change = production.index(
-            "if (active_world && !launch_support_unchanged)"
-        )
-        parent_selection = production.index(
-            "active_incremental_parent_available", evidence_change
-        )
-        evidence_refresh = production[evidence_change:parent_selection]
-        self.assertIn("incremental_refresh=true", evidence_refresh)
-        self.assertIn("TRANSIENT_EXECUTION_EVIDENCE_CHANGED", production)
-        self.assertIn("TRANSIENT_EXECUTION_EVIDENCE_REFRESHED", production)
-        self.assertIn("observedEsdfFullAuditDue", production)
-        self.assertNotIn("preferred_distance_m) + 20.0", production)
         self.assertNotIn("planLaunchSupportDeparture3D", window)
-        self.assertIn(
-            "observed_esdf_resource.local_occupancy->bounds()", pose_recenter
-        )
 
     def test_online_topology_library_is_removed_from_production(self) -> None:
         yaml = (PACKAGE / "config" / "urban_mvp.yaml").read_text(encoding="utf-8")

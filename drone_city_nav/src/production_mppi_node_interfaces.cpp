@@ -33,12 +33,7 @@ void ProductionMppiNode::initializeRuntimeInterfaces() {
                        "NAVIGATION_DIAGNOSTICS failure: unknown exception");
         }
       });
-  world_pipeline_ = std::make_unique<WorldPipeline3D>(
-      use_static_map_,
-      [this](const ProductionMppiRawWorld3D& raw_world) {
-        return processObservedEsdf3D(raw_world);
-      },
-      [this]() { processStaticEsdf3D(); },
+  const WorldPipeline3D::ProcessingFailureHandler world_failure_handler =
       [this](const std::exception_ptr& failure) {
         try {
           std::rethrow_exception(failure);
@@ -47,7 +42,53 @@ void ProductionMppiNode::initializeRuntimeInterfaces() {
         } catch (...) {
           RCLCPP_ERROR(get_logger(), "WORLD_PIPELINE3D failure: unknown exception");
         }
-      });
+      };
+  if (use_static_map_) {
+    world_pipeline_ = std::make_unique<WorldPipeline3D>(
+        StaticWorldRuntime3D{.processor = [this]() { processStaticEsdf3D(); }},
+        world_failure_handler);
+  } else {
+    world_pipeline_ = std::make_unique<WorldPipeline3D>(
+        ObservedWorldRuntime3D{
+            .builder_config =
+                ObservedWorldBuilderConfig3D{
+                    .local_window = no_static_3d_esdf_window_,
+                    .footprint = physical_footprint_config_,
+                    .preferred_distance_m =
+                        static_cast<double>(mppi_config_.risk.preferred_distance_m),
+                    .update_rate_hz = no_static_3d_esdf_update_rate_hz_,
+                    .incremental_maximum_rebuild_ratio =
+                        no_static_3d_esdf_incremental_maximum_rebuild_ratio_,
+                    .full_audit_interval_builds =
+                        no_static_3d_esdf_full_audit_interval_builds_,
+                    .worker_pool = planning_worker_pool_.get(),
+                },
+            .request_provider =
+                [this](std::shared_ptr<const ProductionMppiRawWorld3D> raw_world) {
+                  return makeObservedWorldBuildRequest3D(std::move(raw_world));
+                },
+            .uploader =
+                [this](const WorldEsdfUploadRequest3D& request) {
+                  const mppi::EsdfUploadResult upload = engine_->updateEsdf(
+                      mppi::EsdfSnapshot{request.grid, request.distances_m,
+                                         request.revision, request.dirty_regions});
+                  return WorldEsdfUploadResult3D{
+                      .accepted = upload.accepted,
+                      .upload_ms = upload.upload_ms,
+                      .revision = upload.revision,
+                  };
+                },
+            .evidence_handler =
+                [this](const ObservedWorldEvidenceChange3D& change) {
+                  handleObservedWorldEvidenceChange3D(change);
+                },
+            .update_handler =
+                [this](const ObservedWorldUpdate3D& update) {
+                  handleObservedWorldUpdate3D(update);
+                },
+        },
+        world_failure_handler);
+  }
 
   input_callback_group_ =
       create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
