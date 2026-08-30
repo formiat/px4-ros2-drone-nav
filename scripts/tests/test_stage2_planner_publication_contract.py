@@ -29,7 +29,6 @@ class Stage2PlannerPublicationContractTest(unittest.TestCase):
             + EXECUTION_HOLDS.read_text(encoding="utf-8")
         )
         inputs = INPUTS.read_text(encoding="utf-8")
-        raw_input = RAW_INPUT.read_text(encoding="utf-8")
         mission = PLANNER_MISSION.read_text(encoding="utf-8")
 
         finalization_capture = planning_tick.split(
@@ -104,16 +103,6 @@ class Stage2PlannerPublicationContractTest(unittest.TestCase):
             hold_commit.index("execution_evidence_commit_mutex_"),
             hold_commit.index("commitAndPublishExecutionHorizon"),
         )
-        raw_update = raw_input.split(
-            "void ProductionMppiNode::queueRawWorld3D(", maxsplit=1
-        )[1].split(
-            "void ProductionMppiNode::onMemoryStatus", maxsplit=1
-        )[0]
-        self.assertLess(
-            raw_update.index("execution_evidence_commit_mutex_"),
-            raw_update.index("latest_raw_world_3d_.store"),
-        )
-
         objective_callback = inputs.split(
             "void ProductionMppiNode::onNavigationObjective", maxsplit=1
         )[1]

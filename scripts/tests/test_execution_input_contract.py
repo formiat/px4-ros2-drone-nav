@@ -170,7 +170,7 @@ class ExecutionInputContractTest(unittest.TestCase):
         )
         self.assertIn("? nullptr", planning_tick)
 
-    def test_raw_world_epoch_and_wire_identity_are_linearized(self) -> None:
+    def test_raw_world_runtime_delegates_to_the_3d_pipeline_owner(self) -> None:
         raw_input = RAW_INPUT.read_text(encoding="utf-8")
         raw_2d = RAW_2D.read_text(encoding="utf-8")
         raw_3d = RAW_3D.read_text(encoding="utf-8")
@@ -182,30 +182,19 @@ class ExecutionInputContractTest(unittest.TestCase):
         self.assertNotIn("publishExecutionRevocation", raw_input)
         self.assertNotIn("ProductionMppiNode::onRawObstacleSnapshot(", raw_input)
         self.assertNotIn("ProductionMppiNode::onRawObstacleDelta(", raw_input)
-        for callback in ("onRawObstacleSnapshot3D", "onRawObstacleDelta3D"):
-            body = raw_input.split(
-                f"void ProductionMppiNode::{callback}", maxsplit=1
-            )[1].split("\n}\n", maxsplit=1)[0]
-            self.assertIn("execution_evidence_commit_mutex_", body)
-            self.assertIn("raw_world_identity_conflicted_", body)
-            self.assertIn("invalidateAppliedControlWitnessLocked", body)
-            self.assertIn("requestExecutionRevocation", body)
-
-        status = raw_input.split(
-            "void ProductionMppiNode::onMemoryStatus", maxsplit=1
-        )[1]
-        status_admission = status.index("latest_observation_tracker_.observe(")
-        status_sync = status.index("synchronizeProducerEpoch(")
-        status_revoke = status.index("requestExecutionRevocation(")
-        self.assertLess(status_admission, status_sync)
-        self.assertLess(status_sync, status_revoke)
-        self.assertIn("pending_raw_world_update_", status)
-        self.assertIn("statusAnnouncesRawUpdate(message)", status)
-        pending_join = status.split("if (!installed_through_status)", maxsplit=1)[
-            1
-        ].split("synchronized =", maxsplit=1)[0]
-        self.assertNotIn("clear_current_raw", pending_join)
-        self.assertNotIn("requestExecutionRevocation", pending_join)
+        for boundary in (
+            "world_pipeline_->ingestRawSnapshot(",
+            "world_pipeline_->ingestRawDelta(",
+            "world_pipeline_->ingestMemoryStatus(",
+            "world_pipeline_->commitRawUpdate(",
+        ):
+            self.assertIn(boundary, raw_input)
+        raw_commit = raw_input.split(
+            "void ProductionMppiNode::queueRawWorld3D", maxsplit=1
+        )[1].split("void ProductionMppiNode::onMemoryStatus", maxsplit=1)[0]
+        self.assertIn(
+            "execution_evidence_commit_mutex_, input_mutex_", raw_commit
+        )
 
         for source, snapshot_fingerprint, delta_fingerprint in (
             (

@@ -17,6 +17,7 @@
 #include "production_mppi_route_helpers.hpp"
 #include "production_mppi_route_materialization.hpp"
 #include "production_mppi_route_world.hpp"
+#include "world_pipeline_3d.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -201,12 +202,11 @@ ProductionRouteActivationSnapshot3D
 ProductionMppiNode::captureRouteActivationSnapshot3D() {
   ProductionRouteActivationSnapshot3D snapshot;
   {
-    const std::scoped_lock lock{execution_evidence_commit_mutex_,
-                                world_generation_publication_mutex_, input_mutex_,
-                                esdf_state_mutex_};
+    const std::scoped_lock lock{execution_evidence_commit_mutex_, input_mutex_};
+    WorldPipeline3D::ResidentLease resident = world_pipeline_->lockResident();
     snapshot.execution_authority = route_execution_manager_.authority();
-    snapshot.raw_world = latest_raw_world_3d_.load(std::memory_order_acquire);
-    snapshot.resident_world = resident_world_;
+    snapshot.raw_world = world_pipeline_->latestRawWorld();
+    snapshot.resident_world = resident.world();
     snapshot.navigation = navigation_;
     snapshot.objective = navigationObjective();
   }
@@ -836,11 +836,11 @@ void ProductionMppiNode::commitRouteActivation3D(
 
   bool published_pending{false};
   {
-    const std::scoped_lock lock{execution_evidence_commit_mutex_,
-                                world_generation_publication_mutex_, esdf_state_mutex_};
+    const std::scoped_lock lock{execution_evidence_commit_mutex_};
+    WorldPipeline3D::ResidentLease resident = world_pipeline_->lockResident();
     const bool resident_world_current =
-        resident_world_ && snapshot.resident_world &&
-        sameActivationWorld(*resident_world_, *snapshot.resident_world);
+        resident.world() && snapshot.resident_world &&
+        sameActivationWorld(*resident.world(), *snapshot.resident_world);
     const bool objective_current =
         navigationObjective() == snapshot.objective &&
         minimum_tracking_route_mission_epoch_.load(std::memory_order_acquire) ==
@@ -849,7 +849,7 @@ void ProductionMppiNode::commitRouteActivation3D(
             snapshot.minimum_tracking_route_sample_sequence;
     const bool raw_world_current =
         !raw_validation_required ||
-        latest_raw_world_3d_.load(std::memory_order_acquire) == snapshot.raw_world;
+        world_pipeline_->latestRawWorld() == snapshot.raw_world;
     const bool execution_base_current =
         sameExecutionRouteBase(current_execution, route_execution_manager_.plan());
     const bool candidate_world_coherent =

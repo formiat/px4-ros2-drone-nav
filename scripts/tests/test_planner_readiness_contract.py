@@ -127,9 +127,8 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self.assertNotIn("if (use_static_map_) {\n    return;\n  }", lidar_callback)
         self.assertIn("requestStaticEsdfWork();", inputs)
         self.assertIn("vehicle_navigation_ready_", inputs)
-        self.assertIn("pending_static_esdf_work_", esdf)
         self.assertIn("static_occupancy_3d_", esdf)
-        self.assertIn("completeStaticEsdfWork(true)", esdf)
+        self.assertIn("world_pipeline_->lockPublication()", esdf)
 
     def test_static_esdf_is_not_expired_by_lidar_time(self) -> None:
         planning_tick = PLANNING_TICK.read_text(encoding="utf-8")

@@ -109,6 +109,7 @@ struct ProductionMppiHorizonCommit;
 enum class ProductionMppiHoldOwnershipTransition3D : std::uint8_t;
 enum class ProductionMppiHorizonCommitStatus : std::uint8_t;
 class NavigationDiagnosticsSink;
+class WorldPipeline3D;
 
 [[nodiscard]] const char*
 productionPlanningSearchKindName(ProductionPlanningSearchKind kind) noexcept;
@@ -141,7 +142,7 @@ private:
   void publishRadarTrackModeCommand(const ProductionNavigationObjective& objective,
                                     std::uint8_t reason);
   void requestStaticEsdfWork(bool force_refresh = false);
-  void completeStaticEsdfWork(bool world_ready) noexcept;
+  void markStaticWorldReady() noexcept;
   void publishWorldReadiness(bool ready);
   [[nodiscard]] NavigationHealthAssessment updateNavigationHealth(
       const std::shared_ptr<const ProductionNavigationObjective>& objective,
@@ -185,7 +186,7 @@ private:
   void finishStaticRouteReplan(std::uint64_t base_generation, bool route_activated);
   void finishStaticRouteSearch(const PlannerSearchTransaction3D& transaction,
                                bool route_activated = false);
-  void esdfWorker(std::stop_token stop_token);
+  void processStaticEsdf3D();
   [[nodiscard]] std::optional<std::chrono::steady_clock::time_point>
   processObservedEsdf3D(const ProductionMppiRawWorld3D& raw_world);
   [[nodiscard]] std::optional<ProprioceptiveFreeSpaceSeed3D>
@@ -294,6 +295,8 @@ private:
       const OffboardSessionAdmissionState& offboard_session,
       std::int64_t offboard_session_receive_stamp_ns,
       ProductionMppiPlanningState planning_state, std::int64_t now_ns);
+  [[nodiscard]] ProductionMppiExecutionPublication
+  publishPreparedExecutionCycle(const ProductionMppiExecutionCycle& cycle);
   [[nodiscard]] msg::MppiTrajectoryHorizon
   makeExecutionHorizon(const ProductionMppiExecutionCycle& cycle,
                        std::int64_t valid_until_ns, ProductionMppiExecutionMode mode,
@@ -495,9 +498,6 @@ private:
   std::int64_t offboard_session_receive_stamp_ns_{0};
   std::optional<ProductionMppiCooperativeCommand> cooperative_command_;
   ProductionMppiNonCooperativeTracks noncooperative_tracks_{};
-  LatestObservationTracker latest_observation_tracker_{};
-  ProductionMppiPendingRawWorldUpdate pending_raw_world_update_{};
-  bool raw_world_identity_conflicted_{false};
   std::atomic<std::shared_ptr<const ProductionNavigationObjective>>
       navigation_objective_;
   std::atomic<std::uint64_t> minimum_tracking_route_mission_epoch_{0U};
@@ -506,13 +506,6 @@ private:
   Point3 objective_replan_anchor_{};
   std::int64_t objective_replan_stamp_ns_{0};
 
-  std::mutex raw_queue_mutex_;
-  std::condition_variable_any raw_queue_condition_;
-  // The committed immutable payload remains authoritative while an announced
-  // successor is still pending its status/payload join.
-  LatestWinsDeferredScheduler<std::shared_ptr<const ProductionMppiRawWorld3D>>
-      raw_world_scheduler_3d_{};
-  std::atomic<std::shared_ptr<const ProductionMppiRawWorld3D>> latest_raw_world_3d_;
   std::atomic<std::uint64_t> observed_route_blocked_raw_revision_{0U};
   std::atomic<std::uint64_t> observed_route_replan_dispatched_raw_revision_{0U};
   std::atomic<std::uint64_t> physical_trajectory_replan_route_generation_{0U};
@@ -524,42 +517,24 @@ private:
   std::atomic_bool latest_lidar_evidence_identity_conflicted_{false};
   std::atomic<std::shared_ptr<const VersionedLatestLidarEvidence3D>>
       latest_lidar_evidence_;
-  std::mutex raw_reconstruction_mutex_;
-  RawObstacleDeltaAccumulator3D raw_delta_accumulator_3d_;
-  std::chrono::steady_clock::time_point no_static_3d_esdf_last_build_time_{};
-  LocalWorldGenerationCounter local_world_generation_counter_{};
   bool launch_support_evaluated_{false};
   std::optional<ProprioceptiveFreeSpaceSeed3D> launch_support_seed_;
   std::optional<LaunchSupportContact3D> launch_support_contact_;
   std::atomic_bool vehicle_land_contact_received_{false};
   std::atomic_bool vehicle_land_contact_{false};
   std::atomic_bool launch_support_confirmed_by_land_detector_{false};
-  std::atomic<std::uint64_t> no_static_raw_updates_{0U};
-  std::atomic<std::uint64_t> no_static_esdf_builds_{0U};
-  std::atomic<std::uint64_t> no_static_esdf_throttled_updates_{0U};
-  ObservedEsdf3DRuntimeCounters observed_esdf_3d_counters_{};
   std::atomic<std::uint64_t> rejected_lidar_obstacle_scans_{0U};
-  bool pending_static_esdf_work_{false};
-  bool static_esdf_work_in_progress_{false};
   std::atomic_bool vehicle_navigation_ready_{false};
   std::atomic_bool world_ready_{false};
-  std::atomic<std::uint64_t> dropped_raw_snapshots_{0U};
-  std::jthread esdf_worker_;
+  std::unique_ptr<WorldPipeline3D> world_pipeline_;
   std::mutex route_planning_queue_mutex_;
   std::condition_variable_any route_planning_queue_condition_;
   std::optional<ProductionRoutePlanningWork3D> pending_route_planning_work_;
   std::atomic<std::uint64_t> dropped_route_planning_worlds_{0U};
   std::jthread route_planning_worker_;
 
-  // Linearizes the active GPU ESDF with its exact immutable CPU world.
-  mutable std::mutex world_generation_publication_mutex_;
-  mutable std::mutex esdf_state_mutex_;
-  std::shared_ptr<const WorldSnapshot3D> resident_world_;
-  ProductionWorldBuildTelemetry3D resident_world_build_telemetry_{};
   std::atomic<std::shared_ptr<const ProductionRouteActivationResult3D>>
       latest_route_pipeline_event_;
-  std::atomic<std::uint64_t> superseded_world_generation_ticks_{0U};
-  std::atomic<std::uint64_t> rejected_world_generation_publications_{0U};
 
   std::optional<mppi::MppiTickResult> previous_result_;
   RouteExecutionManager3D route_execution_manager_{};

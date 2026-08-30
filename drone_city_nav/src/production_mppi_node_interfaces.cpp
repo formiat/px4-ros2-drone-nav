@@ -5,6 +5,7 @@
 
 #include "navigation_diagnostics_sink.hpp"
 #include "production_mppi_node.hpp"
+#include "world_pipeline_3d.hpp"
 
 namespace drone_city_nav {
 
@@ -30,6 +31,21 @@ void ProductionMppiNode::initializeRuntimeInterfaces() {
         } catch (...) {
           RCLCPP_ERROR(get_logger(),
                        "NAVIGATION_DIAGNOSTICS failure: unknown exception");
+        }
+      });
+  world_pipeline_ = std::make_unique<WorldPipeline3D>(
+      use_static_map_,
+      [this](const ProductionMppiRawWorld3D& raw_world) {
+        return processObservedEsdf3D(raw_world);
+      },
+      [this]() { processStaticEsdf3D(); },
+      [this](const std::exception_ptr& failure) {
+        try {
+          std::rethrow_exception(failure);
+        } catch (const std::exception& error) {
+          RCLCPP_ERROR(get_logger(), "WORLD_PIPELINE3D failure: %s", error.what());
+        } catch (...) {
+          RCLCPP_ERROR(get_logger(), "WORLD_PIPELINE3D failure: unknown exception");
         }
       });
 
@@ -183,8 +199,7 @@ void ProductionMppiNode::initializeRuntimeInterfaces() {
   });
 
   diagnostics_sink_->start();
-  esdf_worker_ =
-      std::jthread([this](const std::stop_token token) { esdfWorker(token); });
+  world_pipeline_->start();
   route_planning_worker_ =
       std::jthread([this](const std::stop_token token) { routePlanningWorker(token); });
   if (planning_tick_phase_offset_s_ > 0.0) {

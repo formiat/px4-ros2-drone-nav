@@ -10,6 +10,7 @@
 
 #include "production_mppi_node.hpp"
 #include "production_mppi_route_world.hpp"
+#include "world_pipeline_3d.hpp"
 
 namespace drone_city_nav {
 
@@ -352,9 +353,8 @@ void ProductionMppiNode::requestStaticRouteReplan(
     return;
   }
   {
-    const std::scoped_lock esdf_lock{world_generation_publication_mutex_,
-                                     esdf_state_mutex_};
-    if (!resident_world_ || !productionWorldGenerationCoherent(*resident_world_)) {
+    WorldPipeline3D::ResidentLease resident = world_pipeline_->lockResident();
+    if (!resident.world() || !productionWorldGenerationCoherent(*resident.world())) {
       RCLCPP_INFO_THROTTLE(
           get_logger(), *get_clock(), 1000,
           "STATIC_ROUTE_REPLAN_REQUEST status=rejected_generation_mismatch "
@@ -383,8 +383,8 @@ void ProductionMppiNode::requestStaticRouteReplan(
           search_generation, route_generation, routeReleaseReason3DName(reason));
       return;
     }
-    world_snapshot = resident_world_;
-    world_telemetry = resident_world_build_telemetry_;
+    world_snapshot = resident.world();
+    world_telemetry = resident.telemetry();
     planner_world = captureResidentPlannerWorld3D(*world_snapshot);
   }
 
@@ -399,7 +399,7 @@ void ProductionMppiNode::requestStaticRouteReplan(
       const std::uint64_t minimum_search_raw_revision =
           std::max(blocked_raw_revision, world_snapshot->source_raw_revision);
       const std::shared_ptr<const ProductionMppiRawWorld3D> latest_raw_world =
-          latest_raw_world_3d_.load(std::memory_order_acquire);
+          world_pipeline_->latestRawWorld();
       const std::shared_ptr<const PersistentPlannerWorld3D> raw_overlay =
           latest_raw_world != nullptr
               ? captureObservedRouteSearchWorld3D(

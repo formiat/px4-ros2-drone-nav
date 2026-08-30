@@ -540,12 +540,17 @@ eight-layer CMake DAG, complete registration of production-relevant GTests,
 split execution model/certification/transition/store contracts, a package-private
 hand-written C++ API, independent compilation of every hand-written header, and
 an independently tested `NavigationDiagnosticsSink` that owns its mailbox,
-worker, files, error context, and runtime statistics. The remaining world,
-planning, trajectory/control, and execution-facade extraction plus replacement
-of source-text transaction guards remain tracked by the linked checklist. Item
-12 remains in progress until that
-checklist, the complete static audit, and the unchanged three-run Manhattan
-mission gate below are finished.
+worker, files, error context, and runtime statistics. The package-private
+`WorldPipeline3D` now owns raw producer admission and joining, incremental
+reconstruction, latest-wins scheduling, worker lifetime, generation issuance,
+and coherent immutable resident-world publication. Its direct tests replace
+the former raw-world source-order guards with executable overload, quarantine,
+publication, refresh, exception, and stop transactions. Static/observed ESDF
+build policy still remains in node callbacks; that work, the remaining planning,
+trajectory/control, and execution-facade extraction, and the other source-text
+transaction replacements remain tracked by the linked checklist. Item 12
+remains in progress until that checklist, the complete static audit, and the
+unchanged three-run Manhattan mission gate below are finished.
 
 ### Validation
 

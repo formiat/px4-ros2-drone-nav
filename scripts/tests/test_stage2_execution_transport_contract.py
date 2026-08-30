@@ -292,16 +292,7 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         self.assertLess(recertification, retirement)
         self.assertLess(retirement, publication)
 
-    def test_production_world_owners_preserve_source_ownership(self) -> None:
-        raw_input = RAW_INPUT.read_text(encoding="utf-8")
-        raw_producer = raw_input.split(
-            "void ProductionMppiNode::queueRawWorld3D", maxsplit=1
-        )[1].split(
-            "void ProductionMppiNode::onMemoryStatus", maxsplit=1
-        )[0]
-        self.assertIn("VersionedObservedRawWorld3D::captureOwned(", raw_producer)
-        self.assertNotIn("VersionedObservedRawWorld3D::capture(", raw_producer)
-
+    def test_route_consumers_preserve_source_ownership(self) -> None:
         observed_consumers = {
             "activation": ROUTE_ACTIVATION.read_text(encoding="utf-8"),
             "execution": read_execution_sources(),
@@ -616,28 +607,10 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
 
     def test_execution_evidence_publications_are_linearized(self) -> None:
         inputs = INPUTS.read_text(encoding="utf-8")
-        raw_input = RAW_INPUT.read_text(encoding="utf-8")
         activation = ROUTE_ACTIVATION.read_text(encoding="utf-8")
         execution = read_execution_sources()
         route_execution = ROUTE_EXECUTION.read_text(encoding="utf-8")
         execution_manager = ROUTE_EXECUTION_MANAGER.read_text(encoding="utf-8")
-
-        raw_producer = raw_input.split(
-            "void ProductionMppiNode::queueRawWorld3D", maxsplit=1
-        )[1].split(
-            "void ProductionMppiNode::onMemoryStatus", maxsplit=1
-        )[0]
-        raw_lock = raw_producer.index(
-            "execution_evidence_commit_mutex_, input_mutex_,"
-        )
-        raw_authority = raw_producer.index("latest_observation_tracker_.authority()")
-        raw_evidence = raw_producer.index("evidenceMatches(")
-        raw_store = raw_producer.index(
-            "latest_raw_world_3d_.store(immutable_world, std::memory_order_release)"
-        )
-        self.assertLess(raw_lock, raw_authority)
-        self.assertLess(raw_authority, raw_evidence)
-        self.assertLess(raw_evidence, raw_store)
 
         lidar_producer = inputs.split(
             "void ProductionMppiNode::onLatestLidarObstacleScan", maxsplit=1
@@ -664,27 +637,6 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         self.assertLess(authority_boundary, revocation)
         self.assertLess(revocation, lock_end)
         self.assertLess(lock_end, update_handling)
-
-        activation_capture = activation.split(
-            "ProductionMppiNode::captureRouteActivationSnapshot3D()", maxsplit=1
-        )[1].split(
-            "ProductionRouteActivationResult3D "
-            "ProductionMppiNode::prepareRouteActivation3D",
-            maxsplit=1,
-        )[0]
-        activation_lock = activation_capture.index(
-            "const std::scoped_lock lock{execution_evidence_commit_mutex_,"
-        )
-        activation_snapshot = activation_capture.index(
-            "snapshot.execution_authority = route_execution_manager_.authority();"
-        )
-        activation_raw = activation_capture.index(
-            "snapshot.raw_world = latest_raw_world_3d_.load(std::memory_order_acquire);"
-        )
-        self.assertLess(activation_lock, activation_snapshot)
-        self.assertLess(activation_snapshot, activation_raw)
-        self.assertIn("world_generation_publication_mutex_, input_mutex_", activation_capture)
-        self.assertIn("esdf_state_mutex_", activation_capture)
 
         execution_publication = (
             EXECUTION_PUBLICATION.read_text(encoding="utf-8")
@@ -867,17 +819,8 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         self.assertIn("route_execution.progress_preparation != nullptr", atomic_plan_commit)
         self.assertLess(plan_preparation, plan_composition)
 
-        route_raw_load = snapshot_commit.index(
-            "latest_raw_world_3d_.load(std::memory_order_acquire)"
-        )
-        route_currentness = snapshot_commit.index(
-            "assessExecutionPublicationCurrentness3D"
-        )
         self.assertIn("transition.next->publishable()", snapshot_commit)
         self.assertIn("progress_preparation == nullptr", snapshot_commit)
-        self.assertLess(snapshot_lock, route_raw_load)
-        self.assertLess(route_raw_load, route_currentness)
-        self.assertLess(route_currentness, snapshot_owner_commit)
 
         pending_refresh = route_execution.split(
             "refreshPendingRoute", maxsplit=1

@@ -37,28 +37,26 @@ class Stage6WorldGenerationContractTest(unittest.TestCase):
         self.assertIn("WorkerTaskLane::kWorldUpdate", distance_3d)
         self.assertIn("WorkerTaskLane::kRouteCritical", geometry)
 
-    def test_cpu_world_and_gpu_esdf_share_one_publication_gate(self) -> None:
+    def test_world_generation_has_one_private_runtime_owner(self) -> None:
         node_header = (SOURCE / "production_mppi_node.hpp").read_text(
             encoding="utf-8"
         )
-        esdf = (SOURCE / "production_mppi_node_esdf.cpp").read_text(
+        pipeline_header = (SOURCE / "world_pipeline_3d.hpp").read_text(
             encoding="utf-8"
         )
-        observed_esdf = (SOURCE / "production_mppi_node_observed_esdf.cpp").read_text(
-            encoding="utf-8"
-        )
-        planning = (SOURCE / "production_mppi_node_world_generation.cpp").read_text(
-            encoding="utf-8"
-        )
+        cmake = (PACKAGE / "CMakeLists.txt").read_text(encoding="utf-8")
 
-        self.assertIn("world_generation_publication_mutex_", node_header)
-        self.assertIn("world_generation_publication_mutex_", esdf)
-        self.assertIn("world_generation_publication_mutex_", observed_esdf)
-        gate = planning.index("world_generation_publication_mutex_")
-        resident = planning.index("captured_generation_is_resident", gate)
-        gpu_plan = planning.index("engine_->plan(input)", resident)
-        self.assertLess(gate, resident)
-        self.assertLess(resident, gpu_plan)
+        self.assertIn("src/world_pipeline_3d.cpp", cmake)
+        self.assertIn("std::unique_ptr<WorldPipeline3D> world_pipeline_", node_header)
+        for retired_owner in (
+            "world_generation_publication_mutex_",
+            "local_world_generation_counter_",
+            "resident_world_",
+        ):
+            self.assertNotIn(retired_owner, node_header)
+        self.assertIn("std::mutex publication_mutex_", pipeline_header)
+        self.assertIn("LocalWorldGenerationCounter", pipeline_header)
+        self.assertIn("std::shared_ptr<const WorldSnapshot3D> resident_world_", pipeline_header)
 
     def test_mixed_generation_resources_fail_closed(self) -> None:
         world = (SOURCE / "production_mppi_route_world.cpp").read_text(

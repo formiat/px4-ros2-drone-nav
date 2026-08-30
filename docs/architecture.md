@@ -71,10 +71,13 @@ snapshot/delta transport, and selected-spectator 3D clouds.
 - derives no-static soft distance evidence from immutable sparse
   `KnownObstacleDistance3D` chunks and materializes only the controller upload
   projection;
+- delegates raw-world producer admission, snapshot/status joining, delta
+  reconstruction, latest-wins world scheduling, worker lifetime, and coherent
+  resident-world publication to the package-private `WorldPipeline3D` owner;
 - publishes latched planner-world readiness after successful ESDF activation;
-- currently hosts the persistent D* Lite planner and the production route and
-  execution orchestration while those owners are extracted into internal
-  services;
+- currently hosts static/observed ESDF build policy, the persistent D* Lite
+  planner, and production route and execution orchestration while those owners
+  are extracted into internal services;
 - delegates diagnostics queuing, worker lifetime, JSONL/error-context files,
   and coherent statistics to the package-private `NavigationDiagnosticsSink`;
 - certifies route geometry, tracking-error tube, successor reserve, and suffix
@@ -157,6 +160,16 @@ from timestamped 3D lidar. A recentered distance resource may accelerate local
 queries, while the persistent route graph itself is sparse and survives compatible
 world revisions. The raw occupied set plus the drone's swept physical footprint is
 the only hard collision boundary in both profiles.
+
+`WorldPipeline3D` is the sole mutable owner of the production raw-world lineage
+and resident-world publication. It admits producer epochs, joins memory status
+with snapshot/delta payloads, reconstructs an immutable raw world, and schedules
+only the newest pending revision. One publication lease linearizes the GPU ESDF
+revision, `LocalWorldGeneration`, immutable `WorldSnapshot3D`, build telemetry,
+and resident readers. A mixed generation fails closed instead of exposing a CPU
+world paired with another GPU upload. Static and observed ESDF construction
+policy is still supplied by the ROS runtime as a narrow callback; moving that
+policy into the service remains part of the active architecture remediation.
 
 Unknown space remains traversable without a penalty or gate. There are no
 planner/prohibited inflated grids, relaxed inflation modes, escape tunnels, or
@@ -377,6 +390,15 @@ the control callback. MPPI uses persistent GPU allocations. Diagnostics are
 copied into a bounded latest-value mailbox and written after the execution
 horizon has been published.
 
+The world pipeline owns one stoppable worker. In observed mode its deferred
+scheduler retains only the newest immutable raw revision and records skipped
+lineage; in static mode it coalesces refresh requests. Producer ingestion,
+worker scheduling, resident publication, and build statistics have independent
+private synchronization. Publication and resident leases share one mutex, so a
+planner cannot validate one generation while another generation is being
+installed. Stop joins outside the lifecycle mutex and processing exceptions are
+contained at the service boundary.
+
 In the four-vehicle intercept mission, the planner component container has one
 executor thread per vehicle. CPU-heavy planner work remains bounded by the
 mission-wide planner worker budget. Each MPPI engine currently launches its own
@@ -404,3 +426,6 @@ scheduling.
 - Collision validation uses a swept oriented 3D footprint against physical raw
   occupancy. No additional artificial footprint inflation is part of the
   planning contract.
+- `WorldPipeline3D` owns raw reconstruction and publication, but the ROS node
+  still supplies static and observed ESDF build-policy callbacks. The active
+  remediation moves that remaining orchestration behind the service API.

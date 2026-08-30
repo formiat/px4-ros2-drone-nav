@@ -697,6 +697,7 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
   add_library(
     drone_city_nav_production_mppi_component SHARED
     src/navigation_diagnostics_sink.cpp
+    src/world_pipeline_3d.cpp
     src/production_mppi_node.cpp
     src/production_mppi_node_optional_constraints.cpp
     src/production_mppi_node_route_compilation.cpp
@@ -1233,6 +1234,14 @@ if(BUILD_TESTING)
     target_link_libraries(navigation_diagnostics_sink_test
                           drone_city_nav_production_mppi_component)
     enable_project_warnings(navigation_diagnostics_sink_test)
+
+    ament_add_gtest(world_pipeline_3d_test
+                    tests/world_pipeline_3d_test.cpp)
+    target_compile_features(world_pipeline_3d_test PRIVATE cxx_std_20)
+    target_include_directories(world_pipeline_3d_test PRIVATE src)
+    target_link_libraries(world_pipeline_3d_test
+                          drone_city_nav_production_mppi_component)
+    enable_project_warnings(world_pipeline_3d_test)
   endif()
 
   ament_add_gtest(route_progress_3d_test

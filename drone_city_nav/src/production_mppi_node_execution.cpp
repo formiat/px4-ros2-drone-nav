@@ -18,6 +18,7 @@
 
 #include "production_mppi_node_execution_internal.hpp"
 #include "production_mppi_route_world.hpp"
+#include "world_pipeline_3d.hpp"
 
 namespace drone_city_nav {
 
@@ -128,7 +129,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   const std::int64_t lidar_validation_now_ns = get_clock()->now().nanoseconds();
   const Point3 mission_goal = objective->goal;
   const std::shared_ptr<const ProductionMppiRawWorld3D> latest_raw_world_3d =
-      latest_raw_world_3d_.load(std::memory_order_acquire);
+      world_pipeline_->latestRawWorld();
   const bool direct_tracking_requested =
       route_execution.direct_tracking_identity.has_value();
   const CertifiedRouteSuffix3D* const selected_snapshot_route =
@@ -173,12 +174,12 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
           proprioceptive_free_space_seed, world.launch_support_contact);
     }
   }
-  const VersionedExecutionValidationPolicy3D* const selected_policy =
-      selected_snapshot_route != nullptr
-          ? selected_snapshot_route->validation_policy.get()
-      : direct_tracking_requested || stationary_capture_rearm
-          ? execution_validation_policy_.get()
-          : nullptr;
+  const VersionedExecutionValidationPolicy3D* selected_policy{nullptr};
+  if (selected_snapshot_route != nullptr) {
+    selected_policy = selected_snapshot_route->validation_policy.get();
+  } else if (direct_tracking_requested || stationary_capture_rearm) {
+    selected_policy = execution_validation_policy_.get();
+  }
   const double latest_lidar_maximum_age_ms =
       selected_policy != nullptr ? selected_policy->latestLidarMaximumAgeMs()
                                  : latest_lidar_obstacle_maximum_age_ms_;
@@ -210,27 +211,31 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
             (selected_snapshot_route->observed_raw_world != nullptr)) ||
        ((direct_tracking_requested || stationary_capture_rearm) &&
         (direct_static_world != nullptr) != (direct_observed_world != nullptr)));
-  const bool publication_route_constrained =
-      direct_tracking_requested ? false
-      : selected_snapshot_route != nullptr &&
-              selected_snapshot_route->geometry != nullptr &&
-              selected_snapshot_route->geometry->constrained_spans != nullptr
-          ? !selected_snapshot_route->geometry->constrained_spans->empty()
-          : false;
-  const OccupancyGrid3D* static_occupancy =
-      exact_snapshot_world && direct_static_world != nullptr
-          ? &direct_static_world->occupancy()
-      : exact_snapshot_world && selected_snapshot_route != nullptr &&
-              selected_snapshot_route->static_world != nullptr
-          ? &selected_snapshot_route->static_world->occupancy()
-          : nullptr;
-  const ObservedOccupancyGrid3D* observed_occupancy =
-      exact_snapshot_world && direct_observed_world != nullptr
-          ? &direct_observed_world->occupancy()
-      : exact_snapshot_world && selected_snapshot_route != nullptr &&
-              selected_snapshot_route->observed_raw_world != nullptr
-          ? &selected_snapshot_route->observed_raw_world->occupancy()
-          : nullptr;
+  bool publication_route_constrained{false};
+  if (!direct_tracking_requested && selected_snapshot_route != nullptr &&
+      selected_snapshot_route->geometry != nullptr &&
+      selected_snapshot_route->geometry->constrained_spans != nullptr) {
+    publication_route_constrained =
+        !selected_snapshot_route->geometry->constrained_spans->empty();
+  }
+  const OccupancyGrid3D* static_occupancy{nullptr};
+  const ObservedOccupancyGrid3D* observed_occupancy{nullptr};
+  if (exact_snapshot_world) {
+    if (direct_static_world != nullptr) {
+      static_occupancy = std::addressof(direct_static_world->occupancy());
+    } else if (selected_snapshot_route != nullptr &&
+               selected_snapshot_route->static_world != nullptr) {
+      static_occupancy =
+          std::addressof(selected_snapshot_route->static_world->occupancy());
+    }
+    if (direct_observed_world != nullptr) {
+      observed_occupancy = std::addressof(direct_observed_world->occupancy());
+    } else if (selected_snapshot_route != nullptr &&
+               selected_snapshot_route->observed_raw_world != nullptr) {
+      observed_occupancy =
+          std::addressof(selected_snapshot_route->observed_raw_world->occupancy());
+    }
+  }
   RouteEndpointSemantics3D finite_boundary_endpoint_semantics =
       RouteEndpointSemantics3D::kContinuation;
   if (selected_snapshot_route != nullptr) {
@@ -242,16 +247,15 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
           direct_tracking_requested
               ? std::nullopt
               : finiteRouteTerminalBoundary(input, finite_boundary_endpoint_semantics);
-  const LaunchSupportContact3D* launch_support_contact_owner =
-      exact_snapshot_world && direct_observed_world != nullptr &&
-              direct_observed_world->launchSupportContact().has_value()
-          ? &*direct_observed_world->launchSupportContact()
-      : exact_snapshot_world && selected_snapshot_route != nullptr &&
-              selected_snapshot_route->observed_raw_world != nullptr &&
-              selected_snapshot_route->observed_raw_world->launchSupportContact()
-                  .has_value()
-          ? &*selected_snapshot_route->observed_raw_world->launchSupportContact()
-          : nullptr;
+  const LaunchSupportContact3D* launch_support_contact_owner{nullptr};
+  if (exact_snapshot_world && direct_observed_world != nullptr) {
+    launch_support_contact_owner =
+        optionalAddress(direct_observed_world->launchSupportContact());
+  } else if (exact_snapshot_world && selected_snapshot_route != nullptr &&
+             selected_snapshot_route->observed_raw_world != nullptr) {
+    launch_support_contact_owner = optionalAddress(
+        selected_snapshot_route->observed_raw_world->launchSupportContact());
+  }
   const FlightEnvelopeConfig* const execution_flight_envelope =
       exact_snapshot_world ? &selected_policy->flightEnvelope() : nullptr;
   const mppi::DynamicsConfig* const execution_dynamics =
@@ -330,6 +334,53 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       .finite_path_control_interval_ns = finite_path_control_interval_ns,
       .latest_obstacle_revision = latest_obstacle_revision,
   };
+
+  return publishPreparedExecutionCycle(cycle);
+}
+
+ProductionMppiExecutionPublication ProductionMppiNode::publishPreparedExecutionCycle(
+    const ProductionMppiExecutionCycle& cycle) {
+  const mppi::MppiTickInput& input = cycle.input;
+  const mppi::MppiTickResult& result = cycle.result;
+  const ProductionRouteExecutionSelection3D& route_execution = cycle.route_execution;
+  const std::shared_ptr<const VersionedExecutionInput3D>& execution_input =
+      cycle.execution_input;
+  const std::shared_ptr<const VersionedLatestLidarEvidence3D>& latest_lidar_evidence =
+      cycle.latest_lidar_evidence;
+  ProductionMppiExecutionPublication& publication = cycle.publication;
+  const mppi::Control& exact_previous_control = cycle.exact_previous_control;
+  const Point3& mission_goal = cycle.mission_goal;
+  const bool direct_tracking_requested = cycle.direct_tracking_requested;
+  const CertifiedRouteSuffix3D* const selected_snapshot_route =
+      cycle.selected_snapshot_route;
+  const std::shared_ptr<const VersionedObservedRawWorld3D>& direct_observed_world =
+      cycle.direct_observed_world;
+  const std::shared_ptr<const VersionedStaticWorld3D>& direct_static_world =
+      cycle.direct_static_world;
+  const VersionedExecutionValidationPolicy3D* const selected_policy =
+      cycle.selected_policy;
+  const double latest_lidar_obstacle_age_ms = cycle.latest_lidar_obstacle_age_ms;
+  const bool latest_lidar_obstacle_fresh = cycle.latest_lidar_obstacle_fresh;
+  const bool latest_lidar_obstacle_receive_time_fallback =
+      cycle.latest_lidar_obstacle_receive_time_fallback;
+  const std::span<const Point3> latest_lidar_obstacle_points =
+      cycle.latest_lidar_obstacle_points;
+  const std::uint64_t latest_lidar_obstacle_sequence =
+      cycle.latest_lidar_obstacle_sequence;
+  const bool exact_snapshot_world = cycle.exact_snapshot_world;
+  const FlightEnvelopeConfig* const execution_flight_envelope =
+      cycle.execution_flight_envelope;
+  const mppi::DynamicsConfig* const execution_dynamics = cycle.execution_dynamics;
+  const mppi::AltitudeEnvelopeConfig* const execution_altitude_envelope =
+      cycle.execution_altitude_envelope;
+  const SweptFootprintConfig* const execution_footprint = cycle.execution_footprint;
+  const mppi::FiniteExecutionPathWorld& execution_path_world =
+      cycle.execution_path_world;
+  const std::size_t arrival_search_step_controls = cycle.arrival_search_step_controls;
+  const std::int64_t finite_path_control_interval_ns =
+      cycle.finite_path_control_interval_ns;
+  const ProductionMppiPlanningState planning_state = cycle.planning_state;
+  const std::int64_t now_ns = cycle.now_ns;
 
   if (planning_state == ProductionMppiPlanningState::kMissionGoalPositionHold) {
     ProductionMppiExecutionPublication hold = publishExplicitHold(
@@ -598,10 +649,12 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
     const DirectTrackingFiniteExecution3D* const expected_direct =
         expected->directTrackingExecution();
     const FiniteExecutionState3D* const expected_finite = expected->finiteExecution();
-    const std::uint64_t previous_trajectory_revision =
-        expected_direct != nullptr   ? expected_direct->trajectory_revision
-        : expected_finite != nullptr ? expected_finite->trajectory_revision
-                                     : 0U;
+    std::uint64_t previous_trajectory_revision{0U};
+    if (expected_direct != nullptr) {
+      previous_trajectory_revision = expected_direct->trajectory_revision;
+    } else if (expected_finite != nullptr) {
+      previous_trajectory_revision = expected_finite->trajectory_revision;
+    }
     if (previous_trajectory_revision == std::numeric_limits<std::uint64_t>::max()) {
       return publishNoExecutablePathHold(
           cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);

@@ -15,6 +15,7 @@
 #include "production_mppi_node_planning_tick_finalize.hpp"
 #include "production_mppi_node_planning_tick_rearm.hpp"
 #include "production_mppi_route_helpers.hpp"
+#include "world_pipeline_3d.hpp"
 
 namespace drone_city_nav {
 
@@ -72,6 +73,7 @@ void ProductionMppiNode::planningTick() {
   LatestObservation latest_observation;
   std::uint64_t memory_sequence{0U};
   bool raw_world_identity_conflicted{false};
+  WorldPipelineInputSnapshot3D world_input;
   {
     const std::scoped_lock lock{input_mutex_};
     navigation = navigation_;
@@ -94,21 +96,19 @@ void ProductionMppiNode::planningTick() {
         !vehicle_status_epoch_probation_ && !vehicle_status_revision_exhausted_;
     cooperative_command = cooperative_command_;
     noncooperative_tracks = noncooperative_tracks_;
-    latest_observation = latest_observation_tracker_.latest();
+    world_input = world_pipeline_->inputSnapshot();
+    latest_observation = world_input.latest_observation;
     memory_sequence = latest_observation.sequence;
-    raw_world_identity_conflicted = raw_world_identity_conflicted_;
+    raw_world_identity_conflicted = world_input.raw_world_identity_conflicted;
   }
-  std::shared_ptr<const WorldSnapshot3D> world;
-  ProductionWorldBuildTelemetry3D world_build;
-  {
-    const std::scoped_lock lock{world_generation_publication_mutex_, esdf_state_mutex_};
-    world = resident_world_;
-    world_build = resident_world_build_telemetry_;
-  }
+  const WorldPipelineResidentSnapshot3D resident_world =
+      world_pipeline_->residentSnapshot();
+  const std::shared_ptr<const WorldSnapshot3D>& world = resident_world.world;
+  const ProductionWorldBuildTelemetry3D& world_build = resident_world.telemetry;
   const std::shared_ptr<const ProductionRouteActivationResult3D> route_pipeline =
       latest_route_pipeline_event_.load(std::memory_order_acquire);
   const std::shared_ptr<const ProductionMppiRawWorld3D> latest_raw_world_3d =
-      latest_raw_world_3d_.load(std::memory_order_acquire);
+      world_input.latest_raw_world;
   const bool latest_lidar_evidence_identity_conflicted =
       latest_lidar_evidence_identity_conflicted_.load(std::memory_order_acquire);
   const std::shared_ptr<const VersionedLatestLidarEvidence3D> latest_lidar_evidence =

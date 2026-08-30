@@ -187,6 +187,18 @@ sink before its publishers are destroyed. Worker overload, stop-time draining,
 processor failure isolation, file/error-ring behavior, and statistics are
 covered by direct executable tests.
 
+`WorldPipeline3D` now owns raw producer admission, status/payload joining,
+incremental reconstruction, the immutable latest raw world, latest-wins
+scheduling, worker lifetime, the resident world and telemetry, generation
+issuance, and publication/build counters. Its resident and publication leases
+make GPU upload plus CPU world installation one linearizable transaction.
+Executable tests cover overload and dirty lineage, producer-identity conflict
+quarantine and recovery, publication/read exclusion, exact transient-evidence
+refresh, invalid-generation rejection, exception containment, and lifecycle
+reentry during stop. Static and observed ESDF construction policy is still
+implemented by `ProductionMppiNode` callbacks passed to this service; that
+remaining orchestration is not yet complete.
+
 ## Immutable Stage Pipeline
 
 ```text
@@ -287,7 +299,12 @@ no mixed authority revision is observable.
   `ProductionMppiNode`; retain only composition and ROS I/O in the node.
   - [x] Extract `NavigationDiagnosticsSink` as the sole diagnostics worker,
     mailbox, file, error-context, and statistics owner.
-  - [ ] Extract world publication and reconstruction ownership.
+  - [ ] Extract the complete world pipeline.
+    - [x] Move raw ingestion, producer lineage, reconstruction, latest-wins
+      scheduling, worker lifecycle, immutable resident publication, generation
+      issuance, and coherent world statistics into `WorldPipeline3D`.
+    - [ ] Move static and observed ESDF construction policy and orchestration
+      out of `ProductionMppiNode` callbacks and behind the world-service API.
   - [ ] Extract persistent planning and route-pipeline coordination.
   - [ ] Extract trajectory compilation and controller ownership.
   - [ ] Finish the execution-service facade around the existing sole
@@ -297,7 +314,9 @@ no mixed authority revision is observable.
 - [x] Register every production-relevant GTest source and remove the stale test
   for the retired raw-snapshot/risk-field protocol.
 - [ ] Replace source-text transaction checks with executable state-machine and
-  concurrency tests.
+  concurrency tests. Raw-world joining, supersession, quarantine, publication
+  linearization, transient refresh, and stop behavior now have direct GTests;
+  their former source-order assertions have been removed.
 - [x] Keep public and private headers self-contained and retain a temporary
   umbrella include only where migration compatibility requires it.
 - [ ] Pass formatting, static analysis, C++ tests, and script tests after every

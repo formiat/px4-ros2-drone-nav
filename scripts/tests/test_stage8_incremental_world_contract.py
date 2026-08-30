@@ -77,7 +77,6 @@ class Stage8IncrementalWorldContractTest(unittest.TestCase):
         )
         evidence_refresh = production[evidence_change:parent_selection]
         self.assertIn("incremental_refresh=true", evidence_refresh)
-        self.assertNotIn("resident_world_.reset()", evidence_refresh)
         self.assertIn("TRANSIENT_EXECUTION_EVIDENCE_CHANGED", production)
         self.assertIn("TRANSIENT_EXECUTION_EVIDENCE_REFRESHED", production)
         self.assertIn("observedEsdfFullAuditDue", production)

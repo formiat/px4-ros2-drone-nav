@@ -47,9 +47,7 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
         self.assertIn("localObservedEsdfNeedsRecenter", source)
         self.assertIn("source_occupied_fingerprint", source)
 
-    def test_execution_validates_latest_reconstructed_raw_world_independently(
-        self,
-    ) -> None:
+    def test_execution_uses_only_the_3d_raw_world_contract(self) -> None:
         raw_input = (PACKAGE / "src/production_mppi_node_raw_input.cpp").read_text()
         execution = "\n".join(
             (PACKAGE / "src" / name).read_text()
@@ -60,10 +58,6 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
             )
         )
 
-        self.assertIn("latest_raw_world_3d_.store", raw_input)
-        self.assertIn("latest_raw_world_3d_.load", execution)
-        self.assertIn("committed_world_current", execution)
-        self.assertIn("execution_owner", execution)
         self.assertNotIn("ProductionMppiRawWorld2D", raw_input)
         self.assertNotIn("rawOccupancyGridViewFromRos", execution)
 

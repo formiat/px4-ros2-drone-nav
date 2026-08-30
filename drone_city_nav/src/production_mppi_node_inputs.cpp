@@ -8,6 +8,7 @@
 
 #include "production_mppi_node.hpp"
 #include "production_mppi_route_world.hpp"
+#include "world_pipeline_3d.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -259,17 +260,18 @@ void ProductionMppiNode::onNavigationReadiness(const std_msgs::msg::Bool& messag
       execution_snapshot == nullptr ||
       execution_snapshot->routeGenerationHighWater() == 0U;
   {
-    const std::scoped_lock lock{world_generation_publication_mutex_, esdf_state_mutex_};
-    if (resident_world_ && productionWorldGenerationCoherent(*resident_world_) &&
+    const WorldPipelineResidentSnapshot3D resident =
+        world_pipeline_->residentSnapshot();
+    if (resident.world && productionWorldGenerationCoherent(*resident.world) &&
         initial_route_required) {
       if (const auto objective = navigationObjective()) {
         transaction = makePlannerSearchTransaction3D(
-            resident_world_, captureResidentPlannerWorld3D(*resident_world_),
+            resident.world, captureResidentPlannerWorld3D(*resident.world),
             makeStaticRouteObjective(*objective),
             StaticRouteSearchRequestIdentity{
                 .kind = StaticRouteSearchRequestKind::kInitial,
             });
-        world_telemetry = resident_world_build_telemetry_;
+        world_telemetry = resident.telemetry;
       }
     }
   }
@@ -302,26 +304,12 @@ void ProductionMppiNode::requestStaticEsdfWork(const bool force_refresh) {
       return;
     }
   }
-  {
-    const std::scoped_lock lock{raw_queue_mutex_};
-    if (!force_refresh &&
-        (world_ready_.load(std::memory_order_acquire) ||
-         static_esdf_work_in_progress_ || pending_static_esdf_work_)) {
-      return;
-    }
-    pending_static_esdf_work_ = true;
-  }
-  raw_queue_condition_.notify_all();
+  static_cast<void>(world_pipeline_->requestStaticWork(
+      force_refresh, world_ready_.load(std::memory_order_acquire)));
 }
 
-void ProductionMppiNode::completeStaticEsdfWork(const bool world_ready) noexcept {
-  {
-    const std::scoped_lock lock{raw_queue_mutex_};
-    static_esdf_work_in_progress_ = false;
-  }
-  if (world_ready) {
-    world_ready_.store(true, std::memory_order_release);
-  }
+void ProductionMppiNode::markStaticWorldReady() noexcept {
+  world_ready_.store(true, std::memory_order_release);
 }
 
 void ProductionMppiNode::publishWorldReadiness(const bool ready) {
@@ -690,7 +678,7 @@ void ProductionMppiNode::onNavigationObjective(
       }
     } else if (!use_static_map_) {
       const std::shared_ptr<const ProductionMppiRawWorld3D> raw_world =
-          latest_raw_world_3d_.load(std::memory_order_acquire);
+          world_pipeline_->latestRawWorld();
       if (raw_world && raw_world->occupancy) {
         world_available = true;
         resolution =

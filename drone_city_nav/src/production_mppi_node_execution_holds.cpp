@@ -18,6 +18,7 @@
 #include "execution_publication_navigation_rebase_3d.hpp"
 #include "production_mppi_node_execution_internal.hpp"
 #include "production_mppi_node_planning_tick_rearm.hpp"
+#include "world_pipeline_3d.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -96,8 +97,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
     return publication;
   }
   if (stationary_capture_rearm && cycle.direct_observed_world != nullptr &&
-      latest_raw_world_3d_.load(std::memory_order_acquire) !=
-          cycle.latest_raw_world_3d) {
+      world_pipeline_->latestRawWorld() != cycle.latest_raw_world_3d) {
     return publication;
   }
   if (hold_expected->stationaryHold() != nullptr &&
@@ -111,18 +111,22 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
       hold_expected->finiteExecution();
   const DirectTrackingFiniteExecution3D* const direct_execution =
       hold_expected->directTrackingExecution();
-  const std::shared_ptr<const VersionedObservedRawWorld3D> source_observed =
-      stationary_capture_rearm      ? cycle.direct_observed_world
-      : resident_hold != nullptr    ? resident_hold->observed_raw_world
-      : route_execution != nullptr  ? route_execution->observed_raw_world
-      : direct_execution != nullptr ? direct_execution->observed_raw_world
-                                    : nullptr;
+  std::shared_ptr<const VersionedObservedRawWorld3D> source_observed;
+  if (stationary_capture_rearm) {
+    source_observed = cycle.direct_observed_world;
+  } else if (resident_hold != nullptr) {
+    source_observed = resident_hold->observed_raw_world;
+  } else if (route_execution != nullptr) {
+    source_observed = route_execution->observed_raw_world;
+  } else if (direct_execution != nullptr) {
+    source_observed = direct_execution->observed_raw_world;
+  }
   std::shared_ptr<const VersionedObservedRawWorld3D> current_observed;
   if (stationary_capture_rearm) {
     current_observed = source_observed;
   } else if (source_observed != nullptr) {
     const std::shared_ptr<const ProductionMppiRawWorld3D> current_raw =
-        latest_raw_world_3d_.load(std::memory_order_acquire);
+        world_pipeline_->latestRawWorld();
     if (current_raw == nullptr || current_raw->execution_owner == nullptr ||
         current_raw->execution_owner->version().producer_instance_id !=
             source_observed->version().producer_instance_id) {
@@ -130,18 +134,21 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
     }
     current_observed = current_raw->execution_owner;
   }
-  const std::shared_ptr<const VersionedStaticWorld3D> current_static =
-      stationary_capture_rearm      ? cycle.direct_static_world
-      : resident_hold != nullptr    ? resident_hold->static_world
-      : route_execution != nullptr  ? route_execution->static_world
-      : direct_execution != nullptr ? direct_execution->static_world
-                                    : nullptr;
-  const std::shared_ptr<const VersionedExecutionValidationPolicy3D> policy =
-      stationary_capture_rearm      ? execution_validation_policy_
-      : resident_hold != nullptr    ? resident_hold->validation_policy
-      : route_execution != nullptr  ? route_execution->validation_policy
-      : direct_execution != nullptr ? direct_execution->validation_policy
-                                    : nullptr;
+  std::shared_ptr<const VersionedStaticWorld3D> current_static;
+  std::shared_ptr<const VersionedExecutionValidationPolicy3D> policy;
+  if (stationary_capture_rearm) {
+    current_static = cycle.direct_static_world;
+    policy = execution_validation_policy_;
+  } else if (resident_hold != nullptr) {
+    current_static = resident_hold->static_world;
+    policy = resident_hold->validation_policy;
+  } else if (route_execution != nullptr) {
+    current_static = route_execution->static_world;
+    policy = route_execution->validation_policy;
+  } else if (direct_execution != nullptr) {
+    current_static = direct_execution->static_world;
+    policy = direct_execution->validation_policy;
+  }
   const auto make_hold_certification = [&]() {
     return StationaryExecutionHoldCertification3D{
         .position = owned_hold_position,
@@ -214,7 +221,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
   ProductionMppiHorizonCommit commit;
   if (hold_expected == nullptr) {
     return publication;
-  } else if (hold_transition.has_value()) {
+  }
+  if (hold_transition.has_value()) {
     commit.kind = ProductionMppiHorizonCommitKind::kPublishSnapshotTransition;
     commit.expected_snapshot = hold_expected;
     commit.transition = &*hold_transition;

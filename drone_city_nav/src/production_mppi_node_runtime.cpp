@@ -11,6 +11,7 @@
 #include "production_mppi_node.hpp"
 #include "production_mppi_route_helpers.hpp"
 #include "production_mppi_route_world.hpp"
+#include "world_pipeline_3d.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -273,10 +274,8 @@ ProductionMppiNode::~ProductionMppiNode() {
   if (diagnostics_sink_ != nullptr) {
     diagnostics_sink_->stop();
   }
-  if (esdf_worker_.joinable()) {
-    esdf_worker_.request_stop();
-    raw_queue_condition_.notify_all();
-    esdf_worker_.join();
+  if (world_pipeline_ != nullptr) {
+    world_pipeline_->stop();
   }
   if (route_planning_worker_.joinable()) {
     route_planning_worker_.request_stop();

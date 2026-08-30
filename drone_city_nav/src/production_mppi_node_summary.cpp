@@ -7,6 +7,7 @@
 
 #include "navigation_diagnostics_sink.hpp"
 #include "production_mppi_node.hpp"
+#include "world_pipeline_3d.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -60,11 +61,7 @@ void ProductionMppiNode::publishSummary() {
   if (runtime_samples_ms.empty()) {
     return;
   }
-  std::uint64_t dropped_esdf_updates{0U};
-  {
-    const std::scoped_lock lock{raw_queue_mutex_};
-    dropped_esdf_updates = dropped_raw_snapshots_;
-  }
+  const WorldPipelineStatistics3D world_statistics = world_pipeline_->statistics();
   const double maximum =
       *std::max_element(runtime_samples_ms.begin(), runtime_samples_ms.end());
   const std::uint64_t rollout_ticks = full_rollout_ticks + reduced_rollout_ticks;
@@ -135,7 +132,9 @@ void ProductionMppiNode::publishSummary() {
       " worker_world_capacity_waits=%" PRIu64
       " worker_background_capacity_waits=%" PRIu64
       " world_generation_superseded_ticks=%" PRIu64
-      " world_generation_rejected_publications=%" PRIu64,
+      " world_generation_rejected_publications=%" PRIu64
+      " world_pipeline_processing_failures=%" PRIu64
+      " world_pipeline_failure_handler_failures=%" PRIu64,
       completed_ticks, percentile(runtime_samples_ms, 0.50),
       percentile(runtime_samples_ms, 0.95), percentile(runtime_samples_ms, 0.99),
       maximum, deadline_misses, altitude_envelope_violation_horizons,
@@ -144,13 +143,11 @@ void ProductionMppiNode::publishSummary() {
       no_executable_horizon_hold_ticks, terminal_rest_horizon_ticks,
       finite_path_validation_backoff_ticks, latest_lidar_path_validation_backoff_ticks,
       retained_previous_finite_path_ticks, average_arrival_controls,
-      average_arrival_shaping_attempts, dropped_esdf_updates,
-      no_static_raw_updates_.load(std::memory_order_relaxed),
-      no_static_esdf_builds_.load(std::memory_order_relaxed),
-      no_static_esdf_throttled_updates_.load(std::memory_order_relaxed),
-      diagnostics_sink_->droppedSnapshots(), full_rollout_ticks, reduced_rollout_ticks,
-      average_active_rollouts, rolling_route.observations,
-      rolling_route.continuation_boundary_ticks,
+      average_arrival_shaping_attempts, world_statistics.dropped_raw_worlds,
+      world_statistics.raw_updates, world_statistics.observedBuilds(),
+      world_statistics.throttled_observed_builds, diagnostics_sink_->droppedSnapshots(),
+      full_rollout_ticks, reduced_rollout_ticks, average_active_rollouts,
+      rolling_route.observations, rolling_route.continuation_boundary_ticks,
       std::isfinite(rolling_route.minimum_continuation_boundary_speed_mps)
           ? rolling_route.minimum_continuation_boundary_speed_mps
           : -1.0,
@@ -180,8 +177,9 @@ void ProductionMppiNode::publishSummary() {
       workers.lanes[0U].pending, workers.lanes[1U].pending, workers.lanes[2U].pending,
       workers.lanes[0U].capacity_waits, workers.lanes[1U].capacity_waits,
       workers.lanes[2U].capacity_waits,
-      superseded_world_generation_ticks_.load(std::memory_order_relaxed),
-      rejected_world_generation_publications_.load(std::memory_order_relaxed));
+      world_statistics.superseded_planning_generations,
+      world_statistics.rejected_world_publications,
+      world_statistics.processing_failures, world_statistics.failure_handler_failures);
 }
 
 } // namespace drone_city_nav

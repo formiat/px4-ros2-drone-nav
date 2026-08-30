@@ -18,6 +18,7 @@
 #include "execution_publication_navigation_rebase_3d.hpp"
 #include "production_mppi_node_execution_internal.hpp"
 #include "production_mppi_node_planning_tick_rearm.hpp"
+#include "world_pipeline_3d.hpp"
 
 namespace drone_city_nav {
 
@@ -455,14 +456,15 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
   if (!use_static_map_) {
     const double maximum_observation_age_ms =
         maximum_esdf_age_ms_ + stale_esdf_execution_window_ms_;
-    committed_3d = latest_raw_world_3d_.load(std::memory_order_acquire);
+    const WorldPipelineInputSnapshot3D world_input = world_pipeline_->inputSnapshot();
+    committed_3d = world_input.latest_raw_world;
     const bool committed_world_current =
         committed_3d != nullptr &&
         committed_3d->version.producer_instance_id ==
             cycle.world.producer_instance_id &&
         committedRawWorldAgeMs(committed_3d.get(), publication_now_ns) <=
             maximum_observation_age_ms;
-    if (raw_world_identity_conflicted_ || !committed_world_current) {
+    if (world_input.raw_world_identity_conflicted || !committed_world_current) {
       requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
       report_commit_failure("raw_world_not_current");
       return ProductionMppiHorizonCommitStatus::kRejected;
@@ -930,8 +932,9 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitExecutionSnapshotHor
 
   const std::scoped_lock evidence_lock{execution_evidence_commit_mutex_,
                                        latest_lidar_evidence_commit_mutex_};
+  const WorldPipelineInputSnapshot3D world_input = world_pipeline_->inputSnapshot();
   const std::shared_ptr<const ProductionMppiRawWorld3D> current_raw_container =
-      latest_raw_world_3d_.load(std::memory_order_acquire);
+      world_input.latest_raw_world;
   const bool raw_required = expected_raw != nullptr;
   const std::shared_ptr<const VersionedObservedRawWorld3D> current_raw =
       raw_required && current_raw_container != nullptr
