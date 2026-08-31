@@ -98,6 +98,7 @@ struct ProductionMppiDiagnosticsSnapshot;
 struct PreparedRouteActivation3D;
 struct ProductionRouteActivationSnapshot3D;
 class RouteActivationCoordinator3D;
+class RouteExecutionSelector3D;
 class RouteMaterializer3D;
 class MppiController3D;
 struct ProductionMppiExecutionCycle;
@@ -422,6 +423,7 @@ private:
   std::unique_ptr<BoundedWorkerPool> planning_worker_pool_;
   std::unique_ptr<RouteMaterializer3D> route_materializer_;
   std::unique_ptr<RouteActivationCoordinator3D> route_activation_coordinator_;
+  std::unique_ptr<RouteExecutionSelector3D> route_execution_selector_;
   std::unique_ptr<RoutePlanningCoordinator3D> route_planning_coordinator_;
   std::unique_ptr<MppiController3D> mppi_controller_;
   std::mutex static_route_extension_mutex_;

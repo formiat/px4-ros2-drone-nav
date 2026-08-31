@@ -10,6 +10,7 @@
 #include "navigation_diagnostics_sink.hpp"
 #include "production_mppi_node.hpp"
 #include "route_activation_coordinator_3d.hpp"
+#include "route_execution_selector_3d.hpp"
 #include "route_materializer_3d.hpp"
 #include "world_pipeline_3d.hpp"
 
@@ -215,6 +216,17 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
               .cruise_speed_mps = speed_policy_config_.cruise_speed_mps,
               .maximum_control_feedback_age_ms = maximum_control_feedback_age_ms_,
           });
+  route_execution_selector_ = std::make_unique<RouteExecutionSelector3D>(
+      execution_supervisor_,
+      RouteExecutionSelectorConfig3D{
+          .physical_footprint = physical_footprint_config_,
+          .flight_envelope = flight_envelope_config_,
+          .route_tracking = route_tracking_policy_,
+          .route_cross_track_constraints_enabled =
+              optional_constraints_.route_cross_track_constraints_enabled,
+          .route_tracking_tube_constraints_enabled =
+              optional_constraints_.route_tracking_tube_constraints_enabled,
+      });
   route_planning_coordinator_ =
       std::make_unique<RoutePlanningCoordinator3D>(RoutePlanningCoordinatorConfig3D{
           .planner =

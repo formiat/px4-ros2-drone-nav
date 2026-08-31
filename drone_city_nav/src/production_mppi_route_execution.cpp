@@ -1,13 +1,13 @@
 #include "drone_city_nav/rolling_route_telemetry_3d.hpp"
 
 #include <algorithm>
-#include <cinttypes>
 #include <limits>
 #include <memory>
+#include <utility>
 #include <variant>
 
-#include "production_mppi_node.hpp"
 #include "production_mppi_route_world.hpp"
+#include "route_execution_selector_3d.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -36,23 +36,6 @@ void bindObservedRouteEvidence(
   if (launch_support_contact.has_value()) {
     observation.launch_support_contact = std::addressof(launch_support_contact.value());
   }
-}
-
-[[nodiscard]] const char* residentObstacleSource(
-    const ProductionMppiResidentObstacleDisposition disposition) noexcept {
-  switch (disposition) {
-    case ProductionMppiResidentObstacleDisposition::kRouteSuffixReplacementRequired:
-      return "resident_route_suffix_persistent_raw";
-    case ProductionMppiResidentObstacleDisposition::
-        kPersistentRawFiniteExecutionInvalidated:
-      return "active_finite_trajectory_persistent_raw";
-    case ProductionMppiResidentObstacleDisposition::
-        kLatestLidarFiniteExecutionInvalidated:
-      return "active_finite_trajectory_latest_lidar";
-    case ProductionMppiResidentObstacleDisposition::kClear:
-      return "none";
-  }
-  return "none";
 }
 
 [[nodiscard]] bool trackingTubeProfileMatchesCurrentWorld(
@@ -221,17 +204,31 @@ pendingRoutePermanentlyObsolete(const PendingCertifiedRoute3D& pending,
 
 } // namespace
 
-ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
-    const WorldSnapshot3D& world, const ProductionNavigationObjective* const objective,
-    const ProductionMppiNavigation& navigation,
-    const std::shared_ptr<const VersionedExecutionInput3D>& execution_input,
-    const std::shared_ptr<const ProductionMppiRawWorld3D>& latest_raw_world,
-    const std::shared_ptr<const VersionedLatestLidarEvidence3D>& latest_lidar_evidence,
-    const std::int64_t validation_stamp_ns,
-    const std::uint64_t minimum_tracking_sample_sequence,
-    std::optional<DirectTrackingOwnerIdentity3D> direct_tracking_identity,
-    const bool observed_3d_world) {
-  ProductionRouteExecutionSelection3D result{
+RouteExecutionSelector3D::RouteExecutionSelector3D(
+    ExecutionSupervisor3D& execution_supervisor,
+    const RouteExecutionSelectorConfig3D& config)
+    : execution_supervisor_{execution_supervisor},
+      config_{config} {
+}
+
+RouteExecutionSelectorResult3D
+RouteExecutionSelector3D::select(const RouteExecutionSelectorRequest3D& request) {
+  RouteExecutionSelectorResult3D output;
+  if (!request.valid()) {
+    return output;
+  }
+  const WorldSnapshot3D& world = *request.world;
+  const ProductionNavigationObjective* const objective = request.objective;
+  const ProductionMppiNavigation& navigation = request.navigation;
+  const auto& execution_input = request.execution_input;
+  const auto& latest_raw_world = request.latest_raw_world;
+  const auto& latest_lidar_evidence = request.latest_lidar_evidence;
+  const std::int64_t validation_stamp_ns = request.validation_stamp_ns;
+  const std::uint64_t minimum_tracking_sample_sequence =
+      request.minimum_tracking_sample_sequence;
+  const bool observed_3d_world = request.observed_3d_world;
+  ProductionRouteExecutionSelection3D& result = output.selection;
+  result = ProductionRouteExecutionSelection3D{
       .route = nullptr,
       .source_authority = nullptr,
       .source_snapshot = nullptr,
@@ -246,15 +243,15 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
       .lifecycle_event = std::nullopt,
       .hold_position =
           Point3{navigation.state.x, navigation.state.y,
-                 clampToFlightEnvelope(navigation.state.z, flight_envelope_config_)
-                     .value_or(flight_envelope_config_.minimum_target_z_m)},
+                 clampToFlightEnvelope(navigation.state.z, config_.flight_envelope)
+                     .value_or(config_.flight_envelope.minimum_target_z_m)},
       .station_m = 0.0,
       .route_usable = false,
       .tracking_error_tube_handoff_active = false,
       .execution_owner_available = false,
       .pending_activation = false,
       .physical_trajectory_invalidated = false,
-      .direct_tracking_identity = direct_tracking_identity,
+      .direct_tracking_identity = request.direct_tracking_identity,
   };
   const RouteExecutionManagerSnapshot3D manager_snapshot =
       execution_supervisor_.snapshot();
@@ -268,7 +265,7 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
        result.source_snapshot->directTrackingExecution() != nullptr ||
        result.source_snapshot->stationaryHold() != nullptr);
   if (result.source_snapshot == nullptr) {
-    return result;
+    return output;
   }
   const std::shared_ptr<const PendingCertifiedRoute3D>& stale_pending =
       manager_snapshot.pending;
@@ -278,19 +275,19 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
     static_cast<void>(execution_supervisor_.acknowledgePendingIfSame(stale_pending));
   }
   if (result.direct_tracking_identity.has_value()) {
-    return result;
+    return output;
   }
   if (execution_input == nullptr || !execution_input->valid() ||
       !execution_input->nominalStateAuthoritative()) {
-    return result;
+    return output;
   }
   ProductionMppiNavigation execution_navigation = navigation;
   execution_navigation.state = execution_input->state();
 
-  const SweptFootprintConfig& footprint = physical_footprint_config_;
+  const SweptFootprintConfig& footprint = config_.physical_footprint;
   const double execution_maximum_cross_track_m =
-      optional_constraints_.route_cross_track_constraints_enabled
-          ? route_tracking_policy_.maximum_cross_track_m
+      config_.route_cross_track_constraints_enabled
+          ? config_.route_tracking.maximum_cross_track_m
           : std::numeric_limits<double>::max();
   bool active_usable{false};
   if (result.source_snapshot->route() != nullptr) {
@@ -307,25 +304,19 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
     };
     const bool observed_route = active_route.observed_raw_world != nullptr;
     const std::uint64_t physically_invalidated_through_generation =
-        physical_trajectory_replan_route_generation_.load(std::memory_order_acquire);
+        request.physically_invalidated_through_generation;
     const bool physical_invalidation_latched =
         physically_invalidated_through_generation >= active_route.identity.generation;
     if (physical_invalidation_latched) {
       result.status = RouteExecutionStatus3D::kRawCollision;
       result.physical_trajectory_invalidated = true;
-      RCLCPP_INFO_THROTTLE(
-          get_logger(), *get_clock(), 1000,
-          "ROUTE_EXECUTION3D snapshot_version=%" PRIu64 " route_generation=%" PRIu64
-          " status=physical_trajectory_invalidated "
-          "action=hold_resident_owner_until_certified_successor",
-          result.source_snapshot->version, active_route.identity.generation);
     } else {
       if (observed_route && !observed_3d_world) {
-        return result;
+        return output;
       }
       RouteExecutionObservation3D observation = makeExecutionObservation(
           world, objective, execution_navigation, minimum_tracking_sample_sequence,
-          execution_maximum_cross_track_m, footprint, flight_envelope_config_);
+          execution_maximum_cross_track_m, footprint, config_.flight_envelope);
       std::shared_ptr<const VersionedObservedRawWorld3D> latest_observed_owner;
       std::shared_ptr<const VersionedObservedRawWorld3D> collision_observed_owner;
       bool active_trajectory_raw_collision{false};
@@ -407,19 +398,13 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
                                        : active_route.observed_raw_world;
       }
       if (route_suffix_replacement_required) {
-        RCLCPP_WARN_THROTTLE(
-            get_logger(), *get_clock(), 1000,
-            "ROUTE_EXECUTION3D snapshot_version=%" PRIu64 " route_generation=%" PRIu64
-            " status=route_suffix_obstructed scope=persistent_raw_route_suffix "
-            "failure_segment=%zu failure_point=(%.3f,%.3f,%.3f) "
-            "action=retain_finite_execution_and_request_background_successor",
-            result.source_snapshot->version, active_route.identity.generation,
-            diagnostic_assessment.raw_validation.failure_route_segment,
-            diagnostic_assessment.raw_validation.failure_point.x,
-            diagnostic_assessment.raw_validation.failure_point.y,
-            diagnostic_assessment.raw_validation.failure_point.z);
-        requestRouteRelease(RouteReleaseReason3D::kBlocked,
-                            active_route.identity.generation);
+        output.effects.push_back(RouteExecutionSelectorEffect3D{
+            .kind = RouteExecutionSelectorEffectKind3D::kRequestRouteRelease,
+            .release_reason = RouteReleaseReason3D::kBlocked,
+            .obstacle_disposition = obstacle_disposition,
+            .observed_raw_world = nullptr,
+            .route_generation = active_route.identity.generation,
+        });
       } else if (finite_execution_physically_invalidated) {
         const mppi::FiniteExecutionPathValidation& physical_validation =
             obstacle_disposition == ProductionMppiResidentObstacleDisposition::
@@ -431,22 +416,9 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
             RawRouteSuffixStatus3D::kRawCollision;
         diagnostic_assessment.raw_validation.failure_point =
             physical_validation.failure_point;
-        RCLCPP_WARN_THROTTLE(
-            get_logger(), *get_clock(), 1000,
-            "ROUTE_EXECUTION3D snapshot_version=%" PRIu64 " route_generation=%" PRIu64
-            " status=raw_collision scope=%s "
-            "failure_segment=%zu failure_point=(%.3f,%.3f,%.3f)",
-            result.source_snapshot->version, active_route.identity.generation,
-            obstacle_disposition == ProductionMppiResidentObstacleDisposition::
-                                        kPersistentRawFiniteExecutionInvalidated
-                ? "persistent_raw_finite_trajectory"
-                : "latest_lidar_finite_trajectory",
-            physical_validation.failure_segment_index,
-            physical_validation.failure_point.x, physical_validation.failure_point.y,
-            physical_validation.failure_point.z);
       }
       if ((diagnostic_assessment.usable() || route_suffix_replacement_required) &&
-          optional_constraints_.route_tracking_tube_constraints_enabled) {
+          config_.route_tracking_tube_constraints_enabled) {
         if (!trackingTubeProfileMatchesCurrentWorld(active_route,
                                                     active_route.observed_raw_world)) {
           result.tracking_error_tube.status =
@@ -495,52 +467,24 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
                                         active_route.observed_raw_world)
               : ExecutionRouteTransitionResult3D{};
       const bool optional_policy_invalidation =
-          (optional_constraints_.route_cross_track_constraints_enabled &&
+          (config_.route_cross_track_constraints_enabled &&
            diagnostic_assessment.status ==
                RouteExecutionStatus3D::kExcessiveCrossTrack) ||
-          (optional_constraints_.route_tracking_tube_constraints_enabled &&
+          (config_.route_tracking_tube_constraints_enabled &&
            diagnostic_assessment.status ==
                RouteExecutionStatus3D::kTrackingTubeViolation);
       const bool route_invalidation_required =
           finite_execution_physically_invalidated ||
           diagnostic_assessment.status == RouteExecutionStatus3D::kObjectiveMismatch ||
           optional_policy_invalidation;
-      if (result.tracking_error_tube_handoff_active) {
-        active_usable = true;
-        result.status = RouteExecutionStatus3D::kUsable;
-        RCLCPP_INFO_THROTTLE(
-            get_logger(), *get_clock(), 1000,
-            "ROUTE_EXECUTION3D snapshot_version=%" PRIu64 " route_generation=%" PRIu64
-            " status=usable tracking_tube_handoff=%.*s "
-            "handoff_reference_state_index=%zu "
-            "handoff_speed_limit_mps=%.3f handoff_radius_m=%.3f "
-            "handoff_tracking_error_m=%.3f action=retain_immutable_handoff",
-            result.source_snapshot->version, active_route.identity.generation,
-            static_cast<int>(trackingErrorTubeHandoffStatus3DName(
-                                 result.tracking_error_tube_handoff.status)
-                                 .size()),
-            trackingErrorTubeHandoffStatus3DName(
-                result.tracking_error_tube_handoff.status)
-                .data(),
-            result.tracking_error_tube_handoff.reference_state_index,
-            result.tracking_error_tube_handoff.reference_speed_limit_mps,
-            result.tracking_error_tube_handoff.tracking_error_radius_m,
-            result.tracking_error_tube_handoff.actual_tracking_error_m);
-      } else if (!route_execution_assessment_usable && !route_invalidation_required) {
+      if (result.tracking_error_tube_handoff_active ||
+          (!route_execution_assessment_usable && !route_invalidation_required)) {
         // Contract/projection diagnostics and connector history do not describe
-        // a physical intersection of the published finite execution. Keep the
-        // certified owner and retry.
+        // a physical intersection of the published finite execution. The same
+        // retention rule applies while an immutable tracking-tube handoff owns
+        // the controller. Keep the certified owner and retry.
         active_usable = true;
         result.status = RouteExecutionStatus3D::kUsable;
-        RCLCPP_INFO_THROTTLE(
-            get_logger(), *get_clock(), 1000,
-            "ROUTE_EXECUTION3D snapshot_version=%" PRIu64 " route_generation=%" PRIu64
-            " diagnostic_status=%.*s "
-            "action=retain_certified_route_nonphysical_diagnostic",
-            result.source_snapshot->version, active_route.identity.generation,
-            static_cast<int>(
-                routeExecutionStatus3DName(diagnostic_assessment.status).size()),
-            routeExecutionStatus3DName(diagnostic_assessment.status).data());
       } else if (!advanced.applied()) {
         if (advanced.status == ExecutionRouteTransitionStatus3D::kNoChange) {
           active_usable = route_execution_assessment_usable;
@@ -551,15 +495,6 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
           // is not physical evidence and must never synthesize a raw collision.
           active_usable = true;
           result.status = RouteExecutionStatus3D::kUsable;
-          RCLCPP_INFO_THROTTLE(
-              get_logger(), *get_clock(), 1000,
-              "ROUTE_EXECUTION3D snapshot_version=%" PRIu64 " route_generation=%" PRIu64
-              " status=usable transition=%.*s "
-              "action=retain_certified_owner_and_retry_progress",
-              result.source_snapshot->version, active_route.identity.generation,
-              static_cast<int>(
-                  executionRouteTransitionStatus3DName(advanced.status).size()),
-              executionRouteTransitionStatus3DName(advanced.status).data());
         } else {
           result.status = diagnostic_assessment.status;
           const std::uint64_t generation = active_route.identity.generation;
@@ -603,45 +538,24 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
                       : LatestLidarEvidenceId3D{},
           };
           if (raw_invalidated || latest_lidar_invalidated) {
-            handlePhysicalTrajectoryCollision(
-                generation, raw_invalidated ? collision_observed_owner : nullptr,
-                residentObstacleSource(obstacle_disposition),
-                ProductionMppiPhysicalTrajectoryAuthority::kResidentOwner);
+            output.effects.push_back(RouteExecutionSelectorEffect3D{
+                .kind = RouteExecutionSelectorEffectKind3D::
+                    kHandlePhysicalTrajectoryCollision,
+                .release_reason = RouteReleaseReason3D::kBlocked,
+                .obstacle_disposition = obstacle_disposition,
+                .observed_raw_world =
+                    raw_invalidated ? collision_observed_owner : nullptr,
+                .route_generation = generation,
+            });
           } else {
-            requestRouteRelease(release_reason, generation);
+            output.effects.push_back(RouteExecutionSelectorEffect3D{
+                .kind = RouteExecutionSelectorEffectKind3D::kRequestRouteRelease,
+                .release_reason = release_reason,
+                .obstacle_disposition = obstacle_disposition,
+                .observed_raw_world = nullptr,
+                .route_generation = generation,
+            });
           }
-          RCLCPP_WARN_THROTTLE(
-              get_logger(), *get_clock(), 1000,
-              "ROUTE_EXECUTION3D snapshot_version=%" PRIu64 " route_generation=%" PRIu64
-              " status=%.*s transition=%.*s tracking_tube_status=%.*s "
-              "tracking_tube_handoff_status=%.*s "
-              "tracking_tube_speed_limit_mps=%.3f "
-              "tracking_tube_radius_m=%.3f actual_speed_mps=%.3f "
-              "actual_cross_track_m=%.3f "
-              "action=retain_certified_owner_and_request_successor",
-              result.source_snapshot->version, generation,
-              static_cast<int>(routeExecutionStatus3DName(result.status).size()),
-              routeExecutionStatus3DName(result.status).data(),
-              static_cast<int>(
-                  executionRouteTransitionStatus3DName(advanced.status).size()),
-              executionRouteTransitionStatus3DName(advanced.status).data(),
-              static_cast<int>(trackingErrorTubeExecutionStatus3DName(
-                                   result.tracking_error_tube.status)
-                                   .size()),
-              trackingErrorTubeExecutionStatus3DName(result.tracking_error_tube.status)
-                  .data(),
-              static_cast<int>(trackingErrorTubeHandoffStatus3DName(
-                                   result.tracking_error_tube_handoff.status)
-                                   .size()),
-              trackingErrorTubeHandoffStatus3DName(
-                  result.tracking_error_tube_handoff.status)
-                  .data(),
-              result.tracking_error_tube.speed_limit_mps,
-              result.tracking_error_tube.tube_radius_m,
-              routeSpeed3D(Vec3{execution_navigation.state.vx,
-                                execution_navigation.state.vy,
-                                execution_navigation.state.vz}),
-              diagnostic_assessment.projection.distance_m);
         }
       } else {
         // This transition intentionally remains caller-local. Publishing it would
@@ -688,17 +602,8 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
             : refreshPendingRoute(*result.pending_route, world, objective,
                                   execution_navigation, latest_raw_world,
                                   minimum_tracking_sample_sequence,
-                                  route_tracking_policy_.maximum_cross_track_m,
-                                  footprint, flight_envelope_config_);
-    if (retain_snapshot_certificate) {
-      RCLCPP_INFO_THROTTLE(
-          get_logger(), *get_clock(), 1000,
-          "ROUTE_HANDOFF3D pending_generation=%" PRIu64 " base_generation=%" PRIu64
-          " status=snapshot_certificate_retained "
-          "action=validate_finite_horizons_against_latest_physical_evidence",
-          result.pending_route->route.identity.generation,
-          result.pending_route->base_route_generation);
-    }
+                                  config_.route_tracking.maximum_cross_track_m,
+                                  footprint, config_.flight_envelope);
     RouteSpliceReadiness3D splice_readiness{.status =
                                                 RouteSpliceReadinessStatus3D::kReady};
     const bool route_splice_required =
@@ -734,29 +639,11 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
           routeSpliceWindowExpired3D(*route_splice, *resident_route);
       const bool permanently_unavailable =
           splice_expired || !splice_readiness.canStillBecomeReady();
-      RCLCPP_INFO_THROTTLE(
-          get_logger(), *get_clock(), 1000,
-          "ROUTE_SPLICE3D pending_generation=%" PRIu64 " base_generation=%" PRIu64
-          " status=%.*s expired=%s "
-          "base_station_m=%.2f successor_station_m=%.2f "
-          "position_separation_m=%.2f tangent_alignment=%.3f action=%s",
-          result.pending_route->route.identity.generation,
-          result.pending_route->base_route_generation,
-          static_cast<int>(
-              routeSpliceReadinessStatus3DName(splice_readiness.status).size()),
-          routeSpliceReadinessStatus3DName(splice_readiness.status).data(),
-          splice_expired ? "true" : "false", splice_readiness.base_station_m,
-          splice_readiness.successor_station_m, splice_readiness.position_separation_m,
-          splice_readiness.tangent_alignment,
-          permanently_unavailable ? "discard_and_replan" : "retain_active_route");
       if (permanently_unavailable &&
           execution_supervisor_.acknowledgePendingIfSame(result.pending_route)) {
         result.pending_route.reset();
       }
     } else if (snapshot_retention_authorized) {
-      const std::uint64_t pending_generation =
-          result.pending_route->route.identity.generation;
-      const std::uint64_t base_generation = result.pending_route->base_route_generation;
       const bool acknowledged =
           execution_supervisor_.acknowledgePendingIfSame(result.pending_route);
       if (acknowledged) {
@@ -764,12 +651,6 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
       } else {
         result.pending_route = execution_supervisor_.pending();
       }
-      RCLCPP_INFO(get_logger(),
-                  "ROUTE_HANDOFF3D pending_generation=%" PRIu64
-                  " base_generation=%" PRIu64
-                  " status=semantic_refresh_rejected acknowledged=%s "
-                  "action=release_for_current_objective_successor",
-                  pending_generation, base_generation, acknowledged ? "true" : "false");
     }
   }
 
@@ -787,12 +668,11 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
         *result.route, Point3{execution_input->state().x, execution_input->state().y,
                               execution_input->state().z});
     result.station_m = result.route->progress.station_m;
-    result.route_usable =
-        result.route_usable && result.projection.valid &&
-        (!optional_constraints_.route_cross_track_constraints_enabled ||
-         result.tracking_error_tube_handoff_active ||
-         result.projection.cross_track_m <=
-             route_tracking_policy_.maximum_cross_track_m);
+    result.route_usable = result.route_usable && result.projection.valid &&
+                          (!config_.route_cross_track_constraints_enabled ||
+                           result.tracking_error_tube_handoff_active ||
+                           result.projection.cross_track_m <=
+                               config_.route_tracking.maximum_cross_track_m);
     if (!result.route_usable) {
       result.status = result.projection.valid
                           ? RouteExecutionStatus3D::kExcessiveCrossTrack
@@ -800,7 +680,7 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
       result.route.reset();
     }
   }
-  return result;
+  return output;
 }
 
 } // namespace drone_city_nav

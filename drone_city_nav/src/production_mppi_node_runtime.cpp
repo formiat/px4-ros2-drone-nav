@@ -13,6 +13,7 @@
 #include "production_mppi_route_helpers.hpp"
 #include "production_mppi_route_world.hpp"
 #include "route_activation_coordinator_3d.hpp"
+#include "route_execution_selector_3d.hpp"
 #include "route_materializer_3d.hpp"
 #include "world_pipeline_3d.hpp"
 
