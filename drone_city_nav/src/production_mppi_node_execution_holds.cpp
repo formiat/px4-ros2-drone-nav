@@ -108,24 +108,26 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
       horizon, owned_hold_position, cycle.finite_path_control_interval_ns,
       cycle.exact_initial_state.yaw);
 
-  ProductionMppiHorizonCommit commit;
+  ExecutionHorizonLeaseCandidate3D candidate;
   const std::shared_ptr<const ExecutionPlan3D> hold_expected = prepared.expectedPlan();
   if (hold_expected == nullptr) {
     return publication;
   }
   if (prepared.kind == ExecutionHoldPreparationKind3D::kTransition &&
       prepared.transition != nullptr) {
-    commit.kind = ProductionMppiHorizonCommitKind::kPublishSnapshotTransition;
-    commit.expected_snapshot = hold_expected;
-    commit.transition = prepared.transition.get();
+    candidate.kind = ExecutionHorizonCommitKind3D::kTransition;
+    candidate.expected_plan = hold_expected;
+    candidate.transition = prepared.transition;
   } else if (prepared.kind == ExecutionHoldPreparationKind3D::kUnchangedPlan) {
-    commit.kind = ProductionMppiHorizonCommitKind::kConfirmSnapshotUnchanged;
-    commit.expected_snapshot = hold_expected;
+    candidate.kind = ExecutionHorizonCommitKind3D::kUnchangedPlan;
+    candidate.expected_plan = hold_expected;
   } else {
     return publication;
   }
-  commit.expected_authority = prepared.expected_authority;
-  if (commitAndPublishExecutionHorizon(cycle, horizon, commit) !=
+  candidate.expected_authority = prepared.expected_authority;
+  candidate.certification_plan = hold_expected;
+  candidate.stationary_capture_rearm_intent = prepared.stationary_capture_rearm;
+  if (commitAndPublishExecutionHorizon(cycle, horizon, std::move(candidate)) !=
       ProductionMppiHorizonCommitStatus::kPublished) {
     return publication;
   }

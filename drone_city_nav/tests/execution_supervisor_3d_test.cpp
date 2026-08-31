@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "execution_route_snapshot_3d_plan_test_support.hpp"
+#include "execution_supervisor_horizon_3d_test_support.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -63,16 +64,19 @@ TEST(ExecutionSupervisor3DTest,
   const ExecutionOwnerIdentity3D owner =
       SnapshotFixture3D::committedOwner(*transition.next, 7U);
 
-  EXPECT_EQ(supervisor.commitLease(ExecutionLeaseCommit3D{
-                .kind = ExecutionLeaseCommitKind3D::kTransition,
-                .expected_authority = initial_authority,
-                .expected_plan = initial,
-                .transition = transition,
-                .expected_pending = nullptr,
-                .owner = owner,
-                .input = input,
-            }),
-            ExecutionRoutePublicationStatus3D::kPublished);
+  EXPECT_EQ(commitExecutionHorizonForTest(
+                supervisor,
+                ExecutionHorizonTestTransaction3D{
+                    .kind = ExecutionHorizonCommitKind3D::kTransition,
+                    .expected_authority = initial_authority,
+                    .expected_plan = initial,
+                    .transition = transition,
+                    .expected_pending = nullptr,
+                    .owner = owner,
+                    .input = input,
+                })
+                .status,
+            ExecutionHorizonCommitStatus3D::kCommitted);
   const std::shared_ptr<const CommittedExecutionAuthority3D> active =
       supervisor.authority();
   ASSERT_NE(active, nullptr);
@@ -83,16 +87,19 @@ TEST(ExecutionSupervisor3DTest,
 
   ExecutionOwnerIdentity3D refreshed_owner = owner;
   refreshed_owner.sequence = 8U;
-  EXPECT_EQ(supervisor.commitLease(ExecutionLeaseCommit3D{
-                .kind = ExecutionLeaseCommitKind3D::kUnchangedPlan,
-                .expected_authority = active,
-                .expected_plan = transition.next,
-                .transition = std::nullopt,
-                .expected_pending = nullptr,
-                .owner = refreshed_owner,
-                .input = input,
-            }),
-            ExecutionRoutePublicationStatus3D::kPublished);
+  EXPECT_EQ(commitExecutionHorizonForTest(
+                supervisor,
+                ExecutionHorizonTestTransaction3D{
+                    .kind = ExecutionHorizonCommitKind3D::kUnchangedPlan,
+                    .expected_authority = active,
+                    .expected_plan = transition.next,
+                    .transition = std::nullopt,
+                    .expected_pending = nullptr,
+                    .owner = refreshed_owner,
+                    .input = input,
+                })
+                .status,
+            ExecutionHorizonCommitStatus3D::kCommitted);
   const std::shared_ptr<const CommittedExecutionAuthority3D> refreshed =
       supervisor.authority();
   ASSERT_NE(refreshed, nullptr);
@@ -118,16 +125,19 @@ TEST(ExecutionSupervisor3DTest,
   EXPECT_TRUE(lease_cleared->owner().empty());
   EXPECT_EQ(lease_cleared->plan(), transition.next);
 
-  EXPECT_EQ(supervisor.commitLease(ExecutionLeaseCommit3D{
-                .kind = ExecutionLeaseCommitKind3D::kTransition,
-                .expected_authority = initial_authority,
-                .expected_plan = initial,
-                .transition = transition,
-                .expected_pending = nullptr,
-                .owner = owner,
-                .input = input,
-            }),
-            ExecutionRoutePublicationStatus3D::kStaleSnapshotVersion);
+  EXPECT_EQ(commitExecutionHorizonForTest(
+                supervisor,
+                ExecutionHorizonTestTransaction3D{
+                    .kind = ExecutionHorizonCommitKind3D::kTransition,
+                    .expected_authority = initial_authority,
+                    .expected_plan = initial,
+                    .transition = transition,
+                    .expected_pending = nullptr,
+                    .owner = owner,
+                    .input = input,
+                })
+                .status,
+            ExecutionHorizonCommitStatus3D::kAuthorityNotCurrent);
 }
 
 TEST(ExecutionSupervisor3DTest,
@@ -152,28 +162,34 @@ TEST(ExecutionSupervisor3DTest,
       supervisorActivation(*initial, certified);
   ASSERT_TRUE(transition.applied());
 
-  EXPECT_EQ(supervisor.commitLease(ExecutionLeaseCommit3D{
-                .kind = ExecutionLeaseCommitKind3D::kPendingTransition,
-                .expected_authority = initial_authority,
-                .expected_plan = initial,
-                .transition = transition,
-                .expected_pending = pending.pending,
-                .owner = SnapshotFixture3D::committedOwner(*transition.next),
-                .input = SnapshotFixture3D::committedInput(*transition.next),
-            }),
-            ExecutionRoutePublicationStatus3D::kPublished);
+  EXPECT_EQ(commitExecutionHorizonForTest(
+                supervisor,
+                ExecutionHorizonTestTransaction3D{
+                    .kind = ExecutionHorizonCommitKind3D::kPendingTransition,
+                    .expected_authority = initial_authority,
+                    .expected_plan = initial,
+                    .transition = transition,
+                    .expected_pending = pending.pending,
+                    .owner = SnapshotFixture3D::committedOwner(*transition.next),
+                    .input = SnapshotFixture3D::committedInput(*transition.next),
+                })
+                .status,
+            ExecutionHorizonCommitStatus3D::kCommitted);
   EXPECT_EQ(supervisor.plan(), transition.next);
   EXPECT_EQ(supervisor.pending(), nullptr);
-  EXPECT_EQ(supervisor.commitLease(ExecutionLeaseCommit3D{
-                .kind = ExecutionLeaseCommitKind3D::kPendingTransition,
-                .expected_authority = initial_authority,
-                .expected_plan = initial,
-                .transition = transition,
-                .expected_pending = pending.pending,
-                .owner = SnapshotFixture3D::committedOwner(*transition.next),
-                .input = SnapshotFixture3D::committedInput(*transition.next),
-            }),
-            ExecutionRoutePublicationStatus3D::kStaleSnapshotVersion);
+  EXPECT_EQ(commitExecutionHorizonForTest(
+                supervisor,
+                ExecutionHorizonTestTransaction3D{
+                    .kind = ExecutionHorizonCommitKind3D::kPendingTransition,
+                    .expected_authority = initial_authority,
+                    .expected_plan = initial,
+                    .transition = transition,
+                    .expected_pending = pending.pending,
+                    .owner = SnapshotFixture3D::committedOwner(*transition.next),
+                    .input = SnapshotFixture3D::committedInput(*transition.next),
+                })
+                .status,
+            ExecutionHorizonCommitStatus3D::kAuthorityNotCurrent);
 }
 
 TEST(ExecutionSupervisor3DTest,
@@ -197,56 +213,71 @@ TEST(ExecutionSupervisor3DTest,
   const std::shared_ptr<const VersionedExecutionInput3D> input =
       SnapshotFixture3D::committedInput(*transition.next);
 
-  EXPECT_EQ(supervisor.commitLease(ExecutionLeaseCommit3D{
-                .kind = ExecutionLeaseCommitKind3D::kTransition,
-                .expected_authority = initial_authority,
-                .expected_plan = initial,
-                .transition = std::nullopt,
-                .expected_pending = nullptr,
-                .owner = owner,
-                .input = input,
-            }),
-            ExecutionRoutePublicationStatus3D::kInvalidCandidate);
-  EXPECT_EQ(supervisor.commitLease(ExecutionLeaseCommit3D{
-                .kind = ExecutionLeaseCommitKind3D::kUnchangedPlan,
-                .expected_authority = initial_authority,
-                .expected_plan = initial,
-                .transition = transition,
-                .expected_pending = nullptr,
-                .owner = owner,
-                .input = input,
-            }),
-            ExecutionRoutePublicationStatus3D::kInvalidCandidate);
-  EXPECT_EQ(supervisor.commitLease(ExecutionLeaseCommit3D{
-                .kind = ExecutionLeaseCommitKind3D::kPendingTransition,
-                .expected_authority = initial_authority,
-                .expected_plan = initial,
-                .transition = transition,
-                .expected_pending = nullptr,
-                .owner = owner,
-                .input = input,
-            }),
-            ExecutionRoutePublicationStatus3D::kInvalidCandidate);
-  EXPECT_EQ(supervisor.commitLease(ExecutionLeaseCommit3D{
-                .kind = ExecutionLeaseCommitKind3D::kTransition,
-                .expected_authority = initial_authority,
-                .expected_plan = transition.next,
-                .transition = transition,
-                .expected_pending = nullptr,
-                .owner = owner,
-                .input = input,
-            }),
-            ExecutionRoutePublicationStatus3D::kInvalidCandidate);
-  EXPECT_EQ(supervisor.commitLease(ExecutionLeaseCommit3D{
-                .kind = ExecutionLeaseCommitKind3D::kTransition,
-                .expected_authority = initial_authority,
-                .expected_plan = initial,
-                .transition = transition,
-                .expected_pending = nullptr,
-                .owner = owner,
-                .input = nullptr,
-            }),
-            ExecutionRoutePublicationStatus3D::kInvalidCandidate);
+  EXPECT_EQ(commitExecutionHorizonForTest(
+                supervisor,
+                ExecutionHorizonTestTransaction3D{
+                    .kind = ExecutionHorizonCommitKind3D::kTransition,
+                    .expected_authority = initial_authority,
+                    .expected_plan = initial,
+                    .transition = std::nullopt,
+                    .expected_pending = nullptr,
+                    .owner = owner,
+                    .input = input,
+                })
+                .status,
+            ExecutionHorizonCommitStatus3D::kInvalidRequest);
+  EXPECT_EQ(commitExecutionHorizonForTest(
+                supervisor,
+                ExecutionHorizonTestTransaction3D{
+                    .kind = ExecutionHorizonCommitKind3D::kUnchangedPlan,
+                    .expected_authority = initial_authority,
+                    .expected_plan = initial,
+                    .transition = transition,
+                    .expected_pending = nullptr,
+                    .owner = owner,
+                    .input = input,
+                })
+                .status,
+            ExecutionHorizonCommitStatus3D::kInvalidRequest);
+  EXPECT_EQ(commitExecutionHorizonForTest(
+                supervisor,
+                ExecutionHorizonTestTransaction3D{
+                    .kind = ExecutionHorizonCommitKind3D::kPendingTransition,
+                    .expected_authority = initial_authority,
+                    .expected_plan = initial,
+                    .transition = transition,
+                    .expected_pending = nullptr,
+                    .owner = owner,
+                    .input = input,
+                })
+                .status,
+            ExecutionHorizonCommitStatus3D::kInvalidRequest);
+  EXPECT_EQ(commitExecutionHorizonForTest(
+                supervisor,
+                ExecutionHorizonTestTransaction3D{
+                    .kind = ExecutionHorizonCommitKind3D::kTransition,
+                    .expected_authority = initial_authority,
+                    .expected_plan = transition.next,
+                    .transition = transition,
+                    .expected_pending = nullptr,
+                    .owner = owner,
+                    .input = input,
+                })
+                .status,
+            ExecutionHorizonCommitStatus3D::kAuthorityNotCurrent);
+  EXPECT_EQ(commitExecutionHorizonForTest(
+                supervisor,
+                ExecutionHorizonTestTransaction3D{
+                    .kind = ExecutionHorizonCommitKind3D::kTransition,
+                    .expected_authority = initial_authority,
+                    .expected_plan = initial,
+                    .transition = transition,
+                    .expected_pending = nullptr,
+                    .owner = owner,
+                    .input = nullptr,
+                })
+                .status,
+            ExecutionHorizonCommitStatus3D::kInvalidRequest);
   EXPECT_EQ(supervisor.authority(), initial_authority);
   EXPECT_EQ(supervisor.pending(), nullptr);
 }
@@ -269,31 +300,37 @@ TEST(ExecutionSupervisor3DTest, ConcurrentLeaseCommitsHaveOneLinearizationWinner
   const std::shared_ptr<const VersionedExecutionInput3D> input =
       SnapshotFixture3D::committedInput(*transition.next);
   constexpr std::size_t kThreadCount{8U};
-  std::array<ExecutionRoutePublicationStatus3D, kThreadCount> statuses{};
+  std::array<ExecutionHorizonCommitStatus3D, kThreadCount> statuses{};
   std::vector<std::thread> threads;
   threads.reserve(kThreadCount);
   for (std::size_t index = 0U; index < kThreadCount; ++index) {
     threads.emplace_back([&, index] {
-      statuses.at(index) = supervisor.commitLease(ExecutionLeaseCommit3D{
-          .kind = ExecutionLeaseCommitKind3D::kTransition,
-          .expected_authority = initial_authority,
-          .expected_plan = initial,
-          .transition = transition,
-          .expected_pending = nullptr,
-          .owner = SnapshotFixture3D::committedOwner(*transition.next, index + 1U),
-          .input = input,
-      });
+      statuses.at(index) = commitExecutionHorizonForTest(
+                               supervisor,
+                               ExecutionHorizonTestTransaction3D{
+                                   .kind = ExecutionHorizonCommitKind3D::kTransition,
+                                   .expected_authority = initial_authority,
+                                   .expected_plan = initial,
+                                   .transition = transition,
+                                   .expected_pending = nullptr,
+                                   .owner = SnapshotFixture3D::committedOwner(
+                                       *transition.next, index + 1U),
+                                   .input = input,
+                               })
+                               .status;
     });
   }
   for (std::thread& thread : threads) {
     thread.join();
   }
 
-  EXPECT_EQ(std::ranges::count(statuses, ExecutionRoutePublicationStatus3D::kPublished),
+  EXPECT_EQ(std::ranges::count(statuses, ExecutionHorizonCommitStatus3D::kCommitted),
             1);
-  EXPECT_EQ(std::ranges::count(
-                statuses, ExecutionRoutePublicationStatus3D::kStaleSnapshotVersion),
-            kThreadCount - 1U);
+  EXPECT_EQ(
+      std::ranges::count(statuses,
+                         ExecutionHorizonCommitStatus3D::kAuthorityNotCurrent) +
+          std::ranges::count(statuses, ExecutionHorizonCommitStatus3D::kLeaseRejected),
+      kThreadCount - 1U);
   EXPECT_EQ(supervisor.plan(), transition.next);
 }
 

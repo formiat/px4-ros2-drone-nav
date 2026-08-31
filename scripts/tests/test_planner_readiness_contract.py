@@ -28,6 +28,7 @@ EXECUTION_HOLDS = SOURCE / "production_mppi_node_execution_holds.cpp"
 EXECUTION_RETENTION = SOURCE / "production_mppi_node_execution_retention.cpp"
 EXECUTION_RETENTION_SERVICE = SOURCE / "execution_supervisor_3d_retention.cpp"
 EXECUTION_HOLD_SERVICE = SOURCE / "execution_supervisor_3d_hold.cpp"
+EXECUTION_HORIZON_SERVICE = SOURCE / "execution_supervisor_3d_horizon.cpp"
 EXECUTION_HOLD_TEST = PACKAGE / "tests" / "execution_supervisor_hold_3d_test.cpp"
 ROUTE_EXECUTION = SOURCE / "production_mppi_route_execution.cpp"
 OFFBOARD = SOURCE / "mppi_offboard_node.cpp"
@@ -626,6 +627,7 @@ class PlannerReadinessContractTest(unittest.TestCase):
     def test_stage2_execution_feedback_requires_live_exact_witness(self) -> None:
         inputs = INPUTS.read_text(encoding="utf-8")
         control_feedback = CONTROL_FEEDBACK.read_text(encoding="utf-8")
+        horizon_service = EXECUTION_HORIZON_SERVICE.read_text(encoding="utf-8")
         execution = read_execution_sources()
         witness = HORIZON_WITNESS.read_text(encoding="utf-8")
         contract = HORIZON_CONTRACT_ROS.read_text(encoding="utf-8")
@@ -685,8 +687,12 @@ class PlannerReadinessContractTest(unittest.TestCase):
         )[1].split(
             "std::optional<FootprintBodyAxis>", maxsplit=1
         )[0]
-        self.assertIn("source_age_ms", authority_check)
-        self.assertIn("receive_age_ms", authority_check)
+        self.assertIn("appliedControlAuthoritativeForExecution3D", authority_check)
+        service_authority_check = horizon_service.split(
+            "bool appliedControlAuthoritativeForExecution3D", maxsplit=1
+        )[1].split("const char* executionHorizonCommitStatus3DName", maxsplit=1)[0]
+        self.assertIn("source_age_ms", service_authority_check)
+        self.assertIn("receive_age_ms", service_authority_check)
 
         vehicle_status_callback = inputs.split(
             "void ProductionMppiNode::onVehicleStatus", maxsplit=1
@@ -858,6 +864,7 @@ class PlannerReadinessContractTest(unittest.TestCase):
             + EXECUTION_HOLDS.read_text(encoding="utf-8")
         )
         hold_service = EXECUTION_HOLD_SERVICE.read_text(encoding="utf-8")
+        horizon_service = EXECUTION_HORIZON_SERVICE.read_text(encoding="utf-8")
         hold_test = EXECUTION_HOLD_TEST.read_text(encoding="utf-8")
         evidence = EXECUTION_EVIDENCE_HEADER.read_text(encoding="utf-8")
         snapshot_hold = EXECUTION_SNAPSHOT_HOLD.read_text(encoding="utf-8")
@@ -923,10 +930,15 @@ class PlannerReadinessContractTest(unittest.TestCase):
             "StationaryCaptureRearmIsAnExplicitRevokedOwnerTransaction",
             hold_test,
         )
-        self.assertIn("StationaryExecutionHoldOrigin3D::kStationaryCaptureRearm", publication)
-        self.assertIn("!resident_owner.valid", publication)
-        self.assertIn("!resident_control.valid", publication)
-        self.assertIn("resident_execution_authority", publication)
+        self.assertIn(
+            "StationaryExecutionHoldOrigin3D::kStationaryCaptureRearm",
+            horizon_service,
+        )
+        self.assertIn("!resident_owner.valid", horizon_service)
+        self.assertIn("!resident_control.valid", horizon_service)
+        self.assertIn("manager_.authority()", horizon_service)
+        self.assertNotIn("stationaryCaptureRearmCommit", publication)
+        self.assertIn("kControlEvidenceNotCurrent", hold_test)
 
         self.assertIn("StationaryRearmRequiresEveryAuthorityAndEvidenceGate", gate_test)
         self.assertIn("StationaryRearmRequiresFreshExactStoppedStateAtGoal", gate_test)

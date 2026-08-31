@@ -12,6 +12,10 @@ INPUTS = SOURCE / "production_mppi_node_inputs.cpp"
 RAW_INPUT = SOURCE / "production_mppi_node_raw_input.cpp"
 PLANNING_TICK = SOURCE / "production_mppi_node_planning_tick.cpp"
 EXECUTION_PUBLICATION = SOURCE / "production_mppi_node_execution_publication.cpp"
+EXECUTION_HORIZON_SERVICE = SOURCE / "execution_supervisor_3d_horizon.cpp"
+EXECUTION_HORIZON_TEST = (
+    PACKAGE / "tests" / "execution_supervisor_horizon_3d_test.cpp"
+)
 NODE_HEADER = SOURCE / "production_mppi_node.hpp"
 RAW_2D = SOURCE / "raw_obstacle_delta.cpp"
 RAW_3D = SOURCE / "raw_obstacle_3d_ros.cpp"
@@ -229,13 +233,31 @@ class ExecutionInputContractTest(unittest.TestCase):
         commit = publication.split(
             "ProductionMppiNode::commitAndPublishExecutionHorizon", maxsplit=1
         )[1].split("ProductionMppiNode::commitExecutionSnapshotHorizon", maxsplit=1)[0]
+        horizon_service = EXECUTION_HORIZON_SERVICE.read_text(encoding="utf-8")
+        horizon_test = EXECUTION_HORIZON_TEST.read_text(encoding="utf-8")
         input_lock = commit.index("input_lock{input_mutex_}")
-        raw_currentness = commit.index("committed_world_current")
-        snapshot_commit = commit.index("switch (publication_commit.kind)")
-        self.assertLess(input_lock, raw_currentness)
-        self.assertLess(raw_currentness, snapshot_commit)
+        raw_capture = commit.index("committedRawWorldAgeMs")
+        horizon_commit = commit.index("execution_supervisor_.commitHorizon")
+        self.assertLess(input_lock, raw_capture)
+        self.assertLess(raw_capture, horizon_commit)
         self.assertIn("committedRawWorldAgeMs", commit)
-        self.assertIn("cycle.world.producer_instance_id", commit)
+        self.assertIn(".raw_world_identity_conflicted =", commit)
+        self.assertNotIn("cycle_raw_producer_instance_id", commit)
+        self.assertNotIn("raw_world_required", commit)
+        self.assertIn(
+            "rawWorldCurrent(request.runtime, expected_raw,", horizon_service
+        )
+        self.assertIn(
+            "expected_raw->version().producer_instance_id", horizon_service
+        )
+        self.assertLess(
+            horizon_service.index("rawWorldCurrent(request.runtime, expected_raw,"),
+            horizon_service.index("manager_.publishLeasedTransition"),
+        )
+        self.assertIn(
+            "RuntimeEvidenceFailureIsTypedAndLeavesAuthorityUnchanged",
+            horizon_test,
+        )
 
     def test_producer_claims_raise_exact_once_sequence_high_water(self) -> None:
         admission = PRODUCER_ADMISSION.read_text(encoding="utf-8")

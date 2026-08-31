@@ -34,8 +34,11 @@ real-aircraft operation.
 
 - `obstacle_memory_node` owns lidar ingestion, memory, and raw world snapshots.
 - `world_visualization_node` publishes static and raw world geometry.
-- `production_mppi_node` owns distance preparation, persistent full-3D routes,
-  route certification, MPPI, and atomic horizon publication.
+- `production_mppi_node` is the ROS composition root and adapter for immutable
+  world, planning, route, execution, controller, and diagnostics services.
+- `ExecutionSupervisor3D` owns pending/active execution state and the complete
+  currentness, revalidation, owner/control, and atomic horizon-commit transaction;
+  the node publishes DDS only after that transaction succeeds.
 - `mppi_offboard_node` executes fresh timestamped horizons through PX4.
 - `collision_crash_node` converts Gazebo contacts into typed physical-destruction
   events.

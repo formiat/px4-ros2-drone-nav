@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "execution_route_snapshot_3d_plan_test_support.hpp"
+#include "execution_supervisor_horizon_3d_test_support.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -32,19 +33,17 @@ installRouteOwner(ExecutionSupervisor3D& supervisor, SnapshotFixture3D& fixture)
   if (!activation.applied() || activation.next == nullptr) {
     return nullptr;
   }
-  const ExecutionRoutePublicationStatus3D publication =
-      supervisor.commitLease(ExecutionLeaseCommit3D{
-          .kind = ExecutionLeaseCommitKind3D::kTransition,
-          .expected_authority = initial_authority,
-          .expected_plan = initial,
-          .transition = activation,
-          .expected_pending = nullptr,
-          .owner = SnapshotFixture3D::committedOwner(*activation.next),
-          .input = SnapshotFixture3D::committedInput(*activation.next),
-      });
-  return publication == ExecutionRoutePublicationStatus3D::kPublished
-             ? supervisor.plan()
-             : nullptr;
+  const ExecutionHorizonCommitResult3D publication = commitExecutionHorizonForTest(
+      supervisor, ExecutionHorizonTestTransaction3D{
+                      .kind = ExecutionHorizonCommitKind3D::kTransition,
+                      .expected_authority = initial_authority,
+                      .expected_plan = initial,
+                      .transition = activation,
+                      .expected_pending = nullptr,
+                      .owner = SnapshotFixture3D::committedOwner(*activation.next),
+                      .input = SnapshotFixture3D::committedInput(*activation.next),
+                  });
+  return publication.committed() ? supervisor.plan() : nullptr;
 }
 
 [[nodiscard]] ExecutionRetentionRequest3D routeRetentionRequest(
@@ -106,17 +105,20 @@ TEST(ExecutionSupervisorRetention3DTest,
   EXPECT_EQ(prepared.actual_state_validation.status,
             mppi::FiniteExecutionPathStatus::kValid);
 
-  EXPECT_EQ(
-      supervisor.commitLease(ExecutionLeaseCommit3D{
-          .kind = ExecutionLeaseCommitKind3D::kTransition,
-          .expected_authority = prepared.expected_authority,
-          .expected_plan = prepared.expectedPlan(),
-          .transition = *prepared.transition,
-          .expected_pending = nullptr,
-          .owner = SnapshotFixture3D::committedOwner(*prepared.transition->next, 2U),
-          .input = request.execution_input,
-      }),
-      ExecutionRoutePublicationStatus3D::kPublished);
+  EXPECT_EQ(commitExecutionHorizonForTest(
+                supervisor,
+                ExecutionHorizonTestTransaction3D{
+                    .kind = ExecutionHorizonCommitKind3D::kTransition,
+                    .expected_authority = prepared.expected_authority,
+                    .expected_plan = prepared.expectedPlan(),
+                    .transition = *prepared.transition,
+                    .expected_pending = nullptr,
+                    .owner = SnapshotFixture3D::committedOwner(
+                        *prepared.transition->next, 2U),
+                    .input = request.execution_input,
+                })
+                .status,
+            ExecutionHorizonCommitStatus3D::kCommitted);
   EXPECT_EQ(supervisor.plan(), prepared.transition->next);
 }
 
@@ -189,16 +191,20 @@ TEST(ExecutionSupervisorRetention3DTest,
   ASSERT_TRUE(direct_transition.applied());
   const std::shared_ptr<const CommittedExecutionAuthority3D> route_authority =
       supervisor.authority();
-  ASSERT_EQ(supervisor.commitLease(ExecutionLeaseCommit3D{
-                .kind = ExecutionLeaseCommitKind3D::kTransition,
-                .expected_authority = route_authority,
-                .expected_plan = route_owner,
-                .transition = direct_transition,
-                .expected_pending = nullptr,
-                .owner = SnapshotFixture3D::committedOwner(*direct_transition.next, 2U),
-                .input = SnapshotFixture3D::committedInput(*direct_transition.next),
-            }),
-            ExecutionRoutePublicationStatus3D::kPublished);
+  ASSERT_EQ(
+      commitExecutionHorizonForTest(
+          supervisor,
+          ExecutionHorizonTestTransaction3D{
+              .kind = ExecutionHorizonCommitKind3D::kTransition,
+              .expected_authority = route_authority,
+              .expected_plan = route_owner,
+              .transition = direct_transition,
+              .expected_pending = nullptr,
+              .owner = SnapshotFixture3D::committedOwner(*direct_transition.next, 2U),
+              .input = SnapshotFixture3D::committedInput(*direct_transition.next),
+          })
+          .status,
+      ExecutionHorizonCommitStatus3D::kCommitted);
   const std::shared_ptr<const ExecutionPlan3D> direct_owner = supervisor.plan();
   ASSERT_NE(direct_owner, nullptr);
   ASSERT_NE(direct_owner->directTrackingExecution(), nullptr);

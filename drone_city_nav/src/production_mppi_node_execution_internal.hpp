@@ -11,28 +11,10 @@
 
 namespace drone_city_nav {
 
-enum class ProductionMppiHorizonCommitKind : std::uint8_t {
-  kPublishSnapshotTransition,
-  kConfirmSnapshotUnchanged,
-  kCommitPendingSnapshotTransition,
-};
-
 enum class ProductionMppiHorizonCommitStatus : std::uint8_t {
   kPublished,
   kDeferredResidentOwner,
   kRejected,
-};
-
-struct ProductionMppiHorizonCommit {
-  ProductionMppiHorizonCommitKind kind{
-      ProductionMppiHorizonCommitKind::kConfirmSnapshotUnchanged};
-  std::shared_ptr<const CommittedExecutionAuthority3D> expected_authority;
-  std::shared_ptr<const ExecutionPlan3D> expected_snapshot;
-  std::shared_ptr<const ExecutionPlan3D> certification_snapshot;
-  std::shared_ptr<const ExecutionRouteTransitionResult3D> progress_preparation;
-  const ExecutionRouteTransitionResult3D* transition{nullptr};
-  std::shared_ptr<const PendingCertifiedRoute3D> expected_pending;
-  bool latest_evidence_revalidated{false};
 };
 
 struct ProductionMppiExecutionCycle {

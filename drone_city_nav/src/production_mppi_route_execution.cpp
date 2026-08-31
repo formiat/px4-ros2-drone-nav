@@ -260,6 +260,7 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
     const bool observed_3d_world) {
   ProductionRouteExecutionSelection3D result{
       .route = nullptr,
+      .source_authority = nullptr,
       .source_snapshot = nullptr,
       .certification_snapshot = nullptr,
       .progress_preparation = nullptr,
@@ -284,7 +285,9 @@ ProductionRouteExecutionSelection3D ProductionMppiNode::resolveRouteExecution3D(
   };
   const RouteExecutionManagerSnapshot3D manager_snapshot =
       execution_supervisor_.snapshot();
-  result.source_snapshot = manager_snapshot.plan();
+  result.source_authority = manager_snapshot.authority;
+  result.source_snapshot =
+      result.source_authority != nullptr ? result.source_authority->plan() : nullptr;
   result.certification_snapshot = result.source_snapshot;
   result.execution_owner_available =
       result.source_snapshot != nullptr &&

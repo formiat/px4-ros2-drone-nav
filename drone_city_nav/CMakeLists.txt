@@ -303,6 +303,7 @@ add_drone_city_nav_layer(
   src/execution_route_snapshot_3d_validation.cpp
   src/execution_supervisor_3d.cpp
   src/execution_supervisor_3d_hold.cpp
+  src/execution_supervisor_3d_horizon.cpp
   src/execution_supervisor_3d_retention.cpp
   src/mission_goal_capture.cpp
   src/mission_waypoint_acknowledgement_admission.cpp
@@ -1505,6 +1506,7 @@ if(BUILD_TESTING)
     tests/execution_route_certificates_header_compile.cpp
     tests/execution_plan_header_compile.cpp
     tests/execution_hold_header_compile.cpp
+    tests/execution_horizon_commit_header_compile.cpp
     tests/execution_retention_header_compile.cpp
     tests/execution_route_certification_header_compile.cpp
     tests/execution_route_transitions_header_compile.cpp
@@ -1561,6 +1563,13 @@ if(BUILD_TESTING)
   target_link_libraries(execution_supervisor_hold_3d_test
                         drone_city_nav_execution)
   enable_project_warnings(execution_supervisor_hold_3d_test)
+
+  ament_add_gtest(execution_supervisor_horizon_3d_test
+                  tests/execution_supervisor_horizon_3d_test.cpp)
+  target_compile_features(execution_supervisor_horizon_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(execution_supervisor_horizon_3d_test
+                        drone_city_nav_execution)
+  enable_project_warnings(execution_supervisor_horizon_3d_test)
 
   ament_add_gtest(execution_evidence_3d_test
                   tests/execution_evidence_3d_test.cpp)

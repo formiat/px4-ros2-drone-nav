@@ -169,12 +169,20 @@ and unchanged-plan horizon refresh each publish one complete replacement before
 the corresponding DDS message can become visible.
 
 Production code no longer accesses the manager directly. The supervisor exposes
-one owned lease commit whose kind is transition, unchanged plan, or pending
-transition, plus narrow pending, revocation, and control-evidence operations.
-Activation commit and pending recovery use that facade. Direct tests execute all
-three lease kinds, exact pending consumption, stale-authority rejection, complete
-control-evidence replacement, and concurrent single-winner publication. The
-former Python parsing of the manager's pending-clear order has been removed.
+one owned horizon transaction whose kind is transition, unchanged plan, or
+pending transition, plus narrow pending, revocation, and control-evidence
+operations. `commitHorizon` captures the resident authority, orders runtime
+admission, validates plan/evidence/input/owner/control identity, revalidates both
+finite command and braking paths against compatible newer raw/lidar evidence,
+derives raw-world obligation and expected producer from the publication plan,
+and performs the final manager compare-and-swap. There is no lower-level public
+lease-commit bypass. The ROS adapter retains coherent runtime capture, optional
+late navigation rebase and wire encoding, locks, diagnostics, and DDS publication.
+Direct tests execute all three horizon kinds, exact pending consumption,
+same-lineage revalidation, stale-authority rejection, typed runtime failures,
+named stationary rearm, complete control-evidence replacement, and concurrent
+single-winner publication. Source checks now enforce the adapter/service
+boundary instead of parsing transaction implementation order.
 
 Retention preparation now crosses one owned `ExecutionRetentionRequest3D`.
 The supervisor captures the exact resident authority, selects route or direct
@@ -193,7 +201,8 @@ rearm, validates current raw/lidar lineage, and returns either one immutable
 transition or an exact unchanged-plan result. Preparation never mutates the
 store, and the publication commit rejects any intervening authority revision.
 The ROS adapter owns only evidence capture, intent mapping, horizon encoding,
-and the wire commit; it contains no hold certification or reducer calls. A
+and invocation of the supervisor transaction; it contains no hold certification
+or reducer calls. A
 refreshed execution input always produces a new immutable hold snapshot, while
 `kNoChange` is reserved for the exact resident input and evidence owner.
 
@@ -412,7 +421,7 @@ no mixed authority revision is observable.
   committed authority.
 - [x] Remove the test-only parallel lifecycle state and all competing lifecycle
   ownership terminology.
-- [ ] Extract world, planning, trajectory, execution, and control services from
+- [x] Extract world, planning, trajectory, execution, and control services from
   `ProductionMppiNode`; retain only composition and ROS I/O in the node.
   - [x] Extract `NavigationDiagnosticsSink` as the sole diagnostics worker,
     mailbox, file, error-context, and statistics owner.
@@ -442,7 +451,7 @@ no mixed authority revision is observable.
   - [x] Extract trajectory compilation and controller ownership.
     - [x] Extract the sole sealed trajectory-compilation service.
     - [x] Extract controller ownership.
-  - [ ] Finish the execution-service facade around the existing sole
+  - [x] Finish the execution-service facade around the existing sole
     `RouteExecutionManager3D` owner.
     - [x] Move pending sequence allocation and execution-base-checked pending
       publication into one manager transaction.
@@ -451,7 +460,7 @@ no mixed authority revision is observable.
       evidence through its typed API.
     - [x] Move retention preparation behind the facade.
     - [x] Move hold preparation behind the facade.
-    - [ ] Move the remaining horizon validation and commit orchestration behind
+    - [x] Move the remaining horizon validation and commit orchestration behind
       the facade.
 - [x] Enforce the internal dependency graph with CMake targets.
 - [x] Stop installing private implementation headers as public API.
@@ -487,9 +496,15 @@ no mixed authority revision is observable.
   resident replay, refreshed-input replacement, named stationary-capture rearm,
   stale source/raw/lidar rejection, and stale-authority commit rejection; node
   source checks now ban certification and reducer calls in the ROS adapter.
+  Supervisor horizon tests execute transition, unchanged and pending commits,
+  exact-authority loss, compatible evidence revalidation, typed raw conflict,
+  exact navigation/control witnesses, stationary-rearm assumed-zero admission,
+  and concurrent single-winner publication. The old public lease shortcut and
+  node-side currentness/revalidation/owner/CAS source-order checks have been
+  removed; remaining text checks express architectural bans and adapter ordering.
 - [x] Keep public and private headers self-contained and retain a temporary
   umbrella include only where migration compatibility requires it.
-- [ ] Pass formatting, static analysis, C++ tests, and script tests after every
+- [x] Pass formatting, static analysis, C++ tests, and script tests after every
   coherent stage.
 - [ ] Evaluate the unchanged three-run Manhattan no-static 3D-lidar gate only
   after all preceding items are complete.

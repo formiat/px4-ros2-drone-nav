@@ -587,8 +587,15 @@ produce an exact-owner emergency-braking tail. Hold preparation also enters
 through one owned request: the supervisor captures the exact authority,
 validates current raw/lidar lineage, and prepares resident refresh, terminal
 transfer, or the named revoked-owner stationary-capture rearm without mutating
-the store. Only the remaining horizon validation/commit orchestration still
-needs extraction. Pending publication is already one manager-owned transaction:
+the store. Horizon publication now crosses one owned `commitHorizon`
+transaction. The supervisor captures the exact authority, orders vehicle/raw/
+revocation/objective/navigation/offboard admission, validates the exact input,
+derives raw obligation and producer from the plan, validates policy, lidar,
+owner, and previous-control witness, revalidates command and
+braking paths against compatible newer evidence, and performs the final manager
+CAS. The ROS adapter retains only locked runtime capture, optional late rebase,
+wire encoding, diagnostics, and DDS publication; the old public low-level lease
+commit has been removed. Pending publication is already one manager-owned transaction:
 the manager validates the semantic execution base, assigns the sole monotonic
 sequence, seals the candidate, and occupies the pending slot under one lock.
 Direct tests replace the former raw-world source-order guards with executable
@@ -611,9 +618,13 @@ subsequent lease commit; policy no longer lives in the ROS adapter. The direct
 hold suite covers terminal transfer, exact unchanged replay, refreshed-input
 replacement, stationary-capture rearm, stale evidence, and stale-authority CAS.
 Hold certification and reducer calls no longer live in the ROS adapter, and its
-former source-order checks have become architectural bans. The remaining
-execution-facade extraction and other source-text
-transaction replacements remain tracked by the linked checklist.
+former source-order checks have become architectural bans. Direct horizon tests
+cover transition, unchanged and pending commits, compatible evidence
+revalidation, typed runtime failure, exact navigation/control identity,
+stationary-rearm admission, and concurrent single-winner CAS. Node source checks
+now enforce the adapter/service boundary instead of parsing the domain
+transaction. Other source-text transaction replacements remain tracked by the
+linked checklist.
 Manager-owned pending identity and atomic base validation are now covered by a
 direct executable suite instead of activation source-order parsing.
 Item 12 remains in progress until that checklist, the complete static audit,

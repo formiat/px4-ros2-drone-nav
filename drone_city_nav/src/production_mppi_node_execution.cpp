@@ -852,8 +852,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPreparedExecutionC
       commitExecutionSnapshotHorizon(
           cycle, route_execution.source_snapshot, *snapshot_transition, horizon,
           route_execution.pending_activation ? route_execution.pending_route : nullptr,
-          route_execution.certification_snapshot,
-          route_execution.progress_preparation) !=
+          route_execution.certification_snapshot, route_execution.progress_preparation,
+          route_execution.source_authority) !=
           ProductionMppiHorizonCommitStatus::kPublished) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
                          "FINITE_EXECUTION_PUBLICATION published=false "

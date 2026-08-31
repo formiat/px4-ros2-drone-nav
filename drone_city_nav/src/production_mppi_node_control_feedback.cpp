@@ -1,4 +1,5 @@
 #include "drone_city_nav/applied_control_admission.hpp"
+#include "drone_city_nav/execution_horizon_commit_3d.hpp"
 #include "drone_city_nav/execution_horizon_contract_ros.hpp"
 
 #include <cinttypes>
@@ -30,31 +31,8 @@ bool appliedControlAuthoritativeForExecution(const AppliedControlEvidence3D& con
                                              const ExecutionOwnerIdentity3D& owner,
                                              const std::int64_t now_ns,
                                              const double maximum_age_ms) noexcept {
-  if (!control.valid || !control.control_authoritative || !owner.valid ||
-      control.producer_instance_id == 0U ||
-      control.horizon_producer_instance_id == 0U ||
-      control.horizon_producer_instance_id != owner.producer_instance_id ||
-      control.producer_instance_id != owner.target_offboard_instance_id ||
-      control.execution_mode != ExecutionAuthorityMode3D::kPlanned ||
-      owner.execution_mode != ExecutionAuthorityMode3D::kPlanned ||
-      control.horizon_sequence == 0U || control.horizon_sequence != owner.sequence ||
-      control.source_stamp_ns <= 0 || control.receive_stamp_ns <= 0 || now_ns < 0 ||
-      owner.valid_from_ns <= 0 || owner.valid_until_ns <= owner.valid_from_ns ||
-      now_ns < owner.valid_from_ns || now_ns >= owner.valid_until_ns ||
-      control.source_stamp_ns < owner.valid_from_ns ||
-      control.source_stamp_ns >= owner.valid_until_ns ||
-      !std::isfinite(maximum_age_ms) || !(maximum_age_ms > 0.0)) {
-    return false;
-  }
-  const double source_age_ms =
-      static_cast<double>(now_ns - control.source_stamp_ns) * 1.0e-6;
-  const double receive_age_ms =
-      static_cast<double>(now_ns - control.receive_stamp_ns) * 1.0e-6;
-  // Simulated /clock may reach the subscriber slightly before the publisher's
-  // source stamp.  Admit only a bounded skew; a delayed or far-future ACK is
-  // still non-authoritative.
-  return std::abs(source_age_ms) <= maximum_age_ms &&
-         std::abs(receive_age_ms) <= maximum_age_ms;
+  return appliedControlAuthoritativeForExecution3D(control, owner, now_ns,
+                                                   maximum_age_ms);
 }
 
 std::optional<FootprintBodyAxis> authoritativeBodyAxisForExecution(

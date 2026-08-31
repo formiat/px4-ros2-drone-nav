@@ -100,7 +100,6 @@ class RouteActivationCoordinator3D;
 class RouteMaterializer3D;
 class MppiController3D;
 struct ProductionMppiExecutionCycle;
-struct ProductionMppiHorizonCommit;
 struct ObservedWorldBuildRequest3D;
 struct ObservedWorldEvidenceChange3D;
 struct ObservedWorldUpdate3D;
@@ -280,7 +279,7 @@ private:
   [[nodiscard]] ProductionMppiHorizonCommitStatus
   commitAndPublishExecutionHorizon(const ProductionMppiExecutionCycle& cycle,
                                    const msg::MppiTrajectoryHorizon& horizon,
-                                   const ProductionMppiHorizonCommit& commit);
+                                   ExecutionHorizonLeaseCandidate3D candidate);
   [[nodiscard]] ProductionMppiHorizonCommitStatus commitExecutionSnapshotHorizon(
       const ProductionMppiExecutionCycle& cycle,
       const std::shared_ptr<const ExecutionPlan3D>& expected,
@@ -290,8 +289,7 @@ private:
       const std::shared_ptr<const ExecutionPlan3D>& certification_snapshot,
       const std::shared_ptr<const ExecutionRouteTransitionResult3D>&
           progress_preparation,
-      const std::shared_ptr<const CommittedExecutionAuthority3D>& expected_authority =
-          nullptr);
+      const std::shared_ptr<const CommittedExecutionAuthority3D>& expected_authority);
   [[nodiscard]] std::optional<ProductionMppiExecutionPublication>
   retainActiveFinitePath(const ProductionMppiExecutionCycle& cycle,
                          ProductionMppiExecutionReason replacement_failure_reason);

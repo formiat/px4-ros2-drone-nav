@@ -242,10 +242,15 @@ The ownership model is specified in
 [`navigation_architecture_remediation.md`](navigation_architecture_remediation.md).
 `ExecutionSupervisor3D` owns the only production `RouteExecutionManager3D` and
 is the production facade for all pending, lease, revocation, and control-evidence
-mutations. Its single typed lease transaction selects transition, unchanged-plan,
-or pending-transition publication without exposing the store. The manager keeps
-a valid route sticky and owns the resident plan and pending successor under one
-lock. It publishes the resident plan together
+mutations. Its single typed horizon transaction selects transition,
+unchanged-plan, or pending-transition publication without exposing the store.
+It captures the exact authority, orders runtime admission, validates current
+world/lidar/input/owner/control evidence, revalidates finite command and braking
+paths against compatible newer evidence, and performs the final manager CAS.
+The ROS adapter owns coherent capture, optional late navigation rebase, wire
+encoding, locks, diagnostics, and DDS publication; it cannot call a lower-level
+lease commit. The manager keeps a valid route sticky and owns the resident plan
+and pending successor under one lock. It publishes the resident plan together
 with its typed horizon owner, exact immutable versioned input, and matching
 applied-control evidence as one atomic `CommittedExecutionAuthority3D` pointer.
 Pending activation is also one manager transaction: the manager validates the
@@ -257,7 +262,7 @@ the exact current authority, rebuilds and recertifies either a route or
 direct-tracking continuation, and returns an immutable prepared transition.
 Raw or lifecycle invalidation can prepare only a certified emergency-braking
 tail bound to that exact owner. The ROS adapter only encodes the prepared finite
-horizon, commits its lease, publishes DDS, and reports diagnostics.
+horizon, invokes the supervisor transaction, publishes DDS, and reports diagnostics.
 Stationary holds use the same ownership boundary. An owned request selects
 resident refresh, explicit terminal transfer, or the named stationary-capture
 rearm. The supervisor validates exact authority plus current world/lidar
@@ -508,5 +513,5 @@ scheduling.
   worker lifecycle, and `RouteMaterializer3D` owns geometric materialization and
   candidate validation. `RouteTrajectoryCompiler3D` owns exact-state trajectory
   compilation. Activation coordination and controller ownership are extracted;
-  finite-path retention and hold preparation are behind `ExecutionSupervisor3D`;
-  the remaining horizon orchestration still needs extraction.
+  finite-path retention, hold preparation, and atomic horizon validation/commit
+  are behind `ExecutionSupervisor3D`.

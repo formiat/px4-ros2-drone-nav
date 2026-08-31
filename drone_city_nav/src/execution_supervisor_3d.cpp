@@ -33,40 +33,6 @@ bool ExecutionSupervisor3D::acknowledgePendingIfSame(
   return manager_.acknowledgePendingIfSame(expected_pending);
 }
 
-ExecutionRoutePublicationStatus3D
-ExecutionSupervisor3D::commitLease(ExecutionLeaseCommit3D commit) {
-  if (commit.expected_authority == nullptr || commit.expected_plan == nullptr ||
-      !commit.expected_authority->valid() ||
-      commit.expected_authority->plan() != commit.expected_plan ||
-      !commit.owner.valid || commit.input == nullptr) {
-    return ExecutionRoutePublicationStatus3D::kInvalidCandidate;
-  }
-  switch (commit.kind) {
-    case ExecutionLeaseCommitKind3D::kTransition:
-      if (!commit.transition.has_value() || commit.expected_pending != nullptr) {
-        return ExecutionRoutePublicationStatus3D::kInvalidCandidate;
-      }
-      return manager_.publishLeasedTransition(commit.expected_authority,
-                                              *commit.transition, commit.owner,
-                                              std::move(commit.input));
-    case ExecutionLeaseCommitKind3D::kUnchangedPlan:
-      if (commit.transition.has_value() || commit.expected_pending != nullptr) {
-        return ExecutionRoutePublicationStatus3D::kInvalidCandidate;
-      }
-      return manager_.publishLeaseForUnchangedPlanIfSame(
-          commit.expected_authority, commit.expected_plan, commit.owner,
-          std::move(commit.input));
-    case ExecutionLeaseCommitKind3D::kPendingTransition:
-      if (!commit.transition.has_value() || commit.expected_pending == nullptr) {
-        return ExecutionRoutePublicationStatus3D::kInvalidCandidate;
-      }
-      return manager_.commitPendingLeasedTransition(
-          commit.expected_pending, commit.expected_authority, *commit.transition,
-          commit.owner, std::move(commit.input));
-  }
-  return ExecutionRoutePublicationStatus3D::kInvalidCandidate;
-}
-
 ExecutionRoutePublicationStatus3D ExecutionSupervisor3D::commitDetachedTransition(
     const std::shared_ptr<const CommittedExecutionAuthority3D>& expected_authority,
     const ExecutionRouteTransitionResult3D& transition) {

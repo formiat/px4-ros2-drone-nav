@@ -16,6 +16,13 @@ PLANNING_TICK_FINALIZE = SOURCE / "production_mppi_node_planning_tick_finalize.c
 EXECUTION = SOURCE / "production_mppi_node_execution.cpp"
 EXECUTION_PUBLICATION = SOURCE / "production_mppi_node_execution_publication.cpp"
 EXECUTION_HOLDS = SOURCE / "production_mppi_node_execution_holds.cpp"
+EXECUTION_HORIZON_SERVICE = SOURCE / "execution_supervisor_3d_horizon.cpp"
+EXECUTION_HORIZON_TEST = (
+    REPOSITORY
+    / "drone_city_nav"
+    / "tests"
+    / "execution_supervisor_horizon_3d_test.cpp"
+)
 PLANNER_MISSION = SOURCE / "production_mppi_node_mission.cpp"
 
 
@@ -59,38 +66,61 @@ class Stage2PlannerPublicationContractTest(unittest.TestCase):
         )[1].split(
             "ProductionMppiNode::commitExecutionSnapshotHorizon", maxsplit=1
         )[0]
+        horizon_service = EXECUTION_HORIZON_SERVICE.read_text(encoding="utf-8")
+        horizon_test = EXECUTION_HORIZON_TEST.read_text(encoding="utf-8")
         input_lock = commit.index("input_mutex_")
         request_generation = commit.index("requested_execution_revocation_.load")
-        objective_currentness = commit.index(
-            "navigation_objective_.load(std::memory_order_acquire) != cycle.objective"
-        )
-        input_freshness = commit.index("executionInputFreshAt")
-        lidar_owner = commit.index("publication_lidar")
-        lidar_freshness = commit.index("assessLatestLidarEvidenceFreshness3D")
-        raw_currentness = commit.index("committed_world_current")
-        snapshot_cas = commit.index("execution_supervisor_.commitLease")
+        objective_currentness = commit.index(".objective_current =")
+        raw_currentness = commit.index("committedRawWorldAgeMs")
+        current_lidar = commit.index("current_lidar")
+        snapshot_cas = commit.index("execution_supervisor_.commitHorizon")
         wire_publication = commit.index("execution_horizon_pub_->publish")
         for barrier in (
             request_generation,
             objective_currentness,
-            input_freshness,
-            lidar_owner,
-            lidar_freshness,
             raw_currentness,
+            current_lidar,
+            snapshot_cas,
         ):
             self.assertLess(input_lock, barrier)
-            self.assertLess(barrier, snapshot_cas)
             self.assertLess(barrier, wire_publication)
-        self.assertIn("kConfirmSnapshotUnchanged", commit)
-        self.assertIn("snapshotLidarOwner(*publication_snapshot)", commit)
+        self.assertIn(
+            "ExecutionHorizonCommitKind3D::kUnchangedPlan", horizon_service
+        )
+        self.assertIn(".current_lidar_evidence = current_lidar", commit)
         self.assertNotIn("cycle.latest_lidar_evidence", commit)
-        self.assertIn("publication_lidar->evidenceId()", commit)
-        self.assertIn("current_lidar->evidenceId()", commit)
-        self.assertIn("publication_lidar->contentFingerprint()", commit)
-        self.assertIn("current_lidar->contentFingerprint()", commit)
-        self.assertNotIn("publication_lidar != current_lidar", commit)
         self.assertIn("latest_lidar_evidence_identity_conflicted_", commit)
         self.assertIn("publication_now_ns", commit)
+        for moved_domain_gate in (
+            "assessExecutionPublicationCurrentness3D",
+            "executionInputFreshAt",
+            "snapshotLidarOwner",
+            "manager_.publishLeasedTransition",
+        ):
+            self.assertNotIn(moved_domain_gate, commit)
+            self.assertIn(moved_domain_gate, horizon_service)
+        manager_commit = horizon_service.index("manager_.publishLeasedTransition")
+        for domain_gate in (
+            "rawWorldCurrent(request.runtime, expected_raw,",
+            "!request.runtime.objective_current",
+            "assessExecutionPublicationCurrentness3D",
+            "executionInputFreshAt",
+            "publication_lidar->evidenceId()",
+            "publication_lidar->contentFingerprint()",
+        ):
+            self.assertLess(horizon_service.index(domain_gate), manager_commit)
+        self.assertIn("request.current_lidar_evidence->evidenceId()", horizon_service)
+        self.assertIn(
+            "request.current_lidar_evidence->contentFingerprint()", horizon_service
+        )
+        self.assertIn(
+            "CommitsTransitionAndUnchangedLeaseAgainstExactRuntimeEvidence",
+            horizon_test,
+        )
+        self.assertIn(
+            "RevalidatesFinitePathsWhenCurrentEvidenceAdvancesOnTheSameLineage",
+            horizon_test,
+        )
 
         self.assertNotIn("publishLegacyExecutionHorizon", publication)
         self.assertNotIn("legacy_execution_arbiter_", publication)

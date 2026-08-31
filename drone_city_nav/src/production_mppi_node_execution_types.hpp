@@ -62,6 +62,7 @@ struct ProductionMppiNonCooperativeUpdate {
 
 struct ProductionRouteExecutionSelection3D {
   std::shared_ptr<const CertifiedRouteSuffix3D> route;
+  std::shared_ptr<const CommittedExecutionAuthority3D> source_authority;
   // The resident snapshot remains the single CAS predecessor. A successful
   // progress assessment is retained only as an immutable certification base
   // and cannot become controller-visible until a complete execution plan is
