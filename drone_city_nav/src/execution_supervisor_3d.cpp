@@ -28,6 +28,14 @@ PendingRoutePublicationResult3D ExecutionSupervisor3D::publishPendingForCurrentB
                                                std::move(candidate));
 }
 
+PendingRoutePublicationResult3D ExecutionSupervisor3D::replacePendingForCurrentBase(
+    const std::shared_ptr<const ExecutionPlan3D>& expected_execution_base,
+    const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending,
+    PendingCertifiedRoute3D candidate) {
+  return manager_.replacePendingForCurrentBase(expected_execution_base,
+                                               expected_pending, std::move(candidate));
+}
+
 bool ExecutionSupervisor3D::acknowledgePendingIfSame(
     const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending) {
   return manager_.acknowledgePendingIfSame(expected_pending);

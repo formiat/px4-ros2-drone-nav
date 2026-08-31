@@ -6,6 +6,7 @@
 #include "drone_city_nav/mppi/static_route_handoff.hpp"
 #include "drone_city_nav/persistent_dstar_lite_planner_3d.hpp"
 #include "drone_city_nav/route_lifecycle_3d.hpp"
+#include "drone_city_nav/route_successor_improvement_3d.hpp"
 #include "drone_city_nav/static_route_extension.hpp"
 #include "drone_city_nav/world_snapshot_3d.hpp"
 
@@ -151,6 +152,7 @@ struct RouteAdmissionReport3D {
   CertifiedRouteReserveAssessment3D certified_reserve{};
   RouteActivationAssessment3D assessment{};
   RouteProposalReplacementAssessment3D replacement{};
+  RouteSuccessorImprovementAssessment3D successor_improvement{};
   mppi::StaticRouteHandoffResult handoff{};
   RouteSpliceCertificationResult3D splice{};
   CompiledTrajectoryValidation3D trajectory_validation{};
@@ -180,6 +182,9 @@ struct RouteAdmissionReport3D {
   bool publication_world_advanced{false};
   bool certified_pending{false};
   bool commit_assessment_performed{false};
+  bool successor_improvement_required{false};
+  bool successor_compared_to_pending{false};
+  bool pending_snapshot_current{false};
 
   [[nodiscard]] bool compiledTrajectoryValid() const noexcept;
   [[nodiscard]] bool readyForArbitration(

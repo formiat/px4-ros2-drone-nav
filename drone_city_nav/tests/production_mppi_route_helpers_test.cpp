@@ -217,6 +217,7 @@ TEST(ProductionMppiRouteHelpersTest,
       .objective_current = true,
       .raw_world_current = true,
       .execution_base_current = true,
+      .pending_current = true,
       .candidate_world_coherent = true,
   };
   EXPECT_TRUE(pendingRoutePublicationBaseCurrent3D(currentness));
@@ -234,6 +235,9 @@ TEST(ProductionMppiRouteHelpersTest,
   currentness.execution_base_current = false;
   EXPECT_FALSE(pendingRoutePublicationBaseCurrent3D(currentness));
   currentness.execution_base_current = true;
+  currentness.pending_current = false;
+  EXPECT_FALSE(pendingRoutePublicationBaseCurrent3D(currentness));
+  currentness.pending_current = true;
   currentness.candidate_world_coherent = false;
   EXPECT_FALSE(pendingRoutePublicationBaseCurrent3D(currentness));
 }

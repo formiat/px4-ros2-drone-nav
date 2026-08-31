@@ -157,6 +157,21 @@ TEST(RouteLifecycle3DTest, CertifiedSuccessorCanAppendToTheSameActiveIntent) {
   EXPECT_TRUE(assessment.replacementAllowed());
 }
 
+TEST(RouteLifecycle3DTest, MateriallyImprovedSuccessorCanReplaceTheSameIntent) {
+  const MaterializedRouteProposal3D active_proposal = persistentMissionProposal();
+  const ActivatedRouteIdentity3D active = persistentMissionActivatedRoute();
+  MaterializedRouteProposal3D replacement = active_proposal;
+  replacement.route_fingerprint += 1U;
+
+  const RouteProposalReplacementAssessment3D assessment =
+      assessRouteProposalReplacement3D(
+          &active, replacement,
+          RouteProposalReplacementObservation3D{
+              .materially_improved_point_to_point_successor = true});
+
+  EXPECT_TRUE(assessment.replacementAllowed());
+}
+
 TEST(RouteLifecycle3DTest, NewMissionEpochCanReplaceTheActiveIntent) {
   const MaterializedRouteProposal3D active_proposal = persistentMissionProposal();
   const ActivatedRouteIdentity3D active = persistentMissionActivatedRoute();

@@ -10,6 +10,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <stdexcept>
 #include <utility>
 
 #include "production_mppi_execution_control.hpp"
@@ -119,12 +120,16 @@ RouteActivationCoordinator3D::RouteActivationCoordinator3D(
     const RouteActivationCoordinatorConfig3D& config)
     : config_{config},
       trajectory_compiler_{config.trajectory_compiler} {
+  if (!config_.successor_improvement.valid()) {
+    throw std::invalid_argument{"invalid route successor improvement configuration"};
+  }
 }
 
 bool pendingRoutePublicationBaseCurrent3D(
     const PendingRoutePublicationCurrentness3D& currentness) noexcept {
   return currentness.resident_world_current && currentness.objective_current &&
-         currentness.execution_base_current && currentness.candidate_world_coherent;
+         currentness.execution_base_current && currentness.pending_current &&
+         currentness.candidate_world_coherent;
 }
 
 bool RouteAdmissionReport3D::readyForArbitration(
@@ -577,14 +582,66 @@ PreparedRouteActivation3D RouteActivationCoordinator3D::prepare(
       sameExecutionRouteBase3D(prepared.execution_base, current_execution);
   const ActivatedRouteIdentity3D* const active_identity =
       current_route != nullptr ? std::addressof(current_route->identity) : nullptr;
+  const bool safety_replan_requested =
+      transaction.replacement() &&
+      transaction.release_reason == RouteReleaseReason3D::kBlocked;
+  const bool overlap_search =
+      candidate.provenance.required_splice_base_route_instance_id.valid();
+  const PendingCertifiedRoute3D* const captured_pending =
+      snapshot.pending_route != nullptr && current_execution != nullptr &&
+              pendingCertifiedRouteEligible3D(*snapshot.pending_route,
+                                              *current_execution)
+          ? snapshot.pending_route.get()
+          : nullptr;
+  const CertifiedRouteSuffix3D* const improvement_resident =
+      captured_pending != nullptr ? std::addressof(captured_pending->route)
+                                  : current_route;
+  report.successor_compared_to_pending = captured_pending != nullptr;
+  if (improvement_resident != nullptr) {
+    const std::optional<ActiveIntent3D> resident_intent =
+        activeIntent3D(improvement_resident->identity.proposal);
+    const std::optional<ActiveIntent3D> candidate_intent =
+        activeIntent3D(materialized_proposal.identity);
+    const bool same_intent =
+        resident_intent.has_value() && candidate_intent.has_value() &&
+        sameActiveIntent3D(
+            resident_intent.value(),   // NOLINT(bugprone-unchecked-optional-access)
+            candidate_intent.value()); // NOLINT(bugprone-unchecked-optional-access)
+    const bool point_to_point_intent =
+        same_intent && !resident_intent.value_or(ActiveIntent3D{}).continuous_tracking;
+    report.successor_improvement_required =
+        point_to_point_intent && !safety_replan_requested &&
+        improvement_resident->identity.proposal.reaches_mission_goal &&
+        materialized_proposal.identity.reaches_mission_goal;
+    if (report.successor_improvement_required &&
+        improvement_resident->geometry != nullptr &&
+        improvement_resident->geometry->route != nullptr &&
+        materialized_proposal.trajectory != nullptr) {
+      const Point3 current_position{snapshot.navigation.state.x,
+                                    snapshot.navigation.state.y,
+                                    snapshot.navigation.state.z};
+      const RouteProjection3D resident_projection =
+          projectOntoRoute3DWithinStationWindow(
+              *improvement_resident->geometry->route, current_position,
+              improvement_resident->progress.station_m,
+              improvement_resident->geometry->route->back().station_m);
+      report.successor_improvement = assessRouteSuccessorImprovement3D(
+          *improvement_resident->geometry, resident_projection.station_m,
+          *materialized_proposal.trajectory, report.assessment.projection.station_m,
+          config_.successor_improvement);
+    }
+  }
+  const bool successor_improvement_cleared =
+      !report.successor_improvement_required || report.successor_improvement.accepted();
   report.replacement = assessRouteProposalReplacement3D(
       active_identity, materialized_proposal.identity,
       RouteProposalReplacementObservation3D{
-          .safety_replan_requested =
-              transaction.replacement() &&
-              transaction.release_reason == RouteReleaseReason3D::kBlocked,
+          .safety_replan_requested = safety_replan_requested,
           .continuity_preserving_successor =
-              candidate.provenance.required_splice_base_route_instance_id.valid()});
+              candidate.provenance.required_splice_base_route_instance_id.valid(),
+          .materially_improved_point_to_point_successor =
+              report.successor_improvement_required &&
+              report.successor_improvement.accepted()});
 
   const ActivatedRouteIdentity3D candidate_identity{
       .generation = candidate_generation,
@@ -634,7 +691,8 @@ PreparedRouteActivation3D RouteActivationCoordinator3D::prepare(
   const std::optional<CertifiedRouteSuffix3D> certified_route =
       report.readyForArbitration(result.proposal) && report.generation_matches &&
               report.certification_execution_base_current &&
-              report.replacement.replacementAllowed() && compiled_trajectory_valid
+              report.replacement.replacementAllowed() &&
+              successor_improvement_cleared && compiled_trajectory_valid
           ? certifyExecutionRoute3D(ExecutionRouteActivation3D{
                 .route_generation = candidate_generation,
                 .proposal = materialized_proposal.identity,
@@ -683,8 +741,6 @@ PreparedRouteActivation3D RouteActivationCoordinator3D::prepare(
           : std::nullopt;
   report.route_certified = certified_route.has_value();
 
-  const bool overlap_search =
-      candidate.provenance.required_splice_base_route_instance_id.valid();
   const bool overlap_base_matches =
       current_route != nullptr && overlap_search &&
       current_route->route_instance_id ==
@@ -759,12 +815,14 @@ RouteActivationCommitResult3D RouteActivationCoordinator3D::commit(
       !raw_validation_required || context.raw_world == snapshot.raw_world;
   bool execution_base_current =
       sameExecutionRouteBase3D(prepared.execution_base, execution_supervisor.plan());
+  bool pending_current = snapshot.pending_route == execution_supervisor.pending();
   const bool candidate_world_coherent =
       productionWorldGenerationCoherent(*candidate.world);
   report.resident_world_snapshot_current = resident_world_current;
   report.objective_snapshot_current = objective_current;
   report.raw_snapshot_current = raw_world_current;
   report.execution_base_snapshot_current = execution_base_current;
+  report.pending_snapshot_current = pending_current;
   report.candidate_world_coherent = candidate_world_coherent;
   report.snapshot_current =
       pendingRoutePublicationBaseCurrent3D(PendingRoutePublicationCurrentness3D{
@@ -772,23 +830,33 @@ RouteActivationCommitResult3D RouteActivationCoordinator3D::commit(
           .objective_current = objective_current,
           .raw_world_current = raw_world_current,
           .execution_base_current = execution_base_current,
+          .pending_current = pending_current,
           .candidate_world_coherent = candidate_world_coherent,
       });
   if (prepared.pending_draft.has_value() && report.snapshot_current) {
     const PendingRoutePublicationResult3D publication =
-        execution_supervisor.publishPendingForCurrentBase(
-            prepared.execution_base, std::move(*prepared.pending_draft));
+        snapshot.pending_route != nullptr
+            ? execution_supervisor.replacePendingForCurrentBase(
+                  prepared.execution_base, snapshot.pending_route,
+                  std::move(*prepared.pending_draft))
+            : execution_supervisor.publishPendingForCurrentBase(
+                  prepared.execution_base, std::move(*prepared.pending_draft));
     report.pending_publication_status = publication.status;
     prepared.pending_draft.reset();
     execution_base_current =
         publication.status != PendingRoutePublicationStatus3D::kStaleExecutionBase;
+    pending_current =
+        publication.status != PendingRoutePublicationStatus3D::kPendingChanged &&
+        publication.status != PendingRoutePublicationStatus3D::kPendingOccupied;
     report.execution_base_snapshot_current = execution_base_current;
+    report.pending_snapshot_current = pending_current;
     report.snapshot_current =
         pendingRoutePublicationBaseCurrent3D(PendingRoutePublicationCurrentness3D{
             .resident_world_current = resident_world_current,
             .objective_current = objective_current,
             .raw_world_current = raw_world_current,
             .execution_base_current = execution_base_current,
+            .pending_current = pending_current,
             .candidate_world_coherent = candidate_world_coherent,
         });
     published_pending = publication.published();
@@ -810,7 +878,12 @@ RouteActivationCommitResult3D RouteActivationCoordinator3D::commit(
                                     .proposal = result.proposal.identity,
                                 });
   if (!published_pending && report.candidate_validation.accepted &&
-      !report.replacement.replacementAllowed()) {
+      report.successor_improvement_required &&
+      !report.successor_improvement.accepted()) {
+    report.activation_status =
+        StaticRouteActivationStatus::kInsufficientSuccessorImprovement;
+  } else if (!published_pending && report.candidate_validation.accepted &&
+             !report.replacement.replacementAllowed()) {
     report.activation_status =
         StaticRouteActivationStatus::kEquivalentActiveSegmentRetained;
   } else if (!published_pending && report.candidate_validation.accepted &&

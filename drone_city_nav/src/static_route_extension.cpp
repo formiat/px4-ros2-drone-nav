@@ -746,6 +746,8 @@ staticRouteActivationStatusName(const StaticRouteActivationStatus status) noexce
       return "certified_splice_rejected";
     case StaticRouteActivationStatus::kEquivalentActiveSegmentRetained:
       return "equivalent_active_segment_retained";
+    case StaticRouteActivationStatus::kInsufficientSuccessorImprovement:
+      return "insufficient_successor_improvement";
   }
   return "unknown";
 }

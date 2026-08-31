@@ -526,7 +526,9 @@ The implementation order is:
    from the exact initial vehicle state into a sealed `CompiledTrajectory3D`.
 4. Replace phase plus optionals with a tagged execution variant, one pure
    reducer, one pending/active `RouteExecutionManager3D`, and one atomic
-   committed execution authority.
+   committed execution authority; seal a sample-aligned trajectory timeline and
+   gate same-intent point-to-point successors with absolute and relative
+   remaining-time hysteresis.
 5. Extract world, planning, trajectory, execution, control, and diagnostics
    services from `ProductionMppiNode` so the ROS node becomes a composition root.
 6. Enforce the resulting dependency graph with internal CMake targets, register
@@ -598,9 +600,16 @@ owner, and previous-control witness, revalidates command and
 braking paths against compatible newer evidence, and performs the final manager
 CAS. The ROS adapter retains only locked runtime capture, optional late rebase,
 wire encoding, diagnostics, and DDS publication; the old public low-level lease
-commit has been removed. Pending publication is already one manager-owned transaction:
-the manager validates the semantic execution base, assigns the sole monotonic
-sequence, seals the candidate, and occupies the pending slot under one lock.
+commit has been removed. Pending publication is already one manager-owned
+transaction: the manager validates the semantic execution base, assigns the sole
+monotonic sequence, seals the candidate, and occupies the pending slot under one
+lock. A successor admitted against a captured pending route can replace only
+that exact pointer in the same transaction. Admission compares the sealed
+arrival/departure timelines at independently projected resident and candidate
+stations and requires both 1.0 s absolute and 5% relative remaining-time
+improvement. Safety replans, new objectives, continuous-tracking updates, and
+non-comparable mission extensions retain their dedicated lifecycle rules instead
+of being forced through the optimization hysteresis.
 Direct tests replace the former raw-world source-order guards with executable
 overload, quarantine, full/incremental/reuse, throttling, exact-parent,
 publication, upload-rejection/exception fail-closed behavior, and stop

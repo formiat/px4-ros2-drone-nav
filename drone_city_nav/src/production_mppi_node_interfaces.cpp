@@ -195,6 +195,7 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
                       .passage_volume = cooperative_passage_volume_config_,
                   },
               .route_extension = static_route_extension_config_,
+              .successor_improvement = route_successor_improvement_config_,
               .flight_envelope = flight_envelope_config_,
               .route_tracking = route_tracking_policy_,
               .physical_footprint = physical_footprint_config_,

@@ -428,6 +428,24 @@ void ProductionMppiNode::processRouteSearch3D(RoutePlanningUpdateEvent3D event) 
       admission.assessment.raw_validation.suffix_validated ? "true" : "false",
       materialized.fingerprint);
 
+  if (admission.successor_improvement_required ||
+      admission.successor_compared_to_pending) {
+    const std::string_view improvement_status =
+        routeSuccessorImprovementStatus3DName(admission.successor_improvement.status);
+    RCLCPP_INFO(get_logger(),
+                "ROUTE_SUCCESSOR_IMPROVEMENT status=%.*s required=%s "
+                "resident_pending=%s resident_remaining_s=%.3f "
+                "candidate_remaining_s=%.3f absolute_improvement_s=%.3f "
+                "relative_improvement=%.6f",
+                static_cast<int>(improvement_status.size()), improvement_status.data(),
+                admission.successor_improvement_required ? "true" : "false",
+                admission.successor_compared_to_pending ? "true" : "false",
+                admission.successor_improvement.resident_remaining_time_s,
+                admission.successor_improvement.candidate_remaining_time_s,
+                admission.successor_improvement.absolute_improvement_s,
+                admission.successor_improvement.relative_improvement);
+  }
+
   if (admission.certified_pending &&
       materialized.cooperative_passage_assignments != nullptr) {
     for (const CooperativePassageAssignment& assignment :

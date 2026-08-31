@@ -126,9 +126,10 @@ converges, reports no route, or is invalidated.
 
 Owns spatial route geometry and the only executable trajectory compiler. The
 compiler receives the exact initial vehicle state and seals canonical stations,
-tangents, the time profile, tracking tube, physical fingerprint, and optional
-decorators in one immutable `CompiledTrajectory3D`. MPPI references and RViz
-projections are derived adapters, not parallel authorities.
+tangents, the time profile with sample-aligned arrival and departure times,
+tracking tube, physical fingerprint, and optional decorators in one immutable
+`CompiledTrajectory3D`. MPPI references and RViz projections are derived
+adapters, not parallel authorities.
 
 ### `nav_execution`
 
@@ -212,12 +213,16 @@ Pending-route publication no longer allocates identity in the ROS node or
 performs a check-then-publish pair. An unsealed candidate carries sequence zero;
 `RouteExecutionManager3D` atomically validates its captured semantic execution
 base, assigns the next monotonic sequence, validates and seals the route, and
-occupies the sole pending slot. Direct state-machine coverage exercises sequence
-ownership, occupied-slot rejection, externally numbered candidate rejection,
-and stale-base rejection. That executable manager suite replaces the former
-Python assertions that parsed activation-source ordering and helper bodies. The
-legacy unchecked `publishPending` entry point has been removed, including from
-test fixtures; all pending publication now crosses the same production API.
+occupies the sole pending slot. A materially better successor may replace only
+the exact pending pointer captured for its admission comparison; the same
+transaction revalidates the semantic execution base, assigns the next monotonic
+sequence, and fails closed if either resident changed. Direct state-machine
+coverage exercises sequence ownership, occupied-slot rejection, exact pending
+replacement, externally numbered candidate rejection, and stale-base rejection.
+That executable manager suite replaces the former Python assertions that parsed
+activation-source ordering and helper bodies. The legacy unchecked
+`publishPending` entry point has been removed, including from test fixtures; all
+pending publication now crosses the same production API.
 
 ### `nav_control`
 
@@ -376,12 +381,13 @@ an unconditionally empty decorator list.
 Trajectory compilation now requires one exact revisioned `VehicleState3D` and
 one route generation. `TrajectoryCompiler3D` canonicalizes the route once,
 derives one tracking tube, parameterizes one speed/time profile from the exact
-initial 3D velocity, validates the complete passage-resource graph, and is the
-only constructor of `CompiledTrajectory3D`. The sealed class is neither
-copyable nor movable; every owned collection is const. MPPI references and
-planar RViz views are derived adapters and carry no independent route identity.
-The former route compiler, execution-geometry wrappers, stored MPPI route, and
-stored 2D projection have been removed.
+initial 3D velocity, seals point-aligned arrival/departure times, validates the
+complete passage-resource graph, and is the only constructor of
+`CompiledTrajectory3D`. The sealed class is neither copyable nor movable; every
+owned collection is const. MPPI references and planar RViz views are derived
+adapters and carry no independent route identity. The former route compiler,
+execution-geometry wrappers, stored MPPI route, and stored 2D projection have
+been removed.
 
 Planner search now owns an immutable `PlannerSearchTransaction3D` containing
 the exact world publication, derived resident planner input or explicit newer
@@ -406,6 +412,10 @@ no mixed authority revision is observable.
 
 - [x] Split publishable incumbent from search progress and continue anytime
   refinement after the first feasible route.
+- [x] Compare same-intent point-to-point successors against the exact pending
+  route when present, otherwise the active route, using their sealed
+  remaining-time profiles, and require both absolute and relative improvement
+  hysteresis.
 - [x] Remove goal-altitude-first feasibility ordering and decompose the three
   planner searches behind explicit session interfaces.
 - [x] Replace the one-element production candidate set with one typed planner
@@ -458,6 +468,8 @@ no mixed authority revision is observable.
     `RouteExecutionManager3D` owner.
     - [x] Move pending sequence allocation and execution-base-checked pending
       publication into one manager transaction.
+    - [x] Replace only the exact pending route used by successor admission so a
+      final improved incumbent cannot be lost behind the first feasible route.
     - [x] Make `ExecutionSupervisor3D` the sole production manager owner and move
       activation, pending recovery, lease commits, revocation, and control
       evidence through its typed API.
@@ -484,11 +496,15 @@ no mixed authority revision is observable.
   Exact initial-state sealing, observed raw-owner binding, and fail-closed
   missing ownership have a direct `RouteTrajectoryCompiler3D` suite; the former
   source-text tracking-world binding check has been removed. Manager-owned
-  pending sequence allocation and atomic execution-base validation have a direct
-  `RouteExecutionManager3D` suite; the corresponding activation source-text
-  checks have also been removed. Exact-snapshot activation preparation,
-  supersession, occupied-slot retention, manager publication, and fail-closed
-  invalid requests have a direct `RouteActivationCoordinator3D` suite.
+  pending sequence allocation, atomic execution-base validation, and exact
+  pending replacement have a direct `RouteExecutionManager3D` suite; the
+  corresponding activation source-text checks have also been removed. A pure
+  successor policy suite verifies sample-aligned remaining-time comparison and
+  both hysteresis thresholds. Exact-snapshot activation preparation,
+  supersession, pending-slot retention, manager publication, materially
+  improved active and pending successors, dual-threshold retention, and
+  fail-closed invalid requests have a direct `RouteActivationCoordinator3D`
+  suite.
   Supervisor lease kinds, exact pending consumption, stale CAS, control-evidence
   replacement, and concurrent publication now have a direct
   `ExecutionSupervisor3D` suite; manager pending-clear source-order parsing has

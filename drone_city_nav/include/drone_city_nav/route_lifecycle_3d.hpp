@@ -117,6 +117,7 @@ struct RouteProposalReplacementObservation3D {
   double mission_target_tolerance_m{1.0e-6};
   bool safety_replan_requested{false};
   bool continuity_preserving_successor{false};
+  bool materially_improved_point_to_point_successor{false};
 };
 
 struct RouteProposalReplacementAssessment3D {

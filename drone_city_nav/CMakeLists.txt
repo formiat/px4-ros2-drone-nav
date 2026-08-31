@@ -319,6 +319,7 @@ add_drone_city_nav_layer(
   src/route_execution_manager_3d.cpp
   src/route_lifecycle_3d.cpp
   src/route_progress_3d.cpp
+  src/route_successor_improvement_3d.cpp
   src/vehicle_destruction_disarm_lifecycle.cpp)
 target_link_libraries(drone_city_nav_execution PUBLIC drone_city_nav_trajectory)
 
@@ -1490,6 +1491,12 @@ if(BUILD_TESTING)
   target_compile_features(route_lifecycle_3d_test PRIVATE cxx_std_20)
   target_link_libraries(route_lifecycle_3d_test drone_city_nav_core)
   enable_project_warnings(route_lifecycle_3d_test)
+
+  ament_add_gtest(route_successor_improvement_3d_test
+                  tests/route_successor_improvement_3d_test.cpp)
+  target_compile_features(route_successor_improvement_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(route_successor_improvement_3d_test drone_city_nav_core)
+  enable_project_warnings(route_successor_improvement_3d_test)
 
   ament_add_gtest(trajectory_compiler_3d_test tests/trajectory_compiler_3d_test.cpp)
   target_compile_features(trajectory_compiler_3d_test PRIVATE cxx_std_20)

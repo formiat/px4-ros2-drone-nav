@@ -388,6 +388,8 @@ production_mppi_node:
     route_extension_retry_progress_m: 15.0
     route_extension_retry_interval_s: 1.0
     route_extension_minimum_endpoint_improvement_m: 5.0
+    route_successor_minimum_time_improvement_s: 1.0
+    route_successor_minimum_time_improvement_ratio: 0.05
     route_splice_sample_step_m: 0.5
     route_splice_maximum_position_separation_m: 2.0
     route_splice_minimum_tangent_alignment: 0.5

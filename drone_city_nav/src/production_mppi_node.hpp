@@ -50,6 +50,7 @@
 #include "drone_city_nav/route_lifecycle_3d.hpp"
 #include "drone_city_nav/route_planning_3d.hpp"
 #include "drone_city_nav/route_progress_3d.hpp"
+#include "drone_city_nav/route_successor_improvement_3d.hpp"
 #include "drone_city_nav/static_route_extension.hpp"
 #include "drone_city_nav/static_route_geometry.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
@@ -407,6 +408,7 @@ private:
   PassageTraversalEvidenceTracker passage_traversal_evidence_tracker_{};
   PassageGeometryEvidenceTracker passage_geometry_evidence_tracker_{};
   StaticRouteExtensionConfig static_route_extension_config_{};
+  RouteSuccessorImprovementConfig3D route_successor_improvement_config_{};
   FutureRouteConnectorConfig3D future_route_connector_config_{};
   CertifiedRouteSpliceConfig3D certified_route_splice_config_{};
   StaticRouteSearchRetryConfig static_route_search_retry_config_{};

@@ -32,6 +32,11 @@ public:
       const std::shared_ptr<const ExecutionPlan3D>& expected_execution_base,
       PendingCertifiedRoute3D candidate);
 
+  [[nodiscard]] PendingRoutePublicationResult3D replacePendingForCurrentBase(
+      const std::shared_ptr<const ExecutionPlan3D>& expected_execution_base,
+      const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending,
+      PendingCertifiedRoute3D candidate);
+
   [[nodiscard]] bool acknowledgePendingIfSame(
       const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending);
 

@@ -78,8 +78,10 @@ RouteExecutionManagerSnapshot3D::plan() const noexcept {
 }
 
 bool RouteExecutionManagerSnapshot3D::valid() const noexcept {
-  return authority != nullptr && authority->valid() &&
-         (pending == nullptr || pending->valid());
+  const std::shared_ptr<const ExecutionPlan3D> execution = plan();
+  return authority != nullptr && authority->valid() && execution != nullptr &&
+         (pending == nullptr ||
+          (pending->valid() && pendingCertifiedRouteEligible3D(*pending, *execution)));
 }
 
 RouteExecutionManager3D::RouteExecutionManager3D() {
@@ -297,6 +299,59 @@ PendingRoutePublicationResult3D RouteExecutionManager3D::publishPendingForCurren
   last_accepted_pending_sequence_ = sealed->publication_sequence;
   return {
       .status = PendingRoutePublicationStatus3D::kPublished,
+      .pending = std::move(sealed),
+  };
+}
+
+PendingRoutePublicationResult3D RouteExecutionManager3D::replacePendingForCurrentBase(
+    const std::shared_ptr<const ExecutionPlan3D>& expected_execution_base,
+    const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending,
+    PendingCertifiedRoute3D candidate) {
+  if (expected_pending == nullptr || candidate.publication_sequence != 0U) {
+    return {
+        .status = PendingRoutePublicationStatus3D::kInvalidCandidate,
+        .pending = nullptr,
+    };
+  }
+
+  const std::scoped_lock lock{mutex_};
+  const std::shared_ptr<const CommittedExecutionAuthority3D> current_authority =
+      authority_.load(std::memory_order_acquire);
+  const std::shared_ptr<const ExecutionPlan3D> current_execution =
+      current_authority != nullptr ? current_authority->plan() : nullptr;
+  if (!sameExecutionRouteBase3D(expected_execution_base, current_execution)) {
+    return {
+        .status = PendingRoutePublicationStatus3D::kStaleExecutionBase,
+        .pending = nullptr,
+    };
+  }
+  if (pending_ != expected_pending) {
+    return {
+        .status = PendingRoutePublicationStatus3D::kPendingChanged,
+        .pending = nullptr,
+    };
+  }
+  if (last_accepted_pending_sequence_ == std::numeric_limits<std::uint64_t>::max()) {
+    return {
+        .status = PendingRoutePublicationStatus3D::kSequenceExhausted,
+        .pending = nullptr,
+    };
+  }
+
+  candidate.publication_sequence = last_accepted_pending_sequence_ + 1U;
+  auto sealed = std::make_shared<const PendingCertifiedRoute3D>(std::move(candidate));
+  if (!sealed->valid() || current_execution == nullptr ||
+      !pendingCertifiedRouteEligible3D(*expected_pending, *current_execution) ||
+      !pendingCertifiedRouteEligible3D(*sealed, *current_execution)) {
+    return {
+        .status = PendingRoutePublicationStatus3D::kInvalidCandidate,
+        .pending = nullptr,
+    };
+  }
+  pending_ = sealed;
+  last_accepted_pending_sequence_ = sealed->publication_sequence;
+  return {
+      .status = PendingRoutePublicationStatus3D::kReplaced,
       .pending = std::move(sealed),
   };
 }

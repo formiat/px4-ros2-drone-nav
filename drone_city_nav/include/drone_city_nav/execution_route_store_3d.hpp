@@ -20,8 +20,10 @@ enum class ExecutionRoutePublicationStatus3D : std::uint8_t {
 
 enum class PendingRoutePublicationStatus3D : std::uint8_t {
   kPublished,
+  kReplaced,
   kInvalidCandidate,
   kStaleExecutionBase,
+  kPendingChanged,
   kPendingOccupied,
   kSequenceExhausted,
 };
@@ -32,7 +34,9 @@ struct PendingRoutePublicationResult3D {
   std::shared_ptr<const PendingCertifiedRoute3D> pending;
 
   [[nodiscard]] bool published() const noexcept {
-    return status == PendingRoutePublicationStatus3D::kPublished && pending != nullptr;
+    return (status == PendingRoutePublicationStatus3D::kPublished ||
+            status == PendingRoutePublicationStatus3D::kReplaced) &&
+           pending != nullptr;
   }
 };
 
@@ -97,6 +101,14 @@ public:
   // zero; callers cannot reserve or publish a sequence independently.
   [[nodiscard]] PendingRoutePublicationResult3D publishPendingForCurrentBase(
       const std::shared_ptr<const ExecutionPlan3D>& expected_execution_base,
+      PendingCertifiedRoute3D candidate);
+
+  // Replaces only the exact pending identity captured with the same semantic
+  // execution base. Sequence allocation, candidate validation, and the pointer
+  // swap are one transaction; a concurrent consume or replacement wins cleanly.
+  [[nodiscard]] PendingRoutePublicationResult3D replacePendingForCurrentBase(
+      const std::shared_ptr<const ExecutionPlan3D>& expected_execution_base,
+      const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending,
       PendingCertifiedRoute3D candidate);
 
   [[nodiscard]] bool acknowledgePendingIfSame(

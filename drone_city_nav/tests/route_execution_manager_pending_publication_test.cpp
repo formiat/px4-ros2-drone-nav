@@ -14,6 +14,8 @@ TEST(RouteExecutionManagerPendingPublicationTest,
   SnapshotFixture3D fixture;
   const std::optional<CertifiedRouteSuffix3D> suffix = fixture.certify();
   ASSERT_TRUE(suffix.has_value());
+  const CertifiedRouteSuffix3D& certified =
+      suffix.value(); // NOLINT(bugprone-unchecked-optional-access)
   RouteExecutionManager3D manager;
   const std::shared_ptr<const ExecutionPlan3D> expected_base = manager.plan();
   ASSERT_NE(expected_base, nullptr);
@@ -28,7 +30,7 @@ TEST(RouteExecutionManagerPendingPublicationTest,
         .base_continuity_id = 0U,
         .base_direct_tracking_identity = std::nullopt,
         .route_splice = std::nullopt,
-        .route = *suffix,
+        .route = certified,
     };
   };
 
@@ -65,6 +67,48 @@ TEST(RouteExecutionManagerPendingPublicationTest,
   EXPECT_EQ(manager.publishPendingForCurrentBase(stale_base, draft()).status,
             PendingRoutePublicationStatus3D::kStaleExecutionBase);
   EXPECT_EQ(manager.pending(), nullptr);
+}
+
+TEST(RouteExecutionManagerPendingPublicationTest,
+     ReplacesOnlyTheExactPendingAndPreservesMonotonicSequence) {
+  SnapshotFixture3D fixture;
+  const std::optional<CertifiedRouteSuffix3D> suffix = fixture.certify();
+  ASSERT_TRUE(suffix.has_value());
+  const CertifiedRouteSuffix3D& certified =
+      suffix.value(); // NOLINT(bugprone-unchecked-optional-access)
+  RouteExecutionManager3D manager;
+  const std::shared_ptr<const ExecutionPlan3D> expected_base = manager.plan();
+  ASSERT_NE(expected_base, nullptr);
+  const auto draft = [&] {
+    return PendingCertifiedRoute3D{
+        .publication_sequence = 0U,
+        .base_execution_owner_epoch = expected_base->execution_owner_epoch,
+        .base_kind = PendingExecutionBaseKind3D::kEmpty,
+        .base_route_generation = 0U,
+        .base_geometry_revision = 0U,
+        .base_continuity_id = 0U,
+        .base_direct_tracking_identity = std::nullopt,
+        .route_splice = std::nullopt,
+        .route = certified,
+    };
+  };
+  const PendingRoutePublicationResult3D first =
+      manager.publishPendingForCurrentBase(expected_base, draft());
+  ASSERT_TRUE(first.published());
+
+  const PendingRoutePublicationResult3D replaced =
+      manager.replacePendingForCurrentBase(expected_base, first.pending, draft());
+  ASSERT_TRUE(replaced.published());
+  EXPECT_EQ(replaced.status, PendingRoutePublicationStatus3D::kReplaced);
+  ASSERT_NE(replaced.pending, nullptr);
+  EXPECT_EQ(replaced.pending->publication_sequence, 2U);
+  EXPECT_EQ(manager.pending(), replaced.pending);
+  EXPECT_FALSE(manager.acknowledgePendingIfSame(first.pending));
+
+  const PendingRoutePublicationResult3D stale =
+      manager.replacePendingForCurrentBase(expected_base, first.pending, draft());
+  EXPECT_EQ(stale.status, PendingRoutePublicationStatus3D::kPendingChanged);
+  EXPECT_EQ(manager.pending(), replaced.pending);
 }
 
 TEST(RouteExecutionManagerPendingPublicationTest,

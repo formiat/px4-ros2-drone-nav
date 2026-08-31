@@ -38,6 +38,10 @@ void ProductionMppiNode::configureStaticRouteExtension(
       declare_parameter<double>("route_extension_retry_interval_s", 1.0);
   static_route_extension_config_.minimum_endpoint_improvement_m =
       declare_parameter<double>("route_extension_minimum_endpoint_improvement_m", 5.0);
+  route_successor_improvement_config_.minimum_absolute_improvement_s =
+      declare_parameter<double>("route_successor_minimum_time_improvement_s", 1.0);
+  route_successor_improvement_config_.minimum_relative_improvement =
+      declare_parameter<double>("route_successor_minimum_time_improvement_ratio", 0.05);
   future_route_connector_config_.tangent_departure_length_m =
       declare_parameter<double>("route_connector_departure_m", 0.5);
   future_route_connector_config_.successor_join_station_m =
@@ -67,10 +71,12 @@ void ProductionMppiNode::configureStaticRouteExtension(
   certified_route_splice_config_.activation_station_tolerance_m =
       declare_parameter<double>("route_splice_activation_station_tolerance_m", 1.0);
   if (!staticRouteExtensionConfigValid(static_route_extension_config_) ||
+      !route_successor_improvement_config_.valid() ||
       !futureRouteConnectorConfig3DValid(future_route_connector_config_) ||
       !certifiedRouteSpliceConfig3DValid(certified_route_splice_config_)) {
     throw std::invalid_argument{
-        "invalid static route extension, connector, or certified splice configuration"};
+        "invalid route extension, successor hysteresis, connector, or certified "
+        "splice configuration"};
   }
 }
 

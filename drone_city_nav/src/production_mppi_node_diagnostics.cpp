@@ -163,6 +163,20 @@ void ProductionMppiNode::processDiagnostics(
        << certifiedRouteReserveInfoFields(admission)
        << trackingErrorTubeInfoFields(execution_route) << " static_route_activation="
        << staticRouteActivationStatusName(admission.activation_status)
+       << " route_successor_improvement="
+       << routeSuccessorImprovementStatus3DName(admission.successor_improvement.status)
+       << " route_successor_improvement_required="
+       << (admission.successor_improvement_required ? "true" : "false")
+       << " route_successor_compared_to_pending="
+       << (admission.successor_compared_to_pending ? "true" : "false")
+       << " route_successor_resident_remaining_s="
+       << finiteOrNegative(admission.successor_improvement.resident_remaining_time_s)
+       << " route_successor_candidate_remaining_s="
+       << finiteOrNegative(admission.successor_improvement.candidate_remaining_time_s)
+       << " route_successor_absolute_improvement_s="
+       << admission.successor_improvement.absolute_improvement_s
+       << " route_successor_relative_improvement="
+       << admission.successor_improvement.relative_improvement
        << " static_route_publication_status="
        << routePublicationStatus3DName(admission.assessment.publication.status)
        << " static_route_world_compatible="
@@ -505,6 +519,20 @@ void ProductionMppiNode::processDiagnostics(
         << trackingErrorTubeJsonFields(execution_route)
         << ",\"static_route_activation\":\""
         << staticRouteActivationStatusName(admission.activation_status) << '"'
+        << ",\"route_successor_improvement\":\""
+        << routeSuccessorImprovementStatus3DName(admission.successor_improvement.status)
+        << '"' << ",\"route_successor_improvement_required\":"
+        << (admission.successor_improvement_required ? "true" : "false")
+        << ",\"route_successor_compared_to_pending\":"
+        << (admission.successor_compared_to_pending ? "true" : "false")
+        << ",\"route_successor_resident_remaining_s\":"
+        << finiteOrNegative(admission.successor_improvement.resident_remaining_time_s)
+        << ",\"route_successor_candidate_remaining_s\":"
+        << finiteOrNegative(admission.successor_improvement.candidate_remaining_time_s)
+        << ",\"route_successor_absolute_improvement_s\":"
+        << admission.successor_improvement.absolute_improvement_s
+        << ",\"route_successor_relative_improvement\":"
+        << admission.successor_improvement.relative_improvement
         << ",\"static_route_publication_status\":\""
         << routePublicationStatus3DName(admission.assessment.publication.status) << '"'
         << ",\"static_route_world_compatible\":"

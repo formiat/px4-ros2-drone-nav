@@ -246,6 +246,7 @@ RouteProposalReplacementAssessment3D assessRouteProposalReplacement3D(
     // Route/world certification and the finite current-state handoff remain
     // mandatory before this replacement can be published.
     if (observation.continuity_preserving_successor ||
+        observation.materially_improved_point_to_point_successor ||
         observation.safety_replan_requested) {
       return {};
     }

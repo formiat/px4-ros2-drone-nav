@@ -23,6 +23,7 @@ namespace drone_city_nav {
 struct ProductionRouteActivationSnapshot3D {
   std::shared_ptr<const WorldSnapshot3D> resident_world;
   std::shared_ptr<const CommittedExecutionAuthority3D> execution_authority;
+  std::shared_ptr<const PendingCertifiedRoute3D> pending_route;
   ProductionMppiNavigation navigation{};
   std::shared_ptr<const ProductionNavigationObjective> objective;
   std::shared_ptr<const ProductionMppiRawWorld3D> raw_world;
@@ -36,6 +37,7 @@ struct PendingRoutePublicationCurrentness3D {
   bool objective_current{false};
   bool raw_world_current{false};
   bool execution_base_current{false};
+  bool pending_current{false};
   bool candidate_world_coherent{false};
 };
 
@@ -49,6 +51,7 @@ struct PendingRoutePublicationCurrentness3D {
 struct RouteActivationCoordinatorConfig3D {
   RouteTrajectoryCompilerConfig3D trajectory_compiler{};
   StaticRouteExtensionConfig route_extension{};
+  RouteSuccessorImprovementConfig3D successor_improvement{};
   FlightEnvelopeConfig flight_envelope{};
   RouteTrackingPolicy3D route_tracking{};
   SweptFootprintConfig physical_footprint{};

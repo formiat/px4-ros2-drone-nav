@@ -7,6 +7,8 @@
 #include <utility>
 #include <vector>
 
+#include "execution_route_snapshot_3d_plan_test_support.hpp"
+#include "execution_supervisor_horizon_3d_test_support.hpp"
 #include "production_mppi_route_world.hpp"
 #include "route_activation_coordinator_3d.hpp"
 
@@ -61,11 +63,18 @@ staticWorld(const std::uint64_t generation = 3U) {
   return world;
 }
 
-[[nodiscard]] RouteActivationCoordinatorConfig3D coordinatorConfig() {
+[[nodiscard]] RouteActivationCoordinatorConfig3D
+coordinatorConfig(const double cruise_speed_mps = 3.0) {
   RouteActivationCoordinatorConfig3D config;
   config.route_tracking.maximum_cross_track_m = 2.0;
-  config.cruise_speed_mps = 3.0;
+  config.route_extension.minimum_remaining_m = 1.0;
+  config.route_extension.required_certified_overlap_m = 1.0;
+  config.cruise_speed_mps = cruise_speed_mps;
   config.maximum_control_feedback_age_ms = 1000.0;
+  // The shared finite-execution fixture uses a symmetric acceleration profile.
+  // Zero drag keeps that profile terminally stationary when a pending route is
+  // promoted to active in the successor-handoff test.
+  config.mppi.dynamics.linear_drag_1ps = 0.0F;
   config.trajectory_compiler.trajectory.unconstrained_speed_mps =
       config.cruise_speed_mps;
   config.trajectory_compiler.trajectory.physical_footprint = config.physical_footprint;
@@ -80,7 +89,8 @@ staticWorld(const std::uint64_t generation = 3U) {
 }
 
 [[nodiscard]] ActivationFixture3D
-activationFixture(const ExecutionSupervisor3D& supervisor) {
+activationFixture(const ExecutionSupervisor3D& supervisor,
+                  const bool continuous_tracking = false) {
   ActivationFixture3D fixture;
   fixture.world = staticWorld();
   const Point3 start{3.5, 3.5, 5.0};
@@ -89,6 +99,10 @@ activationFixture(const ExecutionSupervisor3D& supervisor) {
       .goal = goal,
       .mission_epoch = 7U,
       .sample_sequence = 1U,
+      .assignment_generation = continuous_tracking ? 2U : 0U,
+      .target_detection_id = continuous_tracking ? 3U : 0U,
+      .target_track_id = continuous_tracking ? 4U : 0U,
+      .continuous_tracking = continuous_tracking,
       .available = true,
   };
   fixture.transaction = makePlannerSearchTransaction3D(
@@ -103,9 +117,17 @@ activationFixture(const ExecutionSupervisor3D& supervisor) {
           .tracking = std::nullopt,
           .mission_epoch = route_objective.mission_epoch,
           .sample_sequence = route_objective.sample_sequence,
+          .assignment_generation = route_objective.assignment_generation,
+          .target_detection_id = route_objective.target_detection_id,
+          .target_track_id = route_objective.target_track_id,
+          .continuous_tracking = continuous_tracking,
       });
   auto route = std::make_shared<const std::vector<RouteSample3D>>(
       sampleRoute3D(std::vector<Point3>{start, goal}, 0.5, 3.0));
+  const RouteExecutionManagerSnapshot3D execution = supervisor.snapshot();
+  const std::shared_ptr<const ExecutionPlan3D> execution_plan = execution.plan();
+  const std::uint64_t candidate_generation =
+      execution_plan != nullptr ? execution_plan->routeGenerationHighWater() + 1U : 0U;
   fixture.materialization.route = MaterializedRoute3D{
       .world = fixture.world,
       .objective = route_objective,
@@ -133,7 +155,7 @@ activationFixture(const ExecutionSupervisor3D& supervisor) {
           std::make_shared<const std::vector<CooperativePassageAssignment>>(),
       .selected_passage_traversal_ids =
           std::make_shared<const std::vector<PassageTraversalId>>(),
-      .candidate_generation = 1U,
+      .candidate_generation = candidate_generation,
       .fingerprint = routeFingerprint(*route),
       .reaches_mission_goal = true,
       .planner_executable = true,
@@ -144,7 +166,8 @@ activationFixture(const ExecutionSupervisor3D& supervisor) {
   };
   fixture.snapshot = ProductionRouteActivationSnapshot3D{
       .resident_world = fixture.world,
-      .execution_authority = supervisor.authority(),
+      .execution_authority = execution.authority,
+      .pending_route = execution.pending,
       .navigation =
           ProductionMppiNavigation{
               .state =
@@ -165,6 +188,37 @@ activationFixture(const ExecutionSupervisor3D& supervisor) {
       .stamp_ns = 100,
   };
   return fixture;
+}
+
+void activatePending(ExecutionSupervisor3D& supervisor) {
+  const std::shared_ptr<const PendingCertifiedRoute3D> pending = supervisor.pending();
+  const std::shared_ptr<const CommittedExecutionAuthority3D> authority =
+      supervisor.authority();
+  ASSERT_NE(pending, nullptr);
+  ASSERT_NE(authority, nullptr);
+  const std::shared_ptr<const ExecutionPlan3D> plan = authority->plan();
+  ASSERT_NE(plan, nullptr);
+  FiniteExecutionPlan3D finite = SnapshotFixture3D::finitePlanForRoute(
+      *plan, pending->route, FiniteExecutionKind3D::kNominal, 100U);
+  const ExecutionRouteTransitionResult3D transition =
+      ::drone_city_nav::activateCertifiedRoute3D(*plan, plan->version, pending->route,
+                                                 std::move(finite));
+  ASSERT_TRUE(transition.applied());
+  ASSERT_NE(transition.next, nullptr);
+  const ExecutionHorizonCommitResult3D committed = commitExecutionHorizonForTest(
+      supervisor, ExecutionHorizonTestTransaction3D{
+                      .kind = ExecutionHorizonCommitKind3D::kPendingTransition,
+                      .expected_authority = authority,
+                      .expected_plan = plan,
+                      .transition = transition,
+                      .expected_pending = pending,
+                      .owner = SnapshotFixture3D::committedOwner(*transition.next),
+                      .input = SnapshotFixture3D::committedInput(*transition.next),
+                  });
+  ASSERT_EQ(committed.status, ExecutionHorizonCommitStatus3D::kCommitted);
+  ASSERT_NE(supervisor.plan(), nullptr);
+  ASSERT_NE(supervisor.plan()->route(), nullptr);
+  ASSERT_EQ(supervisor.pending(), nullptr);
 }
 
 [[nodiscard]] PreparedRouteActivation3D
@@ -252,7 +306,7 @@ TEST(RouteActivationCoordinator3DTest, RejectsSupersededWorldBeforePendingPublic
 }
 
 TEST(RouteActivationCoordinator3DTest,
-     ReportsOccupiedCommitWithoutDisplacingTheResidentPendingRoute) {
+     RejectsPreparationSupersededByAResidentPendingRoute) {
   ExecutionSupervisor3D supervisor;
   RouteActivationCoordinator3D coordinator{coordinatorConfig()};
   PreparedRouteActivation3D first = prepare(coordinator, activationFixture(supervisor));
@@ -269,17 +323,150 @@ TEST(RouteActivationCoordinator3DTest,
   const RouteActivationCommitResult3D committed =
       coordinator.commit(std::move(second), second_context, supervisor);
 
-  const auto& publication_status =
-      committed.result.admission.pending_publication_status;
-  if (!publication_status.has_value()) {
-    FAIL() << "occupied commit did not report the manager publication status";
+  EXPECT_FALSE(committed.result.admission.pending_snapshot_current);
+  EXPECT_FALSE(committed.result.admission.snapshot_current);
+  EXPECT_FALSE(committed.result.admission.pending_publication_status.has_value());
+  EXPECT_EQ(committed.result.admission.activation_status,
+            StaticRouteActivationStatus::kActivationSnapshotSuperseded);
+  EXPECT_EQ(supervisor.pending(), resident);
+}
+
+TEST(RouteActivationCoordinator3DTest,
+     AtomicallyReplacesPendingWithAMateriallyFasterIncumbent) {
+  ExecutionSupervisor3D supervisor;
+  RouteActivationCoordinator3D slow_coordinator{coordinatorConfig(0.5)};
+  PreparedRouteActivation3D slow =
+      prepare(slow_coordinator, activationFixture(supervisor));
+  const RouteActivationCommitContext3D slow_context = commitContext(slow);
+  const RouteActivationCommitResult3D slow_committed =
+      slow_coordinator.commit(std::move(slow), slow_context, supervisor);
+  ASSERT_TRUE(slow_committed.result.admission.certified_pending);
+  const std::shared_ptr<const PendingCertifiedRoute3D> resident = supervisor.pending();
+  ASSERT_NE(resident, nullptr);
+
+  RouteActivationCoordinator3D fast_coordinator{coordinatorConfig(3.0)};
+  PreparedRouteActivation3D fast =
+      prepare(fast_coordinator, activationFixture(supervisor));
+  ASSERT_TRUE(fast.result.admission.successor_improvement_required);
+  ASSERT_TRUE(fast.result.admission.successor_compared_to_pending);
+  ASSERT_TRUE(fast.result.admission.successor_improvement.accepted());
+  ASSERT_TRUE(fast.pending_draft.has_value());
+  const RouteActivationCommitContext3D fast_context = commitContext(fast);
+  const RouteActivationCommitResult3D fast_committed =
+      fast_coordinator.commit(std::move(fast), fast_context, supervisor);
+
+  ASSERT_TRUE(fast_committed.result.admission.pending_publication_status.has_value());
+  EXPECT_EQ(fast_committed.result.admission.pending_publication_status.value_or(
+                PendingRoutePublicationStatus3D::kInvalidCandidate),
+            PendingRoutePublicationStatus3D::kReplaced);
+  EXPECT_TRUE(fast_committed.result.admission.certified_pending);
+  ASSERT_NE(supervisor.pending(), nullptr);
+  EXPECT_NE(supervisor.pending(), resident);
+  EXPECT_EQ(supervisor.pending()->publication_sequence, 2U);
+}
+
+TEST(RouteActivationCoordinator3DTest,
+     RetainsPendingWhenEitherImprovementThresholdIsNotCleared) {
+  ExecutionSupervisor3D supervisor;
+  RouteActivationCoordinator3D coordinator{coordinatorConfig()};
+  PreparedRouteActivation3D first = prepare(coordinator, activationFixture(supervisor));
+  const RouteActivationCommitContext3D first_context = commitContext(first);
+  static_cast<void>(coordinator.commit(std::move(first), first_context, supervisor));
+  const std::shared_ptr<const PendingCertifiedRoute3D> resident = supervisor.pending();
+  ASSERT_NE(resident, nullptr);
+
+  PreparedRouteActivation3D equivalent =
+      prepare(coordinator, activationFixture(supervisor));
+  EXPECT_TRUE(equivalent.result.admission.successor_improvement_required);
+  EXPECT_TRUE(equivalent.result.admission.successor_compared_to_pending);
+  EXPECT_FALSE(equivalent.result.admission.successor_improvement.accepted());
+  EXPECT_EQ(equivalent.result.admission.successor_improvement.status,
+            RouteSuccessorImprovementStatus3D::kInsufficientAbsoluteImprovement);
+  EXPECT_FALSE(equivalent.pending_draft.has_value());
+  const RouteActivationCommitContext3D equivalent_context = commitContext(equivalent);
+  const RouteActivationCommitResult3D committed =
+      coordinator.commit(std::move(equivalent), equivalent_context, supervisor);
+
+  EXPECT_EQ(committed.result.admission.activation_status,
+            StaticRouteActivationStatus::kInsufficientSuccessorImprovement);
+  EXPECT_EQ(supervisor.pending(), resident);
+}
+
+TEST(RouteActivationCoordinator3DTest,
+     KeepsContinuousTrackingOutsidePointToPointHysteresis) {
+  ExecutionSupervisor3D supervisor;
+  RouteActivationCoordinator3D coordinator{coordinatorConfig()};
+  PreparedRouteActivation3D first =
+      prepare(coordinator, activationFixture(supervisor, true));
+  ASSERT_TRUE(first.pending_draft.has_value())
+      << "candidate="
+      << staticRouteCandidateStatusName(
+             first.result.admission.candidate_validation.status)
+      << " reserve="
+      << certifiedRouteReserveStatus3DName(
+             first.result.admission.certified_reserve.status)
+      << " trajectory="
+      << compiledTrajectoryFailureReason3DName(
+             first.result.admission.trajectory_validation.reason)
+      << " assessment=" << first.result.admission.assessment.accepted()
+      << " handoff=" << first.result.admission.handoff.accepted
+      << " replacement=" << first.result.admission.replacement.replacementAllowed()
+      << " generation=" << first.result.admission.generation_matches
+      << " certified=" << first.result.admission.route_certified;
+  const RouteActivationCommitContext3D first_context = commitContext(first);
+  static_cast<void>(coordinator.commit(std::move(first), first_context, supervisor));
+  const std::shared_ptr<const PendingCertifiedRoute3D> resident = supervisor.pending();
+  ASSERT_NE(resident, nullptr);
+
+  PreparedRouteActivation3D tracking_update =
+      prepare(coordinator, activationFixture(supervisor, true));
+  EXPECT_TRUE(tracking_update.result.admission.successor_compared_to_pending);
+  EXPECT_FALSE(tracking_update.result.admission.successor_improvement_required);
+  EXPECT_EQ(tracking_update.result.admission.successor_improvement.status,
+            RouteSuccessorImprovementStatus3D::kNotAssessed);
+  ASSERT_TRUE(tracking_update.pending_draft.has_value());
+  const RouteActivationCommitContext3D tracking_context =
+      commitContext(tracking_update);
+  const RouteActivationCommitResult3D committed =
+      coordinator.commit(std::move(tracking_update), tracking_context, supervisor);
+
+  ASSERT_TRUE(committed.result.admission.pending_publication_status.has_value());
+  EXPECT_EQ(committed.result.admission.pending_publication_status.value_or(
+                PendingRoutePublicationStatus3D::kInvalidCandidate),
+            PendingRoutePublicationStatus3D::kReplaced);
+  ASSERT_NE(supervisor.pending(), nullptr);
+  EXPECT_NE(supervisor.pending(), resident);
+}
+
+TEST(RouteActivationCoordinator3DTest,
+     PublishesMateriallyFasterSameIntentAsCurrentStateRouteHandoff) {
+  ExecutionSupervisor3D supervisor;
+  RouteActivationCoordinator3D slow_coordinator{coordinatorConfig(0.5)};
+  PreparedRouteActivation3D slow =
+      prepare(slow_coordinator, activationFixture(supervisor));
+  const RouteActivationCommitContext3D slow_context = commitContext(slow);
+  static_cast<void>(slow_coordinator.commit(std::move(slow), slow_context, supervisor));
+  activatePending(supervisor);
+
+  RouteActivationCoordinator3D fast_coordinator{coordinatorConfig(3.0)};
+  PreparedRouteActivation3D fast =
+      prepare(fast_coordinator, activationFixture(supervisor));
+  ASSERT_TRUE(fast.result.admission.successor_improvement_required);
+  EXPECT_FALSE(fast.result.admission.successor_compared_to_pending);
+  ASSERT_TRUE(fast.result.admission.successor_improvement.accepted());
+  ASSERT_TRUE(fast.result.admission.replacement.replacementAllowed());
+  if (!fast.pending_draft.has_value()) {
+    FAIL() << "materially faster active-route successor was not certified";
     return;
   }
-  EXPECT_EQ(publication_status.value(),
-            PendingRoutePublicationStatus3D::kPendingOccupied);
-  EXPECT_EQ(committed.result.admission.activation_status,
-            StaticRouteActivationStatus::kActivationCommitRejected);
-  EXPECT_EQ(supervisor.pending(), resident);
+  EXPECT_EQ(fast.pending_draft->base_kind, PendingExecutionBaseKind3D::kRouteHandoff);
+  const RouteActivationCommitContext3D fast_context = commitContext(fast);
+  const RouteActivationCommitResult3D committed =
+      fast_coordinator.commit(std::move(fast), fast_context, supervisor);
+
+  EXPECT_TRUE(committed.result.admission.certified_pending);
+  ASSERT_NE(supervisor.pending(), nullptr);
+  EXPECT_EQ(supervisor.pending()->base_kind, PendingExecutionBaseKind3D::kRouteHandoff);
 }
 
 TEST(RouteActivationCoordinator3DTest,

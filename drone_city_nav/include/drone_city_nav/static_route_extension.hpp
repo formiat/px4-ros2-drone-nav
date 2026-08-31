@@ -316,6 +316,7 @@ enum class StaticRouteActivationStatus : std::uint8_t {
   kDynamicHandoffRejected,
   kCertifiedSpliceRejected,
   kEquivalentActiveSegmentRetained,
+  kInsufficientSuccessorImprovement,
   kCertifiedPending,
 };
 
