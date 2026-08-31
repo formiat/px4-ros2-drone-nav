@@ -522,18 +522,38 @@ The implementation order is:
 2. Introduce the single raw-occupied collision oracle and immutable world and
    route-stage artifacts; remove derived-ESDF hard-collision authority and route
    state from the resident world.
-3. Move motion, dynamics, and risk types below route and MPPI, then compile once
-   from the exact initial vehicle state into a sealed `CompiledTrajectory3D`.
+3. Move motion, dynamics, finite-horizon, and route-risk contracts below route
+   execution and MPPI. `nav_control_contracts` owns controller-neutral motion and
+   horizon DTOs, execution depends only on those contracts, and MPPI remains an
+   adapter. Compile once from the exact initial vehicle state into a sealed
+   `CompiledTrajectory3D`.
 4. Replace phase plus optionals with a tagged execution variant, one pure
    reducer, one pending/active `RouteExecutionManager3D`, and one atomic
    committed execution authority; seal a sample-aligned trajectory timeline and
    gate same-intent point-to-point successors with absolute and relative
    remaining-time hysteresis.
-5. Extract world, planning, trajectory, execution, control, and diagnostics
-   services from `ProductionMppiNode` so the ROS node becomes a composition root.
-6. Enforce the resulting dependency graph with internal CMake targets, register
-   every production-relevant test source, replace source-text transaction guards
-   with executable tests, and remove legacy lifecycle code and terminology.
+5. Extract world, planning, route lifecycle, trajectory, execution-horizon,
+   control, and diagnostics services from `ProductionMppiNode` so the ROS node
+   becomes a composition root. Raw ROS messages terminate at
+   `RawWorldIngressRos3D`; the world pipeline itself remains ROS-free.
+6. Make the runtime boundaries physical with package-private
+   `drone_city_nav_world_runtime`, `drone_city_nav_route_runtime`, and
+   `drone_city_nav_mppi_runtime` targets. The ROS component contains only
+   composition and ROS adapters, does not link the compatibility umbrella, and
+   focused tests link the narrowest target.
+7. Keep `CompiledTrajectory3D` limited to base geometry, canonical time profile,
+   tracking tube, and speed constraints. Attach immutable passage, traversal,
+   and cooperative metadata as `RouteDecorations3D` only after compilation.
+8. Make the production raw-world handle an immutable, factory-built value with
+   one authoritative observed-world owner. Split route activation internally
+   into pure named stages without splitting its transaction owner.
+9. Group production configuration by world, planning, execution, control, and
+   diagnostics; replace oversized cross-stage DTOs with evidence, decision,
+   controller-cycle, and horizon-candidate values; move planner behavior into
+   its owned modules or name passive structures honestly as state.
+10. Replace source-order tests for domain orchestration with direct API tests,
+    give each private target its own include root, then remove flat-layout and
+    compatibility legacy after APIs stabilize.
 
 The current implementation includes the persistent adaptive lattice,
 direction-labelled execution-time refinement, immutable sparse
@@ -643,6 +663,18 @@ Manager-owned pending identity and atomic base validation are now covered by a
 direct executable suite instead of activation source-order parsing.
 Item 12 remains in progress until the complete static audit and the unchanged
 three-run Manhattan mission gate below are finished.
+
+The August 2026 runtime-modularity review found that items 3 and 5 through 10
+above are not yet complete at the current architecture baseline. In particular,
+execution public contracts still expose MPPI finite-horizon/configuration types;
+the 52-translation-unit production component still owns the world, route,
+controller, and node implementations; `ProductionMppiNode` still distributes
+planning and execution orchestration across large node translation units; raw
+world ownership is redundantly representable; optional route decorations remain
+inside the base compiled trajectory; and domain transaction tests still parse
+source expression order. Passing the existing layer-link guard or focused
+service tests does not close those findings. The implementation must remove the
+underlying dependency and ownership paths before the final mission gate.
 
 ### Validation
 

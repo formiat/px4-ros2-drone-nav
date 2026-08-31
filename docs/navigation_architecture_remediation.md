@@ -34,20 +34,27 @@ covered by executable tests, and the unchanged Manhattan acceptance gate in
 ## Target Dependency Graph
 
 The package remains one ROS 2 package and may retain one production ROS
-component. Its internal targets must form this directed graph:
+component. Its domain and control targets must form this directed graph:
 
 ```text
-nav_model
-  -> nav_world
+nav_model -> nav_control_contracts
+nav_model -> nav_world
   -> nav_collision
   -> nav_planning
   -> nav_trajectory
+nav_trajectory + nav_control_contracts
   -> nav_execution
   -> nav_control
   -> nav_runtime
 ```
 
-These boundaries are now enforced by the shared-library targets
+`nav_control_contracts` is a small controller-neutral contract target, not a
+controller implementation. `nav_execution` consumes its motion, dynamics,
+finite-horizon, validation-result, and typed dynamic-handoff ports without
+including MPPI headers. The MPPI/CUDA backend adapts those contracts in
+`nav_control`; it is not a dependency of execution.
+
+The lower domain boundaries are enforced by the shared-library targets
 `drone_city_nav_model`, `drone_city_nav_world`,
 `drone_city_nav_collision`, `drone_city_nav_planning`,
 `drone_city_nav_trajectory`, `drone_city_nav_execution`,
@@ -58,7 +65,12 @@ interface-only compatibility umbrella for in-package targets during API
 migration and owns no translation units. The internal layer targets and
 hand-written headers are not exported as a downstream CMake API; rosidl-generated
 messages and installed ROS nodes/components are the package's supported external
-surface.
+surface. This lower-layer DAG is necessary but not sufficient: production
+application services are also separated into package-private
+`drone_city_nav_world_runtime`, `drone_city_nav_route_runtime`, and
+`drone_city_nav_mppi_runtime` targets with private include roots. The ROS
+component links those targets directly and contains only the composition root
+and ROS adapters; it does not link `drone_city_nav_core`.
 
 Execution contracts are physically split into
 `execution_route_model_3d.hpp`, `execution_route_certificates_3d.hpp`,
@@ -69,17 +81,26 @@ manager compatibility headers have been removed after every consumer migrated
 to the narrow contracts. Every hand-written public-path and private header is
 compiled as an independent translation unit in test builds.
 
-Optional passage and cooperative metadata decorate a compiled route downstream;
-they are not mandatory members of the base trajectory and do not produce a
-competing strategic route.
+Optional passage and cooperative metadata live in immutable
+`RouteDecorations3D` attached to an execution route downstream. They are not
+members of base `CompiledTrajectory3D` and do not produce a competing strategic
+route.
 
 ### `nav_model`
 
-Owns controller-neutral points, vectors, identities, units, kinematics,
-dynamics, risk classifications, `MotionState3D`/`MotionControl3D`, and the dense
-`EsdfGrid3D` geometry descriptor. MPPI retains backend aliases to these contracts
-but does not own them. No model, route, or planning header may include an MPPI
-header; an architectural dependency test enforces that ban.
+Owns points, vectors, identities, units, general kinematics, risk
+classifications, and the dense `EsdfGrid3D` geometry descriptor. No model,
+world, collision, planning, trajectory, execution, or control-contract header
+may include an MPPI header; an architectural dependency test enforces that ban.
+
+### `nav_control_contracts`
+
+Owns controller-neutral `MotionState3D`, `MotionControl3D`, dynamics and altitude
+limits, finite motion horizons, timed path DTOs, strict validation result types,
+and the typed `DynamicHandoffValidator3D` callable. It contains no CUDA, MPPI,
+ROS, route lifecycle, occupancy implementation, or mutable service. MPPI may
+retain backend aliases at its adapter boundary, but execution never names an
+MPPI type.
 
 ### `nav_world`
 
@@ -127,9 +148,10 @@ converges, reports no route, or is invalidated.
 Owns spatial route geometry and the only executable trajectory compiler. The
 compiler receives the exact initial vehicle state and seals canonical stations,
 tangents, the time profile with sample-aligned arrival and departure times,
-tracking tube, physical fingerprint, and optional decorators in one immutable
-`CompiledTrajectory3D`. MPPI references and RViz projections are derived
-adapters, not parallel authorities.
+tracking tube, speed constraints, and physical fingerprint in one immutable
+`CompiledTrajectory3D`. Passage and cooperative decoration is a later immutable
+route step. MPPI references and RViz projections are derived adapters, not
+parallel authorities.
 
 ### `nav_execution`
 
@@ -187,6 +209,12 @@ named stationary rearm, complete control-evidence replacement, and concurrent
 single-winner publication. Source checks now enforce the adapter/service
 boundary instead of parsing transaction implementation order.
 
+Execution depends only on `nav_control_contracts` for motion and horizon values.
+Dynamic route admission receives a typed `DynamicHandoffValidator3D` function
+object and strict result; MPPI construction and simulation stay on the control
+side of that port. Route-risk thresholds are a route policy value rather than a
+field reached through a complete MPPI benchmark configuration.
+
 Retention preparation now crosses one owned `ExecutionRetentionRequest3D`.
 The supervisor captures the exact resident authority, selects route or direct
 tracking from that capture, reconstructs the remaining finite path, validates
@@ -226,8 +254,9 @@ pending publication now crosses the same production API.
 
 ### `nav_control`
 
-Owns controller-neutral local-reference and finite-horizon contracts plus the
-MPPI/CUDA adapter. MPPI does not own route-domain types.
+Owns the local-reference adapter, finite-horizon construction/reshaping backend,
+and MPPI/CUDA controller. It implements the neutral dynamic-handoff port and
+does not own route-domain or execution lifecycle types.
 
 ### `nav_runtime`
 
@@ -235,6 +264,51 @@ Owns workers, scheduling, mission policy, ROS adapters, parameters, logging, and
 diagnostics. `ProductionMppiNode` is the composition root and ROS I/O boundary;
 it does not own the mutable internals of world, planning, trajectory, or
 execution services.
+
+`RawWorldIngressRos3D` converts ROS memory status, snapshot, and delta messages
+to controller-neutral ingress values before calling `WorldPipeline3D`.
+`PlanningCycleCoordinator3D` owns one planning-cycle use case;
+`RouteLifecycleCoordinator3D` owns request gates, continuation, generations,
+and materialize/compile/admit sequencing; `RouteExecutionSelector3D` selects the
+resident route/direct/hold decision; and `ExecutionHorizonAssembler3D` prepares
+the controller cycle and horizon candidate. The node captures runtime/ROS input,
+invokes those services, and publishes the returned events and horizon. The sole
+atomic execution commit remains in `ExecutionSupervisor3D`.
+
+`ProductionMppiConfig` groups `World`, `Planning`, `Execution`, `Control`, and
+`Diagnostics` values. The node constructor declares and validates these groups
+through focused loaders rather than interleaving hundreds of declarations with
+service construction. Orchestration boundaries exchange `EvidenceSnapshot`,
+`RouteDecision`, `ControllerCycle`, and `HorizonCandidate` values instead of one
+cross-stage aggregate.
+
+## Runtime Modularity Completion Batch
+
+The domain extraction that precedes this batch is useful but does not yet make
+the ROS component a composition adapter. Completion requires all of the
+following in order:
+
+1. neutralize every execution-facing MPPI type and inject dynamic handoff and
+   route-risk policy through typed ports;
+2. remove passage/cooperative metadata from `CompiledTrajectory3D` and attach
+   `RouteDecorations3D` to the execution route;
+3. replace independently representable raw occupancy/owner fields with one
+   factory-built immutable raw-world owner and split activation implementation
+   into `rebaseAndValidate`, `compile`, `assessAdmission`, `assessReplacement`,
+   `certify`, and `makePendingDraft` stages under one coordinator;
+4. extract planning-cycle, route-lifecycle, execution-selection, horizon-
+   assembly, and ROS raw-ingress use cases; group node configuration and narrow
+   their DTOs;
+5. move those services to the three package-private runtime targets, remove the
+   component's umbrella dependency, and link focused tests to narrow targets;
+6. replace domain source-order assertions with direct orchestration tests,
+   move behavior into planner-owned modules or rename passive state bags, and
+   finish the private directory/include-root migration after APIs stabilize.
+
+Each numbered implementation stage is formatted, quality-tested, and committed
+before the next one. Simulation is intentionally excluded until the entire
+batch, cleanup, static audit, documentation update, and non-simulation quality
+gate are complete.
 
 `NavigationDiagnosticsSink` now owns the bounded latest-value mailbox, worker
 lifetime, dropped/failure counters, rate-limited JSONL files, bounded error
@@ -434,8 +508,9 @@ no mixed authority revision is observable.
   committed authority.
 - [x] Remove the test-only parallel lifecycle state and all competing lifecycle
   ownership terminology.
-- [x] Extract world, planning, trajectory, execution, and control services from
-  `ProductionMppiNode`; retain only composition and ROS I/O in the node.
+- [ ] Finish extracting world, planning, trajectory, execution, and control
+  services from `ProductionMppiNode`; retain only composition and ROS I/O in the
+  node.
   - [x] Extract `NavigationDiagnosticsSink` as the sole diagnostics worker,
     mailbox, file, error-context, and statistics owner.
   - [x] Extract the complete world pipeline.
@@ -477,12 +552,15 @@ no mixed authority revision is observable.
     - [x] Move hold preparation behind the facade.
     - [x] Move the remaining horizon validation and commit orchestration behind
       the facade.
-- [x] Enforce the internal dependency graph with CMake targets.
+- [ ] Enforce both the domain and production-runtime dependency graphs with
+  narrow CMake targets and actual header-dependency checks.
 - [x] Stop installing private implementation headers as public API.
 - [x] Register every production-relevant GTest source and remove the stale test
   for the retired raw-snapshot/risk-field protocol.
-- [x] Replace source-text transaction checks with executable state-machine and
-  concurrency tests. Raw-world joining, supersession, quarantine, publication
+- [ ] Replace all remaining domain source-text transaction checks with
+  executable orchestration, state-machine, and concurrency tests. Existing
+  completed migrations include:
+  raw-world joining, supersession, quarantine, publication
   linearization, transient refresh, stop behavior, static build/reuse,
   early/late route supersession, upload/generation failure, and refresh
   coalescing now have direct GTests. Persistent-session identity, typed
@@ -523,8 +601,21 @@ no mixed authority revision is observable.
   removed. The obsolete Stage-2 planner publication source-order suite is also
   gone. Remaining text checks cover ROS message/QoS/wiring integration or
   express architectural dependency bans; domain transactions execute directly.
-- [x] Keep public and private headers self-contained and remove obsolete
-  compatibility umbrella includes after all consumers migrate.
+- [ ] Give private runtime targets independent include roots, keep every public
+  and private header self-contained, remove obsolete compatibility umbrella
+  links/includes, and finish the world/planning/trajectory/execution/runtime
+  directory migration after APIs stabilize.
+- [ ] Make execution controller-neutral through `nav_control_contracts`, typed
+  dynamic handoff, and a route-owned risk policy.
+- [ ] Move optional passage/cooperative metadata from `CompiledTrajectory3D` to
+  immutable execution-route decorations.
+- [ ] Make the production raw-world value factory-built and single-owner, and
+  split activation into pure named internal stages under its one coordinator.
+- [ ] Extract planning-cycle, route-lifecycle, route-selection, horizon-assembly,
+  and raw ROS ingress services; group production configuration and narrow the
+  cross-stage DTOs.
+- [ ] Move planner behavior into its owning modules or rename passive structures
+  with the `State` suffix so their encapsulation contract is honest.
 - [x] Pass formatting, static analysis, C++ tests, and script tests after every
   coherent stage.
 - [ ] Evaluate the unchanged three-run Manhattan no-static 3D-lidar gate only
