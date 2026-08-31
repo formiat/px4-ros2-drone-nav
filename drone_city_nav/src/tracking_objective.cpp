@@ -26,7 +26,6 @@ namespace {
 enum class RawPointState : std::uint8_t {
   kFree,
   kOccupied,
-  kUnknown,
 };
 
 using RawPointQuery = std::function<RawPointState(const Point3&)>;
@@ -67,13 +66,6 @@ resolve(const Point3& observed_position, const Point3& predicted_position,
           .status = last_free_fraction > 0.0
                         ? TrackingObjectiveResolutionStatus::kClippedRawOccupied
                         : TrackingObjectiveResolutionStatus::kFallbackObserved,
-          .resolved_fraction = last_free_fraction,
-      };
-    }
-    if (point_state == RawPointState::kUnknown) {
-      return TrackingObjectiveResolution{
-          .resolved_position = last_free,
-          .status = TrackingObjectiveResolutionStatus::kClippedUnknown,
           .resolved_fraction = last_free_fraction,
       };
     }
@@ -350,11 +342,9 @@ TrackingObjectiveResolution resolveTrackingObjective(
                  raw_occupancy.bounds().resolution_m, maximum_sample_spacing_m,
                  [&raw_occupancy](const Point3& point) {
                    const auto cell = raw_occupancy.worldToCell(point);
-                   if (!cell.has_value() || !raw_occupancy.isKnown(*cell)) {
-                     return RawPointState::kUnknown;
-                   }
-                   return raw_occupancy.isOccupied(*cell) ? RawPointState::kOccupied
-                                                          : RawPointState::kFree;
+                   return cell.has_value() && raw_occupancy.isOccupied(*cell)
+                              ? RawPointState::kOccupied
+                              : RawPointState::kFree;
                  });
 }
 
@@ -365,8 +355,6 @@ const char* trackingObjectiveResolutionStatusName(
       return "unchanged";
     case TrackingObjectiveResolutionStatus::kClippedRawOccupied:
       return "clipped_raw_occupied";
-    case TrackingObjectiveResolutionStatus::kClippedUnknown:
-      return "clipped_unknown";
     case TrackingObjectiveResolutionStatus::kFallbackObserved:
       return "fallback_observed";
     case TrackingObjectiveResolutionStatus::kWorldUnavailable:

@@ -14,7 +14,6 @@ namespace drone_city_nav {
 enum class TrackingObjectiveResolutionStatus : std::uint8_t {
   kUnchanged,
   kClippedRawOccupied,
-  kClippedUnknown,
   kFallbackObserved,
   kWorldUnavailable,
   kInvalidInput,
