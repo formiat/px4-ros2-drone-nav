@@ -32,6 +32,11 @@ struct FlightPathTimeProfile3D {
   double translation_time_s{0.0};
   double stationary_turn_time_s{0.0};
   std::vector<double> reference_speeds_mps;
+  // Point-aligned cumulative times. Arrival is before an optional stationary
+  // turn at the point; departure is after it. The last point has identical
+  // arrival and departure times because it has no outgoing segment.
+  std::vector<double> arrival_times_s;
+  std::vector<double> departure_times_s;
 };
 
 // Admissible anisotropic travel-time lower bound used by the persistent graph.

@@ -115,7 +115,7 @@ TrajectoryCompiler3D::compile(TrajectoryCompilerInput3D input) {
     result.validation = {Failure::kInvalidTrackingErrorTube, 0U};
     return result;
   }
-  const RouteTimeParameterization3D parameterization = parameterizeRouteTime3D(
+  RouteTimeParameterization3D parameterization = parameterizeRouteTime3D(
       input.route, input.constrained_spans, input.config.unconstrained_speed_mps,
       input.config.constrained_speed_mps, input.endpoint_semantics,
       input.config.maximum_lateral_acceleration_mps2, input.config.time_model,
@@ -155,6 +155,8 @@ TrajectoryCompiler3D::compile(TrajectoryCompilerInput3D input) {
       .travel_time_s = parameterization.travel_time_s,
       .translation_time_s = parameterization.translation_time_s,
       .stationary_turn_time_s = parameterization.stationary_turn_time_s,
+      .arrival_times_s = std::move(parameterization.arrival_times_s),
+      .departure_times_s = std::move(parameterization.departure_times_s),
   };
 
   auto trajectory =

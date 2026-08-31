@@ -1,3 +1,4 @@
+#include "drone_city_nav/compiled_trajectory_views_3d.hpp"
 #include "drone_city_nav/execution_route_certification_3d.hpp"
 #include "drone_city_nav/trajectory_compiler_3d.hpp"
 
@@ -191,6 +192,38 @@ TEST(TrajectoryCompiler3DTest, ExactInitialVelocityChangesTheSingleSealedTimePro
             from_rest.trajectory->physical_route_fingerprint);
   EXPECT_NE(already_moving.trajectory->compiled_trajectory_revision,
             from_rest.trajectory->compiled_trajectory_revision);
+}
+
+TEST(TrajectoryCompiler3DTest, SealsSampleAlignedRemainingTimeAuthority) {
+  const std::vector<RouteSample3D> route =
+      sampleRoute3D(std::vector<Point3>{{0.0, 0.0, 2.0}, {40.0, 0.0, 2.0}}, 0.5, 8.0);
+  const TrajectoryCompilationResult3D compilation =
+      compileUnconstrained(route, testInitialState(route.front().position));
+
+  ASSERT_TRUE(compilation.compiled());
+  ASSERT_NE(compilation.trajectory, nullptr);
+  const CompiledTrajectory3D& trajectory = *compilation.trajectory;
+  ASSERT_EQ(trajectory.time_profile.arrival_times_s.size(), trajectory.route->size());
+  ASSERT_EQ(trajectory.time_profile.departure_times_s.size(), trajectory.route->size());
+  const std::optional<double> complete = remainingCompiledTrajectoryTime3D(
+      trajectory, trajectory.route->front().station_m);
+  const std::optional<double> partial =
+      remainingCompiledTrajectoryTime3D(trajectory, 20.0);
+  const std::optional<double> finished =
+      remainingCompiledTrajectoryTime3D(trajectory, trajectory.route->back().station_m);
+  ASSERT_TRUE(complete.has_value());
+  ASSERT_TRUE(partial.has_value());
+  ASSERT_TRUE(finished.has_value());
+  const double complete_time_s =
+      complete.value(); // NOLINT(bugprone-unchecked-optional-access)
+  const double partial_time_s =
+      partial.value(); // NOLINT(bugprone-unchecked-optional-access)
+  const double finished_time_s =
+      finished.value(); // NOLINT(bugprone-unchecked-optional-access)
+  EXPECT_DOUBLE_EQ(complete_time_s, trajectory.time_profile.travel_time_s);
+  EXPECT_GT(partial_time_s, 0.0);
+  EXPECT_LT(partial_time_s, complete_time_s);
+  EXPECT_DOUBLE_EQ(finished_time_s, 0.0);
 }
 
 TEST(TrajectoryCompiler3DTest, RecompilationPublishesANewImmutableWorldBinding) {

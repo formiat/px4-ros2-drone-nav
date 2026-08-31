@@ -110,6 +110,8 @@ RouteTimeParameterization3D parameterizeRouteTime3D(
   result.translation_time_s = profile.translation_time_s;
   result.stationary_turn_time_s = profile.stationary_turn_time_s;
   result.reference_speeds_mps = std::move(profile.reference_speeds_mps);
+  result.arrival_times_s = std::move(profile.arrival_times_s);
+  result.departure_times_s = std::move(profile.departure_times_s);
   return result;
 }
 

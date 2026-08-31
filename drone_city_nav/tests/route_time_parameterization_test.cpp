@@ -39,8 +39,14 @@ TEST(RouteTimeParameterizationTest,
 
   ASSERT_TRUE(profile.valid);
   ASSERT_EQ(profile.reference_speeds_mps.size(), route.size());
+  ASSERT_EQ(profile.arrival_times_s.size(), route.size());
+  ASSERT_EQ(profile.departure_times_s.size(), route.size());
   EXPECT_DOUBLE_EQ(profile.reference_speeds_mps.back(), 0.0);
   EXPECT_DOUBLE_EQ(profile.reference_speeds_mps.front(), 0.0);
+  EXPECT_DOUBLE_EQ(profile.arrival_times_s.front(), 0.0);
+  EXPECT_DOUBLE_EQ(profile.departure_times_s.front(), 0.0);
+  EXPECT_DOUBLE_EQ(profile.arrival_times_s.back(), profile.travel_time_s);
+  EXPECT_DOUBLE_EQ(profile.departure_times_s.back(), profile.travel_time_s);
   EXPECT_GT(profile.travel_time_s, 20.0 / 5.0);
   EXPECT_TRUE(std::isfinite(profile.travel_time_s));
 }
@@ -115,6 +121,8 @@ TEST(RouteTimeParameterizationTest, StopAndTurnStartsAnIndependentJerkLimitedLeg
   ASSERT_EQ(profile.reference_speeds_mps.size(), route.size());
   EXPECT_DOUBLE_EQ(profile.reference_speeds_mps[1U], 0.0);
   EXPECT_GT(profile.reference_speeds_mps[2U], 0.0);
+  EXPECT_GT(profile.departure_times_s[1U], profile.arrival_times_s[1U]);
+  EXPECT_GT(profile.arrival_times_s[2U], profile.departure_times_s[1U]);
   EXPECT_GT(profile.stationary_turn_time_s, 0.0);
   EXPECT_GT(profile.travel_time_s, profile.translation_time_s);
   EXPECT_TRUE(std::isfinite(profile.travel_time_s));

@@ -18,6 +18,8 @@ struct RouteTimeParameterization3D {
   double translation_time_s{0.0};
   double stationary_turn_time_s{0.0};
   std::vector<double> reference_speeds_mps;
+  std::vector<double> arrival_times_s;
+  std::vector<double> departure_times_s;
 };
 
 [[nodiscard]] RouteTimeParameterization3D

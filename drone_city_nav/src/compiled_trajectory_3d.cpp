@@ -259,6 +259,16 @@ calculateCompiledTrajectoryRevision(const CompiledTrajectory3D& trajectory) noex
   hash.number(trajectory.time_profile.travel_time_s);
   hash.number(trajectory.time_profile.translation_time_s);
   hash.number(trajectory.time_profile.stationary_turn_time_s);
+  hash.value(
+      static_cast<std::uint64_t>(trajectory.time_profile.arrival_times_s.size()));
+  for (const double arrival_time_s : trajectory.time_profile.arrival_times_s) {
+    hash.number(arrival_time_s);
+  }
+  hash.value(
+      static_cast<std::uint64_t>(trajectory.time_profile.departure_times_s.size()));
+  for (const double departure_time_s : trajectory.time_profile.departure_times_s) {
+    hash.number(departure_time_s);
+  }
   hash.value(trajectory.materialized_route_fingerprint);
   hash.value(trajectory.physical_route_fingerprint);
   return hash.result();
@@ -267,11 +277,47 @@ calculateCompiledTrajectoryRevision(const CompiledTrajectory3D& trajectory) noex
 } // namespace
 
 bool CompiledTrajectoryTimeProfile3D::valid() const noexcept {
-  return std::isfinite(travel_time_s) && travel_time_s > 0.0 &&
-         std::isfinite(translation_time_s) && translation_time_s > 0.0 &&
-         std::isfinite(stationary_turn_time_s) && stationary_turn_time_s >= 0.0 &&
-         std::abs(travel_time_s - translation_time_s - stationary_turn_time_s) <=
-             1.0e-6 * std::max(1.0, travel_time_s);
+  constexpr double kRelativeTolerance{1.0e-6};
+  if (!std::isfinite(travel_time_s) || travel_time_s <= 0.0 ||
+      !std::isfinite(translation_time_s) || translation_time_s <= 0.0 ||
+      !std::isfinite(stationary_turn_time_s) || stationary_turn_time_s < 0.0 ||
+      arrival_times_s.size() < 2U ||
+      arrival_times_s.size() != departure_times_s.size()) {
+    return false;
+  }
+  const double tolerance_s = kRelativeTolerance * std::max(1.0, travel_time_s);
+  if (std::abs(travel_time_s - translation_time_s - stationary_turn_time_s) >
+          tolerance_s ||
+      std::abs(arrival_times_s.front()) > tolerance_s ||
+      std::abs(departure_times_s.front()) > tolerance_s ||
+      std::abs(arrival_times_s.back() - travel_time_s) > tolerance_s ||
+      std::abs(departure_times_s.back() - travel_time_s) > tolerance_s) {
+    return false;
+  }
+
+  double reconstructed_translation_time_s{0.0};
+  double reconstructed_stationary_turn_time_s{0.0};
+  for (std::size_t index = 0U; index < arrival_times_s.size(); ++index) {
+    const double arrival_time_s = arrival_times_s[index];
+    const double departure_time_s = departure_times_s[index];
+    if (!std::isfinite(arrival_time_s) || !std::isfinite(departure_time_s) ||
+        arrival_time_s < 0.0 || departure_time_s + tolerance_s < arrival_time_s) {
+      return false;
+    }
+    reconstructed_stationary_turn_time_s += departure_time_s - arrival_time_s;
+    if (index + 1U < arrival_times_s.size()) {
+      const double next_arrival_time_s = arrival_times_s[index + 1U];
+      if (!std::isfinite(next_arrival_time_s) ||
+          next_arrival_time_s <= departure_time_s) {
+        return false;
+      }
+      reconstructed_translation_time_s += next_arrival_time_s - departure_time_s;
+    }
+  }
+  return std::abs(reconstructed_translation_time_s - translation_time_s) <=
+             tolerance_s &&
+         std::abs(reconstructed_stationary_turn_time_s - stationary_turn_time_s) <=
+             tolerance_s;
 }
 
 CompiledTrajectory3D::CompiledTrajectory3D(
@@ -289,7 +335,7 @@ CompiledTrajectory3D::CompiledTrajectory3D(
     CompiledTrajectoryTimeProfile3D compiled_time_profile,
     const std::uint64_t compiled_materialized_route_fingerprint,
     const std::uint64_t compiled_physical_route_fingerprint)
-    : exact_initial_state{std::move(initial_state)},
+    : exact_initial_state{initial_state},
       endpoint_semantics{compiled_endpoint_semantics},
       route{std::move(compiled_route)},
       tracking_error_tube{std::move(compiled_tracking_error_tube)},
@@ -299,8 +345,8 @@ CompiledTrajectory3D::CompiledTrajectory3D(
           std::move(compiled_cooperative_passage_assignments)},
       selected_passage_traversal_ids{
           std::move(compiled_selected_passage_traversal_ids)},
-      passage_volume_config{std::move(compiled_passage_volume_config)},
-      time_profile{compiled_time_profile},
+      passage_volume_config{compiled_passage_volume_config},
+      time_profile{std::move(compiled_time_profile)},
       materialized_route_fingerprint{compiled_materialized_route_fingerprint},
       physical_route_fingerprint{compiled_physical_route_fingerprint},
       compiled_trajectory_revision{calculateCompiledTrajectoryRevision(*this)} {

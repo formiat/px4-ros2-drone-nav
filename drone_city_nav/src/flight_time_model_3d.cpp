@@ -338,7 +338,20 @@ parameterizeFlightPathTime3D(const std::span<const Point3> points,
     }
   }
 
+  result.arrival_times_s.assign(points.size(), 0.0);
+  result.departure_times_s.assign(points.size(), 0.0);
   for (std::size_t index = 0U; index < segment_count; ++index) {
+    double stationary_turn_time_s{0.0};
+    if (index > 0U && stop_turn_flags[index] != 0U) {
+      stationary_turn_time_s =
+          stationaryYawTurnTime(tangents[index - 1U], tangents[index], model);
+      if (!std::isfinite(stationary_turn_time_s) || stationary_turn_time_s < 0.0) {
+        return {};
+      }
+    }
+    result.stationary_turn_time_s += stationary_turn_time_s;
+    result.departure_times_s[index] =
+        result.arrival_times_s[index] + stationary_turn_time_s;
     const double segment_time = segmentTravelTime(
         lengths[index], result.reference_speeds_mps[index],
         result.reference_speeds_mps[index + 1U], segment_speed_limits[index],
@@ -347,14 +360,10 @@ parameterizeFlightPathTime3D(const std::span<const Point3> points,
       return {};
     }
     result.translation_time_s += segment_time;
+    result.arrival_times_s[index + 1U] = result.departure_times_s[index] + segment_time;
   }
-  for (std::size_t index = 1U; index < segment_count; ++index) {
-    if (stop_turn_flags[index] != 0U) {
-      result.stationary_turn_time_s +=
-          stationaryYawTurnTime(tangents[index - 1U], tangents[index], model);
-    }
-  }
-  result.travel_time_s = result.translation_time_s + result.stationary_turn_time_s;
+  result.departure_times_s.back() = result.arrival_times_s.back();
+  result.travel_time_s = result.arrival_times_s.back();
   result.valid = finitePositive(result.travel_time_s);
   return result;
 }

@@ -280,6 +280,8 @@ bool compiledTrajectoryResourcesValid3D(
       trajectory.cooperative_passage_assignments == nullptr ||
       trajectory.selected_passage_traversal_ids == nullptr ||
       !trajectory.exact_initial_state.valid() || !trajectory.time_profile.valid() ||
+      trajectory.time_profile.arrival_times_s.size() != trajectory.route->size() ||
+      trajectory.time_profile.departure_times_s.size() != trajectory.route->size() ||
       !passageVolumeConfigIsValid(trajectory.passage_volume_config) ||
       trajectory.materialized_route_fingerprint == 0U ||
       trajectory.physical_route_fingerprint == 0U ||
