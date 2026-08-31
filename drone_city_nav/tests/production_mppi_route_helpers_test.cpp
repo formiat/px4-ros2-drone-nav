@@ -9,8 +9,8 @@
 #include <memory>
 #include <vector>
 
-#include "production_mppi_route_activation.hpp"
 #include "production_mppi_route_helpers.hpp"
+#include "route_activation_coordinator_3d.hpp"
 
 namespace drone_city_nav {
 namespace {

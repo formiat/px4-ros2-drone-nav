@@ -9,8 +9,8 @@
 #include <utility>
 
 #include "production_mppi_node.hpp"
-#include "production_mppi_route_activation.hpp"
 #include "production_mppi_route_world.hpp"
+#include "route_activation_coordinator_3d.hpp"
 #include "route_materializer_3d.hpp"
 
 namespace drone_city_nav {
@@ -93,9 +93,6 @@ void ProductionMppiNode::processRouteSearch3D(RoutePlanningUpdateEvent3D event) 
   const RoutePlannerVehicleState3D& vehicle_state = event.vehicle_state;
   RoutePlannerUpdate3D planner_update = std::move(event.update);
   const auto planning_started = std::chrono::steady_clock::now();
-  const Point3 mission_goal = transaction->objective.goal;
-  const NavigationWorldCertificate3D planned_world_certificate =
-      navigationWorldCertificate3D(*transaction->world);
 
   const auto observe_recovery_episode = [this, &transaction] {
     const RouteExecutionManagerSnapshot3D execution_state =
@@ -282,21 +279,24 @@ void ProductionMppiNode::processRouteSearch3D(RoutePlanningUpdateEvent3D event) 
                   fallback.failure_point.z);
     }
   }
-  // Materialization owns the expensive spatial validation. Capture the
-  // transaction base afterwards so it is not stale before activation begins.
-  const ProductionRouteActivationSnapshot3D activation_snapshot =
-      captureRouteActivationSnapshot3D();
   if (improved_incumbent_available && candidate_generation != 0U) {
-    const StaticRouteCandidateValidation materialization_validation =
-        materialization.validation;
-    const StaticRouteReplacementPolicy replacement_policy =
-        materialization.replacement_policy;
-    activation = prepareRouteActivation3D(
-        *transaction, std::move(materialization), planned_world_certificate,
-        materialization_validation, replacement_policy, mission_goal,
-        candidate_generation, activation_snapshot);
-    commitRouteActivation3D(*transaction, activation_snapshot, candidate_generation,
-                            activation);
+    // Materialization owns the expensive spatial validation. Capture the
+    // transaction base afterwards so it is not stale before activation begins.
+    ProductionRouteActivationSnapshot3D activation_snapshot =
+        captureRouteActivationSnapshot3D();
+    StaticRoutePlanningLatencyStats planning_latency;
+    {
+      const std::scoped_lock lifecycle_lock{static_route_extension_mutex_};
+      planning_latency = static_route_planning_latency_tracker_.stats();
+    }
+    PreparedRouteActivation3D prepared =
+        route_activation_coordinator_->prepare(RouteActivationPreparationRequest3D{
+            .transaction = transaction,
+            .materialization = std::move(materialization),
+            .snapshot = std::move(activation_snapshot),
+            .planning_latency = planning_latency,
+        });
+    activation = commitRouteActivation3D(std::move(prepared));
   }
   activation.telemetry.route_search_ms = planner_update.search_ms;
 

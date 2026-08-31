@@ -96,10 +96,10 @@ struct ProductionMppiPlanningTickFinalization;
 struct ProductionMppiControllerTick;
 struct ProductionMppiControllerTickResult;
 struct ProductionMppiDiagnosticsSnapshot;
+struct PreparedRouteActivation3D;
 struct ProductionRouteActivationSnapshot3D;
-struct ProductionRouteMaterialization3D;
+class RouteActivationCoordinator3D;
 class RouteMaterializer3D;
-class RouteTrajectoryCompiler3D;
 struct ProductionMppiExecutionCycle;
 struct ProductionMppiHorizonCommit;
 struct ObservedWorldBuildRequest3D;
@@ -209,18 +209,7 @@ private:
   [[nodiscard]] std::uint64_t nextRouteGeneration3D();
   [[nodiscard]] ProductionRouteActivationSnapshot3D captureRouteActivationSnapshot3D();
   [[nodiscard]] ProductionRouteActivationResult3D
-  prepareRouteActivation3D(const PlannerSearchTransaction3D& transaction,
-                           ProductionRouteMaterialization3D materialization,
-                           NavigationWorldCertificate3D planned_world_certificate,
-                           StaticRouteCandidateValidation validation,
-                           StaticRouteReplacementPolicy replacement_policy,
-                           const Point3& mission_goal,
-                           std::uint64_t candidate_generation,
-                           const ProductionRouteActivationSnapshot3D& snapshot);
-  void commitRouteActivation3D(const PlannerSearchTransaction3D& transaction,
-                               const ProductionRouteActivationSnapshot3D& snapshot,
-                               std::uint64_t candidate_generation,
-                               ProductionRouteActivationResult3D& result);
+  commitRouteActivation3D(PreparedRouteActivation3D prepared);
   void startPlanningTimer();
   void initializeRuntimeInterfaces(StaticWorldResources3D&& static_world_resources);
   [[nodiscard]] ProductionRouteExecutionSelection3D resolveRouteExecution3D(
@@ -451,7 +440,7 @@ private:
   std::unique_ptr<NonCooperativeCollisionAvoidance> noncooperative_avoidance_;
   std::unique_ptr<BoundedWorkerPool> planning_worker_pool_;
   std::unique_ptr<RouteMaterializer3D> route_materializer_;
-  std::unique_ptr<RouteTrajectoryCompiler3D> route_trajectory_compiler_;
+  std::unique_ptr<RouteActivationCoordinator3D> route_activation_coordinator_;
   std::unique_ptr<RoutePlanningCoordinator3D> route_planning_coordinator_;
   std::unique_ptr<mppi::MppiCudaEngine> engine_;
   mppi::TrajectoryReferenceAdapter3D trajectory_reference_adapter_;

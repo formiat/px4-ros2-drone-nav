@@ -51,7 +51,7 @@ class Stage4RouteSpliceContractTest(unittest.TestCase):
         transitions = (
             SOURCE / "execution_route_snapshot_3d_transitions.cpp"
         ).read_text(encoding="utf-8")
-        activation = (SOURCE / "production_mppi_route_activation.cpp").read_text(
+        activation = (SOURCE / "route_activation_coordinator_3d.cpp").read_text(
             encoding="utf-8"
         )
 

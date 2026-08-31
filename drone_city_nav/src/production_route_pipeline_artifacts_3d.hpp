@@ -2,6 +2,7 @@
 
 #include "drone_city_nav/certified_route_splice_3d.hpp"
 #include "drone_city_nav/compiled_trajectory_3d.hpp"
+#include "drone_city_nav/execution_route_store_3d.hpp"
 #include "drone_city_nav/mppi/static_route_handoff.hpp"
 #include "drone_city_nav/persistent_dstar_lite_planner_3d.hpp"
 #include "drone_city_nav/route_lifecycle_3d.hpp"
@@ -153,6 +154,7 @@ struct RouteAdmissionReport3D {
   mppi::StaticRouteHandoffResult handoff{};
   RouteSpliceCertificationResult3D splice{};
   CompiledTrajectoryValidation3D trajectory_validation{};
+  std::optional<PendingRoutePublicationStatus3D> pending_publication_status;
   StaticRouteActivationStatus activation_status{
       StaticRouteActivationStatus::kNotAttempted};
   std::uint64_t snapshot_pose_revision{0U};

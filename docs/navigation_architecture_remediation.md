@@ -256,6 +256,22 @@ static exact-state sealing, observed-owner binding, and fail-closed missing
 observed ownership. The former Python source-order check for this binding has
 been removed in favor of that executable transaction test.
 
+`RouteActivationCoordinator3D` now owns the sole trajectory compiler and the
+complete compilation, admission, generation/replacement assessment,
+certification, splice, and pending-draft pipeline. Its single preparation
+request owns the exact planner transaction, materialized route, coherent
+world/navigation/objective/execution snapshot, and planning-latency sample.
+Preparation reads no node state and emits one `PreparedRouteActivation3D`.
+Commit consumes that artifact by value, receives a caller-locked currentness
+context and the sole execution manager, then returns a distinct typed result;
+it distinguishes snapshot supersession from a manager rejection and cannot
+publish around the manager or expose a half-updated preparation. The thin ROS
+adapter owns capture locks, clock access, warning output, and the latest telemetry
+event; the exact manager publication status remains in that admission event.
+Direct tests execute exact-state preparation, successful atomic
+publication, resident-world supersession, occupied-slot retention, and invalid
+request rejection.
+
 ## Immutable Stage Pipeline
 
 ```text
@@ -367,7 +383,7 @@ no mixed authority revision is observable.
         typed request/event ports.
       - [x] Move static ESDF/cache/topology construction and refresh policy
         behind the same service boundary.
-  - [ ] Extract persistent planning and route-pipeline coordination.
+  - [x] Extract persistent planning and route-pipeline coordination.
     - [x] Move the sole persistent planner, exact continuation session,
       certified-future-stitch selection, route sampling, and raw-only segment
       evidence into `RoutePlanner3D` behind a typed non-ROS API.
@@ -378,7 +394,7 @@ no mixed authority revision is observable.
       `RouteMaterializer3D` one-request/one-result boundary.
     - [x] Move exact-state trajectory compilation behind the non-ROS
       `RouteTrajectoryCompiler3D` one-request/one-result boundary.
-    - [ ] Move activation coordination behind the planning-service boundary.
+    - [x] Move activation coordination behind the planning-service boundary.
   - [ ] Extract trajectory compilation and controller ownership.
     - [x] Extract the sole sealed trajectory-compilation service.
     - [ ] Extract controller ownership.
@@ -409,7 +425,9 @@ no mixed authority revision is observable.
   source-text tracking-world binding check has been removed. Manager-owned
   pending sequence allocation and atomic execution-base validation have a direct
   `RouteExecutionManager3D` suite; the corresponding activation source-text
-  checks have also been removed.
+  checks have also been removed. Exact-snapshot activation preparation,
+  supersession, occupied-slot retention, manager publication, and fail-closed
+  invalid requests have a direct `RouteActivationCoordinator3D` suite.
 - [x] Keep public and private headers self-contained and retain a temporary
   umbrella include only where migration compatibility requires it.
 - [ ] Pass formatting, static analysis, C++ tests, and script tests after every

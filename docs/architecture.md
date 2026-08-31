@@ -221,6 +221,14 @@ acquire hard collision authority.
 vehicle state, endpoint semantics, and exact observed raw owner as one owned
 transaction. It constructs the tracking-world binding and returns the only
 sealed `CompiledTrajectory3D` without ROS or resident node-state access.
+`RouteActivationCoordinator3D` owns that compiler and receives the complete
+planner transaction, materialized route, coherent activation snapshot, and
+latency observation as one immutable request. It prepares one typed activation
+artifact containing the exact execution base and an unsequenced pending draft.
+Its consume-and-return commit API validates a caller-locked world/objective
+context and publishes only through `RouteExecutionManager3D`; no caller can
+reuse a partially committed preparation. The production node adapter is limited
+to coherent capture, lock ownership, clock access, and ROS diagnostics.
 
 The ownership model is specified in
 [`navigation_architecture_remediation.md`](navigation_architecture_remediation.md).

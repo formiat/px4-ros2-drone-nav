@@ -827,6 +827,9 @@ TEST(StaticRouteExtensionTest, ActivationStatusesHaveStableDiagnosticNames) {
                 StaticRouteActivationStatus::kActivationSnapshotSuperseded),
             "activation_snapshot_superseded");
   EXPECT_EQ(staticRouteActivationStatusName(
+                StaticRouteActivationStatus::kActivationCommitRejected),
+            "activation_commit_rejected");
+  EXPECT_EQ(staticRouteActivationStatusName(
                 StaticRouteActivationStatus::kStaleRouteGeneration),
             "stale_route_generation");
   EXPECT_EQ(

@@ -567,8 +567,14 @@ logged only by the ROS adapter. Its soft risk annotation now lives in
 `nav_planning`; the legacy MPPI adapter and controller-layer dependency have
 been removed. `RouteTrajectoryCompiler3D` now owns exact-state compilation and
 the observed/static tracking-world binding behind one non-ROS request/result
-boundary. Activation, controller ownership, and the execution facade remain to
-be extracted. Pending publication is already one manager-owned transaction:
+boundary. `RouteActivationCoordinator3D` owns that compiler and the complete
+compile/admit/certify/splice pipeline behind one immutable request and prepared
+activation result. Its consume-and-return commit takes that preparation by
+value plus a caller-locked currentness context and can publish only through the
+execution manager; the remaining ROS adapter owns only coherent capture, locks,
+clock access, and diagnostics. Controller
+ownership and the remaining execution facade still need extraction. Pending
+publication is already one manager-owned transaction:
 the manager validates the semantic execution base, assigns the sole monotonic
 sequence, seals the candidate, and occupies the pending slot under one lock.
 Direct tests replace the former raw-world source-order guards with executable
@@ -576,9 +582,9 @@ overload, quarantine, full/incremental/reuse, throttling, exact-parent,
 publication, upload-rejection/exception fail-closed behavior, and stop
 transactions, plus static build/reuse, route supersession, generation failure,
 refresh-coalescing, persistent-session transactions, and route-request
-scheduling and materialization. The remaining planning compilation/activation,
-trajectory/control, and execution-facade extraction and the other source-text
-transaction replacements remain tracked by the linked checklist.
+scheduling, materialization, and exact-snapshot activation preparation and
+commit. The remaining controller and execution-facade extraction and the other
+source-text transaction replacements remain tracked by the linked checklist.
 Manager-owned pending identity and atomic base validation are now covered by a
 direct executable suite instead of activation source-order parsing.
 Item 12 remains in progress until that checklist, the complete static audit,
