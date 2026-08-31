@@ -104,6 +104,65 @@ rawWorld(const ObservedOccupancyGrid3D& grid, const std::uint64_t revision,
   return std::make_shared<const OccupancyGrid3D>(std::move(occupancy));
 }
 
+[[nodiscard]] std::shared_ptr<const FreeSpaceTopology3D>
+staticTopology(const OccupancyGrid3D& occupancy) {
+  const FreeSpaceRegionId region_id{"route-region"};
+  const PassagePortalId entry_id{"route-entry"};
+  const PassagePortalId exit_id{"route-exit"};
+  const Point3 entry{2.0, 2.0, 2.0};
+  const Point3 exit{18.0, 2.0, 2.0};
+  const auto portal = [&](const PassagePortalId& id, const Point3& center,
+                          const Vec3& normal) {
+    return PassagePortal{
+        .id = id,
+        .region_id = region_id,
+        .center = center,
+        .outward_normal = normal,
+        .opening_polygon = {{center.x, center.y - 1.0, center.z - 1.0},
+                            {center.x, center.y + 1.0, center.z - 1.0},
+                            {center.x, center.y, center.z + 1.0}},
+        .surface_voxels = {},
+        .traversable_anchors = {},
+        .local_u_axis = {},
+        .local_v_axis = {},
+        .minimum_clearance_m = 0.0,
+        .mean_clearance_m = 0.0,
+        .maximum_clearance_m = 0.0,
+    };
+  };
+  std::vector<RouteSample3D> centerline =
+      sampleRoute3D(std::vector<Point3>{entry, exit}, 0.5, 3.0);
+  std::vector<PassageTraversalEdge> traversals{
+      PassageTraversalEdge{
+          .id = PassageTraversalId{"route-traversal"},
+          .region_id = region_id,
+          .entry_portal_id = entry_id,
+          .exit_portal_id = exit_id,
+          .centerline = centerline,
+          .entry = entry,
+          .exit = exit,
+          .min_z_m = 0.0,
+          .max_z_m = 6.0,
+          .width_m = 4.0,
+          .height_m = 6.0,
+          .minimum_clearance_m = 2.0,
+          .speed_limit_mps = 3.0,
+          .segment_spans = {},
+      },
+  };
+  return std::make_shared<const FreeSpaceTopology3D>(
+      occupancy.fingerprint(), occupancy.bounds(),
+      std::vector<FreeSpaceRegion>{FreeSpaceRegion{
+          .id = region_id,
+          .representative = Point3{10.0, 2.0, 2.0},
+          .maximum_clearance_m = 2.0,
+          .portal_ids = {entry_id, exit_id},
+      }},
+      std::vector<PassagePortal>{portal(entry_id, entry, Vec3{-1.0, 0.0, 0.0}),
+                                 portal(exit_id, exit, Vec3{1.0, 0.0, 0.0})},
+      std::move(traversals));
+}
+
 [[nodiscard]] StaticWorldBuildRequest3D
 staticRequest(const StaticWorldRefreshRequest3D refresh = {},
               const std::uint64_t resident_route_generation = 0U,
@@ -148,7 +207,8 @@ staticRuntime(const std::shared_ptr<const OccupancyGrid3D>& occupancy,
               StaticRequestProvider3D request_provider = {},
               StaticCommitProvider3D commit_provider = {},
               StaticUploader3D uploader = {},
-              std::function<void(const StaticWorldUpdate3D&)> update_handler = {}) {
+              std::function<void(const StaticWorldUpdate3D&)> update_handler = {},
+              std::shared_ptr<const FreeSpaceTopology3D> topology = nullptr) {
   if (!request_provider) {
     request_provider = [](const StaticWorldRefreshRequest3D& refresh) {
       return staticRequest(refresh, refresh.base_route_generation);
@@ -165,9 +225,11 @@ staticRuntime(const std::shared_ptr<const OccupancyGrid3D>& occupancy,
       };
     };
   }
-  const auto topology = std::make_shared<const FreeSpaceTopology3D>(
-      occupancy->fingerprint(), occupancy->bounds(), std::vector<FreeSpaceRegion>{},
-      std::vector<PassagePortal>{}, std::vector<PassageTraversalEdge>{});
+  if (topology == nullptr) {
+    topology = std::make_shared<const FreeSpaceTopology3D>(
+        occupancy->fingerprint(), occupancy->bounds(), std::vector<FreeSpaceRegion>{},
+        std::vector<PassagePortal>{}, std::vector<PassageTraversalEdge>{});
+  }
   return StaticWorldRuntime3D{
       .builder_config =
           StaticWorldBuilderConfig3D{
@@ -699,9 +761,12 @@ TEST(WorldPipeline3DTest, ThrowingUploadInvalidatesPreviouslyResidentWorld) {
 
 TEST(WorldPipeline3DTest, StaticWorldServicePublishesImmutableOwnedArtifact) {
   const std::shared_ptr<const OccupancyGrid3D> occupancy = staticOccupancy();
+  const std::shared_ptr<const FreeSpaceTopology3D> topology =
+      staticTopology(*occupancy);
   std::size_t uploads{0U};
-  WorldPipeline3D pipeline{
-      staticRuntime(occupancy, {}, {}, [&](const WorldEsdfUploadRequest3D& request) {
+  WorldPipeline3D pipeline{staticRuntime(
+      occupancy, {}, {},
+      [&](const WorldEsdfUploadRequest3D& request) {
         ++uploads;
         EXPECT_FALSE(request.distances_m.empty());
         return WorldEsdfUploadResult3D{
@@ -709,13 +774,16 @@ TEST(WorldPipeline3DTest, StaticWorldServicePublishesImmutableOwnedArtifact) {
             .upload_ms = 1.75,
             .revision = request.revision,
         };
-      })};
+      },
+      {}, topology)};
 
   const StaticWorldUpdate3D published = pipeline.updateStaticWorld(staticRequest());
 
   ASSERT_TRUE(published.published());
   ASSERT_NE(published.world->topology_passage_traversals, nullptr);
-  EXPECT_TRUE(published.world->topology_passage_traversals->empty());
+  ASSERT_EQ(published.world->topology_passage_traversals->size(), 1U);
+  EXPECT_EQ(published.world->topology_passage_traversals->front().id,
+            PassageTraversalId{"route-traversal"});
   EXPECT_EQ(published.world->static_occupancy, occupancy);
   EXPECT_EQ(pipeline.staticOccupancy(), occupancy);
   EXPECT_TRUE(productionWorldGenerationCoherent(*published.world));

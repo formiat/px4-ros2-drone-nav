@@ -159,6 +159,54 @@ requestFor(const MaterializerFixture3D& input, RouteSearchCandidate3D candidate,
   };
 }
 
+[[nodiscard]] PassageTraversalEdge
+traversalFor(const RouteSearchCandidate3D& candidate) {
+  const std::vector<RouteSample3D>& centerline = candidate.route;
+  if (centerline.size() < 2U) {
+    throw std::invalid_argument{"candidate route cannot define a traversal"};
+  }
+  return PassageTraversalEdge{
+      .id = PassageTraversalId{"candidate-traversal"},
+      .region_id = FreeSpaceRegionId{"candidate-region"},
+      .entry_portal_id = PassagePortalId{"candidate-entry"},
+      .exit_portal_id = PassagePortalId{"candidate-exit"},
+      .centerline = centerline,
+      .entry = centerline.front().position,
+      .exit = centerline.back().position,
+      .min_z_m = 0.0,
+      .max_z_m = 20.0,
+      .width_m = 6.0,
+      .height_m = 20.0,
+      .minimum_clearance_m = 3.0,
+      .speed_limit_mps = 3.0,
+      .segment_spans = {},
+  };
+}
+
+[[nodiscard]] MaterializerFixture3D
+withTopology(const MaterializerFixture3D& input,
+             const PassageTraversalEdge& traversal) {
+  if (input.world == nullptr || input.transaction == nullptr) {
+    throw std::invalid_argument{"materializer fixture is unavailable"};
+  }
+  WorldSnapshot3D world = *input.world;
+  world.topology_passage_traversals =
+      std::make_shared<const std::vector<PassageTraversalEdge>>(1U, traversal);
+  auto immutable_world = std::make_shared<const WorldSnapshot3D>(std::move(world));
+  const std::shared_ptr<const PersistentPlannerWorld3D> planner_world =
+      captureResidentPlannerWorld3D(*immutable_world);
+  const std::shared_ptr<const PlannerSearchTransaction3D> transaction =
+      makePlannerSearchTransaction3D(
+          immutable_world, planner_world, input.transaction->objective,
+          input.transaction->request, input.transaction->continuity_base,
+          input.transaction->release_reason);
+  return MaterializerFixture3D{
+      .world = std::move(immutable_world),
+      .planner_world = planner_world,
+      .transaction = transaction,
+  };
+}
+
 TEST(RouteMaterializer3DTest, RejectsInvalidConfigurationAndRequest) {
   RouteMaterializerConfig3D invalid = materializerConfig();
   invalid.preferred_distance_m = invalid.critical_distance_m - 1.0;
@@ -212,6 +260,30 @@ TEST(RouteMaterializer3DTest,
   for (const RouteSample3D& sample : *result.route.route) {
     EXPECT_EQ(sample.required_risk_tier, RouteRiskTier3D::kPreferred);
   }
+}
+
+TEST(RouteMaterializer3DTest,
+     MaterializedRouteRetainsAndAssociatesStaticTopologyTraversal) {
+  const MaterializerFixture3D base = fixture();
+  ASSERT_NE(base.transaction, nullptr);
+  RouteSearchCandidate3D candidate = plannerCandidate(base.transaction);
+  const MaterializerFixture3D input = withTopology(base, traversalFor(candidate));
+  ASSERT_NE(input.transaction, nullptr);
+  RouteMaterializer3D materializer{materializerConfig()};
+
+  const ProductionRouteMaterialization3D result =
+      materializer.materialize(requestFor(input, std::move(candidate)));
+
+  ASSERT_TRUE(result.validation.accepted);
+  EXPECT_EQ(result.route.world, input.world);
+  ASSERT_NE(result.route.selected_passage_traversal_ids, nullptr);
+  ASSERT_EQ(result.route.selected_passage_traversal_ids->size(), 1U);
+  EXPECT_EQ(result.route.selected_passage_traversal_ids->front(),
+            PassageTraversalId{"candidate-traversal"});
+  ASSERT_NE(result.route.constrained_spans, nullptr);
+  ASSERT_EQ(result.route.constrained_spans->size(), 1U);
+  EXPECT_EQ(result.route.constrained_spans->front().passage_traversal_id,
+            PassageTraversalId{"candidate-traversal"});
 }
 
 TEST(RouteMaterializer3DTest, OverlapCandidateRequiresTheExactCertifiedActiveRoute) {
