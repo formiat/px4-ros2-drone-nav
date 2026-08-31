@@ -55,24 +55,24 @@ routeIsValidForTube(const std::span<const RouteSample3D> route) noexcept {
   return true;
 }
 
-[[nodiscard]] Point3 statePosition(const mppi::State& state) noexcept {
+[[nodiscard]] Point3 statePosition(const MotionState3D& state) noexcept {
   return Point3{state.x, state.y, state.z};
 }
 
-[[nodiscard]] double stateSpeedMps(const mppi::State& state) noexcept {
+[[nodiscard]] double stateSpeedMps(const MotionState3D& state) noexcept {
   return std::hypot(
       std::hypot(static_cast<double>(state.vx), static_cast<double>(state.vy)),
       static_cast<double>(state.vz));
 }
 
-[[nodiscard]] mppi::State interpolateState(const mppi::State& first,
-                                           const mppi::State& second,
-                                           const double ratio) noexcept {
+[[nodiscard]] MotionState3D interpolateState(const MotionState3D& first,
+                                             const MotionState3D& second,
+                                             const double ratio) noexcept {
   const auto interpolate = [ratio](const float start, const float stop) {
     return static_cast<float>(
         std::lerp(static_cast<double>(start), static_cast<double>(stop), ratio));
   };
-  return mppi::State{
+  return MotionState3D{
       .x = interpolate(first.x, second.x),
       .y = interpolate(first.y, second.y),
       .z = interpolate(first.z, second.z),
@@ -380,7 +380,7 @@ std::string_view trackingErrorTubeHandoffStatus3DName(
 TrackingErrorTubeHandoffAssessment3D assessTrackingErrorTubeHandoff3D(
     const std::span<const RouteSample3D> route,
     const TrackingErrorTubeProfile3D& profile,
-    const std::span<const mppi::State> handoff_states,
+    const std::span<const MotionState3D> handoff_states,
     const double begin_route_station_m, const std::int64_t valid_from_ns,
     const std::int64_t valid_until_ns, const std::int64_t control_interval_ns,
     const TrackingErrorTubeHandoffObservation3D& observation) noexcept {
@@ -400,7 +400,7 @@ TrackingErrorTubeHandoffAssessment3D assessTrackingErrorTubeHandoff3D(
       begin_route_station_m < route.front().station_m - kHandoffStationToleranceM ||
       begin_route_station_m > route.back().station_m + kHandoffStationToleranceM ||
       !std::ranges::all_of(handoff_states,
-                           [](const mppi::State& state) {
+                           [](const MotionState3D& state) {
                              return std::isfinite(state.x) && std::isfinite(state.y) &&
                                     std::isfinite(state.z) && std::isfinite(state.vx) &&
                                     std::isfinite(state.vy) &&
@@ -492,7 +492,7 @@ TrackingErrorTubeHandoffAssessment3D assessTrackingErrorTubeHandoff3D(
     return result;
   }
 
-  const mppi::State reference =
+  const MotionState3D reference =
       interpolateState(handoff_states[lower_index], handoff_states[lower_index + 1U],
                        interpolation_ratio);
   const RouteProjection3D reference_projection = projectOntoRoute3DWithinStationWindow(

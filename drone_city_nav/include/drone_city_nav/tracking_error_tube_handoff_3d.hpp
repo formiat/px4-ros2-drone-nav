@@ -1,6 +1,6 @@
 #pragma once
 
-#include "drone_city_nav/mppi/mppi_types.hpp"
+#include "drone_city_nav/motion_state_3d.hpp"
 #include "drone_city_nav/tracking_error_tube_3d.hpp"
 
 #include <cstddef>
@@ -22,7 +22,7 @@ enum class TrackingErrorTubeHandoffStatus3D : std::uint8_t {
 
 struct TrackingErrorTubeHandoffObservation3D {
   std::int64_t stamp_ns{0};
-  mppi::State state{};
+  MotionState3D state{};
 };
 
 struct TrackingErrorTubeHandoffAssessment3D {
@@ -41,12 +41,12 @@ struct TrackingErrorTubeHandoffAssessment3D {
 [[nodiscard]] std::string_view
 trackingErrorTubeHandoffStatus3DName(TrackingErrorTubeHandoffStatus3D status) noexcept;
 
-// MPPI adapter for the controller-neutral tracking-tube contract. The
-// connector exemption ends as soon as the reference enters the route-owned
-// tube and cannot be reset by selecting another nearby horizon state.
+// Controller-neutral handoff assessment. The connector exemption ends as soon
+// as the reference enters the route-owned tube and cannot be reset by selecting
+// another nearby horizon state.
 [[nodiscard]] TrackingErrorTubeHandoffAssessment3D assessTrackingErrorTubeHandoff3D(
     std::span<const RouteSample3D> route, const TrackingErrorTubeProfile3D& profile,
-    std::span<const mppi::State> handoff_states, double begin_route_station_m,
+    std::span<const MotionState3D> handoff_states, double begin_route_station_m,
     std::int64_t valid_from_ns, std::int64_t valid_until_ns,
     std::int64_t control_interval_ns,
     const TrackingErrorTubeHandoffObservation3D& observation) noexcept;

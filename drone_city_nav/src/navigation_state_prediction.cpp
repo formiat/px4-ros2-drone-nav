@@ -6,7 +6,7 @@
 namespace drone_city_nav {
 
 NavigationStatePredictionResult
-predictNavigationState(const mppi::State& state, const double age_s,
+predictNavigationState(const MotionState3D& state, const double age_s,
                        const double maximum_prediction_age_s) noexcept {
   NavigationStatePredictionResult result{.state = state};
   if (!std::isfinite(age_s) || age_s < 0.0 ||

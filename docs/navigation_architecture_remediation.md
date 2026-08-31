@@ -76,10 +76,10 @@ competing strategic route.
 ### `nav_model`
 
 Owns controller-neutral points, vectors, identities, units, kinematics,
-dynamics, risk classifications, and the dense `EsdfGrid3D` geometry descriptor.
-MPPI retains backend aliases to that descriptor but does not own it. No route or
-planning header may include an MPPI header; an architectural dependency test
-enforces that ban.
+dynamics, risk classifications, `MotionState3D`/`MotionControl3D`, and the dense
+`EsdfGrid3D` geometry descriptor. MPPI retains backend aliases to these contracts
+but does not own them. No model, route, or planning header may include an MPPI
+header; an architectural dependency test enforces that ban.
 
 ### `nav_world`
 

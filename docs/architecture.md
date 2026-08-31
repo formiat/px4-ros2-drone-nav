@@ -26,6 +26,10 @@ selected raw world
   -> PX4 trajectory setpoints
 ```
 
+`MotionState3D`, `MotionControl3D`, and `EsdfGrid3D` are controller-neutral
+contracts shared by these stages. The MPPI backend aliases them instead of
+owning duplicate motion or world representations.
+
 Gazebo contacts follow an independent safety path:
 
 ```text

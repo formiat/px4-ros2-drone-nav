@@ -227,11 +227,11 @@ TEST(TrackingErrorTube3DTest,
       route, TrackingErrorTubeWorld3D{}, SweptFootprintConfig{},
       TrackingErrorTubeConfig3D{.response_time_s = 0.15}, 5.0);
   ASSERT_TRUE(tube.valid);
-  const std::vector<mppi::State> states{
-      mppi::State{.x = 0.0F, .y = 2.0F, .z = 2.0F, .vx = 1.0F},
-      mppi::State{.x = 1.0F, .y = 1.5F, .z = 2.0F, .vx = 1.0F},
-      mppi::State{.x = 2.0F, .y = 0.5F, .z = 2.0F, .vx = 1.0F},
-      mppi::State{.x = 3.0F, .y = 0.0F, .z = 2.0F, .vx = 1.0F},
+  const std::vector<MotionState3D> states{
+      MotionState3D{.x = 0.0F, .y = 2.0F, .z = 2.0F, .vx = 1.0F},
+      MotionState3D{.x = 1.0F, .y = 1.5F, .z = 2.0F, .vx = 1.0F},
+      MotionState3D{.x = 2.0F, .y = 0.5F, .z = 2.0F, .vx = 1.0F},
+      MotionState3D{.x = 3.0F, .y = 0.0F, .z = 2.0F, .vx = 1.0F},
   };
   constexpr std::int64_t kValidFromNs{1'000'000'000LL};
   constexpr std::int64_t kControlIntervalNs{100'000'000LL};
@@ -241,7 +241,7 @@ TEST(TrackingErrorTube3DTest,
       route, tube, states, 0.0, kValidFromNs, kValidUntilNs, kControlIntervalNs,
       TrackingErrorTubeHandoffObservation3D{
           .stamp_ns = kValidFromNs + kControlIntervalNs / 2LL,
-          .state = mppi::State{.x = 0.5F, .y = 1.75F, .z = 2.0F, .vx = 1.0F},
+          .state = MotionState3D{.x = 0.5F, .y = 1.75F, .z = 2.0F, .vx = 1.0F},
       });
   EXPECT_TRUE(active.active());
   EXPECT_DOUBLE_EQ(active.reference_speed_limit_mps, 1.0);
@@ -249,7 +249,7 @@ TEST(TrackingErrorTube3DTest,
 
   TrackingErrorTubeHandoffObservation3D diverged_observation{
       .stamp_ns = kValidFromNs + kControlIntervalNs / 2LL,
-      .state = mppi::State{.x = 0.5F, .y = 2.0F, .z = 2.0F, .vx = 1.0F},
+      .state = MotionState3D{.x = 0.5F, .y = 2.0F, .z = 2.0F, .vx = 1.0F},
   };
   EXPECT_EQ(assessTrackingErrorTubeHandoff3D(route, tube, states, 0.0, kValidFromNs,
                                              kValidUntilNs, kControlIntervalNs,
@@ -258,22 +258,22 @@ TEST(TrackingErrorTube3DTest,
             TrackingErrorTubeHandoffStatus3D::kTrackingErrorExceeded);
 
   diverged_observation.state =
-      mppi::State{.x = 0.5F, .y = 1.75F, .z = 2.0F, .vx = 1.1F};
+      MotionState3D{.x = 0.5F, .y = 1.75F, .z = 2.0F, .vx = 1.1F};
   EXPECT_EQ(assessTrackingErrorTubeHandoff3D(route, tube, states, 0.0, kValidFromNs,
                                              kValidUntilNs, kControlIntervalNs,
                                              diverged_observation)
                 .status,
             TrackingErrorTubeHandoffStatus3D::kSpeedLimitExceeded);
 
-  EXPECT_EQ(assessTrackingErrorTubeHandoff3D(
-                route, tube, states, 0.0, kValidFromNs, kValidUntilNs,
-                kControlIntervalNs,
-                TrackingErrorTubeHandoffObservation3D{
-                    .stamp_ns = kValidFromNs + 5LL * kControlIntervalNs / 2LL,
-                    .state = mppi::State{.x = 2.5F, .y = 0.25F, .z = 2.0F, .vx = 1.0F},
-                })
-                .status,
-            TrackingErrorTubeHandoffStatus3D::kReferenceAcquiredRouteTube);
+  EXPECT_EQ(
+      assessTrackingErrorTubeHandoff3D(
+          route, tube, states, 0.0, kValidFromNs, kValidUntilNs, kControlIntervalNs,
+          TrackingErrorTubeHandoffObservation3D{
+              .stamp_ns = kValidFromNs + 5LL * kControlIntervalNs / 2LL,
+              .state = MotionState3D{.x = 2.5F, .y = 0.25F, .z = 2.0F, .vx = 1.0F},
+          })
+          .status,
+      TrackingErrorTubeHandoffStatus3D::kReferenceAcquiredRouteTube);
 }
 
 } // namespace

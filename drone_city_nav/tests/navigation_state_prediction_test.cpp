@@ -6,7 +6,7 @@ namespace drone_city_nav {
 namespace {
 
 TEST(NavigationStatePredictionTest, ExtrapolatesConstantVelocityAndYawRate) {
-  const mppi::State state{
+  const MotionState3D state{
       .x = 1.0F,
       .y = 2.0F,
       .z = 3.0F,
@@ -30,7 +30,7 @@ TEST(NavigationStatePredictionTest, ExtrapolatesConstantVelocityAndYawRate) {
 
 TEST(NavigationStatePredictionTest, RejectsPredictionPastConfiguredAge) {
   const NavigationStatePredictionResult result =
-      predictNavigationState(mppi::State{}, 1.01, 1.0);
+      predictNavigationState(MotionState3D{}, 1.01, 1.0);
 
   EXPECT_FALSE(result.valid);
   EXPECT_FALSE(result.predicted);

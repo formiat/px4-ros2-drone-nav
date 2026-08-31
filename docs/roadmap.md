@@ -538,12 +538,13 @@ direction-labelled execution-time refinement, immutable sparse
 `KnownObstacleDistance3D` cache, immutable world/search/materialization
 artifacts, the sealed exact-state `CompiledTrajectory3D`, the tagged execution
 variant and reducer, one atomic `CommittedExecutionAuthority3D`, the enforced
-eight-layer CMake DAG, the controller-neutral `EsdfGrid3D` world descriptor,
-complete registration of production-relevant GTests, split execution
-model/certification/transition/store contracts, a package-private hand-written
-C++ API, independent compilation of every hand-written header, and an
-independently tested `NavigationDiagnosticsSink` that owns its mailbox, worker,
-files, error context, and runtime statistics. The package-private
+eight-layer CMake DAG, controller-neutral `MotionState3D`/`MotionControl3D` and
+`EsdfGrid3D` contracts, complete registration of production-relevant GTests,
+split execution model/certification/transition/store contracts, a
+package-private hand-written C++ API, independent compilation of every
+hand-written header, and an independently tested `NavigationDiagnosticsSink`
+that owns its mailbox, worker, files, error context, and runtime statistics. The
+package-private
 `WorldPipeline3D` now owns raw producer admission and joining, incremental
 reconstruction, latest-wins scheduling, worker lifetime, generation issuance,
 and coherent immutable resident-world publication. Observed mode additionally

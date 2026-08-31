@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/esdf_grid_3d.hpp"
+#include "drone_city_nav/motion_state_3d.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -14,23 +15,14 @@ namespace drone_city_nav::mppi {
 inline constexpr float kUnknownEsdfDistanceM{drone_city_nav::kUnknownEsdfDistanceM};
 using EsdfGrid = drone_city_nav::EsdfGrid3D;
 using EsdfDirtyRegion = drone_city_nav::EsdfDirtyRegion3D;
+using State = drone_city_nav::MotionState3D;
+using Control = drone_city_nav::MotionControl3D;
 
 enum class RiskTier : std::uint8_t {
   kPreferred = 0,
   kPlanning = 1,
   kCritical = 2,
   kCollision = 3,
-};
-
-struct State {
-  float x{0.0F};
-  float y{0.0F};
-  float z{0.0F};
-  float vx{0.0F};
-  float vy{0.0F};
-  float vz{0.0F};
-  float yaw{0.0F};
-  float yaw_rate{0.0F};
 };
 
 struct RouteSample3D {
@@ -211,13 +203,6 @@ movingTargetAltitudeAt(const MovingTargetReference& target,
 }
 
 #undef DRONE_CITY_NAV_MPPI_HOST_DEVICE
-
-struct Control {
-  float ax{0.0F};
-  float ay{0.0F};
-  float az{0.0F};
-  float yaw_accel{0.0F};
-};
 
 struct CostBreakdown {
   float head_progress{0.0F};

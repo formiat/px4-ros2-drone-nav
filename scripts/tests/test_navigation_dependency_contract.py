@@ -13,6 +13,7 @@ CONTROLLER_NEUTRAL_HEADERS = (
     "compiled_trajectory_3d.hpp",
     "derived_clearance_3d.hpp",
     "esdf_query.hpp",
+    "navigation_state_prediction.hpp",
     "observed_esdf_3d.hpp",
     "persistent_dstar_lite_planner_3d.hpp",
     "route_3d.hpp",
@@ -20,6 +21,7 @@ CONTROLLER_NEUTRAL_HEADERS = (
     "route_risk_annotation_3d.hpp",
     "static_route_extension.hpp",
     "swept_footprint.hpp",
+    "tracking_error_tube_handoff_3d.hpp",
     "trajectory_compiler_3d.hpp",
     "world_snapshot_3d.hpp",
 )
