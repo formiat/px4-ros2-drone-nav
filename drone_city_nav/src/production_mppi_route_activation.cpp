@@ -72,56 +72,6 @@ candidateStatusFromRiskAssignment(const RouteRiskAnnotationStatus3D status) noex
          snapshot.directTrackingExecution() == nullptr;
 }
 
-[[nodiscard]] bool
-sameExecutionRouteBase(const std::shared_ptr<const ExecutionPlan3D>& first,
-                       const std::shared_ptr<const ExecutionPlan3D>& second) noexcept {
-  if (first == nullptr || second == nullptr || !first->valid() || !second->valid()) {
-    return false;
-  }
-  if (first->execution_owner_epoch != second->execution_owner_epoch ||
-      (first->route() != nullptr) != (second->route() != nullptr) ||
-      (first->directTrackingExecution() != nullptr) !=
-          (second->directTrackingExecution() != nullptr) ||
-      (first->stationaryHold() != nullptr) != (second->stationaryHold() != nullptr) ||
-      first->routeGenerationHighWater() != second->routeGenerationHighWater()) {
-    return false;
-  }
-  const StationaryExecutionHold3D* const first_hold = first->stationaryHold();
-  const StationaryExecutionHold3D* const second_hold = second->stationaryHold();
-  if (exclusiveExecutionHold(*first)) {
-    return exclusiveExecutionHold(*second) && first_hold != nullptr &&
-           second_hold != nullptr && first_hold->hold_id == second_hold->hold_id;
-  }
-  const DirectTrackingFiniteExecution3D* const first_direct =
-      first->directTrackingExecution();
-  const DirectTrackingFiniteExecution3D* const second_direct =
-      second->directTrackingExecution();
-  if (first_direct != nullptr) {
-    if (second_direct == nullptr) {
-      return false;
-    }
-    const DirectTrackingOwnerIdentity3D& left = first_direct->identity;
-    const DirectTrackingOwnerIdentity3D& right = second_direct->identity;
-    return left.mission_epoch == right.mission_epoch &&
-           left.assignment_generation == right.assignment_generation &&
-           left.target_detection_id == right.target_detection_id &&
-           left.target_track_id == right.target_track_id &&
-           left.objective_sample_sequence == right.objective_sample_sequence &&
-           left.line_of_sight_generation == right.line_of_sight_generation;
-  }
-  const CertifiedRouteSuffix3D* const first_route = first->route();
-  const CertifiedRouteSuffix3D* const second_route = second->route();
-  if (first_route == nullptr) {
-    return first->phase() == second->phase();
-  }
-  return second_route != nullptr &&
-         first_route->identity.generation == second_route->identity.generation &&
-         first_route->geometry != nullptr && second_route->geometry != nullptr &&
-         first_route->geometry->compiled_trajectory_revision ==
-             second_route->geometry->compiled_trajectory_revision &&
-         first_route->continuity_id == second_route->continuity_id;
-}
-
 [[nodiscard]] PendingExecutionBaseKind3D
 pendingExecutionBaseKind(const ExecutionPlan3D& snapshot,
                          const bool route_splice_required) noexcept {
@@ -139,18 +89,6 @@ pendingExecutionBaseKind(const ExecutionPlan3D& snapshot,
                                  : PendingExecutionBaseKind3D::kRouteHandoff;
   }
   return PendingExecutionBaseKind3D::kEmpty;
-}
-
-[[nodiscard]] std::optional<std::uint64_t>
-nextPendingPublicationSequence(std::atomic<std::uint64_t>& sequence) noexcept {
-  std::uint64_t current = sequence.load(std::memory_order_relaxed);
-  while (current != std::numeric_limits<std::uint64_t>::max()) {
-    if (sequence.compare_exchange_weak(current, current + 1U, std::memory_order_relaxed,
-                                       std::memory_order_relaxed)) {
-      return current + 1U;
-    }
-  }
-  return std::nullopt;
 }
 
 [[nodiscard]] VehicleState3D
@@ -648,7 +586,7 @@ void ProductionMppiNode::commitRouteActivation3D(
       base_generation != std::numeric_limits<std::uint64_t>::max() &&
       candidate_generation == base_generation + 1U;
   report.generation_matches = base_generation_matches && allocation_generation_matches;
-  report.certification_execution_base_current = sameExecutionRouteBase(
+  report.certification_execution_base_current = sameExecutionRouteBase3D(
       snapshot.execution_authority != nullptr ? snapshot.execution_authority->plan()
                                               : nullptr,
       current_execution);
@@ -784,14 +722,10 @@ void ProductionMppiNode::commitRouteActivation3D(
   const bool splice_ready =
       !overlap_search || (overlap_base_matches && report.splice.certified());
 
-  const std::optional<std::uint64_t> publication_sequence =
+  std::optional<PendingCertifiedRoute3D> pending_draft =
       certified_route.has_value() && splice_ready
-          ? nextPendingPublicationSequence(pending_certified_route_sequence_)
-          : std::nullopt;
-  const auto pending =
-      certified_route.has_value() && publication_sequence.has_value()
-          ? std::make_shared<const PendingCertifiedRoute3D>(PendingCertifiedRoute3D{
-                .publication_sequence = *publication_sequence,
+          ? std::optional<PendingCertifiedRoute3D>{PendingCertifiedRoute3D{
+                .publication_sequence = 0U,
                 .base_execution_owner_epoch =
                     current_execution != nullptr
                         ? current_execution->execution_owner_epoch
@@ -814,8 +748,8 @@ void ProductionMppiNode::commitRouteActivation3D(
                         : std::nullopt,
                 .route_splice = overlap_search ? report.splice.splice : std::nullopt,
                 .route = certified_route.value(),
-            })
-          : nullptr;
+            }}
+          : std::nullopt;
 
   bool published_pending{false};
   {
@@ -833,8 +767,8 @@ void ProductionMppiNode::commitRouteActivation3D(
     const bool raw_world_current =
         !raw_validation_required ||
         world_pipeline_->latestRawWorld() == snapshot.raw_world;
-    const bool execution_base_current =
-        sameExecutionRouteBase(current_execution, route_execution_manager_.plan());
+    bool execution_base_current =
+        sameExecutionRouteBase3D(current_execution, route_execution_manager_.plan());
     const bool candidate_world_coherent =
         productionWorldGenerationCoherent(*candidate.world);
     report.resident_world_snapshot_current = resident_world_current;
@@ -850,8 +784,22 @@ void ProductionMppiNode::commitRouteActivation3D(
             .execution_base_current = execution_base_current,
             .candidate_world_coherent = candidate_world_coherent,
         });
-    if (pending != nullptr && report.snapshot_current) {
-      published_pending = route_execution_manager_.publishPending(pending);
+    if (pending_draft.has_value() && report.snapshot_current) {
+      const PendingRoutePublicationResult3D publication =
+          route_execution_manager_.publishPendingForCurrentBase(
+              current_execution, std::move(*pending_draft));
+      execution_base_current =
+          publication.status != PendingRoutePublicationStatus3D::kStaleExecutionBase;
+      report.execution_base_snapshot_current = execution_base_current;
+      report.snapshot_current =
+          pendingRoutePublicationBaseCurrent3D(PendingRoutePublicationCurrentness3D{
+              .resident_world_current = resident_world_current,
+              .objective_current = objective_current,
+              .raw_world_current = raw_world_current,
+              .execution_base_current = execution_base_current,
+              .candidate_world_coherent = candidate_world_coherent,
+          });
+      published_pending = publication.published();
     }
     if (published_pending) {
       report.activation_status = StaticRouteActivationStatus::kCertifiedPending;

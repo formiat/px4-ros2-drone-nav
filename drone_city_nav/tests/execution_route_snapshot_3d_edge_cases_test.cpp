@@ -63,97 +63,6 @@ TEST(ExecutionRouteSnapshot3DTest,
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
-     ManagerRetainsFirstCertifiedRouteUntilExactAcknowledgement) {
-  SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
-  ASSERT_TRUE(active);
-  ASSERT_TRUE(active->route() != nullptr);
-
-  ExecutionRouteActivation3D successor_activation = fixture.activation();
-  successor_activation.route_generation = SnapshotFixture3D::kRouteGeneration + 1U;
-  const std::optional<CertifiedRouteSuffix3D> successor =
-      certifyExecutionRoute3D(successor_activation);
-  ASSERT_TRUE(successor.has_value());
-
-  const auto first =
-      std::make_shared<const PendingCertifiedRoute3D>(PendingCertifiedRoute3D{
-          .publication_sequence = 1U,
-          .base_execution_owner_epoch = active->execution_owner_epoch,
-          .base_kind = PendingExecutionBaseKind3D::kRoute,
-          .base_route_generation = active->route()->identity.generation,
-          .base_geometry_revision =
-              active->route()->geometry->compiled_trajectory_revision,
-          .base_continuity_id = active->route()->continuity_id,
-          .base_direct_tracking_identity = std::nullopt,
-          .route_splice = testRouteSplice(*active->route(), *successor),
-          .route = *successor,
-      });
-  auto second_value = *first;
-  second_value.publication_sequence = 2U;
-  const auto second =
-      std::make_shared<const PendingCertifiedRoute3D>(std::move(second_value));
-
-  RouteExecutionManager3D manager;
-  EXPECT_TRUE(manager.publishPending(first));
-  const std::shared_ptr<const PendingCertifiedRoute3D> sealed_first = manager.pending();
-  ASSERT_NE(sealed_first, nullptr);
-  EXPECT_NE(sealed_first, first);
-  EXPECT_FALSE(manager.publishPending(first));
-  EXPECT_FALSE(manager.publishPending(second));
-  EXPECT_FALSE(manager.acknowledgePendingIfSame(first));
-  EXPECT_EQ(manager.pending(), sealed_first);
-  EXPECT_TRUE(manager.acknowledgePendingIfSame(sealed_first));
-  EXPECT_EQ(manager.pending(), nullptr);
-  EXPECT_FALSE(manager.publishPending(first));
-  EXPECT_TRUE(manager.publishPending(second));
-  const std::shared_ptr<const PendingCertifiedRoute3D> sealed_second =
-      manager.pending();
-  ASSERT_NE(sealed_second, nullptr);
-  EXPECT_NE(sealed_second, second);
-  EXPECT_EQ(sealed_second->publication_sequence, second->publication_sequence);
-}
-
-TEST(ExecutionRouteSnapshot3DTest,
-     ManagerSealsThePendingRouteAgainstAMutableSharedAlias) {
-  SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
-  ASSERT_NE(active, nullptr);
-  ASSERT_TRUE(active->route() != nullptr);
-
-  ExecutionRouteActivation3D successor_activation = fixture.activation();
-  successor_activation.route_generation = SnapshotFixture3D::kRouteGeneration + 1U;
-  const std::optional<CertifiedRouteSuffix3D> successor =
-      certifyExecutionRoute3D(successor_activation);
-  ASSERT_TRUE(successor.has_value());
-  auto mutable_candidate =
-      std::make_shared<PendingCertifiedRoute3D>(PendingCertifiedRoute3D{
-          .publication_sequence = 1U,
-          .base_execution_owner_epoch = active->execution_owner_epoch,
-          .base_kind = PendingExecutionBaseKind3D::kRoute,
-          .base_route_generation = active->route()->identity.generation,
-          .base_geometry_revision =
-              active->route()->geometry->compiled_trajectory_revision,
-          .base_continuity_id = active->route()->continuity_id,
-          .base_direct_tracking_identity = std::nullopt,
-          .route_splice = testRouteSplice(*active->route(), *successor),
-          .route = *successor,
-      });
-  const std::shared_ptr<const PendingCertifiedRoute3D> const_alias = mutable_candidate;
-  RouteExecutionManager3D manager;
-  ASSERT_TRUE(manager.publishPending(const_alias));
-  const std::shared_ptr<const PendingCertifiedRoute3D> sealed = manager.pending();
-  ASSERT_NE(sealed, nullptr);
-  ASSERT_NE(sealed, const_alias);
-
-  ++mutable_candidate->publication_sequence;
-  mutable_candidate->route.progress.station_m += 1.0;
-  EXPECT_EQ(sealed->publication_sequence, 1U);
-  EXPECT_DOUBLE_EQ(sealed->route.progress.station_m, successor->progress.station_m);
-  EXPECT_TRUE(sealed->valid());
-  EXPECT_TRUE(pendingCertifiedRouteEligible3D(*sealed, *active));
-}
-
-TEST(ExecutionRouteSnapshot3DTest,
      RouteBasedPendingPublicationRequiresACertifiedSplice) {
   SnapshotFixture3D fixture;
   const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
@@ -180,7 +89,7 @@ TEST(ExecutionRouteSnapshot3DTest,
 
   RouteExecutionManager3D manager;
   EXPECT_FALSE(pending->valid());
-  EXPECT_FALSE(manager.publishPending(pending));
+  EXPECT_FALSE(publishPendingDraftForCurrentBase(manager, *pending));
   EXPECT_EQ(manager.pending(), nullptr);
 }
 
@@ -213,7 +122,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       *initial, initial->version, *suffix, std::move(execution));
   ASSERT_TRUE(activation.applied());
 
-  ASSERT_TRUE(manager.publishPending(pending));
+  ASSERT_TRUE(publishPendingDraftForCurrentBase(manager, *pending));
   const std::shared_ptr<const PendingCertifiedRoute3D> sealed = manager.pending();
   ASSERT_NE(sealed, nullptr);
   const RouteExecutionManagerSnapshot3D before_commit = manager.snapshot();
@@ -249,7 +158,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       activateCertifiedRoute3D(*recertified_initial, recertified_initial->version,
                                *recertified, std::move(recertified_execution));
   ASSERT_TRUE(recertified_activation.applied());
-  ASSERT_TRUE(recertified_manager.publishPending(pending));
+  ASSERT_TRUE(publishPendingDraftForCurrentBase(recertified_manager, *pending));
   const std::shared_ptr<const PendingCertifiedRoute3D> recertified_pending =
       recertified_manager.pending();
   ASSERT_NE(recertified_pending, nullptr);
@@ -276,7 +185,7 @@ TEST(ExecutionRouteSnapshot3DTest,
                                std::move(foreign_execution));
   ASSERT_TRUE(foreign_activation.applied());
 
-  ASSERT_TRUE(retained_manager.publishPending(pending));
+  ASSERT_TRUE(publishPendingDraftForCurrentBase(retained_manager, *pending));
   const std::shared_ptr<const PendingCertifiedRoute3D> retained =
       retained_manager.pending();
   ASSERT_NE(retained, nullptr);
@@ -304,7 +213,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       activateCertifiedRoute3D(*unrelated_initial, unrelated_initial->version,
                                *unrelated, std::move(unrelated_execution));
   ASSERT_TRUE(unrelated_activation.applied());
-  ASSERT_TRUE(unrelated_manager.publishPending(pending));
+  ASSERT_TRUE(publishPendingDraftForCurrentBase(unrelated_manager, *pending));
   const std::shared_ptr<const PendingCertifiedRoute3D> unrelated_pending =
       unrelated_manager.pending();
   ASSERT_NE(unrelated_pending, nullptr);
@@ -363,7 +272,7 @@ TEST(ExecutionRouteSnapshot3DTest, RouteSplicePendingSurvivesExecutionProgressCa
           .route_splice = splice,
           .route = *successor,
       });
-  ASSERT_TRUE(manager.publishPending(pending));
+  ASSERT_TRUE(publishPendingDraftForCurrentBase(manager, *pending));
   const std::shared_ptr<const PendingCertifiedRoute3D> sealed = manager.pending();
   ASSERT_NE(sealed, nullptr);
 
@@ -422,7 +331,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       *initial, initial->version, *suffix, std::move(execution));
   ASSERT_TRUE(activation.applied());
 
-  ASSERT_TRUE(manager.publishPending(first));
+  ASSERT_TRUE(publishPendingDraftForCurrentBase(manager, *first));
   std::barrier pending_captured{2};
   std::barrier pending_replaced{2};
   std::shared_ptr<const PendingCertifiedRoute3D> captured;
@@ -440,7 +349,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   }};
   std::thread producer{[&] {
     pending_captured.arrive_and_wait();
-    newer_published = manager.publishPending(newer);
+    newer_published = publishPendingDraftForCurrentBase(manager, *newer);
     pending_replaced.arrive_and_wait();
   }};
 

@@ -18,6 +18,31 @@ enum class ExecutionRoutePublicationStatus3D : std::uint8_t {
   kAuthorityRevisionExhausted,
 };
 
+enum class PendingRoutePublicationStatus3D : std::uint8_t {
+  kPublished,
+  kInvalidCandidate,
+  kStaleExecutionBase,
+  kPendingOccupied,
+  kSequenceExhausted,
+};
+
+struct PendingRoutePublicationResult3D {
+  PendingRoutePublicationStatus3D status{
+      PendingRoutePublicationStatus3D::kInvalidCandidate};
+  std::shared_ptr<const PendingCertifiedRoute3D> pending;
+
+  [[nodiscard]] bool published() const noexcept {
+    return status == PendingRoutePublicationStatus3D::kPublished && pending != nullptr;
+  }
+};
+
+// Compares only the semantic base that a pending route is certified to replace.
+// Finite-horizon refreshes and control evidence do not change this identity;
+// route, direct-tracking, hold, revocation, and owner-epoch changes do.
+[[nodiscard]] bool
+sameExecutionRouteBase3D(const std::shared_ptr<const ExecutionPlan3D>& first,
+                         const std::shared_ptr<const ExecutionPlan3D>& second) noexcept;
+
 struct RouteExecutionManagerSnapshot3D {
   std::shared_ptr<const CommittedExecutionAuthority3D> authority;
   std::shared_ptr<const PendingCertifiedRoute3D> pending;
@@ -66,8 +91,13 @@ public:
   [[nodiscard]] bool clearLeaseIfSame(
       const std::shared_ptr<const CommittedExecutionAuthority3D>& expected_authority);
 
-  [[nodiscard]] bool
-  publishPending(std::shared_ptr<const PendingCertifiedRoute3D> candidate);
+  // Atomically verifies the semantic execution base, assigns the sole
+  // manager-owned publication sequence, seals the candidate, and occupies the
+  // pending slot. The candidate is an unsealed draft and must carry sequence
+  // zero; callers cannot reserve or publish a sequence independently.
+  [[nodiscard]] PendingRoutePublicationResult3D publishPendingForCurrentBase(
+      const std::shared_ptr<const ExecutionPlan3D>& expected_execution_base,
+      PendingCertifiedRoute3D candidate);
 
   [[nodiscard]] bool acknowledgePendingIfSame(
       const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending);

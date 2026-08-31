@@ -7,6 +7,70 @@
 #include <utility>
 
 namespace drone_city_nav {
+namespace {
+
+[[nodiscard]] bool exclusiveExecutionHold(const ExecutionPlan3D& plan) noexcept {
+  return plan.phase() == ExecutionRoutePhase3D::kStopped &&
+         plan.stationaryHold() != nullptr && plan.route() == nullptr &&
+         plan.finiteExecution() == nullptr && plan.directTrackingExecution() == nullptr;
+}
+
+[[nodiscard]] bool
+sameDirectTrackingIdentity(const DirectTrackingOwnerIdentity3D& first,
+                           const DirectTrackingOwnerIdentity3D& second) noexcept {
+  return first.mission_epoch == second.mission_epoch &&
+         first.assignment_generation == second.assignment_generation &&
+         first.target_detection_id == second.target_detection_id &&
+         first.target_track_id == second.target_track_id &&
+         first.objective_sample_sequence == second.objective_sample_sequence &&
+         first.line_of_sight_generation == second.line_of_sight_generation;
+}
+
+} // namespace
+
+bool sameExecutionRouteBase3D(
+    const std::shared_ptr<const ExecutionPlan3D>& first,
+    const std::shared_ptr<const ExecutionPlan3D>& second) noexcept {
+  if (first == nullptr || second == nullptr || !first->valid() || !second->valid()) {
+    return false;
+  }
+  if (first->execution_owner_epoch != second->execution_owner_epoch ||
+      (first->route() != nullptr) != (second->route() != nullptr) ||
+      (first->directTrackingExecution() != nullptr) !=
+          (second->directTrackingExecution() != nullptr) ||
+      (first->stationaryHold() != nullptr) != (second->stationaryHold() != nullptr) ||
+      first->routeGenerationHighWater() != second->routeGenerationHighWater()) {
+    return false;
+  }
+
+  const StationaryExecutionHold3D* const first_hold = first->stationaryHold();
+  const StationaryExecutionHold3D* const second_hold = second->stationaryHold();
+  if (exclusiveExecutionHold(*first)) {
+    return exclusiveExecutionHold(*second) && first_hold != nullptr &&
+           second_hold != nullptr && first_hold->hold_id == second_hold->hold_id;
+  }
+
+  const DirectTrackingFiniteExecution3D* const first_direct =
+      first->directTrackingExecution();
+  const DirectTrackingFiniteExecution3D* const second_direct =
+      second->directTrackingExecution();
+  if (first_direct != nullptr) {
+    return second_direct != nullptr &&
+           sameDirectTrackingIdentity(first_direct->identity, second_direct->identity);
+  }
+
+  const CertifiedRouteSuffix3D* const first_route = first->route();
+  const CertifiedRouteSuffix3D* const second_route = second->route();
+  if (first_route == nullptr) {
+    return first->phase() == second->phase();
+  }
+  return second_route != nullptr &&
+         first_route->identity.generation == second_route->identity.generation &&
+         first_route->geometry != nullptr && second_route->geometry != nullptr &&
+         first_route->geometry->compiled_trajectory_revision ==
+             second_route->geometry->compiled_trajectory_revision &&
+         first_route->continuity_id == second_route->continuity_id;
+}
 
 std::shared_ptr<const ExecutionPlan3D>
 RouteExecutionManagerSnapshot3D::plan() const noexcept {
@@ -186,25 +250,55 @@ bool RouteExecutionManager3D::clearLeaseIfSame(
          ExecutionRoutePublicationStatus3D::kPublished;
 }
 
-bool RouteExecutionManager3D::publishPending(
-    std::shared_ptr<const PendingCertifiedRoute3D> candidate) {
-  if (candidate == nullptr || !candidate->valid()) {
-    return false;
+PendingRoutePublicationResult3D RouteExecutionManager3D::publishPendingForCurrentBase(
+    const std::shared_ptr<const ExecutionPlan3D>& expected_execution_base,
+    PendingCertifiedRoute3D candidate) {
+  if (candidate.publication_sequence != 0U) {
+    return {
+        .status = PendingRoutePublicationStatus3D::kInvalidCandidate,
+        .pending = nullptr,
+    };
   }
-  // Seal the publication boundary even when the caller retains a mutable alias
-  // to the original allocation.
-  const auto sealed = std::make_shared<const PendingCertifiedRoute3D>(*candidate);
-  if (!sealed->valid()) {
-    return false;
-  }
+
   const std::scoped_lock lock{mutex_};
-  if (pending_ != nullptr ||
-      sealed->publication_sequence <= last_accepted_pending_sequence_) {
-    return false;
+  const std::shared_ptr<const CommittedExecutionAuthority3D> current_authority =
+      authority_.load(std::memory_order_acquire);
+  const std::shared_ptr<const ExecutionPlan3D> current_execution =
+      current_authority != nullptr ? current_authority->plan() : nullptr;
+  if (!sameExecutionRouteBase3D(expected_execution_base, current_execution)) {
+    return {
+        .status = PendingRoutePublicationStatus3D::kStaleExecutionBase,
+        .pending = nullptr,
+    };
+  }
+  if (pending_ != nullptr) {
+    return {
+        .status = PendingRoutePublicationStatus3D::kPendingOccupied,
+        .pending = nullptr,
+    };
+  }
+  if (last_accepted_pending_sequence_ == std::numeric_limits<std::uint64_t>::max()) {
+    return {
+        .status = PendingRoutePublicationStatus3D::kSequenceExhausted,
+        .pending = nullptr,
+    };
+  }
+
+  candidate.publication_sequence = last_accepted_pending_sequence_ + 1U;
+  auto sealed = std::make_shared<const PendingCertifiedRoute3D>(std::move(candidate));
+  if (!sealed->valid() || current_execution == nullptr ||
+      !pendingCertifiedRouteEligible3D(*sealed, *current_execution)) {
+    return {
+        .status = PendingRoutePublicationStatus3D::kInvalidCandidate,
+        .pending = nullptr,
+    };
   }
   pending_ = sealed;
   last_accepted_pending_sequence_ = sealed->publication_sequence;
-  return true;
+  return {
+      .status = PendingRoutePublicationStatus3D::kPublished,
+      .pending = std::move(sealed),
+  };
 }
 
 bool RouteExecutionManager3D::acknowledgePendingIfSame(

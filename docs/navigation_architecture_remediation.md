@@ -167,6 +167,17 @@ control evidence. Lease revocation, feedback replacement, pending activation,
 and unchanged-plan horizon refresh each publish one complete replacement before
 the corresponding DDS message can become visible.
 
+Pending-route publication no longer allocates identity in the ROS node or
+performs a check-then-publish pair. An unsealed candidate carries sequence zero;
+`RouteExecutionManager3D` atomically validates its captured semantic execution
+base, assigns the next monotonic sequence, validates and seals the route, and
+occupies the sole pending slot. Direct state-machine coverage exercises sequence
+ownership, occupied-slot rejection, externally numbered candidate rejection,
+and stale-base rejection. That executable manager suite replaces the former
+Python assertions that parsed activation-source ordering and helper bodies. The
+legacy unchecked `publishPending` entry point has been removed, including from
+test fixtures; all pending publication now crosses the same production API.
+
 ### `nav_control`
 
 Owns controller-neutral local-reference and finite-horizon contracts plus the
@@ -373,6 +384,10 @@ no mixed authority revision is observable.
     - [ ] Extract controller ownership.
   - [ ] Finish the execution-service facade around the existing sole
     `RouteExecutionManager3D` owner.
+    - [x] Move pending sequence allocation and execution-base-checked pending
+      publication into one manager transaction.
+    - [ ] Move the remaining activation, retention, hold, and horizon operations
+      behind the facade.
 - [x] Enforce the internal dependency graph with CMake targets.
 - [x] Stop installing private implementation headers as public API.
 - [x] Register every production-relevant GTest source and remove the stale test
@@ -391,7 +406,10 @@ no mixed authority revision is observable.
   invalid derived-distance behavior have a direct `RouteMaterializer3D` suite.
   Exact initial-state sealing, observed raw-owner binding, and fail-closed
   missing ownership have a direct `RouteTrajectoryCompiler3D` suite; the former
-  source-text tracking-world binding check has been removed.
+  source-text tracking-world binding check has been removed. Manager-owned
+  pending sequence allocation and atomic execution-base validation have a direct
+  `RouteExecutionManager3D` suite; the corresponding activation source-text
+  checks have also been removed.
 - [x] Keep public and private headers self-contained and retain a temporary
   umbrella include only where migration compatibility requires it.
 - [ ] Pass formatting, static analysis, C++ tests, and script tests after every

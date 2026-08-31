@@ -228,6 +228,10 @@ The ownership model is specified in
 and pending successor under one lock. It publishes the resident plan together
 with its typed horizon owner, exact immutable versioned input, and matching
 applied-control evidence as one atomic `CommittedExecutionAuthority3D` pointer.
+Pending activation is also one manager transaction: the manager validates the
+captured semantic execution base, assigns the only monotonic pending-publication
+sequence, seals the candidate, and occupies the pending slot under that lock.
+There is no unchecked or externally sequenced pending-publication API.
 Planning ticks and activation capture that pointer once; feedback, horizon
 refresh, revocation, and mission capture use exact-pointer compare-and-swap
 transitions, so an old plan cannot be paired with a newer lease or control

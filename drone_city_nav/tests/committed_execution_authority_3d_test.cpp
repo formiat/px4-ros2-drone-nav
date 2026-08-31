@@ -177,7 +177,7 @@ TEST(CommittedExecutionAuthority3DTest,
           .route_splice = std::nullopt,
           .route = certified,
       });
-  ASSERT_TRUE(manager.publishPending(pending));
+  ASSERT_TRUE(publishPendingDraftForCurrentBase(manager, *pending));
   const std::shared_ptr<const PendingCertifiedRoute3D> sealed = manager.pending();
   ASSERT_NE(sealed, nullptr);
   ASSERT_NE(sealed, pending);

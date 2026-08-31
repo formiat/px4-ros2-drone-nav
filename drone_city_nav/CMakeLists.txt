@@ -1510,6 +1510,15 @@ if(BUILD_TESTING)
   target_link_libraries(execution_route_snapshot_3d_test drone_city_nav_core)
   enable_project_warnings(execution_route_snapshot_3d_test)
 
+  ament_add_gtest(
+    route_execution_manager_pending_publication_test
+    tests/route_execution_manager_pending_publication_test.cpp)
+  target_compile_features(route_execution_manager_pending_publication_test
+                          PRIVATE cxx_std_20)
+  target_link_libraries(route_execution_manager_pending_publication_test
+                        drone_city_nav_core)
+  enable_project_warnings(route_execution_manager_pending_publication_test)
+
   ament_add_gtest(execution_evidence_3d_test
                   tests/execution_evidence_3d_test.cpp)
   target_compile_features(execution_evidence_3d_test PRIVATE cxx_std_20)

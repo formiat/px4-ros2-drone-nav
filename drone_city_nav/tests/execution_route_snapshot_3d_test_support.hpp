@@ -866,5 +866,13 @@ certifyDirectFixtureExecution(
       });
 }
 
+[[nodiscard, maybe_unused]] bool
+publishPendingDraftForCurrentBase(RouteExecutionManager3D& manager,
+                                  PendingCertifiedRoute3D candidate) {
+  candidate.publication_sequence = 0U;
+  return manager.publishPendingForCurrentBase(manager.plan(), std::move(candidate))
+      .published();
+}
+
 } // namespace
 } // namespace drone_city_nav

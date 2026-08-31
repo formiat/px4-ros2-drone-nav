@@ -568,7 +568,9 @@ logged only by the ROS adapter. Its soft risk annotation now lives in
 been removed. `RouteTrajectoryCompiler3D` now owns exact-state compilation and
 the observed/static tracking-world binding behind one non-ROS request/result
 boundary. Activation, controller ownership, and the execution facade remain to
-be extracted.
+be extracted. Pending publication is already one manager-owned transaction:
+the manager validates the semantic execution base, assigns the sole monotonic
+sequence, seals the candidate, and occupies the pending slot under one lock.
 Direct tests replace the former raw-world source-order guards with executable
 overload, quarantine, full/incremental/reuse, throttling, exact-parent,
 publication, upload-rejection/exception fail-closed behavior, and stop
@@ -577,6 +579,8 @@ refresh-coalescing, persistent-session transactions, and route-request
 scheduling and materialization. The remaining planning compilation/activation,
 trajectory/control, and execution-facade extraction and the other source-text
 transaction replacements remain tracked by the linked checklist.
+Manager-owned pending identity and atomic base validation are now covered by a
+direct executable suite instead of activation source-order parsing.
 Item 12 remains in progress until that checklist, the complete static audit,
 and the unchanged three-run Manhattan mission gate below are finished.
 

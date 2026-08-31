@@ -518,7 +518,6 @@ private:
 
   std::optional<mppi::MppiTickResult> previous_result_;
   RouteExecutionManager3D route_execution_manager_{};
-  std::atomic<std::uint64_t> pending_certified_route_sequence_{0U};
   std::atomic<std::uint64_t> requested_execution_revocation_{0U};
   std::uint64_t handled_execution_revocation_request_{0U};
   std::optional<mppi::State> previous_predicted_next_state_;

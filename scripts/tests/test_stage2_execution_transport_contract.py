@@ -770,22 +770,6 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
             "execution_horizon_pub_->publish(publication_horizon);", hold_commit
         )
 
-        execution_base = activation.split(
-            "sameExecutionRouteBase(", maxsplit=1
-        )[1].split("pendingExecutionBaseKind", maxsplit=1)[0]
-        self.assertIn("exclusiveExecutionHold(*first)", execution_base)
-        self.assertIn("first->execution_owner_epoch", execution_base)
-        self.assertIn("first_hold->hold_id == second_hold->hold_id", execution_base)
-        self.assertNotIn("first->version == second->version", execution_base)
-        pending_creation = activation.split(
-            "const std::optional<std::uint64_t> publication_sequence",
-            maxsplit=1,
-        )[1].split("bool published_pending", maxsplit=1)[0]
-        self.assertIn(".base_execution_owner_epoch", pending_creation)
-        self.assertIn(".base_kind", pending_creation)
-        self.assertIn("pendingExecutionBaseKind", pending_creation)
-        self.assertNotIn("base_hold_snapshot_version", pending_creation)
-
         pending_cleanup = route_execution.split(
             "pendingRoutePermanentlyObsolete", maxsplit=1
         )[1].split("} // namespace", maxsplit=1)[0]
