@@ -1,3 +1,4 @@
+#include "drone_city_nav/mppi/route_risk_adapter_3d.hpp"
 #include "drone_city_nav/static_route_extension.hpp"
 
 #include <chrono>
@@ -9,8 +10,8 @@
 
 #include "production_mppi_node.hpp"
 #include "production_mppi_route_activation.hpp"
-#include "production_mppi_route_materialization.hpp"
 #include "production_mppi_route_world.hpp"
+#include "route_materializer_3d.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -182,6 +183,8 @@ void ProductionMppiNode::processRouteSearch3D(RoutePlanningUpdateEvent3D event) 
 
   const bool search_running =
       planner_update.planner_invoked && planner_update.dispatch.continue_search;
+  const bool improved_incumbent_available =
+      planner_update.improved_incumbent.has_value();
   const auto queue_continuation = [this, &planner_update, &transaction,
                                    &world_telemetry]() {
     if (!planner_update.planner_session) {
@@ -196,7 +199,7 @@ void ProductionMppiNode::processRouteSearch3D(RoutePlanningUpdateEvent3D event) 
         .queued();
   };
   bool continuation_queued{false};
-  if (search_running && !planner_update.improved_incumbent) {
+  if (search_running && !improved_incumbent_available) {
     continuation_queued = queue_continuation();
     const double continuation_planning_ms = elapsedMilliseconds(planning_started);
     RCLCPP_INFO(
@@ -232,7 +235,7 @@ void ProductionMppiNode::processRouteSearch3D(RoutePlanningUpdateEvent3D event) 
   }
 
   const std::uint64_t candidate_generation =
-      planner_update.improved_incumbent ? nextRouteGeneration3D() : 0U;
+      improved_incumbent_available ? nextRouteGeneration3D() : 0U;
   const ProductionRouteActivationSnapshot3D materialization_snapshot =
       captureRouteActivationSnapshot3D();
   const std::shared_ptr<const ExecutionPlan3D> materialization_execution =
@@ -242,6 +245,10 @@ void ProductionMppiNode::processRouteSearch3D(RoutePlanningUpdateEvent3D event) 
   const CertifiedRouteSuffix3D* const activation_active_route =
       materialization_execution != nullptr ? materialization_execution->route()
                                            : nullptr;
+  const std::shared_ptr<const CertifiedRouteSuffix3D> materialization_active_route =
+      activation_active_route != nullptr
+          ? std::make_shared<const CertifiedRouteSuffix3D>(*activation_active_route)
+          : nullptr;
 
   ProductionRouteMaterialization3D materialization;
   materialization.route.world = transaction->world;
@@ -252,19 +259,35 @@ void ProductionMppiNode::processRouteSearch3D(RoutePlanningUpdateEvent3D event) 
   ProductionRouteActivationResult3D activation;
   activation.materialized = materialization.route;
   activation.telemetry = materialization.telemetry;
-  if (planner_update.improved_incumbent && candidate_generation != 0U) {
-    const RouteSearchCandidate3D& candidate = *planner_update.improved_incumbent;
-    materialization = materializeRouteCandidate3D(
-        *transaction, world_telemetry, vehicle_state.position, mission_goal, candidate,
-        candidate_generation, activation_active_route,
-        materialization_snapshot.raw_world.get());
+  if (improved_incumbent_available && candidate_generation != 0U) {
+    materialization = route_materializer_->materialize(RouteMaterializationRequest3D{
+        .transaction = transaction,
+        .world_telemetry = world_telemetry,
+        .current_position = vehicle_state.position,
+        .candidate = std::move(*planner_update.improved_incumbent),
+        .candidate_generation = candidate_generation,
+        .active_route = materialization_active_route,
+        .activation_raw_world = materialization_snapshot.raw_world,
+    });
     materialization.telemetry.route_search_ms = planner_update.search_ms;
+    if (materialization.geometry_optimization_fallback.has_value()) {
+      const RouteRiskTierAssignmentResult3D fallback =
+          materialization.geometry_optimization_fallback.value();
+      const std::string_view reason =
+          routeRiskTierAssignmentStatus3DName(fallback.status);
+      RCLCPP_INFO(get_logger(),
+                  "STATIC_ROUTE_GEOMETRY status=fallback_to_lattice reason=%.*s "
+                  "failure=(%.2f,%.2f,%.2f)",
+                  static_cast<int>(reason.size()), reason.data(),
+                  fallback.failure_point.x, fallback.failure_point.y,
+                  fallback.failure_point.z);
+    }
   }
   // Materialization owns the expensive spatial validation. Capture the
   // transaction base afterwards so it is not stale before activation begins.
   const ProductionRouteActivationSnapshot3D activation_snapshot =
       captureRouteActivationSnapshot3D();
-  if (planner_update.improved_incumbent && candidate_generation != 0U) {
+  if (improved_incumbent_available && candidate_generation != 0U) {
     const StaticRouteCandidateValidation materialization_validation =
         materialization.validation;
     const StaticRouteReplacementPolicy replacement_policy =
@@ -298,10 +321,6 @@ void ProductionMppiNode::processRouteSearch3D(RoutePlanningUpdateEvent3D event) 
   }
 
   const PlannerTelemetry3D& plan = planner_update.planner_telemetry;
-  const SpatialRouteCandidate3D* const spatial_route =
-      planner_update.improved_incumbent
-          ? std::addressof(planner_update.improved_incumbent->spatial_route)
-          : nullptr;
   const MaterializedRoute3D& materialized = activation.materialized;
   const ProductionRoutePipelineTelemetry3D& telemetry = activation.telemetry;
   const ProductionRouteMaterializationTelemetry3D& materialization_telemetry =
@@ -389,7 +408,7 @@ void ProductionMppiNode::processRouteSearch3D(RoutePlanningUpdateEvent3D event) 
       materialized.candidate_generation,
       materialized.provenance.base_route_instance_id.value,
       materialized.provenance.base_stitch_station_m.value_or(-1.0),
-      spatial_route ? spatial_route->points.size() : 0U,
+      materialized.provenance.candidate_points,
       materialized.route ? materialized.route->size() : 0U, plan.expansions,
       plan.execution_time_search_expansions, plan.changed_occupied_voxels,
       plan.affected_lattice_states, plan.repair_lattice_states_processed,
@@ -399,14 +418,12 @@ void ProductionMppiNode::processRouteSearch3D(RoutePlanningUpdateEvent3D event) 
       plan.execution_time_search_open_entries, plan.shortcuts_applied,
       plan.shortcut_checks, plan.lattice_edge_queries, plan.raw_edge_validation_checks,
       plan.adaptive_edge_queries, plan.adaptive_edges_in_extracted_path,
-      plan.maximum_queried_lattice_level,
-      spatial_route ? spatial_route->path_length_m : 0.0,
+      plan.maximum_queried_lattice_level, telemetry.planner.path_length_m,
       plan.execution_time_search_objective_s,
-      spatial_route ? spatial_route->estimated_execution_time_s : 0.0,
-      spatial_route ? spatial_route->estimated_translation_time_s : 0.0,
-      spatial_route ? spatial_route->estimated_stationary_turn_time_s : 0.0,
-      planner_update.search_ms, route_planning_ms,
-      materialization_telemetry.candidate_validation_ms,
+      telemetry.planner.estimated_execution_time_s,
+      telemetry.planner.estimated_translation_time_s,
+      telemetry.planner.estimated_stationary_turn_time_s, planner_update.search_ms,
+      route_planning_ms, materialization_telemetry.candidate_validation_ms,
       materialization_telemetry.route_smoothing_ms,
       admission.assessment.raw_validation.connector_validated ? "true" : "false",
       admission.assessment.raw_validation.suffix_validated ? "true" : "false",

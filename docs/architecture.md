@@ -76,8 +76,9 @@ snapshot/delta transport, and selected-spectator 3D clouds.
   publication policy to `WorldPipeline3D` and its typed builders;
 - delegates persistent D* Lite ownership, request scheduling, planner-worker
   lifetime, and typed validation/result delivery to the package-private
-  `RoutePlanningCoordinator3D`; route materialization/activation and remaining
-  execution orchestration are still being extracted into internal services;
+  `RoutePlanningCoordinator3D` and delegates geometric materialization and
+  validation to `RouteMaterializer3D`; route activation and remaining execution
+  orchestration are still being extracted into internal services;
 - delegates diagnostics queuing, worker lifetime, JSONL/error-context files,
   and coherent statistics to the package-private `NavigationDiagnosticsSink`;
 - certifies route geometry, tracking-error tube, successor reserve, and suffix
@@ -208,6 +209,12 @@ available; bounded anytime continuations use keep-pending and therefore cannot
 displace newer work. The coordinator validates world generation, full-3D depth,
 route-generation currency, and vehicle availability and emits typed update or
 rejection events without ROS dependencies.
+`RouteMaterializer3D` receives one owned request containing the exact planner
+transaction, candidate, active certified route, current position, and raw-world
+snapshot. It owns constrained-span construction, splice-preserving geometry
+optimization, derived risk annotation, optional passage decoration, and final
+candidate validation. It returns a typed immutable route result plus telemetry
+and fallback information; ROS logging is an outer adapter.
 
 The ownership model is specified in
 [`navigation_architecture_remediation.md`](navigation_architecture_remediation.md).
@@ -455,6 +462,7 @@ scheduling.
 - `WorldPipeline3D` owns raw reconstruction, static and observed ESDF build
   policy, refresh/upload transactions, and publication.
   `RoutePlanningCoordinator3D` owns persistent planning request scheduling and
-  worker lifecycle. Route materialization/activation, trajectory/control
+  worker lifecycle, and `RouteMaterializer3D` owns geometric materialization and
+  candidate validation. Route compilation/activation, trajectory/control
   coordination, and the execution facade remain to be extracted from the ROS
   node.

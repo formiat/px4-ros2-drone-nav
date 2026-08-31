@@ -1,4 +1,4 @@
-#include "production_mppi_route_materialization.hpp"
+#include "route_materializer_3d.hpp"
 
 #include "drone_city_nav/mppi/route_risk_adapter_3d.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
@@ -7,24 +7,71 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <memory>
 #include <ranges>
 #include <span>
-#include <string>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
 #include "production_mppi_route_helpers.hpp"
 
 namespace drone_city_nav {
+namespace {
 
-ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D(
-    const PlannerSearchTransaction3D& transaction,
-    const ProductionWorldBuildTelemetry3D& world_telemetry,
-    const Point3& current_position, const Point3& mission_goal,
-    const RouteSearchCandidate3D& candidate, const std::uint64_t candidate_generation,
-    const CertifiedRouteSuffix3D* const active_route,
-    const ProductionMppiRawWorld3D* const activation_raw_world) {
+[[nodiscard]] bool
+routeMaterializerConfigValid(const RouteMaterializerConfig3D& config) noexcept {
+  return futureRouteConnectorConfig3DValid(config.future_route_connector) &&
+         staticRouteExtensionConfigValid(config.route_extension) &&
+         passageVolumeConfigIsValid(config.passage_volume) &&
+         std::isfinite(config.critical_distance_m) &&
+         config.critical_distance_m >= 0.0 &&
+         std::isfinite(config.preferred_distance_m) &&
+         config.preferred_distance_m >= config.critical_distance_m &&
+         std::isfinite(config.route_geometry.maximum_shortcut_length_m) &&
+         config.route_geometry.maximum_shortcut_length_m > 0.0 &&
+         std::isfinite(config.route_geometry.sparse_deviation_tolerance_m) &&
+         config.route_geometry.sparse_deviation_tolerance_m >= 0.0 &&
+         std::isfinite(config.route_geometry.maximum_shortcut_turn_increase_rad) &&
+         config.route_geometry.maximum_shortcut_turn_increase_rad >= 0.0 &&
+         config.route_geometry.shortcut_validation_batch_size != 0U &&
+         std::isfinite(config.route_geometry.corner_smoothing_distance_m) &&
+         config.route_geometry.corner_smoothing_distance_m >= 0.0 &&
+         config.route_geometry.corner_curve_samples >= 2U;
+}
+
+} // namespace
+
+RouteMaterializer3D::RouteMaterializer3D(const RouteMaterializerConfig3D& config)
+    : config_{config} {
+  if (!routeMaterializerConfigValid(config_)) {
+    throw std::invalid_argument{"invalid route materializer configuration"};
+  }
+}
+
+ProductionRouteMaterialization3D
+RouteMaterializer3D::materialize(RouteMaterializationRequest3D request) const {
+  if (!request.valid()) {
+    return ProductionRouteMaterialization3D{
+        .route = {},
+        .telemetry = {},
+        .validation =
+            StaticRouteCandidateValidation{
+                .status = StaticRouteCandidateStatus::kInvalidInput},
+        .replacement_policy = StaticRouteReplacementPolicy::kRequireEndpointImprovement,
+        .geometry_optimization_fallback = std::nullopt,
+    };
+  }
+  const PlannerSearchTransaction3D& transaction = *request.transaction;
+  const ProductionWorldBuildTelemetry3D& world_telemetry = request.world_telemetry;
+  const Point3& current_position = request.current_position;
+  const Point3& mission_goal = transaction.objective.goal;
+  const RouteSearchCandidate3D& candidate = request.candidate;
+  const std::uint64_t candidate_generation = request.candidate_generation;
+  const CertifiedRouteSuffix3D* const active_route = request.active_route.get();
+  const ProductionMppiRawWorld3D* const activation_raw_world =
+      request.activation_raw_world.get();
   const Point3 search_start = candidate.search_start;
   const PlannerTelemetry3D& plan = candidate.planner_telemetry;
   const SpatialRouteCandidate3D& spatial_route = candidate.spatial_route;
@@ -126,7 +173,7 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
   const auto validation_started = std::chrono::steady_clock::now();
   auto mutable_route = std::make_shared<std::vector<RouteSample3D>>(candidate.route);
   std::vector<ConstrainedRouteSpan> initial_spans = makeConstrainedRouteSpans(
-      *mutable_route, route_traversals, candidate_generation, route_envelope_config_);
+      *mutable_route, route_traversals, candidate_generation, config_.route_envelope);
   std::optional<FrozenRoutePrefix3D> frozen_prefix;
   const bool overlap_search = candidate.search_base_route_instance_id.valid();
   if ((transaction.extension() || transaction.replacement()) && overlap_search) {
@@ -146,7 +193,7 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
       std::optional<FrozenRoutePrefix3D> connected_prefix =
           materializeTangentContinuousRoutePrefixAtStation3D(
               *active_route->geometry->route, candidate.route, current_position,
-              *candidate.search_base_stitch_station_m, future_route_connector_config_);
+              *candidate.search_base_stitch_station_m, config_.future_route_connector);
       if (connected_prefix.has_value()) {
         const double successor_join_station_m =
             connected_prefix.value().successor_stitch_station_m;
@@ -176,10 +223,10 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
                                   std::numeric_limits<double>::infinity());
     initial_spans =
         remapConstrainedRouteSpans(*active_route->geometry->route, active_prefix_spans,
-                                   materialized_prefix.route, route_envelope_config_);
+                                   materialized_prefix.route, config_.route_envelope);
     const std::vector<ConstrainedRouteSpan> remapped_successor_spans =
         remapConstrainedRouteSpans(candidate.route, successor_suffix_spans,
-                                   materialized_prefix.route, route_envelope_config_);
+                                   materialized_prefix.route, config_.route_envelope);
     initial_spans.insert(initial_spans.end(), remapped_successor_spans.begin(),
                          remapped_successor_spans.end());
     mergeAdjacentConstrainedRouteSpans(initial_spans);
@@ -188,7 +235,7 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
   const std::size_t expected_span_count = initial_spans.size();
   const std::vector<RouteSample3D> canonical_route = *mutable_route;
   const auto smoothing_started = std::chrono::steady_clock::now();
-  StaticRouteGeometryConfig geometry_config = static_route_geometry_config_;
+  StaticRouteGeometryConfig geometry_config = config_.route_geometry;
   if (frozen_prefix.has_value()) {
     const FrozenRoutePrefix3D& materialized_prefix = frozen_prefix.value();
     geometry_config.frozen_prefix_end_station_m =
@@ -207,12 +254,12 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
           transaction.world->launch_support_contact
               ? std::addressof(*transaction.world->launch_support_contact)
               : nullptr,
-      .footprint = physical_footprint_config_,
-      .flight_envelope = flight_envelope_config_,
+      .footprint = config_.physical_footprint,
+      .flight_envelope = config_.flight_envelope,
   };
   StaticRouteGeometryResult geometry = optimizeStaticRouteGeometry(
       *mutable_route, initial_spans, geometry_collision_world, geometry_config,
-      route_envelope_config_, planning_worker_pool_.get());
+      config_.route_envelope, config_.worker_pool);
   materialization.route_smoothing_ms =
       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                 smoothing_started)
@@ -232,24 +279,15 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
   }
 
   const RouteRiskTierAssignmentResult3D optimized_risk_assignment =
-      assignRouteRiskTiersFromMppiEsdf3D(*mutable_route, transaction.world->grid,
-                                         *transaction.world->distances_m,
-                                         mppi_config_.risk.critical_distance_m,
-                                         mppi_config_.risk.preferred_distance_m);
+      assignRouteRiskTiersFromMppiEsdf3D(
+          *mutable_route, transaction.world->grid, *transaction.world->distances_m,
+          config_.critical_distance_m, config_.preferred_distance_m);
   if (!optimized_risk_assignment.accepted()) {
     *mutable_route = canonical_route;
     geometry.constrained_spans = initial_spans;
     materialization.route_shortcuts_applied = 0U;
     materialization.route_corners_smoothed = 0U;
-    const std::string_view optimization_failure =
-        routeRiskTierAssignmentStatus3DName(optimized_risk_assignment.status);
-    RCLCPP_INFO(get_logger(),
-                "STATIC_ROUTE_GEOMETRY status=fallback_to_lattice reason=%.*s "
-                "failure=(%.2f,%.2f,%.2f)",
-                static_cast<int>(optimization_failure.size()),
-                optimization_failure.data(), optimized_risk_assignment.failure_point.x,
-                optimized_risk_assignment.failure_point.y,
-                optimized_risk_assignment.failure_point.z);
+    result.geometry_optimization_fallback = optimized_risk_assignment;
   }
   for (ConstrainedRouteSpan& span : geometry.constrained_spans) {
     span.route_generation = candidate_generation;
@@ -270,21 +308,20 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
     const auto passage_started = std::chrono::steady_clock::now();
     PassageVolumeResource volume_resource = acquireDerivedPassageVolumes(
         *mutable_route, geometry.constrained_spans, *passage_occupancy,
-        passage_occupancy_content_fingerprint, cooperative_passage_volume_config_);
+        passage_occupancy_content_fingerprint, config_.passage_volume);
     materialization.passage_volume_resource_reused =
         volume_resource.shared_resource_reused;
     passage_volumes = std::move(volume_resource.volumes);
     const std::span<const PassageVolume> volumes =
         passage_volumes ? std::span<const PassageVolume>{*passage_volumes}
                         : std::span<const PassageVolume>{};
-    static_cast<void>(
-        projectPassageVolumeEnvelopes(geometry.constrained_spans, volumes,
-                                      cooperative_passage_volume_config_.footprint));
-    if (cooperative_traffic_enabled_) {
+    static_cast<void>(projectPassageVolumeEnvelopes(geometry.constrained_spans, volumes,
+                                                    config_.passage_volume.footprint));
+    if (config_.cooperative_traffic_enabled) {
       CooperativePassageRouteResult cooperative_route =
           applyCooperativePassageCorridors(*mutable_route, geometry.constrained_spans,
                                            volumes, *passage_occupancy,
-                                           cooperative_passage_route_config_);
+                                           config_.cooperative_passage_route);
       cooperative_route_valid = cooperative_route.valid;
       if (cooperative_route.valid) {
         *mutable_route = std::move(cooperative_route.route);
@@ -295,7 +332,7 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
     if (cooperative_route_valid) {
       PassageVolumeResource final_volume_resource = acquireDerivedPassageVolumes(
           *mutable_route, geometry.constrained_spans, *passage_occupancy,
-          passage_occupancy_content_fingerprint, cooperative_passage_volume_config_);
+          passage_occupancy_content_fingerprint, config_.passage_volume);
       materialization.passage_volume_resource_reused =
           materialization.passage_volume_resource_reused ||
           final_volume_resource.shared_resource_reused;
@@ -309,7 +346,7 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
            passage_assignments.size() == geometry.constrained_spans.size()) &&
           std::ranges::all_of(final_volumes, &PassageVolume::raw_validated) &&
           projectPassageVolumeEnvelopes(geometry.constrained_spans, final_volumes,
-                                        cooperative_passage_volume_config_.footprint) ==
+                                        config_.passage_volume.footprint) ==
               geometry.constrained_spans.size();
       for (std::size_t index = 0U;
            cooperative_route_valid && index < passage_assignments.size(); ++index) {
@@ -352,9 +389,8 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
   } else if (const RouteRiskTierAssignmentResult3D risk_assignment =
                  assignRouteRiskTiersFromMppiEsdf3D(
                      *mutable_route, transaction.world->grid,
-                     *transaction.world->distances_m,
-                     mppi_config_.risk.critical_distance_m,
-                     mppi_config_.risk.preferred_distance_m);
+                     *transaction.world->distances_m, config_.critical_distance_m,
+                     config_.preferred_distance_m);
              risk_assignment.accepted()) {
     result.validation = validateStaticRouteCandidate(
         active_route != nullptr && active_route->geometry != nullptr &&
@@ -362,8 +398,8 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
             ? std::span<const RouteSample3D>{*active_route->geometry->route}
             : std::span<const RouteSample3D>{},
         *mutable_route, mission_goal,
-        static_route_extension_config_.minimum_endpoint_improvement_m,
-        spatial_route.valid(), flight_envelope_config_, result.replacement_policy);
+        config_.route_extension.minimum_endpoint_improvement_m, spatial_route.valid(),
+        config_.flight_envelope, result.replacement_policy);
   } else {
     result.validation = StaticRouteCandidateValidation{
         .status = StaticRouteCandidateStatus::kInvalidInput,
@@ -390,7 +426,7 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
       staticRouteReplacementProtected(
           *active_route->geometry->route, *active_route->geometry->constrained_spans,
           current_position, active_route->identity.proposal.objective,
-          transaction.objective, static_route_extension_config_.protected_departure_m);
+          transaction.objective, config_.route_extension.protected_departure_m);
   if (result.validation.accepted && protected_suffix) {
     result.validation = StaticRouteCandidateValidation{
         .status = StaticRouteCandidateStatus::kProtectedConstrainedSuffix};

@@ -5,6 +5,7 @@
 
 #include "navigation_diagnostics_sink.hpp"
 #include "production_mppi_node.hpp"
+#include "route_materializer_3d.hpp"
 #include "world_pipeline_3d.hpp"
 
 namespace drone_city_nav {
@@ -122,6 +123,21 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
         },
         world_failure_handler);
   }
+  route_materializer_ = std::make_unique<RouteMaterializer3D>(RouteMaterializerConfig3D{
+      .route_envelope = route_envelope_config_,
+      .future_route_connector = future_route_connector_config_,
+      .route_geometry = static_route_geometry_config_,
+      .physical_footprint = physical_footprint_config_,
+      .flight_envelope = flight_envelope_config_,
+      .route_extension = static_route_extension_config_,
+      .passage_volume = cooperative_passage_volume_config_,
+      .cooperative_passage_route = cooperative_passage_route_config_,
+      .critical_distance_m = static_cast<double>(mppi_config_.risk.critical_distance_m),
+      .preferred_distance_m =
+          static_cast<double>(mppi_config_.risk.preferred_distance_m),
+      .worker_pool = planning_worker_pool_.get(),
+      .cooperative_traffic_enabled = cooperative_traffic_enabled_,
+  });
   route_planning_coordinator_ =
       std::make_unique<RoutePlanningCoordinator3D>(RoutePlanningCoordinatorConfig3D{
           .planner =

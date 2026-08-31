@@ -98,6 +98,7 @@ struct ProductionMppiControllerTickResult;
 struct ProductionMppiDiagnosticsSnapshot;
 struct ProductionRouteActivationSnapshot3D;
 struct ProductionRouteMaterialization3D;
+class RouteMaterializer3D;
 struct ProductionMppiExecutionCycle;
 struct TrajectoryCompilerConfig3D;
 struct ProductionMppiHorizonCommit;
@@ -223,13 +224,6 @@ private:
                                const ProductionRouteActivationSnapshot3D& snapshot,
                                std::uint64_t candidate_generation,
                                ProductionRouteActivationResult3D& result);
-  [[nodiscard]] ProductionRouteMaterialization3D materializeRouteCandidate3D(
-      const PlannerSearchTransaction3D& transaction,
-      const ProductionWorldBuildTelemetry3D& world_telemetry,
-      const Point3& current_position, const Point3& mission_goal,
-      const RouteSearchCandidate3D& candidate, std::uint64_t candidate_generation,
-      const CertifiedRouteSuffix3D* active_route,
-      const ProductionMppiRawWorld3D* activation_raw_world);
   void startPlanningTimer();
   void initializeRuntimeInterfaces(StaticWorldResources3D&& static_world_resources);
   [[nodiscard]] ProductionRouteExecutionSelection3D resolveRouteExecution3D(
@@ -459,6 +453,7 @@ private:
   NonCooperativeAvoidanceConfig noncooperative_avoidance_config_{};
   std::unique_ptr<NonCooperativeCollisionAvoidance> noncooperative_avoidance_;
   std::unique_ptr<BoundedWorkerPool> planning_worker_pool_;
+  std::unique_ptr<RouteMaterializer3D> route_materializer_;
   std::unique_ptr<RoutePlanningCoordinator3D> route_planning_coordinator_;
   std::unique_ptr<mppi::MppiCudaEngine> engine_;
   mppi::TrajectoryReferenceAdapter3D trajectory_reference_adapter_;

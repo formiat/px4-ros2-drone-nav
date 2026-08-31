@@ -560,14 +560,17 @@ request scheduler, explicit newest-world replacement versus keep-pending
 policy, worker lifecycle, request validation, failure isolation, and typed
 update/rejection delivery. Its direct tests cover overload, displaced lifecycle
 transfer, rejection reasons, callback failure, reentrant continuations, stop,
-and restart. Materialization/activation, trajectory/control, and the execution
-facade remain to be extracted.
+and restart. `RouteMaterializer3D` owns one exact request through geometric
+optimization, splice preservation, derived risk annotation, optional passage
+decoration, and final candidate validation; typed fallback information is
+logged only by the ROS adapter. Trajectory compilation/activation,
+controller ownership, and the execution facade remain to be extracted.
 Direct tests replace the former raw-world source-order guards with executable
 overload, quarantine, full/incremental/reuse, throttling, exact-parent,
 publication, upload-rejection/exception fail-closed behavior, and stop
 transactions, plus static build/reuse, route supersession, generation failure,
 refresh-coalescing, persistent-session transactions, and route-request
-scheduling. The remaining planning materialization/activation,
+scheduling and materialization. The remaining planning compilation/activation,
 trajectory/control, and execution-facade extraction and the other source-text
 transaction replacements remain tracked by the linked checklist.
 Item 12 remains in progress until that checklist, the complete static audit,

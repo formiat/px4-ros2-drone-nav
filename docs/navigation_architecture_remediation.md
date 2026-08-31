@@ -223,6 +223,16 @@ events. Direct concurrency tests cover pending replacement and lifecycle
 transfer, busy retention, validation reasons, callback failure containment,
 reentrant continuation submission, stop, and restart.
 
+`RouteMaterializer3D` now owns geometric route materialization, exact active-
+route splice prerequisites, raw-only smoothing collision input, derived risk
+annotation, optional passage decorators, final candidate validation, and its
+telemetry. It receives one self-contained request that owns the exact planner
+transaction, candidate, active route, and raw-world snapshot and returns one
+typed result. Geometry fallback is an event field consumed by the ROS logging
+adapter; the materializer has no node or ROS dependency. Direct tests cover
+invalid configuration/request handling, successful immutable materialization,
+unknown-neutral invalid derived distances, and exact active-route enforcement.
+
 ## Immutable Stage Pipeline
 
 ```text
@@ -341,8 +351,10 @@ no mixed authority revision is observable.
     - [x] Move single-pending request scheduling with explicit newest-world
       replacement, worker lifecycle, validation, failure isolation, and typed
       update/rejection events into `RoutePlanningCoordinator3D`.
-    - [ ] Move materialization, trajectory compilation, and activation
-      coordination behind the planning-service boundary.
+    - [x] Move geometric materialization and validation behind the non-ROS
+      `RouteMaterializer3D` one-request/one-result boundary.
+    - [ ] Move trajectory compilation and activation coordination behind the
+      planning-service boundary.
   - [ ] Extract trajectory compilation and controller ownership.
   - [ ] Finish the execution-service facade around the existing sole
     `RouteExecutionManager3D` owner.
@@ -359,7 +371,9 @@ no mixed authority revision is observable.
   have a direct `RoutePlanner3D` suite; the former planner source-contract suite
   has been removed. Queue replacement, lifecycle transfer, typed validation,
   callback failure isolation, reentrant continuation, stop, and restart have a
-  direct `RoutePlanningCoordinator3D` suite.
+  direct `RoutePlanningCoordinator3D` suite. Route materialization, invalid
+  configuration/request handling, exact active-route ownership, and neutral
+  invalid derived-distance behavior have a direct `RouteMaterializer3D` suite.
 - [x] Keep public and private headers self-contained and retain a temporary
   umbrella include only where migration compatibility requires it.
 - [ ] Pass formatting, static analysis, C++ tests, and script tests after every
