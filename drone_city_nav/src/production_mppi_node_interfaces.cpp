@@ -201,7 +201,6 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
               .flight_envelope = flight_envelope_config_,
               .route_tracking = route_tracking_policy_,
               .physical_footprint = physical_footprint_config_,
-              .passage_volume = cooperative_passage_volume_config_,
               .certified_splice = certified_route_splice_config_,
               .validation_policy = execution_validation_policy_,
               .route_risk =

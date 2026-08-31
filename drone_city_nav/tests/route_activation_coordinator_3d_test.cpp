@@ -82,9 +82,8 @@ coordinatorConfig(const double cruise_speed_mps = 3.0) {
   config.trajectory_compiler.trajectory.unconstrained_speed_mps =
       config.cruise_speed_mps;
   config.trajectory_compiler.trajectory.physical_footprint = config.physical_footprint;
-  config.passage_volume.flight_envelope = config.flight_envelope;
-  config.passage_volume.footprint = config.physical_footprint;
-  config.trajectory_compiler.passage_volume = config.passage_volume;
+  config.trajectory_compiler.passage_volume.flight_envelope = config.flight_envelope;
+  config.trajectory_compiler.passage_volume.footprint = config.physical_footprint;
   backend_config.steps = 120U;
   config.route_risk = RouteRiskPolicy3D{
       .critical_distance_m = backend_config.risk.critical_distance_m,

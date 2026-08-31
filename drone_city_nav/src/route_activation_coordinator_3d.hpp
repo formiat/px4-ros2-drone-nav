@@ -56,7 +56,6 @@ struct RouteActivationCoordinatorConfig3D {
   FlightEnvelopeConfig flight_envelope{};
   RouteTrackingPolicy3D route_tracking{};
   SweptFootprintConfig physical_footprint{};
-  PassageVolumeConfig passage_volume{};
   CertifiedRouteSpliceConfig3D certified_splice{};
   std::shared_ptr<const VersionedExecutionValidationPolicy3D> validation_policy;
   RouteRiskPolicy3D route_risk{};

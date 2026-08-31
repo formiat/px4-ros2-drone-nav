@@ -748,6 +748,7 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     src/production_mppi_route_execution.cpp
     src/production_mppi_route_activation.cpp
     src/route_activation_coordinator_3d.cpp
+    src/route_activation_preparation_3d.cpp
     src/route_materializer_3d.cpp
     src/route_trajectory_compiler_3d.cpp
     src/route_planning_coordinator_3d.cpp
