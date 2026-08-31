@@ -302,6 +302,7 @@ add_drone_city_nav_layer(
   src/execution_route_snapshot_3d_transitions.cpp
   src/execution_route_snapshot_3d_validation.cpp
   src/execution_supervisor_3d.cpp
+  src/execution_supervisor_3d_retention.cpp
   src/mission_goal_capture.cpp
   src/mission_waypoint_acknowledgement_admission.cpp
   src/mission_waypoint_capture_gate.cpp
@@ -1502,6 +1503,7 @@ if(BUILD_TESTING)
     tests/execution_route_model_header_compile.cpp
     tests/execution_route_certificates_header_compile.cpp
     tests/execution_plan_header_compile.cpp
+    tests/execution_retention_header_compile.cpp
     tests/execution_route_certification_header_compile.cpp
     tests/execution_route_transitions_header_compile.cpp
     tests/execution_route_store_header_compile.cpp
@@ -1543,6 +1545,13 @@ if(BUILD_TESTING)
   target_compile_features(execution_supervisor_3d_test PRIVATE cxx_std_20)
   target_link_libraries(execution_supervisor_3d_test drone_city_nav_execution)
   enable_project_warnings(execution_supervisor_3d_test)
+
+  ament_add_gtest(execution_supervisor_retention_3d_test
+                  tests/execution_supervisor_retention_3d_test.cpp)
+  target_compile_features(execution_supervisor_retention_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(execution_supervisor_retention_3d_test
+                        drone_city_nav_execution)
+  enable_project_warnings(execution_supervisor_retention_3d_test)
 
   ament_add_gtest(execution_evidence_3d_test
                   tests/execution_evidence_3d_test.cpp)

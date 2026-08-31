@@ -26,6 +26,7 @@ EXECUTION = SOURCE / "production_mppi_node_execution.cpp"
 EXECUTION_PUBLICATION = SOURCE / "production_mppi_node_execution_publication.cpp"
 EXECUTION_HOLDS = SOURCE / "production_mppi_node_execution_holds.cpp"
 EXECUTION_RETENTION = SOURCE / "production_mppi_node_execution_retention.cpp"
+EXECUTION_RETENTION_SERVICE = SOURCE / "execution_supervisor_3d_retention.cpp"
 ROUTE_EXECUTION = SOURCE / "production_mppi_route_execution.cpp"
 OFFBOARD = SOURCE / "mppi_offboard_node.cpp"
 OFFBOARD_NAMES = SOURCE / "mppi_offboard_node_names.hpp"
@@ -81,7 +82,13 @@ MISSION_LAUNCH = PACKAGE / "launch" / "multi_vehicle_mission_launch.py"
 def read_execution_sources() -> str:
     return "\n".join(
         path.read_text(encoding="utf-8")
-        for path in (EXECUTION, EXECUTION_PUBLICATION, EXECUTION_HOLDS, EXECUTION_RETENTION)
+        for path in (
+            EXECUTION,
+            EXECUTION_PUBLICATION,
+            EXECUTION_HOLDS,
+            EXECUTION_RETENTION,
+            EXECUTION_RETENTION_SERVICE,
+        )
     )
 
 
@@ -252,8 +259,9 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self.assertIn("actual_state_validation", execution)
         self.assertIn("rebuildFiniteExecutionPathContinuation", execution)
         self.assertIn("recertified=true", execution)
-        self.assertIn("retainSnapshotFinitePath", execution)
-        self.assertIn("retainDirectFinitePath", execution)
+        self.assertIn("prepareRouteRetention", execution)
+        self.assertIn("prepareDirectRetention", execution)
+        self.assertIn("execution_supervisor_.prepareRetention", execution)
         self.assertIn("FiniteExecutionPathTerminalBoundary", execution)
         self.assertNotIn("original_valid_until_ns", execution)
         self.assertIn("assessExecutionHorizonPayload", offboard)

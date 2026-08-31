@@ -252,6 +252,12 @@ Pending activation is also one manager transaction: the manager validates the
 captured semantic execution base, assigns the only monotonic pending-publication
 sequence, seals the candidate, and occupies the pending slot under that lock.
 There is no unchecked or externally sequenced pending-publication API.
+Finite-path retention is also supervisor-owned: one evidence request captures
+the exact current authority, rebuilds and recertifies either a route or
+direct-tracking continuation, and returns an immutable prepared transition.
+Raw or lifecycle invalidation can prepare only a certified emergency-braking
+tail bound to that exact owner. The ROS adapter only encodes the prepared finite
+horizon, commits its lease, publishes DDS, and reports diagnostics.
 Planning ticks and activation capture that pointer once; feedback, horizon
 refresh, revocation, and mission capture use exact-pointer compare-and-swap
 transitions, so an old plan cannot be paired with a newer lease or control
@@ -496,5 +502,5 @@ scheduling.
   worker lifecycle, and `RouteMaterializer3D` owns geometric materialization and
   candidate validation. `RouteTrajectoryCompiler3D` owns exact-state trajectory
   compilation. Activation coordination and controller ownership are extracted;
-  finite-path retention, hold preparation, and the remaining horizon
-  orchestration still need to move behind the execution facade.
+  finite-path retention is behind `ExecutionSupervisor3D`; hold preparation and
+  the remaining horizon orchestration still need extraction.

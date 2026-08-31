@@ -46,6 +46,7 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
                 "production_mppi_node_execution.cpp",
                 "production_mppi_node_execution_publication.cpp",
                 "production_mppi_node_execution_retention.cpp",
+                "execution_supervisor_3d_retention.cpp",
             )
         )
 

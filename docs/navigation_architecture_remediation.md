@@ -176,6 +176,16 @@ three lease kinds, exact pending consumption, stale-authority rejection, complet
 control-evidence replacement, and concurrent single-winner publication. The
 former Python parsing of the manager's pending-clear order has been removed.
 
+Retention preparation now crosses one owned `ExecutionRetentionRequest3D`.
+The supervisor captures the exact resident authority, selects route or direct
+tracking from that capture, reconstructs the remaining finite path, validates
+current raw/lidar evidence, certifies the replacement and braking fallback, and
+returns the captured authority with one immutable transition. Preparation does
+not mutate the store. Direct tests cover normal route retention and commit,
+direct-tracking retention, exact raw-invalidation emergency braking, stale
+lifecycle ownership, and missing-evidence rejection. The ROS adapter contains
+no finite-path certification or reducer calls.
+
 Pending-route publication no longer allocates identity in the ROS node or
 performs a check-then-publish pair. An unsealed candidate carries sequence zero;
 `RouteExecutionManager3D` atomically validates its captured semantic execution
@@ -428,7 +438,7 @@ no mixed authority revision is observable.
     - [x] Make `ExecutionSupervisor3D` the sole production manager owner and move
       activation, pending recovery, lease commits, revocation, and control
       evidence through its typed API.
-    - [ ] Move retention preparation behind the facade.
+    - [x] Move retention preparation behind the facade.
     - [ ] Move hold preparation behind the facade.
     - [ ] Move the remaining horizon validation and commit orchestration behind
       the facade.
@@ -459,7 +469,10 @@ no mixed authority revision is observable.
   Supervisor lease kinds, exact pending consumption, stale CAS, control-evidence
   replacement, and concurrent publication now have a direct
   `ExecutionSupervisor3D` suite; manager pending-clear source-order parsing has
-  been removed.
+  been removed. Supervisor retention tests execute route/direct rebuilding,
+  raw-invalidation braking, stale-owner rejection, and fail-closed missing
+  evidence; the former source-order parsing of that transaction has been
+  removed.
 - [x] Keep public and private headers self-contained and retain a temporary
   umbrella include only where migration compatibility requires it.
 - [ ] Pass formatting, static analysis, C++ tests, and script tests after every

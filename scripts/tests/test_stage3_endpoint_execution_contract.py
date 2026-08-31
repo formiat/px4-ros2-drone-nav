@@ -50,9 +50,6 @@ class Stage3EndpointExecutionContractTest(unittest.TestCase):
         self.assertNotIn("!route_reaches_mission_goal", endpoint_assignment)
 
     def test_raw_invalidation_can_only_publish_an_emergency_brake_tail(self) -> None:
-        retention = (
-            SOURCE / "production_mppi_node_execution_retention.cpp"
-        ).read_text(encoding="utf-8")
         certification = (
             SOURCE / "execution_route_snapshot_3d_finite_execution.cpp"
         ).read_text(encoding="utf-8")
@@ -60,23 +57,6 @@ class Stage3EndpointExecutionContractTest(unittest.TestCase):
             SOURCE / "execution_route_snapshot_3d_transitions.cpp"
         ).read_text(encoding="utf-8")
 
-        candidate_validator = retention.split(
-            "const mppi::FiniteExecutionPathCandidateValidator candidate_validator",
-            maxsplit=1,
-        )[1].split(
-            "const mppi::RebuiltFiniteExecutionPathContinuation rebuilt", maxsplit=1
-        )[0]
-        raw_recertification = candidate_validator.split(
-            "if (raw_invalidation != nullptr)", maxsplit=1
-        )[1].split("if (lifecycle_braking != nullptr)", maxsplit=1)[0]
-        self.assertIn("finite_execution.horizon = *braking_tail", raw_recertification)
-        self.assertIn(
-            "finite_execution.kind = FiniteExecutionKind3D::kEmergencyBrakeTail",
-            raw_recertification,
-        )
-        self.assertIn(
-            "certifyRawInvalidatedFiniteExecution3DDetailed", raw_recertification
-        )
         raw_certification = certification.split(
             "if (certifies_raw_invalidation)", maxsplit=1
         )[1].split("if ((!static_mode", maxsplit=1)[0]

@@ -291,21 +291,6 @@ private:
       const std::shared_ptr<const ExecutionPlan3D>& certification_snapshot,
       const std::shared_ptr<const ExecutionRouteTransitionResult3D>&
           progress_preparation);
-  [[nodiscard]] std::optional<mppi::FiniteExecutionPathWorld>
-  exactSnapshotValidationWorld(
-      const ProductionMppiExecutionCycle& cycle, const CertifiedRouteSuffix3D& route,
-      std::optional<mppi::FiniteExecutionPathTerminalBoundary> terminal_boundary,
-      const std::shared_ptr<const VersionedObservedRawWorld3D>&
-          observed_world_override = nullptr);
-  [[nodiscard]] std::optional<mppi::FiniteExecutionPathWorld>
-  exactDirectValidationWorld(const ProductionMppiExecutionCycle& cycle,
-                             const DirectTrackingFiniteExecution3D& execution);
-  [[nodiscard]] std::optional<ProductionMppiExecutionPublication>
-  retainSnapshotFinitePath(const ProductionMppiExecutionCycle& cycle,
-                           ProductionMppiExecutionReason replacement_failure_reason);
-  [[nodiscard]] std::optional<ProductionMppiExecutionPublication>
-  retainDirectFinitePath(const ProductionMppiExecutionCycle& cycle,
-                         ProductionMppiExecutionReason replacement_failure_reason);
   [[nodiscard]] std::optional<ProductionMppiExecutionPublication>
   retainActiveFinitePath(const ProductionMppiExecutionCycle& cycle,
                          ProductionMppiExecutionReason replacement_failure_reason);

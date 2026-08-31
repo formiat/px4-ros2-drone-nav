@@ -22,6 +22,9 @@ EXECUTION = SOURCE / "production_mppi_node_execution.cpp"
 EXECUTION_PUBLICATION = SOURCE / "production_mppi_node_execution_publication.cpp"
 EXECUTION_HOLDS = SOURCE / "production_mppi_node_execution_holds.cpp"
 EXECUTION_RETENTION = SOURCE / "production_mppi_node_execution_retention.cpp"
+EXECUTION_RETENTION_TEST = (
+    PACKAGE / "tests" / "execution_supervisor_retention_3d_test.cpp"
+)
 OPTIONAL_CONSTRAINTS = SOURCE / "production_mppi_node_optional_constraints.cpp"
 ROUTE_ACTIVATION = SOURCE / "route_activation_coordinator_3d.cpp"
 ROUTE_EXECUTION = SOURCE / "production_mppi_route_execution.cpp"
@@ -246,46 +249,29 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         )
 
     def test_raw_invalidation_recertifies_before_retirement(self) -> None:
-        execution = read_execution_sources()
+        retention_adapter = EXECUTION_RETENTION.read_text(encoding="utf-8")
+        retention_test = EXECUTION_RETENTION_TEST.read_text(encoding="utf-8")
         route_execution = ROUTE_EXECUTION.read_text(encoding="utf-8")
-        invalidation_consumer = execution.split(
-            "ProductionMppiNode::retainSnapshotFinitePath", maxsplit=1
-        )[1].split("ProductionMppiNode::retainDirectFinitePath", maxsplit=1)[0]
-
-        lifecycle_event = invalidation_consumer.index(
-            "RouteLifecycleEventKind3D::kRawInvalidated"
+        self.assertIn("execution_supervisor_.prepareRetention", retention_adapter)
+        self.assertNotIn(
+            "certifyRawInvalidatedFiniteExecution3DDetailed", retention_adapter
         )
-        recertification = invalidation_consumer.index(
-            "certifyRawInvalidatedFiniteExecution3DDetailed"
+        self.assertNotIn("retireCertifiedRoute3D", retention_adapter)
+        self.assertNotIn(
+            "rebuildFiniteExecutionPathContinuation", retention_adapter
         )
-        retirement = invalidation_consumer.index("retireCertifiedRoute3D")
-        publication = invalidation_consumer.index("commitExecutionSnapshotHorizon")
-        candidate_validator = invalidation_consumer.split(
-            "const mppi::FiniteExecutionPathCandidateValidator candidate_validator",
-            maxsplit=1,
-        )[1].split(
-            "const mppi::RebuiltFiniteExecutionPathContinuation rebuilt", maxsplit=1
-        )[0]
-        raw_recertification = candidate_validator.split(
-            "if (raw_invalidation != nullptr)", maxsplit=1
-        )[1].split("if (lifecycle_braking != nullptr)", maxsplit=1)[0]
         self.assertIn(
-            "certifyRawInvalidatedFiniteExecution3DDetailed", raw_recertification
+            "RawInvalidationPreparesOnlyAnExactOwnerEmergencyBrakeTail",
+            retention_test,
         )
-        self.assertIn("invalidating_observed_raw_world", raw_recertification)
-        self.assertIn("recertified_braking_tail", raw_recertification)
-        self.assertIn(
-            "const RouteLifecycleEvent3D* const braking_event", invalidation_consumer
-        )
+        self.assertIn("ExecutionRoutePhase3D::kBraking", retention_test)
+        self.assertIn("FiniteExecutionKind3D::kEmergencyBrakeTail", retention_test)
         evidence_derivation = route_execution.split(
             "deriveLatestObservedRouteEvidence", maxsplit=1
         )[1].split("observedRouteEvidenceIsCurrent", maxsplit=1)[0]
         self.assertIn("deriveRouteEvidence", evidence_derivation)
         self.assertIn("rawWorldExecutionOwnerExact", evidence_derivation)
-        self.assertIn("lifecycle_observed_raw_world", invalidation_consumer)
-        self.assertLess(lifecycle_event, recertification)
-        self.assertLess(recertification, retirement)
-        self.assertLess(retirement, publication)
+        self.assertIn("lifecycle_observed_raw_world", retention_adapter)
 
     def test_route_consumers_preserve_source_ownership(self) -> None:
         observed_consumers = {

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/execution_retention_3d.hpp"
 #include "drone_city_nav/execution_route_store_3d.hpp"
 
 #include <cstdint>
@@ -55,6 +56,9 @@ public:
 
   [[nodiscard]] ExecutionRoutePublicationStatus3D
   commitLease(ExecutionLeaseCommit3D commit);
+
+  [[nodiscard]] ExecutionRetentionResult3D
+  prepareRetention(ExecutionRetentionRequest3D request) const;
 
   [[nodiscard]] ExecutionRoutePublicationStatus3D commitDetachedTransition(
       const std::shared_ptr<const CommittedExecutionAuthority3D>& expected_authority,
