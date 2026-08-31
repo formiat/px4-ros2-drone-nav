@@ -234,9 +234,16 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
     }
     route_planning_queue_condition_.notify_all();
   } else {
-    roi_refresh_sequence =
-        static_roi_refresh_lifecycle_.queue(active_route.identity.generation).sequence;
-    requestStaticEsdfWork(true);
+    const StaticWorldRefreshRequest3D refresh = world_pipeline_->requestStaticRefresh(
+        active_route.identity.generation, StaticWorldRefreshPurpose3D::kRouteExtension);
+    if (!refresh.valid()) {
+      RCLCPP_ERROR(get_logger(),
+                   "STATIC_ROUTE_EXTENSION_REQUEST "
+                   "status=rejected_world_refresh_unavailable generation=%" PRIu64,
+                   active_route.identity.generation);
+      return;
+    }
+    roi_refresh_sequence = refresh.sequence;
   }
 
   static_route_extension_request_in_flight_ = true;
@@ -572,9 +579,16 @@ void ProductionMppiNode::maybeRequestStaticTrackingWorldRefresh(
       !static_route_replan_gate_.tryBegin(active_generation)) {
     return;
   }
-  const StaticRouteRoiRefreshRequest request = static_roi_refresh_lifecycle_.queue(
-      active_generation, StaticRouteRoiRefreshRequest::Purpose::kTrackingObjective);
-  requestStaticEsdfWork(true);
+  const StaticWorldRefreshRequest3D request = world_pipeline_->requestStaticRefresh(
+      active_generation, StaticWorldRefreshPurpose3D::kTrackingObjective);
+  if (!request.valid()) {
+    static_route_replan_gate_.finish(active_generation);
+    RCLCPP_ERROR(get_logger(),
+                 "STATIC_TRACKING_ROI_REFRESH "
+                 "status=rejected_world_refresh_unavailable base_generation=%" PRIu64,
+                 active_generation);
+    return;
+  }
   RCLCPP_INFO(get_logger(),
               "STATIC_TRACKING_ROI_REFRESH status=queued sequence=%" PRIu64
               " base_generation=%" PRIu64 " objective_epoch=%" PRIu64

@@ -103,6 +103,8 @@ void ProductionMppiNode::publishSummary() {
       " average_arrival_controls=%.1f average_arrival_shaping_attempts=%.2f"
       " dropped_esdf_updates=%" PRIu64 " no_static_raw_updates=%" PRIu64
       " no_static_esdf_builds=%" PRIu64 " no_static_esdf_throttled=%" PRIu64
+      " static_esdf_builds=%" PRIu64 " static_esdf_cpu_reuses=%" PRIu64
+      " static_esdf_gpu_reuses=%" PRIu64 " static_esdf_refreshes=%" PRIu64
       " dropped_diagnostics=%" PRIu64 " full_rollout_ticks=%" PRIu64
       " reduced_rollout_ticks=%" PRIu64 " average_active_rollouts=%.1f"
       " rolling_route_observations=%" PRIu64 " continuation_boundary_ticks=%" PRIu64
@@ -145,7 +147,9 @@ void ProductionMppiNode::publishSummary() {
       retained_previous_finite_path_ticks, average_arrival_controls,
       average_arrival_shaping_attempts, world_statistics.dropped_raw_worlds,
       world_statistics.raw_updates, world_statistics.observedBuilds(),
-      world_statistics.throttled_observed_builds, diagnostics_sink_->droppedSnapshots(),
+      world_statistics.throttled_observed_builds, world_statistics.static_builds,
+      world_statistics.static_cpu_reuses, world_statistics.static_gpu_reuses,
+      world_statistics.static_refreshes, diagnostics_sink_->droppedSnapshots(),
       full_rollout_ticks, reduced_rollout_ticks, average_active_rollouts,
       rolling_route.observations, rolling_route.continuation_boundary_ticks,
       std::isfinite(rolling_route.minimum_continuation_boundary_speed_mps)

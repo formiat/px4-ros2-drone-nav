@@ -22,6 +22,7 @@
 #include "observed_world_builder_3d.hpp"
 #include "production_mppi_raw_world.hpp"
 #include "production_route_pipeline_artifacts_3d.hpp"
+#include "static_world_builder_3d.hpp"
 
 namespace drone_city_nav {
 
@@ -109,8 +110,29 @@ struct ObservedWorldRuntime3D {
   std::function<void(const ObservedWorldUpdate3D&)> update_handler;
 };
 
+struct StaticWorldUpdate3D {
+  StaticWorldUpdateStatus3D status{
+      StaticWorldUpdateStatus3D::kUnavailableStaticOccupancy};
+  StaticWorldBuildRequest3D request{};
+  StaticWorldCommitContext3D commit_context{};
+  std::shared_ptr<const WorldSnapshot3D> world;
+  ProductionWorldBuildTelemetry3D telemetry{};
+  StaticWorldBuildDiagnostics3D diagnostics{};
+  std::exception_ptr failure;
+  bool proactive_refresh{false};
+
+  [[nodiscard]] bool published() const noexcept {
+    return status == StaticWorldUpdateStatus3D::kPublished && world != nullptr;
+  }
+};
+
 struct StaticWorldRuntime3D {
-  std::function<void()> processor;
+  StaticWorldBuilderConfig3D builder_config{};
+  std::function<StaticWorldBuildRequest3D(const StaticWorldRefreshRequest3D&)>
+      request_provider;
+  std::function<StaticWorldCommitContext3D()> commit_context_provider;
+  std::function<WorldEsdfUploadResult3D(const WorldEsdfUploadRequest3D&)> uploader;
+  std::function<void(const StaticWorldUpdate3D&)> update_handler;
 };
 
 struct WorldPipelineStatistics3D {
@@ -122,6 +144,10 @@ struct WorldPipelineStatistics3D {
   std::uint64_t observed_reused_builds{0U};
   std::uint64_t observed_recomputed_voxels{0U};
   std::uint64_t observed_reused_voxels{0U};
+  std::uint64_t static_builds{0U};
+  std::uint64_t static_cpu_reuses{0U};
+  std::uint64_t static_gpu_reuses{0U};
+  std::uint64_t static_refreshes{0U};
   std::uint64_t superseded_planning_generations{0U};
   std::uint64_t rejected_world_publications{0U};
   std::uint64_t processing_failures{0U};
@@ -153,33 +179,6 @@ public:
     explicit ResidentLease(const WorldPipeline3D& owner);
 
     const WorldPipeline3D* owner_;
-    std::unique_lock<std::mutex> lock_;
-  };
-
-  class PublicationLease final {
-  public:
-    PublicationLease(PublicationLease&&) noexcept = default;
-    PublicationLease& operator=(PublicationLease&&) noexcept = default;
-    PublicationLease(const PublicationLease&) = delete;
-    PublicationLease& operator=(const PublicationLease&) = delete;
-
-    [[nodiscard]] const std::shared_ptr<const WorldSnapshot3D>& world() const noexcept;
-    [[nodiscard]] const ProductionWorldBuildTelemetry3D& telemetry() const noexcept;
-    [[nodiscard]] std::optional<LocalWorldGeneration>
-    issueGeneration(const RawMapVersion& raw_map, std::uint64_t pose_revision,
-                    std::uint64_t esdf_revision,
-                    std::uint64_t gpu_esdf_revision) noexcept;
-    [[nodiscard]] bool
-    publish(std::shared_ptr<const WorldSnapshot3D> world,
-            const ProductionWorldBuildTelemetry3D& telemetry) noexcept;
-    void recordRejection() noexcept;
-    void invalidateAndRecordRejection() noexcept;
-
-  private:
-    friend class WorldPipeline3D;
-    explicit PublicationLease(WorldPipeline3D& owner);
-
-    WorldPipeline3D* owner_;
     std::unique_lock<std::mutex> lock_;
   };
 
@@ -222,20 +221,53 @@ public:
   [[nodiscard]] ObservedWorldUpdate3D
   updateObservedWorld(ObservedWorldBuildRequest3D request);
 
-  [[nodiscard]] bool requestStaticWork(bool force_refresh, bool world_ready);
+  [[nodiscard]] bool requestStaticWork();
+  [[nodiscard]] StaticWorldRefreshRequest3D
+  requestStaticRefresh(std::uint64_t base_route_generation,
+                       StaticWorldRefreshPurpose3D purpose);
+  [[nodiscard]] StaticWorldUpdate3D
+  updateStaticWorld(const StaticWorldBuildRequest3D& request);
+  [[nodiscard]] std::shared_ptr<const OccupancyGrid3D> staticOccupancy() const noexcept;
 
   [[nodiscard]] WorldPipelineResidentSnapshot3D residentSnapshot() const;
   [[nodiscard]] ResidentLease lockResident() const;
-  [[nodiscard]] PublicationLease lockPublication();
-  [[nodiscard]] bool refreshTransientEvidence(
-      const std::shared_ptr<const WorldSnapshot3D>& expected_world,
-      std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_world_owner,
-      std::optional<ProprioceptiveFreeSpaceSeed3D> free_space_seed);
 
   void recordSupersededPlanningGeneration() noexcept;
   [[nodiscard]] WorldPipelineStatistics3D statistics() const noexcept;
 
 private:
+  class PublicationLease final {
+  public:
+    PublicationLease(PublicationLease&&) noexcept = default;
+    PublicationLease& operator=(PublicationLease&&) noexcept = default;
+    PublicationLease(const PublicationLease&) = delete;
+    PublicationLease& operator=(const PublicationLease&) = delete;
+
+    [[nodiscard]] const std::shared_ptr<const WorldSnapshot3D>& world() const noexcept;
+    [[nodiscard]] const ProductionWorldBuildTelemetry3D& telemetry() const noexcept;
+    [[nodiscard]] std::optional<LocalWorldGeneration>
+    issueGeneration(const RawMapVersion& raw_map, std::uint64_t pose_revision,
+                    std::uint64_t esdf_revision,
+                    std::uint64_t gpu_esdf_revision) noexcept;
+    [[nodiscard]] bool
+    publish(std::shared_ptr<const WorldSnapshot3D> world,
+            const ProductionWorldBuildTelemetry3D& telemetry) noexcept;
+    void recordRejection() noexcept;
+    void invalidateAndRecordRejection() noexcept;
+
+  private:
+    friend class WorldPipeline3D;
+    explicit PublicationLease(WorldPipeline3D& owner);
+
+    WorldPipeline3D* owner_;
+    std::unique_lock<std::mutex> lock_;
+  };
+
+  [[nodiscard]] PublicationLease lockPublication();
+  [[nodiscard]] bool refreshTransientEvidence(
+      const std::shared_ptr<const WorldSnapshot3D>& expected_world,
+      std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_world_owner,
+      std::optional<ProprioceptiveFreeSpaceSeed3D> free_space_seed);
   [[nodiscard]] RawWorldIngestionResult3D
   finishRawIngestionLocked(RawObstacleGridUpdate3D update);
   void run(std::stop_token stop_token) noexcept;
@@ -252,10 +284,14 @@ private:
                            std::size_t recomputed_voxels,
                            std::size_t reused_voxels) noexcept;
   void recordObservedBuildThrottled() noexcept;
+  [[nodiscard]] StaticWorldUpdate3D
+  finishStaticWorldUpdate(PreparedStaticWorldBuild3D build,
+                          const StaticWorldRuntime3D& runtime);
   void completeStaticWork() noexcept;
   void handleProcessingFailure(std::exception_ptr failure) noexcept;
 
   std::unique_ptr<ObservedWorldBuilder3D> observed_builder_;
+  std::unique_ptr<StaticWorldBuilder3D> static_builder_;
   std::variant<ObservedWorldRuntime3D, StaticWorldRuntime3D> runtime_;
   ProcessingFailureHandler failure_handler_;
 
@@ -277,11 +313,14 @@ private:
       raw_world_scheduler_{};
   bool pending_static_work_{false};
   bool static_work_in_progress_{false};
+  std::optional<StaticWorldRefreshRequest3D> pending_static_refresh_;
+  std::uint64_t next_static_refresh_sequence_{0U};
 
   mutable std::mutex publication_mutex_;
   std::shared_ptr<const WorldSnapshot3D> resident_world_;
   ProductionWorldBuildTelemetry3D resident_telemetry_{};
   LocalWorldGenerationCounter local_world_generation_counter_{};
+  std::shared_ptr<const StaticWorldEsdfArtifact3D> uploaded_static_artifact_;
 
   mutable std::mutex build_state_mutex_;
   TimePoint last_observed_build_time_{};
@@ -294,6 +333,10 @@ private:
   std::atomic<std::uint64_t> observed_reused_builds_{0U};
   std::atomic<std::uint64_t> observed_recomputed_voxels_{0U};
   std::atomic<std::uint64_t> observed_reused_voxels_{0U};
+  std::atomic<std::uint64_t> static_builds_{0U};
+  std::atomic<std::uint64_t> static_cpu_reuses_{0U};
+  std::atomic<std::uint64_t> static_gpu_reuses_{0U};
+  std::atomic<std::uint64_t> static_refreshes_{0U};
   std::atomic<std::uint64_t> superseded_planning_generations_{0U};
   std::atomic<std::uint64_t> rejected_world_publications_{0U};
   std::atomic<std::uint64_t> processing_failures_{0U};

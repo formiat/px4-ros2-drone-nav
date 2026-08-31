@@ -145,7 +145,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   std::shared_ptr<const VersionedObservedRawWorld3D> direct_observed_world;
   std::shared_ptr<const VersionedStaticWorld3D> direct_static_world;
   if (direct_tracking_requested || stationary_capture_rearm) {
-    if (use_static_map_ && static_occupancy_3d_ != nullptr) {
+    if (use_static_map_ && world.static_occupancy != nullptr) {
       const DirectTrackingFiniteExecution3D* const direct_execution =
           route_execution.source_snapshot->directTrackingExecution();
       const CertifiedRouteSuffix3D* const source_route =

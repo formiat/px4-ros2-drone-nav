@@ -190,8 +190,9 @@ covered by direct executable tests.
 `WorldPipeline3D` now owns raw producer admission, status/payload joining,
 incremental reconstruction, the immutable latest raw world, latest-wins
 scheduling, worker lifetime, the resident world and telemetry, generation
-issuance, and publication/build counters. Its resident and publication leases
-make GPU upload plus CPU world installation one linearizable transaction.
+issuance, and publication/build counters. Its public resident lease and private
+publication transaction make GPU upload plus CPU world installation one
+linearizable transaction.
 Executable tests cover overload and dirty lineage, producer-identity conflict
 quarantine and recovery, publication/read exclusion, exact transient-evidence
 refresh, invalid-generation rejection, exception containment, and lifecycle
@@ -203,8 +204,14 @@ request and consumes typed early-evidence and final update events. Persistent
 evidence-only changes issue a new exact-parent local generation without a GPU
 upload and force planner revalidation. Upload exceptions invalidate the resident
 world because a partially changed controller resource cannot remain paired with
-the prior CPU artifact. Static ESDF construction policy is still implemented by
-a `ProductionMppiNode` callback; that remaining orchestration is not yet complete.
+the prior CPU artifact. `StaticWorldBuilder3D` now owns static ROI selection,
+fingerprint-bound cache extraction with permanent runtime-EDT fallback, immutable
+occupancy/topology/CPU-ESDF assembly, and resource reuse. `WorldPipeline3D` owns
+refresh sequencing and latest-wins coalescing, early and late base-route
+supersession, GPU residency, generation issuance, fail-closed publication, and
+typed update events. The node only supplies immutable navigation/objective and
+late commit contexts, adapts the uploader, and coordinates a route search after
+a successfully published world.
 
 ## Immutable Stage Pipeline
 
@@ -306,16 +313,16 @@ no mixed authority revision is observable.
   `ProductionMppiNode`; retain only composition and ROS I/O in the node.
   - [x] Extract `NavigationDiagnosticsSink` as the sole diagnostics worker,
     mailbox, file, error-context, and statistics owner.
-  - [ ] Extract the complete world pipeline.
+  - [x] Extract the complete world pipeline.
     - [x] Move raw ingestion, producer lineage, reconstruction, latest-wins
       scheduling, worker lifecycle, immutable resident publication, generation
       issuance, and coherent world statistics into `WorldPipeline3D`.
-    - [ ] Move static and observed ESDF construction policy and orchestration
+    - [x] Move static and observed ESDF construction policy and orchestration
       out of `ProductionMppiNode` callbacks and behind the world-service API.
       - [x] Move observed full/incremental/reused construction, rate/audit/
         recenter policy, exact-parent admission, upload, and publication behind
         typed request/event ports.
-      - [ ] Move static ESDF/cache/topology construction and refresh policy
+      - [x] Move static ESDF/cache/topology construction and refresh policy
         behind the same service boundary.
   - [ ] Extract persistent planning and route-pipeline coordination.
   - [ ] Extract trajectory compilation and controller ownership.
@@ -327,8 +334,10 @@ no mixed authority revision is observable.
   for the retired raw-snapshot/risk-field protocol.
 - [ ] Replace source-text transaction checks with executable state-machine and
   concurrency tests. Raw-world joining, supersession, quarantine, publication
-  linearization, transient refresh, and stop behavior now have direct GTests;
-  their former source-order assertions have been removed.
+  linearization, transient refresh, stop behavior, static build/reuse,
+  early/late route supersession, upload/generation failure, and refresh
+  coalescing now have direct GTests; their former world-publication and static
+  refresh source assertions have been removed.
 - [x] Keep public and private headers self-contained and retain a temporary
   umbrella include only where migration compatibility requires it.
 - [ ] Pass formatting, static analysis, C++ tests, and script tests after every

@@ -1,7 +1,9 @@
 #include "production_mppi_node.hpp"
 
+#include "drone_city_nav/free_space_topology_3d.hpp"
 #include "drone_city_nav/occupancy_grid_3d.hpp"
 #include "drone_city_nav/producer_instance_id.hpp"
+#include "drone_city_nav/static_esdf_cache.hpp"
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <chrono>
@@ -635,6 +637,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       mission_waypoint_capture_gate_config_);
   planning_worker_pool_ = std::make_unique<BoundedWorkerPool>(planner_worker_count_);
   engine_ = std::make_unique<mppi::MppiCudaEngine>(mppi_config_);
+  StaticWorldResources3D static_world_resources;
   if (use_static_map_) {
     const auto package_share = std::filesystem::path{
         ament_index_cpp::get_package_share_directory("drone_city_nav")};
@@ -643,9 +646,11 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
     if (occupancy_path.is_relative()) {
       occupancy_path = package_share / occupancy_path;
     }
-    static_occupancy_3d_ =
+    static_world_resources.occupancy =
         std::make_shared<const OccupancyGrid3D>(OccupancyGrid3D::load(occupancy_path));
-    if (static_occupancy_3d_->contentFingerprint() == 0U) {
+    const std::shared_ptr<const OccupancyGrid3D>& static_occupancy =
+        static_world_resources.occupancy;
+    if (static_occupancy->contentFingerprint() == 0U) {
       throw std::runtime_error{"invalid static occupancy content fingerprint"};
     }
     std::filesystem::path cache_path = declare_parameter<std::string>(
@@ -660,7 +665,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
         static_cast<double>(mppi_config_.risk.preferred_distance_m) + 20.0;
     try {
       StaticEsdfCache cache = StaticEsdfCache::load(cache_path);
-      if (cache.compatibleWith(*static_occupancy_3d_, required_maximum_distance_m)) {
+      if (cache.compatibleWith(*static_occupancy, required_maximum_distance_m)) {
         RCLCPP_INFO(get_logger(),
                     "STATIC_ESDF_CACHE_READY path=%s fingerprint=%" PRIu64
                     " maximum_distance_m=%.2f chunks=%zu bytes=%zu "
@@ -669,7 +674,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
                     cache.maximumDistanceM(), cache.storedChunkCount(),
                     cache.compressedBytes(),
                     cache.sharedResourceReused() ? "true" : "false");
-        static_esdf_cache_ = std::move(cache);
+        static_world_resources.esdf_cache = std::move(cache);
       } else {
         RCLCPP_WARN(get_logger(),
                     "STATIC_ESDF_CACHE_FALLBACK path=%s reason=incompatible_world_or_"
@@ -677,7 +682,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
                     " occupancy_fingerprint=%" PRIu64
                     " cache_maximum_distance_m=%.2f requested_maximum_distance_m=%.2f",
                     cache_path.c_str(), cache.occupancyFingerprint(),
-                    static_occupancy_3d_->fingerprint(), cache.maximumDistanceM(),
+                    static_occupancy->fingerprint(), cache.maximumDistanceM(),
                     required_maximum_distance_m);
       }
     } catch (const std::exception& error) {
@@ -695,49 +700,39 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
     }
     try {
       FreeSpaceTopology3D topology = FreeSpaceTopology3D::load(topology_path);
-      if (topology.compatibleWith(*static_occupancy_3d_)) {
-        static_free_space_topology_3d_ = std::move(topology);
+      if (topology.compatibleWith(*static_occupancy)) {
+        static_world_resources.topology =
+            std::make_shared<const FreeSpaceTopology3D>(std::move(topology));
       } else {
         RCLCPP_WARN(get_logger(),
                     "FREE_SPACE_TOPOLOGY_FALLBACK path=%s reason=incompatible_world "
                     "topology_fingerprint=%" PRIu64 " occupancy_fingerprint=%" PRIu64,
                     topology_path.c_str(), topology.occupancyFingerprint(),
-                    static_occupancy_3d_->fingerprint());
+                    static_occupancy->fingerprint());
       }
     } catch (const std::exception& error) {
       RCLCPP_WARN(get_logger(),
                   "FREE_SPACE_TOPOLOGY_FALLBACK path=%s reason=load_failed error=%s",
                   topology_path.c_str(), error.what());
     }
-    const std::span<const PassageTraversalEdge> passage_traversals =
-        static_free_space_topology_3d_
-            ? std::span<const PassageTraversalEdge>{static_free_space_topology_3d_
-                                                        ->traversalEdges()}
-            : std::span<const PassageTraversalEdge>{};
-    static_portal_edges_ = std::make_shared<const std::vector<PassageTraversalEdge>>(
-        passage_traversals.begin(), passage_traversals.end());
+    const std::shared_ptr<const FreeSpaceTopology3D>& topology =
+        static_world_resources.topology;
     RCLCPP_INFO(get_logger(),
                 "STATIC_WORLD_3D path=%s fingerprint=%" PRIu64
                 " occupied_voxels=%zu passage_regions=%zu portals=%zu "
                 "passage_segments=%zu portal_edges=%zu topology_path=%s "
                 "topology_ready=%s "
                 "dimensions=%dx%dx%d",
-                occupancy_path.c_str(), static_occupancy_3d_->fingerprint(),
-                static_occupancy_3d_->occupiedVoxelCount(),
-                static_free_space_topology_3d_
-                    ? static_free_space_topology_3d_->regions().size()
-                    : 0U,
-                static_free_space_topology_3d_
-                    ? static_free_space_topology_3d_->portals().size()
-                    : 0U,
-                static_free_space_topology_3d_
-                    ? static_free_space_topology_3d_->segments().size()
-                    : 0U,
-                static_portal_edges_->size(), topology_path.c_str(),
-                static_free_space_topology_3d_ ? "true" : "false",
-                static_occupancy_3d_->bounds().width_cells,
-                static_occupancy_3d_->bounds().height_cells,
-                static_occupancy_3d_->bounds().depth_cells);
+                occupancy_path.c_str(), static_occupancy->fingerprint(),
+                static_occupancy->occupiedVoxelCount(),
+                topology ? topology->regions().size() : 0U,
+                topology ? topology->portals().size() : 0U,
+                topology ? topology->segments().size() : 0U,
+                topology ? topology->traversalEdges().size() : 0U,
+                topology_path.c_str(), topology ? "true" : "false",
+                static_occupancy->bounds().width_cells,
+                static_occupancy->bounds().height_cells,
+                static_occupancy->bounds().depth_cells);
   }
   persistent_planner_config_.time_model = FlightTimeModel3D{
       .maximum_horizontal_speed_mps =
@@ -770,7 +765,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   }
   persistent_planner_3d_ =
       std::make_unique<PersistentDStarLitePlanner3D>(persistent_planner_config_);
-  initializeRuntimeInterfaces();
+  initializeRuntimeInterfaces(std::move(static_world_resources));
   RCLCPP_INFO(
       get_logger(),
       "Production MPPI ready: rollouts=%zu open_static_rollouts=%zu "

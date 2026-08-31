@@ -715,9 +715,10 @@ void ProductionMppiNode::commitRouteActivation3D(
     observed_owner = snapshot.raw_world->execution_owner->deriveRouteEvidence(
         candidate.world->proprioceptive_free_space_seed,
         candidate.world->launch_support_contact);
-  } else if (!raw_validation_required && static_occupancy_3d_ != nullptr) {
+  } else if (!raw_validation_required && candidate.world->static_occupancy != nullptr) {
     static_owner = VersionedStaticWorld3D::captureOwned(
-        materialized_proposal.identity.validated_world, static_occupancy_3d_);
+        materialized_proposal.identity.validated_world,
+        candidate.world->static_occupancy);
   }
   const RouteContinuityLineage3D continuity_lineage{
       .mission_epoch = materialized_proposal.identity.objective.mission_epoch,

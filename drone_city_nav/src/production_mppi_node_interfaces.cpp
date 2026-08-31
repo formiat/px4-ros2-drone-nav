@@ -9,7 +9,8 @@
 
 namespace drone_city_nav {
 
-void ProductionMppiNode::initializeRuntimeInterfaces() {
+void ProductionMppiNode::initializeRuntimeInterfaces(
+    StaticWorldResources3D&& static_world_resources) {
   diagnostics_sink_ = std::make_unique<NavigationDiagnosticsSink>(
       NavigationDiagnosticsSinkConfig{
           .output_directory = diagnostics_output_dir_,
@@ -45,7 +46,39 @@ void ProductionMppiNode::initializeRuntimeInterfaces() {
       };
   if (use_static_map_) {
     world_pipeline_ = std::make_unique<WorldPipeline3D>(
-        StaticWorldRuntime3D{.processor = [this]() { processStaticEsdf3D(); }},
+        StaticWorldRuntime3D{
+            .builder_config =
+                StaticWorldBuilderConfig3D{
+                    .resources = std::move(static_world_resources),
+                    .route_lookahead_m = static_esdf_route_lookahead_m_,
+                    .roi_halo_m = 40.0,
+                    .maximum_distance_m =
+                        static_cast<double>(mppi_config_.risk.preferred_distance_m) +
+                        20.0,
+                    .worker_pool = planning_worker_pool_.get(),
+                },
+            .request_provider =
+                [this](const StaticWorldRefreshRequest3D& refresh) {
+                  return makeStaticWorldBuildRequest3D(refresh);
+                },
+            .commit_context_provider =
+                [this]() { return makeStaticWorldCommitContext3D(); },
+            .uploader =
+                [this](const WorldEsdfUploadRequest3D& request) {
+                  const mppi::EsdfUploadResult upload = engine_->updateEsdf(
+                      mppi::EsdfSnapshot{request.grid, request.distances_m,
+                                         request.revision, request.dirty_regions});
+                  return WorldEsdfUploadResult3D{
+                      .accepted = upload.accepted,
+                      .upload_ms = upload.upload_ms,
+                      .revision = upload.revision,
+                  };
+                },
+            .update_handler =
+                [this](const StaticWorldUpdate3D& update) {
+                  handleStaticWorldUpdate3D(update);
+                },
+        },
         world_failure_handler);
   } else {
     world_pipeline_ = std::make_unique<WorldPipeline3D>(

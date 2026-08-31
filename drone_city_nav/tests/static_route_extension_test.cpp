@@ -655,31 +655,6 @@ TEST(StaticRouteExtensionTest, SuccessfulSearchClearsFailureLatch) {
             StaticRouteSearchRetryTrigger::kNoFailure);
 }
 
-TEST(StaticRouteExtensionTest, RepeatedRoiRefreshUsesUniqueRequestSequence) {
-  StaticRouteRoiRefreshLifecycle lifecycle;
-
-  const StaticRouteRoiRefreshRequest first = lifecycle.queue(7U);
-  EXPECT_TRUE(lifecycle.pending(first));
-  lifecycle.complete(first.sequence);
-  EXPECT_FALSE(lifecycle.pending(first));
-
-  const StaticRouteRoiRefreshRequest second = lifecycle.queue(7U);
-  EXPECT_GT(second.sequence, first.sequence);
-  EXPECT_EQ(second.base_route_generation, first.base_route_generation);
-  EXPECT_TRUE(lifecycle.pending(second));
-}
-
-TEST(StaticRouteExtensionTest, PreservesTrackingRefreshPurpose) {
-  StaticRouteRoiRefreshLifecycle lifecycle;
-
-  const StaticRouteRoiRefreshRequest request =
-      lifecycle.queue(9U, StaticRouteRoiRefreshRequest::Purpose::kTrackingObjective);
-
-  EXPECT_EQ(request.purpose, StaticRouteRoiRefreshRequest::Purpose::kTrackingObjective);
-  EXPECT_EQ(lifecycle.latest().purpose,
-            StaticRouteRoiRefreshRequest::Purpose::kTrackingObjective);
-}
-
 TEST(StaticRouteExtensionTest, RejectsRouteOlderThanLosHandoffSample) {
   const StaticRouteObjective current{.goal = Point3{100.0, 50.0, 18.0},
                                      .mission_epoch = 7U,

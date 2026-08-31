@@ -63,11 +63,8 @@ snapshot/delta transport, and selected-spectator 3D clouds.
 
 - consumes PX4 state, the memory-status heartbeat, and immutable raw obstacle
   snapshots where required;
-- loads canonical Occupancy3D directly in static mode;
-- extracts the resident static ESDF asynchronously from a fingerprint-validated
-  precomputed cache as soon as navigation state and the configured objective are
-  ready, independently of lidar snapshots;
-- falls back to the exact runtime EDT when the cache is unavailable or invalid;
+- loads canonical static artifacts at composition time and transfers their
+  ownership to `WorldPipeline3D`;
 - derives no-static soft distance evidence from immutable sparse
   `KnownObstacleDistance3D` chunks and materializes only the controller upload
   projection;
@@ -75,9 +72,11 @@ snapshot/delta transport, and selected-spectator 3D clouds.
   reconstruction, latest-wins world scheduling, worker lifetime, and coherent
   resident-world publication to the package-private `WorldPipeline3D` owner;
 - publishes latched planner-world readiness after successful ESDF activation;
-- currently hosts static/observed ESDF build policy, the persistent D* Lite
-  planner, and production route and execution orchestration while those owners
-  are extracted into internal services;
+- delegates static and observed ESDF build, refresh, upload, generation, and
+  publication policy to `WorldPipeline3D` and its typed builders;
+- currently hosts the persistent D* Lite planner and production route and
+  execution orchestration while those owners are extracted into internal
+  services;
 - delegates diagnostics queuing, worker lifetime, JSONL/error-context files,
   and coherent statistics to the package-private `NavigationDiagnosticsSink`;
 - certifies route geometry, tracking-error tube, successor reserve, and suffix
@@ -174,10 +173,13 @@ immutable publication. The ROS runtime supplies one immutable pose/evidence
 request and consumes typed evidence/update events. A persistent evidence-only
 change publishes a new local generation over the exact existing ESDF parent,
 forces planner revalidation, and performs no redundant GPU upload. Static ESDF
-construction is still supplied by a node callback. An uploader exception
-invalidates the resident world because the service cannot prove whether GPU
-state changed before the exception. Moving the remaining static policy into the
-service remains part of the active architecture remediation.
+mode uses `StaticWorldBuilder3D` for aligned ROI selection, fingerprint-bound
+cache extraction with runtime-EDT fallback, and immutable occupancy/topology/CPU
+artifact assembly. The world service coalesces refreshes, rejects a superseded
+base route both before construction and at commit, reuses exact CPU/GPU
+resources, and issues a fresh generation for accepted proactive refreshes. An
+uploader exception invalidates the resident world because the service cannot
+prove whether GPU state changed before the exception.
 
 Unknown space remains traversable without a penalty or gate. There are no
 planner/prohibited inflated grids, relaxed inflation modes, escape tunnels, or
@@ -402,7 +404,8 @@ The world pipeline owns one stoppable worker. In observed mode its deferred
 scheduler retains only the newest immutable raw revision and records skipped
 lineage, emits persistent evidence changes before expensive construction, and
 then executes the typed `ObservedWorldBuilder3D` transaction. In static mode it
-coalesces refresh requests. Producer ingestion, worker scheduling, resident
+executes the typed `StaticWorldBuilder3D` transaction and coalesces refresh
+requests with latest-wins semantics. Producer ingestion, worker scheduling, resident
 publication, and build statistics have independent private synchronization.
 Publication and resident leases share one mutex, so a planner cannot validate
 one generation while another generation is being installed. Incremental and
@@ -437,6 +440,7 @@ scheduling.
 - Collision validation uses a swept oriented 3D footprint against physical raw
   occupancy. No additional artificial footprint inflation is part of the
   planning contract.
-- `WorldPipeline3D` owns raw reconstruction, observed ESDF build policy, and
-  publication. The ROS node still supplies static ESDF build policy; the active
-  remediation moves that remaining orchestration behind the service API.
+- `WorldPipeline3D` owns raw reconstruction, static and observed ESDF build
+  policy, refresh/upload transactions, and publication. Persistent planning,
+  trajectory/control coordination, and the execution facade remain to be
+  extracted from the ROS node.

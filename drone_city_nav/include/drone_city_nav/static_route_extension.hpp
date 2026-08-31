@@ -10,7 +10,6 @@
 #include "drone_city_nav/types.hpp"
 
 #include <array>
-#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -281,35 +280,6 @@ public:
 
 private:
   std::optional<StaticRouteDeferredReplan> request_;
-};
-
-struct StaticRouteRoiRefreshRequest {
-  std::uint64_t sequence{0U};
-  std::uint64_t base_route_generation{0U};
-  enum class Purpose : std::uint8_t {
-    kRouteExtension,
-    kTrackingObjective,
-  } purpose{Purpose::kRouteExtension};
-};
-
-class StaticRouteRoiRefreshLifecycle final {
-public:
-  [[nodiscard]] StaticRouteRoiRefreshRequest
-  queue(std::uint64_t base_route_generation,
-        StaticRouteRoiRefreshRequest::Purpose purpose =
-            StaticRouteRoiRefreshRequest::Purpose::kRouteExtension) noexcept;
-  [[nodiscard]] StaticRouteRoiRefreshRequest latest() const noexcept;
-  [[nodiscard]] bool
-  pending(const StaticRouteRoiRefreshRequest& request) const noexcept;
-  void complete(std::uint64_t sequence) noexcept;
-
-private:
-  std::atomic<std::uint64_t> next_sequence_{0U};
-  std::atomic<std::uint64_t> requested_sequence_{0U};
-  std::atomic<std::uint64_t> requested_base_route_generation_{0U};
-  std::atomic<StaticRouteRoiRefreshRequest::Purpose> requested_purpose_{
-      StaticRouteRoiRefreshRequest::Purpose::kRouteExtension};
-  std::atomic<std::uint64_t> completed_sequence_{0U};
 };
 
 enum class StaticRouteCandidateStatus : std::uint8_t {

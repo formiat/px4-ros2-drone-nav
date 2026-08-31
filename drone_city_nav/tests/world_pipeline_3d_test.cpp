@@ -97,6 +97,97 @@ rawWorld(const ObservedOccupancyGrid3D& grid, const std::uint64_t revision,
   };
 }
 
+[[nodiscard]] std::shared_ptr<const OccupancyGrid3D> staticOccupancy() {
+  OccupancyGrid3D occupancy{GridBounds3D{0.0, 0.0, 0.0, 1.0, 64, 32, 8}, 73U};
+  occupancy.setOccupied(GridIndex3D{4, 4, 2});
+  occupancy.setOccupied(GridIndex3D{45, 20, 3});
+  return std::make_shared<const OccupancyGrid3D>(std::move(occupancy));
+}
+
+[[nodiscard]] StaticWorldBuildRequest3D
+staticRequest(const StaticWorldRefreshRequest3D refresh = {},
+              const std::uint64_t resident_route_generation = 0U,
+              const Point3 position = Point3{2.0, 2.0, 2.0},
+              const Point3 goal = Point3{18.0, 2.0, 2.0}) noexcept {
+  return StaticWorldBuildRequest3D{
+      .refresh = refresh,
+      .objective =
+          StaticWorldObjective3D{
+              .goal = goal,
+              .mission_epoch = 3U,
+              .sample_sequence = 5U,
+              .assignment_generation = 7U,
+              .available = true,
+          },
+      .position = position,
+      .resident_route_generation = resident_route_generation,
+      .source_stamp_ns = 4'000'000'000LL,
+      .world_state_authoritative = true,
+  };
+}
+
+[[nodiscard]] StaticWorldCommitContext3D
+staticCommit(const std::uint64_t resident_route_generation = 0U) noexcept {
+  return StaticWorldCommitContext3D{
+      .position = Point3{2.25, 2.0, 2.0},
+      .pose_revision = 19U,
+      .resident_route_generation = resident_route_generation,
+      .ready_stamp_ns = 4'100'000'000LL,
+      .navigation_valid = true,
+  };
+}
+
+using StaticRequestProvider3D =
+    std::function<StaticWorldBuildRequest3D(const StaticWorldRefreshRequest3D&)>;
+using StaticCommitProvider3D = std::function<StaticWorldCommitContext3D()>;
+using StaticUploader3D =
+    std::function<WorldEsdfUploadResult3D(const WorldEsdfUploadRequest3D&)>;
+
+[[nodiscard]] StaticWorldRuntime3D
+staticRuntime(const std::shared_ptr<const OccupancyGrid3D>& occupancy,
+              StaticRequestProvider3D request_provider = {},
+              StaticCommitProvider3D commit_provider = {},
+              StaticUploader3D uploader = {},
+              std::function<void(const StaticWorldUpdate3D&)> update_handler = {}) {
+  if (!request_provider) {
+    request_provider = [](const StaticWorldRefreshRequest3D& refresh) {
+      return staticRequest(refresh, refresh.base_route_generation);
+    };
+  }
+  if (!commit_provider) {
+    commit_provider = []() { return staticCommit(); };
+  }
+  if (!uploader) {
+    uploader = [](const WorldEsdfUploadRequest3D& request) {
+      return WorldEsdfUploadResult3D{
+          .accepted = true,
+          .revision = request.revision,
+      };
+    };
+  }
+  const auto topology = std::make_shared<const FreeSpaceTopology3D>(
+      occupancy->fingerprint(), occupancy->bounds(), std::vector<FreeSpaceRegion>{},
+      std::vector<PassagePortal>{}, std::vector<PassageTraversalEdge>{});
+  return StaticWorldRuntime3D{
+      .builder_config =
+          StaticWorldBuilderConfig3D{
+              .resources =
+                  StaticWorldResources3D{
+                      .occupancy = occupancy,
+                      .topology = topology,
+                      .esdf_cache = std::nullopt,
+                  },
+              .route_lookahead_m = 12.0,
+              .roi_halo_m = 0.0,
+              .maximum_distance_m = 8.0,
+          },
+      .request_provider = std::move(request_provider),
+      .commit_context_provider = std::move(commit_provider),
+      .uploader = std::move(uploader),
+      .update_handler = std::move(update_handler),
+  };
+}
+
 [[nodiscard]] std_msgs::msg::Header headerAt(const std::int64_t stamp_ns) {
   std_msgs::msg::Header header;
   header.frame_id = "map";
@@ -150,51 +241,6 @@ ingestAndCommit(WorldPipeline3D& pipeline, const ObservedOccupancyGrid3D& grid,
               result.world->occupancy.get());
   }
   return result;
-}
-
-[[nodiscard]] WorldSnapshot3D coherentObservedWorldWithoutGeneration() {
-  WorldSnapshot3D world;
-  const GridBounds3D bounds{0.0, 0.0, 0.0, 1.0, 4, 4, 4};
-  world.producer_instance_id = 7U;
-  world.source_raw_revision = 451U;
-  world.source_occupied_fingerprint = 88U;
-  world.grid = mppi::EsdfGrid{.width = 4,
-                              .height = 4,
-                              .resolution_m = 1.0F,
-                              .depth = 4,
-                              .outside_is_unknown = true};
-  world.observed_occupancy = std::make_shared<const ObservedOccupancyGrid3D>(bounds);
-  const KnownObstacleDistance3DBuildResult distance =
-      buildKnownObstacleDistance3D(*world.observed_occupancy, bounds, 7.0);
-  world.revision = distance.field->sourceFingerprint();
-  world.distances_m = distance.field->materializeDense();
-  const RawMapVersion raw_version{
-      .producer_instance_id = 7U,
-      .base_snapshot_revision = 400U,
-      .revision = 451U,
-  };
-  world.observed_raw_world_owner = VersionedObservedRawWorld3D::captureOwned(
-      raw_version, world.observed_occupancy, std::nullopt, std::nullopt);
-  world.raw_occupied_fingerprint =
-      world.observed_raw_world_owner->occupiedContentFingerprint();
-  world.planner_full_reset = true;
-  world.observed_esdf_resource = ObservedEsdfResource3D{
-      .local_occupancy = std::make_shared<const ObservedOccupancyGrid3D>(bounds),
-      .known_obstacle_distance = distance.field,
-      .classification_override_cells =
-          std::make_shared<const std::vector<GridIndex3D>>(),
-      .coverage =
-          ObservedEsdfCoverage3D{
-              .source_raw_version = raw_version,
-              .raw_local_fingerprint = 88U,
-              .esdf_fingerprint = world.revision,
-              .total_voxels = 64U,
-              .recomputed_voxels = 64U,
-              .maximum_distance_m = 7.0,
-              .mode = ObservedEsdf3DBuildMode::kFull,
-          },
-  };
-  return world;
 }
 
 TEST(WorldPipeline3DTest, LatestWinsWorkerOwnsOverloadAndDirtyLineage) {
@@ -273,106 +319,6 @@ TEST(WorldPipeline3DTest, IdentityConflictClearsAuthorityUntilNewerEvidence) {
   pipeline.stop();
 }
 
-TEST(WorldPipeline3DTest, PublicationLeaseLinearizesGenerationAndReaders) {
-  WorldPipeline3D pipeline{observedRuntime()};
-  WorldSnapshot3D mutable_world = coherentObservedWorldWithoutGeneration();
-  {
-    WorldPipeline3D::PublicationLease publication = pipeline.lockPublication();
-    const std::optional<LocalWorldGeneration> generation = publication.issueGeneration(
-        mutable_world.observed_esdf_resource.coverage.source_raw_version, 21U,
-        mutable_world.revision, mutable_world.revision);
-    ASSERT_TRUE(generation.has_value());
-    mutable_world.local_world_generation = generation.value_or(LocalWorldGeneration{});
-    ASSERT_TRUE(publication.publish(
-        std::make_shared<const WorldSnapshot3D>(std::move(mutable_world)),
-        ProductionWorldBuildTelemetry3D{.build_ms = 4.0}));
-  }
-
-  const WorldPipelineResidentSnapshot3D captured = pipeline.residentSnapshot();
-  ASSERT_NE(captured.world, nullptr);
-  EXPECT_TRUE(productionWorldGenerationCoherent(*captured.world));
-  EXPECT_DOUBLE_EQ(captured.telemetry.build_ms, 4.0);
-
-  std::optional<WorldPipeline3D::ResidentLease> reader{std::in_place,
-                                                       pipeline.lockResident()};
-  std::mutex mutex;
-  std::condition_variable condition;
-  bool publication_attempted{false};
-  bool publication_acquired{false};
-  std::jthread publisher{[&]() {
-    {
-      const std::scoped_lock lock{mutex};
-      publication_attempted = true;
-    }
-    condition.notify_all();
-    WorldPipeline3D::PublicationLease publication = pipeline.lockPublication();
-    {
-      const std::scoped_lock lock{mutex};
-      publication_acquired = true;
-    }
-    condition.notify_all();
-  }};
-  {
-    std::unique_lock lock{mutex};
-    ASSERT_TRUE(
-        condition.wait_for(lock, 1s, [&]() noexcept { return publication_attempted; }));
-    EXPECT_FALSE(condition.wait_for(lock, 50ms,
-                                    [&]() noexcept { return publication_acquired; }));
-  }
-  reader.reset();
-  {
-    std::unique_lock lock{mutex};
-    ASSERT_TRUE(
-        condition.wait_for(lock, 1s, [&]() noexcept { return publication_acquired; }));
-  }
-}
-
-TEST(WorldPipeline3DTest, TransientRefreshRequiresTheExactResidentPublication) {
-  WorldPipeline3D pipeline{observedRuntime()};
-  WorldSnapshot3D mutable_world = coherentObservedWorldWithoutGeneration();
-  {
-    WorldPipeline3D::PublicationLease publication = pipeline.lockPublication();
-    const std::optional<LocalWorldGeneration> generation = publication.issueGeneration(
-        mutable_world.observed_esdf_resource.coverage.source_raw_version, 21U,
-        mutable_world.revision, mutable_world.revision);
-    ASSERT_TRUE(generation.has_value());
-    mutable_world.local_world_generation = generation.value_or(LocalWorldGeneration{});
-    ASSERT_TRUE(publication.publish(
-        std::make_shared<const WorldSnapshot3D>(std::move(mutable_world)), {}));
-  }
-  const std::shared_ptr<const WorldSnapshot3D> original =
-      pipeline.residentSnapshot().world;
-  ASSERT_NE(original, nullptr);
-  ASSERT_TRUE(pipeline.refreshTransientEvidence(
-      original, original->observed_raw_world_owner, std::nullopt));
-  const std::shared_ptr<const WorldSnapshot3D> refreshed =
-      pipeline.residentSnapshot().world;
-  ASSERT_NE(refreshed, nullptr);
-  EXPECT_NE(refreshed, original);
-  EXPECT_TRUE(
-      refreshed->local_world_generation.sameSnapshot(original->local_world_generation));
-  EXPECT_FALSE(pipeline.refreshTransientEvidence(
-      original, original->observed_raw_world_owner, std::nullopt));
-}
-
-TEST(WorldPipeline3DTest, InvalidGenerationPublicationFailsClosedAndIsCounted) {
-  WorldPipeline3D pipeline{observedRuntime()};
-  WorldSnapshot3D mutable_world = coherentObservedWorldWithoutGeneration();
-  {
-    WorldPipeline3D::PublicationLease publication = pipeline.lockPublication();
-    const std::optional<LocalWorldGeneration> generation = publication.issueGeneration(
-        mutable_world.observed_esdf_resource.coverage.source_raw_version, 21U,
-        mutable_world.revision, mutable_world.revision);
-    ASSERT_TRUE(generation.has_value());
-    mutable_world.local_world_generation = generation.value_or(LocalWorldGeneration{});
-    ++mutable_world.source_raw_revision;
-    EXPECT_FALSE(publication.publish(
-        std::make_shared<const WorldSnapshot3D>(std::move(mutable_world)), {}));
-  }
-  EXPECT_EQ(pipeline.residentSnapshot().world, nullptr);
-  EXPECT_EQ(pipeline.statistics().rejected_world_publications, 1U);
-}
-
 TEST(WorldPipeline3DTest, ObservedWorldServicePublishesExactOwnedFullArtifact) {
   std::size_t uploads{0U};
   ObservedWorldRuntime3D runtime = observedRuntime();
@@ -411,6 +357,76 @@ TEST(WorldPipeline3DTest, ObservedWorldServicePublishesExactOwnedFullArtifact) {
   EXPECT_EQ(update.world->local_world_generation.raw_map.revision,
             raw->version.revision);
   EXPECT_EQ(pipeline.statistics().observed_full_builds, 1U);
+}
+
+TEST(WorldPipeline3DTest, ResidentLeaseLinearizesReadersAgainstPublication) {
+  WorldPipeline3D pipeline{observedRuntime()};
+  ObservedOccupancyGrid3D grid{kRawBounds};
+  ASSERT_TRUE(grid.setState({3, 3, 1}, ObservedVoxelState::kOccupied));
+  const auto raw = rawWorld(grid, 1U);
+  const auto started_at = std::chrono::steady_clock::now();
+  const ObservedWorldUpdate3D initial =
+      pipeline.updateObservedWorld(observedRequest(raw, started_at));
+  ASSERT_TRUE(initial.published());
+
+  std::optional<WorldPipeline3D::ResidentLease> reader{std::in_place,
+                                                       pipeline.lockResident()};
+  std::mutex mutex;
+  std::condition_variable condition;
+  bool publication_attempted{false};
+  bool publication_completed{false};
+  ObservedWorldUpdate3D publication;
+  std::jthread publisher{[&]() {
+    {
+      const std::scoped_lock lock{mutex};
+      publication_attempted = true;
+    }
+    condition.notify_all();
+    ObservedWorldUpdate3D update = pipeline.updateObservedWorld(
+        observedRequest(raw, started_at + 100ms, std::nullopt, true));
+    {
+      const std::scoped_lock lock{mutex};
+      publication = std::move(update);
+      publication_completed = true;
+    }
+    condition.notify_all();
+  }};
+  {
+    std::unique_lock lock{mutex};
+    ASSERT_TRUE(
+        condition.wait_for(lock, 1s, [&]() noexcept { return publication_attempted; }));
+    EXPECT_FALSE(condition.wait_for(lock, 50ms,
+                                    [&]() noexcept { return publication_completed; }));
+  }
+  reader.reset();
+  {
+    std::unique_lock lock{mutex};
+    ASSERT_TRUE(
+        condition.wait_for(lock, 1s, [&]() noexcept { return publication_completed; }));
+  }
+  ASSERT_TRUE(publication.published());
+  EXPECT_GT(publication.world->local_world_generation.generation,
+            initial.world->local_world_generation.generation);
+}
+
+TEST(WorldPipeline3DTest, MismatchedGpuRevisionFailsClosedThroughServiceApi) {
+  ObservedWorldRuntime3D runtime = observedRuntime();
+  runtime.uploader = [](const WorldEsdfUploadRequest3D& request) {
+    return WorldEsdfUploadResult3D{
+        .accepted = true,
+        .revision = request.revision + 1U,
+    };
+  };
+  WorldPipeline3D pipeline{std::move(runtime)};
+  ObservedOccupancyGrid3D grid{kRawBounds};
+  ASSERT_TRUE(grid.setState({3, 3, 1}, ObservedVoxelState::kOccupied));
+
+  const ObservedWorldUpdate3D update = pipeline.updateObservedWorld(
+      observedRequest(rawWorld(grid, 1U), std::chrono::steady_clock::now()));
+
+  EXPECT_EQ(update.status, ObservedWorldUpdateStatus3D::kMixedLocalWorldGeneration);
+  EXPECT_EQ(pipeline.residentSnapshot().world, nullptr);
+  EXPECT_EQ(pipeline.statistics().rejected_world_publications, 1U);
 }
 
 TEST(WorldPipeline3DTest, ObservedWorldServiceRefreshesOnlyTransientEvidence) {
@@ -468,7 +484,10 @@ TEST(WorldPipeline3DTest, ObservedWorldServiceRefreshesOnlyTransientEvidence) {
 TEST(WorldPipeline3DTest, EvidenceEventSupersedesExactParentBeforePublication) {
   std::size_t uploads{0U};
   bool parent_replaced{false};
+  bool replacing_parent{false};
   WorldPipeline3D* pipeline_address{nullptr};
+  std::shared_ptr<const ProductionMppiRawWorld3D> callback_raw;
+  auto callback_started_at = std::chrono::steady_clock::now();
   ObservedWorldRuntime3D runtime = observedRuntime();
   runtime.uploader = [&](const WorldEsdfUploadRequest3D& request) {
     ++uploads;
@@ -478,13 +497,20 @@ TEST(WorldPipeline3DTest, EvidenceEventSupersedesExactParentBeforePublication) {
     };
   };
   runtime.evidence_handler = [&](const ObservedWorldEvidenceChange3D& change) {
-    EXPECT_TRUE(change.persistent_changed);
-    const std::shared_ptr<const WorldSnapshot3D> resident =
-        pipeline_address->residentSnapshot().world;
-    ASSERT_NE(resident, nullptr);
-    parent_replaced = pipeline_address->refreshTransientEvidence(
-        resident, resident->observed_raw_world_owner,
-        resident->proprioceptive_free_space_seed);
+    if (replacing_parent || callback_raw == nullptr || !change.persistent_changed) {
+      return;
+    }
+    replacing_parent = true;
+    const ProprioceptiveFreeSpaceSeed3D seed{
+        .position = Point3{0.0, 0.0, 0.0},
+        .body_axis = FootprintBodyAxis{0.0, 0.0, 1.0},
+        .footprint = SweptFootprintConfig{},
+    };
+    const ObservedWorldUpdate3D nested = pipeline_address->updateObservedWorld(
+        observedRequest(callback_raw, callback_started_at + 100ms, seed));
+    parent_replaced = nested.status == ObservedWorldUpdateStatus3D::kAlreadyCurrent &&
+                      nested.transient_evidence_refreshed;
+    replacing_parent = false;
   };
   WorldPipeline3D pipeline{std::move(runtime)};
   pipeline_address = std::addressof(pipeline);
@@ -492,9 +518,11 @@ TEST(WorldPipeline3DTest, EvidenceEventSupersedesExactParentBeforePublication) {
   ASSERT_TRUE(grid.setState({3, 3, 1}, ObservedVoxelState::kOccupied));
   const auto raw = rawWorld(grid, 1U);
   const auto started_at = std::chrono::steady_clock::now();
+  callback_started_at = started_at;
   const ObservedWorldUpdate3D initial =
       pipeline.updateObservedWorld(observedRequest(raw, started_at));
   ASSERT_TRUE(initial.published());
+  callback_raw = raw;
 
   const ObservedWorldUpdate3D superseded = pipeline.updateObservedWorld(
       observedRequest(raw, started_at + 2s, std::nullopt, true));
@@ -669,31 +697,183 @@ TEST(WorldPipeline3DTest, ThrowingUploadInvalidatesPreviouslyResidentWorld) {
   EXPECT_EQ(pipeline.statistics().rejected_world_publications, 1U);
 }
 
-TEST(WorldPipeline3DTest, StaticWorkerCoalescesOrdinaryWorkAndRetainsForcedRefresh) {
+TEST(WorldPipeline3DTest, StaticWorldServicePublishesImmutableOwnedArtifact) {
+  const std::shared_ptr<const OccupancyGrid3D> occupancy = staticOccupancy();
+  std::size_t uploads{0U};
+  WorldPipeline3D pipeline{
+      staticRuntime(occupancy, {}, {}, [&](const WorldEsdfUploadRequest3D& request) {
+        ++uploads;
+        EXPECT_FALSE(request.distances_m.empty());
+        return WorldEsdfUploadResult3D{
+            .accepted = true,
+            .upload_ms = 1.75,
+            .revision = request.revision,
+        };
+      })};
+
+  const StaticWorldUpdate3D published = pipeline.updateStaticWorld(staticRequest());
+
+  ASSERT_TRUE(published.published());
+  ASSERT_NE(published.world->topology_passage_traversals, nullptr);
+  EXPECT_TRUE(published.world->topology_passage_traversals->empty());
+  EXPECT_EQ(published.world->static_occupancy, occupancy);
+  EXPECT_EQ(pipeline.staticOccupancy(), occupancy);
+  EXPECT_TRUE(productionWorldGenerationCoherent(*published.world));
+  EXPECT_EQ(published.world, pipeline.residentSnapshot().world);
+  EXPECT_DOUBLE_EQ(published.telemetry.upload_ms, 1.75);
+  EXPECT_EQ(uploads, 1U);
+  EXPECT_EQ(pipeline.statistics().static_builds, 1U);
+
+  const StaticWorldUpdate3D already_current =
+      pipeline.updateStaticWorld(staticRequest());
+  EXPECT_EQ(already_current.status, StaticWorldUpdateStatus3D::kAlreadyCurrent);
+  EXPECT_EQ(already_current.world, published.world);
+  EXPECT_EQ(uploads, 1U);
+}
+
+TEST(WorldPipeline3DTest, StaticRefreshReusesResourcesAndPublishesNewGeneration) {
+  const std::shared_ptr<const OccupancyGrid3D> occupancy = staticOccupancy();
+  std::size_t uploads{0U};
+  WorldPipeline3D pipeline{staticRuntime(
+      occupancy, {}, []() { return staticCommit(11U); },
+      [&](const WorldEsdfUploadRequest3D& request) {
+        ++uploads;
+        return WorldEsdfUploadResult3D{
+            .accepted = true,
+            .revision = request.revision,
+        };
+      })};
+  const StaticWorldUpdate3D initial =
+      pipeline.updateStaticWorld(staticRequest({}, 11U));
+  ASSERT_TRUE(initial.published());
+  const StaticWorldRefreshRequest3D refresh{
+      .sequence = 1U,
+      .base_route_generation = 11U,
+      .purpose = StaticWorldRefreshPurpose3D::kRouteExtension,
+  };
+
+  const StaticWorldUpdate3D refreshed =
+      pipeline.updateStaticWorld(staticRequest(refresh, 11U));
+
+  ASSERT_TRUE(refreshed.published());
+  EXPECT_TRUE(refreshed.proactive_refresh);
+  EXPECT_TRUE(refreshed.diagnostics.cpu_resource_reused);
+  EXPECT_TRUE(refreshed.diagnostics.gpu_resource_reused);
+  EXPECT_EQ(refreshed.world->distances_m, initial.world->distances_m);
+  EXPECT_GT(refreshed.world->local_world_generation.generation,
+            initial.world->local_world_generation.generation);
+  EXPECT_EQ(uploads, 1U);
+  const WorldPipelineStatistics3D statistics = pipeline.statistics();
+  EXPECT_EQ(statistics.static_builds, 1U);
+  EXPECT_EQ(statistics.static_cpu_reuses, 1U);
+  EXPECT_EQ(statistics.static_gpu_reuses, 1U);
+}
+
+TEST(WorldPipeline3DTest, StaticRefreshRejectsEarlyAndLateRouteSupersession) {
+  const std::shared_ptr<const OccupancyGrid3D> occupancy = staticOccupancy();
+  std::atomic<std::uint64_t> commit_route_generation{11U};
+  std::size_t uploads{0U};
+  WorldPipeline3D pipeline{staticRuntime(
+      occupancy, {},
+      [&]() {
+        return staticCommit(commit_route_generation.load(std::memory_order_acquire));
+      },
+      [&](const WorldEsdfUploadRequest3D& request) {
+        ++uploads;
+        return WorldEsdfUploadResult3D{
+            .accepted = true,
+            .revision = request.revision,
+        };
+      })};
+  const StaticWorldRefreshRequest3D refresh{
+      .sequence = 1U,
+      .base_route_generation = 11U,
+      .purpose = StaticWorldRefreshPurpose3D::kTrackingObjective,
+  };
+
+  const StaticWorldUpdate3D early =
+      pipeline.updateStaticWorld(staticRequest(refresh, 12U));
+  EXPECT_EQ(early.status, StaticWorldUpdateStatus3D::kRefreshSuperseded);
+
+  commit_route_generation.store(12U, std::memory_order_release);
+  const StaticWorldUpdate3D late =
+      pipeline.updateStaticWorld(staticRequest(refresh, 11U));
+  EXPECT_EQ(late.status, StaticWorldUpdateStatus3D::kRefreshSuperseded);
+  EXPECT_EQ(uploads, 0U);
+  EXPECT_EQ(pipeline.residentSnapshot().world, nullptr);
+}
+
+TEST(WorldPipeline3DTest, StaticUploadExceptionAndRevisionMismatchFailClosed) {
+  const std::shared_ptr<const OccupancyGrid3D> occupancy = staticOccupancy();
+  WorldPipeline3D throwing_pipeline{
+      staticRuntime(occupancy, {}, {},
+                    [](const WorldEsdfUploadRequest3D&) -> WorldEsdfUploadResult3D {
+                      throw std::runtime_error{"upload may have changed GPU state"};
+                    })};
+  const StaticWorldUpdate3D failed =
+      throwing_pipeline.updateStaticWorld(staticRequest());
+  EXPECT_EQ(failed.status, StaticWorldUpdateStatus3D::kUploadFailed);
+  EXPECT_NE(failed.failure, nullptr);
+  EXPECT_EQ(throwing_pipeline.residentSnapshot().world, nullptr);
+  EXPECT_EQ(throwing_pipeline.statistics().rejected_world_publications, 1U);
+
+  WorldPipeline3D mismatched_pipeline{
+      staticRuntime(occupancy, {}, {}, [](const WorldEsdfUploadRequest3D& request) {
+        return WorldEsdfUploadResult3D{
+            .accepted = true,
+            .revision = request.revision + 1U,
+        };
+      })};
+  const StaticWorldUpdate3D mismatched =
+      mismatched_pipeline.updateStaticWorld(staticRequest());
+  EXPECT_EQ(mismatched.status, StaticWorldUpdateStatus3D::kMixedLocalWorldGeneration);
+  EXPECT_EQ(mismatched_pipeline.residentSnapshot().world, nullptr);
+  EXPECT_EQ(mismatched_pipeline.statistics().rejected_world_publications, 1U);
+}
+
+TEST(WorldPipeline3DTest, StaticWorkerCoalescesLatestRefreshDuringBuild) {
   std::mutex mutex;
   std::condition_variable condition;
   std::size_t invocations{0U};
   bool release_first{false};
-  WorldPipeline3D pipeline{StaticWorldRuntime3D{.processor = [&]() {
-    std::unique_lock lock{mutex};
-    ++invocations;
-    condition.notify_all();
-    if (invocations == 1U) {
-      condition.wait(lock, [&]() noexcept { return release_first; });
-    }
-    condition.notify_all();
-  }}};
+  std::vector<StaticWorldUpdate3D> updates;
+  const std::shared_ptr<const OccupancyGrid3D> occupancy = staticOccupancy();
+  WorldPipeline3D pipeline{staticRuntime(
+      occupancy,
+      [&](const StaticWorldRefreshRequest3D& refresh) {
+        {
+          std::unique_lock lock{mutex};
+          ++invocations;
+          condition.notify_all();
+          if (invocations == 1U) {
+            condition.wait(lock, [&]() noexcept { return release_first; });
+          }
+        }
+        return staticRequest(refresh, refresh.valid() ? 17U : 0U);
+      },
+      []() { return staticCommit(17U); }, {},
+      [&](const StaticWorldUpdate3D& update) {
+        const std::scoped_lock lock{mutex};
+        updates.push_back(update);
+        condition.notify_all();
+      })};
   pipeline.start();
 
-  ASSERT_TRUE(pipeline.requestStaticWork(false, false));
+  ASSERT_TRUE(pipeline.requestStaticWork());
   {
     std::unique_lock lock{mutex};
     ASSERT_TRUE(
         condition.wait_for(lock, 1s, [&]() noexcept { return invocations == 1U; }));
   }
-  EXPECT_FALSE(pipeline.requestStaticWork(false, false));
-  EXPECT_TRUE(pipeline.requestStaticWork(true, false));
-  EXPECT_FALSE(pipeline.requestStaticWork(false, false));
+  EXPECT_FALSE(pipeline.requestStaticWork());
+  const StaticWorldRefreshRequest3D first_refresh =
+      pipeline.requestStaticRefresh(17U, StaticWorldRefreshPurpose3D::kRouteExtension);
+  const StaticWorldRefreshRequest3D latest_refresh = pipeline.requestStaticRefresh(
+      17U, StaticWorldRefreshPurpose3D::kTrackingObjective);
+  ASSERT_TRUE(first_refresh.valid());
+  ASSERT_TRUE(latest_refresh.valid());
+  EXPECT_GT(latest_refresh.sequence, first_refresh.sequence);
+  EXPECT_FALSE(pipeline.requestStaticWork());
   {
     const std::scoped_lock lock{mutex};
     release_first = true;
@@ -701,11 +881,19 @@ TEST(WorldPipeline3DTest, StaticWorkerCoalescesOrdinaryWorkAndRetainsForcedRefre
   condition.notify_all();
   {
     std::unique_lock lock{mutex};
-    ASSERT_TRUE(
-        condition.wait_for(lock, 1s, [&]() noexcept { return invocations == 2U; }));
+    ASSERT_TRUE(condition.wait_for(lock, 2s, [&]() noexcept {
+      return invocations == 2U && updates.size() == 2U;
+    }));
+    ASSERT_TRUE(updates.front().published());
+    ASSERT_TRUE(updates.back().published());
+    EXPECT_FALSE(updates.front().request.refresh.valid());
+    EXPECT_EQ(updates.back().request.refresh.sequence, latest_refresh.sequence);
+    EXPECT_EQ(updates.back().request.refresh.purpose,
+              StaticWorldRefreshPurpose3D::kTrackingObjective);
   }
-  EXPECT_FALSE(pipeline.requestStaticWork(false, true));
+  EXPECT_FALSE(pipeline.requestStaticWork());
   pipeline.stop();
+  EXPECT_EQ(pipeline.statistics().static_refreshes, 2U);
 }
 
 TEST(WorldPipeline3DTest, StopCannotDeadlockAProcessorReenteringLifecycleApi) {

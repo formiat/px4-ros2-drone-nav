@@ -71,6 +71,12 @@ nearest-source, dependency-invalidation, and lowering counters are not valid for
 this path and must not be inferred from them. `mode=reused` can still include a
 new raw revision and refreshed free/unknown classification without a GPU upload.
 
+For static worlds, `PRODUCTION_MPPI_SUMMARY` reports service-owned
+`static_esdf_builds`, `static_esdf_cpu_reuses`, `static_esdf_gpu_reuses`, and
+`static_esdf_refreshes`. A proactive refresh may increment both reuse counters
+while still publishing a fresh local-world generation; it does not imply a
+redundant controller upload.
+
 ## Persistent Planner And Route Diagnostics
 
 Inspect:

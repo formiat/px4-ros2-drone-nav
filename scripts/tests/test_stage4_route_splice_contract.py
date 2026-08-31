@@ -95,7 +95,6 @@ class Stage4RouteSpliceContractTest(unittest.TestCase):
         extension = (SOURCE / "production_mppi_node_static_extension.cpp").read_text(
             encoding="utf-8"
         )
-        esdf = (SOURCE / "production_mppi_node_esdf.cpp").read_text(encoding="utf-8")
         runtime = (SOURCE / "production_mppi_node_runtime.cpp").read_text(
             encoding="utf-8"
         )
@@ -119,10 +118,6 @@ class Stage4RouteSpliceContractTest(unittest.TestCase):
             extension,
         )
         self.assertIn("route_execution_manager_.plan()", extension)
-        self.assertIn("route_execution_manager_.plan()", esdf)
-        self.assertIn("refresh_execution->route()->identity.generation", esdf)
-        self.assertIn("PlannerSearchContinuityBase3D", esdf)
-        self.assertIn("refresh_superseded", esdf)
         self.assertIn("execution_snapshot->routeGenerationHighWater()", runtime)
 
 

@@ -547,13 +547,18 @@ and coherent immutable resident-world publication. Observed mode additionally
 owns local-window/recenter policy, audit and rate decisions, full/incremental/
 reused CPU construction, exact-parent admission, GPU upload, and publication;
 the node supplies immutable pose/evidence input and consumes typed events.
+Static mode owns ROI and refresh policy, cache/runtime-EDT construction,
+occupancy/topology/CPU artifact ownership, GPU residency, early and late
+base-route supersession, generation issuance, and fail-closed publication; the
+node supplies immutable navigation/objective and commit contexts and consumes a
+typed result for route-search coordination.
 Direct tests replace the former raw-world source-order guards with executable
 overload, quarantine, full/incremental/reuse, throttling, exact-parent,
 publication, upload-rejection/exception fail-closed behavior, and stop
-transactions. Static ESDF
-build policy still remains in a node callback; that work, the remaining
-planning, trajectory/control, and execution-facade extraction, and the other
-source-text transaction replacements remain tracked by the linked checklist.
+transactions, plus static build/reuse, route supersession, generation failure,
+and refresh-coalescing transactions. The remaining planning,
+trajectory/control, and execution-facade extraction and the other source-text
+transaction replacements remain tracked by the linked checklist.
 Item 12 remains in progress until that checklist, the complete static audit,
 and the unchanged three-run Manhattan mission gate below are finished.
 

@@ -1,6 +1,7 @@
 #include "world_pipeline_3d.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <ranges>
 #include <stdexcept>
 #include <tuple>
@@ -131,11 +132,14 @@ WorldPipeline3D::WorldPipeline3D(ObservedWorldRuntime3D runtime,
 
 WorldPipeline3D::WorldPipeline3D(StaticWorldRuntime3D runtime,
                                  ProcessingFailureHandler failure_handler)
-    : runtime_{std::move(runtime)},
+    : static_builder_{std::make_unique<StaticWorldBuilder3D>(
+          std::move(runtime.builder_config))},
+      runtime_{std::move(runtime)},
       failure_handler_{std::move(failure_handler)} {
   const auto* static_runtime = std::get_if<StaticWorldRuntime3D>(&runtime_);
-  if (static_runtime == nullptr || !static_runtime->processor) {
-    throw std::invalid_argument{"static world pipeline processor is unavailable"};
+  if (static_runtime == nullptr || !static_runtime->request_provider ||
+      !static_runtime->commit_context_provider || !static_runtime->uploader) {
+    throw std::invalid_argument{"static world pipeline ports are incomplete"};
   }
 }
 
@@ -432,9 +436,11 @@ WorldPipeline3D::updateObservedWorld(ObservedWorldBuildRequest3D request) {
   return finishObservedWorldUpdate(std::move(assessment), *runtime);
 }
 
-bool WorldPipeline3D::requestStaticWork(const bool force_refresh,
-                                        const bool world_ready) {
+bool WorldPipeline3D::requestStaticWork() {
   if (!std::holds_alternative<StaticWorldRuntime3D>(runtime_)) {
+    return false;
+  }
+  if (residentSnapshot().world != nullptr) {
     return false;
   }
   const std::scoped_lock lifecycle_lock{lifecycle_mutex_};
@@ -444,14 +450,69 @@ bool WorldPipeline3D::requestStaticWork(const bool force_refresh,
   }
   {
     const std::scoped_lock lock{queue_mutex_};
-    if (!force_refresh &&
-        (world_ready || static_work_in_progress_ || pending_static_work_)) {
+    if (static_work_in_progress_ || pending_static_work_) {
       return false;
     }
     pending_static_work_ = true;
   }
   queue_condition_.notify_all();
   return true;
+}
+
+StaticWorldRefreshRequest3D
+WorldPipeline3D::requestStaticRefresh(const std::uint64_t base_route_generation,
+                                      const StaticWorldRefreshPurpose3D purpose) {
+  if (!std::holds_alternative<StaticWorldRuntime3D>(runtime_) ||
+      base_route_generation == 0U) {
+    return {};
+  }
+  const std::scoped_lock lifecycle_lock{lifecycle_mutex_};
+  if (!accepting_.load(std::memory_order_acquire)) {
+    rejected_after_stop_.fetch_add(1U, std::memory_order_relaxed);
+    return {};
+  }
+  StaticWorldRefreshRequest3D request;
+  {
+    const std::scoped_lock lock{queue_mutex_};
+    if (next_static_refresh_sequence_ == std::numeric_limits<std::uint64_t>::max()) {
+      return {};
+    }
+    request = StaticWorldRefreshRequest3D{
+        .sequence = ++next_static_refresh_sequence_,
+        .base_route_generation = base_route_generation,
+        .purpose = purpose,
+    };
+    pending_static_refresh_ = request;
+    pending_static_work_ = true;
+  }
+  static_refreshes_.fetch_add(1U, std::memory_order_relaxed);
+  queue_condition_.notify_all();
+  return request;
+}
+
+StaticWorldUpdate3D
+WorldPipeline3D::updateStaticWorld(const StaticWorldBuildRequest3D& request) {
+  StaticWorldUpdate3D result;
+  result.request = request;
+  const auto* runtime = std::get_if<StaticWorldRuntime3D>(&runtime_);
+  if (runtime == nullptr || static_builder_ == nullptr) {
+    return result;
+  }
+  PreparedStaticWorldBuild3D build;
+  try {
+    build = static_builder_->prepare(request, residentSnapshot().world,
+                                     uploaded_static_artifact_);
+    return finishStaticWorldUpdate(std::move(build), *runtime);
+  } catch (...) {
+    result.status = StaticWorldUpdateStatus3D::kConstructionFailed;
+    result.failure = std::current_exception();
+    return result;
+  }
+}
+
+std::shared_ptr<const OccupancyGrid3D>
+WorldPipeline3D::staticOccupancy() const noexcept {
+  return static_builder_ != nullptr ? static_builder_->occupancy() : nullptr;
 }
 
 void WorldPipeline3D::completeStaticWork() noexcept {
@@ -646,6 +707,105 @@ WorldPipeline3D::finishObservedWorldUpdate(ObservedWorldBuildAssessment3D assess
   return result;
 }
 
+StaticWorldUpdate3D
+WorldPipeline3D::finishStaticWorldUpdate(PreparedStaticWorldBuild3D build,
+                                         const StaticWorldRuntime3D& runtime) {
+  StaticWorldUpdate3D result{
+      .status = build.status,
+      .request = build.request,
+      .commit_context = {},
+      .world = build.status == StaticWorldUpdateStatus3D::kAlreadyCurrent
+                   ? residentSnapshot().world
+                   : nullptr,
+      .telemetry = build.telemetry,
+      .diagnostics = build.diagnostics,
+      .failure = nullptr,
+      .proactive_refresh = build.proactive_refresh,
+  };
+  if (!build.valid()) {
+    return result;
+  }
+  try {
+    result.commit_context = runtime.commit_context_provider();
+  } catch (...) {
+    result.status = StaticWorldUpdateStatus3D::kConstructionFailed;
+    result.failure = std::current_exception();
+    return result;
+  }
+  if (!result.commit_context.valid()) {
+    result.status = StaticWorldUpdateStatus3D::kInvalidCommitContext;
+    return result;
+  }
+  if (build.proactive_refresh && result.commit_context.resident_route_generation !=
+                                     build.request.refresh.base_route_generation) {
+    result.status = StaticWorldUpdateStatus3D::kRefreshSuperseded;
+    return result;
+  }
+  build.world.ready_stamp_ns = result.commit_context.ready_stamp_ns;
+  std::shared_ptr<WorldSnapshot3D> publication_world =
+      std::make_shared<WorldSnapshot3D>(std::move(build.world));
+  PublicationLease publication = lockPublication();
+  WorldEsdfUploadResult3D upload{
+      .accepted = true,
+      .upload_ms = 0.0,
+      .revision = publication_world->revision,
+  };
+  if (build.upload_required) {
+    try {
+      upload = runtime.uploader(WorldEsdfUploadRequest3D{
+          .grid = publication_world->grid,
+          .distances_m = *publication_world->distances_m,
+          .revision = publication_world->revision,
+          .dirty_regions = {},
+      });
+    } catch (...) {
+      uploaded_static_artifact_.reset();
+      publication.invalidateAndRecordRejection();
+      result.status = StaticWorldUpdateStatus3D::kUploadFailed;
+      result.failure = std::current_exception();
+      return result;
+    }
+    if (!upload.accepted) {
+      result.status = StaticWorldUpdateStatus3D::kUploadRejected;
+      return result;
+    }
+    uploaded_static_artifact_ = build.artifact;
+  }
+  build.telemetry.upload_ms = upload.upload_ms;
+  result.telemetry = build.telemetry;
+  const RawMapVersion static_world_version{
+      .base_snapshot_revision = publication_world->revision,
+      .revision = publication_world->revision,
+  };
+  const std::optional<LocalWorldGeneration> generation = publication.issueGeneration(
+      static_world_version, result.commit_context.pose_revision,
+      publication_world->revision, upload.revision);
+  if (!generation.has_value()) {
+    uploaded_static_artifact_.reset();
+    publication.invalidateAndRecordRejection();
+    result.status = StaticWorldUpdateStatus3D::kMixedLocalWorldGeneration;
+    return result;
+  }
+  publication_world->local_world_generation = *generation;
+  std::shared_ptr<const WorldSnapshot3D> published_world = std::move(publication_world);
+  if (!publication.publish(published_world, build.telemetry)) {
+    uploaded_static_artifact_.reset();
+    result.status = StaticWorldUpdateStatus3D::kMixedLocalWorldGeneration;
+    return result;
+  }
+  if (build.diagnostics.cpu_resource_reused) {
+    static_cpu_reuses_.fetch_add(1U, std::memory_order_relaxed);
+  } else {
+    static_builds_.fetch_add(1U, std::memory_order_relaxed);
+  }
+  if (build.diagnostics.gpu_resource_reused) {
+    static_gpu_reuses_.fetch_add(1U, std::memory_order_relaxed);
+  }
+  result.status = StaticWorldUpdateStatus3D::kPublished;
+  result.world = std::move(published_world);
+  return result;
+}
+
 ObservedWorldBuildHistory3D WorldPipeline3D::observedBuildHistory() const {
   const std::scoped_lock lock{build_state_mutex_};
   return ObservedWorldBuildHistory3D{
@@ -699,6 +859,10 @@ WorldPipelineStatistics3D WorldPipeline3D::statistics() const noexcept {
       .observed_recomputed_voxels =
           observed_recomputed_voxels_.load(std::memory_order_relaxed),
       .observed_reused_voxels = observed_reused_voxels_.load(std::memory_order_relaxed),
+      .static_builds = static_builds_.load(std::memory_order_relaxed),
+      .static_cpu_reuses = static_cpu_reuses_.load(std::memory_order_relaxed),
+      .static_gpu_reuses = static_gpu_reuses_.load(std::memory_order_relaxed),
+      .static_refreshes = static_refreshes_.load(std::memory_order_relaxed),
       .superseded_planning_generations =
           superseded_planning_generations_.load(std::memory_order_relaxed),
       .rejected_world_publications =
@@ -795,6 +959,7 @@ void WorldPipeline3D::runStatic(const std::stop_token stop_token) noexcept {
   }
   while (!stop_token.stop_requested()) {
     bool process{false};
+    StaticWorldRefreshRequest3D refresh;
     {
       std::unique_lock lock{queue_mutex_};
       queue_condition_.wait(lock, stop_token,
@@ -803,15 +968,35 @@ void WorldPipeline3D::runStatic(const std::stop_token stop_token) noexcept {
         return;
       }
       process = std::exchange(pending_static_work_, false);
+      if (pending_static_refresh_.has_value()) {
+        refresh = *pending_static_refresh_;
+        pending_static_refresh_.reset();
+      }
       static_work_in_progress_ = process;
     }
     if (!process) {
       continue;
     }
+    StaticWorldUpdate3D update;
+    update.request.refresh = refresh;
     try {
-      runtime->processor();
+      StaticWorldBuildRequest3D request = runtime->request_provider(refresh);
+      request.refresh = refresh;
+      update = updateStaticWorld(request);
+    } catch (...) {
+      update.status = StaticWorldUpdateStatus3D::kConstructionFailed;
+      update.request.refresh = refresh;
+      update.failure = std::current_exception();
+    }
+    try {
+      if (runtime->update_handler) {
+        runtime->update_handler(update);
+      }
     } catch (...) {
       handleProcessingFailure(std::current_exception());
+    }
+    if (update.failure != nullptr) {
+      handleProcessingFailure(update.failure);
     }
     completeStaticWork();
   }

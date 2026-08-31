@@ -294,7 +294,7 @@ void ProductionMppiNode::onNavigationReadiness(const std_msgs::msg::Bool& messag
   }
 }
 
-void ProductionMppiNode::requestStaticEsdfWork(const bool force_refresh) {
+void ProductionMppiNode::requestStaticEsdfWork() {
   if (!use_static_map_ || !navigationObjective()) {
     return;
   }
@@ -304,8 +304,7 @@ void ProductionMppiNode::requestStaticEsdfWork(const bool force_refresh) {
       return;
     }
   }
-  static_cast<void>(world_pipeline_->requestStaticWork(
-      force_refresh, world_ready_.load(std::memory_order_acquire)));
+  static_cast<void>(world_pipeline_->requestStaticWork());
 }
 
 void ProductionMppiNode::markStaticWorldReady() noexcept {
@@ -667,14 +666,15 @@ void ProductionMppiNode::onNavigationObjective(
         .axial_samples = physical_footprint_config_.axial_samples,
         .sweep_step_m = tracking_objective_ray_sample_spacing_m_};
     bool world_available = false;
-    if (use_static_map_ && static_occupancy_3d_) {
+    const std::shared_ptr<const OccupancyGrid3D> static_occupancy =
+        use_static_map_ ? world_pipeline_->staticOccupancy() : nullptr;
+    if (static_occupancy != nullptr) {
       world_available = true;
-      resolution =
-          resolveTrackingObjective(*static_occupancy_3d_, *current_target, goal,
-                                   tracking_objective_ray_sample_spacing_m_);
+      resolution = resolveTrackingObjective(*static_occupancy, *current_target, goal,
+                                            tracking_objective_ray_sample_spacing_m_);
       if (navigation.valid) {
         direct_resolution = resolveDirectTrackingTarget(
-            *static_occupancy_3d_, current_position, *current_target, goal, footprint);
+            *static_occupancy, current_position, *current_target, goal, footprint);
       }
     } else if (!use_static_map_) {
       const std::shared_ptr<const ProductionMppiRawWorld3D> raw_world =

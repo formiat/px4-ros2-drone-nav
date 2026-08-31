@@ -14,7 +14,6 @@ CONFIG = PACKAGE / "config" / "urban_mvp.yaml"
 INPUTS = SOURCE / "production_mppi_node_inputs.cpp"
 INPUTS_3D = SOURCE / "production_mppi_node_inputs_3d.cpp"
 CONTROL_FEEDBACK = SOURCE / "production_mppi_node_control_feedback.cpp"
-ESDF = SOURCE / "production_mppi_node_esdf.cpp"
 OBSERVED_ESDF = SOURCE / "production_mppi_node_observed_esdf.cpp"
 OBSERVED_EVIDENCE = SOURCE / "production_mppi_node_observed_evidence.cpp"
 PLANNER = SOURCE / "production_mppi_node.cpp"
@@ -117,7 +116,6 @@ class PlannerReadinessContractTest(unittest.TestCase):
 
     def test_static_esdf_bootstrap_keeps_lidar_as_execution_evidence(self) -> None:
         inputs = INPUTS.read_text(encoding="utf-8")
-        esdf = ESDF.read_text(encoding="utf-8")
         lidar_callback = inputs.split(
             "void ProductionMppiNode::onLatestLidarObstacleScan", maxsplit=1
         )[1].split(
@@ -127,8 +125,6 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self.assertNotIn("if (use_static_map_) {\n    return;\n  }", lidar_callback)
         self.assertIn("requestStaticEsdfWork();", inputs)
         self.assertIn("vehicle_navigation_ready_", inputs)
-        self.assertIn("static_occupancy_3d_", esdf)
-        self.assertIn("world_pipeline_->lockPublication()", esdf)
 
     def test_static_esdf_is_not_expired_by_lidar_time(self) -> None:
         planning_tick = PLANNING_TICK.read_text(encoding="utf-8")

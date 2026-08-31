@@ -7,11 +7,9 @@
 #include "drone_city_nav/cooperative_passage_execution.hpp"
 #include "drone_city_nav/cooperative_passage_route.hpp"
 #include "drone_city_nav/direct_tracking_maneuver_lifecycle.hpp"
-#include "drone_city_nav/distance_field_3d.hpp"
 #include "drone_city_nav/execution_evidence_3d.hpp"
 #include "drone_city_nav/execution_route_store_3d.hpp"
 #include "drone_city_nav/flight_envelope.hpp"
-#include "drone_city_nav/free_space_topology_3d.hpp"
 #include "drone_city_nav/intercept_guidance.hpp"
 #include "drone_city_nav/mission_goal_capture.hpp"
 #include "drone_city_nav/mission_waypoint_capture_gate.hpp"
@@ -54,7 +52,6 @@
 #include "drone_city_nav/route_lifecycle_3d.hpp"
 #include "drone_city_nav/route_planning_3d.hpp"
 #include "drone_city_nav/route_progress_3d.hpp"
-#include "drone_city_nav/static_esdf_cache.hpp"
 #include "drone_city_nav/static_route_extension.hpp"
 #include "drone_city_nav/static_route_geometry.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
@@ -109,6 +106,11 @@ struct ProductionMppiHorizonCommit;
 struct ObservedWorldBuildRequest3D;
 struct ObservedWorldEvidenceChange3D;
 struct ObservedWorldUpdate3D;
+struct StaticWorldBuildRequest3D;
+struct StaticWorldCommitContext3D;
+struct StaticWorldRefreshRequest3D;
+struct StaticWorldResources3D;
+struct StaticWorldUpdate3D;
 enum class ProductionMppiHoldOwnershipTransition3D : std::uint8_t;
 enum class ProductionMppiHorizonCommitStatus : std::uint8_t;
 class NavigationDiagnosticsSink;
@@ -144,7 +146,7 @@ private:
   void onCooperativeManeuverCommand(const msg::CooperativeManeuverCommand& message);
   void publishRadarTrackModeCommand(const ProductionNavigationObjective& objective,
                                     std::uint8_t reason);
-  void requestStaticEsdfWork(bool force_refresh = false);
+  void requestStaticEsdfWork();
   void markStaticWorldReady() noexcept;
   void publishWorldReadiness(bool ready);
   [[nodiscard]] NavigationHealthAssessment updateNavigationHealth(
@@ -189,7 +191,10 @@ private:
   void finishStaticRouteReplan(std::uint64_t base_generation, bool route_activated);
   void finishStaticRouteSearch(const PlannerSearchTransaction3D& transaction,
                                bool route_activated = false);
-  void processStaticEsdf3D();
+  [[nodiscard]] StaticWorldBuildRequest3D
+  makeStaticWorldBuildRequest3D(const StaticWorldRefreshRequest3D& refresh);
+  [[nodiscard]] StaticWorldCommitContext3D makeStaticWorldCommitContext3D();
+  void handleStaticWorldUpdate3D(const StaticWorldUpdate3D& update);
   [[nodiscard]] std::optional<ObservedWorldBuildRequest3D>
   makeObservedWorldBuildRequest3D(
       std::shared_ptr<const ProductionMppiRawWorld3D> raw_world);
@@ -236,7 +241,7 @@ private:
       const ProductionMppiNavigation& navigation, const Point3& mission_goal,
       std::shared_ptr<const ProductionPlannerSession3D> continuation_session);
   void startPlanningTimer();
-  void initializeRuntimeInterfaces();
+  void initializeRuntimeInterfaces(StaticWorldResources3D&& static_world_resources);
   [[nodiscard]] ProductionRouteExecutionSelection3D resolveRouteExecution3D(
       const WorldSnapshot3D& world, const ProductionNavigationObjective* objective,
       const ProductionMppiNavigation& navigation,
@@ -467,13 +472,6 @@ private:
   std::unique_ptr<PersistentDStarLitePlanner3D> persistent_planner_3d_;
   std::unique_ptr<mppi::MppiCudaEngine> engine_;
   mppi::TrajectoryReferenceAdapter3D trajectory_reference_adapter_;
-  std::shared_ptr<const OccupancyGrid3D> static_occupancy_3d_;
-  std::optional<FreeSpaceTopology3D> static_free_space_topology_3d_;
-  std::optional<StaticEsdfCache> static_esdf_cache_;
-  std::shared_ptr<const std::vector<PassageTraversalEdge>> static_portal_edges_;
-  std::shared_ptr<const std::vector<float>> static_esdf_3d_;
-  mppi::EsdfGrid static_esdf_grid_{};
-  bool static_esdf_uploaded_{false};
   std::mutex static_route_extension_mutex_;
   bool static_route_extension_request_in_flight_{false};
   std::uint64_t static_route_extension_in_flight_generation_{0U};
@@ -484,7 +482,6 @@ private:
   StaticRouteDeferredReplanLatch static_route_deferred_replan_latch_{};
   StaticRouteReplanGate static_route_replan_gate_{};
   StaticRouteFailedSearchLatch static_route_failed_search_latch_{};
-  StaticRouteRoiRefreshLifecycle static_roi_refresh_lifecycle_{};
 
   mutable std::mutex input_mutex_;
   ProductionMppiNavigation navigation_{};

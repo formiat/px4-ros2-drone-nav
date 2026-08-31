@@ -40,7 +40,7 @@ template<std::size_t Size>
   std::ranges::sort(ordered.begin(), ordered.begin() + sample_count);
   const std::size_t rank =
       static_cast<std::size_t>(std::ceil(quantile * static_cast<double>(sample_count)));
-  return ordered[std::clamp<std::size_t>(rank, 1U, sample_count) - 1U];
+  return ordered.at(std::clamp<std::size_t>(rank, 1U, sample_count) - 1U);
 }
 
 [[nodiscard]] double boundedLatencySeconds(const double latency_ms,
@@ -85,8 +85,8 @@ void StaticRoutePlanningLatencyTracker::record(
       !std::isfinite(world_build_latency_ms) || world_build_latency_ms < 0.0) {
     return;
   }
-  planning_latency_ms_[next_index_] = planning_latency_ms;
-  build_and_planning_latency_ms_[next_index_] =
+  planning_latency_ms_.at(next_index_) = planning_latency_ms;
+  build_and_planning_latency_ms_.at(next_index_) =
       planning_latency_ms + world_build_latency_ms;
   next_index_ = (next_index_ + 1U) % kMaximumSamples;
   sample_count_ = std::min(sample_count_ + 1U, kMaximumSamples);
@@ -411,45 +411,6 @@ void StaticRouteFailedSearchLatch::clear() noexcept {
 
 bool StaticRouteFailedSearchLatch::latched() const noexcept {
   return failure_.has_value();
-}
-
-StaticRouteRoiRefreshRequest StaticRouteRoiRefreshLifecycle::queue(
-    const std::uint64_t base_route_generation,
-    const StaticRouteRoiRefreshRequest::Purpose purpose) noexcept {
-  if (base_route_generation == 0U) {
-    return {};
-  }
-  const std::uint64_t sequence =
-      next_sequence_.fetch_add(1U, std::memory_order_relaxed) + 1U;
-  requested_base_route_generation_.store(base_route_generation,
-                                         std::memory_order_relaxed);
-  requested_purpose_.store(purpose, std::memory_order_relaxed);
-  requested_sequence_.store(sequence, std::memory_order_release);
-  return {.sequence = sequence,
-          .base_route_generation = base_route_generation,
-          .purpose = purpose};
-}
-
-StaticRouteRoiRefreshRequest StaticRouteRoiRefreshLifecycle::latest() const noexcept {
-  const std::uint64_t sequence = requested_sequence_.load(std::memory_order_acquire);
-  return {.sequence = sequence,
-          .base_route_generation =
-              requested_base_route_generation_.load(std::memory_order_relaxed),
-          .purpose = requested_purpose_.load(std::memory_order_relaxed)};
-}
-
-bool StaticRouteRoiRefreshLifecycle::pending(
-    const StaticRouteRoiRefreshRequest& request) const noexcept {
-  return request.sequence != 0U &&
-         request.sequence > completed_sequence_.load(std::memory_order_acquire);
-}
-
-void StaticRouteRoiRefreshLifecycle::complete(const std::uint64_t sequence) noexcept {
-  std::uint64_t completed = completed_sequence_.load(std::memory_order_relaxed);
-  while (completed < sequence && !completed_sequence_.compare_exchange_weak(
-                                     completed, sequence, std::memory_order_release,
-                                     std::memory_order_relaxed)) {
-  }
 }
 
 bool CertifiedRouteReserveAssessment3D::accepted() const noexcept {
