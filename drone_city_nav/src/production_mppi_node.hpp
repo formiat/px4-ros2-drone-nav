@@ -211,7 +211,7 @@ private:
       std::shared_ptr<const PlannerSearchTransaction3D> transaction,
       const ProductionWorldBuildTelemetry3D& world_telemetry,
       const ProductionMppiNavigation& navigation,
-      std::shared_ptr<const ProductionPlannerSession3D> continuation_session);
+      std::shared_ptr<const RoutePlannerSession3D> continuation_session);
   [[nodiscard]] RouteSegmentCompletionAssessment3D
   assessActiveRouteCompletion3D(const Point3& position);
   [[nodiscard]] std::uint64_t nextRouteGeneration3D();
@@ -233,13 +233,9 @@ private:
       const PlannerSearchTransaction3D& transaction,
       const ProductionWorldBuildTelemetry3D& world_telemetry,
       const ProductionMppiNavigation& navigation, const Point3& mission_goal,
-      const ProductionRouteSearchCandidate3D& candidate,
-      std::uint64_t candidate_generation, const CertifiedRouteSuffix3D* active_route,
+      const RouteSearchCandidate3D& candidate, std::uint64_t candidate_generation,
+      const CertifiedRouteSuffix3D* active_route,
       const ProductionMppiRawWorld3D* activation_raw_world);
-  [[nodiscard]] ProductionPlannerUpdate3D generatePlannerUpdate3D(
-      const PlannerSearchTransaction3D& transaction,
-      const ProductionMppiNavigation& navigation, const Point3& mission_goal,
-      std::shared_ptr<const ProductionPlannerSession3D> continuation_session);
   void startPlanningTimer();
   void initializeRuntimeInterfaces(StaticWorldResources3D&& static_world_resources);
   [[nodiscard]] ProductionRouteExecutionSelection3D resolveRouteExecution3D(
@@ -469,7 +465,7 @@ private:
   NonCooperativeAvoidanceConfig noncooperative_avoidance_config_{};
   std::unique_ptr<NonCooperativeCollisionAvoidance> noncooperative_avoidance_;
   std::unique_ptr<BoundedWorkerPool> planning_worker_pool_;
-  std::unique_ptr<PersistentDStarLitePlanner3D> persistent_planner_3d_;
+  std::unique_ptr<RoutePlanner3D> route_planner_;
   std::unique_ptr<mppi::MppiCudaEngine> engine_;
   mppi::TrajectoryReferenceAdapter3D trajectory_reference_adapter_;
   std::mutex static_route_extension_mutex_;

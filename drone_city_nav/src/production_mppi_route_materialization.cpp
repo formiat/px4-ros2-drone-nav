@@ -22,8 +22,7 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
     const PlannerSearchTransaction3D& transaction,
     const ProductionWorldBuildTelemetry3D& world_telemetry,
     const ProductionMppiNavigation& navigation, const Point3& mission_goal,
-    const ProductionRouteSearchCandidate3D& candidate,
-    const std::uint64_t candidate_generation,
+    const RouteSearchCandidate3D& candidate, const std::uint64_t candidate_generation,
     const CertifiedRouteSuffix3D* const active_route,
     const ProductionMppiRawWorld3D* const activation_raw_world) {
   const Point3 current_position{navigation.state.x, navigation.state.y,

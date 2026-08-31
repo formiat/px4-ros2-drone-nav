@@ -325,6 +325,12 @@ no mixed authority revision is observable.
       - [x] Move static ESDF/cache/topology construction and refresh policy
         behind the same service boundary.
   - [ ] Extract persistent planning and route-pipeline coordination.
+    - [x] Move the sole persistent planner, exact continuation session,
+      certified-future-stitch selection, route sampling, and raw-only segment
+      evidence into `RoutePlanner3D` behind a typed non-ROS API.
+    - [ ] Move latest-wins request scheduling, worker lifecycle,
+      materialization, and activation coordination behind the planning-service
+      boundary.
   - [ ] Extract trajectory compilation and controller ownership.
   - [ ] Finish the execution-service facade around the existing sole
     `RouteExecutionManager3D` owner.
@@ -336,8 +342,10 @@ no mixed authority revision is observable.
   concurrency tests. Raw-world joining, supersession, quarantine, publication
   linearization, transient refresh, stop behavior, static build/reuse,
   early/late route supersession, upload/generation failure, and refresh
-  coalescing now have direct GTests; their former world-publication and static
-  refresh source assertions have been removed.
+  coalescing now have direct GTests. Persistent-session identity, typed
+  candidate/evidence production, and cross-mission continuation rejection also
+  have a direct `RoutePlanner3D` suite; the former planner source-contract suite
+  has been removed.
 - [x] Keep public and private headers self-contained and retain a temporary
   umbrella include only where migration compatibility requires it.
 - [ ] Pass formatting, static analysis, C++ tests, and script tests after every

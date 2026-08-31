@@ -1,17 +1,41 @@
+#include "route_planner_3d.hpp"
+
 #include <algorithm>
 #include <chrono>
-#include <cinttypes>
+#include <cmath>
 #include <memory>
-#include <optional>
 #include <span>
+#include <stdexcept>
 #include <utility>
-#include <vector>
-
-#include "production_mppi_node.hpp"
-#include "production_mppi_route_world.hpp"
 
 namespace drone_city_nav {
 namespace {
+
+[[nodiscard]] bool finitePoint(const Point3& point) noexcept {
+  return std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z);
+}
+
+[[nodiscard]] bool finiteVector(const Vec3& vector) noexcept {
+  return std::isfinite(vector.x) && std::isfinite(vector.y) && std::isfinite(vector.z);
+}
+
+[[nodiscard]] RoutePlannerConfig3D validatedConfig(const RoutePlannerConfig3D& config) {
+  if (!std::isfinite(config.route_sampling_step_m) ||
+      config.route_sampling_step_m <= 0.0 || !std::isfinite(config.cruise_speed_mps) ||
+      config.cruise_speed_mps <= 0.0 ||
+      !std::isfinite(config.extension.required_certified_overlap_m) ||
+      config.extension.required_certified_overlap_m < 0.0) {
+    throw std::invalid_argument{"invalid route planner configuration"};
+  }
+  return config;
+}
+
+[[nodiscard]] double
+elapsedMilliseconds(const std::chrono::steady_clock::time_point started) noexcept {
+  return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                   started)
+      .count();
+}
 
 [[nodiscard]] SegmentEvidenceWorld3D
 evidenceWorld(const WorldSnapshot3D& world,
@@ -50,17 +74,45 @@ evidenceWorld(const WorldSnapshot3D& world,
 
 } // namespace
 
-ProductionPlannerUpdate3D ProductionMppiNode::generatePlannerUpdate3D(
+std::string_view
+routePlannerUpdateStatus3DName(const RoutePlannerUpdateStatus3D status) noexcept {
+  switch (status) {
+    case RoutePlannerUpdateStatus3D::kUpdated:
+      return "updated";
+    case RoutePlannerUpdateStatus3D::kInvalidRequest:
+      return "invalid_request";
+    case RoutePlannerUpdateStatus3D::kStitchBaseUnavailable:
+      return "stitch_base_unavailable";
+    case RoutePlannerUpdateStatus3D::kStitchBeyondCertifiedRoute:
+      return "stitch_beyond_certified_route";
+  }
+  return "unknown";
+}
+
+RoutePlanner3D::RoutePlanner3D(const RoutePlannerConfig3D& config)
+    : config_{validatedConfig(config)},
+      planner_{config_.planner} {
+}
+
+RoutePlannerUpdate3D RoutePlanner3D::update(
     const PlannerSearchTransaction3D& transaction,
-    const ProductionMppiNavigation& navigation, const Point3& mission_goal,
-    std::shared_ptr<const ProductionPlannerSession3D> continuation_session) {
+    const RoutePlannerVehicleState3D& vehicle_state,
+    std::shared_ptr<const RoutePlannerSession3D> continuation_session) {
   const auto search_started = std::chrono::steady_clock::now();
-  ProductionPlannerUpdate3D result;
-  if (!continuation_session) {
-    Point3 search_start{navigation.state.x, navigation.state.y, navigation.state.z};
-    Vec3 search_velocity{static_cast<double>(navigation.state.vx),
-                         static_cast<double>(navigation.state.vy),
-                         static_cast<double>(navigation.state.vz)};
+  RoutePlannerUpdate3D result;
+  const auto finish = [search_started](RoutePlannerUpdate3D update) {
+    update.search_ms = elapsedMilliseconds(search_started);
+    return update;
+  };
+  if (!transaction.valid() || !vehicle_state.valid ||
+      !finitePoint(vehicle_state.position) || !finiteVector(vehicle_state.velocity)) {
+    return finish(std::move(result));
+  }
+  const Point3 mission_goal = transaction.objective.goal;
+
+  if (continuation_session == nullptr) {
+    Point3 search_start = vehicle_state.position;
+    Vec3 search_velocity = vehicle_state.velocity;
     RouteInstanceId3D search_base_route_instance_id{};
     std::optional<double> search_base_stitch_station_m;
 
@@ -76,14 +128,8 @@ ProductionPlannerUpdate3D ProductionMppiNode::generatePlannerUpdate3D(
         active_route->progress.valid();
     if (certified_stitch_required) {
       if (!certified_stitch_base_available) {
-        RCLCPP_INFO(get_logger(),
-                    "PERSISTENT_PLANNER3D stage=deferred "
-                    "reason=stitch_base_unavailable revision=%" PRIu64,
-                    transaction.world->revision);
-        result.search_ms = std::chrono::duration<double, std::milli>(
-                               std::chrono::steady_clock::now() - search_started)
-                               .count();
-        return result;
+        result.status = RoutePlannerUpdateStatus3D::kStitchBaseUnavailable;
+        return finish(std::move(result));
       }
       const std::vector<RouteSample3D>& active_geometry =
           *active_route->geometry->route;
@@ -98,34 +144,25 @@ ProductionPlannerUpdate3D ProductionMppiNode::generatePlannerUpdate3D(
                         : active_route->progress.station_m,
                     navigation_projection.valid ? navigation_projection.station_m
                                                 : active_route->progress.station_m}) +
-          static_route_extension_config_.required_certified_overlap_m;
+          config_.extension.required_certified_overlap_m;
+      result.attempted_stitch_station_m = stitch_station_m;
+      result.certified_route_end_station_m = active_geometry.back().station_m;
       if (stitch_station_m > active_geometry.back().station_m) {
-        RCLCPP_INFO(get_logger(),
-                    "PERSISTENT_PLANNER3D stage=deferred "
-                    "reason=future_stitch_beyond_certified_route revision=%" PRIu64
-                    " stitch_station_m=%.3f route_end_station_m=%.3f",
-                    transaction.world->revision, stitch_station_m,
-                    active_geometry.back().station_m);
-        result.search_ms = std::chrono::duration<double, std::milli>(
-                               std::chrono::steady_clock::now() - search_started)
-                               .count();
-        return result;
+        result.status = RoutePlannerUpdateStatus3D::kStitchBeyondCertifiedRoute;
+        return finish(std::move(result));
       }
       const RouteSample3D stitch =
           sampleRoute3DAtStation(active_geometry, stitch_station_m);
       search_start = stitch.position;
-      search_velocity = velocityAtStitch(stitch, speed_policy_config_.cruise_speed_mps);
+      search_velocity = velocityAtStitch(stitch, config_.cruise_speed_mps);
       search_base_route_instance_id = active_route->route_instance_id;
       search_base_stitch_station_m = stitch_station_m;
     }
 
     PersistentPlannerWorld3D planner_world = *transaction.planner_world;
-    if (persistent_planner_3d_ == nullptr || !transaction.objective.available ||
-        transaction.objective.mission_epoch == 0U || !planner_world.valid()) {
-      result.search_ms = std::chrono::duration<double, std::milli>(
-                             std::chrono::steady_clock::now() - search_started)
-                             .count();
-      return result;
+    if (!transaction.objective.available || transaction.objective.mission_epoch == 0U ||
+        !planner_world.valid()) {
+      return finish(std::move(result));
     }
     RouteIntent3D intent{
         .planned_on_revision = planner_world.revision,
@@ -138,7 +175,7 @@ ProductionPlannerUpdate3D ProductionMppiNode::generatePlannerUpdate3D(
                             transaction.objective.target_detection_id,
                             transaction.objective.target_track_id);
     continuation_session =
-        std::make_shared<const ProductionPlannerSession3D>(ProductionPlannerSession3D{
+        std::make_shared<const RoutePlannerSession3D>(RoutePlannerSession3D{
             .request =
                 PersistentPlannerRequest3D{
                     .start = search_start,
@@ -156,16 +193,11 @@ ProductionPlannerUpdate3D ProductionMppiNode::generatePlannerUpdate3D(
         });
   }
 
-  if (persistent_planner_3d_ == nullptr || !continuation_session ||
-      !continuation_session->request.world.valid() ||
-      !transaction.objective.available ||
+  if (continuation_session == nullptr || !continuation_session->request.world.valid() ||
       transaction.objective.mission_epoch !=
           continuation_session->request.mission_epoch ||
       distance3D(mission_goal, continuation_session->mission_goal) > 1.0e-9) {
-    result.search_ms = std::chrono::duration<double, std::milli>(
-                           std::chrono::steady_clock::now() - search_started)
-                           .count();
-    return result;
+    return finish(std::move(result));
   }
   const ObservedOccupancyGrid3D* const route_search_occupancy =
       continuation_session->request.world.observed_occupancy.get();
@@ -173,76 +205,29 @@ ProductionPlannerUpdate3D ProductionMppiNode::generatePlannerUpdate3D(
       continuation_session->request.world.revision;
 
   result.planner_invoked = true;
-  PlannerUpdate3D planner_update =
-      persistent_planner_3d_->plan(continuation_session->request);
+  PlannerUpdate3D planner_update = planner_.plan(continuation_session->request);
   result.planner_input_status = planner_update.input_status;
   result.planner_progress = planner_update.progress;
   result.planner_telemetry = planner_update.telemetry;
   result.dispatch = coordinatePlannerUpdate3D(planner_update);
   result.planner_session = continuation_session;
-  const PlannerTelemetry3D& telemetry = planner_update.telemetry;
-  const SpatialRouteCandidate3D* const improved =
-      planner_update.improved_incumbent
-          ? std::addressof(*planner_update.improved_incumbent)
-          : nullptr;
-  RCLCPP_INFO(get_logger(),
-              "PERSISTENT_PLANNER3D stage=complete raw_revision=%" PRIu64
-              " mission_epoch=%" PRIu64 " input=%s progress=%s publishable=%s "
-              "source=%s reused=%s occupied_unchanged=%s incumbent_retained=%s "
-              "time_search_complete=%s points=%zu expansions=%zu time_expansions=%zu "
-              "changed_occupied=%zu affected_states=%zu repair_processed=%zu "
-              "repair_pending=%zu repair_in_progress=%s feasibility_attempted=%s "
-              "feasibility_found=%s feasibility_expansions=%zu records=%zu open=%zu "
-              "time_records=%zu time_open=%zu shortcuts=%zu/%zu edge_queries=%zu "
-              "raw_edge_checks=%zu adaptive_edge_queries=%zu adaptive_path_edges=%zu "
-              "maximum_adaptive_level=%zu time_objective_s=%.3f eta_s=%.3f "
-              "translation_s=%.3f turn_s=%.3f world_update_ms=%.3f search_ms=%.3f",
-              telemetry.planned_on_revision, telemetry.mission_epoch,
-              plannerInputStatus3DName(planner_update.input_status),
-              searchProgress3DName(planner_update.progress),
-              planner_update.publishable() ? "true" : "false",
-              improved ? spatialRouteCandidateSource3DName(improved->source) : "none",
-              telemetry.search_state_reused ? "true" : "false",
-              telemetry.occupied_world_unchanged ? "true" : "false",
-              telemetry.incumbent_retained ? "true" : "false",
-              telemetry.execution_time_search_complete ? "true" : "false",
-              improved ? improved->points.size() : 0U, telemetry.expansions,
-              telemetry.execution_time_search_expansions,
-              telemetry.changed_occupied_voxels, telemetry.affected_lattice_states,
-              telemetry.repair_lattice_states_processed,
-              telemetry.repair_lattice_states_pending,
-              telemetry.repair_pending ? "true" : "false",
-              telemetry.feasibility_attempted ? "true" : "false",
-              telemetry.feasibility_route_found ? "true" : "false",
-              telemetry.feasibility_expansions, telemetry.records,
-              telemetry.open_entries, telemetry.execution_time_search_records,
-              telemetry.execution_time_search_open_entries, telemetry.shortcuts_applied,
-              telemetry.shortcut_checks, telemetry.lattice_edge_queries,
-              telemetry.raw_edge_validation_checks, telemetry.adaptive_edge_queries,
-              telemetry.adaptive_edges_in_extracted_path,
-              telemetry.maximum_queried_lattice_level,
-              telemetry.execution_time_search_objective_s,
-              improved ? improved->estimated_execution_time_s : 0.0,
-              improved ? improved->estimated_translation_time_s : 0.0,
-              improved ? improved->estimated_stationary_turn_time_s : 0.0,
-              telemetry.world_update_ms, telemetry.search_ms);
+  result.status = RoutePlannerUpdateStatus3D::kUpdated;
 
   if (planner_update.improved_incumbent.has_value()) {
     SpatialRouteCandidate3D spatial_route =
         std::move(*planner_update.improved_incumbent);
-    std::vector<RouteSample3D> route =
-        sampleRoute3D(spatial_route.points, route_sampling_step_m_,
-                      speed_policy_config_.cruise_speed_mps);
+    std::vector<RouteSample3D> route = sampleRoute3D(
+        spatial_route.points, config_.route_sampling_step_m, config_.cruise_speed_mps);
     RouteIntent3D intent = continuation_session->intent;
-    intent.planned_on_revision = telemetry.planned_on_revision;
+    intent.planned_on_revision = planner_update.telemetry.planned_on_revision;
     const SegmentEvidenceWorld3D evidence_world = evidenceWorld(
         *transaction.world, route_search_occupancy, route_search_raw_revision,
-        transaction.world->static_occupancy.get(), physical_footprint_config_,
-        flight_envelope_config_);
+        transaction.world->static_occupancy.get(), config_.planner.physical_footprint,
+        config_.planner.flight_envelope);
     SegmentEvidence3D evidence = evaluateSegmentEvidence3D(
         intent, route, continuation_session->search_start, true, true,
         spatial_route.estimated_execution_time_s, evidence_world);
-    result.improved_incumbent = ProductionRouteSearchCandidate3D{
+    result.improved_incumbent = RouteSearchCandidate3D{
         .search_start = continuation_session->search_start,
         .search_velocity = continuation_session->search_velocity,
         .search_base_route_instance_id =
@@ -254,14 +239,15 @@ ProductionPlannerUpdate3D ProductionMppiNode::generatePlannerUpdate3D(
         .spatial_route = std::move(spatial_route),
         .planner_input_status = planner_update.input_status,
         .planner_progress = planner_update.progress,
-        .planner_telemetry = telemetry,
+        .planner_telemetry = planner_update.telemetry,
         .route = std::move(route),
     };
   }
-  result.search_ms = std::chrono::duration<double, std::milli>(
-                         std::chrono::steady_clock::now() - search_started)
-                         .count();
-  return result;
+  return finish(std::move(result));
+}
+
+void RoutePlanner3D::reset() noexcept {
+  planner_.reset();
 }
 
 } // namespace drone_city_nav

@@ -5,7 +5,6 @@
 #include "drone_city_nav/cooperative_traffic.hpp"
 #include "drone_city_nav/execution_route_store_3d.hpp"
 #include "drone_city_nav/noncooperative_collision_avoidance.hpp"
-#include "drone_city_nav/persistent_dstar_lite_planner_3d.hpp"
 #include "drone_city_nav/route_progress_3d.hpp"
 #include "drone_city_nav/tracking_error_tube_3d.hpp"
 #include "drone_city_nav/tracking_error_tube_handoff_3d.hpp"
@@ -17,6 +16,7 @@
 
 #include "production_planner_search_transaction_3d.hpp"
 #include "production_route_pipeline_artifacts_3d.hpp"
+#include "route_planner_3d.hpp"
 
 namespace drone_city_nav {
 
@@ -61,45 +61,10 @@ struct ProductionMppiNonCooperativeUpdate {
   bool enabled{false};
 };
 
-struct ProductionRouteSearchCandidate3D {
-  Point3 search_start{};
-  Vec3 search_velocity{};
-  RouteInstanceId3D search_base_route_instance_id{};
-  std::optional<double> search_base_stitch_station_m;
-  RouteIntent3D intent{};
-  SegmentEvidence3D evidence{};
-  SpatialRouteCandidate3D spatial_route{};
-  PlannerInputStatus3D planner_input_status{PlannerInputStatus3D::kInvalidInput};
-  SearchProgress3D planner_progress{SearchProgress3D::kInvalidated};
-  PlannerTelemetry3D planner_telemetry{};
-  std::vector<RouteSample3D> route;
-};
-
-struct ProductionPlannerSession3D {
-  PersistentPlannerRequest3D request{};
-  Point3 mission_goal{};
-  Point3 search_start{};
-  Vec3 search_velocity{};
-  RouteInstanceId3D search_base_route_instance_id{};
-  std::optional<double> search_base_stitch_station_m;
-  RouteIntent3D intent{};
-};
-
-struct ProductionPlannerUpdate3D {
-  std::optional<ProductionRouteSearchCandidate3D> improved_incumbent;
-  std::shared_ptr<const ProductionPlannerSession3D> planner_session;
-  PlannerDispatch3D dispatch{};
-  PlannerInputStatus3D planner_input_status{PlannerInputStatus3D::kInvalidInput};
-  SearchProgress3D planner_progress{SearchProgress3D::kInvalidated};
-  PlannerTelemetry3D planner_telemetry{};
-  bool planner_invoked{false};
-  double search_ms{0.0};
-};
-
 struct ProductionRoutePlanningWork3D {
   std::shared_ptr<const PlannerSearchTransaction3D> transaction;
   ProductionWorldBuildTelemetry3D world_telemetry{};
-  std::shared_ptr<const ProductionPlannerSession3D> continuation_session;
+  std::shared_ptr<const RoutePlannerSession3D> continuation_session;
 
   [[nodiscard]] bool valid() const noexcept {
     return transaction != nullptr && transaction->valid();

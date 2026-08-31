@@ -28,7 +28,7 @@ void ProductionMppiNode::processRouteSearch3D(
     std::shared_ptr<const PlannerSearchTransaction3D> transaction,
     const ProductionWorldBuildTelemetry3D& world_telemetry,
     const ProductionMppiNavigation& navigation,
-    std::shared_ptr<const ProductionPlannerSession3D> continuation_session) {
+    std::shared_ptr<const RoutePlannerSession3D> continuation_session) {
   const auto planning_started = std::chrono::steady_clock::now();
   const Point3 mission_goal = transaction->objective.goal;
   const NavigationWorldCertificate3D planned_world_certificate =
@@ -45,12 +45,92 @@ void ProductionMppiNode::processRouteSearch3D(
     static_cast<void>(navigation_recovery_episodes_.observe(
         transaction->objective.mission_epoch, recovery_active));
   };
-  ProductionPlannerUpdate3D planner_update = generatePlannerUpdate3D(
-      *transaction, navigation, mission_goal, std::move(continuation_session));
+  RoutePlannerUpdate3D planner_update;
+  if (route_planner_ != nullptr) {
+    planner_update = route_planner_->update(
+        *transaction,
+        RoutePlannerVehicleState3D{
+            .position =
+                Point3{navigation.state.x, navigation.state.y, navigation.state.z},
+            .velocity =
+                Vec3{navigation.state.vx, navigation.state.vy, navigation.state.vz},
+            .valid = navigation.valid,
+        },
+        std::move(continuation_session));
+  }
   const Point3 search_start =
       planner_update.planner_session
           ? planner_update.planner_session->search_start
           : Point3{navigation.state.x, navigation.state.y, navigation.state.z};
+
+  if (planner_update.status == RoutePlannerUpdateStatus3D::kStitchBaseUnavailable) {
+    RCLCPP_INFO(get_logger(),
+                "PERSISTENT_PLANNER3D stage=deferred "
+                "reason=stitch_base_unavailable revision=%" PRIu64,
+                transaction->world->revision);
+  } else if (planner_update.status ==
+             RoutePlannerUpdateStatus3D::kStitchBeyondCertifiedRoute) {
+    RCLCPP_INFO(get_logger(),
+                "PERSISTENT_PLANNER3D stage=deferred "
+                "reason=future_stitch_beyond_certified_route revision=%" PRIu64
+                " stitch_station_m=%.3f route_end_station_m=%.3f",
+                transaction->world->revision, planner_update.attempted_stitch_station_m,
+                planner_update.certified_route_end_station_m);
+  }
+  if (planner_update.planner_invoked) {
+    const PlannerTelemetry3D& planner_telemetry = planner_update.planner_telemetry;
+    const SpatialRouteCandidate3D* const improved =
+        planner_update.improved_incumbent
+            ? std::addressof(planner_update.improved_incumbent->spatial_route)
+            : nullptr;
+    RCLCPP_INFO(
+        get_logger(),
+        "PERSISTENT_PLANNER3D stage=complete raw_revision=%" PRIu64
+        " mission_epoch=%" PRIu64 " input=%s progress=%s publishable=%s "
+        "source=%s reused=%s occupied_unchanged=%s incumbent_retained=%s "
+        "time_search_complete=%s points=%zu expansions=%zu time_expansions=%zu "
+        "changed_occupied=%zu affected_states=%zu repair_processed=%zu "
+        "repair_pending=%zu repair_in_progress=%s feasibility_attempted=%s "
+        "feasibility_found=%s feasibility_expansions=%zu records=%zu open=%zu "
+        "time_records=%zu time_open=%zu shortcuts=%zu/%zu edge_queries=%zu "
+        "raw_edge_checks=%zu adaptive_edge_queries=%zu adaptive_path_edges=%zu "
+        "maximum_adaptive_level=%zu time_objective_s=%.3f eta_s=%.3f "
+        "translation_s=%.3f turn_s=%.3f world_update_ms=%.3f search_ms=%.3f",
+        planner_telemetry.planned_on_revision, planner_telemetry.mission_epoch,
+        plannerInputStatus3DName(planner_update.planner_input_status),
+        searchProgress3DName(planner_update.planner_progress),
+        improved != nullptr ? "true" : "false",
+        improved != nullptr ? spatialRouteCandidateSource3DName(improved->source)
+                            : "none",
+        planner_telemetry.search_state_reused ? "true" : "false",
+        planner_telemetry.occupied_world_unchanged ? "true" : "false",
+        planner_telemetry.incumbent_retained ? "true" : "false",
+        planner_telemetry.execution_time_search_complete ? "true" : "false",
+        improved != nullptr ? improved->points.size() : 0U,
+        planner_telemetry.expansions,
+        planner_telemetry.execution_time_search_expansions,
+        planner_telemetry.changed_occupied_voxels,
+        planner_telemetry.affected_lattice_states,
+        planner_telemetry.repair_lattice_states_processed,
+        planner_telemetry.repair_lattice_states_pending,
+        planner_telemetry.repair_pending ? "true" : "false",
+        planner_telemetry.feasibility_attempted ? "true" : "false",
+        planner_telemetry.feasibility_route_found ? "true" : "false",
+        planner_telemetry.feasibility_expansions, planner_telemetry.records,
+        planner_telemetry.open_entries, planner_telemetry.execution_time_search_records,
+        planner_telemetry.execution_time_search_open_entries,
+        planner_telemetry.shortcuts_applied, planner_telemetry.shortcut_checks,
+        planner_telemetry.lattice_edge_queries,
+        planner_telemetry.raw_edge_validation_checks,
+        planner_telemetry.adaptive_edge_queries,
+        planner_telemetry.adaptive_edges_in_extracted_path,
+        planner_telemetry.maximum_queried_lattice_level,
+        planner_telemetry.execution_time_search_objective_s,
+        improved != nullptr ? improved->estimated_execution_time_s : 0.0,
+        improved != nullptr ? improved->estimated_translation_time_s : 0.0,
+        improved != nullptr ? improved->estimated_stationary_turn_time_s : 0.0,
+        planner_telemetry.world_update_ms, planner_telemetry.search_ms);
+  }
 
   const bool search_running =
       planner_update.planner_invoked && planner_update.dispatch.continue_search;
@@ -134,8 +214,7 @@ void ProductionMppiNode::processRouteSearch3D(
   activation.materialized = materialization.route;
   activation.telemetry = materialization.telemetry;
   if (planner_update.improved_incumbent && candidate_generation != 0U) {
-    const ProductionRouteSearchCandidate3D& candidate =
-        *planner_update.improved_incumbent;
+    const RouteSearchCandidate3D& candidate = *planner_update.improved_incumbent;
     materialization = materializeRouteCandidate3D(
         *transaction, world_telemetry, navigation, mission_goal, candidate,
         candidate_generation, activation_active_route,

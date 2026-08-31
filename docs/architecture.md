@@ -194,8 +194,12 @@ It searches `(x, y, z)`, incrementally repairs changed occupied evidence, and us
 the shared `FlightTimeModel3D` for anisotropic translation and bounded turn time.
 `PlannerUpdate3D` admits a complete feasible incumbent independently from its
 `SearchProgress3D`. A publishable incumbent can therefore be activated while a
-typed `ProductionPlannerSession3D` preserves the exact request and requeues
-bounded D* repair and execution-time refinement until convergence or no-route.
+typed `RoutePlannerSession3D` preserves the exact request and requeues bounded
+D* repair and execution-time refinement until convergence or no-route.
+`RoutePlanner3D`, rather than the ROS node, owns the one persistent planner and
+turns an immutable search transaction plus a controller-neutral vehicle state
+into a typed update. It also owns certified-future-stitch selection, route
+sampling, and raw-only segment evidence; ROS logging remains an output adapter.
 
 The ownership model is specified in
 [`navigation_architecture_remediation.md`](navigation_architecture_remediation.md).
