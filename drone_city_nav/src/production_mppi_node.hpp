@@ -99,8 +99,8 @@ struct ProductionMppiDiagnosticsSnapshot;
 struct ProductionRouteActivationSnapshot3D;
 struct ProductionRouteMaterialization3D;
 class RouteMaterializer3D;
+class RouteTrajectoryCompiler3D;
 struct ProductionMppiExecutionCycle;
-struct TrajectoryCompilerConfig3D;
 struct ProductionMppiHorizonCommit;
 struct ObservedWorldBuildRequest3D;
 struct ObservedWorldEvidenceChange3D;
@@ -166,9 +166,6 @@ private:
   void configureOptionalNavigationConstraints();
   void configureStaticRouteGeometry();
   void configureStaticRouteExtension(double maximum_horizontal_acceleration_mps2);
-  [[nodiscard]] TrajectoryCompilerConfig3D trajectoryCompilerConfig3D() const noexcept;
-  [[nodiscard]] TrackingErrorTubeWorld3D
-  trackingErrorTubeWorld3D(const WorldSnapshot3D& world) const noexcept;
   void maybeRequestStaticRouteExtensionFromExecution(
       const std::shared_ptr<const WorldSnapshot3D>& world,
       const ProductionWorldBuildTelemetry3D& world_build,
@@ -454,6 +451,7 @@ private:
   std::unique_ptr<NonCooperativeCollisionAvoidance> noncooperative_avoidance_;
   std::unique_ptr<BoundedWorkerPool> planning_worker_pool_;
   std::unique_ptr<RouteMaterializer3D> route_materializer_;
+  std::unique_ptr<RouteTrajectoryCompiler3D> route_trajectory_compiler_;
   std::unique_ptr<RoutePlanningCoordinator3D> route_planning_coordinator_;
   std::unique_ptr<mppi::MppiCudaEngine> engine_;
   mppi::TrajectoryReferenceAdapter3D trajectory_reference_adapter_;

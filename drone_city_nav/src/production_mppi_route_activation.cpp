@@ -17,6 +17,7 @@
 #include "production_mppi_route_helpers.hpp"
 #include "production_mppi_route_world.hpp"
 #include "route_materializer_3d.hpp"
+#include "route_trajectory_compiler_3d.hpp"
 #include "world_pipeline_3d.hpp"
 
 namespace drone_city_nav {
@@ -340,31 +341,12 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
     report.trajectory_compile_attempted = true;
     const RouteEndpointSemantics3D endpoint_semantics = routeEndpointSemantics3D(
         candidate.reaches_mission_goal, !transaction.objective.continuous_tracking);
-    const TrackingErrorTubeWorld3D tracking_world =
-        raw_validation_required
-            ? TrackingErrorTubeWorld3D{
-                  .observed_occupancy = &activation_raw_owner->occupancy(),
-                  .occupied_content_fingerprint =
-                      activation_raw_owner->occupiedContentFingerprint(),
-                  .launch_support_contact =
-                      optionalAddress(candidate.world->launch_support_contact),
-              }
-            : trackingErrorTubeWorld3D(*candidate.world);
     TrajectoryCompilationResult3D compilation =
-        TrajectoryCompiler3D::compile(TrajectoryCompilerInput3D{
+        route_trajectory_compiler_->compile(RouteTrajectoryCompilationRequest3D{
+            .materialized = candidate,
             .exact_initial_state = exactVehicleState3D(snapshot.navigation),
-            .route_generation = candidate.candidate_generation,
-            .route = *candidate.route,
-            .constrained_spans = *candidate.constrained_spans,
-            .passage_volumes = *candidate.passage_volumes,
-            .cooperative_passage_assignments =
-                *candidate.cooperative_passage_assignments,
-            .selected_passage_traversal_ids = *candidate.selected_passage_traversal_ids,
-            .passage_volume_config = cooperative_passage_volume_config_,
             .endpoint_semantics = endpoint_semantics,
-            .materialized_route_fingerprint = candidate.fingerprint,
-            .tracking_world = tracking_world,
-            .config = trajectoryCompilerConfig3D(),
+            .observed_raw_world = activation_raw_owner,
         });
     report.trajectory_compiled = compilation.compiled();
     report.trajectory_validation = compilation.validation;

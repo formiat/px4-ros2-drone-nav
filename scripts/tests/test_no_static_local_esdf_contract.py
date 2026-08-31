@@ -128,37 +128,5 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
         )
         self.assertIn(".physical_footprint = physical_footprint_config_", source)
 
-    def test_tracking_uncertainty_caps_speed_from_raw_occupied_evidence(self) -> None:
-        tube = (PACKAGE / "src/tracking_error_tube_3d.cpp").read_text()
-        compiler = (PACKAGE / "src/trajectory_compiler_3d.cpp").read_text()
-        activation = (PACKAGE / "src/production_mppi_route_activation.cpp").read_text()
-        world_binding = (
-            PACKAGE / "src/production_mppi_node_route_compilation.cpp"
-        ).read_text()
-        parameterization = (
-            PACKAGE / "src/route_time_parameterization.cpp"
-        ).read_text()
-
-        self.assertIn("OccupiedCollisionOracle3D", tube)
-        self.assertIn(".observed_occupancy = world.observed_occupancy", tube)
-        self.assertNotIn("ObservedSpaceValidationPolicy", tube)
-        self.assertNotIn("require_known_free_space", tube)
-        self.assertIn("inflatedFootprint(physical_footprint", tube)
-        self.assertIn("trackingErrorTubeRadiusM(config, maximum_speed_mps)", tube)
-        self.assertIn("makeTrackingErrorTubeProfile3D", compiler)
-        self.assertIn(
-            "activation_raw_owner->occupiedContentFingerprint()", activation
-        )
-        self.assertIn(".tracking_world = tracking_world", activation)
-        self.assertIn(
-            "observed_raw_world_owner->occupiedContentFingerprint()", world_binding
-        )
-        self.assertNotIn(
-            ".occupied_content_fingerprint = world.source_occupied_fingerprint",
-            world_binding,
-        )
-        self.assertIn("tracking_speed_limits_mps[index]", parameterization)
-
-
 if __name__ == "__main__":
     unittest.main()

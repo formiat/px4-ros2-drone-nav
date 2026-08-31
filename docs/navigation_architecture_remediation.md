@@ -236,6 +236,15 @@ The soft derived-clearance annotation API is controller-neutral
 `route_risk_annotation_3d` in `nav_planning`; the former MPPI adapter and names
 have been removed, so route materialization no longer depends on `nav_control`.
 
+`RouteTrajectoryCompiler3D` owns the immutable compiler and passage
+configuration and accepts one materialized-route transaction with the exact
+initial `VehicleState3D`, endpoint semantics, and observed raw-world owner. It
+constructs the tracking-world binding internally and returns the single sealed
+`CompiledTrajectory3D` result without reading node state. Direct tests cover
+static exact-state sealing, observed-owner binding, and fail-closed missing
+observed ownership. The former Python source-order check for this binding has
+been removed in favor of that executable transaction test.
+
 ## Immutable Stage Pipeline
 
 ```text
@@ -356,9 +365,12 @@ no mixed authority revision is observable.
       update/rejection events into `RoutePlanningCoordinator3D`.
     - [x] Move geometric materialization and validation behind the non-ROS
       `RouteMaterializer3D` one-request/one-result boundary.
-    - [ ] Move trajectory compilation and activation coordination behind the
-      planning-service boundary.
+    - [x] Move exact-state trajectory compilation behind the non-ROS
+      `RouteTrajectoryCompiler3D` one-request/one-result boundary.
+    - [ ] Move activation coordination behind the planning-service boundary.
   - [ ] Extract trajectory compilation and controller ownership.
+    - [x] Extract the sole sealed trajectory-compilation service.
+    - [ ] Extract controller ownership.
   - [ ] Finish the execution-service facade around the existing sole
     `RouteExecutionManager3D` owner.
 - [x] Enforce the internal dependency graph with CMake targets.
@@ -377,6 +389,9 @@ no mixed authority revision is observable.
   direct `RoutePlanningCoordinator3D` suite. Route materialization, invalid
   configuration/request handling, exact active-route ownership, and neutral
   invalid derived-distance behavior have a direct `RouteMaterializer3D` suite.
+  Exact initial-state sealing, observed raw-owner binding, and fail-closed
+  missing ownership have a direct `RouteTrajectoryCompiler3D` suite; the former
+  source-text tracking-world binding check has been removed.
 - [x] Keep public and private headers self-contained and retain a temporary
   umbrella include only where migration compatibility requires it.
 - [ ] Pass formatting, static analysis, C++ tests, and script tests after every

@@ -19,6 +19,7 @@
 #include "navigation_diagnostics_sink.hpp"
 #include "production_mppi_node_configuration.hpp"
 #include "route_materializer_3d.hpp"
+#include "route_trajectory_compiler_3d.hpp"
 #include "world_pipeline_3d.hpp"
 
 namespace drone_city_nav {

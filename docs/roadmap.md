@@ -565,8 +565,10 @@ optimization, splice preservation, derived risk annotation, optional passage
 decoration, and final candidate validation; typed fallback information is
 logged only by the ROS adapter. Its soft risk annotation now lives in
 `nav_planning`; the legacy MPPI adapter and controller-layer dependency have
-been removed. Trajectory compilation/activation, controller ownership, and the
-execution facade remain to be extracted.
+been removed. `RouteTrajectoryCompiler3D` now owns exact-state compilation and
+the observed/static tracking-world binding behind one non-ROS request/result
+boundary. Activation, controller ownership, and the execution facade remain to
+be extracted.
 Direct tests replace the former raw-world source-order guards with executable
 overload, quarantine, full/incremental/reuse, throttling, exact-parent,
 publication, upload-rejection/exception fail-closed behavior, and stop

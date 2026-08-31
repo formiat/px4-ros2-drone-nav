@@ -217,6 +217,10 @@ candidate validation. It returns a typed immutable route result plus telemetry
 and fallback information; ROS logging is an outer adapter. Derived-clearance
 risk annotation is a controller-neutral `nav_planning` operation and cannot
 acquire hard collision authority.
+`RouteTrajectoryCompiler3D` receives the materialized route, exact initial
+vehicle state, endpoint semantics, and exact observed raw owner as one owned
+transaction. It constructs the tracking-world binding and returns the only
+sealed `CompiledTrajectory3D` without ROS or resident node-state access.
 
 The ownership model is specified in
 [`navigation_architecture_remediation.md`](navigation_architecture_remediation.md).
@@ -465,6 +469,6 @@ scheduling.
   policy, refresh/upload transactions, and publication.
   `RoutePlanningCoordinator3D` owns persistent planning request scheduling and
   worker lifecycle, and `RouteMaterializer3D` owns geometric materialization and
-  candidate validation. Route compilation/activation, trajectory/control
-  coordination, and the execution facade remain to be extracted from the ROS
-  node.
+  candidate validation. `RouteTrajectoryCompiler3D` owns exact-state trajectory
+  compilation. Activation, controller coordination, and the execution facade
+  remain to be extracted from the ROS node.
