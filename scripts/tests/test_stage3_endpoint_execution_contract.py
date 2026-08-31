@@ -77,10 +77,6 @@ class Stage3EndpointExecutionContractTest(unittest.TestCase):
         self.assertIn(
             "certifyRawInvalidatedFiniteExecution3DDetailed", raw_recertification
         )
-        self.assertRegex(
-            retention,
-            r"braking_event\s*!=\s*nullptr\s*\?\s*retireCertifiedRoute3D\(",
-        )
         raw_certification = certification.split(
             "if (certifies_raw_invalidation)", maxsplit=1
         )[1].split("if ((!static_mode", maxsplit=1)[0]

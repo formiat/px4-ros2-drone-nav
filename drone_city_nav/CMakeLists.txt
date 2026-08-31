@@ -718,6 +718,7 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     src/production_mppi_node_control_feedback.cpp
     src/production_mppi_node_inputs_3d.cpp
     src/production_mppi_node_raw_input.cpp
+    src/mppi_controller_3d.cpp
     src/production_mppi_node_planning_tick.cpp
     src/production_mppi_node_planning_controller.cpp
     src/production_mppi_node_world_generation.cpp
@@ -1269,6 +1270,13 @@ if(BUILD_TESTING)
     target_link_libraries(route_activation_coordinator_3d_test
                           drone_city_nav_production_mppi_component)
     enable_project_warnings(route_activation_coordinator_3d_test)
+
+    ament_add_gtest(mppi_controller_3d_test tests/mppi_controller_3d_test.cpp)
+    target_compile_features(mppi_controller_3d_test PRIVATE cxx_std_20)
+    target_include_directories(mppi_controller_3d_test PRIVATE src)
+    target_link_libraries(mppi_controller_3d_test
+                          drone_city_nav_production_mppi_component)
+    enable_project_warnings(mppi_controller_3d_test)
 
     ament_add_gtest(navigation_diagnostics_sink_test
                     tests/navigation_diagnostics_sink_test.cpp)

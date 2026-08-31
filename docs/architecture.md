@@ -229,6 +229,13 @@ Its consume-and-return commit API validates a caller-locked world/objective
 context and publishes only through `RouteExecutionManager3D`; no caller can
 reuse a partially committed preparation. The production node adapter is limited
 to coherent capture, lock ownership, clock access, and ROS diagnostics.
+`MppiController3D` is the sole owner of the stateful CUDA engine, nominal-reseed
+lifecycle, and controller-reference cache. Its owned request/result transaction
+returns the exact input after assigning the reseed generation and reports
+planned, stationary-hold, backend-unavailable, or backend-failure outcomes
+without ROS side effects. The node holds the resident-world lease across that
+transaction and adapts typed failures to logging, route-release, and fail-closed
+execution revocation.
 
 The ownership model is specified in
 [`navigation_architecture_remediation.md`](navigation_architecture_remediation.md).
@@ -246,9 +253,10 @@ transitions, so an old plan cannot be paired with a newer lease or control
 witness. Planning starts from a certified future station, splices with measured
 latency and braking reserve, and repairs only invalid suffixes.
 
-GPU MPPI owns executable local motion and continuously warm-starts from its
-previous control sequence. Latest raw lidar evidence validates the finite swept
-path before publication, independently of strategic planner reuse.
+`MppiController3D` owns executable local motion and its CUDA engine continuously
+warm-starts from the previous control sequence. Latest raw lidar evidence
+validates the finite swept path before publication, independently of strategic
+planner reuse.
 
 ## Mission Layer
 

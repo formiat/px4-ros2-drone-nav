@@ -7,6 +7,7 @@
 #include <span>
 #include <utility>
 
+#include "mppi_controller_3d.hpp"
 #include "navigation_diagnostics_sink.hpp"
 #include "production_mppi_node.hpp"
 #include "production_mppi_route_helpers.hpp"

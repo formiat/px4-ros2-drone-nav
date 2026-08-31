@@ -12,6 +12,7 @@
 #include <utility>
 #include <vector>
 
+#include "mppi_controller_3d.hpp"
 #include "production_mppi_node_execution_internal.hpp"
 
 namespace drone_city_nav {
@@ -116,9 +117,11 @@ ProductionMppiNode::exactSnapshotValidationWorld(
       (observed_route && (observed_world == nullptr || !observed_world->valid()))) {
     return std::nullopt;
   }
-  const LaunchSupportContact3D* launch_support_contact =
-      observed_route && observed_world->launchSupportContact().has_value()
-          ? &*observed_world->launchSupportContact()
+  const std::optional<LaunchSupportContact3D>* const launch_support_owner =
+      observed_route ? std::addressof(observed_world->launchSupportContact()) : nullptr;
+  const LaunchSupportContact3D* const launch_support_contact =
+      launch_support_owner != nullptr && launch_support_owner->has_value()
+          ? std::addressof(launch_support_owner->value())
           : nullptr;
   return mppi::FiniteExecutionPathWorld{
       .flight_envelope = &route.validation_policy->flightEnvelope(),
@@ -131,7 +134,7 @@ ProductionMppiNode::exactSnapshotValidationWorld(
       .raw_occupancy = nullptr,
       .latest_lidar_obstacle_points =
           std::span<const Point3>{latest_lidar_evidence->hitPointsMapM()},
-      .terminal_boundary = std::move(terminal_boundary),
+      .terminal_boundary = terminal_boundary,
   };
 }
 
@@ -155,9 +158,13 @@ ProductionMppiNode::exactDirectValidationWorld(
   if (static_world == observed_world) {
     return std::nullopt;
   }
-  const LaunchSupportContact3D* launch_support_contact =
-      observed_world && execution.observed_raw_world->launchSupportContact().has_value()
-          ? &*execution.observed_raw_world->launchSupportContact()
+  const std::optional<LaunchSupportContact3D>* const launch_support_owner =
+      observed_world
+          ? std::addressof(execution.observed_raw_world->launchSupportContact())
+          : nullptr;
+  const LaunchSupportContact3D* const launch_support_contact =
+      launch_support_owner != nullptr && launch_support_owner->has_value()
+          ? std::addressof(launch_support_owner->value())
           : nullptr;
   return mppi::FiniteExecutionPathWorld{
       .flight_envelope = &execution.validation_policy->flightEnvelope(),
@@ -281,7 +288,7 @@ ProductionMppiNode::retainSnapshotFinitePath(
     return std::nullopt;
   }
   const std::shared_ptr<const std::vector<mppi::RouteSample3D>> mppi_reference =
-      trajectory_reference_adapter_.adapt(route.geometry);
+      mppi_controller_->adaptTrajectoryReference(route.geometry);
   const std::optional<mppi::FiniteExecutionPathWorld> continuation_world =
       exactSnapshotValidationWorld(
           cycle, route,
@@ -391,9 +398,7 @@ ProductionMppiNode::retainSnapshotFinitePath(
           active.horizon->controls.size(), route.validation_policy->dynamics(),
           route_arrival_search_step_controls, finite_horizon_config_,
           *continuation_world, candidate_validator);
-  if (!rebuilt.accepted() ||
-      (braking_event != nullptr ? !recertified_braking_tail.has_value()
-                                : !recertified_plan.has_value())) {
+  const auto log_rebuild_failure = [&] {
     const std::string_view certification_status =
         finiteExecutionCertificationStatus3DName(certification_diagnostic.status);
     const std::string_view adherence_status = finiteExecutionRouteAdherenceStatus3DName(
@@ -413,6 +418,17 @@ ProductionMppiNode::retainSnapshotFinitePath(
         static_cast<int>(certification_status.size()), certification_status.data(),
         static_cast<int>(adherence_status.size()), adherence_status.data(),
         certification_diagnostic.route_adherence_failure_distance_m);
+  };
+  if (!rebuilt.accepted()) {
+    log_rebuild_failure();
+    return std::nullopt;
+  }
+  if (braking_event != nullptr && !recertified_braking_tail.has_value()) {
+    log_rebuild_failure();
+    return std::nullopt;
+  }
+  if (braking_event == nullptr && !recertified_plan.has_value()) {
+    log_rebuild_failure();
     return std::nullopt;
   }
   const ExecutionRouteTransitionGuard3D guard{
@@ -420,11 +436,17 @@ ProductionMppiNode::retainSnapshotFinitePath(
       .expected_route_generation = route.identity.generation,
       .expected_geometry_revision = route.geometry->compiled_trajectory_revision,
   };
-  const ExecutionRouteTransitionResult3D transition =
-      braking_event != nullptr
-          ? retireCertifiedRoute3D(*expected, guard, *braking_event,
-                                   *recertified_braking_tail)
-          : replaceFiniteExecutionPlan3D(*expected, guard, *recertified_plan);
+  const ExecutionRouteTransitionResult3D transition = [&] {
+    if (braking_event != nullptr) {
+      return retireCertifiedRoute3D(*expected, guard, *braking_event,
+                                    std::move(recertified_braking_tail));
+    }
+    if (!recertified_plan.has_value()) {
+      return ExecutionRouteTransitionResult3D{};
+    }
+    return replaceFiniteExecutionPlan3D(*expected, guard,
+                                        std::move(recertified_plan).value());
+  }();
   const FiniteExecutionState3D* const transitioned_execution =
       transition.next != nullptr ? transition.next->finiteExecution() : nullptr;
   const FiniteExecutionState3D* const transitioned_braking =

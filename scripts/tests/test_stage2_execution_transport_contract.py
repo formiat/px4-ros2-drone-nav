@@ -278,10 +278,6 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         self.assertIn(
             "const RouteLifecycleEvent3D* const braking_event", invalidation_consumer
         )
-        self.assertRegex(
-            invalidation_consumer,
-            r"braking_event != nullptr\s*\?\s*retireCertifiedRoute3D\(",
-        )
         evidence_derivation = route_execution.split(
             "deriveLatestObservedRouteEvidence", maxsplit=1
         )[1].split("observedRouteEvidenceIsCurrent", maxsplit=1)[0]

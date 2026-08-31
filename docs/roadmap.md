@@ -572,9 +572,11 @@ compile/admit/certify/splice pipeline behind one immutable request and prepared
 activation result. Its consume-and-return commit takes that preparation by
 value plus a caller-locked currentness context and can publish only through the
 execution manager; the remaining ROS adapter owns only coherent capture, locks,
-clock access, and diagnostics. Controller
-ownership and the remaining execution facade still need extraction. Pending
-publication is already one manager-owned transaction:
+clock access, and diagnostics. `MppiController3D` now owns the sole CUDA engine,
+nominal-reseed lifecycle, and controller-reference cache behind one owned
+request/result transaction; the node retains only the resident-world lease and
+ROS/fail-closed adaptations. The remaining execution facade still needs
+extraction. Pending publication is already one manager-owned transaction:
 the manager validates the semantic execution base, assigns the sole monotonic
 sequence, seals the candidate, and occupies the pending slot under one lock.
 Direct tests replace the former raw-world source-order guards with executable
@@ -583,8 +585,13 @@ publication, upload-rejection/exception fail-closed behavior, and stop
 transactions, plus static build/reuse, route supersession, generation failure,
 refresh-coalescing, persistent-session transactions, and route-request
 scheduling, materialization, and exact-snapshot activation preparation and
-commit. The remaining controller and execution-facade extraction and the other
-source-text transaction replacements remain tracked by the linked checklist.
+commit, plus exact stationary-hold output, controller reseed ownership,
+concurrent controller serialization, backend-unavailable classification, and
+reference-cache ownership, including invalid and superseded controller-world
+currentness. Direct execution-transition tests also carry the raw-invalidation
+emergency-brake contract, so the former syntax-specific ternary assertions have
+been removed. The remaining execution-facade extraction and other source-text
+transaction replacements remain tracked by the linked checklist.
 Manager-owned pending identity and atomic base validation are now covered by a
 direct executable suite instead of activation source-order parsing.
 Item 12 remains in progress until that checklist, the complete static audit,

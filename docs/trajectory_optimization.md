@@ -5,11 +5,12 @@ on CUDA. There is no corridor-constrained post-processing optimizer.
 
 ## Persistent Engine
 
-`MppiCudaEngine` owns persistent CUDA buffers, the resident ESDF texture, and
-the nominal control sequence. Per-tick planning does not recreate CUDA
-allocations. A generic known-solid API remains in the engine, but the production
-3D-world path does not populate it; canonical physical solids are encoded in
-Occupancy3D.
+`MppiController3D` is the sole production owner of `MppiCudaEngine`, the
+nominal-reseed lifecycle, and the controller-reference cache. The engine owns
+persistent CUDA buffers, the resident ESDF texture, and the nominal control
+sequence. Per-tick planning does not recreate CUDA allocations. A generic
+known-solid API remains in the engine, but the production 3D-world path does not
+populate it; canonical physical solids are encoded in Occupancy3D.
 
 ## State And Control
 

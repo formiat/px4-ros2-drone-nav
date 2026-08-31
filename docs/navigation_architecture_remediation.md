@@ -272,6 +272,20 @@ Direct tests execute exact-state preparation, successful atomic
 publication, resident-world supersession, occupied-slot retention, and invalid
 request rejection.
 
+`MppiController3D` now owns the only production `MppiCudaEngine`, the complete
+nominal-reseed state machine, and the cached conversion from sealed trajectory
+to controller reference. One owned request returns the exact `MppiTickInput`
+after reseed assignment together with the result and typed controller status.
+Stationary hold and backend failure isolation are controller operations; ROS
+logging, route-release requests, fail-closed revocation, and the caller-held
+resident-world lease remain in the thin node adapter. GPU world upload and
+readiness are narrow controller ports used by `WorldPipeline3D`. Direct tests
+cover exact hold output, persistent and concurrently serialized reseed ownership,
+unavailable-backend classification, stable status names, cache ownership through
+the service, and rejection of missing, incoherent, or superseded resident GPU
+worlds. Those executable currentness cases replace the former source-text check
+for a particular `sameSnapshot` call location.
+
 ## Immutable Stage Pipeline
 
 ```text
@@ -395,9 +409,9 @@ no mixed authority revision is observable.
     - [x] Move exact-state trajectory compilation behind the non-ROS
       `RouteTrajectoryCompiler3D` one-request/one-result boundary.
     - [x] Move activation coordination behind the planning-service boundary.
-  - [ ] Extract trajectory compilation and controller ownership.
+  - [x] Extract trajectory compilation and controller ownership.
     - [x] Extract the sole sealed trajectory-compilation service.
-    - [ ] Extract controller ownership.
+    - [x] Extract controller ownership.
   - [ ] Finish the execution-service facade around the existing sole
     `RouteExecutionManager3D` owner.
     - [x] Move pending sequence allocation and execution-base-checked pending

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "drone_city_nav/mppi_nominal_reseed.hpp"
+
 #include "production_mppi_node.hpp"
 
 namespace drone_city_nav {

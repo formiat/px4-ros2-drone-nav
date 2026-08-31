@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <memory>
 
+#include "mppi_controller_3d.hpp"
 #include "production_mppi_node.hpp"
 
 namespace drone_city_nav {
@@ -74,20 +75,11 @@ struct PreviousControlEvidence3D {
 
 struct ProductionMppiControllerTick {
   const WorldSnapshot3D& world;
-  const mppi::MppiTickInput& input;
-  const MppiNominalReseedUpdate& nominal_reseed;
-  mppi::State target{};
-  std::chrono::steady_clock::time_point snapshot_started;
+  MppiControllerRequest3D request{};
   std::uint64_t route_generation{0U};
   std::int64_t now_ns{0};
   double route_cross_track_m{0.0};
-  ProductionMppiPlanningState planning_state{ProductionMppiPlanningState::kPlanned};
   bool direct_tracking_interception{false};
-};
-
-struct ProductionMppiControllerTickResult {
-  mppi::MppiTickResult result;
-  MppiEligibleRolloutUpdate no_eligible_recovery;
 };
 
 [[nodiscard]] inline std::uint64_t

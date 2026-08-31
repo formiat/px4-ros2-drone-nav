@@ -9,6 +9,7 @@
 #include <memory>
 #include <vector>
 
+#include "mppi_controller_3d.hpp"
 #include "production_mppi_route_helpers.hpp"
 #include "route_activation_coordinator_3d.hpp"
 
@@ -105,20 +106,22 @@ TEST(ProductionMppiRouteHelpersTest,
   }
 }
 
-TEST(ProductionMppiRouteHelpersTest, ControllerAdapterCachesByTrajectoryIdentity) {
+TEST(ProductionMppiRouteHelpersTest,
+     ControllerOwnsReferenceCacheKeyedByTrajectoryIdentity) {
   const TrajectoryCompilationResult3D compilation =
       compileProfile(RouteEndpointSemantics3D::kContinuation);
   ASSERT_TRUE(compilation.compiled());
-  mppi::TrajectoryReferenceAdapter3D adapter;
+  mppi::BenchmarkConfig config;
+  config.rollouts = 64U;
+  config.steps = 8U;
+  MppiController3D controller{config};
 
-  const auto first = adapter.adapt(compilation.trajectory);
-  const auto second = adapter.adapt(compilation.trajectory);
+  const auto first = controller.adaptTrajectoryReference(compilation.trajectory);
+  const auto second = controller.adaptTrajectoryReference(compilation.trajectory);
 
   ASSERT_NE(first, nullptr);
   EXPECT_EQ(first, second);
-  adapter.clear();
-  EXPECT_NE(adapter.adapt(compilation.trajectory), nullptr);
-  EXPECT_EQ(adapter.adapt(nullptr), nullptr);
+  EXPECT_EQ(controller.adaptTrajectoryReference(nullptr), nullptr);
 }
 
 TEST(ProductionMppiRouteHelpersTest,

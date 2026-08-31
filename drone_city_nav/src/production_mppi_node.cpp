@@ -16,6 +16,7 @@
 #include <stdexcept>
 #include <string>
 
+#include "mppi_controller_3d.hpp"
 #include "navigation_diagnostics_sink.hpp"
 #include "production_mppi_node_configuration.hpp"
 #include "route_activation_coordinator_3d.hpp"
@@ -638,7 +639,7 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
   mission_waypoint_capture_gate_ = std::make_unique<MissionWaypointCaptureGate>(
       mission_waypoint_capture_gate_config_);
   planning_worker_pool_ = std::make_unique<BoundedWorkerPool>(planner_worker_count_);
-  engine_ = std::make_unique<mppi::MppiCudaEngine>(mppi_config_);
+  mppi_controller_ = std::make_unique<MppiController3D>(mppi_config_);
   StaticWorldResources3D static_world_resources;
   if (use_static_map_) {
     const auto package_share = std::filesystem::path{

@@ -62,15 +62,14 @@ class Stage6WorldGenerationContractTest(unittest.TestCase):
         world = (SOURCE / "production_mppi_route_world.cpp").read_text(
             encoding="utf-8"
         )
-        generation = (SOURCE / "production_mppi_node_world_generation.cpp").read_text(
-            encoding="utf-8"
-        )
+        controller_adapter = (
+            SOURCE / "production_mppi_node_planning_controller.cpp"
+        ).read_text(encoding="utf-8")
 
         self.assertIn("generation.gpu_esdf_revision != world.revision", world)
         self.assertNotIn("topological_graph", world)
         self.assertIn("owner->version().base_snapshot_revision", world)
-        self.assertIn("sameSnapshot", generation)
-        self.assertIn("action=retry_next_tick", generation)
+        self.assertIn("action=retry_next_tick", controller_adapter)
 
     def test_lane_and_generation_backpressure_are_diagnostic(self) -> None:
         diagnostics = (SOURCE / "production_mppi_node_summary.cpp").read_text(

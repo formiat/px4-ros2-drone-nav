@@ -9,7 +9,9 @@
 #include <limits>
 #include <memory>
 #include <span>
+#include <utility>
 
+#include "mppi_controller_3d.hpp"
 #include "production_mppi_node.hpp"
 #include "production_mppi_node_planning_tick_context.hpp"
 #include "production_mppi_node_planning_tick_finalize.hpp"
@@ -20,7 +22,7 @@
 namespace drone_city_nav {
 
 void ProductionMppiNode::planningTick() {
-  if (!engine_) {
+  if (!mppi_controller_) {
     return;
   }
   const std::int64_t tick_entry_ns = get_clock()->now().nanoseconds();
@@ -234,7 +236,7 @@ void ProductionMppiNode::planningTick() {
   if (!worldGenerationAvailableForPlanning(*world, now_ns)) {
     return;
   }
-  if (!engine_->ready()) {
+  if (!mppi_controller_->ready()) {
     publishFailClosedExecutionRevocation(
         ProductionMppiExecutionReason::kNoExecutableHorizon, now_ns);
     return;
@@ -397,7 +399,7 @@ void ProductionMppiNode::planningTick() {
   const std::shared_ptr<const std::vector<RouteSample3D>> execution_route =
       route_geometry != nullptr ? route_geometry->route : nullptr;
   const std::shared_ptr<const std::vector<mppi::RouteSample3D>> execution_mppi_route =
-      trajectory_reference_adapter_.adapt(route_geometry);
+      mppi_controller_->adaptTrajectoryReference(route_geometry);
   const std::shared_ptr<const std::vector<ConstrainedRouteSpan>>
       execution_constrained_spans =
           route_geometry != nullptr ? route_geometry->constrained_spans : nullptr;
@@ -783,15 +785,6 @@ void ProductionMppiNode::planningTick() {
   } else {
     direct_tracking_maneuver = direct_tracking_maneuver_lifecycle_.update({});
   }
-  const MppiNominalReseedUpdate nominal_reseed =
-      nominal_reseed_tracker_.update(MppiNominalReseedObservation{
-          .route_generation = direct_tracking_interception ? effective_route_generation
-                                                           : route_generation,
-          .local_liveness_generation = liveness.reseed_generation,
-          .route_liveness_generation = route_progress.local_reseed_generation,
-          .direct_tracking_maneuver_generation =
-              direct_tracking_maneuver.reseed_generation,
-      });
   const EsdfQueryResult current_clearance =
       queryConservativeEsdf3D(world->grid, *world->distances_m, navigation.state.x,
                               navigation.state.y, navigation.state.z);
@@ -820,7 +813,7 @@ void ProductionMppiNode::planningTick() {
       planningDeterministicCandidate(direct_tracking_interception, planning_state,
                                      route_usable, route_projection.valid,
                                      route_control.hold_xy);
-  mppi::MppiTickInput input{
+  mppi::MppiTickInput controller_input{
       .initial_state = execution_input->state(),
       .target = target,
       .pose_revision = execution_input->poseRevision(),
@@ -829,7 +822,6 @@ void ProductionMppiNode::planningTick() {
       .expected_esdf_revision = world->local_world_generation.gpu_esdf_revision,
       .planning_stamp_ns = now_ns,
       .previous_applied_control = execution_input->previousControl(),
-      .nominal_reseed_generation = nominal_reseed.generation,
       .reference_speed_mps = speed_policy.enabled
                                  ? static_cast<float>(speed_policy.reference_speed_mps)
                                  : -1.0F,
@@ -870,22 +862,42 @@ void ProductionMppiNode::planningTick() {
   const double snapshot_ms = std::chrono::duration<double, std::milli>(
                                  std::chrono::steady_clock::now() - snapshot_started)
                                  .count();
-  std::optional<ProductionMppiControllerTickResult> controller_tick =
+  std::optional<MppiControllerResult3D> controller_tick =
       runPlanningController(ProductionMppiControllerTick{
           .world = *world,
-          .input = input,
-          .nominal_reseed = nominal_reseed,
-          .target = target,
-          .snapshot_started = snapshot_started,
+          .request =
+              MppiControllerRequest3D{
+                  .input = std::move(controller_input),
+                  .nominal_reseed =
+                      MppiNominalReseedObservation{
+                          .route_generation = direct_tracking_interception
+                                                  ? effective_route_generation
+                                                  : route_generation,
+                          .local_liveness_generation = liveness.reseed_generation,
+                          .route_liveness_generation =
+                              route_progress.local_reseed_generation,
+                          .direct_tracking_maneuver_generation =
+                              direct_tracking_maneuver.reseed_generation,
+                      },
+                  .tick_started = snapshot_started,
+                  .world_revision = world->revision,
+                  .mode =
+                      planning_state == ProductionMppiPlanningState::
+                                            kMissionGoalPositionHold ||
+                              planning_state ==
+                                  ProductionMppiPlanningState::kNoExecutableRouteHold
+                          ? MppiControllerMode3D::kStationaryHold
+                          : MppiControllerMode3D::kPlan,
+              },
           .route_generation = route_generation,
           .now_ns = now_ns,
           .route_cross_track_m = route_projection.cross_track_m,
-          .planning_state = planning_state,
           .direct_tracking_interception = direct_tracking_interception,
       });
   if (!controller_tick.has_value()) {
     return;
   }
+  mppi::MppiTickInput& input = controller_tick->input;
   mppi::MppiTickResult& result = controller_tick->result;
   const MppiEligibleRolloutUpdate& no_eligible_recovery =
       controller_tick->no_eligible_recovery;

@@ -16,9 +16,7 @@
 #include "drone_city_nav/mission_waypoint_sequence.hpp"
 #include "drone_city_nav/mppi/finite_execution_path.hpp"
 #include "drone_city_nav/mppi/mppi_engine.hpp"
-#include "drone_city_nav/mppi/trajectory_reference_adapter_3d.hpp"
 #include "drone_city_nav/mppi_liveness.hpp"
-#include "drone_city_nav/mppi_nominal_reseed.hpp"
 #include "drone_city_nav/mppi_rollout_budget.hpp"
 #include "drone_city_nav/mppi_speed_policy.hpp"
 #include "drone_city_nav/msg/cooperative_maneuver_command.hpp"
@@ -94,12 +92,13 @@ namespace drone_city_nav {
 
 struct ProductionMppiPlanningTickFinalization;
 struct ProductionMppiControllerTick;
-struct ProductionMppiControllerTickResult;
+struct MppiControllerResult3D;
 struct ProductionMppiDiagnosticsSnapshot;
 struct PreparedRouteActivation3D;
 struct ProductionRouteActivationSnapshot3D;
 class RouteActivationCoordinator3D;
 class RouteMaterializer3D;
+class MppiController3D;
 struct ProductionMppiExecutionCycle;
 struct ProductionMppiHorizonCommit;
 struct ObservedWorldBuildRequest3D;
@@ -254,12 +253,9 @@ private:
   void planningTick();
   [[nodiscard]] bool worldGenerationAvailableForPlanning(const WorldSnapshot3D& world,
                                                          std::int64_t now_ns);
-  [[nodiscard]] std::optional<mppi::MppiTickResult>
-  planOnCapturedWorldGeneration(const WorldSnapshot3D& world,
-                                const mppi::MppiTickInput& input);
   void finalizePlanningTick(const ProductionMppiPlanningTickFinalization& finalization);
-  [[nodiscard]] std::optional<ProductionMppiControllerTickResult>
-  runPlanningController(const ProductionMppiControllerTick& tick);
+  [[nodiscard]] std::optional<MppiControllerResult3D>
+  runPlanningController(ProductionMppiControllerTick tick);
   void processDiagnostics(const ProductionMppiDiagnosticsSnapshot& snapshot);
   void logDiagnosticsEvents(const ProductionMppiDiagnosticsSnapshot& snapshot,
                             const ConstrainedRouteObservation& route_constraint);
@@ -413,7 +409,6 @@ private:
   bool route_stall_recovery_enabled_{false};
   std::unique_ptr<MppiLivenessSupervisor> liveness_supervisor_;
   std::unique_ptr<NavigationHealthSupervisor> navigation_health_supervisor_;
-  MppiNominalReseedTracker nominal_reseed_tracker_{};
   std::unique_ptr<RouteProgressTracker3D> route_progress_tracker_;
   std::unique_ptr<MissionGoalCaptureLatch> mission_goal_capture_latch_;
   std::unique_ptr<MissionWaypointSequence> mission_waypoint_sequence_;
@@ -442,8 +437,7 @@ private:
   std::unique_ptr<RouteMaterializer3D> route_materializer_;
   std::unique_ptr<RouteActivationCoordinator3D> route_activation_coordinator_;
   std::unique_ptr<RoutePlanningCoordinator3D> route_planning_coordinator_;
-  std::unique_ptr<mppi::MppiCudaEngine> engine_;
-  mppi::TrajectoryReferenceAdapter3D trajectory_reference_adapter_;
+  std::unique_ptr<MppiController3D> mppi_controller_;
   std::mutex static_route_extension_mutex_;
   bool static_route_extension_request_in_flight_{false};
   std::uint64_t static_route_extension_in_flight_generation_{0U};
