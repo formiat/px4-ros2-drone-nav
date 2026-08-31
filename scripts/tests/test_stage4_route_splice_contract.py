@@ -51,8 +51,12 @@ class Stage4RouteSpliceContractTest(unittest.TestCase):
         transitions = (
             SOURCE / "execution_route_snapshot_3d_transitions.cpp"
         ).read_text(encoding="utf-8")
-        activation = (SOURCE / "route_activation_coordinator_3d.cpp").read_text(
-            encoding="utf-8"
+        activation = "".join(
+            path.read_text(encoding="utf-8")
+            for path in (
+                SOURCE / "route_activation_coordinator_3d.cpp",
+                SOURCE / "route_activation_preparation_3d.cpp",
+            )
         )
 
         self.assertIn("std::optional<CertifiedRouteSplice3D> route_splice", pending_header)
@@ -65,8 +69,10 @@ class Stage4RouteSpliceContractTest(unittest.TestCase):
         self.assertIn("const CertifiedRouteSplice3D& splice", replacement)
         self.assertIn("assessRouteSpliceReadiness3D", replacement)
         self.assertIn("certifyRouteSplice3D", activation)
+        self.assertIn(".route_splice =", activation)
         self.assertIn(
-            ".route_splice = overlap_search ? report.splice.splice", activation
+            "state.overlap_search ? report.splice.splice : std::nullopt",
+            activation,
         )
 
     def test_runtime_waits_for_the_proof_window_and_keeps_pending_on_cas_loss(self) -> None:
@@ -75,7 +81,8 @@ class Stage4RouteSpliceContractTest(unittest.TestCase):
         )
         self.assertIn("assessRouteSpliceReadiness3D", execution)
         self.assertIn("routeSpliceWindowExpired3D", execution)
-        self.assertIn('"retain_active_route"', execution)
+        self.assertIn("execution_supervisor_.acknowledgePendingIfSame", execution)
+        self.assertIn("result.pending_route = execution_supervisor_.pending()", execution)
 
     def test_extension_and_roi_refresh_are_bound_to_execution_authority(self) -> None:
         planning = (SOURCE / "production_mppi_node_planning_tick.cpp").read_text(

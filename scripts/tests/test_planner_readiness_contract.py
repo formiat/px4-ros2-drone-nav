@@ -23,6 +23,7 @@ PLANNING_TICK_REARM = SOURCE / "production_mppi_node_planning_tick_rearm.cpp"
 PLANNING_TICK_FINALIZE = SOURCE / "production_mppi_node_planning_tick_finalize.cpp"
 STATIC_EXTENSION = SOURCE / "production_mppi_node_static_extension.cpp"
 EXECUTION = SOURCE / "production_mppi_node_execution.cpp"
+EXECUTION_ASSEMBLER = SOURCE / "execution_horizon_assembler_3d.cpp"
 EXECUTION_PUBLICATION = SOURCE / "production_mppi_node_execution_publication.cpp"
 EXECUTION_HOLDS = SOURCE / "production_mppi_node_execution_holds.cpp"
 EXECUTION_RETENTION = SOURCE / "production_mppi_node_execution_retention.cpp"
@@ -87,6 +88,7 @@ def read_execution_sources() -> str:
         path.read_text(encoding="utf-8")
         for path in (
             EXECUTION,
+            EXECUTION_ASSEMBLER,
             EXECUTION_PUBLICATION,
             EXECUTION_HOLDS,
             EXECUTION_RETENTION,
@@ -212,20 +214,6 @@ class PlannerReadinessContractTest(unittest.TestCase):
             planner,
             r"stationary_hold_validity_ns_\s*=\s*durationNanoseconds\(",
         )
-        hold_publication = execution.split(
-            "ProductionMppiNode::publishPositionHold", maxsplit=1
-        )[1].split("ProductionMppiNode::publishNoExecutablePathHold", maxsplit=1)[0]
-        hold_overflow_guard = hold_publication.index(
-            "std::numeric_limits<std::int64_t>::max() / 2"
-        )
-        hold_interval_double = hold_publication.index(
-            "2 * cycle.finite_path_control_interval_ns"
-        )
-        hold_canonical_end = hold_publication.index(
-            "canonicalHorizonEndTime(cycle.now_ns,"
-        )
-        self.assertLess(hold_overflow_guard, hold_interval_double)
-        self.assertLess(hold_interval_double, hold_canonical_end)
         self.assertIn(
             "committed_valid_until_ns = committed_finite->valid_until_ns", execution
         )
@@ -750,9 +738,11 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self.assertNotIn("offboard_session_admission_", target_selection)
         self.assertIn("assessOffboardSessionPublicationCurrentness", owner_commit)
         self.assertIn("offboard_session_admission_", owner_commit)
-        self.assertIn("cycle.offboard_session", owner_commit)
+        self.assertIn("cycle.evidence.offboard_session", owner_commit)
         self.assertIn("offboard_session_receive_stamp_ns_", owner_commit)
-        self.assertIn("cycle.offboard_session_receive_stamp_ns", owner_commit)
+        self.assertIn(
+            "cycle.evidence.offboard_session_receive_stamp_ns", owner_commit
+        )
 
         self.assertIn("MissionWaypointCaptureGate", planner_mission)
         self.assertIn("navigation.state.vz", planner_mission)

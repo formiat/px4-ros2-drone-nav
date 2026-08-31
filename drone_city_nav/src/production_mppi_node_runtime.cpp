@@ -7,6 +7,7 @@
 #include <span>
 #include <utility>
 
+#include "execution_horizon_assembler_3d.hpp"
 #include "mppi_controller_3d.hpp"
 #include "navigation_diagnostics_sink.hpp"
 #include "production_mppi_node.hpp"

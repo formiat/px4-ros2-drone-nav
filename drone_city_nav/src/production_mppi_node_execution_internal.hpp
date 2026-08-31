@@ -7,6 +7,7 @@
 #include <optional>
 #include <span>
 
+#include "execution_horizon_assembler_3d.hpp"
 #include "production_mppi_node.hpp"
 
 namespace drone_city_nav {
@@ -15,48 +16,6 @@ enum class ProductionMppiHorizonCommitStatus : std::uint8_t {
   kPublished,
   kDeferredResidentOwner,
   kRejected,
-};
-
-struct ProductionMppiExecutionCycle {
-  const mppi::MppiTickInput& input;
-  const mppi::MppiTickResult& result;
-  const WorldSnapshot3D& world;
-  const ProductionRouteExecutionSelection3D& route_execution;
-  const std::shared_ptr<const ProductionNavigationObjective>& objective;
-  const std::shared_ptr<const VersionedExecutionInput3D>& execution_input;
-  const std::shared_ptr<const VersionedLatestLidarEvidence3D>& latest_lidar_evidence;
-  OffboardSessionAdmissionState offboard_session{};
-  std::int64_t offboard_session_receive_stamp_ns{0};
-  ProductionMppiPlanningState planning_state;
-  std::int64_t now_ns;
-  ProductionMppiExecutionPublication& publication;
-  const mppi::State& exact_initial_state;
-  const mppi::Control& exact_previous_control;
-  std::uint64_t target_offboard_instance_id;
-  std::int64_t lidar_validation_now_ns;
-  const Point3& mission_goal;
-  bool direct_tracking_requested;
-  const CertifiedRouteSuffix3D* selected_snapshot_route;
-  const std::shared_ptr<const VersionedObservedRawWorld3D>& direct_observed_world;
-  const std::shared_ptr<const VersionedStaticWorld3D>& direct_static_world;
-  std::shared_ptr<const VersionedExecutionValidationPolicy3D> selected_policy;
-  double latest_lidar_obstacle_age_ms;
-  bool latest_lidar_obstacle_fresh;
-  bool latest_lidar_obstacle_receive_time_fallback;
-  std::span<const Point3> latest_lidar_obstacle_points;
-  std::uint64_t latest_lidar_obstacle_sequence;
-  bool exact_snapshot_world;
-  bool publication_route_constrained;
-  const std::optional<mppi::FiniteExecutionPathTerminalBoundary>&
-      route_terminal_boundary;
-  const FlightEnvelopeConfig* execution_flight_envelope;
-  const mppi::DynamicsConfig* execution_dynamics;
-  const mppi::AltitudeEnvelopeConfig* execution_altitude_envelope;
-  const SweptFootprintConfig* execution_footprint;
-  const mppi::FiniteExecutionPathWorld& execution_path_world;
-  std::size_t arrival_search_step_controls;
-  std::int64_t finite_path_control_interval_ns;
-  std::uint64_t latest_obstacle_revision;
 };
 
 namespace production_mppi_execution_detail {

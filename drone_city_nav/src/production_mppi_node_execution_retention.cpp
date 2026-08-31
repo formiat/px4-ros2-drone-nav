@@ -13,19 +13,19 @@ std::optional<ProductionMppiExecutionPublication>
 ProductionMppiNode::retainActiveFinitePath(
     const ProductionMppiExecutionCycle& cycle,
     const ProductionMppiExecutionReason replacement_failure_reason) {
-  const ProductionRouteExecutionSelection3D& route_execution = cycle.route_execution;
+  const ProductionRouteExecutionSelection3D& route_execution = cycle.route.execution;
   const ExecutionRetentionResult3D prepared =
       execution_supervisor_.prepareRetention(ExecutionRetentionRequest3D{
           .lifecycle_source_plan = route_execution.source_snapshot,
           .lifecycle_event = route_execution.lifecycle_event,
           .lifecycle_observed_raw_world = route_execution.lifecycle_observed_raw_world,
-          .execution_input = cycle.execution_input,
-          .latest_lidar_evidence = cycle.latest_lidar_evidence,
-          .exact_initial_state = cycle.exact_initial_state,
-          .exact_previous_control = cycle.exact_previous_control,
+          .execution_input = cycle.evidence.execution_input,
+          .latest_lidar_evidence = cycle.evidence.latest_lidar_evidence,
+          .exact_initial_state = cycle.evidence.exact_initial_state,
+          .exact_previous_control = cycle.evidence.exact_previous_control,
           .finite_horizon_config = finite_horizon_config_,
-          .now_ns = cycle.now_ns,
-          .lidar_validation_now_ns = cycle.lidar_validation_now_ns,
+          .now_ns = cycle.controller.now_ns,
+          .lidar_validation_now_ns = cycle.evidence.lidar_validation_now_ns,
       });
   const std::shared_ptr<const ExecutionPlan3D> expected = prepared.expectedPlan();
   const std::uint64_t expected_version = expected != nullptr ? expected->version : 0U;
@@ -123,7 +123,7 @@ ProductionMppiNode::retainActiveFinitePath(
   }
   if (!production_mppi_execution_detail::appendFiniteExecutionPoints(
           horizon, retained_horizon->states, retained_horizon->controls,
-          cycle.exact_previous_control, retained_control_interval_ns)) {
+          cycle.evidence.exact_previous_control, retained_control_interval_ns)) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
                          "EXECUTION_RETENTION prepared=false kind=%s "
                          "stage=horizon_encoding_rejected snapshot_version=%" PRIu64,
@@ -155,12 +155,14 @@ ProductionMppiNode::retainActiveFinitePath(
   retained.arrival_shaping_attempts = prepared.arrival_shaping_attempts;
   retained.first_control = reported_horizon.controls.front();
   retained.first_control_available = true;
-  retained.latest_lidar_obstacle_sequence = cycle.latest_lidar_evidence->sequence();
-  retained.latest_lidar_obstacle_hit_count = cycle.latest_lidar_obstacle_points.size();
-  retained.latest_lidar_obstacle_age_ms = cycle.latest_lidar_obstacle_age_ms;
-  retained.latest_lidar_obstacle_fresh = cycle.latest_lidar_obstacle_fresh;
+  retained.latest_lidar_obstacle_sequence =
+      cycle.evidence.latest_lidar_evidence->sequence();
+  retained.latest_lidar_obstacle_hit_count =
+      cycle.evidence.latest_lidar_obstacle_points.size();
+  retained.latest_lidar_obstacle_age_ms = cycle.evidence.latest_lidar_obstacle_age_ms;
+  retained.latest_lidar_obstacle_fresh = cycle.evidence.latest_lidar_obstacle_fresh;
   retained.latest_lidar_obstacle_receive_time_fallback =
-      cycle.latest_lidar_obstacle_receive_time_fallback;
+      cycle.evidence.latest_lidar_obstacle_receive_time_fallback;
   retained.retained_previous_finite_path = true;
   retained.resident_owner_continues = !published;
   retained.terminal_rest_state = true;

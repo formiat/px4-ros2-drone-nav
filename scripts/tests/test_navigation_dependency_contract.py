@@ -38,9 +38,21 @@ CONTROLLER_NEUTRAL_HEADERS = (
 EXECUTION_HEADERS = tuple(sorted(INCLUDE.glob("execution*.hpp"))) + (
     INCLUDE / "committed_execution_authority_3d.hpp",
 )
-EXECUTION_IMPLEMENTATION = tuple(sorted(SOURCE.glob("execution*.cpp"))) + tuple(
-    sorted(SOURCE.glob("execution*.hpp"))
-) + (SOURCE / "committed_execution_authority_3d.cpp",)
+# This ROS-free use case is intentionally the MPPI-side adapter that turns a
+# controller result into neutral execution-plan transitions.
+MPPI_EXECUTION_ADAPTERS = {
+    SOURCE / "execution_horizon_assembler_3d.cpp",
+    SOURCE / "execution_horizon_assembler_3d.hpp",
+}
+EXECUTION_IMPLEMENTATION = tuple(
+    path
+    for path in (
+        *sorted(SOURCE.glob("execution*.cpp")),
+        *sorted(SOURCE.glob("execution*.hpp")),
+        SOURCE / "committed_execution_authority_3d.cpp",
+    )
+    if path not in MPPI_EXECUTION_ADAPTERS
+)
 
 
 class NavigationDependencyContractTest(unittest.TestCase):

@@ -6,6 +6,7 @@
 #include <string>
 #include <utility>
 
+#include "execution_horizon_assembler_3d.hpp"
 #include "mppi_controller_3d.hpp"
 #include "navigation_diagnostics_sink.hpp"
 #include "production_mppi_node.hpp"
@@ -226,6 +227,12 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
               optional_constraints_.route_cross_track_constraints_enabled,
           .route_tracking_tube_constraints_enabled =
               optional_constraints_.route_tracking_tube_constraints_enabled,
+      });
+  execution_horizon_assembler_ =
+      std::make_unique<ExecutionHorizonAssembler3D>(ExecutionHorizonAssemblerConfig3D{
+          .flight_envelope = flight_envelope_config_,
+          .finite_horizon = finite_horizon_config_,
+          .direct_tracking_validation_policy = execution_validation_policy_,
       });
   route_planning_coordinator_ =
       std::make_unique<RoutePlanningCoordinator3D>(RoutePlanningCoordinatorConfig3D{

@@ -174,24 +174,25 @@ ProductionMppiNode::makeExecutionHorizon(const ProductionMppiExecutionCycle& cyc
   horizon.header.stamp = now();
   horizon.header.frame_id = frame_id_;
   horizon.producer_instance_id = execution_horizon_producer_instance_id_;
-  horizon.target_offboard_instance_id = cycle.target_offboard_instance_id;
+  horizon.target_offboard_instance_id = cycle.evidence.target_offboard_instance_id;
   if (execution_horizon_sequence_ != std::numeric_limits<std::uint64_t>::max()) {
     horizon.sequence = ++execution_horizon_sequence_;
   }
   horizon.valid_from =
-      production_mppi_execution_detail::timeFromNanoseconds(cycle.now_ns);
+      production_mppi_execution_detail::timeFromNanoseconds(cycle.controller.now_ns);
   horizon.valid_until =
       production_mppi_execution_detail::timeFromNanoseconds(valid_until_ns);
-  horizon.control_interval_ns = cycle.finite_path_control_interval_ns;
-  horizon.pose_revision = cycle.input.pose_revision;
-  horizon.obstacle_revision = cycle.latest_obstacle_revision;
-  horizon.risk_tier = static_cast<std::uint8_t>(cycle.result.selected_tier);
+  horizon.control_interval_ns = cycle.controller.finite_path_control_interval_ns;
+  horizon.pose_revision = cycle.controller.inputRef().pose_revision;
+  horizon.obstacle_revision = cycle.controller.latest_obstacle_revision;
+  horizon.risk_tier =
+      static_cast<std::uint8_t>(cycle.controller.resultRef().selected_tier);
   horizon.execution_mode = static_cast<std::uint8_t>(mode);
   horizon.execution_reason = static_cast<std::uint8_t>(reason);
-  horizon.route_target.x = cycle.input.target.x;
-  horizon.route_target.y = cycle.input.target.y;
-  horizon.route_target.z = cycle.input.target.z;
-  horizon.route_constrained = cycle.publication_route_constrained;
+  horizon.route_target.x = cycle.controller.inputRef().target.x;
+  horizon.route_target.y = cycle.controller.inputRef().target.y;
+  horizon.route_target.z = cycle.controller.inputRef().target.z;
+  horizon.route_constrained = cycle.route.publication_route_constrained;
   return horizon;
 }
 
@@ -208,7 +209,7 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
 
   msg::MppiTrajectoryHorizon publication_horizon = horizon;
   std::shared_ptr<const VersionedExecutionInput3D> publication_execution_input =
-      cycle.execution_input;
+      cycle.evidence.execution_input;
   std::optional<ExecutionRouteTransitionResult3D> rebased_transition;
   if (publication_execution_input == nullptr || !publication_execution_input->valid() ||
       assessExecutionHorizonPayload(publication_horizon,
@@ -270,7 +271,8 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
   const OffboardSessionPublicationCurrentnessStatus offboard_currentness =
       assessOffboardSessionPublicationCurrentness(
           offboard_session_admission_, offboard_session_receive_stamp_ns_,
-          cycle.offboard_session, cycle.offboard_session_receive_stamp_ns,
+          cycle.evidence.offboard_session,
+          cycle.evidence.offboard_session_receive_stamp_ns,
           owner.target_offboard_instance_id, publication_now_ns,
           maximum_control_feedback_age_ms_);
   const bool navigation_advanced =
@@ -361,16 +363,18 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
                   .candidate_snapshot = candidate.transition->next.get(),
                   .expected_pending = candidate.expected_pending.get(),
                   .lifecycle_event =
-                      cycle.route_execution.lifecycle_event.has_value()
-                          ? std::addressof(*cycle.route_execution.lifecycle_event)
+                      cycle.route.execution.lifecycle_event.has_value()
+                          ? std::addressof(*cycle.route.execution.lifecycle_event)
                           : nullptr,
                   .current_execution_input = current_input,
                   .current_lidar_evidence = current_lidar,
                   .current_observed_raw_world = current_raw,
                   .publication_now_ns = publication_now_ns,
-                  .arrival_search_step_controls = cycle.arrival_search_step_controls,
+                  .arrival_search_step_controls =
+                      cycle.controller.arrival_search_step_controls,
                   .finite_horizon_config = &finite_horizon_config_,
-                  .terminal_boundary = cycle.execution_path_world.terminal_boundary,
+                  .terminal_boundary =
+                      cycle.evidence.execution_path_world.terminal_boundary,
               });
       late_rebase_source_control_index = rebase.source_control_index;
       if (!rebase.rebased() || !rebase.transition.has_value() ||
@@ -493,7 +497,7 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
         "EXECUTION_HORIZON_COMMIT late_rebase=true source_pose_revision=%" PRIu64
         " publication_pose_revision=%" PRIu64
         " source_control_index=%zu control_evidence_advanced=%s",
-        cycle.execution_input->poseRevision(),
+        cycle.evidence.execution_input->poseRevision(),
         publication_execution_input->poseRevision(), late_rebase_source_control_index,
         previous_control_evidence_current ? "false" : "true");
   }
@@ -518,7 +522,7 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
                       handled_execution_revocation_request_,
                   .objective_current =
                       navigation_objective_.load(std::memory_order_acquire) ==
-                      cycle.objective,
+                      cycle.evidence.objective,
                   .navigation_authoritative = navigation_.valid,
                   .offboard_session_currentness = offboard_currentness,
               },
@@ -601,7 +605,7 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitExecutionSnapshotHor
           .expected_pending = expected_pending,
           .owner = {},
           .expected_horizon_producer_instance_id = 0U,
-          .execution_input = cycle.execution_input,
+          .execution_input = cycle.evidence.execution_input,
           .stationary_capture_rearm_intent = false,
       });
 }

@@ -30,7 +30,7 @@ failClosedExecutionReason(const ProductionMppiExecutionReason reason) noexcept {
 ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
     const ProductionMppiExecutionCycle& cycle, const Point3& hold_position,
     const ProductionMppiExecutionReason reason, const ExecutionHoldIntent3D intent) {
-  ProductionMppiExecutionPublication& publication = cycle.publication;
+  ProductionMppiExecutionPublication& publication = cycle.publicationRef();
   const std::scoped_lock evidence_lock{execution_evidence_commit_mutex_,
                                        latest_lidar_evidence_commit_mutex_};
   const WorldPipelineInputSnapshot3D world_input = world_pipeline_->inputSnapshot();
@@ -44,22 +44,23 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
       execution_supervisor_.prepareHold(ExecutionHoldRequest3D{
           .intent = intent,
           .requested_position = hold_position,
-          .cycle_source_plan = cycle.route_execution.source_snapshot,
-          .execution_input = cycle.execution_input,
-          .latest_lidar_evidence = cycle.latest_lidar_evidence,
+          .cycle_source_plan = cycle.route.execution.source_snapshot,
+          .execution_input = cycle.evidence.execution_input,
+          .latest_lidar_evidence = cycle.evidence.latest_lidar_evidence,
           .current_lidar_evidence = current_lidar,
           .current_observed_raw_world = current_observed_raw_world,
-          .stationary_capture_observed_raw_world = cycle.direct_observed_world,
-          .stationary_capture_static_world = cycle.direct_static_world,
-          .selected_validation_policy = cycle.selected_policy,
+          .stationary_capture_observed_raw_world = cycle.evidence.direct_observed_world,
+          .stationary_capture_static_world = cycle.evidence.direct_static_world,
+          .selected_validation_policy = cycle.evidence.selected_policy,
           .stationary_capture_validation_policy = execution_validation_policy_,
-          .validation_now_ns = cycle.lidar_validation_now_ns,
+          .validation_now_ns = cycle.evidence.lidar_validation_now_ns,
           .raw_world_identity_conflicted = world_input.raw_world_identity_conflicted,
           .latest_lidar_identity_conflicted =
               latest_lidar_evidence_identity_conflicted_.load(
                   std::memory_order_acquire),
       });
-  if (!prepared.prepared() || prepared.executionInput() != cycle.execution_input) {
+  if (!prepared.prepared() ||
+      prepared.executionInput() != cycle.evidence.execution_input) {
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "EXECUTION_HOLD prepared=false stage=%s kind=%s transition=%.*s",
@@ -78,8 +79,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
                  owned_hold_position.z);
     return publication;
   }
-  if (cycle.finite_path_control_interval_ns <= 0 ||
-      cycle.finite_path_control_interval_ns >
+  if (cycle.controller.finite_path_control_interval_ns <= 0 ||
+      cycle.controller.finite_path_control_interval_ns >
           std::numeric_limits<std::int64_t>::max() / 2) {
     return publication;
   }
@@ -87,10 +88,10 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
       reason == ProductionMppiExecutionReason::kGoalCapture
           ? mission_goal_capture_hold_validity_ns_
           : stationary_hold_validity_ns_;
-  const std::int64_t hold_duration_ns =
-      std::max(requested_hold_duration_ns, 2 * cycle.finite_path_control_interval_ns);
+  const std::int64_t hold_duration_ns = std::max(
+      requested_hold_duration_ns, 2 * cycle.controller.finite_path_control_interval_ns);
   const std::optional<std::int64_t> hold_valid_until_ns =
-      production_mppi_execution_detail::canonicalHorizonEndTime(cycle.now_ns,
+      production_mppi_execution_detail::canonicalHorizonEndTime(cycle.controller.now_ns,
                                                                 hold_duration_ns);
   if (!hold_valid_until_ns.has_value()) {
     return publication;
@@ -103,10 +104,10 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
   horizon.stationary_hold_position.z = owned_hold_position.z;
   horizon.points.reserve(2U);
   production_mppi_execution_detail::appendStationaryHoldPoint(
-      horizon, owned_hold_position, 0, cycle.exact_initial_state.yaw);
+      horizon, owned_hold_position, 0, cycle.evidence.exact_initial_state.yaw);
   production_mppi_execution_detail::appendStationaryHoldPoint(
-      horizon, owned_hold_position, cycle.finite_path_control_interval_ns,
-      cycle.exact_initial_state.yaw);
+      horizon, owned_hold_position, cycle.controller.finite_path_control_interval_ns,
+      cycle.evidence.exact_initial_state.yaw);
 
   ExecutionHorizonLeaseCandidate3D candidate;
   const std::shared_ptr<const ExecutionPlan3D> hold_expected = prepared.expectedPlan();
@@ -135,21 +136,23 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
       mppi::State{.x = static_cast<float>(owned_hold_position.x),
                   .y = static_cast<float>(owned_hold_position.y),
                   .z = static_cast<float>(owned_hold_position.z),
-                  .yaw = cycle.exact_initial_state.yaw},
+                  .yaw = cycle.evidence.exact_initial_state.yaw},
       mppi::State{.x = static_cast<float>(owned_hold_position.x),
                   .y = static_cast<float>(owned_hold_position.y),
                   .z = static_cast<float>(owned_hold_position.z),
-                  .yaw = cycle.exact_initial_state.yaw},
+                  .yaw = cycle.evidence.exact_initial_state.yaw},
   };
   publication.mode = ProductionMppiExecutionMode::kPositionHold;
   publication.reason = reason;
-  publication.latest_lidar_obstacle_sequence = cycle.latest_lidar_obstacle_sequence;
+  publication.latest_lidar_obstacle_sequence =
+      cycle.evidence.latest_lidar_obstacle_sequence;
   publication.latest_lidar_obstacle_hit_count =
-      cycle.latest_lidar_obstacle_points.size();
-  publication.latest_lidar_obstacle_age_ms = cycle.latest_lidar_obstacle_age_ms;
-  publication.latest_lidar_obstacle_fresh = cycle.latest_lidar_obstacle_fresh;
+      cycle.evidence.latest_lidar_obstacle_points.size();
+  publication.latest_lidar_obstacle_age_ms =
+      cycle.evidence.latest_lidar_obstacle_age_ms;
+  publication.latest_lidar_obstacle_fresh = cycle.evidence.latest_lidar_obstacle_fresh;
   publication.latest_lidar_obstacle_receive_time_fallback =
-      cycle.latest_lidar_obstacle_receive_time_fallback;
+      cycle.evidence.latest_lidar_obstacle_receive_time_fallback;
   publication.published = true;
   return publication;
 }
@@ -157,10 +160,10 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
 ProductionMppiExecutionPublication ProductionMppiNode::publishNoExecutablePathHold(
     const ProductionMppiExecutionCycle& cycle,
     const ProductionMppiExecutionReason reason) {
-  if (cycle.route_execution.source_snapshot != nullptr &&
-      cycle.route_execution.source_snapshot->stationaryHold() != nullptr) {
+  if (cycle.route.execution.source_snapshot != nullptr &&
+      cycle.route.execution.source_snapshot->stationaryHold() != nullptr) {
     ProductionMppiExecutionPublication hold = publishPositionHold(
-        cycle, cycle.route_execution.source_snapshot->stationaryHold()->position,
+        cycle, cycle.route.execution.source_snapshot->stationaryHold()->position,
         reason, ExecutionHoldIntent3D::kRefreshResident);
     if (hold.published) {
       return hold;
@@ -172,13 +175,14 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishNoExecutablePathHo
     return *retained;
   }
   const bool physical_route_invalidation =
-      cycle.route_execution.physical_trajectory_invalidated ||
-      (cycle.route_execution.lifecycle_event.has_value() &&
-       (cycle.route_execution.lifecycle_event->kind ==
+      cycle.route.execution.physical_trajectory_invalidated ||
+      (cycle.route.execution.lifecycle_event.has_value() &&
+       (cycle.route.execution.lifecycle_event->kind ==
             RouteLifecycleEventKind3D::kRawInvalidated ||
-        cycle.route_execution.lifecycle_event->kind ==
+        cycle.route.execution.lifecycle_event->kind ==
             RouteLifecycleEventKind3D::kLatestLidarInvalidated));
-  return publishExecutionRevocation(reason, cycle.now_ns, physical_route_invalidation);
+  return publishExecutionRevocation(reason, cycle.controller.now_ns,
+                                    physical_route_invalidation);
 }
 
 ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionRevocation(
@@ -388,7 +392,7 @@ ProductionMppiNode::publishExplicitHold(const ProductionMppiExecutionCycle& cycl
                                         const ProductionMppiExecutionReason reason) {
   const ExecutionHoldIntent3D intent =
       reason == ProductionMppiExecutionReason::kGoalCapture &&
-              cycle.planning_state ==
+              cycle.route.planning_state ==
                   ProductionMppiPlanningState::kMissionGoalPositionHold
           ? ExecutionHoldIntent3D::kExplicitTransferWithStationaryCaptureRearm
           : ExecutionHoldIntent3D::kExplicitTransfer;

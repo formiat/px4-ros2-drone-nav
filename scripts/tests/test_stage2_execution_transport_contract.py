@@ -19,6 +19,7 @@ PLANNER_NODE = SOURCE / "production_mppi_node.cpp"
 PLANNER_HEADER = SOURCE / "production_mppi_node.hpp"
 PLANNER_MISSION = SOURCE / "production_mppi_node_mission.cpp"
 EXECUTION = SOURCE / "production_mppi_node_execution.cpp"
+EXECUTION_ASSEMBLER = SOURCE / "execution_horizon_assembler_3d.cpp"
 EXECUTION_PUBLICATION = SOURCE / "production_mppi_node_execution_publication.cpp"
 EXECUTION_HOLDS = SOURCE / "production_mppi_node_execution_holds.cpp"
 EXECUTION_RETENTION = SOURCE / "production_mppi_node_execution_retention.cpp"
@@ -33,6 +34,7 @@ EXECUTION_HORIZON_TEST = (
 )
 OPTIONAL_CONSTRAINTS = SOURCE / "production_mppi_node_optional_constraints.cpp"
 ROUTE_ACTIVATION = SOURCE / "route_activation_coordinator_3d.cpp"
+ROUTE_ACTIVATION_PREPARATION = SOURCE / "route_activation_preparation_3d.cpp"
 ROUTE_EXECUTION = SOURCE / "production_mppi_route_execution.cpp"
 CONTROL_FEEDBACK = SOURCE / "production_mppi_node_control_feedback.cpp"
 ROUTE_WORLD_TEST = PACKAGE / "tests" / "production_mppi_route_world_test.cpp"
@@ -58,7 +60,13 @@ MISSION_MONITOR = SOURCE / "mission_monitor_node.cpp"
 def read_execution_sources() -> str:
     return "\n".join(
         path.read_text(encoding="utf-8")
-        for path in (EXECUTION, EXECUTION_PUBLICATION, EXECUTION_HOLDS, EXECUTION_RETENTION)
+        for path in (
+            EXECUTION,
+            EXECUTION_ASSEMBLER,
+            EXECUTION_PUBLICATION,
+            EXECUTION_HOLDS,
+            EXECUTION_RETENTION,
+        )
     )
 
 
@@ -276,12 +284,15 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
             "deriveLatestObservedRouteEvidence", maxsplit=1
         )[1].split("observedRouteEvidenceIsCurrent", maxsplit=1)[0]
         self.assertIn("deriveRouteEvidence", evidence_derivation)
-        self.assertIn("rawWorldExecutionOwnerExact", evidence_derivation)
+        self.assertNotIn("rawWorldExecutionOwnerExact", evidence_derivation)
         self.assertIn("lifecycle_observed_raw_world", retention_adapter)
 
     def test_route_consumers_preserve_source_ownership(self) -> None:
         observed_consumers = {
-            "activation": ROUTE_ACTIVATION.read_text(encoding="utf-8"),
+            "activation": (
+                ROUTE_ACTIVATION.read_text(encoding="utf-8")
+                + ROUTE_ACTIVATION_PREPARATION.read_text(encoding="utf-8")
+            ),
             "execution": read_execution_sources(),
             "route_execution": ROUTE_EXECUTION.read_text(encoding="utf-8"),
         }
@@ -654,7 +665,7 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         self.assertIn("execution_horizon_producer_instance_id_", owner_commit)
         self.assertIn("owner.target_offboard_instance_id", owner_commit)
         self.assertIn("assessOffboardSessionPublicationCurrentness", owner_commit)
-        self.assertIn("cycle.offboard_session", owner_commit)
+        self.assertIn("cycle.evidence.offboard_session", owner_commit)
 
         snapshot_commit = execution_publication.split(
             "ProductionMppiNode::commitExecutionSnapshotHorizon", maxsplit=1
@@ -761,14 +772,6 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         self.assertLess(route_preparation, certification_snapshot)
         self.assertNotIn("execution_supervisor_.commitLease", route_progress_preparation)
 
-        atomic_plan_commit = execution.split(
-            "const ExecutionRouteTransitionResult3D prepared_transition", maxsplit=1
-        )[1].split("const mppi::FiniteHorizon* committed_path", maxsplit=1)[0]
-        plan_preparation = atomic_plan_commit.index("replaceFiniteExecutionPlan3D")
-        plan_composition = atomic_plan_commit.index("composeExecutionPlanTransition3D")
-        self.assertIn("route_execution.progress_preparation != nullptr", atomic_plan_commit)
-        self.assertLess(plan_preparation, plan_composition)
-
         self.assertIn("publication_plan->publishable()", execution_horizon_service)
         self.assertIn("candidate.progress_preparation == nullptr", execution_horizon_service)
 
@@ -844,11 +847,9 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         self.assertNotIn(
             ".value_or(publication)", EXECUTION.read_text(encoding="utf-8")
         )
-        self.assertGreaterEqual(
-            EXECUTION.read_text(encoding="utf-8").count(
-                "publishNoExecutablePathHold("
-            ),
-            10,
+        self.assertIn(
+            "publishNoExecutablePathHold(cycle, candidate.failure_reason)",
+            EXECUTION.read_text(encoding="utf-8"),
         )
 
         revoke = publication.split(
