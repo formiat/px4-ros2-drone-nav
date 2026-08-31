@@ -11,11 +11,6 @@
 
 namespace drone_city_nav {
 
-enum class ProductionMppiHoldOwnershipTransition3D : std::uint8_t {
-  kEnterEmptyOwner,
-  kExplicitTransfer,
-};
-
 enum class ProductionMppiHorizonCommitKind : std::uint8_t {
   kPublishSnapshotTransition,
   kConfirmSnapshotUnchanged,
@@ -31,6 +26,7 @@ enum class ProductionMppiHorizonCommitStatus : std::uint8_t {
 struct ProductionMppiHorizonCommit {
   ProductionMppiHorizonCommitKind kind{
       ProductionMppiHorizonCommitKind::kConfirmSnapshotUnchanged};
+  std::shared_ptr<const CommittedExecutionAuthority3D> expected_authority;
   std::shared_ptr<const ExecutionPlan3D> expected_snapshot;
   std::shared_ptr<const ExecutionPlan3D> certification_snapshot;
   std::shared_ptr<const ExecutionRouteTransitionResult3D> progress_preparation;
@@ -57,12 +53,11 @@ struct ProductionMppiExecutionCycle {
   std::uint64_t target_offboard_instance_id;
   std::int64_t lidar_validation_now_ns;
   const Point3& mission_goal;
-  const std::shared_ptr<const ProductionMppiRawWorld3D>& latest_raw_world_3d;
   bool direct_tracking_requested;
   const CertifiedRouteSuffix3D* selected_snapshot_route;
   const std::shared_ptr<const VersionedObservedRawWorld3D>& direct_observed_world;
   const std::shared_ptr<const VersionedStaticWorld3D>& direct_static_world;
-  const VersionedExecutionValidationPolicy3D* selected_policy;
+  std::shared_ptr<const VersionedExecutionValidationPolicy3D> selected_policy;
   double latest_lidar_obstacle_age_ms;
   bool latest_lidar_obstacle_fresh;
   bool latest_lidar_obstacle_receive_time_fallback;

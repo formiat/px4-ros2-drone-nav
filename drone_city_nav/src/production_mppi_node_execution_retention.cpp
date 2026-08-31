@@ -134,7 +134,7 @@ ProductionMppiNode::retainActiveFinitePath(
 
   const ProductionMppiHorizonCommitStatus commit_status =
       commitExecutionSnapshotHorizon(cycle, expected, transition, horizon, nullptr,
-                                     expected, nullptr);
+                                     expected, nullptr, prepared.expected_authority);
   if (commit_status == ProductionMppiHorizonCommitStatus::kRejected) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
                          "EXECUTION_RETENTION prepared=false kind=%s "

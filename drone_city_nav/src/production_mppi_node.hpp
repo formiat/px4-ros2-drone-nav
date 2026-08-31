@@ -109,7 +109,6 @@ struct StaticWorldCommitContext3D;
 struct StaticWorldRefreshRequest3D;
 struct StaticWorldResources3D;
 struct StaticWorldUpdate3D;
-enum class ProductionMppiHoldOwnershipTransition3D : std::uint8_t;
 enum class ProductionMppiHorizonCommitStatus : std::uint8_t;
 class NavigationDiagnosticsSink;
 class WorldPipeline3D;
@@ -290,14 +289,16 @@ private:
       const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending,
       const std::shared_ptr<const ExecutionPlan3D>& certification_snapshot,
       const std::shared_ptr<const ExecutionRouteTransitionResult3D>&
-          progress_preparation);
+          progress_preparation,
+      const std::shared_ptr<const CommittedExecutionAuthority3D>& expected_authority =
+          nullptr);
   [[nodiscard]] std::optional<ProductionMppiExecutionPublication>
   retainActiveFinitePath(const ProductionMppiExecutionCycle& cycle,
                          ProductionMppiExecutionReason replacement_failure_reason);
   [[nodiscard]] ProductionMppiExecutionPublication
   publishPositionHold(const ProductionMppiExecutionCycle& cycle,
                       const Point3& hold_position, ProductionMppiExecutionReason reason,
-                      ProductionMppiHoldOwnershipTransition3D ownership_transition);
+                      ExecutionHoldIntent3D intent);
   [[nodiscard]] ProductionMppiExecutionPublication
   publishNoExecutablePathHold(const ProductionMppiExecutionCycle& cycle,
                               ProductionMppiExecutionReason reason);

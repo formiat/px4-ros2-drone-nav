@@ -174,11 +174,11 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
           proprioceptive_free_space_seed, world.launch_support_contact);
     }
   }
-  const VersionedExecutionValidationPolicy3D* selected_policy{nullptr};
+  std::shared_ptr<const VersionedExecutionValidationPolicy3D> selected_policy;
   if (selected_snapshot_route != nullptr) {
-    selected_policy = selected_snapshot_route->validation_policy.get();
+    selected_policy = selected_snapshot_route->validation_policy;
   } else if (direct_tracking_requested || stationary_capture_rearm) {
-    selected_policy = execution_validation_policy_.get();
+    selected_policy = execution_validation_policy_;
   }
   const double latest_lidar_maximum_age_ms =
       selected_policy != nullptr ? selected_policy->latestLidarMaximumAgeMs()
@@ -310,7 +310,6 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       .target_offboard_instance_id = target_offboard_instance_id,
       .lidar_validation_now_ns = lidar_validation_now_ns,
       .mission_goal = mission_goal,
-      .latest_raw_world_3d = latest_raw_world_3d,
       .direct_tracking_requested = direct_tracking_requested,
       .selected_snapshot_route = selected_snapshot_route,
       .direct_observed_world = direct_observed_world,
@@ -357,7 +356,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPreparedExecutionC
       cycle.direct_observed_world;
   const std::shared_ptr<const VersionedStaticWorld3D>& direct_static_world =
       cycle.direct_static_world;
-  const VersionedExecutionValidationPolicy3D* const selected_policy =
+  const std::shared_ptr<const VersionedExecutionValidationPolicy3D>& selected_policy =
       cycle.selected_policy;
   const double latest_lidar_obstacle_age_ms = cycle.latest_lidar_obstacle_age_ms;
   const bool latest_lidar_obstacle_fresh = cycle.latest_lidar_obstacle_fresh;

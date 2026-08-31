@@ -436,6 +436,11 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
     report_commit_failure("invalid_resident_authority");
     return ProductionMppiHorizonCommitStatus::kRejected;
   }
+  if (commit.expected_authority != nullptr &&
+      resident_execution_authority != commit.expected_authority) {
+    report_commit_failure("prepared_authority_not_current");
+    return ProductionMppiHorizonCommitStatus::kRejected;
+  }
   const AppliedControlEvidence3D& resident_control =
       resident_execution_authority->control();
   const ExecutionOwnerIdentity3D& resident_owner =
@@ -892,8 +897,8 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitExecutionSnapshotHor
     const msg::MppiTrajectoryHorizon& horizon,
     const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending,
     const std::shared_ptr<const ExecutionPlan3D>& certification_snapshot,
-    const std::shared_ptr<const ExecutionRouteTransitionResult3D>&
-        progress_preparation) {
+    const std::shared_ptr<const ExecutionRouteTransitionResult3D>& progress_preparation,
+    const std::shared_ptr<const CommittedExecutionAuthority3D>& expected_authority) {
   const bool prepared_progress_valid =
       progress_preparation != nullptr && certification_snapshot != nullptr &&
       progress_preparation->applied() &&
@@ -983,6 +988,7 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitExecutionSnapshotHor
       .kind = expected_pending != nullptr
                   ? ProductionMppiHorizonCommitKind::kCommitPendingSnapshotTransition
                   : ProductionMppiHorizonCommitKind::kPublishSnapshotTransition,
+      .expected_authority = expected_authority,
       .expected_snapshot = expected,
       .certification_snapshot = certification_snapshot,
       .progress_preparation = progress_preparation,

@@ -25,6 +25,8 @@ EXECUTION_RETENTION = SOURCE / "production_mppi_node_execution_retention.cpp"
 EXECUTION_RETENTION_TEST = (
     PACKAGE / "tests" / "execution_supervisor_retention_3d_test.cpp"
 )
+EXECUTION_HOLD_SERVICE = SOURCE / "execution_supervisor_3d_hold.cpp"
+EXECUTION_HOLD_TEST = PACKAGE / "tests" / "execution_supervisor_hold_3d_test.cpp"
 OPTIONAL_CONSTRAINTS = SOURCE / "production_mppi_node_optional_constraints.cpp"
 ROUTE_ACTIVATION = SOURCE / "route_activation_coordinator_3d.cpp"
 ROUTE_EXECUTION = SOURCE / "production_mppi_route_execution.cpp"
@@ -622,6 +624,8 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
             EXECUTION_PUBLICATION.read_text(encoding="utf-8")
             + EXECUTION_HOLDS.read_text(encoding="utf-8")
         )
+        execution_hold_service = EXECUTION_HOLD_SERVICE.read_text(encoding="utf-8")
+        execution_hold_test = EXECUTION_HOLD_TEST.read_text(encoding="utf-8")
         owner_commit = execution_publication.split(
             "ProductionMppiNode::commitAndPublishExecutionHorizon", maxsplit=1
         )[1].split("ProductionMppiNode::commitExecutionSnapshotHorizon", maxsplit=1)[0]
@@ -660,56 +664,53 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         hold_commit = execution_publication.split(
             "ProductionMppiNode::publishPositionHold", maxsplit=1
         )[1].split("ProductionMppiNode::publishNoExecutablePathHold", maxsplit=1)[0]
-        hold_lidar_current = hold_commit.index(
-            "current_lidar->evidenceId() != cycle.latest_lidar_evidence->evidenceId()"
+        hold_evidence_lock = hold_commit.index(
+            "const std::scoped_lock evidence_lock{execution_evidence_commit_mutex_,"
         )
-        hold_snapshot_load = hold_commit.index(
-            "hold_expected = execution_supervisor_.plan();"
+        hold_lidar_capture = hold_commit.index(
+            "latest_lidar_evidence_.load(std::memory_order_acquire)"
         )
-        hold_transition = hold_commit.index("transferToExecutionHold3D")
+        hold_preparation = hold_commit.index("execution_supervisor_.prepareHold(")
         hold_horizon = hold_commit.index("makeExecutionHorizon(")
         hold_owner_commit = hold_commit.index(
             "commitAndPublishExecutionHorizon(cycle, horizon, commit)"
         )
-        self.assertLess(hold_lidar_current, hold_snapshot_load)
-        self.assertLess(hold_snapshot_load, hold_transition)
-        self.assertLess(hold_transition, hold_horizon)
+        self.assertLess(hold_evidence_lock, hold_lidar_capture)
+        self.assertLess(hold_lidar_capture, hold_preparation)
+        self.assertLess(hold_preparation, hold_horizon)
         self.assertLess(hold_horizon, hold_owner_commit)
         self.assertIn(
             "ProductionMppiHorizonCommitKind::kPublishSnapshotTransition",
             hold_commit,
         )
+        self.assertIn("commit.expected_authority = prepared.expected_authority", hold_commit)
+        self.assertIn("ExecutionHoldIntent3D::kRefreshResident", execution)
+        self.assertIn("ExecutionHoldIntent3D::kExplicitTransfer", execution)
         self.assertIn(
-            "ProductionMppiHoldOwnershipTransition3D::kExplicitTransfer", execution
+            "ExecutionHoldIntent3D::kExplicitTransferWithStationaryCaptureRearm",
+            execution,
+        )
+        self.assertNotIn("transferToExecutionHold3D", hold_commit)
+        self.assertNotIn("armStationaryCaptureHold3D", hold_commit)
+        self.assertNotIn("StationaryExecutionHoldCertification3D", hold_commit)
+        self.assertIn("transferToExecutionHold3D", execution_hold_service)
+        self.assertIn("armStationaryCaptureHold3D", execution_hold_service)
+        self.assertIn("manager_.authority()", execution_hold_service)
+        self.assertIn("latestLidarCurrent", execution_hold_service)
+        self.assertIn("stationaryCaptureWorldCurrent", execution_hold_service)
+        self.assertIn(
+            "StationaryCaptureRearmIsAnExplicitRevokedOwnerTransaction",
+            execution_hold_test,
         )
         self.assertIn(
-            "ProductionMppiHoldOwnershipTransition3D::kEnterEmptyOwner", execution
+            "PreparedHoldCannotCommitAcrossAnAuthorityRevision",
+            execution_hold_test,
         )
-        self.assertIn("transferToExecutionHold3D", hold_commit)
-        self.assertIn("armStationaryCaptureHold3D", hold_commit)
-        capture_rearm = hold_commit.split(
-            "const bool stationary_capture_rearm", maxsplit=1
-        )[1].split(
-            "if (cycle.execution_input != nullptr", maxsplit=1
-        )[0]
-        self.assertIn("ProductionMppiExecutionReason::kGoalCapture", capture_rearm)
-        self.assertIn(
-            "ProductionMppiPlanningState::kMissionGoalPositionHold", capture_rearm
-        )
-        self.assertIn("ExecutionRoutePhase3D::kRevoked", capture_rearm)
-        self.assertIn("stationaryCaptureStateAuthoritative", capture_rearm)
-        self.assertIn(
-            "ProductionMppiHoldOwnershipTransition3D::kExplicitTransfer",
-            capture_rearm,
-        )
-        self.assertNotIn("kEnterEmptyOwner", capture_rearm)
         self.assertIn(
             "StationaryExecutionHoldOrigin3D::kStationaryCaptureRearm", owner_commit
         )
         self.assertIn("!resident_owner.valid", owner_commit)
         self.assertIn("!resident_control.valid", owner_commit)
-        self.assertNotIn("enterExecutionHold3D", hold_commit)
-        self.assertNotIn("newerResident", hold_commit)
         self.assertNotIn(
             "execution_horizon_pub_->publish(publication_horizon);", hold_commit
         )

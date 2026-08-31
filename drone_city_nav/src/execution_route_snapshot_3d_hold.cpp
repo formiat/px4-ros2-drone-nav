@@ -232,6 +232,10 @@ execution_route_snapshot_3d_internal::applyTransferToExecutionHoldCommand3D(
     hold_id = resident_hold->hold_id;
     origin = resident_hold->origin;
     const bool same_evidence =
+        certification.execution_input == resident_hold->terminal_execution_input &&
+        certification.position.x == resident_hold->position.x &&
+        certification.position.y == resident_hold->position.y &&
+        certification.position.z == resident_hold->position.z &&
         certification.observed_raw_world == resident_hold->observed_raw_world &&
         certification.static_world == resident_hold->static_world &&
         certification.validation_policy->policyId() ==

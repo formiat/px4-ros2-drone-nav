@@ -186,6 +186,17 @@ direct-tracking retention, exact raw-invalidation emergency braking, stale
 lifecycle ownership, and missing-evidence rejection. The ROS adapter contains
 no finite-path certification or reducer calls.
 
+Stationary-hold preparation now crosses one owned `ExecutionHoldRequest3D`.
+The supervisor captures the exact authority, distinguishes resident refresh,
+explicit terminal transfer, and the named revoked-owner stationary-capture
+rearm, validates current raw/lidar lineage, and returns either one immutable
+transition or an exact unchanged-plan result. Preparation never mutates the
+store, and the publication commit rejects any intervening authority revision.
+The ROS adapter owns only evidence capture, intent mapping, horizon encoding,
+and the wire commit; it contains no hold certification or reducer calls. A
+refreshed execution input always produces a new immutable hold snapshot, while
+`kNoChange` is reserved for the exact resident input and evidence owner.
+
 Pending-route publication no longer allocates identity in the ROS node or
 performs a check-then-publish pair. An unsealed candidate carries sequence zero;
 `RouteExecutionManager3D` atomically validates its captured semantic execution
@@ -439,7 +450,7 @@ no mixed authority revision is observable.
       activation, pending recovery, lease commits, revocation, and control
       evidence through its typed API.
     - [x] Move retention preparation behind the facade.
-    - [ ] Move hold preparation behind the facade.
+    - [x] Move hold preparation behind the facade.
     - [ ] Move the remaining horizon validation and commit orchestration behind
       the facade.
 - [x] Enforce the internal dependency graph with CMake targets.
@@ -472,7 +483,10 @@ no mixed authority revision is observable.
   been removed. Supervisor retention tests execute route/direct rebuilding,
   raw-invalidation braking, stale-owner rejection, and fail-closed missing
   evidence; the former source-order parsing of that transaction has been
-  removed.
+  removed. Supervisor hold tests execute terminal transfer and commit, exact
+  resident replay, refreshed-input replacement, named stationary-capture rearm,
+  stale source/raw/lidar rejection, and stale-authority commit rejection; node
+  source checks now ban certification and reducer calls in the ROS adapter.
 - [x] Keep public and private headers self-contained and retain a temporary
   umbrella include only where migration compatibility requires it.
 - [ ] Pass formatting, static analysis, C++ tests, and script tests after every

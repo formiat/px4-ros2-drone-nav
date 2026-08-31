@@ -583,9 +583,12 @@ revocation, and control evidence cross its typed facade. Route and
 direct-tracking retention now enter through one owned request: the supervisor
 captures the resident authority, validates current world/evidence, and returns
 one certified transition without mutating the store. Raw invalidation can only
-produce an exact-owner emergency-braking tail. Hold and the remaining horizon
-orchestration still need extraction. Pending publication is already one
-manager-owned transaction:
+produce an exact-owner emergency-braking tail. Hold preparation also enters
+through one owned request: the supervisor captures the exact authority,
+validates current raw/lidar lineage, and prepares resident refresh, terminal
+transfer, or the named revoked-owner stationary-capture rearm without mutating
+the store. Only the remaining horizon validation/commit orchestration still
+needs extraction. Pending publication is already one manager-owned transaction:
 the manager validates the semantic execution base, assigns the sole monotonic
 sequence, seals the candidate, and occupies the pending slot under one lock.
 Direct tests replace the former raw-world source-order guards with executable
@@ -604,8 +607,12 @@ consumption, stale CAS, control-evidence replacement, and concurrent
 single-winner publication; the manager pending-clear source parser has been
 removed. Direct supervisor retention tests cover route/direct continuation,
 raw-invalidation braking, stale lifecycle ownership, missing evidence, and the
-subsequent lease commit; policy no longer lives in the ROS adapter. The
-remaining execution-facade extraction and other source-text
+subsequent lease commit; policy no longer lives in the ROS adapter. The direct
+hold suite covers terminal transfer, exact unchanged replay, refreshed-input
+replacement, stationary-capture rearm, stale evidence, and stale-authority CAS.
+Hold certification and reducer calls no longer live in the ROS adapter, and its
+former source-order checks have become architectural bans. The remaining
+execution-facade extraction and other source-text
 transaction replacements remain tracked by the linked checklist.
 Manager-owned pending identity and atomic base validation are now covered by a
 direct executable suite instead of activation source-order parsing.

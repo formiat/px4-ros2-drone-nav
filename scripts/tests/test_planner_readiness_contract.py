@@ -27,6 +27,8 @@ EXECUTION_PUBLICATION = SOURCE / "production_mppi_node_execution_publication.cpp
 EXECUTION_HOLDS = SOURCE / "production_mppi_node_execution_holds.cpp"
 EXECUTION_RETENTION = SOURCE / "production_mppi_node_execution_retention.cpp"
 EXECUTION_RETENTION_SERVICE = SOURCE / "execution_supervisor_3d_retention.cpp"
+EXECUTION_HOLD_SERVICE = SOURCE / "execution_supervisor_3d_hold.cpp"
+EXECUTION_HOLD_TEST = PACKAGE / "tests" / "execution_supervisor_hold_3d_test.cpp"
 ROUTE_EXECUTION = SOURCE / "production_mppi_route_execution.cpp"
 OFFBOARD = SOURCE / "mppi_offboard_node.cpp"
 OFFBOARD_NAMES = SOURCE / "mppi_offboard_node_names.hpp"
@@ -177,6 +179,8 @@ class PlannerReadinessContractTest(unittest.TestCase):
         finite_horizon = FINITE_HORIZON.read_text(encoding="utf-8")
         finite_execution_path = FINITE_EXECUTION_PATH.read_text(encoding="utf-8")
         horizon_contract = HORIZON_CONTRACT_ROS.read_text(encoding="utf-8")
+        execution_hold_service = EXECUTION_HOLD_SERVICE.read_text(encoding="utf-8")
+        execution_hold_test = EXECUTION_HOLD_TEST.read_text(encoding="utf-8")
 
         self.assertIn("kNoExecutableRouteHold", planning_tick)
         self.assertIn("route_hold_position = route_execution.hold_position", planning_tick)
@@ -192,7 +196,13 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self.assertIn("EXECUTION_REASON_NO_EXECUTABLE_HORIZON=1", horizon_message)
         self.assertIn("EXECUTION_REASON_NO_EXECUTABLE_ROUTE", offboard)
         self.assertIn("EXECUTION_REASON_NO_EXECUTABLE_HORIZON", offboard)
-        self.assertIn("transferToExecutionHold3D", execution)
+        self.assertIn("execution_supervisor_.prepareHold", execution)
+        self.assertNotIn("transferToExecutionHold3D", execution)
+        self.assertIn("transferToExecutionHold3D", execution_hold_service)
+        self.assertIn(
+            "RefreshesAResidentInputAndUsesNoChangeOnlyForTheExactOwnerEvidence",
+            execution_hold_test,
+        )
         self.assertIn("publishExecutionRevocation", execution)
         self.assertIn("stationaryHold() != nullptr", execution)
         self.assertIn("action=hold_no_executable_path", execution)
@@ -847,6 +857,8 @@ class PlannerReadinessContractTest(unittest.TestCase):
             EXECUTION_PUBLICATION.read_text(encoding="utf-8")
             + EXECUTION_HOLDS.read_text(encoding="utf-8")
         )
+        hold_service = EXECUTION_HOLD_SERVICE.read_text(encoding="utf-8")
+        hold_test = EXECUTION_HOLD_TEST.read_text(encoding="utf-8")
         evidence = EXECUTION_EVIDENCE_HEADER.read_text(encoding="utf-8")
         snapshot_hold = EXECUTION_SNAPSHOT_HOLD.read_text(encoding="utf-8")
         gate = MISSION_CAPTURE_GATE.read_text(encoding="utf-8")
@@ -902,7 +914,15 @@ class PlannerReadinessContractTest(unittest.TestCase):
             "current.phase() != ExecutionRoutePhase3D::kRevoked", snapshot_hold
         )
         self.assertIn("stationaryHoldPointSafe(certification, true)", snapshot_hold)
-        self.assertIn("armStationaryCaptureHold3D", publication)
+        self.assertNotIn("armStationaryCaptureHold3D", publication)
+        self.assertIn("armStationaryCaptureHold3D", hold_service)
+        self.assertIn("emptyRevokedPlan", hold_service)
+        self.assertIn("stationaryCaptureWorldCurrent", hold_service)
+        self.assertIn("latestLidarCurrent", hold_service)
+        self.assertIn(
+            "StationaryCaptureRearmIsAnExplicitRevokedOwnerTransaction",
+            hold_test,
+        )
         self.assertIn("StationaryExecutionHoldOrigin3D::kStationaryCaptureRearm", publication)
         self.assertIn("!resident_owner.valid", publication)
         self.assertIn("!resident_control.valid", publication)
