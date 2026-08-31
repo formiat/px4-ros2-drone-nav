@@ -275,20 +275,15 @@ void ProductionMppiNode::onNavigationReadiness(const std_msgs::msg::Bool& messag
       }
     }
   }
-  bool queued = false;
-  if (transaction) {
-    const std::scoped_lock lock{route_planning_queue_mutex_};
-    if (!pending_route_planning_work_) {
-      pending_route_planning_work_ = ProductionRoutePlanningWork3D{
-          .transaction = std::move(transaction),
-          .world_telemetry = world_telemetry,
-          .continuation_session = nullptr,
-      };
-      queued = true;
-    }
-  }
+  const bool queued =
+      transaction != nullptr && route_planning_coordinator_
+                                    ->enqueue(RoutePlanningRequest3D{
+                                        .transaction = std::move(transaction),
+                                        .world_telemetry = world_telemetry,
+                                        .continuation_session = nullptr,
+                                    })
+                                    .queued();
   if (queued) {
-    route_planning_queue_condition_.notify_all();
     RCLCPP_INFO(get_logger(), "STATIC_ROUTE_SEARCH_REQUEST status=queued_after_takeoff "
                               "resident_esdf_ready=true");
   }

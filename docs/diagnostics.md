@@ -104,6 +104,15 @@ Planner evidence describes the search that produced the resident route.
 Candidate validation and activation fields describe later contracts and must
 not be inferred from `planner_executable` alone.
 
+`PRODUCTION_MPPI_SUMMARY` also reports the planning-service lifecycle counters:
+`route_planning_queued`, `route_planning_processed`,
+`route_planning_displaced`, `route_planning_busy_rejections`,
+`route_planning_invalid_rejections`, `route_planning_stopped_rejections`,
+`route_planning_processing_failures`, and
+`route_planning_handler_failures`. A displaced request means a newer immutable
+world request replaced an older pending request; it does not mean that the
+currently executing planner call was interrupted.
+
 For no-static 3D runs, `PRODUCTION_MPPI_ROUTE3D` also reports
 the same persistent-planner result together with certified-route reserve,
 publication, activation, raw-connector, and raw-suffix evidence. Acceptance

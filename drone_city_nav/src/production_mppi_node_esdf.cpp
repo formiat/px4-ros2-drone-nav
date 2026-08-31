@@ -265,36 +265,22 @@ void ProductionMppiNode::handleStaticWorldUpdate3D(const StaticWorldUpdate3D& up
             std::move(continuity_base),
             tracking_refresh ? RouteReleaseReason3D::kObjectiveChanged
                              : RouteReleaseReason3D::kNone);
-    bool queued{false};
-    std::shared_ptr<const PlannerSearchTransaction3D> superseded_transaction;
-    {
-      const std::scoped_lock lock{route_planning_queue_mutex_};
-      if (pending_route_planning_work_ && (extension_search || tracking_refresh) &&
-          transaction != nullptr) {
-        dropped_route_planning_worlds_.fetch_add(1U, std::memory_order_relaxed);
-        superseded_transaction = pending_route_planning_work_->transaction;
-        pending_route_planning_work_.reset();
-      }
-      if (!pending_route_planning_work_ && transaction != nullptr) {
-        pending_route_planning_work_ = ProductionRoutePlanningWork3D{
-            .transaction = transaction,
-            .world_telemetry = update.telemetry,
-            .continuation_session = nullptr,
-        };
-        queued = true;
-      }
+    RoutePlanningEnqueueResult3D enqueue;
+    if (transaction != nullptr) {
+      enqueue = route_planning_coordinator_->enqueue(
+          RoutePlanningRequest3D{
+              .transaction = transaction,
+              .world_telemetry = update.telemetry,
+              .continuation_session = nullptr,
+          },
+          RoutePlanningQueuePolicy3D::kReplacePending);
     }
-    const bool lifecycle_transferred =
-        superseded_transaction != nullptr && transaction != nullptr &&
-        superseded_transaction->request.kind == transaction->request.kind &&
-        superseded_transaction->request.base_route_generation ==
-            transaction->request.base_route_generation;
-    if (superseded_transaction != nullptr && !lifecycle_transferred) {
-      finishStaticRouteSearch(*superseded_transaction);
+    if (transaction != nullptr && enqueue.displaced.has_value() &&
+        enqueue.displaced->transaction != nullptr &&
+        !enqueue.lifecycleTransferredTo(*transaction)) {
+      finishStaticRouteSearch(*enqueue.displaced->transaction);
     }
-    if (queued) {
-      route_planning_queue_condition_.notify_all();
-    } else if (transaction == nullptr) {
+    if (transaction == nullptr) {
       RCLCPP_ERROR(get_logger(),
                    "STATIC_ROUTE_SEARCH_REQUEST "
                    "status=rejected_invalid_transaction generation=%" PRIu64,

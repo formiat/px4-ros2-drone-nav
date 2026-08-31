@@ -62,6 +62,8 @@ void ProductionMppiNode::publishSummary() {
     return;
   }
   const WorldPipelineStatistics3D world_statistics = world_pipeline_->statistics();
+  const RoutePlanningCoordinatorStatistics3D route_planning_statistics =
+      route_planning_coordinator_->statistics();
   const double maximum =
       *std::max_element(runtime_samples_ms.begin(), runtime_samples_ms.end());
   const std::uint64_t rollout_ticks = full_rollout_ticks + reduced_rollout_ticks;
@@ -136,7 +138,13 @@ void ProductionMppiNode::publishSummary() {
       " world_generation_superseded_ticks=%" PRIu64
       " world_generation_rejected_publications=%" PRIu64
       " world_pipeline_processing_failures=%" PRIu64
-      " world_pipeline_failure_handler_failures=%" PRIu64,
+      " world_pipeline_failure_handler_failures=%" PRIu64
+      " route_planning_queued=%" PRIu64 " route_planning_processed=%" PRIu64
+      " route_planning_displaced=%" PRIu64 " route_planning_busy_rejections=%" PRIu64
+      " route_planning_invalid_rejections=%" PRIu64
+      " route_planning_stopped_rejections=%" PRIu64
+      " route_planning_processing_failures=%" PRIu64
+      " route_planning_handler_failures=%" PRIu64,
       completed_ticks, percentile(runtime_samples_ms, 0.50),
       percentile(runtime_samples_ms, 0.95), percentile(runtime_samples_ms, 0.99),
       maximum, deadline_misses, altitude_envelope_violation_horizons,
@@ -183,7 +191,13 @@ void ProductionMppiNode::publishSummary() {
       workers.lanes[2U].capacity_waits,
       world_statistics.superseded_planning_generations,
       world_statistics.rejected_world_publications,
-      world_statistics.processing_failures, world_statistics.failure_handler_failures);
+      world_statistics.processing_failures, world_statistics.failure_handler_failures,
+      route_planning_statistics.queued, route_planning_statistics.processed,
+      route_planning_statistics.displaced, route_planning_statistics.busy_rejections,
+      route_planning_statistics.invalid_rejections,
+      route_planning_statistics.stopped_rejections,
+      route_planning_statistics.processing_failures,
+      route_planning_statistics.handler_failures);
 }
 
 } // namespace drone_city_nav

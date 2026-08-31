@@ -215,24 +215,21 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
                    active_route.identity.generation);
       return;
     }
-    {
-      const std::scoped_lock queue_lock{route_planning_queue_mutex_};
-      if (pending_route_planning_work_) {
-        RCLCPP_INFO_THROTTLE(
-            get_logger(), *get_clock(), 1000,
-            "STATIC_ROUTE_EXTENSION_REQUEST status=deferred_route_queue_busy "
-            "generation=%" PRIu64 " station_m=%.2f remaining_m=%.2f",
-            active_route.identity.generation, route_projection.station_m,
-            route_projection.remaining_m);
-        return;
-      }
-      pending_route_planning_work_ = ProductionRoutePlanningWork3D{
-          .transaction = transaction,
-          .world_telemetry = world_build,
-          .continuation_session = nullptr,
-      };
+    const RoutePlanningEnqueueResult3D enqueue =
+        route_planning_coordinator_->enqueue(RoutePlanningRequest3D{
+            .transaction = transaction,
+            .world_telemetry = world_build,
+            .continuation_session = nullptr,
+        });
+    if (!enqueue.queued()) {
+      RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "STATIC_ROUTE_EXTENSION_REQUEST status=deferred_route_queue_busy "
+          "generation=%" PRIu64 " station_m=%.2f remaining_m=%.2f",
+          active_route.identity.generation, route_projection.station_m,
+          route_projection.remaining_m);
+      return;
     }
-    route_planning_queue_condition_.notify_all();
   } else {
     const StaticWorldRefreshRequest3D refresh = world_pipeline_->requestStaticRefresh(
         active_route.identity.generation, StaticWorldRefreshPurpose3D::kRouteExtension);
@@ -498,30 +495,28 @@ void ProductionMppiNode::requestStaticRouteReplan(
     return;
   }
 
-  {
-    const std::scoped_lock queue_lock{route_planning_queue_mutex_};
-    if (pending_route_planning_work_) {
-      RCLCPP_INFO_THROTTLE(
-          get_logger(), *get_clock(), 1000,
-          "STATIC_ROUTE_REPLAN_REQUEST status=deferred_route_queue_busy "
-          "generation=%" PRIu64 " reason=%s",
-          search_generation, routeReleaseReason3DName(reason));
-      return;
-    }
-    if (!static_route_replan_gate_.tryBegin(search_generation)) {
-      RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
-                           "STATIC_ROUTE_REPLAN_REQUEST status=coalesced_gate_rejected "
-                           "generation=%" PRIu64 " in_flight_generation=%" PRIu64
-                           " reason=%s",
-                           search_generation, static_route_replan_gate_.generation(),
-                           routeReleaseReason3DName(reason));
-      return;
-    }
-    pending_route_planning_work_ = ProductionRoutePlanningWork3D{
-        .transaction = transaction,
-        .world_telemetry = world_telemetry,
-        .continuation_session = nullptr,
-    };
+  if (!static_route_replan_gate_.tryBegin(search_generation)) {
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
+                         "STATIC_ROUTE_REPLAN_REQUEST status=coalesced_gate_rejected "
+                         "generation=%" PRIu64 " in_flight_generation=%" PRIu64
+                         " reason=%s",
+                         search_generation, static_route_replan_gate_.generation(),
+                         routeReleaseReason3DName(reason));
+    return;
+  }
+  const RoutePlanningEnqueueResult3D enqueue =
+      route_planning_coordinator_->enqueue(RoutePlanningRequest3D{
+          .transaction = transaction,
+          .world_telemetry = world_telemetry,
+          .continuation_session = nullptr,
+      });
+  if (!enqueue.queued()) {
+    static_route_replan_gate_.finish(search_generation);
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
+                         "STATIC_ROUTE_REPLAN_REQUEST status=deferred_route_queue_busy "
+                         "generation=%" PRIu64 " reason=%s",
+                         search_generation, routeReleaseReason3DName(reason));
+    return;
   }
   if (dispatched_raw_revision != 0U) {
     std::uint64_t previous_dispatched =
@@ -532,7 +527,6 @@ void ProductionMppiNode::requestStaticRouteReplan(
                std::memory_order_relaxed)) {
     }
   }
-  route_planning_queue_condition_.notify_all();
   RCLCPP_INFO(get_logger(),
               "STATIC_ROUTE_REPLAN_REQUEST status=queued generation=%" PRIu64
               " resident_esdf_revision=%" PRIu64 " retry_trigger=%.*s reason=%s",

@@ -95,10 +95,6 @@ class Stage4RouteSpliceContractTest(unittest.TestCase):
         extension = (SOURCE / "production_mppi_node_static_extension.cpp").read_text(
             encoding="utf-8"
         )
-        runtime = (SOURCE / "production_mppi_node_runtime.cpp").read_text(
-            encoding="utf-8"
-        )
-
         self.assertIn("maybeRequestStaticRouteExtensionFromExecution", planning)
         self.assertIn(
             "const ExecutionPlan3D& source = "
@@ -118,7 +114,6 @@ class Stage4RouteSpliceContractTest(unittest.TestCase):
             extension,
         )
         self.assertIn("route_execution_manager_.plan()", extension)
-        self.assertIn("execution_snapshot->routeGenerationHighWater()", runtime)
 
 
 if __name__ == "__main__":

@@ -555,16 +555,21 @@ typed result for route-search coordination.
 The first planning-service boundary is also concrete: `RoutePlanner3D` owns the
 single persistent planner and exact continuation sessions, selects certified
 future stitches, and emits typed sampled candidates with raw-only segment
-evidence from immutable inputs. Its direct tests replace the former planner
-source-contract suite. Request scheduling, materialization/activation,
-trajectory/control, and the execution facade remain to be extracted.
+evidence from immutable inputs. `RoutePlanningCoordinator3D` owns the one-slot
+request scheduler, explicit newest-world replacement versus keep-pending
+policy, worker lifecycle, request validation, failure isolation, and typed
+update/rejection delivery. Its direct tests cover overload, displaced lifecycle
+transfer, rejection reasons, callback failure, reentrant continuations, stop,
+and restart. Materialization/activation, trajectory/control, and the execution
+facade remain to be extracted.
 Direct tests replace the former raw-world source-order guards with executable
 overload, quarantine, full/incremental/reuse, throttling, exact-parent,
 publication, upload-rejection/exception fail-closed behavior, and stop
 transactions, plus static build/reuse, route supersession, generation failure,
-refresh-coalescing, and persistent-session transactions. The remaining
-planning, trajectory/control, and execution-facade extraction and the other
-source-text transaction replacements remain tracked by the linked checklist.
+refresh-coalescing, persistent-session transactions, and route-request
+scheduling. The remaining planning materialization/activation,
+trajectory/control, and execution-facade extraction and the other source-text
+transaction replacements remain tracked by the linked checklist.
 Item 12 remains in progress until that checklist, the complete static audit,
 and the unchanged three-run Manhattan mission gate below are finished.
 

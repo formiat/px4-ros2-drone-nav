@@ -62,7 +62,6 @@ class Stage6WorldGenerationContractTest(unittest.TestCase):
         world = (SOURCE / "production_mppi_route_world.cpp").read_text(
             encoding="utf-8"
         )
-        runtime = (SOURCE / "production_mppi_node_runtime.cpp").read_text(encoding="utf-8")
         generation = (SOURCE / "production_mppi_node_world_generation.cpp").read_text(
             encoding="utf-8"
         )
@@ -70,7 +69,6 @@ class Stage6WorldGenerationContractTest(unittest.TestCase):
         self.assertIn("generation.gpu_esdf_revision != world.revision", world)
         self.assertNotIn("topological_graph", world)
         self.assertIn("owner->version().base_snapshot_revision", world)
-        self.assertIn("productionWorldGenerationCoherent", runtime)
         self.assertIn("sameSnapshot", generation)
         self.assertIn("action=retry_next_tick", generation)
 

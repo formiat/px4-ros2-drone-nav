@@ -16,7 +16,6 @@
 
 #include "production_planner_search_transaction_3d.hpp"
 #include "production_route_pipeline_artifacts_3d.hpp"
-#include "route_planner_3d.hpp"
 
 namespace drone_city_nav {
 
@@ -59,16 +58,6 @@ struct ProductionMppiNonCooperativeUpdate {
   std::uint64_t source_scan_sequence{0U};
   double transport_age_ms{-1.0};
   bool enabled{false};
-};
-
-struct ProductionRoutePlanningWork3D {
-  std::shared_ptr<const PlannerSearchTransaction3D> transaction;
-  ProductionWorldBuildTelemetry3D world_telemetry{};
-  std::shared_ptr<const RoutePlannerSession3D> continuation_session;
-
-  [[nodiscard]] bool valid() const noexcept {
-    return transaction != nullptr && transaction->valid();
-  }
 };
 
 struct ProductionRouteExecutionSelection3D {

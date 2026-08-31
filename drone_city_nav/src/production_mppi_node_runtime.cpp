@@ -53,83 +53,6 @@ namespace {
 
 } // namespace
 
-void ProductionMppiNode::routePlanningWorker(const std::stop_token stop_token) {
-  while (!stop_token.stop_requested()) {
-    std::optional<ProductionRoutePlanningWork3D> work;
-    {
-      std::unique_lock lock{route_planning_queue_mutex_};
-      route_planning_queue_condition_.wait(lock, stop_token, [this]() {
-        return pending_route_planning_work_.has_value();
-      });
-      if (stop_token.stop_requested()) {
-        return;
-      }
-      work = std::exchange(pending_route_planning_work_, std::nullopt);
-    }
-    if (!work || !work->valid()) {
-      continue;
-    }
-    const std::shared_ptr<const PlannerSearchTransaction3D>& transaction =
-        work->transaction;
-    if (!productionWorldGenerationCoherent(*transaction->world)) {
-      const ProductionWorldGenerationStatus status =
-          assessProductionWorldGeneration(*transaction->world);
-      const std::string_view status_name = productionWorldGenerationStatusName(status);
-      RCLCPP_ERROR(get_logger(),
-                   "PRODUCTION_MPPI_ROUTE rejected local_world_generation=%" PRIu64
-                   " reason=%.*s",
-                   transaction->world->local_world_generation.generation,
-                   static_cast<int>(status_name.size()), status_name.data());
-      finishStaticRouteSearch(*transaction);
-      continue;
-    }
-    if (transaction->world->grid.depth <= 1) {
-      RCLCPP_ERROR(get_logger(),
-                   "PRODUCTION_MPPI_ROUTE rejected local_world_generation=%" PRIu64
-                   " reason=full_3d_world_required depth=%d",
-                   transaction->world->local_world_generation.generation,
-                   transaction->world->grid.depth);
-      finishStaticRouteSearch(*transaction);
-      continue;
-    }
-
-    const StaticRouteSearchRequestIdentity& request = transaction->request;
-    std::uint64_t resident_route_generation = 0U;
-    const std::shared_ptr<const ExecutionPlan3D> execution_snapshot =
-        route_execution_manager_.plan();
-    if (execution_snapshot != nullptr) {
-      resident_route_generation = execution_snapshot->routeGenerationHighWater();
-    }
-    const StaticRouteSearchCurrencyAssessment currency =
-        assessStaticRouteSearchCurrency(request, resident_route_generation);
-    if (!work->continuation_session && !currency.current()) {
-      RCLCPP_INFO(
-          get_logger(),
-          "STATIC_ROUTE_SEARCH_REQUEST status=%.*s kind=%.*s "
-          "request_generation=%" PRIu64 " resident_generation=%" PRIu64,
-          static_cast<int>(staticRouteSearchCurrencyStatusName(currency.status).size()),
-          staticRouteSearchCurrencyStatusName(currency.status).data(),
-          static_cast<int>(staticRouteSearchRequestKindName(request.kind).size()),
-          staticRouteSearchRequestKindName(request.kind).data(),
-          request.base_route_generation, resident_route_generation);
-      finishStaticRouteSearch(*transaction);
-      continue;
-    }
-
-    ProductionMppiNavigation navigation;
-    {
-      const std::scoped_lock lock{input_mutex_};
-      navigation = navigation_;
-    }
-    if (!navigation.valid) {
-      finishStaticRouteSearch(*transaction);
-      continue;
-    }
-    processRouteSearch3D(transaction, work->world_telemetry, navigation,
-                         std::move(work->continuation_session));
-  }
-}
-
 mppi::State
 ProductionMppiNode::selectTarget(const std::span<const RouteSample3D> route,
                                  const std::span<const mppi::RouteSample3D> mppi_route,
@@ -274,13 +197,11 @@ ProductionMppiNode::~ProductionMppiNode() {
   if (diagnostics_sink_ != nullptr) {
     diagnostics_sink_->stop();
   }
+  if (route_planning_coordinator_ != nullptr) {
+    route_planning_coordinator_->stop();
+  }
   if (world_pipeline_ != nullptr) {
     world_pipeline_->stop();
-  }
-  if (route_planning_worker_.joinable()) {
-    route_planning_worker_.request_stop();
-    route_planning_queue_condition_.notify_all();
-    route_planning_worker_.join();
   }
   publishSummary();
 }

@@ -72,17 +72,14 @@
 
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <span>
-#include <stop_token>
 #include <string>
 #include <string_view>
-#include <thread>
 #include <vector>
 
 #include "production_mppi_execution_control.hpp"
@@ -91,6 +88,7 @@
 #include "production_mppi_raw_world.hpp"
 #include "production_planner_search_transaction_3d.hpp"
 #include "production_route_pipeline_artifacts_3d.hpp"
+#include "route_planning_coordinator_3d.hpp"
 
 namespace drone_city_nav {
 
@@ -206,12 +204,8 @@ private:
       const ProductionMppiNavigation& navigation,
       const std::shared_ptr<const CommittedExecutionAuthority3D>& execution_authority);
   void queueLatestObservedWorldForPose(const ProductionMppiNavigation& navigation);
-  void routePlanningWorker(std::stop_token stop_token);
-  void processRouteSearch3D(
-      std::shared_ptr<const PlannerSearchTransaction3D> transaction,
-      const ProductionWorldBuildTelemetry3D& world_telemetry,
-      const ProductionMppiNavigation& navigation,
-      std::shared_ptr<const RoutePlannerSession3D> continuation_session);
+  void processRouteSearch3D(RoutePlanningUpdateEvent3D event);
+  void handleRoutePlanningRejection3D(const RoutePlanningRejection3D& rejection);
   [[nodiscard]] RouteSegmentCompletionAssessment3D
   assessActiveRouteCompletion3D(const Point3& position);
   [[nodiscard]] std::uint64_t nextRouteGeneration3D();
@@ -232,7 +226,7 @@ private:
   [[nodiscard]] ProductionRouteMaterialization3D materializeRouteCandidate3D(
       const PlannerSearchTransaction3D& transaction,
       const ProductionWorldBuildTelemetry3D& world_telemetry,
-      const ProductionMppiNavigation& navigation, const Point3& mission_goal,
+      const Point3& current_position, const Point3& mission_goal,
       const RouteSearchCandidate3D& candidate, std::uint64_t candidate_generation,
       const CertifiedRouteSuffix3D* active_route,
       const ProductionMppiRawWorld3D* activation_raw_world);
@@ -465,7 +459,7 @@ private:
   NonCooperativeAvoidanceConfig noncooperative_avoidance_config_{};
   std::unique_ptr<NonCooperativeCollisionAvoidance> noncooperative_avoidance_;
   std::unique_ptr<BoundedWorkerPool> planning_worker_pool_;
-  std::unique_ptr<RoutePlanner3D> route_planner_;
+  std::unique_ptr<RoutePlanningCoordinator3D> route_planning_coordinator_;
   std::unique_ptr<mppi::MppiCudaEngine> engine_;
   mppi::TrajectoryReferenceAdapter3D trajectory_reference_adapter_;
   std::mutex static_route_extension_mutex_;
@@ -526,12 +520,6 @@ private:
   std::atomic_bool vehicle_navigation_ready_{false};
   std::atomic_bool world_ready_{false};
   std::unique_ptr<WorldPipeline3D> world_pipeline_;
-  std::mutex route_planning_queue_mutex_;
-  std::condition_variable_any route_planning_queue_condition_;
-  std::optional<ProductionRoutePlanningWork3D> pending_route_planning_work_;
-  std::atomic<std::uint64_t> dropped_route_planning_worlds_{0U};
-  std::jthread route_planning_worker_;
-
   std::atomic<std::shared_ptr<const ProductionRouteActivationResult3D>>
       latest_route_pipeline_event_;
 

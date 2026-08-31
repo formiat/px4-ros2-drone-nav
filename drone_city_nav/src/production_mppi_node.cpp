@@ -763,12 +763,6 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       persistent_planner_config_.minimum_continuous_turn_alignment > 1.0) {
     throw std::invalid_argument{"invalid persistent 3D planner dynamics"};
   }
-  route_planner_ = std::make_unique<RoutePlanner3D>(RoutePlannerConfig3D{
-      .planner = persistent_planner_config_,
-      .extension = static_route_extension_config_,
-      .route_sampling_step_m = route_sampling_step_m_,
-      .cruise_speed_mps = speed_policy_config_.cruise_speed_mps,
-  });
   initializeRuntimeInterfaces(std::move(static_world_resources));
   RCLCPP_INFO(
       get_logger(),

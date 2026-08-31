@@ -24,11 +24,73 @@ elapsedMilliseconds(const std::chrono::steady_clock::time_point started) noexcep
 
 } // namespace
 
-void ProductionMppiNode::processRouteSearch3D(
-    std::shared_ptr<const PlannerSearchTransaction3D> transaction,
-    const ProductionWorldBuildTelemetry3D& world_telemetry,
-    const ProductionMppiNavigation& navigation,
-    std::shared_ptr<const RoutePlannerSession3D> continuation_session) {
+void ProductionMppiNode::handleRoutePlanningRejection3D(
+    const RoutePlanningRejection3D& rejection) {
+  const std::shared_ptr<const PlannerSearchTransaction3D>& transaction =
+      rejection.request.transaction;
+  if (transaction == nullptr) {
+    return;
+  }
+  switch (rejection.reason) {
+    case RoutePlanningRejectionReason3D::kInvalidWorldGeneration: {
+      const std::string_view status_name =
+          productionWorldGenerationStatusName(rejection.world_status);
+      RCLCPP_ERROR(get_logger(),
+                   "PRODUCTION_MPPI_ROUTE rejected local_world_generation=%" PRIu64
+                   " reason=%.*s",
+                   transaction->world->local_world_generation.generation,
+                   static_cast<int>(status_name.size()), status_name.data());
+      break;
+    }
+    case RoutePlanningRejectionReason3D::kFullThreeDimensionalWorldRequired:
+      RCLCPP_ERROR(get_logger(),
+                   "PRODUCTION_MPPI_ROUTE rejected local_world_generation=%" PRIu64
+                   " reason=full_3d_world_required depth=%d",
+                   transaction->world->local_world_generation.generation,
+                   rejection.world_depth);
+      break;
+    case RoutePlanningRejectionReason3D::kSupersededRouteGeneration: {
+      const StaticRouteSearchRequestIdentity& request = transaction->request;
+      const StaticRouteSearchCurrencyAssessment& currency = rejection.currency;
+      RCLCPP_INFO(
+          get_logger(),
+          "STATIC_ROUTE_SEARCH_REQUEST status=%.*s kind=%.*s "
+          "request_generation=%" PRIu64 " resident_generation=%" PRIu64,
+          static_cast<int>(staticRouteSearchCurrencyStatusName(currency.status).size()),
+          staticRouteSearchCurrencyStatusName(currency.status).data(),
+          static_cast<int>(staticRouteSearchRequestKindName(request.kind).size()),
+          staticRouteSearchRequestKindName(request.kind).data(),
+          request.base_route_generation, currency.resident_route_generation);
+      break;
+    }
+    case RoutePlanningRejectionReason3D::kVehicleStateUnavailable:
+      break;
+    case RoutePlanningRejectionReason3D::kProcessingFailed:
+      RCLCPP_ERROR(get_logger(),
+                   "PRODUCTION_MPPI_ROUTE rejected local_world_generation=%" PRIu64
+                   " reason=planning_coordinator_failure",
+                   transaction->world->local_world_generation.generation);
+      break;
+    case RoutePlanningRejectionReason3D::kUpdateHandlerFailed:
+      RCLCPP_ERROR(get_logger(),
+                   "PRODUCTION_MPPI_ROUTE rejected local_world_generation=%" PRIu64
+                   " reason=planning_update_handler_failure",
+                   transaction->world->local_world_generation.generation);
+      break;
+  }
+  finishStaticRouteSearch(*transaction);
+}
+
+void ProductionMppiNode::processRouteSearch3D(RoutePlanningUpdateEvent3D event) {
+  const std::shared_ptr<const PlannerSearchTransaction3D>& transaction =
+      event.request.transaction;
+  if (transaction == nullptr) {
+    return;
+  }
+  const ProductionWorldBuildTelemetry3D& world_telemetry =
+      event.request.world_telemetry;
+  const RoutePlannerVehicleState3D& vehicle_state = event.vehicle_state;
+  RoutePlannerUpdate3D planner_update = std::move(event.update);
   const auto planning_started = std::chrono::steady_clock::now();
   const Point3 mission_goal = transaction->objective.goal;
   const NavigationWorldCertificate3D planned_world_certificate =
@@ -45,23 +107,9 @@ void ProductionMppiNode::processRouteSearch3D(
     static_cast<void>(navigation_recovery_episodes_.observe(
         transaction->objective.mission_epoch, recovery_active));
   };
-  RoutePlannerUpdate3D planner_update;
-  if (route_planner_ != nullptr) {
-    planner_update = route_planner_->update(
-        *transaction,
-        RoutePlannerVehicleState3D{
-            .position =
-                Point3{navigation.state.x, navigation.state.y, navigation.state.z},
-            .velocity =
-                Vec3{navigation.state.vx, navigation.state.vy, navigation.state.vz},
-            .valid = navigation.valid,
-        },
-        std::move(continuation_session));
-  }
-  const Point3 search_start =
-      planner_update.planner_session
-          ? planner_update.planner_session->search_start
-          : Point3{navigation.state.x, navigation.state.y, navigation.state.z};
+  const Point3 search_start = planner_update.planner_session
+                                  ? planner_update.planner_session->search_start
+                                  : vehicle_state.position;
 
   if (planner_update.status == RoutePlannerUpdateStatus3D::kStitchBaseUnavailable) {
     RCLCPP_INFO(get_logger(),
@@ -139,22 +187,13 @@ void ProductionMppiNode::processRouteSearch3D(
     if (!planner_update.planner_session) {
       return false;
     }
-    bool queued{false};
-    {
-      const std::scoped_lock lock{route_planning_queue_mutex_};
-      if (!pending_route_planning_work_) {
-        pending_route_planning_work_ = ProductionRoutePlanningWork3D{
+    return route_planning_coordinator_
+        ->enqueue(RoutePlanningRequest3D{
             .transaction = transaction,
             .world_telemetry = world_telemetry,
             .continuation_session = planner_update.planner_session,
-        };
-        queued = true;
-      }
-    }
-    if (queued) {
-      route_planning_queue_condition_.notify_all();
-    }
-    return queued;
+        })
+        .queued();
   };
   bool continuation_queued{false};
   if (search_running && !planner_update.improved_incumbent) {
@@ -216,7 +255,7 @@ void ProductionMppiNode::processRouteSearch3D(
   if (planner_update.improved_incumbent && candidate_generation != 0U) {
     const RouteSearchCandidate3D& candidate = *planner_update.improved_incumbent;
     materialization = materializeRouteCandidate3D(
-        *transaction, world_telemetry, navigation, mission_goal, candidate,
+        *transaction, world_telemetry, vehicle_state.position, mission_goal, candidate,
         candidate_generation, activation_active_route,
         materialization_snapshot.raw_world.get());
     materialization.telemetry.route_search_ms = planner_update.search_ms;

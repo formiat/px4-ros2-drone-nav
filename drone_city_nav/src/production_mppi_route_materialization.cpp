@@ -21,12 +21,10 @@ namespace drone_city_nav {
 ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D(
     const PlannerSearchTransaction3D& transaction,
     const ProductionWorldBuildTelemetry3D& world_telemetry,
-    const ProductionMppiNavigation& navigation, const Point3& mission_goal,
+    const Point3& current_position, const Point3& mission_goal,
     const RouteSearchCandidate3D& candidate, const std::uint64_t candidate_generation,
     const CertifiedRouteSuffix3D* const active_route,
     const ProductionMppiRawWorld3D* const activation_raw_world) {
-  const Point3 current_position{navigation.state.x, navigation.state.y,
-                                navigation.state.z};
   const Point3 search_start = candidate.search_start;
   const PlannerTelemetry3D& plan = candidate.planner_telemetry;
   const SpatialRouteCandidate3D& spatial_route = candidate.spatial_route;
@@ -416,9 +414,8 @@ ProductionRouteMaterialization3D ProductionMppiNode::materializeRouteCandidate3D
   route.selected_passage_traversal_ids =
       std::make_shared<const std::vector<PassageTraversalId>>(
           std::move(selected_passage_traversal_ids));
-  route.initial_projection = projectOntoRouteProgress3D(
-      *materialized_route,
-      Point3{navigation.state.x, navigation.state.y, navigation.state.z});
+  route.initial_projection =
+      projectOntoRouteProgress3D(*materialized_route, current_position);
   materialization.candidate_validation_ms =
       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                 validation_started)

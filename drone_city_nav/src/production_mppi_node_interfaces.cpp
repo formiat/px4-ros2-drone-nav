@@ -122,6 +122,54 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
         },
         world_failure_handler);
   }
+  route_planning_coordinator_ =
+      std::make_unique<RoutePlanningCoordinator3D>(RoutePlanningCoordinatorConfig3D{
+          .planner =
+              RoutePlannerConfig3D{
+                  .planner = persistent_planner_config_,
+                  .extension = static_route_extension_config_,
+                  .route_sampling_step_m = route_sampling_step_m_,
+                  .cruise_speed_mps = speed_policy_config_.cruise_speed_mps,
+              },
+          .vehicle_state_provider =
+              [this]() {
+                const std::scoped_lock lock{input_mutex_};
+                return RoutePlannerVehicleState3D{
+                    .position = Point3{navigation_.state.x, navigation_.state.y,
+                                       navigation_.state.z},
+                    .velocity = Vec3{navigation_.state.vx, navigation_.state.vy,
+                                     navigation_.state.vz},
+                    .valid = navigation_.valid,
+                };
+              },
+          .resident_route_generation_provider =
+              [this]() {
+                const std::shared_ptr<const ExecutionPlan3D> plan =
+                    route_execution_manager_.plan();
+                return plan != nullptr ? plan->routeGenerationHighWater() : 0U;
+              },
+          .update_handler =
+              [this](RoutePlanningUpdateEvent3D event) {
+                processRouteSearch3D(std::move(event));
+              },
+          .rejection_handler =
+              [this](const RoutePlanningRejection3D& rejection) {
+                handleRoutePlanningRejection3D(rejection);
+              },
+          .failure_handler =
+              [this](const std::exception_ptr failure) {
+                try {
+                  std::rethrow_exception(failure);
+                } catch (const std::exception& error) {
+                  RCLCPP_ERROR(get_logger(), "ROUTE_PLANNING_COORDINATOR3D failure: %s",
+                               error.what());
+                } catch (...) {
+                  RCLCPP_ERROR(
+                      get_logger(),
+                      "ROUTE_PLANNING_COORDINATOR3D failure: unknown exception");
+                }
+              },
+      });
 
   input_callback_group_ =
       create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
@@ -273,9 +321,8 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
   });
 
   diagnostics_sink_->start();
+  route_planning_coordinator_->start();
   world_pipeline_->start();
-  route_planning_worker_ =
-      std::jthread([this](const std::stop_token token) { routePlanningWorker(token); });
   if (planning_tick_phase_offset_s_ > 0.0) {
     planning_start_timer_ = create_wall_timer(
         std::chrono::duration<double>{planning_tick_phase_offset_s_},

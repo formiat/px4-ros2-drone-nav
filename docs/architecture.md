@@ -74,9 +74,10 @@ snapshot/delta transport, and selected-spectator 3D clouds.
 - publishes latched planner-world readiness after successful ESDF activation;
 - delegates static and observed ESDF build, refresh, upload, generation, and
   publication policy to `WorldPipeline3D` and its typed builders;
-- currently hosts the persistent D* Lite planner and production route and
-  execution orchestration while those owners are extracted into internal
-  services;
+- delegates persistent D* Lite ownership, request scheduling, planner-worker
+  lifetime, and typed validation/result delivery to the package-private
+  `RoutePlanningCoordinator3D`; route materialization/activation and remaining
+  execution orchestration are still being extracted into internal services;
 - delegates diagnostics queuing, worker lifetime, JSONL/error-context files,
   and coherent statistics to the package-private `NavigationDiagnosticsSink`;
 - certifies route geometry, tracking-error tube, successor reserve, and suffix
@@ -200,6 +201,13 @@ D* repair and execution-time refinement until convergence or no-route.
 turns an immutable search transaction plus a controller-neutral vehicle state
 into a typed update. It also owns certified-future-stitch selection, route
 sampling, and raw-only segment evidence; ROS logging remains an output adapter.
+`RoutePlanningCoordinator3D` owns the single pending request slot and planner
+worker. World-derived requests use an explicit replace-pending policy so the
+worker never processes an older queued world while a newer immutable world is
+available; bounded anytime continuations use keep-pending and therefore cannot
+displace newer work. The coordinator validates world generation, full-3D depth,
+route-generation currency, and vehicle availability and emits typed update or
+rejection events without ROS dependencies.
 
 The ownership model is specified in
 [`navigation_architecture_remediation.md`](navigation_architecture_remediation.md).
@@ -445,6 +453,8 @@ scheduling.
   occupancy. No additional artificial footprint inflation is part of the
   planning contract.
 - `WorldPipeline3D` owns raw reconstruction, static and observed ESDF build
-  policy, refresh/upload transactions, and publication. Persistent planning,
-  trajectory/control coordination, and the execution facade remain to be
-  extracted from the ROS node.
+  policy, refresh/upload transactions, and publication.
+  `RoutePlanningCoordinator3D` owns persistent planning request scheduling and
+  worker lifecycle. Route materialization/activation, trajectory/control
+  coordination, and the execution facade remain to be extracted from the ROS
+  node.

@@ -46,16 +46,10 @@ void ProductionMppiNode::handleObservedWorldEvidenceChange3D(
   }
   const std::uint64_t raw_revision = change.raw_world->version.revision;
   if (change.persistent_changed) {
-    std::shared_ptr<const PlannerSearchTransaction3D> superseded_transaction;
-    {
-      const std::scoped_lock lock{route_planning_queue_mutex_};
-      if (pending_route_planning_work_) {
-        superseded_transaction = pending_route_planning_work_->transaction;
-        pending_route_planning_work_.reset();
-      }
-    }
-    if (superseded_transaction != nullptr) {
-      finishStaticRouteSearch(*superseded_transaction);
+    const std::optional<RoutePlanningRequest3D> superseded =
+        route_planning_coordinator_->cancelPending();
+    if (superseded.has_value() && superseded->transaction != nullptr) {
+      finishStaticRouteSearch(*superseded->transaction);
     }
     RCLCPP_INFO(get_logger(),
                 "EXECUTION_EVIDENCE_WORLD_CHANGED raw_revision=%" PRIu64
@@ -188,7 +182,7 @@ void ProductionMppiNode::handleObservedWorldUpdate3D(
 
   const bool initial_route_search_required = resident_route_generation == 0U;
   bool initial_route_search_queued = false;
-  bool initial_route_search_already_pending = false;
+  bool initial_route_search_replaced_pending = false;
   const std::shared_ptr<const ProductionNavigationObjective> current_objective =
       navigationObjective();
   if (initial_route_search_required && current_objective != nullptr) {
@@ -205,21 +199,20 @@ void ProductionMppiNode::handleObservedWorldUpdate3D(
                    "raw_revision=%" PRIu64,
                    published_world->source_raw_revision);
     }
-    {
-      const std::scoped_lock lock{route_planning_queue_mutex_};
-      if (pending_route_planning_work_) {
-        initial_route_search_already_pending = true;
-      } else if (transaction != nullptr) {
-        pending_route_planning_work_ = ProductionRoutePlanningWork3D{
-            .transaction = transaction,
-            .world_telemetry = update.telemetry,
-            .continuation_session = nullptr,
-        };
-        initial_route_search_queued = true;
+    if (transaction != nullptr) {
+      const RoutePlanningEnqueueResult3D enqueue = route_planning_coordinator_->enqueue(
+          RoutePlanningRequest3D{
+              .transaction = transaction,
+              .world_telemetry = update.telemetry,
+              .continuation_session = nullptr,
+          },
+          RoutePlanningQueuePolicy3D::kReplacePending);
+      initial_route_search_queued = enqueue.queued();
+      initial_route_search_replaced_pending = enqueue.displaced.has_value();
+      if (enqueue.displaced.has_value() && enqueue.displaced->transaction != nullptr &&
+          !enqueue.lifecycleTransferredTo(*transaction)) {
+        finishStaticRouteSearch(*enqueue.displaced->transaction);
       }
-    }
-    if (initial_route_search_queued) {
-      route_planning_queue_condition_.notify_all();
     }
   }
   if (!world_ready_.exchange(true, std::memory_order_acq_rel)) {
@@ -229,9 +222,9 @@ void ProductionMppiNode::handleObservedWorldUpdate3D(
   const char* route_search_status = "active_route_preserved";
   if (initial_route_search_required) {
     if (initial_route_search_queued) {
-      route_search_status = "initial_queued";
-    } else if (initial_route_search_already_pending) {
-      route_search_status = "initial_already_pending";
+      route_search_status = initial_route_search_replaced_pending
+                                ? "initial_replaced_pending"
+                                : "initial_queued";
     } else {
       route_search_status = "initial_not_queued";
     }

@@ -213,6 +213,16 @@ typed update events. The node only supplies immutable navigation/objective and
 late commit contexts, adapts the uploader, and coordinates a route search after
 a successfully published world.
 
+`RoutePlanningCoordinator3D` now owns the single pending request slot, explicit
+keep-versus-replace admission policy, planning worker lifetime, request/world/
+route-generation validation, the sole `RoutePlanner3D`, and failure isolation.
+New world publications replace an older pending world request; bounded anytime
+continuations never displace newer work. The node supplies controller-neutral
+vehicle and resident-generation ports and consumes typed update or rejection
+events. Direct concurrency tests cover pending replacement and lifecycle
+transfer, busy retention, validation reasons, callback failure containment,
+reentrant continuation submission, stop, and restart.
+
 ## Immutable Stage Pipeline
 
 ```text
@@ -328,9 +338,11 @@ no mixed authority revision is observable.
     - [x] Move the sole persistent planner, exact continuation session,
       certified-future-stitch selection, route sampling, and raw-only segment
       evidence into `RoutePlanner3D` behind a typed non-ROS API.
-    - [ ] Move latest-wins request scheduling, worker lifecycle,
-      materialization, and activation coordination behind the planning-service
-      boundary.
+    - [x] Move single-pending request scheduling with explicit newest-world
+      replacement, worker lifecycle, validation, failure isolation, and typed
+      update/rejection events into `RoutePlanningCoordinator3D`.
+    - [ ] Move materialization, trajectory compilation, and activation
+      coordination behind the planning-service boundary.
   - [ ] Extract trajectory compilation and controller ownership.
   - [ ] Finish the execution-service facade around the existing sole
     `RouteExecutionManager3D` owner.
@@ -345,7 +357,9 @@ no mixed authority revision is observable.
   coalescing now have direct GTests. Persistent-session identity, typed
   candidate/evidence production, and cross-mission continuation rejection also
   have a direct `RoutePlanner3D` suite; the former planner source-contract suite
-  has been removed.
+  has been removed. Queue replacement, lifecycle transfer, typed validation,
+  callback failure isolation, reentrant continuation, stop, and restart have a
+  direct `RoutePlanningCoordinator3D` suite.
 - [x] Keep public and private headers self-contained and retain a temporary
   umbrella include only where migration compatibility requires it.
 - [ ] Pass formatting, static analysis, C++ tests, and script tests after every

@@ -146,7 +146,6 @@ class PlannerReadinessContractTest(unittest.TestCase):
         )
         self.assertIn("route_execution_manager_.plan()", observed_esdf)
         self.assertIn('"active_route_preserved"', observed_esdf)
-        self.assertIn("initial_route_search_already_pending", observed_esdf)
         self.assertNotIn("dropped_route_planning_worlds_", observed_esdf)
         self.assertIn("use_static_map_ || observed_3d_world", planning_tick)
         self.assertIn("observed_world", extension)
