@@ -2,9 +2,9 @@
 
 #include "drone_city_nav/cooperative_passage_route.hpp"
 #include "drone_city_nav/flight_envelope.hpp"
-#include "drone_city_nav/mppi/route_risk_adapter_3d.hpp"
 #include "drone_city_nav/passage_volume.hpp"
 #include "drone_city_nav/route_3d.hpp"
+#include "drone_city_nav/route_risk_annotation_3d.hpp"
 #include "drone_city_nav/static_route_extension.hpp"
 #include "drone_city_nav/static_route_geometry.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
@@ -60,7 +60,7 @@ struct ProductionRouteMaterialization3D {
   StaticRouteCandidateValidation validation{};
   StaticRouteReplacementPolicy replacement_policy{
       StaticRouteReplacementPolicy::kRequireEndpointImprovement};
-  std::optional<RouteRiskTierAssignmentResult3D> geometry_optimization_fallback;
+  std::optional<RouteRiskAnnotationResult3D> geometry_optimization_fallback;
 };
 
 class RouteMaterializer3D final {

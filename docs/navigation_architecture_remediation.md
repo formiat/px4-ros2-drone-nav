@@ -232,6 +232,9 @@ typed result. Geometry fallback is an event field consumed by the ROS logging
 adapter; the materializer has no node or ROS dependency. Direct tests cover
 invalid configuration/request handling, successful immutable materialization,
 unknown-neutral invalid derived distances, and exact active-route enforcement.
+The soft derived-clearance annotation API is controller-neutral
+`route_risk_annotation_3d` in `nav_planning`; the former MPPI adapter and names
+have been removed, so route materialization no longer depends on `nav_control`.
 
 ## Immutable Stage Pipeline
 

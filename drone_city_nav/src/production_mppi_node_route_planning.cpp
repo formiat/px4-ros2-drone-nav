@@ -1,4 +1,4 @@
-#include "drone_city_nav/mppi/route_risk_adapter_3d.hpp"
+#include "drone_city_nav/route_risk_annotation_3d.hpp"
 #include "drone_city_nav/static_route_extension.hpp"
 
 #include <chrono>
@@ -271,10 +271,9 @@ void ProductionMppiNode::processRouteSearch3D(RoutePlanningUpdateEvent3D event) 
     });
     materialization.telemetry.route_search_ms = planner_update.search_ms;
     if (materialization.geometry_optimization_fallback.has_value()) {
-      const RouteRiskTierAssignmentResult3D fallback =
+      const RouteRiskAnnotationResult3D fallback =
           materialization.geometry_optimization_fallback.value();
-      const std::string_view reason =
-          routeRiskTierAssignmentStatus3DName(fallback.status);
+      const std::string_view reason = routeRiskAnnotationStatus3DName(fallback.status);
       RCLCPP_INFO(get_logger(),
                   "STATIC_ROUTE_GEOMETRY status=fallback_to_lattice reason=%.*s "
                   "failure=(%.2f,%.2f,%.2f)",

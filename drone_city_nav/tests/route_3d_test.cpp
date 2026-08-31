@@ -1,6 +1,6 @@
 #include "drone_city_nav/esdf_query.hpp"
-#include "drone_city_nav/mppi/route_risk_adapter_3d.hpp"
 #include "drone_city_nav/route_3d.hpp"
+#include "drone_city_nav/route_risk_annotation_3d.hpp"
 
 #include <gtest/gtest.h>
 
@@ -482,7 +482,7 @@ TEST(Route3DTest, ReportsUnavailableWithoutRoute) {
   EXPECT_EQ(constrainedRoutePhaseName(observation.phase), "unavailable");
 }
 
-TEST(Route3DTest, AssignsRequiredRiskTierFromRawEsdfClearance) {
+TEST(Route3DTest, AnnotatesRequiredRiskTierFromDerivedEsdfClearance) {
   const mppi::EsdfGrid grid{3, 1, 1.0F, 0.0F, 0.0F, 1, 0.0F};
   const std::vector<float> esdf{std::numeric_limits<float>::infinity(), 4.0F, 1.5F};
   std::vector<RouteSample3D> route{
@@ -492,7 +492,7 @@ TEST(Route3DTest, AssignsRequiredRiskTierFromRawEsdfClearance) {
   };
 
   ASSERT_TRUE(
-      assignRouteRiskTiersFromMppiEsdf3D(route, grid, esdf, 1.0, 6.0).accepted());
+      annotateRouteRiskTiersFromDerivedEsdf3D(route, grid, esdf, 1.0, 6.0).accepted());
   EXPECT_EQ(route[0].required_risk_tier, RouteRiskTier3D::kPreferred);
   EXPECT_EQ(route[1].required_risk_tier, RouteRiskTier3D::kPlanning);
   EXPECT_EQ(route[2].required_risk_tier, RouteRiskTier3D::kCritical);
@@ -508,7 +508,7 @@ TEST(Route3DTest, RiskTierAssignmentTreatsUnknownAsPreferredWithoutAStrictMode) 
   };
 
   EXPECT_TRUE(
-      assignRouteRiskTiersFromMppiEsdf3D(route, grid, esdf, 1.0, 6.0).accepted());
+      annotateRouteRiskTiersFromDerivedEsdf3D(route, grid, esdf, 1.0, 6.0).accepted());
   EXPECT_EQ(route.front().required_risk_tier, RouteRiskTier3D::kPreferred);
 }
 
@@ -520,8 +520,8 @@ TEST(Route3DTest, ZeroDerivedClearanceIsOnlyASoftCriticalRiskAnnotation) {
       RouteSample3D{.position = Point3{1.5, 0.5, 0.5}},
   };
 
-  const RouteRiskTierAssignmentResult3D result =
-      assignRouteRiskTiersFromMppiEsdf3D(route, grid, esdf, 1.0, 6.0);
+  const RouteRiskAnnotationResult3D result =
+      annotateRouteRiskTiersFromDerivedEsdf3D(route, grid, esdf, 1.0, 6.0);
   EXPECT_TRUE(result.accepted());
   EXPECT_EQ(route.back().required_risk_tier, RouteRiskTier3D::kCritical);
 }

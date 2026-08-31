@@ -214,7 +214,9 @@ transaction, candidate, active certified route, current position, and raw-world
 snapshot. It owns constrained-span construction, splice-preserving geometry
 optimization, derived risk annotation, optional passage decoration, and final
 candidate validation. It returns a typed immutable route result plus telemetry
-and fallback information; ROS logging is an outer adapter.
+and fallback information; ROS logging is an outer adapter. Derived-clearance
+risk annotation is a controller-neutral `nav_planning` operation and cannot
+acquire hard collision authority.
 
 The ownership model is specified in
 [`navigation_architecture_remediation.md`](navigation_architecture_remediation.md).

@@ -1,4 +1,4 @@
-#include "drone_city_nav/mppi/route_risk_adapter_3d.hpp"
+#include "drone_city_nav/route_risk_annotation_3d.hpp"
 
 #include "drone_city_nav/esdf_query.hpp"
 
@@ -6,7 +6,7 @@
 
 namespace drone_city_nav {
 
-RouteRiskTierAssignmentResult3D assignRouteRiskTiersFromMppiEsdf3D(
+RouteRiskAnnotationResult3D annotateRouteRiskTiersFromDerivedEsdf3D(
     const std::span<RouteSample3D> route, const mppi::EsdfGrid& grid,
     const std::span<const float> esdf_m, const double critical_distance_m,
     const double preferred_distance_m) noexcept {
@@ -18,7 +18,7 @@ RouteRiskTierAssignmentResult3D assignRouteRiskTiersFromMppiEsdf3D(
     RouteSample3D& sample = route[index];
     if (!std::isfinite(sample.position.x) || !std::isfinite(sample.position.y) ||
         !std::isfinite(sample.position.z)) {
-      return {.status = RouteRiskTierAssignmentStatus3D::kInvalidInput,
+      return {.status = RouteRiskAnnotationStatus3D::kInvalidInput,
               .failure_sample_index = index,
               .failure_point = sample.position};
     }
@@ -37,15 +37,15 @@ RouteRiskTierAssignmentResult3D assignRouteRiskTiersFromMppiEsdf3D(
       sample.required_risk_tier = RouteRiskTier3D::kPreferred;
     }
   }
-  return {.status = RouteRiskTierAssignmentStatus3D::kAccepted};
+  return {.status = RouteRiskAnnotationStatus3D::kAccepted};
 }
 
-std::string_view routeRiskTierAssignmentStatus3DName(
-    const RouteRiskTierAssignmentStatus3D status) noexcept {
+std::string_view
+routeRiskAnnotationStatus3DName(const RouteRiskAnnotationStatus3D status) noexcept {
   switch (status) {
-    case RouteRiskTierAssignmentStatus3D::kAccepted:
+    case RouteRiskAnnotationStatus3D::kAccepted:
       return "accepted";
-    case RouteRiskTierAssignmentStatus3D::kInvalidInput:
+    case RouteRiskAnnotationStatus3D::kInvalidInput:
       return "invalid_input";
   }
   return "invalid_status";

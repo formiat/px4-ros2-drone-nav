@@ -254,6 +254,7 @@ add_drone_city_nav_layer(
   src/route_3d_passage.cpp
   src/route_3d_spans.cpp
   src/route_planning_3d.cpp
+  src/route_risk_annotation_3d.cpp
   src/static_route_geometry.cpp
   src/tracking_objective.cpp)
 target_link_libraries(drone_city_nav_planning PUBLIC drone_city_nav_collision)
@@ -322,7 +323,6 @@ add_drone_city_nav_layer(
   src/cooperative_mppi_adapter.cpp
   src/cooperative_passage_execution.cpp
   src/mppi/mppi_post_update_classification.cpp
-  src/mppi/route_risk_adapter_3d.cpp
   src/mppi_liveness.cpp
   src/mppi_nominal_reseed.cpp
   src/mppi_rollout_budget.cpp

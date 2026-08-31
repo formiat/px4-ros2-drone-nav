@@ -1,8 +1,8 @@
 #include "route_materializer_3d.hpp"
 
-#include "drone_city_nav/mppi/route_risk_adapter_3d.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
 #include "drone_city_nav/passage_traversal_selection_3d.hpp"
+#include "drone_city_nav/route_risk_annotation_3d.hpp"
 #include "drone_city_nav/static_route_extension.hpp"
 
 #include <algorithm>
@@ -278,8 +278,8 @@ RouteMaterializer3D::materialize(RouteMaterializationRequest3D request) const {
     *mutable_route = std::move(geometry.route);
   }
 
-  const RouteRiskTierAssignmentResult3D optimized_risk_assignment =
-      assignRouteRiskTiersFromMppiEsdf3D(
+  const RouteRiskAnnotationResult3D optimized_risk_assignment =
+      annotateRouteRiskTiersFromDerivedEsdf3D(
           *mutable_route, transaction.world->grid, *transaction.world->distances_m,
           config_.critical_distance_m, config_.preferred_distance_m);
   if (!optimized_risk_assignment.accepted()) {
@@ -386,8 +386,8 @@ RouteMaterializer3D::materialize(RouteMaterializationRequest3D request) const {
   if (!cooperative_route_valid) {
     result.validation = StaticRouteCandidateValidation{
         .status = StaticRouteCandidateStatus::kInvalidPassageSpan};
-  } else if (const RouteRiskTierAssignmentResult3D risk_assignment =
-                 assignRouteRiskTiersFromMppiEsdf3D(
+  } else if (const RouteRiskAnnotationResult3D risk_assignment =
+                 annotateRouteRiskTiersFromDerivedEsdf3D(
                      *mutable_route, transaction.world->grid,
                      *transaction.world->distances_m, config_.critical_distance_m,
                      config_.preferred_distance_m);

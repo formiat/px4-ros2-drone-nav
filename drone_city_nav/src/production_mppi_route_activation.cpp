@@ -1,8 +1,8 @@
 #include "production_mppi_route_activation.hpp"
 
 #include "drone_city_nav/execution_route_certification_3d.hpp"
-#include "drone_city_nav/mppi/route_risk_adapter_3d.hpp"
 #include "drone_city_nav/mppi/trajectory_reference_adapter_3d.hpp"
+#include "drone_city_nav/route_risk_annotation_3d.hpp"
 #include "drone_city_nav/trajectory_compiler_3d.hpp"
 
 #include <algorithm>
@@ -46,12 +46,12 @@ rawWorldExecutionOwnerExact(const ProductionMppiRawWorld3D& raw_world) noexcept 
              raw_world.occupancy.get();
 }
 
-[[nodiscard]] StaticRouteCandidateStatus candidateStatusFromRiskAssignment(
-    const RouteRiskTierAssignmentStatus3D status) noexcept {
+[[nodiscard]] StaticRouteCandidateStatus
+candidateStatusFromRiskAssignment(const RouteRiskAnnotationStatus3D status) noexcept {
   switch (status) {
-    case RouteRiskTierAssignmentStatus3D::kAccepted:
+    case RouteRiskAnnotationStatus3D::kAccepted:
       return StaticRouteCandidateStatus::kAccepted;
-    case RouteRiskTierAssignmentStatus3D::kInvalidInput:
+    case RouteRiskAnnotationStatus3D::kInvalidInput:
       return StaticRouteCandidateStatus::kInvalidInput;
   }
   return StaticRouteCandidateStatus::kInvalidInput;
@@ -275,12 +275,12 @@ ProductionRouteActivationResult3D ProductionMppiNode::prepareRouteActivation3D(
       snapshot.resident_world->local_world_generation.generation !=
           candidate.world->local_world_generation.generation) {
     auto rebased_route = std::make_shared<std::vector<RouteSample3D>>(*candidate.route);
-    const RouteRiskTierAssignmentResult3D risk_assignment =
-        assignRouteRiskTiersFromMppiEsdf3D(*rebased_route,
-                                           snapshot.resident_world->grid,
-                                           *snapshot.resident_world->distances_m,
-                                           mppi_config_.risk.critical_distance_m,
-                                           mppi_config_.risk.preferred_distance_m);
+    const RouteRiskAnnotationResult3D risk_assignment =
+        annotateRouteRiskTiersFromDerivedEsdf3D(*rebased_route,
+                                                snapshot.resident_world->grid,
+                                                *snapshot.resident_world->distances_m,
+                                                mppi_config_.risk.critical_distance_m,
+                                                mppi_config_.risk.preferred_distance_m);
     if (!risk_assignment.accepted()) {
       report.candidate_validation = StaticRouteCandidateValidation{
           .status = candidateStatusFromRiskAssignment(risk_assignment.status),

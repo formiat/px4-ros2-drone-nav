@@ -563,8 +563,10 @@ transfer, rejection reasons, callback failure, reentrant continuations, stop,
 and restart. `RouteMaterializer3D` owns one exact request through geometric
 optimization, splice preservation, derived risk annotation, optional passage
 decoration, and final candidate validation; typed fallback information is
-logged only by the ROS adapter. Trajectory compilation/activation,
-controller ownership, and the execution facade remain to be extracted.
+logged only by the ROS adapter. Its soft risk annotation now lives in
+`nav_planning`; the legacy MPPI adapter and controller-layer dependency have
+been removed. Trajectory compilation/activation, controller ownership, and the
+execution facade remain to be extracted.
 Direct tests replace the former raw-world source-order guards with executable
 overload, quarantine, full/incremental/reuse, throttling, exact-parent,
 publication, upload-rejection/exception fail-closed behavior, and stop
