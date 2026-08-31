@@ -1,6 +1,5 @@
 #include "drone_city_nav/pending_certified_route_3d.hpp"
 
-#include "drone_city_nav/execution_route_store_3d.hpp"
 #include "drone_city_nav/execution_supervisor_3d.hpp"
 
 #include <limits>
@@ -148,14 +147,6 @@ bool pendingCertifiedRouteRetainsSnapshotCertificate3D(
     const PendingCertifiedRoute3D& pending) noexcept {
   return pending.valid() &&
          pending.base_kind == PendingExecutionBaseKind3D::kRouteHandoff;
-}
-
-PendingCertifiedRouteRecoveryResult3D recoverPendingCertifiedRouteLiveness3D(
-    RouteExecutionManager3D& manager,
-    const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending,
-    const PendingCertifiedRouteRecoveryObservation3D& observation) {
-  return recoverPendingCertifiedRouteLivenessImpl(manager, expected_pending,
-                                                  observation);
 }
 
 PendingCertifiedRouteRecoveryResult3D recoverPendingCertifiedRouteLiveness3D(

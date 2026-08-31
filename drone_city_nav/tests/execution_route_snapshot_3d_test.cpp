@@ -563,37 +563,38 @@ TEST(ExecutionRouteSnapshot3DTest,
   const std::optional<CertifiedRouteSuffix3D> route = fixture.certify();
   ASSERT_TRUE(route.has_value());
   const auto exercise_recovery = [&](const PendingExecutionBaseKind3D base_kind) {
-    RouteExecutionManager3D manager;
+    ExecutionSupervisor3D supervisor;
     if (base_kind == PendingExecutionBaseKind3D::kRevoked) {
       const std::shared_ptr<const CommittedExecutionAuthority3D> authority =
-          manager.authority();
-      const std::shared_ptr<const ExecutionPlan3D> initial = manager.plan();
+          supervisor.authority();
+      const std::shared_ptr<const ExecutionPlan3D> initial = supervisor.plan();
       ASSERT_NE(initial, nullptr);
       const ExecutionRouteTransitionResult3D revoked =
           revokeExecution3D(*initial, initial->version);
       ASSERT_TRUE(revoked.applied());
-      ASSERT_EQ(manager.publishDetachedTransition(authority, revoked),
+      ASSERT_EQ(supervisor.commitDetachedTransition(authority, revoked),
                 ExecutionRoutePublicationStatus3D::kPublished);
     }
-    const std::shared_ptr<const ExecutionPlan3D> base = manager.plan();
+    const std::shared_ptr<const ExecutionPlan3D> base = supervisor.plan();
     ASSERT_NE(base, nullptr);
     const auto pending = std::make_shared<const PendingCertifiedRoute3D>(
         pendingForSnapshot(*base, base_kind, *route, 1U));
     ASSERT_TRUE(pending->valid());
     ASSERT_TRUE(pendingCertifiedRouteEligible3D(*pending, *base));
-    ASSERT_TRUE(publishPendingDraftForCurrentBase(manager, *pending));
-    const std::shared_ptr<const PendingCertifiedRoute3D> expected = manager.pending();
+    ASSERT_TRUE(publishPendingDraftForCurrentBase(supervisor, *pending));
+    const std::shared_ptr<const PendingCertifiedRoute3D> expected =
+        supervisor.pending();
     ASSERT_NE(expected, nullptr);
 
     // pending_activation=false is the post-resolve signal that current
     // recertification could not produce an executable activation.
     const PendingCertifiedRouteRecoveryResult3D recovery =
         recoverPendingCertifiedRouteLiveness3D(
-            manager, expected, PendingCertifiedRouteRecoveryObservation3D{});
+            supervisor, expected, PendingCertifiedRouteRecoveryObservation3D{});
 
     EXPECT_TRUE(recovery.pending_acknowledged);
     EXPECT_TRUE(recovery.request_successor);
-    EXPECT_EQ(manager.pending(), nullptr);
+    EXPECT_EQ(supervisor.pending(), nullptr);
   };
 
   exercise_recovery(PendingExecutionBaseKind3D::kEmpty);
@@ -639,21 +640,21 @@ TEST(ExecutionRouteSnapshot3DTest,
   newer_value.publication_sequence = 2U;
   const auto newer =
       std::make_shared<const PendingCertifiedRoute3D>(std::move(newer_value));
-  RouteExecutionManager3D manager;
-  ASSERT_TRUE(publishPendingDraftForCurrentBase(manager, *first));
-  const std::shared_ptr<const PendingCertifiedRoute3D> captured = manager.pending();
+  ExecutionSupervisor3D supervisor;
+  ASSERT_TRUE(publishPendingDraftForCurrentBase(supervisor, *first));
+  const std::shared_ptr<const PendingCertifiedRoute3D> captured = supervisor.pending();
   ASSERT_NE(captured, nullptr);
-  ASSERT_FALSE(publishPendingDraftForCurrentBase(manager, *newer));
+  ASSERT_FALSE(publishPendingDraftForCurrentBase(supervisor, *newer));
 
   const PendingCertifiedRouteRecoveryResult3D recovery =
       recoverPendingCertifiedRouteLiveness3D(
-          manager, captured, PendingCertifiedRouteRecoveryObservation3D{});
+          supervisor, captured, PendingCertifiedRouteRecoveryObservation3D{});
 
   EXPECT_TRUE(recovery.pending_acknowledged);
   EXPECT_TRUE(recovery.request_successor);
-  EXPECT_EQ(manager.pending(), nullptr);
-  ASSERT_TRUE(publishPendingDraftForCurrentBase(manager, *newer));
-  const std::shared_ptr<const PendingCertifiedRoute3D> resident = manager.pending();
+  EXPECT_EQ(supervisor.pending(), nullptr);
+  ASSERT_TRUE(publishPendingDraftForCurrentBase(supervisor, *newer));
+  const std::shared_ptr<const PendingCertifiedRoute3D> resident = supervisor.pending();
   ASSERT_NE(resident, nullptr);
   EXPECT_EQ(resident->publication_sequence, 2U);
 }
@@ -668,15 +669,15 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_NE(initial, nullptr);
   const auto pending = std::make_shared<const PendingCertifiedRoute3D>(
       pendingForSnapshot(*initial, PendingExecutionBaseKind3D::kEmpty, *route, 1U));
-  RouteExecutionManager3D manager;
-  ASSERT_TRUE(publishPendingDraftForCurrentBase(manager, *pending));
+  ExecutionSupervisor3D supervisor;
+  ASSERT_TRUE(publishPendingDraftForCurrentBase(supervisor, *pending));
 
   const PendingCertifiedRouteRecoveryResult3D occupied =
       recoverPendingCertifiedRouteLiveness3D(
-          manager, nullptr, PendingCertifiedRouteRecoveryObservation3D{});
+          supervisor, nullptr, PendingCertifiedRouteRecoveryObservation3D{});
   EXPECT_FALSE(occupied.pending_acknowledged);
   EXPECT_FALSE(occupied.request_successor);
-  const std::shared_ptr<const PendingCertifiedRoute3D> resident = manager.pending();
+  const std::shared_ptr<const PendingCertifiedRoute3D> resident = supervisor.pending();
   ASSERT_NE(resident, nullptr);
   EXPECT_EQ(resident->publication_sequence, pending->publication_sequence);
   EXPECT_EQ(resident->route.identity.generation, pending->route.identity.generation);
@@ -685,10 +686,10 @@ TEST(ExecutionRouteSnapshot3DTest,
   EXPECT_EQ(resident->route.geometry->compiled_trajectory_revision,
             pending->route.geometry->compiled_trajectory_revision);
 
-  ASSERT_TRUE(manager.acknowledgePendingIfSame(resident));
+  ASSERT_TRUE(supervisor.acknowledgePendingIfSame(resident));
   const PendingCertifiedRouteRecoveryResult3D empty =
       recoverPendingCertifiedRouteLiveness3D(
-          manager, nullptr, PendingCertifiedRouteRecoveryObservation3D{});
+          supervisor, nullptr, PendingCertifiedRouteRecoveryObservation3D{});
   EXPECT_FALSE(empty.pending_acknowledged);
   EXPECT_TRUE(empty.request_successor);
 }
@@ -703,18 +704,18 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_NE(initial, nullptr);
   const auto pending = std::make_shared<const PendingCertifiedRoute3D>(
       pendingForSnapshot(*initial, PendingExecutionBaseKind3D::kEmpty, *route, 1U));
-  RouteExecutionManager3D manager;
-  ASSERT_TRUE(publishPendingDraftForCurrentBase(manager, *pending));
+  ExecutionSupervisor3D supervisor;
+  ASSERT_TRUE(publishPendingDraftForCurrentBase(supervisor, *pending));
 
   const PendingCertifiedRouteRecoveryResult3D recovery =
-      recoverPendingCertifiedRouteLiveness3D(manager, nullptr,
+      recoverPendingCertifiedRouteLiveness3D(supervisor, nullptr,
                                              PendingCertifiedRouteRecoveryObservation3D{
                                                  .direct_tracking_requested = true,
                                              });
 
   EXPECT_FALSE(recovery.pending_acknowledged);
   EXPECT_FALSE(recovery.request_successor);
-  EXPECT_NE(manager.pending(), nullptr);
+  EXPECT_NE(supervisor.pending(), nullptr);
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
@@ -741,7 +742,7 @@ TEST(ExecutionRouteSnapshot3DTest,
         pendingForSnapshot(*owner, base_kind, *successor, 1U));
     ASSERT_TRUE(pending->valid());
     ASSERT_TRUE(pendingCertifiedRouteEligible3D(*pending, *owner));
-    RouteExecutionManager3D manager;
+    ExecutionSupervisor3D supervisor;
     const std::shared_ptr<const PendingCertifiedRoute3D>& expected = pending;
 
     const bool execution_owner_available =
@@ -750,14 +751,14 @@ TEST(ExecutionRouteSnapshot3DTest,
         owner->stationaryHold() != nullptr;
     const PendingCertifiedRouteRecoveryResult3D recovery =
         recoverPendingCertifiedRouteLiveness3D(
-            manager, expected,
+            supervisor, expected,
             PendingCertifiedRouteRecoveryObservation3D{
                 .execution_owner_available = execution_owner_available,
             });
 
     EXPECT_FALSE(recovery.pending_acknowledged);
     EXPECT_FALSE(recovery.request_successor);
-    EXPECT_EQ(manager.pending(), nullptr);
+    EXPECT_EQ(supervisor.pending(), nullptr);
   };
 
   exercise_owner(active, PendingExecutionBaseKind3D::kRoute);

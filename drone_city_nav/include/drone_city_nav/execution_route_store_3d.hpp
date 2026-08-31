@@ -109,15 +109,6 @@ public:
       const ExecutionOwnerIdentity3D& owner,
       std::shared_ptr<const VersionedExecutionInput3D> input);
 
-  // Compatibility boolean for low-level callers that only need success. New
-  // production orchestration consumes the typed status through the supervisor.
-  [[nodiscard]] bool commitPendingLeasedTransitionIfSame(
-      const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending,
-      const std::shared_ptr<const CommittedExecutionAuthority3D>& expected_authority,
-      const ExecutionRouteTransitionResult3D& transition,
-      const ExecutionOwnerIdentity3D& owner,
-      std::shared_ptr<const VersionedExecutionInput3D> input);
-
 private:
   [[nodiscard]] ExecutionRoutePublicationStatus3D publishAuthorityLocked(
       const std::shared_ptr<const CommittedExecutionAuthority3D>& expected_authority,

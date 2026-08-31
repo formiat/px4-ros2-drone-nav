@@ -46,7 +46,6 @@ pendingCertifiedRouteEligible3D(const PendingCertifiedRoute3D& pending,
     const PendingCertifiedRoute3D& pending) noexcept;
 
 class ExecutionSupervisor3D;
-class RouteExecutionManager3D;
 
 struct PendingCertifiedRouteRecoveryObservation3D {
   bool direct_tracking_requested{false};
@@ -62,12 +61,6 @@ struct PendingCertifiedRouteRecoveryResult3D {
 // Resolves the no-owner pending-plan liveness edge after pending-route
 // recertification. A successor request is authorized only when there was no
 // pending route or the exact failed pending identity was acknowledged.
-[[nodiscard]] PendingCertifiedRouteRecoveryResult3D
-recoverPendingCertifiedRouteLiveness3D(
-    RouteExecutionManager3D& manager,
-    const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending,
-    const PendingCertifiedRouteRecoveryObservation3D& observation);
-
 [[nodiscard]] PendingCertifiedRouteRecoveryResult3D
 recoverPendingCertifiedRouteLiveness3D(
     ExecutionSupervisor3D& supervisor,

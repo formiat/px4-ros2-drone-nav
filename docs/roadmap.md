@@ -573,11 +573,11 @@ boundary. `RouteActivationCoordinator3D` owns that compiler and the complete
 compile/admit/certify/splice pipeline behind one immutable request and prepared
 activation result. Its consume-and-return commit takes that preparation by
 value plus a caller-locked currentness context and can publish only through the
-execution manager; the remaining ROS adapter owns only coherent capture, locks,
-clock access, and diagnostics. `MppiController3D` now owns the sole CUDA engine,
-nominal-reseed lifecycle, and controller-reference cache behind one owned
-request/result transaction; the node retains only the resident-world lease and
-ROS/fail-closed adaptations. `ExecutionSupervisor3D` now owns the sole
+execution supervisor; the remaining ROS adapter owns only coherent capture,
+locks, clock access, and diagnostics. `MppiController3D` now owns the sole CUDA
+engine, nominal-reseed lifecycle, and controller-reference cache behind one
+owned request/result transaction; the node retains only the resident-world
+lease and ROS/fail-closed adaptations. `ExecutionSupervisor3D` now owns the sole
 production execution manager; activation, pending recovery, lease publication,
 revocation, and control evidence cross its typed facade. Route and
 direct-tracking retention now enter through one owned request: the supervisor
@@ -623,12 +623,14 @@ cover transition, unchanged and pending commits, compatible evidence
 revalidation, typed runtime failure, exact navigation/control identity,
 stationary-rearm admission, and concurrent single-winner CAS. Node source checks
 now enforce the adapter/service boundary instead of parsing the domain
-transaction. Other source-text transaction replacements remain tracked by the
-linked checklist.
+transaction. The obsolete Stage-2 planner publication source-order suite and
+the final compatibility execution headers have been removed. Remaining source
+checks cover ROS message/QoS/wiring integration or architectural dependency
+bans, not domain transaction behavior.
 Manager-owned pending identity and atomic base validation are now covered by a
 direct executable suite instead of activation source-order parsing.
-Item 12 remains in progress until that checklist, the complete static audit,
-and the unchanged three-run Manhattan mission gate below are finished.
+Item 12 remains in progress until the complete static audit and the unchanged
+three-run Manhattan mission gate below are finished.
 
 ### Validation
 

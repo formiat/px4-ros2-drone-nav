@@ -77,8 +77,10 @@ snapshot/delta transport, and selected-spectator 3D clouds.
 - delegates persistent D* Lite ownership, request scheduling, planner-worker
   lifetime, and typed validation/result delivery to the package-private
   `RoutePlanningCoordinator3D` and delegates geometric materialization and
-  validation to `RouteMaterializer3D`; route activation and remaining execution
-  orchestration are still being extracted into internal services;
+  validation to `RouteMaterializer3D`; route compilation and activation are
+  delegated to `RouteTrajectoryCompiler3D` and `RouteActivationCoordinator3D`,
+  while execution retention, hold, and horizon commits cross the sole
+  `ExecutionSupervisor3D` facade;
 - delegates diagnostics queuing, worker lifetime, JSONL/error-context files,
   and coherent statistics to the package-private `NavigationDiagnosticsSink`;
 - certifies route geometry, tracking-error tube, successor reserve, and suffix

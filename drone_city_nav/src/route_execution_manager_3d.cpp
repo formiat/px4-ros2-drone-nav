@@ -354,15 +354,4 @@ RouteExecutionManager3D::commitPendingLeasedTransition(
   return ExecutionRoutePublicationStatus3D::kPublished;
 }
 
-bool RouteExecutionManager3D::commitPendingLeasedTransitionIfSame(
-    const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending,
-    const std::shared_ptr<const CommittedExecutionAuthority3D>& expected_authority,
-    const ExecutionRouteTransitionResult3D& transition,
-    const ExecutionOwnerIdentity3D& owner,
-    std::shared_ptr<const VersionedExecutionInput3D> input) {
-  return commitPendingLeasedTransition(expected_pending, expected_authority, transition,
-                                       owner, std::move(input)) ==
-         ExecutionRoutePublicationStatus3D::kPublished;
-}
-
 } // namespace drone_city_nav

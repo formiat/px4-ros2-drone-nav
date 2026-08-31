@@ -186,8 +186,9 @@ TEST(CommittedExecutionAuthority3DTest,
   const std::shared_ptr<const VersionedExecutionInput3D> input =
       SnapshotFixture3D::committedInput(*transition.next);
 
-  ASSERT_TRUE(manager.commitPendingLeasedTransitionIfSame(sealed, initial, transition,
-                                                          owner, input));
+  ASSERT_EQ(
+      manager.commitPendingLeasedTransition(sealed, initial, transition, owner, input),
+      ExecutionRoutePublicationStatus3D::kPublished);
   const RouteExecutionManagerSnapshot3D committed = manager.snapshot();
   ASSERT_TRUE(committed.valid());
   ASSERT_NE(committed.authority, nullptr);
@@ -196,8 +197,9 @@ TEST(CommittedExecutionAuthority3DTest,
   EXPECT_EQ(committed.authority->owner().sequence, owner.sequence);
   EXPECT_TRUE(committed.authority->control().empty());
   EXPECT_EQ(committed.pending, nullptr);
-  EXPECT_FALSE(manager.commitPendingLeasedTransitionIfSame(sealed, initial, transition,
-                                                           owner, input));
+  EXPECT_EQ(
+      manager.commitPendingLeasedTransition(sealed, initial, transition, owner, input),
+      ExecutionRoutePublicationStatus3D::kStaleSnapshotVersion);
 }
 
 TEST(CommittedExecutionAuthority3DTest,

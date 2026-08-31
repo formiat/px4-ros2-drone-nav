@@ -1497,8 +1497,7 @@ if(BUILD_TESTING)
   enable_project_warnings(trajectory_compiler_3d_test)
 
   # Each contract is compiled as the first include in an independent
-  # translation unit. This prevents the compatibility umbrella or another
-  # header from hiding missing includes.
+  # translation unit so another header cannot hide missing includes.
   ament_add_gtest(
     execution_route_public_headers_test
     tests/execution_route_public_headers_test.cpp
@@ -1511,8 +1510,7 @@ if(BUILD_TESTING)
     tests/execution_route_certification_header_compile.cpp
     tests/execution_route_transitions_header_compile.cpp
     tests/execution_route_store_header_compile.cpp
-    tests/execution_supervisor_header_compile.cpp
-    tests/execution_route_compatibility_headers_compile.cpp)
+    tests/execution_supervisor_header_compile.cpp)
   target_compile_features(execution_route_public_headers_test PRIVATE cxx_std_20)
   target_link_libraries(execution_route_public_headers_test drone_city_nav_execution)
   enable_project_warnings(execution_route_public_headers_test)

@@ -2,6 +2,7 @@
 
 #include "drone_city_nav/execution_route_store_3d.hpp"
 #include "drone_city_nav/execution_route_transitions_3d.hpp"
+#include "drone_city_nav/execution_supervisor_3d.hpp"
 #include "drone_city_nav/mppi/mppi_reference.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
 #include "drone_city_nav/trajectory_compiler_3d.hpp"
@@ -871,6 +872,15 @@ publishPendingDraftForCurrentBase(RouteExecutionManager3D& manager,
                                   PendingCertifiedRoute3D candidate) {
   candidate.publication_sequence = 0U;
   return manager.publishPendingForCurrentBase(manager.plan(), std::move(candidate))
+      .published();
+}
+
+[[nodiscard, maybe_unused]] bool
+publishPendingDraftForCurrentBase(ExecutionSupervisor3D& supervisor,
+                                  PendingCertifiedRoute3D candidate) {
+  candidate.publication_sequence = 0U;
+  return supervisor
+      .publishPendingForCurrentBase(supervisor.plan(), std::move(candidate))
       .published();
 }
 

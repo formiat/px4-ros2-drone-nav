@@ -65,8 +65,8 @@ Execution contracts are physically split into
 `execution_plan_3d.hpp`, `execution_route_certification_3d.hpp`,
 `execution_route_transitions_3d.hpp`, and `execution_route_store_3d.hpp`.
 `RouteExecutionManager3D` is the canonical store owner. The former snapshot and
-manager headers remain include-only compatibility umbrellas and have no internal
-production consumers. Every hand-written public-path and private header is
+manager compatibility headers have been removed after every consumer migrated
+to the narrow contracts. Every hand-written public-path and private header is
 compiled as an independent translation unit in test builds.
 
 Optional passage and cooperative metadata decorate a compiled route downstream;
@@ -466,7 +466,7 @@ no mixed authority revision is observable.
 - [x] Stop installing private implementation headers as public API.
 - [x] Register every production-relevant GTest source and remove the stale test
   for the retired raw-snapshot/risk-field protocol.
-- [ ] Replace source-text transaction checks with executable state-machine and
+- [x] Replace source-text transaction checks with executable state-machine and
   concurrency tests. Raw-world joining, supersession, quarantine, publication
   linearization, transient refresh, stop behavior, static build/reuse,
   early/late route supersession, upload/generation failure, and refresh
@@ -501,9 +501,11 @@ no mixed authority revision is observable.
   exact navigation/control witnesses, stationary-rearm assumed-zero admission,
   and concurrent single-winner publication. The old public lease shortcut and
   node-side currentness/revalidation/owner/CAS source-order checks have been
-  removed; remaining text checks express architectural bans and adapter ordering.
-- [x] Keep public and private headers self-contained and retain a temporary
-  umbrella include only where migration compatibility requires it.
+  removed. The obsolete Stage-2 planner publication source-order suite is also
+  gone. Remaining text checks cover ROS message/QoS/wiring integration or
+  express architectural dependency bans; domain transactions execute directly.
+- [x] Keep public and private headers self-contained and remove obsolete
+  compatibility umbrella includes after all consumers migrate.
 - [x] Pass formatting, static analysis, C++ tests, and script tests after every
   coherent stage.
 - [ ] Evaluate the unchanged three-run Manhattan no-static 3D-lidar gate only
