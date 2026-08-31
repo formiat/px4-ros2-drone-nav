@@ -60,8 +60,7 @@ StaticWorldBuildRequest3D ProductionMppiNode::makeStaticWorldBuildRequest3D(
     const std::scoped_lock lock{input_mutex_};
     navigation = navigation_;
   }
-  const std::shared_ptr<const ExecutionPlan3D> execution =
-      route_execution_manager_.plan();
+  const std::shared_ptr<const ExecutionPlan3D> execution = execution_supervisor_.plan();
   return StaticWorldBuildRequest3D{
       .refresh = refresh,
       .objective = staticWorldObjective3D(navigationObjective()),
@@ -79,8 +78,7 @@ StaticWorldCommitContext3D ProductionMppiNode::makeStaticWorldCommitContext3D() 
     const std::scoped_lock lock{input_mutex_};
     navigation = navigation_;
   }
-  const std::shared_ptr<const ExecutionPlan3D> execution =
-      route_execution_manager_.plan();
+  const std::shared_ptr<const ExecutionPlan3D> execution = execution_supervisor_.plan();
   return StaticWorldCommitContext3D{
       .position = {navigation.state.x, navigation.state.y, navigation.state.z},
       .pose_revision = navigation.revision,
@@ -182,7 +180,7 @@ void ProductionMppiNode::handleStaticWorldUpdate3D(const StaticWorldUpdate3D& up
   }
 
   const std::shared_ptr<const ExecutionPlan3D> binding_execution =
-      refresh.valid() ? route_execution_manager_.plan() : nullptr;
+      refresh.valid() ? execution_supervisor_.plan() : nullptr;
   const CertifiedRouteSuffix3D* const binding_route =
       binding_execution != nullptr ? binding_execution->route() : nullptr;
   const bool refresh_base_current =
@@ -234,8 +232,7 @@ void ProductionMppiNode::handleStaticWorldUpdate3D(const StaticWorldUpdate3D& up
                        : refresh_base_current;
   if (route_search_required) {
     const std::shared_ptr<const ExecutionPlan3D> resident_execution =
-        binding_execution != nullptr ? binding_execution
-                                     : route_execution_manager_.plan();
+        binding_execution != nullptr ? binding_execution : execution_supervisor_.plan();
     const std::uint64_t resident_route_generation =
         resident_execution != nullptr ? resident_execution->routeGenerationHighWater()
                                       : 0U;

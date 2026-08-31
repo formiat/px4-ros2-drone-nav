@@ -731,10 +731,9 @@ PreparedRouteActivation3D RouteActivationCoordinator3D::prepare(
   return prepared;
 }
 
-RouteActivationCommitResult3D
-RouteActivationCoordinator3D::commit(PreparedRouteActivation3D prepared,
-                                     const RouteActivationCommitContext3D& context,
-                                     RouteExecutionManager3D& execution_manager) const {
+RouteActivationCommitResult3D RouteActivationCoordinator3D::commit(
+    PreparedRouteActivation3D prepared, const RouteActivationCommitContext3D& context,
+    ExecutionSupervisor3D& execution_supervisor) const {
   RouteActivationCommitResult3D committed{
       .result = std::move(prepared.result),
   };
@@ -759,7 +758,7 @@ RouteActivationCoordinator3D::commit(PreparedRouteActivation3D prepared,
   const bool raw_world_current =
       !raw_validation_required || context.raw_world == snapshot.raw_world;
   bool execution_base_current =
-      sameExecutionRouteBase3D(prepared.execution_base, execution_manager.plan());
+      sameExecutionRouteBase3D(prepared.execution_base, execution_supervisor.plan());
   const bool candidate_world_coherent =
       productionWorldGenerationCoherent(*candidate.world);
   report.resident_world_snapshot_current = resident_world_current;
@@ -777,7 +776,7 @@ RouteActivationCoordinator3D::commit(PreparedRouteActivation3D prepared,
       });
   if (prepared.pending_draft.has_value() && report.snapshot_current) {
     const PendingRoutePublicationResult3D publication =
-        execution_manager.publishPendingForCurrentBase(
+        execution_supervisor.publishPendingForCurrentBase(
             prepared.execution_base, std::move(*prepared.pending_draft));
     report.pending_publication_status = publication.status;
     prepared.pending_draft.reset();

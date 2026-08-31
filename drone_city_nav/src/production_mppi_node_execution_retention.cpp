@@ -197,8 +197,7 @@ ProductionMppiNode::retainSnapshotFinitePath(
   const bool latest_lidar_obstacle_fresh = cycle.latest_lidar_obstacle_fresh;
   const bool latest_lidar_obstacle_receive_time_fallback =
       cycle.latest_lidar_obstacle_receive_time_fallback;
-  const std::shared_ptr<const ExecutionPlan3D> expected =
-      route_execution_manager_.plan();
+  const std::shared_ptr<const ExecutionPlan3D> expected = execution_supervisor_.plan();
   const CertifiedRouteSuffix3D* const expected_route =
       expected != nullptr ? expected->route() : nullptr;
   const FiniteExecutionState3D* const expected_execution =
@@ -562,8 +561,7 @@ ProductionMppiNode::retainDirectFinitePath(
   const bool latest_lidar_obstacle_fresh = cycle.latest_lidar_obstacle_fresh;
   const bool latest_lidar_obstacle_receive_time_fallback =
       cycle.latest_lidar_obstacle_receive_time_fallback;
-  const std::shared_ptr<const ExecutionPlan3D> expected =
-      route_execution_manager_.plan();
+  const std::shared_ptr<const ExecutionPlan3D> expected = execution_supervisor_.plan();
   const DirectTrackingFiniteExecution3D* const expected_direct =
       expected != nullptr ? expected->directTrackingExecution() : nullptr;
   if (expected == nullptr ||
@@ -693,8 +691,7 @@ std::optional<ProductionMppiExecutionPublication>
 ProductionMppiNode::retainActiveFinitePath(
     const ProductionMppiExecutionCycle& cycle,
     const ProductionMppiExecutionReason replacement_failure_reason) {
-  const std::shared_ptr<const ExecutionPlan3D> resident =
-      route_execution_manager_.plan();
+  const std::shared_ptr<const ExecutionPlan3D> resident = execution_supervisor_.plan();
   if (resident != nullptr && resident->directTrackingExecution() != nullptr) {
     return retainDirectFinitePath(cycle, replacement_failure_reason);
   }

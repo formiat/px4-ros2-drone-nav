@@ -479,10 +479,12 @@ inability to follow the route. A continuity-preserving successor may improve the
 route only after full certification and hysteresis; an extension does not change
 the active intent.
 
-One `RouteExecutionManager3D` owns immutable route chunks, monotonic progress,
+One `ExecutionSupervisor3D` owns the sole production
+`RouteExecutionManager3D`, which owns immutable route chunks, monotonic progress,
 the pending and active route, an overlapping future-station successor, and
-atomic suffix repair. Every admitted non-terminal route has certified remaining
-reserve of at least:
+atomic suffix repair. Production mutations cross one typed supervisor lease
+transaction; the manager is not exposed to the ROS node. Every admitted
+non-terminal route has certified remaining reserve of at least:
 
 ```text
 stopping_distance + speed * p99_successor_latency + certified_overlap
@@ -575,8 +577,11 @@ execution manager; the remaining ROS adapter owns only coherent capture, locks,
 clock access, and diagnostics. `MppiController3D` now owns the sole CUDA engine,
 nominal-reseed lifecycle, and controller-reference cache behind one owned
 request/result transaction; the node retains only the resident-world lease and
-ROS/fail-closed adaptations. The remaining execution facade still needs
-extraction. Pending publication is already one manager-owned transaction:
+ROS/fail-closed adaptations. `ExecutionSupervisor3D` now owns the sole
+production execution manager; activation, pending recovery, lease publication,
+revocation, and control evidence cross its typed facade. Retention, hold, and
+the remaining horizon orchestration still need extraction. Pending publication
+is already one manager-owned transaction:
 the manager validates the semantic execution base, assigns the sole monotonic
 sequence, seals the candidate, and occupies the pending slot under one lock.
 Direct tests replace the former raw-world source-order guards with executable
@@ -590,7 +595,10 @@ concurrent controller serialization, backend-unavailable classification, and
 reference-cache ownership, including invalid and superseded controller-world
 currentness. Direct execution-transition tests also carry the raw-invalidation
 emergency-brake contract, so the former syntax-specific ternary assertions have
-been removed. The remaining execution-facade extraction and other source-text
+been removed. Direct supervisor tests now cover all lease kinds, exact pending
+consumption, stale CAS, control-evidence replacement, and concurrent
+single-winner publication; the manager pending-clear source parser has been
+removed. The remaining execution-facade extraction and other source-text
 transaction replacements remain tracked by the linked checklist.
 Manager-owned pending identity and atomic base validation are now covered by a
 direct executable suite instead of activation source-order parsing.

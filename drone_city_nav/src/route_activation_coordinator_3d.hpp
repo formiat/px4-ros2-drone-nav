@@ -1,7 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/certified_route_splice_3d.hpp"
-#include "drone_city_nav/execution_route_store_3d.hpp"
+#include "drone_city_nav/execution_supervisor_3d.hpp"
 #include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/mppi/mppi_config.hpp"
 #include "drone_city_nav/route_progress_3d.hpp"
@@ -109,7 +109,7 @@ public:
   [[nodiscard]] RouteActivationCommitResult3D
   commit(PreparedRouteActivation3D prepared,
          const RouteActivationCommitContext3D& context,
-         RouteExecutionManager3D& execution_manager) const;
+         ExecutionSupervisor3D& execution_supervisor) const;
 
 private:
   RouteActivationCoordinatorConfig3D config_{};

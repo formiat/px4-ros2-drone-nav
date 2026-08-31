@@ -314,7 +314,8 @@ bool RouteExecutionManager3D::acknowledgePendingIfSame(
   return true;
 }
 
-bool RouteExecutionManager3D::commitPendingLeasedTransitionIfSame(
+ExecutionRoutePublicationStatus3D
+RouteExecutionManager3D::commitPendingLeasedTransition(
     const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending,
     const std::shared_ptr<const CommittedExecutionAuthority3D>& expected_authority,
     const ExecutionRouteTransitionResult3D& transition,
@@ -322,7 +323,7 @@ bool RouteExecutionManager3D::commitPendingLeasedTransitionIfSame(
     std::shared_ptr<const VersionedExecutionInput3D> input) {
   if (expected_pending == nullptr || expected_authority == nullptr ||
       transition.next == nullptr) {
-    return false;
+    return ExecutionRoutePublicationStatus3D::kInvalidCandidate;
   }
   const std::scoped_lock lock{mutex_};
   const std::shared_ptr<const CommittedExecutionAuthority3D> current =
@@ -337,18 +338,31 @@ bool RouteExecutionManager3D::commitPendingLeasedTransitionIfSame(
        committed_route->parent_route_instance_id ==
            std::optional<RouteInstanceId3D>{expected_pending->route.route_instance_id});
   if (current != expected_authority || pending_ != expected_pending ||
-      expected_plan == nullptr ||
-      !pendingCertifiedRouteEligible3D(*expected_pending, *expected_plan) ||
-      !committed_route_is_pending_revision) {
-    return false;
+      expected_plan == nullptr) {
+    return ExecutionRoutePublicationStatus3D::kStaleSnapshotVersion;
   }
-  if (publishTransitionLocked(expected_authority, transition, owner,
-                              std::move(input)) !=
-      ExecutionRoutePublicationStatus3D::kPublished) {
-    return false;
+  if (!pendingCertifiedRouteEligible3D(*expected_pending, *expected_plan) ||
+      !committed_route_is_pending_revision) {
+    return ExecutionRoutePublicationStatus3D::kInvalidCandidate;
+  }
+  const ExecutionRoutePublicationStatus3D publication =
+      publishTransitionLocked(expected_authority, transition, owner, std::move(input));
+  if (publication != ExecutionRoutePublicationStatus3D::kPublished) {
+    return publication;
   }
   pending_.reset();
-  return true;
+  return ExecutionRoutePublicationStatus3D::kPublished;
+}
+
+bool RouteExecutionManager3D::commitPendingLeasedTransitionIfSame(
+    const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending,
+    const std::shared_ptr<const CommittedExecutionAuthority3D>& expected_authority,
+    const ExecutionRouteTransitionResult3D& transition,
+    const ExecutionOwnerIdentity3D& owner,
+    std::shared_ptr<const VersionedExecutionInput3D> input) {
+  return commitPendingLeasedTransition(expected_pending, expected_authority, transition,
+                                       owner, std::move(input)) ==
+         ExecutionRoutePublicationStatus3D::kPublished;
 }
 
 } // namespace drone_city_nav

@@ -6,6 +6,7 @@ bool executionPlanHeaderIsSelfContained();
 bool executionRouteCertificationHeaderIsSelfContained();
 bool executionRouteTransitionsHeaderIsSelfContained();
 bool executionRouteStoreHeaderIsSelfContained();
+bool executionSupervisorHeaderIsSelfContained();
 bool executionRouteCompatibilityHeadersCompile();
 
 TEST(ExecutionRoutePublicHeaders, CompileAsIndependentTranslationUnits) {
@@ -15,5 +16,6 @@ TEST(ExecutionRoutePublicHeaders, CompileAsIndependentTranslationUnits) {
   EXPECT_TRUE(executionRouteCertificationHeaderIsSelfContained());
   EXPECT_TRUE(executionRouteTransitionsHeaderIsSelfContained());
   EXPECT_TRUE(executionRouteStoreHeaderIsSelfContained());
+  EXPECT_TRUE(executionSupervisorHeaderIsSelfContained());
   EXPECT_TRUE(executionRouteCompatibilityHeadersCompile());
 }

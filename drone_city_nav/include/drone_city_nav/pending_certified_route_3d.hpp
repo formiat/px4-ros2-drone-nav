@@ -45,6 +45,7 @@ pendingCertifiedRouteEligible3D(const PendingCertifiedRoute3D& pending,
 [[nodiscard]] bool pendingCertifiedRouteRetainsSnapshotCertificate3D(
     const PendingCertifiedRoute3D& pending) noexcept;
 
+class ExecutionSupervisor3D;
 class RouteExecutionManager3D;
 
 struct PendingCertifiedRouteRecoveryObservation3D {
@@ -64,6 +65,12 @@ struct PendingCertifiedRouteRecoveryResult3D {
 [[nodiscard]] PendingCertifiedRouteRecoveryResult3D
 recoverPendingCertifiedRouteLiveness3D(
     RouteExecutionManager3D& manager,
+    const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending,
+    const PendingCertifiedRouteRecoveryObservation3D& observation);
+
+[[nodiscard]] PendingCertifiedRouteRecoveryResult3D
+recoverPendingCertifiedRouteLiveness3D(
+    ExecutionSupervisor3D& supervisor,
     const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending,
     const PendingCertifiedRouteRecoveryObservation3D& observation);
 

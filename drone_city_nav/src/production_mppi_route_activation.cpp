@@ -14,7 +14,7 @@ ProductionMppiNode::captureRouteActivationSnapshot3D() {
   {
     const std::scoped_lock lock{execution_evidence_commit_mutex_, input_mutex_};
     WorldPipeline3D::ResidentLease resident = world_pipeline_->lockResident();
-    snapshot.execution_authority = route_execution_manager_.authority();
+    snapshot.execution_authority = execution_supervisor_.authority();
     snapshot.raw_world = world_pipeline_->latestRawWorld();
     snapshot.resident_world = resident.world();
     snapshot.navigation = navigation_;
@@ -57,7 +57,7 @@ ProductionMppiNode::commitRouteActivation3D(PreparedRouteActivation3D prepared) 
             .minimum_tracking_route_sample_sequence =
                 minimum_tracking_route_sample_sequence_.load(std::memory_order_acquire),
         },
-        route_execution_manager_);
+        execution_supervisor_);
   }
   latest_route_pipeline_event_.store(
       std::make_shared<const ProductionRouteActivationResult3D>(committed.result),

@@ -21,7 +21,7 @@ ProductionMppiNode::makeObservedWorldBuildRequest3D(
   {
     const std::scoped_lock lock{input_mutex_};
     navigation = navigation_;
-    execution_authority = route_execution_manager_.authority();
+    execution_authority = execution_supervisor_.authority();
   }
   if (!navigation.world_state_authoritative) {
     return std::nullopt;
@@ -164,7 +164,7 @@ void ProductionMppiNode::handleObservedWorldUpdate3D(
   const std::uint64_t dispatched_raw_revision =
       observed_route_replan_dispatched_raw_revision_.load(std::memory_order_acquire);
   const std::shared_ptr<const ExecutionPlan3D> resident_execution =
-      route_execution_manager_.plan();
+      execution_supervisor_.plan();
   const std::uint64_t resident_route_generation =
       resident_execution != nullptr ? resident_execution->routeGenerationHighWater()
                                     : 0U;

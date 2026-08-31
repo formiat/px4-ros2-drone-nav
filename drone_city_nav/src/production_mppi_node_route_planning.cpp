@@ -96,7 +96,7 @@ void ProductionMppiNode::processRouteSearch3D(RoutePlanningUpdateEvent3D event) 
 
   const auto observe_recovery_episode = [this, &transaction] {
     const RouteExecutionManagerSnapshot3D execution_state =
-        route_execution_manager_.snapshot();
+        execution_supervisor_.snapshot();
     const std::shared_ptr<const ExecutionPlan3D> execution_plan =
         execution_state.plan();
     const bool recovery_active =
@@ -450,7 +450,7 @@ void ProductionMppiNode::processRouteSearch3D(RoutePlanningUpdateEvent3D event) 
   if (transaction->replacement() || initial_route_search) {
     const StaticRouteSearchRequestIdentity& search_request = transaction->request;
     const std::shared_ptr<const ExecutionPlan3D> resident_execution =
-        route_execution_manager_.plan();
+        execution_supervisor_.plan();
     const std::uint64_t resident_route_generation =
         resident_execution != nullptr ? resident_execution->routeGenerationHighWater()
                                       : 0U;
@@ -503,7 +503,7 @@ void ProductionMppiNode::processRouteSearch3D(RoutePlanningUpdateEvent3D event) 
             : 0U;
     StaticRouteObjective resident_route_objective;
     const std::shared_ptr<const ExecutionPlan3D> resident_execution =
-        route_execution_manager_.plan();
+        execution_supervisor_.plan();
     if (resident_execution != nullptr && resident_execution->route() != nullptr) {
       resident_route_objective =
           resident_execution->route()->identity.proposal.objective;

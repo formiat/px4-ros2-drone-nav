@@ -65,7 +65,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
           cycle.latest_lidar_evidence->contentFingerprint()) {
     return publication;
   }
-  hold_expected = route_execution_manager_.plan();
+  hold_expected = execution_supervisor_.plan();
   if (hold_expected == nullptr ||
       hold_expected != cycle.route_execution.source_snapshot) {
     RCLCPP_ERROR_THROTTLE(
@@ -303,7 +303,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionRevocatio
 
   const std::scoped_lock lock{execution_evidence_commit_mutex_, input_mutex_};
   const std::shared_ptr<const CommittedExecutionAuthority3D> expected_authority =
-      route_execution_manager_.authority();
+      execution_supervisor_.authority();
   if (expected_authority == nullptr || !expected_authority->valid()) {
     return publication;
   }
@@ -380,11 +380,10 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionRevocatio
   }
 
   const bool authority_cleared =
-      transition_required
-          ? route_execution_manager_.publishDetachedTransition(expected_authority,
-                                                               transition) ==
-                ExecutionRoutePublicationStatus3D::kPublished
-          : route_execution_manager_.clearLeaseIfSame(expected_authority);
+      transition_required ? execution_supervisor_.commitDetachedTransition(
+                                expected_authority, transition) ==
+                                ExecutionRoutePublicationStatus3D::kPublished
+                          : execution_supervisor_.clearLeaseIfSame(expected_authority);
   if (!authority_cleared) {
     return publication;
   }
@@ -433,7 +432,7 @@ bool ProductionMppiNode::handleRequestedExecutionRevocation(const std::int64_t n
   {
     const std::scoped_lock lock{execution_evidence_commit_mutex_, input_mutex_};
     const std::shared_ptr<const CommittedExecutionAuthority3D> authority =
-        route_execution_manager_.authority();
+        execution_supervisor_.authority();
     const std::shared_ptr<const ExecutionPlan3D> snapshot =
         authority != nullptr ? authority->plan() : nullptr;
     const bool snapshot_has_executable_authority =
@@ -454,8 +453,7 @@ void ProductionMppiNode::publishFailClosedExecutionRevocation(
   if (!optional_constraints_.nonphysical_execution_revocation_enabled) {
     return;
   }
-  const std::shared_ptr<const ExecutionPlan3D> snapshot =
-      route_execution_manager_.plan();
+  const std::shared_ptr<const ExecutionPlan3D> snapshot = execution_supervisor_.plan();
   const bool authority_present =
       snapshot != nullptr && (snapshot->phase() == ExecutionRoutePhase3D::kRevoked ||
                               snapshot->finiteExecution() != nullptr ||

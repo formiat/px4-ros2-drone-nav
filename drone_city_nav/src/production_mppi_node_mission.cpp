@@ -91,7 +91,7 @@ MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
   if (capture.continuity_broken) {
     mission_goal_capture_attempt_invalidated_ = true;
     const std::scoped_lock lock{input_mutex_};
-    if (route_execution_manager_.authority() == execution_authority) {
+    if (execution_supervisor_.authority() == execution_authority) {
       invalidateAppliedControlWitnessLocked();
       requestExecutionRevocation(ProductionMppiExecutionReason::kNoExecutableHorizon);
     }
@@ -141,7 +141,7 @@ MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
         vehicleStatusAuthoritativeForExecution(vehicle_status_, true, commit_now_ns,
                                                maximum_vehicle_status_age_ms_);
     const bool authority_current =
-        route_execution_manager_.authority() == execution_authority;
+        execution_supervisor_.authority() == execution_authority;
     const bool owner_current = authority_current && execution_horizon_owner.valid &&
                                execution_horizon_owner.valid_from_ns > 0 &&
                                execution_horizon_owner.valid_until_ns >

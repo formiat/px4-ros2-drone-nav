@@ -83,7 +83,7 @@ void ProductionMppiNode::planningTick() {
                        !navigation_frame_reset_unresolved_;
     vehicle_status = vehicle_status_;
     prediction = latest_prediction_error_;
-    execution_authority = route_execution_manager_.authority();
+    execution_authority = execution_supervisor_.authority();
     if (execution_authority != nullptr && execution_authority->valid()) {
       applied_control = execution_authority->control();
       execution_horizon_owner = execution_authority->owner();
@@ -358,7 +358,7 @@ void ProductionMppiNode::planningTick() {
       observed_3d_world);
   const PendingCertifiedRouteRecoveryResult3D pending_recovery =
       recoverPendingCertifiedRouteLiveness3D(
-          route_execution_manager_, route_execution.pending_route,
+          execution_supervisor_, route_execution.pending_route,
           PendingCertifiedRouteRecoveryObservation3D{
               .direct_tracking_requested =
                   route_execution.direct_tracking_identity.has_value(),

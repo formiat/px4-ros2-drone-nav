@@ -129,7 +129,7 @@ void ProductionMppiNode::finalizePlanningTick(
       latest_lidar_evidence, finalization.offboard_session,
       finalization.offboard_session_receive_stamp_ns, planning_state, now_ns);
   const std::shared_ptr<const ExecutionPlan3D> committed_execution_snapshot =
-      route_execution_manager_.plan();
+      execution_supervisor_.plan();
   const CertifiedRouteSuffix3D* const committed_route =
       committed_execution_snapshot != nullptr ? committed_execution_snapshot->route()
                                               : nullptr;

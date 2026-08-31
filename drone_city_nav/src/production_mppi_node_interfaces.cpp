@@ -228,7 +228,7 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
           .resident_route_generation_provider =
               [this]() {
                 const std::shared_ptr<const ExecutionPlan3D> plan =
-                    route_execution_manager_.plan();
+                    execution_supervisor_.plan();
                 return plan != nullptr ? plan->routeGenerationHighWater() : 0U;
               },
           .update_handler =

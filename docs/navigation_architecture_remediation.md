@@ -158,7 +158,8 @@ class CommittedExecutionAuthority3D {
 };
 ```
 
-`RouteExecutionManager3D` is the only constructor and publisher of this value.
+`ExecutionSupervisor3D` owns the only production `RouteExecutionManager3D`;
+the manager remains the only constructor and publisher of this value.
 Every mutation is an exact-pointer compare-and-swap transaction against the
 captured authority, increments its monotonic revision, and validates that the
 lease belongs to the plan owner, the input is the plan's exact immutable input,
@@ -166,6 +167,14 @@ and control feedback belongs to that lease. A plan transition clears prior
 control evidence. Lease revocation, feedback replacement, pending activation,
 and unchanged-plan horizon refresh each publish one complete replacement before
 the corresponding DDS message can become visible.
+
+Production code no longer accesses the manager directly. The supervisor exposes
+one owned lease commit whose kind is transition, unchanged plan, or pending
+transition, plus narrow pending, revocation, and control-evidence operations.
+Activation commit and pending recovery use that facade. Direct tests execute all
+three lease kinds, exact pending consumption, stale-authority rejection, complete
+control-evidence replacement, and concurrent single-winner publication. The
+former Python parsing of the manager's pending-clear order has been removed.
 
 Pending-route publication no longer allocates identity in the ROS node or
 performs a check-then-publish pair. An unsealed candidate carries sequence zero;
@@ -416,8 +425,13 @@ no mixed authority revision is observable.
     `RouteExecutionManager3D` owner.
     - [x] Move pending sequence allocation and execution-base-checked pending
       publication into one manager transaction.
-    - [ ] Move the remaining activation, retention, hold, and horizon operations
-      behind the facade.
+    - [x] Make `ExecutionSupervisor3D` the sole production manager owner and move
+      activation, pending recovery, lease commits, revocation, and control
+      evidence through its typed API.
+    - [ ] Move retention preparation behind the facade.
+    - [ ] Move hold preparation behind the facade.
+    - [ ] Move the remaining horizon validation and commit orchestration behind
+      the facade.
 - [x] Enforce the internal dependency graph with CMake targets.
 - [x] Stop installing private implementation headers as public API.
 - [x] Register every production-relevant GTest source and remove the stale test
@@ -442,6 +456,10 @@ no mixed authority revision is observable.
   checks have also been removed. Exact-snapshot activation preparation,
   supersession, occupied-slot retention, manager publication, and fail-closed
   invalid requests have a direct `RouteActivationCoordinator3D` suite.
+  Supervisor lease kinds, exact pending consumption, stale CAS, control-evidence
+  replacement, and concurrent publication now have a direct
+  `ExecutionSupervisor3D` suite; manager pending-clear source-order parsing has
+  been removed.
 - [x] Keep public and private headers self-contained and retain a temporary
   umbrella include only where migration compatibility requires it.
 - [ ] Pass formatting, static analysis, C++ tests, and script tests after every

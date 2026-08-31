@@ -73,20 +73,9 @@ class Stage4RouteSpliceContractTest(unittest.TestCase):
         execution = (SOURCE / "production_mppi_route_execution.cpp").read_text(
             encoding="utf-8"
         )
-        manager = (SOURCE / "route_execution_manager_3d.cpp").read_text(
-            encoding="utf-8"
-        )
-
         self.assertIn("assessRouteSpliceReadiness3D", execution)
         self.assertIn("routeSpliceWindowExpired3D", execution)
         self.assertIn('"retain_active_route"', execution)
-        commit = manager.split(
-            "RouteExecutionManager3D::commitPendingLeasedTransitionIfSame", maxsplit=1
-        )[1].split("} // namespace drone_city_nav", maxsplit=1)[0]
-        publish = commit.index("publishTransitionLocked(expected_authority, transition")
-        clear = commit.index("pending_.reset()")
-        self.assertLess(publish, clear)
-        self.assertIn("return false;", commit[publish:clear])
 
     def test_extension_and_roi_refresh_are_bound_to_execution_authority(self) -> None:
         planning = (SOURCE / "production_mppi_node_planning_tick.cpp").read_text(
@@ -113,7 +102,7 @@ class Stage4RouteSpliceContractTest(unittest.TestCase):
             "std::make_shared<const CertifiedRouteSuffix3D>(active_route)",
             extension,
         )
-        self.assertIn("route_execution_manager_.plan()", extension)
+        self.assertIn("execution_supervisor_.plan()", extension)
 
 
 if __name__ == "__main__":

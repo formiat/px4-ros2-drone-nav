@@ -104,12 +104,12 @@ void ProductionMppiNode::invalidateAppliedControlWitnessLocked() noexcept {
   // discontinuity even if a later callback reinstalls the exact same horizon
   // tuple before the next planning tick observes it.
   const std::shared_ptr<const CommittedExecutionAuthority3D> expected =
-      route_execution_manager_.authority();
+      execution_supervisor_.authority();
   if (expected == nullptr || !expected->control().valid) {
     return;
   }
-  if (!route_execution_manager_.clearAppliedControlIfSame(expected)) {
-    if (route_execution_manager_.authority() == expected) {
+  if (!execution_supervisor_.clearAppliedControlIfSame(expected)) {
+    if (execution_supervisor_.authority() == expected) {
       applied_control_discontinuity_generation_exhausted_ = true;
     }
     return;
@@ -173,7 +173,7 @@ void ProductionMppiNode::onAppliedControl(const msg::MppiControlFeedback& messag
   const bool session_heartbeat = assessment.candidate.heartbeat();
   const std::scoped_lock lock{input_mutex_};
   const std::shared_ptr<const CommittedExecutionAuthority3D> execution_authority =
-      route_execution_manager_.authority();
+      execution_supervisor_.authority();
   const ExecutionOwnerIdentity3D execution_owner = execution_authority != nullptr
                                                        ? execution_authority->owner()
                                                        : ExecutionOwnerIdentity3D{};
@@ -227,10 +227,9 @@ void ProductionMppiNode::onAppliedControl(const msg::MppiControlFeedback& messag
       invalidateAppliedControlWitnessLocked();
       if (admission.session_transitioned) {
         const std::shared_ptr<const CommittedExecutionAuthority3D> current_authority =
-            route_execution_manager_.authority();
+            execution_supervisor_.authority();
         if (current_authority != nullptr && current_authority->owner().valid) {
-          static_cast<void>(
-              route_execution_manager_.clearLeaseIfSame(current_authority));
+          static_cast<void>(execution_supervisor_.clearLeaseIfSame(current_authority));
         }
       }
       if (!control_payload_valid) {
@@ -261,8 +260,8 @@ void ProductionMppiNode::onAppliedControl(const msg::MppiControlFeedback& messag
     invalidateAppliedControlWitnessLocked();
     return;
   }
-  if (!route_execution_manager_.publishAppliedControlIfSame(execution_authority,
-                                                            feedback)) {
+  if (!execution_supervisor_.publishAppliedControlIfSame(execution_authority,
+                                                         feedback)) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
                          "APPLIED_CONTROL rejected=true reason=authority_changed "
                          "horizon_producer=%" PRIu64 " horizon=%" PRIu64,

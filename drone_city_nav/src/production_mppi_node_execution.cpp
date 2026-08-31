@@ -509,8 +509,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPreparedExecutionC
   std::uint64_t route_trajectory_revision{0U};
   std::optional<FiniteExecutionPlanCertificationResult3D> route_candidate_certification;
   mppi::FiniteExecutionPathCandidateValidator route_candidate_validator;
-  const std::shared_ptr<const ExecutionPlan3D> resident =
-      route_execution_manager_.plan();
+  const std::shared_ptr<const ExecutionPlan3D> resident = execution_supervisor_.plan();
   if (execution_certification_snapshot == nullptr || resident != expected_snapshot) {
     return publishNoExecutablePathHold(
         cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);

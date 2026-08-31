@@ -146,7 +146,7 @@ void ProductionMppiNode::maybeRequestStaticRouteExtension(
   const Point3 next_planning_goal =
       staticRoutePlanningGoal(current, mission_goal, static_esdf_route_lookahead_m_);
   const bool observed_world = !use_static_map_;
-  const bool pending_successor = route_execution_manager_.pending() != nullptr;
+  const bool pending_successor = execution_supervisor_.pending() != nullptr;
   const ProductionMppiForwardAcceleration3D forward_acceleration =
       productionMppiForwardAcceleration3D(navigation);
 
@@ -307,7 +307,7 @@ void ProductionMppiNode::requestStaticRouteReplan(
   }
   const std::int64_t now_ns = get_clock()->now().nanoseconds();
   const std::shared_ptr<const ExecutionPlan3D> execution_snapshot =
-      route_execution_manager_.plan();
+      execution_supervisor_.plan();
   const std::uint64_t committed_route_generation =
       execution_snapshot != nullptr ? execution_snapshot->routeGenerationHighWater()
                                     : 0U;
@@ -544,7 +544,7 @@ void ProductionMppiNode::maybeRequestStaticTrackingWorldRefresh(
     return;
   }
   const std::shared_ptr<const ExecutionPlan3D> execution_snapshot =
-      route_execution_manager_.plan();
+      execution_supervisor_.plan();
   if (execution_snapshot == nullptr) {
     return;
   }

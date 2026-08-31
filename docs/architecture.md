@@ -226,9 +226,10 @@ planner transaction, materialized route, coherent activation snapshot, and
 latency observation as one immutable request. It prepares one typed activation
 artifact containing the exact execution base and an unsequenced pending draft.
 Its consume-and-return commit API validates a caller-locked world/objective
-context and publishes only through `RouteExecutionManager3D`; no caller can
-reuse a partially committed preparation. The production node adapter is limited
-to coherent capture, lock ownership, clock access, and ROS diagnostics.
+context and publishes only through `ExecutionSupervisor3D`; no caller can reuse
+a partially committed preparation. The supervisor is the sole production owner
+of `RouteExecutionManager3D`, including activation publication. The node adapter
+is limited to coherent capture, lock ownership, clock access, and ROS diagnostics.
 `MppiController3D` is the sole owner of the stateful CUDA engine, nominal-reseed
 lifecycle, and controller-reference cache. Its owned request/result transaction
 returns the exact input after assigning the reseed generation and reports
@@ -239,8 +240,12 @@ execution revocation.
 
 The ownership model is specified in
 [`navigation_architecture_remediation.md`](navigation_architecture_remediation.md).
-`RouteExecutionManager3D` keeps a valid route sticky and owns the resident plan
-and pending successor under one lock. It publishes the resident plan together
+`ExecutionSupervisor3D` owns the only production `RouteExecutionManager3D` and
+is the production facade for all pending, lease, revocation, and control-evidence
+mutations. Its single typed lease transaction selects transition, unchanged-plan,
+or pending-transition publication without exposing the store. The manager keeps
+a valid route sticky and owns the resident plan and pending successor under one
+lock. It publishes the resident plan together
 with its typed horizon owner, exact immutable versioned input, and matching
 applied-control evidence as one atomic `CommittedExecutionAuthority3D` pointer.
 Pending activation is also one manager transaction: the manager validates the
@@ -490,5 +495,6 @@ scheduling.
   `RoutePlanningCoordinator3D` owns persistent planning request scheduling and
   worker lifecycle, and `RouteMaterializer3D` owns geometric materialization and
   candidate validation. `RouteTrajectoryCompiler3D` owns exact-state trajectory
-  compilation. Activation, controller coordination, and the execution facade
-  remain to be extracted from the ROS node.
+  compilation. Activation coordination and controller ownership are extracted;
+  finite-path retention, hold preparation, and the remaining horizon
+  orchestration still need to move behind the execution facade.

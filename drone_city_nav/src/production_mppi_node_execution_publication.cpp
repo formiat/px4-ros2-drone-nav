@@ -430,7 +430,7 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
   }
   const std::scoped_lock input_lock{input_mutex_};
   const std::shared_ptr<const CommittedExecutionAuthority3D>
-      resident_execution_authority = route_execution_manager_.authority();
+      resident_execution_authority = execution_supervisor_.authority();
   if (resident_execution_authority == nullptr ||
       !resident_execution_authority->valid()) {
     report_commit_failure("invalid_resident_authority");
@@ -841,36 +841,32 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
     return ProductionMppiHorizonCommitStatus::kRejected;
   }
 
-  bool owner_committed{false};
-  switch (publication_commit.kind) {
-    case ProductionMppiHorizonCommitKind::kPublishSnapshotTransition:
-      owner_committed =
-          publication_commit.expected_snapshot != nullptr &&
-          publication_commit.transition != nullptr &&
-          route_execution_manager_.publishLeasedTransition(
-              resident_execution_authority, *publication_commit.transition, owner,
-              publication_execution_input) ==
-              ExecutionRoutePublicationStatus3D::kPublished;
-      break;
-    case ProductionMppiHorizonCommitKind::kConfirmSnapshotUnchanged:
-      owner_committed =
-          publication_commit.expected_snapshot != nullptr &&
-          route_execution_manager_.publishLeaseForUnchangedPlanIfSame(
-              resident_execution_authority, publication_commit.expected_snapshot, owner,
-              publication_execution_input) ==
-              ExecutionRoutePublicationStatus3D::kPublished;
-      break;
-    case ProductionMppiHorizonCommitKind::kCommitPendingSnapshotTransition:
-      owner_committed =
-          publication_commit.expected_snapshot != nullptr &&
-          publication_commit.transition != nullptr &&
-          publication_commit.expected_pending != nullptr &&
-          route_execution_manager_.commitPendingLeasedTransitionIfSame(
-              publication_commit.expected_pending, resident_execution_authority,
-              *publication_commit.transition, owner, publication_execution_input);
-      break;
-  }
-  if (!owner_committed) {
+  const ExecutionLeaseCommitKind3D lease_commit_kind = [&] {
+    switch (publication_commit.kind) {
+      case ProductionMppiHorizonCommitKind::kPublishSnapshotTransition:
+        return ExecutionLeaseCommitKind3D::kTransition;
+      case ProductionMppiHorizonCommitKind::kConfirmSnapshotUnchanged:
+        return ExecutionLeaseCommitKind3D::kUnchangedPlan;
+      case ProductionMppiHorizonCommitKind::kCommitPendingSnapshotTransition:
+        return ExecutionLeaseCommitKind3D::kPendingTransition;
+    }
+    return ExecutionLeaseCommitKind3D::kUnchangedPlan;
+  }();
+  const ExecutionRoutePublicationStatus3D owner_commit_status =
+      execution_supervisor_.commitLease(ExecutionLeaseCommit3D{
+          .kind = lease_commit_kind,
+          .expected_authority = resident_execution_authority,
+          .expected_plan = publication_commit.expected_snapshot,
+          .transition =
+              publication_commit.transition != nullptr
+                  ? std::optional<ExecutionRouteTransitionResult3D>{*publication_commit
+                                                                         .transition}
+                  : std::nullopt,
+          .expected_pending = publication_commit.expected_pending,
+          .owner = owner,
+          .input = publication_execution_input,
+      });
+  if (owner_commit_status != ExecutionRoutePublicationStatus3D::kPublished) {
     report_commit_failure("snapshot_owner_commit_rejected");
     return ProductionMppiHorizonCommitStatus::kRejected;
   }
@@ -943,7 +939,7 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitExecutionSnapshotHor
   const ExecutionPublicationCurrentnessStatus3D currentness =
       assessExecutionPublicationCurrentness3D(ExecutionPublicationCurrentnessCheck3D{
           .expected_snapshot = expected,
-          .current_snapshot = route_execution_manager_.plan(),
+          .current_snapshot = execution_supervisor_.plan(),
           .raw_requirement = raw_required
                                  ? ExecutionPublicationRawRequirement3D::kRequired
                                  : ExecutionPublicationRawRequirement3D::kOptional,

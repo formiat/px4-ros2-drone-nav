@@ -1,6 +1,7 @@
 #include "drone_city_nav/pending_certified_route_3d.hpp"
 
 #include "drone_city_nav/execution_route_store_3d.hpp"
+#include "drone_city_nav/execution_supervisor_3d.hpp"
 
 #include <limits>
 #include <utility>
@@ -17,6 +18,34 @@ sameDirectTrackingIdentity(const DirectTrackingOwnerIdentity3D& first,
          first.target_track_id == second.target_track_id &&
          first.objective_sample_sequence == second.objective_sample_sequence &&
          first.line_of_sight_generation == second.line_of_sight_generation;
+}
+
+template<typename ExecutionStore>
+[[nodiscard]] PendingCertifiedRouteRecoveryResult3D
+recoverPendingCertifiedRouteLivenessImpl(
+    ExecutionStore& store,
+    const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending,
+    const PendingCertifiedRouteRecoveryObservation3D& observation) {
+  if (observation.direct_tracking_requested || observation.execution_owner_available ||
+      observation.pending_activation) {
+    return {};
+  }
+  if (expected_pending == nullptr) {
+    // A caller-local null does not prove that the shared pending slot is empty: a
+    // newer route may have won publication after the caller's earlier read or
+    // failed acknowledgement. Confirm the shared state at this linearization
+    // point before authorizing another successor request.
+    const bool mailbox_empty = store.pending() == nullptr;
+    return PendingCertifiedRouteRecoveryResult3D{
+        .pending_acknowledged = false,
+        .request_successor = mailbox_empty,
+    };
+  }
+  const bool acknowledged = store.acknowledgePendingIfSame(expected_pending);
+  return PendingCertifiedRouteRecoveryResult3D{
+      .pending_acknowledged = acknowledged,
+      .request_successor = acknowledged,
+  };
 }
 
 } // namespace
@@ -125,26 +154,16 @@ PendingCertifiedRouteRecoveryResult3D recoverPendingCertifiedRouteLiveness3D(
     RouteExecutionManager3D& manager,
     const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending,
     const PendingCertifiedRouteRecoveryObservation3D& observation) {
-  if (observation.direct_tracking_requested || observation.execution_owner_available ||
-      observation.pending_activation) {
-    return {};
-  }
-  if (expected_pending == nullptr) {
-    // A caller-local null does not prove that the shared pending slot is empty: a
-    // newer route may have won publication after the caller's earlier read or
-    // failed acknowledgement. Confirm the shared state at this linearization
-    // point before authorizing another successor request.
-    const bool mailbox_empty = manager.pending() == nullptr;
-    return PendingCertifiedRouteRecoveryResult3D{
-        .pending_acknowledged = false,
-        .request_successor = mailbox_empty,
-    };
-  }
-  const bool acknowledged = manager.acknowledgePendingIfSame(expected_pending);
-  return PendingCertifiedRouteRecoveryResult3D{
-      .pending_acknowledged = acknowledged,
-      .request_successor = acknowledged,
-  };
+  return recoverPendingCertifiedRouteLivenessImpl(manager, expected_pending,
+                                                  observation);
+}
+
+PendingCertifiedRouteRecoveryResult3D recoverPendingCertifiedRouteLiveness3D(
+    ExecutionSupervisor3D& supervisor,
+    const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending,
+    const PendingCertifiedRouteRecoveryObservation3D& observation) {
+  return recoverPendingCertifiedRouteLivenessImpl(supervisor, expected_pending,
+                                                  observation);
 }
 
 } // namespace drone_city_nav

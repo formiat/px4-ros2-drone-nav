@@ -25,7 +25,6 @@ EXECUTION_RETENTION = SOURCE / "production_mppi_node_execution_retention.cpp"
 OPTIONAL_CONSTRAINTS = SOURCE / "production_mppi_node_optional_constraints.cpp"
 ROUTE_ACTIVATION = SOURCE / "route_activation_coordinator_3d.cpp"
 ROUTE_EXECUTION = SOURCE / "production_mppi_route_execution.cpp"
-ROUTE_EXECUTION_MANAGER = SOURCE / "route_execution_manager_3d.cpp"
 CONTROL_FEEDBACK = SOURCE / "production_mppi_node_control_feedback.cpp"
 ROUTE_WORLD_TEST = PACKAGE / "tests" / "production_mppi_route_world_test.cpp"
 OFFBOARD = SOURCE / "mppi_offboard_node.cpp"
@@ -381,7 +380,7 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
             "navigation_objective_.load(std::memory_order_acquire) == objective",
             "navigation_.revision == navigation.revision",
             "vehicle_status_.revision == vehicle_status.revision",
-            "route_execution_manager_.authority() == execution_authority",
+            "execution_supervisor_.authority() == execution_authority",
             "requested_execution_revocation_.load(std::memory_order_acquire)",
             "commit_now_ns >= execution_horizon_owner.valid_from_ns",
             "commit_now_ns < execution_horizon_owner.valid_until_ns",
@@ -606,7 +605,6 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         activation = ROUTE_ACTIVATION.read_text(encoding="utf-8")
         execution = read_execution_sources()
         route_execution = ROUTE_EXECUTION.read_text(encoding="utf-8")
-        execution_manager = ROUTE_EXECUTION_MANAGER.read_text(encoding="utf-8")
 
         lidar_producer = inputs.split(
             "void ProductionMppiNode::onLatestLidarObstacleScan", maxsplit=1
@@ -642,22 +640,12 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
             "ProductionMppiNode::commitAndPublishExecutionHorizon", maxsplit=1
         )[1].split("ProductionMppiNode::commitExecutionSnapshotHorizon", maxsplit=1)[0]
         owner_callback = owner_commit.index("switch (publication_commit.kind)")
-        transition_install = owner_commit.index(
-            "route_execution_manager_.publishLeasedTransition"
-        )
-        unchanged_install = owner_commit.index(
-            "route_execution_manager_.publishLeaseForUnchangedPlanIfSame"
-        )
-        pending_install = owner_commit.index(
-            "route_execution_manager_.commitPendingLeasedTransitionIfSame"
-        )
+        supervisor_commit = owner_commit.index("execution_supervisor_.commitLease")
         owner_dds = owner_commit.index(
             "execution_horizon_pub_->publish(publication_horizon);"
         )
-        self.assertLess(owner_callback, transition_install)
-        self.assertLess(transition_install, owner_dds)
-        self.assertLess(unchanged_install, owner_dds)
-        self.assertLess(pending_install, owner_dds)
+        self.assertLess(owner_callback, supervisor_commit)
+        self.assertLess(supervisor_commit, owner_dds)
         self.assertNotIn("applied_control_", owner_commit)
         self.assertNotIn("execution_horizon_owner_", owner_commit)
         self.assertIn("owner.producer_instance_id ==", owner_commit)
@@ -665,15 +653,6 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         self.assertIn("owner.target_offboard_instance_id", owner_commit)
         self.assertIn("assessOffboardSessionPublicationCurrentness", owner_commit)
         self.assertIn("cycle.offboard_session", owner_commit)
-
-        pending_snapshot_cas = owner_commit.index(
-            "commitPendingLeasedTransitionIfSame"
-        )
-        fallback_snapshot_cas = owner_commit.index(
-            "route_execution_manager_.publishLeasedTransition"
-        )
-        self.assertLess(pending_snapshot_cas, owner_dds)
-        self.assertLess(fallback_snapshot_cas, owner_dds)
 
         snapshot_commit = execution_publication.split(
             "ProductionMppiNode::commitExecutionSnapshotHorizon", maxsplit=1
@@ -692,23 +671,6 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         self.assertLess(snapshot_currentness, snapshot_owner_commit)
         self.assertNotIn("evidence_lock.unlock", snapshot_commit)
 
-        atomic_pending_commit = execution_manager.split(
-            "RouteExecutionManager3D::commitPendingLeasedTransitionIfSame", maxsplit=1
-        )[1].split("} // namespace drone_city_nav", maxsplit=1)[0]
-        pending_mutex = atomic_pending_commit.index(
-            "const std::scoped_lock lock{mutex_};"
-        )
-        pending_identity = atomic_pending_commit.index(
-            "pending_ != expected_pending"
-        )
-        pending_plan_cas = atomic_pending_commit.index(
-            "publishTransitionLocked(expected_authority, transition"
-        )
-        pending_consume = atomic_pending_commit.index("pending_.reset();")
-        self.assertLess(pending_mutex, pending_identity)
-        self.assertLess(pending_identity, pending_plan_cas)
-        self.assertLess(pending_plan_cas, pending_consume)
-
         hold_commit = execution_publication.split(
             "ProductionMppiNode::publishPositionHold", maxsplit=1
         )[1].split("ProductionMppiNode::publishNoExecutablePathHold", maxsplit=1)[0]
@@ -716,7 +678,7 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
             "current_lidar->evidenceId() != cycle.latest_lidar_evidence->evidenceId()"
         )
         hold_snapshot_load = hold_commit.index(
-            "hold_expected = route_execution_manager_.plan();"
+            "hold_expected = execution_supervisor_.plan();"
         )
         hold_transition = hold_commit.index("transferToExecutionHold3D")
         hold_horizon = hold_commit.index("makeExecutionHorizon(")
@@ -789,7 +751,7 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         )
         self.assertLess(route_advance, route_preparation)
         self.assertLess(route_preparation, certification_snapshot)
-        self.assertNotIn("route_execution_manager_.publishPlan", route_progress_preparation)
+        self.assertNotIn("execution_supervisor_.commitLease", route_progress_preparation)
 
         atomic_plan_commit = execution.split(
             "const ExecutionRouteTransitionResult3D prepared_transition", maxsplit=1
@@ -856,9 +818,7 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         )
         self.assertLess(request_currentness, snapshot_cas)
         self.assertLess(request_currentness, dds_publish)
-        snapshot_owner_commit = owner_commit.index(
-            "route_execution_manager_.publishLeasedTransition"
-        )
+        snapshot_owner_commit = owner_commit.index("execution_supervisor_.commitLease")
         executable_owner_install = owner_commit.index(
             "execution_horizon_pub_->publish(publication_horizon)"
         )
@@ -886,7 +846,7 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         )[1].split("ProductionMppiNode::requestExecutionRevocation", maxsplit=1)[0]
         self.assertIn("ExecutionRouteTransitionStatus3D::kNoChange", revoke)
         session_gate = revoke.index("if (!current_session)")
-        revoke_cas = revoke.index("route_execution_manager_.publishDetachedTransition")
+        revoke_cas = revoke.index("execution_supervisor_.commitDetachedTransition")
         sequence_commit = revoke.index(
             "execution_horizon_sequence_ = revocation.sequence"
         )
@@ -894,7 +854,7 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         self.assertLess(session_gate, revoke_cas)
         self.assertLess(revoke_cas, sequence_commit)
         self.assertLess(sequence_commit, revoke_publish)
-        self.assertIn("route_execution_manager_.clearLeaseIfSame", revoke)
+        self.assertIn("execution_supervisor_.clearLeaseIfSame", revoke)
         self.assertNotIn("execution_horizon_owner_", revoke)
         self.assertNotIn("applied_control_", revoke)
         self.assertIn(
