@@ -49,9 +49,6 @@ compileProfile(const RouteEndpointSemantics3D semantics) {
       .route_generation = 1U,
       .route = std::move(route),
       .constrained_spans = {},
-      .passage_volumes = {},
-      .cooperative_passage_assignments = {},
-      .selected_passage_traversal_ids = {},
       .endpoint_semantics = semantics,
       .materialized_route_fingerprint = fingerprint,
       .config = config,
@@ -150,6 +147,15 @@ TEST(ProductionMppiRouteHelpersTest,
   ASSERT_TRUE(compilation.compiled());
   const std::uint64_t fingerprint =
       compilation.trajectory->materialized_route_fingerprint;
+  const RouteDecorationCompilationResult3D decoration_compilation =
+      RouteDecorationCompiler3D::compile(RouteDecorationCompilerInput3D{
+          .trajectory = compilation.trajectory,
+          .route_generation = 1U,
+          .passage_volumes = {},
+          .cooperative_passage_assignments = {},
+          .selected_passage_traversal_ids = {},
+      });
+  ASSERT_TRUE(decoration_compilation.compiled());
 
   ProductionMaterializedRouteProposal3D proposal{
       .identity =
@@ -159,6 +165,7 @@ TEST(ProductionMppiRouteHelpersTest,
               .activation_eligible = true,
           },
       .trajectory = compilation.trajectory,
+      .decorations = decoration_compilation.decorations,
   };
   RouteAdmissionReport3D admission;
   admission.assessment = RouteActivationAssessment3D{
@@ -175,6 +182,7 @@ TEST(ProductionMppiRouteHelpersTest,
       .status = DynamicHandoffStatus3D::kAccepted,
   };
   admission.trajectory_validation = compilation.validation;
+  admission.decoration_validation = decoration_compilation.validation;
   admission.world_compatible = true;
   admission.objective_matches = true;
 
@@ -196,9 +204,6 @@ TEST(ProductionMppiRouteHelpersTest,
           .route_generation = 1U,
           .route = std::move(invalid_route),
           .constrained_spans = {},
-          .passage_volumes = {},
-          .cooperative_passage_assignments = {},
-          .selected_passage_traversal_ids = {},
           .materialized_route_fingerprint = retained->materialized_route_fingerprint,
       });
 

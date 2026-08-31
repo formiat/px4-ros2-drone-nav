@@ -52,41 +52,66 @@ RouteTrajectoryCompiler3D::RouteTrajectoryCompiler3D(
     : config_{config} {
 }
 
-TrajectoryCompilationResult3D RouteTrajectoryCompiler3D::compile(
+RouteTrajectoryCompilationResult3D RouteTrajectoryCompiler3D::compile(
     const RouteTrajectoryCompilationRequest3D& request) const {
   using Failure = CompiledTrajectoryFailureReason3D;
   if (!materializedResourcesAvailable(request.materialized)) {
-    return TrajectoryCompilationResult3D{
+    return RouteTrajectoryCompilationResult3D{
         .trajectory = nullptr,
+        .decorations = nullptr,
         .validation = {.reason = Failure::kMissingRoute},
+        .decoration_validation = {},
         .stop_turn_count = 0U,
     };
   }
   const std::optional<TrackingErrorTubeWorld3D> tracking_world =
       trackingWorld(request.materialized, request.observed_raw_world);
   if (!tracking_world.has_value()) {
-    return TrajectoryCompilationResult3D{
+    return RouteTrajectoryCompilationResult3D{
         .trajectory = nullptr,
+        .decorations = nullptr,
         .validation = {.reason = Failure::kInvalidTrackingErrorTube},
+        .decoration_validation = {},
         .stop_turn_count = 0U,
     };
   }
 
   const MaterializedRoute3D& materialized = request.materialized;
-  return TrajectoryCompiler3D::compile(TrajectoryCompilerInput3D{
-      .exact_initial_state = request.exact_initial_state,
-      .route_generation = materialized.candidate_generation,
-      .route = *materialized.route,
-      .constrained_spans = *materialized.constrained_spans,
-      .passage_volumes = *materialized.passage_volumes,
-      .cooperative_passage_assignments = *materialized.cooperative_passage_assignments,
-      .selected_passage_traversal_ids = *materialized.selected_passage_traversal_ids,
-      .passage_volume_config = config_.passage_volume,
-      .endpoint_semantics = request.endpoint_semantics,
-      .materialized_route_fingerprint = materialized.fingerprint,
-      .tracking_world = tracking_world.value(),
-      .config = config_.trajectory,
-  });
+  TrajectoryCompilationResult3D trajectory =
+      TrajectoryCompiler3D::compile(TrajectoryCompilerInput3D{
+          .exact_initial_state = request.exact_initial_state,
+          .route_generation = materialized.candidate_generation,
+          .route = *materialized.route,
+          .constrained_spans = *materialized.constrained_spans,
+          .endpoint_semantics = request.endpoint_semantics,
+          .materialized_route_fingerprint = materialized.fingerprint,
+          .tracking_world = tracking_world.value(),
+          .config = config_.trajectory,
+      });
+  RouteTrajectoryCompilationResult3D result{
+      .trajectory = trajectory.trajectory,
+      .decorations = nullptr,
+      .validation = trajectory.validation,
+      .decoration_validation = {},
+      .stop_turn_count = trajectory.stop_turn_count,
+  };
+  if (!trajectory.compiled()) {
+    return result;
+  }
+  RouteDecorationCompilationResult3D decorations =
+      RouteDecorationCompiler3D::compile(RouteDecorationCompilerInput3D{
+          .trajectory = trajectory.trajectory,
+          .route_generation = materialized.candidate_generation,
+          .passage_volumes = *materialized.passage_volumes,
+          .cooperative_passage_assignments =
+              *materialized.cooperative_passage_assignments,
+          .selected_passage_traversal_ids =
+              *materialized.selected_passage_traversal_ids,
+          .passage_volume_config = config_.passage_volume,
+      });
+  result.decorations = std::move(decorations.decorations);
+  result.decoration_validation = decorations.validation;
+  return result;
 }
 
 } // namespace drone_city_nav

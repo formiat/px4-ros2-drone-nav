@@ -92,85 +92,6 @@ validTraversalSegmentSpans(const ConstrainedRouteSpan& span) noexcept {
   return true;
 }
 
-[[nodiscard]] bool
-validPassageCrossSection(const PassageCrossSection& section) noexcept {
-  const double tangent_norm = vectorNorm(section.tangent);
-  const double lateral_norm = vectorNorm(section.lateral_axis);
-  const double secondary_norm = vectorNorm(section.secondary_axis);
-  const Vec3 tangent_cross_lateral{section.tangent.y * section.lateral_axis.z -
-                                       section.tangent.z * section.lateral_axis.y,
-                                   section.tangent.z * section.lateral_axis.x -
-                                       section.tangent.x * section.lateral_axis.z,
-                                   section.tangent.x * section.lateral_axis.y -
-                                       section.tangent.y * section.lateral_axis.x};
-  return std::isfinite(section.station_m) && finitePoint(section.center) &&
-         finiteVector(section.tangent) && finiteVector(section.lateral_axis) &&
-         finiteVector(section.secondary_axis) &&
-         nearlyEqual(tangent_norm, 1.0, 1.0e-3) &&
-         nearlyEqual(lateral_norm, 1.0, 1.0e-3) &&
-         nearlyEqual(secondary_norm, 1.0, 1.0e-3) &&
-         std::abs(vectorDot(section.tangent, section.lateral_axis)) <= 1.0e-3 &&
-         std::abs(vectorDot(section.tangent, section.secondary_axis)) <= 1.0e-3 &&
-         std::abs(vectorDot(section.lateral_axis, section.secondary_axis)) <= 1.0e-3 &&
-         vectorDot(tangent_cross_lateral, section.secondary_axis) >= 0.999 &&
-         std::isfinite(section.minimum_lateral_offset_m) &&
-         std::isfinite(section.maximum_lateral_offset_m) &&
-         std::isfinite(section.minimum_secondary_offset_m) &&
-         std::isfinite(section.maximum_secondary_offset_m) &&
-         section.minimum_lateral_offset_m <= section.maximum_lateral_offset_m &&
-         section.minimum_secondary_offset_m <= section.maximum_secondary_offset_m &&
-         section.raw_validated;
-}
-
-[[nodiscard]] bool validPassageVolume(const PassageVolume& volume,
-                                      const ConstrainedRouteSpan& span,
-                                      const std::size_t span_index) noexcept {
-  if (volume.span_index != span_index ||
-      volume.passage_traversal_id != span.passage_traversal_id ||
-      !volume.raw_validated || volume.cross_sections.empty() ||
-      !std::isfinite(volume.begin_station_m) || !std::isfinite(volume.end_station_m) ||
-      !nearlyEqual(volume.begin_station_m, span.begin_station_m, kStationToleranceM) ||
-      !nearlyEqual(volume.end_station_m, span.end_station_m, kStationToleranceM) ||
-      !std::isfinite(volume.minimum_lateral_offset_m) ||
-      !std::isfinite(volume.maximum_lateral_offset_m) ||
-      !std::isfinite(volume.minimum_secondary_offset_m) ||
-      !std::isfinite(volume.maximum_secondary_offset_m) ||
-      volume.minimum_lateral_offset_m > volume.maximum_lateral_offset_m ||
-      volume.minimum_secondary_offset_m > volume.maximum_secondary_offset_m ||
-      !std::isfinite(volume.minimum_physical_width_m) ||
-      !std::isfinite(volume.minimum_physical_secondary_extent_m) ||
-      volume.minimum_physical_width_m < 0.0 ||
-      volume.minimum_physical_secondary_extent_m < 0.0 ||
-      volume.segment_spans != span.segment_spans) {
-    return false;
-  }
-  double previous_station_m{-std::numeric_limits<double>::infinity()};
-  const PassageCrossSection* previous_section{nullptr};
-  for (const PassageCrossSection& section : volume.cross_sections) {
-    if (!validPassageCrossSection(section) || section.station_m <= previous_station_m ||
-        section.station_m + kStationToleranceM < volume.begin_station_m ||
-        section.station_m > volume.end_station_m + kStationToleranceM ||
-        (previous_section != nullptr &&
-         (vectorDot(previous_section->lateral_axis, section.lateral_axis) <= 0.0 ||
-          vectorDot(previous_section->secondary_axis, section.secondary_axis) <=
-              0.0))) {
-      return false;
-    }
-    previous_station_m = section.station_m;
-    previous_section = &section;
-  }
-  return volume.cross_sections.front().station_m <=
-             volume.begin_station_m + kStationToleranceM &&
-         volume.cross_sections.back().station_m + kStationToleranceM >=
-             volume.end_station_m;
-}
-
-[[nodiscard]] bool
-assignmentStatusValid(const CooperativePassageRouteStatus status) noexcept {
-  return status == CooperativePassageRouteStatus::kCentered ||
-         status == CooperativePassageRouteStatus::kApplied;
-}
-
 } // namespace
 
 const char* compiledTrajectoryFailureReason3DName(
@@ -204,8 +125,6 @@ const char* compiledTrajectoryFailureReason3DName(
       return "invalid_time_profile";
     case CompiledTrajectoryFailureReason3D::kInvalidConstrainedSpans:
       return "invalid_constrained_spans";
-    case CompiledTrajectoryFailureReason3D::kInvalidPassageResources:
-      return "invalid_passage_resources";
     case CompiledTrajectoryFailureReason3D::kInvalidFingerprint:
       return "invalid_fingerprint";
     case CompiledTrajectoryFailureReason3D::kDerivedResourceMismatch:
@@ -276,13 +195,9 @@ bool compiledTrajectoryResourcesValid3D(
   if (!endpointSemanticsValid(trajectory.endpoint_semantics) ||
       trajectory.route == nullptr || trajectory.tracking_error_tube == nullptr ||
       trajectory.constrained_spans == nullptr ||
-      trajectory.passage_volumes == nullptr ||
-      trajectory.cooperative_passage_assignments == nullptr ||
-      trajectory.selected_passage_traversal_ids == nullptr ||
       !trajectory.exact_initial_state.valid() || !trajectory.time_profile.valid() ||
       trajectory.time_profile.arrival_times_s.size() != trajectory.route->size() ||
       trajectory.time_profile.departure_times_s.size() != trajectory.route->size() ||
-      !passageVolumeConfigIsValid(trajectory.passage_volume_config) ||
       trajectory.materialized_route_fingerprint == 0U ||
       trajectory.physical_route_fingerprint == 0U ||
       !validateCompiledTrajectorySamples3D(*trajectory.route).valid() ||
@@ -305,22 +220,8 @@ bool compiledTrajectoryResourcesValid3D(
     }
   }
 
-  const std::vector<PassageTraversalId>& selected_ids =
-      *trajectory.selected_passage_traversal_ids;
-  for (std::size_t index = 0U; index < selected_ids.size(); ++index) {
-    if (selected_ids[index].empty() ||
-        std::ranges::find(selected_ids.begin(),
-                          selected_ids.begin() + static_cast<std::ptrdiff_t>(index),
-                          selected_ids[index]) !=
-            selected_ids.begin() + static_cast<std::ptrdiff_t>(index)) {
-      return false;
-    }
-  }
-
   const std::vector<ConstrainedRouteSpan>& spans = *trajectory.constrained_spans;
   double previous_span_end_station_m{-std::numeric_limits<double>::infinity()};
-  std::vector<PassageTraversalId> expected_ids;
-  expected_ids.reserve(spans.size());
   for (const ConstrainedRouteSpan& span : spans) {
     if (span.route_generation == 0U ||
         (expected_route_generation != 0U &&
@@ -334,65 +235,7 @@ bool compiledTrajectoryResourcesValid3D(
         !validEnvelopeSamples(span) || !validTraversalSegmentSpans(span)) {
       return false;
     }
-    if (std::ranges::find(expected_ids, span.passage_traversal_id) ==
-        expected_ids.end()) {
-      expected_ids.push_back(span.passage_traversal_id);
-    }
     previous_span_end_station_m = span.end_station_m;
-  }
-  if (selected_ids != expected_ids ||
-      trajectory.passage_volumes->size() != spans.size()) {
-    return false;
-  }
-  for (std::size_t index = 0U; index < spans.size(); ++index) {
-    const PassageVolume& volume = (*trajectory.passage_volumes)[index];
-    if (!validPassageVolume(volume, spans[index], index)) {
-      return false;
-    }
-    for (const PassageCrossSection& section : volume.cross_sections) {
-      const RouteSample3D route_sample =
-          sampleRoute3DAtStation(*trajectory.route, section.station_m);
-      if (vectorDot(route_sample.tangent, section.tangent) <= 0.0) {
-        return false;
-      }
-    }
-  }
-
-  const std::vector<CooperativePassageAssignment>& assignments =
-      *trajectory.cooperative_passage_assignments;
-  if (!assignments.empty() && assignments.size() != spans.size()) {
-    return false;
-  }
-  for (std::size_t index = 0U; index < assignments.size(); ++index) {
-    const CooperativePassageAssignment& assignment = assignments[index];
-    const ConstrainedRouteSpan& span = spans[index];
-    const PassageVolume& volume = (*trajectory.passage_volumes)[index];
-    const double first_lateral_bound_m =
-        volume.minimum_lateral_offset_m * static_cast<double>(span.direction_sign) +
-        assignment.applied_lateral_offset_m;
-    const double second_lateral_bound_m =
-        volume.maximum_lateral_offset_m * static_cast<double>(span.direction_sign) +
-        assignment.applied_lateral_offset_m;
-    if (assignment.route_generation != span.route_generation ||
-        (expected_route_generation != 0U &&
-         assignment.route_generation != expected_route_generation) ||
-        assignment.span_index != index ||
-        assignment.passage_traversal_id != span.passage_traversal_id ||
-        !assignmentStatusValid(assignment.status) ||
-        !std::isfinite(assignment.requested_lateral_offset_m) ||
-        !std::isfinite(assignment.applied_lateral_offset_m) ||
-        !std::isfinite(assignment.desired_center_separation_m) ||
-        assignment.physical_width_m != volume.minimum_physical_width_m ||
-        assignment.minimum_lateral_offset_m !=
-            std::min(first_lateral_bound_m, second_lateral_bound_m) ||
-        assignment.maximum_lateral_offset_m !=
-            std::max(first_lateral_bound_m, second_lateral_bound_m) ||
-        assignment.minimum_secondary_offset_m != volume.minimum_secondary_offset_m ||
-        assignment.maximum_secondary_offset_m != volume.maximum_secondary_offset_m ||
-        assignment.passage_cross_section_count != volume.cross_sections.size() ||
-        assignment.passage_volume_raw_validated != volume.raw_validated) {
-      return false;
-    }
   }
   return true;
 }

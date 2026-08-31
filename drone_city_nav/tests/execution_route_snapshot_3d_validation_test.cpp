@@ -455,6 +455,8 @@ TEST(ExecutionRouteSnapshot3DTest,
 
   ExecutionRouteActivation3D successor_activation = fixture.activation();
   successor_activation.route_generation = direct.next->routeGenerationHighWater() + 1U;
+  successor_activation =
+      rebindUnconstrainedDecorations(std::move(successor_activation));
   successor_activation.observation.position = Point3{
       direct.next->directTrackingExecution()->execution_input->state().x,
       direct.next->directTrackingExecution()->execution_input->state().y,

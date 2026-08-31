@@ -113,6 +113,8 @@ struct SnapshotFixture3D {
                        .occupied_content_fingerprint =
                            raw_occupancy.occupiedSnapshot().contentFingerprint(),
                    })};
+  std::shared_ptr<const RouteDecorations3D> decorations{
+      makeDecorations(geometry, kRouteGeneration)};
   std::uint64_t geometry_revision{geometry->compiled_trajectory_revision};
   PassageVolumeConfig passage_volume_config{testPassageVolumeConfig()};
   SweptFootprintConfig execution_footprint{testPassageVolumeConfig().footprint};
@@ -153,8 +155,8 @@ struct SnapshotFixture3D {
         .route_generation = kRouteGeneration,
         .proposal = proposal,
         .geometry = geometry,
+        .decorations = decorations,
         .observation = observation(),
-        .passage_volume_config = passage_volume_config,
         .continuity_lineage =
             RouteContinuityLineage3D{
                 .mission_epoch = objective.mission_epoch,
@@ -782,6 +784,20 @@ struct SnapshotFixture3D {
     };
   }
 };
+
+[[nodiscard, maybe_unused]] ExecutionRouteActivation3D
+rebindUnconstrainedDecorations(ExecutionRouteActivation3D activation) {
+  if (activation.geometry == nullptr ||
+      !activation.geometry->constrained_spans->empty()) {
+    throw std::logic_error{"test decoration rebinding requires unconstrained geometry"};
+  }
+  const PassageVolumeConfig config = activation.decorations != nullptr
+                                         ? activation.decorations->passage_volume_config
+                                         : testPassageVolumeConfig();
+  activation.decorations = makeDecorations(
+      activation.geometry, activation.route_generation, {}, {}, {}, config);
+  return activation;
+}
 
 [[nodiscard, maybe_unused]] ExecutionRouteActivation3D
 staticActivation(SnapshotFixture3D& fixture, const OccupancyGrid3D& static_occupancy) {

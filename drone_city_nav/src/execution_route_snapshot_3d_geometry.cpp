@@ -84,15 +84,14 @@ sameRouteEnvelopeSampleExact(const RouteEnvelopeSample& first,
          first.reference_speed_mps == second.reference_speed_mps;
 }
 
-[[nodiscard]] bool
-canonicalPassageGeometryMatchesWorld(const CompiledTrajectory3D& geometry,
-                                     const OccupancyGrid3D& occupancy,
-                                     const PassageVolumeConfig& expected_config) {
-  if (!samePassageVolumeConfig(geometry.passage_volume_config, expected_config)) {
+[[nodiscard]] bool canonicalPassageGeometryMatchesWorld(
+    const CompiledTrajectory3D& geometry, const RouteDecorations3D& decorations,
+    const OccupancyGrid3D& occupancy, const PassageVolumeConfig& expected_config) {
+  if (!samePassageVolumeConfig(decorations.passage_volume_config, expected_config)) {
     return false;
   }
   const std::vector<ConstrainedRouteSpan>& spans = *geometry.constrained_spans;
-  const std::vector<PassageVolume>& claimed_volumes = *geometry.passage_volumes;
+  const std::vector<PassageVolume>& claimed_volumes = *decorations.passage_volumes;
   if (spans.empty()) {
     return claimed_volumes.empty();
   }
@@ -117,16 +116,17 @@ canonicalPassageGeometryMatchesWorld(const CompiledTrajectory3D& geometry,
 }
 
 [[nodiscard]] bool canonicalPassageGeometryMatchesObservedWorld(
-    const CompiledTrajectory3D& geometry, const VersionedObservedRawWorld3D& world,
+    const CompiledTrajectory3D& geometry, const RouteDecorations3D& decorations,
+    const VersionedObservedRawWorld3D& world,
     const PassageVolumeConfig& expected_config) {
   if (geometry.constrained_spans->empty()) {
-    return geometry.passage_volumes->empty() &&
-           samePassageVolumeConfig(geometry.passage_volume_config, expected_config);
+    return decorations.passage_volumes->empty() &&
+           samePassageVolumeConfig(decorations.passage_volume_config, expected_config);
   }
   const std::shared_ptr<const OccupancyGrid3D> occupied_snapshot =
       world.occupiedSnapshot();
   return world.valid() && occupied_snapshot != nullptr &&
-         canonicalPassageGeometryMatchesWorld(geometry, *occupied_snapshot,
+         canonicalPassageGeometryMatchesWorld(geometry, decorations, *occupied_snapshot,
                                               expected_config);
 }
 
@@ -234,10 +234,11 @@ passageFrameBetweenSections(const PassageCrossSection& lower_section,
 }
 
 [[nodiscard]] bool constrainedPointAccepted(const CompiledTrajectory3D& geometry,
+                                            const RouteDecorations3D& decorations,
                                             const Point3& point,
                                             const double station_m) noexcept {
   const std::vector<ConstrainedRouteSpan>& spans = *geometry.constrained_spans;
-  const std::vector<PassageVolume>& volumes = *geometry.passage_volumes;
+  const std::vector<PassageVolume>& volumes = *decorations.passage_volumes;
   for (std::size_t index = 0U; index < spans.size(); ++index) {
     const ConstrainedRouteSpan& span = spans[index];
     if (station_m + kStationToleranceM < span.begin_station_m ||
@@ -254,6 +255,7 @@ passageFrameBetweenSections(const PassageCrossSection& lower_section,
 
 [[nodiscard]] std::vector<double>
 constrainedStationEvents(const CompiledTrajectory3D& geometry,
+                         const RouteDecorations3D& decorations,
                          const double begin_station_m, const double end_station_m) {
   std::vector<double> events;
   const auto add_event = [&](const double station_m) {
@@ -270,7 +272,7 @@ constrainedStationEvents(const CompiledTrajectory3D& geometry,
       add_event(segment.end_station_m);
     }
   }
-  for (const PassageVolume& volume : *geometry.passage_volumes) {
+  for (const PassageVolume& volume : *decorations.passage_volumes) {
     for (const PassageCrossSection& section : volume.cross_sections) {
       add_event(section.station_m);
     }
@@ -387,6 +389,7 @@ constrainedStationEvents(const CompiledTrajectory3D& geometry,
 }
 
 [[nodiscard]] bool constrainedSegmentAccepted(const CompiledTrajectory3D& geometry,
+                                              const RouteDecorations3D& decorations,
                                               const Point3& begin,
                                               const double begin_station_m,
                                               const Point3& end,
@@ -395,7 +398,7 @@ constrainedStationEvents(const CompiledTrajectory3D& geometry,
     return false;
   }
   const std::vector<ConstrainedRouteSpan>& spans = *geometry.constrained_spans;
-  const std::vector<PassageVolume>& volumes = *geometry.passage_volumes;
+  const std::vector<PassageVolume>& volumes = *decorations.passage_volumes;
   for (std::size_t index = 0U; index < spans.size(); ++index) {
     const ConstrainedRouteSpan& span = spans[index];
     const double overlap_begin_station_m =
@@ -465,16 +468,15 @@ constrainedStationEvents(const CompiledTrajectory3D& geometry,
   return Point3{state.x, state.y, state.z};
 }
 
-[[nodiscard]] bool
-validateOrderedPassageCrossings(const CompiledTrajectory3D& geometry,
-                                const std::span<const StationedRoutePoint3D> path,
-                                const double begin_station_m,
-                                const double end_station_m) noexcept {
+[[nodiscard]] bool validateOrderedPassageCrossings(
+    const CompiledTrajectory3D& geometry, const RouteDecorations3D& decorations,
+    const std::span<const StationedRoutePoint3D> path, const double begin_station_m,
+    const double end_station_m) noexcept {
   if (path.size() < 2U) {
     return false;
   }
   const std::vector<ConstrainedRouteSpan>& spans = *geometry.constrained_spans;
-  const std::vector<PassageVolume>& volumes = *geometry.passage_volumes;
+  const std::vector<PassageVolume>& volumes = *decorations.passage_volumes;
   for (std::size_t span_index = 0U; span_index < spans.size(); ++span_index) {
     const ConstrainedRouteSpan& span = spans[span_index];
     if (end_station_m <= span.begin_station_m + kStationToleranceM ||
@@ -581,9 +583,10 @@ validateOrderedPassageCrossings(const CompiledTrajectory3D& geometry,
 }
 
 [[nodiscard]] RouteAdherenceAssessment3D validateFiniteRouteAdherence(
-    const CompiledTrajectory3D& geometry, const std::span<const MotionState3D> states,
-    const double initial_station_m, const double minimum_station_m,
-    const double maximum_station_m, const std::optional<double> maximum_cross_track_m,
+    const CompiledTrajectory3D& geometry, const RouteDecorations3D& decorations,
+    const std::span<const MotionState3D> states, const double initial_station_m,
+    const double minimum_station_m, const double maximum_station_m,
+    const std::optional<double> maximum_cross_track_m,
     const std::optional<double> terminal_cross_track_tolerance_m,
     const double requested_sweep_step_m, const bool allow_initial_handoff,
     const bool enforce_tracking_tube) {
@@ -603,8 +606,8 @@ validateOrderedPassageCrossings(const CompiledTrajectory3D& geometry,
   const double sweep_step_m =
       std::min(requested_sweep_step_m, kMaximumAdherenceSweepStepM);
   const std::span<const RouteSample3D> route{*geometry.route};
-  const std::vector<double> station_events =
-      constrainedStationEvents(geometry, minimum_station_m, maximum_station_m);
+  const std::vector<double> station_events = constrainedStationEvents(
+      geometry, decorations, minimum_station_m, maximum_station_m);
   const Point3 initial_point = statePoint(states.front());
   RouteProjection3D previous_projection = projectOntoRoute3DWithinStationWindow(
       route, initial_point, std::max(minimum_station_m, initial_station_m),
@@ -635,7 +638,7 @@ validateOrderedPassageCrossings(const CompiledTrajectory3D& geometry,
     result.failure_distance_m = initial_station_error_m;
     return result;
   }
-  if (!constrainedPointAccepted(geometry, initial_point,
+  if (!constrainedPointAccepted(geometry, decorations, initial_point,
                                 previous_projection.station_m)) {
     result.status = FiniteExecutionRouteAdherenceStatus3D::kInitialConstraintRejected;
     result.failure_distance_m = previous_projection.distance_m;
@@ -739,8 +742,9 @@ validateOrderedPassageCrossings(const CompiledTrajectory3D& geometry,
           return result;
         }
       }
-      if (!constrainedPointAccepted(geometry, sample, projection.station_m) ||
-          !constrainedSegmentAccepted(geometry, sample_begin,
+      if (!constrainedPointAccepted(geometry, decorations, sample,
+                                    projection.station_m) ||
+          !constrainedSegmentAccepted(geometry, decorations, sample_begin,
                                       previous_projection.station_m, sample,
                                       projection.station_m)) {
         result.status = FiniteExecutionRouteAdherenceStatus3D::kConstraintRejected;
@@ -759,7 +763,7 @@ validateOrderedPassageCrossings(const CompiledTrajectory3D& geometry,
               (projection.station_m - previous_projection.station_m);
           const Point3 event_point =
               interpolatePoint(sample_begin, sample, station_ratio);
-          if (!constrainedPointAccepted(geometry, event_point, *event)) {
+          if (!constrainedPointAccepted(geometry, decorations, event_point, *event)) {
             result.status = FiniteExecutionRouteAdherenceStatus3D::kConstraintRejected;
             result.failure_state_index = state_index;
             result.failure_distance_m = projection.distance_m;
@@ -788,7 +792,8 @@ validateOrderedPassageCrossings(const CompiledTrajectory3D& geometry,
     result.failure_distance_m = previous_projection.distance_m;
     return result;
   }
-  if (!validateOrderedPassageCrossings(geometry, stationed_path, result.begin.station_m,
+  if (!validateOrderedPassageCrossings(geometry, decorations, stationed_path,
+                                       result.begin.station_m,
                                        previous_projection.station_m)) {
     result.status = FiniteExecutionRouteAdherenceStatus3D::kPassageCrossingRejected;
     result.failure_state_index = states.size() - 1U;

@@ -67,7 +67,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   EXPECT_EQ(raw_certificate->validated_through_revision,
             SnapshotFixture3D::kLatestRawRevision);
   EXPECT_NE(raw_certificate->validation_policy_fingerprint, 0U);
-  EXPECT_NE(raw_certificate->passage_geometry_revision, 0U);
+  EXPECT_NE(raw_certificate->route_decorations_revision, 0U);
   EXPECT_NE(raw_certificate->passage_volume_config_fingerprint, 0U);
   EXPECT_EQ(raw_certificate->geometry_derivation_occupancy_content_fingerprint,
             suffix->observed_raw_world->occupiedContentFingerprint());
@@ -211,6 +211,8 @@ TEST(ExecutionRouteSnapshot3DTest, RejectsSameSizeGeometryWithAStaleFingerprint)
   changed[1].position.y = 1.0;
   ExecutionRouteActivation3D activation = fixture.activation();
   activation.geometry = makeGeometry(changed, fixture.physical_route_fingerprint);
+  activation.decorations =
+      makeDecorations(activation.geometry, SnapshotFixture3D::kRouteGeneration);
 
   EXPECT_EQ(changed.size(), fixture.route.size());
   EXPECT_FALSE(certifyExecutionRoute3D(activation).has_value());
@@ -227,14 +229,15 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_NE(fixture.geometry->route, nullptr);
   ASSERT_NE(fixture.geometry->tracking_error_tube, nullptr);
   ASSERT_NE(fixture.geometry->constrained_spans, nullptr);
-  ASSERT_NE(fixture.geometry->passage_volumes, nullptr);
-  ASSERT_NE(fixture.geometry->cooperative_passage_assignments, nullptr);
-  ASSERT_NE(fixture.geometry->selected_passage_traversal_ids, nullptr);
+  ASSERT_NE(fixture.decorations, nullptr);
+  ASSERT_NE(fixture.decorations->passage_volumes, nullptr);
+  ASSERT_NE(fixture.decorations->cooperative_passage_assignments, nullptr);
+  ASSERT_NE(fixture.decorations->selected_passage_traversal_ids, nullptr);
   EXPECT_FALSE(fixture.geometry->route->empty());
   EXPECT_TRUE(fixture.geometry->constrained_spans->empty());
-  EXPECT_TRUE(fixture.geometry->passage_volumes->empty());
-  EXPECT_TRUE(fixture.geometry->cooperative_passage_assignments->empty());
-  EXPECT_TRUE(fixture.geometry->selected_passage_traversal_ids->empty());
+  EXPECT_TRUE(fixture.decorations->passage_volumes->empty());
+  EXPECT_TRUE(fixture.decorations->cooperative_passage_assignments->empty());
+  EXPECT_TRUE(fixture.decorations->selected_passage_traversal_ids->empty());
   EXPECT_EQ(fixture.geometry->compiled_trajectory_revision,
             compiledTrajectoryRevision3D(*fixture.geometry));
   EXPECT_TRUE(fixture.certify().has_value());
@@ -243,64 +246,58 @@ TEST(ExecutionRouteSnapshot3DTest,
 TEST(ExecutionRouteSnapshot3DTest,
      RejectsWrongCandidateGenerationForASealedConstrainedTrajectory) {
   SnapshotFixture3D fixture;
-  const auto geometry = makeConstrainedGeometry(
+  const TestCompiledRoute3D route = makeConstrainedRoute(
       fixture.route, fixture.physical_route_fingerprint,
       SnapshotFixture3D::kRouteGeneration, fixture.raw_occupancy.occupiedSnapshot(),
       testPassageVolumeConfig());
-  ASSERT_NE(geometry->compiled_trajectory_revision, 0U);
+  ASSERT_NE(route.geometry->compiled_trajectory_revision, 0U);
 
   ExecutionRouteActivation3D activation = fixture.activation();
   ++activation.route_generation;
-  activation.geometry = geometry;
+  activation.geometry = route.geometry;
+  activation.decorations = route.decorations;
 
   EXPECT_FALSE(certifyExecutionRoute3D(activation).has_value());
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
-     TrajectoryCompilerRejectsCrossResourcePassageInconsistency) {
+     DecorationCompilerRejectsCrossResourcePassageInconsistency) {
   SnapshotFixture3D fixture;
-  const auto valid = makeConstrainedGeometry(
+  const TestCompiledRoute3D valid = makeConstrainedRoute(
       fixture.route, fixture.physical_route_fingerprint,
       SnapshotFixture3D::kRouteGeneration, fixture.raw_occupancy.occupiedSnapshot(),
       testPassageVolumeConfig());
-  const OccupancyGrid3D occupied = fixture.raw_occupancy.occupiedSnapshot();
-  std::vector<PassageVolume> inconsistent_volumes = *valid->passage_volumes;
+  std::vector<PassageVolume> inconsistent_volumes = *valid.decorations->passage_volumes;
   inconsistent_volumes.front().passage_traversal_id = "mismatched_volume";
 
-  const TrajectoryCompilationResult3D rejected =
-      TrajectoryCompiler3D::compile(TrajectoryCompilerInput3D{
-          .exact_initial_state = valid->exact_initial_state,
+  const RouteDecorationCompilationResult3D rejected =
+      RouteDecorationCompiler3D::compile(RouteDecorationCompilerInput3D{
+          .trajectory = valid.geometry,
           .route_generation = SnapshotFixture3D::kRouteGeneration,
-          .route = *valid->route,
-          .constrained_spans = *valid->constrained_spans,
           .passage_volumes = std::move(inconsistent_volumes),
-          .cooperative_passage_assignments = *valid->cooperative_passage_assignments,
-          .selected_passage_traversal_ids = *valid->selected_passage_traversal_ids,
-          .passage_volume_config = valid->passage_volume_config,
-          .endpoint_semantics = valid->endpoint_semantics,
-          .materialized_route_fingerprint = valid->materialized_route_fingerprint,
-          .tracking_world =
-              TrackingErrorTubeWorld3D{
-                  .occupancy = &occupied,
-                  .occupied_content_fingerprint = occupied.contentFingerprint(),
-              },
+          .cooperative_passage_assignments =
+              *valid.decorations->cooperative_passage_assignments,
+          .selected_passage_traversal_ids =
+              *valid.decorations->selected_passage_traversal_ids,
+          .passage_volume_config = valid.decorations->passage_volume_config,
       });
 
   EXPECT_FALSE(rejected.compiled());
   EXPECT_EQ(rejected.validation.reason,
-            CompiledTrajectoryFailureReason3D::kInvalidPassageResources);
-  EXPECT_EQ(rejected.trajectory, nullptr);
+            RouteDecorationFailureReason3D::kInvalidPassageResources);
+  EXPECT_EQ(rejected.decorations, nullptr);
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
      RejectsPassageGeometryDerivedFromDifferentObservedWorld) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const CompiledTrajectory3D> geometry = makeConstrainedGeometry(
+  const TestCompiledRoute3D route = makeConstrainedRoute(
       fixture.route, fixture.physical_route_fingerprint,
       SnapshotFixture3D::kRouteGeneration, fixture.raw_occupancy.occupiedSnapshot(),
       testPassageVolumeConfig());
   ExecutionRouteActivation3D matching_activation = fixture.activation();
-  matching_activation.geometry = geometry;
+  matching_activation.geometry = route.geometry;
+  matching_activation.decorations = route.decorations;
   ASSERT_TRUE(certifyExecutionRoute3D(matching_activation).has_value());
 
   ObservedOccupancyGrid3D changed_world = fixture.raw_occupancy;
@@ -309,7 +306,8 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_TRUE(lateral_wall.has_value());
   ASSERT_TRUE(changed_world.setState(*lateral_wall, ObservedVoxelState::kOccupied));
   ExecutionRouteActivation3D mismatched_activation = fixture.activation();
-  mismatched_activation.geometry = geometry;
+  mismatched_activation.geometry = route.geometry;
+  mismatched_activation.decorations = route.decorations;
   mismatched_activation.observed_raw_world =
       fixture.rawWorld(SnapshotFixture3D::kLatestRawRevision, &changed_world);
   ASSERT_TRUE(mismatched_activation.observed_raw_world);
@@ -322,12 +320,13 @@ TEST(ExecutionRouteSnapshot3DTest,
   SnapshotFixture3D fixture;
   const OccupancyGrid3D clear_world{fixture.raw_occupancy.bounds(),
                                     fixture.validated_world.esdf_fingerprint};
-  const std::shared_ptr<const CompiledTrajectory3D> geometry = makeConstrainedGeometry(
+  const TestCompiledRoute3D route = makeConstrainedRoute(
       fixture.route, fixture.physical_route_fingerprint,
       SnapshotFixture3D::kRouteGeneration, clear_world, testPassageVolumeConfig());
   ExecutionRouteActivation3D matching_activation =
       staticActivation(fixture, clear_world);
-  matching_activation.geometry = geometry;
+  matching_activation.geometry = route.geometry;
+  matching_activation.decorations = route.decorations;
   ASSERT_TRUE(certifyExecutionRoute3D(matching_activation).has_value());
 
   OccupancyGrid3D changed_world{fixture.raw_occupancy.bounds(),
@@ -338,22 +337,30 @@ TEST(ExecutionRouteSnapshot3DTest,
   changed_world.setOccupied(*lateral_wall);
   ExecutionRouteActivation3D mismatched_activation =
       staticActivation(fixture, changed_world);
-  mismatched_activation.geometry = geometry;
+  mismatched_activation.geometry = route.geometry;
+  mismatched_activation.decorations = route.decorations;
 
   EXPECT_FALSE(certifyExecutionRoute3D(mismatched_activation).has_value());
 }
 
 TEST(ExecutionRouteSnapshot3DTest, RejectsPassageDerivationConfigurationMismatch) {
   SnapshotFixture3D fixture;
-  const std::shared_ptr<const CompiledTrajectory3D> geometry = makeConstrainedGeometry(
+  const TestCompiledRoute3D route = makeConstrainedRoute(
       fixture.route, fixture.physical_route_fingerprint,
       SnapshotFixture3D::kRouteGeneration, fixture.raw_occupancy.occupiedSnapshot(),
       testPassageVolumeConfig());
   ExecutionRouteActivation3D activation = fixture.activation();
-  activation.geometry = geometry;
+  activation.geometry = route.geometry;
+  activation.decorations = route.decorations;
   ASSERT_TRUE(certifyExecutionRoute3D(activation).has_value());
 
-  activation.passage_volume_config.minimum_wall_clearance_m += 0.25;
+  PassageVolumeConfig mismatched_config = route.decorations->passage_volume_config;
+  mismatched_config.minimum_wall_clearance_m += 0.25;
+  activation.decorations = makeDecorations(
+      route.geometry, SnapshotFixture3D::kRouteGeneration,
+      *route.decorations->passage_volumes,
+      *route.decorations->cooperative_passage_assignments,
+      *route.decorations->selected_passage_traversal_ids, mismatched_config);
   EXPECT_FALSE(certifyExecutionRoute3D(activation).has_value());
 }
 
@@ -608,6 +615,8 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_NE(active, nullptr);
   ExecutionRouteActivation3D successor_activation = fixture.activation();
   successor_activation.route_generation = active->routeGenerationHighWater() + 1U;
+  successor_activation =
+      rebindUnconstrainedDecorations(std::move(successor_activation));
   const std::optional<CertifiedRouteSuffix3D> successor =
       certifyExecutionRoute3D(successor_activation);
   ASSERT_TRUE(successor.has_value());
@@ -733,6 +742,8 @@ TEST(ExecutionRouteSnapshot3DTest,
 
   ExecutionRouteActivation3D successor_activation = fixture.activation();
   successor_activation.route_generation = active->routeGenerationHighWater() + 1U;
+  successor_activation =
+      rebindUnconstrainedDecorations(std::move(successor_activation));
   const std::optional<CertifiedRouteSuffix3D> successor =
       certifyExecutionRoute3D(successor_activation);
   ASSERT_TRUE(successor.has_value());

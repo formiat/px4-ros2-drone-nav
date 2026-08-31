@@ -23,6 +23,7 @@ TEST(ExecutionRouteSnapshot3DTest,
 
   ExecutionRouteActivation3D stale_activation = fixture.activation();
   stale_activation.route_generation = SnapshotFixture3D::kRouteGeneration + 1U;
+  stale_activation = rebindUnconstrainedDecorations(std::move(stale_activation));
   stale_activation.observation.position = {4.0, 0.0, 5.0};
   const std::optional<CertifiedRouteSuffix3D> stale_successor =
       certifyExecutionRoute3D(stale_activation);

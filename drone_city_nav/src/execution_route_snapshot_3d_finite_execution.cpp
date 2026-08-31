@@ -84,7 +84,7 @@ std::optional<RouteAdherenceAssessment3D> validateExecutionProgressConnector(
           ? std::optional<double>{kMaximumRouteCrossTrackM}
           : std::nullopt;
   RouteAdherenceAssessment3D adherence = validateFiniteRouteAdherence(
-      *route.geometry, connector_states, route.progress.station_m,
+      *route.geometry, *route.decorations, connector_states, route.progress.station_m,
       certificate_view.suffix_start_station_m, connector_maximum_station_m,
       cross_track_limit, cross_track_limit,
       route.validation_policy->sweptFootprint().sweep_step_m, false,
@@ -321,8 +321,9 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
            observed_raw_validation_world->contentFingerprint() !=
                previous_raw_lineage->observed_world_content_fingerprint))) ||
         !canonicalPassageGeometryMatchesObservedWorld(
-            *target_route.geometry, *observed_raw_validation_world,
-            target_route.geometry->passage_volume_config)) {
+            *target_route.geometry, *target_route.decorations,
+            *observed_raw_validation_world,
+            target_route.decorations->passage_volume_config)) {
       return rejectedFiniteExecution(
           FiniteExecutionCertificationStatus3D::kRawInvalidationContractRejected);
     }
@@ -475,8 +476,9 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
           ? brakingRouteOwnershipBinding(target_route, validated_horizon.states,
                                          execution_begin_station_m)
           : validateFiniteRouteAdherence(
-                *target_route.geometry, validated_horizon.states,
-                execution_begin_station_m, certificate_view.suffix_start_station_m,
+                *target_route.geometry, *target_route.decorations,
+                validated_horizon.states, execution_begin_station_m,
+                certificate_view.suffix_start_station_m,
                 certificate_view.certified_end_station_m, cross_track_limit,
                 cross_track_limit, policy->sweptFootprint().sweep_step_m,
                 targets_initial_route || targets_direct_successor ||

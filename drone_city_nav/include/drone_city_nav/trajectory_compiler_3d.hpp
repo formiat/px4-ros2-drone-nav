@@ -26,10 +26,6 @@ struct TrajectoryCompilerInput3D {
   std::uint64_t route_generation{0U};
   std::vector<RouteSample3D> route;
   std::vector<ConstrainedRouteSpan> constrained_spans;
-  std::vector<PassageVolume> passage_volumes;
-  std::vector<CooperativePassageAssignment> cooperative_passage_assignments;
-  std::vector<PassageTraversalId> selected_passage_traversal_ids;
-  PassageVolumeConfig passage_volume_config{};
   RouteEndpointSemantics3D endpoint_semantics{RouteEndpointSemantics3D::kContinuation};
   std::uint64_t materialized_route_fingerprint{0U};
   TrackingErrorTubeWorld3D tracking_world{};

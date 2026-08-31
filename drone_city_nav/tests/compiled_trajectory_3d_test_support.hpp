@@ -2,6 +2,7 @@
 
 #include "drone_city_nav/certified_route_splice_3d.hpp"
 #include "drone_city_nav/execution_route_certification_3d.hpp"
+#include "drone_city_nav/route_decoration_compiler_3d.hpp"
 #include "drone_city_nav/trajectory_compiler_3d.hpp"
 
 #include <cstdint>
@@ -12,6 +13,11 @@
 
 namespace drone_city_nav {
 namespace {
+
+struct TestCompiledRoute3D {
+  std::shared_ptr<const CompiledTrajectory3D> geometry;
+  std::shared_ptr<const RouteDecorations3D> decorations;
+};
 
 [[nodiscard]] PassageVolumeConfig testPassageVolumeConfig() noexcept {
   PassageVolumeConfig config;
@@ -61,10 +67,6 @@ makeGeometry(const std::vector<RouteSample3D>& route,
           .route_generation = 1U,
           .route = route,
           .constrained_spans = {},
-          .passage_volumes = {},
-          .cooperative_passage_assignments = {},
-          .selected_passage_traversal_ids = {},
-          .passage_volume_config = testPassageVolumeConfig(),
           .endpoint_semantics = testEndpointSemantics(route),
           .materialized_route_fingerprint = physical_route_fingerprint,
           .tracking_world = tracking_world,
@@ -75,6 +77,29 @@ makeGeometry(const std::vector<RouteSample3D>& route,
         compiledTrajectoryFailureReason3DName(compilation.validation.reason)};
   }
   return compilation.trajectory;
+}
+
+[[nodiscard]] std::shared_ptr<const RouteDecorations3D> makeDecorations(
+    const std::shared_ptr<const CompiledTrajectory3D>& geometry,
+    const std::uint64_t route_generation,
+    std::vector<PassageVolume> passage_volumes = {},
+    std::vector<CooperativePassageAssignment> cooperative_assignments = {},
+    std::vector<PassageTraversalId> selected_passage_traversal_ids = {},
+    const PassageVolumeConfig& passage_volume_config = testPassageVolumeConfig()) {
+  const RouteDecorationCompilationResult3D compilation =
+      RouteDecorationCompiler3D::compile(RouteDecorationCompilerInput3D{
+          .trajectory = geometry,
+          .route_generation = route_generation,
+          .passage_volumes = std::move(passage_volumes),
+          .cooperative_passage_assignments = std::move(cooperative_assignments),
+          .selected_passage_traversal_ids = std::move(selected_passage_traversal_ids),
+          .passage_volume_config = passage_volume_config,
+      });
+  if (!compilation.compiled()) {
+    throw std::logic_error{
+        routeDecorationFailureReason3DName(compilation.validation.reason)};
+  }
+  return compilation.decorations;
 }
 
 [[nodiscard, maybe_unused]] CertifiedRouteSplice3D
@@ -111,10 +136,6 @@ withEndpointSemantics(const std::shared_ptr<const CompiledTrajectory3D>& source,
           .route_generation = 1U,
           .route = *source->route,
           .constrained_spans = *source->constrained_spans,
-          .passage_volumes = *source->passage_volumes,
-          .cooperative_passage_assignments = *source->cooperative_passage_assignments,
-          .selected_passage_traversal_ids = *source->selected_passage_traversal_ids,
-          .passage_volume_config = source->passage_volume_config,
           .endpoint_semantics = endpoint_semantics,
           .materialized_route_fingerprint = source->materialized_route_fingerprint,
           .tracking_world = tracking_world,
@@ -127,14 +148,14 @@ withEndpointSemantics(const std::shared_ptr<const CompiledTrajectory3D>& source,
   return compilation.trajectory;
 }
 
-[[nodiscard, maybe_unused]] std::shared_ptr<const CompiledTrajectory3D>
-makeConstrainedGeometry(const std::vector<RouteSample3D>& route,
-                        const std::uint64_t physical_route_fingerprint,
-                        const std::uint64_t route_generation,
-                        const OccupancyGrid3D& occupancy,
-                        const PassageVolumeConfig& passage_volume_config,
-                        const double constrained_begin_station_m = 0.0,
-                        const double constrained_end_station_m = -1.0) {
+[[nodiscard, maybe_unused]] TestCompiledRoute3D
+makeConstrainedRoute(const std::vector<RouteSample3D>& route,
+                     const std::uint64_t physical_route_fingerprint,
+                     const std::uint64_t route_generation,
+                     const OccupancyGrid3D& occupancy,
+                     const PassageVolumeConfig& passage_volume_config,
+                     const double constrained_begin_station_m = 0.0,
+                     const double constrained_end_station_m = -1.0) {
   if (route.empty()) {
     throw std::logic_error{"test constrained trajectory requires a route"};
   }
@@ -211,10 +232,6 @@ makeConstrainedGeometry(const std::vector<RouteSample3D>& route,
           .route_generation = route_generation,
           .route = route,
           .constrained_spans = std::move(spans),
-          .passage_volumes = std::move(volumes),
-          .cooperative_passage_assignments = {assignment},
-          .selected_passage_traversal_ids = {passage_traversal_id},
-          .passage_volume_config = passage_volume_config,
           .endpoint_semantics = testEndpointSemantics(route),
           .materialized_route_fingerprint = physical_route_fingerprint,
           .tracking_world =
@@ -228,7 +245,12 @@ makeConstrainedGeometry(const std::vector<RouteSample3D>& route,
     throw std::logic_error{
         compiledTrajectoryFailureReason3DName(compilation.validation.reason)};
   }
-  return compilation.trajectory;
+  return TestCompiledRoute3D{
+      .geometry = compilation.trajectory,
+      .decorations =
+          makeDecorations(compilation.trajectory, route_generation, std::move(volumes),
+                          {assignment}, {passage_traversal_id}, passage_volume_config),
+  };
 }
 
 } // namespace

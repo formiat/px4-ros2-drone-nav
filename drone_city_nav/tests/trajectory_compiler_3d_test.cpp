@@ -1,5 +1,6 @@
 #include "drone_city_nav/compiled_trajectory_views_3d.hpp"
 #include "drone_city_nav/execution_route_certification_3d.hpp"
+#include "drone_city_nav/route_decoration_compiler_3d.hpp"
 #include "drone_city_nav/trajectory_compiler_3d.hpp"
 
 #include <gtest/gtest.h>
@@ -59,9 +60,6 @@ compileUnconstrained(std::vector<RouteSample3D> route,
       .route_generation = 1U,
       .route = std::move(route),
       .constrained_spans = {},
-      .passage_volumes = {},
-      .cooperative_passage_assignments = {},
-      .selected_passage_traversal_ids = {},
       .endpoint_semantics = endpoint_semantics,
       .materialized_route_fingerprint = materialized_fingerprint,
       .tracking_world = tracking_world,
@@ -74,6 +72,11 @@ static_assert(!std::is_copy_constructible_v<CompiledTrajectory3D>);
 static_assert(!std::is_copy_assignable_v<CompiledTrajectory3D>);
 static_assert(!std::is_move_constructible_v<CompiledTrajectory3D>);
 static_assert(!std::is_move_assignable_v<CompiledTrajectory3D>);
+static_assert(!std::is_default_constructible_v<RouteDecorations3D>);
+static_assert(!std::is_copy_constructible_v<RouteDecorations3D>);
+static_assert(!std::is_copy_assignable_v<RouteDecorations3D>);
+static_assert(!std::is_move_constructible_v<RouteDecorations3D>);
+static_assert(!std::is_move_assignable_v<RouteDecorations3D>);
 
 TEST(TrajectoryCompiler3DTest, SealsHardCornerAndExactInitialState) {
   std::vector<RouteSample3D> route = sampleRoute3D(
@@ -144,9 +147,6 @@ TEST(TrajectoryCompiler3DTest, RejectsSpanWithoutCompleteBoundaryEnvelope) {
           .route_generation = 1U,
           .route = route,
           .constrained_spans = {incomplete},
-          .passage_volumes = {PassageVolume{}},
-          .cooperative_passage_assignments = {},
-          .selected_passage_traversal_ids = {PassageTraversalId{"passage"}},
           .materialized_route_fingerprint = materialized_fingerprint,
       });
 
@@ -192,6 +192,77 @@ TEST(TrajectoryCompiler3DTest, ExactInitialVelocityChangesTheSingleSealedTimePro
             from_rest.trajectory->physical_route_fingerprint);
   EXPECT_NE(already_moving.trajectory->compiled_trajectory_revision,
             from_rest.trajectory->compiled_trajectory_revision);
+}
+
+TEST(TrajectoryCompiler3DTest,
+     PassageMetadataHasAnIndependentImmutableDecorationRevision) {
+  const std::vector<RouteSample3D> route =
+      sampleRoute3D(std::vector<Point3>{{0.0, 0.0, 2.0}, {10.0, 0.0, 2.0}}, 0.5, 5.0);
+  const TrajectoryCompilationResult3D trajectory =
+      compileUnconstrained(route, testInitialState(route.front().position));
+  ASSERT_TRUE(trajectory.compiled());
+  const std::uint64_t trajectory_revision =
+      trajectory.trajectory->compiled_trajectory_revision;
+
+  PassageVolumeConfig first_config;
+  PassageVolumeConfig second_config = first_config;
+  second_config.minimum_wall_clearance_m += 0.1;
+  const RouteDecorationCompilationResult3D first =
+      RouteDecorationCompiler3D::compile(RouteDecorationCompilerInput3D{
+          .trajectory = trajectory.trajectory,
+          .route_generation = 1U,
+          .passage_volumes = {},
+          .cooperative_passage_assignments = {},
+          .selected_passage_traversal_ids = {},
+          .passage_volume_config = first_config,
+      });
+  const RouteDecorationCompilationResult3D second =
+      RouteDecorationCompiler3D::compile(RouteDecorationCompilerInput3D{
+          .trajectory = trajectory.trajectory,
+          .route_generation = 1U,
+          .passage_volumes = {},
+          .cooperative_passage_assignments = {},
+          .selected_passage_traversal_ids = {},
+          .passage_volume_config = second_config,
+      });
+
+  ASSERT_TRUE(first.compiled())
+      << routeDecorationFailureReason3DName(first.validation.reason);
+  ASSERT_TRUE(second.compiled())
+      << routeDecorationFailureReason3DName(second.validation.reason);
+  EXPECT_EQ(trajectory.trajectory->compiled_trajectory_revision, trajectory_revision);
+  EXPECT_NE(first.decorations->route_decorations_revision,
+            second.decorations->route_decorations_revision);
+}
+
+TEST(TrajectoryCompiler3DTest,
+     RouteDecorationsAreBoundToTheExactCompiledGeometryRevision) {
+  const std::vector<RouteSample3D> route =
+      sampleRoute3D(std::vector<Point3>{{0.0, 0.0, 2.0}, {10.0, 0.0, 2.0}}, 0.5, 5.0);
+  const TrajectoryCompilationResult3D first =
+      compileUnconstrained(route, testInitialState(route.front().position));
+  VehicleState3D newer_state = testInitialState(route.front().position);
+  ++newer_state.identity.revision;
+  const TrajectoryCompilationResult3D second = compileUnconstrained(route, newer_state);
+  ASSERT_TRUE(first.compiled());
+  ASSERT_TRUE(second.compiled());
+  ASSERT_EQ(first.trajectory->physical_route_fingerprint,
+            second.trajectory->physical_route_fingerprint);
+  ASSERT_NE(first.trajectory->compiled_trajectory_revision,
+            second.trajectory->compiled_trajectory_revision);
+
+  const RouteDecorationCompilationResult3D decorations =
+      RouteDecorationCompiler3D::compile(RouteDecorationCompilerInput3D{
+          .trajectory = first.trajectory,
+          .route_generation = 1U,
+          .passage_volumes = {},
+          .cooperative_passage_assignments = {},
+          .selected_passage_traversal_ids = {},
+      });
+  ASSERT_TRUE(decorations.compiled());
+  EXPECT_TRUE(routeDecorationsValid3D(*decorations.decorations, *first.trajectory, 1U));
+  EXPECT_FALSE(
+      routeDecorationsValid3D(*decorations.decorations, *second.trajectory, 1U));
 }
 
 TEST(TrajectoryCompiler3DTest, SealsSampleAlignedRemainingTimeAuthority) {

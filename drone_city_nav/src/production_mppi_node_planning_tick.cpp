@@ -381,6 +381,8 @@ void ProductionMppiNode::planningTick() {
   const CertifiedRouteSuffix3D* const activated_route = route_execution.route.get();
   const std::shared_ptr<const CompiledTrajectory3D> route_geometry =
       activated_route != nullptr ? activated_route->geometry : nullptr;
+  const std::shared_ptr<const RouteDecorations3D> route_decorations =
+      activated_route != nullptr ? activated_route->decorations : nullptr;
   const std::uint64_t route_generation =
       activated_route != nullptr ? activated_route->identity.generation : 0U;
   const bool route_reaches_mission_goal =
@@ -405,12 +407,14 @@ void ProductionMppiNode::planningTick() {
           route_geometry != nullptr ? route_geometry->constrained_spans : nullptr;
   const std::shared_ptr<const std::vector<CooperativePassageAssignment>>
       execution_cooperative_passage_assignments =
-          route_geometry != nullptr ? route_geometry->cooperative_passage_assignments
-                                    : nullptr;
+          route_decorations != nullptr
+              ? route_decorations->cooperative_passage_assignments
+              : nullptr;
   const std::shared_ptr<const std::vector<PassageTraversalId>>
       execution_selected_passage_traversal_ids =
-          route_geometry != nullptr ? route_geometry->selected_passage_traversal_ids
-                                    : nullptr;
+          route_decorations != nullptr
+              ? route_decorations->selected_passage_traversal_ids
+              : nullptr;
   const bool route_execution_blocked =
       !direct_tracking_interception && objective && !route_usable;
   const double route_station_m = route_execution.station_m;

@@ -3,6 +3,7 @@
 #include "drone_city_nav/compiled_trajectory_3d.hpp"
 #include "drone_city_nav/execution_route_model_3d.hpp"
 #include "drone_city_nav/finite_execution_path_3d.hpp"
+#include "drone_city_nav/route_decorations_3d.hpp"
 #include "drone_city_nav/route_execution_contract_3d.hpp"
 
 #include <cstdint>
@@ -23,7 +24,7 @@ struct StaticRouteCertificate3D {
   std::uint64_t static_occupancy_content_fingerprint{0U};
   std::uint64_t validation_policy_fingerprint{0U};
   std::uint64_t execution_validation_policy_fingerprint{0U};
-  std::uint64_t passage_geometry_revision{0U};
+  std::uint64_t route_decorations_revision{0U};
   std::uint64_t passage_volume_config_fingerprint{0U};
   std::uint64_t geometry_derivation_occupancy_content_fingerprint{0U};
   NavigationWorldCertificate3D world_certificate{};
@@ -47,7 +48,7 @@ struct ObservedRawRouteCertificate3D {
   std::uint64_t validation_policy_fingerprint{0U};
   std::uint64_t execution_validation_policy_fingerprint{0U};
   std::uint64_t observed_world_content_fingerprint{0U};
-  std::uint64_t passage_geometry_revision{0U};
+  std::uint64_t route_decorations_revision{0U};
   std::uint64_t passage_volume_config_fingerprint{0U};
   std::uint64_t geometry_derivation_occupancy_content_fingerprint{0U};
   double suffix_start_station_m{0.0};
@@ -69,6 +70,7 @@ struct CertifiedRouteSuffix3D {
   std::optional<RouteInstanceId3D> parent_route_instance_id;
   ActivatedRouteIdentity3D identity{};
   std::shared_ptr<const CompiledTrajectory3D> geometry;
+  std::shared_ptr<const RouteDecorations3D> decorations;
   RouteSuffixCertificate3D certificate{StaticRouteCertificate3D{}};
   CertifiedRouteProgress3D progress{};
   RouteContinuityLineage3D continuity_lineage{};

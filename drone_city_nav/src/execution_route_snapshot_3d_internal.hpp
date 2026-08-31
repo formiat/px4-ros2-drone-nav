@@ -75,7 +75,7 @@ struct CertificateView3D {
   std::uint64_t validation_policy_fingerprint{0U};
   std::uint64_t execution_validation_policy_fingerprint{0U};
   std::uint64_t world_content_fingerprint{0U};
-  std::uint64_t passage_geometry_revision{0U};
+  std::uint64_t route_decorations_revision{0U};
   std::uint64_t passage_volume_config_fingerprint{0U};
   std::uint64_t geometry_derivation_occupancy_content_fingerprint{0U};
   double suffix_start_station_m{0.0};
@@ -249,13 +249,13 @@ samePassageCrossSectionExact(const PassageCrossSection& first,
 sameRouteEnvelopeSampleExact(const RouteEnvelopeSample& first,
                              const RouteEnvelopeSample& second) noexcept;
 
-[[nodiscard]] bool
-canonicalPassageGeometryMatchesWorld(const CompiledTrajectory3D& geometry,
-                                     const OccupancyGrid3D& occupancy,
-                                     const PassageVolumeConfig& expected_config);
+[[nodiscard]] bool canonicalPassageGeometryMatchesWorld(
+    const CompiledTrajectory3D& geometry, const RouteDecorations3D& decorations,
+    const OccupancyGrid3D& occupancy, const PassageVolumeConfig& expected_config);
 
 [[nodiscard]] bool canonicalPassageGeometryMatchesObservedWorld(
-    const CompiledTrajectory3D& geometry, const VersionedObservedRawWorld3D& world,
+    const CompiledTrajectory3D& geometry, const RouteDecorations3D& decorations,
+    const VersionedObservedRawWorld3D& world,
     const PassageVolumeConfig& expected_config);
 
 [[nodiscard]] Vec3 normalizedVector(const Vec3& vector) noexcept;
@@ -273,11 +273,13 @@ passageFrameBetweenSections(const PassageCrossSection& lower_section,
                                             const double station_m) noexcept;
 
 [[nodiscard]] bool constrainedPointAccepted(const CompiledTrajectory3D& geometry,
+                                            const RouteDecorations3D& decorations,
                                             const Point3& point,
                                             const double station_m) noexcept;
 
 [[nodiscard]] std::vector<double>
 constrainedStationEvents(const CompiledTrajectory3D& geometry,
+                         const RouteDecorations3D& decorations,
                          const double begin_station_m, const double end_station_m);
 
 [[nodiscard]] bool pointInsidePassageFrame(const PassageFrame3D& frame,
@@ -299,6 +301,7 @@ constrainedStationEvents(const CompiledTrajectory3D& geometry,
     const double end_station_m, const std::size_t depth = 0U) noexcept;
 
 [[nodiscard]] bool constrainedSegmentAccepted(const CompiledTrajectory3D& geometry,
+                                              const RouteDecorations3D& decorations,
                                               const Point3& begin,
                                               const double begin_station_m,
                                               const Point3& end,
@@ -306,16 +309,16 @@ constrainedStationEvents(const CompiledTrajectory3D& geometry,
 
 [[nodiscard]] Point3 statePoint(const MotionState3D& state) noexcept;
 
-[[nodiscard]] bool
-validateOrderedPassageCrossings(const CompiledTrajectory3D& geometry,
-                                const std::span<const StationedRoutePoint3D> path,
-                                const double begin_station_m,
-                                const double end_station_m) noexcept;
+[[nodiscard]] bool validateOrderedPassageCrossings(
+    const CompiledTrajectory3D& geometry, const RouteDecorations3D& decorations,
+    const std::span<const StationedRoutePoint3D> path, const double begin_station_m,
+    const double end_station_m) noexcept;
 
 [[nodiscard]] RouteAdherenceAssessment3D validateFiniteRouteAdherence(
-    const CompiledTrajectory3D& geometry, const std::span<const MotionState3D> states,
-    const double initial_station_m, const double minimum_station_m,
-    const double maximum_station_m, std::optional<double> maximum_cross_track_m,
+    const CompiledTrajectory3D& geometry, const RouteDecorations3D& decorations,
+    const std::span<const MotionState3D> states, const double initial_station_m,
+    const double minimum_station_m, const double maximum_station_m,
+    std::optional<double> maximum_cross_track_m,
     std::optional<double> terminal_cross_track_tolerance_m,
     double requested_sweep_step_m, bool allow_initial_handoff,
     bool enforce_tracking_tube);

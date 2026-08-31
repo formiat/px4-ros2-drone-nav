@@ -145,6 +145,8 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
 
   ExecutionRouteActivation3D successor_activation = fixture.activation();
   successor_activation.route_generation = active->routeGenerationHighWater() + 1U;
+  successor_activation =
+      rebindUnconstrainedDecorations(std::move(successor_activation));
   ++successor_activation.proposal.objective.mission_epoch;
   successor_activation.proposal.intent.id =
       makeRouteIntentId3D(successor_activation.proposal.intent.mission_target,

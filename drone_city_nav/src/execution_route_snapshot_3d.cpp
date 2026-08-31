@@ -74,7 +74,7 @@ bool StaticRouteCertificate3D::validFor(
          static_occupancy_content_fingerprint != 0U &&
          validation_policy_fingerprint != 0U &&
          execution_validation_policy_fingerprint != 0U &&
-         passage_geometry_revision != 0U && passage_volume_config_fingerprint != 0U &&
+         route_decorations_revision != 0U && passage_volume_config_fingerprint != 0U &&
          geometry_derivation_occupancy_content_fingerprint ==
              static_occupancy_content_fingerprint &&
          sameWorldCertificate(world_certificate, identity.proposal.validated_world) &&
@@ -100,7 +100,7 @@ bool ObservedRawRouteCertificate3D::validFor(
              identity.proposal.validated_world.raw_validated_through_revision &&
          validation_policy_fingerprint != 0U &&
          execution_validation_policy_fingerprint != 0U &&
-         observed_world_content_fingerprint != 0U && passage_geometry_revision != 0U &&
+         observed_world_content_fingerprint != 0U && route_decorations_revision != 0U &&
          passage_volume_config_fingerprint != 0U &&
          geometry_derivation_occupancy_content_fingerprint != 0U &&
          validStationInterval(suffix_start_station_m, certified_end_station_m,
@@ -117,8 +117,7 @@ bool compiledTrajectoryValid3D(const CompiledTrajectory3D& geometry,
          geometry.compiled_trajectory_revision != 0U &&
          geometry.compiled_trajectory_revision ==
              compiledTrajectoryRevision3D(geometry) &&
-         endpointSpeedProfileMatchesSemantics3D(geometry, identity.proposal) &&
-         compiledTrajectoryPassageRevision3D(geometry) != 0U;
+         endpointSpeedProfileMatchesSemantics3D(geometry, identity.proposal);
 }
 
 bool CertifiedRouteSuffix3D::valid() const noexcept {
@@ -126,7 +125,7 @@ bool CertifiedRouteSuffix3D::valid() const noexcept {
       activeIntent3D(identity.proposal);
   if (!route_instance_id.valid() || !owner.valid() || !proposal_intent.has_value() ||
       !sameActiveIntent3D(owner.active_intent, *proposal_intent) ||
-      geometry == nullptr || !progress.valid() ||
+      geometry == nullptr || decorations == nullptr || !progress.valid() ||
       (parent_route_instance_id.has_value() &&
        (!parent_route_instance_id->valid() ||
         *parent_route_instance_id == route_instance_id)) ||
@@ -134,7 +133,7 @@ bool CertifiedRouteSuffix3D::valid() const noexcept {
       (progress.execution_input != nullptr &&
        !executionInputFreshAt(*progress.execution_input, *validation_policy,
                               progress.execution_input->effectiveStampNs())) ||
-      !footprintConservativelyContains(geometry->passage_volume_config.footprint,
+      !footprintConservativelyContains(decorations->passage_volume_config.footprint,
                                        validation_policy->sweptFootprint()) ||
       !footprintConservativelyContains(
           geometry->tracking_error_tube->physical_footprint,
@@ -142,6 +141,7 @@ bool CertifiedRouteSuffix3D::valid() const noexcept {
       progress.route_generation != identity.generation ||
       progress.geometry_revision != geometry->compiled_trajectory_revision ||
       !compiledTrajectoryValid3D(*geometry, identity) || continuity_id == 0U ||
+      !routeDecorationsValid3D(*decorations, *geometry, identity.generation) ||
       continuity_id !=
           routeContinuityId3D(identity.proposal.intent, continuity_lineage) ||
       planned_endpoint_semantics !=
@@ -171,16 +171,16 @@ bool CertifiedRouteSuffix3D::valid() const noexcept {
     return false;
   }
   const CertificateView3D certificate_view = certificateView(certificate);
-  const std::uint64_t passage_geometry_revision =
-      compiledTrajectoryPassageRevision3D(*geometry);
+  const std::uint64_t route_decorations_revision =
+      routeDecorationsRevision3D(*decorations);
   const std::uint64_t passage_config_fingerprint =
-      passageVolumeConfigFingerprint(geometry->passage_volume_config);
+      passageVolumeConfigFingerprint(decorations->passage_volume_config);
   return certificate_view.physical_route_fingerprint ==
              geometry->physical_route_fingerprint &&
          certificate_view.execution_validation_policy_fingerprint ==
              validation_policy->contentFingerprint() &&
-         passage_geometry_revision != 0U &&
-         certificate_view.passage_geometry_revision == passage_geometry_revision &&
+         route_decorations_revision != 0U &&
+         certificate_view.route_decorations_revision == route_decorations_revision &&
          passage_config_fingerprint != 0U &&
          certificate_view.passage_volume_config_fingerprint ==
              passage_config_fingerprint &&

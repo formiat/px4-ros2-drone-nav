@@ -264,12 +264,12 @@ ExecutionRouteTransitionResult3D applyAdvanceCertifiedRouteCommand3D(
           ExecutionRouteTransitionStatus3D::kExecutionAssessmentRejected);
     }
     if (!route.geometry->constrained_spans->empty() &&
-        (!sameFootprintConfig(route.geometry->passage_volume_config.footprint,
+        (!sameFootprintConfig(route.decorations->passage_volume_config.footprint,
                               observation.footprint) ||
          (derived_geometry_world_changed &&
           !canonicalPassageGeometryMatchesObservedWorld(
-              *route.geometry, *observed_raw_world,
-              route.geometry->passage_volume_config)))) {
+              *route.geometry, *route.decorations, *observed_raw_world,
+              route.decorations->passage_volume_config)))) {
       return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
     }
   } else {
@@ -317,7 +317,7 @@ ExecutionRouteTransitionResult3D applyAdvanceCertifiedRouteCommand3D(
           ? std::optional<double>{observation.maximum_cross_track_m}
           : std::nullopt;
   const RouteAdherenceAssessment3D observed_adherence = validateFiniteRouteAdherence(
-      *route.geometry, observed_path, route.progress.station_m,
+      *route.geometry, *route.decorations, observed_path, route.progress.station_m,
       old_certificate.suffix_start_station_m, old_certificate.certified_end_station_m,
       cross_track_limit, cross_track_limit, observation.footprint.sweep_step_m,
       acquiring_certified_tracking_tube,

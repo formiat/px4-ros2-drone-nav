@@ -15,8 +15,8 @@ struct ExecutionRouteActivation3D {
   std::uint64_t route_generation{0U};
   MaterializedRouteProposal3D proposal{};
   std::shared_ptr<const CompiledTrajectory3D> geometry;
+  std::shared_ptr<const RouteDecorations3D> decorations;
   RouteActivationObservation3D observation{};
-  PassageVolumeConfig passage_volume_config{};
   RouteContinuityLineage3D continuity_lineage{};
   std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_world;
   std::shared_ptr<const VersionedStaticWorld3D> static_world;

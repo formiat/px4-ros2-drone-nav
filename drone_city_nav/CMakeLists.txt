@@ -280,6 +280,8 @@ add_drone_city_nav_layer(
   src/cooperative_traffic.cpp
   src/passage_volume.cpp
   src/route_execution_contract_3d.cpp
+  src/route_decoration_compiler_3d.cpp
+  src/route_decorations_3d.cpp
   src/route_time_parameterization.cpp
   src/static_route_extension.cpp
   src/tracking_error_tube_3d.cpp

@@ -32,6 +32,8 @@ certifySuccessor(SnapshotFixture3D& fixture, const std::vector<RouteSample3D>& r
           .occupied_content_fingerprint =
               fixture.raw_occupancy.occupiedSnapshot().contentFingerprint(),
       });
+  activation.decorations =
+      makeDecorations(activation.geometry, activation.route_generation);
   return certifyExecutionRoute3D(activation);
 }
 

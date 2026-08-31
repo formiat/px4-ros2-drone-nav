@@ -5,6 +5,7 @@
 #include "drone_city_nav/dynamic_handoff_validator_3d.hpp"
 #include "drone_city_nav/execution_route_store_3d.hpp"
 #include "drone_city_nav/persistent_dstar_lite_planner_3d.hpp"
+#include "drone_city_nav/route_decoration_compiler_3d.hpp"
 #include "drone_city_nav/route_lifecycle_3d.hpp"
 #include "drone_city_nav/route_successor_improvement_3d.hpp"
 #include "drone_city_nav/static_route_extension.hpp"
@@ -143,6 +144,7 @@ struct ProductionRoutePipelineTelemetry3D {
 struct ProductionMaterializedRouteProposal3D {
   MaterializedRouteProposal3D identity{};
   std::shared_ptr<const CompiledTrajectory3D> trajectory;
+  std::shared_ptr<const RouteDecorations3D> decorations;
 };
 
 // Admission is a report about a candidate. It does not mutate or own the
@@ -156,6 +158,7 @@ struct RouteAdmissionReport3D {
   DynamicHandoffResult3D handoff{};
   RouteSpliceCertificationResult3D splice{};
   CompiledTrajectoryValidation3D trajectory_validation{};
+  RouteDecorationValidation3D decoration_validation{};
   std::optional<PendingRoutePublicationStatus3D> pending_publication_status;
   StaticRouteActivationStatus activation_status{
       StaticRouteActivationStatus::kNotAttempted};
@@ -194,6 +197,7 @@ struct RouteAdmissionReport3D {
 struct ProductionRouteActivationResult3D {
   MaterializedRoute3D materialized{};
   std::shared_ptr<const CompiledTrajectory3D> trajectory;
+  std::shared_ptr<const RouteDecorations3D> decorations;
   std::size_t stop_turn_count{0U};
   ProductionRoutePipelineTelemetry3D telemetry{};
   ProductionMaterializedRouteProposal3D proposal{};

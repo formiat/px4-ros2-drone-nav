@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <cmath>
 #include <memory>
-#include <ranges>
 #include <utility>
 
 namespace drone_city_nav {
@@ -46,24 +45,6 @@ spansStructurallyValid(const std::span<const RouteSample3D> route,
   return true;
 }
 
-[[nodiscard]] bool
-passageResourcesStructurallyValid(const TrajectoryCompilerInput3D& input) noexcept {
-  if (input.passage_volumes.size() != input.constrained_spans.size() ||
-      (!input.cooperative_passage_assignments.empty() &&
-       input.cooperative_passage_assignments.size() !=
-           input.constrained_spans.size())) {
-    return false;
-  }
-  std::vector<PassageTraversalId> expected_ids;
-  for (const ConstrainedRouteSpan& span : input.constrained_spans) {
-    if (std::ranges::find(expected_ids, span.passage_traversal_id) ==
-        expected_ids.end()) {
-      expected_ids.push_back(span.passage_traversal_id);
-    }
-  }
-  return expected_ids == input.selected_passage_traversal_ids;
-}
-
 } // namespace
 
 TrajectoryCompilationResult3D
@@ -75,7 +56,7 @@ TrajectoryCompiler3D::compile(TrajectoryCompilerInput3D input) {
     return result;
   }
   if (input.route_generation == 0U) {
-    result.validation = {Failure::kInvalidPassageResources, 0U};
+    result.validation = {Failure::kInvalidConstrainedSpans, 0U};
     return result;
   }
   if (input.route.size() < 2U) {
@@ -94,10 +75,6 @@ TrajectoryCompiler3D::compile(TrajectoryCompilerInput3D input) {
   }
   if (!spansStructurallyValid(input.route, input.constrained_spans)) {
     result.validation = {Failure::kInvalidConstrainedSpans, 0U};
-    return result;
-  }
-  if (!passageResourcesStructurallyValid(input)) {
-    result.validation = {Failure::kInvalidPassageResources, 0U};
     return result;
   }
   if (input.materialized_route_fingerprint == 0U) {
@@ -144,13 +121,6 @@ TrajectoryCompiler3D::compile(TrajectoryCompilerInput3D input) {
   const auto constrained_spans =
       std::make_shared<const std::vector<ConstrainedRouteSpan>>(
           std::move(input.constrained_spans));
-  const auto passage_volumes = std::make_shared<const std::vector<PassageVolume>>(
-      std::move(input.passage_volumes));
-  const auto cooperative_assignments =
-      std::make_shared<const std::vector<CooperativePassageAssignment>>(
-          std::move(input.cooperative_passage_assignments));
-  const auto traversal_ids = std::make_shared<const std::vector<PassageTraversalId>>(
-      std::move(input.selected_passage_traversal_ids));
   const CompiledTrajectoryTimeProfile3D time_profile{
       .travel_time_s = parameterization.travel_time_s,
       .translation_time_s = parameterization.translation_time_s,
@@ -162,18 +132,15 @@ TrajectoryCompiler3D::compile(TrajectoryCompilerInput3D input) {
   auto trajectory =
       std::shared_ptr<const CompiledTrajectory3D>{new CompiledTrajectory3D(
           input.exact_initial_state, input.endpoint_semantics, route,
-          std::move(tracking_error_tube), constrained_spans, passage_volumes,
-          cooperative_assignments, traversal_ids, input.passage_volume_config,
-          time_profile, input.materialized_route_fingerprint,
-          physical_route_fingerprint)};
+          std::move(tracking_error_tube), constrained_spans, time_profile,
+          input.materialized_route_fingerprint, physical_route_fingerprint)};
   if (!compiledTrajectoryResourcesValid3D(*trajectory, input.route_generation)) {
-    result.validation = {Failure::kInvalidPassageResources, 0U};
+    result.validation = {Failure::kDerivedResourceMismatch, 0U};
     return result;
   }
   if (trajectory->compiled_trajectory_revision == 0U ||
       compiledTrajectoryRevision3D(*trajectory) !=
-          trajectory->compiled_trajectory_revision ||
-      compiledTrajectoryPassageRevision3D(*trajectory) == 0U) {
+          trajectory->compiled_trajectory_revision) {
     result.validation = {Failure::kDerivedResourceMismatch, 0U};
     return result;
   }

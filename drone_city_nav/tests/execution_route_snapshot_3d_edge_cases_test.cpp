@@ -70,6 +70,8 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_TRUE(active->route() != nullptr);
   ExecutionRouteActivation3D successor_activation = fixture.activation();
   successor_activation.route_generation = SnapshotFixture3D::kRouteGeneration + 1U;
+  successor_activation =
+      rebindUnconstrainedDecorations(std::move(successor_activation));
   const std::optional<CertifiedRouteSuffix3D> successor =
       certifyExecutionRoute3D(successor_activation);
   ASSERT_TRUE(successor.has_value());
@@ -254,6 +256,8 @@ TEST(ExecutionRouteSnapshot3DTest, RouteSplicePendingSurvivesExecutionProgressCa
 
   ExecutionRouteActivation3D successor_activation = fixture.activation();
   successor_activation.route_generation = SnapshotFixture3D::kRouteGeneration + 1U;
+  successor_activation =
+      rebindUnconstrainedDecorations(std::move(successor_activation));
   const std::optional<CertifiedRouteSuffix3D> successor =
       certifyExecutionRoute3D(successor_activation);
   ASSERT_TRUE(successor.has_value());
@@ -380,6 +384,8 @@ TEST(ExecutionRouteSnapshot3DTest,
 
   ExecutionRouteActivation3D successor_activation = fixture.activation();
   successor_activation.route_generation = SnapshotFixture3D::kRouteGeneration + 1U;
+  successor_activation =
+      rebindUnconstrainedDecorations(std::move(successor_activation));
   const std::optional<CertifiedRouteSuffix3D> successor =
       certifyExecutionRoute3D(successor_activation);
   ASSERT_TRUE(successor.has_value());
@@ -428,6 +434,8 @@ TEST(ExecutionRouteSnapshot3DTest,
 
   ExecutionRouteActivation3D successor_activation = fixture.activation();
   successor_activation.route_generation = active->routeGenerationHighWater() + 1U;
+  successor_activation =
+      rebindUnconstrainedDecorations(std::move(successor_activation));
   const std::optional<CertifiedRouteSuffix3D> successor =
       certifyExecutionRoute3D(successor_activation);
   ASSERT_TRUE(successor.has_value());
@@ -495,6 +503,8 @@ TEST(ExecutionRouteSnapshot3DTest,
 
   ExecutionRouteActivation3D successor_activation = fixture.activation();
   successor_activation.route_generation = active->routeGenerationHighWater() + 1U;
+  successor_activation =
+      rebindUnconstrainedDecorations(std::move(successor_activation));
   successor_activation.observation.position = held.next->stationaryHold()->position;
   const std::optional<CertifiedRouteSuffix3D> successor =
       certifyExecutionRoute3D(successor_activation);
@@ -569,6 +579,8 @@ TEST(ExecutionRouteSnapshot3DTest,
 
   ExecutionRouteActivation3D discontinuous_activation = fixture.activation();
   discontinuous_activation.route_generation = active->routeGenerationHighWater() + 1U;
+  discontinuous_activation =
+      rebindUnconstrainedDecorations(std::move(discontinuous_activation));
   const std::optional<CertifiedRouteSuffix3D> discontinuous_successor =
       certifyExecutionRoute3D(discontinuous_activation);
   ASSERT_TRUE(discontinuous_successor.has_value());
@@ -613,6 +625,8 @@ TEST(ExecutionRouteSnapshot3DTest,
 
   ExecutionRouteActivation3D successor_activation = fixture.activation();
   successor_activation.route_generation = active->routeGenerationHighWater() + 1U;
+  successor_activation =
+      rebindUnconstrainedDecorations(std::move(successor_activation));
   const std::optional<CertifiedRouteSuffix3D> successor =
       certifyExecutionRoute3D(successor_activation);
   ASSERT_TRUE(successor.has_value());
@@ -684,6 +698,8 @@ TEST(ExecutionRouteSnapshot3DTest, PendingRouteIsObsoleteAtMissionTerminalStop) 
 
   ExecutionRouteActivation3D successor_activation = fixture.activation();
   successor_activation.route_generation = stopped.next->routeGenerationHighWater() + 1U;
+  successor_activation =
+      rebindUnconstrainedDecorations(std::move(successor_activation));
   successor_activation.observation.position = {10.0, 0.0, 5.0};
   const std::optional<CertifiedRouteSuffix3D> successor =
       certifyExecutionRoute3D(successor_activation);
@@ -819,6 +835,8 @@ TEST(ExecutionRouteSnapshot3DTest,
   ExecutionRouteActivation3D successor_activation = fixture.activation();
   successor_activation.route_generation =
       route_owner->route()->identity.generation + 1U;
+  successor_activation =
+      rebindUnconstrainedDecorations(std::move(successor_activation));
   const std::optional<CertifiedRouteSuffix3D> successor =
       certifyExecutionRoute3D(successor_activation);
   ASSERT_TRUE(successor.has_value());
@@ -904,10 +922,6 @@ TEST(ExecutionRouteSnapshot3DTest, ProgressConnectorUsesExactPreviousControlBody
           .route_generation = SnapshotFixture3D::kRouteGeneration,
           .route = fixture.route,
           .constrained_spans = {},
-          .passage_volumes = {},
-          .cooperative_passage_assignments = {},
-          .selected_passage_traversal_ids = {},
-          .passage_volume_config = fixture.passage_volume_config,
           .endpoint_semantics = RouteEndpointSemantics3D::kMissionStop,
           .materialized_route_fingerprint = fixture.physical_route_fingerprint,
           .tracking_world =
@@ -920,6 +934,9 @@ TEST(ExecutionRouteSnapshot3DTest, ProgressConnectorUsesExactPreviousControlBody
       });
   ASSERT_TRUE(compilation.compiled());
   fixture.geometry = compilation.trajectory;
+  fixture.decorations =
+      makeDecorations(fixture.geometry, SnapshotFixture3D::kRouteGeneration, {}, {}, {},
+                      fixture.passage_volume_config);
   fixture.geometry_revision = fixture.geometry->compiled_trajectory_revision;
   const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);

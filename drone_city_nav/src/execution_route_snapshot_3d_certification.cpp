@@ -88,7 +88,7 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
   const std::optional<ActiveIntent3D> active_intent =
       activeIntent3D(activation.proposal);
   if (!identity.has_value() || !active_intent.has_value() ||
-      activation.geometry == nullptr) {
+      activation.geometry == nullptr || activation.decorations == nullptr) {
     return std::nullopt;
   }
   RouteOwnerIdentity3D route_owner;
@@ -109,16 +109,17 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
     return std::nullopt;
   }
   const std::shared_ptr<const CompiledTrajectory3D> geometry = activation.geometry;
-  if (geometry == nullptr || !compiledTrajectoryValid3D(*geometry, *identity)) {
+  const std::shared_ptr<const RouteDecorations3D> decorations = activation.decorations;
+  if (geometry == nullptr || decorations == nullptr ||
+      !compiledTrajectoryValid3D(*geometry, *identity) ||
+      !routeDecorationsValid3D(*decorations, *geometry, identity->generation)) {
     return std::nullopt;
   }
-  if (!samePassageVolumeConfig(geometry->passage_volume_config,
-                               activation.passage_volume_config) ||
-      !footprintConservativelyContains(
+  if (!footprintConservativelyContains(
           geometry->tracking_error_tube->physical_footprint,
           activation.validation_policy->sweptFootprint()) ||
       (!geometry->constrained_spans->empty() &&
-       !sameFootprintConfig(activation.passage_volume_config.footprint,
+       !sameFootprintConfig(decorations->passage_volume_config.footprint,
                             owned_observation.footprint))) {
     return std::nullopt;
   }
@@ -143,23 +144,23 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
   const bool passage_geometry_matches_world =
       requires_observed_raw_certificate
           ? canonicalPassageGeometryMatchesObservedWorld(
-                *geometry, *activation.observed_raw_world,
-                activation.passage_volume_config)
-          : canonicalPassageGeometryMatchesWorld(*geometry,
+                *geometry, *decorations, *activation.observed_raw_world,
+                decorations->passage_volume_config)
+          : canonicalPassageGeometryMatchesWorld(*geometry, *decorations,
                                                  activation.static_world->occupancy(),
-                                                 activation.passage_volume_config);
+                                                 decorations->passage_volume_config);
   if (!passage_geometry_matches_world) {
     return std::nullopt;
   }
-  const std::uint64_t passage_geometry_revision =
-      compiledTrajectoryPassageRevision3D(*geometry);
+  const std::uint64_t route_decorations_revision =
+      routeDecorationsRevision3D(*decorations);
   const std::uint64_t passage_config_fingerprint =
-      passageVolumeConfigFingerprint(activation.passage_volume_config);
+      passageVolumeConfigFingerprint(decorations->passage_volume_config);
   const std::uint64_t geometry_derivation_occupancy_content_fingerprint =
       requires_observed_raw_certificate
           ? activation.observed_raw_world->occupiedContentFingerprint()
           : activation.static_world->contentFingerprint();
-  if (passage_geometry_revision == 0U || passage_config_fingerprint == 0U ||
+  if (route_decorations_revision == 0U || passage_config_fingerprint == 0U ||
       geometry_derivation_occupancy_content_fingerprint == 0U) {
     return std::nullopt;
   }
@@ -198,7 +199,7 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
             activation.validation_policy->contentFingerprint(),
         .observed_world_content_fingerprint =
             activation.observed_raw_world->contentFingerprint(),
-        .passage_geometry_revision = passage_geometry_revision,
+        .route_decorations_revision = route_decorations_revision,
         .passage_volume_config_fingerprint = passage_config_fingerprint,
         .geometry_derivation_occupancy_content_fingerprint =
             geometry_derivation_occupancy_content_fingerprint,
@@ -224,7 +225,7 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
         .validation_policy_fingerprint = policy_fingerprint,
         .execution_validation_policy_fingerprint =
             activation.validation_policy->contentFingerprint(),
-        .passage_geometry_revision = passage_geometry_revision,
+        .route_decorations_revision = route_decorations_revision,
         .passage_volume_config_fingerprint = passage_config_fingerprint,
         .geometry_derivation_occupancy_content_fingerprint =
             geometry_derivation_occupancy_content_fingerprint,
@@ -243,6 +244,7 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
               : std::nullopt,
       .identity = *identity,
       .geometry = geometry,
+      .decorations = decorations,
       .certificate = certificate,
       .progress = {.route_generation = identity->generation,
                    .geometry_revision = geometry->compiled_trajectory_revision,
@@ -284,8 +286,8 @@ std::optional<CertifiedRouteSuffix3D> recertifyExecutionRoute3D(
           .route_generation = sealed_source.identity.generation,
           .proposal = sealed_source.identity.proposal,
           .geometry = sealed_source.geometry,
+          .decorations = sealed_source.decorations,
           .observation = observation,
-          .passage_volume_config = sealed_source.geometry->passage_volume_config,
           .continuity_lineage = sealed_source.continuity_lineage,
           .observed_raw_world = std::move(observed_raw_world),
           .static_world = sealed_source.static_world,

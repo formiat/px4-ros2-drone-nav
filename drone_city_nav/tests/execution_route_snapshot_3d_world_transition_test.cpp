@@ -116,10 +116,12 @@ TEST(ExecutionRouteSnapshot3DTest,
 TEST(ExecutionRouteSnapshot3DTest,
      ConstrainedAdvanceRejectsANewerWorldWithDifferentPassageGeometry) {
   SnapshotFixture3D fixture;
-  fixture.geometry = makeConstrainedGeometry(
+  const TestCompiledRoute3D constrained = makeConstrainedRoute(
       fixture.route, fixture.physical_route_fingerprint,
       SnapshotFixture3D::kRouteGeneration, fixture.raw_occupancy.occupiedSnapshot(),
       testPassageVolumeConfig());
+  fixture.geometry = constrained.geometry;
+  fixture.decorations = constrained.decorations;
   fixture.geometry_revision = fixture.geometry->compiled_trajectory_revision;
   const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_TRUE(active);

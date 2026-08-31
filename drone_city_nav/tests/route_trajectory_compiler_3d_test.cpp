@@ -90,7 +90,7 @@ TEST(RouteTrajectoryCompiler3DTest, SealsStaticRouteWithExactInitialState) {
   MaterializedRoute3D materialized = materializedRoute(staticWorld());
   const VehicleState3D initial = initialState(materialized.route->front().position);
 
-  const TrajectoryCompilationResult3D result =
+  const RouteTrajectoryCompilationResult3D result =
       compiler.compile(RouteTrajectoryCompilationRequest3D{
           .materialized = materialized,
           .exact_initial_state = initial,
@@ -101,6 +101,10 @@ TEST(RouteTrajectoryCompiler3DTest, SealsStaticRouteWithExactInitialState) {
   ASSERT_TRUE(result.compiled())
       << compiledTrajectoryFailureReason3DName(result.validation.reason);
   ASSERT_NE(result.trajectory, nullptr);
+  ASSERT_NE(result.decorations, nullptr);
+  EXPECT_TRUE(result.decorations->passage_volumes->empty());
+  EXPECT_TRUE(routeDecorationsValid3D(*result.decorations, *result.trajectory,
+                                      materialized.candidate_generation));
   EXPECT_EQ(result.trajectory->exact_initial_state, initial);
   EXPECT_EQ(result.trajectory->endpoint_semantics,
             RouteEndpointSemantics3D::kMissionStop);
@@ -114,7 +118,7 @@ TEST(RouteTrajectoryCompiler3DTest, BindsTrackingTubeToExactObservedOwner) {
   RouteTrajectoryCompiler3D compiler{RouteTrajectoryCompilerConfig3D{}};
   MaterializedRoute3D materialized = materializedRoute(observed.world);
 
-  const TrajectoryCompilationResult3D result =
+  const RouteTrajectoryCompilationResult3D result =
       compiler.compile(RouteTrajectoryCompilationRequest3D{
           .materialized = materialized,
           .exact_initial_state = initialState(materialized.route->front().position),
@@ -125,6 +129,7 @@ TEST(RouteTrajectoryCompiler3DTest, BindsTrackingTubeToExactObservedOwner) {
   ASSERT_TRUE(result.compiled())
       << compiledTrajectoryFailureReason3DName(result.validation.reason);
   ASSERT_NE(result.trajectory, nullptr);
+  ASSERT_NE(result.decorations, nullptr);
   EXPECT_TRUE(trackingErrorTubeProfile3DMatchesWorld(
       *result.trajectory->route, *result.trajectory->tracking_error_tube,
       TrackingErrorTubeWorld3D{
@@ -138,7 +143,7 @@ TEST(RouteTrajectoryCompiler3DTest, RejectsObservedRouteWithoutOwnedRawWorld) {
   RouteTrajectoryCompiler3D compiler{RouteTrajectoryCompilerConfig3D{}};
   MaterializedRoute3D materialized = materializedRoute(observed.world);
 
-  const TrajectoryCompilationResult3D result =
+  const RouteTrajectoryCompilationResult3D result =
       compiler.compile(RouteTrajectoryCompilationRequest3D{
           .materialized = materialized,
           .exact_initial_state = initialState(materialized.route->front().position),
@@ -147,6 +152,7 @@ TEST(RouteTrajectoryCompiler3DTest, RejectsObservedRouteWithoutOwnedRawWorld) {
       });
 
   EXPECT_EQ(result.trajectory, nullptr);
+  EXPECT_EQ(result.decorations, nullptr);
   EXPECT_EQ(result.validation.reason,
             CompiledTrajectoryFailureReason3D::kInvalidTrackingErrorTube);
 }

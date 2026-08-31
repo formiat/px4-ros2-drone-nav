@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/execution_route_model_3d.hpp"
+#include "drone_city_nav/route_decoration_compiler_3d.hpp"
 #include "drone_city_nav/trajectory_compiler_3d.hpp"
 
 #include <memory>
@@ -24,6 +25,19 @@ struct RouteTrajectoryCompilationRequest3D {
   std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_world;
 };
 
+struct RouteTrajectoryCompilationResult3D {
+  std::shared_ptr<const CompiledTrajectory3D> trajectory;
+  std::shared_ptr<const RouteDecorations3D> decorations;
+  CompiledTrajectoryValidation3D validation{};
+  RouteDecorationValidation3D decoration_validation{};
+  std::size_t stop_turn_count{0U};
+
+  [[nodiscard]] bool compiled() const noexcept {
+    return trajectory != nullptr && decorations != nullptr && validation.valid() &&
+           decoration_validation.valid();
+  }
+};
+
 class RouteTrajectoryCompiler3D final {
 public:
   explicit RouteTrajectoryCompiler3D(const RouteTrajectoryCompilerConfig3D& config);
@@ -33,7 +47,7 @@ public:
   RouteTrajectoryCompiler3D(RouteTrajectoryCompiler3D&&) = delete;
   RouteTrajectoryCompiler3D& operator=(RouteTrajectoryCompiler3D&&) = delete;
 
-  [[nodiscard]] TrajectoryCompilationResult3D
+  [[nodiscard]] RouteTrajectoryCompilationResult3D
   compile(const RouteTrajectoryCompilationRequest3D& request) const;
 
 private:

@@ -99,6 +99,8 @@ TEST(ExecutionRouteSnapshot3DTest, DerivesPlannedEndpointSemanticsFromTheProposa
           .occupied_content_fingerprint =
               fixture.raw_occupancy.occupiedSnapshot().contentFingerprint(),
       });
+  activation.decorations =
+      makeDecorations(activation.geometry, SnapshotFixture3D::kRouteGeneration);
   const std::optional<CertifiedRouteSuffix3D> continuation =
       certifyExecutionRoute3D(activation);
   ASSERT_TRUE(continuation.has_value());
@@ -123,6 +125,8 @@ TEST(ExecutionRouteSnapshot3DTest,
           .occupied_content_fingerprint =
               fixture.raw_occupancy.occupiedSnapshot().contentFingerprint(),
       });
+  activation.decorations =
+      makeDecorations(activation.geometry, SnapshotFixture3D::kRouteGeneration);
 
   const std::optional<CertifiedRouteSuffix3D> continuation =
       certifyExecutionRoute3D(activation);
@@ -149,6 +153,8 @@ TEST(ExecutionRouteSnapshot3DTest,
           .occupied_content_fingerprint =
               fixture.raw_occupancy.occupiedSnapshot().contentFingerprint(),
       });
+  mission.decorations =
+      makeDecorations(mission.geometry, SnapshotFixture3D::kRouteGeneration);
   EXPECT_FALSE(certifyExecutionRoute3D(mission).has_value());
 }
 

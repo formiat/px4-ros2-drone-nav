@@ -106,7 +106,7 @@ exactVehicleState3D(const ProductionMppiNavigation& navigation) noexcept {
 } // namespace
 
 bool RouteAdmissionReport3D::compiledTrajectoryValid() const noexcept {
-  return trajectory_validation.valid();
+  return trajectory_validation.valid() && decoration_validation.valid();
 }
 
 bool RouteActivationPreparationRequest3D::valid() const noexcept {
@@ -134,20 +134,21 @@ bool pendingRoutePublicationBaseCurrent3D(
 
 bool RouteAdmissionReport3D::readyForArbitration(
     const ProductionMaterializedRouteProposal3D& proposal) const noexcept {
-  if (proposal.trajectory == nullptr) {
+  if (proposal.trajectory == nullptr || proposal.decorations == nullptr) {
     return false;
   }
   const CompiledTrajectory3D& trajectory = *proposal.trajectory;
   return proposal.identity.activation_eligible && assessment.accepted() &&
          handoff.accepted() && trajectory.route && trajectory.constrained_spans &&
-         trajectory.passage_volumes && trajectory.cooperative_passage_assignments &&
-         trajectory.selected_passage_traversal_ids &&
          trajectory.materialized_route_fingerprint ==
              proposal.identity.route_fingerprint &&
          trajectory.compiled_trajectory_revision != 0U &&
          trajectory.compiled_trajectory_revision ==
              compiledTrajectoryRevision3D(trajectory) &&
-         trajectory_validation.valid() && world_compatible && objective_matches;
+         routeDecorationsValid3D(*proposal.decorations, trajectory,
+                                 proposal.decorations->route_generation) &&
+         trajectory_validation.valid() && decoration_validation.valid() &&
+         world_compatible && objective_matches;
 }
 
 PreparedRouteActivation3D RouteActivationCoordinator3D::prepare(
@@ -286,18 +287,22 @@ PreparedRouteActivation3D RouteActivationCoordinator3D::prepare(
     report.trajectory_compile_attempted = true;
     const RouteEndpointSemantics3D endpoint_semantics = routeEndpointSemantics3D(
         candidate.reaches_mission_goal, !transaction.objective.continuous_tracking);
-    TrajectoryCompilationResult3D compilation =
+    RouteTrajectoryCompilationResult3D compilation =
         trajectory_compiler_.compile(RouteTrajectoryCompilationRequest3D{
             .materialized = candidate,
             .exact_initial_state = exactVehicleState3D(snapshot.navigation),
             .endpoint_semantics = endpoint_semantics,
             .observed_raw_world = activation_raw_owner,
         });
-    report.trajectory_compiled = compilation.compiled();
+    const bool compilation_succeeded = compilation.compiled();
+    report.trajectory_compiled = compilation_succeeded;
     report.trajectory_validation = compilation.validation;
+    report.decoration_validation = compilation.decoration_validation;
     result.stop_turn_count = compilation.stop_turn_count;
     result.trajectory =
-        compilation.compiled() ? std::move(compilation.trajectory) : nullptr;
+        compilation_succeeded ? std::move(compilation.trajectory) : nullptr;
+    result.decorations =
+        compilation_succeeded ? std::move(compilation.decorations) : nullptr;
   } else if (report.candidate_validation.accepted && raw_validation_required &&
              activation_raw_owner == nullptr) {
     report.candidate_validation = StaticRouteCandidateValidation{
@@ -495,6 +500,7 @@ PreparedRouteActivation3D RouteActivationCoordinator3D::prepare(
               .activation_eligible = activation_evidence.physical_executable,
           },
       .trajectory = result.trajectory,
+      .decorations = result.decorations,
   };
 
   if (result.proposal.trajectory == nullptr &&
@@ -512,10 +518,15 @@ PreparedRouteActivation3D RouteActivationCoordinator3D::prepare(
     };
     if (report.trajectory_validation.valid() &&
         (!compiledTrajectoryValid3D(*result.proposal.trajectory, candidate_identity) ||
+         result.proposal.decorations == nullptr ||
+         !routeDecorationsValid3D(*result.proposal.decorations,
+                                  *result.proposal.trajectory, candidate_generation) ||
          result.proposal.trajectory->exact_initial_state !=
              exactVehicleState3D(snapshot.navigation))) {
       report.trajectory_validation.reason =
           CompiledTrajectoryFailureReason3D::kDerivedResourceMismatch;
+      report.decoration_validation.reason =
+          RouteDecorationFailureReason3D::kDerivedResourceMismatch;
     }
   }
 
@@ -543,7 +554,7 @@ PreparedRouteActivation3D RouteActivationCoordinator3D::prepare(
   result.proposal.identity.activation_eligible =
       result.proposal.identity.activation_eligible && report.assessment.accepted() &&
       report.handoff.accepted() && result.proposal.trajectory != nullptr &&
-      result.proposal.trajectory->route &&
+      result.proposal.decorations != nullptr && result.proposal.trajectory->route &&
       result.proposal.trajectory->constrained_spans && report.world_compatible &&
       report.objective_matches && report.trajectory_validation.valid();
 
@@ -652,9 +663,13 @@ PreparedRouteActivation3D RouteActivationCoordinator3D::prepare(
   };
   const bool compiled_trajectory_valid =
       candidate.candidate_generation == candidate_generation &&
-      report.trajectory_validation.valid() &&
+      report.trajectory_validation.valid() && report.decoration_validation.valid() &&
       materialized_proposal.trajectory != nullptr &&
-      compiledTrajectoryValid3D(*materialized_proposal.trajectory, candidate_identity);
+      materialized_proposal.decorations != nullptr &&
+      compiledTrajectoryValid3D(*materialized_proposal.trajectory,
+                                candidate_identity) &&
+      routeDecorationsValid3D(*materialized_proposal.decorations,
+                              *materialized_proposal.trajectory, candidate_generation);
   std::shared_ptr<const VersionedObservedRawWorld3D> observed_owner;
   std::shared_ptr<const VersionedStaticWorld3D> static_owner;
   if (raw_validation_required && snapshot.raw_world != nullptr &&
@@ -700,6 +715,7 @@ PreparedRouteActivation3D RouteActivationCoordinator3D::prepare(
                 .route_generation = candidate_generation,
                 .proposal = materialized_proposal.identity,
                 .geometry = materialized_proposal.trajectory,
+                .decorations = materialized_proposal.decorations,
                 .observation =
                     RouteActivationObservation3D{
                         .resident_world =
@@ -734,7 +750,6 @@ PreparedRouteActivation3D RouteActivationCoordinator3D::prepare(
                         .flight_envelope = config_.flight_envelope,
                         .raw_validation_required = raw_validation_required,
                     },
-                .passage_volume_config = config_.passage_volume,
                 .continuity_lineage = continuity_lineage,
                 .observed_raw_world = observed_owner,
                 .static_world = static_owner,
@@ -874,12 +889,15 @@ RouteActivationCommitResult3D RouteActivationCoordinator3D::commit(
       candidate.provenance.required_splice_base_route_instance_id.valid();
   const bool compiled_trajectory_valid =
       candidate.candidate_generation != 0U && report.trajectory_validation.valid() &&
-      result.proposal.trajectory != nullptr &&
+      report.decoration_validation.valid() && result.proposal.trajectory != nullptr &&
+      result.proposal.decorations != nullptr &&
       compiledTrajectoryValid3D(*result.proposal.trajectory,
                                 ActivatedRouteIdentity3D{
                                     .generation = candidate.candidate_generation,
                                     .proposal = result.proposal.identity,
-                                });
+                                }) &&
+      routeDecorationsValid3D(*result.proposal.decorations, *result.proposal.trajectory,
+                              candidate.candidate_generation);
   if (!published_pending && report.candidate_validation.accepted &&
       report.successor_improvement_required &&
       !report.successor_improvement.accepted()) {

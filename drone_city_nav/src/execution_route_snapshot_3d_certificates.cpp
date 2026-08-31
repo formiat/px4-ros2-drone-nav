@@ -60,7 +60,7 @@ certificateView(const RouteSuffixCertificate3D& certificate) noexcept {
             static_certificate->execution_validation_policy_fingerprint,
         .world_content_fingerprint =
             static_certificate->static_occupancy_content_fingerprint,
-        .passage_geometry_revision = static_certificate->passage_geometry_revision,
+        .route_decorations_revision = static_certificate->route_decorations_revision,
         .passage_volume_config_fingerprint =
             static_certificate->passage_volume_config_fingerprint,
         .geometry_derivation_occupancy_content_fingerprint =
@@ -86,7 +86,7 @@ certificateView(const RouteSuffixCertificate3D& certificate) noexcept {
       .execution_validation_policy_fingerprint =
           raw_certificate->execution_validation_policy_fingerprint,
       .world_content_fingerprint = raw_certificate->observed_world_content_fingerprint,
-      .passage_geometry_revision = raw_certificate->passage_geometry_revision,
+      .route_decorations_revision = raw_certificate->route_decorations_revision,
       .passage_volume_config_fingerprint =
           raw_certificate->passage_volume_config_fingerprint,
       .geometry_derivation_occupancy_content_fingerprint =
@@ -125,7 +125,7 @@ void hashCertificate(std::uint64_t& hash,
   hashValue(hash, view.validation_policy_fingerprint);
   hashValue(hash, view.execution_validation_policy_fingerprint);
   hashValue(hash, view.world_content_fingerprint);
-  hashValue(hash, view.passage_geometry_revision);
+  hashValue(hash, view.route_decorations_revision);
   hashValue(hash, view.passage_volume_config_fingerprint);
   hashValue(hash, view.geometry_derivation_occupancy_content_fingerprint);
   hashDouble(hash, view.suffix_start_station_m);
@@ -374,7 +374,7 @@ certificateValidForSource(const RouteSuffixCertificate3D& certificate,
       view.geometry_revision == 0U || view.geometry_revision != geometry_revision ||
       view.physical_route_fingerprint == 0U ||
       view.physical_route_fingerprint != physical_route_fingerprint ||
-      view.passage_geometry_revision == 0U ||
+      view.route_decorations_revision == 0U ||
       view.execution_validation_policy_fingerprint == 0U ||
       view.passage_volume_config_fingerprint == 0U ||
       view.geometry_derivation_occupancy_content_fingerprint == 0U ||
@@ -410,7 +410,7 @@ sameCertificateBinding(const RouteSuffixCertificate3D& first,
       first_view.execution_validation_policy_fingerprint !=
           second_view.execution_validation_policy_fingerprint ||
       first_view.world_content_fingerprint != second_view.world_content_fingerprint ||
-      first_view.passage_geometry_revision != second_view.passage_geometry_revision ||
+      first_view.route_decorations_revision != second_view.route_decorations_revision ||
       first_view.passage_volume_config_fingerprint !=
           second_view.passage_volume_config_fingerprint ||
       first_view.geometry_derivation_occupancy_content_fingerprint !=
@@ -454,7 +454,8 @@ certificateEligibleForRevalidation(const RouteSuffixCertificate3D& artifact,
           route_view.physical_route_fingerprint ||
       artifact_view.execution_validation_policy_fingerprint !=
           route_view.execution_validation_policy_fingerprint ||
-      artifact_view.passage_geometry_revision != route_view.passage_geometry_revision ||
+      artifact_view.route_decorations_revision !=
+          route_view.route_decorations_revision ||
       artifact_view.passage_volume_config_fingerprint !=
           route_view.passage_volume_config_fingerprint ||
       artifact_view.observed_raw != route_view.observed_raw ||
