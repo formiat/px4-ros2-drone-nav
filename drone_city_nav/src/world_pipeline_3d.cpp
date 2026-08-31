@@ -240,8 +240,8 @@ MemoryStatusIngestionResult3D WorldPipeline3D::ingestMemoryStatus(
         latest_raw_world_.load(std::memory_order_acquire);
     const bool raw_pointer_current =
         raw_world != nullptr &&
-        raw_world->version.producer_instance_id == authority.producer_instance_id &&
-        raw_world->version.revision == evidence.sequence;
+        raw_world->version().producer_instance_id == authority.producer_instance_id &&
+        raw_world->version().revision == evidence.sequence;
     const bool installed_through_status =
         authority.valid() && !evidence.current_identity_conflicted &&
         evidence.authority_generation == authority.generation &&
@@ -255,7 +255,7 @@ MemoryStatusIngestionResult3D WorldPipeline3D::ingestMemoryStatus(
           .minimum_source_stamp_ns = observation.source_stamp_ns,
       };
     } else if (raw_world != nullptr &&
-               pending_raw_world_update_.satisfiedBy(evidence, raw_world->version)) {
+               pending_raw_world_update_.satisfiedBy(evidence, raw_world->version())) {
       pending_raw_world_update_ = {};
     }
   }
@@ -300,19 +300,6 @@ RawWorldCommitResult3D WorldPipeline3D::commitRawUpdate(
         .replaced_pending = false,
     };
   }
-  auto mutable_world =
-      std::make_shared<ProductionMppiRawWorld3D>(ProductionMppiRawWorld3D{
-          .version = version,
-          .source_stamp_ns = update.evidence_observation.source_stamp_ns,
-          .receive_stamp_ns = update.evidence_observation.receive_stamp_ns,
-          .ready_stamp_ns = ready_stamp_ns,
-          .reconstruction_ms = reconstruction_ms,
-          .occupancy = update.state.occupancy,
-          .execution_owner = execution_owner,
-          .dirty_chunks = update.dirty_chunks,
-          .full_reset = update.full_reset,
-      });
-
   const std::scoped_lock lifecycle_lock{lifecycle_mutex_};
   if (!accepting_.load(std::memory_order_acquire)) {
     rejected_after_stop_.fetch_add(1U, std::memory_order_relaxed);
@@ -344,16 +331,34 @@ RawWorldCommitResult3D WorldPipeline3D::commitRawUpdate(
       };
     }
     const auto& pending = raw_world_scheduler_.pending();
+    std::vector<OccupancyChunkIndex3D> dirty_chunks = update.dirty_chunks;
+    bool full_reset = update.full_reset;
     if (pending.has_value() && *pending != nullptr) {
       replaced_pending = true;
-      mutable_world->full_reset = mutable_world->full_reset || (*pending)->full_reset;
-      mergeDirtyChunks(mutable_world->dirty_chunks, (*pending)->dirty_chunks);
+      full_reset = full_reset || (*pending)->fullReset();
+      mergeDirtyChunks(dirty_chunks, (*pending)->dirtyChunks());
     }
-    immutable_world = mutable_world;
+    immutable_world = ProductionMppiRawWorld3D::capture(
+        execution_owner,
+        ProductionMppiRawWorldMetadata3D{
+            .source_stamp_ns = update.evidence_observation.source_stamp_ns,
+            .receive_stamp_ns = update.evidence_observation.receive_stamp_ns,
+            .ready_stamp_ns = ready_stamp_ns,
+            .reconstruction_ms = reconstruction_ms,
+            .dirty_chunks = std::move(dirty_chunks),
+            .full_reset = full_reset,
+        });
+    if (immutable_world == nullptr) {
+      return {
+          .status = RawWorldCommitStatus3D::kInvalidExecutionOwner,
+          .world = nullptr,
+          .replaced_pending = false,
+      };
+    }
     static_cast<void>(raw_world_scheduler_.submit(immutable_world));
     latest_raw_world_.store(immutable_world, std::memory_order_release);
     raw_world_identity_conflicted_ = false;
-    if (pending_raw_world_update_.satisfiedBy(evidence, immutable_world->version)) {
+    if (pending_raw_world_update_.satisfiedBy(evidence, immutable_world->version())) {
       pending_raw_world_update_ = {};
     }
   }
@@ -681,7 +686,7 @@ WorldPipeline3D::finishObservedWorldUpdate(ObservedWorldBuildAssessment3D assess
   build.telemetry.upload_ms = upload.upload_ms;
   result.telemetry = build.telemetry;
   const std::optional<LocalWorldGeneration> generation = publication.issueGeneration(
-      build.request.raw_world->version, build.request.pose_revision,
+      build.request.raw_world->version(), build.request.pose_revision,
       publication_world->revision, upload.revision);
   if (!generation.has_value()) {
     if (build.upload_required) {

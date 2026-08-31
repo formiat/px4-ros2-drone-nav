@@ -64,20 +64,19 @@ rawWorld(const ObservedOccupancyGrid3D& grid, const std::uint64_t revision,
       .base_snapshot_revision = kBaseRevision,
       .revision = revision,
   };
-  return std::make_shared<const ProductionMppiRawWorld3D>(ProductionMppiRawWorld3D{
-      .version = version,
-      .source_stamp_ns = static_cast<std::int64_t>(revision) * 1'000'000'000LL,
-      .receive_stamp_ns =
-          static_cast<std::int64_t>(revision) * 1'000'000'000LL + 10'000'000LL,
-      .ready_stamp_ns =
-          static_cast<std::int64_t>(revision) * 1'000'000'000LL + 20'000'000LL,
-      .reconstruction_ms = 1.25,
-      .occupancy = occupancy,
-      .execution_owner = VersionedObservedRawWorld3D::captureOwned(
-          version, occupancy, std::nullopt, std::nullopt),
-      .dirty_chunks = std::move(dirty_chunks),
-      .full_reset = full_reset,
-  });
+  return ProductionMppiRawWorld3D::capture(
+      VersionedObservedRawWorld3D::captureOwned(version, occupancy, std::nullopt,
+                                                std::nullopt),
+      ProductionMppiRawWorldMetadata3D{
+          .source_stamp_ns = static_cast<std::int64_t>(revision) * 1'000'000'000LL,
+          .receive_stamp_ns =
+              static_cast<std::int64_t>(revision) * 1'000'000'000LL + 10'000'000LL,
+          .ready_stamp_ns =
+              static_cast<std::int64_t>(revision) * 1'000'000'000LL + 20'000'000LL,
+          .reconstruction_ms = 1.25,
+          .dirty_chunks = std::move(dirty_chunks),
+          .full_reset = full_reset,
+      });
 }
 
 [[nodiscard]] ObservedWorldBuildRequest3D observedRequest(
@@ -291,16 +290,11 @@ ingestAndCommit(WorldPipeline3D& pipeline, const ObservedOccupancyGrid3D& grid,
   RawWorldCommitResult3D result = pipeline.commitRawUpdate(
       ingestion.update, 1.5, source_stamp_ns + 30'000'000LL, kAdmissionConfig);
   if (result.committed()) {
-    EXPECT_NE(result.world->execution_owner, nullptr);
-    EXPECT_TRUE(result.world->execution_owner->valid());
-    EXPECT_EQ(result.world->execution_owner->version().producer_instance_id,
-              result.world->version.producer_instance_id);
-    EXPECT_EQ(result.world->execution_owner->version().base_snapshot_revision,
-              result.world->version.base_snapshot_revision);
-    EXPECT_EQ(result.world->execution_owner->version().revision,
-              result.world->version.revision);
-    EXPECT_EQ(&result.world->execution_owner->occupancy(),
-              result.world->occupancy.get());
+    EXPECT_TRUE(result.world->valid());
+    EXPECT_NE(result.world->authoritativeOwner(), nullptr);
+    EXPECT_EQ(&result.world->authoritativeOwner()->version(), &result.world->version());
+    EXPECT_EQ(&result.world->authoritativeOwner()->occupancy(),
+              &result.world->occupancy());
   }
   return result;
 }
@@ -314,8 +308,8 @@ TEST(WorldPipeline3DTest, LatestWinsWorkerOwnsOverloadAndDirtyLineage) {
   WorldPipeline3D pipeline{observedRuntime(
       [&](const std::shared_ptr<const ProductionMppiRawWorld3D>& world) {
         std::unique_lock lock{mutex};
-        processed.push_back(world->version.revision);
-        if (world->version.revision == 1U) {
+        processed.push_back(world->version().revision);
+        if (world->version().revision == 1U) {
           first_entered = true;
           condition.notify_all();
           condition.wait(lock, [&]() noexcept { return release_first; });
@@ -354,7 +348,7 @@ TEST(WorldPipeline3DTest, LatestWinsWorkerOwnsOverloadAndDirtyLineage) {
   EXPECT_EQ(statistics.raw_updates, 3U);
   EXPECT_EQ(statistics.dropped_raw_worlds, 1U);
   ASSERT_NE(pipeline.latestRawWorld(), nullptr);
-  EXPECT_EQ(pipeline.latestRawWorld()->version.revision, 3U);
+  EXPECT_EQ(pipeline.latestRawWorld()->version().revision, 3U);
 }
 
 TEST(WorldPipeline3DTest, IdentityConflictClearsAuthorityUntilNewerEvidence) {
@@ -377,7 +371,7 @@ TEST(WorldPipeline3DTest, IdentityConflictClearsAuthorityUntilNewerEvidence) {
   ASSERT_TRUE(ingestAndCommit(pipeline, grid, 42U, 2U).committed());
   EXPECT_FALSE(pipeline.inputSnapshot().raw_world_identity_conflicted);
   ASSERT_NE(pipeline.latestRawWorld(), nullptr);
-  EXPECT_EQ(pipeline.latestRawWorld()->version.revision, 2U);
+  EXPECT_EQ(pipeline.latestRawWorld()->version().revision, 2U);
   pipeline.stop();
 }
 
@@ -398,7 +392,7 @@ TEST(WorldPipeline3DTest, ObservedWorldServicePublishesExactOwnedFullArtifact) {
   ObservedOccupancyGrid3D grid{kRawBounds};
   ASSERT_TRUE(grid.setState({3, 3, 1}, ObservedVoxelState::kOccupied));
   const std::shared_ptr<const ProductionMppiRawWorld3D> raw = rawWorld(grid, 1U);
-  ASSERT_NE(raw->execution_owner, nullptr);
+  ASSERT_NE(raw->authoritativeOwner(), nullptr);
 
   const ObservedWorldUpdate3D update = pipeline.updateObservedWorld(
       observedRequest(raw, std::chrono::steady_clock::now()));
@@ -410,14 +404,14 @@ TEST(WorldPipeline3DTest, ObservedWorldServicePublishesExactOwnedFullArtifact) {
   EXPECT_DOUBLE_EQ(update.telemetry.upload_ms, 2.5);
   EXPECT_TRUE(productionWorldGenerationCoherent(*update.world));
   EXPECT_EQ(update.world, pipeline.residentSnapshot().world);
-  EXPECT_EQ(update.world->observed_occupancy, raw->occupancy);
-  EXPECT_EQ(&update.world->observed_raw_world_owner->occupancy(), raw->occupancy.get());
-  EXPECT_TRUE(raw->execution_owner->sharesObservationOwner(
+  EXPECT_EQ(update.world->observed_occupancy, raw->occupancyOwner());
+  EXPECT_EQ(&update.world->observed_raw_world_owner->occupancy(), &raw->occupancy());
+  EXPECT_TRUE(raw->authoritativeOwner()->sharesObservationOwner(
       *update.world->observed_raw_world_owner));
   EXPECT_EQ(update.world->observed_raw_world_owner->occupiedSnapshot(),
-            raw->execution_owner->occupiedSnapshot());
+            raw->authoritativeOwner()->occupiedSnapshot());
   EXPECT_EQ(update.world->local_world_generation.raw_map.revision,
-            raw->version.revision);
+            raw->version().revision);
   EXPECT_EQ(pipeline.statistics().observed_full_builds, 1U);
 }
 
@@ -682,7 +676,7 @@ TEST(WorldPipeline3DTest, ObservedWorldServiceRateLimitsThenPublishesIncremental
   EXPECT_EQ(uploads, 2U);
   EXPECT_EQ(
       incremental.world->observed_esdf_resource.coverage.parent_raw_version.revision,
-      first_raw->version.revision);
+      first_raw->version().revision);
   EXPECT_EQ(incremental.world->planner_parent_raw_revision,
             first.world->source_raw_revision);
   EXPECT_GT(incremental.world->local_world_generation.generation,
@@ -690,7 +684,8 @@ TEST(WorldPipeline3DTest, ObservedWorldServiceRateLimitsThenPublishesIncremental
   EXPECT_EQ(pipeline.statistics().observed_incremental_builds, 1U);
 }
 
-TEST(WorldPipeline3DTest, ObservedWorldServiceRejectsInvalidOwnerAndFailedUpload) {
+TEST(WorldPipeline3DTest,
+     RawWorldFactoryRejectsMissingOwnerAndServiceReportsFailedUpload) {
   std::size_t uploads{0U};
   ObservedWorldRuntime3D runtime = observedRuntime();
   runtime.uploader = [&](const WorldEsdfUploadRequest3D&) {
@@ -701,12 +696,20 @@ TEST(WorldPipeline3DTest, ObservedWorldServiceRejectsInvalidOwnerAndFailedUpload
   ObservedOccupancyGrid3D grid{kRawBounds};
   ASSERT_TRUE(grid.setState({3, 3, 1}, ObservedVoxelState::kOccupied));
   const auto valid_raw = rawWorld(grid, 1U);
-  auto invalid_raw = std::make_shared<ProductionMppiRawWorld3D>(*valid_raw);
-  invalid_raw->execution_owner.reset();
+  const auto invalid_raw =
+      ProductionMppiRawWorld3D::capture(nullptr, ProductionMppiRawWorldMetadata3D{
+                                                     .source_stamp_ns = 1'000'000'000,
+                                                     .receive_stamp_ns = 1'010'000'000,
+                                                     .ready_stamp_ns = 1'020'000'000,
+                                                     .reconstruction_ms = 1.0,
+                                                     .dirty_chunks = {},
+                                                     .full_reset = false,
+                                                 });
 
+  ASSERT_EQ(invalid_raw, nullptr);
   const ObservedWorldUpdate3D invalid = pipeline.updateObservedWorld(
       observedRequest(invalid_raw, std::chrono::steady_clock::now()));
-  EXPECT_EQ(invalid.status, ObservedWorldUpdateStatus3D::kRawExecutionOwnerMismatch);
+  EXPECT_EQ(invalid.status, ObservedWorldUpdateStatus3D::kUnavailableObservedGrid);
   EXPECT_EQ(uploads, 0U);
   EXPECT_EQ(pipeline.residentSnapshot().world, nullptr);
 

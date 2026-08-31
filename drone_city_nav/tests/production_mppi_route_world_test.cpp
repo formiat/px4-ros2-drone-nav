@@ -200,16 +200,20 @@ TEST(ProductionMppiRouteWorldTest,
       VersionedObservedRawWorld3D::captureOwned(newer_version, newer_occupancy,
                                                 std::nullopt, std::nullopt);
   ASSERT_NE(newer_owner, nullptr);
-  const ProductionMppiRawWorld3D newer_raw{
-      .version = newer_version,
-      .occupancy = newer_occupancy,
-      .execution_owner = newer_owner,
-      .dirty_chunks = {},
-      .full_reset = false,
-  };
+  const std::shared_ptr<const ProductionMppiRawWorld3D> newer_raw =
+      ProductionMppiRawWorld3D::capture(newer_owner,
+                                        ProductionMppiRawWorldMetadata3D{
+                                            .source_stamp_ns = 1'000'000'000,
+                                            .receive_stamp_ns = 1'010'000'000,
+                                            .ready_stamp_ns = 1'020'000'000,
+                                            .reconstruction_ms = 1.0,
+                                            .dirty_chunks = {},
+                                            .full_reset = false,
+                                        });
+  ASSERT_NE(newer_raw, nullptr);
 
   const std::shared_ptr<const PersistentPlannerWorld3D> route_search_planner_world =
-      captureObservedRouteSearchWorld3D(newer_raw, std::nullopt, std::nullopt);
+      captureObservedRouteSearchWorld3D(*newer_raw, std::nullopt, std::nullopt);
   const std::shared_ptr<const PersistentPlannerWorld3D> resident =
       observedPlannerWorld(world);
 
@@ -238,25 +242,59 @@ TEST(ProductionMppiRouteWorldTest,
   EXPECT_EQ(navigationWorldCertificate3D(world).esdf_source_raw_revision, 451U);
 }
 
-TEST(ProductionMppiRouteWorldTest, RawSearchOverlayRequiresExactExecutionOwner) {
+TEST(ProductionMppiRouteWorldTest, RawWorldFactoryMakesOwnerTheOnlyOccupancyAuthority) {
   const GridBounds3D bounds{0.0, 0.0, 0.0, 1.0, 4, 4, 4};
-  const auto occupancy = std::make_shared<const ObservedOccupancyGrid3D>(bounds);
-  const auto other_occupancy = std::make_shared<const ObservedOccupancyGrid3D>(bounds);
+  const auto authoritative_occupancy =
+      std::make_shared<const ObservedOccupancyGrid3D>(bounds);
   const RawMapVersion version{
       .producer_instance_id = 7U, .base_snapshot_revision = 400U, .revision = 470U};
-  const std::shared_ptr<const VersionedObservedRawWorld3D> mismatched_owner =
-      VersionedObservedRawWorld3D::captureOwned(version, other_occupancy, std::nullopt,
-                                                std::nullopt);
-  ASSERT_NE(mismatched_owner, nullptr);
-  const ProductionMppiRawWorld3D raw{
-      .version = version,
-      .occupancy = occupancy,
-      .execution_owner = mismatched_owner,
-      .dirty_chunks = {},
-      .full_reset = false,
-  };
+  const std::shared_ptr<const VersionedObservedRawWorld3D> owner =
+      VersionedObservedRawWorld3D::captureOwned(version, authoritative_occupancy,
+                                                std::nullopt, std::nullopt);
+  ASSERT_NE(owner, nullptr);
+  const std::shared_ptr<const ProductionMppiRawWorld3D> raw =
+      ProductionMppiRawWorld3D::capture(owner, ProductionMppiRawWorldMetadata3D{
+                                                   .source_stamp_ns = 1'000'000'000,
+                                                   .receive_stamp_ns = 1'010'000'000,
+                                                   .ready_stamp_ns = 1'020'000'000,
+                                                   .reconstruction_ms = 1.0,
+                                                   .dirty_chunks = {},
+                                                   .full_reset = false,
+                                               });
 
-  EXPECT_EQ(captureObservedRouteSearchWorld3D(raw, std::nullopt, std::nullopt),
+  ASSERT_NE(raw, nullptr);
+  EXPECT_EQ(raw->occupancyOwner(), authoritative_occupancy);
+  EXPECT_EQ(raw->authoritativeOwner(), owner);
+  EXPECT_NE(captureObservedRouteSearchWorld3D(*raw, std::nullopt, std::nullopt),
+            nullptr);
+  const ProprioceptiveFreeSpaceSeed3D seed{
+      .position = {1.0, 1.0, 1.0},
+      .body_axis = {},
+      .footprint = {},
+  };
+  const auto route_evidence = raw->deriveRouteEvidence(seed, std::nullopt);
+  ASSERT_NE(route_evidence, nullptr);
+  EXPECT_TRUE(raw->ownsRouteEvidence(*route_evidence));
+  EXPECT_EQ(route_evidence->occupancyOwner(), authoritative_occupancy);
+  EXPECT_EQ(ProductionMppiRawWorld3D::capture(route_evidence,
+                                              ProductionMppiRawWorldMetadata3D{
+                                                  .source_stamp_ns = 1'000'000'000,
+                                                  .receive_stamp_ns = 1'010'000'000,
+                                                  .ready_stamp_ns = 1'020'000'000,
+                                                  .reconstruction_ms = 1.0,
+                                                  .dirty_chunks = {},
+                                                  .full_reset = false,
+                                              }),
+            nullptr);
+  EXPECT_EQ(ProductionMppiRawWorld3D::capture(nullptr,
+                                              ProductionMppiRawWorldMetadata3D{
+                                                  .source_stamp_ns = 1'000'000'000,
+                                                  .receive_stamp_ns = 1'010'000'000,
+                                                  .ready_stamp_ns = 1'020'000'000,
+                                                  .reconstruction_ms = 1.0,
+                                                  .dirty_chunks = {},
+                                                  .full_reset = false,
+                                              }),
             nullptr);
 }
 
@@ -591,26 +629,28 @@ TEST(ProductionMppiRouteWorldTest,
 }
 
 TEST(ProductionMppiRouteWorldTest, CommittedPayloadOwnsObservationFreshness) {
-  const ProductionMppiRawWorld3D committed{
-      .version =
-          RawMapVersion{
-              .producer_instance_id = 7U,
-              .base_snapshot_revision = 40U,
-              .revision = 42U,
-          },
-      .source_stamp_ns = 1'000'000'000,
-      .receive_stamp_ns = 1'010'000'000,
-      .ready_stamp_ns = 1'020'000'000,
-      .reconstruction_ms = 1.0,
-      .occupancy = nullptr,
-      .execution_owner = nullptr,
-      .dirty_chunks = {},
-      .full_reset = false,
-  };
+  const auto occupancy = std::make_shared<const ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 1.0, 4, 4, 4});
+  const auto owner = VersionedObservedRawWorld3D::captureOwned(
+      RawMapVersion{
+          .producer_instance_id = 7U,
+          .base_snapshot_revision = 40U,
+          .revision = 42U,
+      },
+      occupancy, std::nullopt, std::nullopt);
+  const auto committed =
+      ProductionMppiRawWorld3D::capture(owner, ProductionMppiRawWorldMetadata3D{
+                                                   .source_stamp_ns = 1'000'000'000,
+                                                   .receive_stamp_ns = 1'010'000'000,
+                                                   .ready_stamp_ns = 1'020'000'000,
+                                                   .reconstruction_ms = 1.0,
+                                                   .dirty_chunks = {},
+                                                   .full_reset = false,
+                                               });
 
-  EXPECT_DOUBLE_EQ(committedRawWorldAgeMs(&committed, 1'030'000'000), 30.0);
-  EXPECT_TRUE(std::isinf(
-      committedRawWorldAgeMs<ProductionMppiRawWorld3D>(nullptr, 1'030'000'000)));
+  ASSERT_NE(committed, nullptr);
+  EXPECT_DOUBLE_EQ(committedRawWorldAgeMs(committed.get(), 1'030'000'000), 30.0);
+  EXPECT_TRUE(std::isinf(committedRawWorldAgeMs(nullptr, 1'030'000'000)));
 }
 
 } // namespace

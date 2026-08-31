@@ -158,19 +158,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
         direct_static_world = VersionedStaticWorld3D::captureOwned(
             navigationWorldCertificate3D(world), world.static_occupancy);
       }
-    } else if (latest_raw_world_3d != nullptr &&
-               latest_raw_world_3d->execution_owner != nullptr &&
-               latest_raw_world_3d->occupancy != nullptr &&
-               latest_raw_world_3d->execution_owner->valid() &&
-               std::addressof(latest_raw_world_3d->execution_owner->occupancy()) ==
-                   latest_raw_world_3d->occupancy.get() &&
-               latest_raw_world_3d->execution_owner->version().producer_instance_id ==
-                   latest_raw_world_3d->version.producer_instance_id &&
-               latest_raw_world_3d->execution_owner->version().base_snapshot_revision ==
-                   latest_raw_world_3d->version.base_snapshot_revision &&
-               latest_raw_world_3d->execution_owner->version().revision ==
-                   latest_raw_world_3d->version.revision) {
-      direct_observed_world = latest_raw_world_3d->execution_owner->deriveRouteEvidence(
+    } else if (latest_raw_world_3d != nullptr) {
+      direct_observed_world = latest_raw_world_3d->deriveRouteEvidence(
           proprioceptive_free_space_seed, world.launch_support_contact);
     }
   }

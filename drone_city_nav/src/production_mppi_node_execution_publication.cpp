@@ -351,7 +351,7 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
       const std::shared_ptr<const VersionedLatestLidarEvidence3D> current_lidar =
           latest_lidar_evidence_.load(std::memory_order_acquire);
       const std::shared_ptr<const VersionedObservedRawWorld3D> current_raw =
-          committed_3d != nullptr ? committed_3d->execution_owner : nullptr;
+          committed_3d != nullptr ? committed_3d->authoritativeOwner() : nullptr;
       ExecutionPublicationNavigationRebaseResult3D rebase =
           rebaseExecutionPublicationForCurrentNavigation3D(
               ExecutionPublicationNavigationRebaseRequest3D{
@@ -537,7 +537,7 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
                       navigation_.measured_acceleration_valid,
               },
           .current_observed_raw_world = !use_static_map_ && committed_3d != nullptr
-                                            ? committed_3d->execution_owner
+                                            ? committed_3d->authoritativeOwner()
                                             : nullptr,
           .current_lidar_evidence = current_lidar,
           .publication_now_ns = publication_now_ns,

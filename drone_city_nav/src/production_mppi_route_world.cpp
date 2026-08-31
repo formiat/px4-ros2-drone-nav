@@ -11,13 +11,6 @@
 namespace drone_city_nav {
 namespace {
 
-[[nodiscard]] bool sameRawMapVersion(const RawMapVersion& first,
-                                     const RawMapVersion& second) noexcept {
-  return first.producer_instance_id == second.producer_instance_id &&
-         first.base_snapshot_revision == second.base_snapshot_revision &&
-         first.revision == second.revision;
-}
-
 [[nodiscard]] bool observedEsdfCoverageMatches(const WorldSnapshot3D& world,
                                                const RawMapVersion& raw) noexcept {
   const ObservedEsdfResource3D& resource = world.observed_esdf_resource;
@@ -165,26 +158,23 @@ std::shared_ptr<const PersistentPlannerWorld3D> captureObservedRouteSearchWorld3
     const ProductionMppiRawWorld3D& raw_world,
     std::optional<ProprioceptiveFreeSpaceSeed3D> proprioceptive_free_space_seed,
     std::optional<LaunchSupportContact3D> launch_support_contact) {
-  const std::shared_ptr<const VersionedObservedRawWorld3D>& owner =
-      raw_world.execution_owner;
-  if (!raw_world.version.valid() || raw_world.occupancy == nullptr ||
-      owner == nullptr || !owner->valid() ||
-      !sameRawMapVersion(raw_world.version, owner->version()) ||
-      std::addressof(owner->occupancy()) != raw_world.occupancy.get()) {
+  if (!raw_world.valid()) {
     return nullptr;
   }
+  const std::shared_ptr<const VersionedObservedRawWorld3D>& owner =
+      raw_world.authoritativeOwner();
   const std::uint64_t occupied_fingerprint = owner->occupiedContentFingerprint();
   if (occupied_fingerprint == 0U) {
     return nullptr;
   }
   return std::make_shared<const PersistentPlannerWorld3D>(PersistentPlannerWorld3D{
-      .observed_occupancy = raw_world.occupancy,
+      .observed_occupancy = raw_world.occupancyOwner(),
       .static_occupancy = nullptr,
       .proprioceptive_free_space_seed = proprioceptive_free_space_seed,
       .launch_support_contact = std::move(launch_support_contact),
       .dirty_chunks = {},
-      .producer_instance_id = raw_world.version.producer_instance_id,
-      .revision = raw_world.version.revision,
+      .producer_instance_id = raw_world.version().producer_instance_id,
+      .revision = raw_world.version().revision,
       .incremental_parent_revision = 0U,
       .occupied_fingerprint = occupied_fingerprint,
       .full_reset = true,

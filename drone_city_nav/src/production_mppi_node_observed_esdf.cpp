@@ -44,7 +44,7 @@ void ProductionMppiNode::handleObservedWorldEvidenceChange3D(
   if (!change.changed() || change.raw_world == nullptr) {
     return;
   }
-  const std::uint64_t raw_revision = change.raw_world->version.revision;
+  const std::uint64_t raw_revision = change.raw_world->version().revision;
   if (change.persistent_changed) {
     const std::optional<RoutePlanningRequest3D> superseded =
         route_planning_coordinator_->cancelPending();
@@ -69,9 +69,9 @@ void ProductionMppiNode::handleObservedWorldEvidenceChange3D(
 void ProductionMppiNode::handleObservedWorldUpdate3D(
     const ObservedWorldUpdate3D& update) {
   const std::uint64_t raw_revision =
-      update.raw_world != nullptr ? update.raw_world->version.revision : 0U;
+      update.raw_world != nullptr ? update.raw_world->version().revision : 0U;
   const double reconstruction_ms =
-      update.raw_world != nullptr ? update.raw_world->reconstruction_ms : 0.0;
+      update.raw_world != nullptr ? update.raw_world->reconstructionMs() : 0.0;
   switch (update.status) {
     case ObservedWorldUpdateStatus3D::kUnavailableObservedGrid:
       RCLCPP_WARN(get_logger(),

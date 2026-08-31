@@ -57,6 +57,8 @@ public:
 
   [[nodiscard]] const RawMapVersion& version() const noexcept;
   [[nodiscard]] const ObservedOccupancyGrid3D& occupancy() const noexcept;
+  [[nodiscard]] const std::shared_ptr<const ObservedOccupancyGrid3D>&
+  occupancyOwner() const noexcept;
   [[nodiscard]] std::uint64_t contentFingerprint() const noexcept;
   [[nodiscard]] std::uint64_t occupiedContentFingerprint() const noexcept;
   [[nodiscard]] std::shared_ptr<const OccupancyGrid3D>

@@ -735,6 +735,11 @@ const ObservedOccupancyGrid3D& VersionedObservedRawWorld3D::occupancy() const no
   return *occupancy_;
 }
 
+const std::shared_ptr<const ObservedOccupancyGrid3D>&
+VersionedObservedRawWorld3D::occupancyOwner() const noexcept {
+  return occupancy_;
+}
+
 std::uint64_t VersionedObservedRawWorld3D::contentFingerprint() const noexcept {
   return content_fingerprint_;
 }

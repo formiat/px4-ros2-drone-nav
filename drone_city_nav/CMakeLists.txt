@@ -719,6 +719,7 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     src/observed_world_builder_3d.cpp
     src/static_world_builder_3d.cpp
     src/world_pipeline_3d.cpp
+    src/production_mppi_raw_world.cpp
     src/production_mppi_node.cpp
     src/production_mppi_node_optional_constraints.cpp
     src/production_mppi_node_interfaces.cpp

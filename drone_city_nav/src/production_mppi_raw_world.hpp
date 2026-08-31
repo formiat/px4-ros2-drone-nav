@@ -5,23 +5,76 @@
 #include "drone_city_nav/world_generation.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <optional>
+#include <utility>
 #include <vector>
 
 namespace drone_city_nav {
 
-struct ProductionMppiRawWorld3D {
-  RawMapVersion version{};
+struct ProductionMppiRawWorldMetadata3D {
   std::int64_t source_stamp_ns{0};
   std::int64_t receive_stamp_ns{0};
   std::int64_t ready_stamp_ns{0};
   double reconstruction_ms{0.0};
-  std::shared_ptr<const ObservedOccupancyGrid3D> occupancy;
-  std::shared_ptr<const VersionedObservedRawWorld3D> execution_owner;
   std::vector<OccupancyChunkIndex3D> dirty_chunks;
   bool full_reset{false};
+
+  [[nodiscard]] bool valid() const noexcept {
+    return source_stamp_ns > 0 && receive_stamp_ns > 0 && ready_stamp_ns > 0 &&
+           std::isfinite(reconstruction_ms) && reconstruction_ms >= 0.0;
+  }
+};
+
+// One closed publication of observed raw occupancy. Version and occupancy are
+// derived from the sole authoritative owner, so mismatched identities cannot
+// be represented after construction.
+class ProductionMppiRawWorld3D final {
+private:
+  struct CaptureToken final {};
+
+public:
+  [[nodiscard]] static std::shared_ptr<const ProductionMppiRawWorld3D>
+  capture(std::shared_ptr<const VersionedObservedRawWorld3D> authoritative_owner,
+          ProductionMppiRawWorldMetadata3D metadata);
+
+  ProductionMppiRawWorld3D(const ProductionMppiRawWorld3D&) = delete;
+  ProductionMppiRawWorld3D& operator=(const ProductionMppiRawWorld3D&) = delete;
+  ProductionMppiRawWorld3D(ProductionMppiRawWorld3D&&) = delete;
+  ProductionMppiRawWorld3D& operator=(ProductionMppiRawWorld3D&&) = delete;
+  ~ProductionMppiRawWorld3D() = default;
+
+  [[nodiscard]] const RawMapVersion& version() const noexcept;
+  [[nodiscard]] const ObservedOccupancyGrid3D& occupancy() const noexcept;
+  [[nodiscard]] const std::shared_ptr<const ObservedOccupancyGrid3D>&
+  occupancyOwner() const noexcept;
+  [[nodiscard]] const std::shared_ptr<const VersionedObservedRawWorld3D>&
+  authoritativeOwner() const noexcept;
+  [[nodiscard]] std::shared_ptr<const VersionedObservedRawWorld3D> deriveRouteEvidence(
+      std::optional<ProprioceptiveFreeSpaceSeed3D> proprioceptive_free_space_seed,
+      std::optional<LaunchSupportContact3D> launch_support_contact) const;
+  [[nodiscard]] bool
+  ownsRouteEvidence(const VersionedObservedRawWorld3D& evidence) const noexcept;
+
+  [[nodiscard]] std::int64_t sourceStampNs() const noexcept;
+  [[nodiscard]] std::int64_t receiveStampNs() const noexcept;
+  [[nodiscard]] std::int64_t readyStampNs() const noexcept;
+  [[nodiscard]] double reconstructionMs() const noexcept;
+  [[nodiscard]] const std::vector<OccupancyChunkIndex3D>& dirtyChunks() const noexcept;
+  [[nodiscard]] bool fullReset() const noexcept;
+  [[nodiscard]] bool valid() const noexcept;
+
+  ProductionMppiRawWorld3D(
+      CaptureToken,
+      std::shared_ptr<const VersionedObservedRawWorld3D> authoritative_owner,
+      ProductionMppiRawWorldMetadata3D metadata);
+
+private:
+  std::shared_ptr<const VersionedObservedRawWorld3D> authoritative_owner_;
+  ProductionMppiRawWorldMetadata3D metadata_{};
 };
 
 struct ProductionMppiPendingRawWorldUpdate {
@@ -48,18 +101,17 @@ struct ProductionMppiPendingRawWorldUpdate {
   }
 };
 
-template<typename RawWorld>
-[[nodiscard]] double committedRawWorldAgeMs(const RawWorld* world,
-                                            const std::int64_t now_ns) noexcept {
-  if (world == nullptr || !world->version.valid() || world->source_stamp_ns <= 0 ||
-      world->receive_stamp_ns <= 0 || now_ns <= 0) {
+[[nodiscard]] inline double
+committedRawWorldAgeMs(const ProductionMppiRawWorld3D* world,
+                       const std::int64_t now_ns) noexcept {
+  if (world == nullptr || !world->valid() || now_ns <= 0) {
     return std::numeric_limits<double>::infinity();
   }
   const auto absolute_age = [now_ns](const std::int64_t stamp_ns) noexcept {
     return now_ns >= stamp_ns ? now_ns - stamp_ns : stamp_ns - now_ns;
   };
-  return static_cast<double>(std::max(absolute_age(world->source_stamp_ns),
-                                      absolute_age(world->receive_stamp_ns))) *
+  return static_cast<double>(std::max(absolute_age(world->sourceStampNs()),
+                                      absolute_age(world->receiveStampNs()))) *
          1.0e-6;
 }
 

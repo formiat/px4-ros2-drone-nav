@@ -12,43 +12,16 @@
 namespace drone_city_nav {
 namespace {
 
-[[nodiscard]] bool sameRawMapVersion(const RawMapVersion& first,
-                                     const RawMapVersion& second) noexcept {
-  return first.producer_instance_id == second.producer_instance_id &&
-         first.base_snapshot_revision == second.base_snapshot_revision &&
-         first.revision == second.revision;
-}
-
-[[nodiscard]] bool
-rawWorldExecutionOwnerExact(const ProductionMppiRawWorld3D& raw_world) noexcept {
-  return raw_world.version.valid() && raw_world.occupancy != nullptr &&
-         raw_world.execution_owner != nullptr && raw_world.execution_owner->valid() &&
-         sameRawMapVersion(raw_world.version, raw_world.execution_owner->version()) &&
-         std::addressof(raw_world.execution_owner->occupancy()) ==
-             raw_world.occupancy.get();
-}
-
 [[nodiscard]] std::shared_ptr<const VersionedObservedRawWorld3D>
 deriveLatestObservedRouteEvidence(
     const std::shared_ptr<const ProductionMppiRawWorld3D>& latest_raw_world,
     const CertifiedRouteSuffix3D& route) {
-  if (latest_raw_world == nullptr || !rawWorldExecutionOwnerExact(*latest_raw_world) ||
-      route.observed_raw_world == nullptr) {
+  if (latest_raw_world == nullptr || route.observed_raw_world == nullptr) {
     return nullptr;
   }
-  std::shared_ptr<const VersionedObservedRawWorld3D> derived =
-      latest_raw_world->execution_owner->deriveRouteEvidence(
-          route.observed_raw_world->proprioceptiveFreeSpaceSeed(),
-          route.observed_raw_world->launchSupportContact());
-  if (derived == nullptr || !derived->valid() ||
-      !sameRawMapVersion(derived->version(), latest_raw_world->version) ||
-      std::addressof(derived->occupancy()) != latest_raw_world->occupancy.get() ||
-      !latest_raw_world->execution_owner->sharesObservationOwner(*derived) ||
-      derived->occupiedSnapshot() !=
-          latest_raw_world->execution_owner->occupiedSnapshot()) {
-    return nullptr;
-  }
-  return derived;
+  return latest_raw_world->deriveRouteEvidence(
+      route.observed_raw_world->proprioceptiveFreeSpaceSeed(),
+      route.observed_raw_world->launchSupportContact());
 }
 
 void bindObservedRouteEvidence(

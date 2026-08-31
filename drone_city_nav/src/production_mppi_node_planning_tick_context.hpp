@@ -89,7 +89,7 @@ planningRawRevision(const bool use_static_map, const std::uint64_t esdf_revision
   if (use_static_map) {
     return esdf_revision;
   }
-  return latest_raw_world_3d != nullptr ? latest_raw_world_3d->version.revision
+  return latest_raw_world_3d != nullptr ? latest_raw_world_3d->version().revision
                                         : esdf_revision;
 }
 

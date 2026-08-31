@@ -27,22 +27,6 @@ template<typename T>
   return std::addressof(value.value());
 }
 
-[[nodiscard]] bool sameRawMapVersion(const RawMapVersion& first,
-                                     const RawMapVersion& second) noexcept {
-  return first.producer_instance_id == second.producer_instance_id &&
-         first.base_snapshot_revision == second.base_snapshot_revision &&
-         first.revision == second.revision;
-}
-
-[[nodiscard]] bool
-rawWorldExecutionOwnerExact(const ProductionMppiRawWorld3D& raw_world) noexcept {
-  return raw_world.version.valid() && raw_world.occupancy != nullptr &&
-         raw_world.execution_owner != nullptr && raw_world.execution_owner->valid() &&
-         sameRawMapVersion(raw_world.version, raw_world.execution_owner->version()) &&
-         std::addressof(raw_world.execution_owner->occupancy()) ==
-             raw_world.occupancy.get();
-}
-
 [[nodiscard]] StaticRouteCandidateStatus
 candidateStatusFromRiskAssignment(const RouteRiskAnnotationStatus3D status) noexcept {
   switch (status) {
@@ -197,7 +181,7 @@ PreparedRouteActivation3D RouteActivationCoordinator3D::prepare(
 
   report.snapshot_pose_revision = snapshot.navigation.revision;
   report.snapshot_raw_revision =
-      snapshot.raw_world ? snapshot.raw_world->version.revision : 0U;
+      snapshot.raw_world ? snapshot.raw_world->version().revision : 0U;
 
   const MaterializedRouteProposal3D publication_proposal{
       .planned_world = planned_world_certificate,
@@ -210,8 +194,8 @@ PreparedRouteActivation3D RouteActivationCoordinator3D::prepare(
                               : RoutePublicationAssessment3D{};
   report.world_compatible = publication.compatible();
   const std::shared_ptr<const VersionedObservedRawWorld3D> activation_raw_owner =
-      snapshot.raw_world != nullptr && rawWorldExecutionOwnerExact(*snapshot.raw_world)
-          ? snapshot.raw_world->execution_owner
+      snapshot.raw_world != nullptr && snapshot.raw_world->valid()
+          ? snapshot.raw_world->authoritativeOwner()
           : nullptr;
 
   if (report.candidate_validation.accepted && report.world_compatible &&
@@ -424,14 +408,13 @@ PreparedRouteActivation3D RouteActivationCoordinator3D::prepare(
           .position = {snapshot.navigation.state.x, snapshot.navigation.state.y,
                        snapshot.navigation.state.z},
           .maximum_cross_track_m = config_.route_tracking.maximum_cross_track_m,
-          .latest_raw_occupancy = snapshot.raw_world && snapshot.raw_world->occupancy
-                                      ? snapshot.raw_world->occupancy.get()
-                                      : nullptr,
+          .latest_raw_occupancy =
+              snapshot.raw_world ? &snapshot.raw_world->occupancy() : nullptr,
           .latest_raw_producer_instance_id =
-              snapshot.raw_world ? snapshot.raw_world->version.producer_instance_id
+              snapshot.raw_world ? snapshot.raw_world->version().producer_instance_id
                                  : 0U,
           .latest_raw_revision =
-              snapshot.raw_world ? snapshot.raw_world->version.revision : 0U,
+              snapshot.raw_world ? snapshot.raw_world->version().revision : 0U,
           .footprint =
               SweptFootprintConfig{
                   .radius_m = config_.physical_footprint.radius_m,
@@ -672,19 +655,8 @@ PreparedRouteActivation3D RouteActivationCoordinator3D::prepare(
                               *materialized_proposal.trajectory, candidate_generation);
   std::shared_ptr<const VersionedObservedRawWorld3D> observed_owner;
   std::shared_ptr<const VersionedStaticWorld3D> static_owner;
-  if (raw_validation_required && snapshot.raw_world != nullptr &&
-      snapshot.raw_world->occupancy != nullptr &&
-      snapshot.raw_world->execution_owner != nullptr &&
-      snapshot.raw_world->execution_owner->valid() &&
-      std::addressof(snapshot.raw_world->execution_owner->occupancy()) ==
-          snapshot.raw_world->occupancy.get() &&
-      snapshot.raw_world->execution_owner->version().producer_instance_id ==
-          snapshot.raw_world->version.producer_instance_id &&
-      snapshot.raw_world->execution_owner->version().base_snapshot_revision ==
-          snapshot.raw_world->version.base_snapshot_revision &&
-      snapshot.raw_world->execution_owner->version().revision ==
-          snapshot.raw_world->version.revision) {
-    observed_owner = snapshot.raw_world->execution_owner->deriveRouteEvidence(
+  if (raw_validation_required && snapshot.raw_world != nullptr) {
+    observed_owner = snapshot.raw_world->deriveRouteEvidence(
         candidate.world->proprioceptive_free_space_seed,
         candidate.world->launch_support_contact);
   } else if (!raw_validation_required && candidate.world->static_occupancy != nullptr) {

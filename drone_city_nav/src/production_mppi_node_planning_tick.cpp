@@ -136,7 +136,7 @@ void ProductionMppiNode::planningTick() {
     observation_age_ms = 0.0;
   } else if (world && !raw_world_identity_conflicted) {
     if (latest_raw_world_3d != nullptr &&
-        latest_raw_world_3d->version.producer_instance_id ==
+        latest_raw_world_3d->version().producer_instance_id ==
             world->producer_instance_id) {
       observation_age_ms = committedRawWorldAgeMs(latest_raw_world_3d.get(), now_ns);
     }

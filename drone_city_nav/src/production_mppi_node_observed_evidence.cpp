@@ -35,10 +35,11 @@ ProductionMppiNode::prepareObservedExecutionEvidence3D(
     const ProductionMppiRawWorld3D& raw_world,
     const ProductionMppiNavigation& navigation,
     const std::shared_ptr<const CommittedExecutionAuthority3D>& execution_authority) {
-  const std::shared_ptr<const ObservedOccupancyGrid3D>& occupancy = raw_world.occupancy;
-  if (!occupancy) {
+  if (!raw_world.valid()) {
     return std::nullopt;
   }
+  const std::shared_ptr<const ObservedOccupancyGrid3D>& occupancy =
+      raw_world.occupancyOwner();
   const AppliedControlEvidence3D applied_control = execution_authority != nullptr
                                                        ? execution_authority->control()
                                                        : AppliedControlEvidence3D{};
@@ -82,7 +83,7 @@ ProductionMppiNode::prepareObservedExecutionEvidence3D(
           RCLCPP_INFO(get_logger(),
                       "LAUNCH_SUPPORT_CONTACT state=not_present source="
                       "observed_known_free revision=%" PRIu64,
-                      raw_world.version.revision);
+                      raw_world.version().revision);
         }
       }
     }
@@ -92,7 +93,7 @@ ProductionMppiNode::prepareObservedExecutionEvidence3D(
                   "LAUNCH_SUPPORT_CONTACT state=active revision=%" PRIu64
                   " source=%s cells=%zu occupied_evidence=%zu"
                   " anchor=(%.3f,%.3f,%.3f)",
-                  raw_world.version.revision,
+                  raw_world.version().revision,
                   launch_support_contact_->evidence_source ==
                           LaunchSupportEvidenceSource::kVehicleLandDetector
                       ? "vehicle_land_detector"
@@ -108,13 +109,13 @@ ProductionMppiNode::prepareObservedExecutionEvidence3D(
       RCLCPP_INFO(get_logger(),
                   "LAUNCH_SUPPORT_CONTACT state=not_detected_after_departure"
                   " revision=%" PRIu64 " position=(%.3f,%.3f,%.3f)",
-                  raw_world.version.revision, position.x, position.y, position.z);
+                  raw_world.version().revision, position.x, position.y, position.z);
     } else if (!launch_support_evaluated_) {
       RCLCPP_INFO_THROTTLE(
           get_logger(), *get_clock(), 1000,
           "LAUNCH_SUPPORT_CONTACT state=awaiting_evidence revision=%" PRIu64
           " anchor=(%.3f,%.3f,%.3f)",
-          raw_world.version.revision, launch_support_seed_->position.x,
+          raw_world.version().revision, launch_support_seed_->position.x,
           launch_support_seed_->position.y, launch_support_seed_->position.z);
     }
   }
@@ -123,7 +124,7 @@ ProductionMppiNode::prepareObservedExecutionEvidence3D(
       RCLCPP_INFO(get_logger(),
                   "LAUNCH_SUPPORT_CONTACT state=settled revision=%" PRIu64
                   " minimum_axial_departure_m=%.3f position=(%.3f,%.3f,%.3f)",
-                  raw_world.version.revision,
+                  raw_world.version().revision,
                   launch_support_contact_->minimum_axial_departure_m, position.x,
                   position.y, position.z);
     }
@@ -145,7 +146,7 @@ ProductionMppiNode::prepareObservedExecutionEvidence3D(
         RCLCPP_INFO(get_logger(),
                     "LAUNCH_SUPPORT_CONTACT state=released revision=%" PRIu64
                     " axial_departure_m=%.3f position=(%.3f,%.3f,%.3f)",
-                    raw_world.version.revision, support_axial_departure_m, position.x,
+                    raw_world.version().revision, support_axial_departure_m, position.x,
                     position.y, position.z);
         launch_support_contact_.reset();
       }
@@ -198,7 +199,7 @@ ProductionMppiNode::prepareObservedExecutionEvidence3D(
         " support_maximum_lateral_departure_m=%.3f"
         " support_minimum_axial_departure_m=%.3f"
         " support_maximum_axial_settling_m=%.3f",
-        raw_world.version.revision,
+        raw_world.version().revision,
         occupiedCollisionStatus3DName(current_footprint->status), position.x,
         position.y, position.z, current_footprint->failure_point.x,
         current_footprint->failure_point.y, current_footprint->failure_point.z,
@@ -219,7 +220,7 @@ ProductionMppiNode::prepareObservedExecutionEvidence3D(
                          "OBSERVED_FOOTPRINT_READINESS revision=%" PRIu64
                          " status=body_axis_unavailable position=(%.3f,%.3f,%.3f)"
                          " proprioceptive_free_space=false",
-                         raw_world.version.revision, position.x, position.y,
+                         raw_world.version().revision, position.x, position.y,
                          position.z);
   }
   return free_space_seed;

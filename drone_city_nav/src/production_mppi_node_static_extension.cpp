@@ -425,7 +425,7 @@ void ProductionMppiNode::requestStaticRouteReplan(
             "blocked_raw_revision=%" PRIu64 " latest_raw_revision=%" PRIu64
             " esdf_source_raw_revision=%" PRIu64 " generation=%" PRIu64 " reason=%s",
             blocked_raw_revision,
-            latest_raw_world != nullptr ? latest_raw_world->version.revision : 0U,
+            latest_raw_world != nullptr ? latest_raw_world->version().revision : 0U,
             world_snapshot->source_raw_revision, search_generation,
             routeReleaseReason3DName(reason));
         return;

@@ -36,7 +36,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
   const WorldPipelineInputSnapshot3D world_input = world_pipeline_->inputSnapshot();
   const std::shared_ptr<const VersionedObservedRawWorld3D> current_observed_raw_world =
       world_input.latest_raw_world != nullptr
-          ? world_input.latest_raw_world->execution_owner
+          ? world_input.latest_raw_world->authoritativeOwner()
           : nullptr;
   const std::shared_ptr<const VersionedLatestLidarEvidence3D> current_lidar =
       latest_lidar_evidence_.load(std::memory_order_acquire);

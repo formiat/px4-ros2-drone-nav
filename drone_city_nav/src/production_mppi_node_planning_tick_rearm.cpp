@@ -17,33 +17,10 @@ namespace {
          snapshot->stationaryHold() == nullptr;
 }
 
-[[nodiscard]] bool sameRawMapVersion(const RawMapVersion& first,
-                                     const RawMapVersion& second) noexcept {
-  return first.producer_instance_id == second.producer_instance_id &&
-         first.base_snapshot_revision == second.base_snapshot_revision &&
-         first.revision == second.revision;
-}
-
 [[nodiscard]] bool observedWorldCurrentForStationaryRearm(
     const WorldSnapshot3D& world, const ProductionMppiRawWorld3D* raw_world) noexcept {
-  if (raw_world == nullptr || !raw_world->version.valid() ||
-      raw_world->occupancy == nullptr || raw_world->execution_owner == nullptr ||
-      !raw_world->execution_owner->valid() ||
-      !sameRawMapVersion(raw_world->version, raw_world->execution_owner->version()) ||
-      std::addressof(raw_world->execution_owner->occupancy()) !=
-          raw_world->occupancy.get() ||
-      world.observed_raw_world_owner == nullptr ||
-      !world.observed_raw_world_owner->valid() ||
-      !sameRawMapVersion(world.observed_raw_world_owner->version(),
-                         raw_world->version) ||
-      std::addressof(world.observed_raw_world_owner->occupancy()) !=
-          raw_world->occupancy.get()) {
-    return false;
-  }
-  return raw_world->execution_owner->sharesObservationOwner(
-             *world.observed_raw_world_owner) &&
-         raw_world->execution_owner->occupiedSnapshot() ==
-             world.observed_raw_world_owner->occupiedSnapshot();
+  return raw_world != nullptr && world.observed_raw_world_owner != nullptr &&
+         raw_world->ownsRouteEvidence(*world.observed_raw_world_owner);
 }
 
 } // namespace

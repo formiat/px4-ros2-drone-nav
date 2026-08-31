@@ -243,10 +243,9 @@ RouteMaterializer3D::materialize(RouteMaterializationRequest3D request) const {
         materialized_prefix.active_begin_station_m;
   }
   const OccupiedCollisionWorld3D geometry_collision_world{
-      .observed_occupancy =
-          activation_raw_world != nullptr && activation_raw_world->occupancy != nullptr
-              ? activation_raw_world->occupancy.get()
-              : nullptr,
+      .observed_occupancy = activation_raw_world != nullptr
+                                ? &activation_raw_world->occupancy()
+                                : nullptr,
       .static_occupancy = transaction.world->static_occupancy.get(),
       .planar_occupancy = nullptr,
       .raw_point_cloud = {},
