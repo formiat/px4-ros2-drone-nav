@@ -380,8 +380,8 @@ classifyObservedGrid3D(const ObservedOccupancyGrid3D& occupancy,
   return true;
 }
 
-[[nodiscard]] mppi::EsdfGrid esdfGrid(const GridBounds3D& bounds) noexcept {
-  return mppi::EsdfGrid{
+[[nodiscard]] EsdfGrid3D esdfGrid(const GridBounds3D& bounds) noexcept {
+  return EsdfGrid3D{
       .width = bounds.width_cells,
       .height = bounds.height_cells,
       .resolution_m = static_cast<float>(bounds.resolution_m),
@@ -519,7 +519,7 @@ ObservedEsdf3D updateObservedEsdf3D(
   }
   result.dirty_regions.reserve(distance_update.dirty_regions.size());
   for (const KnownObstacleDistanceRegion3D& region : distance_update.dirty_regions) {
-    result.dirty_regions.push_back(ObservedEsdfDirtyRegion3D{
+    result.dirty_regions.push_back(EsdfDirtyRegion3D{
         .minimum_x = region.minimum_x,
         .minimum_y = region.minimum_y,
         .minimum_z = region.minimum_z,

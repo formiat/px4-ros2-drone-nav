@@ -6,7 +6,7 @@
 
 namespace drone_city_nav {
 
-EsdfQueryResult queryConservativeEsdf(const mppi::EsdfGrid& grid,
+EsdfQueryResult queryConservativeEsdf(const EsdfGrid3D& grid,
                                       const std::span<const float> esdf_m,
                                       const float x_m, const float y_m) noexcept {
   if (grid.width <= 0 || grid.height <= 0 || !(grid.resolution_m > 0.0F) ||
@@ -30,7 +30,7 @@ EsdfQueryResult queryConservativeEsdf(const mppi::EsdfGrid& grid,
     return {};
   }
   const float center_distance_m = esdf_m[index];
-  if (center_distance_m == mppi::kUnknownEsdfDistanceM) {
+  if (center_distance_m == kUnknownEsdfDistanceM) {
     return {.clearance_m = 0.0F, .status = EsdfQueryStatus::kUnknownSpace};
   }
   if (std::isinf(center_distance_m) && center_distance_m > 0.0F) {
@@ -55,7 +55,7 @@ EsdfQueryResult queryConservativeEsdf(const mppi::EsdfGrid& grid,
   };
 }
 
-EsdfQueryResult queryConservativeEsdf3D(const mppi::EsdfGrid& grid,
+EsdfQueryResult queryConservativeEsdf3D(const EsdfGrid3D& grid,
                                         const std::span<const float> esdf_m,
                                         const float x_m, const float y_m,
                                         const float z_m) noexcept {
@@ -89,7 +89,7 @@ EsdfQueryResult queryConservativeEsdf3D(const mppi::EsdfGrid& grid,
     return {};
   }
   const float center_distance_m = esdf_m[index];
-  if (center_distance_m == mppi::kUnknownEsdfDistanceM) {
+  if (center_distance_m == kUnknownEsdfDistanceM) {
     return {.clearance_m = 0.0F, .status = EsdfQueryStatus::kUnknownSpace};
   }
   if (std::isinf(center_distance_m) && center_distance_m > 0.0F) {

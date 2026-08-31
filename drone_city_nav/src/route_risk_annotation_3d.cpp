@@ -7,7 +7,7 @@
 namespace drone_city_nav {
 
 RouteRiskAnnotationResult3D annotateRouteRiskTiersFromDerivedEsdf3D(
-    const std::span<RouteSample3D> route, const mppi::EsdfGrid& grid,
+    const std::span<RouteSample3D> route, const EsdfGrid3D& grid,
     const std::span<const float> esdf_m, const double critical_distance_m,
     const double preferred_distance_m) noexcept {
   if (!std::isfinite(critical_distance_m) || !std::isfinite(preferred_distance_m) ||

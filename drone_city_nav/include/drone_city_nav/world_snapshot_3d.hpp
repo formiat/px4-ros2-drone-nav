@@ -1,6 +1,6 @@
 #pragma once
 
-#include "drone_city_nav/mppi/mppi_types.hpp"
+#include "drone_city_nav/esdf_grid_3d.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
 #include "drone_city_nav/occupancy_grid_3d.hpp"
 #include "drone_city_nav/portal_graph.hpp"
@@ -29,7 +29,7 @@ struct WorldSnapshot3D {
   std::uint64_t planner_parent_raw_revision{0U};
   std::int64_t source_stamp_ns{0};
   std::int64_t ready_stamp_ns{0};
-  mppi::EsdfGrid grid{};
+  EsdfGrid3D grid{};
   std::shared_ptr<const std::vector<float>> distances_m;
   std::shared_ptr<const ObservedOccupancyGrid3D> observed_occupancy;
   std::shared_ptr<const OccupancyGrid3D> static_occupancy;

@@ -10,7 +10,7 @@ namespace drone_city_nav {
 namespace {
 
 TEST(EsdfQueryTest, ConvertsCenterDistanceToConservativeOccupiedCellClearance) {
-  const mppi::EsdfGrid grid{3, 1, 1.0F, 0.0F, 0.0F};
+  const EsdfGrid3D grid{3, 1, 1.0F, 0.0F, 0.0F};
   const std::vector<float> esdf{2.0F, 1.0F, 0.0F};
 
   const EsdfQueryResult result = queryConservativeEsdf(grid, esdf, 0.5F, 0.5F);
@@ -20,7 +20,7 @@ TEST(EsdfQueryTest, ConvertsCenterDistanceToConservativeOccupiedCellClearance) {
 }
 
 TEST(EsdfQueryTest, AccountsForQueryOffsetInsideCell) {
-  const mppi::EsdfGrid grid{3, 1, 1.0F, 0.0F, 0.0F};
+  const EsdfGrid3D grid{3, 1, 1.0F, 0.0F, 0.0F};
   const std::vector<float> esdf{2.0F, 1.0F, 0.0F};
 
   const EsdfQueryResult center = queryConservativeEsdf(grid, esdf, 0.5F, 0.5F);
@@ -32,7 +32,7 @@ TEST(EsdfQueryTest, AccountsForQueryOffsetInsideCell) {
 }
 
 TEST(EsdfQueryTest, PreservesPositiveInfinityAndRejectsInvalidSamples) {
-  const mppi::EsdfGrid grid{2, 1, 1.0F, 0.0F, 0.0F};
+  const EsdfGrid3D grid{2, 1, 1.0F, 0.0F, 0.0F};
   const std::vector<float> esdf{std::numeric_limits<float>::infinity(),
                                 std::numeric_limits<float>::quiet_NaN()};
 
@@ -48,7 +48,7 @@ TEST(EsdfQueryTest, PreservesPositiveInfinityAndRejectsInvalidSamples) {
 }
 
 TEST(EsdfQueryTest, ReportsOnlyConservativeDerivedClearance) {
-  const mppi::EsdfGrid grid{2, 1, 1.0F, 0.0F, 0.0F};
+  const EsdfGrid3D grid{2, 1, 1.0F, 0.0F, 0.0F};
   const std::vector<float> esdf{1.0F, 0.0F};
 
   const EsdfQueryResult free_near_wall = queryConservativeEsdf(grid, esdf, 0.99F, 0.5F);
@@ -61,7 +61,7 @@ TEST(EsdfQueryTest, ReportsOnlyConservativeDerivedClearance) {
 }
 
 TEST(EsdfQueryTest, QueriesThreeDimensionalGridUsingZMajorStorage) {
-  mppi::EsdfGrid grid{2, 2, 1.0F, 10.0F, 20.0F};
+  EsdfGrid3D grid{2, 2, 1.0F, 10.0F, 20.0F};
   grid.depth = 2;
   grid.origin_z_m = 30.0F;
   const std::vector<float> esdf{
@@ -83,9 +83,9 @@ TEST(EsdfQueryTest, QueriesThreeDimensionalGridUsingZMajorStorage) {
 }
 
 TEST(EsdfQueryTest, ReportsObservedUnknownVoxelWithoutCallingItOccupied) {
-  mppi::EsdfGrid grid{2, 1, 1.0F, 0.0F, 0.0F};
+  EsdfGrid3D grid{2, 1, 1.0F, 0.0F, 0.0F};
   grid.outside_is_unknown = true;
-  const std::vector<float> esdf{2.0F, mppi::kUnknownEsdfDistanceM};
+  const std::vector<float> esdf{2.0F, kUnknownEsdfDistanceM};
 
   const EsdfQueryResult unknown = queryConservativeEsdf(grid, esdf, 1.5F, 0.5F);
   const EsdfQueryResult outside = queryConservativeEsdf(grid, esdf, 2.5F, 0.5F);
@@ -96,7 +96,7 @@ TEST(EsdfQueryTest, ReportsObservedUnknownVoxelWithoutCallingItOccupied) {
 }
 
 TEST(EsdfQueryTest, InvalidDerivedDistanceNeverManufacturesRawOccupancy) {
-  const mppi::EsdfGrid grid{2, 1, 1.0F, 0.0F, 0.0F};
+  const EsdfGrid3D grid{2, 1, 1.0F, 0.0F, 0.0F};
   const std::vector<float> esdf{std::numeric_limits<float>::quiet_NaN(), -2.0F};
 
   EXPECT_EQ(queryConservativeEsdf(grid, esdf, 0.5F, 0.5F).status,

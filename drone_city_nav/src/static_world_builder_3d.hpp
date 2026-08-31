@@ -119,7 +119,7 @@ struct StaticWorldBuildDiagnostics3D {
 };
 
 struct StaticWorldEsdfArtifact3D {
-  mppi::EsdfGrid grid{};
+  EsdfGrid3D grid{};
   std::shared_ptr<const std::vector<float>> distances_m;
   ProductionWorldBuildTelemetry3D telemetry{};
   StaticWorldBuildDiagnostics3D diagnostics{};

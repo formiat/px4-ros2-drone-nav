@@ -1,6 +1,6 @@
 #pragma once
 
-#include "drone_city_nav/mppi/mppi_types.hpp"
+#include "drone_city_nav/esdf_grid_3d.hpp"
 #include "drone_city_nav/route_3d.hpp"
 
 #include <cstddef>
@@ -29,7 +29,7 @@ struct RouteRiskAnnotationResult3D {
 // tier. Invalid or unavailable distance evidence is deliberately neutral and
 // never acquires hard collision authority.
 [[nodiscard]] RouteRiskAnnotationResult3D annotateRouteRiskTiersFromDerivedEsdf3D(
-    std::span<RouteSample3D> route, const mppi::EsdfGrid& grid,
+    std::span<RouteSample3D> route, const EsdfGrid3D& grid,
     std::span<const float> esdf_m, double critical_distance_m,
     double preferred_distance_m) noexcept;
 

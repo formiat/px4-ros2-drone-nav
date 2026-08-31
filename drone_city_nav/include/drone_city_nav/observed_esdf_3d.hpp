@@ -1,7 +1,7 @@
 #pragma once
 
+#include "drone_city_nav/esdf_grid_3d.hpp"
 #include "drone_city_nav/known_obstacle_distance_3d.hpp"
-#include "drone_city_nav/mppi/mppi_types.hpp"
 #include "drone_city_nav/observed_occupancy_grid_3d.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
 #include "drone_city_nav/world_generation.hpp"
@@ -21,8 +21,6 @@ enum class ObservedEsdf3DBuildMode : std::uint8_t {
   kIncremental,
   kReused,
 };
-
-using ObservedEsdfDirtyRegion3D = mppi::EsdfDirtyRegion;
 
 struct ObservedEsdf3DBuildStats {
   KnownObstacleDistance3DBuildStats distance_cache{};
@@ -44,19 +42,19 @@ struct ObservedEsdf3DBuildStats {
 };
 
 struct ObservedEsdf3D {
-  mppi::EsdfGrid grid{};
+  EsdfGrid3D grid{};
   std::shared_ptr<const std::vector<float>> distances_m;
   std::shared_ptr<const KnownObstacleDistance3D> known_obstacle_distance;
   std::shared_ptr<const ObservedOccupancyGrid3D> local_occupancy;
   std::vector<GridIndex3D> classification_override_cells;
-  std::vector<ObservedEsdfDirtyRegion3D> dirty_regions;
+  std::vector<EsdfDirtyRegion3D> dirty_regions;
   std::uint64_t occupancy_fingerprint{0U};
   double maximum_distance_m{0.0};
   ObservedEsdf3DBuildStats stats{};
 };
 
 struct PreviousObservedEsdf3D {
-  mppi::EsdfGrid grid{};
+  EsdfGrid3D grid{};
   std::shared_ptr<const std::vector<float>> distances_m;
   std::shared_ptr<const KnownObstacleDistance3D> known_obstacle_distance;
   std::shared_ptr<const ObservedOccupancyGrid3D> source_occupancy;

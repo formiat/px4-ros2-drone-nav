@@ -217,8 +217,8 @@ snapshot. It owns constrained-span construction, splice-preserving geometry
 optimization, derived risk annotation, optional passage decoration, and final
 candidate validation. It returns a typed immutable route result plus telemetry
 and fallback information; ROS logging is an outer adapter. Derived-clearance
-risk annotation is a controller-neutral `nav_planning` operation and cannot
-acquire hard collision authority.
+risk annotation consumes the controller-neutral `EsdfGrid3D` world contract in
+`nav_planning` and cannot acquire hard collision authority.
 `RouteTrajectoryCompiler3D` receives the materialized route, exact initial
 vehicle state, endpoint semantics, and exact observed raw owner as one owned
 transaction. It constructs the tracking-world binding and returns the only

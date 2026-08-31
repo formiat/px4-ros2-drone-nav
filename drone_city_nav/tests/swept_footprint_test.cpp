@@ -25,7 +25,7 @@ TEST(SweptFootprintTest, AnnotatesRotorSweepAsDerivedClearanceOnly) {
   std::vector<float> esdf;
   std::ranges::transform(field.distancesM(), std::back_inserter(esdf),
                          [](const double value) { return static_cast<float>(value); });
-  const mppi::EsdfGrid grid{12, 6, 1.0F, 0.0F, 0.0F};
+  const EsdfGrid3D grid{12, 6, 1.0F, 0.0F, 0.0F};
 
   const DerivedFootprintClearance3D point_mass = querySweptFootprintClearance3D(
       grid, esdf, Point3{1.5, 2.5, 0.0}, Point3{10.5, 2.5, 0.0},
@@ -41,7 +41,7 @@ TEST(SweptFootprintTest, AnnotatesRotorSweepAsDerivedClearanceOnly) {
 }
 
 TEST(SweptFootprintTest, ReportsOutsideGridSeparatelyFromPhysicalCollision) {
-  const mppi::EsdfGrid grid{4, 4, 1.0F, 0.0F, 0.0F};
+  const EsdfGrid3D grid{4, 4, 1.0F, 0.0F, 0.0F};
   const std::vector<float> esdf(16U, 10.0F);
 
   const DerivedFootprintClearance3D result = queryFootprintClearance3D(
@@ -52,7 +52,7 @@ TEST(SweptFootprintTest, ReportsOutsideGridSeparatelyFromPhysicalCollision) {
 }
 
 TEST(SweptFootprintTest, AnnotatesZeroClearanceAboveVehicleReferencePoint) {
-  const mppi::EsdfGrid grid{8, 8, 1.0F, 0.0F, 0.0F, 8, 0.0F};
+  const EsdfGrid3D grid{8, 8, 1.0F, 0.0F, 0.0F, 8, 0.0F};
   std::vector<float> esdf(std::size_t{8U} * 8U * 8U,
                           std::numeric_limits<float>::infinity());
   esdf[(4U * 8U + 3U) * 8U + 3U] = 0.0F;
@@ -75,10 +75,10 @@ TEST(SweptFootprintTest, AnnotatesZeroClearanceAboveVehicleReferencePoint) {
 }
 
 TEST(SweptFootprintTest, EsdfUnknownAndZeroClearanceRemainDerivedEvidence) {
-  const mppi::EsdfGrid grid{8, 8, 1.0F, 0.0F, 0.0F, 8, 0.0F};
+  const EsdfGrid3D grid{8, 8, 1.0F, 0.0F, 0.0F, 8, 0.0F};
   std::vector<float> esdf(std::size_t{8U} * 8U * 8U,
                           std::numeric_limits<float>::infinity());
-  esdf[(3U * 8U + 3U) * 8U + 3U] = mppi::kUnknownEsdfDistanceM;
+  esdf[(3U * 8U + 3U) * 8U + 3U] = kUnknownEsdfDistanceM;
   esdf[(4U * 8U + 3U) * 8U + 3U] = 0.0F;
 
   const DerivedFootprintClearance3D result =
@@ -97,10 +97,10 @@ TEST(SweptFootprintTest, EsdfUnknownAndZeroClearanceRemainDerivedEvidence) {
 }
 
 TEST(SweptFootprintTest, EsdfUnknownPrefixPreservesLaterZeroClearanceEvidence) {
-  const mppi::EsdfGrid grid{8, 4, 1.0F, 0.0F, 0.0F, 4, 0.0F};
+  const EsdfGrid3D grid{8, 4, 1.0F, 0.0F, 0.0F, 4, 0.0F};
   std::vector<float> esdf(std::size_t{8U} * 4U * 4U,
                           std::numeric_limits<float>::infinity());
-  esdf[(1U * 4U + 1U) * 8U + 1U] = mppi::kUnknownEsdfDistanceM;
+  esdf[(1U * 4U + 1U) * 8U + 1U] = kUnknownEsdfDistanceM;
   esdf[(1U * 4U + 1U) * 8U + 5U] = 0.0F;
 
   const DerivedFootprintClearance3D result = querySweptFootprintClearance3D(
@@ -115,10 +115,10 @@ TEST(SweptFootprintTest, EsdfUnknownPrefixPreservesLaterZeroClearanceEvidence) {
 }
 
 TEST(SweptFootprintTest, UnknownWithoutKnownSamplesHasNoClearanceEvidence) {
-  const mppi::EsdfGrid grid{4, 4, 1.0F, 0.0F, 0.0F, 4, 0.0F};
+  const EsdfGrid3D grid{4, 4, 1.0F, 0.0F, 0.0F, 4, 0.0F};
   std::vector<float> esdf(std::size_t{4U} * 4U * 4U,
                           std::numeric_limits<float>::infinity());
-  esdf[(1U * 4U + 1U) * 4U + 1U] = mppi::kUnknownEsdfDistanceM;
+  esdf[(1U * 4U + 1U) * 4U + 1U] = kUnknownEsdfDistanceM;
 
   const DerivedFootprintClearance3D result = queryFootprintClearance3D(
       grid, esdf, Point3{1.5, 1.5, 1.5},
@@ -130,7 +130,7 @@ TEST(SweptFootprintTest, UnknownWithoutKnownSamplesHasNoClearanceEvidence) {
 }
 
 TEST(SweptFootprintTest, RotatesDerivedClearanceSamplingWithBodyAxis) {
-  const mppi::EsdfGrid grid{8, 8, 1.0F, 0.0F, 0.0F, 8, 0.0F};
+  const EsdfGrid3D grid{8, 8, 1.0F, 0.0F, 0.0F, 8, 0.0F};
   std::vector<float> esdf(std::size_t{8U} * 8U * 8U,
                           std::numeric_limits<float>::infinity());
   esdf[(3U * 8U + 3U) * 8U + 4U] = 0.0F;
@@ -152,7 +152,7 @@ TEST(SweptFootprintTest, RotatesDerivedClearanceSamplingWithBodyAxis) {
 }
 
 TEST(SweptFootprintTest, ClearanceBroadPhaseReturnsAConservativeSafeBound) {
-  const mppi::EsdfGrid grid{8, 8, 1.0F, 0.0F, 0.0F, 8, 0.0F};
+  const EsdfGrid3D grid{8, 8, 1.0F, 0.0F, 0.0F, 8, 0.0F};
   const std::vector<float> esdf(std::size_t{8U} * 8U * 8U, 10.0F);
   const Point3 position{3.5, 3.5, 3.5};
   SweptFootprintConfig exact_config{.radius_m = 0.82,

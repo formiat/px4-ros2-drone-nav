@@ -90,7 +90,7 @@ void subtractKnownClearance(DerivedFootprintClearance3D& result,
 }
 
 [[nodiscard]] DerivedFootprintClearance3D
-queryPoint(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
+queryPoint(const EsdfGrid3D& grid, const std::span<const float> esdf_m,
            const Point3& query_point) noexcept {
   const EsdfQueryResult query = queryConservativeEsdf3D(
       grid, esdf_m, static_cast<float>(query_point.x),
@@ -121,11 +121,9 @@ queryPoint(const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
   return makeKnownClearanceResult(query.clearance_m);
 }
 
-[[nodiscard]] DerivedFootprintClearance3D
-samplePlanarCircleClearanceCells(const mppi::EsdfGrid& grid,
-                                 const std::span<const float> esdf_m,
-                                 const Point3& position, const double radius_m,
-                                 DerivedFootprintClearance3D result) noexcept {
+[[nodiscard]] DerivedFootprintClearance3D samplePlanarCircleClearanceCells(
+    const EsdfGrid3D& grid, const std::span<const float> esdf_m, const Point3& position,
+    const double radius_m, DerivedFootprintClearance3D result) noexcept {
   const double minimum_x = position.x - radius_m;
   const double maximum_x = position.x + radius_m;
   const double minimum_y = position.y - radius_m;
@@ -172,7 +170,7 @@ samplePlanarCircleClearanceCells(const mppi::EsdfGrid& grid,
         continue;
       }
       const float center_distance_m = esdf_m[index];
-      if (center_distance_m == mppi::kUnknownEsdfDistanceM) {
+      if (center_distance_m == kUnknownEsdfDistanceM) {
         mergeEvidence(result,
                       makeStatusResult(EsdfQueryStatus::kUnknownSpace, position));
         continue;
@@ -197,8 +195,8 @@ samplePlanarCircleClearanceCells(const mppi::EsdfGrid& grid,
 }
 
 [[nodiscard]] DerivedSweptClearanceProfile3D sampleSweptFootprint(
-    const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
-    const Point3& first, const FootprintBodyAxis& first_body_axis, const Point3& second,
+    const EsdfGrid3D& grid, const std::span<const float> esdf_m, const Point3& first,
+    const FootprintBodyAxis& first_body_axis, const Point3& second,
     const FootprintBodyAxis& second_body_axis, const SweptFootprintConfig& config,
     const double critical_distance_m, const double preferred_distance_m) noexcept {
   const double length_m = distance3D(first, second);
@@ -237,15 +235,15 @@ samplePlanarCircleClearanceCells(const mppi::EsdfGrid& grid,
 } // namespace
 
 DerivedFootprintClearance3D
-queryFootprintClearance3D(const mppi::EsdfGrid& grid,
-                          const std::span<const float> esdf_m, const Point3& position,
+queryFootprintClearance3D(const EsdfGrid3D& grid, const std::span<const float> esdf_m,
+                          const Point3& position,
                           const SweptFootprintConfig& config) noexcept {
   return queryFootprintClearance3D(grid, esdf_m, position, FootprintBodyAxis{}, config);
 }
 
 DerivedFootprintClearance3D
-queryFootprintClearance3D(const mppi::EsdfGrid& grid,
-                          const std::span<const float> esdf_m, const Point3& position,
+queryFootprintClearance3D(const EsdfGrid3D& grid, const std::span<const float> esdf_m,
+                          const Point3& position,
                           const FootprintBodyAxis& requested_body_axis,
                           const SweptFootprintConfig& config) noexcept {
   DerivedFootprintClearance3D result = queryPoint(grid, esdf_m, position);
@@ -303,18 +301,16 @@ queryFootprintClearance3D(const mppi::EsdfGrid& grid,
   return result;
 }
 
-DerivedFootprintClearance3D
-querySweptFootprintClearance3D(const mppi::EsdfGrid& grid,
-                               const std::span<const float> esdf_m, const Point3& first,
-                               const Point3& second,
-                               const SweptFootprintConfig& config) noexcept {
+DerivedFootprintClearance3D querySweptFootprintClearance3D(
+    const EsdfGrid3D& grid, const std::span<const float> esdf_m, const Point3& first,
+    const Point3& second, const SweptFootprintConfig& config) noexcept {
   return querySweptFootprintClearance3D(grid, esdf_m, first, FootprintBodyAxis{},
                                         second, FootprintBodyAxis{}, config);
 }
 
 DerivedFootprintClearance3D querySweptFootprintClearance3D(
-    const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
-    const Point3& first, const FootprintBodyAxis& first_body_axis, const Point3& second,
+    const EsdfGrid3D& grid, const std::span<const float> esdf_m, const Point3& first,
+    const FootprintBodyAxis& first_body_axis, const Point3& second,
     const FootprintBodyAxis& second_body_axis,
     const SweptFootprintConfig& config) noexcept {
   return sampleSweptFootprint(grid, esdf_m, first, first_body_axis, second,
@@ -323,8 +319,8 @@ DerivedFootprintClearance3D querySweptFootprintClearance3D(
 }
 
 DerivedSweptClearanceProfile3D profileSweptFootprintClearance3D(
-    const mppi::EsdfGrid& grid, const std::span<const float> esdf_m,
-    const Point3& first, const Point3& second, const SweptFootprintConfig& config,
+    const EsdfGrid3D& grid, const std::span<const float> esdf_m, const Point3& first,
+    const Point3& second, const SweptFootprintConfig& config,
     const double critical_distance_m, const double preferred_distance_m) noexcept {
   return sampleSweptFootprint(grid, esdf_m, first, FootprintBodyAxis{}, second,
                               FootprintBodyAxis{}, config, critical_distance_m,

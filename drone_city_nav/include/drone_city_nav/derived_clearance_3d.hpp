@@ -36,27 +36,28 @@ struct DerivedSweptClearanceProfile3D {
 };
 
 [[nodiscard]] DerivedFootprintClearance3D
-queryFootprintClearance3D(const mppi::EsdfGrid& grid, std::span<const float> esdf_m,
+queryFootprintClearance3D(const EsdfGrid3D& grid, std::span<const float> esdf_m,
                           const Point3& position,
                           const SweptFootprintConfig& config) noexcept;
 
 [[nodiscard]] DerivedFootprintClearance3D
-queryFootprintClearance3D(const mppi::EsdfGrid& grid, std::span<const float> esdf_m,
+queryFootprintClearance3D(const EsdfGrid3D& grid, std::span<const float> esdf_m,
                           const Point3& position, const FootprintBodyAxis& body_axis,
                           const SweptFootprintConfig& config) noexcept;
 
-[[nodiscard]] DerivedFootprintClearance3D querySweptFootprintClearance3D(
-    const mppi::EsdfGrid& grid, std::span<const float> esdf_m, const Point3& first,
-    const Point3& second, const SweptFootprintConfig& config) noexcept;
+[[nodiscard]] DerivedFootprintClearance3D
+querySweptFootprintClearance3D(const EsdfGrid3D& grid, std::span<const float> esdf_m,
+                               const Point3& first, const Point3& second,
+                               const SweptFootprintConfig& config) noexcept;
 
 [[nodiscard]] DerivedFootprintClearance3D querySweptFootprintClearance3D(
-    const mppi::EsdfGrid& grid, std::span<const float> esdf_m, const Point3& first,
+    const EsdfGrid3D& grid, std::span<const float> esdf_m, const Point3& first,
     const FootprintBodyAxis& first_body_axis, const Point3& second,
     const FootprintBodyAxis& second_body_axis,
     const SweptFootprintConfig& config) noexcept;
 
 [[nodiscard]] DerivedSweptClearanceProfile3D profileSweptFootprintClearance3D(
-    const mppi::EsdfGrid& grid, std::span<const float> esdf_m, const Point3& first,
+    const EsdfGrid3D& grid, std::span<const float> esdf_m, const Point3& first,
     const Point3& second, const SweptFootprintConfig& config,
     double critical_distance_m, double preferred_distance_m) noexcept;
 

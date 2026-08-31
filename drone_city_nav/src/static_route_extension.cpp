@@ -562,7 +562,7 @@ Point3 staticRoutePlanningGoal(const Point3& start, const Point3& mission_goal,
                 std::lerp(start.z, mission_goal.z, ratio)};
 }
 
-bool staticRoutePointInsideEsdf(const mppi::EsdfGrid& grid, const Point3& point,
+bool staticRoutePointInsideEsdf(const EsdfGrid3D& grid, const Point3& point,
                                 const double margin_m) noexcept {
   if (grid.width <= 0 || grid.height <= 0 || grid.depth <= 1 ||
       !(grid.resolution_m > 0.0F)) {

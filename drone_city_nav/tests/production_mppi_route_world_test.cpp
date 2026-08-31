@@ -17,11 +17,11 @@ namespace {
   world.producer_instance_id = 7U;
   world.source_raw_revision = 451U;
   world.source_occupied_fingerprint = 88U;
-  world.grid = mppi::EsdfGrid{.width = 4,
-                              .height = 4,
-                              .resolution_m = 1.0F,
-                              .depth = 4,
-                              .outside_is_unknown = true};
+  world.grid = EsdfGrid3D{.width = 4,
+                          .height = 4,
+                          .resolution_m = 1.0F,
+                          .depth = 4,
+                          .outside_is_unknown = true};
   world.observed_occupancy = std::make_shared<const ObservedOccupancyGrid3D>(bounds);
   const KnownObstacleDistance3DBuildResult distance =
       buildKnownObstacleDistance3D(*world.observed_occupancy, bounds, 7.0);
@@ -295,7 +295,7 @@ TEST(ProductionMppiRouteWorldTest, StaticWorldUsesItsEsdfAsRawGenerationAnchor) 
   world.revision = world.static_occupancy->fingerprint();
   world.source_occupied_fingerprint = world.static_occupancy->contentFingerprint();
   world.raw_occupied_fingerprint = world.source_occupied_fingerprint;
-  world.grid = mppi::EsdfGrid{4, 4, 1.0F, 0.0F, 0.0F, 4, 0.0F};
+  world.grid = EsdfGrid3D{4, 4, 1.0F, 0.0F, 0.0F, 4, 0.0F};
   world.distances_m = std::make_shared<const std::vector<float>>(64U, 2.0F);
   world.local_world_generation = LocalWorldGeneration{
       .generation = 3U,

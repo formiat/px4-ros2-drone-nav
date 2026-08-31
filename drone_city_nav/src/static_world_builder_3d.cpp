@@ -74,7 +74,7 @@ namespace {
   };
 }
 
-[[nodiscard]] bool sameStaticEsdfGrid(const mppi::EsdfGrid& grid,
+[[nodiscard]] bool sameStaticEsdfGrid(const EsdfGrid3D& grid,
                                       const GridBounds3D& bounds) noexcept {
   constexpr double kTolerance{1.0e-6};
   return grid.width == bounds.width_cells && grid.height == bounds.height_cells &&
@@ -88,8 +88,8 @@ namespace {
          std::abs(static_cast<double>(grid.origin_z_m) - bounds.origin_z) <= kTolerance;
 }
 
-[[nodiscard]] mppi::EsdfGrid esdfGrid(const GridBounds3D& bounds) noexcept {
-  return mppi::EsdfGrid{
+[[nodiscard]] EsdfGrid3D esdfGrid(const GridBounds3D& bounds) noexcept {
+  return EsdfGrid3D{
       .width = bounds.width_cells,
       .height = bounds.height_cells,
       .resolution_m = static_cast<float>(bounds.resolution_m),

@@ -69,10 +69,10 @@ struct WorldPipelineResidentSnapshot3D {
 };
 
 struct WorldEsdfUploadRequest3D {
-  mppi::EsdfGrid grid{};
+  EsdfGrid3D grid{};
   std::span<const float> distances_m;
   std::uint64_t revision{0U};
-  std::span<const ObservedEsdfDirtyRegion3D> dirty_regions;
+  std::span<const EsdfDirtyRegion3D> dirty_regions;
 };
 
 struct WorldEsdfUploadResult3D {

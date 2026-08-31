@@ -30,7 +30,7 @@ TEST(RoutePlanning3D, NetCoordinateProgressUsesTheFullThreeDimensionalMission) {
                    10.0);
 }
 
-[[nodiscard]] SegmentEvidenceWorld3D world(const mppi::EsdfGrid& grid,
+[[nodiscard]] SegmentEvidenceWorld3D world(const EsdfGrid3D& grid,
                                            const std::vector<float>& esdf) {
   return SegmentEvidenceWorld3D{
       .grid = &grid,
@@ -51,14 +51,14 @@ TEST(RoutePlanning3D, NetCoordinateProgressUsesTheFullThreeDimensionalMission) {
 }
 
 TEST(RoutePlanning3DTest, PartialRouteDoesNotCompleteMissionIntent) {
-  mppi::EsdfGrid grid{.width = 4,
-                      .height = 2,
-                      .resolution_m = 1.0F,
-                      .origin_x_m = 0.0F,
-                      .origin_y_m = 0.0F,
-                      .depth = 2,
-                      .origin_z_m = 0.0F,
-                      .outside_is_unknown = true};
+  EsdfGrid3D grid{.width = 4,
+                  .height = 2,
+                  .resolution_m = 1.0F,
+                  .origin_x_m = 0.0F,
+                  .origin_y_m = 0.0F,
+                  .depth = 2,
+                  .origin_z_m = 0.0F,
+                  .outside_is_unknown = true};
   std::vector<float> esdf(16U, 5.0F);
   RouteIntent3D intent{.id = 1U,
                        .planned_on_revision = 10U,
@@ -75,15 +75,15 @@ TEST(RoutePlanning3DTest, PartialRouteDoesNotCompleteMissionIntent) {
 }
 
 TEST(RoutePlanning3DTest, UnknownIsTraversableAndDoesNotInventKnownClearance) {
-  mppi::EsdfGrid grid{.width = 4,
-                      .height = 2,
-                      .resolution_m = 1.0F,
-                      .origin_x_m = 0.0F,
-                      .origin_y_m = 0.0F,
-                      .depth = 2,
-                      .origin_z_m = 0.0F,
-                      .outside_is_unknown = true};
-  std::vector<float> esdf(16U, mppi::kUnknownEsdfDistanceM);
+  EsdfGrid3D grid{.width = 4,
+                  .height = 2,
+                  .resolution_m = 1.0F,
+                  .origin_x_m = 0.0F,
+                  .origin_y_m = 0.0F,
+                  .depth = 2,
+                  .origin_z_m = 0.0F,
+                  .outside_is_unknown = true};
+  std::vector<float> esdf(16U, kUnknownEsdfDistanceM);
   RouteIntent3D intent{.id = 2U,
                        .planned_on_revision = 11U,
                        .mission_target = {3.0, 0.5, 0.5},
@@ -101,15 +101,15 @@ TEST(RoutePlanning3DTest, UnknownIsTraversableAndDoesNotInventKnownClearance) {
 }
 
 TEST(RoutePlanning3DTest, ZeroDerivedDistanceCannotManufactureRawCollision) {
-  mppi::EsdfGrid grid{.width = 4,
-                      .height = 2,
-                      .resolution_m = 1.0F,
-                      .origin_x_m = 0.0F,
-                      .origin_y_m = 0.0F,
-                      .depth = 2,
-                      .origin_z_m = 0.0F,
-                      .outside_is_unknown = true};
-  std::vector<float> esdf(16U, mppi::kUnknownEsdfDistanceM);
+  EsdfGrid3D grid{.width = 4,
+                  .height = 2,
+                  .resolution_m = 1.0F,
+                  .origin_x_m = 0.0F,
+                  .origin_y_m = 0.0F,
+                  .depth = 2,
+                  .origin_z_m = 0.0F,
+                  .outside_is_unknown = true};
+  std::vector<float> esdf(16U, kUnknownEsdfDistanceM);
   esdf[2U] = 0.0F;
   RouteIntent3D intent{.id = 3U,
                        .planned_on_revision = 11U,
@@ -129,15 +129,15 @@ TEST(RoutePlanning3DTest, ZeroDerivedDistanceCannotManufactureRawCollision) {
 }
 
 TEST(RoutePlanning3DTest, LatestRawCollisionRejectsAStaleUnknownEsdfRoute) {
-  mppi::EsdfGrid grid{.width = 4,
-                      .height = 2,
-                      .resolution_m = 1.0F,
-                      .origin_x_m = 0.0F,
-                      .origin_y_m = 0.0F,
-                      .depth = 2,
-                      .origin_z_m = 0.0F,
-                      .outside_is_unknown = true};
-  const std::vector<float> esdf(16U, mppi::kUnknownEsdfDistanceM);
+  EsdfGrid3D grid{.width = 4,
+                  .height = 2,
+                  .resolution_m = 1.0F,
+                  .origin_x_m = 0.0F,
+                  .origin_y_m = 0.0F,
+                  .depth = 2,
+                  .origin_z_m = 0.0F,
+                  .outside_is_unknown = true};
+  const std::vector<float> esdf(16U, kUnknownEsdfDistanceM);
   ObservedOccupancyGrid3D latest_raw{GridBounds3D{0.0, 0.0, 0.0, 1.0, 4, 2, 2}};
   ASSERT_TRUE(latest_raw.setState(GridIndex3D{1, 0, 0}, ObservedVoxelState::kOccupied));
   const RouteIntent3D intent{.id = 4U,
@@ -158,14 +158,14 @@ TEST(RoutePlanning3DTest, LatestRawCollisionRejectsAStaleUnknownEsdfRoute) {
 }
 
 TEST(RoutePlanning3DTest, RawAuthorityMakesInvalidDerivedDistanceNonBlocking) {
-  mppi::EsdfGrid grid{.width = 4,
-                      .height = 2,
-                      .resolution_m = 1.0F,
-                      .origin_x_m = 0.0F,
-                      .origin_y_m = 0.0F,
-                      .depth = 2,
-                      .origin_z_m = 0.0F,
-                      .outside_is_unknown = true};
+  EsdfGrid3D grid{.width = 4,
+                  .height = 2,
+                  .resolution_m = 1.0F,
+                  .origin_x_m = 0.0F,
+                  .origin_y_m = 0.0F,
+                  .depth = 2,
+                  .origin_z_m = 0.0F,
+                  .outside_is_unknown = true};
   const std::vector<float> esdf(16U, std::numeric_limits<float>::quiet_NaN());
   ObservedOccupancyGrid3D latest_raw{GridBounds3D{0.0, 0.0, 0.0, 1.0, 4, 2, 2}};
   for (int x = 0; x < 4; ++x) {
@@ -188,14 +188,14 @@ TEST(RoutePlanning3DTest, RawAuthorityMakesInvalidDerivedDistanceNonBlocking) {
 }
 
 TEST(RoutePlanning3DTest, RouteBeyondLocalDistanceCacheUsesRawAuthority) {
-  const mppi::EsdfGrid grid{.width = 2,
-                            .height = 2,
-                            .resolution_m = 1.0F,
-                            .origin_x_m = 0.0F,
-                            .origin_y_m = 0.0F,
-                            .depth = 2,
-                            .origin_z_m = 0.0F,
-                            .outside_is_unknown = true};
+  const EsdfGrid3D grid{.width = 2,
+                        .height = 2,
+                        .resolution_m = 1.0F,
+                        .origin_x_m = 0.0F,
+                        .origin_y_m = 0.0F,
+                        .depth = 2,
+                        .origin_z_m = 0.0F,
+                        .outside_is_unknown = true};
   const std::vector<float> esdf(8U, std::numeric_limits<float>::infinity());
   ObservedOccupancyGrid3D raw{GridBounds3D{0.0, 0.0, 0.0, 1.0, 8, 2, 2}};
   const RouteIntent3D intent{.id = 6U,

@@ -538,11 +538,12 @@ direction-labelled execution-time refinement, immutable sparse
 `KnownObstacleDistance3D` cache, immutable world/search/materialization
 artifacts, the sealed exact-state `CompiledTrajectory3D`, the tagged execution
 variant and reducer, one atomic `CommittedExecutionAuthority3D`, the enforced
-eight-layer CMake DAG, complete registration of production-relevant GTests,
-split execution model/certification/transition/store contracts, a package-private
-hand-written C++ API, independent compilation of every hand-written header, and
-an independently tested `NavigationDiagnosticsSink` that owns its mailbox,
-worker, files, error context, and runtime statistics. The package-private
+eight-layer CMake DAG, the controller-neutral `EsdfGrid3D` world descriptor,
+complete registration of production-relevant GTests, split execution
+model/certification/transition/store contracts, a package-private hand-written
+C++ API, independent compilation of every hand-written header, and an
+independently tested `NavigationDiagnosticsSink` that owns its mailbox, worker,
+files, error context, and runtime statistics. The package-private
 `WorldPipeline3D` now owns raw producer admission and joining, incremental
 reconstruction, latest-wins scheduling, worker lifetime, generation issuance,
 and coherent immutable resident-world publication. Observed mode additionally
@@ -566,8 +567,9 @@ and restart. `RouteMaterializer3D` owns one exact request through geometric
 optimization, splice preservation, derived risk annotation, optional passage
 decoration, and final candidate validation; typed fallback information is
 logged only by the ROS adapter. Its soft risk annotation now lives in
-`nav_planning`; the legacy MPPI adapter and controller-layer dependency have
-been removed. `RouteTrajectoryCompiler3D` now owns exact-state compilation and
+`nav_planning` and consumes the neutral ESDF world descriptor; the legacy MPPI
+adapter and controller-layer dependency have been removed.
+`RouteTrajectoryCompiler3D` now owns exact-state compilation and
 the observed/static tracking-world binding behind one non-ROS request/result
 boundary. `RouteActivationCoordinator3D` owns that compiler and the complete
 compile/admit/certify/splice pipeline behind one immutable request and prepared

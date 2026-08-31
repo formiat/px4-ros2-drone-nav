@@ -1,5 +1,7 @@
 #pragma once
 
+#include "drone_city_nav/esdf_grid_3d.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -7,7 +9,11 @@
 
 namespace drone_city_nav::mppi {
 
-inline constexpr float kUnknownEsdfDistanceM{-1.0F};
+// The backend retains its established names while sharing the neutral world
+// contract with mapping, planning, and trajectory code.
+inline constexpr float kUnknownEsdfDistanceM{drone_city_nav::kUnknownEsdfDistanceM};
+using EsdfGrid = drone_city_nav::EsdfGrid3D;
+using EsdfDirtyRegion = drone_city_nav::EsdfDirtyRegion3D;
 
 enum class RiskTier : std::uint8_t {
   kPreferred = 0,
@@ -243,26 +249,6 @@ struct RolloutMetrics {
   float predicted_capture_time_s{-1.0F};
   RiskTier worst_tier{RiskTier::kPreferred};
   bool altitude_envelope_violation{false};
-};
-
-struct EsdfGrid {
-  int width{0};
-  int height{0};
-  float resolution_m{0.0F};
-  float origin_x_m{0.0F};
-  float origin_y_m{0.0F};
-  int depth{1};
-  float origin_z_m{0.0F};
-  bool outside_is_unknown{false};
-};
-
-struct EsdfDirtyRegion {
-  int minimum_x{0};
-  int minimum_y{0};
-  int minimum_z{0};
-  int maximum_x_exclusive{0};
-  int maximum_y_exclusive{0};
-  int maximum_z_exclusive{0};
 };
 
 } // namespace drone_city_nav::mppi

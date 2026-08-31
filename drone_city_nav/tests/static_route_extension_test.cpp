@@ -510,7 +510,7 @@ TEST(StaticRouteExtensionTest, PlanningGoalAndEsdfBoundaryAreExplicit) {
   const Point3 planning_goal =
       staticRoutePlanningGoal(Point3{0.0, 0.0, 2.0}, Point3{100.0, 0.0, 2.0}, 40.0);
   EXPECT_DOUBLE_EQ(planning_goal.x, 40.0);
-  const mppi::EsdfGrid grid{40, 20, 1.0F, 0.0F, -10.0F, 10, 0.0F};
+  const EsdfGrid3D grid{40, 20, 1.0F, 0.0F, -10.0F, 10, 0.0F};
   EXPECT_FALSE(staticRoutePointInsideEsdf(grid, planning_goal));
   EXPECT_TRUE(staticRoutePointInsideEsdf(grid, Point3{39.5, 0.0, 2.0}));
 }

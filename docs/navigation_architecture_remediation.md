@@ -76,8 +76,10 @@ competing strategic route.
 ### `nav_model`
 
 Owns controller-neutral points, vectors, identities, units, kinematics,
-dynamics, and risk classifications. No route or planning header may include an
-MPPI header.
+dynamics, risk classifications, and the dense `EsdfGrid3D` geometry descriptor.
+MPPI retains backend aliases to that descriptor but does not own it. No route or
+planning header may include an MPPI header; an architectural dependency test
+enforces that ban.
 
 ### `nav_world`
 
@@ -284,7 +286,8 @@ invalid configuration/request handling, successful immutable materialization,
 unknown-neutral invalid derived distances, and exact active-route enforcement.
 The soft derived-clearance annotation API is controller-neutral
 `route_risk_annotation_3d` in `nav_planning`; the former MPPI adapter and names
-have been removed, so route materialization no longer depends on `nav_control`.
+have been removed, and its ESDF input is the neutral `EsdfGrid3D` world contract,
+so route materialization no longer depends on `nav_control`.
 
 `RouteTrajectoryCompiler3D` owns the immutable compiler and passage
 configuration and accepts one materialized-route transaction with the exact

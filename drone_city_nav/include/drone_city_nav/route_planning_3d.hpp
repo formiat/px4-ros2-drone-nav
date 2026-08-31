@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/esdf_grid_3d.hpp"
 #include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/observed_occupancy_grid_3d.hpp"
 #include "drone_city_nav/occupied_collision_oracle_3d.hpp"
@@ -60,7 +61,7 @@ routeNetCoordinateProgress3D(const Point3& start, const Point3& endpoint,
                              const Point3& mission_target) noexcept;
 
 struct SegmentEvidenceWorld3D {
-  const mppi::EsdfGrid* grid{nullptr};
+  const EsdfGrid3D* grid{nullptr};
   std::span<const float> esdf_m;
   OccupiedCollisionWorld3D collision{};
   std::uint64_t validated_through_revision{0U};

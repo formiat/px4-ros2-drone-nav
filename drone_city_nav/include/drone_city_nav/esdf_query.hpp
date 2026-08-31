@@ -1,6 +1,6 @@
 #pragma once
 
-#include "drone_city_nav/mppi/mppi_config.hpp"
+#include "drone_city_nav/esdf_grid_3d.hpp"
 
 #include <span>
 
@@ -18,11 +18,11 @@ struct EsdfQueryResult {
   EsdfQueryStatus status{EsdfQueryStatus::kOutsideGrid};
 };
 
-[[nodiscard]] EsdfQueryResult queryConservativeEsdf(const mppi::EsdfGrid& grid,
+[[nodiscard]] EsdfQueryResult queryConservativeEsdf(const EsdfGrid3D& grid,
                                                     std::span<const float> esdf_m,
                                                     float x_m, float y_m) noexcept;
 
-[[nodiscard]] EsdfQueryResult queryConservativeEsdf3D(const mppi::EsdfGrid& grid,
+[[nodiscard]] EsdfQueryResult queryConservativeEsdf3D(const EsdfGrid3D& grid,
                                                       std::span<const float> esdf_m,
                                                       float x_m, float y_m,
                                                       float z_m) noexcept;

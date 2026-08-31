@@ -1,6 +1,5 @@
 #pragma once
 
-#include "drone_city_nav/mppi/mppi_config.hpp"
 #include "drone_city_nav/observed_occupancy_grid_3d.hpp"
 #include "drone_city_nav/occupancy_grid.hpp"
 #include "drone_city_nav/occupancy_grid_3d.hpp"

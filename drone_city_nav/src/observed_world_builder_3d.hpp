@@ -107,7 +107,7 @@ struct PreparedObservedWorldBuild3D {
   std::uint64_t expected_parent_esdf_fingerprint{0U};
   ProductionWorldBuildTelemetry3D telemetry{};
   ObservedEsdf3DBuildStats stats{};
-  std::vector<ObservedEsdfDirtyRegion3D> dirty_regions;
+  std::vector<EsdfDirtyRegion3D> dirty_regions;
   ObservedWorldEvidenceChange3D evidence_change{};
   double maximum_distance_m{0.0};
   bool parent_required{false};

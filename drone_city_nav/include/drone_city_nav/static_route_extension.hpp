@@ -1,7 +1,7 @@
 #pragma once
 
+#include "drone_city_nav/esdf_grid_3d.hpp"
 #include "drone_city_nav/flight_envelope.hpp"
-#include "drone_city_nav/mppi/mppi_types.hpp"
 #include "drone_city_nav/route_3d.hpp"
 #include "drone_city_nav/route_execution_contract_3d.hpp"
 #include "drone_city_nav/route_progress_3d.hpp"
@@ -351,7 +351,7 @@ deferStaticRouteReleaseDuringExtension(bool request_in_flight,
                                              const Point3& mission_goal,
                                              double planning_distance_m) noexcept;
 
-[[nodiscard]] bool staticRoutePointInsideEsdf(const mppi::EsdfGrid& grid,
+[[nodiscard]] bool staticRoutePointInsideEsdf(const EsdfGrid3D& grid,
                                               const Point3& point,
                                               double margin_m = 0.0) noexcept;
 

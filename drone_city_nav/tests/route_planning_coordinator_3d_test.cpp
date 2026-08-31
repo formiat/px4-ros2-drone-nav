@@ -164,7 +164,7 @@ coordinatorInput(const std::uint64_t mission_epoch = 7U, const int depth = 8,
   world->revision = revision;
   world->source_occupied_fingerprint = occupied_fingerprint;
   world->raw_occupied_fingerprint = occupied_fingerprint;
-  world->grid = mppi::EsdfGrid{
+  world->grid = EsdfGrid3D{
       .width = bounds.width_cells,
       .height = bounds.height_cells,
       .resolution_m = static_cast<float>(bounds.resolution_m),

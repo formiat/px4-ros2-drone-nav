@@ -483,7 +483,7 @@ TEST(Route3DTest, ReportsUnavailableWithoutRoute) {
 }
 
 TEST(Route3DTest, AnnotatesRequiredRiskTierFromDerivedEsdfClearance) {
-  const mppi::EsdfGrid grid{3, 1, 1.0F, 0.0F, 0.0F, 1, 0.0F};
+  const EsdfGrid3D grid{3, 1, 1.0F, 0.0F, 0.0F, 1, 0.0F};
   const std::vector<float> esdf{std::numeric_limits<float>::infinity(), 4.0F, 1.5F};
   std::vector<RouteSample3D> route{
       RouteSample3D{.position = Point3{0.5, 0.5, 0.5}},
@@ -499,8 +499,8 @@ TEST(Route3DTest, AnnotatesRequiredRiskTierFromDerivedEsdfClearance) {
 }
 
 TEST(Route3DTest, RiskTierAssignmentTreatsUnknownAsPreferredWithoutAStrictMode) {
-  const mppi::EsdfGrid grid{2, 1, 1.0F, 0.0F, 0.0F, 1, 0.0F};
-  const std::vector<float> esdf{mppi::kUnknownEsdfDistanceM,
+  const EsdfGrid3D grid{2, 1, 1.0F, 0.0F, 0.0F, 1, 0.0F};
+  const std::vector<float> esdf{kUnknownEsdfDistanceM,
                                 std::numeric_limits<float>::infinity()};
   std::vector<RouteSample3D> route{
       RouteSample3D{.position = Point3{0.5, 0.5, 0.5}},
@@ -513,7 +513,7 @@ TEST(Route3DTest, RiskTierAssignmentTreatsUnknownAsPreferredWithoutAStrictMode) 
 }
 
 TEST(Route3DTest, ZeroDerivedClearanceIsOnlyASoftCriticalRiskAnnotation) {
-  const mppi::EsdfGrid grid{2, 1, 1.0F, 0.0F, 0.0F, 1, 0.0F};
+  const EsdfGrid3D grid{2, 1, 1.0F, 0.0F, 0.0F, 1, 0.0F};
   const std::vector<float> esdf{std::numeric_limits<float>::infinity(), 0.0F};
   std::vector<RouteSample3D> route{
       RouteSample3D{.position = Point3{0.5, 0.5, 0.5}},
