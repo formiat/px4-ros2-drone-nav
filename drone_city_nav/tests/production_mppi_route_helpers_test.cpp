@@ -171,9 +171,8 @@ TEST(ProductionMppiRouteHelpersTest,
       .cross_track_accepted = true,
       .raw_world_compatible = true,
   };
-  admission.handoff = mppi::StaticRouteHandoffResult{
-      .status = mppi::StaticRouteHandoffStatus::kAccepted,
-      .accepted = true,
+  admission.handoff = DynamicHandoffResult3D{
+      .status = DynamicHandoffStatus3D::kAccepted,
   };
   admission.trajectory_validation = compilation.validation;
   admission.world_compatible = true;

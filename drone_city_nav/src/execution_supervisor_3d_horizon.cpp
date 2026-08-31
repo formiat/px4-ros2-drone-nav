@@ -1,6 +1,6 @@
 #include "drone_city_nav/execution_horizon_commit_3d.hpp"
 #include "drone_city_nav/execution_supervisor_3d.hpp"
-#include "drone_city_nav/mppi/finite_execution_path.hpp"
+#include "drone_city_nav/finite_execution_path_3d.hpp"
 
 #include <cmath>
 #include <memory>
@@ -13,7 +13,7 @@ namespace drone_city_nav {
 namespace {
 
 struct FiniteExecutionEvidenceView3D {
-  const mppi::FiniteHorizon* horizon{nullptr};
+  const FiniteMotionHorizon3D* horizon{nullptr};
   const VersionedExecutionInput3D* execution_input{nullptr};
   const VersionedExecutionValidationPolicy3D* policy{nullptr};
   const VersionedStaticWorld3D* static_world{nullptr};
@@ -38,9 +38,9 @@ finiteExecutionEvidenceView(const Execution& execution) noexcept {
   };
 }
 
-[[nodiscard]] std::vector<mppi::TimedExecutionPathPoint>
+[[nodiscard]] std::vector<TimedExecutionPathPoint3D>
 timedExecutionPathPoints(const FiniteExecutionEvidenceView3D& view) {
-  std::vector<mppi::TimedExecutionPathPoint> points;
+  std::vector<TimedExecutionPathPoint3D> points;
   if (view.horizon == nullptr || view.execution_input == nullptr ||
       view.control_interval_ns <= 0 || view.horizon->controls.empty() ||
       view.horizon->states.size() != view.horizon->controls.size() + 1U) {
@@ -52,7 +52,7 @@ timedExecutionPathPoints(const FiniteExecutionEvidenceView3D& view) {
   }
   points.reserve(view.horizon->states.size());
   for (std::size_t index = 0U; index < view.horizon->states.size(); ++index) {
-    points.push_back(mppi::TimedExecutionPathPoint{
+    points.push_back(TimedExecutionPathPoint3D{
         .time_from_start_s = static_cast<double>(index) * step_s,
         .state = view.horizon->states[index],
         .control = index == 0U ? view.execution_input->previousControl()
@@ -78,15 +78,14 @@ timedExecutionPathPoints(const FiniteExecutionEvidenceView3D& view) {
       (static_world && !view.static_world->valid())) {
     return false;
   }
-  const std::vector<mppi::TimedExecutionPathPoint> points =
-      timedExecutionPathPoints(view);
+  const std::vector<TimedExecutionPathPoint3D> points = timedExecutionPathPoints(view);
   if (points.empty()) {
     return false;
   }
   const std::optional<LaunchSupportContact3D>& launch_support =
       !static_world ? latest_raw->launchSupportContact()
                     : std::optional<LaunchSupportContact3D>{};
-  const mppi::FiniteExecutionPathWorld world{
+  const FiniteExecutionPathWorld3D world{
       .flight_envelope = &view.policy->flightEnvelope(),
       .dynamics = &view.policy->dynamics(),
       .altitude_envelope = &view.policy->altitudeEnvelope(),
@@ -100,7 +99,7 @@ timedExecutionPathPoints(const FiniteExecutionEvidenceView3D& view) {
           std::span<const Point3>{latest_lidar->hitPointsMapM()},
       .terminal_boundary = std::nullopt,
   };
-  return mppi::validateCompleteFiniteExecutionPath(
+  return validateCompleteFiniteExecutionPath3D(
              points, view.execution_input->previousControl(), world)
       .accepted();
 }
@@ -196,15 +195,15 @@ progressPreservesRouteEvidence(const ExecutionPlan3D& expected,
          source->planned_endpoint_semantics == next->planned_endpoint_semantics;
 }
 
-[[nodiscard]] bool sameState(const mppi::State& first,
-                             const mppi::State& second) noexcept {
+[[nodiscard]] bool sameState(const MotionState3D& first,
+                             const MotionState3D& second) noexcept {
   return first.x == second.x && first.y == second.y && first.z == second.z &&
          first.vx == second.vx && first.vy == second.vy && first.vz == second.vz &&
          first.yaw == second.yaw && first.yaw_rate == second.yaw_rate;
 }
 
-[[nodiscard]] bool sameControl(const mppi::Control& first,
-                               const mppi::Control& second) noexcept {
+[[nodiscard]] bool sameControl(const MotionControl3D& first,
+                               const MotionControl3D& second) noexcept {
   return first.ax == second.ax && first.ay == second.ay && first.az == second.az &&
          first.yaw_accel == second.yaw_accel;
 }

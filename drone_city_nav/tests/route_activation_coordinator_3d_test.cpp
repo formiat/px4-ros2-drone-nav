@@ -1,9 +1,12 @@
+#include "drone_city_nav/mppi/static_route_handoff.hpp"
+
 #include <gtest/gtest.h>
 
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -66,6 +69,7 @@ staticWorld(const std::uint64_t generation = 3U) {
 [[nodiscard]] RouteActivationCoordinatorConfig3D
 coordinatorConfig(const double cruise_speed_mps = 3.0) {
   RouteActivationCoordinatorConfig3D config;
+  mppi::BenchmarkConfig backend_config;
   config.route_tracking.maximum_cross_track_m = 2.0;
   config.route_extension.minimum_remaining_m = 1.0;
   config.route_extension.required_certified_overlap_m = 1.0;
@@ -74,16 +78,22 @@ coordinatorConfig(const double cruise_speed_mps = 3.0) {
   // The shared finite-execution fixture uses a symmetric acceleration profile.
   // Zero drag keeps that profile terminally stationary when a pending route is
   // promoted to active in the successor-handoff test.
-  config.mppi.dynamics.linear_drag_1ps = 0.0F;
+  backend_config.dynamics.linear_drag_1ps = 0.0F;
   config.trajectory_compiler.trajectory.unconstrained_speed_mps =
       config.cruise_speed_mps;
   config.trajectory_compiler.trajectory.physical_footprint = config.physical_footprint;
   config.passage_volume.flight_envelope = config.flight_envelope;
   config.passage_volume.footprint = config.physical_footprint;
   config.trajectory_compiler.passage_volume = config.passage_volume;
-  config.mppi.steps = 120U;
+  backend_config.steps = 120U;
+  config.route_risk = RouteRiskPolicy3D{
+      .critical_distance_m = backend_config.risk.critical_distance_m,
+      .preferred_distance_m = backend_config.risk.preferred_distance_m,
+  };
+  config.dynamic_handoff_validator =
+      mppi::makeMppiDynamicHandoffValidator3D(backend_config);
   config.validation_policy = VersionedExecutionValidationPolicy3D::capture(
-      config.flight_envelope, config.mppi.dynamics, config.mppi.altitude_envelope,
+      config.flight_envelope, backend_config.dynamics, backend_config.altitude_envelope,
       config.physical_footprint, 1000.0, 1000.0, 1000.0, true, false, true);
   return config;
 }
@@ -261,7 +271,7 @@ TEST(RouteActivationCoordinator3DTest,
       << " base=" << prepared.result.admission.certification_execution_base_current
       << " replacement=" << prepared.result.admission.replacement.replacementAllowed()
       << " assessment=" << prepared.result.admission.assessment.accepted()
-      << " handoff=" << prepared.result.admission.handoff.accepted;
+      << " handoff=" << prepared.result.admission.handoff.accepted();
   if (!prepared.pending_draft.has_value()) {
     FAIL() << "certified preparation did not produce a pending draft";
     return;
@@ -284,6 +294,45 @@ TEST(RouteActivationCoordinator3DTest,
             StaticRouteActivationStatus::kCertifiedPending);
   ASSERT_NE(supervisor.pending(), nullptr);
   EXPECT_EQ(supervisor.pending()->publication_sequence, 1U);
+}
+
+TEST(RouteActivationCoordinator3DTest,
+     UsesInjectedDynamicHandoffValidatorWithoutControllerTypes) {
+  ExecutionSupervisor3D supervisor;
+  std::size_t validator_calls = 0U;
+  RouteActivationCoordinatorConfig3D config = coordinatorConfig();
+  config.dynamic_handoff_validator =
+      [&validator_calls](const DynamicHandoffRequest3D& request) {
+        ++validator_calls;
+        EXPECT_NE(request.candidate_trajectory, nullptr);
+        EXPECT_NE(request.derived_distances_m, nullptr);
+        EXPECT_GT(request.reference_speed_mps, 0.0F);
+        EXPECT_GT(request.maximum_cross_track_m, 0.0F);
+        return DynamicHandoffResult3D{
+            .status = DynamicHandoffStatus3D::kExcessiveCrossTrack,
+            .cross_track_m = request.maximum_cross_track_m + 1.0F,
+        };
+      };
+  RouteActivationCoordinator3D coordinator{config};
+
+  const PreparedRouteActivation3D prepared =
+      prepare(coordinator, activationFixture(supervisor));
+
+  EXPECT_EQ(validator_calls, 1U);
+  EXPECT_EQ(prepared.result.admission.handoff.status,
+            DynamicHandoffStatus3D::kExcessiveCrossTrack);
+  EXPECT_FALSE(prepared.result.admission.handoff.accepted());
+  EXPECT_FALSE(prepared.pending_draft.has_value());
+  EXPECT_EQ(prepared.result.admission.activation_status,
+            StaticRouteActivationStatus::kDynamicHandoffRejected);
+}
+
+TEST(RouteActivationCoordinator3DTest, RejectsMissingDynamicHandoffPort) {
+  RouteActivationCoordinatorConfig3D config = coordinatorConfig();
+  config.dynamic_handoff_validator = {};
+
+  EXPECT_THROW(static_cast<void>(RouteActivationCoordinator3D{config}),
+               std::invalid_argument);
 }
 
 TEST(RouteActivationCoordinator3DTest, RejectsSupersededWorldBeforePendingPublication) {
@@ -409,7 +458,7 @@ TEST(RouteActivationCoordinator3DTest,
       << compiledTrajectoryFailureReason3DName(
              first.result.admission.trajectory_validation.reason)
       << " assessment=" << first.result.admission.assessment.accepted()
-      << " handoff=" << first.result.admission.handoff.accepted
+      << " handoff=" << first.result.admission.handoff.accepted()
       << " replacement=" << first.result.admission.replacement.replacementAllowed()
       << " generation=" << first.result.admission.generation_matches
       << " certified=" << first.result.admission.route_certified;

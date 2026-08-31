@@ -237,7 +237,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_TRUE(baseline.horizon);
 
   const auto make_certification =
-      [&](mppi::FiniteHorizon horizon,
+      [&](FiniteMotionHorizon3D horizon,
           std::shared_ptr<const VersionedExecutionInput3D> execution_input,
           std::shared_ptr<const VersionedLatestLidarEvidence3D> lidar_evidence) {
         return FiniteExecutionCertification3D{
@@ -266,7 +266,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   EXPECT_NE(accepted.execution->validation_proof.validation_contract_fingerprint, 0U);
   EXPECT_NE(accepted.execution->validation_proof.artifact_fingerprint, 0U);
 
-  mppi::FiniteHorizon inconsistent = *baseline.horizon;
+  FiniteMotionHorizon3D inconsistent = *baseline.horizon;
   inconsistent.states.at(1).x += 1.0F;
   const FiniteExecutionCertificationResult3D inconsistent_result =
       certifyFiniteExecution3DDetailed(
@@ -319,7 +319,7 @@ TEST(ExecutionRouteSnapshot3DTest,
           make_certification(*baseline.horizon, baseline.execution_input, nullptr))
           .has_value());
 
-  const mppi::State& middle =
+  const MotionState3D& middle =
       baseline.horizon->states[baseline.horizon->states.size() / 2U];
   const auto blocking_lidar =
       VersionedLatestLidarEvidence3D::capture(LatestLidarEvidenceCapture3D{
@@ -603,31 +603,31 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_NE(baseline.execution_input, nullptr);
   ASSERT_NE(baseline.latest_lidar_evidence, nullptr);
 
-  mppi::FiniteHorizon crossing;
+  FiniteMotionHorizon3D crossing;
   crossing.controls.reserve(121U);
   for (std::size_t index = 0U; index < 50U; ++index) {
-    crossing.controls.push_back(mppi::Control{.ax = 0.344F});
+    crossing.controls.push_back(MotionControl3D{.ax = 0.344F});
   }
   for (std::size_t index = 0U; index < 50U; ++index) {
-    crossing.controls.push_back(mppi::Control{.ax = -0.344F});
+    crossing.controls.push_back(MotionControl3D{.ax = -0.344F});
   }
   for (std::size_t index = 0U; index < 10U; ++index) {
-    crossing.controls.push_back(mppi::Control{.ax = -0.4F});
+    crossing.controls.push_back(MotionControl3D{.ax = -0.4F});
   }
   for (std::size_t index = 0U; index < 10U; ++index) {
-    crossing.controls.push_back(mppi::Control{.ax = 0.4F});
+    crossing.controls.push_back(MotionControl3D{.ax = 0.4F});
   }
-  crossing.controls.push_back(mppi::Control{});
+  crossing.controls.push_back(MotionControl3D{});
   crossing.nominal_prefix_control_count = crossing.controls.size();
   crossing.states.reserve(crossing.controls.size() + 1U);
   crossing.states.push_back(baseline.execution_input->state());
-  for (const mppi::Control& control : crossing.controls) {
+  for (const MotionControl3D& control : crossing.controls) {
     crossing.states.push_back(
-        mppi::integrateReference(crossing.states.back(), control,
-                                 active->route()->validation_policy->dynamics()));
+        integrateMotionState3D(crossing.states.back(), control,
+                               active->route()->validation_policy->dynamics()));
   }
-  ASSERT_TRUE(mppi::finiteHorizonHasTerminalRestState(crossing));
-  EXPECT_GT(std::ranges::max(crossing.states, {}, &mppi::State::x).x, 10.5F);
+  ASSERT_TRUE(finiteMotionHorizonHasTerminalRestState3D(crossing));
+  EXPECT_GT(std::ranges::max(crossing.states, {}, &MotionState3D::x).x, 10.5F);
   EXPECT_LT(crossing.states.back().x, 10.5F);
 
   EXPECT_FALSE(certifyFiniteExecution3D(
@@ -660,7 +660,7 @@ TEST(ExecutionRouteSnapshot3DTest,
 
   constexpr std::size_t kAccelerationControlCount{50U};
   constexpr float kBackwardAccelerationMps2{2.0e-6F};
-  const mppi::DynamicsConfig& dynamics = suffix->validation_policy->dynamics();
+  const MotionDynamicsConfig3D& dynamics = suffix->validation_policy->dynamics();
   const float drag = std::max(0.0F, 1.0F - dynamics.linear_drag_1ps * dynamics.dt_s);
   const float recovery_acceleration_mps2 =
       kBackwardAccelerationMps2 *
@@ -676,10 +676,10 @@ TEST(ExecutionRouteSnapshot3DTest,
   certification.horizon.states.front() = certification.execution_input->state();
   for (std::size_t index = 0U; index < certification.horizon.controls.size(); ++index) {
     certification.horizon.states[index + 1U] =
-        mppi::integrateReference(certification.horizon.states[index],
-                                 certification.horizon.controls[index], dynamics);
+        integrateMotionState3D(certification.horizon.states[index],
+                               certification.horizon.controls[index], dynamics);
   }
-  ASSERT_TRUE(mppi::finiteHorizonHasTerminalRestState(certification.horizon));
+  ASSERT_TRUE(finiteMotionHorizonHasTerminalRestState3D(certification.horizon));
   ASSERT_LT(certification.horizon.states.back().x,
             certification.horizon.states.front().x - 1.0e-6F);
   for (std::size_t index = 1U; index < certification.horizon.states.size(); ++index) {
@@ -725,11 +725,11 @@ TEST(ExecutionRouteSnapshot3DTest,
   }
   certification.horizon.states.front() = certification.execution_input->state();
   for (std::size_t index = 0U; index < certification.horizon.controls.size(); ++index) {
-    certification.horizon.states[index + 1U] = mppi::integrateReference(
+    certification.horizon.states[index + 1U] = integrateMotionState3D(
         certification.horizon.states[index], certification.horizon.controls[index],
         suffix->validation_policy->dynamics());
   }
-  ASSERT_TRUE(mppi::finiteHorizonHasTerminalRestState(certification.horizon));
+  ASSERT_TRUE(finiteMotionHorizonHasTerminalRestState3D(certification.horizon));
   EXPECT_GT(certification.horizon.states.back().y, 0.25F);
   EXPECT_LT(certification.horizon.states.back().y, 2.0F);
 
@@ -809,7 +809,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   const auto recapture =
       [&](const std::uint64_t capture_sequence, const std::uint64_t pose_revision,
           const std::uint64_t pose_source_timestamp_us,
-          const std::int64_t pose_receive_stamp_ns, const mppi::State& state,
+          const std::int64_t pose_receive_stamp_ns, const MotionState3D& state,
           const std::uint64_t control_source_sequence,
           const std::int64_t control_source_stamp_ns,
           const std::int64_t control_receive_stamp_ns) {
@@ -842,7 +842,7 @@ TEST(ExecutionRouteSnapshot3DTest,
                 .status,
             ExecutionRouteTransitionStatus3D::kNoChange);
 
-  mppi::State conflicting_state = resident.state();
+  MotionState3D conflicting_state = resident.state();
   conflicting_state.x = 4.0F;
   const std::shared_ptr<const VersionedExecutionInput3D> conflicting =
       recapture(resident.captureSequence(), resident.poseRevision(),
@@ -885,7 +885,7 @@ TEST(ExecutionRouteSnapshot3DTest,
                 .status,
             ExecutionRouteTransitionStatus3D::kNonMonotonicProgress);
 
-  mppi::State forged_source_sample_state = resident.state();
+  MotionState3D forged_source_sample_state = resident.state();
   forged_source_sample_state.x += 0.25F;
   const std::shared_ptr<const VersionedExecutionInput3D> forged_source_sample =
       VersionedExecutionInput3D::capture(ExecutionInputCapture3D{

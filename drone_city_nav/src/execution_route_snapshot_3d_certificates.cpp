@@ -1,6 +1,6 @@
 #include "drone_city_nav/execution_horizon_timing.hpp"
 #include "drone_city_nav/execution_route_certificates_3d.hpp"
-#include "drone_city_nav/mppi/mppi_reference.hpp"
+#include "drone_city_nav/motion_dynamics_3d.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
 #include "drone_city_nav/occupied_collision_oracle_3d.hpp"
 
@@ -198,7 +198,7 @@ finiteExecutionArtifactFingerprint(const FiniteExecutionState3D& execution) noex
                       : 0U);
   hashCertificate(hash, execution.certificate);
   hashValue(hash, static_cast<std::uint64_t>(execution.horizon->states.size()));
-  for (const mppi::State& state : execution.horizon->states) {
+  for (const MotionState3D& state : execution.horizon->states) {
     hashFloat(hash, state.x);
     hashFloat(hash, state.y);
     hashFloat(hash, state.z);
@@ -209,7 +209,7 @@ finiteExecutionArtifactFingerprint(const FiniteExecutionState3D& execution) noex
     hashFloat(hash, state.yaw_rate);
   }
   hashValue(hash, static_cast<std::uint64_t>(execution.horizon->controls.size()));
-  for (const mppi::Control& control : execution.horizon->controls) {
+  for (const MotionControl3D& control : execution.horizon->controls) {
     hashFloat(hash, control.ax);
     hashFloat(hash, control.ay);
     hashFloat(hash, control.az);
@@ -311,7 +311,7 @@ sameDirectTrackingOwner(const DirectTrackingOwnerIdentity3D& first,
                       ? execution.static_world->contentFingerprint()
                       : 0U);
   hashValue(hash, static_cast<std::uint64_t>(execution.horizon->states.size()));
-  for (const mppi::State& state : execution.horizon->states) {
+  for (const MotionState3D& state : execution.horizon->states) {
     hashFloat(hash, state.x);
     hashFloat(hash, state.y);
     hashFloat(hash, state.z);
@@ -322,7 +322,7 @@ sameDirectTrackingOwner(const DirectTrackingOwnerIdentity3D& first,
     hashFloat(hash, state.yaw_rate);
   }
   hashValue(hash, static_cast<std::uint64_t>(execution.horizon->controls.size()));
-  for (const mppi::Control& control : execution.horizon->controls) {
+  for (const MotionControl3D& control : execution.horizon->controls) {
     hashFloat(hash, control.ax);
     hashFloat(hash, control.ay);
     hashFloat(hash, control.az);
@@ -731,7 +731,7 @@ terminalStopBoundaryValid(const CertifiedStopBoundary3D& boundary,
       boundary.station_m > certificate.certified_end_station_m + kStationToleranceM) {
     return false;
   }
-  const mppi::State& terminal = execution.horizon->states.back();
+  const MotionState3D& terminal = execution.horizon->states.back();
   return distance3D(boundary.position, Point3{terminal.x, terminal.y, terminal.z}) <=
          boundary.position_tolerance_m;
 }

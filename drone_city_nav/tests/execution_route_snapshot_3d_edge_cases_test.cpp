@@ -888,11 +888,11 @@ TEST(ExecutionRouteSnapshot3DTest, ProgressConnectorUsesExactPreviousControlBody
       .axial_samples = 5U,
       .sweep_step_m = 0.05,
   };
-  mppi::DynamicsConfig dynamics;
+  MotionDynamicsConfig3D dynamics;
   dynamics.dt_s = 0.1F;
   dynamics.linear_drag_1ps = 0.0F;
   fixture.validation_policy = VersionedExecutionValidationPolicy3D::capture(
-      FlightEnvelopeConfig{}, dynamics, mppi::AltitudeEnvelopeConfig{},
+      FlightEnvelopeConfig{}, dynamics, MotionAltitudeEnvelopeConfig3D{},
       oriented_footprint, 100.0);
   fixture.execution_footprint = oriented_footprint;
   fixture.passage_volume_config.footprint = oriented_footprint;
@@ -935,7 +935,7 @@ TEST(ExecutionRouteSnapshot3DTest, ProgressConnectorUsesExactPreviousControlBody
       latest_occupancy.worldToCell(tilted_only_obstacle);
   ASSERT_TRUE(obstacle_cell.has_value());
   ASSERT_TRUE(latest_occupancy.setState(*obstacle_cell, ObservedVoxelState::kOccupied));
-  const mppi::Control tilted_control{.ax = 9.80665F};
+  const MotionControl3D tilted_control{.ax = 9.80665F};
   const FootprintBodyAxis old_axis = bodyAxisFromWorldAcceleration(
       Vec3{old_input.previousControl().ax, old_input.previousControl().ay,
            old_input.previousControl().az});

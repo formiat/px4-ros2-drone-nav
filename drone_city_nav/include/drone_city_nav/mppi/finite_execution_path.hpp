@@ -1,161 +1,94 @@
 #pragma once
 
-#include "drone_city_nav/flight_envelope.hpp"
+#include "drone_city_nav/finite_execution_path_3d.hpp"
 #include "drone_city_nav/mppi/mppi_config.hpp"
 #include "drone_city_nav/mppi/mppi_finite_horizon.hpp"
 #include "drone_city_nav/mppi/mppi_types.hpp"
-#include "drone_city_nav/observed_occupancy_grid_3d.hpp"
-#include "drone_city_nav/occupancy_grid.hpp"
-#include "drone_city_nav/occupancy_grid_3d.hpp"
-#include "drone_city_nav/occupied_collision_oracle_3d.hpp"
-#include "drone_city_nav/swept_footprint.hpp"
 
 #include <cstddef>
 #include <cstdint>
-#include <functional>
-#include <optional>
 #include <span>
+#include <utility>
 
 namespace drone_city_nav::mppi {
 
-struct TimedExecutionPathPoint {
-  double time_from_start_s{0.0};
-  State state{};
-  // Arrival convention: point zero carries the exact previously applied
-  // control; every later point carries the control of the interval ending at
-  // that point.
-  Control control{};
-};
+using TimedExecutionPathPoint = drone_city_nav::TimedExecutionPathPoint3D;
+using FiniteExecutionPathStatus = drone_city_nav::FiniteExecutionPathStatus3D;
+using FiniteExecutionPathTerminalBoundary =
+    drone_city_nav::FiniteExecutionPathTerminalBoundary3D;
+using FiniteExecutionPathValidation = drone_city_nav::FiniteExecutionPathValidation3D;
+using FiniteExecutionPathWorld = drone_city_nav::FiniteExecutionPathWorld3D;
+using RebuiltFiniteExecutionPathContinuation =
+    drone_city_nav::RebuiltFiniteExecutionPathContinuation3D;
+using ValidatedFiniteExecutionPath = drone_city_nav::ValidatedFiniteExecutionPath3D;
+using FiniteExecutionPathCandidateValidator =
+    drone_city_nav::FiniteExecutionPathCandidateValidator3D;
 
-enum class FiniteExecutionPathStatus {
-  kValid,
-  kInvalidContract,
-  kCandidateRejected,
-  kNotActive,
-  kRouteEndpointExceeded,
-  kFlightEnvelopeViolation,
-  kDynamicFlightEnvelopeViolation,
-  kRawWorldUnavailable,
-  kRawCollision,
-  kLatestLidarRawCollision,
-};
+[[nodiscard]] inline FiniteExecutionPathValidation validateCompleteFiniteExecutionPath(
+    const std::span<const TimedExecutionPathPoint> points,
+    const Control& previous_applied_control,
+    const FiniteExecutionPathWorld& world) noexcept {
+  return validateCompleteFiniteExecutionPath3D(points, previous_applied_control, world);
+}
 
-struct FiniteExecutionPathTerminalBoundary {
-  Point3 endpoint{};
-  Vec3 forward{};
-  double tolerance_m{0.5};
-  double activation_distance_m{std::numeric_limits<double>::infinity()};
-  double maximum_cross_track_m{std::numeric_limits<double>::infinity()};
-  std::span<const RouteSample3D> activation_route;
-  float initial_route_station_m{0.0F};
-  float activation_route_station_m{0.0F};
-};
-
-struct FiniteExecutionPathValidation {
-  FiniteExecutionPathStatus status{FiniteExecutionPathStatus::kInvalidContract};
-  std::size_t first_remaining_point_index{0U};
-  std::size_t failure_segment_index{0U};
-  Point3 failure_point{};
-  double remaining_duration_s{0.0};
-
-  [[nodiscard]] bool accepted() const noexcept {
-    return status == FiniteExecutionPathStatus::kValid;
-  }
-};
-
-struct FiniteExecutionPathWorld {
-  const FlightEnvelopeConfig* flight_envelope{nullptr};
-  const DynamicsConfig* dynamics{nullptr};
-  const AltitudeEnvelopeConfig* altitude_envelope{nullptr};
-  const SweptFootprintConfig* footprint{nullptr};
-  const OccupancyGrid3D* static_occupancy{nullptr};
-  const ObservedOccupancyGrid3D* observed_occupancy{nullptr};
-  const LaunchSupportContact3D* launch_support_contact{nullptr};
-  const OccupancyGrid2D* raw_occupancy{nullptr};
-  std::span<const Point3> latest_lidar_obstacle_points;
-  std::optional<FiniteExecutionPathTerminalBoundary> terminal_boundary;
-};
-
-struct RebuiltFiniteExecutionPathContinuation {
-  std::optional<FiniteHorizon> horizon;
-  FiniteExecutionPathValidation validation{};
-  std::size_t source_control_index{0U};
-  std::size_t arrival_shaping_attempts{0U};
-  std::int64_t valid_until_ns{0};
-  bool path_validation_backoff{false};
-  bool persistent_raw_path_validation_backoff{false};
-  bool latest_lidar_path_validation_backoff{false};
-
-  [[nodiscard]] bool accepted() const noexcept {
-    return horizon.has_value() && validation.accepted();
-  }
-
-  [[nodiscard]] bool physicalObstacleValidationBackoff() const noexcept {
-    return persistent_raw_path_validation_backoff ||
-           latest_lidar_path_validation_backoff;
-  }
-};
-
-struct ValidatedFiniteExecutionPath {
-  std::optional<FiniteHorizon> horizon;
-  FiniteExecutionPathValidation validation{};
-  std::size_t arrival_shaping_attempts{0U};
-  bool path_validation_backoff{false};
-  FiniteExecutionPathStatus first_failed_validation_status{
-      FiniteExecutionPathStatus::kValid};
-  bool persistent_raw_path_validation_backoff{false};
-  bool latest_lidar_path_validation_backoff{false};
-
-  [[nodiscard]] bool accepted() const noexcept {
-    return horizon.has_value() && validation.accepted();
-  }
-
-  [[nodiscard]] bool physicalObstacleValidationBackoff() const noexcept {
-    return persistent_raw_path_validation_backoff ||
-           latest_lidar_path_validation_backoff;
-  }
-};
-
-using FiniteExecutionPathCandidateValidator = std::function<bool(const FiniteHorizon&)>;
-
-[[nodiscard]] FiniteExecutionPathValidation
-validateCompleteFiniteExecutionPath(std::span<const TimedExecutionPathPoint> points,
-                                    const Control& previous_applied_control,
-                                    const FiniteExecutionPathWorld& world) noexcept;
-
-[[nodiscard]] ValidatedFiniteExecutionPath buildValidatedFiniteExecutionPath(
-    std::span<const State> planned_states, std::span<const Control> planned_controls,
+[[nodiscard]] inline ValidatedFiniteExecutionPath buildValidatedFiniteExecutionPath(
+    const std::span<const State> planned_states,
+    const std::span<const Control> planned_controls,
     const Control& previous_applied_control, const DynamicsConfig& dynamics,
-    std::size_t arrival_search_step_controls,
+    const std::size_t arrival_search_step_controls,
     const FiniteHorizonConfig& finite_horizon_config,
     const FiniteExecutionPathWorld& world,
-    FiniteExecutionPathCandidateValidator candidate_validator = {});
+    FiniteExecutionPathCandidateValidator candidate_validator = {}) {
+  return buildValidatedFiniteExecutionPath3D(
+      planned_states, planned_controls, previous_applied_control, dynamics,
+      arrival_search_step_controls, finite_horizon_config, world,
+      std::move(candidate_validator));
+}
 
-[[nodiscard]] FiniteExecutionPathValidation
+[[nodiscard]] inline FiniteExecutionPathValidation
 validateFiniteExecutionTrajectoryContinuation(
-    std::span<const TimedExecutionPathPoint> points, std::int64_t valid_from_ns,
-    std::int64_t valid_until_ns, std::int64_t now_ns, const State& current_state,
-    const Control& current_control, const FiniteExecutionPathWorld& world) noexcept;
+    const std::span<const TimedExecutionPathPoint> points,
+    const std::int64_t valid_from_ns, const std::int64_t valid_until_ns,
+    const std::int64_t now_ns, const State& current_state,
+    const Control& current_control, const FiniteExecutionPathWorld& world) noexcept {
+  return validateFiniteExecutionTrajectoryContinuation3D(
+      points, valid_from_ns, valid_until_ns, now_ns, current_state, current_control,
+      world);
+}
 
-[[nodiscard]] FiniteExecutionPathValidation validateFiniteExecutionPathContinuation(
-    std::span<const TimedExecutionPathPoint> points, std::int64_t valid_from_ns,
-    std::int64_t valid_until_ns, std::int64_t now_ns, const State& current_state,
-    const Control& current_control, const FiniteExecutionPathWorld& world) noexcept;
+[[nodiscard]] inline FiniteExecutionPathValidation
+validateFiniteExecutionPathContinuation(
+    const std::span<const TimedExecutionPathPoint> points,
+    const std::int64_t valid_from_ns, const std::int64_t valid_until_ns,
+    const std::int64_t now_ns, const State& current_state,
+    const Control& current_control, const FiniteExecutionPathWorld& world) noexcept {
+  return validateFiniteExecutionPathContinuation3D(
+      points, valid_from_ns, valid_until_ns, now_ns, current_state, current_control,
+      world);
+}
 
-// The preserved prefix may include an already shaped arrival tail, while the
-// nominal prefix retains its original phase classification.
-[[nodiscard]] RebuiltFiniteExecutionPathContinuation
+[[nodiscard]] inline RebuiltFiniteExecutionPathContinuation
 rebuildFiniteExecutionPathContinuation(
-    std::span<const TimedExecutionPathPoint> points, std::int64_t valid_from_ns,
-    std::int64_t valid_until_ns, std::int64_t now_ns, const State& current_state,
-    const Control& current_control, std::size_t source_nominal_prefix_control_count,
-    std::size_t source_preserved_prefix_control_count, const DynamicsConfig& dynamics,
-    std::size_t arrival_search_step_controls,
+    const std::span<const TimedExecutionPathPoint> points,
+    const std::int64_t valid_from_ns, const std::int64_t valid_until_ns,
+    const std::int64_t now_ns, const State& current_state,
+    const Control& current_control,
+    const std::size_t source_nominal_prefix_control_count,
+    const std::size_t source_preserved_prefix_control_count,
+    const DynamicsConfig& dynamics, const std::size_t arrival_search_step_controls,
     const FiniteHorizonConfig& finite_horizon_config,
     const FiniteExecutionPathWorld& world,
-    FiniteExecutionPathCandidateValidator candidate_validator = {});
+    FiniteExecutionPathCandidateValidator candidate_validator = {}) {
+  return rebuildFiniteExecutionPathContinuation3D(
+      points, valid_from_ns, valid_until_ns, now_ns, current_state, current_control,
+      source_nominal_prefix_control_count, source_preserved_prefix_control_count,
+      dynamics, arrival_search_step_controls, finite_horizon_config, world,
+      std::move(candidate_validator));
+}
 
-[[nodiscard]] const char*
-finiteExecutionPathStatusName(FiniteExecutionPathStatus status) noexcept;
+[[nodiscard]] inline const char*
+finiteExecutionPathStatusName(const FiniteExecutionPathStatus status) noexcept {
+  return finiteExecutionPathStatus3DName(status);
+}
 
 } // namespace drone_city_nav::mppi

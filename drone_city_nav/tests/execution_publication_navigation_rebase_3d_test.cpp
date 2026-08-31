@@ -14,9 +14,9 @@ namespace {
 [[nodiscard]] std::shared_ptr<const VersionedExecutionInput3D>
 advanceExecutionInput(const VersionedExecutionInput3D& source,
                       const std::int64_t publication_now_ns,
-                      std::optional<mppi::State> state = std::nullopt,
+                      std::optional<MotionState3D> state = std::nullopt,
                       const bool refresh_receive_witness = false,
-                      std::optional<mppi::Control> previous_control = std::nullopt) {
+                      std::optional<MotionControl3D> previous_control = std::nullopt) {
   const std::int64_t receive_stamp_ns = refresh_receive_witness
                                             ? publication_now_ns - 5'000'000LL
                                             : source.poseReceiveStampNs() + 10'000;
@@ -92,7 +92,7 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
   const std::shared_ptr<const VersionedExecutionInput3D> current_input =
       advanceExecutionInput(*candidate_owner.execution_input, publication_now_ns);
   ASSERT_NE(current_input, nullptr);
-  mppi::FiniteHorizonConfig finite_horizon_config;
+  FiniteMotionHorizonConfig3D finite_horizon_config;
 
   ExecutionPublicationNavigationRebaseResult3D result =
       rebaseExecutionPublicationForCurrentNavigation3D(
@@ -111,10 +111,10 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
 
   ASSERT_TRUE(result.rebased())
       << executionPublicationNavigationRebaseStatus3DName(result.status) << ' '
-      << mppi::finiteExecutionPathStatusName(result.path_validation_status) << ' '
+      << finiteExecutionPathStatus3DName(result.path_validation_status) << ' '
       << finiteExecutionCertificationStatus3DName(result.route_certification_status)
       << ' ' << executionRouteTransitionStatus3DName(result.transition_status);
-  EXPECT_EQ(result.path_validation_status, mppi::FiniteExecutionPathStatus::kValid);
+  EXPECT_EQ(result.path_validation_status, FiniteExecutionPathStatus3D::kValid);
   EXPECT_EQ(result.route_certification_status,
             FiniteExecutionCertificationStatus3D::kCertified);
   EXPECT_EQ(result.route_adherence_status,
@@ -131,7 +131,7 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
   EXPECT_EQ(rebased.valid_from_ns, publication_now_ns);
   ASSERT_NE(rebased.horizon, nullptr);
   EXPECT_EQ(rebased.horizon->states.front().x, current_input->state().x);
-  EXPECT_TRUE(mppi::finiteHorizonHasTerminalRestState(*rebased.horizon));
+  EXPECT_TRUE(finiteMotionHorizonHasTerminalRestState3D(*rebased.horizon));
 }
 
 TEST(ExecutionPublicationNavigationRebase3DTest,
@@ -200,7 +200,7 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
       advanceLidarEvidence(*candidate_owner.latest_lidar_evidence, publication_now_ns);
   ASSERT_NE(current_input, nullptr);
   ASSERT_NE(current_lidar, nullptr);
-  mppi::FiniteHorizonConfig finite_horizon_config;
+  FiniteMotionHorizonConfig3D finite_horizon_config;
 
   const ExecutionPublicationNavigationRebaseResult3D result =
       rebaseExecutionPublicationForCurrentNavigation3D(
@@ -219,7 +219,7 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
 
   ASSERT_TRUE(result.rebased())
       << executionPublicationNavigationRebaseStatus3DName(result.status) << ' '
-      << mppi::finiteExecutionPathStatusName(result.path_validation_status) << ' '
+      << finiteExecutionPathStatus3DName(result.path_validation_status) << ' '
       << finiteExecutionCertificationStatus3DName(result.route_certification_status)
       << ' ' << executionRouteTransitionStatus3DName(result.transition_status);
   EXPECT_EQ(result.transition_status, ExecutionRouteTransitionStatus3D::kApplied);
@@ -295,7 +295,7 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
       });
   ASSERT_NE(current_input, nullptr);
   ASSERT_NE(current_lidar, nullptr);
-  mppi::FiniteHorizonConfig finite_horizon_config;
+  FiniteMotionHorizonConfig3D finite_horizon_config;
 
   const ExecutionPublicationNavigationRebaseResult3D result =
       rebaseExecutionPublicationForCurrentNavigation3D(
@@ -313,7 +313,7 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
 
   ASSERT_TRUE(result.rebased())
       << executionPublicationNavigationRebaseStatus3DName(result.status) << ' '
-      << mppi::finiteExecutionPathStatusName(result.path_validation_status) << ' '
+      << finiteExecutionPathStatus3DName(result.path_validation_status) << ' '
       << finiteExecutionCertificationStatus3DName(result.route_certification_status)
       << ' ' << executionRouteTransitionStatus3DName(result.transition_status);
   ASSERT_TRUE(result.transition.has_value());
@@ -375,7 +375,7 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
       });
   ASSERT_NE(current_input, nullptr);
   ASSERT_NE(current_lidar, nullptr);
-  mppi::FiniteHorizonConfig finite_horizon_config;
+  FiniteMotionHorizonConfig3D finite_horizon_config;
 
   const ExecutionPublicationNavigationRebaseResult3D result =
       rebaseExecutionPublicationForCurrentNavigation3D(
@@ -393,7 +393,7 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
 
   ASSERT_TRUE(result.rebased())
       << executionPublicationNavigationRebaseStatus3DName(result.status) << ' '
-      << mppi::finiteExecutionPathStatusName(result.path_validation_status) << ' '
+      << finiteExecutionPathStatus3DName(result.path_validation_status) << ' '
       << finiteExecutionCertificationStatus3DName(result.route_certification_status)
       << ' ' << executionRouteTransitionStatus3DName(result.transition_status);
   ASSERT_TRUE(result.transition.has_value());
@@ -448,7 +448,7 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
       advanceLidarEvidence(*candidate_owner.latest_lidar_evidence, publication_now_ns);
   ASSERT_NE(current_input, nullptr);
   ASSERT_NE(current_lidar, nullptr);
-  mppi::FiniteHorizonConfig finite_horizon_config;
+  FiniteMotionHorizonConfig3D finite_horizon_config;
 
   const ExecutionPublicationNavigationRebaseResult3D result =
       rebaseExecutionPublicationForCurrentNavigation3D(
@@ -467,10 +467,10 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
 
   ASSERT_TRUE(result.rebased())
       << executionPublicationNavigationRebaseStatus3DName(result.status) << ' '
-      << mppi::finiteExecutionPathStatusName(result.path_validation_status) << ' '
+      << finiteExecutionPathStatus3DName(result.path_validation_status) << ' '
       << finiteExecutionCertificationStatus3DName(result.route_certification_status)
       << ' ' << executionRouteTransitionStatus3DName(result.transition_status);
-  EXPECT_EQ(result.path_validation_status, mppi::FiniteExecutionPathStatus::kValid);
+  EXPECT_EQ(result.path_validation_status, FiniteExecutionPathStatus3D::kValid);
   EXPECT_EQ(result.route_certification_status,
             FiniteExecutionCertificationStatus3D::kCertified);
   EXPECT_EQ(result.route_adherence_status,
@@ -540,7 +540,7 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
                            publication_now_ns);
   ASSERT_NE(current_input, nullptr);
   ASSERT_NE(current_lidar, nullptr);
-  mppi::FiniteHorizonConfig finite_horizon_config;
+  FiniteMotionHorizonConfig3D finite_horizon_config;
 
   const ExecutionPublicationNavigationRebaseResult3D result =
       rebaseExecutionPublicationForCurrentNavigation3D(
@@ -560,7 +560,7 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
 
   ASSERT_TRUE(result.rebased())
       << executionPublicationNavigationRebaseStatus3DName(result.status) << ' '
-      << mppi::finiteExecutionPathStatusName(result.path_validation_status) << ' '
+      << finiteExecutionPathStatus3DName(result.path_validation_status) << ' '
       << finiteExecutionCertificationStatus3DName(result.route_certification_status)
       << ' ' << executionRouteTransitionStatus3DName(result.transition_status);
   ASSERT_TRUE(result.transition.has_value());
@@ -633,7 +633,7 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
                            publication_now_ns);
   ASSERT_NE(current_input, nullptr);
   ASSERT_NE(current_lidar, nullptr);
-  mppi::FiniteHorizonConfig finite_horizon_config;
+  FiniteMotionHorizonConfig3D finite_horizon_config;
 
   const ExecutionPublicationNavigationRebaseResult3D result =
       rebaseExecutionPublicationForCurrentNavigation3D(
@@ -652,7 +652,7 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
 
   ASSERT_TRUE(result.rebased())
       << executionPublicationNavigationRebaseStatus3DName(result.status) << ' '
-      << mppi::finiteExecutionPathStatusName(result.path_validation_status) << ' '
+      << finiteExecutionPathStatus3DName(result.path_validation_status) << ' '
       << finiteExecutionCertificationStatus3DName(result.route_certification_status)
       << ' ' << executionRouteTransitionStatus3DName(result.transition_status);
   ASSERT_TRUE(result.transition.has_value());
@@ -699,13 +699,13 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
   ASSERT_NE(candidate_owner.latest_lidar_evidence, nullptr);
   ASSERT_NE(candidate_owner.observed_raw_world, nullptr);
   const std::int64_t publication_now_ns = candidate_owner.valid_from_ns + 20'000'000;
-  mppi::State off_route_state = candidate_owner.execution_input->state();
+  MotionState3D off_route_state = candidate_owner.execution_input->state();
   off_route_state.y = 3.0F;
   const std::shared_ptr<const VersionedExecutionInput3D> current_input =
       advanceExecutionInput(*candidate_owner.execution_input, publication_now_ns,
                             off_route_state);
   ASSERT_NE(current_input, nullptr);
-  mppi::FiniteHorizonConfig finite_horizon_config;
+  FiniteMotionHorizonConfig3D finite_horizon_config;
 
   const ExecutionPublicationNavigationRebaseResult3D result =
       rebaseExecutionPublicationForCurrentNavigation3D(
@@ -724,7 +724,7 @@ TEST(ExecutionPublicationNavigationRebase3DTest,
   EXPECT_FALSE(result.rebased());
   EXPECT_EQ(result.status, ExecutionPublicationNavigationRebaseStatus3D::kPathRejected);
   EXPECT_EQ(result.path_validation_status,
-            mppi::FiniteExecutionPathStatus::kCandidateRejected);
+            FiniteExecutionPathStatus3D::kCandidateRejected);
   EXPECT_EQ(result.route_certification_status,
             FiniteExecutionCertificationStatus3D::kExecutionBindingRejected);
   EXPECT_EQ(result.route_adherence_status,

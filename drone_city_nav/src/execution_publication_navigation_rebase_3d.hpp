@@ -1,7 +1,8 @@
 #pragma once
 
 #include "drone_city_nav/execution_route_transitions_3d.hpp"
-#include "drone_city_nav/mppi/finite_execution_path.hpp"
+#include "drone_city_nav/finite_execution_path_3d.hpp"
+#include "drone_city_nav/finite_motion_horizon_3d.hpp"
 #include "drone_city_nav/pending_certified_route_3d.hpp"
 
 #include <cstddef>
@@ -38,16 +39,16 @@ struct ExecutionPublicationNavigationRebaseRequest3D {
   std::shared_ptr<const VersionedObservedRawWorld3D> current_observed_raw_world;
   std::int64_t publication_now_ns{0};
   std::size_t arrival_search_step_controls{0U};
-  const mppi::FiniteHorizonConfig* finite_horizon_config{nullptr};
-  std::optional<mppi::FiniteExecutionPathTerminalBoundary> terminal_boundary;
+  const FiniteMotionHorizonConfig3D* finite_horizon_config{nullptr};
+  std::optional<FiniteExecutionPathTerminalBoundary3D> terminal_boundary;
 };
 
 struct ExecutionPublicationNavigationRebaseResult3D {
   ExecutionPublicationNavigationRebaseStatus3D status{
       ExecutionPublicationNavigationRebaseStatus3D::kInvalidRequest};
   std::optional<ExecutionRouteTransitionResult3D> transition;
-  mppi::FiniteExecutionPathStatus path_validation_status{
-      mppi::FiniteExecutionPathStatus::kInvalidContract};
+  FiniteExecutionPathStatus3D path_validation_status{
+      FiniteExecutionPathStatus3D::kInvalidContract};
   FiniteExecutionCertificationStatus3D route_certification_status{
       FiniteExecutionCertificationStatus3D::kInvalidInput};
   FiniteExecutionRouteAdherenceStatus3D route_adherence_status{

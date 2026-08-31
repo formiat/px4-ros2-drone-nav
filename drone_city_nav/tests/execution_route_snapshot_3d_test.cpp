@@ -416,7 +416,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   missing_policy.validation_policy.reset();
   EXPECT_FALSE(missing_policy.valid());
 
-  mppi::DynamicsConfig changed_dynamics = raw_suffix->validation_policy->dynamics();
+  MotionDynamicsConfig3D changed_dynamics = raw_suffix->validation_policy->dynamics();
   changed_dynamics.dt_s *= 2.0F;
   CertifiedRouteSuffix3D changed_policy = *raw_suffix;
   changed_policy.validation_policy = VersionedExecutionValidationPolicy3D::capture(

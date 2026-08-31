@@ -214,8 +214,8 @@ TEST(ExecutionRouteSnapshot3DTest,
   FiniteExecutionCertification3D stationary_certification =
       SnapshotFixture3D::finiteCertificationForRoute(
           *active->route(), FiniteExecutionKind3D::kNominal, 101U);
-  const std::optional<mppi::FiniteHorizon> stationary_horizon =
-      mppi::buildFiniteBrakingHorizon(
+  const std::optional<FiniteMotionHorizon3D> stationary_horizon =
+      buildFiniteBrakingHorizon3D(
           stationary_certification.horizon.states.front(),
           stationary_certification.horizon.controls.size(),
           active->route()->validation_policy->dynamics(),
@@ -238,14 +238,14 @@ TEST(ExecutionRouteSnapshot3DTest,
       fixture.rawWorld(SnapshotFixture3D::kLatestRawRevision + 1U, &far_route_obstacle);
   ASSERT_NE(far_route_world, nullptr);
 
-  const mppi::FiniteExecutionPathValidation unaffected =
+  const FiniteExecutionPathValidation3D unaffected =
       validateRemainingFiniteExecutionAgainstObservedWorld3D(
           *stationary_execution, *stationary_execution->execution_input,
           *far_route_world, stationary_execution->valid_from_ns);
-  EXPECT_EQ(unaffected.status, mppi::FiniteExecutionPathStatus::kValid);
+  EXPECT_EQ(unaffected.status, FiniteExecutionPathStatus3D::kValid);
 
   ObservedOccupancyGrid3D active_trajectory_obstacle = fixture.raw_occupancy;
-  const mppi::State& active_state = stationary_execution->execution_input->state();
+  const MotionState3D& active_state = stationary_execution->execution_input->state();
   const std::optional<GridIndex3D> active_cell = active_trajectory_obstacle.worldToCell(
       Point3{active_state.x, active_state.y, active_state.z});
   ASSERT_TRUE(active_cell.has_value());
@@ -256,11 +256,11 @@ TEST(ExecutionRouteSnapshot3DTest,
                        &active_trajectory_obstacle);
   ASSERT_NE(active_world, nullptr);
 
-  const mppi::FiniteExecutionPathValidation blocked =
+  const FiniteExecutionPathValidation3D blocked =
       validateRemainingFiniteExecutionAgainstObservedWorld3D(
           *stationary_execution, *stationary_execution->execution_input, *active_world,
           stationary_execution->valid_from_ns);
-  EXPECT_EQ(blocked.status, mppi::FiniteExecutionPathStatus::kRawCollision);
+  EXPECT_EQ(blocked.status, FiniteExecutionPathStatus3D::kRawCollision);
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
@@ -542,7 +542,7 @@ TEST(ExecutionRouteSnapshot3DTest,
                       FiniteExecutionKind3D::kEmergencyBrakeTail)
           .has_value());
 
-  const mppi::State& current_state =
+  const MotionState3D& current_state =
       following.next->route()->progress.execution_input->state();
   const Point3 current_position{current_state.x, current_state.y, current_state.z};
   const std::optional<GridIndex3D> current_cell =
@@ -667,11 +667,11 @@ TEST(ExecutionRouteSnapshot3DTest,
 TEST(ExecutionRouteSnapshot3DTest,
      RawInvalidationRetirementAcceptsACertifiedOffRouteConnector) {
   SnapshotFixture3D fixture;
-  mppi::DynamicsConfig dynamics;
+  MotionDynamicsConfig3D dynamics;
   dynamics.dt_s = 0.1F;
   dynamics.linear_drag_1ps = 0.0F;
   fixture.validation_policy = VersionedExecutionValidationPolicy3D::capture(
-      FlightEnvelopeConfig{}, dynamics, mppi::AltitudeEnvelopeConfig{},
+      FlightEnvelopeConfig{}, dynamics, MotionAltitudeEnvelopeConfig3D{},
       testPassageVolumeConfig().footprint, 100.0, 1000.0, 1000.0, false, true, false);
   const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);
@@ -695,7 +695,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       SnapshotFixture3D::finiteCertificationForRoute(
           *following.next->route(), FiniteExecutionKind3D::kEmergencyBrakeTail, 102U,
           56U, 0U, 4.0);
-  for (mppi::State& state : certification.horizon.states) {
+  for (MotionState3D& state : certification.horizon.states) {
     state.y = 1.0F;
   }
   const VersionedExecutionInput3D& source_input = *certification.execution_input;

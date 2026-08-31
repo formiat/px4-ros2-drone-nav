@@ -2,7 +2,7 @@
 
 #include "drone_city_nav/compiled_trajectory_3d.hpp"
 #include "drone_city_nav/execution_route_model_3d.hpp"
-#include "drone_city_nav/mppi/finite_execution_path.hpp"
+#include "drone_city_nav/finite_execution_path_3d.hpp"
 #include "drone_city_nav/route_execution_contract_3d.hpp"
 
 #include <cstdint>
@@ -147,7 +147,7 @@ struct FiniteExecutionState3D {
   std::uint64_t source_geometry_revision{0U};
   std::uint64_t source_physical_route_fingerprint{0U};
   RouteSuffixCertificate3D certificate{StaticRouteCertificate3D{}};
-  std::shared_ptr<const mppi::FiniteHorizon> horizon;
+  std::shared_ptr<const FiniteMotionHorizon3D> horizon;
   std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_world;
   std::shared_ptr<const VersionedStaticWorld3D> static_world;
   std::shared_ptr<const VersionedExecutionValidationPolicy3D> validation_policy;
@@ -168,14 +168,14 @@ struct FiniteExecutionState3D {
 
 // Raw-world and acquisition-aligned lidar changes invalidate only an occupied
 // intersection with the still-active part of an already-published finite path.
-[[nodiscard]] mppi::FiniteExecutionPathValidation
+[[nodiscard]] FiniteExecutionPathValidation3D
 validateRemainingFiniteExecutionAgainstObservedWorld3D(
     const FiniteExecutionState3D& execution,
     const VersionedExecutionInput3D& current_input,
     const VersionedObservedRawWorld3D& current_world,
     std::int64_t validation_stamp_ns) noexcept;
 
-[[nodiscard]] mppi::FiniteExecutionPathValidation
+[[nodiscard]] FiniteExecutionPathValidation3D
 validateRemainingFiniteExecutionAgainstLatestLidar3D(
     const FiniteExecutionState3D& execution,
     const VersionedExecutionInput3D& current_input,

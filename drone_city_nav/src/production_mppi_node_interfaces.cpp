@@ -1,3 +1,5 @@
+#include "drone_city_nav/mppi/static_route_handoff.hpp"
+
 #include <algorithm>
 #include <chrono>
 #include <exception>
@@ -202,7 +204,15 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
               .passage_volume = cooperative_passage_volume_config_,
               .certified_splice = certified_route_splice_config_,
               .validation_policy = execution_validation_policy_,
-              .mppi = mppi_config_,
+              .route_risk =
+                  RouteRiskPolicy3D{
+                      .critical_distance_m =
+                          static_cast<double>(mppi_config_.risk.critical_distance_m),
+                      .preferred_distance_m =
+                          static_cast<double>(mppi_config_.risk.preferred_distance_m),
+                  },
+              .dynamic_handoff_validator =
+                  mppi::makeMppiDynamicHandoffValidator3D(mppi_config_),
               .cruise_speed_mps = speed_policy_config_.cruise_speed_mps,
               .maximum_control_feedback_age_ms = maximum_control_feedback_age_ms_,
           });

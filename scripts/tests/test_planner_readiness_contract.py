@@ -65,15 +65,15 @@ OFFBOARD_SESSION_ADMISSION = SOURCE / "offboard_session_admission.cpp"
 MISSION_WAYPOINT_SEQUENCE = SOURCE / "mission_waypoint_sequence.cpp"
 SPEED_POLICY = PACKAGE / "include" / "drone_city_nav" / "mppi_speed_policy.hpp"
 FINITE_HORIZON_HEADER = (
-    PACKAGE / "include" / "drone_city_nav" / "mppi" / "mppi_finite_horizon.hpp"
+    PACKAGE / "include" / "drone_city_nav" / "control_contracts_3d.hpp"
 )
 STOPPING_CAPABILITY = (
     PACKAGE / "include" / "drone_city_nav" / "stopping_capability.hpp"
 )
 MPPI_REFERENCE = SOURCE / "mppi" / "mppi_reference.cpp"
 MPPI_KERNELS = SOURCE / "mppi" / "mppi_engine_kernels.cuh"
-FINITE_HORIZON = SOURCE / "mppi" / "mppi_finite_horizon.cpp"
-FINITE_EXECUTION_PATH = SOURCE / "mppi" / "finite_execution_path.cpp"
+FINITE_HORIZON = SOURCE / "finite_motion_horizon_3d.cpp"
+FINITE_EXECUTION_PATH = SOURCE / "finite_execution_path_3d.cpp"
 REFEREE = SOURCE / "intercept_mission_referee_node.cpp"
 REFEREE_LIFECYCLE = SOURCE / "intercept_mission_referee_lifecycle.cpp"
 REFEREE_SUPPORT = SOURCE / "intercept_referee_support.cpp"
@@ -237,8 +237,8 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self.assertIn("plannedFinitePathCompleted", offboard)
         self.assertIn("buildMppiPathTrajectorySetpoint", offboard)
         self.assertIn("buildValidatedFiniteExecutionPath", execution)
-        self.assertIn("buildFiniteHorizon", finite_execution_path)
-        self.assertIn("finiteHorizonHasTerminalRestState", finite_horizon)
+        self.assertIn("buildFiniteMotionHorizon3D", finite_execution_path)
+        self.assertIn("finiteMotionHorizonHasTerminalRestState3D", finite_horizon)
         self.assertNotIn(
             "finite_path_arrival_maximum_horizontal_deceleration_mps2", planner
         )

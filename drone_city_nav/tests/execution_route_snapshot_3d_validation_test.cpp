@@ -5,9 +5,9 @@
 namespace drone_city_nav {
 namespace {
 
-[[nodiscard]] std::shared_ptr<const VersionedExecutionInput3D>
-stationaryCaptureInput(const VersionedExecutionInput3D& source,
-                       const std::optional<mppi::State> state_override = std::nullopt) {
+[[nodiscard]] std::shared_ptr<const VersionedExecutionInput3D> stationaryCaptureInput(
+    const VersionedExecutionInput3D& source,
+    const std::optional<MotionState3D> state_override = std::nullopt) {
   const ExecutionStateProvenance3D source_sample{
       .x = ExecutionStateFieldProvenance3D::kSourceSample,
       .y = ExecutionStateFieldProvenance3D::kSourceSample,
@@ -162,7 +162,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       transferToExecutionHold3D(*active, active->version, std::move(early)).status,
       ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
 
-  const mppi::State& terminal = active->finiteExecution()->horizon->states.back();
+  const MotionState3D& terminal = active->finiteExecution()->horizon->states.back();
   const Point3 discontinuous_position{terminal.x + 1.0, terminal.y, terminal.z};
   StationaryExecutionHoldCertification3D discontinuous =
       SnapshotFixture3D::holdCertification(*active, true, discontinuous_position);
@@ -174,7 +174,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   StationaryExecutionHoldCertification3D certification =
       SnapshotFixture3D::holdCertification(
           *active, true, std::nullopt, std::nullopt, 0.1F,
-          mppi::Control{.ax = 0.05F, .yaw_accel = 0.02F});
+          MotionControl3D{.ax = 0.05F, .yaw_accel = 0.02F});
   const Point3 hold_position = certification.position;
 
   const ExecutionRouteTransitionResult3D transferred =
@@ -272,7 +272,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   EXPECT_TRUE(rearmed.next->valid());
 
   StationaryExecutionHoldCertification3D moving = terminal;
-  mppi::State moving_state = terminal.execution_input->state();
+  MotionState3D moving_state = terminal.execution_input->state();
   moving_state.vx =
       static_cast<float>(kStationaryExecutionHoldSpeedToleranceMps + 0.01);
   moving.execution_input =
@@ -768,7 +768,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_TRUE(accepted.next->finiteExecution() != nullptr);
   EXPECT_EQ(accepted.next->finiteExecution()->source_route_generation,
             active->route()->identity.generation);
-  EXPECT_TRUE(mppi::finiteHorizonHasTerminalRestState(
+  EXPECT_TRUE(finiteMotionHorizonHasTerminalRestState3D(
       *accepted.next->finiteExecution()->horizon));
 
   FiniteExecutionState3D wrong_route = finite;
@@ -793,7 +793,7 @@ TEST(ExecutionRouteSnapshot3DTest,
             ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
 
   FiniteExecutionState3D inconsistent_counts = finite;
-  auto inconsistent_horizon = std::make_shared<mppi::FiniteHorizon>(*finite.horizon);
+  auto inconsistent_horizon = std::make_shared<FiniteMotionHorizon3D>(*finite.horizon);
   ++inconsistent_horizon->arrival_control_count;
   inconsistent_counts.horizon = std::move(inconsistent_horizon);
   EXPECT_EQ(replaceFiniteExecution3D(*active, SnapshotFixture3D::guard(*active),
@@ -873,7 +873,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_NE(resident.latest_lidar_evidence, nullptr);
 
   const auto input_capture = [&](const std::uint64_t capture_sequence,
-                                 const mppi::Control control) {
+                                 const MotionControl3D control) {
     return VersionedExecutionInput3D::capture(ExecutionInputCapture3D{
         .capture_sequence = capture_sequence,
         .pose_revision = resident.execution_input->poseRevision(),
@@ -933,7 +933,7 @@ TEST(ExecutionRouteSnapshot3DTest,
                   ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
       };
 
-  mppi::Control conflicting_control = resident.execution_input->previousControl();
+  MotionControl3D conflicting_control = resident.execution_input->previousControl();
   conflicting_control.ax += 0.01F;
   expect_replacement_rejected(certify_candidate(
       input_capture(resident.execution_input->captureSequence(), conflicting_control),

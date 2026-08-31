@@ -1,7 +1,6 @@
 #include "route_activation_coordinator_3d.hpp"
 
 #include "drone_city_nav/execution_route_certification_3d.hpp"
-#include "drone_city_nav/mppi/trajectory_reference_adapter_3d.hpp"
 #include "drone_city_nav/route_risk_annotation_3d.hpp"
 
 #include <algorithm>
@@ -120,8 +119,9 @@ RouteActivationCoordinator3D::RouteActivationCoordinator3D(
     const RouteActivationCoordinatorConfig3D& config)
     : config_{config},
       trajectory_compiler_{config.trajectory_compiler} {
-  if (!config_.successor_improvement.valid()) {
-    throw std::invalid_argument{"invalid route successor improvement configuration"};
+  if (!config_.successor_improvement.valid() || !config_.route_risk.valid() ||
+      !config_.dynamic_handoff_validator) {
+    throw std::invalid_argument{"invalid route activation coordinator configuration"};
   }
 }
 
@@ -139,7 +139,7 @@ bool RouteAdmissionReport3D::readyForArbitration(
   }
   const CompiledTrajectory3D& trajectory = *proposal.trajectory;
   return proposal.identity.activation_eligible && assessment.accepted() &&
-         handoff.accepted && trajectory.route && trajectory.constrained_spans &&
+         handoff.accepted() && trajectory.route && trajectory.constrained_spans &&
          trajectory.passage_volumes && trajectory.cooperative_passage_assignments &&
          trajectory.selected_passage_traversal_ids &&
          trajectory.materialized_route_fingerprint ==
@@ -222,11 +222,11 @@ PreparedRouteActivation3D RouteActivationCoordinator3D::prepare(
           candidate.world->local_world_generation.generation) {
     auto rebased_route = std::make_shared<std::vector<RouteSample3D>>(*candidate.route);
     const RouteRiskAnnotationResult3D risk_assignment =
-        annotateRouteRiskTiersFromDerivedEsdf3D(*rebased_route,
-                                                snapshot.resident_world->grid,
-                                                *snapshot.resident_world->distances_m,
-                                                config_.mppi.risk.critical_distance_m,
-                                                config_.mppi.risk.preferred_distance_m);
+        annotateRouteRiskTiersFromDerivedEsdf3D(
+            *rebased_route, snapshot.resident_world->grid,
+            *snapshot.resident_world->distances_m,
+            config_.route_risk.critical_distance_m,
+            config_.route_risk.preferred_distance_m);
     if (!risk_assignment.accepted()) {
       report.candidate_validation = StaticRouteCandidateValidation{
           .status = candidateStatusFromRiskAssignment(risk_assignment.status),
@@ -522,24 +522,27 @@ PreparedRouteActivation3D RouteActivationCoordinator3D::prepare(
   const bool handoff_control_fresh = appliedControlAuthoritativeForExecution(
       captured_control, captured_owner, snapshot.stamp_ns,
       config_.maximum_control_feedback_age_ms);
-  const std::shared_ptr<const std::vector<mppi::RouteSample3D>> mppi_reference =
-      result.proposal.trajectory != nullptr
-          ? mppi::adaptTrajectoryReference3D(*result.proposal.trajectory)
-          : nullptr;
   if (result.proposal.identity.activation_eligible && report.assessment.accepted() &&
-      mppi_reference && candidate.world->distances_m && snapshot.navigation.valid) {
-    report.handoff = mppi::validateStaticRouteHandoff(
-        snapshot.navigation.state,
-        handoff_control_fresh ? captured_control.control : mppi::Control{},
-        *mppi_reference, static_cast<float>(config_.cruise_speed_mps),
-        static_cast<float>(config_.route_tracking.maximum_cross_track_m),
-        static_cast<float>(kFiniteExecutionRouteCrossTrackToleranceM3D), config_.mppi,
-        candidate.world->grid, *candidate.world->distances_m);
+      result.proposal.trajectory != nullptr && candidate.world->distances_m &&
+      snapshot.navigation.valid) {
+    report.handoff = config_.dynamic_handoff_validator(DynamicHandoffRequest3D{
+        .current_state = snapshot.navigation.state,
+        .previous_applied_control =
+            handoff_control_fresh ? captured_control.control : MotionControl3D{},
+        .candidate_trajectory = result.proposal.trajectory,
+        .reference_speed_mps = static_cast<float>(config_.cruise_speed_mps),
+        .maximum_cross_track_m =
+            static_cast<float>(config_.route_tracking.maximum_cross_track_m),
+        .terminal_cross_track_tolerance_m =
+            static_cast<float>(kFiniteExecutionRouteCrossTrackToleranceM3D),
+        .grid = candidate.world->grid,
+        .derived_distances_m = candidate.world->distances_m,
+    });
   }
 
   result.proposal.identity.activation_eligible =
       result.proposal.identity.activation_eligible && report.assessment.accepted() &&
-      report.handoff.accepted && result.proposal.trajectory != nullptr &&
+      report.handoff.accepted() && result.proposal.trajectory != nullptr &&
       result.proposal.trajectory->route &&
       result.proposal.trajectory->constrained_spans && report.world_compatible &&
       report.objective_matches && report.trajectory_validation.valid();
@@ -909,7 +912,7 @@ RouteActivationCommitResult3D RouteActivationCoordinator3D::commit(
              overlap_search && report.route_certified && !report.splice.certified()) {
     report.activation_status = StaticRouteActivationStatus::kCertifiedSpliceRejected;
   } else if (!published_pending && report.candidate_validation.accepted &&
-             (!report.assessment.accepted() || !report.handoff.accepted ||
+             (!report.assessment.accepted() || !report.handoff.accepted() ||
               !report.route_certified)) {
     report.activation_status = StaticRouteActivationStatus::kDynamicHandoffRejected;
   }

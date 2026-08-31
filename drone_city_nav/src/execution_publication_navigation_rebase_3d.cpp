@@ -9,7 +9,7 @@ namespace drone_city_nav {
 namespace {
 
 struct FiniteExecutionCandidateView3D {
-  const mppi::FiniteHorizon* horizon{nullptr};
+  const FiniteMotionHorizon3D* horizon{nullptr};
   const VersionedExecutionInput3D* execution_input{nullptr};
   const VersionedExecutionValidationPolicy3D* policy{nullptr};
   const VersionedStaticWorld3D* static_world{nullptr};
@@ -50,9 +50,9 @@ candidateView(const ExecutionPlan3D& snapshot) noexcept {
   return std::nullopt;
 }
 
-[[nodiscard]] std::vector<mppi::TimedExecutionPathPoint>
+[[nodiscard]] std::vector<TimedExecutionPathPoint3D>
 timedPathPoints(const FiniteExecutionCandidateView3D& view) {
-  std::vector<mppi::TimedExecutionPathPoint> points;
+  std::vector<TimedExecutionPathPoint3D> points;
   if (view.horizon == nullptr || view.execution_input == nullptr ||
       view.control_interval_ns <= 0 || view.horizon->controls.empty() ||
       view.horizon->states.size() != view.horizon->controls.size() + 1U) {
@@ -64,7 +64,7 @@ timedPathPoints(const FiniteExecutionCandidateView3D& view) {
   }
   points.reserve(view.horizon->states.size());
   for (std::size_t index = 0U; index < view.horizon->states.size(); ++index) {
-    points.push_back(mppi::TimedExecutionPathPoint{
+    points.push_back(TimedExecutionPathPoint3D{
         .time_from_start_s = static_cast<double>(index) * step_s,
         .state = view.horizon->states[index],
         .control = index == 0U ? view.execution_input->previousControl()
@@ -96,7 +96,7 @@ publicationValidUntilNs(const FiniteExecutionCandidateView3D& view,
 
 [[nodiscard]] ExecutionRouteTransitionResult3D
 rebaseRouteExecution(const ExecutionPublicationNavigationRebaseRequest3D& request,
-                     const mppi::FiniteHorizon& horizon,
+                     const FiniteMotionHorizon3D& horizon,
                      FiniteExecutionCertificationResult3D& diagnostic,
                      ExecutionRouteTransitionStatus3D& transition_diagnostic) {
   const ExecutionPlan3D& resident = *request.expected_snapshot;
@@ -179,12 +179,11 @@ rebaseRouteExecution(const ExecutionPublicationNavigationRebaseRequest3D& reques
     transition_diagnostic = transition.status;
     return transition;
   }
-  const std::optional<mppi::FiniteHorizon> braking_tail =
-      mppi::buildFiniteBrakingHorizon(
-          horizon.states.front(), horizon.controls.size(),
-          candidate_execution.validation_policy->dynamics(),
-          request.current_execution_input->previousControl(),
-          *request.finite_horizon_config);
+  const std::optional<FiniteMotionHorizon3D> braking_tail =
+      buildFiniteBrakingHorizon3D(horizon.states.front(), horizon.controls.size(),
+                                  candidate_execution.validation_policy->dynamics(),
+                                  request.current_execution_input->previousControl(),
+                                  *request.finite_horizon_config);
   if (!braking_tail.has_value()) {
     return {};
   }
@@ -251,7 +250,7 @@ rebaseRouteExecution(const ExecutionPublicationNavigationRebaseRequest3D& reques
 
 [[nodiscard]] ExecutionRouteTransitionResult3D
 rebaseDirectExecution(const ExecutionPublicationNavigationRebaseRequest3D& request,
-                      const mppi::FiniteHorizon& horizon) {
+                      const FiniteMotionHorizon3D& horizon) {
   const ExecutionPlan3D& expected = *request.expected_snapshot;
   const DirectTrackingFiniteExecution3D* const candidate_execution =
       request.candidate_snapshot->directTrackingExecution();
@@ -353,8 +352,7 @@ rebaseExecutionPublicationForCurrentNavigation3D(
   const FiniteExecutionCandidateView3D* const path_source =
       published_view.has_value() ? std::addressof(*published_view)
                                  : std::addressof(*candidate_view);
-  const std::vector<mppi::TimedExecutionPathPoint> points =
-      timedPathPoints(*path_source);
+  const std::vector<TimedExecutionPathPoint3D> points = timedPathPoints(*path_source);
   std::optional<std::int64_t> reset_valid_until_ns;
   if (retained_published_route_continuation) {
     reset_valid_until_ns = path_source->valid_until_ns;
@@ -379,7 +377,7 @@ rebaseExecutionPublicationForCurrentNavigation3D(
   const std::optional<LaunchSupportContact3D>& launch_support =
       !static_world ? request.current_observed_raw_world->launchSupportContact()
                     : std::optional<LaunchSupportContact3D>{};
-  const mppi::FiniteExecutionPathWorld current_world{
+  const FiniteExecutionPathWorld3D current_world{
       .flight_envelope = &candidate_view->policy->flightEnvelope(),
       .dynamics = &candidate_view->policy->dynamics(),
       .altitude_envelope = &candidate_view->policy->altitudeEnvelope(),
@@ -399,11 +397,11 @@ rebaseExecutionPublicationForCurrentNavigation3D(
   FiniteExecutionCertificationResult3D route_certification_diagnostic;
   ExecutionRouteTransitionStatus3D route_transition_diagnostic{
       ExecutionRouteTransitionStatus3D::kInvalidCandidate};
-  mppi::FiniteExecutionPathCandidateValidator route_candidate_validator;
+  FiniteExecutionPathCandidateValidator3D route_candidate_validator;
   if (candidate_finite_execution != nullptr && candidate_route != nullptr) {
     route_candidate_validator =
         [&request, &transition, &route_certification_diagnostic,
-         &route_transition_diagnostic](const mppi::FiniteHorizon& candidate) {
+         &route_transition_diagnostic](const FiniteMotionHorizon3D& candidate) {
           ExecutionRouteTransitionResult3D candidate_transition =
               rebaseRouteExecution(request, candidate, route_certification_diagnostic,
                                    route_transition_diagnostic);
@@ -414,8 +412,8 @@ rebaseExecutionPublicationForCurrentNavigation3D(
           return true;
         };
   }
-  const mppi::RebuiltFiniteExecutionPathContinuation rebuilt =
-      mppi::rebuildFiniteExecutionPathContinuation(
+  const RebuiltFiniteExecutionPathContinuation3D rebuilt =
+      rebuildFiniteExecutionPathContinuation3D(
           // Only a retained candidate is a continuation of controls that were
           // actually published and may have executed during commit. A new
           // candidate starts at control zero: motion under a different owner

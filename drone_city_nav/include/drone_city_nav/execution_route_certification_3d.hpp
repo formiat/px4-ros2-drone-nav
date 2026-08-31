@@ -26,7 +26,7 @@ struct ExecutionRouteActivation3D {
 
 struct FiniteExecutionCertification3D {
   std::uint64_t trajectory_revision{0U};
-  mppi::FiniteHorizon horizon{};
+  FiniteMotionHorizon3D horizon{};
   std::shared_ptr<const VersionedExecutionInput3D> execution_input;
   std::shared_ptr<const VersionedLatestLidarEvidence3D> latest_lidar_evidence;
   std::int64_t valid_from_ns{0};
@@ -35,7 +35,7 @@ struct FiniteExecutionCertification3D {
 
 struct FiniteExecutionPlanCertification3D {
   FiniteExecutionCertification3D command_horizon{};
-  mppi::FiniteHorizon braking_tail{};
+  FiniteMotionHorizon3D braking_tail{};
 };
 
 enum class FiniteExecutionCertificationStatus3D : std::uint8_t {
@@ -115,7 +115,7 @@ struct DirectTrackingExecutionCertification3D {
   DirectTrackingOwnerIdentity3D identity{};
   std::uint64_t trajectory_revision{0U};
   Point3 target{};
-  mppi::FiniteHorizon horizon{};
+  FiniteMotionHorizon3D horizon{};
   std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_world;
   std::shared_ptr<const VersionedStaticWorld3D> static_world;
   std::shared_ptr<const VersionedExecutionValidationPolicy3D> validation_policy;

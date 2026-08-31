@@ -62,8 +62,8 @@ struct ExecutionHorizonRuntimeCurrentness3D {
 // Exact navigation/control witness captured by the runtime adapter. No mutable
 // node state or ROS message crosses the execution-service boundary.
 struct ExecutionHorizonNavigationWitness3D {
-  mppi::State state{};
-  mppi::Control measured_equivalent_control{};
+  MotionState3D state{};
+  MotionControl3D measured_equivalent_control{};
   std::uint64_t pose_revision{0U};
   std::uint64_t source_timestamp_us{0U};
   std::int64_t receive_stamp_ns{0};

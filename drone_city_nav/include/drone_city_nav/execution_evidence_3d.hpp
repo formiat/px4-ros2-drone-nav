@@ -1,8 +1,7 @@
 #pragma once
 
+#include "drone_city_nav/control_contracts_3d.hpp"
 #include "drone_city_nav/flight_envelope.hpp"
-#include "drone_city_nav/mppi/mppi_config.hpp"
-#include "drone_city_nav/mppi/mppi_types.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
 #include "drone_city_nav/types.hpp"
 
@@ -32,8 +31,8 @@ private:
 
 public:
   [[nodiscard]] static std::shared_ptr<const VersionedExecutionValidationPolicy3D>
-  capture(FlightEnvelopeConfig flight_envelope, mppi::DynamicsConfig dynamics,
-          mppi::AltitudeEnvelopeConfig altitude_envelope,
+  capture(FlightEnvelopeConfig flight_envelope, MotionDynamicsConfig3D dynamics,
+          MotionAltitudeEnvelopeConfig3D altitude_envelope,
           SweptFootprintConfig swept_footprint,
           double latest_lidar_maximum_age_ms = 1000.0,
           double execution_input_maximum_pose_age_ms = 1000.0,
@@ -43,8 +42,8 @@ public:
           bool route_tracking_tube_constraints_enabled = true);
 
   [[nodiscard]] const FlightEnvelopeConfig& flightEnvelope() const noexcept;
-  [[nodiscard]] const mppi::DynamicsConfig& dynamics() const noexcept;
-  [[nodiscard]] const mppi::AltitudeEnvelopeConfig& altitudeEnvelope() const noexcept;
+  [[nodiscard]] const MotionDynamicsConfig3D& dynamics() const noexcept;
+  [[nodiscard]] const MotionAltitudeEnvelopeConfig3D& altitudeEnvelope() const noexcept;
   [[nodiscard]] const SweptFootprintConfig& sweptFootprint() const noexcept;
   [[nodiscard]] double latestLidarMaximumAgeMs() const noexcept;
   [[nodiscard]] double executionInputMaximumPoseAgeMs() const noexcept;
@@ -57,8 +56,8 @@ public:
   [[nodiscard]] bool valid() const noexcept;
 
   VersionedExecutionValidationPolicy3D(
-      CaptureToken, FlightEnvelopeConfig flight_envelope, mppi::DynamicsConfig dynamics,
-      mppi::AltitudeEnvelopeConfig altitude_envelope,
+      CaptureToken, FlightEnvelopeConfig flight_envelope,
+      MotionDynamicsConfig3D dynamics, MotionAltitudeEnvelopeConfig3D altitude_envelope,
       SweptFootprintConfig swept_footprint, double latest_lidar_maximum_age_ms,
       double execution_input_maximum_pose_age_ms,
       double execution_input_maximum_control_age_ms,
@@ -67,8 +66,8 @@ public:
 
 private:
   FlightEnvelopeConfig flight_envelope_{};
-  mppi::DynamicsConfig dynamics_{};
-  mppi::AltitudeEnvelopeConfig altitude_envelope_{};
+  MotionDynamicsConfig3D dynamics_{};
+  MotionAltitudeEnvelopeConfig3D altitude_envelope_{};
   SweptFootprintConfig swept_footprint_{};
   double latest_lidar_maximum_age_ms_{0.0};
   double execution_input_maximum_pose_age_ms_{0.0};
@@ -120,11 +119,11 @@ struct ExecutionInputCapture3D {
   std::uint64_t pose_source_timestamp_us{0U};
   std::int64_t pose_receive_stamp_ns{0};
   std::int64_t effective_stamp_ns{0};
-  mppi::State state{};
+  MotionState3D state{};
   bool full_state_authoritative{false};
   ExecutionStateProvenance3D state_provenance{};
   ExecutionInputPurpose3D purpose{ExecutionInputPurpose3D::kGeneralExecution};
-  mppi::Control previous_control{};
+  MotionControl3D previous_control{};
   ExecutionPreviousControlEvidenceSource3D previous_control_source{
       ExecutionPreviousControlEvidenceSource3D::kUnknown};
   std::uint64_t previous_control_source_producer_instance_id{0U};
@@ -146,13 +145,13 @@ public:
   [[nodiscard]] std::uint64_t poseSourceTimestampUs() const noexcept;
   [[nodiscard]] std::int64_t poseReceiveStampNs() const noexcept;
   [[nodiscard]] std::int64_t effectiveStampNs() const noexcept;
-  [[nodiscard]] const mppi::State& state() const noexcept;
+  [[nodiscard]] const MotionState3D& state() const noexcept;
   [[nodiscard]] bool fullStateAuthoritative() const noexcept;
   [[nodiscard]] const ExecutionStateProvenance3D& stateProvenance() const noexcept;
   [[nodiscard]] bool nominalStateAuthoritative() const noexcept;
   [[nodiscard]] bool stationaryCaptureStateAuthoritative() const noexcept;
   [[nodiscard]] ExecutionInputPurpose3D purpose() const noexcept;
-  [[nodiscard]] const mppi::Control& previousControl() const noexcept;
+  [[nodiscard]] const MotionControl3D& previousControl() const noexcept;
   [[nodiscard]] ExecutionPreviousControlEvidenceSource3D
   previousControlSource() const noexcept;
   [[nodiscard]] std::uint64_t previousControlSourceProducerInstanceId() const noexcept;

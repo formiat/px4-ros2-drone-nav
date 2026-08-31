@@ -1,34 +1,14 @@
 #pragma once
 
+#include "drone_city_nav/dynamic_handoff_validator_3d.hpp"
 #include "drone_city_nav/mppi/mppi_engine.hpp"
 
-#include <cstddef>
-#include <cstdint>
 #include <span>
 
 namespace drone_city_nav::mppi {
 
-enum class StaticRouteHandoffStatus : std::uint8_t {
-  kNotAttempted,
-  kAccepted,
-  kInvalidInput,
-  kInvalidProjection,
-  kExcessiveCrossTrack,
-  kNoRouteConvergentFiniteHorizon,
-  kAltitudeEnvelopeViolation,
-};
-
-struct StaticRouteHandoffResult {
-  StaticRouteHandoffStatus status{StaticRouteHandoffStatus::kNotAttempted};
-  float cross_track_m{0.0F};
-  float minimum_clearance_m{0.0F};
-  float critical_exposure_m{0.0F};
-  float planning_exposure_m{0.0F};
-  float terminal_cross_track_m{-1.0F};
-  std::size_t arrival_shaping_attempts{0U};
-  std::size_t nominal_prefix_control_count{0U};
-  bool accepted{false};
-};
+using StaticRouteHandoffStatus = drone_city_nav::DynamicHandoffStatus3D;
+using StaticRouteHandoffResult = drone_city_nav::DynamicHandoffResult3D;
 
 [[nodiscard]] StaticRouteHandoffResult validateStaticRouteHandoff(
     const State& current_state, Control previous_applied_control,
@@ -38,5 +18,10 @@ struct StaticRouteHandoffResult {
 
 [[nodiscard]] const char*
 staticRouteHandoffStatusName(StaticRouteHandoffStatus status) noexcept;
+
+// Adapts the MPPI backend to the controller-neutral activation port. The
+// captured configuration is immutable for the lifetime of the validator.
+[[nodiscard]] DynamicHandoffValidator3D
+makeMppiDynamicHandoffValidator3D(BenchmarkConfig config);
 
 } // namespace drone_city_nav::mppi

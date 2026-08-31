@@ -1,7 +1,9 @@
 #pragma once
 
 #include "drone_city_nav/execution_route_transitions_3d.hpp"
-#include "drone_city_nav/mppi/mppi_reference.hpp"
+#include "drone_city_nav/finite_execution_path_3d.hpp"
+#include "drone_city_nav/finite_motion_horizon_3d.hpp"
+#include "drone_city_nav/motion_dynamics_3d.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -91,9 +93,9 @@ enum class ExecutionInputProgressRelation3D : std::uint8_t {
 
 [[nodiscard]] bool finiteVector(const Vec3& vector) noexcept;
 
-[[nodiscard]] bool finiteState(const mppi::State& state) noexcept;
+[[nodiscard]] bool finiteState(const MotionState3D& state) noexcept;
 
-[[nodiscard]] bool finiteControl(const mppi::Control& control) noexcept;
+[[nodiscard]] bool finiteControl(const MotionControl3D& control) noexcept;
 
 [[nodiscard]] bool knownFiniteExecutionKind(const FiniteExecutionKind3D kind) noexcept;
 
@@ -174,10 +176,10 @@ observedOccupancyContentFingerprint(const ObservedOccupancyGrid3D& occupancy);
 
 void hashValidationTerminalBoundary(
     std::uint64_t& hash,
-    const std::optional<mppi::FiniteExecutionPathTerminalBoundary>& boundary);
+    const std::optional<FiniteExecutionPathTerminalBoundary3D>& boundary);
 
 [[nodiscard]] std::optional<ValidationWorldOwnerContent3D>
-validationWorldOwnerContent(const mppi::FiniteExecutionPathWorld& world,
+validationWorldOwnerContent(const FiniteExecutionPathWorld3D& world,
                             const ValidationContractOwners3D& owners) noexcept;
 
 [[nodiscard]] std::uint64_t validationLidarOwnerContentFingerprint(
@@ -185,15 +187,15 @@ validationWorldOwnerContent(const mppi::FiniteExecutionPathWorld& world,
     const VersionedLatestLidarEvidence3D* const owner) noexcept;
 
 [[nodiscard]] std::uint64_t
-validationContractFingerprint(const mppi::FiniteExecutionPathWorld& world,
-                              const mppi::Control& previous_applied_control,
+validationContractFingerprint(const FiniteExecutionPathWorld3D& world,
+                              const MotionControl3D& previous_applied_control,
                               const ValidationContractOwners3D& owners);
 
-[[nodiscard]] std::optional<mppi::FiniteExecutionPathTerminalBoundary>
+[[nodiscard]] std::optional<FiniteExecutionPathTerminalBoundary3D>
 makeValidationTerminalBoundary(
     const std::optional<FiniteRouteTerminalBoundary3D>& boundary,
     const CertifiedRouteSuffix3D& route,
-    std::span<const mppi::RouteSample3D> mppi_reference);
+    std::span<const ControlRouteSample3D> mppi_reference);
 
 [[nodiscard]] std::optional<FiniteRouteTerminalBoundary3D>
 canonicalFiniteRouteTerminalBoundary(const CertifiedRouteSuffix3D& route,
@@ -215,18 +217,18 @@ latestLidarEvidenceFreshAt(const VersionedLatestLidarEvidence3D& evidence,
     const VersionedExecutionValidationPolicy3D& validation_policy,
     const VersionedLatestLidarEvidence3D& latest_lidar_evidence) noexcept;
 
-[[nodiscard]] std::vector<mppi::TimedExecutionPathPoint>
-timedExecutionPathPoints(const mppi::FiniteHorizon& horizon,
-                         const mppi::Control& previous_applied_control,
+[[nodiscard]] std::vector<TimedExecutionPathPoint3D>
+timedExecutionPathPoints(const FiniteMotionHorizon3D& horizon,
+                         const MotionControl3D& previous_applied_control,
                          const std::int64_t control_interval_ns);
 
-[[nodiscard]] bool finiteStateNearlyEqual(const mppi::State& first,
-                                          const mppi::State& second) noexcept;
+[[nodiscard]] bool finiteStateNearlyEqual(const MotionState3D& first,
+                                          const MotionState3D& second) noexcept;
 
 [[nodiscard]] bool
-finiteHorizonDynamicallyConsistent(const mppi::FiniteHorizon& horizon,
-                                   const mppi::Control& previous_applied_control,
-                                   const mppi::DynamicsConfig& dynamics) noexcept;
+finiteHorizonDynamicallyConsistent(const FiniteMotionHorizon3D& horizon,
+                                   const MotionControl3D& previous_applied_control,
+                                   const MotionDynamicsConfig3D& dynamics) noexcept;
 
 [[nodiscard]] double vectorNorm(const Vec3& vector) noexcept;
 
@@ -302,7 +304,7 @@ constrainedStationEvents(const CompiledTrajectory3D& geometry,
                                               const Point3& end,
                                               const double end_station_m) noexcept;
 
-[[nodiscard]] Point3 statePoint(const mppi::State& state) noexcept;
+[[nodiscard]] Point3 statePoint(const MotionState3D& state) noexcept;
 
 [[nodiscard]] bool
 validateOrderedPassageCrossings(const CompiledTrajectory3D& geometry,
@@ -311,7 +313,7 @@ validateOrderedPassageCrossings(const CompiledTrajectory3D& geometry,
                                 const double end_station_m) noexcept;
 
 [[nodiscard]] RouteAdherenceAssessment3D validateFiniteRouteAdherence(
-    const CompiledTrajectory3D& geometry, const std::span<const mppi::State> states,
+    const CompiledTrajectory3D& geometry, const std::span<const MotionState3D> states,
     const double initial_station_m, const double minimum_station_m,
     const double maximum_station_m, std::optional<double> maximum_cross_track_m,
     std::optional<double> terminal_cross_track_tolerance_m,
@@ -323,9 +325,9 @@ validateOrderedPassageCrossings(const CompiledTrajectory3D& geometry,
     const CertifiedRouteSuffix3D& target_route) noexcept;
 
 [[nodiscard]] bool validateTrackingTubeHandoffClearance(
-    const CertifiedRouteSuffix3D& route, const mppi::FiniteHorizon& horizon,
-    double begin_route_station_m, const mppi::Control& previous_control,
-    const mppi::FiniteExecutionPathWorld& world) noexcept;
+    const CertifiedRouteSuffix3D& route, const FiniteMotionHorizon3D& horizon,
+    double begin_route_station_m, const MotionControl3D& previous_control,
+    const FiniteExecutionPathWorld3D& world) noexcept;
 
 [[nodiscard]] bool validStationInterval(const double begin_station_m,
                                         const double end_station_m,
@@ -444,11 +446,11 @@ finiteExecutionPointer(ExecutionPlan3D& snapshot) noexcept;
 [[nodiscard]] FiniteExecutionState3D*
 brakingFallbackPointer(ExecutionPlan3D& snapshot) noexcept;
 
-[[nodiscard]] bool sameControl(const mppi::Control& first,
-                               const mppi::Control& second) noexcept;
+[[nodiscard]] bool sameControl(const MotionControl3D& first,
+                               const MotionControl3D& second) noexcept;
 
-[[nodiscard]] bool sameStateExact(const mppi::State& first,
-                                  const mppi::State& second) noexcept;
+[[nodiscard]] bool sameStateExact(const MotionState3D& first,
+                                  const MotionState3D& second) noexcept;
 
 [[nodiscard]] bool
 sameStateProvenance(const ExecutionStateProvenance3D& first,

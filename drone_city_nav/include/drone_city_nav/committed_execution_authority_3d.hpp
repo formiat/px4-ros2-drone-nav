@@ -46,7 +46,7 @@ struct ExecutionOwnerIdentity3D {
 // is represented only by the default empty value; stale payload is never kept
 // beside a newer plan or owner.
 struct AppliedControlEvidence3D {
-  mppi::Control control{};
+  MotionControl3D control{};
   float yaw_rate_radps{0.0F};
   std::int64_t source_stamp_ns{0};
   std::int64_t receive_stamp_ns{0};

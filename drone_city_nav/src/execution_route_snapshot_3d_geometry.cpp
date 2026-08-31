@@ -1,6 +1,6 @@
 #include "drone_city_nav/execution_horizon_timing.hpp"
 #include "drone_city_nav/execution_route_certification_3d.hpp"
-#include "drone_city_nav/mppi/mppi_reference.hpp"
+#include "drone_city_nav/motion_dynamics_3d.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
 
 #include <algorithm>
@@ -461,7 +461,7 @@ constrainedStationEvents(const CompiledTrajectory3D& geometry,
   return true;
 }
 
-[[nodiscard]] Point3 statePoint(const mppi::State& state) noexcept {
+[[nodiscard]] Point3 statePoint(const MotionState3D& state) noexcept {
   return Point3{state.x, state.y, state.z};
 }
 
@@ -581,7 +581,7 @@ validateOrderedPassageCrossings(const CompiledTrajectory3D& geometry,
 }
 
 [[nodiscard]] RouteAdherenceAssessment3D validateFiniteRouteAdherence(
-    const CompiledTrajectory3D& geometry, const std::span<const mppi::State> states,
+    const CompiledTrajectory3D& geometry, const std::span<const MotionState3D> states,
     const double initial_station_m, const double minimum_station_m,
     const double maximum_station_m, const std::optional<double> maximum_cross_track_m,
     const std::optional<double> terminal_cross_track_tolerance_m,
@@ -641,7 +641,7 @@ validateOrderedPassageCrossings(const CompiledTrajectory3D& geometry,
     result.failure_distance_m = previous_projection.distance_m;
     return result;
   }
-  const auto tracking_tube_assessment = [&](const mppi::State& state,
+  const auto tracking_tube_assessment = [&](const MotionState3D& state,
                                             const RouteProjection3D& projection,
                                             const double cross_track_error_m) {
     return assessTrackingErrorTubeExecution3D(
@@ -685,9 +685,9 @@ validateOrderedPassageCrossings(const CompiledTrajectory3D& geometry,
       const double ratio =
           static_cast<double>(subdivision) / static_cast<double>(subdivision_count);
       const Point3 sample = interpolatePoint(previous_point, state_position, ratio);
-      const mppi::State& previous_state = states[state_index - 1U];
-      const mppi::State& current_state = states[state_index];
-      const mppi::State sample_state{
+      const MotionState3D& previous_state = states[state_index - 1U];
+      const MotionState3D& current_state = states[state_index];
+      const MotionState3D sample_state{
           .vx = static_cast<float>(std::lerp(static_cast<double>(previous_state.vx),
                                              static_cast<double>(current_state.vx),
                                              ratio)),

@@ -1,6 +1,6 @@
 #include "drone_city_nav/execution_horizon_timing.hpp"
 #include "drone_city_nav/execution_route_certification_3d.hpp"
-#include "drone_city_nav/mppi/mppi_reference.hpp"
+#include "drone_city_nav/motion_dynamics_3d.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
 
 #include <algorithm>
@@ -30,14 +30,14 @@ namespace drone_city_nav::execution_route_snapshot_3d_internal {
   return std::isfinite(vector.x) && std::isfinite(vector.y) && std::isfinite(vector.z);
 }
 
-[[nodiscard]] bool finiteState(const mppi::State& state) noexcept {
+[[nodiscard]] bool finiteState(const MotionState3D& state) noexcept {
   return std::isfinite(state.x) && std::isfinite(state.y) && std::isfinite(state.z) &&
          std::isfinite(state.vx) && std::isfinite(state.vy) &&
          std::isfinite(state.vz) && std::isfinite(state.yaw) &&
          std::isfinite(state.yaw_rate);
 }
 
-[[nodiscard]] bool finiteControl(const mppi::Control& control) noexcept {
+[[nodiscard]] bool finiteControl(const MotionControl3D& control) noexcept {
   return std::isfinite(control.ax) && std::isfinite(control.ay) &&
          std::isfinite(control.az) && std::isfinite(control.yaw_accel);
 }
@@ -367,7 +367,7 @@ observedOccupancyContentFingerprint(const ObservedOccupancyGrid3D& occupancy) {
 
 void hashValidationTerminalBoundary(
     std::uint64_t& hash,
-    const std::optional<mppi::FiniteExecutionPathTerminalBoundary>& boundary) {
+    const std::optional<FiniteExecutionPathTerminalBoundary3D>& boundary) {
   hashValue(hash, boundary.has_value() ? 1U : 0U);
   if (!boundary.has_value()) {
     return;
@@ -382,7 +382,7 @@ void hashValidationTerminalBoundary(
   hashValue(hash, canonicalDoubleBits(boundary->initial_route_station_m));
   hashValue(hash, canonicalDoubleBits(boundary->activation_route_station_m));
   hashValue(hash, static_cast<std::uint64_t>(boundary->activation_route.size()));
-  for (const mppi::RouteSample3D& sample : boundary->activation_route) {
+  for (const ControlRouteSample3D& sample : boundary->activation_route) {
     hashValue(hash, canonicalDoubleBits(sample.x_m));
     hashValue(hash, canonicalDoubleBits(sample.y_m));
     hashValue(hash, canonicalDoubleBits(sample.z_m));
@@ -396,7 +396,7 @@ void hashValidationTerminalBoundary(
 // Owners authenticate immutable content at capture. Exact view identity lets
 // certification bind that content without walking occupancy chunks again.
 [[nodiscard]] std::optional<ValidationWorldOwnerContent3D>
-validationWorldOwnerContent(const mppi::FiniteExecutionPathWorld& world,
+validationWorldOwnerContent(const FiniteExecutionPathWorld3D& world,
                             const ValidationContractOwners3D& owners) noexcept {
   if (world.raw_occupancy != nullptr ||
       (owners.observed_raw_world == nullptr) == (owners.static_world == nullptr)) {
@@ -452,8 +452,8 @@ validationWorldOwnerContent(const mppi::FiniteExecutionPathWorld& world,
 }
 
 [[nodiscard]] std::uint64_t
-validationContractFingerprint(const mppi::FiniteExecutionPathWorld& world,
-                              const mppi::Control& previous_applied_control,
+validationContractFingerprint(const FiniteExecutionPathWorld3D& world,
+                              const MotionControl3D& previous_applied_control,
                               const ValidationContractOwners3D& owners) {
   if (world.flight_envelope == nullptr || world.dynamics == nullptr ||
       world.altitude_envelope == nullptr || world.footprint == nullptr ||
@@ -464,7 +464,7 @@ validationContractFingerprint(const mppi::FiniteExecutionPathWorld& world,
   std::uint64_t hash{kFnvOffset};
   hashValue(hash, canonicalDoubleBits(world.flight_envelope->minimum_target_z_m));
   hashValue(hash, canonicalDoubleBits(world.flight_envelope->maximum_target_z_m));
-  const mppi::DynamicsConfig& dynamics = *world.dynamics;
+  const MotionDynamicsConfig3D& dynamics = *world.dynamics;
   hashValue(hash, canonicalDoubleBits(dynamics.dt_s));
   hashValue(hash, canonicalDoubleBits(dynamics.linear_drag_1ps));
   hashValue(hash, canonicalDoubleBits(dynamics.maximum_horizontal_acceleration_mps2));
@@ -475,7 +475,7 @@ validationContractFingerprint(const mppi::FiniteExecutionPathWorld& world,
   hashValue(hash, canonicalDoubleBits(dynamics.maximum_yaw_acceleration_radps2));
   hashValue(hash, canonicalDoubleBits(dynamics.maximum_yaw_rate_radps));
   hashValue(hash, canonicalDoubleBits(dynamics.maximum_control_jerk_mps3));
-  const mppi::AltitudeEnvelopeConfig& altitude = *world.altitude_envelope;
+  const MotionAltitudeEnvelopeConfig3D& altitude = *world.altitude_envelope;
   hashValue(hash, canonicalDoubleBits(altitude.minimum_z_m));
   hashValue(hash, canonicalDoubleBits(altitude.maximum_z_m));
   hashValue(hash, canonicalDoubleBits(altitude.guaranteed_vertical_deceleration_mps2));
@@ -539,15 +539,15 @@ canonicalFiniteRouteTerminalBoundary(const CertifiedRouteSuffix3D& route,
   };
 }
 
-std::optional<mppi::FiniteExecutionPathTerminalBoundary> makeValidationTerminalBoundary(
+std::optional<FiniteExecutionPathTerminalBoundary3D> makeValidationTerminalBoundary(
     const std::optional<FiniteRouteTerminalBoundary3D>& boundary,
     const CertifiedRouteSuffix3D& route,
-    const std::span<const mppi::RouteSample3D> mppi_reference) {
+    const std::span<const ControlRouteSample3D> mppi_reference) {
   if (!boundary.has_value() || route.geometry == nullptr ||
       mppi_reference.size() != route.geometry->route->size()) {
     return std::nullopt;
   }
-  return mppi::FiniteExecutionPathTerminalBoundary{
+  return FiniteExecutionPathTerminalBoundary3D{
       .endpoint = boundary->endpoint,
       .forward = boundary->forward,
       .tolerance_m = boundary->tolerance_m,
@@ -601,11 +601,11 @@ latestLidarEvidenceFreshAt(const VersionedLatestLidarEvidence3D& evidence,
           static_cast<double>(acquisition_age_ns) <= maximum_age_ns);
 }
 
-[[nodiscard]] std::vector<mppi::TimedExecutionPathPoint>
-timedExecutionPathPoints(const mppi::FiniteHorizon& horizon,
-                         const mppi::Control& previous_applied_control,
+[[nodiscard]] std::vector<TimedExecutionPathPoint3D>
+timedExecutionPathPoints(const FiniteMotionHorizon3D& horizon,
+                         const MotionControl3D& previous_applied_control,
                          const std::int64_t control_interval_ns) {
-  std::vector<mppi::TimedExecutionPathPoint> points;
+  std::vector<TimedExecutionPathPoint3D> points;
   if (control_interval_ns <= 0 || horizon.controls.empty() ||
       horizon.states.size() != horizon.controls.size() + 1U ||
       !executionHorizonTerminalOffsetNs(horizon.states.size(), control_interval_ns)) {
@@ -613,7 +613,7 @@ timedExecutionPathPoints(const mppi::FiniteHorizon& horizon,
   }
   points.reserve(horizon.states.size());
   for (std::size_t index = 0U; index < horizon.states.size(); ++index) {
-    points.push_back(mppi::TimedExecutionPathPoint{
+    points.push_back(TimedExecutionPathPoint3D{
         .time_from_start_s = static_cast<double>(static_cast<std::int64_t>(index) *
                                                  control_interval_ns) /
                              1'000'000'000.0,
@@ -625,8 +625,8 @@ timedExecutionPathPoints(const mppi::FiniteHorizon& horizon,
   return points;
 }
 
-[[nodiscard]] bool finiteStateNearlyEqual(const mppi::State& first,
-                                          const mppi::State& second) noexcept {
+[[nodiscard]] bool finiteStateNearlyEqual(const MotionState3D& first,
+                                          const MotionState3D& second) noexcept {
   constexpr float kDynamicsTolerance{2.0e-3F};
   const auto close = [](const float left, const float right) noexcept {
     return std::isfinite(left) && std::isfinite(right) &&
@@ -642,9 +642,9 @@ timedExecutionPathPoints(const mppi::FiniteHorizon& horizon,
 }
 
 [[nodiscard]] bool
-finiteHorizonDynamicallyConsistent(const mppi::FiniteHorizon& horizon,
-                                   const mppi::Control& previous_applied_control,
-                                   const mppi::DynamicsConfig& dynamics) noexcept {
+finiteHorizonDynamicallyConsistent(const FiniteMotionHorizon3D& horizon,
+                                   const MotionControl3D& previous_applied_control,
+                                   const MotionDynamicsConfig3D& dynamics) noexcept {
   if (horizon.controls.empty() ||
       horizon.states.size() != horizon.controls.size() + 1U ||
       !finiteControl(previous_applied_control) || !std::isfinite(dynamics.dt_s) ||
@@ -663,9 +663,9 @@ finiteHorizonDynamicallyConsistent(const mppi::FiniteHorizon& horizon,
   constexpr float kControlTolerance{1.0e-4F};
   const float maximum_control_delta =
       dynamics.maximum_control_jerk_mps3 * dynamics.dt_s;
-  mppi::Control previous_control = previous_applied_control;
+  MotionControl3D previous_control = previous_applied_control;
   for (std::size_t index = 0U; index < horizon.controls.size(); ++index) {
-    const mppi::Control& control = horizon.controls[index];
+    const MotionControl3D& control = horizon.controls[index];
     if (!finiteControl(control) ||
         std::hypot(control.ax, control.ay) >
             dynamics.maximum_horizontal_acceleration_mps2 + kControlTolerance ||
@@ -681,8 +681,8 @@ finiteHorizonDynamicallyConsistent(const mppi::FiniteHorizon& horizon,
             maximum_control_delta + kControlTolerance) {
       return false;
     }
-    const mppi::State expected =
-        mppi::integrateReference(horizon.states[index], control, dynamics);
+    const MotionState3D expected =
+        integrateMotionState3D(horizon.states[index], control, dynamics);
     if (!finiteStateNearlyEqual(expected, horizon.states[index + 1U])) {
       return false;
     }

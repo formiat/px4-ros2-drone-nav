@@ -18,7 +18,7 @@ FiniteExecutionPlan3D SnapshotFixture3D::finitePlanForRoute(
       snapshot.finiteExecution() != nullptr
           ? snapshot.finiteExecution()->latest_lidar_evidence.get()
           : nullptr);
-  const std::optional<mppi::FiniteHorizon> braking = mppi::buildFiniteBrakingHorizon(
+  const std::optional<FiniteMotionHorizon3D> braking = buildFiniteBrakingHorizon3D(
       command.horizon.states.front(), command.horizon.controls.size(),
       suffix.validation_policy->dynamics(), command.execution_input->previousControl());
   if (!braking.has_value()) {
@@ -52,12 +52,11 @@ testExecutionPlanForCommand(const ExecutionPlan3D& current,
       target_route.validation_policy == nullptr) {
     return invalid_plan();
   }
-  const std::optional<mppi::FiniteHorizon> braking_horizon =
-      mppi::buildFiniteBrakingHorizon(
-          command_horizon.horizon->states.front(),
-          command_horizon.horizon->controls.size(),
-          target_route.validation_policy->dynamics(),
-          command_horizon.execution_input->previousControl());
+  const std::optional<FiniteMotionHorizon3D> braking_horizon =
+      buildFiniteBrakingHorizon3D(command_horizon.horizon->states.front(),
+                                  command_horizon.horizon->controls.size(),
+                                  target_route.validation_policy->dynamics(),
+                                  command_horizon.execution_input->previousControl());
   if (!braking_horizon.has_value()) {
     return invalid_plan();
   }

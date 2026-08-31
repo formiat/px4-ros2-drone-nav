@@ -4,10 +4,12 @@
 #include "drone_city_nav/mppi/mppi_finite_horizon.hpp"
 #include "drone_city_nav/mppi/mppi_reference.hpp"
 #include "drone_city_nav/mppi/mppi_route_projection.hpp"
+#include "drone_city_nav/mppi/trajectory_reference_adapter_3d.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <optional>
+#include <utility>
 #include <vector>
 
 namespace drone_city_nav::mppi {
@@ -41,6 +43,7 @@ StaticRouteHandoffResult validateStaticRouteHandoff(
       !(terminal_cross_track_tolerance_m > 0.0F) ||
       !std::isfinite(terminal_cross_track_tolerance_m) || !validGrid(grid) ||
       esdf_m.size() != gridCellCount(grid)) {
+    result.status = StaticRouteHandoffStatus::kInvalidInput;
     return result;
   }
 
@@ -100,29 +103,31 @@ StaticRouteHandoffResult validateStaticRouteHandoff(
     return result;
   }
   result.status = StaticRouteHandoffStatus::kAccepted;
-  result.accepted = true;
   return result;
 }
 
 const char*
 staticRouteHandoffStatusName(const StaticRouteHandoffStatus status) noexcept {
-  switch (status) {
-    case StaticRouteHandoffStatus::kNotAttempted:
-      return "not_attempted";
-    case StaticRouteHandoffStatus::kAccepted:
-      return "accepted";
-    case StaticRouteHandoffStatus::kInvalidInput:
-      return "invalid_input";
-    case StaticRouteHandoffStatus::kInvalidProjection:
-      return "invalid_projection";
-    case StaticRouteHandoffStatus::kExcessiveCrossTrack:
-      return "excessive_cross_track";
-    case StaticRouteHandoffStatus::kNoRouteConvergentFiniteHorizon:
-      return "no_route_convergent_finite_horizon";
-    case StaticRouteHandoffStatus::kAltitudeEnvelopeViolation:
-      return "altitude_envelope_violation";
-  }
-  return "unknown";
+  return dynamicHandoffStatus3DName(status);
+}
+
+DynamicHandoffValidator3D makeMppiDynamicHandoffValidator3D(BenchmarkConfig config) {
+  return [config = std::move(config)](const DynamicHandoffRequest3D& request) {
+    if (request.candidate_trajectory == nullptr ||
+        request.derived_distances_m == nullptr) {
+      return DynamicHandoffResult3D{.status = DynamicHandoffStatus3D::kInvalidInput};
+    }
+    const std::shared_ptr<const std::vector<RouteSample3D>> reference =
+        adaptTrajectoryReference3D(*request.candidate_trajectory);
+    if (reference == nullptr) {
+      return DynamicHandoffResult3D{.status = DynamicHandoffStatus3D::kInvalidInput};
+    }
+    return validateStaticRouteHandoff(
+        request.current_state, request.previous_applied_control, *reference,
+        request.reference_speed_mps, request.maximum_cross_track_m,
+        request.terminal_cross_track_tolerance_m, config, request.grid,
+        *request.derived_distances_m);
+  };
 }
 
 } // namespace drone_city_nav::mppi

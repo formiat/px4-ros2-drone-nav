@@ -34,14 +34,14 @@ void hashValue(std::uint64_t& hash, const std::uint64_t value) noexcept {
   return value == 0.0 ? 0U : std::bit_cast<std::uint64_t>(value);
 }
 
-[[nodiscard]] bool finiteState(const mppi::State& state) noexcept {
+[[nodiscard]] bool finiteState(const MotionState3D& state) noexcept {
   return std::isfinite(state.x) && std::isfinite(state.y) && std::isfinite(state.z) &&
          std::isfinite(state.vx) && std::isfinite(state.vy) &&
          std::isfinite(state.vz) && std::isfinite(state.yaw) &&
          std::isfinite(state.yaw_rate);
 }
 
-[[nodiscard]] bool finiteControl(const mppi::Control& control) noexcept {
+[[nodiscard]] bool finiteControl(const MotionControl3D& control) noexcept {
   return std::isfinite(control.ax) && std::isfinite(control.ay) &&
          std::isfinite(control.az) && std::isfinite(control.yaw_accel);
 }
@@ -52,7 +52,7 @@ void hashValue(std::uint64_t& hash, const std::uint64_t value) noexcept {
          config.maximum_target_z_m > config.minimum_target_z_m;
 }
 
-[[nodiscard]] bool validDynamics(const mppi::DynamicsConfig& config) noexcept {
+[[nodiscard]] bool validDynamics(const MotionDynamicsConfig3D& config) noexcept {
   return std::isfinite(config.dt_s) && config.dt_s > 0.0F &&
          std::isfinite(config.linear_drag_1ps) && config.linear_drag_1ps >= 0.0F &&
          std::isfinite(config.maximum_horizontal_acceleration_mps2) &&
@@ -74,8 +74,8 @@ void hashValue(std::uint64_t& hash, const std::uint64_t value) noexcept {
 }
 
 [[nodiscard]] bool
-validAltitudeEnvelope(const mppi::AltitudeEnvelopeConfig& config,
-                      const mppi::DynamicsConfig& dynamics) noexcept {
+validAltitudeEnvelope(const MotionAltitudeEnvelopeConfig3D& config,
+                      const MotionDynamicsConfig3D& dynamics) noexcept {
   return std::isfinite(config.minimum_z_m) && std::isfinite(config.maximum_z_m) &&
          config.maximum_z_m > config.minimum_z_m &&
          std::isfinite(config.guaranteed_vertical_deceleration_mps2) &&
@@ -99,8 +99,8 @@ validAltitudeEnvelope(const mppi::AltitudeEnvelopeConfig& config,
 
 [[nodiscard]] bool
 validPolicy(const FlightEnvelopeConfig& flight_envelope,
-            const mppi::DynamicsConfig& dynamics,
-            const mppi::AltitudeEnvelopeConfig& altitude_envelope,
+            const MotionDynamicsConfig3D& dynamics,
+            const MotionAltitudeEnvelopeConfig3D& altitude_envelope,
             const SweptFootprintConfig& swept_footprint,
             const double latest_lidar_maximum_age_ms,
             const double execution_input_maximum_pose_age_ms,
@@ -122,7 +122,7 @@ void hashFlightEnvelope(std::uint64_t& hash,
   hashValue(hash, canonicalDoubleBits(config.maximum_target_z_m));
 }
 
-void hashDynamics(std::uint64_t& hash, const mppi::DynamicsConfig& config) noexcept {
+void hashDynamics(std::uint64_t& hash, const MotionDynamicsConfig3D& config) noexcept {
   hashValue(hash, canonicalFloatBits(config.dt_s));
   hashValue(hash, canonicalFloatBits(config.linear_drag_1ps));
   hashValue(hash, canonicalFloatBits(config.maximum_horizontal_acceleration_mps2));
@@ -136,7 +136,7 @@ void hashDynamics(std::uint64_t& hash, const mppi::DynamicsConfig& config) noexc
 }
 
 void hashAltitudeEnvelope(std::uint64_t& hash,
-                          const mppi::AltitudeEnvelopeConfig& config) noexcept {
+                          const MotionAltitudeEnvelopeConfig3D& config) noexcept {
   hashValue(hash, canonicalFloatBits(config.minimum_z_m));
   hashValue(hash, canonicalFloatBits(config.maximum_z_m));
   hashValue(hash, canonicalFloatBits(config.guaranteed_vertical_deceleration_mps2));
@@ -157,8 +157,8 @@ void hashSweptFootprint(std::uint64_t& hash,
 
 [[nodiscard]] std::uint64_t
 policyFingerprint(const FlightEnvelopeConfig& flight_envelope,
-                  const mppi::DynamicsConfig& dynamics,
-                  const mppi::AltitudeEnvelopeConfig& altitude_envelope,
+                  const MotionDynamicsConfig3D& dynamics,
+                  const MotionAltitudeEnvelopeConfig3D& altitude_envelope,
                   const SweptFootprintConfig& swept_footprint,
                   const double latest_lidar_maximum_age_ms,
                   const double execution_input_maximum_pose_age_ms,
@@ -227,7 +227,7 @@ template<typename Predicate>
   return false;
 }
 
-[[nodiscard]] bool exactZeroControl(const mppi::Control& control) noexcept {
+[[nodiscard]] bool exactZeroControl(const MotionControl3D& control) noexcept {
   return control.ax == 0.0F && control.ay == 0.0F && control.az == 0.0F &&
          control.yaw_accel == 0.0F;
 }
@@ -277,7 +277,7 @@ validExecutionInputCapture(const ExecutionInputCapture3D& capture) noexcept {
          capture.previous_control_receive_stamp_ns <= capture.effective_stamp_ns;
 }
 
-void hashState(std::uint64_t& hash, const mppi::State& state) noexcept {
+void hashState(std::uint64_t& hash, const MotionState3D& state) noexcept {
   hashValue(hash, canonicalFloatBits(state.x));
   hashValue(hash, canonicalFloatBits(state.y));
   hashValue(hash, canonicalFloatBits(state.z));
@@ -300,7 +300,7 @@ void hashStateProvenance(std::uint64_t& hash,
   hashValue(hash, static_cast<std::uint64_t>(provenance.yaw_rate));
 }
 
-void hashControl(std::uint64_t& hash, const mppi::Control& control) noexcept {
+void hashControl(std::uint64_t& hash, const MotionControl3D& control) noexcept {
   hashValue(hash, canonicalFloatBits(control.ax));
   hashValue(hash, canonicalFloatBits(control.ay));
   hashValue(hash, canonicalFloatBits(control.az));
@@ -391,8 +391,8 @@ latestLidarFingerprint(const LatestLidarEvidenceCapture3D& capture,
 } // namespace
 
 VersionedExecutionValidationPolicy3D::VersionedExecutionValidationPolicy3D(
-    CaptureToken, FlightEnvelopeConfig flight_envelope, mppi::DynamicsConfig dynamics,
-    mppi::AltitudeEnvelopeConfig altitude_envelope,
+    CaptureToken, FlightEnvelopeConfig flight_envelope, MotionDynamicsConfig3D dynamics,
+    MotionAltitudeEnvelopeConfig3D altitude_envelope,
     SweptFootprintConfig swept_footprint, const double latest_lidar_maximum_age_ms,
     const double execution_input_maximum_pose_age_ms,
     const double execution_input_maximum_control_age_ms,
@@ -419,8 +419,8 @@ VersionedExecutionValidationPolicy3D::VersionedExecutionValidationPolicy3D(
 
 std::shared_ptr<const VersionedExecutionValidationPolicy3D>
 VersionedExecutionValidationPolicy3D::capture(
-    FlightEnvelopeConfig flight_envelope, mppi::DynamicsConfig dynamics,
-    mppi::AltitudeEnvelopeConfig altitude_envelope,
+    FlightEnvelopeConfig flight_envelope, MotionDynamicsConfig3D dynamics,
+    MotionAltitudeEnvelopeConfig3D altitude_envelope,
     SweptFootprintConfig swept_footprint, const double latest_lidar_maximum_age_ms,
     const double execution_input_maximum_pose_age_ms,
     const double execution_input_maximum_control_age_ms,
@@ -444,12 +444,12 @@ VersionedExecutionValidationPolicy3D::flightEnvelope() const noexcept {
   return flight_envelope_;
 }
 
-const mppi::DynamicsConfig&
+const MotionDynamicsConfig3D&
 VersionedExecutionValidationPolicy3D::dynamics() const noexcept {
   return dynamics_;
 }
 
-const mppi::AltitudeEnvelopeConfig&
+const MotionAltitudeEnvelopeConfig3D&
 VersionedExecutionValidationPolicy3D::altitudeEnvelope() const noexcept {
   return altitude_envelope_;
 }
@@ -552,7 +552,7 @@ std::int64_t VersionedExecutionInput3D::effectiveStampNs() const noexcept {
   return capture_.effective_stamp_ns;
 }
 
-const mppi::State& VersionedExecutionInput3D::state() const noexcept {
+const MotionState3D& VersionedExecutionInput3D::state() const noexcept {
   return capture_.state;
 }
 
@@ -581,7 +581,7 @@ ExecutionInputPurpose3D VersionedExecutionInput3D::purpose() const noexcept {
   return capture_.purpose;
 }
 
-const mppi::Control& VersionedExecutionInput3D::previousControl() const noexcept {
+const MotionControl3D& VersionedExecutionInput3D::previousControl() const noexcept {
   return capture_.previous_control;
 }
 

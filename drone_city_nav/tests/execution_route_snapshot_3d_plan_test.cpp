@@ -25,10 +25,9 @@ TEST(ExecutionRouteSnapshot3DTest, UnboundSuccessorBindsAtTheCurrentFinitePlanSt
     ADD_FAILURE() << "The command must own an execution input";
     return;
   }
-  const std::optional<mppi::FiniteHorizon> braking_tail =
-      mppi::buildFiniteBrakingHorizon(
-          command.horizon.states.front(), command.horizon.controls.size(),
-          successor.validation_policy->dynamics(), current_input->previousControl());
+  const std::optional<FiniteMotionHorizon3D> braking_tail = buildFiniteBrakingHorizon3D(
+      command.horizon.states.front(), command.horizon.controls.size(),
+      successor.validation_policy->dynamics(), current_input->previousControl());
   if (!braking_tail.has_value()) {
     ADD_FAILURE() << "The command must produce a finite braking tail";
     return;
@@ -206,7 +205,7 @@ TEST(ExecutionRouteSnapshot3DTest,
           route.progress.execution_input.get(),
           resident_execution.latest_lidar_evidence.get());
   ASSERT_NE(command.execution_input, nullptr);
-  mppi::State lagging_state = command.execution_input->state();
+  MotionState3D lagging_state = command.execution_input->state();
   lagging_state.x -= 0.1F;
   const VersionedExecutionInput3D& generated_input = *command.execution_input;
   command.execution_input = VersionedExecutionInput3D::capture(ExecutionInputCapture3D{
@@ -231,10 +230,10 @@ TEST(ExecutionRouteSnapshot3DTest,
   });
   ASSERT_NE(command.execution_input, nullptr);
 
-  const std::optional<mppi::FiniteHorizon> stationary_horizon =
-      mppi::buildFiniteBrakingHorizon(lagging_state, command.horizon.controls.size(),
-                                      route.validation_policy->dynamics(),
-                                      command.execution_input->previousControl());
+  const std::optional<FiniteMotionHorizon3D> stationary_horizon =
+      buildFiniteBrakingHorizon3D(lagging_state, command.horizon.controls.size(),
+                                  route.validation_policy->dynamics(),
+                                  command.execution_input->previousControl());
   if (!stationary_horizon.has_value()) {
     ADD_FAILURE() << "The lagging state must produce a finite braking horizon";
     return;

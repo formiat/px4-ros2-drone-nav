@@ -35,7 +35,7 @@ TEST(StaticRouteHandoff, AcceptsRawSafeRouteFromCurrentMotion) {
       15.0F, 2.0F, config(), grid, esdf);
 
   EXPECT_EQ(result.status, StaticRouteHandoffStatus::kAccepted);
-  EXPECT_TRUE(result.accepted);
+  EXPECT_TRUE(result.accepted());
 }
 
 TEST(StaticRouteHandoff, DerivedZeroClearanceRemainsAControllerAnnotation) {
@@ -53,7 +53,7 @@ TEST(StaticRouteHandoff, DerivedZeroClearanceRemainsAControllerAnnotation) {
       15.0F, 2.0F, config(), grid, esdf);
 
   EXPECT_EQ(result.status, StaticRouteHandoffStatus::kAccepted);
-  EXPECT_TRUE(result.accepted);
+  EXPECT_TRUE(result.accepted());
   EXPECT_FLOAT_EQ(result.minimum_clearance_m, 0.0F);
 }
 
@@ -68,7 +68,7 @@ TEST(StaticRouteHandoff, CriticalClearanceRemainsExecutable) {
       15.0F, 2.0F, config(), grid, esdf);
 
   EXPECT_EQ(result.status, StaticRouteHandoffStatus::kAccepted);
-  EXPECT_TRUE(result.accepted);
+  EXPECT_TRUE(result.accepted());
   EXPECT_GT(result.critical_exposure_m, 0.0F);
 }
 
@@ -83,7 +83,7 @@ TEST(StaticRouteHandoff, RejectsRouteWithoutReachableFiniteStoppingHandoff) {
                                  route, 20.0F, 15.0F, 2.0F, config(), grid, esdf);
 
   EXPECT_EQ(result.status, StaticRouteHandoffStatus::kNoRouteConvergentFiniteHorizon);
-  EXPECT_FALSE(result.accepted);
+  EXPECT_FALSE(result.accepted());
   EXPECT_GT(result.arrival_shaping_attempts, 0U);
   EXPECT_GT(result.terminal_cross_track_m, 2.0F);
 }

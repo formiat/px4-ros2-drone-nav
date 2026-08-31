@@ -82,7 +82,7 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
         guaranteed_range_m = planner["guaranteed_lidar_detection_range_m"]
         physical_margin_m = planner["sensor_braking_physical_margin_m"]
         source = (PACKAGE / "src/production_mppi_node.cpp").read_text()
-        cpu_dynamics = (PACKAGE / "src/mppi/mppi_reference.cpp").read_text()
+        cpu_dynamics = (PACKAGE / "src/motion_dynamics_3d.cpp").read_text()
         cuda_dynamics = (PACKAGE / "src/mppi/mppi_engine_kernels.cuh").read_text()
 
         self.assertGreater(guaranteed_range_m, physical_margin_m)

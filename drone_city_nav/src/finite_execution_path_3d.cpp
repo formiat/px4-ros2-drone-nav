@@ -1,8 +1,9 @@
-#include "drone_city_nav/mppi/finite_execution_path.hpp"
+#include "drone_city_nav/finite_execution_path_3d.hpp"
 
-#include "drone_city_nav/mppi/mppi_altitude_envelope.hpp"
-#include "drone_city_nav/mppi/mppi_reference.hpp"
-#include "drone_city_nav/mppi/mppi_route_projection.hpp"
+#include "drone_city_nav/control_route_projection_3d.hpp"
+#include "drone_city_nav/finite_motion_horizon_3d.hpp"
+#include "drone_city_nav/motion_altitude_envelope_3d.hpp"
+#include "drone_city_nav/motion_dynamics_3d.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -12,39 +13,40 @@
 #include <utility>
 #include <vector>
 
-namespace drone_city_nav::mppi {
+namespace drone_city_nav {
 namespace {
 
 constexpr double kNanosecondsPerSecond{1.0e9};
 constexpr double kTerminalRestTolerance{1.0e-3};
 
-[[nodiscard]] bool finite(const State& state) noexcept {
+[[nodiscard]] bool finite(const MotionState3D& state) noexcept {
   return std::isfinite(state.x) && std::isfinite(state.y) && std::isfinite(state.z) &&
          std::isfinite(state.vx) && std::isfinite(state.vy) &&
          std::isfinite(state.vz) && std::isfinite(state.yaw) &&
          std::isfinite(state.yaw_rate);
 }
 
-[[nodiscard]] bool finite(const Control& control) noexcept {
+[[nodiscard]] bool finite(const MotionControl3D& control) noexcept {
   return std::isfinite(control.ax) && std::isfinite(control.ay) &&
          std::isfinite(control.az) && std::isfinite(control.yaw_accel);
 }
 
-[[nodiscard]] bool sameControl(const Control& first, const Control& second) noexcept {
+[[nodiscard]] bool sameControl(const MotionControl3D& first,
+                               const MotionControl3D& second) noexcept {
   return first.ax == second.ax && first.ay == second.ay && first.az == second.az &&
          first.yaw_accel == second.yaw_accel;
 }
 
-[[nodiscard]] Point3 position(const State& state) noexcept {
+[[nodiscard]] Point3 position(const MotionState3D& state) noexcept {
   return Point3{state.x, state.y, state.z};
 }
 
-[[nodiscard]] FootprintBodyAxis bodyAxis(const Control& control) noexcept {
+[[nodiscard]] FootprintBodyAxis bodyAxis(const MotionControl3D& control) noexcept {
   return bodyAxisFromWorldAcceleration(Vec3{control.ax, control.ay, control.az});
 }
 
 [[nodiscard]] bool
-validRouteActivation(const FiniteExecutionPathTerminalBoundary& boundary) noexcept {
+validRouteActivation(const FiniteExecutionPathTerminalBoundary3D& boundary) noexcept {
   if (boundary.activation_route.empty()) {
     return true;
   }
@@ -54,7 +56,7 @@ validRouteActivation(const FiniteExecutionPathTerminalBoundary& boundary) noexce
     return false;
   }
   float previous_station_m{-std::numeric_limits<float>::infinity()};
-  for (const RouteSample3D& sample : boundary.activation_route) {
+  for (const ControlRouteSample3D& sample : boundary.activation_route) {
     if (!std::isfinite(sample.x_m) || !std::isfinite(sample.y_m) ||
         !std::isfinite(sample.z_m) || !std::isfinite(sample.station_m) ||
         sample.station_m + 1.0e-4F < previous_station_m) {
@@ -71,7 +73,7 @@ validRouteActivation(const FiniteExecutionPathTerminalBoundary& boundary) noexce
          boundary.activation_route_station_m <= last_station_m + 1.0e-4F;
 }
 
-[[nodiscard]] bool validWorld(const FiniteExecutionPathWorld& world) noexcept {
+[[nodiscard]] bool validWorld(const FiniteExecutionPathWorld3D& world) noexcept {
   if (world.flight_envelope == nullptr || world.dynamics == nullptr ||
       world.altitude_envelope == nullptr || world.footprint == nullptr) {
     return false;
@@ -79,7 +81,7 @@ validRouteActivation(const FiniteExecutionPathTerminalBoundary& boundary) noexce
   if (!world.terminal_boundary.has_value()) {
     return true;
   }
-  const FiniteExecutionPathTerminalBoundary& boundary = *world.terminal_boundary;
+  const FiniteExecutionPathTerminalBoundary3D& boundary = *world.terminal_boundary;
   const double forward_norm = std::hypot(
       std::hypot(boundary.forward.x, boundary.forward.y), boundary.forward.z);
   return std::isfinite(boundary.endpoint.x) && std::isfinite(boundary.endpoint.y) &&
@@ -91,22 +93,23 @@ validRouteActivation(const FiniteExecutionPathTerminalBoundary& boundary) noexce
 }
 
 [[nodiscard]] bool withinTerminalBoundary(
-    const State& state,
-    const std::optional<FiniteExecutionPathTerminalBoundary>& boundary,
+    const MotionState3D& state,
+    const std::optional<FiniteExecutionPathTerminalBoundary3D>& boundary,
     const float traveled_distance_m) noexcept {
   if (!boundary.has_value()) {
     return true;
   }
   if (!boundary->activation_route.empty()) {
-    const MppiRouteProjection3D projection = projectOntoMppiRoute3D(
+    const ControlRouteProjection3D projection = projectOntoControlRoute3D(
         state, boundary->activation_route, boundary->initial_route_station_m);
     if (!projection.valid) {
       return true;
     }
     const float credited_station_m =
         boundary->initial_route_station_m +
-        creditedRouteProgressM(projection.station_m, boundary->initial_route_station_m,
-                               traveled_distance_m);
+        creditedControlRouteProgressM3D(projection.station_m,
+                                        boundary->initial_route_station_m,
+                                        traveled_distance_m);
     if (credited_station_m + 1.0e-4F < boundary->activation_route_station_m) {
       return true;
     }
@@ -139,11 +142,11 @@ validRouteActivation(const FiniteExecutionPathTerminalBoundary& boundary) noexce
          cross_track_m > boundary->maximum_cross_track_m;
 }
 
-[[nodiscard]] FiniteExecutionPathValidation
-reject(const FiniteExecutionPathStatus status, const std::size_t first_remaining_index,
-       const std::size_t segment_index, const Point3& failure_point,
-       const double remaining_duration_s) noexcept {
-  return FiniteExecutionPathValidation{
+[[nodiscard]] FiniteExecutionPathValidation3D
+reject(const FiniteExecutionPathStatus3D status,
+       const std::size_t first_remaining_index, const std::size_t segment_index,
+       const Point3& failure_point, const double remaining_duration_s) noexcept {
+  return FiniteExecutionPathValidation3D{
       .status = status,
       .first_remaining_point_index = first_remaining_index,
       .failure_segment_index = segment_index,
@@ -152,15 +155,15 @@ reject(const FiniteExecutionPathStatus status, const std::size_t first_remaining
   };
 }
 
-[[nodiscard]] FiniteExecutionPathStatus
+[[nodiscard]] FiniteExecutionPathStatus3D
 validatePhysicalSegment(const Point3& first, const FootprintBodyAxis& first_axis,
                         const Point3& second, const FootprintBodyAxis& second_axis,
-                        const FiniteExecutionPathWorld& world,
+                        const FiniteExecutionPathWorld3D& world,
                         Point3& failure_point) noexcept {
   if (world.static_occupancy == nullptr && world.observed_occupancy == nullptr &&
       world.raw_occupancy == nullptr && world.latest_lidar_obstacle_points.empty()) {
     failure_point = first;
-    return FiniteExecutionPathStatus::kRawWorldUnavailable;
+    return FiniteExecutionPathStatus3D::kRawWorldUnavailable;
   }
   const OccupiedCollisionOracle3D oracle{OccupiedCollisionWorld3D{
       .observed_occupancy = world.observed_occupancy,
@@ -174,75 +177,76 @@ validatePhysicalSegment(const Point3& first, const FootprintBodyAxis& first_axis
   const OccupiedCollisionResult3D validation =
       oracle.validateSegment(first, first_axis, second, second_axis);
   if (validation.clear()) {
-    return FiniteExecutionPathStatus::kValid;
+    return FiniteExecutionPathStatus3D::kValid;
   }
   failure_point = validation.failure_point;
   if (validation.status == OccupiedCollisionStatus3D::kOutsideFlightEnvelope) {
-    return FiniteExecutionPathStatus::kFlightEnvelopeViolation;
+    return FiniteExecutionPathStatus3D::kFlightEnvelopeViolation;
   }
   if (validation.status == OccupiedCollisionStatus3D::kInvalidInput) {
-    return FiniteExecutionPathStatus::kRawWorldUnavailable;
+    return FiniteExecutionPathStatus3D::kRawWorldUnavailable;
   }
   if (validation.source == OccupiedCollisionSource3D::kRawPointCloud) {
-    return FiniteExecutionPathStatus::kLatestLidarRawCollision;
+    return FiniteExecutionPathStatus3D::kLatestLidarRawCollision;
   }
-  return FiniteExecutionPathStatus::kRawCollision;
+  return FiniteExecutionPathStatus3D::kRawCollision;
 }
 
-[[nodiscard]] FiniteExecutionPathValidation
-validatePathContract(const std::span<const TimedExecutionPathPoint> points) noexcept {
+[[nodiscard]] FiniteExecutionPathValidation3D
+validatePathContract(const std::span<const TimedExecutionPathPoint3D> points) noexcept {
   if (points.size() < 2U) {
     return {};
   }
   double previous_time_s{-std::numeric_limits<double>::infinity()};
-  for (const TimedExecutionPathPoint& point : points) {
+  for (const TimedExecutionPathPoint3D& point : points) {
     if (!std::isfinite(point.time_from_start_s) || point.time_from_start_s < 0.0 ||
         point.time_from_start_s <= previous_time_s || !finite(point.state) ||
         !finite(point.control)) {
-      return reject(FiniteExecutionPathStatus::kInvalidContract, 0U, 0U,
+      return reject(FiniteExecutionPathStatus3D::kInvalidContract, 0U, 0U,
                     position(point.state), 0.0);
     }
     previous_time_s = point.time_from_start_s;
   }
-  const TimedExecutionPathPoint& terminal = points.back();
+  const TimedExecutionPathPoint3D& terminal = points.back();
   if (std::hypot(std::hypot(terminal.state.vx, terminal.state.vy), terminal.state.vz) >
           kTerminalRestTolerance ||
       std::abs(terminal.state.yaw_rate) > kTerminalRestTolerance ||
       std::hypot(std::hypot(terminal.control.ax, terminal.control.ay),
                  terminal.control.az) > kTerminalRestTolerance ||
       std::abs(terminal.control.yaw_accel) > kTerminalRestTolerance) {
-    return reject(FiniteExecutionPathStatus::kInvalidContract, 0U, points.size() - 1U,
+    return reject(FiniteExecutionPathStatus3D::kInvalidContract, 0U, points.size() - 1U,
                   position(terminal.state), 0.0);
   }
-  return FiniteExecutionPathValidation{
-      .status = FiniteExecutionPathStatus::kValid,
+  return FiniteExecutionPathValidation3D{
+      .status = FiniteExecutionPathStatus3D::kValid,
   };
 }
 
-[[nodiscard]] FiniteExecutionPathStatus
-validateAltitudeState(const State& state, const Control& applied_control,
-                      const FiniteExecutionPathWorld& world) noexcept {
+[[nodiscard]] FiniteExecutionPathStatus3D
+validateAltitudeState(const MotionState3D& state,
+                      const MotionControl3D& applied_control,
+                      const FiniteExecutionPathWorld3D& world) noexcept {
   if (!insideFlightEnvelope(state.z, *world.flight_envelope)) {
-    return FiniteExecutionPathStatus::kFlightEnvelopeViolation;
+    return FiniteExecutionPathStatus3D::kFlightEnvelopeViolation;
   }
-  if (!altitudeEnvelopeDynamicallyRecoverable(state, applied_control, *world.dynamics,
-                                              *world.altitude_envelope)) {
-    return FiniteExecutionPathStatus::kDynamicFlightEnvelopeViolation;
+  if (!motionAltitudeEnvelopeDynamicallyRecoverable3D(
+          state, applied_control, *world.dynamics, *world.altitude_envelope)) {
+    return FiniteExecutionPathStatus3D::kDynamicFlightEnvelopeViolation;
   }
-  return FiniteExecutionPathStatus::kValid;
+  return FiniteExecutionPathStatus3D::kValid;
 }
 
-[[nodiscard]] std::vector<TimedExecutionPathPoint>
-timedPathPoints(const FiniteHorizon& horizon, const Control& previous_applied_control,
-                const float dt_s) {
-  std::vector<TimedExecutionPathPoint> points;
+[[nodiscard]] std::vector<TimedExecutionPathPoint3D>
+timedPathPoints(const FiniteMotionHorizon3D& horizon,
+                const MotionControl3D& previous_applied_control, const float dt_s) {
+  std::vector<TimedExecutionPathPoint3D> points;
   if (horizon.states.size() != horizon.controls.size() + 1U ||
       horizon.controls.empty() || !(dt_s > 0.0F)) {
     return points;
   }
   points.reserve(horizon.states.size());
   for (std::size_t index = 0U; index < horizon.states.size(); ++index) {
-    points.push_back(TimedExecutionPathPoint{
+    points.push_back(TimedExecutionPathPoint3D{
         .time_from_start_s = static_cast<double>(index) * dt_s,
         .state = horizon.states[index],
         .control =
@@ -254,74 +258,75 @@ timedPathPoints(const FiniteHorizon& horizon, const Control& previous_applied_co
 
 } // namespace
 
-FiniteExecutionPathValidation validateCompleteFiniteExecutionPath(
-    const std::span<const TimedExecutionPathPoint> points,
-    const Control& previous_applied_control,
-    const FiniteExecutionPathWorld& world) noexcept {
+FiniteExecutionPathValidation3D validateCompleteFiniteExecutionPath3D(
+    const std::span<const TimedExecutionPathPoint3D> points,
+    const MotionControl3D& previous_applied_control,
+    const FiniteExecutionPathWorld3D& world) noexcept {
   if (!validWorld(world) || !finite(previous_applied_control)) {
     return {};
   }
-  const FiniteExecutionPathValidation contract = validatePathContract(points);
+  const FiniteExecutionPathValidation3D contract = validatePathContract(points);
   if (!contract.accepted()) {
     return contract;
   }
   if (!sameControl(points.front().control, previous_applied_control)) {
-    return reject(FiniteExecutionPathStatus::kInvalidContract, 0U, 0U,
+    return reject(FiniteExecutionPathStatus3D::kInvalidContract, 0U, 0U,
                   position(points.front().state), 0.0);
   }
 
-  FiniteExecutionPathStatus altitude_status =
+  FiniteExecutionPathStatus3D altitude_status =
       validateAltitudeState(points.front().state, previous_applied_control, world);
-  if (altitude_status != FiniteExecutionPathStatus::kValid) {
+  if (altitude_status != FiniteExecutionPathStatus3D::kValid) {
     return reject(altitude_status, 0U, 0U, position(points.front().state), 0.0);
   }
   float terminal_boundary_travel_m{0.0F};
   if (!withinTerminalBoundary(points.front().state, world.terminal_boundary,
                               terminal_boundary_travel_m)) {
-    return reject(FiniteExecutionPathStatus::kRouteEndpointExceeded, 0U, 0U,
+    return reject(FiniteExecutionPathStatus3D::kRouteEndpointExceeded, 0U, 0U,
                   position(points.front().state), 0.0);
   }
 
   Point3 failure_point{};
   for (std::size_t index = 1U; index < points.size(); ++index) {
-    const TimedExecutionPathPoint& first = points[index - 1U];
-    const TimedExecutionPathPoint& second = points[index];
+    const TimedExecutionPathPoint3D& first = points[index - 1U];
+    const TimedExecutionPathPoint3D& second = points[index];
     terminal_boundary_travel_m += std::hypot(
         std::hypot(second.state.x - first.state.x, second.state.y - first.state.y),
         second.state.z - first.state.z);
     altitude_status = validateAltitudeState(second.state, second.control, world);
-    if (altitude_status != FiniteExecutionPathStatus::kValid) {
+    if (altitude_status != FiniteExecutionPathStatus3D::kValid) {
       return reject(altitude_status, 0U, index - 1U, position(second.state), 0.0);
     }
     if (!withinTerminalBoundary(second.state, world.terminal_boundary,
                                 terminal_boundary_travel_m)) {
-      return reject(FiniteExecutionPathStatus::kRouteEndpointExceeded, 0U, index - 1U,
+      return reject(FiniteExecutionPathStatus3D::kRouteEndpointExceeded, 0U, index - 1U,
                     position(second.state), 0.0);
     }
-    const FiniteExecutionPathStatus segment_status = validatePhysicalSegment(
+    const FiniteExecutionPathStatus3D segment_status = validatePhysicalSegment(
         position(first.state), bodyAxis(first.control), position(second.state),
         bodyAxis(second.control), world, failure_point);
-    if (segment_status != FiniteExecutionPathStatus::kValid) {
+    if (segment_status != FiniteExecutionPathStatus3D::kValid) {
       return reject(segment_status, 0U, index - 1U, failure_point, 0.0);
     }
   }
-  return FiniteExecutionPathValidation{
-      .status = FiniteExecutionPathStatus::kValid,
+  return FiniteExecutionPathValidation3D{
+      .status = FiniteExecutionPathStatus3D::kValid,
   };
 }
 
-[[nodiscard]] static ValidatedFiniteExecutionPath
-buildValidatedFiniteExecutionPathFromPreservedPrefix(
-    const std::span<const State> planned_states,
-    const std::span<const Control> planned_controls,
-    const Control& previous_applied_control, const DynamicsConfig& dynamics,
+[[nodiscard]] static ValidatedFiniteExecutionPath3D
+buildValidatedFiniteExecutionPath3DFromPreservedPrefix(
+    const std::span<const MotionState3D> planned_states,
+    const std::span<const MotionControl3D> planned_controls,
+    const MotionControl3D& previous_applied_control,
+    const MotionDynamicsConfig3D& dynamics,
     const std::size_t arrival_search_step_controls,
-    const FiniteHorizonConfig& finite_horizon_config,
-    const FiniteExecutionPathWorld& world,
+    const FiniteMotionHorizonConfig3D& finite_horizon_config,
+    const FiniteExecutionPathWorld3D& world,
     const std::size_t initial_preserved_prefix_control_count,
     const std::size_t maximum_nominal_prefix_control_count,
-    FiniteExecutionPathCandidateValidator candidate_validator) {
-  ValidatedFiniteExecutionPath result;
+    FiniteExecutionPathCandidateValidator3D candidate_validator) {
+  ValidatedFiniteExecutionPath3D result;
   if (!validWorld(world) || !finite(previous_applied_control) ||
       planned_states.size() != planned_controls.size() + 1U ||
       planned_controls.empty() || arrival_search_step_controls == 0U ||
@@ -333,7 +338,7 @@ buildValidatedFiniteExecutionPathFromPreservedPrefix(
   std::size_t preserved_prefix_control_count = initial_preserved_prefix_control_count;
   while (true) {
     ++result.arrival_shaping_attempts;
-    std::optional<FiniteHorizon> candidate = buildFiniteHorizon(
+    std::optional<FiniteMotionHorizon3D> candidate = buildFiniteMotionHorizon3D(
         planned_states, planned_controls, preserved_prefix_control_count, dynamics,
         previous_applied_control, finite_horizon_config);
     if (candidate.has_value()) {
@@ -341,7 +346,7 @@ buildValidatedFiniteExecutionPathFromPreservedPrefix(
           maximum_nominal_prefix_control_count, preserved_prefix_control_count);
       candidate->arrival_control_count =
           candidate->controls.size() - candidate->nominal_prefix_control_count;
-      result.validation = validateCompleteFiniteExecutionPath(
+      result.validation = validateCompleteFiniteExecutionPath3D(
           timedPathPoints(*candidate, previous_applied_control, dynamics.dt_s),
           previous_applied_control, world);
       if (result.validation.accepted() &&
@@ -350,7 +355,7 @@ buildValidatedFiniteExecutionPathFromPreservedPrefix(
         return result;
       }
       if (result.validation.accepted()) {
-        result.validation = reject(FiniteExecutionPathStatus::kCandidateRejected, 0U,
+        result.validation = reject(FiniteExecutionPathStatus3D::kCandidateRejected, 0U,
                                    preserved_prefix_control_count,
                                    position(candidate->states.back()), 0.0);
       }
@@ -359,13 +364,13 @@ buildValidatedFiniteExecutionPathFromPreservedPrefix(
       }
       result.path_validation_backoff = true;
       result.persistent_raw_path_validation_backoff |=
-          result.validation.status == FiniteExecutionPathStatus::kRawCollision;
+          result.validation.status == FiniteExecutionPathStatus3D::kRawCollision;
       result.latest_lidar_path_validation_backoff |=
           result.validation.status ==
-          FiniteExecutionPathStatus::kLatestLidarRawCollision;
+          FiniteExecutionPathStatus3D::kLatestLidarRawCollision;
     } else {
       result.validation =
-          reject(FiniteExecutionPathStatus::kInvalidContract, 0U,
+          reject(FiniteExecutionPathStatus3D::kInvalidContract, 0U,
                  preserved_prefix_control_count, position(planned_states.front()), 0.0);
     }
     if (preserved_prefix_control_count == 0U) {
@@ -378,25 +383,27 @@ buildValidatedFiniteExecutionPathFromPreservedPrefix(
   }
 }
 
-ValidatedFiniteExecutionPath buildValidatedFiniteExecutionPath(
-    const std::span<const State> planned_states,
-    const std::span<const Control> planned_controls,
-    const Control& previous_applied_control, const DynamicsConfig& dynamics,
+ValidatedFiniteExecutionPath3D buildValidatedFiniteExecutionPath3D(
+    const std::span<const MotionState3D> planned_states,
+    const std::span<const MotionControl3D> planned_controls,
+    const MotionControl3D& previous_applied_control,
+    const MotionDynamicsConfig3D& dynamics,
     const std::size_t arrival_search_step_controls,
-    const FiniteHorizonConfig& finite_horizon_config,
-    const FiniteExecutionPathWorld& world,
-    FiniteExecutionPathCandidateValidator candidate_validator) {
-  return buildValidatedFiniteExecutionPathFromPreservedPrefix(
+    const FiniteMotionHorizonConfig3D& finite_horizon_config,
+    const FiniteExecutionPathWorld3D& world,
+    FiniteExecutionPathCandidateValidator3D candidate_validator) {
+  return buildValidatedFiniteExecutionPath3DFromPreservedPrefix(
       planned_states, planned_controls, previous_applied_control, dynamics,
       arrival_search_step_controls, finite_horizon_config, world,
       planned_controls.size(), planned_controls.size(), std::move(candidate_validator));
 }
 
-FiniteExecutionPathValidation validateFiniteExecutionTrajectoryContinuation(
-    const std::span<const TimedExecutionPathPoint> points,
+FiniteExecutionPathValidation3D validateFiniteExecutionTrajectoryContinuation3D(
+    const std::span<const TimedExecutionPathPoint3D> points,
     const std::int64_t valid_from_ns, const std::int64_t valid_until_ns,
-    const std::int64_t now_ns, const State& current_state,
-    const Control& current_control, const FiniteExecutionPathWorld& world) noexcept {
+    const std::int64_t now_ns, const MotionState3D& current_state,
+    const MotionControl3D& current_control,
+    const FiniteExecutionPathWorld3D& world) noexcept {
   if (!validWorld(world) || points.size() < 2U || valid_from_ns <= 0 ||
       valid_until_ns <= valid_from_ns || !finite(current_state) ||
       !finite(current_control)) {
@@ -405,47 +412,47 @@ FiniteExecutionPathValidation validateFiniteExecutionTrajectoryContinuation(
   const double remaining_duration_s =
       static_cast<double>(valid_until_ns - now_ns) / kNanosecondsPerSecond;
   if (now_ns < valid_from_ns || now_ns >= valid_until_ns) {
-    return reject(FiniteExecutionPathStatus::kNotActive, 0U, 0U,
+    return reject(FiniteExecutionPathStatus3D::kNotActive, 0U, 0U,
                   position(current_state), remaining_duration_s);
   }
 
-  FiniteExecutionPathValidation contract = validatePathContract(points);
+  FiniteExecutionPathValidation3D contract = validatePathContract(points);
   if (!contract.accepted()) {
     contract.remaining_duration_s = remaining_duration_s;
     return contract;
   }
-  const TimedExecutionPathPoint& terminal = points.back();
+  const TimedExecutionPathPoint3D& terminal = points.back();
 
   const double elapsed_s =
       static_cast<double>(now_ns - valid_from_ns) / kNanosecondsPerSecond;
   const auto first_remaining =
-      std::ranges::find_if(points, [elapsed_s](const TimedExecutionPathPoint& point) {
+      std::ranges::find_if(points, [elapsed_s](const TimedExecutionPathPoint3D& point) {
         return point.time_from_start_s >= elapsed_s;
       });
   if (first_remaining == points.end()) {
-    return reject(FiniteExecutionPathStatus::kInvalidContract, points.size(),
+    return reject(FiniteExecutionPathStatus3D::kInvalidContract, points.size(),
                   points.size() - 1U, position(terminal.state), remaining_duration_s);
   }
   const std::size_t first_remaining_index =
       static_cast<std::size_t>(std::distance(points.begin(), first_remaining));
-  FiniteExecutionPathStatus altitude_status =
+  FiniteExecutionPathStatus3D altitude_status =
       validateAltitudeState(current_state, current_control, world);
-  if (altitude_status != FiniteExecutionPathStatus::kValid) {
+  if (altitude_status != FiniteExecutionPathStatus3D::kValid) {
     return reject(altitude_status, first_remaining_index, first_remaining_index,
                   position(current_state), remaining_duration_s);
   }
   float terminal_boundary_travel_m{0.0F};
   if (!withinTerminalBoundary(current_state, world.terminal_boundary,
                               terminal_boundary_travel_m)) {
-    return reject(FiniteExecutionPathStatus::kRouteEndpointExceeded,
+    return reject(FiniteExecutionPathStatus3D::kRouteEndpointExceeded,
                   first_remaining_index, first_remaining_index, position(current_state),
                   remaining_duration_s);
   }
-  State terminal_boundary_previous_state = current_state;
+  MotionState3D terminal_boundary_previous_state = current_state;
   for (std::size_t index = first_remaining_index; index < points.size(); ++index) {
     altitude_status =
         validateAltitudeState(points[index].state, points[index].control, world);
-    if (altitude_status != FiniteExecutionPathStatus::kValid) {
+    if (altitude_status != FiniteExecutionPathStatus3D::kValid) {
       return reject(altitude_status, first_remaining_index, index,
                     position(points[index].state), remaining_duration_s);
     }
@@ -456,47 +463,48 @@ FiniteExecutionPathValidation validateFiniteExecutionTrajectoryContinuation(
     terminal_boundary_previous_state = points[index].state;
     if (!withinTerminalBoundary(points[index].state, world.terminal_boundary,
                                 terminal_boundary_travel_m)) {
-      return reject(FiniteExecutionPathStatus::kRouteEndpointExceeded,
+      return reject(FiniteExecutionPathStatus3D::kRouteEndpointExceeded,
                     first_remaining_index, index, position(points[index].state),
                     remaining_duration_s);
     }
   }
 
   Point3 failure_point{};
-  FiniteExecutionPathStatus segment_status =
+  FiniteExecutionPathStatus3D segment_status =
       validatePhysicalSegment(position(current_state), bodyAxis(current_control),
                               position(first_remaining->state),
                               bodyAxis(first_remaining->control), world, failure_point);
-  if (segment_status != FiniteExecutionPathStatus::kValid) {
+  if (segment_status != FiniteExecutionPathStatus3D::kValid) {
     return reject(segment_status, first_remaining_index, first_remaining_index,
                   failure_point, remaining_duration_s);
   }
   for (std::size_t index = first_remaining_index + 1U; index < points.size(); ++index) {
-    const TimedExecutionPathPoint& first = points[index - 1U];
-    const TimedExecutionPathPoint& second = points[index];
+    const TimedExecutionPathPoint3D& first = points[index - 1U];
+    const TimedExecutionPathPoint3D& second = points[index];
     segment_status = validatePhysicalSegment(
         position(first.state), bodyAxis(first.control), position(second.state),
         bodyAxis(second.control), world, failure_point);
-    if (segment_status != FiniteExecutionPathStatus::kValid) {
+    if (segment_status != FiniteExecutionPathStatus3D::kValid) {
       return reject(segment_status, first_remaining_index, index - 1U, failure_point,
                     remaining_duration_s);
     }
   }
 
-  return FiniteExecutionPathValidation{
-      .status = FiniteExecutionPathStatus::kValid,
+  return FiniteExecutionPathValidation3D{
+      .status = FiniteExecutionPathStatus3D::kValid,
       .first_remaining_point_index = first_remaining_index,
       .remaining_duration_s = remaining_duration_s,
   };
 }
 
-FiniteExecutionPathValidation validateFiniteExecutionPathContinuation(
-    const std::span<const TimedExecutionPathPoint> points,
+FiniteExecutionPathValidation3D validateFiniteExecutionPathContinuation3D(
+    const std::span<const TimedExecutionPathPoint3D> points,
     const std::int64_t valid_from_ns, const std::int64_t valid_until_ns,
-    const std::int64_t now_ns, const State& current_state,
-    const Control& current_control, const FiniteExecutionPathWorld& world) noexcept {
-  const FiniteExecutionPathValidation trajectory_validation =
-      validateFiniteExecutionTrajectoryContinuation(
+    const std::int64_t now_ns, const MotionState3D& current_state,
+    const MotionControl3D& current_control,
+    const FiniteExecutionPathWorld3D& world) noexcept {
+  const FiniteExecutionPathValidation3D trajectory_validation =
+      validateFiniteExecutionTrajectoryContinuation3D(
           points, valid_from_ns, valid_until_ns, now_ns, current_state, current_control,
           world);
   if (!trajectory_validation.accepted()) {
@@ -504,9 +512,9 @@ FiniteExecutionPathValidation validateFiniteExecutionPathContinuation(
   }
 
   const std::int64_t control_interval_ns =
-      finitePathControlIntervalNanoseconds(world.dynamics->dt_s);
+      finitePathControlIntervalNanoseconds3D(world.dynamics->dt_s);
   if (control_interval_ns <= 0) {
-    return reject(FiniteExecutionPathStatus::kInvalidContract,
+    return reject(FiniteExecutionPathStatus3D::kInvalidContract,
                   trajectory_validation.first_remaining_point_index,
                   trajectory_validation.first_remaining_point_index,
                   position(current_state), trajectory_validation.remaining_duration_s);
@@ -516,18 +524,18 @@ FiniteExecutionPathValidation validateFiniteExecutionPathContinuation(
                points.size() - 2U);
   const std::size_t first_remaining_index =
       trajectory_validation.first_remaining_point_index;
-  State simulated_state = current_state;
-  Control previous_control = current_control;
+  MotionState3D simulated_state = current_state;
+  MotionControl3D previous_control = current_control;
   float terminal_boundary_travel_m{0.0F};
-  FiniteExecutionPathStatus altitude_status{FiniteExecutionPathStatus::kValid};
-  FiniteExecutionPathStatus segment_status{FiniteExecutionPathStatus::kValid};
+  FiniteExecutionPathStatus3D altitude_status{FiniteExecutionPathStatus3D::kValid};
+  FiniteExecutionPathStatus3D segment_status{FiniteExecutionPathStatus3D::kValid};
   Point3 failure_point{};
   for (std::size_t index = source_control_index; index + 1U < points.size(); ++index) {
-    const Control& control = points[index + 1U].control;
-    const State next_state =
-        integrateReference(simulated_state, control, *world.dynamics);
+    const MotionControl3D& control = points[index + 1U].control;
+    const MotionState3D next_state =
+        integrateMotionState3D(simulated_state, control, *world.dynamics);
     altitude_status = validateAltitudeState(next_state, control, world);
-    if (altitude_status != FiniteExecutionPathStatus::kValid) {
+    if (altitude_status != FiniteExecutionPathStatus3D::kValid) {
       return reject(altitude_status, first_remaining_index, index, position(next_state),
                     trajectory_validation.remaining_duration_s);
     }
@@ -536,39 +544,40 @@ FiniteExecutionPathValidation validateFiniteExecutionPathContinuation(
         next_state.z - simulated_state.z);
     if (!withinTerminalBoundary(next_state, world.terminal_boundary,
                                 terminal_boundary_travel_m)) {
-      return reject(FiniteExecutionPathStatus::kRouteEndpointExceeded,
+      return reject(FiniteExecutionPathStatus3D::kRouteEndpointExceeded,
                     first_remaining_index, index, position(next_state),
                     trajectory_validation.remaining_duration_s);
     }
     segment_status = validatePhysicalSegment(
         position(simulated_state), bodyAxis(previous_control), position(next_state),
         bodyAxis(control), world, failure_point);
-    if (segment_status != FiniteExecutionPathStatus::kValid) {
+    if (segment_status != FiniteExecutionPathStatus3D::kValid) {
       return reject(segment_status, first_remaining_index, index, failure_point,
                     trajectory_validation.remaining_duration_s);
     }
     simulated_state = next_state;
     previous_control = control;
   }
-  return FiniteExecutionPathValidation{
-      .status = FiniteExecutionPathStatus::kValid,
+  return FiniteExecutionPathValidation3D{
+      .status = FiniteExecutionPathStatus3D::kValid,
       .first_remaining_point_index = first_remaining_index,
       .remaining_duration_s = trajectory_validation.remaining_duration_s,
   };
 }
 
-RebuiltFiniteExecutionPathContinuation rebuildFiniteExecutionPathContinuation(
-    const std::span<const TimedExecutionPathPoint> points,
+RebuiltFiniteExecutionPathContinuation3D rebuildFiniteExecutionPathContinuation3D(
+    const std::span<const TimedExecutionPathPoint3D> points,
     const std::int64_t valid_from_ns, const std::int64_t valid_until_ns,
-    const std::int64_t now_ns, const State& current_state,
-    const Control& current_control,
+    const std::int64_t now_ns, const MotionState3D& current_state,
+    const MotionControl3D& current_control,
     const std::size_t source_nominal_prefix_control_count,
     const std::size_t source_preserved_prefix_control_count,
-    const DynamicsConfig& dynamics, const std::size_t arrival_search_step_controls,
-    const FiniteHorizonConfig& finite_horizon_config,
-    const FiniteExecutionPathWorld& world,
-    FiniteExecutionPathCandidateValidator candidate_validator) {
-  RebuiltFiniteExecutionPathContinuation result;
+    const MotionDynamicsConfig3D& dynamics,
+    const std::size_t arrival_search_step_controls,
+    const FiniteMotionHorizonConfig3D& finite_horizon_config,
+    const FiniteExecutionPathWorld3D& world,
+    FiniteExecutionPathCandidateValidator3D candidate_validator) {
+  RebuiltFiniteExecutionPathContinuation3D result;
   if (!validWorld(world) || !finite(current_state) || !finite(current_control) ||
       !(dynamics.dt_s > 0.0F) || arrival_search_step_controls == 0U ||
       valid_from_ns <= 0 || valid_until_ns <= valid_from_ns || points.empty() ||
@@ -583,7 +592,7 @@ RebuiltFiniteExecutionPathContinuation rebuildFiniteExecutionPathContinuation(
   }
   if (now_ns < valid_from_ns || now_ns >= valid_until_ns) {
     result.validation =
-        reject(FiniteExecutionPathStatus::kNotActive, 0U, 0U, position(current_state),
+        reject(FiniteExecutionPathStatus3D::kNotActive, 0U, 0U, position(current_state),
                static_cast<double>(valid_until_ns - now_ns) / kNanosecondsPerSecond);
     return result;
   }
@@ -591,7 +600,7 @@ RebuiltFiniteExecutionPathContinuation rebuildFiniteExecutionPathContinuation(
   const double remaining_s =
       static_cast<double>(valid_until_ns - now_ns) / kNanosecondsPerSecond;
   const std::int64_t control_interval_ns =
-      finitePathControlIntervalNanoseconds(dynamics.dt_s);
+      finitePathControlIntervalNanoseconds3D(dynamics.dt_s);
   if (control_interval_ns <= 0) {
     return result;
   }
@@ -606,20 +615,20 @@ RebuiltFiniteExecutionPathContinuation rebuildFiniteExecutionPathContinuation(
       std::min(available_source_controls, deadline_control_count);
   if (control_count == 0U) {
     result.validation =
-        reject(FiniteExecutionPathStatus::kNotActive, result.source_control_index,
+        reject(FiniteExecutionPathStatus3D::kNotActive, result.source_control_index,
                result.source_control_index, position(current_state), remaining_s);
     return result;
   }
 
-  std::vector<Control> controls;
+  std::vector<MotionControl3D> controls;
   controls.reserve(control_count);
   for (std::size_t offset = 0U; offset < control_count; ++offset) {
     controls.push_back(points[result.source_control_index + offset + 1U].control);
   }
-  std::vector<State> states{current_state};
+  std::vector<MotionState3D> states{current_state};
   states.reserve(controls.size() + 1U);
-  for (const Control& control : controls) {
-    states.push_back(integrateReference(states.back(), control, dynamics));
+  for (const MotionControl3D& control : controls) {
+    states.push_back(integrateMotionState3D(states.back(), control, dynamics));
   }
 
   const std::size_t remaining_nominal_prefix_control_count =
@@ -633,8 +642,8 @@ RebuiltFiniteExecutionPathContinuation rebuildFiniteExecutionPathContinuation(
                          result.source_control_index,
                      controls.size())
           : 0U;
-  ValidatedFiniteExecutionPath rebuilt =
-      buildValidatedFiniteExecutionPathFromPreservedPrefix(
+  ValidatedFiniteExecutionPath3D rebuilt =
+      buildValidatedFiniteExecutionPath3DFromPreservedPrefix(
           states, controls, current_control, dynamics, arrival_search_step_controls,
           finite_horizon_config, world, remaining_preserved_prefix_control_count,
           remaining_nominal_prefix_control_count, std::move(candidate_validator));
@@ -648,7 +657,7 @@ RebuiltFiniteExecutionPathContinuation rebuildFiniteExecutionPathContinuation(
   if (!rebuilt.accepted() || !rebuilt.horizon.has_value()) {
     return result;
   }
-  FiniteHorizon rebuilt_horizon = std::move(*rebuilt.horizon);
+  FiniteMotionHorizon3D rebuilt_horizon = std::move(*rebuilt.horizon);
   result.valid_until_ns =
       now_ns +
       static_cast<std::int64_t>(rebuilt_horizon.controls.size()) * control_interval_ns;
@@ -658,30 +667,30 @@ RebuiltFiniteExecutionPathContinuation rebuildFiniteExecutionPathContinuation(
 }
 
 const char*
-finiteExecutionPathStatusName(const FiniteExecutionPathStatus status) noexcept {
+finiteExecutionPathStatus3DName(const FiniteExecutionPathStatus3D status) noexcept {
   switch (status) {
-    case FiniteExecutionPathStatus::kValid:
+    case FiniteExecutionPathStatus3D::kValid:
       return "valid";
-    case FiniteExecutionPathStatus::kInvalidContract:
+    case FiniteExecutionPathStatus3D::kInvalidContract:
       return "invalid_contract";
-    case FiniteExecutionPathStatus::kCandidateRejected:
+    case FiniteExecutionPathStatus3D::kCandidateRejected:
       return "candidate_rejected";
-    case FiniteExecutionPathStatus::kNotActive:
+    case FiniteExecutionPathStatus3D::kNotActive:
       return "not_active";
-    case FiniteExecutionPathStatus::kRouteEndpointExceeded:
+    case FiniteExecutionPathStatus3D::kRouteEndpointExceeded:
       return "route_endpoint_exceeded";
-    case FiniteExecutionPathStatus::kFlightEnvelopeViolation:
+    case FiniteExecutionPathStatus3D::kFlightEnvelopeViolation:
       return "flight_envelope";
-    case FiniteExecutionPathStatus::kDynamicFlightEnvelopeViolation:
+    case FiniteExecutionPathStatus3D::kDynamicFlightEnvelopeViolation:
       return "dynamic_flight_envelope";
-    case FiniteExecutionPathStatus::kRawWorldUnavailable:
+    case FiniteExecutionPathStatus3D::kRawWorldUnavailable:
       return "raw_world_unavailable";
-    case FiniteExecutionPathStatus::kRawCollision:
+    case FiniteExecutionPathStatus3D::kRawCollision:
       return "raw_collision";
-    case FiniteExecutionPathStatus::kLatestLidarRawCollision:
+    case FiniteExecutionPathStatus3D::kLatestLidarRawCollision:
       return "latest_lidar_raw_collision";
   }
   return "unknown";
 }
 
-} // namespace drone_city_nav::mppi
+} // namespace drone_city_nav

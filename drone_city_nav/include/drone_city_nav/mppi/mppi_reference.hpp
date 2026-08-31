@@ -8,7 +8,7 @@
 
 namespace drone_city_nav::mppi {
 
-[[nodiscard]] State integrateReference(State state, Control control,
+[[nodiscard]] State integrateReference(const State& state, const Control& control,
                                        const DynamicsConfig& config) noexcept;
 
 [[nodiscard]] Control equivalentControlFromMeasuredAcceleration(

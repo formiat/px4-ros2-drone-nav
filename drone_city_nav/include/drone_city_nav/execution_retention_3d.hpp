@@ -3,8 +3,8 @@
 #include "drone_city_nav/committed_execution_authority_3d.hpp"
 #include "drone_city_nav/execution_evidence_3d.hpp"
 #include "drone_city_nav/execution_route_transitions_3d.hpp"
-#include "drone_city_nav/mppi/finite_execution_path.hpp"
-#include "drone_city_nav/mppi/mppi_finite_horizon.hpp"
+#include "drone_city_nav/finite_execution_path_3d.hpp"
+#include "drone_city_nav/finite_motion_horizon_3d.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -46,9 +46,9 @@ struct ExecutionRetentionRequest3D {
   std::shared_ptr<const VersionedObservedRawWorld3D> lifecycle_observed_raw_world;
   std::shared_ptr<const VersionedExecutionInput3D> execution_input;
   std::shared_ptr<const VersionedLatestLidarEvidence3D> latest_lidar_evidence;
-  mppi::State exact_initial_state{};
-  mppi::Control exact_previous_control{};
-  mppi::FiniteHorizonConfig finite_horizon_config{};
+  MotionState3D exact_initial_state{};
+  MotionControl3D exact_previous_control{};
+  FiniteMotionHorizonConfig3D finite_horizon_config{};
   std::int64_t now_ns{0};
   std::int64_t lidar_validation_now_ns{0};
 };
@@ -61,9 +61,9 @@ struct ExecutionRetentionResult3D {
   ExecutionRetentionStatus3D status{ExecutionRetentionStatus3D::kMissingResidentOwner};
   std::shared_ptr<const CommittedExecutionAuthority3D> expected_authority;
   std::shared_ptr<const ExecutionRouteTransitionResult3D> transition;
-  mppi::FiniteExecutionPathValidation actual_state_validation{};
-  mppi::FiniteExecutionPathValidation trajectory_validation{};
-  mppi::FiniteExecutionPathValidation rebuild_validation{};
+  FiniteExecutionPathValidation3D actual_state_validation{};
+  FiniteExecutionPathValidation3D trajectory_validation{};
+  FiniteExecutionPathValidation3D rebuild_validation{};
   FiniteExecutionCertificationResult3D certification{};
   std::optional<RouteLifecycleEventKind3D> braking_event;
   std::size_t arrival_shaping_attempts{0U};

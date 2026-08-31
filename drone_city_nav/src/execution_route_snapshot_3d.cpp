@@ -1,7 +1,7 @@
 #include "drone_city_nav/execution_horizon_timing.hpp"
 #include "drone_city_nav/execution_route_certification_3d.hpp"
-#include "drone_city_nav/mppi/mppi_altitude_envelope.hpp"
-#include "drone_city_nav/mppi/mppi_reference.hpp"
+#include "drone_city_nav/motion_altitude_envelope_3d.hpp"
+#include "drone_city_nav/motion_dynamics_3d.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
 
 #include <algorithm>
@@ -245,7 +245,7 @@ bool FiniteExecutionState3D::validFor(
       horizon == nullptr || horizon->controls.empty() ||
       horizon->states.size() != horizon->controls.size() + 1U ||
       !horizon_counts_valid || !duration_fits ||
-      !mppi::finiteHorizonHasTerminalRestState(*horizon) || valid_from_ns < 0 ||
+      !finiteMotionHorizonHasTerminalRestState3D(*horizon) || valid_from_ns < 0 ||
       valid_until_ns != expected_valid_until_ns ||
       !std::isfinite(begin_route_station_m) || begin_route_station_m < 0.0 ||
       !certificateValidForSource(certificate, source_route_instance_id,
@@ -377,7 +377,7 @@ bool DirectTrackingFiniteExecution3D::valid() const noexcept {
          finitePoint(target) && horizon != nullptr && !horizon->controls.empty() &&
          horizon->states.size() == horizon->controls.size() + 1U &&
          horizon_counts_valid && duration_fits &&
-         mppi::finiteHorizonHasTerminalRestState(*horizon) &&
+         finiteMotionHorizonHasTerminalRestState3D(*horizon) &&
          valid_until_ns == expected_valid_until_ns &&
          (kind == FiniteExecutionKind3D::kNominal ||
           kind == FiniteExecutionKind3D::kRetained) &&
@@ -417,11 +417,11 @@ bool StationaryExecutionHold3D::valid() const noexcept {
       (static_world != nullptr && !static_world->valid())) {
     return false;
   }
-  const mppi::State& state = terminal_execution_input->state();
-  const mppi::Control& control = terminal_execution_input->previousControl();
+  const MotionState3D& state = terminal_execution_input->state();
+  const MotionControl3D& control = terminal_execution_input->previousControl();
   const Point3 actual_position{state.x, state.y, state.z};
   return insideFlightEnvelope(position, validation_policy->flightEnvelope()) &&
-         mppi::altitudeEnvelopeDynamicallyRecoverable(
+         motionAltitudeEnvelopeDynamicallyRecoverable3D(
              state, control, validation_policy->dynamics(),
              validation_policy->altitudeEnvelope()) &&
          distance3D(position, actual_position) <=

@@ -1,9 +1,9 @@
 #include "drone_city_nav/execution_horizon_timing.hpp"
 #include "drone_city_nav/execution_route_certification_3d.hpp"
-#include "drone_city_nav/mppi/mppi_reference.hpp"
-#include "drone_city_nav/mppi/trajectory_reference_adapter_3d.hpp"
+#include "drone_city_nav/motion_dynamics_3d.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
 #include "drone_city_nav/occupied_collision_oracle_3d.hpp"
+#include "drone_city_nav/trajectory_control_reference_3d.hpp"
 
 #include <algorithm>
 #include <array>
@@ -71,13 +71,13 @@ std::optional<RouteAdherenceAssessment3D> validateExecutionProgressConnector(
       certificate_view.certified_end_station_m,
       route.progress.station_m + kMaximumStationCreditPerTravel * connector_travel_m +
           kStationToleranceM);
-  const std::array<mppi::State, 2U> connector_states{
-      mppi::State{.x = static_cast<float>(route.progress.last_observed_position.x),
-                  .y = static_cast<float>(route.progress.last_observed_position.y),
-                  .z = static_cast<float>(route.progress.last_observed_position.z)},
-      mppi::State{.x = static_cast<float>(execution_position.x),
-                  .y = static_cast<float>(execution_position.y),
-                  .z = static_cast<float>(execution_position.z)},
+  const std::array<MotionState3D, 2U> connector_states{
+      MotionState3D{.x = static_cast<float>(route.progress.last_observed_position.x),
+                    .y = static_cast<float>(route.progress.last_observed_position.y),
+                    .z = static_cast<float>(route.progress.last_observed_position.z)},
+      MotionState3D{.x = static_cast<float>(execution_position.x),
+                    .y = static_cast<float>(execution_position.y),
+                    .z = static_cast<float>(execution_position.z)},
   };
   const std::optional<double> cross_track_limit =
       route.validation_policy->routeCrossTrackConstraintsEnabled()
@@ -93,9 +93,9 @@ std::optional<RouteAdherenceAssessment3D> validateExecutionProgressConnector(
     return std::nullopt;
   }
 
-  const mppi::Control& previous_route_control =
+  const MotionControl3D& previous_route_control =
       route.progress.execution_input->previousControl();
-  const mppi::Control& current_execution_control = execution_input->previousControl();
+  const MotionControl3D& current_execution_control = execution_input->previousControl();
   const FootprintBodyAxis previous_route_axis = bodyAxisFromWorldAcceleration(Vec3{
       previous_route_control.ax, previous_route_control.ay, previous_route_control.az});
   const FootprintBodyAxis current_execution_axis = bodyAxisFromWorldAcceleration(
@@ -157,7 +157,7 @@ unboundSuccessorExecutionStation(const CertifiedRouteSuffix3D& route,
 
 [[nodiscard]] RouteAdherenceAssessment3D
 brakingRouteOwnershipBinding(const CertifiedRouteSuffix3D& route,
-                             const std::span<const mppi::State> states,
+                             const std::span<const MotionState3D> states,
                              const double station_m) noexcept {
   RouteAdherenceAssessment3D binding;
   if (route.geometry == nullptr || route.geometry->route == nullptr || states.empty() ||
@@ -170,7 +170,7 @@ brakingRouteOwnershipBinding(const CertifiedRouteSuffix3D& route,
   }
   const RouteSample3D owner_sample =
       sampleRoute3DAtStation(*route.geometry->route, station_m);
-  const auto projection = [&](const mppi::State& state) {
+  const auto projection = [&](const MotionState3D& state) {
     const Point3 position{state.x, state.y, state.z};
     return RouteProjection3D{
         .valid = true,
@@ -265,7 +265,7 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
        validateRemainingFiniteExecutionAgainstLatestLidar3D(
            *current_execution, *certification.execution_input,
            *certification.latest_lidar_evidence, certification.valid_from_ns)
-               .status != mppi::FiniteExecutionPathStatus::kLatestLidarRawCollision)) {
+               .status != FiniteExecutionPathStatus3D::kLatestLidarRawCollision)) {
     return rejectedFiniteExecution(
         FiniteExecutionCertificationStatus3D::kLifecycleBrakingContractRejected);
   }
@@ -371,9 +371,9 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
         FiniteExecutionCertificationStatus3D::kCollisionPolicyInvalid);
   }
 
-  const mppi::FiniteHorizon& validated_horizon = certification.horizon;
+  const FiniteMotionHorizon3D& validated_horizon = certification.horizon;
   const std::int64_t control_interval_ns =
-      mppi::finitePathControlIntervalNanoseconds(policy->dynamics().dt_s);
+      finitePathControlIntervalNanoseconds3D(policy->dynamics().dt_s);
   if (validated_horizon.controls.empty() || validated_horizon.states.empty() ||
       validated_horizon.states.size() != validated_horizon.controls.size() + 1U ||
       control_interval_ns <= 0 ||
@@ -389,7 +389,7 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
   }
 
   const CertificateView3D certificate_view = certificateView(target_route.certificate);
-  const mppi::State& initial_state = validated_horizon.states.front();
+  const MotionState3D& initial_state = validated_horizon.states.front();
   const Point3 initial_state_position{initial_state.x, initial_state.y,
                                       initial_state.z};
   if (!finiteStateNearlyEqual(initial_state, certification.execution_input->state())) {
@@ -498,15 +498,15 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
         FiniteExecutionCertificationStatus3D::kTerminalBoundaryInvalid);
   }
 
-  const std::shared_ptr<const std::vector<mppi::RouteSample3D>> mppi_reference =
+  const std::shared_ptr<const std::vector<ControlRouteSample3D>> mppi_reference =
       certifies_braking_execution
           ? nullptr
-          : mppi::adaptTrajectoryReference3D(*target_route.geometry);
+          : adaptTrajectoryControlReference3D(*target_route.geometry);
   if (!certifies_braking_execution && mppi_reference == nullptr) {
     return rejectedFiniteExecution(
         FiniteExecutionCertificationStatus3D::kTerminalBoundaryInvalid);
   }
-  mppi::FiniteExecutionPathWorld validation_world{
+  FiniteExecutionPathWorld3D validation_world{
       .flight_envelope = &policy->flightEnvelope(),
       .dynamics = &policy->dynamics(),
       .altitude_envelope = &policy->altitudeEnvelope(),
@@ -535,12 +535,12 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
     return rejectedFiniteExecution(
         FiniteExecutionCertificationStatus3D::kTrackingTubeHandoffRejected);
   }
-  const std::vector<mppi::TimedExecutionPathPoint> validation_points =
+  const std::vector<TimedExecutionPathPoint3D> validation_points =
       timedExecutionPathPoints(validated_horizon,
                                certification.execution_input->previousControl(),
                                control_interval_ns);
-  const mppi::FiniteExecutionPathValidation validation =
-      mppi::validateCompleteFiniteExecutionPath(
+  const FiniteExecutionPathValidation3D validation =
+      validateCompleteFiniteExecutionPath3D(
           validation_points, certification.execution_input->previousControl(),
           validation_world);
   if (!validation.accepted()) {
@@ -614,7 +614,7 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
       certification.valid_from_ns +
       static_cast<std::int64_t>(validated_horizon.controls.size()) *
           control_interval_ns;
-  const mppi::State& terminal_state = validated_horizon.states.back();
+  const MotionState3D& terminal_state = validated_horizon.states.back();
   const Point3 terminal_position{terminal_state.x, terminal_state.y, terminal_state.z};
   const std::uint64_t validated_raw_revision = rawValidatedRevision(validation_lineage);
   FiniteExecutionState3D execution{
@@ -627,8 +627,8 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
       .source_physical_route_fingerprint =
           target_route.geometry->physical_route_fingerprint,
       .certificate = target_route.certificate,
-      .horizon =
-          std::make_shared<const mppi::FiniteHorizon>(std::move(certification.horizon)),
+      .horizon = std::make_shared<const FiniteMotionHorizon3D>(
+          std::move(certification.horizon)),
       .observed_raw_world = std::move(observed_raw_validation_world),
       .static_world = target_route.static_world,
       .validation_policy = policy,
@@ -834,12 +834,12 @@ certifyDirectTrackingExecution3D(const ExecutionPlan3D& current,
     return std::nullopt;
   }
 
-  const mppi::FiniteHorizon& horizon = certification.horizon;
-  const std::int64_t control_interval_ns = mppi::finitePathControlIntervalNanoseconds(
+  const FiniteMotionHorizon3D& horizon = certification.horizon;
+  const std::int64_t control_interval_ns = finitePathControlIntervalNanoseconds3D(
       certification.validation_policy->dynamics().dt_s);
   if (horizon.controls.empty() ||
       horizon.states.size() != horizon.controls.size() + 1U ||
-      control_interval_ns <= 0 || !mppi::finiteHorizonHasTerminalRestState(horizon) ||
+      control_interval_ns <= 0 || !finiteMotionHorizonHasTerminalRestState3D(horizon) ||
       !finiteHorizonDynamicallyConsistent(
           horizon, certification.execution_input->previousControl(),
           certification.validation_policy->dynamics()) ||
@@ -858,7 +858,7 @@ certifyDirectTrackingExecution3D(const ExecutionPlan3D& current,
           : nullptr;
   const std::span<const Point3> latest_lidar_obstacle_points{
       certification.latest_lidar_evidence->hitPointsMapM()};
-  mppi::FiniteExecutionPathWorld validation_world{
+  FiniteExecutionPathWorld3D validation_world{
       .flight_envelope = &certification.validation_policy->flightEnvelope(),
       .dynamics = &certification.validation_policy->dynamics(),
       .altitude_envelope = &certification.validation_policy->altitudeEnvelope(),
@@ -872,11 +872,11 @@ certifyDirectTrackingExecution3D(const ExecutionPlan3D& current,
       .latest_lidar_obstacle_points = latest_lidar_obstacle_points,
       .terminal_boundary = std::nullopt,
   };
-  const std::vector<mppi::TimedExecutionPathPoint> validation_points =
+  const std::vector<TimedExecutionPathPoint3D> validation_points =
       timedExecutionPathPoints(horizon,
                                certification.execution_input->previousControl(),
                                control_interval_ns);
-  if (!mppi::validateCompleteFiniteExecutionPath(
+  if (!validateCompleteFiniteExecutionPath3D(
            validation_points, certification.execution_input->previousControl(),
            validation_world)
            .accepted()) {
@@ -925,8 +925,8 @@ certifyDirectTrackingExecution3D(const ExecutionPlan3D& current,
       .source_snapshot_version = current.version,
       .source_navigation_revision = certification.execution_input->poseRevision(),
       .target = certification.target,
-      .horizon =
-          std::make_shared<const mppi::FiniteHorizon>(std::move(certification.horizon)),
+      .horizon = std::make_shared<const FiniteMotionHorizon3D>(
+          std::move(certification.horizon)),
       .observed_raw_world = std::move(certification.observed_raw_world),
       .static_world = std::move(certification.static_world),
       .validation_policy = std::move(certification.validation_policy),

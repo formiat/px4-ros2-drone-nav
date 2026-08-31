@@ -103,7 +103,7 @@ TEST(ExecutionSupervisorRetention3DTest,
   EXPECT_EQ(prepared.prepared_trajectory_revision,
             active->finiteExecution()->trajectory_revision + 1U);
   EXPECT_EQ(prepared.actual_state_validation.status,
-            mppi::FiniteExecutionPathStatus::kValid);
+            FiniteExecutionPathStatus3D::kValid);
 
   EXPECT_EQ(commitExecutionHorizonForTest(
                 supervisor,

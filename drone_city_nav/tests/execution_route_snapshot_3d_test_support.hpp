@@ -3,7 +3,9 @@
 #include "drone_city_nav/execution_route_store_3d.hpp"
 #include "drone_city_nav/execution_route_transitions_3d.hpp"
 #include "drone_city_nav/execution_supervisor_3d.hpp"
-#include "drone_city_nav/mppi/mppi_reference.hpp"
+#include "drone_city_nav/finite_execution_path_3d.hpp"
+#include "drone_city_nav/finite_motion_horizon_3d.hpp"
+#include "drone_city_nav/motion_dynamics_3d.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
 #include "drone_city_nav/trajectory_compiler_3d.hpp"
 
@@ -115,11 +117,11 @@ struct SnapshotFixture3D {
   PassageVolumeConfig passage_volume_config{testPassageVolumeConfig()};
   SweptFootprintConfig execution_footprint{testPassageVolumeConfig().footprint};
   std::shared_ptr<const VersionedExecutionValidationPolicy3D> validation_policy = [] {
-    mppi::DynamicsConfig dynamics;
+    MotionDynamicsConfig3D dynamics;
     dynamics.dt_s = 0.1F;
     dynamics.linear_drag_1ps = 0.0F;
     return VersionedExecutionValidationPolicy3D::capture(
-        FlightEnvelopeConfig{}, dynamics, mppi::AltitudeEnvelopeConfig{},
+        FlightEnvelopeConfig{}, dynamics, MotionAltitudeEnvelopeConfig3D{},
         testPassageVolumeConfig().footprint, 100.0, 1000.0, 1000.0, true);
   }();
 
@@ -257,7 +259,7 @@ struct SnapshotFixture3D {
       }
       return value + stamp_delta_ns;
     };
-    mppi::State state = previous.state();
+    MotionState3D state = previous.state();
     state.x = static_cast<float>(position.x);
     state.y = static_cast<float>(position.y);
     state.z = static_cast<float>(position.z);
@@ -302,18 +304,18 @@ struct SnapshotFixture3D {
         begin_station_m > suffix.endStationM()) {
       throw std::logic_error{"finite execution fixture requires a policy"};
     }
-    const mppi::DynamicsConfig& dynamics = suffix.validation_policy->dynamics();
+    const MotionDynamicsConfig3D& dynamics = suffix.validation_policy->dynamics();
     constexpr std::size_t kAccelerationControlCount{50U};
     const std::size_t planned_control_count =
         2U * kAccelerationControlCount + 1U + extra_stationary_control_count;
-    std::vector<mppi::State> planned_states(planned_control_count + 1U);
+    std::vector<MotionState3D> planned_states(planned_control_count + 1U);
     planned_states.front() =
-        mppi::State{.x = static_cast<float>(begin_sample.position.x),
-                    .y = static_cast<float>(begin_sample.position.y),
-                    .z = static_cast<float>(begin_sample.position.z)};
+        MotionState3D{.x = static_cast<float>(begin_sample.position.x),
+                      .y = static_cast<float>(begin_sample.position.y),
+                      .z = static_cast<float>(begin_sample.position.z)};
     const float acceleration_mps2 =
         static_cast<float>((suffix.endStationM() - begin_station_m) / 25.0);
-    std::vector<mppi::Control> planned_controls(planned_control_count);
+    std::vector<MotionControl3D> planned_controls(planned_control_count);
     for (std::size_t index = 0U; index < kAccelerationControlCount; ++index) {
       planned_controls[index].ax = acceleration_mps2;
     }
@@ -322,19 +324,19 @@ struct SnapshotFixture3D {
       planned_controls[index].ax = -acceleration_mps2;
     }
     for (std::size_t index = 0U; index < planned_controls.size(); ++index) {
-      planned_states[index + 1U] = mppi::integrateReference(
+      planned_states[index + 1U] = integrateMotionState3D(
           planned_states[index], planned_controls[index], dynamics);
     }
-    std::optional<mppi::FiniteHorizon> built_horizon =
-        mppi::buildFiniteHorizon(planned_states, planned_controls,
-                                 planned_controls.size(), dynamics, mppi::Control{});
+    std::optional<FiniteMotionHorizon3D> built_horizon = buildFiniteMotionHorizon3D(
+        planned_states, planned_controls, planned_controls.size(), dynamics,
+        MotionControl3D{});
     if (!built_horizon.has_value()) {
       throw std::logic_error{"failed to build finite execution fixture"};
     }
-    mppi::FiniteHorizon horizon = std::move(*built_horizon);
+    FiniteMotionHorizon3D horizon = std::move(*built_horizon);
     if (kind == FiniteExecutionKind3D::kEmergencyBrakeTail) {
-      built_horizon = mppi::buildFiniteBrakingHorizon(
-          horizon.states.front(), horizon.controls.size(), dynamics, mppi::Control{});
+      built_horizon = buildFiniteBrakingHorizon3D(
+          horizon.states.front(), horizon.controls.size(), dynamics, MotionControl3D{});
       if (!built_horizon.has_value()) {
         throw std::logic_error{"failed to build braking execution fixture"};
       }
@@ -518,7 +520,7 @@ struct SnapshotFixture3D {
     }
     FiniteExecutionState3D result = certified.value();
     if (!terminal_rest) {
-      auto changed_horizon = std::make_shared<mppi::FiniteHorizon>(*result.horizon);
+      auto changed_horizon = std::make_shared<FiniteMotionHorizon3D>(*result.horizon);
       changed_horizon->states.back().vx = 1.0F;
       result.horizon = std::move(changed_horizon);
     }
@@ -560,7 +562,7 @@ struct SnapshotFixture3D {
     }
     FiniteExecutionState3D result = certified.value();
     if (!terminal_rest) {
-      auto changed_horizon = std::make_shared<mppi::FiniteHorizon>(*result.horizon);
+      auto changed_horizon = std::make_shared<FiniteMotionHorizon3D>(*result.horizon);
       changed_horizon->states.back().vx = 1.0F;
       result.horizon = std::move(changed_horizon);
     }
@@ -589,7 +591,7 @@ struct SnapshotFixture3D {
       const std::optional<Point3> requested_position = std::nullopt,
       const std::optional<std::int64_t> requested_effective_stamp_ns = std::nullopt,
       const std::optional<float> residual_velocity_x_mps = std::nullopt,
-      const std::optional<mppi::Control> measured_control = std::nullopt) {
+      const std::optional<MotionControl3D> measured_control = std::nullopt) {
     const FiniteExecutionState3D* const route_execution = snapshot.finiteExecution();
     const DirectTrackingFiniteExecution3D* const direct_execution =
         snapshot.directTrackingExecution();
@@ -599,7 +601,7 @@ struct SnapshotFixture3D {
         : direct_execution != nullptr ? direct_execution->execution_input
         : resident_hold != nullptr    ? resident_hold->terminal_execution_input
                                       : nullptr;
-    const mppi::FiniteHorizon* const source_horizon =
+    const FiniteMotionHorizon3D* const source_horizon =
         route_execution != nullptr    ? route_execution->horizon.get()
         : direct_execution != nullptr ? direct_execution->horizon.get()
                                       : nullptr;
@@ -627,8 +629,8 @@ struct SnapshotFixture3D {
     if (effective_stamp_ns <= source_input->effectiveStampNs() + std::int64_t{30'000}) {
       throw std::logic_error{"hold fixture requires newer effective time"};
     }
-    mppi::State state = resident_hold != nullptr ? source_input->state()
-                                                 : source_horizon->states.back();
+    MotionState3D state = resident_hold != nullptr ? source_input->state()
+                                                   : source_horizon->states.back();
     if (!terminal_rest) {
       state.vx = 1.0F;
     } else if (residual_velocity_x_mps.has_value()) {
@@ -655,7 +657,7 @@ struct SnapshotFixture3D {
             .state = state,
             .full_state_authoritative = true,
             .state_provenance = state_provenance,
-            .previous_control = measured_control.value_or(mppi::Control{}),
+            .previous_control = measured_control.value_or(MotionControl3D{}),
             .previous_control_source = source_input->previousControlSource(),
             .previous_control_source_producer_instance_id =
                 source_input->previousControlSourceProducerInstanceId(),

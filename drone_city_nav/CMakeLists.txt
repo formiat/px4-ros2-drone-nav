@@ -167,11 +167,14 @@ function(add_drone_city_nav_layer target_name)
 endfunction()
 
 # Enforced dependency direction: model -> world -> collision -> planning ->
-# trajectory -> execution -> control -> runtime.
+# trajectory -> execution -> control -> runtime. Controller-neutral finite
+# motion and path contracts branch from collision and are consumed by
+# execution without introducing an MPPI dependency.
 add_drone_city_nav_layer(
   drone_city_nav_model
   src/bounded_worker_pool.cpp
   src/flight_time_model_3d.cpp
+  src/motion_dynamics_3d.cpp
   src/navigation_angular_derivative.cpp
   src/navigation_pose.cpp
   src/navigation_state_prediction.cpp
@@ -239,6 +242,13 @@ add_drone_city_nav_layer(
 target_link_libraries(drone_city_nav_collision PUBLIC drone_city_nav_world)
 
 add_drone_city_nav_layer(
+  drone_city_nav_control_contracts
+  src/finite_execution_path_3d.cpp
+  src/finite_motion_horizon_3d.cpp)
+target_link_libraries(drone_city_nav_control_contracts
+                      PUBLIC drone_city_nav_collision)
+
+add_drone_city_nav_layer(
   drone_city_nav_planning
   src/free_space_topology_3d.cpp
   src/free_space_topology_extractor_3d.cpp
@@ -273,6 +283,7 @@ add_drone_city_nav_layer(
   src/route_time_parameterization.cpp
   src/static_route_extension.cpp
   src/tracking_error_tube_3d.cpp
+  src/trajectory_control_reference_3d.cpp
   src/trajectory_compiler_3d.cpp)
 target_link_libraries(drone_city_nav_trajectory PUBLIC drone_city_nav_planning)
 
@@ -309,10 +320,6 @@ add_drone_city_nav_layer(
   src/mission_waypoint_acknowledgement_admission.cpp
   src/mission_waypoint_capture_gate.cpp
   src/mission_waypoint_sequence.cpp
-  src/mppi/finite_execution_path.cpp
-  src/mppi/mppi_finite_horizon.cpp
-  src/mppi/mppi_reference.cpp
-  src/mppi/trajectory_reference_adapter_3d.cpp
   src/offboard_session_admission.cpp
   src/pending_certified_route_3d.cpp
   src/rolling_route_telemetry_3d.cpp
@@ -321,18 +328,23 @@ add_drone_city_nav_layer(
   src/route_progress_3d.cpp
   src/route_successor_improvement_3d.cpp
   src/vehicle_destruction_disarm_lifecycle.cpp)
-target_link_libraries(drone_city_nav_execution PUBLIC drone_city_nav_trajectory)
+target_link_libraries(drone_city_nav_execution
+                      PUBLIC drone_city_nav_trajectory
+                             drone_city_nav_control_contracts)
 
 add_drone_city_nav_layer(
   drone_city_nav_control
   src/cooperative_mppi_adapter.cpp
   src/cooperative_passage_execution.cpp
+  src/mppi/mppi_reference.cpp
   src/mppi/mppi_post_update_classification.cpp
   src/mppi_liveness.cpp
   src/mppi_nominal_reseed.cpp
   src/mppi_rollout_budget.cpp
   src/mppi_speed_policy.cpp
   src/noncooperative_collision_avoidance.cpp)
+target_sources(drone_city_nav_control
+               PRIVATE src/mppi/trajectory_reference_adapter_3d.cpp)
 target_link_libraries(drone_city_nav_control PUBLIC drone_city_nav_execution)
 
 add_drone_city_nav_layer(
@@ -792,6 +804,7 @@ install(
     drone_city_nav_model
     drone_city_nav_world
     drone_city_nav_collision
+    drone_city_nav_control_contracts
     drone_city_nav_planning
     drone_city_nav_trajectory
     drone_city_nav_execution

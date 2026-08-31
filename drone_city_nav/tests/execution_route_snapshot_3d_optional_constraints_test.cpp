@@ -36,7 +36,7 @@ TEST(ExecutionRouteSnapshot3DTest,
     certification.horizon.states.front() = certification.execution_input->state();
     for (std::size_t index = 0U; index < certification.horizon.controls.size();
          ++index) {
-      certification.horizon.states[index + 1U] = mppi::integrateReference(
+      certification.horizon.states[index + 1U] = integrateMotionState3D(
           certification.horizon.states[index], certification.horizon.controls[index],
           suffix.validation_policy->dynamics());
     }
@@ -52,9 +52,9 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_NE(strict_initial, nullptr);
   FiniteExecutionCertification3D strict_candidate =
       lateral_detour(*strict_suffix, 102U);
-  ASSERT_TRUE(mppi::finiteHorizonHasTerminalRestState(strict_candidate.horizon));
+  ASSERT_TRUE(finiteMotionHorizonHasTerminalRestState3D(strict_candidate.horizon));
   const auto maximum_lateral_state =
-      std::ranges::max_element(strict_candidate.horizon.states, {}, &mppi::State::y);
+      std::ranges::max_element(strict_candidate.horizon.states, {}, &MotionState3D::y);
   ASSERT_NE(maximum_lateral_state, strict_candidate.horizon.states.end());
   ASSERT_GT(maximum_lateral_state->y, 2.5F);
   EXPECT_NEAR(strict_candidate.horizon.states.back().y, 0.0F, 1.0e-4F);

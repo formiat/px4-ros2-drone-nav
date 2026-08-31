@@ -1,6 +1,6 @@
 #include "drone_city_nav/execution_route_transitions_3d.hpp"
-#include "drone_city_nav/mppi/mppi_altitude_envelope.hpp"
-#include "drone_city_nav/mppi/mppi_reference.hpp"
+#include "drone_city_nav/motion_altitude_envelope_3d.hpp"
+#include "drone_city_nav/motion_dynamics_3d.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
 #include "drone_city_nav/occupied_collision_oracle_3d.hpp"
 
@@ -28,7 +28,7 @@ bool stationaryHoldRawSafe(
   if ((observed_raw_world == nullptr) == (static_world == nullptr)) {
     return false;
   }
-  const mppi::Control& control = execution_input.previousControl();
+  const MotionControl3D& control = execution_input.previousControl();
   const FootprintBodyAxis axis =
       bodyAxisFromWorldAcceleration(Vec3{control.ax, control.ay, control.az});
   const std::optional<LaunchSupportContact3D>* const launch_support_owner =
@@ -106,8 +106,8 @@ stationaryHoldPointSafe(const StationaryExecutionHoldCertification3D& certificat
       !finitePoint(certification.position)) {
     return false;
   }
-  const mppi::State& state = certification.execution_input->state();
-  const mppi::Control& control = certification.execution_input->previousControl();
+  const MotionState3D& state = certification.execution_input->state();
+  const MotionControl3D& control = certification.execution_input->previousControl();
   const Point3 actual_position{state.x, state.y, state.z};
   if (distance3D(certification.position, actual_position) >
           kStationaryExecutionHoldPositionToleranceM ||
@@ -116,7 +116,7 @@ stationaryHoldPointSafe(const StationaryExecutionHoldCertification3D& certificat
       std::abs(state.yaw_rate) > kStationaryExecutionHoldYawRateToleranceRadps ||
       !insideFlightEnvelope(certification.position,
                             certification.validation_policy->flightEnvelope()) ||
-      !mppi::altitudeEnvelopeDynamicallyRecoverable(
+      !motionAltitudeEnvelopeDynamicallyRecoverable3D(
           state, control, certification.validation_policy->dynamics(),
           certification.validation_policy->altitudeEnvelope())) {
     return false;
@@ -176,7 +176,7 @@ execution_route_snapshot_3d_internal::applyTransferToExecutionHoldCommand3D(
     return transitionFailure(
         ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
   }
-  const mppi::FiniteHorizon* source_horizon{nullptr};
+  const FiniteMotionHorizon3D* source_horizon{nullptr};
   std::shared_ptr<const VersionedExecutionInput3D> source_input;
   const VersionedObservedRawWorld3D* source_observed{nullptr};
   const VersionedStaticWorld3D* source_static{nullptr};
@@ -255,7 +255,7 @@ execution_route_snapshot_3d_internal::applyTransferToExecutionHoldCommand3D(
     const std::int64_t valid_until_ns = route_execution != nullptr
                                             ? route_execution->valid_until_ns
                                             : direct_execution->valid_until_ns;
-    const mppi::State& terminal = source_horizon->states.back();
+    const MotionState3D& terminal = source_horizon->states.back();
     if (certification.execution_input->effectiveStampNs() < valid_until_ns ||
         distance3D(certification.position, Point3{terminal.x, terminal.y, terminal.z}) >
             kStationaryExecutionHoldPositionToleranceM) {

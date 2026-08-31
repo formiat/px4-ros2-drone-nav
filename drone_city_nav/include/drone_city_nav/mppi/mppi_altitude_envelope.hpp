@@ -1,8 +1,8 @@
 #pragma once
 
+#include "drone_city_nav/motion_altitude_envelope_3d.hpp"
 #include "drone_city_nav/mppi/mppi_config.hpp"
-
-#include <cmath>
+#include "drone_city_nav/mppi/mppi_types.hpp"
 
 namespace drone_city_nav::mppi {
 
@@ -14,11 +14,7 @@ namespace drone_city_nav::mppi {
 
 [[nodiscard]] DRONE_CITY_NAV_MPPI_ALTITUDE_HOST_DEVICE inline bool
 mppiAltitudeFinite(const float value) noexcept {
-#if defined(__CUDA_ARCH__)
-  return isfinite(value);
-#else
-  return std::isfinite(value);
-#endif
+  return motionAltitudeFinite(value);
 }
 
 [[nodiscard]] DRONE_CITY_NAV_MPPI_ALTITUDE_HOST_DEVICE inline float
@@ -27,94 +23,25 @@ verticalStoppingDistanceM(const float vertical_speed_mps,
                           const DynamicsConfig& dynamics,
                           const float guaranteed_vertical_deceleration_mps2,
                           const float reaction_latency_s) noexcept {
-  const float speed_mps =
-      vertical_speed_mps < 0.0F ? -vertical_speed_mps : vertical_speed_mps;
-  if (!(speed_mps > 0.0F)) {
-    return 0.0F;
-  }
-  const float guaranteed_deceleration_mps2 =
-      guaranteed_vertical_deceleration_mps2 <
-              dynamics.maximum_vertical_acceleration_mps2
-          ? guaranteed_vertical_deceleration_mps2
-          : dynamics.maximum_vertical_acceleration_mps2;
-  const float maximum_jerk_mps3 = dynamics.maximum_control_jerk_mps3;
-  if (!(guaranteed_deceleration_mps2 > 0.0F) || !(maximum_jerk_mps3 > 0.0F) ||
-      !(reaction_latency_s >= 0.0F)) {
-    return 3.402823466e+38F;
-  }
-
-  const float direction = vertical_speed_mps < 0.0F ? -1.0F : 1.0F;
-  const float aligned_acceleration_mps2 =
-      direction * vertical_acceleration_mps2 < -guaranteed_deceleration_mps2
-          ? -guaranteed_deceleration_mps2
-          : (direction * vertical_acceleration_mps2 >
-                     dynamics.maximum_vertical_acceleration_mps2
-                 ? dynamics.maximum_vertical_acceleration_mps2
-                 : direction * vertical_acceleration_mps2);
-  const float latency_speed_mps =
-      speed_mps + aligned_acceleration_mps2 * reaction_latency_s;
-  if (!(latency_speed_mps > 0.0F)) {
-    return aligned_acceleration_mps2 < 0.0F
-               ? speed_mps * speed_mps / (-2.0F * aligned_acceleration_mps2)
-               : 0.0F;
-  }
-  const float latency_distance_m =
-      speed_mps * reaction_latency_s +
-      0.5F * aligned_acceleration_mps2 * reaction_latency_s * reaction_latency_s;
-  const float ramp_time_s =
-      (aligned_acceleration_mps2 + guaranteed_deceleration_mps2) / maximum_jerk_mps3;
-  const float ramp_time_squared_s2 = ramp_time_s * ramp_time_s;
-  const float speed_after_ramp_mps = latency_speed_mps +
-                                     aligned_acceleration_mps2 * ramp_time_s -
-                                     0.5F * maximum_jerk_mps3 * ramp_time_squared_s2;
-  if (!(speed_after_ramp_mps > 0.0F)) {
-    const float nonnegative_acceleration_mps2 =
-        aligned_acceleration_mps2 > 0.0F ? aligned_acceleration_mps2 : 0.0F;
-    return latency_distance_m + latency_speed_mps * ramp_time_s +
-           0.5F * nonnegative_acceleration_mps2 * ramp_time_squared_s2;
-  }
-
-  const float ramp_distance_m =
-      latency_speed_mps * ramp_time_s +
-      0.5F * aligned_acceleration_mps2 * ramp_time_squared_s2 -
-      maximum_jerk_mps3 * ramp_time_squared_s2 * ramp_time_s / 6.0F;
-  const float constant_acceleration_distance_m = speed_after_ramp_mps *
-                                                 speed_after_ramp_mps /
-                                                 (2.0F * guaranteed_deceleration_mps2);
-  return latency_distance_m + ramp_distance_m + constant_acceleration_distance_m;
+  return verticalStoppingDistanceM3D(vertical_speed_mps, vertical_acceleration_mps2,
+                                     dynamics, guaranteed_vertical_deceleration_mps2,
+                                     reaction_latency_s);
 }
 
 [[nodiscard]] DRONE_CITY_NAV_MPPI_ALTITUDE_HOST_DEVICE inline float
 verticalStoppingDistanceM(const float vertical_speed_mps,
                           const float vertical_acceleration_mps2,
                           const DynamicsConfig& dynamics) noexcept {
-  return verticalStoppingDistanceM(vertical_speed_mps, vertical_acceleration_mps2,
-                                   dynamics,
-                                   dynamics.maximum_vertical_acceleration_mps2, 0.0F);
+  return verticalStoppingDistanceM3D(vertical_speed_mps, vertical_acceleration_mps2,
+                                     dynamics);
 }
 
 [[nodiscard]] DRONE_CITY_NAV_MPPI_ALTITUDE_HOST_DEVICE inline bool
 altitudeEnvelopeDynamicallyRecoverable(
     const State& state, const Control& control, const DynamicsConfig& dynamics,
     const AltitudeEnvelopeConfig& envelope) noexcept {
-  if (!mppiAltitudeFinite(state.z) || !mppiAltitudeFinite(state.vz) ||
-      !mppiAltitudeFinite(control.az) || state.z < envelope.minimum_z_m ||
-      state.z >= envelope.maximum_z_m) {
-    return false;
-  }
-  if (state.vz < 0.0F) {
-    return verticalStoppingDistanceM(state.vz, control.az, dynamics,
-                                     envelope.guaranteed_vertical_deceleration_mps2,
-                                     envelope.reaction_latency_s) <=
-           state.z - envelope.minimum_z_m;
-  }
-  if (state.vz > 0.0F) {
-    return verticalStoppingDistanceM(state.vz, control.az, dynamics,
-                                     envelope.guaranteed_vertical_deceleration_mps2,
-                                     envelope.reaction_latency_s) <
-           envelope.maximum_z_m - state.z;
-  }
-  return true;
+  return motionAltitudeEnvelopeDynamicallyRecoverable3D(state, control, dynamics,
+                                                        envelope);
 }
 
 #undef DRONE_CITY_NAV_MPPI_ALTITUDE_HOST_DEVICE

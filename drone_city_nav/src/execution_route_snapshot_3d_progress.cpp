@@ -1,6 +1,6 @@
 #include "drone_city_nav/execution_horizon_timing.hpp"
 #include "drone_city_nav/execution_route_transitions_3d.hpp"
-#include "drone_city_nav/mppi/mppi_reference.hpp"
+#include "drone_city_nav/motion_dynamics_3d.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
 
 #include <algorithm>
@@ -155,14 +155,14 @@ FiniteExecutionState3D* brakingFallbackPointer(ExecutionPlan3D& snapshot) noexce
                                  : nullptr;
 }
 
-[[nodiscard]] bool sameControl(const mppi::Control& first,
-                               const mppi::Control& second) noexcept {
+[[nodiscard]] bool sameControl(const MotionControl3D& first,
+                               const MotionControl3D& second) noexcept {
   return first.ax == second.ax && first.ay == second.ay && first.az == second.az &&
          first.yaw_accel == second.yaw_accel;
 }
 
-[[nodiscard]] bool sameStateExact(const mppi::State& first,
-                                  const mppi::State& second) noexcept {
+[[nodiscard]] bool sameStateExact(const MotionState3D& first,
+                                  const MotionState3D& second) noexcept {
   return first.x == second.x && first.y == second.y && first.z == second.z &&
          first.vx == second.vx && first.vy == second.vy && first.vz == second.vz &&
          first.yaw == second.yaw && first.yaw_rate == second.yaw_rate;
@@ -186,8 +186,8 @@ sameSourceSampleStateUpdateAllowed(const VersionedExecutionInput3D& candidate,
   if (candidate.effectiveStampNs() == previous.effectiveStampNs()) {
     return sameStateExact(candidate.state(), previous.state());
   }
-  const mppi::State& next = candidate.state();
-  const mppi::State& old = previous.state();
+  const MotionState3D& next = candidate.state();
+  const MotionState3D& old = previous.state();
   const ExecutionStateProvenance3D& provenance = candidate.stateProvenance();
   const auto field_update_allowed = [](const float next_value, const float old_value,
                                        const ExecutionStateFieldProvenance3D source) {

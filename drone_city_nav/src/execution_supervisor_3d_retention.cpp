@@ -1,6 +1,6 @@
 #include "drone_city_nav/execution_horizon_timing.hpp"
 #include "drone_city_nav/execution_supervisor_3d.hpp"
-#include "drone_city_nav/mppi/trajectory_reference_adapter_3d.hpp"
+#include "drone_city_nav/trajectory_control_reference_3d.hpp"
 
 #include <algorithm>
 #include <limits>
@@ -15,9 +15,9 @@ namespace drone_city_nav {
 namespace {
 
 template<typename FiniteExecution>
-[[nodiscard]] std::vector<mppi::TimedExecutionPathPoint>
+[[nodiscard]] std::vector<TimedExecutionPathPoint3D>
 executionPathPoints(const FiniteExecution& execution) {
-  std::vector<mppi::TimedExecutionPathPoint> points;
+  std::vector<TimedExecutionPathPoint3D> points;
   if (execution.horizon == nullptr || execution.horizon->controls.empty() ||
       execution.horizon->states.size() != execution.horizon->controls.size() + 1U ||
       !executionHorizonTerminalOffsetNs(execution.horizon->states.size(),
@@ -27,7 +27,7 @@ executionPathPoints(const FiniteExecution& execution) {
   }
   points.reserve(execution.horizon->states.size());
   for (std::size_t index = 0U; index < execution.horizon->states.size(); ++index) {
-    points.push_back(mppi::TimedExecutionPathPoint{
+    points.push_back(TimedExecutionPathPoint3D{
         .time_from_start_s = static_cast<double>(static_cast<std::int64_t>(index) *
                                                  execution.control_interval_ns) /
                              1'000'000'000.0,
@@ -39,16 +39,16 @@ executionPathPoints(const FiniteExecution& execution) {
   return points;
 }
 
-[[nodiscard]] std::optional<mppi::FiniteExecutionPathTerminalBoundary>
+[[nodiscard]] std::optional<FiniteExecutionPathTerminalBoundary3D>
 validationTerminalBoundary(
     const FiniteExecutionState3D& execution, const CertifiedRouteSuffix3D& route,
-    const std::shared_ptr<const std::vector<mppi::RouteSample3D>>& mppi_reference) {
+    const std::shared_ptr<const std::vector<ControlRouteSample3D>>& mppi_reference) {
   if (!execution.terminal_boundary.has_value() || route.geometry == nullptr ||
       mppi_reference == nullptr) {
     return std::nullopt;
   }
   const FiniteRouteTerminalBoundary3D& boundary = *execution.terminal_boundary;
-  return mppi::FiniteExecutionPathTerminalBoundary{
+  return FiniteExecutionPathTerminalBoundary3D{
       .endpoint = boundary.endpoint,
       .forward = boundary.forward,
       .tolerance_m = boundary.tolerance_m,
@@ -72,9 +72,9 @@ latestLidarEvidenceFresh(const ExecutionRetentionRequest3D& request,
               .fresh);
 }
 
-[[nodiscard]] std::optional<mppi::FiniteExecutionPathWorld> snapshotValidationWorld(
+[[nodiscard]] std::optional<FiniteExecutionPathWorld3D> snapshotValidationWorld(
     const ExecutionRetentionRequest3D& request, const CertifiedRouteSuffix3D& route,
-    std::optional<mppi::FiniteExecutionPathTerminalBoundary> terminal_boundary) {
+    std::optional<FiniteExecutionPathTerminalBoundary3D> terminal_boundary) {
   if (!route.valid() || route.validation_policy == nullptr ||
       !route.validation_policy->valid() ||
       !latestLidarEvidenceFresh(request, *route.validation_policy)) {
@@ -97,7 +97,7 @@ latestLidarEvidenceFresh(const ExecutionRetentionRequest3D& request,
       launch_support_owner != nullptr && launch_support_owner->has_value()
           ? std::addressof(launch_support_owner->value())
           : nullptr;
-  return mppi::FiniteExecutionPathWorld{
+  return FiniteExecutionPathWorld3D{
       .flight_envelope = &route.validation_policy->flightEnvelope(),
       .dynamics = &route.validation_policy->dynamics(),
       .altitude_envelope = &route.validation_policy->altitudeEnvelope(),
@@ -112,7 +112,7 @@ latestLidarEvidenceFresh(const ExecutionRetentionRequest3D& request,
   };
 }
 
-[[nodiscard]] std::optional<mppi::FiniteExecutionPathWorld>
+[[nodiscard]] std::optional<FiniteExecutionPathWorld3D>
 directValidationWorld(const ExecutionRetentionRequest3D& request,
                       const DirectTrackingFiniteExecution3D& execution) {
   if (!execution.valid() || execution.validation_policy == nullptr ||
@@ -132,7 +132,7 @@ directValidationWorld(const ExecutionRetentionRequest3D& request,
       launch_support_owner != nullptr && launch_support_owner->has_value()
           ? std::addressof(launch_support_owner->value())
           : nullptr;
-  return mppi::FiniteExecutionPathWorld{
+  return FiniteExecutionPathWorld3D{
       .flight_envelope = &execution.validation_policy->flightEnvelope(),
       .dynamics = &execution.validation_policy->dynamics(),
       .altitude_envelope = &execution.validation_policy->altitudeEnvelope(),
@@ -214,16 +214,15 @@ directValidationWorld(const ExecutionRetentionRequest3D& request,
     return result;
   }
 
-  const std::vector<mppi::TimedExecutionPathPoint> points =
-      executionPathPoints(*active);
+  const std::vector<TimedExecutionPathPoint3D> points = executionPathPoints(*active);
   if (points.empty()) {
     result.status = ExecutionRetentionStatus3D::kInvalidActivePath;
     return result;
   }
-  const std::shared_ptr<const std::vector<mppi::RouteSample3D>> mppi_reference =
-      route->geometry != nullptr ? mppi::adaptTrajectoryReference3D(*route->geometry)
+  const std::shared_ptr<const std::vector<ControlRouteSample3D>> mppi_reference =
+      route->geometry != nullptr ? adaptTrajectoryControlReference3D(*route->geometry)
                                  : nullptr;
-  const std::optional<mppi::FiniteExecutionPathWorld> continuation_world =
+  const std::optional<FiniteExecutionPathWorld3D> continuation_world =
       snapshotValidationWorld(
           request, *route,
           lifecycle_braking != nullptr
@@ -233,10 +232,10 @@ directValidationWorld(const ExecutionRetentionRequest3D& request,
     result.status = ExecutionRetentionStatus3D::kValidationWorldUnavailable;
     return result;
   }
-  result.actual_state_validation = mppi::validateFiniteExecutionPathContinuation(
+  result.actual_state_validation = validateFiniteExecutionPathContinuation3D(
       points, active->valid_from_ns, active->valid_until_ns, request.now_ns,
       request.exact_initial_state, request.exact_previous_control, *continuation_world);
-  result.trajectory_validation = mppi::validateFiniteExecutionTrajectoryContinuation(
+  result.trajectory_validation = validateFiniteExecutionTrajectoryContinuation3D(
       points, active->valid_from_ns, active->valid_until_ns, request.now_ns,
       request.exact_initial_state, request.exact_previous_control, *continuation_world);
   if (active->trajectory_revision == std::numeric_limits<std::uint64_t>::max()) {
@@ -246,13 +245,13 @@ directValidationWorld(const ExecutionRetentionRequest3D& request,
   result.prepared_trajectory_revision = active->trajectory_revision + 1U;
   std::optional<FiniteExecutionState3D> recertified_braking_tail;
   std::optional<FiniteExecutionPlan3D> recertified_plan;
-  const mppi::FiniteExecutionPathCandidateValidator candidate_validator =
-      [&](const mppi::FiniteHorizon& candidate) {
+  const FiniteExecutionPathCandidateValidator3D candidate_validator =
+      [&](const FiniteMotionHorizon3D& candidate) {
         if (candidate.states.empty() || candidate.controls.empty()) {
           return false;
         }
-        const std::optional<mppi::FiniteHorizon> braking_tail =
-            mppi::buildFiniteBrakingHorizon(
+        const std::optional<FiniteMotionHorizon3D> braking_tail =
+            buildFiniteBrakingHorizon3D(
                 candidate.states.front(), candidate.controls.size(),
                 route->validation_policy->dynamics(), request.exact_previous_control,
                 request.finite_horizon_config);
@@ -303,13 +302,13 @@ directValidationWorld(const ExecutionRetentionRequest3D& request,
         recertified_plan = std::move(certification.plan);
         return certified;
       };
-  const mppi::RebuiltFiniteExecutionPathContinuation rebuilt =
-      mppi::rebuildFiniteExecutionPathContinuation(
+  const RebuiltFiniteExecutionPathContinuation3D rebuilt =
+      rebuildFiniteExecutionPathContinuation3D(
           points, active->valid_from_ns, active->valid_until_ns, request.now_ns,
           request.exact_initial_state, request.exact_previous_control,
           active->horizon->nominal_prefix_control_count,
           active->horizon->controls.size(), route->validation_policy->dynamics(),
-          mppi::finiteHorizonArrivalSearchStepControls(
+          finiteHorizonArrivalSearchStepControls3D(
               route->validation_policy->dynamics().dt_s),
           request.finite_horizon_config, *continuation_world, candidate_validator);
   result.rebuild_validation = rebuilt.validation;
@@ -371,9 +370,8 @@ directValidationWorld(const ExecutionRetentionRequest3D& request,
     return result;
   }
   result.source_trajectory_revision = active->trajectory_revision;
-  const std::vector<mppi::TimedExecutionPathPoint> points =
-      executionPathPoints(*active);
-  const std::optional<mppi::FiniteExecutionPathWorld> continuation_world =
+  const std::vector<TimedExecutionPathPoint3D> points = executionPathPoints(*active);
+  const std::optional<FiniteExecutionPathWorld3D> continuation_world =
       directValidationWorld(request, *active);
   if (points.empty()) {
     result.status = ExecutionRetentionStatus3D::kInvalidActivePath;
@@ -383,10 +381,10 @@ directValidationWorld(const ExecutionRetentionRequest3D& request,
     result.status = ExecutionRetentionStatus3D::kValidationWorldUnavailable;
     return result;
   }
-  result.actual_state_validation = mppi::validateFiniteExecutionPathContinuation(
+  result.actual_state_validation = validateFiniteExecutionPathContinuation3D(
       points, active->valid_from_ns, active->valid_until_ns, request.now_ns,
       request.exact_initial_state, request.exact_previous_control, *continuation_world);
-  result.trajectory_validation = mppi::validateFiniteExecutionTrajectoryContinuation(
+  result.trajectory_validation = validateFiniteExecutionTrajectoryContinuation3D(
       points, active->valid_from_ns, active->valid_until_ns, request.now_ns,
       request.exact_initial_state, request.exact_previous_control, *continuation_world);
   if (active->trajectory_revision == std::numeric_limits<std::uint64_t>::max()) {
@@ -395,8 +393,8 @@ directValidationWorld(const ExecutionRetentionRequest3D& request,
   }
   result.prepared_trajectory_revision = active->trajectory_revision + 1U;
   std::optional<DirectTrackingFiniteExecution3D> recertified;
-  const mppi::FiniteExecutionPathCandidateValidator candidate_validator =
-      [&](const mppi::FiniteHorizon& candidate) {
+  const FiniteExecutionPathCandidateValidator3D candidate_validator =
+      [&](const FiniteMotionHorizon3D& candidate) {
         recertified = certifyDirectTrackingExecution3D(
             *expected, DirectTrackingExecutionCertification3D{
                            .identity = active->identity,
@@ -413,13 +411,13 @@ directValidationWorld(const ExecutionRetentionRequest3D& request,
                        });
         return recertified.has_value();
       };
-  const mppi::RebuiltFiniteExecutionPathContinuation rebuilt =
-      mppi::rebuildFiniteExecutionPathContinuation(
+  const RebuiltFiniteExecutionPathContinuation3D rebuilt =
+      rebuildFiniteExecutionPathContinuation3D(
           points, active->valid_from_ns, active->valid_until_ns, request.now_ns,
           request.exact_initial_state, request.exact_previous_control,
           active->horizon->nominal_prefix_control_count,
           active->horizon->controls.size(), active->validation_policy->dynamics(),
-          mppi::finiteHorizonArrivalSearchStepControls(
+          finiteHorizonArrivalSearchStepControls3D(
               active->validation_policy->dynamics().dt_s),
           request.finite_horizon_config, *continuation_world, candidate_validator);
   result.rebuild_validation = rebuilt.validation;

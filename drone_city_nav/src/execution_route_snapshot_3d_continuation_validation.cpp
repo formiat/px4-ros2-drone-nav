@@ -24,8 +24,7 @@ template<typename T>
 
 } // namespace
 
-mppi::FiniteExecutionPathValidation
-validateRemainingFiniteExecutionAgainstObservedWorld3D(
+FiniteExecutionPathValidation3D validateRemainingFiniteExecutionAgainstObservedWorld3D(
     const FiniteExecutionState3D& execution,
     const VersionedExecutionInput3D& current_input,
     const VersionedObservedRawWorld3D& current_world,
@@ -42,13 +41,13 @@ validateRemainingFiniteExecutionAgainstObservedWorld3D(
           execution.observed_raw_world->version().revision) {
     return {};
   }
-  const std::vector<mppi::TimedExecutionPathPoint> points = timedExecutionPathPoints(
+  const std::vector<TimedExecutionPathPoint3D> points = timedExecutionPathPoints(
       *execution.horizon, execution.execution_input->previousControl(),
       execution.control_interval_ns);
   if (points.empty()) {
     return {};
   }
-  const mppi::FiniteExecutionPathWorld validation_world{
+  const FiniteExecutionPathWorld3D validation_world{
       .flight_envelope = &execution.validation_policy->flightEnvelope(),
       .dynamics = &execution.validation_policy->dynamics(),
       .altitude_envelope = &execution.validation_policy->altitudeEnvelope(),
@@ -60,13 +59,12 @@ validateRemainingFiniteExecutionAgainstObservedWorld3D(
       .latest_lidar_obstacle_points = {},
       .terminal_boundary = std::nullopt,
   };
-  return mppi::validateFiniteExecutionTrajectoryContinuation(
+  return validateFiniteExecutionTrajectoryContinuation3D(
       points, execution.valid_from_ns, execution.valid_until_ns, validation_stamp_ns,
       current_input.state(), current_input.previousControl(), validation_world);
 }
 
-mppi::FiniteExecutionPathValidation
-validateRemainingFiniteExecutionAgainstLatestLidar3D(
+FiniteExecutionPathValidation3D validateRemainingFiniteExecutionAgainstLatestLidar3D(
     const FiniteExecutionState3D& execution,
     const VersionedExecutionInput3D& current_input,
     const VersionedLatestLidarEvidence3D& current_lidar,
@@ -88,7 +86,7 @@ validateRemainingFiniteExecutionAgainstLatestLidar3D(
       (static_mode && !execution.static_world->valid())) {
     return {};
   }
-  const std::vector<mppi::TimedExecutionPathPoint> points = timedExecutionPathPoints(
+  const std::vector<TimedExecutionPathPoint3D> points = timedExecutionPathPoints(
       *execution.horizon, execution.execution_input->previousControl(),
       execution.control_interval_ns);
   if (points.empty()) {
@@ -96,7 +94,7 @@ validateRemainingFiniteExecutionAgainstLatestLidar3D(
   }
   const VersionedObservedRawWorld3D* const observed_world =
       execution.observed_raw_world.get();
-  const mppi::FiniteExecutionPathWorld validation_world{
+  const FiniteExecutionPathWorld3D validation_world{
       .flight_envelope = &execution.validation_policy->flightEnvelope(),
       .dynamics = &execution.validation_policy->dynamics(),
       .altitude_envelope = &execution.validation_policy->altitudeEnvelope(),
@@ -111,7 +109,7 @@ validateRemainingFiniteExecutionAgainstLatestLidar3D(
           std::span<const Point3>{current_lidar.hitPointsMapM()},
       .terminal_boundary = std::nullopt,
   };
-  return mppi::validateFiniteExecutionTrajectoryContinuation(
+  return validateFiniteExecutionTrajectoryContinuation3D(
       points, execution.valid_from_ns, execution.valid_until_ns, validation_stamp_ns,
       current_input.state(), current_input.previousControl(), validation_world);
 }

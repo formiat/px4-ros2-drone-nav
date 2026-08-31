@@ -26,7 +26,7 @@ struct DirectTrackingFiniteExecution3D {
   std::uint64_t source_snapshot_version{0U};
   std::uint64_t source_navigation_revision{0U};
   Point3 target{};
-  std::shared_ptr<const mppi::FiniteHorizon> horizon;
+  std::shared_ptr<const FiniteMotionHorizon3D> horizon;
   std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_world;
   std::shared_ptr<const VersionedStaticWorld3D> static_world;
   std::shared_ptr<const VersionedExecutionValidationPolicy3D> validation_policy;

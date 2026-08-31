@@ -1,8 +1,8 @@
 #include "drone_city_nav/certified_route_splice_3d.hpp"
 #include "drone_city_nav/execution_horizon_timing.hpp"
 #include "drone_city_nav/execution_route_transitions_3d.hpp"
-#include "drone_city_nav/mppi/mppi_altitude_envelope.hpp"
-#include "drone_city_nav/mppi/mppi_reference.hpp"
+#include "drone_city_nav/motion_altitude_envelope_3d.hpp"
+#include "drone_city_nav/motion_dynamics_3d.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
 #include "drone_city_nav/occupied_collision_oracle_3d.hpp"
 
@@ -73,7 +73,7 @@ namespace {
         ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
   }
   if (splice != nullptr) {
-    const mppi::State& splice_state =
+    const MotionState3D& splice_state =
         successor_execution.command_horizon.execution_input->state();
     const RouteSpliceReadiness3D splice_readiness = assessRouteSpliceReadiness3D(
         *splice, *current_route, successor,
@@ -297,7 +297,7 @@ ExecutionRouteTransitionResult3D applyAdvanceCertifiedRouteCommand3D(
       route.endStationM(), route.progress.station_m +
                                kMaximumStationCreditPerTravel * observed_travel_m +
                                kStationToleranceM);
-  const std::array<mppi::State, 2U> observed_path{
+  const std::array<MotionState3D, 2U> observed_path{
       route.progress.execution_input->state(), execution_input->state()};
   const bool acquiring_certified_tracking_tube =
       route.validation_policy->routeTrackingTubeConstraintsEnabled() &&
@@ -326,9 +326,9 @@ ExecutionRouteTransitionResult3D applyAdvanceCertifiedRouteCommand3D(
     return transitionFailure(
         ExecutionRouteTransitionStatus3D::kExecutionAssessmentRejected);
   }
-  const mppi::Control& previous_route_control =
+  const MotionControl3D& previous_route_control =
       route.progress.execution_input->previousControl();
-  const mppi::Control& current_execution_control = execution_input->previousControl();
+  const MotionControl3D& current_execution_control = execution_input->previousControl();
   const FootprintBodyAxis previous_route_axis = bodyAxisFromWorldAcceleration(Vec3{
       previous_route_control.ax, previous_route_control.ay, previous_route_control.az});
   const FootprintBodyAxis current_execution_axis = bodyAxisFromWorldAcceleration(

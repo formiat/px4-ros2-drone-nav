@@ -40,22 +40,22 @@ TEST(ExecutionRouteSnapshot3DTest,
                               {Point3{-4.0, -4.0, 1.0}});
   ASSERT_NE(clear_lidar, nullptr);
 
-  const mppi::FiniteExecutionPathValidation clear =
+  const FiniteExecutionPathValidation3D clear =
       validateRemainingFiniteExecutionAgainstLatestLidar3D(
           resident, *current.execution_input, *clear_lidar, current.valid_from_ns);
-  EXPECT_EQ(clear.status, mppi::FiniteExecutionPathStatus::kValid);
+  EXPECT_EQ(clear.status, FiniteExecutionPathStatus3D::kValid);
 
-  const mppi::State& intersected_state =
+  const MotionState3D& intersected_state =
       resident.horizon->states[resident.horizon->states.size() / 2U];
   const std::shared_ptr<const VersionedLatestLidarEvidence3D> blocking_lidar =
       SnapshotFixture3D::newerLidarEvidence(
           *clear_lidar,
           {Point3{intersected_state.x, intersected_state.y, intersected_state.z}});
   ASSERT_NE(blocking_lidar, nullptr);
-  const mppi::FiniteExecutionPathValidation blocked =
+  const FiniteExecutionPathValidation3D blocked =
       validateRemainingFiniteExecutionAgainstLatestLidar3D(
           resident, *current.execution_input, *blocking_lidar, current.valid_from_ns);
-  EXPECT_EQ(blocked.status, mppi::FiniteExecutionPathStatus::kLatestLidarRawCollision);
+  EXPECT_EQ(blocked.status, FiniteExecutionPathStatus3D::kLatestLidarRawCollision);
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
@@ -72,7 +72,7 @@ TEST(ExecutionRouteSnapshot3DTest,
           *active->route(), FiniteExecutionKind3D::kEmergencyBrakeTail,
           active->finiteExecution()->trajectory_revision + 2U);
   ASSERT_NE(braking.latest_lidar_evidence, nullptr);
-  const mppi::State& intersected_state =
+  const MotionState3D& intersected_state =
       active->finiteExecution()
           ->horizon->states[active->finiteExecution()->horizon->states.size() / 2U];
   braking.latest_lidar_evidence = lidarEvidenceWithPoints(
@@ -152,7 +152,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   certification.horizon.states.pop_back();
   --certification.horizon.arrival_control_count;
   constexpr float kDivergedY{3.0F};
-  for (mppi::State& state : certification.horizon.states) {
+  for (MotionState3D& state : certification.horizon.states) {
     state.y = kDivergedY;
   }
   const std::shared_ptr<const VersionedExecutionInput3D> source_input =

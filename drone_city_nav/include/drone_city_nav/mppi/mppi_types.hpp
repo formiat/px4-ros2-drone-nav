@@ -1,7 +1,7 @@
 #pragma once
 
+#include "drone_city_nav/control_contracts_3d.hpp"
 #include "drone_city_nav/esdf_grid_3d.hpp"
-#include "drone_city_nav/motion_state_3d.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -18,24 +18,8 @@ using EsdfDirtyRegion = drone_city_nav::EsdfDirtyRegion3D;
 using State = drone_city_nav::MotionState3D;
 using Control = drone_city_nav::MotionControl3D;
 
-enum class RiskTier : std::uint8_t {
-  kPreferred = 0,
-  kPlanning = 1,
-  kCritical = 2,
-  kCollision = 3,
-};
-
-struct RouteSample3D {
-  float x_m{0.0F};
-  float y_m{0.0F};
-  float z_m{0.0F};
-  float tangent_x{0.0F};
-  float tangent_y{0.0F};
-  float tangent_z{0.0F};
-  float station_m{0.0F};
-  float reference_speed_mps{0.0F};
-  RiskTier required_risk_tier{RiskTier::kPreferred};
-};
+using RiskTier = drone_city_nav::ControlRouteRiskTier3D;
+using RouteSample3D = drone_city_nav::ControlRouteSample3D;
 
 struct MovingTargetReference {
   State state{};

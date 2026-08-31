@@ -2,8 +2,8 @@
 
 #include "drone_city_nav/certified_route_splice_3d.hpp"
 #include "drone_city_nav/compiled_trajectory_3d.hpp"
+#include "drone_city_nav/dynamic_handoff_validator_3d.hpp"
 #include "drone_city_nav/execution_route_store_3d.hpp"
-#include "drone_city_nav/mppi/static_route_handoff.hpp"
 #include "drone_city_nav/persistent_dstar_lite_planner_3d.hpp"
 #include "drone_city_nav/route_lifecycle_3d.hpp"
 #include "drone_city_nav/route_successor_improvement_3d.hpp"
@@ -153,7 +153,7 @@ struct RouteAdmissionReport3D {
   RouteActivationAssessment3D assessment{};
   RouteProposalReplacementAssessment3D replacement{};
   RouteSuccessorImprovementAssessment3D successor_improvement{};
-  mppi::StaticRouteHandoffResult handoff{};
+  DynamicHandoffResult3D handoff{};
   RouteSpliceCertificationResult3D splice{};
   CompiledTrajectoryValidation3D trajectory_validation{};
   std::optional<PendingRoutePublicationStatus3D> pending_publication_status;

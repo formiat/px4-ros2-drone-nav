@@ -1,28 +1,17 @@
 #pragma once
 
+#include "drone_city_nav/control_contracts_3d.hpp"
 #include "drone_city_nav/mppi/mppi_horizon_sampling.hpp"
 #include "drone_city_nav/mppi/mppi_types.hpp"
 #include "drone_city_nav/stopping_capability.hpp"
 
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <string>
 
 namespace drone_city_nav::mppi {
 
-struct DynamicsConfig {
-  float dt_s{0.05F};
-  float linear_drag_1ps{0.08F};
-  float maximum_horizontal_acceleration_mps2{4.0F};
-  float maximum_vertical_acceleration_mps2{4.0F};
-  float maximum_horizontal_speed_mps{10.0F};
-  float maximum_vertical_speed_mps{5.0F};
-  float maximum_translational_speed_mps{std::numeric_limits<float>::max()};
-  float maximum_yaw_acceleration_radps2{2.0F};
-  float maximum_yaw_rate_radps{1.5F};
-  float maximum_control_jerk_mps3{12.0F};
-};
+using DynamicsConfig = drone_city_nav::MotionDynamicsConfig3D;
 
 struct NoiseConfig {
   float horizontal_acceleration_sigma_mps2{3.0F};
@@ -49,12 +38,7 @@ struct FootprintConfig {
   bool clearance_broad_phase_enabled{true};
 };
 
-struct AltitudeEnvelopeConfig {
-  float minimum_z_m{-std::numeric_limits<float>::max()};
-  float maximum_z_m{std::numeric_limits<float>::max()};
-  float guaranteed_vertical_deceleration_mps2{4.0F};
-  float reaction_latency_s{0.0F};
-};
+using AltitudeEnvelopeConfig = drone_city_nav::MotionAltitudeEnvelopeConfig3D;
 
 struct CostConfig {
   float guide_deviation_weight{1.0F};

@@ -42,9 +42,9 @@ TEST(ExecutionRouteSnapshot3DTest,
         for (std::size_t index = 0U; index < certification.horizon.controls.size();
              ++index) {
           certification.horizon.states[index + 1U] =
-              mppi::integrateReference(certification.horizon.states[index],
-                                       certification.horizon.controls[index],
-                                       suffix->validation_policy->dynamics());
+              integrateMotionState3D(certification.horizon.states[index],
+                                     certification.horizon.controls[index],
+                                     suffix->validation_policy->dynamics());
         }
         const std::shared_ptr<const VersionedExecutionInput3D> source_input =
             certification.execution_input;
@@ -93,9 +93,9 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_NE(tube_blocked.latest_lidar_evidence, nullptr);
   constexpr std::size_t kTubeOnlyObstacleSegment{25U};
   ASSERT_LT(kTubeOnlyObstacleSegment, tube_blocked.horizon.states.size());
-  const mppi::State& obstacle_begin =
+  const MotionState3D& obstacle_begin =
       tube_blocked.horizon.states[kTubeOnlyObstacleSegment - 1U];
-  const mppi::State& obstacle_stop =
+  const MotionState3D& obstacle_stop =
       tube_blocked.horizon.states[kTubeOnlyObstacleSegment];
   const double connector_speed_mps =
       std::max(std::hypot(std::hypot(static_cast<double>(obstacle_begin.vx),
@@ -116,12 +116,12 @@ TEST(ExecutionRouteSnapshot3DTest,
            physical_footprint.upper_extent_m + 0.5 * connector_tracking_radius_m,
   };
   for (std::size_t index = 1U; index < tube_blocked.horizon.states.size(); ++index) {
-    const mppi::Control& start_control =
+    const MotionControl3D& start_control =
         index == 1U ? tube_blocked.execution_input->previousControl()
                     : tube_blocked.horizon.controls[index - 2U];
-    const mppi::Control& stop_control = tube_blocked.horizon.controls[index - 1U];
-    const mppi::State& first = tube_blocked.horizon.states[index - 1U];
-    const mppi::State& second = tube_blocked.horizon.states[index];
+    const MotionControl3D& stop_control = tube_blocked.horizon.controls[index - 1U];
+    const MotionState3D& first = tube_blocked.horizon.states[index - 1U];
+    const MotionState3D& second = tube_blocked.horizon.states[index];
     ASSERT_TRUE(validateRawPointCloudSweptFootprint(
                     std::array<Point3, 1U>{tube_only_lidar_point},
                     Point3{first.x, first.y, first.z},
@@ -165,7 +165,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   std::size_t acquisition_state_index{0U};
   for (std::size_t index = 1U; index < resident_handoff.horizon->states.size();
        ++index) {
-    const mppi::State& state = resident_handoff.horizon->states[index];
+    const MotionState3D& state = resident_handoff.horizon->states[index];
     const RouteProjection3D projection = projectOntoRoute3D(
         *activated.next->route()->geometry->route, Point3{state.x, state.y, state.z});
     const TrackingErrorTubeExecutionAssessment3D tube =
@@ -191,7 +191,7 @@ TEST(ExecutionRouteSnapshot3DTest,
   const VersionedExecutionInput3D& source_input =
       *activated.next->route()->progress.execution_input;
   const auto handoff_input_at = [&](const std::size_t clock_state_index,
-                                    const mppi::State& state) {
+                                    const MotionState3D& state) {
     const std::int64_t effective_stamp_ns =
         resident_handoff.valid_from_ns + static_cast<std::int64_t>(clock_state_index) *
                                              resident_handoff.control_interval_ns;
@@ -214,7 +214,7 @@ TEST(ExecutionRouteSnapshot3DTest,
         .previous_control_receive_stamp_ns = effective_stamp_ns - 10'000LL,
     });
   };
-  const mppi::State acquired_state =
+  const MotionState3D acquired_state =
       resident_handoff.horizon->states[acquisition_state_index];
   const std::shared_ptr<const VersionedExecutionInput3D> premature_join =
       handoff_input_at(1U, acquired_state);

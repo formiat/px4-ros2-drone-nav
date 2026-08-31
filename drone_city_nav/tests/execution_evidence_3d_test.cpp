@@ -28,18 +28,18 @@ namespace {
       .pose_source_timestamp_us = 5'000'000U,
       .pose_receive_stamp_ns = 5'010'000'000,
       .effective_stamp_ns = 5'020'000'000,
-      .state = mppi::State{.x = 1.0F,
-                           .y = 2.0F,
-                           .z = 3.0F,
-                           .vx = 4.0F,
-                           .vy = 5.0F,
-                           .vz = 6.0F,
-                           .yaw = 0.25F,
-                           .yaw_rate = -0.5F},
+      .state = MotionState3D{.x = 1.0F,
+                             .y = 2.0F,
+                             .z = 3.0F,
+                             .vx = 4.0F,
+                             .vy = 5.0F,
+                             .vz = 6.0F,
+                             .yaw = 0.25F,
+                             .yaw_rate = -0.5F},
       .full_state_authoritative = true,
       .state_provenance = authoritativeStateProvenance(),
       .previous_control =
-          mppi::Control{.ax = 0.1F, .ay = 0.2F, .az = 0.3F, .yaw_accel = 0.4F},
+          MotionControl3D{.ax = 0.1F, .ay = 0.2F, .az = 0.3F, .yaw_accel = 0.4F},
       .previous_control_source =
           ExecutionPreviousControlEvidenceSource3D::kOffboardFeedback,
       .previous_control_source_producer_instance_id = 29U,
@@ -65,9 +65,9 @@ namespace {
 TEST(ExecutionEvidence3DTest,
      ValidationPolicyOwnsExactValuesAndHasContentSensitiveFingerprint) {
   FlightEnvelopeConfig flight{.minimum_target_z_m = 2.0, .maximum_target_z_m = 40.0};
-  mppi::DynamicsConfig dynamics;
+  MotionDynamicsConfig3D dynamics;
   dynamics.dt_s = 0.1F;
-  mppi::AltitudeEnvelopeConfig altitude{
+  MotionAltitudeEnvelopeConfig3D altitude{
       .minimum_z_m = 2.0F,
       .maximum_z_m = 40.0F,
       .guaranteed_vertical_deceleration_mps2 = 3.0F,
@@ -155,8 +155,8 @@ TEST(ExecutionEvidence3DTest,
   const auto input = VersionedExecutionInput3D::capture(validExecutionInputCapture());
   ASSERT_NE(input, nullptr);
   const auto exact_policy = VersionedExecutionValidationPolicy3D::capture(
-      FlightEnvelopeConfig{}, mppi::DynamicsConfig{}, mppi::AltitudeEnvelopeConfig{},
-      SweptFootprintConfig{}, 1000.0, 10.0, 4.0);
+      FlightEnvelopeConfig{}, MotionDynamicsConfig3D{},
+      MotionAltitudeEnvelopeConfig3D{}, SweptFootprintConfig{}, 1000.0, 10.0, 4.0);
   ASSERT_NE(exact_policy, nullptr);
 
   constexpr std::int64_t kExactBoundaryNs{5'020'000'000};
@@ -180,8 +180,8 @@ TEST(ExecutionEvidence3DTest,
 
 TEST(ExecutionEvidence3DTest, ValidationPolicyRejectsInvalidConfiguration) {
   FlightEnvelopeConfig flight;
-  mppi::DynamicsConfig dynamics;
-  mppi::AltitudeEnvelopeConfig altitude;
+  MotionDynamicsConfig3D dynamics;
+  MotionAltitudeEnvelopeConfig3D altitude;
   SweptFootprintConfig footprint;
 
   flight.maximum_target_z_m = std::numeric_limits<double>::quiet_NaN();
@@ -194,19 +194,19 @@ TEST(ExecutionEvidence3DTest, ValidationPolicyRejectsInvalidConfiguration) {
   EXPECT_EQ(VersionedExecutionValidationPolicy3D::capture(flight, dynamics, altitude,
                                                           footprint),
             nullptr);
-  dynamics = mppi::DynamicsConfig{};
+  dynamics = MotionDynamicsConfig3D{};
 
   dynamics.maximum_translational_speed_mps = 0.0F;
   EXPECT_EQ(VersionedExecutionValidationPolicy3D::capture(flight, dynamics, altitude,
                                                           footprint),
             nullptr);
-  dynamics = mppi::DynamicsConfig{};
+  dynamics = MotionDynamicsConfig3D{};
 
   altitude.maximum_z_m = altitude.minimum_z_m;
   EXPECT_EQ(VersionedExecutionValidationPolicy3D::capture(flight, dynamics, altitude,
                                                           footprint),
             nullptr);
-  altitude = mppi::AltitudeEnvelopeConfig{};
+  altitude = MotionAltitudeEnvelopeConfig3D{};
 
   footprint.sweep_step_m = 0.0;
   EXPECT_EQ(VersionedExecutionValidationPolicy3D::capture(flight, dynamics, altitude,

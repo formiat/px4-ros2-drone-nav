@@ -33,7 +33,7 @@ namespace {
   return false;
 }
 
-[[nodiscard]] bool finiteControl(const mppi::Control& control) noexcept {
+[[nodiscard]] bool finiteControl(const MotionControl3D& control) noexcept {
   return std::isfinite(control.ax) && std::isfinite(control.ay) &&
          std::isfinite(control.az) && std::isfinite(control.yaw_accel);
 }

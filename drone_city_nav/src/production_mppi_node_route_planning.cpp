@@ -326,7 +326,7 @@ void ProductionMppiNode::processRouteSearch3D(RoutePlanningUpdateEvent3D event) 
       telemetry.materialization;
   const RouteAdmissionReport3D& admission = activation.admission;
   const StaticRouteCandidateValidation& validation = admission.candidate_validation;
-  const mppi::StaticRouteHandoffResult& handoff = admission.handoff;
+  const DynamicHandoffResult3D& handoff = admission.handoff;
   const TrackingErrorTubeProfile3D* const tracking_profile =
       activation.trajectory != nullptr
           ? activation.trajectory->tracking_error_tube.get()
@@ -394,7 +394,7 @@ void ProductionMppiNode::processRouteSearch3D(RoutePlanningUpdateEvent3D event) 
       routePublicationStatus3DName(admission.assessment.publication.status).data(),
       static_cast<int>(staticRouteCandidateStatusName(validation.status).size()),
       staticRouteCandidateStatusName(validation.status).data(),
-      mppi::staticRouteHandoffStatusName(handoff.status),
+      dynamicHandoffStatus3DName(handoff.status),
       static_cast<int>(
           routeSpliceCertificationStatus3DName(admission.splice.status).size()),
       routeSpliceCertificationStatus3DName(admission.splice.status).data(),

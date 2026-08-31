@@ -1,10 +1,11 @@
 #pragma once
 
 #include "drone_city_nav/certified_route_splice_3d.hpp"
+#include "drone_city_nav/dynamic_handoff_validator_3d.hpp"
 #include "drone_city_nav/execution_supervisor_3d.hpp"
 #include "drone_city_nav/flight_envelope.hpp"
-#include "drone_city_nav/mppi/mppi_config.hpp"
 #include "drone_city_nav/route_progress_3d.hpp"
+#include "drone_city_nav/route_risk_policy_3d.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
 
 #include <cstdint>
@@ -58,7 +59,8 @@ struct RouteActivationCoordinatorConfig3D {
   PassageVolumeConfig passage_volume{};
   CertifiedRouteSpliceConfig3D certified_splice{};
   std::shared_ptr<const VersionedExecutionValidationPolicy3D> validation_policy;
-  mppi::BenchmarkConfig mppi{};
+  RouteRiskPolicy3D route_risk{};
+  DynamicHandoffValidator3D dynamic_handoff_validator;
   double cruise_speed_mps{0.0};
   double maximum_control_feedback_age_ms{0.0};
 };

@@ -33,7 +33,7 @@ bool certifiedTrackingTubeHandoffPending(
       target_route.progress.execution_input != execution->execution_input) {
     return false;
   }
-  const mppi::State& initial_state = execution->horizon->states.front();
+  const MotionState3D& initial_state = execution->horizon->states.front();
   const RouteProjection3D initial_projection = projectOntoRoute3DWithinStationWindow(
       *target_route.geometry->route,
       Point3{initial_state.x, initial_state.y, initial_state.z},
@@ -58,7 +58,7 @@ bool certifiedTrackingTubeHandoffPending(
       tube.status != TrackingErrorTubeExecutionStatus3D::kCrossTrackExceeded) {
     return false;
   }
-  const mppi::State& terminal_state = execution->horizon->states.back();
+  const MotionState3D& terminal_state = execution->horizon->states.back();
   const RouteProjection3D terminal_projection = projectOntoRoute3DWithinStationWindow(
       *target_route.geometry->route,
       Point3{terminal_state.x, terminal_state.y, terminal_state.z},
@@ -78,9 +78,9 @@ bool certifiedTrackingTubeHandoffPending(
 }
 
 bool validateTrackingTubeHandoffClearance(
-    const CertifiedRouteSuffix3D& route, const mppi::FiniteHorizon& horizon,
-    const double begin_route_station_m, const mppi::Control& previous_control,
-    const mppi::FiniteExecutionPathWorld& world) noexcept {
+    const CertifiedRouteSuffix3D& route, const FiniteMotionHorizon3D& horizon,
+    const double begin_route_station_m, const MotionControl3D& previous_control,
+    const FiniteExecutionPathWorld3D& world) noexcept {
   if (route.geometry == nullptr || route.geometry->route == nullptr ||
       route.geometry->tracking_error_tube == nullptr || horizon.states.size() < 2U ||
       horizon.controls.size() + 1U != horizon.states.size() ||
@@ -90,12 +90,12 @@ bool validateTrackingTubeHandoffClearance(
   }
   const std::span<const RouteSample3D> route_samples{*route.geometry->route};
   const TrackingErrorTubeProfile3D& profile = *route.geometry->tracking_error_tube;
-  const auto speed_mps = [](const mppi::State& state) {
+  const auto speed_mps = [](const MotionState3D& state) {
     return std::hypot(
         std::hypot(static_cast<double>(state.vx), static_cast<double>(state.vy)),
         static_cast<double>(state.vz));
   };
-  const auto assessment = [&](const mppi::State& state,
+  const auto assessment = [&](const MotionState3D& state,
                               const RouteProjection3D& projection) {
     return assessTrackingErrorTubeExecution3D(
         route_samples, profile,
@@ -121,8 +121,8 @@ bool validateTrackingTubeHandoffClearance(
   }
 
   for (std::size_t index = 1U; index < horizon.states.size(); ++index) {
-    const mppi::State& previous_state = horizon.states[index - 1U];
-    const mppi::State& state = horizon.states[index];
+    const MotionState3D& previous_state = horizon.states[index - 1U];
+    const MotionState3D& state = horizon.states[index];
     const Point3 position{state.x, state.y, state.z};
     const double travel_m = distance3D(previous_position, position);
     if (!std::isfinite(travel_m)) {
@@ -155,9 +155,9 @@ bool validateTrackingTubeHandoffClearance(
       inflated.radial_rings = std::max<std::size_t>(1U, inflated.radial_rings);
       inflated.axial_samples = std::max<std::size_t>(1U, inflated.axial_samples);
     }
-    const mppi::Control& start_control =
+    const MotionControl3D& start_control =
         index == 1U ? previous_control : horizon.controls[index - 2U];
-    const mppi::Control& stop_control = horizon.controls[index - 1U];
+    const MotionControl3D& stop_control = horizon.controls[index - 1U];
     const FootprintBodyAxis start_axis = bodyAxisFromWorldAcceleration(
         Vec3{start_control.ax, start_control.ay, start_control.az});
     const FootprintBodyAxis stop_axis = bodyAxisFromWorldAcceleration(
@@ -207,7 +207,7 @@ TrackingErrorTubeHandoffAssessment3D assessCertifiedTrackingTubeHandoff3D(
     return {};
   }
   const FiniteExecutionState3D& execution = *current_execution;
-  const mppi::State& progress_state = target_route.progress.execution_input->state();
+  const MotionState3D& progress_state = target_route.progress.execution_input->state();
   const RouteProjection3D progress_projection = projectOntoRoute3DWithinStationWindow(
       *target_route.geometry->route,
       Point3{progress_state.x, progress_state.y, progress_state.z},
