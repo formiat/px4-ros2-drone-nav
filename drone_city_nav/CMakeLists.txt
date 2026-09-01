@@ -442,8 +442,7 @@ function(add_drone_city_nav_private_runtime target_name)
   set_target_properties(${target_name} PROPERTIES POSITION_INDEPENDENT_CODE ON)
   target_include_directories(
     ${target_name}
-    PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-           "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>")
+    PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>")
   enable_project_warnings(${target_name})
 endfunction()
 
@@ -480,46 +479,57 @@ endfunction()
 # umbrella. Their public include root is build-only because none of these APIs
 # is installed as a package contract.
 set(DRONE_CITY_NAV_WORLD_RUNTIME_SOURCES
-    src/observed_world_builder_3d.cpp
-    src/production_mppi_raw_world.cpp
-    src/production_mppi_route_world.cpp
-    src/static_world_builder_3d.cpp
-    src/world_pipeline_3d.cpp)
+    src/world/observed_world_builder_3d.cpp
+    src/world/production_mppi_raw_world.cpp
+    src/world/production_mppi_route_world.cpp
+    src/world/static_world_builder_3d.cpp
+    src/world/world_pipeline_3d.cpp)
 add_drone_city_nav_private_runtime(drone_city_nav_world_runtime
                                    ${DRONE_CITY_NAV_WORLD_RUNTIME_SOURCES})
+target_include_directories(
+  drone_city_nav_world_runtime
+  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/world>")
 target_link_libraries(drone_city_nav_world_runtime
                       PUBLIC drone_city_nav_execution)
 
 set(DRONE_CITY_NAV_ROUTE_RUNTIME_SOURCES
-    src/execution_publication_navigation_rebase_3d.cpp
-    src/production_mppi_route_execution.cpp
-    src/production_mppi_route_helpers.cpp
-    src/route_activation_coordinator_3d.cpp
-    src/route_activation_preparation_3d.cpp
-    src/route_lifecycle_coordinator_3d.cpp
-    src/route_materializer_3d.cpp
-    src/route_planner_3d.cpp
-    src/route_planning_coordinator_3d.cpp
-    src/route_trajectory_compiler_3d.cpp)
+    src/execution/execution_publication_navigation_rebase_3d.cpp
+    src/execution/production_mppi_route_execution.cpp
+    src/execution/production_mppi_route_helpers.cpp
+    src/execution/route_activation_coordinator_3d.cpp
+    src/execution/route_activation_preparation_3d.cpp
+    src/planning/route_lifecycle_coordinator_3d.cpp
+    src/planning/route_planner_3d.cpp
+    src/planning/route_planning_coordinator_3d.cpp
+    src/trajectory/route_materializer_3d.cpp
+    src/trajectory/route_trajectory_compiler_3d.cpp)
 add_drone_city_nav_private_runtime(drone_city_nav_route_runtime
                                    ${DRONE_CITY_NAV_ROUTE_RUNTIME_SOURCES})
+target_include_directories(
+  drone_city_nav_route_runtime
+  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/planning>"
+         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/trajectory>"
+         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/execution>")
 target_link_libraries(drone_city_nav_route_runtime
                       PUBLIC drone_city_nav_world_runtime)
 
 if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
   set(DRONE_CITY_NAV_MPPI_RUNTIME_SOURCES
-      src/execution_horizon_assembler_3d.cpp
-      src/mppi_controller_3d.cpp
-      src/navigation_diagnostics_sink.cpp
-      src/planning_cycle_coordinator_3d.cpp
-      src/production_mppi_config.cpp
-      src/production_mppi_cooperative_diagnostics.cpp
-      src/production_mppi_execution_control.cpp
-      src/production_mppi_execution_diagnostics.cpp
-      src/production_mppi_node_names.cpp
-      src/production_mppi_noncooperative_diagnostics.cpp)
+      src/runtime/execution_horizon_assembler_3d.cpp
+      src/runtime/mppi_controller_3d.cpp
+      src/runtime/navigation_diagnostics_sink.cpp
+      src/runtime/planning_cycle_coordinator_3d.cpp
+      src/runtime/production_mppi_config.cpp
+      src/runtime/production_mppi_cooperative_diagnostics.cpp
+      src/runtime/production_mppi_execution_control.cpp
+      src/runtime/production_mppi_execution_diagnostics.cpp
+      src/runtime/production_mppi_node_names.cpp
+      src/runtime/production_mppi_noncooperative_diagnostics.cpp)
   add_drone_city_nav_private_runtime(drone_city_nav_mppi_runtime
                                      ${DRONE_CITY_NAV_MPPI_RUNTIME_SOURCES})
+  target_include_directories(
+    drone_city_nav_mppi_runtime
+    PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/runtime>")
   target_link_libraries(drone_city_nav_mppi_runtime
                         PUBLIC drone_city_nav_route_runtime
                                drone_city_nav_runtime
@@ -826,42 +836,45 @@ enable_project_warnings(lidar_debug_node)
 if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
   add_library(
     drone_city_nav_production_mppi_component SHARED
-    src/raw_world_ingress_ros_3d.cpp
-    src/production_mppi_config_ros.cpp
-    src/production_mppi_node.cpp
-    src/production_mppi_node_interfaces.cpp
-    src/production_mppi_node_health.cpp
-    src/production_mppi_node_mission.cpp
-    src/production_mppi_node_cooperative.cpp
-    src/production_mppi_node_noncooperative.cpp
-    src/production_mppi_node_esdf.cpp
-    src/production_mppi_node_observed_esdf.cpp
-    src/production_mppi_node_observed_evidence.cpp
-    src/production_mppi_node_inputs.cpp
-    src/production_mppi_node_navigation_input.cpp
-    src/production_mppi_node_control_feedback.cpp
-    src/production_mppi_node_inputs_3d.cpp
-    src/production_mppi_node_raw_input.cpp
-    src/production_mppi_node_planning_tick.cpp
-    src/production_mppi_node_planning_controller.cpp
-    src/production_mppi_node_world_generation.cpp
-    src/production_mppi_node_planning_tick_finalize.cpp
-    src/production_mppi_node_planning_tick_rearm.cpp
-    src/production_mppi_node_runtime.cpp
-    src/production_mppi_route_activation.cpp
-    src/production_mppi_node_static_extension.cpp
-    src/production_mppi_node_route_planning.cpp
-    src/production_mppi_node_route_lifecycle.cpp
-    src/production_mppi_node_diagnostics.cpp
-    src/production_mppi_node_diagnostics_events.cpp
-    src/production_mppi_node_diagnostics_runtime.cpp
-    src/production_mppi_node_summary.cpp
-    src/tracking_objective_diagnostics.cpp
-    src/production_mppi_node_execution.cpp
-    src/production_mppi_node_execution_publication.cpp
-    src/production_mppi_node_execution_holds.cpp
-    src/production_mppi_node_execution_retention.cpp)
+    src/runtime/ros/raw_world_ingress_ros_3d.cpp
+    src/runtime/ros/production_mppi_config_ros.cpp
+    src/runtime/ros/production_mppi_node.cpp
+    src/runtime/ros/production_mppi_node_interfaces.cpp
+    src/runtime/ros/production_mppi_node_health.cpp
+    src/runtime/ros/production_mppi_node_mission.cpp
+    src/runtime/ros/production_mppi_node_cooperative.cpp
+    src/runtime/ros/production_mppi_node_noncooperative.cpp
+    src/runtime/ros/production_mppi_node_esdf.cpp
+    src/runtime/ros/production_mppi_node_observed_esdf.cpp
+    src/runtime/ros/production_mppi_node_observed_evidence.cpp
+    src/runtime/ros/production_mppi_node_inputs.cpp
+    src/runtime/ros/production_mppi_node_navigation_input.cpp
+    src/runtime/ros/production_mppi_node_control_feedback.cpp
+    src/runtime/ros/production_mppi_node_inputs_3d.cpp
+    src/runtime/ros/production_mppi_node_raw_input.cpp
+    src/runtime/ros/production_mppi_node_planning_tick.cpp
+    src/runtime/ros/production_mppi_node_planning_controller.cpp
+    src/runtime/ros/production_mppi_node_world_generation.cpp
+    src/runtime/ros/production_mppi_node_planning_tick_finalize.cpp
+    src/runtime/ros/production_mppi_node_planning_tick_rearm.cpp
+    src/runtime/ros/production_mppi_node_runtime.cpp
+    src/runtime/ros/production_mppi_route_activation.cpp
+    src/runtime/ros/production_mppi_node_static_extension.cpp
+    src/runtime/ros/production_mppi_node_route_planning.cpp
+    src/runtime/ros/production_mppi_node_route_lifecycle.cpp
+    src/runtime/ros/production_mppi_node_diagnostics.cpp
+    src/runtime/ros/production_mppi_node_diagnostics_events.cpp
+    src/runtime/ros/production_mppi_node_diagnostics_runtime.cpp
+    src/runtime/ros/production_mppi_node_summary.cpp
+    src/runtime/ros/tracking_objective_diagnostics.cpp
+    src/runtime/ros/production_mppi_node_execution.cpp
+    src/runtime/ros/production_mppi_node_execution_publication.cpp
+    src/runtime/ros/production_mppi_node_execution_holds.cpp
+    src/runtime/ros/production_mppi_node_execution_retention.cpp)
   target_compile_features(drone_city_nav_production_mppi_component PRIVATE cxx_std_20)
+  target_include_directories(
+    drone_city_nav_production_mppi_component
+    PRIVATE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/ros>")
   target_link_libraries(
     drone_city_nav_production_mppi_component
     drone_city_nav_mppi_runtime
@@ -886,7 +899,7 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     "drone_city_nav::ProductionMppiNode")
   enable_project_warnings(drone_city_nav_production_mppi_component)
 
-  add_executable(production_mppi_node src/production_mppi_main.cpp)
+  add_executable(production_mppi_node src/runtime/ros/production_mppi_main.cpp)
   target_compile_features(production_mppi_node PRIVATE cxx_std_20)
   target_link_libraries(production_mppi_node
                         drone_city_nav_production_mppi_component)
@@ -973,7 +986,13 @@ if(BUILD_TESTING)
   target_include_directories(
     drone_city_nav_header_self_containment
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include"
-            "${CMAKE_CURRENT_SOURCE_DIR}/src")
+            "${CMAKE_CURRENT_SOURCE_DIR}/src"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/world"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/planning"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/trajectory"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/execution"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/runtime"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/ros")
   target_link_libraries(
     drone_city_nav_header_self_containment
     drone_city_nav_core drone_city_nav_ros_adapters ${cpp_typesupport_target})
@@ -1050,7 +1069,7 @@ if(BUILD_TESTING)
 
   add_drone_city_nav_private_runtime_gtest(
     production_mppi_route_world_test
-    tests/production_mppi_route_world_test.cpp drone_city_nav_world_runtime)
+    tests/production_mppi_route_world_test.cpp drone_city_nav_route_runtime)
   add_drone_city_nav_private_runtime_gtest(
     world_pipeline_3d_test tests/world_pipeline_3d_test.cpp
     drone_city_nav_world_runtime)
@@ -1400,7 +1419,8 @@ if(BUILD_TESTING)
     ament_add_gtest(raw_world_ingress_ros_3d_test
                     tests/raw_world_ingress_ros_3d_test.cpp)
     target_compile_features(raw_world_ingress_ros_3d_test PRIVATE cxx_std_20)
-    target_include_directories(raw_world_ingress_ros_3d_test PRIVATE src)
+    target_include_directories(raw_world_ingress_ros_3d_test
+                               PRIVATE src/runtime/ros)
     target_link_libraries(raw_world_ingress_ros_3d_test
                           drone_city_nav_production_mppi_component)
     enable_project_warnings(raw_world_ingress_ros_3d_test)
@@ -1408,7 +1428,8 @@ if(BUILD_TESTING)
     ament_add_gtest(production_mppi_config_test
                     tests/production_mppi_config_test.cpp)
     target_compile_features(production_mppi_config_test PRIVATE cxx_std_20)
-    target_include_directories(production_mppi_config_test PRIVATE src)
+    target_include_directories(production_mppi_config_test
+                               PRIVATE src/runtime/ros)
     target_link_libraries(production_mppi_config_test
                           drone_city_nav_production_mppi_component)
     enable_project_warnings(production_mppi_config_test)
@@ -1717,7 +1738,8 @@ if(BUILD_TESTING)
   ament_add_gtest(production_mppi_execution_control_test
                   tests/production_mppi_execution_control_test.cpp)
   target_compile_features(production_mppi_execution_control_test PRIVATE cxx_std_20)
-  target_include_directories(production_mppi_execution_control_test PRIVATE src)
+  target_include_directories(production_mppi_execution_control_test
+                             PRIVATE src/execution)
   target_link_libraries(production_mppi_execution_control_test
                         drone_city_nav_execution)
   enable_project_warnings(production_mppi_execution_control_test)
@@ -1760,7 +1782,7 @@ if(BUILD_TESTING)
   target_compile_features(execution_publication_navigation_rebase_3d_test
                           PRIVATE cxx_std_20)
   target_include_directories(execution_publication_navigation_rebase_3d_test
-                             PRIVATE src tests)
+                             PRIVATE tests)
   target_link_libraries(execution_publication_navigation_rebase_3d_test
                         drone_city_nav_route_runtime)
   enable_project_warnings(execution_publication_navigation_rebase_3d_test)

@@ -10,6 +10,8 @@ from pathlib import Path
 REPOSITORY = Path(__file__).resolve().parents[2]
 PACKAGE = REPOSITORY / "drone_city_nav"
 SOURCE = PACKAGE / "src"
+MPPI_RUNTIME = SOURCE / "runtime"
+ROS_RUNTIME = MPPI_RUNTIME / "ros"
 LAUNCH = PACKAGE / "launch" / "multi_vehicle.launch.py"
 LIDAR_LAUNCH = PACKAGE / "launch" / "multi_vehicle_lidar_launch.py"
 MISSION_LAUNCH = PACKAGE / "launch" / "multi_vehicle_mission_launch.py"
@@ -28,13 +30,13 @@ GROUND_TRUTH_BOUNDARY = SOURCE / "intercept_ground_truth_boundary.cpp"
 ASSIGNMENT_COORDINATOR = SOURCE / "target_assignment_coordinator_node.cpp"
 TRUTH_ADAPTER = SOURCE / "simulation_truth_adapter_node.cpp"
 OBSTACLE_MEMORY = SOURCE / "obstacle_memory_node.cpp"
-PLANNING_TICK = SOURCE / "production_mppi_node_planning_tick.cpp"
-PLANNING_COORDINATOR = SOURCE / "planning_cycle_coordinator_3d.cpp"
-EXECUTION = SOURCE / "production_mppi_node_execution.cpp"
-EXECUTION_ASSEMBLER = SOURCE / "execution_horizon_assembler_3d.cpp"
-EXECUTION_PUBLICATION = SOURCE / "production_mppi_node_execution_publication.cpp"
-EXECUTION_HOLDS = SOURCE / "production_mppi_node_execution_holds.cpp"
-EXECUTION_RETENTION = SOURCE / "production_mppi_node_execution_retention.cpp"
+PLANNING_TICK = ROS_RUNTIME / "production_mppi_node_planning_tick.cpp"
+PLANNING_COORDINATOR = MPPI_RUNTIME / "planning_cycle_coordinator_3d.cpp"
+EXECUTION = ROS_RUNTIME / "production_mppi_node_execution.cpp"
+EXECUTION_ASSEMBLER = MPPI_RUNTIME / "execution_horizon_assembler_3d.cpp"
+EXECUTION_PUBLICATION = ROS_RUNTIME / "production_mppi_node_execution_publication.cpp"
+EXECUTION_HOLDS = ROS_RUNTIME / "production_mppi_node_execution_holds.cpp"
+EXECUTION_RETENTION = ROS_RUNTIME / "production_mppi_node_execution_retention.cpp"
 EXECUTION_FILES = (
     EXECUTION,
     EXECUTION_ASSEMBLER,
@@ -43,7 +45,7 @@ EXECUTION_FILES = (
     EXECUTION_RETENTION,
 )
 MPPI_ENGINE = SOURCE / "mppi" / "mppi_engine.cu"
-NONCOOPERATIVE_PLANNER = SOURCE / "production_mppi_node_noncooperative.cpp"
+NONCOOPERATIVE_PLANNER = ROS_RUNTIME / "production_mppi_node_noncooperative.cpp"
 NAVIGATION_OBJECTIVE = PACKAGE / "msg" / "NavigationObjective.msg"
 
 
@@ -297,10 +299,10 @@ class InterceptRadarContractTest(unittest.TestCase):
         planner = "\n".join(
             path.read_text(encoding="utf-8")
             for path in (
-                SOURCE / "production_mppi_node.cpp",
-                SOURCE / "production_mppi_node.hpp",
-                SOURCE / "production_mppi_config.hpp",
-                SOURCE / "production_mppi_config_ros.cpp",
+                ROS_RUNTIME / "production_mppi_node.cpp",
+                ROS_RUNTIME / "production_mppi_node.hpp",
+                MPPI_RUNTIME / "production_mppi_config.hpp",
+                ROS_RUNTIME / "production_mppi_config_ros.cpp",
                 PLANNING_TICK,
                 PLANNING_COORDINATOR,
                 *EXECUTION_FILES,

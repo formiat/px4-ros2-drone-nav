@@ -10,6 +10,8 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 PACKAGE = ROOT / "drone_city_nav"
 SOURCE = PACKAGE / "src"
+MPPI_RUNTIME = SOURCE / "runtime"
+ROS_RUNTIME = MPPI_RUNTIME / "ros"
 
 
 class Stage3EndpointExecutionContractTest(unittest.TestCase):
@@ -20,7 +22,7 @@ class Stage3EndpointExecutionContractTest(unittest.TestCase):
         parameterization = (SOURCE / "route_time_parameterization.cpp").read_text(
             encoding="utf-8"
         )
-        execution = (SOURCE / "production_mppi_node_execution.cpp").read_text(
+        execution = (ROS_RUNTIME / "production_mppi_node_execution.cpp").read_text(
             encoding="utf-8"
         )
 
@@ -36,7 +38,7 @@ class Stage3EndpointExecutionContractTest(unittest.TestCase):
         )
 
     def test_planning_uses_certified_endpoint_semantics_not_goal_negation(self) -> None:
-        planning = (SOURCE / "planning_cycle_coordinator_3d.cpp").read_text(
+        planning = (MPPI_RUNTIME / "planning_cycle_coordinator_3d.cpp").read_text(
             encoding="utf-8"
         )
 

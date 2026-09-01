@@ -9,9 +9,10 @@ from pathlib import Path
 
 REPOSITORY = Path(__file__).resolve().parents[2]
 PACKAGE = REPOSITORY / "drone_city_nav"
+ROS_RUNTIME = PACKAGE / "src" / "runtime" / "ros"
 PLANNER_SOURCES = (
-    PACKAGE / "src" / "production_mppi_node.cpp",
-    PACKAGE / "src" / "production_mppi_node_interfaces.cpp",
+    ROS_RUNTIME / "production_mppi_node.cpp",
+    ROS_RUNTIME / "production_mppi_node_interfaces.cpp",
 )
 
 
@@ -25,7 +26,7 @@ class RuntimeTransportBudgetContractTest(unittest.TestCase):
             encoding="utf-8"
         )
         planner = _read_planner_sources()
-        header = (PACKAGE / "src" / "production_mppi_node.hpp").read_text(
+        header = (ROS_RUNTIME / "production_mppi_node.hpp").read_text(
             encoding="utf-8"
         )
 

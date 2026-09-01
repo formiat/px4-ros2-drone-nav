@@ -66,6 +66,8 @@ PRODUCTION_MPPI_SOURCE = (
     Path(__file__).resolve().parents[2]
     / "drone_city_nav"
     / "src"
+    / "runtime"
+    / "ros"
     / "production_mppi_node.cpp"
 )
 PRODUCTION_MPPI_CONFIG_SOURCE = PRODUCTION_MPPI_SOURCE.with_name(
@@ -75,6 +77,8 @@ PRODUCTION_MPPI_RUNTIME_SOURCE = (
     Path(__file__).resolve().parents[2]
     / "drone_city_nav"
     / "src"
+    / "runtime"
+    / "ros"
     / "production_mppi_node_runtime.cpp"
 )
 RVIZ_CONFIGS = (

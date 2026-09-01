@@ -62,7 +62,9 @@ class Stage8IncrementalWorldContractTest(unittest.TestCase):
 
     def test_online_topology_library_is_removed_from_production(self) -> None:
         yaml = (PACKAGE / "config" / "urban_mvp.yaml").read_text(encoding="utf-8")
-        node = (SOURCE / "production_mppi_node.hpp").read_text(encoding="utf-8")
+        node = (
+            SOURCE / "runtime" / "ros" / "production_mppi_node.hpp"
+        ).read_text(encoding="utf-8")
         cmake = (PACKAGE / "CMakeLists.txt").read_text(encoding="utf-8")
 
         for retired_path in (

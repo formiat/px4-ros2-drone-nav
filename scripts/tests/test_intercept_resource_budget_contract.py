@@ -11,15 +11,18 @@ from pathlib import Path
 
 REPOSITORY = Path(__file__).resolve().parents[2]
 PACKAGE = REPOSITORY / "drone_city_nav"
+SOURCE = PACKAGE / "src"
+MPPI_RUNTIME = SOURCE / "runtime"
+ROS_RUNTIME = MPPI_RUNTIME / "ros"
 LAUNCH = PACKAGE / "launch" / "multi_vehicle.launch.py"
 DIAGNOSTICS_LAUNCH = PACKAGE / "launch" / "intercept_diagnostics_launch.py"
 TRACKING_LAUNCH = PACKAGE / "launch" / "intercept_tracking_launch.py"
 RUN_SCRIPT = REPOSITORY / "scripts" / "run_drone_nav_sim.sh"
 PLANNER_SOURCES = (
-    PACKAGE / "src" / "production_mppi_node.cpp",
-    PACKAGE / "src" / "production_mppi_node_interfaces.cpp",
-    PACKAGE / "src" / "production_mppi_config.cpp",
-    PACKAGE / "src" / "production_mppi_config_ros.cpp",
+    ROS_RUNTIME / "production_mppi_node.cpp",
+    ROS_RUNTIME / "production_mppi_node_interfaces.cpp",
+    MPPI_RUNTIME / "production_mppi_config.cpp",
+    ROS_RUNTIME / "production_mppi_config_ros.cpp",
 )
 
 
@@ -152,7 +155,7 @@ class InterceptResourceBudgetContractTest(unittest.TestCase):
         self.assertIn("startPlanningTimer();", source)
 
     def test_planning_timer_cannot_starve_input_callbacks(self) -> None:
-        header = (PACKAGE / "src" / "production_mppi_node.hpp").read_text(
+        header = (ROS_RUNTIME / "production_mppi_node.hpp").read_text(
             encoding="utf-8"
         )
         source = _read_planner_sources()
@@ -167,9 +170,9 @@ class InterceptResourceBudgetContractTest(unittest.TestCase):
 
     def test_adaptive_rollout_budget_preserves_uncertain_and_risky_work(self) -> None:
         config = (PACKAGE / "config" / "urban_mvp.yaml").read_text(encoding="utf-8")
-        planning_cycle = (
-            PACKAGE / "src" / "planning_cycle_coordinator_3d.cpp"
-        ).read_text(encoding="utf-8")
+        planning_cycle = (MPPI_RUNTIME / "planning_cycle_coordinator_3d.cpp").read_text(
+            encoding="utf-8"
+        )
         policy = (PACKAGE / "src" / "mppi_rollout_budget.cpp").read_text(
             encoding="utf-8"
         )

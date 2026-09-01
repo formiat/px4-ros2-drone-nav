@@ -13,6 +13,8 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PACKAGE = REPO_ROOT / "drone_city_nav"
+SOURCE = PACKAGE / "src"
+ROS_RUNTIME = SOURCE / "runtime" / "ros"
 
 
 class NoStaticLocalEsdfContractTest(unittest.TestCase):
@@ -39,14 +41,14 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
         )
 
     def test_execution_uses_only_the_3d_raw_world_contract(self) -> None:
-        raw_input = (PACKAGE / "src/production_mppi_node_raw_input.cpp").read_text()
+        raw_input = (ROS_RUNTIME / "production_mppi_node_raw_input.cpp").read_text()
         execution = "\n".join(
-            (PACKAGE / "src" / name).read_text()
-            for name in (
-                "production_mppi_node_execution.cpp",
-                "production_mppi_node_execution_publication.cpp",
-                "production_mppi_node_execution_retention.cpp",
-                "execution_supervisor_3d_retention.cpp",
+            path.read_text()
+            for path in (
+                ROS_RUNTIME / "production_mppi_node_execution.cpp",
+                ROS_RUNTIME / "production_mppi_node_execution_publication.cpp",
+                ROS_RUNTIME / "production_mppi_node_execution_retention.cpp",
+                SOURCE / "execution_supervisor_3d_retention.cpp",
             )
         )
 
@@ -81,7 +83,7 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
         vertical_max = float(vertical.findtext("max_angle", "nan"))
         guaranteed_range_m = planner["guaranteed_lidar_detection_range_m"]
         physical_margin_m = planner["sensor_braking_physical_margin_m"]
-        source = (PACKAGE / "src/production_mppi_config_ros.cpp").read_text()
+        source = (ROS_RUNTIME / "production_mppi_config_ros.cpp").read_text()
         cpu_dynamics = (PACKAGE / "src/motion_dynamics_3d.cpp").read_text()
         cuda_dynamics = (PACKAGE / "src/mppi/mppi_engine_kernels.cuh").read_text()
 
@@ -113,10 +115,8 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
         self.assertIn("maximum_translational_speed_mps", cuda_dynamics)
 
     def test_hard_planning_footprint_is_the_physical_hull(self) -> None:
-        config_source = (PACKAGE / "src/production_mppi_config_ros.cpp").read_text()
-        runtime_source = (
-            PACKAGE / "src/production_mppi_node_interfaces.cpp"
-        ).read_text()
+        config_source = (ROS_RUNTIME / "production_mppi_config_ros.cpp").read_text()
+        runtime_source = (ROS_RUNTIME / "production_mppi_node_interfaces.cpp").read_text()
         config = yaml.safe_load((PACKAGE / "config/urban_mvp.yaml").read_text())
         parameters = config["production_mppi_node"]["ros__parameters"]
 

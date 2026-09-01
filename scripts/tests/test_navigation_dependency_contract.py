@@ -44,14 +44,16 @@ EXECUTION_HEADERS = tuple(sorted(INCLUDE.glob("execution*.hpp"))) + (
 # This ROS-free use case is intentionally the MPPI-side adapter that turns a
 # controller result into neutral execution-plan transitions.
 MPPI_EXECUTION_ADAPTERS = {
-    SOURCE / "execution_horizon_assembler_3d.cpp",
-    SOURCE / "execution_horizon_assembler_3d.hpp",
+    SOURCE / "runtime" / "execution_horizon_assembler_3d.cpp",
+    SOURCE / "runtime" / "execution_horizon_assembler_3d.hpp",
 }
 EXECUTION_IMPLEMENTATION = tuple(
     path
     for path in (
         *sorted(SOURCE.glob("execution*.cpp")),
         *sorted(SOURCE.glob("execution*.hpp")),
+        *sorted((SOURCE / "execution").glob("*.cpp")),
+        *sorted((SOURCE / "execution").glob("*.hpp")),
         SOURCE / "committed_execution_authority_3d.cpp",
     )
     if path not in MPPI_EXECUTION_ADAPTERS
@@ -91,6 +93,19 @@ LEGACY_ORCHESTRATION_CONTRACT_TESTS = (
     "test_stage3_endpoint_execution_contract.py",
     "test_stage7_geometry_vertical_cost_contract.py",
 )
+WORLD_RUNTIME_INCLUDE_ROOTS = (SOURCE / "world",)
+ROUTE_RUNTIME_INCLUDE_ROOTS = (
+    SOURCE / "planning",
+    SOURCE / "trajectory",
+    SOURCE / "execution",
+    *WORLD_RUNTIME_INCLUDE_ROOTS,
+)
+MPPI_RUNTIME_INCLUDE_ROOTS = (SOURCE / "runtime", *ROUTE_RUNTIME_INCLUDE_ROOTS)
+RUNTIME_INCLUDE_ROOTS = {
+    "DRONE_CITY_NAV_WORLD_RUNTIME_SOURCES": WORLD_RUNTIME_INCLUDE_ROOTS,
+    "DRONE_CITY_NAV_ROUTE_RUNTIME_SOURCES": ROUTE_RUNTIME_INCLUDE_ROOTS,
+    "DRONE_CITY_NAV_MPPI_RUNTIME_SOURCES": MPPI_RUNTIME_INCLUDE_ROOTS,
+}
 
 
 def cmake_source_manifest(variable: str) -> tuple[Path, ...]:
@@ -119,19 +134,24 @@ def component_sources() -> tuple[Path, ...]:
     )
 
 
-def resolve_local_include(owner: Path, include: str) -> Path | None:
+def resolve_local_include(
+    owner: Path, include: str, include_roots: tuple[Path, ...]
+) -> Path | None:
     candidates = [owner.parent / include]
     if include.startswith("drone_city_nav/"):
         candidates.append(PACKAGE / "include" / include)
     else:
-        candidates.extend((SOURCE / include, INCLUDE / include))
+        candidates.extend(root / include for root in include_roots)
+        candidates.append(INCLUDE / include)
     for candidate in candidates:
         if candidate.is_file():
             return candidate.resolve()
     return None
 
 
-def local_dependency_closure(roots: tuple[Path, ...]) -> set[Path]:
+def local_dependency_closure(
+    roots: tuple[Path, ...], include_roots: tuple[Path, ...]
+) -> set[Path]:
     pending = [path.resolve() for path in roots]
     visited: set[Path] = set()
     while pending:
@@ -143,7 +163,7 @@ def local_dependency_closure(roots: tuple[Path, ...]) -> set[Path]:
         visited.add(path)
         text = path.read_text(encoding="utf-8")
         for include in LOCAL_INCLUDE_PATTERN.findall(text):
-            dependency = resolve_local_include(path, include)
+            dependency = resolve_local_include(path, include, include_roots)
             if dependency is not None and dependency not in visited:
                 pending.append(dependency)
     return visited
@@ -184,13 +204,51 @@ class NavigationDependencyContractTest(unittest.TestCase):
                 with self.subTest(first=first, second=second):
                     self.assertFalse(manifests[first] & manifests[second])
 
+    def test_private_runtime_sources_and_include_roots_follow_layers(self) -> None:
+        expected_source_roots = {
+            "DRONE_CITY_NAV_WORLD_RUNTIME_SOURCES": (SOURCE / "world",),
+            "DRONE_CITY_NAV_ROUTE_RUNTIME_SOURCES": (
+                SOURCE / "planning",
+                SOURCE / "trajectory",
+                SOURCE / "execution",
+            ),
+            "DRONE_CITY_NAV_MPPI_RUNTIME_SOURCES": (SOURCE / "runtime",),
+        }
+        for variable, allowed_roots in expected_source_roots.items():
+            for path in cmake_source_manifest(variable):
+                with self.subTest(manifest=variable, path=path.name):
+                    self.assertTrue(
+                        any(path.is_relative_to(root) for root in allowed_roots)
+                    )
+        for path in component_sources():
+            with self.subTest(component_source=path.name):
+                self.assertTrue(path.is_relative_to(SOURCE / "runtime" / "ros"))
+
+        cmake = CMAKE.read_text(encoding="utf-8")
+        self.assertNotIn(
+            'PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>"', cmake
+        )
+        for relative_root in (
+            "src/world",
+            "src/planning",
+            "src/trajectory",
+            "src/execution",
+            "src/runtime",
+        ):
+            with self.subTest(include_root=relative_root):
+                self.assertIn(
+                    f"${{CMAKE_CURRENT_SOURCE_DIR}}/{relative_root}", cmake
+                )
+
     def test_private_runtime_header_graphs_are_ros_free(self) -> None:
         for variable in (
             "DRONE_CITY_NAV_WORLD_RUNTIME_SOURCES",
             "DRONE_CITY_NAV_ROUTE_RUNTIME_SOURCES",
             "DRONE_CITY_NAV_MPPI_RUNTIME_SOURCES",
         ):
-            dependencies = local_dependency_closure(cmake_source_manifest(variable))
+            dependencies = local_dependency_closure(
+                cmake_source_manifest(variable), RUNTIME_INCLUDE_ROOTS[variable]
+            )
             for path in dependencies:
                 text = path.read_text(encoding="utf-8")
                 for token in PURE_RUNTIME_BANNED_TOKENS:
@@ -203,7 +261,8 @@ class NavigationDependencyContractTest(unittest.TestCase):
 
     def test_world_runtime_does_not_reach_route_or_controller_headers(self) -> None:
         dependencies = local_dependency_closure(
-            cmake_source_manifest("DRONE_CITY_NAV_WORLD_RUNTIME_SOURCES")
+            cmake_source_manifest("DRONE_CITY_NAV_WORLD_RUNTIME_SOURCES"),
+            WORLD_RUNTIME_INCLUDE_ROOTS,
         )
         for path in dependencies:
             text = path.read_text(encoding="utf-8")
@@ -214,7 +273,8 @@ class NavigationDependencyContractTest(unittest.TestCase):
 
     def test_route_runtime_does_not_reach_controller_headers(self) -> None:
         dependencies = local_dependency_closure(
-            cmake_source_manifest("DRONE_CITY_NAV_ROUTE_RUNTIME_SOURCES")
+            cmake_source_manifest("DRONE_CITY_NAV_ROUTE_RUNTIME_SOURCES"),
+            ROUTE_RUNTIME_INCLUDE_ROOTS,
         )
         for path in dependencies:
             text = path.read_text(encoding="utf-8")
