@@ -179,34 +179,9 @@ void ProductionMppiNode::handleObservedWorldUpdate3D(
   const bool initial_route_search_required = resident_route_generation == 0U;
   bool initial_route_search_queued = false;
   bool initial_route_search_replaced_pending = false;
-  const std::shared_ptr<const ProductionNavigationObjective> current_objective =
-      navigationObjective();
-  if (initial_route_search_required && current_objective != nullptr) {
-    const std::shared_ptr<const PlannerSearchTransaction3D> transaction =
-        makePlannerSearchTransaction3D(
-            published_world, captureResidentPlannerWorld3D(*published_world),
-            makeStaticRouteObjective(*current_objective),
-            StaticRouteSearchRequestIdentity{
-                .kind = StaticRouteSearchRequestKind::kInitial,
-            });
-    if (transaction == nullptr) {
-      RCLCPP_ERROR(get_logger(),
-                   "PRODUCTION_MPPI_ROUTE3D status=invalid_initial_transaction "
-                   "raw_revision=%" PRIu64,
-                   published_world->source_raw_revision);
-    }
-    if (transaction != nullptr) {
-      const RoutePlanningEnqueueResult3D enqueue =
-          route_lifecycle_coordinator_->enqueue(
-              RoutePlanningRequest3D{
-                  .transaction = transaction,
-                  .world_telemetry = update.telemetry,
-                  .continuation_session = nullptr,
-              },
-              RoutePlanningQueuePolicy3D::kReplacePending);
-      initial_route_search_queued = enqueue.queued();
-      initial_route_search_replaced_pending = enqueue.displaced.has_value();
-    }
+  if (initial_route_search_required) {
+    initial_route_search_queued = requestInitialRouteSearch3D(
+        published_world, update.telemetry, initial_route_search_replaced_pending);
   }
   if (!world_ready_.exchange(true, std::memory_order_acq_rel)) {
     publishWorldReadiness(true);

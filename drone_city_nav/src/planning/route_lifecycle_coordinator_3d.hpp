@@ -80,6 +80,29 @@ enum class RouteLifecycleAdvanceStatus3D : std::uint8_t {
   kCompleted,
 };
 
+// What the lifecycle must do with a candidate after one activation attempt.
+// The candidate is owned by the lifecycle until it reaches a terminal
+// disposition, so a transient loss of currentness costs one retry instead of
+// discarding a route the search already proved.
+enum class RouteCandidateDisposition3D : std::uint8_t {
+  // Activation committed the candidate.
+  kActivated,
+  // The optimistic commit base moved. The candidate itself is untouched, so it
+  // is materialized and committed again against the current snapshot.
+  kRetrySameCandidate,
+  // The current world contradicts the world the search ran on. Neither this
+  // candidate nor the search that produced it can be trusted.
+  kRetireSearchAndReplan,
+  // Activation declined this candidate, but the running search may still find a
+  // better one against the same world.
+  kContinueForImprovement,
+  // Activation rejected the candidate on grounds a retry cannot change.
+  kTerminalReject,
+};
+
+[[nodiscard]] const char*
+routeCandidateDisposition3DName(RouteCandidateDisposition3D disposition) noexcept;
+
 struct RouteLifecycleUpdate3D {
   RouteLifecycleAdvanceStatus3D status{RouteLifecycleAdvanceStatus3D::kInvalidEvent};
   RoutePlanningRequest3D request{};
@@ -91,6 +114,9 @@ struct RouteLifecycleUpdate3D {
   RouteLifecycleTrackingFollowup3D tracking_followup{};
   Point3 search_start{};
   double route_planning_ms{0.0};
+  RouteCandidateDisposition3D candidate_disposition{
+      RouteCandidateDisposition3D::kContinueForImprovement};
+  std::size_t activation_attempts{0U};
   bool search_running{false};
   bool search_superseded_by_activation{false};
   bool continuation_queued{false};

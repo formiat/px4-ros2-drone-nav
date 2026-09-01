@@ -667,7 +667,12 @@ TEST(RouteLifecycleCoordinator3DTest,
   EXPECT_TRUE(result.search_running);
   EXPECT_TRUE(result.search_superseded_by_activation);
   EXPECT_FALSE(result.continuation_queued);
-  EXPECT_EQ(superseded_commit_count, 1U);
+  // The candidate survives one supersession and is committed again; only a
+  // second supersession retires the search.
+  EXPECT_EQ(superseded_commit_count, 2U);
+  EXPECT_EQ(result.activation_attempts, 2U);
+  EXPECT_EQ(result.candidate_disposition,
+            RouteCandidateDisposition3D::kRetireSearchAndReplan);
   EXPECT_EQ(result.activation.admission.activation_status,
             StaticRouteActivationStatus::kActivationSnapshotSuperseded);
   ASSERT_EQ(replan_outcomes.size(), 2U);
@@ -675,6 +680,74 @@ TEST(RouteLifecycleCoordinator3DTest,
   EXPECT_EQ(replay.origin, RouteLifecycleReplanOrigin3D::kDeferredReplanReplay);
   EXPECT_EQ(replay.replay_completed_generation, generation);
   EXPECT_EQ(replay.status, RouteLifecycleReplanStatus3D::kRouteQueueBusy);
+}
+
+TEST(RouteLifecycleCoordinator3DTest,
+     SupersededActivationSnapshotRetriesTheSameCandidateBeforeRetiring) {
+  ExecutionSupervisor3D supervisor;
+  const LifecycleFixture3D input = fixture();
+  ASSERT_NE(input.transaction, nullptr);
+
+  std::size_t commit_count{0U};
+  RouteLifecycleCoordinatorConfig3D config =
+      lifecycleConfig(input, supervisor, commit_count);
+  std::vector<std::size_t> committed_route_sample_counts;
+  config.activation_commit_boundary =
+      [&input, &commit_count,
+       &committed_route_sample_counts](PreparedRouteActivation3D prepared,
+                                       const RouteActivationCommitOperation3D& commit) {
+        ++commit_count;
+        committed_route_sample_counts.push_back(
+            prepared.result.materialized.route != nullptr
+                ? prepared.result.materialized.route->size()
+                : 0U);
+        if (commit_count == 1U) {
+          ProductionRouteActivationResult3D activation = std::move(prepared.result);
+          activation.admission.activation_status =
+              StaticRouteActivationStatus::kActivationSnapshotSuperseded;
+          activation.admission.snapshot_current = false;
+          activation.admission.resident_world_snapshot_current = false;
+          activation.admission.certified_pending = false;
+          return RouteActivationCommitResult3D{.result = std::move(activation)};
+        }
+        return commit(std::move(prepared),
+                      RouteActivationCommitContext3D{
+                          .resident_world = input.world,
+                          .objective = input.objective,
+                          .raw_world = nullptr,
+                          .minimum_tracking_route_mission_epoch = 0U,
+                          .minimum_tracking_route_sample_sequence = 0U,
+                      });
+      };
+  RouteLifecycleCoordinator3D coordinator{supervisor, std::move(config)};
+
+  RoutePlanner3D planner{plannerConfig()};
+  const RoutePlannerVehicleState3D vehicle_state = vehicleState(input);
+  RoutePlannerUpdate3D planner_update =
+      planner.update(*input.transaction, vehicle_state);
+  ASSERT_TRUE(planner_update.improved_incumbent.has_value());
+
+  const RouteLifecycleUpdate3D result = coordinator.advance(RoutePlanningUpdateEvent3D{
+      .request =
+          RoutePlanningRequest3D{
+              .transaction = input.transaction,
+              .continuation_session = nullptr,
+          },
+      .vehicle_state = vehicle_state,
+      .update = std::move(planner_update),
+  });
+
+  EXPECT_EQ(result.status, RouteLifecycleAdvanceStatus3D::kCompleted);
+  EXPECT_EQ(commit_count, 2U);
+  EXPECT_EQ(result.activation_attempts, 2U);
+  EXPECT_EQ(result.candidate_disposition, RouteCandidateDisposition3D::kActivated);
+  EXPECT_FALSE(result.search_superseded_by_activation);
+  ASSERT_EQ(committed_route_sample_counts.size(), 2U);
+  // The retry commits the same proven candidate, not a degraded substitute.
+  EXPECT_EQ(committed_route_sample_counts.front(),
+            committed_route_sample_counts.back());
+  EXPECT_GT(committed_route_sample_counts.back(), 1U);
+  EXPECT_NE(supervisor.plan(), nullptr);
 }
 
 TEST(RouteLifecycleCoordinator3DTest,

@@ -10,7 +10,30 @@
 #include "production_mppi_route_world.hpp"
 
 namespace drone_city_nav {
+
+const char* routeCandidateDisposition3DName(
+    const RouteCandidateDisposition3D disposition) noexcept {
+  switch (disposition) {
+    case RouteCandidateDisposition3D::kActivated:
+      return "activated";
+    case RouteCandidateDisposition3D::kRetrySameCandidate:
+      return "retry_same_candidate";
+    case RouteCandidateDisposition3D::kRetireSearchAndReplan:
+      return "retire_search_and_replan";
+    case RouteCandidateDisposition3D::kContinueForImprovement:
+      return "continue_for_improvement";
+    case RouteCandidateDisposition3D::kTerminalReject:
+      return "terminal_reject";
+  }
+  return "continue_for_improvement";
+}
+
 namespace {
+
+// One retry covers the ordinary case of a world, objective, or execution
+// snapshot landing between capture and commit. Beyond that the lifecycle is
+// losing a race it cannot win by repeating itself.
+inline constexpr std::size_t kMaximumActivationAttempts{2U};
 
 [[nodiscard]] double
 elapsedMilliseconds(const std::chrono::steady_clock::time_point started) noexcept {
@@ -19,21 +42,12 @@ elapsedMilliseconds(const std::chrono::steady_clock::time_point started) noexcep
       .count();
 }
 
+// The search ran on a world the activation snapshot has since contradicted with
+// exact raw evidence. The candidate and the session that produced it are both
+// stale, so neither a retry nor a continuation can recover them.
 [[nodiscard]] bool
-searchSupersededByActivation(const bool search_running,
-                             const PlannerSearchTransaction3D& transaction,
-                             const RouteAdmissionReport3D& admission) noexcept {
-  if (!search_running) {
-    return false;
-  }
-  // An improved incumbent is moved out of the planner update before activation.
-  // If the optimistic commit base changes, continuing the same search cannot
-  // publish that incumbent again. Retire the consumed session so the lifecycle
-  // gate can replay a request against the current snapshot.
-  if (admission.activation_status ==
-      StaticRouteActivationStatus::kActivationSnapshotSuperseded) {
-    return true;
-  }
+searchInvalidatedByActivationWorld(const PlannerSearchTransaction3D& transaction,
+                                   const RouteAdmissionReport3D& admission) noexcept {
   return admission.activation_status ==
              StaticRouteActivationStatus::kCandidateValidationRejected &&
          admission.candidate_validation.status ==
@@ -46,6 +60,24 @@ searchSupersededByActivation(const bool search_running,
          admission.tracking_profile_activation_occupied_fingerprint != 0U &&
          transaction.planner_world->occupied_fingerprint !=
              admission.tracking_profile_activation_occupied_fingerprint;
+}
+
+[[nodiscard]] RouteCandidateDisposition3D
+classifyCandidateDisposition(const PlannerSearchTransaction3D& transaction,
+                             const RouteAdmissionReport3D& admission) noexcept {
+  if (admission.certified_pending) {
+    return RouteCandidateDisposition3D::kActivated;
+  }
+  if (searchInvalidatedByActivationWorld(transaction, admission)) {
+    return RouteCandidateDisposition3D::kRetireSearchAndReplan;
+  }
+  // A superseded snapshot says only that the commit base moved between capture
+  // and commit. The candidate remains exactly what the search produced.
+  if (admission.activation_status ==
+      StaticRouteActivationStatus::kActivationSnapshotSuperseded) {
+    return RouteCandidateDisposition3D::kRetrySameCandidate;
+  }
+  return RouteCandidateDisposition3D::kContinueForImprovement;
 }
 
 [[nodiscard]] RouteLifecycleCandidateSummary3D
@@ -259,74 +291,90 @@ RouteLifecycleCoordinator3D::advance(RoutePlanningUpdateEvent3D event) {
     return result;
   }
 
-  const std::uint64_t candidate_generation =
-      result.candidate.available ? nextRouteGeneration() : 0U;
-  ProductionRouteMaterialization3D materialization;
-  materialization.route.world = transaction->world;
-  materialization.route.objective = transaction->objective;
-  materialization.route.candidate_generation = candidate_generation;
-  materialization.telemetry.world_build = world_telemetry;
-  materialization.telemetry.route_search_ms = planner_update.search_ms;
-
   ProductionRouteActivationResult3D activation;
-  activation.materialized = materialization.route;
-  activation.telemetry = materialization.telemetry;
-  if (result.candidate.available && candidate_generation != 0U) {
-    const ProductionRouteActivationSnapshot3D materialization_snapshot =
-        config_.activation_snapshot_provider();
-    const std::shared_ptr<const ExecutionPlan3D> materialization_execution =
-        materialization_snapshot.execution_authority != nullptr
-            ? materialization_snapshot.execution_authority->plan()
-            : nullptr;
-    const CertifiedRouteSuffix3D* const active_route =
-        materialization_execution != nullptr ? materialization_execution->route()
-                                             : nullptr;
-    const std::shared_ptr<const CertifiedRouteSuffix3D> active_route_snapshot =
-        active_route != nullptr
-            ? std::shared_ptr<const CertifiedRouteSuffix3D>{materialization_execution,
-                                                            active_route}
-            : nullptr;
-    RouteSearchCandidate3D candidate =
+  activation.materialized.world = transaction->world;
+  activation.materialized.objective = transaction->objective;
+  activation.telemetry.world_build = world_telemetry;
+  activation.telemetry.route_search_ms = planner_update.search_ms;
+  if (result.candidate.available) {
+    // The lifecycle owns the candidate until it reaches a terminal disposition.
+    // Activation is optimistic, so a commit base that moves underneath it is a
+    // reason to try again against the current snapshot, not to throw away a
+    // route the search already proved.
+    const RouteSearchCandidate3D candidate =
         std::move(planner_update.improved_incumbent).value_or(RouteSearchCandidate3D{});
     planner_update.improved_incumbent.reset();
-    materialization = route_materializer_.materialize(RouteMaterializationRequest3D{
-        .transaction = transaction,
-        .world_telemetry = world_telemetry,
-        .current_position = event.vehicle_state.position,
-        .candidate = std::move(candidate),
-        .candidate_generation = candidate_generation,
-        .active_route = active_route_snapshot,
-        .activation_raw_world = materialization_snapshot.raw_world,
-    });
-    materialization.telemetry.route_search_ms = planner_update.search_ms;
-    result.geometry_optimization_fallback =
-        materialization.geometry_optimization_fallback;
-
-    ProductionRouteActivationSnapshot3D activation_snapshot =
-        config_.activation_snapshot_provider();
-    const StaticRoutePlanningLatencyStats planning_latency =
-        planningLatencyStatistics();
-    PreparedRouteActivation3D prepared =
-        route_activation_coordinator_.prepare(RouteActivationPreparationRequest3D{
-            .transaction = transaction,
-            .materialization = std::move(materialization),
-            .snapshot = std::move(activation_snapshot),
-            .planning_latency = planning_latency,
-        });
     const RouteActivationCommitOperation3D commit_operation =
         [this](PreparedRouteActivation3D pending,
                const RouteActivationCommitContext3D& context) {
           return route_activation_coordinator_.commit(std::move(pending), context,
                                                       execution_supervisor_);
         };
-    RouteActivationCommitResult3D committed =
-        config_.activation_commit_boundary(std::move(prepared), commit_operation);
-    activation = std::move(committed.result);
+    while (result.activation_attempts < kMaximumActivationAttempts) {
+      ++result.activation_attempts;
+      const std::uint64_t candidate_generation = nextRouteGeneration();
+      if (candidate_generation == 0U) {
+        break;
+      }
+      const ProductionRouteActivationSnapshot3D materialization_snapshot =
+          config_.activation_snapshot_provider();
+      const std::shared_ptr<const ExecutionPlan3D> materialization_execution =
+          materialization_snapshot.execution_authority != nullptr
+              ? materialization_snapshot.execution_authority->plan()
+              : nullptr;
+      const CertifiedRouteSuffix3D* const active_route =
+          materialization_execution != nullptr ? materialization_execution->route()
+                                               : nullptr;
+      const std::shared_ptr<const CertifiedRouteSuffix3D> active_route_snapshot =
+          active_route != nullptr
+              ? std::shared_ptr<const CertifiedRouteSuffix3D>{materialization_execution,
+                                                              active_route}
+              : nullptr;
+      ProductionRouteMaterialization3D materialization =
+          route_materializer_.materialize(RouteMaterializationRequest3D{
+              .transaction = transaction,
+              .world_telemetry = world_telemetry,
+              .current_position = event.vehicle_state.position,
+              .candidate = candidate,
+              .candidate_generation = candidate_generation,
+              .active_route = active_route_snapshot,
+              .activation_raw_world = materialization_snapshot.raw_world,
+          });
+      materialization.telemetry.route_search_ms = planner_update.search_ms;
+      result.geometry_optimization_fallback =
+          materialization.geometry_optimization_fallback;
+
+      PreparedRouteActivation3D prepared =
+          route_activation_coordinator_.prepare(RouteActivationPreparationRequest3D{
+              .transaction = transaction,
+              .materialization = std::move(materialization),
+              .snapshot = config_.activation_snapshot_provider(),
+              .planning_latency = planningLatencyStatistics(),
+          });
+      RouteActivationCommitResult3D committed =
+          config_.activation_commit_boundary(std::move(prepared), commit_operation);
+      activation = std::move(committed.result);
+      result.candidate_disposition =
+          classifyCandidateDisposition(*transaction, activation.admission);
+      if (result.candidate_disposition !=
+          RouteCandidateDisposition3D::kRetrySameCandidate) {
+        break;
+      }
+    }
+    // Retries are bounded. A commit base that keeps moving means the lifecycle
+    // is racing a faster producer, so the session is retired and replanned
+    // rather than retried indefinitely.
+    if (result.candidate_disposition ==
+        RouteCandidateDisposition3D::kRetrySameCandidate) {
+      result.candidate_disposition =
+          RouteCandidateDisposition3D::kRetireSearchAndReplan;
+    }
   }
   activation.telemetry.route_search_ms = planner_update.search_ms;
   result.activation = std::move(activation);
-  result.search_superseded_by_activation = searchSupersededByActivation(
-      result.search_running, *transaction, result.activation.admission);
+  result.search_superseded_by_activation =
+      result.search_running && result.candidate_disposition ==
+                                   RouteCandidateDisposition3D::kRetireSearchAndReplan;
 
   result.planner_update = std::move(planner_update);
   if (result.search_running && !result.search_superseded_by_activation) {

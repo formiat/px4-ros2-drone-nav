@@ -163,6 +163,10 @@ private:
       std::string_view source, ProductionMppiPhysicalTrajectoryAuthority authority);
   void requestStaticRouteReplan(RouteReleaseReason3D reason,
                                 std::uint64_t route_generation);
+  [[nodiscard]] bool
+  requestInitialRouteSearch3D(const std::shared_ptr<const WorldSnapshot3D>& world,
+                              const ProductionWorldBuildTelemetry3D& world_telemetry,
+                              bool& replaced_pending);
   void maybeRequestStaticRouteExtensionFromExecution(
       const std::shared_ptr<const WorldSnapshot3D>& world,
       const ProductionWorldBuildTelemetry3D& world_build,

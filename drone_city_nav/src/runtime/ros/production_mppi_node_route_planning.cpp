@@ -8,6 +8,7 @@
 
 #include "production_mppi_node.hpp"
 #include "production_mppi_route_world.hpp"
+#include "world_pipeline_3d.hpp"
 
 namespace drone_city_nav {
 
@@ -198,11 +199,36 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
             : "activation_world_raw_collision";
     RCLCPP_WARN(get_logger(),
                 "PERSISTENT_PLANNER3D stage=continuation_cancelled "
-                "reason=%s search_raw_revision=%" PRIu64
+                "reason=%s disposition=%s attempts=%zu search_raw_revision=%" PRIu64
                 " activation_raw_revision=%" PRIu64 " search_generation=%" PRIu64,
-                reason, planner_update.planner_telemetry.planned_on_revision,
+                reason, routeCandidateDisposition3DName(update.candidate_disposition),
+                update.activation_attempts,
+                planner_update.planner_telemetry.planned_on_revision,
                 activation_report.snapshot_raw_revision,
                 planner_update.planner_telemetry.search_generation);
+    // A retired initial search leaves the vehicle with no route at all. The
+    // lifecycle gate replays replacement and extension searches itself; an
+    // initial search has no base generation to replay from, so it is requested
+    // again here against the current resident world instead of waiting for the
+    // next observed-world publication.
+    if (update.request.transaction != nullptr &&
+        update.request.transaction->initial()) {
+      const std::shared_ptr<const ExecutionPlan3D> resident_execution =
+          execution_supervisor_.plan();
+      const bool route_still_missing =
+          resident_execution == nullptr ||
+          resident_execution->routeGenerationHighWater() == 0U;
+      if (route_still_missing) {
+        WorldPipeline3D::ResidentLease resident = world_pipeline_->lockResident();
+        bool replaced_pending = false;
+        const bool queued = requestInitialRouteSearch3D(
+            resident.world(), resident.telemetry(), replaced_pending);
+        RCLCPP_INFO(get_logger(),
+                    "PRODUCTION_MPPI_ROUTE3D status=initial_search_replayed "
+                    "queued=%s replaced_pending=%s",
+                    queued ? "true" : "false", replaced_pending ? "true" : "false");
+      }
+    }
   } else if (update.search_running) {
     RCLCPP_INFO(get_logger(),
                 "PERSISTENT_PLANNER3D stage=continuation_after_incumbent "
@@ -375,6 +401,39 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
         staticRouteCandidateStatusName(validation.status).data(), search_start.x,
         search_start.y, search_start.z);
   }
+}
+
+bool ProductionMppiNode::requestInitialRouteSearch3D(
+    const std::shared_ptr<const WorldSnapshot3D>& world,
+    const ProductionWorldBuildTelemetry3D& world_telemetry, bool& replaced_pending) {
+  replaced_pending = false;
+  const std::shared_ptr<const ProductionNavigationObjective> objective =
+      navigationObjective();
+  if (world == nullptr || objective == nullptr) {
+    return false;
+  }
+  const std::shared_ptr<const PlannerSearchTransaction3D> transaction =
+      makePlannerSearchTransaction3D(world, captureResidentPlannerWorld3D(*world),
+                                     makeStaticRouteObjective(*objective),
+                                     StaticRouteSearchRequestIdentity{
+                                         .kind = StaticRouteSearchRequestKind::kInitial,
+                                     });
+  if (transaction == nullptr) {
+    RCLCPP_ERROR(get_logger(),
+                 "PRODUCTION_MPPI_ROUTE3D status=invalid_initial_transaction "
+                 "raw_revision=%" PRIu64,
+                 world->source_raw_revision);
+    return false;
+  }
+  const RoutePlanningEnqueueResult3D enqueue = route_lifecycle_coordinator_->enqueue(
+      RoutePlanningRequest3D{
+          .transaction = transaction,
+          .world_telemetry = world_telemetry,
+          .continuation_session = nullptr,
+      },
+      RoutePlanningQueuePolicy3D::kReplacePending);
+  replaced_pending = enqueue.displaced.has_value();
+  return enqueue.queued();
 }
 
 } // namespace drone_city_nav
