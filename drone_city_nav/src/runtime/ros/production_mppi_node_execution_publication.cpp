@@ -163,6 +163,31 @@ finiteExecutionEvidenceView(const ExecutionPlan3D& snapshot) noexcept {
   return std::nullopt;
 }
 
+[[nodiscard]] const char* executionControlEvidenceSourceName(
+    const ExecutionPreviousControlEvidenceSource3D source) noexcept {
+  switch (source) {
+    case ExecutionPreviousControlEvidenceSource3D::kOffboardFeedback:
+      return "offboard_feedback";
+    case ExecutionPreviousControlEvidenceSource3D::kMeasuredAcceleration:
+      return "measured_acceleration";
+    case ExecutionPreviousControlEvidenceSource3D::kAssumedZero:
+      return "assumed_zero";
+    case ExecutionPreviousControlEvidenceSource3D::kEngineFallback:
+      return "engine_fallback";
+    case ExecutionPreviousControlEvidenceSource3D::kUnknown:
+      return "unknown";
+  }
+  return "unknown";
+}
+
+[[nodiscard]] double evidenceAgeMs(const std::int64_t now_ns,
+                                   const std::int64_t receive_stamp_ns) noexcept {
+  if (now_ns <= 0 || receive_stamp_ns <= 0 || receive_stamp_ns > now_ns) {
+    return -1.0;
+  }
+  return static_cast<double>(now_ns - receive_stamp_ns) * 1.0e-6;
+}
+
 } // namespace
 
 msg::MppiTrajectoryHorizon
@@ -387,12 +412,26 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
       if (!rebase.rebased() || !rebase.transition.has_value() ||
           rebase.transition->next == nullptr) {
         late_rebase_candidate_rejected = true;
+        const double input_pose_age_ms =
+            evidenceAgeMs(publication_now_ns, current_input->poseReceiveStampNs());
+        const double input_control_age_ms = evidenceAgeMs(
+            publication_now_ns, current_input->previousControlReceiveStampNs());
+        const LatestLidarEvidenceFreshness3D lidar_freshness =
+            assessLatestLidarEvidenceFreshness3D(
+                *current_lidar, publication_now_ns,
+                candidate.transition->next->route() != nullptr
+                    ? candidate.transition->next->route()
+                          ->validation_policy->latestLidarMaximumAgeMs()
+                    : config_.execution.latest_lidar_obstacle_maximum_age_ms);
         RCLCPP_WARN_THROTTLE(
             get_logger(), *get_clock(), 1000,
             "EXECUTION_HORIZON_REBASE rebased=false status=%s path_validation=%s "
             "route_certification=%.*s route_adherence=%.*s "
             "source_control_index=%zu route_adherence_state_index=%zu "
-            "route_adherence_failure_distance_m=%.3f transition=%.*s",
+            "route_adherence_failure_distance_m=%.3f transition=%.*s "
+            "input_control_source=%s input_pose_age_ms=%.3f "
+            "input_control_age_ms=%.3f input_pose_maximum_age_ms=%.3f "
+            "input_control_maximum_age_ms=%.3f lidar_age_ms=%.3f lidar_fresh=%s",
             executionPublicationNavigationRebaseStatus3DName(rebase.status),
             mppi::finiteExecutionPathStatusName(rebase.path_validation_status),
             static_cast<int>(finiteExecutionCertificationStatus3DName(
@@ -409,7 +448,18 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
             rebase.route_adherence_failure_distance_m,
             static_cast<int>(
                 executionRouteTransitionStatus3DName(rebase.transition_status).size()),
-            executionRouteTransitionStatus3DName(rebase.transition_status).data());
+            executionRouteTransitionStatus3DName(rebase.transition_status).data(),
+            executionControlEvidenceSourceName(current_input->previousControlSource()),
+            input_pose_age_ms, input_control_age_ms,
+            candidate.transition->next->route() != nullptr
+                ? candidate.transition->next->route()
+                      ->validation_policy->executionInputMaximumPoseAgeMs()
+                : -1.0,
+            candidate.transition->next->route() != nullptr
+                ? candidate.transition->next->route()
+                      ->validation_policy->executionInputMaximumControlAgeMs()
+                : -1.0,
+            lidar_freshness.age_ms, lidar_freshness.fresh ? "true" : "false");
         return executionPublicationNavigationRebaseStatus3DName(rebase.status);
       }
       ExecutionRouteTransitionResult3D current_transition =
