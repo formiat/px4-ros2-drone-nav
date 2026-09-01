@@ -1,5 +1,6 @@
 #include "route_activation_preparation_3d.hpp"
 
+#include "drone_city_nav/execution_horizon_commit_3d.hpp"
 #include "drone_city_nav/execution_route_certification_3d.hpp"
 #include "drone_city_nav/route_risk_annotation_3d.hpp"
 
@@ -11,7 +12,6 @@
 #include <span>
 #include <utility>
 
-#include "production_mppi_execution_control.hpp"
 #include "production_mppi_route_helpers.hpp"
 #include "production_mppi_route_world.hpp"
 
@@ -523,7 +523,7 @@ assessAdmission(RouteActivationPreparationState3D state,
   const ExecutionOwnerIdentity3D captured_owner =
       snapshot.execution_authority != nullptr ? snapshot.execution_authority->owner()
                                               : ExecutionOwnerIdentity3D{};
-  const bool handoff_control_fresh = appliedControlAuthoritativeForExecution(
+  const bool handoff_control_fresh = appliedControlAuthoritativeForExecution3D(
       captured_control, captured_owner, snapshot.stamp_ns,
       config.maximum_control_feedback_age_ms);
   if (result.proposal.identity.activation_eligible && report.assessment.accepted() &&

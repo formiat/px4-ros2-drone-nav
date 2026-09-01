@@ -1,6 +1,5 @@
 #include "drone_city_nav/compiled_trajectory_views_3d.hpp"
 #include "drone_city_nav/execution_route_certification_3d.hpp"
-#include "drone_city_nav/mppi/trajectory_reference_adapter_3d.hpp"
 #include "drone_city_nav/trajectory_compiler_3d.hpp"
 
 #include <gtest/gtest.h>
@@ -54,24 +53,6 @@ compileProfile(const RouteEndpointSemantics3D semantics) {
   });
 }
 
-TEST(ProductionMppiRouteHelpersTest,
-     ControllerReferenceIsDerivedFromTheCanonicalSealedProfile) {
-  const TrajectoryCompilationResult3D continuation =
-      compileProfile(RouteEndpointSemantics3D::kContinuation);
-  ASSERT_TRUE(continuation.compiled());
-
-  const auto reference = mppi::adaptTrajectoryReference3D(*continuation.trajectory);
-
-  ASSERT_NE(reference, nullptr);
-  ASSERT_EQ(reference->size(), continuation.trajectory->route->size());
-  for (std::size_t index = 0U; index < reference->size(); ++index) {
-    EXPECT_FLOAT_EQ((*reference)[index].reference_speed_mps,
-                    static_cast<float>(
-                        (*continuation.trajectory->route)[index].reference_speed_mps));
-  }
-  EXPECT_GT(reference->back().reference_speed_mps, 0.0F);
-}
-
 TEST(ProductionMppiRouteHelpersTest, RealStopsTaperTheSealedProfileToRest) {
   for (const RouteEndpointSemantics3D semantics :
        {RouteEndpointSemantics3D::kLocalStop, RouteEndpointSemantics3D::kMissionStop,
@@ -100,21 +81,6 @@ TEST(ProductionMppiRouteHelpersTest,
     EXPECT_DOUBLE_EQ(projection[index].y,
                      (*compilation.trajectory->route)[index].position.y);
   }
-}
-
-TEST(ProductionMppiRouteHelpersTest,
-     PlanningAdapterCachesReferenceByTrajectoryIdentity) {
-  const TrajectoryCompilationResult3D compilation =
-      compileProfile(RouteEndpointSemantics3D::kContinuation);
-  ASSERT_TRUE(compilation.compiled());
-  mppi::TrajectoryReferenceAdapter3D adapter;
-
-  const auto first = adapter.adapt(compilation.trajectory);
-  const auto second = adapter.adapt(compilation.trajectory);
-
-  ASSERT_NE(first, nullptr);
-  EXPECT_EQ(first, second);
-  EXPECT_EQ(adapter.adapt(nullptr), nullptr);
 }
 
 TEST(ProductionMppiRouteHelpersTest,

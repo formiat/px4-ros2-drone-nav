@@ -4,6 +4,7 @@
 #include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/route_progress_3d.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
+#include "drone_city_nav/world_snapshot_3d.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -11,9 +12,9 @@
 #include <vector>
 
 #include "production_mppi_execution_control.hpp"
-#include "production_mppi_node_execution_types.hpp"
 #include "production_mppi_node_types.hpp"
 #include "production_mppi_raw_world.hpp"
+#include "route_execution_selection_3d.hpp"
 
 namespace drone_city_nav {
 

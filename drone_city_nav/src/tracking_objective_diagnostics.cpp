@@ -1,14 +1,17 @@
 #include "tracking_objective_diagnostics.hpp"
 
 #include "drone_city_nav/json_output.hpp"
+#include "drone_city_nav/mppi/mppi_engine.hpp"
 #include "drone_city_nav/mppi_debug_markers.hpp"
+#include "drone_city_nav/mppi_speed_policy.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <iomanip>
 #include <sstream>
 
-#include "production_mppi_node.hpp"
+#include "production_mppi_execution_control.hpp"
+#include "production_mppi_node_types.hpp"
 
 namespace drone_city_nav::detail {
 

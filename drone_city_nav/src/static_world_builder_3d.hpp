@@ -13,7 +13,7 @@
 #include <string_view>
 #include <vector>
 
-#include "production_route_pipeline_artifacts_3d.hpp"
+#include "production_world_build_telemetry_3d.hpp"
 
 namespace drone_city_nav {
 

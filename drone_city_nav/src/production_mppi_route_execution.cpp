@@ -321,8 +321,8 @@ RouteExecutionSelector3D::select(const RouteExecutionSelectorRequest3D& request)
       std::shared_ptr<const VersionedObservedRawWorld3D> collision_observed_owner;
       bool active_trajectory_raw_collision{false};
       bool active_trajectory_latest_lidar_collision{false};
-      mppi::FiniteExecutionPathValidation active_trajectory_raw_validation;
-      mppi::FiniteExecutionPathValidation active_trajectory_lidar_validation;
+      FiniteExecutionPathValidation3D active_trajectory_raw_validation;
+      FiniteExecutionPathValidation3D active_trajectory_lidar_validation;
       if (observed_route) {
         latest_observed_owner =
             deriveLatestObservedRouteEvidence(latest_raw_world, active_route);
@@ -333,9 +333,8 @@ RouteExecutionSelector3D::select(const RouteExecutionSelectorRequest3D& request)
               validateRemainingFiniteExecutionAgainstObservedWorld3D(
                   *active_finite_execution, *execution_input, *latest_observed_owner,
                   execution_input->effectiveStampNs());
-          active_trajectory_raw_collision =
-              active_trajectory_raw_validation.status ==
-              mppi::FiniteExecutionPathStatus::kRawCollision;
+          active_trajectory_raw_collision = active_trajectory_raw_validation.status ==
+                                            FiniteExecutionPathStatus3D::kRawCollision;
         }
         // A memory revision is not itself an invalidation. Use its owned raw
         // occupancy only as a collision witness for the remaining resident
@@ -357,7 +356,7 @@ RouteExecutionSelector3D::select(const RouteExecutionSelectorRequest3D& request)
                 validation_stamp_ns);
         active_trajectory_latest_lidar_collision =
             active_trajectory_lidar_validation.status ==
-            mppi::FiniteExecutionPathStatus::kLatestLidarRawCollision;
+            FiniteExecutionPathStatus3D::kLatestLidarRawCollision;
       }
       const auto* const raw_certificate =
           std::get_if<ObservedRawRouteCertificate3D>(&active_route.certificate);
@@ -406,7 +405,7 @@ RouteExecutionSelector3D::select(const RouteExecutionSelectorRequest3D& request)
             .route_generation = active_route.identity.generation,
         });
       } else if (finite_execution_physically_invalidated) {
-        const mppi::FiniteExecutionPathValidation& physical_validation =
+        const FiniteExecutionPathValidation3D& physical_validation =
             obstacle_disposition == ProductionMppiResidentObstacleDisposition::
                                         kPersistentRawFiniteExecutionInvalidated
                 ? active_trajectory_raw_validation

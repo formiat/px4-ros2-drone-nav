@@ -1,10 +1,8 @@
 #pragma once
 
 #include "drone_city_nav/committed_execution_authority_3d.hpp"
-#include "drone_city_nav/mppi/finite_execution_path.hpp"
-#include "drone_city_nav/mppi/mppi_types.hpp"
-#include "drone_city_nav/msg/mppi_control_feedback.hpp"
-#include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
+#include "drone_city_nav/control_contracts_3d.hpp"
+#include "drone_city_nav/finite_execution_path_3d.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
 
 #include <cstddef>
@@ -68,16 +66,6 @@ struct ProductionMppiResidentOwnerContinuationCheck {
 
 using ProductionMppiExecutionMode = ExecutionAuthorityMode3D;
 using ProductionMppiExecutionReason = ExecutionAuthorityReason3D;
-
-static_assert(static_cast<std::uint8_t>(ExecutionAuthorityMode3D::kPlanned) ==
-              msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED);
-static_assert(static_cast<std::uint8_t>(ExecutionAuthorityMode3D::kPositionHold) ==
-              msg::MppiTrajectoryHorizon::EXECUTION_MODE_POSITION_HOLD);
-static_assert(static_cast<std::uint8_t>(ExecutionAuthorityMode3D::kRevoked) ==
-              msg::MppiTrajectoryHorizon::EXECUTION_MODE_REVOKED);
-static_assert(
-    static_cast<std::uint8_t>(ExecutionAuthorityReason3D::kUnavailableWorld) ==
-    msg::MppiTrajectoryHorizon::EXECUTION_REASON_UNAVAILABLE_WORLD);
 
 enum class ProductionMppiPhysicalTrajectoryAuthority : std::uint8_t {
   kUnownedCandidate,
@@ -143,22 +131,22 @@ residentObstacleDisposition(
 }
 
 struct ProductionMppiExecutionPublication {
-  std::vector<mppi::State> horizon;
+  std::vector<MotionState3D> horizon;
   ProductionMppiExecutionMode mode{ProductionMppiExecutionMode::kPlanned};
   ProductionMppiExecutionReason reason{ProductionMppiExecutionReason::kNone};
   std::size_t planned_control_count{0U};
   std::size_t nominal_prefix_control_count{0U};
   std::size_t arrival_control_count{0U};
   std::size_t arrival_shaping_attempts{0U};
-  mppi::Control first_control{};
+  MotionControl3D first_control{};
   std::uint64_t latest_lidar_obstacle_sequence{0U};
   std::size_t latest_lidar_obstacle_hit_count{0U};
   double latest_lidar_obstacle_age_ms{-1.0};
   bool finite_path_validation_backoff{false};
-  mppi::FiniteExecutionPathStatus finite_path_validation_status{
-      mppi::FiniteExecutionPathStatus::kInvalidContract};
-  mppi::FiniteExecutionPathStatus finite_path_first_failed_validation_status{
-      mppi::FiniteExecutionPathStatus::kValid};
+  FiniteExecutionPathStatus3D finite_path_validation_status{
+      FiniteExecutionPathStatus3D::kInvalidContract};
+  FiniteExecutionPathStatus3D finite_path_first_failed_validation_status{
+      FiniteExecutionPathStatus3D::kValid};
   bool latest_lidar_obstacle_fresh{false};
   bool latest_lidar_obstacle_receive_time_fallback{false};
   bool latest_lidar_path_validation_backoff{false};

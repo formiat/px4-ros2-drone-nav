@@ -1,11 +1,12 @@
 #include "production_mppi_noncooperative_diagnostics.hpp"
 
 #include "drone_city_nav/json_output.hpp"
+#include "drone_city_nav/mppi/mppi_engine.hpp"
 
 #include <iomanip>
 #include <sstream>
 
-#include "production_mppi_node.hpp"
+#include "production_mppi_node_execution_types.hpp"
 
 namespace drone_city_nav::detail {
 namespace {

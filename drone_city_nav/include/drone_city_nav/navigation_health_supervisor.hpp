@@ -1,7 +1,8 @@
 #pragma once
 
+#include "drone_city_nav/navigation_recovery_episode_tracker.hpp"
+
 #include <cstdint>
-#include <mutex>
 
 namespace drone_city_nav {
 
@@ -31,20 +32,6 @@ struct NavigationHealthConfig {
   std::uint32_t maximum_recovery_attempts{64U};
 
   [[nodiscard]] bool valid() const noexcept;
-};
-
-// Planner workers report one recovery episode, independent of how many search
-// completions or retries occur while the route remains unavailable.
-class NavigationRecoveryEpisodeTracker final {
-public:
-  [[nodiscard]] bool observe(std::uint64_t mission_epoch, bool recovery_active);
-  [[nodiscard]] std::uint64_t sequence() const;
-
-private:
-  mutable std::mutex mutex_;
-  std::uint64_t latest_mission_epoch_{0U};
-  std::uint64_t active_recovery_mission_epoch_{0U};
-  std::uint64_t sequence_{0U};
 };
 
 struct NavigationHealthObservation {

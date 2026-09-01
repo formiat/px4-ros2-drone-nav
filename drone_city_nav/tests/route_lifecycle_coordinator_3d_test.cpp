@@ -1,5 +1,3 @@
-#include "drone_city_nav/mppi/static_route_handoff.hpp"
-
 #include <gtest/gtest.h>
 
 #include <cstddef>
@@ -68,7 +66,8 @@ struct LifecycleFixture3D {
 
 [[nodiscard]] RouteActivationCoordinatorConfig3D activationConfig() {
   RouteActivationCoordinatorConfig3D config;
-  mppi::BenchmarkConfig backend_config;
+  MotionDynamicsConfig3D dynamics;
+  MotionAltitudeEnvelopeConfig3D altitude_envelope;
   config.route_tracking.maximum_cross_track_m = 2.0;
   config.route_extension.minimum_remaining_m = 1.0;
   config.route_extension.required_certified_overlap_m = 1.0;
@@ -83,18 +82,23 @@ struct LifecycleFixture3D {
   config.trajectory_compiler.trajectory.time_model.maximum_vertical_speed_mps = 2.0;
   config.trajectory_compiler.passage_volume.flight_envelope = config.flight_envelope;
   config.trajectory_compiler.passage_volume.footprint = config.physical_footprint;
-  backend_config.dynamics.linear_drag_1ps = 0.0F;
-  backend_config.dynamics.maximum_control_jerk_mps3 = 100.0F;
-  backend_config.steps = 120U;
+  dynamics.linear_drag_1ps = 0.0F;
+  dynamics.maximum_control_jerk_mps3 = 100.0F;
   config.route_risk = RouteRiskPolicy3D{
-      .critical_distance_m = backend_config.risk.critical_distance_m,
-      .preferred_distance_m = backend_config.risk.preferred_distance_m,
+      .critical_distance_m = 1.0,
+      .preferred_distance_m = 6.0,
   };
-  config.dynamic_handoff_validator =
-      mppi::makeMppiDynamicHandoffValidator3D(backend_config);
+  config.dynamic_handoff_validator = [](const DynamicHandoffRequest3D& request) {
+    return DynamicHandoffResult3D{
+        .status = request.candidate_trajectory != nullptr &&
+                          request.derived_distances_m != nullptr
+                      ? DynamicHandoffStatus3D::kAccepted
+                      : DynamicHandoffStatus3D::kInvalidInput,
+    };
+  };
   config.validation_policy = VersionedExecutionValidationPolicy3D::capture(
-      config.flight_envelope, backend_config.dynamics, backend_config.altitude_envelope,
-      config.physical_footprint, 1000.0, 1000.0, 1000.0, true, false, true);
+      config.flight_envelope, dynamics, altitude_envelope, config.physical_footprint,
+      1000.0, 1000.0, 1000.0, true, false, true);
   return config;
 }
 
@@ -166,7 +170,7 @@ struct LifecycleFixture3D {
       .navigation =
           ProductionMppiNavigation{
               .state =
-                  mppi::State{
+                  MotionState3D{
                       .x = static_cast<float>(start.x),
                       .y = static_cast<float>(start.y),
                       .z = static_cast<float>(start.z),

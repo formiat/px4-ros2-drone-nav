@@ -38,7 +38,6 @@ ROUTE_ACTIVATION = SOURCE / "route_activation_coordinator_3d.cpp"
 ROUTE_ACTIVATION_PREPARATION = SOURCE / "route_activation_preparation_3d.cpp"
 ROUTE_EXECUTION = SOURCE / "production_mppi_route_execution.cpp"
 CONTROL_FEEDBACK = SOURCE / "production_mppi_node_control_feedback.cpp"
-ROUTE_WORLD_TEST = PACKAGE / "tests" / "production_mppi_route_world_test.cpp"
 OFFBOARD = SOURCE / "mppi_offboard_node.cpp"
 COOPERATIVE_AGENT = SOURCE / "cooperative_traffic_agent_node.cpp"
 COOPERATIVE_REFEREE = SOURCE / "cooperative_traffic_referee_node.cpp"
@@ -543,22 +542,6 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         inputs = INPUTS.read_text(encoding="utf-8")
         planning_tick = PLANNING_TICK.read_text(encoding="utf-8")
         publication = EXECUTION_PUBLICATION.read_text(encoding="utf-8")
-        feedback = CONTROL_FEEDBACK.read_text(encoding="utf-8")
-        route_world_test = ROUTE_WORLD_TEST.read_text(encoding="utf-8")
-
-        authority = feedback.split(
-            "bool vehicleStatusAuthoritativeForExecution", maxsplit=1
-        )[1].split("bool appliedControlAuthoritativeForExecution", maxsplit=1)[0]
-        for requirement in (
-            "status.valid",
-            "status.armed",
-            "timestamp_epoch_stable",
-            "status.source_timestamp_us == 0U",
-            "status.receive_stamp_ns <= 0",
-            "now_ns < status.receive_stamp_ns",
-            "maximum_age_ms",
-        ):
-            self.assertIn(requirement, authority)
 
         callback = inputs.split(
             "void ProductionMppiNode::onVehicleStatus", maxsplit=1
@@ -610,11 +593,6 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
             "if (!request.runtime.vehicle_status_authoritative)", horizon_service
         )
         self.assertIn("resident_owner.valid", horizon_service)
-
-        self.assertIn(
-            "VehicleStatusAuthorityRequiresFreshStableArmedObservation",
-            route_world_test,
-        )
 
     def test_execution_evidence_publications_are_linearized(self) -> None:
         inputs = INPUTS.read_text(encoding="utf-8")

@@ -19,7 +19,7 @@ TEST(RouteExecutionSelector3DTest,
                                                 }};
   WorldSnapshot3D world;
   ProductionMppiNavigation navigation;
-  navigation.state = mppi::State{.x = 4.0F, .y = 5.0F, .z = 40.0F};
+  navigation.state = MotionState3D{.x = 4.0F, .y = 5.0F, .z = 40.0F};
 
   const RouteExecutionSelectorResult3D result =
       selector.select(RouteExecutionSelectorRequest3D{

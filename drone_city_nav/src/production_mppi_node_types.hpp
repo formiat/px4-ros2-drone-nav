@@ -1,7 +1,7 @@
 #pragma once
 
+#include "drone_city_nav/control_contracts_3d.hpp"
 #include "drone_city_nav/intercept_guidance.hpp"
-#include "drone_city_nav/mppi/mppi_types.hpp"
 #include "drone_city_nav/static_route_extension.hpp"
 #include "drone_city_nav/tracking_objective.hpp"
 #include "drone_city_nav/types.hpp"
@@ -26,8 +26,8 @@ struct ProductionNavigationOptionalConstraints {
 };
 
 struct ProductionMppiNavigation {
-  mppi::State state{};
-  mppi::Control measured_equivalent_control{};
+  MotionState3D state{};
+  MotionControl3D measured_equivalent_control{};
   std::int64_t receive_stamp_ns{0};
   std::uint64_t source_timestamp_us{0U};
   std::uint64_t revision{0U};

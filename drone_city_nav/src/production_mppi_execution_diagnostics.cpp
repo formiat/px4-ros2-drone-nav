@@ -1,11 +1,12 @@
 #include "production_mppi_execution_diagnostics.hpp"
 
 #include "drone_city_nav/json_output.hpp"
+#include "drone_city_nav/mppi/finite_execution_path.hpp"
 #include "drone_city_nav/rolling_route_telemetry_3d.hpp"
 
 #include <sstream>
 
-#include "production_mppi_node.hpp"
+#include "production_mppi_execution_control.hpp"
 
 namespace drone_city_nav::detail {
 

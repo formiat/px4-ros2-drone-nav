@@ -19,7 +19,7 @@
 
 #include "observed_world_builder_3d.hpp"
 #include "production_mppi_raw_world.hpp"
-#include "production_route_pipeline_artifacts_3d.hpp"
+#include "production_world_build_telemetry_3d.hpp"
 #include "static_world_builder_3d.hpp"
 
 namespace drone_city_nav {

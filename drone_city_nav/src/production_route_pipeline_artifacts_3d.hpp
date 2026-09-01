@@ -17,6 +17,8 @@
 #include <optional>
 #include <vector>
 
+#include "production_world_build_telemetry_3d.hpp"
+
 namespace drone_city_nav {
 
 enum class ProductionPlanningSearchKind : std::uint8_t {
@@ -68,16 +70,6 @@ struct ProductionPersistentPlannerTelemetry3D {
   bool feasibility_route_found{false};
   bool execution_time_search_complete{false};
   bool incumbent_available{false};
-};
-
-struct ProductionWorldBuildTelemetry3D {
-  double build_ms{0.0};
-  double esdf_x_pass_ms{0.0};
-  double esdf_y_pass_ms{0.0};
-  double esdf_z_pass_ms{0.0};
-  double esdf_finalize_ms{0.0};
-  double conversion_ms{0.0};
-  double upload_ms{0.0};
 };
 
 struct ProductionRouteMaterializationTelemetry3D {

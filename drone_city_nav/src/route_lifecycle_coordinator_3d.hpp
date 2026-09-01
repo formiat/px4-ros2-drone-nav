@@ -1,7 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/flight_envelope.hpp"
-#include "drone_city_nav/navigation_health_supervisor.hpp"
+#include "drone_city_nav/navigation_recovery_episode_tracker.hpp"
 #include "drone_city_nav/route_risk_annotation_3d.hpp"
 #include "drone_city_nav/static_route_extension.hpp"
 

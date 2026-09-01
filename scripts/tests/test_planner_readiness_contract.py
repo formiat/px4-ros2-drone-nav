@@ -640,7 +640,6 @@ class PlannerReadinessContractTest(unittest.TestCase):
     def test_stage2_execution_feedback_requires_live_exact_witness(self) -> None:
         inputs = INPUTS.read_text(encoding="utf-8")
         control_feedback = CONTROL_FEEDBACK.read_text(encoding="utf-8")
-        horizon_service = EXECUTION_HORIZON_SERVICE.read_text(encoding="utf-8")
         execution = read_execution_sources()
         witness = HORIZON_WITNESS.read_text(encoding="utf-8")
         contract = HORIZON_CONTRACT_ROS.read_text(encoding="utf-8")
@@ -695,18 +694,6 @@ class PlannerReadinessContractTest(unittest.TestCase):
             "offboard_session_admission_.latest_source_stamp_ns",
             applied_callback,
         )
-        authority_check = control_feedback.split(
-            "bool appliedControlAuthoritativeForExecution", maxsplit=1
-        )[1].split(
-            "std::optional<FootprintBodyAxis>", maxsplit=1
-        )[0]
-        self.assertIn("appliedControlAuthoritativeForExecution3D", authority_check)
-        service_authority_check = horizon_service.split(
-            "bool appliedControlAuthoritativeForExecution3D", maxsplit=1
-        )[1].split("const char* executionHorizonCommitStatus3DName", maxsplit=1)[0]
-        self.assertIn("source_age_ms", service_authority_check)
-        self.assertIn("receive_age_ms", service_authority_check)
-
         vehicle_status_callback = inputs.split(
             "void ProductionMppiNode::onVehicleStatus", maxsplit=1
         )[1].split(

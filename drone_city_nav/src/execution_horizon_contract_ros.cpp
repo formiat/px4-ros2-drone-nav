@@ -1,5 +1,6 @@
 #include "drone_city_nav/execution_horizon_contract_ros.hpp"
 
+#include "drone_city_nav/committed_execution_authority_3d.hpp"
 #include "drone_city_nav/execution_horizon_timing.hpp"
 
 #include <bit>
@@ -13,6 +14,16 @@
 
 namespace drone_city_nav {
 namespace {
+
+static_assert(static_cast<std::uint8_t>(ExecutionAuthorityMode3D::kPlanned) ==
+              msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED);
+static_assert(static_cast<std::uint8_t>(ExecutionAuthorityMode3D::kPositionHold) ==
+              msg::MppiTrajectoryHorizon::EXECUTION_MODE_POSITION_HOLD);
+static_assert(static_cast<std::uint8_t>(ExecutionAuthorityMode3D::kRevoked) ==
+              msg::MppiTrajectoryHorizon::EXECUTION_MODE_REVOKED);
+static_assert(
+    static_cast<std::uint8_t>(ExecutionAuthorityReason3D::kUnavailableWorld) ==
+    msg::MppiTrajectoryHorizon::EXECUTION_REASON_UNAVAILABLE_WORLD);
 
 constexpr std::uint64_t kFnvOffset{1469598103934665603ULL};
 constexpr std::uint64_t kFnvPrime{1099511628211ULL};
