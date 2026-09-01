@@ -18,6 +18,8 @@ RUN_SCRIPT = REPOSITORY / "scripts" / "run_drone_nav_sim.sh"
 PLANNER_SOURCES = (
     PACKAGE / "src" / "production_mppi_node.cpp",
     PACKAGE / "src" / "production_mppi_node_interfaces.cpp",
+    PACKAGE / "src" / "production_mppi_config.cpp",
+    PACKAGE / "src" / "production_mppi_config_ros.cpp",
 )
 
 

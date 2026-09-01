@@ -19,7 +19,7 @@ ProductionMppiNode::assessActiveRouteCompletion3D(const Point3& position) {
           .minimum_station_m = route->progress.station_m,
       },
       RouteSegmentCompletionConfig3D{
-          .capture_radius_m = route_completion_tolerance_m_,
+          .capture_radius_m = config_.planning.route_completion_tolerance_m,
       });
 }
 

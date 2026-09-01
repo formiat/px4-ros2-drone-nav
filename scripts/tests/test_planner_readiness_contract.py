@@ -18,6 +18,8 @@ OBSERVED_ESDF = SOURCE / "production_mppi_node_observed_esdf.cpp"
 OBSERVED_EVIDENCE = SOURCE / "production_mppi_node_observed_evidence.cpp"
 PLANNER = SOURCE / "production_mppi_node.cpp"
 PLANNER_INTERFACES = SOURCE / "production_mppi_node_interfaces.cpp"
+PLANNER_CONFIG_HEADER = SOURCE / "production_mppi_config.hpp"
+PLANNER_CONFIG_LOADER = SOURCE / "production_mppi_config_ros.cpp"
 PLANNING_TICK = SOURCE / "production_mppi_node_planning_tick.cpp"
 PLANNING_COORDINATOR = SOURCE / "planning_cycle_coordinator_3d.cpp"
 PLANNING_COORDINATOR_TEST = (
@@ -108,7 +110,8 @@ class PlannerReadinessContractTest(unittest.TestCase):
             encoding="utf-8"
         )
         interfaces = PLANNER_INTERFACES.read_text(encoding="utf-8")
-        self.assertIn('"planner_health_topic"', interfaces)
+        config_loader = PLANNER_CONFIG_LOADER.read_text(encoding="utf-8")
+        self.assertIn('"planner_health_topic"', config_loader)
         self.assertIn("planner_health_pub_->publish(planner_alive)", interfaces)
         self.assertIn("require_planner_health_", offboard)
         self.assertIn("planner_authorized", offboard)
@@ -147,7 +150,7 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self.assertRegex(
             planning_tick,
             r"if \(world\)\s*\{\s*"
-            r"esdf_age_ms\s*=\s*use_static_map_\s*\?\s*0\.0",
+            r"esdf_age_ms\s*=\s*config_\.world\.use_static_map\s*\?\s*0\.0",
         )
 
     def test_observed_esdf_refresh_preserves_an_active_route(self) -> None:
@@ -184,7 +187,10 @@ class PlannerReadinessContractTest(unittest.TestCase):
         offboard = OFFBOARD.read_text(encoding="utf-8") + OFFBOARD_NAMES.read_text(
             encoding="utf-8"
         )
-        planner = PLANNER.read_text(encoding="utf-8")
+        planner = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in (PLANNER, PLANNER_CONFIG_LOADER)
+        )
         horizon_message = HORIZON_MESSAGE.read_text(encoding="utf-8")
         speed_policy = SPEED_POLICY.read_text(encoding="utf-8")
         finite_horizon_header = FINITE_HORIZON_HEADER.read_text(encoding="utf-8")
@@ -229,7 +235,7 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self.assertIn("publishPositionHold", execution)
         self.assertRegex(
             planner,
-            r"stationary_hold_validity_ns_\s*=\s*durationNanoseconds\(",
+            r"execution\.stationary_hold_validity_ns\s*=\s*durationNanoseconds\(",
         )
         self.assertIn(
             "committed_valid_until_ns = committed_finite->valid_until_ns", execution
@@ -250,7 +256,7 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self.assertRegex(
             planner,
             r"makeFiniteHorizonConfig\(\s*"
-            r"speed_policy_config_\.stopping_capability\)",
+            r"control\.speed_policy\.stopping_capability\)",
         )
         self.assertIn("StoppingCapability stopping_capability", speed_policy)
         self.assertIn("StoppingCapability stopping_capability", finite_horizon_header)
@@ -268,7 +274,7 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self.assertIn(
             "altitude_envelope.guaranteed_vertical_deceleration_mps2", planner
         )
-        self.assertIn("finite_horizon_config_", execution)
+        self.assertIn("config_.execution.finite_horizon", execution)
         self.assertIn("guaranteed_horizontal_deceleration_mps2", finite_horizon)
         self.assertIn("validateFiniteExecutionTrajectoryContinuation", execution)
         self.assertIn("validateFiniteExecutionPathContinuation", execution)
@@ -327,7 +333,9 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self.assertNotIn("captureLatestLidarEvidence", planning_tick)
         self.assertNotIn("latest_lidar_obstacle_scan_.load", planning_tick)
         self.assertIn("latest_lidar_evidence", execution)
-        self.assertIn("latest_lidar_obstacle_maximum_age_ms_", execution)
+        self.assertIn(
+            "config_.execution.latest_lidar_obstacle_maximum_age_ms", execution
+        )
         self.assertIn("lidar_validation_now_ns", execution)
         self.assertIn("latestLidarEvidenceFreshness", execution)
         self.assertIn("buildValidatedFiniteExecutionPath", execution)
@@ -836,13 +844,17 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self,
     ) -> None:
         planner_interfaces = PLANNER_INTERFACES.read_text(encoding="utf-8")
+        planner_config = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in (PLANNER_CONFIG_HEADER, PLANNER_CONFIG_LOADER)
+        )
         mission_monitor = MISSION_MONITOR.read_text(encoding="utf-8")
         config = CONFIG.read_text(encoding="utf-8")
         multi_vehicle_launch = LAUNCH.read_text(encoding="utf-8")
         mission_launch = MISSION_LAUNCH.read_text(encoding="utf-8")
 
         default_topic = "/drone_city_nav/mission_waypoint_acknowledgement"
-        self.assertIn(default_topic, planner_interfaces)
+        self.assertIn(default_topic, planner_config)
         self.assertIn(default_topic, mission_monitor)
         self.assertEqual(
             config.count(
@@ -967,7 +979,7 @@ class PlannerReadinessContractTest(unittest.TestCase):
     def test_planners_publish_latched_world_readiness(self) -> None:
         planner = "\n".join(
             path.read_text(encoding="utf-8")
-            for path in (PLANNER, PLANNER_INTERFACES)
+            for path in (PLANNER, PLANNER_INTERFACES, PLANNER_CONFIG_LOADER)
         )
         launch = LAUNCH.read_text(encoding="utf-8")
 

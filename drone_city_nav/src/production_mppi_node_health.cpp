@@ -40,9 +40,9 @@ NavigationHealthAssessment ProductionMppiNode::updateNavigationHealth(
   const bool horizon_acknowledged =
       certified_route_ready && execution_horizon_owner.valid &&
       execution_horizon_owner.execution_mode == ExecutionAuthorityMode3D::kPlanned &&
-      appliedControlAuthoritativeForExecution(applied_control, execution_horizon_owner,
-                                              now_ns,
-                                              maximum_control_feedback_age_ms_) &&
+      appliedControlAuthoritativeForExecution(
+          applied_control, execution_horizon_owner, now_ns,
+          config_.execution.maximum_control_feedback_age_ms) &&
       applied_control.execution_mode == ExecutionAuthorityMode3D::kPlanned;
   const NavigationHealthAssessment assessment =
       navigation_health_supervisor_->update(NavigationHealthObservation{
@@ -79,7 +79,7 @@ void ProductionMppiNode::publishNavigationHealth(
   }
   msg::NavigationHealth message;
   message.header.stamp = get_clock()->now();
-  message.header.frame_id = frame_id_;
+  message.header.frame_id = config_.world.frame_id;
   message.producer_instance_id = navigation_health_producer_instance_id_;
   message.sequence = ++navigation_health_sequence_;
   message.mission_epoch = assessment.mission_epoch;

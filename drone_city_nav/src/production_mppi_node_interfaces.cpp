@@ -24,12 +24,13 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
     StaticWorldResources3D&& static_world_resources) {
   diagnostics_sink_ = std::make_unique<NavigationDiagnosticsSink>(
       NavigationDiagnosticsSinkConfig{
-          .output_directory = diagnostics_output_dir_,
-          .file_period_ns = diagnostics_file_period_ns_,
-          .flush_period = std::chrono::duration<double>{diagnostics_flush_period_s_},
-          .error_ring_capacity = diagnostics_error_ring_capacity_,
-          .configured_rollouts = mppi_config_.rollouts,
-          .deadline_ms = deadline_ms_,
+          .output_directory = config_.diagnostics.output_dir,
+          .file_period_ns = config_.diagnostics.file_period_ns,
+          .flush_period =
+              std::chrono::duration<double>{config_.diagnostics.flush_period_s},
+          .error_ring_capacity = config_.diagnostics.error_ring_capacity,
+          .configured_rollouts = config_.control.mppi.rollouts,
+          .deadline_ms = config_.planning.deadline_ms,
       },
       [this](const ProductionMppiDiagnosticsSnapshot& snapshot) {
         processDiagnostics(snapshot);
@@ -55,16 +56,17 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
           RCLCPP_ERROR(get_logger(), "WORLD_PIPELINE3D failure: unknown exception");
         }
       };
-  if (use_static_map_) {
+  if (config_.world.use_static_map) {
     world_pipeline_ = std::make_unique<WorldPipeline3D>(
         StaticWorldRuntime3D{
             .builder_config =
                 StaticWorldBuilderConfig3D{
                     .resources = std::move(static_world_resources),
-                    .route_lookahead_m = static_esdf_route_lookahead_m_,
+                    .route_lookahead_m = config_.planning.static_esdf_route_lookahead_m,
                     .roi_halo_m = 40.0,
                     .maximum_distance_m =
-                        static_cast<double>(mppi_config_.risk.preferred_distance_m) +
+                        static_cast<double>(
+                            config_.control.mppi.risk.preferred_distance_m) +
                         20.0,
                     .worker_pool = planning_worker_pool_.get(),
                 },
@@ -96,15 +98,16 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
         ObservedWorldRuntime3D{
             .builder_config =
                 ObservedWorldBuilderConfig3D{
-                    .local_window = no_static_3d_esdf_window_,
-                    .footprint = physical_footprint_config_,
-                    .preferred_distance_m =
-                        static_cast<double>(mppi_config_.risk.preferred_distance_m),
-                    .update_rate_hz = no_static_3d_esdf_update_rate_hz_,
+                    .local_window = config_.world.no_static_3d_esdf_window,
+                    .footprint = config_.world.physical_footprint,
+                    .preferred_distance_m = static_cast<double>(
+                        config_.control.mppi.risk.preferred_distance_m),
+                    .update_rate_hz = config_.world.no_static_3d_esdf_update_rate_hz,
                     .incremental_maximum_rebuild_ratio =
-                        no_static_3d_esdf_incremental_maximum_rebuild_ratio_,
+                        config_.world
+                            .no_static_3d_esdf_incremental_maximum_rebuild_ratio,
                     .full_audit_interval_builds =
-                        no_static_3d_esdf_full_audit_interval_builds_,
+                        config_.world.no_static_3d_esdf_full_audit_interval_builds,
                     .worker_pool = planning_worker_pool_.get(),
                 },
             .request_provider =
@@ -137,155 +140,171 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
       *world_pipeline_,
       RawWorldIngressRosConfig3D{
           .producer_epoch = production_mppi_raw_input_detail::producerEpochConfig(
-              maximum_esdf_age_ms_, stale_esdf_execution_window_ms_),
-          .frame_id = frame_id_,
+              config_.world.maximum_esdf_age_ms,
+              config_.execution.stale_esdf_execution_window_ms),
+          .frame_id = config_.world.frame_id,
       });
   RouteMaterializerConfig3D route_materializer_config{
-      .route_envelope = route_envelope_config_,
-      .future_route_connector = future_route_connector_config_,
-      .route_geometry = static_route_geometry_config_,
-      .physical_footprint = physical_footprint_config_,
-      .flight_envelope = flight_envelope_config_,
-      .route_extension = static_route_extension_config_,
-      .passage_volume = cooperative_passage_volume_config_,
-      .cooperative_passage_route = cooperative_passage_route_config_,
-      .critical_distance_m = static_cast<double>(mppi_config_.risk.critical_distance_m),
+      .route_envelope = config_.planning.route_envelope,
+      .future_route_connector = config_.planning.future_route_connector,
+      .route_geometry = config_.planning.static_route_geometry,
+      .physical_footprint = config_.world.physical_footprint,
+      .flight_envelope = config_.world.flight_envelope,
+      .route_extension = config_.planning.static_route_extension,
+      .passage_volume = config_.planning.cooperative_passage_volume,
+      .cooperative_passage_route = config_.planning.cooperative_passage_route,
+      .critical_distance_m =
+          static_cast<double>(config_.control.mppi.risk.critical_distance_m),
       .preferred_distance_m =
-          static_cast<double>(mppi_config_.risk.preferred_distance_m),
+          static_cast<double>(config_.control.mppi.risk.preferred_distance_m),
       .worker_pool = planning_worker_pool_.get(),
-      .cooperative_traffic_enabled = cooperative_traffic_enabled_,
+      .cooperative_traffic_enabled = config_.planning.cooperative_traffic_enabled,
   };
   RouteActivationCoordinatorConfig3D route_activation_config{
       .trajectory_compiler =
           RouteTrajectoryCompilerConfig3D{
               .trajectory =
                   TrajectoryCompilerConfig3D{
-                      .unconstrained_speed_mps = speed_policy_config_.cruise_speed_mps,
-                      .constrained_speed_mps = constrained_route_speed_limit_mps_,
+                      .unconstrained_speed_mps =
+                          config_.control.speed_policy.cruise_speed_mps,
+                      .constrained_speed_mps =
+                          config_.planning.constrained_route_speed_limit_mps,
                       .maximum_lateral_acceleration_mps2 =
-                          speed_policy_config_.maximum_lateral_acceleration_mps2,
+                          config_.control.speed_policy
+                              .maximum_lateral_acceleration_mps2,
                       .minimum_continuous_turn_alignment =
-                          future_route_connector_config_
+                          config_.planning.future_route_connector
                               .minimum_continuous_turn_alignment,
                       .time_model =
                           FlightTimeModel3D{
                               .maximum_horizontal_speed_mps = std::min(
-                                  {speed_policy_config_.cruise_speed_mps,
-                                   speed_policy_config_.absolute_speed_limit_mps,
+                                  {config_.control.speed_policy.cruise_speed_mps,
+                                   config_.control.speed_policy
+                                       .absolute_speed_limit_mps,
                                    static_cast<double>(
-                                       mppi_config_.dynamics
+                                       config_.control.mppi.dynamics
                                            .maximum_horizontal_speed_mps)}),
-                              .maximum_vertical_speed_mps = static_cast<double>(
-                                  mppi_config_.dynamics.maximum_vertical_speed_mps),
+                              .maximum_vertical_speed_mps =
+                                  static_cast<double>(config_.control.mppi.dynamics
+                                                          .maximum_vertical_speed_mps),
                               .maximum_translational_speed_mps = static_cast<double>(
-                                  mppi_config_.dynamics
+                                  config_.control.mppi.dynamics
                                       .maximum_translational_speed_mps),
                               .maximum_horizontal_acceleration_mps2 =
                                   static_cast<double>(
-                                      mppi_config_.dynamics
+                                      config_.control.mppi.dynamics
                                           .maximum_horizontal_acceleration_mps2),
                               .maximum_vertical_acceleration_mps2 = static_cast<double>(
-                                  mppi_config_.dynamics
+                                  config_.control.mppi.dynamics
                                       .maximum_vertical_acceleration_mps2),
-                              .maximum_control_jerk_mps3 = static_cast<double>(
-                                  mppi_config_.dynamics.maximum_control_jerk_mps3),
+                              .maximum_control_jerk_mps3 =
+                                  static_cast<double>(config_.control.mppi.dynamics
+                                                          .maximum_control_jerk_mps3),
                               .maximum_yaw_acceleration_radps2 = static_cast<double>(
-                                  mppi_config_.dynamics
+                                  config_.control.mppi.dynamics
                                       .maximum_yaw_acceleration_radps2),
                               .maximum_yaw_rate_radps = static_cast<double>(
-                                  mppi_config_.dynamics.maximum_yaw_rate_radps),
+                                  config_.control.mppi.dynamics.maximum_yaw_rate_radps),
                           },
-                      .physical_footprint = physical_footprint_config_,
-                      .tracking_error_tube = tracking_error_tube_config_,
+                      .physical_footprint = config_.world.physical_footprint,
+                      .tracking_error_tube = config_.control.tracking_error_tube,
                   },
-              .passage_volume = cooperative_passage_volume_config_,
+              .passage_volume = config_.planning.cooperative_passage_volume,
           },
-      .route_extension = static_route_extension_config_,
-      .successor_improvement = route_successor_improvement_config_,
-      .flight_envelope = flight_envelope_config_,
-      .route_tracking = route_tracking_policy_,
-      .physical_footprint = physical_footprint_config_,
-      .certified_splice = certified_route_splice_config_,
-      .validation_policy = execution_validation_policy_,
+      .route_extension = config_.planning.static_route_extension,
+      .successor_improvement = config_.planning.route_successor_improvement,
+      .flight_envelope = config_.world.flight_envelope,
+      .route_tracking = config_.planning.route_tracking_policy,
+      .physical_footprint = config_.world.physical_footprint,
+      .certified_splice = config_.planning.certified_route_splice,
+      .validation_policy = config_.execution.validation_policy,
       .route_risk =
           RouteRiskPolicy3D{
               .critical_distance_m =
-                  static_cast<double>(mppi_config_.risk.critical_distance_m),
+                  static_cast<double>(config_.control.mppi.risk.critical_distance_m),
               .preferred_distance_m =
-                  static_cast<double>(mppi_config_.risk.preferred_distance_m),
+                  static_cast<double>(config_.control.mppi.risk.preferred_distance_m),
           },
       .dynamic_handoff_validator =
-          mppi::makeMppiDynamicHandoffValidator3D(mppi_config_),
-      .cruise_speed_mps = speed_policy_config_.cruise_speed_mps,
-      .maximum_control_feedback_age_ms = maximum_control_feedback_age_ms_,
+          mppi::makeMppiDynamicHandoffValidator3D(config_.control.mppi),
+      .cruise_speed_mps = config_.control.speed_policy.cruise_speed_mps,
+      .maximum_control_feedback_age_ms =
+          config_.execution.maximum_control_feedback_age_ms,
   };
   planning_cycle_coordinator_ = std::make_unique<PlanningCycleCoordinator3D>(
       execution_supervisor_,
       PlanningCycleCoordinatorConfig3D{
           .route_execution =
               RouteExecutionSelectorConfig3D{
-                  .physical_footprint = physical_footprint_config_,
-                  .flight_envelope = flight_envelope_config_,
-                  .route_tracking = route_tracking_policy_,
+                  .physical_footprint = config_.world.physical_footprint,
+                  .flight_envelope = config_.world.flight_envelope,
+                  .route_tracking = config_.planning.route_tracking_policy,
                   .route_cross_track_constraints_enabled =
-                      optional_constraints_.route_cross_track_constraints_enabled,
+                      config_.planning.optional_constraints
+                          .route_cross_track_constraints_enabled,
                   .route_tracking_tube_constraints_enabled =
-                      optional_constraints_.route_tracking_tube_constraints_enabled,
+                      config_.planning.optional_constraints
+                          .route_tracking_tube_constraints_enabled,
               },
-          .liveness = liveness_config_,
+          .liveness = config_.planning.liveness,
           .route_progress =
-              route_stall_recovery_enabled_
-                  ? std::optional<RouteProgressConfig3D>{route_progress_config_}
+              config_.planning.route_stall_recovery_enabled
+                  ? std::optional<RouteProgressConfig3D>{config_.planning
+                                                             .route_progress}
                   : std::nullopt,
-          .goal_capture = mission_goal_capture_config_,
-          .direct_tracking = direct_tracking_maneuver_config_,
-          .route_envelope = route_envelope_config_,
-          .constrained_route_control = constrained_route_control_config_,
-          .speed_policy = speed_policy_config_,
-          .rollout_budget = rollout_budget_config_,
-          .cooperative_timing = cooperative_passage_timing_config_,
-          .cooperative_yield = cooperative_passage_yield_config_,
-          .noncooperative_avoidance = noncooperative_avoidance_config_,
-          .flight_envelope = flight_envelope_config_,
-          .dynamics = mppi_config_.dynamics,
-          .vehicle_id = vehicle_id_,
-          .horizon_steps = mppi_config_.steps,
-          .tracking_capture_radius_m = tracking_capture_radius_m_,
+          .goal_capture = config_.planning.mission_goal_capture,
+          .direct_tracking = config_.planning.direct_tracking_maneuver,
+          .route_envelope = config_.planning.route_envelope,
+          .constrained_route_control = config_.control.constrained_route,
+          .speed_policy = config_.control.speed_policy,
+          .rollout_budget = config_.control.rollout_budget,
+          .cooperative_timing = config_.planning.cooperative_passage_timing,
+          .cooperative_yield = config_.planning.cooperative_passage_yield,
+          .noncooperative_avoidance = config_.planning.noncooperative_avoidance,
+          .flight_envelope = config_.world.flight_envelope,
+          .dynamics = config_.control.mppi.dynamics,
+          .vehicle_id = config_.planning.vehicle_id,
+          .horizon_steps = config_.control.mppi.steps,
+          .tracking_capture_radius_m = config_.planning.tracking_capture_radius_m,
           .route_constraint_diagnostics_distance_m =
-              route_constraint_diagnostics_distance_m_,
-          .cooperative_traffic_enabled = cooperative_traffic_enabled_,
-          .noncooperative_avoidance_enabled = noncooperative_avoidance_enabled_,
+              config_.diagnostics.route_constraint_distance_m,
+          .cooperative_traffic_enabled = config_.planning.cooperative_traffic_enabled,
+          .noncooperative_avoidance_enabled =
+              config_.planning.noncooperative_avoidance_enabled,
           .route_progress_replan_enabled =
-              optional_constraints_.route_progress_replan_enabled,
+              config_.planning.optional_constraints.route_progress_replan_enabled,
           .route_cross_track_constraints_enabled =
-              optional_constraints_.route_cross_track_constraints_enabled,
+              config_.planning.optional_constraints
+                  .route_cross_track_constraints_enabled,
           .stochastic_trajectory_selection_enabled =
-              optional_constraints_.stochastic_trajectory_selection_enabled,
+              config_.planning.optional_constraints
+                  .stochastic_trajectory_selection_enabled,
       });
   execution_horizon_assembler_ =
       std::make_unique<ExecutionHorizonAssembler3D>(ExecutionHorizonAssemblerConfig3D{
-          .flight_envelope = flight_envelope_config_,
-          .finite_horizon = finite_horizon_config_,
-          .direct_tracking_validation_policy = execution_validation_policy_,
+          .flight_envelope = config_.world.flight_envelope,
+          .finite_horizon = config_.execution.finite_horizon,
+          .direct_tracking_validation_policy = config_.execution.validation_policy,
       });
   route_lifecycle_coordinator_ = std::make_unique<RouteLifecycleCoordinator3D>(
       execution_supervisor_,
       RouteLifecycleCoordinatorConfig3D{
           .planner =
               RoutePlannerConfig3D{
-                  .planner = persistent_planner_config_,
-                  .extension = static_route_extension_config_,
-                  .route_sampling_step_m = route_sampling_step_m_,
-                  .cruise_speed_mps = speed_policy_config_.cruise_speed_mps,
+                  .planner = config_.planning.persistent_planner,
+                  .extension = config_.planning.static_route_extension,
+                  .route_sampling_step_m = config_.planning.route_sampling_step_m,
+                  .cruise_speed_mps = config_.control.speed_policy.cruise_speed_mps,
               },
           .materializer = route_materializer_config,
           .activation = std::move(route_activation_config),
-          .extension = static_route_extension_config_,
-          .search_retry = static_route_search_retry_config_,
-          .flight_envelope = flight_envelope_config_,
-          .static_route_lookahead_m = static_esdf_route_lookahead_m_,
-          .tracking_world_refresh_margin_m = static_tracking_esdf_refresh_margin_m_,
-          .observed_world = !use_static_map_,
+          .extension = config_.planning.static_route_extension,
+          .search_retry = config_.planning.static_route_search_retry,
+          .flight_envelope = config_.world.flight_envelope,
+          .static_route_lookahead_m = config_.planning.static_esdf_route_lookahead_m,
+          .tracking_world_refresh_margin_m =
+              config_.planning.static_tracking_esdf_refresh_margin_m,
+          .observed_world = !config_.world.use_static_map,
           .vehicle_state_provider =
               [this]() {
                 const std::scoped_lock lock{input_mutex_};
@@ -449,43 +468,35 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
   world_subscription_options.callback_group = world_input_callback_group_;
   const auto sensor_qos = rclcpp::SensorDataQoS{};
   local_position_sub_ = create_subscription<px4_msgs::msg::VehicleLocalPosition>(
-      declare_parameter<std::string>("px4_local_position_topic",
-                                     "/fmu/out/vehicle_local_position_v1"),
-      sensor_qos,
+      config_.world.topics.px4_local_position, sensor_qos,
       [this](const px4_msgs::msg::VehicleLocalPosition::SharedPtr message) {
         onLocalPosition(*message);
       },
       input_subscription_options);
   vehicle_status_sub_ = create_subscription<px4_msgs::msg::VehicleStatus>(
-      declare_parameter<std::string>("px4_vehicle_status_topic",
-                                     "/fmu/out/vehicle_status_v1"),
-      sensor_qos,
+      config_.execution.topics.px4_vehicle_status, sensor_qos,
       [this](const px4_msgs::msg::VehicleStatus::SharedPtr message) {
         onVehicleStatus(*message);
       },
       input_subscription_options);
   vehicle_land_detected_sub_ = create_subscription<px4_msgs::msg::VehicleLandDetected>(
-      declare_parameter<std::string>("px4_vehicle_land_detected_topic",
-                                     "/fmu/out/vehicle_land_detected"),
-      sensor_qos,
+      config_.execution.topics.px4_vehicle_land_detected, sensor_qos,
       [this](const px4_msgs::msg::VehicleLandDetected::SharedPtr message) {
         onVehicleLandDetected(*message);
       },
       input_subscription_options);
   navigation_readiness_sub_ = create_subscription<std_msgs::msg::Bool>(
-      declare_parameter<std::string>("navigation_readiness_topic",
-                                     "/drone_city_nav/navigation_ready"),
+      config_.world.topics.navigation_readiness,
       rclcpp::QoS{1}.reliable().transient_local(),
       [this](const std_msgs::msg::Bool::SharedPtr message) {
         onNavigationReadiness(*message);
       },
       input_subscription_options);
 
-  const std::string raw_snapshot_3d_topic = declare_parameter<std::string>(
-      "raw_obstacle_snapshot_3d_topic", "/drone_city_nav/raw_obstacle_snapshot_3d");
-  const std::string raw_delta_3d_topic = declare_parameter<std::string>(
-      "raw_obstacle_delta_3d_topic", "/drone_city_nav/raw_obstacle_delta_3d");
-  if (!use_static_map_) {
+  const std::string& raw_snapshot_3d_topic =
+      config_.world.topics.raw_obstacle_snapshot_3d;
+  const std::string& raw_delta_3d_topic = config_.world.topics.raw_obstacle_delta_3d;
+  if (!config_.world.use_static_map) {
     raw_snapshot_3d_sub_ = create_subscription<msg::RawObstacleSnapshot3D>(
         raw_snapshot_3d_topic, rclcpp::QoS{1}.reliable().transient_local(),
         [this](msg::RawObstacleSnapshot3D::ConstSharedPtr message) {
@@ -500,32 +511,26 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
         world_subscription_options);
   }
   latest_lidar_obstacle_scan_sub_ = create_subscription<msg::LatestLidarObstacleScan>(
-      declare_parameter<std::string>("latest_lidar_obstacle_scan_topic",
-                                     "/drone_city_nav/latest_lidar_obstacle_scan"),
-      rclcpp::SensorDataQoS{},
+      config_.world.topics.latest_lidar_obstacle_scan, rclcpp::SensorDataQoS{},
       [this](const msg::LatestLidarObstacleScan::SharedPtr message) {
         onLatestLidarObstacleScan(*message);
       },
       lidar_evidence_subscription_options);
   memory_status_sub_ = create_subscription<msg::ObstacleMemoryStatus>(
-      declare_parameter<std::string>("obstacle_memory_status_topic",
-                                     "/drone_city_nav/obstacle_memory_status"),
+      config_.world.topics.obstacle_memory_status,
       rclcpp::QoS{1}.reliable().transient_local(),
       [this](const msg::ObstacleMemoryStatus::SharedPtr message) {
         onMemoryStatus(*message);
       },
       input_subscription_options);
   applied_control_sub_ = create_subscription<msg::MppiControlFeedback>(
-      declare_parameter<std::string>("applied_control_feedback_topic",
-                                     "/drone_city_nav/mppi/applied_control"),
-      rclcpp::QoS{10}.reliable(),
+      config_.execution.topics.applied_control_feedback, rclcpp::QoS{10}.reliable(),
       [this](const msg::MppiControlFeedback::SharedPtr message) {
         onAppliedControl(*message);
       },
       input_subscription_options);
   navigation_objective_sub_ = create_subscription<msg::NavigationObjective>(
-      declare_parameter<std::string>("navigation_objective_topic",
-                                     "/drone_city_nav/navigation_objective"),
+      config_.planning.topics.navigation_objective,
       rclcpp::QoS{1}.reliable().transient_local(),
       [this](const msg::NavigationObjective::SharedPtr message) {
         onNavigationObjective(*message);
@@ -535,39 +540,28 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
   createNonCooperativeAvoidanceInterface(input_subscription_options);
 
   radar_track_mode_command_pub_ = create_publisher<msg::RadarTrackModeCommand>(
-      declare_parameter<std::string>("radar_track_mode_command_topic",
-                                     "/drone_city_nav/radar/track_mode_command"),
+      config_.planning.topics.radar_track_mode_command,
       rclcpp::QoS{1}.reliable().transient_local());
-  path_pub_ = create_publisher<nav_msgs::msg::Path>(
-      declare_parameter<std::string>("path_topic", "/drone_city_nav/mppi/path"),
-      rclcpp::QoS{1}.reliable());
+  path_pub_ = create_publisher<nav_msgs::msg::Path>(config_.diagnostics.topics.path,
+                                                    rclcpp::QoS{1}.reliable());
   markers_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
-      declare_parameter<std::string>("markers_topic", "/drone_city_nav/mppi/markers"),
-      rclcpp::QoS{1}.reliable());
+      config_.diagnostics.topics.markers, rclcpp::QoS{1}.reliable());
   status_pub_ = create_publisher<std_msgs::msg::String>(
-      declare_parameter<std::string>("status_topic", "/drone_city_nav/mppi/status"),
-      rclcpp::QoS{10}.best_effort());
+      config_.diagnostics.topics.status, rclcpp::QoS{10}.best_effort());
   world_readiness_pub_ = create_publisher<std_msgs::msg::Bool>(
-      declare_parameter<std::string>("world_readiness_topic",
-                                     "/drone_city_nav/mppi/world_ready"),
+      config_.diagnostics.topics.world_readiness,
       rclcpp::QoS{1}.reliable().transient_local());
   planner_health_pub_ = create_publisher<std_msgs::msg::Bool>(
-      declare_parameter<std::string>("planner_health_topic",
-                                     "/drone_city_nav/mppi/planner_alive"),
+      config_.diagnostics.topics.planner_health,
       rclcpp::QoS{1}.reliable().transient_local());
   navigation_health_pub_ = create_publisher<msg::NavigationHealth>(
-      declare_parameter<std::string>("navigation_health_topic",
-                                     "/drone_city_nav/mppi/navigation_health"),
+      config_.diagnostics.topics.navigation_health,
       rclcpp::QoS{1}.reliable().transient_local());
   execution_horizon_pub_ = create_publisher<msg::MppiTrajectoryHorizon>(
-      declare_parameter<std::string>("execution_horizon_topic",
-                                     "/drone_city_nav/mppi/execution_horizon"),
-      rclcpp::QoS{2}.reliable());
+      config_.execution.topics.execution_horizon, rclcpp::QoS{2}.reliable());
   mission_waypoint_acknowledgement_pub_ =
       create_publisher<msg::MissionWaypointAcknowledgement>(
-          declare_parameter<std::string>(
-              "mission_waypoint_acknowledgement_topic",
-              "/drone_city_nav/mission_waypoint_acknowledgement"),
+          config_.execution.topics.mission_waypoint_acknowledgement,
           rclcpp::QoS{32}.reliable().transient_local());
   publishWorldReadiness(false);
   std_msgs::msg::Bool planner_alive;
@@ -582,9 +576,9 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
   diagnostics_sink_->start();
   route_lifecycle_coordinator_->start();
   world_pipeline_->start();
-  if (planning_tick_phase_offset_s_ > 0.0) {
+  if (config_.planning.planning_tick_phase_offset_s > 0.0) {
     planning_start_timer_ = create_wall_timer(
-        std::chrono::duration<double>{planning_tick_phase_offset_s_},
+        std::chrono::duration<double>{config_.planning.planning_tick_phase_offset_s},
         [this]() {
           planning_start_timer_->cancel();
           startPlanningTimer();

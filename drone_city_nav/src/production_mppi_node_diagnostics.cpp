@@ -48,8 +48,9 @@ void ProductionMppiNode::processDiagnostics(
       speed_policy.sensor_braking_assessment;
   const detail::TrackingPursuitDiagnostics pursuit_diagnostics =
       detail::trackingPursuitDiagnostics(objective.get(), input, snapshot.execution);
-  const ConstrainedRouteObservation route_constraint = diagnosticRouteConstraint(
-      snapshot, route_envelope_config_, route_constraint_diagnostics_distance_m_);
+  const ConstrainedRouteObservation route_constraint =
+      diagnosticRouteConstraint(snapshot, config_.planning.route_envelope,
+                                config_.diagnostics.route_constraint_distance_m);
   const ProductionMppiPlanningState planning_state = snapshot.planning_state;
   const std::string_view target_source = snapshot.target_source;
   const char* static_route_generation_matches = "not_attempted";
@@ -79,10 +80,11 @@ void ProductionMppiNode::processDiagnostics(
        << " state_position=(" << input.initial_state.x << ',' << input.initial_state.y
        << ',' << input.initial_state.z << ") state_velocity=(" << input.initial_state.vx
        << ',' << input.initial_state.vy << ',' << input.initial_state.vz << ')'
-       << " planning_mode=" << (use_static_map_ ? "static" : "no_static")
+       << " planning_mode=" << (config_.world.use_static_map ? "static" : "no_static")
        << " planning_state=" << productionMppiPlanningStateName(planning_state)
        << detail::executionInfoFields(snapshot.execution) << " horizon_s="
-       << static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s
+       << static_cast<double>(config_.control.mppi.steps) *
+              config_.control.mppi.dynamics.dt_s
        << " target_source=" << target_source << " target=(" << input.target.x << ','
        << input.target.y << ',' << input.target.z << ")"
        << " route_generation=" << route_candidate.candidate_generation
@@ -226,7 +228,8 @@ void ProductionMppiNode::processDiagnostics(
        << " snapshot_ms=" << snapshot.snapshot_ms
        << " stability_ms=" << snapshot.stability_ms << " rviz_ms=" << rviz_ms
        << " deadline_missed="
-       << (result.timings.host_total_ms > deadline_ms_ ? "true" : "false")
+       << (result.timings.host_total_ms > config_.planning.deadline_ms ? "true"
+                                                                       : "false")
        << " risk_tier=" << mppi::mppiRiskTierName(result.selected_tier)
        << " altitude_envelope_violation="
        << (result.altitude_envelope_violation ? "true" : "false")
@@ -335,7 +338,7 @@ void ProductionMppiNode::processDiagnostics(
        << " esdf_upload_ms=" << snapshot.world_build.upload_ms
        << " dropped_diagnostics=" << diagnostics_sink_->droppedSnapshots();
   const std::int64_t now_ns = get_clock()->now().nanoseconds();
-  if (now_ns - last_diagnostics_info_stamp_ns_ >= diagnostics_info_period_ns_) {
+  if (now_ns - last_diagnostics_info_stamp_ns_ >= config_.diagnostics.info_period_ns) {
     RCLCPP_INFO(get_logger(), "%s", line.str().c_str());
     std_msgs::msg::String status;
     status.data = line.str();
@@ -368,7 +371,7 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"mppi_target_x_m\":" << input.target.x
         << ",\"mppi_target_y_m\":" << input.target.y
         << ",\"mppi_target_z_m\":" << input.target.z << ",\"planning_mode\":\""
-        << (use_static_map_ ? "static" : "no_static") << '"'
+        << (config_.world.use_static_map ? "static" : "no_static") << '"'
         << ",\"esdf_build_ms\":" << snapshot.world_build.build_ms
         << ",\"esdf_x_pass_ms\":" << snapshot.world_build.esdf_x_pass_ms
         << ",\"esdf_y_pass_ms\":" << snapshot.world_build.esdf_y_pass_ms
@@ -396,15 +399,18 @@ void ProductionMppiNode::processDiagnostics(
         << target_source << '"'
         << detail::trackingObjectiveJsonFields(objective.get(), mission_goal, now_ns)
         << ",\"horizon_s\":"
-        << static_cast<double>(mppi_config_.steps) * mppi_config_.dynamics.dt_s
+        << static_cast<double>(config_.control.mppi.steps) *
+               config_.control.mppi.dynamics.dt_s
         << ",\"horizontal_speed_cap_mps\":"
-        << mppi_config_.dynamics.maximum_horizontal_speed_mps
+        << config_.control.mppi.dynamics.maximum_horizontal_speed_mps
         << ",\"translational_speed_cap_mps\":"
-        << mppi_config_.dynamics.maximum_translational_speed_mps
+        << config_.control.mppi.dynamics.maximum_translational_speed_mps
         << ",\"acceleration_cap_mps2\":"
-        << mppi_config_.dynamics.maximum_horizontal_acceleration_mps2
-        << ",\"jerk_cap_mps3\":" << mppi_config_.dynamics.maximum_control_jerk_mps3
-        << ",\"speed_tracking_weight\":" << mppi_config_.costs.speed_tracking_weight
+        << config_.control.mppi.dynamics.maximum_horizontal_acceleration_mps2
+        << ",\"jerk_cap_mps3\":"
+        << config_.control.mppi.dynamics.maximum_control_jerk_mps3
+        << ",\"speed_tracking_weight\":"
+        << config_.control.mppi.costs.speed_tracking_weight
         << ",\"route_generation\":" << route_candidate.candidate_generation
         << ",\"route_objective_epoch\":" << route_candidate.objective.mission_epoch
         << ",\"route_objective_sample\":" << route_candidate.objective.sample_sequence

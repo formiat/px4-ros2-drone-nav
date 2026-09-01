@@ -243,7 +243,7 @@ void ProductionMppiNode::onVehicleLandDetected(
 void ProductionMppiNode::onNavigationReadiness(const std_msgs::msg::Bool& message) {
   const bool was_ready =
       vehicle_navigation_ready_.exchange(message.data, std::memory_order_acq_rel);
-  if (!message.data || !use_static_map_ || !navigationObjective()) {
+  if (!message.data || !config_.world.use_static_map || !navigationObjective()) {
     return;
   }
   if (!world_ready_.load(std::memory_order_acquire)) {
@@ -292,7 +292,7 @@ void ProductionMppiNode::onNavigationReadiness(const std_msgs::msg::Bool& messag
 }
 
 void ProductionMppiNode::requestStaticEsdfWork() {
-  if (!use_static_map_ || !navigationObjective()) {
+  if (!config_.world.use_static_map || !navigationObjective()) {
     return;
   }
   {
@@ -313,9 +313,9 @@ void ProductionMppiNode::publishWorldReadiness(const bool ready) {
   std_msgs::msg::Bool message;
   message.data = ready;
   world_readiness_pub_->publish(message);
-  RCLCPP_INFO(get_logger(), "PLANNER_WORLD_READY ready=%s source=%s",
-              ready ? "true" : "false",
-              use_static_map_ ? "resident_static_esdf" : "raw_snapshot_esdf");
+  RCLCPP_INFO(
+      get_logger(), "PLANNER_WORLD_READY ready=%s source=%s", ready ? "true" : "false",
+      config_.world.use_static_map ? "resident_static_esdf" : "raw_snapshot_esdf");
 }
 
 void ProductionMppiNode::onLatestLidarObstacleScan(
@@ -378,7 +378,7 @@ void ProductionMppiNode::onLatestLidarObstacleScan(
                             message.invalid_beam_count < message.source_beam_count &&
                             message.hit_points_body_frd.size() <=
                                 message.source_beam_count - message.invalid_beam_count;
-  if (message.header.frame_id != frame_id_ || acquisition_stamp_ns <= 0 ||
+  if (message.header.frame_id != config_.world.frame_id || acquisition_stamp_ns <= 0 ||
       message.producer_instance_id == 0U || message.sequence == 0U || !valid_counts ||
       !lidarProjectionBodyFrameIsValid(frame)) {
     rejected_lidar_obstacle_scans_.fetch_add(1U, std::memory_order_relaxed);
@@ -454,8 +454,8 @@ void ProductionMppiNode::onLatestLidarObstacleScan(
         admitClaimedLatestLidarEvidence3D(
             latest_lidar_evidence_admission_state_, current.get(), *evidence,
             claimed.claim, get_clock()->now().nanoseconds(),
-            execution_validation_policy_ != nullptr
-                ? execution_validation_policy_->latestLidarMaximumAgeMs()
+            config_.execution.validation_policy != nullptr
+                ? config_.execution.validation_policy->latestLidarMaximumAgeMs()
                 : 0.0);
     latest_lidar_evidence_admission_state_ = admission.next_state;
     latest_lidar_evidence_identity_conflicted_.store(
@@ -550,7 +550,7 @@ void ProductionMppiNode::onNavigationObjective(
   const std::optional<InterceptGuidanceMode> guidance_mode =
       guidanceMode(message.guidance_mode);
   const FlightEnvelopeStatus target_altitude_status =
-      evaluateFlightEnvelopeAltitude(message.position.z, flight_envelope_config_);
+      evaluateFlightEnvelopeAltitude(message.position.z, config_.world.flight_envelope);
   if (!tracking && target_altitude_status != FlightEnvelopeStatus::kValid) {
     RCLCPP_WARN(get_logger(),
                 "NAVIGATION_OBJECTIVE rejected mission_epoch=%" PRIu64
@@ -600,7 +600,7 @@ void ProductionMppiNode::onNavigationObjective(
   const Point3 unconstrained_goal{message.position.x, message.position.y,
                                   message.position.z};
   const std::optional<double> bounded_goal_z =
-      clampToFlightEnvelope(unconstrained_goal.z, flight_envelope_config_);
+      clampToFlightEnvelope(unconstrained_goal.z, config_.world.flight_envelope);
   if (!bounded_goal_z.has_value()) {
     RCLCPP_WARN(get_logger(),
                 "NAVIGATION_OBJECTIVE rejected mission_epoch=%" PRIu64
@@ -617,7 +617,7 @@ void ProductionMppiNode::onNavigationObjective(
                           message.observed_target_position.y,
                           message.observed_target_position.z};
     const std::optional<double> bounded_observed_z =
-        clampToFlightEnvelope(observed.z, flight_envelope_config_);
+        clampToFlightEnvelope(observed.z, config_.world.flight_envelope);
     if (!bounded_observed_z.has_value()) {
       RCLCPP_WARN(get_logger(),
                   "NAVIGATION_OBJECTIVE rejected mission_epoch=%" PRIu64
@@ -628,8 +628,8 @@ void ProductionMppiNode::onNavigationObjective(
     const std::optional<Point3> current_target = currentTrackingTarget(
         message.observed_target_position, message.observed_target_velocity,
         observation_stamp_ns, objective_stamp_ns,
-        mppi_config_.dynamics.maximum_vertical_acceleration_mps2,
-        flight_envelope_config_);
+        config_.control.mppi.dynamics.maximum_vertical_acceleration_mps2,
+        config_.world.flight_envelope);
     if (!current_target.has_value()) {
       RCLCPP_WARN(get_logger(),
                   "NAVIGATION_OBJECTIVE rejected mission_epoch=%" PRIu64
@@ -654,32 +654,33 @@ void ProductionMppiNode::onNavigationObjective(
     const Point3 current_position{navigation.state.x, navigation.state.y,
                                   navigation.state.z};
     const SweptFootprintConfig footprint{
-        .radius_m = physical_footprint_config_.radius_m,
-        .lower_extent_m = physical_footprint_config_.lower_extent_m,
-        .upper_extent_m = physical_footprint_config_.upper_extent_m,
-        .perimeter_samples = physical_footprint_config_.perimeter_samples,
-        .radial_rings = physical_footprint_config_.radial_rings,
-        .axial_samples = physical_footprint_config_.axial_samples,
-        .sweep_step_m = tracking_objective_ray_sample_spacing_m_};
+        .radius_m = config_.world.physical_footprint.radius_m,
+        .lower_extent_m = config_.world.physical_footprint.lower_extent_m,
+        .upper_extent_m = config_.world.physical_footprint.upper_extent_m,
+        .perimeter_samples = config_.world.physical_footprint.perimeter_samples,
+        .radial_rings = config_.world.physical_footprint.radial_rings,
+        .axial_samples = config_.world.physical_footprint.axial_samples,
+        .sweep_step_m = config_.planning.tracking_objective_ray_sample_spacing_m};
     bool world_available = false;
     const std::shared_ptr<const OccupancyGrid3D> static_occupancy =
-        use_static_map_ ? world_pipeline_->staticOccupancy() : nullptr;
+        config_.world.use_static_map ? world_pipeline_->staticOccupancy() : nullptr;
     if (static_occupancy != nullptr) {
       world_available = true;
-      resolution = resolveTrackingObjective(*static_occupancy, *current_target, goal,
-                                            tracking_objective_ray_sample_spacing_m_);
+      resolution = resolveTrackingObjective(
+          *static_occupancy, *current_target, goal,
+          config_.planning.tracking_objective_ray_sample_spacing_m);
       if (navigation.valid) {
         direct_resolution = resolveDirectTrackingTarget(
             *static_occupancy, current_position, *current_target, goal, footprint);
       }
-    } else if (!use_static_map_) {
+    } else if (!config_.world.use_static_map) {
       const std::shared_ptr<const ProductionMppiRawWorld3D> raw_world =
           world_pipeline_->latestRawWorld();
       if (raw_world != nullptr && raw_world->valid()) {
         world_available = true;
-        resolution =
-            resolveTrackingObjective(raw_world->occupancy(), *current_target, goal,
-                                     tracking_objective_ray_sample_spacing_m_);
+        resolution = resolveTrackingObjective(
+            raw_world->occupancy(), *current_target, goal,
+            config_.planning.tracking_objective_ray_sample_spacing_m);
         if (navigation.valid) {
           direct_resolution =
               resolveDirectTrackingTarget(raw_world->occupancy(), current_position,
@@ -786,11 +787,11 @@ void ProductionMppiNode::onNavigationObjective(
                      previous->target_detection_id != message.target_detection_id ||
                      previous->target_track_id != message.target_track_id);
     const bool moved = pointDistance(goal, objective_replan_anchor_) >=
-                       dynamic_objective_replan_distance_m_;
+                       config_.planning.dynamic_objective_replan_distance_m;
     const bool period_elapsed =
         objective_replan_stamp_ns_ <= 0 ||
         static_cast<double>(now_ns - objective_replan_stamp_ns_) * 1.0e-9 >=
-            dynamic_objective_replan_period_s_;
+            config_.planning.dynamic_objective_replan_period_s;
     const bool previous_direct_interception =
         previous && previous->tracking.value_or(ProductionTrackingObjective{})
                         .direct_interception_active;
@@ -823,7 +824,7 @@ void ProductionMppiNode::onNavigationObjective(
     }
   }
   publishRadarTrackModeCommand(*objective, radar_cadence_reason);
-  if (use_static_map_ && !world_ready_.load(std::memory_order_acquire)) {
+  if (config_.world.use_static_map && !world_ready_.load(std::memory_order_acquire)) {
     requestStaticEsdfWork();
   }
   if (request_replan) {

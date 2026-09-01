@@ -80,6 +80,7 @@
 #include <string_view>
 #include <vector>
 
+#include "production_mppi_config.hpp"
 #include "production_mppi_execution_control.hpp"
 #include "production_mppi_node_execution_types.hpp"
 #include "production_mppi_node_types.hpp"
@@ -160,9 +161,6 @@ private:
       std::string_view source, ProductionMppiPhysicalTrajectoryAuthority authority);
   void requestStaticRouteReplan(RouteReleaseReason3D reason,
                                 std::uint64_t route_generation);
-  void configureOptionalNavigationConstraints();
-  void configureStaticRouteGeometry();
-  void configureStaticRouteExtension(double maximum_horizontal_acceleration_mps2);
   void maybeRequestStaticRouteExtensionFromExecution(
       const std::shared_ptr<const WorldSnapshot3D>& world,
       const ProductionWorldBuildTelemetry3D& world_build,
@@ -202,10 +200,8 @@ private:
   [[nodiscard]] ProductionRouteActivationSnapshot3D captureRouteActivationSnapshot3D();
   void startPlanningTimer();
   void initializeRuntimeInterfaces(StaticWorldResources3D&& static_world_resources);
-  void configureCooperativeTraffic();
   void createCooperativeTrafficInterfaces(
       const rclcpp::SubscriptionOptions& subscription_options);
-  void configureNonCooperativeAvoidance();
   void createNonCooperativeAvoidanceInterface(
       const rclcpp::SubscriptionOptions& subscription_options);
   void onNonCooperativeTracks(const msg::TargetTrackArray& message);
@@ -294,93 +290,16 @@ private:
   [[nodiscard]] ProductionMppiStability
   compareWithPrevious(const mppi::MppiTickResult& result) const;
 
-  double tick_rate_hz_{50.0};
-  double rviz_rate_hz_{10.0};
-  double diagnostics_info_rate_hz_{5.0};
-  double diagnostics_file_rate_hz_{5.0};
-  double diagnostics_flush_period_s_{1.0};
-  std::size_t diagnostics_error_ring_capacity_{25U};
-  double deadline_ms_{20.0};
-  double maximum_pose_age_ms_{150.0};
-  double maximum_vehicle_status_age_ms_{1000.0};
-  double maximum_pose_prediction_age_ms_{1000.0};
-  double maximum_esdf_age_ms_{1000.0};
-  double stale_esdf_execution_window_ms_{4000.0};
-  double maximum_control_feedback_age_ms_{200.0};
-  double latest_lidar_obstacle_maximum_age_ms_{250.0};
-  double no_static_3d_esdf_update_rate_hz_{1.0};
-  LocalObservedEsdfWindow3D no_static_3d_esdf_window_{};
-  double no_static_3d_esdf_incremental_maximum_rebuild_ratio_{0.15};
-  std::size_t no_static_3d_esdf_full_audit_interval_builds_{120U};
-  std::size_t planner_worker_count_{4U};
-  MppiRolloutBudgetConfig rollout_budget_config_{};
-  double planning_tick_phase_offset_s_{0.0};
-  MissionGoalCaptureConfig mission_goal_capture_config_{};
-  MissionWaypointSequenceConfig mission_waypoint_sequence_config_{};
-  MissionWaypointCaptureGateConfig mission_waypoint_capture_gate_config_{};
-  Px4MapFrameTransform px4_map_transform_{};
-  Point3 mission_start_{54.0, 54.0, 0.0};
+  const ProductionMppiConfig config_;
   Point3 mission_goal_{216.0, 378.0, 18.0};
-  FlightEnvelopeConfig flight_envelope_config_{};
-  double dynamic_objective_replan_distance_m_{5.0};
-  double dynamic_objective_replan_period_s_{0.25};
-  double tracking_objective_ray_sample_spacing_m_{0.25};
-  double tracking_capture_radius_m_{5.0};
-  double static_tracking_esdf_refresh_margin_m_{15.0};
   TrackingLineOfSightLifecycle tracking_line_of_sight_lifecycle_{};
-  DirectTrackingManeuverConfig direct_tracking_maneuver_config_{};
-  bool use_static_map_{true};
-  bool cooperative_traffic_enabled_{false};
-  bool noncooperative_avoidance_enabled_{false};
-  std::string noncooperative_tracks_topic_;
-  std::string vehicle_id_;
-  float constrained_route_speed_limit_mps_{10.0F};
-  double route_constraint_diagnostics_distance_m_{30.0};
-  std::string frame_id_{"map"};
-  std::filesystem::path diagnostics_output_dir_{"log/mppi"};
-  std::int64_t rviz_period_ns_{100000000};
-  std::int64_t diagnostics_info_period_ns_{200000000};
-  std::int64_t diagnostics_file_period_ns_{200000000};
   std::int64_t last_rviz_stamp_ns_{0};
   std::int64_t last_diagnostics_info_stamp_ns_{0};
   std::optional<ConstrainedRouteObservation> last_route_constraint_observation_;
 
-  mppi::BenchmarkConfig mppi_config_{};
-  ProductionNavigationOptionalConstraints optional_constraints_{};
-  NavigationAngularDerivativeConfig navigation_angular_derivative_config_{};
-  SweptFootprintConfig physical_footprint_config_{};
-  TrackingErrorTubeConfig3D tracking_error_tube_config_{};
-  std::shared_ptr<const VersionedExecutionValidationPolicy3D>
-      execution_validation_policy_;
-  MppiLivenessConfig liveness_config_{};
-  MppiSpeedPolicyConfig speed_policy_config_{};
-  mppi::FiniteHorizonConfig finite_horizon_config_{};
-  double stationary_hold_validity_s_{1.0};
-  std::int64_t stationary_hold_validity_ns_{1'000'000'000LL};
-  std::int64_t mission_goal_capture_hold_validity_ns_{0};
-  RouteTrackingPolicy3D route_tracking_policy_{};
-  RouteProgressConfig3D route_progress_config_{};
-  bool route_stall_recovery_enabled_{false};
   std::unique_ptr<NavigationHealthSupervisor> navigation_health_supervisor_;
   std::unique_ptr<MissionWaypointSequence> mission_waypoint_sequence_;
   std::unique_ptr<MissionWaypointCaptureGate> mission_waypoint_capture_gate_;
-  PersistentPlannerConfig3D persistent_planner_config_{};
-  double route_sampling_step_m_{0.5};
-  double route_completion_tolerance_m_{2.0};
-  double static_esdf_route_lookahead_m_{180.0};
-  RouteEnvelopeConfig route_envelope_config_{};
-  ConstrainedRouteControlConfig constrained_route_control_config_{};
-  StaticRouteExtensionConfig static_route_extension_config_{};
-  RouteSuccessorImprovementConfig3D route_successor_improvement_config_{};
-  FutureRouteConnectorConfig3D future_route_connector_config_{};
-  CertifiedRouteSpliceConfig3D certified_route_splice_config_{};
-  StaticRouteSearchRetryConfig static_route_search_retry_config_{};
-  StaticRouteGeometryConfig static_route_geometry_config_{};
-  PassageVolumeConfig cooperative_passage_volume_config_{};
-  CooperativePassageRouteConfig cooperative_passage_route_config_{};
-  CooperativePassageTimingConfig cooperative_passage_timing_config_{};
-  CooperativePassageYieldConfig cooperative_passage_yield_config_{};
-  NonCooperativeAvoidanceConfig noncooperative_avoidance_config_{};
   std::unique_ptr<BoundedWorkerPool> planning_worker_pool_;
   std::unique_ptr<RouteLifecycleCoordinator3D> route_lifecycle_coordinator_;
   std::unique_ptr<PlanningCycleCoordinator3D> planning_cycle_coordinator_;

@@ -56,7 +56,7 @@ void ProductionMppiNode::logDiagnosticsEvents(
   }
   if (snapshot.no_eligible_recovery.route_replan_requested) {
     const bool route_replan_enabled =
-        optional_constraints_.no_eligible_route_replan_enabled;
+        config_.planning.optional_constraints.no_eligible_route_replan_enabled;
     RCLCPP_WARN(
         get_logger(),
         "MPPI_NO_ELIGIBLE_RECOVERY action=%s policy_enabled=%s"
@@ -67,11 +67,11 @@ void ProductionMppiNode::logDiagnosticsEvents(
         mppiNoEligiblePhaseName(snapshot.no_eligible_recovery.phase), route_generation);
   }
   if (snapshot.planning_state == ProductionMppiPlanningState::kPlanned &&
-      snapshot.esdf_age_ms > maximum_esdf_age_ms_) {
+      snapshot.esdf_age_ms > config_.world.maximum_esdf_age_ms) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
                          "PRODUCTION_MPPI_STALE_WORLD action=continue_resident_esdf "
                          "esdf_age_ms=%.1f warning_age_ms=%.1f revision=%" PRIu64,
-                         snapshot.esdf_age_ms, maximum_esdf_age_ms_,
+                         snapshot.esdf_age_ms, config_.world.maximum_esdf_age_ms,
                          snapshot.world != nullptr ? snapshot.world->revision : 0U);
   }
   if (snapshot.cooperative.yield.active) {
@@ -80,7 +80,8 @@ void ProductionMppiNode::logDiagnosticsEvents(
         "COOPERATIVE_PASSAGE_YIELD vehicle='%s' passage='%s' offset_m=%.2f "
         "offset_interval_m=[%.2f,%.2f] status=%s hold=%s queue_hold=%s "
         "hold_station_m=%.2f maximum_speed_mps=%.2f entry_not_before_ns=%" PRId64,
-        vehicle_id_.c_str(), snapshot.cooperative.passage.passage_traversal_id.c_str(),
+        config_.planning.vehicle_id.c_str(),
+        snapshot.cooperative.passage.passage_traversal_id.c_str(),
         snapshot.cooperative.passage.lateral_offset_m,
         snapshot.cooperative.passage.minimum_lateral_offset_m,
         snapshot.cooperative.passage.maximum_lateral_offset_m,

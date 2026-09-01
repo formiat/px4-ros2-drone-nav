@@ -68,7 +68,7 @@ ProductionMppiNode::runPlanningController(ProductionMppiControllerTick tick) {
   }
   if (output.no_eligible_recovery.route_replan_requested &&
       !tick.direct_tracking_interception &&
-      optional_constraints_.no_eligible_route_replan_enabled) {
+      config_.planning.optional_constraints.no_eligible_route_replan_enabled) {
     requestRouteRelease(RouteReleaseReason3D::kNoEligibleRollouts,
                         tick.route_generation);
   }

@@ -68,6 +68,9 @@ PRODUCTION_MPPI_SOURCE = (
     / "src"
     / "production_mppi_node.cpp"
 )
+PRODUCTION_MPPI_CONFIG_SOURCE = PRODUCTION_MPPI_SOURCE.with_name(
+    "production_mppi_config_ros.cpp"
+)
 PRODUCTION_MPPI_RUNTIME_SOURCE = (
     Path(__file__).resolve().parents[2]
     / "drone_city_nav"
@@ -129,6 +132,9 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         cls.production_mppi_source_text = PRODUCTION_MPPI_SOURCE.read_text(
             encoding="utf-8"
         )
+        cls.production_mppi_config_source_text = (
+            PRODUCTION_MPPI_CONFIG_SOURCE.read_text(encoding="utf-8")
+        )
         cls.production_mppi_runtime_source_text = (
             PRODUCTION_MPPI_RUNTIME_SOURCE.read_text(encoding="utf-8")
         )
@@ -173,10 +179,11 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
 
         self.assertIn(
             '"configured_mission_objective_enabled", false',
-            self.production_mppi_source_text,
+            self.production_mppi_config_source_text,
         )
         self.assertIn(
-            ".mission_epoch = configured_mission_objective_enabled ? 1U : 0U,",
+            ".mission_epoch = config_.planning.configured_mission_objective_enabled "
+            "? 1U : 0U,",
             normalized_startup_objective,
         )
         self.assertIn(".sample_sequence = 0U", startup_objective)
@@ -692,7 +699,9 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         )
 
     def test_production_mppi_loads_3d_world_only_in_static_mode(self) -> None:
-        self.assertIn("if (use_static_map_)", self.production_mppi_source_text)
+        self.assertIn(
+            "if (!config.world.use_static_map)", self.production_mppi_source_text
+        )
         self.assertIn("OccupancyGrid3D::load", self.production_mppi_source_text)
 
     def test_runtime_lidar_visibility_follows_resolved_static_map_mode(self) -> None:

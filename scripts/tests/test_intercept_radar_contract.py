@@ -303,6 +303,8 @@ class InterceptRadarContractTest(unittest.TestCase):
             for path in (
                 SOURCE / "production_mppi_node.cpp",
                 SOURCE / "production_mppi_node.hpp",
+                SOURCE / "production_mppi_config.hpp",
+                SOURCE / "production_mppi_config_ros.cpp",
                 PLANNING_TICK,
                 PLANNING_COORDINATOR,
                 *EXECUTION_FILES,

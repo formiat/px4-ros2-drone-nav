@@ -172,7 +172,7 @@ ProductionMppiNode::makeExecutionHorizon(const ProductionMppiExecutionCycle& cyc
                                          const ProductionMppiExecutionReason reason) {
   msg::MppiTrajectoryHorizon horizon;
   horizon.header.stamp = now();
-  horizon.header.frame_id = frame_id_;
+  horizon.header.frame_id = config_.world.frame_id;
   horizon.producer_instance_id = execution_horizon_producer_instance_id_;
   horizon.target_offboard_instance_id = cycle.evidence.target_offboard_instance_id;
   if (execution_horizon_sequence_ != std::numeric_limits<std::uint64_t>::max()) {
@@ -212,11 +212,11 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
       cycle.evidence.execution_input;
   std::optional<ExecutionRouteTransitionResult3D> rebased_transition;
   if (publication_execution_input == nullptr || !publication_execution_input->valid() ||
-      assessExecutionHorizonPayload(publication_horizon,
-                                    ExecutionHorizonPayloadValidationConfig{
-                                        .expected_frame_id = frame_id_,
-                                        .flight_envelope = &flight_envelope_config_,
-                                    }) != ExecutionHorizonPayloadStatus::kValid) {
+      assessExecutionHorizonPayload(
+          publication_horizon, ExecutionHorizonPayloadValidationConfig{
+                                   .expected_frame_id = config_.world.frame_id,
+                                   .flight_envelope = &config_.world.flight_envelope,
+                               }) != ExecutionHorizonPayloadStatus::kValid) {
     report_commit_failure("invalid_input_or_payload");
     return ProductionMppiHorizonCommitStatus::kRejected;
   }
@@ -258,12 +258,13 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
       !vehicle_status_epoch_probation_ && !vehicle_status_revision_exhausted_;
   const bool vehicle_status_authoritative = vehicleStatusAuthoritativeForExecution(
       vehicle_status_, vehicle_status_epoch_stable, publication_now_ns,
-      maximum_vehicle_status_age_ms_);
+      config_.execution.maximum_vehicle_status_age_ms);
   const RawWorldIngressSnapshot3D world_input = raw_world_ingress_->snapshot();
   const std::shared_ptr<const ProductionMppiRawWorld3D> committed_3d =
       world_input.latest_raw_world;
   const double maximum_observation_age_ms =
-      maximum_esdf_age_ms_ + stale_esdf_execution_window_ms_;
+      config_.world.maximum_esdf_age_ms +
+      config_.execution.stale_esdf_execution_window_ms;
   const double current_raw_age_ms =
       committed_3d != nullptr
           ? committedRawWorldAgeMs(committed_3d.get(), publication_now_ns)
@@ -274,7 +275,7 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
           cycle.evidence.offboard_session,
           cycle.evidence.offboard_session_receive_stamp_ns,
           owner.target_offboard_instance_id, publication_now_ns,
-          maximum_control_feedback_age_ms_);
+          config_.execution.maximum_control_feedback_age_ms);
   const bool navigation_advanced =
       navigation_.revision != publication_execution_input->poseRevision() ||
       navigation_.source_timestamp_us !=
@@ -285,7 +286,7 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
       case ExecutionPreviousControlEvidenceSource3D::kOffboardFeedback:
         return appliedControlAuthoritativeForExecution(
                    resident_control, resident_owner, publication_now_ns,
-                   maximum_control_feedback_age_ms_) &&
+                   config_.execution.maximum_control_feedback_age_ms) &&
                resident_control.horizon_producer_instance_id ==
                    publication_execution_input
                        ->previousControlSourceProducerInstanceId() &&
@@ -341,7 +342,7 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
           prepareExecutionInputForPlanningTick(
               navigation_, resident_execution_authority,
               ++execution_input_capture_sequence_, publication_now_ns,
-              maximum_control_feedback_age_ms_, false, false);
+              config_.execution.maximum_control_feedback_age_ms, false, false);
       const std::shared_ptr<const VersionedExecutionInput3D>& current_input =
           current_input_preparation.execution_input;
       if (!current_input_preparation.previous_control_available ||
@@ -372,7 +373,7 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
                   .publication_now_ns = publication_now_ns,
                   .arrival_search_step_controls =
                       cycle.controller.arrival_search_step_controls,
-                  .finite_horizon_config = &finite_horizon_config_,
+                  .finite_horizon_config = &config_.execution.finite_horizon,
                   .terminal_boundary =
                       cycle.evidence.execution_path_world.terminal_boundary,
               });
@@ -426,11 +427,12 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
               publication_horizon, rebased_view->horizon->states,
               rebased_view->horizon->controls, current_input->previousControl(),
               rebased_view->control_interval_ns) ||
-          assessExecutionHorizonPayload(publication_horizon,
-                                        ExecutionHorizonPayloadValidationConfig{
-                                            .expected_frame_id = frame_id_,
-                                            .flight_envelope = &flight_envelope_config_,
-                                        }) != ExecutionHorizonPayloadStatus::kValid) {
+          assessExecutionHorizonPayload(
+              publication_horizon,
+              ExecutionHorizonPayloadValidationConfig{
+                  .expected_frame_id = config_.world.frame_id,
+                  .flight_envelope = &config_.world.flight_envelope,
+              }) != ExecutionHorizonPayloadStatus::kValid) {
         return "late_rebase_payload_invalid";
       }
       publication_execution_input = current_input;
@@ -458,7 +460,7 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
                 FiniteExecutionKind3D::kRetained));
       const bool resident_owner_witnessed = appliedControlAuthoritativeForExecution(
           resident_control, resident_owner, publication_now_ns,
-          maximum_control_feedback_age_ms_);
+          config_.execution.maximum_control_feedback_age_ms);
       const bool no_revocation_pending =
           requested_execution_revocation_.load(std::memory_order_acquire) ==
           handled_execution_revocation_request_;
@@ -540,12 +542,14 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
                   .measured_acceleration_authoritative =
                       navigation_.measured_acceleration_valid,
               },
-          .current_observed_raw_world = !use_static_map_ && committed_3d != nullptr
-                                            ? committed_3d->authoritativeOwner()
-                                            : nullptr,
+          .current_observed_raw_world =
+              !config_.world.use_static_map && committed_3d != nullptr
+                  ? committed_3d->authoritativeOwner()
+                  : nullptr,
           .current_lidar_evidence = current_lidar,
           .publication_now_ns = publication_now_ns,
-          .maximum_control_feedback_age_ms = maximum_control_feedback_age_ms_,
+          .maximum_control_feedback_age_ms =
+              config_.execution.maximum_control_feedback_age_ms,
           .latest_lidar_identity_conflicted =
               latest_lidar_evidence_identity_conflicted_.load(
                   std::memory_order_acquire),

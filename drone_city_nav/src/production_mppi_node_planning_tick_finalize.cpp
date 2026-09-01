@@ -185,7 +185,7 @@ void ProductionMppiNode::finalizePlanningTick(
                                   std::chrono::steady_clock::now() - stability_started)
                                   .count();
   std::optional<ProductionMppiRvizSnapshot> rviz;
-  if (now_ns - last_rviz_stamp_ns_ >= rviz_period_ns_) {
+  if (now_ns - last_rviz_stamp_ns_ >= config_.diagnostics.rviz_period_ns) {
     std::shared_ptr<const std::vector<mppi::RouteSample3D>> rviz_route =
         route_usable ? execution_mppi_route : nullptr;
     if (direct_tracking_interception) {

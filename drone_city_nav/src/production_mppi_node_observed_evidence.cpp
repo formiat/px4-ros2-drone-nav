@@ -48,16 +48,17 @@ ProductionMppiNode::prepareObservedExecutionEvidence3D(
                                      : ExecutionOwnerIdentity3D{};
   const Point3 position{navigation.state.x, navigation.state.y, navigation.state.z};
   const std::optional<FootprintBodyAxis> current_body_axis =
-      authoritativeBodyAxisForExecution(applied_control, execution_horizon_owner,
-                                        navigation, get_clock()->now().nanoseconds(),
-                                        maximum_control_feedback_age_ms_,
-                                        maximum_pose_age_ms_);
+      authoritativeBodyAxisForExecution(
+          applied_control, execution_horizon_owner, navigation,
+          get_clock()->now().nanoseconds(),
+          config_.execution.maximum_control_feedback_age_ms,
+          config_.execution.maximum_pose_age_ms);
   const std::optional<ProprioceptiveFreeSpaceSeed3D> free_space_seed =
       current_body_axis.has_value()
           ? std::optional<ProprioceptiveFreeSpaceSeed3D>{ProprioceptiveFreeSpaceSeed3D{
                 .position = position,
                 .body_axis = *current_body_axis,
-                .footprint = physical_footprint_config_,
+                .footprint = config_.world.physical_footprint,
             }}
           : std::nullopt;
   if (!launch_support_seed_ && free_space_seed.has_value()) {
@@ -77,7 +78,7 @@ ProductionMppiNode::prepareObservedExecutionEvidence3D(
       if (!launch_support_contact_ && vehicle_land_contact_received) {
         const OccupiedCollisionResult3D without_support = validateObservedPoint(
             *occupancy, launch_support_seed_->position, launch_support_seed_->body_axis,
-            physical_footprint_config_, nullptr);
+            config_.world.physical_footprint, nullptr);
         if (without_support.clear()) {
           launch_support_evaluated_ = true;
           RCLCPP_INFO(get_logger(),
@@ -104,7 +105,7 @@ ProductionMppiNode::prepareObservedExecutionEvidence3D(
                   launch_support_seed_->position.z);
     } else if (!launch_support_evaluated_ &&
                distance3D(position, launch_support_seed_->position) >
-                   std::max(0.5, physical_footprint_config_.radius_m)) {
+                   std::max(0.5, config_.world.physical_footprint.radius_m)) {
       launch_support_evaluated_ = true;
       RCLCPP_INFO(get_logger(),
                   "LAUNCH_SUPPORT_CONTACT state=not_detected_after_departure"
@@ -131,7 +132,7 @@ ProductionMppiNode::prepareObservedExecutionEvidence3D(
     if (current_body_axis.has_value() && free_space_seed.has_value()) {
       const OccupiedCollisionResult3D without_support =
           validateObservedPoint(*occupancy, position, *current_body_axis,
-                                physical_footprint_config_, nullptr);
+                                config_.world.physical_footprint, nullptr);
       const FootprintBodyAxis support_axis = launch_support_contact_->seed.body_axis;
       const Point3 support_delta{
           position.x - launch_support_contact_->seed.position.x,
@@ -157,8 +158,8 @@ ProductionMppiNode::prepareObservedExecutionEvidence3D(
   const std::optional<OccupiedCollisionResult3D> current_footprint =
       current_body_axis.has_value() && free_space_seed.has_value()
           ? std::optional<OccupiedCollisionResult3D>{validateObservedPoint(
-                *occupancy, position, *current_body_axis, physical_footprint_config_,
-                launch_support_contact)}
+                *occupancy, position, *current_body_axis,
+                config_.world.physical_footprint, launch_support_contact)}
           : std::nullopt;
   double support_axial_departure_m{0.0};
   double support_lateral_departure_m{0.0};

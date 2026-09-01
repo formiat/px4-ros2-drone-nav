@@ -22,7 +22,7 @@ void ProductionMppiNode::publishRviz(
   const ProductionMppiRvizSnapshot& rviz = *snapshot.rviz;
   const auto stamp = now();
   nav_msgs::msg::Path path;
-  path.header.frame_id = frame_id_;
+  path.header.frame_id = config_.world.frame_id;
   path.header.stamp = stamp;
   path.poses.reserve(rviz.candidate_horizon.size());
   for (const mppi::State& state : rviz.candidate_horizon) {
@@ -59,7 +59,7 @@ void ProductionMppiNode::publishRviz(
       .selected_passage_traversal_ids = selected_passage_traversal_ids,
       .initial_state = snapshot.input.initial_state,
       .target = snapshot.input.target,
-      .mission_start = mission_start_,
+      .mission_start = config_.planning.mission_start,
       .mission_goal = mission_goal,
       .selected_tier = snapshot.result.selected_tier,
   };

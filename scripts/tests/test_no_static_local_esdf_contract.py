@@ -81,7 +81,7 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
         vertical_max = float(vertical.findtext("max_angle", "nan"))
         guaranteed_range_m = planner["guaranteed_lidar_detection_range_m"]
         physical_margin_m = planner["sensor_braking_physical_margin_m"]
-        source = (PACKAGE / "src/production_mppi_node.cpp").read_text()
+        source = (PACKAGE / "src/production_mppi_config_ros.cpp").read_text()
         cpu_dynamics = (PACKAGE / "src/motion_dynamics_3d.cpp").read_text()
         cuda_dynamics = (PACKAGE / "src/mppi/mppi_engine_kernels.cuh").read_text()
 
@@ -96,8 +96,7 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
         self.assertNotIn("observation_distance_m", planner)
         self.assertNotIn("observation_margin_m", planner)
         self.assertIn(
-            ".maximum_evidence_age_s = "
-            "latest_lidar_obstacle_maximum_age_ms_ * 1.0e-3",
+            "config_.execution.latest_lidar_obstacle_maximum_age_ms * 1.0e-3",
             source,
         )
         self.assertIn("std::hypot(", source)
@@ -114,20 +113,26 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
         self.assertIn("maximum_translational_speed_mps", cuda_dynamics)
 
     def test_hard_planning_footprint_is_the_physical_hull(self) -> None:
-        source = (PACKAGE / "src/production_mppi_node.cpp").read_text()
+        config_source = (PACKAGE / "src/production_mppi_config_ros.cpp").read_text()
+        runtime_source = (
+            PACKAGE / "src/production_mppi_node_interfaces.cpp"
+        ).read_text()
         config = yaml.safe_load((PACKAGE / "config/urban_mvp.yaml").read_text())
         parameters = config["production_mppi_node"]["ros__parameters"]
 
         self.assertNotIn("static_route_tracking_margin_m", parameters)
         self.assertGreater(parameters["tracking_error_tube_response_time_s"], 0.0)
-        self.assertNotIn("lattice_config_", source)
-        self.assertNotIn("lattice_3d_config_", source)
+        self.assertNotIn("lattice_config_", config_source)
+        self.assertNotIn("lattice_3d_config_", config_source)
         self.assertIn(
-            "persistent_planner_config_.physical_footprint = "
-            "physical_footprint_config_;",
-            source,
+            "planning.persistent_planner.physical_footprint = "
+            "world.physical_footprint;",
+            config_source,
         )
-        self.assertIn(".physical_footprint = physical_footprint_config_", source)
+        self.assertIn(
+            ".physical_footprint = config_.world.physical_footprint",
+            runtime_source,
+        )
 
 if __name__ == "__main__":
     unittest.main()

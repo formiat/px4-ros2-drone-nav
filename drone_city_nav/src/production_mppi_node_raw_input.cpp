@@ -11,7 +11,7 @@ namespace drone_city_nav {
 
 void ProductionMppiNode::onRawObstacleSnapshot3D(
     msg::RawObstacleSnapshot3D::ConstSharedPtr message) {
-  if (use_static_map_) {
+  if (config_.world.use_static_map) {
     return;
   }
   const auto started = std::chrono::steady_clock::now();
@@ -43,7 +43,7 @@ void ProductionMppiNode::onRawObstacleSnapshot3D(
 
 void ProductionMppiNode::onRawObstacleDelta3D(
     msg::RawObstacleDelta3D::ConstSharedPtr message) {
-  if (use_static_map_) {
+  if (config_.world.use_static_map) {
     return;
   }
   const auto started = std::chrono::steady_clock::now();
@@ -99,7 +99,7 @@ void ProductionMppiNode::queueRawWorld3D(const RawObstacleGridUpdate3D& update,
 }
 
 void ProductionMppiNode::onMemoryStatus(const msg::ObstacleMemoryStatus& message) {
-  if (use_static_map_) {
+  if (config_.world.use_static_map) {
     return;
   }
   const std::int64_t now_ns = get_clock()->now().nanoseconds();

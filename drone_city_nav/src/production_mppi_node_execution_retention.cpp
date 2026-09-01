@@ -23,7 +23,7 @@ ProductionMppiNode::retainActiveFinitePath(
           .latest_lidar_evidence = cycle.evidence.latest_lidar_evidence,
           .exact_initial_state = cycle.evidence.exact_initial_state,
           .exact_previous_control = cycle.evidence.exact_previous_control,
-          .finite_horizon_config = finite_horizon_config_,
+          .finite_horizon_config = config_.execution.finite_horizon,
           .now_ns = cycle.controller.now_ns,
           .lidar_validation_now_ns = cycle.evidence.lidar_validation_now_ns,
       });

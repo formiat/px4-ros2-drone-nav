@@ -8,72 +8,6 @@
 
 namespace drone_city_nav {
 
-void ProductionMppiNode::configureStaticRouteExtension(
-    const double maximum_horizontal_acceleration_mps2) {
-  static_route_extension_config_.minimum_remaining_m =
-      route_tracking_policy_.minimum_remaining_m;
-  static_route_extension_config_.required_certified_overlap_m =
-      declare_parameter<double>("route_required_certified_overlap_m", 8.0);
-  static_route_extension_config_.latency_margin_s =
-      declare_parameter<double>("route_extension_latency_margin_s", 0.5);
-  static_route_extension_config_.maximum_latency_s =
-      declare_parameter<double>("route_extension_maximum_latency_s", 8.0);
-  static_route_extension_config_.maximum_horizontal_acceleration_mps2 =
-      maximum_horizontal_acceleration_mps2;
-  static_route_extension_config_.maximum_vertical_acceleration_mps2 =
-      mppi_config_.dynamics.maximum_vertical_acceleration_mps2;
-  static_route_extension_config_.maximum_control_jerk_mps3 =
-      mppi_config_.dynamics.maximum_control_jerk_mps3;
-  static_route_extension_config_.stopping_capability =
-      speed_policy_config_.stopping_capability;
-  static_route_extension_config_.minimum_retry_progress_m =
-      declare_parameter<double>("route_extension_retry_progress_m", 15.0);
-  static_route_extension_config_.minimum_retry_interval_s =
-      declare_parameter<double>("route_extension_retry_interval_s", 1.0);
-  static_route_extension_config_.minimum_endpoint_improvement_m =
-      declare_parameter<double>("route_extension_minimum_endpoint_improvement_m", 5.0);
-  route_successor_improvement_config_.minimum_absolute_improvement_s =
-      declare_parameter<double>("route_successor_minimum_time_improvement_s", 1.0);
-  route_successor_improvement_config_.minimum_relative_improvement =
-      declare_parameter<double>("route_successor_minimum_time_improvement_ratio", 0.05);
-  future_route_connector_config_.tangent_departure_length_m =
-      declare_parameter<double>("route_connector_departure_m", 0.5);
-  future_route_connector_config_.successor_join_station_m =
-      declare_parameter<double>("route_connector_join_m", 2.0);
-  future_route_connector_config_.curve_control_distance_m =
-      declare_parameter<double>("route_connector_control_m", 0.75);
-  const auto connector_curve_samples =
-      declare_parameter<std::int64_t>("route_connector_curve_samples", 12);
-  if (connector_curve_samples >= 0) {
-    future_route_connector_config_.curve_samples =
-        static_cast<std::size_t>(connector_curve_samples);
-  } else {
-    future_route_connector_config_.curve_samples = 0U;
-  }
-  future_route_connector_config_.minimum_continuous_turn_alignment =
-      declare_parameter<double>(
-          "route_connector_minimum_continuous_turn_alignment",
-          TrajectoryCompilerConfig3D{}.minimum_continuous_turn_alignment);
-  certified_route_splice_config_.required_overlap_m =
-      static_route_extension_config_.required_certified_overlap_m;
-  certified_route_splice_config_.sample_step_m =
-      declare_parameter<double>("route_splice_sample_step_m", route_sampling_step_m_);
-  certified_route_splice_config_.maximum_position_separation_m =
-      declare_parameter<double>("route_splice_maximum_position_separation_m", 0.05);
-  certified_route_splice_config_.minimum_tangent_alignment =
-      declare_parameter<double>("route_splice_minimum_tangent_alignment", 0.995);
-  certified_route_splice_config_.activation_station_tolerance_m =
-      declare_parameter<double>("route_splice_activation_station_tolerance_m", 1.0);
-  if (!staticRouteExtensionConfigValid(static_route_extension_config_) ||
-      !route_successor_improvement_config_.valid() ||
-      !futureRouteConnectorConfig3DValid(future_route_connector_config_) ||
-      !certifiedRouteSpliceConfig3DValid(certified_route_splice_config_)) {
-    throw std::invalid_argument{
-        "invalid route extension, successor hysteresis, connector, or certified "
-        "splice configuration"};
-  }
-}
-
 void ProductionMppiNode::maybeRequestStaticRouteExtensionFromExecution(
     const std::shared_ptr<const WorldSnapshot3D>& world,
     const ProductionWorldBuildTelemetry3D& world_build,
@@ -108,8 +42,9 @@ void ProductionMppiNode::maybeRequestStaticRouteExtensionFromExecution(
       Point3{navigation.state.x, navigation.state.y, navigation.state.z},
       active_route->progress.station_m, active_route->endStationM());
   if (!projection.valid ||
-      (optional_constraints_.route_cross_track_constraints_enabled &&
-       projection.distance_m > route_tracking_policy_.maximum_cross_track_m)) {
+      (config_.planning.optional_constraints.route_cross_track_constraints_enabled &&
+       projection.distance_m >
+           config_.planning.route_tracking_policy.maximum_cross_track_m)) {
     return;
   }
   const std::shared_ptr<const CertifiedRouteSuffix3D> active_route_snapshot{
@@ -373,7 +308,7 @@ void ProductionMppiNode::maybeRequestStaticTrackingWorldRefresh(
               " objective_sample=%" PRIu64 " margin_m=%.2f now_ns=%" PRId64,
               outcome.sequence, outcome.base_route_generation,
               outcome.objective_mission_epoch, outcome.objective_sample_sequence,
-              static_tracking_esdf_refresh_margin_m_, outcome.stamp_ns);
+              config_.planning.static_tracking_esdf_refresh_margin_m, outcome.stamp_ns);
 }
 
 } // namespace drone_city_nav

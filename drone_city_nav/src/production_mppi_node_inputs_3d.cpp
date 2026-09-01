@@ -4,7 +4,7 @@
 namespace drone_city_nav {
 void ProductionMppiNode::queueLatestObservedWorldForPose(
     const ProductionMppiNavigation& navigation) {
-  if (use_static_map_ || !navigation.world_state_authoritative) {
+  if (config_.world.use_static_map || !navigation.world_state_authoritative) {
     return;
   }
   const Point3 position{navigation.state.x, navigation.state.y, navigation.state.z};

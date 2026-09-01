@@ -98,7 +98,7 @@ void ProductionMppiNode::invalidateAppliedControlWitnessLocked() noexcept {
 void ProductionMppiNode::onAppliedControl(const msg::MppiControlFeedback& message) {
   const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
   const ExecutionControlFeedbackAssessment assessment =
-      assessExecutionControlFeedback(message, frame_id_, receive_stamp_ns);
+      assessExecutionControlFeedback(message, config_.world.frame_id, receive_stamp_ns);
   if (!assessment.valid()) {
     {
       const std::scoped_lock lock{input_mutex_};

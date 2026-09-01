@@ -21,72 +21,13 @@ diagnosticValue(const std::optional<NonCooperativeClosestApproach>& threat,
 
 } // namespace
 
-void ProductionMppiNode::configureNonCooperativeAvoidance() {
-  noncooperative_avoidance_enabled_ =
-      declare_parameter<bool>("noncooperative_avoidance_enabled", false);
-  noncooperative_tracks_topic_ = declare_parameter<std::string>(
-      "noncooperative_tracks_topic", "/drone_city_nav/noncooperative_tracks");
-  noncooperative_avoidance_config_.prediction_horizon_s =
-      declare_parameter<double>("noncooperative_prediction_horizon_s", 4.0);
-  noncooperative_avoidance_config_.strong_separation_m =
-      declare_parameter<double>("noncooperative_strong_separation_m", 10.0);
-  noncooperative_avoidance_config_.anticipation_separation_m =
-      declare_parameter<double>("noncooperative_anticipation_separation_m", 20.0);
-  noncooperative_avoidance_config_.release_separation_m =
-      declare_parameter<double>("noncooperative_release_separation_m", 15.0);
-  noncooperative_avoidance_config_.release_hysteresis_s =
-      declare_parameter<double>("noncooperative_release_hysteresis_s", 1.0);
-  noncooperative_avoidance_config_.maximum_track_age_s =
-      declare_parameter<double>("noncooperative_maximum_track_age_s", 0.75);
-  noncooperative_avoidance_config_.tracked_aircraft_radius_m =
-      declare_parameter<double>("noncooperative_tracked_aircraft_radius_m", 0.82);
-  noncooperative_avoidance_config_.minimum_relative_speed_mps =
-      declare_parameter<double>("noncooperative_minimum_relative_speed_mps", 0.05);
-  noncooperative_avoidance_config_.candidate_acceleration_fraction =
-      declare_parameter<double>("noncooperative_candidate_acceleration_fraction", 0.95);
-  noncooperative_avoidance_config_.candidate_duration_s =
-      declare_parameter<double>("noncooperative_candidate_duration_s", 1.5);
-  noncooperative_avoidance_config_.strong_cost_weight =
-      declare_parameter<double>("noncooperative_strong_cost_weight", 4000.0);
-  noncooperative_avoidance_config_.anticipation_cost_weight =
-      declare_parameter<double>("noncooperative_anticipation_cost_weight", 40.0);
-  noncooperative_avoidance_config_.time_to_collision_gain_s =
-      declare_parameter<double>("noncooperative_time_to_collision_gain_s", 1.0);
-  noncooperative_avoidance_config_.maximum_time_to_collision_multiplier =
-      declare_parameter<double>("noncooperative_maximum_ttc_multiplier", 4.0);
-
-  if (!noncooperative_avoidance_enabled_) {
-    return;
-  }
-  if (cooperative_traffic_enabled_) {
-    throw std::invalid_argument{
-        "cooperative and non-cooperative avoidance cannot be enabled together"};
-  }
-  if (noncooperative_tracks_topic_.empty()) {
-    throw std::invalid_argument{"non-cooperative tracks topic must not be empty"};
-  }
-  RCLCPP_INFO(get_logger(),
-              "NONCOOPERATIVE_AVOIDANCE_CONFIG enabled=true vehicle_id='%s' "
-              "tracks_topic='%s' "
-              "prediction_horizon_s=%.2f strong_separation_m=%.2f "
-              "anticipation_separation_m=%.2f release_separation_m=%.2f "
-              "maximum_track_age_s=%.2f strong_cost_weight=%.1f",
-              vehicle_id_.c_str(), noncooperative_tracks_topic_.c_str(),
-              noncooperative_avoidance_config_.prediction_horizon_s,
-              noncooperative_avoidance_config_.strong_separation_m,
-              noncooperative_avoidance_config_.anticipation_separation_m,
-              noncooperative_avoidance_config_.release_separation_m,
-              noncooperative_avoidance_config_.maximum_track_age_s,
-              noncooperative_avoidance_config_.strong_cost_weight);
-}
-
 void ProductionMppiNode::createNonCooperativeAvoidanceInterface(
     const rclcpp::SubscriptionOptions& subscription_options) {
-  if (!noncooperative_avoidance_enabled_) {
+  if (!config_.planning.noncooperative_avoidance_enabled) {
     return;
   }
   noncooperative_tracks_sub_ = create_subscription<msg::TargetTrackArray>(
-      noncooperative_tracks_topic_, rclcpp::QoS{2}.reliable(),
+      config_.planning.topics.noncooperative_tracks, rclcpp::QoS{2}.reliable(),
       [this](const msg::TargetTrackArray::SharedPtr message) {
         onNonCooperativeTracks(*message);
       },
@@ -97,11 +38,13 @@ void ProductionMppiNode::onNonCooperativeTracks(const msg::TargetTrackArray& mes
   ProductionMppiNonCooperativeTracks snapshot;
   snapshot.source_scan_sequence = message.source_scan_sequence;
   snapshot.receive_stamp_ns = get_clock()->now().nanoseconds();
-  if (!message.header.frame_id.empty() && message.header.frame_id != frame_id_) {
+  if (!message.header.frame_id.empty() &&
+      message.header.frame_id != config_.world.frame_id) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
                          "NONCOOPERATIVE_AVOIDANCE rejected_tracks=true "
                          "reason=frame_mismatch expected='%s' actual='%s'",
-                         frame_id_.c_str(), message.header.frame_id.c_str());
+                         config_.world.frame_id.c_str(),
+                         message.header.frame_id.c_str());
   } else {
     snapshot.tracks.reserve(message.tracks.size());
     const std::int64_t array_stamp_ns = timeNanoseconds(message.header.stamp);

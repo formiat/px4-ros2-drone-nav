@@ -58,7 +58,7 @@ void ProductionMppiNode::planningTick() {
   const bool direct_tracking_interception =
       objective && objective->continuous_tracking && tracking_objective_available &&
       tracking_objective.direct_interception_active;
-  const bool observed_3d_world = !use_static_map_;
+  const bool observed_3d_world = !config_.world.use_static_map;
   if (handleRequestedExecutionRevocation(tick_entry_ns)) {
     // A callback-requested epoch is a hard barrier; retain it until revoke
     // publication has linearized with the exact snapshot.
@@ -146,12 +146,12 @@ void ProductionMppiNode::planningTick() {
       static_cast<double>(now_ns - navigation.receive_stamp_ns) / 1.0e6;
   double esdf_age_ms = std::numeric_limits<double>::infinity();
   if (world) {
-    esdf_age_ms = use_static_map_
+    esdf_age_ms = config_.world.use_static_map
                       ? 0.0
                       : static_cast<double>(now_ns - world->ready_stamp_ns) / 1.0e6;
   }
   double observation_age_ms = std::numeric_limits<double>::infinity();
-  if (use_static_map_) {
+  if (config_.world.use_static_map) {
     observation_age_ms = 0.0;
   } else if (world && !raw_world_identity_conflicted) {
     if (latest_raw_world_3d != nullptr &&
@@ -167,18 +167,19 @@ void ProductionMppiNode::planningTick() {
   const bool world_current =
       world_ready_.load(std::memory_order_acquire) && world &&
       observation_age_ms >= 0.0 &&
-      observation_age_ms <= maximum_esdf_age_ms_ + stale_esdf_execution_window_ms_;
+      observation_age_ms <= config_.world.maximum_esdf_age_ms +
+                                config_.execution.stale_esdf_execution_window_ms;
   const NavigationHealthAssessment navigation_health =
       updateNavigationHealth(objective, execution_authority, world_current, now_ns);
   if (navigation_health.terminal &&
-      optional_constraints_.nonphysical_execution_revocation_enabled) {
+      config_.planning.optional_constraints.nonphysical_execution_revocation_enabled) {
     publishFailClosedExecutionRevocation(
         terminalExecutionReason(navigation_health.failure), now_ns);
     return;
   }
-  if (!vehicleStatusAuthoritativeForExecution(vehicle_status,
-                                              vehicle_status_epoch_stable, now_ns,
-                                              maximum_vehicle_status_age_ms_)) {
+  if (!vehicleStatusAuthoritativeForExecution(
+          vehicle_status, vehicle_status_epoch_stable, now_ns,
+          config_.execution.maximum_vehicle_status_age_ms)) {
     if (execution_horizon_owner.valid) {
       requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
       static_cast<void>(handleRequestedExecutionRevocation(now_ns));
@@ -213,9 +214,9 @@ void ProductionMppiNode::planningTick() {
       now_ns >= execution_horizon_owner.valid_from_ns &&
       now_ns < execution_horizon_owner.valid_until_ns &&
       distance3D(execution_horizon_owner.route_target, mission_goal) <=
-          mission_waypoint_capture_gate_config_.target_match_tolerance_m &&
+          config_.execution.mission_waypoint_capture_gate.target_match_tolerance_m &&
       distance3D(execution_horizon_owner.stationary_hold_position, mission_goal) <=
-          mission_waypoint_capture_gate_config_.target_match_tolerance_m;
+          config_.execution.mission_waypoint_capture_gate.target_match_tolerance_m;
   if (matching_goal_capture_attempt) {
     // Freeze one committed lease/identity for the full acknowledgement attempt.
     // The offboard process repeats feedback for this exact tuple; superseding it
@@ -228,10 +229,10 @@ void ProductionMppiNode::planningTick() {
     return;
   }
   bool pose_predicted = false;
-  if (pose_age_ms > maximum_pose_age_ms_) {
-    const NavigationStatePredictionResult predicted =
-        predictNavigationState(navigation.state, pose_age_ms / 1000.0,
-                               maximum_pose_prediction_age_ms_ / 1000.0);
+  if (pose_age_ms > config_.execution.maximum_pose_age_ms) {
+    const NavigationStatePredictionResult predicted = predictNavigationState(
+        navigation.state, pose_age_ms / 1000.0,
+        config_.execution.maximum_pose_prediction_age_ms / 1000.0);
     if (!predicted.valid) {
       publishFailClosedExecutionRevocation(
           ProductionMppiExecutionReason::kNoExecutableHorizon, now_ns);
@@ -241,13 +242,15 @@ void ProductionMppiNode::planningTick() {
     pose_predicted = predicted.predicted;
   }
   if (!world || observation_age_ms < 0.0 ||
-      observation_age_ms > maximum_esdf_age_ms_ + stale_esdf_execution_window_ms_) {
+      observation_age_ms > config_.world.maximum_esdf_age_ms +
+                               config_.execution.stale_esdf_execution_window_ms) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
                          "PRODUCTION_MPPI_UNAVAILABLE_WORLD action=wait_for_world "
                          "observation_age_ms=%.1f esdf_content_age_ms=%.1f "
                          "maximum_execution_age_ms=%.1f",
                          observation_age_ms, esdf_age_ms,
-                         maximum_esdf_age_ms_ + stale_esdf_execution_window_ms_);
+                         config_.world.maximum_esdf_age_ms +
+                             config_.execution.stale_esdf_execution_window_ms);
     publishFailClosedExecutionRevocation(
         ProductionMppiExecutionReason::kUnavailableWorld, now_ns);
     return;
@@ -260,9 +263,9 @@ void ProductionMppiNode::planningTick() {
         ProductionMppiExecutionReason::kNoExecutableHorizon, now_ns);
     return;
   }
-  const bool planned_owner_witnessed =
-      appliedControlAuthoritativeForExecution(applied_control, execution_horizon_owner,
-                                              now_ns, maximum_control_feedback_age_ms_);
+  const bool planned_owner_witnessed = appliedControlAuthoritativeForExecution(
+      applied_control, execution_horizon_owner, now_ns,
+      config_.execution.maximum_control_feedback_age_ms);
   switch (assessPlannedHorizonSupersession(execution_horizon_owner,
                                            planned_owner_witnessed, now_ns)) {
     case ProductionMppiHorizonSupersessionDecision::kDeferredAwaitingOwnerWitness:
@@ -279,12 +282,13 @@ void ProductionMppiNode::planningTick() {
           "EXECUTION_HORIZON_SUPERSESSION rejected=true reason=owner_not_current "
           "action=%s "
           "producer=%" PRIu64 " sequence=%" PRIu64,
-          optional_constraints_.nonphysical_execution_revocation_enabled
+          config_.planning.optional_constraints.nonphysical_execution_revocation_enabled
               ? "revoke"
               : "replace_expired_owner",
           execution_horizon_owner.producer_instance_id,
           execution_horizon_owner.sequence);
-      if (optional_constraints_.nonphysical_execution_revocation_enabled) {
+      if (config_.planning.optional_constraints
+              .nonphysical_execution_revocation_enabled) {
         publishFailClosedExecutionRevocation(
             ProductionMppiExecutionReason::kNoExecutableHorizon, now_ns);
         return;
@@ -314,26 +318,28 @@ void ProductionMppiNode::planningTick() {
           .world = world.get(),
           .latest_raw_world_3d = latest_raw_world_3d,
           .latest_lidar_evidence = latest_lidar_evidence,
-          .validation_policy = execution_validation_policy_,
+          .validation_policy = config_.execution.validation_policy,
           .static_occupancy_3d = world->static_occupancy,
-          .capture_gate_config = mission_waypoint_capture_gate_config_,
+          .capture_gate_config = config_.execution.mission_waypoint_capture_gate,
           .mission_goal = mission_goal,
           .now_ns = now_ns,
           .offboard_session_receive_stamp_ns = offboard_session_receive_stamp_ns,
-          .maximum_pose_age_ms = maximum_pose_age_ms_,
-          .maximum_control_feedback_age_ms = maximum_control_feedback_age_ms_,
-          .maximum_esdf_age_ms = maximum_esdf_age_ms_,
+          .maximum_pose_age_ms = config_.execution.maximum_pose_age_ms,
+          .maximum_control_feedback_age_ms =
+              config_.execution.maximum_control_feedback_age_ms,
+          .maximum_esdf_age_ms = config_.world.maximum_esdf_age_ms,
           .observation_age_ms = observation_age_ms,
           .vehicle_status_epoch_stable = vehicle_status_epoch_stable,
           .terminal_hold_enabled = terminal_hold_enabled,
           .goal_capture_latched = goal_capture_latched,
-          .use_static_map = use_static_map_,
+          .use_static_map = config_.world.use_static_map,
           .observed_3d_world = observed_3d_world,
       });
   const ProductionMppiExecutionInputPreparation execution_input_preparation =
       prepareExecutionInputForPlanningTick(
           navigation, execution_authority, execution_input_sequence, now_ns,
-          maximum_control_feedback_age_ms_, pose_predicted, stationary_capture_rearm);
+          config_.execution.maximum_control_feedback_age_ms, pose_predicted,
+          stationary_capture_rearm);
   if (!execution_input_preparation.previous_control_available ||
       tick_sequence_ == std::numeric_limits<std::uint64_t>::max()) {
     RCLCPP_WARN_THROTTLE(
@@ -394,7 +400,7 @@ void ProductionMppiNode::planningTick() {
           .control_feedback_fresh = execution_input_preparation.control_feedback_fresh,
           .terminal_hold_enabled = terminal_hold_enabled,
           .direct_tracking_interception = direct_tracking_interception,
-          .use_static_map = use_static_map_,
+          .use_static_map = config_.world.use_static_map,
           .observed_3d_world = observed_3d_world,
       });
   for (const RouteExecutionSelectorEffect3D& effect :
@@ -460,7 +466,7 @@ void ProductionMppiNode::planningTick() {
                 "span_station_m=(%.2f,%.2f) position=(%.2f,%.2f,%.2f) "
                 "maximum_cross_track_m=%.3f maximum_vertical_error_m=%.3f "
                 "vertical_window_preserved=%s",
-                vehicle_id_.c_str(), event.sequence,
+                config_.planning.vehicle_id.c_str(), event.sequence,
                 passageTraversalEvidenceStatusName(event.status).data(),
                 passageTraversalEvidenceReasonName(event.reason).data(),
                 event.passage_traversal_id.c_str(), event.route_generation,
@@ -474,16 +480,16 @@ void ProductionMppiNode::planningTick() {
   if (planning.effects.passage_geometry_proximity.has_value()) {
     const PassageGeometryProximity3D& proximity =
         planning.effects.passage_geometry_proximity.value();
-    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
-                         "PASSAGE_GEOMETRY_PROXIMITY vehicle_id='%s' passage='%s' "
-                         "entry_distance_m=%.2f projection_station_m=%.2f "
-                         "projection_cross_track_m=%.2f minimum_clearance_m=%.2f "
-                         "within_corridor=%s",
-                         vehicle_id_.c_str(), proximity.passage_traversal_id.c_str(),
-                         proximity.entry_distance_m, proximity.projection_station_m,
-                         proximity.projection_cross_track_m,
-                         proximity.minimum_clearance_m,
-                         proximity.within_corridor ? "true" : "false");
+    RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "PASSAGE_GEOMETRY_PROXIMITY vehicle_id='%s' passage='%s' "
+        "entry_distance_m=%.2f projection_station_m=%.2f "
+        "projection_cross_track_m=%.2f minimum_clearance_m=%.2f "
+        "within_corridor=%s",
+        config_.planning.vehicle_id.c_str(), proximity.passage_traversal_id.c_str(),
+        proximity.entry_distance_m, proximity.projection_station_m,
+        proximity.projection_cross_track_m, proximity.minimum_clearance_m,
+        proximity.within_corridor ? "true" : "false");
   }
   for (const PassageGeometryEvidenceEvent& event :
        planning.effects.passage_geometry_events) {
@@ -493,7 +499,7 @@ void ProductionMppiNode::planningTick() {
                 "duration_s=%.3f station_m=%.2f traversal_length_m=%.2f "
                 "maximum_station_m=%.2f position=(%.2f,%.2f,%.2f) "
                 "maximum_cross_track_m=%.3f",
-                vehicle_id_.c_str(), event.sequence,
+                config_.planning.vehicle_id.c_str(), event.sequence,
                 passageTraversalEvidenceStatusName(event.status).data(),
                 passageTraversalEvidenceReasonName(event.reason).data(),
                 event.passage_traversal_id.c_str(), event.observation_count,

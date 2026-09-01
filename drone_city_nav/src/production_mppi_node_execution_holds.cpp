@@ -52,7 +52,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
           .stationary_capture_observed_raw_world = cycle.evidence.direct_observed_world,
           .stationary_capture_static_world = cycle.evidence.direct_static_world,
           .selected_validation_policy = cycle.evidence.selected_policy,
-          .stationary_capture_validation_policy = execution_validation_policy_,
+          .stationary_capture_validation_policy = config_.execution.validation_policy,
           .validation_now_ns = cycle.evidence.lidar_validation_now_ns,
           .raw_world_identity_conflicted = world_input.raw_world_identity_conflicted,
           .latest_lidar_identity_conflicted =
@@ -72,7 +72,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
     return publication;
   }
   const Point3 owned_hold_position = prepared.position;
-  if (!insideFlightEnvelope(owned_hold_position, flight_envelope_config_)) {
+  if (!insideFlightEnvelope(owned_hold_position, config_.world.flight_envelope)) {
     RCLCPP_ERROR(get_logger(),
                  "EXECUTION_HORIZON rejected reason=hold_outside_flight_envelope "
                  "target_z=%.3f",
@@ -86,8 +86,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
   }
   const std::int64_t requested_hold_duration_ns =
       reason == ProductionMppiExecutionReason::kGoalCapture
-          ? mission_goal_capture_hold_validity_ns_
-          : stationary_hold_validity_ns_;
+          ? config_.execution.mission_goal_capture_hold_validity_ns
+          : config_.execution.stationary_hold_validity_ns;
   const std::int64_t hold_duration_ns = std::max(
       requested_hold_duration_ns, 2 * cycle.controller.finite_path_control_interval_ns);
   const std::optional<std::int64_t> hold_valid_until_ns =
@@ -191,9 +191,9 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionRevocatio
   ProductionMppiExecutionPublication publication;
   publication.mode = ProductionMppiExecutionMode::kRevoked;
   publication.reason = reason;
-  if (!executionRevocationAllowed(
-          physical_route_invalidation,
-          optional_constraints_.nonphysical_execution_revocation_enabled)) {
+  if (!executionRevocationAllowed(physical_route_invalidation,
+                                  config_.planning.optional_constraints
+                                      .nonphysical_execution_revocation_enabled)) {
     return publication;
   }
   if (!failClosedExecutionReason(reason) || execution_horizon_pub_ == nullptr ||
@@ -250,10 +250,10 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionRevocatio
       static_cast<double>(publication_now_ns -
                           offboard_session_admission_.latest_source_stamp_ns) *
               1.0e-6 <=
-          maximum_control_feedback_age_ms_ &&
+          config_.execution.maximum_control_feedback_age_ms &&
       static_cast<double>(publication_now_ns - offboard_session_receive_stamp_ns_) *
               1.0e-6 <=
-          maximum_control_feedback_age_ms_;
+          config_.execution.maximum_control_feedback_age_ms;
   if (!current_session) {
     return publication;
   }
@@ -265,7 +265,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionRevocatio
 
   msg::MppiTrajectoryHorizon revocation;
   revocation.header.stamp = now();
-  revocation.header.frame_id = frame_id_;
+  revocation.header.frame_id = config_.world.frame_id;
   revocation.producer_instance_id = execution_horizon_producer_instance_id_;
   revocation.target_offboard_instance_id = target_offboard_instance_id;
   revocation.sequence = execution_horizon_sequence_ + 1U;
@@ -273,9 +273,9 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionRevocatio
   revocation.valid_until = revocation.valid_from;
   revocation.execution_mode = msg::MppiTrajectoryHorizon::EXECUTION_MODE_REVOKED;
   revocation.execution_reason = static_cast<std::uint8_t>(reason);
-  if (assessExecutionHorizonPayload(
-          revocation,
-          ExecutionHorizonPayloadValidationConfig{.expected_frame_id = frame_id_}) !=
+  if (assessExecutionHorizonPayload(revocation,
+                                    ExecutionHorizonPayloadValidationConfig{
+                                        .expected_frame_id = config_.world.frame_id}) !=
       ExecutionHorizonPayloadStatus::kValid) {
     return publication;
   }
@@ -309,7 +309,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionRevocatio
 bool ProductionMppiNode::handleRequestedExecutionRevocation(const std::int64_t now_ns) {
   const std::uint64_t requested_revocation =
       requested_execution_revocation_.load(std::memory_order_acquire);
-  if (!optional_constraints_.nonphysical_execution_revocation_enabled) {
+  if (!config_.planning.optional_constraints.nonphysical_execution_revocation_enabled) {
     // Callback requests describe evidence/freshness discontinuities, not a
     // certified raw-occupancy intersection. Drain them without turning a
     // transient publication race into a permanent planning barrier.
@@ -351,7 +351,7 @@ bool ProductionMppiNode::handleRequestedExecutionRevocation(const std::int64_t n
 
 void ProductionMppiNode::publishFailClosedExecutionRevocation(
     const ProductionMppiExecutionReason reason, const std::int64_t now_ns) {
-  if (!optional_constraints_.nonphysical_execution_revocation_enabled) {
+  if (!config_.planning.optional_constraints.nonphysical_execution_revocation_enabled) {
     return;
   }
   const std::shared_ptr<const ExecutionPlan3D> snapshot = execution_supervisor_.plan();
@@ -367,7 +367,7 @@ void ProductionMppiNode::publishFailClosedExecutionRevocation(
 
 void ProductionMppiNode::requestExecutionRevocation(
     const ProductionMppiExecutionReason reason) noexcept {
-  if (!optional_constraints_.nonphysical_execution_revocation_enabled ||
+  if (!config_.planning.optional_constraints.nonphysical_execution_revocation_enabled ||
       !failClosedExecutionReason(reason)) {
     return;
   }

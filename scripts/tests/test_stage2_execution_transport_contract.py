@@ -17,6 +17,8 @@ RAW_INPUT = SOURCE / "production_mppi_node_raw_input.cpp"
 PLANNING_TICK = SOURCE / "production_mppi_node_planning_tick.cpp"
 PLANNER_NODE = SOURCE / "production_mppi_node.cpp"
 PLANNER_HEADER = SOURCE / "production_mppi_node.hpp"
+PLANNER_CONFIG_HEADER = SOURCE / "production_mppi_config.hpp"
+PLANNER_CONFIG_LOADER = SOURCE / "production_mppi_config_ros.cpp"
 PLANNER_MISSION = SOURCE / "production_mppi_node_mission.cpp"
 EXECUTION = SOURCE / "production_mppi_node_execution.cpp"
 EXECUTION_ASSEMBLER = SOURCE / "execution_horizon_assembler_3d.cpp"
@@ -32,7 +34,6 @@ EXECUTION_HORIZON_SERVICE = SOURCE / "execution_supervisor_3d_horizon.cpp"
 EXECUTION_HORIZON_TEST = (
     PACKAGE / "tests" / "execution_supervisor_horizon_3d_test.cpp"
 )
-OPTIONAL_CONSTRAINTS = SOURCE / "production_mppi_node_optional_constraints.cpp"
 ROUTE_ACTIVATION = SOURCE / "route_activation_coordinator_3d.cpp"
 ROUTE_ACTIVATION_PREPARATION = SOURCE / "route_activation_preparation_3d.cpp"
 ROUTE_EXECUTION = SOURCE / "production_mppi_route_execution.cpp"
@@ -73,7 +74,7 @@ def read_execution_sources() -> str:
 class Stage2ExecutionTransportContractTest(unittest.TestCase):
     def test_nonphysical_execution_revocation_is_optional_and_disabled(self) -> None:
         config = CONFIG.read_text(encoding="utf-8")
-        optional_constraints = OPTIONAL_CONSTRAINTS.read_text(encoding="utf-8")
+        config_loader = PLANNER_CONFIG_LOADER.read_text(encoding="utf-8")
         planning_tick = PLANNING_TICK.read_text(encoding="utf-8")
         planner_node = PLANNER_NODE.read_text(encoding="utf-8")
         holds = EXECUTION_HOLDS.read_text(encoding="utf-8")
@@ -81,17 +82,18 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         self.assertIn("execution_nonphysical_revocation_enabled: false", config)
         self.assertIn("navigation_health_terminal_failure_enabled: false", config)
         self.assertIn(
-            '"navigation_health_terminal_failure_enabled", false', planner_node
+            '"navigation_health_terminal_failure_enabled", false', config_loader
         )
         self.assertIn(
-            'declare_parameter<bool>("execution_nonphysical_revocation_enabled", false)',
-            optional_constraints,
+            'declare<bool>("execution_nonphysical_revocation_enabled", false)',
+            config_loader,
         )
         request = holds.split(
             "ProductionMppiNode::requestExecutionRevocation", maxsplit=1
         )[1]
         self.assertIn(
-            "!optional_constraints_.nonphysical_execution_revocation_enabled",
+            "!config_.planning.optional_constraints."
+            "nonphysical_execution_revocation_enabled",
             request,
         )
         handler = holds.split(
@@ -100,7 +102,8 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
             "ProductionMppiNode::publishFailClosedExecutionRevocation", maxsplit=1
         )[0]
         policy_gate = handler.index(
-            "!optional_constraints_.nonphysical_execution_revocation_enabled"
+            "!config_.planning.optional_constraints."
+            "nonphysical_execution_revocation_enabled"
         )
         drain = handler.index(
             "handled_execution_revocation_request_ = requested_revocation"
@@ -124,7 +127,8 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
         self.assertIn("physical_route_invalidation", no_path)
         self.assertIn(
             "navigation_health.terminal &&\n"
-            "      optional_constraints_.nonphysical_execution_revocation_enabled",
+            "      config_.planning.optional_constraints."
+            "nonphysical_execution_revocation_enabled",
             planning_tick,
         )
         self.assertIn('"replace_expired_owner"', planning_tick)
@@ -313,16 +317,20 @@ class Stage2ExecutionTransportContractTest(unittest.TestCase):
 
     def test_vehicle_status_budget_covers_px4_two_hertz_cadence(self) -> None:
         planner_node = PLANNER_NODE.read_text(encoding="utf-8")
-        planner_header = PLANNER_HEADER.read_text(encoding="utf-8")
+        planner_config_header = PLANNER_CONFIG_HEADER.read_text(encoding="utf-8")
+        planner_config_loader = PLANNER_CONFIG_LOADER.read_text(encoding="utf-8")
         capture_header = CAPTURE_GATE_HEADER.read_text(encoding="utf-8")
         config = CONFIG.read_text(encoding="utf-8")
         capture_test = CAPTURE_GATE_TEST.read_text(encoding="utf-8")
 
         self.assertIn(
-            'declare_parameter<double>("maximum_vehicle_status_age_ms", 1000.0)',
-            planner_node,
+            'declare<double>("maximum_vehicle_status_age_ms", 1000.0)',
+            planner_config_loader,
         )
-        self.assertIn("maximum_vehicle_status_age_ms_{1000.0}", planner_header)
+        self.assertIn(
+            "double maximum_vehicle_status_age_ms{1000.0};",
+            planner_config_header,
+        )
         self.assertEqual(
             capture_header.count("maximum_vehicle_status_age_s{1.0}"), 2
         )

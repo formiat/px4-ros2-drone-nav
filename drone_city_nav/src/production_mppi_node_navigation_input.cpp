@@ -95,16 +95,18 @@ void ProductionMppiNode::onLocalPosition(
       std::isfinite(message.vy) && std::isfinite(message.vz);
   const bool heading_contract =
       message.heading_good_for_control && std::isfinite(message.heading);
-  const Point2 map_position = px4_map_transform_.localPositionToMap(
+  const Point2 map_position = config_.world.px4_map_transform.localPositionToMap(
       Point2{static_cast<double>(message.x), static_cast<double>(message.y)});
-  const Point2 map_velocity = px4_map_transform_.localVectorToMap(
+  const Point2 map_velocity = config_.world.px4_map_transform.localVectorToMap(
       Point2{static_cast<double>(message.vx), static_cast<double>(message.vy)});
   const double map_yaw =
-      heading_contract ? px4_map_transform_.px4HeadingToMapYaw(message.heading) : 0.0;
+      heading_contract
+          ? config_.world.px4_map_transform.px4HeadingToMapYaw(message.heading)
+          : 0.0;
   navigation.state.x = static_cast<float>(map_position.x);
   navigation.state.y = static_cast<float>(map_position.y);
   navigation.state.z = static_cast<float>(-static_cast<double>(message.z) +
-                                          px4_map_transform_.map_origin.z);
+                                          config_.world.px4_map_transform.map_origin.z);
   navigation.state.vx = static_cast<float>(map_velocity.x);
   navigation.state.vy = static_cast<float>(map_velocity.y);
   navigation.state.vz = -message.vz;
@@ -270,7 +272,8 @@ void ProductionMppiNode::onLocalPosition(
       if (navigation.world_state_authoritative) {
         lock.unlock();
         queueLatestObservedWorldForPose(navigation);
-        if (use_static_map_ && navigationObjective() && !world_ready_.load()) {
+        if (config_.world.use_static_map && navigationObjective() &&
+            !world_ready_.load()) {
           requestStaticEsdfWork();
         }
       }
@@ -286,7 +289,7 @@ void ProductionMppiNode::onLocalPosition(
                                                    std::isfinite(message.ay) &&
                                                    std::isfinite(message.az);
     if (navigation.linear_acceleration_authoritative) {
-      const Point2 map_acceleration = px4_map_transform_.localVectorToMap(
+      const Point2 map_acceleration = config_.world.px4_map_transform.localVectorToMap(
           Point2{static_cast<double>(message.ax), static_cast<double>(message.ay)});
       navigation.linear_acceleration_authoritative =
           std::isfinite(map_acceleration.x) && std::isfinite(map_acceleration.y);
@@ -295,7 +298,7 @@ void ProductionMppiNode::onLocalPosition(
             mppi::equivalentControlFromMeasuredAcceleration(
                 navigation.state, static_cast<float>(map_acceleration.x),
                 static_cast<float>(map_acceleration.y), -message.az,
-                mppi_config_.dynamics);
+                config_.control.mppi.dynamics);
       }
     }
     navigation.measured_equivalent_control.yaw_accel =
@@ -339,7 +342,7 @@ void ProductionMppiNode::onLocalPosition(
   if (navigation.world_state_authoritative) {
     queueLatestObservedWorldForPose(navigation);
   }
-  if (navigation.world_state_authoritative && use_static_map_ &&
+  if (navigation.world_state_authoritative && config_.world.use_static_map &&
       navigationObjective() && !world_ready_.load()) {
     requestStaticEsdfWork();
   }

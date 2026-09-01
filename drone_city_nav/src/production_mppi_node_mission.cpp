@@ -120,7 +120,7 @@ MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
         commit_now_ns >= now_ns && navigation_.receive_stamp_ns > 0 &&
         commit_now_ns >= navigation_.receive_stamp_ns &&
         static_cast<double>(commit_now_ns - navigation_.receive_stamp_ns) * 1.0e-6 <=
-            maximum_pose_age_ms_;
+            config_.execution.maximum_pose_age_ms;
     const bool objective_current =
         navigation_objective_.load(std::memory_order_acquire) == objective;
     const bool navigation_current =
@@ -138,8 +138,9 @@ MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
         vehicle_status_.valid == vehicle_status.valid &&
         vehicle_status_.armed == vehicle_status.armed &&
         !vehicle_status_epoch_probation_ && !vehicle_status_revision_exhausted_ &&
-        vehicleStatusAuthoritativeForExecution(vehicle_status_, true, commit_now_ns,
-                                               maximum_vehicle_status_age_ms_);
+        vehicleStatusAuthoritativeForExecution(
+            vehicle_status_, true, commit_now_ns,
+            config_.execution.maximum_vehicle_status_age_ms);
     const bool authority_current =
         execution_supervisor_.authority() == execution_authority;
     const bool owner_current = authority_current && execution_horizon_owner.valid &&
@@ -157,10 +158,10 @@ MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
         commit_now_ns >= applied_control.source_stamp_ns &&
         commit_now_ns >= applied_control.receive_stamp_ns &&
         static_cast<double>(commit_now_ns - applied_control.source_stamp_ns) * 1.0e-6 <=
-            maximum_control_feedback_age_ms_ &&
+            config_.execution.maximum_control_feedback_age_ms &&
         static_cast<double>(commit_now_ns - applied_control.receive_stamp_ns) *
                 1.0e-6 <=
-            maximum_control_feedback_age_ms_;
+            config_.execution.maximum_control_feedback_age_ms;
     const bool revocation_current =
         requested_execution_revocation_.load(std::memory_order_acquire) ==
         handled_execution_revocation_request_;
@@ -171,7 +172,7 @@ MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
             applied_control_discontinuity_generation;
     const bool active_goal_current =
         distance3D(mission_waypoint_sequence_->activeGoal(), objective->goal) <=
-        mission_waypoint_capture_gate_config_.target_match_tolerance_m;
+        config_.execution.mission_waypoint_capture_gate.target_match_tolerance_m;
     if (!commit_time_valid || !objective_current || !navigation_current ||
         !status_current || !authority_current || !owner_current || !feedback_current ||
         !feedback_continuity_current || !revocation_current || !active_goal_current) {
@@ -244,7 +245,7 @@ void ProductionMppiNode::publishMissionWaypointAcknowledgement(
     const std::int64_t now_ns) {
   msg::MissionWaypointAcknowledgement acknowledgement;
   acknowledgement.header.stamp = timeFromNanoseconds(now_ns);
-  acknowledgement.header.frame_id = frame_id_;
+  acknowledgement.header.frame_id = config_.world.frame_id;
   acknowledgement.producer_instance_id = execution_horizon_producer_instance_id_;
   acknowledgement.acknowledgement_sequence =
       ++mission_waypoint_acknowledgement_sequence_;

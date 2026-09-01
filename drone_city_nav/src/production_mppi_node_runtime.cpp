@@ -124,11 +124,11 @@ ProductionMppiNode::compareWithPrevious(const mppi::MppiTickResult& result) cons
     return stability;
   }
   const mppi::Control& current = result.controls.front();
-  const double offset_steps =
-      result.warm_start_shift_s / static_cast<double>(mppi_config_.dynamics.dt_s);
-  const std::vector<mppi::Control> shifted_controls =
-      mppi::shiftControlSequence(previous_result_->controls, mppi_config_.dynamics.dt_s,
-                                 result.warm_start_shift_s);
+  const double offset_steps = result.warm_start_shift_s /
+                              static_cast<double>(config_.control.mppi.dynamics.dt_s);
+  const std::vector<mppi::Control> shifted_controls = mppi::shiftControlSequence(
+      previous_result_->controls, config_.control.mppi.dynamics.dt_s,
+      result.warm_start_shift_s);
   const mppi::Control& previous = shifted_controls.front();
   stability.first_control_delta =
       std::hypot(std::hypot(current.ax - previous.ax, current.ay - previous.ay),
@@ -151,8 +151,8 @@ ProductionMppiNode::compareWithPrevious(const mppi::MppiTickResult& result) cons
 
 void ProductionMppiNode::startPlanningTimer() {
   planning_timer_ = create_wall_timer(
-      std::chrono::duration<double>{1.0 / tick_rate_hz_}, [this]() { planningTick(); },
-      planning_callback_group_);
+      std::chrono::duration<double>{1.0 / config_.planning.tick_rate_hz},
+      [this]() { planningTick(); }, planning_callback_group_);
 }
 
 ProductionMppiNode::~ProductionMppiNode() {

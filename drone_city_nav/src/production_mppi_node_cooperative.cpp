@@ -7,113 +7,36 @@
 
 namespace drone_city_nav {
 
-void ProductionMppiNode::configureCooperativeTraffic() {
-  cooperative_traffic_enabled_ =
-      declare_parameter<bool>("cooperative_traffic_enabled", false);
-  vehicle_id_ = declare_parameter<std::string>("vehicle_id", "");
-  cooperative_passage_route_config_.desired_center_separation_m =
-      declare_parameter<double>("cooperative_passage_desired_center_separation_m", 5.0);
-  cooperative_passage_volume_config_.minimum_wall_clearance_m =
-      declare_parameter<double>("cooperative_passage_minimum_wall_clearance_m", 1.0);
-  cooperative_passage_volume_config_.lateral_probe_step_m =
-      declare_parameter<double>("cooperative_passage_lateral_probe_step_m", 0.5);
-  cooperative_passage_volume_config_.cross_section_spacing_m =
-      declare_parameter<double>("cooperative_passage_cross_section_spacing_m", 1.0);
-  cooperative_passage_volume_config_.secondary_probe_step_m =
-      declare_parameter<double>("cooperative_passage_secondary_probe_step_m", 0.5);
-  cooperative_passage_volume_config_.maximum_cross_section_probe_m =
-      declare_parameter<double>("cooperative_passage_maximum_probe_m", 30.0);
-  cooperative_passage_volume_config_.flight_envelope = flight_envelope_config_;
-  cooperative_passage_volume_config_.footprint = SweptFootprintConfig{
-      .radius_m = physical_footprint_config_.radius_m,
-      .lower_extent_m = physical_footprint_config_.lower_extent_m,
-      .upper_extent_m = physical_footprint_config_.upper_extent_m,
-      .perimeter_samples = physical_footprint_config_.perimeter_samples,
-      .radial_rings = physical_footprint_config_.radial_rings,
-      .axial_samples = physical_footprint_config_.axial_samples,
-      .sweep_step_m = physical_footprint_config_.sweep_step_m,
-  };
-  cooperative_passage_route_config_.preferred_transition_length_m =
-      declare_parameter<double>("cooperative_passage_preferred_transition_m", 10.0);
-  cooperative_passage_route_config_.minimum_transition_length_m =
-      declare_parameter<double>("cooperative_passage_minimum_transition_m", 3.0);
-  cooperative_passage_route_config_.directional_offset_fraction =
-      declare_parameter<double>("cooperative_passage_directional_offset_fraction", 0.5);
-  cooperative_passage_route_config_.footprint =
-      cooperative_passage_volume_config_.footprint;
-  cooperative_passage_timing_config_.minimum_prediction_speed_mps =
-      declare_parameter<double>("cooperative_passage_minimum_prediction_speed_mps",
-                                1.0);
-  cooperative_passage_timing_config_.maximum_prediction_horizon_s =
-      declare_parameter<double>("cooperative_passage_maximum_prediction_horizon_s",
-                                30.0);
-  cooperative_passage_yield_config_.stopping_buffer_m =
-      declare_parameter<double>("cooperative_passage_stopping_buffer_m", 2.0);
-  cooperative_passage_yield_config_.reaction_latency_s =
-      declare_parameter<double>("cooperative_passage_reaction_latency_s", 0.1);
-  cooperative_passage_yield_config_.maximum_braking_acceleration_mps2 =
-      declare_parameter<double>("cooperative_passage_maximum_braking_mps2", 8.0);
-  mppi_config_.cooperative.desired_minimum_separation_m = static_cast<float>(
-      declare_parameter<double>("cooperative_desired_minimum_separation_m", 5.0));
-  mppi_config_.cooperative.candidate_acceleration_fraction = static_cast<float>(
-      declare_parameter<double>("cooperative_candidate_acceleration_fraction", 0.75));
-  mppi_config_.cooperative.candidate_duration_s = static_cast<float>(
-      declare_parameter<double>("cooperative_candidate_duration_s", 1.5));
-  mppi_config_.costs.peer_separation_weight = static_cast<float>(
-      declare_parameter<double>("cooperative_peer_separation_weight", 80.0));
-  mppi_config_.costs.cooperative_maneuver_preference_weight = static_cast<float>(
-      declare_parameter<double>("cooperative_maneuver_preference_weight", 1.5));
-
-  if ((cooperative_traffic_enabled_ && vehicle_id_.empty()) ||
-      !passageVolumeConfigIsValid(cooperative_passage_volume_config_) ||
-      !(cooperative_passage_route_config_.desired_center_separation_m > 0.0) ||
-      !(cooperative_passage_route_config_.directional_offset_fraction >= 0.0) ||
-      !(cooperative_passage_route_config_.directional_offset_fraction <= 1.0) ||
-      !(cooperative_passage_route_config_.preferred_transition_length_m > 0.0) ||
-      !(cooperative_passage_route_config_.minimum_transition_length_m > 0.0) ||
-      cooperative_passage_route_config_.minimum_transition_length_m >
-          cooperative_passage_route_config_.preferred_transition_length_m ||
-      !(cooperative_passage_timing_config_.minimum_prediction_speed_mps > 0.0) ||
-      !(cooperative_passage_timing_config_.maximum_prediction_horizon_s > 0.0) ||
-      !(cooperative_passage_yield_config_.stopping_buffer_m >= 0.0) ||
-      !(cooperative_passage_yield_config_.reaction_latency_s >= 0.0) ||
-      !(cooperative_passage_yield_config_.maximum_braking_acceleration_mps2 > 0.0)) {
-    throw std::invalid_argument{"invalid cooperative planner configuration"};
-  }
-}
-
 void ProductionMppiNode::createCooperativeTrafficInterfaces(
     const rclcpp::SubscriptionOptions& subscription_options) {
-  if (!cooperative_traffic_enabled_) {
+  if (!config_.planning.cooperative_traffic_enabled) {
     return;
   }
   const auto command_qos = rclcpp::QoS{4}.reliable();
   cooperative_command_sub_ = create_subscription<msg::CooperativeManeuverCommand>(
-      declare_parameter<std::string>("cooperative_maneuver_command_topic",
-                                     "/drone_city_nav/cooperative/command"),
-      command_qos,
+      config_.planning.topics.cooperative_maneuver_command, command_qos,
       [this](const msg::CooperativeManeuverCommand::SharedPtr message) {
         onCooperativeManeuverCommand(*message);
       },
       subscription_options);
   cooperative_passage_state_pub_ = create_publisher<msg::CooperativePassageIntent>(
-      declare_parameter<std::string>("cooperative_passage_state_topic",
-                                     "/drone_city_nav/cooperative/passage_state"),
-      command_qos);
+      config_.planning.topics.cooperative_passage_state, command_qos);
 }
 
 void ProductionMppiNode::onCooperativeManeuverCommand(
     const msg::CooperativeManeuverCommand& message) {
   const CooperativeManeuverCommandData command =
       cooperativeManeuverCommandData(message);
-  if (message.header.frame_id != frame_id_ || command.vehicle_id != vehicle_id_ ||
+  if (message.header.frame_id != config_.world.frame_id ||
+      command.vehicle_id != config_.planning.vehicle_id ||
       command.command_generation == 0U || command.stamp_ns <= 0 ||
       command.valid_until_ns < command.stamp_ns) {
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "COOPERATIVE_COMMAND_REJECTED vehicle_id='%s' source_vehicle_id='%s' "
         "generation=%" PRIu64 " reason=invalid_contract",
-        vehicle_id_.c_str(), command.vehicle_id.c_str(), command.command_generation);
+        config_.planning.vehicle_id.c_str(), command.vehicle_id.c_str(),
+        command.command_generation);
     return;
   }
   const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();

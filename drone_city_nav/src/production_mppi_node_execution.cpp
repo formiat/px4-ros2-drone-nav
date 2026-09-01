@@ -107,9 +107,9 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       now_ns >= offboard_session.latest_source_stamp_ns &&
       now_ns >= offboard_session_receive_stamp_ns &&
       static_cast<double>(now_ns - offboard_session.latest_source_stamp_ns) * 1.0e-6 <=
-          maximum_control_feedback_age_ms_ &&
+          config_.execution.maximum_control_feedback_age_ms &&
       static_cast<double>(now_ns - offboard_session_receive_stamp_ns) * 1.0e-6 <=
-          maximum_control_feedback_age_ms_;
+          config_.execution.maximum_control_feedback_age_ms;
   if (offboard_session_fresh) {
     target_offboard_instance_id = offboard_session.current_producer_instance_id;
   }
@@ -140,12 +140,12 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       .body_axis = bodyAxisFromWorldAcceleration(Vec3{exact_previous_control.ax,
                                                       exact_previous_control.ay,
                                                       exact_previous_control.az}),
-      .footprint = physical_footprint_config_,
+      .footprint = config_.world.physical_footprint,
   };
   std::shared_ptr<const VersionedObservedRawWorld3D> direct_observed_world;
   std::shared_ptr<const VersionedStaticWorld3D> direct_static_world;
   if (direct_tracking_requested || stationary_capture_rearm) {
-    if (use_static_map_ && world.static_occupancy != nullptr) {
+    if (config_.world.use_static_map && world.static_occupancy != nullptr) {
       const DirectTrackingFiniteExecution3D* const direct_execution =
           route_execution.source_snapshot->directTrackingExecution();
       const CertifiedRouteSuffix3D* const source_route =
@@ -167,11 +167,12 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   if (selected_snapshot_route != nullptr) {
     selected_policy = selected_snapshot_route->validation_policy;
   } else if (direct_tracking_requested || stationary_capture_rearm) {
-    selected_policy = execution_validation_policy_;
+    selected_policy = config_.execution.validation_policy;
   }
   const double latest_lidar_maximum_age_ms =
-      selected_policy != nullptr ? selected_policy->latestLidarMaximumAgeMs()
-                                 : latest_lidar_obstacle_maximum_age_ms_;
+      selected_policy != nullptr
+          ? selected_policy->latestLidarMaximumAgeMs()
+          : config_.execution.latest_lidar_obstacle_maximum_age_ms;
   const LatestLidarEvidenceFreshness3D latest_lidar_freshness =
       production_mppi_execution_detail::latestLidarEvidenceFreshness(
           latest_lidar_evidence, lidar_validation_now_ns, latest_lidar_maximum_age_ms);
@@ -267,7 +268,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   };
   const float execution_dt_s = execution_dynamics != nullptr
                                    ? execution_dynamics->dt_s
-                                   : mppi_config_.dynamics.dt_s;
+                                   : config_.control.mppi.dynamics.dt_s;
   const std::size_t arrival_search_step_controls =
       mppi::finiteHorizonArrivalSearchStepControls(execution_dt_s);
   const std::int64_t finite_path_control_interval_ns =
