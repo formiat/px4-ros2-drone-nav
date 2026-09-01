@@ -21,6 +21,7 @@
 #include "navigation_diagnostics_sink.hpp"
 #include "planning_cycle_coordinator_3d.hpp"
 #include "production_mppi_node_configuration.hpp"
+#include "raw_world_ingress_ros_3d.hpp"
 #include "world_pipeline_3d.hpp"
 
 namespace drone_city_nav {

@@ -1,7 +1,6 @@
 #pragma once
 
 #include "drone_city_nav/observed_esdf_3d.hpp"
-#include "drone_city_nav/raw_obstacle_3d_ros.hpp"
 #include "drone_city_nav/world_generation.hpp"
 #include "drone_city_nav/world_snapshot_3d.hpp"
 
@@ -15,7 +14,6 @@
 #include <mutex>
 #include <optional>
 #include <span>
-#include <string_view>
 #include <thread>
 #include <variant>
 
@@ -26,41 +24,20 @@
 
 namespace drone_city_nav {
 
-enum class RawWorldCommitStatus3D : std::uint8_t {
-  kCommitted,
+enum class RawWorldPublicationStatus3D : std::uint8_t {
+  kPublished,
   kStopped,
-  kInvalidUpdate,
-  kInvalidExecutionOwner,
-  kSupersededEvidence,
+  kInvalidWorld,
 };
 
-[[nodiscard]] std::string_view
-rawWorldCommitStatus3DName(RawWorldCommitStatus3D status) noexcept;
-
-struct RawWorldIngestionResult3D {
-  RawObstacleGridUpdate3D update{};
-  bool execution_revocation_required{false};
-};
-
-struct MemoryStatusIngestionResult3D {
-  std::optional<RawObstacleGridUpdate3D> synchronized_update;
-  bool execution_revocation_required{false};
-};
-
-struct RawWorldCommitResult3D {
-  RawWorldCommitStatus3D status{RawWorldCommitStatus3D::kInvalidUpdate};
+struct RawWorldPublicationResult3D {
+  RawWorldPublicationStatus3D status{RawWorldPublicationStatus3D::kInvalidWorld};
   std::shared_ptr<const ProductionMppiRawWorld3D> world;
   bool replaced_pending{false};
 
-  [[nodiscard]] bool committed() const noexcept {
-    return status == RawWorldCommitStatus3D::kCommitted && world != nullptr;
+  [[nodiscard]] bool published() const noexcept {
+    return status == RawWorldPublicationStatus3D::kPublished && world != nullptr;
   }
-};
-
-struct WorldPipelineInputSnapshot3D {
-  LatestObservation latest_observation{};
-  std::shared_ptr<const ProductionMppiRawWorld3D> latest_raw_world;
-  bool raw_world_identity_conflicted{false};
 };
 
 struct WorldPipelineResidentSnapshot3D {
@@ -197,23 +174,9 @@ public:
   void stop() noexcept;
   [[nodiscard]] bool accepting() const noexcept;
 
-  [[nodiscard]] RawWorldIngestionResult3D
-  ingestRawSnapshot(const msg::RawObstacleSnapshot3D& message,
-                    std::int64_t receive_stamp_ns,
-                    const ProducerEpochAdmissionConfig& config, bool frame_matches);
-  [[nodiscard]] RawWorldIngestionResult3D
-  ingestRawDelta(const msg::RawObstacleDelta3D& message, std::int64_t receive_stamp_ns,
-                 const ProducerEpochAdmissionConfig& config, bool frame_matches);
-  [[nodiscard]] MemoryStatusIngestionResult3D
-  ingestMemoryStatus(const ProducerEpochObservation& observation,
-                     bool announces_raw_update, std::int64_t now_ns,
-                     const ProducerEpochAdmissionConfig& config, bool frame_matches);
-  [[nodiscard]] RawWorldCommitResult3D
-  commitRawUpdate(const RawObstacleGridUpdate3D& update, double reconstruction_ms,
-                  std::int64_t ready_stamp_ns,
-                  const ProducerEpochAdmissionConfig& config);
-
-  [[nodiscard]] WorldPipelineInputSnapshot3D inputSnapshot() const;
+  [[nodiscard]] RawWorldPublicationResult3D
+  publishRawWorld(std::shared_ptr<const ProductionMppiRawWorld3D> raw_world);
+  void invalidateRawWorld() noexcept;
   [[nodiscard]] std::shared_ptr<const ProductionMppiRawWorld3D>
   latestRawWorld() const noexcept;
   [[nodiscard]] bool scheduleLatestRawWorldUrgently();
@@ -268,8 +231,6 @@ private:
       const std::shared_ptr<const WorldSnapshot3D>& expected_world,
       std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_world_owner,
       std::optional<ProprioceptiveFreeSpaceSeed3D> free_space_seed);
-  [[nodiscard]] RawWorldIngestionResult3D
-  finishRawIngestionLocked(RawObstacleGridUpdate3D update);
   void run(std::stop_token stop_token) noexcept;
   void runObserved(std::stop_token stop_token) noexcept;
   void runStatic(std::stop_token stop_token) noexcept;
@@ -300,11 +261,7 @@ private:
   bool stopping_{false};
   std::atomic_bool accepting_{false};
 
-  mutable std::mutex ingestion_mutex_;
-  LatestObservationTracker latest_observation_tracker_{};
-  RawObstacleDeltaAccumulator3D raw_delta_accumulator_{};
-  ProductionMppiPendingRawWorldUpdate pending_raw_world_update_{};
-  bool raw_world_identity_conflicted_{false};
+  mutable std::mutex raw_world_mutex_;
   std::atomic<std::shared_ptr<const ProductionMppiRawWorld3D>> latest_raw_world_;
 
   mutable std::mutex queue_mutex_;

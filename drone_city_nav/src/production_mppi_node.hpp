@@ -44,7 +44,6 @@
 #include "drone_city_nav/passage_volume.hpp"
 #include "drone_city_nav/persistent_dstar_lite_planner_3d.hpp"
 #include "drone_city_nav/px4_map_frame_transform.hpp"
-#include "drone_city_nav/raw_obstacle_3d_ros.hpp"
 #include "drone_city_nav/raw_obstacle_delta.hpp"
 #include "drone_city_nav/route_3d.hpp"
 #include "drone_city_nav/route_lifecycle_3d.hpp"
@@ -110,6 +109,8 @@ struct StaticWorldUpdate3D;
 enum class ProductionMppiHorizonCommitStatus : std::uint8_t;
 class NavigationDiagnosticsSink;
 class WorldPipeline3D;
+class RawWorldIngressRos3D;
+struct RawObstacleGridUpdate3D;
 
 [[nodiscard]] const char*
 productionPlanningSearchKindName(ProductionPlanningSearchKind kind) noexcept;
@@ -433,6 +434,7 @@ private:
   std::atomic_bool vehicle_navigation_ready_{false};
   std::atomic_bool world_ready_{false};
   std::unique_ptr<WorldPipeline3D> world_pipeline_;
+  std::unique_ptr<RawWorldIngressRos3D> raw_world_ingress_;
   std::atomic<std::shared_ptr<const ProductionRouteActivationResult3D>>
       latest_route_pipeline_event_;
 

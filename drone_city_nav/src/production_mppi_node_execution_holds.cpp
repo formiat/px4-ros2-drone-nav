@@ -9,7 +9,7 @@
 #include <optional>
 
 #include "production_mppi_node_execution_internal.hpp"
-#include "world_pipeline_3d.hpp"
+#include "raw_world_ingress_ros_3d.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -33,7 +33,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
   ProductionMppiExecutionPublication& publication = cycle.publicationRef();
   const std::scoped_lock evidence_lock{execution_evidence_commit_mutex_,
                                        latest_lidar_evidence_commit_mutex_};
-  const WorldPipelineInputSnapshot3D world_input = world_pipeline_->inputSnapshot();
+  const RawWorldIngressSnapshot3D world_input = raw_world_ingress_->snapshot();
   const std::shared_ptr<const VersionedObservedRawWorld3D> current_observed_raw_world =
       world_input.latest_raw_world != nullptr
           ? world_input.latest_raw_world->authoritativeOwner()

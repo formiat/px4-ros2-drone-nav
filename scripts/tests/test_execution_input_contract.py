@@ -9,18 +9,9 @@ PACKAGE = ROOT / "drone_city_nav"
 SOURCE = PACKAGE / "src"
 NAVIGATION_INPUT = SOURCE / "production_mppi_node_navigation_input.cpp"
 INPUTS = SOURCE / "production_mppi_node_inputs.cpp"
-RAW_INPUT = SOURCE / "production_mppi_node_raw_input.cpp"
 PLANNING_TICK = SOURCE / "production_mppi_node_planning_tick.cpp"
-EXECUTION_PUBLICATION = SOURCE / "production_mppi_node_execution_publication.cpp"
-EXECUTION_HORIZON_SERVICE = SOURCE / "execution_supervisor_3d_horizon.cpp"
-EXECUTION_HORIZON_TEST = (
-    PACKAGE / "tests" / "execution_supervisor_horizon_3d_test.cpp"
-)
 NODE_HEADER = SOURCE / "production_mppi_node.hpp"
-RAW_2D = SOURCE / "raw_obstacle_delta.cpp"
-RAW_3D = SOURCE / "raw_obstacle_3d_ros.cpp"
 PRODUCER_ADMISSION = SOURCE / "producer_epoch_admission.cpp"
-CMAKE = PACKAGE / "CMakeLists.txt"
 
 
 class ExecutionInputContractTest(unittest.TestCase):
@@ -173,91 +164,6 @@ class ExecutionInputContractTest(unittest.TestCase):
             "latest_lidar_evidence_identity_conflicted_.load(", planning_tick
         )
         self.assertIn("? nullptr", planning_tick)
-
-    def test_raw_world_runtime_delegates_to_the_3d_pipeline_owner(self) -> None:
-        raw_input = RAW_INPUT.read_text(encoding="utf-8")
-        raw_2d = RAW_2D.read_text(encoding="utf-8")
-        raw_3d = RAW_3D.read_text(encoding="utf-8")
-        planning_tick = PLANNING_TICK.read_text(encoding="utf-8")
-        publication = EXECUTION_PUBLICATION.read_text(encoding="utf-8")
-        cmake = CMAKE.read_text(encoding="utf-8")
-
-        self.assertIn("src/production_mppi_node_raw_input.cpp", cmake)
-        self.assertNotIn("publishExecutionRevocation", raw_input)
-        self.assertNotIn("ProductionMppiNode::onRawObstacleSnapshot(", raw_input)
-        self.assertNotIn("ProductionMppiNode::onRawObstacleDelta(", raw_input)
-        for boundary in (
-            "world_pipeline_->ingestRawSnapshot(",
-            "world_pipeline_->ingestRawDelta(",
-            "world_pipeline_->ingestMemoryStatus(",
-            "world_pipeline_->commitRawUpdate(",
-        ):
-            self.assertIn(boundary, raw_input)
-        raw_commit = raw_input.split(
-            "void ProductionMppiNode::queueRawWorld3D", maxsplit=1
-        )[1].split("void ProductionMppiNode::onMemoryStatus", maxsplit=1)[0]
-        self.assertIn(
-            "execution_evidence_commit_mutex_, input_mutex_", raw_commit
-        )
-
-        for source, snapshot_fingerprint, delta_fingerprint in (
-            (
-                raw_2d,
-                "rawObstacleSnapshotWireFingerprint(snapshot)",
-                "rawObstacleDeltaWireFingerprint(delta)",
-            ),
-            (
-                raw_3d,
-                "rawObstacleSnapshot3DWireFingerprint(snapshot)",
-                "rawObstacleDelta3DWireFingerprint(delta)",
-            ),
-        ):
-            self.assertIn(snapshot_fingerprint, source)
-            self.assertIn(delta_fingerprint, source)
-            self.assertIn("pending.full_snapshot", source)
-            self.assertIn("prospective_identity_capacity_exhausted_", source)
-            self.assertIn("prospectiveSequenceHighWater", source)
-            self.assertIn("const ProspectiveIdentity selected_pending", source)
-            self.assertIn(
-                ".evidence_observation = selected_pending.observation", source
-            )
-
-        planning_raw_gate = planning_tick.split(
-            "double observation_age_ms", maxsplit=1
-        )[1].split("const bool observation_fresh", maxsplit=1)[0]
-        self.assertIn("committedRawWorldAgeMs", planning_raw_gate)
-        self.assertIn("latest_raw_world_3d", planning_raw_gate)
-        self.assertIn("!raw_world_identity_conflicted", planning_raw_gate)
-        self.assertNotIn("latest_observation.ageMs", planning_raw_gate)
-
-        commit = publication.split(
-            "ProductionMppiNode::commitAndPublishExecutionHorizon", maxsplit=1
-        )[1].split("ProductionMppiNode::commitExecutionSnapshotHorizon", maxsplit=1)[0]
-        horizon_service = EXECUTION_HORIZON_SERVICE.read_text(encoding="utf-8")
-        horizon_test = EXECUTION_HORIZON_TEST.read_text(encoding="utf-8")
-        input_lock = commit.index("input_lock{input_mutex_}")
-        raw_capture = commit.index("committedRawWorldAgeMs")
-        horizon_commit = commit.index("execution_supervisor_.commitHorizon")
-        self.assertLess(input_lock, raw_capture)
-        self.assertLess(raw_capture, horizon_commit)
-        self.assertIn("committedRawWorldAgeMs", commit)
-        self.assertIn(".raw_world_identity_conflicted =", commit)
-        self.assertNotIn("cycle_raw_producer_instance_id", commit)
-        self.assertNotIn("raw_world_required", commit)
-        self.assertIn(
-            "rawWorldCurrent(request.runtime, expected_raw,", horizon_service
-        )
-        self.assertIn(
-            "expected_raw->version().producer_instance_id", horizon_service
-        )
-        self.assertLess(
-            horizon_service.index("rawWorldCurrent(request.runtime, expected_raw,"),
-            horizon_service.index("manager_.publishLeasedTransition"),
-        )
-        self.assertIn(
-            "RuntimeEvidenceFailureIsTypedAndLeavesAuthorityUnchanged",
-            horizon_test,
-        )
 
     def test_producer_claims_raise_exact_once_sequence_high_water(self) -> None:
         admission = PRODUCER_ADMISSION.read_text(encoding="utf-8")

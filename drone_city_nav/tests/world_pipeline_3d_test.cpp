@@ -21,10 +21,6 @@ namespace {
 using namespace std::chrono_literals;
 
 constexpr GridBounds3D kRawBounds{-4.0, -4.0, -2.0, 1.0, 8, 8, 4};
-constexpr ProducerEpochAdmissionConfig kAdmissionConfig{
-    .maximum_observation_age_ns = 100'000'000'000LL,
-    .maximum_confirmation_interval_ns = 10'000'000'000LL,
-};
 
 using RawWorldProbe3D =
     std::function<void(std::shared_ptr<const ProductionMppiRawWorld3D>)>;
@@ -249,47 +245,12 @@ staticRuntime(const std::shared_ptr<const OccupancyGrid3D>& occupancy,
   };
 }
 
-[[nodiscard]] std_msgs::msg::Header headerAt(const std::int64_t stamp_ns) {
-  std_msgs::msg::Header header;
-  header.frame_id = "map";
-  header.stamp.sec = static_cast<std::int32_t>(stamp_ns / 1'000'000'000LL);
-  header.stamp.nanosec = static_cast<std::uint32_t>(stamp_ns % 1'000'000'000LL);
-  return header;
-}
-
-[[nodiscard]] ProducerEpochObservation
-statusObservation(const std::uint64_t producer, const std::uint64_t sequence,
-                  const std::int64_t source_stamp_ns,
-                  const std::int64_t receive_stamp_ns) noexcept {
-  return ProducerEpochObservation{
-      .producer_instance_id = producer,
-      .sequence = sequence,
-      .source_stamp_ns = source_stamp_ns,
-      .receive_stamp_ns = receive_stamp_ns,
-      .content_fingerprint = 10'000U + sequence,
-  };
-}
-
-[[nodiscard]] RawWorldCommitResult3D
-ingestAndCommit(WorldPipeline3D& pipeline, const ObservedOccupancyGrid3D& grid,
-                const std::uint64_t producer, const std::uint64_t sequence) {
-  const std::int64_t source_stamp_ns =
-      static_cast<std::int64_t>(sequence) * 1'000'000'000LL;
-  const std::int64_t status_receive_stamp_ns = source_stamp_ns + 10'000'000LL;
-  const MemoryStatusIngestionResult3D status = pipeline.ingestMemoryStatus(
-      statusObservation(producer, sequence, source_stamp_ns, status_receive_stamp_ns),
-      true, status_receive_stamp_ns, kAdmissionConfig, true);
-  EXPECT_FALSE(status.execution_revocation_required);
-  const msg::RawObstacleSnapshot3D snapshot =
-      makeRawObstacleSnapshot3D(grid, headerAt(source_stamp_ns), producer, sequence);
-  const std::int64_t raw_receive_stamp_ns = source_stamp_ns + 20'000'000LL;
-  const RawWorldIngestionResult3D ingestion = pipeline.ingestRawSnapshot(
-      snapshot, raw_receive_stamp_ns, kAdmissionConfig, true);
-  EXPECT_TRUE(ingestion.update.accepted());
-  EXPECT_FALSE(ingestion.execution_revocation_required);
-  RawWorldCommitResult3D result = pipeline.commitRawUpdate(
-      ingestion.update, 1.5, source_stamp_ns + 30'000'000LL, kAdmissionConfig);
-  if (result.committed()) {
+[[nodiscard]] RawWorldPublicationResult3D
+publishRawWorld(WorldPipeline3D& pipeline, const ObservedOccupancyGrid3D& grid,
+                const std::uint64_t revision) {
+  RawWorldPublicationResult3D result =
+      pipeline.publishRawWorld(rawWorld(grid, revision));
+  if (result.published()) {
     EXPECT_TRUE(result.world->valid());
     EXPECT_NE(result.world->authoritativeOwner(), nullptr);
     EXPECT_EQ(&result.world->authoritativeOwner()->version(), &result.world->version());
@@ -320,16 +281,16 @@ TEST(WorldPipeline3DTest, LatestWinsWorkerOwnsOverloadAndDirtyLineage) {
   ObservedOccupancyGrid3D grid{kRawBounds};
   static_cast<void>(grid.setState({1, 1, 1}, ObservedVoxelState::kOccupied));
 
-  ASSERT_TRUE(ingestAndCommit(pipeline, grid, 42U, 1U).committed());
+  ASSERT_TRUE(publishRawWorld(pipeline, grid, 1U).published());
   {
     std::unique_lock lock{mutex};
     ASSERT_TRUE(condition.wait_for(lock, 1s, [&]() noexcept { return first_entered; }));
   }
   static_cast<void>(grid.setState({2, 1, 1}, ObservedVoxelState::kOccupied));
-  ASSERT_TRUE(ingestAndCommit(pipeline, grid, 42U, 2U).committed());
+  ASSERT_TRUE(publishRawWorld(pipeline, grid, 2U).published());
   static_cast<void>(grid.setState({3, 1, 1}, ObservedVoxelState::kOccupied));
-  const RawWorldCommitResult3D third = ingestAndCommit(pipeline, grid, 42U, 3U);
-  ASSERT_TRUE(third.committed());
+  const RawWorldPublicationResult3D third = publishRawWorld(pipeline, grid, 3U);
+  ASSERT_TRUE(third.published());
   EXPECT_TRUE(third.replaced_pending);
   {
     const std::scoped_lock lock{mutex};
@@ -351,27 +312,18 @@ TEST(WorldPipeline3DTest, LatestWinsWorkerOwnsOverloadAndDirtyLineage) {
   EXPECT_EQ(pipeline.latestRawWorld()->version().revision, 3U);
 }
 
-TEST(WorldPipeline3DTest, IdentityConflictClearsAuthorityUntilNewerEvidence) {
+TEST(WorldPipeline3DTest, RawInvalidationRevokesLatestAndDeferredScheduling) {
   WorldPipeline3D pipeline{observedRuntime()};
   pipeline.start();
   ObservedOccupancyGrid3D grid{kRawBounds};
-  static_cast<void>(grid.setState({1, 1, 1}, ObservedVoxelState::kFree));
-  ASSERT_TRUE(ingestAndCommit(pipeline, grid, 42U, 1U).committed());
+  ASSERT_TRUE(grid.setState({1, 1, 1}, ObservedVoxelState::kOccupied));
+  ASSERT_TRUE(publishRawWorld(pipeline, grid, 1U).published());
 
-  static_cast<void>(grid.setState({1, 1, 1}, ObservedVoxelState::kOccupied));
-  const msg::RawObstacleSnapshot3D conflict =
-      makeRawObstacleSnapshot3D(grid, headerAt(1'000'000'000LL), 42U, 1U);
-  const RawWorldIngestionResult3D conflicted =
-      pipeline.ingestRawSnapshot(conflict, 1'040'000'000LL, kAdmissionConfig, true);
-  EXPECT_EQ(conflicted.update.status, RawObstacleGridUpdateStatus3D::kIdentityConflict);
-  EXPECT_TRUE(conflicted.execution_revocation_required);
-  EXPECT_TRUE(pipeline.inputSnapshot().raw_world_identity_conflicted);
+  pipeline.invalidateRawWorld();
+
   EXPECT_EQ(pipeline.latestRawWorld(), nullptr);
-
-  ASSERT_TRUE(ingestAndCommit(pipeline, grid, 42U, 2U).committed());
-  EXPECT_FALSE(pipeline.inputSnapshot().raw_world_identity_conflicted);
-  ASSERT_NE(pipeline.latestRawWorld(), nullptr);
-  EXPECT_EQ(pipeline.latestRawWorld()->version().revision, 2U);
+  EXPECT_FALSE(pipeline.scheduleLatestRawWorldUrgently());
+  EXPECT_EQ(pipeline.statistics().raw_updates, 1U);
   pipeline.stop();
 }
 
@@ -994,7 +946,7 @@ TEST(WorldPipeline3DTest, StopCannotDeadlockAProcessorReenteringLifecycleApi) {
   pipeline_address = std::addressof(pipeline);
   pipeline.start();
   ObservedOccupancyGrid3D grid{kRawBounds};
-  ASSERT_TRUE(ingestAndCommit(pipeline, grid, 42U, 1U).committed());
+  ASSERT_TRUE(publishRawWorld(pipeline, grid, 1U).published());
   {
     std::unique_lock lock{mutex};
     ASSERT_TRUE(
@@ -1040,7 +992,7 @@ TEST(WorldPipeline3DTest, ProcessingFailureIsContainedAndStopRejectsWork) {
       }};
   pipeline.start();
   ObservedOccupancyGrid3D grid{kRawBounds};
-  ASSERT_TRUE(ingestAndCommit(pipeline, grid, 42U, 1U).committed());
+  ASSERT_TRUE(publishRawWorld(pipeline, grid, 1U).published());
   {
     std::unique_lock lock{mutex};
     ASSERT_TRUE(condition.wait_for(lock, 1s, [&]() noexcept { return processed; }));
@@ -1050,8 +1002,8 @@ TEST(WorldPipeline3DTest, ProcessingFailureIsContainedAndStopRejectsWork) {
   EXPECT_EQ(statistics.processing_failures, 1U);
   EXPECT_EQ(statistics.failure_handler_failures, 1U);
 
-  const RawWorldCommitResult3D rejected = ingestAndCommit(pipeline, grid, 42U, 2U);
-  EXPECT_EQ(rejected.status, RawWorldCommitStatus3D::kStopped);
+  const RawWorldPublicationResult3D rejected = publishRawWorld(pipeline, grid, 2U);
+  EXPECT_EQ(rejected.status, RawWorldPublicationStatus3D::kStopped);
   EXPECT_EQ(pipeline.statistics().rejected_after_stop, 1U);
 }
 

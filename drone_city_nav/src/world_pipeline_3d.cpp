@@ -24,37 +24,7 @@ void mergeDirtyChunks(std::vector<OccupancyChunkIndex3D>& destination,
   destination.erase(duplicates.begin(), duplicates.end());
 }
 
-[[nodiscard]] bool
-evidenceMatches(const ProducerEvidenceAdmissionState& evidence,
-                const ProducerEpochAuthority& authority,
-                const ProducerEpochObservation& observation) noexcept {
-  return authority.valid() && !evidence.current_identity_conflicted &&
-         evidence.authority_generation == authority.generation &&
-         evidence.producer_instance_id == authority.producer_instance_id &&
-         evidence.producer_instance_id == observation.producer_instance_id &&
-         evidence.sequence == observation.sequence &&
-         evidence.source_stamp_ns == observation.source_stamp_ns &&
-         evidence.content_fingerprint == observation.content_fingerprint;
-}
-
 } // namespace
-
-std::string_view
-rawWorldCommitStatus3DName(const RawWorldCommitStatus3D status) noexcept {
-  switch (status) {
-    case RawWorldCommitStatus3D::kCommitted:
-      return "committed";
-    case RawWorldCommitStatus3D::kStopped:
-      return "stopped";
-    case RawWorldCommitStatus3D::kInvalidUpdate:
-      return "invalid_update";
-    case RawWorldCommitStatus3D::kInvalidExecutionOwner:
-      return "invalid_execution_owner";
-    case RawWorldCommitStatus3D::kSupersededEvidence:
-      return "superseded_evidence";
-  }
-  return "unknown";
-}
 
 WorldPipeline3D::ResidentLease::ResidentLease(const WorldPipeline3D& owner)
     : owner_{std::addressof(owner)},
@@ -180,122 +150,11 @@ bool WorldPipeline3D::accepting() const noexcept {
   return accepting_.load(std::memory_order_acquire);
 }
 
-RawWorldIngestionResult3D WorldPipeline3D::ingestRawSnapshot(
-    const msg::RawObstacleSnapshot3D& message, const std::int64_t receive_stamp_ns,
-    const ProducerEpochAdmissionConfig& config, const bool frame_matches) {
-  const std::scoped_lock lock{ingestion_mutex_};
-  return finishRawIngestionLocked(raw_delta_accumulator_.apply(
-      message, latest_observation_tracker_.admissionState(), receive_stamp_ns,
-      receive_stamp_ns, config, frame_matches));
-}
-
-RawWorldIngestionResult3D WorldPipeline3D::ingestRawDelta(
-    const msg::RawObstacleDelta3D& message, const std::int64_t receive_stamp_ns,
-    const ProducerEpochAdmissionConfig& config, const bool frame_matches) {
-  const std::scoped_lock lock{ingestion_mutex_};
-  return finishRawIngestionLocked(raw_delta_accumulator_.apply(
-      message, latest_observation_tracker_.admissionState(), receive_stamp_ns,
-      receive_stamp_ns, config, frame_matches));
-}
-
-RawWorldIngestionResult3D
-WorldPipeline3D::finishRawIngestionLocked(RawObstacleGridUpdate3D update) {
-  const bool conflict_started =
-      update.current_identity_conflict && !raw_world_identity_conflicted_;
-  if (update.current_identity_conflict) {
-    raw_world_identity_conflicted_ = true;
-    latest_raw_world_.store(nullptr, std::memory_order_release);
-  }
-  return RawWorldIngestionResult3D{
-      .update = std::move(update),
-      .execution_revocation_required = conflict_started,
-  };
-}
-
-MemoryStatusIngestionResult3D WorldPipeline3D::ingestMemoryStatus(
-    const ProducerEpochObservation& observation, const bool announces_raw_update,
-    const std::int64_t now_ns, const ProducerEpochAdmissionConfig& config,
-    const bool frame_matches) {
-  const std::scoped_lock lock{ingestion_mutex_};
-  const ProducerEpochAdmissionResult admission =
-      latest_observation_tracker_.observe(config, observation, now_ns, frame_matches);
-  const bool authority_boundary =
-      admission.status == ProducerEpochAdmissionStatus::kAcceptedInitial ||
-      admission.producer_handoff;
-  bool execution_revocation_required = false;
-  if (authority_boundary) {
-    raw_world_identity_conflicted_ = false;
-    pending_raw_world_update_ = {};
-  }
-  if (admission.current_identity_conflict) {
-    execution_revocation_required = !raw_world_identity_conflicted_;
-    raw_world_identity_conflicted_ = true;
-    latest_raw_world_.store(nullptr, std::memory_order_release);
-  }
-  if (admission.install_observation && announces_raw_update) {
-    const ProducerEpochAuthority authority = latest_observation_tracker_.authority();
-    const ProducerEvidenceAdmissionState& evidence =
-        raw_delta_accumulator_.evidenceAdmissionState();
-    const std::shared_ptr<const ProductionMppiRawWorld3D> raw_world =
-        latest_raw_world_.load(std::memory_order_acquire);
-    const bool raw_pointer_current =
-        raw_world != nullptr &&
-        raw_world->version().producer_instance_id == authority.producer_instance_id &&
-        raw_world->version().revision == evidence.sequence;
-    const bool installed_through_status =
-        authority.valid() && !evidence.current_identity_conflicted &&
-        evidence.authority_generation == authority.generation &&
-        evidence.producer_instance_id == authority.producer_instance_id &&
-        evidence.source_stamp_ns >= observation.source_stamp_ns && raw_pointer_current;
-    if (!installed_through_status) {
-      pending_raw_world_update_ = ProductionMppiPendingRawWorldUpdate{
-          .authority_generation = authority.generation,
-          .producer_instance_id = authority.producer_instance_id,
-          .announced_sequence = observation.sequence,
-          .minimum_source_stamp_ns = observation.source_stamp_ns,
-      };
-    } else if (raw_world != nullptr &&
-               pending_raw_world_update_.satisfiedBy(evidence, raw_world->version())) {
-      pending_raw_world_update_ = {};
-    }
-  }
-  std::optional<RawObstacleGridUpdate3D> synchronized =
-      raw_delta_accumulator_.synchronizeProducerEpoch(
-          latest_observation_tracker_.admissionState(), now_ns, config);
-  if (synchronized.has_value() && synchronized->current_identity_conflict) {
-    if (!raw_world_identity_conflicted_) {
-      execution_revocation_required = true;
-    }
-    raw_world_identity_conflicted_ = true;
-    latest_raw_world_.store(nullptr, std::memory_order_release);
-  }
-  return MemoryStatusIngestionResult3D{
-      .synchronized_update = std::move(synchronized),
-      .execution_revocation_required = execution_revocation_required,
-  };
-}
-
-RawWorldCommitResult3D WorldPipeline3D::commitRawUpdate(
-    const RawObstacleGridUpdate3D& update, const double reconstruction_ms,
-    const std::int64_t ready_stamp_ns, const ProducerEpochAdmissionConfig& config) {
-  if (!update.accepted()) {
+RawWorldPublicationResult3D WorldPipeline3D::publishRawWorld(
+    std::shared_ptr<const ProductionMppiRawWorld3D> raw_world) {
+  if (raw_world == nullptr || !raw_world->valid()) {
     return {
-        .status = RawWorldCommitStatus3D::kInvalidUpdate,
-        .world = nullptr,
-        .replaced_pending = false,
-    };
-  }
-  const RawMapVersion version{
-      .producer_instance_id = update.state.producer_instance_id,
-      .base_snapshot_revision = update.state.base_snapshot_revision,
-      .revision = update.state.obstacle_snapshot_revision,
-  };
-  const std::shared_ptr<const VersionedObservedRawWorld3D> execution_owner =
-      VersionedObservedRawWorld3D::captureOwned(version, update.state.occupancy,
-                                                std::nullopt, std::nullopt);
-  if (execution_owner == nullptr) {
-    return {
-        .status = RawWorldCommitStatus3D::kInvalidExecutionOwner,
+        .status = RawWorldPublicationStatus3D::kInvalidWorld,
         .world = nullptr,
         .replaced_pending = false,
     };
@@ -304,83 +163,63 @@ RawWorldCommitResult3D WorldPipeline3D::commitRawUpdate(
   if (!accepting_.load(std::memory_order_acquire)) {
     rejected_after_stop_.fetch_add(1U, std::memory_order_relaxed);
     return {
-        .status = RawWorldCommitStatus3D::kStopped,
+        .status = RawWorldPublicationStatus3D::kStopped,
         .world = nullptr,
         .replaced_pending = false,
     };
   }
   bool replaced_pending{false};
-  std::shared_ptr<const ProductionMppiRawWorld3D> immutable_world;
   {
-    const std::scoped_lock lock{ingestion_mutex_, queue_mutex_};
-    const ProducerEpochAuthority authority = latest_observation_tracker_.authority();
-    const LatestObservation& status = latest_observation_tracker_.latest();
-    const ProducerEvidenceAdmissionState& evidence =
-        raw_delta_accumulator_.evidenceAdmissionState();
-    if (!status.available() ||
-        status.producer_instance_id != authority.producer_instance_id ||
-        status.producer_epoch_generation != authority.generation ||
-        update.authority_generation != authority.generation ||
-        !evidenceMatches(evidence, authority, update.evidence_observation) ||
-        !producerEpochObservationFresh(config, update.evidence_observation,
-                                       ready_stamp_ns)) {
-      return {
-          .status = RawWorldCommitStatus3D::kSupersededEvidence,
-          .world = nullptr,
-          .replaced_pending = false,
-      };
-    }
+    const std::scoped_lock lock{raw_world_mutex_, queue_mutex_};
     const auto& pending = raw_world_scheduler_.pending();
-    std::vector<OccupancyChunkIndex3D> dirty_chunks = update.dirty_chunks;
-    bool full_reset = update.full_reset;
+    std::vector<OccupancyChunkIndex3D> dirty_chunks = raw_world->dirtyChunks();
+    bool full_reset = raw_world->fullReset();
     if (pending.has_value() && *pending != nullptr) {
       replaced_pending = true;
       full_reset = full_reset || (*pending)->fullReset();
       mergeDirtyChunks(dirty_chunks, (*pending)->dirtyChunks());
     }
-    immutable_world = ProductionMppiRawWorld3D::capture(
-        execution_owner,
-        ProductionMppiRawWorldMetadata3D{
-            .source_stamp_ns = update.evidence_observation.source_stamp_ns,
-            .receive_stamp_ns = update.evidence_observation.receive_stamp_ns,
-            .ready_stamp_ns = ready_stamp_ns,
-            .reconstruction_ms = reconstruction_ms,
-            .dirty_chunks = std::move(dirty_chunks),
-            .full_reset = full_reset,
-        });
-    if (immutable_world == nullptr) {
-      return {
-          .status = RawWorldCommitStatus3D::kInvalidExecutionOwner,
-          .world = nullptr,
-          .replaced_pending = false,
-      };
+    if (replaced_pending) {
+      raw_world = ProductionMppiRawWorld3D::capture(
+          raw_world->authoritativeOwner(),
+          ProductionMppiRawWorldMetadata3D{
+              .source_stamp_ns = raw_world->sourceStampNs(),
+              .receive_stamp_ns = raw_world->receiveStampNs(),
+              .ready_stamp_ns = raw_world->readyStampNs(),
+              .reconstruction_ms = raw_world->reconstructionMs(),
+              .dirty_chunks = std::move(dirty_chunks),
+              .full_reset = full_reset,
+          });
+      if (raw_world == nullptr) {
+        return {
+            .status = RawWorldPublicationStatus3D::kInvalidWorld,
+            .world = nullptr,
+            .replaced_pending = false,
+        };
+      }
     }
-    static_cast<void>(raw_world_scheduler_.submit(immutable_world));
-    latest_raw_world_.store(immutable_world, std::memory_order_release);
-    raw_world_identity_conflicted_ = false;
-    if (pending_raw_world_update_.satisfiedBy(evidence, immutable_world->version())) {
-      pending_raw_world_update_ = {};
-    }
+    static_cast<void>(raw_world_scheduler_.submit(raw_world));
+    latest_raw_world_.store(raw_world, std::memory_order_release);
   }
   raw_updates_.fetch_add(1U, std::memory_order_relaxed);
   if (replaced_pending) {
     dropped_raw_worlds_.fetch_add(1U, std::memory_order_relaxed);
   }
   queue_condition_.notify_all();
-  return RawWorldCommitResult3D{
-      .status = RawWorldCommitStatus3D::kCommitted,
-      .world = std::move(immutable_world),
+  return RawWorldPublicationResult3D{
+      .status = RawWorldPublicationStatus3D::kPublished,
+      .world = std::move(raw_world),
       .replaced_pending = replaced_pending,
   };
 }
 
-WorldPipelineInputSnapshot3D WorldPipeline3D::inputSnapshot() const {
-  const std::scoped_lock lock{ingestion_mutex_};
-  return WorldPipelineInputSnapshot3D{
-      .latest_observation = latest_observation_tracker_.latest(),
-      .latest_raw_world = latest_raw_world_.load(std::memory_order_acquire),
-      .raw_world_identity_conflicted = raw_world_identity_conflicted_,
-  };
+void WorldPipeline3D::invalidateRawWorld() noexcept {
+  {
+    const std::scoped_lock lock{raw_world_mutex_, queue_mutex_};
+    latest_raw_world_.store(nullptr, std::memory_order_release);
+    raw_world_scheduler_.reset();
+  }
+  queue_condition_.notify_all();
 }
 
 std::shared_ptr<const ProductionMppiRawWorld3D>
@@ -392,17 +231,18 @@ bool WorldPipeline3D::scheduleLatestRawWorldUrgently() {
   if (!std::holds_alternative<ObservedWorldRuntime3D>(runtime_)) {
     return false;
   }
-  const std::shared_ptr<const ProductionMppiRawWorld3D> raw_world = latestRawWorld();
-  if (raw_world == nullptr) {
-    return false;
-  }
   const std::scoped_lock lifecycle_lock{lifecycle_mutex_};
   if (!accepting_.load(std::memory_order_acquire)) {
     rejected_after_stop_.fetch_add(1U, std::memory_order_relaxed);
     return false;
   }
   {
-    const std::scoped_lock lock{queue_mutex_};
+    const std::scoped_lock lock{raw_world_mutex_, queue_mutex_};
+    const std::shared_ptr<const ProductionMppiRawWorld3D> raw_world =
+        latest_raw_world_.load(std::memory_order_acquire);
+    if (raw_world == nullptr) {
+      return false;
+    }
     static_cast<void>(raw_world_scheduler_.submit(raw_world, true));
   }
   queue_condition_.notify_all();

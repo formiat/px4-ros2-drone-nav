@@ -12,6 +12,8 @@
 #include "navigation_diagnostics_sink.hpp"
 #include "planning_cycle_coordinator_3d.hpp"
 #include "production_mppi_node.hpp"
+#include "production_mppi_raw_input_internal.hpp"
+#include "raw_world_ingress_ros_3d.hpp"
 #include "route_activation_coordinator_3d.hpp"
 #include "route_materializer_3d.hpp"
 #include "world_pipeline_3d.hpp"
@@ -131,6 +133,13 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
         },
         world_failure_handler);
   }
+  raw_world_ingress_ = std::make_unique<RawWorldIngressRos3D>(
+      *world_pipeline_,
+      RawWorldIngressRosConfig3D{
+          .producer_epoch = production_mppi_raw_input_detail::producerEpochConfig(
+              maximum_esdf_age_ms_, stale_esdf_execution_window_ms_),
+          .frame_id = frame_id_,
+      });
   RouteMaterializerConfig3D route_materializer_config{
       .route_envelope = route_envelope_config_,
       .future_route_connector = future_route_connector_config_,

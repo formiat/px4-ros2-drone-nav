@@ -157,8 +157,11 @@ TEST(WorldGenerationTest, GenerationMatchesOnlyTheExactCapturedComponents) {
   LocalWorldGenerationCounter counter;
   const RawMapVersion raw{
       .producer_instance_id = 7U, .base_snapshot_revision = 10U, .revision = 14U};
-  const LocalWorldGeneration generation =
-      counter.issue(raw, 21U, 99U, 99U, 13U).value();
+  const std::optional<LocalWorldGeneration> issued =
+      counter.issue(raw, 21U, 99U, 99U, 13U);
+
+  ASSERT_TRUE(issued.has_value());
+  const LocalWorldGeneration generation = issued.value_or(LocalWorldGeneration{});
 
   EXPECT_TRUE(generation.matches(raw, 21U, 99U, 99U));
   EXPECT_FALSE(generation.matches(RawMapVersion{.producer_instance_id = 7U,
@@ -174,7 +177,11 @@ TEST(WorldGenerationTest, SameSnapshotRequiresGenerationAndAllComponents) {
   LocalWorldGenerationCounter counter;
   const RawMapVersion raw{
       .producer_instance_id = 7U, .base_snapshot_revision = 10U, .revision = 14U};
-  const LocalWorldGeneration first = counter.issue(raw, 21U, 99U, 99U, 13U).value();
+  const std::optional<LocalWorldGeneration> issued =
+      counter.issue(raw, 21U, 99U, 99U, 13U);
+
+  ASSERT_TRUE(issued.has_value());
+  const LocalWorldGeneration first = issued.value_or(LocalWorldGeneration{});
   LocalWorldGeneration copy = first;
 
   EXPECT_TRUE(first.sameSnapshot(copy));
@@ -228,6 +235,21 @@ TEST(WorldGenerationTest, PoseDrivenUrgentRequestBypassesRateDeadline) {
   EXPECT_TRUE(submission.replaced_pending);
   EXPECT_TRUE(submission.ready_immediately);
   EXPECT_EQ(scheduler.takeReady(start), 1);
+}
+
+TEST(WorldGenerationTest, ResetRevokesDeferredAndUrgentWork) {
+  using Scheduler = LatestWinsDeferredScheduler<int>;
+  Scheduler scheduler;
+  const Scheduler::TimePoint start{};
+  scheduler.defer(1, start + std::chrono::seconds{1});
+  static_cast<void>(scheduler.submit(2, true));
+
+  scheduler.reset();
+
+  EXPECT_FALSE(scheduler.hasPending());
+  EXPECT_FALSE(scheduler.urgent());
+  EXPECT_FALSE(scheduler.notBefore().has_value());
+  EXPECT_FALSE(scheduler.takeReady(start + std::chrono::seconds{2}).has_value());
 }
 
 } // namespace

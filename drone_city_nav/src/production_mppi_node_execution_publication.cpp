@@ -13,7 +13,7 @@
 #include "execution_publication_navigation_rebase_3d.hpp"
 #include "production_mppi_node_execution_internal.hpp"
 #include "production_mppi_node_planning_tick_rearm.hpp"
-#include "world_pipeline_3d.hpp"
+#include "raw_world_ingress_ros_3d.hpp"
 
 namespace drone_city_nav {
 
@@ -259,7 +259,7 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
   const bool vehicle_status_authoritative = vehicleStatusAuthoritativeForExecution(
       vehicle_status_, vehicle_status_epoch_stable, publication_now_ns,
       maximum_vehicle_status_age_ms_);
-  const WorldPipelineInputSnapshot3D world_input = world_pipeline_->inputSnapshot();
+  const RawWorldIngressSnapshot3D world_input = raw_world_ingress_->snapshot();
   const std::shared_ptr<const ProductionMppiRawWorld3D> committed_3d =
       world_input.latest_raw_world;
   const double maximum_observation_age_ms =

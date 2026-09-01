@@ -141,6 +141,12 @@ public:
     return pending_;
   }
 
+  void reset() noexcept {
+    pending_.reset();
+    not_before_.reset();
+    urgent_ = false;
+  }
+
 private:
   std::optional<T> pending_{};
   std::optional<TimePoint> not_before_{};

@@ -1,3 +1,5 @@
+#include "drone_city_nav/lidar_projection.hpp"
+
 #include <algorithm>
 #include <bit>
 #include <chrono>

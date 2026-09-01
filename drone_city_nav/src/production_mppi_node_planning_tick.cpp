@@ -13,6 +13,7 @@
 #include "production_mppi_node_planning_tick_context.hpp"
 #include "production_mppi_node_planning_tick_finalize.hpp"
 #include "production_mppi_node_planning_tick_rearm.hpp"
+#include "raw_world_ingress_ros_3d.hpp"
 #include "world_pipeline_3d.hpp"
 
 namespace drone_city_nav {
@@ -93,7 +94,7 @@ void ProductionMppiNode::planningTick() {
   LatestObservation latest_observation;
   std::uint64_t memory_sequence{0U};
   bool raw_world_identity_conflicted{false};
-  WorldPipelineInputSnapshot3D world_input;
+  RawWorldIngressSnapshot3D world_input;
   {
     const std::scoped_lock lock{input_mutex_};
     navigation = navigation_;
@@ -116,7 +117,7 @@ void ProductionMppiNode::planningTick() {
         !vehicle_status_epoch_probation_ && !vehicle_status_revision_exhausted_;
     cooperative_command = cooperative_command_;
     noncooperative_tracks = noncooperative_tracks_;
-    world_input = world_pipeline_->inputSnapshot();
+    world_input = raw_world_ingress_->snapshot();
     latest_observation = world_input.latest_observation;
     memory_sequence = latest_observation.sequence;
     raw_world_identity_conflicted = world_input.raw_world_identity_conflicted;

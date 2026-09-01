@@ -719,6 +719,7 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     src/observed_world_builder_3d.cpp
     src/static_world_builder_3d.cpp
     src/world_pipeline_3d.cpp
+    src/raw_world_ingress_ros_3d.cpp
     src/production_mppi_raw_world.cpp
     src/production_mppi_node.cpp
     src/production_mppi_node_optional_constraints.cpp
@@ -1350,6 +1351,14 @@ if(BUILD_TESTING)
     target_link_libraries(world_pipeline_3d_test
                           drone_city_nav_production_mppi_component)
     enable_project_warnings(world_pipeline_3d_test)
+
+    ament_add_gtest(raw_world_ingress_ros_3d_test
+                    tests/raw_world_ingress_ros_3d_test.cpp)
+    target_compile_features(raw_world_ingress_ros_3d_test PRIVATE cxx_std_20)
+    target_include_directories(raw_world_ingress_ros_3d_test PRIVATE src)
+    target_link_libraries(raw_world_ingress_ros_3d_test
+                          drone_city_nav_production_mppi_component)
+    enable_project_warnings(raw_world_ingress_ros_3d_test)
   endif()
 
   ament_add_gtest(route_progress_3d_test
