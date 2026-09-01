@@ -137,10 +137,4 @@ MppiControllerResult3D MppiController3D::run(MppiControllerRequest3D request) {
   return output;
 }
 
-std::shared_ptr<const std::vector<mppi::RouteSample3D>>
-MppiController3D::adaptTrajectoryReference(
-    const std::shared_ptr<const CompiledTrajectory3D>& trajectory) {
-  return trajectory_reference_adapter_.adapt(trajectory);
-}
-
 } // namespace drone_city_nav

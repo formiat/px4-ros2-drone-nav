@@ -92,19 +92,19 @@ guidanceMode(const std::uint8_t value) noexcept {
   }
 }
 
-[[nodiscard]] const char* radarCadenceReasonName(const std::uint8_t reason) noexcept {
+[[nodiscard]] std::uint8_t
+radarCadenceReasonMessageValue(const RadarCadenceReason reason) noexcept {
   switch (reason) {
-    case msg::RadarTrackModeCommand::REASON_NO_TRACKING_OBJECTIVE:
-      return "no_tracking_objective";
-    case msg::RadarTrackModeCommand::REASON_OBSERVED_TARGET_OCCLUDED:
-      return "observed_target_occluded";
-    case msg::RadarTrackModeCommand::REASON_OBSERVED_TARGET_VISIBLE:
-      return "observed_target_visible";
-    case msg::RadarTrackModeCommand::REASON_WORLD_UNAVAILABLE:
-      return "world_unavailable";
-    default:
-      return "unknown";
+    case RadarCadenceReason::kNoTrackingObjective:
+      return msg::RadarTrackModeCommand::REASON_NO_TRACKING_OBJECTIVE;
+    case RadarCadenceReason::kObservedTargetOccluded:
+      return msg::RadarTrackModeCommand::REASON_OBSERVED_TARGET_OCCLUDED;
+    case RadarCadenceReason::kObservedTargetVisible:
+      return msg::RadarTrackModeCommand::REASON_OBSERVED_TARGET_VISIBLE;
+    case RadarCadenceReason::kWorldUnavailable:
+      return msg::RadarTrackModeCommand::REASON_WORLD_UNAVAILABLE;
   }
+  return msg::RadarTrackModeCommand::REASON_NO_TRACKING_OBJECTIVE;
 }
 
 [[nodiscard]] double pointDistance(const Point3& first, const Point3& second) noexcept {
@@ -523,7 +523,7 @@ ProductionMppiNode::navigationObjective() const {
 }
 
 void ProductionMppiNode::publishRadarTrackModeCommand(
-    const ProductionNavigationObjective& objective, const std::uint8_t reason) {
+    const ProductionNavigationObjective& objective, const RadarCadenceReason reason) {
   if (!radar_track_mode_command_pub_) {
     return;
   }
@@ -537,7 +537,7 @@ void ProductionMppiNode::publishRadarTrackModeCommand(
       objective.tracking.has_value() && objective.tracking->observed_target_visible
           ? msg::RadarTrackModeCommand::MODE_TRACK
           : msg::RadarTrackModeCommand::MODE_SEARCH;
-  command.reason = reason;
+  command.reason = radarCadenceReasonMessageValue(reason);
   radar_track_mode_command_pub_->publish(command);
 }
 
@@ -609,8 +609,7 @@ void ProductionMppiNode::onNavigationObjective(
   Point3 goal{unconstrained_goal.x, unconstrained_goal.y, *bounded_goal_z};
   std::optional<ProductionTrackingObjective> tracking_objective;
   TrackingLineOfSightUpdate line_of_sight;
-  std::uint8_t radar_cadence_reason =
-      msg::RadarTrackModeCommand::REASON_NO_TRACKING_OBJECTIVE;
+  RadarCadenceReason radar_cadence_reason{RadarCadenceReason::kNoTrackingObjective};
   if (tracking) {
     const Point3 observed{message.observed_target_position.x,
                           message.observed_target_position.y,
@@ -710,12 +709,11 @@ void ProductionMppiNode::onNavigationObjective(
     goal = line_of_sight.active ? direct_resolution.selected_position
                                 : resolution.resolved_position;
     if (!world_available || !navigation.valid) {
-      radar_cadence_reason = msg::RadarTrackModeCommand::REASON_WORLD_UNAVAILABLE;
+      radar_cadence_reason = RadarCadenceReason::kWorldUnavailable;
     } else if (direct_resolution.observed_target_visible) {
-      radar_cadence_reason = msg::RadarTrackModeCommand::REASON_OBSERVED_TARGET_VISIBLE;
+      radar_cadence_reason = RadarCadenceReason::kObservedTargetVisible;
     } else {
-      radar_cadence_reason =
-          msg::RadarTrackModeCommand::REASON_OBSERVED_TARGET_OCCLUDED;
+      radar_cadence_reason = RadarCadenceReason::kObservedTargetOccluded;
     }
     tracking_objective = ProductionTrackingObjective{
         .observed_position = observed,

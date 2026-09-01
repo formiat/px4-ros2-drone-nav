@@ -98,9 +98,9 @@ struct ProductionMppiDiagnosticsSnapshot;
 struct PreparedRouteActivation3D;
 struct ProductionRouteActivationSnapshot3D;
 class RouteActivationCoordinator3D;
-class RouteExecutionSelector3D;
 class RouteMaterializer3D;
 class MppiController3D;
+class PlanningCycleCoordinator3D;
 class ExecutionHorizonAssembler3D;
 struct ProductionMppiExecutionCycle;
 struct ObservedWorldBuildRequest3D;
@@ -144,7 +144,7 @@ private:
   void onNavigationObjective(const msg::NavigationObjective& message);
   void onCooperativeManeuverCommand(const msg::CooperativeManeuverCommand& message);
   void publishRadarTrackModeCommand(const ProductionNavigationObjective& objective,
-                                    std::uint8_t reason);
+                                    RadarCadenceReason reason);
   void requestStaticEsdfWork();
   void markStaticWorldReady() noexcept;
   void publishWorldReadiness(bool ready);
@@ -212,32 +212,14 @@ private:
   commitRouteActivation3D(PreparedRouteActivation3D prepared);
   void startPlanningTimer();
   void initializeRuntimeInterfaces(StaticWorldResources3D&& static_world_resources);
-  [[nodiscard]] ProductionRouteExecutionSelection3D resolveRouteExecution3D(
-      const WorldSnapshot3D& world, const ProductionNavigationObjective* objective,
-      const ProductionMppiNavigation& navigation,
-      const std::shared_ptr<const VersionedExecutionInput3D>& execution_input,
-      const std::shared_ptr<const ProductionMppiRawWorld3D>& latest_raw_world,
-      const std::shared_ptr<const VersionedLatestLidarEvidence3D>&
-          latest_lidar_evidence,
-      std::int64_t validation_stamp_ns, std::uint64_t minimum_tracking_sample_sequence,
-      std::optional<DirectTrackingOwnerIdentity3D> direct_tracking_identity,
-      bool observed_3d_world);
   void configureCooperativeTraffic();
   void createCooperativeTrafficInterfaces(
       const rclcpp::SubscriptionOptions& subscription_options);
-  [[nodiscard]] ProductionMppiCooperativeUpdate prepareCooperativeTick(
-      std::span<const CooperativePassageAssignment> passage_assignments,
-      const ConstrainedRouteObservation& route_observation,
-      const std::optional<ProductionMppiCooperativeCommand>& command,
-      std::int64_t now_ns, double planned_speed_mps);
   void configureNonCooperativeAvoidance();
   void createNonCooperativeAvoidanceInterface(
       const rclcpp::SubscriptionOptions& subscription_options);
   void onNonCooperativeTracks(const msg::TargetTrackArray& message);
-  [[nodiscard]] ProductionMppiNonCooperativeUpdate
-  prepareNonCooperativeTick(const mppi::State& ownship,
-                            const ProductionMppiNonCooperativeTracks& tracks,
-                            std::int64_t now_ns);
+  void logNonCooperativeUpdate(const ProductionMppiNonCooperativeUpdate& update);
   [[nodiscard]] MissionWaypointUpdate updateMissionWaypoint(
       const std::shared_ptr<const ProductionNavigationObjective>& objective,
       const ProductionMppiNavigation& navigation,
@@ -319,11 +301,6 @@ private:
                       const Point3& hold_position,
                       ProductionMppiExecutionReason reason);
 
-  [[nodiscard]] mppi::State
-  selectTarget(std::span<const RouteSample3D> route,
-               std::span<const mppi::RouteSample3D> mppi_route,
-               double current_station_m, double lookahead_m, std::string& target_source,
-               double& target_station_m) const;
   [[nodiscard]] ProductionMppiStability
   compareWithPrevious(const mppi::MppiTickResult& result) const;
 
@@ -361,7 +338,7 @@ private:
   double tracking_capture_radius_m_{5.0};
   double static_tracking_esdf_refresh_margin_m_{15.0};
   TrackingLineOfSightLifecycle tracking_line_of_sight_lifecycle_{};
-  DirectTrackingManeuverLifecycle direct_tracking_maneuver_lifecycle_{};
+  DirectTrackingManeuverConfig direct_tracking_maneuver_config_{};
   bool use_static_map_{true};
   bool cooperative_traffic_enabled_{false};
   bool noncooperative_avoidance_enabled_{false};
@@ -394,10 +371,7 @@ private:
   RouteTrackingPolicy3D route_tracking_policy_{};
   RouteProgressConfig3D route_progress_config_{};
   bool route_stall_recovery_enabled_{false};
-  std::unique_ptr<MppiLivenessSupervisor> liveness_supervisor_;
   std::unique_ptr<NavigationHealthSupervisor> navigation_health_supervisor_;
-  std::unique_ptr<RouteProgressTracker3D> route_progress_tracker_;
-  std::unique_ptr<MissionGoalCaptureLatch> mission_goal_capture_latch_;
   std::unique_ptr<MissionWaypointSequence> mission_waypoint_sequence_;
   std::unique_ptr<MissionWaypointCaptureGate> mission_waypoint_capture_gate_;
   PersistentPlannerConfig3D persistent_planner_config_{};
@@ -406,9 +380,6 @@ private:
   double static_esdf_route_lookahead_m_{180.0};
   RouteEnvelopeConfig route_envelope_config_{};
   ConstrainedRouteControlConfig constrained_route_control_config_{};
-  ConstrainedRouteCoordinator constrained_route_coordinator_{};
-  PassageTraversalEvidenceTracker passage_traversal_evidence_tracker_{};
-  PassageGeometryEvidenceTracker passage_geometry_evidence_tracker_{};
   StaticRouteExtensionConfig static_route_extension_config_{};
   RouteSuccessorImprovementConfig3D route_successor_improvement_config_{};
   FutureRouteConnectorConfig3D future_route_connector_config_{};
@@ -420,11 +391,10 @@ private:
   CooperativePassageTimingConfig cooperative_passage_timing_config_{};
   CooperativePassageYieldConfig cooperative_passage_yield_config_{};
   NonCooperativeAvoidanceConfig noncooperative_avoidance_config_{};
-  std::unique_ptr<NonCooperativeCollisionAvoidance> noncooperative_avoidance_;
   std::unique_ptr<BoundedWorkerPool> planning_worker_pool_;
   std::unique_ptr<RouteMaterializer3D> route_materializer_;
   std::unique_ptr<RouteActivationCoordinator3D> route_activation_coordinator_;
-  std::unique_ptr<RouteExecutionSelector3D> route_execution_selector_;
+  std::unique_ptr<PlanningCycleCoordinator3D> planning_cycle_coordinator_;
   std::unique_ptr<ExecutionHorizonAssembler3D> execution_horizon_assembler_;
   std::unique_ptr<RoutePlanningCoordinator3D> route_planning_coordinator_;
   std::unique_ptr<MppiController3D> mppi_controller_;

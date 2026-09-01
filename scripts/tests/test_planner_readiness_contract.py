@@ -19,6 +19,10 @@ OBSERVED_EVIDENCE = SOURCE / "production_mppi_node_observed_evidence.cpp"
 PLANNER = SOURCE / "production_mppi_node.cpp"
 PLANNER_INTERFACES = SOURCE / "production_mppi_node_interfaces.cpp"
 PLANNING_TICK = SOURCE / "production_mppi_node_planning_tick.cpp"
+PLANNING_COORDINATOR = SOURCE / "planning_cycle_coordinator_3d.cpp"
+PLANNING_COORDINATOR_TEST = (
+    PACKAGE / "tests" / "planning_cycle_coordinator_3d_test.cpp"
+)
 PLANNING_TICK_REARM = SOURCE / "production_mppi_node_planning_tick_rearm.cpp"
 PLANNING_TICK_FINALIZE = SOURCE / "production_mppi_node_planning_tick_finalize.cpp"
 STATIC_EXTENSION = SOURCE / "production_mppi_node_static_extension.cpp"
@@ -149,6 +153,7 @@ class PlannerReadinessContractTest(unittest.TestCase):
     def test_observed_esdf_refresh_preserves_an_active_route(self) -> None:
         observed_esdf = OBSERVED_ESDF.read_text(encoding="utf-8")
         planning_tick = PLANNING_TICK.read_text(encoding="utf-8")
+        planning_cycle = PLANNING_COORDINATOR.read_text(encoding="utf-8")
         extension = STATIC_EXTENSION.read_text(encoding="utf-8")
 
         self.assertIn(
@@ -158,17 +163,22 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self.assertIn("execution_supervisor_.plan()", observed_esdf)
         self.assertIn('"active_route_preserved"', observed_esdf)
         self.assertNotIn("dropped_route_planning_worlds_", observed_esdf)
-        self.assertIn("use_static_map_ || observed_3d_world", planning_tick)
+        self.assertIn("request_route_extension", planning_tick)
+        self.assertIn(
+            "request.use_static_map || request.observed_3d_world", planning_cycle
+        )
         self.assertIn("observed_world", extension)
         self.assertIn('"observed_resident_esdf"', extension)
         self.assertNotIn("Lattice3DRoutePurpose", extension)
-        self.assertRegex(
-            planning_tick,
-            r"route_progress_tracker_\s*&&\s*!direct_tracking_interception",
+        self.assertIn(
+            "route_progress_tracker_ != nullptr && "
+            "!request.direct_tracking_interception",
+            planning_cycle,
         )
 
     def test_missing_executable_route_holds_without_a_clearance_gate(self) -> None:
-        planning_tick = PLANNING_TICK.read_text(encoding="utf-8")
+        planning_cycle = PLANNING_COORDINATOR.read_text(encoding="utf-8")
+        planning_cycle_test = PLANNING_COORDINATOR_TEST.read_text(encoding="utf-8")
         execution = read_execution_sources()
         route_execution = ROUTE_EXECUTION.read_text(encoding="utf-8")
         offboard = OFFBOARD.read_text(encoding="utf-8") + OFFBOARD_NAMES.read_text(
@@ -185,12 +195,19 @@ class PlannerReadinessContractTest(unittest.TestCase):
         execution_hold_service = EXECUTION_HOLD_SERVICE.read_text(encoding="utf-8")
         execution_hold_test = EXECUTION_HOLD_TEST.read_text(encoding="utf-8")
 
-        self.assertIn("kNoExecutableRouteHold", planning_tick)
-        self.assertIn("route_hold_position = route_execution.hold_position", planning_tick)
+        self.assertIn("kNoExecutableRouteHold", planning_cycle)
+        self.assertIn(
+            "const Point3& hold = output.route.execution.hold_position",
+            planning_cycle,
+        )
+        self.assertIn(
+            "NoActiveRouteProducesOneTypedStationaryControllerCycle",
+            planning_cycle_test,
+        )
         self.assertIn(".hold_position =", route_execution)
         self.assertIn("active_usable = true", route_execution)
         self.assertIn("result.route_usable = true", route_execution)
-        self.assertIn("local_route_stop_is_terminal", planning_tick)
+        self.assertIn("local_stop_is_terminal", planning_cycle)
         self.assertIn("ProductionMppiExecutionReason::kNoExecutableRoute", execution)
         self.assertIn(
             "ProductionMppiExecutionReason::kNoExecutableHorizon", execution
@@ -265,11 +282,11 @@ class PlannerReadinessContractTest(unittest.TestCase):
         self.assertNotIn("original_valid_until_ns", execution)
         self.assertIn("assessExecutionHorizonPayload", offboard)
         self.assertIn("kMissingTerminalRestState", horizon_contract)
-        self.assertNotIn("route_free_", planning_tick)
-        self.assertNotIn("temporary_frontier_continuation_ready", planning_tick)
+        self.assertNotIn("route_free_", planning_cycle)
+        self.assertNotIn("temporary_frontier_continuation_ready", planning_cycle)
         self.assertNotIn("route_endpoint_terminal_speed_mps", speed_policy)
         self.assertNotRegex(
-            planning_tick,
+            planning_cycle,
             r"clearance[^\n]*kNoExecutableRouteHold|"
             r"kNoExecutableRouteHold[^\n]*clearance",
         )

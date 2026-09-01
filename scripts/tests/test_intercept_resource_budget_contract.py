@@ -165,8 +165,8 @@ class InterceptResourceBudgetContractTest(unittest.TestCase):
 
     def test_adaptive_rollout_budget_preserves_uncertain_and_risky_work(self) -> None:
         config = (PACKAGE / "config" / "urban_mvp.yaml").read_text(encoding="utf-8")
-        planning_tick = (
-            PACKAGE / "src" / "production_mppi_node_planning_tick.cpp"
+        planning_cycle = (
+            PACKAGE / "src" / "planning_cycle_coordinator_3d.cpp"
         ).read_text(encoding="utf-8")
         policy = (PACKAGE / "src" / "mppi_rollout_budget.cpp").read_text(
             encoding="utf-8"
@@ -175,8 +175,11 @@ class InterceptResourceBudgetContractTest(unittest.TestCase):
         self.assertIn("rollouts: 8192", config)
         self.assertIn("open_static_rollouts: 6144", config)
         self.assertIn("direct_tracking_rollouts: 4096", config)
-        self.assertIn("selectMppiRolloutBudget", planning_tick)
-        self.assertIn(".active_rollouts = rollout_budget.active_rollouts", planning_tick)
+        self.assertIn("selectMppiRolloutBudget", planning_cycle)
+        self.assertIn(
+            ".active_rollouts = output.controller.rollout_budget.active_rollouts",
+            planning_cycle,
+        )
         self.assertIn("kFullWorldUncertain", policy)
         self.assertIn("kFullElevatedRisk", policy)
         self.assertIn("kFullLowClearance", policy)

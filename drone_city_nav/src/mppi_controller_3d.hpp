@@ -1,8 +1,6 @@
 #pragma once
 
-#include "drone_city_nav/compiled_trajectory_3d.hpp"
 #include "drone_city_nav/mppi/mppi_engine.hpp"
-#include "drone_city_nav/mppi/trajectory_reference_adapter_3d.hpp"
 #include "drone_city_nav/mppi_nominal_reseed.hpp"
 
 #include <chrono>
@@ -10,7 +8,6 @@
 #include <memory>
 #include <mutex>
 #include <string>
-#include <vector>
 
 #include "production_mppi_route_world.hpp"
 
@@ -73,9 +70,9 @@ struct MppiControllerResult3D {
   [[nodiscard]] bool executable() const noexcept;
 };
 
-// Sole owner of the stateful CUDA backend, nominal-reseed lifecycle, and
-// controller representation cache. ROS logging, world-residency locking, and
-// execution side effects remain adapter responsibilities.
+// Sole owner of the stateful CUDA backend and nominal-reseed lifecycle. ROS
+// logging, world-residency locking, and execution side effects remain adapter
+// responsibilities.
 class MppiController3D final {
 public:
   explicit MppiController3D(const mppi::BenchmarkConfig& config);
@@ -89,15 +86,10 @@ public:
   [[nodiscard]] mppi::EsdfUploadResult updateEsdf(const mppi::EsdfSnapshot& snapshot);
   [[nodiscard]] MppiControllerResult3D run(MppiControllerRequest3D request);
 
-  [[nodiscard]] std::shared_ptr<const std::vector<mppi::RouteSample3D>>
-  adaptTrajectoryReference(
-      const std::shared_ptr<const CompiledTrajectory3D>& trajectory);
-
 private:
   mutable std::mutex mutex_;
   mppi::MppiCudaEngine engine_;
   MppiNominalReseedTracker nominal_reseed_tracker_{};
-  mppi::TrajectoryReferenceAdapter3D trajectory_reference_adapter_{};
 };
 
 } // namespace drone_city_nav

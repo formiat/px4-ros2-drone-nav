@@ -739,6 +739,7 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     src/production_mppi_node_inputs_3d.cpp
     src/production_mppi_node_raw_input.cpp
     src/mppi_controller_3d.cpp
+    src/planning_cycle_coordinator_3d.cpp
     src/production_mppi_node_planning_tick.cpp
     src/production_mppi_node_planning_controller.cpp
     src/production_mppi_node_world_generation.cpp
@@ -746,7 +747,6 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     src/production_mppi_node_planning_tick_rearm.cpp
     src/production_mppi_node_runtime.cpp
     src/production_mppi_route_execution.cpp
-    src/production_mppi_route_execution_adapter.cpp
     src/production_mppi_route_activation.cpp
     src/route_activation_coordinator_3d.cpp
     src/route_activation_preparation_3d.cpp
@@ -1302,6 +1302,14 @@ if(BUILD_TESTING)
     target_link_libraries(route_execution_selector_3d_test
                           drone_city_nav_production_mppi_component)
     enable_project_warnings(route_execution_selector_3d_test)
+
+    ament_add_gtest(planning_cycle_coordinator_3d_test
+                    tests/planning_cycle_coordinator_3d_test.cpp)
+    target_compile_features(planning_cycle_coordinator_3d_test PRIVATE cxx_std_20)
+    target_include_directories(planning_cycle_coordinator_3d_test PRIVATE src)
+    target_link_libraries(planning_cycle_coordinator_3d_test
+                          drone_city_nav_production_mppi_component)
+    enable_project_warnings(planning_cycle_coordinator_3d_test)
 
     ament_add_gtest(execution_horizon_assembler_3d_test
                     tests/execution_horizon_assembler_3d_test.cpp)

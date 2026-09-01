@@ -1,7 +1,6 @@
 #include "drone_city_nav/cooperative_traffic_ros.hpp"
 
 #include <cinttypes>
-#include <cmath>
 #include <stdexcept>
 
 #include "production_mppi_node.hpp"
@@ -131,54 +130,6 @@ void ProductionMppiNode::onCooperativeManeuverCommand(
       .data = command,
       .receive_stamp_ns = receive_stamp_ns,
   };
-}
-
-ProductionMppiCooperativeUpdate ProductionMppiNode::prepareCooperativeTick(
-    const std::span<const CooperativePassageAssignment> passage_assignments,
-    const ConstrainedRouteObservation& route_observation,
-    const std::optional<ProductionMppiCooperativeCommand>& command,
-    const std::int64_t now_ns, const double planned_speed_mps) {
-  ProductionMppiCooperativeUpdate result;
-  if (!cooperative_traffic_enabled_) {
-    return result;
-  }
-
-  const CooperativePassageAssignment* assignment = nullptr;
-  if (route_observation.span_available &&
-      route_observation.span_index < passage_assignments.size()) {
-    const CooperativePassageAssignment& candidate =
-        passage_assignments[route_observation.span_index];
-    if (candidate.span_index == route_observation.span_index &&
-        candidate.route_generation == route_observation.route_generation &&
-        candidate.passage_traversal_id == route_observation.passage_traversal_id) {
-      assignment = &candidate;
-    }
-  }
-  if (assignment != nullptr) {
-    result.passage = makeCooperativePassageUse(route_observation, *assignment, now_ns,
-                                               planned_speed_mps,
-                                               cooperative_passage_timing_config_);
-  }
-  if (cooperative_passage_state_pub_) {
-    cooperative_passage_state_pub_->publish(
-        cooperativePassageIntentMessage(result.passage));
-  }
-  if (!command.has_value()) {
-    return result;
-  }
-
-  result.command_generation = command->data.command_generation;
-  result.command_age_ms =
-      now_ns >= command->data.stamp_ns
-          ? static_cast<double>(now_ns - command->data.stamp_ns) / 1.0e6
-          : -1.0;
-  result.mppi =
-      adaptCooperativeMppiCommand(command->data, vehicle_id_, now_ns,
-                                  mppi_config_.steps, mppi_config_.dynamics.dt_s);
-  result.yield = evaluateCooperativePassageYield(
-      command->data, result.passage, route_observation, vehicle_id_, now_ns,
-      route_observation.actual_horizontal_speed_mps, cooperative_passage_yield_config_);
-  return result;
 }
 
 } // namespace drone_city_nav

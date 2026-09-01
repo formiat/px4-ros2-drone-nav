@@ -384,4 +384,18 @@ directTrackingTargetStatusName(const DirectTrackingTargetStatus status) noexcept
   return "unknown";
 }
 
+const char* radarCadenceReasonName(const RadarCadenceReason reason) noexcept {
+  switch (reason) {
+    case RadarCadenceReason::kNoTrackingObjective:
+      return "no_tracking_objective";
+    case RadarCadenceReason::kObservedTargetOccluded:
+      return "observed_target_occluded";
+    case RadarCadenceReason::kObservedTargetVisible:
+      return "observed_target_visible";
+    case RadarCadenceReason::kWorldUnavailable:
+      return "world_unavailable";
+  }
+  return "unknown";
+}
+
 } // namespace drone_city_nav

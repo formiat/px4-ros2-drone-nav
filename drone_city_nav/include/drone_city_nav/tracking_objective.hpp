@@ -11,6 +11,13 @@
 
 namespace drone_city_nav {
 
+enum class RadarCadenceReason : std::uint8_t {
+  kNoTrackingObjective,
+  kObservedTargetOccluded,
+  kObservedTargetVisible,
+  kWorldUnavailable,
+};
+
 enum class TrackingObjectiveResolutionStatus : std::uint8_t {
   kUnchanged,
   kClippedRawOccupied,
@@ -128,5 +135,7 @@ trackingLineOfSightSweptRawClear(const ObservedOccupancyGrid3D& raw_occupancy,
 
 [[nodiscard]] const char*
 directTrackingTargetStatusName(DirectTrackingTargetStatus status) noexcept;
+
+[[nodiscard]] const char* radarCadenceReasonName(RadarCadenceReason reason) noexcept;
 
 } // namespace drone_city_nav

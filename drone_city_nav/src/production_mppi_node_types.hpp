@@ -2,7 +2,6 @@
 
 #include "drone_city_nav/intercept_guidance.hpp"
 #include "drone_city_nav/mppi/mppi_types.hpp"
-#include "drone_city_nav/msg/radar_track_mode_command.hpp"
 #include "drone_city_nav/static_route_extension.hpp"
 #include "drone_city_nav/tracking_objective.hpp"
 #include "drone_city_nav/types.hpp"
@@ -104,8 +103,7 @@ struct ProductionTrackingObjective {
       TrackingObjectiveResolutionStatus::kInvalidInput};
   DirectTrackingTargetStatus direct_target_status{
       DirectTrackingTargetStatus::kWorldUnavailable};
-  std::uint8_t radar_cadence_reason{
-      msg::RadarTrackModeCommand::REASON_NO_TRACKING_OBJECTIVE};
+  RadarCadenceReason radar_cadence_reason{RadarCadenceReason::kNoTrackingObjective};
   bool vertical_prediction_clipped{false};
   bool observed_target_visible{false};
   bool predicted_intercept_path_clear{false};

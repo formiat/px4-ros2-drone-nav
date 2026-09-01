@@ -30,6 +30,7 @@ ASSIGNMENT_COORDINATOR = SOURCE / "target_assignment_coordinator_node.cpp"
 TRUTH_ADAPTER = SOURCE / "simulation_truth_adapter_node.cpp"
 OBSTACLE_MEMORY = SOURCE / "obstacle_memory_node.cpp"
 PLANNING_TICK = SOURCE / "production_mppi_node_planning_tick.cpp"
+PLANNING_COORDINATOR = SOURCE / "planning_cycle_coordinator_3d.cpp"
 EXECUTION = SOURCE / "production_mppi_node_execution.cpp"
 EXECUTION_ASSEMBLER = SOURCE / "execution_horizon_assembler_3d.cpp"
 EXECUTION_PUBLICATION = SOURCE / "production_mppi_node_execution_publication.cpp"
@@ -156,7 +157,7 @@ class InterceptRadarContractTest(unittest.TestCase):
     ) -> None:
         objective = NAVIGATION_OBJECTIVE.read_text(encoding="utf-8")
         guidance = GUIDANCE.read_text(encoding="utf-8")
-        planning = PLANNING_TICK.read_text(encoding="utf-8")
+        planning = PLANNING_COORDINATOR.read_text(encoding="utf-8")
         referee = REFEREE.read_text(encoding="utf-8") + REFEREE_LIFECYCLE.read_text(
             encoding="utf-8"
         )
@@ -258,15 +259,9 @@ class InterceptRadarContractTest(unittest.TestCase):
 
     def test_attacker_planner_consumes_only_local_anonymous_tracks(self) -> None:
         planner = NONCOOPERATIVE_PLANNER.read_text(encoding="utf-8")
-        planning_tick = PLANNING_TICK.read_text(encoding="utf-8")
 
         self.assertIn("create_subscription<msg::TargetTrackArray>", planner)
         self.assertIn("track.track_id", planner)
-        self.assertIn("prepareNonCooperativeTick", planning_tick)
-        self.assertRegex(
-            planning_tick, r"noncooperative\.avoidance\s*\.cost_policy"
-        )
-        self.assertIn("noncooperative.avoidance.acquisition", planning_tick)
         for forbidden in (
             "SimulationTruthState",
             "source_detection_id",
@@ -279,7 +274,7 @@ class InterceptRadarContractTest(unittest.TestCase):
                 self.assertNotIn(forbidden, planner)
 
     def test_attacker_avoidance_preserves_physical_obstacle_safety(self) -> None:
-        planning_tick = PLANNING_TICK.read_text(encoding="utf-8")
+        planning_tick = PLANNING_COORDINATOR.read_text(encoding="utf-8")
         execution = read_execution_sources()
         engine = MPPI_ENGINE.read_text(encoding="utf-8")
         finite_execution = (SOURCE / "finite_execution_path_3d.cpp").read_text(
@@ -309,6 +304,7 @@ class InterceptRadarContractTest(unittest.TestCase):
                 SOURCE / "production_mppi_node.cpp",
                 SOURCE / "production_mppi_node.hpp",
                 PLANNING_TICK,
+                PLANNING_COORDINATOR,
                 *EXECUTION_FILES,
             )
         )

@@ -9,9 +9,9 @@
 #include "execution_horizon_assembler_3d.hpp"
 #include "mppi_controller_3d.hpp"
 #include "navigation_diagnostics_sink.hpp"
+#include "planning_cycle_coordinator_3d.hpp"
 #include "production_mppi_node.hpp"
 #include "route_activation_coordinator_3d.hpp"
-#include "route_execution_selector_3d.hpp"
 #include "route_materializer_3d.hpp"
 #include "world_pipeline_3d.hpp"
 
@@ -217,16 +217,48 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
               .cruise_speed_mps = speed_policy_config_.cruise_speed_mps,
               .maximum_control_feedback_age_ms = maximum_control_feedback_age_ms_,
           });
-  route_execution_selector_ = std::make_unique<RouteExecutionSelector3D>(
+  planning_cycle_coordinator_ = std::make_unique<PlanningCycleCoordinator3D>(
       execution_supervisor_,
-      RouteExecutionSelectorConfig3D{
-          .physical_footprint = physical_footprint_config_,
+      PlanningCycleCoordinatorConfig3D{
+          .route_execution =
+              RouteExecutionSelectorConfig3D{
+                  .physical_footprint = physical_footprint_config_,
+                  .flight_envelope = flight_envelope_config_,
+                  .route_tracking = route_tracking_policy_,
+                  .route_cross_track_constraints_enabled =
+                      optional_constraints_.route_cross_track_constraints_enabled,
+                  .route_tracking_tube_constraints_enabled =
+                      optional_constraints_.route_tracking_tube_constraints_enabled,
+              },
+          .liveness = liveness_config_,
+          .route_progress =
+              route_stall_recovery_enabled_
+                  ? std::optional<RouteProgressConfig3D>{route_progress_config_}
+                  : std::nullopt,
+          .goal_capture = mission_goal_capture_config_,
+          .direct_tracking = direct_tracking_maneuver_config_,
+          .route_envelope = route_envelope_config_,
+          .constrained_route_control = constrained_route_control_config_,
+          .speed_policy = speed_policy_config_,
+          .rollout_budget = rollout_budget_config_,
+          .cooperative_timing = cooperative_passage_timing_config_,
+          .cooperative_yield = cooperative_passage_yield_config_,
+          .noncooperative_avoidance = noncooperative_avoidance_config_,
           .flight_envelope = flight_envelope_config_,
-          .route_tracking = route_tracking_policy_,
+          .dynamics = mppi_config_.dynamics,
+          .vehicle_id = vehicle_id_,
+          .horizon_steps = mppi_config_.steps,
+          .tracking_capture_radius_m = tracking_capture_radius_m_,
+          .route_constraint_diagnostics_distance_m =
+              route_constraint_diagnostics_distance_m_,
+          .cooperative_traffic_enabled = cooperative_traffic_enabled_,
+          .noncooperative_avoidance_enabled = noncooperative_avoidance_enabled_,
+          .route_progress_replan_enabled =
+              optional_constraints_.route_progress_replan_enabled,
           .route_cross_track_constraints_enabled =
               optional_constraints_.route_cross_track_constraints_enabled,
-          .route_tracking_tube_constraints_enabled =
-              optional_constraints_.route_tracking_tube_constraints_enabled,
+          .stochastic_trajectory_selection_enabled =
+              optional_constraints_.stochastic_trajectory_selection_enabled,
       });
   execution_horizon_assembler_ =
       std::make_unique<ExecutionHorizonAssembler3D>(ExecutionHorizonAssemblerConfig3D{

@@ -2,7 +2,6 @@
 
 #include <chrono>
 #include <cstdint>
-#include <memory>
 
 #include "mppi_controller_3d.hpp"
 #include "production_mppi_node.hpp"
@@ -22,20 +21,6 @@ terminalExecutionReason(const NavigationTerminalFailure failure) noexcept {
       return ProductionMppiExecutionReason::kNoExecutableRoute;
   }
   return ProductionMppiExecutionReason::kNoExecutableRoute;
-}
-
-[[nodiscard]] inline mppi::DeterministicCandidateKind planningDeterministicCandidate(
-    const bool direct_tracking_interception,
-    const ProductionMppiPlanningState planning_state, const bool route_usable,
-    const bool route_projection_valid, const bool route_hold) noexcept {
-  if (direct_tracking_interception) {
-    return mppi::DeterministicCandidateKind::kTargetDirectedReacquisition;
-  }
-  if (planning_state == ProductionMppiPlanningState::kPlanned && route_usable &&
-      route_projection_valid && !route_hold) {
-    return mppi::DeterministicCandidateKind::kRouteDirectedCruise;
-  }
-  return mppi::DeterministicCandidateKind::kDisabled;
 }
 
 [[nodiscard]] inline std::optional<DirectTrackingOwnerIdentity3D>
@@ -81,16 +66,5 @@ struct ProductionMppiControllerTick {
   double route_cross_track_m{0.0};
   bool direct_tracking_interception{false};
 };
-
-[[nodiscard]] inline std::uint64_t
-planningRawRevision(const bool use_static_map, const std::uint64_t esdf_revision,
-                    const std::shared_ptr<const ProductionMppiRawWorld3D>&
-                        latest_raw_world_3d) noexcept {
-  if (use_static_map) {
-    return esdf_revision;
-  }
-  return latest_raw_world_3d != nullptr ? latest_raw_world_3d->version().revision
-                                        : esdf_revision;
-}
 
 } // namespace drone_city_nav

@@ -1,6 +1,4 @@
-#include <algorithm>
 #include <cinttypes>
-#include <cmath>
 #include <stdexcept>
 #include <utility>
 
@@ -67,8 +65,6 @@ void ProductionMppiNode::configureNonCooperativeAvoidance() {
   if (noncooperative_tracks_topic_.empty()) {
     throw std::invalid_argument{"non-cooperative tracks topic must not be empty"};
   }
-  noncooperative_avoidance_ = std::make_unique<NonCooperativeCollisionAvoidance>(
-      noncooperative_avoidance_config_);
   RCLCPP_INFO(get_logger(),
               "NONCOOPERATIVE_AVOIDANCE_CONFIG enabled=true vehicle_id='%s' "
               "tracks_topic='%s' "
@@ -125,33 +121,15 @@ void ProductionMppiNode::onNonCooperativeTracks(const msg::TargetTrackArray& mes
   noncooperative_tracks_ = std::move(snapshot);
 }
 
-ProductionMppiNonCooperativeUpdate ProductionMppiNode::prepareNonCooperativeTick(
-    const mppi::State& ownship, const ProductionMppiNonCooperativeTracks& tracks,
-    const std::int64_t now_ns) {
-  ProductionMppiNonCooperativeUpdate result{
-      .source_scan_sequence = tracks.source_scan_sequence,
-      .transport_age_ms = tracks.receive_stamp_ns > 0
-                              ? static_cast<double>(std::max<std::int64_t>(
-                                    0, now_ns - tracks.receive_stamp_ns)) /
-                                    1.0e6
-                              : -1.0,
-      .enabled = noncooperative_avoidance_enabled_,
-  };
-  if (!noncooperative_avoidance_enabled_ || !noncooperative_avoidance_) {
-    return result;
+void ProductionMppiNode::logNonCooperativeUpdate(
+    const ProductionMppiNonCooperativeUpdate& update) {
+  if (!update.enabled) {
+    return;
   }
-  result.avoidance = noncooperative_avoidance_->update(NonCooperativeAvoidanceInput{
-      .ownship = ownship,
-      .tracks = tracks.tracks,
-      .now_ns = now_ns,
-      .horizon_steps = mppi_config_.steps,
-      .step_s = mppi_config_.dynamics.dt_s,
-  });
-
-  const NonCooperativeAvoidanceLifecycleState state = result.avoidance.lifecycle_state;
+  const NonCooperativeAvoidanceLifecycleState state = update.avoidance.lifecycle_state;
   const auto log_lifecycle = [&](const bool throttle) {
     const std::optional<NonCooperativeClosestApproach>& threat =
-        result.avoidance.primary_threat;
+        update.avoidance.primary_threat;
     const char* reason =
         threat ? nonCooperativeThreatReasonName(threat->reason) : "none";
     const std::uint64_t track_id = threat ? threat->local_track_id : 0U;
@@ -164,12 +142,12 @@ ProductionMppiNonCooperativeUpdate ProductionMppiNode::prepareNonCooperativeTick
           " reason=%s radar_age_s=%.3f range_m=%.3f closing_speed_mps=%.3f "
           "tcpa_s=%.3f dcpa_m=%.3f",
           nonCooperativeAvoidanceLifecycleStateName(state),
-          result.avoidance.lifecycle_generation,
-          result.avoidance.influence.track_available ? "true" : "false",
-          result.avoidance.influence.cost_influence_active ? "true" : "false",
-          result.avoidance.influence.evasive_maneuver_active ? "true" : "false",
-          result.avoidance.fresh_track_count, track_id, reason,
-          result.avoidance.maximum_radar_age_s,
+          update.avoidance.lifecycle_generation,
+          update.avoidance.influence.track_available ? "true" : "false",
+          update.avoidance.influence.cost_influence_active ? "true" : "false",
+          update.avoidance.influence.evasive_maneuver_active ? "true" : "false",
+          update.avoidance.fresh_track_count, track_id, reason,
+          update.avoidance.maximum_radar_age_s,
           diagnosticValue(threat, &NonCooperativeClosestApproach::current_range_m),
           diagnosticValue(threat, &NonCooperativeClosestApproach::closing_speed_mps),
           diagnosticValue(threat,
@@ -186,12 +164,12 @@ ProductionMppiNonCooperativeUpdate ProductionMppiNode::prepareNonCooperativeTick
         " reason=%s radar_age_s=%.3f range_m=%.3f closing_speed_mps=%.3f "
         "tcpa_s=%.3f dcpa_m=%.3f",
         nonCooperativeAvoidanceLifecycleStateName(state),
-        result.avoidance.lifecycle_generation,
-        result.avoidance.influence.track_available ? "true" : "false",
-        result.avoidance.influence.cost_influence_active ? "true" : "false",
-        result.avoidance.influence.evasive_maneuver_active ? "true" : "false",
-        result.avoidance.fresh_track_count, track_id, reason,
-        result.avoidance.maximum_radar_age_s,
+        update.avoidance.lifecycle_generation,
+        update.avoidance.influence.track_available ? "true" : "false",
+        update.avoidance.influence.cost_influence_active ? "true" : "false",
+        update.avoidance.influence.evasive_maneuver_active ? "true" : "false",
+        update.avoidance.fresh_track_count, track_id, reason,
+        update.avoidance.maximum_radar_age_s,
         diagnosticValue(threat, &NonCooperativeClosestApproach::current_range_m),
         diagnosticValue(threat, &NonCooperativeClosestApproach::closing_speed_mps),
         diagnosticValue(threat,
@@ -202,10 +180,9 @@ ProductionMppiNonCooperativeUpdate ProductionMppiNode::prepareNonCooperativeTick
   if (state == NonCooperativeAvoidanceLifecycleState::kEntered ||
       state == NonCooperativeAvoidanceLifecycleState::kReleased) {
     log_lifecycle(false);
-  } else if (result.avoidance.influence.cost_influence_active) {
+  } else if (update.avoidance.influence.cost_influence_active) {
     log_lifecycle(true);
   }
-  return result;
 }
 
 } // namespace drone_city_nav

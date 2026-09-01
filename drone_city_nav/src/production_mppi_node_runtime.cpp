@@ -10,11 +10,10 @@
 #include "execution_horizon_assembler_3d.hpp"
 #include "mppi_controller_3d.hpp"
 #include "navigation_diagnostics_sink.hpp"
+#include "planning_cycle_coordinator_3d.hpp"
 #include "production_mppi_node.hpp"
-#include "production_mppi_route_helpers.hpp"
 #include "production_mppi_route_world.hpp"
 #include "route_activation_coordinator_3d.hpp"
-#include "route_execution_selector_3d.hpp"
 #include "route_materializer_3d.hpp"
 #include "world_pipeline_3d.hpp"
 
@@ -57,46 +56,6 @@ namespace {
 }
 
 } // namespace
-
-mppi::State
-ProductionMppiNode::selectTarget(const std::span<const RouteSample3D> route,
-                                 const std::span<const mppi::RouteSample3D> mppi_route,
-                                 const double current_station_m,
-                                 const double lookahead_m, std::string& target_source,
-                                 double& target_station_m) const {
-  const std::shared_ptr<const ProductionNavigationObjective> objective =
-      navigationObjective();
-  const Point3 mission_goal = objective ? objective->goal : mission_goal_;
-  mppi::State target{static_cast<float>(mission_goal.x),
-                     static_cast<float>(mission_goal.y),
-                     static_cast<float>(mission_goal.z)};
-  target_source = "mission_goal_direct";
-  target_station_m = 0.0;
-  const double desired_station_m = current_station_m + std::max(0.0, lookahead_m);
-  if (!route.empty()) {
-    const RouteSample3D sample = sampleRoute3DAtStation(route, desired_station_m);
-    target.x = static_cast<float>(sample.position.x);
-    target.y = static_cast<float>(sample.position.y);
-    target.z = static_cast<float>(sample.position.z);
-    target_station_m = sample.station_m;
-    target_source = "persistent_route_3d";
-    return target;
-  }
-  if (!mppi_route.empty()) {
-    const float desired_station = static_cast<float>(desired_station_m);
-    const auto selected = std::ranges::lower_bound(mppi_route, desired_station, {},
-                                                   &mppi::RouteSample3D::station_m);
-    const mppi::RouteSample3D& sample =
-        selected == mppi_route.end() ? mppi_route.back() : *selected;
-    target.x = sample.x_m;
-    target.y = sample.y_m;
-    target.z = sample.z_m;
-    target_station_m = sample.station_m;
-    target_source = "persistent_route_3d";
-    return target;
-  }
-  return target;
-}
 
 void ProductionMppiNode::requestRouteRelease(const RouteReleaseReason3D reason,
                                              const std::uint64_t route_generation) {

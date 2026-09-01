@@ -36,7 +36,7 @@ class Stage3EndpointExecutionContractTest(unittest.TestCase):
         )
 
     def test_planning_uses_certified_endpoint_semantics_not_goal_negation(self) -> None:
-        planning = (SOURCE / "production_mppi_node_planning_tick.cpp").read_text(
+        planning = (SOURCE / "planning_cycle_coordinator_3d.cpp").read_text(
             encoding="utf-8"
         )
 
@@ -44,10 +44,7 @@ class Stage3EndpointExecutionContractTest(unittest.TestCase):
         self.assertIn(
             "routeEndpointHasTerminalStop3D(route_endpoint_semantics)", planning
         )
-        endpoint_assignment = planning.split(
-            ".route_endpoint_remaining_m =", maxsplit=1
-        )[1].split(".route_constraint_speed_limit_mps", maxsplit=1)[0]
-        self.assertNotIn("!route_reaches_mission_goal", endpoint_assignment)
+        self.assertNotIn("!route_reaches_mission_goal", planning)
 
     def test_raw_invalidation_can_only_publish_an_emergency_brake_tail(self) -> None:
         certification = (

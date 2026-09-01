@@ -11,24 +11,6 @@
 #include "production_mppi_node.hpp"
 
 namespace drone_city_nav::detail {
-namespace {
-
-[[nodiscard]] const char* radarCadenceReasonName(const std::uint8_t reason) noexcept {
-  switch (reason) {
-    case msg::RadarTrackModeCommand::REASON_NO_TRACKING_OBJECTIVE:
-      return "no_tracking_objective";
-    case msg::RadarTrackModeCommand::REASON_OBSERVED_TARGET_OCCLUDED:
-      return "observed_target_occluded";
-    case msg::RadarTrackModeCommand::REASON_OBSERVED_TARGET_VISIBLE:
-      return "observed_target_visible";
-    case msg::RadarTrackModeCommand::REASON_WORLD_UNAVAILABLE:
-      return "world_unavailable";
-    default:
-      return "unknown";
-  }
-}
-
-} // namespace
 
 TrackingPursuitDiagnostics
 trackingPursuitDiagnostics(const ProductionNavigationObjective* navigation_objective,

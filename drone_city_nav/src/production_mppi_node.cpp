@@ -19,9 +19,9 @@
 #include "execution_horizon_assembler_3d.hpp"
 #include "mppi_controller_3d.hpp"
 #include "navigation_diagnostics_sink.hpp"
+#include "planning_cycle_coordinator_3d.hpp"
 #include "production_mppi_node_configuration.hpp"
 #include "route_activation_coordinator_3d.hpp"
-#include "route_execution_selector_3d.hpp"
 #include "route_materializer_3d.hpp"
 #include "world_pipeline_3d.hpp"
 
@@ -190,19 +190,18 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
       declare_parameter<double>("tracking_capture_radius_m", 5.0);
   static_tracking_esdf_refresh_margin_m_ =
       declare_parameter<double>("static_tracking_esdf_refresh_margin_m", 15.0);
-  direct_tracking_maneuver_lifecycle_ =
-      DirectTrackingManeuverLifecycle{DirectTrackingManeuverConfig{
-          .bearing_change_threshold_rad = declare_parameter<double>(
-              "direct_tracking_reseed_bearing_change_rad", 0.5235987755982988),
-          .minimum_closing_speed_mps = declare_parameter<double>(
-              "direct_tracking_minimum_closing_speed_mps", 0.5),
-          .closing_recovery_speed_mps = declare_parameter<double>(
-              "direct_tracking_closing_recovery_speed_mps", 1.5),
-          .no_closing_duration_s = declare_parameter<double>(
-              "direct_tracking_no_closing_reseed_delay_s", 1.0),
-          .minimum_reseed_interval_s = declare_parameter<double>(
-              "direct_tracking_minimum_reseed_interval_s", 0.5),
-      }};
+  direct_tracking_maneuver_config_ = DirectTrackingManeuverConfig{
+      .bearing_change_threshold_rad = declare_parameter<double>(
+          "direct_tracking_reseed_bearing_change_rad", 0.5235987755982988),
+      .minimum_closing_speed_mps =
+          declare_parameter<double>("direct_tracking_minimum_closing_speed_mps", 0.5),
+      .closing_recovery_speed_mps =
+          declare_parameter<double>("direct_tracking_closing_recovery_speed_mps", 1.5),
+      .no_closing_duration_s =
+          declare_parameter<double>("direct_tracking_no_closing_reseed_delay_s", 1.0),
+      .minimum_reseed_interval_s =
+          declare_parameter<double>("direct_tracking_minimum_reseed_interval_s", 0.5),
+  };
   if (!(dynamic_objective_replan_distance_m_ > 0.0) ||
       !(dynamic_objective_replan_period_s_ > 0.0) ||
       !(tracking_objective_ray_sample_spacing_m_ > 0.0) ||
@@ -631,13 +630,6 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
     throw std::invalid_argument{"invalid immutable execution validation policy"};
   }
 
-  liveness_supervisor_ = std::make_unique<MppiLivenessSupervisor>(liveness_config_);
-  if (route_stall_recovery_enabled_) {
-    route_progress_tracker_ =
-        std::make_unique<RouteProgressTracker3D>(route_progress_config_);
-  }
-  mission_goal_capture_latch_ =
-      std::make_unique<MissionGoalCaptureLatch>(mission_goal_capture_config_);
   mission_waypoint_capture_gate_ = std::make_unique<MissionWaypointCaptureGate>(
       mission_waypoint_capture_gate_config_);
   planning_worker_pool_ = std::make_unique<BoundedWorkerPool>(planner_worker_count_);

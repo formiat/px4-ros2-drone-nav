@@ -1,25 +1,41 @@
-#include "drone_city_nav/esdf_query.hpp"
-#include "drone_city_nav/mppi/mppi_control_sequence.hpp"
+#include "drone_city_nav/cooperative_traffic_ros.hpp"
 #include "drone_city_nav/navigation_state_prediction.hpp"
 
-#include <algorithm>
 #include <chrono>
 #include <cinttypes>
-#include <cmath>
 #include <limits>
 #include <memory>
-#include <span>
 #include <utility>
 
 #include "mppi_controller_3d.hpp"
+#include "planning_cycle_coordinator_3d.hpp"
 #include "production_mppi_node.hpp"
 #include "production_mppi_node_planning_tick_context.hpp"
 #include "production_mppi_node_planning_tick_finalize.hpp"
 #include "production_mppi_node_planning_tick_rearm.hpp"
-#include "production_mppi_route_helpers.hpp"
 #include "world_pipeline_3d.hpp"
 
 namespace drone_city_nav {
+namespace {
+
+[[nodiscard]] const char* residentObstacleSource(
+    const ProductionMppiResidentObstacleDisposition disposition) noexcept {
+  switch (disposition) {
+    case ProductionMppiResidentObstacleDisposition::kRouteSuffixReplacementRequired:
+      return "resident_route_suffix_persistent_raw";
+    case ProductionMppiResidentObstacleDisposition::
+        kPersistentRawFiniteExecutionInvalidated:
+      return "active_finite_trajectory_persistent_raw";
+    case ProductionMppiResidentObstacleDisposition::
+        kLatestLidarFiniteExecutionInvalidated:
+      return "active_finite_trajectory_latest_lidar";
+    case ProductionMppiResidentObstacleDisposition::kClear:
+      return "none";
+  }
+  return "none";
+}
+
+} // namespace
 
 void ProductionMppiNode::planningTick() {
   if (!mppi_controller_) {
@@ -31,14 +47,16 @@ void ProductionMppiNode::planningTick() {
   }
   const std::shared_ptr<const ProductionNavigationObjective> objective =
       navigationObjective();
-  const ProductionTrackingObjective* tracking_objective =
-      objective && objective->tracking.has_value() ? &objective->tracking.value()
-                                                   : nullptr;
+  const bool tracking_objective_available =
+      objective != nullptr && objective->tracking.has_value();
+  const ProductionTrackingObjective tracking_objective =
+      objective != nullptr ? objective->tracking.value_or(ProductionTrackingObjective{})
+                           : ProductionTrackingObjective{};
   const Point3 mission_goal = objective ? objective->goal : mission_goal_;
   const bool terminal_hold_enabled = !objective || !objective->continuous_tracking;
   const bool direct_tracking_interception =
-      objective && objective->continuous_tracking && tracking_objective != nullptr &&
-      tracking_objective->direct_interception_active;
+      objective && objective->continuous_tracking && tracking_objective_available &&
+      tracking_objective.direct_interception_active;
   const bool observed_3d_world = !use_static_map_;
   if (handleRequestedExecutionRevocation(tick_entry_ns)) {
     // A callback-requested epoch is a hard barrier; retain it until revoke
@@ -46,7 +64,7 @@ void ProductionMppiNode::planningTick() {
     return;
   }
   const std::uint64_t line_of_sight_generation =
-      tracking_objective != nullptr ? tracking_objective->line_of_sight_generation : 0U;
+      tracking_objective_available ? tracking_objective.line_of_sight_generation : 0U;
   const std::optional<DirectTrackingOwnerIdentity3D> direct_tracking_identity =
       makeDirectTrackingOwnerIdentity(objective.get(), direct_tracking_interception,
                                       line_of_sight_generation);
@@ -167,8 +185,8 @@ void ProductionMppiNode::planningTick() {
     return;
   }
   const bool goal_capture_latched =
-      mission_goal_capture_latch_ && objective && terminal_hold_enabled &&
-      mission_goal_capture_latch_->latchedFor(mission_goal);
+      planning_cycle_coordinator_ != nullptr && objective && terminal_hold_enabled &&
+      planning_cycle_coordinator_->goalCaptureLatchedFor(mission_goal);
   const MissionWaypointUpdate early_waypoint_update =
       updateMissionWaypoint(objective, navigation, vehicle_status, execution_authority,
                             applied_control_discontinuity_generation,
@@ -342,112 +360,98 @@ void ProductionMppiNode::planningTick() {
         ProductionMppiExecutionReason::kNoExecutableHorizon, now_ns);
     return;
   }
-  ProductionRouteExecutionSelection3D route_execution;
-  bool route_usable{false};
-  RouteExecutionStatus3D route_execution_status{RouteExecutionStatus3D::kNoActiveRoute};
-  RouteProgressProjection3D measured_route_projection;
-  Point3 route_hold_position{
-      navigation.state.x,
-      navigation.state.y,
-      clampToFlightEnvelope(navigation.state.z, flight_envelope_config_)
-          .value_or(flight_envelope_config_.minimum_target_z_m),
-  };
-  route_execution = resolveRouteExecution3D(
-      *world, objective.get(), navigation, execution_input, latest_raw_world_3d,
-      latest_lidar_evidence, now_ns, required_route_sample, direct_tracking_identity,
-      observed_3d_world);
-  const PendingCertifiedRouteRecoveryResult3D pending_recovery =
-      recoverPendingCertifiedRouteLiveness3D(
-          execution_supervisor_, route_execution.pending_route,
-          PendingCertifiedRouteRecoveryObservation3D{
-              .direct_tracking_requested =
-                  route_execution.direct_tracking_identity.has_value(),
-              .execution_owner_available = route_execution.execution_owner_available,
-              .pending_activation = route_execution.pending_activation,
-          });
-  if (pending_recovery.request_successor) {
-    requestRouteRelease(RouteReleaseReason3D::kNoActiveRoute, 0U);
-  }
-  if (route_execution.tracking_error_tube_handoff_active) {
-    // The controller is still consuming the exact finite connector certified
-    // in the resident immutable plan. Replanning would reset its execution
-    // clock and turn a bounded handoff into an open-ended exemption.
+  if (planning_cycle_coordinator_ == nullptr) {
+    publishFailClosedExecutionRevocation(
+        ProductionMppiExecutionReason::kNoExecutableHorizon, now_ns);
     return;
   }
-  route_usable = route_execution.route_usable;
-  route_execution_status = route_execution.status;
-  measured_route_projection = route_execution.projection;
-  route_hold_position = route_execution.hold_position;
-  const CertifiedRouteSuffix3D* const activated_route = route_execution.route.get();
-  const std::shared_ptr<const CompiledTrajectory3D> route_geometry =
-      activated_route != nullptr ? activated_route->geometry : nullptr;
-  const std::shared_ptr<const RouteDecorations3D> route_decorations =
-      activated_route != nullptr ? activated_route->decorations : nullptr;
-  const std::uint64_t route_generation =
-      activated_route != nullptr ? activated_route->identity.generation : 0U;
-  const bool route_reaches_mission_goal =
-      activated_route != nullptr
-          ? activated_route->identity.proposal.reaches_mission_goal
-          : false;
-  RouteEndpointSemantics3D route_endpoint_semantics =
-      RouteEndpointSemantics3D::kLocalStop;
-  if (activated_route != nullptr) {
-    route_endpoint_semantics = activated_route->planned_endpoint_semantics;
-  } else if (route_reaches_mission_goal) {
-    route_endpoint_semantics = terminal_hold_enabled
-                                   ? RouteEndpointSemantics3D::kMissionStop
-                                   : RouteEndpointSemantics3D::kContinuation;
+  PlanningCycleOutcome3D planning =
+      planning_cycle_coordinator_->prepare(PlanningCycleRequest3D{
+          .world = world.get(),
+          .objective = objective.get(),
+          .previous_result = previous_result_.has_value()
+                                 ? std::addressof(previous_result_.value())
+                                 : nullptr,
+          .navigation = navigation,
+          .execution_input = execution_input,
+          .latest_raw_world = latest_raw_world_3d,
+          .latest_lidar_evidence = latest_lidar_evidence,
+          .cooperative_command = cooperative_command,
+          .noncooperative_tracks = noncooperative_tracks,
+          .direct_tracking_identity = direct_tracking_identity,
+          .mission_goal = mission_goal,
+          .tick_started = snapshot_started,
+          .minimum_tracking_sample_sequence = required_route_sample,
+          .physically_invalidated_through_generation =
+              physical_trajectory_replan_route_generation_.load(
+                  std::memory_order_acquire),
+          .effective_route_generation = effective_route_generation,
+          .line_of_sight_generation = line_of_sight_generation,
+          .world_revision = world->revision,
+          .now_ns = now_ns,
+          .observation_age_ms = observation_age_ms,
+          .control_feedback_fresh = execution_input_preparation.control_feedback_fresh,
+          .terminal_hold_enabled = terminal_hold_enabled,
+          .direct_tracking_interception = direct_tracking_interception,
+          .use_static_map = use_static_map_,
+          .observed_3d_world = observed_3d_world,
+      });
+  for (const RouteExecutionSelectorEffect3D& effect :
+       planning.effects.route_execution) {
+    switch (effect.kind) {
+      case RouteExecutionSelectorEffectKind3D::kRequestRouteRelease:
+        requestRouteRelease(effect.release_reason, effect.route_generation);
+        break;
+      case RouteExecutionSelectorEffectKind3D::kHandlePhysicalTrajectoryCollision:
+        handlePhysicalTrajectoryCollision(
+            effect.route_generation, effect.observed_raw_world,
+            residentObstacleSource(effect.obstacle_disposition),
+            ProductionMppiPhysicalTrajectoryAuthority::kResidentOwner);
+        break;
+    }
+    RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "ROUTE_EXECUTION3D route_generation=%" PRIu64
+        " status=%.*s effect=%s obstacle_source=%s",
+        effect.route_generation,
+        static_cast<int>(
+            routeExecutionStatus3DName(planning.route.execution.status).size()),
+        routeExecutionStatus3DName(planning.route.execution.status).data(),
+        effect.kind == RouteExecutionSelectorEffectKind3D::kRequestRouteRelease
+            ? "request_route_release"
+            : "handle_physical_trajectory_collision",
+        residentObstacleSource(effect.obstacle_disposition));
   }
-  const std::shared_ptr<const std::vector<RouteSample3D>> execution_route =
-      route_geometry != nullptr ? route_geometry->route : nullptr;
-  const std::shared_ptr<const std::vector<mppi::RouteSample3D>> execution_mppi_route =
-      mppi_controller_->adaptTrajectoryReference(route_geometry);
-  const std::shared_ptr<const std::vector<ConstrainedRouteSpan>>
-      execution_constrained_spans =
-          route_geometry != nullptr ? route_geometry->constrained_spans : nullptr;
-  const std::shared_ptr<const std::vector<CooperativePassageAssignment>>
-      execution_cooperative_passage_assignments =
-          route_decorations != nullptr
-              ? route_decorations->cooperative_passage_assignments
-              : nullptr;
-  const std::shared_ptr<const std::vector<PassageTraversalId>>
-      execution_selected_passage_traversal_ids =
-          route_decorations != nullptr
-              ? route_decorations->selected_passage_traversal_ids
-              : nullptr;
-  const bool route_execution_blocked =
-      !direct_tracking_interception && objective && !route_usable;
-  const double route_station_m = route_execution.station_m;
-  RouteProgressProjection3D route_projection = measured_route_projection;
-  if (route_projection.valid) {
-    route_projection.station_m = route_station_m;
-    route_projection.remaining_m =
-        std::max(0.0, route_projection.total_length_m - route_station_m);
+  if (planning.effects.request_pending_successor) {
+    requestRouteRelease(RouteReleaseReason3D::kNoActiveRoute, 0U);
   }
-  if (use_static_map_ && objective && objective->continuous_tracking) {
+  if (planning.status == PlanningCycleStatus3D::kTrackingHandoffRetained) {
+    // The resident connector remains the sole finite execution owner until its
+    // bounded handoff completes.
+    return;
+  }
+  if (!planning.ready()) {
+    RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 1000,
+                          "PRODUCTION_MPPI_PLANNING_CYCLE status=%s action=fail_closed",
+                          planningCycleStatus3DName(planning.status));
+    publishFailClosedExecutionRevocation(
+        ProductionMppiExecutionReason::kNoExecutableHorizon, now_ns);
+    return;
+  }
+
+  if (planning.effects.request_static_tracking_world_refresh && objective) {
     maybeRequestStaticTrackingWorldRefresh(world, navigation, *objective, now_ns);
   }
-  if (use_static_map_ || observed_3d_world) {
-    maybeRequestStaticRouteExtensionFromExecution(world, world_build, route_execution,
-                                                  navigation, now_ns);
+  if (planning.effects.request_route_extension) {
+    maybeRequestStaticRouteExtensionFromExecution(
+        world, world_build, planning.route.execution, navigation, now_ns);
   }
-  const std::span<const RouteSample3D> route_3d =
-      route_usable && execution_route ? std::span<const RouteSample3D>{*execution_route}
-                                      : std::span<const RouteSample3D>{};
-  const std::span<const ConstrainedRouteSpan> constrained_spans =
-      route_usable && execution_constrained_spans
-          ? std::span<const ConstrainedRouteSpan>{*execution_constrained_spans}
-          : std::span<const ConstrainedRouteSpan>{};
-  const ConstrainedRouteObservation route_constraint = observeConstrainedRoute(
-      route_3d, constrained_spans, route_generation, route_projection.station_m,
-      Point3{navigation.state.x, navigation.state.y, navigation.state.z},
-      Vec3{navigation.state.vx, navigation.state.vy, navigation.state.vz},
-      route_envelope_config_, route_constraint_diagnostics_distance_m_);
-  const Point3 actual_position{navigation.state.x, navigation.state.y,
-                               navigation.state.z};
+  if (planning.effects.request_stalled_route_release) {
+    requestRouteRelease(RouteReleaseReason3D::kStalled, planning.route.generation);
+  }
+
   for (const PassageTraversalEvidenceEvent& event :
-       passage_traversal_evidence_tracker_.update(route_constraint, actual_position,
-                                                  now_ns)) {
+       planning.effects.passage_traversal_events) {
     RCLCPP_INFO(get_logger(),
                 "PASSAGE_TRAVERSAL_EVENT vehicle_id='%s' sequence=%" PRIu64
                 " status=%s reason=%s passage='%s' route_generation=%" PRIu64
@@ -466,54 +470,22 @@ void ProductionMppiNode::planningTick() {
                 event.maximum_absolute_vertical_error_m,
                 event.vertical_window_preserved ? "true" : "false");
   }
-  std::vector<PassageGeometryObservation> passage_geometry_observations;
-  const PassageTraversalEdge* nearest_passage_entry = nullptr;
-  RouteProjection3D nearest_passage_projection;
-  double nearest_passage_entry_distance_m = std::numeric_limits<double>::infinity();
-  if (world->topology_passage_traversals) {
-    passage_geometry_observations.reserve(world->topology_passage_traversals->size());
-    for (const PassageTraversalEdge& passage : *world->topology_passage_traversals) {
-      const RouteProjection3D projection =
-          projectOntoRoute3D(passage.centerline, actual_position);
-      const double entry_distance_m = distance3D(actual_position, passage.entry);
-      if (entry_distance_m < nearest_passage_entry_distance_m) {
-        nearest_passage_entry = &passage;
-        nearest_passage_projection = projection;
-        nearest_passage_entry_distance_m = entry_distance_m;
-      }
-      const double traversal_length_m =
-          passage.centerline.empty() ? 0.0 : passage.centerline.back().station_m;
-      passage_geometry_observations.push_back(PassageGeometryObservation{
-          .passage_traversal_id = passage.id,
-          .within_corridor =
-              projection.valid && projection.distance_m <= passage.minimum_clearance_m,
-          .station_m = projection.station_m,
-          .traversal_length_m = traversal_length_m,
-          .cross_track_error_m = projection.distance_m,
-      });
-    }
-  }
-  if (nearest_passage_entry != nullptr && nearest_passage_entry_distance_m < 8.0) {
+  if (planning.effects.passage_geometry_proximity.has_value()) {
+    const PassageGeometryProximity3D& proximity =
+        planning.effects.passage_geometry_proximity.value();
     RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
                          "PASSAGE_GEOMETRY_PROXIMITY vehicle_id='%s' passage='%s' "
                          "entry_distance_m=%.2f projection_station_m=%.2f "
                          "projection_cross_track_m=%.2f minimum_clearance_m=%.2f "
                          "within_corridor=%s",
-                         vehicle_id_.c_str(), nearest_passage_entry->id.c_str(),
-                         nearest_passage_entry_distance_m,
-                         nearest_passage_projection.station_m,
-                         nearest_passage_projection.distance_m,
-                         nearest_passage_entry->minimum_clearance_m,
-                         nearest_passage_projection.valid &&
-                                 nearest_passage_projection.distance_m <=
-                                     nearest_passage_entry->minimum_clearance_m
-                             ? "true"
-                             : "false");
+                         vehicle_id_.c_str(), proximity.passage_traversal_id.c_str(),
+                         proximity.entry_distance_m, proximity.projection_station_m,
+                         proximity.projection_cross_track_m,
+                         proximity.minimum_clearance_m,
+                         proximity.within_corridor ? "true" : "false");
   }
   for (const PassageGeometryEvidenceEvent& event :
-       passage_geometry_evidence_tracker_.update(passage_geometry_observations,
-                                                 actual_position, now_ns,
-                                                 PassageGeometryEvidenceConfig{})) {
+       planning.effects.passage_geometry_events) {
     RCLCPP_INFO(get_logger(),
                 "PASSAGE_GEOMETRY_EVENT vehicle_id='%s' sequence=%" PRIu64
                 " status=%s reason=%s passage='%s' observations=%zu "
@@ -529,373 +501,22 @@ void ProductionMppiNode::planningTick() {
                 event.actual_position.y, event.actual_position.z,
                 event.maximum_cross_track_error_m);
   }
-  const ConstrainedRouteControl route_control = constrained_route_coordinator_.update(
-      route_constraint, speed_policy_config_.cruise_speed_mps,
-      constrained_route_control_config_);
-  const MissionGoalCaptureResult goal_capture =
-      mission_goal_capture_latch_ && terminal_hold_enabled
-          ? mission_goal_capture_latch_->update(MissionGoalCaptureObservation{
-                .mission_goal = mission_goal,
-                .state = navigation.state,
-                .terminal_route_available = route_reaches_mission_goal,
-            })
-          : MissionGoalCaptureResult{};
-  const bool local_route_stop_is_terminal =
-      route_usable && route_projection.valid &&
-      route_endpoint_semantics == RouteEndpointSemantics3D::kLocalStop;
-  MppiSpeedPolicyResult speed_policy = evaluateMppiSpeedPolicy(
-      speed_policy_config_,
-      MppiSpeedPolicyInput{
-          .state = navigation.state,
-          .mission_goal = mission_goal,
-          .route = route_3d,
-          .route_endpoint_remaining_m =
-              route_usable && route_projection.valid &&
-                      routeEndpointHasTerminalStop3D(route_endpoint_semantics)
-                  ? std::optional<double>{route_projection.remaining_m}
-                  : std::nullopt,
-          .route_constraint_speed_limit_mps =
-              route_control.active
-                  ? std::optional<double>{route_control.speed_limit_mps}
-                  : std::nullopt,
-          .route_endpoint_semantics = route_endpoint_semantics,
-          .terminal_goal_limit_enabled = terminal_hold_enabled,
-      });
-  const std::span<const CooperativePassageAssignment> passage_assignments =
-      execution_cooperative_passage_assignments
-          ? std::span<
-                const CooperativePassageAssignment>{*execution_cooperative_passage_assignments}
-          : std::span<const CooperativePassageAssignment>{};
-  const ProductionMppiCooperativeUpdate cooperative =
-      prepareCooperativeTick(passage_assignments, route_constraint, cooperative_command,
-                             now_ns, speed_policy.reference_speed_mps);
-  const ProductionMppiNonCooperativeUpdate noncooperative =
-      prepareNonCooperativeTick(navigation.state, noncooperative_tracks, now_ns);
-  const bool noncooperative_cost_influence_active =
-      noncooperative.enabled &&
-      noncooperative.avoidance.influence.cost_influence_active;
-  const bool noncooperative_evasive_maneuver_active =
-      noncooperative.enabled &&
-      noncooperative.avoidance.influence.evasive_maneuver_active;
-  if (cooperative.yield.active) {
-    speed_policy.reference_speed_mps =
-        std::min(speed_policy.reference_speed_mps, cooperative.yield.maximum_speed_mps);
-    speed_policy.target_lookahead_m = std::min(
-        speed_policy.target_lookahead_m,
-        std::max(0.0, cooperative.yield.hold_station_m - route_projection.station_m));
+  if (cooperative_passage_state_pub_) {
+    cooperative_passage_state_pub_->publish(
+        cooperativePassageIntentMessage(planning.controller.cooperative.passage));
   }
-  std::string target_source;
-  double target_station_m = 0.0;
-  mppi::State target;
-  if (direct_tracking_interception) {
-    target = mppi::State{
-        .x = static_cast<float>(mission_goal.x),
-        .y = static_cast<float>(mission_goal.y),
-        .z = static_cast<float>(mission_goal.z),
-        .yaw = navigation.state.yaw,
-    };
-    target_source = tracking_objective != nullptr &&
-                            tracking_objective->predicted_intercept_path_clear
-                        ? "tracking_direct_full_prediction"
-                        : "tracking_direct_shortened_prediction";
-  } else if (route_execution_blocked) {
-    target = mppi::State{
-        .x = static_cast<float>(route_hold_position.x),
-        .y = static_cast<float>(route_hold_position.y),
-        .z = static_cast<float>(route_hold_position.z),
-        .yaw = navigation.state.yaw,
-    };
-    target_source = objective->continuous_tracking ? "tracking_no_executable_route_"
-                                                   : "no_executable_route_";
-    target_source += routeExecutionStatus3DName(route_execution_status);
-  } else {
-    const std::span<const mppi::RouteSample3D> mppi_route =
-        execution_mppi_route
-            ? std::span<const mppi::RouteSample3D>{*execution_mppi_route}
-            : std::span<const mppi::RouteSample3D>{};
-    target =
-        selectTarget(route_3d, mppi_route, route_station_m,
-                     speed_policy.target_lookahead_m, target_source, target_station_m);
-  }
-  if (route_control.active) {
-    target.z = static_cast<float>(route_control.reference_z_m);
-    if (route_control.hold_xy) {
-      target_source = "passage_vertical_alignment_hold";
-    } else if (route_control.vertical_ready) {
-      target_source = "passage_traversal";
-    } else {
-      target_source = "passage_vertical_alignment";
-    }
-    if (route_control.hold_xy) {
-      target.x = navigation.state.x;
-      target.y = navigation.state.y;
-      speed_policy.reference_speed_mps = 0.0;
-      speed_policy.target_lookahead_m = 0.0;
-    }
-  }
-  if (cooperative.yield.active && route_usable && route_projection.valid &&
-      execution_route && !execution_route->empty() && !route_control.hold_xy) {
-    const RouteSample3D hold_sample =
-        sampleRoute3DAtStation(*execution_route, cooperative.yield.hold_station_m);
-    target.x = static_cast<float>(hold_sample.position.x);
-    target.y = static_cast<float>(hold_sample.position.y);
-    target.z = static_cast<float>(hold_sample.position.z);
-    target_station_m = hold_sample.station_m;
-    target_source = cooperative.yield.hold_at_entry
-                        ? "cooperative_passage_yield_hold"
-                        : "cooperative_passage_yield_deceleration";
-  }
-  ProductionMppiPlanningState planning_state = ProductionMppiPlanningState::kPlanned;
-  if (objective && objective->immediate_hold) {
-    planning_state = ProductionMppiPlanningState::kMissionCommandPositionHold;
-    target = mppi::State{
-        .x = static_cast<float>(mission_goal.x),
-        .y = static_cast<float>(mission_goal.y),
-        .z = static_cast<float>(mission_goal.z),
-        .yaw = navigation.state.yaw,
-    };
-    speed_policy.reference_speed_mps = 0.0;
-    speed_policy.target_lookahead_m = 0.0;
-    target_source = "mission_command_position_hold";
-  } else if (goal_capture.latched) {
-    planning_state = ProductionMppiPlanningState::kMissionGoalPositionHold;
-    target = mppi::State{
-        .x = static_cast<float>(mission_goal.x),
-        .y = static_cast<float>(mission_goal.y),
-        .z = static_cast<float>(mission_goal.z),
-        .yaw = navigation.state.yaw,
-    };
-    speed_policy.reference_speed_mps = 0.0;
-    speed_policy.target_lookahead_m = 0.0;
-    target_source = "mission_goal_position_hold";
-  } else if (route_execution_blocked) {
-    planning_state = ProductionMppiPlanningState::kNoExecutableRouteHold;
-    speed_policy.reference_speed_mps = 0.0;
-    speed_policy.target_lookahead_m = 0.0;
-  } else if (cooperative.yield.active && cooperative.yield.hold_at_entry &&
-             !cooperative.mppi.avoidance_active && !route_control.hold_xy) {
-    planning_state = ProductionMppiPlanningState::kCooperativePassageYieldHold;
-    speed_policy.reference_speed_mps = 0.0;
-    speed_policy.target_lookahead_m = 0.0;
-    target_source = "cooperative_passage_yield_hold";
-  }
-  MppiLivenessResult liveness;
-  if (liveness_supervisor_ && !direct_tracking_interception) {
-    liveness = liveness_supervisor_->evaluate(MppiLivenessObservation{
-        .stamp_ns = now_ns,
-        .actual_state = navigation.state,
-        .controller_active = execution_input_preparation.control_feedback_fresh &&
-                             planning_state == ProductionMppiPlanningState::kPlanned &&
-                             !route_control.hold_xy && route_projection.valid,
-        .predicted_head_progress_m =
-            previous_result_.has_value() ? previous_result_->head_progress_m : 0.0,
-        .predicted_terminal_progress_m =
-            previous_result_.has_value() ? previous_result_->terminal_progress_m : 0.0,
-        .route_generation = route_generation,
-        .route_station_m = route_projection.station_m,
-        .route_station_valid = route_projection.valid,
-    });
-  }
-  RouteProgressUpdate3D route_progress;
-  if (route_progress_tracker_ && !direct_tracking_interception) {
-    const RouteProgressProjection3D& projection = route_projection;
-    route_progress = route_progress_tracker_->evaluate(RouteProgressObservation3D{
-        .stamp_ns = now_ns,
-        .route_generation =
-            projection.valid && planning_state == ProductionMppiPlanningState::kPlanned
-                ? route_generation
-                : 0U,
-        .station_m = projection.station_m,
-        .predicted_head_progress_m =
-            previous_result_.has_value() ? previous_result_->head_progress_m : 0.0,
-        .cross_track_m = projection.cross_track_m,
-        .recovery_active = liveness.recovery_active,
-        .controller_active = execution_input_preparation.control_feedback_fresh &&
-                             planning_state == ProductionMppiPlanningState::kPlanned &&
-                             !route_control.hold_xy,
-    });
-    if (route_progress.stalled && optional_constraints_.route_progress_replan_enabled) {
-      requestRouteRelease(RouteReleaseReason3D::kStalled, route_generation);
-    }
-  }
-  mppi::RiskTier route_required_risk_tier = mppi::RiskTier::kPreferred;
-  if (route_usable && execution_mppi_route && route_projection.valid) {
-    const double horizon_distance_m = std::max(
-        target_station_m - route_projection.station_m,
-        speed_policy.reference_speed_mps * static_cast<double>(mppi_config_.steps) *
-            static_cast<double>(mppi_config_.dynamics.dt_s));
-    route_required_risk_tier = mppi::maximumRequiredRiskTier(
-        *execution_mppi_route, static_cast<float>(route_projection.station_m),
-        static_cast<float>(route_projection.station_m +
-                           std::max(0.0, horizon_distance_m)));
-  }
-  std::optional<mppi::MovingTargetReference> moving_target;
-  if (objective && objective->continuous_tracking && objective->tracking.has_value()) {
-    const ProductionTrackingObjective& tracking = objective->tracking.value();
-    const double observation_age_s = static_cast<double>(std::max<std::int64_t>(
-                                         0, now_ns - tracking.observation_stamp_ns)) *
-                                     1.0e-9;
-    const TargetVerticalPrediction vertical_prediction = predictTargetVerticalMotion(
-        tracking.observed_position.z, tracking.observed_velocity.z, observation_age_s,
-        mppi_config_.dynamics.maximum_vertical_acceleration_mps2,
-        flight_envelope_config_);
-    const float minimum_z =
-        static_cast<float>(flight_envelope_config_.minimum_target_z_m);
-    const float maximum_z = std::nextafter(
-        static_cast<float>(flight_envelope_config_.maximum_target_z_m), minimum_z);
-    if (vertical_prediction.valid && std::isfinite(minimum_z) &&
-        std::isfinite(maximum_z) && maximum_z > minimum_z) {
-      const float bounded_vertical_z = mppi::clampMovingTargetAltitude(
-          static_cast<float>(vertical_prediction.z_m), minimum_z, maximum_z);
-      moving_target = mppi::MovingTargetReference{
-          .state =
-              mppi::State{
-                  .x = static_cast<float>(tracking.observed_position.x +
-                                          tracking.observed_velocity.x *
-                                              observation_age_s),
-                  .y = static_cast<float>(tracking.observed_position.y +
-                                          tracking.observed_velocity.y *
-                                              observation_age_s),
-                  .z = bounded_vertical_z,
-                  .vx = static_cast<float>(tracking.observed_velocity.x),
-                  .vy = static_cast<float>(tracking.observed_velocity.y),
-                  .vz = static_cast<float>(vertical_prediction.velocity_mps),
-              },
-          .capture_radius_m = static_cast<float>(tracking_capture_radius_m_),
-          .vertical_deceleration_mps2 =
-              mppi_config_.dynamics.maximum_vertical_acceleration_mps2,
-          .minimum_z_m = minimum_z,
-          .maximum_z_m = maximum_z,
-          .bounded_vertical_motion = true,
-      };
-    }
-  }
-  DirectTrackingManeuverUpdate direct_tracking_maneuver;
-  if (direct_tracking_interception && moving_target.has_value()) {
-    direct_tracking_maneuver =
-        direct_tracking_maneuver_lifecycle_.update(DirectTrackingManeuverObservation{
-            .interceptor_position =
-                Point3{navigation.state.x, navigation.state.y, navigation.state.z},
-            .interceptor_velocity =
-                Vec3{navigation.state.vx, navigation.state.vy, navigation.state.vz},
-            .target_position = Point3{moving_target->state.x, moving_target->state.y,
-                                      moving_target->state.z},
-            .target_velocity = Vec3{moving_target->state.vx, moving_target->state.vy,
-                                    moving_target->state.vz},
-            .stamp_ns = now_ns,
-            .line_of_sight_generation = line_of_sight_generation,
-            .active = planning_state == ProductionMppiPlanningState::kPlanned,
-        });
-  } else {
-    direct_tracking_maneuver = direct_tracking_maneuver_lifecycle_.update({});
-  }
-  const EsdfQueryResult current_clearance =
-      queryConservativeEsdf3D(world->grid, *world->distances_m, navigation.state.x,
-                              navigation.state.y, navigation.state.z);
-  const double tracking_age_ms =
-      tracking_objective != nullptr && tracking_objective->observation_stamp_ns > 0
-          ? static_cast<double>(std::max<std::int64_t>(
-                0, now_ns - tracking_objective->observation_stamp_ns)) /
-                1.0e6
-          : std::numeric_limits<double>::infinity();
-  const MppiRolloutBudgetDecision rollout_budget = selectMppiRolloutBudget(
-      rollout_budget_config_,
-      MppiRolloutBudgetObservation{
-          .static_world = use_static_map_,
-          .route_available =
-              direct_tracking_interception || (route_usable && route_projection.valid),
-          .direct_tracking = direct_tracking_interception,
-          .clearance_valid = current_clearance.status == EsdfQueryStatus::kValid,
-          .clearance_m = current_clearance.clearance_m,
-          .world_age_ms = observation_age_ms,
-          .tracking_age_ms = tracking_age_ms,
-          .required_risk_tier = direct_tracking_interception
-                                    ? mppi::RiskTier::kPreferred
-                                    : route_required_risk_tier,
-      });
-  const mppi::DeterministicCandidateKind deterministic_candidate =
-      planningDeterministicCandidate(direct_tracking_interception, planning_state,
-                                     route_usable, route_projection.valid,
-                                     route_control.hold_xy);
-  mppi::MppiTickInput controller_input{
-      .initial_state = execution_input->state(),
-      .target = target,
-      .pose_revision = execution_input->poseRevision(),
-      .obstacle_revision =
-          planningRawRevision(use_static_map_, world->revision, latest_raw_world_3d),
-      .expected_esdf_revision = world->local_world_generation.gpu_esdf_revision,
-      .planning_stamp_ns = now_ns,
-      .previous_applied_control = execution_input->previousControl(),
-      .reference_speed_mps = speed_policy.enabled
-                                 ? static_cast<float>(speed_policy.reference_speed_mps)
-                                 : -1.0F,
-      .moving_target = moving_target,
-      .route =
-          planning_state == ProductionMppiPlanningState::kPlanned && route_usable &&
-                  execution_mppi_route && route_projection.valid &&
-                  !route_control.hold_xy
-              ? std::optional<mppi::RouteReference>{mppi::RouteReference{
-                    .points = execution_mppi_route,
-                    .generation = route_generation,
-                    .initial_station_m = static_cast<float>(route_projection.station_m),
-                    .terminal_cross_track_tolerance_m = routeCrossTrackTolerance3D(
-                        optional_constraints_.route_cross_track_constraints_enabled),
-                }}
-              : std::nullopt,
-      .dynamic_aircraft = noncooperative_cost_influence_active
-                              ? noncooperative.avoidance.trajectories
-                              : cooperative.mppi.dynamic_aircraft,
-      .dynamic_aircraft_cost_policy =
-          noncooperative_cost_influence_active
-              ? std::optional<mppi::DynamicAircraftCostPolicy>{noncooperative.avoidance
-                                                                   .cost_policy}
-              : std::nullopt,
-      .cooperative_maneuver = cooperative.mppi.maneuver,
-      .cooperative_acquisition = cooperative.mppi.acquisition,
-      .noncooperative_acquisition = noncooperative_evasive_maneuver_active
-                                        ? noncooperative.avoidance.acquisition
-                                        : std::nullopt,
-      .active_rollouts = rollout_budget.active_rollouts,
-      .deterministic_candidate = deterministic_candidate,
-      .prefer_route_directed_candidate =
-          !optional_constraints_.stochastic_trajectory_selection_enabled ||
-          liveness.recovery_active || route_progress.local_reseed_requested,
-      .cooperative_avoidance_active = cooperative.mppi.avoidance_active,
-      .noncooperative_avoidance_active = noncooperative_evasive_maneuver_active,
-  };
+  logNonCooperativeUpdate(planning.controller.noncooperative);
+
   const double snapshot_ms = std::chrono::duration<double, std::milli>(
                                  std::chrono::steady_clock::now() - snapshot_started)
                                  .count();
   std::optional<MppiControllerResult3D> controller_tick =
       runPlanningController(ProductionMppiControllerTick{
           .world = *world,
-          .request =
-              MppiControllerRequest3D{
-                  .input = std::move(controller_input),
-                  .nominal_reseed =
-                      MppiNominalReseedObservation{
-                          .route_generation = direct_tracking_interception
-                                                  ? effective_route_generation
-                                                  : route_generation,
-                          .local_liveness_generation = liveness.reseed_generation,
-                          .route_liveness_generation =
-                              route_progress.local_reseed_generation,
-                          .direct_tracking_maneuver_generation =
-                              direct_tracking_maneuver.reseed_generation,
-                      },
-                  .tick_started = snapshot_started,
-                  .world_revision = world->revision,
-                  .mode =
-                      planning_state == ProductionMppiPlanningState::
-                                            kMissionGoalPositionHold ||
-                              planning_state ==
-                                  ProductionMppiPlanningState::kNoExecutableRouteHold
-                          ? MppiControllerMode3D::kStationaryHold
-                          : MppiControllerMode3D::kPlan,
-              },
-          .route_generation = route_generation,
+          .request = std::move(planning.controller.request),
+          .route_generation = planning.route.generation,
           .now_ns = now_ns,
-          .route_cross_track_m = route_projection.cross_track_m,
+          .route_cross_track_m = planning.route.projection.cross_track_m,
           .direct_tracking_interception = direct_tracking_interception,
       });
   if (!controller_tick.has_value()) {
@@ -911,30 +532,30 @@ void ProductionMppiNode::planningTick() {
       .world = world,
       .world_build = world_build,
       .route_pipeline = route_pipeline,
-      .route_execution = route_execution,
+      .route_execution = planning.route.execution,
       .execution_input = execution_input,
       .latest_lidar_evidence = latest_lidar_evidence,
       .offboard_session = offboard_session,
       .offboard_session_receive_stamp_ns = offboard_session_receive_stamp_ns,
       .navigation = navigation,
-      .execution_mppi_route = execution_mppi_route,
+      .execution_mppi_route = planning.route.controller_route,
       .execution_selected_passage_traversal_ids =
-          execution_selected_passage_traversal_ids,
+          planning.route.selected_passage_traversal_ids,
       .objective = objective,
       .prediction = prediction,
-      .liveness = liveness,
-      .direct_tracking_maneuver = direct_tracking_maneuver,
-      .speed_policy = speed_policy,
-      .route_progress = route_progress,
+      .liveness = planning.controller.liveness,
+      .direct_tracking_maneuver = planning.controller.direct_tracking_maneuver,
+      .speed_policy = planning.controller.speed_policy,
+      .route_progress = planning.controller.route_progress,
       .no_eligible_recovery = no_eligible_recovery,
-      .goal_capture = goal_capture,
-      .rollout_budget = rollout_budget,
-      .cooperative = cooperative,
-      .noncooperative = noncooperative,
-      .route_projection = route_projection,
+      .goal_capture = planning.controller.goal_capture,
+      .rollout_budget = planning.controller.rollout_budget,
+      .cooperative = planning.controller.cooperative,
+      .noncooperative = planning.controller.noncooperative,
+      .route_projection = planning.route.projection,
       .mission_goal = mission_goal,
-      .target_source = target_source,
-      .route_generation = route_generation,
+      .target_source = planning.controller.target_source,
+      .route_generation = planning.route.generation,
       .memory_sequence = memory_sequence,
       .now_ns = now_ns,
       .pose_age_ms = pose_age_ms,
@@ -942,13 +563,13 @@ void ProductionMppiNode::planningTick() {
       .observation_age_ms = observation_age_ms,
       .control_feedback_age_ms = control_feedback_age_ms,
       .snapshot_ms = snapshot_ms,
-      .route_execution_status = route_execution_status,
-      .planning_state = planning_state,
+      .route_execution_status = planning.route.execution_status,
+      .planning_state = planning.controller.planning_state,
       .previous_control_source = execution_input_preparation.previous_control_source,
-      .route_required_risk_tier = route_required_risk_tier,
-      .route_usable = route_usable,
+      .route_required_risk_tier = planning.controller.route_required_risk_tier,
+      .route_usable = planning.route.usable,
       .direct_tracking_interception = direct_tracking_interception,
-      .local_route_stop_is_terminal = local_route_stop_is_terminal,
+      .local_route_stop_is_terminal = planning.route.local_stop_is_terminal,
       .pose_predicted = pose_predicted,
   });
 }

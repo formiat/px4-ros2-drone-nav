@@ -276,5 +276,16 @@ TEST(TrackingLineOfSightLifecycle, RepeatedFlappingCreatesOneGenerationPerEntry)
   }
 }
 
+TEST(TrackingObjective, NamesEveryRadarCadenceReason) {
+  EXPECT_STREQ(radarCadenceReasonName(RadarCadenceReason::kNoTrackingObjective),
+               "no_tracking_objective");
+  EXPECT_STREQ(radarCadenceReasonName(RadarCadenceReason::kObservedTargetOccluded),
+               "observed_target_occluded");
+  EXPECT_STREQ(radarCadenceReasonName(RadarCadenceReason::kObservedTargetVisible),
+               "observed_target_visible");
+  EXPECT_STREQ(radarCadenceReasonName(RadarCadenceReason::kWorldUnavailable),
+               "world_unavailable");
+}
+
 } // namespace
 } // namespace drone_city_nav
