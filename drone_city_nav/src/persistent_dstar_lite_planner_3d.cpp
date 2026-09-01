@@ -142,47 +142,6 @@ spatialRouteCandidateSource3DName(const SpatialRouteCandidateSource3D source) no
 
 namespace detail {
 
-void LatticeState3D::reset() noexcept {
-  raw_bounds_ = {};
-  width_ = 0;
-  height_ = 0;
-  depth_ = 0;
-}
-
-void DStarLiteSessionState3D::reset() noexcept {
-  queue_token_ = 0U;
-  queue_sequence_ = 0U;
-  key_modifier_ = 0.0;
-  cost_to_goal_heuristic_admissible_ = true;
-  open_ = {};
-  records_.clear();
-  edge_cost_cache_.clear();
-  pending_repair_nodes_.clear();
-  pending_repair_members_.clear();
-}
-
-void FeasiblePathSearchState3D::reset() noexcept {
-  initialized_ = false;
-  queue_sequence_ = 0U;
-  open_ = {};
-  costs_.clear();
-  parents_.clear();
-}
-
-void ExecutionTimeRefinementState3D::reset() noexcept {
-  initialized_ = false;
-  complete_ = false;
-  start_from_rest_ = false;
-  start_ = {};
-  goal_.reset();
-  spatial_incumbent_.clear();
-  goal_cost_s_ = std::numeric_limits<double>::infinity();
-  queue_sequence_ = 0U;
-  open_ = {};
-  costs_.clear();
-  parents_.clear();
-}
-
 void AnytimePlannerCoordinator3D::reset() noexcept {
   incumbent_.reset();
 }
@@ -273,7 +232,36 @@ bool PersistentPlannerTimeQueueEntryCompare3D::operator()(
 
 PersistentDStarLitePlanner3DImpl::PersistentDStarLitePlanner3DImpl(
     const PersistentPlannerConfig3D& config)
-    : config_{config} {
+    : config_{config},
+      lattice_{config_},
+      dstar_session_{config_, lattice_},
+      feasibility_search_{config_, lattice_},
+      execution_time_refiner_{config_, lattice_, dstar_session_} {
+}
+
+void PersistentDStarLitePlanner3DImpl::initializeSearch(
+    const PersistentPlannerRequest3D& request, const PersistentPlannerNode3D start,
+    const PersistentPlannerNode3D goal) {
+  initialized_ = true;
+  start_ = start;
+  last_start_ = start;
+  goal_ = goal;
+  exact_start_ = request.start;
+  exact_goal_ = request.mission_goal;
+  mission_epoch_ = request.mission_epoch;
+  dstar_session_.begin(start, goal);
+  feasibility_search_.reset();
+  execution_time_refiner_.reset();
+}
+
+FeasiblePathSearch3D::Endpoints3D
+PersistentDStarLitePlanner3DImpl::searchEndpoints() const noexcept {
+  return FeasiblePathSearch3D::Endpoints3D{
+      .start = start_,
+      .goal = goal_,
+      .exact_start = exact_start_,
+      .exact_goal = exact_goal_,
+  };
 }
 
 const PersistentPlannerConfig3D&
@@ -284,8 +272,6 @@ PersistentDStarLitePlanner3DImpl::config() const noexcept {
 void PersistentDStarLitePlanner3DImpl::reset() noexcept {
   initialized_ = false;
   world_ = {};
-  resident_collision_oracle_.reset();
-  departure_collision_oracle_.reset();
   lattice_.reset();
   start_ = {};
   last_start_ = {};
@@ -297,11 +283,7 @@ void PersistentDStarLitePlanner3DImpl::reset() noexcept {
   feasibility_search_.reset();
   execution_time_refiner_.reset();
   coordinator_.reset();
-  lattice_edge_queries_ = 0U;
-  raw_edge_validation_checks_ = 0U;
-  adaptive_edge_queries_ = 0U;
   adaptive_edges_in_extracted_path_ = 0U;
-  maximum_queried_lattice_level_ = 0U;
 }
 
 bool PersistentDStarLitePlanner3DImpl::validRequest(
@@ -328,18 +310,15 @@ bool PersistentDStarLitePlanner3DImpl::validRequest(
          std::isfinite(config_.maximum_compute_time_ms) &&
          config_.maximum_compute_time_ms > 0.0 &&
          config_.physical_footprint.sweep_step_m > 0.0 &&
-         pointInsideFlightEnvelope(request.start) &&
-         pointInsideFlightEnvelope(request.mission_goal);
+         lattice_.pointInsideFlightEnvelope(request.start) &&
+         lattice_.pointInsideFlightEnvelope(request.mission_goal);
 }
 
 PlannerUpdate3D
 PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request) {
   const auto operation_started = std::chrono::steady_clock::now();
-  lattice_edge_queries_ = 0U;
-  raw_edge_validation_checks_ = 0U;
-  adaptive_edge_queries_ = 0U;
+  lattice_.resetEdgeStatistics();
   adaptive_edges_in_extracted_path_ = 0U;
-  maximum_queried_lattice_level_ = 0U;
   PlannerUpdate3D update;
   PlannerTelemetry3D& telemetry = update.telemetry;
   telemetry.mission_epoch = request.mission_epoch;
@@ -370,22 +349,19 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   telemetry.occupied_world_unchanged = world_update.occupied_world_unchanged;
 
   const std::optional<PersistentPlannerNode3D> start_anchor =
-      selectAnchor(request.start, true);
+      lattice_.selectAnchor(request.start, true);
   if (!start_anchor.has_value()) {
     update.input_status = PlannerInputStatus3D::kStartUnavailable;
     return update;
   }
   const std::optional<PersistentPlannerNode3D> goal_anchor =
-      selectAnchor(request.mission_goal, false);
+      lattice_.selectAnchor(request.mission_goal, false);
   if (!goal_anchor.has_value()) {
     update.input_status = PlannerInputStatus3D::kGoalUnavailable;
     return update;
   }
-  const PersistentPlannerTimeState3D time_start_state =
-      executionTimeStartState(request, *start_anchor);
-  const bool starts_from_rest =
-      std::hypot(std::hypot(request.velocity.x, request.velocity.y),
-                 request.velocity.z) <= 1.0e-9;
+  const ExecutionTimeRefiner3D::Request3D refinement_request =
+      refinementRequest(request, *start_anchor, *goal_anchor);
 
   const bool mission_changed =
       initialized_ &&
@@ -401,39 +377,34 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     initializeSearch(request, *start_anchor, *goal_anchor);
   } else {
     const bool feasibility_start_changed = *start_anchor != start_;
-    const bool execution_time_start_changed =
-        execution_time_refiner_.initialized_ &&
-        (execution_time_refiner_.start_ != time_start_state ||
-         execution_time_refiner_.start_from_rest_ != starts_from_rest);
+    const bool execution_time_start_changed = execution_time_refiner_.startChanged(
+        refinement_request.start, refinement_request.start_from_rest);
     const bool execution_time_goal_changed =
-        execution_time_refiner_.initialized_ &&
-        distance3D(request.mission_goal, previous_goal) > 1.0e-9;
+        execution_time_refiner_.goalChanged(request.mission_goal);
     telemetry.search_state_reused = true;
     exact_start_ = request.start;
     exact_goal_ = request.mission_goal;
-    dstar_session_.key_modifier_ += heuristic(last_start_, *start_anchor);
+    dstar_session_.rebaseStart(*start_anchor,
+                               lattice_.heuristic(last_start_, *start_anchor));
     start_ = *start_anchor;
     last_start_ = *start_anchor;
     if (!world_update.changed_cells.empty()) {
-      scheduleAffectedVertices(world_update.changed_cells,
-                               telemetry.affected_lattice_states);
+      dstar_session_.scheduleAffectedVertices(world_, world_update.changed_cells,
+                                              telemetry.affected_lattice_states);
       if (world_update.occupied_cells_removed) {
         // A cost-to-go retained across an obstacle removal can overestimate a
         // newly opened route until every affected label settles. Keep the
         // refinement heuristic strictly Euclidean in that case.
-        dstar_session_.cost_to_goal_heuristic_admissible_ = false;
+        dstar_session_.markCostToGoalInadmissible();
       }
-      dstar_session_.repair_generation_ =
-          dstar_session_.repair_generation_ == std::numeric_limits<std::uint64_t>::max()
-              ? 1U
-              : dstar_session_.repair_generation_ + 1U;
+      dstar_session_.advanceRepairGeneration();
     }
     if (!world_update.changed_cells.empty() || feasibility_start_changed) {
-      resetFeasibilitySearch();
+      feasibility_search_.reset();
     }
     if (!world_update.changed_cells.empty() || execution_time_start_changed ||
         execution_time_goal_changed) {
-      resetExecutionTimeSearch();
+      execution_time_refiner_.reset();
     }
   }
 
@@ -459,9 +430,10 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
                       std::chrono::duration_cast<std::chrono::steady_clock::duration>(
                           std::chrono::duration<double, std::milli>{
                               config_.maximum_feasibility_compute_time_ms}));
-    std::optional<std::vector<Point3>> path = findFeasiblePath(
-        feasibility_deadline, config_.maximum_feasibility_expansions_per_update,
-        telemetry.feasibility_expansions);
+    std::optional<std::vector<Point3>> path =
+        feasibility_search_.advance(searchEndpoints(), feasibility_deadline,
+                                    config_.maximum_feasibility_expansions_per_update,
+                                    telemetry.feasibility_expansions);
     std::optional<SpatialRouteCandidate3D> candidate =
         path ? makeCandidate(std::move(*path),
                              SpatialRouteCandidateSource3D::kFeasibilitySearch,
@@ -473,30 +445,31 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     }
   }
 
-  const bool repair_complete =
-      continueAffectedVertexRepair(deadline, config_.maximum_expansions_per_update,
-                                   telemetry.repair_lattice_states_processed);
-  telemetry.repair_lattice_states_pending = dstar_session_.pending_repair_nodes_.size();
+  const bool repair_complete = dstar_session_.continueAffectedVertexRepair(
+      deadline, config_.maximum_expansions_per_update,
+      telemetry.repair_lattice_states_processed);
+  telemetry.repair_lattice_states_pending = dstar_session_.pendingRepairNodes();
   telemetry.repair_pending = !repair_complete;
   const std::size_t remaining_spatial_expansions =
       telemetry.repair_lattice_states_processed < config_.maximum_expansions_per_update
           ? config_.maximum_expansions_per_update -
                 telemetry.repair_lattice_states_processed
           : 0U;
-  bool spatial_search_complete = repair_complete && shortestPathComplete();
+  bool spatial_search_complete =
+      repair_complete && dstar_session_.shortestPathComplete();
   if (!spatial_search_complete && repair_complete &&
       remaining_spatial_expansions > 0U) {
-    spatial_search_complete = computeShortestPath(
+    spatial_search_complete = dstar_session_.computeShortestPath(
         deadline, remaining_spatial_expansions, telemetry.expansions);
   }
-  bool spatial_route_available{false};
-  const auto spatial_start_record = dstar_session_.records_.find(start_);
-  spatial_route_available = spatial_search_complete &&
-                            spatial_start_record != dstar_session_.records_.end() &&
-                            std::isfinite(spatial_start_record->second.g);
+  const bool spatial_route_available =
+      spatial_search_complete && dstar_session_.startResolved(start_);
   if (spatial_route_available) {
-    if (!execution_time_refiner_.initialized_) {
-      initializeExecutionTimeSearch(request, time_start_state);
+    if (!execution_time_refiner_.initialized()) {
+      execution_time_refiner_.begin(
+          refinement_request,
+          dstar_session_.extractPath(exact_start_, exact_goal_,
+                                     adaptive_edges_in_extracted_path_));
     }
     const std::size_t graph_expansions =
         telemetry.repair_lattice_states_processed + telemetry.expansions;
@@ -504,9 +477,15 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
         graph_expansions < config_.maximum_expansions_per_update
             ? config_.maximum_expansions_per_update - graph_expansions
             : 0U;
-    std::optional<std::vector<Point3>> path = continueExecutionTimeSearch(
+    std::optional<std::vector<Point3>> path = execution_time_refiner_.advance(
         deadline, refinement_budget, telemetry.execution_time_search_expansions);
-    if (execution_time_refiner_.complete_ && path && !path->empty()) {
+    if (path.has_value()) {
+      // The published path came from the refinement, so its adaptive-edge count
+      // is the one that describes it.
+      adaptive_edges_in_extracted_path_ =
+          execution_time_refiner_.adaptiveEdgesInExtractedPath();
+    }
+    if (execution_time_refiner_.complete() && path && !path->empty()) {
       *path = path_postprocessor_.shortcut(
           *path,
           PathPostprocessorContext3D{
@@ -514,8 +493,8 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
               .segment_valid =
                   [this](const Point3& first, const Point3& second,
                          const bool departure) {
-                    return departure ? departureSegmentValid(first, second)
-                                     : rawSegmentValid(first, second);
+                    return departure ? lattice_.departureSegmentValid(first, second)
+                                     : lattice_.rawSegmentValid(first, second);
                   },
               .time_profile =
                   [this, &request](const std::vector<Point3>& points) {
@@ -538,12 +517,12 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
       }
     }
   } else if (spatial_search_complete) {
-    resetExecutionTimeSearch();
+    execution_time_refiner_.reset();
   }
 
   const bool search_complete =
       spatial_search_complete &&
-      (!spatial_route_available || execution_time_refiner_.complete_);
+      (!spatial_route_available || execution_time_refiner_.complete());
   telemetry.incumbent_available = coordinator_.incumbent() != nullptr;
   if (!search_complete) {
     update.progress = SearchProgress3D::kRunning;
@@ -552,22 +531,20 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   } else {
     update.progress = SearchProgress3D::kNoRoute;
   }
-  telemetry.execution_time_search_complete = execution_time_refiner_.complete_;
-  telemetry.search_generation = dstar_session_.search_generation_;
-  telemetry.repair_generation = dstar_session_.repair_generation_;
-  telemetry.records = dstar_session_.records_.size();
-  telemetry.open_entries = dstar_session_.open_.size();
-  telemetry.lattice_edge_queries = lattice_edge_queries_;
-  telemetry.raw_edge_validation_checks = raw_edge_validation_checks_;
-  telemetry.adaptive_edge_queries = adaptive_edge_queries_;
+  telemetry.execution_time_search_complete = execution_time_refiner_.complete();
+  telemetry.search_generation = dstar_session_.searchGeneration();
+  telemetry.repair_generation = dstar_session_.repairGeneration();
+  telemetry.records = dstar_session_.records();
+  telemetry.open_entries = dstar_session_.openEntries();
+  telemetry.lattice_edge_queries = lattice_.edgeQueries();
+  telemetry.raw_edge_validation_checks = lattice_.rawEdgeValidationChecks();
+  telemetry.adaptive_edge_queries = lattice_.adaptiveEdgeQueries();
   telemetry.adaptive_edges_in_extracted_path = adaptive_edges_in_extracted_path_;
-  telemetry.maximum_queried_lattice_level = maximum_queried_lattice_level_;
-  telemetry.execution_time_search_records = execution_time_refiner_.costs_.size();
-  telemetry.execution_time_search_open_entries = execution_time_refiner_.open_.size();
+  telemetry.maximum_queried_lattice_level = lattice_.maximumQueriedLevel();
+  telemetry.execution_time_search_records = execution_time_refiner_.records();
+  telemetry.execution_time_search_open_entries = execution_time_refiner_.openEntries();
   telemetry.execution_time_search_objective_s =
-      std::isfinite(execution_time_refiner_.goal_cost_s_)
-          ? execution_time_refiner_.goal_cost_s_
-          : 0.0;
+      execution_time_refiner_.objectiveSeconds();
   telemetry.search_ms = std::chrono::duration<double, std::milli>(
                             std::chrono::steady_clock::now() - operation_started)
                             .count();

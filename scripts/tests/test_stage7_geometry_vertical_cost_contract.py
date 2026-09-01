@@ -29,8 +29,11 @@ class Stage7GeometryVerticalCostContractTest(unittest.TestCase):
         implementation = (SOURCE / "flight_time_model_3d.cpp").read_text(
             encoding="utf-8"
         )
-        search = (SOURCE / "persistent_dstar_lite_planner_3d_search.cpp").read_text(
-            encoding="utf-8"
+        # The persistent search is split across the lattice that prices edges and
+        # the translation units that consume those prices.
+        search = "".join(
+            path.read_text(encoding="utf-8")
+            for path in sorted(SOURCE.glob("persistent_dstar_lite_planner_3d*.cpp"))
         )
         yaml = (PACKAGE / "config" / "urban_mvp.yaml").read_text(encoding="utf-8")
 

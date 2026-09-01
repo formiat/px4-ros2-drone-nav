@@ -55,50 +55,10 @@ constexpr double kGeometryTolerance{1.0e-9};
 
 } // namespace
 
-bool PersistentDStarLitePlanner3DImpl::sameGridGeometry(
-    const GridBounds3D& bounds) const noexcept {
-  return lattice_.width_ > 0 && lattice_.height_ > 0 && lattice_.depth_ > 0 &&
-         sameBounds(lattice_.raw_bounds_, bounds);
-}
-
-void PersistentDStarLitePlanner3DImpl::configureGridGeometry(
-    const GridBounds3D& bounds) {
-  lattice_.raw_bounds_ = bounds;
-  const double width_m = static_cast<double>(bounds.width_cells) * bounds.resolution_m;
-  const double height_m =
-      static_cast<double>(bounds.height_cells) * bounds.resolution_m;
-  const double depth_m = static_cast<double>(bounds.depth_cells) * bounds.resolution_m;
-  lattice_.width_ = std::max(
-      1, static_cast<int>(std::floor(width_m / config_.minimum_horizontal_step_m)));
-  lattice_.height_ = std::max(
-      1, static_cast<int>(std::floor(height_m / config_.minimum_horizontal_step_m)));
-  lattice_.depth_ = std::max(
-      1, static_cast<int>(std::floor(depth_m / config_.minimum_vertical_step_m)));
-}
-
 void PersistentDStarLitePlanner3DImpl::installWorld(
     const PersistentPlannerWorld3D& world) {
   world_ = world;
-  resident_collision_oracle_.emplace(OccupiedCollisionWorld3D{
-      .observed_occupancy = world_.observed_occupancy.get(),
-      .static_occupancy = world_.static_occupancy.get(),
-      .planar_occupancy = nullptr,
-      .raw_point_cloud = {},
-      .launch_support_contact = nullptr,
-      .footprint = config_.physical_footprint,
-      .flight_envelope = config_.flight_envelope,
-  });
-  departure_collision_oracle_.emplace(OccupiedCollisionWorld3D{
-      .observed_occupancy = world_.observed_occupancy.get(),
-      .static_occupancy = world_.static_occupancy.get(),
-      .planar_occupancy = nullptr,
-      .raw_point_cloud = {},
-      .launch_support_contact = world_.launch_support_contact
-                                    ? std::addressof(*world_.launch_support_contact)
-                                    : nullptr,
-      .footprint = config_.physical_footprint,
-      .flight_envelope = config_.flight_envelope,
-  });
+  lattice_.installWorld(world);
 }
 
 PersistentPlannerWorldUpdate3D
@@ -109,14 +69,14 @@ PersistentDStarLitePlanner3DImpl::updateWorld(const PersistentPlannerWorld3D& wo
   }
   if (!initialized_ && world_.producer_instance_id == 0U) {
     installWorld(world);
-    configureGridGeometry(*world.bounds());
+    lattice_.configureGridGeometry(*world.bounds());
     update.accepted = true;
     update.requires_reset = true;
     return update;
   }
   if (world_.producer_instance_id == 0U ||
       world.producer_instance_id != world_.producer_instance_id ||
-      !sameGridGeometry(*world.bounds()) || world.revision < world_.revision ||
+      !lattice_.sameGridGeometry(*world.bounds()) || world.revision < world_.revision ||
       (world.revision == world_.revision &&
        world.occupied_fingerprint != world_.occupied_fingerprint)) {
     if (world.revision < world_.revision &&
@@ -124,8 +84,8 @@ PersistentDStarLitePlanner3DImpl::updateWorld(const PersistentPlannerWorld3D& wo
       return update;
     }
     installWorld(world);
-    configureGridGeometry(*world.bounds());
-    dstar_session_.edge_cost_cache_.clear();
+    lattice_.configureGridGeometry(*world.bounds());
+    lattice_.resetEdgeEvidence();
     update.accepted = true;
     update.requires_reset = true;
     return update;
@@ -138,7 +98,7 @@ PersistentDStarLitePlanner3DImpl::updateWorld(const PersistentPlannerWorld3D& wo
   }
   if (world.full_reset) {
     installWorld(world);
-    dstar_session_.edge_cost_cache_.clear();
+    lattice_.resetEdgeEvidence();
     update.accepted = true;
     update.requires_reset = true;
     return update;
@@ -151,14 +111,14 @@ PersistentDStarLitePlanner3DImpl::updateWorld(const PersistentPlannerWorld3D& wo
   }
   if (world.incremental_parent_revision != world_.revision) {
     installWorld(world);
-    dstar_session_.edge_cost_cache_.clear();
+    lattice_.resetEdgeEvidence();
     update.accepted = true;
     update.requires_reset = true;
     return update;
   }
   if (world.observed_occupancy == nullptr || world_.observed_occupancy == nullptr) {
     installWorld(world);
-    dstar_session_.edge_cost_cache_.clear();
+    lattice_.resetEdgeEvidence();
     update.accepted = true;
     update.requires_reset = true;
     return update;
@@ -232,130 +192,6 @@ std::vector<GridIndex3D> PersistentDStarLitePlanner3DImpl::changedOccupiedCells(
     }
   }
   return changed;
-}
-
-bool PersistentDStarLitePlanner3DImpl::nodeInside(
-    const PersistentPlannerNode3D node) const noexcept {
-  return node.x >= 0 && node.y >= 0 && node.z >= 0 && node.x < lattice_.width_ &&
-         node.y < lattice_.height_ && node.z < lattice_.depth_;
-}
-
-int PersistentDStarLitePlanner3DImpl::maximumLatticeScale() const noexcept {
-  return 1 << config_.maximum_adaptive_lattice_level;
-}
-
-std::size_t PersistentDStarLitePlanner3DImpl::latticeLevel(
-    const PersistentPlannerNode3D first,
-    const PersistentPlannerNode3D second) const noexcept {
-  const int scale =
-      std::max({std::abs(first.x - second.x), std::abs(first.y - second.y),
-                std::abs(first.z - second.z)});
-  if (scale <= 1) {
-    return 0U;
-  }
-  return static_cast<std::size_t>(std::countr_zero(static_cast<unsigned int>(scale)));
-}
-
-Point3 PersistentDStarLitePlanner3DImpl::pointFor(
-    const PersistentPlannerNode3D node) const noexcept {
-  return Point3{
-      lattice_.raw_bounds_.origin_x +
-          (static_cast<double>(node.x) + 0.5) * config_.minimum_horizontal_step_m,
-      lattice_.raw_bounds_.origin_y +
-          (static_cast<double>(node.y) + 0.5) * config_.minimum_horizontal_step_m,
-      lattice_.raw_bounds_.origin_z +
-          (static_cast<double>(node.z) + 0.5) * config_.minimum_vertical_step_m,
-  };
-}
-
-PersistentPlannerNode3D
-PersistentDStarLitePlanner3DImpl::nearestNode(const Point3& point) const noexcept {
-  const auto clamp_index = [](const double coordinate, const double origin,
-                              const double step, const int size) {
-    const int index = static_cast<int>(std::floor((coordinate - origin) / step));
-    return std::clamp(index, 0, size - 1);
-  };
-  return PersistentPlannerNode3D{
-      clamp_index(point.x, lattice_.raw_bounds_.origin_x,
-                  config_.minimum_horizontal_step_m, lattice_.width_),
-      clamp_index(point.y, lattice_.raw_bounds_.origin_y,
-                  config_.minimum_horizontal_step_m, lattice_.height_),
-      clamp_index(point.z, lattice_.raw_bounds_.origin_z,
-                  config_.minimum_vertical_step_m, lattice_.depth_),
-  };
-}
-
-std::optional<PersistentPlannerNode3D>
-PersistentDStarLitePlanner3DImpl::selectAnchor(const Point3& point,
-                                               const bool start_anchor) const {
-  const PersistentPlannerNode3D center = nearestNode(point);
-  const auto radius = static_cast<int>(config_.connector_search_radius_cells);
-  std::vector<PersistentPlannerNode3D> candidates;
-  const int diameter = 2 * radius + 1;
-  const auto diameter_size = static_cast<std::size_t>(diameter);
-  candidates.reserve(diameter_size * diameter_size * diameter_size);
-  for (int z_offset = -radius; z_offset <= radius; ++z_offset) {
-    for (int y_offset = -radius; y_offset <= radius; ++y_offset) {
-      for (int x_offset = -radius; x_offset <= radius; ++x_offset) {
-        const PersistentPlannerNode3D candidate{
-            center.x + x_offset, center.y + y_offset, center.z + z_offset};
-        if (nodeInside(candidate)) {
-          candidates.push_back(candidate);
-        }
-      }
-    }
-  }
-  std::ranges::sort(candidates, [&](const PersistentPlannerNode3D& first,
-                                    const PersistentPlannerNode3D& second) {
-    const double first_distance = distance3D(point, pointFor(first));
-    const double second_distance = distance3D(point, pointFor(second));
-    return first_distance == second_distance ? nodeLess(first, second)
-                                             : first_distance < second_distance;
-  });
-  for (const PersistentPlannerNode3D candidate : candidates) {
-    const Point3 anchor = pointFor(candidate);
-    if (!nodeValid(candidate)) {
-      continue;
-    }
-    const bool connector_valid = start_anchor ? departureSegmentValid(point, anchor)
-                                              : rawSegmentValid(anchor, point);
-    if (connector_valid) {
-      return candidate;
-    }
-  }
-  return std::nullopt;
-}
-
-bool PersistentDStarLitePlanner3DImpl::pointInsideFlightEnvelope(
-    const Point3& point) const noexcept {
-  return std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z) &&
-         evaluateFlightEnvelopeAltitude(point.z, config_.flight_envelope) ==
-             FlightEnvelopeStatus::kValid;
-}
-
-bool PersistentDStarLitePlanner3DImpl::rawSegmentValid(const Point3& first,
-                                                       const Point3& second) const {
-  // The resident graph represents persistent raw occupancy only. A moving
-  // proprioceptive seed and launch support are local execution evidence; if
-  // they changed graph edge costs, every pose refresh would invalidate the
-  // complete backward search and its edge cache.
-  return resident_collision_oracle_.has_value() &&
-         resident_collision_oracle_
-             ->validateSegment(first, FootprintBodyAxis{}, second, FootprintBodyAxis{})
-             .clear();
-}
-
-bool PersistentDStarLitePlanner3DImpl::departureSegmentValid(
-    const Point3& first, const Point3& second) const {
-  return departure_collision_oracle_.has_value() &&
-         departure_collision_oracle_
-             ->validateSegment(first, FootprintBodyAxis{}, second, FootprintBodyAxis{})
-             .clear();
-}
-
-bool PersistentDStarLitePlanner3DImpl::nodeValid(
-    const PersistentPlannerNode3D node) const {
-  return nodeInside(node) && rawSegmentValid(pointFor(node), pointFor(node));
 }
 
 } // namespace drone_city_nav::detail
