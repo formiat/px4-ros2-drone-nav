@@ -85,8 +85,10 @@ Keep private application services in the directory owned by their narrow CMake
 target:
 
 - `src/world/`: raw-world and coherent world-publication services;
-- `src/planning/`, `src/trajectory/`, and `src/execution/`: route-runtime
-  use cases and their build-only contracts;
+- `src/route_application/`: route-runtime use cases — planning, materialization,
+  activation, and execution publication — and their build-only contracts. They
+  are one application service, so they are one directory rather than three that
+  imply independent layers;
 - `src/runtime/`: ROS-free MPPI application services and configuration;
 - `src/runtime/ros/`: the production node composition root and ROS adapters.
 

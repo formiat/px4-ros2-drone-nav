@@ -145,8 +145,8 @@ separate CMake graphs. The private graph is:
 ```text
 src/runtime/ros  drone_city_nav_production_mppi_component
   -> src/runtime  drone_city_nav_mppi_runtime
-  -> src/planning + src/trajectory + src/execution
-                   drone_city_nav_route_runtime
+  -> src/route_application
+                  drone_city_nav_route_runtime
   -> src/world    drone_city_nav_world_runtime
   -> controller-neutral domain libraries
 ```

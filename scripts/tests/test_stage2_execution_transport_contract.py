@@ -10,7 +10,7 @@ from pathlib import Path
 REPOSITORY = Path(__file__).resolve().parents[2]
 PACKAGE = REPOSITORY / "drone_city_nav"
 SOURCE = PACKAGE / "src"
-EXECUTION_RUNTIME = SOURCE / "execution"
+EXECUTION_RUNTIME = SOURCE / "route_application"
 MPPI_RUNTIME = SOURCE / "runtime"
 ROS_RUNTIME = MPPI_RUNTIME / "ros"
 INCLUDE = PACKAGE / "include" / "drone_city_nav"

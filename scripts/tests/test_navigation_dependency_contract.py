@@ -52,8 +52,8 @@ EXECUTION_IMPLEMENTATION = tuple(
     for path in (
         *sorted(SOURCE.glob("execution*.cpp")),
         *sorted(SOURCE.glob("execution*.hpp")),
-        *sorted((SOURCE / "execution").glob("*.cpp")),
-        *sorted((SOURCE / "execution").glob("*.hpp")),
+        *sorted((SOURCE / "route_application").glob("execution*.cpp")),
+        *sorted((SOURCE / "route_application").glob("execution*.hpp")),
         SOURCE / "committed_execution_authority_3d.cpp",
     )
     if path not in MPPI_EXECUTION_ADAPTERS
@@ -95,9 +95,7 @@ LEGACY_ORCHESTRATION_CONTRACT_TESTS = (
 )
 WORLD_RUNTIME_INCLUDE_ROOTS = (SOURCE / "world",)
 ROUTE_RUNTIME_INCLUDE_ROOTS = (
-    SOURCE / "planning",
-    SOURCE / "trajectory",
-    SOURCE / "execution",
+    SOURCE / "route_application",
     *WORLD_RUNTIME_INCLUDE_ROOTS,
 )
 MPPI_RUNTIME_INCLUDE_ROOTS = (SOURCE / "runtime", *ROUTE_RUNTIME_INCLUDE_ROOTS)
@@ -327,11 +325,7 @@ class NavigationDependencyContractTest(unittest.TestCase):
     def test_private_runtime_sources_and_include_roots_follow_layers(self) -> None:
         expected_source_roots = {
             "DRONE_CITY_NAV_WORLD_RUNTIME_SOURCES": (SOURCE / "world",),
-            "DRONE_CITY_NAV_ROUTE_RUNTIME_SOURCES": (
-                SOURCE / "planning",
-                SOURCE / "trajectory",
-                SOURCE / "execution",
-            ),
+            "DRONE_CITY_NAV_ROUTE_RUNTIME_SOURCES": (SOURCE / "route_application",),
             "DRONE_CITY_NAV_MPPI_RUNTIME_SOURCES": (SOURCE / "runtime",),
         }
         for variable, allowed_roots in expected_source_roots.items():
@@ -350,9 +344,7 @@ class NavigationDependencyContractTest(unittest.TestCase):
         )
         for relative_root in (
             "src/world",
-            "src/planning",
-            "src/trajectory",
-            "src/execution",
+            "src/route_application",
             "src/runtime",
         ):
             with self.subTest(include_root=relative_root):

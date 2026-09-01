@@ -753,23 +753,21 @@ target_include_directories(
 target_link_libraries(drone_city_nav_world_runtime PUBLIC drone_city_nav_planning)
 
 set(DRONE_CITY_NAV_ROUTE_RUNTIME_SOURCES
-    src/execution/execution_publication_navigation_rebase_3d.cpp
-    src/execution/production_mppi_route_execution.cpp
-    src/execution/production_mppi_route_helpers.cpp
-    src/execution/route_activation_coordinator_3d.cpp
-    src/execution/route_activation_preparation_3d.cpp
-    src/planning/route_lifecycle_coordinator_3d.cpp
-    src/planning/route_planner_3d.cpp
-    src/planning/route_planning_coordinator_3d.cpp
-    src/trajectory/route_materializer_3d.cpp
-    src/trajectory/route_trajectory_compiler_3d.cpp)
+    src/route_application/execution_publication_navigation_rebase_3d.cpp
+    src/route_application/production_mppi_route_execution.cpp
+    src/route_application/production_mppi_route_helpers.cpp
+    src/route_application/route_activation_coordinator_3d.cpp
+    src/route_application/route_activation_preparation_3d.cpp
+    src/route_application/route_lifecycle_coordinator_3d.cpp
+    src/route_application/route_planner_3d.cpp
+    src/route_application/route_planning_coordinator_3d.cpp
+    src/route_application/route_materializer_3d.cpp
+    src/route_application/route_trajectory_compiler_3d.cpp)
 add_drone_city_nav_private_runtime(drone_city_nav_route_runtime
                                    ${DRONE_CITY_NAV_ROUTE_RUNTIME_SOURCES})
 target_include_directories(
   drone_city_nav_route_runtime
-  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/planning>"
-         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/trajectory>"
-         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/execution>")
+  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/route_application>")
 # Route runtime is the first application service that owns execution state, so
 # it names the execution layer directly instead of inheriting it through the
 # world runtime.
@@ -1286,9 +1284,7 @@ if(BUILD_TESTING)
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include"
             "${CMAKE_CURRENT_SOURCE_DIR}/src"
             "${CMAKE_CURRENT_SOURCE_DIR}/src/world"
-            "${CMAKE_CURRENT_SOURCE_DIR}/src/planning"
-            "${CMAKE_CURRENT_SOURCE_DIR}/src/trajectory"
-            "${CMAKE_CURRENT_SOURCE_DIR}/src/execution"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/route_application"
             "${CMAKE_CURRENT_SOURCE_DIR}/src/runtime"
             "${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/ros")
   target_link_libraries(
@@ -2037,7 +2033,7 @@ if(BUILD_TESTING)
                   tests/production_mppi_execution_control_test.cpp)
   target_compile_features(production_mppi_execution_control_test PRIVATE cxx_std_20)
   target_include_directories(production_mppi_execution_control_test
-                             PRIVATE src/execution)
+                             PRIVATE src/route_application)
   target_link_libraries(production_mppi_execution_control_test
                         drone_city_nav_execution)
   enable_project_warnings(production_mppi_execution_control_test)

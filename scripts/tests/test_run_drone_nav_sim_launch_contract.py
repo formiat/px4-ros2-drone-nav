@@ -177,7 +177,7 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self,
     ) -> None:
         startup_objective = self.production_mppi_source_text.split(
-            "navigation_objective_.store", maxsplit=1
+            "navigation_objective_state_.store", maxsplit=1
         )[1].split("objective_replan_anchor_", maxsplit=1)[0]
         normalized_startup_objective = " ".join(startup_objective.split())
 
