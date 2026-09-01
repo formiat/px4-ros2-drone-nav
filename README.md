@@ -637,6 +637,22 @@ The approved build system entry point is `colcon`, not direct top-level CMake.
 The C++ package itself uses modern target-based CMake in
 `drone_city_nav/CMakeLists.txt`.
 
+Production navigation services are compile-time separated from ROS composition:
+
+```text
+drone_city_nav_production_mppi_component  (src/runtime/ros)
+  -> drone_city_nav_mppi_runtime          (src/runtime)
+  -> drone_city_nav_route_runtime         (src/planning, trajectory, execution)
+  -> drone_city_nav_world_runtime         (src/world)
+```
+
+These package-private libraries have independent build-only include roots. The
+world, route, and MPPI runtimes are ROS-free; the component contains the ROS
+capture/apply/publish adapters and does not link the compatibility core umbrella.
+Header-graph and manifest tests enforce the boundary rather than relying only on
+declared `target_link_libraries` edges. See
+[`docs/architecture.md`](docs/architecture.md#compile-time-runtime-boundaries).
+
 Do not introduce an ad-hoc build directory when an existing `build/` directory
 and compile database are already available. The normal build
 commands keep the build out of the source package and export a compile database

@@ -79,6 +79,29 @@ Offboard owns:
 Do not make planner diagnostics authoritative for runtime control unless the
 trajectory artifact explicitly carries that contract.
 
+### Private Production Services
+
+Keep private application services in the directory owned by their narrow CMake
+target:
+
+- `src/world/`: raw-world and coherent world-publication services;
+- `src/planning/`, `src/trajectory/`, and `src/execution/`: route-runtime
+  use cases and their build-only contracts;
+- `src/runtime/`: ROS-free MPPI application services and configuration;
+- `src/runtime/ros/`: the production node composition root and ROS adapters.
+
+Do not restore the package-wide `src/` include root to a private runtime target.
+Expose a new build-only include directory only through the target that owns it,
+and preserve the allowed target dependency direction ROS component -> MPPI ->
+route -> world.
+The component must not link `drone_city_nav_core` or reach around its immediate
+runtime dependency.
+
+Domain orchestration behavior belongs in direct C++ API, state-machine, and
+concurrency tests. Python source contracts may check ROS messages, QoS, launch
+wiring, or explicit dependency bans; they must not infer transaction behavior
+by slicing C++ source with expression order or line position.
+
 ## Safe Refactoring
 
 Before refactoring:

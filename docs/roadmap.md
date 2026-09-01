@@ -661,20 +661,22 @@ checks cover ROS message/QoS/wiring integration or architectural dependency
 bans, not domain transaction behavior.
 Manager-owned pending identity and atomic base validation are now covered by a
 direct executable suite instead of activation source-order parsing.
-Item 12 remains in progress until the complete static audit and the unchanged
-three-run Manhattan mission gate below are finished.
+The September 2026 closure audit confirms that the runtime-modularity findings
+are implemented at both the ownership and compile-time boundaries. Execution is
+controller-neutral; raw occupancy has one factory-built authoritative owner;
+optional route metadata lives in immutable `RouteDecorations3D`; planning-cycle,
+route-lifecycle, route-selection, horizon-assembly, and raw-ingress services own
+their use cases; configuration and cross-stage values are grouped; and domain
+transactions are covered through executable APIs rather than C++ source order.
+The production component is now a ROS composition adapter over independent
+world, route, and MPPI runtime targets with narrow include roots and transitive
+header-dependency enforcement. Private implementation sources reside in their
+world/planning/trajectory/execution/runtime layers, and passive planner data has
+explicit `State` names.
 
-The August 2026 runtime-modularity review found that items 3 and 5 through 10
-above are not yet complete at the current architecture baseline. In particular,
-execution public contracts still expose MPPI finite-horizon/configuration types;
-the 52-translation-unit production component still owns the world, route,
-controller, and node implementations; `ProductionMppiNode` still distributes
-planning and execution orchestration across large node translation units; raw
-world ownership is redundantly representable; optional route decorations remain
-inside the base compiled trajectory; and domain transaction tests still parse
-source expression order. Passing the existing layer-link guard or focused
-service tests does not close those findings. The implementation must remove the
-underlying dependency and ownership paths before the final mission gate.
+Item 12 remains in progress only until the unchanged three-run Manhattan
+no-static 3D-lidar mission gate below is classified. This audit is not mission
+acceptance evidence; the gate outcome is recorded only from those final runs.
 
 ### Validation
 

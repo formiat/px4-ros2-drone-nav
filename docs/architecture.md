@@ -67,6 +67,8 @@ snapshot/delta transport, and selected-spectator 3D clouds.
 
 - consumes PX4 state, the memory-status heartbeat, and immutable raw obstacle
   snapshots where required;
+- terminates raw ROS memory messages at `RawWorldIngressRos3D`, which converts
+  them to ROS-free world-ingress values before invoking `WorldPipeline3D`;
 - loads canonical static artifacts at composition time and transfers their
   ownership to `WorldPipeline3D`;
 - derives no-static soft distance evidence from immutable sparse
@@ -85,6 +87,11 @@ snapshot/delta transport, and selected-spectator 3D clouds.
   delegated to `RouteTrajectoryCompiler3D` and `RouteActivationCoordinator3D`,
   while execution retention, hold, and horizon commits cross the sole
   `ExecutionSupervisor3D` facade;
+- delegates the complete planning-cycle decision to
+  `PlanningCycleCoordinator3D`, route request/continuation/materialize/activate
+  sequencing to `RouteLifecycleCoordinator3D`, resident route/direct/hold
+  selection to `RouteExecutionSelector3D`, and controller-cycle/horizon
+  assembly to `ExecutionHorizonAssembler3D`;
 - delegates diagnostics queuing, worker lifetime, JSONL/error-context files,
   and coherent statistics to the package-private `NavigationDiagnosticsSink`;
 - certifies route geometry, tracking-error tube, successor reserve, and suffix
@@ -129,6 +136,35 @@ nodes share a diagnostics-only component container. Intra-process transport
 avoids serializing spectator selection and detailed point clouds between these
 components. This container remains isolated from planning, mapping, control,
 the mission referee, and radar simulators.
+
+## Compile-Time Runtime Boundaries
+
+The layered domain libraries and package-private production services have
+separate CMake graphs. The private graph is:
+
+```text
+src/runtime/ros  drone_city_nav_production_mppi_component
+  -> src/runtime  drone_city_nav_mppi_runtime
+  -> src/planning + src/trajectory + src/execution
+                   drone_city_nav_route_runtime
+  -> src/world    drone_city_nav_world_runtime
+  -> controller-neutral domain libraries
+```
+
+`drone_city_nav_world_runtime`, `drone_city_nav_route_runtime`, and
+`drone_city_nav_mppi_runtime` are position-independent package-private static
+libraries. Each exports only its build-time private include roots to the next
+target. None exposes the former flat `src/` root. The world and route runtimes
+cannot include MPPI, ROS, generated message, or node headers; the MPPI runtime
+remains ROS-free. The production component contains only composition and ROS
+adapters, links the MPPI runtime plus ROS adapters, and has no direct dependency
+on `drone_city_nav_core`, CUDA, or the lower private runtime targets.
+
+`test_navigation_dependency_contract.py` walks the transitive local header
+graph of every private manifest, verifies the source-directory and include-root
+layout, checks forbidden dependencies, and keeps the component source list
+disjoint from all three service libraries. Every hand-written header is also
+compiled as the first and only include in an independent translation unit.
 
 ### `mppi_offboard_node`
 
@@ -227,10 +263,18 @@ risk annotation consumes the controller-neutral `EsdfGrid3D` world contract in
 vehicle state, endpoint semantics, and exact observed raw owner as one owned
 transaction. It constructs the tracking-world binding and returns the only
 sealed `CompiledTrajectory3D` without ROS or resident node-state access.
+The compiled trajectory contains only base geometry, canonical time, tracking
+tube, and speed constraints. Immutable `RouteDecorations3D` binds optional
+passage volumes, traversal identities, and cooperative assignments to that
+sealed trajectory only when constructing the execution route.
 `RouteActivationCoordinator3D` owns that compiler and receives the complete
 planner transaction, materialized route, coherent activation snapshot, and
 latency observation as one immutable request. It prepares one typed activation
 artifact containing the exact execution base and an unsequenced pending draft.
+Its implementation is one transaction owner composed from the pure named stages
+`rebaseAndValidate`, `compile`, `assessAdmission`, `assessReplacement`,
+`certify`, and `makePendingDraft`; the stages do not introduce independent
+mutable services.
 Its consume-and-return commit API validates a caller-locked world/objective
 context and publishes only through `ExecutionSupervisor3D`; no caller can reuse
 a partially committed preparation. The supervisor is the sole production owner

@@ -278,15 +278,14 @@ atomic execution commit remains in `ExecutionSupervisor3D`.
 `ProductionMppiConfig` groups `World`, `Planning`, `Execution`, `Control`, and
 `Diagnostics` values. The node constructor declares and validates these groups
 through focused loaders rather than interleaving hundreds of declarations with
-service construction. Orchestration boundaries exchange `EvidenceSnapshot`,
-`RouteDecision`, `ControllerCycle`, and `HorizonCandidate` values instead of one
-cross-stage aggregate.
+service construction. Orchestration boundaries exchange `EvidenceSnapshot3D`,
+`RouteDecision3D`, `ControllerCycle3D`, and `HorizonCandidate3D` values instead
+of one cross-stage aggregate.
 
 ## Runtime Modularity Completion Batch
 
-The domain extraction that precedes this batch is useful but does not yet make
-the ROS component a composition adapter. Completion requires all of the
-following in order:
+The completion batch is implemented. It made the ROS component a composition
+adapter by applying the following dependency-ordered changes:
 
 1. neutralize every execution-facing MPPI type and inject dynamic handoff and
    route-risk policy through typed ports;
@@ -305,10 +304,22 @@ following in order:
    move behavior into planner-owned modules or rename passive state bags, and
    finish the private directory/include-root migration after APIs stabilize.
 
-Each numbered implementation stage is formatted, quality-tested, and committed
-before the next one. Simulation is intentionally excluded until the entire
-batch, cleanup, static audit, documentation update, and non-simulation quality
-gate are complete.
+### Runtime-Modularity Review Closure Matrix
+
+| Review requirement | Production closure | Executable or static enforcement |
+| --- | --- | --- |
+| Move planning and execution use cases out of the ROS node | `PlanningCycleCoordinator3D`, `RouteLifecycleCoordinator3D`, `RouteExecutionSelector3D`, and `ExecutionHorizonAssembler3D` own their complete decisions. The node captures inputs, applies returned events, and publishes; `ExecutionSupervisor3D` remains the sole atomic execution commit facade. | Direct coordinator, selector, assembler, supervisor, state-machine, and concurrency suites exercise the APIs without parsing node expression order. |
+| Decompose activation without creating competing owners | `RouteActivationCoordinator3D` composes `rebaseAndValidate`, `compile`, `assessAdmission`, `assessReplacement`, `certify`, and `makePendingDraft` under one transaction owner. | `RouteActivationCoordinator3D` and `RouteExecutionManager3D` suites cover exact-snapshot preparation, replacement, publication, and fail-closed inputs. |
+| Close raw-world ownership and separate ROS transport | Factory-built `ProductionMppiRawWorld3D` owns one authoritative occupancy value and exposes only `valid()`, `occupancy()`, and `deriveRouteEvidence()`. `RawWorldIngressRos3D` converts ROS messages before invoking the ROS-free `WorldPipeline3D`. | World-pipeline and raw-world suites cover lineage, reconstruction, publication, invalid ownership, and derived evidence. Dependency checks ban ROS from the world target. |
+| Keep execution controller-neutral and route metadata separate | Execution consumes neutral control contracts, a typed dynamic-handoff port, and route-owned risk policy. `CompiledTrajectory3D` contains only sealed base trajectory data; immutable `RouteDecorations3D` carries passage and cooperative metadata. | Direct execution, handoff, compilation, decoration, and certification suites cover the contracts. Header-graph checks ban control implementation dependencies from the route target. |
+| Narrow configuration and cross-stage values | `ProductionMppiConfig` groups `World`, `Planning`, `Execution`, `Control`, and `Diagnostics`; orchestration uses focused evidence, decision, controller-cycle, and horizon-candidate values. | Configuration and orchestration suites validate construction, rejection, and returned decisions through typed APIs. |
+| Enforce physical runtime boundaries | Package-private `drone_city_nav_world_runtime`, `drone_city_nav_route_runtime`, and `drone_city_nav_mppi_runtime` own `src/world`, `src/planning` + `src/trajectory` + `src/execution`, and `src/runtime`; ROS composition lives in `src/runtime/ros`. The production component links only its immediate MPPI runtime and ROS adapters, not `drone_city_nav_core`. | CMake link assertions, `test_navigation_dependency_contract.py`, and the header-self-containment object target inspect manifests, include roots, transitive local headers, disjoint source ownership, and first-include header compilation. |
+| Remove source-order and passive-structure legacy | Domain transaction assertions execute C++ APIs. Passive planner data is named `LatticeState3D`, `DStarLiteSessionState3D`, `FeasiblePathSearchState3D`, and `ExecutionTimeRefinementState3D`. | The dependency contract guards the retained contract files against source-order parsing; the remaining Python checks cover ROS/QoS/wiring or explicit architectural bans only. |
+
+Each numbered implementation stage was formatted, quality-tested, and committed
+before the next one. Simulation remained excluded until the entire batch,
+cleanup, static audit, documentation update, and non-simulation quality gate
+were complete.
 
 `NavigationDiagnosticsSink` now owns the bounded latest-value mailbox, worker
 lifetime, dropped/failure counters, rate-limited JSONL files, bounded error
@@ -508,7 +519,7 @@ no mixed authority revision is observable.
   committed authority.
 - [x] Remove the test-only parallel lifecycle state and all competing lifecycle
   ownership terminology.
-- [ ] Finish extracting world, planning, trajectory, execution, and control
+- [x] Finish extracting world, planning, trajectory, execution, and control
   services from `ProductionMppiNode`; retain only composition and ROS I/O in the
   node.
   - [x] Extract `NavigationDiagnosticsSink` as the sole diagnostics worker,
@@ -552,12 +563,16 @@ no mixed authority revision is observable.
     - [x] Move hold preparation behind the facade.
     - [x] Move the remaining horizon validation and commit orchestration behind
       the facade.
-- [ ] Enforce both the domain and production-runtime dependency graphs with
+  - [x] Extract planning-cycle, route-lifecycle, resident execution-selection,
+    and execution-horizon assembly as typed use cases.
+  - [x] Terminate raw-world ROS transport in `RawWorldIngressRos3D`, group the
+    production configuration, and narrow cross-stage DTOs.
+- [x] Enforce both the domain and production-runtime dependency graphs with
   narrow CMake targets and actual header-dependency checks.
 - [x] Stop installing private implementation headers as public API.
 - [x] Register every production-relevant GTest source and remove the stale test
   for the retired raw-snapshot/risk-field protocol.
-- [ ] Replace all remaining domain source-text transaction checks with
+- [x] Replace all remaining domain source-text transaction checks with
   executable orchestration, state-machine, and concurrency tests. Existing
   completed migrations include:
   raw-world joining, supersession, quarantine, publication
@@ -601,20 +616,20 @@ no mixed authority revision is observable.
   removed. The obsolete Stage-2 planner publication source-order suite is also
   gone. Remaining text checks cover ROS message/QoS/wiring integration or
   express architectural dependency bans; domain transactions execute directly.
-- [ ] Give private runtime targets independent include roots, keep every public
+- [x] Give private runtime targets independent include roots, keep every public
   and private header self-contained, remove obsolete compatibility umbrella
   links/includes, and finish the world/planning/trajectory/execution/runtime
   directory migration after APIs stabilize.
-- [ ] Make execution controller-neutral through `nav_control_contracts`, typed
+- [x] Make execution controller-neutral through `nav_control_contracts`, typed
   dynamic handoff, and a route-owned risk policy.
-- [ ] Move optional passage/cooperative metadata from `CompiledTrajectory3D` to
+- [x] Move optional passage/cooperative metadata from `CompiledTrajectory3D` to
   immutable execution-route decorations.
-- [ ] Make the production raw-world value factory-built and single-owner, and
+- [x] Make the production raw-world value factory-built and single-owner, and
   split activation into pure named internal stages under its one coordinator.
-- [ ] Extract planning-cycle, route-lifecycle, route-selection, horizon-assembly,
+- [x] Extract planning-cycle, route-lifecycle, route-selection, horizon-assembly,
   and raw ROS ingress services; group production configuration and narrow the
   cross-stage DTOs.
-- [ ] Move planner behavior into its owning modules or rename passive structures
+- [x] Move planner behavior into its owning modules or rename passive structures
   with the `State` suffix so their encapsulation contract is honest.
 - [x] Pass formatting, static analysis, C++ tests, and script tests after every
   coherent stage.

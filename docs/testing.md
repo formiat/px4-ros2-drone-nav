@@ -86,6 +86,12 @@ Add tests near the feature being changed. For shared serialization,
 configuration, planner, or control contracts, add direct tests rather than only
 relying on integration behavior.
 
+Private runtime tests link the narrowest owning target. The navigation
+dependency contract additionally verifies disjoint source manifests,
+target-specific include roots, transitive local-header bans, and the ROS-only
+component boundary. Do not replace executable orchestration coverage with a
+Python test that depends on C++ expression order.
+
 ## Before Commit
 
 Minimum expected checks:
