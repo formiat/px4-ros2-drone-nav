@@ -22,7 +22,7 @@ timeFromNanoseconds(const std::int64_t nanoseconds) noexcept {
 } // namespace
 
 MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
-    const std::shared_ptr<const ProductionNavigationObjective>& objective,
+    const std::shared_ptr<const ProductionNavigationObjectiveState>& objective_state,
     const ProductionMppiNavigation& navigation,
     const ProductionMppiVehicleStatus& vehicle_status,
     const std::shared_ptr<const CommittedExecutionAuthority3D>& execution_authority,
@@ -31,6 +31,8 @@ MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
     const bool vehicle_status_epoch_stable, const bool goal_capture_latched,
     const std::int64_t now_ns) {
   mission_goal_capture_attempt_invalidated_ = false;
+  const std::shared_ptr<const ProductionNavigationObjective> objective =
+      objective_state != nullptr ? objective_state->objective : nullptr;
   if (!mission_waypoint_sequence_ || !mission_waypoint_capture_gate_ || !objective ||
       objective->tracking.has_value() || objective->immediate_hold ||
       !mission_waypoint_acknowledgement_pub_ || execution_authority == nullptr ||
@@ -122,7 +124,7 @@ MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
         static_cast<double>(commit_now_ns - navigation_.receive_stamp_ns) * 1.0e-6 <=
             config_.execution.maximum_pose_age_ms;
     const bool objective_current =
-        navigation_objective_.load(std::memory_order_acquire) == objective;
+        navigation_objective_state_.load(std::memory_order_acquire) == objective_state;
     const bool navigation_current =
         navigation_.revision == navigation.revision &&
         navigation_.source_timestamp_us == navigation.source_timestamp_us &&
@@ -183,19 +185,27 @@ MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
     update = mission_waypoint_sequence_->acknowledgeGoalCapture();
     if (update.advanced) {
       mission_goal_ = mission_waypoint_sequence_->activeGoal();
-      navigation_objective_.store(
-          std::make_shared<const ProductionNavigationObjective>(
-              ProductionNavigationObjective{
-                  .goal = mission_goal_,
-                  .tracking = std::nullopt,
-                  .mission_epoch = objective->mission_epoch + 1U,
-                  .sample_sequence = 0U,
-                  .assignment_generation = 0U,
-                  .target_detection_id = 0U,
-                  .target_track_id = 0U,
-                  .stamp_ns = commit_now_ns,
-                  .continuous_tracking = false,
-                  .immediate_hold = false,
+      // The successor leg is a non-tracking objective, so it carries no minimum
+      // tracking-route requirement. Publishing both halves together keeps the
+      // requirement from outliving the epoch that produced it.
+      navigation_objective_state_.store(
+          std::make_shared<const ProductionNavigationObjectiveState>(
+              ProductionNavigationObjectiveState{
+                  .objective = std::make_shared<const ProductionNavigationObjective>(
+                      ProductionNavigationObjective{
+                          .goal = mission_goal_,
+                          .tracking = std::nullopt,
+                          .mission_epoch = objective->mission_epoch + 1U,
+                          .sample_sequence = 0U,
+                          .assignment_generation = 0U,
+                          .target_detection_id = 0U,
+                          .target_track_id = 0U,
+                          .stamp_ns = commit_now_ns,
+                          .continuous_tracking = false,
+                          .immediate_hold = false,
+                      }),
+                  .minimum_tracking_route_mission_epoch = 0U,
+                  .minimum_tracking_route_sample_sequence = 0U,
               }),
           std::memory_order_release);
       // Keep the completed leg's wire owner as the revocation witness, but make

@@ -8,6 +8,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <memory>
 #include <optional>
 
 namespace drone_city_nav {
@@ -123,6 +124,25 @@ struct ProductionNavigationObjective {
   std::int64_t stamp_ns{0};
   bool continuous_tracking{false};
   bool immediate_hold{false};
+};
+
+// One coherent objective transition. The minimum tracking-route requirement is
+// produced by the same transition that publishes the objective, so a reader must
+// never pair one objective epoch with another epoch's requirement. Publishing
+// both halves as a single immutable state removes that possibility by
+// construction instead of relying on reader-side lock discipline.
+struct ProductionNavigationObjectiveState {
+  std::shared_ptr<const ProductionNavigationObjective> objective;
+  std::uint64_t minimum_tracking_route_mission_epoch{0U};
+  std::uint64_t minimum_tracking_route_sample_sequence{0U};
+
+  // A requirement only constrains the objective epoch that produced it.
+  [[nodiscard]] std::uint64_t requiredTrackingSampleSequence() const noexcept {
+    return objective != nullptr &&
+                   objective->mission_epoch == minimum_tracking_route_mission_epoch
+               ? minimum_tracking_route_sample_sequence
+               : 0U;
+  }
 };
 
 [[nodiscard]] inline StaticRouteObjective

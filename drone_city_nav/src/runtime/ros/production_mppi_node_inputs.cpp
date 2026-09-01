@@ -519,9 +519,16 @@ void ProductionMppiNode::onLatestLidarObstacleScan(
       evidence->acquisitionStampNs());
 }
 
+std::shared_ptr<const ProductionNavigationObjectiveState>
+ProductionMppiNode::navigationObjectiveState() const {
+  return navigation_objective_state_.load(std::memory_order_acquire);
+}
+
 std::shared_ptr<const ProductionNavigationObjective>
 ProductionMppiNode::navigationObjective() const {
-  return navigation_objective_.load(std::memory_order_acquire);
+  const std::shared_ptr<const ProductionNavigationObjectiveState> state =
+      navigation_objective_state_.load(std::memory_order_acquire);
+  return state != nullptr ? state->objective : nullptr;
 }
 
 void ProductionMppiNode::publishRadarTrackModeCommand(
@@ -580,12 +587,16 @@ void ProductionMppiNode::onNavigationObjective(
                 message.mission_epoch, message.sample_sequence);
     return;
   }
+  std::shared_ptr<const ProductionNavigationObjectiveState> previous_state;
   std::shared_ptr<const ProductionNavigationObjective> previous;
   TrackingLineOfSightLifecycle next_line_of_sight_lifecycle;
   {
     const std::scoped_lock lock{input_mutex_};
-    previous = navigation_objective_.load(std::memory_order_acquire);
+    previous_state = navigation_objective_state_.load(std::memory_order_acquire);
     next_line_of_sight_lifecycle = tracking_line_of_sight_lifecycle_;
+  }
+  if (previous_state != nullptr) {
+    previous = previous_state->objective;
   }
   if (previous && message.mission_epoch < previous->mission_epoch) {
     return;
@@ -776,7 +787,7 @@ void ProductionMppiNode::onNavigationObjective(
        previous->immediate_hold != objective->immediate_hold);
   {
     const std::scoped_lock lock{input_mutex_, objective_replan_mutex_};
-    if (navigation_objective_.load(std::memory_order_acquire) != previous) {
+    if (navigation_objective_state_.load(std::memory_order_acquire) != previous_state) {
       return;
     }
     const bool epoch_changed =
@@ -804,20 +815,34 @@ void ProductionMppiNode::onNavigationObjective(
         tracking && (epoch_changed || assignment_changed || direct_interception_lost);
     request_replan = epoch_changed || assignment_changed || direct_interception_lost ||
                      (moved && period_elapsed);
-    navigation_objective_.store(objective, std::memory_order_release);
+    // The objective and the requirement it produces are published together so a
+    // reader cannot observe one epoch's objective beside another's requirement.
+    ProductionNavigationObjectiveState next_state{
+        .objective = objective,
+        .minimum_tracking_route_mission_epoch =
+            previous_state != nullptr
+                ? previous_state->minimum_tracking_route_mission_epoch
+                : 0U,
+        .minimum_tracking_route_sample_sequence =
+            previous_state != nullptr
+                ? previous_state->minimum_tracking_route_sample_sequence
+                : 0U,
+    };
+    if (require_new_tracking_route) {
+      next_state.minimum_tracking_route_mission_epoch = message.mission_epoch;
+      next_state.minimum_tracking_route_sample_sequence = message.sample_sequence;
+    } else if (!tracking) {
+      next_state.minimum_tracking_route_mission_epoch = 0U;
+      next_state.minimum_tracking_route_sample_sequence = 0U;
+    }
+    navigation_objective_state_.store(
+        std::make_shared<const ProductionNavigationObjectiveState>(
+            std::move(next_state)),
+        std::memory_order_release);
     tracking_line_of_sight_lifecycle_ = next_line_of_sight_lifecycle;
     if (request_replan) {
       objective_replan_anchor_ = goal;
       objective_replan_stamp_ns_ = now_ns;
-    }
-    if (require_new_tracking_route) {
-      minimum_tracking_route_sample_sequence_.store(message.sample_sequence,
-                                                    std::memory_order_release);
-      minimum_tracking_route_mission_epoch_.store(message.mission_epoch,
-                                                  std::memory_order_release);
-    } else if (!tracking) {
-      minimum_tracking_route_sample_sequence_.store(0U, std::memory_order_release);
-      minimum_tracking_route_mission_epoch_.store(0U, std::memory_order_release);
     }
     if (execution_lineage_changed) {
       requestExecutionRevocation(ProductionMppiExecutionReason::kNoExecutableHorizon);

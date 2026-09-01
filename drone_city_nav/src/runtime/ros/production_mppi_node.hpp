@@ -151,6 +151,8 @@ private:
       const std::shared_ptr<const CommittedExecutionAuthority3D>& execution_authority,
       bool world_current, std::int64_t now_ns);
   void publishNavigationHealth(const NavigationHealthAssessment& assessment);
+  [[nodiscard]] std::shared_ptr<const ProductionNavigationObjectiveState>
+  navigationObjectiveState() const;
   [[nodiscard]] std::shared_ptr<const ProductionNavigationObjective>
   navigationObjective() const;
   void requestRouteRelease(RouteReleaseReason3D reason,
@@ -207,7 +209,7 @@ private:
   void onNonCooperativeTracks(const msg::TargetTrackArray& message);
   void logNonCooperativeUpdate(const ProductionMppiNonCooperativeUpdate& update);
   [[nodiscard]] MissionWaypointUpdate updateMissionWaypoint(
-      const std::shared_ptr<const ProductionNavigationObjective>& objective,
+      const std::shared_ptr<const ProductionNavigationObjectiveState>& objective_state,
       const ProductionMppiNavigation& navigation,
       const ProductionMppiVehicleStatus& vehicle_status,
       const std::shared_ptr<const CommittedExecutionAuthority3D>& execution_authority,
@@ -324,10 +326,10 @@ private:
   std::int64_t offboard_session_receive_stamp_ns_{0};
   std::optional<ProductionMppiCooperativeCommand> cooperative_command_;
   ProductionMppiNonCooperativeTracks noncooperative_tracks_{};
-  std::atomic<std::shared_ptr<const ProductionNavigationObjective>>
-      navigation_objective_;
-  std::atomic<std::uint64_t> minimum_tracking_route_mission_epoch_{0U};
-  std::atomic<std::uint64_t> minimum_tracking_route_sample_sequence_{0U};
+  // Published as one immutable state so every reader observes the objective and
+  // the tracking-route requirement produced by the same transition.
+  std::atomic<std::shared_ptr<const ProductionNavigationObjectiveState>>
+      navigation_objective_state_;
   std::mutex objective_replan_mutex_;
   Point3 objective_replan_anchor_{};
   std::int64_t objective_replan_stamp_ns_{0};

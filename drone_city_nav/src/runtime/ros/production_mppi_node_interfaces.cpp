@@ -326,18 +326,26 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
                   const std::scoped_lock lock{execution_evidence_commit_mutex_};
                   WorldPipeline3D::ResidentLease resident =
                       world_pipeline_->lockResident();
+                  const std::shared_ptr<const ProductionNavigationObjectiveState>
+                      objective_state = navigationObjectiveState();
                   committed =
                       commit(std::move(prepared),
                              RouteActivationCommitContext3D{
                                  .resident_world = resident.world(),
-                                 .objective = navigationObjective(),
+                                 .objective = objective_state != nullptr
+                                                  ? objective_state->objective
+                                                  : nullptr,
                                  .raw_world = world_pipeline_->latestRawWorld(),
                                  .minimum_tracking_route_mission_epoch =
-                                     minimum_tracking_route_mission_epoch_.load(
-                                         std::memory_order_acquire),
+                                     objective_state != nullptr
+                                         ? objective_state
+                                               ->minimum_tracking_route_mission_epoch
+                                         : 0U,
                                  .minimum_tracking_route_sample_sequence =
-                                     minimum_tracking_route_sample_sequence_.load(
-                                         std::memory_order_acquire),
+                                     objective_state != nullptr
+                                         ? objective_state
+                                               ->minimum_tracking_route_sample_sequence
+                                         : 0U,
                              });
                 }
                 latest_route_pipeline_event_.store(
@@ -348,14 +356,17 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
               },
           .tracking_context_provider =
               [this]() {
+                const std::shared_ptr<const ProductionNavigationObjectiveState> state =
+                    navigationObjectiveState();
+                if (state == nullptr) {
+                  return RouteLifecycleTrackingContext3D{};
+                }
                 return RouteLifecycleTrackingContext3D{
-                    .objective = navigationObjective(),
+                    .objective = state->objective,
                     .minimum_route_mission_epoch =
-                        minimum_tracking_route_mission_epoch_.load(
-                            std::memory_order_acquire),
+                        state->minimum_tracking_route_mission_epoch,
                     .minimum_route_sample_sequence =
-                        minimum_tracking_route_sample_sequence_.load(
-                            std::memory_order_acquire),
+                        state->minimum_tracking_route_sample_sequence,
                 };
               },
           .replan_snapshot_provider =
@@ -365,7 +376,11 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
                   const std::scoped_lock input_lock{input_mutex_};
                   snapshot.navigation = navigation_;
                 }
-                snapshot.objective = navigationObjective();
+                const std::shared_ptr<const ProductionNavigationObjectiveState>
+                    objective_state = navigationObjectiveState();
+                if (objective_state != nullptr) {
+                  snapshot.objective = objective_state->objective;
+                }
                 const std::shared_ptr<const ExecutionPlan3D> execution =
                     execution_supervisor_.plan();
                 snapshot.committed_route_generation =
@@ -384,12 +399,12 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
                 snapshot.blocked_raw_revision =
                     observed_route_blocked_raw_revision_.load(
                         std::memory_order_acquire);
-                snapshot.minimum_route_mission_epoch =
-                    minimum_tracking_route_mission_epoch_.load(
-                        std::memory_order_acquire);
-                snapshot.minimum_route_sample_sequence =
-                    minimum_tracking_route_sample_sequence_.load(
-                        std::memory_order_acquire);
+                if (objective_state != nullptr) {
+                  snapshot.minimum_route_mission_epoch =
+                      objective_state->minimum_tracking_route_mission_epoch;
+                  snapshot.minimum_route_sample_sequence =
+                      objective_state->minimum_tracking_route_sample_sequence;
+                }
                 snapshot.stamp_ns = get_clock()->now().nanoseconds();
                 return snapshot;
               },

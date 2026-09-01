@@ -223,14 +223,20 @@ ProductionMppiNode::ProductionMppiNode(const rclcpp::NodeOptions& options)
           createProducerInstanceId(kExecutionHorizonProducerDomain)},
       navigation_health_producer_instance_id_{
           createProducerInstanceId(kNavigationHealthProducerDomain)} {
-  navigation_objective_.store(
-      std::make_shared<const ProductionNavigationObjective>(
-          ProductionNavigationObjective{
-              .goal = mission_goal_,
-              .tracking = std::nullopt,
-              .mission_epoch =
-                  config_.planning.configured_mission_objective_enabled ? 1U : 0U,
-              .sample_sequence = 0U,
+  navigation_objective_state_.store(
+      std::make_shared<const ProductionNavigationObjectiveState>(
+          ProductionNavigationObjectiveState{
+              .objective = std::make_shared<const ProductionNavigationObjective>(
+                  ProductionNavigationObjective{
+                      .goal = mission_goal_,
+                      .tracking = std::nullopt,
+                      .mission_epoch =
+                          config_.planning.configured_mission_objective_enabled ? 1U
+                                                                                : 0U,
+                      .sample_sequence = 0U,
+                  }),
+              .minimum_tracking_route_mission_epoch = 0U,
+              .minimum_tracking_route_sample_sequence = 0U,
           }),
       std::memory_order_release);
 

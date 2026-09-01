@@ -46,8 +46,10 @@ void ProductionMppiNode::planningTick() {
   if (mission_waypoint_capture_gate_) {
     mission_waypoint_capture_gate_->beginTick(tick_entry_ns);
   }
+  const std::shared_ptr<const ProductionNavigationObjectiveState> objective_state =
+      navigationObjectiveState();
   const std::shared_ptr<const ProductionNavigationObjective> objective =
-      navigationObjective();
+      objective_state != nullptr ? objective_state->objective : nullptr;
   const bool tracking_objective_available =
       objective != nullptr && objective->tracking.has_value();
   const ProductionTrackingObjective tracking_objective =
@@ -71,12 +73,9 @@ void ProductionMppiNode::planningTick() {
                                       line_of_sight_generation);
   const std::uint64_t effective_route_generation = directTrackingRouteGeneration(
       direct_tracking_interception, line_of_sight_generation);
-  const std::uint64_t required_route_epoch =
-      minimum_tracking_route_mission_epoch_.load(std::memory_order_acquire);
   const std::uint64_t required_route_sample =
-      objective && objective->mission_epoch == required_route_epoch
-          ? minimum_tracking_route_sample_sequence_.load(std::memory_order_acquire)
-          : 0U;
+      objective_state != nullptr ? objective_state->requiredTrackingSampleSequence()
+                                 : 0U;
   const auto snapshot_started = std::chrono::steady_clock::now();
   ProductionMppiNavigation navigation;
   ProductionMppiVehicleStatus vehicle_status;
@@ -189,11 +188,11 @@ void ProductionMppiNode::planningTick() {
   const bool goal_capture_latched =
       planning_cycle_coordinator_ != nullptr && objective && terminal_hold_enabled &&
       planning_cycle_coordinator_->goalCaptureLatchedFor(mission_goal);
-  const MissionWaypointUpdate early_waypoint_update =
-      updateMissionWaypoint(objective, navigation, vehicle_status, execution_authority,
-                            applied_control_discontinuity_generation,
-                            applied_control_discontinuity_generation_valid,
-                            vehicle_status_epoch_stable, goal_capture_latched, now_ns);
+  const MissionWaypointUpdate early_waypoint_update = updateMissionWaypoint(
+      objective_state, navigation, vehicle_status, execution_authority,
+      applied_control_discontinuity_generation,
+      applied_control_discontinuity_generation_valid, vehicle_status_epoch_stable,
+      goal_capture_latched, now_ns);
   if (early_waypoint_update.waypoint_completed) {
     // The planner published the aggregate acknowledgement before replacing the
     // objective. Replan the newly active leg on the next tick.

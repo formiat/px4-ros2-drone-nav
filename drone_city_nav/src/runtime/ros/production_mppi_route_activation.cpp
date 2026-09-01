@@ -17,12 +17,16 @@ ProductionMppiNode::captureRouteActivationSnapshot3D() {
     snapshot.raw_world = world_pipeline_->latestRawWorld();
     snapshot.resident_world = resident.world();
     snapshot.navigation = navigation_;
-    snapshot.objective = navigationObjective();
+    const std::shared_ptr<const ProductionNavigationObjectiveState> objective_state =
+        navigationObjectiveState();
+    if (objective_state != nullptr) {
+      snapshot.objective = objective_state->objective;
+      snapshot.minimum_tracking_route_mission_epoch =
+          objective_state->minimum_tracking_route_mission_epoch;
+      snapshot.minimum_tracking_route_sample_sequence =
+          objective_state->minimum_tracking_route_sample_sequence;
+    }
   }
-  snapshot.minimum_tracking_route_mission_epoch =
-      minimum_tracking_route_mission_epoch_.load(std::memory_order_acquire);
-  snapshot.minimum_tracking_route_sample_sequence =
-      minimum_tracking_route_sample_sequence_.load(std::memory_order_acquire);
   snapshot.stamp_ns = get_clock()->now().nanoseconds();
   return snapshot;
 }

@@ -581,8 +581,7 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
                       requested_execution_revocation_.load(std::memory_order_acquire) ==
                       handled_execution_revocation_request_,
                   .objective_current =
-                      navigation_objective_.load(std::memory_order_acquire) ==
-                      cycle.evidence.objective,
+                      navigationObjective() == cycle.evidence.objective,
                   .navigation_authoritative = navigation_.valid,
                   .offboard_session_currentness = offboard_currentness,
               },
