@@ -371,7 +371,7 @@ TEST(RouteLifecycleCoordinator3DTest,
 
   EXPECT_EQ(result.status, RouteLifecycleAdvanceStatus3D::kCompleted);
   EXPECT_TRUE(result.candidate.available);
-  EXPECT_FALSE(result.search_superseded_by_activation_world);
+  EXPECT_FALSE(result.search_superseded_by_activation);
   EXPECT_GE(result.candidate.point_count, 2U);
   EXPECT_EQ(commit_count, 1U);
   EXPECT_EQ(result.activation.materialized.candidate_generation, 1U);
@@ -513,7 +513,7 @@ TEST(RouteLifecycleCoordinator3DTest,
 
   EXPECT_EQ(result.status, RouteLifecycleAdvanceStatus3D::kCompleted);
   EXPECT_TRUE(result.search_running);
-  EXPECT_TRUE(result.search_superseded_by_activation_world);
+  EXPECT_TRUE(result.search_superseded_by_activation);
   EXPECT_FALSE(result.continuation_queued);
   EXPECT_EQ(collision_commit_count, 1U);
   EXPECT_EQ(result.activation.admission.candidate_validation.status,
@@ -577,11 +577,104 @@ TEST(RouteLifecycleCoordinator3DTest,
   });
 
   EXPECT_TRUE(result.search_running);
-  EXPECT_FALSE(result.search_superseded_by_activation_world);
+  EXPECT_FALSE(result.search_superseded_by_activation);
   EXPECT_FALSE(result.continuation_queued);
   EXPECT_EQ(commit_count, 1U);
   EXPECT_EQ(result.activation.admission.snapshot_raw_revision,
             result.planner_update.planner_telemetry.planned_on_revision);
+}
+
+TEST(RouteLifecycleCoordinator3DTest,
+     SupersededActivationSnapshotReleasesGateAndReplaysDeferredReplan) {
+  ExecutionSupervisor3D supervisor;
+  const LifecycleFixture3D input = fixture();
+  ASSERT_NE(input.transaction, nullptr);
+  std::size_t initial_commit_count{0U};
+  {
+    RouteLifecycleCoordinator3D activation_coordinator{
+        supervisor, lifecycleConfig(input, supervisor, initial_commit_count)};
+    planAndActivateInitialRoute(activation_coordinator, supervisor, input);
+  }
+  ASSERT_NE(supervisor.plan(), nullptr);
+  const std::uint64_t generation = supervisor.plan()->routeGenerationHighWater();
+  const std::shared_ptr<const PlannerSearchTransaction3D> replacement =
+      makePlannerSearchTransaction3D(input.world, input.planner_world,
+                                     input.transaction->objective,
+                                     StaticRouteSearchRequestIdentity{
+                                         .kind = StaticRouteSearchRequestKind::kReplan,
+                                         .base_route_generation = generation,
+                                     },
+                                     std::nullopt, RouteReleaseReason3D::kBlocked);
+  ASSERT_NE(replacement, nullptr);
+
+  std::size_t superseded_commit_count{0U};
+  std::vector<RouteLifecycleReplanOutcome3D> replan_outcomes;
+  RouteLifecycleCoordinatorConfig3D config =
+      lifecycleConfig(input, supervisor, superseded_commit_count);
+  config.tracking_world_refresh_margin_m = 3.0;
+  bindResidentReplanSnapshot(config, input, supervisor, 600);
+  config.replan_outcome_handler =
+      [&replan_outcomes](const RouteLifecycleReplanOutcome3D& outcome) {
+        replan_outcomes.push_back(outcome);
+      };
+  config.activation_commit_boundary =
+      [&superseded_commit_count](PreparedRouteActivation3D prepared,
+                                 const RouteActivationCommitOperation3D&) {
+        ++superseded_commit_count;
+        ProductionRouteActivationResult3D activation = std::move(prepared.result);
+        activation.admission.activation_status =
+            StaticRouteActivationStatus::kActivationSnapshotSuperseded;
+        activation.admission.snapshot_current = false;
+        activation.admission.resident_world_snapshot_current = false;
+        activation.admission.certified_pending = false;
+        return RouteActivationCommitResult3D{.result = std::move(activation)};
+      };
+  RouteLifecycleCoordinator3D coordinator{supervisor, std::move(config)};
+
+  const RouteLifecycleTrackingRefreshOutcome3D refresh =
+      coordinator.requestTrackingWorldRefresh(RouteLifecycleTrackingRefreshRequest3D{
+          .world = input.world,
+          .navigation = input.navigation,
+          .objective = input.objective,
+          .stamp_ns = 600,
+      });
+  ASSERT_EQ(refresh.status, RouteLifecycleTrackingRefreshStatus3D::kQueued);
+  const RouteLifecycleReplanOutcome3D deferred =
+      coordinator.requestReplan(RouteReleaseReason3D::kBlocked, generation);
+  ASSERT_EQ(deferred.status, RouteLifecycleReplanStatus3D::kDeferredReplanInFlight);
+  ASSERT_EQ(replan_outcomes.size(), 1U);
+
+  RoutePlanner3D planner{plannerConfig()};
+  const RoutePlannerVehicleState3D vehicle_state = vehicleState(input);
+  RoutePlannerUpdate3D planner_update = planner.update(*replacement, vehicle_state);
+  ASSERT_TRUE(planner_update.improved_incumbent.has_value());
+  ASSERT_NE(planner_update.planner_session, nullptr);
+  planner_update.planner_invoked = true;
+  planner_update.planner_progress = SearchProgress3D::kRunning;
+  planner_update.dispatch.continue_search = true;
+
+  const RouteLifecycleUpdate3D result = coordinator.advance(RoutePlanningUpdateEvent3D{
+      .request =
+          RoutePlanningRequest3D{
+              .transaction = replacement,
+              .continuation_session = nullptr,
+          },
+      .vehicle_state = vehicle_state,
+      .update = std::move(planner_update),
+  });
+
+  EXPECT_EQ(result.status, RouteLifecycleAdvanceStatus3D::kCompleted);
+  EXPECT_TRUE(result.search_running);
+  EXPECT_TRUE(result.search_superseded_by_activation);
+  EXPECT_FALSE(result.continuation_queued);
+  EXPECT_EQ(superseded_commit_count, 1U);
+  EXPECT_EQ(result.activation.admission.activation_status,
+            StaticRouteActivationStatus::kActivationSnapshotSuperseded);
+  ASSERT_EQ(replan_outcomes.size(), 2U);
+  const RouteLifecycleReplanOutcome3D& replay = replan_outcomes.back();
+  EXPECT_EQ(replay.origin, RouteLifecycleReplanOrigin3D::kDeferredReplanReplay);
+  EXPECT_EQ(replay.replay_completed_generation, generation);
+  EXPECT_EQ(replay.status, RouteLifecycleReplanStatus3D::kRouteQueueBusy);
 }
 
 TEST(RouteLifecycleCoordinator3DTest,

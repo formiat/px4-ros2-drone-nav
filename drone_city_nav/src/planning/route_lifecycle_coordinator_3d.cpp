@@ -20,11 +20,21 @@ elapsedMilliseconds(const std::chrono::steady_clock::time_point started) noexcep
 }
 
 [[nodiscard]] bool
-searchSupersededByActivationWorld(const bool search_running,
-                                  const PlannerSearchTransaction3D& transaction,
-                                  const RouteAdmissionReport3D& admission) noexcept {
-  return search_running &&
-         admission.activation_status ==
+searchSupersededByActivation(const bool search_running,
+                             const PlannerSearchTransaction3D& transaction,
+                             const RouteAdmissionReport3D& admission) noexcept {
+  if (!search_running) {
+    return false;
+  }
+  // An improved incumbent is moved out of the planner update before activation.
+  // If the optimistic commit base changes, continuing the same search cannot
+  // publish that incumbent again. Retire the consumed session so the lifecycle
+  // gate can replay a request against the current snapshot.
+  if (admission.activation_status ==
+      StaticRouteActivationStatus::kActivationSnapshotSuperseded) {
+    return true;
+  }
+  return admission.activation_status ==
              StaticRouteActivationStatus::kCandidateValidationRejected &&
          admission.candidate_validation.status ==
              StaticRouteCandidateStatus::kRawCollision &&
@@ -315,11 +325,11 @@ RouteLifecycleCoordinator3D::advance(RoutePlanningUpdateEvent3D event) {
   }
   activation.telemetry.route_search_ms = planner_update.search_ms;
   result.activation = std::move(activation);
-  result.search_superseded_by_activation_world = searchSupersededByActivationWorld(
+  result.search_superseded_by_activation = searchSupersededByActivation(
       result.search_running, *transaction, result.activation.admission);
 
   result.planner_update = std::move(planner_update);
-  if (result.search_running && !result.search_superseded_by_activation_world) {
+  if (result.search_running && !result.search_superseded_by_activation) {
     result.continuation_queued = queueContinuation(result);
   }
   observeRecoveryEpisode(transaction->objective.mission_epoch);

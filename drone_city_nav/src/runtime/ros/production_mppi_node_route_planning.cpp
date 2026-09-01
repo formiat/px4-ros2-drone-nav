@@ -190,12 +190,17 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
                 candidate.candidate_generation);
   }
 
-  if (update.search_superseded_by_activation_world) {
+  if (update.search_superseded_by_activation) {
+    const char* const reason =
+        activation_report.activation_status ==
+                StaticRouteActivationStatus::kActivationSnapshotSuperseded
+            ? "activation_snapshot_superseded"
+            : "activation_world_raw_collision";
     RCLCPP_WARN(get_logger(),
                 "PERSISTENT_PLANNER3D stage=continuation_cancelled "
-                "reason=activation_world_raw_collision search_raw_revision=%" PRIu64
+                "reason=%s search_raw_revision=%" PRIu64
                 " activation_raw_revision=%" PRIu64 " search_generation=%" PRIu64,
-                planner_update.planner_telemetry.planned_on_revision,
+                reason, planner_update.planner_telemetry.planned_on_revision,
                 activation_report.snapshot_raw_revision,
                 planner_update.planner_telemetry.search_generation);
   } else if (update.search_running) {
