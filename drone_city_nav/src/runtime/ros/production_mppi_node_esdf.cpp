@@ -57,7 +57,7 @@ StaticWorldBuildRequest3D ProductionMppiNode::makeStaticWorldBuildRequest3D(
     const StaticWorldRefreshRequest3D& refresh) {
   ProductionMppiNavigation navigation;
   {
-    const std::scoped_lock lock{input_mutex_};
+    const auto lock = evidence_boundary_.input();
     navigation = navigation_;
   }
   const std::shared_ptr<const ExecutionPlan3D> execution = execution_supervisor_.plan();
@@ -75,7 +75,7 @@ StaticWorldBuildRequest3D ProductionMppiNode::makeStaticWorldBuildRequest3D(
 StaticWorldCommitContext3D ProductionMppiNode::makeStaticWorldCommitContext3D() {
   ProductionMppiNavigation navigation;
   {
-    const std::scoped_lock lock{input_mutex_};
+    const auto lock = evidence_boundary_.input();
     navigation = navigation_;
   }
   const std::shared_ptr<const ExecutionPlan3D> execution = execution_supervisor_.plan();

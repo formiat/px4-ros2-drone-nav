@@ -9,7 +9,7 @@ ProductionRouteActivationSnapshot3D
 ProductionMppiNode::captureRouteActivationSnapshot3D() {
   ProductionRouteActivationSnapshot3D snapshot;
   {
-    const std::scoped_lock lock{execution_evidence_commit_mutex_, input_mutex_};
+    const auto lock = evidence_boundary_.evidenceWithInput();
     WorldPipeline3D::ResidentLease resident = world_pipeline_->lockResident();
     const RouteExecutionManagerSnapshot3D execution = execution_supervisor_.snapshot();
     snapshot.execution_authority = execution.authority;

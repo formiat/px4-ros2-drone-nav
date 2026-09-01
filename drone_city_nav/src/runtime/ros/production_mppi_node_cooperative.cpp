@@ -40,7 +40,7 @@ void ProductionMppiNode::onCooperativeManeuverCommand(
     return;
   }
   const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
-  const std::scoped_lock lock{input_mutex_};
+  const auto lock = evidence_boundary_.input();
   if (cooperative_command_.has_value()) {
     const CooperativeManeuverCommandData& previous = cooperative_command_->data;
     if (command.stamp_ns < previous.stamp_ns ||

@@ -31,8 +31,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
     const ProductionMppiExecutionCycle& cycle, const Point3& hold_position,
     const ProductionMppiExecutionReason reason, const ExecutionHoldIntent3D intent) {
   ProductionMppiExecutionPublication& publication = cycle.publicationRef();
-  const std::scoped_lock evidence_lock{execution_evidence_commit_mutex_,
-                                       latest_lidar_evidence_commit_mutex_};
+  const auto evidence_lock = evidence_boundary_.evidenceWithLatestLidar();
   const RawWorldIngressSnapshot3D world_input = raw_world_ingress_->snapshot();
   const std::shared_ptr<const VersionedObservedRawWorld3D> current_observed_raw_world =
       world_input.latest_raw_world != nullptr
@@ -202,7 +201,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionRevocatio
     return publication;
   }
 
-  const std::scoped_lock lock{execution_evidence_commit_mutex_, input_mutex_};
+  const auto lock = evidence_boundary_.evidenceWithInput();
   const std::shared_ptr<const CommittedExecutionAuthority3D> expected_authority =
       execution_supervisor_.authority();
   if (expected_authority == nullptr || !expected_authority->valid()) {
@@ -331,7 +330,7 @@ bool ProductionMppiNode::handleRequestedExecutionRevocation(const std::int64_t n
 
   bool revocation_already_satisfied{false};
   {
-    const std::scoped_lock lock{execution_evidence_commit_mutex_, input_mutex_};
+    const auto lock = evidence_boundary_.evidenceWithInput();
     const std::shared_ptr<const CommittedExecutionAuthority3D> authority =
         execution_supervisor_.authority();
     const std::shared_ptr<const ExecutionPlan3D> snapshot =

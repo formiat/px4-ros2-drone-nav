@@ -146,7 +146,7 @@ void ProductionMppiNode::onVehicleStatus(const px4_msgs::msg::VehicleStatus& mes
   const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
   const bool armed =
       message.arming_state == px4_msgs::msg::VehicleStatus::ARMING_STATE_ARMED;
-  const std::scoped_lock lock{input_mutex_};
+  const auto lock = evidence_boundary_.input();
   const Px4TimestampEpochAdmissionResult admission = admitPx4TimestampEpoch(
       Px4TimestampEpochAdmissionConfig{
           .maximum_epoch_confirmation_interval_s = 2.0,
@@ -296,7 +296,7 @@ void ProductionMppiNode::requestStaticEsdfWork() {
     return;
   }
   {
-    const std::scoped_lock lock{input_mutex_};
+    const auto lock = evidence_boundary_.input();
     if (!navigation_.valid) {
       return;
     }
@@ -324,7 +324,7 @@ void ProductionMppiNode::onLatestLidarObstacleScan(
   const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
   LatestLidarEvidenceClaimResult3D claimed;
   {
-    const std::scoped_lock lock{latest_lidar_evidence_commit_mutex_};
+    const auto lock = evidence_boundary_.latestLidar();
     const std::shared_ptr<const VersionedLatestLidarEvidence3D> current =
         latest_lidar_evidence_.load(std::memory_order_acquire);
     claimed = claimLatestLidarEvidenceIdentity3D(
@@ -443,7 +443,7 @@ void ProductionMppiNode::onLatestLidarObstacleScan(
   std::uint64_t previous_producer_instance_id{0U};
   std::int64_t previous_acquisition_stamp_ns{0};
   {
-    const std::scoped_lock lock{latest_lidar_evidence_commit_mutex_};
+    const auto lock = evidence_boundary_.latestLidar();
     const std::shared_ptr<const VersionedLatestLidarEvidence3D> current =
         latest_lidar_evidence_.load(std::memory_order_acquire);
     previous_producer_instance_id =
@@ -591,7 +591,7 @@ void ProductionMppiNode::onNavigationObjective(
   std::shared_ptr<const ProductionNavigationObjective> previous;
   TrackingLineOfSightLifecycle next_line_of_sight_lifecycle;
   {
-    const std::scoped_lock lock{input_mutex_};
+    const auto lock = evidence_boundary_.input();
     previous_state = navigation_objective_state_.load(std::memory_order_acquire);
     next_line_of_sight_lifecycle = tracking_line_of_sight_lifecycle_;
   }
@@ -659,7 +659,7 @@ void ProductionMppiNode::onNavigationObjective(
     };
     ProductionMppiNavigation navigation;
     {
-      const std::scoped_lock lock{input_mutex_};
+      const auto lock = evidence_boundary_.input();
       navigation = navigation_;
     }
     const Point3 current_position{navigation.state.x, navigation.state.y,
@@ -786,7 +786,7 @@ void ProductionMppiNode::onNavigationObjective(
        previous->continuous_tracking != objective->continuous_tracking ||
        previous->immediate_hold != objective->immediate_hold);
   {
-    const std::scoped_lock lock{input_mutex_, objective_replan_mutex_};
+    const auto lock = evidence_boundary_.inputWithObjectiveReplan();
     if (navigation_objective_state_.load(std::memory_order_acquire) != previous_state) {
       return;
     }

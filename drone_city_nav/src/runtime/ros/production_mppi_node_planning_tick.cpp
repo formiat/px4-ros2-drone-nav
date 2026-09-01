@@ -95,7 +95,7 @@ void ProductionMppiNode::planningTick() {
   bool raw_world_identity_conflicted{false};
   RawWorldIngressSnapshot3D world_input;
   {
-    const std::scoped_lock lock{input_mutex_};
+    const auto lock = evidence_boundary_.input();
     navigation = navigation_;
     navigation.valid = navigation.valid && !navigation_revision_exhausted_ &&
                        !navigation_frame_reset_unresolved_;

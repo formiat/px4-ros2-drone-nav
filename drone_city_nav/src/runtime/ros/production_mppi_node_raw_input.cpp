@@ -21,10 +21,10 @@ void ProductionMppiNode::onRawObstacleSnapshot3D(
     // Raw reconstruction is serialized by RawWorldIngressRos3D and belongs to
     // the execution-evidence domain.  Keep PX4 navigation and applied-control
     // callbacks live while the large occupancy snapshot is reconstructed.
-    const std::scoped_lock evidence_lock{execution_evidence_commit_mutex_};
+    const auto evidence_lock = evidence_boundary_.evidence();
     ingestion = raw_world_ingress_->ingestRawSnapshot(*message, receive_stamp_ns);
     if (ingestion.execution_revocation_required) {
-      const std::scoped_lock input_lock{input_mutex_};
+      const auto input_lock = evidence_boundary_.input();
       invalidateAppliedControlWitnessLocked();
       requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
     }
@@ -54,10 +54,10 @@ void ProductionMppiNode::onRawObstacleDelta3D(
   const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
   RawWorldIngestionResult3D ingestion;
   {
-    const std::scoped_lock evidence_lock{execution_evidence_commit_mutex_};
+    const auto evidence_lock = evidence_boundary_.evidence();
     ingestion = raw_world_ingress_->ingestRawDelta(*message, receive_stamp_ns);
     if (ingestion.execution_revocation_required) {
-      const std::scoped_lock input_lock{input_mutex_};
+      const auto input_lock = evidence_boundary_.input();
       invalidateAppliedControlWitnessLocked();
       requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
     }
@@ -91,7 +91,7 @@ void ProductionMppiNode::queueRawWorld3D(const RawObstacleGridUpdate3D& update,
     // evidence publication until that integration gate moves into the execution
     // service facade. Navigation and control feedback are independent inputs and
     // must remain live while the immutable raw-world owner is constructed.
-    const std::scoped_lock evidence_lock{execution_evidence_commit_mutex_};
+    const auto evidence_lock = evidence_boundary_.evidence();
     result =
         raw_world_ingress_->commitRawUpdate(update, reconstruction_ms, ready_stamp_ns);
   }
@@ -111,10 +111,10 @@ void ProductionMppiNode::onMemoryStatus(const msg::ObstacleMemoryStatus& message
   const std::int64_t now_ns = get_clock()->now().nanoseconds();
   MemoryStatusIngestionResult3D ingestion;
   {
-    const std::scoped_lock evidence_lock{execution_evidence_commit_mutex_};
+    const auto evidence_lock = evidence_boundary_.evidence();
     ingestion = raw_world_ingress_->ingestMemoryStatus(message, now_ns);
     if (ingestion.execution_revocation_required) {
-      const std::scoped_lock input_lock{input_mutex_};
+      const auto input_lock = evidence_boundary_.input();
       invalidateAppliedControlWitnessLocked();
       requestExecutionRevocation(ProductionMppiExecutionReason::kUnavailableWorld);
     }

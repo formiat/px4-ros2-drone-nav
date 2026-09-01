@@ -136,7 +136,7 @@ void ProductionMppiNode::onLocalPosition(
       navigationPayloadFingerprint(message);
 
   {
-    std::unique_lock lock{input_mutex_};
+    auto lock = evidence_boundary_.releasableInput();
     const NavigationAngularDerivativeEstimate angular_derivative =
         navigation_angular_derivative_estimator_.observe(NavigationAngularObservation{
             .sample_timestamp_us = message.timestamp_sample,
@@ -270,7 +270,7 @@ void ProductionMppiNode::onLocalPosition(
           navigation.source_timestamp_us, position_velocity_contract ? "true" : "false",
           heading_contract ? "true" : "false");
       if (navigation.world_state_authoritative) {
-        lock.unlock();
+        lock.release();
         queueLatestObservedWorldForPose(navigation);
         if (config_.world.use_static_map && navigationObjective() &&
             !world_ready_.load()) {

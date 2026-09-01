@@ -264,7 +264,7 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
           static_cast<ExecutionAuthorityReason3D>(publication_horizon.execution_reason),
       .stationary_position_hold = publication_horizon.stationary_position_hold,
   };
-  const std::scoped_lock input_lock{input_mutex_};
+  const auto input_lock = evidence_boundary_.input();
   const std::shared_ptr<const CommittedExecutionAuthority3D>
       resident_execution_authority = execution_supervisor_.authority();
   const bool control_evidence_only_authority_successor =
@@ -649,8 +649,7 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitExecutionSnapshotHor
     const std::shared_ptr<const ExecutionPlan3D>& certification_snapshot,
     const std::shared_ptr<const ExecutionRouteTransitionResult3D>& progress_preparation,
     const std::shared_ptr<const CommittedExecutionAuthority3D>& expected_authority) {
-  const std::scoped_lock evidence_lock{execution_evidence_commit_mutex_,
-                                       latest_lidar_evidence_commit_mutex_};
+  const auto evidence_lock = evidence_boundary_.evidenceWithLatestLidar();
   return commitAndPublishExecutionHorizon(
       cycle, horizon,
       ExecutionHorizonLeaseCandidate3D{

@@ -80,6 +80,7 @@
 #include <string_view>
 #include <vector>
 
+#include "execution_evidence_boundary_3d.hpp"
 #include "production_mppi_config.hpp"
 #include "production_mppi_execution_control.hpp"
 #include "production_mppi_node_execution_types.hpp"
@@ -312,7 +313,9 @@ private:
   std::unique_ptr<ExecutionHorizonAssembler3D> execution_horizon_assembler_;
   std::unique_ptr<MppiController3D> mppi_controller_;
 
-  mutable std::mutex input_mutex_;
+  // Every writer that can change what a publication is allowed to claim enters
+  // through this boundary, so the lock order lives in one ROS-free type.
+  mutable ExecutionEvidenceBoundary3D evidence_boundary_;
   ProductionMppiNavigation navigation_{};
   bool navigation_revision_exhausted_{false};
   // Cleared only by node restart. Safe recovery needs one coordinated
@@ -334,17 +337,12 @@ private:
   // the tracking-route requirement produced by the same transition.
   std::atomic<std::shared_ptr<const ProductionNavigationObjectiveState>>
       navigation_objective_state_;
-  std::mutex objective_replan_mutex_;
   Point3 objective_replan_anchor_{};
   std::int64_t objective_replan_stamp_ns_{0};
 
   std::atomic<std::uint64_t> observed_route_blocked_raw_revision_{0U};
   std::atomic<std::uint64_t> observed_route_replan_dispatched_raw_revision_{0U};
   std::atomic<std::uint64_t> physical_trajectory_replan_route_generation_{0U};
-  std::mutex execution_evidence_commit_mutex_;
-  // Latest-lidar admission is independent from raw-world reconstruction. Active
-  // execution publication locks both domains to validate one coherent boundary.
-  std::mutex latest_lidar_evidence_commit_mutex_;
   LatestLidarEvidenceAdmissionState3D latest_lidar_evidence_admission_state_{};
   std::atomic_bool latest_lidar_evidence_identity_conflicted_{false};
   std::atomic<std::shared_ptr<const VersionedLatestLidarEvidence3D>>

@@ -211,7 +211,7 @@ void ProductionMppiNode::finalizePlanningTick(
   }
 
   {
-    const std::scoped_lock lock{input_mutex_};
+    const auto lock = evidence_boundary_.input();
     if (result.horizon.size() > 1U) {
       previous_predicted_next_state_ = result.horizon[1U];
       previous_prediction_stamp_ns_ = now_ns;

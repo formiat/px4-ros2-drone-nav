@@ -21,8 +21,8 @@ void ProductionMppiNode::recordAppliedControlDiscontinuityLocked() noexcept {
 }
 
 void ProductionMppiNode::invalidateAppliedControlWitnessLocked() noexcept {
-  // Every caller holds input_mutex_. A valid-to-empty transition is a sticky
-  // discontinuity even if a later callback reinstalls the exact same horizon
+  // Every caller holds the boundary's input scope. A valid-to-empty transition is a
+  // sticky discontinuity even if a later callback reinstalls the exact same horizon
   // tuple before the next planning tick observes it.
   const std::shared_ptr<const CommittedExecutionAuthority3D> expected =
       execution_supervisor_.authority();
@@ -44,7 +44,7 @@ void ProductionMppiNode::onAppliedControl(const msg::MppiControlFeedback& messag
       assessExecutionControlFeedback(message, config_.world.frame_id, receive_stamp_ns);
   if (!assessment.valid()) {
     {
-      const std::scoped_lock lock{input_mutex_};
+      const auto lock = evidence_boundary_.input();
       const ExecutionHorizonWitnessAdmissionResult malformed =
           revokeMalformedExecutionHorizonFeedback(
               applied_control_admission_state_, assessment.candidate, receive_stamp_ns);
@@ -92,7 +92,7 @@ void ProductionMppiNode::onAppliedControl(const msg::MppiControlFeedback& messag
   feedback.content_fingerprint = assessment.candidate.content_fingerprint;
   const bool control_payload_valid = assessment.valid() && feedback.valid;
   const bool session_heartbeat = assessment.candidate.heartbeat();
-  const std::scoped_lock lock{input_mutex_};
+  const auto lock = evidence_boundary_.input();
   const std::shared_ptr<const CommittedExecutionAuthority3D> execution_authority =
       execution_supervisor_.authority();
   const ExecutionOwnerIdentity3D execution_owner = execution_authority != nullptr

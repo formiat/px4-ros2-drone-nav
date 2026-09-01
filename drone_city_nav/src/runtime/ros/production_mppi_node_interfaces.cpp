@@ -307,7 +307,7 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
           .observed_world = !config_.world.use_static_map,
           .vehicle_state_provider =
               [this]() {
-                const std::scoped_lock lock{input_mutex_};
+                const auto lock = evidence_boundary_.input();
                 return RoutePlannerVehicleState3D{
                     .position = Point3{navigation_.state.x, navigation_.state.y,
                                        navigation_.state.z},
@@ -323,7 +323,7 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
                      const RouteActivationCommitOperation3D& commit) {
                 RouteActivationCommitResult3D committed;
                 {
-                  const std::scoped_lock lock{execution_evidence_commit_mutex_};
+                  const auto lock = evidence_boundary_.evidence();
                   WorldPipeline3D::ResidentLease resident =
                       world_pipeline_->lockResident();
                   const std::shared_ptr<const ProductionNavigationObjectiveState>
@@ -373,7 +373,7 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
               [this]() {
                 RouteLifecycleReplanSnapshot3D snapshot;
                 {
-                  const std::scoped_lock input_lock{input_mutex_};
+                  const auto input_lock = evidence_boundary_.input();
                   snapshot.navigation = navigation_;
                 }
                 const std::shared_ptr<const ProductionNavigationObjectiveState>

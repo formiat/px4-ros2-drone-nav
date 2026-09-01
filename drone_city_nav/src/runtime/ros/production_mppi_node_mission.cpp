@@ -92,7 +92,7 @@ MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
       });
   if (capture.continuity_broken) {
     mission_goal_capture_attempt_invalidated_ = true;
-    const std::scoped_lock lock{input_mutex_};
+    const auto lock = evidence_boundary_.input();
     if (execution_supervisor_.authority() == execution_authority) {
       invalidateAppliedControlWitnessLocked();
       requestExecutionRevocation(ProductionMppiExecutionReason::kNoExecutableHorizon);
@@ -116,7 +116,7 @@ MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
     // exact objective and controller witness sampled by this planning tick so a
     // concurrent objective, status, feedback, or horizon update cannot be
     // acknowledged and then overwritten by the successor leg below.
-    const std::scoped_lock lock{input_mutex_, objective_replan_mutex_};
+    const auto lock = evidence_boundary_.inputWithObjectiveReplan();
     const std::int64_t commit_now_ns = get_clock()->now().nanoseconds();
     const bool commit_time_valid =
         commit_now_ns >= now_ns && navigation_.receive_stamp_ns > 0 &&

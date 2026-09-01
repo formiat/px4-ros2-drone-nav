@@ -19,7 +19,7 @@ ProductionMppiNode::makeObservedWorldBuildRequest3D(
   ProductionMppiNavigation navigation;
   std::shared_ptr<const CommittedExecutionAuthority3D> execution_authority;
   {
-    const std::scoped_lock lock{input_mutex_};
+    const auto lock = evidence_boundary_.input();
     navigation = navigation_;
     execution_authority = execution_supervisor_.authority();
   }

@@ -60,7 +60,7 @@ void ProductionMppiNode::onNonCooperativeTracks(const msg::TargetTrackArray& mes
       });
     }
   }
-  const std::scoped_lock lock{input_mutex_};
+  const auto lock = evidence_boundary_.input();
   noncooperative_tracks_ = std::move(snapshot);
 }
 
