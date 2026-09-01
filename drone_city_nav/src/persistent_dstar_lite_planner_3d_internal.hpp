@@ -140,7 +140,7 @@ using FeasibilityOpenQueue3D =
     std::priority_queue<FeasibilityQueueEntry3D, std::vector<FeasibilityQueueEntry3D>,
                         FeasibilityQueueEntryCompare3D>;
 
-class Lattice3D final {
+class LatticeState3D final {
 public:
   void reset() noexcept;
 
@@ -153,7 +153,7 @@ private:
   int depth_{0};
 };
 
-class DStarLiteSession3D final {
+class DStarLiteSessionState3D final {
 public:
   void reset() noexcept;
 
@@ -177,7 +177,7 @@ private:
       pending_repair_members_;
 };
 
-class FeasiblePathSearch3D final {
+class FeasiblePathSearchState3D final {
 public:
   void reset() noexcept;
 
@@ -194,7 +194,7 @@ private:
       parents_;
 };
 
-class ExecutionTimeRefiner3D final {
+class ExecutionTimeRefinementState3D final {
 public:
   void reset() noexcept;
 
@@ -344,7 +344,7 @@ private:
   PersistentPlannerWorld3D world_{};
   std::optional<OccupiedCollisionOracle3D> resident_collision_oracle_;
   std::optional<OccupiedCollisionOracle3D> departure_collision_oracle_;
-  Lattice3D lattice_{};
+  LatticeState3D lattice_{};
   PersistentPlannerNode3D start_{};
   PersistentPlannerNode3D last_start_{};
   PersistentPlannerNode3D goal_{};
@@ -352,9 +352,9 @@ private:
   Point3 exact_goal_{};
   std::uint64_t mission_epoch_{0U};
   bool initialized_{false};
-  DStarLiteSession3D dstar_session_{};
-  FeasiblePathSearch3D feasibility_search_{};
-  ExecutionTimeRefiner3D execution_time_refiner_{};
+  DStarLiteSessionState3D dstar_session_{};
+  FeasiblePathSearchState3D feasibility_search_{};
+  ExecutionTimeRefinementState3D execution_time_refiner_{};
   PathPostprocessor3D path_postprocessor_{};
   AnytimePlannerCoordinator3D coordinator_;
   std::size_t lattice_edge_queries_{0U};

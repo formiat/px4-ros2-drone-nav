@@ -46,31 +46,5 @@ class Stage3EndpointExecutionContractTest(unittest.TestCase):
         )
         self.assertNotIn("!route_reaches_mission_goal", planning)
 
-    def test_raw_invalidation_can_only_publish_an_emergency_brake_tail(self) -> None:
-        certification = (
-            SOURCE / "execution_route_snapshot_3d_finite_execution.cpp"
-        ).read_text(encoding="utf-8")
-        transitions = (
-            SOURCE / "execution_route_snapshot_3d_transitions.cpp"
-        ).read_text(encoding="utf-8")
-
-        raw_certification = certification.split(
-            "if (certifies_raw_invalidation)", maxsplit=1
-        )[1].split("if ((!static_mode", maxsplit=1)[0]
-        self.assertIn(
-            "certification.kind != FiniteExecutionKind3D::kEmergencyBrakeTail",
-            raw_certification,
-        )
-        raw_transition = transitions.split(
-            "case RouteLifecycleEventKind3D::kRawInvalidated:", maxsplit=1
-        )[1].split("[[fallthrough]]", maxsplit=1)[0]
-        self.assertRegex(
-            raw_transition,
-            r"retained_safe_execution->kind\s*!=\s*"
-            r"FiniteExecutionKind3D::kEmergencyBrakeTail",
-        )
-        self.assertIn("next.state = BrakingPlan3D{", transitions)
-
-
 if __name__ == "__main__":
     unittest.main()

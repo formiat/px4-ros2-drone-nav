@@ -142,14 +142,14 @@ spatialRouteCandidateSource3DName(const SpatialRouteCandidateSource3D source) no
 
 namespace detail {
 
-void Lattice3D::reset() noexcept {
+void LatticeState3D::reset() noexcept {
   raw_bounds_ = {};
   width_ = 0;
   height_ = 0;
   depth_ = 0;
 }
 
-void DStarLiteSession3D::reset() noexcept {
+void DStarLiteSessionState3D::reset() noexcept {
   queue_token_ = 0U;
   queue_sequence_ = 0U;
   key_modifier_ = 0.0;
@@ -161,7 +161,7 @@ void DStarLiteSession3D::reset() noexcept {
   pending_repair_members_.clear();
 }
 
-void FeasiblePathSearch3D::reset() noexcept {
+void FeasiblePathSearchState3D::reset() noexcept {
   initialized_ = false;
   queue_sequence_ = 0U;
   open_ = {};
@@ -169,7 +169,7 @@ void FeasiblePathSearch3D::reset() noexcept {
   parents_.clear();
 }
 
-void ExecutionTimeRefiner3D::reset() noexcept {
+void ExecutionTimeRefinementState3D::reset() noexcept {
   initialized_ = false;
   complete_ = false;
   start_from_rest_ = false;

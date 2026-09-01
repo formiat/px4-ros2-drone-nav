@@ -83,6 +83,14 @@ ROUTE_PRIVATE_HEADERS = {
     "route_planning_coordinator_3d.hpp",
     "route_trajectory_compiler_3d.hpp",
 }
+LEGACY_ORCHESTRATION_CONTRACT_TESTS = (
+    "test_execution_input_contract.py",
+    "test_planner_readiness_contract.py",
+    "test_runtime_transport_budget_contract.py",
+    "test_stage2_execution_transport_contract.py",
+    "test_stage3_endpoint_execution_contract.py",
+    "test_stage7_geometry_vertical_cost_contract.py",
+)
 
 
 def cmake_source_manifest(variable: str) -> tuple[Path, ...]:
@@ -142,6 +150,14 @@ def local_dependency_closure(roots: tuple[Path, ...]) -> set[Path]:
 
 
 class NavigationDependencyContractTest(unittest.TestCase):
+    def test_orchestration_contracts_do_not_parse_source_order(self) -> None:
+        test_directory = REPOSITORY / "scripts" / "tests"
+        for name in LEGACY_ORCHESTRATION_CONTRACT_TESTS:
+            text = (test_directory / name).read_text(encoding="utf-8")
+            with self.subTest(test=name):
+                self.assertNotIn(".split(", text)
+                self.assertNotIn(".index(", text)
+
     def test_world_planning_and_trajectory_contracts_do_not_depend_on_mppi(self) -> None:
         for name in CONTROLLER_NEUTRAL_HEADERS:
             with self.subTest(header=name):

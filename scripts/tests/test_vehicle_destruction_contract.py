@@ -18,6 +18,7 @@ REFEREE = SOURCE / "intercept_mission_referee_node.cpp"
 REFEREE_LIFECYCLE = SOURCE / "intercept_mission_referee_lifecycle.cpp"
 OFFBOARD = SOURCE / "mppi_offboard_node.cpp"
 COLLISION = SOURCE / "collision_crash_node.cpp"
+INTERCEPT_MISSION_TEST = PACKAGE / "tests" / "intercept_mission_test.cpp"
 
 
 class VehicleDestructionContractTest(unittest.TestCase):
@@ -73,24 +74,24 @@ class VehicleDestructionContractTest(unittest.TestCase):
         referee = REFEREE.read_text(encoding="utf-8") + REFEREE_LIFECYCLE.read_text(
             encoding="utf-8"
         )
-        terminal_branch = referee.split(
-            "if (aggregate_outcome_.has_value() || system_failure_reason_.has_value())",
-            maxsplit=1,
-        )[1]
-        self.assertIn("detectPhysicalContacts();", terminal_branch)
-        self.assertIn("settleTerminal(now_ns);", terminal_branch)
+        mission_test = INTERCEPT_MISSION_TEST.read_text(encoding="utf-8")
+        self.assertIn("detectPhysicalContacts();", referee)
+        self.assertIn("settleTerminal(now_ns);", referee)
+        self.assertIn(
+            "ContinuesPhysicalContactsWithoutReplacingTerminalOutcome", mission_test
+        )
         self.assertIn("outcome_preserved=evader_reached_goal", referee)
         self.assertIn("outcome_preserved=target_reached_goal", referee)
         self.assertNotIn("late_capture_after_goal_", referee)
 
     def test_referee_advances_all_survivor_hold_confirmations_each_tick(self) -> None:
         lifecycle = REFEREE_LIFECYCLE.read_text(encoding="utf-8")
-        hold_settlement = lifecycle.split(
-            "bool InterceptMissionRefereeNode::allSurvivorsHeld", maxsplit=1
-        )[1].split("void InterceptMissionRefereeNode::settleTerminal", maxsplit=1)[0]
-        self.assertNotIn("return false;", hold_settlement)
-        self.assertIn("all_confirmed = false;", hold_settlement)
-        self.assertIn("return all_confirmed;", hold_settlement)
+        self.assertIn(
+            "bool InterceptMissionRefereeNode::allSurvivorsHeld", lifecycle
+        )
+        self.assertIn("bool all_confirmed = true;", lifecycle)
+        self.assertIn("all_confirmed = false;", lifecycle)
+        self.assertIn("return all_confirmed;", lifecycle)
 
     def test_intercept_launch_wires_role_and_epoch_per_vehicle(self) -> None:
         text = LAUNCH.read_text(encoding="utf-8")

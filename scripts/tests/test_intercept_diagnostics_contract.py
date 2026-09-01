@@ -113,10 +113,12 @@ class InterceptDiagnosticsContractTest(unittest.TestCase):
             r"const auto memory_3d_source_qos\s*=\s*"
             r"rclcpp::QoS\{1\}\.best_effort\(\)\.transient_local\(\);",
         )
-        memory_subscription = source.split(
-            "topicParameter(\"memory_3d_topics\", \"/raw_memory_points_3d\")", 1
-        )[1].split("createCloudSubscriptions", 1)[0]
-        self.assertIn("memory_3d_source_qos", memory_subscription)
+        self.assertRegex(
+            source,
+            r"createCloudSubscriptions\(\s*CloudLayer::kMemory3d,\s*"
+            r'topicParameter\("memory_3d_topics", "/raw_memory_points_3d"\),\s*'
+            r"memory_3d_source_qos\);",
+        )
 
     def test_rviz_shows_all_routes_and_only_selected_full_diagnostics(self) -> None:
         for config_path in RVIZ_CONFIGS:

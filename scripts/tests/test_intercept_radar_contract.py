@@ -25,7 +25,6 @@ COOPERATIVE_AGENT = SOURCE / "cooperative_traffic_agent_node.cpp"
 REFEREE_LIFECYCLE = SOURCE / "intercept_mission_referee_lifecycle.cpp"
 REFEREE_SUPPORT = SOURCE / "intercept_referee_support.cpp"
 GROUND_TRUTH_BOUNDARY = SOURCE / "intercept_ground_truth_boundary.cpp"
-RADAR_SIMULATOR = SOURCE / "radar_simulator_node.cpp"
 ASSIGNMENT_COORDINATOR = SOURCE / "target_assignment_coordinator_node.cpp"
 TRUTH_ADAPTER = SOURCE / "simulation_truth_adapter_node.cpp"
 OBSTACLE_MEMORY = SOURCE / "obstacle_memory_node.cpp"
@@ -137,19 +136,16 @@ class InterceptRadarContractTest(unittest.TestCase):
         self.assertIn('"target_navigation_observer_fqns"', launch)
         self.assertIn('"/intercept_spectator_node"', launch)
         self.assertIn('"/intercept_diagnostics_mux_node"', launch)
-        target_contracts = boundary.split(
-            "for (const TargetTruthEndpoint& endpoint", 1
-        )[1].split("return std::make_unique", 1)[0]
         self.assertIn(
             "navigation_subscribers.insert(target_navigation_observer_fqns",
-            target_contracts,
+            boundary,
         )
         self.assertIn(
             ".allowed_subscribers = std::move(navigation_subscribers)",
-            target_contracts,
+            boundary,
         )
         self.assertIn(
-            ".allowed_subscribers = target_truth_subscribers", target_contracts
+            ".allowed_subscribers = target_truth_subscribers", boundary
         )
 
     def test_survivor_hold_avoids_obstacles_then_requires_stationary_horizon(

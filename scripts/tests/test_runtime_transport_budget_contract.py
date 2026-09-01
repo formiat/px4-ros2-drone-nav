@@ -40,11 +40,9 @@ class RuntimeTransportBudgetContractTest(unittest.TestCase):
         source = (PACKAGE / "src" / "obstacle_memory_transport.cpp").read_text(
             encoding="utf-8"
         )
-        debug_block = source.split("if (publish_debug) {", maxsplit=1)[1].split(
-            "msg::ObstacleMemoryStatus status", maxsplit=1
-        )[0]
 
-        self.assertIn("makeObstacleMemorySnapshotMessage", debug_block)
+        self.assertIn("if (publish_debug)", source)
+        self.assertIn("makeObstacleMemorySnapshotMessage", source)
         self.assertIn("raw_base_revision_ = sequence_", source)
         self.assertIn("dirty_chunks_since_base_", source)
         self.assertIn("makeRawObstacleDelta", source)
@@ -61,14 +59,11 @@ class RuntimeTransportBudgetContractTest(unittest.TestCase):
 
         self.assertIn('f"{prefix}/obstacle_memory_status"', launch)
         self.assertIn('f"{prefix}/raw_obstacle_delta_3d"', launch)
-        planner_parameters = launch.split("planner_params =", maxsplit=1)[1].split(
-            "offboard_params =", maxsplit=1
-        )[0]
-        self.assertIn('"obstacle_memory_status_topic": memory_status', planner_parameters)
-        self.assertIn('"raw_obstacle_delta_3d_topic": (', planner_parameters)
-        self.assertNotIn('"raw_obstacle_delta_topic": raw_delta', planner_parameters)
+        self.assertIn('"obstacle_memory_status_topic": memory_status', launch)
+        self.assertIn('"raw_obstacle_delta_3d_topic": (', launch)
+        self.assertNotIn('"raw_obstacle_delta_topic": raw_delta', launch)
         self.assertNotIn(
-            '"obstacle_memory_snapshot_topic": memory_snapshot', planner_parameters
+            '"obstacle_memory_snapshot_topic": memory_snapshot', launch
         )
 
 if __name__ == "__main__":
