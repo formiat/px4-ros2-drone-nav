@@ -522,7 +522,7 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
       [this](const msg::ObstacleMemoryStatus::SharedPtr message) {
         onMemoryStatus(*message);
       },
-      input_subscription_options);
+      world_subscription_options);
   applied_control_sub_ = create_subscription<msg::MppiControlFeedback>(
       config_.execution.topics.applied_control_feedback, rclcpp::QoS{10}.reliable(),
       [this](const msg::MppiControlFeedback::SharedPtr message) {
