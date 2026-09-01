@@ -1,9 +1,9 @@
 #pragma once
 
 #include "drone_city_nav/esdf_grid_3d.hpp"
+#include "drone_city_nav/footprint_geometry_3d.hpp"
 #include "drone_city_nav/known_obstacle_distance_3d.hpp"
 #include "drone_city_nav/observed_occupancy_grid_3d.hpp"
-#include "drone_city_nav/swept_footprint.hpp"
 #include "drone_city_nav/world_generation.hpp"
 
 #include <atomic>
@@ -120,14 +120,6 @@ localObservedEsdfWindow3DIsValid(const LocalObservedEsdfWindow3D& window) noexce
 knownObstacleFingerprint3D(const ObservedOccupancyGrid3D& occupancy,
                            const GridBounds3D& local_bounds);
 
-[[nodiscard]] std::optional<LaunchSupportContact3D>
-detectLaunchSupportContact3D(const ObservedOccupancyGrid3D& occupancy,
-                             const ProprioceptiveFreeSpaceSeed3D& seed);
-
-[[nodiscard]] LaunchSupportContact3D
-makeVehicleLandedSupportContact3D(const GridBounds3D& bounds,
-                                  const ProprioceptiveFreeSpaceSeed3D& seed);
-
 [[nodiscard]] ObservedEsdf3D
 buildObservedEsdf3D(const ObservedOccupancyGrid3D& occupancy,
                     const GridBounds3D& local_bounds, double maximum_distance_m,
@@ -140,11 +132,6 @@ buildObservedEsdf3D(const ObservedOccupancyGrid3D& occupancy,
     std::span<const OccupancyChunkIndex3D> dirty_chunks, bool full_reset,
     double maximum_rebuild_ratio, BoundedWorkerPool* worker_pool = nullptr,
     const LaunchSupportContact3D* launch_support_contact = nullptr);
-
-[[nodiscard]] double
-requiredObservedEsdfMaximumDistanceM(double preferred_distance_m,
-                                     const SweptFootprintConfig& footprint,
-                                     double resolution_m) noexcept;
 
 [[nodiscard]] bool observedEsdfFullAuditDue(std::uint64_t completed_builds,
                                             std::size_t audit_interval_builds) noexcept;

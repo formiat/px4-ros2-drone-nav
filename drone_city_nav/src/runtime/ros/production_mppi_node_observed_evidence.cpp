@@ -1,3 +1,4 @@
+#include "drone_city_nav/launch_support_contact_3d.hpp"
 #include "drone_city_nav/occupied_collision_oracle_3d.hpp"
 
 #include <algorithm>

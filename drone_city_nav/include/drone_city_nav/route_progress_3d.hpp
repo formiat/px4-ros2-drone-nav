@@ -1,32 +1,11 @@
 #pragma once
 
+#include "drone_city_nav/route_release_3d.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <cstdint>
 
 namespace drone_city_nav {
-
-// Mission-route progress and release contracts are independent of planner internals.
-enum class RouteReleaseReason3D : std::uint8_t {
-  kNone,
-  kNoActiveRoute,
-  kBlocked,
-  kExhausted,
-  kStalled,
-  kNoEligibleRollouts,
-  kDiverged,
-  kObjectiveChanged,
-};
-
-struct RouteProgressProjection3D {
-  bool valid{false};
-  double station_m{0.0};
-  double total_length_m{0.0};
-  double remaining_m{0.0};
-  double cross_track_m{0.0};
-  Point2 point{};
-  Point2 tangent{};
-};
 
 struct RouteTrackingPolicy3D {
   double minimum_remaining_m{15.0};

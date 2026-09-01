@@ -23,105 +23,6 @@ namespace {
                     0, cell_count - 1);
 }
 
-struct LaunchSupportCellCandidate {
-  GridIndex3D index{};
-  AxisAlignedBox3D bounds{};
-};
-
-[[nodiscard]] bool launchSupportEnvelopeIntersectsCell(
-    const ProprioceptiveFreeSpaceSeed3D& seed, const double resolution_m,
-    const Point3& cell_minimum, const Point3& cell_maximum) noexcept {
-  const double axis_norm =
-      std::hypot(std::hypot(seed.body_axis.x, seed.body_axis.y), seed.body_axis.z);
-  if (!(axis_norm > 1.0e-9) || !(resolution_m > 0.0)) {
-    return false;
-  }
-  const FootprintBodyAxis axis{seed.body_axis.x / axis_norm,
-                               seed.body_axis.y / axis_norm,
-                               seed.body_axis.z / axis_norm};
-  const double lower_extent_m = std::max(0.0, seed.footprint.lower_extent_m);
-  const double maximum_axial_extent_m =
-      std::max(lower_extent_m, std::max(0.0, seed.footprint.upper_extent_m));
-  const Point3 contact_center{seed.position.x - lower_extent_m * axis.x,
-                              seed.position.y - lower_extent_m * axis.y,
-                              seed.position.z - lower_extent_m * axis.z};
-  const SweptFootprintConfig contact_envelope{
-      .radius_m =
-          std::hypot(std::max(0.0, seed.footprint.radius_m), maximum_axial_extent_m) +
-          resolution_m,
-      .lower_extent_m = resolution_m,
-      .upper_extent_m = resolution_m,
-  };
-  return footprintIntersectsAxisAlignedBox(contact_center, axis, contact_envelope,
-                                           cell_minimum, cell_maximum);
-}
-
-[[nodiscard]] std::vector<LaunchSupportCellCandidate>
-launchSupportCellCandidates(const GridBounds3D& bounds,
-                            const ProprioceptiveFreeSpaceSeed3D& seed) {
-  const double broad_extent_m = std::max(0.0, seed.footprint.radius_m) +
-                                std::max(std::max(0.0, seed.footprint.lower_extent_m),
-                                         std::max(0.0, seed.footprint.upper_extent_m)) +
-                                bounds.resolution_m;
-  const int minimum_x = clampedCell(seed.position.x - broad_extent_m, bounds.origin_x,
-                                    bounds.resolution_m, bounds.width_cells);
-  const int maximum_x = clampedCell(seed.position.x + broad_extent_m, bounds.origin_x,
-                                    bounds.resolution_m, bounds.width_cells);
-  const int minimum_y = clampedCell(seed.position.y - broad_extent_m, bounds.origin_y,
-                                    bounds.resolution_m, bounds.height_cells);
-  const int maximum_y = clampedCell(seed.position.y + broad_extent_m, bounds.origin_y,
-                                    bounds.resolution_m, bounds.height_cells);
-  const int minimum_z = clampedCell(seed.position.z - broad_extent_m, bounds.origin_z,
-                                    bounds.resolution_m, bounds.depth_cells);
-  const int maximum_z = clampedCell(seed.position.z + broad_extent_m, bounds.origin_z,
-                                    bounds.resolution_m, bounds.depth_cells);
-
-  std::vector<LaunchSupportCellCandidate> result;
-  for (int z = minimum_z; z <= maximum_z; ++z) {
-    for (int y = minimum_y; y <= maximum_y; ++y) {
-      for (int x = minimum_x; x <= maximum_x; ++x) {
-        const Point3 minimum{
-            bounds.origin_x + static_cast<double>(x) * bounds.resolution_m,
-            bounds.origin_y + static_cast<double>(y) * bounds.resolution_m,
-            bounds.origin_z + static_cast<double>(z) * bounds.resolution_m};
-        const Point3 maximum{minimum.x + bounds.resolution_m,
-                             minimum.y + bounds.resolution_m,
-                             minimum.z + bounds.resolution_m};
-        if (launchSupportEnvelopeIntersectsCell(seed, bounds.resolution_m, minimum,
-                                                maximum)) {
-          result.push_back(LaunchSupportCellCandidate{
-              .index = GridIndex3D{x, y, z},
-              .bounds = AxisAlignedBox3D{.minimum = minimum, .maximum = maximum},
-          });
-        }
-      }
-    }
-  }
-  return result;
-}
-
-[[nodiscard]] LaunchSupportContact3D
-makeLaunchSupportContact3D(const GridBounds3D& bounds,
-                           const ProprioceptiveFreeSpaceSeed3D& seed,
-                           const LaunchSupportEvidenceSource evidence_source,
-                           const std::size_t occupied_evidence_cells,
-                           const std::vector<LaunchSupportCellCandidate>& candidates) {
-  LaunchSupportContact3D contact{
-      .seed = seed,
-      .contact_cells = {},
-      .occupied_evidence_cells = occupied_evidence_cells,
-      .evidence_source = evidence_source,
-      .maximum_lateral_departure_m = bounds.resolution_m,
-      .minimum_axial_departure_m = 0.0,
-      .maximum_axial_settling_m = bounds.resolution_m,
-  };
-  contact.contact_cells.reserve(candidates.size());
-  std::ranges::transform(
-      candidates, std::back_inserter(contact.contact_cells),
-      [](const LaunchSupportCellCandidate& candidate) { return candidate.bounds; });
-  return contact;
-}
-
 } // namespace
 
 GridBounds3D selectLocalObservedEsdfBounds(const GridBounds3D& world_bounds,
@@ -218,33 +119,6 @@ bool localObservedEsdfWindow3DIsValid(
          std::isfinite(window.vertical_recenter_margin_m) &&
          window.vertical_recenter_margin_m >= 0.0 &&
          window.vertical_recenter_margin_m < window.vertical_half_extent_m;
-}
-
-std::optional<LaunchSupportContact3D>
-detectLaunchSupportContact3D(const ObservedOccupancyGrid3D& occupancy,
-                             const ProprioceptiveFreeSpaceSeed3D& seed) {
-  const GridBounds3D& bounds = occupancy.bounds();
-  const std::vector<LaunchSupportCellCandidate> candidates =
-      launchSupportCellCandidates(bounds, seed);
-  const std::size_t occupied_evidence_cells = static_cast<std::size_t>(
-      std::ranges::count_if(candidates, [&](const LaunchSupportCellCandidate& cell) {
-        return occupancy.state(cell.index) == ObservedVoxelState::kOccupied;
-      }));
-  if (occupied_evidence_cells == 0U) {
-    return std::nullopt;
-  }
-  return makeLaunchSupportContact3D(bounds, seed,
-                                    LaunchSupportEvidenceSource::kObservedOccupancy,
-                                    occupied_evidence_cells, candidates);
-}
-
-LaunchSupportContact3D
-makeVehicleLandedSupportContact3D(const GridBounds3D& bounds,
-                                  const ProprioceptiveFreeSpaceSeed3D& seed) {
-  const std::vector<LaunchSupportCellCandidate> candidates =
-      launchSupportCellCandidates(bounds, seed);
-  return makeLaunchSupportContact3D(
-      bounds, seed, LaunchSupportEvidenceSource::kVehicleLandDetector, 0U, candidates);
 }
 
 } // namespace drone_city_nav

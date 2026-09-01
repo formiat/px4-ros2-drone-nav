@@ -617,4 +617,16 @@ FootprintBodyAxis bodyAxisFromWorldAcceleration(const Vec3& acceleration_mps2,
                                       acceleration_mps2.z + gravity_mps2});
 }
 
+const char* sweptFootprintStatusName(const SweptFootprintStatus status) noexcept {
+  switch (status) {
+    case SweptFootprintStatus::kValid:
+      return "valid";
+    case SweptFootprintStatus::kInvalidInput:
+      return "invalid_input";
+    case SweptFootprintStatus::kRawCollision:
+      return "raw_collision";
+  }
+  return "invalid_status";
+}
+
 } // namespace drone_city_nav

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/timed_vehicle_state.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <cstddef>
@@ -13,19 +14,6 @@ namespace drone_city_nav {
 struct InterceptMissionConfig {
   double capture_radius_m{5.0};
   double evader_goal_radius_m{2.0};
-};
-
-struct TimedVehicleState {
-  Point3 position{};
-  Vec3 velocity{};
-  std::int64_t stamp_ns{0};
-  double heading_rad{0.0};
-  bool position_valid{false};
-  bool velocity_valid{false};
-  bool heading_valid{false};
-  bool armed{false};
-  bool airborne{false};
-  bool navigation_ready{false};
 };
 
 enum class InterceptMissionOutcome : std::uint8_t {

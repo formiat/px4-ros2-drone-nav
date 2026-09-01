@@ -38,29 +38,47 @@ component. Its domain and control targets must form this directed graph:
 
 ```text
 nav_model -> nav_control_contracts
-nav_model -> nav_world
+nav_model -> nav_route_contracts
+nav_model + nav_route_contracts -> nav_world
   -> nav_collision
-  -> nav_planning
+nav_collision + nav_control_contracts -> nav_finite_execution
+nav_collision -> nav_planning
   -> nav_trajectory
-nav_trajectory + nav_control_contracts
+nav_trajectory + nav_finite_execution
   -> nav_execution
   -> nav_control
   -> nav_runtime
 ```
 
-`nav_control_contracts` is a small controller-neutral contract target, not a
-controller implementation. `nav_execution` consumes its motion, dynamics,
-finite-horizon, validation-result, and typed dynamic-handoff ports without
-including MPPI headers. The MPPI/CUDA backend adapts those contracts in
-`nav_control`; it is not a dependency of execution.
+`nav_control_contracts` is a pure controller-neutral DTO target, not a
+controller implementation and not a validation algorithm: it branches straight
+from `nav_model` so model-level motion code may depend on it.
+`nav_finite_execution` holds the controller-neutral validation algorithms that
+need collision evidence. `nav_route_contracts` holds route geometry, passage
+identity, risk tiers, and the release and progress-projection contracts, so the
+world layer can publish topology evidence without depending on planning.
+`nav_execution` consumes the motion, dynamics, finite-horizon, validation-result,
+and typed dynamic-handoff ports without including MPPI headers. The MPPI/CUDA
+backend adapts those contracts in `nav_control`; it is not a dependency of
+execution.
 
 The lower domain boundaries are enforced by the shared-library targets
-`drone_city_nav_model`, `drone_city_nav_world`,
-`drone_city_nav_collision`, `drone_city_nav_planning`,
-`drone_city_nav_trajectory`, `drone_city_nav_execution`,
-`drone_city_nav_control`, and `drone_city_nav_runtime`. Every layer links
-only its immediate predecessor and uses `--no-undefined`; configure-time
-guards reject any additional internal edge. `drone_city_nav_core` remains an
+`drone_city_nav_model`, `drone_city_nav_control_contracts`,
+`drone_city_nav_route_contracts`, `drone_city_nav_world`,
+`drone_city_nav_collision`, `drone_city_nav_finite_execution`,
+`drone_city_nav_planning`, `drone_city_nav_trajectory`,
+`drone_city_nav_execution`, `drone_city_nav_control`, and
+`drone_city_nav_runtime`. Every layer links exactly the predecessors declared
+for it and uses `--no-undefined`; configure-time guards reject any additional
+internal edge.
+
+Link edges alone cannot police the graph, because every public header shares one
+include root. Ownership is therefore declared explicitly: each public header is
+named in exactly one `DRONE_CITY_NAV_<LAYER>_HEADERS` manifest, each owning
+target compiles its own headers against its own closure, and
+`scripts/tests/test_navigation_dependency_contract.py` rejects any header or
+layer source that includes a header owned by a higher layer, plus any header
+missing from every manifest. `drone_city_nav_core` remains an
 interface-only compatibility umbrella for in-package targets during API
 migration and owns no translation units. The internal layer targets and
 hand-written headers are not exported as a downstream CMake API; rosidl-generated

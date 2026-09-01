@@ -166,15 +166,24 @@ function(add_drone_city_nav_layer target_name)
   enable_project_warnings(${target_name})
 endfunction()
 
-# Enforced dependency direction: model -> world -> collision -> planning ->
-# trajectory -> execution -> control -> runtime. Controller-neutral finite
-# motion and path contracts branch from collision and are consumed by
-# execution without introducing an MPPI dependency.
+# Enforced dependency graph. Two contract targets branch directly from model and
+# are consumed lower down without dragging their consumers upward:
+#
+#   model -> control_contracts        (controller-neutral motion DTOs)
+#   model -> route_contracts          (route geometry and release contracts)
+#   model + route_contracts -> world -> collision
+#   collision + control_contracts -> finite_execution
+#   collision -> planning -> trajectory
+#   trajectory + finite_execution -> execution -> control -> runtime
+#
+# finite_execution holds the controller-neutral validation algorithms that need
+# collision evidence; control_contracts stays a pure DTO target so model-level
+# motion code can depend on it. No target may link a layer above itself.
 add_drone_city_nav_layer(
   drone_city_nav_model
   src/bounded_worker_pool.cpp
   src/flight_time_model_3d.cpp
-  src/motion_dynamics_3d.cpp
+  src/footprint_geometry_3d.cpp
   src/navigation_angular_derivative.cpp
   src/navigation_pose.cpp
   src/navigation_recovery_episode_tracker.cpp
@@ -187,6 +196,19 @@ add_drone_city_nav_layer(
   src/simulation_truth_alignment.cpp
   src/stopping_distance.cpp
   src/world_generation.cpp)
+
+add_drone_city_nav_layer(
+  drone_city_nav_control_contracts
+  src/finite_motion_horizon_3d.cpp
+  src/motion_dynamics_3d.cpp)
+target_link_libraries(drone_city_nav_control_contracts PUBLIC drone_city_nav_model)
+
+add_drone_city_nav_layer(
+  drone_city_nav_route_contracts
+  src/route_3d.cpp
+  src/route_3d_passage.cpp
+  src/route_3d_spans.cpp)
+target_link_libraries(drone_city_nav_route_contracts PUBLIC drone_city_nav_model)
 
 add_drone_city_nav_layer(
   drone_city_nav_world
@@ -222,32 +244,36 @@ add_drone_city_nav_layer(
   src/observed_esdf_3d.cpp
   src/observed_esdf_3d_fingerprint.cpp
   src/observed_esdf_3d_metadata.cpp
+  src/observed_esdf_3d_window.cpp
   src/observed_occupancy_grid_3d.cpp
   src/occupancy_grid.cpp
   src/occupancy_grid_3d.cpp
   src/static_esdf_cache.cpp
   src/tracked_agent_lidar_filter.cpp)
-target_link_libraries(drone_city_nav_world PUBLIC drone_city_nav_model
-                                               PRIVATE PkgConfig::ZSTD)
+target_link_libraries(
+  drone_city_nav_world
+  PUBLIC drone_city_nav_model drone_city_nav_route_contracts
+  PRIVATE PkgConfig::ZSTD)
 
 add_drone_city_nav_layer(
   drone_city_nav_collision
   src/flight_envelope.cpp
-  src/observed_esdf_3d_window.cpp
+  src/launch_support_contact_3d.cpp
+  src/observed_esdf_footprint_3d.cpp
+  src/observed_world_content_hash_3d.cpp
   src/occupied_collision_oracle_3d.cpp
   src/sensor_braking_contract_3d.cpp
   src/swept_footprint.cpp
   src/swept_footprint_2d.cpp
-  src/swept_footprint_contract.cpp
-  src/swept_footprint_esdf.cpp)
+  src/swept_footprint_esdf.cpp
+  src/versioned_world_evidence_3d.cpp)
 target_link_libraries(drone_city_nav_collision PUBLIC drone_city_nav_world)
 
-add_drone_city_nav_layer(
-  drone_city_nav_control_contracts
-  src/finite_execution_path_3d.cpp
-  src/finite_motion_horizon_3d.cpp)
-target_link_libraries(drone_city_nav_control_contracts
-                      PUBLIC drone_city_nav_collision)
+add_drone_city_nav_layer(drone_city_nav_finite_execution
+                         src/finite_execution_path_3d.cpp)
+target_link_libraries(drone_city_nav_finite_execution
+                      PUBLIC drone_city_nav_collision
+                             drone_city_nav_control_contracts)
 
 add_drone_city_nav_layer(
   drone_city_nav_planning
@@ -261,9 +287,6 @@ add_drone_city_nav_layer(
   src/persistent_dstar_lite_planner_3d_search.cpp
   src/persistent_dstar_lite_planner_3d_time_search.cpp
   src/persistent_dstar_lite_planner_3d_world.cpp
-  src/route_3d.cpp
-  src/route_3d_passage.cpp
-  src/route_3d_spans.cpp
   src/route_planning_3d.cpp
   src/route_risk_annotation_3d.cpp
   src/static_route_geometry.cpp
@@ -286,7 +309,6 @@ add_drone_city_nav_layer(
   src/route_time_parameterization.cpp
   src/static_route_extension.cpp
   src/tracking_error_tube_3d.cpp
-  src/trajectory_control_reference_3d.cpp
   src/trajectory_compiler_3d.cpp)
 target_link_libraries(drone_city_nav_trajectory PUBLIC drone_city_nav_planning)
 
@@ -327,13 +349,14 @@ add_drone_city_nav_layer(
   src/pending_certified_route_3d.cpp
   src/rolling_route_telemetry_3d.cpp
   src/route_execution_manager_3d.cpp
+  src/trajectory_control_reference_3d.cpp
   src/route_lifecycle_3d.cpp
   src/route_progress_3d.cpp
   src/route_successor_improvement_3d.cpp
   src/vehicle_destruction_disarm_lifecycle.cpp)
 target_link_libraries(drone_city_nav_execution
                       PUBLIC drone_city_nav_trajectory
-                             drone_city_nav_control_contracts)
+                             drone_city_nav_finite_execution)
 
 add_drone_city_nav_layer(
   drone_city_nav_control
@@ -363,41 +386,276 @@ add_drone_city_nav_layer(
   src/target_assignment.cpp)
 target_link_libraries(drone_city_nav_runtime PUBLIC drone_city_nav_control)
 
-function(assert_drone_city_nav_layer_dependency target_name expected_predecessor)
+# Header ownership. Every hand-written public header belongs to exactly one
+# target, and may include only headers owned by that target or by one of its
+# declared predecessors. The lists are exhaustive: a new header that is not
+# named here fails test_navigation_dependency_contract.py rather than silently
+# inheriting whatever include path happens to be available.
+set(DRONE_CITY_NAV_MODEL_HEADERS
+    include/drone_city_nav/bounded_worker_pool.hpp
+    include/drone_city_nav/flight_time_model_3d.hpp
+    include/drone_city_nav/footprint_geometry_3d.hpp
+    include/drone_city_nav/json_output.hpp
+    include/drone_city_nav/latest_processing_queue.hpp
+    include/drone_city_nav/latest_value_mailbox.hpp
+    include/drone_city_nav/motion_state_3d.hpp
+    include/drone_city_nav/navigation_angular_derivative.hpp
+    include/drone_city_nav/navigation_pose.hpp
+    include/drone_city_nav/navigation_recovery_episode_tracker.hpp
+    include/drone_city_nav/navigation_state_prediction.hpp
+    include/drone_city_nav/producer_epoch_admission.hpp
+    include/drone_city_nav/producer_instance_id.hpp
+    include/drone_city_nav/px4_map_frame_transform.hpp
+    include/drone_city_nav/px4_ros_time_mapper.hpp
+    include/drone_city_nav/radar_cadence.hpp
+    include/drone_city_nav/radar_model.hpp
+    include/drone_city_nav/simulation_truth_alignment.hpp
+    include/drone_city_nav/stopping_capability.hpp
+    include/drone_city_nav/stopping_distance.hpp
+    include/drone_city_nav/strong_string_id.hpp
+    include/drone_city_nav/timed_vehicle_state.hpp
+    include/drone_city_nav/types.hpp
+    include/drone_city_nav/vehicle_state_3d.hpp
+    include/drone_city_nav/world_generation.hpp)
+
+set(DRONE_CITY_NAV_CONTROL_CONTRACTS_HEADERS
+    include/drone_city_nav/control_contracts_3d.hpp
+    include/drone_city_nav/control_route_projection_3d.hpp
+    include/drone_city_nav/finite_motion_horizon_3d.hpp
+    include/drone_city_nav/motion_altitude_envelope_3d.hpp
+    include/drone_city_nav/motion_dynamics_3d.hpp)
+
+set(DRONE_CITY_NAV_ROUTE_CONTRACTS_HEADERS
+    include/drone_city_nav/passage_ids.hpp
+    include/drone_city_nav/portal_graph.hpp
+    include/drone_city_nav/route_3d.hpp
+    include/drone_city_nav/route_release_3d.hpp
+    include/drone_city_nav/route_risk_policy_3d.hpp
+    include/drone_city_nav/route_risk_tier_3d.hpp)
+
+set(DRONE_CITY_NAV_WORLD_HEADERS
+    include/drone_city_nav/ambiguous_lidar_hit_tracker.hpp
+    include/drone_city_nav/collision_voxelizer.hpp
+    include/drone_city_nav/debug_image.hpp
+    include/drone_city_nav/distance_field.hpp
+    include/drone_city_nav/distance_field_3d.hpp
+    include/drone_city_nav/esdf_grid_3d.hpp
+    include/drone_city_nav/esdf_query.hpp
+    include/drone_city_nav/grid_config.hpp
+    include/drone_city_nav/grid_overlay.hpp
+    include/drone_city_nav/known_obstacle_distance_3d.hpp
+    include/drone_city_nav/known_static_lidar_hit_classifier.hpp
+    include/drone_city_nav/latest_lidar_obstacle_scan.hpp
+    include/drone_city_nav/lidar_acquisition_pose.hpp
+    include/drone_city_nav/lidar_beam_observation.hpp
+    include/drone_city_nav/lidar_debug_renderer.hpp
+    include/drone_city_nav/lidar_debug_snapshot_pipeline.hpp
+    include/drone_city_nav/lidar_ingestion_decision.hpp
+    include/drone_city_nav/lidar_memory_hit_diagnostics.hpp
+    include/drone_city_nav/lidar_motion_compensation.hpp
+    include/drone_city_nav/lidar_pose_history.hpp
+    include/drone_city_nav/lidar_projection.hpp
+    include/drone_city_nav/lidar_scan_3d.hpp
+    include/drone_city_nav/lidar_self_filter.hpp
+    include/drone_city_nav/lidar_snapshot_writer.hpp
+    include/drone_city_nav/local_esdf_2d.hpp
+    include/drone_city_nav/map_to_sdf_transform.hpp
+    include/drone_city_nav/mapping_lifecycle.hpp
+    include/drone_city_nav/observed_esdf_3d.hpp
+    include/drone_city_nav/observed_occupancy_grid_3d.hpp
+    include/drone_city_nav/obstacle_memory.hpp
+    include/drone_city_nav/obstacle_memory_3d.hpp
+    include/drone_city_nav/obstacle_memory_transport_policy_3d.hpp
+    include/drone_city_nav/occupancy_grid.hpp
+    include/drone_city_nav/occupancy_grid_3d.hpp
+    include/drone_city_nav/static_esdf_cache.hpp
+    include/drone_city_nav/tracked_agent_lidar_filter.hpp
+    include/drone_city_nav/world_snapshot_3d.hpp)
+
+set(DRONE_CITY_NAV_COLLISION_HEADERS
+    include/drone_city_nav/derived_clearance_3d.hpp
+    include/drone_city_nav/flight_envelope.hpp
+    include/drone_city_nav/launch_support_contact_3d.hpp
+    include/drone_city_nav/observed_esdf_footprint_3d.hpp
+    include/drone_city_nav/observed_world_content_hash_3d.hpp
+    include/drone_city_nav/occupied_collision_oracle_3d.hpp
+    include/drone_city_nav/sensor_braking_contract_3d.hpp
+    include/drone_city_nav/swept_footprint.hpp
+    include/drone_city_nav/versioned_world_evidence_3d.hpp)
+
+set(DRONE_CITY_NAV_FINITE_EXECUTION_HEADERS
+    include/drone_city_nav/finite_execution_path_3d.hpp)
+
+set(DRONE_CITY_NAV_PLANNING_HEADERS
+    include/drone_city_nav/free_space_topology_3d.hpp
+    include/drone_city_nav/free_space_topology_extractor_3d.hpp
+    include/drone_city_nav/free_space_topology_format_limits.hpp
+    include/drone_city_nav/passage_traversal_selection_3d.hpp
+    include/drone_city_nav/persistent_dstar_lite_planner_3d.hpp
+    include/drone_city_nav/route_planning_3d.hpp
+    include/drone_city_nav/route_risk_annotation_3d.hpp
+    include/drone_city_nav/static_route_geometry.hpp
+    include/drone_city_nav/tracking_objective.hpp)
+
+set(DRONE_CITY_NAV_TRAJECTORY_HEADERS
+    include/drone_city_nav/compiled_trajectory_3d.hpp
+    include/drone_city_nav/compiled_trajectory_views_3d.hpp
+    include/drone_city_nav/cooperative_passage_coordination.hpp
+    include/drone_city_nav/cooperative_passage_route.hpp
+    include/drone_city_nav/cooperative_space_time.hpp
+    include/drone_city_nav/cooperative_traffic.hpp
+    include/drone_city_nav/passage_volume.hpp
+    include/drone_city_nav/route_decoration_compiler_3d.hpp
+    include/drone_city_nav/route_decorations_3d.hpp
+    include/drone_city_nav/route_execution_contract_3d.hpp
+    include/drone_city_nav/route_time_parameterization.hpp
+    include/drone_city_nav/static_route_extension.hpp
+    include/drone_city_nav/tracking_error_tube_3d.hpp
+    include/drone_city_nav/tracking_error_tube_handoff_3d.hpp
+    include/drone_city_nav/trajectory_compiler_3d.hpp)
+
+set(DRONE_CITY_NAV_EXECUTION_HEADERS
+    include/drone_city_nav/applied_control_admission.hpp
+    include/drone_city_nav/certified_route_splice_3d.hpp
+    include/drone_city_nav/committed_execution_authority_3d.hpp
+    include/drone_city_nav/direct_tracking_maneuver_lifecycle.hpp
+    include/drone_city_nav/dynamic_handoff_validator_3d.hpp
+    include/drone_city_nav/execution_evidence_3d.hpp
+    include/drone_city_nav/execution_hold_3d.hpp
+    include/drone_city_nav/execution_horizon_admission.hpp
+    include/drone_city_nav/execution_horizon_commit_3d.hpp
+    include/drone_city_nav/execution_horizon_timing.hpp
+    include/drone_city_nav/execution_horizon_witness.hpp
+    include/drone_city_nav/execution_plan_3d.hpp
+    include/drone_city_nav/execution_publication_currentness_3d.hpp
+    include/drone_city_nav/execution_retention_3d.hpp
+    include/drone_city_nav/execution_route_certificates_3d.hpp
+    include/drone_city_nav/execution_route_certification_3d.hpp
+    include/drone_city_nav/execution_route_model_3d.hpp
+    include/drone_city_nav/execution_route_store_3d.hpp
+    include/drone_city_nav/execution_route_transitions_3d.hpp
+    include/drone_city_nav/execution_supervisor_3d.hpp
+    include/drone_city_nav/mission_goal_capture.hpp
+    include/drone_city_nav/mission_waypoint_acknowledgement_admission.hpp
+    include/drone_city_nav/mission_waypoint_capture_gate.hpp
+    include/drone_city_nav/mission_waypoint_sequence.hpp
+    include/drone_city_nav/offboard_session_admission.hpp
+    include/drone_city_nav/pending_certified_route_3d.hpp
+    include/drone_city_nav/rolling_route_telemetry_3d.hpp
+    include/drone_city_nav/route_lifecycle_3d.hpp
+    include/drone_city_nav/route_progress_3d.hpp
+    include/drone_city_nav/route_successor_improvement_3d.hpp
+    include/drone_city_nav/trajectory_control_reference_3d.hpp
+    include/drone_city_nav/vehicle_destruction_disarm_lifecycle.hpp)
+
+set(DRONE_CITY_NAV_CONTROL_HEADERS
+    include/drone_city_nav/cooperative_mppi_adapter.hpp
+    include/drone_city_nav/cooperative_passage_execution.hpp
+    include/drone_city_nav/mppi_liveness.hpp
+    include/drone_city_nav/mppi_nominal_reseed.hpp
+    include/drone_city_nav/mppi_rollout_budget.hpp
+    include/drone_city_nav/mppi_speed_policy.hpp
+    include/drone_city_nav/noncooperative_collision_avoidance.hpp)
+
+set(DRONE_CITY_NAV_RUNTIME_HEADERS
+    include/drone_city_nav/cooperative_traffic_mission.hpp
+    include/drone_city_nav/dynamic_agent_lidar_state.hpp
+    include/drone_city_nav/intercept_guidance.hpp
+    include/drone_city_nav/intercept_mission.hpp
+    include/drone_city_nav/navigation_health_supervisor.hpp
+    include/drone_city_nav/radar_target_tracker.hpp
+    include/drone_city_nav/radar_visibility.hpp
+    include/drone_city_nav/spectator_diagnostics_selection.hpp
+    include/drone_city_nav/spectator_selection.hpp
+    include/drone_city_nav/target_assignment.hpp)
+
+set(DRONE_CITY_NAV_ROS_HEADERS
+    include/drone_city_nav/cooperative_traffic_agent_node.hpp
+    include/drone_city_nav/cooperative_traffic_ros.hpp
+    include/drone_city_nav/execution_horizon_contract_ros.hpp
+    include/drone_city_nav/intercept_diagnostics_mux_node.hpp
+    include/drone_city_nav/intercept_spectator_node.hpp
+    include/drone_city_nav/interceptor_guidance_node.hpp
+    include/drone_city_nav/latest_lidar_obstacle_scan_ros.hpp
+    include/drone_city_nav/lidar_debug_node_config.hpp
+    include/drone_city_nav/lidar_debug_pointclouds.hpp
+    include/drone_city_nav/mppi_debug_markers.hpp
+    include/drone_city_nav/obstacle_memory_provenance_ros.hpp
+    include/drone_city_nav/px4_offboard_setpoint_io.hpp
+    include/drone_city_nav/radar_target_tracker_node.hpp
+    include/drone_city_nav/raw_obstacle_3d_ros.hpp
+    include/drone_city_nav/raw_obstacle_delta.hpp
+    include/drone_city_nav/ros_conversions.hpp
+    include/drone_city_nav/spectator_diagnostics_selection_ros.hpp
+    include/drone_city_nav/static_map_debug.hpp
+    include/drone_city_nav/target_assignment_coordinator_node.hpp
+    include/drone_city_nav/visualization_marker_helpers.hpp
+    include/drone_city_nav/world_visualization_node.hpp)
+
+set(DRONE_CITY_NAV_INTERNAL_LAYERS
+    drone_city_nav_model
+    drone_city_nav_control_contracts
+    drone_city_nav_route_contracts
+    drone_city_nav_world
+    drone_city_nav_collision
+    drone_city_nav_finite_execution
+    drone_city_nav_planning
+    drone_city_nav_trajectory
+    drone_city_nav_execution
+    drone_city_nav_control
+    drone_city_nav_runtime)
+
+# A layer may link exactly the predecessors named here: every one of them, and
+# no other internal layer. Direct predecessors are declared, not inferred, so a
+# new edge has to be argued for in this file instead of appearing silently.
+function(assert_drone_city_nav_layer_dependency target_name)
+  set(expected_predecessors ${ARGN})
   get_target_property(layer_links ${target_name} LINK_LIBRARIES)
   if(NOT layer_links)
     set(layer_links "")
   endif()
   foreach(layer_link IN LISTS layer_links)
-    if(layer_link MATCHES
-       "^drone_city_nav_(model|world|collision|planning|trajectory|execution|control|runtime)$"
-       AND NOT layer_link STREQUAL expected_predecessor)
+    list(FIND DRONE_CITY_NAV_INTERNAL_LAYERS "${layer_link}" internal_index)
+    if(internal_index EQUAL -1)
+      continue()
+    endif()
+    list(FIND expected_predecessors "${layer_link}" expected_index)
+    if(expected_index EQUAL -1)
       message(
         FATAL_ERROR
-          "${target_name} has forbidden internal dependency ${layer_link}; expected only ${expected_predecessor}"
+          "${target_name} has forbidden internal dependency ${layer_link}; expected only ${expected_predecessors}"
       )
     endif()
   endforeach()
-  if(NOT "${expected_predecessor}" STREQUAL "")
+  foreach(expected_predecessor IN LISTS expected_predecessors)
     list(FIND layer_links "${expected_predecessor}" predecessor_index)
     if(predecessor_index EQUAL -1)
       message(
         FATAL_ERROR
           "${target_name} must link its predecessor ${expected_predecessor}")
     endif()
-  endif()
+  endforeach()
 endfunction()
 
-assert_drone_city_nav_layer_dependency(drone_city_nav_model "")
-assert_drone_city_nav_layer_dependency(drone_city_nav_world drone_city_nav_model)
+assert_drone_city_nav_layer_dependency(drone_city_nav_model)
+assert_drone_city_nav_layer_dependency(drone_city_nav_control_contracts
+                                       drone_city_nav_model)
+assert_drone_city_nav_layer_dependency(drone_city_nav_route_contracts
+                                       drone_city_nav_model)
+assert_drone_city_nav_layer_dependency(drone_city_nav_world drone_city_nav_model
+                                       drone_city_nav_route_contracts)
 assert_drone_city_nav_layer_dependency(drone_city_nav_collision
                                        drone_city_nav_world)
+assert_drone_city_nav_layer_dependency(drone_city_nav_finite_execution
+                                       drone_city_nav_collision
+                                       drone_city_nav_control_contracts)
 assert_drone_city_nav_layer_dependency(drone_city_nav_planning
                                        drone_city_nav_collision)
 assert_drone_city_nav_layer_dependency(drone_city_nav_trajectory
                                        drone_city_nav_planning)
 assert_drone_city_nav_layer_dependency(drone_city_nav_execution
-                                       drone_city_nav_trajectory)
+                                       drone_city_nav_trajectory
+                                       drone_city_nav_finite_execution)
 assert_drone_city_nav_layer_dependency(drone_city_nav_control
                                        drone_city_nav_execution)
 assert_drone_city_nav_layer_dependency(drone_city_nav_runtime
@@ -489,8 +747,10 @@ add_drone_city_nav_private_runtime(drone_city_nav_world_runtime
 target_include_directories(
   drone_city_nav_world_runtime
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/world>")
-target_link_libraries(drone_city_nav_world_runtime
-                      PUBLIC drone_city_nav_execution)
+# World runtime owns world evidence only. It must not reach the route or
+# execution layers; the versioned world evidence it publishes lives in
+# drone_city_nav_world.
+target_link_libraries(drone_city_nav_world_runtime PUBLIC drone_city_nav_planning)
 
 set(DRONE_CITY_NAV_ROUTE_RUNTIME_SOURCES
     src/execution/execution_publication_navigation_rebase_3d.cpp
@@ -510,8 +770,12 @@ target_include_directories(
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/planning>"
          "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/trajectory>"
          "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/execution>")
+# Route runtime is the first application service that owns execution state, so
+# it names the execution layer directly instead of inheriting it through the
+# world runtime.
 target_link_libraries(drone_city_nav_route_runtime
-                      PUBLIC drone_city_nav_world_runtime)
+                      PUBLIC drone_city_nav_world_runtime
+                             drone_city_nav_execution)
 
 if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
   set(DRONE_CITY_NAV_MPPI_RUNTIME_SOURCES
@@ -538,13 +802,14 @@ endif()
 
 assert_drone_city_nav_target_links(
   drone_city_nav_world_runtime
-  REQUIRED drone_city_nav_execution
-  FORBIDDEN drone_city_nav_core drone_city_nav_route_runtime
-            drone_city_nav_mppi_runtime drone_city_nav_runtime
-            drone_city_nav_ros_adapters drone_city_nav_mppi_cuda)
+  REQUIRED drone_city_nav_planning
+  FORBIDDEN drone_city_nav_execution drone_city_nav_control drone_city_nav_core
+            drone_city_nav_route_runtime drone_city_nav_mppi_runtime
+            drone_city_nav_runtime drone_city_nav_ros_adapters
+            drone_city_nav_mppi_cuda)
 assert_drone_city_nav_target_links(
   drone_city_nav_route_runtime
-  REQUIRED drone_city_nav_world_runtime
+  REQUIRED drone_city_nav_world_runtime drone_city_nav_execution
   FORBIDDEN drone_city_nav_core drone_city_nav_mppi_runtime
             drone_city_nav_runtime drone_city_nav_control
             drone_city_nav_ros_adapters drone_city_nav_mppi_cuda)
@@ -915,9 +1180,11 @@ endif()
 install(
   TARGETS
     drone_city_nav_model
+    drone_city_nav_control_contracts
+    drone_city_nav_route_contracts
     drone_city_nav_world
     drone_city_nav_collision
-    drone_city_nav_control_contracts
+    drone_city_nav_finite_execution
     drone_city_nav_planning
     drone_city_nav_trajectory
     drone_city_nav_execution
@@ -960,28 +1227,59 @@ if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
 
   # Compile every hand-written header as the first and only include in an
-  # independent translation unit. Generated sources live in the build tree;
-  # CONFIGURE_DEPENDS makes newly added contracts join the check automatically.
-  file(
-    GLOB_RECURSE drone_city_nav_handwritten_headers
-    CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp")
-  set(drone_city_nav_header_check_sources "")
-  foreach(header_path IN LISTS drone_city_nav_handwritten_headers)
-    file(RELATIVE_PATH header_relative_path "${CMAKE_CURRENT_SOURCE_DIR}"
-         "${header_path}")
-    string(MAKE_C_IDENTIFIER "${header_relative_path}" header_identifier)
-    set(header_check_source
-        "${CMAKE_CURRENT_BINARY_DIR}/header_self_containment/${header_identifier}.cpp")
-    file(
-      GENERATE
-      OUTPUT "${header_check_source}"
-      CONTENT "#include \"${header_path}\"\n")
-    list(APPEND drone_city_nav_header_check_sources "${header_check_source}")
+  # independent translation unit.
+  function(drone_city_nav_header_check_sources output_variable)
+    set(generated_sources "")
+    foreach(header_path IN LISTS ARGN)
+      if(NOT IS_ABSOLUTE "${header_path}")
+        set(header_path "${CMAKE_CURRENT_SOURCE_DIR}/${header_path}")
+      endif()
+      file(RELATIVE_PATH header_relative_path "${CMAKE_CURRENT_SOURCE_DIR}"
+           "${header_path}")
+      string(MAKE_C_IDENTIFIER "${header_relative_path}" header_identifier)
+      set(header_check_source
+          "${CMAKE_CURRENT_BINARY_DIR}/header_self_containment/${header_identifier}.cpp"
+      )
+      file(
+        GENERATE
+        OUTPUT "${header_check_source}"
+        CONTENT "#include \"${header_path}\"\n")
+      list(APPEND generated_sources "${header_check_source}")
+    endforeach()
+    set(${output_variable} "${generated_sources}" PARENT_SCOPE)
+  endfunction()
+
+  # Each owning target compiles its own public headers against the include and
+  # link closure of that target alone. A header that reaches past its layer at
+  # link time fails here; one that reaches past it at include time fails in
+  # test_navigation_dependency_contract.py.
+  foreach(owned_layer IN LISTS DRONE_CITY_NAV_INTERNAL_LAYERS)
+    string(REPLACE "drone_city_nav_" "" layer_suffix "${owned_layer}")
+    string(TOUPPER "${layer_suffix}" layer_suffix_upper)
+    drone_city_nav_header_check_sources(
+      layer_header_sources ${DRONE_CITY_NAV_${layer_suffix_upper}_HEADERS})
+    add_library(drone_city_nav_header_owner_${layer_suffix} OBJECT
+                ${layer_header_sources})
+    target_compile_features(drone_city_nav_header_owner_${layer_suffix}
+                            PRIVATE cxx_std_20)
+    target_link_libraries(drone_city_nav_header_owner_${layer_suffix}
+                          ${owned_layer})
+    enable_project_warnings(drone_city_nav_header_owner_${layer_suffix})
+    target_compile_options(drone_city_nav_header_owner_${layer_suffix}
+                           PRIVATE -Wno-unused-function)
   endforeach()
+
+  # ROS adapters and private application headers keep the umbrella closure:
+  # they are the composition root, not a domain layer.
+  file(
+    GLOB_RECURSE drone_city_nav_private_headers
+    CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp")
+  drone_city_nav_header_check_sources(
+    drone_city_nav_header_check_sources_list
+    ${drone_city_nav_private_headers} ${DRONE_CITY_NAV_ROS_HEADERS})
   add_library(drone_city_nav_header_self_containment OBJECT
-              ${drone_city_nav_header_check_sources})
+              ${drone_city_nav_header_check_sources_list})
   target_compile_features(drone_city_nav_header_self_containment PRIVATE cxx_std_20)
   target_include_directories(
     drone_city_nav_header_self_containment

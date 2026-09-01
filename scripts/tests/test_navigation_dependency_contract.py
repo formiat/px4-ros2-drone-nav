@@ -108,6 +108,67 @@ RUNTIME_INCLUDE_ROOTS = {
 }
 
 
+# Declared layer graph. A layer's headers may include only headers owned by that
+# layer or by one of its transitive predecessors here. This mirrors the
+# assert_drone_city_nav_layer_dependency() calls in CMakeLists.txt; the CMake
+# guard covers link edges, this covers include edges, which link edges alone
+# cannot see because every header shares one include root.
+LAYER_PREDECESSORS = {
+    "model": (),
+    "control_contracts": ("model",),
+    "route_contracts": ("model",),
+    "world": ("model", "route_contracts"),
+    "collision": ("world",),
+    "finite_execution": ("collision", "control_contracts"),
+    "planning": ("collision",),
+    "trajectory": ("planning",),
+    "execution": ("trajectory", "finite_execution"),
+    "control": ("execution",),
+    "runtime": ("control",),
+    # ROS adapters and node headers sit above every domain layer.
+    "ros": ("runtime",),
+}
+PACKAGE_INCLUDE_PATTERN = re.compile(r'#\s*include\s*"drone_city_nav/([A-Za-z0-9_./+-]+\.hpp)"')
+
+
+def layer_closure(layer: str) -> frozenset[str]:
+    reached = {layer}
+    pending = [layer]
+    while pending:
+        current = pending.pop()
+        for predecessor in LAYER_PREDECESSORS[current]:
+            if predecessor not in reached:
+                reached.add(predecessor)
+                pending.append(predecessor)
+    return frozenset(reached)
+
+
+def cmake_header_manifest(layer: str) -> tuple[str, ...]:
+    text = CMAKE.read_text(encoding="utf-8")
+    variable = f"DRONE_CITY_NAV_{layer.upper()}_HEADERS"
+    match = re.search(rf"set\({re.escape(variable)}\s+(.*?)\)", text, re.DOTALL)
+    if match is None:
+        raise AssertionError(f"missing CMake header manifest {variable}")
+    return tuple(
+        Path(relative).name
+        for relative in re.findall(
+            r"include/drone_city_nav/[A-Za-z0-9_./+-]+\.hpp", match.group(1)
+        )
+    )
+
+
+def header_owners() -> dict[str, str]:
+    owners: dict[str, str] = {}
+    for layer in LAYER_PREDECESSORS:
+        for header in cmake_header_manifest(layer):
+            if header in owners:
+                raise AssertionError(
+                    f"{header} is owned by both {owners[header]} and {layer}"
+                )
+            owners[header] = layer
+    return owners
+
+
 def cmake_source_manifest(variable: str) -> tuple[Path, ...]:
     text = CMAKE.read_text(encoding="utf-8")
     match = re.search(rf"set\({re.escape(variable)}\s+(.*?)\)", text, re.DOTALL)
@@ -170,6 +231,65 @@ def local_dependency_closure(
 
 
 class NavigationDependencyContractTest(unittest.TestCase):
+    def test_every_public_header_has_exactly_one_owning_target(self) -> None:
+        owners = header_owners()
+        declared = set(owners)
+        present = {path.name for path in INCLUDE.glob("*.hpp")}
+        self.assertEqual(
+            present - declared,
+            set(),
+            "public headers missing from every DRONE_CITY_NAV_*_HEADERS manifest",
+        )
+        self.assertEqual(
+            declared - present,
+            set(),
+            "header manifests name files that do not exist",
+        )
+
+    def test_public_headers_never_include_a_higher_layer(self) -> None:
+        owners = header_owners()
+        for header, layer in sorted(owners.items()):
+            allowed = layer_closure(layer)
+            text = (INCLUDE / header).read_text(encoding="utf-8")
+            for included in PACKAGE_INCLUDE_PATTERN.findall(text):
+                included_name = Path(included).name
+                included_layer = owners.get(included_name)
+                if included_layer is None:
+                    continue
+                with self.subTest(header=header, includes=included_name):
+                    self.assertIn(
+                        included_layer,
+                        allowed,
+                        f"{header} ({layer}) includes {included_name} "
+                        f"({included_layer}), which is not below {layer}",
+                    )
+
+    def test_layer_sources_never_include_a_higher_layer(self) -> None:
+        owners = header_owners()
+        for layer in LAYER_PREDECESSORS:
+            if layer == "ros":
+                continue
+            allowed = layer_closure(layer)
+            match = re.search(
+                rf"add_drone_city_nav_layer\(\s*drone_city_nav_{layer}\b(.*?)\)\n",
+                CMAKE.read_text(encoding="utf-8"),
+                re.DOTALL,
+            )
+            self.assertIsNotNone(match, f"missing layer target drone_city_nav_{layer}")
+            for relative in re.findall(r"src/[A-Za-z0-9_./+-]+\.cpp", match.group(1)):
+                text = (PACKAGE / relative).read_text(encoding="utf-8")
+                for included in PACKAGE_INCLUDE_PATTERN.findall(text):
+                    included_layer = owners.get(Path(included).name)
+                    if included_layer is None:
+                        continue
+                    with self.subTest(source=relative, includes=included):
+                        self.assertIn(
+                            included_layer,
+                            allowed,
+                            f"{relative} ({layer}) includes {included} "
+                            f"({included_layer}), which is not below {layer}",
+                        )
+
     def test_orchestration_contracts_do_not_parse_source_order(self) -> None:
         test_directory = REPOSITORY / "scripts" / "tests"
         for name in LEGACY_ORCHESTRATION_CONTRACT_TESTS:

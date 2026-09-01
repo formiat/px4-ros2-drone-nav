@@ -1,14 +1,11 @@
-#include "drone_city_nav/swept_footprint.hpp"
+#include "drone_city_nav/footprint_geometry_3d.hpp"
 
 #include <algorithm>
 #include <cmath>
-
-#include "swept_footprint_internal.hpp"
+#include <cstddef>
 
 namespace drone_city_nav {
 namespace {
-
-using swept_footprint_detail::normalized;
 
 [[nodiscard]] bool finiteFootprintConfig(const SweptFootprintConfig& config) noexcept {
   return std::isfinite(config.radius_m) && config.radius_m >= 0.0 &&
@@ -130,7 +127,8 @@ bool updateLaunchSupportSettling(LaunchSupportContact3D& contact,
       !std::isfinite(observed_position.y) || !std::isfinite(observed_position.z)) {
     return false;
   }
-  const FootprintBodyAxis seed_axis = normalized(contact.seed.body_axis);
+  const FootprintBodyAxis seed_axis =
+      normalizedFootprintBodyAxis(contact.seed.body_axis);
   const Point3 delta{observed_position.x - contact.seed.position.x,
                      observed_position.y - contact.seed.position.y,
                      observed_position.z - contact.seed.position.z};
@@ -143,18 +141,6 @@ bool updateLaunchSupportSettling(LaunchSupportContact3D& contact,
   }
   contact.minimum_axial_departure_m = axial;
   return true;
-}
-
-const char* sweptFootprintStatusName(const SweptFootprintStatus status) noexcept {
-  switch (status) {
-    case SweptFootprintStatus::kValid:
-      return "valid";
-    case SweptFootprintStatus::kInvalidInput:
-      return "invalid_input";
-    case SweptFootprintStatus::kRawCollision:
-      return "raw_collision";
-  }
-  return "invalid_status";
 }
 
 } // namespace drone_city_nav

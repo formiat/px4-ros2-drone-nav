@@ -1,3 +1,5 @@
+#include "drone_city_nav/launch_support_contact_3d.hpp"
+
 #include "execution_route_snapshot_3d_plan_test_support.hpp"
 
 namespace drone_city_nav {

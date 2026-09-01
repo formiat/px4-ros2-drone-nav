@@ -7,6 +7,7 @@
 #include "drone_city_nav/route_planning_3d.hpp"
 #include "drone_city_nav/static_route_extension.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
+#include "drone_city_nav/versioned_world_evidence_3d.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -16,18 +17,6 @@
 #include <string_view>
 
 namespace drone_city_nav {
-
-struct NavigationWorldCertificate3D {
-  std::uint64_t producer_instance_id{0U};
-  std::uint64_t esdf_fingerprint{0U};
-  std::uint64_t esdf_source_raw_revision{0U};
-  std::uint64_t esdf_source_occupied_fingerprint{0U};
-  std::uint64_t raw_validated_through_revision{0U};
-  std::uint64_t local_world_generation{0U};
-  std::uint64_t topology_revision{0U};
-
-  [[nodiscard]] bool valid() const noexcept;
-};
 
 struct MaterializedRouteProposal3D {
   NavigationWorldCertificate3D planned_world{};

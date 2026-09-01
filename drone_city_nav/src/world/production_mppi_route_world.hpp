@@ -1,6 +1,7 @@
 #pragma once
 
-#include "drone_city_nav/route_lifecycle_3d.hpp"
+#include "drone_city_nav/route_release_3d.hpp"
+#include "drone_city_nav/versioned_world_evidence_3d.hpp"
 #include "drone_city_nav/world_generation.hpp"
 #include "drone_city_nav/world_snapshot_3d.hpp"
 

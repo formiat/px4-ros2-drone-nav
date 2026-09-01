@@ -122,11 +122,6 @@ validateCollisionSegment(const OccupiedCollisionOracle3D& oracle, const Point3& 
 
 } // namespace
 
-bool NavigationWorldCertificate3D::valid() const noexcept {
-  return esdf_fingerprint != 0U &&
-         raw_validated_through_revision >= esdf_source_raw_revision;
-}
-
 bool ActiveIntent3D::valid() const noexcept {
   return route_intent_id != 0U && mission_epoch != 0U && finitePoint(mission_target);
 }

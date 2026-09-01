@@ -4,6 +4,7 @@
 #include "drone_city_nav/finite_execution_path_3d.hpp"
 #include "drone_city_nav/finite_motion_horizon_3d.hpp"
 #include "drone_city_nav/motion_dynamics_3d.hpp"
+#include "drone_city_nav/observed_world_content_hash_3d.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -24,8 +25,28 @@ inline constexpr double kMaximumRouteCrossTrackM{
 inline constexpr double kTerminalBoundaryToleranceM{0.5};
 inline constexpr double kTerminalBoundaryActivationDistanceM{10.0};
 inline constexpr double kMaximumStationCreditPerTravel{1.0};
-inline constexpr std::uint64_t kFnvOffset{1469598103934665603ULL};
-inline constexpr std::uint64_t kFnvPrime{1099511628211ULL};
+using observed_world_content_3d::kFnvOffset;
+using observed_world_content_3d::kFnvPrime;
+
+using observed_world_content_3d::canonicalDoubleBits;
+using observed_world_content_3d::footprintConservativelyContains;
+using observed_world_content_3d::footprintValid;
+using observed_world_content_3d::hashAxis;
+using observed_world_content_3d::hashFootprint;
+using observed_world_content_3d::hashGridBounds;
+using observed_world_content_3d::hashLaunchSupportContact;
+using observed_world_content_3d::hashObservedOccupancy;
+using observed_world_content_3d::hashPoint;
+using observed_world_content_3d::hashProprioceptiveFreeSpaceSeed;
+using observed_world_content_3d::hashValue;
+using observed_world_content_3d::launchSupportMatchesOwnedOccupancy;
+using observed_world_content_3d::observedOccupancyContentFingerprint;
+using observed_world_content_3d::observedWorldContentFingerprintFromObservation;
+using observed_world_content_3d::sameAxisAlignedBox;
+using observed_world_content_3d::sameCanonicalLaunchSupport;
+using observed_world_content_3d::sameFootprintConfig;
+using observed_world_content_3d::sameFreeSpaceSeed;
+using observed_world_content_3d::validationPolicyFingerprint;
 
 struct ValidationContractOwners3D {
   const VersionedObservedRawWorld3D* observed_raw_world{nullptr};
@@ -114,65 +135,6 @@ sameWorldCertificate(const NavigationWorldCertificate3D& first,
 
 [[nodiscard]] bool
 observedRawLineage(const NavigationWorldCertificate3D& certificate) noexcept;
-
-void hashValue(std::uint64_t& hash, const std::uint64_t value) noexcept;
-
-[[nodiscard]] std::uint64_t canonicalDoubleBits(const double value) noexcept;
-
-void hashPoint(std::uint64_t& hash, const Point3& point) noexcept;
-
-void hashAxis(std::uint64_t& hash, const FootprintBodyAxis& axis) noexcept;
-
-[[nodiscard]] bool footprintValid(const SweptFootprintConfig& footprint) noexcept;
-
-[[nodiscard]] bool sameFootprintConfig(const SweptFootprintConfig& first,
-                                       const SweptFootprintConfig& second) noexcept;
-
-[[nodiscard]] bool
-footprintConservativelyContains(const SweptFootprintConfig& outer,
-                                const SweptFootprintConfig& inner) noexcept;
-
-[[nodiscard]] bool
-sameFreeSpaceSeed(const ProprioceptiveFreeSpaceSeed3D& first,
-                  const ProprioceptiveFreeSpaceSeed3D& second) noexcept;
-
-[[nodiscard]] bool sameAxisAlignedBox(const AxisAlignedBox3D& first,
-                                      const AxisAlignedBox3D& second) noexcept;
-
-[[nodiscard]] bool
-sameCanonicalLaunchSupport(const LaunchSupportContact3D& candidate,
-                           const LaunchSupportContact3D& canonical) noexcept;
-
-[[nodiscard]] bool
-launchSupportMatchesOwnedOccupancy(const LaunchSupportContact3D& support,
-                                   const ObservedOccupancyGrid3D& occupancy);
-
-void hashFootprint(std::uint64_t& hash, const SweptFootprintConfig& footprint) noexcept;
-
-[[nodiscard]] bool hashProprioceptiveFreeSpaceSeed(
-    std::uint64_t& hash,
-    const ProprioceptiveFreeSpaceSeed3D* const free_space_seed) noexcept;
-
-[[nodiscard]] bool hashLaunchSupportContact(
-    std::uint64_t& hash,
-    const LaunchSupportContact3D* const launch_support_contact) noexcept;
-
-[[nodiscard]] std::uint64_t validationPolicyFingerprint(
-    const SweptFootprintConfig& footprint,
-    const LaunchSupportContact3D* const launch_support_contact) noexcept;
-
-void hashGridBounds(std::uint64_t& hash, const GridBounds3D& bounds) noexcept;
-
-void hashObservedOccupancy(std::uint64_t& hash,
-                           const ObservedOccupancyGrid3D& occupancy);
-
-[[nodiscard]] std::uint64_t
-observedOccupancyContentFingerprint(const ObservedOccupancyGrid3D& occupancy);
-
-[[nodiscard]] std::uint64_t observedWorldContentFingerprintFromObservation(
-    const std::uint64_t observation_content_fingerprint,
-    const ProprioceptiveFreeSpaceSeed3D* const free_space_seed,
-    const LaunchSupportContact3D* const launch_support_contact);
 
 void hashValidationTerminalBoundary(
     std::uint64_t& hash,

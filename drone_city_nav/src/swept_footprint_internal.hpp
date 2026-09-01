@@ -17,11 +17,7 @@ makeStatusResult(const SweptFootprintStatus status,
 
 [[nodiscard]] inline FootprintBodyAxis
 normalized(const FootprintBodyAxis& axis) noexcept {
-  const double length = std::sqrt(axis.x * axis.x + axis.y * axis.y + axis.z * axis.z);
-  if (!(length > 1.0e-9) || !std::isfinite(length)) {
-    return FootprintBodyAxis{.x = 0.0, .y = 0.0, .z = 0.0};
-  }
-  return FootprintBodyAxis{axis.x / length, axis.y / length, axis.z / length};
+  return normalizedFootprintBodyAxis(axis);
 }
 
 struct ConservativeSweepCover3D {

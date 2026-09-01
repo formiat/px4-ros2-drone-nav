@@ -1,5 +1,7 @@
 #include "observed_world_builder_3d.hpp"
 
+#include "drone_city_nav/observed_esdf_footprint_3d.hpp"
+
 #include <cmath>
 #include <stdexcept>
 #include <utility>

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "drone_city_nav/intercept_mission.hpp"
+#include "drone_city_nav/timed_vehicle_state.hpp"
 
 #include <cstdint>
 #include <optional>

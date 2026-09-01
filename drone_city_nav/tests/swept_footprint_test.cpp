@@ -1,5 +1,6 @@
 #include "drone_city_nav/derived_clearance_3d.hpp"
 #include "drone_city_nav/distance_field.hpp"
+#include "drone_city_nav/launch_support_contact_3d.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
 

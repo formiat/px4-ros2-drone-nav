@@ -1,4 +1,6 @@
+#include "drone_city_nav/launch_support_contact_3d.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
+#include "drone_city_nav/observed_esdf_footprint_3d.hpp"
 
 #include <gtest/gtest.h>
 
