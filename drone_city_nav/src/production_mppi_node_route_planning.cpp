@@ -1,29 +1,15 @@
 #include "drone_city_nav/route_risk_annotation_3d.hpp"
 #include "drone_city_nav/static_route_extension.hpp"
 
-#include <chrono>
 #include <cinttypes>
-#include <limits>
 #include <memory>
 #include <optional>
 #include <utility>
 
 #include "production_mppi_node.hpp"
 #include "production_mppi_route_world.hpp"
-#include "route_activation_coordinator_3d.hpp"
-#include "route_materializer_3d.hpp"
 
 namespace drone_city_nav {
-namespace {
-
-[[nodiscard]] double
-elapsedMilliseconds(const std::chrono::steady_clock::time_point started) noexcept {
-  return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
-                                                   started)
-      .count();
-}
-
-} // namespace
 
 void ProductionMppiNode::handleRoutePlanningRejection3D(
     const RoutePlanningRejection3D& rejection) {
@@ -79,35 +65,16 @@ void ProductionMppiNode::handleRoutePlanningRejection3D(
                    transaction->world->local_world_generation.generation);
       break;
   }
-  finishStaticRouteSearch(*transaction);
 }
 
-void ProductionMppiNode::processRouteSearch3D(RoutePlanningUpdateEvent3D event) {
+void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
   const std::shared_ptr<const PlannerSearchTransaction3D>& transaction =
-      event.request.transaction;
-  if (transaction == nullptr) {
+      update.request.transaction;
+  if (transaction == nullptr || !update.valid()) {
     return;
   }
-  const ProductionWorldBuildTelemetry3D& world_telemetry =
-      event.request.world_telemetry;
-  const RoutePlannerVehicleState3D& vehicle_state = event.vehicle_state;
-  RoutePlannerUpdate3D planner_update = std::move(event.update);
-  const auto planning_started = std::chrono::steady_clock::now();
-
-  const auto observe_recovery_episode = [this, &transaction] {
-    const RouteExecutionManagerSnapshot3D execution_state =
-        execution_supervisor_.snapshot();
-    const std::shared_ptr<const ExecutionPlan3D> execution_plan =
-        execution_state.plan();
-    const bool recovery_active =
-        (execution_plan == nullptr || execution_plan->route() == nullptr) &&
-        execution_state.pending == nullptr;
-    static_cast<void>(navigation_recovery_episodes_.observe(
-        transaction->objective.mission_epoch, recovery_active));
-  };
-  const Point3 search_start = planner_update.planner_session
-                                  ? planner_update.planner_session->search_start
-                                  : vehicle_state.position;
+  const RoutePlannerUpdate3D& planner_update = update.planner_update;
+  const Point3 search_start = update.search_start;
 
   if (planner_update.status == RoutePlannerUpdateStatus3D::kStitchBaseUnavailable) {
     RCLCPP_INFO(get_logger(),
@@ -125,80 +92,56 @@ void ProductionMppiNode::processRouteSearch3D(RoutePlanningUpdateEvent3D event) 
   }
   if (planner_update.planner_invoked) {
     const PlannerTelemetry3D& planner_telemetry = planner_update.planner_telemetry;
-    const SpatialRouteCandidate3D* const improved =
-        planner_update.improved_incumbent
-            ? std::addressof(planner_update.improved_incumbent->spatial_route)
-            : nullptr;
-    RCLCPP_INFO(
-        get_logger(),
-        "PERSISTENT_PLANNER3D stage=complete raw_revision=%" PRIu64
-        " mission_epoch=%" PRIu64 " input=%s progress=%s publishable=%s "
-        "source=%s reused=%s occupied_unchanged=%s incumbent_retained=%s "
-        "time_search_complete=%s points=%zu expansions=%zu time_expansions=%zu "
-        "changed_occupied=%zu affected_states=%zu repair_processed=%zu "
-        "repair_pending=%zu repair_in_progress=%s feasibility_attempted=%s "
-        "feasibility_found=%s feasibility_expansions=%zu records=%zu open=%zu "
-        "time_records=%zu time_open=%zu shortcuts=%zu/%zu edge_queries=%zu "
-        "raw_edge_checks=%zu adaptive_edge_queries=%zu adaptive_path_edges=%zu "
-        "maximum_adaptive_level=%zu time_objective_s=%.3f eta_s=%.3f "
-        "translation_s=%.3f turn_s=%.3f world_update_ms=%.3f search_ms=%.3f",
-        planner_telemetry.planned_on_revision, planner_telemetry.mission_epoch,
-        plannerInputStatus3DName(planner_update.planner_input_status),
-        searchProgress3DName(planner_update.planner_progress),
-        improved != nullptr ? "true" : "false",
-        improved != nullptr ? spatialRouteCandidateSource3DName(improved->source)
-                            : "none",
-        planner_telemetry.search_state_reused ? "true" : "false",
-        planner_telemetry.occupied_world_unchanged ? "true" : "false",
-        planner_telemetry.incumbent_retained ? "true" : "false",
-        planner_telemetry.execution_time_search_complete ? "true" : "false",
-        improved != nullptr ? improved->points.size() : 0U,
-        planner_telemetry.expansions,
-        planner_telemetry.execution_time_search_expansions,
-        planner_telemetry.changed_occupied_voxels,
-        planner_telemetry.affected_lattice_states,
-        planner_telemetry.repair_lattice_states_processed,
-        planner_telemetry.repair_lattice_states_pending,
-        planner_telemetry.repair_pending ? "true" : "false",
-        planner_telemetry.feasibility_attempted ? "true" : "false",
-        planner_telemetry.feasibility_route_found ? "true" : "false",
-        planner_telemetry.feasibility_expansions, planner_telemetry.records,
-        planner_telemetry.open_entries, planner_telemetry.execution_time_search_records,
-        planner_telemetry.execution_time_search_open_entries,
-        planner_telemetry.shortcuts_applied, planner_telemetry.shortcut_checks,
-        planner_telemetry.lattice_edge_queries,
-        planner_telemetry.raw_edge_validation_checks,
-        planner_telemetry.adaptive_edge_queries,
-        planner_telemetry.adaptive_edges_in_extracted_path,
-        planner_telemetry.maximum_queried_lattice_level,
-        planner_telemetry.execution_time_search_objective_s,
-        improved != nullptr ? improved->estimated_execution_time_s : 0.0,
-        improved != nullptr ? improved->estimated_translation_time_s : 0.0,
-        improved != nullptr ? improved->estimated_stationary_turn_time_s : 0.0,
-        planner_telemetry.world_update_ms, planner_telemetry.search_ms);
+    RCLCPP_INFO(get_logger(),
+                "PERSISTENT_PLANNER3D stage=complete raw_revision=%" PRIu64
+                " mission_epoch=%" PRIu64 " input=%s progress=%s publishable=%s "
+                "source=%s reused=%s occupied_unchanged=%s incumbent_retained=%s "
+                "time_search_complete=%s points=%zu expansions=%zu time_expansions=%zu "
+                "changed_occupied=%zu affected_states=%zu repair_processed=%zu "
+                "repair_pending=%zu repair_in_progress=%s feasibility_attempted=%s "
+                "feasibility_found=%s feasibility_expansions=%zu records=%zu open=%zu "
+                "time_records=%zu time_open=%zu shortcuts=%zu/%zu edge_queries=%zu "
+                "raw_edge_checks=%zu adaptive_edge_queries=%zu adaptive_path_edges=%zu "
+                "maximum_adaptive_level=%zu time_objective_s=%.3f eta_s=%.3f "
+                "translation_s=%.3f turn_s=%.3f world_update_ms=%.3f search_ms=%.3f",
+                planner_telemetry.planned_on_revision, planner_telemetry.mission_epoch,
+                plannerInputStatus3DName(planner_update.planner_input_status),
+                searchProgress3DName(planner_update.planner_progress),
+                update.candidate.available ? "true" : "false",
+                update.candidate.available
+                    ? spatialRouteCandidateSource3DName(update.candidate.source)
+                    : "none",
+                planner_telemetry.search_state_reused ? "true" : "false",
+                planner_telemetry.occupied_world_unchanged ? "true" : "false",
+                planner_telemetry.incumbent_retained ? "true" : "false",
+                planner_telemetry.execution_time_search_complete ? "true" : "false",
+                update.candidate.point_count, planner_telemetry.expansions,
+                planner_telemetry.execution_time_search_expansions,
+                planner_telemetry.changed_occupied_voxels,
+                planner_telemetry.affected_lattice_states,
+                planner_telemetry.repair_lattice_states_processed,
+                planner_telemetry.repair_lattice_states_pending,
+                planner_telemetry.repair_pending ? "true" : "false",
+                planner_telemetry.feasibility_attempted ? "true" : "false",
+                planner_telemetry.feasibility_route_found ? "true" : "false",
+                planner_telemetry.feasibility_expansions, planner_telemetry.records,
+                planner_telemetry.open_entries,
+                planner_telemetry.execution_time_search_records,
+                planner_telemetry.execution_time_search_open_entries,
+                planner_telemetry.shortcuts_applied, planner_telemetry.shortcut_checks,
+                planner_telemetry.lattice_edge_queries,
+                planner_telemetry.raw_edge_validation_checks,
+                planner_telemetry.adaptive_edge_queries,
+                planner_telemetry.adaptive_edges_in_extracted_path,
+                planner_telemetry.maximum_queried_lattice_level,
+                planner_telemetry.execution_time_search_objective_s,
+                update.candidate.estimated_execution_time_s,
+                update.candidate.estimated_translation_time_s,
+                update.candidate.estimated_stationary_turn_time_s,
+                planner_telemetry.world_update_ms, planner_telemetry.search_ms);
   }
 
-  const bool search_running =
-      planner_update.planner_invoked && planner_update.dispatch.continue_search;
-  const bool improved_incumbent_available =
-      planner_update.improved_incumbent.has_value();
-  const auto queue_continuation = [this, &planner_update, &transaction,
-                                   &world_telemetry]() {
-    if (!planner_update.planner_session) {
-      return false;
-    }
-    return route_planning_coordinator_
-        ->enqueue(RoutePlanningRequest3D{
-            .transaction = transaction,
-            .world_telemetry = world_telemetry,
-            .continuation_session = planner_update.planner_session,
-        })
-        .queued();
-  };
-  bool continuation_queued{false};
-  if (search_running && !improved_incumbent_available) {
-    continuation_queued = queue_continuation();
-    const double continuation_planning_ms = elapsedMilliseconds(planning_started);
+  if (update.status == RouteLifecycleAdvanceStatus3D::kContinuationQueued) {
     RCLCPP_INFO(
         get_logger(),
         "PERSISTENT_PLANNER3D stage=continuation "
@@ -207,7 +150,7 @@ void ProductionMppiNode::processRouteSearch3D(RoutePlanningUpdateEvent3D event) 
         "repair_pending=%zu feasibility_attempted=%s "
         "feasibility_found=%s feasibility_expansions=%zu "
         "route_planning_ms=%.3f",
-        continuation_queued ? "true" : "newer_world_pending",
+        update.continuation_queued ? "true" : "newer_world_pending",
         planner_update.planner_telemetry.planned_on_revision,
         planner_update.planner_telemetry.search_generation,
         planner_update.planner_telemetry.repair_generation,
@@ -216,107 +159,44 @@ void ProductionMppiNode::processRouteSearch3D(RoutePlanningUpdateEvent3D event) 
         planner_update.planner_telemetry.feasibility_attempted ? "true" : "false",
         planner_update.planner_telemetry.feasibility_route_found ? "true" : "false",
         planner_update.planner_telemetry.feasibility_expansions,
-        continuation_planning_ms);
-    if (!continuation_queued) {
-      // A newer world owns the single queue slot. Close this request's gate;
-      // the newer request will continue against its own immutable snapshot.
-      finishStaticRouteSearch(*transaction);
-    }
-    {
-      const std::scoped_lock lifecycle_lock{static_route_extension_mutex_};
-      static_route_planning_latency_tracker_.record(continuation_planning_ms,
-                                                    world_telemetry.build_ms);
-    }
-    observe_recovery_episode();
+        update.route_planning_ms);
     return;
   }
 
-  const std::uint64_t candidate_generation =
-      improved_incumbent_available ? nextRouteGeneration3D() : 0U;
-  const ProductionRouteActivationSnapshot3D materialization_snapshot =
-      captureRouteActivationSnapshot3D();
-  const std::shared_ptr<const ExecutionPlan3D> materialization_execution =
-      materialization_snapshot.execution_authority != nullptr
-          ? materialization_snapshot.execution_authority->plan()
-          : nullptr;
-  const CertifiedRouteSuffix3D* const activation_active_route =
-      materialization_execution != nullptr ? materialization_execution->route()
-                                           : nullptr;
-  const std::shared_ptr<const CertifiedRouteSuffix3D> materialization_active_route =
-      activation_active_route != nullptr
-          ? std::make_shared<const CertifiedRouteSuffix3D>(*activation_active_route)
-          : nullptr;
-
-  ProductionRouteMaterialization3D materialization;
-  materialization.route.world = transaction->world;
-  materialization.route.objective = transaction->objective;
-  materialization.route.candidate_generation = candidate_generation;
-  materialization.telemetry.world_build = world_telemetry;
-  materialization.telemetry.route_search_ms = planner_update.search_ms;
-  ProductionRouteActivationResult3D activation;
-  activation.materialized = materialization.route;
-  activation.telemetry = materialization.telemetry;
-  if (improved_incumbent_available && candidate_generation != 0U) {
-    materialization = route_materializer_->materialize(RouteMaterializationRequest3D{
-        .transaction = transaction,
-        .world_telemetry = world_telemetry,
-        .current_position = vehicle_state.position,
-        .candidate = std::move(*planner_update.improved_incumbent),
-        .candidate_generation = candidate_generation,
-        .active_route = materialization_active_route,
-        .activation_raw_world = materialization_snapshot.raw_world,
-    });
-    materialization.telemetry.route_search_ms = planner_update.search_ms;
-    if (materialization.geometry_optimization_fallback.has_value()) {
-      const RouteRiskAnnotationResult3D fallback =
-          materialization.geometry_optimization_fallback.value();
-      const std::string_view reason = routeRiskAnnotationStatus3DName(fallback.status);
-      RCLCPP_INFO(get_logger(),
-                  "STATIC_ROUTE_GEOMETRY status=fallback_to_lattice reason=%.*s "
-                  "failure=(%.2f,%.2f,%.2f)",
-                  static_cast<int>(reason.size()), reason.data(),
-                  fallback.failure_point.x, fallback.failure_point.y,
-                  fallback.failure_point.z);
-    }
+  if (update.geometry_optimization_fallback.has_value()) {
+    const RouteRiskAnnotationResult3D& fallback =
+        *update.geometry_optimization_fallback;
+    const std::string_view reason = routeRiskAnnotationStatus3DName(fallback.status);
+    RCLCPP_INFO(get_logger(),
+                "STATIC_ROUTE_GEOMETRY status=fallback_to_lattice reason=%.*s "
+                "failure=(%.2f,%.2f,%.2f)",
+                static_cast<int>(reason.size()), reason.data(),
+                fallback.failure_point.x, fallback.failure_point.y,
+                fallback.failure_point.z);
   }
-  if (improved_incumbent_available && candidate_generation != 0U) {
-    // Materialization owns the expensive spatial validation. Capture the
-    // transaction base afterwards so it is not stale before activation begins.
-    ProductionRouteActivationSnapshot3D activation_snapshot =
-        captureRouteActivationSnapshot3D();
-    StaticRoutePlanningLatencyStats planning_latency;
-    {
-      const std::scoped_lock lifecycle_lock{static_route_extension_mutex_};
-      planning_latency = static_route_planning_latency_tracker_.stats();
-    }
-    PreparedRouteActivation3D prepared =
-        route_activation_coordinator_->prepare(RouteActivationPreparationRequest3D{
-            .transaction = transaction,
-            .materialization = std::move(materialization),
-            .snapshot = std::move(activation_snapshot),
-            .planning_latency = planning_latency,
-        });
-    activation = commitRouteActivation3D(std::move(prepared));
-  }
-  activation.telemetry.route_search_ms = planner_update.search_ms;
 
-  if (search_running) {
-    continuation_queued = queue_continuation();
+  const ProductionRouteActivationResult3D& activation = update.activation;
+  const MaterializedRoute3D& candidate = activation.materialized;
+  const RouteAdmissionReport3D& activation_report = activation.admission;
+  if (candidate.candidate_generation != 0U &&
+      (!activation_report.trajectory_validation.valid() ||
+       activation.proposal.trajectory == nullptr)) {
+    RCLCPP_WARN(get_logger(),
+                "COMPILED_TRAJECTORY valid=false reason=%s sample_index=%zu "
+                "route_generation=%" PRIu64,
+                compiledTrajectoryFailureReason3DName(
+                    activation_report.trajectory_validation.reason),
+                activation_report.trajectory_validation.sample_index,
+                candidate.candidate_generation);
+  }
+
+  if (update.search_running) {
     RCLCPP_INFO(get_logger(),
                 "PERSISTENT_PLANNER3D stage=continuation_after_incumbent "
                 "queued=%s raw_revision=%" PRIu64 " search_generation=%" PRIu64,
-                continuation_queued ? "true" : "newer_world_pending",
+                update.continuation_queued ? "true" : "newer_world_pending",
                 planner_update.planner_telemetry.planned_on_revision,
                 planner_update.planner_telemetry.search_generation);
-  }
-
-  observe_recovery_episode();
-
-  const double route_planning_ms = elapsedMilliseconds(planning_started);
-  {
-    const std::scoped_lock lifecycle_lock{static_route_extension_mutex_};
-    static_route_planning_latency_tracker_.record(route_planning_ms,
-                                                  world_telemetry.build_ms);
   }
 
   const PlannerTelemetry3D& plan = planner_update.planner_telemetry;
@@ -422,7 +302,7 @@ void ProductionMppiNode::processRouteSearch3D(RoutePlanningUpdateEvent3D event) 
       telemetry.planner.estimated_execution_time_s,
       telemetry.planner.estimated_translation_time_s,
       telemetry.planner.estimated_stationary_turn_time_s, planner_update.search_ms,
-      route_planning_ms, materialization_telemetry.candidate_validation_ms,
+      update.route_planning_ms, materialization_telemetry.candidate_validation_ms,
       materialization_telemetry.route_smoothing_ms,
       admission.assessment.raw_validation.connector_validated ? "true" : "false",
       admission.assessment.raw_validation.suffix_validated ? "true" : "false",
@@ -464,80 +344,23 @@ void ProductionMppiNode::processRouteSearch3D(RoutePlanningUpdateEvent3D event) 
     }
   }
 
-  const bool initial_route_search = transaction->initial();
-  if (transaction->replacement() || initial_route_search) {
-    const StaticRouteSearchRequestIdentity& search_request = transaction->request;
-    const std::shared_ptr<const ExecutionPlan3D> resident_execution =
-        execution_supervisor_.plan();
-    const std::uint64_t resident_route_generation =
-        resident_execution != nullptr ? resident_execution->routeGenerationHighWater()
-                                      : 0U;
-    const std::scoped_lock lifecycle_lock{static_route_extension_mutex_};
-    if (admission.certified_pending) {
-      static_route_failed_search_latch_.clear();
-    } else if (!search_running && staticRouteSearchFailureLatchEligible(
-                                      search_request, resident_route_generation)) {
-      const std::uint64_t failed_generation =
-          transaction->replacement() ? transaction->request.base_route_generation : 0U;
-      static_route_failed_search_latch_.recordFailure(StaticRouteSearchContext{
-          .base_route_generation = failed_generation,
-          .search_start = search_start,
-          .objective = transaction->objective,
-          .minimum_tracking_sample_sequence = admission.required_objective_sample,
-          .stamp_ns = get_clock()->now().nanoseconds(),
-      });
-      RCLCPP_INFO(
-          get_logger(),
-          "STATIC_ROUTE_SEARCH_OUTCOME status=failed_latched "
-          "generation=%" PRIu64 " initial=%s planner_input=%s "
-          "planner_progress=%s "
-          "activation_status=%.*s candidate_status=%.*s "
-          "start=(%.2f,%.2f,%.2f)",
-          failed_generation, initial_route_search ? "true" : "false", planner_input,
-          planner_progress,
-          static_cast<int>(
-              staticRouteActivationStatusName(admission.activation_status).size()),
-          staticRouteActivationStatusName(admission.activation_status).data(),
-          static_cast<int>(staticRouteCandidateStatusName(validation.status).size()),
-          staticRouteCandidateStatusName(validation.status).data(), search_start.x,
-          search_start.y, search_start.z);
-    }
-  } else if (admission.certified_pending) {
-    const std::scoped_lock lifecycle_lock{static_route_extension_mutex_};
-    static_route_failed_search_latch_.clear();
-  }
-
-  if (!continuation_queued) {
-    finishStaticRouteSearch(*transaction, admission.certified_pending);
-  }
-  const std::shared_ptr<const ProductionNavigationObjective> current_objective =
-      navigationObjective();
-  if (current_objective && current_objective->continuous_tracking) {
-    const std::uint64_t required_epoch =
-        minimum_tracking_route_mission_epoch_.load(std::memory_order_acquire);
-    const std::uint64_t required_sample =
-        current_objective->mission_epoch == required_epoch
-            ? minimum_tracking_route_sample_sequence_.load(std::memory_order_acquire)
-            : 0U;
-    StaticRouteObjective resident_route_objective;
-    const std::shared_ptr<const ExecutionPlan3D> resident_execution =
-        execution_supervisor_.plan();
-    if (resident_execution != nullptr && resident_execution->route() != nullptr) {
-      resident_route_objective =
-          resident_execution->route()->identity.proposal.objective;
-    }
-    if (!staticRouteObjectiveMatches(
-            resident_route_objective, makeStaticRouteObjective(*current_objective),
-            required_sample, std::numeric_limits<double>::infinity())) {
-      RCLCPP_INFO(get_logger(),
-                  "STATIC_ROUTE_SHADOW status=followup_required "
-                  "required_epoch=%" PRIu64 " required_sample=%" PRIu64
-                  " resident_epoch=%" PRIu64 " resident_sample=%" PRIu64,
-                  required_epoch, required_sample,
-                  resident_route_objective.mission_epoch,
-                  resident_route_objective.sample_sequence);
-      requestRouteRelease(RouteReleaseReason3D::kObjectiveChanged);
-    }
+  if (update.failed_search_latched) {
+    const std::uint64_t failed_generation =
+        transaction->replacement() ? transaction->request.base_route_generation : 0U;
+    RCLCPP_INFO(
+        get_logger(),
+        "STATIC_ROUTE_SEARCH_OUTCOME status=failed_latched "
+        "generation=%" PRIu64 " initial=%s planner_input=%s "
+        "planner_progress=%s activation_status=%.*s candidate_status=%.*s "
+        "start=(%.2f,%.2f,%.2f)",
+        failed_generation, transaction->initial() ? "true" : "false", planner_input,
+        planner_progress,
+        static_cast<int>(
+            staticRouteActivationStatusName(admission.activation_status).size()),
+        staticRouteActivationStatusName(admission.activation_status).data(),
+        static_cast<int>(staticRouteCandidateStatusName(validation.status).size()),
+        staticRouteCandidateStatusName(validation.status).data(), search_start.x,
+        search_start.y, search_start.z);
   }
 }
 

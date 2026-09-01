@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cinttypes>
 #include <exception>
 #include <string>
 #include <utility>
@@ -130,7 +131,7 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
         },
         world_failure_handler);
   }
-  route_materializer_ = std::make_unique<RouteMaterializer3D>(RouteMaterializerConfig3D{
+  RouteMaterializerConfig3D route_materializer_config{
       .route_envelope = route_envelope_config_,
       .future_route_connector = future_route_connector_config_,
       .route_geometry = static_route_geometry_config_,
@@ -144,79 +145,71 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
           static_cast<double>(mppi_config_.risk.preferred_distance_m),
       .worker_pool = planning_worker_pool_.get(),
       .cooperative_traffic_enabled = cooperative_traffic_enabled_,
-  });
-  route_activation_coordinator_ =
-      std::make_unique<RouteActivationCoordinator3D>(
-          RouteActivationCoordinatorConfig3D{
-              .trajectory_compiler =
-                  RouteTrajectoryCompilerConfig3D{
-                      .trajectory =
-                          TrajectoryCompilerConfig3D{
-                              .unconstrained_speed_mps =
-                                  speed_policy_config_.cruise_speed_mps,
-                              .constrained_speed_mps =
-                                  constrained_route_speed_limit_mps_,
-                              .maximum_lateral_acceleration_mps2 =
-                                  speed_policy_config_
-                                      .maximum_lateral_acceleration_mps2,
-                              .minimum_continuous_turn_alignment =
-                                  future_route_connector_config_
-                                      .minimum_continuous_turn_alignment,
-                              .time_model =
-                                  FlightTimeModel3D{
-                                      .maximum_horizontal_speed_mps = std::min(
-                                          {speed_policy_config_.cruise_speed_mps,
-                                           speed_policy_config_
-                                               .absolute_speed_limit_mps,
-                                           static_cast<double>(
-                                               mppi_config_.dynamics
-                                                   .maximum_horizontal_speed_mps)}),
-                                      .maximum_vertical_speed_mps =
-                                          static_cast<double>(mppi_config_.dynamics
-                                                                  .maximum_vertical_speed_mps),
-                                      .maximum_translational_speed_mps =
-                                          static_cast<double>(mppi_config_.dynamics
-                                                                  .maximum_translational_speed_mps),
-                                      .maximum_horizontal_acceleration_mps2 =
-                                          static_cast<double>(mppi_config_.dynamics
-                                                                  .maximum_horizontal_acceleration_mps2),
-                                      .maximum_vertical_acceleration_mps2 =
-                                          static_cast<double>(mppi_config_.dynamics
-                                                                  .maximum_vertical_acceleration_mps2),
-                                      .maximum_control_jerk_mps3 =
-                                          static_cast<double>(mppi_config_.dynamics
-                                                                  .maximum_control_jerk_mps3),
-                                      .maximum_yaw_acceleration_radps2 =
-                                          static_cast<double>(mppi_config_.dynamics
-                                                                  .maximum_yaw_acceleration_radps2),
-                                      .maximum_yaw_rate_radps =
-                                          static_cast<double>(mppi_config_.dynamics
-                                                                  .maximum_yaw_rate_radps),
-                                  },
-                              .physical_footprint = physical_footprint_config_,
-                              .tracking_error_tube = tracking_error_tube_config_,
+  };
+  RouteActivationCoordinatorConfig3D route_activation_config{
+      .trajectory_compiler =
+          RouteTrajectoryCompilerConfig3D{
+              .trajectory =
+                  TrajectoryCompilerConfig3D{
+                      .unconstrained_speed_mps = speed_policy_config_.cruise_speed_mps,
+                      .constrained_speed_mps = constrained_route_speed_limit_mps_,
+                      .maximum_lateral_acceleration_mps2 =
+                          speed_policy_config_.maximum_lateral_acceleration_mps2,
+                      .minimum_continuous_turn_alignment =
+                          future_route_connector_config_
+                              .minimum_continuous_turn_alignment,
+                      .time_model =
+                          FlightTimeModel3D{
+                              .maximum_horizontal_speed_mps = std::min(
+                                  {speed_policy_config_.cruise_speed_mps,
+                                   speed_policy_config_.absolute_speed_limit_mps,
+                                   static_cast<double>(
+                                       mppi_config_.dynamics
+                                           .maximum_horizontal_speed_mps)}),
+                              .maximum_vertical_speed_mps = static_cast<double>(
+                                  mppi_config_.dynamics.maximum_vertical_speed_mps),
+                              .maximum_translational_speed_mps = static_cast<double>(
+                                  mppi_config_.dynamics
+                                      .maximum_translational_speed_mps),
+                              .maximum_horizontal_acceleration_mps2 =
+                                  static_cast<double>(
+                                      mppi_config_.dynamics
+                                          .maximum_horizontal_acceleration_mps2),
+                              .maximum_vertical_acceleration_mps2 = static_cast<double>(
+                                  mppi_config_.dynamics
+                                      .maximum_vertical_acceleration_mps2),
+                              .maximum_control_jerk_mps3 = static_cast<double>(
+                                  mppi_config_.dynamics.maximum_control_jerk_mps3),
+                              .maximum_yaw_acceleration_radps2 = static_cast<double>(
+                                  mppi_config_.dynamics
+                                      .maximum_yaw_acceleration_radps2),
+                              .maximum_yaw_rate_radps = static_cast<double>(
+                                  mppi_config_.dynamics.maximum_yaw_rate_radps),
                           },
-                      .passage_volume = cooperative_passage_volume_config_,
+                      .physical_footprint = physical_footprint_config_,
+                      .tracking_error_tube = tracking_error_tube_config_,
                   },
-              .route_extension = static_route_extension_config_,
-              .successor_improvement = route_successor_improvement_config_,
-              .flight_envelope = flight_envelope_config_,
-              .route_tracking = route_tracking_policy_,
-              .physical_footprint = physical_footprint_config_,
-              .certified_splice = certified_route_splice_config_,
-              .validation_policy = execution_validation_policy_,
-              .route_risk =
-                  RouteRiskPolicy3D{
-                      .critical_distance_m =
-                          static_cast<double>(mppi_config_.risk.critical_distance_m),
-                      .preferred_distance_m =
-                          static_cast<double>(mppi_config_.risk.preferred_distance_m),
-                  },
-              .dynamic_handoff_validator =
-                  mppi::makeMppiDynamicHandoffValidator3D(mppi_config_),
-              .cruise_speed_mps = speed_policy_config_.cruise_speed_mps,
-              .maximum_control_feedback_age_ms = maximum_control_feedback_age_ms_,
-          });
+              .passage_volume = cooperative_passage_volume_config_,
+          },
+      .route_extension = static_route_extension_config_,
+      .successor_improvement = route_successor_improvement_config_,
+      .flight_envelope = flight_envelope_config_,
+      .route_tracking = route_tracking_policy_,
+      .physical_footprint = physical_footprint_config_,
+      .certified_splice = certified_route_splice_config_,
+      .validation_policy = execution_validation_policy_,
+      .route_risk =
+          RouteRiskPolicy3D{
+              .critical_distance_m =
+                  static_cast<double>(mppi_config_.risk.critical_distance_m),
+              .preferred_distance_m =
+                  static_cast<double>(mppi_config_.risk.preferred_distance_m),
+          },
+      .dynamic_handoff_validator =
+          mppi::makeMppiDynamicHandoffValidator3D(mppi_config_),
+      .cruise_speed_mps = speed_policy_config_.cruise_speed_mps,
+      .maximum_control_feedback_age_ms = maximum_control_feedback_age_ms_,
+  };
   planning_cycle_coordinator_ = std::make_unique<PlanningCycleCoordinator3D>(
       execution_supervisor_,
       PlanningCycleCoordinatorConfig3D{
@@ -266,8 +259,9 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
           .finite_horizon = finite_horizon_config_,
           .direct_tracking_validation_policy = execution_validation_policy_,
       });
-  route_planning_coordinator_ =
-      std::make_unique<RoutePlanningCoordinator3D>(RoutePlanningCoordinatorConfig3D{
+  route_lifecycle_coordinator_ = std::make_unique<RouteLifecycleCoordinator3D>(
+      execution_supervisor_,
+      RouteLifecycleCoordinatorConfig3D{
           .planner =
               RoutePlannerConfig3D{
                   .planner = persistent_planner_config_,
@@ -275,6 +269,14 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
                   .route_sampling_step_m = route_sampling_step_m_,
                   .cruise_speed_mps = speed_policy_config_.cruise_speed_mps,
               },
+          .materializer = route_materializer_config,
+          .activation = std::move(route_activation_config),
+          .extension = static_route_extension_config_,
+          .search_retry = static_route_search_retry_config_,
+          .flight_envelope = flight_envelope_config_,
+          .static_route_lookahead_m = static_esdf_route_lookahead_m_,
+          .tracking_world_refresh_margin_m = static_tracking_esdf_refresh_margin_m_,
+          .observed_world = !use_static_map_,
           .vehicle_state_provider =
               [this]() {
                 const std::scoped_lock lock{input_mutex_};
@@ -286,31 +288,135 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
                     .valid = navigation_.valid,
                 };
               },
-          .resident_route_generation_provider =
-              [this]() {
-                const std::shared_ptr<const ExecutionPlan3D> plan =
-                    execution_supervisor_.plan();
-                return plan != nullptr ? plan->routeGenerationHighWater() : 0U;
+          .activation_snapshot_provider =
+              [this]() { return captureRouteActivationSnapshot3D(); },
+          .activation_commit_boundary =
+              [this](PreparedRouteActivation3D prepared,
+                     const RouteActivationCommitOperation3D& commit) {
+                RouteActivationCommitResult3D committed;
+                {
+                  const std::scoped_lock lock{execution_evidence_commit_mutex_};
+                  WorldPipeline3D::ResidentLease resident =
+                      world_pipeline_->lockResident();
+                  committed =
+                      commit(std::move(prepared),
+                             RouteActivationCommitContext3D{
+                                 .resident_world = resident.world(),
+                                 .objective = navigationObjective(),
+                                 .raw_world = world_pipeline_->latestRawWorld(),
+                                 .minimum_tracking_route_mission_epoch =
+                                     minimum_tracking_route_mission_epoch_.load(
+                                         std::memory_order_acquire),
+                                 .minimum_tracking_route_sample_sequence =
+                                     minimum_tracking_route_sample_sequence_.load(
+                                         std::memory_order_acquire),
+                             });
+                }
+                latest_route_pipeline_event_.store(
+                    std::make_shared<const ProductionRouteActivationResult3D>(
+                        committed.result),
+                    std::memory_order_release);
+                return committed;
               },
+          .tracking_context_provider =
+              [this]() {
+                return RouteLifecycleTrackingContext3D{
+                    .objective = navigationObjective(),
+                    .minimum_route_mission_epoch =
+                        minimum_tracking_route_mission_epoch_.load(
+                            std::memory_order_acquire),
+                    .minimum_route_sample_sequence =
+                        minimum_tracking_route_sample_sequence_.load(
+                            std::memory_order_acquire),
+                };
+              },
+          .replan_snapshot_provider =
+              [this]() {
+                RouteLifecycleReplanSnapshot3D snapshot;
+                {
+                  const std::scoped_lock input_lock{input_mutex_};
+                  snapshot.navigation = navigation_;
+                }
+                snapshot.objective = navigationObjective();
+                const std::shared_ptr<const ExecutionPlan3D> execution =
+                    execution_supervisor_.plan();
+                snapshot.committed_route_generation =
+                    execution != nullptr ? execution->routeGenerationHighWater() : 0U;
+                {
+                  WorldPipeline3D::ResidentLease resident =
+                      world_pipeline_->lockResident();
+                  snapshot.resident_world = resident.world();
+                  snapshot.world_telemetry = resident.telemetry();
+                  if (snapshot.resident_world != nullptr) {
+                    snapshot.resident_planner_world =
+                        captureResidentPlannerWorld3D(*snapshot.resident_world);
+                  }
+                }
+                snapshot.latest_raw_world = world_pipeline_->latestRawWorld();
+                snapshot.blocked_raw_revision =
+                    observed_route_blocked_raw_revision_.load(
+                        std::memory_order_acquire);
+                snapshot.minimum_route_mission_epoch =
+                    minimum_tracking_route_mission_epoch_.load(
+                        std::memory_order_acquire);
+                snapshot.minimum_route_sample_sequence =
+                    minimum_tracking_route_sample_sequence_.load(
+                        std::memory_order_acquire);
+                snapshot.stamp_ns = get_clock()->now().nanoseconds();
+                return snapshot;
+              },
+          .world_refresh_requester =
+              [this](const std::uint64_t base_generation,
+                     const RouteLifecycleWorldRefreshPurpose3D purpose) {
+                const StaticWorldRefreshRequest3D refresh =
+                    world_pipeline_->requestStaticRefresh(
+                        base_generation,
+                        purpose ==
+                                RouteLifecycleWorldRefreshPurpose3D::kTrackingObjective
+                            ? StaticWorldRefreshPurpose3D::kTrackingObjective
+                            : StaticWorldRefreshPurpose3D::kRouteExtension);
+                return RouteLifecycleWorldRefreshResult3D{
+                    .sequence = refresh.sequence,
+                    .base_route_generation = refresh.base_route_generation,
+                };
+              },
+          .stamp_provider = [this]() { return get_clock()->now().nanoseconds(); },
           .update_handler =
-              [this](RoutePlanningUpdateEvent3D event) {
-                processRouteSearch3D(std::move(event));
+              [this](RouteLifecycleUpdate3D update) {
+                processRouteSearch3D(std::move(update));
               },
           .rejection_handler =
               [this](const RoutePlanningRejection3D& rejection) {
                 handleRoutePlanningRejection3D(rejection);
+              },
+          .replan_outcome_handler =
+              [this](const RouteLifecycleReplanOutcome3D& outcome) {
+                logRouteLifecycleReplanOutcome3D(outcome);
+              },
+          .tracking_followup_handler =
+              [this](const RouteLifecycleTrackingFollowup3D& followup) {
+                RCLCPP_INFO(get_logger(),
+                            "STATIC_ROUTE_SHADOW status=followup_required "
+                            "required_epoch=%" PRIu64 " required_sample=%" PRIu64
+                            " resident_epoch=%" PRIu64 " resident_sample=%" PRIu64,
+                            followup.required_mission_epoch,
+                            followup.required_sample_sequence,
+                            followup.resident_objective.mission_epoch,
+                            followup.resident_objective.sample_sequence);
+                requestRouteRelease(RouteReleaseReason3D::kObjectiveChanged);
               },
           .failure_handler =
               [this](const std::exception_ptr failure) {
                 try {
                   std::rethrow_exception(failure);
                 } catch (const std::exception& error) {
-                  RCLCPP_ERROR(get_logger(), "ROUTE_PLANNING_COORDINATOR3D failure: %s",
+                  RCLCPP_ERROR(get_logger(),
+                               "ROUTE_LIFECYCLE_COORDINATOR3D failure: %s",
                                error.what());
                 } catch (...) {
                   RCLCPP_ERROR(
                       get_logger(),
-                      "ROUTE_PLANNING_COORDINATOR3D failure: unknown exception");
+                      "ROUTE_LIFECYCLE_COORDINATOR3D failure: unknown exception");
                 }
               },
       });
@@ -465,7 +571,7 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
   });
 
   diagnostics_sink_->start();
-  route_planning_coordinator_->start();
+  route_lifecycle_coordinator_->start();
   world_pipeline_->start();
   if (planning_tick_phase_offset_s_ > 0.0) {
     planning_start_timer_ = create_wall_timer(

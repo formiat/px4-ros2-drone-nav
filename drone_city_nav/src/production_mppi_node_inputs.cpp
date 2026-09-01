@@ -276,7 +276,7 @@ void ProductionMppiNode::onNavigationReadiness(const std_msgs::msg::Bool& messag
     }
   }
   const bool queued =
-      transaction != nullptr && route_planning_coordinator_
+      transaction != nullptr && route_lifecycle_coordinator_
                                     ->enqueue(RoutePlanningRequest3D{
                                         .transaction = std::move(transaction),
                                         .world_telemetry = world_telemetry,

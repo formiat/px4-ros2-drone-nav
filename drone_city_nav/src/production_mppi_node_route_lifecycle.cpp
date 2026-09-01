@@ -1,5 +1,3 @@
-#include <limits>
-
 #include "production_mppi_node.hpp"
 
 namespace drone_city_nav {
@@ -23,15 +21,6 @@ ProductionMppiNode::assessActiveRouteCompletion3D(const Point3& position) {
       RouteSegmentCompletionConfig3D{
           .capture_radius_m = route_completion_tolerance_m_,
       });
-}
-
-std::uint64_t ProductionMppiNode::nextRouteGeneration3D() {
-  const std::shared_ptr<const ExecutionPlan3D> snapshot = execution_supervisor_.plan();
-  const std::uint64_t current_generation =
-      snapshot != nullptr ? snapshot->routeGenerationHighWater() : 0U;
-  return current_generation == std::numeric_limits<std::uint64_t>::max()
-             ? 0U
-             : current_generation + 1U;
 }
 
 } // namespace drone_city_nav

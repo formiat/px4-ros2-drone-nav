@@ -752,6 +752,7 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     src/route_activation_preparation_3d.cpp
     src/route_materializer_3d.cpp
     src/route_trajectory_compiler_3d.cpp
+    src/route_lifecycle_coordinator_3d.cpp
     src/route_planning_coordinator_3d.cpp
     src/route_planner_3d.cpp
     src/production_mppi_route_world.cpp
@@ -1270,6 +1271,14 @@ if(BUILD_TESTING)
     target_link_libraries(route_planning_coordinator_3d_test
                           drone_city_nav_production_mppi_component)
     enable_project_warnings(route_planning_coordinator_3d_test)
+
+    ament_add_gtest(route_lifecycle_coordinator_3d_test
+                    tests/route_lifecycle_coordinator_3d_test.cpp)
+    target_compile_features(route_lifecycle_coordinator_3d_test PRIVATE cxx_std_20)
+    target_include_directories(route_lifecycle_coordinator_3d_test PRIVATE src)
+    target_link_libraries(route_lifecycle_coordinator_3d_test
+                          drone_city_nav_production_mppi_component)
+    enable_project_warnings(route_lifecycle_coordinator_3d_test)
 
     ament_add_gtest(route_materializer_3d_test
                     tests/route_materializer_3d_test.cpp)

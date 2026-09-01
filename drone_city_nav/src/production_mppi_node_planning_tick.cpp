@@ -440,7 +440,7 @@ void ProductionMppiNode::planningTick() {
   }
 
   if (planning.effects.request_static_tracking_world_refresh && objective) {
-    maybeRequestStaticTrackingWorldRefresh(world, navigation, *objective, now_ns);
+    maybeRequestStaticTrackingWorldRefresh(world, navigation, objective, now_ns);
   }
   if (planning.effects.request_route_extension) {
     maybeRequestStaticRouteExtensionFromExecution(

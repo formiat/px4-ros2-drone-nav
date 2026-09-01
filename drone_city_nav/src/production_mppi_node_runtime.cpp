@@ -12,9 +12,6 @@
 #include "navigation_diagnostics_sink.hpp"
 #include "planning_cycle_coordinator_3d.hpp"
 #include "production_mppi_node.hpp"
-#include "production_mppi_route_world.hpp"
-#include "route_activation_coordinator_3d.hpp"
-#include "route_materializer_3d.hpp"
 #include "world_pipeline_3d.hpp"
 
 namespace drone_city_nav {
@@ -161,8 +158,8 @@ ProductionMppiNode::~ProductionMppiNode() {
   if (diagnostics_sink_ != nullptr) {
     diagnostics_sink_->stop();
   }
-  if (route_planning_coordinator_ != nullptr) {
-    route_planning_coordinator_->stop();
+  if (route_lifecycle_coordinator_ != nullptr) {
+    route_lifecycle_coordinator_->stop();
   }
   if (world_pipeline_ != nullptr) {
     world_pipeline_->stop();

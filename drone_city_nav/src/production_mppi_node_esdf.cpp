@@ -96,9 +96,13 @@ void ProductionMppiNode::handleStaticWorldUpdate3D(const StaticWorldUpdate3D& up
       return;
     }
     if (refresh.purpose == StaticWorldRefreshPurpose3D::kTrackingObjective) {
-      finishStaticRouteReplan(refresh.base_route_generation, false);
+      route_lifecycle_coordinator_->finishWorldRefresh(
+          refresh.base_route_generation,
+          RouteLifecycleWorldRefreshPurpose3D::kTrackingObjective);
     } else {
-      finishStaticRouteExtension(refresh.base_route_generation);
+      route_lifecycle_coordinator_->finishWorldRefresh(
+          refresh.base_route_generation,
+          RouteLifecycleWorldRefreshPurpose3D::kRouteExtension);
     }
   };
 
@@ -264,18 +268,13 @@ void ProductionMppiNode::handleStaticWorldUpdate3D(const StaticWorldUpdate3D& up
                              : RouteReleaseReason3D::kNone);
     RoutePlanningEnqueueResult3D enqueue;
     if (transaction != nullptr) {
-      enqueue = route_planning_coordinator_->enqueue(
+      enqueue = route_lifecycle_coordinator_->enqueue(
           RoutePlanningRequest3D{
               .transaction = transaction,
               .world_telemetry = update.telemetry,
               .continuation_session = nullptr,
           },
           RoutePlanningQueuePolicy3D::kReplacePending);
-    }
-    if (transaction != nullptr && enqueue.displaced.has_value() &&
-        enqueue.displaced->transaction != nullptr &&
-        !enqueue.lifecycleTransferredTo(*transaction)) {
-      finishStaticRouteSearch(*enqueue.displaced->transaction);
     }
     if (transaction == nullptr) {
       RCLCPP_ERROR(get_logger(),

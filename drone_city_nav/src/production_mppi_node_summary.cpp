@@ -63,7 +63,7 @@ void ProductionMppiNode::publishSummary() {
   }
   const WorldPipelineStatistics3D world_statistics = world_pipeline_->statistics();
   const RoutePlanningCoordinatorStatistics3D route_planning_statistics =
-      route_planning_coordinator_->statistics();
+      route_lifecycle_coordinator_->statistics();
   const double maximum =
       *std::max_element(runtime_samples_ms.begin(), runtime_samples_ms.end());
   const std::uint64_t rollout_ticks = full_rollout_ticks + reduced_rollout_ticks;
@@ -84,11 +84,8 @@ void ProductionMppiNode::publishSummary() {
   const BoundedWorkerPoolSnapshot workers = planning_worker_pool_
                                                 ? planning_worker_pool_->snapshot()
                                                 : BoundedWorkerPoolSnapshot{};
-  StaticRoutePlanningLatencyStats planning_latency;
-  {
-    const std::scoped_lock lifecycle_lock{static_route_extension_mutex_};
-    planning_latency = static_route_planning_latency_tracker_.stats();
-  }
+  const StaticRoutePlanningLatencyStats planning_latency =
+      route_lifecycle_coordinator_->planningLatencyStatistics();
   RCLCPP_INFO(
       get_logger(),
       "PRODUCTION_MPPI_SUMMARY ticks=%" PRIu64

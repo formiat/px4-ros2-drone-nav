@@ -87,7 +87,7 @@
 #include "production_mppi_raw_world.hpp"
 #include "production_planner_search_transaction_3d.hpp"
 #include "production_route_pipeline_artifacts_3d.hpp"
-#include "route_planning_coordinator_3d.hpp"
+#include "route_lifecycle_coordinator_3d.hpp"
 
 namespace drone_city_nav {
 
@@ -95,10 +95,6 @@ struct ProductionMppiPlanningTickFinalization;
 struct ProductionMppiControllerTick;
 struct MppiControllerResult3D;
 struct ProductionMppiDiagnosticsSnapshot;
-struct PreparedRouteActivation3D;
-struct ProductionRouteActivationSnapshot3D;
-class RouteActivationCoordinator3D;
-class RouteMaterializer3D;
 class MppiController3D;
 class PlanningCycleCoordinator3D;
 class ExecutionHorizonAssembler3D;
@@ -171,22 +167,18 @@ private:
       const ProductionWorldBuildTelemetry3D& world_build,
       const ProductionRouteExecutionSelection3D& route_execution,
       const ProductionMppiNavigation& navigation, std::int64_t now_ns);
-  void
-  maybeRequestStaticRouteExtension(const std::shared_ptr<const WorldSnapshot3D>& world,
-                                   const ProductionWorldBuildTelemetry3D& world_build,
-                                   const CertifiedRouteSuffix3D& active_route,
-                                   const ProductionMppiNavigation& navigation,
-                                   const RouteProgressProjection3D& route_projection,
-                                   std::int64_t now_ns);
+  void maybeRequestStaticRouteExtension(
+      const std::shared_ptr<const WorldSnapshot3D>& world,
+      const ProductionWorldBuildTelemetry3D& world_build,
+      const std::shared_ptr<const CertifiedRouteSuffix3D>& active_route,
+      const ProductionMppiNavigation& navigation,
+      const RouteProgressProjection3D& route_projection, std::int64_t now_ns);
   void maybeRequestStaticTrackingWorldRefresh(
       const std::shared_ptr<const WorldSnapshot3D>& world,
       const ProductionMppiNavigation& navigation,
-      const ProductionNavigationObjective& objective, std::int64_t now_ns);
-  void finishStaticRouteExtension(std::uint64_t base_generation,
-                                  bool extension_activated = false);
-  void finishStaticRouteReplan(std::uint64_t base_generation, bool route_activated);
-  void finishStaticRouteSearch(const PlannerSearchTransaction3D& transaction,
-                               bool route_activated = false);
+      const std::shared_ptr<const ProductionNavigationObjective>& objective,
+      std::int64_t now_ns);
+  void logRouteLifecycleReplanOutcome3D(const RouteLifecycleReplanOutcome3D& outcome);
   [[nodiscard]] StaticWorldBuildRequest3D
   makeStaticWorldBuildRequest3D(const StaticWorldRefreshRequest3D& refresh);
   [[nodiscard]] StaticWorldCommitContext3D makeStaticWorldCommitContext3D();
@@ -202,14 +194,11 @@ private:
       const ProductionMppiNavigation& navigation,
       const std::shared_ptr<const CommittedExecutionAuthority3D>& execution_authority);
   void queueLatestObservedWorldForPose(const ProductionMppiNavigation& navigation);
-  void processRouteSearch3D(RoutePlanningUpdateEvent3D event);
+  void processRouteSearch3D(RouteLifecycleUpdate3D update);
   void handleRoutePlanningRejection3D(const RoutePlanningRejection3D& rejection);
   [[nodiscard]] RouteSegmentCompletionAssessment3D
   assessActiveRouteCompletion3D(const Point3& position);
-  [[nodiscard]] std::uint64_t nextRouteGeneration3D();
   [[nodiscard]] ProductionRouteActivationSnapshot3D captureRouteActivationSnapshot3D();
-  [[nodiscard]] ProductionRouteActivationResult3D
-  commitRouteActivation3D(PreparedRouteActivation3D prepared);
   void startPlanningTimer();
   void initializeRuntimeInterfaces(StaticWorldResources3D&& static_world_resources);
   void configureCooperativeTraffic();
@@ -392,22 +381,10 @@ private:
   CooperativePassageYieldConfig cooperative_passage_yield_config_{};
   NonCooperativeAvoidanceConfig noncooperative_avoidance_config_{};
   std::unique_ptr<BoundedWorkerPool> planning_worker_pool_;
-  std::unique_ptr<RouteMaterializer3D> route_materializer_;
-  std::unique_ptr<RouteActivationCoordinator3D> route_activation_coordinator_;
+  std::unique_ptr<RouteLifecycleCoordinator3D> route_lifecycle_coordinator_;
   std::unique_ptr<PlanningCycleCoordinator3D> planning_cycle_coordinator_;
   std::unique_ptr<ExecutionHorizonAssembler3D> execution_horizon_assembler_;
-  std::unique_ptr<RoutePlanningCoordinator3D> route_planning_coordinator_;
   std::unique_ptr<MppiController3D> mppi_controller_;
-  std::mutex static_route_extension_mutex_;
-  bool static_route_extension_request_in_flight_{false};
-  std::uint64_t static_route_extension_in_flight_generation_{0U};
-  std::uint64_t static_route_extension_last_request_generation_{0U};
-  double static_route_extension_last_request_station_m_{0.0};
-  std::int64_t static_route_extension_last_request_stamp_ns_{0};
-  StaticRoutePlanningLatencyTracker static_route_planning_latency_tracker_{};
-  StaticRouteDeferredReplanLatch static_route_deferred_replan_latch_{};
-  StaticRouteReplanGate static_route_replan_gate_{};
-  StaticRouteFailedSearchLatch static_route_failed_search_latch_{};
 
   mutable std::mutex input_mutex_;
   ProductionMppiNavigation navigation_{};
@@ -472,7 +449,6 @@ private:
   std::uint64_t execution_horizon_producer_instance_id_{0U};
   std::uint64_t navigation_health_producer_instance_id_{0U};
   std::uint64_t navigation_health_sequence_{0U};
-  NavigationRecoveryEpisodeTracker navigation_recovery_episodes_{};
   std::optional<NavigationHealthAssessment> last_navigation_health_assessment_;
   std::uint64_t mission_waypoint_acknowledgement_sequence_{0U};
   bool mission_goal_capture_attempt_invalidated_{false};

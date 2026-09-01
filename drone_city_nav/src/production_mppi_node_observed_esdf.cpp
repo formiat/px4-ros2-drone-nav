@@ -46,11 +46,7 @@ void ProductionMppiNode::handleObservedWorldEvidenceChange3D(
   }
   const std::uint64_t raw_revision = change.raw_world->version().revision;
   if (change.persistent_changed) {
-    const std::optional<RoutePlanningRequest3D> superseded =
-        route_planning_coordinator_->cancelPending();
-    if (superseded.has_value() && superseded->transaction != nullptr) {
-      finishStaticRouteSearch(*superseded->transaction);
-    }
+    static_cast<void>(route_lifecycle_coordinator_->cancelPending());
     RCLCPP_INFO(get_logger(),
                 "EXECUTION_EVIDENCE_WORLD_CHANGED raw_revision=%" PRIu64
                 " free_space_seed=%s support_active=%s resolution_pending=%s"
@@ -200,19 +196,16 @@ void ProductionMppiNode::handleObservedWorldUpdate3D(
                    published_world->source_raw_revision);
     }
     if (transaction != nullptr) {
-      const RoutePlanningEnqueueResult3D enqueue = route_planning_coordinator_->enqueue(
-          RoutePlanningRequest3D{
-              .transaction = transaction,
-              .world_telemetry = update.telemetry,
-              .continuation_session = nullptr,
-          },
-          RoutePlanningQueuePolicy3D::kReplacePending);
+      const RoutePlanningEnqueueResult3D enqueue =
+          route_lifecycle_coordinator_->enqueue(
+              RoutePlanningRequest3D{
+                  .transaction = transaction,
+                  .world_telemetry = update.telemetry,
+                  .continuation_session = nullptr,
+              },
+              RoutePlanningQueuePolicy3D::kReplacePending);
       initial_route_search_queued = enqueue.queued();
       initial_route_search_replaced_pending = enqueue.displaced.has_value();
-      if (enqueue.displaced.has_value() && enqueue.displaced->transaction != nullptr &&
-          !enqueue.lifecycleTransferredTo(*transaction)) {
-        finishStaticRouteSearch(*enqueue.displaced->transaction);
-      }
     }
   }
   if (!world_ready_.exchange(true, std::memory_order_acq_rel)) {
