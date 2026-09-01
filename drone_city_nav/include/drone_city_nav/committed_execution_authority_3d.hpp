@@ -97,4 +97,12 @@ private:
   friend class RouteExecutionManager3D;
 };
 
+// Returns true only when current is a newer immutable authority revision for
+// the exact same plan, wire lease, and execution input. RouteExecutionManager3D
+// can create such successors while installing or clearing applied-control
+// evidence; plan or lease changes are intentionally excluded.
+[[nodiscard]] bool isControlEvidenceOnlyAuthoritySuccessor3D(
+    const std::shared_ptr<const CommittedExecutionAuthority3D>& expected,
+    const std::shared_ptr<const CommittedExecutionAuthority3D>& current) noexcept;
+
 } // namespace drone_city_nav

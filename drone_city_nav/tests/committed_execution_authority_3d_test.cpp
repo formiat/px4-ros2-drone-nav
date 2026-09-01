@@ -118,6 +118,9 @@ TEST(CommittedExecutionAuthority3DTest,
   const std::shared_ptr<const CommittedExecutionAuthority3D> witnessed =
       manager.authority();
   ASSERT_NE(witnessed, nullptr);
+  EXPECT_TRUE(isControlEvidenceOnlyAuthoritySuccessor3D(leased, witnessed));
+  EXPECT_FALSE(isControlEvidenceOnlyAuthoritySuccessor3D(witnessed, leased));
+  EXPECT_FALSE(isControlEvidenceOnlyAuthoritySuccessor3D(witnessed, witnessed));
   EXPECT_EQ(witnessed->revision(), leased->revision() + 1U);
   EXPECT_EQ(witnessed->plan(), leased->plan());
   EXPECT_EQ(witnessed->input(), input);
@@ -134,6 +137,7 @@ TEST(CommittedExecutionAuthority3DTest,
   const std::shared_ptr<const CommittedExecutionAuthority3D> unwitnessed =
       manager.authority();
   ASSERT_NE(unwitnessed, nullptr);
+  EXPECT_TRUE(isControlEvidenceOnlyAuthoritySuccessor3D(witnessed, unwitnessed));
   EXPECT_TRUE(unwitnessed->control().empty());
   EXPECT_EQ(unwitnessed->plan(), witnessed->plan());
   EXPECT_EQ(unwitnessed->input(), input);
@@ -147,6 +151,7 @@ TEST(CommittedExecutionAuthority3DTest,
   EXPECT_TRUE(detached->owner().empty());
   EXPECT_EQ(detached->input(), nullptr);
   EXPECT_TRUE(detached->control().empty());
+  EXPECT_FALSE(isControlEvidenceOnlyAuthoritySuccessor3D(unwitnessed, detached));
   EXPECT_FALSE(manager.publishAppliedControlIfSame(unwitnessed, control));
   EXPECT_EQ(manager.authority(), detached);
 }

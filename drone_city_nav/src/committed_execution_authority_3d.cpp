@@ -38,6 +38,26 @@ namespace {
          std::isfinite(control.az) && std::isfinite(control.yaw_accel);
 }
 
+[[nodiscard]] bool sameOwnerIdentity(const ExecutionOwnerIdentity3D& first,
+                                     const ExecutionOwnerIdentity3D& second) noexcept {
+  return first.route_target.x == second.route_target.x &&
+         first.route_target.y == second.route_target.y &&
+         first.route_target.z == second.route_target.z &&
+         first.stationary_hold_position.x == second.stationary_hold_position.x &&
+         first.stationary_hold_position.y == second.stationary_hold_position.y &&
+         first.stationary_hold_position.z == second.stationary_hold_position.z &&
+         first.valid_from_ns == second.valid_from_ns &&
+         first.valid_until_ns == second.valid_until_ns &&
+         first.producer_instance_id == second.producer_instance_id &&
+         first.target_offboard_instance_id == second.target_offboard_instance_id &&
+         first.sequence == second.sequence &&
+         first.execution_owner_epoch == second.execution_owner_epoch &&
+         first.execution_mode == second.execution_mode &&
+         first.execution_reason == second.execution_reason &&
+         first.stationary_position_hold == second.stationary_position_hold &&
+         first.valid == second.valid;
+}
+
 [[nodiscard]] const VersionedExecutionInput3D*
 planExecutionInput(const ExecutionPlan3D& plan) noexcept {
   if (const FiniteExecutionState3D* const execution = plan.finiteExecution()) {
@@ -162,6 +182,15 @@ bool CommittedExecutionAuthority3D::valid() const noexcept {
     return false;
   }
   return control_.valid ? control_.validFor(owner_) : control_.empty();
+}
+
+bool isControlEvidenceOnlyAuthoritySuccessor3D(
+    const std::shared_ptr<const CommittedExecutionAuthority3D>& expected,
+    const std::shared_ptr<const CommittedExecutionAuthority3D>& current) noexcept {
+  return expected != nullptr && current != nullptr && expected->valid() &&
+         current->valid() && current->revision() > expected->revision() &&
+         current->plan() == expected->plan() && current->input() == expected->input() &&
+         sameOwnerIdentity(current->owner(), expected->owner());
 }
 
 } // namespace drone_city_nav

@@ -242,6 +242,12 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
   const std::scoped_lock input_lock{input_mutex_};
   const std::shared_ptr<const CommittedExecutionAuthority3D>
       resident_execution_authority = execution_supervisor_.authority();
+  const bool control_evidence_only_authority_successor =
+      isControlEvidenceOnlyAuthoritySuccessor3D(candidate.expected_authority,
+                                                resident_execution_authority);
+  if (control_evidence_only_authority_successor) {
+    candidate.expected_authority = resident_execution_authority;
+  }
   const bool resident_authority_current =
       resident_execution_authority != nullptr &&
       resident_execution_authority->valid() &&
@@ -498,10 +504,12 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
         get_logger(), *get_clock(), 1000,
         "EXECUTION_HORIZON_COMMIT late_rebase=true source_pose_revision=%" PRIu64
         " publication_pose_revision=%" PRIu64
-        " source_control_index=%zu control_evidence_advanced=%s",
+        " source_control_index=%zu control_evidence_advanced=%s "
+        "authority_control_successor=%s",
         cycle.evidence.execution_input->poseRevision(),
         publication_execution_input->poseRevision(), late_rebase_source_control_index,
-        previous_control_evidence_current ? "false" : "true");
+        previous_control_evidence_current ? "false" : "true",
+        control_evidence_only_authority_successor ? "true" : "false");
   }
   const std::shared_ptr<const VersionedLatestLidarEvidence3D> current_lidar =
       latest_lidar_evidence_.load(std::memory_order_acquire);
