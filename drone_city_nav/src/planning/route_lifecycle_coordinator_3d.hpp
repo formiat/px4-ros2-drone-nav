@@ -92,6 +92,7 @@ struct RouteLifecycleUpdate3D {
   Point3 search_start{};
   double route_planning_ms{0.0};
   bool search_running{false};
+  bool search_superseded_by_activation_world{false};
   bool continuation_queued{false};
   bool failed_search_latched{false};
 

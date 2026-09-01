@@ -19,6 +19,25 @@ elapsedMilliseconds(const std::chrono::steady_clock::time_point started) noexcep
       .count();
 }
 
+[[nodiscard]] bool
+searchSupersededByActivationWorld(const bool search_running,
+                                  const PlannerSearchTransaction3D& transaction,
+                                  const RouteAdmissionReport3D& admission) noexcept {
+  return search_running &&
+         admission.activation_status ==
+             StaticRouteActivationStatus::kCandidateValidationRejected &&
+         admission.candidate_validation.status ==
+             StaticRouteCandidateStatus::kRawCollision &&
+         transaction.planner_world != nullptr &&
+         transaction.planner_world->revision != 0U &&
+         admission.snapshot_raw_revision != 0U &&
+         transaction.planner_world->revision != admission.snapshot_raw_revision &&
+         transaction.planner_world->occupied_fingerprint != 0U &&
+         admission.tracking_profile_activation_occupied_fingerprint != 0U &&
+         transaction.planner_world->occupied_fingerprint !=
+             admission.tracking_profile_activation_occupied_fingerprint;
+}
+
 [[nodiscard]] RouteLifecycleCandidateSummary3D
 summarizeCandidate(const std::optional<RouteSearchCandidate3D>& candidate) noexcept {
   if (!candidate.has_value()) {
@@ -296,9 +315,11 @@ RouteLifecycleCoordinator3D::advance(RoutePlanningUpdateEvent3D event) {
   }
   activation.telemetry.route_search_ms = planner_update.search_ms;
   result.activation = std::move(activation);
+  result.search_superseded_by_activation_world = searchSupersededByActivationWorld(
+      result.search_running, *transaction, result.activation.admission);
 
   result.planner_update = std::move(planner_update);
-  if (result.search_running) {
+  if (result.search_running && !result.search_superseded_by_activation_world) {
     result.continuation_queued = queueContinuation(result);
   }
   observeRecoveryEpisode(transaction->objective.mission_epoch);
