@@ -69,7 +69,6 @@ CONTROLLER_BANNED_TOKENS = (
     "mppi::",
 )
 ROUTE_PRIVATE_HEADERS = {
-    "execution_publication_navigation_rebase_3d.hpp",
     "production_mppi_execution_control.hpp",
     "production_mppi_node_types.hpp",
     "production_mppi_route_helpers.hpp",

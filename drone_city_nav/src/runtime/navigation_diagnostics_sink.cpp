@@ -70,10 +70,15 @@ void NavigationDiagnosticsSink::recordTick(
     const ProductionMppiPlanningState planning_state,
     const ProductionMppiExecutionPublication& execution,
     const bool liveness_reseed_requested,
-    const RollingRouteTelemetryObservation3D& rolling_route) {
+    const RollingRouteTelemetryObservation3D& rolling_route,
+    const ProductionMppiTickPhaseTimings& phases) {
   const std::scoped_lock lock{statistics_mutex_};
   ++statistics_.completed_ticks;
   statistics_.runtime_samples_ms.push_back(result.timings.host_total_ms);
+  statistics_.snapshot_phase_samples_ms.push_back(phases.snapshot_ms);
+  statistics_.controller_phase_samples_ms.push_back(phases.controller_ms);
+  statistics_.publication_phase_samples_ms.push_back(phases.publication_ms);
+  statistics_.tick_total_samples_ms.push_back(phases.total_ms);
   statistics_.deadline_misses +=
       result.timings.host_total_ms > config_.deadline_ms ? 1U : 0U;
   statistics_.altitude_envelope_violation_horizons +=
@@ -90,7 +95,12 @@ void NavigationDiagnosticsSink::recordTick(
   statistics_.no_executable_route_hold_ticks +=
       planning_state == ProductionMppiPlanningState::kNoExecutableRouteHold ? 1U : 0U;
   statistics_.no_executable_horizon_hold_ticks +=
-      execution.reason == ProductionMppiExecutionReason::kNoExecutableHorizon ? 1U : 0U;
+      execution.reason == ProductionMppiExecutionReason::kNoExecutableHorizon &&
+              !execution.resident_owner_continues
+          ? 1U
+          : 0U;
+  statistics_.resident_owner_continuation_ticks +=
+      execution.resident_owner_continues ? 1U : 0U;
   statistics_.terminal_rest_horizon_ticks += execution.terminal_rest_state ? 1U : 0U;
   statistics_.finite_path_validation_backoff_ticks +=
       execution.finite_path_validation_backoff ? 1U : 0U;

@@ -25,6 +25,16 @@
 
 namespace drone_city_nav {
 
+// Wall-clock cost of the planning tick outside the GPU. The controller deadline
+// measures only the MPPI backend; these phases make CPU-side validation,
+// assembly, and publication visible in the same diagnostics.
+struct ProductionMppiTickPhaseTimings {
+  double snapshot_ms{0.0};
+  double controller_ms{0.0};
+  double publication_ms{0.0};
+  double total_ms{0.0};
+};
+
 struct ProductionMppiRvizSnapshot {
   std::vector<mppi::State> candidate_horizon;
   std::vector<mppi::State> previous_horizon;
@@ -62,7 +72,7 @@ struct ProductionMppiDiagnosticsSnapshot {
   double control_feedback_age_ms{0.0};
   double route_station_m{0.0};
   double route_remaining_m{0.0};
-  double snapshot_ms{0.0};
+  ProductionMppiTickPhaseTimings phases{};
   double stability_ms{0.0};
   RollingRouteTelemetryObservation3D rolling_route{};
   bool route_projection_valid{false};

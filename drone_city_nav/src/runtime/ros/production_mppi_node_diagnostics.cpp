@@ -225,7 +225,10 @@ void ProductionMppiNode::processDiagnostics(
        << " gpu_ms=" << result.timings.gpu_total_ms
        << " horizon_reconstruction_ms=" << result.timings.horizon_reconstruction_ms
        << " total_ms=" << result.timings.host_total_ms
-       << " snapshot_ms=" << snapshot.snapshot_ms
+       << " snapshot_ms=" << snapshot.phases.snapshot_ms
+       << " controller_ms=" << snapshot.phases.controller_ms
+       << " publication_ms=" << snapshot.phases.publication_ms
+       << " tick_total_ms=" << snapshot.phases.total_ms
        << " stability_ms=" << snapshot.stability_ms << " rviz_ms=" << rviz_ms
        << " deadline_missed="
        << (result.timings.host_total_ms > config_.planning.deadline_ms ? "true"
@@ -597,7 +600,10 @@ void ProductionMppiNode::processDiagnostics(
          << ",\"horizon_reconstruction_ms\":"
          << result.timings.horizon_reconstruction_ms
          << ",\"total_ms\":" << result.timings.host_total_ms
-         << ",\"snapshot_ms\":" << snapshot.snapshot_ms
+         << ",\"snapshot_ms\":" << snapshot.phases.snapshot_ms
+         << ",\"controller_ms\":" << snapshot.phases.controller_ms
+         << ",\"publication_ms\":" << snapshot.phases.publication_ms
+         << ",\"tick_total_ms\":" << snapshot.phases.total_ms
          << ",\"stability_ms\":" << snapshot.stability_ms << ",\"rviz_ms\":" << rviz_ms
          << ",\"altitude_envelope_violation\":"
          << (result.altitude_envelope_violation ? "true" : "false")

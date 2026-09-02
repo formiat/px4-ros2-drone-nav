@@ -69,7 +69,6 @@ void ProductionMppiNode::finalizePlanningTick(
   const double esdf_age_ms = finalization.esdf_age_ms;
   const double observation_age_ms = finalization.observation_age_ms;
   const double control_feedback_age_ms = finalization.control_feedback_age_ms;
-  const double snapshot_ms = finalization.snapshot_ms;
   const RouteExecutionStatus3D route_execution_status =
       finalization.route_execution_status;
   const ProductionMppiPlanningState planning_state = finalization.planning_state;
@@ -124,10 +123,22 @@ void ProductionMppiNode::finalizePlanningTick(
                 noncooperative.avoidance.lifecycle_generation);
   }
   ++tick_sequence_;
+  const auto publication_started = std::chrono::steady_clock::now();
   ProductionMppiExecutionPublication execution = publishExecutionHorizon(
       input, result, *world, route_execution, objective, execution_input,
       latest_lidar_evidence, finalization.offboard_session,
       finalization.offboard_session_receive_stamp_ns, planning_state, now_ns);
+  const auto publication_finished = std::chrono::steady_clock::now();
+  const ProductionMppiTickPhaseTimings phases{
+      .snapshot_ms = finalization.snapshot_ms,
+      .controller_ms = finalization.controller_ms,
+      .publication_ms = std::chrono::duration<double, std::milli>(publication_finished -
+                                                                  publication_started)
+                            .count(),
+      .total_ms = std::chrono::duration<double, std::milli>(publication_finished -
+                                                            finalization.tick_started)
+                      .count(),
+  };
   const std::shared_ptr<const ExecutionPlan3D> committed_execution_snapshot =
       execution_supervisor_.plan();
   const CertifiedRouteSuffix3D* const committed_route =
@@ -177,7 +188,7 @@ void ProductionMppiNode::finalizePlanningTick(
   diagnostics_sink_->recordTick(result, planning_state, execution,
                                 liveness.reseed_requested ||
                                     route_progress.local_reseed_requested,
-                                rolling_route);
+                                rolling_route, phases);
 
   const auto stability_started = std::chrono::steady_clock::now();
   const ProductionMppiStability stability = compareWithPrevious(result);
@@ -249,7 +260,7 @@ void ProductionMppiNode::finalizePlanningTick(
       .control_feedback_age_ms = control_feedback_age_ms,
       .route_station_m = route_projection.station_m,
       .route_remaining_m = route_projection.remaining_m,
-      .snapshot_ms = snapshot_ms,
+      .phases = phases,
       .stability_ms = stability_ms,
       .rolling_route = rolling_route,
       .route_projection_valid = route_projection.valid,

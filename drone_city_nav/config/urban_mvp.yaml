@@ -219,7 +219,16 @@ production_mppi_node:
     static_stale_esdf_execution_window_s: 6.0
     no_static_stale_esdf_execution_window_s: 4.0
     maximum_control_feedback_age_ms: 200.0
-    no_static_3d_esdf_update_rate_hz: 1.0
+    # A planned horizon the offboard process has not acknowledged (neither it
+    # nor its immediate predecessor) may be replaced after this grace instead
+    # of only after its expiry.
+    execution_horizon_acknowledgement_grace_ms: 100.0
+    # The observed field is an exact dense distance transform of the local
+    # window; a rebuild is cheap enough to follow the raw world at this rate.
+    no_static_3d_esdf_update_rate_hz: 5.0
+    # Dedicated world-build threads; planner continuations keep
+    # planner_worker_count to themselves.
+    world_worker_count: 2
     no_static_3d_esdf_horizontal_half_extent_m: 20.0
     no_static_3d_esdf_vertical_half_extent_m: 15.0
     no_static_3d_esdf_horizontal_recenter_margin_m: 12.0

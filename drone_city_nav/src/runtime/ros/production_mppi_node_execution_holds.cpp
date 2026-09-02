@@ -180,8 +180,67 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishNoExecutablePathHo
             RouteLifecycleEventKind3D::kRawInvalidated ||
         cycle.route.execution.lifecycle_event->kind ==
             RouteLifecycleEventKind3D::kLatestLidarInvalidated));
-  return publishExecutionRevocation(reason, cycle.controller.now_ns,
-                                    physical_route_invalidation);
+  ProductionMppiExecutionPublication revocation = publishExecutionRevocation(
+      reason, cycle.controller.now_ns, physical_route_invalidation);
+  if (revocation.published ||
+      executionRevocationAllowed(physical_route_invalidation,
+                                 config_.planning.optional_constraints
+                                     .nonphysical_execution_revocation_enabled)) {
+    return revocation;
+  }
+  return residentOwnerContinuation(reason, cycle.controller.now_ns, revocation);
+}
+
+ProductionMppiExecutionPublication ProductionMppiNode::residentOwnerContinuation(
+    const ProductionMppiExecutionReason replacement_failure_reason,
+    const std::int64_t now_ns,
+    const ProductionMppiExecutionPublication& unpublished_revocation) {
+  // A non-physical replacement failure leaves the last committed lease in
+  // force by policy. Report that state honestly: the vehicle keeps executing
+  // the resident planned horizon, nothing was revoked on the wire.
+  const std::shared_ptr<const CommittedExecutionAuthority3D> authority =
+      execution_supervisor_.authority();
+  if (authority == nullptr || !authority->valid()) {
+    return unpublished_revocation;
+  }
+  const ExecutionOwnerIdentity3D& owner = authority->owner();
+  const std::shared_ptr<const ExecutionPlan3D>& plan = authority->plan();
+  if (!owner.valid || owner.execution_mode != ExecutionAuthorityMode3D::kPlanned ||
+      now_ns < owner.valid_from_ns || now_ns >= owner.valid_until_ns ||
+      plan == nullptr) {
+    return unpublished_revocation;
+  }
+  const mppi::FiniteHorizon* resident_horizon{nullptr};
+  if (const FiniteExecutionState3D* const finite = plan->finiteExecution()) {
+    resident_horizon = finite->horizon.get();
+  } else if (const DirectTrackingFiniteExecution3D* const direct =
+                 plan->directTrackingExecution()) {
+    resident_horizon = direct->horizon.get();
+  }
+  if (resident_horizon == nullptr || resident_horizon->controls.empty()) {
+    return unpublished_revocation;
+  }
+  resident_owner_continuation_ticks_.fetch_add(1U, std::memory_order_relaxed);
+  ProductionMppiExecutionPublication continuation;
+  continuation.horizon = resident_horizon->states;
+  continuation.mode = ProductionMppiExecutionMode::kPlanned;
+  continuation.reason = replacement_failure_reason;
+  continuation.planned_control_count = resident_horizon->controls.size();
+  continuation.nominal_prefix_control_count =
+      resident_horizon->nominal_prefix_control_count;
+  continuation.arrival_control_count = resident_horizon->arrival_control_count;
+  continuation.first_control = resident_horizon->controls.front();
+  continuation.first_control_available = true;
+  continuation.resident_owner_continues = true;
+  continuation.terminal_rest_state = true;
+  continuation.published = false;
+  RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "EXECUTION_HORIZON resident_owner_continues=true sequence=%" PRIu64
+      " replacement_failure=%s remaining_lease_ms=%.1f",
+      owner.sequence, productionMppiExecutionReasonName(replacement_failure_reason),
+      static_cast<double>(owner.valid_until_ns - now_ns) * 1.0e-6);
+  return continuation;
 }
 
 ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionRevocation(

@@ -132,19 +132,16 @@ ProductionMppiNode::retainActiveFinitePath(
     return std::nullopt;
   }
 
-  const ProductionMppiHorizonCommitStatus commit_status =
-      commitExecutionSnapshotHorizon(cycle, expected, transition, horizon, nullptr,
-                                     expected, nullptr, prepared.expected_authority);
-  if (commit_status == ProductionMppiHorizonCommitStatus::kRejected) {
+  if (commitExecutionSnapshotHorizon(cycle, expected, transition, horizon, nullptr,
+                                     expected, nullptr, prepared.expected_authority) !=
+      ProductionMppiHorizonCommitStatus::kPublished) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
                          "EXECUTION_RETENTION prepared=false kind=%s "
                          "stage=publication_commit_rejected snapshot_version=%" PRIu64,
                          executionRetentionKind3DName(prepared.kind), expected_version);
     return std::nullopt;
   }
-  const bool published = commit_status == ProductionMppiHorizonCommitStatus::kPublished;
-  const mppi::FiniteHorizon& reported_horizon =
-      published ? *retained_horizon : *resident_horizon;
+  const mppi::FiniteHorizon& reported_horizon = *retained_horizon;
   ProductionMppiExecutionPublication retained;
   retained.horizon = reported_horizon.states;
   retained.mode = ProductionMppiExecutionMode::kPlanned;
@@ -164,9 +161,9 @@ ProductionMppiNode::retainActiveFinitePath(
   retained.latest_lidar_obstacle_receive_time_fallback =
       cycle.evidence.latest_lidar_obstacle_receive_time_fallback;
   retained.retained_previous_finite_path = true;
-  retained.resident_owner_continues = !published;
+  retained.resident_owner_continues = false;
   retained.terminal_rest_state = true;
-  retained.published = published;
+  retained.published = true;
 
   const std::string_view braking_event_name =
       prepared.braking_event.has_value()
@@ -174,14 +171,12 @@ ProductionMppiNode::retainActiveFinitePath(
           : std::string_view{"none"};
   RCLCPP_INFO_THROTTLE(
       get_logger(), *get_clock(), 1000,
-      "EXECUTION_RETENTION retained=true recertified=true kind=%s published=%s "
+      "EXECUTION_RETENTION retained=true recertified=true kind=%s published=true "
       "snapshot_version=%" PRIu64 " trajectory_revision=%" PRIu64
       " braking_event=%.*s actual_state_validation=%s "
       "trajectory_validation=%s",
-      executionRetentionKind3DName(prepared.kind), published ? "true" : "false",
-      published ? transition.next->version : expected_version,
-      published ? prepared.prepared_trajectory_revision
-                : prepared.source_trajectory_revision,
+      executionRetentionKind3DName(prepared.kind), transition.next->version,
+      prepared.prepared_trajectory_revision,
       static_cast<int>(braking_event_name.size()), braking_event_name.data(),
       mppi::finiteExecutionPathStatusName(prepared.actual_state_validation.status),
       mppi::finiteExecutionPathStatusName(prepared.trajectory_validation.status));

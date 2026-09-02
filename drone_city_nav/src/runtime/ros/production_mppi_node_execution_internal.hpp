@@ -14,7 +14,6 @@ namespace drone_city_nav {
 
 enum class ProductionMppiHorizonCommitStatus : std::uint8_t {
   kPublished,
-  kDeferredResidentOwner,
   kRejected,
 };
 

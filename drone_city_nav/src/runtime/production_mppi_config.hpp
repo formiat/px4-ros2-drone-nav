@@ -142,6 +142,11 @@ struct ProductionMppiConfig final {
     double maximum_control_feedback_age_ms{200.0};
     double latest_lidar_obstacle_maximum_age_ms{1000.0};
     double stale_esdf_execution_window_ms{4000.0};
+    // How long an unacknowledged planned lease stays the wire owner before the
+    // planner may replace it anyway. Bounded so one lost feedback sample cannot
+    // stall replanning until the lease expires.
+    double horizon_acknowledgement_grace_ms{100.0};
+    std::int64_t horizon_acknowledgement_grace_ns{100'000'000LL};
     double stationary_hold_validity_s{1.0};
     std::int64_t stationary_hold_validity_ns{1'000'000'000LL};
     std::int64_t mission_goal_capture_hold_validity_ns{0};

@@ -140,6 +140,19 @@ void ProductionMppiNode::onAppliedControl(const msg::MppiControlFeedback& messag
         admission.next_state.latest_session_receive_stamp_ns;
   }
 
+  if (!session_heartbeat) {
+    // Any accepted horizon feedback, owning or not, is a monotonic
+    // acknowledgement of what the controller is executing right now.
+    latest_horizon_acknowledgement_ = ProductionMppiHorizonAcknowledgement{
+        .offboard_producer_instance_id = feedback.producer_instance_id,
+        .horizon_producer_instance_id = feedback.horizon_producer_instance_id,
+        .horizon_sequence = feedback.horizon_sequence,
+        .source_stamp_ns = feedback.source_stamp_ns,
+        .receive_stamp_ns = feedback.receive_stamp_ns,
+        .valid = true,
+    };
+  }
+
   if (session_heartbeat) {
     // Every newer fallback heartbeat revokes the exact applied-control witness.
     // The execution owner itself survives a same-session heartbeat so only a

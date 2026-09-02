@@ -1,4 +1,5 @@
 #include "drone_city_nav/cooperative_traffic_ros.hpp"
+#include "drone_city_nav/execution_horizon_commit_3d.hpp"
 #include "drone_city_nav/navigation_state_prediction.hpp"
 
 #include <chrono>
@@ -87,6 +88,8 @@ void ProductionMppiNode::planningTick() {
   bool applied_control_discontinuity_generation_valid{false};
   OffboardSessionAdmissionState offboard_session;
   std::int64_t offboard_session_receive_stamp_ns{0};
+  ProductionMppiHorizonAcknowledgement horizon_acknowledgement;
+  ProductionMppiHorizonPublicationRecord horizon_publication;
   bool vehicle_status_epoch_stable{false};
   std::optional<ProductionMppiCooperativeCommand> cooperative_command;
   ProductionMppiNonCooperativeTracks noncooperative_tracks;
@@ -112,6 +115,8 @@ void ProductionMppiNode::planningTick() {
         !applied_control_discontinuity_generation_exhausted_;
     offboard_session = offboard_session_admission_;
     offboard_session_receive_stamp_ns = offboard_session_receive_stamp_ns_;
+    horizon_acknowledgement = latest_horizon_acknowledgement_;
+    horizon_publication = latest_horizon_publication_;
     vehicle_status_epoch_stable =
         !vehicle_status_epoch_probation_ && !vehicle_status_revision_exhausted_;
     cooperative_command = cooperative_command_;
@@ -262,19 +267,56 @@ void ProductionMppiNode::planningTick() {
         ProductionMppiExecutionReason::kNoExecutableHorizon, now_ns);
     return;
   }
-  const bool planned_owner_witnessed = appliedControlAuthoritativeForExecution(
+  const char* const owner_witness_failure = appliedControlAuthorityFailure3D(
       applied_control, execution_horizon_owner, now_ns,
       config_.execution.maximum_control_feedback_age_ms);
-  switch (assessPlannedHorizonSupersession(execution_horizon_owner,
-                                           planned_owner_witnessed, now_ns)) {
-    case ProductionMppiHorizonSupersessionDecision::kDeferredAwaitingOwnerWitness:
+  const ProductionMppiHorizonSupersessionDecision supersession =
+      assessPlannedHorizonSupersession(ProductionMppiHorizonSupersessionCheck{
+          .owner = &execution_horizon_owner,
+          .acknowledgement = &horizon_acknowledgement,
+          .owner_witnessed = owner_witness_failure == nullptr,
+          .now_ns = now_ns,
+          .owner_publication_stamp_ns =
+              horizon_publication.sequence == execution_horizon_owner.sequence
+                  ? horizon_publication.publication_stamp_ns
+                  : 0,
+          .acknowledgement_grace_ns =
+              config_.execution.horizon_acknowledgement_grace_ns,
+          .maximum_acknowledgement_age_ns = static_cast<std::int64_t>(
+              config_.execution.maximum_control_feedback_age_ms * 1.0e6),
+      });
+  switch (supersession) {
+    case ProductionMppiHorizonSupersessionDecision::kDeferredAwaitingAcknowledgement:
+      horizon_supersession_deferrals_.fetch_add(1U, std::memory_order_relaxed);
       RCLCPP_INFO_THROTTLE(
           get_logger(), *get_clock(), 1000,
-          "EXECUTION_HORIZON_SUPERSESSION deferred=true reason=awaiting_owner_witness "
-          "producer=%" PRIu64 " sequence=%" PRIu64,
+          "EXECUTION_HORIZON_SUPERSESSION deferred=true "
+          "reason=awaiting_acknowledgement witness_failure=%s "
+          "producer=%" PRIu64 " sequence=%" PRIu64 " acknowledged_sequence=%" PRIu64
+          " acknowledgement_age_ms=%.1f owner_age_ms=%.1f",
+          owner_witness_failure != nullptr ? owner_witness_failure : "none",
           execution_horizon_owner.producer_instance_id,
-          execution_horizon_owner.sequence);
+          execution_horizon_owner.sequence,
+          horizon_acknowledgement.valid ? horizon_acknowledgement.horizon_sequence : 0U,
+          horizon_acknowledgement.valid
+              ? static_cast<double>(now_ns - horizon_acknowledgement.receive_stamp_ns) *
+                    1.0e-6
+              : -1.0,
+          static_cast<double>(now_ns - execution_horizon_owner.valid_from_ns) * 1.0e-6);
       return;
+    case ProductionMppiHorizonSupersessionDecision::kAllowedAcknowledgementGraceElapsed:
+      horizon_supersession_grace_replacements_.fetch_add(1U, std::memory_order_relaxed);
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "EXECUTION_HORIZON_SUPERSESSION allowed=true "
+          "reason=acknowledgement_grace_elapsed witness_failure=%s "
+          "producer=%" PRIu64 " sequence=%" PRIu64 " acknowledged_sequence=%" PRIu64,
+          owner_witness_failure != nullptr ? owner_witness_failure : "none",
+          execution_horizon_owner.producer_instance_id,
+          execution_horizon_owner.sequence,
+          horizon_acknowledgement.valid ? horizon_acknowledgement.horizon_sequence
+                                        : 0U);
+      break;
     case ProductionMppiHorizonSupersessionDecision::kRejectedOwnerNotCurrent:
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 1000,
@@ -295,6 +337,7 @@ void ProductionMppiNode::planningTick() {
       break;
     case ProductionMppiHorizonSupersessionDecision::kAllowedNoPlannedOwner:
     case ProductionMppiHorizonSupersessionDecision::kAllowedWitnessedOwner:
+    case ProductionMppiHorizonSupersessionDecision::kAllowedAcknowledgedPredecessor:
       break;
   }
   if (execution_input_capture_sequence_ == std::numeric_limits<std::uint64_t>::max()) {
@@ -516,6 +559,7 @@ void ProductionMppiNode::planningTick() {
   const double snapshot_ms = std::chrono::duration<double, std::milli>(
                                  std::chrono::steady_clock::now() - snapshot_started)
                                  .count();
+  const auto controller_started = std::chrono::steady_clock::now();
   std::optional<MppiControllerResult3D> controller_tick =
       runPlanningController(ProductionMppiControllerTick{
           .world = *world,
@@ -525,6 +569,10 @@ void ProductionMppiNode::planningTick() {
           .route_cross_track_m = planning.route.projection.cross_track_m,
           .direct_tracking_interception = direct_tracking_interception,
       });
+  const double controller_ms =
+      std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                controller_started)
+          .count();
   if (!controller_tick.has_value()) {
     return;
   }
@@ -569,6 +617,8 @@ void ProductionMppiNode::planningTick() {
       .observation_age_ms = observation_age_ms,
       .control_feedback_age_ms = control_feedback_age_ms,
       .snapshot_ms = snapshot_ms,
+      .controller_ms = controller_ms,
+      .tick_started = snapshot_started,
       .route_execution_status = planning.route.execution_status,
       .planning_state = planning.controller.planning_state,
       .previous_control_source = execution_input_preparation.previous_control_source,

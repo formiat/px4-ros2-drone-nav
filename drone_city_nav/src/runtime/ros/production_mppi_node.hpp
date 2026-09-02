@@ -281,6 +281,9 @@ private:
   [[nodiscard]] ProductionMppiExecutionPublication
   publishExecutionRevocation(ProductionMppiExecutionReason reason, std::int64_t now_ns,
                              bool physical_route_invalidation = false);
+  [[nodiscard]] ProductionMppiExecutionPublication residentOwnerContinuation(
+      ProductionMppiExecutionReason replacement_failure_reason, std::int64_t now_ns,
+      const ProductionMppiExecutionPublication& unpublished_revocation);
   [[nodiscard]] bool handleRequestedExecutionRevocation(std::int64_t now_ns);
   void publishFailClosedExecutionRevocation(ProductionMppiExecutionReason reason,
                                             std::int64_t now_ns);
@@ -372,6 +375,15 @@ private:
   std::uint64_t tick_sequence_{0U};
   std::uint64_t execution_horizon_sequence_{0U};
   std::uint64_t execution_horizon_producer_instance_id_{0U};
+  ProductionMppiHorizonPublicationRecord latest_horizon_publication_{};
+  // Newest planned-horizon identity the current offboard process reported.
+  // Guarded by the input scope; replaced by every accepted horizon feedback.
+  ProductionMppiHorizonAcknowledgement latest_horizon_acknowledgement_{};
+  std::atomic<std::uint64_t> horizon_publications_{0U};
+  std::atomic<std::uint64_t> horizon_commit_rejections_{0U};
+  std::atomic<std::uint64_t> horizon_supersession_deferrals_{0U};
+  std::atomic<std::uint64_t> horizon_supersession_grace_replacements_{0U};
+  std::atomic<std::uint64_t> resident_owner_continuation_ticks_{0U};
   std::uint64_t navigation_health_producer_instance_id_{0U};
   std::uint64_t navigation_health_sequence_{0U};
   std::optional<NavigationHealthAssessment> last_navigation_health_assessment_;

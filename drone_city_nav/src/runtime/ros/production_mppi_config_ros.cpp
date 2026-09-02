@@ -193,6 +193,8 @@ private:
     execution.maximum_pose_age_ms = declare<double>("maximum_pose_age_ms", 150.0);
     execution.maximum_vehicle_status_age_ms =
         declare<double>("maximum_vehicle_status_age_ms", 1000.0);
+    execution.horizon_acknowledgement_grace_ms =
+        declare<double>("execution_horizon_acknowledgement_grace_ms", 100.0);
     execution.maximum_pose_prediction_age_ms =
         declare<double>("maximum_pose_prediction_age_ms", 1000.0);
     execution.maximum_control_feedback_age_ms =
@@ -771,6 +773,9 @@ void ProductionMppiConfigLoader::finalize() {
       .stop_speed_mps = planning.mission_waypoint_sequence.stop_speed_mps,
       .stop_hold_s = planning.mission_waypoint_sequence.stop_hold_s,
       .maximum_pose_age_s = execution.maximum_pose_age_ms * 1.0e-3,
+  execution.horizon_acknowledgement_grace_ns =
+      durationNanoseconds(execution.horizon_acknowledgement_grace_ms * 1.0e-3,
+                          "execution_horizon_acknowledgement_grace_ms", true);
       .maximum_vehicle_status_age_s = execution.maximum_vehicle_status_age_ms * 1.0e-3,
       .maximum_feedback_age_s = execution.maximum_control_feedback_age_ms * 1.0e-3,
   };

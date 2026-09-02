@@ -325,7 +325,7 @@ TEST(ExecutionSupervisorHorizon3DTest,
 }
 
 TEST(ExecutionSupervisorHorizon3DTest,
-     NavigationAndControlWitnessMustOwnTheExactExecutionInput) {
+     NavigationLineageAndControlEvidenceGateTheExecutionInput) {
   SnapshotFixture3D fixture;
   ExecutionSupervisor3D supervisor;
   const std::shared_ptr<const CommittedExecutionAuthority3D> authority =
@@ -335,15 +335,70 @@ TEST(ExecutionSupervisorHorizon3DTest,
       activeTransition(*authority->plan(), fixture);
   ASSERT_TRUE(transition.applied());
   ExecutionHorizonCommitRequest3D request = transitionRequest(authority, transition);
-  ++request.navigation.pose_revision;
 
+  // Navigation that regressed below the captured input is not a lineage the
+  // input can be published against.
+  --request.navigation.pose_revision;
   EXPECT_EQ(supervisor.commitHorizon(request).status,
             ExecutionHorizonCommitStatus3D::kExecutionInputNotCurrent);
-  --request.navigation.pose_revision;
+  ++request.navigation.pose_revision;
   request.navigation.measured_acceleration_authoritative = false;
   EXPECT_EQ(supervisor.commitHorizon(request).status,
             ExecutionHorizonCommitStatus3D::kControlEvidenceNotCurrent);
   EXPECT_EQ(supervisor.authority(), authority);
+
+  // Newer navigation samples of the same lineage do not invalidate the input;
+  // its age is bounded by the validation policy, not by exact identity.
+  request.navigation.measured_acceleration_authoritative = true;
+  request.navigation.pose_revision += 3U;
+  request.navigation.source_timestamp_us += 40'000U;
+  request.navigation.receive_stamp_ns += 40'000'000;
+  request.navigation.measured_control_source_sequence += 40'000U;
+  request.navigation.measured_control_receive_stamp_ns += 40'000'000;
+  const ExecutionHorizonCommitResult3D committed = supervisor.commitHorizon(request);
+  EXPECT_EQ(committed.status, ExecutionHorizonCommitStatus3D::kCommitted);
+  EXPECT_NE(supervisor.authority(), authority);
+}
+
+TEST(ExecutionSupervisorHorizon3DTest, NamesTheFirstFailingAppliedControlPredicate) {
+  ExecutionOwnerIdentity3D owner{
+      .valid_from_ns = 1'000'000'000,
+      .valid_until_ns = 5'000'000'000,
+      .producer_instance_id = 17U,
+      .target_offboard_instance_id = 23U,
+      .sequence = 31U,
+      .execution_mode = ExecutionAuthorityMode3D::kPlanned,
+      .valid = true,
+  };
+  AppliedControlEvidence3D control{
+      .source_stamp_ns = 1'500'000'000,
+      .receive_stamp_ns = 1'500'000'000,
+      .producer_instance_id = 23U,
+      .horizon_producer_instance_id = 17U,
+      .horizon_sequence = 31U,
+      .content_fingerprint = 7U,
+      .execution_mode = ExecutionAuthorityMode3D::kPlanned,
+      .yaw_acceleration_authoritative = true,
+      .control_authoritative = true,
+      .valid = true,
+  };
+  const std::int64_t now_ns = 1'520'000'000;
+  EXPECT_EQ(appliedControlAuthorityFailure3D(control, owner, now_ns, 200.0), nullptr);
+  EXPECT_TRUE(appliedControlAuthoritativeForExecution3D(control, owner, now_ns, 200.0));
+
+  control.horizon_sequence = 30U;
+  EXPECT_STREQ(appliedControlAuthorityFailure3D(control, owner, now_ns, 200.0),
+               "horizon_sequence_mismatch");
+  control.horizon_sequence = 31U;
+  EXPECT_STREQ(
+      appliedControlAuthorityFailure3D(control, owner, now_ns + 300'000'000, 200.0),
+      "control_source_stale");
+  control.valid = false;
+  EXPECT_STREQ(appliedControlAuthorityFailure3D(control, owner, now_ns, 200.0),
+               "control_evidence_empty");
+  owner.valid = false;
+  EXPECT_STREQ(appliedControlAuthorityFailure3D(control, owner, now_ns, 200.0),
+               "owner_invalid");
 }
 
 } // namespace

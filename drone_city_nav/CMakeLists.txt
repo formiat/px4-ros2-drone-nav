@@ -755,7 +755,6 @@ target_include_directories(
 target_link_libraries(drone_city_nav_world_runtime PUBLIC drone_city_nav_planning)
 
 set(DRONE_CITY_NAV_ROUTE_RUNTIME_SOURCES
-    src/route_application/execution_publication_navigation_rebase_3d.cpp
     src/route_application/production_mppi_route_execution.cpp
     src/route_application/production_mppi_route_helpers.cpp
     src/route_application/route_activation_coordinator_3d.cpp
@@ -2071,17 +2070,6 @@ if(BUILD_TESTING)
   target_link_libraries(execution_publication_currentness_3d_test
                         drone_city_nav_core)
   enable_project_warnings(execution_publication_currentness_3d_test)
-
-  ament_add_gtest(
-    execution_publication_navigation_rebase_3d_test
-    tests/execution_publication_navigation_rebase_3d_test.cpp)
-  target_compile_features(execution_publication_navigation_rebase_3d_test
-                          PRIVATE cxx_std_20)
-  target_include_directories(execution_publication_navigation_rebase_3d_test
-                             PRIVATE tests)
-  target_link_libraries(execution_publication_navigation_rebase_3d_test
-                        drone_city_nav_route_runtime)
-  enable_project_warnings(execution_publication_navigation_rebase_3d_test)
 
   ament_add_gtest(rolling_route_telemetry_3d_test
                   tests/rolling_route_telemetry_3d_test.cpp)

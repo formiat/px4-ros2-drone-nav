@@ -6,13 +6,10 @@
 #include <limits>
 #include <memory>
 #include <mutex>
-#include <optional>
 #include <span>
 #include <utility>
 
-#include "execution_publication_navigation_rebase_3d.hpp"
 #include "production_mppi_node_execution_internal.hpp"
-#include "production_mppi_node_planning_tick_rearm.hpp"
 #include "raw_world_ingress_ros_3d.hpp"
 
 namespace drone_city_nav {
@@ -130,39 +127,6 @@ bool appendFiniteExecutionPoints(msg::MppiTrajectoryHorizon& horizon,
 
 namespace {
 
-struct FiniteExecutionEvidenceView {
-  const mppi::FiniteHorizon* horizon{nullptr};
-  const VersionedExecutionInput3D* execution_input{nullptr};
-  std::int64_t valid_until_ns{0};
-  std::int64_t control_interval_ns{0};
-};
-
-template<typename Execution>
-[[nodiscard]] std::optional<FiniteExecutionEvidenceView>
-finiteExecutionArtifactEvidenceView(const Execution& execution) noexcept {
-  if (execution.horizon == nullptr || execution.execution_input == nullptr) {
-    return std::nullopt;
-  }
-  return FiniteExecutionEvidenceView{
-      .horizon = execution.horizon.get(),
-      .execution_input = execution.execution_input.get(),
-      .valid_until_ns = execution.valid_until_ns,
-      .control_interval_ns = execution.control_interval_ns,
-  };
-}
-
-[[nodiscard]] std::optional<FiniteExecutionEvidenceView>
-finiteExecutionEvidenceView(const ExecutionPlan3D& snapshot) noexcept {
-  if (const FiniteExecutionState3D* const execution = snapshot.finiteExecution()) {
-    return finiteExecutionArtifactEvidenceView(*execution);
-  }
-  if (const DirectTrackingFiniteExecution3D* const execution =
-          snapshot.directTrackingExecution()) {
-    return finiteExecutionArtifactEvidenceView(*execution);
-  }
-  return std::nullopt;
-}
-
 [[nodiscard]] const char* executionControlEvidenceSourceName(
     const ExecutionPreviousControlEvidenceSource3D source) noexcept {
   switch (source) {
@@ -200,9 +164,10 @@ ProductionMppiNode::makeExecutionHorizon(const ProductionMppiExecutionCycle& cyc
   horizon.header.frame_id = config_.world.frame_id;
   horizon.producer_instance_id = execution_horizon_producer_instance_id_;
   horizon.target_offboard_instance_id = cycle.evidence.target_offboard_instance_id;
-  if (execution_horizon_sequence_ != std::numeric_limits<std::uint64_t>::max()) {
-    horizon.sequence = ++execution_horizon_sequence_;
-  }
+  // The wire sequence is allocated by the commit that publishes this horizon.
+  // A candidate that never commits must not consume a number the controller
+  // will then never see.
+  horizon.sequence = 0U;
   horizon.valid_from =
       production_mppi_execution_detail::timeFromNanoseconds(cycle.controller.now_ns);
   horizon.valid_until =
@@ -225,27 +190,35 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
     const ProductionMppiExecutionCycle& cycle,
     const msg::MppiTrajectoryHorizon& horizon,
     ExecutionHorizonLeaseCandidate3D candidate) {
-  using production_mppi_execution_detail::sameControl;
   using production_mppi_execution_detail::timeToNanoseconds;
   const auto report_commit_failure = [this](const char* const stage) {
+    horizon_commit_rejections_.fetch_add(1U, std::memory_order_relaxed);
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
                          "EXECUTION_HORIZON_COMMIT committed=false stage=%s", stage);
   };
 
-  msg::MppiTrajectoryHorizon publication_horizon = horizon;
-  std::shared_ptr<const VersionedExecutionInput3D> publication_execution_input =
+  const std::shared_ptr<const VersionedExecutionInput3D>& publication_execution_input =
       cycle.evidence.execution_input;
-  std::optional<ExecutionRouteTransitionResult3D> rebased_transition;
-  if (publication_execution_input == nullptr || !publication_execution_input->valid() ||
-      assessExecutionHorizonPayload(
+  if (publication_execution_input == nullptr || !publication_execution_input->valid()) {
+    report_commit_failure("invalid_execution_input");
+    return ProductionMppiHorizonCommitStatus::kRejected;
+  }
+  const auto input_lock = evidence_boundary_.input();
+  if (execution_horizon_sequence_ == std::numeric_limits<std::uint64_t>::max()) {
+    report_commit_failure("horizon_sequence_exhausted");
+    return ProductionMppiHorizonCommitStatus::kRejected;
+  }
+  msg::MppiTrajectoryHorizon publication_horizon = horizon;
+  publication_horizon.sequence = execution_horizon_sequence_ + 1U;
+  if (assessExecutionHorizonPayload(
           publication_horizon, ExecutionHorizonPayloadValidationConfig{
                                    .expected_frame_id = config_.world.frame_id,
                                    .flight_envelope = &config_.world.flight_envelope,
                                }) != ExecutionHorizonPayloadStatus::kValid) {
-    report_commit_failure("invalid_input_or_payload");
+    report_commit_failure("invalid_payload");
     return ProductionMppiHorizonCommitStatus::kRejected;
   }
-  ExecutionOwnerIdentity3D owner{
+  const ExecutionOwnerIdentity3D owner{
       .route_target =
           Point3{publication_horizon.route_target.x, publication_horizon.route_target.y,
                  publication_horizon.route_target.z},
@@ -264,26 +237,14 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
           static_cast<ExecutionAuthorityReason3D>(publication_horizon.execution_reason),
       .stationary_position_hold = publication_horizon.stationary_position_hold,
   };
-  const auto input_lock = evidence_boundary_.input();
   const std::shared_ptr<const CommittedExecutionAuthority3D>
       resident_execution_authority = execution_supervisor_.authority();
-  const bool control_evidence_only_authority_successor =
-      isControlEvidenceOnlyAuthoritySuccessor3D(candidate.expected_authority,
-                                                resident_execution_authority);
-  if (control_evidence_only_authority_successor) {
+  if (isControlEvidenceOnlyAuthoritySuccessor3D(candidate.expected_authority,
+                                                resident_execution_authority)) {
+    // Feedback installed or cleared since capture does not change the plan,
+    // lease, or input this candidate was prepared against.
     candidate.expected_authority = resident_execution_authority;
   }
-  const bool resident_authority_current =
-      resident_execution_authority != nullptr &&
-      resident_execution_authority->valid() &&
-      resident_execution_authority == candidate.expected_authority &&
-      resident_execution_authority->plan() == candidate.expected_plan;
-  const AppliedControlEvidence3D resident_control =
-      resident_execution_authority != nullptr ? resident_execution_authority->control()
-                                              : AppliedControlEvidence3D{};
-  const ExecutionOwnerIdentity3D resident_owner =
-      resident_execution_authority != nullptr ? resident_execution_authority->owner()
-                                              : ExecutionOwnerIdentity3D{};
   const std::int64_t publication_now_ns = get_clock()->now().nanoseconds();
   const bool vehicle_status_epoch_stable =
       !vehicle_status_epoch_probation_ && !vehicle_status_revision_exhausted_;
@@ -307,260 +268,6 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
           cycle.evidence.offboard_session_receive_stamp_ns,
           owner.target_offboard_instance_id, publication_now_ns,
           config_.execution.maximum_control_feedback_age_ms);
-  const bool navigation_advanced =
-      navigation_.revision != publication_execution_input->poseRevision() ||
-      navigation_.source_timestamp_us !=
-          publication_execution_input->poseSourceTimestampUs() ||
-      navigation_.receive_stamp_ns != publication_execution_input->poseReceiveStampNs();
-  const bool previous_control_evidence_current = [&]() noexcept {
-    switch (publication_execution_input->previousControlSource()) {
-      case ExecutionPreviousControlEvidenceSource3D::kOffboardFeedback:
-        return appliedControlAuthoritativeForExecution(
-                   resident_control, resident_owner, publication_now_ns,
-                   config_.execution.maximum_control_feedback_age_ms) &&
-               resident_control.horizon_producer_instance_id ==
-                   publication_execution_input
-                       ->previousControlSourceProducerInstanceId() &&
-               resident_control.horizon_sequence ==
-                   publication_execution_input->previousControlSourceSequence() &&
-               resident_control.source_stamp_ns ==
-                   publication_execution_input->previousControlSourceStampNs() &&
-               resident_control.receive_stamp_ns ==
-                   publication_execution_input->previousControlReceiveStampNs() &&
-               sameControl(resident_control.control,
-                           publication_execution_input->previousControl());
-      case ExecutionPreviousControlEvidenceSource3D::kMeasuredAcceleration:
-        return navigation_.measured_acceleration_valid &&
-               navigation_.source_timestamp_us ==
-                   publication_execution_input->previousControlSourceSequence() &&
-               navigation_.receive_stamp_ns ==
-                   publication_execution_input->previousControlSourceStampNs() &&
-               navigation_.receive_stamp_ns ==
-                   publication_execution_input->previousControlReceiveStampNs() &&
-               sameControl(navigation_.measured_equivalent_control,
-                           publication_execution_input->previousControl());
-      case ExecutionPreviousControlEvidenceSource3D::kAssumedZero:
-        // Stationary capture has its own exact empty-owner commit contract below.
-        return true;
-      case ExecutionPreviousControlEvidenceSource3D::kUnknown:
-      case ExecutionPreviousControlEvidenceSource3D::kEngineFallback:
-        return false;
-    }
-    return false;
-  }();
-  const bool execution_input_advanced =
-      resident_authority_current &&
-      (navigation_advanced || !previous_control_evidence_current);
-  if (execution_input_advanced) {
-    bool late_rebase_candidate_rejected{false};
-    std::size_t late_rebase_source_control_index{0U};
-    const auto rebase_for_current_navigation = [&]() -> const char* {
-      const bool planned_snapshot_transition =
-          publication_horizon.execution_mode ==
-              msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED &&
-          (candidate.kind == ExecutionHorizonCommitKind3D::kTransition ||
-           candidate.kind == ExecutionHorizonCommitKind3D::kPendingTransition) &&
-          candidate.expected_plan != nullptr && candidate.transition != nullptr &&
-          candidate.transition->applied() && candidate.transition->next != nullptr;
-      if (!planned_snapshot_transition) {
-        return "navigation_advanced_without_rebase_contract";
-      }
-      if (execution_input_capture_sequence_ ==
-          std::numeric_limits<std::uint64_t>::max()) {
-        return "late_rebase_input_sequence_exhausted";
-      }
-      const ProductionMppiExecutionInputPreparation current_input_preparation =
-          prepareExecutionInputForPlanningTick(
-              navigation_, resident_execution_authority,
-              ++execution_input_capture_sequence_, publication_now_ns,
-              config_.execution.maximum_control_feedback_age_ms, false, false);
-      const std::shared_ptr<const VersionedExecutionInput3D>& current_input =
-          current_input_preparation.execution_input;
-      if (!current_input_preparation.previous_control_available ||
-          current_input == nullptr || !current_input->valid() ||
-          !current_input->nominalStateAuthoritative()) {
-        return "late_rebase_execution_input_unavailable";
-      }
-
-      const std::shared_ptr<const VersionedLatestLidarEvidence3D> current_lidar =
-          latest_lidar_evidence_.load(std::memory_order_acquire);
-      const std::shared_ptr<const VersionedObservedRawWorld3D> current_raw =
-          committed_3d != nullptr ? committed_3d->authoritativeOwner() : nullptr;
-      ExecutionPublicationNavigationRebaseResult3D rebase =
-          rebaseExecutionPublicationForCurrentNavigation3D(
-              ExecutionPublicationNavigationRebaseRequest3D{
-                  .expected_snapshot = candidate.expected_plan.get(),
-                  .certification_snapshot = candidate.certification_plan.get(),
-                  .progress_preparation = candidate.progress_preparation.get(),
-                  .candidate_snapshot = candidate.transition->next.get(),
-                  .expected_pending = candidate.expected_pending.get(),
-                  .lifecycle_event =
-                      cycle.route.execution.lifecycle_event.has_value()
-                          ? std::addressof(*cycle.route.execution.lifecycle_event)
-                          : nullptr,
-                  .current_execution_input = current_input,
-                  .current_lidar_evidence = current_lidar,
-                  .current_observed_raw_world = current_raw,
-                  .publication_now_ns = publication_now_ns,
-                  .arrival_search_step_controls =
-                      cycle.controller.arrival_search_step_controls,
-                  .finite_horizon_config = &config_.execution.finite_horizon,
-                  .terminal_boundary =
-                      cycle.evidence.execution_path_world.terminal_boundary,
-              });
-      late_rebase_source_control_index = rebase.source_control_index;
-      if (!rebase.rebased() || !rebase.transition.has_value() ||
-          rebase.transition->next == nullptr) {
-        late_rebase_candidate_rejected = true;
-        const double input_pose_age_ms =
-            evidenceAgeMs(publication_now_ns, current_input->poseReceiveStampNs());
-        const double input_control_age_ms = evidenceAgeMs(
-            publication_now_ns, current_input->previousControlReceiveStampNs());
-        const LatestLidarEvidenceFreshness3D lidar_freshness =
-            assessLatestLidarEvidenceFreshness3D(
-                *current_lidar, publication_now_ns,
-                candidate.transition->next->route() != nullptr
-                    ? candidate.transition->next->route()
-                          ->validation_policy->latestLidarMaximumAgeMs()
-                    : config_.execution.latest_lidar_obstacle_maximum_age_ms);
-        RCLCPP_WARN_THROTTLE(
-            get_logger(), *get_clock(), 1000,
-            "EXECUTION_HORIZON_REBASE rebased=false status=%s path_validation=%s "
-            "route_certification=%.*s route_adherence=%.*s "
-            "source_control_index=%zu route_adherence_state_index=%zu "
-            "route_adherence_failure_distance_m=%.3f transition=%.*s "
-            "input_control_source=%s input_pose_age_ms=%.3f "
-            "input_control_age_ms=%.3f input_pose_maximum_age_ms=%.3f "
-            "input_control_maximum_age_ms=%.3f lidar_age_ms=%.3f lidar_fresh=%s",
-            executionPublicationNavigationRebaseStatus3DName(rebase.status),
-            mppi::finiteExecutionPathStatusName(rebase.path_validation_status),
-            static_cast<int>(finiteExecutionCertificationStatus3DName(
-                                 rebase.route_certification_status)
-                                 .size()),
-            finiteExecutionCertificationStatus3DName(rebase.route_certification_status)
-                .data(),
-            static_cast<int>(
-                finiteExecutionRouteAdherenceStatus3DName(rebase.route_adherence_status)
-                    .size()),
-            finiteExecutionRouteAdherenceStatus3DName(rebase.route_adherence_status)
-                .data(),
-            rebase.source_control_index, rebase.route_adherence_failure_state_index,
-            rebase.route_adherence_failure_distance_m,
-            static_cast<int>(
-                executionRouteTransitionStatus3DName(rebase.transition_status).size()),
-            executionRouteTransitionStatus3DName(rebase.transition_status).data(),
-            executionControlEvidenceSourceName(current_input->previousControlSource()),
-            input_pose_age_ms, input_control_age_ms,
-            candidate.transition->next->route() != nullptr
-                ? candidate.transition->next->route()
-                      ->validation_policy->executionInputMaximumPoseAgeMs()
-                : -1.0,
-            candidate.transition->next->route() != nullptr
-                ? candidate.transition->next->route()
-                      ->validation_policy->executionInputMaximumControlAgeMs()
-                : -1.0,
-            lidar_freshness.age_ms, lidar_freshness.fresh ? "true" : "false");
-        return executionPublicationNavigationRebaseStatus3DName(rebase.status);
-      }
-      ExecutionRouteTransitionResult3D current_transition =
-          std::move(*rebase.transition);
-
-      const std::optional<FiniteExecutionEvidenceView> rebased_view =
-          finiteExecutionEvidenceView(*current_transition.next);
-      if (!rebased_view.has_value() || rebased_view->horizon == nullptr ||
-          rebased_view->execution_input == nullptr) {
-        return "late_rebase_transition_invalid";
-      }
-      publication_horizon.points.clear();
-      publication_horizon.valid_from =
-          production_mppi_execution_detail::timeFromNanoseconds(publication_now_ns);
-      const std::int64_t rebased_valid_until_ns = rebased_view->valid_until_ns;
-      publication_horizon.valid_until =
-          production_mppi_execution_detail::timeFromNanoseconds(rebased_valid_until_ns);
-      publication_horizon.pose_revision = navigation_.revision;
-      publication_horizon.control_interval_ns = rebased_view->control_interval_ns;
-      if (!production_mppi_execution_detail::appendFiniteExecutionPoints(
-              publication_horizon, rebased_view->horizon->states,
-              rebased_view->horizon->controls, current_input->previousControl(),
-              rebased_view->control_interval_ns) ||
-          assessExecutionHorizonPayload(
-              publication_horizon,
-              ExecutionHorizonPayloadValidationConfig{
-                  .expected_frame_id = config_.world.frame_id,
-                  .flight_envelope = &config_.world.flight_envelope,
-              }) != ExecutionHorizonPayloadStatus::kValid) {
-        return "late_rebase_payload_invalid";
-      }
-      publication_execution_input = current_input;
-      rebased_transition.emplace(std::move(current_transition));
-      candidate.transition =
-          std::make_shared<const ExecutionRouteTransitionResult3D>(*rebased_transition);
-      owner.valid_from_ns = publication_now_ns;
-      owner.valid_until_ns = rebased_valid_until_ns;
-      return nullptr;
-    };
-    if (const char* const rebase_failure = rebase_for_current_navigation();
-        rebase_failure != nullptr) {
-      report_commit_failure(rebase_failure);
-      const ExecutionPlan3D* const retained_candidate =
-          candidate.transition != nullptr && candidate.transition->next != nullptr
-              ? candidate.transition->next.get()
-              : nullptr;
-      const bool retained_execution =
-          retained_candidate != nullptr &&
-          ((retained_candidate->finiteExecution() != nullptr &&
-            retained_candidate->finiteExecution()->kind ==
-                FiniteExecutionKind3D::kRetained) ||
-           (retained_candidate->directTrackingExecution() != nullptr &&
-            retained_candidate->directTrackingExecution()->kind ==
-                FiniteExecutionKind3D::kRetained));
-      const bool resident_owner_witnessed = appliedControlAuthoritativeForExecution(
-          resident_control, resident_owner, publication_now_ns,
-          config_.execution.maximum_control_feedback_age_ms);
-      const bool no_revocation_pending =
-          requested_execution_revocation_.load(std::memory_order_acquire) ==
-          handled_execution_revocation_request_;
-      const bool exact_resident_snapshot =
-          candidate.expected_plan != nullptr &&
-          resident_execution_authority->plan() == candidate.expected_plan;
-      const bool resident_execution_owner_matches =
-          candidate.expected_plan != nullptr &&
-          resident_owner.execution_owner_epoch ==
-              candidate.expected_plan->execution_owner_epoch;
-      const bool resident_owner_may_continue =
-          canContinueResidentPlannedOwner(ProductionMppiResidentOwnerContinuationCheck{
-              .owner = &resident_owner,
-              .now_ns = publication_now_ns,
-              .retained_candidate = retained_execution,
-              .exact_snapshot_current = exact_resident_snapshot,
-              .execution_owner_matches = resident_execution_owner_matches,
-              .revocation_pending = !no_revocation_pending,
-              .owner_witnessed = resident_owner_witnessed,
-          });
-      if (late_rebase_candidate_rejected && resident_owner_may_continue) {
-        // The retained replacement lost only the final navigation race. The
-        // exact resident snapshot is still owned by a current, witnessed wire
-        // lease, so leave that immutable lease in force and retry next tick.
-        // No new snapshot or horizon is published on this disposition.
-        RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
-                             "EXECUTION_HORIZON_COMMIT committed=false deferred=true "
-                             "stage=%s resident_sequence=%" PRIu64,
-                             rebase_failure, resident_owner.sequence);
-        return ProductionMppiHorizonCommitStatus::kDeferredResidentOwner;
-      }
-      return ProductionMppiHorizonCommitStatus::kRejected;
-    }
-    RCLCPP_INFO_THROTTLE(
-        get_logger(), *get_clock(), 1000,
-        "EXECUTION_HORIZON_COMMIT late_rebase=true source_pose_revision=%" PRIu64
-        " publication_pose_revision=%" PRIu64
-        " source_control_index=%zu control_evidence_advanced=%s "
-        "authority_control_successor=%s",
-        cycle.evidence.execution_input->poseRevision(),
-        publication_execution_input->poseRevision(), late_rebase_source_control_index,
-        previous_control_evidence_current ? "false" : "true",
-        control_evidence_only_authority_successor ? "true" : "false");
-  }
   const std::shared_ptr<const VersionedLatestLidarEvidence3D> current_lidar =
       latest_lidar_evidence_.load(std::memory_order_acquire);
   candidate.owner = owner;
@@ -622,21 +329,51 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
       break;
   }
   if (!committed.committed()) {
+    if (committed.status ==
+        ExecutionHorizonCommitStatus3D::kOffboardSessionNotCurrent) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "EXECUTION_HORIZON_COMMIT offboard_session=%s session_source_age_ms=%.1f "
+          "session_receive_age_ms=%.1f maximum_age_ms=%.1f",
+          offboardSessionPublicationCurrentnessStatusName(offboard_currentness),
+          static_cast<double>(publication_now_ns -
+                              offboard_session_admission_.latest_source_stamp_ns) *
+              1.0e-6,
+          static_cast<double>(publication_now_ns - offboard_session_receive_stamp_ns_) *
+              1.0e-6,
+          config_.execution.maximum_control_feedback_age_ms);
+    }
     report_commit_failure(executionHorizonCommitStatus3DName(committed.status));
     return ProductionMppiHorizonCommitStatus::kRejected;
   }
+  execution_horizon_sequence_ = publication_horizon.sequence;
+  latest_horizon_publication_ = ProductionMppiHorizonPublicationRecord{
+      .sequence = publication_horizon.sequence,
+      .publication_stamp_ns = publication_now_ns,
+  };
   if (committed.replaced_applied_control) {
     recordAppliedControlDiscontinuityLocked();
   }
   execution_horizon_pub_->publish(publication_horizon);
-  RCLCPP_INFO(get_logger(),
-              "EXECUTION_HORIZON published=true producer=%" PRIu64 " sequence=%" PRIu64
-              " mode=%s",
-              publication_horizon.producer_instance_id, publication_horizon.sequence,
-              publication_horizon.execution_mode ==
-                      msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED
-                  ? "planned"
-                  : "non_planned");
+  horizon_publications_.fetch_add(1U, std::memory_order_relaxed);
+  RCLCPP_INFO(
+      get_logger(),
+      "EXECUTION_HORIZON published=true producer=%" PRIu64 " sequence=%" PRIu64
+      " mode=%s previous_control=%s input_pose_age_ms=%.1f "
+      "input_control_age_ms=%.1f capture_to_publication_ms=%.1f",
+      publication_horizon.producer_instance_id, publication_horizon.sequence,
+      publication_horizon.execution_mode ==
+              msg::MppiTrajectoryHorizon::EXECUTION_MODE_PLANNED
+          ? "planned"
+          : "non_planned",
+      executionControlEvidenceSourceName(
+          publication_execution_input->previousControlSource()),
+      evidenceAgeMs(publication_now_ns,
+                    publication_execution_input->poseReceiveStampNs()),
+      evidenceAgeMs(publication_now_ns,
+                    publication_execution_input->previousControlReceiveStampNs()),
+      evidenceAgeMs(publication_now_ns,
+                    publication_execution_input->effectiveStampNs()));
   return ProductionMppiHorizonCommitStatus::kPublished;
 }
 

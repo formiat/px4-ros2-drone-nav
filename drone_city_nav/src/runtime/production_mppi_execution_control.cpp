@@ -22,6 +22,25 @@ bool vehicleStatusAuthoritativeForExecution(const ProductionMppiVehicleStatus& s
          maximum_age_ms;
 }
 
+const char* productionMppiHorizonSupersessionDecisionName(
+    const ProductionMppiHorizonSupersessionDecision decision) noexcept {
+  switch (decision) {
+    case ProductionMppiHorizonSupersessionDecision::kAllowedNoPlannedOwner:
+      return "no_planned_owner";
+    case ProductionMppiHorizonSupersessionDecision::kAllowedWitnessedOwner:
+      return "witnessed_owner";
+    case ProductionMppiHorizonSupersessionDecision::kAllowedAcknowledgedPredecessor:
+      return "acknowledged_predecessor";
+    case ProductionMppiHorizonSupersessionDecision::kAllowedAcknowledgementGraceElapsed:
+      return "acknowledgement_grace_elapsed";
+    case ProductionMppiHorizonSupersessionDecision::kDeferredAwaitingAcknowledgement:
+      return "awaiting_acknowledgement";
+    case ProductionMppiHorizonSupersessionDecision::kRejectedOwnerNotCurrent:
+      return "owner_not_current";
+  }
+  return "unknown";
+}
+
 bool appliedControlAuthoritativeForExecution(const AppliedControlEvidence3D& control,
                                              const ExecutionOwnerIdentity3D& owner,
                                              const std::int64_t now_ns,

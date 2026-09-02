@@ -18,51 +18,108 @@ struct ProductionMppiVehicleStatus;
 enum class ProductionMppiHorizonSupersessionDecision : std::uint8_t {
   kAllowedNoPlannedOwner,
   kAllowedWitnessedOwner,
-  kDeferredAwaitingOwnerWitness,
+  kAllowedAcknowledgedPredecessor,
+  kAllowedAcknowledgementGraceElapsed,
+  kDeferredAwaitingAcknowledgement,
   kRejectedOwnerNotCurrent,
 };
 
-// A planned execution lease must remain the wire owner until offboard has
-// witnessed that exact tuple. Replacing an unwitnessed lease at planner rate
-// can keep every real feedback sample one generation behind forever.
-[[nodiscard]] constexpr ProductionMppiHorizonSupersessionDecision
-assessPlannedHorizonSupersession(const ExecutionOwnerIdentity3D& owner,
-                                 const bool owner_witnessed,
-                                 const std::int64_t now_ns) noexcept {
-  if (!owner.valid || owner.execution_mode != ExecutionAuthorityMode3D::kPlanned) {
-    return ProductionMppiHorizonSupersessionDecision::kAllowedNoPlannedOwner;
-  }
-  if (owner.valid_from_ns <= 0 || owner.valid_until_ns <= owner.valid_from_ns ||
-      now_ns < owner.valid_from_ns || now_ns >= owner.valid_until_ns) {
-    return ProductionMppiHorizonSupersessionDecision::kRejectedOwnerNotCurrent;
-  }
-  return owner_witnessed
-             ? ProductionMppiHorizonSupersessionDecision::kAllowedWitnessedOwner
-             : ProductionMppiHorizonSupersessionDecision::kDeferredAwaitingOwnerWitness;
-}
-
-struct ProductionMppiResidentOwnerContinuationCheck {
-  const ExecutionOwnerIdentity3D* owner{nullptr};
-  std::int64_t now_ns{0};
-  bool retained_candidate{false};
-  bool exact_snapshot_current{false};
-  bool execution_owner_matches{false};
-  bool revocation_pending{false};
-  bool owner_witnessed{false};
+// The newest planned-horizon identity the current offboard process reported
+// applying. It is a monotonic acknowledgement, not an exact control witness:
+// the sequence only says which lease the controller is executing.
+struct ProductionMppiHorizonAcknowledgement {
+  std::uint64_t offboard_producer_instance_id{0U};
+  std::uint64_t horizon_producer_instance_id{0U};
+  std::uint64_t horizon_sequence{0U};
+  std::int64_t source_stamp_ns{0};
+  std::int64_t receive_stamp_ns{0};
+  bool valid{false};
 };
 
-// A failed retained replacement may defer to the already-published lease only
-// when that exact resident authority is still current and observed by offboard.
-// This decision never extends the lease and never authorizes another snapshot.
-[[nodiscard]] constexpr bool canContinueResidentPlannedOwner(
-    const ProductionMppiResidentOwnerContinuationCheck& check) noexcept {
-  return check.owner != nullptr && check.retained_candidate &&
-         check.exact_snapshot_current && check.execution_owner_matches &&
-         !check.revocation_pending &&
-         assessPlannedHorizonSupersession(*check.owner, check.owner_witnessed,
-                                          check.now_ns) ==
-             ProductionMppiHorizonSupersessionDecision::kAllowedWitnessedOwner;
+// When the resident wire lease was published. Acknowledgement grace is
+// measured from this instant rather than from the lease's capture time.
+struct ProductionMppiHorizonPublicationRecord {
+  std::uint64_t sequence{0U};
+  std::int64_t publication_stamp_ns{0};
+};
+
+struct ProductionMppiHorizonSupersessionCheck {
+  const ExecutionOwnerIdentity3D* owner{nullptr};
+  const ProductionMppiHorizonAcknowledgement* acknowledgement{nullptr};
+  // Exact fresh applied-control evidence for this owner.
+  bool owner_witnessed{false};
+  std::int64_t now_ns{0};
+  // When this lease was put on the wire. Grace is measured from here because
+  // the lease's valid_from is the earlier planning-capture instant.
+  std::int64_t owner_publication_stamp_ns{0};
+  std::int64_t acknowledgement_grace_ns{0};
+  std::int64_t maximum_acknowledgement_age_ns{0};
+};
+
+// A planned lease may be replaced as soon as the controller has proven it is
+// keeping up: it applied this lease, or it applied the immediate predecessor
+// while this lease is still in flight. A lease the controller never
+// acknowledges is replaced after a bounded grace instead of at its expiry, so
+// one lost or delayed feedback sample cannot stall replanning for a whole
+// horizon. Replacing at planner rate is intended receding-horizon behaviour;
+// the predecessor rule only bounds how far the wire may run ahead of feedback.
+[[nodiscard]] constexpr ProductionMppiHorizonSupersessionDecision
+assessPlannedHorizonSupersession(
+    const ProductionMppiHorizonSupersessionCheck& check) noexcept {
+  if (check.owner == nullptr || !check.owner->valid ||
+      check.owner->execution_mode != ExecutionAuthorityMode3D::kPlanned) {
+    return ProductionMppiHorizonSupersessionDecision::kAllowedNoPlannedOwner;
+  }
+  const ExecutionOwnerIdentity3D& owner = *check.owner;
+  if (owner.valid_from_ns <= 0 || owner.valid_until_ns <= owner.valid_from_ns ||
+      check.now_ns < owner.valid_from_ns || check.now_ns >= owner.valid_until_ns) {
+    return ProductionMppiHorizonSupersessionDecision::kRejectedOwnerNotCurrent;
+  }
+  if (check.owner_witnessed) {
+    return ProductionMppiHorizonSupersessionDecision::kAllowedWitnessedOwner;
+  }
+  const ProductionMppiHorizonAcknowledgement* const acknowledgement =
+      check.acknowledgement;
+  if (acknowledgement != nullptr && acknowledgement->valid &&
+      acknowledgement->receive_stamp_ns > 0 &&
+      check.maximum_acknowledgement_age_ns > 0 &&
+      check.now_ns >= acknowledgement->receive_stamp_ns &&
+      check.now_ns - acknowledgement->receive_stamp_ns <=
+          check.maximum_acknowledgement_age_ns &&
+      acknowledgement->offboard_producer_instance_id ==
+          owner.target_offboard_instance_id &&
+      acknowledgement->horizon_producer_instance_id == owner.producer_instance_id &&
+      acknowledgement->horizon_sequence + 1U >= owner.sequence) {
+    return ProductionMppiHorizonSupersessionDecision::kAllowedAcknowledgedPredecessor;
+  }
+  const std::int64_t publication_stamp_ns = check.owner_publication_stamp_ns > 0
+                                                ? check.owner_publication_stamp_ns
+                                                : owner.valid_from_ns;
+  if (check.acknowledgement_grace_ns >= 0 &&
+      check.now_ns - publication_stamp_ns >= check.acknowledgement_grace_ns) {
+    return ProductionMppiHorizonSupersessionDecision::
+        kAllowedAcknowledgementGraceElapsed;
+  }
+  return ProductionMppiHorizonSupersessionDecision::kDeferredAwaitingAcknowledgement;
 }
+
+[[nodiscard]] constexpr bool horizonSupersessionAllowed(
+    const ProductionMppiHorizonSupersessionDecision decision) noexcept {
+  switch (decision) {
+    case ProductionMppiHorizonSupersessionDecision::kAllowedNoPlannedOwner:
+    case ProductionMppiHorizonSupersessionDecision::kAllowedWitnessedOwner:
+    case ProductionMppiHorizonSupersessionDecision::kAllowedAcknowledgedPredecessor:
+    case ProductionMppiHorizonSupersessionDecision::kAllowedAcknowledgementGraceElapsed:
+      return true;
+    case ProductionMppiHorizonSupersessionDecision::kDeferredAwaitingAcknowledgement:
+    case ProductionMppiHorizonSupersessionDecision::kRejectedOwnerNotCurrent:
+      return false;
+  }
+  return false;
+}
+
+[[nodiscard]] const char* productionMppiHorizonSupersessionDecisionName(
+    ProductionMppiHorizonSupersessionDecision decision) noexcept;
 
 using ProductionMppiExecutionMode = ExecutionAuthorityMode3D;
 using ProductionMppiExecutionReason = ExecutionAuthorityReason3D;

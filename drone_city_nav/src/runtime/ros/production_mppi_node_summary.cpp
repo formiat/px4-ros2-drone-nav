@@ -141,7 +141,15 @@ void ProductionMppiNode::publishSummary() {
       " route_planning_invalid_rejections=%" PRIu64
       " route_planning_stopped_rejections=%" PRIu64
       " route_planning_processing_failures=%" PRIu64
-      " route_planning_handler_failures=%" PRIu64,
+      " route_planning_handler_failures=%" PRIu64
+      " tick_snapshot_p50_ms=%.3f tick_snapshot_p95_ms=%.3f tick_snapshot_max_ms=%.3f"
+      " tick_controller_p50_ms=%.3f tick_controller_p95_ms=%.3f"
+      " tick_publication_p50_ms=%.3f tick_publication_p95_ms=%.3f"
+      " tick_publication_max_ms=%.3f tick_total_p50_ms=%.3f tick_total_p95_ms=%.3f"
+      " tick_total_max_ms=%.3f horizon_publications=%" PRIu64
+      " horizon_commit_rejections=%" PRIu64 " horizon_supersession_deferrals=%" PRIu64
+      " horizon_supersession_grace_replacements=%" PRIu64
+      " resident_owner_continuation_ticks=%" PRIu64,
       completed_ticks, percentile(runtime_samples_ms, 0.50),
       percentile(runtime_samples_ms, 0.95), percentile(runtime_samples_ms, 0.99),
       maximum, deadline_misses, altitude_envelope_violation_horizons,
@@ -194,7 +202,23 @@ void ProductionMppiNode::publishSummary() {
       route_planning_statistics.invalid_rejections,
       route_planning_statistics.stopped_rejections,
       route_planning_statistics.processing_failures,
-      route_planning_statistics.handler_failures);
+      route_planning_statistics.handler_failures,
+      percentile(diagnostics.snapshot_phase_samples_ms, 0.50),
+      percentile(diagnostics.snapshot_phase_samples_ms, 0.95),
+      percentile(diagnostics.snapshot_phase_samples_ms, 1.0),
+      percentile(diagnostics.controller_phase_samples_ms, 0.50),
+      percentile(diagnostics.controller_phase_samples_ms, 0.95),
+      percentile(diagnostics.publication_phase_samples_ms, 0.50),
+      percentile(diagnostics.publication_phase_samples_ms, 0.95),
+      percentile(diagnostics.publication_phase_samples_ms, 1.0),
+      percentile(diagnostics.tick_total_samples_ms, 0.50),
+      percentile(diagnostics.tick_total_samples_ms, 0.95),
+      percentile(diagnostics.tick_total_samples_ms, 1.0),
+      horizon_publications_.load(std::memory_order_relaxed),
+      horizon_commit_rejections_.load(std::memory_order_relaxed),
+      horizon_supersession_deferrals_.load(std::memory_order_relaxed),
+      horizon_supersession_grace_replacements_.load(std::memory_order_relaxed),
+      diagnostics.resident_owner_continuation_ticks);
 }
 
 } // namespace drone_city_nav

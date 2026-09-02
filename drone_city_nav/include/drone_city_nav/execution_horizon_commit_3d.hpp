@@ -120,6 +120,14 @@ struct ExecutionHorizonCommitResult3D {
     const AppliedControlEvidence3D& control, const ExecutionOwnerIdentity3D& owner,
     std::int64_t now_ns, double maximum_age_ms) noexcept;
 
+// Names the first predicate that makes the applied-control evidence
+// non-authoritative for this owner, or returns nullptr when it is
+// authoritative. Diagnostics use it so a deferred supersession can say why.
+[[nodiscard]] const char*
+appliedControlAuthorityFailure3D(const AppliedControlEvidence3D& control,
+                                 const ExecutionOwnerIdentity3D& owner,
+                                 std::int64_t now_ns, double maximum_age_ms) noexcept;
+
 [[nodiscard]] const char*
 executionHorizonCommitStatus3DName(ExecutionHorizonCommitStatus3D status) noexcept;
 

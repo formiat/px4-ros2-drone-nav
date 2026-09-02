@@ -7,10 +7,13 @@
 namespace drone_city_nav {
 namespace {
 
+constexpr std::int64_t kGraceNs{100'000'000};
+constexpr std::int64_t kMaximumAcknowledgementAgeNs{200'000'000};
+
 [[nodiscard]] ExecutionOwnerIdentity3D plannedOwner() {
   return {
-      .valid_from_ns = 1'000,
-      .valid_until_ns = 2'000,
+      .valid_from_ns = 1'000'000'000,
+      .valid_until_ns = 5'000'000'000,
       .producer_instance_id = 17U,
       .target_offboard_instance_id = 23U,
       .sequence = 31U,
@@ -19,31 +22,140 @@ namespace {
   };
 }
 
+[[nodiscard]] ProductionMppiHorizonAcknowledgement
+acknowledgementOf(const std::uint64_t sequence, const std::int64_t receive_stamp_ns) {
+  return {
+      .offboard_producer_instance_id = 23U,
+      .horizon_producer_instance_id = 17U,
+      .horizon_sequence = sequence,
+      .source_stamp_ns = receive_stamp_ns,
+      .receive_stamp_ns = receive_stamp_ns,
+      .valid = true,
+  };
+}
+
+[[nodiscard]] ProductionMppiHorizonSupersessionCheck
+check(const ExecutionOwnerIdentity3D& owner,
+      const ProductionMppiHorizonAcknowledgement& acknowledgement,
+      const std::int64_t now_ns, const bool witnessed = false,
+      const std::int64_t publication_stamp_ns = 0) {
+  return {
+      .owner = &owner,
+      .acknowledgement = &acknowledgement,
+      .owner_witnessed = witnessed,
+      .now_ns = now_ns,
+      .owner_publication_stamp_ns = publication_stamp_ns,
+      .acknowledgement_grace_ns = kGraceNs,
+      .maximum_acknowledgement_age_ns = kMaximumAcknowledgementAgeNs,
+  };
+}
+
 TEST(ProductionMppiExecutionControlTest, AllowsPublicationWithoutPlannedOwner) {
-  EXPECT_EQ(assessPlannedHorizonSupersession({}, false, 1'500),
+  const ProductionMppiHorizonAcknowledgement none{};
+  const ExecutionOwnerIdentity3D empty{};
+  EXPECT_EQ(assessPlannedHorizonSupersession(check(empty, none, 1'500'000'000)),
             ProductionMppiHorizonSupersessionDecision::kAllowedNoPlannedOwner);
 
   ExecutionOwnerIdentity3D hold = plannedOwner();
   hold.execution_mode = ExecutionAuthorityMode3D::kPositionHold;
-  EXPECT_EQ(assessPlannedHorizonSupersession(hold, false, 1'500),
+  EXPECT_EQ(assessPlannedHorizonSupersession(check(hold, none, 1'500'000'000)),
             ProductionMppiHorizonSupersessionDecision::kAllowedNoPlannedOwner);
 }
 
-TEST(ProductionMppiExecutionControlTest, DefersCurrentUnwitnessedOwner) {
-  EXPECT_EQ(assessPlannedHorizonSupersession(plannedOwner(), false, 1'500),
-            ProductionMppiHorizonSupersessionDecision::kDeferredAwaitingOwnerWitness);
+TEST(ProductionMppiExecutionControlTest, RejectsOwnerOutsideItsLease) {
+  const ExecutionOwnerIdentity3D owner = plannedOwner();
+  const ProductionMppiHorizonAcknowledgement acknowledged = acknowledgementOf(31U, 999);
+  EXPECT_EQ(assessPlannedHorizonSupersession(check(owner, acknowledged, 999'999'999)),
+            ProductionMppiHorizonSupersessionDecision::kRejectedOwnerNotCurrent);
+  EXPECT_EQ(
+      assessPlannedHorizonSupersession(check(owner, acknowledged, 5'000'000'000, true)),
+      ProductionMppiHorizonSupersessionDecision::kRejectedOwnerNotCurrent);
 }
 
-TEST(ProductionMppiExecutionControlTest, AllowsCurrentWitnessedOwner) {
-  EXPECT_EQ(assessPlannedHorizonSupersession(plannedOwner(), true, 1'500),
+TEST(ProductionMppiExecutionControlTest, AllowsExactlyWitnessedOwnerImmediately) {
+  const ExecutionOwnerIdentity3D owner = plannedOwner();
+  const ProductionMppiHorizonAcknowledgement none{};
+  EXPECT_EQ(assessPlannedHorizonSupersession(check(owner, none, 1'010'000'000, true)),
             ProductionMppiHorizonSupersessionDecision::kAllowedWitnessedOwner);
 }
 
-TEST(ProductionMppiExecutionControlTest, RejectsOwnerOutsideItsLease) {
-  EXPECT_EQ(assessPlannedHorizonSupersession(plannedOwner(), false, 999),
-            ProductionMppiHorizonSupersessionDecision::kRejectedOwnerNotCurrent);
-  EXPECT_EQ(assessPlannedHorizonSupersession(plannedOwner(), true, 2'000),
-            ProductionMppiHorizonSupersessionDecision::kRejectedOwnerNotCurrent);
+TEST(ProductionMppiExecutionControlTest,
+     AllowsReplacementWhenControllerAcknowledgedThisOrPreviousLease) {
+  const ExecutionOwnerIdentity3D owner = plannedOwner();
+  const std::int64_t now_ns = 1'010'000'000;
+  EXPECT_EQ(assessPlannedHorizonSupersession(
+                check(owner, acknowledgementOf(31U, now_ns - 20'000'000), now_ns)),
+            ProductionMppiHorizonSupersessionDecision::kAllowedAcknowledgedPredecessor);
+  EXPECT_EQ(assessPlannedHorizonSupersession(
+                check(owner, acknowledgementOf(30U, now_ns - 20'000'000), now_ns)),
+            ProductionMppiHorizonSupersessionDecision::kAllowedAcknowledgedPredecessor);
+}
+
+TEST(ProductionMppiExecutionControlTest,
+     DefersWhileControllerIsTwoLeasesBehindInsideGrace) {
+  const ExecutionOwnerIdentity3D owner = plannedOwner();
+  const std::int64_t now_ns = 1'010'000'000;
+  EXPECT_EQ(
+      assessPlannedHorizonSupersession(
+          check(owner, acknowledgementOf(29U, now_ns - 20'000'000), now_ns)),
+      ProductionMppiHorizonSupersessionDecision::kDeferredAwaitingAcknowledgement);
+}
+
+TEST(ProductionMppiExecutionControlTest, IgnoresStaleOrForeignAcknowledgements) {
+  const ExecutionOwnerIdentity3D owner = plannedOwner();
+  const std::int64_t now_ns = 1'010'000'000;
+  EXPECT_EQ(
+      assessPlannedHorizonSupersession(check(
+          owner, acknowledgementOf(31U, now_ns - kMaximumAcknowledgementAgeNs - 1),
+          now_ns)),
+      ProductionMppiHorizonSupersessionDecision::kDeferredAwaitingAcknowledgement);
+  ProductionMppiHorizonAcknowledgement foreign =
+      acknowledgementOf(31U, now_ns - 20'000'000);
+  foreign.offboard_producer_instance_id = 99U;
+  EXPECT_EQ(
+      assessPlannedHorizonSupersession(check(owner, foreign, now_ns)),
+      ProductionMppiHorizonSupersessionDecision::kDeferredAwaitingAcknowledgement);
+  ProductionMppiHorizonAcknowledgement other_planner =
+      acknowledgementOf(31U, now_ns - 20'000'000);
+  other_planner.horizon_producer_instance_id = 5U;
+  EXPECT_EQ(
+      assessPlannedHorizonSupersession(check(owner, other_planner, now_ns)),
+      ProductionMppiHorizonSupersessionDecision::kDeferredAwaitingAcknowledgement);
+}
+
+TEST(ProductionMppiExecutionControlTest,
+     ReplacesUnacknowledgedOwnerAfterGraceMeasuredFromPublication) {
+  const ExecutionOwnerIdentity3D owner = plannedOwner();
+  const ProductionMppiHorizonAcknowledgement none{};
+  const std::int64_t published_ns = 1'400'000'000;
+  EXPECT_EQ(
+      assessPlannedHorizonSupersession(
+          check(owner, none, published_ns + kGraceNs - 1, false, published_ns)),
+      ProductionMppiHorizonSupersessionDecision::kDeferredAwaitingAcknowledgement);
+  EXPECT_EQ(
+      assessPlannedHorizonSupersession(
+          check(owner, none, published_ns + kGraceNs, false, published_ns)),
+      ProductionMppiHorizonSupersessionDecision::kAllowedAcknowledgementGraceElapsed);
+  // Without a publication record the grace falls back to the lease start.
+  EXPECT_EQ(
+      assessPlannedHorizonSupersession(
+          check(owner, none, owner.valid_from_ns + kGraceNs)),
+      ProductionMppiHorizonSupersessionDecision::kAllowedAcknowledgementGraceElapsed);
+}
+
+TEST(ProductionMppiExecutionControlTest, ClassifiesAllowedDecisions) {
+  EXPECT_TRUE(horizonSupersessionAllowed(
+      ProductionMppiHorizonSupersessionDecision::kAllowedNoPlannedOwner));
+  EXPECT_TRUE(horizonSupersessionAllowed(
+      ProductionMppiHorizonSupersessionDecision::kAllowedWitnessedOwner));
+  EXPECT_TRUE(horizonSupersessionAllowed(
+      ProductionMppiHorizonSupersessionDecision::kAllowedAcknowledgedPredecessor));
+  EXPECT_TRUE(horizonSupersessionAllowed(
+      ProductionMppiHorizonSupersessionDecision::kAllowedAcknowledgementGraceElapsed));
+  EXPECT_FALSE(horizonSupersessionAllowed(
+      ProductionMppiHorizonSupersessionDecision::kDeferredAwaitingAcknowledgement));
+  EXPECT_FALSE(horizonSupersessionAllowed(
+      ProductionMppiHorizonSupersessionDecision::kRejectedOwnerNotCurrent));
 }
 
 TEST(ProductionMppiExecutionControlTest,
@@ -80,53 +192,6 @@ TEST(ProductionMppiExecutionControlTest,
             }),
             ProductionMppiResidentObstacleDisposition::
                 kPersistentRawFiniteExecutionInvalidated);
-}
-
-TEST(ProductionMppiExecutionControlTest,
-     ContinuesExactWitnessedResidentForRetainedRetry) {
-  const ExecutionOwnerIdentity3D owner = plannedOwner();
-  EXPECT_TRUE(
-      canContinueResidentPlannedOwner(ProductionMppiResidentOwnerContinuationCheck{
-          .owner = &owner,
-          .now_ns = 1'500,
-          .retained_candidate = true,
-          .exact_snapshot_current = true,
-          .execution_owner_matches = true,
-          .revocation_pending = false,
-          .owner_witnessed = true,
-      }));
-}
-
-TEST(ProductionMppiExecutionControlTest,
-     RejectsResidentContinuationWithoutEveryAuthorityWitness) {
-  const ExecutionOwnerIdentity3D owner = plannedOwner();
-  ProductionMppiResidentOwnerContinuationCheck check{
-      .owner = &owner,
-      .now_ns = 1'500,
-      .retained_candidate = true,
-      .exact_snapshot_current = true,
-      .execution_owner_matches = true,
-      .revocation_pending = false,
-      .owner_witnessed = true,
-  };
-
-  check.retained_candidate = false;
-  EXPECT_FALSE(canContinueResidentPlannedOwner(check));
-  check.retained_candidate = true;
-  check.exact_snapshot_current = false;
-  EXPECT_FALSE(canContinueResidentPlannedOwner(check));
-  check.exact_snapshot_current = true;
-  check.execution_owner_matches = false;
-  EXPECT_FALSE(canContinueResidentPlannedOwner(check));
-  check.execution_owner_matches = true;
-  check.revocation_pending = true;
-  EXPECT_FALSE(canContinueResidentPlannedOwner(check));
-  check.revocation_pending = false;
-  check.owner_witnessed = false;
-  EXPECT_FALSE(canContinueResidentPlannedOwner(check));
-  check.owner_witnessed = true;
-  check.now_ns = owner.valid_until_ns;
-  EXPECT_FALSE(canContinueResidentPlannedOwner(check));
 }
 
 } // namespace

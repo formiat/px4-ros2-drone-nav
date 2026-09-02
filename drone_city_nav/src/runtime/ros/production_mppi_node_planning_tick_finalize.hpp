@@ -2,6 +2,8 @@
 
 #include "drone_city_nav/mppi_nominal_reseed.hpp"
 
+#include <chrono>
+
 #include "production_mppi_node.hpp"
 
 namespace drone_city_nav {
@@ -43,6 +45,8 @@ struct ProductionMppiPlanningTickFinalization {
   double observation_age_ms;
   double control_feedback_age_ms;
   double snapshot_ms;
+  double controller_ms;
+  std::chrono::steady_clock::time_point tick_started;
   RouteExecutionStatus3D route_execution_status;
   ProductionMppiPlanningState planning_state;
   ProductionMppiPreviousControlSource previous_control_source;

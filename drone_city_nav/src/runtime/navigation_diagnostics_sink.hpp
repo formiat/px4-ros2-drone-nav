@@ -40,6 +40,10 @@ struct NavigationDiagnosticsFileRecordDecision {
 
 struct NavigationDiagnosticsStatistics {
   std::vector<double> runtime_samples_ms;
+  std::vector<double> snapshot_phase_samples_ms;
+  std::vector<double> controller_phase_samples_ms;
+  std::vector<double> publication_phase_samples_ms;
+  std::vector<double> tick_total_samples_ms;
   RollingRouteTelemetrySnapshot3D rolling_route{};
   std::uint64_t completed_ticks{0U};
   std::uint64_t deadline_misses{0U};
@@ -50,6 +54,7 @@ struct NavigationDiagnosticsStatistics {
   std::uint64_t mission_goal_position_hold_ticks{0U};
   std::uint64_t no_executable_route_hold_ticks{0U};
   std::uint64_t no_executable_horizon_hold_ticks{0U};
+  std::uint64_t resident_owner_continuation_ticks{0U};
   std::uint64_t terminal_rest_horizon_ticks{0U};
   std::uint64_t finite_path_validation_backoff_ticks{0U};
   std::uint64_t latest_lidar_path_validation_backoff_ticks{0U};
@@ -85,7 +90,8 @@ public:
                   ProductionMppiPlanningState planning_state,
                   const ProductionMppiExecutionPublication& execution,
                   bool liveness_reseed_requested,
-                  const RollingRouteTelemetryObservation3D& rolling_route);
+                  const RollingRouteTelemetryObservation3D& rolling_route,
+                  const ProductionMppiTickPhaseTimings& phases = {});
   [[nodiscard]] NavigationDiagnosticsStatistics statistics() const;
 
   [[nodiscard]] NavigationDiagnosticsFileRecordDecision

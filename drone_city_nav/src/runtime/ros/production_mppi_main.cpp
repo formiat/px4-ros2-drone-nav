@@ -1,6 +1,7 @@
 #include <rclcpp/executors/multi_threaded_executor.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <cstddef>
 #include <exception>
 #include <memory>
 
@@ -11,9 +12,12 @@ int main(int argc, char* argv[]) {
   try {
     auto node =
         std::make_shared<drone_city_nav::ProductionMppiNode>(rclcpp::NodeOptions{});
-    // Planning, world reconstruction, high-rate vehicle input, and lidar evidence
-    // each have an independent mutually-exclusive callback group.
-    rclcpp::executors::MultiThreadedExecutor executor{rclcpp::ExecutorOptions{}, 4U};
+    // Planning, world reconstruction, high-rate vehicle input, lidar evidence,
+    // and the default group each need a thread of their own so a long planning
+    // tick or raw reconstruction can never starve control feedback.
+    constexpr std::size_t kCallbackGroupCount{5U};
+    rclcpp::executors::MultiThreadedExecutor executor{rclcpp::ExecutorOptions{},
+                                                      kCallbackGroupCount + 1U};
     executor.add_node(node);
     executor.spin();
   } catch (const std::exception& error) {
