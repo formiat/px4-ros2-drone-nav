@@ -339,38 +339,39 @@ ExecutionTimeRefiner3D::advance(const std::chrono::steady_clock::time_point dead
       continue;
     }
 
-    for (const PersistentPlannerNode3D successor_position :
-         lattice_->adjacentNodes(current.state.position)) {
-      const PersistentPlannerTimeState3D successor{
-          .position = successor_position,
-          .incoming = directionForEdge3D(current.state.position, successor_position),
-      };
-      const double transition_cost = transitionCost(current.state, successor);
-      const double candidate_cost = current.cost_from_start_s + transition_cost;
-      if (!std::isfinite(candidate_cost)) {
-        continue;
-      }
-      const auto existing = costs_.find(successor);
-      if (existing != costs_.end() && !costLess(candidate_cost, existing->second)) {
-        continue;
-      }
-      costs_[successor] = candidate_cost;
-      parents_[successor] = current.state;
-      ++queue_sequence_;
-      if (queue_sequence_ == 0U) {
-        queue_sequence_ = 1U;
-      }
-      const double estimated_total = candidate_cost + heuristic(successor);
-      if (hasIncumbent() && !costLess(estimated_total, goal_cost_s_)) {
-        continue;
-      }
-      open_.push(PersistentPlannerTimeQueueEntry3D{
-          .estimated_total_s = estimated_total,
-          .cost_from_start_s = candidate_cost,
-          .state = successor,
-          .sequence = queue_sequence_,
-      });
-    }
+    lattice_->forEachAdjacentNode(
+        current.state.position, [&](const PersistentPlannerNode3D successor_position) {
+          const PersistentPlannerTimeState3D successor{
+              .position = successor_position,
+              .incoming =
+                  directionForEdge3D(current.state.position, successor_position),
+          };
+          const double transition_cost = transitionCost(current.state, successor);
+          const double candidate_cost = current.cost_from_start_s + transition_cost;
+          if (!std::isfinite(candidate_cost)) {
+            return;
+          }
+          const auto existing = costs_.find(successor);
+          if (existing != costs_.end() && !costLess(candidate_cost, existing->second)) {
+            return;
+          }
+          costs_[successor] = candidate_cost;
+          parents_[successor] = current.state;
+          ++queue_sequence_;
+          if (queue_sequence_ == 0U) {
+            queue_sequence_ = 1U;
+          }
+          const double estimated_total = candidate_cost + heuristic(successor);
+          if (hasIncumbent() && !costLess(estimated_total, goal_cost_s_)) {
+            return;
+          }
+          open_.push(PersistentPlannerTimeQueueEntry3D{
+              .estimated_total_s = estimated_total,
+              .cost_from_start_s = candidate_cost,
+              .state = successor,
+              .sequence = queue_sequence_,
+          });
+        });
   }
 }
 

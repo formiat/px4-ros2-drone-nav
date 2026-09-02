@@ -187,6 +187,37 @@ public:
   [[nodiscard]] bool pathTraversable(const std::vector<Point3>& path) const;
   [[nodiscard]] std::vector<PersistentPlannerNode3D>
   adjacentNodes(PersistentPlannerNode3D node) const;
+
+  // Visits every lattice neighbour of a node without materializing a vector;
+  // the searches call this in their hot loops.
+  template<typename Visitor>
+  void forEachAdjacentNode(const PersistentPlannerNode3D node,
+                           Visitor&& visitor) const {
+    for (std::size_t level = 0U; level <= config_->maximum_adaptive_lattice_level;
+         ++level) {
+      const int scale = 1 << level;
+      if (node.x % scale != 0 || node.y % scale != 0 || node.z % scale != 0) {
+        continue;
+      }
+      for (int z_offset = -1; z_offset <= 1; ++z_offset) {
+        for (int y_offset = -1; y_offset <= 1; ++y_offset) {
+          for (int x_offset = -1; x_offset <= 1; ++x_offset) {
+            if (x_offset == 0 && y_offset == 0 && z_offset == 0) {
+              continue;
+            }
+            const PersistentPlannerNode3D candidate{node.x + x_offset * scale,
+                                                    node.y + y_offset * scale,
+                                                    node.z + z_offset * scale};
+            if (nodeInside(candidate) &&
+                pointInsideFlightEnvelope(pointFor(candidate))) {
+              visitor(candidate);
+            }
+          }
+        }
+      }
+    }
+  }
+
   [[nodiscard]] double heuristic(PersistentPlannerNode3D first,
                                  PersistentPlannerNode3D second) const noexcept;
   [[nodiscard]] double rawEdgeCost(PersistentPlannerNode3D first,
@@ -478,7 +509,8 @@ private:
                     PersistentPlannerNode3D goal_anchor) const noexcept;
   [[nodiscard]] std::vector<GridIndex3D>
   changedOccupiedCells(const PersistentPlannerWorld3D& previous,
-                       const PersistentPlannerWorld3D& current) const;
+                       const PersistentPlannerWorld3D& current,
+                       bool dirty_chunks_complete) const;
 
   PersistentPlannerConfig3D config_{};
   PersistentPlannerWorld3D world_{};

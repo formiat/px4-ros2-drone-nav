@@ -17,25 +17,6 @@
 namespace drone_city_nav::detail {
 namespace {
 
-constexpr double kGeometryTolerance{1.0e-9};
-
-[[nodiscard]] bool sameBounds(const GridBounds3D& first,
-                              const GridBounds3D& second) noexcept {
-  return std::abs(first.origin_x - second.origin_x) <= kGeometryTolerance &&
-         std::abs(first.origin_y - second.origin_y) <= kGeometryTolerance &&
-         std::abs(first.origin_z - second.origin_z) <= kGeometryTolerance &&
-         std::abs(first.resolution_m - second.resolution_m) <= kGeometryTolerance &&
-         first.width_cells == second.width_cells &&
-         first.height_cells == second.height_cells &&
-         first.depth_cells == second.depth_cells;
-}
-
-[[nodiscard]] bool nodeLess(const PersistentPlannerNode3D& first,
-                            const PersistentPlannerNode3D& second) noexcept {
-  return std::tuple{first.z, first.y, first.x} <
-         std::tuple{second.z, second.y, second.x};
-}
-
 [[nodiscard]] GridIndex3D rawCellFromChunkBit(const OccupancyChunkIndex3D& chunk,
                                               const std::size_t bit_index) noexcept {
   const std::size_t layer = static_cast<std::size_t>(OccupancyGrid3D::kChunkSize) *
@@ -109,13 +90,6 @@ PersistentDStarLitePlanner3DImpl::updateWorld(const PersistentPlannerWorld3D& wo
     update.occupied_world_unchanged = true;
     return update;
   }
-  if (world.incremental_parent_revision != world_.revision) {
-    installWorld(world);
-    lattice_.resetEdgeEvidence();
-    update.accepted = true;
-    update.requires_reset = true;
-    return update;
-  }
   if (world.observed_occupancy == nullptr || world_.observed_occupancy == nullptr) {
     installWorld(world);
     lattice_.resetEdgeEvidence();
@@ -124,7 +98,12 @@ PersistentDStarLitePlanner3DImpl::updateWorld(const PersistentPlannerWorld3D& wo
     return update;
   }
 
-  update.changed_cells = changedOccupiedCells(world_, world);
+  // A skipped publication makes the dirty-chunk delta incomplete. The exact
+  // change set is still available by comparing the two resident grids chunk
+  // by chunk, which is far cheaper than discarding every search label.
+  const bool dirty_chunks_complete =
+      world.incremental_parent_revision == world_.revision;
+  update.changed_cells = changedOccupiedCells(world_, world, dirty_chunks_complete);
   update.occupied_cells_removed =
       std::ranges::any_of(update.changed_cells, [&](const GridIndex3D cell) {
         return world_.observed_occupancy->isOccupied(cell) &&
@@ -141,11 +120,13 @@ PersistentDStarLitePlanner3DImpl::updateWorld(const PersistentPlannerWorld3D& wo
 }
 
 std::vector<GridIndex3D> PersistentDStarLitePlanner3DImpl::changedOccupiedCells(
-    const PersistentPlannerWorld3D& previous,
-    const PersistentPlannerWorld3D& current) const {
+    const PersistentPlannerWorld3D& previous, const PersistentPlannerWorld3D& current,
+    const bool dirty_chunks_complete) const {
   const ObservedOccupancyGrid3D& before = *previous.observed_occupancy;
   const ObservedOccupancyGrid3D& after = *current.observed_occupancy;
-  std::vector<OccupancyChunkIndex3D> chunks = current.dirty_chunks;
+  std::vector<OccupancyChunkIndex3D> chunks =
+      dirty_chunks_complete ? current.dirty_chunks
+                            : std::vector<OccupancyChunkIndex3D>{};
   if (chunks.empty()) {
     chunks.reserve(before.chunks().size() + after.chunks().size());
     for (const auto& [index, storage] : before.chunks()) {

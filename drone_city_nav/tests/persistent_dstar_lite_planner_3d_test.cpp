@@ -250,7 +250,7 @@ TEST(PersistentDStarLitePlanner3DTest,
 }
 
 TEST(PersistentDStarLitePlanner3DTest,
-     MissingIncrementalPredecessorForcesAnExactWorldReset) {
+     MissingIncrementalPredecessorRepairsFromAnExactGridDifference) {
   auto initial_occupancy = std::make_shared<ObservedOccupancyGrid3D>(
       GridBounds3D{0.0, 0.0, 0.0, 1.0, 14, 10, 6});
   PersistentDStarLitePlanner3D planner{testConfig()};
@@ -266,16 +266,17 @@ TEST(PersistentDStarLitePlanner3DTest,
   PersistentPlannerWorld3D skipped_predecessor =
       world(changed, 3U, {ObservedOccupancyGrid3D::chunkIndex(obstacle)});
   skipped_predecessor.incremental_parent_revision = 2U;
-  const PlannerUpdate3D reset =
+  const PlannerUpdate3D repaired =
       planner.plan(request(start, goal, std::move(skipped_predecessor)));
 
-  ASSERT_TRUE(reset.publishable());
-  EXPECT_FALSE(reset.telemetry.search_state_reused);
-  EXPECT_EQ(reset.telemetry.changed_occupied_voxels, 0U);
-  EXPECT_EQ(reset.telemetry.search_generation,
-            initial.telemetry.search_generation + 1U);
-  EXPECT_GT(candidate(reset).path_length_m, candidate(initial).path_length_m);
-  expectRawValid(candidate(reset).points, *changed,
+  // The incomplete dirty-chunk delta is replaced by an exact comparison of the
+  // two resident grids, so the search keeps its labels and repairs locally.
+  ASSERT_TRUE(repaired.publishable());
+  EXPECT_TRUE(repaired.telemetry.search_state_reused);
+  EXPECT_EQ(repaired.telemetry.changed_occupied_voxels, 1U);
+  EXPECT_EQ(repaired.telemetry.search_generation, initial.telemetry.search_generation);
+  EXPECT_GT(candidate(repaired).path_length_m, candidate(initial).path_length_m);
+  expectRawValid(candidate(repaired).points, *changed,
                  planner.config().physical_footprint);
 }
 

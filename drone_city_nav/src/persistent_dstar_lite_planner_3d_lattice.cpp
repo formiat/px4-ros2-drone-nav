@@ -211,28 +211,9 @@ std::vector<PersistentPlannerNode3D>
 PlannerLattice3D::adjacentNodes(const PersistentPlannerNode3D node) const {
   std::vector<PersistentPlannerNode3D> result;
   result.reserve(26U * (config_->maximum_adaptive_lattice_level + 1U));
-  for (std::size_t level = 0U; level <= config_->maximum_adaptive_lattice_level;
-       ++level) {
-    const int scale = 1 << level;
-    if (node.x % scale != 0 || node.y % scale != 0 || node.z % scale != 0) {
-      continue;
-    }
-    for (int z_offset = -1; z_offset <= 1; ++z_offset) {
-      for (int y_offset = -1; y_offset <= 1; ++y_offset) {
-        for (int x_offset = -1; x_offset <= 1; ++x_offset) {
-          if (x_offset == 0 && y_offset == 0 && z_offset == 0) {
-            continue;
-          }
-          const PersistentPlannerNode3D candidate{node.x + x_offset * scale,
-                                                  node.y + y_offset * scale,
-                                                  node.z + z_offset * scale};
-          if (nodeInside(candidate) && pointInsideFlightEnvelope(pointFor(candidate))) {
-            result.push_back(candidate);
-          }
-        }
-      }
-    }
-  }
+  forEachAdjacentNode(node, [&result](const PersistentPlannerNode3D candidate) {
+    result.push_back(candidate);
+  });
   return result;
 }
 
@@ -312,14 +293,7 @@ const GridBounds3D& PlannerLattice3D::bounds() const noexcept {
 
 bool PlannerLattice3D::edgeTraversable(const PersistentPlannerNode3D first,
                                        const PersistentPlannerNode3D second) {
-  ++edge_queries_;
-  const std::size_t queried_level = level(first, second);
-  if (queried_level > 0U) {
-    ++adaptive_edge_queries_;
-    maximum_queried_level_ = std::max(maximum_queried_level_, queried_level);
-  }
-  ++raw_edge_validation_checks_;
-  return rawSegmentValid(pointFor(first), pointFor(second));
+  return std::isfinite(rawEdgeCost(first, second));
 }
 
 bool PlannerLattice3D::pathTraversable(const std::vector<Point3>& path) const {
@@ -340,7 +314,8 @@ bool PlannerLattice3D::pathTraversable(const std::vector<Point3>& path) const {
 }
 
 std::size_t PlannerLattice3D::nodeSpan() const noexcept {
-  return static_cast<std::size_t>(width_ + height_ + depth_);
+  return static_cast<std::size_t>(width_) + static_cast<std::size_t>(height_) +
+         static_cast<std::size_t>(depth_);
 }
 
 bool PlannerLattice3D::forgetEdgeCost(const PersistentPlannerEdge3D& edge) {

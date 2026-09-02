@@ -116,17 +116,17 @@ void DStarLiteSession3D::updateVertex(const PersistentPlannerNode3D node) {
   DStarLiteRecord3D& record = records_[node];
   if (node != goal_) {
     double best = std::numeric_limits<double>::infinity();
-    for (const PersistentPlannerNode3D successor : lattice_->adjacentNodes(node)) {
+    lattice_->forEachAdjacentNode(node, [&](const PersistentPlannerNode3D successor) {
       const double edge_cost = lattice_->rawEdgeCost(node, successor);
       if (!std::isfinite(edge_cost)) {
-        continue;
+        return;
       }
       const auto found = records_.find(successor);
       const double successor_cost = found != records_.end()
                                         ? found->second.g
                                         : std::numeric_limits<double>::infinity();
       best = std::min(best, edge_cost + successor_cost);
-    }
+    });
     record.rhs = best;
   }
   record.open_token = 0U;
@@ -186,14 +186,14 @@ void DStarLiteSession3D::scheduleAffectedVertices(
   // previously infinite undirected edge traversable.
   std::unordered_set<PersistentPlannerNode3D, PersistentPlannerNode3DHash> affected;
   for (const PersistentPlannerNode3D node : resident_candidates) {
-    for (const PersistentPlannerNode3D neighbor : lattice_->adjacentNodes(node)) {
+    lattice_->forEachAdjacentNode(node, [&](const PersistentPlannerNode3D neighbor) {
       const PersistentPlannerEdge3D edge = canonicalEdge(node, neighbor);
       if (!lattice_->forgetEdgeCost(edge)) {
-        continue;
+        return;
       }
       affected.insert(edge.first);
       affected.insert(edge.second);
-    }
+    });
   }
   std::vector<PersistentPlannerNode3D> ordered{affected.begin(), affected.end()};
   std::ranges::sort(ordered, nodeLess);
@@ -269,17 +269,17 @@ bool DStarLiteSession3D::computeShortestPath(
       enqueue(next->node, record);
     } else if (record.g > record.rhs) {
       record.g = record.rhs;
-      for (const PersistentPlannerNode3D predecessor :
-           lattice_->adjacentNodes(next->node)) {
-        updateVertex(predecessor);
-      }
+      lattice_->forEachAdjacentNode(next->node,
+                                    [this](const PersistentPlannerNode3D predecessor) {
+                                      updateVertex(predecessor);
+                                    });
     } else {
       record.g = std::numeric_limits<double>::infinity();
       updateVertex(next->node);
-      for (const PersistentPlannerNode3D predecessor :
-           lattice_->adjacentNodes(next->node)) {
-        updateVertex(predecessor);
-      }
+      lattice_->forEachAdjacentNode(next->node,
+                                    [this](const PersistentPlannerNode3D predecessor) {
+                                      updateVertex(predecessor);
+                                    });
     }
     ++expansions;
   }
@@ -306,12 +306,12 @@ std::vector<Point3> DStarLiteSession3D::extractPath(const Point3& exact_start,
   while (node != goal_ && path.size() < config_->maximum_extracted_path_nodes) {
     std::optional<PersistentPlannerNode3D> selected;
     double selected_cost = std::numeric_limits<double>::infinity();
-    for (const PersistentPlannerNode3D successor : lattice_->adjacentNodes(node)) {
+    lattice_->forEachAdjacentNode(node, [&](const PersistentPlannerNode3D successor) {
       const double edge_cost = lattice_->rawEdgeCost(node, successor);
       const auto successor_record = records_.find(successor);
       if (!std::isfinite(edge_cost) || successor_record == records_.end() ||
           !std::isfinite(successor_record->second.g)) {
-        continue;
+        return;
       }
       const double cost = edge_cost + successor_record->second.g;
       if (!selected.has_value() || cost < selected_cost - kCostTolerance ||
@@ -327,7 +327,7 @@ std::vector<Point3> DStarLiteSession3D::extractPath(const Point3& exact_start,
     }
     if (!selected.has_value() || visited.contains(*selected)) {
       return {};
-    }
+    });
     const PersistentPlannerNode3D previous_node = node;
     node = *selected;
     adaptive_edges += lattice_->level(previous_node, node) > 0U ? 1U : 0U;

@@ -98,37 +98,37 @@ std::optional<std::vector<Point3>> FeasiblePathSearch3D::advance(
       }
     }
 
-    for (const PersistentPlannerNode3D neighbor :
-         lattice_->adjacentNodes(current.node)) {
-      if (!lattice_->edgeTraversable(current.node, neighbor)) {
-        continue;
-      }
-      const double transition_cost = minimumFlightTranslationTime3D(
-          lattice_->pointFor(current.node), lattice_->pointFor(neighbor),
-          config_->time_model);
-      const double candidate_cost = current.cost_from_start_s + transition_cost;
-      const auto existing = costs_.find(neighbor);
-      if (existing != costs_.end() &&
-          (existing->second < candidate_cost ||
-           approximatelyEqual(existing->second, candidate_cost))) {
-        continue;
-      }
-      costs_[neighbor] = candidate_cost;
-      parents_.insert_or_assign(neighbor, current.node);
-      const std::size_t depth = current.depth + 1U;
-      ++queue_sequence_;
-      if (queue_sequence_ == 0U) {
-        queue_sequence_ = 1U;
-      }
-      open_.push(FeasibilityQueueEntry3D{
-          .estimated_total_s =
-              candidate_cost + lattice_->heuristic(neighbor, endpoints.goal),
-          .cost_from_start_s = candidate_cost,
-          .depth = depth,
-          .node = neighbor,
-          .sequence = queue_sequence_,
-      });
-    }
+    lattice_->forEachAdjacentNode(
+        current.node, [&](const PersistentPlannerNode3D neighbor) {
+          if (!lattice_->edgeTraversable(current.node, neighbor)) {
+            return;
+          }
+          const double transition_cost = minimumFlightTranslationTime3D(
+              lattice_->pointFor(current.node), lattice_->pointFor(neighbor),
+              config_->time_model);
+          const double candidate_cost = current.cost_from_start_s + transition_cost;
+          const auto existing = costs_.find(neighbor);
+          if (existing != costs_.end() &&
+              (existing->second < candidate_cost ||
+               approximatelyEqual(existing->second, candidate_cost))) {
+            return;
+          }
+          costs_[neighbor] = candidate_cost;
+          parents_.insert_or_assign(neighbor, current.node);
+          const std::size_t depth = current.depth + 1U;
+          ++queue_sequence_;
+          if (queue_sequence_ == 0U) {
+            queue_sequence_ = 1U;
+          }
+          open_.push(FeasibilityQueueEntry3D{
+              .estimated_total_s =
+                  candidate_cost + lattice_->heuristic(neighbor, endpoints.goal),
+              .cost_from_start_s = candidate_cost,
+              .depth = depth,
+              .node = neighbor,
+              .sequence = queue_sequence_,
+          });
+        });
   }
   return std::nullopt;
 }
