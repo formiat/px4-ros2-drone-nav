@@ -31,6 +31,9 @@ struct ProductionRouteExecutionSelection3D {
   bool route_usable{false};
   bool tracking_error_tube_handoff_active{false};
   bool execution_owner_available{false};
+  // The execution owner is a certified stationary hold: the vehicle holds a
+  // position but executes no route, so it still needs a successor route.
+  bool stationary_hold_owner{false};
   bool pending_activation{false};
   bool physical_trajectory_invalidated{false};
   std::optional<DirectTrackingOwnerIdentity3D> direct_tracking_identity;

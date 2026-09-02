@@ -1,6 +1,7 @@
 #include "drone_city_nav/route_risk_annotation_3d.hpp"
 #include "drone_city_nav/static_route_extension.hpp"
 
+#include <algorithm>
 #include <cinttypes>
 #include <memory>
 #include <optional>
@@ -93,53 +94,75 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
   }
   if (planner_update.planner_invoked) {
     const PlannerTelemetry3D& planner_telemetry = planner_update.planner_telemetry;
-    RCLCPP_INFO(get_logger(),
-                "PERSISTENT_PLANNER3D stage=complete raw_revision=%" PRIu64
-                " mission_epoch=%" PRIu64 " input=%s progress=%s publishable=%s "
-                "source=%s reused=%s occupied_unchanged=%s incumbent_retained=%s "
-                "time_search_complete=%s points=%zu expansions=%zu time_expansions=%zu "
-                "changed_occupied=%zu affected_states=%zu repair_processed=%zu "
-                "repair_pending=%zu repair_in_progress=%s feasibility_attempted=%s "
-                "feasibility_found=%s feasibility_expansions=%zu records=%zu open=%zu "
-                "time_records=%zu time_open=%zu shortcuts=%zu/%zu edge_queries=%zu "
-                "raw_edge_checks=%zu adaptive_edge_queries=%zu adaptive_path_edges=%zu "
-                "maximum_adaptive_level=%zu time_objective_s=%.3f eta_s=%.3f "
-                "translation_s=%.3f turn_s=%.3f world_update_ms=%.3f search_ms=%.3f",
-                planner_telemetry.planned_on_revision, planner_telemetry.mission_epoch,
-                plannerInputStatus3DName(planner_update.planner_input_status),
-                searchProgress3DName(planner_update.planner_progress),
-                update.candidate.available ? "true" : "false",
-                update.candidate.available
-                    ? spatialRouteCandidateSource3DName(update.candidate.source)
-                    : "none",
-                planner_telemetry.search_state_reused ? "true" : "false",
-                planner_telemetry.occupied_world_unchanged ? "true" : "false",
-                planner_telemetry.incumbent_retained ? "true" : "false",
-                planner_telemetry.execution_time_search_complete ? "true" : "false",
-                update.candidate.point_count, planner_telemetry.expansions,
-                planner_telemetry.execution_time_search_expansions,
-                planner_telemetry.changed_occupied_voxels,
-                planner_telemetry.affected_lattice_states,
-                planner_telemetry.repair_lattice_states_processed,
-                planner_telemetry.repair_lattice_states_pending,
-                planner_telemetry.repair_pending ? "true" : "false",
-                planner_telemetry.feasibility_attempted ? "true" : "false",
-                planner_telemetry.feasibility_route_found ? "true" : "false",
-                planner_telemetry.feasibility_expansions, planner_telemetry.records,
-                planner_telemetry.open_entries,
-                planner_telemetry.execution_time_search_records,
-                planner_telemetry.execution_time_search_open_entries,
-                planner_telemetry.shortcuts_applied, planner_telemetry.shortcut_checks,
-                planner_telemetry.lattice_edge_queries,
-                planner_telemetry.raw_edge_validation_checks,
-                planner_telemetry.adaptive_edge_queries,
-                planner_telemetry.adaptive_edges_in_extracted_path,
-                planner_telemetry.maximum_queried_lattice_level,
-                planner_telemetry.execution_time_search_objective_s,
-                update.candidate.estimated_execution_time_s,
-                update.candidate.estimated_translation_time_s,
-                update.candidate.estimated_stationary_turn_time_s,
-                planner_telemetry.world_update_ms, planner_telemetry.search_ms);
+    RCLCPP_INFO(
+        get_logger(),
+        "PERSISTENT_PLANNER3D stage=complete raw_revision=%" PRIu64
+        " mission_epoch=%" PRIu64 " input=%s input_failure=%s progress=%s "
+        "publishable=%s "
+        "source=%s reused=%s occupied_unchanged=%s incumbent_retained=%s "
+        "time_search_complete=%s points=%zu expansions=%zu time_expansions=%zu "
+        "changed_occupied=%zu affected_states=%zu repair_processed=%zu "
+        "repair_pending=%zu repair_in_progress=%s feasibility_attempted=%s "
+        "feasibility_found=%s feasibility_expansions=%zu "
+        "feasibility_exhausted=%s feasibility_explored=%zu "
+        "feasibility_closest_goal_m=%.1f feasibility_restarts=%zu "
+        "feasibility_prefix_reseeds=%zu feasibility_invalid_segment=%zu "
+        "feasibility_anchor=(%.1f,%.1f,%.1f) records=%zu open=%zu "
+        "time_records=%zu time_open=%zu shortcuts=%zu/%zu edge_queries=%zu "
+        "raw_edge_checks=%zu adaptive_edge_queries=%zu adaptive_path_edges=%zu "
+        "maximum_adaptive_level=%zu time_objective_s=%.3f eta_s=%.3f "
+        "translation_s=%.3f turn_s=%.3f world_update_ms=%.3f search_ms=%.3f "
+        "world_diff_ms=%.1f world_install_ms=%.1f "
+        "schedule_ms=%.1f schedule_ranking_ms=%.1f edges_forgotten=%zu "
+        "clearances_tightened=%zu clearances_rederived=%zu",
+        planner_telemetry.planned_on_revision, planner_telemetry.mission_epoch,
+        plannerInputStatus3DName(planner_update.planner_input_status),
+        planner_telemetry.input_failure,
+        searchProgress3DName(planner_update.planner_progress),
+        update.candidate.available ? "true" : "false",
+        update.candidate.available
+            ? spatialRouteCandidateSource3DName(update.candidate.source)
+            : "none",
+        planner_telemetry.search_state_reused ? "true" : "false",
+        planner_telemetry.occupied_world_unchanged ? "true" : "false",
+        planner_telemetry.incumbent_retained ? "true" : "false",
+        planner_telemetry.execution_time_search_complete ? "true" : "false",
+        update.candidate.point_count, planner_telemetry.expansions,
+        planner_telemetry.execution_time_search_expansions,
+        planner_telemetry.changed_occupied_voxels,
+        planner_telemetry.affected_lattice_states,
+        planner_telemetry.repair_lattice_states_processed,
+        planner_telemetry.repair_lattice_states_pending,
+        planner_telemetry.repair_pending ? "true" : "false",
+        planner_telemetry.feasibility_attempted ? "true" : "false",
+        planner_telemetry.feasibility_route_found ? "true" : "false",
+        planner_telemetry.feasibility_expansions,
+        planner_telemetry.feasibility_frontier_exhausted ? "true" : "false",
+        planner_telemetry.feasibility_explored_nodes,
+        planner_telemetry.feasibility_closest_goal_distance_m,
+        planner_telemetry.feasibility_restarts,
+        planner_telemetry.feasibility_prefix_reseeds,
+        planner_telemetry.feasibility_last_invalid_segment,
+        planner_telemetry.feasibility_anchor.x, planner_telemetry.feasibility_anchor.y,
+        planner_telemetry.feasibility_anchor.z, planner_telemetry.records,
+        planner_telemetry.open_entries, planner_telemetry.execution_time_search_records,
+        planner_telemetry.execution_time_search_open_entries,
+        planner_telemetry.shortcuts_applied, planner_telemetry.shortcut_checks,
+        planner_telemetry.lattice_edge_queries,
+        planner_telemetry.raw_edge_validation_checks,
+        planner_telemetry.adaptive_edge_queries,
+        planner_telemetry.adaptive_edges_in_extracted_path,
+        planner_telemetry.maximum_queried_lattice_level,
+        planner_telemetry.execution_time_search_objective_s,
+        update.candidate.estimated_execution_time_s,
+        update.candidate.estimated_translation_time_s,
+        update.candidate.estimated_stationary_turn_time_s,
+        planner_telemetry.world_update_ms, planner_telemetry.search_ms,
+        planner_telemetry.world_diff_ms, planner_telemetry.world_install_ms,
+        planner_telemetry.schedule_ms, planner_telemetry.schedule_ranking_ms,
+        planner_telemetry.schedule_edges_forgotten,
+        planner_telemetry.schedule_clearances_tightened,
+        planner_telemetry.schedule_clearances_rederived);
   }
 
   if (update.status == RouteLifecycleAdvanceStatus3D::kContinuationQueued) {
@@ -182,12 +205,18 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
   if (candidate.candidate_generation != 0U &&
       (!activation_report.trajectory_validation.valid() ||
        activation.proposal.trajectory == nullptr)) {
+    const std::size_t failed_sample =
+        activation_report.trajectory_validation.sample_index;
+    const Point3 failed_position =
+        candidate.route != nullptr && failed_sample < candidate.route->size()
+            ? (*candidate.route)[failed_sample].position
+            : Point3{};
     RCLCPP_WARN(get_logger(),
                 "COMPILED_TRAJECTORY valid=false reason=%s sample_index=%zu "
-                "route_generation=%" PRIu64,
+                "sample=(%.2f,%.2f,%.2f) route_generation=%" PRIu64,
                 compiledTrajectoryFailureReason3DName(
                     activation_report.trajectory_validation.reason),
-                activation_report.trajectory_validation.sample_index,
+                failed_sample, failed_position.x, failed_position.y, failed_position.z,
                 candidate.candidate_generation);
   }
 
@@ -246,6 +275,24 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
   const RouteAdmissionReport3D& admission = activation.admission;
   const StaticRouteCandidateValidation& validation = admission.candidate_validation;
   const DynamicHandoffResult3D& handoff = admission.handoff;
+
+  struct RouteAltitudeSpan {
+    double minimum_z_m{0.0};
+    double maximum_z_m{0.0};
+    double first_z_m{0.0};
+  } route_altitude_span;
+
+  if (materialized.route != nullptr && !materialized.route->empty()) {
+    route_altitude_span.first_z_m = materialized.route->front().position.z;
+    route_altitude_span.minimum_z_m = route_altitude_span.first_z_m;
+    route_altitude_span.maximum_z_m = route_altitude_span.first_z_m;
+    for (const RouteSample3D& sample : *materialized.route) {
+      route_altitude_span.minimum_z_m =
+          std::min(route_altitude_span.minimum_z_m, sample.position.z);
+      route_altitude_span.maximum_z_m =
+          std::max(route_altitude_span.maximum_z_m, sample.position.z);
+    }
+  }
   const TrackingErrorTubeProfile3D* const tracking_profile =
       activation.trajectory != nullptr
           ? activation.trajectory->tracking_error_tube.get()
@@ -271,7 +318,10 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
       "trajectory_compile=%s/%s tracking_source_occupied=%" PRIu64
       " tracking_activation_occupied=%" PRIu64 " tracking_min_speed_mps=%.3f "
       "publication_status=%.*s "
-      "validation=%.*s handoff=%s splice=%.*s "
+      "validation=%.*s handoff=%s handoff_cross_track_m=%.2f "
+      "handoff_min_clearance_m=%.2f handoff_critical_exposure_m=%.2f "
+      "handoff_terminal_cross_track_m=%.2f route_z=[%.1f,%.1f] route_first_z=%.1f "
+      "splice=%.*s "
       "certified_reserve=%.*s reserve_available_m=%.3f "
       "reserve_required_m=%.3f reserve_shortfall_m=%.3f "
       "route_reaches_mission_goal=%s route_generation=%" PRIu64
@@ -313,7 +363,10 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
       routePublicationStatus3DName(admission.assessment.publication.status).data(),
       static_cast<int>(staticRouteCandidateStatusName(validation.status).size()),
       staticRouteCandidateStatusName(validation.status).data(),
-      dynamicHandoffStatus3DName(handoff.status),
+      dynamicHandoffStatus3DName(handoff.status), handoff.cross_track_m,
+      handoff.minimum_clearance_m, handoff.critical_exposure_m,
+      handoff.terminal_cross_track_m, route_altitude_span.minimum_z_m,
+      route_altitude_span.maximum_z_m, route_altitude_span.first_z_m,
       static_cast<int>(
           routeSpliceCertificationStatus3DName(admission.splice.status).size()),
       routeSpliceCertificationStatus3DName(admission.splice.status).data(),

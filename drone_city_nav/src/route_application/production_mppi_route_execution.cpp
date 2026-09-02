@@ -264,6 +264,11 @@ RouteExecutionSelector3D::select(const RouteExecutionSelectorRequest3D& request)
       (result.source_snapshot->finiteExecution() != nullptr ||
        result.source_snapshot->directTrackingExecution() != nullptr ||
        result.source_snapshot->stationaryHold() != nullptr);
+  result.stationary_hold_owner =
+      result.source_snapshot != nullptr &&
+      result.source_snapshot->finiteExecution() == nullptr &&
+      result.source_snapshot->directTrackingExecution() == nullptr &&
+      result.source_snapshot->stationaryHold() != nullptr;
   if (result.source_snapshot == nullptr) {
     return output;
   }

@@ -42,6 +42,10 @@ struct RouteSearchCandidate3D {
 
 struct RoutePlannerSession3D {
   PersistentPlannerRequest3D request{};
+  // Consecutive continuations that kept the session world while the planner
+  // was still repairing the previous change; bounds how long a search may lag
+  // behind the newest evidence.
+  std::uint32_t deferred_world_refreshes{0U};
   Point3 mission_goal{};
   Point3 search_start{};
   Vec3 search_velocity{};
@@ -93,6 +97,7 @@ public:
 private:
   RoutePlannerConfig3D config_{};
   PersistentDStarLitePlanner3D planner_;
+  std::uint64_t next_session_id_{0U};
 };
 
 } // namespace drone_city_nav

@@ -120,6 +120,9 @@ struct RouteLifecycleUpdate3D {
   bool search_running{false};
   bool search_superseded_by_activation{false};
   bool continuation_queued{false};
+  // Activation rejected the delivered incumbent for a vehicle-relative reason;
+  // the continuation asks the planner to drop it and search afresh.
+  bool incumbent_rejected{false};
   bool failed_search_latched{false};
 
   [[nodiscard]] bool valid() const noexcept {
@@ -330,6 +333,13 @@ private:
                     RouteLifecycleReplanOrigin3D origin,
                     std::uint64_t replay_completed_generation = 0U);
   [[nodiscard]] bool queueContinuation(const RouteLifecycleUpdate3D& update);
+  std::uint64_t incumbent_rejection_sequence_{0U};
+  // Rebases a continuation request onto the newest coherent world when it is
+  // strictly newer than the session world.
+  void refreshContinuationWorld(RoutePlanningRequest3D& request,
+                                const PlannerTelemetry3D& telemetry) const;
+  // Moves a vehicle-anchored continuation start to the current vehicle state.
+  void refreshContinuationStart(RoutePlanningRequest3D& request) const;
   void handleWorkerUpdate(RoutePlanningUpdateEvent3D event);
   void handleWorkerRejection(const RoutePlanningRejection3D& rejection);
   void observeRecoveryEpisode(std::uint64_t mission_epoch) noexcept;
@@ -357,6 +367,11 @@ private:
   StaticRoutePlanningLatencyTracker planning_latency_tracker_{};
   StaticRouteDeferredReplanLatch deferred_replan_latch_{};
   StaticRouteReplanGate replan_gate_{};
+  // Mission epoch of the objective the in-flight replan search serves.
+  std::uint64_t replan_in_flight_mission_epoch_{0U};
+  // The in-flight replan search already delivered a candidate; what it still
+  // runs for are improvements, which a release request does not wait for.
+  bool replan_in_flight_published_{false};
   StaticRouteFailedSearchLatch failed_search_latch_{};
   NavigationRecoveryEpisodeTracker recovery_episodes_{};
 };

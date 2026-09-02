@@ -202,6 +202,7 @@ struct ProductionMppiExecutionPublication {
   bool finite_path_validation_backoff{false};
   FiniteExecutionPathStatus3D finite_path_validation_status{
       FiniteExecutionPathStatus3D::kInvalidContract};
+  const char* finite_path_rejected_precondition{"none"};
   FiniteExecutionPathStatus3D finite_path_first_failed_validation_status{
       FiniteExecutionPathStatus3D::kValid};
   bool latest_lidar_obstacle_fresh{false};

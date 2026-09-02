@@ -265,6 +265,14 @@ RouteLifecycleCoordinator3D::advance(RoutePlanningUpdateEvent3D event) {
   result.request = std::move(event.request);
   result.vehicle_state = event.vehicle_state;
   result.candidate = summarizeCandidate(planner_update.improved_incumbent);
+  if (result.candidate.available &&
+      (transaction->replacement() || transaction->initial())) {
+    const std::scoped_lock lock{lifecycle_mutex_};
+    if (replan_gate_.inFlight() &&
+        replan_gate_.generation() == transaction->request.base_route_generation) {
+      replan_in_flight_published_ = true;
+    }
+  }
   if (planner_update.planner_session != nullptr) {
     result.search_start = planner_update.planner_session->search_start;
   } else {
@@ -272,6 +280,24 @@ RouteLifecycleCoordinator3D::advance(RoutePlanningUpdateEvent3D event) {
   }
   result.search_running =
       planner_update.planner_invoked && planner_update.dispatch.continue_search;
+  // A search for an objective the mission has since left is finished here,
+  // whatever it found: its continuation would keep the planner on the old leg
+  // and its candidate would be rejected as stale at activation anyway.
+  {
+    const RouteLifecycleReplanSnapshot3D current = config_.replan_snapshot_provider();
+    const bool objective_stale =
+        current.objective != nullptr && transaction->objective.mission_epoch != 0U &&
+        current.objective->mission_epoch != transaction->objective.mission_epoch;
+    if (objective_stale) {
+      finishSearch(*transaction);
+      result.search_running = false;
+      result.candidate = {};
+      result.planner_update = std::move(planner_update);
+      result.route_planning_ms = elapsedMilliseconds(planning_started);
+      result.status = RouteLifecycleAdvanceStatus3D::kCompleted;
+      return result;
+    }
+  }
 
   if (result.search_running && !result.candidate.available) {
     result.planner_update = std::move(planner_update);
@@ -377,6 +403,20 @@ RouteLifecycleCoordinator3D::advance(RoutePlanningUpdateEvent3D event) {
                                    RouteCandidateDisposition3D::kRetireSearchAndReplan;
 
   result.planner_update = std::move(planner_update);
+  // A candidate the activation could not hand the vehicle over to, or whose
+  // connector the raw evidence rejected, is not an incumbent worth improving:
+  // the search keeps running, but from the vehicle rather than from it.
+  result.incumbent_rejected =
+      result.candidate_disposition ==
+          RouteCandidateDisposition3D::kContinueForImprovement &&
+      (result.activation.admission.activation_status ==
+           StaticRouteActivationStatus::kDynamicHandoffRejected ||
+       result.activation.admission.activation_status ==
+           StaticRouteActivationStatus::kCandidateValidationRejected ||
+       result.activation.admission.activation_status ==
+           StaticRouteActivationStatus::kCandidateNotExecutable ||
+       result.activation.admission.activation_status ==
+           StaticRouteActivationStatus::kInvalidExecutionGeometry);
   if (result.search_running && !result.search_superseded_by_activation) {
     result.continuation_queued = queueContinuation(result);
   }
@@ -618,214 +658,6 @@ RouteLifecycleExtensionOutcome3D RouteLifecycleCoordinator3D::requestExtension(
   }
 }
 
-RouteLifecycleReplanOutcome3D
-RouteLifecycleCoordinator3D::requestReplan(const RouteReleaseReason3D reason,
-                                           const std::uint64_t route_generation) {
-  return requestReplanImpl(reason, route_generation,
-                           RouteLifecycleReplanOrigin3D::kRequested);
-}
-
-RouteLifecycleReplanOutcome3D RouteLifecycleCoordinator3D::requestReplanImpl(
-    const RouteReleaseReason3D reason, const std::uint64_t route_generation,
-    const RouteLifecycleReplanOrigin3D origin,
-    const std::uint64_t replay_completed_generation) {
-  const RouteLifecycleReplanSnapshot3D snapshot = config_.replan_snapshot_provider();
-  RouteLifecycleReplanOutcome3D outcome;
-  outcome.origin = origin;
-  outcome.reason = reason;
-  outcome.requested_route_generation = route_generation;
-  outcome.replay_completed_generation = replay_completed_generation;
-  outcome.committed_route_generation = snapshot.committed_route_generation;
-  outcome.resident_world_revision =
-      snapshot.resident_world != nullptr ? snapshot.resident_world->revision : 0U;
-  outcome.resident_source_raw_revision =
-      snapshot.resident_world != nullptr ? snapshot.resident_world->source_raw_revision
-                                         : 0U;
-  outcome.latest_raw_revision = snapshot.latest_raw_world != nullptr
-                                    ? snapshot.latest_raw_world->version().revision
-                                    : 0U;
-  outcome.blocked_raw_revision = snapshot.blocked_raw_revision;
-  const auto complete = [this](const RouteLifecycleReplanOutcome3D& value) {
-    notifyReplanOutcome(value);
-    return value;
-  };
-  if (snapshot.objective == nullptr) {
-    return complete(outcome);
-  }
-
-  {
-    const std::scoped_lock lock{lifecycle_mutex_};
-    outcome.cleared_gate_generation =
-        replan_gate_.finishIfSupersededBy(snapshot.committed_route_generation);
-    if (deferStaticRouteReleaseDuringExtension(extension_request_in_flight_, reason)) {
-      outcome.deferred_route_generation =
-          route_generation != 0U ? route_generation : extension_in_flight_generation_;
-      outcome.in_flight_generation = extension_in_flight_generation_;
-      deferred_replan_latch_.defer(StaticRouteDeferredReplan{
-          .reason = reason,
-          .route_generation = outcome.deferred_route_generation,
-      });
-      outcome.status = RouteLifecycleReplanStatus3D::kDeferredDuringExtension;
-    } else if (replan_gate_.inFlight()) {
-      outcome.in_flight_generation = replan_gate_.generation();
-      outcome.deferred_route_generation =
-          route_generation != 0U ? route_generation : outcome.in_flight_generation;
-      deferred_replan_latch_.defer(StaticRouteDeferredReplan{
-          .reason = reason,
-          .route_generation = outcome.deferred_route_generation,
-      });
-      outcome.status = RouteLifecycleReplanStatus3D::kDeferredReplanInFlight;
-    }
-  }
-  if (outcome.status == RouteLifecycleReplanStatus3D::kDeferredDuringExtension ||
-      outcome.status == RouteLifecycleReplanStatus3D::kDeferredReplanInFlight) {
-    return complete(outcome);
-  }
-
-  if (snapshot.resident_world == nullptr ||
-      !productionWorldGenerationCoherent(*snapshot.resident_world) ||
-      snapshot.resident_planner_world == nullptr) {
-    outcome.status = RouteLifecycleReplanStatus3D::kInvalidResidentWorld;
-    return complete(outcome);
-  }
-  outcome.search_generation = staticRouteSearchGeneration(
-      true, snapshot.committed_route_generation, snapshot.committed_route_generation);
-  bool failed_search_latched{false};
-  {
-    const std::scoped_lock lock{lifecycle_mutex_};
-    failed_search_latched = failed_search_latch_.latched();
-  }
-  if (snapshot.committed_route_generation == 0U && !failed_search_latched) {
-    outcome.status = RouteLifecycleReplanStatus3D::kWaitingInitialSearch;
-    return complete(outcome);
-  }
-  if (route_generation != 0U && outcome.search_generation != route_generation) {
-    outcome.status = RouteLifecycleReplanStatus3D::kGenerationMismatch;
-    return complete(outcome);
-  }
-
-  std::shared_ptr<const PersistentPlannerWorld3D> planner_world =
-      snapshot.resident_planner_world;
-  if (config_.observed_world) {
-    const bool latest_overlay_required =
-        routeSearchRequiresLatestRawOverlay3D(reason) ||
-        snapshot.blocked_raw_revision > snapshot.resident_world->source_raw_revision;
-    if (latest_overlay_required) {
-      const std::uint64_t minimum_raw_revision = std::max(
-          snapshot.blocked_raw_revision, snapshot.resident_world->source_raw_revision);
-      const std::shared_ptr<const PersistentPlannerWorld3D> raw_overlay =
-          snapshot.latest_raw_world != nullptr
-              ? captureObservedRouteSearchWorld3D(
-                    *snapshot.latest_raw_world,
-                    snapshot.resident_world->proprioceptive_free_space_seed,
-                    snapshot.resident_world->launch_support_contact)
-              : nullptr;
-      if (raw_overlay == nullptr ||
-          raw_overlay->producer_instance_id !=
-              snapshot.resident_world->producer_instance_id ||
-          raw_overlay->revision < minimum_raw_revision) {
-        outcome.status = RouteLifecycleReplanStatus3D::kWaitingRawSnapshot;
-        return complete(outcome);
-      }
-      planner_world = raw_overlay;
-      outcome.raw_search_overlay_used = true;
-      if (snapshot.blocked_raw_revision != 0U) {
-        outcome.dispatched_raw_revision = raw_overlay->revision;
-      }
-    }
-  }
-
-  const std::uint64_t required_sample =
-      snapshot.objective->mission_epoch == snapshot.minimum_route_mission_epoch
-          ? snapshot.minimum_route_sample_sequence
-          : 0U;
-  const StaticRouteSearchContext retry_context{
-      .base_route_generation = outcome.search_generation,
-      .search_start = Point3{snapshot.navigation.state.x, snapshot.navigation.state.y,
-                             snapshot.navigation.state.z},
-      .objective = makeStaticRouteObjective(*snapshot.objective),
-      .minimum_tracking_sample_sequence = required_sample,
-      .stamp_ns = snapshot.stamp_ns,
-  };
-  outcome.search_start = retry_context.search_start;
-  if (!snapshot.navigation.valid ||
-      (failed_search_latched &&
-       !insideFlightEnvelope(retry_context.search_start, config_.flight_envelope))) {
-    outcome.status = RouteLifecycleReplanStatus3D::kInvalidStart;
-    return complete(outcome);
-  }
-  {
-    const std::scoped_lock lock{lifecycle_mutex_};
-    outcome.retry = failed_search_latch_.evaluate(config_.search_retry, retry_context);
-  }
-  if (!outcome.retry.allow) {
-    outcome.status = RouteLifecycleReplanStatus3D::kSuppressedFailedSearch;
-    return complete(outcome);
-  }
-
-  const StaticRouteSearchRequestIdentity request_identity{
-      .kind = outcome.search_generation == 0U
-                  ? StaticRouteSearchRequestKind::kInitialRetry
-                  : StaticRouteSearchRequestKind::kReplan,
-      .base_route_generation = outcome.search_generation,
-  };
-  const std::shared_ptr<const PlannerSearchTransaction3D> transaction =
-      makePlannerSearchTransaction3D(snapshot.resident_world, std::move(planner_world),
-                                     makeStaticRouteObjective(*snapshot.objective),
-                                     request_identity, std::nullopt, reason);
-  if (transaction == nullptr) {
-    outcome.status = RouteLifecycleReplanStatus3D::kInvalidTransaction;
-    return complete(outcome);
-  }
-
-  {
-    const std::scoped_lock lock{lifecycle_mutex_};
-    if (deferStaticRouteReleaseDuringExtension(extension_request_in_flight_, reason)) {
-      outcome.deferred_route_generation =
-          route_generation != 0U ? route_generation : extension_in_flight_generation_;
-      outcome.in_flight_generation = extension_in_flight_generation_;
-      deferred_replan_latch_.defer(StaticRouteDeferredReplan{
-          .reason = reason,
-          .route_generation = outcome.deferred_route_generation,
-      });
-      outcome.status = RouteLifecycleReplanStatus3D::kDeferredDuringExtension;
-    } else if (!replan_gate_.tryBegin(outcome.search_generation)) {
-      outcome.in_flight_generation = replan_gate_.generation();
-      outcome.deferred_route_generation =
-          route_generation != 0U ? route_generation : outcome.in_flight_generation;
-      deferred_replan_latch_.defer(StaticRouteDeferredReplan{
-          .reason = reason,
-          .route_generation = outcome.deferred_route_generation,
-      });
-      outcome.status = RouteLifecycleReplanStatus3D::kDeferredReplanInFlight;
-    }
-  }
-  if (outcome.status == RouteLifecycleReplanStatus3D::kDeferredDuringExtension ||
-      outcome.status == RouteLifecycleReplanStatus3D::kDeferredReplanInFlight) {
-    return complete(outcome);
-  }
-  RoutePlanningEnqueueResult3D enqueue_result;
-  try {
-    enqueue_result = enqueue(RoutePlanningRequest3D{
-        .transaction = transaction,
-        .world_telemetry = snapshot.world_telemetry,
-        .continuation_session = nullptr,
-    });
-  } catch (...) {
-    finishReplan(outcome.search_generation, false);
-    throw;
-  }
-  outcome.enqueue_status = enqueue_result.status;
-  if (!enqueue_result.queued()) {
-    outcome.status = RouteLifecycleReplanStatus3D::kRouteQueueBusy;
-    notifyReplanOutcome(outcome);
-    finishReplan(outcome.search_generation, false);
-    return outcome;
-  }
-  outcome.status = RouteLifecycleReplanStatus3D::kQueued;
-  return complete(outcome);
-}
-
 RouteLifecycleTrackingRefreshOutcome3D
 RouteLifecycleCoordinator3D::requestTrackingWorldRefresh(
     RouteLifecycleTrackingRefreshRequest3D request) {
@@ -867,6 +699,8 @@ RouteLifecycleCoordinator3D::requestTrackingWorldRefresh(
       outcome.status = RouteLifecycleTrackingRefreshStatus3D::kLifecycleBusy;
       return outcome;
     }
+    replan_in_flight_mission_epoch_ =
+        request.objective != nullptr ? request.objective->mission_epoch : 0U;
   }
   RouteLifecycleWorldRefreshResult3D refresh;
   try {
@@ -932,12 +766,143 @@ bool RouteLifecycleCoordinator3D::queueContinuation(
       update.planner_update.planner_session == nullptr) {
     return false;
   }
-  return enqueue(RoutePlanningRequest3D{
-                     .transaction = update.request.transaction,
-                     .world_telemetry = update.request.world_telemetry,
-                     .continuation_session = update.planner_update.planner_session,
-                 })
+  RoutePlanningRequest3D request{
+      .transaction = update.request.transaction,
+      .world_telemetry = update.request.world_telemetry,
+      .continuation_session = update.planner_update.planner_session,
+  };
+  refreshContinuationWorld(request, update.planner_update.planner_telemetry);
+  refreshContinuationStart(request);
+  if (update.incumbent_rejected && request.continuation_session != nullptr) {
+    auto rejected_session =
+        std::make_shared<RoutePlannerSession3D>(*request.continuation_session);
+    rejected_session->request.incumbent_rejection_sequence =
+        ++incumbent_rejection_sequence_;
+    request.continuation_session = std::move(rejected_session);
+  }
+  // A running search carries the incumbent search state; dropping its
+  // continuation behind a request that happened to be queued first would end
+  // the search silently, and a displaced request loses nothing: the trigger
+  // that raised it (a blocked route, a superseded objective, a vehicle without
+  // a route) raises it again once the queue is free.
+  return enqueue(std::move(request), RoutePlanningQueuePolicy3D::kReplacePending)
       .queued();
+}
+
+void RouteLifecycleCoordinator3D::refreshContinuationWorld(
+    RoutePlanningRequest3D& request, const PlannerTelemetry3D& telemetry) const {
+  // A persistent search continues against the newest raw evidence rather than
+  // the world captured when it began. D* Lite repairs the exact occupied
+  // difference incrementally, so the in-flight search itself absorbs a blocked
+  // route instead of a deferred replan waiting for it to converge on a stale
+  // world. A world is absorbed once the previous change has been repaired, or
+  // after a bounded number of deferrals, so the search spends its budget on
+  // repair instead of on re-scheduling every revision.
+  if (!config_.replan_snapshot_provider || request.transaction == nullptr ||
+      request.continuation_session == nullptr) {
+    return;
+  }
+  // Every resident world is absorbed as it arrives: a skipped revision makes
+  // the next world's dirty-chunk delta incomplete and forces the planner into
+  // a full-grid occupied difference, which costs more than absorbing the
+  // change it skipped.
+  constexpr std::uint32_t kMaximumDeferredWorldRefreshes{0U};
+  if (telemetry.repair_lattice_states_pending > 0U &&
+      request.continuation_session->deferred_world_refreshes <
+          kMaximumDeferredWorldRefreshes) {
+    auto deferred_session =
+        std::make_shared<RoutePlannerSession3D>(*request.continuation_session);
+    ++deferred_session->deferred_world_refreshes;
+    request.continuation_session = std::move(deferred_session);
+    return;
+  }
+  const RouteLifecycleReplanSnapshot3D snapshot = config_.replan_snapshot_provider();
+  const PlannerSearchTransaction3D& transaction = *request.transaction;
+  const RoutePlannerSession3D& session = *request.continuation_session;
+  if (snapshot.resident_world == nullptr ||
+      !productionWorldGenerationCoherent(*snapshot.resident_world) ||
+      transaction.world == nullptr ||
+      snapshot.resident_world->producer_instance_id !=
+          transaction.world->producer_instance_id) {
+    return;
+  }
+  // Candidate worlds, newest first: the raw search overlay over the latest
+  // raw world, then the resident planner world. Each must pair validly with
+  // the resident world snapshot; the first valid, strictly newer candidate is
+  // absorbed.
+  // The resident planner world shares its chunk storage with the previous
+  // one, so the planner's occupied difference against it costs only the
+  // chunks that changed. A raw overlay is a fresh copy whose every chunk has
+  // to be compared, so it is absorbed only when it carries blocking evidence
+  // the resident world does not have yet.
+  std::vector<std::shared_ptr<const PersistentPlannerWorld3D>> candidates;
+  if (snapshot.resident_planner_world != nullptr) {
+    candidates.push_back(snapshot.resident_planner_world);
+  }
+  const bool overlay_required =
+      config_.observed_world && snapshot.latest_raw_world != nullptr &&
+      snapshot.blocked_raw_revision > snapshot.resident_world->source_raw_revision;
+  if (overlay_required) {
+    std::shared_ptr<const PersistentPlannerWorld3D> raw_overlay =
+        captureObservedRouteSearchWorld3D(
+            *snapshot.latest_raw_world,
+            snapshot.resident_world->proprioceptive_free_space_seed,
+            snapshot.resident_world->launch_support_contact);
+    if (raw_overlay != nullptr) {
+      candidates.insert(candidates.begin(), std::move(raw_overlay));
+    }
+  }
+  for (const std::shared_ptr<const PersistentPlannerWorld3D>& newest : candidates) {
+    if (!newest->valid() ||
+        newest->producer_instance_id != session.request.world.producer_instance_id ||
+        newest->revision <= session.request.world.revision) {
+      continue;
+    }
+    auto refreshed_transaction =
+        std::make_shared<PlannerSearchTransaction3D>(transaction);
+    refreshed_transaction->world = snapshot.resident_world;
+    refreshed_transaction->planner_world = newest;
+    if (!refreshed_transaction->valid()) {
+      continue;
+    }
+    auto refreshed_session = std::make_shared<RoutePlannerSession3D>(session);
+    refreshed_session->request.world = *newest;
+    refreshed_session->deferred_world_refreshes = 0U;
+    request.transaction = std::move(refreshed_transaction);
+    request.continuation_session = std::move(refreshed_session);
+    request.world_telemetry = snapshot.world_telemetry;
+    return;
+  }
+  // Nothing newer could be absorbed this time; the next continuation tries
+  // again without accumulating deferrals.
+  auto retry_session = std::make_shared<RoutePlannerSession3D>(session);
+  retry_session->deferred_world_refreshes = 0U;
+  request.continuation_session = std::move(retry_session);
+}
+
+void RouteLifecycleCoordinator3D::refreshContinuationStart(
+    RoutePlanningRequest3D& request) const {
+  // A search anchored at the vehicle follows the vehicle: D* Lite rebases its
+  // start incrementally, and a route planned from where the vehicle was a
+  // second ago cannot be handed off. A certified stitch keeps its exact base.
+  if (!config_.vehicle_state_provider || request.continuation_session == nullptr ||
+      request.continuation_session->search_base_stitch_station_m.has_value()) {
+    return;
+  }
+  const RoutePlannerVehicleState3D vehicle_state = config_.vehicle_state_provider();
+  if (!vehicle_state.valid) {
+    return;
+  }
+  const RoutePlannerSession3D& session = *request.continuation_session;
+  if (distance3D(session.search_start, vehicle_state.position) <= 1.0e-6) {
+    return;
+  }
+  auto refreshed_session = std::make_shared<RoutePlannerSession3D>(session);
+  refreshed_session->request.start = vehicle_state.position;
+  refreshed_session->request.velocity = vehicle_state.velocity;
+  refreshed_session->search_start = vehicle_state.position;
+  refreshed_session->search_velocity = vehicle_state.velocity;
+  request.continuation_session = std::move(refreshed_session);
 }
 
 void RouteLifecycleCoordinator3D::handleWorkerUpdate(RoutePlanningUpdateEvent3D event) {
@@ -996,36 +961,6 @@ void RouteLifecycleCoordinator3D::finishReplan(const std::uint64_t base_generati
   if (replay.has_value()) {
     replayDeferredReplan(*replay, RouteLifecycleReplanOrigin3D::kDeferredReplanReplay,
                          base_generation);
-  }
-}
-
-void RouteLifecycleCoordinator3D::replayDeferredReplan(
-    const StaticRouteDeferredReplan& replay, const RouteLifecycleReplanOrigin3D origin,
-    const std::uint64_t completed_generation) noexcept {
-  if (origin == RouteLifecycleReplanOrigin3D::kRequested) {
-    return;
-  }
-  const std::uint64_t requested_generation =
-      origin == RouteLifecycleReplanOrigin3D::kDeferredExtensionReplay
-          ? replay.route_generation
-          : 0U;
-  try {
-    static_cast<void>(requestReplanImpl(replay.reason, requested_generation, origin,
-                                        completed_generation));
-  } catch (...) {
-    handleFailure(std::current_exception());
-  }
-}
-
-void RouteLifecycleCoordinator3D::notifyReplanOutcome(
-    const RouteLifecycleReplanOutcome3D& outcome) const {
-  if (!config_.replan_outcome_handler) {
-    return;
-  }
-  try {
-    config_.replan_outcome_handler(outcome);
-  } catch (...) {
-    handleFailure(std::current_exception());
   }
 }
 
