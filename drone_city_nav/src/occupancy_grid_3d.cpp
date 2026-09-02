@@ -252,8 +252,9 @@ std::uint64_t OccupancyGrid3D::contentFingerprint() const {
       add(word);
     }
   }
-  content_fingerprint_cache_ = hash == 0U ? 1U : hash;
-  return *content_fingerprint_cache_;
+  const std::uint64_t fingerprint = hash == 0U ? 1U : hash;
+  content_fingerprint_cache_ = fingerprint;
+  return fingerprint;
 }
 
 std::optional<std::uint64_t>
@@ -294,6 +295,12 @@ Point3 OccupancyGrid3D::cellCenter(const GridIndex3D index) const noexcept {
       bounds_.origin_y + (static_cast<double>(index.y) + 0.5) * bounds_.resolution_m,
       bounds_.origin_z + (static_cast<double>(index.z) + 0.5) * bounds_.resolution_m,
   };
+}
+
+const OccupancyGrid3D::Chunk*
+OccupancyGrid3D::findChunk(const OccupancyChunkIndex3D index) const noexcept {
+  const auto found = chunks_.find(index);
+  return found == chunks_.end() ? nullptr : &found->second;
 }
 
 OccupancyChunkIndex3D OccupancyGrid3D::chunkIndex(const GridIndex3D index) noexcept {

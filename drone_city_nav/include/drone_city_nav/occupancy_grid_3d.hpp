@@ -52,12 +52,16 @@ public:
   worldToCell(const Point3& point) const noexcept;
   [[nodiscard]] Point3 cellCenter(GridIndex3D index) const noexcept;
   [[nodiscard]] bool isOccupied(GridIndex3D index) const noexcept;
+  // The chunk holding this index, or nullptr when no cell of the chunk has
+  // ever been occupied. Chunks are 16-cubed bitsets; a present chunk may have
+  // been cleared back to zero.
+  [[nodiscard]] const Chunk* findChunk(OccupancyChunkIndex3D index) const noexcept;
+  [[nodiscard]] static OccupancyChunkIndex3D chunkIndex(GridIndex3D index) noexcept;
 
   void setOccupied(GridIndex3D index);
   void clearOccupied(GridIndex3D index);
 
 private:
-  [[nodiscard]] static OccupancyChunkIndex3D chunkIndex(GridIndex3D index) noexcept;
   [[nodiscard]] static std::size_t localBitIndex(GridIndex3D index) noexcept;
 
   GridBounds3D bounds_{};

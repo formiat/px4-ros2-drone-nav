@@ -3,11 +3,14 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <iterator>
 #include <limits>
 #include <optional>
+#include <span>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "swept_footprint_internal.hpp"
 
@@ -56,9 +59,8 @@ using swept_footprint_detail::normalized;
   // exact minimum is one of the breakpoints or a stationary point inside a
   // piece. A fixed-iteration search can overestimate this minimum and miss a
   // tangent or shallow collision.
-  std::array<double, 8U> breakpoints{};
-  breakpoints[0] = 0.0;
-  breakpoints[1] = 1.0;
+  std::array<double, 8U> breakpoint_storage{0.0, 1.0};
+  const std::span<double, 8U> breakpoints{breakpoint_storage};
   std::size_t breakpoint_count{2U};
   const auto add_axis_breakpoints = [&](const double start, const double delta,
                                         const double lower,
@@ -76,11 +78,12 @@ using swept_footprint_detail::normalized;
   add_axis_breakpoints(first.x, direction.x, minimum.x, maximum.x);
   add_axis_breakpoints(first.y, direction.y, minimum.y, maximum.y);
   add_axis_breakpoints(first.z, direction.z, minimum.z, maximum.z);
-  std::sort(breakpoints.begin(), breakpoints.begin() + breakpoint_count);
+  const std::span<double> active_breakpoints = breakpoints.first(breakpoint_count);
+  std::sort(active_breakpoints.begin(), active_breakpoints.end());
   const auto unique_end =
-      std::unique(breakpoints.begin(), breakpoints.begin() + breakpoint_count);
+      std::unique(active_breakpoints.begin(), active_breakpoints.end());
   breakpoint_count =
-      static_cast<std::size_t>(std::distance(breakpoints.begin(), unique_end));
+      static_cast<std::size_t>(std::distance(active_breakpoints.begin(), unique_end));
 
   double minimum_distance_squared = std::numeric_limits<double>::infinity();
   for (std::size_t index = 0U; index < breakpoint_count; ++index) {
@@ -96,14 +99,15 @@ using swept_footprint_detail::normalized;
     const auto add_active_axis = [&](const double start, const double delta,
                                      const double lower, const double upper) noexcept {
       const double coordinate = start + delta * midpoint;
-      const std::optional<double> active_boundary =
-          coordinate < lower   ? std::optional<double>{lower}
-          : coordinate > upper ? std::optional<double>{upper}
-                               : std::nullopt;
-      if (!active_boundary.has_value()) {
+      double active_boundary{0.0};
+      if (coordinate < lower) {
+        active_boundary = lower;
+      } else if (coordinate > upper) {
+        active_boundary = upper;
+      } else {
         return;
       }
-      derivative_constant += delta * (start - *active_boundary);
+      derivative_constant += delta * (start - active_boundary);
       derivative_slope += delta * delta;
     };
     add_active_axis(first.x, direction.x, minimum.x, maximum.x);
@@ -263,6 +267,136 @@ candidateRemainsInsideLaunchSupportEnvelope(const LaunchSupportContact3D& contac
                                              const Point3& box_maximum) noexcept {
   return std::ranges::any_of(contact.contact_cells, [&](const AxisAlignedBox3D& box) {
     return sameBox(box, box_minimum, box_maximum);
+struct AxisAlignedExtent3D {
+  Point3 minimum{};
+  Point3 maximum{};
+};
+
+// Conservative axis-aligned box of a body at one pose: the axial extents along
+// the body axis plus the full radius in every direction.
+[[nodiscard]] AxisAlignedExtent3D
+bodyExtent(const Point3& center, const FootprintBodyAxis& axis,
+           const SweptFootprintConfig& config) noexcept {
+  const double radius_m = std::max(0.0, config.radius_m);
+  const double lower_extent_m = std::max(0.0, config.lower_extent_m);
+  const double upper_extent_m = std::max(0.0, config.upper_extent_m);
+  const Point3 lower{center.x - lower_extent_m * axis.x,
+                     center.y - lower_extent_m * axis.y,
+                     center.z - lower_extent_m * axis.z};
+  const Point3 upper{center.x + upper_extent_m * axis.x,
+                     center.y + upper_extent_m * axis.y,
+                     center.z + upper_extent_m * axis.z};
+  return AxisAlignedExtent3D{
+      .minimum = Point3{std::min(lower.x, upper.x) - radius_m,
+                        std::min(lower.y, upper.y) - radius_m,
+                        std::min(lower.z, upper.z) - radius_m},
+      .maximum = Point3{std::max(lower.x, upper.x) + radius_m,
+                        std::max(lower.y, upper.y) + radius_m,
+                        std::max(lower.z, upper.z) + radius_m},
+  };
+}
+
+// The rotating, translating body over a whole sweep stays inside the union of
+// its end poses, grown by the largest body radius times the rotation angle.
+[[nodiscard]] AxisAlignedExtent3D
+sweepExtent(const swept_footprint_detail::ConservativeSweepCover3D& cover,
+            const SweptFootprintConfig& config) noexcept {
+  const AxisAlignedExtent3D first = bodyExtent(cover.first, cover.first_axis, config);
+  const AxisAlignedExtent3D second =
+      bodyExtent(cover.second, cover.second_axis, config);
+  const double body_radius_m = std::hypot(
+      std::max(0.0, config.radius_m), std::max(std::max(0.0, config.lower_extent_m),
+                                               std::max(0.0, config.upper_extent_m)));
+  const double rotation_margin_m = body_radius_m * cover.angle_rad;
+  return AxisAlignedExtent3D{
+      .minimum =
+          Point3{std::min(first.minimum.x, second.minimum.x) - rotation_margin_m,
+                 std::min(first.minimum.y, second.minimum.y) - rotation_margin_m,
+                 std::min(first.minimum.z, second.minimum.z) - rotation_margin_m},
+      .maximum =
+          Point3{std::max(first.maximum.x, second.maximum.x) + rotation_margin_m,
+                 std::max(first.maximum.y, second.maximum.y) + rotation_margin_m,
+                 std::max(first.maximum.z, second.maximum.z) + rotation_margin_m},
+  };
+}
+
+template<typename Chunk>
+[[nodiscard]] bool chunkHasOccupiedBits(const Chunk& chunk) noexcept {
+  if constexpr (std::is_same_v<Chunk, ObservedOccupancyGrid3D::Chunk>) {
+    return std::ranges::any_of(chunk.occupied,
+                               [](const std::uint64_t word) { return word != 0U; });
+  } else {
+    return std::ranges::any_of(chunk,
+                               [](const std::uint64_t word) { return word != 0U; });
+  }
+}
+
+// Exact early-out: when no chunk overlapping the extent holds an occupied cell,
+// nothing inside the extent can intersect the body. Chunks are 16-cubed so an
+// extent of a few metres touches at most a handful of them.
+template<typename Occupancy>
+[[nodiscard]] bool
+extentMayContainOccupied(const Occupancy& occupancy,
+                         const AxisAlignedExtent3D& extent) noexcept {
+  constexpr int kChunkSize{Occupancy::kChunkSize};
+  const GridBounds3D& bounds = occupancy.bounds();
+  const int minimum_x = std::max(
+      0, minimumContactCell(extent.minimum.x, bounds.origin_x, bounds.resolution_m));
+  const int maximum_x = std::min(
+      bounds.width_cells - 1,
+      maximumContactCell(extent.maximum.x, bounds.origin_x, bounds.resolution_m));
+  const int minimum_y = std::max(
+      0, minimumContactCell(extent.minimum.y, bounds.origin_y, bounds.resolution_m));
+  const int maximum_y = std::min(
+      bounds.height_cells - 1,
+      maximumContactCell(extent.maximum.y, bounds.origin_y, bounds.resolution_m));
+  const int minimum_z = std::max(
+      0, minimumContactCell(extent.minimum.z, bounds.origin_z, bounds.resolution_m));
+  const int maximum_z = std::min(
+      bounds.depth_cells - 1,
+      maximumContactCell(extent.maximum.z, bounds.origin_z, bounds.resolution_m));
+  if (minimum_x > maximum_x || minimum_y > maximum_y || minimum_z > maximum_z) {
+    return false;
+  }
+  for (int chunk_z = minimum_z / kChunkSize; chunk_z <= maximum_z / kChunkSize;
+       ++chunk_z) {
+    for (int chunk_y = minimum_y / kChunkSize; chunk_y <= maximum_y / kChunkSize;
+         ++chunk_y) {
+      for (int chunk_x = minimum_x / kChunkSize; chunk_x <= maximum_x / kChunkSize;
+           ++chunk_x) {
+        const auto* const chunk =
+            occupancy.findChunk(OccupancyChunkIndex3D{chunk_x, chunk_y, chunk_z});
+        if (chunk != nullptr && chunkHasOccupiedBits(*chunk)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+[[nodiscard]] bool pointInsideExtent(const Point3& point,
+                                     const AxisAlignedExtent3D& extent) noexcept {
+  return point.x >= extent.minimum.x && point.x <= extent.maximum.x &&
+         point.y >= extent.minimum.y && point.y <= extent.maximum.y &&
+         point.z >= extent.minimum.z && point.z <= extent.maximum.z;
+}
+
+// Points that can touch the swept body over a segment. One pass over the scan
+// replaces a full scan per sweep interval.
+[[nodiscard]] std::span<const Point3>
+pointsInsideExtent(const std::span<const Point3> points,
+                   const AxisAlignedExtent3D& extent) {
+  thread_local std::vector<Point3> scratch;
+  scratch.clear();
+  for (const Point3& point : points) {
+    if (pointInsideExtent(point, extent)) {
+      scratch.push_back(point);
+    }
+  }
+  return scratch;
+}
+
   });
 }
 
@@ -280,6 +414,8 @@ candidateRemainsInsideLaunchSupportEnvelope(const LaunchSupportContact3D& contac
 [[nodiscard]] bool launchSupportAllowsPoint(const LaunchSupportContact3D& contact,
                                             const Point3& point,
                                             const Point3& candidate_position) noexcept {
+// Exact per-pose validation. Callers that already proved the surrounding
+// chunks empty for a whole sweep skip the per-pose broad phase.
   return candidateRemainsInsideLaunchSupportEnvelope(contact, candidate_position) &&
          std::ranges::any_of(contact.contact_cells, [&](const AxisAlignedBox3D& box) {
            return pointInsideBox(point, box);
@@ -318,7 +454,7 @@ candidateRemainsInsideLaunchSupportEnvelope(const LaunchSupportContact3D& contac
 }
 
 template<typename Occupancy>
-[[nodiscard]] SweptFootprintResult validateRawFootprintAt3D(
+[[nodiscard]] SweptFootprintResult validateRawFootprintAt3DExact(
     const Occupancy& occupancy, const Point3& position,
     const FootprintBodyAxis& requested_body_axis, const SweptFootprintConfig& config,
     const LaunchSupportContact3D* const launch_support_contact = nullptr) noexcept {
@@ -389,6 +525,20 @@ template<typename Occupancy>
       return cached_chunk != nullptr &&
              ObservedOccupancyGrid3D::chunkState(
                  *cached_chunk, ObservedOccupancyGrid3D::localBitIndex(cell)) ==
+template<typename Occupancy>
+[[nodiscard]] SweptFootprintResult validateRawFootprintAt3D(
+    const Occupancy& occupancy, const Point3& position,
+    const FootprintBodyAxis& requested_body_axis, const SweptFootprintConfig& config,
+    const LaunchSupportContact3D* const launch_support_contact = nullptr) noexcept {
+  if (config.radius_m > 0.0 &&
+      !extentMayContainOccupied(
+          occupancy, bodyExtent(position, normalized(requested_body_axis), config))) {
+    return validRawFootprint();
+  }
+  return validateRawFootprintAt3DExact(occupancy, position, requested_body_axis, config,
+                                       launch_support_contact);
+}
+
                  ObservedVoxelState::kOccupied;
     }
   };
@@ -438,7 +588,10 @@ template<typename Occupancy>
   if (!cover.valid()) {
     return makeStatusResult(SweptFootprintStatus::kInvalidInput, first);
   }
-  const SweptFootprintResult first_result = validateRawFootprintAt3D(
+  if (!extentMayContainOccupied(occupancy, sweepExtent(cover, config))) {
+    return validRawFootprint();
+  }
+  const SweptFootprintResult first_result = validateRawFootprintAt3DExact(
       occupancy, cover.first, cover.first_axis, config, launch_support_contact);
   if (!first_result.accepted()) {
     return first_result;
@@ -464,14 +617,14 @@ template<typename Occupancy>
       // before its contact cells can be exempted for the complete interval.
       interval_launch_support = nullptr;
     }
-    const SweptFootprintResult result = validateRawFootprintAt3D(
+    const SweptFootprintResult result = validateRawFootprintAt3DExact(
         occupancy, interpolateSweepPosition(cover, ratio), midpoint_axis,
         inflated_config, interval_launch_support);
     if (!result.accepted()) {
       return result;
     }
   }
-  const SweptFootprintResult second_result = validateRawFootprintAt3D(
+  const SweptFootprintResult second_result = validateRawFootprintAt3DExact(
       occupancy, cover.second, cover.second_axis, config, launch_support_contact);
   if (!second_result.accepted()) {
     return second_result;
@@ -538,6 +691,11 @@ bool footprintIntersectsAxisAlignedBox(const Point3& position,
   const FootprintBodyAxis axis = normalized(requested_body_axis);
   return boxIntersectsFiniteCylinder(
       position, axis, box_minimum, box_maximum, std::max(0.0, config.lower_extent_m),
+  const std::span<const Point3> obstacle_points =
+      pointsInsideExtent(all_obstacle_points, sweepExtent(cover, config));
+  if (obstacle_points.empty()) {
+    return validRawFootprint();
+  }
       std::max(0.0, config.upper_extent_m),
       std::max(0.0, config.radius_m) * std::max(0.0, config.radius_m));
 }
@@ -563,7 +721,7 @@ SweptFootprintResult validateRawPointCloudFootprintAt(
 }
 
 SweptFootprintResult validateRawPointCloudSweptFootprint(
-    const std::span<const Point3> obstacle_points, const Point3& first,
+    const std::span<const Point3> all_obstacle_points, const Point3& first,
     const FootprintBodyAxis& first_body_axis, const Point3& second,
     const FootprintBodyAxis& second_body_axis, const SweptFootprintConfig& config,
     const LaunchSupportContact3D* const launch_support_contact) noexcept {
