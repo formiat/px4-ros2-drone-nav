@@ -285,6 +285,9 @@ production_mppi_node:
     # Closed-loop tracking error is bounded by speed times this response horizon.
     # At 5 m/s the tube is 0.75 m; narrower passages receive a lower speed cap.
     tracking_error_tube_response_time_s: 0.15
+    # Where the physical body clears raw occupancy, a constrained segment keeps
+    # at least this ceiling (0.15 m tube at 1 m/s) instead of crawling.
+    tracking_error_tube_minimum_progress_speed_mps: 1.0
     mppi_footprint_clearance_broad_phase_enabled: true
     route_constraint_diagnostics_distance_m: 30.0
     maximum_vertical_acceleration_mps2: 4.0
@@ -365,13 +368,18 @@ production_mppi_node:
     persistent_planner_maximum_extracted_path_nodes: 8192
     persistent_planner_maximum_shortcut_checks: 8192
     persistent_planner_maximum_compute_time_ms: 150.0
+    # Soft clearance ranking of lattice edges (never a reachability rule): an
+    # edge within this distance of raw occupied evidence costs its flight time
+    # times 1 + weight * (1 - clearance / distance)^2.
+    persistent_planner_clearance_ranking_weight: 1.5
+    persistent_planner_clearance_ranking_distance_m: 6.0
     route_sampling_step_m: 0.5
     route_completion_tolerance_m: 2.0
     static_esdf_route_lookahead_m: 180.0
     # These switches affect optional soft costs, geometry refinement, or local
     # controller behavior. They cannot change hard occupancy semantics.
-    clearance_costs_enabled: false
-    static_route_geometry_optimization_enabled: false
+    clearance_costs_enabled: true
+    static_route_geometry_optimization_enabled: true
     static_route_shortcut_optimization_enabled: false
     stochastic_trajectory_selection_enabled: false
     execution_route_cross_track_constraints_enabled: false

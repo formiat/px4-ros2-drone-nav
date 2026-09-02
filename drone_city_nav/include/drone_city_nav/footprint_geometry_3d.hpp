@@ -75,6 +75,18 @@ sameLaunchSupportContact3D(const LaunchSupportContact3D& first,
 [[nodiscard]] bool
 launchSupportContactValid3D(const LaunchSupportContact3D& contact) noexcept;
 
+// True while a candidate body position is still inside the departure envelope
+// of the launch support: contact cells suppress occupied evidence only there.
+[[nodiscard]] bool
+launchSupportEnvelopeContains3D(const LaunchSupportContact3D& contact,
+                                const Point3& candidate_position) noexcept;
+
+// True when the voxel box is one of the recorded launch support contact cells.
+[[nodiscard]] bool
+launchSupportContactContainsCell3D(const LaunchSupportContact3D& contact,
+                                   const Point3& box_minimum,
+                                   const Point3& box_maximum) noexcept;
+
 [[nodiscard]] bool
 updateLaunchSupportSettling(LaunchSupportContact3D& contact,
                             const Point3& observed_position) noexcept;

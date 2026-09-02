@@ -143,4 +143,36 @@ bool updateLaunchSupportSettling(LaunchSupportContact3D& contact,
   return true;
 }
 
+bool launchSupportEnvelopeContains3D(const LaunchSupportContact3D& contact,
+                                     const Point3& candidate_position) noexcept {
+  const FootprintBodyAxis seed_axis =
+      normalizedFootprintBodyAxis(contact.seed.body_axis);
+  const Point3 delta{candidate_position.x - contact.seed.position.x,
+                     candidate_position.y - contact.seed.position.y,
+                     candidate_position.z - contact.seed.position.z};
+  const double axial =
+      delta.x * seed_axis.x + delta.y * seed_axis.y + delta.z * seed_axis.z;
+  const double lateral_squared = std::max(0.0, delta.x * delta.x + delta.y * delta.y +
+                                                   delta.z * delta.z - axial * axial);
+  constexpr double kDepartureToleranceM{1.0e-9};
+  return axial >= contact.minimum_axial_departure_m - kDepartureToleranceM &&
+         lateral_squared <=
+             contact.maximum_lateral_departure_m * contact.maximum_lateral_departure_m +
+                 kDepartureToleranceM;
+}
+
+bool launchSupportContactContainsCell3D(const LaunchSupportContact3D& contact,
+                                        const Point3& box_minimum,
+                                        const Point3& box_maximum) noexcept {
+  constexpr double kCellAlignmentToleranceM{1.0e-6};
+  return std::ranges::any_of(contact.contact_cells, [&](const AxisAlignedBox3D& box) {
+    return std::abs(box.minimum.x - box_minimum.x) <= kCellAlignmentToleranceM &&
+           std::abs(box.minimum.y - box_minimum.y) <= kCellAlignmentToleranceM &&
+           std::abs(box.minimum.z - box_minimum.z) <= kCellAlignmentToleranceM &&
+           std::abs(box.maximum.x - box_maximum.x) <= kCellAlignmentToleranceM &&
+           std::abs(box.maximum.y - box_maximum.y) <= kCellAlignmentToleranceM &&
+           std::abs(box.maximum.z - box_maximum.z) <= kCellAlignmentToleranceM;
+  });
+}
+
 } // namespace drone_city_nav

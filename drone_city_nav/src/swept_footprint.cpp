@@ -233,40 +233,40 @@ seedAllowsSupportContact(const ProprioceptiveFreeSpaceSeed3D& seed,
          box_minimum_axial < kContactToleranceM;
 }
 
-[[nodiscard]] bool
-candidateRemainsInsideLaunchSupportEnvelope(const LaunchSupportContact3D& contact,
+[[nodiscard]] bool pointInsideBox(const Point3& point,
+                                  const AxisAlignedBox3D& box) noexcept {
+  constexpr double kContactToleranceM{1.0e-6};
+  return point.x >= box.minimum.x - kContactToleranceM &&
+         point.x <= box.maximum.x + kContactToleranceM &&
+         point.y >= box.minimum.y - kContactToleranceM &&
+         point.y <= box.maximum.y + kContactToleranceM &&
+         point.z >= box.minimum.z - kContactToleranceM &&
+         point.z <= box.maximum.z + kContactToleranceM;
+}
+
+[[nodiscard]] bool launchSupportAllowsPoint(const LaunchSupportContact3D& contact,
+                                            const Point3& point,
                                             const Point3& candidate_position) noexcept {
-  const FootprintBodyAxis seed_axis = normalized(contact.seed.body_axis);
-  const Point3 delta{candidate_position.x - contact.seed.position.x,
-                     candidate_position.y - contact.seed.position.y,
-                     candidate_position.z - contact.seed.position.z};
-  const double axial =
-      delta.x * seed_axis.x + delta.y * seed_axis.y + delta.z * seed_axis.z;
-  const double lateral_squared = std::max(0.0, delta.x * delta.x + delta.y * delta.y +
-                                                   delta.z * delta.z - axial * axial);
-  constexpr double kDepartureToleranceM{1.0e-9};
-  return axial >= contact.minimum_axial_departure_m - kDepartureToleranceM &&
-         lateral_squared <=
-             contact.maximum_lateral_departure_m * contact.maximum_lateral_departure_m +
-                 kDepartureToleranceM;
+  return launchSupportEnvelopeContains3D(contact, candidate_position) &&
+         std::ranges::any_of(contact.contact_cells, [&](const AxisAlignedBox3D& box) {
+           return pointInsideBox(point, box);
+         });
 }
 
-[[nodiscard]] bool sameBox(const AxisAlignedBox3D& first, const Point3& second_minimum,
-                           const Point3& second_maximum) noexcept {
-  constexpr double kCellAlignmentToleranceM{1.0e-6};
-  return std::abs(first.minimum.x - second_minimum.x) <= kCellAlignmentToleranceM &&
-         std::abs(first.minimum.y - second_minimum.y) <= kCellAlignmentToleranceM &&
-         std::abs(first.minimum.z - second_minimum.z) <= kCellAlignmentToleranceM &&
-         std::abs(first.maximum.x - second_maximum.x) <= kCellAlignmentToleranceM &&
-         std::abs(first.maximum.y - second_maximum.y) <= kCellAlignmentToleranceM &&
-         std::abs(first.maximum.z - second_maximum.z) <= kCellAlignmentToleranceM;
+[[nodiscard]] int minimumContactCell(const double coordinate, const double origin,
+                                     const double resolution) noexcept {
+  return static_cast<int>(std::ceil((coordinate - origin) / resolution)) - 1;
 }
 
-[[nodiscard]] bool launchSupportContainsCell(const LaunchSupportContact3D& contact,
-                                             const Point3& box_minimum,
-                                             const Point3& box_maximum) noexcept {
-  return std::ranges::any_of(contact.contact_cells, [&](const AxisAlignedBox3D& box) {
-    return sameBox(box, box_minimum, box_maximum);
+[[nodiscard]] int maximumContactCell(const double coordinate, const double origin,
+                                     const double resolution) noexcept {
+  return static_cast<int>(std::floor((coordinate - origin) / resolution));
+}
+
+[[nodiscard]] SweptFootprintResult validRawFootprint() noexcept {
+  return {.status = SweptFootprintStatus::kValid};
+}
+
 struct AxisAlignedExtent3D {
   Point3 minimum{};
   Point3 maximum{};
@@ -397,45 +397,6 @@ pointsInsideExtent(const std::span<const Point3> points,
   return scratch;
 }
 
-  });
-}
-
-[[nodiscard]] bool pointInsideBox(const Point3& point,
-                                  const AxisAlignedBox3D& box) noexcept {
-  constexpr double kContactToleranceM{1.0e-6};
-  return point.x >= box.minimum.x - kContactToleranceM &&
-         point.x <= box.maximum.x + kContactToleranceM &&
-         point.y >= box.minimum.y - kContactToleranceM &&
-         point.y <= box.maximum.y + kContactToleranceM &&
-         point.z >= box.minimum.z - kContactToleranceM &&
-         point.z <= box.maximum.z + kContactToleranceM;
-}
-
-[[nodiscard]] bool launchSupportAllowsPoint(const LaunchSupportContact3D& contact,
-                                            const Point3& point,
-                                            const Point3& candidate_position) noexcept {
-// Exact per-pose validation. Callers that already proved the surrounding
-// chunks empty for a whole sweep skip the per-pose broad phase.
-  return candidateRemainsInsideLaunchSupportEnvelope(contact, candidate_position) &&
-         std::ranges::any_of(contact.contact_cells, [&](const AxisAlignedBox3D& box) {
-           return pointInsideBox(point, box);
-         });
-}
-
-[[nodiscard]] int minimumContactCell(const double coordinate, const double origin,
-                                     const double resolution) noexcept {
-  return static_cast<int>(std::ceil((coordinate - origin) / resolution)) - 1;
-}
-
-[[nodiscard]] int maximumContactCell(const double coordinate, const double origin,
-                                     const double resolution) noexcept {
-  return static_cast<int>(std::floor((coordinate - origin) / resolution));
-}
-
-[[nodiscard]] SweptFootprintResult validRawFootprint() noexcept {
-  return {.status = SweptFootprintStatus::kValid};
-}
-
 [[nodiscard]] bool pointIntersectsBody(const Point3& point, const Point3& center,
                                        const FootprintBodyAxis& requested_axis,
                                        const SweptFootprintConfig& config) noexcept {
@@ -562,10 +523,9 @@ template<typename Occupancy>
         }
         const bool launch_support_cell_allowed =
             launch_support_contact != nullptr &&
-            candidateRemainsInsideLaunchSupportEnvelope(*launch_support_contact,
-                                                        position) &&
-            launchSupportContainsCell(*launch_support_contact, cell_minimum,
-                                      cell_maximum);
+            launchSupportEnvelopeContains3D(*launch_support_contact, position) &&
+            launchSupportContactContainsCell3D(*launch_support_contact, cell_minimum,
+                                               cell_maximum);
         if (launch_support_cell_allowed) {
           continue;
         }
@@ -607,10 +567,10 @@ template<typename Occupancy>
         inflatedSweepFootprint(config, cover, midpoint_axis);
     const LaunchSupportContact3D* interval_launch_support = launch_support_contact;
     if (launch_support_contact != nullptr &&
-        (!candidateRemainsInsideLaunchSupportEnvelope(
+        (!launchSupportEnvelopeContains3D(
              *launch_support_contact,
              interpolateSweepPosition(cover, interval_begin_ratio)) ||
-         !candidateRemainsInsideLaunchSupportEnvelope(
+         !launchSupportEnvelopeContains3D(
              *launch_support_contact,
              interpolateSweepPosition(cover, interval_end_ratio)))) {
       // The launch envelope is convex. Both interval endpoints must be inside
@@ -750,10 +710,10 @@ SweptFootprintResult validateRawPointCloudSweptFootprint(
         inflatedSweepFootprint(config, cover, midpoint_axis);
     const LaunchSupportContact3D* interval_launch_support = launch_support_contact;
     if (launch_support_contact != nullptr &&
-        (!candidateRemainsInsideLaunchSupportEnvelope(
+        (!launchSupportEnvelopeContains3D(
              *launch_support_contact,
              interpolateSweepPosition(cover, interval_begin_ratio)) ||
-         !candidateRemainsInsideLaunchSupportEnvelope(
+         !launchSupportEnvelopeContains3D(
              *launch_support_contact,
              interpolateSweepPosition(cover, interval_end_ratio)))) {
       interval_launch_support = nullptr;

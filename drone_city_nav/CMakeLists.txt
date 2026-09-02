@@ -480,6 +480,7 @@ set(DRONE_CITY_NAV_COLLISION_HEADERS
     include/drone_city_nav/observed_esdf_footprint_3d.hpp
     include/drone_city_nav/observed_world_content_hash_3d.hpp
     include/drone_city_nav/occupied_collision_oracle_3d.hpp
+    include/drone_city_nav/raw_occupancy_clearance_3d.hpp
     include/drone_city_nav/sensor_braking_contract_3d.hpp
     include/drone_city_nav/swept_footprint.hpp
     include/drone_city_nav/versioned_world_evidence_3d.hpp)

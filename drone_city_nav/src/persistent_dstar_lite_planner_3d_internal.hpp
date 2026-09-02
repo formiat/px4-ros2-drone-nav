@@ -222,8 +222,19 @@ public:
                                  PersistentPlannerNode3D second) const noexcept;
   [[nodiscard]] double rawEdgeCost(PersistentPlannerNode3D first,
                                    PersistentPlannerNode3D second);
-  // Uncached edge traversability, for a search that owns its own cost model.
-  // Query statistics are recorded the same way as for a cached cost.
+  // Distance from a node to the nearest raw occupied cell, capped at the
+  // clearance ranking distance. It is derived ranking evidence computed from
+  // the resident raw grid and cached per node.
+  [[nodiscard]] double nodeClearanceM(PersistentPlannerNode3D node);
+  // Reach, in metres, beyond the body within which a raw change can alter a
+  // cached edge cost. Zero when clearance ranking is disabled.
+  [[nodiscard]] double clearanceRankingReachM() const noexcept;
+  // Drops cached clearances of nodes whose raw surroundings changed.
+  void
+  forgetNodeClearances(const std::unordered_set<PersistentPlannerNode3D,
+                                                PersistentPlannerNode3DHash>& nodes);
+  // Edge traversability from the shared cost cache, for a search that owns its
+  // own cost model. A finite cached cost is exactly a traversable edge.
   [[nodiscard]] bool edgeTraversable(PersistentPlannerNode3D first,
                                      PersistentPlannerNode3D second);
 
@@ -242,6 +253,8 @@ private:
   std::optional<OccupiedCollisionOracle3D> departure_collision_oracle_;
   std::unordered_map<PersistentPlannerEdge3D, double, PersistentPlannerEdge3DHash>
       edge_cost_cache_;
+  std::unordered_map<PersistentPlannerNode3D, double, PersistentPlannerNode3DHash>
+      node_clearance_cache_;
   std::size_t edge_queries_{0U};
   std::size_t raw_edge_validation_checks_{0U};
   std::size_t adaptive_edge_queries_{0U};

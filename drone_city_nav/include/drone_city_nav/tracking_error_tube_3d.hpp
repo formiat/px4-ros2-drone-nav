@@ -17,6 +17,11 @@ namespace drone_city_nav {
 // inflating the hard planning footprint by a fixed margin.
 struct TrackingErrorTubeConfig3D {
   double response_time_s{0.15};
+  // Lower bound on a constrained segment's speed ceiling wherever the physical
+  // body itself clears raw occupancy. The tube then admits a small, bounded
+  // tracking excursion instead of collapsing progress to centimetres per second
+  // beside a wall. Zero keeps the pure clearance-derived ceiling.
+  double minimum_progress_speed_mps{0.0};
 };
 
 [[nodiscard]] bool

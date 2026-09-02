@@ -1,15 +1,16 @@
 #include "drone_city_nav/tracking_error_tube_3d.hpp"
 
+#include "drone_city_nav/raw_occupancy_clearance_3d.hpp"
 #include "drone_city_nav/tracking_error_tube_handoff_3d.hpp"
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <limits>
 
 namespace drone_city_nav {
 namespace {
 
-constexpr std::size_t kMarginSearchIterations{32U};
 constexpr double kSpeedToleranceMps{1.0e-9};
 constexpr double kExecutionTolerance{1.0e-6};
 constexpr double kHandoffStationToleranceM{1.0e-6};
@@ -84,16 +85,6 @@ routeIsValidForTube(const std::span<const RouteSample3D> route) noexcept {
   };
 }
 
-[[nodiscard]] SweptFootprintConfig
-inflatedFootprint(const SweptFootprintConfig& physical,
-                  const double margin_m) noexcept {
-  SweptFootprintConfig inflated = physical;
-  inflated.radius_m += margin_m;
-  inflated.lower_extent_m += margin_m;
-  inflated.upper_extent_m += margin_m;
-  return inflated;
-}
-
 [[nodiscard]] bool
 worldConfigurationIsValid(const TrackingErrorTubeWorld3D& world) noexcept {
   if (world.observed_occupancy != nullptr && world.occupancy != nullptr) {
@@ -131,38 +122,68 @@ worldConfigurationIsValid(const TrackingErrorTubeWorld3D& world) noexcept {
   return oracle.validateSegment(first, kBodyAxis, second, kBodyAxis).clear();
 }
 
+// The largest uniform body inflation that clears raw occupied evidence along
+// the whole segment: the minimum over body poses sampled at the sweep step,
+// each an exact distance query against nearby occupied voxel boxes.
+[[nodiscard]] double segmentInflationMarginM(
+    const TrackingErrorTubeWorld3D& world, const Point3& first, const Point3& second,
+    const SweptFootprintConfig& physical_footprint, const double maximum_margin_m) {
+  const RawClearanceBody3D body{
+      .radius_m = physical_footprint.radius_m,
+      .lower_extent_m = physical_footprint.lower_extent_m,
+      .upper_extent_m = physical_footprint.upper_extent_m,
+  };
+  const double length_m = distance3D(first, second);
+  const auto pose_count = static_cast<std::size_t>(
+      std::ceil(length_m / std::max(physical_footprint.sweep_step_m, 1.0e-6)));
+  double margin_m = maximum_margin_m;
+  for (std::size_t pose = 0U; pose <= pose_count && margin_m > 0.0; ++pose) {
+    const double ratio =
+        pose_count == 0U ? 1.0
+                         : static_cast<double>(pose) / static_cast<double>(pose_count);
+    const Point3 position{std::lerp(first.x, second.x, ratio),
+                          std::lerp(first.y, second.y, ratio),
+                          std::lerp(first.z, second.z, ratio)};
+    if (world.observed_occupancy != nullptr) {
+      margin_m = std::min(
+          margin_m, rawBodyInflationMargin3D(*world.observed_occupancy, position, body,
+                                             margin_m, world.launch_support_contact));
+    } else if (world.occupancy != nullptr) {
+      margin_m = std::min(margin_m, rawBodyInflationMargin3D(*world.occupancy, position,
+                                                             body, margin_m));
+    }
+  }
+  return margin_m;
+}
+
 [[nodiscard]] double segmentSpeedLimitMps(
     const TrackingErrorTubeWorld3D& world, const Point3& first, const Point3& second,
     const SweptFootprintConfig& physical_footprint,
     const TrackingErrorTubeConfig3D& config, const double maximum_speed_mps) noexcept {
+  // The physical body stays the only hard authority; the tube only shapes the
+  // speed ceiling above it.
   if (!segmentAccepted(world, first, second, physical_footprint)) {
     return std::numeric_limits<double>::quiet_NaN();
   }
   const double maximum_margin_m = trackingErrorTubeRadiusM(config, maximum_speed_mps);
-  if (segmentAccepted(world, first, second,
-                      inflatedFootprint(physical_footprint, maximum_margin_m))) {
+  const double margin_m = segmentInflationMarginM(world, first, second,
+                                                  physical_footprint, maximum_margin_m);
+  if (margin_m >= maximum_margin_m) {
     return maximum_speed_mps;
   }
-
-  double accepted_margin_m{0.0};
-  double rejected_margin_m{maximum_margin_m};
-  for (std::size_t iteration = 0U; iteration < kMarginSearchIterations; ++iteration) {
-    const double candidate_margin_m = 0.5 * (accepted_margin_m + rejected_margin_m);
-    if (segmentAccepted(world, first, second,
-                        inflatedFootprint(physical_footprint, candidate_margin_m))) {
-      accepted_margin_m = candidate_margin_m;
-    } else {
-      rejected_margin_m = candidate_margin_m;
-    }
-  }
-  return std::clamp(accepted_margin_m / config.response_time_s, 0.0, maximum_speed_mps);
+  const double clearance_limit_mps =
+      std::clamp(margin_m / config.response_time_s, 0.0, maximum_speed_mps);
+  return std::clamp(std::max(clearance_limit_mps, config.minimum_progress_speed_mps),
+                    0.0, maximum_speed_mps);
 }
 
 } // namespace
 
 bool trackingErrorTubeConfig3DIsValid(
     const TrackingErrorTubeConfig3D& config) noexcept {
-  return std::isfinite(config.response_time_s) && config.response_time_s > 0.0;
+  return std::isfinite(config.response_time_s) && config.response_time_s > 0.0 &&
+         std::isfinite(config.minimum_progress_speed_mps) &&
+         config.minimum_progress_speed_mps >= 0.0;
 }
 
 bool trackingErrorTubeProfile3DIsValid(const TrackingErrorTubeProfile3D& profile,

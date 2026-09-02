@@ -349,6 +349,10 @@ void ProductionMppiConfigLoader::declarePlanning() {
       declare<double>("route_completion_tolerance_m", 2.0);
   planning.static_esdf_route_lookahead_m =
       declare<double>("static_esdf_route_lookahead_m", 180.0);
+  planner.clearance_ranking_weight =
+      declare<double>("persistent_planner_clearance_ranking_weight", 1.5);
+  planner.clearance_ranking_distance_m =
+      declare<double>("persistent_planner_clearance_ranking_distance_m", 6.0);
   planning.static_route_geometry.sample_step_m = planning.route_sampling_step_m;
   planning.static_route_geometry.enabled =
       planning.optional_constraints.static_route_geometry_optimization_enabled;
@@ -663,6 +667,8 @@ void ProductionMppiConfigLoader::declareControl() {
       .lower_extent_m =
           static_cast<float>(config_.world.physical_footprint.lower_extent_m),
       .upper_extent_m =
+  control.tracking_error_tube.minimum_progress_speed_mps =
+      declare<double>("tracking_error_tube_minimum_progress_speed_mps", 1.0);
           static_cast<float>(config_.world.physical_footprint.upper_extent_m),
       .perimeter_samples = static_cast<std::uint32_t>(
           config_.world.physical_footprint.perimeter_samples),

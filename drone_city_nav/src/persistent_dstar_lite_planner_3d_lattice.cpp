@@ -1,9 +1,11 @@
 #include "drone_city_nav/occupied_collision_oracle_3d.hpp"
+#include "drone_city_nav/raw_occupancy_clearance_3d.hpp"
 
 #include <algorithm>
 #include <bit>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <numbers>
@@ -259,12 +261,60 @@ double PlannerLattice3D::rawEdgeCost(const PersistentPlannerNode3D first,
   const Point3 first_point = pointFor(first);
   const Point3 second_point = pointFor(second);
   ++raw_edge_validation_checks_;
-  const double cost = rawSegmentValid(first_point, second_point)
-                          ? minimumFlightTranslationTime3D(first_point, second_point,
-                                                           config_->time_model)
-                          : std::numeric_limits<double>::infinity();
+  double cost = rawSegmentValid(first_point, second_point)
+                    ? minimumFlightTranslationTime3D(first_point, second_point,
+                                                     config_->time_model)
+                    : std::numeric_limits<double>::infinity();
+  if (std::isfinite(cost) && config_->clearance_ranking_weight > 0.0) {
+    // Soft ranking only: a traversable edge stays traversable, it just costs
+    // more the closer its endpoints run to confirmed occupied evidence.
+    const double distance_m = config_->clearance_ranking_distance_m;
+    const double clearance_m = std::min(nodeClearanceM(first), nodeClearanceM(second));
+    if (clearance_m < distance_m) {
+      const double shortfall = 1.0 - clearance_m / distance_m;
+      cost *= 1.0 + config_->clearance_ranking_weight * shortfall * shortfall;
+    }
+  }
   edge_cost_cache_.emplace(edge, cost);
   return cost;
+}
+
+void PlannerLattice3D::forgetNodeClearances(
+    const std::unordered_set<PersistentPlannerNode3D, PersistentPlannerNode3DHash>&
+        nodes) {
+  for (const PersistentPlannerNode3D node : nodes) {
+    node_clearance_cache_.erase(node);
+  }
+}
+
+double PlannerLattice3D::clearanceRankingReachM() const noexcept {
+  return config_->clearance_ranking_weight > 0.0 ? config_->clearance_ranking_distance_m
+                                                 : 0.0;
+}
+
+double PlannerLattice3D::nodeClearanceM(const PersistentPlannerNode3D node) {
+  const double cap_m = config_->clearance_ranking_distance_m;
+  if (const auto found = node_clearance_cache_.find(node);
+      found != node_clearance_cache_.end()) {
+    return found->second;
+  }
+  const Point3 point = pointFor(node);
+  double clearance_m = cap_m;
+  if (resident_collision_oracle_.has_value()) {
+    const OccupiedCollisionWorld3D& world = resident_collision_oracle_->world();
+    if (world.observed_occupancy != nullptr) {
+      clearance_m = std::min(
+          clearance_m, rawEuclideanClearance3D(*world.observed_occupancy, point, cap_m,
+                                               world.launch_support_contact));
+    }
+    if (world.static_occupancy != nullptr) {
+      clearance_m = std::min(
+          clearance_m, rawEuclideanClearance3D(*world.static_occupancy, point, cap_m,
+                                               world.launch_support_contact));
+    }
+  }
+  node_clearance_cache_.emplace(node, clearance_m);
+  return clearance_m;
 }
 
 void PlannerLattice3D::reset() noexcept {
@@ -277,6 +327,7 @@ void PlannerLattice3D::reset() noexcept {
 
 void PlannerLattice3D::resetEdgeEvidence() noexcept {
   edge_cost_cache_.clear();
+  node_clearance_cache_.clear();
   resetEdgeStatistics();
 }
 

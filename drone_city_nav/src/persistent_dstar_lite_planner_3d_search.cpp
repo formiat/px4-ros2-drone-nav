@@ -142,14 +142,15 @@ void DStarLiteSession3D::scheduleAffectedVertices(
       resident_candidates;
   const double raw_half_diagonal =
       0.5 * std::numbers::sqrt3 * lattice_->bounds().resolution_m;
+  const double ranking_reach = lattice_->clearanceRankingReachM();
   const double horizontal_reach =
-      config_->physical_footprint.radius_m + raw_half_diagonal +
+      config_->physical_footprint.radius_m + raw_half_diagonal + ranking_reach +
       std::numbers::sqrt2 * config_->minimum_horizontal_step_m *
           static_cast<double>(lattice_->maximumScale());
   const double vertical_reach =
       std::max(config_->physical_footprint.lower_extent_m,
                config_->physical_footprint.upper_extent_m) +
-      raw_half_diagonal +
+      raw_half_diagonal + ranking_reach +
       config_->minimum_vertical_step_m * static_cast<double>(lattice_->maximumScale());
   const int horizontal_radius =
       static_cast<int>(
@@ -185,6 +186,7 @@ void DStarLiteSession3D::scheduleAffectedVertices(
   // Both endpoints are scheduled because an obstacle removal may make a
   // previously infinite undirected edge traversable.
   std::unordered_set<PersistentPlannerNode3D, PersistentPlannerNode3DHash> affected;
+  lattice_->forgetNodeClearances(resident_candidates);
   for (const PersistentPlannerNode3D node : resident_candidates) {
     lattice_->forEachAdjacentNode(node, [&](const PersistentPlannerNode3D neighbor) {
       const PersistentPlannerEdge3D edge = canonicalEdge(node, neighbor);

@@ -309,6 +309,10 @@ bool PersistentDStarLitePlanner3DImpl::validRequest(
          config_.maximum_extracted_path_nodes > 1U &&
          std::isfinite(config_.maximum_compute_time_ms) &&
          config_.maximum_compute_time_ms > 0.0 &&
+         std::isfinite(config_.clearance_ranking_weight) &&
+         config_.clearance_ranking_weight >= 0.0 &&
+         std::isfinite(config_.clearance_ranking_distance_m) &&
+         config_.clearance_ranking_distance_m > 0.0 &&
          config_.physical_footprint.sweep_step_m > 0.0 &&
          lattice_.pointInsideFlightEnvelope(request.start) &&
          lattice_.pointInsideFlightEnvelope(request.mission_goal);

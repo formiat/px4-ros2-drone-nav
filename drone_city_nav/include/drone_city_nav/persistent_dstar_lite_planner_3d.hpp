@@ -75,6 +75,12 @@ struct PersistentPlannerConfig3D {
   std::size_t maximum_extracted_path_nodes{8192U};
   std::size_t maximum_shortcut_checks{8192U};
   double maximum_compute_time_ms{150.0};
+  // Soft clearance ranking. An edge whose endpoints lie within
+  // clearance_ranking_distance_m of raw occupied evidence costs its flight
+  // time scaled by 1 + weight * (1 - clearance / distance)^2. Zero weight
+  // disables it. Reachability is untouched: only the raw body check rejects.
+  double clearance_ranking_weight{0.0};
+  double clearance_ranking_distance_m{6.0};
   SweptFootprintConfig physical_footprint{};
   FlightEnvelopeConfig flight_envelope{};
 };
