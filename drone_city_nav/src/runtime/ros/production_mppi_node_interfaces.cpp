@@ -68,7 +68,7 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
                         static_cast<double>(
                             config_.control.mppi.risk.preferred_distance_m) +
                         20.0,
-                    .worker_pool = planning_worker_pool_.get(),
+                    .worker_pool = world_worker_pool_.get(),
                 },
             .request_provider =
                 [this](const StaticWorldRefreshRequest3D& refresh) {
@@ -103,12 +103,7 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
                     .preferred_distance_m = static_cast<double>(
                         config_.control.mppi.risk.preferred_distance_m),
                     .update_rate_hz = config_.world.no_static_3d_esdf_update_rate_hz,
-                    .incremental_maximum_rebuild_ratio =
-                        config_.world
-                            .no_static_3d_esdf_incremental_maximum_rebuild_ratio,
-                    .full_audit_interval_builds =
-                        config_.world.no_static_3d_esdf_full_audit_interval_builds,
-                    .worker_pool = planning_worker_pool_.get(),
+                    .worker_pool = world_worker_pool_.get(),
                 },
             .request_provider =
                 [this](std::shared_ptr<const ProductionMppiRawWorld3D> raw_world) {

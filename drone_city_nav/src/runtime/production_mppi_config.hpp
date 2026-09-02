@@ -78,6 +78,10 @@ struct ProductionMppiConfig final {
     bool use_static_map{true};
     double maximum_esdf_age_ms{1000.0};
     double no_static_3d_esdf_update_rate_hz{1.0};
+    // Threads of the dedicated world pool. World builds (static ESDF, observed
+    // distance transforms) never share planner_worker_count with planner
+    // continuations, so a long transform cannot starve a D* Lite repair.
+    std::size_t world_worker_count{2U};
     LocalObservedEsdfWindow3D no_static_3d_esdf_window{};
     std::string frame_id{"map"};
     Px4MapFrameTransform px4_map_transform{};

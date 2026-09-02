@@ -67,7 +67,7 @@ TEST(MppiControlSequenceTest, FractionalShiftInterpolatesWithoutDroppingWholeTic
   EXPECT_FLOAT_EQ(shifted[2].ax, 20.0F);
 }
 
-TEST(MppiControlSequenceTest, ShiftBeyondHorizonDropsStaleNominal) {
+TEST(MppiControlSequenceTest, ShiftBeyondHorizonHoldsTheLastPlannedControl) {
   const std::array<Control, 2> controls{
       Control{.ax = 1.0F},
       Control{.ax = 2.0F},
@@ -76,8 +76,8 @@ TEST(MppiControlSequenceTest, ShiftBeyondHorizonDropsStaleNominal) {
   const std::vector<Control> shifted = shiftControlSequence(controls, 0.05F, 0.2);
 
   ASSERT_EQ(shifted.size(), controls.size());
-  EXPECT_FLOAT_EQ(shifted[0].ax, 0.0F);
-  EXPECT_FLOAT_EQ(shifted[1].ax, 0.0F);
+  EXPECT_FLOAT_EQ(shifted[0].ax, 2.0F);
+  EXPECT_FLOAT_EQ(shifted[1].ax, 2.0F);
 }
 
 TEST(MppiControlSequenceTest, ReseedFollowsRouteWithoutAlternatingLateralBias) {

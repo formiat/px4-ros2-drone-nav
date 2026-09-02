@@ -84,6 +84,10 @@ void ProductionMppiNode::publishSummary() {
   const BoundedWorkerPoolSnapshot workers = planning_worker_pool_
                                                 ? planning_worker_pool_->snapshot()
                                                 : BoundedWorkerPoolSnapshot{};
+  const BoundedWorkerPoolSnapshot world_workers =
+      world_worker_pool_ ? world_worker_pool_->snapshot() : BoundedWorkerPoolSnapshot{};
+  constexpr std::size_t kWorldLane{
+      static_cast<std::size_t>(WorkerTaskLane::kWorldUpdate)};
   const StaticRoutePlanningLatencyStats planning_latency =
       route_lifecycle_coordinator_->planningLatencyStatistics();
   RCLCPP_INFO(
@@ -191,9 +195,9 @@ void ProductionMppiNode::publishSummary() {
       rolling_route.post_bootstrap_no_executable_route_hold_ticks,
       planning_latency.sample_count, planning_latency.planning_p95_ms,
       planning_latency.planning_p99_ms, planning_latency.build_and_planning_p99_ms,
-      workers.lanes[0U].pending, workers.lanes[1U].pending, workers.lanes[2U].pending,
-      workers.lanes[0U].capacity_waits, workers.lanes[1U].capacity_waits,
-      workers.lanes[2U].capacity_waits,
+      workers.lanes[0U].pending, world_workers.lanes[kWorldLane].pending,
+      workers.lanes[2U].pending, workers.lanes[0U].capacity_waits,
+      world_workers.lanes[kWorldLane].capacity_waits, workers.lanes[2U].capacity_waits,
       world_statistics.superseded_planning_generations,
       world_statistics.rejected_world_publications,
       world_statistics.processing_failures, world_statistics.failure_handler_failures,

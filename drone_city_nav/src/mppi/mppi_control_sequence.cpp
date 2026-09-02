@@ -163,11 +163,11 @@ std::vector<Control> shiftControlSequence(const std::span<const Control> control
   if (controls.empty()) {
     return {};
   }
+  // Elapsed time beyond the horizon holds the last planned control rather than
+  // dropping to zero acceleration: the tail of a converged sequence is the best
+  // available continuation, and a zero fill would restart the sampler from a
+  // coast-to-stop guess after every long tick.
   const double offset_steps = elapsed_s / static_cast<double>(dt_s);
-  if (offset_steps >= static_cast<double>(controls.size())) {
-    return std::vector<Control>(controls.size());
-  }
-
   std::vector<Control> shifted;
   shifted.reserve(controls.size());
   const std::size_t last = controls.size() - 1U;

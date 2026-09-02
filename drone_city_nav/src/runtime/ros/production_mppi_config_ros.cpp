@@ -120,6 +120,12 @@ private:
     world.maximum_esdf_age_ms = declare<double>("maximum_esdf_age_ms", 1000.0);
     world.no_static_3d_esdf_update_rate_hz =
         declare<double>("no_static_3d_esdf_update_rate_hz", 1.0);
+    const std::int64_t world_worker_count =
+        declare<std::int64_t>("world_worker_count", 2);
+    if (world_worker_count < 1 || world_worker_count > 8) {
+      throw std::invalid_argument{"world_worker_count must be within [1, 8]"};
+    }
+    world.world_worker_count = static_cast<std::size_t>(world_worker_count);
     world.no_static_3d_esdf_window.horizontal_half_extent_m =
         declare<double>("no_static_3d_esdf_horizontal_half_extent_m", 20.0);
     world.no_static_3d_esdf_window.vertical_half_extent_m =

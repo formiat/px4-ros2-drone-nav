@@ -311,6 +311,7 @@ private:
   std::unique_ptr<MissionWaypointSequence> mission_waypoint_sequence_;
   std::unique_ptr<MissionWaypointCaptureGate> mission_waypoint_capture_gate_;
   std::unique_ptr<BoundedWorkerPool> planning_worker_pool_;
+  std::unique_ptr<BoundedWorkerPool> world_worker_pool_;
   std::unique_ptr<RouteLifecycleCoordinator3D> route_lifecycle_coordinator_;
   std::unique_ptr<PlanningCycleCoordinator3D> planning_cycle_coordinator_;
   std::unique_ptr<ExecutionHorizonAssembler3D> execution_horizon_assembler_;
