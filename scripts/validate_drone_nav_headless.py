@@ -75,8 +75,9 @@ def validate_execution_chain(ros_log: str, errors: list[str]) -> None:
     require(
         "published collision-free planned horizon",
         ros_log,
-        r"PRODUCTION_MPPI_TICK .*execution_published=true .*"
-        r"execution_mode=planned .*raw_collision=false .*known_solid_collision=false",
+        r"PRODUCTION_MPPI_TICK .*execution_mode=planned execution_reason=none "
+        r"execution_published=true .*finite_path_validation_status=valid .*"
+        r"raw_invalidation_active=false",
         errors,
     )
     published = set(re.findall(
@@ -99,8 +100,9 @@ def validate_execution_chain(ros_log: str, errors: list[str]) -> None:
     require(
         "measured execution route progress is positive",
         ros_log,
-        r"PRODUCTION_MPPI_DIAGNOSTICS .*liveness_route_progress_used=true .*"
-        r"liveness_actual_route_progress_m=(?:0\.0*[1-9][0-9]*|[1-9][0-9]*(?:\.[0-9]+)?)",
+        r"PRODUCTION_MPPI_TICK .*"
+        r"liveness_actual_route_progress_m=(?:0\.0*[1-9][0-9]*|[1-9][0-9]*(?:\.[0-9]+)?) "
+        r"liveness_route_progress_used=true",
         errors,
     )
 

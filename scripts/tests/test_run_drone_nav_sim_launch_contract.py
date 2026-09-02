@@ -469,7 +469,7 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn("mission_goal_sequence_xyz_m", self.launch_text)
         self.assertIn("shutdown_on_mission_result", self.launch_text)
         self.assertIn(
-            "ENABLE_LIVENESS_RECOVERY:-false",
+            "ENABLE_LIVENESS_RECOVERY:-true",
             self.text,
         )
         self.assertIn(

@@ -49,8 +49,9 @@ class MappingPipelineValidationTest(unittest.TestCase):
     def test_execution_chain_rejects_safe_unpublished_ticks(self) -> None:
         errors: list[str] = []
         VALIDATOR.validate_execution_chain(
-            "PRODUCTION_MPPI_TICK execution_published=false execution_mode=position_hold "
-            "raw_collision=false known_solid_collision=false "
+            "PRODUCTION_MPPI_TICK execution_mode=position_hold execution_reason=none "
+            "execution_published=false finite_path_validation_status=valid "
+            "raw_invalidation_active=false "
             "target_source=persistent_route_3d route_reaches_mission_goal=false\n",
             errors,
         )
@@ -59,14 +60,14 @@ class MappingPipelineValidationTest(unittest.TestCase):
     def test_execution_chain_requires_one_exact_identity_through_offboard(self) -> None:
         errors: list[str] = []
         VALIDATOR.validate_execution_chain(
-            "PRODUCTION_MPPI_TICK execution_published=true execution_mode=planned "
-            "raw_collision=false known_solid_collision=false "
-            "route_reaches_mission_goal=true target_source=persistent_route_3d\n"
+            "PRODUCTION_MPPI_TICK execution_mode=planned execution_reason=none "
+            "execution_published=true finite_path_validation_status=valid "
+            "route_reaches_mission_goal=true target_source=persistent_route_3d "
+            "raw_invalidation_active=false "
+            "liveness_actual_route_progress_m=0.25 liveness_route_progress_used=true\n"
             "EXECUTION_HORIZON published=true producer=7 sequence=9 mode=planned\n"
             "EXECUTION_HORIZON accepted=true producer=7 sequence=9 mode=planned\n"
-            "OFFBOARD_PLANNED_HORIZON_APPLIED producer=7 sequence=9\n"
-            "PRODUCTION_MPPI_DIAGNOSTICS liveness_route_progress_used=true "
-            "liveness_actual_route_progress_m=0.25\n",
+            "OFFBOARD_PLANNED_HORIZON_APPLIED producer=7 sequence=9\n",
             errors,
         )
         self.assertEqual(errors, [])

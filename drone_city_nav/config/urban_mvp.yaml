@@ -93,6 +93,10 @@ obstacle_memory_node:
 obstacle_memory_3d_node:
   ros__parameters:
     persistent_memory_enabled: true
+    # Latest-wins integration: when integration cannot keep up with the scan
+    # rate, the newest scan is integrated and older ones are dropped, so the
+    # committed raw world stays within the execution freshness budget.
+    lidar_memory_scan_queue_capacity: 1
     frame_id: map
     lidar_3d_topic: /lidar_3d/points
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
@@ -122,6 +126,18 @@ obstacle_memory_3d_node:
     use_initial_pose_until_px4: true
     max_pose_staleness_s: 1.0
     min_mapping_altitude_m: 1.0
+    # Adjacent returns of the organized scan whose range step fits one surface
+    # viewed within the incidence limit are joined by occupied surface samples.
+    # The sparse beam layout otherwise maps a wall as rows and columns spaced
+    # by range times beam spacing, and the band between them stays unknown
+    # until the sensor is within a few metres. Vertical neighbours keep a tight
+    # limit (a ceiling or floor in front of a wall would otherwise be joined
+    # into a ramp through free volume); horizontal neighbours keep a wide one
+    # (a row meets a wall at grazing incidence exactly where its columns are
+    # sparse, and a depth edge steps far beyond any incidence).
+    lidar_surface_interpolation_enabled: true
+    lidar_surface_interpolation_maximum_incidence_deg: 30.0
+    lidar_surface_interpolation_maximum_row_incidence_deg: 80.0
     use_px4_heading_for_scan: true
     maximum_heading_variance_rad2: 0.05
     startup_heading_stable_sample_count: 5
@@ -202,11 +218,18 @@ production_mppi_node:
     # cannot indefinitely postpone an otherwise executable route segment.
     route_progress_integral_weight: 2.0
     planning_exposure_weight: 8.0
-    # Softmax temperature and its adaptive floor: the effective temperature is
-    # max(mppi_temperature, fraction * mean feasible cost excess) so the update
-    # keeps a population rather than one dominant rollout.
+    # Softmax temperature and its optional adaptive floor: the effective
+    # temperature is max(mppi_temperature, fraction * mean feasible cost
+    # excess). With the exposure costs in the thousands a fraction above zero
+    # flattens the weights into the noise mean and the update stops making
+    # progress, so the adaptive floor stays off.
     mppi_temperature: 8.0
-    mppi_adaptive_temperature_cost_fraction: 0.5
+    mppi_adaptive_temperature_cost_fraction: 0.0
+    # The sampler's body gate excludes rollouts inside occupied ESDF voxels from
+    # the weighted update. The ESDF is coarser than the raw grid and marks
+    # raw-valid passages occupied, which leaves the update hovering; the raw
+    # finite-path validators keep the hard authority, so the gate stays off.
+    mppi_body_collision_gate_enabled: false
     critical_exposure_weight: 2000.0
     critical_clearance_proximity_weight: 4000.0
     obstacle_approach_weight: 40.0
@@ -267,7 +290,11 @@ production_mppi_node:
     speed_reaction_latency_s: 0.10
     guaranteed_lidar_detection_range_m: 30.0
     sensor_braking_physical_margin_m: 3.0
-    goal_braking_margin_m: 2.0
+    # The goal limiter reaches zero this far before the mission goal. The
+    # capture latch needs the vehicle inside the stationary hold tolerance
+    # (0.25 m), so the margin stays at half of it: a larger margin leaves the
+    # vehicle creeping outside the capture tolerance with no speed allowance.
+    goal_braking_margin_m: 0.125
     curvature_preview_distance_m: 60.0
     route_curvature_measurement_window_m: 5.0
     constrained_route_speed_limit_mps: 10.0
@@ -281,6 +308,8 @@ production_mppi_node:
     physical_footprint_samples: 12
     physical_footprint_radial_rings: 2
     physical_footprint_axial_samples: 3
+    # One raw cell per sweep step, matching the world generator's portal
+    # validation capsule.
     physical_footprint_sweep_step_m: 0.25
     # Closed-loop tracking error is bounded by speed times this response horizon.
     # At 5 m/s the tube is 0.75 m; narrower passages receive a lower speed cap.
@@ -303,7 +332,12 @@ production_mppi_node:
     mission_waypoint_stop_speed_mps: 0.8
     mission_waypoint_hold_s: 2.0
     mission_waypoint_target_match_tolerance_m: 0.001
-    minimum_target_z_m: 1.0
+    # The lowest lattice level sits at the first half-metre above this floor;
+    # with the 0.23 m lower body extent, 2.0 m keeps that level clear of
+    # street-level slabs and passage floors that the lidar maps only from
+    # close range, so a descent to the floor level does not end in a raw
+    # collision discovered inside the vertical braking distance.
+    minimum_target_z_m: 2.0
     maximum_target_z_m: 32.0
     navigation_objective_topic: /drone_city_nav/navigation_objective
     px4_vehicle_status_topic: /fmu/out/vehicle_status_v1
@@ -344,9 +378,11 @@ production_mppi_node:
     applied_control_feedback_topic: /drone_city_nav/mppi/applied_control
     diagnostics_output_dir: log/mppi
     execution_horizon_topic: /drone_city_nav/mppi/execution_horizon
-    # Recovery heuristics are opt-in. They may be useful for a diagnosed
-    # failure mode, but must not change ordinary navigation by default.
-    liveness_enabled: false
+    # Liveness recovery forces the certified route candidate after a window
+    # without progress. It addresses the diagnosed stationary fixed point of
+    # the weighted update in front of narrow passages; the runner's
+    # ENABLE_LIVENESS_RECOVERY overrides this value at launch.
+    liveness_enabled: true
     liveness_observation_window_s: 1.0
     liveness_minimum_actual_displacement_m: 0.5
     liveness_minimum_predicted_terminal_progress_m: 5.0
@@ -361,8 +397,15 @@ production_mppi_node:
     persistent_planner_goal_tolerance_m: 2.0
     persistent_planner_connector_search_radius_cells: 2
     persistent_planner_feasibility_first_enabled: true
-    persistent_planner_maximum_feasibility_expansions_per_update: 4096
-    persistent_planner_maximum_feasibility_compute_time_ms: 100.0
+    # The feasibility frontier is dense-labelled; an expansion costs a few
+    # microseconds, so a continuation can afford tens of thousands of them
+    # within its share of the planner budget and reach a city-scale goal in
+    # a handful of updates instead of tens of seconds.
+    persistent_planner_maximum_feasibility_expansions_per_update: 32768
+    persistent_planner_maximum_feasibility_compute_time_ms: 140.0
+    # The feasibility-first search tries the direct raw connector to the goal
+    # only from nodes within this reach.
+    persistent_planner_feasibility_goal_connector_reach_m: 40.0
     persistent_planner_maximum_expansions_per_update: 200000
     persistent_planner_maximum_incremental_changed_voxels: 32768
     persistent_planner_maximum_extracted_path_nodes: 8192
@@ -372,7 +415,14 @@ production_mppi_node:
     # edge within this distance of raw occupied evidence costs its flight time
     # times 1 + weight * (1 - clearance / distance)^2.
     persistent_planner_clearance_ranking_weight: 1.5
-    persistent_planner_clearance_ranking_distance_m: 6.0
+    persistent_planner_clearance_ranking_distance_m: 3.0
+    # Below the execution risk model's critical_distance_m the ranking factor
+    # additionally grows by this weight times (1 - clearance / critical)^2.
+    # The executor charges critical_exposure_weight per critical metre, about
+    # a hundred times its progress reward per metre; the planner mirrors that
+    # ratio so it detours around a critical metre the way execution would,
+    # instead of handing execution a route it can only crawl along.
+    persistent_planner_clearance_ranking_critical_weight: 100.0
     route_sampling_step_m: 0.5
     route_completion_tolerance_m: 2.0
     static_esdf_route_lookahead_m: 180.0
@@ -435,7 +485,7 @@ mppi_offboard_node:
     applied_control_feedback_frame_id: map
     mppi_control_lookahead_s: 0.05
     initial_altitude_m: 18.0
-    minimum_target_z_m: 1.0
+    minimum_target_z_m: 2.0
     maximum_target_z_m: 32.0
     offboard_control_mode_topic: /fmu/in/offboard_control_mode
     trajectory_setpoint_topic: /fmu/in/trajectory_setpoint

@@ -199,7 +199,7 @@ enable_gz_scene_diagnostics="$(
 )"
 active_static_map="$(normalize_bool "${ENABLE_STATIC_MAP:-false}")"
 enable_liveness_recovery="$(
-  normalize_bool "${ENABLE_LIVENESS_RECOVERY:-false}"
+  normalize_bool "${ENABLE_LIVENESS_RECOVERY:-true}"
 )"
 enable_route_stall_recovery="$(
   normalize_bool "${ENABLE_ROUTE_STALL_RECOVERY:-false}"

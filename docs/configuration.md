@@ -42,6 +42,23 @@ geometry, full-6DoF acquisition-pose alignment, sparse Occupancy3D bounds and
 chunk size, hit/miss integration, snapshot/delta cadence, self-return filtering,
 and selected-spectator current/accumulated point clouds.
 
+Beam-adjacent surface reconstruction (`lidar_surface_interpolation_enabled`,
+`lidar_surface_interpolation_maximum_incidence_deg`,
+`lidar_surface_interpolation_maximum_row_incidence_deg`): two adjacent returns
+of the organized scan whose range step fits a single surface viewed within the
+incidence limit are joined by occupied surface samples spaced below one voxel
+edge. A sparse beam layout maps a wall as rows and columns spaced by range
+times beam spacing, so the band the vehicle body occupies between two rows, or
+the strip between two columns of a wall seen at a grazing angle, would
+otherwise stay unknown until the sensor is a few metres away. Vertical
+neighbours use the tight limit and must join through a segment steeper than 30
+degrees: a ceiling or floor in front of a wall answers with a much larger range
+step than the wall itself, and joining those returns would draw a ramp through
+free volume. Horizontal neighbours use the wide limit: a depth edge between two
+columns steps by the whole gap behind it, far beyond any incidence. The samples
+carry occupied evidence at their endpoint only and no free-space evidence. The
+latest-lidar obstacle scan stays the measured returns alone.
+
 ## `production_mppi_node`
 
 Execution cadence:
@@ -135,9 +152,12 @@ Sampler:
 - `mppi_temperature` and `mppi_adaptive_temperature_cost_fraction` normalize the
   MPPI weighting temperature to the feasible-cost spread so the update does not
   collapse onto one rollout when costs are large;
-- rollouts whose body enters an occupied ESDF voxel are excluded from the
-  weighted update while at least one feasible rollout exists; the raw swept
-  footprint remains the only hard authority afterwards;
+- `mppi_body_collision_gate_enabled` optionally excludes rollouts whose body
+  enters an occupied ESDF voxel from the weighted update while another
+  rollout stays feasible. The device ESDF is coarser than the raw grid and can
+  mark a raw-valid passage occupied, which leaves the update hovering in front
+  of it, so the gate is off in the production profile; the raw swept footprint
+  remains the only hard authority either way;
 - `route_directed_candidate_cost_tolerance` accepts the deterministic
   route-directed candidate when its cost is within that fraction of the
   stochastic optimum, which keeps the warm start on the route instead of
@@ -168,6 +188,9 @@ Persistent 3D planner and route lifecycle:
   `persistent_planner_clearance_ranking_distance_m` scale lattice edges near
   raw occupied evidence for ranking only; a low-clearance edge stays traversable
   whenever the raw swept body check accepts it;
+  `persistent_planner_clearance_ranking_critical_weight` adds a steep band
+  below the execution risk model's `critical_distance_m`, so the planner detours
+  around a critical metre the way the executor's critical exposure cost would;
 - `clearance_costs_enabled` and `static_route_geometry_optimization_enabled`
   are on in the production profile.
 
