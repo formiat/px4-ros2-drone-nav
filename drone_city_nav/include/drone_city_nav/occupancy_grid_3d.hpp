@@ -57,13 +57,14 @@ public:
   // been cleared back to zero.
   [[nodiscard]] const Chunk* findChunk(OccupancyChunkIndex3D index) const noexcept;
   [[nodiscard]] static OccupancyChunkIndex3D chunkIndex(GridIndex3D index) noexcept;
+  // Bit position of a cell inside its chunk; chunk-aware readers index the
+  // chunk words with it directly.
+  [[nodiscard]] static std::size_t localBitIndex(GridIndex3D index) noexcept;
 
   void setOccupied(GridIndex3D index);
   void clearOccupied(GridIndex3D index);
 
 private:
-  [[nodiscard]] static std::size_t localBitIndex(GridIndex3D index) noexcept;
-
   GridBounds3D bounds_{};
   std::uint64_t fingerprint_{0U};
   std::size_t occupied_voxels_{0U};

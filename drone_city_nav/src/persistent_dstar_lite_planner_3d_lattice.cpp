@@ -2,6 +2,7 @@
 #include "drone_city_nav/raw_occupancy_clearance_3d.hpp"
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <cmath>
 #include <cstddef>
@@ -12,6 +13,7 @@
 #include <optional>
 #include <ranges>
 #include <tuple>
+#include <unordered_set>
 #include <vector>
 
 #include "persistent_dstar_lite_planner_3d_internal.hpp"
@@ -47,6 +49,41 @@ canonicalEdge(const PersistentPlannerNode3D first,
   return PersistentPlannerEdge3D{second, first};
 }
 
+constexpr unsigned kLevelZeroEdgeUnknown{0U};
+constexpr unsigned kLevelZeroEdgeClear{1U};
+constexpr unsigned kLevelZeroEdgeBlocked{2U};
+
+struct LevelZeroOffset3D {
+  int x{0};
+  int y{0};
+  int z{0};
+};
+
+// The thirteen offsets that are lexicographically positive in (z, y, x)
+// order: exactly the second endpoints of canonical level-zero edges.
+constexpr std::array<LevelZeroOffset3D, 13U> kLevelZeroOffsets{{
+    {1, 0, 0},
+    {-1, 1, 0},
+    {0, 1, 0},
+    {1, 1, 0},
+    {-1, -1, 1},
+    {0, -1, 1},
+    {1, -1, 1},
+    {-1, 0, 1},
+    {0, 0, 1},
+    {1, 0, 1},
+    {-1, 1, 1},
+    {0, 1, 1},
+    {1, 1, 1},
+}};
+
+// Index of a canonical offset in kLevelZeroOffsets: the offsets enumerate the
+// codes 14..26 of (z + 1) * 9 + (y + 1) * 3 + (x + 1).
+[[nodiscard]] constexpr std::size_t levelZeroDirection(const int x, const int y,
+                                                       const int z) noexcept {
+  return static_cast<std::size_t>((z + 1) * 9 + (y + 1) * 3 + (x + 1) - 14);
+}
+
 } // namespace
 
 bool PlannerLattice3D::sameGridGeometry(const GridBounds3D& bounds) const noexcept {
@@ -65,6 +102,158 @@ void PlannerLattice3D::configureGridGeometry(const GridBounds3D& bounds) {
       1, static_cast<int>(std::floor(height_m / config_->minimum_horizontal_step_m)));
   depth_ = std::max(
       1, static_cast<int>(std::floor(depth_m / config_->minimum_vertical_step_m)));
+  // An adaptive edge can be affected by any occupied change within the body
+  // margin of its extent, quantized by the raw voxel half diagonal.
+  const double raw_half_diagonal = 0.5 * std::numbers::sqrt3 * bounds.resolution_m;
+  adaptive_edge_horizontal_margin_m_ =
+      config_->physical_footprint.radius_m + raw_half_diagonal;
+  adaptive_edge_vertical_margin_m_ =
+      std::max(config_->physical_footprint.lower_extent_m,
+               config_->physical_footprint.upper_extent_m) +
+      raw_half_diagonal;
+  level_zero_edge_states_.assign(nodeCount(), 0U);
+  const PersistentPlannerNode3D origin{1, 1, 1};
+  for (std::size_t direction = 0U; direction < kLevelZeroDirections; ++direction) {
+    const LevelZeroOffset3D offset = kLevelZeroOffsets[direction];
+    level_zero_edge_time_s_[direction] = minimumFlightTranslationTime3D(
+        pointFor(origin),
+        pointFor(PersistentPlannerNode3D{origin.x + offset.x, origin.y + offset.y,
+                                         origin.z + offset.z}),
+        config_->time_model);
+  }
+}
+
+std::size_t PlannerLattice3D::nodeCount() const noexcept {
+  return static_cast<std::size_t>(width_) * static_cast<std::size_t>(height_) *
+         static_cast<std::size_t>(depth_);
+}
+
+std::size_t
+PlannerLattice3D::linearIndex(const PersistentPlannerNode3D node) const noexcept {
+  return (static_cast<std::size_t>(node.z) * static_cast<std::size_t>(height_) +
+          static_cast<std::size_t>(node.y)) *
+             static_cast<std::size_t>(width_) +
+         static_cast<std::size_t>(node.x);
+}
+
+PersistentPlannerNode3D
+PlannerLattice3D::nodeAt(const std::size_t index) const noexcept {
+  const auto width = static_cast<std::size_t>(width_);
+  const auto height = static_cast<std::size_t>(height_);
+  return PersistentPlannerNode3D{
+      static_cast<int>(index % width),
+      static_cast<int>((index / width) % height),
+      static_cast<int>(index / (width * height)),
+  };
+}
+
+PlannerLattice3D::LevelZeroSlot PlannerLattice3D::levelZeroSlot(
+    const PersistentPlannerEdge3D& canonical) const noexcept {
+  return LevelZeroSlot{
+      .node = linearIndex(canonical.first),
+      .direction = levelZeroDirection(canonical.second.x - canonical.first.x,
+                                      canonical.second.y - canonical.first.y,
+                                      canonical.second.z - canonical.first.z),
+  };
+}
+
+unsigned PlannerLattice3D::levelZeroState(const LevelZeroSlot slot) const noexcept {
+  return (level_zero_edge_states_[slot.node] >> (2U * slot.direction)) & 3U;
+}
+
+void PlannerLattice3D::setLevelZeroState(const LevelZeroSlot slot,
+                                         const unsigned state) noexcept {
+  std::uint32_t& word = level_zero_edge_states_[slot.node];
+  word = (word & ~(3U << (2U * slot.direction))) | (state << (2U * slot.direction));
+}
+
+bool PlannerLattice3D::endpointClearanceClears(const PersistentPlannerNode3D first,
+                                               const PersistentPlannerNode3D second) {
+  const double cap_m = config_->clearance_ranking_distance_m;
+  if (!(config_->clearance_ranking_weight > 0.0) || !(cap_m > 0.0)) {
+    return false;
+  }
+  const Point3 first_point = pointFor(first);
+  const Point3 second_point = pointFor(second);
+  const double body_extent_m = std::max({config_->physical_footprint.radius_m,
+                                         config_->physical_footprint.lower_extent_m,
+                                         config_->physical_footprint.upper_extent_m});
+  const double raw_half_diagonal = 0.5 * std::numbers::sqrt3 * raw_bounds_.resolution_m;
+  const double required_m =
+      0.5 * distance3D(first_point, second_point) + body_extent_m + raw_half_diagonal;
+  if (required_m >= cap_m) {
+    return false;
+  }
+  // Only clearances already derived for ranking are consulted: deriving one
+  // costs more than the swept validation it would save, so a search through
+  // an unpriced region sweeps its edges and the ranking prices them later.
+  const std::optional<double> first_clearance = cachedNodeClearance(first);
+  const std::optional<double> second_clearance = cachedNodeClearance(second);
+  return first_clearance.has_value() && second_clearance.has_value() &&
+         *first_clearance > required_m && *second_clearance > required_m;
+}
+
+bool PlannerLattice3D::surroundingsUnoccupied(
+    const PersistentPlannerNode3D node) const noexcept {
+  if (!resident_collision_oracle_.has_value()) {
+    return false;
+  }
+  constexpr int kChunkSize{OccupancyGrid3D::kChunkSize};
+  const OccupiedCollisionWorld3D& world = resident_collision_oracle_->world();
+  const Point3 center = pointFor(node);
+  const double horizontal_reach_m =
+      config_->minimum_horizontal_step_m + adaptive_edge_horizontal_margin_m_;
+  const double vertical_reach_m =
+      config_->minimum_vertical_step_m + adaptive_edge_vertical_margin_m_;
+  const double resolution_m = raw_bounds_.resolution_m;
+  const auto chunk_of = [&](const double coordinate, const double origin) {
+    return static_cast<int>(
+        std::floor(std::floor((coordinate - origin) / resolution_m) / kChunkSize));
+  };
+  const int minimum_x = chunk_of(center.x - horizontal_reach_m, raw_bounds_.origin_x);
+  const int maximum_x = chunk_of(center.x + horizontal_reach_m, raw_bounds_.origin_x);
+  const int minimum_y = chunk_of(center.y - horizontal_reach_m, raw_bounds_.origin_y);
+  const int maximum_y = chunk_of(center.y + horizontal_reach_m, raw_bounds_.origin_y);
+  const int minimum_z = chunk_of(center.z - vertical_reach_m, raw_bounds_.origin_z);
+  const int maximum_z = chunk_of(center.z + vertical_reach_m, raw_bounds_.origin_z);
+  const auto unoccupied = [&](const auto& occupancy) {
+    for (int z = minimum_z; z <= maximum_z; ++z) {
+      for (int y = minimum_y; y <= maximum_y; ++y) {
+        for (int x = minimum_x; x <= maximum_x; ++x) {
+          if (occupancy.findChunk(OccupancyChunkIndex3D{x, y, z}) != nullptr) {
+            return false;
+          }
+        }
+      }
+    }
+    return true;
+  };
+  return (world.observed_occupancy == nullptr ||
+          unoccupied(*world.observed_occupancy)) &&
+         (world.static_occupancy == nullptr || unoccupied(*world.static_occupancy));
+}
+
+void PlannerLattice3D::markSurroundingLevelZeroEdgesClear(
+    const PersistentPlannerNode3D node) noexcept {
+  if (!pointInsideFlightEnvelope(pointFor(node))) {
+    return;
+  }
+  for (int z_offset = -1; z_offset <= 1; ++z_offset) {
+    for (int y_offset = -1; y_offset <= 1; ++y_offset) {
+      for (int x_offset = -1; x_offset <= 1; ++x_offset) {
+        if (x_offset == 0 && y_offset == 0 && z_offset == 0) {
+          continue;
+        }
+        const PersistentPlannerNode3D neighbor{node.x + x_offset, node.y + y_offset,
+                                               node.z + z_offset};
+        if (!nodeInside(neighbor) || !pointInsideFlightEnvelope(pointFor(neighbor))) {
+          continue;
+        }
+        setLevelZeroState(levelZeroSlot(canonicalEdge(node, neighbor)),
+                          kLevelZeroEdgeClear);
+      }
+    }
+  }
 }
 
 void PlannerLattice3D::installWorld(const PersistentPlannerWorld3D& world) {
@@ -250,33 +439,153 @@ double PlannerLattice3D::rawEdgeCost(const PersistentPlannerNode3D first,
     return std::numeric_limits<double>::infinity();
   }
   const std::size_t queried_level = level(first, second);
-  if (queried_level > 0U) {
-    ++adaptive_edge_queries_;
-    maximum_queried_level_ = std::max(maximum_queried_level_, queried_level);
-  }
   const PersistentPlannerEdge3D edge = canonicalEdge(first, second);
-  if (const auto found = edge_cost_cache_.find(edge); found != edge_cost_cache_.end()) {
-    return found->second;
+  if (queried_level == 0U) {
+    const LevelZeroSlot slot = levelZeroSlot(edge);
+    unsigned state = levelZeroState(slot);
+    if (state == kLevelZeroEdgeUnknown) {
+      // Open space first: with no raw chunk within the swept reach of the
+      // canonical endpoint, every level-zero edge leaving it is clear.
+      if (surroundingsUnoccupied(edge.first)) {
+        markSurroundingLevelZeroEdgesClear(edge.first);
+        state = levelZeroState(slot);
+      }
+      // Every point of the swept body lies within half the edge length plus
+      // the body extent of the nearer endpoint; two endpoints whose raw
+      // clearance exceeds that cannot touch occupied evidence anywhere along
+      // the edge. The clearance is the cached ranking quantity, so open
+      // streets price their edges without swept validation.
+      if (state == kLevelZeroEdgeUnknown && endpointClearanceClears(first, second)) {
+        state = kLevelZeroEdgeClear;
+        setLevelZeroState(slot, state);
+      }
+      if (state == kLevelZeroEdgeUnknown) {
+        ++raw_edge_validation_checks_;
+        state = rawSegmentValid(pointFor(first), pointFor(second))
+                    ? kLevelZeroEdgeClear
+                    : kLevelZeroEdgeBlocked;
+        setLevelZeroState(slot, state);
+      }
+    }
+    return state == kLevelZeroEdgeClear ? level_zero_edge_time_s_[slot.direction]
+                                        : std::numeric_limits<double>::infinity();
   }
-  const Point3 first_point = pointFor(first);
-  const Point3 second_point = pointFor(second);
-  ++raw_edge_validation_checks_;
-  double cost = rawSegmentValid(first_point, second_point)
-                    ? minimumFlightTranslationTime3D(first_point, second_point,
-                                                     config_->time_model)
-                    : std::numeric_limits<double>::infinity();
-  if (std::isfinite(cost) && config_->clearance_ranking_weight > 0.0) {
-    // Soft ranking only: a traversable edge stays traversable, it just costs
-    // more the closer its endpoints run to confirmed occupied evidence.
-    const double distance_m = config_->clearance_ranking_distance_m;
-    const double clearance_m = std::min(nodeClearanceM(first), nodeClearanceM(second));
-    if (clearance_m < distance_m) {
-      const double shortfall = 1.0 - clearance_m / distance_m;
-      cost *= 1.0 + config_->clearance_ranking_weight * shortfall * shortfall;
+  ++adaptive_edge_queries_;
+  maximum_queried_level_ = std::max(maximum_queried_level_, queried_level);
+  double raw_cost = std::numeric_limits<double>::infinity();
+  if (const auto found = adaptive_edge_cost_cache_.find(edge);
+      found != adaptive_edge_cost_cache_.end()) {
+    raw_cost = found->second;
+  } else {
+    const Point3 first_point = pointFor(first);
+    const Point3 second_point = pointFor(second);
+    ++raw_edge_validation_checks_;
+    raw_cost = rawSegmentValid(first_point, second_point)
+                   ? minimumFlightTranslationTime3D(first_point, second_point,
+                                                    config_->time_model)
+                   : std::numeric_limits<double>::infinity();
+    adaptive_edge_cost_cache_.emplace(edge, raw_cost);
+    indexAdaptiveEdge(edge);
+  }
+  return raw_cost;
+}
+
+double PlannerLattice3D::rankedEdgeCost(const PersistentPlannerNode3D first,
+                                        const PersistentPlannerNode3D second) {
+  const double raw_cost = rawEdgeCost(first, second);
+  if (!std::isfinite(raw_cost) || config_->clearance_ranking_weight <= 0.0) {
+    return raw_cost;
+  }
+  // Soft ranking only: a traversable edge stays traversable, it just costs
+  // more the closer its endpoints run to confirmed occupied evidence. The raw
+  // flight time is cached separately from the clearance, so an occupied
+  // change inside the ranking reach re-derives only the cheap node clearance
+  // and never the swept-footprint validation.
+  // The ranking clearance is measured from the body surface, as the execution
+  // risk model measures it, so a node centre one body radius from a wall
+  // ranks as touching rather than as one metre clear.
+  const double clearance_m =
+      std::max(0.0, std::min(nodeClearanceM(first), nodeClearanceM(second)) -
+                        config_->physical_footprint.radius_m);
+  return raw_cost * rankingFactorForBodyClearance(clearance_m);
+}
+
+double PlannerLattice3D::rankingFactorForBodyClearance(
+    const double body_clearance_m) const noexcept {
+  const double distance_m = config_->clearance_ranking_distance_m;
+  if (!(config_->clearance_ranking_weight > 0.0) || !(distance_m > 0.0) ||
+      body_clearance_m >= distance_m) {
+    return 1.0;
+  }
+  const double shortfall = 1.0 - body_clearance_m / distance_m;
+  double factor = 1.0 + config_->clearance_ranking_weight * shortfall * shortfall;
+  const double critical_m = config_->clearance_ranking_critical_distance_m;
+  if (config_->clearance_ranking_critical_weight > 0.0 && critical_m > 0.0 &&
+      body_clearance_m < critical_m) {
+    const double critical_shortfall = 1.0 - body_clearance_m / critical_m;
+    factor += config_->clearance_ranking_critical_weight * critical_shortfall *
+              critical_shortfall;
+  }
+  return factor;
+}
+
+double PlannerLattice3D::pointClearanceM(const Point3& point) const {
+  const double cap_m = config_->clearance_ranking_distance_m;
+  double clearance_m = cap_m;
+  if (resident_collision_oracle_.has_value()) {
+    const OccupiedCollisionWorld3D& world = resident_collision_oracle_->world();
+    if (world.observed_occupancy != nullptr) {
+      clearance_m = std::min(
+          clearance_m, rawEuclideanClearance3D(*world.observed_occupancy, point, cap_m,
+                                               world.launch_support_contact));
+    }
+    if (world.static_occupancy != nullptr) {
+      clearance_m = std::min(
+          clearance_m, rawEuclideanClearance3D(*world.static_occupancy, point, cap_m,
+                                               world.launch_support_contact));
     }
   }
-  edge_cost_cache_.emplace(edge, cost);
-  return cost;
+  return clearance_m;
+}
+
+double PlannerLattice3D::rankedPathTimeS(const std::vector<Point3>& path,
+                                         const FlightPathTimeProfile3D& profile) const {
+  if (path.size() < 2U || !profile.valid ||
+      profile.arrival_times_s.size() != path.size() ||
+      profile.departure_times_s.size() != path.size()) {
+    return 0.0;
+  }
+  const double radius_m = config_->physical_footprint.radius_m;
+  const double sample_step_m = std::max(0.5, 0.5 * config_->minimum_horizontal_step_m);
+  double ranked_s = 0.0;
+  for (std::size_t index = 0U; index + 1U < path.size(); ++index) {
+    const Point3& first = path[index];
+    const Point3& second = path[index + 1U];
+    const double segment_s = std::max(0.0, profile.arrival_times_s[index + 1U] -
+                                               profile.departure_times_s[index]);
+    const double turn_s = std::max(0.0, profile.departure_times_s[index] -
+                                            profile.arrival_times_s[index]);
+    const double length_m = distance3D(first, second);
+    const auto samples = static_cast<std::size_t>(std::ceil(length_m / sample_step_m));
+    double worst_factor = 1.0;
+    for (std::size_t sample = 0U; sample <= samples; ++sample) {
+      const double ratio =
+          samples == 0U ? 0.0
+                        : static_cast<double>(sample) / static_cast<double>(samples);
+      const Point3 point{first.x + ratio * (second.x - first.x),
+                         first.y + ratio * (second.y - first.y),
+                         first.z + ratio * (second.z - first.z)};
+      const double body_clearance_m = std::max(0.0, pointClearanceM(point) - radius_m);
+      worst_factor =
+          std::max(worst_factor, rankingFactorForBodyClearance(body_clearance_m));
+    }
+    ranked_s += turn_s + segment_s * worst_factor;
+  }
+  return ranked_s;
+}
+
+void PlannerLattice3D::resetNodeClearances() noexcept {
+  node_clearance_cache_.clear();
 }
 
 void PlannerLattice3D::forgetNodeClearances(
@@ -287,9 +596,112 @@ void PlannerLattice3D::forgetNodeClearances(
   }
 }
 
+std::vector<PersistentPlannerNode3D> PlannerLattice3D::refreshChangedNodeClearances(
+    const std::unordered_set<PersistentPlannerNode3D, PersistentPlannerNode3DHash>&
+        nodes) {
+  constexpr double kClearanceToleranceM{1.0e-3};
+  std::vector<PersistentPlannerNode3D> changed;
+  for (const PersistentPlannerNode3D node : nodes) {
+    const auto cached = node_clearance_cache_.find(node);
+    if (cached == node_clearance_cache_.end()) {
+      continue;
+    }
+    const double previous_m = cached->second;
+    node_clearance_cache_.erase(cached);
+    if (std::abs(nodeClearanceM(node) - previous_m) > kClearanceToleranceM) {
+      changed.push_back(node);
+    }
+  }
+  return changed;
+}
+
+double voxelBoxDistance3D(const Point3& point, const Point3& box_minimum,
+                          const Point3& box_maximum) noexcept {
+  const auto gap = [](const double minimum, const double maximum,
+                      const double coordinate) {
+    return std::max({minimum - coordinate, 0.0, coordinate - maximum});
+  };
+  const double dx = gap(box_minimum.x, box_maximum.x, point.x);
+  const double dy = gap(box_minimum.y, box_maximum.y, point.y);
+  const double dz = gap(box_minimum.z, box_maximum.z, point.z);
+  return std::sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+std::optional<double>
+PlannerLattice3D::cachedNodeClearance(const PersistentPlannerNode3D node) const {
+  const auto cached = node_clearance_cache_.find(node);
+  if (cached == node_clearance_cache_.end()) {
+    return std::nullopt;
+  }
+  return cached->second;
+}
+
+void PlannerLattice3D::setCachedNodeClearance(const PersistentPlannerNode3D node,
+                                              const double clearance_m) {
+  node_clearance_cache_.insert_or_assign(node, clearance_m);
+}
+
 double PlannerLattice3D::clearanceRankingReachM() const noexcept {
   return config_->clearance_ranking_weight > 0.0 ? config_->clearance_ranking_distance_m
                                                  : 0.0;
+}
+
+template<typename Visitor>
+void PlannerLattice3D::forEachChunkTouching(const Point3& first, const Point3& second,
+                                            Visitor&& visitor) const {
+  constexpr int kChunkSize{OccupancyGrid3D::kChunkSize};
+  const double resolution_m = raw_bounds_.resolution_m;
+  const auto chunk_of = [&](const double coordinate, const double origin) {
+    return static_cast<int>(
+        std::floor(std::floor((coordinate - origin) / resolution_m) / kChunkSize));
+  };
+  const double horizontal_margin_m = adaptive_edge_horizontal_margin_m_;
+  const double vertical_margin_m = adaptive_edge_vertical_margin_m_;
+  const int minimum_x =
+      chunk_of(std::min(first.x, second.x) - horizontal_margin_m, raw_bounds_.origin_x);
+  const int maximum_x =
+      chunk_of(std::max(first.x, second.x) + horizontal_margin_m, raw_bounds_.origin_x);
+  const int minimum_y =
+      chunk_of(std::min(first.y, second.y) - horizontal_margin_m, raw_bounds_.origin_y);
+  const int maximum_y =
+      chunk_of(std::max(first.y, second.y) + horizontal_margin_m, raw_bounds_.origin_y);
+  const int minimum_z =
+      chunk_of(std::min(first.z, second.z) - vertical_margin_m, raw_bounds_.origin_z);
+  const int maximum_z =
+      chunk_of(std::max(first.z, second.z) + vertical_margin_m, raw_bounds_.origin_z);
+  for (int z = minimum_z; z <= maximum_z; ++z) {
+    for (int y = minimum_y; y <= maximum_y; ++y) {
+      for (int x = minimum_x; x <= maximum_x; ++x) {
+        visitor(OccupancyChunkIndex3D{x, y, z});
+      }
+    }
+  }
+}
+
+void PlannerLattice3D::indexAdaptiveEdge(const PersistentPlannerEdge3D& edge) {
+  forEachChunkTouching(pointFor(edge.first), pointFor(edge.second),
+                       [&](const OccupancyChunkIndex3D chunk) {
+                         adaptive_edges_by_chunk_[chunk].push_back(edge);
+                       });
+}
+
+std::vector<PersistentPlannerEdge3D> PlannerLattice3D::forgetAdaptiveEdgesNear(
+    const std::unordered_set<OccupancyChunkIndex3D, OccupancyChunkIndex3DHash>&
+        changed_chunks) {
+  std::vector<PersistentPlannerEdge3D> forgotten;
+  for (const OccupancyChunkIndex3D& chunk : changed_chunks) {
+    const auto found = adaptive_edges_by_chunk_.find(chunk);
+    if (found == adaptive_edges_by_chunk_.end()) {
+      continue;
+    }
+    for (const PersistentPlannerEdge3D& edge : found->second) {
+      if (adaptive_edge_cost_cache_.erase(edge) != 0U) {
+        forgotten.push_back(edge);
+      }
+    }
+    adaptive_edges_by_chunk_.erase(found);
+  }
+  return forgotten;
 }
 
 double PlannerLattice3D::nodeClearanceM(const PersistentPlannerNode3D node) {
@@ -322,12 +734,15 @@ void PlannerLattice3D::reset() noexcept {
   width_ = 0;
   height_ = 0;
   depth_ = 0;
+  level_zero_edge_states_.clear();
   resetEdgeEvidence();
 }
 
 void PlannerLattice3D::resetEdgeEvidence() noexcept {
-  edge_cost_cache_.clear();
+  std::ranges::fill(level_zero_edge_states_, 0U);
+  adaptive_edge_cost_cache_.clear();
   node_clearance_cache_.clear();
+  adaptive_edges_by_chunk_.clear();
   resetEdgeStatistics();
 }
 
@@ -348,20 +763,25 @@ bool PlannerLattice3D::edgeTraversable(const PersistentPlannerNode3D first,
 }
 
 bool PlannerLattice3D::pathTraversable(const std::vector<Point3>& path) const {
+  return !firstInvalidSegment(path).has_value();
+}
+
+std::optional<std::size_t>
+PlannerLattice3D::firstInvalidSegment(const std::vector<Point3>& path) const {
   if (path.size() < 2U || !std::ranges::all_of(path, [&](const Point3& point) {
         return pointInsideFlightEnvelope(point);
       })) {
-    return false;
+    return 0U;
   }
   for (std::size_t index = 1U; index < path.size(); ++index) {
     const bool segment_valid =
         index == 1U ? departureSegmentValid(path[index - 1U], path[index])
                     : rawSegmentValid(path[index - 1U], path[index]);
     if (!segment_valid) {
-      return false;
+      return index;
     }
   }
-  return true;
+  return std::nullopt;
 }
 
 std::size_t PlannerLattice3D::nodeSpan() const noexcept {
@@ -370,7 +790,58 @@ std::size_t PlannerLattice3D::nodeSpan() const noexcept {
 }
 
 bool PlannerLattice3D::forgetEdgeCost(const PersistentPlannerEdge3D& edge) {
-  return edge_cost_cache_.erase(edge) != 0U;
+  if (!nodeInside(edge.first) || !nodeInside(edge.second) ||
+      edge.first == edge.second) {
+    return false;
+  }
+  if (level(edge.first, edge.second) == 0U) {
+    const LevelZeroSlot slot = levelZeroSlot(canonicalEdge(edge.first, edge.second));
+    if (levelZeroState(slot) == kLevelZeroEdgeUnknown) {
+      return false;
+    }
+    setLevelZeroState(slot, kLevelZeroEdgeUnknown);
+    return true;
+  }
+  return adaptive_edge_cost_cache_.erase(edge) != 0U;
+}
+
+bool PlannerLattice3D::forgetNodeEvidence(const PersistentPlannerNode3D node) {
+  if (!nodeInside(node)) {
+    return false;
+  }
+  bool forgotten = node_clearance_cache_.erase(node) != 0U;
+  for (int z_offset = -1; z_offset <= 1; ++z_offset) {
+    for (int y_offset = -1; y_offset <= 1; ++y_offset) {
+      for (int x_offset = -1; x_offset <= 1; ++x_offset) {
+        if (x_offset == 0 && y_offset == 0 && z_offset == 0) {
+          continue;
+        }
+        const PersistentPlannerNode3D neighbor{node.x + x_offset, node.y + y_offset,
+                                               node.z + z_offset};
+        if (!nodeInside(neighbor)) {
+          continue;
+        }
+        const LevelZeroSlot slot = levelZeroSlot(canonicalEdge(node, neighbor));
+        if (levelZeroState(slot) != kLevelZeroEdgeUnknown) {
+          setLevelZeroState(slot, kLevelZeroEdgeUnknown);
+          forgotten = true;
+        }
+      }
+    }
+  }
+  return forgotten;
+}
+
+bool PlannerLattice3D::hasEdgeCost(const PersistentPlannerEdge3D& edge) const noexcept {
+  if (!nodeInside(edge.first) || !nodeInside(edge.second) ||
+      edge.first == edge.second) {
+    return false;
+  }
+  if (level(edge.first, edge.second) == 0U) {
+    return levelZeroState(levelZeroSlot(canonicalEdge(edge.first, edge.second))) !=
+           kLevelZeroEdgeUnknown;
+  }
+  return adaptive_edge_cost_cache_.contains(edge);
 }
 
 bool PlannerLattice3D::configured() const noexcept {

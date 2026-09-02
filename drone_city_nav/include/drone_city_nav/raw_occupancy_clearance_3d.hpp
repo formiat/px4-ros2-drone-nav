@@ -94,6 +94,49 @@ void forEachRawOccupiedVoxelNear3D(const Occupancy& occupancy, const Point3& cen
         if (chunk == nullptr) {
           continue;
         }
+        const int clip_minimum_x = std::max(minimum_x, chunk_x * kChunkSize);
+        const int clip_maximum_x =
+            std::min(maximum_x, chunk_x * kChunkSize + kChunkSize - 1);
+        const int clip_minimum_y = std::max(minimum_y, chunk_y * kChunkSize);
+        const int clip_maximum_y =
+            std::min(maximum_y, chunk_y * kChunkSize + kChunkSize - 1);
+        const int clip_minimum_z = std::max(minimum_z, chunk_z * kChunkSize);
+        const int clip_maximum_z =
+            std::min(maximum_z, chunk_z * kChunkSize + kChunkSize - 1);
+        const auto clipped_cells =
+            static_cast<std::size_t>(clip_maximum_x - clip_minimum_x + 1) *
+            static_cast<std::size_t>(clip_maximum_y - clip_minimum_y + 1) *
+            static_cast<std::size_t>(clip_maximum_z - clip_minimum_z + 1);
+        if (clipped_cells < OccupancyGrid3D::kVoxelsPerChunk / 2U) {
+          // The reach covers a small part of the chunk: testing the clipped
+          // cells directly is cheaper than scanning every occupied bit of a
+          // dense chunk and discarding those outside the reach.
+          const OccupancyGrid3D::Chunk& words = occupiedWords(*chunk);
+          for (int cell_z = clip_minimum_z; cell_z <= clip_maximum_z; ++cell_z) {
+            for (int cell_y = clip_minimum_y; cell_y <= clip_maximum_y; ++cell_y) {
+              for (int cell_x = clip_minimum_x; cell_x <= clip_maximum_x; ++cell_x) {
+                const std::size_t bit =
+                    OccupancyGrid3D::localBitIndex(GridIndex3D{cell_x, cell_y, cell_z});
+                if ((words[bit / 64U] & (std::uint64_t{1U} << (bit % 64U))) == 0U) {
+                  continue;
+                }
+                const Point3 box_minimum{bounds.origin_x + cell_x * resolution_m,
+                                         bounds.origin_y + cell_y * resolution_m,
+                                         bounds.origin_z + cell_z * resolution_m};
+                const Point3 box_maximum{box_minimum.x + resolution_m,
+                                         box_minimum.y + resolution_m,
+                                         box_minimum.z + resolution_m};
+                if (suppress_contact_cells &&
+                    launchSupportContactContainsCell3D(*launch_support, box_minimum,
+                                                       box_maximum)) {
+                  continue;
+                }
+                visitor(box_minimum, box_maximum);
+              }
+            }
+          }
+          continue;
+        }
         std::size_t word_offset{0U};
         for (const std::uint64_t word : occupiedWords(*chunk)) {
           std::uint64_t occupied_bits = word;

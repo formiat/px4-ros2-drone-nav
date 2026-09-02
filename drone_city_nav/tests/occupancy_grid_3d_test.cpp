@@ -1,3 +1,4 @@
+#include "drone_city_nav/observed_occupancy_grid_3d.hpp"
 #include "drone_city_nav/occupancy_grid_3d.hpp"
 
 #include <gtest/gtest.h>
@@ -152,6 +153,34 @@ TEST(OccupancyGrid3D, LoadsCommittedCompactPassageFixture) {
   EXPECT_EQ(bounds.depth_cells, 60);
   EXPECT_EQ(grid.occupiedVoxelCount(), 32604U);
   EXPECT_EQ(grid.occupiedChunkCount(), 88U);
+}
+
+} // namespace
+} // namespace drone_city_nav
+
+namespace drone_city_nav {
+namespace {
+
+TEST(ObservedOccupancyGrid3DTest, OccupiedContentFingerprintMatchesTheDenseSnapshot) {
+  ObservedOccupancyGrid3D grid{GridBounds3D{-2.0, -3.0, 0.0, 0.5, 40, 36, 20}};
+  EXPECT_EQ(grid.occupiedContentFingerprint(),
+            grid.occupiedSnapshot().contentFingerprint());
+
+  ASSERT_TRUE(grid.setState({3, 4, 5}, ObservedVoxelState::kOccupied));
+  ASSERT_TRUE(grid.setState({17, 20, 12}, ObservedVoxelState::kOccupied));
+  ASSERT_TRUE(grid.setState({39, 35, 19}, ObservedVoxelState::kOccupied));
+  ASSERT_TRUE(grid.setState({8, 8, 8}, ObservedVoxelState::kFree));
+  EXPECT_EQ(grid.occupiedContentFingerprint(),
+            grid.occupiedSnapshot().contentFingerprint());
+
+  // Free relabeling keeps the occupied identity; an occupied change moves it.
+  const std::uint64_t before = grid.occupiedContentFingerprint();
+  ASSERT_TRUE(grid.setState({9, 9, 9}, ObservedVoxelState::kFree));
+  EXPECT_EQ(grid.occupiedContentFingerprint(), before);
+  ASSERT_TRUE(grid.setState({17, 20, 12}, ObservedVoxelState::kFree));
+  EXPECT_NE(grid.occupiedContentFingerprint(), before);
+  EXPECT_EQ(grid.occupiedContentFingerprint(),
+            grid.occupiedSnapshot().contentFingerprint());
 }
 
 } // namespace

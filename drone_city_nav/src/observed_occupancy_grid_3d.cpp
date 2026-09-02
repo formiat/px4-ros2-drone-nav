@@ -5,6 +5,9 @@
 #include <cmath>
 #include <functional>
 #include <stdexcept>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 namespace drone_city_nav {
 namespace {
@@ -155,6 +158,7 @@ bool ObservedOccupancyGrid3D::setState(const GridIndex3D index,
   if (before == state_value) {
     return false;
   }
+  occupied_content_fingerprint_cache_.reset();
   const OccupancyChunkIndex3D chunk_index = chunkIndex(index);
   const std::size_t bit_index = localBitIndex(index);
   if (state_value == ObservedVoxelState::kUnknown) {
@@ -184,6 +188,7 @@ bool ObservedOccupancyGrid3D::replaceChunk(const OccupancyChunkIndex3D index,
       found->second->occupied == chunk.occupied) {
     return false;
   }
+  occupied_content_fingerprint_cache_.reset();
   if (found != chunks_.end()) {
     const std::size_t old_known = popcount(found->second->observed);
     const std::size_t old_occupied = popcount(found->second->occupied);
@@ -209,12 +214,14 @@ bool ObservedOccupancyGrid3D::replaceChunk(const OccupancyChunkIndex3D index,
 
 ObservedOccupancyGrid3D::Chunk&
 ObservedOccupancyGrid3D::mutableChunk(const OccupancyChunkIndex3D index) {
+  occupied_content_fingerprint_cache_.reset();
   const auto [found, inserted] = chunks_.try_emplace(index, ChunkStorage{Chunk{}});
   static_cast<void>(inserted);
   return found->second.mutableChunk();
 }
 
 void ObservedOccupancyGrid3D::clear() {
+  occupied_content_fingerprint_cache_.reset();
   chunks_.clear();
   known_voxels_ = 0U;
   free_voxels_ = 0U;
@@ -225,24 +232,81 @@ OccupancyGrid3D ObservedOccupancyGrid3D::occupiedSnapshot() const {
   OccupancyGrid3D snapshot{bounds_};
   for (const auto& [chunk_index, storage] : chunks_) {
     const Chunk& chunk = storage.get();
-    for (std::size_t bit_index = 0U; bit_index < OccupancyGrid3D::kVoxelsPerChunk;
-         ++bit_index) {
-      if (!bit(chunk.occupied, bit_index)) {
-        continue;
+    std::size_t word_offset{0U};
+    for (const std::uint64_t word : chunk.occupied) {
+      std::uint64_t occupied_bits = word;
+      while (occupied_bits != 0U) {
+        const std::size_t bit_index =
+            word_offset + static_cast<std::size_t>(std::countr_zero(occupied_bits));
+        occupied_bits &= occupied_bits - 1U;
+        const int local_x = static_cast<int>(bit_index % kChunkSize);
+        const int local_y = static_cast<int>((bit_index / kChunkSize) % kChunkSize);
+        const int local_z = static_cast<int>(
+            bit_index / static_cast<std::size_t>(kChunkSize * kChunkSize));
+        const GridIndex3D index{chunk_index.x * kChunkSize + local_x,
+                                chunk_index.y * kChunkSize + local_y,
+                                chunk_index.z * kChunkSize + local_z};
+        if (contains(index)) {
+          snapshot.setOccupied(index);
+        }
       }
-      const int local_x = static_cast<int>(bit_index % kChunkSize);
-      const int local_y = static_cast<int>((bit_index / kChunkSize) % kChunkSize);
-      const int local_z = static_cast<int>(
-          bit_index / static_cast<std::size_t>(kChunkSize * kChunkSize));
-      const GridIndex3D index{chunk_index.x * kChunkSize + local_x,
-                              chunk_index.y * kChunkSize + local_y,
-                              chunk_index.z * kChunkSize + local_z};
-      if (contains(index)) {
-        snapshot.setOccupied(index);
-      }
+      word_offset += 64U;
     }
   }
   return snapshot;
+}
+
+std::uint64_t ObservedOccupancyGrid3D::occupiedContentFingerprint() const {
+  if (occupied_content_fingerprint_cache_.has_value()) {
+    return *occupied_content_fingerprint_cache_;
+  }
+  // Mirrors OccupancyGrid3D::contentFingerprint over the chunks that the
+  // occupied snapshot would contain: bounds, then chunks with at least one
+  // occupied bit in canonical order with all their words.
+  constexpr std::uint64_t kOffset{1469598103934665603ULL};
+  constexpr std::uint64_t kPrime{1099511628211ULL};
+  std::uint64_t hash{kOffset};
+  const auto add = [&](const std::uint64_t value) {
+    for (std::size_t byte = 0U; byte < sizeof(value); ++byte) {
+      hash ^= (value >> (byte * 8U)) & 0xffU;
+      hash *= kPrime;
+    }
+  };
+  const auto add_number = [&](const double value) {
+    add(value == 0.0 ? 0U : std::bit_cast<std::uint64_t>(value));
+  };
+  add_number(bounds_.origin_x);
+  add_number(bounds_.origin_y);
+  add_number(bounds_.origin_z);
+  add_number(bounds_.resolution_m);
+  add(static_cast<std::uint64_t>(bounds_.width_cells));
+  add(static_cast<std::uint64_t>(bounds_.height_cells));
+  add(static_cast<std::uint64_t>(bounds_.depth_cells));
+  std::vector<std::pair<OccupancyChunkIndex3D, const OccupancyGrid3D::Chunk*>>
+      occupied_chunks;
+  occupied_chunks.reserve(chunks_.size());
+  for (const auto& [index, storage] : chunks_) {
+    const Chunk& chunk = storage.get();
+    if (std::ranges::any_of(chunk.occupied,
+                            [](const std::uint64_t word) { return word != 0U; })) {
+      occupied_chunks.emplace_back(index, &chunk.occupied);
+    }
+  }
+  std::ranges::sort(occupied_chunks, {}, [](const auto& entry) {
+    return std::tuple{entry.first.x, entry.first.y, entry.first.z};
+  });
+  add(static_cast<std::uint64_t>(occupied_chunks.size()));
+  for (const auto& [index, words] : occupied_chunks) {
+    add(static_cast<std::uint64_t>(static_cast<std::int64_t>(index.x)));
+    add(static_cast<std::uint64_t>(static_cast<std::int64_t>(index.y)));
+    add(static_cast<std::uint64_t>(static_cast<std::int64_t>(index.z)));
+    for (const std::uint64_t word : *words) {
+      add(word);
+    }
+  }
+  const std::uint64_t fingerprint = hash == 0U ? 1U : hash;
+  occupied_content_fingerprint_cache_ = fingerprint;
+  return fingerprint;
 }
 
 ObservedOccupancyGrid3D

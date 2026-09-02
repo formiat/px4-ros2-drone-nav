@@ -70,6 +70,10 @@ public:
   void clear();
 
   [[nodiscard]] OccupancyGrid3D occupiedSnapshot() const;
+  // Content fingerprint of the occupied evidence alone: identical to
+  // occupiedSnapshot().contentFingerprint() without materializing the dense
+  // snapshot. Cached until the next mutation.
+  [[nodiscard]] std::uint64_t occupiedContentFingerprint() const;
   [[nodiscard]] ObservedOccupancyGrid3D crop(const GridBounds3D& bounds) const;
 
   [[nodiscard]] static OccupancyChunkIndex3D chunkIndex(GridIndex3D index) noexcept;
@@ -87,6 +91,7 @@ private:
   std::size_t known_voxels_{0U};
   std::size_t free_voxels_{0U};
   std::size_t occupied_voxels_{0U};
+  mutable std::optional<std::uint64_t> occupied_content_fingerprint_cache_;
   ChunkMap chunks_;
 };
 

@@ -129,6 +129,82 @@ TEST(PersistentDStarLitePlanner3DTest,
   EXPECT_TRUE(dispatch.terminal);
 }
 
+TEST(PersistentDStarLitePlanner3DTest, CandidatesCompeteOnTheRankedExecutionTime) {
+  SpatialRouteCandidate3D plain{
+      .points = {{0.0, 0.0, 1.0}, {1.0, 0.0, 1.0}},
+      .source = SpatialRouteCandidateSource3D::kFeasibilitySearch,
+      .path_length_m = 1.0,
+      .estimated_execution_time_s = 1.0,
+      .estimated_translation_time_s = 1.0,
+      .estimated_stationary_turn_time_s = 0.0,
+  };
+  EXPECT_TRUE(plain.valid());
+  EXPECT_DOUBLE_EQ(plain.objectiveS(), 1.0);
+  SpatialRouteCandidate3D ranked = plain;
+  ranked.ranked_execution_time_s = 4.0;
+  EXPECT_TRUE(ranked.valid());
+  EXPECT_DOUBLE_EQ(ranked.objectiveS(), 4.0);
+  ranked.ranked_execution_time_s = -1.0;
+  EXPECT_FALSE(ranked.valid());
+}
+
+TEST(PersistentDStarLitePlanner3DTest, ANewSessionReceivesTheResidentIncumbent) {
+  auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 1.0, 12, 12, 8});
+  PersistentDStarLitePlanner3D planner{testConfig()};
+  const Point3 start{1.5, 1.5, 1.5};
+  const Point3 goal{10.5, 10.5, 5.5};
+  PersistentPlannerRequest3D first_session = request(start, goal, world(occupancy, 1U));
+  first_session.session_id = 1U;
+
+  const PlannerUpdate3D converged = planner.plan(first_session);
+  ASSERT_TRUE(converged.publishable());
+  EXPECT_EQ(converged.progress, SearchProgress3D::kConverged);
+  const std::vector<Point3> route = candidate(converged).points;
+
+  // The same session already holds the incumbent: nothing new to publish.
+  const PlannerUpdate3D same_session = planner.plan(first_session);
+  EXPECT_FALSE(same_session.publishable());
+  EXPECT_EQ(same_session.progress, SearchProgress3D::kConverged);
+
+  // A new session of the same mission holds no route of this search yet, so
+  // the retained incumbent is delivered to it without any improvement.
+  PersistentPlannerRequest3D second_session = first_session;
+  second_session.session_id = 2U;
+  const PlannerUpdate3D new_session = planner.plan(second_session);
+  ASSERT_TRUE(new_session.publishable());
+  EXPECT_TRUE(new_session.telemetry.incumbent_retained);
+  expectSamePath(candidate(new_session).points, route);
+  EXPECT_FALSE(planner.plan(second_session).publishable());
+}
+
+TEST(PersistentDStarLitePlanner3DTest,
+     ARejectedIncumbentIsDroppedAndTheSearchRestartsFromTheVehicle) {
+  auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 1.0, 12, 12, 8});
+  PersistentDStarLitePlanner3D planner{testConfig()};
+  const Point3 start{1.5, 1.5, 1.5};
+  const Point3 goal{10.5, 10.5, 5.5};
+  PersistentPlannerRequest3D session = request(start, goal, world(occupancy, 1U));
+  session.session_id = 1U;
+  ASSERT_TRUE(planner.plan(session).publishable());
+
+  // The consumer could not enter the delivered incumbent and the vehicle now
+  // waits elsewhere: the continuation carries a newer rejection sequence.
+  PersistentPlannerRequest3D rejected = session;
+  rejected.start = Point3{1.5, 6.5, 4.5};
+  rejected.incumbent_rejection_sequence = 1U;
+  const PlannerUpdate3D restarted = planner.plan(rejected);
+
+  ASSERT_TRUE(restarted.publishable());
+  EXPECT_FALSE(restarted.telemetry.incumbent_retained);
+  EXPECT_DOUBLE_EQ(candidate(restarted).points.front().x, rejected.start.x);
+  EXPECT_DOUBLE_EQ(candidate(restarted).points.front().y, rejected.start.y);
+  EXPECT_DOUBLE_EQ(candidate(restarted).points.front().z, rejected.start.z);
+  // The same sequence applies once; an unchanged request publishes nothing new.
+  EXPECT_FALSE(planner.plan(rejected).publishable());
+}
+
 TEST(PersistentDStarLitePlanner3DTest,
      SolvesOneWorldFixedTwentySixConnectedMissionToTheExactGoal) {
   auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
@@ -573,7 +649,8 @@ TEST(PersistentDStarLitePlanner3DTest,
   EXPECT_EQ(result.telemetry.search_generation, generation);
   EXPECT_FALSE(result.telemetry.execution_time_search_complete);
   EXPECT_EQ(result.progress, SearchProgress3D::kRunning);
-  EXPECT_EQ(result.telemetry.shortcut_checks, 0U);
+  // Anytime publications are shortcut-simplified like converged ones; the
+  // refinement still continues afterwards.
   expectRawValid(candidate(result).points, *occupancy,
                  planner.config().physical_footprint);
 }

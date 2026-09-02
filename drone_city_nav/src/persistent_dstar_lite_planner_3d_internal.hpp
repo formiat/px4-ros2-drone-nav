@@ -3,6 +3,7 @@
 #include "drone_city_nav/occupied_collision_oracle_3d.hpp"
 #include "drone_city_nav/persistent_dstar_lite_planner_3d.hpp"
 
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -127,7 +128,12 @@ struct PersistentPlannerWorldUpdate3D {
   bool requires_reset{false};
   bool occupied_world_unchanged{false};
   bool occupied_cells_removed{false};
+  // The request world was older than the resident one; the resident world
+  // was kept as the authority.
+  bool resident_world_retained{false};
   std::vector<GridIndex3D> changed_cells;
+  double diff_ms{0.0};
+  double install_ms{0.0};
 };
 
 using DStarLiteOpenQueue3D =
@@ -145,6 +151,10 @@ using FeasibilityOpenQueue3D =
 // sit, which segments the physical body can traverse, and what an edge costs.
 // All three searches ask the same questions of it, so it answers them itself
 // instead of exposing its geometry for a single owner to interpret.
+// Euclidean distance from a point to an axis-aligned voxel box; zero inside.
+[[nodiscard]] double voxelBoxDistance3D(const Point3& point, const Point3& box_minimum,
+                                        const Point3& box_maximum) noexcept;
+
 class PlannerLattice3D final {
 public:
   explicit PlannerLattice3D(const PersistentPlannerConfig3D& config) noexcept
@@ -164,10 +174,19 @@ public:
   [[nodiscard]] const GridBounds3D& bounds() const noexcept;
   // Upper bound on nodes along one traversal of the lattice.
   [[nodiscard]] std::size_t nodeSpan() const noexcept;
+  // Number of level-zero nodes; dense per-node storage is sized by it.
+  [[nodiscard]] std::size_t nodeCount() const noexcept;
+  [[nodiscard]] std::size_t linearIndex(PersistentPlannerNode3D node) const noexcept;
+  [[nodiscard]] PersistentPlannerNode3D nodeAt(std::size_t index) const noexcept;
 
   // Drops the cached cost of an evaluated edge. A D* label can depend only on
   // an edge whose cost was evaluated, so repair invalidates exactly those.
   [[nodiscard]] bool forgetEdgeCost(const PersistentPlannerEdge3D& edge);
+  // Forgets every level-zero edge incident to the node and its cached
+  // clearance; returns true when anything was priced. Coarse scheduling of a
+  // very large change set uses it over the nodes of the changed chunks.
+  bool forgetNodeEvidence(PersistentPlannerNode3D node);
+  [[nodiscard]] bool hasEdgeCost(const PersistentPlannerEdge3D& edge) const noexcept;
 
   [[nodiscard]] bool nodeInside(PersistentPlannerNode3D node) const noexcept;
   [[nodiscard]] int maximumScale() const noexcept;
@@ -185,6 +204,11 @@ public:
   // A path is traversable when it stays inside the flight envelope and every
   // segment clears the physical body; the first segment is a departure.
   [[nodiscard]] bool pathTraversable(const std::vector<Point3>& path) const;
+  // Index of the first segment that fails traversal (segment s joins path[s-1]
+  // and path[s]; 0 names a point outside the flight envelope or a degenerate
+  // path), or nullopt when the path is traversable.
+  [[nodiscard]] std::optional<std::size_t>
+  firstInvalidSegment(const std::vector<Point3>& path) const;
   [[nodiscard]] std::vector<PersistentPlannerNode3D>
   adjacentNodes(PersistentPlannerNode3D node) const;
 
@@ -222,17 +246,56 @@ public:
                                  PersistentPlannerNode3D second) const noexcept;
   [[nodiscard]] double rawEdgeCost(PersistentPlannerNode3D first,
                                    PersistentPlannerNode3D second);
+  // Raw flight time scaled by the soft clearance ranking. D* Lite labels and
+  // the execution-time refinement rank with it; edge traversability and path
+  // validity stay on the raw cost.
+  [[nodiscard]] double rankedEdgeCost(PersistentPlannerNode3D first,
+                                      PersistentPlannerNode3D second);
   // Distance from a node to the nearest raw occupied cell, capped at the
   // clearance ranking distance. It is derived ranking evidence computed from
   // the resident raw grid and cached per node.
   [[nodiscard]] double nodeClearanceM(PersistentPlannerNode3D node);
-  // Reach, in metres, beyond the body within which a raw change can alter a
-  // cached edge cost. Zero when clearance ranking is disabled.
-  [[nodiscard]] double clearanceRankingReachM() const noexcept;
+  // The same clearance at an arbitrary point, uncached.
+  [[nodiscard]] double pointClearanceM(const Point3& point) const;
+  // Ranking factor of a body clearance (raw clearance less the footprint
+  // radius): 1 beyond the ranking distance, growing through the soft band
+  // and steeply through the critical band.
+  [[nodiscard]] double
+  rankingFactorForBodyClearance(double body_clearance_m) const noexcept;
+  // Execution time of a point path with every segment scaled by the worst
+  // ranking factor sampled along it; stationary turn time is not scaled.
+  [[nodiscard]] double rankedPathTimeS(const std::vector<Point3>& path,
+                                       const FlightPathTimeProfile3D& profile) const;
+  // Drops every cached node clearance; they are re-derived lazily.
+  void resetNodeClearances() noexcept;
   // Drops cached clearances of nodes whose raw surroundings changed.
   void
   forgetNodeClearances(const std::unordered_set<PersistentPlannerNode3D,
                                                 PersistentPlannerNode3DHash>& nodes);
+  // Re-derives the cached clearance of the given nodes on the resident world
+  // and returns the nodes whose clearance moved; nodes without a cached
+  // clearance have no priced edge to re-evaluate and are skipped.
+  [[nodiscard]] std::vector<PersistentPlannerNode3D> refreshChangedNodeClearances(
+      const std::unordered_set<PersistentPlannerNode3D, PersistentPlannerNode3DHash>&
+          nodes);
+  // The cached clearance of a node, or nullopt when it was never priced.
+  [[nodiscard]] std::optional<double>
+  cachedNodeClearance(PersistentPlannerNode3D node) const;
+  // Replaces a cached clearance with a tighter value derived by the caller
+  // from newly occupied evidence.
+  void setCachedNodeClearance(PersistentPlannerNode3D node, double clearance_m);
+  // Distance within which an occupied change can alter a node's cached
+  // clearance. Zero when clearance ranking is disabled.
+  [[nodiscard]] double clearanceRankingReachM() const noexcept;
+  // Forgets cached adaptive (level > 0) edges whose margin-expanded extent
+  // touches a changed chunk and returns them. Level-zero edges are handled by
+  // the per-cell reach box of the D* session; long edges are found here from
+  // the cache so the scheduling cost is bounded by the cache, not by the
+  // change size times the long-edge reach.
+  [[nodiscard]] std::vector<PersistentPlannerEdge3D> forgetAdaptiveEdgesNear(
+      const std::unordered_set<OccupancyChunkIndex3D, OccupancyChunkIndex3DHash>&
+          changed_chunks);
+
   // Edge traversability from the shared cost cache, for a search that owns its
   // own cost model. A finite cached cost is exactly a traversable edge.
   [[nodiscard]] bool edgeTraversable(PersistentPlannerNode3D first,
@@ -251,10 +314,55 @@ private:
   int depth_{0};
   std::optional<OccupiedCollisionOracle3D> resident_collision_oracle_;
   std::optional<OccupiedCollisionOracle3D> departure_collision_oracle_;
+  // Level-zero edges are dense: every node owns the thirteen canonical edges
+  // that leave it towards a lexicographically greater neighbour, two state
+  // bits each (unknown, clear, blocked). Their raw flight time depends only on
+  // the direction, so it is tabulated once per grid geometry. Searches query
+  // millions of level-zero edges per second; a hash lookup per query was the
+  // dominant planner cost.
+  static constexpr std::size_t kLevelZeroDirections{13U};
+
+  struct LevelZeroSlot {
+    std::size_t node{0U};
+    std::size_t direction{0U};
+  };
+
+  std::vector<std::uint32_t> level_zero_edge_states_;
+  std::array<double, kLevelZeroDirections> level_zero_edge_time_s_{};
+  [[nodiscard]] LevelZeroSlot
+  levelZeroSlot(const PersistentPlannerEdge3D& canonical) const noexcept;
+  [[nodiscard]] unsigned levelZeroState(LevelZeroSlot slot) const noexcept;
+  void setLevelZeroState(LevelZeroSlot slot, unsigned state) noexcept;
+  // True when no raw chunk lies within the swept reach of any level-zero edge
+  // leaving the node; every such edge is then clear without a swept check.
+  [[nodiscard]] bool
+  surroundingsUnoccupied(PersistentPlannerNode3D node) const noexcept;
+  void markSurroundingLevelZeroEdgesClear(PersistentPlannerNode3D node) noexcept;
+  // True when both endpoints' already cached raw clearance exceeds half the
+  // edge plus the body extent, which clears the whole swept edge without
+  // validation. Uncached clearances are not derived here.
+  [[nodiscard]] bool endpointClearanceClears(PersistentPlannerNode3D first,
+                                             PersistentPlannerNode3D second);
+  // Adaptive (level > 0) edges are sparse and keep a keyed cache.
   std::unordered_map<PersistentPlannerEdge3D, double, PersistentPlannerEdge3DHash>
-      edge_cost_cache_;
+      adaptive_edge_cost_cache_;
   std::unordered_map<PersistentPlannerNode3D, double, PersistentPlannerNode3DHash>
       node_clearance_cache_;
+  // Adaptive (level > 0) cached edges keyed by every chunk their
+  // margin-expanded extent touches, so an occupied change finds the long
+  // edges it can affect without scanning the whole edge cache. Entries of
+  // edges forgotten through another chunk are pruned lazily.
+  std::unordered_map<OccupancyChunkIndex3D, std::vector<PersistentPlannerEdge3D>,
+                     OccupancyChunkIndex3DHash>
+      adaptive_edges_by_chunk_;
+  // Body margin of a swept edge: footprint extent plus the raw voxel half
+  // diagonal. An occupied change outside it cannot touch the edge.
+  double adaptive_edge_horizontal_margin_m_{0.0};
+  double adaptive_edge_vertical_margin_m_{0.0};
+  void indexAdaptiveEdge(const PersistentPlannerEdge3D& edge);
+  template<typename Visitor>
+  void forEachChunkTouching(const Point3& first, const Point3& second,
+                            Visitor&& visitor) const;
   std::size_t edge_queries_{0U};
   std::size_t raw_edge_validation_checks_{0U};
   std::size_t adaptive_edge_queries_{0U};
@@ -289,9 +397,22 @@ public:
   costToGoal(PersistentPlannerNode3D node) const noexcept;
   [[nodiscard]] bool startResolved(PersistentPlannerNode3D start) const noexcept;
 
+  struct ScheduleStatistics {
+    double total_ms{0.0};
+    double ranking_ms{0.0};
+    std::size_t edges_forgotten{0U};
+    std::size_t clearances_tightened{0U};
+    std::size_t clearances_rederived{0U};
+  };
+
   void scheduleAffectedVertices(const PersistentPlannerWorld3D& world,
                                 const std::vector<GridIndex3D>& changed_cells,
                                 std::size_t& affected_states);
+
+  [[nodiscard]] const ScheduleStatistics& scheduleStatistics() const noexcept {
+    return schedule_statistics_;
+  }
+
   [[nodiscard]] bool
   continueAffectedVertexRepair(std::chrono::steady_clock::time_point deadline,
                                std::size_t maximum_vertices,
@@ -330,6 +451,7 @@ private:
   std::unordered_map<PersistentPlannerNode3D, DStarLiteRecord3D,
                      PersistentPlannerNode3DHash>
       records_;
+  ScheduleStatistics schedule_statistics_{};
   std::deque<PersistentPlannerNode3D> pending_repair_nodes_;
   std::unordered_set<PersistentPlannerNode3D, PersistentPlannerNode3DHash>
       pending_repair_members_;
@@ -355,28 +477,68 @@ public:
 
   void reset() noexcept;
   [[nodiscard]] bool initialized() const noexcept;
+  // The lattice node the labels were seeded from. A candidate departs from
+  // the exact start straight to it, so the anchor stays valid while that
+  // departure segment does, wherever the vehicle drifted meanwhile.
+  [[nodiscard]] PersistentPlannerNode3D anchor() const noexcept;
+  // True when the last advance() emptied the frontier without a candidate.
+  [[nodiscard]] bool frontierExhausted() const noexcept;
+  [[nodiscard]] std::size_t exploredNodes() const noexcept;
+  // Smallest distance from any expanded node to the exact goal so far.
+  [[nodiscard]] double closestGoalDistanceM() const noexcept;
+  // Candidates that failed validation since construction, by what failed:
+  // full restarts (departure, degenerate candidate) and prefix reseeds
+  // (an interior segment whose edge no longer survives the resident world).
+  [[nodiscard]] std::size_t restartCount() const noexcept;
+  [[nodiscard]] std::size_t prefixReseedCount() const noexcept;
+  [[nodiscard]] std::size_t lastInvalidSegment() const noexcept;
 
   // Expands the frontier until a path is found, the budget is spent, or the
-  // deadline passes. Seeds itself from the endpoints on first use.
+  // deadline passes. Seeds itself from the endpoints on first use and on every
+  // restart, so `endpoints.start` is the current start anchor.
   [[nodiscard]] std::optional<std::vector<Point3>>
   advance(const Endpoints3D& endpoints, std::chrono::steady_clock::time_point deadline,
           std::size_t maximum_expansions, std::size_t& expansions);
 
 private:
+  static constexpr std::uint32_t kNoParent{std::numeric_limits<std::uint32_t>::max()};
+
   void initialize(const Endpoints3D& endpoints);
+  void ensureLabelStorage();
+  [[nodiscard]] bool labelled(std::size_t index) const noexcept;
+  // Lattice nodes from the anchor to the terminal, or empty when the parent
+  // chain is broken or too long.
+  [[nodiscard]] std::vector<PersistentPlannerNode3D>
+  reconstructNodes(PersistentPlannerNode3D terminal) const;
+  // Exact-start departure, the nodes, and the exact goal. The departure joins
+  // the first node the exact start reaches directly; nodes before it are
+  // dropped, so a drifted vehicle keeps the labels it can still use.
   [[nodiscard]] std::optional<std::vector<Point3>>
-  reconstruct(const Endpoints3D& endpoints, PersistentPlannerNode3D terminal) const;
+  pathFromNodes(const Endpoints3D& endpoints,
+                std::vector<PersistentPlannerNode3D>& nodes) const;
+  // Restarts the search seeded with the labels of `prefix`, whose edges were
+  // just validated on the resident world.
+  void reseedFromPrefix(const Endpoints3D& endpoints,
+                        const std::vector<PersistentPlannerNode3D>& prefix);
 
   const PersistentPlannerConfig3D* config_{nullptr};
   PlannerLattice3D* lattice_{nullptr};
   bool initialized_{false};
+  PersistentPlannerNode3D anchor_{};
   std::uint64_t queue_sequence_{0U};
+  bool frontier_exhausted_{false};
+  double closest_goal_distance_m_{std::numeric_limits<double>::infinity()};
   FeasibilityOpenQueue3D open_{};
-  std::unordered_map<PersistentPlannerNode3D, double, PersistentPlannerNode3DHash>
-      costs_;
-  std::unordered_map<PersistentPlannerNode3D, PersistentPlannerNode3D,
-                     PersistentPlannerNode3DHash>
-      parents_;
+  // Dense labels stamped with the generation that wrote them; a reset bumps
+  // the generation instead of clearing the arrays.
+  std::vector<double> cost_s_;
+  std::vector<std::uint32_t> label_generation_;
+  std::vector<std::uint32_t> parent_index_;
+  std::uint32_t generation_{0U};
+  std::size_t explored_{0U};
+  std::size_t restart_count_{0U};
+  std::size_t prefix_reseed_count_{0U};
+  std::size_t last_invalid_segment_{0U};
 };
 
 // Discrete travel direction of a vector or a lattice edge. Time states are
@@ -422,6 +584,10 @@ public:
                                   bool start_from_rest) const noexcept;
   [[nodiscard]] bool goalChanged(const Point3& exact_goal) const noexcept;
   [[nodiscard]] bool hasIncumbent() const noexcept;
+  // Keeps the search across an occupied change; drops blocked incumbents.
+  void rebaseWorld();
+  // Largest total cost a state may still have to be worth expanding.
+  [[nodiscard]] double improvementBoundS() const noexcept;
   [[nodiscard]] std::vector<Point3> bestPath();
   [[nodiscard]] std::size_t records() const noexcept;
   [[nodiscard]] std::size_t openEntries() const noexcept;
@@ -432,8 +598,10 @@ public:
   advance(std::chrono::steady_clock::time_point deadline,
           std::size_t maximum_expansions, std::size_t& expansions);
 
-private:
+  // Installs a raw-valid spatial route as the anytime incumbent and bound.
   void seedIncumbent(const std::vector<Point3>& spatial_route);
+
+private:
   [[nodiscard]] Vec3
   directionVector(PersistentPlannerDirection3D direction) const noexcept;
   [[nodiscard]] double
@@ -530,6 +698,7 @@ private:
   PlannerLattice3D lattice_;
   PersistentPlannerNode3D start_{};
   PersistentPlannerNode3D last_start_{};
+  // Anchored start of the feasibility search; see plan() for the hysteresis.
   PersistentPlannerNode3D goal_{};
   Point3 exact_start_{};
   Point3 exact_goal_{};
@@ -541,6 +710,12 @@ private:
   PathPostprocessor3D path_postprocessor_{};
   AnytimePlannerCoordinator3D coordinator_;
   std::size_t adaptive_edges_in_extracted_path_{0U};
+  // Session that last received the incumbent; see
+  // PersistentPlannerRequest3D::session_id.
+  std::uint64_t published_session_id_{0U};
+  // Session whose incumbent-discard request was already honoured.
+  std::uint64_t discarded_session_id_{0U};
+  std::uint64_t applied_incumbent_rejection_sequence_{0U};
 };
 
 } // namespace drone_city_nav::detail

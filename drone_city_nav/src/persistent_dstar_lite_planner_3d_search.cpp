@@ -10,6 +10,7 @@
 #include <optional>
 #include <ranges>
 #include <tuple>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -117,7 +118,7 @@ void DStarLiteSession3D::updateVertex(const PersistentPlannerNode3D node) {
   if (node != goal_) {
     double best = std::numeric_limits<double>::infinity();
     lattice_->forEachAdjacentNode(node, [&](const PersistentPlannerNode3D successor) {
-      const double edge_cost = lattice_->rawEdgeCost(node, successor);
+      const double edge_cost = lattice_->rankedEdgeCost(node, successor);
       if (!std::isfinite(edge_cost)) {
         return;
       }
@@ -135,23 +136,169 @@ void DStarLiteSession3D::updateVertex(const PersistentPlannerNode3D node) {
   }
 }
 
+namespace {
+constexpr double kClearanceToleranceM{1.0e-3};
+} // namespace
+
 void DStarLiteSession3D::scheduleAffectedVertices(
     const PersistentPlannerWorld3D& world,
     const std::vector<GridIndex3D>& changed_cells, std::size_t& affected_states) {
-  std::unordered_set<PersistentPlannerNode3D, PersistentPlannerNode3DHash>
-      resident_candidates;
+  const auto schedule_started = std::chrono::steady_clock::now();
+  schedule_statistics_ = {};
+  // Level-zero edges are found from a per-cell reach box; adaptive long edges
+  // are found from the edge cache by chunk overlap, so a large change set
+  // never multiplies by the long-edge reach.
+  std::unordered_set<OccupancyChunkIndex3D, OccupancyChunkIndex3DHash> changed_chunks;
   const double raw_half_diagonal =
       0.5 * std::numbers::sqrt3 * lattice_->bounds().resolution_m;
-  const double ranking_reach = lattice_->clearanceRankingReachM();
+  const double horizontal_margin =
+      config_->physical_footprint.radius_m + raw_half_diagonal;
+  const double vertical_margin = std::max(config_->physical_footprint.lower_extent_m,
+                                          config_->physical_footprint.upper_extent_m) +
+                                 raw_half_diagonal;
   const double horizontal_reach =
-      config_->physical_footprint.radius_m + raw_half_diagonal + ranking_reach +
-      std::numbers::sqrt2 * config_->minimum_horizontal_step_m *
-          static_cast<double>(lattice_->maximumScale());
-  const double vertical_reach =
-      std::max(config_->physical_footprint.lower_extent_m,
-               config_->physical_footprint.upper_extent_m) +
-      raw_half_diagonal + ranking_reach +
-      config_->minimum_vertical_step_m * static_cast<double>(lattice_->maximumScale());
+      horizontal_margin + std::numbers::sqrt2 * config_->minimum_horizontal_step_m;
+  const double vertical_reach = vertical_margin + config_->minimum_vertical_step_m;
+  for (const GridIndex3D cell : changed_cells) {
+    changed_chunks.insert(OccupancyGrid3D::chunkIndex(cell));
+  }
+
+  // A D* label can depend only on an edge whose cost was evaluated. Invalidate
+  // those exact cached dependencies instead of eagerly creating and validating
+  // every geometrically possible neighbor in the conservative change radius.
+  // Both endpoints are scheduled because an obstacle removal may make a
+  // previously infinite undirected edge traversable.
+  // Only an edge whose swept body can actually touch a changed cell is
+  // forgotten: the distance from the cell centre to the edge segment must be
+  // within the body margin, horizontally and vertically. A node beside a
+  // change keeps every edge that points away from it. The test is exact per
+  // (cell, edge) pair and touches only nodes within the level-zero reach of
+  // that cell, so the cost is linear in the change size.
+  std::unordered_set<PersistentPlannerNode3D, PersistentPlannerNode3DHash> affected;
+  const auto cell_touches_segment = [&](const Point3& center, const Point3& first,
+                                        const Point3& second) noexcept {
+    const Vec3 direction{second.x - first.x, second.y - first.y, second.z - first.z};
+    const double length_squared = direction.x * direction.x +
+                                  direction.y * direction.y + direction.z * direction.z;
+    const Vec3 offset{center.x - first.x, center.y - first.y, center.z - first.z};
+    const double ratio =
+        length_squared > 0.0
+            ? std::clamp((offset.x * direction.x + offset.y * direction.y +
+                          offset.z * direction.z) /
+                             length_squared,
+                         0.0, 1.0)
+            : 0.0;
+    const double dz = offset.z - ratio * direction.z;
+    if (std::abs(dz) > vertical_margin) {
+      return false;
+    }
+    const double dx = offset.x - ratio * direction.x;
+    const double dy = offset.y - ratio * direction.y;
+    return dx * dx + dy * dy <= horizontal_margin * horizontal_margin;
+  };
+
+  // The change set is bucketed by the lattice node cell that holds each cell
+  // centre; every bucket then visits the labelled nodes within reach of that
+  // cell and tests only their priced edges against the bucket's cells. The
+  // cost is the number of changed node cells times the reach box, plus the
+  // exact per-edge tests near labels, never the change size times the box.
+  struct ChangedCell {
+    Point3 center{};
+    bool occupied_now{false};
+  };
+
+  std::unordered_map<PersistentPlannerNode3D, std::vector<ChangedCell>,
+                     PersistentPlannerNode3DHash>
+      changes_by_node_cell;
+  for (const GridIndex3D cell : changed_cells) {
+    const Point3 center = world.observed_occupancy != nullptr
+                              ? world.observed_occupancy->cellCenter(cell)
+                              : world.static_occupancy->cellCenter(cell);
+    const bool occupied_now = world.observed_occupancy != nullptr
+                                  ? world.observed_occupancy->isOccupied(cell)
+                                  : world.static_occupancy->isOccupied(cell);
+    changes_by_node_cell[lattice_->nearestNode(center)].push_back(
+        ChangedCell{.center = center, .occupied_now = occupied_now});
+  }
+  const auto labelled = [&](const PersistentPlannerNode3D node) {
+    return node == start_ || node == goal_ || records_.contains(node);
+  };
+  // Visits every labelled node within the given node-step radii of a cell node.
+  const auto for_each_labelled_node_near = [&](const PersistentPlannerNode3D cell_node,
+                                               const int horizontal_radius,
+                                               const int vertical_radius,
+                                               auto&& visitor) {
+    for (int z_offset = -vertical_radius; z_offset <= vertical_radius; ++z_offset) {
+      for (int y_offset = -horizontal_radius; y_offset <= horizontal_radius;
+           ++y_offset) {
+        for (int x_offset = -horizontal_radius; x_offset <= horizontal_radius;
+             ++x_offset) {
+          const PersistentPlannerNode3D node{
+              cell_node.x + x_offset, cell_node.y + y_offset, cell_node.z + z_offset};
+          if (lattice_->nodeInside(node) && labelled(node)) {
+            visitor(node);
+          }
+        }
+      }
+    }
+  };
+  // A very large change set (a freshly revealed facade, or several scans
+  // absorbed at once) is scheduled coarsely by chunk: every node whose reach
+  // touches a changed chunk forgets its level-zero edges and clearance, and
+  // the labelled ones among them are repaired. The cost is bounded by the
+  // changed chunks times the node box of a chunk, never by the cell count.
+  constexpr std::size_t kExactChangeCellLimit{4096U};
+  const bool exact = changed_cells.size() <= kExactChangeCellLimit;
+  if (!exact) {
+    const double chunk_span_m = static_cast<double>(OccupancyGrid3D::kChunkSize) *
+                                lattice_->bounds().resolution_m;
+    const GridBounds3D& bounds = lattice_->bounds();
+    for (const OccupancyChunkIndex3D& chunk : changed_chunks) {
+      const Point3 chunk_minimum{
+          bounds.origin_x + chunk.x * chunk_span_m - horizontal_reach,
+          bounds.origin_y + chunk.y * chunk_span_m - horizontal_reach,
+          bounds.origin_z + chunk.z * chunk_span_m - vertical_reach};
+      const Point3 chunk_maximum{
+          bounds.origin_x + (chunk.x + 1) * chunk_span_m + horizontal_reach,
+          bounds.origin_y + (chunk.y + 1) * chunk_span_m + horizontal_reach,
+          bounds.origin_z + (chunk.z + 1) * chunk_span_m + vertical_reach};
+      const PersistentPlannerNode3D first = lattice_->nearestNode(chunk_minimum);
+      const PersistentPlannerNode3D last = lattice_->nearestNode(chunk_maximum);
+      for (int z = first.z; z <= last.z; ++z) {
+        for (int y = first.y; y <= last.y; ++y) {
+          for (int x = first.x; x <= last.x; ++x) {
+            const PersistentPlannerNode3D node{x, y, z};
+            if (!lattice_->forgetNodeEvidence(node)) {
+              continue;
+            }
+            ++schedule_statistics_.edges_forgotten;
+            if (node == start_ || node == goal_ || records_.contains(node)) {
+              affected.insert(node);
+            }
+          }
+        }
+      }
+    }
+    for (const PersistentPlannerEdge3D& edge :
+         lattice_->forgetAdaptiveEdgesNear(changed_chunks)) {
+      affected.insert(edge.first);
+      affected.insert(edge.second);
+    }
+    std::vector<PersistentPlannerNode3D> coarse_ordered{affected.begin(),
+                                                        affected.end()};
+    std::ranges::sort(coarse_ordered, nodeLess);
+    for (const PersistentPlannerNode3D node : coarse_ordered) {
+      if (pending_repair_members_.insert(node).second) {
+        pending_repair_nodes_.push_back(node);
+      }
+    }
+    affected_states = coarse_ordered.size();
+    schedule_statistics_.total_ms =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                  schedule_started)
+            .count();
+    return;
+  }
   const int horizontal_radius =
       static_cast<int>(
           std::ceil(horizontal_reach / config_->minimum_horizontal_step_m)) +
@@ -159,44 +306,132 @@ void DStarLiteSession3D::scheduleAffectedVertices(
   const int vertical_radius =
       static_cast<int>(std::ceil(vertical_reach / config_->minimum_vertical_step_m)) +
       1;
-  for (const GridIndex3D cell : changed_cells) {
-    const Point3 center = world.observed_occupancy != nullptr
-                              ? world.observed_occupancy->cellCenter(cell)
-                              : world.static_occupancy->cellCenter(cell);
-    const PersistentPlannerNode3D nearest = lattice_->nearestNode(center);
-    for (int z_offset = -vertical_radius; z_offset <= vertical_radius; ++z_offset) {
-      for (int y_offset = -horizontal_radius; y_offset <= horizontal_radius;
-           ++y_offset) {
-        for (int x_offset = -horizontal_radius; x_offset <= horizontal_radius;
-             ++x_offset) {
-          const PersistentPlannerNode3D candidate{
-              nearest.x + x_offset, nearest.y + y_offset, nearest.z + z_offset};
-          if (lattice_->nodeInside(candidate) &&
-              (candidate == start_ || candidate == goal_ ||
-               records_.contains(candidate))) {
-            resident_candidates.insert(candidate);
+  for (const auto& [cell_node, changes] : changes_by_node_cell) {
+    for_each_labelled_node_near(
+        cell_node, horizontal_radius, vertical_radius,
+        [&](const PersistentPlannerNode3D node) {
+          const Point3 node_point = lattice_->pointFor(node);
+          // A change beyond the reach of every edge leaving this node cannot
+          // touch any of them; most box nodes are filtered here.
+          const bool within_reach =
+              std::ranges::any_of(changes, [&](const ChangedCell& change) {
+                return std::abs(change.center.z - node_point.z) <= vertical_reach &&
+                       std::hypot(change.center.x - node_point.x,
+                                  change.center.y - node_point.y) <= horizontal_reach;
+              });
+          if (!within_reach) {
+            return;
           }
+          for (int z_offset = -1; z_offset <= 1; ++z_offset) {
+            for (int y_offset = -1; y_offset <= 1; ++y_offset) {
+              for (int x_offset = -1; x_offset <= 1; ++x_offset) {
+                if (x_offset == 0 && y_offset == 0 && z_offset == 0) {
+                  continue;
+                }
+                const PersistentPlannerNode3D neighbor{
+                    node.x + x_offset, node.y + y_offset, node.z + z_offset};
+                if (!lattice_->nodeInside(neighbor)) {
+                  continue;
+                }
+                const PersistentPlannerEdge3D edge = canonicalEdge(node, neighbor);
+                if (!lattice_->hasEdgeCost(edge)) {
+                  continue;
+                }
+                const Point3 neighbor_point = lattice_->pointFor(neighbor);
+                const bool touched =
+                    !exact ||
+                    std::ranges::any_of(changes, [&](const ChangedCell& change) {
+                      return cell_touches_segment(change.center, node_point,
+                                                  neighbor_point);
+                    });
+                if (!touched || !lattice_->forgetEdgeCost(edge)) {
+                  continue;
+                }
+                ++schedule_statistics_.edges_forgotten;
+                affected.insert(edge.first);
+                affected.insert(edge.second);
+              }
+            }
+          }
+        });
+  }
+  for (const PersistentPlannerEdge3D& edge :
+       lattice_->forgetAdaptiveEdgesNear(changed_chunks)) {
+    affected.insert(edge.first);
+    affected.insert(edge.second);
+  }
+  // Clearance ranking re-prices every edge incident to a node whose cached
+  // clearance moves. An added occupied cell can only lower a clearance, which
+  // is applied in place; a removed cell that was the nearest evidence forces a
+  // re-derivation. Nodes without a cached clearance were never priced.
+  const double ranking_reach = lattice_->clearanceRankingReachM();
+  const auto ranking_started = std::chrono::steady_clock::now();
+  if (ranking_reach > 0.0) {
+    const double half_cell_m = 0.5 * lattice_->bounds().resolution_m;
+    const int ranking_horizontal_radius =
+        static_cast<int>(std::ceil((ranking_reach + raw_half_diagonal) /
+                                   config_->minimum_horizontal_step_m)) +
+        1;
+    const int ranking_vertical_radius =
+        static_cast<int>(std::ceil((ranking_reach + raw_half_diagonal) /
+                                   config_->minimum_vertical_step_m)) +
+        1;
+    std::unordered_set<PersistentPlannerNode3D, PersistentPlannerNode3DHash>
+        re_derive_candidates;
+    std::unordered_set<PersistentPlannerNode3D, PersistentPlannerNode3DHash> moved;
+    for (const auto& [cell_node, changes] : changes_by_node_cell) {
+      for_each_labelled_node_near(
+          cell_node, ranking_horizontal_radius, ranking_vertical_radius,
+          [&](const PersistentPlannerNode3D node) {
+            const std::optional<double> cached = lattice_->cachedNodeClearance(node);
+            if (!cached.has_value()) {
+              return;
+            }
+            const Point3 node_point = lattice_->pointFor(node);
+            double clearance_m = *cached;
+            bool re_derive = false;
+            for (const ChangedCell& change : changes) {
+              const Point3 box_minimum{change.center.x - half_cell_m,
+                                       change.center.y - half_cell_m,
+                                       change.center.z - half_cell_m};
+              const Point3 box_maximum{change.center.x + half_cell_m,
+                                       change.center.y + half_cell_m,
+                                       change.center.z + half_cell_m};
+              const double distance_m =
+                  voxelBoxDistance3D(node_point, box_minimum, box_maximum);
+              if (change.occupied_now) {
+                clearance_m = std::min(clearance_m, distance_m);
+              } else if (distance_m <= clearance_m + kClearanceToleranceM) {
+                re_derive = true;
+              }
+            }
+            if (re_derive) {
+              re_derive_candidates.insert(node);
+            } else if (clearance_m + kClearanceToleranceM < *cached) {
+              lattice_->setCachedNodeClearance(node, clearance_m);
+              ++schedule_statistics_.clearances_tightened;
+              moved.insert(node);
+            }
+          });
+    }
+    schedule_statistics_.clearances_rederived = re_derive_candidates.size();
+    for (const PersistentPlannerNode3D node :
+         lattice_->refreshChangedNodeClearances(re_derive_candidates)) {
+      moved.insert(node);
+    }
+    for (const PersistentPlannerNode3D node : moved) {
+      affected.insert(node);
+      lattice_->forEachAdjacentNode(node, [&](const PersistentPlannerNode3D neighbor) {
+        if (records_.contains(neighbor)) {
+          affected.insert(neighbor);
         }
-      }
+      });
     }
   }
-  // A D* label can depend only on an edge whose cost was evaluated. Invalidate
-  // those exact cached dependencies instead of eagerly creating and validating
-  // every geometrically possible neighbor in the conservative change radius.
-  // Both endpoints are scheduled because an obstacle removal may make a
-  // previously infinite undirected edge traversable.
-  std::unordered_set<PersistentPlannerNode3D, PersistentPlannerNode3DHash> affected;
-  lattice_->forgetNodeClearances(resident_candidates);
-  for (const PersistentPlannerNode3D node : resident_candidates) {
-    lattice_->forEachAdjacentNode(node, [&](const PersistentPlannerNode3D neighbor) {
-      const PersistentPlannerEdge3D edge = canonicalEdge(node, neighbor);
-      if (!lattice_->forgetEdgeCost(edge)) {
-        return;
-      }
-      affected.insert(edge.first);
-      affected.insert(edge.second);
-    });
-  }
+  schedule_statistics_.ranking_ms =
+      std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                ranking_started)
+          .count();
   std::vector<PersistentPlannerNode3D> ordered{affected.begin(), affected.end()};
   std::ranges::sort(ordered, nodeLess);
   for (const PersistentPlannerNode3D node : ordered) {
@@ -205,6 +440,10 @@ void DStarLiteSession3D::scheduleAffectedVertices(
     }
   }
   affected_states = ordered.size();
+  schedule_statistics_.total_ms =
+      std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                schedule_started)
+          .count();
 }
 
 bool DStarLiteSession3D::continueAffectedVertexRepair(
@@ -309,7 +548,7 @@ std::vector<Point3> DStarLiteSession3D::extractPath(const Point3& exact_start,
     std::optional<PersistentPlannerNode3D> selected;
     double selected_cost = std::numeric_limits<double>::infinity();
     lattice_->forEachAdjacentNode(node, [&](const PersistentPlannerNode3D successor) {
-      const double edge_cost = lattice_->rawEdgeCost(node, successor);
+      const double edge_cost = lattice_->rankedEdgeCost(node, successor);
       const auto successor_record = records_.find(successor);
       if (!std::isfinite(edge_cost) || successor_record == records_.end() ||
           !std::isfinite(successor_record->second.g)) {
@@ -474,6 +713,7 @@ std::optional<SpatialRouteCandidate3D> PersistentDStarLitePlanner3DImpl::makeCan
   for (std::size_t index = 1U; index < path.size(); ++index) {
     path_length_m += distance3D(path[index - 1U], path[index]);
   }
+  const double ranked_execution_time_s = lattice_.rankedPathTimeS(path, profile);
   return SpatialRouteCandidate3D{
       .points = std::move(path),
       .source = source,
@@ -481,6 +721,7 @@ std::optional<SpatialRouteCandidate3D> PersistentDStarLitePlanner3DImpl::makeCan
       .estimated_execution_time_s = profile.travel_time_s,
       .estimated_translation_time_s = profile.translation_time_s,
       .estimated_stationary_turn_time_s = profile.stationary_turn_time_s,
+      .ranked_execution_time_s = ranked_execution_time_s,
   };
 }
 

@@ -192,6 +192,40 @@ bool ExecutionTimeRefiner3D::hasIncumbent() const noexcept {
   return goal_.has_value() || !spatial_incumbent_.empty();
 }
 
+void ExecutionTimeRefiner3D::rebaseWorld() {
+  if (!initialized_) {
+    return;
+  }
+  // Labels computed on the previous world stay as an anytime approximation:
+  // they can only make the refinement less optimal, never unsafe, because
+  // every published path is raw-validated on extraction. Incumbents that the
+  // new world blocks are dropped so the bound reopens.
+  if (goal_.has_value()) {
+    const std::vector<Point3> refined = extractPath();
+    if (refined.empty() || !lattice_->pathTraversable(refined)) {
+      goal_.reset();
+      goal_cost_s_ = std::numeric_limits<double>::infinity();
+    }
+  }
+  if (!spatial_incumbent_.empty() && !goal_.has_value()) {
+    const std::vector<Point3> incumbent = spatial_incumbent_;
+    spatial_incumbent_.clear();
+    goal_cost_s_ = std::numeric_limits<double>::infinity();
+    seedIncumbent(incumbent);
+  }
+  complete_ = false;
+}
+
+double ExecutionTimeRefiner3D::improvementBoundS() const noexcept {
+  if (!hasIncumbent()) {
+    return std::numeric_limits<double>::infinity();
+  }
+  const double margin_s = std::max(
+      config_->execution_time_refinement_minimum_improvement_s,
+      config_->execution_time_refinement_minimum_improvement_ratio * goal_cost_s_);
+  return goal_cost_s_ - margin_s;
+}
+
 std::vector<Point3> ExecutionTimeRefiner3D::bestPath() {
   if (goal_.has_value()) {
     return extractPath();
@@ -232,7 +266,7 @@ ExecutionTimeRefiner3D::transitionCost(const PersistentPlannerTimeState3D& first
     return std::numeric_limits<double>::infinity();
   }
   const double translation_cost =
-      lattice_->rawEdgeCost(first.position, second.position);
+      lattice_->rankedEdgeCost(first.position, second.position);
   if (!std::isfinite(translation_cost)) {
     return translation_cost;
   }
@@ -294,9 +328,21 @@ ExecutionTimeRefiner3D::advance(const std::chrono::steady_clock::time_point dead
   if (!initialized_) {
     return std::nullopt;
   }
+  const auto validated_best = [this]() -> std::optional<std::vector<Point3>> {
+    if (!hasIncumbent()) {
+      return std::nullopt;
+    }
+    std::vector<Point3> path = bestPath();
+    if (path.size() < 2U || !lattice_->pathTraversable(path)) {
+      // Stale labels from an earlier world produced a blocked path: discard
+      // the search state rather than publish it.
+      reset();
+      return std::nullopt;
+    }
+    return path;
+  };
   if (complete_) {
-    return hasIncumbent() ? std::optional<std::vector<Point3>>{bestPath()}
-                          : std::nullopt;
+    return validated_best();
   }
 
   while (true) {
@@ -310,19 +356,20 @@ ExecutionTimeRefiner3D::advance(const std::chrono::steady_clock::time_point dead
       open_.pop();
     }
 
-    if (open_.empty() ||
-        (hasIncumbent() && !costLess(open_.top().estimated_total_s, goal_cost_s_))) {
+    // A state whose optimistic total cannot beat the incumbent by the
+    // configured margin is never worth expanding: the resulting route could
+    // not be admitted as a successor anyway.
+    if (open_.empty() || (hasIncumbent() && !costLess(open_.top().estimated_total_s,
+                                                      improvementBoundS()))) {
       complete_ = true;
-      return hasIncumbent() ? std::optional<std::vector<Point3>>{bestPath()}
-                            : std::nullopt;
+      return validated_best();
     }
     if (expansions >= maximum_expansions ||
         std::chrono::steady_clock::now() >= deadline) {
       // The spatial incumbent is already a complete raw-valid route. Publish
       // it as the anytime result while the direction-aware search continues
       // refining the execution-time objective on later calls.
-      return hasIncumbent() ? std::optional<std::vector<Point3>>{bestPath()}
-                            : std::nullopt;
+      return validated_best();
     }
 
     const PersistentPlannerTimeQueueEntry3D current = open_.top();
@@ -362,7 +409,7 @@ ExecutionTimeRefiner3D::advance(const std::chrono::steady_clock::time_point dead
             queue_sequence_ = 1U;
           }
           const double estimated_total = candidate_cost + heuristic(successor);
-          if (hasIncumbent() && !costLess(estimated_total, goal_cost_s_)) {
+          if (hasIncumbent() && !costLess(estimated_total, improvementBoundS())) {
             return;
           }
           open_.push(PersistentPlannerTimeQueueEntry3D{

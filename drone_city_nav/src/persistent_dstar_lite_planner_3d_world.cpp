@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <bit>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -55,15 +56,22 @@ PersistentDStarLitePlanner3DImpl::updateWorld(const PersistentPlannerWorld3D& wo
     update.requires_reset = true;
     return update;
   }
+  if (world.producer_instance_id == world_.producer_instance_id &&
+      lattice_.sameGridGeometry(*world.bounds()) && world.revision < world_.revision) {
+    // The caller's snapshot lags behind evidence this planner has already
+    // absorbed from a newer continuation. Occupied evidence is monotonic in
+    // time, so the resident world stays authoritative and the request simply
+    // continues on it.
+    update.accepted = true;
+    update.occupied_world_unchanged = true;
+    update.resident_world_retained = true;
+    return update;
+  }
   if (world_.producer_instance_id == 0U ||
       world.producer_instance_id != world_.producer_instance_id ||
-      !lattice_.sameGridGeometry(*world.bounds()) || world.revision < world_.revision ||
+      !lattice_.sameGridGeometry(*world.bounds()) ||
       (world.revision == world_.revision &&
        world.occupied_fingerprint != world_.occupied_fingerprint)) {
-    if (world.revision < world_.revision &&
-        world.producer_instance_id == world_.producer_instance_id) {
-      return update;
-    }
     installWorld(world);
     lattice_.configureGridGeometry(*world.bounds());
     lattice_.resetEdgeEvidence();
@@ -75,13 +83,6 @@ PersistentDStarLitePlanner3DImpl::updateWorld(const PersistentPlannerWorld3D& wo
     update.accepted = true;
     update.occupied_world_unchanged = true;
     installWorld(world);
-    return update;
-  }
-  if (world.full_reset) {
-    installWorld(world);
-    lattice_.resetEdgeEvidence();
-    update.accepted = true;
-    update.requires_reset = true;
     return update;
   }
   if (world.occupied_fingerprint == world_.occupied_fingerprint) {
@@ -103,7 +104,11 @@ PersistentDStarLitePlanner3DImpl::updateWorld(const PersistentPlannerWorld3D& wo
   // by chunk, which is far cheaper than discarding every search label.
   const bool dirty_chunks_complete =
       world.incremental_parent_revision == world_.revision;
+  const auto diff_started = std::chrono::steady_clock::now();
   update.changed_cells = changedOccupiedCells(world_, world, dirty_chunks_complete);
+  update.diff_ms = std::chrono::duration<double, std::milli>(
+                       std::chrono::steady_clock::now() - diff_started)
+                       .count();
   update.occupied_cells_removed =
       std::ranges::any_of(update.changed_cells, [&](const GridIndex3D cell) {
         return world_.observed_occupancy->isOccupied(cell) &&
@@ -114,7 +119,11 @@ PersistentDStarLitePlanner3DImpl::updateWorld(const PersistentPlannerWorld3D& wo
     update.changed_cells.clear();
     update.requires_reset = true;
   }
+  const auto install_started = std::chrono::steady_clock::now();
   installWorld(world);
+  update.install_ms = std::chrono::duration<double, std::milli>(
+                          std::chrono::steady_clock::now() - install_started)
+                          .count();
   update.accepted = true;
   return update;
 }

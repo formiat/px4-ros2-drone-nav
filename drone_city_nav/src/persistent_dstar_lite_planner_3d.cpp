@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <numbers>
 #include <utility>
 
 #include "persistent_dstar_lite_planner_3d_internal.hpp"
@@ -52,7 +53,13 @@ bool SpatialRouteCandidate3D::valid() const noexcept {
          std::isfinite(estimated_translation_time_s) &&
          estimated_translation_time_s >= 0.0 &&
          std::isfinite(estimated_stationary_turn_time_s) &&
-         estimated_stationary_turn_time_s >= 0.0;
+         estimated_stationary_turn_time_s >= 0.0 &&
+         std::isfinite(ranked_execution_time_s) && ranked_execution_time_s >= 0.0;
+}
+
+double SpatialRouteCandidate3D::objectiveS() const noexcept {
+  return ranked_execution_time_s > 0.0 ? ranked_execution_time_s
+                                       : estimated_execution_time_s;
 }
 
 bool PlannerUpdate3D::publishable() const noexcept {
@@ -162,10 +169,10 @@ AnytimePlannerCoordinator3D::consider(SpatialRouteCandidate3D candidate) {
   }
   const bool improved =
       !incumbent_.has_value() ||
-      candidate.estimated_execution_time_s <
-          incumbent_->estimated_execution_time_s -
-              kObjectiveTolerance * std::max({1.0, candidate.estimated_execution_time_s,
-                                              incumbent_->estimated_execution_time_s});
+      candidate.objectiveS() <
+          incumbent_->objectiveS() -
+              kObjectiveTolerance *
+                  std::max({1.0, candidate.objectiveS(), incumbent_->objectiveS()});
   if (!improved) {
     return std::nullopt;
   }
@@ -284,6 +291,9 @@ void PersistentDStarLitePlanner3DImpl::reset() noexcept {
   execution_time_refiner_.reset();
   coordinator_.reset();
   adaptive_edges_in_extracted_path_ = 0U;
+  published_session_id_ = 0U;
+  discarded_session_id_ = 0U;
+  applied_incumbent_rejection_sequence_ = 0U;
 }
 
 bool PersistentDStarLitePlanner3DImpl::validRequest(
@@ -309,10 +319,23 @@ bool PersistentDStarLitePlanner3DImpl::validRequest(
          config_.maximum_extracted_path_nodes > 1U &&
          std::isfinite(config_.maximum_compute_time_ms) &&
          config_.maximum_compute_time_ms > 0.0 &&
+         std::isfinite(config_.execution_time_refinement_minimum_improvement_s) &&
+         config_.execution_time_refinement_minimum_improvement_s >= 0.0 &&
+         std::isfinite(config_.execution_time_refinement_minimum_improvement_ratio) &&
+         config_.execution_time_refinement_minimum_improvement_ratio >= 0.0 &&
+         config_.execution_time_refinement_minimum_improvement_ratio < 1.0 &&
+         std::isfinite(config_.feasibility_goal_connector_reach_m) &&
+         config_.feasibility_goal_connector_reach_m > 0.0 &&
          std::isfinite(config_.clearance_ranking_weight) &&
          config_.clearance_ranking_weight >= 0.0 &&
          std::isfinite(config_.clearance_ranking_distance_m) &&
          config_.clearance_ranking_distance_m > 0.0 &&
+         std::isfinite(config_.clearance_ranking_critical_distance_m) &&
+         config_.clearance_ranking_critical_distance_m >= 0.0 &&
+         config_.clearance_ranking_critical_distance_m <=
+             config_.clearance_ranking_distance_m &&
+         std::isfinite(config_.clearance_ranking_critical_weight) &&
+         config_.clearance_ranking_critical_weight >= 0.0 &&
          config_.physical_footprint.sweep_step_m > 0.0 &&
          lattice_.pointInsideFlightEnvelope(request.start) &&
          lattice_.pointInsideFlightEnvelope(request.mission_goal);
@@ -329,6 +352,7 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   telemetry.planned_on_revision = request.world.revision;
   telemetry.occupied_fingerprint = request.world.occupied_fingerprint;
   if (!validRequest(request)) {
+    telemetry.input_failure = "request_invalid";
     return update;
   }
   const auto deadline =
@@ -341,14 +365,21 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   const Point3 previous_goal = exact_goal_;
   const auto world_update_started = std::chrono::steady_clock::now();
   const PersistentPlannerWorldUpdate3D world_update = updateWorld(request.world);
+  telemetry.world_diff_ms = world_update.diff_ms;
+  telemetry.world_install_ms = world_update.install_ms;
   telemetry.world_update_ms =
       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                 world_update_started)
           .count();
   if (!world_update.accepted) {
+    telemetry.input_failure = "world_rejected";
     return update;
   }
   update.input_status = PlannerInputStatus3D::kAccepted;
+  if (world_update.resident_world_retained) {
+    telemetry.planned_on_revision = world_.revision;
+    telemetry.occupied_fingerprint = world_.occupied_fingerprint;
+  }
   telemetry.changed_occupied_voxels = world_update.changed_cells.size();
   telemetry.occupied_world_unchanged = world_update.occupied_world_unchanged;
 
@@ -380,7 +411,18 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     }
     initializeSearch(request, *start_anchor, *goal_anchor);
   } else {
-    const bool feasibility_start_changed = *start_anchor != start_;
+    // The feasibility search keeps its anchor while the vehicle stays within
+    // one lattice diagonal of it: a hovering vehicle flips its nearest node
+    // with every centimetre of drift, and re-anchoring the search on each flip
+    // would restart it forever. The departure segment from the exact start to
+    // the anchor is validated on every candidate, and a candidate that fails
+    // restarts the search from the current anchor, so a momentarily blocked
+    // departure never discards the labels by itself.
+    const bool feasibility_start_changed =
+        feasibility_search_.initialized() &&
+        *start_anchor != feasibility_search_.anchor() &&
+        distance3D(request.start, lattice_.pointFor(feasibility_search_.anchor())) >
+            std::numbers::sqrt2 * config_.minimum_horizontal_step_m;
     const bool execution_time_start_changed = execution_time_refiner_.startChanged(
         refinement_request.start, refinement_request.start_from_rest);
     const bool execution_time_goal_changed =
@@ -395,6 +437,12 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     if (!world_update.changed_cells.empty()) {
       dstar_session_.scheduleAffectedVertices(world_, world_update.changed_cells,
                                               telemetry.affected_lattice_states);
+      const auto& schedule = dstar_session_.scheduleStatistics();
+      telemetry.schedule_ms = schedule.total_ms;
+      telemetry.schedule_ranking_ms = schedule.ranking_ms;
+      telemetry.schedule_edges_forgotten = schedule.edges_forgotten;
+      telemetry.schedule_clearances_tightened = schedule.clearances_tightened;
+      telemetry.schedule_clearances_rederived = schedule.clearances_rederived;
       if (world_update.occupied_cells_removed) {
         // A cost-to-go retained across an obstacle removal can overestimate a
         // newly opened route until every affected label settles. Keep the
@@ -403,15 +451,34 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
       }
       dstar_session_.advanceRepairGeneration();
     }
-    if (!world_update.changed_cells.empty() || feasibility_start_changed) {
+    // The feasibility search keeps its labels across occupied changes; every
+    // candidate it returns is raw-validated on the resident world first, and a
+    // candidate that fails restarts the search there.
+    if (feasibility_start_changed) {
       feasibility_search_.reset();
     }
-    if (!world_update.changed_cells.empty() || execution_time_start_changed ||
-        execution_time_goal_changed) {
+    if (execution_time_start_changed || execution_time_goal_changed) {
       execution_time_refiner_.reset();
+    } else if (!world_update.changed_cells.empty()) {
+      execution_time_refiner_.rebaseWorld();
     }
   }
 
+  if (request.discard_incumbent && request.session_id != 0U &&
+      request.session_id != discarded_session_id_) {
+    discarded_session_id_ = request.session_id;
+    coordinator_.reset();
+    execution_time_refiner_.reset();
+  }
+  if (request.incumbent_rejection_sequence > applied_incumbent_rejection_sequence_) {
+    // The consumer could not enter the incumbent it was delivered. Keeping it
+    // would keep the feasibility search idle and leave the vehicle waiting on
+    // an incremental repair that newer evidence may never let converge.
+    applied_incumbent_rejection_sequence_ = request.incumbent_rejection_sequence;
+    coordinator_.reset();
+    execution_time_refiner_.reset();
+    feasibility_search_.reset();
+  }
   if (const SpatialRouteCandidate3D* const incumbent = coordinator_.incumbent();
       incumbent != nullptr) {
     const std::optional<std::vector<Point3>> retained =
@@ -447,6 +514,16 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
       telemetry.feasibility_route_found = true;
       update.improved_incumbent = coordinator_.consider(std::move(*candidate));
     }
+    telemetry.feasibility_frontier_exhausted = feasibility_search_.frontierExhausted();
+    telemetry.feasibility_explored_nodes = feasibility_search_.exploredNodes();
+    telemetry.feasibility_closest_goal_distance_m =
+        feasibility_search_.closestGoalDistanceM();
+    telemetry.feasibility_restarts = feasibility_search_.restartCount();
+    telemetry.feasibility_prefix_reseeds = feasibility_search_.prefixReseedCount();
+    telemetry.feasibility_last_invalid_segment =
+        feasibility_search_.lastInvalidSegment();
+    telemetry.feasibility_anchor = lattice_.pointFor(
+        feasibility_search_.initialized() ? feasibility_search_.anchor() : start_);
   }
 
   const bool repair_complete = dstar_session_.continueAffectedVertexRepair(
@@ -474,6 +551,11 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
           refinement_request,
           dstar_session_.extractPath(exact_start_, exact_goal_,
                                      adaptive_edges_in_extracted_path_));
+    } else if (!execution_time_refiner_.hasIncumbent()) {
+      // The world change dropped the refinement incumbent; the repaired D*
+      // route is the new anytime bound.
+      execution_time_refiner_.seedIncumbent(dstar_session_.extractPath(
+          exact_start_, exact_goal_, adaptive_edges_in_extracted_path_));
     }
     const std::size_t graph_expansions =
         telemetry.repair_lattice_states_processed + telemetry.expansions;
@@ -489,7 +571,10 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
       adaptive_edges_in_extracted_path_ =
           execution_time_refiner_.adaptiveEdgesInExtractedPath();
     }
-    if (execution_time_refiner_.complete() && path && !path->empty()) {
+    if (path && path->size() >= 2U) {
+      // Every published path, anytime or converged, is shortcut-simplified:
+      // each shortcut is raw-validated, and a lattice zig-zag left in a route
+      // costs a stop-and-turn at every corner during execution.
       *path = path_postprocessor_.shortcut(
           *path,
           PathPostprocessorContext3D{
@@ -522,6 +607,16 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     }
   } else if (spatial_search_complete) {
     execution_time_refiner_.reset();
+  }
+
+  // A consumer that opened a new session holds no route of this search: its
+  // first update delivers the resident incumbent, later ones improvements only.
+  if (request.session_id != 0U && request.session_id != published_session_id_ &&
+      !update.improved_incumbent.has_value() && coordinator_.incumbent() != nullptr) {
+    update.improved_incumbent = *coordinator_.incumbent();
+  }
+  if (update.improved_incumbent.has_value()) {
+    published_session_id_ = request.session_id;
   }
 
   const bool search_complete =
