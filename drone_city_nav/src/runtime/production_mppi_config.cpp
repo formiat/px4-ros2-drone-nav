@@ -136,8 +136,6 @@ bool ProductionMppiConfig::valid() const noexcept {
                  control.mppi.dynamics.maximum_vertical_acceleration_mps2) &&
          world.no_static_3d_esdf_update_rate_hz > 0.0 &&
          localObservedEsdfWindow3DIsValid(world.no_static_3d_esdf_window) &&
-         world.no_static_3d_esdf_incremental_maximum_rebuild_ratio > 0.0 &&
-         world.no_static_3d_esdf_incremental_maximum_rebuild_ratio <= 1.0 &&
          rollout_budget_valid && mission_waypoints_valid && cooperative_valid &&
          noncooperative_valid && route_extension_valid && route_search_retry_valid &&
          navigationAngularDerivativeConfigIsValid(

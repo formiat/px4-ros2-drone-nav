@@ -128,16 +128,6 @@ private:
         declare<double>("no_static_3d_esdf_horizontal_recenter_margin_m", 12.0);
     world.no_static_3d_esdf_window.vertical_recenter_margin_m =
         declare<double>("no_static_3d_esdf_vertical_recenter_margin_m", 9.0);
-    world.no_static_3d_esdf_incremental_maximum_rebuild_ratio =
-        declare<double>("no_static_3d_esdf_incremental_maximum_rebuild_ratio", 0.15);
-    const std::int64_t full_audit_interval =
-        declare<std::int64_t>("no_static_3d_esdf_full_audit_interval_builds", 120);
-    if (full_audit_interval <= 0) {
-      throw std::invalid_argument{
-          "no_static_3d_esdf_full_audit_interval_builds must be positive"};
-    }
-    world.no_static_3d_esdf_full_audit_interval_builds =
-        static_cast<std::size_t>(full_audit_interval);
     world.frame_id = declare<std::string>("frame_id", "map");
     world.px4_map_transform = Px4MapFrameTransform{
         .map_origin = Point3{declare<double>("px4_local_origin_x_m", 54.0),

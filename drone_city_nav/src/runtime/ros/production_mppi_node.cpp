@@ -149,8 +149,7 @@ void logConfiguration(const ProductionMppiConfig& config,
       "far_cost_sampling=(%.2fs,%u) liveness=%s "
       "persistent_route=true route_replan_remaining=%.1fm planner_workers=%zu "
       "planner_tick_phase_ms=%.1f no_static_world=observed_occupancy_3d "
-      "no_static_esdf=(%.1fHz/h%.1f/v%.1f/hm%.1f/vm%.1fm/incremental_ratio=%.2f/"
-      "audit_builds=%zu)",
+      "no_static_esdf=(%.1fHz/h%.1f/v%.1f/hm%.1f/vm%.1fm/exact_dense_edt)",
       config.control.mppi.rollouts, config.control.rollout_budget.open_static_rollouts,
       config.control.rollout_budget.direct_tracking_rollouts,
       config.control.rollout_budget.minimum_reduced_clearance_m,
@@ -179,9 +178,7 @@ void logConfiguration(const ProductionMppiConfig& config,
       config.world.no_static_3d_esdf_window.horizontal_half_extent_m,
       config.world.no_static_3d_esdf_window.vertical_half_extent_m,
       config.world.no_static_3d_esdf_window.horizontal_recenter_margin_m,
-      config.world.no_static_3d_esdf_window.vertical_recenter_margin_m,
-      config.world.no_static_3d_esdf_incremental_maximum_rebuild_ratio,
-      config.world.no_static_3d_esdf_full_audit_interval_builds);
+      config.world.no_static_3d_esdf_window.vertical_recenter_margin_m);
 
   if (config.planning.noncooperative_avoidance_enabled) {
     RCLCPP_INFO(logger,

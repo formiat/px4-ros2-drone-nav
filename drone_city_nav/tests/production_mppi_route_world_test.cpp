@@ -29,7 +29,7 @@ namespace {
   const KnownObstacleDistance3DBuildResult distance =
       buildKnownObstacleDistance3D(*world.observed_occupancy, bounds, 7.0);
   world.revision = distance.field->sourceFingerprint();
-  world.distances_m = distance.field->materializeDense();
+  world.distances_m = distance.field->denseDistances();
   world.observed_raw_world_owner = VersionedObservedRawWorld3D::captureOwned(
       RawMapVersion{
           .producer_instance_id = 7U, .base_snapshot_revision = 400U, .revision = 451U},

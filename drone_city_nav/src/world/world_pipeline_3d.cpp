@@ -273,12 +273,12 @@ WorldPipeline3D::updateObservedWorld(ObservedWorldBuildRequest3D request) {
   if (request.build_started_at == TimePoint{}) {
     request.build_started_at = std::chrono::steady_clock::now();
   }
-  ObservedWorldBuildAssessment3D assessment = observed_builder_->assess(
+  const ObservedWorldBuildAssessment3D assessment = observed_builder_->assess(
       std::move(request), residentSnapshot().world, observedBuildHistory());
   if (assessment.evidence_change.changed() && runtime->evidence_handler) {
     runtime->evidence_handler(assessment.evidence_change);
   }
-  return finishObservedWorldUpdate(std::move(assessment), *runtime);
+  return finishObservedWorldUpdate(assessment, *runtime);
 }
 
 bool WorldPipeline3D::requestStaticWork() {
@@ -441,9 +441,9 @@ bool WorldPipeline3D::residentParentMatches(
              build.expected_parent_esdf_fingerprint;
 }
 
-ObservedWorldUpdate3D
-WorldPipeline3D::finishObservedWorldUpdate(ObservedWorldBuildAssessment3D assessment,
-                                           const ObservedWorldRuntime3D& runtime) {
+ObservedWorldUpdate3D WorldPipeline3D::finishObservedWorldUpdate(
+    const ObservedWorldBuildAssessment3D& assessment,
+    const ObservedWorldRuntime3D& runtime) {
   ObservedWorldUpdate3D result{
       .status = assessment.status,
       .raw_world = assessment.request.raw_world,
@@ -451,7 +451,6 @@ WorldPipeline3D::finishObservedWorldUpdate(ObservedWorldBuildAssessment3D assess
       .evidence_change = assessment.evidence_change,
       .retry_not_before = assessment.retry_not_before,
       .maximum_distance_m = assessment.maximum_distance_m,
-      .periodic_full_audit = assessment.periodic_full_audit,
       .recentered = assessment.recentered,
   };
   if (assessment.status == ObservedWorldUpdateStatus3D::kAlreadyCurrent) {
@@ -478,13 +477,11 @@ WorldPipeline3D::finishObservedWorldUpdate(ObservedWorldBuildAssessment3D assess
     return result;
   }
 
-  PreparedObservedWorldBuild3D build =
-      observed_builder_->materialize(std::move(assessment));
+  PreparedObservedWorldBuild3D build = observed_builder_->materialize(assessment);
   result.status = build.status;
   result.telemetry = build.telemetry;
   result.stats = build.stats;
   result.maximum_distance_m = build.maximum_distance_m;
-  result.periodic_full_audit = build.periodic_full_audit;
   result.recentered = build.recentered;
   if (!build.valid()) {
     result.world.reset();
@@ -511,7 +508,7 @@ WorldPipeline3D::finishObservedWorldUpdate(ObservedWorldBuildAssessment3D assess
           .grid = publication_world->grid,
           .distances_m = *publication_world->distances_m,
           .revision = publication_world->revision,
-          .dirty_regions = build.dirty_regions,
+          .dirty_regions = {},
       });
     } catch (...) {
       publication.invalidateAndRecordRejection();
@@ -655,8 +652,7 @@ ObservedWorldBuildHistory3D WorldPipeline3D::observedBuildHistory() const {
   const std::scoped_lock lock{build_state_mutex_};
   return ObservedWorldBuildHistory3D{
       .last_build_time = last_observed_build_time_,
-      .completed_builds = observed_full_builds_.load(std::memory_order_relaxed) +
-                          observed_incremental_builds_.load(std::memory_order_relaxed),
+      .completed_builds = observed_full_builds_.load(std::memory_order_relaxed),
   };
 }
 
@@ -671,9 +667,6 @@ void WorldPipeline3D::recordObservedBuild(const TimePoint build_time,
   switch (mode) {
     case ObservedEsdf3DBuildMode::kFull:
       observed_full_builds_.fetch_add(1U, std::memory_order_relaxed);
-      break;
-    case ObservedEsdf3DBuildMode::kIncremental:
-      observed_incremental_builds_.fetch_add(1U, std::memory_order_relaxed);
       break;
     case ObservedEsdf3DBuildMode::kReused:
       observed_reused_builds_.fetch_add(1U, std::memory_order_relaxed);
@@ -698,8 +691,6 @@ WorldPipelineStatistics3D WorldPipeline3D::statistics() const noexcept {
       .throttled_observed_builds =
           throttled_observed_builds_.load(std::memory_order_relaxed),
       .observed_full_builds = observed_full_builds_.load(std::memory_order_relaxed),
-      .observed_incremental_builds =
-          observed_incremental_builds_.load(std::memory_order_relaxed),
       .observed_reused_builds = observed_reused_builds_.load(std::memory_order_relaxed),
       .observed_recomputed_voxels =
           observed_recomputed_voxels_.load(std::memory_order_relaxed),

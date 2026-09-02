@@ -52,17 +52,28 @@ GridBounds3D selectLocalObservedEsdfBounds(const GridBounds3D& world_bounds,
   const int maximum_z =
       clampedCell(position.z + window.vertical_half_extent_m, world_bounds.origin_z,
                   world_bounds.resolution_m, world_bounds.depth_cells);
+  constexpr int kChunkSize{ObservedOccupancyGrid3D::kChunkSize};
+  const auto align_down = [](const int cell) { return cell - cell % kChunkSize; };
+  const auto align_up_exclusive = [](const int last_cell, const int cell_count) {
+    return std::min(cell_count, (last_cell / kChunkSize + 1) * kChunkSize);
+  };
+  const int aligned_minimum_x = align_down(minimum_x);
+  const int aligned_minimum_y = align_down(minimum_y);
+  const int aligned_minimum_z = align_down(minimum_z);
   return GridBounds3D{
       .origin_x = world_bounds.origin_x +
-                  static_cast<double>(minimum_x) * world_bounds.resolution_m,
+                  static_cast<double>(aligned_minimum_x) * world_bounds.resolution_m,
       .origin_y = world_bounds.origin_y +
-                  static_cast<double>(minimum_y) * world_bounds.resolution_m,
+                  static_cast<double>(aligned_minimum_y) * world_bounds.resolution_m,
       .origin_z = world_bounds.origin_z +
-                  static_cast<double>(minimum_z) * world_bounds.resolution_m,
+                  static_cast<double>(aligned_minimum_z) * world_bounds.resolution_m,
       .resolution_m = world_bounds.resolution_m,
-      .width_cells = maximum_x - minimum_x + 1,
-      .height_cells = maximum_y - minimum_y + 1,
-      .depth_cells = maximum_z - minimum_z + 1,
+      .width_cells =
+          align_up_exclusive(maximum_x, world_bounds.width_cells) - aligned_minimum_x,
+      .height_cells =
+          align_up_exclusive(maximum_y, world_bounds.height_cells) - aligned_minimum_y,
+      .depth_cells =
+          align_up_exclusive(maximum_z, world_bounds.depth_cells) - aligned_minimum_z,
   };
 }
 

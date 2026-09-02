@@ -202,39 +202,29 @@ void ProductionMppiNode::handleObservedWorldUpdate3D(
   RCLCPP_INFO(
       get_logger(),
       "PRODUCTION_MPPI_ESDF3D_ONLINE revision=%" PRIu64 " raw_revision=%" PRIu64
-      " build_ms=%.2f classify_ms=%.2f upload_ms=%.2f dimensions=%dx%dx%d "
-      "known=%zu free=%zu occupied=%zu unknown=%zu proprioceptive_free=%zu "
-      "launch_support=%zu mode=%s fallback=%s changed=%zu recomputed=%zu reused=%zu "
-      "classified=%zu classification_reused=%zu sources=%zu source_chunks=%zu "
-      "distance_chunks=%zu finite_distance_voxels=%zu inserted_sources=%zu "
-      "removed_sources=%zu recomputed_chunks=%zu reused_chunks=%zu changed_chunks=%zu "
-      "queried_voxels=%zu source_index_ms=%.2f distance_query_ms=%.2f "
-      "maximum_distance_m=%.2f audit=%s recenter=%s local_world_generation=%" PRIu64
-      " route_generation=%" PRIu64 " route_search=%s builds=%" PRIu64
-      " throttled=%" PRIu64 " dropped_raw=%" PRIu64 " mode_totals=(full=%" PRIu64
-      ",incremental=%" PRIu64 ",reused=%" PRIu64 ")",
+      " build_ms=%.2f classify_ms=%.2f source_collection_ms=%.2f transform_ms=%.2f "
+      "upload_ms=%.2f dimensions=%dx%dx%d known=%zu free=%zu occupied=%zu "
+      "unknown=%zu proprioceptive_free=%zu launch_support=%zu mode=%s "
+      "recomputed=%zu reused=%zu sources=%zu transform_voxels=%zu "
+      "finite_distance_voxels=%zu maximum_distance_m=%.2f recenter=%s "
+      "local_world_generation=%" PRIu64 " route_generation=%" PRIu64
+      " route_search=%s builds=%" PRIu64 " throttled=%" PRIu64 " dropped_raw=%" PRIu64
+      " mode_totals=(full=%" PRIu64 ",reused=%" PRIu64 ")",
       published_world->revision, raw_revision, update.telemetry.build_ms,
-      stats.classification_ms, update.telemetry.upload_ms, published_world->grid.width,
-      published_world->grid.height, published_world->grid.depth, stats.known_voxels,
-      stats.free_voxels, stats.occupied_voxels, stats.unknown_voxels,
-      stats.proprioceptive_free_voxels, stats.launch_support_voxels,
-      observedEsdf3DBuildModeName(stats.mode),
-      stats.incremental_fallback ? "true" : "false", stats.changed_voxels,
-      stats.recomputed_voxels, stats.reused_voxels, stats.classified_voxels,
-      stats.reused_classification_voxels, stats.distance_cache.source_voxels,
-      stats.distance_cache.source_chunks, stats.distance_cache.stored_distance_chunks,
-      stats.distance_cache.finite_distance_voxels,
-      stats.distance_cache.inserted_sources, stats.distance_cache.removed_sources,
-      stats.distance_cache.recomputed_chunks, stats.distance_cache.reused_chunks,
-      stats.distance_cache.changed_chunks, stats.distance_cache.queried_voxels,
-      stats.distance_cache.source_index_ms, stats.distance_cache.distance_query_ms,
-      update.maximum_distance_m, update.periodic_full_audit ? "true" : "false",
+      stats.classification_ms, stats.distance_field.source_collection_ms,
+      stats.distance_field.transform_ms, update.telemetry.upload_ms,
+      published_world->grid.width, published_world->grid.height,
+      published_world->grid.depth, stats.known_voxels, stats.free_voxels,
+      stats.occupied_voxels, stats.unknown_voxels, stats.proprioceptive_free_voxels,
+      stats.launch_support_voxels, observedEsdf3DBuildModeName(stats.mode),
+      stats.recomputed_voxels, stats.reused_voxels, stats.distance_field.source_voxels,
+      stats.distance_field.transform_voxels,
+      stats.distance_field.finite_distance_voxels, update.maximum_distance_m,
       update.recentered ? "true" : "false",
       published_world->local_world_generation.generation, resident_route_generation,
       route_search_status, pipeline_statistics.observedBuilds(),
       pipeline_statistics.throttled_observed_builds,
       pipeline_statistics.dropped_raw_worlds, pipeline_statistics.observed_full_builds,
-      pipeline_statistics.observed_incremental_builds,
       pipeline_statistics.observed_reused_builds);
 }
 

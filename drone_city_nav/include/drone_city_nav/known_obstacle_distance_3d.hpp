@@ -14,103 +14,81 @@ class BoundedWorkerPool;
 
 enum class KnownObstacleDistance3DBuildMode : std::uint8_t {
   kFull,
-  kIncremental,
   kReused,
-};
-
-struct KnownObstacleDistanceRegion3D {
-  int minimum_x{0};
-  int minimum_y{0};
-  int minimum_z{0};
-  int maximum_x_exclusive{0};
-  int maximum_y_exclusive{0};
-  int maximum_z_exclusive{0};
 };
 
 struct KnownObstacleDistance3DBuildStats {
   std::size_t source_voxels{0U};
-  std::size_t source_chunks{0U};
-  std::size_t stored_distance_chunks{0U};
+  std::size_t transform_voxels{0U};
   std::size_t finite_distance_voxels{0U};
-  std::size_t inserted_sources{0U};
-  std::size_t removed_sources{0U};
-  std::size_t recomputed_chunks{0U};
-  std::size_t reused_chunks{0U};
-  std::size_t changed_chunks{0U};
-  std::size_t queried_voxels{0U};
-  double source_index_ms{0.0};
-  double distance_query_ms{0.0};
+  double source_collection_ms{0.0};
+  double transform_ms{0.0};
   double duration_ms{0.0};
 };
 
-namespace detail {
-struct KnownObstacleDistanceStorage3D;
-}
-
-struct KnownObstacleDistance3DBuildResult;
-
-// Immutable sparse distance-to-confirmed-occupied evidence backed by shared
-// 8-cubed chunks. sourceBounds() is the conservative rectangular influence halo;
-// only sources within the exact capped radius of an output cell are indexed.
-// Missing chunks and cells mean that no confirmed obstacle exists within
-// maximumDistanceM(); they are neutral rather than unknown or forbidden.
+// Immutable dense distance-to-confirmed-occupied evidence over one local output
+// window. It is an exact Euclidean distance transform, capped at
+// maximumDistanceM(): sources inside the rectangular halo sourceBounds() are
+// transformed with three separable passes, and only the output window is
+// stored. Infinite cells mean that no confirmed obstacle exists within the cap;
+// they are neutral rather than unknown or forbidden. Free and unknown cells are
+// equivalent inputs.
 class KnownObstacleDistance3D final {
 public:
-  static constexpr int kChunkSize{8};
-
   class ConstructionKey final {
   private:
     ConstructionKey() = default;
     friend class KnownObstacleDistance3D;
   };
 
-  KnownObstacleDistance3D(
-      ConstructionKey construction_key,
-      std::shared_ptr<const detail::KnownObstacleDistanceStorage3D> storage);
+  struct Storage final {
+    GridBounds3D output_bounds{};
+    GridBounds3D source_bounds{};
+    double maximum_distance_m{0.0};
+    std::uint64_t source_fingerprint{0U};
+    std::size_t source_voxels{0U};
+    std::size_t finite_distance_voxels{0U};
+    std::shared_ptr<const std::vector<float>> distances_m;
+  };
+
+  KnownObstacleDistance3D(ConstructionKey construction_key, Storage storage);
 
   [[nodiscard]] bool valid() const noexcept;
   [[nodiscard]] const GridBounds3D& bounds() const noexcept;
   [[nodiscard]] const GridBounds3D& sourceBounds() const noexcept;
   [[nodiscard]] double maximumDistanceM() const noexcept;
+  // Identity of the exact influencing occupied sources and the window geometry.
   [[nodiscard]] std::uint64_t sourceFingerprint() const noexcept;
   [[nodiscard]] std::size_t sourceVoxelCount() const noexcept;
-  [[nodiscard]] std::size_t sourceChunkCount() const noexcept;
-  [[nodiscard]] std::size_t storedDistanceChunkCount() const noexcept;
   [[nodiscard]] std::size_t finiteDistanceVoxelCount() const noexcept;
   [[nodiscard]] float distanceAt(GridIndex3D local_cell) const noexcept;
-  [[nodiscard]] std::shared_ptr<const std::vector<float>> materializeDense() const;
+  // The dense output projection in z-major order. It is shared, not copied.
+  [[nodiscard]] const std::shared_ptr<const std::vector<float>>&
+  denseDistances() const noexcept;
+
+  // Only the build functions in this component can produce a Storage whose
+  // distances are the exact transform of its fingerprinted sources.
+  [[nodiscard]] static std::shared_ptr<const KnownObstacleDistance3D>
+  create(Storage storage);
 
 private:
-  [[nodiscard]] static std::shared_ptr<const KnownObstacleDistance3D>
-  create(std::shared_ptr<const detail::KnownObstacleDistanceStorage3D> storage);
-
-  std::shared_ptr<const detail::KnownObstacleDistanceStorage3D> storage_;
-
-  friend struct KnownObstacleDistance3DBuildResult;
-  friend KnownObstacleDistance3DBuildResult
-  buildKnownObstacleDistance3D(const ObservedOccupancyGrid3D&, const GridBounds3D&,
-                               double, std::span<const GridIndex3D>,
-                               BoundedWorkerPool*);
-  friend KnownObstacleDistance3DBuildResult updateKnownObstacleDistance3D(
-      const ObservedOccupancyGrid3D&, const GridBounds3D&, double,
-      const std::shared_ptr<const KnownObstacleDistance3D>&,
-      const ObservedOccupancyGrid3D*, std::span<const OccupancyChunkIndex3D>, bool,
-      double, std::span<const GridIndex3D>, BoundedWorkerPool*);
+  Storage storage_{};
 };
 
 struct KnownObstacleDistance3DBuildResult {
   std::shared_ptr<const KnownObstacleDistance3D> field;
-  std::vector<KnownObstacleDistanceRegion3D> dirty_regions;
   KnownObstacleDistance3DBuildStats stats{};
   KnownObstacleDistance3DBuildMode mode{KnownObstacleDistance3DBuildMode::kFull};
-  bool incremental_fallback{false};
 };
 
+// The rectangular halo of world cells whose occupied evidence can influence
+// any output cell of the local window under the distance cap.
 [[nodiscard]] GridBounds3D
 knownObstacleDistanceSourceBounds3D(const GridBounds3D& world_bounds,
                                     const GridBounds3D& local_bounds,
                                     double maximum_distance_m);
 
+// Exact full transform. Suppressed source cells are treated as free.
 [[nodiscard]] KnownObstacleDistance3DBuildResult
 buildKnownObstacleDistance3D(const ObservedOccupancyGrid3D& occupancy,
                              const GridBounds3D& local_bounds,
@@ -118,13 +96,12 @@ buildKnownObstacleDistance3D(const ObservedOccupancyGrid3D& occupancy,
                              std::span<const GridIndex3D> suppressed_source_cells = {},
                              BoundedWorkerPool* worker_pool = nullptr);
 
+// Returns the previous field unchanged when its exact source identity still
+// matches the occupancy, otherwise runs the full transform.
 [[nodiscard]] KnownObstacleDistance3DBuildResult updateKnownObstacleDistance3D(
     const ObservedOccupancyGrid3D& occupancy, const GridBounds3D& local_bounds,
     double maximum_distance_m,
     const std::shared_ptr<const KnownObstacleDistance3D>& previous,
-    const ObservedOccupancyGrid3D* previous_source_occupancy,
-    std::span<const OccupancyChunkIndex3D> dirty_chunks, bool full_reset,
-    double maximum_rebuild_ratio,
     std::span<const GridIndex3D> suppressed_source_cells = {},
     BoundedWorkerPool* worker_pool = nullptr);
 

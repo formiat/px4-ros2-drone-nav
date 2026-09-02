@@ -22,8 +22,6 @@ struct ObservedWorldBuilderConfig3D {
   SweptFootprintConfig footprint{};
   double preferred_distance_m{6.0};
   double update_rate_hz{1.0};
-  double incremental_maximum_rebuild_ratio{0.15};
-  std::size_t full_audit_interval_builds{120U};
   BoundedWorkerPool* worker_pool{nullptr};
 };
 
@@ -90,7 +88,6 @@ struct ObservedWorldBuildAssessment3D {
   std::optional<std::chrono::steady_clock::time_point> retry_not_before;
   ObservedWorldEvidenceChange3D evidence_change{};
   bool same_raw_lineage{false};
-  bool periodic_full_audit{false};
   bool recentered{false};
 
   [[nodiscard]] bool buildRequired() const noexcept {
@@ -107,12 +104,10 @@ struct PreparedObservedWorldBuild3D {
   std::uint64_t expected_parent_esdf_fingerprint{0U};
   ProductionWorldBuildTelemetry3D telemetry{};
   ObservedEsdf3DBuildStats stats{};
-  std::vector<EsdfDirtyRegion3D> dirty_regions;
   ObservedWorldEvidenceChange3D evidence_change{};
   double maximum_distance_m{0.0};
   bool parent_required{false};
   bool upload_required{false};
-  bool periodic_full_audit{false};
   bool recentered{false};
 
   [[nodiscard]] bool valid() const noexcept {
@@ -144,7 +139,7 @@ public:
          const ObservedWorldBuildHistory3D& history) const;
 
   [[nodiscard]] PreparedObservedWorldBuild3D
-  materialize(ObservedWorldBuildAssessment3D assessment) const;
+  materialize(const ObservedWorldBuildAssessment3D& assessment) const;
 
 private:
   ObservedWorldBuilderConfig3D config_{};

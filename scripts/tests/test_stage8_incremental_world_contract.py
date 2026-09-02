@@ -14,7 +14,9 @@ SOURCE = PACKAGE / "src"
 
 
 class Stage8IncrementalWorldContractTest(unittest.TestCase):
-    def test_observed_esdf_has_exact_incremental_and_reuse_modes(self) -> None:
+    def test_observed_esdf_is_an_exact_dense_transform_with_identity_reuse(
+        self,
+    ) -> None:
         header = (INCLUDE / "observed_esdf_3d.hpp").read_text(encoding="utf-8")
         implementation = (SOURCE / "observed_esdf_3d.cpp").read_text(
             encoding="utf-8"
@@ -22,9 +24,9 @@ class Stage8IncrementalWorldContractTest(unittest.TestCase):
         distance_header = (INCLUDE / "known_obstacle_distance_3d.hpp").read_text(
             encoding="utf-8"
         )
-        distance_update = (
-            SOURCE / "known_obstacle_distance_3d_update.cpp"
-        ).read_text(encoding="utf-8")
+        distance_source = (SOURCE / "known_obstacle_distance_3d.cpp").read_text(
+            encoding="utf-8"
+        )
         window = (SOURCE / "observed_esdf_3d_window.cpp").read_text(
             encoding="utf-8"
         )
@@ -39,25 +41,28 @@ class Stage8IncrementalWorldContractTest(unittest.TestCase):
             "classification_override_cells",
         ):
             self.assertIn(token, header)
-        for token in (
-            "classifyObservedGrid3DIncremental",
-            "rawClassificationChangesCoveredByDirtyChunks",
-            "inserted_sources",
-            "removed_sources",
-            "maximum_rebuild_ratio",
-        ):
-            self.assertIn(token, implementation)
+        self.assertIn("replaceChunk", implementation)
         self.assertNotIn("DistanceField3D::buildLocal", implementation)
-        self.assertNotIn("nearest_obstacle_indices", header)
+        self.assertNotIn("kIncremental", header)
         self.assertIn("immutable", distance_header.lower())
         for token in (
-            "knownObstacleRawChangesCovered3D",
-            "affected_output_chunks",
-            "reused_chunks",
-            "maximum_rebuild_ratio",
+            "transformSeparable",
+            "transformLine",
+            "sourceFingerprint",
+            "kReused",
         ):
-            self.assertIn(token, distance_update)
-        self.assertIn("source_occupancy", header)
+            self.assertIn(token, distance_source)
+        # The per-voxel nearest-source search and its incremental chunk repair
+        # are gone: the field is one exact separable transform per build.
+        self.assertNotIn("KnownObstacleSourceIndex3D", distance_source)
+        self.assertNotIn("nearestRecursive", distance_source)
+        self.assertFalse(
+            (SOURCE / "known_obstacle_distance_3d_update.cpp").exists()
+        )
+        self.assertFalse(
+            (SOURCE / "known_obstacle_distance_3d_internal.hpp").exists()
+        )
+        self.assertIn("kChunkSize", window)
         self.assertNotIn("planLaunchSupportDeparture3D", window)
 
     def test_online_topology_library_is_removed_from_production(self) -> None:

@@ -79,8 +79,6 @@ struct ProductionMppiConfig final {
     double maximum_esdf_age_ms{1000.0};
     double no_static_3d_esdf_update_rate_hz{1.0};
     LocalObservedEsdfWindow3D no_static_3d_esdf_window{};
-    double no_static_3d_esdf_incremental_maximum_rebuild_ratio{0.15};
-    std::size_t no_static_3d_esdf_full_audit_interval_builds{120U};
     std::string frame_id{"map"};
     Px4MapFrameTransform px4_map_transform{};
     FlightEnvelopeConfig flight_envelope{};

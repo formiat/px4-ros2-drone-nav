@@ -34,16 +34,12 @@ template<typename T>
   return localObservedEsdfWindow3DIsValid(config.local_window) &&
          std::isfinite(config.preferred_distance_m) &&
          config.preferred_distance_m >= 0.0 && std::isfinite(config.update_rate_hz) &&
-         config.update_rate_hz > 0.0 &&
-         std::isfinite(config.incremental_maximum_rebuild_ratio) &&
-         config.incremental_maximum_rebuild_ratio > 0.0 &&
-         config.incremental_maximum_rebuild_ratio <= 1.0 &&
-         std::isfinite(config.footprint.radius_m) && config.footprint.radius_m >= 0.0 &&
+         config.update_rate_hz > 0.0 && std::isfinite(config.footprint.radius_m) &&
+         config.footprint.radius_m >= 0.0 &&
          std::isfinite(config.footprint.lower_extent_m) &&
          config.footprint.lower_extent_m >= 0.0 &&
          std::isfinite(config.footprint.upper_extent_m) &&
-         config.footprint.upper_extent_m >= 0.0 &&
-         config.full_audit_interval_builds > 0U;
+         config.footprint.upper_extent_m >= 0.0;
 }
 
 [[nodiscard]] GridBounds3D residentLocalBounds(const WorldSnapshot3D& world) noexcept {
@@ -215,9 +211,6 @@ ObservedWorldBuilder3D::assess(ObservedWorldBuildRequest3D request,
       result.same_raw_lineage && launch_support_contact_unchanged &&
       result.active_world->source_occupied_fingerprint ==
           result.local_occupied_fingerprint;
-  result.periodic_full_audit = observedEsdfFullAuditDue(
-      history.completed_builds, config_.full_audit_interval_builds);
-
   result.observed_raw_world_owner = raw_world.deriveRouteEvidence(
       result.request.free_space_seed, result.request.launch_support_contact);
   if (result.observed_raw_world_owner == nullptr) {
@@ -226,7 +219,7 @@ ObservedWorldBuilder3D::assess(ObservedWorldBuildRequest3D request,
   }
 
   const bool already_current =
-      known_obstacle_sources_unchanged && !result.periodic_full_audit &&
+      known_obstacle_sources_unchanged &&
       result.active_world->source_raw_revision == raw_world.version().revision;
   if (already_current && !result.evidence_change.persistent_changed) {
     result.status = ObservedWorldUpdateStatus3D::kAlreadyCurrent;
@@ -240,8 +233,8 @@ ObservedWorldBuilder3D::assess(ObservedWorldBuildRequest3D request,
                                     history.last_build_time)
           .count();
   const bool build_rate_due = first_build || elapsed_s >= 1.0 / config_.update_rate_hz;
-  if ((!known_obstacle_sources_unchanged || result.periodic_full_audit) &&
-      result.active_world != nullptr && !result.recentered && !build_rate_due) {
+  if (!known_obstacle_sources_unchanged && result.active_world != nullptr &&
+      !result.recentered && !build_rate_due) {
     const std::chrono::duration<double> update_period{1.0 / config_.update_rate_hz};
     result.retry_not_before =
         history.last_build_time +
@@ -251,15 +244,14 @@ ObservedWorldBuilder3D::assess(ObservedWorldBuildRequest3D request,
   return result;
 }
 
-PreparedObservedWorldBuild3D
-ObservedWorldBuilder3D::materialize(ObservedWorldBuildAssessment3D assessment) const {
+PreparedObservedWorldBuild3D ObservedWorldBuilder3D::materialize(
+    const ObservedWorldBuildAssessment3D& assessment) const {
   PreparedObservedWorldBuild3D result;
   result.status = assessment.status;
   result.request = assessment.request;
   result.expected_parent = assessment.active_world;
   result.evidence_change = assessment.evidence_change;
   result.maximum_distance_m = assessment.maximum_distance_m;
-  result.periodic_full_audit = assessment.periodic_full_audit;
   result.recentered = assessment.recentered;
   if (!assessment.buildRequired() || assessment.request.raw_world == nullptr) {
     return result;
@@ -272,12 +264,6 @@ ObservedWorldBuilder3D::materialize(ObservedWorldBuildAssessment3D assessment) c
         .distances_m = assessment.active_world->distances_m,
         .known_obstacle_distance =
             assessment.active_world->observed_esdf_resource.known_obstacle_distance,
-        .source_occupancy = assessment.active_world->observed_occupancy,
-        .local_occupancy =
-            assessment.active_world->observed_esdf_resource.local_occupancy,
-        .classification_override_cells =
-            *assessment.active_world->observed_esdf_resource
-                 .classification_override_cells,
         .occupancy_fingerprint = assessment.active_world->revision,
         .maximum_distance_m =
             assessment.active_world->observed_esdf_resource.coverage.maximum_distance_m,
@@ -285,10 +271,8 @@ ObservedWorldBuilder3D::materialize(ObservedWorldBuildAssessment3D assessment) c
   }
   ObservedEsdf3D field = updateObservedEsdf3D(
       raw_world.occupancy(), assessment.local_bounds, assessment.maximum_distance_m,
-      optionalAddress(previous), raw_world.dirtyChunks(),
-      raw_world.fullReset() || assessment.recentered || assessment.periodic_full_audit,
-      config_.incremental_maximum_rebuild_ratio, config_.worker_pool,
-      optionalAddress(assessment.request.launch_support_contact));
+      optionalAddress(previous), raw_world.fullReset() || assessment.recentered,
+      config_.worker_pool, optionalAddress(assessment.request.launch_support_contact));
 
   const bool evidence_only_reuse =
       field.stats.mode == ObservedEsdf3DBuildMode::kReused &&
@@ -366,11 +350,10 @@ ObservedWorldBuilder3D::materialize(ObservedWorldBuildAssessment3D assessment) c
   result.expected_parent_raw_version = parent_raw_version;
   result.expected_parent_esdf_fingerprint = parent_esdf_fingerprint;
   result.telemetry.build_ms =
-      field.stats.distance_cache.duration_ms + field.stats.classification_ms;
+      field.stats.distance_field.duration_ms + field.stats.classification_ms;
   result.telemetry.conversion_ms =
       raw_world.reconstructionMs() + field.stats.classification_ms;
   result.stats = field.stats;
-  result.dirty_regions = std::move(field.dirty_regions);
   result.parent_required = field.stats.mode != ObservedEsdf3DBuildMode::kFull;
   result.upload_required = field.stats.mode != ObservedEsdf3DBuildMode::kReused;
   result.status = ObservedWorldUpdateStatus3D::kPrepared;

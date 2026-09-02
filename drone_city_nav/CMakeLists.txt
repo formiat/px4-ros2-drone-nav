@@ -221,7 +221,6 @@ add_drone_city_nav_layer(
   src/grid_config.cpp
   src/grid_overlay.cpp
   src/known_obstacle_distance_3d.cpp
-  src/known_obstacle_distance_3d_update.cpp
   src/known_static_lidar_hit_classifier.cpp
   src/latest_lidar_obstacle_scan.cpp
   src/lidar_acquisition_pose.cpp

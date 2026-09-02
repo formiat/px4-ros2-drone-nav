@@ -233,10 +233,6 @@ production_mppi_node:
     no_static_3d_esdf_vertical_half_extent_m: 15.0
     no_static_3d_esdf_horizontal_recenter_margin_m: 12.0
     no_static_3d_esdf_vertical_recenter_margin_m: 9.0
-    # Incremental removal repair scales with the dependency-invalidated region.
-    # Prefer the bounded full distance transform once that region is material.
-    no_static_3d_esdf_incremental_maximum_rebuild_ratio: 0.15
-    no_static_3d_esdf_full_audit_interval_builds: 120
     raw_obstacle_snapshot_3d_topic: /drone_city_nav/raw_obstacle_snapshot_3d
     raw_obstacle_delta_3d_topic: /drone_city_nav/raw_obstacle_delta_3d
     latest_lidar_obstacle_scan_topic: /drone_city_nav/latest_lidar_obstacle_scan

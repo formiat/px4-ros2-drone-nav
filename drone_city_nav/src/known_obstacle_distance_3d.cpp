@@ -9,15 +9,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
-#include <ranges>
 #include <stdexcept>
-#include <tuple>
-#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
-
-#include "known_obstacle_distance_3d_internal.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -25,6 +20,9 @@ namespace {
 constexpr double kGeometryTolerance{1.0e-9};
 constexpr std::uint64_t kFnvOffsetBasis{1469598103934665603ULL};
 constexpr std::uint64_t kFnvPrime{1099511628211ULL};
+// Squared cell distance assigned to cells without a source. It must stay
+// finite for the parabola intersections and far above any reachable value.
+constexpr double kUnreachedSquaredCells{1.0e12};
 
 [[nodiscard]] int alignedCellOffset(const double local_origin,
                                     const double world_origin,
@@ -57,21 +55,29 @@ constexpr std::uint64_t kFnvPrime{1099511628211ULL};
          offset_z + local.depth_cells <= world.depth_cells;
 }
 
-[[nodiscard]] bool localCellInside(const GridBounds3D& bounds,
-                                   const GridIndex3D cell) noexcept {
-  return cell.x >= 0 && cell.y >= 0 && cell.z >= 0 && cell.x < bounds.width_cells &&
-         cell.y < bounds.height_cells && cell.z < bounds.depth_cells;
+[[nodiscard]] bool sameBounds(const GridBounds3D& first,
+                              const GridBounds3D& second) noexcept {
+  return std::abs(first.origin_x - second.origin_x) <= kGeometryTolerance &&
+         std::abs(first.origin_y - second.origin_y) <= kGeometryTolerance &&
+         std::abs(first.origin_z - second.origin_z) <= kGeometryTolerance &&
+         std::abs(first.resolution_m - second.resolution_m) <= kGeometryTolerance &&
+         first.width_cells == second.width_cells &&
+         first.height_cells == second.height_cells &&
+         first.depth_cells == second.depth_cells;
 }
 
-[[nodiscard]] int axisCoordinate(const GridIndex3D cell, const int axis) noexcept {
-  switch (axis) {
-    case 0:
-      return cell.x;
-    case 1:
-      return cell.y;
-    default:
-      return cell.z;
+[[nodiscard]] std::size_t checkedVoxelCount(const GridBounds3D& bounds) {
+  const auto width = static_cast<std::size_t>(bounds.width_cells);
+  const auto height = static_cast<std::size_t>(bounds.height_cells);
+  const auto depth = static_cast<std::size_t>(bounds.depth_cells);
+  if (height != 0U && width > std::numeric_limits<std::size_t>::max() / height) {
+    throw std::overflow_error{"known obstacle distance dimensions overflow"};
   }
+  const std::size_t plane = width * height;
+  if (depth != 0U && plane > std::numeric_limits<std::size_t>::max() / depth) {
+    throw std::overflow_error{"known obstacle distance dimensions overflow"};
+  }
+  return plane * depth;
 }
 
 [[nodiscard]] double
@@ -89,11 +95,448 @@ squaredDistanceBetweenIntervals(const int first_minimum, const int first_maximum
   return 0.0;
 }
 
-struct SourceChunkExtent3D {
-  GridIndex3D minimum{};
-  GridIndex3D maximum{};
-  bool initialized{false};
+// Cell geometry of one transform: the output window and the source halo, both
+// expressed as offsets into the world grid.
+struct TransformGeometry3D {
+  GridBounds3D world_bounds{};
+  GridBounds3D output_bounds{};
+  GridBounds3D source_bounds{};
+  int output_offset_x{0};
+  int output_offset_y{0};
+  int output_offset_z{0};
+  int source_minimum_x{0};
+  int source_minimum_y{0};
+  int source_minimum_z{0};
+  double maximum_distance_m{0.0};
+  double maximum_squared_cells{0.0};
+
+  [[nodiscard]] int sourceMaximumXExclusive() const noexcept {
+    return source_minimum_x + source_bounds.width_cells;
+  }
+
+  [[nodiscard]] int sourceMaximumYExclusive() const noexcept {
+    return source_minimum_y + source_bounds.height_cells;
+  }
+
+  [[nodiscard]] int sourceMaximumZExclusive() const noexcept {
+    return source_minimum_z + source_bounds.depth_cells;
+  }
+
+  [[nodiscard]] std::size_t sourceIndex(const int world_x, const int world_y,
+                                        const int world_z) const noexcept {
+    return (static_cast<std::size_t>(world_z - source_minimum_z) *
+                static_cast<std::size_t>(source_bounds.height_cells) +
+            static_cast<std::size_t>(world_y - source_minimum_y)) *
+               static_cast<std::size_t>(source_bounds.width_cells) +
+           static_cast<std::size_t>(world_x - source_minimum_x);
+  }
+
+  [[nodiscard]] bool insideSource(const GridIndex3D world_cell) const noexcept {
+    return world_cell.x >= source_minimum_x &&
+           world_cell.x < sourceMaximumXExclusive() &&
+           world_cell.y >= source_minimum_y &&
+           world_cell.y < sourceMaximumYExclusive() &&
+           world_cell.z >= source_minimum_z && world_cell.z < sourceMaximumZExclusive();
+  }
+
+  // Only sources within the exact capped radius of some output cell can change
+  // an output distance; those are the field's identity.
+  [[nodiscard]] bool canInfluenceOutput(const GridIndex3D world_cell) const noexcept {
+    const double minimum_squared_distance =
+        squaredDistanceBetweenIntervals(world_cell.x, world_cell.x, output_offset_x,
+                                        output_offset_x + output_bounds.width_cells -
+                                            1) +
+        squaredDistanceBetweenIntervals(world_cell.y, world_cell.y, output_offset_y,
+                                        output_offset_y + output_bounds.height_cells -
+                                            1) +
+        squaredDistanceBetweenIntervals(world_cell.z, world_cell.z, output_offset_z,
+                                        output_offset_z + output_bounds.depth_cells -
+                                            1);
+    return minimum_squared_distance <= maximum_squared_cells;
+  }
 };
+
+[[nodiscard]] TransformGeometry3D makeGeometry(const GridBounds3D& world_bounds,
+                                               const GridBounds3D& local_bounds,
+                                               const double maximum_distance_m) {
+  TransformGeometry3D geometry;
+  geometry.world_bounds = world_bounds;
+  geometry.output_bounds = local_bounds;
+  geometry.source_bounds = knownObstacleDistanceSourceBounds3D(
+      world_bounds, local_bounds, maximum_distance_m);
+  geometry.output_offset_x = alignedCellOffset(
+      local_bounds.origin_x, world_bounds.origin_x, world_bounds.resolution_m);
+  geometry.output_offset_y = alignedCellOffset(
+      local_bounds.origin_y, world_bounds.origin_y, world_bounds.resolution_m);
+  geometry.output_offset_z = alignedCellOffset(
+      local_bounds.origin_z, world_bounds.origin_z, world_bounds.resolution_m);
+  geometry.source_minimum_x =
+      alignedCellOffset(geometry.source_bounds.origin_x, world_bounds.origin_x,
+                        world_bounds.resolution_m);
+  geometry.source_minimum_y =
+      alignedCellOffset(geometry.source_bounds.origin_y, world_bounds.origin_y,
+                        world_bounds.resolution_m);
+  geometry.source_minimum_z =
+      alignedCellOffset(geometry.source_bounds.origin_z, world_bounds.origin_z,
+                        world_bounds.resolution_m);
+  geometry.maximum_distance_m = maximum_distance_m;
+  const double maximum_cells = maximum_distance_m / world_bounds.resolution_m;
+  geometry.maximum_squared_cells = maximum_cells * maximum_cells;
+  return geometry;
+}
+
+[[nodiscard]] std::uint64_t sourceKey(const GridBounds3D& world_bounds,
+                                      const GridIndex3D world_cell) noexcept {
+  return (static_cast<std::uint64_t>(world_cell.z) *
+              static_cast<std::uint64_t>(world_bounds.height_cells) +
+          static_cast<std::uint64_t>(world_cell.y)) *
+             static_cast<std::uint64_t>(world_bounds.width_cells) +
+         static_cast<std::uint64_t>(world_cell.x);
+}
+
+struct CollectedSources3D {
+  // Squared cell distances over the source halo: zero at a source, otherwise
+  // unreached. This is the transform input.
+  std::vector<float> squared_cells;
+  std::vector<std::uint64_t> influencing_keys;
+  std::uint64_t fingerprint{0U};
+  double collection_ms{0.0};
+};
+
+[[nodiscard]] std::uint64_t fingerprintOf(const TransformGeometry3D& geometry,
+                                          std::vector<std::uint64_t>& keys) {
+  std::ranges::sort(keys);
+  std::uint64_t hash = kFnvOffsetBasis;
+  const auto combine = [&hash](const std::uint64_t value) {
+    hash ^= value;
+    hash *= kFnvPrime;
+  };
+  const auto combine_bounds = [&](const GridBounds3D& bounds) {
+    combine(std::bit_cast<std::uint64_t>(bounds.origin_x));
+    combine(std::bit_cast<std::uint64_t>(bounds.origin_y));
+    combine(std::bit_cast<std::uint64_t>(bounds.origin_z));
+    combine(std::bit_cast<std::uint64_t>(bounds.resolution_m));
+    combine(static_cast<std::uint64_t>(bounds.width_cells));
+    combine(static_cast<std::uint64_t>(bounds.height_cells));
+    combine(static_cast<std::uint64_t>(bounds.depth_cells));
+  };
+  combine_bounds(geometry.world_bounds);
+  combine_bounds(geometry.output_bounds);
+  combine_bounds(geometry.source_bounds);
+  combine(std::bit_cast<std::uint64_t>(geometry.maximum_distance_m));
+  for (const std::uint64_t key : keys) {
+    combine(key);
+  }
+  return hash == 0U ? 1U : hash;
+}
+
+[[nodiscard]] CollectedSources3D
+collectSources(const ObservedOccupancyGrid3D& occupancy,
+               const TransformGeometry3D& geometry,
+               const std::span<const GridIndex3D> suppressed_source_cells) {
+  const auto started = std::chrono::steady_clock::now();
+  CollectedSources3D result;
+  result.squared_cells.assign(checkedVoxelCount(geometry.source_bounds),
+                              static_cast<float>(kUnreachedSquaredCells));
+  std::unordered_set<std::uint64_t> suppressed;
+  suppressed.reserve(suppressed_source_cells.size());
+  for (const GridIndex3D cell : suppressed_source_cells) {
+    if (occupancy.contains(cell)) {
+      suppressed.insert(sourceKey(geometry.world_bounds, cell));
+    }
+  }
+  constexpr int kChunkSize{ObservedOccupancyGrid3D::kChunkSize};
+  const int first_chunk_x = geometry.source_minimum_x / kChunkSize;
+  const int first_chunk_y = geometry.source_minimum_y / kChunkSize;
+  const int first_chunk_z = geometry.source_minimum_z / kChunkSize;
+  const int last_chunk_x = (geometry.sourceMaximumXExclusive() - 1) / kChunkSize;
+  const int last_chunk_y = (geometry.sourceMaximumYExclusive() - 1) / kChunkSize;
+  const int last_chunk_z = (geometry.sourceMaximumZExclusive() - 1) / kChunkSize;
+  for (int chunk_z = first_chunk_z; chunk_z <= last_chunk_z; ++chunk_z) {
+    for (int chunk_y = first_chunk_y; chunk_y <= last_chunk_y; ++chunk_y) {
+      for (int chunk_x = first_chunk_x; chunk_x <= last_chunk_x; ++chunk_x) {
+        const ObservedOccupancyGrid3D::Chunk* const chunk =
+            occupancy.findChunk(OccupancyChunkIndex3D{chunk_x, chunk_y, chunk_z});
+        if (chunk == nullptr) {
+          continue;
+        }
+        std::size_t word_index{0U};
+        for (const std::uint64_t word : chunk->occupied) {
+          std::uint64_t occupied_bits = word;
+          const std::size_t word_offset = word_index++ * 64U;
+          while (occupied_bits != 0U) {
+            const int bit_offset = std::countr_zero(occupied_bits);
+            occupied_bits &= occupied_bits - 1U;
+            const std::size_t bit_index =
+                word_offset + static_cast<std::size_t>(bit_offset);
+            const GridIndex3D cell{
+                chunk_x * kChunkSize + static_cast<int>(bit_index % kChunkSize),
+                chunk_y * kChunkSize +
+                    static_cast<int>((bit_index / kChunkSize) % kChunkSize),
+                chunk_z * kChunkSize +
+                    static_cast<int>(bit_index /
+                                     static_cast<std::size_t>(kChunkSize * kChunkSize)),
+            };
+            if (!geometry.insideSource(cell)) {
+              continue;
+            }
+            const std::uint64_t key = sourceKey(geometry.world_bounds, cell);
+            if (!suppressed.empty() && suppressed.contains(key)) {
+              continue;
+            }
+            result.squared_cells[geometry.sourceIndex(cell.x, cell.y, cell.z)] = 0.0F;
+            if (geometry.canInfluenceOutput(cell)) {
+              result.influencing_keys.push_back(key);
+            }
+          }
+        }
+      }
+    }
+  }
+  result.fingerprint = fingerprintOf(geometry, result.influencing_keys);
+  result.collection_ms = std::chrono::duration<double, std::milli>(
+                             std::chrono::steady_clock::now() - started)
+                             .count();
+  return result;
+}
+
+// One-dimensional squared Euclidean distance transform of sampled function
+// values (Felzenszwalb and Huttenlocher). Scratch buffers are reused per line.
+struct TransformScratch1D {
+  std::vector<double> values;
+  std::vector<double> output;
+  std::vector<int> parabola_locations;
+  std::vector<double> boundaries;
+
+  void reserve(const std::size_t size) {
+    values.resize(size);
+    output.resize(size);
+    parabola_locations.resize(size);
+    boundaries.resize(size + 1U);
+  }
+};
+
+void transformLine(TransformScratch1D& scratch, const std::size_t size) {
+  std::vector<double>& input = scratch.values;
+  std::vector<int>& locations = scratch.parabola_locations;
+  std::vector<double>& boundaries = scratch.boundaries;
+  int envelope_size = 0;
+  locations[0] = 0;
+  boundaries[0] = -std::numeric_limits<double>::infinity();
+  boundaries[1] = std::numeric_limits<double>::infinity();
+  for (int candidate = 1; candidate < static_cast<int>(size); ++candidate) {
+    double intersection = 0.0;
+    while (envelope_size >= 0) {
+      const int location = locations[static_cast<std::size_t>(envelope_size)];
+      const double candidate_value = static_cast<double>(candidate);
+      const double location_value = static_cast<double>(location);
+      intersection = ((input[static_cast<std::size_t>(candidate)] +
+                       candidate_value * candidate_value) -
+                      (input[static_cast<std::size_t>(location)] +
+                       location_value * location_value)) /
+                     (2.0 * static_cast<double>(candidate - location));
+      if (intersection > boundaries[static_cast<std::size_t>(envelope_size)]) {
+        break;
+      }
+      --envelope_size;
+    }
+    if (envelope_size < 0) {
+      envelope_size = 0;
+      locations[0] = candidate;
+      boundaries[0] = -std::numeric_limits<double>::infinity();
+      boundaries[1] = std::numeric_limits<double>::infinity();
+    } else {
+      ++envelope_size;
+      locations[static_cast<std::size_t>(envelope_size)] = candidate;
+      boundaries[static_cast<std::size_t>(envelope_size)] = intersection;
+      boundaries[static_cast<std::size_t>(envelope_size) + 1U] =
+          std::numeric_limits<double>::infinity();
+    }
+  }
+  envelope_size = 0;
+  for (int position = 0; position < static_cast<int>(size); ++position) {
+    while (boundaries[static_cast<std::size_t>(envelope_size) + 1U] <
+           static_cast<double>(position)) {
+      ++envelope_size;
+    }
+    const int location = locations[static_cast<std::size_t>(envelope_size)];
+    const double delta = static_cast<double>(position - location);
+    scratch.output[static_cast<std::size_t>(position)] =
+        std::min(kUnreachedSquaredCells,
+                 delta * delta + input[static_cast<std::size_t>(location)]);
+  }
+}
+
+template<typename LineFunction>
+void forEachLine(BoundedWorkerPool* const worker_pool, const std::size_t line_count,
+                 const LineFunction& function) {
+  if (worker_pool != nullptr) {
+    worker_pool->parallelFor(line_count, WorkerTaskLane::kWorldUpdate, function);
+    return;
+  }
+  for (std::size_t line = 0U; line < line_count; ++line) {
+    function(line);
+  }
+}
+
+[[nodiscard]] TransformScratch1D& lineScratch(const std::size_t size) {
+  thread_local TransformScratch1D scratch;
+  if (scratch.values.size() < size) {
+    scratch.reserve(size);
+  }
+  return scratch;
+}
+
+// Three separable passes over the source halo. Later passes only visit lines
+// that intersect the output window, so the halo costs one extra x pass.
+void transformSeparable(std::vector<float>& squared_cells,
+                        const TransformGeometry3D& geometry,
+                        BoundedWorkerPool* const worker_pool) {
+  const int source_width = geometry.source_bounds.width_cells;
+  const int source_height = geometry.source_bounds.height_cells;
+  const int source_depth = geometry.source_bounds.depth_cells;
+  const int output_x_begin = geometry.output_offset_x - geometry.source_minimum_x;
+  const int output_y_begin = geometry.output_offset_y - geometry.source_minimum_y;
+  const int output_width = geometry.output_bounds.width_cells;
+  const int output_height = geometry.output_bounds.height_cells;
+  const auto index = [source_width, source_height](const int x, const int y,
+                                                   const int z) {
+    return (static_cast<std::size_t>(z) * static_cast<std::size_t>(source_height) +
+            static_cast<std::size_t>(y)) *
+               static_cast<std::size_t>(source_width) +
+           static_cast<std::size_t>(x);
+  };
+  const std::size_t x_line_count =
+      static_cast<std::size_t>(source_height) * static_cast<std::size_t>(source_depth);
+  forEachLine(worker_pool, x_line_count, [&](const std::size_t line) {
+    const int z = static_cast<int>(line / static_cast<std::size_t>(source_height));
+    const int y = static_cast<int>(line % static_cast<std::size_t>(source_height));
+    TransformScratch1D& scratch = lineScratch(static_cast<std::size_t>(source_width));
+    bool any_source{false};
+    for (int x = 0; x < source_width; ++x) {
+      const float value = squared_cells[index(x, y, z)];
+      any_source = any_source || value == 0.0F;
+      scratch.values[static_cast<std::size_t>(x)] = static_cast<double>(value);
+    }
+    if (!any_source) {
+      return;
+    }
+    transformLine(scratch, static_cast<std::size_t>(source_width));
+    for (int x = 0; x < source_width; ++x) {
+      squared_cells[index(x, y, z)] =
+          static_cast<float>(scratch.output[static_cast<std::size_t>(x)]);
+    }
+  });
+  const std::size_t y_line_count =
+      static_cast<std::size_t>(output_width) * static_cast<std::size_t>(source_depth);
+  forEachLine(worker_pool, y_line_count, [&](const std::size_t line) {
+    const int z = static_cast<int>(line / static_cast<std::size_t>(output_width));
+    const int x = output_x_begin +
+                  static_cast<int>(line % static_cast<std::size_t>(output_width));
+    TransformScratch1D& scratch = lineScratch(static_cast<std::size_t>(source_height));
+    bool any_reached{false};
+    for (int y = 0; y < source_height; ++y) {
+      const float value = squared_cells[index(x, y, z)];
+      any_reached = any_reached || static_cast<double>(value) < kUnreachedSquaredCells;
+      scratch.values[static_cast<std::size_t>(y)] = static_cast<double>(value);
+    }
+    if (!any_reached) {
+      return;
+    }
+    transformLine(scratch, static_cast<std::size_t>(source_height));
+    for (int y = 0; y < source_height; ++y) {
+      squared_cells[index(x, y, z)] =
+          static_cast<float>(scratch.output[static_cast<std::size_t>(y)]);
+    }
+  });
+  const std::size_t z_line_count =
+      static_cast<std::size_t>(output_width) * static_cast<std::size_t>(output_height);
+  forEachLine(worker_pool, z_line_count, [&](const std::size_t line) {
+    const int y = output_y_begin +
+                  static_cast<int>(line / static_cast<std::size_t>(output_width));
+    const int x = output_x_begin +
+                  static_cast<int>(line % static_cast<std::size_t>(output_width));
+    TransformScratch1D& scratch = lineScratch(static_cast<std::size_t>(source_depth));
+    bool any_reached{false};
+    for (int z = 0; z < source_depth; ++z) {
+      const float value = squared_cells[index(x, y, z)];
+      any_reached = any_reached || static_cast<double>(value) < kUnreachedSquaredCells;
+      scratch.values[static_cast<std::size_t>(z)] = static_cast<double>(value);
+    }
+    if (!any_reached) {
+      return;
+    }
+    transformLine(scratch, static_cast<std::size_t>(source_depth));
+    for (int z = 0; z < source_depth; ++z) {
+      squared_cells[index(x, y, z)] =
+          static_cast<float>(scratch.output[static_cast<std::size_t>(z)]);
+    }
+  });
+}
+
+[[nodiscard]] KnownObstacleDistance3DBuildResult
+transformCollectedSources(const TransformGeometry3D& geometry,
+                          CollectedSources3D sources,
+                          BoundedWorkerPool* const worker_pool,
+                          const std::chrono::steady_clock::time_point started) {
+  const auto transform_started = std::chrono::steady_clock::now();
+  const std::size_t transform_voxels = sources.squared_cells.size();
+  if (!sources.influencing_keys.empty()) {
+    transformSeparable(sources.squared_cells, geometry, worker_pool);
+  }
+  const GridBounds3D& output = geometry.output_bounds;
+  auto distances = std::make_shared<std::vector<float>>(
+      checkedVoxelCount(output), std::numeric_limits<float>::infinity());
+  std::size_t finite_voxels{0U};
+  if (!sources.influencing_keys.empty()) {
+    const double resolution_m = geometry.world_bounds.resolution_m;
+    std::size_t output_index{0U};
+    for (int z = 0; z < output.depth_cells; ++z) {
+      for (int y = 0; y < output.height_cells; ++y) {
+        const std::size_t row =
+            geometry.sourceIndex(geometry.output_offset_x, geometry.output_offset_y + y,
+                                 geometry.output_offset_z + z);
+        for (int x = 0; x < output.width_cells; ++x, ++output_index) {
+          const double squared = static_cast<double>(
+              sources.squared_cells[row + static_cast<std::size_t>(x)]);
+          if (squared > geometry.maximum_squared_cells) {
+            continue;
+          }
+          (*distances)[output_index] =
+              static_cast<float>(std::sqrt(squared) * resolution_m);
+          ++finite_voxels;
+        }
+      }
+    }
+  }
+  const double transform_ms = std::chrono::duration<double, std::milli>(
+                                  std::chrono::steady_clock::now() - transform_started)
+                                  .count();
+  KnownObstacleDistance3DBuildResult result{
+      .field = KnownObstacleDistance3D::create(KnownObstacleDistance3D::Storage{
+          .output_bounds = output,
+          .source_bounds = geometry.source_bounds,
+          .maximum_distance_m = geometry.maximum_distance_m,
+          .source_fingerprint = sources.fingerprint,
+          .source_voxels = sources.influencing_keys.size(),
+          .finite_distance_voxels = finite_voxels,
+          .distances_m = std::move(distances),
+      }),
+      .stats =
+          KnownObstacleDistance3DBuildStats{
+              .source_voxels = sources.influencing_keys.size(),
+              .transform_voxels = transform_voxels,
+              .finite_distance_voxels = finite_voxels,
+              .source_collection_ms = sources.collection_ms,
+              .transform_ms = transform_ms,
+          },
+      .mode = KnownObstacleDistance3DBuildMode::kFull,
+  };
+  result.stats.duration_ms = std::chrono::duration<double, std::milli>(
+                                 std::chrono::steady_clock::now() - started)
+                                 .count();
+  return result;
+}
 
 } // namespace
 
@@ -135,92 +578,68 @@ GridBounds3D knownObstacleDistanceSourceBounds3D(const GridBounds3D& world_bound
   };
 }
 
-KnownObstacleDistance3D::KnownObstacleDistance3D(
-    const ConstructionKey construction_key,
-    std::shared_ptr<const detail::KnownObstacleDistanceStorage3D> storage)
+KnownObstacleDistance3D::KnownObstacleDistance3D(const ConstructionKey construction_key,
+                                                 Storage storage)
     : storage_{std::move(storage)} {
   static_cast<void>(construction_key);
 }
 
-std::shared_ptr<const KnownObstacleDistance3D> KnownObstacleDistance3D::create(
-    std::shared_ptr<const detail::KnownObstacleDistanceStorage3D> storage) {
+std::shared_ptr<const KnownObstacleDistance3D>
+KnownObstacleDistance3D::create(Storage storage) {
   return std::make_shared<const KnownObstacleDistance3D>(ConstructionKey{},
                                                          std::move(storage));
 }
 
 bool KnownObstacleDistance3D::valid() const noexcept {
-  return storage_ != nullptr && storage_->source_fingerprint != 0U &&
-         storage_->maximum_distance_m > 0.0;
+  return storage_.source_fingerprint != 0U && storage_.maximum_distance_m > 0.0 &&
+         storage_.distances_m != nullptr &&
+         storage_.distances_m->size() ==
+             static_cast<std::size_t>(storage_.output_bounds.width_cells) *
+                 static_cast<std::size_t>(storage_.output_bounds.height_cells) *
+                 static_cast<std::size_t>(storage_.output_bounds.depth_cells);
 }
 
 const GridBounds3D& KnownObstacleDistance3D::bounds() const noexcept {
-  return storage_->output_bounds;
+  return storage_.output_bounds;
 }
 
 const GridBounds3D& KnownObstacleDistance3D::sourceBounds() const noexcept {
-  return storage_->source_bounds;
+  return storage_.source_bounds;
 }
 
 double KnownObstacleDistance3D::maximumDistanceM() const noexcept {
-  return storage_->maximum_distance_m;
+  return storage_.maximum_distance_m;
 }
 
 std::uint64_t KnownObstacleDistance3D::sourceFingerprint() const noexcept {
-  return storage_->source_fingerprint;
+  return storage_.source_fingerprint;
 }
 
 std::size_t KnownObstacleDistance3D::sourceVoxelCount() const noexcept {
-  return storage_->source_voxels;
-}
-
-std::size_t KnownObstacleDistance3D::sourceChunkCount() const noexcept {
-  return storage_->source_chunks.size();
-}
-
-std::size_t KnownObstacleDistance3D::storedDistanceChunkCount() const noexcept {
-  return storage_->distance_chunks.size();
+  return storage_.source_voxels;
 }
 
 std::size_t KnownObstacleDistance3D::finiteDistanceVoxelCount() const noexcept {
-  return storage_->finite_distance_voxels;
+  return storage_.finite_distance_voxels;
 }
 
 float KnownObstacleDistance3D::distanceAt(const GridIndex3D local_cell) const noexcept {
-  if (!valid() || !localCellInside(storage_->output_bounds, local_cell)) {
+  const GridBounds3D& bounds = storage_.output_bounds;
+  if (!valid() || local_cell.x < 0 || local_cell.y < 0 || local_cell.z < 0 ||
+      local_cell.x >= bounds.width_cells || local_cell.y >= bounds.height_cells ||
+      local_cell.z >= bounds.depth_cells) {
     return std::numeric_limits<float>::infinity();
   }
-  const OccupancyChunkIndex3D chunk = detail::knownObstacleOutputChunk3D(local_cell);
-  const auto found = storage_->distance_chunks.find(chunk);
-  if (found == storage_->distance_chunks.end()) {
-    return std::numeric_limits<float>::infinity();
-  }
-  return found->second->distances_m.at(
-      detail::knownObstacleChunkBitIndex3D(local_cell));
+  return (*storage_.distances_m)[(static_cast<std::size_t>(local_cell.z) *
+                                      static_cast<std::size_t>(bounds.height_cells) +
+                                  static_cast<std::size_t>(local_cell.y)) *
+                                     static_cast<std::size_t>(bounds.width_cells) +
+                                 static_cast<std::size_t>(local_cell.x)];
 }
 
-std::shared_ptr<const std::vector<float>>
-KnownObstacleDistance3D::materializeDense() const {
-  if (!valid()) {
-    return {};
-  }
-  auto dense = std::make_shared<std::vector<float>>(
-      detail::knownObstacleVoxelCount3D(storage_->output_bounds),
-      std::numeric_limits<float>::infinity());
-  for (const auto& [chunk_index, chunk] : storage_->distance_chunks) {
-    const KnownObstacleDistanceRegion3D region =
-        detail::knownObstacleChunkRegion3D(storage_->output_bounds, chunk_index);
-    for (int z = region.minimum_z; z < region.maximum_z_exclusive; ++z) {
-      for (int y = region.minimum_y; y < region.maximum_y_exclusive; ++y) {
-        for (int x = region.minimum_x; x < region.maximum_x_exclusive; ++x) {
-          const GridIndex3D local{x, y, z};
-          dense->at(
-              detail::knownObstacleLocalLinearIndex3D(storage_->output_bounds, local)) =
-              chunk->distances_m.at(detail::knownObstacleChunkBitIndex3D(local));
-        }
-      }
-    }
-  }
-  return dense;
+const std::shared_ptr<const std::vector<float>>&
+KnownObstacleDistance3D::denseDistances() const noexcept {
+  return storage_.distances_m;
 }
 
 const char* knownObstacleDistance3DBuildModeName(
@@ -228,547 +647,11 @@ const char* knownObstacleDistance3DBuildModeName(
   switch (mode) {
     case KnownObstacleDistance3DBuildMode::kFull:
       return "full";
-    case KnownObstacleDistance3DBuildMode::kIncremental:
-      return "incremental";
     case KnownObstacleDistance3DBuildMode::kReused:
       return "reused";
   }
   return "invalid";
 }
-
-namespace detail {
-
-bool sameKnownObstacleBounds3D(const GridBounds3D& first,
-                               const GridBounds3D& second) noexcept {
-  return std::abs(first.origin_x - second.origin_x) <= kGeometryTolerance &&
-         std::abs(first.origin_y - second.origin_y) <= kGeometryTolerance &&
-         std::abs(first.origin_z - second.origin_z) <= kGeometryTolerance &&
-         std::abs(first.resolution_m - second.resolution_m) <= kGeometryTolerance &&
-         first.width_cells == second.width_cells &&
-         first.height_cells == second.height_cells &&
-         first.depth_cells == second.depth_cells;
-}
-
-std::size_t knownObstacleVoxelCount3D(const GridBounds3D& bounds) {
-  const auto width = static_cast<std::size_t>(bounds.width_cells);
-  const auto height = static_cast<std::size_t>(bounds.height_cells);
-  const auto depth = static_cast<std::size_t>(bounds.depth_cells);
-  if (height != 0U && width > std::numeric_limits<std::size_t>::max() / height) {
-    throw std::overflow_error{"known obstacle distance dimensions overflow"};
-  }
-  const std::size_t plane = width * height;
-  if (depth != 0U && plane > std::numeric_limits<std::size_t>::max() / depth) {
-    throw std::overflow_error{"known obstacle distance dimensions overflow"};
-  }
-  return plane * depth;
-}
-
-std::size_t knownObstacleLocalLinearIndex3D(const GridBounds3D& bounds,
-                                            const GridIndex3D local_cell) noexcept {
-  return (static_cast<std::size_t>(local_cell.z) *
-              static_cast<std::size_t>(bounds.height_cells) +
-          static_cast<std::size_t>(local_cell.y)) *
-             static_cast<std::size_t>(bounds.width_cells) +
-         static_cast<std::size_t>(local_cell.x);
-}
-
-std::size_t knownObstacleChunkBitIndex3D(const GridIndex3D local_cell) noexcept {
-  constexpr int kChunkSize{KnownObstacleDistance3D::kChunkSize};
-  const int local_x = local_cell.x % kChunkSize;
-  const int local_y = local_cell.y % kChunkSize;
-  const int local_z = local_cell.z % kChunkSize;
-  return (static_cast<std::size_t>(local_z) * static_cast<std::size_t>(kChunkSize) +
-          static_cast<std::size_t>(local_y)) *
-             static_cast<std::size_t>(kChunkSize) +
-         static_cast<std::size_t>(local_x);
-}
-
-bool knownObstacleSourceCanInfluence3D(const KnownObstacleDistanceStorage3D& storage,
-                                       const GridIndex3D global_cell) noexcept {
-  if (global_cell.x < storage.source_minimum_x ||
-      global_cell.x >= storage.source_maximum_x_exclusive ||
-      global_cell.y < storage.source_minimum_y ||
-      global_cell.y >= storage.source_maximum_y_exclusive ||
-      global_cell.z < storage.source_minimum_z ||
-      global_cell.z >= storage.source_maximum_z_exclusive) {
-    return false;
-  }
-  const int output_maximum_x =
-      storage.output_offset_x + storage.output_bounds.width_cells - 1;
-  const int output_maximum_y =
-      storage.output_offset_y + storage.output_bounds.height_cells - 1;
-  const int output_maximum_z =
-      storage.output_offset_z + storage.output_bounds.depth_cells - 1;
-  const double minimum_squared_distance =
-      squaredDistanceBetweenIntervals(global_cell.x, global_cell.x,
-                                      storage.output_offset_x, output_maximum_x) +
-      squaredDistanceBetweenIntervals(global_cell.y, global_cell.y,
-                                      storage.output_offset_y, output_maximum_y) +
-      squaredDistanceBetweenIntervals(global_cell.z, global_cell.z,
-                                      storage.output_offset_z, output_maximum_z);
-  return minimum_squared_distance <= storage.maximum_squared_cells;
-}
-
-std::uint64_t knownObstacleSourceKey3D(const GridBounds3D& world_bounds,
-                                       const GridIndex3D global_cell) noexcept {
-  return (static_cast<std::uint64_t>(global_cell.z) *
-              static_cast<std::uint64_t>(world_bounds.height_cells) +
-          static_cast<std::uint64_t>(global_cell.y)) *
-             static_cast<std::uint64_t>(world_bounds.width_cells) +
-         static_cast<std::uint64_t>(global_cell.x);
-}
-
-OccupancyChunkIndex3D
-knownObstacleOutputChunk3D(const GridIndex3D local_cell) noexcept {
-  constexpr int kChunkSize{KnownObstacleDistance3D::kChunkSize};
-  return OccupancyChunkIndex3D{local_cell.x / kChunkSize, local_cell.y / kChunkSize,
-                               local_cell.z / kChunkSize};
-}
-
-KnownObstacleSourceIndex3D::KnownObstacleSourceIndex3D(
-    const KnownObstacleSourceChunkMap3D& source_chunks) {
-  std::vector<KnownObstacleSourcePoint3D> sources =
-      flattenKnownObstacleSources3D(source_chunks);
-  nodes_.reserve(sources.size());
-  root_ = build(sources, 0U, sources.size(), 0);
-}
-
-KnownObstacleSourceIndex3D::KnownObstacleSourceIndex3D(
-    const std::span<const KnownObstacleSourcePoint3D> sources) {
-  std::vector<KnownObstacleSourcePoint3D> mutable_sources{sources.begin(),
-                                                          sources.end()};
-  nodes_.reserve(mutable_sources.size());
-  root_ = build(mutable_sources, 0U, mutable_sources.size(), 0);
-}
-
-int KnownObstacleSourceIndex3D::build(std::vector<KnownObstacleSourcePoint3D>& sources,
-                                      const std::size_t begin, const std::size_t end,
-                                      const int depth) {
-  if (begin >= end) {
-    return -1;
-  }
-  const int axis = depth % 3;
-  const std::size_t middle = begin + (end - begin) / 2U;
-  std::nth_element(std::next(sources.begin(), static_cast<std::ptrdiff_t>(begin)),
-                   std::next(sources.begin(), static_cast<std::ptrdiff_t>(middle)),
-                   std::next(sources.begin(), static_cast<std::ptrdiff_t>(end)),
-                   [axis](const KnownObstacleSourcePoint3D& first,
-                          const KnownObstacleSourcePoint3D& second) {
-                     const int first_coordinate = axisCoordinate(first.cell, axis);
-                     const int second_coordinate = axisCoordinate(second.cell, axis);
-                     return first_coordinate == second_coordinate
-                                ? first.key < second.key
-                                : first_coordinate < second_coordinate;
-                   });
-  const int node_index = static_cast<int>(nodes_.size());
-  nodes_.push_back(Node{.source = sources.at(middle), .axis = axis});
-  const int left = build(sources, begin, middle, depth + 1);
-  const int right = build(sources, middle + 1U, end, depth + 1);
-  nodes_.at(static_cast<std::size_t>(node_index)).left = left;
-  nodes_.at(static_cast<std::size_t>(node_index)).right = right;
-  return node_index;
-}
-
-KnownObstacleNearestSource3D
-KnownObstacleSourceIndex3D::nearest(const GridIndex3D global_cell,
-                                    const double maximum_squared_cells) const noexcept {
-  KnownObstacleNearestSource3D result{
-      .key = kNoKnownObstacleSource3D,
-      .squared_cells = maximum_squared_cells,
-  };
-  nearestRecursive(root_, global_cell, result);
-  return result;
-}
-
-void KnownObstacleSourceIndex3D::nearestRecursive(
-    const int node_index, const GridIndex3D cell,
-    KnownObstacleNearestSource3D& nearest_source) const noexcept {
-  if (node_index < 0) {
-    return;
-  }
-  const Node& node = nodes_.at(static_cast<std::size_t>(node_index));
-  const double dx =
-      static_cast<double>(cell.x) - static_cast<double>(node.source.cell.x);
-  const double dy =
-      static_cast<double>(cell.y) - static_cast<double>(node.source.cell.y);
-  const double dz =
-      static_cast<double>(cell.z) - static_cast<double>(node.source.cell.z);
-  const double squared_cells = dx * dx + dy * dy + dz * dz;
-  if (squared_cells < nearest_source.squared_cells ||
-      (squared_cells == nearest_source.squared_cells &&
-       (nearest_source.key == kNoKnownObstacleSource3D ||
-        node.source.key < nearest_source.key))) {
-    nearest_source = {.key = node.source.key, .squared_cells = squared_cells};
-  }
-  const int delta =
-      axisCoordinate(cell, node.axis) - axisCoordinate(node.source.cell, node.axis);
-  const int near_child = delta < 0 ? node.left : node.right;
-  const int far_child = delta < 0 ? node.right : node.left;
-  nearestRecursive(near_child, cell, nearest_source);
-  if (static_cast<double>(delta) * static_cast<double>(delta) <=
-      nearest_source.squared_cells) {
-    nearestRecursive(far_child, cell, nearest_source);
-  }
-}
-
-std::size_t KnownObstacleSourceIndex3D::size() const noexcept {
-  return nodes_.size();
-}
-
-KnownObstacleSourceChunk3D collectKnownObstacleSourceChunk3D(
-    const ObservedOccupancyGrid3D& occupancy,
-    const KnownObstacleDistanceStorage3D& storage,
-    const OccupancyChunkIndex3D chunk_index,
-    const std::unordered_set<std::uint64_t>& suppressed_keys) {
-  KnownObstacleSourceChunk3D result;
-  const ObservedOccupancyGrid3D::Chunk* const chunk = occupancy.findChunk(chunk_index);
-  if (chunk == nullptr) {
-    return result;
-  }
-  for (std::size_t word_index = 0U; word_index < chunk->occupied.size(); ++word_index) {
-    std::uint64_t occupied_bits = chunk->occupied.at(word_index);
-    while (occupied_bits != 0U) {
-      const int bit_offset = std::countr_zero(occupied_bits);
-      const std::size_t bit_index =
-          word_index * 64U + static_cast<std::size_t>(bit_offset);
-      const int local_z = static_cast<int>(
-          bit_index / static_cast<std::size_t>(ObservedOccupancyGrid3D::kChunkSize *
-                                               ObservedOccupancyGrid3D::kChunkSize));
-      const int local_y =
-          static_cast<int>((bit_index / ObservedOccupancyGrid3D::kChunkSize) %
-                           ObservedOccupancyGrid3D::kChunkSize);
-      const int local_x = static_cast<int>(
-          bit_index % static_cast<std::size_t>(ObservedOccupancyGrid3D::kChunkSize));
-      const GridIndex3D cell{
-          chunk_index.x * ObservedOccupancyGrid3D::kChunkSize + local_x,
-          chunk_index.y * ObservedOccupancyGrid3D::kChunkSize + local_y,
-          chunk_index.z * ObservedOccupancyGrid3D::kChunkSize + local_z,
-      };
-      const std::uint64_t key = knownObstacleSourceKey3D(storage.world_bounds, cell);
-      if (knownObstacleSourceCanInfluence3D(storage, cell) &&
-          !suppressed_keys.contains(key)) {
-        result.push_back({.cell = cell, .key = key});
-      }
-      occupied_bits &= occupied_bits - 1U;
-    }
-  }
-  std::ranges::sort(result, {}, &KnownObstacleSourcePoint3D::key);
-  return result;
-}
-
-KnownObstacleSourceChunkMap3D collectKnownObstacleSourceChunks3D(
-    const ObservedOccupancyGrid3D& occupancy,
-    const KnownObstacleDistanceStorage3D& storage,
-    const std::unordered_set<std::uint64_t>& suppressed_keys) {
-  KnownObstacleSourceChunkMap3D result;
-  constexpr int kChunkSize{ObservedOccupancyGrid3D::kChunkSize};
-  const OccupancyChunkIndex3D first{storage.source_minimum_x / kChunkSize,
-                                    storage.source_minimum_y / kChunkSize,
-                                    storage.source_minimum_z / kChunkSize};
-  const OccupancyChunkIndex3D last{
-      (storage.source_maximum_x_exclusive - 1) / kChunkSize,
-      (storage.source_maximum_y_exclusive - 1) / kChunkSize,
-      (storage.source_maximum_z_exclusive - 1) / kChunkSize};
-  for (int z = first.z; z <= last.z; ++z) {
-    for (int y = first.y; y <= last.y; ++y) {
-      for (int x = first.x; x <= last.x; ++x) {
-        const OccupancyChunkIndex3D chunk_index{x, y, z};
-        KnownObstacleSourceChunk3D sources = collectKnownObstacleSourceChunk3D(
-            occupancy, storage, chunk_index, suppressed_keys);
-        if (!sources.empty()) {
-          result.emplace(
-              chunk_index,
-              std::make_shared<const KnownObstacleSourceChunk3D>(std::move(sources)));
-        }
-      }
-    }
-  }
-  return result;
-}
-
-std::vector<KnownObstacleSourcePoint3D>
-flattenKnownObstacleSources3D(const KnownObstacleSourceChunkMap3D& source_chunks) {
-  std::size_t count{0U};
-  for (const auto& [chunk_index, sources] : source_chunks) {
-    static_cast<void>(chunk_index);
-    count += sources->size();
-  }
-  std::vector<KnownObstacleSourcePoint3D> result;
-  result.reserve(count);
-  for (const auto& [chunk_index, sources] : source_chunks) {
-    static_cast<void>(chunk_index);
-    result.insert(result.end(), sources->begin(), sources->end());
-  }
-  std::ranges::sort(result, {}, &KnownObstacleSourcePoint3D::key);
-  return result;
-}
-
-std::uint64_t
-knownObstacleSourceFingerprint3D(const KnownObstacleDistanceStorage3D& storage,
-                                 const KnownObstacleSourceChunkMap3D& source_chunks) {
-  std::uint64_t hash = kFnvOffsetBasis;
-  const auto combine = [&hash](const std::uint64_t value) {
-    hash ^= value;
-    hash *= kFnvPrime;
-  };
-  combine(std::bit_cast<std::uint64_t>(storage.world_bounds.origin_x));
-  combine(std::bit_cast<std::uint64_t>(storage.world_bounds.origin_y));
-  combine(std::bit_cast<std::uint64_t>(storage.world_bounds.origin_z));
-  combine(std::bit_cast<std::uint64_t>(storage.world_bounds.resolution_m));
-  combine(static_cast<std::uint64_t>(storage.world_bounds.width_cells));
-  combine(static_cast<std::uint64_t>(storage.world_bounds.height_cells));
-  combine(static_cast<std::uint64_t>(storage.world_bounds.depth_cells));
-  combine(std::bit_cast<std::uint64_t>(storage.output_bounds.origin_x));
-  combine(std::bit_cast<std::uint64_t>(storage.output_bounds.origin_y));
-  combine(std::bit_cast<std::uint64_t>(storage.output_bounds.origin_z));
-  combine(std::bit_cast<std::uint64_t>(storage.output_bounds.resolution_m));
-  combine(static_cast<std::uint64_t>(storage.output_bounds.width_cells));
-  combine(static_cast<std::uint64_t>(storage.output_bounds.height_cells));
-  combine(static_cast<std::uint64_t>(storage.output_bounds.depth_cells));
-  combine(static_cast<std::uint64_t>(storage.source_minimum_x));
-  combine(static_cast<std::uint64_t>(storage.source_minimum_y));
-  combine(static_cast<std::uint64_t>(storage.source_minimum_z));
-  combine(static_cast<std::uint64_t>(storage.source_maximum_x_exclusive));
-  combine(static_cast<std::uint64_t>(storage.source_maximum_y_exclusive));
-  combine(static_cast<std::uint64_t>(storage.source_maximum_z_exclusive));
-  combine(std::bit_cast<std::uint64_t>(storage.maximum_distance_m));
-  for (const KnownObstacleSourcePoint3D source :
-       flattenKnownObstacleSources3D(source_chunks)) {
-    combine(source.key);
-  }
-  return hash == 0U ? 1U : hash;
-}
-
-std::vector<OccupancyChunkIndex3D> knownObstacleOutputChunksAffectedBySources3D(
-    const KnownObstacleDistanceStorage3D& storage,
-    const std::span<const KnownObstacleSourcePoint3D> sources) {
-  std::unordered_map<OccupancyChunkIndex3D, SourceChunkExtent3D,
-                     OccupancyChunkIndex3DHash>
-      source_extents;
-  for (const KnownObstacleSourcePoint3D source : sources) {
-    const OccupancyChunkIndex3D source_chunk =
-        ObservedOccupancyGrid3D::chunkIndex(source.cell);
-    SourceChunkExtent3D& extent = source_extents[source_chunk];
-    if (!extent.initialized) {
-      extent.minimum = source.cell;
-      extent.maximum = source.cell;
-      extent.initialized = true;
-    } else {
-      extent.minimum.x = std::min(extent.minimum.x, source.cell.x);
-      extent.minimum.y = std::min(extent.minimum.y, source.cell.y);
-      extent.minimum.z = std::min(extent.minimum.z, source.cell.z);
-      extent.maximum.x = std::max(extent.maximum.x, source.cell.x);
-      extent.maximum.y = std::max(extent.maximum.y, source.cell.y);
-      extent.maximum.z = std::max(extent.maximum.z, source.cell.z);
-    }
-  }
-
-  std::unordered_set<OccupancyChunkIndex3D, OccupancyChunkIndex3DHash> chunks;
-  constexpr int kChunkSize{KnownObstacleDistance3D::kChunkSize};
-  for (const auto& [source_chunk, extent] : source_extents) {
-    static_cast<void>(source_chunk);
-    const int minimum_local_x =
-        std::max(0, extent.minimum.x - storage.output_offset_x - storage.radius_cells);
-    const int minimum_local_y =
-        std::max(0, extent.minimum.y - storage.output_offset_y - storage.radius_cells);
-    const int minimum_local_z =
-        std::max(0, extent.minimum.z - storage.output_offset_z - storage.radius_cells);
-    const int maximum_local_x =
-        std::min(storage.output_bounds.width_cells - 1,
-                 extent.maximum.x - storage.output_offset_x + storage.radius_cells);
-    const int maximum_local_y =
-        std::min(storage.output_bounds.height_cells - 1,
-                 extent.maximum.y - storage.output_offset_y + storage.radius_cells);
-    const int maximum_local_z =
-        std::min(storage.output_bounds.depth_cells - 1,
-                 extent.maximum.z - storage.output_offset_z + storage.radius_cells);
-    if (minimum_local_x > maximum_local_x || minimum_local_y > maximum_local_y ||
-        minimum_local_z > maximum_local_z) {
-      continue;
-    }
-    for (int chunk_z = minimum_local_z / kChunkSize;
-         chunk_z <= maximum_local_z / kChunkSize; ++chunk_z) {
-      for (int chunk_y = minimum_local_y / kChunkSize;
-           chunk_y <= maximum_local_y / kChunkSize; ++chunk_y) {
-        for (int chunk_x = minimum_local_x / kChunkSize;
-             chunk_x <= maximum_local_x / kChunkSize; ++chunk_x) {
-          const int output_minimum_x = storage.output_offset_x + chunk_x * kChunkSize;
-          const int output_minimum_y = storage.output_offset_y + chunk_y * kChunkSize;
-          const int output_minimum_z = storage.output_offset_z + chunk_z * kChunkSize;
-          const int output_maximum_x =
-              storage.output_offset_x +
-              std::min(storage.output_bounds.width_cells, (chunk_x + 1) * kChunkSize) -
-              1;
-          const int output_maximum_y =
-              storage.output_offset_y +
-              std::min(storage.output_bounds.height_cells, (chunk_y + 1) * kChunkSize) -
-              1;
-          const int output_maximum_z =
-              storage.output_offset_z +
-              std::min(storage.output_bounds.depth_cells, (chunk_z + 1) * kChunkSize) -
-              1;
-          const double minimum_squared_distance =
-              squaredDistanceBetweenIntervals(extent.minimum.x, extent.maximum.x,
-                                              output_minimum_x, output_maximum_x) +
-              squaredDistanceBetweenIntervals(extent.minimum.y, extent.maximum.y,
-                                              output_minimum_y, output_maximum_y) +
-              squaredDistanceBetweenIntervals(extent.minimum.z, extent.maximum.z,
-                                              output_minimum_z, output_maximum_z);
-          if (minimum_squared_distance <= storage.maximum_squared_cells) {
-            chunks.insert({chunk_x, chunk_y, chunk_z});
-          }
-        }
-      }
-    }
-  }
-  std::vector<OccupancyChunkIndex3D> result{chunks.begin(), chunks.end()};
-  std::ranges::sort(result, {}, [](const OccupancyChunkIndex3D index) {
-    return std::tuple{index.z, index.y, index.x};
-  });
-  return result;
-}
-
-std::shared_ptr<const KnownObstacleDistanceChunk3D>
-computeKnownObstacleDistanceChunk3D(const KnownObstacleDistanceStorage3D& storage,
-                                    const KnownObstacleSourceIndex3D& source_index,
-                                    const OccupancyChunkIndex3D output_chunk) {
-  auto chunk = std::make_shared<KnownObstacleDistanceChunk3D>();
-  chunk->distances_m.fill(std::numeric_limits<float>::infinity());
-  const KnownObstacleDistanceRegion3D region =
-      knownObstacleChunkRegion3D(storage.output_bounds, output_chunk);
-  for (int z = region.minimum_z; z < region.maximum_z_exclusive; ++z) {
-    for (int y = region.minimum_y; y < region.maximum_y_exclusive; ++y) {
-      for (int x = region.minimum_x; x < region.maximum_x_exclusive; ++x) {
-        const GridIndex3D local{x, y, z};
-        const GridIndex3D global{x + storage.output_offset_x,
-                                 y + storage.output_offset_y,
-                                 z + storage.output_offset_z};
-        const KnownObstacleNearestSource3D nearest =
-            source_index.nearest(global, storage.maximum_squared_cells);
-        if (!nearest.found() || nearest.squared_cells > storage.maximum_squared_cells) {
-          continue;
-        }
-        const std::size_t bit_index = knownObstacleChunkBitIndex3D(local);
-        chunk->distances_m.at(bit_index) = static_cast<float>(
-            std::sqrt(nearest.squared_cells) * storage.output_bounds.resolution_m);
-        ++chunk->finite_voxels;
-      }
-    }
-  }
-  return chunk->finite_voxels == 0U ? nullptr : std::move(chunk);
-}
-
-std::vector<std::shared_ptr<const KnownObstacleDistanceChunk3D>>
-computeKnownObstacleDistanceChunks3D(
-    const KnownObstacleDistanceStorage3D& storage,
-    const KnownObstacleSourceIndex3D& source_index,
-    const std::span<const OccupancyChunkIndex3D> output_chunks,
-    BoundedWorkerPool* const worker_pool) {
-  std::vector<std::shared_ptr<const KnownObstacleDistanceChunk3D>> result(
-      output_chunks.size());
-  const auto compute = [&](const std::size_t index) {
-    result.at(index) = computeKnownObstacleDistanceChunk3D(storage, source_index,
-                                                           output_chunks[index]);
-  };
-  if (worker_pool != nullptr) {
-    worker_pool->parallelFor(output_chunks.size(), WorkerTaskLane::kWorldUpdate,
-                             compute);
-  } else {
-    for (std::size_t index = 0U; index < output_chunks.size(); ++index) {
-      compute(index);
-    }
-  }
-  return result;
-}
-
-KnownObstacleDistanceRegion3D
-knownObstacleChunkRegion3D(const GridBounds3D& bounds,
-                           const OccupancyChunkIndex3D output_chunk) noexcept {
-  constexpr int kChunkSize{KnownObstacleDistance3D::kChunkSize};
-  return KnownObstacleDistanceRegion3D{
-      .minimum_x = output_chunk.x * kChunkSize,
-      .minimum_y = output_chunk.y * kChunkSize,
-      .minimum_z = output_chunk.z * kChunkSize,
-      .maximum_x_exclusive =
-          std::min(bounds.width_cells, (output_chunk.x + 1) * kChunkSize),
-      .maximum_y_exclusive =
-          std::min(bounds.height_cells, (output_chunk.y + 1) * kChunkSize),
-      .maximum_z_exclusive =
-          std::min(bounds.depth_cells, (output_chunk.z + 1) * kChunkSize),
-  };
-}
-
-std::size_t
-knownObstacleRegionVoxelCount3D(const KnownObstacleDistanceRegion3D& region) noexcept {
-  return static_cast<std::size_t>(region.maximum_x_exclusive - region.minimum_x) *
-         static_cast<std::size_t>(region.maximum_y_exclusive - region.minimum_y) *
-         static_cast<std::size_t>(region.maximum_z_exclusive - region.minimum_z);
-}
-
-std::unordered_set<std::uint64_t>
-knownObstacleSuppressedKeys3D(const GridBounds3D& world_bounds,
-                              const std::span<const GridIndex3D> suppressed_cells) {
-  std::unordered_set<std::uint64_t> result;
-  result.reserve(suppressed_cells.size());
-  for (const GridIndex3D cell : suppressed_cells) {
-    if (cell.x >= 0 && cell.y >= 0 && cell.z >= 0 &&
-        cell.x < world_bounds.width_cells && cell.y < world_bounds.height_cells &&
-        cell.z < world_bounds.depth_cells) {
-      result.insert(knownObstacleSourceKey3D(world_bounds, cell));
-    }
-  }
-  return result;
-}
-
-std::shared_ptr<KnownObstacleDistanceStorage3D> makeKnownObstacleDistanceStorage3D(
-    const ObservedOccupancyGrid3D& occupancy, const GridBounds3D& local_bounds,
-    const double maximum_distance_m,
-    const std::span<const GridIndex3D> suppressed_cells) {
-  const GridBounds3D& world_bounds = occupancy.bounds();
-  const GridBounds3D source_bounds = knownObstacleDistanceSourceBounds3D(
-      world_bounds, local_bounds, maximum_distance_m);
-  auto storage = std::make_shared<KnownObstacleDistanceStorage3D>();
-  storage->world_bounds = world_bounds;
-  storage->output_bounds = local_bounds;
-  storage->source_bounds = source_bounds;
-  storage->output_offset_x = alignedCellOffset(
-      local_bounds.origin_x, world_bounds.origin_x, world_bounds.resolution_m);
-  storage->output_offset_y = alignedCellOffset(
-      local_bounds.origin_y, world_bounds.origin_y, world_bounds.resolution_m);
-  storage->output_offset_z = alignedCellOffset(
-      local_bounds.origin_z, world_bounds.origin_z, world_bounds.resolution_m);
-  storage->source_minimum_x = alignedCellOffset(
-      source_bounds.origin_x, world_bounds.origin_x, world_bounds.resolution_m);
-  storage->source_minimum_y = alignedCellOffset(
-      source_bounds.origin_y, world_bounds.origin_y, world_bounds.resolution_m);
-  storage->source_minimum_z = alignedCellOffset(
-      source_bounds.origin_z, world_bounds.origin_z, world_bounds.resolution_m);
-  storage->source_maximum_x_exclusive =
-      storage->source_minimum_x + source_bounds.width_cells;
-  storage->source_maximum_y_exclusive =
-      storage->source_minimum_y + source_bounds.height_cells;
-  storage->source_maximum_z_exclusive =
-      storage->source_minimum_z + source_bounds.depth_cells;
-  storage->radius_cells =
-      static_cast<int>(std::ceil(maximum_distance_m / world_bounds.resolution_m));
-  storage->maximum_distance_m = maximum_distance_m;
-  storage->maximum_squared_cells =
-      std::pow(maximum_distance_m / world_bounds.resolution_m, 2.0);
-  storage->suppressed_source_cells.assign(suppressed_cells.begin(),
-                                          suppressed_cells.end());
-  std::ranges::sort(storage->suppressed_source_cells,
-                    [](const GridIndex3D first, const GridIndex3D second) {
-                      return std::tuple{first.z, first.y, first.x} <
-                             std::tuple{second.z, second.y, second.x};
-                    });
-  storage->suppressed_source_cells.erase(
-      std::unique(storage->suppressed_source_cells.begin(),
-                  storage->suppressed_source_cells.end()),
-      storage->suppressed_source_cells.end());
-  return storage;
-}
-
-} // namespace detail
 
 KnownObstacleDistance3DBuildResult
 buildKnownObstacleDistance3D(const ObservedOccupancyGrid3D& occupancy,
@@ -777,62 +660,50 @@ buildKnownObstacleDistance3D(const ObservedOccupancyGrid3D& occupancy,
                              const std::span<const GridIndex3D> suppressed_source_cells,
                              BoundedWorkerPool* const worker_pool) {
   const auto started = std::chrono::steady_clock::now();
-  auto storage = detail::makeKnownObstacleDistanceStorage3D(
-      occupancy, local_bounds, maximum_distance_m, suppressed_source_cells);
-  const auto source_started = std::chrono::steady_clock::now();
-  const std::unordered_set<std::uint64_t> suppressed_keys =
-      detail::knownObstacleSuppressedKeys3D(occupancy.bounds(),
-                                            suppressed_source_cells);
-  storage->source_chunks =
-      detail::collectKnownObstacleSourceChunks3D(occupancy, *storage, suppressed_keys);
-  const std::vector<detail::KnownObstacleSourcePoint3D> sources =
-      detail::flattenKnownObstacleSources3D(storage->source_chunks);
-  const detail::KnownObstacleSourceIndex3D source_index{std::span{sources}};
-  storage->source_voxels = source_index.size();
-  storage->source_fingerprint =
-      detail::knownObstacleSourceFingerprint3D(*storage, storage->source_chunks);
-  const double source_index_ms = std::chrono::duration<double, std::milli>(
-                                     std::chrono::steady_clock::now() - source_started)
-                                     .count();
+  const TransformGeometry3D geometry =
+      makeGeometry(occupancy.bounds(), local_bounds, maximum_distance_m);
+  return transformCollectedSources(
+      geometry, collectSources(occupancy, geometry, suppressed_source_cells),
+      worker_pool, started);
+}
 
-  const auto query_started = std::chrono::steady_clock::now();
-  const std::vector<OccupancyChunkIndex3D> candidate_chunks =
-      detail::knownObstacleOutputChunksAffectedBySources3D(*storage, sources);
-  const auto computed = detail::computeKnownObstacleDistanceChunks3D(
-      *storage, source_index, candidate_chunks, worker_pool);
-  std::size_t queried_voxels{0U};
-  for (std::size_t index = 0U; index < candidate_chunks.size(); ++index) {
-    queried_voxels += detail::knownObstacleRegionVoxelCount3D(
-        detail::knownObstacleChunkRegion3D(local_bounds, candidate_chunks[index]));
-    if (computed[index] != nullptr) {
-      storage->finite_distance_voxels += computed[index]->finite_voxels;
-      storage->distance_chunks.emplace(candidate_chunks[index], computed[index]);
-    }
+KnownObstacleDistance3DBuildResult updateKnownObstacleDistance3D(
+    const ObservedOccupancyGrid3D& occupancy, const GridBounds3D& local_bounds,
+    const double maximum_distance_m,
+    const std::shared_ptr<const KnownObstacleDistance3D>& previous,
+    const std::span<const GridIndex3D> suppressed_source_cells,
+    BoundedWorkerPool* const worker_pool) {
+  const auto started = std::chrono::steady_clock::now();
+  const TransformGeometry3D geometry =
+      makeGeometry(occupancy.bounds(), local_bounds, maximum_distance_m);
+  CollectedSources3D sources =
+      collectSources(occupancy, geometry, suppressed_source_cells);
+  const bool previous_compatible =
+      previous != nullptr && previous->valid() &&
+      sameBounds(previous->bounds(), geometry.output_bounds) &&
+      sameBounds(previous->sourceBounds(), geometry.source_bounds) &&
+      std::abs(previous->maximumDistanceM() - maximum_distance_m) <=
+          kGeometryTolerance &&
+      previous->sourceFingerprint() == sources.fingerprint;
+  if (previous_compatible) {
+    KnownObstacleDistance3DBuildResult result{
+        .field = previous,
+        .stats =
+            KnownObstacleDistance3DBuildStats{
+                .source_voxels = previous->sourceVoxelCount(),
+                .transform_voxels = 0U,
+                .finite_distance_voxels = previous->finiteDistanceVoxelCount(),
+                .source_collection_ms = sources.collection_ms,
+                .transform_ms = 0.0,
+            },
+        .mode = KnownObstacleDistance3DBuildMode::kReused,
+    };
+    result.stats.duration_ms = std::chrono::duration<double, std::milli>(
+                                   std::chrono::steady_clock::now() - started)
+                                   .count();
+    return result;
   }
-  const double query_ms = std::chrono::duration<double, std::milli>(
-                              std::chrono::steady_clock::now() - query_started)
-                              .count();
-  KnownObstacleDistance3DBuildResult result{
-      .field = KnownObstacleDistance3D::create(storage),
-      .dirty_regions = {},
-      .stats =
-          KnownObstacleDistance3DBuildStats{
-              .source_voxels = storage->source_voxels,
-              .source_chunks = storage->source_chunks.size(),
-              .stored_distance_chunks = storage->distance_chunks.size(),
-              .finite_distance_voxels = storage->finite_distance_voxels,
-              .recomputed_chunks = candidate_chunks.size(),
-              .queried_voxels = queried_voxels,
-              .source_index_ms = source_index_ms,
-              .distance_query_ms = query_ms,
-          },
-      .mode = KnownObstacleDistance3DBuildMode::kFull,
-      .incremental_fallback = false,
-  };
-  result.stats.duration_ms = std::chrono::duration<double, std::milli>(
-                                 std::chrono::steady_clock::now() - started)
-                                 .count();
-  return result;
+  return transformCollectedSources(geometry, std::move(sources), worker_pool, started);
 }
 
 } // namespace drone_city_nav

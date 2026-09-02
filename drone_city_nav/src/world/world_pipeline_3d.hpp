@@ -68,7 +68,6 @@ struct ObservedWorldUpdate3D {
   ObservedWorldEvidenceChange3D evidence_change{};
   std::optional<std::chrono::steady_clock::time_point> retry_not_before;
   double maximum_distance_m{0.0};
-  bool periodic_full_audit{false};
   bool recentered{false};
   bool transient_evidence_refreshed{false};
 
@@ -117,7 +116,6 @@ struct WorldPipelineStatistics3D {
   std::uint64_t dropped_raw_worlds{0U};
   std::uint64_t throttled_observed_builds{0U};
   std::uint64_t observed_full_builds{0U};
-  std::uint64_t observed_incremental_builds{0U};
   std::uint64_t observed_reused_builds{0U};
   std::uint64_t observed_recomputed_voxels{0U};
   std::uint64_t observed_reused_voxels{0U};
@@ -132,7 +130,7 @@ struct WorldPipelineStatistics3D {
   std::uint64_t rejected_after_stop{0U};
 
   [[nodiscard]] std::uint64_t observedBuilds() const noexcept {
-    return observed_full_builds + observed_incremental_builds;
+    return observed_full_builds;
   }
 };
 
@@ -235,7 +233,7 @@ private:
   void runObserved(std::stop_token stop_token) noexcept;
   void runStatic(std::stop_token stop_token) noexcept;
   [[nodiscard]] ObservedWorldUpdate3D
-  finishObservedWorldUpdate(ObservedWorldBuildAssessment3D assessment,
+  finishObservedWorldUpdate(const ObservedWorldBuildAssessment3D& assessment,
                             const ObservedWorldRuntime3D& runtime);
   [[nodiscard]] bool residentParentMatches(
       const PreparedObservedWorldBuild3D& build,
@@ -286,7 +284,6 @@ private:
   std::atomic<std::uint64_t> dropped_raw_worlds_{0U};
   std::atomic<std::uint64_t> throttled_observed_builds_{0U};
   std::atomic<std::uint64_t> observed_full_builds_{0U};
-  std::atomic<std::uint64_t> observed_incremental_builds_{0U};
   std::atomic<std::uint64_t> observed_reused_builds_{0U};
   std::atomic<std::uint64_t> observed_recomputed_voxels_{0U};
   std::atomic<std::uint64_t> observed_reused_voxels_{0U};

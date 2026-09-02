@@ -37,29 +37,16 @@ bool ObservedEsdfCoverage3D::coherent() const noexcept {
   if (!parent_is_exact_predecessor) {
     return false;
   }
-  if (mode == ObservedEsdf3DBuildMode::kIncremental) {
-    return recomputed_voxels > 0U && reused_voxels > 0U &&
-           (parent_raw_version.revision < source_raw_version.revision ||
-            parent_esdf_fingerprint != esdf_fingerprint);
-  }
   return mode == ObservedEsdf3DBuildMode::kReused && recomputed_voxels == 0U &&
          reused_voxels == total_voxels &&
          parent_raw_version.revision < source_raw_version.revision &&
          parent_esdf_fingerprint == esdf_fingerprint;
 }
 
-bool observedEsdfFullAuditDue(const std::uint64_t completed_builds,
-                              const std::size_t audit_interval_builds) noexcept {
-  return completed_builds != 0U && audit_interval_builds != 0U &&
-         completed_builds % audit_interval_builds == 0U;
-}
-
 const char* observedEsdf3DBuildModeName(const ObservedEsdf3DBuildMode mode) noexcept {
   switch (mode) {
     case ObservedEsdf3DBuildMode::kFull:
       return "full";
-    case ObservedEsdf3DBuildMode::kIncremental:
-      return "incremental";
     case ObservedEsdf3DBuildMode::kReused:
       return "reused";
   }

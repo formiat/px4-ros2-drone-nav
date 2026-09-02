@@ -584,10 +584,9 @@ TEST(WorldPipeline3DTest, PersistentEvidencePublishesAReuseGenerationWithoutUplo
   EXPECT_EQ(pipeline.statistics().observed_reused_builds, 1U);
 }
 
-TEST(WorldPipeline3DTest, ObservedWorldServiceRateLimitsThenPublishesIncrementalChild) {
+TEST(WorldPipeline3DTest, ObservedWorldServiceRateLimitsThenPublishesRebuiltChild) {
   std::size_t uploads{0U};
   ObservedWorldRuntime3D runtime = observedRuntime();
-  runtime.builder_config.incremental_maximum_rebuild_ratio = 1.0;
   runtime.uploader = [&](const WorldEsdfUploadRequest3D& request) {
     ++uploads;
     return WorldEsdfUploadResult3D{
@@ -620,20 +619,18 @@ TEST(WorldPipeline3DTest, ObservedWorldServiceRateLimitsThenPublishesIncremental
   EXPECT_EQ(pipeline.statistics().throttled_observed_builds, 1U);
   EXPECT_EQ(pipeline.residentSnapshot().world, first.world);
 
-  const ObservedWorldUpdate3D incremental =
+  const ObservedWorldUpdate3D rebuilt =
       pipeline.updateObservedWorld(observedRequest(second_raw, started_at + 2s));
-  ASSERT_TRUE(incremental.published());
-  EXPECT_FALSE(incremental.stats.incremental_fallback);
-  EXPECT_EQ(incremental.stats.mode, ObservedEsdf3DBuildMode::kIncremental);
+  ASSERT_TRUE(rebuilt.published());
+  EXPECT_EQ(rebuilt.stats.mode, ObservedEsdf3DBuildMode::kFull);
   EXPECT_EQ(uploads, 2U);
-  EXPECT_EQ(
-      incremental.world->observed_esdf_resource.coverage.parent_raw_version.revision,
-      first_raw->version().revision);
-  EXPECT_EQ(incremental.world->planner_parent_raw_revision,
+  EXPECT_EQ(rebuilt.world->observed_esdf_resource.coverage.parent_raw_version.revision,
+            0U);
+  EXPECT_EQ(rebuilt.world->planner_parent_raw_revision,
             first.world->source_raw_revision);
-  EXPECT_GT(incremental.world->local_world_generation.generation,
+  EXPECT_GT(rebuilt.world->local_world_generation.generation,
             first.world->local_world_generation.generation);
-  EXPECT_EQ(pipeline.statistics().observed_incremental_builds, 1U);
+  EXPECT_EQ(pipeline.statistics().observed_full_builds, 2U);
 }
 
 TEST(WorldPipeline3DTest,
@@ -676,7 +673,6 @@ TEST(WorldPipeline3DTest,
 TEST(WorldPipeline3DTest, ThrowingUploadInvalidatesPreviouslyResidentWorld) {
   std::size_t uploads{0U};
   ObservedWorldRuntime3D runtime = observedRuntime();
-  runtime.builder_config.incremental_maximum_rebuild_ratio = 1.0;
   runtime.uploader = [&](const WorldEsdfUploadRequest3D& request) {
     ++uploads;
     if (uploads == 2U) {

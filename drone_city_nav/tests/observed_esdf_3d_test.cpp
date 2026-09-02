@@ -24,17 +24,11 @@ void fillKnownFree(ObservedOccupancyGrid3D& occupancy) {
   }
 }
 
-[[nodiscard]] PreviousObservedEsdf3D
-previousField(const ObservedEsdf3D& field,
-              const ObservedOccupancyGrid3D& source_occupancy) {
+[[nodiscard]] PreviousObservedEsdf3D previousField(const ObservedEsdf3D& field) {
   return PreviousObservedEsdf3D{
       .grid = field.grid,
       .distances_m = field.distances_m,
       .known_obstacle_distance = field.known_obstacle_distance,
-      .source_occupancy =
-          std::make_shared<const ObservedOccupancyGrid3D>(source_occupancy),
-      .local_occupancy = field.local_occupancy,
-      .classification_override_cells = field.classification_override_cells,
       .occupancy_fingerprint = field.occupancy_fingerprint,
       .maximum_distance_m = field.maximum_distance_m,
   };
@@ -222,122 +216,60 @@ TEST(ObservedEsdf3DTest, LaunchSupportCoversTheBoundedDepartureEnvelope) {
   EXPECT_EQ(occupancy.state(swept_support_cell), ObservedVoxelState::kOccupied);
 }
 
-TEST(ObservedEsdf3DTest, IncrementalInsertAndRemoveExactlyMatchFullRebuilds) {
+TEST(ObservedEsdf3DTest, SourceChangesRebuildTheExactFieldAndRelabelsReuseIt) {
   const GridBounds3D bounds{0.0, 0.0, 0.0, 1.0, 48, 32, 24};
   ObservedOccupancyGrid3D occupancy{bounds};
   fillKnownFree(occupancy);
   const ObservedEsdf3D initial = buildObservedEsdf3D(occupancy, bounds, 3.0);
-  const PreviousObservedEsdf3D initial_previous = previousField(initial, occupancy);
+  const PreviousObservedEsdf3D initial_previous = previousField(initial);
   const GridIndex3D changed_cell{20, 15, 10};
-  const OccupancyChunkIndex3D dirty = ObservedOccupancyGrid3D::chunkIndex(changed_cell);
 
   static_cast<void>(occupancy.setState(changed_cell, ObservedVoxelState::kOccupied));
-  const ObservedEsdf3D inserted = updateObservedEsdf3D(
-      occupancy, bounds, 3.0, &initial_previous, std::span{&dirty, 1U}, false, 0.75);
+  const ObservedEsdf3D inserted =
+      updateObservedEsdf3D(occupancy, bounds, 3.0, &initial_previous, false);
   const ObservedEsdf3D inserted_full = buildObservedEsdf3D(occupancy, bounds, 3.0);
 
-  EXPECT_EQ(inserted.stats.mode, ObservedEsdf3DBuildMode::kIncremental);
-  EXPECT_GT(inserted.stats.reused_voxels, 0U);
-  EXPECT_LT(inserted.stats.recomputed_voxels, inserted.distances_m->size());
+  EXPECT_EQ(inserted.stats.mode, ObservedEsdf3DBuildMode::kFull);
+  EXPECT_EQ(inserted.stats.recomputed_voxels, inserted.distances_m->size());
   EXPECT_EQ(*inserted.distances_m, *inserted_full.distances_m);
   EXPECT_EQ(inserted.occupancy_fingerprint, inserted_full.occupancy_fingerprint);
+  EXPECT_NE(inserted.occupancy_fingerprint, initial.occupancy_fingerprint);
 
-  const PreviousObservedEsdf3D inserted_previous = previousField(inserted, occupancy);
-  static_cast<void>(occupancy.setState(changed_cell, ObservedVoxelState::kFree));
-  const ObservedEsdf3D removed = updateObservedEsdf3D(
-      occupancy, bounds, 3.0, &inserted_previous, std::span{&dirty, 1U}, false, 0.75);
-  const ObservedEsdf3D removed_full = buildObservedEsdf3D(occupancy, bounds, 3.0);
-
-  EXPECT_EQ(removed.stats.mode, ObservedEsdf3DBuildMode::kIncremental);
-  EXPECT_EQ(*removed.distances_m, *removed_full.distances_m);
-  EXPECT_EQ(removed.occupancy_fingerprint, removed_full.occupancy_fingerprint);
-}
-
-TEST(ObservedEsdf3DTest, FreeUnknownRelabelReusesTheSameKnownObstacleDistance) {
-  const GridBounds3D bounds{0.0, 0.0, 0.0, 1.0, 48, 32, 24};
-  ObservedOccupancyGrid3D occupancy{bounds};
-  fillKnownFree(occupancy);
+  const PreviousObservedEsdf3D inserted_previous = previousField(inserted);
   static_cast<void>(
-      occupancy.setState(GridIndex3D{24, 16, 12}, ObservedVoxelState::kOccupied));
-  const ObservedEsdf3D initial = buildObservedEsdf3D(occupancy, bounds, 3.0);
-  const PreviousObservedEsdf3D previous = previousField(initial, occupancy);
-  const GridIndex3D changed_cell{19, 15, 10};
-  const OccupancyChunkIndex3D dirty = ObservedOccupancyGrid3D::chunkIndex(changed_cell);
-  static_cast<void>(occupancy.setState(changed_cell, ObservedVoxelState::kUnknown));
-
-  const ObservedEsdf3D incremental = updateObservedEsdf3D(
-      occupancy, bounds, 3.0, &previous, std::span{&dirty, 1U}, false, 0.75);
-  const ObservedEsdf3D full = buildObservedEsdf3D(occupancy, bounds, 3.0);
-
-  EXPECT_EQ(incremental.stats.mode, ObservedEsdf3DBuildMode::kReused);
-  EXPECT_EQ(*incremental.distances_m, *full.distances_m);
-  EXPECT_EQ(incremental.distances_m, initial.distances_m);
-  EXPECT_EQ(incremental.known_obstacle_distance, initial.known_obstacle_distance);
-  EXPECT_EQ(incremental.local_occupancy->state(changed_cell),
+      occupancy.setState(GridIndex3D{19, 15, 10}, ObservedVoxelState::kUnknown));
+  const ObservedEsdf3D relabeled =
+      updateObservedEsdf3D(occupancy, bounds, 3.0, &inserted_previous, false);
+  EXPECT_EQ(relabeled.stats.mode, ObservedEsdf3DBuildMode::kReused);
+  EXPECT_EQ(relabeled.distances_m, inserted.distances_m);
+  EXPECT_EQ(relabeled.known_obstacle_distance, inserted.known_obstacle_distance);
+  EXPECT_EQ(relabeled.local_occupancy->state(GridIndex3D{19, 15, 10}),
             ObservedVoxelState::kUnknown);
+  EXPECT_EQ(relabeled.stats.reused_voxels, relabeled.distances_m->size());
+
+  static_cast<void>(occupancy.setState(changed_cell, ObservedVoxelState::kFree));
+  const ObservedEsdf3D removed =
+      updateObservedEsdf3D(occupancy, bounds, 3.0, &inserted_previous, false);
+  EXPECT_EQ(removed.stats.mode, ObservedEsdf3DBuildMode::kFull);
+  EXPECT_EQ(*removed.distances_m, *initial.distances_m);
+  EXPECT_EQ(removed.occupancy_fingerprint, initial.occupancy_fingerprint);
 }
 
-TEST(ObservedEsdf3DTest,
-     RepeatedSourceRemovalReassignsExactNearestObstacleDependencies) {
-  const GridBounds3D bounds{0.0, 0.0, 0.0, 1.0, 48, 32, 24};
+TEST(ObservedEsdf3DTest, FullResetRebuildsEvenWhenSourcesAreUnchanged) {
+  const GridBounds3D bounds{0.0, 0.0, 0.0, 1.0, 32, 32, 16};
   ObservedOccupancyGrid3D occupancy{bounds};
-  fillKnownFree(occupancy);
-  const GridIndex3D first{12, 16, 12};
-  const GridIndex3D second{24, 16, 12};
-  const GridIndex3D third{36, 16, 12};
-  ASSERT_TRUE(occupancy.setState(first, ObservedVoxelState::kOccupied));
-  ASSERT_TRUE(occupancy.setState(second, ObservedVoxelState::kOccupied));
-  ASSERT_TRUE(occupancy.setState(third, ObservedVoxelState::kOccupied));
-  const ObservedEsdf3D initial = buildObservedEsdf3D(occupancy, bounds, 8.0);
-  const PreviousObservedEsdf3D initial_previous = previousField(initial, occupancy);
-
-  ASSERT_TRUE(occupancy.setState(second, ObservedVoxelState::kFree));
-  const OccupancyChunkIndex3D second_dirty =
-      ObservedOccupancyGrid3D::chunkIndex(second);
-  const ObservedEsdf3D first_update =
-      updateObservedEsdf3D(occupancy, bounds, 8.0, &initial_previous,
-                           std::span{&second_dirty, 1U}, false, 0.75);
-  const ObservedEsdf3D first_full = buildObservedEsdf3D(occupancy, bounds, 8.0);
-  ASSERT_EQ(first_update.stats.mode, ObservedEsdf3DBuildMode::kIncremental);
-  EXPECT_EQ(*first_update.distances_m, *first_full.distances_m);
-
-  const PreviousObservedEsdf3D first_previous = previousField(first_update, occupancy);
-  ASSERT_TRUE(occupancy.setState(first, ObservedVoxelState::kFree));
-  const OccupancyChunkIndex3D first_dirty = ObservedOccupancyGrid3D::chunkIndex(first);
-  const ObservedEsdf3D second_update =
-      updateObservedEsdf3D(occupancy, bounds, 8.0, &first_previous,
-                           std::span{&first_dirty, 1U}, false, 0.75);
-  const ObservedEsdf3D second_full = buildObservedEsdf3D(occupancy, bounds, 8.0);
-
-  EXPECT_EQ(second_update.stats.mode, ObservedEsdf3DBuildMode::kIncremental);
-  EXPECT_EQ(second_update.stats.distance_cache.removed_sources, 1U);
-  EXPECT_EQ(*second_update.distances_m, *second_full.distances_m);
-}
-
-TEST(ObservedEsdf3DTest,
-     DistributedChangesUseIndependentIncrementalRegionsInsteadOfGlobalAabb) {
-  const GridBounds3D bounds{0.0, 0.0, 0.0, 1.0, 48, 32, 24};
-  ObservedOccupancyGrid3D occupancy{bounds};
-  fillKnownFree(occupancy);
+  static_cast<void>(
+      occupancy.setState(GridIndex3D{16, 16, 8}, ObservedVoxelState::kOccupied));
   const ObservedEsdf3D initial = buildObservedEsdf3D(occupancy, bounds, 3.0);
-  const PreviousObservedEsdf3D previous = previousField(initial, occupancy);
-  const GridIndex3D first{5, 5, 5};
-  const GridIndex3D second{40, 25, 18};
-  const std::array<OccupancyChunkIndex3D, 2U> dirty_chunks{
-      ObservedOccupancyGrid3D::chunkIndex(first),
-      ObservedOccupancyGrid3D::chunkIndex(second),
-  };
-  static_cast<void>(occupancy.setState(first, ObservedVoxelState::kOccupied));
-  static_cast<void>(occupancy.setState(second, ObservedVoxelState::kOccupied));
+  const PreviousObservedEsdf3D previous = previousField(initial);
 
-  const ObservedEsdf3D incremental = updateObservedEsdf3D(
-      occupancy, bounds, 3.0, &previous, dirty_chunks, false, 0.75);
-  const ObservedEsdf3D full = buildObservedEsdf3D(occupancy, bounds, 3.0);
+  const ObservedEsdf3D reset =
+      updateObservedEsdf3D(occupancy, bounds, 3.0, &previous, true);
 
-  EXPECT_EQ(incremental.stats.mode, ObservedEsdf3DBuildMode::kIncremental);
-  EXPECT_EQ(*incremental.distances_m, *full.distances_m);
-  EXPECT_LT(incremental.stats.recomputed_voxels, incremental.distances_m->size());
-  EXPECT_EQ(incremental.stats.changed_voxels, 2U);
+  EXPECT_EQ(reset.stats.mode, ObservedEsdf3DBuildMode::kFull);
+  EXPECT_NE(reset.distances_m, initial.distances_m);
+  EXPECT_EQ(*reset.distances_m, *initial.distances_m);
+  EXPECT_EQ(reset.occupancy_fingerprint, initial.occupancy_fingerprint);
 }
 
 TEST(ObservedEsdf3DTest, LaunchSupportRelabelWithoutObstacleChangeReusesDistance) {
@@ -363,25 +295,22 @@ TEST(ObservedEsdf3DTest, LaunchSupportRelabelWithoutObstacleChangeReusesDistance
       makeVehicleLandedSupportContact3D(bounds, second_seed);
   const ObservedEsdf3D initial =
       buildObservedEsdf3D(occupancy, bounds, 3.0, nullptr, &first_support);
-  const PreviousObservedEsdf3D previous = previousField(initial, occupancy);
+  const PreviousObservedEsdf3D previous = previousField(initial);
 
-  const ObservedEsdf3D incremental = updateObservedEsdf3D(
-      occupancy, bounds, 3.0, &previous, {}, false, 0.75, nullptr, &second_support);
+  const ObservedEsdf3D relabeled = updateObservedEsdf3D(
+      occupancy, bounds, 3.0, &previous, false, nullptr, &second_support);
   const ObservedEsdf3D full =
       buildObservedEsdf3D(occupancy, bounds, 3.0, nullptr, &second_support);
 
-  EXPECT_EQ(incremental.stats.mode, ObservedEsdf3DBuildMode::kReused);
-  EXPECT_EQ(incremental.stats.changed_voxels, 0U);
-  EXPECT_LT(incremental.stats.classified_voxels, incremental.distances_m->size());
-  EXPECT_GT(incremental.stats.reused_classification_voxels, 0U);
-  EXPECT_EQ(*incremental.distances_m, *full.distances_m);
-  EXPECT_EQ(incremental.distances_m, initial.distances_m);
-  EXPECT_EQ(incremental.known_obstacle_distance, initial.known_obstacle_distance);
-  EXPECT_EQ(incremental.occupancy_fingerprint, full.occupancy_fingerprint);
+  EXPECT_EQ(relabeled.stats.mode, ObservedEsdf3DBuildMode::kReused);
+  EXPECT_EQ(*relabeled.distances_m, *full.distances_m);
+  EXPECT_EQ(relabeled.distances_m, initial.distances_m);
+  EXPECT_EQ(relabeled.known_obstacle_distance, initial.known_obstacle_distance);
+  EXPECT_EQ(relabeled.occupancy_fingerprint, full.occupancy_fingerprint);
+  EXPECT_FALSE(relabeled.classification_override_cells.empty());
 }
 
-TEST(ObservedEsdf3DTest,
-     UntrackedRawChangeFallsBackEvenWhenClassificationMasksTheDifference) {
+TEST(ObservedEsdf3DTest, SuppressedSupportCellNeverEntersTheSourceIdentity) {
   const GridBounds3D bounds{0.0, 0.0, 0.0, 1.0, 24, 24, 24};
   ObservedOccupancyGrid3D occupancy{bounds};
   const GridIndex3D changed_cell{12, 12, 12};
@@ -397,34 +326,56 @@ TEST(ObservedEsdf3DTest,
   ASSERT_TRUE(occupancy.setState(changed_cell, ObservedVoxelState::kOccupied));
   const ObservedEsdf3D initial =
       buildObservedEsdf3D(occupancy, bounds, 3.0, nullptr, &support);
-  const PreviousObservedEsdf3D previous = previousField(initial, occupancy);
+  const PreviousObservedEsdf3D previous = previousField(initial);
   ASSERT_TRUE(initial.local_occupancy);
   ASSERT_EQ(initial.local_occupancy->state(changed_cell), ObservedVoxelState::kFree);
   ASSERT_TRUE(occupancy.setState(changed_cell, ObservedVoxelState::kFree));
 
-  const ObservedEsdf3D update = updateObservedEsdf3D(
-      occupancy, bounds, 3.0, &previous, {}, false, 0.75, nullptr, &support);
+  const ObservedEsdf3D update =
+      updateObservedEsdf3D(occupancy, bounds, 3.0, &previous, false, nullptr, &support);
 
-  EXPECT_EQ(update.stats.mode, ObservedEsdf3DBuildMode::kFull);
-  EXPECT_TRUE(update.stats.incremental_fallback);
-  EXPECT_EQ(update.stats.changed_voxels, 0U);
+  EXPECT_EQ(update.stats.mode, ObservedEsdf3DBuildMode::kReused);
+  EXPECT_EQ(update.known_obstacle_distance, initial.known_obstacle_distance);
 }
 
-TEST(ObservedEsdf3DTest, RawChangesOutsideTheExactLocalWindowDoNotForceARebuild) {
+TEST(ObservedEsdf3DTest, RawChangesOutsideTheSourceHaloDoNotForceARebuild) {
   const GridBounds3D world{0.0, 0.0, 0.0, 1.0, 48, 48, 32};
   const GridBounds3D local{10.0, 10.0, 8.0, 1.0, 10, 10, 10};
   ObservedOccupancyGrid3D occupancy{world};
   const ObservedEsdf3D initial = buildObservedEsdf3D(occupancy, local, 3.0);
-  const PreviousObservedEsdf3D previous = previousField(initial, occupancy);
+  const PreviousObservedEsdf3D previous = previousField(initial);
   ASSERT_TRUE(
       occupancy.setState(GridIndex3D{5, 12, 12}, ObservedVoxelState::kOccupied));
 
   const ObservedEsdf3D update =
-      updateObservedEsdf3D(occupancy, local, 3.0, &previous, {}, false, 0.75);
+      updateObservedEsdf3D(occupancy, local, 3.0, &previous, false);
 
   EXPECT_EQ(update.stats.mode, ObservedEsdf3DBuildMode::kReused);
-  EXPECT_FALSE(update.stats.incremental_fallback);
   EXPECT_EQ(update.distances_m, initial.distances_m);
+}
+
+TEST(ObservedEsdf3DTest, UnalignedWindowClassificationMatchesPerVoxelLabels) {
+  const GridBounds3D world{0.0, 0.0, 0.0, 1.0, 48, 48, 32};
+  const GridBounds3D local{10.0, 13.0, 7.0, 1.0, 21, 19, 11};
+  ObservedOccupancyGrid3D occupancy{world};
+  for (int index = 0; index < 200; ++index) {
+    const GridIndex3D cell{(index * 7) % 48, (index * 13) % 48, (index * 5) % 32};
+    static_cast<void>(occupancy.setState(cell, index % 3 == 0
+                                                   ? ObservedVoxelState::kOccupied
+                                                   : ObservedVoxelState::kFree));
+  }
+
+  const ObservedEsdf3D field = buildObservedEsdf3D(occupancy, local, 3.0);
+
+  ASSERT_TRUE(field.local_occupancy);
+  for (int z = 0; z < local.depth_cells; ++z) {
+    for (int y = 0; y < local.height_cells; ++y) {
+      for (int x = 0; x < local.width_cells; ++x) {
+        EXPECT_EQ(field.local_occupancy->state(GridIndex3D{x, y, z}),
+                  occupancy.state(GridIndex3D{x + 10, y + 13, z + 7}));
+      }
+    }
+  }
 }
 
 TEST(ObservedEsdf3DTest, ReusesAnExactlyUnchangedClassifiedWorld) {
@@ -432,10 +383,10 @@ TEST(ObservedEsdf3DTest, ReusesAnExactlyUnchangedClassifiedWorld) {
   ObservedOccupancyGrid3D occupancy{bounds};
   fillKnownFree(occupancy);
   const ObservedEsdf3D initial = buildObservedEsdf3D(occupancy, bounds, 3.0);
-  const PreviousObservedEsdf3D previous = previousField(initial, occupancy);
+  const PreviousObservedEsdf3D previous = previousField(initial);
 
   const ObservedEsdf3D reused =
-      updateObservedEsdf3D(occupancy, bounds, 3.0, &previous, {}, false, 0.75);
+      updateObservedEsdf3D(occupancy, bounds, 3.0, &previous, false);
 
   EXPECT_EQ(reused.stats.mode, ObservedEsdf3DBuildMode::kReused);
   EXPECT_EQ(reused.stats.recomputed_voxels, 0U);
@@ -448,70 +399,46 @@ TEST(ObservedEsdf3DTest, ReusesAnExactlyUnchangedClassifiedWorld) {
             initial.local_occupancy->occupiedVoxelCount());
 }
 
-TEST(ObservedEsdf3DTest, FallsBackWhenDirtyLineageOrPatchBudgetIsInsufficient) {
-  const GridBounds3D bounds{0.0, 0.0, 0.0, 1.0, 48, 32, 24};
-  ObservedOccupancyGrid3D occupancy{bounds};
-  fillKnownFree(occupancy);
-  const ObservedEsdf3D initial = buildObservedEsdf3D(occupancy, bounds, 3.0);
-  const PreviousObservedEsdf3D previous = previousField(initial, occupancy);
-  static_cast<void>(
-      occupancy.setState(GridIndex3D{20, 15, 10}, ObservedVoxelState::kOccupied));
-  const OccupancyChunkIndex3D unrelated{0, 0, 0};
-
-  const ObservedEsdf3D missing_lineage = updateObservedEsdf3D(
-      occupancy, bounds, 3.0, &previous, std::span{&unrelated, 1U}, false, 0.75);
-  EXPECT_EQ(missing_lineage.stats.mode, ObservedEsdf3DBuildMode::kFull);
-  EXPECT_TRUE(missing_lineage.stats.incremental_fallback);
-
-  const OccupancyChunkIndex3D dirty =
-      ObservedOccupancyGrid3D::chunkIndex(GridIndex3D{20, 15, 10});
-  const ObservedEsdf3D over_budget = updateObservedEsdf3D(
-      occupancy, bounds, 3.0, &previous, std::span{&dirty, 1U}, false, 0.001);
-  EXPECT_EQ(over_budget.stats.mode, ObservedEsdf3DBuildMode::kFull);
-  EXPECT_TRUE(over_budget.stats.incremental_fallback);
-}
-
 TEST(ObservedEsdf3DTest, CoverageCertificateRequiresExactParentAccounting) {
   const RawMapVersion source{
       .producer_instance_id = 17U, .base_snapshot_revision = 4U, .revision = 9U};
   const RawMapVersion parent{
       .producer_instance_id = 17U, .base_snapshot_revision = 4U, .revision = 8U};
-  const ObservedEsdfCoverage3D incremental{
+  const ObservedEsdfCoverage3D full{
       .source_raw_version = source,
-      .parent_raw_version = parent,
       .raw_local_fingerprint = 101U,
       .esdf_fingerprint = 202U,
-      .parent_esdf_fingerprint = 201U,
       .total_voxels = 100U,
-      .recomputed_voxels = 25U,
-      .reused_voxels = 75U,
+      .recomputed_voxels = 100U,
+      .reused_voxels = 0U,
       .maximum_distance_m = 7.0,
-      .mode = ObservedEsdf3DBuildMode::kIncremental,
+      .mode = ObservedEsdf3DBuildMode::kFull,
   };
-  EXPECT_TRUE(incremental.coherent());
+  EXPECT_TRUE(full.coherent());
+  ObservedEsdfCoverage3D invalid_full = full;
+  invalid_full.parent_esdf_fingerprint = 201U;
+  EXPECT_FALSE(invalid_full.coherent());
 
-  ObservedEsdfCoverage3D invalid = incremental;
-  ++invalid.parent_raw_version.base_snapshot_revision;
-  EXPECT_FALSE(invalid.coherent());
-  invalid = incremental;
-  ++invalid.reused_voxels;
-  EXPECT_FALSE(invalid.coherent());
-
-  ObservedEsdfCoverage3D reused = incremental;
-  reused.esdf_fingerprint = reused.parent_esdf_fingerprint;
+  ObservedEsdfCoverage3D reused = full;
+  reused.parent_raw_version = parent;
+  reused.parent_esdf_fingerprint = reused.esdf_fingerprint;
   reused.recomputed_voxels = 0U;
   reused.reused_voxels = reused.total_voxels;
   reused.mode = ObservedEsdf3DBuildMode::kReused;
   EXPECT_TRUE(reused.coherent());
 
-  ObservedEsdfCoverage3D evidence_only = incremental;
-  evidence_only.parent_raw_version = evidence_only.source_raw_version;
-  EXPECT_TRUE(evidence_only.coherent());
-  evidence_only.parent_esdf_fingerprint = evidence_only.esdf_fingerprint;
-  EXPECT_FALSE(evidence_only.coherent());
-
-  reused.parent_raw_version = reused.source_raw_version;
-  EXPECT_FALSE(reused.coherent());
+  ObservedEsdfCoverage3D invalid = reused;
+  ++invalid.parent_raw_version.base_snapshot_revision;
+  EXPECT_FALSE(invalid.coherent());
+  invalid = reused;
+  ++invalid.reused_voxels;
+  EXPECT_FALSE(invalid.coherent());
+  invalid = reused;
+  invalid.parent_raw_version = invalid.source_raw_version;
+  EXPECT_FALSE(invalid.coherent());
+  invalid = reused;
+  invalid.parent_esdf_fingerprint = 5U;
+  EXPECT_FALSE(invalid.coherent());
 }
 
 TEST(ObservedEsdf3DTest, MaximumDistanceCoversFootprintAndVoxelCorrection) {
@@ -521,15 +448,6 @@ TEST(ObservedEsdf3DTest, MaximumDistanceCoversFootprintAndVoxelCorrection) {
 
   EXPECT_DOUBLE_EQ(required, 6.0 + std::hypot(0.82, 0.35) + std::numbers::sqrt3 * 0.25);
   EXPECT_TRUE(std::isnan(requiredObservedEsdfMaximumDistanceM(-1.0, footprint, 0.25)));
-}
-
-TEST(ObservedEsdf3DTest, PeriodicFullAuditSkipsStartupAndFiresOnExactIntervals) {
-  EXPECT_FALSE(observedEsdfFullAuditDue(0U, 120U));
-  EXPECT_FALSE(observedEsdfFullAuditDue(119U, 120U));
-  EXPECT_TRUE(observedEsdfFullAuditDue(120U, 120U));
-  EXPECT_FALSE(observedEsdfFullAuditDue(121U, 120U));
-  EXPECT_TRUE(observedEsdfFullAuditDue(240U, 120U));
-  EXPECT_FALSE(observedEsdfFullAuditDue(120U, 0U));
 }
 
 TEST(ObservedEsdf3DTest, RecenterHonorsWorldEdges) {
@@ -545,12 +463,15 @@ TEST(ObservedEsdf3DTest, RecenterHonorsWorldEdges) {
 
   EXPECT_DOUBLE_EQ(left.origin_x, world.origin_x);
   EXPECT_DOUBLE_EQ(left.origin_z, world.origin_z);
+  // The requested [0, 13) x-range and [0, 14) z-range grow to whole chunks.
+  EXPECT_EQ(left.width_cells, ObservedOccupancyGrid3D::kChunkSize);
+  EXPECT_EQ(left.depth_cells, ObservedOccupancyGrid3D::kChunkSize);
   EXPECT_FALSE(
       localObservedEsdfNeedsRecenter(left, world, Point3{2.0, 40.0, 5.0}, window));
   EXPECT_TRUE(
-      localObservedEsdfNeedsRecenter(left, world, Point3{10.0, 40.0, 5.0}, window));
+      localObservedEsdfNeedsRecenter(left, world, Point3{13.0, 40.0, 5.0}, window));
   EXPECT_TRUE(
-      localObservedEsdfNeedsRecenter(left, world, Point3{2.0, 40.0, 12.0}, window));
+      localObservedEsdfNeedsRecenter(left, world, Point3{2.0, 40.0, 14.0}, window));
 }
 
 } // namespace
