@@ -375,7 +375,6 @@ private:
   std::uint64_t execution_input_capture_sequence_{0U};
   std::uint64_t tick_sequence_{0U};
   std::uint64_t execution_horizon_sequence_{0U};
-  std::uint64_t execution_horizon_producer_instance_id_{0U};
   ProductionMppiHorizonPublicationRecord latest_horizon_publication_{};
   // Newest planned-horizon identity the current offboard process reported.
   // Guarded by the input scope; replaced by every accepted horizon feedback.
@@ -385,6 +384,7 @@ private:
   std::atomic<std::uint64_t> horizon_supersession_deferrals_{0U};
   std::atomic<std::uint64_t> horizon_supersession_grace_replacements_{0U};
   std::atomic<std::uint64_t> resident_owner_continuation_ticks_{0U};
+  std::uint64_t execution_horizon_producer_instance_id_{0U};
   std::uint64_t navigation_health_producer_instance_id_{0U};
   std::uint64_t navigation_health_sequence_{0U};
   std::optional<NavigationHealthAssessment> last_navigation_health_assessment_;

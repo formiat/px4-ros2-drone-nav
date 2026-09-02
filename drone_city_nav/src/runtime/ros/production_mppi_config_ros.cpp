@@ -189,12 +189,12 @@ private:
     execution.maximum_pose_age_ms = declare<double>("maximum_pose_age_ms", 150.0);
     execution.maximum_vehicle_status_age_ms =
         declare<double>("maximum_vehicle_status_age_ms", 1000.0);
-    execution.horizon_acknowledgement_grace_ms =
-        declare<double>("execution_horizon_acknowledgement_grace_ms", 100.0);
     execution.maximum_pose_prediction_age_ms =
         declare<double>("maximum_pose_prediction_age_ms", 1000.0);
     execution.maximum_control_feedback_age_ms =
         declare<double>("maximum_control_feedback_age_ms", 200.0);
+    execution.horizon_acknowledgement_grace_ms =
+        declare<double>("execution_horizon_acknowledgement_grace_ms", 100.0);
     execution.latest_lidar_obstacle_maximum_age_ms =
         declare<double>("latest_lidar_obstacle_maximum_age_ms", 1000.0);
     execution.stationary_hold_validity_s =
@@ -349,16 +349,16 @@ void ProductionMppiConfigLoader::declarePlanning() {
       declarePositiveSize("persistent_planner_maximum_shortcut_checks", 8'192);
   planner.maximum_compute_time_ms =
       declare<double>("persistent_planner_maximum_compute_time_ms", 150.0);
+  planner.clearance_ranking_weight =
+      declare<double>("persistent_planner_clearance_ranking_weight", 1.5);
+  planner.clearance_ranking_distance_m =
+      declare<double>("persistent_planner_clearance_ranking_distance_m", 6.0);
 
   planning.route_sampling_step_m = declare<double>("route_sampling_step_m", 0.5);
   planning.route_completion_tolerance_m =
       declare<double>("route_completion_tolerance_m", 2.0);
   planning.static_esdf_route_lookahead_m =
       declare<double>("static_esdf_route_lookahead_m", 180.0);
-  planner.clearance_ranking_weight =
-      declare<double>("persistent_planner_clearance_ranking_weight", 1.5);
-  planner.clearance_ranking_distance_m =
-      declare<double>("persistent_planner_clearance_ranking_distance_m", 6.0);
   planning.static_route_geometry.sample_step_m = planning.route_sampling_step_m;
   planning.static_route_geometry.enabled =
       planning.optional_constraints.static_route_geometry_optimization_enabled;
@@ -667,14 +667,14 @@ void ProductionMppiConfigLoader::declareControl() {
       declare<double>("constrained_route_vertical_capture_speed_mps", 0.75);
   control.tracking_error_tube.response_time_s =
       declare<double>("tracking_error_tube_response_time_s", 0.15);
+  control.tracking_error_tube.minimum_progress_speed_mps =
+      declare<double>("tracking_error_tube_minimum_progress_speed_mps", 1.0);
 
   mppi.footprint = mppi::FootprintConfig{
       .radius_m = static_cast<float>(config_.world.physical_footprint.radius_m),
       .lower_extent_m =
           static_cast<float>(config_.world.physical_footprint.lower_extent_m),
       .upper_extent_m =
-  control.tracking_error_tube.minimum_progress_speed_mps =
-      declare<double>("tracking_error_tube_minimum_progress_speed_mps", 1.0);
           static_cast<float>(config_.world.physical_footprint.upper_extent_m),
       .perimeter_samples = static_cast<std::uint32_t>(
           config_.world.physical_footprint.perimeter_samples),
@@ -685,6 +685,11 @@ void ProductionMppiConfigLoader::declareControl() {
   };
   mppi.footprint.clearance_broad_phase_enabled =
       declare<bool>("mppi_footprint_clearance_broad_phase_enabled", true);
+  mppi.costs.temperature = static_cast<float>(declare<double>("mppi_temperature", 8.0));
+  mppi.costs.adaptive_temperature_cost_fraction = static_cast<float>(
+      declare<double>("mppi_adaptive_temperature_cost_fraction", 0.5));
+  mppi.costs.route_directed_candidate_cost_tolerance = static_cast<float>(
+      declare<double>("route_directed_candidate_cost_tolerance", 0.5));
   mppi.costs.head_progress_horizon_s =
       static_cast<float>(declare<double>("head_progress_horizon_s", 0.4));
   mppi.costs.head_progress_weight =
@@ -697,11 +702,6 @@ void ProductionMppiConfigLoader::declareControl() {
       static_cast<float>(declare<double>("critical_exposure_weight", 20.0));
   const float critical_clearance_proximity_weight =
       static_cast<float>(declare<double>("critical_clearance_proximity_weight", 400.0));
-  mppi.costs.temperature = static_cast<float>(declare<double>("mppi_temperature", 8.0));
-  mppi.costs.adaptive_temperature_cost_fraction = static_cast<float>(
-      declare<double>("mppi_adaptive_temperature_cost_fraction", 0.5));
-  mppi.costs.route_directed_candidate_cost_tolerance = static_cast<float>(
-      declare<double>("route_directed_candidate_cost_tolerance", 0.5));
   const float obstacle_approach_weight =
       static_cast<float>(declare<double>("obstacle_approach_weight", 40.0));
   if (config_.planning.optional_constraints.clearance_costs_enabled) {
@@ -773,6 +773,9 @@ void ProductionMppiConfigLoader::finalize() {
   }
   execution.stationary_hold_validity_ns = durationNanoseconds(
       execution.stationary_hold_validity_s, "stationary_hold_validity_s");
+  execution.horizon_acknowledgement_grace_ns =
+      durationNanoseconds(execution.horizon_acknowledgement_grace_ms * 1.0e-3,
+                          "execution_horizon_acknowledgement_grace_ms", true);
   execution.mission_waypoint_capture_gate = MissionWaypointCaptureGateConfig{
       .goal_radius_m = planning.mission_goal_capture.capture_radius_m,
       .target_match_tolerance_m =
@@ -780,9 +783,6 @@ void ProductionMppiConfigLoader::finalize() {
       .stop_speed_mps = planning.mission_waypoint_sequence.stop_speed_mps,
       .stop_hold_s = planning.mission_waypoint_sequence.stop_hold_s,
       .maximum_pose_age_s = execution.maximum_pose_age_ms * 1.0e-3,
-  execution.horizon_acknowledgement_grace_ns =
-      durationNanoseconds(execution.horizon_acknowledgement_grace_ms * 1.0e-3,
-                          "execution_horizon_acknowledgement_grace_ms", true);
       .maximum_vehicle_status_age_s = execution.maximum_vehicle_status_age_ms * 1.0e-3,
       .maximum_feedback_age_s = execution.maximum_control_feedback_age_ms * 1.0e-3,
   };

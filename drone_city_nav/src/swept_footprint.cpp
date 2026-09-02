@@ -414,6 +414,8 @@ pointsInsideExtent(const std::span<const Point3> points,
   return radial_squared <= radius * radius;
 }
 
+// Exact per-pose validation. Callers that already proved the surrounding
+// chunks empty for a whole sweep skip the per-pose broad phase.
 template<typename Occupancy>
 [[nodiscard]] SweptFootprintResult validateRawFootprintAt3DExact(
     const Occupancy& occupancy, const Point3& position,
@@ -486,20 +488,6 @@ template<typename Occupancy>
       return cached_chunk != nullptr &&
              ObservedOccupancyGrid3D::chunkState(
                  *cached_chunk, ObservedOccupancyGrid3D::localBitIndex(cell)) ==
-template<typename Occupancy>
-[[nodiscard]] SweptFootprintResult validateRawFootprintAt3D(
-    const Occupancy& occupancy, const Point3& position,
-    const FootprintBodyAxis& requested_body_axis, const SweptFootprintConfig& config,
-    const LaunchSupportContact3D* const launch_support_contact = nullptr) noexcept {
-  if (config.radius_m > 0.0 &&
-      !extentMayContainOccupied(
-          occupancy, bodyExtent(position, normalized(requested_body_axis), config))) {
-    return validRawFootprint();
-  }
-  return validateRawFootprintAt3DExact(occupancy, position, requested_body_axis, config,
-                                       launch_support_contact);
-}
-
                  ObservedVoxelState::kOccupied;
     }
   };
@@ -535,6 +523,20 @@ template<typename Occupancy>
     }
   }
   return validRawFootprint();
+}
+
+template<typename Occupancy>
+[[nodiscard]] SweptFootprintResult validateRawFootprintAt3D(
+    const Occupancy& occupancy, const Point3& position,
+    const FootprintBodyAxis& requested_body_axis, const SweptFootprintConfig& config,
+    const LaunchSupportContact3D* const launch_support_contact = nullptr) noexcept {
+  if (config.radius_m > 0.0 &&
+      !extentMayContainOccupied(
+          occupancy, bodyExtent(position, normalized(requested_body_axis), config))) {
+    return validRawFootprint();
+  }
+  return validateRawFootprintAt3DExact(occupancy, position, requested_body_axis, config,
+                                       launch_support_contact);
 }
 
 template<typename Occupancy>
@@ -651,11 +653,6 @@ bool footprintIntersectsAxisAlignedBox(const Point3& position,
   const FootprintBodyAxis axis = normalized(requested_body_axis);
   return boxIntersectsFiniteCylinder(
       position, axis, box_minimum, box_maximum, std::max(0.0, config.lower_extent_m),
-  const std::span<const Point3> obstacle_points =
-      pointsInsideExtent(all_obstacle_points, sweepExtent(cover, config));
-  if (obstacle_points.empty()) {
-    return validRawFootprint();
-  }
       std::max(0.0, config.upper_extent_m),
       std::max(0.0, config.radius_m) * std::max(0.0, config.radius_m));
 }
@@ -693,6 +690,11 @@ SweptFootprintResult validateRawPointCloudSweptFootprint(
                                                   second_body_axis, config);
   if (!cover.valid()) {
     return makeStatusResult(SweptFootprintStatus::kInvalidInput, first);
+  }
+  const std::span<const Point3> obstacle_points =
+      pointsInsideExtent(all_obstacle_points, sweepExtent(cover, config));
+  if (obstacle_points.empty()) {
+    return validRawFootprint();
   }
   const SweptFootprintResult first_result = validateRawPointCloudFootprintAt(
       obstacle_points, cover.first, cover.first_axis, config, launch_support_contact);

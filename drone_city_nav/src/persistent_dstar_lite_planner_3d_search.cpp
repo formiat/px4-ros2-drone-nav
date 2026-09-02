@@ -326,10 +326,10 @@ std::vector<Point3> DStarLiteSession3D::extractPath(const Point3& exact_start,
         selected = successor;
         selected_cost = cost;
       }
-    }
+    });
     if (!selected.has_value() || visited.contains(*selected)) {
       return {};
-    });
+    }
     const PersistentPlannerNode3D previous_node = node;
     node = *selected;
     adaptive_edges += lattice_->level(previous_node, node) > 0U ? 1U : 0U;
