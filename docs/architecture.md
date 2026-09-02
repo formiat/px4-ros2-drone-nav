@@ -211,8 +211,8 @@ only the newest pending revision. One publication lease linearizes the GPU ESDF
 revision, `LocalWorldGeneration`, immutable `WorldSnapshot3D`, build telemetry,
 and resident readers. A mixed generation fails closed instead of exposing a CPU
 world paired with another GPU upload. In observed mode the service owns local
-window selection, recentering, full-audit and rate policy, incremental parent
-selection, CPU construction, exact-parent admission, controller upload, and
+window selection, recentering, rate policy, exact-source reuse, dense
+distance-transform construction, exact-parent admission, controller upload, and
 immutable publication. The ROS runtime supplies one immutable pose/evidence
 request and consumes typed evidence/update events. A persistent evidence-only
 change publishes a new local generation over the exact existing ESDF parent,
@@ -297,9 +297,13 @@ unchanged-plan, or pending-transition publication without exposing the store.
 It captures the exact authority, orders runtime admission, validates current
 world/lidar/input/owner/control evidence, revalidates finite command and braking
 paths against compatible newer evidence, and performs the final manager CAS.
-The ROS adapter owns coherent capture, optional late navigation rebase, wire
-encoding, locks, diagnostics, and DDS publication; it cannot call a lower-level
-lease commit. The manager keeps a valid route sticky and owns the resident plan
+The ROS adapter owns coherent capture, wire encoding, locks, diagnostics, and
+DDS publication; it cannot call a lower-level lease commit. The commit admits
+an execution input whose navigation lineage is current and whose applied-control
+evidence is authoritative for the resident owner; it does not require the
+exact captured tuple and never rebases a captured input after validation. The
+horizon sequence is assigned inside the commit and advances only when the
+commit succeeds. The manager keeps a valid route sticky and owns the resident plan
 and pending successor under one lock. It publishes the resident plan together
 with its typed horizon owner, exact immutable versioned input, and matching
 applied-control evidence as one atomic `CommittedExecutionAuthority3D` pointer.
@@ -486,6 +490,16 @@ prohibited zone or relax collision checks against raw physical occupancy.
 Offboard executes only the current fresh horizon. There is no legacy path-id,
 suffix ACK, partial-replan, safe-truncation, or moving/after-hold protocol.
 
+Horizon supersession is monotonic. Offboard acknowledges every accepted horizon
+through `MppiControlFeedback` with the horizon sequence it executes. A new plan
+replaces the resident owner when that owner is witnessed by applied-control
+evidence, when offboard has acknowledged the owner or its predecessor, or when
+the configured acknowledgement grace has elapsed since publication; only a
+stale acknowledgement after the grace rejects. A rejected commit therefore never
+waits for the owner to expire, and a tick that cannot publish keeps the
+resident planned owner explicitly as a resident-owner continuation instead of
+reporting a hold it did not publish.
+
 ## Safety Boundaries
 
 - Entering a physical occupied cell in the active map is a hard collision
@@ -525,8 +539,11 @@ executes the typed `StaticWorldBuilder3D` transaction and coalesces refresh
 requests with latest-wins semantics. Producer ingestion, worker scheduling, resident
 publication, and build statistics have independent private synchronization.
 Publication and resident leases share one mutex, so a planner cannot validate
-one generation while another generation is being installed. Incremental and
-reused builds require the exact immutable parent captured before construction.
+one generation while another generation is being installed. Reused builds
+require the exact immutable parent captured before construction. World builds
+run on a dedicated world worker pool sized by `world_worker_count`; the planner
+worker pool serves only D* Lite continuations and route work, so neither can
+starve the other.
 Stop joins outside the lifecycle mutex and processing exceptions are contained
 at the service boundary.
 

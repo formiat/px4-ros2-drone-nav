@@ -374,8 +374,9 @@ These are the two production planning sources, selected by mode:
 
 - static: canonical Occupancy3D + precomputed chunked ESDF3D -> local dense
   controller projection;
-- no-static 3D: revisioned observed Occupancy3D -> sparse incremental
-  `KnownObstacleDistance3D` -> local dense controller projection.
+- no-static 3D: revisioned observed Occupancy3D -> exact capped dense
+  `KnownObstacleDistance3D` over the chunk-aligned local window -> controller
+  projection shared without copying.
 
 They are not merged in the current implementation. Each occupied distance
 field turns its selected raw source into risk tiers.

@@ -50,7 +50,12 @@ Execution cadence:
 - `diagnostics_file_rate_hz`, `diagnostics_flush_period_s`, and
   `diagnostics_error_ring_capacity`;
 - `rollouts`, `dt_s`, mode-specific horizon duration;
-- deadline and maximum input ages.
+- deadline and maximum input ages;
+- `execution_horizon_acknowledgement_grace_ms` bounds how long a freshly
+  published horizon waits for the offboard acknowledgement before a newer plan
+  may supersede it. Supersession never waits for the resident horizon to
+  expire: an acknowledged predecessor, a witnessed owner, or the elapsed grace
+  each admit the replacement, and the deferral is counted in diagnostics.
 
 No-static direct raw validation:
 
@@ -75,9 +80,12 @@ No-static 3D world:
   `obstacle_memory_3d_snapshot_maximum_period_s`, and
   `obstacle_memory_3d_snapshot_rebase_dirty_ratio` control adaptive base
   rebasing without coupling it to lidar cadence;
-- local ESDF half extent, recenter margin, update rate, and incremental rebuild
-  ratio bound the derived controller-distance resource built from sparse observed
-  occupancy;
+- local ESDF half extent, recenter margin, and update rate bound the derived
+  controller-distance resource. It is an exact capped dense Euclidean distance
+  transform over the chunk-aligned local window; an unchanged occupied source
+  reuses the resident field and GPU texture without recomputation;
+- `world_worker_count` sizes the dedicated world-build pool, so a distance
+  transform never shares planner threads with D* Lite continuations;
 - the observed ESDF distance cap is derived from preferred clearance, the full
   oriented-footprint bounding radius, and conservative voxel-query correction;
 - missing distance evidence, outside-cache volume, and unknown voxels are neutral
@@ -122,6 +130,19 @@ Risk:
 - `critical_distance_m`;
 - `preferred_distance_m`.
 
+Sampler:
+
+- `mppi_temperature` and `mppi_adaptive_temperature_cost_fraction` normalize the
+  MPPI weighting temperature to the feasible-cost spread so the update does not
+  collapse onto one rollout when costs are large;
+- rollouts whose body enters an occupied ESDF voxel are excluded from the
+  weighted update while at least one feasible rollout exists; the raw swept
+  footprint remains the only hard authority afterwards;
+- `route_directed_candidate_cost_tolerance` accepts the deterministic
+  route-directed candidate when its cost is within that fraction of the
+  stochastic optimum, which keeps the warm start on the route instead of
+  alternating between near-equal candidates.
+
 Raw occupied cells or voxels are the only hard collision geometry. The distance
 thresholds classify free space for risk ranking; they do not inflate raw
 occupancy.
@@ -140,7 +161,15 @@ Persistent 3D planner and route lifecycle:
   reserve, splice, and retry thresholds;
 - cross-track and stall thresholds;
 - velocity/previous-route heading cascade thresholds;
-- speed-dependent tracking-error response horizon.
+- speed-dependent tracking-error response horizon and
+  `tracking_error_tube_minimum_progress_speed_mps`, the progress floor that a
+  constrained segment keeps wherever the physical body clears raw occupancy;
+- `persistent_planner_clearance_ranking_weight` and
+  `persistent_planner_clearance_ranking_distance_m` scale lattice edges near
+  raw occupied evidence for ranking only; a low-clearance edge stays traversable
+  whenever the raw swept body check accepts it;
+- `clearance_costs_enabled` and `static_route_geometry_optimization_enabled`
+  are on in the production profile.
 
 Static world:
 

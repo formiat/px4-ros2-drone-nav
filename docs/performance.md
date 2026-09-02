@@ -65,14 +65,54 @@ record `active_rollouts` so timing changes can be compared by actual GPU work.
 
 ## ESDF
 
-Full CPU ESDF construction is substantially more expensive than one resident
-MPPI tick. No-static 3D therefore classifies immutable local observed grids and
-uses dirty-lineage-verified incremental EDT patches, with a bounded full-rebuild
-fallback. Unchanged fields reuse both host distances and the resident GPU
-texture while rebasing the exact raw generation. Diagnostics report build mode,
-fallback, distance-field work, and recomputed/reused voxel totals.
+No-static 3D builds `KnownObstacleDistance3D` as an exact capped dense
+Euclidean distance transform: occupied sources inside the rectangular influence
+halo of the chunk-aligned local window are transformed with three separable
+linear-time passes, parallelized over the dedicated world worker pool. The cost
+is linear in window volume and independent of the number of occupied voxels,
+which replaced the former kd-tree walk and incremental patch repair. An
+unchanged occupied source fingerprint reuses both host distances and the
+resident GPU texture while rebasing the exact raw generation. Diagnostics report
+build mode (`full` or `reused`), source and transform voxel counts, and
+collection/transform durations.
 
 High ESDF age is a world-update problem even when MPPI GPU timing is excellent.
+
+## Tick Phases
+
+Every planning tick records snapshot, controller, publication, and total wall
+time. The per-tick INFO line and JSONL carry `snapshot_ms`, `controller_ms`,
+`publication_ms`, and `tick_total_ms`; the summary reports their p50/p95/p99
+together with horizon publications, commit rejections, acknowledgement
+deferrals, grace replacements, and resident-owner continuation ticks. A
+regression in CPU-side validation or in the execution handshake is therefore
+visible without GPU timing.
+
+## Raw Validation Fast Paths
+
+Raw swept-footprint validation first tests the axis-aligned extent of the
+whole sweep against the occupied chunks it touches; a sweep whose chunks hold
+no occupied bit is accepted without per-pose sampling. Lidar point validation
+prefilters points by the sweep extent before the exact per-pose test. Both
+paths are pure fast rejections of empty space: every non-empty extent still
+runs the exact oriented body test.
+
+## Strategic Planner
+
+D* Lite adjacency is visited without allocation, edge costs are cached and
+invalidated only within the affected reach of changed occupied voxels, and a
+missing incremental predecessor repairs from an exact full-grid difference
+instead of resetting the search. Soft clearance ranking and the raw clearance
+probe behind it share the exact voxel enumeration used by the tracking tube.
+
+## Tracking Tube
+
+The tracking-error tube derives each segment's admissible body inflation from
+an exact capped distance query against raw occupied voxel boxes sampled along
+the segment, instead of a bisection over inflated swept footprints. The
+physical body remains the hard authority; the tube only shapes the speed
+ceiling, and a configured progress floor keeps constrained segments moving
+wherever the body itself clears raw occupancy.
 
 ## Diagnostics
 

@@ -69,8 +69,8 @@ sensor message appears. A pose-driven recenter request is urgent and may build a
 new local generation before that deadline. Planning starts only when the
 captured CPU generation names the ESDF revision active in the GPU engine.
 Observed generations additionally carry a coverage certificate naming their
-exact raw source and incremental parent, influence-halo/raw fingerprints, maximum
-distance, and recomputed versus reused voxel counts.
+exact raw source, the occupied source fingerprint, maximum distance, and whether
+the dense distance transform was rebuilt or reused.
 
 Distance classifications are:
 

@@ -395,9 +395,10 @@ cost. A production strict-known switch, observation-frontier stop policy,
 outside-local-grid rejection, inflated hard grid, or information-gain transit
 preference would violate this invariant and must not exist.
 
-Maintain a sparse incremental `KnownObstacleDistance3D` cache over confirmed
-occupied cells. It supplies optional soft clearance and controller evidence in
-both free and unknown volume. Missing or out-of-cache distance evidence is
+Maintain an exact capped dense `KnownObstacleDistance3D` transform over
+confirmed occupied cells within the chunk-aligned local window, reused while
+its occupied source is unchanged. It supplies optional soft clearance and
+controller evidence in both free and unknown volume. Missing or out-of-cache distance evidence is
 neutral. The hard swept-footprint query always uses raw occupancy and the
 physical vehicle hull. Tracking uncertainty is a speed-dependent tube; it may
 reduce speed in a narrow passage but must not enlarge the hard planning hull by
@@ -618,8 +619,8 @@ revocation/objective/navigation/offboard admission, validates the exact input,
 derives raw obligation and producer from the plan, validates policy, lidar,
 owner, and previous-control witness, revalidates command and
 braking paths against compatible newer evidence, and performs the final manager
-CAS. The ROS adapter retains only locked runtime capture, optional late rebase,
-wire encoding, diagnostics, and DDS publication; the old public low-level lease
+CAS. The ROS adapter retains only locked runtime capture, wire encoding,
+diagnostics, and DDS publication; the old public low-level lease
 commit has been removed. Pending publication is already one manager-owned
 transaction: the manager validates the semantic execution base, assigns the sole
 monotonic sequence, seals the candidate, and occupies the pending slot under one
@@ -631,7 +632,7 @@ improvement. Safety replans, new objectives, continuous-tracking updates, and
 non-comparable mission extensions retain their dedicated lifecycle rules instead
 of being forced through the optimization hysteresis.
 Direct tests replace the former raw-world source-order guards with executable
-overload, quarantine, full/incremental/reuse, throttling, exact-parent,
+overload, quarantine, full/reuse, throttling, exact-parent,
 publication, upload-rejection/exception fail-closed behavior, and stop
 transactions, plus static build/reuse, route supersession, generation failure,
 refresh-coalescing, persistent-session transactions, and route-request

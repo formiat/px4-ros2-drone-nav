@@ -219,8 +219,10 @@ admission, validates plan/evidence/input/owner/control identity, revalidates bot
 finite command and braking paths against compatible newer raw/lidar evidence,
 derives raw-world obligation and expected producer from the publication plan,
 and performs the final manager compare-and-swap. There is no lower-level public
-lease-commit bypass. The ROS adapter retains coherent runtime capture, optional
-late navigation rebase and wire encoding, locks, diagnostics, and DDS publication.
+lease-commit bypass. The ROS adapter retains coherent runtime capture, wire
+encoding, locks, diagnostics, and DDS publication; commit validates navigation
+lineage and control authority instead of an exact captured tuple, and the
+late navigation rebase has been removed.
 Direct tests execute all three horizon kinds, exact pending consumption,
 same-lineage revalidation, stale-authority rejection, typed runtime failures,
 named stationary rearm, complete control-evidence replacement, and concurrent
@@ -357,9 +359,9 @@ Executable tests cover overload and dirty lineage, producer-identity conflict
 quarantine and recovery, publication/read exclusion, exact transient-evidence
 refresh, invalid-generation rejection, exception containment, and lifecycle
 reentry during stop. `ObservedWorldBuilder3D` and the world-service transaction
-now own observed local-window selection, recentering, full-audit/rate policy,
-full/incremental/reused construction, exact-parent admission, GPU upload, and
-immutable publication. The node supplies an immutable pose/execution-evidence
+now own observed local-window selection, recentering, rate policy,
+full/reused dense distance-transform construction, exact-parent admission, GPU
+upload, and immutable publication. The node supplies an immutable pose/execution-evidence
 request and consumes typed early-evidence and final update events. Persistent
 evidence-only changes issue a new exact-parent local generation without a GPU
 upload and force planner revalidation. Upload exceptions invalidate the resident
@@ -497,9 +499,9 @@ the exact world publication, derived resident planner input or explicit newer
 raw overlay, mission objective, typed request identity, release reason, and an
 optional certified continuity base. Continuation work retains the same
 transaction pointer instead of copying a mutable world/route aggregate. The
-world snapshot also carries the raw occupied fingerprint and exact incremental
-planner predecessor; a skipped publication forces a safe full planner repair
-rather than applying an incomplete dirty-chunk delta. Planner request flags,
+world snapshot also carries the raw occupied fingerprint and exact planner
+predecessor; a missing predecessor is repaired from an exact full-grid
+difference of occupied cells rather than a search reset. Planner request flags,
 parallel planner-world copies, and search objectives no longer reside on the
 published world.
 
