@@ -76,6 +76,8 @@ void NavigationDiagnosticsSink::recordTick(
   ++statistics_.completed_ticks;
   statistics_.runtime_samples_ms.push_back(result.timings.host_total_ms);
   statistics_.snapshot_phase_samples_ms.push_back(phases.snapshot_ms);
+  statistics_.cycle_prepare_phase_samples_ms.push_back(phases.cycle_prepare_ms);
+  statistics_.commit_phase_samples_ms.push_back(phases.commit_ms);
   statistics_.controller_phase_samples_ms.push_back(phases.controller_ms);
   statistics_.publication_phase_samples_ms.push_back(phases.publication_ms);
   statistics_.tick_total_samples_ms.push_back(phases.total_ms);

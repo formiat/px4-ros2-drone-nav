@@ -25,7 +25,10 @@ struct ProductionMppiStationaryCaptureRearmContext {
   std::int64_t offboard_session_receive_stamp_ns{0};
   double maximum_pose_age_ms{0.0};
   double maximum_control_feedback_age_ms{0.0};
-  double maximum_esdf_age_ms{0.0};
+  // Execution freshness window of the observed world: the ESDF cadence plus
+  // the stale-ESDF execution window, the same bound the planning tick applies
+  // before it executes against the resident world.
+  double maximum_observation_age_ms{0.0};
   double observation_age_ms{0.0};
   bool vehicle_status_epoch_stable{false};
   bool terminal_hold_enabled{false};
@@ -34,6 +37,9 @@ struct ProductionMppiStationaryCaptureRearmContext {
   bool observed_3d_world{false};
 };
 
+// Names the first failing predicate, or nullptr when the tick may rearm.
+[[nodiscard]] const char* stationaryCaptureRearmIneligibilityForPlanningTick(
+    const ProductionMppiStationaryCaptureRearmContext& context);
 [[nodiscard]] bool stationaryCaptureRearmEligibleForPlanningTick(
     const ProductionMppiStationaryCaptureRearmContext& context);
 

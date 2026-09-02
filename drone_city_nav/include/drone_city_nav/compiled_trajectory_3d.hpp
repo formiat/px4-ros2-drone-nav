@@ -97,15 +97,27 @@ struct CompiledTrajectoryValidation3D {
 [[nodiscard]] CompiledTrajectoryValidation3D
 validateCompiledTrajectorySamples3D(std::span<const RouteSample3D> route) noexcept;
 
-// Validates the sealed controller-neutral resource graph, including endpoint
-// semantics, speed/tube consistency, and constrained speed spans. Optional
-// passage/cooperative metadata is validated separately as RouteDecorations3D.
+// Exhaustively verifies the controller-neutral resource graph, including
+// endpoint semantics, speed/tube consistency, and constrained speed spans. It
+// scans every sample and is run once, when the trajectory is sealed; a sealed
+// trajectory is immutable and non-copyable, so the seal itself proves the
+// resources afterwards.
+[[nodiscard]] bool compiledTrajectoryResourcesVerified3D(
+    const CompiledTrajectory3D& trajectory,
+    std::uint64_t expected_route_generation = 0U) noexcept;
+
+// Validity of a sealed trajectory's resources for an expected route
+// generation. Constant time apart from the constrained-span generation check:
+// the non-zero seal stands for the exhaustive verification made at sealing.
+// Optional passage/cooperative metadata is validated separately as
+// RouteDecorations3D.
 [[nodiscard]] bool compiledTrajectoryResourcesValid3D(
     const CompiledTrajectory3D& trajectory,
     std::uint64_t expected_route_generation = 0U) noexcept;
 
-// Covers the exact initial state and every controller-neutral executable
-// resource. Returns zero when any required resource or scalar is invalid.
+// The seal computed over the exact initial state and every controller-neutral
+// executable resource when the trajectory was compiled. Zero when any required
+// resource or scalar was invalid at sealing.
 [[nodiscard]] std::uint64_t
 compiledTrajectoryRevision3D(const CompiledTrajectory3D& trajectory) noexcept;
 

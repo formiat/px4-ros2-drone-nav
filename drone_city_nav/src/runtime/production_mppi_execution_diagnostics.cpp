@@ -35,6 +35,8 @@ std::string executionInfoFields(const ProductionMppiExecutionPublication& execut
          << " finite_path_first_failed_validation_status="
          << mppi::finiteExecutionPathStatusName(
                 execution.finite_path_first_failed_validation_status)
+         << " finite_path_rejected_precondition="
+         << execution.finite_path_rejected_precondition
          << " latest_lidar_obstacle_fresh="
          << (execution.latest_lidar_obstacle_fresh ? "true" : "false")
          << " latest_lidar_obstacle_receive_time_fallback="
@@ -77,7 +79,9 @@ std::string executionJsonFields(const ProductionMppiExecutionPublication& execut
          << '\"' << ",\"finite_path_first_failed_validation_status\":\""
          << mppi::finiteExecutionPathStatusName(
                 execution.finite_path_first_failed_validation_status)
-         << '\"' << ",\"latest_lidar_obstacle_fresh\":"
+         << '\"' << ",\"finite_path_rejected_precondition\":\""
+         << execution.finite_path_rejected_precondition << '\"'
+         << ",\"latest_lidar_obstacle_fresh\":"
          << (execution.latest_lidar_obstacle_fresh ? "true" : "false")
          << ",\"latest_lidar_obstacle_receive_time_fallback\":"
          << (execution.latest_lidar_obstacle_receive_time_fallback ? "true" : "false")

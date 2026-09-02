@@ -98,10 +98,18 @@ struct RebuiltFiniteExecutionPathContinuation3D {
 struct ValidatedFiniteExecutionPath3D {
   std::optional<FiniteMotionHorizon3D> horizon;
   FiniteExecutionPathValidation3D validation{};
+  // Names the first failing input precondition when no candidate was built at
+  // all; "none" once the arrival search ran.
+  const char* rejected_precondition{"none"};
   std::size_t arrival_shaping_attempts{0U};
   bool path_validation_backoff{false};
   FiniteExecutionPathStatus3D first_failed_validation_status{
       FiniteExecutionPathStatus3D::kValid};
+  // The validation of the first rejected candidate: the arrival search then
+  // shortens the preserved prefix, so `validation` describes the last attempt
+  // while this one names where the longest candidate failed.
+  FiniteExecutionPathValidation3D first_failed_validation{
+      .status = FiniteExecutionPathStatus3D::kValid};
   bool persistent_raw_path_validation_backoff{false};
   bool latest_lidar_path_validation_backoff{false};
 

@@ -100,7 +100,7 @@ worldConfigurationIsValid(const TrackingErrorTubeWorld3D& world) noexcept {
   }
   const std::uint64_t canonical_fingerprint =
       world.observed_occupancy != nullptr
-          ? world.observed_occupancy->occupiedSnapshot().contentFingerprint()
+          ? world.observed_occupancy->occupiedContentFingerprint()
           : world.occupancy->contentFingerprint();
   return canonical_fingerprint != 0U &&
          world.occupied_content_fingerprint == canonical_fingerprint;

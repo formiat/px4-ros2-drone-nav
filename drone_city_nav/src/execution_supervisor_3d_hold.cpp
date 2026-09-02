@@ -59,13 +59,6 @@ samePolicy(const std::shared_ptr<const VersionedExecutionValidationPolicy3D>& fi
          first->contentFingerprint() == second->contentFingerprint();
 }
 
-[[nodiscard]] bool sameRawVersion(const RawMapVersion& first,
-                                  const RawMapVersion& second) noexcept {
-  return first.producer_instance_id == second.producer_instance_id &&
-         first.base_snapshot_revision == second.base_snapshot_revision &&
-         first.revision == second.revision;
-}
-
 [[nodiscard]] bool
 stationaryCaptureWorldCurrent(const ExecutionHoldRequest3D& request) noexcept {
   const bool observed = request.stationary_capture_observed_raw_world != nullptr;
@@ -76,29 +69,35 @@ stationaryCaptureWorldCurrent(const ExecutionHoldRequest3D& request) noexcept {
   if (static_world) {
     return request.stationary_capture_static_world->valid();
   }
+  // The captured world must be on the current raw lineage: same producer and
+  // not newer than the resident raw world. A revision that arrived while the
+  // tick was running does not invalidate a hold at the vehicle's own position;
+  // the commit revalidates the hold against compatible newer evidence.
   const VersionedObservedRawWorld3D& capture =
       *request.stationary_capture_observed_raw_world;
   const VersionedObservedRawWorld3D* const current =
       request.current_observed_raw_world.get();
   return !request.raw_world_identity_conflicted && capture.valid() &&
          current != nullptr && current->valid() &&
-         sameRawVersion(capture.version(), current->version()) &&
-         capture.sharesObservationOwner(*current) &&
-         capture.occupiedSnapshot() == current->occupiedSnapshot();
+         capture.version().sameLineage(current->version()) &&
+         capture.version().revision <= current->version().revision;
 }
 
 [[nodiscard]] bool
 latestLidarCurrent(const ExecutionHoldRequest3D& request,
                    const VersionedExecutionValidationPolicy3D& policy) noexcept {
+  // The captured scan must be on the current lidar lineage: same producer and
+  // not newer than the scan installed now. A scan that arrived while the tick
+  // was running is used by the next tick; it does not retract this one.
   if (request.latest_lidar_identity_conflicted ||
       request.latest_lidar_evidence == nullptr ||
       request.current_lidar_evidence == nullptr ||
       !request.latest_lidar_evidence->valid() ||
       !request.current_lidar_evidence->valid() ||
-      request.latest_lidar_evidence->evidenceId() !=
-          request.current_lidar_evidence->evidenceId() ||
-      request.latest_lidar_evidence->contentFingerprint() !=
-          request.current_lidar_evidence->contentFingerprint()) {
+      request.latest_lidar_evidence->producerInstanceId() !=
+          request.current_lidar_evidence->producerInstanceId() ||
+      request.latest_lidar_evidence->sequence() >
+          request.current_lidar_evidence->sequence()) {
     return false;
   }
   return !policy.latestLidarFreshnessRequired() ||

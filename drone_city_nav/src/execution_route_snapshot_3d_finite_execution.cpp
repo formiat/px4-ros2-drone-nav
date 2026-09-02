@@ -70,7 +70,7 @@ std::optional<RouteAdherenceAssessment3D> validateExecutionProgressConnector(
   const double connector_maximum_station_m = std::min(
       certificate_view.certified_end_station_m,
       route.progress.station_m + kMaximumStationCreditPerTravel * connector_travel_m +
-          kStationToleranceM);
+          route.validation_policy->routeStationCreditSlackM() + kStationToleranceM);
   const std::array<MotionState3D, 2U> connector_states{
       MotionState3D{.x = static_cast<float>(route.progress.last_observed_position.x),
                     .y = static_cast<float>(route.progress.last_observed_position.y),
@@ -144,11 +144,11 @@ unboundSuccessorExecutionStation(const CertifiedRouteSuffix3D& route,
     return std::nullopt;
   }
   const CertificateView3D certificate_view = certificateView(route.certificate);
-  const double maximum_station_m =
-      std::min(certificate_view.certified_end_station_m,
-               route.progress.station_m +
-                   kMaximumStationCreditPerTravel * planning_to_execution_travel_m +
-                   kStationToleranceM);
+  const double maximum_station_m = std::min(
+      certificate_view.certified_end_station_m,
+      route.progress.station_m +
+          kMaximumStationCreditPerTravel * planning_to_execution_travel_m +
+          route.validation_policy->routeStationCreditSlackM() + kStationToleranceM);
   const RouteProjection3D projection = projectOntoRoute3DWithinStationWindow(
       *route.geometry->route, execution_position, route.progress.station_m,
       maximum_station_m);

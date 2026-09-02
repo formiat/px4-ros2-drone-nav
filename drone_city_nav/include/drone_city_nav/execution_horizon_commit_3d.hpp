@@ -120,6 +120,20 @@ struct ExecutionHorizonCommitResult3D {
     const AppliedControlEvidence3D& control, const ExecutionOwnerIdentity3D& owner,
     std::int64_t now_ns, double maximum_age_ms) noexcept;
 
+// Applied-control evidence usable as the previous control of a new execution
+// input: it must come from the offboard process that executes this owner's
+// lineage, be fresh, and refer to the owner's own horizon or to its immediate
+// predecessor. The predecessor is accepted because the offboard keeps applying
+// it until it switches to the newly published horizon; a jerk-limited ramp
+// that restarts from the measured acceleration on every tick never leaves
+// rest. For a stationary hold owner the offboard's hold feedback of that same
+// hold is current: it carries the zero control the hold applies. Unlike the
+// witness above it does not require the control stamp inside the owner's
+// lease, and it never certifies a supersession.
+[[nodiscard]] bool appliedControlCurrentForExecutionInput3D(
+    const AppliedControlEvidence3D& control, const ExecutionOwnerIdentity3D& owner,
+    std::int64_t now_ns, double maximum_age_ms) noexcept;
+
 // Names the first predicate that makes the applied-control evidence
 // non-authoritative for this owner, or returns nullptr when it is
 // authoritative. Diagnostics use it so a deferred supersession can say why.

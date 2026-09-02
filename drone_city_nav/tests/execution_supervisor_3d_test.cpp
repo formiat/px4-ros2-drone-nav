@@ -282,6 +282,50 @@ TEST(ExecutionSupervisor3DTest,
   EXPECT_EQ(supervisor.pending(), nullptr);
 }
 
+TEST(ExecutionSupervisor3DTest, HoldFeedbackOfTheSameHoldIsCurrentPreviousControl) {
+  ExecutionOwnerIdentity3D owner;
+  owner.valid = true;
+  owner.valid_from_ns = 1'000'000'000;
+  owner.valid_until_ns = 4'000'000'000;
+  owner.producer_instance_id = 7U;
+  owner.target_offboard_instance_id = 9U;
+  owner.sequence = 42U;
+  owner.execution_mode = ExecutionAuthorityMode3D::kPositionHold;
+
+  AppliedControlEvidence3D feedback;
+  feedback.valid = true;
+  feedback.control_authoritative = false;
+  feedback.producer_instance_id = 9U;
+  feedback.horizon_producer_instance_id = 7U;
+  feedback.horizon_sequence = 42U;
+  feedback.execution_mode = ExecutionAuthorityMode3D::kPositionHold;
+  feedback.source_stamp_ns = 1'900'000'000;
+  feedback.receive_stamp_ns = 1'910'000'000;
+
+  const std::int64_t now_ns = 1'950'000'000;
+  EXPECT_TRUE(appliedControlCurrentForExecutionInput3D(feedback, owner, now_ns, 200.0));
+
+  // Hold feedback of a superseded hold is not the owner's.
+  AppliedControlEvidence3D previous_hold = feedback;
+  previous_hold.horizon_sequence = 41U;
+  EXPECT_FALSE(
+      appliedControlCurrentForExecutionInput3D(previous_hold, owner, now_ns, 200.0));
+
+  // Planned feedback does not describe a hold owner, nor does hold feedback
+  // describe a planned owner.
+  AppliedControlEvidence3D planned_feedback = feedback;
+  planned_feedback.execution_mode = ExecutionAuthorityMode3D::kPlanned;
+  planned_feedback.control_authoritative = true;
+  EXPECT_FALSE(
+      appliedControlCurrentForExecutionInput3D(planned_feedback, owner, now_ns, 200.0));
+  ExecutionOwnerIdentity3D planned_owner = owner;
+  planned_owner.execution_mode = ExecutionAuthorityMode3D::kPlanned;
+  EXPECT_FALSE(
+      appliedControlCurrentForExecutionInput3D(feedback, planned_owner, now_ns, 200.0));
+  EXPECT_TRUE(appliedControlCurrentForExecutionInput3D(planned_feedback, planned_owner,
+                                                       now_ns, 200.0));
+}
+
 TEST(ExecutionSupervisor3DTest, ConcurrentLeaseCommitsHaveOneLinearizationWinner) {
   SnapshotFixture3D fixture;
   const std::optional<CertifiedRouteSuffix3D> route = fixture.certify();

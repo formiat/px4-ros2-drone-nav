@@ -133,12 +133,30 @@ struct HorizonCandidate3D {
       ProductionMppiExecutionReason::kNone};
   std::shared_ptr<const ExecutionPlan3D> committed_snapshot;
   std::optional<ExecutionRouteTransitionResult3D> transition;
+  // Status of a rejected plan transition, for diagnostics.
+  ExecutionRouteTransitionStatus3D transition_status{
+      ExecutionRouteTransitionStatus3D::kApplied};
   std::optional<HorizonCandidatePhysicalRejection3D> physical_rejection;
   std::size_t arrival_shaping_attempts{0U};
   mppi::FiniteExecutionPathStatus validation_status{
       mppi::FiniteExecutionPathStatus::kInvalidContract};
   mppi::FiniteExecutionPathStatus first_failed_validation_status{
       mppi::FiniteExecutionPathStatus::kValid};
+  const char* finite_path_rejected_precondition{"none"};
+  // Segment at which the finite path validation failed, for diagnostics.
+  std::size_t validation_failure_segment{0U};
+  std::size_t validation_first_remaining_point{0U};
+  // Where the first (longest) rejected candidate failed, for diagnostics.
+  std::size_t first_failed_validation_segment{0U};
+  Point3 first_failed_validation_point{};
+  // Route certification verdict of the last candidate, for diagnostics.
+  FiniteExecutionCertificationStatus3D certification_status{
+      FiniteExecutionCertificationStatus3D::kInvalidInput};
+  FiniteExecutionCertificationStatus3D braking_tail_certification_status{
+      FiniteExecutionCertificationStatus3D::kInvalidInput};
+  FiniteExecutionRouteAdherenceStatus3D route_adherence_status{
+      FiniteExecutionRouteAdherenceStatus3D::kNotEvaluated};
+  double route_adherence_failure_distance_m{-1.0};
   bool nominal_candidate_degraded{false};
   bool path_validation_backoff{false};
   bool latest_lidar_path_validation_backoff{false};

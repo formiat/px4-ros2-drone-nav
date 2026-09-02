@@ -47,8 +47,21 @@ MppiLivenessSupervisor::evaluate(const MppiLivenessObservation& observation) {
     result.state = MppiLivenessState::kInactive;
     return result;
   }
-  if (!observation.controller_active || observation.stamp_ns <= 0) {
+  if (observation.stamp_ns <= 0) {
     anchor_.reset();
+    result.state = MppiLivenessState::kInactive;
+    return result;
+  }
+  if (!observation.controller_active) {
+    // A tick without a published horizon does not restart the observation
+    // window: the vehicle is still not progressing. The anchor only lapses
+    // once the controller has been inactive for a whole window.
+    if (anchor_.has_value() &&
+        static_cast<double>(observation.stamp_ns - anchor_->stamp_ns) / 1.0e9 >
+            2.0 * config_.observation_window_s &&
+        !recovery_active_) {
+      anchor_.reset();
+    }
     result.state = MppiLivenessState::kInactive;
     return result;
   }

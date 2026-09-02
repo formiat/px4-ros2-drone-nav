@@ -131,8 +131,19 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
   }
   if (result.route_endpoint_stop_required &&
       input.route_endpoint_remaining_m.has_value()) {
-    const double route_endpoint_distance =
-        std::max(0.0, *input.route_endpoint_remaining_m);
+    // The stop point is the route's last sample. Its station distance is the
+    // path still to fly along the route; beside the endpoint that distance
+    // reads zero while the endpoint itself is still half a metre away, and a
+    // zero allowance would leave the vehicle creeping toward a stop it can
+    // reach at speed. The straight distance to the endpoint is the least the
+    // vehicle must travel, so the allowance covers whichever is longer.
+    double route_endpoint_distance = std::max(0.0, *input.route_endpoint_remaining_m);
+    if (!input.route.empty()) {
+      route_endpoint_distance =
+          std::max(route_endpoint_distance,
+                   distance3D(input.route.back().position,
+                              Point3{input.state.x, input.state.y, input.state.z}));
+    }
     result.route_endpoint_limit_mps =
         stoppingLimitedSpeed(route_endpoint_distance, 0.0, config.stopping_capability);
   }

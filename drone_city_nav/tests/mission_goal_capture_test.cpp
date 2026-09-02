@@ -21,10 +21,46 @@ TEST(MissionGoalCaptureLatchTest, RequiresExactTerminalRoute) {
   EXPECT_FALSE(result.latched);
 }
 
-TEST(MissionGoalCaptureLatchTest, RemainsLatchedAfterLeavingCaptureRadius) {
+TEST(MissionGoalCaptureLatchTest, LatchesOnlyWhenHoldableAtTheGoal) {
   MissionGoalCaptureLatch latch;
   mppi::State state;
   state.x = 9.0F;
+  state.y = 10.0F;
+  state.z = 18.0F;
+  // Inside the capture radius but outside the stationary hold tolerance: the
+  // controller still has to bring the vehicle to the goal.
+  EXPECT_FALSE(latch
+                   .update(MissionGoalCaptureObservation{
+                       .mission_goal = Point3{10.0, 10.0, 18.0},
+                       .state = state,
+                       .terminal_route_available = true,
+                   })
+                   .latched);
+
+  state.x = 9.9F;
+  state.vx = 1.0F;
+  const MissionGoalCaptureResult moving = latch.update(MissionGoalCaptureObservation{
+      .mission_goal = Point3{10.0, 10.0, 18.0},
+      .state = state,
+      .terminal_route_available = true,
+  });
+  EXPECT_FALSE(moving.latched);
+  EXPECT_NEAR(moving.speed_mps, 1.0, 1.0e-6);
+
+  state.vx = 0.1F;
+  EXPECT_TRUE(latch
+                  .update(MissionGoalCaptureObservation{
+                      .mission_goal = Point3{10.0, 10.0, 18.0},
+                      .state = state,
+                      .terminal_route_available = true,
+                  })
+                  .newly_latched);
+}
+
+TEST(MissionGoalCaptureLatchTest, RemainsLatchedAfterLeavingCaptureRadius) {
+  MissionGoalCaptureLatch latch;
+  mppi::State state;
+  state.x = 10.0F;
   state.y = 10.0F;
   state.z = 18.0F;
   ASSERT_TRUE(latch

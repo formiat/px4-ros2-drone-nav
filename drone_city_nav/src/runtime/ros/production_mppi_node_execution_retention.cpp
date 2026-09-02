@@ -12,7 +12,8 @@ namespace drone_city_nav {
 std::optional<ProductionMppiExecutionPublication>
 ProductionMppiNode::retainActiveFinitePath(
     const ProductionMppiExecutionCycle& cycle,
-    const ProductionMppiExecutionReason replacement_failure_reason) {
+    const ProductionMppiExecutionReason replacement_failure_reason,
+    bool* const physically_rejected) {
   const ProductionRouteExecutionSelection3D& route_execution = cycle.route.execution;
   const ExecutionRetentionResult3D prepared =
       execution_supervisor_.prepareRetention(ExecutionRetentionRequest3D{
@@ -30,6 +31,15 @@ ProductionMppiNode::retainActiveFinitePath(
   const std::shared_ptr<const ExecutionPlan3D> expected = prepared.expectedPlan();
   const std::uint64_t expected_version = expected != nullptr ? expected->version : 0U;
   if (!prepared.prepared()) {
+    if (physically_rejected != nullptr) {
+      const auto physical = [](const FiniteExecutionPathStatus3D status) {
+        return status == FiniteExecutionPathStatus3D::kRawCollision ||
+               status == FiniteExecutionPathStatus3D::kLatestLidarRawCollision;
+      };
+      *physically_rejected = physical(prepared.trajectory_validation.status) ||
+                             physical(prepared.rebuild_validation.status) ||
+                             physical(prepared.actual_state_validation.status);
+    }
     const std::string_view certification_status =
         finiteExecutionCertificationStatus3DName(prepared.certification.status);
     const std::string_view adherence_status = finiteExecutionRouteAdherenceStatus3DName(

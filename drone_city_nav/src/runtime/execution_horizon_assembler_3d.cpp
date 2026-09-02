@@ -32,8 +32,16 @@ void captureValidationTelemetry(HorizonCandidate3D& candidate,
                                 const mppi::ValidatedFiniteExecutionPath& validation,
                                 const bool nominal_candidate_degraded) noexcept {
   candidate.arrival_shaping_attempts = validation.arrival_shaping_attempts;
+  candidate.validation_failure_segment = validation.validation.failure_segment_index;
+  candidate.validation_first_remaining_point =
+      validation.validation.first_remaining_point_index;
   candidate.validation_status = validation.validation.status;
   candidate.first_failed_validation_status = validation.first_failed_validation_status;
+  candidate.first_failed_validation_segment =
+      validation.first_failed_validation.failure_segment_index;
+  candidate.first_failed_validation_point =
+      validation.first_failed_validation.failure_point;
+  candidate.finite_path_rejected_precondition = validation.rejected_precondition;
   candidate.nominal_candidate_degraded = nominal_candidate_degraded;
   candidate.path_validation_backoff = validation.path_validation_backoff;
   candidate.latest_lidar_path_validation_backoff =
@@ -200,6 +208,15 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
           std::move(route_candidate_validator));
   HorizonCandidate3D candidate;
   captureValidationTelemetry(candidate, validated_path, nominal_candidate_degraded);
+  if (route_certification.has_value()) {
+    candidate.certification_status = route_certification->command_horizon.status;
+    candidate.braking_tail_certification_status =
+        route_certification->braking_tail.status;
+    candidate.route_adherence_status =
+        route_certification->command_horizon.route_adherence_status;
+    candidate.route_adherence_failure_distance_m =
+        route_certification->command_horizon.route_adherence_failure_distance_m;
+  }
   if (!route.direct_tracking_requested && !route_execution.pending_activation &&
       route.selected_snapshot_route != nullptr &&
       validated_path.physicalObstacleValidationBackoff()) {
@@ -272,6 +289,7 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
     if (!transition.applied() || transition.next == nullptr ||
         transition.next->directTrackingExecution() == nullptr) {
       candidate.status = HorizonCandidateStatus3D::kTransitionRejected;
+      candidate.transition_status = transition.status;
       return candidate;
     }
     candidate.committed_snapshot = transition.next;
@@ -331,6 +349,7 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
         transition.next->finiteExecution() == nullptr ||
         transition.next->brakingFallback() == nullptr) {
       candidate.status = HorizonCandidateStatus3D::kTransitionRejected;
+      candidate.transition_status = transition.status;
       return candidate;
     }
     candidate.committed_snapshot = transition.next;

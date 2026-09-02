@@ -3,10 +3,12 @@
 #include <algorithm>
 #include <atomic>
 #include <cinttypes>
+#include <cmath>
 #include <limits>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <string_view>
 
 #include "production_mppi_node_execution_internal.hpp"
 #include "raw_world_ingress_ros_3d.hpp"
@@ -158,9 +160,21 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
 
 ProductionMppiExecutionPublication ProductionMppiNode::publishNoExecutablePathHold(
     const ProductionMppiExecutionCycle& cycle,
-    const ProductionMppiExecutionReason reason) {
+    const ProductionMppiExecutionReason reason,
+    const bool physical_candidate_rejection) {
+  const bool mission_goal_hold = cycle.route.planning_state ==
+                                 ProductionMppiPlanningState::kMissionGoalPositionHold;
   if (cycle.route.execution.source_snapshot != nullptr &&
       cycle.route.execution.source_snapshot->stationaryHold() != nullptr) {
+    // A resident hold is re-leased only when its lease is about to run out.
+    // Every re-lease is a new horizon on the wire: it restarts the waypoint
+    // capture continuity, and it moves the execution base a pending certified
+    // route has to hand off from, so a per-tick refresh keeps a new route from
+    // ever activating out of the hold.
+    if (!residentHoldLeaseNearExpiry(cycle.controller.now_ns)) {
+      return residentOwnerContinuation(reason, cycle.controller.now_ns, {},
+                                       mission_goal_hold);
+    }
     ProductionMppiExecutionPublication hold = publishPositionHold(
         cycle, cycle.route.execution.source_snapshot->stationaryHold()->position,
         reason, ExecutionHoldIntent3D::kRefreshResident);
@@ -168,12 +182,18 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishNoExecutablePathHo
       return hold;
     }
   }
-  if (std::optional<ProductionMppiExecutionPublication> retained =
-          retainActiveFinitePath(cycle, reason);
-      retained.has_value()) {
-    return *retained;
+  bool retention_physically_rejected{false};
+  // At the mission goal the route is finished: re-leasing its finite path
+  // would keep extending the lease the goal hold has to outlive.
+  if (!mission_goal_hold) {
+    if (std::optional<ProductionMppiExecutionPublication> retained =
+            retainActiveFinitePath(cycle, reason, &retention_physically_rejected);
+        retained.has_value()) {
+      return *retained;
+    }
   }
   const bool physical_route_invalidation =
+      physical_candidate_rejection || retention_physically_rejected ||
       cycle.route.execution.physical_trajectory_invalidated ||
       (cycle.route.execution.lifecycle_event.has_value() &&
        (cycle.route.execution.lifecycle_event->kind ==
@@ -188,13 +208,32 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishNoExecutablePathHo
                                      .nonphysical_execution_revocation_enabled)) {
     return revocation;
   }
-  return residentOwnerContinuation(reason, cycle.controller.now_ns, revocation);
+  return residentOwnerContinuation(
+      reason, cycle.controller.now_ns, revocation,
+      cycle.route.planning_state ==
+          ProductionMppiPlanningState::kMissionGoalPositionHold);
+}
+
+bool ProductionMppiNode::residentHoldLeaseNearExpiry(const std::int64_t now_ns) const {
+  const std::shared_ptr<const CommittedExecutionAuthority3D> authority =
+      execution_supervisor_.authority();
+  if (authority == nullptr || !authority->valid() || !authority->owner().valid) {
+    return true;
+  }
+  // Two nominal ticks, or two measured ones when the planning tick runs
+  // slower than its nominal rate, so the renewal lands before the lease ends.
+  const std::int64_t nominal_margin_ns = static_cast<std::int64_t>(
+      std::llround(2.0e9 / std::max(config_.planning.tick_rate_hz, 1.0)));
+  const std::int64_t renewal_margin_ns =
+      std::max(nominal_margin_ns, 2 * last_planning_tick_period_ns_);
+  return authority->owner().valid_until_ns - now_ns <= renewal_margin_ns;
 }
 
 ProductionMppiExecutionPublication ProductionMppiNode::residentOwnerContinuation(
     const ProductionMppiExecutionReason replacement_failure_reason,
     const std::int64_t now_ns,
-    const ProductionMppiExecutionPublication& unpublished_revocation) {
+    const ProductionMppiExecutionPublication& unpublished_revocation,
+    const bool retire_route_on_expiry) {
   // A non-physical replacement failure leaves the last committed lease in
   // force by policy. Report that state honestly: the vehicle keeps executing
   // the resident planned horizon, nothing was revoked on the wire.
@@ -205,9 +244,12 @@ ProductionMppiExecutionPublication ProductionMppiNode::residentOwnerContinuation
   }
   const ExecutionOwnerIdentity3D& owner = authority->owner();
   const std::shared_ptr<const ExecutionPlan3D>& plan = authority->plan();
+  if (owner.valid && now_ns >= owner.valid_until_ns) {
+    expireResidentOwner(now_ns, retire_route_on_expiry);
+    return unpublished_revocation;
+  }
   if (!owner.valid || owner.execution_mode != ExecutionAuthorityMode3D::kPlanned ||
-      now_ns < owner.valid_from_ns || now_ns >= owner.valid_until_ns ||
-      plan == nullptr) {
+      now_ns < owner.valid_from_ns || plan == nullptr) {
     return unpublished_revocation;
   }
   const mppi::FiniteHorizon* resident_horizon{nullptr};
@@ -362,6 +404,97 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionRevocatio
       revocation.sequence, productionMppiExecutionReasonName(reason),
       certified_route_preserved ? "true" : "false");
   return publication;
+}
+
+void ProductionMppiNode::expireResidentOwner(const std::int64_t now_ns,
+                                             const bool retire_route) {
+  const auto lock = evidence_boundary_.evidenceWithInput();
+  const std::shared_ptr<const CommittedExecutionAuthority3D> expected_authority =
+      execution_supervisor_.authority();
+  if (expected_authority == nullptr || !expected_authority->valid()) {
+    return;
+  }
+  const ExecutionOwnerIdentity3D& owner = expected_authority->owner();
+  const std::shared_ptr<const ExecutionPlan3D> expected = expected_authority->plan();
+  if (!owner.valid || now_ns < owner.valid_until_ns || expected == nullptr) {
+    return;
+  }
+  // A suspended route plan is not publishable, so a detached suspension can
+  // never be committed. Mid-route the plan therefore keeps its sticky route
+  // and stale finite execution exactly as before the lease expired: the next
+  // executable horizon replaces them, and a certified replacement can be
+  // handed off against them. Only a finished route, whose mission goal capture
+  // is latched, is revoked outright so the stationary capture rearm can take
+  // the revoked plan over.
+  if (!retire_route) {
+    return;
+  }
+  const ExecutionRouteTransitionResult3D transition =
+      revokeExecution3D(*expected, expected->version);
+  const bool transition_required = transition.applied();
+  if (!transition_required &&
+      transition.status != ExecutionRouteTransitionStatus3D::kNoChange) {
+    const std::string_view status_name =
+        executionRouteTransitionStatus3DName(transition.status);
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+                         "EXECUTION_HORIZON owner_expired=true sequence=%" PRIu64
+                         " plan_transition=rejected status=%.*s retire_route=%s",
+                         owner.sequence, static_cast<int>(status_name.size()),
+                         status_name.data(), retire_route ? "true" : "false");
+    return;
+  }
+  ExecutionRoutePublicationStatus3D publication_status{
+      ExecutionRoutePublicationStatus3D::kPublished};
+  bool authority_cleared{false};
+  if (transition_required) {
+    publication_status =
+        execution_supervisor_.commitDetachedTransition(expected_authority, transition);
+    authority_cleared =
+        publication_status == ExecutionRoutePublicationStatus3D::kPublished;
+  } else {
+    authority_cleared = execution_supervisor_.clearLeaseIfSame(expected_authority);
+  }
+  RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "EXECUTION_HORIZON owner_expired=true sequence=%" PRIu64
+      " lease_age_ms=%.1f plan_transition=%s publication=%s "
+      "authority_cleared=%s retire_route=%s",
+      owner.sequence, static_cast<double>(now_ns - owner.valid_until_ns) * 1.0e-6,
+      transition_required ? "applied" : "unchanged",
+      executionRoutePublicationStatus3DName(publication_status),
+      authority_cleared ? "true" : "false", retire_route ? "true" : "false");
+}
+
+void ProductionMppiNode::retireGoalHoldForSuccessorLeg() {
+  // The completed leg's goal hold has served its purpose once the waypoint is
+  // acknowledged. Left resident, it would be re-leased indefinitely and every
+  // successor route would have to hand off from it under the hold-evidence
+  // ordering; revoked here, the successor activates from an empty base.
+  const auto lock = evidence_boundary_.evidenceWithInput();
+  const std::shared_ptr<const CommittedExecutionAuthority3D> expected_authority =
+      execution_supervisor_.authority();
+  if (expected_authority == nullptr || !expected_authority->valid()) {
+    return;
+  }
+  const std::shared_ptr<const ExecutionPlan3D> expected = expected_authority->plan();
+  if (expected == nullptr || expected->stationaryHold() == nullptr ||
+      expected->finiteExecution() != nullptr ||
+      expected->directTrackingExecution() != nullptr) {
+    return;
+  }
+  const ExecutionRouteTransitionResult3D transition =
+      revokeExecution3D(*expected, expected->version);
+  if (!transition.applied()) {
+    const std::string_view status_name =
+        executionRouteTransitionStatus3DName(transition.status);
+    RCLCPP_WARN(get_logger(), "MISSION_GOAL_HOLD_RETIRED=false status=%.*s",
+                static_cast<int>(status_name.size()), status_name.data());
+    return;
+  }
+  const ExecutionRoutePublicationStatus3D publication_status =
+      execution_supervisor_.commitDetachedTransition(expected_authority, transition);
+  RCLCPP_INFO(get_logger(), "MISSION_GOAL_HOLD_RETIRED=true publication=%s",
+              executionRoutePublicationStatus3DName(publication_status));
 }
 
 bool ProductionMppiNode::handleRequestedExecutionRevocation(const std::int64_t now_ns) {

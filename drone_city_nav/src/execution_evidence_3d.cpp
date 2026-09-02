@@ -165,10 +165,13 @@ policyFingerprint(const FlightEnvelopeConfig& flight_envelope,
                   const double execution_input_maximum_control_age_ms,
                   const bool route_cross_track_constraints_enabled,
                   const bool latest_lidar_freshness_required,
-                  const bool route_tracking_tube_constraints_enabled) noexcept {
+                  const bool route_tracking_tube_constraints_enabled,
+                  const double route_station_credit_slack_m) noexcept {
   if (!validPolicy(flight_envelope, dynamics, altitude_envelope, swept_footprint,
                    latest_lidar_maximum_age_ms, execution_input_maximum_pose_age_ms,
-                   execution_input_maximum_control_age_ms)) {
+                   execution_input_maximum_control_age_ms) ||
+      !std::isfinite(route_station_credit_slack_m) ||
+      route_station_credit_slack_m < 0.0) {
     return 0U;
   }
   std::uint64_t hash{kFnvOffset};
@@ -183,6 +186,7 @@ policyFingerprint(const FlightEnvelopeConfig& flight_envelope,
   hashValue(hash, route_cross_track_constraints_enabled ? 1U : 0U);
   hashValue(hash, latest_lidar_freshness_required ? 1U : 0U);
   hashValue(hash, route_tracking_tube_constraints_enabled ? 1U : 0U);
+  hashValue(hash, canonicalDoubleBits(route_station_credit_slack_m));
   return hash == 0U ? 1U : hash;
 }
 
@@ -398,7 +402,8 @@ VersionedExecutionValidationPolicy3D::VersionedExecutionValidationPolicy3D(
     const double execution_input_maximum_control_age_ms,
     const bool route_cross_track_constraints_enabled,
     const bool latest_lidar_freshness_required,
-    const bool route_tracking_tube_constraints_enabled)
+    const bool route_tracking_tube_constraints_enabled,
+    const double route_station_credit_slack_m)
     : flight_envelope_{flight_envelope},
       dynamics_{dynamics},
       altitude_envelope_{altitude_envelope},
@@ -409,12 +414,13 @@ VersionedExecutionValidationPolicy3D::VersionedExecutionValidationPolicy3D(
       route_cross_track_constraints_enabled_{route_cross_track_constraints_enabled},
       latest_lidar_freshness_required_{latest_lidar_freshness_required},
       route_tracking_tube_constraints_enabled_{route_tracking_tube_constraints_enabled},
+      route_station_credit_slack_m_{route_station_credit_slack_m},
       content_fingerprint_{policyFingerprint(
           flight_envelope_, dynamics_, altitude_envelope_, swept_footprint_,
           latest_lidar_maximum_age_ms_, execution_input_maximum_pose_age_ms_,
           execution_input_maximum_control_age_ms_,
           route_cross_track_constraints_enabled_, latest_lidar_freshness_required_,
-          route_tracking_tube_constraints_enabled_)} {
+          route_tracking_tube_constraints_enabled_, route_station_credit_slack_m_)} {
 }
 
 std::shared_ptr<const VersionedExecutionValidationPolicy3D>
@@ -426,17 +432,25 @@ VersionedExecutionValidationPolicy3D::capture(
     const double execution_input_maximum_control_age_ms,
     const bool route_cross_track_constraints_enabled,
     const bool latest_lidar_freshness_required,
-    const bool route_tracking_tube_constraints_enabled) {
+    const bool route_tracking_tube_constraints_enabled,
+    const double route_station_credit_slack_m) {
   if (!validPolicy(flight_envelope, dynamics, altitude_envelope, swept_footprint,
                    latest_lidar_maximum_age_ms, execution_input_maximum_pose_age_ms,
-                   execution_input_maximum_control_age_ms)) {
+                   execution_input_maximum_control_age_ms) ||
+      !std::isfinite(route_station_credit_slack_m) ||
+      route_station_credit_slack_m < 0.0) {
     return nullptr;
   }
   return std::make_shared<const VersionedExecutionValidationPolicy3D>(
       CaptureToken{}, flight_envelope, dynamics, altitude_envelope, swept_footprint,
       latest_lidar_maximum_age_ms, execution_input_maximum_pose_age_ms,
       execution_input_maximum_control_age_ms, route_cross_track_constraints_enabled,
-      latest_lidar_freshness_required, route_tracking_tube_constraints_enabled);
+      latest_lidar_freshness_required, route_tracking_tube_constraints_enabled,
+      route_station_credit_slack_m);
+}
+
+double VersionedExecutionValidationPolicy3D::routeStationCreditSlackM() const noexcept {
+  return route_station_credit_slack_m_;
 }
 
 const FlightEnvelopeConfig&

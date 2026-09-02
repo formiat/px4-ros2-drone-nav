@@ -1,5 +1,7 @@
 #include "production_mppi_node_planning_tick_rearm.hpp"
 
+#include "drone_city_nav/execution_horizon_commit_3d.hpp"
+
 #include <memory>
 #include <optional>
 
@@ -19,24 +21,37 @@ namespace {
 
 [[nodiscard]] bool observedWorldCurrentForStationaryRearm(
     const WorldSnapshot3D& world, const ProductionMppiRawWorld3D* raw_world) noexcept {
-  return raw_world != nullptr && world.observed_raw_world_owner != nullptr &&
-         raw_world->ownsRouteEvidence(*world.observed_raw_world_owner);
+  // The resident world's raw owner must lie on the current raw lineage and
+  // must not be newer than the latest raw world; a raw revision that arrived
+  // after the resident world was built does not retract a hold at the
+  // vehicle's own validated position.
+  if (raw_world == nullptr || world.observed_raw_world_owner == nullptr ||
+      !raw_world->valid() || !world.observed_raw_world_owner->valid()) {
+    return false;
+  }
+  const RawMapVersion& resident = world.observed_raw_world_owner->version();
+  const RawMapVersion& latest = raw_world->version();
+  return resident.sameLineage(latest) && resident.revision <= latest.revision;
 }
 
 } // namespace
 
-bool stationaryCaptureRearmEligibleForPlanningTick(
+const char* stationaryCaptureRearmIneligibilityForPlanningTick(
     const ProductionMppiStationaryCaptureRearmContext& context) {
   if (context.objective == nullptr || context.mission_waypoint_sequence == nullptr ||
       context.navigation == nullptr || context.vehicle_status == nullptr ||
-      context.execution_authority == nullptr || !context.execution_authority->valid() ||
       context.offboard_session == nullptr || context.world == nullptr) {
-    return false;
+    return "context_incomplete";
+  }
+  if (context.execution_authority == nullptr || !context.execution_authority->valid()) {
+    return "execution_authority_invalid";
   }
   const AppliedControlEvidence3D& applied_control =
       context.execution_authority->control();
   const ExecutionOwnerIdentity3D& execution_owner =
       context.execution_authority->owner();
+  const bool owner_lease_expired =
+      execution_owner.valid && context.now_ns >= execution_owner.valid_until_ns;
   const bool stationary_rearm_candidate =
       !context.objective->tracking.has_value() && !context.objective->immediate_hold &&
       context.terminal_hold_enabled && context.goal_capture_latched;
@@ -57,11 +72,11 @@ bool stationaryCaptureRearmEligibleForPlanningTick(
                                            context.static_occupancy_3d) != nullptr;
   const bool observed_world_current =
       stationary_rearm_candidate && context.observed_3d_world &&
-      context.observation_age_ms <= context.maximum_esdf_age_ms &&
+      context.observation_age_ms <= context.maximum_observation_age_ms &&
       observedWorldCurrentForStationaryRearm(*context.world,
                                              context.latest_raw_world_3d.get());
 
-  return missionWaypointStationaryRearmEligible(
+  return missionWaypointStationaryRearmIneligibility(
       MissionWaypointStationaryRearmGateConfig{
           .maximum_pose_age_s = context.maximum_pose_age_ms * 1.0e-3,
           .maximum_vehicle_status_age_s =
@@ -100,8 +115,12 @@ bool stationaryCaptureRearmEligibleForPlanningTick(
           .vehicle_status_epoch_stable = context.vehicle_status_epoch_stable,
           .armed = context.vehicle_status->armed,
           .offboard_session_valid = context.offboard_session->valid(),
-          .applied_control_empty = applied_control.empty(),
-          .horizon_owner_empty = execution_owner.empty(),
+          // An owner whose lease has expired holds no wire authority any more;
+          // the offboard is in its local terminal hold, exactly the state a
+          // stationary capture rearm takes over. Applied-control evidence of
+          // that expired lease is equally moot.
+          .applied_control_empty = applied_control.empty() || owner_lease_expired,
+          .horizon_owner_empty = execution_owner.empty() || owner_lease_expired,
           .execution_snapshot_revoked_empty =
               executionSnapshotRevokedEmpty(context.execution_authority->plan()),
           .validation_policy_current = validation_policy_current,
@@ -124,8 +143,8 @@ ProductionMppiExecutionInputPreparation prepareExecutionInputForPlanningTick(
   const ExecutionOwnerIdentity3D& execution_horizon_owner =
       execution_authority->owner();
   result.control_feedback_fresh =
-      appliedControlAuthoritativeForExecution(applied_control, execution_horizon_owner,
-                                              now_ns, maximum_control_feedback_age_ms);
+      appliedControlCurrentForExecutionInput3D(applied_control, execution_horizon_owner,
+                                               now_ns, maximum_control_feedback_age_ms);
   result.measured_control_available =
       navigation.measured_acceleration_valid && !pose_predicted;
 
@@ -203,6 +222,11 @@ ProductionMppiExecutionInputPreparation prepareExecutionInputForPlanningTick(
       .previous_control_receive_stamp_ns = previous_control_evidence->receive_stamp_ns,
   });
   return result;
+}
+
+bool stationaryCaptureRearmEligibleForPlanningTick(
+    const ProductionMppiStationaryCaptureRearmContext& context) {
+  return stationaryCaptureRearmIneligibilityForPlanningTick(context) == nullptr;
 }
 
 } // namespace drone_city_nav

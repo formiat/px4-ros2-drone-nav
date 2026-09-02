@@ -162,7 +162,7 @@ void hashTrajectoryResources(TrajectoryHasher& hash,
 
 [[nodiscard]] std::uint64_t
 calculateCompiledTrajectoryRevision(const CompiledTrajectory3D& trajectory) noexcept {
-  if (!compiledTrajectoryResourcesValid3D(trajectory)) {
+  if (!compiledTrajectoryResourcesVerified3D(trajectory)) {
     return 0U;
   }
 
@@ -257,7 +257,10 @@ CompiledTrajectory3D::CompiledTrajectory3D(
 
 std::uint64_t
 compiledTrajectoryRevision3D(const CompiledTrajectory3D& trajectory) noexcept {
-  return calculateCompiledTrajectoryRevision(trajectory);
+  // Sealed at construction over immutable, non-copyable resources: the stored
+  // seal is the exact recomputation, so re-hashing every sample on each
+  // validity check would only repeat it.
+  return trajectory.compiled_trajectory_revision;
 }
 
 } // namespace drone_city_nav

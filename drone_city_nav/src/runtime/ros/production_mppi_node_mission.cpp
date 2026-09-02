@@ -45,6 +45,19 @@ MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
   const AppliedControlEvidence3D& applied_control = execution_authority->control();
   const ExecutionOwnerIdentity3D& execution_horizon_owner =
       execution_authority->owner();
+  const std::shared_ptr<const ExecutionPlan3D> authority_plan =
+      execution_authority->plan();
+  const std::uint64_t hold_id =
+      authority_plan != nullptr && authority_plan->stationaryHold() != nullptr
+          ? authority_plan->stationaryHold()->hold_id
+          : 0U;
+  const std::uint64_t previous_horizon_sequence_same_hold =
+      hold_id != 0U && last_capture_hold_id_ == hold_id &&
+              last_capture_hold_sequence_ != execution_horizon_owner.sequence
+          ? last_capture_hold_sequence_
+          : 0U;
+  last_capture_hold_id_ = hold_id;
+  last_capture_hold_sequence_ = execution_horizon_owner.sequence;
 
   const MissionWaypointCaptureGateResult capture =
       mission_waypoint_capture_gate_->update(MissionWaypointCaptureObservation{
@@ -64,6 +77,8 @@ MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
           .feedback_receive_stamp_ns = applied_control.receive_stamp_ns,
           .horizon_producer_instance_id = execution_horizon_owner.producer_instance_id,
           .horizon_sequence = execution_horizon_owner.sequence,
+          .hold_id = hold_id,
+          .previous_horizon_sequence_same_hold = previous_horizon_sequence_same_hold,
           .target_offboard_instance_id =
               execution_horizon_owner.target_offboard_instance_id,
           .feedback_horizon_producer_instance_id =
@@ -90,13 +105,27 @@ MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
           .feedback_continuity_generation_valid =
               applied_control_discontinuity_generation_valid,
       });
+  // A broken witness restarts the gate's own continuity; it is not evidence
+  // against the resident hold. Invalidating the applied-control witness here
+  // would change its continuity generation, which the next observation would
+  // see as another break, and every break would revoke and re-lease the hold.
   if (capture.continuity_broken) {
-    mission_goal_capture_attempt_invalidated_ = true;
-    const auto lock = evidence_boundary_.input();
-    if (execution_supervisor_.authority() == execution_authority) {
-      invalidateAppliedControlWitnessLocked();
-      requestExecutionRevocation(ProductionMppiExecutionReason::kNoExecutableHorizon);
-    }
+    ++mission_capture_continuity_breaks_;
+    mission_capture_last_break_reason_ = capture.continuity_break_reason;
+  }
+  if (goal_capture_latched && !capture.ready) {
+    RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "MISSION_CAPTURE_GATE ready=false evidence=%s reason=%s continuous_ms=%.0f "
+        "breaks=%" PRIu64 " last_break=%s horizon=%" PRIu64 " feedback_horizon=%" PRIu64
+        " feedback_age_ms=%.0f",
+        capture.evidence_valid ? "valid" : "invalid", capture.ineligibility,
+        static_cast<double>(capture.continuous_duration_ns) * 1.0e-6,
+        mission_capture_continuity_breaks_, mission_capture_last_break_reason_,
+        execution_horizon_owner.sequence, applied_control.horizon_sequence,
+        applied_control.source_stamp_ns > 0
+            ? static_cast<double>(now_ns - applied_control.source_stamp_ns) * 1.0e-6
+            : -1.0);
   }
   if (!capture.ready ||
       mission_waypoint_acknowledgement_sequence_ ==
@@ -178,6 +207,19 @@ MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
     if (!commit_time_valid || !objective_current || !navigation_current ||
         !status_current || !authority_current || !owner_current || !feedback_current ||
         !feedback_continuity_current || !revocation_current || !active_goal_current) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "MISSION_CAPTURE_COMMIT rejected=true commit_time=%s objective=%s "
+          "navigation=%s status=%s authority=%s owner=%s feedback=%s "
+          "feedback_continuity=%s revocation=%s active_goal=%s",
+          commit_time_valid ? "current" : "stale",
+          objective_current ? "current" : "stale",
+          navigation_current ? "current" : "stale",
+          status_current ? "current" : "stale", authority_current ? "current" : "stale",
+          owner_current ? "current" : "stale", feedback_current ? "current" : "stale",
+          feedback_continuity_current ? "current" : "stale",
+          revocation_current ? "current" : "stale",
+          active_goal_current ? "current" : "stale");
       return {};
     }
 
@@ -236,6 +278,7 @@ MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
     return update;
   }
 
+  retireGoalHoldForSuccessorLeg();
   requestRouteRelease(RouteReleaseReason3D::kObjectiveChanged);
   RCLCPP_INFO(get_logger(),
               "MISSION_WAYPOINT_ACKNOWLEDGED completed_index=%zu waypoint_count=%zu "

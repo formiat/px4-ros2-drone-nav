@@ -31,6 +31,14 @@ struct MissionWaypointCaptureObservation {
   std::int64_t feedback_receive_stamp_ns{0};
   std::uint64_t horizon_producer_instance_id{0U};
   std::uint64_t horizon_sequence{0U};
+  // Identity of the certified stationary hold the horizon leases; renewals of
+  // the same hold change the horizon sequence but not this. Zero when the
+  // horizon is not a stationary hold.
+  std::uint64_t hold_id{0U};
+  // Sequence of the previous lease of the same hold, or zero. Feedback for
+  // it is still evidence of this hold while the offboard catches up with the
+  // renewal.
+  std::uint64_t previous_horizon_sequence_same_hold{0U};
   std::uint64_t target_offboard_instance_id{0U};
   std::uint64_t feedback_horizon_producer_instance_id{0U};
   std::uint64_t feedback_horizon_sequence{0U};
@@ -53,8 +61,12 @@ struct MissionWaypointCaptureObservation {
 
 struct MissionWaypointCaptureGateResult {
   bool evidence_valid{false};
+  // Names the first failing evidence predicate, or "none" when valid.
+  const char* ineligibility{"none"};
   bool continuity_started{false};
   bool continuity_broken{false};
+  // Names why the continuity was reset in this update, or "none".
+  const char* continuity_break_reason{"none"};
   bool ready{false};
   std::int64_t continuous_since_ns{0};
   std::int64_t continuous_duration_ns{0};
@@ -105,6 +117,11 @@ struct MissionWaypointStationaryRearmObservation {
     const MissionWaypointStationaryRearmGateConfig& config,
     const MissionWaypointStationaryRearmObservation& observation) noexcept;
 
+// Names the first failing rearm predicate, or nullptr when eligible.
+[[nodiscard]] const char* missionWaypointStationaryRearmIneligibility(
+    const MissionWaypointStationaryRearmGateConfig& config,
+    const MissionWaypointStationaryRearmObservation& observation) noexcept;
+
 // The gate is tick-aware: beginTick() must be paired with one update(). A
 // planning tick that exits before supplying exact evidence is detected by the
 // next beginTick() and breaks continuity.
@@ -121,6 +138,9 @@ public:
 private:
   [[nodiscard]] bool
   evidenceValid(const MissionWaypointCaptureObservation& observation) const noexcept;
+  // Names the first failing evidence predicate, or nullptr when valid.
+  [[nodiscard]] const char* evidenceIneligibility(
+      const MissionWaypointCaptureObservation& observation) const noexcept;
   void resetContinuity() noexcept;
 
   MissionWaypointCaptureGateConfig config_{};
@@ -132,10 +152,12 @@ private:
   std::int64_t continuous_since_ns_{0};
   std::uint64_t continuous_horizon_producer_instance_id_{0U};
   std::uint64_t continuous_horizon_sequence_{0U};
+  std::uint64_t continuous_hold_id_{0U};
   std::uint64_t continuous_offboard_instance_id_{0U};
   std::uint64_t continuous_feedback_generation_{0U};
   bool tick_open_{false};
   bool continuity_broken_on_begin_{false};
+  const char* begin_break_reason_{"none"};
 };
 
 } // namespace drone_city_nav

@@ -2,11 +2,13 @@
 #include "drone_city_nav/mppi/finite_execution_path.hpp"
 
 #include <atomic>
+#include <chrono>
 #include <cinttypes>
 #include <limits>
 #include <memory>
 #include <mutex>
 #include <span>
+#include <string_view>
 #include <utility>
 
 #include "production_mppi_node_execution_internal.hpp"
@@ -274,6 +276,10 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
   candidate.expected_horizon_producer_instance_id =
       execution_horizon_producer_instance_id_;
   candidate.execution_input = publication_execution_input;
+  const auto commit_started = std::chrono::steady_clock::now();
+  latest_horizon_assembly_ms_ = std::chrono::duration<double, std::milli>(
+                                    commit_started - latest_publication_started_)
+                                    .count();
   const ExecutionHorizonCommitResult3D committed =
       execution_supervisor_.commitHorizon(ExecutionHorizonCommitRequest3D{
           .candidate = std::move(candidate),
@@ -318,6 +324,9 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
               latest_lidar_evidence_identity_conflicted_.load(
                   std::memory_order_acquire),
       });
+  latest_horizon_commit_ms_ = std::chrono::duration<double, std::milli>(
+                                  std::chrono::steady_clock::now() - commit_started)
+                                  .count();
   switch (committed.revocation_request) {
     case ExecutionHorizonRevocationRequest3D::kNone:
       break;
@@ -343,6 +352,15 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
               1.0e-6,
           config_.execution.maximum_control_feedback_age_ms);
     }
+    if (committed.status == ExecutionHorizonCommitStatus3D::kEvidenceNotCurrent) {
+      const std::string_view currentness = executionPublicationCurrentnessStatus3DName(
+          committed.publication_currentness);
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+                           "EXECUTION_HORIZON_COMMIT evidence_currentness=%.*s "
+                           "latest_evidence_revalidated=%s",
+                           static_cast<int>(currentness.size()), currentness.data(),
+                           committed.latest_evidence_revalidated ? "true" : "false");
+    }
     report_commit_failure(executionHorizonCommitStatus3DName(committed.status));
     return ProductionMppiHorizonCommitStatus::kRejected;
   }
@@ -354,7 +372,11 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
   if (committed.replaced_applied_control) {
     recordAppliedControlDiscontinuityLocked();
   }
+  const auto wire_started = std::chrono::steady_clock::now();
   execution_horizon_pub_->publish(publication_horizon);
+  latest_horizon_wire_ms_ = std::chrono::duration<double, std::milli>(
+                                std::chrono::steady_clock::now() - wire_started)
+                                .count();
   horizon_publications_.fetch_add(1U, std::memory_order_relaxed);
   RCLCPP_INFO(
       get_logger(),

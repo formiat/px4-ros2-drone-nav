@@ -78,8 +78,11 @@ VersionedObservedRawWorld3D::captureOwned(
       observedOccupancyContentFingerprint(*occupancy);
   const auto occupied_snapshot =
       std::make_shared<const OccupancyGrid3D>(occupancy->occupiedSnapshot());
+  // The observed grid computes the occupied fingerprint canonically and caches
+  // it; every later consumer of this shared grid reuses it instead of
+  // materializing another dense snapshot.
   const std::uint64_t occupied_content_fingerprint =
-      occupied_snapshot->contentFingerprint();
+      occupancy->occupiedContentFingerprint();
   auto result = std::make_shared<const VersionedObservedRawWorld3D>(
       CaptureToken{}, version, std::move(occupancy), occupied_snapshot,
       observation_content_fingerprint, occupied_content_fingerprint,

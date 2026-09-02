@@ -64,6 +64,11 @@ struct CostConfig {
   // best rollout so a population spread over thousands of cost units does not
   // collapse onto a single sample. Zero keeps the fixed temperature.
   float adaptive_temperature_cost_fraction{0.5F};
+  // Excludes rollouts whose body enters an occupied ESDF voxel from the
+  // weighted update while any other rollout stays feasible. The device ESDF is
+  // coarser than the raw grid, so the gate can reject raw-valid passages and
+  // leave the update hovering; it is a sampler ranking aid, off by default.
+  bool body_collision_gate_enabled{false};
   // Share of that mean excess the deterministic route candidate may cost more
   // than the best feasible rollout and still override the weighted update.
   float route_directed_candidate_cost_tolerance{0.5F};

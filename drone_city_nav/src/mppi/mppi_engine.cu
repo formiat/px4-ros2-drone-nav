@@ -455,15 +455,16 @@ public:
                 "copy minimum soft cost");
       checkCuda(cudaStreamSynchronize(stream_), "synchronize MPPI weighting");
     };
-    run_weighting(false);
+    const bool body_collision_gate = config_.costs.body_collision_gate_enabled;
+    run_weighting(!body_collision_gate);
     fetch_weighting_summary();
     // Every rollout intersects raw occupancy in the sampler's view. The body
     // gate is a ranking inside the sampler, never a reachability claim, so it
     // is lifted rather than leaving the controller without an update; the raw
     // validators downstream keep their exact authority.
     const bool collision_gate_lifted =
-        !(feasible_weight_sum > 0.0F) || feasible_count == 0U;
-    if (collision_gate_lifted) {
+        !body_collision_gate || !(feasible_weight_sum > 0.0F) || feasible_count == 0U;
+    if (body_collision_gate && collision_gate_lifted) {
       run_weighting(true);
       fetch_weighting_summary();
     }
@@ -493,6 +494,8 @@ public:
     std::uint8_t reacquisition_collision_violation = 1U;
     float reacquisition_weight = 0.0F;
     float reacquisition_soft_cost = 0.0F;
+    float reacquisition_critical_exposure_m = 0.0F;
+    float reacquisition_minimum_clearance_m = 0.0F;
     checkCuda(cudaMemcpyAsync(updated_.data(), buffers_.updated.get(),
                               updated_.size() * sizeof(Control), cudaMemcpyDeviceToHost,
                               stream_),
@@ -524,6 +527,16 @@ public:
                                 sizeof(reacquisition_soft_cost), cudaMemcpyDeviceToHost,
                                 stream_),
                 "copy deterministic candidate soft cost");
+      checkCuda(cudaMemcpyAsync(&reacquisition_critical_exposure_m,
+                                buffers_.critical_exposure.get(),
+                                sizeof(reacquisition_critical_exposure_m),
+                                cudaMemcpyDeviceToHost, stream_),
+                "copy deterministic candidate critical exposure");
+      checkCuda(cudaMemcpyAsync(&reacquisition_minimum_clearance_m,
+                                buffers_.minimum_clearance.get(),
+                                sizeof(reacquisition_minimum_clearance_m),
+                                cudaMemcpyDeviceToHost, stream_),
+                "copy deterministic candidate minimum clearance");
     }
     completed_.record(stream_);
     completed_.synchronize();
@@ -571,6 +584,10 @@ public:
                                 feasible_mean_excess;
     result.route_directed_candidate_cost_excess =
         route_directed_candidate ? reacquisition_soft_cost - minimum_soft_cost : 0.0F;
+    result.route_directed_candidate_critical_exposure_m =
+        route_directed_candidate ? reacquisition_critical_exposure_m : 0.0F;
+    result.route_directed_candidate_minimum_clearance_m =
+        route_directed_candidate ? reacquisition_minimum_clearance_m : 0.0F;
     const bool arbitration_stochastic = !input.dynamic_aircraft.empty();
     const bool policy_prefers_route_candidate = input.prefer_route_directed_candidate &&
                                                 !arbitration_stochastic &&

@@ -325,6 +325,8 @@ void ProductionMppiConfigLoader::declarePlanning() {
       static_cast<std::size_t>(maximum_adaptive_lattice_level);
   planner.goal_tolerance_m =
       declare<double>("persistent_planner_goal_tolerance_m", 2.0);
+  planner.feasibility_goal_connector_reach_m =
+      declare<double>("persistent_planner_feasibility_goal_connector_reach_m", 40.0);
   const std::int64_t connector_search_radius_cells =
       declare<std::int64_t>("persistent_planner_connector_search_radius_cells", 2);
   if (connector_search_radius_cells < 0 || connector_search_radius_cells > 32) {
@@ -353,6 +355,8 @@ void ProductionMppiConfigLoader::declarePlanning() {
       declare<double>("persistent_planner_clearance_ranking_weight", 1.5);
   planner.clearance_ranking_distance_m =
       declare<double>("persistent_planner_clearance_ranking_distance_m", 6.0);
+  planner.clearance_ranking_critical_weight =
+      declare<double>("persistent_planner_clearance_ranking_critical_weight", 100.0);
 
   planning.route_sampling_step_m = declare<double>("route_sampling_step_m", 0.5);
   planning.route_completion_tolerance_m =
@@ -405,6 +409,12 @@ void ProductionMppiConfigLoader::declarePlanning() {
       declare<double>("route_successor_minimum_time_improvement_s", 1.0);
   planning.route_successor_improvement.minimum_relative_improvement =
       declare<double>("route_successor_minimum_time_improvement_ratio", 0.05);
+  // The refinement search shares the successor admission margins: a gain the
+  // lifecycle would not admit is not worth the planner budget.
+  planner.execution_time_refinement_minimum_improvement_s =
+      planning.route_successor_improvement.minimum_absolute_improvement_s;
+  planner.execution_time_refinement_minimum_improvement_ratio =
+      planning.route_successor_improvement.minimum_relative_improvement;
   planning.future_route_connector.tangent_departure_length_m =
       declare<double>("route_connector_departure_m", 0.5);
   planning.future_route_connector.successor_join_station_m =
@@ -608,7 +618,13 @@ void ProductionMppiConfigLoader::declareControl() {
           maximum_horizontal_acceleration_mps2, maximum_vertical_acceleration_mps2),
       .maximum_control_jerk_mps3 = maximum_control_jerk_mps3,
   };
-  control.speed_policy.goal_margin_m = declare<double>("goal_braking_margin_m", 2.0);
+  // Braking completes at the goal capture's stationary tolerance: a wider
+  // margin leaves the vehicle drifting to rest outside the tolerance with no
+  // reference speed left to close the gap.
+  // Half the stationary hold tolerance: the limiter must still allow motion
+  // at the capture boundary, or the vehicle settles just outside it.
+  control.speed_policy.goal_margin_m = declare<double>(
+      "goal_braking_margin_m", 0.5 * kStationaryExecutionHoldPositionToleranceM);
   control.speed_policy.curvature_preview_distance_m =
       declare<double>("curvature_preview_distance_m", 60.0);
   control.speed_policy.curvature_measurement_window_m =
@@ -687,7 +703,9 @@ void ProductionMppiConfigLoader::declareControl() {
       declare<bool>("mppi_footprint_clearance_broad_phase_enabled", true);
   mppi.costs.temperature = static_cast<float>(declare<double>("mppi_temperature", 8.0));
   mppi.costs.adaptive_temperature_cost_fraction = static_cast<float>(
-      declare<double>("mppi_adaptive_temperature_cost_fraction", 0.5));
+      declare<double>("mppi_adaptive_temperature_cost_fraction", 0.0));
+  mppi.costs.body_collision_gate_enabled =
+      declare<bool>("mppi_body_collision_gate_enabled", false);
   mppi.costs.route_directed_candidate_cost_tolerance = static_cast<float>(
       declare<double>("route_directed_candidate_cost_tolerance", 0.5));
   mppi.costs.head_progress_horizon_s =
@@ -771,6 +789,10 @@ void ProductionMppiConfigLoader::finalize() {
     throw std::invalid_argument{
         "planning tick phase offset must be in [0, one planning tick period)"};
   }
+  // The planner's critical ranking band is the execution risk model's critical
+  // distance: both sides then agree on which metres are nearly unexecutable.
+  planning.persistent_planner.clearance_ranking_critical_distance_m =
+      static_cast<double>(control.mppi.risk.critical_distance_m);
   execution.stationary_hold_validity_ns = durationNanoseconds(
       execution.stationary_hold_validity_s, "stationary_hold_validity_s");
   execution.horizon_acknowledgement_grace_ns =
@@ -857,7 +879,8 @@ void ProductionMppiConfigLoader::finalize() {
       execution.maximum_control_feedback_age_ms,
       planning.optional_constraints.route_cross_track_constraints_enabled,
       planning.optional_constraints.latest_lidar_freshness_required,
-      planning.optional_constraints.route_tracking_tube_constraints_enabled);
+      planning.optional_constraints.route_tracking_tube_constraints_enabled,
+      control.speed_policy.minimum_target_lookahead_m);
   if (execution.validation_policy == nullptr) {
     throw std::invalid_argument{"invalid immutable execution validation policy"};
   }

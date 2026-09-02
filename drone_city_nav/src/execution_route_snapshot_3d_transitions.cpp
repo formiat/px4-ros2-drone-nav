@@ -378,10 +378,13 @@ ExecutionRouteTransitionResult3D applyAdvanceCertifiedRouteCommand3D(
       advanced.progress, execution_input,
       std::max(route.progress.station_m, assessment.projection.station_m));
   if (old_certificate.observed_raw && assessment.raw_validation.suffix_validated) {
+    // Only older raw evidence regresses the certificate. A validation that
+    // starts at an earlier station than the certified suffix covers more of
+    // the route on the current evidence, not less: a hovering vehicle drifts
+    // a few centimetres back along its route, and refusing every transition
+    // until it drifts forward again would hold it there indefinitely.
     if (assessment.validated_through_raw_revision <
-            old_certificate.validated_through_revision ||
-        assessment.raw_validation.validated_from_station_m + kStationToleranceM <
-            old_certificate.suffix_start_station_m) {
+        old_certificate.validated_through_revision) {
       return transitionFailure(
           ExecutionRouteTransitionStatus3D::kCertificateRegression);
     }

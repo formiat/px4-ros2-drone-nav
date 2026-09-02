@@ -99,6 +99,7 @@ struct ProductionMppiDiagnosticsSnapshot;
 class MppiController3D;
 class PlanningCycleCoordinator3D;
 class ExecutionHorizonAssembler3D;
+struct HorizonCandidate3D;
 struct ProductionMppiExecutionCycle;
 struct ObservedWorldBuildRequest3D;
 struct ObservedWorldEvidenceChange3D;
@@ -250,6 +251,10 @@ private:
       ProductionMppiPlanningState planning_state, std::int64_t now_ns);
   [[nodiscard]] ProductionMppiExecutionPublication
   publishPreparedExecutionCycle(const ProductionMppiExecutionCycle& cycle);
+  void logPhysicalRejectionCells(const ProductionMppiExecutionCycle& cycle,
+                                 const HorizonCandidate3D& candidate);
+  void releaseRouteRejectedByCertificationWhileStationary(
+      const ProductionMppiExecutionCycle& cycle, const HorizonCandidate3D& candidate);
   [[nodiscard]] msg::MppiTrajectoryHorizon
   makeExecutionHorizon(const ProductionMppiExecutionCycle& cycle,
                        std::int64_t valid_until_ns, ProductionMppiExecutionMode mode,
@@ -268,22 +273,46 @@ private:
       const std::shared_ptr<const ExecutionRouteTransitionResult3D>&
           progress_preparation,
       const std::shared_ptr<const CommittedExecutionAuthority3D>& expected_authority);
+  // Retains the active finite path with a braking tail. When retention fails
+  // because the active trajectory itself collides with raw or lidar evidence,
+  // physically_rejected reports it so the caller fails closed instead of
+  // letting the resident owner run on.
   [[nodiscard]] std::optional<ProductionMppiExecutionPublication>
   retainActiveFinitePath(const ProductionMppiExecutionCycle& cycle,
-                         ProductionMppiExecutionReason replacement_failure_reason);
+                         ProductionMppiExecutionReason replacement_failure_reason,
+                         bool* physically_rejected = nullptr);
   [[nodiscard]] ProductionMppiExecutionPublication
   publishPositionHold(const ProductionMppiExecutionCycle& cycle,
                       const Point3& hold_position, ProductionMppiExecutionReason reason,
                       ExecutionHoldIntent3D intent);
+  // physical_candidate_rejection: the replacement candidate was rejected by
+  // raw or lidar collision evidence ahead of the vehicle. A resident owner is
+  // never continued past physical evidence; the execution is revoked so the
+  // offboard holds immediately.
   [[nodiscard]] ProductionMppiExecutionPublication
   publishNoExecutablePathHold(const ProductionMppiExecutionCycle& cycle,
-                              ProductionMppiExecutionReason reason);
+                              ProductionMppiExecutionReason reason,
+                              bool physical_candidate_rejection = false);
   [[nodiscard]] ProductionMppiExecutionPublication
   publishExecutionRevocation(ProductionMppiExecutionReason reason, std::int64_t now_ns,
                              bool physical_route_invalidation = false);
+  // Retires an owner whose lease has expired without a replacement: the
+  // offboard is already in its local terminal hold, so the plan moves to the
+  // revoked state that a stationary capture rearm or a fresh activation takes
+  // over. Nothing is published; the wire has no authority to revoke.
+  // retire_route: the route itself is finished (the mission goal capture is
+  // latched), so the plan is revoked outright instead of suspended.
+  void expireResidentOwner(std::int64_t now_ns, bool retire_route);
+  // Revokes the resident goal hold once its waypoint is acknowledged, so the
+  // successor leg activates from an empty execution base.
+  void retireGoalHoldForSuccessorLeg();
+  // True when the resident hold lease ends within two planning ticks (nominal
+  // or measured), the point at which it must be re-leased to keep authority.
+  [[nodiscard]] bool residentHoldLeaseNearExpiry(std::int64_t now_ns) const;
   [[nodiscard]] ProductionMppiExecutionPublication residentOwnerContinuation(
       ProductionMppiExecutionReason replacement_failure_reason, std::int64_t now_ns,
-      const ProductionMppiExecutionPublication& unpublished_revocation);
+      const ProductionMppiExecutionPublication& unpublished_revocation,
+      bool retire_route_on_expiry);
   [[nodiscard]] bool handleRequestedExecutionRevocation(std::int64_t now_ns);
   void publishFailClosedExecutionRevocation(ProductionMppiExecutionReason reason,
                                             std::int64_t now_ns);
@@ -310,11 +339,27 @@ private:
   std::unique_ptr<NavigationHealthSupervisor> navigation_health_supervisor_;
   std::unique_ptr<MissionWaypointSequence> mission_waypoint_sequence_;
   std::unique_ptr<MissionWaypointCaptureGate> mission_waypoint_capture_gate_;
+  std::uint64_t mission_capture_continuity_breaks_{0U};
+  std::int64_t last_planning_tick_entry_ns_{0};
+  std::int64_t last_planning_tick_period_ns_{0};
+  // Owner identity of the goal hold observed by the previous capture update,
+  // so feedback for the lease a renewal just superseded still counts.
+  std::uint64_t last_capture_hold_id_{0U};
+  std::uint64_t last_capture_hold_sequence_{0U};
+  const char* mission_capture_last_break_reason_{"none"};
   std::unique_ptr<BoundedWorkerPool> planning_worker_pool_;
   std::unique_ptr<BoundedWorkerPool> world_worker_pool_;
+  // Wall time of the last publication sub-phases on the planning tick thread.
+  std::chrono::steady_clock::time_point latest_publication_started_{};
+  double latest_horizon_assembly_ms_{0.0};
+  double latest_horizon_commit_ms_{0.0};
+  double latest_horizon_wire_ms_{0.0};
   std::unique_ptr<RouteLifecycleCoordinator3D> route_lifecycle_coordinator_;
   std::unique_ptr<PlanningCycleCoordinator3D> planning_cycle_coordinator_;
   std::unique_ptr<ExecutionHorizonAssembler3D> execution_horizon_assembler_;
+  // Resident route generation already released after stationary candidates
+  // were rejected by the route contract; one release per generation.
+  std::uint64_t certification_release_route_generation_{0U};
   std::unique_ptr<MppiController3D> mppi_controller_;
 
   // Every writer that can change what a publication is allowed to claim enters

@@ -41,6 +41,8 @@ struct NavigationDiagnosticsFileRecordDecision {
 struct NavigationDiagnosticsStatistics {
   std::vector<double> runtime_samples_ms;
   std::vector<double> snapshot_phase_samples_ms;
+  std::vector<double> cycle_prepare_phase_samples_ms;
+  std::vector<double> commit_phase_samples_ms;
   std::vector<double> controller_phase_samples_ms;
   std::vector<double> publication_phase_samples_ms;
   std::vector<double> tick_total_samples_ms;

@@ -245,6 +245,41 @@ TEST(MissionWaypointCaptureGateTest, ExactOwnerTransitionRestartsTheFullHold) {
   EXPECT_TRUE(observe(gate, transitioned).ready);
 }
 
+TEST(MissionWaypointCaptureGateTest, ALeaseRenewalOfTheSameHoldKeepsContinuity) {
+  MissionWaypointCaptureGate gate;
+  MissionWaypointCaptureObservation first = validObservation(1'000'000'000);
+  first.hold_id = 9U;
+  EXPECT_TRUE(observe(gate, first).continuity_started);
+
+  // The lease was renewed: a new horizon sequence for the same certified
+  // hold, with the offboard still reporting the previous lease.
+  MissionWaypointCaptureObservation renewed = validObservation(2'000'000'000);
+  renewed.hold_id = 9U;
+  renewed.horizon_sequence = 5U;
+  renewed.previous_horizon_sequence_same_hold = 4U;
+  renewed.feedback_horizon_sequence = 4U;
+  const MissionWaypointCaptureGateResult lagging = observe(gate, renewed);
+  EXPECT_TRUE(lagging.evidence_valid);
+  EXPECT_FALSE(lagging.continuity_broken);
+  EXPECT_EQ(lagging.continuous_since_ns, 1'000'000'000);
+
+  // The offboard caught up with the renewal.
+  MissionWaypointCaptureObservation caught_up = validObservation(3'000'000'000);
+  caught_up.hold_id = 9U;
+  caught_up.horizon_sequence = 5U;
+  caught_up.feedback_horizon_sequence = 5U;
+  const MissionWaypointCaptureGateResult ready = observe(gate, caught_up);
+  EXPECT_FALSE(ready.continuity_broken);
+  EXPECT_TRUE(ready.ready);
+
+  // A different hold under the same producer restarts the witness.
+  MissionWaypointCaptureObservation other_hold = validObservation(4'000'000'000);
+  other_hold.hold_id = 10U;
+  other_hold.horizon_sequence = 6U;
+  other_hold.feedback_horizon_sequence = 6U;
+  EXPECT_TRUE(observe(gate, other_hold).continuity_broken);
+}
+
 TEST(MissionWaypointCaptureGateTest, DrivesTwoWaypointsOnlyAfterSeparateWitnesses) {
   MissionWaypointSequence sequence{
       {Point3{10.0, 20.0, 18.0}, Point3{30.0, 40.0, 20.0}}};

@@ -44,9 +44,11 @@ void ProductionMppiNode::planningTick() {
     return;
   }
   const std::int64_t tick_entry_ns = get_clock()->now().nanoseconds();
-  if (mission_waypoint_capture_gate_) {
-    mission_waypoint_capture_gate_->beginTick(tick_entry_ns);
+  if (last_planning_tick_entry_ns_ > 0 &&
+      tick_entry_ns > last_planning_tick_entry_ns_) {
+    last_planning_tick_period_ns_ = tick_entry_ns - last_planning_tick_entry_ns_;
   }
+  last_planning_tick_entry_ns_ = tick_entry_ns;
   const std::shared_ptr<const ProductionNavigationObjectiveState> objective_state =
       navigationObjectiveState();
   const std::shared_ptr<const ProductionNavigationObjective> objective =
@@ -128,6 +130,9 @@ void ProductionMppiNode::planningTick() {
   }
   const WorldPipelineResidentSnapshot3D resident_world =
       world_pipeline_->residentSnapshot();
+  const double capture_ms = std::chrono::duration<double, std::milli>(
+                                std::chrono::steady_clock::now() - snapshot_started)
+                                .count();
   const std::shared_ptr<const WorldSnapshot3D>& world = resident_world.world;
   const ProductionWorldBuildTelemetry3D& world_build = resident_world.telemetry;
   const std::shared_ptr<const ProductionRouteActivationResult3D> route_pipeline =
@@ -146,6 +151,12 @@ void ProductionMppiNode::planningTick() {
   // have been captured. A concurrently published evidence value may have a
   // receive stamp later than tick entry, but never later than this boundary.
   const std::int64_t now_ns = get_clock()->now().nanoseconds();
+  // The capture gate is opened with the exact stamp the mission observation
+  // carries; a second clock read between the two would break its continuity
+  // on every tick.
+  if (mission_waypoint_capture_gate_) {
+    mission_waypoint_capture_gate_->beginTick(now_ns);
+  }
   const double pose_age_ms =
       static_cast<double>(now_ns - navigation.receive_stamp_ns) / 1.0e6;
   double esdf_age_ms = std::numeric_limits<double>::infinity();
@@ -349,39 +360,53 @@ void ProductionMppiNode::planningTick() {
     return;
   }
   const std::uint64_t execution_input_sequence = ++execution_input_capture_sequence_;
-  const bool stationary_capture_rearm = stationaryCaptureRearmEligibleForPlanningTick(
-      ProductionMppiStationaryCaptureRearmContext{
-          .objective = objective.get(),
-          .mission_waypoint_sequence = mission_waypoint_sequence_.get(),
-          .navigation = &navigation,
-          .vehicle_status = &vehicle_status,
-          .execution_authority = execution_authority,
-          .offboard_session = &offboard_session,
-          .world = world.get(),
-          .latest_raw_world_3d = latest_raw_world_3d,
-          .latest_lidar_evidence = latest_lidar_evidence,
-          .validation_policy = config_.execution.validation_policy,
-          .static_occupancy_3d = world->static_occupancy,
-          .capture_gate_config = config_.execution.mission_waypoint_capture_gate,
-          .mission_goal = mission_goal,
-          .now_ns = now_ns,
-          .offboard_session_receive_stamp_ns = offboard_session_receive_stamp_ns,
-          .maximum_pose_age_ms = config_.execution.maximum_pose_age_ms,
-          .maximum_control_feedback_age_ms =
-              config_.execution.maximum_control_feedback_age_ms,
-          .maximum_esdf_age_ms = config_.world.maximum_esdf_age_ms,
-          .observation_age_ms = observation_age_ms,
-          .vehicle_status_epoch_stable = vehicle_status_epoch_stable,
-          .terminal_hold_enabled = terminal_hold_enabled,
-          .goal_capture_latched = goal_capture_latched,
-          .use_static_map = config_.world.use_static_map,
-          .observed_3d_world = observed_3d_world,
-      });
+  const char* const stationary_capture_rearm_failure =
+      stationaryCaptureRearmIneligibilityForPlanningTick(
+          ProductionMppiStationaryCaptureRearmContext{
+              .objective = objective.get(),
+              .mission_waypoint_sequence = mission_waypoint_sequence_.get(),
+              .navigation = &navigation,
+              .vehicle_status = &vehicle_status,
+              .execution_authority = execution_authority,
+              .offboard_session = &offboard_session,
+              .world = world.get(),
+              .latest_raw_world_3d = latest_raw_world_3d,
+              .latest_lidar_evidence = latest_lidar_evidence,
+              .validation_policy = config_.execution.validation_policy,
+              .static_occupancy_3d = world->static_occupancy,
+              .capture_gate_config = config_.execution.mission_waypoint_capture_gate,
+              .mission_goal = mission_goal,
+              .now_ns = now_ns,
+              .offboard_session_receive_stamp_ns = offboard_session_receive_stamp_ns,
+              .maximum_pose_age_ms = config_.execution.maximum_pose_age_ms,
+              .maximum_control_feedback_age_ms =
+                  config_.execution.maximum_control_feedback_age_ms,
+              .maximum_observation_age_ms =
+                  config_.world.maximum_esdf_age_ms +
+                  config_.execution.stale_esdf_execution_window_ms,
+              .observation_age_ms = observation_age_ms,
+              .vehicle_status_epoch_stable = vehicle_status_epoch_stable,
+              .terminal_hold_enabled = terminal_hold_enabled,
+              .goal_capture_latched = goal_capture_latched,
+              .use_static_map = config_.world.use_static_map,
+              .observed_3d_world = observed_3d_world,
+          });
+  const bool stationary_capture_rearm = stationary_capture_rearm_failure == nullptr;
+  if (goal_capture_latched && !stationary_capture_rearm) {
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
+                         "STATIONARY_CAPTURE_REARM eligible=false reason=%s",
+                         stationary_capture_rearm_failure);
+  }
+  const auto execution_input_started = std::chrono::steady_clock::now();
   const ProductionMppiExecutionInputPreparation execution_input_preparation =
       prepareExecutionInputForPlanningTick(
           navigation, execution_authority, execution_input_sequence, now_ns,
           config_.execution.maximum_control_feedback_age_ms, pose_predicted,
           stationary_capture_rearm);
+  const double execution_input_ms =
+      std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                execution_input_started)
+          .count();
   if (!execution_input_preparation.previous_control_available ||
       tick_sequence_ == std::numeric_limits<std::uint64_t>::max()) {
     RCLCPP_WARN_THROTTLE(
@@ -414,6 +439,7 @@ void ProductionMppiNode::planningTick() {
         ProductionMppiExecutionReason::kNoExecutableHorizon, now_ns);
     return;
   }
+  const auto cycle_prepare_started = std::chrono::steady_clock::now();
   PlanningCycleOutcome3D planning =
       planning_cycle_coordinator_->prepare(PlanningCycleRequest3D{
           .world = world.get(),
@@ -445,6 +471,10 @@ void ProductionMppiNode::planningTick() {
           .use_static_map = config_.world.use_static_map,
           .observed_3d_world = observed_3d_world,
       });
+  const double cycle_prepare_ms =
+      std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                cycle_prepare_started)
+          .count();
   for (const RouteExecutionSelectorEffect3D& effect :
        planning.effects.route_execution) {
     switch (effect.kind) {
@@ -617,6 +647,9 @@ void ProductionMppiNode::planningTick() {
       .observation_age_ms = observation_age_ms,
       .control_feedback_age_ms = control_feedback_age_ms,
       .snapshot_ms = snapshot_ms,
+      .capture_ms = capture_ms,
+      .execution_input_ms = execution_input_ms,
+      .cycle_prepare_ms = cycle_prepare_ms,
       .controller_ms = controller_ms,
       .tick_started = snapshot_started,
       .route_execution_status = planning.route.execution_status,

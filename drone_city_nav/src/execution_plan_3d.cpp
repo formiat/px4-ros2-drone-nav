@@ -48,11 +48,17 @@ bool executionRouteAcceptsCertifiedReplacement3D(
   if (route == nullptr) {
     return false;
   }
+  // A vehicle stopped before the end of its route, whatever the route's
+  // endpoint semantics, is exactly the state a certified replacement resolves:
+  // it stopped because the remaining route could not be executed. Only a
+  // route stopped at its own mission endpoint keeps the stop exclusive.
+  constexpr double kEndpointStopToleranceM{0.5};
   return snapshot.phase() == ExecutionRoutePhase3D::kFollowing ||
          snapshot.phase() == ExecutionRoutePhase3D::kAwaitingSuccessor ||
          snapshot.phase() == ExecutionRoutePhase3D::kBraking ||
          (snapshot.phase() == ExecutionRoutePhase3D::kStopped &&
-          route->planned_endpoint_semantics == RouteEndpointSemantics3D::kLocalStop);
+          (route->planned_endpoint_semantics == RouteEndpointSemantics3D::kLocalStop ||
+           route->remainingM() > kEndpointStopToleranceM));
 }
 
 std::string_view finiteExecutionKind3DName(const FiniteExecutionKind3D kind) noexcept {

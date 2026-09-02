@@ -18,6 +18,21 @@ enum class ExecutionRoutePublicationStatus3D : std::uint8_t {
   kAuthorityRevisionExhausted,
 };
 
+[[nodiscard]] constexpr const char* executionRoutePublicationStatus3DName(
+    const ExecutionRoutePublicationStatus3D status) noexcept {
+  switch (status) {
+    case ExecutionRoutePublicationStatus3D::kPublished:
+      return "published";
+    case ExecutionRoutePublicationStatus3D::kInvalidCandidate:
+      return "invalid_candidate";
+    case ExecutionRoutePublicationStatus3D::kStaleSnapshotVersion:
+      return "stale_snapshot_version";
+    case ExecutionRoutePublicationStatus3D::kAuthorityRevisionExhausted:
+      return "authority_revision_exhausted";
+  }
+  return "unknown";
+}
+
 enum class PendingRoutePublicationStatus3D : std::uint8_t {
   kPublished,
   kReplaced,

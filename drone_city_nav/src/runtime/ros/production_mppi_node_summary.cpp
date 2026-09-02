@@ -147,6 +147,8 @@ void ProductionMppiNode::publishSummary() {
       " route_planning_processing_failures=%" PRIu64
       " route_planning_handler_failures=%" PRIu64
       " tick_snapshot_p50_ms=%.3f tick_snapshot_p95_ms=%.3f tick_snapshot_max_ms=%.3f"
+      " tick_cycle_prepare_p50_ms=%.3f tick_cycle_prepare_p95_ms=%.3f"
+      " tick_commit_p50_ms=%.3f tick_commit_p95_ms=%.3f"
       " tick_controller_p50_ms=%.3f tick_controller_p95_ms=%.3f"
       " tick_publication_p50_ms=%.3f tick_publication_p95_ms=%.3f"
       " tick_publication_max_ms=%.3f tick_total_p50_ms=%.3f tick_total_p95_ms=%.3f"
@@ -210,6 +212,10 @@ void ProductionMppiNode::publishSummary() {
       percentile(diagnostics.snapshot_phase_samples_ms, 0.50),
       percentile(diagnostics.snapshot_phase_samples_ms, 0.95),
       percentile(diagnostics.snapshot_phase_samples_ms, 1.0),
+      percentile(diagnostics.cycle_prepare_phase_samples_ms, 0.50),
+      percentile(diagnostics.cycle_prepare_phase_samples_ms, 0.95),
+      percentile(diagnostics.commit_phase_samples_ms, 0.50),
+      percentile(diagnostics.commit_phase_samples_ms, 0.95),
       percentile(diagnostics.controller_phase_samples_ms, 0.50),
       percentile(diagnostics.controller_phase_samples_ms, 0.95),
       percentile(diagnostics.publication_phase_samples_ms, 0.50),

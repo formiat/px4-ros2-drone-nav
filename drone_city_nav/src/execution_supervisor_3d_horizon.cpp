@@ -9,6 +9,8 @@
 #include <utility>
 #include <vector>
 
+#include "execution_route_snapshot_3d_internal.hpp"
+
 namespace drone_city_nav {
 namespace {
 
@@ -123,12 +125,32 @@ timedExecutionPathPoints(const FiniteExecutionEvidenceView3D& view) {
   }
   const DirectTrackingFiniteExecution3D* const direct =
       snapshot.directTrackingExecution();
-  if (direct == nullptr) {
+  if (direct != nullptr) {
+    const std::optional<FiniteExecutionEvidenceView3D> view =
+        finiteExecutionEvidenceView(*direct);
+    return view.has_value() &&
+           revalidateFiniteExecution(*view, latest_raw, latest_lidar);
+  }
+  // A stationary hold executes no path; its evidence on the newest world is
+  // the body at the hold position staying clear of raw occupancy. Without this
+  // a re-lease fails on every world change and the hold churns through
+  // expiry, revocation and re-arm while a pending route waits for a stable
+  // base to hand off from.
+  const StationaryExecutionHold3D* const hold = snapshot.stationaryHold();
+  if (hold == nullptr || !hold->valid() || hold->terminal_execution_input == nullptr ||
+      hold->validation_policy == nullptr || latest_lidar == nullptr ||
+      !latest_lidar->valid()) {
     return false;
   }
-  const std::optional<FiniteExecutionEvidenceView3D> view =
-      finiteExecutionEvidenceView(*direct);
-  return view.has_value() && revalidateFiniteExecution(*view, latest_raw, latest_lidar);
+  const bool static_world = hold->static_world != nullptr;
+  if ((!static_world && (latest_raw == nullptr || !latest_raw->valid())) ||
+      (static_world && !hold->static_world->valid())) {
+    return false;
+  }
+  return execution_route_snapshot_3d_internal::stationaryHoldRawSafe(
+      hold->position, *hold->terminal_execution_input,
+      static_world ? nullptr : latest_raw.get(), hold->static_world.get(),
+      *hold->validation_policy, *latest_lidar);
 }
 
 [[nodiscard]] std::shared_ptr<const VersionedObservedRawWorld3D>
@@ -183,13 +205,25 @@ progressPreservesRouteEvidence(const ExecutionPlan3D& expected,
                                const ExecutionPlan3D& prepared) noexcept {
   const CertifiedRouteSuffix3D* const source = expected.route();
   const CertifiedRouteSuffix3D* const next = prepared.route();
+  // The prepared progress may carry route evidence re-derived from a newer
+  // raw revision of the same lineage; the commit revalidates the finite path
+  // against the current evidence, so only the identity of the route and the
+  // lineage of its raw evidence must be preserved.
+  const auto same_raw_lineage = [](const auto& first, const auto& second) {
+    if (first == second) {
+      return true;
+    }
+    return first != nullptr && second != nullptr && first->valid() && second->valid() &&
+           first->version().sameLineage(second->version()) &&
+           first->version().revision <= second->version().revision;
+  };
   return source != nullptr && next != nullptr &&
          source->route_instance_id == next->route_instance_id &&
          source->owner.id == next->owner.id &&
          source->identity.generation == next->identity.generation &&
          source->geometry == next->geometry &&
          source->continuity_id == next->continuity_id &&
-         source->observed_raw_world == next->observed_raw_world &&
+         same_raw_lineage(source->observed_raw_world, next->observed_raw_world) &&
          source->static_world == next->static_world &&
          source->validation_policy == next->validation_policy &&
          source->planned_endpoint_semantics == next->planned_endpoint_semantics;
@@ -269,7 +303,7 @@ previousControlCurrent(const VersionedExecutionInput3D& input,
                        const bool stationary_capture_rearm) noexcept {
   switch (input.previousControlSource()) {
     case ExecutionPreviousControlEvidenceSource3D::kOffboardFeedback:
-      return appliedControlAuthoritativeForExecution3D(
+      return appliedControlCurrentForExecutionInput3D(
                  resident_control, resident_owner, now_ns,
                  maximum_control_feedback_age_ms) &&
              resident_control.horizon_producer_instance_id ==
@@ -402,6 +436,45 @@ bool appliedControlAuthoritativeForExecution3D(const AppliedControlEvidence3D& c
                                                const double maximum_age_ms) noexcept {
   return appliedControlAuthorityFailure3D(control, owner, now_ns, maximum_age_ms) ==
          nullptr;
+}
+
+bool appliedControlCurrentForExecutionInput3D(const AppliedControlEvidence3D& control,
+                                              const ExecutionOwnerIdentity3D& owner,
+                                              const std::int64_t now_ns,
+                                              const double maximum_age_ms) noexcept {
+  if (!owner.valid || !control.valid || control.producer_instance_id == 0U ||
+      control.horizon_producer_instance_id == 0U ||
+      control.horizon_producer_instance_id != owner.producer_instance_id ||
+      control.producer_instance_id != owner.target_offboard_instance_id ||
+      control.horizon_sequence == 0U || control.source_stamp_ns <= 0 ||
+      control.receive_stamp_ns <= 0 || now_ns < 0 || !std::isfinite(maximum_age_ms) ||
+      !(maximum_age_ms > 0.0)) {
+    return false;
+  }
+  // A planned owner needs authoritative planned feedback of its own horizon or
+  // of its immediate predecessor. A stationary hold owner needs the offboard's
+  // hold feedback of that same hold: the offboard reports it as
+  // non-authoritative because no planned control is being applied, and the
+  // previous control of a certified stationary hold is exactly zero.
+  const bool planned_pair =
+      control.execution_mode == ExecutionAuthorityMode3D::kPlanned &&
+      owner.execution_mode == ExecutionAuthorityMode3D::kPlanned &&
+      control.control_authoritative &&
+      (control.horizon_sequence == owner.sequence ||
+       control.horizon_sequence + 1U == owner.sequence);
+  const bool hold_pair =
+      control.execution_mode == ExecutionAuthorityMode3D::kPositionHold &&
+      owner.execution_mode == ExecutionAuthorityMode3D::kPositionHold &&
+      control.horizon_sequence == owner.sequence;
+  if (!planned_pair && !hold_pair) {
+    return false;
+  }
+  const double source_age_ms =
+      static_cast<double>(now_ns - control.source_stamp_ns) * 1.0e-6;
+  const double receive_age_ms =
+      static_cast<double>(now_ns - control.receive_stamp_ns) * 1.0e-6;
+  return std::abs(source_age_ms) <= maximum_age_ms &&
+         std::abs(receive_age_ms) <= maximum_age_ms;
 }
 
 const char* executionHorizonCommitStatus3DName(

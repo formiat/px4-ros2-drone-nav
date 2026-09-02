@@ -120,13 +120,24 @@ bool pendingCertifiedRouteEligible3D(const PendingCertifiedRoute3D& pending,
              pending.route_splice.has_value() &&
              pending.route_splice->validFor(*route, pending.route);
     case PendingExecutionBaseKind3D::kRouteHandoff:
+      if (pending.route_splice.has_value()) {
+        return false;
+      }
+      // The base route may have been revoked by physical evidence after the
+      // replacement was certified. The replacement was planned from the
+      // vehicle and is re-validated on activation, so a revoked, empty plan
+      // whose last route generation is the base still hands it off.
+      if (snapshot.phase() == ExecutionRoutePhase3D::kRevoked && route == nullptr &&
+          snapshot.finiteExecution() == nullptr && direct == nullptr &&
+          hold == nullptr) {
+        return true;
+      }
       return executionRouteAcceptsCertifiedReplacement3D(snapshot) &&
              route != nullptr && route->geometry != nullptr &&
              route->identity.generation == pending.base_route_generation &&
              route->geometry->compiled_trajectory_revision ==
                  pending.base_geometry_revision &&
-             route->continuity_id == pending.base_continuity_id &&
-             !pending.route_splice.has_value();
+             route->continuity_id == pending.base_continuity_id;
     case PendingExecutionBaseKind3D::kDirectTracking:
       return snapshot.phase() == ExecutionRoutePhase3D::kDirectTracking &&
              direct != nullptr && pending.base_direct_tracking_identity.has_value() &&

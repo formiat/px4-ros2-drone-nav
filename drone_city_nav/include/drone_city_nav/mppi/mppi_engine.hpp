@@ -139,6 +139,10 @@ struct MppiTickResult {
   MppiControlSelection control_selection{MppiControlSelection::kWeightedUpdate};
   float effective_temperature{0.0F};
   float route_directed_candidate_cost_excess{0.0F};
+  // Exposure and clearance of the route-directed candidate rollout itself,
+  // so a rejected candidate names what the executor objected to.
+  float route_directed_candidate_critical_exposure_m{0.0F};
+  float route_directed_candidate_minimum_clearance_m{0.0F};
   // Every rollout intersected raw occupancy in the sampler, so the body gate
   // was lifted for this update and the raw validators decide alone.
   bool collision_gate_lifted{false};

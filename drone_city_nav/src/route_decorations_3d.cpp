@@ -290,7 +290,9 @@ RouteDecorations3D::RouteDecorations3D(
 
 std::uint64_t
 routeDecorationsRevision3D(const RouteDecorations3D& decorations) noexcept {
-  return calculateRouteDecorationsRevision(decorations);
+  // Sealed at construction over immutable, non-copyable resources; see
+  // compiledTrajectoryRevision3D.
+  return decorations.route_decorations_revision;
 }
 
 bool routeDecorationsValid3D(const RouteDecorations3D& decorations,

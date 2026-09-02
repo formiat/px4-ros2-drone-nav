@@ -189,7 +189,30 @@ CompiledTrajectoryValidation3D validateCompiledTrajectorySamples3D(
   return {Failure::kValid, route.size() - 1U};
 }
 
+namespace {
+
+[[nodiscard]] bool constrainedSpansMatchGeneration(
+    const CompiledTrajectory3D& trajectory,
+    const std::uint64_t expected_route_generation) noexcept {
+  if (expected_route_generation == 0U || trajectory.constrained_spans == nullptr) {
+    return trajectory.constrained_spans != nullptr;
+  }
+  return std::ranges::all_of(
+      *trajectory.constrained_spans, [&](const ConstrainedRouteSpan& span) {
+        return span.route_generation == expected_route_generation;
+      });
+}
+
+} // namespace
+
 bool compiledTrajectoryResourcesValid3D(
+    const CompiledTrajectory3D& trajectory,
+    const std::uint64_t expected_route_generation) noexcept {
+  return trajectory.compiled_trajectory_revision != 0U &&
+         constrainedSpansMatchGeneration(trajectory, expected_route_generation);
+}
+
+bool compiledTrajectoryResourcesVerified3D(
     const CompiledTrajectory3D& trajectory,
     const std::uint64_t expected_route_generation) noexcept {
   if (!endpointSemanticsValid(trajectory.endpoint_semantics) ||

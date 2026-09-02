@@ -39,7 +39,8 @@ public:
           double execution_input_maximum_control_age_ms = 1000.0,
           bool route_cross_track_constraints_enabled = false,
           bool latest_lidar_freshness_required = true,
-          bool route_tracking_tube_constraints_enabled = true);
+          bool route_tracking_tube_constraints_enabled = true,
+          double route_station_credit_slack_m = 0.0);
 
   [[nodiscard]] const FlightEnvelopeConfig& flightEnvelope() const noexcept;
   [[nodiscard]] const MotionDynamicsConfig3D& dynamics() const noexcept;
@@ -51,6 +52,12 @@ public:
   [[nodiscard]] bool routeCrossTrackConstraintsEnabled() const noexcept;
   [[nodiscard]] bool latestLidarFreshnessRequired() const noexcept;
   [[nodiscard]] bool routeTrackingTubeConstraintsEnabled() const noexcept;
+  // Route station a progress observation may be credited beyond the
+  // vehicle's displacement since the last binding. The executor steers at a
+  // target that far ahead along the route, so cutting a bend advances the
+  // station by more than the chord flown; without the slack the credited
+  // station lags the vehicle by every corner cut and never recovers.
+  [[nodiscard]] double routeStationCreditSlackM() const noexcept;
   [[nodiscard]] ExecutionValidationPolicyId3D policyId() const noexcept;
   [[nodiscard]] std::uint64_t contentFingerprint() const noexcept;
   [[nodiscard]] bool valid() const noexcept;
@@ -62,7 +69,8 @@ public:
       double execution_input_maximum_pose_age_ms,
       double execution_input_maximum_control_age_ms,
       bool route_cross_track_constraints_enabled, bool latest_lidar_freshness_required,
-      bool route_tracking_tube_constraints_enabled);
+      bool route_tracking_tube_constraints_enabled,
+      double route_station_credit_slack_m);
 
 private:
   FlightEnvelopeConfig flight_envelope_{};
@@ -75,6 +83,7 @@ private:
   bool route_cross_track_constraints_enabled_{false};
   bool latest_lidar_freshness_required_{true};
   bool route_tracking_tube_constraints_enabled_{true};
+  double route_station_credit_slack_m_{0.0};
   std::uint64_t content_fingerprint_{0U};
 };
 

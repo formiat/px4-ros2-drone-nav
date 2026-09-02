@@ -162,6 +162,34 @@ TEST(MppiSpeedPolicyTest, ContinuationIgnoresItsLocalEndpointDistance) {
   EXPECT_NE(result.active_limiter, MppiSpeedLimiter::kRouteEndpoint);
 }
 
+TEST(MppiSpeedPolicyTest, LocalStopBesideItsEndpointKeepsTheStraightDistanceAllowance) {
+  MppiSpeedPolicyConfig config;
+  config.cruise_speed_mps = 20.0;
+  config.absolute_speed_limit_mps = 20.0;
+  config.stopping_capability.maximum_commanded_horizontal_deceleration_mps2 = 8.0;
+  config.stopping_capability.reaction_latency_s = 0.1;
+  allowHighSensorBrakingSpeed(config);
+  // The vehicle projects onto the route's last sample (no station left) while
+  // the endpoint itself is still half a metre away.
+  std::array<RouteSample3D, 1U> route{};
+  route.front().position = Point3{0.5, 0.0, 0.0};
+  route.front().station_m = 3.5;
+  MppiSpeedPolicyInput input;
+  input.mission_goal = Point3{300.0, 0.0, 18.0};
+  input.route = route;
+  input.route_endpoint_remaining_m = 0.0;
+  input.route_endpoint_semantics = RouteEndpointSemantics3D::kLocalStop;
+
+  const MppiSpeedPolicyResult beside_endpoint = evaluateMppiSpeedPolicy(config, input);
+
+  EXPECT_GT(beside_endpoint.route_endpoint_limit_mps, 1.0);
+  EXPECT_TRUE(beside_endpoint.route_endpoint_stop_required);
+
+  route.front().position = Point3{0.0, 0.0, 0.0};
+  const MppiSpeedPolicyResult at_endpoint = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_DOUBLE_EQ(at_endpoint.route_endpoint_limit_mps, 0.0);
+}
+
 TEST(MppiSpeedPolicyTest, LocalStopBrakesAtItsFiniteEndpoint) {
   MppiSpeedPolicyConfig config;
   config.cruise_speed_mps = 20.0;

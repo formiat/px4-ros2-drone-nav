@@ -124,6 +124,10 @@ void ProductionMppiNode::finalizePlanningTick(
   }
   ++tick_sequence_;
   const auto publication_started = std::chrono::steady_clock::now();
+  latest_horizon_commit_ms_ = 0.0;
+  latest_horizon_assembly_ms_ = 0.0;
+  latest_horizon_wire_ms_ = 0.0;
+  latest_publication_started_ = publication_started;
   ProductionMppiExecutionPublication execution = publishExecutionHorizon(
       input, result, *world, route_execution, objective, execution_input,
       latest_lidar_evidence, finalization.offboard_session,
@@ -131,10 +135,16 @@ void ProductionMppiNode::finalizePlanningTick(
   const auto publication_finished = std::chrono::steady_clock::now();
   const ProductionMppiTickPhaseTimings phases{
       .snapshot_ms = finalization.snapshot_ms,
+      .capture_ms = finalization.capture_ms,
+      .execution_input_ms = finalization.execution_input_ms,
+      .cycle_prepare_ms = finalization.cycle_prepare_ms,
       .controller_ms = finalization.controller_ms,
       .publication_ms = std::chrono::duration<double, std::milli>(publication_finished -
                                                                   publication_started)
                             .count(),
+      .assembly_ms = latest_horizon_assembly_ms_,
+      .commit_ms = latest_horizon_commit_ms_,
+      .wire_ms = latest_horizon_wire_ms_,
       .total_ms = std::chrono::duration<double, std::milli>(publication_finished -
                                                             finalization.tick_started)
                       .count(),

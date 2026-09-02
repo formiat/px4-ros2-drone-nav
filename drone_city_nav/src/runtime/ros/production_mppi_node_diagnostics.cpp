@@ -226,8 +226,14 @@ void ProductionMppiNode::processDiagnostics(
        << " horizon_reconstruction_ms=" << result.timings.horizon_reconstruction_ms
        << " total_ms=" << result.timings.host_total_ms
        << " snapshot_ms=" << snapshot.phases.snapshot_ms
+       << " capture_ms=" << snapshot.phases.capture_ms
+       << " execution_input_ms=" << snapshot.phases.execution_input_ms
+       << " cycle_prepare_ms=" << snapshot.phases.cycle_prepare_ms
        << " controller_ms=" << snapshot.phases.controller_ms
        << " publication_ms=" << snapshot.phases.publication_ms
+       << " assembly_ms=" << snapshot.phases.assembly_ms
+       << " commit_ms=" << snapshot.phases.commit_ms
+       << " wire_ms=" << snapshot.phases.wire_ms
        << " tick_total_ms=" << snapshot.phases.total_ms
        << " stability_ms=" << snapshot.stability_ms << " rviz_ms=" << rviz_ms
        << " deadline_missed="
@@ -605,8 +611,14 @@ void ProductionMppiNode::processDiagnostics(
          << result.timings.horizon_reconstruction_ms
          << ",\"total_ms\":" << result.timings.host_total_ms
          << ",\"snapshot_ms\":" << snapshot.phases.snapshot_ms
+         << ",\"capture_ms\":" << snapshot.phases.capture_ms
+         << ",\"execution_input_ms\":" << snapshot.phases.execution_input_ms
+         << ",\"cycle_prepare_ms\":" << snapshot.phases.cycle_prepare_ms
          << ",\"controller_ms\":" << snapshot.phases.controller_ms
          << ",\"publication_ms\":" << snapshot.phases.publication_ms
+         << ",\"assembly_ms\":" << snapshot.phases.assembly_ms
+         << ",\"commit_ms\":" << snapshot.phases.commit_ms
+         << ",\"wire_ms\":" << snapshot.phases.wire_ms
          << ",\"tick_total_ms\":" << snapshot.phases.total_ms
          << ",\"stability_ms\":" << snapshot.stability_ms << ",\"rviz_ms\":" << rviz_ms
          << ",\"altitude_envelope_violation\":"
@@ -671,6 +683,10 @@ void ProductionMppiNode::processDiagnostics(
          << result.route_directed_candidate_weight
          << ",\"route_directed_candidate_cost_excess\":"
          << result.route_directed_candidate_cost_excess
+         << ",\"route_directed_candidate_critical_exposure_m\":"
+         << result.route_directed_candidate_critical_exposure_m
+         << ",\"route_directed_candidate_minimum_clearance_m\":"
+         << result.route_directed_candidate_minimum_clearance_m
          << ",\"effective_temperature\":" << result.effective_temperature
          << ",\"collision_gate_lifted\":"
          << (result.collision_gate_lifted ? "true" : "false")

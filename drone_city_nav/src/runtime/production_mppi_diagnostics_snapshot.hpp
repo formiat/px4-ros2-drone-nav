@@ -30,8 +30,19 @@ namespace drone_city_nav {
 // assembly, and publication visible in the same diagnostics.
 struct ProductionMppiTickPhaseTimings {
   double snapshot_ms{0.0};
+  // Sub-phases of the snapshot phase: locked input capture, execution input
+  // preparation, and the planning-cycle preparation (route execution and
+  // finite-path assessment).
+  double capture_ms{0.0};
+  double execution_input_ms{0.0};
+  double cycle_prepare_ms{0.0};
   double controller_ms{0.0};
   double publication_ms{0.0};
+  // Sub-phases of publication: horizon assembly before the commit, the
+  // supervisor commit transaction, and the wire publication after it.
+  double assembly_ms{0.0};
+  double commit_ms{0.0};
+  double wire_ms{0.0};
   double total_ms{0.0};
 };
 

@@ -327,11 +327,30 @@ buildValidatedFiniteExecutionPath3DFromPreservedPrefix(
     const std::size_t maximum_nominal_prefix_control_count,
     FiniteExecutionPathCandidateValidator3D candidate_validator) {
   ValidatedFiniteExecutionPath3D result;
-  if (!validWorld(world) || !finite(previous_applied_control) ||
-      planned_states.size() != planned_controls.size() + 1U ||
-      planned_controls.empty() || arrival_search_step_controls == 0U ||
-      initial_preserved_prefix_control_count > planned_controls.size() ||
-      maximum_nominal_prefix_control_count > initial_preserved_prefix_control_count) {
+  const auto precondition_failure = [&]() -> const char* {
+    if (!validWorld(world)) {
+      return "world_invalid";
+    }
+    if (!finite(previous_applied_control)) {
+      return "previous_control_not_finite";
+    }
+    if (planned_controls.empty()) {
+      return "planned_controls_empty";
+    }
+    if (planned_states.size() != planned_controls.size() + 1U) {
+      return "planned_states_controls_mismatch";
+    }
+    if (arrival_search_step_controls == 0U) {
+      return "arrival_search_step_zero";
+    }
+    if (initial_preserved_prefix_control_count > planned_controls.size() ||
+        maximum_nominal_prefix_control_count > initial_preserved_prefix_control_count) {
+      return "prefix_counts_inconsistent";
+    }
+    return nullptr;
+  }();
+  if (precondition_failure != nullptr) {
+    result.rejected_precondition = precondition_failure;
     return result;
   }
 
@@ -361,6 +380,7 @@ buildValidatedFiniteExecutionPath3DFromPreservedPrefix(
       }
       if (!result.path_validation_backoff) {
         result.first_failed_validation_status = result.validation.status;
+        result.first_failed_validation = result.validation;
       }
       result.path_validation_backoff = true;
       result.persistent_raw_path_validation_backoff |=

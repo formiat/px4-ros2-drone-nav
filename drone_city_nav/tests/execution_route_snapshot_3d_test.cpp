@@ -127,9 +127,18 @@ TEST(ExecutionRouteSnapshot3DTest,
   };
   EXPECT_TRUE(executionRouteAcceptsCertifiedReplacement3D(snapshot));
 
-  std::get<CertifiedTerminalHoldPlan3D>(
-      std::get<StationaryHoldPlan3D>(snapshot.state).owner)
-      .route.planned_endpoint_semantics = RouteEndpointSemantics3D::kMissionStop;
+  // A mission-stop hold short of the route end is a stop the route did not
+  // plan; a certified replacement may still take over the remaining route.
+  CertifiedRouteSuffix3D& mission_stop_route =
+      std::get<CertifiedTerminalHoldPlan3D>(
+          std::get<StationaryHoldPlan3D>(snapshot.state).owner)
+          .route;
+  mission_stop_route.planned_endpoint_semantics =
+      RouteEndpointSemantics3D::kMissionStop;
+  ASSERT_GT(mission_stop_route.remainingM(), 0.5);
+  EXPECT_TRUE(executionRouteAcceptsCertifiedReplacement3D(snapshot));
+  // At the route end the mission stop is final.
+  mission_stop_route.progress.station_m = mission_stop_route.endStationM();
   EXPECT_FALSE(executionRouteAcceptsCertifiedReplacement3D(snapshot));
 
   snapshot.state = RevokedPlan3D{};

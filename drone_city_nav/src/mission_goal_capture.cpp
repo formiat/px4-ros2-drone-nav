@@ -24,13 +24,20 @@ MissionGoalCaptureLatch::MissionGoalCaptureLatch(const MissionGoalCaptureConfig&
   if (!(config_.capture_radius_m > 0.0)) {
     throw std::invalid_argument{"mission goal capture radius must be positive"};
   }
+  if (!(config_.stationary_position_tolerance_m > 0.0) ||
+      !(config_.stationary_speed_tolerance_mps > 0.0)) {
+    throw std::invalid_argument{
+        "mission goal capture stationary tolerances must be positive"};
+  }
 }
 
 MissionGoalCaptureResult
 MissionGoalCaptureLatch::update(const MissionGoalCaptureObservation& observation) {
   MissionGoalCaptureResult result;
   if (!finiteMission(observation.mission_goal) || !std::isfinite(observation.state.x) ||
-      !std::isfinite(observation.state.y) || !std::isfinite(observation.state.z)) {
+      !std::isfinite(observation.state.y) || !std::isfinite(observation.state.z) ||
+      !std::isfinite(observation.state.vx) || !std::isfinite(observation.state.vy) ||
+      !std::isfinite(observation.state.vz)) {
     return result;
   }
   if (!mission_initialized_ || !sameMission(mission_goal_, observation.mission_goal)) {
@@ -42,8 +49,13 @@ MissionGoalCaptureLatch::update(const MissionGoalCaptureObservation& observation
   result.distance_m =
       distance3D(Point3{observation.state.x, observation.state.y, observation.state.z},
                  mission_goal_);
+  result.speed_mps = std::hypot(std::hypot(observation.state.vx, observation.state.vy),
+                                observation.state.vz);
+  const bool holdable_at_goal =
+      result.distance_m <= config_.stationary_position_tolerance_m &&
+      result.speed_mps <= config_.stationary_speed_tolerance_mps;
   if (!latched_ && observation.terminal_route_available &&
-      result.distance_m <= config_.capture_radius_m) {
+      result.distance_m <= config_.capture_radius_m && holdable_at_goal) {
     latched_ = true;
     result.newly_latched = true;
   }
