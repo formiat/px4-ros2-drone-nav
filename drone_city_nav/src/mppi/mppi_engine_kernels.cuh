@@ -139,6 +139,9 @@ __device__ DeviceBodyAxis bodyAxisFromControl(const Control control) {
 struct DeviceEsdfQuery {
   float clearance_m;
   bool unknown_space;
+  // The sampled point lies inside a raw occupied voxel: its own distance is
+  // exactly zero. Unlike the conservative clearance this is an exact fact.
+  bool inside_occupied;
 };
 
 __device__ DeviceEsdfQuery queryEsdfPoint(const float x, const float y, const float z,
@@ -154,19 +157,19 @@ __device__ DeviceEsdfQuery queryEsdfPoint(const float x, const float y, const fl
                 : 0;
   if (cell_x < 0 || cell_y < 0 || cell_z < 0 || cell_x >= grid.width ||
       cell_y >= grid.height || cell_z >= depth) {
-    return {grid.outside_is_unknown ? 0.0F : kInfinity, grid.outside_is_unknown};
+    return {grid.outside_is_unknown ? 0.0F : kInfinity, grid.outside_is_unknown, false};
   }
   const float center_distance_m = tex3D<float>(
       esdf_texture, static_cast<float>(cell_x) + 0.5F,
       static_cast<float>(cell_y) + 0.5F, static_cast<float>(cell_z) + 0.5F);
   if (center_distance_m == kUnknownEsdfDistanceM) {
-    return {0.0F, true};
+    return {0.0F, true, false};
   }
   if (isinf(center_distance_m) && center_distance_m > 0.0F) {
-    return {center_distance_m, false};
+    return {center_distance_m, false, false};
   }
   if (!isfinite(center_distance_m) || center_distance_m < 0.0F) {
-    return {0.0F, true};
+    return {0.0F, true, false};
   }
   const float center_x_m =
       grid.origin_x_m + (static_cast<float>(cell_x) + 0.5F) * grid.resolution_m;
@@ -181,7 +184,8 @@ __device__ DeviceEsdfQuery queryEsdfPoint(const float x, const float y, const fl
       depth > 1 ? 0.86602540378443864676F : 0.70710678118654752440F;
   const float correction_m =
       sqrtf(dx * dx + dy * dy + dz * dz) + half_diagonal_scale * grid.resolution_m;
-  return {fmaxf(0.0F, center_distance_m - correction_m), false};
+  return {fmaxf(0.0F, center_distance_m - correction_m), false,
+          center_distance_m == 0.0F};
 }
 
 __device__ DeviceBodyAxis crossAxis(const DeviceBodyAxis first,
@@ -249,6 +253,7 @@ __device__ DeviceEsdfQuery queryFootprint(const State& state,
         const float dy = state.y - nearest_y;
         if (dx * dx + dy * dy <= radius_squared) {
           result.clearance_m = 0.0F;
+          result.inside_occupied = true;
         }
       }
     }
@@ -299,6 +304,7 @@ __device__ DeviceEsdfQuery queryFootprint(const State& state,
             state.z + axial_offset * axis.z + radial_z_offset, grid, esdf_texture);
         result.clearance_m = fminf(result.clearance_m, query.clearance_m);
         result.unknown_space = result.unknown_space || query.unknown_space;
+        result.inside_occupied = result.inside_occupied || query.inside_occupied;
         if (result.unknown_space) {
           return result;
         }
@@ -312,12 +318,12 @@ __global__ void
 simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
          const float* noise_yaw, const Control* nominal, float* soft_cost,
          float* critical_exposure, float* planning_exposure, float* minimum_clearance,
-         std::uint8_t* altitude_envelope_violation, std::uint8_t* worst_tier,
-         std::size_t rollouts, std::size_t steps, State initial, State target,
-         MovingTargetReference moving_target, bool moving_target_enabled,
-         DynamicsConfig dynamics, RiskConfig risk, FootprintConfig footprint,
-         AltitudeEnvelopeConfig altitude_envelope, CostConfig costs,
-         HorizonSamplingConfig horizon_sampling, EsdfGrid grid,
+         std::uint8_t* altitude_envelope_violation, std::uint8_t* collision_violation,
+         std::uint8_t* worst_tier, std::size_t rollouts, std::size_t steps,
+         State initial, State target, MovingTargetReference moving_target,
+         bool moving_target_enabled, DynamicsConfig dynamics, RiskConfig risk,
+         FootprintConfig footprint, AltitudeEnvelopeConfig altitude_envelope,
+         CostConfig costs, HorizonSamplingConfig horizon_sampling, EsdfGrid grid,
          cudaTextureObject_t esdf_texture, const RouteSample3D* route_points,
          std::size_t route_point_count, float initial_route_station_m,
          const DynamicAircraftSample* dynamic_aircraft_samples,
@@ -350,6 +356,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
   float obstacle_approach_m2_s = 0.0F;
   float minimum_clearance_m = kInfinity;
   float previous_clearance_m = kInfinity;
+  bool collision_hit = false;
   bool altitude_envelope_hit = !altitudeEnvelopeDynamicallyRecoverable(
       initial, previous_applied_control, dynamics, altitude_envelope);
   std::uint8_t tier = static_cast<std::uint8_t>(RiskTier::kPreferred);
@@ -406,6 +413,9 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
           swept_state, body_axis, footprint,
           footprint.clearance_broad_phase_enabled ? risk.preferred_distance_m : 0.0F,
           grid, esdf_texture);
+      // A body sample inside a raw occupied voxel is a physical intersection,
+      // not a clearance preference: such a rollout cannot be executed.
+      collision_hit = collision_hit || esdf_query.inside_occupied;
       if (!esdf_query.unknown_space) {
         clearance = fminf(clearance, esdf_query.clearance_m);
       }
@@ -573,6 +583,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
   planning_exposure[rollout] = planning_m;
   minimum_clearance[rollout] = minimum_clearance_m;
   altitude_envelope_violation[rollout] = altitude_envelope_hit ? 1U : 0U;
+  collision_violation[rollout] = collision_hit ? 1U : 0U;
   worst_tier[rollout] = tier;
 }
 
@@ -591,12 +602,25 @@ __device__ float atomicMinFloat(float* address, float value) {
 }
 
 __global__ void initializeReduction(float* minimum_soft, float* weight_sum,
-                                    int* best_rollout) {
+                                    int* best_rollout, float* feasible_cost_sum,
+                                    unsigned int* feasible_count) {
   if (blockIdx.x == 0 && threadIdx.x == 0) {
     *minimum_soft = kInfinity;
     *weight_sum = 0.0F;
     *best_rollout = INT_MAX;
+    *feasible_cost_sum = 0.0F;
+    *feasible_count = 0U;
   }
+}
+
+// A rollout takes part in the weighted update only when it is executable:
+// inside the altitude envelope and, unless the caller lifted that gate because
+// every rollout intersected raw occupancy, free of body-sample intersections.
+__device__ bool rolloutFeasible(const std::uint8_t altitude_envelope_violation,
+                                const std::uint8_t collision_violation,
+                                const bool ignore_collision) {
+  return altitude_envelope_violation == 0U &&
+         (ignore_collision || collision_violation == 0U);
 }
 
 template<typename T> __device__ T blockMinimum(T value, const T identity) {
@@ -685,12 +709,15 @@ __global__ void buildBestFeasibleControls(
 
 __global__ void reduceSoft(const float* soft,
                            const std::uint8_t* altitude_envelope_violation,
-                           std::size_t count, float* minimum_soft) {
+                           const std::uint8_t* collision_violation,
+                           bool ignore_collision, std::size_t count,
+                           float* minimum_soft) {
   const std::size_t index =
       static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   const bool valid = index < count;
   float candidate = kInfinity;
-  if (valid && altitude_envelope_violation[index] == 0U) {
+  if (valid && rolloutFeasible(altitude_envelope_violation[index],
+                               collision_violation[index], ignore_collision)) {
     candidate = soft[index];
   }
   const float block_candidate = blockMinimum(candidate, kInfinity);
@@ -699,16 +726,56 @@ __global__ void reduceSoft(const float* soft,
   }
 }
 
-__global__ void calculateWeights(const float* soft,
-                                 const std::uint8_t* altitude_envelope_violation,
-                                 float* weights, std::size_t count,
-                                 const float* minimum_soft, float temperature,
-                                 float* weight_sum) {
+// Sums the feasible costs above the minimum so the temperature can follow the
+// spread of the population instead of a fixed constant.
+__global__ void accumulateFeasibleCost(
+    const float* soft, const std::uint8_t* altitude_envelope_violation,
+    const std::uint8_t* collision_violation, bool ignore_collision, std::size_t count,
+    const float* minimum_soft, float* feasible_cost_sum, unsigned int* feasible_count) {
   const std::size_t index =
       static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   const bool valid = index < count;
+  float excess = 0.0F;
+  float feasible = 0.0F;
+  if (valid && rolloutFeasible(altitude_envelope_violation[index],
+                               collision_violation[index], ignore_collision)) {
+    excess = fmaxf(0.0F, soft[index] - *minimum_soft);
+    feasible = 1.0F;
+  }
+  const float block_excess = blockSum(excess);
+  const float block_feasible = blockSum(feasible);
+  if (threadIdx.x == 0) {
+    atomicAdd(feasible_cost_sum, block_excess);
+    atomicAdd(feasible_count, static_cast<unsigned int>(block_feasible + 0.5F));
+  }
+}
+
+__device__ float effectiveTemperature(const float base_temperature,
+                                      const float adaptive_cost_fraction,
+                                      const float feasible_cost_sum,
+                                      const unsigned int feasible_count) {
+  if (!(adaptive_cost_fraction > 0.0F) || feasible_count == 0U) {
+    return base_temperature;
+  }
+  const float mean_excess = feasible_cost_sum / static_cast<float>(feasible_count);
+  return fmaxf(base_temperature, adaptive_cost_fraction * mean_excess);
+}
+
+__global__ void
+calculateWeights(const float* soft, const std::uint8_t* altitude_envelope_violation,
+                 const std::uint8_t* collision_violation, bool ignore_collision,
+                 float* weights, std::size_t count, const float* minimum_soft,
+                 float base_temperature, float adaptive_cost_fraction,
+                 const float* feasible_cost_sum, const unsigned int* feasible_count,
+                 float* weight_sum, float* effective_temperature) {
+  const std::size_t index =
+      static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const bool valid = index < count;
+  const float temperature = effectiveTemperature(
+      base_temperature, adaptive_cost_fraction, *feasible_cost_sum, *feasible_count);
   float weight = 0.0F;
-  if (valid && altitude_envelope_violation[index] == 0U) {
+  if (valid && rolloutFeasible(altitude_envelope_violation[index],
+                               collision_violation[index], ignore_collision)) {
     weight = expf(-(soft[index] - *minimum_soft) / temperature);
   }
   if (valid) {
@@ -717,6 +784,9 @@ __global__ void calculateWeights(const float* soft,
   const float block_weight_sum = blockSum(weight);
   if (threadIdx.x == 0) {
     atomicAdd(weight_sum, block_weight_sum);
+    if (blockIdx.x == 0) {
+      *effective_temperature = temperature;
+    }
   }
 }
 

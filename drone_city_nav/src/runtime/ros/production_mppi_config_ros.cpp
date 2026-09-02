@@ -685,6 +685,11 @@ void ProductionMppiConfigLoader::declareControl() {
       static_cast<float>(declare<double>("critical_exposure_weight", 20.0));
   const float critical_clearance_proximity_weight =
       static_cast<float>(declare<double>("critical_clearance_proximity_weight", 400.0));
+  mppi.costs.temperature = static_cast<float>(declare<double>("mppi_temperature", 8.0));
+  mppi.costs.adaptive_temperature_cost_fraction = static_cast<float>(
+      declare<double>("mppi_adaptive_temperature_cost_fraction", 0.5));
+  mppi.costs.route_directed_candidate_cost_tolerance = static_cast<float>(
+      declare<double>("route_directed_candidate_cost_tolerance", 0.5));
   const float obstacle_approach_weight =
       static_cast<float>(declare<double>("obstacle_approach_weight", 40.0));
   if (config_.planning.optional_constraints.clearance_costs_enabled) {

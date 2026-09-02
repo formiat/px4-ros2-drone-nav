@@ -664,7 +664,10 @@ TEST(MppiControlSequenceTest,
                                .generation = 1U,
                                .terminal_cross_track_tolerance_m = std::nullopt};
   input.deterministic_candidate = DeterministicCandidateKind::kRouteDirectedCruise;
+  // Liveness recovery forces the certified route candidate; mere preference
+  // accepts it only within the configured cost tolerance.
   input.prefer_route_directed_candidate = true;
+  input.force_route_directed_candidate = true;
 
   const MppiTickResult result = engine.plan(input);
 

@@ -202,6 +202,11 @@ production_mppi_node:
     # cannot indefinitely postpone an otherwise executable route segment.
     route_progress_integral_weight: 2.0
     planning_exposure_weight: 8.0
+    # Softmax temperature and its adaptive floor: the effective temperature is
+    # max(mppi_temperature, fraction * mean feasible cost excess) so the update
+    # keeps a population rather than one dominant rollout.
+    mppi_temperature: 8.0
+    mppi_adaptive_temperature_cost_fraction: 0.5
     critical_exposure_weight: 2000.0
     critical_clearance_proximity_weight: 4000.0
     obstacle_approach_weight: 40.0
@@ -376,7 +381,11 @@ production_mppi_node:
     # Keep a certified trajectory across freshness, authority, and publication
     # races. Raw occupancy intersecting that trajectory remains unconditional.
     execution_nonphysical_revocation_enabled: false
+    # The certified route candidate overrides the weighted update only while
+    # its cost stays within this share of the feasible cost spread above the
+    # best rollout; liveness recovery may still force it.
     # Latest-scan age is diagnostic only. Its exact owned points and persistent
+    route_directed_candidate_cost_tolerance: 0.5
     # raw occupancy remain conservative hard collision evidence.
     execution_latest_lidar_freshness_required: false
     static_route_maximum_shortcut_length_m: 30.0

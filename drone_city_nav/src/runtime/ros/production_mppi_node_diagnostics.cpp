@@ -294,6 +294,10 @@ void ProductionMppiNode::processDiagnostics(
        << " route_directed_candidate_best_feasible="
        << (result.route_directed_candidate_best_feasible ? "true" : "false")
        << " route_directed_candidate_weight=" << result.route_directed_candidate_weight
+       << " route_directed_candidate_cost_excess="
+       << result.route_directed_candidate_cost_excess
+       << " effective_temperature=" << result.effective_temperature
+       << " collision_gate_lifted=" << (result.collision_gate_lifted ? "true" : "false")
        << " route_directed_candidate_generation="
        << result.route_directed_candidate_generation << " local_route_stop_is_terminal="
        << (snapshot.local_route_stop_is_terminal ? "true" : "false")
@@ -665,6 +669,11 @@ void ProductionMppiNode::processDiagnostics(
          << (result.route_directed_candidate_best_feasible ? "true" : "false")
          << ",\"route_directed_candidate_weight\":"
          << result.route_directed_candidate_weight
+         << ",\"route_directed_candidate_cost_excess\":"
+         << result.route_directed_candidate_cost_excess
+         << ",\"effective_temperature\":" << result.effective_temperature
+         << ",\"collision_gate_lifted\":"
+         << (result.collision_gate_lifted ? "true" : "false")
          << ",\"route_directed_candidate_generation\":"
          << result.route_directed_candidate_generation
          << ",\"local_route_stop_is_terminal\":"

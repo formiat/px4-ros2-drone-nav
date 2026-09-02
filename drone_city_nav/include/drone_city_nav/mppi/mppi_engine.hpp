@@ -53,6 +53,9 @@ struct MppiTickInput {
   DeterministicCandidateKind deterministic_candidate{
       DeterministicCandidateKind::kDisabled};
   bool prefer_route_directed_candidate{false};
+  // Liveness recovery: the certified route candidate replaces the weighted
+  // update regardless of its cost to break a stationary fixed point.
+  bool force_route_directed_candidate{false};
   bool cooperative_avoidance_active{false};
   bool noncooperative_avoidance_active{false};
 };
@@ -134,6 +137,11 @@ struct MppiTickResult {
   MppiFeasibilityContract feasibility_contract{};
   MppiPostUpdateClassificationResult post_update_classification{};
   MppiControlSelection control_selection{MppiControlSelection::kWeightedUpdate};
+  float effective_temperature{0.0F};
+  float route_directed_candidate_cost_excess{0.0F};
+  // Every rollout intersected raw occupancy in the sampler, so the body gate
+  // was lifted for this update and the raw validators decide alone.
+  bool collision_gate_lifted{false};
   MppiPostUpdateRepair post_update_repair{MppiPostUpdateRepair::kNotRequired};
   float post_update_backtrack_ratio{1.0F};
   RiskTier selected_tier{RiskTier::kCollision};

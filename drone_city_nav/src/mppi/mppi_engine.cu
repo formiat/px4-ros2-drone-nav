@@ -46,77 +46,7 @@ using detail::elapsedMs;
 using detail::EsdfTexture;
 using detail::Event;
 
-struct DeviceBuffers {
-  DeviceBuffer<float> noise_ax;
-  DeviceBuffer<float> noise_ay;
-  DeviceBuffer<float> noise_az;
-  DeviceBuffer<float> noise_yaw;
-  DeviceBuffer<float> soft_cost;
-  DeviceBuffer<float> critical_exposure;
-  DeviceBuffer<float> planning_exposure;
-  DeviceBuffer<float> minimum_clearance;
-  DeviceBuffer<std::uint8_t> altitude_envelope_violation;
-  DeviceBuffer<std::uint8_t> worst_tier;
-  DeviceBuffer<float> weights;
-  DeviceBuffer<Control> nominal;
-  DeviceBuffer<Control> updated;
-  DeviceBuffer<Control> control_update_partials;
-  DeviceBuffer<Control> best_feasible;
-  DeviceBuffer<Control> repair_candidates;
-  DeviceBuffer<int> best_rollout;
-  DeviceBuffer<float> minimum_soft;
-  DeviceBuffer<float> weight_sum;
-  DeviceBuffer<RouteSample3D> route_points{kMaximumDeviceRoutePoints};
-  DeviceBuffer<DynamicAircraftSample> dynamic_aircraft_samples;
-  DeviceBuffer<float> dynamic_aircraft_radii{kMaximumDynamicAircraft};
-  DeviceBuffer<std::uint32_t> dynamic_aircraft_active_steps{kMaximumDynamicAircraft};
-
-  DeviceBuffers(const std::size_t rollouts, const std::size_t steps)
-      : noise_ax{rollouts * steps},
-        noise_ay{rollouts * steps},
-        noise_az{rollouts * steps},
-        noise_yaw{rollouts * steps},
-        soft_cost{rollouts},
-        critical_exposure{rollouts},
-        planning_exposure{rollouts},
-        minimum_clearance{rollouts},
-        altitude_envelope_violation{rollouts},
-        worst_tier{rollouts},
-        weights{rollouts},
-        nominal{steps},
-        updated{steps},
-        control_update_partials{kControlUpdatePartitions * steps},
-        best_feasible{steps},
-        repair_candidates{kMaximumRepairCandidateCount * steps},
-        best_rollout{1U},
-        minimum_soft{1U},
-        weight_sum{1U},
-        dynamic_aircraft_samples{kMaximumDynamicAircraft * steps} {
-  }
-
-  [[nodiscard]] std::size_t bytes() const noexcept {
-    return noise_ax.bytes() + noise_ay.bytes() + noise_az.bytes() + noise_yaw.bytes() +
-           soft_cost.bytes() + critical_exposure.bytes() + planning_exposure.bytes() +
-           minimum_clearance.bytes() + altitude_envelope_violation.bytes() +
-           worst_tier.bytes() + weights.bytes() + nominal.bytes() + updated.bytes() +
-           control_update_partials.bytes() + best_feasible.bytes() +
-           repair_candidates.bytes() + best_rollout.bytes() + minimum_soft.bytes() +
-           weight_sum.bytes() + route_points.bytes() +
-           dynamic_aircraft_samples.bytes() + dynamic_aircraft_radii.bytes() +
-           dynamic_aircraft_active_steps.bytes();
-  }
-};
-
-struct EvaluatedControlSequence {
-  ReferenceSimulationTrace trace;
-  RolloutMetrics metrics{};
-  MppiPostUpdateClassificationResult classification{};
-  bool route_terminal_cross_track_violation{false};
-  float terminal_route_cross_track_m{-1.0F};
-  std::size_t route_terminal_arrival_shaping_attempts{0U};
-  std::size_t route_terminal_nominal_prefix_control_count{0U};
-};
-
+#include "mppi_engine_device_buffers.cuh"
 #include "mppi_engine_kernels.cuh"
 
 } // namespace
@@ -455,12 +385,12 @@ public:
         buffers_.noise_yaw.get(), buffers_.nominal.get(), buffers_.soft_cost.get(),
         buffers_.critical_exposure.get(), buffers_.planning_exposure.get(),
         buffers_.minimum_clearance.get(), buffers_.altitude_envelope_violation.get(),
-        buffers_.worst_tier.get(), active_rollouts, config_.steps, input.initial_state,
-        input.target, moving_target, moving_target_enabled, config_.dynamics,
-        config_.risk, config_.footprint, config_.altitude_envelope, config_.costs,
-        config_.horizon_sampling, textures_[active_texture_].grid(),
-        textures_[active_texture_].texture(), buffers_.route_points.get(),
-        route_active ? route_point_count_ : 0U,
+        buffers_.collision_violation.get(), buffers_.worst_tier.get(), active_rollouts,
+        config_.steps, input.initial_state, input.target, moving_target,
+        moving_target_enabled, config_.dynamics, config_.risk, config_.footprint,
+        config_.altitude_envelope, config_.costs, config_.horizon_sampling,
+        textures_[active_texture_].grid(), textures_[active_texture_].texture(),
+        buffers_.route_points.get(), route_active ? route_point_count_ : 0U,
         route_active ? input.route->initial_station_m : 0.0F,
         buffers_.dynamic_aircraft_samples.get(), buffers_.dynamic_aircraft_radii.get(),
         buffers_.dynamic_aircraft_active_steps.get(), dynamic_aircraft_count,
@@ -470,21 +400,73 @@ public:
         first_control_interval_s, input.reference_speed_mps,
         config_.early_exit_on_altitude_envelope_violation, nullptr);
     simulation_done_.record(stream_);
-    initializeReduction<<<1, 1, 0U, stream_>>>(buffers_.minimum_soft.get(),
-                                               buffers_.weight_sum.get(),
-                                               buffers_.best_rollout.get());
-    reduceSoft<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
-        buffers_.soft_cost.get(), buffers_.altitude_envelope_violation.get(),
-        active_rollouts, buffers_.minimum_soft.get());
-    reduction_done_.record(stream_);
-    calculateWeights<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
-        buffers_.soft_cost.get(), buffers_.altitude_envelope_violation.get(),
-        buffers_.weights.get(), active_rollouts, buffers_.minimum_soft.get(),
-        config_.costs.temperature, buffers_.weight_sum.get());
-    selectBestFeasibleRollout<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
-        buffers_.weights.get(), buffers_.soft_cost.get(), buffers_.minimum_soft.get(),
-        active_rollouts, buffers_.best_rollout.get());
-    weights_done_.record(stream_);
+    const auto run_weighting = [&](const bool ignore_collision) {
+      initializeReduction<<<1, 1, 0U, stream_>>>(
+          buffers_.minimum_soft.get(), buffers_.weight_sum.get(),
+          buffers_.best_rollout.get(), buffers_.feasible_cost_sum.get(),
+          buffers_.feasible_count.get());
+      reduceSoft<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
+          buffers_.soft_cost.get(), buffers_.altitude_envelope_violation.get(),
+          buffers_.collision_violation.get(), ignore_collision, active_rollouts,
+          buffers_.minimum_soft.get());
+      accumulateFeasibleCost<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
+          buffers_.soft_cost.get(), buffers_.altitude_envelope_violation.get(),
+          buffers_.collision_violation.get(), ignore_collision, active_rollouts,
+          buffers_.minimum_soft.get(), buffers_.feasible_cost_sum.get(),
+          buffers_.feasible_count.get());
+      reduction_done_.record(stream_);
+      calculateWeights<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
+          buffers_.soft_cost.get(), buffers_.altitude_envelope_violation.get(),
+          buffers_.collision_violation.get(), ignore_collision, buffers_.weights.get(),
+          active_rollouts, buffers_.minimum_soft.get(), config_.costs.temperature,
+          config_.costs.adaptive_temperature_cost_fraction,
+          buffers_.feasible_cost_sum.get(), buffers_.feasible_count.get(),
+          buffers_.weight_sum.get(), buffers_.effective_temperature.get());
+      selectBestFeasibleRollout<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
+          buffers_.weights.get(), buffers_.soft_cost.get(), buffers_.minimum_soft.get(),
+          active_rollouts, buffers_.best_rollout.get());
+      weights_done_.record(stream_);
+    };
+    float feasible_weight_sum = 0.0F;
+    float effective_temperature = config_.costs.temperature;
+    float feasible_cost_excess_sum = 0.0F;
+    unsigned int feasible_count = 0U;
+    float minimum_soft_cost = 0.0F;
+    const auto fetch_weighting_summary = [&]() {
+      checkCuda(cudaMemcpyAsync(&feasible_weight_sum, buffers_.weight_sum.get(),
+                                sizeof(feasible_weight_sum), cudaMemcpyDeviceToHost,
+                                stream_),
+                "copy feasible weight sum");
+      checkCuda(cudaMemcpyAsync(
+                    &effective_temperature, buffers_.effective_temperature.get(),
+                    sizeof(effective_temperature), cudaMemcpyDeviceToHost, stream_),
+                "copy effective temperature");
+      checkCuda(cudaMemcpyAsync(
+                    &feasible_cost_excess_sum, buffers_.feasible_cost_sum.get(),
+                    sizeof(feasible_cost_excess_sum), cudaMemcpyDeviceToHost, stream_),
+                "copy feasible cost sum");
+      checkCuda(cudaMemcpyAsync(&feasible_count, buffers_.feasible_count.get(),
+                                sizeof(feasible_count), cudaMemcpyDeviceToHost,
+                                stream_),
+                "copy feasible count");
+      checkCuda(cudaMemcpyAsync(&minimum_soft_cost, buffers_.minimum_soft.get(),
+                                sizeof(minimum_soft_cost), cudaMemcpyDeviceToHost,
+                                stream_),
+                "copy minimum soft cost");
+      checkCuda(cudaStreamSynchronize(stream_), "synchronize MPPI weighting");
+    };
+    run_weighting(false);
+    fetch_weighting_summary();
+    // Every rollout intersects raw occupancy in the sampler's view. The body
+    // gate is a ranking inside the sampler, never a reachability claim, so it
+    // is lifted rather than leaving the controller without an update; the raw
+    // validators downstream keep their exact authority.
+    const bool collision_gate_lifted =
+        !(feasible_weight_sum > 0.0F) || feasible_count == 0U;
+    if (collision_gate_lifted) {
+      run_weighting(true);
+      fetch_weighting_summary();
+    }
     accumulateControlUpdatePartials<<<control_update_grid, kThreadsPerBlock, 0U,
                                       stream_>>>(
         buffers_.noise_ax.get(), buffers_.noise_ay.get(), buffers_.noise_az.get(),
@@ -506,10 +488,11 @@ public:
                                          config_.dynamics, previous_applied_control,
                                          first_control_interval_s);
     update_done_.record(stream_);
-    float feasible_weight_sum = 0.0F;
     int best_rollout_index = -1;
     std::uint8_t reacquisition_altitude_envelope_violation = 1U;
+    std::uint8_t reacquisition_collision_violation = 1U;
     float reacquisition_weight = 0.0F;
+    float reacquisition_soft_cost = 0.0F;
     checkCuda(cudaMemcpyAsync(updated_.data(), buffers_.updated.get(),
                               updated_.size() * sizeof(Control), cudaMemcpyDeviceToHost,
                               stream_),
@@ -518,10 +501,6 @@ public:
                               best_feasible_.size() * sizeof(Control),
                               cudaMemcpyDeviceToHost, stream_),
               "copy best feasible controls");
-    checkCuda(cudaMemcpyAsync(&feasible_weight_sum, buffers_.weight_sum.get(),
-                              sizeof(feasible_weight_sum), cudaMemcpyDeviceToHost,
-                              stream_),
-              "copy feasible weight sum");
     if (deterministic_candidate_enabled) {
       checkCuda(cudaMemcpyAsync(&best_rollout_index, buffers_.best_rollout.get(),
                                 sizeof(best_rollout_index), cudaMemcpyDeviceToHost,
@@ -532,10 +511,19 @@ public:
                                 sizeof(reacquisition_altitude_envelope_violation),
                                 cudaMemcpyDeviceToHost, stream_),
                 "copy deterministic candidate altitude envelope status");
+      checkCuda(cudaMemcpyAsync(&reacquisition_collision_violation,
+                                buffers_.collision_violation.get(),
+                                sizeof(reacquisition_collision_violation),
+                                cudaMemcpyDeviceToHost, stream_),
+                "copy deterministic candidate collision status");
       checkCuda(cudaMemcpyAsync(&reacquisition_weight, buffers_.weights.get(),
                                 sizeof(reacquisition_weight), cudaMemcpyDeviceToHost,
                                 stream_),
                 "copy target-directed weight");
+      checkCuda(cudaMemcpyAsync(&reacquisition_soft_cost, buffers_.soft_cost.get(),
+                                sizeof(reacquisition_soft_cost), cudaMemcpyDeviceToHost,
+                                stream_),
+                "copy deterministic candidate soft cost");
     }
     completed_.record(stream_);
     completed_.synchronize();
@@ -546,32 +534,52 @@ public:
         .available = std::isfinite(feasible_weight_sum) && feasible_weight_sum > 0.0F,
         .weight_sum = feasible_weight_sum,
     };
+    result.effective_temperature = effective_temperature;
+    result.collision_gate_lifted = collision_gate_lifted;
+    const bool deterministic_candidate_device_feasible =
+        reacquisition_altitude_envelope_violation == 0U &&
+        (collision_gate_lifted || reacquisition_collision_violation == 0U);
     result.target_directed_candidate_injected = target_directed_candidate;
     result.target_directed_candidate_device_feasible =
-        target_directed_candidate && reacquisition_altitude_envelope_violation == 0U;
+        target_directed_candidate && deterministic_candidate_device_feasible;
     result.target_directed_candidate_best_feasible =
         target_directed_candidate && best_rollout_index == 0;
     result.target_directed_candidate_weight =
         target_directed_candidate ? reacquisition_weight : 0.0F;
     result.route_directed_candidate_injected = route_directed_candidate;
     result.route_directed_candidate_device_feasible =
-        route_directed_candidate && reacquisition_altitude_envelope_violation == 0U;
+        route_directed_candidate && deterministic_candidate_device_feasible;
     result.route_directed_candidate_best_feasible =
         route_directed_candidate && best_rollout_index == 0;
     result.route_directed_candidate_weight =
         route_directed_candidate ? reacquisition_weight : 0.0F;
     result.route_directed_candidate_generation =
         route_directed_candidate ? input.route->generation : 0U;
-    const bool policy_prefers_route_candidate =
-        input.prefer_route_directed_candidate && input.dynamic_aircraft.empty();
+    // The certified route candidate is one deterministic rollout. It may
+    // override the weighted update only when it is the best feasible rollout,
+    // when the caller forces it to break a stationary fixed point, or when the
+    // policy prefers it and its cost stays within the configured share of the
+    // feasible spread above the best rollout. Dynamic-aircraft arbitration
+    // always remains stochastic.
+    const float feasible_mean_excess =
+        feasible_count > 0U
+            ? feasible_cost_excess_sum / static_cast<float>(feasible_count)
+            : 0.0F;
+    const bool candidate_within_tolerance =
+        reacquisition_soft_cost <=
+        minimum_soft_cost + config_.costs.route_directed_candidate_cost_tolerance *
+                                feasible_mean_excess;
+    result.route_directed_candidate_cost_excess =
+        route_directed_candidate ? reacquisition_soft_cost - minimum_soft_cost : 0.0F;
+    const bool arbitration_stochastic = !input.dynamic_aircraft.empty();
+    const bool policy_prefers_route_candidate = input.prefer_route_directed_candidate &&
+                                                !arbitration_stochastic &&
+                                                candidate_within_tolerance;
+    const bool route_candidate_forced =
+        input.force_route_directed_candidate && !arbitration_stochastic;
     if (result.route_directed_candidate_device_feasible &&
-        (result.route_directed_candidate_best_feasible ||
+        (result.route_directed_candidate_best_feasible || route_candidate_forced ||
          policy_prefers_route_candidate)) {
-      // The single explicit route candidate must not be diluted by many
-      // individually worse rollouts when it is the objective winner. The
-      // caller may also make the independently certified trajectory authoritative
-      // to avoid a stationary weighted-update fixed point. Dynamic-aircraft
-      // arbitration always remains stochastic and is excluded above.
       std::ranges::copy(reacquisition_candidate_, updated_.begin());
       limitControlSequence(updated_, config_.dynamics, previous_applied_control,
                            first_control_interval_s);
@@ -667,10 +675,11 @@ public:
           buffers_.noise_yaw.get(), buffers_.nominal.get(), buffers_.soft_cost.get(),
           buffers_.critical_exposure.get(), buffers_.planning_exposure.get(),
           buffers_.minimum_clearance.get(), buffers_.altitude_envelope_violation.get(),
-          buffers_.worst_tier.get(), candidate_count, config_.steps,
-          input.initial_state, input.target, moving_target, moving_target_enabled,
-          config_.dynamics, config_.risk, config_.footprint, config_.altitude_envelope,
-          config_.costs, config_.horizon_sampling, textures_[active_texture_].grid(),
+          buffers_.collision_violation.get(), buffers_.worst_tier.get(),
+          candidate_count, config_.steps, input.initial_state, input.target,
+          moving_target, moving_target_enabled, config_.dynamics, config_.risk,
+          config_.footprint, config_.altitude_envelope, config_.costs,
+          config_.horizon_sampling, textures_[active_texture_].grid(),
           textures_[active_texture_].texture(), buffers_.route_points.get(),
           route_active ? route_point_count_ : 0U,
           route_active ? input.route->initial_station_m : 0.0F,

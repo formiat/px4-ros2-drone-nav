@@ -60,6 +60,13 @@ struct CostConfig {
   float critical_clearance_proximity_weight{400.0F};
   float obstacle_approach_weight{40.0F};
   float temperature{8.0F};
+  // The softmax temperature grows with the mean feasible cost excess above the
+  // best rollout so a population spread over thousands of cost units does not
+  // collapse onto a single sample. Zero keeps the fixed temperature.
+  float adaptive_temperature_cost_fraction{0.5F};
+  // Share of that mean excess the deterministic route candidate may cost more
+  // than the best feasible rollout and still override the weighted update.
+  float route_directed_candidate_cost_tolerance{0.5F};
 };
 
 struct CooperativeConfig {

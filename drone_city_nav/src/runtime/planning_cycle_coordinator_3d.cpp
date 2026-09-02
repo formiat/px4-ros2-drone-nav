@@ -741,8 +741,10 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
                   .active_rollouts = output.controller.rollout_budget.active_rollouts,
                   .deterministic_candidate = deterministic_candidate,
                   .prefer_route_directed_candidate =
-                      !config_.stochastic_trajectory_selection_enabled ||
-                      output.controller.liveness.recovery_active ||
+                      !config_.stochastic_trajectory_selection_enabled,
+                  .force_route_directed_candidate =
+                      output.controller.liveness
+                          .recovery_active ||
                       output.controller.route_progress.local_reseed_requested,
                   .cooperative_avoidance_active =
                       output.controller.cooperative.mppi.avoidance_active,
