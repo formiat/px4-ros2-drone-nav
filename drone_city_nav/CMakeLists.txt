@@ -3,6 +3,22 @@ project(drone_city_nav VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# The obstacle memory, the dense ESDF and the planner searches run at the
+# sensor rate, and an unoptimised build cannot keep the observed world inside
+# the execution freshness budget. A single-configuration generator without an
+# explicit build type therefore builds optimised code with debug symbols;
+# assertions stay enabled, so no NDEBUG is defined.
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE
+      RelWithDebInfo
+      CACHE STRING "Build type" FORCE)
+  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS Debug Release
+                                                       RelWithDebInfo MinSizeRel)
+endif()
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O2 -g")
+set(CMAKE_C_FLAGS_RELWITHDEBINFO "-O2 -g")
+set(CMAKE_CUDA_FLAGS_RELWITHDEBINFO "-O2 -g")
+
 option(DRONE_CITY_NAV_ENABLE_CUDA_MPPI
        "Build the CUDA MPPI controller and benchmark" ON)
 set(DRONE_CITY_NAV_CUDA_ARCHITECTURES
