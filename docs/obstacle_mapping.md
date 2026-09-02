@@ -82,6 +82,14 @@ Memory uses hit/miss scoring:
 - `occupied_score`
 - `free_score`
 
+Classification is a Schmitt trigger over the score: a voxel becomes occupied
+when its score reaches `occupied_score`, becomes free when it drops to
+`free_score`, and keeps its current state while the score lies between the two.
+A wall surface voxel that collects one hit and a few grazing misses per scan
+therefore stays occupied instead of flipping every scan, and consumers of
+occupied evidence (planner repair, route validation, tube profiles) are not
+re-invalidated at the scan rate by evidence that has not really changed.
+
 Mapping activates after the vehicle first reaches `min_mapping_altitude_m` and
 remains latched for the airborne mission. Descending through a low passage does
 not freeze lidar snapshots.

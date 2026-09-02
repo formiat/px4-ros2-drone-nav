@@ -242,6 +242,7 @@ ObstacleMemory3DStats ObstacleMemory3D::integrateScan(const LidarScan3DView& sca
     ++stats.processed_beams;
     stats.hit_beams += beam.hit ? 1U : 0U;
     stats.miss_beams += beam.hit ? 0U : 1U;
+    stats.surface_beams += beam.surface_only ? 1U : 0U;
     integrateRay(scan.origin_map, beam, scan_evidence, stats);
   }
   for (const auto& [chunk_index, chunk_evidence] : scan_evidence) {
@@ -431,7 +432,13 @@ bool ObstacleMemory3D::applyEvidence(const GridIndex3D index, const double delta
                  static_cast<double>(config_.maximum_score));
   evidence.scores.at(bit_index) = after_score;
   const ObservedVoxelState before = grid_.state(index);
-  ObservedVoxelState after = ObservedVoxelState::kUnknown;
+  // Schmitt-trigger classification: a voxel enters the occupied or free state
+  // when its score crosses that state's threshold and keeps its state while the
+  // score stays between the thresholds. Without the hysteresis a wall surface
+  // voxel that collects one hit and a few grazing misses per scan flips its
+  // state every scan, and every consumer of occupied evidence re-validates the
+  // same geometry at the scan rate.
+  ObservedVoxelState after = before;
   if (after_score >= config_.occupied_score) {
     after = ObservedVoxelState::kOccupied;
   } else if (after_score <= config_.free_score) {
@@ -461,6 +468,12 @@ void ObstacleMemory3D::integrateRay(const Point3& origin, const LidarBeam3D& bea
       hit_within_range ? grid_.worldToCell(endpoint) : std::nullopt;
   if (hit_within_range && !hit_cell.has_value()) {
     ++stats.outside_endpoints;
+  }
+  if (beam.surface_only) {
+    if (hit_cell.has_value()) {
+      recordScanEvidence(*hit_cell, true, scan_evidence);
+    }
+    return;
   }
   visitIntersectedGridCells(grid_, origin, endpoint, [&](const GridIndex3D cell) {
     if (!hit_cell.has_value() || cell != *hit_cell) {

@@ -60,6 +60,26 @@ TEST(ObservedOccupancyGrid3D, CropDoesNotTurnUnknownIntoFree) {
   EXPECT_EQ(cropped.state({3, 4, 2}), ObservedVoxelState::kUnknown);
 }
 
+TEST(ObstacleMemory3D, SurfaceOnlyBeamMarksItsEndpointWithoutCarvingFreeSpace) {
+  ObstacleMemory3D memory{
+      kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
+  const std::array beams{LidarBeam3D{.direction_map = {1.0, 0.0, 0.0},
+                                     .range_m = 8.0,
+                                     .hit = true,
+                                     .valid = true,
+                                     .surface_only = true}};
+
+  const ObstacleMemory3DStats stats = memory.integrateScan(
+      LidarScan3DView{.origin_map = {0.5, 0.5, 0.5}, .beams = beams});
+
+  EXPECT_EQ(stats.surface_beams, 1U);
+  EXPECT_EQ(stats.hit_beams, 1U);
+  EXPECT_EQ(stats.free_voxel_updates, 0U);
+  EXPECT_TRUE(memory.grid().isOccupied({8, 0, 0}));
+  EXPECT_EQ(memory.grid().state({4, 0, 0}), ObservedVoxelState::kUnknown);
+  EXPECT_EQ(memory.grid().state({0, 0, 0}), ObservedVoxelState::kUnknown);
+}
+
 TEST(ObstacleMemory3D, IntegratesHitAndMissEvidenceAlongFullRay) {
   ObstacleMemory3D memory{
       kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0, .minimum_range_m = 0.1}};
@@ -255,14 +275,51 @@ TEST(ObstacleMemory3D, DuplicateMissesContributeOncePerScan) {
   static_cast<void>(
       memory.integrateScan({.origin_map = {1.5, 1.5, 2.5}, .beams = hit}));
 
+  // One hit scores 4. Each miss scan subtracts the miss weight once, and the
+  // occupied state is retained while the score stays above free_score: 2 and
+  // 0 keep the voxel occupied, -2 frees it. Counting the duplicates three
+  // times would free the voxel after the first scan.
   static_cast<void>(
       memory.integrateScan({.origin_map = {1.5, 1.5, 2.5}, .beams = duplicate_misses}));
-  EXPECT_EQ(memory.grid().state({9, 1, 2}), ObservedVoxelState::kUnknown);
+  EXPECT_TRUE(memory.grid().isOccupied({9, 1, 2}));
   static_cast<void>(
       memory.integrateScan({.origin_map = {1.5, 1.5, 2.5}, .beams = duplicate_misses}));
+  EXPECT_TRUE(memory.grid().isOccupied({9, 1, 2}));
   static_cast<void>(
       memory.integrateScan({.origin_map = {1.5, 1.5, 2.5}, .beams = duplicate_misses}));
   EXPECT_TRUE(memory.grid().isKnownFree({9, 1, 2}));
+}
+
+TEST(ObstacleMemory3D, StateHysteresisKeepsASurfaceVoxelOccupiedAcrossGrazingMisses) {
+  ObstacleMemory3D memory{kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0,
+                                                          .minimum_range_m = 0.1,
+                                                          .hit_weight = 4,
+                                                          .miss_weight = 1,
+                                                          .minimum_score = -8,
+                                                          .maximum_score = 12,
+                                                          .occupied_score = 3,
+                                                          .free_score = -1}};
+  const std::array hit{LidarBeam3D{
+      .direction_map = {1.0, 0.0, 0.0}, .range_m = 8.0, .hit = true, .valid = true}};
+  const std::array miss{LidarBeam3D{
+      .direction_map = {1.0, 0.0, 0.0}, .range_m = 12.0, .hit = false, .valid = true}};
+  static_cast<void>(
+      memory.integrateScan({.origin_map = {1.5, 1.5, 2.5}, .beams = hit}));
+  ASSERT_TRUE(memory.grid().isOccupied({9, 1, 2}));
+  // Scores 3, 2, 1, 0 all keep the occupied state; -1 releases it.
+  for (int scan = 0; scan < 4; ++scan) {
+    static_cast<void>(
+        memory.integrateScan({.origin_map = {1.5, 1.5, 2.5}, .beams = miss}));
+    EXPECT_TRUE(memory.grid().isOccupied({9, 1, 2})) << scan;
+  }
+  static_cast<void>(
+      memory.integrateScan({.origin_map = {1.5, 1.5, 2.5}, .beams = miss}));
+  EXPECT_TRUE(memory.grid().isKnownFree({9, 1, 2}));
+  // A free voxel likewise keeps its state until the score reaches
+  // occupied_score again.
+  static_cast<void>(
+      memory.integrateScan({.origin_map = {1.5, 1.5, 2.5}, .beams = hit}));
+  EXPECT_TRUE(memory.grid().isOccupied({9, 1, 2}));
 }
 
 TEST(ObstacleMemory3D, ExposesRevisionedDirtyChunks) {

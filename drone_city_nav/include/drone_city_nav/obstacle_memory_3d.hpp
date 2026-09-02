@@ -17,6 +17,9 @@ struct LidarBeam3D {
   double range_m{0.0};
   bool hit{false};
   bool valid{false};
+  // A reconstructed surface sample: occupied evidence at the endpoint only.
+  // No beam travelled to it, so it carries no free-space evidence.
+  bool surface_only{false};
 };
 
 struct LidarScan3DView {
@@ -48,6 +51,7 @@ struct ObstacleMemory3DStats {
   std::size_t processed_beams{0U};
   std::size_t hit_beams{0U};
   std::size_t miss_beams{0U};
+  std::size_t surface_beams{0U};
   std::size_t invalid_beams{0U};
   std::size_t free_voxel_updates{0U};
   std::size_t occupied_voxel_updates{0U};

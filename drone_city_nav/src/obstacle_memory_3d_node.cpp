@@ -203,6 +203,23 @@ public:
     if (!organizedLidarScan3DConfigIsValid(scan_config_)) {
       throw std::invalid_argument{"invalid organized 3D lidar configuration"};
     }
+    surface_interpolation_config_.enabled =
+        declare_parameter<bool>("lidar_surface_interpolation_enabled", true);
+    surface_interpolation_config_.maximum_incidence_rad =
+        declare_parameter<double>("lidar_surface_interpolation_maximum_incidence_deg",
+                                  30.0) *
+        std::numbers::pi / 180.0;
+    surface_interpolation_config_.maximum_row_incidence_rad =
+        declare_parameter<double>(
+            "lidar_surface_interpolation_maximum_row_incidence_deg", 80.0) *
+        std::numbers::pi / 180.0;
+    // Samples denser than a voxel edge so a joined surface marks every voxel
+    // it crosses.
+    surface_interpolation_config_.sample_spacing_m = 0.7 * bounds_.resolution_m;
+    if (!lidarSurfaceInterpolation3DConfigIsValid(surface_interpolation_config_)) {
+      throw std::invalid_argument{
+          "invalid 3D lidar surface interpolation configuration"};
+    }
 
     ObstacleMemory3DConfig memory_config;
     memory_config.maximum_range_m = scan_config_.maximum_range_m;
@@ -691,10 +708,18 @@ private:
         acquisition.adjusted_timing.first_beam_stamp_ns;
     DynamicAgentLidarFilterPlan filter_plan =
         dynamic_agent_state_->makeFilterPlan(now_ns, acquisition_stamp_ns);
+    // Surface samples reconstructed between adjacent returns pass through the
+    // same projection and filters as measured returns and enter the persistent
+    // memory as occupied evidence without free-space evidence. The latest
+    // obstacle scan stays the measured returns alone: its contract bounds the
+    // hit count by the beam count.
+    const std::vector<LidarBeamSample3D> surface_samples =
+        interpolateOrganizedLidarSurfaces3D(decoded.beams, scan_config_,
+                                            surface_interpolation_config_);
     std::vector<LidarBeam3D> memory_beams;
     std::vector<Point3> hit_points_map;
     std::vector<Point3> hit_points_body;
-    memory_beams.reserve(decoded.beams.size());
+    memory_beams.reserve(decoded.beams.size() + surface_samples.size());
     hit_points_map.reserve(decoded.hit_beams);
     hit_points_body.reserve(decoded.hit_beams);
     Point3 ray_origin{};
@@ -704,17 +729,18 @@ private:
     std::size_t self_filtered{0U};
     std::size_t persistent_self_filtered{0U};
     std::size_t projection_invalid{0U};
-    for (const LidarBeamSample3D& sample : decoded.beams) {
+    const auto process_sample = [&](const LidarBeamSample3D& sample) {
       const LidarRayProjection3D ray =
           projectLidarRay3D(pose, projection_config_, sample.direction_lidar_flu);
       LidarBeam3D beam{.direction_map = ray.direction_map,
                        .range_m = sample.range_m,
                        .hit = sample.hit,
-                       .valid = sample.valid && ray.valid};
+                       .valid = sample.valid && ray.valid,
+                       .surface_only = sample.interpolated};
       if (!beam.valid) {
         ++projection_invalid;
         memory_beams.push_back(beam);
-        continue;
+        return;
       }
       ray_origin = ray.origin_map_m;
       origin_valid = true;
@@ -737,7 +763,7 @@ private:
           beam.valid = false;
           ++self_filtered;
           memory_beams.push_back(beam);
-          continue;
+          return;
         }
         const bool tracked_agent =
             anyVolumeContains(filter_plan.tracked_agent_exclusions, endpoint);
@@ -748,8 +774,10 @@ private:
           tracked_agent_filtered += tracked_agent ? 1U : 0U;
           cooperative_filtered += !tracked_agent && cooperative_peer ? 1U : 0U;
         } else {
-          hit_points_map.push_back(endpoint);
-          hit_points_body.push_back(endpoint_body);
+          if (!sample.interpolated) {
+            hit_points_map.push_back(endpoint);
+            hit_points_body.push_back(endpoint_body);
+          }
           if (self_disposition ==
               LidarSelfFilterDisposition::kDiscardFromPersistentMemory) {
             beam.valid = false;
@@ -758,6 +786,12 @@ private:
         }
       }
       memory_beams.push_back(beam);
+    };
+    for (const LidarBeamSample3D& sample : decoded.beams) {
+      process_sample(sample);
+    }
+    for (const LidarBeamSample3D& sample : surface_samples) {
+      process_sample(sample);
     }
     if (!origin_valid) {
       return PendingPointCloudDisposition::kConsumed;
@@ -810,12 +844,12 @@ private:
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "LIDAR3D_CURRENT_SCAN accepted=true stamp_ns=%" PRId64 " sequence=%" PRIu64
-        " source=%zu hits=%zu invalid=%zu "
+        " source=%zu hits=%zu surface_samples=%zu invalid=%zu "
         "acquisition_age_ms=%.3f processing_ms=%.3f alignment_coalesced=%" PRIu64
         " memory_scan_dropped=%s debug=%s",
         acquisition_stamp_ns, latest_scan_sequence_, decoded.beams.size(),
-        hit_points_body.size(), latest.invalid_beam_count, acquisition_age_ms,
-        processing_ms, alignment_coalesced_clouds_,
+        hit_points_body.size(), surface_samples.size(), latest.invalid_beam_count,
+        acquisition_age_ms, processing_ms, alignment_coalesced_clouds_,
         memory_scan_dropped ? "true" : "false",
         publish_current_cloud ? "true" : "false");
     return PendingPointCloudDisposition::kConsumed;
@@ -824,6 +858,7 @@ private:
   GridBounds3D bounds_{};
   ObservedOccupancyGrid3D grid_geometry_;
   OrganizedLidarScan3DConfig scan_config_{};
+  LidarSurfaceInterpolation3DConfig surface_interpolation_config_{};
   LidarProjectionConfig projection_config_{};
   LidarSelfFilterConfig self_filter_config_{};
   std::unique_ptr<ObstacleMemory3DWorker> memory_worker_;
