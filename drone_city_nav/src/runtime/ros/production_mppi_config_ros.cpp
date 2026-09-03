@@ -747,6 +747,8 @@ void ProductionMppiConfigLoader::declareControl() {
   mppi.costs.speed_tracking_weight = static_cast<float>(
       config_.world.use_static_map ? static_speed_tracking_weight
                                    : no_static_speed_tracking_weight);
+  mppi.costs.overspeed_weight =
+      static_cast<float>(declare<double>("overspeed_weight", 200.0));
   mppi.risk.critical_distance_m =
       static_cast<float>(declare<double>("critical_distance_m", 1.0));
   mppi.risk.preferred_distance_m =

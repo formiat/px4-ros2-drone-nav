@@ -48,6 +48,11 @@ struct CostConfig {
   float progress_weight{4.0F};
   float route_progress_integral_weight{2.0F};
   float speed_tracking_weight{1.0F};
+  // Cost per second of squared translational speed above the dynamics speed
+  // caps. The caps bound every rollout state, but a rollout that starts above
+  // them inherits its speed, and without this term the progress reward keeps
+  // an overspeeding vehicle at its inherited speed instead of shedding it.
+  float overspeed_weight{200.0F};
   float acceleration_weight{0.03F};
   float jerk_weight{0.02F};
   float yaw_change_weight{0.1F};

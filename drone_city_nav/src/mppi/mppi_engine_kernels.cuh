@@ -348,6 +348,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
   float yaw_cost = 0.0F;
   float altitude_cost = 0.0F;
   float speed_tracking_cost = 0.0F;
+  float overspeed_cost = 0.0F;
   float dynamic_aircraft_survival_cost = 0.0F;
   float maneuver_preference_cost = 0.0F;
   float critical_m = 0.0F;
@@ -535,6 +536,15 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
         const float speed_error = speed_mps - active_reference_speed_mps;
         speed_tracking_cost += sample_weight * speed_error * speed_error;
       }
+      {
+        const float horizontal_speed_mps = hypotf(state.vx, state.vy);
+        const float translational_speed_mps = hypotf(horizontal_speed_mps, state.vz);
+        const float excess_mps = fmaxf(
+            0.0F,
+            fmaxf(horizontal_speed_mps - dynamics.maximum_horizontal_speed_mps,
+                  translational_speed_mps - dynamics.maximum_translational_speed_mps));
+        overspeed_cost += sample_weight * excess_mps * excess_mps;
+      }
     }
     if (step + 1U == head_steps) {
       head_progress = moving_target_enabled ? initial_distance - target_distance
@@ -567,6 +577,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
       costs.head_progress_weight * -head_progress + costs.progress_weight * -progress +
       costs.route_progress_integral_weight * -route_progress_integral_m_s +
       costs.speed_tracking_weight * dynamics.dt_s * speed_tracking_cost +
+      costs.overspeed_weight * dynamics.dt_s * overspeed_cost +
       costs.guide_deviation_weight * dynamics.dt_s * guide_cost +
       costs.altitude_tracking_weight * dynamics.dt_s * altitude_cost +
       costs.acceleration_weight * dynamics.dt_s * acceleration_cost +

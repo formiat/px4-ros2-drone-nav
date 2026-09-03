@@ -184,6 +184,10 @@ Persistent 3D planner and route lifecycle:
 - speed-dependent tracking-error response horizon and
   `tracking_error_tube_minimum_progress_speed_mps`, the progress floor that a
   constrained segment keeps wherever the physical body clears raw occupancy;
+- `overspeed_weight` charges every rollout state above the MPPI dynamics
+  speed caps (the absolute limit horizontally, the sensor-braking limit
+  translationally); a rollout that starts above a cap inherits its speed, and
+  the term makes shedding the excess worth more than the progress it buys;
 - `persistent_planner_clearance_ranking_weight` and
   `persistent_planner_clearance_ranking_distance_m` scale lattice edges near
   raw occupied evidence for ranking only; a low-clearance edge stays traversable

@@ -353,6 +353,38 @@ TEST(MppiReferenceTest, ReferenceSpeedAddsTrackingCost) {
   EXPECT_LT(matched.soft_cost, faster.soft_cost);
 }
 
+TEST(MppiReferenceTest, SpeedAboveTheDynamicsCapsAccruesOverspeedCost) {
+  constexpr int kWidth = 20;
+  constexpr int kHeight = 20;
+  const EsdfGrid grid{kWidth, kHeight, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> esdf(static_cast<std::size_t>(kWidth * kHeight), 20.0F);
+  const std::array<Control, 2> controls{};
+  const std::array<Control, 2> noise{};
+  DynamicsConfig dynamics;
+  dynamics.linear_drag_1ps = 0.0F;
+  dynamics.maximum_horizontal_speed_mps = 10.0F;
+  dynamics.maximum_translational_speed_mps = 6.0F;
+
+  // Under both caps: nothing to shed.
+  const RolloutMetrics within = simulateReference(
+      State{.x = 1.5F, .y = 1.5F, .vx = 5.0F}, controls, noise, dynamics, RiskConfig{},
+      CostConfig{}, grid, esdf, 10.0F, 1.5F, false);
+  // The inherited speed stays above the translational cap along the rollout.
+  const RolloutMetrics inherited = simulateReference(
+      State{.x = 1.5F, .y = 1.5F, .vx = 9.0F}, controls, noise, dynamics, RiskConfig{},
+      CostConfig{}, grid, esdf, 10.0F, 1.5F, false);
+  // Braking sheds it, and the shed excess costs less than the kept one.
+  const std::array<Control, 2> braking{Control{.ax = -4.0F}, Control{.ax = -4.0F}};
+  const RolloutMetrics shedding = simulateReference(
+      State{.x = 1.5F, .y = 1.5F, .vx = 9.0F}, braking, noise, dynamics, RiskConfig{},
+      CostConfig{}, grid, esdf, 10.0F, 1.5F, false);
+
+  EXPECT_FLOAT_EQ(within.costs.overspeed, 0.0F);
+  EXPECT_GT(inherited.costs.overspeed, 0.0F);
+  EXPECT_LT(shedding.costs.overspeed, inherited.costs.overspeed);
+  EXPECT_LT(shedding.soft_cost, inherited.soft_cost);
+}
+
 TEST(MppiReferenceTest, ReferenceSpeedUsesTheTotalThreeDimensionalVelocity) {
   constexpr int kWidth = 20;
   constexpr int kHeight = 20;

@@ -115,6 +115,8 @@ bool benchmarkConfigIsValid(const BenchmarkConfig& config) noexcept {
          config.costs.route_progress_integral_weight >= 0.0F &&
          std::isfinite(config.costs.speed_tracking_weight) &&
          config.costs.speed_tracking_weight >= 0.0F &&
+         std::isfinite(config.costs.overspeed_weight) &&
+         config.costs.overspeed_weight >= 0.0F &&
          std::isfinite(config.costs.planning_exposure_weight) &&
          config.costs.planning_exposure_weight >= 0.0F &&
          std::isfinite(config.costs.critical_exposure_weight) &&
@@ -386,6 +388,15 @@ RolloutMetrics simulateReference(
       metrics.costs.speed_tracking += squared(
           std::hypot(std::hypot(state.vx, state.vy), state.vz) - reference_speed_mps);
     }
+    {
+      const float horizontal_speed_mps = std::hypot(state.vx, state.vy);
+      const float translational_speed_mps = std::hypot(horizontal_speed_mps, state.vz);
+      const float excess_mps = std::max(
+          0.0F,
+          std::max(horizontal_speed_mps - dynamics.maximum_horizontal_speed_mps,
+                   translational_speed_mps - dynamics.maximum_translational_speed_mps));
+      metrics.costs.overspeed += squared(excess_mps);
+    }
     metrics.costs.terminal = moving_target.has_value()
                                  ? std::max(0.0F, metrics.minimum_target_separation_m -
                                                       moving_target->capture_radius_m)
@@ -418,6 +429,7 @@ RolloutMetrics simulateReference(
       costs.head_progress_weight * -metrics.costs.head_progress +
       costs.progress_weight * metrics.costs.progress +
       costs.speed_tracking_weight * dynamics.dt_s * metrics.costs.speed_tracking +
+      costs.overspeed_weight * dynamics.dt_s * metrics.costs.overspeed +
       costs.guide_deviation_weight * dynamics.dt_s * metrics.costs.guide_deviation +
       costs.acceleration_weight * dynamics.dt_s * metrics.costs.acceleration +
       costs.jerk_weight * metrics.costs.jerk +

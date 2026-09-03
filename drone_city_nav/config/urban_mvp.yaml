@@ -238,6 +238,12 @@ production_mppi_node:
     far_horizon_full_rate_duration_s: 2.0
     far_horizon_cost_stride: 2
     static_speed_tracking_weight: 1.0
+    # Cost per second of squared speed above the dynamics caps (the absolute
+    # limit horizontally, the sensor-braking limit translationally). A rollout
+    # that starts above a cap inherits its speed; this makes shedding the
+    # excess worth more than the progress it buys, so an overspeeding vehicle
+    # brakes back under the envelope it can stop within.
+    overspeed_weight: 200.0
     no_static_speed_tracking_weight: 1.0
     deadline_ms: 20.0
     maximum_pose_age_ms: 150.0
