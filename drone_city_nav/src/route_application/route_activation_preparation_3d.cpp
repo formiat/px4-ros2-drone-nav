@@ -597,9 +597,13 @@ assessReplacement(RouteActivationPreparationState3D state,
       sameExecutionRouteBase3D(state.prepared.execution_base, current_execution);
   const ActivatedRouteIdentity3D* const active_identity =
       current_route != nullptr ? std::addressof(current_route->identity) : nullptr;
+  // A resident route released as blocked or diverged is one the vehicle
+  // cannot follow any more: it is no base a successor has to improve on, so
+  // the first raw-valid successor replaces it.
   const bool safety_replan_requested =
       transaction.replacement() &&
-      transaction.release_reason == RouteReleaseReason3D::kBlocked;
+      (transaction.release_reason == RouteReleaseReason3D::kBlocked ||
+       transaction.release_reason == RouteReleaseReason3D::kDiverged);
   state.overlap_search =
       candidate.provenance.required_splice_base_route_instance_id.valid();
   const PendingCertifiedRoute3D* const captured_pending =

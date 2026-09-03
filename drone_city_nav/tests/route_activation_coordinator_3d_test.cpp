@@ -522,6 +522,43 @@ TEST(RouteActivationCoordinator3DTest,
 }
 
 TEST(RouteActivationCoordinator3DTest,
+     ADivergedReleaseWaivesTheSuccessorImprovementRequirement) {
+  ExecutionSupervisor3D supervisor;
+  RouteActivationCoordinator3D coordinator{coordinatorConfig()};
+  PreparedRouteActivation3D first = prepare(coordinator, activationFixture(supervisor));
+  const RouteActivationCommitContext3D first_context = commitContext(first);
+  static_cast<void>(coordinator.commit(std::move(first), first_context, supervisor));
+  activatePending(supervisor);
+  ASSERT_NE(supervisor.plan(), nullptr);
+  const std::uint64_t generation = supervisor.plan()->routeGenerationHighWater();
+  ASSERT_GT(generation, 0U);
+
+  // The same route again, so it improves on nothing; the search that produced
+  // it replaces a resident the vehicle could not follow.
+  ActivationFixture3D diverged = activationFixture(supervisor);
+  diverged.transaction = makePlannerSearchTransaction3D(
+      diverged.world, captureResidentPlannerWorld3D(*diverged.world),
+      diverged.transaction->objective,
+      StaticRouteSearchRequestIdentity{
+          .kind = StaticRouteSearchRequestKind::kReplan,
+          .base_route_generation = generation,
+      },
+      std::nullopt, RouteReleaseReason3D::kDiverged);
+  ASSERT_NE(diverged.transaction, nullptr);
+  PreparedRouteActivation3D replacement = prepare(coordinator, diverged);
+  EXPECT_FALSE(replacement.result.admission.successor_improvement_required);
+  EXPECT_TRUE(replacement.result.admission.replacement.replacementAllowed());
+  ASSERT_TRUE(replacement.pending_draft.has_value());
+  const RouteActivationCommitContext3D replacement_context = commitContext(replacement);
+  const RouteActivationCommitResult3D committed =
+      coordinator.commit(std::move(replacement), replacement_context, supervisor);
+
+  EXPECT_TRUE(committed.result.admission.certified_pending)
+      << staticRouteActivationStatusName(committed.result.admission.activation_status);
+  EXPECT_NE(supervisor.pending(), nullptr);
+}
+
+TEST(RouteActivationCoordinator3DTest,
      InvalidPreparationFailsClosedWithoutAnExecutionDraft) {
   RouteActivationCoordinator3D coordinator{coordinatorConfig()};
 
