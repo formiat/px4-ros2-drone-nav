@@ -530,6 +530,14 @@ private:
   [[nodiscard]] DStarLiteKey3D calculateKey(PersistentPlannerNode3D node);
   void enqueue(PersistentPlannerNode3D node, DStarLiteRecord3D& record);
   void updateVertex(PersistentPlannerNode3D node);
+  // The optimized D* Lite vertex maintenance (Koenig & Likhachev): a
+  // lowered g(u) tightens each predecessor's rhs through the one edge into u
+  // instead of rescanning every successor of every predecessor, and a raised
+  // g(u) rescans only the predecessors whose rhs went through u.
+  void recomputeRhs(PersistentPlannerNode3D node, DStarLiteRecord3D& record);
+  void updateVertexQueue(PersistentPlannerNode3D node, DStarLiteRecord3D& record);
+  void lowerPredecessors(PersistentPlannerNode3D node, double node_g);
+  void raisePredecessors(PersistentPlannerNode3D node, double previous_node_g);
   [[nodiscard]] std::optional<DStarLiteQueueEntry3D> currentTop();
 
   const PersistentPlannerConfig3D* config_{nullptr};

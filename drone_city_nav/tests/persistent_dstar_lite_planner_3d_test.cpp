@@ -898,9 +898,17 @@ TEST(PersistentDStarLitePlanner3DTest,
       << " expansions=" << result.telemetry.expansions
       << " time_expansions=" << result.telemetry.execution_time_search_expansions
       << " search_ms=" << result.telemetry.search_ms;
-  EXPECT_TRUE(result.telemetry.feasibility_attempted);
-  EXPECT_TRUE(result.telemetry.feasibility_route_found);
-  EXPECT_GT(result.telemetry.feasibility_expansions, 0U);
+  // The anytime route comes from whichever search reaches the goal first
+  // within the health budget: the feasibility-first search, or the persistent
+  // search itself once its vertex maintenance leaves it enough of the budget.
+  EXPECT_LE(slices, 10U);
+  EXPECT_TRUE(result.telemetry.feasibility_attempted ||
+              candidate(result).source ==
+                  SpatialRouteCandidateSource3D::kExecutionTimeRefinement);
+  if (candidate(result).source == SpatialRouteCandidateSource3D::kFeasibilitySearch) {
+    EXPECT_TRUE(result.telemetry.feasibility_route_found);
+    EXPECT_GT(result.telemetry.feasibility_expansions, 0U);
+  }
   EXPECT_FALSE(result.telemetry.execution_time_search_complete);
   EXPECT_EQ(result.progress, SearchProgress3D::kRunning);
   expectRawValid(candidate(result).points, *occupancy,

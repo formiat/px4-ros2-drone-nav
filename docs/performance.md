@@ -119,7 +119,12 @@ beside a wall ignores the scan-to-scan churn of everything beyond the wall. Repa
 and search share every update: with a repair queue pending the search still
 receives half the budget, so a world that changes every scan cannot starve it
 of expansions, and an anytime route on the current labels reaches the vehicle
-while later repairs re-converge the search. The feasibility-first search that
+while later repairs re-converge the search. The session runs the optimized D* Lite vertex
+maintenance: when an expansion lowers g(u) each predecessor's rhs is tightened
+through its one edge into u, and when an expansion raises g(u) only the
+predecessors whose rhs went through u rescan their successors, so an
+expansion costs O(b) ranked edge evaluations rather than O(b^2) over the
+26-connected lattice and its adaptive levels. The feasibility-first search that
 runs while no incumbent exists is bounded the same way: its configured compute
 time is capped at half of the remaining budget whenever the persistent search
 still has repair or expansion work, so a feasibility search that keeps failing

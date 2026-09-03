@@ -113,27 +113,75 @@ void DStarLiteSession3D::enqueue(const PersistentPlannerNode3D node,
   });
 }
 
-void DStarLiteSession3D::updateVertex(const PersistentPlannerNode3D node) {
-  DStarLiteRecord3D& record = records_[node];
-  if (node != goal_) {
-    double best = std::numeric_limits<double>::infinity();
-    lattice_->forEachAdjacentNode(node, [&](const PersistentPlannerNode3D successor) {
-      const double edge_cost = lattice_->rankedEdgeCost(node, successor);
-      if (!std::isfinite(edge_cost)) {
-        return;
-      }
-      const auto found = records_.find(successor);
-      const double successor_cost = found != records_.end()
-                                        ? found->second.g
-                                        : std::numeric_limits<double>::infinity();
-      best = std::min(best, edge_cost + successor_cost);
-    });
-    record.rhs = best;
+void DStarLiteSession3D::recomputeRhs(const PersistentPlannerNode3D node,
+                                      DStarLiteRecord3D& record) {
+  if (node == goal_) {
+    return;
   }
+  double best = std::numeric_limits<double>::infinity();
+  lattice_->forEachAdjacentNode(node, [&](const PersistentPlannerNode3D successor) {
+    const double edge_cost = lattice_->rankedEdgeCost(node, successor);
+    if (!std::isfinite(edge_cost)) {
+      return;
+    }
+    const auto found = records_.find(successor);
+    const double successor_cost = found != records_.end()
+                                      ? found->second.g
+                                      : std::numeric_limits<double>::infinity();
+    best = std::min(best, edge_cost + successor_cost);
+  });
+  record.rhs = best;
+}
+
+void DStarLiteSession3D::updateVertexQueue(const PersistentPlannerNode3D node,
+                                           DStarLiteRecord3D& record) {
   record.open_token = 0U;
   if (!approximatelyEqual(record.g, record.rhs)) {
     enqueue(node, record);
   }
+}
+
+void DStarLiteSession3D::updateVertex(const PersistentPlannerNode3D node) {
+  DStarLiteRecord3D& record = records_[node];
+  recomputeRhs(node, record);
+  updateVertexQueue(node, record);
+}
+
+void DStarLiteSession3D::lowerPredecessors(const PersistentPlannerNode3D node,
+                                           const double node_g) {
+  lattice_->forEachAdjacentNode(node, [&](const PersistentPlannerNode3D predecessor) {
+    if (predecessor == goal_) {
+      return;
+    }
+    const double edge_cost = lattice_->rankedEdgeCost(predecessor, node);
+    if (!std::isfinite(edge_cost)) {
+      return;
+    }
+    DStarLiteRecord3D& predecessor_record = records_[predecessor];
+    predecessor_record.rhs = std::min(predecessor_record.rhs, edge_cost + node_g);
+    updateVertexQueue(predecessor, predecessor_record);
+  });
+}
+
+void DStarLiteSession3D::raisePredecessors(const PersistentPlannerNode3D node,
+                                           const double previous_node_g) {
+  lattice_->forEachAdjacentNode(node, [&](const PersistentPlannerNode3D predecessor) {
+    if (predecessor == goal_) {
+      return;
+    }
+    const auto found = records_.find(predecessor);
+    if (found == records_.end()) {
+      return;
+    }
+    if (std::isfinite(previous_node_g)) {
+      const double edge_cost = lattice_->rankedEdgeCost(predecessor, node);
+      if (std::isfinite(edge_cost) &&
+          approximatelyEqual(found->second.rhs, edge_cost + previous_node_g)) {
+        recomputeRhs(predecessor, found->second);
+      }
+    }
+    updateVertexQueue(predecessor, found->second);
+  });
 }
 
 namespace {
@@ -470,17 +518,14 @@ bool DStarLiteSession3D::computeShortestPath(
       enqueue(next->node, record);
     } else if (record.g > record.rhs) {
       record.g = record.rhs;
-      lattice_->forEachAdjacentNode(next->node,
-                                    [this](const PersistentPlannerNode3D predecessor) {
-                                      updateVertex(predecessor);
-                                    });
+      const double node_g = record.g;
+      // Record references may move while predecessors are created below.
+      lowerPredecessors(next->node, node_g);
     } else {
+      const double previous_node_g = record.g;
       record.g = std::numeric_limits<double>::infinity();
-      updateVertex(next->node);
-      lattice_->forEachAdjacentNode(next->node,
-                                    [this](const PersistentPlannerNode3D predecessor) {
-                                      updateVertex(predecessor);
-                                    });
+      raisePredecessors(next->node, previous_node_g);
+      updateVertexQueue(next->node, records_.at(next->node));
     }
     ++expansions;
   }
