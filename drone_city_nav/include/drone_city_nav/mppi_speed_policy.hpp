@@ -39,8 +39,12 @@ struct MppiSpeedPolicyConfig {
   double horizon_duration_s{6.0};
   double minimum_target_lookahead_m{30.0};
   double maximum_target_lookahead_m{100.0};
-  // Floor of the clearance limit so a tight spot stays leavable: the body
-  // validation, not the speed policy, is the hard authority there.
+  // Tracking-error tube law applied to live evidence: the tracking error the
+  // controller can accumulate within its response time must fit inside the
+  // body clearance of the motion under execution. The floor keeps a tight
+  // spot leavable; the body validation, not the speed policy, is the hard
+  // authority there. Both mirror the route tube configuration.
+  double clearance_response_time_s{0.15};
   double clearance_minimum_progress_speed_mps{1.0};
 };
 
@@ -55,7 +59,7 @@ struct MppiSpeedPolicyInput {
   // to stop before it.
   std::optional<double> blocked_route_remaining_m;
   // Body clearance to known occupied evidence along the motion the vehicle
-  // executes right now: the vehicle must be able to stop within it.
+  // executes right now: the tracking-error tube must fit inside it.
   std::optional<double> executed_horizon_clearance_m;
   RouteEndpointSemantics3D route_endpoint_semantics{
       RouteEndpointSemantics3D::kContinuation};

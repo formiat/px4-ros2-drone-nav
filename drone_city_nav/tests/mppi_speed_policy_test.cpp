@@ -84,6 +84,7 @@ TEST(MppiSpeedPolicyTest, TheExecutedHorizonClearanceCapsTheReferenceSpeed) {
   config.stopping_capability.maximum_commanded_horizontal_deceleration_mps2 = 4.0;
   config.stopping_capability.guaranteed_horizontal_deceleration_mps2 = 4.0;
   config.stopping_capability.reaction_latency_s = 0.0;
+  config.clearance_response_time_s = 0.5;
   config.clearance_minimum_progress_speed_mps = 1.0;
   allowHighSensorBrakingSpeed(config);
   MppiSpeedPolicyInput input;
@@ -93,7 +94,7 @@ TEST(MppiSpeedPolicyTest, TheExecutedHorizonClearanceCapsTheReferenceSpeed) {
   const MppiSpeedPolicyResult near = evaluateMppiSpeedPolicy(config, input);
   EXPECT_EQ(near.active_limiter, MppiSpeedLimiter::kClearance);
   EXPECT_STREQ(mppiSpeedLimiterName(near.active_limiter), "clearance");
-  EXPECT_NEAR(near.clearance_limit_mps, std::sqrt(2.0 * 4.0 * 2.0), 1.0e-6);
+  EXPECT_NEAR(near.clearance_limit_mps, 2.0 / 0.5, 1.0e-6);
   EXPECT_DOUBLE_EQ(near.reference_speed_mps, near.clearance_limit_mps);
 
   input.executed_horizon_clearance_m = 0.0;

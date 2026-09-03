@@ -119,11 +119,14 @@ Mode policy:
 - sensor-braking and goal limits.
 
 The reference speed is also capped by the body clearance of the horizon the
-vehicle is executing: it never exceeds the speed the vehicle can stop from
-within that clearance to known occupied evidence (unknown space does not
-count), whatever the route promised when it was certified.
-`clearance_speed_minimum_progress_mps` floors that limit so a tight spot stays
-leavable; the body validation remains the only hard authority.
+vehicle is executing, with the tracking-error tube law the route
+certification applies (`tracking_error_tube_response_time_s`,
+`tracking_error_tube_minimum_progress_speed_mps`): the tracking error the
+controller can accumulate within its response time must fit inside the
+clearance to known occupied evidence (unknown space does not count), whatever
+the route promised when it was certified. The minimum progress speed floors
+that limit so a tight spot stays leavable; the body validation remains the
+only hard authority.
 
 `guaranteed_lidar_detection_range_m` and
 `sensor_braking_physical_margin_m` define the physical sensor side of the

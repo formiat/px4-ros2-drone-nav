@@ -610,8 +610,6 @@ void ProductionMppiConfigLoader::declareControl() {
       declare<double>("guaranteed_vertical_stopping_deceleration_mps2", 2.0);
   control.speed_policy.stopping_capability.reaction_latency_s =
       declare<double>("speed_reaction_latency_s", 0.10);
-  control.speed_policy.clearance_minimum_progress_speed_mps =
-      declare<double>("clearance_speed_minimum_progress_mps", 1.0);
   control.speed_policy.sensor_braking_contract = SensorBrakingContract3D{
       .guaranteed_detection_range_m =
           declare<double>("guaranteed_lidar_detection_range_m", 30.0),
@@ -689,6 +687,12 @@ void ProductionMppiConfigLoader::declareControl() {
       declare<double>("tracking_error_tube_response_time_s", 0.15);
   control.tracking_error_tube.minimum_progress_speed_mps =
       declare<double>("tracking_error_tube_minimum_progress_speed_mps", 1.0);
+  // The live clearance speed limit enforces the same tube law as the route
+  // certification, so it shares the tube configuration.
+  control.speed_policy.clearance_response_time_s =
+      control.tracking_error_tube.response_time_s;
+  control.speed_policy.clearance_minimum_progress_speed_mps =
+      control.tracking_error_tube.minimum_progress_speed_mps;
 
   mppi.footprint = mppi::FootprintConfig{
       .radius_m = static_cast<float>(config_.world.physical_footprint.radius_m),

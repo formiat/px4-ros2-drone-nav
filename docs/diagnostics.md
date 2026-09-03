@@ -46,7 +46,7 @@ the script rather than assuming that `log/latest` belongs to the intended run.
 (`cruise`, `curvature`, `sensor_braking`, `goal`, `route_endpoint`,
 `route_constraint`, `blocked_route`, `clearance`), and the
 `*_speed_limit_mps` fields carry each limit; `clearance_speed_limit_mps` is
-the stopping-limited speed within the executed horizon's body clearance.
+the tracking-tube speed the executed horizon's body clearance admits.
 
 The JSONL record carries the same data in machine-readable form.
 

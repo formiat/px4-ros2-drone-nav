@@ -84,6 +84,7 @@ void validateConfig(const MppiSpeedPolicyConfig& config) {
       !(config.horizon_duration_s > 0.0) ||
       !(config.minimum_target_lookahead_m > 0.0) ||
       !(config.maximum_target_lookahead_m >= config.minimum_target_lookahead_m) ||
+      !(config.clearance_response_time_s > 0.0) ||
       !(config.clearance_minimum_progress_speed_mps >= 0.0)) {
     throw std::invalid_argument{"invalid MPPI speed policy configuration"};
   }
@@ -159,13 +160,15 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
   if (input.executed_horizon_clearance_m.has_value()) {
     // The motion under execution passes this close to known occupied
     // evidence. Whatever the route promised when it was certified, the
-    // vehicle must be able to stop within the clearance it actually has, so
-    // the stopping law caps the reference speed. The floor keeps a tight spot
-    // leavable; the body validation stays the only hard authority.
-    result.clearance_limit_mps = std::max(
-        config.clearance_minimum_progress_speed_mps,
-        stoppingLimitedSpeed(std::max(0.0, *input.executed_horizon_clearance_m), 0.0,
-                             config.stopping_capability));
+    // tracking error the controller can accumulate within its response time
+    // must fit inside the clearance the vehicle actually has: the same tube
+    // law the route certification applies, enforced on live evidence. The
+    // floor keeps a tight spot leavable; the body validation stays the only
+    // hard authority.
+    result.clearance_limit_mps =
+        std::max(config.clearance_minimum_progress_speed_mps,
+                 std::max(0.0, *input.executed_horizon_clearance_m) /
+                     config.clearance_response_time_s);
   }
   if (input.route_constraint_speed_limit_mps.has_value()) {
     result.route_constraint_limit_mps =
