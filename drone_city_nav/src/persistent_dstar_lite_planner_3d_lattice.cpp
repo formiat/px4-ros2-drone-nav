@@ -274,7 +274,7 @@ void PlannerLattice3D::ensureChunkTables(const GridBounds3D& bounds) {
     chunk_rows_ = rows;
     chunk_layers_ = layers;
     chunk_change_epoch_.assign(chunk_count, 0U);
-    chunk_near_occupied_.assign(chunk_count, 0U);
+    chunk_occupied_ring_.assign(chunk_count, 0U);
   }
   const double chunk_span_m = kChunkSize * bounds.resolution_m;
   const double reach_m = std::max(config_->clearance_ranking_distance_m,
@@ -291,7 +291,7 @@ void PlannerLattice3D::installWorld(const PersistentPlannerWorld3D& world) {
   }
   if (world.static_occupancy != nullptr) {
     // The static grid enumerates no chunks: every chunk ranks with a query.
-    std::ranges::fill(chunk_near_occupied_, 1U);
+    std::ranges::fill(chunk_occupied_ring_, 1U);
   } else if (world.observed_occupancy != nullptr) {
     for (const auto& [chunk, storage] : world.observed_occupancy->chunks()) {
       const bool occupied = std::ranges::any_of(
@@ -641,7 +641,7 @@ void PlannerLattice3D::reset() noexcept {
   depth_ = 0;
   level_zero_edge_states_.clear();
   chunk_change_epoch_.clear();
-  chunk_near_occupied_.clear();
+  chunk_occupied_ring_.clear();
   chunk_columns_ = 0;
   chunk_rows_ = 0;
   chunk_layers_ = 0;

@@ -411,12 +411,14 @@ private:
   // chunk grid so a staleness check reads its reach box without hashing; the
   // epoch advances with every noted change set.
   std::vector<std::uint64_t> chunk_change_epoch_;
-  // Whether occupied evidence lies within the ranking reach of a chunk, dense
-  // over the chunk grid and conservative (set when a chunk within reach ever
-  // held occupied evidence): a node whose chunk is clear ranks at unity
-  // without a clearance query, so searches through open air stay as cheap as
-  // unranked ones.
-  std::vector<std::uint8_t> chunk_near_occupied_;
+  // How close occupied evidence lies to a chunk, in chunk rings, dense over
+  // the chunk grid and conservative (a ring is recorded when a chunk that far
+  // away ever held occupied evidence; zero means none within the ranking
+  // reach). A node whose chunk lies beyond the rings a reach spans ranks at
+  // unity without a clearance query, so a search through open air stays as
+  // cheap as an unranked one, and the short feasibility reach skips more than
+  // the full ranking reach.
+  std::vector<std::uint8_t> chunk_occupied_ring_;
   int near_occupied_chunk_radius_{0};
   int chunk_columns_{0};
   int chunk_rows_{0};
@@ -427,7 +429,7 @@ private:
   [[nodiscard]] std::optional<std::size_t>
   chunkSlot(const OccupancyChunkIndex3D& chunk) const noexcept;
   void markNearOccupied(const OccupancyChunkIndex3D& chunk) noexcept;
-  [[nodiscard]] bool nearOccupied(const Point3& point) const noexcept;
+  [[nodiscard]] bool nearOccupied(const Point3& point, double reach_m) const noexcept;
   std::uint64_t change_epoch_{0U};
   std::vector<PersistentPlannerNode3D> moved_clearances_;
   std::size_t clearances_rederived_{0U};

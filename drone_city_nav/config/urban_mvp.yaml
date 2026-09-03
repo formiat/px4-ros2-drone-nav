@@ -288,7 +288,10 @@ production_mppi_node:
     static_occupancy_3d_path: worlds/generated_city.occupancy3d
     static_free_space_topology_3d_path: worlds/generated_city.topology3d
     static_esdf_3d_cache_path: worlds/generated_city.esdf3d
-    cruise_speed_mps: 5.0
+    # Cruise sits just under the sensor-braking limit (6.57 m/s for the 30 m
+    # guaranteed lidar range): the motion model caps every rollout there, so a
+    # higher cruise buys nothing and a lower one only lengthens open legs.
+    cruise_speed_mps: 6.5
     absolute_speed_limit_mps: 10.0
     maximum_horizontal_acceleration_mps2: 4.0
     guaranteed_vertical_stopping_deceleration_mps2: 2.0

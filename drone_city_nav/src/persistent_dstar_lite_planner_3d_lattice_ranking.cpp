@@ -31,7 +31,9 @@ double PlannerLattice3D::rankedEdgeCost(const PersistentPlannerNode3D first,
   // The ranking clearance is measured from the body surface, as the execution
   // risk model measures it, so a node centre one body radius from a wall
   // ranks as touching rather than as one metre clear.
-  if (!nearOccupied(pointFor(first)) && !nearOccupied(pointFor(second))) {
+  const double reach_m = config_->clearance_ranking_distance_m;
+  if (!nearOccupied(pointFor(first), reach_m) &&
+      !nearOccupied(pointFor(second), reach_m)) {
     return raw_cost;
   }
   const double clearance_m =
@@ -51,7 +53,8 @@ double PlannerLattice3D::rankedEdgeCost(const PersistentPlannerNode3D first,
   // The curve is scaled to the reach: an edge clear beyond it costs its raw
   // flight time, so the unranked heuristic stays tight in open space and the
   // search remains directed; only the band near occupied evidence is priced.
-  if (!nearOccupied(pointFor(first)) && !nearOccupied(pointFor(second))) {
+  if (!nearOccupied(pointFor(first), clearance_reach_m) &&
+      !nearOccupied(pointFor(second), clearance_reach_m)) {
     return raw_cost;
   }
   const double clearance_m =
@@ -124,7 +127,7 @@ double PlannerLattice3D::rankedSegmentTimeS(const Point3& first, const Point3& s
     const Point3 point{first.x + ratio * (second.x - first.x),
                        first.y + ratio * (second.y - first.y),
                        first.z + ratio * (second.z - first.z)};
-    if (!nearOccupied(point)) {
+    if (!nearOccupied(point, clearance_reach_m)) {
       continue;
     }
     const double body_clearance_m =
@@ -213,18 +216,27 @@ void PlannerLattice3D::markNearOccupied(const OccupancyChunkIndex3D& chunk) noex
   for (int z = chunk.z - radius; z <= chunk.z + radius; ++z) {
     for (int y = chunk.y - radius; y <= chunk.y + radius; ++y) {
       for (int x = chunk.x - radius; x <= chunk.x + radius; ++x) {
-        if (const std::optional<std::size_t> slot =
-                chunkSlot(OccupancyChunkIndex3D{x, y, z});
-            slot.has_value()) {
-          chunk_near_occupied_[*slot] = 1U;
+        const std::optional<std::size_t> slot =
+            chunkSlot(OccupancyChunkIndex3D{x, y, z});
+        if (!slot.has_value()) {
+          continue;
+        }
+        // Ring one is the chunk itself and its neighbours; the recorded ring
+        // is the nearest one that ever held occupied evidence.
+        const int ring = 1 + std::max({std::abs(x - chunk.x), std::abs(y - chunk.y),
+                                       std::abs(z - chunk.z)});
+        std::uint8_t& recorded = chunk_occupied_ring_[*slot];
+        if (recorded == 0U || ring < recorded) {
+          recorded = static_cast<std::uint8_t>(ring);
         }
       }
     }
   }
 }
 
-bool PlannerLattice3D::nearOccupied(const Point3& point) const noexcept {
-  if (chunk_near_occupied_.empty()) {
+bool PlannerLattice3D::nearOccupied(const Point3& point,
+                                    const double reach_m) const noexcept {
+  if (chunk_occupied_ring_.empty()) {
     return true;
   }
   constexpr int kChunkSize{OccupancyGrid3D::kChunkSize};
@@ -234,7 +246,17 @@ bool PlannerLattice3D::nearOccupied(const Point3& point) const noexcept {
       static_cast<int>(std::floor((point.y - raw_bounds_.origin_y) / chunk_span_m)),
       static_cast<int>(std::floor((point.z - raw_bounds_.origin_z) / chunk_span_m))};
   const std::optional<std::size_t> slot = chunkSlot(chunk);
-  return !slot.has_value() || chunk_near_occupied_[*slot] != 0U;
+  if (!slot.has_value()) {
+    return true;
+  }
+  const std::uint8_t ring = chunk_occupied_ring_[*slot];
+  if (ring == 0U) {
+    return false;
+  }
+  // Evidence `ring` rings away lies at least (ring - 1) chunk spans away.
+  const int rings_within_reach =
+      1 + static_cast<int>(std::ceil(std::max(0.0, reach_m) / chunk_span_m));
+  return ring <= rings_within_reach;
 }
 
 std::vector<PersistentPlannerNode3D> PlannerLattice3D::takeMovedClearances() {
