@@ -307,6 +307,9 @@ public:
   // and steeply through the critical band.
   [[nodiscard]] double
   rankingFactorForBodyClearance(double body_clearance_m) const noexcept;
+  // The same curve scaled to another reach: unity at and beyond it.
+  [[nodiscard]] double rankingFactorForBodyClearance(double body_clearance_m,
+                                                     double distance_m) const noexcept;
   // Execution time of a point path with every segment scaled by the worst
   // ranking factor sampled along it; stationary turn time is not scaled.
   [[nodiscard]] double rankedPathTimeS(const std::vector<Point3>& path,
@@ -328,7 +331,8 @@ public:
   [[nodiscard]] std::size_t clearancesRederived() const noexcept;
   // The current clearance of a node whose clearance was priced before, or
   // nullopt when it never was. A stale cache entry is re-derived first.
-  [[nodiscard]] std::optional<double> cachedNodeClearance(PersistentPlannerNode3D node);
+  [[nodiscard]] std::optional<double> cachedNodeClearance(PersistentPlannerNode3D node,
+                                                          double reach_m);
   // Distance within which an occupied change can alter a node's cached
   // clearance. Zero when clearance ranking is disabled.
   [[nodiscard]] double clearanceRankingReachM() const noexcept;

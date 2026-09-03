@@ -188,8 +188,10 @@ bool PlannerLattice3D::endpointClearanceClears(const PersistentPlannerNode3D fir
   // Only clearances already derived for ranking are consulted: deriving one
   // costs more than the swept validation it would save, so a search through
   // an unpriced region sweeps its edges and the ranking prices them later.
-  const std::optional<double> first_clearance = cachedNodeClearance(first);
-  const std::optional<double> second_clearance = cachedNodeClearance(second);
+  const std::optional<double> first_clearance =
+      cachedNodeClearance(first, required_m + 1.0e-6);
+  const std::optional<double> second_clearance =
+      cachedNodeClearance(second, required_m + 1.0e-6);
   return first_clearance.has_value() && second_clearance.has_value() &&
          *first_clearance > required_m && *second_clearance > required_m;
 }
@@ -519,16 +521,24 @@ double PlannerLattice3D::rankedEdgeCost(const PersistentPlannerNode3D first,
       !(clearance_reach_m > 0.0)) {
     return raw_cost;
   }
+  // The curve is scaled to the reach: an edge clear beyond it costs its raw
+  // flight time, so the unranked heuristic stays tight in open space and the
+  // search remains directed; only the band near occupied evidence is priced.
   const double clearance_m =
       std::max(0.0, std::min(nodeClearanceWithin(first, clearance_reach_m),
                              nodeClearanceWithin(second, clearance_reach_m)) -
                         config_->physical_footprint.radius_m);
-  return raw_cost * rankingFactorForBodyClearance(clearance_m);
+  return raw_cost * rankingFactorForBodyClearance(clearance_m, clearance_reach_m);
 }
 
 double PlannerLattice3D::rankingFactorForBodyClearance(
     const double body_clearance_m) const noexcept {
-  const double distance_m = config_->clearance_ranking_distance_m;
+  return rankingFactorForBodyClearance(body_clearance_m,
+                                       config_->clearance_ranking_distance_m);
+}
+
+double PlannerLattice3D::rankingFactorForBodyClearance(
+    const double body_clearance_m, const double distance_m) const noexcept {
   if (!(config_->clearance_ranking_weight > 0.0) || !(distance_m > 0.0) ||
       body_clearance_m >= distance_m) {
     return 1.0;
@@ -587,7 +597,8 @@ double PlannerLattice3D::rankedSegmentTimeS(const Point3& first, const Point3& s
     const double body_clearance_m =
         std::max(0.0, deriveNodeClearance(point, clearance_reach_m) - radius_m);
     worst_factor =
-        std::max(worst_factor, rankingFactorForBodyClearance(body_clearance_m));
+        std::max(worst_factor,
+                 rankingFactorForBodyClearance(body_clearance_m, clearance_reach_m));
   }
   return segment_s * worst_factor;
 }
@@ -698,11 +709,12 @@ double voxelBoxDistance3D(const Point3& point, const Point3& box_minimum,
 }
 
 std::optional<double>
-PlannerLattice3D::cachedNodeClearance(const PersistentPlannerNode3D node) {
+PlannerLattice3D::cachedNodeClearance(const PersistentPlannerNode3D node,
+                                      const double reach_m) {
   if (!node_clearance_cache_.contains(node)) {
     return std::nullopt;
   }
-  return nodeClearanceM(node);
+  return nodeClearanceWithin(node, reach_m);
 }
 
 double PlannerLattice3D::clearanceRankingReachM() const noexcept {

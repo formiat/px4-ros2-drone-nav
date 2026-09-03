@@ -432,6 +432,40 @@ TEST(PersistentDStarLitePlanner3DTest,
 }
 
 TEST(PersistentDStarLitePlanner3DTest,
+     TheRankedFeasibilitySearchStaysDirectedAcrossAnOpenWorld) {
+  // A ranking curve that charged open space would loosen the unranked
+  // heuristic and turn the first search into a breadth-first sweep; scaled to
+  // its reach it prices only the band near occupied evidence, so a far goal
+  // across an open world is reached within a few thousand explored nodes.
+  auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 1.0, 120, 120, 16});
+  for (int x = 0; x < 120; ++x) {
+    for (int y = 0; y < 120; ++y) {
+      ASSERT_TRUE(occupancy->setState({x, y, 0}, ObservedVoxelState::kOccupied));
+    }
+  }
+  PersistentPlannerConfig3D config = testConfig();
+  config.feasibility_first_enabled = true;
+  config.clearance_ranking_weight = 1.5;
+  config.clearance_ranking_distance_m = 6.0;
+  config.feasibility_clearance_ranking_distance_m = 2.0;
+  config.maximum_compute_time_ms = 2000.0;
+  PersistentDStarLitePlanner3D planner{config};
+  const Point3 start{2.5, 2.5, 5.5};
+  const Point3 goal{117.5, 117.5, 5.5};
+  PlannerUpdate3D update = planner.plan(request(start, goal, world(occupancy, 1U)));
+  for (int attempt = 0; attempt < 4 && !update.publishable(); ++attempt) {
+    update = planner.plan(request(start, goal, world(occupancy, 1U)));
+  }
+  ASSERT_TRUE(update.publishable());
+  EXPECT_TRUE(update.telemetry.feasibility_route_found);
+  EXPECT_LT(update.telemetry.feasibility_explored_nodes, 60000U)
+      << "explored " << update.telemetry.feasibility_explored_nodes;
+  expectRawValid(candidate(update).points, *occupancy,
+                 planner.config().physical_footprint);
+}
+
+TEST(PersistentDStarLitePlanner3DTest,
      RepairsTheResidentSearchAfterAnOccupiedCellAppearsOnItsPath) {
   auto initial_occupancy = std::make_shared<ObservedOccupancyGrid3D>(
       GridBounds3D{0.0, 0.0, 0.0, 1.0, 14, 10, 6});
