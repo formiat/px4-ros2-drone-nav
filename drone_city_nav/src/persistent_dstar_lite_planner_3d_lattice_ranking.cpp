@@ -286,6 +286,7 @@ bool PlannerLattice3D::clearanceStale(const Point3& point, const double reach_m,
   const int minimum_z = std::max(0, chunk_of(point.z - reach_m, raw_bounds_.origin_z));
   const int maximum_z =
       std::min(chunk_layers_ - 1, chunk_of(point.z + reach_m, raw_bounds_.origin_z));
+  const double reach_squared = reach_m * reach_m;
   for (int z = minimum_z; z <= maximum_z; ++z) {
     for (int y = minimum_y; y <= maximum_y; ++y) {
       const std::size_t row_offset =
@@ -293,8 +294,15 @@ bool PlannerLattice3D::clearanceStale(const Point3& point, const double reach_m,
            static_cast<std::size_t>(y)) *
           static_cast<std::size_t>(chunk_columns_);
       for (int x = minimum_x; x <= maximum_x; ++x) {
-        if (chunk_change_epoch_[row_offset + static_cast<std::size_t>(x)] >
+        if (chunk_change_epoch_[row_offset + static_cast<std::size_t>(x)] <=
             change_epoch) {
+          continue;
+        }
+        // The reach box over-approximates the reach sphere at the chunk
+        // corners; a changed chunk whose box lies beyond the reach cannot
+        // hold evidence within it.
+        if (raw_occupancy_clearance_detail::chunkDistanceSquared3D(
+                raw_bounds_, OccupancyChunkIndex3D{x, y, z}, point) <= reach_squared) {
           return true;
         }
       }
@@ -350,7 +358,15 @@ double PlannerLattice3D::nodeClearanceWithin(const PersistentPlannerNode3D node,
     // that nothing lies closer than that cap; a longer reach re-derives it.
     const bool reach_sufficient =
         cached.cap_m + 1.0e-9 >= cap_m || cached.clearance_m + 1.0e-9 < cached.cap_m;
-    if (reach_sufficient && !clearanceStale(point, cached.cap_m, cached.change_epoch)) {
+    // Only a change closer than the cached clearance can move it: occupied
+    // evidence added farther away cannot lower a minimum, and evidence removed
+    // farther away was not the nearest. A clearance that reached its cap
+    // knows nothing beyond the cap, so any change within it still counts.
+    const double relevant_reach_m = cached.clearance_m + 1.0e-9 < cached.cap_m
+                                        ? cached.clearance_m + 1.0e-6
+                                        : cached.cap_m;
+    if (reach_sufficient &&
+        !clearanceStale(point, relevant_reach_m, cached.change_epoch)) {
       cached.change_epoch = change_epoch_;
       return std::min(cached.clearance_m, cap_m);
     }

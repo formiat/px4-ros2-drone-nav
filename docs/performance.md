@@ -111,7 +111,11 @@ clearance ranking is validated lazily: a change stamps its chunks, a cached
 node clearance is re-derived when the search next consults it and a stamped
 chunk lies within the ranking reach, and only a re-derivation that moves the
 ranking factor by more than a few percent schedules the node for repair. The
-scheduler therefore never walks the ranking reach box per changed cell. Repair
+scheduler therefore never walks the ranking reach box per changed cell. A
+cached clearance below its reach goes stale only when a changed chunk's box
+lies within that clearance: evidence added farther away cannot lower a
+minimum and evidence removed farther away was not the nearest, so a label
+beside a wall ignores the scan-to-scan churn of everything beyond the wall. Repair
 and search share every update: with a repair queue pending the search still
 receives half the budget, so a world that changes every scan cannot starve it
 of expansions, and an anytime route on the current labels reaches the vehicle
