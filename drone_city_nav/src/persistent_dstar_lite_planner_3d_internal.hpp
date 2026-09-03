@@ -407,16 +407,33 @@ private:
   std::unordered_map<PersistentPlannerNode3D, CachedNodeClearance,
                      PersistentPlannerNode3DHash>
       node_clearance_cache_;
-  // Change epoch of the last occupied change per chunk; the epoch advances
-  // with every noted change set.
-  std::unordered_map<OccupancyChunkIndex3D, std::uint64_t, OccupancyChunkIndex3DHash>
-      chunk_change_epoch_;
+  // Change epoch of the last occupied change per raw chunk, dense over the
+  // chunk grid so a staleness check reads its reach box without hashing; the
+  // epoch advances with every noted change set.
+  std::vector<std::uint64_t> chunk_change_epoch_;
+  // Whether occupied evidence lies within the ranking reach of a chunk, dense
+  // over the chunk grid and conservative (set when a chunk within reach ever
+  // held occupied evidence): a node whose chunk is clear ranks at unity
+  // without a clearance query, so searches through open air stay as cheap as
+  // unranked ones.
+  std::vector<std::uint8_t> chunk_near_occupied_;
+  int near_occupied_chunk_radius_{0};
+  int chunk_columns_{0};
+  int chunk_rows_{0};
+  int chunk_layers_{0};
+  // Sizes the dense per-chunk tables for the raw grid bounds, keeping their
+  // contents when the geometry is unchanged.
+  void ensureChunkTables(const GridBounds3D& bounds);
+  [[nodiscard]] std::optional<std::size_t>
+  chunkSlot(const OccupancyChunkIndex3D& chunk) const noexcept;
+  void markNearOccupied(const OccupancyChunkIndex3D& chunk) noexcept;
+  [[nodiscard]] bool nearOccupied(const Point3& point) const noexcept;
   std::uint64_t change_epoch_{0U};
   std::vector<PersistentPlannerNode3D> moved_clearances_;
   std::size_t clearances_rederived_{0U};
-  // Whether a chunk within the ranking reach of the point changed after the
-  // given epoch.
-  [[nodiscard]] bool clearanceStale(const Point3& point,
+  // Whether a chunk within `reach_m` of the point changed after the given
+  // epoch.
+  [[nodiscard]] bool clearanceStale(const Point3& point, double reach_m,
                                     std::uint64_t change_epoch) const noexcept;
   [[nodiscard]] double deriveNodeClearance(const Point3& point, double cap_m) const;
   [[nodiscard]] double nodeClearanceWithin(PersistentPlannerNode3D node, double cap_m);

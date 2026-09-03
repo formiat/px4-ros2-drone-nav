@@ -350,6 +350,9 @@ TEST(PersistentDStarLitePlanner3DTest,
   // body reach forgets edges and repairs them.
   auto open_occupancy = std::make_shared<ObservedOccupancyGrid3D>(
       GridBounds3D{0.0, 0.0, 0.0, 1.0, 14, 1, 12});
+  // One occupied cell beyond every label's reach keeps the chunk ranked, so
+  // the labels cache their clearances instead of skipping the ranking.
+  ASSERT_TRUE(open_occupancy->setState({0, 0, 11}, ObservedVoxelState::kOccupied));
   PersistentPlannerConfig3D config = testConfig();
   config.clearance_ranking_weight = 1.5;
   config.clearance_ranking_distance_m = 6.0;

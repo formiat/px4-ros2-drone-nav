@@ -301,6 +301,7 @@ add_drone_city_nav_layer(
   src/persistent_dstar_lite_planner_3d.cpp
   src/persistent_dstar_lite_planner_3d_feasible_search.cpp
   src/persistent_dstar_lite_planner_3d_lattice.cpp
+  src/persistent_dstar_lite_planner_3d_lattice_ranking.cpp
   src/persistent_dstar_lite_planner_3d_search.cpp
   src/persistent_dstar_lite_planner_3d_time_search.cpp
   src/persistent_dstar_lite_planner_3d_world.cpp
