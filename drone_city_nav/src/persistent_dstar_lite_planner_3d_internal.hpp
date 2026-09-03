@@ -13,6 +13,7 @@
 #include <memory>
 #include <optional>
 #include <queue>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -56,6 +57,23 @@ using LatticeChangesByChunk3D =
 // Whether a cell centre lies within the swept body of the segment.
 using LatticeSegmentTouch3D = std::function<bool(
     const Point3& center, const Point3& first, const Point3& second)>;
+
+[[nodiscard]] inline bool nodeLess(const PersistentPlannerNode3D& first,
+                                   const PersistentPlannerNode3D& second) noexcept {
+  return std::tuple{first.z, first.y, first.x} <
+         std::tuple{second.z, second.y, second.x};
+}
+
+// The undirected edge in its canonical orientation, so both directions of a
+// traversal name the same cache entry.
+[[nodiscard]] inline PersistentPlannerEdge3D
+canonicalEdge(const PersistentPlannerNode3D first,
+              const PersistentPlannerNode3D second) noexcept {
+  if (nodeLess(first, second)) {
+    return PersistentPlannerEdge3D{first, second};
+  }
+  return PersistentPlannerEdge3D{second, first};
+}
 
 struct PersistentPlannerEdge3DHash {
   [[nodiscard]] std::size_t
@@ -584,16 +602,22 @@ public:
   // the exact start straight to it, so the anchor stays valid while that
   // departure segment does, wherever the vehicle drifted meanwhile.
   [[nodiscard]] PersistentPlannerNode3D anchor() const noexcept;
+  // Occupied evidence changed on the resident world. Every label is kept; the
+  // chain of lattice edges that reached it is re-validated lazily, when the
+  // search next touches the label, and the labels behind an edge that no
+  // longer survives are dropped and re-entered from their intact neighbours.
+  void noteWorldChanged() noexcept;
   // True when the last advance() emptied the frontier without a candidate.
   [[nodiscard]] bool frontierExhausted() const noexcept;
   [[nodiscard]] std::size_t exploredNodes() const noexcept;
   // Smallest distance from any expanded node to the exact goal so far.
   [[nodiscard]] double closestGoalDistanceM() const noexcept;
   // Candidates that failed validation since construction, by what failed:
-  // full restarts (departure, degenerate candidate) and prefix reseeds
-  // (an interior segment whose edge no longer survives the resident world).
+  // full restarts (departure, degenerate candidate), and labels dropped
+  // because a lattice edge on their chain no longer survives the resident
+  // world.
   [[nodiscard]] std::size_t restartCount() const noexcept;
-  [[nodiscard]] std::size_t prefixReseedCount() const noexcept;
+  [[nodiscard]] std::size_t invalidatedLabelCount() const noexcept;
   [[nodiscard]] std::size_t lastInvalidSegment() const noexcept;
 
   // Expands the frontier until a path is found, the budget is spent, or the
@@ -605,10 +629,27 @@ public:
 
 private:
   static constexpr std::uint32_t kNoParent{std::numeric_limits<std::uint32_t>::max()};
+  static constexpr std::uint32_t kNoPathNode{std::numeric_limits<std::uint32_t>::max()};
 
   void initialize(const Endpoints3D& endpoints);
   void ensureLabelStorage();
   [[nodiscard]] bool labelled(std::size_t index) const noexcept;
+  // Writes a label reached through a chain validated on the resident world.
+  void label(std::size_t index, double cost_from_start_s, std::uint32_t parent,
+             std::uint32_t depth);
+  // Queues the label unless an entry with its current cost is already queued.
+  void push(std::size_t index, PersistentPlannerNode3D node);
+  // Whether the chain of lattice edges from the anchor to the label survives
+  // the resident world. Edges are checked from the nearest ancestor already
+  // validated on this world; the labels behind the first broken edge are
+  // dropped and queued for re-entry.
+  [[nodiscard]] bool chainValid(std::size_t index);
+  // Starts a validation epoch: every chain is walked again when next touched.
+  void advanceValidationEpoch() noexcept;
+  void invalidateLabel(std::size_t index);
+  // Re-opens the intact labelled neighbours of every dropped label, so the
+  // region behind a broken edge is re-entered from the labels around it.
+  void drainInvalidations();
   // Lattice nodes from the anchor to the terminal, or empty when the parent
   // chain is broken or too long.
   [[nodiscard]] std::vector<PersistentPlannerNode3D>
@@ -616,31 +657,45 @@ private:
   // Exact-start departure, the nodes, and the exact goal. The departure joins
   // the first node the exact start reaches directly; nodes before it are
   // dropped, so a drifted vehicle keeps the labels it can still use.
+  // `path_nodes` names, per path point, the index into `nodes` it stands for,
+  // or kNoPathNode for an exact endpoint that is not on a node.
   [[nodiscard]] std::optional<std::vector<Point3>>
   pathFromNodes(const Endpoints3D& endpoints,
-                std::vector<PersistentPlannerNode3D>& nodes) const;
-  // Restarts the search seeded with the labels of `prefix`, whose edges were
-  // just validated on the resident world.
-  void reseedFromPrefix(const Endpoints3D& endpoints,
-                        const std::vector<PersistentPlannerNode3D>& prefix);
+                const std::vector<PersistentPlannerNode3D>& nodes,
+                std::vector<std::uint32_t>& path_nodes) const;
 
   const PersistentPlannerConfig3D* config_{nullptr};
   PlannerLattice3D* lattice_{nullptr};
   bool initialized_{false};
   PersistentPlannerNode3D anchor_{};
+  PersistentPlannerNode3D goal_{};
   std::uint64_t queue_sequence_{0U};
   bool frontier_exhausted_{false};
   double closest_goal_distance_m_{std::numeric_limits<double>::infinity()};
   FeasibilityOpenQueue3D open_{};
   // Dense labels stamped with the generation that wrote them; a reset bumps
-  // the generation instead of clearing the arrays.
+  // the generation instead of clearing the arrays. Each label also carries
+  // the validation epoch its chain was last walked on and whether an entry
+  // with its current cost is queued. An epoch starts with every occupied
+  // change and with every dropped label.
   std::vector<double> cost_s_;
   std::vector<std::uint32_t> label_generation_;
   std::vector<std::uint32_t> parent_index_;
+  std::vector<std::uint32_t> depth_;
+  std::vector<std::uint32_t> validated_epoch_;
+  std::vector<std::uint8_t> queued_;
   std::uint32_t generation_{0U};
+  std::uint32_t validation_epoch_{1U};
+  std::vector<std::uint32_t> chain_;
+  std::vector<std::uint32_t> invalidation_queue_;
+  std::vector<std::uint32_t> path_nodes_;
+  // Edges the raw sweep rejected on the resident world: the sweep is the
+  // authority for a candidate, so the search never offers them again on it.
+  std::unordered_set<PersistentPlannerEdge3D, PersistentPlannerEdge3DHash>
+      rejected_edges_;
   std::size_t explored_{0U};
   std::size_t restart_count_{0U};
-  std::size_t prefix_reseed_count_{0U};
+  std::size_t invalidated_label_count_{0U};
   std::size_t last_invalid_segment_{0U};
 };
 

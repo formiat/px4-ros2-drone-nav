@@ -463,10 +463,11 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
         dstar_session_.markCostToGoalInadmissible();
       }
       dstar_session_.advanceRepairGeneration();
+      // The feasibility search keeps its labels across occupied changes and
+      // re-validates their edge chains lazily on the resident world; every
+      // candidate it returns is raw-validated there as well.
+      feasibility_search_.noteWorldChanged();
     }
-    // The feasibility search keeps its labels across occupied changes; every
-    // candidate it returns is raw-validated on the resident world first, and a
-    // candidate that fails restarts the search there.
     if (feasibility_start_changed) {
       feasibility_search_.reset();
     }
@@ -538,11 +539,16 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     telemetry.feasibility_closest_goal_distance_m =
         feasibility_search_.closestGoalDistanceM();
     telemetry.feasibility_restarts = feasibility_search_.restartCount();
-    telemetry.feasibility_prefix_reseeds = feasibility_search_.prefixReseedCount();
+    telemetry.feasibility_invalidated_labels =
+        feasibility_search_.invalidatedLabelCount();
     telemetry.feasibility_last_invalid_segment =
         feasibility_search_.lastInvalidSegment();
     telemetry.feasibility_anchor = lattice_.pointFor(
         feasibility_search_.initialized() ? feasibility_search_.anchor() : start_);
+    telemetry.feasibility_ms =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                  feasibility_started)
+            .count();
   }
 
   // Repair and search share the update: while a changing world keeps the
@@ -558,6 +564,10 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
       repair_deadline, config_.maximum_expansions_per_update,
       telemetry.repair_lattice_states_processed));
   dstar_session_.scheduleMovedClearances();
+  const auto spatial_search_started = std::chrono::steady_clock::now();
+  telemetry.repair_ms =
+      std::chrono::duration<double, std::milli>(spatial_search_started - repair_started)
+          .count();
   const std::size_t remaining_spatial_expansions =
       telemetry.repair_lattice_states_processed < config_.maximum_expansions_per_update
           ? config_.maximum_expansions_per_update -
@@ -569,6 +579,10 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
         deadline, remaining_spatial_expansions, telemetry.expansions);
   }
   dstar_session_.scheduleMovedClearances();
+  const auto refinement_started = std::chrono::steady_clock::now();
+  telemetry.spatial_search_ms = std::chrono::duration<double, std::milli>(
+                                    refinement_started - spatial_search_started)
+                                    .count();
   const bool repair_complete = dstar_session_.pendingRepairNodes() == 0U;
   telemetry.repair_lattice_states_pending = dstar_session_.pendingRepairNodes();
   telemetry.repair_pending = !repair_complete;
@@ -637,6 +651,9 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   } else if (spatial_search_complete) {
     execution_time_refiner_.reset();
   }
+  telemetry.refinement_ms = std::chrono::duration<double, std::milli>(
+                                std::chrono::steady_clock::now() - refinement_started)
+                                .count();
 
   // A consumer that opened a new session holds no route of this search: its
   // first update delivers the resident incumbent, later ones improvements only.

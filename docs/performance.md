@@ -128,7 +128,19 @@ expansion costs O(b) ranked edge evaluations rather than O(b^2) over the
 runs while no incumbent exists is bounded the same way: its configured compute
 time is capped at half of the remaining budget whenever the persistent search
 still has repair or expansion work, so a feasibility search that keeps failing
-on an unchanged world cannot starve the session that would converge. The raw clearance probe behind the
+on an unchanged world cannot starve the session that would converge. Its
+labels survive occupied changes: each label carries the world epoch on which
+the chain of lattice edges that reached it was last validated, the chain is
+re-checked against the lattice edge cache only when the search next touches
+the label, and the labels behind an edge that stopped surviving are dropped
+and re-entered from their intact neighbours, so a scan that moves one edge
+near the vehicle costs the search that region rather than every label beyond
+it. An edge the raw sweep rejects on a candidate is withheld from the search
+on that world, so a candidate can never be rebuilt through it. The lattice
+edge cache both searches price their edges from forgets every cached edge a
+change can touch, whether or not the persistent session labelled its
+endpoints, so a region only the feasibility search has priced never keeps an
+edge the resident world no longer supports. The raw clearance probe behind the
 ranking and the tracking tube visits chunks nearest to the query first and
 stops once no unvisited chunk can hold a closer voxel, so a 6 m ranking reach
 costs less than the former 3 m scan.

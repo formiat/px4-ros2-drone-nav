@@ -195,6 +195,13 @@ struct PlannerTelemetry3D {
   double world_diff_ms{0.0};
   double world_install_ms{0.0};
   double search_ms{0.0};
+  // Breakdown of the search phases of this update: the feasibility-first
+  // search, the affected-vertex repair, the persistent spatial search, and
+  // the execution-time refinement.
+  double feasibility_ms{0.0};
+  double repair_ms{0.0};
+  double spatial_search_ms{0.0};
+  double refinement_ms{0.0};
   // Repair scheduling breakdown of this update.
   double schedule_ms{0.0};
   double schedule_ranking_ms{0.0};
@@ -213,7 +220,9 @@ struct PlannerTelemetry3D {
   std::size_t feasibility_explored_nodes{0U};
   double feasibility_closest_goal_distance_m{0.0};
   std::size_t feasibility_restarts{0U};
-  std::size_t feasibility_prefix_reseeds{0U};
+  // Labels dropped because a lattice edge on their chain stopped surviving
+  // the resident world, since the planner was constructed.
+  std::size_t feasibility_invalidated_labels{0U};
   std::size_t feasibility_last_invalid_segment{0U};
   Point3 feasibility_anchor{};
   bool execution_time_search_complete{false};

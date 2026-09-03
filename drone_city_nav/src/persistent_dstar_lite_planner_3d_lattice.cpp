@@ -35,21 +35,6 @@ constexpr double kGeometryTolerance{1.0e-9};
          first.depth_cells == second.depth_cells;
 }
 
-[[nodiscard]] bool nodeLess(const PersistentPlannerNode3D& first,
-                            const PersistentPlannerNode3D& second) noexcept {
-  return std::tuple{first.z, first.y, first.x} <
-         std::tuple{second.z, second.y, second.x};
-}
-
-[[nodiscard]] PersistentPlannerEdge3D
-canonicalEdge(const PersistentPlannerNode3D first,
-              const PersistentPlannerNode3D second) noexcept {
-  if (nodeLess(first, second)) {
-    return PersistentPlannerEdge3D{first, second};
-  }
-  return PersistentPlannerEdge3D{second, first};
-}
-
 constexpr unsigned kLevelZeroEdgeUnknown{0U};
 constexpr unsigned kLevelZeroEdgeClear{1U};
 constexpr unsigned kLevelZeroEdgeBlocked{2U};

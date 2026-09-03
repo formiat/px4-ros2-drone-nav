@@ -11,6 +11,12 @@
 
 #include "persistent_dstar_lite_planner_3d_internal.hpp"
 
+// Feasibility-first search: a resumable best-first search whose labels survive
+// occupied changes. A label is trusted only while the chain of lattice edges
+// that reached it survives the resident world; the chain is re-validated
+// lazily against the lattice edge cache, so a change drops exactly the labels
+// behind the edges it moved and the rest of the frontier keeps its progress.
+
 namespace drone_city_nav::detail {
 namespace {
 
@@ -53,7 +59,8 @@ FeasiblePathSearch3D::reconstructNodes(const PersistentPlannerNode3D terminal) c
 
 std::optional<std::vector<Point3>>
 FeasiblePathSearch3D::pathFromNodes(const Endpoints3D& endpoints,
-                                    std::vector<PersistentPlannerNode3D>& nodes) const {
+                                    const std::vector<PersistentPlannerNode3D>& nodes,
+                                    std::vector<std::uint32_t>& path_nodes) const {
   // The vehicle may have drifted from the anchor since the labels were seeded;
   // the departure joins the first of the leading nodes it still reaches.
   constexpr std::size_t kDepartureCandidates{8U};
@@ -70,52 +77,152 @@ FeasiblePathSearch3D::pathFromNodes(const Endpoints3D& endpoints,
   if (first >= nodes.size()) {
     return std::nullopt;
   }
-  nodes.erase(nodes.begin(),
-              std::next(nodes.begin(), static_cast<std::ptrdiff_t>(first)));
   std::vector<Point3> path;
-  path.reserve(nodes.size() + 2U);
+  path.reserve(nodes.size() - first + 2U);
+  path_nodes.clear();
+  path_nodes.reserve(nodes.size() - first + 2U);
   path.push_back(endpoints.exact_start);
-  for (const PersistentPlannerNode3D node : nodes) {
-    const Point3 point = lattice_->pointFor(node);
+  path_nodes.push_back(kNoPathNode);
+  for (std::size_t index = first; index < nodes.size(); ++index) {
+    const Point3 point = lattice_->pointFor(nodes[index]);
     if (distance3D(path.back(), point) > kCostTolerance) {
       path.push_back(point);
+      path_nodes.push_back(static_cast<std::uint32_t>(index));
+    } else {
+      // The exact start sits on this node: the point stands for both.
+      path_nodes.back() = static_cast<std::uint32_t>(index);
     }
   }
   if (distance3D(path.back(), endpoints.exact_goal) > kCostTolerance) {
     path.push_back(endpoints.exact_goal);
+    path_nodes.push_back(kNoPathNode);
   }
   return path.size() >= 2U ? std::optional<std::vector<Point3>>{std::move(path)}
                            : std::nullopt;
 }
 
-void FeasiblePathSearch3D::reseedFromPrefix(
-    const Endpoints3D& endpoints, const std::vector<PersistentPlannerNode3D>& prefix) {
-  std::vector<double> costs;
-  costs.reserve(prefix.size());
-  for (const PersistentPlannerNode3D node : prefix) {
-    costs.push_back(cost_s_[lattice_->linearIndex(node)]);
+void FeasiblePathSearch3D::noteWorldChanged() noexcept {
+  rejected_edges_.clear();
+  advanceValidationEpoch();
+}
+
+void FeasiblePathSearch3D::advanceValidationEpoch() noexcept {
+  if (++validation_epoch_ == 0U) {
+    std::ranges::fill(validated_epoch_, 0U);
+    validation_epoch_ = 1U;
   }
-  reset();
-  ensureLabelStorage();
-  initialized_ = true;
-  queue_sequence_ = 1U;
-  std::uint32_t parent = kNoParent;
-  for (std::size_t index = 0U; index < prefix.size(); ++index) {
-    const std::size_t node_index = lattice_->linearIndex(prefix[index]);
-    label_generation_[node_index] = generation_;
-    cost_s_[node_index] = costs[index];
-    parent_index_[node_index] = parent;
-    parent = static_cast<std::uint32_t>(node_index);
+}
+
+void FeasiblePathSearch3D::label(const std::size_t index,
+                                 const double cost_from_start_s,
+                                 const std::uint32_t parent,
+                                 const std::uint32_t depth) {
+  if (!labelled(index)) {
+    label_generation_[index] = generation_;
     ++explored_;
-    ++queue_sequence_;
-    open_.push(FeasibilityQueueEntry3D{
-        .estimated_total_s =
-            costs[index] + lattice_->heuristic(prefix[index], endpoints.goal),
-        .cost_from_start_s = costs[index],
-        .depth = index,
-        .node = prefix[index],
-        .sequence = queue_sequence_,
-    });
+  }
+  cost_s_[index] = cost_from_start_s;
+  parent_index_[index] = parent;
+  depth_[index] = depth;
+  validated_epoch_[index] = validation_epoch_;
+}
+
+void FeasiblePathSearch3D::push(const std::size_t index,
+                                const PersistentPlannerNode3D node) {
+  if (queued_[index] != 0U) {
+    return;
+  }
+  queued_[index] = 1U;
+  ++queue_sequence_;
+  if (queue_sequence_ == 0U) {
+    queue_sequence_ = 1U;
+  }
+  open_.push(FeasibilityQueueEntry3D{
+      .estimated_total_s = cost_s_[index] + lattice_->heuristic(node, goal_),
+      .cost_from_start_s = cost_s_[index],
+      .depth = depth_[index],
+      .node = node,
+      .sequence = queue_sequence_,
+  });
+}
+
+bool FeasiblePathSearch3D::chainValid(const std::size_t index) {
+  if (!labelled(index)) {
+    return false;
+  }
+  if (validated_epoch_[index] == validation_epoch_) {
+    return true;
+  }
+  // Climb to the nearest ancestor validated on this world. The anchor has no
+  // parent edge and is valid by construction; an ancestor that already lost
+  // its label takes every label below it with it.
+  chain_.clear();
+  std::size_t current = index;
+  while (true) {
+    if (!labelled(current)) {
+      for (const std::uint32_t stale : chain_) {
+        invalidateLabel(stale);
+      }
+      return false;
+    }
+    if (validated_epoch_[current] == validation_epoch_) {
+      break;
+    }
+    chain_.push_back(static_cast<std::uint32_t>(current));
+    if (parent_index_[current] == kNoParent) {
+      break;
+    }
+    current = parent_index_[current];
+  }
+  for (std::size_t position = chain_.size(); position-- > 0U;) {
+    const std::size_t child = chain_[position];
+    const std::uint32_t parent = parent_index_[child];
+    if (parent != kNoParent) {
+      const PersistentPlannerNode3D parent_node = lattice_->nodeAt(parent);
+      const PersistentPlannerNode3D child_node = lattice_->nodeAt(child);
+      const bool traversable =
+          (rejected_edges_.empty() ||
+           !rejected_edges_.contains(canonicalEdge(parent_node, child_node))) &&
+          lattice_->edgeTraversable(parent_node, child_node);
+      if (!traversable) {
+        // Labels validated earlier on this epoch may descend from the
+        // dropped ones; a new epoch sends every chain back through the walk.
+        advanceValidationEpoch();
+        for (std::size_t stale = 0U; stale <= position; ++stale) {
+          invalidateLabel(chain_[stale]);
+        }
+        return false;
+      }
+    }
+    validated_epoch_[child] = validation_epoch_;
+  }
+  return true;
+}
+
+void FeasiblePathSearch3D::invalidateLabel(const std::size_t index) {
+  if (!labelled(index)) {
+    return;
+  }
+  label_generation_[index] = 0U;
+  --explored_;
+  ++invalidated_label_count_;
+  invalidation_queue_.push_back(static_cast<std::uint32_t>(index));
+}
+
+void FeasiblePathSearch3D::drainInvalidations() {
+  while (!invalidation_queue_.empty()) {
+    const std::size_t index = invalidation_queue_.back();
+    invalidation_queue_.pop_back();
+    lattice_->forEachAdjacentNode(
+        lattice_->nodeAt(index), [&](const PersistentPlannerNode3D neighbor) {
+          const std::size_t neighbor_index = lattice_->linearIndex(neighbor);
+          // A neighbour whose own chain holds is frontier again; one whose
+          // chain is broken joins the queue through its validation.
+          if (!labelled(neighbor_index) || !chainValid(neighbor_index)) {
+            return;
+          }
+          push(neighbor_index, neighbor);
+        });
   }
 }
 
@@ -127,9 +234,11 @@ std::optional<std::vector<Point3>> FeasiblePathSearch3D::advance(
     initialize(endpoints);
   }
 
-  // Labels survive occupied changes; a candidate that fails raw validation,
-  // or a frontier exhausted without a valid candidate, restarts the search on
-  // the resident world from the current start anchor once per call.
+  // Labels survive occupied changes behind a lazily validated chain; a
+  // candidate that still fails the raw sweep drops the labels behind the
+  // failed edge, and a frontier exhausted without a valid candidate restarts
+  // the search on the resident world from the current start anchor once per
+  // call.
   bool restarted{false};
   frontier_exhausted_ = false;
   while (expansions < maximum_expansions &&
@@ -150,6 +259,13 @@ std::optional<std::vector<Point3>> FeasiblePathSearch3D::advance(
     if (!labelled(current_index) ||
         !approximatelyEqual(current.cost_from_start_s, cost_s_[current_index])) {
       continue;
+    }
+    if (!chainValid(current_index)) {
+      drainInvalidations();
+      continue;
+    }
+    if (!current.goal_connector) {
+      queued_[current_index] = 0U;
     }
     ++expansions;
 
@@ -190,9 +306,9 @@ std::optional<std::vector<Point3>> FeasiblePathSearch3D::advance(
       });
     }
     if (current.goal_connector && goal_connector_valid) {
-      std::vector<PersistentPlannerNode3D> nodes = reconstructNodes(current.node);
+      const std::vector<PersistentPlannerNode3D> nodes = reconstructNodes(current.node);
       std::optional<std::vector<Point3>> candidate =
-          nodes.empty() ? std::nullopt : pathFromNodes(endpoints, nodes);
+          nodes.empty() ? std::nullopt : pathFromNodes(endpoints, nodes, path_nodes_);
       const std::optional<std::size_t> invalid_segment =
           candidate.has_value() ? lattice_->firstInvalidSegment(*candidate)
                                 : std::optional<std::size_t>{0U};
@@ -200,19 +316,24 @@ std::optional<std::vector<Point3>> FeasiblePathSearch3D::advance(
         return candidate;
       }
       last_invalid_segment_ = *invalid_segment;
-      // Segment s joins candidate[s-1] and candidate[s]; with the exact start
-      // in front, segment s >= 2 leaves nodes[s-2]. Its edge was traversable
-      // when labelled and is not on the resident world any more: forget it and
-      // continue from the validated prefix instead of the whole closed set.
-      if (*invalid_segment >= 2U && *invalid_segment - 1U < nodes.size()) {
-        const std::size_t prefix_end = *invalid_segment - 2U;
-        if (*invalid_segment < nodes.size() + 1U) {
-          static_cast<void>(lattice_->forgetEdgeCost(
-              PersistentPlannerEdge3D{nodes[prefix_end], nodes[prefix_end + 1U]}));
-        }
-        nodes.resize(prefix_end + 1U);
-        ++prefix_reseed_count_;
-        reseedFromPrefix(endpoints, nodes);
+      // Segment s joins candidate[s-1] and candidate[s]. When both are lattice
+      // nodes, the lattice priced their edge traversable and the sweep rejects
+      // it on the resident world: the sweep is the authority, so the edge is
+      // forgotten for re-derivation, withheld from this search on this world,
+      // and the labels behind it are dropped and re-entered from the intact
+      // labels around them.
+      const std::size_t segment = *invalid_segment;
+      if (segment >= 1U && segment < path_nodes_.size() &&
+          path_nodes_[segment - 1U] != kNoPathNode &&
+          path_nodes_[segment] != kNoPathNode) {
+        const PersistentPlannerNode3D from = nodes[path_nodes_[segment - 1U]];
+        const PersistentPlannerNode3D to = nodes[path_nodes_[segment]];
+        const PersistentPlannerEdge3D edge = canonicalEdge(from, to);
+        static_cast<void>(lattice_->forgetEdgeCost(edge));
+        rejected_edges_.insert(edge);
+        advanceValidationEpoch();
+        invalidateLabel(lattice_->linearIndex(to));
+        drainInvalidations();
         continue;
       }
       // The departure no longer reaches any leading node, or the candidate is
@@ -228,6 +349,10 @@ std::optional<std::vector<Point3>> FeasiblePathSearch3D::advance(
 
     lattice_->forEachAdjacentNode(
         current.node, [&](const PersistentPlannerNode3D neighbor) {
+          if (!rejected_edges_.empty() &&
+              rejected_edges_.contains(canonicalEdge(current.node, neighbor))) {
+            return;
+          }
           // Priced with the soft clearance ranking within the feasibility
           // reach: the first route already keeps its body out of the
           // critical band instead of hugging the nearest floor or wall.
@@ -239,32 +364,21 @@ std::optional<std::vector<Point3>> FeasiblePathSearch3D::advance(
           }
           const double candidate_cost = current.cost_from_start_s + transition_cost;
           const std::size_t neighbor_index = lattice_->linearIndex(neighbor);
-          if (labelled(neighbor_index)) {
+          // A label whose chain broke is dropped here and re-labelled below.
+          if (labelled(neighbor_index) && chainValid(neighbor_index)) {
             const double existing = cost_s_[neighbor_index];
             if (existing < candidate_cost ||
                 approximatelyEqual(existing, candidate_cost)) {
               return;
             }
-          } else {
-            label_generation_[neighbor_index] = generation_;
-            ++explored_;
           }
-          cost_s_[neighbor_index] = candidate_cost;
-          parent_index_[neighbor_index] = static_cast<std::uint32_t>(current_index);
-          const std::size_t depth = current.depth + 1U;
-          ++queue_sequence_;
-          if (queue_sequence_ == 0U) {
-            queue_sequence_ = 1U;
-          }
-          open_.push(FeasibilityQueueEntry3D{
-              .estimated_total_s =
-                  candidate_cost + lattice_->heuristic(neighbor, endpoints.goal),
-              .cost_from_start_s = candidate_cost,
-              .depth = depth,
-              .node = neighbor,
-              .sequence = queue_sequence_,
-          });
+          label(neighbor_index, candidate_cost,
+                static_cast<std::uint32_t>(current_index),
+                static_cast<std::uint32_t>(current.depth + 1U));
+          queued_[neighbor_index] = 0U;
+          push(neighbor_index, neighbor);
         });
+    drainInvalidations();
   }
   return std::nullopt;
 }
@@ -277,6 +391,9 @@ void FeasiblePathSearch3D::ensureLabelStorage() {
   cost_s_.assign(count, std::numeric_limits<double>::infinity());
   label_generation_.assign(count, 0U);
   parent_index_.assign(count, kNoParent);
+  depth_.assign(count, 0U);
+  validated_epoch_.assign(count, 0U);
+  queued_.assign(count, 0U);
   generation_ = 1U;
 }
 
@@ -289,19 +406,11 @@ void FeasiblePathSearch3D::initialize(const Endpoints3D& endpoints) {
   ensureLabelStorage();
   initialized_ = true;
   anchor_ = endpoints.start;
+  goal_ = endpoints.goal;
   queue_sequence_ = 1U;
   const std::size_t anchor_index = lattice_->linearIndex(anchor_);
-  label_generation_[anchor_index] = generation_;
-  cost_s_[anchor_index] = 0.0;
-  parent_index_[anchor_index] = kNoParent;
-  explored_ = 1U;
-  open_.push(FeasibilityQueueEntry3D{
-      .estimated_total_s = lattice_->heuristic(anchor_, endpoints.goal),
-      .cost_from_start_s = 0.0,
-      .depth = 0U,
-      .node = anchor_,
-      .sequence = queue_sequence_,
-  });
+  label(anchor_index, 0.0, kNoParent, 0U);
+  push(anchor_index, anchor_);
 }
 
 void FeasiblePathSearch3D::reset() noexcept {
@@ -310,6 +419,10 @@ void FeasiblePathSearch3D::reset() noexcept {
   frontier_exhausted_ = false;
   open_ = FeasibilityOpenQueue3D{};
   explored_ = 0U;
+  chain_.clear();
+  invalidation_queue_.clear();
+  rejected_edges_.clear();
+  std::ranges::fill(queued_, 0U);
   if (++generation_ == 0U) {
     std::ranges::fill(label_generation_, 0U);
     generation_ = 1U;
@@ -340,8 +453,8 @@ std::size_t FeasiblePathSearch3D::restartCount() const noexcept {
   return restart_count_;
 }
 
-std::size_t FeasiblePathSearch3D::prefixReseedCount() const noexcept {
-  return prefix_reseed_count_;
+std::size_t FeasiblePathSearch3D::invalidatedLabelCount() const noexcept {
+  return invalidated_label_count_;
 }
 
 std::size_t FeasiblePathSearch3D::lastInvalidSegment() const noexcept {

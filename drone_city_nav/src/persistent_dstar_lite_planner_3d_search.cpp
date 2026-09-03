@@ -40,21 +40,6 @@ constexpr double kCostTolerance{1.0e-12};
          first.second < second.second;
 }
 
-[[nodiscard]] bool nodeLess(const PersistentPlannerNode3D& first,
-                            const PersistentPlannerNode3D& second) noexcept {
-  return std::tuple{first.z, first.y, first.x} <
-         std::tuple{second.z, second.y, second.x};
-}
-
-[[nodiscard]] PersistentPlannerEdge3D
-canonicalEdge(const PersistentPlannerNode3D first,
-              const PersistentPlannerNode3D second) noexcept {
-  if (nodeLess(first, second)) {
-    return PersistentPlannerEdge3D{first, second};
-  }
-  return PersistentPlannerEdge3D{second, first};
-}
-
 } // namespace
 
 bool FeasibilityQueueEntryCompare3D::operator()(
@@ -215,11 +200,12 @@ void DStarLiteSession3D::scheduleAffectedVertices(
   // repaired through scheduleMovedClearances.
   lattice_->noteChangedChunks(changed_chunks);
 
-  // A D* label can depend only on an edge whose cost was evaluated. Invalidate
-  // those exact cached dependencies instead of eagerly creating and validating
-  // every geometrically possible neighbor in the conservative change radius.
-  // Both endpoints are scheduled because an obstacle removal may make a
-  // previously infinite undirected edge traversable.
+  // The lattice edge cache is shared by every search on it, so every priced
+  // edge a change can move is forgotten, whether or not this session labelled
+  // its endpoints. An edge with a labelled endpoint schedules both endpoints
+  // for repair, because an obstacle removal may make a previously infinite
+  // undirected edge traversable into a state this session has not seen; an
+  // edge without one cannot move any label.
   // Only an edge whose swept body can actually touch a changed cell is
   // forgotten: the distance from the cell centre to the edge segment must be
   // within the body margin, horizontally and vertically. A node beside a
@@ -250,18 +236,23 @@ void DStarLiteSession3D::scheduleAffectedVertices(
   };
 
   // The change set is bucketed by the lattice node cell that holds each cell
-  // centre; every bucket then visits the labelled nodes within reach of that
-  // cell and tests only their priced edges against the bucket's cells. The
-  // cost is the number of changed node cells times the reach box, plus the
-  // exact per-edge tests near labels, never the change size times the box.
+  // centre; every bucket then visits the nodes within reach of that cell and
+  // tests only their priced edges against the bucket's cells. The cost is the
+  // number of changed node cells times the reach box, plus the exact per-edge
+  // tests near priced edges, never the change size times the box.
   const auto labelled = [&](const PersistentPlannerNode3D node) {
     return node == start_ || node == goal_ || records_.contains(node);
   };
-  // Visits every labelled node within the given node-step radii of a cell node.
-  const auto for_each_labelled_node_near = [&](const PersistentPlannerNode3D cell_node,
-                                               const int horizontal_radius,
-                                               const int vertical_radius,
-                                               auto&& visitor) {
+  const auto schedule_forgotten = [&](const PersistentPlannerEdge3D& edge) {
+    if (labelled(edge.first) || labelled(edge.second)) {
+      affected.insert(edge.first);
+      affected.insert(edge.second);
+    }
+  };
+  // Visits every node within the given node-step radii of a cell node.
+  const auto for_each_node_near = [&](const PersistentPlannerNode3D cell_node,
+                                      const int horizontal_radius,
+                                      const int vertical_radius, auto&& visitor) {
     for (int z_offset = -vertical_radius; z_offset <= vertical_radius; ++z_offset) {
       for (int y_offset = -horizontal_radius; y_offset <= horizontal_radius;
            ++y_offset) {
@@ -269,7 +260,7 @@ void DStarLiteSession3D::scheduleAffectedVertices(
              ++x_offset) {
           const PersistentPlannerNode3D node{
               cell_node.x + x_offset, cell_node.y + y_offset, cell_node.z + z_offset};
-          if (lattice_->nodeInside(node) && labelled(node)) {
+          if (lattice_->nodeInside(node)) {
             visitor(node);
           }
         }
@@ -368,7 +359,7 @@ void DStarLiteSession3D::scheduleAffectedVertices(
       static_cast<int>(std::ceil(vertical_reach / config_->minimum_vertical_step_m)) +
       1;
   for (const auto& [cell_node, changes] : changes_by_node_cell) {
-    for_each_labelled_node_near(
+    for_each_node_near(
         cell_node, horizontal_radius, vertical_radius,
         [&](const PersistentPlannerNode3D node) {
           const Point3 node_point = lattice_->pointFor(node);
@@ -412,8 +403,7 @@ void DStarLiteSession3D::scheduleAffectedVertices(
                   continue;
                 }
                 ++schedule_statistics_.edges_forgotten;
-                affected.insert(edge.first);
-                affected.insert(edge.second);
+                schedule_forgotten(edge);
               }
             }
           }
@@ -421,8 +411,7 @@ void DStarLiteSession3D::scheduleAffectedVertices(
   }
   for (const PersistentPlannerEdge3D& edge :
        lattice_->forgetAdaptiveEdgesTouching(changes_by_chunk, cell_touches_segment)) {
-    affected.insert(edge.first);
-    affected.insert(edge.second);
+    schedule_forgotten(edge);
   }
   std::vector<PersistentPlannerNode3D> ordered{affected.begin(), affected.end()};
   std::ranges::sort(ordered, nodeLess);
