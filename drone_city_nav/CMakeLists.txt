@@ -1399,6 +1399,10 @@ if(BUILD_TESTING)
     route_lifecycle_coordinator_3d_test
     tests/route_lifecycle_coordinator_3d_test.cpp drone_city_nav_route_runtime)
   add_drone_city_nav_private_runtime_gtest(
+    route_lifecycle_coordinator_3d_retirement_test
+    tests/route_lifecycle_coordinator_3d_retirement_test.cpp
+    drone_city_nav_route_runtime)
+  add_drone_city_nav_private_runtime_gtest(
     route_materializer_3d_test tests/route_materializer_3d_test.cpp
     drone_city_nav_route_runtime)
   add_drone_city_nav_private_runtime_gtest(

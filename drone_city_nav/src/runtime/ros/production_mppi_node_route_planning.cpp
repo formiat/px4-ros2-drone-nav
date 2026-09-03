@@ -263,7 +263,9 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
     RCLCPP_INFO(get_logger(),
                 "PERSISTENT_PLANNER3D stage=continuation_after_incumbent "
                 "queued=%s raw_revision=%" PRIu64 " search_generation=%" PRIu64,
-                update.continuation_queued ? "true" : "newer_world_pending",
+                update.continuation_queued ? "true"
+                : update.search_retired    ? "retired"
+                                           : "newer_world_pending",
                 planner_update.planner_telemetry.planned_on_revision,
                 planner_update.planner_telemetry.search_generation);
   }

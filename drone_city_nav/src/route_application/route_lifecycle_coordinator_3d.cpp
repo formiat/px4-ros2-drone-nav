@@ -77,6 +77,15 @@ classifyCandidateDisposition(const PlannerSearchTransaction3D& transaction,
       StaticRouteActivationStatus::kActivationSnapshotSuperseded) {
     return RouteCandidateDisposition3D::kRetrySameCandidate;
   }
+  // The commit base moved past the base this search was opened on (its own
+  // candidate was activated, or another route was): nothing the session can
+  // still deliver activates, so continuing it would only repeat the stale
+  // delivery every update. The lifecycle replans from the current base.
+  if (admission.activation_status ==
+          StaticRouteActivationStatus::kStaleRouteGeneration &&
+      (transaction.replacement() || transaction.extension())) {
+    return RouteCandidateDisposition3D::kRetireSearchAndReplan;
+  }
   return RouteCandidateDisposition3D::kContinueForImprovement;
 }
 
@@ -418,6 +427,7 @@ RouteLifecycleCoordinator3D::advance(RoutePlanningUpdateEvent3D event) {
        result.activation.admission.activation_status ==
            StaticRouteActivationStatus::kInvalidExecutionGeometry);
   if (result.search_running && !result.search_superseded_by_activation) {
+    result.search_retired = searchRetired(*transaction);
     result.continuation_queued = queueContinuation(result);
   }
   observeRecoveryEpisode(transaction->objective.mission_epoch);
@@ -760,10 +770,27 @@ std::uint64_t RouteLifecycleCoordinator3D::nextRouteGeneration() const noexcept 
              : current_generation + 1U;
 }
 
+bool RouteLifecycleCoordinator3D::searchRetired(
+    const PlannerSearchTransaction3D& transaction) const noexcept {
+  const std::scoped_lock lock{lifecycle_mutex_};
+  if (transaction.extension()) {
+    return !extension_request_in_flight_ ||
+           extension_in_flight_generation_ != transaction.request.base_route_generation;
+  }
+  return !replan_gate_.inFlight() ||
+         replan_gate_.generation() != transaction.request.base_route_generation;
+}
+
 bool RouteLifecycleCoordinator3D::queueContinuation(
     const RouteLifecycleUpdate3D& update) {
   if (update.request.transaction == nullptr ||
       update.planner_update.planner_session == nullptr) {
+    return false;
+  }
+  // A release that needed a fresh search already retired this search and
+  // queued its replacement. Requeueing the retired search would displace that
+  // replacement, and the release that raised it does not raise it again.
+  if (searchRetired(*update.request.transaction)) {
     return false;
   }
   RoutePlanningRequest3D request{

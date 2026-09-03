@@ -119,6 +119,9 @@ struct RouteLifecycleUpdate3D {
   std::size_t activation_attempts{0U};
   bool search_running{false};
   bool search_superseded_by_activation{false};
+  // The search's gate was cleared by a release that queued a fresh search;
+  // its continuation is dropped instead of displacing that search.
+  bool search_retired{false};
   bool continuation_queued{false};
   // Activation rejected the delivered incumbent for a vehicle-relative reason;
   // the continuation asks the planner to drop it and search afresh.
@@ -332,6 +335,10 @@ private:
   requestReplanImpl(RouteReleaseReason3D reason, std::uint64_t route_generation,
                     RouteLifecycleReplanOrigin3D origin,
                     std::uint64_t replay_completed_generation = 0U);
+  // Whether the transaction's gate no longer names it as the in-flight
+  // search: a release retired it and queued a replacement.
+  [[nodiscard]] bool
+  searchRetired(const PlannerSearchTransaction3D& transaction) const noexcept;
   [[nodiscard]] bool queueContinuation(const RouteLifecycleUpdate3D& update);
   std::uint64_t incumbent_rejection_sequence_{0U};
   // Rebases a continuation request onto the newest coherent world when it is
