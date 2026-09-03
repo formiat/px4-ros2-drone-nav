@@ -174,9 +174,14 @@ TEST(ExecutionSupervisorHorizon3DTest,
       supervisor.commitHorizon(std::move(unchanged));
   ASSERT_TRUE(refreshed.committed())
       << executionHorizonCommitStatus3DName(refreshed.status);
-  EXPECT_TRUE(refreshed.replaced_applied_control);
+  // The new lease inherits the witnessed control of its predecessor horizon,
+  // so the applied control stays continuous instead of being replaced.
+  EXPECT_FALSE(refreshed.replaced_applied_control);
   EXPECT_EQ(supervisor.authority()->owner().sequence, 2U);
-  EXPECT_TRUE(supervisor.authority()->control().empty());
+  EXPECT_TRUE(supervisor.authority()->control().valid);
+  EXPECT_EQ(supervisor.authority()->control().horizon_sequence, 1U);
+  EXPECT_TRUE(
+      supervisor.authority()->control().validFor(supervisor.authority()->owner()));
 
   const ExecutionHorizonCommitResult3D stale =
       supervisor.commitHorizon(transitionRequest(initial_authority, transition));

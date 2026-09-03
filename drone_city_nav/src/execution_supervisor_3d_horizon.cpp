@@ -308,7 +308,7 @@ previousControlCurrent(const VersionedExecutionInput3D& input,
                  maximum_control_feedback_age_ms) &&
              resident_control.horizon_producer_instance_id ==
                  input.previousControlSourceProducerInstanceId() &&
-             resident_control.horizon_sequence ==
+             resident_control.horizon_sequence >=
                  input.previousControlSourceSequence() &&
              resident_control.source_stamp_ns >= input.previousControlSourceStampNs() &&
              resident_control.receive_stamp_ns >= input.previousControlReceiveStampNs();
@@ -721,7 +721,13 @@ ExecutionSupervisor3D::commitHorizon(ExecutionHorizonCommitRequest3D request) {
     return result;
   }
   result.status = ExecutionHorizonCommitStatus3D::kCommitted;
-  result.replaced_applied_control = resident_control.valid;
+  // A lease that inherits the witnessed control of its predecessor horizon
+  // keeps the applied control continuous; only a lease that starts without
+  // the resident's witness replaces it.
+  const std::shared_ptr<const CommittedExecutionAuthority3D> published =
+      manager_.authority();
+  result.replaced_applied_control =
+      resident_control.valid && (published == nullptr || !published->control().valid);
   return result;
 }
 

@@ -149,6 +149,25 @@ ExecutionRoutePublicationStatus3D RouteExecutionManager3D::publishAuthorityLocke
   return ExecutionRoutePublicationStatus3D::kPublished;
 }
 
+namespace {
+
+// The applied control a new lease inherits from the authority it replaces:
+// the offboard keeps applying the previous horizon until it receives the new
+// one, so feedback that still witnesses the new owner (its immediate
+// predecessor) stays the authority's applied control instead of leaving the
+// lease unwitnessed until the next feedback lands.
+[[nodiscard]] AppliedControlEvidence3D
+carriedAppliedControl(const CommittedExecutionAuthority3D& previous,
+                      const ExecutionOwnerIdentity3D& owner) noexcept {
+  const AppliedControlEvidence3D& control = previous.control();
+  if (control.valid && owner.valid && control.validFor(owner)) {
+    return control;
+  }
+  return AppliedControlEvidence3D{};
+}
+
+} // namespace
+
 ExecutionRoutePublicationStatus3D RouteExecutionManager3D::publishTransitionLocked(
     const std::shared_ptr<const CommittedExecutionAuthority3D>& expected_authority,
     const ExecutionRouteTransitionResult3D& transition,
@@ -171,7 +190,8 @@ ExecutionRoutePublicationStatus3D RouteExecutionManager3D::publishTransitionLock
     return ExecutionRoutePublicationStatus3D::kStaleSnapshotVersion;
   }
   return publishAuthorityLocked(expected_authority, transition.next, owner,
-                                std::move(input), AppliedControlEvidence3D{});
+                                std::move(input),
+                                carriedAppliedControl(*expected_authority, owner));
 }
 
 ExecutionRoutePublicationStatus3D RouteExecutionManager3D::publishDetachedTransition(
@@ -209,7 +229,8 @@ RouteExecutionManager3D::publishLeaseForUnchangedPlanIfSame(
     return ExecutionRoutePublicationStatus3D::kInvalidCandidate;
   }
   return publishAuthorityLocked(expected_authority, expected_plan, owner,
-                                std::move(input), AppliedControlEvidence3D{});
+                                std::move(input),
+                                carriedAppliedControl(*expected_authority, owner));
 }
 
 bool RouteExecutionManager3D::publishAppliedControlIfSame(

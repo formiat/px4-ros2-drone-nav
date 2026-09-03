@@ -143,7 +143,9 @@ or, in planned mode, the immediate predecessor: the owner republishes its
 horizon every control interval, so the feedback of the previous publication
 is the control being applied now. The admission, the authority's
 applied-control contract and the freshness rule of the execution input all
-apply that one predecessor rule. Feedback of an older or unknown horizon
+apply that one predecessor rule, and a new lease inherits the witnessed
+control of its predecessor horizon instead of starting unwitnessed until the
+next feedback lands. Feedback of an older or unknown horizon
 revokes the latch, and the planner then falls back to the measured
 acceleration for control continuity; that fallback anchors the jerk limit on
 the vehicle's response rather than on the command, so it is meant for gaps,

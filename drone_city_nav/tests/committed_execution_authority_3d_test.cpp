@@ -142,6 +142,65 @@ TEST(CommittedExecutionAuthority3DTest,
 }
 
 TEST(CommittedExecutionAuthority3DTest,
+     ANewLeaseCarriesTheWitnessedControlOfItsPredecessorHorizon) {
+  // The offboard keeps applying the previous horizon until the new one
+  // reaches it, so the witnessed control of the predecessor stays the applied
+  // control of the next lease; a lease two horizons on starts unwitnessed.
+  SnapshotFixture3D fixture;
+  const std::optional<CertifiedRouteSuffix3D> suffix = fixture.certify();
+  ASSERT_TRUE(suffix.has_value());
+  const CertifiedRouteSuffix3D& certified =
+      suffix.value(); // NOLINT(bugprone-unchecked-optional-access)
+  RouteExecutionManager3D manager;
+  const std::shared_ptr<const CommittedExecutionAuthority3D> initial =
+      manager.authority();
+  ASSERT_NE(initial, nullptr);
+  const ExecutionRouteTransitionResult3D transition =
+      activeTransition(*initial->plan(), certified);
+  ASSERT_TRUE(transition.applied());
+  const ExecutionOwnerIdentity3D owner =
+      SnapshotFixture3D::committedOwner(*transition.next, 11U);
+  const std::shared_ptr<const VersionedExecutionInput3D> input =
+      SnapshotFixture3D::committedInput(*transition.next);
+  ASSERT_EQ(manager.publishLeasedTransition(initial, transition, owner, input),
+            ExecutionRoutePublicationStatus3D::kPublished);
+  const std::shared_ptr<const CommittedExecutionAuthority3D> leased =
+      manager.authority();
+  ASSERT_NE(leased, nullptr);
+  const AppliedControlEvidence3D control = SnapshotFixture3D::committedControl(owner);
+  ASSERT_TRUE(manager.publishAppliedControlIfSame(leased, control));
+  const std::shared_ptr<const CommittedExecutionAuthority3D> witnessed =
+      manager.authority();
+  ASSERT_NE(witnessed, nullptr);
+
+  const ExecutionOwnerIdentity3D next_owner =
+      SnapshotFixture3D::committedOwner(*transition.next, 12U);
+  ASSERT_EQ(manager.publishLeaseForUnchangedPlanIfSame(witnessed, witnessed->plan(),
+                                                       next_owner, input),
+            ExecutionRoutePublicationStatus3D::kPublished);
+  const std::shared_ptr<const CommittedExecutionAuthority3D> carried =
+      manager.authority();
+  ASSERT_NE(carried, nullptr);
+  EXPECT_TRUE(carried->valid());
+  EXPECT_EQ(carried->owner().sequence, 12U);
+  EXPECT_TRUE(carried->control().valid);
+  EXPECT_EQ(carried->control().horizon_sequence, owner.sequence);
+  EXPECT_TRUE(carried->control().validFor(carried->owner()));
+
+  const ExecutionOwnerIdentity3D later_owner =
+      SnapshotFixture3D::committedOwner(*transition.next, 13U);
+  ASSERT_EQ(manager.publishLeaseForUnchangedPlanIfSame(carried, carried->plan(),
+                                                       later_owner, input),
+            ExecutionRoutePublicationStatus3D::kPublished);
+  const std::shared_ptr<const CommittedExecutionAuthority3D> unwitnessed =
+      manager.authority();
+  ASSERT_NE(unwitnessed, nullptr);
+  EXPECT_TRUE(unwitnessed->valid());
+  EXPECT_EQ(unwitnessed->owner().sequence, 13U);
+  EXPECT_TRUE(unwitnessed->control().empty());
+}
+
+TEST(CommittedExecutionAuthority3DTest,
      ControlReplacementAndLeaseClearRequireTheExactAuthorityRevision) {
   SnapshotFixture3D fixture;
   const std::optional<CertifiedRouteSuffix3D> suffix = fixture.certify();
