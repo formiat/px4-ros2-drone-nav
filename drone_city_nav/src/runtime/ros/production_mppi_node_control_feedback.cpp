@@ -196,11 +196,16 @@ void ProductionMppiNode::onAppliedControl(const msg::MppiControlFeedback& messag
   }
   if (!execution_supervisor_.publishAppliedControlIfSame(execution_authority,
                                                          feedback)) {
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
-                         "APPLIED_CONTROL rejected=true reason=authority_changed "
-                         "horizon_producer=%" PRIu64 " horizon=%" PRIu64,
-                         feedback.horizon_producer_instance_id,
-                         feedback.horizon_sequence);
+    // The admission accepted the feedback for this owner; the publication
+    // fails either because the authority moved on since it was read or
+    // because the feedback does not witness the owner's lease.
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "APPLIED_CONTROL rejected=true reason=%s "
+        "horizon_producer=%" PRIu64 " horizon=%" PRIu64 " expected_horizon=%" PRIu64,
+        feedback.validFor(execution_owner) ? "authority_changed" : "owner_contract",
+        feedback.horizon_producer_instance_id, feedback.horizon_sequence,
+        execution_owner.sequence);
   }
 }
 

@@ -60,6 +60,11 @@ struct AppliedControlEvidence3D {
   bool valid{false};
 
   [[nodiscard]] bool empty() const noexcept;
+  // Whether this feedback witnesses the owner's lease: the owner's own
+  // horizon, or for a planned owner its immediate predecessor, which is the
+  // horizon the offboard is applying while the owner's has just been
+  // published. The same rule decides the freshness of the previous control an
+  // execution input carries and the admission of the feedback itself.
   [[nodiscard]] bool validFor(const ExecutionOwnerIdentity3D& owner) const noexcept;
 };
 

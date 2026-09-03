@@ -83,6 +83,65 @@ TEST(CommittedExecutionAuthority3DTest,
 }
 
 TEST(CommittedExecutionAuthority3DTest,
+     PlannedFeedbackOfTheImmediatePredecessorHorizonWitnessesTheOwner) {
+  // The offboard reports the horizon it applies while the owner publishes
+  // the next one every cycle: feedback of the immediate predecessor is the
+  // control the vehicle is executing under the lease, feedback two horizons
+  // back or of a later horizon is not, and a stationary hold is witnessed
+  // only by that same hold.
+  SnapshotFixture3D fixture;
+  const std::optional<CertifiedRouteSuffix3D> suffix = fixture.certify();
+  ASSERT_TRUE(suffix.has_value());
+  const CertifiedRouteSuffix3D& certified =
+      suffix.value(); // NOLINT(bugprone-unchecked-optional-access)
+  RouteExecutionManager3D manager;
+  const std::shared_ptr<const CommittedExecutionAuthority3D> initial =
+      manager.authority();
+  ASSERT_NE(initial, nullptr);
+  const ExecutionRouteTransitionResult3D transition =
+      activeTransition(*initial->plan(), certified);
+  ASSERT_TRUE(transition.applied());
+  const ExecutionOwnerIdentity3D owner =
+      SnapshotFixture3D::committedOwner(*transition.next, 11U);
+  const AppliedControlEvidence3D control = SnapshotFixture3D::committedControl(owner);
+  ASSERT_TRUE(control.validFor(owner));
+
+  AppliedControlEvidence3D predecessor = control;
+  predecessor.horizon_sequence = owner.sequence - 1U;
+  EXPECT_TRUE(predecessor.validFor(owner));
+  AppliedControlEvidence3D two_back = control;
+  two_back.horizon_sequence = owner.sequence - 2U;
+  EXPECT_FALSE(two_back.validFor(owner));
+  AppliedControlEvidence3D successor = control;
+  successor.horizon_sequence = owner.sequence + 1U;
+  EXPECT_FALSE(successor.validFor(owner));
+
+  ExecutionOwnerIdentity3D hold_owner = owner;
+  hold_owner.execution_mode = ExecutionAuthorityMode3D::kPositionHold;
+  AppliedControlEvidence3D hold_control = control;
+  hold_control.execution_mode = ExecutionAuthorityMode3D::kPositionHold;
+  hold_control.control_authoritative = false;
+  hold_control.yaw_acceleration_authoritative = false;
+  EXPECT_TRUE(hold_control.validFor(hold_owner));
+  hold_control.horizon_sequence = hold_owner.sequence - 1U;
+  EXPECT_FALSE(hold_control.validFor(hold_owner));
+
+  const std::shared_ptr<const VersionedExecutionInput3D> input =
+      SnapshotFixture3D::committedInput(*transition.next);
+  ASSERT_EQ(manager.publishLeasedTransition(initial, transition, owner, input),
+            ExecutionRoutePublicationStatus3D::kPublished);
+  const std::shared_ptr<const CommittedExecutionAuthority3D> leased =
+      manager.authority();
+  ASSERT_NE(leased, nullptr);
+  ASSERT_TRUE(manager.publishAppliedControlIfSame(leased, predecessor));
+  const std::shared_ptr<const CommittedExecutionAuthority3D> witnessed =
+      manager.authority();
+  ASSERT_NE(witnessed, nullptr);
+  EXPECT_TRUE(witnessed->valid());
+  EXPECT_EQ(witnessed->control().horizon_sequence, owner.sequence - 1U);
+}
+
+TEST(CommittedExecutionAuthority3DTest,
      ControlReplacementAndLeaseClearRequireTheExactAuthorityRevision) {
   SnapshotFixture3D fixture;
   const std::optional<CertifiedRouteSuffix3D> suffix = fixture.certify();

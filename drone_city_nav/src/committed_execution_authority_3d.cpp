@@ -123,6 +123,14 @@ bool AppliedControlEvidence3D::validFor(
           ? control_authoritative && yaw_acceleration_authoritative
           : execution_mode == ExecutionAuthorityMode3D::kPositionHold &&
                 !control_authoritative && !yaw_acceleration_authoritative;
+  // A planned owner publishes a new horizon every cycle while the offboard
+  // reports the one it is applying, so the feedback that reaches the owner
+  // names its immediate predecessor as often as the owner itself; both are
+  // the control the vehicle is executing under this lease. A stationary hold
+  // is witnessed only by feedback of that same hold.
+  const bool immediate_predecessor =
+      execution_mode == ExecutionAuthorityMode3D::kPlanned &&
+      horizon_sequence + 1U == owner.sequence;
   return valid && owner.valid && finiteControl(control) &&
          std::isfinite(yaw_rate_radps) && source_stamp_ns > 0 && receive_stamp_ns > 0 &&
          producer_instance_id != 0U && horizon_producer_instance_id != 0U &&
@@ -131,8 +139,8 @@ bool AppliedControlEvidence3D::validFor(
          execution_mode != ExecutionAuthorityMode3D::kRevoked &&
          producer_instance_id == owner.target_offboard_instance_id &&
          horizon_producer_instance_id == owner.producer_instance_id &&
-         horizon_sequence == owner.sequence && execution_mode == owner.execution_mode &&
-         authority_semantics_valid;
+         (horizon_sequence == owner.sequence || immediate_predecessor) &&
+         execution_mode == owner.execution_mode && authority_semantics_valid;
 }
 
 CommittedExecutionAuthority3D::CommittedExecutionAuthority3D(
