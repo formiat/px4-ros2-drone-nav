@@ -6,6 +6,7 @@
 #include "drone_city_nav/swept_footprint.hpp"
 #include "drone_city_nav/types.hpp"
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -237,6 +238,16 @@ struct PlannerDispatch3D {
 
 [[nodiscard]] PlannerDispatch3D
 coordinatePlannerUpdate3D(const PlannerUpdate3D& update) noexcept;
+
+// Share of the remaining update budget the feasibility-first search may
+// spend: its configured compute time, capped at half of the remainder while
+// the persistent search still has repair or expansion work. A feasibility
+// search that keeps failing on an unchanged world must not starve the
+// session that would otherwise converge on a route.
+[[nodiscard]] std::chrono::steady_clock::duration
+feasibilitySearchBudget3D(std::chrono::steady_clock::duration remaining,
+                          std::chrono::steady_clock::duration configured,
+                          bool persistent_search_has_work) noexcept;
 
 namespace detail {
 class PersistentDStarLitePlanner3DImpl;

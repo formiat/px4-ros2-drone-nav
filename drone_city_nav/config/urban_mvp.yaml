@@ -424,6 +424,9 @@ production_mppi_node:
     # within its share of the planner budget and reach a city-scale goal in
     # a handful of updates instead of tens of seconds.
     persistent_planner_maximum_feasibility_expansions_per_update: 32768
+    # Upper bound only: while the persistent search still has repair or
+    # expansion work the feasibility search gets at most half of the update
+    # budget, so a feasibility search that keeps failing cannot starve it.
     persistent_planner_maximum_feasibility_compute_time_ms: 140.0
     # The feasibility-first search tries the direct raw connector to the goal
     # only from nodes within this reach.

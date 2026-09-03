@@ -115,7 +115,11 @@ scheduler therefore never walks the ranking reach box per changed cell. Repair
 and search share every update: with a repair queue pending the search still
 receives half the budget, so a world that changes every scan cannot starve it
 of expansions, and an anytime route on the current labels reaches the vehicle
-while later repairs re-converge the search. The raw clearance probe behind the
+while later repairs re-converge the search. The feasibility-first search that
+runs while no incumbent exists is bounded the same way: its configured compute
+time is capped at half of the remaining budget whenever the persistent search
+still has repair or expansion work, so a feasibility search that keeps failing
+on an unchanged world cannot starve the session that would converge. The raw clearance probe behind the
 ranking and the tracking tube visits chunks nearest to the query first and
 stops once no unvisited chunk can hold a closer voxel, so a 6 m ranking reach
 costs less than the former 3 m scan.

@@ -72,6 +72,18 @@ bool PlannerUpdate3D::running() const noexcept {
          progress == SearchProgress3D::kRunning;
 }
 
+std::chrono::steady_clock::duration
+feasibilitySearchBudget3D(const std::chrono::steady_clock::duration remaining,
+                          const std::chrono::steady_clock::duration configured,
+                          const bool persistent_search_has_work) noexcept {
+  const std::chrono::steady_clock::duration available =
+      std::max(remaining, std::chrono::steady_clock::duration::zero());
+  const std::chrono::steady_clock::duration share =
+      persistent_search_has_work ? available / 2 : available;
+  return std::min(std::max(configured, std::chrono::steady_clock::duration::zero()),
+                  share);
+}
+
 PlannerDispatch3D coordinatePlannerUpdate3D(const PlannerUpdate3D& update) noexcept {
   const bool accepted = update.input_status == PlannerInputStatus3D::kAccepted;
   return PlannerDispatch3D{
@@ -497,11 +509,17 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
 
   if (config_.feasibility_first_enabled && coordinator_.incumbent() == nullptr) {
     telemetry.feasibility_attempted = true;
-    const auto feasibility_deadline = std::min(
-        deadline, std::chrono::steady_clock::now() +
-                      std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-                          std::chrono::duration<double, std::milli>{
-                              config_.maximum_feasibility_compute_time_ms}));
+    const auto feasibility_started = std::chrono::steady_clock::now();
+    const bool persistent_search_has_work = dstar_session_.pendingRepairNodes() > 0U ||
+                                            !dstar_session_.shortestPathComplete();
+    const auto feasibility_deadline =
+        feasibility_started +
+        feasibilitySearchBudget3D(
+            deadline - feasibility_started,
+            std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                std::chrono::duration<double, std::milli>{
+                    config_.maximum_feasibility_compute_time_ms}),
+            persistent_search_has_work);
     std::optional<std::vector<Point3>> path =
         feasibility_search_.advance(searchEndpoints(), feasibility_deadline,
                                     config_.maximum_feasibility_expansions_per_update,

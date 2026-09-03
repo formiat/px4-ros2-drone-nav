@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -1052,4 +1053,20 @@ TEST(PersistentDStarLitePlanner3DTest,
 }
 
 } // namespace
+
+TEST(PersistentDStarLitePlanner3DTest,
+     TheFeasibilitySearchLeavesHalfTheBudgetToAPersistentSearchWithWork) {
+  using std::chrono::milliseconds;
+  EXPECT_EQ(feasibilitySearchBudget3D(milliseconds{150}, milliseconds{140}, true),
+            milliseconds{75});
+  EXPECT_EQ(feasibilitySearchBudget3D(milliseconds{150}, milliseconds{140}, false),
+            milliseconds{140});
+  EXPECT_EQ(feasibilitySearchBudget3D(milliseconds{150}, milliseconds{40}, true),
+            milliseconds{40});
+  EXPECT_EQ(feasibilitySearchBudget3D(milliseconds{-5}, milliseconds{140}, true),
+            milliseconds{0});
+  EXPECT_EQ(feasibilitySearchBudget3D(milliseconds{150}, milliseconds{-1}, false),
+            milliseconds{0});
+}
+
 } // namespace drone_city_nav
