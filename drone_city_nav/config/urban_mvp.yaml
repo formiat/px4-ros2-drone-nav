@@ -291,9 +291,8 @@ production_mppi_node:
     guaranteed_lidar_detection_range_m: 30.0
     sensor_braking_physical_margin_m: 3.0
     # The goal limiter reaches zero this far before the mission goal. The
-    # capture latch needs the vehicle inside the stationary hold tolerance
-    # (0.25 m), so the margin stays at half of it: a larger margin leaves the
-    # vehicle creeping outside the capture tolerance with no speed allowance.
+    # capture latch fires once the vehicle rests inside the capture radius, so
+    # the margin only shapes where the approach comes to rest.
     goal_braking_margin_m: 0.125
     curvature_preview_distance_m: 60.0
     route_curvature_measurement_window_m: 5.0
@@ -413,9 +412,15 @@ production_mppi_node:
     persistent_planner_maximum_compute_time_ms: 150.0
     # Soft clearance ranking of lattice edges (never a reachability rule): an
     # edge within this distance of raw occupied evidence costs its flight time
-    # times 1 + weight * (1 - clearance / distance)^2.
+    # times 1 + weight * (1 - clearance / distance)^2. The reach equals the
+    # execution risk model's preferred_distance_m: a passage opening 7 m tall
+    # then ranks its middle above its floor, and a street ranks the levels 6 m
+    # above the seen ground above the lowest ones. A 3 m reach left every level
+    # above 3 m indifferent, so routes rode the lowest lattice levels along the
+    # floor discovery frontier, where each freshly seen floor cell turned the
+    # route critical for execution and the vehicle crawled.
     persistent_planner_clearance_ranking_weight: 1.5
-    persistent_planner_clearance_ranking_distance_m: 3.0
+    persistent_planner_clearance_ranking_distance_m: 6.0
     # Below the execution risk model's critical_distance_m the ranking factor
     # additionally grows by this weight times (1 - clearance / critical)^2.
     # The executor charges critical_exposure_weight per critical metre, about
@@ -592,6 +597,7 @@ mission_monitor_node:
     spawn_tolerance_m: 1.0
     min_movement_distance_m: 5.0
     mission_waypoint_target_match_tolerance_m: 0.001
+    mission_goal_capture_radius_m: 2.0
     shutdown_on_result: false
     building_clearance_m: 0.5
     vertical_clearance_m: 1.0

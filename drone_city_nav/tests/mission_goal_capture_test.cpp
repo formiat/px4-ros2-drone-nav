@@ -21,14 +21,13 @@ TEST(MissionGoalCaptureLatchTest, RequiresExactTerminalRoute) {
   EXPECT_FALSE(result.latched);
 }
 
-TEST(MissionGoalCaptureLatchTest, LatchesOnlyWhenHoldableAtTheGoal) {
+TEST(MissionGoalCaptureLatchTest, LatchesOnlyWhenRestingInsideTheCaptureRadius) {
   MissionGoalCaptureLatch latch;
   mppi::State state;
-  state.x = 9.0F;
+  state.x = 7.5F;
   state.y = 10.0F;
   state.z = 18.0F;
-  // Inside the capture radius but outside the stationary hold tolerance: the
-  // controller still has to bring the vehicle to the goal.
+  // At rest but outside the capture radius: the mission has not accepted it.
   EXPECT_FALSE(latch
                    .update(MissionGoalCaptureObservation{
                        .mission_goal = Point3{10.0, 10.0, 18.0},
@@ -37,7 +36,9 @@ TEST(MissionGoalCaptureLatchTest, LatchesOnlyWhenHoldableAtTheGoal) {
                    })
                    .latched);
 
-  state.x = 9.9F;
+  // Inside the capture radius but still moving: no stationary hold could be
+  // certified there yet.
+  state.x = 9.0F;
   state.vx = 1.0F;
   const MissionGoalCaptureResult moving = latch.update(MissionGoalCaptureObservation{
       .mission_goal = Point3{10.0, 10.0, 18.0},
@@ -47,14 +48,16 @@ TEST(MissionGoalCaptureLatchTest, LatchesOnlyWhenHoldableAtTheGoal) {
   EXPECT_FALSE(moving.latched);
   EXPECT_NEAR(moving.speed_mps, 1.0, 1.0e-6);
 
+  // Resting one metre from the goal is a capture: the hold pins this rest
+  // position, the vehicle never has to creep onto the exact coordinate.
   state.vx = 0.1F;
-  EXPECT_TRUE(latch
-                  .update(MissionGoalCaptureObservation{
-                      .mission_goal = Point3{10.0, 10.0, 18.0},
-                      .state = state,
-                      .terminal_route_available = true,
-                  })
-                  .newly_latched);
+  const MissionGoalCaptureResult resting = latch.update(MissionGoalCaptureObservation{
+      .mission_goal = Point3{10.0, 10.0, 18.0},
+      .state = state,
+      .terminal_route_available = true,
+  });
+  EXPECT_TRUE(resting.newly_latched);
+  EXPECT_NEAR(resting.distance_m, 1.0, 1.0e-6);
 }
 
 TEST(MissionGoalCaptureLatchTest, RemainsLatchedAfterLeavingCaptureRadius) {

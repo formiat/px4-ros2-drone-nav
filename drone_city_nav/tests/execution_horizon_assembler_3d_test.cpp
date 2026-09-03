@@ -65,6 +65,8 @@ TEST(ExecutionHorizonAssembler3DTest,
   ExecutionCycleFixture3D fixture;
   fixture.input.target = mppi::State{.x = 7.0F, .y = 8.0F, .z = 9.0F};
   fixture.cycle.route.mission_goal = Point3{1.0, 2.0, 3.0};
+  fixture.cycle.evidence.exact_initial_state =
+      mppi::State{.x = 1.5F, .y = 2.5F, .z = 3.5F};
   fixture.cycle.publication = nullptr;
   ASSERT_TRUE(fixture.cycle.validForAssembly());
   ASSERT_FALSE(fixture.cycle.valid());
@@ -75,12 +77,10 @@ TEST(ExecutionHorizonAssembler3DTest,
   EXPECT_EQ(goal_candidate.status, HorizonCandidateStatus3D::kExplicitHold);
   EXPECT_EQ(goal_candidate.explicit_hold_reason,
             ProductionMppiExecutionReason::kGoalCapture);
-  EXPECT_DOUBLE_EQ(goal_candidate.explicit_hold_position.x,
-                   fixture.cycle.route.mission_goal.x);
-  EXPECT_DOUBLE_EQ(goal_candidate.explicit_hold_position.y,
-                   fixture.cycle.route.mission_goal.y);
-  EXPECT_DOUBLE_EQ(goal_candidate.explicit_hold_position.z,
-                   fixture.cycle.route.mission_goal.z);
+  // The goal hold pins the vehicle's rest position, not the goal coordinate.
+  EXPECT_DOUBLE_EQ(goal_candidate.explicit_hold_position.x, 1.5);
+  EXPECT_DOUBLE_EQ(goal_candidate.explicit_hold_position.y, 2.5);
+  EXPECT_DOUBLE_EQ(goal_candidate.explicit_hold_position.z, 3.5);
 
   fixture.cycle.route.planning_state =
       ProductionMppiPlanningState::kMissionCommandPositionHold;

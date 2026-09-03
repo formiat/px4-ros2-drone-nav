@@ -83,7 +83,7 @@ const char* stationaryCaptureRearmIneligibilityForPlanningTick(
               context.capture_gate_config.maximum_vehicle_status_age_s,
           .maximum_offboard_session_age_s =
               context.maximum_control_feedback_age_ms * 1.0e-3,
-          .position_tolerance_m = kStationaryExecutionHoldPositionToleranceM,
+          .position_tolerance_m = context.capture_gate_config.goal_radius_m,
           .speed_tolerance_mps = kStationaryExecutionHoldSpeedToleranceMps,
           .yaw_rate_tolerance_radps = kStationaryExecutionHoldYawRateToleranceRadps,
       },

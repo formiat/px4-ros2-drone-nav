@@ -6,14 +6,13 @@
 
 namespace drone_city_nav {
 
-// The latch fires when the vehicle can be held at the goal: it is inside the
-// capture radius and, more tightly, inside the stationary hold tolerance at a
-// stationary speed. Latching earlier would hand the goal to a stationary hold
-// that cannot be certified until the vehicle actually arrives, with no
-// controller left to bring it there.
+// The latch fires when the vehicle rests inside the capture radius: the
+// capture radius is the mission's acceptance of the goal, and the goal hold
+// then pins the vehicle where it came to rest rather than at the exact goal
+// coordinate. Latching while still moving would hand the goal to a stationary
+// hold that cannot be certified, with no controller left to stop the vehicle.
 struct MissionGoalCaptureConfig {
   double capture_radius_m{2.0};
-  double stationary_position_tolerance_m{kStationaryExecutionHoldPositionToleranceM};
   double stationary_speed_tolerance_mps{kStationaryExecutionHoldSpeedToleranceMps};
 };
 

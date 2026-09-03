@@ -379,12 +379,12 @@ const char* MissionWaypointCaptureGate::evidenceIneligibility(
   if (total_speed_mps > config_.stop_speed_mps) {
     return "speed_above_stop_speed";
   }
+  // The route ends exactly at the goal; the hold pins the vehicle's rest
+  // position, which the capture radius accepts.
   if (distance3D(observation.route_target, observation.goal) >
           config_.target_match_tolerance_m ||
       distance3D(observation.stationary_hold_position, observation.goal) >
-          config_.target_match_tolerance_m ||
-      distance3D(observation.route_target, observation.stationary_hold_position) >
-          config_.target_match_tolerance_m) {
+          config_.goal_radius_m) {
     return "hold_target_mismatch";
   }
   return nullptr;

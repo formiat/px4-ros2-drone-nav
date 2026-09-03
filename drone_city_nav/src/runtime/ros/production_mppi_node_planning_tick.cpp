@@ -231,7 +231,7 @@ void ProductionMppiNode::planningTick() {
       distance3D(execution_horizon_owner.route_target, mission_goal) <=
           config_.execution.mission_waypoint_capture_gate.target_match_tolerance_m &&
       distance3D(execution_horizon_owner.stationary_hold_position, mission_goal) <=
-          config_.execution.mission_waypoint_capture_gate.target_match_tolerance_m;
+          config_.execution.mission_waypoint_capture_gate.goal_radius_m;
   if (matching_goal_capture_attempt) {
     // Freeze one committed lease/identity for the full acknowledgement attempt.
     // The offboard process repeats feedback for this exact tuple; superseding it

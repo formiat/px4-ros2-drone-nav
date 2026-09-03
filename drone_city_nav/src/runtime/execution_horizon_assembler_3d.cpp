@@ -94,7 +94,12 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
 
   switch (route.planning_state) {
     case ProductionMppiPlanningState::kMissionGoalPositionHold:
-      return explicitHoldCandidate(route.mission_goal,
+      // The goal is captured once the vehicle rests inside the capture radius;
+      // the hold pins that rest position instead of the goal coordinate, so no
+      // controller has to creep the vehicle onto the exact goal first.
+      return explicitHoldCandidate(Point3{evidence.exact_initial_state.x,
+                                          evidence.exact_initial_state.y,
+                                          evidence.exact_initial_state.z},
                                    ProductionMppiExecutionReason::kGoalCapture);
     case ProductionMppiPlanningState::kMissionCommandPositionHold:
       return explicitHoldCandidate(

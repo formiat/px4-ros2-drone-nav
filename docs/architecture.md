@@ -337,7 +337,13 @@ planner reuse.
 ## Mission Layer
 
 Point-to-point navigation remains the default mission and uses the configured
-fixed position objective and terminal goal capture.
+fixed position objective and terminal goal capture. The goal is captured once
+the vehicle rests inside the capture radius (`mission_goal_capture_radius_m`):
+the goal hold pins the vehicle's rest position rather than the goal coordinate,
+so the mission never waits for the controller to creep onto an exact point,
+while the route target that reached the goal still has to match it exactly. A
+goal hold may also replace a resident finite execution before its lease ends
+once the remaining lease commands nothing but rest at the hold position.
 
 The finite intercept mission runs four complete navigation stacks: three
 interceptors and one evader, each with a separate PX4 DDS namespace, planner,

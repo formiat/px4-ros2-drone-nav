@@ -1,4 +1,5 @@
 #include "drone_city_nav/compiled_trajectory_3d.hpp"
+#include "drone_city_nav/finite_motion_horizon_3d.hpp"
 
 #include "execution_route_snapshot_3d_plan_test_support.hpp"
 
@@ -155,12 +156,36 @@ TEST(ExecutionRouteSnapshot3DTest,
       transferToExecutionHold3D(*active, active->version, std::move(moving)).status,
       ExecutionRouteTransitionStatus3D::kInvalidCandidate);
 
-  const std::int64_t before_terminal_ns = active->finiteExecution()->valid_until_ns - 1;
+  const FiniteExecutionState3D& resident_execution = *active->finiteExecution();
+  const FiniteMotionHorizon3D& resident_horizon = *resident_execution.horizon;
+  std::size_t first_rest_state_index = 0U;
+  while (
+      first_rest_state_index < resident_horizon.states.size() &&
+      !finiteMotionHorizonRestsFromState3D(resident_horizon, first_rest_state_index,
+                                           kStationaryExecutionHoldPositionToleranceM,
+                                           kStationaryExecutionHoldSpeedToleranceMps)) {
+    ++first_rest_state_index;
+  }
+  ASSERT_GT(first_rest_state_index, 1U);
+  ASSERT_LT(first_rest_state_index + 1U, resident_horizon.states.size());
+  const auto lease_stamp_at = [&](const std::size_t state_index) {
+    return resident_execution.valid_from_ns +
+           static_cast<std::int64_t>(state_index) *
+               resident_execution.control_interval_ns;
+  };
   StationaryExecutionHoldCertification3D early = SnapshotFixture3D::holdCertification(
-      *active, true, std::nullopt, before_terminal_ns);
+      *active, true, std::nullopt, lease_stamp_at(first_rest_state_index - 1U));
   EXPECT_EQ(
       transferToExecutionHold3D(*active, active->version, std::move(early)).status,
       ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
+  StationaryExecutionHoldCertification3D resting = SnapshotFixture3D::holdCertification(
+      *active, true, std::nullopt, lease_stamp_at(first_rest_state_index));
+  const ExecutionRouteTransitionResult3D rested_early =
+      transferToExecutionHold3D(*active, active->version, std::move(resting));
+  EXPECT_EQ(rested_early.status, ExecutionRouteTransitionStatus3D::kApplied);
+  ASSERT_NE(rested_early.next, nullptr);
+  EXPECT_TRUE(rested_early.next->stationaryHold() != nullptr);
+  EXPECT_FALSE(rested_early.next->finiteExecution() != nullptr);
 
   const MotionState3D& terminal = active->finiteExecution()->horizon->states.back();
   const Point3 discontinuous_position{terminal.x + 1.0, terminal.y, terminal.z};

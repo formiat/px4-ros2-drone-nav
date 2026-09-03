@@ -2056,6 +2056,12 @@ if(BUILD_TESTING)
                         drone_city_nav_execution)
   enable_project_warnings(production_mppi_execution_control_test)
 
+  ament_add_gtest(finite_motion_horizon_3d_test
+                  tests/finite_motion_horizon_3d_test.cpp)
+  target_compile_features(finite_motion_horizon_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(finite_motion_horizon_3d_test drone_city_nav_core)
+  enable_project_warnings(finite_motion_horizon_3d_test)
+
   ament_add_gtest(execution_horizon_timing_test
                   tests/execution_horizon_timing_test.cpp)
   target_compile_features(execution_horizon_timing_test PRIVATE cxx_std_20)

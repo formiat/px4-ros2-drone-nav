@@ -164,9 +164,13 @@ public:
     minimum_movement_m_ = declare_parameter<double>("min_movement_distance_m", 5.0);
     acknowledgement_target_tolerance_m_ =
         declare_parameter<double>("mission_waypoint_target_match_tolerance_m", 1.0e-3);
+    goal_capture_radius_m_ =
+        declare_parameter<double>("mission_goal_capture_radius_m", 2.0);
     frame_id_ = declare_parameter<std::string>("frame_id", "map");
     if (!std::isfinite(acknowledgement_target_tolerance_m_) ||
-        acknowledgement_target_tolerance_m_ < 0.0 || frame_id_.empty()) {
+        acknowledgement_target_tolerance_m_ < 0.0 ||
+        !std::isfinite(goal_capture_radius_m_) || goal_capture_radius_m_ <= 0.0 ||
+        frame_id_.empty()) {
       throw std::invalid_argument{
           "mission acknowledgement frame and tolerance must be valid"};
     }
@@ -322,7 +326,7 @@ private:
             acknowledgement_target_tolerance_m_ &&
         distance3D(route_target, expected_goal) <=
             acknowledgement_target_tolerance_m_ &&
-        distance3D(hold_position, expected_goal) <= acknowledgement_target_tolerance_m_;
+        distance3D(hold_position, expected_goal) <= goal_capture_radius_m_;
     const MissionWaypointAcknowledgementCandidate candidate{
         .producer_instance_id = acknowledgement.producer_instance_id,
         .acknowledgement_sequence = acknowledgement.acknowledgement_sequence,
@@ -450,6 +454,7 @@ private:
   double spawn_tolerance_m_{1.0};
   double minimum_movement_m_{5.0};
   double acknowledgement_target_tolerance_m_{1.0e-3};
+  double goal_capture_radius_m_{2.0};
   double latest_altitude_m_{std::numeric_limits<double>::quiet_NaN()};
   double latest_speed_mps_{std::numeric_limits<double>::infinity()};
   double spawn_distance_m_{std::numeric_limits<double>::infinity()};

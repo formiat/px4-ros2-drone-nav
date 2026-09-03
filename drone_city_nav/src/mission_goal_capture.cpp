@@ -24,10 +24,9 @@ MissionGoalCaptureLatch::MissionGoalCaptureLatch(const MissionGoalCaptureConfig&
   if (!(config_.capture_radius_m > 0.0)) {
     throw std::invalid_argument{"mission goal capture radius must be positive"};
   }
-  if (!(config_.stationary_position_tolerance_m > 0.0) ||
-      !(config_.stationary_speed_tolerance_mps > 0.0)) {
+  if (!(config_.stationary_speed_tolerance_mps > 0.0)) {
     throw std::invalid_argument{
-        "mission goal capture stationary tolerances must be positive"};
+        "mission goal capture stationary speed tolerance must be positive"};
   }
 }
 
@@ -51,11 +50,11 @@ MissionGoalCaptureLatch::update(const MissionGoalCaptureObservation& observation
                  mission_goal_);
   result.speed_mps = std::hypot(std::hypot(observation.state.vx, observation.state.vy),
                                 observation.state.vz);
-  const bool holdable_at_goal =
-      result.distance_m <= config_.stationary_position_tolerance_m &&
+  const bool resting_inside_capture_radius =
+      result.distance_m <= config_.capture_radius_m &&
       result.speed_mps <= config_.stationary_speed_tolerance_mps;
   if (!latched_ && observation.terminal_route_available &&
-      result.distance_m <= config_.capture_radius_m && holdable_at_goal) {
+      resting_inside_capture_radius) {
     latched_ = true;
     result.newly_latched = true;
   }

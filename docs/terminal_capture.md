@@ -26,7 +26,8 @@ captured current position instead of extrapolating motion.
 
 Mission completion is determined by `mission_monitor_node`, using:
 
-- goal radius;
+- goal radius, which also bounds how far the acknowledged stationary hold may
+  rest from the goal (`mission_goal_capture_radius_m`);
 - low-speed threshold;
 - stable hold duration;
 - absence of a latched `VehicleDestroyed` event.

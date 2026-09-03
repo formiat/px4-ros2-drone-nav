@@ -1,4 +1,5 @@
 #include "drone_city_nav/execution_route_transitions_3d.hpp"
+#include "drone_city_nav/finite_motion_horizon_3d.hpp"
 #include "drone_city_nav/motion_altitude_envelope_3d.hpp"
 #include "drone_city_nav/motion_dynamics_3d.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
@@ -6,6 +7,7 @@
 
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -125,6 +127,32 @@ stationaryHoldPointSafe(const StationaryExecutionHoldCertification3D& certificat
       certification.position, *certification.execution_input,
       certification.observed_raw_world.get(), certification.static_world.get(),
       *certification.validation_policy, *certification.latest_lidar_evidence);
+}
+
+// A finite execution may hand its ownership to a stationary hold once its
+// remaining lease commands nothing but rest at the terminal state: either the
+// lease has ended, or every state scheduled at or after `stamp_ns` already
+// rests there. The hold then replaces an owner that would only keep the
+// vehicle still, so no commanded motion is truncated.
+[[nodiscard]] bool finiteExecutionLeaseRestsAt(const FiniteMotionHorizon3D& horizon,
+                                               const std::int64_t valid_from_ns,
+                                               const std::int64_t valid_until_ns,
+                                               const std::int64_t control_interval_ns,
+                                               const std::int64_t stamp_ns) noexcept {
+  if (stamp_ns >= valid_until_ns) {
+    return true;
+  }
+  if (stamp_ns < valid_from_ns || control_interval_ns <= 0) {
+    return false;
+  }
+  const std::int64_t elapsed_ns = stamp_ns - valid_from_ns;
+  const std::int64_t first_state_index =
+      elapsed_ns / control_interval_ns +
+      static_cast<std::int64_t>(elapsed_ns % control_interval_ns != 0);
+  return finiteMotionHorizonRestsFromState3D(
+      horizon, static_cast<std::size_t>(first_state_index),
+      kStationaryExecutionHoldPositionToleranceM,
+      kStationaryExecutionHoldSpeedToleranceMps);
 }
 
 [[nodiscard]] ExecutionPlan3D
@@ -252,13 +280,21 @@ execution_route_snapshot_3d_internal::applyTransferToExecutionHoldCommand3D(
         source_horizon == nullptr || source_horizon->states.empty()) {
       return transitionFailure(ExecutionRouteTransitionStatus3D::kVersionExhausted);
     }
+    const std::int64_t valid_from_ns = route_execution != nullptr
+                                           ? route_execution->valid_from_ns
+                                           : direct_execution->valid_from_ns;
     const std::int64_t valid_until_ns = route_execution != nullptr
                                             ? route_execution->valid_until_ns
                                             : direct_execution->valid_until_ns;
+    const std::int64_t control_interval_ns =
+        route_execution != nullptr ? route_execution->control_interval_ns
+                                   : direct_execution->control_interval_ns;
     const MotionState3D& terminal = source_horizon->states.back();
-    if (certification.execution_input->effectiveStampNs() < valid_until_ns ||
-        distance3D(certification.position, Point3{terminal.x, terminal.y, terminal.z}) >
-            kStationaryExecutionHoldPositionToleranceM) {
+    if (distance3D(certification.position, Point3{terminal.x, terminal.y, terminal.z}) >
+            kStationaryExecutionHoldPositionToleranceM ||
+        !finiteExecutionLeaseRestsAt(
+            *source_horizon, valid_from_ns, valid_until_ns, control_interval_ns,
+            certification.execution_input->effectiveStampNs())) {
       return transitionFailure(
           ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
     }

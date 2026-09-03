@@ -38,6 +38,14 @@ buildRouteConvergentFiniteMotionHorizon3D(
     const FiniteMotionHorizon3D& horizon,
     float velocity_tolerance_mps = 1.0e-3F) noexcept;
 
+// True when every state from `first_state_index` onward already rests at the
+// terminal state: within `position_tolerance_m` of it and slower than
+// `velocity_tolerance_mps`. Such a tail commands no further motion, so an
+// equivalent stationary owner may replace it before its lease ends.
+[[nodiscard]] bool finiteMotionHorizonRestsFromState3D(
+    const FiniteMotionHorizon3D& horizon, std::size_t first_state_index,
+    double position_tolerance_m, double velocity_tolerance_mps) noexcept;
+
 [[nodiscard]] std::int64_t finitePathControlIntervalNanoseconds3D(float dt_s) noexcept;
 
 [[nodiscard]] std::size_t finiteHorizonArrivalSearchStepControls3D(float dt_s) noexcept;

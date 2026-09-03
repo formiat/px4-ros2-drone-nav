@@ -149,8 +149,12 @@ TEST(MissionWaypointCaptureGateTest,
   observation.vehicle_status_epoch_stable = false;
   EXPECT_FALSE(observe(gate, observation).evidence_valid);
 
+  // The hold pins the vehicle's rest position anywhere inside the goal radius.
   observation = validObservation(5'000'000'000);
-  observation.stationary_hold_position.z += 0.01;
+  observation.stationary_hold_position.z += 0.5;
+  EXPECT_TRUE(observe(gate, observation).evidence_valid);
+  observation = validObservation(5'500'000'000);
+  observation.stationary_hold_position.z += 2.01;
   EXPECT_FALSE(observe(gate, observation).evidence_valid);
 
   observation = validObservation(6'000'000'000);

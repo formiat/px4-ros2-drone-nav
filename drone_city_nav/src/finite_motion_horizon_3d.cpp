@@ -353,4 +353,29 @@ bool finiteMotionHorizonHasTerminalRestState3D(
          std::abs(terminal_control.yaw_accel) <= 1.0e-6F;
 }
 
+bool finiteMotionHorizonRestsFromState3D(const FiniteMotionHorizon3D& horizon,
+                                         const std::size_t first_state_index,
+                                         const double position_tolerance_m,
+                                         const double velocity_tolerance_mps) noexcept {
+  if (horizon.states.empty() || first_state_index >= horizon.states.size() ||
+      !(position_tolerance_m >= 0.0) || !(velocity_tolerance_mps >= 0.0)) {
+    return false;
+  }
+  const MotionState3D& terminal = horizon.states.back();
+  for (std::size_t index = first_state_index; index < horizon.states.size(); ++index) {
+    const MotionState3D& state = horizon.states[index];
+    const double displacement_m = std::hypot(
+        std::hypot(static_cast<double>(state.x) - static_cast<double>(terminal.x),
+                   static_cast<double>(state.y) - static_cast<double>(terminal.y)),
+        static_cast<double>(state.z) - static_cast<double>(terminal.z));
+    const double speed_mps = std::hypot(std::hypot(state.vx, state.vy), state.vz);
+    if (!(displacement_m <= position_tolerance_m) ||
+        !(speed_mps <= velocity_tolerance_mps) ||
+        !(std::abs(static_cast<double>(state.yaw_rate)) <= velocity_tolerance_mps)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 } // namespace drone_city_nav
