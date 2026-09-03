@@ -136,6 +136,14 @@ physical path is invalid, arrival shaping is retried from an earlier path sample
 an old or colliding path is never
 executed as a fallback.
 
+The deterministic route-directed candidate connects a straight route interval
+with a cubic rest-to-rest maneuver solved in the shortest duration whose peak
+acceleration, peak speed, and deceleration of the current speed fit the
+dynamics; it then holds the terminal rest for the remainder of the horizon.
+A connector stretched over the whole horizon would be re-solved every tick
+for "rest at the horizon end" and creep toward a near route end at ever
+smaller accelerations without reaching it.
+
 Arrival shaping uses
 `finite_path_arrival_maximum_horizontal_deceleration_mps2`, a conservative contract
 separate from the higher acceleration available to ordinary manoeuvres. This

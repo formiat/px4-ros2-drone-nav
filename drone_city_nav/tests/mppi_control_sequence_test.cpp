@@ -6,6 +6,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <memory>
@@ -208,6 +209,43 @@ TEST(MppiControlSequenceTest, RouteSeedTracksThreeDimensionalTangentVelocity) {
   ASSERT_FALSE(seed.empty());
   EXPECT_GT(seed.front().ax, 1.0F);
   EXPECT_GT(seed.front().az, 1.0F);
+}
+
+TEST(MppiControlSequenceTest, RouteDirectedSeedReachesANearRouteEndWithinTheHorizon) {
+  DynamicsConfig dynamics;
+  dynamics.dt_s = 0.05F;
+  const std::array route{
+      RouteSample3D{.x_m = 0.0F, .y_m = 0.0F, .tangent_x = 1.0F, .station_m = 0.0F},
+      RouteSample3D{.x_m = 2.5F, .y_m = 0.0F, .tangent_x = 1.0F, .station_m = 2.5F},
+  };
+  constexpr std::size_t kSteps{80U};
+
+  const std::vector<Control> seed = buildFiniteRouteDirectedSeed(
+      State{}, State{.x = 2.5F}, route, 0.0F, 4.0F, dynamics, kSteps, Control{});
+
+  ASSERT_EQ(seed.size(), kSteps);
+  State state{};
+  std::size_t arrival_step = kSteps;
+  for (std::size_t step = 0U; step < seed.size(); ++step) {
+    state = integrateReference(state, seed[step], dynamics);
+    if (arrival_step == kSteps && std::abs(state.x - 2.5F) < 0.1F &&
+        std::abs(state.vx) < 0.3F) {
+      arrival_step = step;
+    }
+  }
+  // A connector stretched over the whole four-second horizon would only
+  // arrive at its very end; the shortest feasible maneuver arrives well
+  // before the horizon is half over and rests there.
+  EXPECT_LT(arrival_step, kSteps / 2U);
+  EXPECT_NEAR(state.x, 2.5F, 0.1F);
+  EXPECT_NEAR(state.vx, 0.0F, 0.1F);
+  // The jerk limit ramps the first controls; the maneuver itself demands far
+  // more than the horizon-stretched connector's ~0.9 m/s^2.
+  float peak_ax = 0.0F;
+  for (const Control& control : seed) {
+    peak_ax = std::max(peak_ax, control.ax);
+  }
+  EXPECT_GT(peak_ax, 1.5F);
 }
 
 TEST(MppiControlSequenceTest, HostLimiterMatchesAccelerationAndJerkContract) {

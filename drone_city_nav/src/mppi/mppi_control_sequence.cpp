@@ -323,6 +323,60 @@ std::vector<Control> buildGuideDirectedSeed(
   return seed;
 }
 
+// Time constant of the rest-settling gains once the connector's maneuver is
+// over: gentle enough to stay stable at the control interval, firm enough to
+// hold the terminal point against drag and drift.
+constexpr float kStraightConnectorSettleTimeS{0.5F};
+
+// Shortest duration in which the cubic connector's peak acceleration
+// (6 d / T^2 from rest), peak speed (1.5 d / T) and the deceleration of the
+// current speed along the interval fit the dynamics; never longer than the
+// horizon, so a distant terminal keeps the whole horizon as before.
+[[nodiscard]] float straightConnectorDurationS(const State& initial,
+                                               const RouteSample& initial_route,
+                                               const RouteSample& terminal_route,
+                                               const float chord_length_m,
+                                               const float reference_speed_mps,
+                                               const DynamicsConfig& dynamics,
+                                               const float horizon_duration_s) {
+  if (!(chord_length_m > 1.0e-3F)) {
+    return horizon_duration_s;
+  }
+  const float direction_x = (terminal_route.x_m - initial_route.x_m) / chord_length_m;
+  const float direction_y = (terminal_route.y_m - initial_route.y_m) / chord_length_m;
+  const float direction_z = (terminal_route.z_m - initial_route.z_m) / chord_length_m;
+  const float horizontal_component = std::hypot(direction_x, direction_y);
+  const float vertical_component = std::abs(direction_z);
+  float acceleration_limit_mps2 = std::numeric_limits<float>::infinity();
+  if (horizontal_component > 1.0e-5F) {
+    acceleration_limit_mps2 =
+        std::min(acceleration_limit_mps2,
+                 dynamics.maximum_horizontal_acceleration_mps2 / horizontal_component);
+  }
+  if (vertical_component > 1.0e-5F) {
+    acceleration_limit_mps2 =
+        std::min(acceleration_limit_mps2,
+                 dynamics.maximum_vertical_acceleration_mps2 / vertical_component);
+  }
+  if (!std::isfinite(acceleration_limit_mps2) || !(acceleration_limit_mps2 > 0.0F)) {
+    return horizon_duration_s;
+  }
+  const float speed_limit_mps = std::min(
+      std::isfinite(reference_speed_mps) ? std::max(0.0F, reference_speed_mps) : 0.0F,
+      dynamics.maximum_translational_speed_mps);
+  const float acceleration_bound_s =
+      std::sqrt(6.0F * chord_length_m / acceleration_limit_mps2);
+  const float speed_bound_s = speed_limit_mps > 1.0e-3F
+                                  ? 1.5F * chord_length_m / speed_limit_mps
+                                  : horizon_duration_s;
+  const float speed_along_mps =
+      std::max(0.0F, initial.vx * direction_x + initial.vy * direction_y +
+                         initial.vz * direction_z);
+  const float stopping_bound_s = speed_along_mps / acceleration_limit_mps2;
+  return std::clamp(std::max({acceleration_bound_s, speed_bound_s, stopping_bound_s}),
+                    2.0F * dynamics.dt_s, horizon_duration_s);
+}
+
 std::vector<Control> buildStraightRouteTerminalRestSeed(
     const State& initial, const State& target,
     const std::span<const RouteSample3D> route, const float initial_route_station_m,
@@ -368,15 +422,29 @@ std::vector<Control> buildStraightRouteTerminalRestSeed(
         steps, previous_applied_control, stopping_capability, terminal_station_m);
   }
 
+  // The cubic rest-to-rest connector peaks at 6 d / T^2 of acceleration and
+  // 1.5 d / T of speed over a maneuver of duration T. Solve the maneuver in
+  // the shortest duration those peaks fit the dynamics and the requested
+  // speed, and hold the terminal rest for the remainder of the horizon.
+  // Stretching the maneuver over the whole horizon instead re-solves every
+  // tick for "rest at the horizon end", so a vehicle near a route end would
+  // creep toward it at ever smaller accelerations without reaching it.
+  const float maneuver_duration_s =
+      straightConnectorDurationS(initial, initial_route, terminal_route, chord_length_m,
+                                 reference_speed_mps, dynamics, horizon_duration_s);
   std::vector<Control> seed(steps);
   State predicted = initial;
   Control previous = previous_applied_control;
   for (std::size_t index = 0U; index < steps; ++index) {
-    const float remaining_s = static_cast<float>(steps - index) * dynamics.dt_s;
+    const float elapsed_s = static_cast<float>(index) * dynamics.dt_s;
+    const float remaining_s =
+        std::max(maneuver_duration_s - elapsed_s, kStraightConnectorSettleTimeS);
     const float inverse_remaining_s = 1.0F / remaining_s;
     // Receding-horizon gains for the cubic boundary-value solution with zero
-    // terminal velocity. This connector is valid only on a straight route
-    // interval; curved intervals must follow their geometry above.
+    // terminal velocity; past the maneuver they settle the rest at the
+    // terminal point with a fixed time constant. This connector is valid
+    // only on a straight route interval; curved intervals must follow their
+    // geometry above.
     const float position_gain = 6.0F * inverse_remaining_s * inverse_remaining_s;
     const float velocity_gain = 4.0F * inverse_remaining_s;
     seed[index] = Control{
