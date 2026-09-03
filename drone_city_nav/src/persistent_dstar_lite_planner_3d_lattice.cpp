@@ -511,6 +511,21 @@ double PlannerLattice3D::rankedEdgeCost(const PersistentPlannerNode3D first,
   return raw_cost * rankingFactorForBodyClearance(clearance_m);
 }
 
+double PlannerLattice3D::rankedEdgeCost(const PersistentPlannerNode3D first,
+                                        const PersistentPlannerNode3D second,
+                                        const double clearance_reach_m) {
+  const double raw_cost = rawEdgeCost(first, second);
+  if (!std::isfinite(raw_cost) || config_->clearance_ranking_weight <= 0.0 ||
+      !(clearance_reach_m > 0.0)) {
+    return raw_cost;
+  }
+  const double clearance_m =
+      std::max(0.0, std::min(nodeClearanceWithin(first, clearance_reach_m),
+                             nodeClearanceWithin(second, clearance_reach_m)) -
+                        config_->physical_footprint.radius_m);
+  return raw_cost * rankingFactorForBodyClearance(clearance_m);
+}
+
 double PlannerLattice3D::rankingFactorForBodyClearance(
     const double body_clearance_m) const noexcept {
   const double distance_m = config_->clearance_ranking_distance_m;
@@ -547,6 +562,34 @@ double PlannerLattice3D::pointClearanceM(const Point3& point) const {
     }
   }
   return clearance_m;
+}
+
+double PlannerLattice3D::rankedSegmentTimeS(const Point3& first, const Point3& second,
+                                            const double clearance_reach_m) const {
+  const double segment_s =
+      minimumFlightTranslationTime3D(first, second, config_->time_model);
+  if (!std::isfinite(segment_s) || config_->clearance_ranking_weight <= 0.0 ||
+      !(clearance_reach_m > 0.0)) {
+    return segment_s;
+  }
+  const double radius_m = config_->physical_footprint.radius_m;
+  const double sample_step_m = std::max(0.5, 0.5 * config_->minimum_horizontal_step_m);
+  const double length_m = distance3D(first, second);
+  const auto samples = static_cast<std::size_t>(std::ceil(length_m / sample_step_m));
+  double worst_factor = 1.0;
+  for (std::size_t sample = 0U; sample <= samples; ++sample) {
+    const double ratio =
+        samples == 0U ? 0.0
+                      : static_cast<double>(sample) / static_cast<double>(samples);
+    const Point3 point{first.x + ratio * (second.x - first.x),
+                       first.y + ratio * (second.y - first.y),
+                       first.z + ratio * (second.z - first.z)};
+    const double body_clearance_m =
+        std::max(0.0, deriveNodeClearance(point, clearance_reach_m) - radius_m);
+    worst_factor =
+        std::max(worst_factor, rankingFactorForBodyClearance(body_clearance_m));
+  }
+  return segment_s * worst_factor;
 }
 
 double PlannerLattice3D::rankedPathTimeS(const std::vector<Point3>& path,
@@ -755,8 +798,8 @@ PlannerLattice3D::forgetAdaptiveEdgesTouching(const LatticeChangesByChunk3D& cha
   return forgotten;
 }
 
-double PlannerLattice3D::deriveNodeClearance(const Point3& point) const {
-  const double cap_m = config_->clearance_ranking_distance_m;
+double PlannerLattice3D::deriveNodeClearance(const Point3& point,
+                                             const double cap_m) const {
   double clearance_m = cap_m;
   if (resident_collision_oracle_.has_value()) {
     const OccupiedCollisionWorld3D& world = resident_collision_oracle_->world();
@@ -775,30 +818,42 @@ double PlannerLattice3D::deriveNodeClearance(const Point3& point) const {
 }
 
 double PlannerLattice3D::nodeClearanceM(const PersistentPlannerNode3D node) {
+  return nodeClearanceWithin(node, config_->clearance_ranking_distance_m);
+}
+
+double PlannerLattice3D::nodeClearanceWithin(const PersistentPlannerNode3D node,
+                                             const double cap_m) {
   const Point3 point = pointFor(node);
   const auto found = node_clearance_cache_.find(node);
   if (found != node_clearance_cache_.end()) {
     CachedNodeClearance& cached = found->second;
-    if (!clearanceStale(point, cached.change_epoch)) {
+    // A value derived within a shorter reach that reached its cap says only
+    // that nothing lies closer than that cap; a longer reach re-derives it.
+    const bool reach_sufficient =
+        cached.cap_m + 1.0e-9 >= cap_m || cached.clearance_m + 1.0e-9 < cached.cap_m;
+    if (reach_sufficient && !clearanceStale(point, cached.change_epoch)) {
       cached.change_epoch = change_epoch_;
-      return cached.clearance_m;
+      return std::min(cached.clearance_m, cap_m);
     }
     // Occupied evidence within reach changed since this clearance was
-    // derived: re-derive it, and hand the node to the search when the move
-    // matters for its ranked labels.
+    // derived, or a longer reach is asked for: re-derive it, and hand the
+    // node to the search when the move matters for its ranked labels.
     const double previous_m = cached.clearance_m;
-    cached.clearance_m = deriveNodeClearance(point);
+    const double reach_m = std::max(cached.cap_m, cap_m);
+    cached.clearance_m = deriveNodeClearance(point, reach_m);
+    cached.cap_m = reach_m;
     cached.change_epoch = change_epoch_;
     ++clearances_rederived_;
     if (rankingRepairRequired(previous_m, cached.clearance_m)) {
       moved_clearances_.push_back(node);
     }
-    return cached.clearance_m;
+    return std::min(cached.clearance_m, cap_m);
   }
-  const double clearance_m = deriveNodeClearance(point);
-  node_clearance_cache_.emplace(
-      node,
-      CachedNodeClearance{.clearance_m = clearance_m, .change_epoch = change_epoch_});
+  const double clearance_m = deriveNodeClearance(point, cap_m);
+  node_clearance_cache_.emplace(node,
+                                CachedNodeClearance{.clearance_m = clearance_m,
+                                                    .cap_m = cap_m,
+                                                    .change_epoch = change_epoch_});
   return clearance_m;
 }
 

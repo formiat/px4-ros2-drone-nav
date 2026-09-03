@@ -188,6 +188,9 @@ Persistent 3D planner and route lifecycle:
   `persistent_planner_clearance_ranking_distance_m` scale lattice edges near
   raw occupied evidence for ranking only; a low-clearance edge stays traversable
   whenever the raw swept body check accepts it;
+  `persistent_planner_feasibility_clearance_ranking_distance_m` is the shorter
+  reach within which the feasibility-first search derives the same ranking, so
+  the first route already keeps its body out of the critical band;
   `persistent_planner_clearance_ranking_critical_weight` adds a steep band
   below the execution risk model's `critical_distance_m`, so the planner detours
   around a critical metre the way the executor's critical exposure cost would;

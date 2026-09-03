@@ -130,6 +130,9 @@ struct FeasibilityQueueEntry3D {
   std::size_t depth{0U};
   PersistentPlannerNode3D node{};
   std::uint64_t sequence{0U};
+  // A direct raw connector from `node` to the exact goal, priced with the
+  // ranking, competing in the queue with the labelled frontier.
+  bool goal_connector{false};
 };
 
 struct FeasibilityQueueEntryCompare3D {
@@ -282,6 +285,17 @@ public:
   // validity stay on the raw cost.
   [[nodiscard]] double rankedEdgeCost(PersistentPlannerNode3D first,
                                       PersistentPlannerNode3D second);
+  // The same ranking with node clearances derived only within
+  // `clearance_reach_m`; a clearance at the reach ranks as that reach. The
+  // feasibility-first search uses a short reach so every explored node stays
+  // cheap to price.
+  [[nodiscard]] double rankedEdgeCost(PersistentPlannerNode3D first,
+                                      PersistentPlannerNode3D second,
+                                      double clearance_reach_m);
+  // Flight time of a straight segment scaled by the worst ranking factor
+  // sampled along it, with clearances derived within `clearance_reach_m`.
+  [[nodiscard]] double rankedSegmentTimeS(const Point3& first, const Point3& second,
+                                          double clearance_reach_m) const;
   // Distance from a node to the nearest raw occupied cell, capped at the
   // clearance ranking distance. It is derived ranking evidence computed from
   // the resident raw grid and cached per node.
@@ -379,6 +393,9 @@ private:
 
   struct CachedNodeClearance {
     double clearance_m{0.0};
+    // The reach the clearance was derived within: the value is exact below
+    // it and only a lower bound of the reach at it.
+    double cap_m{0.0};
     // The change epoch the clearance is known to be current for.
     std::uint64_t change_epoch{0U};
   };
@@ -397,7 +414,8 @@ private:
   // given epoch.
   [[nodiscard]] bool clearanceStale(const Point3& point,
                                     std::uint64_t change_epoch) const noexcept;
-  [[nodiscard]] double deriveNodeClearance(const Point3& point) const;
+  [[nodiscard]] double deriveNodeClearance(const Point3& point, double cap_m) const;
+  [[nodiscard]] double nodeClearanceWithin(PersistentPlannerNode3D node, double cap_m);
   // Adaptive (level > 0) cached edges keyed by every chunk their
   // margin-expanded extent touches, so an occupied change finds the long
   // edges it can affect without scanning the whole edge cache. Entries of

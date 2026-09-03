@@ -326,6 +326,8 @@ bool PersistentDStarLitePlanner3DImpl::validRequest(
          config_.execution_time_refinement_minimum_improvement_ratio < 1.0 &&
          std::isfinite(config_.feasibility_goal_connector_reach_m) &&
          config_.feasibility_goal_connector_reach_m > 0.0 &&
+         std::isfinite(config_.feasibility_clearance_ranking_distance_m) &&
+         config_.feasibility_clearance_ranking_distance_m > 0.0 &&
          std::isfinite(config_.clearance_ranking_weight) &&
          config_.clearance_ranking_weight >= 0.0 &&
          std::isfinite(config_.clearance_ranking_distance_m) &&

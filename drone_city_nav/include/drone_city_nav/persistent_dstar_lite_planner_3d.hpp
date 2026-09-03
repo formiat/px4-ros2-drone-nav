@@ -71,6 +71,12 @@ struct PersistentPlannerConfig3D {
   // goal only from nodes within this distance; a raw sweep across the whole
   // remaining route on every expansion would dominate the search budget.
   double feasibility_goal_connector_reach_m{40.0};
+  // Clearance reach of the feasibility-first search's ranking. The search
+  // prices its edges with the same soft clearance ranking as the D* search,
+  // but derives node clearances only within this shorter reach, so the first
+  // route keeps its body out of the critical band without paying the full
+  // ranking reach on every explored node.
+  double feasibility_clearance_ranking_distance_m{2.0};
   // Feasibility-first search may publish any complete raw-valid route before
   // the persistent graph proves translation- or execution-time optimality.
   bool feasibility_first_enabled{true};

@@ -168,7 +168,28 @@ std::optional<std::vector<Point3>> FeasiblePathSearch3D::advance(
              ? lattice_->departureSegmentValid(endpoints.exact_start,
                                                endpoints.exact_goal)
              : lattice_->rawSegmentValid(current_point, endpoints.exact_goal));
-    if (goal_connector_valid) {
+    if (goal_connector_valid && !current.goal_connector) {
+      // The connector is one more priced edge: it competes in the queue with
+      // the labelled frontier instead of ending the search on the first
+      // raw-valid straight line, so a connector that hugs the floor or a wall
+      // yields to a route that climbs clear of it first.
+      ++queue_sequence_;
+      if (queue_sequence_ == 0U) {
+        queue_sequence_ = 1U;
+      }
+      open_.push(FeasibilityQueueEntry3D{
+          .estimated_total_s = current.cost_from_start_s +
+                               lattice_->rankedSegmentTimeS(
+                                   current_point, endpoints.exact_goal,
+                                   config_->feasibility_clearance_ranking_distance_m),
+          .cost_from_start_s = current.cost_from_start_s,
+          .depth = current.depth,
+          .node = current.node,
+          .sequence = queue_sequence_,
+          .goal_connector = true,
+      });
+    }
+    if (current.goal_connector && goal_connector_valid) {
       std::vector<PersistentPlannerNode3D> nodes = reconstructNodes(current.node);
       std::optional<std::vector<Point3>> candidate =
           nodes.empty() ? std::nullopt : pathFromNodes(endpoints, nodes);
@@ -207,7 +228,12 @@ std::optional<std::vector<Point3>> FeasiblePathSearch3D::advance(
 
     lattice_->forEachAdjacentNode(
         current.node, [&](const PersistentPlannerNode3D neighbor) {
-          const double transition_cost = lattice_->rawEdgeCost(current.node, neighbor);
+          // Priced with the soft clearance ranking within the feasibility
+          // reach: the first route already keeps its body out of the
+          // critical band instead of hugging the nearest floor or wall.
+          const double transition_cost = lattice_->rankedEdgeCost(
+              current.node, neighbor,
+              config_->feasibility_clearance_ranking_distance_m);
           if (!std::isfinite(transition_cost)) {
             return;
           }

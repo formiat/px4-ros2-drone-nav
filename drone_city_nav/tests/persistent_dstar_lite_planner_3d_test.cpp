@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <span>
@@ -386,6 +387,48 @@ TEST(PersistentDStarLitePlanner3DTest,
   EXPECT_GT(repaired.telemetry.schedule_edges_forgotten, 0U);
   EXPECT_GT(repaired.telemetry.affected_lattice_states, 0U);
   EXPECT_GT(repaired.telemetry.schedule_clearances_rederived, 0U);
+}
+
+TEST(PersistentDStarLitePlanner3DTest,
+     TheFeasibilityFirstRouteKeepsItsBodyOutOfTheCriticalBand) {
+  // A known floor two cells thick under a corridor: the unranked feasibility
+  // search would fly the lowest level right above it; ranked within its short
+  // reach, it lifts the interior of the route clear of the critical band.
+  auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 1.0, 14, 3, 8});
+  for (int x = 0; x < 14; ++x) {
+    for (int y = 0; y < 3; ++y) {
+      for (int z = 0; z < 2; ++z) {
+        ASSERT_TRUE(occupancy->setState({x, y, z}, ObservedVoxelState::kOccupied));
+      }
+    }
+  }
+  PersistentPlannerConfig3D config = testConfig();
+  config.feasibility_first_enabled = true;
+  config.clearance_ranking_weight = 1.5;
+  config.clearance_ranking_distance_m = 6.0;
+  config.clearance_ranking_critical_distance_m = 1.0;
+  config.clearance_ranking_critical_weight = 100.0;
+  config.feasibility_clearance_ranking_distance_m = 2.0;
+  PersistentDStarLitePlanner3D planner{config};
+  const Point3 start{1.5, 1.5, 2.5};
+  const Point3 goal{12.5, 1.5, 2.5};
+  PlannerUpdate3D update = planner.plan(request(start, goal, world(occupancy, 1U)));
+  for (int attempt = 0; attempt < 8 && !update.publishable(); ++attempt) {
+    update = planner.plan(request(start, goal, world(occupancy, 1U)));
+  }
+  ASSERT_TRUE(update.publishable());
+  EXPECT_TRUE(update.telemetry.feasibility_route_found);
+  const std::vector<Point3>& points = candidate(update).points;
+  ASSERT_GE(points.size(), 3U);
+  double interior_minimum_z = std::numeric_limits<double>::infinity();
+  for (std::size_t index = 1U; index + 1U < points.size(); ++index) {
+    interior_minimum_z = std::min(interior_minimum_z, points[index].z);
+  }
+  // Node centres at z = 2.5 sit half a metre above the floor's top at 2.0;
+  // the ranked search climbs at least one level to leave the critical band.
+  EXPECT_GE(interior_minimum_z, 3.4) << "interior minimum z " << interior_minimum_z;
+  expectRawValid(points, *occupancy, planner.config().physical_footprint);
 }
 
 TEST(PersistentDStarLitePlanner3DTest,

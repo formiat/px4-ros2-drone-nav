@@ -327,6 +327,8 @@ void ProductionMppiConfigLoader::declarePlanning() {
       declare<double>("persistent_planner_goal_tolerance_m", 2.0);
   planner.feasibility_goal_connector_reach_m =
       declare<double>("persistent_planner_feasibility_goal_connector_reach_m", 40.0);
+  planner.feasibility_clearance_ranking_distance_m = declare<double>(
+      "persistent_planner_feasibility_clearance_ranking_distance_m", 2.0);
   const std::int64_t connector_search_radius_cells =
       declare<std::int64_t>("persistent_planner_connector_search_radius_cells", 2);
   if (connector_search_radius_cells < 0 || connector_search_radius_cells > 32) {
