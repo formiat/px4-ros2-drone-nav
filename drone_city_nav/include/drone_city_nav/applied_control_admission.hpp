@@ -13,6 +13,11 @@ struct AppliedControlExecutionOwner {
   ExecutionHorizonWitnessMode execution_mode{ExecutionHorizonWitnessMode::kPlanned};
 
   [[nodiscard]] bool valid() const noexcept;
+  // Feedback the owner accepts as its applied control: its own horizon, or in
+  // planned mode the immediate predecessor the offboard is still executing
+  // while the owner's republication has not reached it yet. The execution
+  // input freshness rule accepts the same pair; a feedback of an older
+  // horizon, or of a newer one the owner does not know, revokes the latch.
   [[nodiscard]] bool
   matches(const ExecutionHorizonFeedbackCandidate& candidate) const noexcept;
 };

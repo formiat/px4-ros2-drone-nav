@@ -137,6 +137,14 @@ abandoned if the resident world, objective, or captured raw snapshot changes
 before the execution manager commits it. Unknown voxels remain traversable
 during this raw check.
 
+The offboard's applied-control feedback names the horizon it executes. The
+owner installs it as the applied control when it names the owner's horizon
+or, in planned mode, the immediate predecessor: the owner republishes its
+horizon every control interval, so the feedback of the previous publication
+is the control being applied now. Feedback of an older or unknown horizon
+revokes the latch, and the planner then falls back to the measured
+acceleration for control continuity.
+
 The production execution boundary has one authority owner. The manager
 atomically replaces a captured pending successor and resident authority; a
 successor that loses an optimistic race leaves both unchanged and requests a

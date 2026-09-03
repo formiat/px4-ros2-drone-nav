@@ -21,10 +21,13 @@ bool AppliedControlExecutionOwner::valid() const noexcept {
 
 bool AppliedControlExecutionOwner::matches(
     const ExecutionHorizonFeedbackCandidate& candidate) const noexcept {
+  const bool immediate_predecessor =
+      execution_mode == ExecutionHorizonWitnessMode::kPlanned &&
+      candidate.horizon_sequence + 1U == horizon_sequence;
   return valid() && candidate.horizonFeedback() &&
          offboard_producer_instance_id == candidate.offboard_producer_instance_id &&
          horizon_producer_instance_id == candidate.horizon_producer_instance_id &&
-         horizon_sequence == candidate.horizon_sequence &&
+         (horizon_sequence == candidate.horizon_sequence || immediate_predecessor) &&
          execution_mode == candidate.execution_mode;
 }
 

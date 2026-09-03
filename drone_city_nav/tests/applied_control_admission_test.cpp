@@ -116,6 +116,36 @@ TEST(AppliedControlAdmissionTest,
 }
 
 TEST(AppliedControlAdmissionTest,
+     PlannedFeedbackOfTheImmediatePredecessorInstallsTheAppliedControl) {
+  // The owner republishes its horizon before the offboard's feedback of the
+  // previous publication arrives: that feedback is the control the vehicle is
+  // applying right now and is installed, while an older horizon is not.
+  AppliedControlExecutionOwner republished = owner();
+  republished.horizon_sequence = 5U;
+  const AppliedControlAdmissionResult predecessor =
+      admitAppliedControlEvidence(initialSession(), feedback(4U), republished, true);
+  EXPECT_TRUE(predecessor.feedback.accept);
+  EXPECT_TRUE(predecessor.install_control);
+  EXPECT_FALSE(predecessor.revoke_control);
+
+  republished.horizon_sequence = 6U;
+  const AppliedControlAdmissionResult stale =
+      admitAppliedControlEvidence(initialSession(), feedback(4U), republished, true);
+  EXPECT_TRUE(stale.feedback.accept);
+  EXPECT_FALSE(stale.install_control);
+  EXPECT_TRUE(stale.revoke_control);
+
+  AppliedControlExecutionOwner hold = owner();
+  hold.horizon_sequence = 5U;
+  hold.execution_mode = ExecutionHorizonWitnessMode::kPositionHold;
+  const AppliedControlAdmissionResult hold_predecessor = admitAppliedControlEvidence(
+      initialSession(),
+      feedback(4U, 120, 130, 41U, false, ExecutionHorizonWitnessMode::kPositionHold),
+      hold, true);
+  EXPECT_FALSE(hold_predecessor.install_control);
+}
+
+TEST(AppliedControlAdmissionTest,
      SameStampDifferentHorizonOrContentRevokesInstalledControl) {
   const ExecutionHorizonWitnessState state = stateWithInstalledControl();
 
