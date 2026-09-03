@@ -102,8 +102,16 @@ runs the exact oriented body test.
 D* Lite adjacency is visited without allocation, edge costs are cached and
 invalidated only within the affected reach of changed occupied voxels, and a
 missing incremental predecessor repairs from an exact full-grid difference
-instead of resetting the search. Soft clearance ranking and the raw clearance
-probe behind it share the exact voxel enumeration used by the tracking tube.
+instead of resetting the search. A change forgets only the priced edges it can
+move: a voxel that became occupied forgets clear edges whose swept body touches
+it, a voxel that became free forgets blocked ones, and adaptive edges are tested
+against the exact touch rather than their chunk, so the add/remove flicker of a
+persistent raw surface no longer re-validates every edge beside it. Soft
+clearance ranking repairs a label only when its ranking factor moves by more
+than a few percent; smaller moves are cached. The raw clearance probe behind
+the ranking and the tracking tube visits chunks nearest to the query first and
+stops once no unvisited chunk can hold a closer voxel, so a 6 m ranking reach
+costs less than the former 3 m scan.
 
 ## Tracking Tube
 

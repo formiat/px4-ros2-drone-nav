@@ -296,6 +296,103 @@ TEST(PersistentDStarLitePlanner3DTest,
 }
 
 TEST(PersistentDStarLitePlanner3DTest,
+     AVanishedCellRepricesOnlyBlockedEdgesAndRestoresTheDirectRoute) {
+  auto open_occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 1.0, 14, 10, 6});
+  PersistentPlannerConfig3D config = testConfig();
+  config.physical_footprint.radius_m = 0.4;
+  config.physical_footprint.perimeter_samples = 8U;
+  config.physical_footprint.radial_rings = 1U;
+  config.physical_footprint.axial_samples = 1U;
+  PersistentDStarLitePlanner3D planner{config};
+  const Point3 start{1.5, 5.5, 2.5};
+  const Point3 goal{12.5, 5.5, 2.5};
+  const PlannerUpdate3D initial =
+      planner.plan(request(start, goal, world(open_occupancy, 1U)));
+  ASSERT_TRUE(initial.publishable());
+
+  auto blocked = std::make_shared<ObservedOccupancyGrid3D>(*open_occupancy);
+  const GridIndex3D obstacle{7, 5, 2};
+  ASSERT_TRUE(blocked->setState(obstacle, ObservedVoxelState::kOccupied));
+  const PlannerUpdate3D detoured = planner.plan(
+      request(start, goal,
+              world(blocked, 2U, {ObservedOccupancyGrid3D::chunkIndex(obstacle)})));
+  ASSERT_TRUE(detoured.publishable());
+  // The cell that appeared can only block clear edges; every priced edge it
+  // touches was clear, so all of them are forgotten.
+  EXPECT_GT(detoured.telemetry.schedule_edges_forgotten, 0U);
+  EXPECT_GT(candidate(detoured).path_length_m, candidate(initial).path_length_m);
+
+  // A cell that vanishes can only unblock blocked edges: the detour's edges
+  // beside the obstacle stay priced, and the direct route comes back.
+  auto reopened = std::make_shared<ObservedOccupancyGrid3D>(*blocked);
+  ASSERT_TRUE(reopened->setState(obstacle, ObservedVoxelState::kFree));
+  const PlannerUpdate3D restored = planner.plan(
+      request(start, goal,
+              world(reopened, 3U, {ObservedOccupancyGrid3D::chunkIndex(obstacle)})));
+  ASSERT_TRUE(restored.publishable());
+  EXPECT_TRUE(restored.telemetry.search_state_reused);
+  EXPECT_GT(restored.telemetry.schedule_edges_forgotten, 0U);
+  EXPECT_LE(restored.telemetry.schedule_edges_forgotten,
+            detoured.telemetry.schedule_edges_forgotten);
+  EXPECT_NEAR(candidate(restored).path_length_m, candidate(initial).path_length_m,
+              1.0e-6);
+  expectRawValid(candidate(restored).points, *reopened,
+                 planner.config().physical_footprint);
+}
+
+TEST(PersistentDStarLitePlanner3DTest,
+     ASmallRankingFactorMoveIsCachedWithoutRepairingTheSearch) {
+  // One lattice row under a low flight envelope: labels live on the route
+  // line and one vertical step above it, so a cell whose box lies six metres
+  // above the highest label moves every cached clearance by at most half a
+  // metre near the cap, a ranking factor change below the repair tolerance.
+  auto open_occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 1.0, 14, 1, 12});
+  PersistentPlannerConfig3D config = testConfig();
+  config.clearance_ranking_weight = 1.5;
+  config.clearance_ranking_distance_m = 6.0;
+  config.flight_envelope.maximum_target_z_m = 3.9;
+  PersistentDStarLitePlanner3D planner{config};
+  const Point3 start{1.5, 0.5, 2.5};
+  const Point3 goal{12.5, 0.5, 2.5};
+  const PlannerUpdate3D initial =
+      planner.plan(request(start, goal, world(open_occupancy, 1U)));
+  ASSERT_TRUE(initial.publishable());
+
+  auto far_cell = std::make_shared<ObservedOccupancyGrid3D>(*open_occupancy);
+  const GridIndex3D far{7, 0, 9};
+  ASSERT_TRUE(far_cell->setState(far, ObservedVoxelState::kOccupied));
+  const PlannerUpdate3D cached = planner.plan(request(
+      start, goal, world(far_cell, 2U, {ObservedOccupancyGrid3D::chunkIndex(far)})));
+  // Nothing to repair: the session keeps its incumbent and converges at once.
+  EXPECT_FALSE(cached.publishable());
+  EXPECT_TRUE(cached.telemetry.incumbent_retained);
+  EXPECT_EQ(cached.progress, SearchProgress3D::kConverged);
+  EXPECT_EQ(cached.telemetry.changed_occupied_voxels, 1U);
+  EXPECT_GT(cached.telemetry.schedule_clearances_tightened, 0U);
+  EXPECT_EQ(cached.telemetry.affected_lattice_states, 0U)
+      << "forgotten=" << cached.telemetry.schedule_edges_forgotten
+      << " tightened=" << cached.telemetry.schedule_clearances_tightened
+      << " rederived=" << cached.telemetry.schedule_clearances_rederived
+      << " records=" << cached.telemetry.records
+      << " adaptive_queries=" << cached.telemetry.adaptive_edge_queries;
+
+  // One metre above the highest label the factor moves by tens of percent:
+  // repaired.
+  auto near_cell = std::make_shared<ObservedOccupancyGrid3D>(*open_occupancy);
+  const GridIndex3D near{7, 0, 5};
+  ASSERT_TRUE(near_cell->setState(near, ObservedVoxelState::kOccupied));
+  PersistentDStarLitePlanner3D fresh{config};
+  ASSERT_TRUE(
+      fresh.plan(request(start, goal, world(open_occupancy, 1U))).publishable());
+  const PlannerUpdate3D repaired = fresh.plan(request(
+      start, goal, world(near_cell, 2U, {ObservedOccupancyGrid3D::chunkIndex(near)})));
+  EXPECT_GT(repaired.telemetry.schedule_clearances_tightened, 0U);
+  EXPECT_GT(repaired.telemetry.affected_lattice_states, 0U);
+}
+
+TEST(PersistentDStarLitePlanner3DTest,
      RepairsTheResidentSearchAfterAnOccupiedCellAppearsOnItsPath) {
   auto initial_occupancy = std::make_shared<ObservedOccupancyGrid3D>(
       GridBounds3D{0.0, 0.0, 0.0, 1.0, 14, 10, 6});

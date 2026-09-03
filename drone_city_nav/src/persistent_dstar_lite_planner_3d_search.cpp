@@ -202,14 +202,12 @@ void DStarLiteSession3D::scheduleAffectedVertices(
   // cell and tests only their priced edges against the bucket's cells. The
   // cost is the number of changed node cells times the reach box, plus the
   // exact per-edge tests near labels, never the change size times the box.
-  struct ChangedCell {
-    Point3 center{};
-    bool occupied_now{false};
-  };
+  using ChangedCell = LatticeChangedCell3D;
 
   std::unordered_map<PersistentPlannerNode3D, std::vector<ChangedCell>,
                      PersistentPlannerNode3DHash>
       changes_by_node_cell;
+  LatticeChangesByChunk3D changes_by_chunk;
   for (const GridIndex3D cell : changed_cells) {
     const Point3 center = world.observed_occupancy != nullptr
                               ? world.observed_occupancy->cellCenter(cell)
@@ -217,8 +215,9 @@ void DStarLiteSession3D::scheduleAffectedVertices(
     const bool occupied_now = world.observed_occupancy != nullptr
                                   ? world.observed_occupancy->isOccupied(cell)
                                   : world.static_occupancy->isOccupied(cell);
-    changes_by_node_cell[lattice_->nearestNode(center)].push_back(
-        ChangedCell{.center = center, .occupied_now = occupied_now});
+    const ChangedCell change{.center = center, .occupied_now = occupied_now};
+    changes_by_node_cell[lattice_->nearestNode(center)].push_back(change);
+    changes_by_chunk[OccupancyGrid3D::chunkIndex(cell)].push_back(change);
   }
   const auto labelled = [&](const PersistentPlannerNode3D node) {
     return node == start_ || node == goal_ || records_.contains(node);
@@ -338,13 +337,16 @@ void DStarLiteSession3D::scheduleAffectedVertices(
                   continue;
                 }
                 const Point3 neighbor_point = lattice_->pointFor(neighbor);
-                const bool touched =
-                    !exact ||
-                    std::ranges::any_of(changes, [&](const ChangedCell& change) {
-                      return cell_touches_segment(change.center, node_point,
-                                                  neighbor_point);
-                    });
-                if (!touched || !lattice_->forgetEdgeCost(edge)) {
+                bool occupied_cell_added = false;
+                bool occupied_cell_removed = false;
+                for (const ChangedCell& change : changes) {
+                  if (cell_touches_segment(change.center, node_point, neighbor_point)) {
+                    (change.occupied_now ? occupied_cell_added
+                                         : occupied_cell_removed) = true;
+                  }
+                }
+                if (!lattice_->forgetEdgeCostForChange(edge, occupied_cell_added,
+                                                       occupied_cell_removed)) {
                   continue;
                 }
                 ++schedule_statistics_.edges_forgotten;
@@ -356,7 +358,7 @@ void DStarLiteSession3D::scheduleAffectedVertices(
         });
   }
   for (const PersistentPlannerEdge3D& edge :
-       lattice_->forgetAdaptiveEdgesNear(changed_chunks)) {
+       lattice_->forgetAdaptiveEdgesTouching(changes_by_chunk, cell_touches_segment)) {
     affected.insert(edge.first);
     affected.insert(edge.second);
   }
@@ -410,7 +412,9 @@ void DStarLiteSession3D::scheduleAffectedVertices(
             } else if (clearance_m + kClearanceToleranceM < *cached) {
               lattice_->setCachedNodeClearance(node, clearance_m);
               ++schedule_statistics_.clearances_tightened;
-              moved.insert(node);
+              if (lattice_->rankingRepairRequired(*cached, clearance_m)) {
+                moved.insert(node);
+              }
             }
           });
     }

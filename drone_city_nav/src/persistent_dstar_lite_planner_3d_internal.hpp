@@ -43,6 +43,20 @@ struct PersistentPlannerEdge3D {
   operator==(const PersistentPlannerEdge3D&) const noexcept = default;
 };
 
+// One raw cell whose occupancy changed, as the lattice sees it.
+struct LatticeChangedCell3D {
+  Point3 center{};
+  bool occupied_now{false};
+};
+
+using LatticeChangesByChunk3D =
+    std::unordered_map<OccupancyChunkIndex3D, std::vector<LatticeChangedCell3D>,
+                       OccupancyChunkIndex3DHash>;
+
+// Whether a cell centre lies within the swept body of the segment.
+using LatticeSegmentTouch3D = std::function<bool(
+    const Point3& center, const Point3& first, const Point3& second)>;
+
 struct PersistentPlannerEdge3DHash {
   [[nodiscard]] std::size_t
   operator()(const PersistentPlannerEdge3D& edge) const noexcept;
@@ -182,6 +196,20 @@ public:
   // Drops the cached cost of an evaluated edge. A D* label can depend only on
   // an edge whose cost was evaluated, so repair invalidates exactly those.
   [[nodiscard]] bool forgetEdgeCost(const PersistentPlannerEdge3D& edge);
+  // Drops the cached cost of an evaluated edge only when the change touching
+  // it can move it: a cell that became occupied can block a clear edge but
+  // never unblock a blocked one, and a cell that became free can unblock a
+  // blocked edge but never block a clear one. Surface flicker in a persistent
+  // raw map adds and removes cells in equal numbers; pricing only the edges a
+  // change can move keeps repair proportional to real change.
+  [[nodiscard]] bool forgetEdgeCostForChange(const PersistentPlannerEdge3D& edge,
+                                             bool occupied_cell_added,
+                                             bool occupied_cell_removed);
+  // Whether labels priced with the previous clearance must be repaired: the
+  // ranking factor is a soft cost, so a move that shifts it by less than a
+  // small fraction keeps the search consistent enough and is only cached.
+  [[nodiscard]] bool rankingRepairRequired(double previous_clearance_m,
+                                           double current_clearance_m) const noexcept;
   // Forgets every level-zero edge incident to the node and its cached
   // clearance; returns true when anything was priced. Coarse scheduling of a
   // very large change set uses it over the nodes of the changed chunks.
@@ -295,6 +323,13 @@ public:
   [[nodiscard]] std::vector<PersistentPlannerEdge3D> forgetAdaptiveEdgesNear(
       const std::unordered_set<OccupancyChunkIndex3D, OccupancyChunkIndex3DHash>&
           changed_chunks);
+  // Forgets cached adaptive edges that a changed cell can move (the polarity
+  // rule of forgetEdgeCostForChange) and whose swept body `touches` the cell
+  // (centre, edge start, edge end). Only edges indexed under a changed chunk
+  // are tested, so the cost stays bounded by the cache near the change.
+  [[nodiscard]] std::vector<PersistentPlannerEdge3D>
+  forgetAdaptiveEdgesTouching(const LatticeChangesByChunk3D& changes,
+                              const LatticeSegmentTouch3D& touches);
 
   // Edge traversability from the shared cost cache, for a search that owns its
   // own cost model. A finite cached cost is exactly a traversable edge.
@@ -360,6 +395,7 @@ private:
   double adaptive_edge_horizontal_margin_m_{0.0};
   double adaptive_edge_vertical_margin_m_{0.0};
   void indexAdaptiveEdge(const PersistentPlannerEdge3D& edge);
+  void unindexAdaptiveEdge(const PersistentPlannerEdge3D& edge);
   template<typename Visitor>
   void forEachChunkTouching(const Point3& first, const Point3& second,
                             Visitor&& visitor) const;
