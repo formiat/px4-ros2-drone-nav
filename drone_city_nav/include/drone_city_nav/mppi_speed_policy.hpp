@@ -23,6 +23,7 @@ enum class MppiSpeedLimiter : std::uint8_t {
   kGoal,
   kRouteEndpoint,
   kRouteConstraint,
+  kBlockedRoute,
 };
 
 struct MppiSpeedPolicyConfig {
@@ -45,6 +46,10 @@ struct MppiSpeedPolicyInput {
   std::span<const RouteSample3D> route;
   std::optional<double> route_endpoint_remaining_m;
   std::optional<double> route_constraint_speed_limit_mps;
+  // Route distance to the first sample the raw world blocks, while the route
+  // is still followed and a replacement is searched: the vehicle must be able
+  // to stop before it.
+  std::optional<double> blocked_route_remaining_m;
   RouteEndpointSemantics3D route_endpoint_semantics{
       RouteEndpointSemantics3D::kContinuation};
   bool terminal_goal_limit_enabled{true};
@@ -60,6 +65,7 @@ struct MppiSpeedPolicyResult {
   double goal_limit_mps{std::numeric_limits<double>::infinity()};
   double route_endpoint_limit_mps{std::numeric_limits<double>::infinity()};
   double route_constraint_limit_mps{std::numeric_limits<double>::infinity()};
+  double blocked_route_limit_mps{std::numeric_limits<double>::infinity()};
   double maximum_preview_curvature_1pm{0.0};
   double target_lookahead_m{0.0};
   SensorBrakingAssessment3D sensor_braking_assessment{};

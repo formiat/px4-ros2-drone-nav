@@ -330,7 +330,14 @@ witness. Planning starts from a certified future station, splices with measured
 latency and braking reserve, and repairs only invalid suffixes.
 
 `MppiController3D` owns executable local motion and its CUDA engine continuously
-warm-starts from the previous control sequence. Latest raw lidar evidence
+warm-starts from the previous control sequence. Every integrator of the motion
+model (rollouts, the CPU reference, finite path validation) sheds a speed above
+the model's caps at least as fast as the maximum deceleration allows, so an
+inherited excess above the sensor-braking envelope is braked away instead of
+carried along the horizon, and rollouts pay for any excess that remains. While
+a followed route is blocked ahead by the persistent raw world and its
+replacement is still being searched, the speed policy limits the speed so the
+vehicle can stop before the blocked station. Latest raw lidar evidence
 validates the finite swept path before publication, independently of strategic
 planner reuse.
 

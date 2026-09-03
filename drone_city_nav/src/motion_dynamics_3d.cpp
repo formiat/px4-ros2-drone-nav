@@ -48,14 +48,22 @@ MotionState3D integrateMotionState3D(MotionState3D state, MotionControl3D contro
   state.vx = state.vx * drag + control.ax * config.dt_s;
   state.vy = state.vy * drag + control.ay * config.dt_s;
   state.vz = state.vz * drag + control.az * config.dt_s;
-  clampHorizontal(
-      state.vx, state.vy,
-      std::max(config.maximum_horizontal_speed_mps, inherited_horizontal_speed_mps));
-  state.vz = clampMagnitude(state.vz, std::max(config.maximum_vertical_speed_mps,
-                                               inherited_vertical_speed_mps));
+  // A state above a cap keeps at most the speed the maximum deceleration
+  // leaves it after one step: an inherited excess is shed at least as fast as
+  // the vehicle can brake instead of being carried along the whole horizon.
+  const float horizontal_shed_mps =
+      config.maximum_horizontal_acceleration_mps2 * config.dt_s;
+  const float vertical_shed_mps =
+      config.maximum_vertical_acceleration_mps2 * config.dt_s;
+  clampHorizontal(state.vx, state.vy,
+                  std::max(config.maximum_horizontal_speed_mps,
+                           inherited_horizontal_speed_mps - horizontal_shed_mps));
+  state.vz = clampMagnitude(state.vz,
+                            std::max(config.maximum_vertical_speed_mps,
+                                     inherited_vertical_speed_mps - vertical_shed_mps));
   clampTranslational(state.vx, state.vy, state.vz,
                      std::max(config.maximum_translational_speed_mps,
-                              inherited_translational_speed_mps));
+                              inherited_translational_speed_mps - horizontal_shed_mps));
 
   state.yaw_rate =
       clampMagnitude(state.yaw_rate + control.yaw_accel * config.dt_s,

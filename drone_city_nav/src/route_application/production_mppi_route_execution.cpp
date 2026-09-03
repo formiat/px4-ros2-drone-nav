@@ -402,6 +402,11 @@ RouteExecutionSelector3D::select(const RouteExecutionSelectorRequest3D& request)
                                        : active_route.observed_raw_world;
       }
       if (route_suffix_replacement_required) {
+        const std::vector<RouteSample3D>& blocked_route = *active_route.geometry->route;
+        const std::size_t blocked_segment =
+            std::min(diagnostic_assessment.raw_validation.failure_route_segment,
+                     blocked_route.size() - 1U);
+        result.raw_blocked_station_m = blocked_route[blocked_segment].station_m;
         output.effects.push_back(RouteExecutionSelectorEffect3D{
             .kind = RouteExecutionSelectorEffectKind3D::kRequestRouteRelease,
             .release_reason = RouteReleaseReason3D::kBlocked,

@@ -78,15 +78,22 @@ __device__ State integrate(State state, Control control, DynamicsConfig config) 
   state.vx = state.vx * drag + control.ax * config.dt_s;
   state.vy = state.vy * drag + control.ay * config.dt_s;
   state.vz = state.vz * drag + control.az * config.dt_s;
-  clampHorizontal(
-      state.vx, state.vy,
-      fmaxf(config.maximum_horizontal_speed_mps, inherited_horizontal_speed_mps));
+  // Mirrors integrateMotionState3D: an inherited excess above a cap is shed
+  // at least as fast as the maximum deceleration allows.
+  const float horizontal_shed_mps =
+      config.maximum_horizontal_acceleration_mps2 * config.dt_s;
+  const float vertical_shed_mps =
+      config.maximum_vertical_acceleration_mps2 * config.dt_s;
+  clampHorizontal(state.vx, state.vy,
+                  fmaxf(config.maximum_horizontal_speed_mps,
+                        inherited_horizontal_speed_mps - horizontal_shed_mps));
   const float vertical_speed_limit_mps =
-      fmaxf(config.maximum_vertical_speed_mps, inherited_vertical_speed_mps);
+      fmaxf(config.maximum_vertical_speed_mps,
+            inherited_vertical_speed_mps - vertical_shed_mps);
   state.vz = clampValue(state.vz, -vertical_speed_limit_mps, vertical_speed_limit_mps);
-  clampTranslational(
-      state.vx, state.vy, state.vz,
-      fmaxf(config.maximum_translational_speed_mps, inherited_translational_speed_mps));
+  clampTranslational(state.vx, state.vy, state.vz,
+                     fmaxf(config.maximum_translational_speed_mps,
+                           inherited_translational_speed_mps - horizontal_shed_mps));
   const float yaw_rate_limit_radps =
       fmaxf(config.maximum_yaw_rate_radps, inherited_yaw_rate_radps);
   state.yaw_rate = clampValue(state.yaw_rate + control.yaw_accel * config.dt_s,

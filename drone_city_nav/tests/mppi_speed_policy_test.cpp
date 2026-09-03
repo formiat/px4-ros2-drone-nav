@@ -51,6 +51,31 @@ TEST(MppiSpeedPolicyTest, MeasuredOverspeedRequestsBrakingInsteadOfNewMotion) {
   EXPECT_FALSE(result.sensor_braking_assessment.accepted());
 }
 
+TEST(MppiSpeedPolicyTest, ABlockedRouteLimitsSpeedToStopBeforeTheBlock) {
+  MppiSpeedPolicyConfig config;
+  config.cruise_speed_mps = 20.0;
+  config.absolute_speed_limit_mps = 20.0;
+  config.stopping_capability.maximum_commanded_horizontal_deceleration_mps2 = 4.0;
+  config.stopping_capability.guaranteed_horizontal_deceleration_mps2 = 4.0;
+  config.stopping_capability.reaction_latency_s = 0.0;
+  allowHighSensorBrakingSpeed(config);
+  MppiSpeedPolicyInput input;
+  input.terminal_goal_limit_enabled = false;
+  input.blocked_route_remaining_m = 8.0;
+
+  const MppiSpeedPolicyResult result = evaluateMppiSpeedPolicy(config, input);
+
+  EXPECT_EQ(result.active_limiter, MppiSpeedLimiter::kBlockedRoute);
+  EXPECT_STREQ(mppiSpeedLimiterName(result.active_limiter), "blocked_route");
+  EXPECT_NEAR(result.blocked_route_limit_mps, std::sqrt(2.0 * 4.0 * 8.0), 1.0e-6);
+  EXPECT_DOUBLE_EQ(result.reference_speed_mps, result.blocked_route_limit_mps);
+
+  input.blocked_route_remaining_m = std::nullopt;
+  const MppiSpeedPolicyResult open = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_NE(open.active_limiter, MppiSpeedLimiter::kBlockedRoute);
+  EXPECT_DOUBLE_EQ(open.reference_speed_mps, 20.0);
+}
+
 TEST(MppiSpeedPolicyTest, StraightGuideUsesCruiseAndHundredMeterLookahead) {
   MppiSpeedPolicyConfig config;
   config.cruise_speed_mps = 20.0;

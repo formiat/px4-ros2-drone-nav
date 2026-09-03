@@ -41,6 +41,28 @@ TEST(MppiReferenceTest, DynamicsClampsAccelerationAndVelocity) {
   EXPECT_NEAR(state.yaw, 0.75F, 1.0e-5F);
 }
 
+TEST(MppiReferenceTest, AnInheritedSpeedAboveTheCapIsShedAtTheMaximumDeceleration) {
+  DynamicsConfig dynamics;
+  dynamics.linear_drag_1ps = 0.0F;
+  dynamics.dt_s = 0.1F;
+  dynamics.maximum_horizontal_acceleration_mps2 = 4.0F;
+  dynamics.maximum_horizontal_speed_mps = 10.0F;
+  dynamics.maximum_translational_speed_mps = 6.0F;
+  const State inherited{.vx = 9.0F};
+
+  // Even a rollout that keeps accelerating loses at least one step of maximum
+  // deceleration per step while above the cap ...
+  const State kept = integrateReference(inherited, Control{.ax = 4.0F}, dynamics);
+  EXPECT_NEAR(kept.vx, 8.6F, 1.0e-5F);
+  // ... and a rollout that brakes is not clamped below what braking leaves.
+  const State braked = integrateReference(inherited, Control{.ax = -4.0F}, dynamics);
+  EXPECT_NEAR(braked.vx, 8.6F, 1.0e-5F);
+  // Once under the cap the cap itself holds.
+  const State under =
+      integrateReference(State{.vx = 5.9F}, Control{.ax = 4.0F}, dynamics);
+  EXPECT_NEAR(under.vx, 6.0F, 1.0e-5F);
+}
+
 TEST(MppiReferenceTest, DynamicsClampsTheCompleteTranslationalSpeedVector) {
   DynamicsConfig config{};
   config.dt_s = 1.0F;
@@ -369,11 +391,11 @@ TEST(MppiReferenceTest, SpeedAboveTheDynamicsCapsAccruesOverspeedCost) {
   const RolloutMetrics within = simulateReference(
       State{.x = 1.5F, .y = 1.5F, .vx = 5.0F}, controls, noise, dynamics, RiskConfig{},
       CostConfig{}, grid, esdf, 10.0F, 1.5F, false);
-  // The inherited speed stays above the translational cap along the rollout.
+  // The inherited speed starts above the translational cap.
   const RolloutMetrics inherited = simulateReference(
       State{.x = 1.5F, .y = 1.5F, .vx = 9.0F}, controls, noise, dynamics, RiskConfig{},
       CostConfig{}, grid, esdf, 10.0F, 1.5F, false);
-  // Braking sheds it, and the shed excess costs less than the kept one.
+  // Braking controls shed no faster than the dynamics already do.
   const std::array<Control, 2> braking{Control{.ax = -4.0F}, Control{.ax = -4.0F}};
   const RolloutMetrics shedding = simulateReference(
       State{.x = 1.5F, .y = 1.5F, .vx = 9.0F}, braking, noise, dynamics, RiskConfig{},
@@ -381,8 +403,10 @@ TEST(MppiReferenceTest, SpeedAboveTheDynamicsCapsAccruesOverspeedCost) {
 
   EXPECT_FLOAT_EQ(within.costs.overspeed, 0.0F);
   EXPECT_GT(inherited.costs.overspeed, 0.0F);
-  EXPECT_LT(shedding.costs.overspeed, inherited.costs.overspeed);
-  EXPECT_LT(shedding.soft_cost, inherited.soft_cost);
+  // The dynamics shed the excess at the maximum deceleration whatever the
+  // controls ask, so both rollouts carry the same unavoidable excess.
+  EXPECT_FLOAT_EQ(shedding.costs.overspeed, inherited.costs.overspeed);
+  EXPECT_GT(inherited.soft_cost, within.soft_cost);
 }
 
 TEST(MppiReferenceTest, ReferenceSpeedUsesTheTotalThreeDimensionalVelocity) {
@@ -406,7 +430,7 @@ TEST(MppiReferenceTest, ReferenceSpeedUsesTheTotalThreeDimensionalVelocity) {
   EXPECT_GT(horizontal.costs.speed_tracking, vertical_only.costs.speed_tracking);
 }
 
-TEST(MppiReferenceTest, InheritedSpeedAboveModelLimitDecaysWithoutTeleporting) {
+TEST(MppiReferenceTest, InheritedSpeedAboveModelLimitShedsOneStepOfBrakingPerStep) {
   DynamicsConfig dynamics;
   dynamics.dt_s = 0.05F;
   dynamics.linear_drag_1ps = 0.0F;
@@ -420,10 +444,17 @@ TEST(MppiReferenceTest, InheritedSpeedAboveModelLimitDecaysWithoutTeleporting) {
       .vz = -6.0F,
       .yaw_rate = 2.0F,
   };
-  const State unchanged = integrateReference(initial, Control{}, dynamics);
-  EXPECT_FLOAT_EQ(unchanged.vx, initial.vx);
-  EXPECT_FLOAT_EQ(unchanged.vz, initial.vz);
-  EXPECT_FLOAT_EQ(unchanged.yaw_rate, initial.yaw_rate);
+  // Without braking controls the excess is still shed by one step of the
+  // maximum deceleration, never clamped to the cap at once.
+  const State shed = integrateReference(initial, Control{}, dynamics);
+  EXPECT_NEAR(shed.vx,
+              initial.vx -
+                  dynamics.maximum_horizontal_acceleration_mps2 * dynamics.dt_s,
+              1.0e-5F);
+  EXPECT_NEAR(shed.vz,
+              initial.vz + dynamics.maximum_vertical_acceleration_mps2 * dynamics.dt_s,
+              1.0e-5F);
+  EXPECT_FLOAT_EQ(shed.yaw_rate, initial.yaw_rate);
 
   const State recovering = integrateReference(
       initial, Control{.ax = -4.0F, .az = 4.0F, .yaw_accel = -2.0F}, dynamics);

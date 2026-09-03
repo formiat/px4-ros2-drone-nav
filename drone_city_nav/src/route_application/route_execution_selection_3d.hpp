@@ -36,6 +36,10 @@ struct ProductionRouteExecutionSelection3D {
   bool stationary_hold_owner{false};
   bool pending_activation{false};
   bool physical_trajectory_invalidated{false};
+  // Station of the first route sample the persistent raw world blocks while
+  // the route is still followed and its replacement is being searched: the
+  // speed policy brakes toward it as toward a route end.
+  std::optional<double> raw_blocked_station_m;
   std::optional<DirectTrackingOwnerIdentity3D> direct_tracking_identity;
 };
 

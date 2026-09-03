@@ -147,6 +147,14 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
     result.route_endpoint_limit_mps =
         stoppingLimitedSpeed(route_endpoint_distance, 0.0, config.stopping_capability);
   }
+  if (input.blocked_route_remaining_m.has_value()) {
+    // The raw world blocks the route ahead and a replacement is not certified
+    // yet: fly the validated prefix as if it ended at the block, so the
+    // vehicle can stop before it whatever the replacement search decides.
+    result.blocked_route_limit_mps =
+        stoppingLimitedSpeed(std::max(0.0, *input.blocked_route_remaining_m), 0.0,
+                             config.stopping_capability);
+  }
   if (input.route_constraint_speed_limit_mps.has_value()) {
     result.route_constraint_limit_mps =
         std::max(0.0, *input.route_constraint_speed_limit_mps);
@@ -176,10 +184,11 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
     }
   }
 
-  result.reference_speed_mps = std::min(
-      {result.cruise_limit_mps, result.absolute_limit_mps, result.curvature_limit_mps,
-       result.sensor_braking_limit_mps, result.goal_limit_mps,
-       result.route_endpoint_limit_mps, result.route_constraint_limit_mps});
+  result.reference_speed_mps =
+      std::min({result.cruise_limit_mps, result.absolute_limit_mps,
+                result.curvature_limit_mps, result.sensor_braking_limit_mps,
+                result.goal_limit_mps, result.route_endpoint_limit_mps,
+                result.route_constraint_limit_mps, result.blocked_route_limit_mps});
   const std::array limits{
       std::pair{result.cruise_limit_mps, MppiSpeedLimiter::kCruise},
       std::pair{result.absolute_limit_mps, MppiSpeedLimiter::kAbsolute},
@@ -188,6 +197,7 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
       std::pair{result.goal_limit_mps, MppiSpeedLimiter::kGoal},
       std::pair{result.route_endpoint_limit_mps, MppiSpeedLimiter::kRouteEndpoint},
       std::pair{result.route_constraint_limit_mps, MppiSpeedLimiter::kRouteConstraint},
+      std::pair{result.blocked_route_limit_mps, MppiSpeedLimiter::kBlockedRoute},
   };
   result.active_limiter = std::min_element(limits.begin(), limits.end(),
                                            [](const auto& first, const auto& second) {
@@ -227,6 +237,8 @@ const char* mppiSpeedLimiterName(const MppiSpeedLimiter limiter) noexcept {
       return "route_endpoint";
     case MppiSpeedLimiter::kRouteConstraint:
       return "route_constraint";
+    case MppiSpeedLimiter::kBlockedRoute:
+      return "blocked_route";
   }
   return "unknown";
 }

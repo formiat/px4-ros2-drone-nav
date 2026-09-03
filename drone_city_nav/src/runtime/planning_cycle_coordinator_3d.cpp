@@ -396,6 +396,13 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
               route_control.active
                   ? std::optional<double>{route_control.speed_limit_mps}
                   : std::nullopt,
+          .blocked_route_remaining_m =
+              output.route.usable && output.route.projection.valid &&
+                      output.route.execution.raw_blocked_station_m.has_value()
+                  ? std::optional<double>{std::max(
+                        0.0, *output.route.execution.raw_blocked_station_m -
+                                 output.route.projection.station_m)}
+                  : std::nullopt,
           .route_endpoint_semantics = route_endpoint_semantics,
           .terminal_goal_limit_enabled = request.terminal_hold_enabled,
       });
