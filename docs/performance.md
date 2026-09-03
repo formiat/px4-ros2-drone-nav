@@ -107,9 +107,16 @@ move: a voxel that became occupied forgets clear edges whose swept body touches
 it, a voxel that became free forgets blocked ones, and adaptive edges are tested
 against the exact touch rather than their chunk, so the add/remove flicker of a
 persistent raw surface no longer re-validates every edge beside it. Soft
-clearance ranking repairs a label only when its ranking factor moves by more
-than a few percent; smaller moves are cached. The raw clearance probe behind
-the ranking and the tracking tube visits chunks nearest to the query first and
+clearance ranking is validated lazily: a change stamps its chunks, a cached
+node clearance is re-derived when the search next consults it and a stamped
+chunk lies within the ranking reach, and only a re-derivation that moves the
+ranking factor by more than a few percent schedules the node for repair. The
+scheduler therefore never walks the ranking reach box per changed cell. Repair
+and search share every update: with a repair queue pending the search still
+receives half the budget, so a world that changes every scan cannot starve it
+of expansions, and an anytime route on the current labels reaches the vehicle
+while later repairs re-converge the search. The raw clearance probe behind the
+ranking and the tracking tube visits chunks nearest to the query first and
 stops once no unvisited chunk can hold a closer voxel, so a 6 m ranking reach
 costs less than the former 3 m scan.
 

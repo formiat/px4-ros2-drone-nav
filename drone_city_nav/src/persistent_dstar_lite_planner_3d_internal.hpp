@@ -210,10 +210,13 @@ public:
   // small fraction keeps the search consistent enough and is only cached.
   [[nodiscard]] bool rankingRepairRequired(double previous_clearance_m,
                                            double current_clearance_m) const noexcept;
-  // Forgets every level-zero edge incident to the node and its cached
-  // clearance; returns true when anything was priced. Coarse scheduling of a
-  // very large change set uses it over the nodes of the changed chunks.
-  bool forgetNodeEvidence(PersistentPlannerNode3D node);
+  // Forgets every level-zero edge incident to the node that the change can
+  // move (clear edges for an occupied cell that appeared, blocked edges for
+  // one that vanished); returns true when anything was forgotten. Coarse
+  // scheduling of a very large change set uses it over the nodes of the
+  // changed chunks.
+  bool forgetNodeEdgesForChange(PersistentPlannerNode3D node, bool occupied_cell_added,
+                                bool occupied_cell_removed);
   [[nodiscard]] bool hasEdgeCost(const PersistentPlannerEdge3D& edge) const noexcept;
 
   [[nodiscard]] bool nodeInside(PersistentPlannerNode3D node) const noexcept;
@@ -297,32 +300,24 @@ public:
   // Drops every cached node clearance; they are re-derived lazily.
   void resetNodeClearances() noexcept;
   // Drops cached clearances of nodes whose raw surroundings changed.
-  void
-  forgetNodeClearances(const std::unordered_set<PersistentPlannerNode3D,
-                                                PersistentPlannerNode3DHash>& nodes);
-  // Re-derives the cached clearance of the given nodes on the resident world
-  // and returns the nodes whose clearance moved; nodes without a cached
-  // clearance have no priced edge to re-evaluate and are skipped.
-  [[nodiscard]] std::vector<PersistentPlannerNode3D> refreshChangedNodeClearances(
-      const std::unordered_set<PersistentPlannerNode3D, PersistentPlannerNode3DHash>&
-          nodes);
-  // The cached clearance of a node, or nullopt when it was never priced.
-  [[nodiscard]] std::optional<double>
-  cachedNodeClearance(PersistentPlannerNode3D node) const;
-  // Replaces a cached clearance with a tighter value derived by the caller
-  // from newly occupied evidence.
-  void setCachedNodeClearance(PersistentPlannerNode3D node, double clearance_m);
+  // Stamps the chunks an occupied change touched. Cached node clearances are
+  // validated lazily against these stamps when they are next consulted, so a
+  // scan that changes thousands of cells costs the scheduler one stamp per
+  // chunk instead of a reach-box walk per changed cell.
+  void noteChangedChunks(
+      const std::unordered_set<OccupancyChunkIndex3D, OccupancyChunkIndex3DHash>&
+          changed_chunks);
+  // Nodes whose lazily re-derived clearance moved their ranking factor past
+  // the repair tolerance since the last call; the search repairs the labelled
+  // ones among them.
+  [[nodiscard]] std::vector<PersistentPlannerNode3D> takeMovedClearances();
+  [[nodiscard]] std::size_t clearancesRederived() const noexcept;
+  // The current clearance of a node whose clearance was priced before, or
+  // nullopt when it never was. A stale cache entry is re-derived first.
+  [[nodiscard]] std::optional<double> cachedNodeClearance(PersistentPlannerNode3D node);
   // Distance within which an occupied change can alter a node's cached
   // clearance. Zero when clearance ranking is disabled.
   [[nodiscard]] double clearanceRankingReachM() const noexcept;
-  // Forgets cached adaptive (level > 0) edges whose margin-expanded extent
-  // touches a changed chunk and returns them. Level-zero edges are handled by
-  // the per-cell reach box of the D* session; long edges are found here from
-  // the cache so the scheduling cost is bounded by the cache, not by the
-  // change size times the long-edge reach.
-  [[nodiscard]] std::vector<PersistentPlannerEdge3D> forgetAdaptiveEdgesNear(
-      const std::unordered_set<OccupancyChunkIndex3D, OccupancyChunkIndex3DHash>&
-          changed_chunks);
   // Forgets cached adaptive edges that a changed cell can move (the polarity
   // rule of forgetEdgeCostForChange) and whose swept body `touches` the cell
   // (centre, edge start, edge end). Only edges indexed under a changed chunk
@@ -381,8 +376,28 @@ private:
   // Adaptive (level > 0) edges are sparse and keep a keyed cache.
   std::unordered_map<PersistentPlannerEdge3D, double, PersistentPlannerEdge3DHash>
       adaptive_edge_cost_cache_;
-  std::unordered_map<PersistentPlannerNode3D, double, PersistentPlannerNode3DHash>
+
+  struct CachedNodeClearance {
+    double clearance_m{0.0};
+    // The change epoch the clearance is known to be current for.
+    std::uint64_t change_epoch{0U};
+  };
+
+  std::unordered_map<PersistentPlannerNode3D, CachedNodeClearance,
+                     PersistentPlannerNode3DHash>
       node_clearance_cache_;
+  // Change epoch of the last occupied change per chunk; the epoch advances
+  // with every noted change set.
+  std::unordered_map<OccupancyChunkIndex3D, std::uint64_t, OccupancyChunkIndex3DHash>
+      chunk_change_epoch_;
+  std::uint64_t change_epoch_{0U};
+  std::vector<PersistentPlannerNode3D> moved_clearances_;
+  std::size_t clearances_rederived_{0U};
+  // Whether a chunk within the ranking reach of the point changed after the
+  // given epoch.
+  [[nodiscard]] bool clearanceStale(const Point3& point,
+                                    std::uint64_t change_epoch) const noexcept;
+  [[nodiscard]] double deriveNodeClearance(const Point3& point) const;
   // Adaptive (level > 0) cached edges keyed by every chunk their
   // margin-expanded extent touches, so an occupied change finds the long
   // edges it can affect without scanning the whole edge cache. Entries of
@@ -437,8 +452,8 @@ public:
     double total_ms{0.0};
     double ranking_ms{0.0};
     std::size_t edges_forgotten{0U};
+    // Labelled nodes scheduled because a lazily re-derived clearance moved.
     std::size_t clearances_tightened{0U};
-    std::size_t clearances_rederived{0U};
   };
 
   void scheduleAffectedVertices(const PersistentPlannerWorld3D& world,
@@ -453,6 +468,9 @@ public:
   continueAffectedVertexRepair(std::chrono::steady_clock::time_point deadline,
                                std::size_t maximum_vertices,
                                std::size_t& processed_vertices);
+  // Queues repair for the labelled nodes whose lazily re-derived clearance
+  // moved their ranking factor, and for their labelled neighbours.
+  void scheduleMovedClearances();
   [[nodiscard]] bool shortestPathComplete();
   [[nodiscard]] bool computeShortestPath(std::chrono::steady_clock::time_point deadline,
                                          std::size_t maximum_expansions,

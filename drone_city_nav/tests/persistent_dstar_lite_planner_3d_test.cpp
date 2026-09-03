@@ -342,11 +342,11 @@ TEST(PersistentDStarLitePlanner3DTest,
 }
 
 TEST(PersistentDStarLitePlanner3DTest,
-     ASmallRankingFactorMoveIsCachedWithoutRepairingTheSearch) {
+     AChangeOutsideTheBodyReachSchedulesNoRepairUntilTheSearchConsultsIt) {
   // One lattice row under a low flight envelope: labels live on the route
-  // line and one vertical step above it, so a cell whose box lies six metres
-  // above the highest label moves every cached clearance by at most half a
-  // metre near the cap, a ranking factor change below the repair tolerance.
+  // line and one vertical step above it. A cell six metres above the highest
+  // label is only stamped for the lazy clearance check; a cell within the
+  // body reach forgets edges and repairs them.
   auto open_occupancy = std::make_shared<ObservedOccupancyGrid3D>(
       GridBounds3D{0.0, 0.0, 0.0, 1.0, 14, 1, 12});
   PersistentPlannerConfig3D config = testConfig();
@@ -370,26 +370,22 @@ TEST(PersistentDStarLitePlanner3DTest,
   EXPECT_TRUE(cached.telemetry.incumbent_retained);
   EXPECT_EQ(cached.progress, SearchProgress3D::kConverged);
   EXPECT_EQ(cached.telemetry.changed_occupied_voxels, 1U);
-  EXPECT_GT(cached.telemetry.schedule_clearances_tightened, 0U);
-  EXPECT_EQ(cached.telemetry.affected_lattice_states, 0U)
-      << "forgotten=" << cached.telemetry.schedule_edges_forgotten
-      << " tightened=" << cached.telemetry.schedule_clearances_tightened
-      << " rederived=" << cached.telemetry.schedule_clearances_rederived
-      << " records=" << cached.telemetry.records
-      << " adaptive_queries=" << cached.telemetry.adaptive_edge_queries;
+  EXPECT_EQ(cached.telemetry.schedule_edges_forgotten, 0U);
+  EXPECT_EQ(cached.telemetry.affected_lattice_states, 0U);
 
-  // One metre above the highest label the factor moves by tens of percent:
-  // repaired.
+  // At the level of the highest label the cell touches its edges: they are
+  // forgotten, re-priced, and the moved clearance repairs the labels.
   auto near_cell = std::make_shared<ObservedOccupancyGrid3D>(*open_occupancy);
-  const GridIndex3D near{7, 0, 5};
+  const GridIndex3D near{7, 0, 3};
   ASSERT_TRUE(near_cell->setState(near, ObservedVoxelState::kOccupied));
   PersistentDStarLitePlanner3D fresh{config};
   ASSERT_TRUE(
       fresh.plan(request(start, goal, world(open_occupancy, 1U))).publishable());
   const PlannerUpdate3D repaired = fresh.plan(request(
       start, goal, world(near_cell, 2U, {ObservedOccupancyGrid3D::chunkIndex(near)})));
-  EXPECT_GT(repaired.telemetry.schedule_clearances_tightened, 0U);
+  EXPECT_GT(repaired.telemetry.schedule_edges_forgotten, 0U);
   EXPECT_GT(repaired.telemetry.affected_lattice_states, 0U);
+  EXPECT_GT(repaired.telemetry.schedule_clearances_rederived, 0U);
 }
 
 TEST(PersistentDStarLitePlanner3DTest,

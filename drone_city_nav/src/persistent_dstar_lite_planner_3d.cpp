@@ -442,7 +442,6 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
       telemetry.schedule_ranking_ms = schedule.ranking_ms;
       telemetry.schedule_edges_forgotten = schedule.edges_forgotten;
       telemetry.schedule_clearances_tightened = schedule.clearances_tightened;
-      telemetry.schedule_clearances_rederived = schedule.clearances_rederived;
       if (world_update.occupied_cells_removed) {
         // A cost-to-go retained across an obstacle removal can overestimate a
         // newly opened route until every affected label settles. Keep the
@@ -526,23 +525,33 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
         feasibility_search_.initialized() ? feasibility_search_.anchor() : start_);
   }
 
-  const bool repair_complete = dstar_session_.continueAffectedVertexRepair(
-      deadline, config_.maximum_expansions_per_update,
-      telemetry.repair_lattice_states_processed);
-  telemetry.repair_lattice_states_pending = dstar_session_.pendingRepairNodes();
-  telemetry.repair_pending = !repair_complete;
+  // Repair and search share the update: while a changing world keeps the
+  // repair queue from ever draining, the search still gets half the budget so
+  // it can expand and hand out an anytime route on the labels it has. Labels
+  // a later repair moves re-enter the queue and the search re-converges.
+  const auto repair_started = std::chrono::steady_clock::now();
+  const auto repair_deadline =
+      dstar_session_.pendingRepairNodes() > 0U && deadline > repair_started
+          ? repair_started + (deadline - repair_started) / 2
+          : deadline;
+  static_cast<void>(dstar_session_.continueAffectedVertexRepair(
+      repair_deadline, config_.maximum_expansions_per_update,
+      telemetry.repair_lattice_states_processed));
+  dstar_session_.scheduleMovedClearances();
   const std::size_t remaining_spatial_expansions =
       telemetry.repair_lattice_states_processed < config_.maximum_expansions_per_update
           ? config_.maximum_expansions_per_update -
                 telemetry.repair_lattice_states_processed
           : 0U;
-  bool spatial_search_complete =
-      repair_complete && dstar_session_.shortestPathComplete();
-  if (!spatial_search_complete && repair_complete &&
-      remaining_spatial_expansions > 0U) {
+  bool spatial_search_complete = dstar_session_.shortestPathComplete();
+  if (!spatial_search_complete && remaining_spatial_expansions > 0U) {
     spatial_search_complete = dstar_session_.computeShortestPath(
         deadline, remaining_spatial_expansions, telemetry.expansions);
   }
+  dstar_session_.scheduleMovedClearances();
+  const bool repair_complete = dstar_session_.pendingRepairNodes() == 0U;
+  telemetry.repair_lattice_states_pending = dstar_session_.pendingRepairNodes();
+  telemetry.repair_pending = !repair_complete;
   const bool spatial_route_available =
       spatial_search_complete && dstar_session_.startResolved(start_);
   if (spatial_route_available) {
@@ -620,7 +629,7 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   }
 
   const bool search_complete =
-      spatial_search_complete &&
+      repair_complete && spatial_search_complete &&
       (!spatial_route_available || execution_time_refiner_.complete());
   telemetry.incumbent_available = coordinator_.incumbent() != nullptr;
   if (!search_complete) {
@@ -637,6 +646,7 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   telemetry.open_entries = dstar_session_.openEntries();
   telemetry.lattice_edge_queries = lattice_.edgeQueries();
   telemetry.raw_edge_validation_checks = lattice_.rawEdgeValidationChecks();
+  telemetry.schedule_clearances_rederived = lattice_.clearancesRederived();
   telemetry.adaptive_edge_queries = lattice_.adaptiveEdgeQueries();
   telemetry.adaptive_edges_in_extracted_path = adaptive_edges_in_extracted_path_;
   telemetry.maximum_queried_lattice_level = lattice_.maximumQueriedLevel();

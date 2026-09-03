@@ -14,6 +14,7 @@
 #include <ranges>
 #include <tuple>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "persistent_dstar_lite_planner_3d_internal.hpp"
@@ -586,32 +587,59 @@ double PlannerLattice3D::rankedPathTimeS(const std::vector<Point3>& path,
 
 void PlannerLattice3D::resetNodeClearances() noexcept {
   node_clearance_cache_.clear();
+  chunk_change_epoch_.clear();
+  change_epoch_ = 0U;
+  moved_clearances_.clear();
 }
 
-void PlannerLattice3D::forgetNodeClearances(
-    const std::unordered_set<PersistentPlannerNode3D, PersistentPlannerNode3DHash>&
-        nodes) {
-  for (const PersistentPlannerNode3D node : nodes) {
-    node_clearance_cache_.erase(node);
+void PlannerLattice3D::noteChangedChunks(
+    const std::unordered_set<OccupancyChunkIndex3D, OccupancyChunkIndex3DHash>&
+        changed_chunks) {
+  if (changed_chunks.empty() || clearanceRankingReachM() <= 0.0) {
+    return;
+  }
+  ++change_epoch_;
+  for (const OccupancyChunkIndex3D& chunk : changed_chunks) {
+    chunk_change_epoch_[chunk] = change_epoch_;
   }
 }
 
-std::vector<PersistentPlannerNode3D> PlannerLattice3D::refreshChangedNodeClearances(
-    const std::unordered_set<PersistentPlannerNode3D, PersistentPlannerNode3DHash>&
-        nodes) {
-  std::vector<PersistentPlannerNode3D> changed;
-  for (const PersistentPlannerNode3D node : nodes) {
-    const auto cached = node_clearance_cache_.find(node);
-    if (cached == node_clearance_cache_.end()) {
-      continue;
-    }
-    const double previous_m = cached->second;
-    node_clearance_cache_.erase(cached);
-    if (rankingRepairRequired(previous_m, nodeClearanceM(node))) {
-      changed.push_back(node);
+std::vector<PersistentPlannerNode3D> PlannerLattice3D::takeMovedClearances() {
+  return std::exchange(moved_clearances_, {});
+}
+
+std::size_t PlannerLattice3D::clearancesRederived() const noexcept {
+  return clearances_rederived_;
+}
+
+bool PlannerLattice3D::clearanceStale(const Point3& point,
+                                      const std::uint64_t change_epoch) const noexcept {
+  if (change_epoch == change_epoch_ || chunk_change_epoch_.empty()) {
+    return false;
+  }
+  constexpr int kChunkSize{OccupancyGrid3D::kChunkSize};
+  const double reach_m = clearanceRankingReachM();
+  const double chunk_span_m = kChunkSize * raw_bounds_.resolution_m;
+  const auto chunk_of = [&](const double coordinate, const double origin) {
+    return static_cast<int>(std::floor((coordinate - origin) / chunk_span_m));
+  };
+  const int minimum_x = chunk_of(point.x - reach_m, raw_bounds_.origin_x);
+  const int maximum_x = chunk_of(point.x + reach_m, raw_bounds_.origin_x);
+  const int minimum_y = chunk_of(point.y - reach_m, raw_bounds_.origin_y);
+  const int maximum_y = chunk_of(point.y + reach_m, raw_bounds_.origin_y);
+  const int minimum_z = chunk_of(point.z - reach_m, raw_bounds_.origin_z);
+  const int maximum_z = chunk_of(point.z + reach_m, raw_bounds_.origin_z);
+  for (int z = minimum_z; z <= maximum_z; ++z) {
+    for (int y = minimum_y; y <= maximum_y; ++y) {
+      for (int x = minimum_x; x <= maximum_x; ++x) {
+        const auto found = chunk_change_epoch_.find(OccupancyChunkIndex3D{x, y, z});
+        if (found != chunk_change_epoch_.end() && found->second > change_epoch) {
+          return true;
+        }
+      }
     }
   }
-  return changed;
+  return false;
 }
 
 double voxelBoxDistance3D(const Point3& point, const Point3& box_minimum,
@@ -627,17 +655,11 @@ double voxelBoxDistance3D(const Point3& point, const Point3& box_minimum,
 }
 
 std::optional<double>
-PlannerLattice3D::cachedNodeClearance(const PersistentPlannerNode3D node) const {
-  const auto cached = node_clearance_cache_.find(node);
-  if (cached == node_clearance_cache_.end()) {
+PlannerLattice3D::cachedNodeClearance(const PersistentPlannerNode3D node) {
+  if (!node_clearance_cache_.contains(node)) {
     return std::nullopt;
   }
-  return cached->second;
-}
-
-void PlannerLattice3D::setCachedNodeClearance(const PersistentPlannerNode3D node,
-                                              const double clearance_m) {
-  node_clearance_cache_.insert_or_assign(node, clearance_m);
+  return nodeClearanceM(node);
 }
 
 double PlannerLattice3D::clearanceRankingReachM() const noexcept {
@@ -733,32 +755,8 @@ PlannerLattice3D::forgetAdaptiveEdgesTouching(const LatticeChangesByChunk3D& cha
   return forgotten;
 }
 
-std::vector<PersistentPlannerEdge3D> PlannerLattice3D::forgetAdaptiveEdgesNear(
-    const std::unordered_set<OccupancyChunkIndex3D, OccupancyChunkIndex3DHash>&
-        changed_chunks) {
-  std::vector<PersistentPlannerEdge3D> forgotten;
-  for (const OccupancyChunkIndex3D& chunk : changed_chunks) {
-    const auto found = adaptive_edges_by_chunk_.find(chunk);
-    if (found == adaptive_edges_by_chunk_.end()) {
-      continue;
-    }
-    for (const PersistentPlannerEdge3D& edge : found->second) {
-      if (adaptive_edge_cost_cache_.erase(edge) != 0U) {
-        forgotten.push_back(edge);
-      }
-    }
-    adaptive_edges_by_chunk_.erase(found);
-  }
-  return forgotten;
-}
-
-double PlannerLattice3D::nodeClearanceM(const PersistentPlannerNode3D node) {
+double PlannerLattice3D::deriveNodeClearance(const Point3& point) const {
   const double cap_m = config_->clearance_ranking_distance_m;
-  if (const auto found = node_clearance_cache_.find(node);
-      found != node_clearance_cache_.end()) {
-    return found->second;
-  }
-  const Point3 point = pointFor(node);
   double clearance_m = cap_m;
   if (resident_collision_oracle_.has_value()) {
     const OccupiedCollisionWorld3D& world = resident_collision_oracle_->world();
@@ -773,7 +771,34 @@ double PlannerLattice3D::nodeClearanceM(const PersistentPlannerNode3D node) {
                                                world.launch_support_contact));
     }
   }
-  node_clearance_cache_.emplace(node, clearance_m);
+  return clearance_m;
+}
+
+double PlannerLattice3D::nodeClearanceM(const PersistentPlannerNode3D node) {
+  const Point3 point = pointFor(node);
+  const auto found = node_clearance_cache_.find(node);
+  if (found != node_clearance_cache_.end()) {
+    CachedNodeClearance& cached = found->second;
+    if (!clearanceStale(point, cached.change_epoch)) {
+      cached.change_epoch = change_epoch_;
+      return cached.clearance_m;
+    }
+    // Occupied evidence within reach changed since this clearance was
+    // derived: re-derive it, and hand the node to the search when the move
+    // matters for its ranked labels.
+    const double previous_m = cached.clearance_m;
+    cached.clearance_m = deriveNodeClearance(point);
+    cached.change_epoch = change_epoch_;
+    ++clearances_rederived_;
+    if (rankingRepairRequired(previous_m, cached.clearance_m)) {
+      moved_clearances_.push_back(node);
+    }
+    return cached.clearance_m;
+  }
+  const double clearance_m = deriveNodeClearance(point);
+  node_clearance_cache_.emplace(
+      node,
+      CachedNodeClearance{.clearance_m = clearance_m, .change_epoch = change_epoch_});
   return clearance_m;
 }
 
@@ -789,12 +814,13 @@ void PlannerLattice3D::reset() noexcept {
 void PlannerLattice3D::resetEdgeEvidence() noexcept {
   std::ranges::fill(level_zero_edge_states_, 0U);
   adaptive_edge_cost_cache_.clear();
-  node_clearance_cache_.clear();
+  resetNodeClearances();
   adaptive_edges_by_chunk_.clear();
   resetEdgeStatistics();
 }
 
 void PlannerLattice3D::resetEdgeStatistics() noexcept {
+  clearances_rederived_ = 0U;
   edge_queries_ = 0U;
   raw_edge_validation_checks_ = 0U;
   adaptive_edge_queries_ = 0U;
@@ -897,11 +923,13 @@ bool PlannerLattice3D::rankingRepairRequired(
          kRankingRepairRelativeTolerance * std::max(previous_factor, current_factor);
 }
 
-bool PlannerLattice3D::forgetNodeEvidence(const PersistentPlannerNode3D node) {
-  if (!nodeInside(node)) {
+bool PlannerLattice3D::forgetNodeEdgesForChange(const PersistentPlannerNode3D node,
+                                                const bool occupied_cell_added,
+                                                const bool occupied_cell_removed) {
+  if (!nodeInside(node) || (!occupied_cell_added && !occupied_cell_removed)) {
     return false;
   }
-  bool forgotten = node_clearance_cache_.erase(node) != 0U;
+  bool forgotten = false;
   for (int z_offset = -1; z_offset <= 1; ++z_offset) {
     for (int y_offset = -1; y_offset <= 1; ++y_offset) {
       for (int x_offset = -1; x_offset <= 1; ++x_offset) {
@@ -914,7 +942,10 @@ bool PlannerLattice3D::forgetNodeEvidence(const PersistentPlannerNode3D node) {
           continue;
         }
         const LevelZeroSlot slot = levelZeroSlot(canonicalEdge(node, neighbor));
-        if (levelZeroState(slot) != kLevelZeroEdgeUnknown) {
+        const unsigned state = levelZeroState(slot);
+        const bool movable = (state == kLevelZeroEdgeClear && occupied_cell_added) ||
+                             (state == kLevelZeroEdgeBlocked && occupied_cell_removed);
+        if (movable) {
           setLevelZeroState(slot, kLevelZeroEdgeUnknown);
           forgotten = true;
         }

@@ -162,6 +162,10 @@ void DStarLiteSession3D::scheduleAffectedVertices(
   for (const GridIndex3D cell : changed_cells) {
     changed_chunks.insert(OccupancyGrid3D::chunkIndex(cell));
   }
+  // Ranking clearances are validated lazily against the changed chunks when
+  // the search next consults them; nodes whose ranking factor then moves are
+  // repaired through scheduleMovedClearances.
+  lattice_->noteChangedChunks(changed_chunks);
 
   // A D* label can depend only on an edge whose cost was evaluated. Invalidate
   // those exact cached dependencies instead of eagerly creating and validating
@@ -202,23 +206,6 @@ void DStarLiteSession3D::scheduleAffectedVertices(
   // cell and tests only their priced edges against the bucket's cells. The
   // cost is the number of changed node cells times the reach box, plus the
   // exact per-edge tests near labels, never the change size times the box.
-  using ChangedCell = LatticeChangedCell3D;
-
-  std::unordered_map<PersistentPlannerNode3D, std::vector<ChangedCell>,
-                     PersistentPlannerNode3DHash>
-      changes_by_node_cell;
-  LatticeChangesByChunk3D changes_by_chunk;
-  for (const GridIndex3D cell : changed_cells) {
-    const Point3 center = world.observed_occupancy != nullptr
-                              ? world.observed_occupancy->cellCenter(cell)
-                              : world.static_occupancy->cellCenter(cell);
-    const bool occupied_now = world.observed_occupancy != nullptr
-                                  ? world.observed_occupancy->isOccupied(cell)
-                                  : world.static_occupancy->isOccupied(cell);
-    const ChangedCell change{.center = center, .occupied_now = occupied_now};
-    changes_by_node_cell[lattice_->nearestNode(center)].push_back(change);
-    changes_by_chunk[OccupancyGrid3D::chunkIndex(cell)].push_back(change);
-  }
   const auto labelled = [&](const PersistentPlannerNode3D node) {
     return node == start_ || node == goal_ || records_.contains(node);
   };
@@ -241,18 +228,44 @@ void DStarLiteSession3D::scheduleAffectedVertices(
       }
     }
   };
-  // A very large change set (a freshly revealed facade, or several scans
-  // absorbed at once) is scheduled coarsely by chunk: every node whose reach
-  // touches a changed chunk forgets its level-zero edges and clearance, and
-  // the labelled ones among them are repaired. The cost is bounded by the
-  // changed chunks times the node box of a chunk, never by the cell count.
-  constexpr std::size_t kExactChangeCellLimit{4096U};
+  using ChangedCell = LatticeChangedCell3D;
+
+  std::unordered_map<PersistentPlannerNode3D, std::vector<ChangedCell>,
+                     PersistentPlannerNode3DHash>
+      changes_by_node_cell;
+  LatticeChangesByChunk3D changes_by_chunk;
+  for (const GridIndex3D cell : changed_cells) {
+    const Point3 center = world.observed_occupancy != nullptr
+                              ? world.observed_occupancy->cellCenter(cell)
+                              : world.static_occupancy->cellCenter(cell);
+    const bool occupied_now = world.observed_occupancy != nullptr
+                                  ? world.observed_occupancy->isOccupied(cell)
+                                  : world.static_occupancy->isOccupied(cell);
+    const ChangedCell change{.center = center, .occupied_now = occupied_now};
+    changes_by_node_cell[lattice_->nearestNode(center)].push_back(change);
+    changes_by_chunk[OccupancyGrid3D::chunkIndex(cell)].push_back(change);
+  }
+
+  // A very large change set (several scans absorbed at once) is scheduled
+  // coarsely by chunk: every node whose reach touches a changed chunk forgets
+  // the level-zero edges the chunk's change polarity can move, and the
+  // labelled ones among them are repaired. The cost is bounded by the changed
+  // chunks times the node box of a chunk, never by the cell count.
+  constexpr std::size_t kExactChangeCellLimit{32768U};
   const bool exact = changed_cells.size() <= kExactChangeCellLimit;
   if (!exact) {
     const double chunk_span_m = static_cast<double>(OccupancyGrid3D::kChunkSize) *
                                 lattice_->bounds().resolution_m;
     const GridBounds3D& bounds = lattice_->bounds();
     for (const OccupancyChunkIndex3D& chunk : changed_chunks) {
+      bool occupied_cell_added = false;
+      bool occupied_cell_removed = false;
+      if (const auto cells = changes_by_chunk.find(chunk);
+          cells != changes_by_chunk.end()) {
+        for (const ChangedCell& change : cells->second) {
+          (change.occupied_now ? occupied_cell_added : occupied_cell_removed) = true;
+        }
+      }
       const Point3 chunk_minimum{
           bounds.origin_x + chunk.x * chunk_span_m - horizontal_reach,
           bounds.origin_y + chunk.y * chunk_span_m - horizontal_reach,
@@ -267,7 +280,8 @@ void DStarLiteSession3D::scheduleAffectedVertices(
         for (int y = first.y; y <= last.y; ++y) {
           for (int x = first.x; x <= last.x; ++x) {
             const PersistentPlannerNode3D node{x, y, z};
-            if (!lattice_->forgetNodeEvidence(node)) {
+            if (!lattice_->forgetNodeEdgesForChange(node, occupied_cell_added,
+                                                    occupied_cell_removed)) {
               continue;
             }
             ++schedule_statistics_.edges_forgotten;
@@ -278,8 +292,8 @@ void DStarLiteSession3D::scheduleAffectedVertices(
         }
       }
     }
-    for (const PersistentPlannerEdge3D& edge :
-         lattice_->forgetAdaptiveEdgesNear(changed_chunks)) {
+    for (const PersistentPlannerEdge3D& edge : lattice_->forgetAdaptiveEdgesTouching(
+             changes_by_chunk, cell_touches_segment)) {
       affected.insert(edge.first);
       affected.insert(edge.second);
     }
@@ -362,80 +376,6 @@ void DStarLiteSession3D::scheduleAffectedVertices(
     affected.insert(edge.first);
     affected.insert(edge.second);
   }
-  // Clearance ranking re-prices every edge incident to a node whose cached
-  // clearance moves. An added occupied cell can only lower a clearance, which
-  // is applied in place; a removed cell that was the nearest evidence forces a
-  // re-derivation. Nodes without a cached clearance were never priced.
-  const double ranking_reach = lattice_->clearanceRankingReachM();
-  const auto ranking_started = std::chrono::steady_clock::now();
-  if (ranking_reach > 0.0) {
-    const double half_cell_m = 0.5 * lattice_->bounds().resolution_m;
-    const int ranking_horizontal_radius =
-        static_cast<int>(std::ceil((ranking_reach + raw_half_diagonal) /
-                                   config_->minimum_horizontal_step_m)) +
-        1;
-    const int ranking_vertical_radius =
-        static_cast<int>(std::ceil((ranking_reach + raw_half_diagonal) /
-                                   config_->minimum_vertical_step_m)) +
-        1;
-    std::unordered_set<PersistentPlannerNode3D, PersistentPlannerNode3DHash>
-        re_derive_candidates;
-    std::unordered_set<PersistentPlannerNode3D, PersistentPlannerNode3DHash> moved;
-    for (const auto& [cell_node, changes] : changes_by_node_cell) {
-      for_each_labelled_node_near(
-          cell_node, ranking_horizontal_radius, ranking_vertical_radius,
-          [&](const PersistentPlannerNode3D node) {
-            const std::optional<double> cached = lattice_->cachedNodeClearance(node);
-            if (!cached.has_value()) {
-              return;
-            }
-            const Point3 node_point = lattice_->pointFor(node);
-            double clearance_m = *cached;
-            bool re_derive = false;
-            for (const ChangedCell& change : changes) {
-              const Point3 box_minimum{change.center.x - half_cell_m,
-                                       change.center.y - half_cell_m,
-                                       change.center.z - half_cell_m};
-              const Point3 box_maximum{change.center.x + half_cell_m,
-                                       change.center.y + half_cell_m,
-                                       change.center.z + half_cell_m};
-              const double distance_m =
-                  voxelBoxDistance3D(node_point, box_minimum, box_maximum);
-              if (change.occupied_now) {
-                clearance_m = std::min(clearance_m, distance_m);
-              } else if (distance_m <= clearance_m + kClearanceToleranceM) {
-                re_derive = true;
-              }
-            }
-            if (re_derive) {
-              re_derive_candidates.insert(node);
-            } else if (clearance_m + kClearanceToleranceM < *cached) {
-              lattice_->setCachedNodeClearance(node, clearance_m);
-              ++schedule_statistics_.clearances_tightened;
-              if (lattice_->rankingRepairRequired(*cached, clearance_m)) {
-                moved.insert(node);
-              }
-            }
-          });
-    }
-    schedule_statistics_.clearances_rederived = re_derive_candidates.size();
-    for (const PersistentPlannerNode3D node :
-         lattice_->refreshChangedNodeClearances(re_derive_candidates)) {
-      moved.insert(node);
-    }
-    for (const PersistentPlannerNode3D node : moved) {
-      affected.insert(node);
-      lattice_->forEachAdjacentNode(node, [&](const PersistentPlannerNode3D neighbor) {
-        if (records_.contains(neighbor)) {
-          affected.insert(neighbor);
-        }
-      });
-    }
-  }
-  schedule_statistics_.ranking_ms =
-      std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
-                                                ranking_started)
-          .count();
   std::vector<PersistentPlannerNode3D> ordered{affected.begin(), affected.end()};
   std::ranges::sort(ordered, nodeLess);
   for (const PersistentPlannerNode3D node : ordered) {
@@ -448,6 +388,22 @@ void DStarLiteSession3D::scheduleAffectedVertices(
       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                 schedule_started)
           .count();
+}
+
+void DStarLiteSession3D::scheduleMovedClearances() {
+  for (const PersistentPlannerNode3D node : lattice_->takeMovedClearances()) {
+    const auto schedule = [&](const PersistentPlannerNode3D candidate) {
+      if (candidate != start_ && candidate != goal_ && !records_.contains(candidate)) {
+        return;
+      }
+      if (pending_repair_members_.insert(candidate).second) {
+        pending_repair_nodes_.push_back(candidate);
+      }
+    };
+    schedule(node);
+    lattice_->forEachAdjacentNode(node, schedule);
+    ++schedule_statistics_.clearances_tightened;
+  }
 }
 
 bool DStarLiteSession3D::continueAffectedVertexRepair(
