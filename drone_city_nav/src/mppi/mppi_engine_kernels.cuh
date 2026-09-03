@@ -542,6 +542,13 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
                                     : hypotf(hypotf(state.vx, state.vy), state.vz);
         const float speed_error = speed_mps - active_reference_speed_mps;
         speed_tracking_cost += sample_weight * speed_error * speed_error;
+        // The reference is the speed the policy can still stop within
+        // (a blocked route, a route endpoint, the goal, a turn, the sensor
+        // range): the excess above it is shed like the excess above the
+        // dynamics caps, so the stopping law ahead outweighs the progress a
+        // faster rollout would buy.
+        const float reference_excess_mps = fmaxf(0.0F, speed_error);
+        overspeed_cost += sample_weight * reference_excess_mps * reference_excess_mps;
       }
       {
         const float horizontal_speed_mps = hypotf(state.vx, state.vy);

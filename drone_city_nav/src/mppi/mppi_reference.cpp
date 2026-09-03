@@ -385,8 +385,12 @@ RolloutMetrics simulateReference(
     metrics.costs.control_effort += squared(control.ax) + squared(control.ay) +
                                     squared(control.az) + squared(control.yaw_accel);
     if (reference_speed_mps >= 0.0F) {
-      metrics.costs.speed_tracking += squared(
-          std::hypot(std::hypot(state.vx, state.vy), state.vz) - reference_speed_mps);
+      const float speed_error =
+          std::hypot(std::hypot(state.vx, state.vy), state.vz) - reference_speed_mps;
+      metrics.costs.speed_tracking += squared(speed_error);
+      // The excess above the reference is shed like the excess above the
+      // dynamics caps: the reference is the speed the policy can stop within.
+      metrics.costs.overspeed += squared(std::max(0.0F, speed_error));
     }
     {
       const float horizontal_speed_mps = std::hypot(state.vx, state.vy);

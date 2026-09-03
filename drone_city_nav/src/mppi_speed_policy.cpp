@@ -151,11 +151,14 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
   }
   if (input.blocked_route_remaining_m.has_value()) {
     // The raw world blocks the route ahead and a replacement is not certified
-    // yet: fly the validated prefix as if it ended at the block, so the
-    // vehicle can stop before it whatever the replacement search decides.
-    result.blocked_route_limit_mps =
-        stoppingLimitedSpeed(std::max(0.0, *input.blocked_route_remaining_m), 0.0,
-                             config.stopping_capability);
+    // yet: fly the validated prefix as if it ended a body margin before the
+    // block, so the vehicle can stop clear of it whatever the replacement
+    // search decides. The margin is the one the sensor-braking contract keeps
+    // to evidence it stops for.
+    result.blocked_route_limit_mps = stoppingLimitedSpeed(
+        std::max(0.0, *input.blocked_route_remaining_m -
+                          config.sensor_braking_contract.physical_margin_m),
+        0.0, config.stopping_capability);
   }
   if (input.executed_horizon_clearance_m.has_value()) {
     // The motion under execution passes this close to known occupied
@@ -228,7 +231,11 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
       config.sensor_braking_contract, config.stopping_capability,
       std::max(result.reference_speed_mps, measured_speed_mps));
   if (!result.sensor_braking_assessment.accepted()) {
-    result.reference_speed_mps = 0.0;
+    // The measured speed exceeds what the sensor range can stop within. The
+    // reference already sits at or below the sensor-braking limit and the
+    // excess above the reference is priced as overspeed, so the vehicle sheds
+    // the excess instead of being asked to stop outright and then released
+    // again on the next tick.
     result.active_limiter = MppiSpeedLimiter::kSensorBraking;
   }
   result.target_lookahead_m =

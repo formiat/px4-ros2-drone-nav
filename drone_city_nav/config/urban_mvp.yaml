@@ -253,10 +253,14 @@ production_mppi_node:
     far_horizon_cost_stride: 2
     static_speed_tracking_weight: 1.0
     # Cost per second of squared speed above the dynamics caps (the absolute
-    # limit horizontally, the sensor-braking limit translationally). A rollout
-    # that starts above a cap inherits its speed; this makes shedding the
-    # excess worth more than the progress it buys, so an overspeeding vehicle
-    # brakes back under the envelope it can stop within.
+    # limit horizontally, the sensor-braking limit translationally) and above
+    # the reference speed the speed policy derives (the stopping laws for a
+    # blocked route, a route endpoint, the goal, a turn, the sensor range).
+    # A rollout that starts above a cap inherits its speed; this makes
+    # shedding the excess worth more than the progress it buys, so a vehicle
+    # above the envelope it can stop within brakes back under it. The
+    # symmetric speed tracking weight below only pulls speed up to the
+    # reference and cannot outweigh progress on its own.
     overspeed_weight: 200.0
     no_static_speed_tracking_weight: 1.0
     deadline_ms: 20.0

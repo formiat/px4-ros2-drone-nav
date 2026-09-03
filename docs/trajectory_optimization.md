@@ -77,8 +77,11 @@ the squared shortfall between the clearance a state keeps to known occupied
 evidence and the clearance its approach speed needs to stop before it, so a
 rollout brakes before the critical band instead of reacting inside it.
 These terms rank safe rollouts together with route deviation, mission
-progress, early/head progress, altitude error, speed tracking, acceleration,
-jerk, yaw motion, terminal error, and control effort. Low clearance alone cannot
+progress, early/head progress, altitude error, speed tracking, overspeed
+(speed above the dynamics caps or above the reference speed the speed policy
+derives from its stopping laws, priced so that shedding it outweighs the
+progress it buys), acceleration, jerk, yaw motion, terminal error, and control
+effort. Low clearance alone cannot
 make a rollout unreachable or force a position hold.
 
 Conservative ESDF distance classifies the critical and planning bands and feeds

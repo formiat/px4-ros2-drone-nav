@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <limits>
@@ -38,7 +39,11 @@ TEST(MppiSpeedPolicyTest, SensorBrakingContractLimitsReferenceSpeed) {
               config.sensor_braking_contract.guaranteed_detection_range_m, 1.0e-10);
 }
 
-TEST(MppiSpeedPolicyTest, MeasuredOverspeedRequestsBrakingInsteadOfNewMotion) {
+TEST(MppiSpeedPolicyTest, MeasuredOverspeedKeepsTheReferenceAtTheSensorBrakingLimit) {
+  // The excess above the reference is priced as overspeed by the optimizer,
+  // so the policy names the sensor limiter and keeps the reference at the
+  // speed the sensor range can stop within instead of dropping it to zero
+  // and releasing it again once the vehicle dips under the limit.
   MppiSpeedPolicyConfig config;
   MppiSpeedPolicyInput input;
   input.terminal_goal_limit_enabled = false;
@@ -46,7 +51,9 @@ TEST(MppiSpeedPolicyTest, MeasuredOverspeedRequestsBrakingInsteadOfNewMotion) {
 
   const MppiSpeedPolicyResult result = evaluateMppiSpeedPolicy(config, input);
 
-  EXPECT_DOUBLE_EQ(result.reference_speed_mps, 0.0);
+  EXPECT_GT(result.reference_speed_mps, 0.0);
+  EXPECT_DOUBLE_EQ(result.reference_speed_mps,
+                   std::min(result.cruise_limit_mps, result.sensor_braking_limit_mps));
   EXPECT_EQ(result.active_limiter, MppiSpeedLimiter::kSensorBraking);
   EXPECT_DOUBLE_EQ(result.sensor_braking_assessment.speed_mps, 20.0);
   EXPECT_FALSE(result.sensor_braking_assessment.accepted());
@@ -60,15 +67,17 @@ TEST(MppiSpeedPolicyTest, ABlockedRouteLimitsSpeedToStopBeforeTheBlock) {
   config.stopping_capability.guaranteed_horizontal_deceleration_mps2 = 4.0;
   config.stopping_capability.reaction_latency_s = 0.0;
   allowHighSensorBrakingSpeed(config);
+  config.sensor_braking_contract.physical_margin_m = 3.0;
   MppiSpeedPolicyInput input;
   input.terminal_goal_limit_enabled = false;
   input.blocked_route_remaining_m = 8.0;
 
   const MppiSpeedPolicyResult result = evaluateMppiSpeedPolicy(config, input);
 
+  // The stop lands the body margin before the block: 8 m less the 3 m margin.
   EXPECT_EQ(result.active_limiter, MppiSpeedLimiter::kBlockedRoute);
   EXPECT_STREQ(mppiSpeedLimiterName(result.active_limiter), "blocked_route");
-  EXPECT_NEAR(result.blocked_route_limit_mps, std::sqrt(2.0 * 4.0 * 8.0), 1.0e-6);
+  EXPECT_NEAR(result.blocked_route_limit_mps, std::sqrt(2.0 * 4.0 * 5.0), 1.0e-6);
   EXPECT_DOUBLE_EQ(result.reference_speed_mps, result.blocked_route_limit_mps);
 
   input.blocked_route_remaining_m = std::nullopt;

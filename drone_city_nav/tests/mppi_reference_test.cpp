@@ -375,6 +375,35 @@ TEST(MppiReferenceTest, ReferenceSpeedAddsTrackingCost) {
   EXPECT_LT(matched.soft_cost, faster.soft_cost);
 }
 
+TEST(MppiReferenceTest, SpeedAboveTheReferenceAccruesOverspeedCost) {
+  // The reference speed is the speed the policy can stop within: a rollout
+  // above it sheds the excess under the overspeed weight, while one below it
+  // pays only the symmetric tracking term.
+  constexpr int kWidth = 20;
+  constexpr int kHeight = 20;
+  const EsdfGrid grid{kWidth, kHeight, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> esdf(static_cast<std::size_t>(kWidth * kHeight), 20.0F);
+  const std::array<Control, 2> controls{};
+  const std::array<Control, 2> noise{};
+  DynamicsConfig dynamics;
+  dynamics.linear_drag_1ps = 0.0F;
+  dynamics.maximum_horizontal_speed_mps = 10.0F;
+  dynamics.maximum_translational_speed_mps = 10.0F;
+  const State initial{.x = 1.5F, .y = 1.5F, .vx = 5.0F};
+
+  const RolloutMetrics below =
+      simulateReference(initial, controls, noise, dynamics, RiskConfig{}, CostConfig{},
+                        grid, esdf, 10.0F, 1.5F, false, Control{}, 8.0F);
+  const RolloutMetrics above =
+      simulateReference(initial, controls, noise, dynamics, RiskConfig{}, CostConfig{},
+                        grid, esdf, 10.0F, 1.5F, false, Control{}, 2.0F);
+
+  EXPECT_FLOAT_EQ(below.costs.overspeed, 0.0F);
+  EXPECT_GT(above.costs.overspeed, 0.0F);
+  EXPECT_GT(above.costs.speed_tracking, 0.0F);
+  EXPECT_GT(above.soft_cost, below.soft_cost);
+}
+
 TEST(MppiReferenceTest, SpeedAboveTheDynamicsCapsAccruesOverspeedCost) {
   constexpr int kWidth = 20;
   constexpr int kHeight = 20;

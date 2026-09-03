@@ -423,8 +423,10 @@ horizontal or vertical deceleration. Configuration contract tests bind the
 guaranteed range to both the 3D lidar model and obstacle-memory range, while
 runtime diagnostics publish every distance term and the remaining reserve. The
 solved limit is a hard complete-translational-speed bound in host and CUDA
-dynamics and the shared strategic/route ETA model. Measured overspeed requests
-braking while retaining physically continuous inherited velocity. The
+dynamics and the shared strategic/route ETA model. Measured overspeed keeps
+the reference at the sensor-braking limit and the optimizer sheds the excess
+under the overspeed cost while retaining physically continuous inherited
+velocity. The
 organized lidar covers the complete vertical sphere, including pure climb and
 descent directions, instead of leaving polar blind cones outside the range
 contract.
