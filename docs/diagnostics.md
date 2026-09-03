@@ -133,6 +133,27 @@ Compare:
 High terminal progress with no actual displacement indicates an ineffective
 horizon, not successful navigation.
 
+### Execution Plan Transition Rejections
+
+`EXECUTION_HORIZON_ASSEMBLY ... transition=<status> detail=<detail>`,
+`EXECUTION_HOLD ... transition=<status> detail=<detail>` and
+`ROUTE_CERTIFICATION_RELEASE ... transition=<status> detail=<detail>` name the
+plan transition that rejected a certified candidate. The status is the reducer
+outcome (`invalid_candidate`, `finite_execution_conflict`, ...); the detail
+names the contract check behind it (`activation_binding_invalid`,
+`next_plan_invalid`, `progress_composition_mismatch`, ...), so a repeated
+rejection can be traced to one predicate without re-running the reducer.
+
+`PENDING_ROUTE_RETIRED route_generation=<n> base_route_generation=<m>
+transition=<status> detail=<detail> acknowledged=<bool>` reports a pending
+successor whose activation the reducer rejected on the candidate's own contract
+(`invalid_candidate`). Such a proposal cannot activate by being offered again,
+and while it stays pending the lifecycle measures every newer successor against
+it and the selection offers it instead of the resident route's own candidates.
+The node acknowledges it so the lifecycle plans a fresh successor from the
+vehicle. Transient outcomes (a moved snapshot version, a finite-execution
+ordering conflict) keep the pending route and are retried.
+
 ## Static Constrained Route Diagnostics
 
 `ROUTE_CONSTRAINT_EVENT` is emitted on observable lifecycle transitions:

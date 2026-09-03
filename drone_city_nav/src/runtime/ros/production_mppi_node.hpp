@@ -253,6 +253,8 @@ private:
   publishPreparedExecutionCycle(const ProductionMppiExecutionCycle& cycle);
   void logPhysicalRejectionCells(const ProductionMppiExecutionCycle& cycle,
                                  const HorizonCandidate3D& candidate);
+  bool retirePendingRouteRejectedByTransition(const ProductionMppiExecutionCycle& cycle,
+                                              const HorizonCandidate3D& candidate);
   void releaseRouteRejectedByCertificationWhileStationary(
       const ProductionMppiExecutionCycle& cycle, const HorizonCandidate3D& candidate);
   [[nodiscard]] msg::MppiTrajectoryHorizon

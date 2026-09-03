@@ -25,22 +25,25 @@ namespace drone_city_nav {
 class ExecutionRouteTransitionFactory3D final {
 public:
   [[nodiscard]] static ExecutionRouteTransitionResult3D
-  failure(const ExecutionRouteTransitionStatus3D status) {
-    return {status, nullptr, nullptr};
+  failure(const ExecutionRouteTransitionStatus3D status,
+          const ExecutionRouteTransitionDetail3D detail) {
+    return {status, detail, nullptr, nullptr};
   }
 
   [[nodiscard]] static ExecutionRouteTransitionResult3D
   success(const ExecutionPlan3D& predecessor,
           std::shared_ptr<const ExecutionPlan3D> next) {
-    return {ExecutionRouteTransitionStatus3D::kApplied, &predecessor, std::move(next)};
+    return {ExecutionRouteTransitionStatus3D::kApplied,
+            ExecutionRouteTransitionDetail3D::kNone, &predecessor, std::move(next)};
   }
 };
 
 namespace execution_route_snapshot_3d_internal {
 
 [[nodiscard]] ExecutionRouteTransitionResult3D
-transitionFailure(const ExecutionRouteTransitionStatus3D status) {
-  return ExecutionRouteTransitionFactory3D::failure(status);
+transitionFailure(const ExecutionRouteTransitionStatus3D status,
+                  const ExecutionRouteTransitionDetail3D detail) {
+  return ExecutionRouteTransitionFactory3D::failure(status, detail);
 }
 
 [[nodiscard]] ExecutionRouteTransitionStatus3D
@@ -81,7 +84,8 @@ checkGuard(const ExecutionPlan3D& current,
 [[nodiscard]] ExecutionRouteTransitionResult3D
 finishTransition(const ExecutionPlan3D& current, ExecutionPlan3D next) {
   if (!next.valid()) {
-    return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
+    return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate,
+                             ExecutionRouteTransitionDetail3D::kNextPlanInvalid);
   }
   return ExecutionRouteTransitionFactory3D::success(
       current, std::make_shared<const ExecutionPlan3D>(std::move(next)));

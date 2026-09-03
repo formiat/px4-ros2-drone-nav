@@ -439,16 +439,53 @@ void ProductionMppiNode::releaseRouteRejectedByCertificationWhileStationary(
       finiteExecutionCertificationStatus3DName(candidate.certification_status);
   const std::string_view transition_name =
       executionRouteTransitionStatus3DName(candidate.transition_status);
+  const std::string_view detail_name =
+      executionRouteTransitionDetail3DName(candidate.transition_detail);
   RCLCPP_WARN(get_logger(),
               "ROUTE_CERTIFICATION_RELEASE route_generation=%" PRIu64
-              " status=%.*s certification=%.*s transition=%.*s "
+              " status=%.*s certification=%.*s transition=%.*s detail=%.*s "
               "adherence_failure_m=%.2f speed_mps=%.2f action=release_diverged_route",
               route_generation, static_cast<int>(status_name.size()),
               status_name.data(), static_cast<int>(certification_name.size()),
               certification_name.data(), static_cast<int>(transition_name.size()),
-              transition_name.data(), candidate.route_adherence_failure_distance_m,
+              transition_name.data(), static_cast<int>(detail_name.size()),
+              detail_name.data(), candidate.route_adherence_failure_distance_m,
               vehicle_speed_mps);
   requestRouteRelease(RouteReleaseReason3D::kDiverged, route_generation);
+}
+
+bool ProductionMppiNode::retirePendingRouteRejectedByTransition(
+    const ProductionMppiExecutionCycle& cycle, const HorizonCandidate3D& candidate) {
+  // A pending successor is an optimistic proposal that every tick tries to
+  // activate over the resident plan. When the plan reducer rejects that
+  // activation on the candidate's own contract, the same proposal can never
+  // activate later, yet while it stays pending the lifecycle measures every
+  // newer successor against it and the selection keeps offering it instead
+  // of the resident route's own candidates. Acknowledging it hands the slot
+  // back to the lifecycle so a fresh successor can be planned from the vehicle.
+  const ProductionRouteExecutionSelection3D& route_execution = cycle.route.execution;
+  if (!route_execution.pending_activation || route_execution.pending_route == nullptr ||
+      candidate.status != HorizonCandidateStatus3D::kTransitionRejected ||
+      !pendingRouteActivationStructurallyRejected3D(candidate.transition_status)) {
+    return false;
+  }
+  const std::shared_ptr<const PendingCertifiedRoute3D> pending =
+      route_execution.pending_route;
+  const bool acknowledged = execution_supervisor_.acknowledgePendingIfSame(pending);
+  const std::string_view transition_name =
+      executionRouteTransitionStatus3DName(candidate.transition_status);
+  const std::string_view detail_name =
+      executionRouteTransitionDetail3DName(candidate.transition_detail);
+  RCLCPP_WARN(get_logger(),
+              "PENDING_ROUTE_RETIRED route_generation=%" PRIu64
+              " base_route_generation=%" PRIu64 " transition=%.*s detail=%.*s "
+              "acknowledged=%s action=%s",
+              pending->route.identity.generation, pending->base_route_generation,
+              static_cast<int>(transition_name.size()), transition_name.data(),
+              static_cast<int>(detail_name.size()), detail_name.data(),
+              acknowledged ? "true" : "false",
+              acknowledged ? "release_pending_slot" : "pending_already_replaced");
+  return acknowledged;
 }
 
 ProductionMppiExecutionPublication ProductionMppiNode::publishPreparedExecutionCycle(
@@ -526,7 +563,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPreparedExecutionC
         "failure_segment=%zu first_remaining=%zu "
         "first_failure=%s@%zu(%.2f,%.2f,%.2f) "
         "certification=%.*s braking_tail=%.*s adherence_failure_m=%.2f "
-        "transition=%.*s action=hold_no_executable_path",
+        "transition=%.*s detail=%.*s action=hold_no_executable_path",
         static_cast<int>(status_name.size()), status_name.data(),
         mppi::finiteExecutionPathStatusName(candidate.validation_status),
         candidate.finite_path_rejected_precondition, candidate.arrival_shaping_attempts,
@@ -542,8 +579,13 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPreparedExecutionC
         braking_certification_name.data(), candidate.route_adherence_failure_distance_m,
         static_cast<int>(
             executionRouteTransitionStatus3DName(candidate.transition_status).size()),
-        executionRouteTransitionStatus3DName(candidate.transition_status).data());
-    releaseRouteRejectedByCertificationWhileStationary(cycle, candidate);
+        executionRouteTransitionStatus3DName(candidate.transition_status).data(),
+        static_cast<int>(
+            executionRouteTransitionDetail3DName(candidate.transition_detail).size()),
+        executionRouteTransitionDetail3DName(candidate.transition_detail).data());
+    if (!retirePendingRouteRejectedByTransition(cycle, candidate)) {
+      releaseRouteRejectedByCertificationWhileStationary(cycle, candidate);
+    }
     const auto physical_status = [](const mppi::FiniteExecutionPathStatus status) {
       return status == mppi::FiniteExecutionPathStatus::kRawCollision ||
              status == mppi::FiniteExecutionPathStatus::kLatestLidarRawCollision;

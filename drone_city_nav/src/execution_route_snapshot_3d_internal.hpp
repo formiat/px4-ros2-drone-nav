@@ -386,8 +386,9 @@ latestLidarInvalidationProofMatchesEvent(const FiniteExecutionState3D& execution
 terminalStopBoundaryValid(const CertifiedStopBoundary3D& boundary,
                           const FiniteExecutionState3D& execution) noexcept;
 
-[[nodiscard]] ExecutionRouteTransitionResult3D
-transitionFailure(const ExecutionRouteTransitionStatus3D status);
+[[nodiscard]] ExecutionRouteTransitionResult3D transitionFailure(
+    ExecutionRouteTransitionStatus3D status,
+    ExecutionRouteTransitionDetail3D detail = ExecutionRouteTransitionDetail3D::kNone);
 
 [[nodiscard]] ExecutionRouteTransitionStatus3D
 checkCurrentAndVersion(const ExecutionPlan3D& current,

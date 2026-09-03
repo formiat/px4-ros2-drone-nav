@@ -133,9 +133,11 @@ struct HorizonCandidate3D {
       ProductionMppiExecutionReason::kNone};
   std::shared_ptr<const ExecutionPlan3D> committed_snapshot;
   std::optional<ExecutionRouteTransitionResult3D> transition;
-  // Status of a rejected plan transition, for diagnostics.
+  // Status and detail of a rejected plan transition, for diagnostics.
   ExecutionRouteTransitionStatus3D transition_status{
       ExecutionRouteTransitionStatus3D::kApplied};
+  ExecutionRouteTransitionDetail3D transition_detail{
+      ExecutionRouteTransitionDetail3D::kNone};
   std::optional<HorizonCandidatePhysicalRejection3D> physical_rejection;
   std::size_t arrival_shaping_attempts{0U};
   mppi::FiniteExecutionPathStatus validation_status{

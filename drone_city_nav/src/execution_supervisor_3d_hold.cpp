@@ -157,6 +157,7 @@ latestLidarCurrent(const ExecutionHoldRequest3D& request,
           .latest_lidar_evidence = request.latest_lidar_evidence,
       });
   result.transition_status = transition.status;
+  result.transition_detail = transition.detail;
   if (!transition.applied() || transition.next == nullptr ||
       !exclusiveStationaryHold(*transition.next) ||
       transition.next->stationaryHold()->origin !=
@@ -230,6 +231,7 @@ latestLidarCurrent(const ExecutionHoldRequest3D& request,
           .latest_lidar_evidence = request.latest_lidar_evidence,
       });
   result.transition_status = transition.status;
+  result.transition_detail = transition.detail;
   const std::shared_ptr<const ExecutionPlan3D> prepared_plan =
       transition.applied() ? transition.next : expected;
   if ((transition.applied() && transition.next != nullptr) ||

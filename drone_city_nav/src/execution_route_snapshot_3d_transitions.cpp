@@ -43,7 +43,8 @@ namespace {
                                                      successor.owner.active_intent);
   if ((splice != nullptr && !same_active_intent) ||
       (!same_active_intent && successor.owner.id == current_route->owner.id)) {
-    return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
+    return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate,
+                             ExecutionRouteTransitionDetail3D::kActiveIntentConflict);
   }
   if (same_active_intent) {
     successor.owner = current_route->owner;
@@ -58,7 +59,9 @@ namespace {
       current.execution_owner_epoch == std::numeric_limits<std::uint64_t>::max() ||
       successor.identity.generation != current_route->identity.generation + 1U ||
       splice_binding_mismatch) {
-    return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
+    return transitionFailure(
+        ExecutionRouteTransitionStatus3D::kInvalidCandidate,
+        ExecutionRouteTransitionDetail3D::kSuccessorIdentityMismatch);
   }
   const bool replacement_phase_allowed =
       executionRouteAcceptsCertifiedReplacement3D(current);
@@ -79,7 +82,8 @@ namespace {
         *splice, *current_route, successor,
         Point3{splice_state.x, splice_state.y, splice_state.z});
     if (!splice_readiness.ready()) {
-      return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
+      return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate,
+                               ExecutionRouteTransitionDetail3D::kSpliceNotReady);
     }
   }
   // A splice-free handoff is certified from the vehicle's current state. The
@@ -152,7 +156,9 @@ ExecutionRouteTransitionResult3D applyActivateCertifiedRouteCommand3D(
       candidate.identity.generation != current.routeGenerationHighWater() + 1U ||
       candidate_execution.command_horizon.kind != FiniteExecutionKind3D::kNominal ||
       candidate_execution.command_horizon.execution_input == nullptr) {
-    return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
+    return transitionFailure(
+        ExecutionRouteTransitionStatus3D::kInvalidCandidate,
+        ExecutionRouteTransitionDetail3D::kActivationIdentityMismatch);
   }
   const bool empty_owner =
       (current.phase() == ExecutionRoutePhase3D::kAwaitingSuccessor ||
@@ -175,7 +181,9 @@ ExecutionRouteTransitionResult3D applyActivateCertifiedRouteCommand3D(
   if (!candidate.valid() || !candidate_execution.validFor(candidate) ||
       !candidateFiniteExecutionValid(candidate_execution.command_horizon, current,
                                      &candidate, true)) {
-    return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
+    return transitionFailure(
+        ExecutionRouteTransitionStatus3D::kInvalidCandidate,
+        ExecutionRouteTransitionDetail3D::kActivationBindingInvalid);
   }
   ExecutionPlan3D next = current;
   ++next.version;
@@ -207,7 +215,9 @@ ExecutionRouteTransitionResult3D applyAdvanceCertifiedRouteCommand3D(
       !execution_input->valid() || !execution_input->nominalStateAuthoritative() ||
       !executionInputFreshAt(*execution_input, *route.validation_policy,
                              execution_input->effectiveStampNs())) {
-    return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
+    return transitionFailure(
+        ExecutionRouteTransitionStatus3D::kInvalidCandidate,
+        ExecutionRouteTransitionDetail3D::kProgressExecutionInputStale);
   }
   const ExecutionInputProgressRelation3D progress_relation =
       executionInputProgressRelation(*execution_input, *route.progress.execution_input);
@@ -230,7 +240,9 @@ ExecutionRouteTransitionResult3D applyAdvanceCertifiedRouteCommand3D(
              old_certificate.validated_through_revision &&
          observed_raw_world->contentFingerprint() !=
              old_certificate.world_content_fingerprint)) {
-      return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
+      return transitionFailure(
+          ExecutionRouteTransitionStatus3D::kInvalidCandidate,
+          ExecutionRouteTransitionDetail3D::kProgressWorldOlderThanCertificate);
     }
     observation.latest_raw_occupancy = &observed_raw_world->occupancy();
     observation.latest_raw_producer_instance_id =
@@ -243,7 +255,9 @@ ExecutionRouteTransitionResult3D applyAdvanceCertifiedRouteCommand3D(
     if (validationPolicyFingerprint(observation.footprint,
                                     observation.launch_support_contact) !=
         old_certificate.validation_policy_fingerprint) {
-      return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
+      return transitionFailure(
+          ExecutionRouteTransitionStatus3D::kInvalidCandidate,
+          ExecutionRouteTransitionDetail3D::kProgressValidationPolicyChanged);
     }
     const bool derived_geometry_world_changed =
         observed_raw_world->occupiedContentFingerprint() !=
@@ -270,11 +284,15 @@ ExecutionRouteTransitionResult3D applyAdvanceCertifiedRouteCommand3D(
           !canonicalPassageGeometryMatchesObservedWorld(
               *route.geometry, *route.decorations, *observed_raw_world,
               route.decorations->passage_volume_config)))) {
-      return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
+      return transitionFailure(
+          ExecutionRouteTransitionStatus3D::kInvalidCandidate,
+          ExecutionRouteTransitionDetail3D::kProgressPassageGeometryChanged);
     }
   } else {
     if (observed_raw_world != nullptr) {
-      return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
+      return transitionFailure(
+          ExecutionRouteTransitionStatus3D::kInvalidCandidate,
+          ExecutionRouteTransitionDetail3D::kProgressUnexpectedObservedWorld);
     }
     observation.latest_raw_occupancy = nullptr;
     observation.latest_raw_producer_instance_id = 0U;
@@ -282,7 +300,9 @@ ExecutionRouteTransitionResult3D applyAdvanceCertifiedRouteCommand3D(
     observation.launch_support_contact = nullptr;
     if (validationPolicyFingerprint(observation.footprint, nullptr) !=
         old_certificate.validation_policy_fingerprint) {
-      return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
+      return transitionFailure(
+          ExecutionRouteTransitionStatus3D::kInvalidCandidate,
+          ExecutionRouteTransitionDetail3D::kProgressValidationPolicyChanged);
     }
   }
   observation.previously_validated_through_raw_revision =
@@ -291,7 +311,9 @@ ExecutionRouteTransitionResult3D applyAdvanceCertifiedRouteCommand3D(
   const double observed_travel_m =
       distance3D(route.progress.last_observed_position, observation.position);
   if (!std::isfinite(observed_travel_m)) {
-    return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
+    return transitionFailure(
+        ExecutionRouteTransitionStatus3D::kInvalidCandidate,
+        ExecutionRouteTransitionDetail3D::kProgressObservedTravelInvalid);
   }
   observation.maximum_station_m = std::min(
       route.endStationM(), route.progress.station_m +
@@ -499,11 +521,14 @@ ExecutionRouteTransitionResult3D applyRetireCertifiedRouteCommand3D(
         ExecutionRouteTransitionStatus3D::kRouteGenerationMismatch);
   }
   if (!knownRouteLifecycleEventKind(event.kind)) {
-    return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
+    return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate,
+                             ExecutionRouteTransitionDetail3D::kLifecycleEventUnknown);
   }
   if (event.kind == RouteLifecycleEventKind3D::kControlCandidateRejected) {
     if (retained_safe_execution.has_value()) {
-      return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
+      return transitionFailure(
+          ExecutionRouteTransitionStatus3D::kInvalidCandidate,
+          ExecutionRouteTransitionDetail3D::kLifecycleRetainedExecutionUnexpected);
     }
     return transitionFailure(ExecutionRouteTransitionStatus3D::kNoChange);
   }
@@ -599,7 +624,9 @@ ExecutionRouteTransitionResult3D applyRetireCertifiedRouteCommand3D(
       current_route->planned_endpoint_semantics ==
           RouteEndpointSemantics3D::kContinuation &&
       has_retained_safe_execution) {
-    return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
+    return transitionFailure(
+        ExecutionRouteTransitionStatus3D::kInvalidCandidate,
+        ExecutionRouteTransitionDetail3D::kLifecycleRetainedExecutionUnexpected);
   }
 
   ExecutionPlan3D next = current;
@@ -741,7 +768,9 @@ ExecutionRouteTransitionResult3D applyRetireCertifiedRouteCommand3D(
       break;
     }
     case RouteLifecycleEventKind3D::kControlCandidateRejected:
-      return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
+      return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate,
+                               ExecutionRouteTransitionDetail3D::
+                                   kLifecycleControlCandidateRejectedUnsupported);
   }
   ++next.version;
   return finishTransition(current, std::move(next));

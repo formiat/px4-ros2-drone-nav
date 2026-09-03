@@ -27,6 +27,35 @@ enum class ExecutionRouteTransitionStatus3D : std::uint8_t {
   kVersionExhausted,
 };
 
+// Names the contract check that rejected a transition. A status such as
+// kInvalidCandidate covers several unrelated predicates; the detail tells a
+// reader of the diagnostics which one failed without re-running the reducer.
+enum class ExecutionRouteTransitionDetail3D : std::uint8_t {
+  kNone,
+  kNextPlanInvalid,
+  kActiveIntentConflict,
+  kSuccessorIdentityMismatch,
+  kSpliceNotReady,
+  kReplacementWithoutSplice,
+  kActivationIdentityMismatch,
+  kActivationBindingInvalid,
+  kProgressExecutionInputStale,
+  kProgressWorldOlderThanCertificate,
+  kProgressValidationPolicyChanged,
+  kProgressPassageGeometryChanged,
+  kProgressUnexpectedObservedWorld,
+  kProgressObservedTravelInvalid,
+  kProgressCompositionMismatch,
+  kLifecycleEventUnknown,
+  kLifecycleRetainedExecutionUnexpected,
+  kLifecycleControlCandidateRejectedUnsupported,
+  kHoldCertificationStale,
+  kHoldPointUnsafe,
+};
+
+[[nodiscard]] std::string_view
+executionRouteTransitionDetail3DName(ExecutionRouteTransitionDetail3D detail) noexcept;
+
 struct ExecutionRouteTransitionGuard3D {
   std::uint64_t expected_snapshot_version{0U};
   std::uint64_t expected_route_generation{0U};
@@ -121,6 +150,8 @@ struct ExecutionRouteTransitionResult3D {
 
   const ExecutionRouteTransitionStatus3D status{
       ExecutionRouteTransitionStatus3D::kInvalidCandidate};
+  const ExecutionRouteTransitionDetail3D detail{
+      ExecutionRouteTransitionDetail3D::kNone};
   const ExecutionPlan3D* const predecessor{nullptr};
   const std::shared_ptr<const ExecutionPlan3D> next;
 
@@ -128,6 +159,7 @@ struct ExecutionRouteTransitionResult3D {
 
 private:
   ExecutionRouteTransitionResult3D(ExecutionRouteTransitionStatus3D status_value,
+                                   ExecutionRouteTransitionDetail3D detail_value,
                                    const ExecutionPlan3D* predecessor_value,
                                    std::shared_ptr<const ExecutionPlan3D> next_value);
 

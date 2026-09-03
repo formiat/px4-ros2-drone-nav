@@ -22,9 +22,11 @@ bool ExecutionRouteTransitionResult3D::applied() const noexcept {
 
 ExecutionRouteTransitionResult3D::ExecutionRouteTransitionResult3D(
     const ExecutionRouteTransitionStatus3D status_value,
+    const ExecutionRouteTransitionDetail3D detail_value,
     const ExecutionPlan3D* const predecessor_value,
     std::shared_ptr<const ExecutionPlan3D> next_value)
     : status{status_value},
+      detail{detail_value},
       predecessor{predecessor_value},
       next{std::move(next_value)},
       authorized_{true} {
@@ -118,6 +120,54 @@ std::string_view executionRouteTransitionStatus3DName(
       return "finite_execution_conflict";
     case ExecutionRouteTransitionStatus3D::kVersionExhausted:
       return "version_exhausted";
+  }
+  return "invalid";
+}
+
+std::string_view executionRouteTransitionDetail3DName(
+    const ExecutionRouteTransitionDetail3D detail) noexcept {
+  switch (detail) {
+    case ExecutionRouteTransitionDetail3D::kNone:
+      return "none";
+    case ExecutionRouteTransitionDetail3D::kNextPlanInvalid:
+      return "next_plan_invalid";
+    case ExecutionRouteTransitionDetail3D::kActiveIntentConflict:
+      return "active_intent_conflict";
+    case ExecutionRouteTransitionDetail3D::kSuccessorIdentityMismatch:
+      return "successor_identity_mismatch";
+    case ExecutionRouteTransitionDetail3D::kSpliceNotReady:
+      return "splice_not_ready";
+    case ExecutionRouteTransitionDetail3D::kReplacementWithoutSplice:
+      return "replacement_without_splice";
+    case ExecutionRouteTransitionDetail3D::kActivationIdentityMismatch:
+      return "activation_identity_mismatch";
+    case ExecutionRouteTransitionDetail3D::kActivationBindingInvalid:
+      return "activation_binding_invalid";
+    case ExecutionRouteTransitionDetail3D::kProgressExecutionInputStale:
+      return "progress_execution_input_stale";
+    case ExecutionRouteTransitionDetail3D::kProgressWorldOlderThanCertificate:
+      return "progress_world_older_than_certificate";
+    case ExecutionRouteTransitionDetail3D::kProgressValidationPolicyChanged:
+      return "progress_validation_policy_changed";
+    case ExecutionRouteTransitionDetail3D::kProgressPassageGeometryChanged:
+      return "progress_passage_geometry_changed";
+    case ExecutionRouteTransitionDetail3D::kProgressUnexpectedObservedWorld:
+      return "progress_unexpected_observed_world";
+    case ExecutionRouteTransitionDetail3D::kProgressObservedTravelInvalid:
+      return "progress_observed_travel_invalid";
+    case ExecutionRouteTransitionDetail3D::kProgressCompositionMismatch:
+      return "progress_composition_mismatch";
+    case ExecutionRouteTransitionDetail3D::kLifecycleEventUnknown:
+      return "lifecycle_event_unknown";
+    case ExecutionRouteTransitionDetail3D::kLifecycleRetainedExecutionUnexpected:
+      return "lifecycle_retained_execution_unexpected";
+    case ExecutionRouteTransitionDetail3D::
+        kLifecycleControlCandidateRejectedUnsupported:
+      return "lifecycle_control_candidate_rejected_unsupported";
+    case ExecutionRouteTransitionDetail3D::kHoldCertificationStale:
+      return "hold_certification_stale";
+    case ExecutionRouteTransitionDetail3D::kHoldPointUnsafe:
+      return "hold_point_unsafe";
   }
   return "invalid";
 }

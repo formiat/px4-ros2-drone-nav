@@ -243,7 +243,8 @@ execution_route_snapshot_3d_internal::applyTransferToExecutionHoldCommand3D(
                                    *source_lidar) ||
       !holdWorldNotOlder(certification, source_observed, source_static) ||
       !stationaryHoldPointSafe(certification, false)) {
-    return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
+    return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate,
+                             ExecutionRouteTransitionDetail3D::kHoldCertificationStale);
   }
 
   std::uint64_t source_trajectory_revision{0U};
@@ -332,7 +333,8 @@ execution_route_snapshot_3d_internal::applyArmStationaryCaptureHoldCommand3D(
     return transitionFailure(ExecutionRouteTransitionStatus3D::kVersionExhausted);
   }
   if (!stationaryHoldPointSafe(certification, true)) {
-    return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
+    return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate,
+                             ExecutionRouteTransitionDetail3D::kHoldPointUnsafe);
   }
   const std::uint64_t hold_id = current.execution_owner_epoch + 1U;
   ExecutionPlan3D next = makeStationaryHoldSnapshot(

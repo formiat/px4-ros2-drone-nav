@@ -64,12 +64,15 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPositionHold(
       prepared.executionInput() != cycle.evidence.execution_input) {
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
-        "EXECUTION_HOLD prepared=false stage=%s kind=%s transition=%.*s",
+        "EXECUTION_HOLD prepared=false stage=%s kind=%s transition=%.*s detail=%.*s",
         executionHoldPreparationStatus3DName(prepared.status),
         executionHoldPreparationKind3DName(prepared.kind),
         static_cast<int>(
             executionRouteTransitionStatus3DName(prepared.transition_status).size()),
-        executionRouteTransitionStatus3DName(prepared.transition_status).data());
+        executionRouteTransitionStatus3DName(prepared.transition_status).data(),
+        static_cast<int>(
+            executionRouteTransitionDetail3DName(prepared.transition_detail).size()),
+        executionRouteTransitionDetail3DName(prepared.transition_detail).data());
     return publication;
   }
   const Point3 owned_hold_position = prepared.position;

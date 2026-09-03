@@ -2,6 +2,7 @@
 
 #include "drone_city_nav/certified_route_splice_3d.hpp"
 #include "drone_city_nav/execution_plan_3d.hpp"
+#include "drone_city_nav/execution_route_transitions_3d.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -44,6 +45,15 @@ pendingCertifiedRouteEligible3D(const PendingCertifiedRoute3D& pending,
 // resident finite execution owner.
 [[nodiscard]] bool pendingCertifiedRouteRetainsSnapshotCertificate3D(
     const PendingCertifiedRoute3D& pending) noexcept;
+
+// A pending activation the plan reducer rejects on the candidate's own contract
+// (kInvalidCandidate) cannot succeed by being offered again against the same
+// base: the rejection depends on the pending route and the plan it extends,
+// not on evidence that the next tick refreshes. Transient outcomes such as a
+// moved snapshot version, an exhausted version, or a finite-execution ordering
+// conflict are retried instead.
+[[nodiscard]] bool pendingRouteActivationStructurallyRejected3D(
+    ExecutionRouteTransitionStatus3D status) noexcept;
 
 class ExecutionSupervisor3D;
 

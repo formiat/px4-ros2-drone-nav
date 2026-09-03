@@ -160,6 +160,11 @@ bool pendingCertifiedRouteRetainsSnapshotCertificate3D(
          pending.base_kind == PendingExecutionBaseKind3D::kRouteHandoff;
 }
 
+bool pendingRouteActivationStructurallyRejected3D(
+    const ExecutionRouteTransitionStatus3D status) noexcept {
+  return status == ExecutionRouteTransitionStatus3D::kInvalidCandidate;
+}
+
 PendingCertifiedRouteRecoveryResult3D recoverPendingCertifiedRouteLiveness3D(
     ExecutionSupervisor3D& supervisor,
     const std::shared_ptr<const PendingCertifiedRoute3D>& expected_pending,

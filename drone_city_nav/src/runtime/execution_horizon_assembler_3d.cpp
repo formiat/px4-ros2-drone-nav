@@ -295,6 +295,7 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
         transition.next->directTrackingExecution() == nullptr) {
       candidate.status = HorizonCandidateStatus3D::kTransitionRejected;
       candidate.transition_status = transition.status;
+      candidate.transition_detail = transition.detail;
       return candidate;
     }
     candidate.committed_snapshot = transition.next;
@@ -355,6 +356,7 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
         transition.next->brakingFallback() == nullptr) {
       candidate.status = HorizonCandidateStatus3D::kTransitionRejected;
       candidate.transition_status = transition.status;
+      candidate.transition_detail = transition.detail;
       return candidate;
     }
     candidate.committed_snapshot = transition.next;

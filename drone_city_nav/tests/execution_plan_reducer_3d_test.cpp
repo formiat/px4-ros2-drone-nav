@@ -81,6 +81,8 @@ TEST(ExecutionPlanReducer3DTest, MalformedTaggedCommandFailsClosed) {
                                      });
 
   EXPECT_EQ(rejected.status, ExecutionRouteTransitionStatus3D::kInvalidCandidate);
+  EXPECT_EQ(rejected.detail,
+            ExecutionRouteTransitionDetail3D::kReplacementWithoutSplice);
   EXPECT_FALSE(rejected.applied());
   EXPECT_EQ(rejected.predecessor, nullptr);
   EXPECT_EQ(rejected.next, nullptr);

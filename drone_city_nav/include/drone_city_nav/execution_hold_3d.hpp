@@ -73,6 +73,8 @@ struct ExecutionHoldPreparation3D {
   std::shared_ptr<const ExecutionRouteTransitionResult3D> transition;
   ExecutionRouteTransitionStatus3D transition_status{
       ExecutionRouteTransitionStatus3D::kInvalidCandidate};
+  ExecutionRouteTransitionDetail3D transition_detail{
+      ExecutionRouteTransitionDetail3D::kNone};
   Point3 position{};
   bool stationary_capture_rearm{false};
 

@@ -251,6 +251,7 @@ RouteExecutionSelector3D::select(const RouteExecutionSelectorRequest3D& request)
       .execution_owner_available = false,
       .pending_activation = false,
       .physical_trajectory_invalidated = false,
+      .raw_blocked_station_m = std::nullopt,
       .direct_tracking_identity = request.direct_tracking_identity,
   };
   const RouteExecutionManagerSnapshot3D manager_snapshot =

@@ -41,7 +41,9 @@ applyCommand(const ExecutionPlan3D& current, RetireCertifiedRouteCommand3D comma
 [[nodiscard]] ExecutionRouteTransitionResult3D
 applyCommand(const ExecutionPlan3D& current, ReplaceCertifiedRouteCommand3D command) {
   if (command.splice == nullptr) {
-    return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate);
+    return transitionFailure(
+        ExecutionRouteTransitionStatus3D::kInvalidCandidate,
+        ExecutionRouteTransitionDetail3D::kReplacementWithoutSplice);
   }
   return applyReplaceCertifiedRouteCommand3D(
       current, command.guard, std::move(command.successor),
@@ -269,7 +271,8 @@ ExecutionRouteTransitionResult3D composeExecutionPlanTransition3D(
       prepared_execution_plan.next == nullptr ||
       !prepared_execution_plan.next->publishable()) {
     return execution_route_snapshot_3d_internal::transitionFailure(
-        ExecutionRouteTransitionStatus3D::kInvalidCandidate);
+        ExecutionRouteTransitionStatus3D::kInvalidCandidate,
+        ExecutionRouteTransitionDetail3D::kProgressCompositionMismatch);
   }
   return execution_route_snapshot_3d_internal::finishTransition(
       resident, *prepared_execution_plan.next);

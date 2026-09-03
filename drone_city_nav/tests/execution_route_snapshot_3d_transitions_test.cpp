@@ -966,11 +966,11 @@ TEST(ExecutionRouteSnapshot3DTest,
   CertifiedRouteSplice3D tampered_splice =
       testRouteSplice(*following.next->route(), *successor);
   ++tampered_splice.successor_geometry_revision;
-  EXPECT_EQ(replaceCertifiedRoute3D(*following.next,
-                                    SnapshotFixture3D::guard(*following.next),
-                                    *successor, successor_execution, tampered_splice)
-                .status,
-            ExecutionRouteTransitionStatus3D::kInvalidCandidate);
+  const ExecutionRouteTransitionResult3D tampered = replaceCertifiedRoute3D(
+      *following.next, SnapshotFixture3D::guard(*following.next), *successor,
+      successor_execution, tampered_splice);
+  EXPECT_EQ(tampered.status, ExecutionRouteTransitionStatus3D::kInvalidCandidate);
+  EXPECT_EQ(tampered.detail, ExecutionRouteTransitionDetail3D::kSpliceNotReady);
   const ExecutionRouteTransitionResult3D accepted = replaceCertifiedRoute3D(
       *following.next, SnapshotFixture3D::guard(*following.next), *successor,
       successor_execution, testRouteSplice(*following.next->route(), *successor));

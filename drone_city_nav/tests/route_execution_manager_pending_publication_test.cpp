@@ -129,4 +129,20 @@ TEST(RouteExecutionManagerPendingPublicationTest,
 }
 
 } // namespace
+
+TEST(PendingCertifiedRoute3DTest,
+     OnlyACandidateContractRejectionRetiresAPendingActivation) {
+  EXPECT_TRUE(pendingRouteActivationStructurallyRejected3D(
+      ExecutionRouteTransitionStatus3D::kInvalidCandidate));
+  for (const ExecutionRouteTransitionStatus3D transient :
+       {ExecutionRouteTransitionStatus3D::kStaleSnapshotVersion,
+        ExecutionRouteTransitionStatus3D::kVersionExhausted,
+        ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict,
+        ExecutionRouteTransitionStatus3D::kCertificateRegression,
+        ExecutionRouteTransitionStatus3D::kNoChange,
+        ExecutionRouteTransitionStatus3D::kApplied}) {
+    EXPECT_FALSE(pendingRouteActivationStructurallyRejected3D(transient));
+  }
+}
+
 } // namespace drone_city_nav
