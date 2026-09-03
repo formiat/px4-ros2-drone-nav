@@ -192,11 +192,13 @@ TEST(ExecutionRouteSnapshot3DTest,
   ASSERT_LT(successor_certificate->validated_through_revision,
             braking_lineage->validated_through_raw_revision);
 
-  EXPECT_EQ(replaceCertifiedRoute3D(
-                *retired.next, SnapshotFixture3D::guard(*retired.next), successor_route,
-                successor_execution, testRouteSplice(retired_route, successor_route))
-                .status,
+  const ExecutionRouteTransitionResult3D regression = replaceCertifiedRoute3D(
+      *retired.next, SnapshotFixture3D::guard(*retired.next), successor_route,
+      successor_execution, testRouteSplice(retired_route, successor_route));
+  EXPECT_EQ(regression.status,
             ExecutionRouteTransitionStatus3D::kCertificateRegression);
+  EXPECT_EQ(regression.detail,
+            ExecutionRouteTransitionDetail3D::kSuccessorCertificateOlder);
   const ExecutionRouteTransitionResult3D accepted = replaceCertifiedRouteAtHandoff3D(
       *retired.next, SnapshotFixture3D::guard(*retired.next), successor_route,
       successor_execution);

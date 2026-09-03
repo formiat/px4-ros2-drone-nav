@@ -51,6 +51,18 @@ enum class ExecutionRouteTransitionDetail3D : std::uint8_t {
   kLifecycleControlCandidateRejectedUnsupported,
   kHoldCertificationStale,
   kHoldPointUnsafe,
+  // A successor's evidence is older than the resident route's. The successor
+  // kinds name the successor's own certificate; the execution kinds name the
+  // finite execution it is offered with, which the next tick refreshes.
+  kSuccessorValidationPolicyMismatch,
+  kSuccessorCertificateKindMismatch,
+  kSuccessorProducerMismatch,
+  kSuccessorCertificateOlder,
+  kSuccessorWorldContentMismatch,
+  kSuccessorExecutionEvidenceOlder,
+  kSuccessorExecutionInputOlder,
+  kResidentProgressInputMissing,
+  kProgressRawRevisionOlder,
 };
 
 [[nodiscard]] std::string_view

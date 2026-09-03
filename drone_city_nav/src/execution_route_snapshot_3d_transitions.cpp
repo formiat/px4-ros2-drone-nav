@@ -93,28 +93,35 @@ namespace {
   // against the exact current execution input before either route is replaced.
   const bool splice_free_braking_handoff =
       splice == nullptr && current.phase() == ExecutionRoutePhase3D::kBraking;
-  bool successor_evidence_current{false};
+  ExecutionRouteTransitionDetail3D successor_evidence_regression =
+      ExecutionRouteTransitionDetail3D::kNone;
   if (current.finiteExecution() != nullptr) {
-    successor_evidence_current =
+    successor_evidence_regression =
         splice_free_braking_handoff
-            ? successorRouteEvidenceNotOlder(*current_route, successor,
-                                             successor_execution.command_horizon)
-            : successorEvidenceNotOlder(*current_route, *current.finiteExecution(),
-                                        successor, successor_execution.command_horizon);
+            ? successorRouteEvidenceRegression(*current_route, successor,
+                                               successor_execution.command_horizon)
+            : successorEvidenceRegression(*current_route, *current.finiteExecution(),
+                                          successor,
+                                          successor_execution.command_horizon);
+  } else if (current_route->progress.execution_input == nullptr) {
+    successor_evidence_regression =
+        ExecutionRouteTransitionDetail3D::kResidentProgressInputMissing;
+  } else if (!executionInputNotOlder(
+                 *successor_execution.command_horizon.execution_input,
+                 *current_route->progress.execution_input)) {
+    successor_evidence_regression =
+        ExecutionRouteTransitionDetail3D::kSuccessorExecutionInputOlder;
   } else {
-    successor_evidence_current =
-        current_route->progress.execution_input != nullptr &&
-        executionInputNotOlder(*successor_execution.command_horizon.execution_input,
-                               *current_route->progress.execution_input) &&
-        successorRouteEvidenceNotOlder(*current_route, successor,
-                                       successor_execution.command_horizon);
+    successor_evidence_regression = successorRouteEvidenceRegression(
+        *current_route, successor, successor_execution.command_horizon);
   }
   if (successor_execution.command_horizon.kind != FiniteExecutionKind3D::kNominal) {
     return transitionFailure(
         ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
   }
-  if (!successor_evidence_current) {
-    return transitionFailure(ExecutionRouteTransitionStatus3D::kCertificateRegression);
+  if (successor_evidence_regression != ExecutionRouteTransitionDetail3D::kNone) {
+    return transitionFailure(ExecutionRouteTransitionStatus3D::kCertificateRegression,
+                             successor_evidence_regression);
   }
 
   bindProgressToExecutionInput(
@@ -408,7 +415,8 @@ ExecutionRouteTransitionResult3D applyAdvanceCertifiedRouteCommand3D(
     if (assessment.validated_through_raw_revision <
         old_certificate.validated_through_revision) {
       return transitionFailure(
-          ExecutionRouteTransitionStatus3D::kCertificateRegression);
+          ExecutionRouteTransitionStatus3D::kCertificateRegression,
+          ExecutionRouteTransitionDetail3D::kProgressRawRevisionOlder);
     }
     ObservedRawRouteCertificate3D& renewed =
         std::get<ObservedRawRouteCertificate3D>(advanced.certificate);

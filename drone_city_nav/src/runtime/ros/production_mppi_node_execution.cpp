@@ -466,7 +466,8 @@ bool ProductionMppiNode::retirePendingRouteRejectedByTransition(
   const ProductionRouteExecutionSelection3D& route_execution = cycle.route.execution;
   if (!route_execution.pending_activation || route_execution.pending_route == nullptr ||
       candidate.status != HorizonCandidateStatus3D::kTransitionRejected ||
-      !pendingRouteActivationStructurallyRejected3D(candidate.transition_status)) {
+      !pendingRouteActivationStructurallyRejected3D(candidate.transition_status,
+                                                    candidate.transition_detail)) {
     return false;
   }
   const std::shared_ptr<const PendingCertifiedRoute3D> pending =

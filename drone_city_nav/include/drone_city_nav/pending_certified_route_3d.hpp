@@ -47,13 +47,19 @@ pendingCertifiedRouteEligible3D(const PendingCertifiedRoute3D& pending,
     const PendingCertifiedRoute3D& pending) noexcept;
 
 // A pending activation the plan reducer rejects on the candidate's own contract
-// (kInvalidCandidate) cannot succeed by being offered again against the same
-// base: the rejection depends on the pending route and the plan it extends,
-// not on evidence that the next tick refreshes. Transient outcomes such as a
-// moved snapshot version, an exhausted version, or a finite-execution ordering
-// conflict are retried instead.
+// cannot succeed by being offered again against the same base: the rejection
+// depends on the pending route and the plan it extends, not on evidence that
+// the next tick refreshes. That is every kInvalidCandidate rejection, and a
+// kCertificateRegression whose detail names the successor's own certificate
+// (its policy, kind, producer, validated revision, or world content), since
+// the certificate a pending route carries never moves while the resident
+// route's can only advance. Transient outcomes such as a moved snapshot
+// version, an exhausted version, a finite-execution ordering conflict, or a
+// regression of the finite execution the candidate is offered with are
+// retried instead.
 [[nodiscard]] bool pendingRouteActivationStructurallyRejected3D(
-    ExecutionRouteTransitionStatus3D status) noexcept;
+    ExecutionRouteTransitionStatus3D status,
+    ExecutionRouteTransitionDetail3D detail) noexcept;
 
 class ExecutionSupervisor3D;
 

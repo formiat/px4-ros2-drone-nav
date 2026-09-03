@@ -168,6 +168,24 @@ std::string_view executionRouteTransitionDetail3DName(
       return "hold_certification_stale";
     case ExecutionRouteTransitionDetail3D::kHoldPointUnsafe:
       return "hold_point_unsafe";
+    case ExecutionRouteTransitionDetail3D::kSuccessorValidationPolicyMismatch:
+      return "successor_validation_policy_mismatch";
+    case ExecutionRouteTransitionDetail3D::kSuccessorCertificateKindMismatch:
+      return "successor_certificate_kind_mismatch";
+    case ExecutionRouteTransitionDetail3D::kSuccessorProducerMismatch:
+      return "successor_producer_mismatch";
+    case ExecutionRouteTransitionDetail3D::kSuccessorCertificateOlder:
+      return "successor_certificate_older";
+    case ExecutionRouteTransitionDetail3D::kSuccessorWorldContentMismatch:
+      return "successor_world_content_mismatch";
+    case ExecutionRouteTransitionDetail3D::kSuccessorExecutionEvidenceOlder:
+      return "successor_execution_evidence_older";
+    case ExecutionRouteTransitionDetail3D::kSuccessorExecutionInputOlder:
+      return "successor_execution_input_older";
+    case ExecutionRouteTransitionDetail3D::kResidentProgressInputMissing:
+      return "resident_progress_input_missing";
+    case ExecutionRouteTransitionDetail3D::kProgressRawRevisionOlder:
+      return "progress_raw_revision_older";
   }
   return "invalid";
 }

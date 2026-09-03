@@ -560,15 +560,55 @@ candidateFiniteExecutionValid(const FiniteExecutionState3D& candidate,
           sameCertificate(candidate.certificate, route->certificate));
 }
 
-[[nodiscard]] bool successorRouteEvidenceNotOlder(
+namespace {
+
+[[nodiscard]] ExecutionRouteTransitionDetail3D staticWorldCertificateRegression(
+    const StaticRouteCertificate3D& current_static,
+    const StaticRouteCertificate3D& successor_static) noexcept {
+  using Detail = ExecutionRouteTransitionDetail3D;
+  const NavigationWorldCertificate3D& current_world = current_static.world_certificate;
+  const NavigationWorldCertificate3D& successor_world =
+      successor_static.world_certificate;
+  if (successor_world.producer_instance_id != current_world.producer_instance_id) {
+    return Detail::kSuccessorProducerMismatch;
+  }
+  const bool nondecreasing =
+      successor_world.esdf_source_raw_revision >=
+          current_world.esdf_source_raw_revision &&
+      successor_world.raw_validated_through_revision >=
+          current_world.raw_validated_through_revision &&
+      successor_world.local_world_generation >= current_world.local_world_generation &&
+      successor_world.topology_revision >= current_world.topology_revision;
+  if (!nondecreasing) {
+    return Detail::kSuccessorCertificateOlder;
+  }
+  const bool strictly_advanced =
+      successor_world.esdf_source_raw_revision >
+          current_world.esdf_source_raw_revision ||
+      successor_world.raw_validated_through_revision >
+          current_world.raw_validated_through_revision ||
+      successor_world.local_world_generation > current_world.local_world_generation ||
+      successor_world.topology_revision > current_world.topology_revision;
+  if (strictly_advanced || (sameWorldCertificate(successor_world, current_world) &&
+                            successor_static.static_occupancy_content_fingerprint ==
+                                current_static.static_occupancy_content_fingerprint)) {
+    return Detail::kNone;
+  }
+  return Detail::kSuccessorWorldContentMismatch;
+}
+
+} // namespace
+
+ExecutionRouteTransitionDetail3D successorRouteEvidenceRegression(
     const CertifiedRouteSuffix3D& current_route,
     const CertifiedRouteSuffix3D& successor,
     const FiniteExecutionState3D& successor_execution) noexcept {
+  using Detail = ExecutionRouteTransitionDetail3D;
   if (current_route.validation_policy == nullptr ||
       successor.validation_policy == nullptr ||
       current_route.validation_policy->contentFingerprint() !=
           successor.validation_policy->contentFingerprint()) {
-    return false;
+    return Detail::kSuccessorValidationPolicyMismatch;
   }
 
   const auto* const current_raw =
@@ -579,20 +619,29 @@ candidateFiniteExecutionValid(const FiniteExecutionState3D& candidate,
     const auto* const successor_execution_raw =
         std::get_if<ObservedRawFiniteExecutionValidationLineage3D>(
             &successor_execution.validation_proof.lineage);
-    if (successor_raw == nullptr || successor_execution_raw == nullptr ||
-        successor_raw->producer_instance_id != current_raw->producer_instance_id ||
-        successor_execution_raw->producer_instance_id !=
-            successor_raw->producer_instance_id ||
-        successor_raw->validated_through_revision <
-            current_raw->validated_through_revision ||
-        successor_execution_raw->validated_through_raw_revision <
-            current_raw->validated_through_revision) {
-      return false;
+    if (successor_raw == nullptr || successor_execution_raw == nullptr) {
+      return Detail::kSuccessorCertificateKindMismatch;
     }
-    return successor_raw->validated_through_revision !=
-               current_raw->validated_through_revision ||
-           successor_raw->observed_world_content_fingerprint ==
-               current_raw->observed_world_content_fingerprint;
+    if (successor_raw->producer_instance_id != current_raw->producer_instance_id ||
+        successor_execution_raw->producer_instance_id !=
+            successor_raw->producer_instance_id) {
+      return Detail::kSuccessorProducerMismatch;
+    }
+    if (successor_raw->validated_through_revision <
+        current_raw->validated_through_revision) {
+      return Detail::kSuccessorCertificateOlder;
+    }
+    if (successor_execution_raw->validated_through_raw_revision <
+        current_raw->validated_through_revision) {
+      return Detail::kSuccessorExecutionEvidenceOlder;
+    }
+    if (successor_raw->validated_through_revision ==
+            current_raw->validated_through_revision &&
+        successor_raw->observed_world_content_fingerprint !=
+            current_raw->observed_world_content_fingerprint) {
+      return Detail::kSuccessorWorldContentMismatch;
+    }
+    return Detail::kNone;
   }
 
   const auto* const current_static =
@@ -602,45 +651,22 @@ candidateFiniteExecutionValid(const FiniteExecutionState3D& candidate,
   if (current_static == nullptr || successor_static == nullptr ||
       !std::holds_alternative<StaticFiniteExecutionValidationLineage3D>(
           successor_execution.validation_proof.lineage)) {
-    return false;
+    return Detail::kSuccessorCertificateKindMismatch;
   }
-  const NavigationWorldCertificate3D& current_world = current_static->world_certificate;
-  const NavigationWorldCertificate3D& successor_world =
-      successor_static->world_certificate;
-  const bool nondecreasing =
-      successor_world.producer_instance_id == current_world.producer_instance_id &&
-      successor_world.esdf_source_raw_revision >=
-          current_world.esdf_source_raw_revision &&
-      successor_world.raw_validated_through_revision >=
-          current_world.raw_validated_through_revision &&
-      successor_world.local_world_generation >= current_world.local_world_generation &&
-      successor_world.topology_revision >= current_world.topology_revision;
-  if (!nondecreasing) {
-    return false;
-  }
-  const bool strictly_advanced =
-      successor_world.esdf_source_raw_revision >
-          current_world.esdf_source_raw_revision ||
-      successor_world.raw_validated_through_revision >
-          current_world.raw_validated_through_revision ||
-      successor_world.local_world_generation > current_world.local_world_generation ||
-      successor_world.topology_revision > current_world.topology_revision;
-  return strictly_advanced ||
-         (sameWorldCertificate(successor_world, current_world) &&
-          successor_static->static_occupancy_content_fingerprint ==
-              current_static->static_occupancy_content_fingerprint);
+  return staticWorldCertificateRegression(*current_static, *successor_static);
 }
 
-[[nodiscard]] bool
-successorEvidenceNotOlder(const CertifiedRouteSuffix3D& current_route,
-                          const FiniteExecutionState3D& current_execution,
-                          const CertifiedRouteSuffix3D& successor,
-                          const FiniteExecutionState3D& successor_execution) noexcept {
+ExecutionRouteTransitionDetail3D successorEvidenceRegression(
+    const CertifiedRouteSuffix3D& current_route,
+    const FiniteExecutionState3D& current_execution,
+    const CertifiedRouteSuffix3D& successor,
+    const FiniteExecutionState3D& successor_execution) noexcept {
+  using Detail = ExecutionRouteTransitionDetail3D;
   if (current_route.validation_policy == nullptr ||
       successor.validation_policy == nullptr ||
       current_route.validation_policy->contentFingerprint() !=
           successor.validation_policy->contentFingerprint()) {
-    return false;
+    return Detail::kSuccessorValidationPolicyMismatch;
   }
   const auto* const current_raw =
       std::get_if<ObservedRawRouteCertificate3D>(&current_route.certificate);
@@ -654,37 +680,42 @@ successorEvidenceNotOlder(const CertifiedRouteSuffix3D& current_route,
         std::get_if<ObservedRawFiniteExecutionValidationLineage3D>(
             &successor_execution.validation_proof.lineage);
     if (successor_raw == nullptr || current_execution_raw == nullptr ||
-        successor_execution_raw == nullptr ||
-        current_execution_raw->producer_instance_id !=
+        successor_execution_raw == nullptr) {
+      return Detail::kSuccessorCertificateKindMismatch;
+    }
+    // A producer switch requires an authoritative latest-world token. Until
+    // publication supplies that token, fail closed instead of treating an
+    // arbitrary internally consistent producer ID as fresh evidence.
+    if (current_execution_raw->producer_instance_id !=
             current_raw->producer_instance_id ||
         successor_execution_raw->producer_instance_id !=
-            successor_raw->producer_instance_id) {
-      return false;
-    }
-    if (successor_raw->producer_instance_id != current_raw->producer_instance_id) {
-      // A producer switch requires an authoritative latest-world token. Until
-      // publication supplies that token, fail closed instead of treating an
-      // arbitrary internally consistent producer ID as fresh evidence.
-      return false;
+            successor_raw->producer_instance_id ||
+        successor_raw->producer_instance_id != current_raw->producer_instance_id) {
+      return Detail::kSuccessorProducerMismatch;
     }
     const std::uint64_t required_raw_revision =
         std::max(current_raw->validated_through_revision,
                  current_execution_raw->validated_through_raw_revision);
-    if (successor_raw->validated_through_revision < required_raw_revision ||
-        successor_execution_raw->validated_through_raw_revision <
-            required_raw_revision) {
-      return false;
+    if (successor_raw->validated_through_revision < required_raw_revision) {
+      return Detail::kSuccessorCertificateOlder;
+    }
+    if (successor_execution_raw->validated_through_raw_revision <
+        required_raw_revision) {
+      return Detail::kSuccessorExecutionEvidenceOlder;
     }
     if (successor_raw->validated_through_revision ==
             current_raw->validated_through_revision &&
         successor_raw->observed_world_content_fingerprint !=
             current_raw->observed_world_content_fingerprint) {
-      return false;
+      return Detail::kSuccessorWorldContentMismatch;
     }
-    return successor_raw->validated_through_revision !=
-               current_execution_raw->validated_through_raw_revision ||
-           successor_raw->observed_world_content_fingerprint ==
-               current_execution_raw->observed_world_content_fingerprint;
+    if (successor_raw->validated_through_revision ==
+            current_execution_raw->validated_through_raw_revision &&
+        successor_raw->observed_world_content_fingerprint !=
+            current_execution_raw->observed_world_content_fingerprint) {
+      return Detail::kSuccessorWorldContentMismatch;
+    }
+    return Detail::kNone;
   }
 
   const auto* const current_static =
@@ -696,33 +727,9 @@ successorEvidenceNotOlder(const CertifiedRouteSuffix3D& current_route,
           current_execution.validation_proof.lineage) ||
       !std::holds_alternative<StaticFiniteExecutionValidationLineage3D>(
           successor_execution.validation_proof.lineage)) {
-    return false;
+    return Detail::kSuccessorCertificateKindMismatch;
   }
-  const NavigationWorldCertificate3D& current_world = current_static->world_certificate;
-  const NavigationWorldCertificate3D& successor_world =
-      successor_static->world_certificate;
-  const bool nondecreasing =
-      successor_world.producer_instance_id == current_world.producer_instance_id &&
-      successor_world.esdf_source_raw_revision >=
-          current_world.esdf_source_raw_revision &&
-      successor_world.raw_validated_through_revision >=
-          current_world.raw_validated_through_revision &&
-      successor_world.local_world_generation >= current_world.local_world_generation &&
-      successor_world.topology_revision >= current_world.topology_revision;
-  if (!nondecreasing) {
-    return false;
-  }
-  const bool strictly_advanced =
-      successor_world.esdf_source_raw_revision >
-          current_world.esdf_source_raw_revision ||
-      successor_world.raw_validated_through_revision >
-          current_world.raw_validated_through_revision ||
-      successor_world.local_world_generation > current_world.local_world_generation ||
-      successor_world.topology_revision > current_world.topology_revision;
-  return strictly_advanced ||
-         (sameWorldCertificate(successor_world, current_world) &&
-          successor_static->static_occupancy_content_fingerprint ==
-              current_static->static_occupancy_content_fingerprint);
+  return staticWorldCertificateRegression(*current_static, *successor_static);
 }
 
 } // namespace execution_route_snapshot_3d_internal

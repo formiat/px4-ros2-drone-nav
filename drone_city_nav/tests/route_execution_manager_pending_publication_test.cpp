@@ -133,15 +133,44 @@ TEST(RouteExecutionManagerPendingPublicationTest,
 TEST(PendingCertifiedRoute3DTest,
      OnlyACandidateContractRejectionRetiresAPendingActivation) {
   EXPECT_TRUE(pendingRouteActivationStructurallyRejected3D(
-      ExecutionRouteTransitionStatus3D::kInvalidCandidate));
+      ExecutionRouteTransitionStatus3D::kInvalidCandidate,
+      ExecutionRouteTransitionDetail3D::kNone));
+  EXPECT_TRUE(pendingRouteActivationStructurallyRejected3D(
+      ExecutionRouteTransitionStatus3D::kInvalidCandidate,
+      ExecutionRouteTransitionDetail3D::kSpliceNotReady));
   for (const ExecutionRouteTransitionStatus3D transient :
        {ExecutionRouteTransitionStatus3D::kStaleSnapshotVersion,
         ExecutionRouteTransitionStatus3D::kVersionExhausted,
         ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict,
-        ExecutionRouteTransitionStatus3D::kCertificateRegression,
         ExecutionRouteTransitionStatus3D::kNoChange,
         ExecutionRouteTransitionStatus3D::kApplied}) {
-    EXPECT_FALSE(pendingRouteActivationStructurallyRejected3D(transient));
+    EXPECT_FALSE(pendingRouteActivationStructurallyRejected3D(
+        transient, ExecutionRouteTransitionDetail3D::kSuccessorCertificateOlder));
+  }
+}
+
+TEST(PendingCertifiedRoute3DTest,
+     ARegressionOfTheSuccessorsOwnCertificateRetiresAPendingActivation) {
+  // The certificate a pending route carries never moves while the resident
+  // route's can only advance, so a regression it names is permanent; one that
+  // names the finite execution it was offered with is refreshed next tick.
+  for (const ExecutionRouteTransitionDetail3D permanent :
+       {ExecutionRouteTransitionDetail3D::kSuccessorValidationPolicyMismatch,
+        ExecutionRouteTransitionDetail3D::kSuccessorCertificateKindMismatch,
+        ExecutionRouteTransitionDetail3D::kSuccessorProducerMismatch,
+        ExecutionRouteTransitionDetail3D::kSuccessorCertificateOlder,
+        ExecutionRouteTransitionDetail3D::kSuccessorWorldContentMismatch}) {
+    EXPECT_TRUE(pendingRouteActivationStructurallyRejected3D(
+        ExecutionRouteTransitionStatus3D::kCertificateRegression, permanent));
+  }
+  for (const ExecutionRouteTransitionDetail3D transient :
+       {ExecutionRouteTransitionDetail3D::kNone,
+        ExecutionRouteTransitionDetail3D::kSuccessorExecutionEvidenceOlder,
+        ExecutionRouteTransitionDetail3D::kSuccessorExecutionInputOlder,
+        ExecutionRouteTransitionDetail3D::kResidentProgressInputMissing,
+        ExecutionRouteTransitionDetail3D::kProgressRawRevisionOlder}) {
+    EXPECT_FALSE(pendingRouteActivationStructurallyRejected3D(
+        ExecutionRouteTransitionStatus3D::kCertificateRegression, transient));
   }
 }
 

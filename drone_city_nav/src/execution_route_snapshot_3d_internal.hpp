@@ -483,13 +483,16 @@ candidateFiniteExecutionValid(const FiniteExecutionState3D& candidate,
                               const CertifiedRouteSuffix3D* route,
                               const bool require_current_certificate) noexcept;
 
-[[nodiscard]] bool
-successorEvidenceNotOlder(const CertifiedRouteSuffix3D& current_route,
-                          const FiniteExecutionState3D& current_execution,
-                          const CertifiedRouteSuffix3D& successor,
-                          const FiniteExecutionState3D& successor_execution) noexcept;
+// Whether a successor's evidence is at least as current as the resident
+// route's. kNone means it is; any other detail names the evidence that is
+// older or incompatible.
+[[nodiscard]] ExecutionRouteTransitionDetail3D
+successorEvidenceRegression(const CertifiedRouteSuffix3D& current_route,
+                            const FiniteExecutionState3D& current_execution,
+                            const CertifiedRouteSuffix3D& successor,
+                            const FiniteExecutionState3D& successor_execution) noexcept;
 
-[[nodiscard]] bool successorRouteEvidenceNotOlder(
+[[nodiscard]] ExecutionRouteTransitionDetail3D successorRouteEvidenceRegression(
     const CertifiedRouteSuffix3D& current_route,
     const CertifiedRouteSuffix3D& successor,
     const FiniteExecutionState3D& successor_execution) noexcept;

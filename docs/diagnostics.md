@@ -152,8 +152,14 @@ rejection can be traced to one predicate without re-running the reducer.
 
 `PENDING_ROUTE_RETIRED route_generation=<n> base_route_generation=<m>
 transition=<status> detail=<detail> acknowledged=<bool>` reports a pending
-successor whose activation the reducer rejected on the candidate's own contract
-(`invalid_candidate`). Such a proposal cannot activate by being offered again,
+successor whose activation the reducer rejected on the candidate's own contract:
+every `invalid_candidate`, and a `certificate_regression` whose detail names
+the successor's own certificate (`successor_certificate_older`,
+`successor_world_content_mismatch`, `successor_producer_mismatch`,
+`successor_certificate_kind_mismatch`, `successor_validation_policy_mismatch`)
+rather than the finite execution it was offered with
+(`successor_execution_evidence_older`, `successor_execution_input_older`).
+Such a proposal cannot activate by being offered again,
 and while it stays pending the lifecycle measures every newer successor against
 it and the selection offers it instead of the resident route's own candidates.
 The node acknowledges it so the lifecycle plans a fresh successor from the

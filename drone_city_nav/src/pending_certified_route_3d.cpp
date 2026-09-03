@@ -161,8 +161,24 @@ bool pendingCertifiedRouteRetainsSnapshotCertificate3D(
 }
 
 bool pendingRouteActivationStructurallyRejected3D(
-    const ExecutionRouteTransitionStatus3D status) noexcept {
-  return status == ExecutionRouteTransitionStatus3D::kInvalidCandidate;
+    const ExecutionRouteTransitionStatus3D status,
+    const ExecutionRouteTransitionDetail3D detail) noexcept {
+  if (status == ExecutionRouteTransitionStatus3D::kInvalidCandidate) {
+    return true;
+  }
+  if (status != ExecutionRouteTransitionStatus3D::kCertificateRegression) {
+    return false;
+  }
+  switch (detail) {
+    case ExecutionRouteTransitionDetail3D::kSuccessorValidationPolicyMismatch:
+    case ExecutionRouteTransitionDetail3D::kSuccessorCertificateKindMismatch:
+    case ExecutionRouteTransitionDetail3D::kSuccessorProducerMismatch:
+    case ExecutionRouteTransitionDetail3D::kSuccessorCertificateOlder:
+    case ExecutionRouteTransitionDetail3D::kSuccessorWorldContentMismatch:
+      return true;
+    default:
+      return false;
+  }
 }
 
 PendingCertifiedRouteRecoveryResult3D recoverPendingCertifiedRouteLiveness3D(
