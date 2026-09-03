@@ -72,7 +72,11 @@ Critical and planning clearance exposure are strong soft costs. Inside the
 critical band, a bounded quadratic proximity term additionally distinguishes a
 shallow exposure from a trajectory that nearly touches a wall. The term is
 integrated over time, so remaining stationary near a wall does not avoid its
-cost. These terms rank safe rollouts together with route deviation, mission
+cost. An obstacle-approach term prices the stopping law along the rollout:
+the squared shortfall between the clearance a state keeps to known occupied
+evidence and the clearance its approach speed needs to stop before it, so a
+rollout brakes before the critical band instead of reacting inside it.
+These terms rank safe rollouts together with route deviation, mission
 progress, early/head progress, altitude error, speed tracking, acceleration,
 jerk, yaw motion, terminal error, and control effort. Low clearance alone cannot
 make a rollout unreachable or force a position hold.

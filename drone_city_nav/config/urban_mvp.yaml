@@ -214,6 +214,13 @@ production_mppi_node:
     maximum_vertical_speed_mps: 5.0
     head_progress_horizon_s: 0.4
     head_progress_weight: 8.0
+    # Squared altitude error against the route's reference height, per
+    # second. Vertical motion is free everywhere else in the controller: no
+    # progress term rewards it and speed tracking follows the route tangent,
+    # so this is the only term that holds the vertical channel. At 4 the
+    # sampled vertical accelerations drifted the vehicle +-5 m around the
+    # route and bounced it between a passage floor and ceiling.
+    altitude_tracking_weight: 40.0
     # Prefer progress earlier in the finite horizon so receding-horizon updates
     # cannot indefinitely postpone an otherwise executable route segment.
     route_progress_integral_weight: 2.0
@@ -232,7 +239,14 @@ production_mppi_node:
     mppi_body_collision_gate_enabled: false
     critical_exposure_weight: 2000.0
     critical_clearance_proximity_weight: 4000.0
-    obstacle_approach_weight: 40.0
+    # Squared shortfall, in metres, between the clearance a rollout keeps to
+    # known occupied evidence and the clearance it needs to stop before it
+    # (critical distance + approach speed * response time + braking
+    # distance). This is the stopping law along the rollout; at 40 it was two
+    # orders below the critical-band proximity cost, so the vehicle only
+    # reacted inside the band with maximum acceleration and overshot into the
+    # opposite band. Unknown space carries no clearance and no approach cost.
+    obstacle_approach_weight: 1000.0
     obstacle_approach_response_time_s: 0.25
     obstacle_approach_deceleration_mps2: 4.0
     far_horizon_full_rate_duration_s: 2.0

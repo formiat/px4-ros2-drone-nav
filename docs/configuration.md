@@ -296,9 +296,15 @@ overrides.
 4. Tune reference speed and lookahead.
 5. Tune risk-band exposure and `critical_clearance_proximity_weight`. The latter
    is a bounded soft cost inside the critical band; it must not be used as a
-   reachability or hold threshold.
-6. Tune smoothness and control costs.
-7. Tune liveness and route-recovery lifecycle only from observed failure cases.
+   reachability or hold threshold. `obstacle_approach_weight` prices the
+   stopping law along the rollout (the shortfall between the clearance kept
+   to known evidence and the clearance needed to stop before it); keep it
+   strong enough to brake before the critical band rather than inside it.
+6. Tune `altitude_tracking_weight`: it is the only term holding the vertical
+   channel, since no progress term rewards vertical motion and speed tracking
+   follows the route tangent.
+7. Tune smoothness and control costs.
+8. Tune liveness and route-recovery lifecycle only from observed failure cases.
 
 Do not compensate for frame, collision, or stale-input failures by changing
 soft MPPI weights.
