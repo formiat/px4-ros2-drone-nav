@@ -359,12 +359,37 @@ void DStarLiteSession3D::scheduleAffectedVertices(
       static_cast<int>(std::ceil(vertical_reach / config_->minimum_vertical_step_m)) +
       1;
   for (const auto& [cell_node, changes] : changes_by_node_cell) {
+    // The bucket's cells lie within one node cell; their bounding box, grown
+    // by the reach, rejects most box nodes with three comparisons before the
+    // exact per-cell test.
+    Point3 changes_minimum{std::numeric_limits<double>::infinity(),
+                           std::numeric_limits<double>::infinity(),
+                           std::numeric_limits<double>::infinity()};
+    Point3 changes_maximum{-std::numeric_limits<double>::infinity(),
+                           -std::numeric_limits<double>::infinity(),
+                           -std::numeric_limits<double>::infinity()};
+    for (const ChangedCell& change : changes) {
+      changes_minimum.x = std::min(changes_minimum.x, change.center.x);
+      changes_minimum.y = std::min(changes_minimum.y, change.center.y);
+      changes_minimum.z = std::min(changes_minimum.z, change.center.z);
+      changes_maximum.x = std::max(changes_maximum.x, change.center.x);
+      changes_maximum.y = std::max(changes_maximum.y, change.center.y);
+      changes_maximum.z = std::max(changes_maximum.z, change.center.z);
+    }
     for_each_node_near(
         cell_node, horizontal_radius, vertical_radius,
         [&](const PersistentPlannerNode3D node) {
           const Point3 node_point = lattice_->pointFor(node);
           // A change beyond the reach of every edge leaving this node cannot
           // touch any of them; most box nodes are filtered here.
+          if (node_point.x < changes_minimum.x - horizontal_reach ||
+              node_point.x > changes_maximum.x + horizontal_reach ||
+              node_point.y < changes_minimum.y - horizontal_reach ||
+              node_point.y > changes_maximum.y + horizontal_reach ||
+              node_point.z < changes_minimum.z - vertical_reach ||
+              node_point.z > changes_maximum.z + vertical_reach) {
+            return;
+          }
           const bool within_reach =
               std::ranges::any_of(changes, [&](const ChangedCell& change) {
                 return std::abs(change.center.z - node_point.z) <= vertical_reach &&
