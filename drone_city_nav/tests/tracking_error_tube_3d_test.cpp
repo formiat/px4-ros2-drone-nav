@@ -3,8 +3,11 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <limits>
+#include <string>
 #include <vector>
 
 namespace drone_city_nav {
@@ -77,6 +80,47 @@ TEST(TrackingErrorTube3DTest, NarrowPhysicalPassageReducesSpeedInsteadOfPathClea
   EXPECT_GT(tube.minimum_speed_limit_mps, 0.5);
   EXPECT_LT(tube.minimum_speed_limit_mps, 4.0);
   EXPECT_LT(tube.maximum_tracking_error_m, 0.75);
+}
+
+TEST(TrackingErrorTube3DTest, ConstraintDescriptionNamesTheConstrainedStationRanges) {
+  ObservedOccupancyGrid3D occupancy{testBounds()};
+  addPassageWalls(occupancy);
+  const std::vector<RouteSample3D> route = passageRoute();
+  const TrackingErrorTubeProfile3D tube = profile(occupancy);
+  ASSERT_TRUE(tube.valid);
+  ASSERT_GT(tube.constrained_segment_count, 0U);
+
+  const std::string description =
+      describeTrackingErrorTubeConstraints3D(route, tube, 8U);
+  ASSERT_FALSE(description.empty());
+  // The walls run along the whole route, so one range spans it end to end and
+  // names the profile's lowest limit.
+  char expected_limit[32];
+  std::snprintf(expected_limit, sizeof(expected_limit), ":%.2f@",
+                tube.minimum_speed_limit_mps);
+  EXPECT_NE(description.find(expected_limit), std::string::npos) << description;
+  EXPECT_EQ(description.find(';'), std::string::npos) << description;
+  EXPECT_EQ(description.rfind("0.0-", 0U), 0U) << description;
+
+  TrackingErrorTubeProfile3D unconstrained = tube;
+  std::ranges::fill(unconstrained.speed_limits_mps,
+                    unconstrained.unconstrained_speed_limit_mps);
+  unconstrained.constrained_segment_count = 0U;
+  unconstrained.minimum_speed_limit_mps = unconstrained.unconstrained_speed_limit_mps;
+  unconstrained.maximum_tracking_error_m = trackingErrorTubeRadiusM(
+      unconstrained.config, unconstrained.unconstrained_speed_limit_mps);
+  EXPECT_TRUE(describeTrackingErrorTubeConstraints3D(route, unconstrained, 8U).empty());
+
+  // Two separated ranges with a one-range budget name the first and count the
+  // second.
+  TrackingErrorTubeProfile3D split = unconstrained;
+  split.speed_limits_mps[1U] = 1.0;
+  split.speed_limits_mps[route.size() - 2U] = 2.0;
+  split.constrained_segment_count = 2U;
+  split.minimum_speed_limit_mps = 1.0;
+  const std::string limited = describeTrackingErrorTubeConstraints3D(route, split, 1U);
+  EXPECT_NE(limited.find(":1.00@"), std::string::npos) << limited;
+  EXPECT_NE(limited.find(";+1"), std::string::npos) << limited;
 }
 
 TEST(TrackingErrorTube3DTest, FreeUnknownRelabelingLeavesSpeedProfileUnchanged) {

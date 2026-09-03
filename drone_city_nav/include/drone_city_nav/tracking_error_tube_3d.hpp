@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -57,6 +58,16 @@ struct TrackingErrorTubeProfile3D {
 [[nodiscard]] bool
 trackingErrorTubeProfile3DIsValid(const TrackingErrorTubeProfile3D& profile,
                                   std::size_t route_sample_count) noexcept;
+
+// Diagnostics: the constrained station ranges of a profile, nearest first, as
+// "begin_m-end_m:limit_mps@(x,y,z)" entries joined by ';', where the point is
+// the sample holding the range's lowest limit. At most `maximum_ranges` are
+// named, followed by "+N" for the ranges left out. Empty when nothing is
+// constrained or the profile does not match the route.
+[[nodiscard]] std::string
+describeTrackingErrorTubeConstraints3D(std::span<const RouteSample3D> route,
+                                       const TrackingErrorTubeProfile3D& profile,
+                                       std::size_t maximum_ranges);
 
 [[nodiscard]] bool
 trackingErrorTubeProfile3DMatchesWorld(std::span<const RouteSample3D> route,

@@ -326,6 +326,7 @@ add_drone_city_nav_layer(
   src/route_time_parameterization.cpp
   src/static_route_extension.cpp
   src/tracking_error_tube_3d.cpp
+  src/tracking_error_tube_3d_diagnostics.cpp
   src/trajectory_compiler_3d.cpp)
 target_link_libraries(drone_city_nav_trajectory PUBLIC drone_city_nav_planning)
 
@@ -1667,6 +1668,12 @@ if(BUILD_TESTING)
   target_compile_features(route_time_parameterization_test PRIVATE cxx_std_20)
   target_link_libraries(route_time_parameterization_test drone_city_nav_core)
   enable_project_warnings(route_time_parameterization_test)
+
+  ament_add_gtest(raw_occupancy_clearance_3d_test
+                  tests/raw_occupancy_clearance_3d_test.cpp)
+  target_compile_features(raw_occupancy_clearance_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(raw_occupancy_clearance_3d_test drone_city_nav_core)
+  enable_project_warnings(raw_occupancy_clearance_3d_test)
 
   ament_add_gtest(tracking_error_tube_3d_test tests/tracking_error_tube_3d_test.cpp)
   target_compile_features(tracking_error_tube_3d_test PRIVATE cxx_std_20)

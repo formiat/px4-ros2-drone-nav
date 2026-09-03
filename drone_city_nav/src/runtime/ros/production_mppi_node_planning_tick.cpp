@@ -214,11 +214,6 @@ void ProductionMppiNode::planningTick() {
     // objective. Replan the newly active leg on the next tick.
     return;
   }
-  if (mission_goal_capture_attempt_invalidated_) {
-    // Preserve the exact wire owner until the queued revocation linearizes.
-    // A replacement capture lease may be committed only on a later tick.
-    return;
-  }
   const bool matching_goal_capture_attempt =
       goal_capture_latched && execution_horizon_owner.valid &&
       execution_horizon_owner.execution_mode ==

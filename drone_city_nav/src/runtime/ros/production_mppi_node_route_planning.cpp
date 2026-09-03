@@ -5,6 +5,7 @@
 #include <cinttypes>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 
 #include "production_mppi_node.hpp"
@@ -399,6 +400,23 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
       admission.assessment.raw_validation.connector_validated ? "true" : "false",
       admission.assessment.raw_validation.suffix_validated ? "true" : "false",
       materialized.fingerprint);
+  if (activation.trajectory != nullptr && tracking_profile != nullptr &&
+      tracking_profile->constrained_segment_count > 0U &&
+      activation.trajectory->route != nullptr) {
+    // Names where the route runs close to raw occupied evidence: every
+    // constrained range caps the executable speed and shrinks the tube the
+    // finite path has to stay inside.
+    const std::string ranges = describeTrackingErrorTubeConstraints3D(
+        *activation.trajectory->route, *tracking_profile, 8U);
+    RCLCPP_INFO(get_logger(),
+                "TRACKING_TUBE_PROFILE route_generation=%" PRIu64
+                " constrained_segments=%zu minimum_speed_limit_mps=%.2f "
+                "maximum_error_m=%.2f ranges=%s",
+                materialized.candidate_generation,
+                tracking_profile->constrained_segment_count,
+                tracking_profile->minimum_speed_limit_mps,
+                tracking_profile->maximum_tracking_error_m, ranges.c_str());
+  }
 
   if (admission.successor_improvement_required ||
       admission.successor_compared_to_pending) {

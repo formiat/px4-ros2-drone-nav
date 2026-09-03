@@ -434,7 +434,6 @@ private:
   std::uint64_t navigation_health_sequence_{0U};
   std::optional<NavigationHealthAssessment> last_navigation_health_assessment_;
   std::uint64_t mission_waypoint_acknowledgement_sequence_{0U};
-  bool mission_goal_capture_attempt_invalidated_{false};
   std::int64_t last_summary_stamp_ns_{0};
   std::unique_ptr<NavigationDiagnosticsSink> diagnostics_sink_;
 

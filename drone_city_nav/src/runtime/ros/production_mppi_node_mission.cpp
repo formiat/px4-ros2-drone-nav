@@ -30,7 +30,6 @@ MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
     const bool applied_control_discontinuity_generation_valid,
     const bool vehicle_status_epoch_stable, const bool goal_capture_latched,
     const std::int64_t now_ns) {
-  mission_goal_capture_attempt_invalidated_ = false;
   const std::shared_ptr<const ProductionNavigationObjective> objective =
       objective_state != nullptr ? objective_state->objective : nullptr;
   if (!mission_waypoint_sequence_ || !mission_waypoint_capture_gate_ || !objective ||
