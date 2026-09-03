@@ -293,6 +293,10 @@ production_mppi_node:
     # higher cruise buys nothing and a lower one only lengthens open legs.
     cruise_speed_mps: 6.5
     absolute_speed_limit_mps: 10.0
+    # The reference speed never exceeds what the vehicle can stop from within
+    # the body clearance of the horizon it executes (known occupied evidence
+    # only); this floor keeps a tight spot leavable.
+    clearance_speed_minimum_progress_mps: 1.0
     maximum_horizontal_acceleration_mps2: 4.0
     guaranteed_vertical_stopping_deceleration_mps2: 2.0
     maximum_control_jerk_mps3: 12.0

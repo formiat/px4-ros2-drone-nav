@@ -83,7 +83,8 @@ void validateConfig(const MppiSpeedPolicyConfig& config) {
       !(config.curvature_measurement_window_m > 0.0) ||
       !(config.horizon_duration_s > 0.0) ||
       !(config.minimum_target_lookahead_m > 0.0) ||
-      !(config.maximum_target_lookahead_m >= config.minimum_target_lookahead_m)) {
+      !(config.maximum_target_lookahead_m >= config.minimum_target_lookahead_m) ||
+      !(config.clearance_minimum_progress_speed_mps >= 0.0)) {
     throw std::invalid_argument{"invalid MPPI speed policy configuration"};
   }
 }
@@ -155,6 +156,17 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
         stoppingLimitedSpeed(std::max(0.0, *input.blocked_route_remaining_m), 0.0,
                              config.stopping_capability);
   }
+  if (input.executed_horizon_clearance_m.has_value()) {
+    // The motion under execution passes this close to known occupied
+    // evidence. Whatever the route promised when it was certified, the
+    // vehicle must be able to stop within the clearance it actually has, so
+    // the stopping law caps the reference speed. The floor keeps a tight spot
+    // leavable; the body validation stays the only hard authority.
+    result.clearance_limit_mps = std::max(
+        config.clearance_minimum_progress_speed_mps,
+        stoppingLimitedSpeed(std::max(0.0, *input.executed_horizon_clearance_m), 0.0,
+                             config.stopping_capability));
+  }
   if (input.route_constraint_speed_limit_mps.has_value()) {
     result.route_constraint_limit_mps =
         std::max(0.0, *input.route_constraint_speed_limit_mps);
@@ -184,11 +196,11 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
     }
   }
 
-  result.reference_speed_mps =
-      std::min({result.cruise_limit_mps, result.absolute_limit_mps,
-                result.curvature_limit_mps, result.sensor_braking_limit_mps,
-                result.goal_limit_mps, result.route_endpoint_limit_mps,
-                result.route_constraint_limit_mps, result.blocked_route_limit_mps});
+  result.reference_speed_mps = std::min(
+      {result.cruise_limit_mps, result.absolute_limit_mps, result.curvature_limit_mps,
+       result.sensor_braking_limit_mps, result.goal_limit_mps,
+       result.route_endpoint_limit_mps, result.route_constraint_limit_mps,
+       result.blocked_route_limit_mps, result.clearance_limit_mps});
   const std::array limits{
       std::pair{result.cruise_limit_mps, MppiSpeedLimiter::kCruise},
       std::pair{result.absolute_limit_mps, MppiSpeedLimiter::kAbsolute},
@@ -198,6 +210,7 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
       std::pair{result.route_endpoint_limit_mps, MppiSpeedLimiter::kRouteEndpoint},
       std::pair{result.route_constraint_limit_mps, MppiSpeedLimiter::kRouteConstraint},
       std::pair{result.blocked_route_limit_mps, MppiSpeedLimiter::kBlockedRoute},
+      std::pair{result.clearance_limit_mps, MppiSpeedLimiter::kClearance},
   };
   result.active_limiter = std::min_element(limits.begin(), limits.end(),
                                            [](const auto& first, const auto& second) {
@@ -239,6 +252,8 @@ const char* mppiSpeedLimiterName(const MppiSpeedLimiter limiter) noexcept {
       return "route_constraint";
     case MppiSpeedLimiter::kBlockedRoute:
       return "blocked_route";
+    case MppiSpeedLimiter::kClearance:
+      return "clearance";
   }
   return "unknown";
 }

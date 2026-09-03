@@ -42,6 +42,12 @@ the script rather than assuming that `log/latest` belongs to the intended run.
   earlier in-path deceleration start;
 - dropped diagnostic snapshots.
 
+`active_speed_limiter` names the speed limit that set the reference speed
+(`cruise`, `curvature`, `sensor_braking`, `goal`, `route_endpoint`,
+`route_constraint`, `blocked_route`, `clearance`), and the
+`*_speed_limit_mps` fields carry each limit; `clearance_speed_limit_mps` is
+the stopping-limited speed within the executed horizon's body clearance.
+
 The JSONL record carries the same data in machine-readable form.
 
 ## Timing

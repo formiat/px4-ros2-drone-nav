@@ -610,6 +610,8 @@ void ProductionMppiConfigLoader::declareControl() {
       declare<double>("guaranteed_vertical_stopping_deceleration_mps2", 2.0);
   control.speed_policy.stopping_capability.reaction_latency_s =
       declare<double>("speed_reaction_latency_s", 0.10);
+  control.speed_policy.clearance_minimum_progress_speed_mps =
+      declare<double>("clearance_speed_minimum_progress_mps", 1.0);
   control.speed_policy.sensor_braking_contract = SensorBrakingContract3D{
       .guaranteed_detection_range_m =
           declare<double>("guaranteed_lidar_detection_range_m", 30.0),

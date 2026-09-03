@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cmath>
+#include <limits>
 
 namespace drone_city_nav {
 namespace {
@@ -73,6 +74,36 @@ TEST(MppiSpeedPolicyTest, ABlockedRouteLimitsSpeedToStopBeforeTheBlock) {
   input.blocked_route_remaining_m = std::nullopt;
   const MppiSpeedPolicyResult open = evaluateMppiSpeedPolicy(config, input);
   EXPECT_NE(open.active_limiter, MppiSpeedLimiter::kBlockedRoute);
+  EXPECT_DOUBLE_EQ(open.reference_speed_mps, 20.0);
+}
+
+TEST(MppiSpeedPolicyTest, TheExecutedHorizonClearanceCapsTheReferenceSpeed) {
+  MppiSpeedPolicyConfig config;
+  config.cruise_speed_mps = 20.0;
+  config.absolute_speed_limit_mps = 20.0;
+  config.stopping_capability.maximum_commanded_horizontal_deceleration_mps2 = 4.0;
+  config.stopping_capability.guaranteed_horizontal_deceleration_mps2 = 4.0;
+  config.stopping_capability.reaction_latency_s = 0.0;
+  config.clearance_minimum_progress_speed_mps = 1.0;
+  allowHighSensorBrakingSpeed(config);
+  MppiSpeedPolicyInput input;
+  input.terminal_goal_limit_enabled = false;
+  input.executed_horizon_clearance_m = 2.0;
+
+  const MppiSpeedPolicyResult near = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_EQ(near.active_limiter, MppiSpeedLimiter::kClearance);
+  EXPECT_STREQ(mppiSpeedLimiterName(near.active_limiter), "clearance");
+  EXPECT_NEAR(near.clearance_limit_mps, std::sqrt(2.0 * 4.0 * 2.0), 1.0e-6);
+  EXPECT_DOUBLE_EQ(near.reference_speed_mps, near.clearance_limit_mps);
+
+  input.executed_horizon_clearance_m = 0.0;
+  const MppiSpeedPolicyResult touching = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_EQ(touching.active_limiter, MppiSpeedLimiter::kClearance);
+  EXPECT_DOUBLE_EQ(touching.reference_speed_mps, 1.0);
+
+  input.executed_horizon_clearance_m = std::numeric_limits<double>::infinity();
+  const MppiSpeedPolicyResult open = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_NE(open.active_limiter, MppiSpeedLimiter::kClearance);
   EXPECT_DOUBLE_EQ(open.reference_speed_mps, 20.0);
 }
 

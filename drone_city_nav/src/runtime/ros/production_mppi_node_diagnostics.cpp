@@ -196,6 +196,8 @@ void ProductionMppiNode::processDiagnostics(
        << finiteOrNegative(speed_policy.curvature_limit_mps)
        << " sensor_braking_speed_limit_mps="
        << finiteOrNegative(speed_policy.sensor_braking_limit_mps)
+       << " clearance_speed_limit_mps="
+       << finiteOrNegative(speed_policy.clearance_limit_mps)
        << " sensor_braking_assessed_speed_mps=" << sensor_braking.speed_mps
        << " sensor_braking_total_latency_s=" << sensor_braking.total_latency_s
        << " sensor_braking_latency_distance_m=" << sensor_braking.latency_distance_m
@@ -574,6 +576,8 @@ void ProductionMppiNode::processDiagnostics(
          << finiteOrNegative(speed_policy.curvature_limit_mps)
          << ",\"sensor_braking_speed_limit_mps\":"
          << finiteOrNegative(speed_policy.sensor_braking_limit_mps)
+         << ",\"clearance_speed_limit_mps\":"
+         << finiteOrNegative(speed_policy.clearance_limit_mps)
          << ",\"sensor_braking_assessed_speed_mps\":" << sensor_braking.speed_mps
          << ",\"sensor_braking_total_latency_s\":" << sensor_braking.total_latency_s
          << ",\"sensor_braking_latency_distance_m\":"

@@ -403,6 +403,13 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
                         0.0, *output.route.execution.raw_blocked_station_m -
                                  output.route.projection.station_m)}
                   : std::nullopt,
+          .executed_horizon_clearance_m =
+              request.previous_result != nullptr &&
+                      !request.previous_result->horizon.empty() &&
+                      request.previous_result->post_update_classification.executable
+                  ? std::optional<double>{static_cast<double>(
+                        request.previous_result->minimum_esdf_distance_m)}
+                  : std::nullopt,
           .route_endpoint_semantics = route_endpoint_semantics,
           .terminal_goal_limit_enabled = request.terminal_hold_enabled,
       });
