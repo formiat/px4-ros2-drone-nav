@@ -95,6 +95,35 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
         self.assertAlmostEqual(vertical_max, memory["lidar_3d_vertical_max_angle_rad"])
         self.assertAlmostEqual(vertical_min, -0.5 * math.pi, places=12)
         self.assertAlmostEqual(vertical_max, 0.5 * math.pi, places=12)
+        # Sensing geometry behind the guaranteed range: at that range adjacent
+        # scan rows must land no farther apart than the vertical body band plus
+        # one occupancy voxel, and adjacent columns no farther apart than the
+        # body diameter plus one voxel, so a surface crossing the vehicle's path
+        # is painted inside the swept footprint by measured returns alone.
+        horizontal = sensor.find("ray/scan/horizontal")
+        self.assertIsNotNone(horizontal)
+        horizontal_samples = int(horizontal.findtext("samples", "0"))
+        horizontal_min = float(horizontal.findtext("min_angle", "nan"))
+        horizontal_max = float(horizontal.findtext("max_angle", "nan"))
+        self.assertGreater(vertical_samples, 1)
+        self.assertGreater(horizontal_samples, 1)
+        vertical_spacing_rad = (vertical_max - vertical_min) / (vertical_samples - 1)
+        horizontal_spacing_rad = (horizontal_max - horizontal_min) / (
+            horizontal_samples - 1
+        )
+        voxel_m = memory["grid_resolution_m"]
+        body_band_m = (
+            planner["physical_footprint_lower_extent_m"]
+            + planner["physical_footprint_upper_extent_m"]
+        )
+        body_diameter_m = 2.0 * planner["physical_footprint_radius_m"]
+        self.assertLessEqual(
+            guaranteed_range_m * math.tan(vertical_spacing_rad), body_band_m + voxel_m
+        )
+        self.assertLessEqual(
+            guaranteed_range_m * math.tan(horizontal_spacing_rad),
+            body_diameter_m + voxel_m,
+        )
         self.assertNotIn("observation_distance_m", planner)
         self.assertNotIn("observation_margin_m", planner)
         self.assertIn(

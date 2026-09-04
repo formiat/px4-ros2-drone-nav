@@ -134,7 +134,7 @@ class DroneModelSdfContractTest(unittest.TestCase):
         self.assertIsNotNone(horizontal)
         self.assertIsNotNone(vertical)
         self.assertEqual(240, int(horizontal.findtext("samples", "0")))
-        self.assertEqual(19, int(vertical.findtext("samples", "0")))
+        self.assertEqual(121, int(vertical.findtext("samples", "0")))
         self.assertEqual(1, int(vertical.findtext("samples", "0")) % 2)
         vertical_min = float(vertical.findtext("min_angle", "nan"))
         vertical_max = float(vertical.findtext("max_angle", "nan"))
@@ -143,7 +143,7 @@ class DroneModelSdfContractTest(unittest.TestCase):
         self.assertLessEqual(
             (vertical_max - vertical_min)
             / (int(vertical.findtext("samples", "0")) - 1),
-            math.radians(10.0),
+            math.radians(1.5) + 1.0e-9,
         )
         for visual in root.iter("visual"):
             self.assertEqual(

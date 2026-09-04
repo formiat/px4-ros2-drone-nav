@@ -157,7 +157,7 @@ obstacle_memory_3d_node:
     lidar_extrinsic_translation_body_frd_m: [0.12, 0.0, -0.315]
     lidar_extrinsic_quaternion_lidar_flu_to_body_frd: [0.0, 1.0, 0.0, 0.0]
     lidar_3d_horizontal_samples: 240
-    lidar_3d_vertical_samples: 19
+    lidar_3d_vertical_samples: 121
     lidar_3d_horizontal_min_angle_rad: -3.141592653589793
     lidar_3d_horizontal_max_angle_rad: 3.141592653589793
     lidar_3d_vertical_min_angle_rad: -1.5707963267948966

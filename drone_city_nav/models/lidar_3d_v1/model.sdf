@@ -89,7 +89,11 @@
               <max_angle>3.141592653589793</max_angle>
             </horizontal>
             <vertical>
-              <samples>19</samples>
+              <!-- 1.5 deg rows: at the guaranteed 30 m detection range adjacent
+                   rows land no farther apart than the vehicle body band plus
+                   one occupancy voxel, so a wall is painted inside the band
+                   without relying on surface joins. -->
+              <samples>121</samples>
               <resolution>1</resolution>
               <min_angle>-1.5707963267948966</min_angle>
               <max_angle>1.5707963267948966</max_angle>
