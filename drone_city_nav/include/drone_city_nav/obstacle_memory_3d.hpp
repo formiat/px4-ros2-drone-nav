@@ -89,16 +89,27 @@ private:
   using ScanEvidence = std::unordered_map<OccupancyChunkIndex3D, ScanEvidenceChunk,
                                           OccupancyChunkIndex3DHash>;
 
+  // Consecutive cells of one ray share a chunk sixteen at a time; the cursor
+  // keeps the chunk of the last recorded cell so the map is consulted only
+  // when the ray crosses a chunk boundary.
+  struct ScanEvidenceCursor {
+    OccupancyChunkIndex3D chunk_index{};
+    ScanEvidenceChunk* chunk{nullptr};
+  };
+
   struct EvidenceChunk {
     std::array<double, OccupancyGrid3D::kVoxelsPerChunk> scores{};
   };
 
-  [[nodiscard]] bool applyEvidence(GridIndex3D index, double delta,
-                                   ObstacleMemory3DStats& stats);
+  // Applies one scan's evidence of a chunk to the scores and voxel states,
+  // resolving the score chunk and the grid chunk once per chunk.
+  void applyChunkEvidence(OccupancyChunkIndex3D chunk_index,
+                          const ScanEvidenceChunk& chunk_evidence,
+                          ObstacleMemory3DStats& stats);
   [[nodiscard]] double evidenceIntervalSeconds(const LidarScan3DView& scan,
                                                ObstacleMemory3DStats& stats);
-  void recordScanEvidence(GridIndex3D index, bool occupied,
-                          ScanEvidence& scan_evidence) const;
+  void recordScanEvidence(GridIndex3D index, bool occupied, ScanEvidence& scan_evidence,
+                          ScanEvidenceCursor& cursor) const;
   void integrateRay(const Point3& origin, const LidarBeam3D& beam,
                     ScanEvidence& scan_evidence, ObstacleMemory3DStats& stats) const;
   [[nodiscard]] static GridIndex3D cellFromChunkBit(OccupancyChunkIndex3D chunk,

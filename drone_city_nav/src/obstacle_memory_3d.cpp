@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <utility>
@@ -246,24 +247,7 @@ ObstacleMemory3DStats ObstacleMemory3D::integrateScan(const LidarScan3DView& sca
     integrateRay(scan.origin_map, beam, scan_evidence, stats);
   }
   for (const auto& [chunk_index, chunk_evidence] : scan_evidence) {
-    for (std::size_t word_index = 0U; word_index < OccupancyGrid3D::kWordsPerChunk;
-         ++word_index) {
-      std::uint64_t remaining = chunk_evidence.observed.at(word_index);
-      while (remaining != 0U) {
-        const std::size_t bit_offset =
-            static_cast<std::size_t>(std::countr_zero(remaining));
-        const std::size_t bit_index = word_index * 64U + bit_offset;
-        const bool occupied = (chunk_evidence.occupied.at(word_index) &
-                               (std::uint64_t{1U} << bit_offset)) != 0U;
-        const double delta = occupied ? static_cast<double>(config_.hit_weight)
-                                      : -static_cast<double>(config_.miss_weight);
-        static_cast<void>(
-            applyEvidence(cellFromChunkBit(chunk_index, bit_index), delta, stats));
-        stats.occupied_voxel_updates += occupied ? 1U : 0U;
-        stats.free_voxel_updates += occupied ? 0U : 1U;
-        remaining &= remaining - 1U;
-      }
-    }
+    applyChunkEvidence(chunk_index, chunk_evidence, stats);
   }
   if (stats.state_transitions > 0U) {
     ++revision_;
@@ -307,15 +291,21 @@ GridIndex3D ObstacleMemory3D::cellFromChunkBit(const OccupancyChunkIndex3D chunk
 }
 
 void ObstacleMemory3D::recordScanEvidence(const GridIndex3D index, const bool occupied,
-                                          ScanEvidence& scan_evidence) const {
+                                          ScanEvidence& scan_evidence,
+                                          ScanEvidenceCursor& cursor) const {
   const OccupancyChunkIndex3D chunk_index = ObservedOccupancyGrid3D::chunkIndex(index);
-  ScanEvidenceChunk& chunk = scan_evidence[chunk_index];
+  if (cursor.chunk == nullptr || !(cursor.chunk_index == chunk_index)) {
+    // Node-based map: the element address stays valid across later inserts.
+    cursor.chunk = std::addressof(scan_evidence[chunk_index]);
+    cursor.chunk_index = chunk_index;
+  }
+  ScanEvidenceChunk& chunk = *cursor.chunk;
   const std::size_t bit_index = ObservedOccupancyGrid3D::localBitIndex(index);
   const std::size_t word_index = bit_index / 64U;
   const std::uint64_t bit = std::uint64_t{1U} << (bit_index % 64U);
-  chunk.observed.at(word_index) |= bit;
+  chunk.observed[word_index] |= bit;
   if (occupied) {
-    chunk.occupied.at(word_index) |= bit;
+    chunk.occupied[word_index] |= bit;
   }
 }
 
@@ -418,39 +408,68 @@ ObstacleMemory3DChanges ObstacleMemory3D::takeChanges() {
   return changes;
 }
 
-bool ObstacleMemory3D::applyEvidence(const GridIndex3D index, const double delta,
-                                     ObstacleMemory3DStats& stats) {
-  if (!grid_.contains(index)) {
-    return false;
+void ObstacleMemory3D::applyChunkEvidence(const OccupancyChunkIndex3D chunk_index,
+                                          const ScanEvidenceChunk& chunk_evidence,
+                                          ObstacleMemory3DStats& stats) {
+  const double hit_delta = static_cast<double>(config_.hit_weight);
+  const double miss_delta = -static_cast<double>(config_.miss_weight);
+  const auto minimum_score = static_cast<double>(config_.minimum_score);
+  const auto maximum_score = static_cast<double>(config_.maximum_score);
+  EvidenceChunk* scores{nullptr};
+  const ObservedOccupancyGrid3D::Chunk* grid_chunk = grid_.findChunk(chunk_index);
+  bool chunk_dirty{false};
+  for (std::size_t word_index = 0U; word_index < OccupancyGrid3D::kWordsPerChunk;
+       ++word_index) {
+    std::uint64_t remaining = chunk_evidence.observed[word_index];
+    const std::uint64_t occupied_word = chunk_evidence.occupied[word_index];
+    while (remaining != 0U) {
+      const std::size_t bit_offset =
+          static_cast<std::size_t>(std::countr_zero(remaining));
+      remaining &= remaining - 1U;
+      const std::size_t bit_index = word_index * 64U + bit_offset;
+      const bool occupied = (occupied_word & (std::uint64_t{1U} << bit_offset)) != 0U;
+      stats.occupied_voxel_updates += occupied ? 1U : 0U;
+      stats.free_voxel_updates += occupied ? 0U : 1U;
+      const GridIndex3D cell = cellFromChunkBit(chunk_index, bit_index);
+      if (!grid_.contains(cell)) {
+        continue;
+      }
+      if (scores == nullptr) {
+        scores = std::addressof(evidence_[chunk_index]);
+      }
+      const double after_score =
+          std::clamp(scores->scores[bit_index] + (occupied ? hit_delta : miss_delta),
+                     minimum_score, maximum_score);
+      scores->scores[bit_index] = after_score;
+      const ObservedVoxelState before =
+          grid_chunk != nullptr
+              ? ObservedOccupancyGrid3D::chunkState(*grid_chunk, bit_index)
+              : ObservedVoxelState::kUnknown;
+      // Schmitt-trigger classification: a voxel enters the occupied or free
+      // state when its score crosses that state's threshold and keeps its state
+      // while the score stays between the thresholds. Without the hysteresis a
+      // wall surface voxel that collects one hit and a few grazing misses per
+      // scan flips its state every scan, and every consumer of occupied
+      // evidence re-validates the same geometry at the scan rate.
+      ObservedVoxelState after = before;
+      if (after_score >= config_.occupied_score) {
+        after = ObservedVoxelState::kOccupied;
+      } else if (after_score <= config_.free_score) {
+        after = ObservedVoxelState::kFree;
+      }
+      if (before == after) {
+        continue;
+      }
+      static_cast<void>(grid_.setState(cell, after));
+      // The first observed voxel of a chunk materializes it.
+      grid_chunk = grid_.findChunk(chunk_index);
+      chunk_dirty = true;
+      ++stats.state_transitions;
+    }
   }
-  const OccupancyChunkIndex3D chunk_index = ObservedOccupancyGrid3D::chunkIndex(index);
-  EvidenceChunk& evidence = evidence_[chunk_index];
-  const std::size_t bit_index = ObservedOccupancyGrid3D::localBitIndex(index);
-  const double before_score = evidence.scores.at(bit_index);
-  const double after_score =
-      std::clamp(before_score + delta, static_cast<double>(config_.minimum_score),
-                 static_cast<double>(config_.maximum_score));
-  evidence.scores.at(bit_index) = after_score;
-  const ObservedVoxelState before = grid_.state(index);
-  // Schmitt-trigger classification: a voxel enters the occupied or free state
-  // when its score crosses that state's threshold and keeps its state while the
-  // score stays between the thresholds. Without the hysteresis a wall surface
-  // voxel that collects one hit and a few grazing misses per scan flips its
-  // state every scan, and every consumer of occupied evidence re-validates the
-  // same geometry at the scan rate.
-  ObservedVoxelState after = before;
-  if (after_score >= config_.occupied_score) {
-    after = ObservedVoxelState::kOccupied;
-  } else if (after_score <= config_.free_score) {
-    after = ObservedVoxelState::kFree;
+  if (chunk_dirty) {
+    dirty_chunks_[chunk_index] = true;
   }
-  if (before == after) {
-    return false;
-  }
-  static_cast<void>(grid_.setState(index, after));
-  dirty_chunks_[chunk_index] = true;
-  ++stats.state_transitions;
-  return true;
 }
 
 void ObstacleMemory3D::integrateRay(const Point3& origin, const LidarBeam3D& beam,
@@ -469,19 +488,20 @@ void ObstacleMemory3D::integrateRay(const Point3& origin, const LidarBeam3D& bea
   if (hit_within_range && !hit_cell.has_value()) {
     ++stats.outside_endpoints;
   }
+  ScanEvidenceCursor cursor;
   if (beam.surface_only) {
     if (hit_cell.has_value()) {
-      recordScanEvidence(*hit_cell, true, scan_evidence);
+      recordScanEvidence(*hit_cell, true, scan_evidence, cursor);
     }
     return;
   }
   visitIntersectedGridCells(grid_, origin, endpoint, [&](const GridIndex3D cell) {
     if (!hit_cell.has_value() || cell != *hit_cell) {
-      recordScanEvidence(cell, false, scan_evidence);
+      recordScanEvidence(cell, false, scan_evidence, cursor);
     }
   });
   if (hit_cell.has_value()) {
-    recordScanEvidence(*hit_cell, true, scan_evidence);
+    recordScanEvidence(*hit_cell, true, scan_evidence, cursor);
   }
 }
 
