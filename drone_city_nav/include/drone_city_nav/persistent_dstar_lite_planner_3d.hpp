@@ -250,10 +250,10 @@ struct PlannerDispatch3D {
 coordinatePlannerUpdate3D(const PlannerUpdate3D& update) noexcept;
 
 // Share of the remaining update budget the feasibility-first search may
-// spend: its configured compute time, capped at half of the remainder while
-// the persistent search still has repair or expansion work. A feasibility
-// search that keeps failing on an unchanged world must not starve the
-// session that would otherwise converge on a route.
+// spend. It runs only while no route exists, so the resident session's work
+// improves a route nobody can fly: the session keeps a reserve (the configured
+// feasibility time, at most a third of the remainder) to absorb the world, and
+// the search takes the rest of the update.
 [[nodiscard]] std::chrono::steady_clock::duration
 feasibilitySearchBudget3D(std::chrono::steady_clock::duration remaining,
                           std::chrono::steady_clock::duration configured,

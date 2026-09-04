@@ -124,11 +124,13 @@ maintenance: when an expansion lowers g(u) each predecessor's rhs is tightened
 through its one edge into u, and when an expansion raises g(u) only the
 predecessors whose rhs went through u rescan their successors, so an
 expansion costs O(b) ranked edge evaluations rather than O(b^2) over the
-26-connected lattice and its adaptive levels. The feasibility-first search that
-runs while no incumbent exists is bounded the same way: its configured compute
-time is capped at half of the remaining budget whenever the persistent search
-still has repair or expansion work, so a feasibility search that keeps failing
-on an unchanged world cannot starve the session that would converge. Its
+26-connected lattice and its adaptive levels. The feasibility-first search runs
+only while no incumbent exists, so the resident session's repair and expansion
+work improves a route nobody can fly: the session keeps a reserve of the update
+(its configured feasibility time, at most a third of the remainder) to absorb
+the world, and the search takes the rest. Time to a first route is what the
+vehicle waits on at every mission waypoint, and a search bounded to half the
+update doubled that wait. Its
 labels survive occupied changes: each label carries the world epoch on which
 the chain of lattice edges that reached it was last validated, the chain is
 re-checked against the lattice edge cache only when the search next touches

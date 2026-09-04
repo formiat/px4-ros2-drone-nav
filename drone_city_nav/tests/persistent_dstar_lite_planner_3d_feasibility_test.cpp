@@ -418,18 +418,21 @@ TEST(PersistentDStarLitePlanner3DTest,
 }
 
 TEST(PersistentDStarLitePlanner3DTest,
-     TheFeasibilitySearchLeavesHalfTheBudgetToAPersistentSearchWithWork) {
+     TheFeasibilitySearchTakesTheUpdateBeyondThePersistentSessionReserve) {
   using std::chrono::milliseconds;
+  // The session keeps its configured reserve, at most a third of the update.
   EXPECT_EQ(feasibilitySearchBudget3D(milliseconds{150}, milliseconds{140}, true),
-            milliseconds{75});
+            milliseconds{100});
   EXPECT_EQ(feasibilitySearchBudget3D(milliseconds{150}, milliseconds{140}, false),
-            milliseconds{140});
+            milliseconds{150});
   EXPECT_EQ(feasibilitySearchBudget3D(milliseconds{150}, milliseconds{40}, true),
+            milliseconds{110});
+  EXPECT_EQ(feasibilitySearchBudget3D(milliseconds{60}, milliseconds{50}, true),
             milliseconds{40});
   EXPECT_EQ(feasibilitySearchBudget3D(milliseconds{-5}, milliseconds{140}, true),
             milliseconds{0});
-  EXPECT_EQ(feasibilitySearchBudget3D(milliseconds{150}, milliseconds{-1}, false),
-            milliseconds{0});
+  EXPECT_EQ(feasibilitySearchBudget3D(milliseconds{150}, milliseconds{-1}, true),
+            milliseconds{150});
 }
 
 TEST(PersistentDStarLitePlanner3DTest,

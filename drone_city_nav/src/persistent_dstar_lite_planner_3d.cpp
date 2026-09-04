@@ -78,10 +78,18 @@ feasibilitySearchBudget3D(const std::chrono::steady_clock::duration remaining,
                           const bool persistent_search_has_work) noexcept {
   const std::chrono::steady_clock::duration available =
       std::max(remaining, std::chrono::steady_clock::duration::zero());
-  const std::chrono::steady_clock::duration share =
-      persistent_search_has_work ? available / 2 : available;
-  return std::min(std::max(configured, std::chrono::steady_clock::duration::zero()),
-                  share);
+  // The search runs only while no route exists at all. Until one does, the
+  // resident session's repair and expansion work improves a route nobody can
+  // fly, so it keeps a reserve to absorb the world and the search takes the
+  // rest of the update. The configured time is that reserve, never a ceiling
+  // on the search: time to a first route is what the vehicle waits on at
+  // every mission waypoint.
+  const std::chrono::steady_clock::duration reserve =
+      persistent_search_has_work
+          ? std::min(std::max(configured, std::chrono::steady_clock::duration::zero()),
+                     available / 3)
+          : std::chrono::steady_clock::duration::zero();
+  return available - reserve;
 }
 
 PlannerDispatch3D coordinatePlannerUpdate3D(const PlannerUpdate3D& update) noexcept {
