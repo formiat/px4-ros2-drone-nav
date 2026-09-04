@@ -203,6 +203,9 @@ public:
   void resetEdgeStatistics() noexcept;
 
   void installWorld(const PersistentPlannerWorld3D& world);
+  // Rebinds only the departure oracle (launch support, proprioceptive seed)
+  // to the given world without touching the resident graph evidence.
+  void installDepartureEvidence(const PersistentPlannerWorld3D& world);
   void configureGridGeometry(const GridBounds3D& bounds);
   [[nodiscard]] bool sameGridGeometry(const GridBounds3D& bounds) const noexcept;
   [[nodiscard]] bool configured() const noexcept;
@@ -829,6 +832,9 @@ private:
   [[nodiscard]] PersistentPlannerWorldUpdate3D
   updateWorld(const PersistentPlannerWorld3D& world);
   void installWorld(const PersistentPlannerWorld3D& world);
+  // Adopts the request's departure evidence into the resident world when the
+  // occupied evidence itself is retained.
+  void installDepartureEvidence(const PersistentPlannerWorld3D& world);
   // Starts every search over: the backward session, the feasibility frontier,
   // and the execution-time refinement all restart from these endpoints.
   void initializeSearch(const PersistentPlannerRequest3D& request,

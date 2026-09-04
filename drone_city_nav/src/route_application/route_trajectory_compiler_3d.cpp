@@ -34,6 +34,8 @@ materializedResourcesAvailable(const MaterializedRoute3D& materialized) noexcept
             observed_raw_world->occupiedContentFingerprint(),
         .launch_support_contact =
             optionalAddress(materialized.world->launch_support_contact),
+        .proprioceptive_free_space_seed =
+            optionalAddress(materialized.world->proprioceptive_free_space_seed),
     };
   }
   return TrackingErrorTubeWorld3D{

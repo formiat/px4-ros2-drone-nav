@@ -55,6 +55,8 @@ FiniteExecutionPathValidation3D validateRemainingFiniteExecutionAgainstObservedW
       .static_occupancy = nullptr,
       .observed_occupancy = &current_world.occupancy(),
       .launch_support_contact = optionalAddress(current_world.launchSupportContact()),
+      .proprioceptive_free_space_seed =
+          optionalAddress(current_world.proprioceptiveFreeSpaceSeed()),
       .raw_occupancy = nullptr,
       .latest_lidar_obstacle_points = {},
       .terminal_boundary = std::nullopt,
@@ -103,6 +105,9 @@ FiniteExecutionPathValidation3D validateRemainingFiniteExecutionAgainstLatestLid
       .observed_occupancy = observed_mode ? &observed_world->occupancy() : nullptr,
       .launch_support_contact =
           observed_mode ? optionalAddress(observed_world->launchSupportContact())
+                        : nullptr,
+      .proprioceptive_free_space_seed =
+          observed_mode ? optionalAddress(observed_world->proprioceptiveFreeSpaceSeed())
                         : nullptr,
       .raw_occupancy = nullptr,
       .latest_lidar_obstacle_points =

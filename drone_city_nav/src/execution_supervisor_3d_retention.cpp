@@ -97,6 +97,10 @@ latestLidarEvidenceFresh(const ExecutionRetentionRequest3D& request,
       launch_support_owner != nullptr && launch_support_owner->has_value()
           ? std::addressof(launch_support_owner->value())
           : nullptr;
+  const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_seed =
+      observed_route && observed_world->proprioceptiveFreeSpaceSeed().has_value()
+          ? std::addressof(observed_world->proprioceptiveFreeSpaceSeed().value())
+          : nullptr;
   return FiniteExecutionPathWorld3D{
       .flight_envelope = &route.validation_policy->flightEnvelope(),
       .dynamics = &route.validation_policy->dynamics(),
@@ -105,6 +109,7 @@ latestLidarEvidenceFresh(const ExecutionRetentionRequest3D& request,
       .static_occupancy = static_route ? &route.static_world->occupancy() : nullptr,
       .observed_occupancy = observed_route ? &observed_world->occupancy() : nullptr,
       .launch_support_contact = launch_support_contact,
+      .proprioceptive_free_space_seed = proprioceptive_seed,
       .raw_occupancy = nullptr,
       .latest_lidar_obstacle_points =
           std::span<const Point3>{request.latest_lidar_evidence->hitPointsMapM()},
@@ -132,6 +137,12 @@ directValidationWorld(const ExecutionRetentionRequest3D& request,
       launch_support_owner != nullptr && launch_support_owner->has_value()
           ? std::addressof(launch_support_owner->value())
           : nullptr;
+  const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_seed =
+      observed_world &&
+              execution.observed_raw_world->proprioceptiveFreeSpaceSeed().has_value()
+          ? std::addressof(
+                execution.observed_raw_world->proprioceptiveFreeSpaceSeed().value())
+          : nullptr;
   return FiniteExecutionPathWorld3D{
       .flight_envelope = &execution.validation_policy->flightEnvelope(),
       .dynamics = &execution.validation_policy->dynamics(),
@@ -141,6 +152,7 @@ directValidationWorld(const ExecutionRetentionRequest3D& request,
       .observed_occupancy =
           observed_world ? &execution.observed_raw_world->occupancy() : nullptr,
       .launch_support_contact = launch_support_contact,
+      .proprioceptive_free_space_seed = proprioceptive_seed,
       .raw_occupancy = nullptr,
       .latest_lidar_obstacle_points =
           std::span<const Point3>{request.latest_lidar_evidence->hitPointsMapM()},

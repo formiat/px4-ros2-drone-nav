@@ -53,7 +53,8 @@ bool sameProprioceptiveFreeSpaceSeed3D(
          first.footprint.axial_samples == second.footprint.axial_samples &&
          first.footprint.sweep_step_m == second.footprint.sweep_step_m &&
          first.footprint.safe_clearance_threshold_m ==
-             second.footprint.safe_clearance_threshold_m;
+             second.footprint.safe_clearance_threshold_m &&
+         first.contact_tolerance_m == second.contact_tolerance_m;
 }
 
 bool sameLaunchSupportContact3D(const LaunchSupportContact3D& first,

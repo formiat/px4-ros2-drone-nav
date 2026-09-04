@@ -90,7 +90,9 @@ worldConfigurationIsValid(const TrackingErrorTubeWorld3D& world) noexcept {
   if (world.observed_occupancy != nullptr && world.occupancy != nullptr) {
     return false;
   }
-  if (world.observed_occupancy == nullptr && world.launch_support_contact != nullptr) {
+  if (world.observed_occupancy == nullptr &&
+      (world.launch_support_contact != nullptr ||
+       world.proprioceptive_free_space_seed != nullptr)) {
     return false;
   }
   const bool evidence_available =
@@ -116,6 +118,7 @@ worldConfigurationIsValid(const TrackingErrorTubeWorld3D& world) noexcept {
       .planar_occupancy = nullptr,
       .raw_point_cloud = {},
       .launch_support_contact = world.launch_support_contact,
+      .proprioceptive_free_space_seed = world.proprioceptive_free_space_seed,
       .footprint = footprint,
       .flight_envelope = std::nullopt,
   }};

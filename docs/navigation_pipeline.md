@@ -94,6 +94,18 @@ obstacles. The authoritative raw occupied set and the physical
 swept footprint are the only hard collision constraints; unknown space remains
 traversable and has neither a penalty nor an eligibility gate.
 
+The vehicle's own pose is proprioceptive contact evidence. Occupied evidence
+that overlaps the body at the proprioceptive seed (the current pose, widened by
+half an observed voxel) is contact rather than an obstacle: the vehicle
+demonstrably occupies that volume. Every raw validator (planner departure,
+route candidates, certification, the finite execution path, hold validation)
+suppresses such contact for body positions that come no closer to it than the
+seed, again within the half-voxel tolerance. Departing from a wall that closed
+in on the body therefore validates; any further approach is a collision, and
+evidence the body does not overlap at the seed (the rest of that wall, any
+other obstacle) is never exempt. The resident search graph never sees the
+seed, so pose refreshes do not invalidate cached edges or D* labels.
+
 The planner retains its D* Lite state across compatible world revisions. Occupied
 voxel deltas update only affected vertices, while unchanged raw occupancy reuses
 the existing search state. An occupied delta invalidates only incident cached

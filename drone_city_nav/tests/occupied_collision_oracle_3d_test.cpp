@@ -109,5 +109,50 @@ TEST(OccupiedCollisionOracle3DTest, RejectsMalformedHardCollisionInputs) {
             OccupiedCollisionStatus3D::kInvalidInput);
 }
 
+TEST(OccupiedCollisionOracle3DTest, ProprioceptiveSeedMakesTheOwnPoseAValidDeparture) {
+  // Observed evidence closed in on the vehicle: one occupied voxel overlaps the
+  // body at its pose. Without the seed the pose itself is a collision and no
+  // motion from it validates; with the seed, departing is clear and the only
+  // rejected motion is a further approach.
+  ObservedOccupancyGrid3D observed{GridBounds3D{0.0, 0.0, 0.0, 0.25, 40, 40, 40}};
+  ASSERT_TRUE(
+      observed.setState(GridIndex3D{24, 20, 20}, ObservedVoxelState::kOccupied));
+  const SweptFootprintConfig footprint{.radius_m = 0.5,
+                                       .lower_extent_m = 0.25,
+                                       .upper_extent_m = 0.25,
+                                       .sweep_step_m = 0.125};
+  const ProprioceptiveFreeSpaceSeed3D seed{
+      .position = Point3{5.6, 5.1, 5.1},
+      .body_axis = FootprintBodyAxis{},
+      .footprint = footprint,
+      .contact_tolerance_m = 0.125,
+  };
+  const OccupiedCollisionOracle3D strict{OccupiedCollisionWorld3D{
+      .observed_occupancy = &observed,
+      .footprint = footprint,
+      .flight_envelope = FlightEnvelopeConfig{0.0, 10.0},
+  }};
+  const OccupiedCollisionOracle3D seeded{OccupiedCollisionWorld3D{
+      .observed_occupancy = &observed,
+      .proprioceptive_free_space_seed = &seed,
+      .footprint = footprint,
+      .flight_envelope = FlightEnvelopeConfig{0.0, 10.0},
+  }};
+  const FootprintBodyAxis axis{};
+
+  EXPECT_EQ(strict.validatePoint(seed.position, axis).status,
+            OccupiedCollisionStatus3D::kRawCollision);
+  EXPECT_TRUE(seeded.validatePoint(seed.position, axis).clear());
+  EXPECT_EQ(
+      strict.validateSegment(seed.position, axis, Point3{5.0, 5.1, 5.1}, axis).status,
+      OccupiedCollisionStatus3D::kRawCollision);
+  EXPECT_TRUE(
+      seeded.validateSegment(seed.position, axis, Point3{5.0, 5.1, 5.1}, axis).clear());
+  const OccupiedCollisionResult3D approach =
+      seeded.validateSegment(seed.position, axis, Point3{5.9, 5.1, 5.1}, axis);
+  EXPECT_EQ(approach.status, OccupiedCollisionStatus3D::kRawCollision);
+  EXPECT_EQ(approach.source, OccupiedCollisionSource3D::kObservedOccupancy);
+}
+
 } // namespace
 } // namespace drone_city_nav

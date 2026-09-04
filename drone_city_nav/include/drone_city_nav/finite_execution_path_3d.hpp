@@ -70,6 +70,7 @@ struct FiniteExecutionPathWorld3D {
   const OccupancyGrid3D* static_occupancy{nullptr};
   const ObservedOccupancyGrid3D* observed_occupancy{nullptr};
   const LaunchSupportContact3D* launch_support_contact{nullptr};
+  const ProprioceptiveFreeSpaceSeed3D* proprioceptive_free_space_seed{nullptr};
   const OccupancyGrid2D* raw_occupancy{nullptr};
   std::span<const Point3> latest_lidar_obstacle_points;
   std::optional<FiniteExecutionPathTerminalBoundary3D> terminal_boundary;

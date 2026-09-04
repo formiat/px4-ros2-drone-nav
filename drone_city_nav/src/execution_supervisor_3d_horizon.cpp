@@ -87,6 +87,9 @@ timedExecutionPathPoints(const FiniteExecutionEvidenceView3D& view) {
   const std::optional<LaunchSupportContact3D>& launch_support =
       !static_world ? latest_raw->launchSupportContact()
                     : std::optional<LaunchSupportContact3D>{};
+  const std::optional<ProprioceptiveFreeSpaceSeed3D>& proprioceptive_seed =
+      !static_world ? latest_raw->proprioceptiveFreeSpaceSeed()
+                    : std::optional<ProprioceptiveFreeSpaceSeed3D>{};
   const FiniteExecutionPathWorld3D world{
       .flight_envelope = &view.policy->flightEnvelope(),
       .dynamics = &view.policy->dynamics(),
@@ -96,6 +99,8 @@ timedExecutionPathPoints(const FiniteExecutionEvidenceView3D& view) {
       .observed_occupancy = !static_world ? &latest_raw->occupancy() : nullptr,
       .launch_support_contact =
           launch_support ? std::addressof(*launch_support) : nullptr,
+      .proprioceptive_free_space_seed =
+          proprioceptive_seed ? std::addressof(*proprioceptive_seed) : nullptr,
       .raw_occupancy = nullptr,
       .latest_lidar_obstacle_points =
           std::span<const Point3>{latest_lidar->hitPointsMapM()},

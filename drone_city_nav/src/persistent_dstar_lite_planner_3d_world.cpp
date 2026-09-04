@@ -40,7 +40,14 @@ namespace {
 void PersistentDStarLitePlanner3DImpl::installWorld(
     const PersistentPlannerWorld3D& world) {
   world_ = world;
-  lattice_.installWorld(world);
+  lattice_.installWorld(world_);
+}
+
+void PersistentDStarLitePlanner3DImpl::installDepartureEvidence(
+    const PersistentPlannerWorld3D& world) {
+  world_.proprioceptive_free_space_seed = world.proprioceptive_free_space_seed;
+  world_.launch_support_contact = world.launch_support_contact;
+  lattice_.installDepartureEvidence(world_);
 }
 
 PersistentPlannerWorldUpdate3D
@@ -61,7 +68,8 @@ PersistentDStarLitePlanner3DImpl::updateWorld(const PersistentPlannerWorld3D& wo
     // The caller's snapshot lags behind evidence this planner has already
     // absorbed from a newer continuation. Occupied evidence is monotonic in
     // time, so the resident world stays authoritative and the request simply
-    // continues on it.
+    // continues on it with its own departure evidence.
+    installDepartureEvidence(world);
     update.accepted = true;
     update.occupied_world_unchanged = true;
     update.resident_world_retained = true;

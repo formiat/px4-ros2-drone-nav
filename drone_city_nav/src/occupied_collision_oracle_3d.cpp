@@ -53,8 +53,17 @@ withSource(OccupiedCollisionResult3D result,
   return std::ranges::all_of(points, finitePoint);
 }
 
+[[nodiscard]] bool
+validProprioceptiveSeed(const ProprioceptiveFreeSpaceSeed3D* const seed) noexcept {
+  return seed == nullptr ||
+         (finitePoint(seed->position) && validBodyAxis(seed->body_axis) &&
+          validFootprint(seed->footprint) && std::isfinite(seed->contact_tolerance_m) &&
+          seed->contact_tolerance_m >= 0.0);
+}
+
 [[nodiscard]] bool validWorldContract(const OccupiedCollisionWorld3D& world) noexcept {
   return validFootprint(world.footprint) &&
+         validProprioceptiveSeed(world.proprioceptive_free_space_seed) &&
          finiteRawPointCloud(world.raw_point_cloud) &&
          (!world.flight_envelope ||
           evaluateFlightEnvelopeAltitude(world.flight_envelope->minimum_target_z_m,
@@ -83,20 +92,21 @@ OccupiedCollisionResult3D OccupiedCollisionOracle3D::validatePoint(
             .failure_point = position};
   }
   if (world_.observed_occupancy != nullptr) {
-    const OccupiedCollisionResult3D observed =
-        withSource(classifyRawValidation(validateRawFootprintAt(
-                       *world_.observed_occupancy, position, body_axis,
-                       world_.footprint, world_.launch_support_contact)),
-                   OccupiedCollisionSource3D::kObservedOccupancy);
+    const OccupiedCollisionResult3D observed = withSource(
+        classifyRawValidation(validateRawFootprintAt(
+            *world_.observed_occupancy, position, body_axis, world_.footprint,
+            world_.launch_support_contact, world_.proprioceptive_free_space_seed)),
+        OccupiedCollisionSource3D::kObservedOccupancy);
     if (!observed.clear()) {
       return observed;
     }
   }
   if (world_.static_occupancy != nullptr) {
-    const OccupiedCollisionResult3D known = withSource(
-        classifyRawValidation(validateRawFootprintAt(*world_.static_occupancy, position,
-                                                     body_axis, world_.footprint)),
-        OccupiedCollisionSource3D::kStaticOccupancy);
+    const OccupiedCollisionResult3D known =
+        withSource(classifyRawValidation(validateRawFootprintAt(
+                       *world_.static_occupancy, position, body_axis, world_.footprint,
+                       world_.proprioceptive_free_space_seed)),
+                   OccupiedCollisionSource3D::kStaticOccupancy);
     if (!known.clear()) {
       return known;
     }
@@ -111,11 +121,11 @@ OccupiedCollisionResult3D OccupiedCollisionOracle3D::validatePoint(
     }
   }
   if (!world_.raw_point_cloud.empty()) {
-    const OccupiedCollisionResult3D point_cloud =
-        withSource(classifyRawValidation(validateRawPointCloudFootprintAt(
-                       world_.raw_point_cloud, position, body_axis, world_.footprint,
-                       world_.launch_support_contact)),
-                   OccupiedCollisionSource3D::kRawPointCloud);
+    const OccupiedCollisionResult3D point_cloud = withSource(
+        classifyRawValidation(validateRawPointCloudFootprintAt(
+            world_.raw_point_cloud, position, body_axis, world_.footprint,
+            world_.launch_support_contact, world_.proprioceptive_free_space_seed)),
+        OccupiedCollisionSource3D::kRawPointCloud);
     if (!point_cloud.clear()) {
       return point_cloud;
     }
@@ -142,18 +152,19 @@ OccupiedCollisionResult3D OccupiedCollisionOracle3D::validateSegment(
     const OccupiedCollisionResult3D observed = withSource(
         classifyRawValidation(validateRawSweptFootprint(
             *world_.observed_occupancy, first, first_body_axis, second,
-            second_body_axis, world_.footprint, world_.launch_support_contact)),
+            second_body_axis, world_.footprint, world_.launch_support_contact,
+            world_.proprioceptive_free_space_seed)),
         OccupiedCollisionSource3D::kObservedOccupancy);
     if (!observed.clear()) {
       return observed;
     }
   }
   if (world_.static_occupancy != nullptr) {
-    const OccupiedCollisionResult3D known =
-        withSource(classifyRawValidation(validateRawSweptFootprint(
-                       *world_.static_occupancy, first, first_body_axis, second,
-                       second_body_axis, world_.footprint)),
-                   OccupiedCollisionSource3D::kStaticOccupancy);
+    const OccupiedCollisionResult3D known = withSource(
+        classifyRawValidation(validateRawSweptFootprint(
+            *world_.static_occupancy, first, first_body_axis, second, second_body_axis,
+            world_.footprint, world_.proprioceptive_free_space_seed)),
+        OccupiedCollisionSource3D::kStaticOccupancy);
     if (!known.clear()) {
       return known;
     }
@@ -171,7 +182,8 @@ OccupiedCollisionResult3D OccupiedCollisionOracle3D::validateSegment(
     const OccupiedCollisionResult3D point_cloud = withSource(
         classifyRawValidation(validateRawPointCloudSweptFootprint(
             world_.raw_point_cloud, first, first_body_axis, second, second_body_axis,
-            world_.footprint, world_.launch_support_contact)),
+            world_.footprint, world_.launch_support_contact,
+            world_.proprioceptive_free_space_seed)),
         OccupiedCollisionSource3D::kRawPointCloud);
     if (!point_cloud.clear()) {
       return point_cloud;

@@ -16,13 +16,15 @@ namespace {
 [[nodiscard]] OccupiedCollisionResult3D validateObservedPoint(
     const ObservedOccupancyGrid3D& occupancy, const Point3& position,
     const FootprintBodyAxis& body_axis, const SweptFootprintConfig& footprint,
-    const LaunchSupportContact3D* const launch_support_contact) noexcept {
+    const LaunchSupportContact3D* const launch_support_contact,
+    const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_seed = nullptr) noexcept {
   const OccupiedCollisionOracle3D oracle{OccupiedCollisionWorld3D{
       .observed_occupancy = std::addressof(occupancy),
       .static_occupancy = nullptr,
       .planar_occupancy = nullptr,
       .raw_point_cloud = {},
       .launch_support_contact = launch_support_contact,
+      .proprioceptive_free_space_seed = proprioceptive_seed,
       .footprint = footprint,
       .flight_envelope = std::nullopt,
   }};
@@ -60,6 +62,7 @@ ProductionMppiNode::prepareObservedExecutionEvidence3D(
                 .position = position,
                 .body_axis = *current_body_axis,
                 .footprint = config_.world.physical_footprint,
+                .contact_tolerance_m = raw_world.proprioceptiveContactToleranceM(),
             }}
           : std::nullopt;
   if (!launch_support_seed_ && free_space_seed.has_value()) {
@@ -156,11 +159,20 @@ ProductionMppiNode::prepareObservedExecutionEvidence3D(
   }
   const LaunchSupportContact3D* const launch_support_contact =
       launch_support_contact_ ? &*launch_support_contact_ : nullptr;
+  // The strict status ignores proprioceptive contact; the seeded status is
+  // what every raw validator sees for the vehicle's own pose.
   const std::optional<OccupiedCollisionResult3D> current_footprint =
       current_body_axis.has_value() && free_space_seed.has_value()
           ? std::optional<OccupiedCollisionResult3D>{validateObservedPoint(
                 *occupancy, position, *current_body_axis,
                 config_.world.physical_footprint, launch_support_contact)}
+          : std::nullopt;
+  const std::optional<OccupiedCollisionResult3D> seeded_footprint =
+      current_footprint.has_value()
+          ? std::optional<OccupiedCollisionResult3D>{validateObservedPoint(
+                *occupancy, position, *current_body_axis,
+                config_.world.physical_footprint, launch_support_contact,
+                std::addressof(*free_space_seed))}
           : std::nullopt;
   double support_axial_departure_m{0.0};
   double support_lateral_departure_m{0.0};
@@ -195,16 +207,19 @@ ProductionMppiNode::prepareObservedExecutionEvidence3D(
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "OBSERVED_FOOTPRINT_READINESS revision=%" PRIu64
-        " status=%s position=(%.3f,%.3f,%.3f) failure_point=(%.3f,%.3f,%.3f)"
+        " status=%s strict_status=%s contact_tolerance_m=%.3f"
+        " position=(%.3f,%.3f,%.3f) failure_point=(%.3f,%.3f,%.3f)"
         " launch_support_active=%s support_failure_cell=%s"
         " support_axial_departure_m=%.3f support_lateral_departure_m=%.3f"
         " support_maximum_lateral_departure_m=%.3f"
         " support_minimum_axial_departure_m=%.3f"
         " support_maximum_axial_settling_m=%.3f",
         raw_world.version().revision,
-        occupiedCollisionStatus3DName(current_footprint->status), position.x,
-        position.y, position.z, current_footprint->failure_point.x,
-        current_footprint->failure_point.y, current_footprint->failure_point.z,
+        occupiedCollisionStatus3DName(seeded_footprint->status),
+        occupiedCollisionStatus3DName(current_footprint->status),
+        free_space_seed->contact_tolerance_m, position.x, position.y, position.z,
+        current_footprint->failure_point.x, current_footprint->failure_point.y,
+        current_footprint->failure_point.z,
         launch_support_contact != nullptr ? "true" : "false",
         failure_is_launch_support_cell ? "true" : "false", support_axial_departure_m,
         support_lateral_departure_m,

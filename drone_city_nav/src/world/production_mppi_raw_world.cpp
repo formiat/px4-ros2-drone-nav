@@ -1,5 +1,6 @@
 #include "production_mppi_raw_world.hpp"
 
+#include <cmath>
 #include <memory>
 #include <utility>
 
@@ -104,6 +105,14 @@ bool ProductionMppiRawWorld3D::valid() const noexcept {
   return authoritative_owner_ != nullptr && authoritative_owner_->valid() &&
          !authoritative_owner_->proprioceptiveFreeSpaceSeed().has_value() &&
          !authoritative_owner_->launchSupportContact().has_value() && metadata_.valid();
+}
+
+double ProductionMppiRawWorld3D::proprioceptiveContactToleranceM() const noexcept {
+  if (!valid()) {
+    return 0.0;
+  }
+  const double resolution_m = occupancy().bounds().resolution_m;
+  return std::isfinite(resolution_m) && resolution_m > 0.0 ? 0.5 * resolution_m : 0.0;
 }
 
 } // namespace drone_city_nav

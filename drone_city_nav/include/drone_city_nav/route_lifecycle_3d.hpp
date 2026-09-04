@@ -147,6 +147,7 @@ struct RouteActivationObservation3D {
   std::uint64_t latest_raw_revision{0U};
   SweptFootprintConfig footprint{};
   const LaunchSupportContact3D* launch_support_contact{nullptr};
+  const ProprioceptiveFreeSpaceSeed3D* proprioceptive_free_space_seed{nullptr};
   std::optional<FlightEnvelopeConfig> flight_envelope{};
   bool raw_validation_required{false};
 };
@@ -188,6 +189,7 @@ struct RouteExecutionObservation3D {
   std::uint64_t latest_raw_revision{0U};
   SweptFootprintConfig footprint{};
   const LaunchSupportContact3D* launch_support_contact{nullptr};
+  const ProprioceptiveFreeSpaceSeed3D* proprioceptive_free_space_seed{nullptr};
   std::optional<FlightEnvelopeConfig> flight_envelope{};
 };
 

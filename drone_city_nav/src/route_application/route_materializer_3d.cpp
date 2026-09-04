@@ -253,6 +253,10 @@ RouteMaterializer3D::materialize(RouteMaterializationRequest3D request) const {
           transaction.world->launch_support_contact
               ? std::addressof(*transaction.world->launch_support_contact)
               : nullptr,
+      .proprioceptive_free_space_seed =
+          transaction.world->proprioceptive_free_space_seed
+              ? std::addressof(*transaction.world->proprioceptive_free_space_seed)
+              : nullptr,
       .footprint = config_.physical_footprint,
       .flight_envelope = config_.flight_envelope,
   };

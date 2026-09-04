@@ -41,6 +41,7 @@ struct TrackingErrorTubeWorld3D {
   // preserves this identity and therefore preserves the executable profile.
   std::uint64_t occupied_content_fingerprint{0U};
   const LaunchSupportContact3D* launch_support_contact{nullptr};
+  const ProprioceptiveFreeSpaceSeed3D* proprioceptive_free_space_seed{nullptr};
 };
 
 struct TrackingErrorTubeProfile3D {

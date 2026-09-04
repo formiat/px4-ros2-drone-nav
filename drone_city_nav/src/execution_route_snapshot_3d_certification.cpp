@@ -47,6 +47,7 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
   RouteActivationObservation3D owned_observation = activation.observation;
   owned_observation.flight_envelope = activation.validation_policy->flightEnvelope();
   const LaunchSupportContact3D* observed_launch_support{nullptr};
+  const ProprioceptiveFreeSpaceSeed3D* observed_proprioceptive_seed{nullptr};
   if (requires_observed_raw_certificate) {
     if (activation.static_world != nullptr ||
         activation.observed_raw_world == nullptr ||
@@ -68,6 +69,12 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
     observed_launch_support =
         launch_support.has_value() ? std::addressof(*launch_support) : nullptr;
     owned_observation.launch_support_contact = observed_launch_support;
+    const std::optional<ProprioceptiveFreeSpaceSeed3D>& proprioceptive_seed =
+        activation.observed_raw_world->proprioceptiveFreeSpaceSeed();
+    observed_proprioceptive_seed = proprioceptive_seed.has_value()
+                                       ? std::addressof(*proprioceptive_seed)
+                                       : nullptr;
+    owned_observation.proprioceptive_free_space_seed = observed_proprioceptive_seed;
   } else {
     if (activation.observed_raw_world != nullptr ||
         activation.static_world == nullptr || !activation.static_world->valid() ||
@@ -79,6 +86,7 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
     owned_observation.latest_raw_producer_instance_id = 0U;
     owned_observation.latest_raw_revision = 0U;
     owned_observation.launch_support_contact = nullptr;
+    owned_observation.proprioceptive_free_space_seed = nullptr;
   }
   const RouteEndpointSemantics3D planned_endpoint_semantics =
       routeEndpointSemantics3D(activation.proposal.reaches_mission_goal,
@@ -130,6 +138,7 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
         .occupied_content_fingerprint =
             activation.observed_raw_world->occupiedContentFingerprint(),
         .launch_support_contact = observed_launch_support,
+        .proprioceptive_free_space_seed = observed_proprioceptive_seed,
     };
   } else {
     tracking_tube_world = TrackingErrorTubeWorld3D{

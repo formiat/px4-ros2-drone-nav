@@ -168,6 +168,7 @@ bool validateTrackingTubeHandoffClearance(
         .planar_occupancy = world.raw_occupancy,
         .raw_point_cloud = world.latest_lidar_obstacle_points,
         .launch_support_contact = world.launch_support_contact,
+        .proprioceptive_free_space_seed = world.proprioceptive_free_space_seed,
         .footprint = inflated,
         .flight_envelope = *world.flight_envelope,
     }};

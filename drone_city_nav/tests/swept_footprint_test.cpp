@@ -741,5 +741,118 @@ TEST(SweptFootprintTest, RawPointCloudFootprintUsesRequestedBodyAxis) {
             SweptFootprintStatus::kRawCollision);
 }
 
+TEST(SweptFootprintTest, ProprioceptiveSeedExemptsContactOnlyWhileNotApproaching) {
+  // A wall occupies x >= 3.0. The body (radius 0.5) at x = 2.6 overlaps the
+  // first wall voxels: strictly a collision, but the vehicle is demonstrably
+  // there. With the seed, standing still, departing, and shifting within the
+  // voxels already in contact are valid; approaching beyond the half-voxel
+  // tolerance is not, and wall voxels the body does not overlap at the seed
+  // (sliding a body length along the wall, or another obstacle) are never
+  // exempt.
+  const GridBounds3D bounds{0.0, 0.0, 0.0, 0.25, 20, 20, 20};
+  ObservedOccupancyGrid3D occupancy{bounds};
+  for (int z = 0; z < bounds.depth_cells; ++z) {
+    for (int y = 0; y < bounds.height_cells; ++y) {
+      for (int x = 12; x < bounds.width_cells; ++x) {
+        static_cast<void>(
+            occupancy.setState(GridIndex3D{x, y, z}, ObservedVoxelState::kOccupied));
+      }
+    }
+  }
+  static_cast<void>(
+      occupancy.setState(GridIndex3D{10, 2, 8}, ObservedVoxelState::kOccupied));
+  const SweptFootprintConfig footprint{.radius_m = 0.5,
+                                       .lower_extent_m = 0.25,
+                                       .upper_extent_m = 0.25,
+                                       .sweep_step_m = 0.125};
+  const ProprioceptiveFreeSpaceSeed3D seed{
+      .position = Point3{2.6, 2.0, 2.0},
+      .body_axis = FootprintBodyAxis{},
+      .footprint = footprint,
+      .contact_tolerance_m = 0.5 * bounds.resolution_m,
+  };
+  const FootprintBodyAxis axis{};
+
+  EXPECT_EQ(validateRawFootprintAt(occupancy, seed.position, axis, footprint).status,
+            SweptFootprintStatus::kRawCollision);
+  EXPECT_TRUE(
+      validateRawFootprintAt(occupancy, seed.position, axis, footprint, nullptr, &seed)
+          .accepted());
+  EXPECT_TRUE(validateRawSweptFootprint(occupancy, seed.position, axis,
+                                        Point3{2.0, 2.0, 2.0}, axis, footprint, nullptr,
+                                        &seed)
+                  .accepted());
+  EXPECT_TRUE(validateRawSweptFootprint(occupancy, seed.position, axis,
+                                        Point3{2.6, 2.1, 2.0}, axis, footprint, nullptr,
+                                        &seed)
+                  .accepted());
+  EXPECT_EQ(validateRawSweptFootprint(occupancy, seed.position, axis,
+                                      Point3{2.6, 3.0, 2.0}, axis, footprint, nullptr,
+                                      &seed)
+                .status,
+            SweptFootprintStatus::kRawCollision);
+  EXPECT_TRUE(validateRawSweptFootprint(occupancy, seed.position, axis,
+                                        Point3{2.7, 2.0, 2.0}, axis, footprint, nullptr,
+                                        &seed)
+                  .accepted());
+  EXPECT_EQ(validateRawSweptFootprint(occupancy, seed.position, axis,
+                                      Point3{2.8, 2.0, 2.0}, axis, footprint, nullptr,
+                                      &seed)
+                .status,
+            SweptFootprintStatus::kRawCollision);
+  EXPECT_EQ(validateRawSweptFootprint(occupancy, seed.position, axis,
+                                      Point3{2.6, 1.2, 2.0}, axis, footprint, nullptr,
+                                      &seed)
+                .status,
+            SweptFootprintStatus::kRawCollision);
+  const ProprioceptiveFreeSpaceSeed3D malformed_seed{
+      .position = seed.position,
+      .body_axis = seed.body_axis,
+      .footprint = footprint,
+      .contact_tolerance_m = -1.0,
+  };
+  EXPECT_EQ(validateRawFootprintAt(occupancy, seed.position, axis, footprint, nullptr,
+                                   &malformed_seed)
+                .status,
+            SweptFootprintStatus::kInvalidInput);
+}
+
+TEST(SweptFootprintTest,
+     ProprioceptiveSeedExemptsRawPointContactOnlyWhileNotApproaching) {
+  const std::vector<Point3> hits{Point3{3.05, 2.0, 2.0}, Point3{2.6, 0.9, 2.0}};
+  const SweptFootprintConfig footprint{.radius_m = 0.5,
+                                       .lower_extent_m = 0.25,
+                                       .upper_extent_m = 0.25,
+                                       .sweep_step_m = 0.125};
+  const ProprioceptiveFreeSpaceSeed3D seed{
+      .position = Point3{2.6, 2.0, 2.0},
+      .body_axis = FootprintBodyAxis{},
+      .footprint = footprint,
+      .contact_tolerance_m = 0.125,
+  };
+  const FootprintBodyAxis axis{};
+
+  EXPECT_EQ(
+      validateRawPointCloudFootprintAt(hits, seed.position, axis, footprint).status,
+      SweptFootprintStatus::kRawCollision);
+  EXPECT_TRUE(validateRawPointCloudFootprintAt(hits, seed.position, axis, footprint,
+                                               nullptr, &seed)
+                  .accepted());
+  EXPECT_TRUE(validateRawPointCloudSweptFootprint(hits, seed.position, axis,
+                                                  Point3{2.0, 2.0, 2.0}, axis,
+                                                  footprint, nullptr, &seed)
+                  .accepted());
+  EXPECT_EQ(validateRawPointCloudSweptFootprint(hits, seed.position, axis,
+                                                Point3{2.9, 2.0, 2.0}, axis, footprint,
+                                                nullptr, &seed)
+                .status,
+            SweptFootprintStatus::kRawCollision);
+  EXPECT_EQ(validateRawPointCloudSweptFootprint(hits, seed.position, axis,
+                                                Point3{2.6, 1.3, 2.0}, axis, footprint,
+                                                nullptr, &seed)
+                .status,
+            SweptFootprintStatus::kRawCollision);
+}
+
 } // namespace
 } // namespace drone_city_nav

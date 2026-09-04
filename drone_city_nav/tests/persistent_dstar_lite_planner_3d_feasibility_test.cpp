@@ -432,5 +432,45 @@ TEST(PersistentDStarLitePlanner3DTest,
             milliseconds{0});
 }
 
+TEST(PersistentDStarLitePlanner3DTest,
+     AStartInContactWithObservedEvidenceStillAnchorsTheSearch) {
+  // Observed evidence closed in on the vehicle's own cell. Without the
+  // proprioceptive seed no departure validates and the planner reports the
+  // start unavailable; with it the departure to a free anchor is contact
+  // evidence and the search proceeds from the vehicle's true pose.
+  auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 1.0, 18, 18, 8});
+  ASSERT_TRUE(occupancy->setState(GridIndex3D{1, 1, 1}, ObservedVoxelState::kOccupied));
+  PersistentPlannerConfig3D config = testConfig();
+  PersistentDStarLitePlanner3D planner{config};
+  const Point3 start{1.5, 1.5, 1.5};
+  const Point3 goal{16.5, 16.5, 6.5};
+
+  const PlannerUpdate3D unseeded =
+      planner.plan(request(start, goal, world(occupancy, 1U)));
+  EXPECT_EQ(unseeded.input_status, PlannerInputStatus3D::kStartUnavailable);
+
+  PersistentPlannerWorld3D seeded_world = world(occupancy, 1U);
+  seeded_world.proprioceptive_free_space_seed = ProprioceptiveFreeSpaceSeed3D{
+      .position = start,
+      .body_axis = FootprintBodyAxis{},
+      .footprint = config.physical_footprint,
+      .contact_tolerance_m = 0.5,
+  };
+  const PlannerUpdate3D seeded =
+      planner.plan(request(start, goal, std::move(seeded_world)));
+  ASSERT_EQ(seeded.input_status, PlannerInputStatus3D::kAccepted);
+  EXPECT_NE(seeded.progress, SearchProgress3D::kInvalidated);
+  ASSERT_TRUE(seeded.improved_incumbent.has_value());
+  const std::vector<Point3>& path = candidate(seeded).points;
+  ASSERT_GE(path.size(), 2U);
+  EXPECT_NEAR(path.front().x, start.x, 1.0e-9);
+  EXPECT_NEAR(path.front().y, start.y, 1.0e-9);
+  EXPECT_NEAR(path.front().z, start.z, 1.0e-9);
+  EXPECT_NEAR(path.back().x, goal.x, 1.0e-9);
+  EXPECT_NEAR(path.back().y, goal.y, 1.0e-9);
+  EXPECT_NEAR(path.back().z, goal.z, 1.0e-9);
+}
+
 } // namespace
 } // namespace drone_city_nav

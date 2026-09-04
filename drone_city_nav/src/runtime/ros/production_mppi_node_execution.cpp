@@ -143,6 +143,10 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
                                                       exact_previous_control.ay,
                                                       exact_previous_control.az}),
       .footprint = config_.world.physical_footprint,
+      .contact_tolerance_m =
+          latest_raw_world_3d != nullptr
+              ? latest_raw_world_3d->proprioceptiveContactToleranceM()
+              : 0.0,
   };
   std::shared_ptr<const VersionedObservedRawWorld3D> direct_observed_world;
   std::shared_ptr<const VersionedStaticWorld3D> direct_static_world;
@@ -240,13 +244,18 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
               ? std::nullopt
               : finiteRouteTerminalBoundary(input, finite_boundary_endpoint_semantics);
   const LaunchSupportContact3D* launch_support_contact_owner{nullptr};
+  const ProprioceptiveFreeSpaceSeed3D* proprioceptive_seed_owner{nullptr};
   if (exact_snapshot_world && direct_observed_world != nullptr) {
     launch_support_contact_owner =
         optionalAddress(direct_observed_world->launchSupportContact());
+    proprioceptive_seed_owner =
+        optionalAddress(direct_observed_world->proprioceptiveFreeSpaceSeed());
   } else if (exact_snapshot_world && selected_snapshot_route != nullptr &&
              selected_snapshot_route->observed_raw_world != nullptr) {
     launch_support_contact_owner = optionalAddress(
         selected_snapshot_route->observed_raw_world->launchSupportContact());
+    proprioceptive_seed_owner = optionalAddress(
+        selected_snapshot_route->observed_raw_world->proprioceptiveFreeSpaceSeed());
   }
   const FlightEnvelopeConfig* const execution_flight_envelope =
       exact_snapshot_world ? &selected_policy->flightEnvelope() : nullptr;
@@ -264,6 +273,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       .static_occupancy = static_occupancy,
       .observed_occupancy = observed_occupancy,
       .launch_support_contact = launch_support_contact_owner,
+      .proprioceptive_free_space_seed = proprioceptive_seed_owner,
       .raw_occupancy = nullptr,
       .latest_lidar_obstacle_points = latest_lidar_obstacle_points,
       .terminal_boundary = route_terminal_boundary,

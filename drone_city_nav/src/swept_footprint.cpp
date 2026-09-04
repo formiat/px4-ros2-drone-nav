@@ -414,22 +414,101 @@ pointsInsideExtent(const std::span<const Point3> points,
   return radial_squared <= radius * radius;
 }
 
+[[nodiscard]] double
+seedContactToleranceM(const ProprioceptiveFreeSpaceSeed3D& seed) noexcept {
+  return std::isfinite(seed.contact_tolerance_m)
+             ? std::max(0.0, seed.contact_tolerance_m)
+             : 0.0;
+}
+
+[[nodiscard]] SweptFootprintConfig
+contactWidenedFootprint(const SweptFootprintConfig& footprint,
+                        const double tolerance_m) noexcept {
+  SweptFootprintConfig widened = footprint;
+  widened.radius_m = std::max(0.0, footprint.radius_m) + tolerance_m;
+  widened.lower_extent_m = std::max(0.0, footprint.lower_extent_m) + tolerance_m;
+  widened.upper_extent_m = std::max(0.0, footprint.upper_extent_m) + tolerance_m;
+  return widened;
+}
+
+// Contact evidence accepted by one validation: the anchored launch support and
+// the proprioceptive seed. Every listed body position must be exempt for the
+// evidence to stay suppressed, so a sweep interval lists its begin, midpoint,
+// and end and never exempts evidence its interior may approach.
+struct ContactExemption3D {
+  const LaunchSupportContact3D* launch_support{nullptr};
+  const ProprioceptiveFreeSpaceSeed3D* seed{nullptr};
+  std::span<const Point3> positions;
+
+  [[nodiscard]] bool exemptsBox(const Point3& box_minimum,
+                                const Point3& box_maximum) const noexcept {
+    if (positions.empty()) {
+      return false;
+    }
+    if (launch_support != nullptr &&
+        launchSupportContactContainsCell3D(*launch_support, box_minimum, box_maximum) &&
+        std::ranges::all_of(positions, [&](const Point3& position) {
+          return launchSupportEnvelopeContains3D(*launch_support, position);
+        })) {
+      return true;
+    }
+    return seed != nullptr &&
+           std::ranges::all_of(positions, [&](const Point3& position) {
+             return proprioceptiveSeedExemptsBox(*seed, position, box_minimum,
+                                                 box_maximum);
+           });
+  }
+
+  [[nodiscard]] bool exemptsPoint(const Point3& obstacle_point) const noexcept {
+    if (positions.empty()) {
+      return false;
+    }
+    if (launch_support != nullptr &&
+        std::ranges::all_of(positions, [&](const Point3& position) {
+          return launchSupportAllowsPoint(*launch_support, obstacle_point, position);
+        })) {
+      return true;
+    }
+    return seed != nullptr &&
+           std::ranges::all_of(positions, [&](const Point3& position) {
+             return proprioceptiveSeedExemptsPoint(*seed, position, obstacle_point);
+           });
+  }
+};
+
+[[nodiscard]] ContactExemption3D
+poseExemption(const LaunchSupportContact3D* const launch_support,
+              const ProprioceptiveFreeSpaceSeed3D* const seed,
+              const Point3& position) noexcept {
+  return ContactExemption3D{.launch_support = launch_support,
+                            .seed = seed,
+                            .positions = std::span<const Point3>{&position, 1U}};
+}
+
 // Exact per-pose validation. Callers that already proved the surrounding
 // chunks empty for a whole sweep skip the per-pose broad phase.
 template<typename Occupancy>
-[[nodiscard]] SweptFootprintResult validateRawFootprintAt3DExact(
-    const Occupancy& occupancy, const Point3& position,
-    const FootprintBodyAxis& requested_body_axis, const SweptFootprintConfig& config,
-    const LaunchSupportContact3D* const launch_support_contact = nullptr) noexcept {
+[[nodiscard]] SweptFootprintResult
+validateRawFootprintAt3DExact(const Occupancy& occupancy, const Point3& position,
+                              const FootprintBodyAxis& requested_body_axis,
+                              const SweptFootprintConfig& config,
+                              const ContactExemption3D& exemption) noexcept {
   const double radius_m = std::max(0.0, config.radius_m);
   if (!(radius_m > 0.0)) {
     const std::optional<GridIndex3D> cell = occupancy.worldToCell(position);
-    if (!cell.has_value()) {
+    if (!cell.has_value() || !occupancy.isOccupied(*cell)) {
       return validRawFootprint();
     }
-    return occupancy.isOccupied(*cell)
-               ? makeStatusResult(SweptFootprintStatus::kRawCollision, position)
-               : validRawFootprint();
+    const GridBounds3D& bounds = occupancy.bounds();
+    const Point3 cell_minimum{bounds.origin_x + cell->x * bounds.resolution_m,
+                              bounds.origin_y + cell->y * bounds.resolution_m,
+                              bounds.origin_z + cell->z * bounds.resolution_m};
+    const Point3 cell_maximum{cell_minimum.x + bounds.resolution_m,
+                              cell_minimum.y + bounds.resolution_m,
+                              cell_minimum.z + bounds.resolution_m};
+    return exemption.exemptsBox(cell_minimum, cell_maximum)
+               ? validRawFootprint()
+               : makeStatusResult(SweptFootprintStatus::kRawCollision, position);
   }
 
   const FootprintBodyAxis axis = normalized(requested_body_axis);
@@ -509,12 +588,7 @@ template<typename Occupancy>
                                          radius_squared)) {
           continue;
         }
-        const bool launch_support_cell_allowed =
-            launch_support_contact != nullptr &&
-            launchSupportEnvelopeContains3D(*launch_support_contact, position) &&
-            launchSupportContactContainsCell3D(*launch_support_contact, cell_minimum,
-                                               cell_maximum);
-        if (launch_support_cell_allowed) {
+        if (exemption.exemptsBox(cell_minimum, cell_maximum)) {
           continue;
         }
         return makeStatusResult(SweptFootprintStatus::kRawCollision,
@@ -529,14 +603,38 @@ template<typename Occupancy>
 [[nodiscard]] SweptFootprintResult validateRawFootprintAt3D(
     const Occupancy& occupancy, const Point3& position,
     const FootprintBodyAxis& requested_body_axis, const SweptFootprintConfig& config,
-    const LaunchSupportContact3D* const launch_support_contact = nullptr) noexcept {
+    const LaunchSupportContact3D* const launch_support_contact,
+    const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_seed) noexcept {
   if (config.radius_m > 0.0 &&
       !extentMayContainOccupied(
           occupancy, bodyExtent(position, normalized(requested_body_axis), config))) {
     return validRawFootprint();
   }
-  return validateRawFootprintAt3DExact(occupancy, position, requested_body_axis, config,
-                                       launch_support_contact);
+  return validateRawFootprintAt3DExact(
+      occupancy, position, requested_body_axis, config,
+      poseExemption(launch_support_contact, proprioceptive_seed, position));
+}
+
+// Body positions whose exemption must hold for one sweep interval: the launch
+// envelope is convex and the seed's admissible region is bounded away from
+// the contact, so begin, midpoint, and end together cover the interval up to
+// the sweep step the inflated midpoint footprint already absorbs.
+struct SweepIntervalPositions3D {
+  std::array<Point3, 3U> positions{};
+
+  [[nodiscard]] std::span<const Point3> span() const noexcept {
+    return std::span<const Point3>{positions};
+  }
+};
+
+[[nodiscard]] SweepIntervalPositions3D
+sweepIntervalPositions(const swept_footprint_detail::ConservativeSweepCover3D& cover,
+                       const double begin_ratio, const double midpoint_ratio,
+                       const double end_ratio) noexcept {
+  return SweepIntervalPositions3D{
+      .positions = {interpolateSweepPosition(cover, begin_ratio),
+                    interpolateSweepPosition(cover, midpoint_ratio),
+                    interpolateSweepPosition(cover, end_ratio)}};
 }
 
 template<typename Occupancy>
@@ -544,7 +642,8 @@ template<typename Occupancy>
     const Occupancy& occupancy, const Point3& first,
     const FootprintBodyAxis& first_body_axis, const Point3& second,
     const FootprintBodyAxis& second_body_axis, const SweptFootprintConfig& config,
-    const LaunchSupportContact3D* const launch_support_contact = nullptr) noexcept {
+    const LaunchSupportContact3D* const launch_support_contact,
+    const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_seed) noexcept {
   const auto cover = makeConservativeSweepCover3D(first, first_body_axis, second,
                                                   second_body_axis, config);
   if (!cover.valid()) {
@@ -554,7 +653,8 @@ template<typename Occupancy>
     return validRawFootprint();
   }
   const SweptFootprintResult first_result = validateRawFootprintAt3DExact(
-      occupancy, cover.first, cover.first_axis, config, launch_support_contact);
+      occupancy, cover.first, cover.first_axis, config,
+      poseExemption(launch_support_contact, proprioceptive_seed, cover.first));
   if (!first_result.accepted()) {
     return first_result;
   }
@@ -567,31 +667,54 @@ template<typename Occupancy>
     const FootprintBodyAxis midpoint_axis = interpolateSweepAxis(cover, ratio);
     const SweptFootprintConfig inflated_config =
         inflatedSweepFootprint(config, cover, midpoint_axis);
-    const LaunchSupportContact3D* interval_launch_support = launch_support_contact;
-    if (launch_support_contact != nullptr &&
-        (!launchSupportEnvelopeContains3D(
-             *launch_support_contact,
-             interpolateSweepPosition(cover, interval_begin_ratio)) ||
-         !launchSupportEnvelopeContains3D(
-             *launch_support_contact,
-             interpolateSweepPosition(cover, interval_end_ratio)))) {
-      // The launch envelope is convex. Both interval endpoints must be inside
-      // before its contact cells can be exempted for the complete interval.
-      interval_launch_support = nullptr;
-    }
+    const SweepIntervalPositions3D interval_positions =
+        sweepIntervalPositions(cover, interval_begin_ratio, ratio, interval_end_ratio);
     const SweptFootprintResult result = validateRawFootprintAt3DExact(
-        occupancy, interpolateSweepPosition(cover, ratio), midpoint_axis,
-        inflated_config, interval_launch_support);
+        occupancy, interval_positions.positions[1U], midpoint_axis, inflated_config,
+        ContactExemption3D{.launch_support = launch_support_contact,
+                           .seed = proprioceptive_seed,
+                           .positions = interval_positions.span()});
     if (!result.accepted()) {
       return result;
     }
   }
   const SweptFootprintResult second_result = validateRawFootprintAt3DExact(
-      occupancy, cover.second, cover.second_axis, config, launch_support_contact);
+      occupancy, cover.second, cover.second_axis, config,
+      poseExemption(launch_support_contact, proprioceptive_seed, cover.second));
   if (!second_result.accepted()) {
     return second_result;
   }
   return validRawFootprint();
+}
+
+[[nodiscard]] SweptFootprintResult validateRawPointCloudFootprintAt3D(
+    const std::span<const Point3> obstacle_points, const Point3& position,
+    const FootprintBodyAxis& body_axis, const SweptFootprintConfig& config,
+    const ContactExemption3D& exemption) noexcept {
+  for (const Point3& point : obstacle_points) {
+    if (pointIntersectsBody(point, position, body_axis, config) &&
+        !exemption.exemptsPoint(point)) {
+      return makeStatusResult(SweptFootprintStatus::kRawCollision, point);
+    }
+  }
+  return validRawFootprint();
+}
+
+[[nodiscard]] bool
+validProprioceptiveSeed(const ProprioceptiveFreeSpaceSeed3D* const seed) noexcept {
+  if (seed == nullptr) {
+    return true;
+  }
+  const double axis_norm =
+      std::hypot(std::hypot(seed->body_axis.x, seed->body_axis.y), seed->body_axis.z);
+  return swept_footprint_detail::finitePoint(seed->position) &&
+         std::isfinite(axis_norm) && axis_norm > 1.0e-9 &&
+         std::isfinite(seed->footprint.radius_m) && seed->footprint.radius_m >= 0.0 &&
+         std::isfinite(seed->footprint.lower_extent_m) &&
+         seed->footprint.lower_extent_m >= 0.0 &&
+         std::isfinite(seed->footprint.upper_extent_m) &&
+         seed->footprint.upper_extent_m >= 0.0 &&
+         std::isfinite(seed->contact_tolerance_m) && seed->contact_tolerance_m >= 0.0;
 }
 
 } // namespace
@@ -603,46 +726,99 @@ bool proprioceptiveSeedAllowsSupportContact(
                                   occupancy_resolution_m);
 }
 
-SweptFootprintResult
-validateRawFootprintAt(const OccupancyGrid3D& occupancy, const Point3& position,
-                       const FootprintBodyAxis& requested_body_axis,
-                       const SweptFootprintConfig& config) noexcept {
-  return validateRawFootprintAt3D(occupancy, position, requested_body_axis, config);
+bool proprioceptiveSeedExemptsBox(const ProprioceptiveFreeSpaceSeed3D& seed,
+                                  const Point3& candidate_position,
+                                  const Point3& box_minimum,
+                                  const Point3& box_maximum) noexcept {
+  const double tolerance_m = seedContactToleranceM(seed);
+  const SweptFootprintConfig contact_body =
+      contactWidenedFootprint(seed.footprint, tolerance_m);
+  if (!boxIntersectsFiniteCylinder(
+          seed.position, normalized(seed.body_axis), box_minimum, box_maximum,
+          contact_body.lower_extent_m, contact_body.upper_extent_m,
+          contact_body.radius_m * contact_body.radius_m)) {
+    return false;
+  }
+  constexpr double kApproachToleranceM{1.0e-9};
+  const double seed_distance_m =
+      std::sqrt(squaredDistanceToBox(seed.position, box_minimum, box_maximum));
+  const double candidate_distance_m =
+      std::sqrt(squaredDistanceToBox(candidate_position, box_minimum, box_maximum));
+  return candidate_distance_m + tolerance_m + kApproachToleranceM >= seed_distance_m;
 }
 
-SweptFootprintResult
-validateRawSweptFootprint(const OccupancyGrid3D& occupancy, const Point3& first,
-                          const FootprintBodyAxis& first_body_axis,
-                          const Point3& second,
-                          const FootprintBodyAxis& second_body_axis,
-                          const SweptFootprintConfig& config) noexcept {
+bool proprioceptiveSeedExemptsPoint(const ProprioceptiveFreeSpaceSeed3D& seed,
+                                    const Point3& candidate_position,
+                                    const Point3& obstacle_point) noexcept {
+  const double tolerance_m = seedContactToleranceM(seed);
+  if (!pointIntersectsBody(obstacle_point, seed.position, seed.body_axis,
+                           contactWidenedFootprint(seed.footprint, tolerance_m))) {
+    return false;
+  }
+  constexpr double kApproachToleranceM{1.0e-9};
+  const double seed_distance_m =
+      std::hypot(std::hypot(obstacle_point.x - seed.position.x,
+                            obstacle_point.y - seed.position.y),
+                 obstacle_point.z - seed.position.z);
+  const double candidate_distance_m =
+      std::hypot(std::hypot(obstacle_point.x - candidate_position.x,
+                            obstacle_point.y - candidate_position.y),
+                 obstacle_point.z - candidate_position.z);
+  return candidate_distance_m + tolerance_m + kApproachToleranceM >= seed_distance_m;
+}
+
+SweptFootprintResult validateRawFootprintAt(
+    const OccupancyGrid3D& occupancy, const Point3& position,
+    const FootprintBodyAxis& requested_body_axis, const SweptFootprintConfig& config,
+    const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_seed) noexcept {
+  if (!validProprioceptiveSeed(proprioceptive_seed)) {
+    return makeStatusResult(SweptFootprintStatus::kInvalidInput, position);
+  }
+  return validateRawFootprintAt3D(occupancy, position, requested_body_axis, config,
+                                  nullptr, proprioceptive_seed);
+}
+
+SweptFootprintResult validateRawSweptFootprint(
+    const OccupancyGrid3D& occupancy, const Point3& first,
+    const FootprintBodyAxis& first_body_axis, const Point3& second,
+    const FootprintBodyAxis& second_body_axis, const SweptFootprintConfig& config,
+    const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_seed) noexcept {
+  if (!validProprioceptiveSeed(proprioceptive_seed)) {
+    return makeStatusResult(SweptFootprintStatus::kInvalidInput, first);
+  }
   return validateRawSweptFootprint3D(occupancy, first, first_body_axis, second,
-                                     second_body_axis, config);
+                                     second_body_axis, config, nullptr,
+                                     proprioceptive_seed);
 }
 
 SweptFootprintResult validateRawFootprintAt(
     const ObservedOccupancyGrid3D& occupancy, const Point3& position,
     const FootprintBodyAxis& requested_body_axis, const SweptFootprintConfig& config,
-    const LaunchSupportContact3D* const launch_support_contact) noexcept {
-  if (launch_support_contact != nullptr &&
-      !launchSupportContactValid3D(*launch_support_contact)) {
+    const LaunchSupportContact3D* const launch_support_contact,
+    const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_seed) noexcept {
+  if ((launch_support_contact != nullptr &&
+       !launchSupportContactValid3D(*launch_support_contact)) ||
+      !validProprioceptiveSeed(proprioceptive_seed)) {
     return makeStatusResult(SweptFootprintStatus::kInvalidInput, position);
   }
   return validateRawFootprintAt3D(occupancy, position, requested_body_axis, config,
-                                  launch_support_contact);
+                                  launch_support_contact, proprioceptive_seed);
 }
 
 SweptFootprintResult validateRawSweptFootprint(
     const ObservedOccupancyGrid3D& occupancy, const Point3& first,
     const FootprintBodyAxis& first_body_axis, const Point3& second,
     const FootprintBodyAxis& second_body_axis, const SweptFootprintConfig& config,
-    const LaunchSupportContact3D* const launch_support_contact) noexcept {
-  if (launch_support_contact != nullptr &&
-      !launchSupportContactValid3D(*launch_support_contact)) {
+    const LaunchSupportContact3D* const launch_support_contact,
+    const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_seed) noexcept {
+  if ((launch_support_contact != nullptr &&
+       !launchSupportContactValid3D(*launch_support_contact)) ||
+      !validProprioceptiveSeed(proprioceptive_seed)) {
     return makeStatusResult(SweptFootprintStatus::kInvalidInput, first);
   }
   return validateRawSweptFootprint3D(occupancy, first, first_body_axis, second,
-                                     second_body_axis, config, launch_support_contact);
+                                     second_body_axis, config, launch_support_contact,
+                                     proprioceptive_seed);
 }
 
 bool footprintIntersectsAxisAlignedBox(const Point3& position,
@@ -660,30 +836,27 @@ bool footprintIntersectsAxisAlignedBox(const Point3& position,
 SweptFootprintResult validateRawPointCloudFootprintAt(
     const std::span<const Point3> obstacle_points, const Point3& position,
     const FootprintBodyAxis& body_axis, const SweptFootprintConfig& config,
-    const LaunchSupportContact3D* const launch_support_contact) noexcept {
-  if (launch_support_contact != nullptr &&
-      !launchSupportContactValid3D(*launch_support_contact)) {
+    const LaunchSupportContact3D* const launch_support_contact,
+    const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_seed) noexcept {
+  if ((launch_support_contact != nullptr &&
+       !launchSupportContactValid3D(*launch_support_contact)) ||
+      !validProprioceptiveSeed(proprioceptive_seed)) {
     return makeStatusResult(SweptFootprintStatus::kInvalidInput, position);
   }
-  for (const Point3& point : obstacle_points) {
-    if (pointIntersectsBody(point, position, body_axis, config)) {
-      if (launch_support_contact != nullptr &&
-          launchSupportAllowsPoint(*launch_support_contact, point, position)) {
-        continue;
-      }
-      return makeStatusResult(SweptFootprintStatus::kRawCollision, point);
-    }
-  }
-  return validRawFootprint();
+  return validateRawPointCloudFootprintAt3D(
+      obstacle_points, position, body_axis, config,
+      poseExemption(launch_support_contact, proprioceptive_seed, position));
 }
 
 SweptFootprintResult validateRawPointCloudSweptFootprint(
     const std::span<const Point3> all_obstacle_points, const Point3& first,
     const FootprintBodyAxis& first_body_axis, const Point3& second,
     const FootprintBodyAxis& second_body_axis, const SweptFootprintConfig& config,
-    const LaunchSupportContact3D* const launch_support_contact) noexcept {
-  if (launch_support_contact != nullptr &&
-      !launchSupportContactValid3D(*launch_support_contact)) {
+    const LaunchSupportContact3D* const launch_support_contact,
+    const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_seed) noexcept {
+  if ((launch_support_contact != nullptr &&
+       !launchSupportContactValid3D(*launch_support_contact)) ||
+      !validProprioceptiveSeed(proprioceptive_seed)) {
     return makeStatusResult(SweptFootprintStatus::kInvalidInput, first);
   }
   const auto cover = makeConservativeSweepCover3D(first, first_body_axis, second,
@@ -696,8 +869,9 @@ SweptFootprintResult validateRawPointCloudSweptFootprint(
   if (obstacle_points.empty()) {
     return validRawFootprint();
   }
-  const SweptFootprintResult first_result = validateRawPointCloudFootprintAt(
-      obstacle_points, cover.first, cover.first_axis, config, launch_support_contact);
+  const SweptFootprintResult first_result = validateRawPointCloudFootprintAt3D(
+      obstacle_points, cover.first, cover.first_axis, config,
+      poseExemption(launch_support_contact, proprioceptive_seed, cover.first));
   if (!first_result.accepted()) {
     return first_result;
   }
@@ -710,25 +884,21 @@ SweptFootprintResult validateRawPointCloudSweptFootprint(
     const FootprintBodyAxis midpoint_axis = interpolateSweepAxis(cover, ratio);
     const SweptFootprintConfig inflated_config =
         inflatedSweepFootprint(config, cover, midpoint_axis);
-    const LaunchSupportContact3D* interval_launch_support = launch_support_contact;
-    if (launch_support_contact != nullptr &&
-        (!launchSupportEnvelopeContains3D(
-             *launch_support_contact,
-             interpolateSweepPosition(cover, interval_begin_ratio)) ||
-         !launchSupportEnvelopeContains3D(
-             *launch_support_contact,
-             interpolateSweepPosition(cover, interval_end_ratio)))) {
-      interval_launch_support = nullptr;
-    }
-    const SweptFootprintResult result = validateRawPointCloudFootprintAt(
-        obstacle_points, interpolateSweepPosition(cover, ratio), midpoint_axis,
-        inflated_config, interval_launch_support);
+    const SweepIntervalPositions3D interval_positions =
+        sweepIntervalPositions(cover, interval_begin_ratio, ratio, interval_end_ratio);
+    const SweptFootprintResult result = validateRawPointCloudFootprintAt3D(
+        obstacle_points, interval_positions.positions[1U], midpoint_axis,
+        inflated_config,
+        ContactExemption3D{.launch_support = launch_support_contact,
+                           .seed = proprioceptive_seed,
+                           .positions = interval_positions.span()});
     if (!result.accepted()) {
       return result;
     }
   }
-  return validateRawPointCloudFootprintAt(
-      obstacle_points, cover.second, cover.second_axis, config, launch_support_contact);
+  return validateRawPointCloudFootprintAt3D(
+      obstacle_points, cover.second, cover.second_axis, config,
+      poseExemption(launch_support_contact, proprioceptive_seed, cover.second));
 }
 
 FootprintBodyAxis bodyAxisFromWorldAcceleration(const Vec3& acceleration_mps2,

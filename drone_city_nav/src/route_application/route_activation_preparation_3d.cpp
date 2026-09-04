@@ -429,6 +429,8 @@ assessAdmission(RouteActivationPreparationState3D state,
           .footprint = activationFootprint(config),
           .launch_support_contact =
               optionalAddress(candidate.world->launch_support_contact),
+          .proprioceptive_free_space_seed =
+              optionalAddress(candidate.world->proprioceptive_free_space_seed),
           .flight_envelope = config.flight_envelope,
           .raw_validation_required = state.raw_validation_required,
       });

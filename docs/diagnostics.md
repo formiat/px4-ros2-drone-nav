@@ -110,6 +110,16 @@ Planner evidence describes the search that produced the resident route.
 Candidate validation and activation fields describe later contracts and must
 not be inferred from `planner_executable` alone.
 
+`OBSERVED_FOOTPRINT_READINESS` reports the vehicle's own pose against observed
+occupancy once per second. `status` is what every raw validator sees, including
+proprioceptive contact suppression; `strict_status` ignores it. A
+`strict_status=raw_collision` with `status=clear` means observed evidence has
+closed in on the body (`failure_point` names the voxel) and the validators are
+letting the vehicle depart without approaching it; `contact_tolerance_m` is the
+half-voxel tolerance in force. A persistent `planner_input=start_unavailable`
+together with `status=raw_collision` means no departure from the pose validates
+even with contact suppression.
+
 `PRODUCTION_MPPI_SUMMARY` also reports the planning-service lifecycle counters:
 `route_planning_queued`, `route_planning_processed`,
 `route_planning_displaced`, `route_planning_busy_rejections`,

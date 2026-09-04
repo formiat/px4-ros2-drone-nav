@@ -295,6 +295,12 @@ void PlannerLattice3D::installWorld(const PersistentPlannerWorld3D& world) {
       .footprint = config_->physical_footprint,
       .flight_envelope = config_->flight_envelope,
   });
+  installDepartureEvidence(world);
+}
+
+void PlannerLattice3D::installDepartureEvidence(const PersistentPlannerWorld3D& world) {
+  // Departure evidence is local to the vehicle's pose and refreshes with every
+  // request; the world owning it must outlive this oracle.
   departure_collision_oracle_.emplace(OccupiedCollisionWorld3D{
       .observed_occupancy = world.observed_occupancy.get(),
       .static_occupancy = world.static_occupancy.get(),
@@ -303,6 +309,10 @@ void PlannerLattice3D::installWorld(const PersistentPlannerWorld3D& world) {
       .launch_support_contact = world.launch_support_contact
                                     ? std::addressof(*world.launch_support_contact)
                                     : nullptr,
+      .proprioceptive_free_space_seed =
+          world.proprioceptive_free_space_seed
+              ? std::addressof(*world.proprioceptive_free_space_seed)
+              : nullptr,
       .footprint = config_->physical_footprint,
       .flight_envelope = config_->flight_envelope,
   });

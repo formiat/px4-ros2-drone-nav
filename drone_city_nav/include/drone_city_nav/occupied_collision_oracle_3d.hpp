@@ -23,6 +23,11 @@ struct OccupiedCollisionWorld3D {
   const OccupancyGrid2D* planar_occupancy{nullptr};
   std::span<const Point3> raw_point_cloud;
   const LaunchSupportContact3D* launch_support_contact{nullptr};
+  // Proprioceptive contact evidence: occupied evidence the body overlaps at
+  // the seed is contact, suppressed for body positions that come no closer to
+  // it than the seed. It is what makes the vehicle's own pose a valid start
+  // when observed evidence has closed in on it.
+  const ProprioceptiveFreeSpaceSeed3D* proprioceptive_free_space_seed{nullptr};
   SweptFootprintConfig footprint{};
   std::optional<FlightEnvelopeConfig> flight_envelope;
 };

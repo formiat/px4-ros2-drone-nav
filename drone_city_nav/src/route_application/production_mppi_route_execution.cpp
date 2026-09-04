@@ -36,6 +36,12 @@ void bindObservedRouteEvidence(
   if (launch_support_contact.has_value()) {
     observation.launch_support_contact = std::addressof(launch_support_contact.value());
   }
+  observation.proprioceptive_free_space_seed = nullptr;
+  const auto& proprioceptive_seed = observed_world.proprioceptiveFreeSpaceSeed();
+  if (proprioceptive_seed.has_value()) {
+    observation.proprioceptive_free_space_seed =
+        std::addressof(proprioceptive_seed.value());
+  }
 }
 
 [[nodiscard]] bool trackingTubeProfileMatchesCurrentWorld(
@@ -57,12 +63,17 @@ void bindObservedRouteEvidence(
     certified_occupied_fingerprint =
         raw_certificate->geometry_derivation_occupancy_content_fingerprint;
     const auto& launch_support_contact = observed_world->launchSupportContact();
+    const auto& proprioceptive_seed = observed_world->proprioceptiveFreeSpaceSeed();
     world = TrackingErrorTubeWorld3D{
         .observed_occupancy = &observed_world->occupancy(),
         .occupied_content_fingerprint = observed_world->occupiedContentFingerprint(),
         .launch_support_contact = launch_support_contact.has_value()
                                       ? std::addressof(launch_support_contact.value())
                                       : nullptr,
+        .proprioceptive_free_space_seed =
+            proprioceptive_seed.has_value()
+                ? std::addressof(proprioceptive_seed.value())
+                : nullptr,
     };
   } else {
     const auto* const static_certificate =
@@ -103,6 +114,10 @@ void bindObservedRouteEvidence(
       .launch_support_contact = world.launch_support_contact
                                     ? std::addressof(*world.launch_support_contact)
                                     : nullptr,
+      .proprioceptive_free_space_seed =
+          world.proprioceptive_free_space_seed
+              ? std::addressof(*world.proprioceptive_free_space_seed)
+              : nullptr,
       .flight_envelope = flight_envelope,
   };
 }

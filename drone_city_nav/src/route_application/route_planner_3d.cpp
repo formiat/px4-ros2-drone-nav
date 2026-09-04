@@ -58,6 +58,10 @@ evidenceWorld(const WorldSnapshot3D& world,
                   world.launch_support_contact
                       ? std::addressof(*world.launch_support_contact)
                       : nullptr,
+              .proprioceptive_free_space_seed =
+                  world.proprioceptive_free_space_seed
+                      ? std::addressof(*world.proprioceptive_free_space_seed)
+                      : nullptr,
               .footprint = physical_footprint,
               .flight_envelope = flight_envelope,
           },

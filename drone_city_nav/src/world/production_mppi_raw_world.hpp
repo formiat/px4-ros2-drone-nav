@@ -67,6 +67,10 @@ public:
   [[nodiscard]] bool fullReset() const noexcept;
   [[nodiscard]] bool valid() const noexcept;
 
+  // Quantization tolerance of this world's occupied evidence for proprioceptive
+  // contact: half a voxel, the largest positional ambiguity of one occupied cell.
+  [[nodiscard]] double proprioceptiveContactToleranceM() const noexcept;
+
   ProductionMppiRawWorld3D(
       CaptureToken,
       std::shared_ptr<const VersionedObservedRawWorld3D> authoritative_owner,

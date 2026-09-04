@@ -41,6 +41,11 @@ bool stationaryHoldRawSafe(
       launch_support_owner != nullptr && launch_support_owner->has_value()
           ? std::addressof(**launch_support_owner)
           : nullptr;
+  const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_seed =
+      observed_raw_world != nullptr &&
+              observed_raw_world->proprioceptiveFreeSpaceSeed().has_value()
+          ? std::addressof(*observed_raw_world->proprioceptiveFreeSpaceSeed())
+          : nullptr;
   const OccupiedCollisionOracle3D oracle{OccupiedCollisionWorld3D{
       .observed_occupancy = observed_raw_world != nullptr
                                 ? std::addressof(observed_raw_world->occupancy())
@@ -50,6 +55,7 @@ bool stationaryHoldRawSafe(
       .planar_occupancy = nullptr,
       .raw_point_cloud = latest_lidar_evidence.hitPointsMapM(),
       .launch_support_contact = launch_support,
+      .proprioceptive_free_space_seed = proprioceptive_seed,
       .footprint = validation_policy.sweptFootprint(),
       .flight_envelope = validation_policy.flightEnvelope(),
   }};

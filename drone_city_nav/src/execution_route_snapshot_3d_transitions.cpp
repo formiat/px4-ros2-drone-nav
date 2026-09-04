@@ -259,6 +259,10 @@ ExecutionRouteTransitionResult3D applyAdvanceCertifiedRouteCommand3D(
         observed_raw_world->launchSupportContact().has_value()
             ? &*observed_raw_world->launchSupportContact()
             : nullptr;
+    observation.proprioceptive_free_space_seed =
+        observed_raw_world->proprioceptiveFreeSpaceSeed().has_value()
+            ? &*observed_raw_world->proprioceptiveFreeSpaceSeed()
+            : nullptr;
     if (validationPolicyFingerprint(observation.footprint,
                                     observation.launch_support_contact) !=
         old_certificate.validation_policy_fingerprint) {
@@ -279,6 +283,10 @@ ExecutionRouteTransitionResult3D applyAdvanceCertifiedRouteCommand3D(
                 .launch_support_contact =
                     observed_raw_world->launchSupportContact().has_value()
                         ? &*observed_raw_world->launchSupportContact()
+                        : nullptr,
+                .proprioceptive_free_space_seed =
+                    observed_raw_world->proprioceptiveFreeSpaceSeed().has_value()
+                        ? &*observed_raw_world->proprioceptiveFreeSpaceSeed()
                         : nullptr,
             })) {
       return transitionFailure(
@@ -305,6 +313,7 @@ ExecutionRouteTransitionResult3D applyAdvanceCertifiedRouteCommand3D(
     observation.latest_raw_producer_instance_id = 0U;
     observation.latest_raw_revision = 0U;
     observation.launch_support_contact = nullptr;
+    observation.proprioceptive_free_space_seed = nullptr;
     if (validationPolicyFingerprint(observation.footprint, nullptr) !=
         old_certificate.validation_policy_fingerprint) {
       return transitionFailure(
@@ -373,6 +382,7 @@ ExecutionRouteTransitionResult3D applyAdvanceCertifiedRouteCommand3D(
       .planar_occupancy = nullptr,
       .raw_point_cloud = {},
       .launch_support_contact = observation.launch_support_contact,
+      .proprioceptive_free_space_seed = observation.proprioceptive_free_space_seed,
       .footprint = observation.footprint,
       .flight_envelope = route.validation_policy->flightEnvelope(),
   }};
