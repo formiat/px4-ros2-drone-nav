@@ -739,12 +739,16 @@ bool proprioceptiveSeedExemptsBox(const ProprioceptiveFreeSpaceSeed3D& seed,
           contact_body.radius_m * contact_body.radius_m)) {
     return false;
   }
+  // Contact never licenses approach. The tolerance widens what counts as
+  // contact, never how far the body may close on it: a seed that renews every
+  // tick would otherwise ratchet the vehicle into the evidence a tolerance at
+  // a time.
   constexpr double kApproachToleranceM{1.0e-9};
   const double seed_distance_m =
       std::sqrt(squaredDistanceToBox(seed.position, box_minimum, box_maximum));
   const double candidate_distance_m =
       std::sqrt(squaredDistanceToBox(candidate_position, box_minimum, box_maximum));
-  return candidate_distance_m + tolerance_m + kApproachToleranceM >= seed_distance_m;
+  return candidate_distance_m + kApproachToleranceM >= seed_distance_m;
 }
 
 bool proprioceptiveSeedExemptsPoint(const ProprioceptiveFreeSpaceSeed3D& seed,
@@ -764,7 +768,7 @@ bool proprioceptiveSeedExemptsPoint(const ProprioceptiveFreeSpaceSeed3D& seed,
       std::hypot(std::hypot(obstacle_point.x - candidate_position.x,
                             obstacle_point.y - candidate_position.y),
                  obstacle_point.z - candidate_position.z);
-  return candidate_distance_m + tolerance_m + kApproachToleranceM >= seed_distance_m;
+  return candidate_distance_m + kApproachToleranceM >= seed_distance_m;
 }
 
 SweptFootprintResult validateRawFootprintAt(

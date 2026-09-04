@@ -100,7 +100,10 @@ half an observed voxel) is contact rather than an obstacle: the vehicle
 demonstrably occupies that volume. Every raw validator (planner departure,
 route candidates, certification, the finite execution path, hold validation)
 suppresses such contact for body positions that come no closer to it than the
-seed, again within the half-voxel tolerance. The seed is transient evidence
+seed. Holding and departing stay executable; any motion that closes on the
+contact, sideways into neighbouring evidence of the same surface included, is
+a collision, and the half-voxel tolerance widens what counts as contact but
+never how far the body may close on it. The seed is transient evidence
 like the newest lidar returns: each validation builds it from the pose its own
 execution input reports, never from the pose a resident route was certified
 from. A seed frozen into a certified world would stop exempting evidence that

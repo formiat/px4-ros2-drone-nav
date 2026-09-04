@@ -31,9 +31,9 @@ struct FootprintBodyAxis {
 // The body demonstrably occupies its own volume at the seed. Occupied
 // evidence overlapping that volume is contact rather than an obstacle, so a
 // body position that comes no closer to such evidence than the seed keeps it
-// suppressed; any further approach is a collision. The contact tolerance is
-// the quantization of the evidence the seed is judged against: it widens the
-// contact volume and the admissible approach by that amount.
+// suppressed; any approach is a collision. The contact tolerance is the
+// quantization of the evidence the seed is judged against: it widens the
+// contact volume only, never the admissible approach.
 struct ProprioceptiveFreeSpaceSeed3D {
   Point3 position{};
   FootprintBodyAxis body_axis{};
