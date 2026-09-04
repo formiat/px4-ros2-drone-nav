@@ -113,10 +113,16 @@ void FeasiblePathSearch3D::advanceValidationEpoch() noexcept {
   }
 }
 
-void FeasiblePathSearch3D::label(const std::size_t index,
+bool FeasiblePathSearch3D::label(const std::size_t index,
                                  const double cost_from_start_s,
                                  const std::uint32_t parent,
                                  const std::uint32_t depth) {
+  // Adopted labels leave costs non-monotone along a chain, so a cheaper
+  // parent may sit below the label; closing that loop would make every
+  // chain walk endless.
+  if (parent != kNoParent && descendsFrom(parent, index)) {
+    return false;
+  }
   if (!labelled(index)) {
     label_generation_[index] = generation_;
     ++explored_;
@@ -125,6 +131,7 @@ void FeasiblePathSearch3D::label(const std::size_t index,
   parent_index_[index] = parent;
   depth_[index] = depth;
   validated_epoch_[index] = validation_epoch_;
+  return true;
 }
 
 void FeasiblePathSearch3D::push(const std::size_t index,
@@ -162,6 +169,14 @@ bool FeasiblePathSearch3D::chainValid(const std::size_t index) {
     std::size_t current = index;
     bool parent_missing{false};
     while (true) {
+      if (chain_.size() >= kMaximumChainWalk) {
+        // No chain is this long on a bounded lattice: a loop of parent links
+        // would be, and it must not hold the planning thread.
+        for (const std::uint32_t stale : chain_) {
+          invalidateLabel(stale);
+        }
+        return false;
+      }
       chain_.push_back(static_cast<std::uint32_t>(current));
       const std::uint32_t parent = parent_index_[current];
       if (parent == kNoParent) {
@@ -216,13 +231,14 @@ bool FeasiblePathSearch3D::chainValid(const std::size_t index) {
 
 bool FeasiblePathSearch3D::descendsFrom(std::size_t index,
                                         const std::size_t ancestor) const noexcept {
-  constexpr std::size_t kMaximumWalk{1U << 20U};
-  for (std::size_t step = 0U; step < kMaximumWalk; ++step) {
+  // Parent links of dropped labels are followed too: a dropped label that is
+  // re-labelled below one of its former descendants would close a cycle.
+  for (std::size_t step = 0U; step < kMaximumChainWalk; ++step) {
     if (index == ancestor) {
       return true;
     }
     const std::uint32_t parent = parent_index_[index];
-    if (parent == kNoParent || !labelled(parent)) {
+    if (parent == kNoParent) {
       return false;
     }
     index = parent;
@@ -474,9 +490,11 @@ std::optional<std::vector<Point3>> FeasiblePathSearch3D::advance(
               return;
             }
           }
-          label(neighbor_index, candidate_cost,
-                static_cast<std::uint32_t>(current_index),
-                static_cast<std::uint32_t>(current.depth + 1U));
+          if (!label(neighbor_index, candidate_cost,
+                     static_cast<std::uint32_t>(current_index),
+                     static_cast<std::uint32_t>(current.depth + 1U))) {
+            return;
+          }
           queued_[neighbor_index] = 0U;
           push(neighbor_index, neighbor);
         });
@@ -511,7 +529,7 @@ void FeasiblePathSearch3D::initialize(const Endpoints3D& endpoints) {
   goal_ = endpoints.goal;
   queue_sequence_ = 1U;
   const std::size_t anchor_index = lattice_->linearIndex(anchor_);
-  label(anchor_index, 0.0, kNoParent, 0U);
+  static_cast<void>(label(anchor_index, 0.0, kNoParent, 0U));
   push(anchor_index, anchor_);
 }
 

@@ -636,13 +636,16 @@ public:
 private:
   static constexpr std::uint32_t kNoParent{std::numeric_limits<std::uint32_t>::max()};
   static constexpr std::uint32_t kNoPathNode{std::numeric_limits<std::uint32_t>::max()};
+  // Longest parent chain any walk follows; longer means a loop of links.
+  static constexpr std::size_t kMaximumChainWalk{1U << 20U};
 
   void initialize(const Endpoints3D& endpoints);
   void ensureLabelStorage();
   [[nodiscard]] bool labelled(std::size_t index) const noexcept;
   // Writes a label reached through a chain validated on the resident world.
-  void label(std::size_t index, double cost_from_start_s, std::uint32_t parent,
-             std::uint32_t depth);
+  // Refuses a parent that descends from the label.
+  [[nodiscard]] bool label(std::size_t index, double cost_from_start_s,
+                           std::uint32_t parent, std::uint32_t depth);
   // Queues the label unless an entry with its current cost is already queued.
   void push(std::size_t index, PersistentPlannerNode3D node);
   // Whether the chain of lattice edges from the anchor to the label survives

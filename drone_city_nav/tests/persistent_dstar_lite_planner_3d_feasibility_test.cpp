@@ -522,5 +522,57 @@ TEST(PersistentDStarLitePlanner3DTest,
   }
 }
 
+TEST(PersistentDStarLitePlanner3DTest,
+     EveryPlannerCallReturnsWithinItsBudgetUnderOccupiedChurnAroundTheAnchor) {
+  // Occupied evidence flickers around the anchor on every call while the
+  // search runs on a bounded budget: no call may hold the thread beyond a
+  // small multiple of that budget, whatever the labels behind the churn do.
+  auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 1.0, 24, 12, 6});
+  PersistentPlannerConfig3D config = testConfig();
+  config.feasibility_first_enabled = true;
+  config.feasibility_goal_connector_reach_m = 2.0;
+  config.maximum_compute_time_ms = 20.0;
+  config.maximum_feasibility_compute_time_ms = 8.0;
+  config.maximum_expansions_per_update = 400U;
+  config.maximum_feasibility_expansions_per_update = 400U;
+  PersistentDStarLitePlanner3D planner{config};
+  const Point3 start{1.5, 5.5, 2.5};
+  const Point3 goal{22.5, 5.5, 2.5};
+
+  std::uint64_t revision{1U};
+  std::uint32_t state{12345U};
+  const auto next_random = [&state]() noexcept {
+    state = state * 1664525U + 1013904223U;
+    return state >> 8U;
+  };
+  double worst_call_ms{0.0};
+  for (int call = 0; call < 200; ++call) {
+    auto changed = std::make_shared<ObservedOccupancyGrid3D>(*occupancy);
+    for (int toggle = 0; toggle < 6; ++toggle) {
+      const GridIndex3D cell{2 + static_cast<int>(next_random() % 6U),
+                             static_cast<int>(next_random() % 12U),
+                             static_cast<int>(next_random() % 6U)};
+      if (distance3D(changed->cellCenter(cell), start) < 1.0) {
+        continue;
+      }
+      const bool occupied = changed->state(cell) == ObservedVoxelState::kOccupied;
+      static_cast<void>(changed->setState(
+          cell, occupied ? ObservedVoxelState::kFree : ObservedVoxelState::kOccupied));
+    }
+    occupancy = std::move(changed);
+    const auto started = std::chrono::steady_clock::now();
+    const PlannerUpdate3D update =
+        planner.plan(request(start, goal, world(occupancy, ++revision)));
+    const double call_ms = std::chrono::duration<double, std::milli>(
+                               std::chrono::steady_clock::now() - started)
+                               .count();
+    worst_call_ms = std::max(worst_call_ms, call_ms);
+    ASSERT_NE(update.input_status, PlannerInputStatus3D::kInvalidInput);
+    ASSERT_LT(call_ms, 500.0) << "call " << call << " took " << call_ms << " ms";
+  }
+  EXPECT_LT(worst_call_ms, 500.0);
+}
+
 } // namespace
 } // namespace drone_city_nav
