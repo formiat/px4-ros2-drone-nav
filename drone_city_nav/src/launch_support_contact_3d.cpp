@@ -144,4 +144,33 @@ makeVehicleLandedSupportContact3D(const GridBounds3D& bounds,
       bounds, seed, LaunchSupportEvidenceSource::kVehicleLandDetector, 0U, candidates);
 }
 
+bool launchSupportAnchorAdmissible3D(const bool land_contact_now,
+                                     const double speed_mps,
+                                     const double maximum_speed_mps) noexcept {
+  return land_contact_now && std::isfinite(speed_mps) && speed_mps >= 0.0 &&
+         std::isfinite(maximum_speed_mps) && maximum_speed_mps >= 0.0 &&
+         speed_mps <= maximum_speed_mps;
+}
+
+bool launchSupportReleased3D(const LaunchSupportContact3D& contact,
+                             const Point3& position,
+                             const bool body_clear_without_support,
+                             const double occupancy_resolution_m) noexcept {
+  if (!body_clear_without_support || !launchSupportContactValid3D(contact) ||
+      !std::isfinite(position.x) || !std::isfinite(position.y) ||
+      !std::isfinite(position.z)) {
+    return false;
+  }
+  const FootprintBodyAxis axis = normalizedFootprintBodyAxis(contact.seed.body_axis);
+  const Point3 delta{position.x - contact.seed.position.x,
+                     position.y - contact.seed.position.y,
+                     position.z - contact.seed.position.z};
+  const double axial = delta.x * axis.x + delta.y * axis.y + delta.z * axis.z;
+  const double resolution_m =
+      std::isfinite(occupancy_resolution_m) && occupancy_resolution_m > 0.0
+          ? occupancy_resolution_m
+          : 0.0;
+  return axial > resolution_m || !launchSupportEnvelopeContains3D(contact, position);
+}
+
 } // namespace drone_city_nav

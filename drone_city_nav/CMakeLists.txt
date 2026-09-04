@@ -499,6 +499,7 @@ set(DRONE_CITY_NAV_COLLISION_HEADERS
     include/drone_city_nav/observed_esdf_footprint_3d.hpp
     include/drone_city_nav/observed_world_content_hash_3d.hpp
     include/drone_city_nav/occupied_collision_oracle_3d.hpp
+    include/drone_city_nav/proprioceptive_contact_seed_3d.hpp
     include/drone_city_nav/raw_occupancy_clearance_3d.hpp
     include/drone_city_nav/sensor_braking_contract_3d.hpp
     include/drone_city_nav/swept_footprint.hpp
@@ -1546,6 +1547,12 @@ if(BUILD_TESTING)
   target_compile_features(swept_footprint_test PRIVATE cxx_std_20)
   target_link_libraries(swept_footprint_test drone_city_nav_core)
   enable_project_warnings(swept_footprint_test)
+
+  ament_add_gtest(launch_support_contact_3d_test
+                  tests/launch_support_contact_3d_test.cpp)
+  target_compile_features(launch_support_contact_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(launch_support_contact_3d_test drone_city_nav_core)
+  enable_project_warnings(launch_support_contact_3d_test)
 
   ament_add_gtest(occupied_collision_oracle_3d_test
                   tests/occupied_collision_oracle_3d_test.cpp)

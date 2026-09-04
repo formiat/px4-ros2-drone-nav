@@ -67,11 +67,14 @@ VersionedObservedRawWorld3D::captureOwned(
       launch_support_contact.has_value() ? std::addressof(*launch_support_contact)
                                          : nullptr;
   std::uint64_t seed_hash{kFnvOffset};
+  // The support carries its own anchor seed; the proprioceptive seed is the
+  // vehicle's pose now. Tying the two would make a support the vehicle has not
+  // released reject every world once the vehicle moves, and the navigation
+  // stack would lose observed evidence entirely.
   if (!version.valid() || version.producer_instance_id == 0U ||
       !hashProprioceptiveFreeSpaceSeed(seed_hash, seed) || occupancy == nullptr ||
       (support != nullptr &&
-       (seed == nullptr || !sameFreeSpaceSeed(*seed, support->seed) ||
-        !launchSupportMatchesOwnedOccupancy(*support, *occupancy)))) {
+       !launchSupportMatchesOwnedOccupancy(*support, *occupancy))) {
     return nullptr;
   }
   const std::uint64_t observation_content_fingerprint =
@@ -138,8 +141,7 @@ VersionedObservedRawWorld3D::deriveRouteEvidence(
   std::uint64_t seed_hash{kFnvOffset};
   if (!valid() || !hashProprioceptiveFreeSpaceSeed(seed_hash, seed) ||
       (support != nullptr &&
-       (seed == nullptr || !sameFreeSpaceSeed(*seed, support->seed) ||
-        !launchSupportMatchesOwnedOccupancy(*support, *occupancy_)))) {
+       !launchSupportMatchesOwnedOccupancy(*support, *occupancy_))) {
     return nullptr;
   }
   auto result = std::make_shared<const VersionedObservedRawWorld3D>(
@@ -167,10 +169,7 @@ bool VersionedObservedRawWorld3D::valid() const noexcept {
          occupancy_ != nullptr && occupied_snapshot_ != nullptr &&
          content_fingerprint_ != 0U && occupied_content_fingerprint_ != 0U &&
          (!launch_support_contact_.has_value() ||
-          (proprioceptive_free_space_seed_.has_value() &&
-           launchSupportContactValid3D(*launch_support_contact_) &&
-           sameFreeSpaceSeed(*proprioceptive_free_space_seed_,
-                             launch_support_contact_->seed)));
+          launchSupportContactValid3D(*launch_support_contact_));
 }
 
 VersionedStaticWorld3D::VersionedStaticWorld3D(

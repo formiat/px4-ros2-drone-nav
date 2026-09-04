@@ -65,8 +65,30 @@ ProductionMppiNode::prepareObservedExecutionEvidence3D(
                 .contact_tolerance_m = raw_world.proprioceptiveContactToleranceM(),
             }}
           : std::nullopt;
+  const double vehicle_speed_mps =
+      std::hypot(std::hypot(static_cast<double>(navigation.state.vx),
+                            static_cast<double>(navigation.state.vy)),
+                 static_cast<double>(navigation.state.vz));
+  const bool vehicle_land_contact_now =
+      vehicle_land_contact_.load(std::memory_order_acquire);
   if (!launch_support_seed_ && free_space_seed.has_value()) {
-    launch_support_seed_ = free_space_seed;
+    if (launchSupportAnchorAdmissible3D(vehicle_land_contact_now, vehicle_speed_mps,
+                                        kStationaryExecutionHoldSpeedToleranceMps)) {
+      launch_support_seed_ = free_space_seed;
+    } else if (!launch_support_evaluated_ &&
+               navigation.position_velocity_authoritative) {
+      // The first evidence reached this node with the vehicle already flying:
+      // there is no resting pose to anchor a support at, and anchoring one
+      // here would exempt evidence the body never rested on.
+      launch_support_evaluated_ = true;
+      RCLCPP_INFO(get_logger(),
+                  "LAUNCH_SUPPORT_CONTACT state=not_anchored_before_departure"
+                  " revision=%" PRIu64 " land_contact=%s speed_mps=%.2f"
+                  " position=(%.3f,%.3f,%.3f)",
+                  raw_world.version().revision,
+                  vehicle_land_contact_now ? "true" : "false", vehicle_speed_mps,
+                  position.x, position.y, position.z);
+    }
   }
   if (!launch_support_evaluated_ && launch_support_seed_.has_value()) {
     const bool vehicle_land_contact_received =
@@ -146,13 +168,16 @@ ProductionMppiNode::prepareObservedExecutionEvidence3D(
       const double support_axial_departure_m = support_delta.x * support_axis.x +
                                                support_delta.y * support_axis.y +
                                                support_delta.z * support_axis.z;
-      if (without_support.clear() &&
-          support_axial_departure_m > occupancy->bounds().resolution_m) {
+      if (launchSupportReleased3D(*launch_support_contact_, position,
+                                  without_support.clear(),
+                                  occupancy->bounds().resolution_m)) {
         RCLCPP_INFO(get_logger(),
                     "LAUNCH_SUPPORT_CONTACT state=released revision=%" PRIu64
-                    " axial_departure_m=%.3f position=(%.3f,%.3f,%.3f)",
-                    raw_world.version().revision, support_axial_departure_m, position.x,
-                    position.y, position.z);
+                    " axial_departure_m=%.3f distance_m=%.3f"
+                    " position=(%.3f,%.3f,%.3f)",
+                    raw_world.version().revision, support_axial_departure_m,
+                    distance3D(position, launch_support_contact_->seed.position),
+                    position.x, position.y, position.z);
         launch_support_contact_.reset();
       }
     }

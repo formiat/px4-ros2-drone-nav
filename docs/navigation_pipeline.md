@@ -94,6 +94,17 @@ obstacles. The authoritative raw occupied set and the physical
 swept footprint are the only hard collision constraints; unknown space remains
 traversable and has neither a penalty nor an eligibility gate.
 
+Launch support is separate, anchored contact evidence: the pose the vehicle
+rested at before takeoff, whose occupied cells its body overlapped there. It is
+anchored only while the land detector reports contact and the vehicle is at
+rest, so a navigation stack that starts after takeoff anchors none rather than
+exempting evidence the body never rested on. It is released once the body is
+clear without it and the vehicle has left its envelope in any direction, a
+departure sideways included. Its anchor seed is its own: a world derivation
+never requires the vehicle's current pose to match it, or an unreleased support
+would reject every observed world once the vehicle moved and leave the stack
+without evidence at all.
+
 The vehicle's own pose is proprioceptive contact evidence. Occupied evidence
 that overlaps the body at the proprioceptive seed (the current pose, widened by
 half an observed voxel) is contact rather than an obstacle: the vehicle
