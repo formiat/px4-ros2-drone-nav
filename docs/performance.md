@@ -132,10 +132,14 @@ on an unchanged world cannot starve the session that would converge. Its
 labels survive occupied changes: each label carries the world epoch on which
 the chain of lattice edges that reached it was last validated, the chain is
 re-checked against the lattice edge cache only when the search next touches
-the label, and the labels behind an edge that stopped surviving are dropped
-and re-entered from their intact neighbours, so a scan that moves one edge
-near the vehicle costs the search that region rather than every label beyond
-it. An edge the raw sweep rejects on a candidate is withheld from the search
+the label, and the label behind an edge that stopped surviving is re-parented
+through the cheapest adjacent label already validated on that epoch; only a
+label no intact neighbour can adopt is dropped, together with the labels below
+it on that chain, and re-entered from the labels around it. A scan that moves
+one edge near the vehicle therefore costs the search a few re-parented labels
+rather than every label beyond the edge, and the re-entry cascade of a dropped
+label stops at the planner deadline and resumes on the next call instead of
+holding the planning thread. An edge the raw sweep rejects on a candidate is withheld from the search
 on that world, so a candidate can never be rebuilt through it. The lattice
 edge cache both searches price their edges from forgets every cached edge a
 change can touch, whether or not the persistent session labelled its

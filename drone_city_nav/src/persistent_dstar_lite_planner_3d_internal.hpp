@@ -621,6 +621,9 @@ public:
   // world.
   [[nodiscard]] std::size_t restartCount() const noexcept;
   [[nodiscard]] std::size_t invalidatedLabelCount() const noexcept;
+  // Labels whose chain broke and that were re-parented through an intact
+  // neighbour instead of being dropped.
+  [[nodiscard]] std::size_t adoptedLabelCount() const noexcept;
   [[nodiscard]] std::size_t lastInvalidSegment() const noexcept;
 
   // Expands the frontier until a path is found, the budget is spent, or the
@@ -644,15 +647,27 @@ private:
   void push(std::size_t index, PersistentPlannerNode3D node);
   // Whether the chain of lattice edges from the anchor to the label survives
   // the resident world. Edges are checked from the nearest ancestor already
-  // validated on this world; the labels behind the first broken edge are
-  // dropped and queued for re-entry.
+  // validated on this world. The label behind a broken edge is re-parented
+  // through an intact neighbour when one exists; otherwise it and the labels
+  // below it on this chain are dropped and queued for re-entry.
   [[nodiscard]] bool chainValid(std::size_t index);
+  // Re-parents a label whose parent edge broke through the cheapest adjacent
+  // label validated on this epoch, or else through the cheapest labelled
+  // neighbour outside the label's own subtree; the next walk validates that
+  // parent's chain in turn.
+  [[nodiscard]] bool adoptLabel(std::size_t index);
+  // Whether the label's parent chain passes through the ancestor.
+  [[nodiscard]] bool descendsFrom(std::size_t index,
+                                  std::size_t ancestor) const noexcept;
   // Starts a validation epoch: every chain is walked again when next touched.
+  // An epoch starts with every occupied change and every rejected edge; both
+  // can invalidate chains validated earlier.
   void advanceValidationEpoch() noexcept;
   void invalidateLabel(std::size_t index);
   // Re-opens the intact labelled neighbours of every dropped label, so the
-  // region behind a broken edge is re-entered from the labels around it.
-  void drainInvalidations();
+  // region behind a broken edge is re-entered from the labels around it. The
+  // cascade stops at the deadline and resumes on the next advance.
+  void drainInvalidations(std::chrono::steady_clock::time_point deadline);
   // Lattice nodes from the anchor to the terminal, or empty when the parent
   // chain is broken or too long.
   [[nodiscard]] std::vector<PersistentPlannerNode3D>
@@ -679,8 +694,7 @@ private:
   // Dense labels stamped with the generation that wrote them; a reset bumps
   // the generation instead of clearing the arrays. Each label also carries
   // the validation epoch its chain was last walked on and whether an entry
-  // with its current cost is queued. An epoch starts with every occupied
-  // change and with every dropped label.
+  // with its current cost is queued.
   std::vector<double> cost_s_;
   std::vector<std::uint32_t> label_generation_;
   std::vector<std::uint32_t> parent_index_;
@@ -699,6 +713,7 @@ private:
   std::size_t explored_{0U};
   std::size_t restart_count_{0U};
   std::size_t invalidated_label_count_{0U};
+  std::size_t adopted_label_count_{0U};
   std::size_t last_invalid_segment_{0U};
 };
 

@@ -223,6 +223,7 @@ struct PlannerTelemetry3D {
   // Labels dropped because a lattice edge on their chain stopped surviving
   // the resident world, since the planner was constructed.
   std::size_t feasibility_invalidated_labels{0U};
+  std::size_t feasibility_adopted_labels{0U};
   std::size_t feasibility_last_invalid_segment{0U};
   Point3 feasibility_anchor{};
   bool execution_time_search_complete{false};

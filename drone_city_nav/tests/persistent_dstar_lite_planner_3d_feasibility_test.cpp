@@ -472,5 +472,55 @@ TEST(PersistentDStarLitePlanner3DTest,
   EXPECT_NEAR(path.back().z, goal.z, 1.0e-9);
 }
 
+TEST(PersistentDStarLitePlanner3DTest,
+     ALabelDroppedNearTheAnchorReparentsTheExploredTreeInsteadOfDroppingIt) {
+  // A corridor explored end to end; then occupied evidence closes its second
+  // cross-section except one corner cell. Every chain beyond the closure
+  // breaks near the anchor. The labels behind it are re-parented through
+  // the intact corner instead of being dropped and rebuilt one by one.
+  auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 1.0, 18, 3, 3});
+  PersistentPlannerConfig3D config = testConfig();
+  config.feasibility_first_enabled = true;
+  // A short goal connector keeps the route on lattice nodes all the way.
+  config.feasibility_goal_connector_reach_m = 2.0;
+  PersistentDStarLitePlanner3D planner{config};
+  const Point3 start{1.5, 1.5, 1.5};
+  const Point3 goal{16.5, 1.5, 1.5};
+
+  PlannerUpdate3D update = planner.plan(request(start, goal, world(occupancy, 1U)));
+  for (int attempt = 0; attempt < 20 && !update.telemetry.feasibility_route_found;
+       ++attempt) {
+    update = planner.plan(request(start, goal, world(occupancy, 1U)));
+  }
+  ASSERT_TRUE(update.telemetry.feasibility_route_found);
+  const std::size_t explored_before = update.telemetry.feasibility_explored_nodes;
+  ASSERT_GT(explored_before, 30U);
+
+  auto changed = std::make_shared<ObservedOccupancyGrid3D>(*occupancy);
+  for (int y = 0; y < 3; ++y) {
+    for (int z = 0; z < 3; ++z) {
+      if (y == 0 && z == 0) {
+        continue;
+      }
+      ASSERT_TRUE(
+          changed->setState(GridIndex3D{2, y, z}, ObservedVoxelState::kOccupied));
+    }
+  }
+
+  update = planner.plan(request(start, goal, world(changed, 2U)));
+  for (int attempt = 0; attempt < 20 && !update.publishable(); ++attempt) {
+    update = planner.plan(request(start, goal, world(changed, 2U)));
+  }
+  ASSERT_TRUE(update.publishable());
+  EXPECT_GT(update.telemetry.feasibility_adopted_labels, 0U);
+  EXPECT_LT(update.telemetry.feasibility_invalidated_labels, explored_before / 2U);
+  for (const Point3& point : candidate(update).points) {
+    const std::optional<GridIndex3D> cell = changed->worldToCell(point);
+    ASSERT_TRUE(cell.has_value());
+    EXPECT_NE(changed->state(*cell), ObservedVoxelState::kOccupied);
+  }
+}
+
 } // namespace
 } // namespace drone_city_nav

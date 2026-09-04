@@ -150,51 +150,143 @@ bool FeasiblePathSearch3D::chainValid(const std::size_t index) {
   if (!labelled(index)) {
     return false;
   }
-  if (validated_epoch_[index] == validation_epoch_) {
-    return true;
-  }
-  // Climb to the nearest ancestor validated on this world. The anchor has no
-  // parent edge and is valid by construction; an ancestor that already lost
-  // its label takes every label below it with it.
-  chain_.clear();
-  std::size_t current = index;
-  while (true) {
-    if (!labelled(current)) {
-      for (const std::uint32_t stale : chain_) {
-        invalidateLabel(stale);
+  constexpr std::size_t kMaximumAdoptions{32U};
+  for (std::size_t adoption = 0U; adoption < kMaximumAdoptions; ++adoption) {
+    if (validated_epoch_[index] == validation_epoch_) {
+      return true;
+    }
+    // Climb to the nearest ancestor validated on this epoch. The anchor has no
+    // parent edge and is valid by construction; an ancestor that lost its
+    // label leaves the label below it to adoption.
+    chain_.clear();
+    std::size_t current = index;
+    bool parent_missing{false};
+    while (true) {
+      chain_.push_back(static_cast<std::uint32_t>(current));
+      const std::uint32_t parent = parent_index_[current];
+      if (parent == kNoParent) {
+        break;
+      }
+      if (!labelled(parent)) {
+        parent_missing = true;
+        break;
+      }
+      if (validated_epoch_[parent] == validation_epoch_) {
+        break;
+      }
+      current = parent;
+    }
+    // Validate top-down. A validated entry is a sound parent for the entry
+    // below it. The first broken entry is re-parented and the walk starts
+    // over from the label; an entry no neighbour adopts takes the rest of
+    // this chain with it.
+    bool adopted{false};
+    for (std::size_t position = chain_.size(); position-- > 0U;) {
+      const std::size_t child = chain_[position];
+      const std::uint32_t parent = parent_index_[child];
+      bool intact = parent == kNoParent;
+      if (!intact && !(position + 1U == chain_.size() && parent_missing)) {
+        const PersistentPlannerNode3D parent_node = lattice_->nodeAt(parent);
+        const PersistentPlannerNode3D child_node = lattice_->nodeAt(child);
+        intact = (rejected_edges_.empty() ||
+                  !rejected_edges_.contains(canonicalEdge(parent_node, child_node))) &&
+                 lattice_->edgeTraversable(parent_node, child_node);
+      }
+      if (intact) {
+        validated_epoch_[child] = validation_epoch_;
+        continue;
+      }
+      if (adoptLabel(child)) {
+        adopted = true;
+        break;
+      }
+      for (std::size_t stale = 0U; stale <= position; ++stale) {
+        invalidateLabel(chain_[stale]);
       }
       return false;
     }
-    if (validated_epoch_[current] == validation_epoch_) {
-      break;
+    if (!adopted) {
+      return true;
     }
-    chain_.push_back(static_cast<std::uint32_t>(current));
-    if (parent_index_[current] == kNoParent) {
-      break;
-    }
-    current = parent_index_[current];
   }
-  for (std::size_t position = chain_.size(); position-- > 0U;) {
-    const std::size_t child = chain_[position];
-    const std::uint32_t parent = parent_index_[child];
-    if (parent != kNoParent) {
-      const PersistentPlannerNode3D parent_node = lattice_->nodeAt(parent);
-      const PersistentPlannerNode3D child_node = lattice_->nodeAt(child);
-      const bool traversable =
-          (rejected_edges_.empty() ||
-           !rejected_edges_.contains(canonicalEdge(parent_node, child_node))) &&
-          lattice_->edgeTraversable(parent_node, child_node);
-      if (!traversable) {
-        // Labels validated earlier on this epoch may descend from the
-        // dropped ones; a new epoch sends every chain back through the walk.
-        advanceValidationEpoch();
-        for (std::size_t stale = 0U; stale <= position; ++stale) {
-          invalidateLabel(chain_[stale]);
-        }
-        return false;
-      }
+  // A chain that keeps breaking above every adopter is not worth more walks.
+  invalidateLabel(index);
+  return false;
+}
+
+bool FeasiblePathSearch3D::descendsFrom(std::size_t index,
+                                        const std::size_t ancestor) const noexcept {
+  constexpr std::size_t kMaximumWalk{1U << 20U};
+  for (std::size_t step = 0U; step < kMaximumWalk; ++step) {
+    if (index == ancestor) {
+      return true;
     }
-    validated_epoch_[child] = validation_epoch_;
+    const std::uint32_t parent = parent_index_[index];
+    if (parent == kNoParent || !labelled(parent)) {
+      return false;
+    }
+    index = parent;
+  }
+  return true;
+}
+
+bool FeasiblePathSearch3D::adoptLabel(const std::size_t index) {
+  // A neighbour validated on this epoch cannot descend from the label: within
+  // an epoch its chain would have failed on the same broken edge. Any other
+  // labelled neighbour outside the label's own subtree is a plausible parent
+  // whose chain the next walk validates in turn.
+  const PersistentPlannerNode3D node = lattice_->nodeAt(index);
+  double validated_cost_s = std::numeric_limits<double>::infinity();
+  std::uint32_t validated_parent = kNoParent;
+  double plausible_cost_s = std::numeric_limits<double>::infinity();
+  std::uint32_t plausible_parent = kNoParent;
+  lattice_->forEachAdjacentNode(node, [&](const PersistentPlannerNode3D neighbor) {
+    const std::size_t neighbor_index = lattice_->linearIndex(neighbor);
+    if (!labelled(neighbor_index)) {
+      return;
+    }
+    if (!rejected_edges_.empty() &&
+        rejected_edges_.contains(canonicalEdge(neighbor, node))) {
+      return;
+    }
+    const bool validated = validated_epoch_[neighbor_index] == validation_epoch_;
+    if (!validated && (cost_s_[neighbor_index] >= plausible_cost_s ||
+                       descendsFrom(neighbor_index, index))) {
+      return;
+    }
+    const double transition_cost = lattice_->rankedEdgeCost(
+        neighbor, node, config_->feasibility_clearance_ranking_distance_m);
+    if (!std::isfinite(transition_cost)) {
+      return;
+    }
+    const double candidate_cost = cost_s_[neighbor_index] + transition_cost;
+    if (validated) {
+      if (candidate_cost < validated_cost_s) {
+        validated_cost_s = candidate_cost;
+        validated_parent = static_cast<std::uint32_t>(neighbor_index);
+      }
+    } else if (candidate_cost < plausible_cost_s) {
+      plausible_cost_s = candidate_cost;
+      plausible_parent = static_cast<std::uint32_t>(neighbor_index);
+    }
+  });
+  const bool validated = validated_parent != kNoParent;
+  const std::uint32_t parent = validated ? validated_parent : plausible_parent;
+  if (parent == kNoParent) {
+    return false;
+  }
+  cost_s_[index] = validated ? validated_cost_s : plausible_cost_s;
+  parent_index_[index] = parent;
+  depth_[index] = depth_[parent] + 1U;
+  if (validated) {
+    validated_epoch_[index] = validation_epoch_;
+  }
+  ++adopted_label_count_;
+  if (queued_[index] != 0U) {
+    // The queued entry carries the old cost and drops on pop; queue the label
+    // again at its adopted cost so the frontier keeps it.
+    queued_[index] = 0U;
+    push(index, node);
   }
   return true;
 }
@@ -209,8 +301,13 @@ void FeasiblePathSearch3D::invalidateLabel(const std::size_t index) {
   invalidation_queue_.push_back(static_cast<std::uint32_t>(index));
 }
 
-void FeasiblePathSearch3D::drainInvalidations() {
+void FeasiblePathSearch3D::drainInvalidations(
+    const std::chrono::steady_clock::time_point deadline) {
+  std::size_t drained{0U};
   while (!invalidation_queue_.empty()) {
+    if ((++drained & 63U) == 0U && std::chrono::steady_clock::now() >= deadline) {
+      return;
+    }
     const std::size_t index = invalidation_queue_.back();
     invalidation_queue_.pop_back();
     lattice_->forEachAdjacentNode(
@@ -243,6 +340,11 @@ std::optional<std::vector<Point3>> FeasiblePathSearch3D::advance(
   frontier_exhausted_ = false;
   while (expansions < maximum_expansions &&
          std::chrono::steady_clock::now() < deadline) {
+    if (!invalidation_queue_.empty()) {
+      // A re-entry cascade the previous call could not finish.
+      drainInvalidations(deadline);
+      continue;
+    }
     if (open_.empty()) {
       frontier_exhausted_ = true;
       if (restarted) {
@@ -261,7 +363,7 @@ std::optional<std::vector<Point3>> FeasiblePathSearch3D::advance(
       continue;
     }
     if (!chainValid(current_index)) {
-      drainInvalidations();
+      drainInvalidations(deadline);
       continue;
     }
     if (!current.goal_connector) {
@@ -333,7 +435,7 @@ std::optional<std::vector<Point3>> FeasiblePathSearch3D::advance(
         rejected_edges_.insert(edge);
         advanceValidationEpoch();
         invalidateLabel(lattice_->linearIndex(to));
-        drainInvalidations();
+        drainInvalidations(deadline);
         continue;
       }
       // The departure no longer reaches any leading node, or the candidate is
@@ -378,7 +480,7 @@ std::optional<std::vector<Point3>> FeasiblePathSearch3D::advance(
           queued_[neighbor_index] = 0U;
           push(neighbor_index, neighbor);
         });
-    drainInvalidations();
+    drainInvalidations(deadline);
   }
   return std::nullopt;
 }
@@ -455,6 +557,10 @@ std::size_t FeasiblePathSearch3D::restartCount() const noexcept {
 
 std::size_t FeasiblePathSearch3D::invalidatedLabelCount() const noexcept {
   return invalidated_label_count_;
+}
+
+std::size_t FeasiblePathSearch3D::adoptedLabelCount() const noexcept {
+  return adopted_label_count_;
 }
 
 std::size_t FeasiblePathSearch3D::lastInvalidSegment() const noexcept {

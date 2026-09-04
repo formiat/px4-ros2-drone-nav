@@ -541,6 +541,7 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     telemetry.feasibility_restarts = feasibility_search_.restartCount();
     telemetry.feasibility_invalidated_labels =
         feasibility_search_.invalidatedLabelCount();
+    telemetry.feasibility_adopted_labels = feasibility_search_.adoptedLabelCount();
     telemetry.feasibility_last_invalid_segment =
         feasibility_search_.lastInvalidSegment();
     telemetry.feasibility_anchor = lattice_.pointFor(
