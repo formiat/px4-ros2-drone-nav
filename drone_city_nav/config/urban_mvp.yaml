@@ -135,7 +135,12 @@ obstacle_memory_3d_node:
     # into a ramp through free volume); horizontal neighbours keep a wide one
     # (a row meets a wall at grazing incidence exactly where its columns are
     # sparse, and a depth edge steps far beyond any incidence).
-    lidar_surface_interpolation_enabled: true
+    # The 121-row scan paints a wall inside the vehicle's body band with
+    # measured returns alone at the guaranteed range (see the sensing
+    # geometry contract), so surface joins would only add occupied evidence
+    # between returns: tens of thousands of voxels per scan that the planner
+    # has to repair around. Sparse sensors turn the joins on.
+    lidar_surface_interpolation_enabled: false
     lidar_surface_interpolation_maximum_incidence_deg: 30.0
     lidar_surface_interpolation_maximum_row_incidence_deg: 80.0
     use_px4_heading_for_scan: true

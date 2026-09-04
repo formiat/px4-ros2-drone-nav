@@ -140,9 +140,12 @@ vertical body band (`physical_footprint_lower_extent_m` plus
 columns no farther apart than the body diameter plus one voxel. A wall crossing
 the vehicle's path is therefore painted inside the swept footprint by measured
 returns alone, whatever the roof or floor next to it does to the neighbouring
-rows; the surface joins only densify that evidence. The 3D profile samples
-121 rows (1.5 deg) and 240 columns (1.5 deg) for the 30 m guarantee with the
-0.58 m body band and 0.25 m voxels. With 10 deg rows the same wall was a single
+rows; the surface joins only densify that evidence, so the 3D profile leaves
+`lidar_surface_interpolation_enabled` off: with a dense scan the joins add tens
+of thousands of occupied voxels per scan between measured returns, every one
+of which the planner has to repair around. The 3D profile samples 121 rows
+(1.5 deg) and 240 columns (1.5 deg) for the 30 m guarantee with the 0.58 m body
+band and 0.25 m voxels. With 10 deg rows the same wall was a single
 row at sensor height until the vehicle was a few metres away: under a passage
 roof the neighbouring row hits the ceiling instead of the wall, so no join can
 fill the band, and the body band sailed through unknown space between two
