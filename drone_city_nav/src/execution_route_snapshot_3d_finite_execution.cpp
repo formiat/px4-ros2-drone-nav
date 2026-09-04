@@ -3,6 +3,7 @@
 #include "drone_city_nav/motion_dynamics_3d.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
 #include "drone_city_nav/occupied_collision_oracle_3d.hpp"
+#include "drone_city_nav/proprioceptive_contact_seed_3d.hpp"
 #include "drone_city_nav/trajectory_control_reference_3d.hpp"
 
 #include <algorithm>
@@ -107,10 +108,13 @@ std::optional<RouteAdherenceAssessment3D> validateExecutionProgressConnector(
       raw_certificate != nullptr && observed_raw_world != nullptr
           ? optionalAddress(observed_raw_world->launchSupportContact())
           : nullptr;
-  const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_seed =
-      raw_certificate != nullptr && observed_raw_world != nullptr
-          ? optionalAddress(observed_raw_world->proprioceptiveFreeSpaceSeed())
-          : nullptr;
+  const std::optional<ProprioceptiveFreeSpaceSeed3D> proprioceptive_seed =
+      proprioceptiveContactSeed3D(
+          executionInputPosition(*execution_input), current_execution_control,
+          route.validation_policy->sweptFootprint(),
+          raw_certificate != nullptr && observed_raw_world != nullptr
+              ? std::addressof(observed_raw_world->occupancy())
+              : nullptr);
   const OccupiedCollisionOracle3D collision_oracle{OccupiedCollisionWorld3D{
       .observed_occupancy = raw_certificate != nullptr && observed_raw_world != nullptr
                                 ? std::addressof(observed_raw_world->occupancy())
@@ -121,7 +125,7 @@ std::optional<RouteAdherenceAssessment3D> validateExecutionProgressConnector(
       .planar_occupancy = nullptr,
       .raw_point_cloud = latest_lidar_obstacle_points,
       .launch_support_contact = launch_support_contact,
-      .proprioceptive_free_space_seed = proprioceptive_seed,
+      .proprioceptive_free_space_seed = optionalAddress(proprioceptive_seed),
       .footprint = route.validation_policy->sweptFootprint(),
       .flight_envelope = route.validation_policy->flightEnvelope(),
   }};
@@ -370,10 +374,12 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
   const LaunchSupportContact3D* const launch_support_contact =
       raw_mode ? optionalAddress(observed_raw_validation_world->launchSupportContact())
                : nullptr;
-  const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_seed =
-      raw_mode ? optionalAddress(
-                     observed_raw_validation_world->proprioceptiveFreeSpaceSeed())
-               : nullptr;
+  const std::optional<ProprioceptiveFreeSpaceSeed3D> proprioceptive_seed =
+      proprioceptiveContactSeed3D(
+          executionInputPosition(*certification.execution_input),
+          certification.execution_input->previousControl(), policy->sweptFootprint(),
+          raw_mode ? std::addressof(observed_raw_validation_world->occupancy())
+                   : nullptr);
   const std::uint64_t execution_collision_policy_fingerprint =
       validationPolicyFingerprint(policy->sweptFootprint(), launch_support_contact);
   if (execution_collision_policy_fingerprint == 0U) {
@@ -527,7 +533,7 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
       .observed_occupancy =
           raw_mode ? &observed_raw_validation_world->occupancy() : nullptr,
       .launch_support_contact = launch_support_contact,
-      .proprioceptive_free_space_seed = proprioceptive_seed,
+      .proprioceptive_free_space_seed = optionalAddress(proprioceptive_seed),
       .raw_occupancy = nullptr,
       .latest_lidar_obstacle_points = latest_lidar_obstacle_points,
       .terminal_boundary = std::nullopt,
@@ -868,10 +874,13 @@ certifyDirectTrackingExecution3D(const ExecutionPlan3D& current,
       raw_mode
           ? optionalAddress(certification.observed_raw_world->launchSupportContact())
           : nullptr;
-  const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_seed =
-      raw_mode ? optionalAddress(
-                     certification.observed_raw_world->proprioceptiveFreeSpaceSeed())
-               : nullptr;
+  const std::optional<ProprioceptiveFreeSpaceSeed3D> proprioceptive_seed =
+      proprioceptiveContactSeed3D(
+          executionInputPosition(*certification.execution_input),
+          certification.execution_input->previousControl(),
+          certification.validation_policy->sweptFootprint(),
+          raw_mode ? std::addressof(certification.observed_raw_world->occupancy())
+                   : nullptr);
   const std::span<const Point3> latest_lidar_obstacle_points{
       certification.latest_lidar_evidence->hitPointsMapM()};
   FiniteExecutionPathWorld3D validation_world{
@@ -884,7 +893,7 @@ certifyDirectTrackingExecution3D(const ExecutionPlan3D& current,
       .observed_occupancy =
           raw_mode ? &certification.observed_raw_world->occupancy() : nullptr,
       .launch_support_contact = launch_support_contact,
-      .proprioceptive_free_space_seed = proprioceptive_seed,
+      .proprioceptive_free_space_seed = optionalAddress(proprioceptive_seed),
       .raw_occupancy = nullptr,
       .latest_lidar_obstacle_points = latest_lidar_obstacle_points,
       .terminal_boundary = std::nullopt,

@@ -1,5 +1,6 @@
 #include "drone_city_nav/execution_horizon_timing.hpp"
 #include "drone_city_nav/execution_supervisor_3d.hpp"
+#include "drone_city_nav/proprioceptive_contact_seed_3d.hpp"
 #include "drone_city_nav/trajectory_control_reference_3d.hpp"
 
 #include <algorithm>
@@ -13,6 +14,11 @@
 namespace drone_city_nav {
 
 namespace {
+
+template<typename T>
+[[nodiscard]] const T* optionalAddress(const std::optional<T>& value) noexcept {
+  return value.has_value() ? std::addressof(*value) : nullptr;
+}
 
 template<typename FiniteExecution>
 [[nodiscard]] std::vector<TimedExecutionPathPoint3D>
@@ -72,9 +78,12 @@ latestLidarEvidenceFresh(const ExecutionRetentionRequest3D& request,
               .fresh);
 }
 
+// `live_seed` receives the contact evidence the returned world points at, so
+// the caller owns storage that outlives the world.
 [[nodiscard]] std::optional<FiniteExecutionPathWorld3D> snapshotValidationWorld(
     const ExecutionRetentionRequest3D& request, const CertifiedRouteSuffix3D& route,
-    std::optional<FiniteExecutionPathTerminalBoundary3D> terminal_boundary) {
+    std::optional<FiniteExecutionPathTerminalBoundary3D> terminal_boundary,
+    std::optional<ProprioceptiveFreeSpaceSeed3D>& live_seed) {
   if (!route.valid() || route.validation_policy == nullptr ||
       !route.validation_policy->valid() ||
       !latestLidarEvidenceFresh(request, *route.validation_policy)) {
@@ -97,10 +106,14 @@ latestLidarEvidenceFresh(const ExecutionRetentionRequest3D& request,
       launch_support_owner != nullptr && launch_support_owner->has_value()
           ? std::addressof(launch_support_owner->value())
           : nullptr;
-  const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_seed =
-      observed_route && observed_world->proprioceptiveFreeSpaceSeed().has_value()
-          ? std::addressof(observed_world->proprioceptiveFreeSpaceSeed().value())
-          : nullptr;
+  // Live contact evidence: the vehicle's pose now, not the pose the route was
+  // certified from. Without it a wall that closed in on a moving vehicle
+  // leaves it no validated motion at all, not even a stop.
+  live_seed = proprioceptiveContactSeed3D(
+      Point3{request.exact_initial_state.x, request.exact_initial_state.y,
+             request.exact_initial_state.z},
+      request.exact_previous_control, route.validation_policy->sweptFootprint(),
+      observed_route ? std::addressof(observed_world->occupancy()) : nullptr);
   return FiniteExecutionPathWorld3D{
       .flight_envelope = &route.validation_policy->flightEnvelope(),
       .dynamics = &route.validation_policy->dynamics(),
@@ -109,7 +122,7 @@ latestLidarEvidenceFresh(const ExecutionRetentionRequest3D& request,
       .static_occupancy = static_route ? &route.static_world->occupancy() : nullptr,
       .observed_occupancy = observed_route ? &observed_world->occupancy() : nullptr,
       .launch_support_contact = launch_support_contact,
-      .proprioceptive_free_space_seed = proprioceptive_seed,
+      .proprioceptive_free_space_seed = optionalAddress(live_seed),
       .raw_occupancy = nullptr,
       .latest_lidar_obstacle_points =
           std::span<const Point3>{request.latest_lidar_evidence->hitPointsMapM()},
@@ -119,7 +132,8 @@ latestLidarEvidenceFresh(const ExecutionRetentionRequest3D& request,
 
 [[nodiscard]] std::optional<FiniteExecutionPathWorld3D>
 directValidationWorld(const ExecutionRetentionRequest3D& request,
-                      const DirectTrackingFiniteExecution3D& execution) {
+                      const DirectTrackingFiniteExecution3D& execution,
+                      std::optional<ProprioceptiveFreeSpaceSeed3D>& live_seed) {
   if (!execution.valid() || execution.validation_policy == nullptr ||
       !latestLidarEvidenceFresh(request, *execution.validation_policy)) {
     return std::nullopt;
@@ -137,12 +151,12 @@ directValidationWorld(const ExecutionRetentionRequest3D& request,
       launch_support_owner != nullptr && launch_support_owner->has_value()
           ? std::addressof(launch_support_owner->value())
           : nullptr;
-  const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_seed =
-      observed_world &&
-              execution.observed_raw_world->proprioceptiveFreeSpaceSeed().has_value()
-          ? std::addressof(
-                execution.observed_raw_world->proprioceptiveFreeSpaceSeed().value())
-          : nullptr;
+  live_seed = proprioceptiveContactSeed3D(
+      Point3{request.exact_initial_state.x, request.exact_initial_state.y,
+             request.exact_initial_state.z},
+      request.exact_previous_control, execution.validation_policy->sweptFootprint(),
+      observed_world ? std::addressof(execution.observed_raw_world->occupancy())
+                     : nullptr);
   return FiniteExecutionPathWorld3D{
       .flight_envelope = &execution.validation_policy->flightEnvelope(),
       .dynamics = &execution.validation_policy->dynamics(),
@@ -152,7 +166,7 @@ directValidationWorld(const ExecutionRetentionRequest3D& request,
       .observed_occupancy =
           observed_world ? &execution.observed_raw_world->occupancy() : nullptr,
       .launch_support_contact = launch_support_contact,
-      .proprioceptive_free_space_seed = proprioceptive_seed,
+      .proprioceptive_free_space_seed = optionalAddress(live_seed),
       .raw_occupancy = nullptr,
       .latest_lidar_obstacle_points =
           std::span<const Point3>{request.latest_lidar_evidence->hitPointsMapM()},
@@ -234,12 +248,14 @@ directValidationWorld(const ExecutionRetentionRequest3D& request,
   const std::shared_ptr<const std::vector<ControlRouteSample3D>> mppi_reference =
       route->geometry != nullptr ? adaptTrajectoryControlReference3D(*route->geometry)
                                  : nullptr;
+  std::optional<ProprioceptiveFreeSpaceSeed3D> live_seed;
   const std::optional<FiniteExecutionPathWorld3D> continuation_world =
       snapshotValidationWorld(
           request, *route,
           lifecycle_braking != nullptr
               ? std::nullopt
-              : validationTerminalBoundary(*active, *route, mppi_reference));
+              : validationTerminalBoundary(*active, *route, mppi_reference),
+          live_seed);
   if (!continuation_world.has_value()) {
     result.status = ExecutionRetentionStatus3D::kValidationWorldUnavailable;
     return result;
@@ -383,8 +399,9 @@ directValidationWorld(const ExecutionRetentionRequest3D& request,
   }
   result.source_trajectory_revision = active->trajectory_revision;
   const std::vector<TimedExecutionPathPoint3D> points = executionPathPoints(*active);
+  std::optional<ProprioceptiveFreeSpaceSeed3D> live_seed;
   const std::optional<FiniteExecutionPathWorld3D> continuation_world =
-      directValidationWorld(request, *active);
+      directValidationWorld(request, *active, live_seed);
   if (points.empty()) {
     result.status = ExecutionRetentionStatus3D::kInvalidActivePath;
     return result;

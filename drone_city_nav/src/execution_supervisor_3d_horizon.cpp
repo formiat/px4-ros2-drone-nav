@@ -1,6 +1,7 @@
 #include "drone_city_nav/execution_horizon_commit_3d.hpp"
 #include "drone_city_nav/execution_supervisor_3d.hpp"
 #include "drone_city_nav/finite_execution_path_3d.hpp"
+#include "drone_city_nav/proprioceptive_contact_seed_3d.hpp"
 
 #include <cmath>
 #include <memory>
@@ -87,9 +88,16 @@ timedExecutionPathPoints(const FiniteExecutionEvidenceView3D& view) {
   const std::optional<LaunchSupportContact3D>& launch_support =
       !static_world ? latest_raw->launchSupportContact()
                     : std::optional<LaunchSupportContact3D>{};
-  const std::optional<ProprioceptiveFreeSpaceSeed3D>& proprioceptive_seed =
-      !static_world ? latest_raw->proprioceptiveFreeSpaceSeed()
-                    : std::optional<ProprioceptiveFreeSpaceSeed3D>{};
+  // Contact evidence is the vehicle's pose now: this validation asks whether
+  // the published path is still executable from where the vehicle stands.
+  const std::optional<ProprioceptiveFreeSpaceSeed3D> proprioceptive_seed =
+      !static_world
+          ? proprioceptiveContactSeed3D(
+                Point3{view.execution_input->state().x, view.execution_input->state().y,
+                       view.execution_input->state().z},
+                view.execution_input->previousControl(), view.policy->sweptFootprint(),
+                std::addressof(latest_raw->occupancy()))
+          : std::optional<ProprioceptiveFreeSpaceSeed3D>{};
   const FiniteExecutionPathWorld3D world{
       .flight_envelope = &view.policy->flightEnvelope(),
       .dynamics = &view.policy->dynamics(),

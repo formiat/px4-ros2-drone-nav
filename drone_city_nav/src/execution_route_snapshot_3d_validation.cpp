@@ -160,17 +160,14 @@ validationWorldOwnerContent(const FiniteExecutionPathWorld3D& world,
         owner.launchSupportContact();
     const LaunchSupportContact3D* const owned_support =
         launch_support.has_value() ? std::addressof(*launch_support) : nullptr;
-    const std::optional<ProprioceptiveFreeSpaceSeed3D>& proprioceptive_seed =
-        owner.proprioceptiveFreeSpaceSeed();
-    const ProprioceptiveFreeSpaceSeed3D* const owned_seed =
-        proprioceptive_seed.has_value() ? std::addressof(*proprioceptive_seed)
-                                        : nullptr;
     const std::uint64_t content_fingerprint = owner.contentFingerprint();
+    // The proprioceptive seed is transient evidence like the newest lidar
+    // returns: it is the vehicle's pose at validation time, never part of the
+    // owner's immutable content.
     if (!owner.valid() || content_fingerprint == 0U ||
         world.static_occupancy != nullptr ||
         world.observed_occupancy != std::addressof(owner.occupancy()) ||
-        world.launch_support_contact != owned_support ||
-        world.proprioceptive_free_space_seed != owned_seed) {
+        world.launch_support_contact != owned_support) {
       return std::nullopt;
     }
     return ValidationWorldOwnerContent3D{
@@ -183,8 +180,7 @@ validationWorldOwnerContent(const FiniteExecutionPathWorld3D& world,
   const std::uint64_t content_fingerprint = owner.contentFingerprint();
   if (!owner.valid() || content_fingerprint == 0U ||
       world.static_occupancy != std::addressof(owner.occupancy()) ||
-      world.observed_occupancy != nullptr || world.launch_support_contact != nullptr ||
-      world.proprioceptive_free_space_seed != nullptr) {
+      world.observed_occupancy != nullptr || world.launch_support_contact != nullptr) {
     return std::nullopt;
   }
   return ValidationWorldOwnerContent3D{

@@ -308,8 +308,13 @@ TEST(ExecutionRouteSnapshot3DTest,
                 .status,
             ExecutionRouteTransitionStatus3D::kInvalidCandidate);
 
+  // A return two metres away is an obstacle for a hold there; a return at the
+  // vehicle's own pose is contact and leaves the hold certifiable.
   StationaryExecutionHoldCertification3D raw_unsafe = terminal;
   ASSERT_NE(raw_unsafe.latest_lidar_evidence, nullptr);
+  const Point3 remote_hit{raw_unsafe.position.x - 2.0, raw_unsafe.position.y,
+                          raw_unsafe.position.z};
+  raw_unsafe.position = remote_hit;
   raw_unsafe.latest_lidar_evidence =
       VersionedLatestLidarEvidence3D::capture(LatestLidarEvidenceCapture3D{
           .producer_instance_id =
@@ -319,7 +324,7 @@ TEST(ExecutionRouteSnapshot3DTest,
           .acquisition_stamp_ns = raw_unsafe.execution_input->effectiveStampNs(),
           .receive_stamp_ns = raw_unsafe.execution_input->effectiveStampNs(),
           .source_beam_count = 1U,
-          .hit_points_map_m = {raw_unsafe.position},
+          .hit_points_map_m = {remote_hit},
       });
   ASSERT_NE(raw_unsafe.latest_lidar_evidence, nullptr);
   EXPECT_EQ(armStationaryCaptureHold3D(*revoked.next, revoked.next->version,
@@ -509,8 +514,14 @@ TEST(ExecutionRouteSnapshot3DTest,
   const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
   ASSERT_NE(active, nullptr);
 
-  StationaryExecutionHoldCertification3D raw_blocked =
+  // A hold away from the vehicle is rejected when raw evidence blocks it: the
+  // body does not stand there, so that evidence is an obstacle.
+  const StationaryExecutionHoldCertification3D reference =
       SnapshotFixture3D::holdCertification(*active);
+  const Point3 remote_position{reference.position.x - 2.0, reference.position.y,
+                               reference.position.z};
+  StationaryExecutionHoldCertification3D raw_blocked =
+      SnapshotFixture3D::holdCertification(*active, true, remote_position);
   ObservedOccupancyGrid3D blocked_occupancy = fixture.raw_occupancy;
   const std::optional<GridIndex3D> blocked_cell =
       blocked_occupancy.worldToCell(raw_blocked.position);
@@ -525,7 +536,7 @@ TEST(ExecutionRouteSnapshot3DTest,
             ExecutionRouteTransitionStatus3D::kInvalidCandidate);
 
   StationaryExecutionHoldCertification3D lidar_blocked =
-      SnapshotFixture3D::holdCertification(*active);
+      SnapshotFixture3D::holdCertification(*active, true, remote_position);
   lidar_blocked.latest_lidar_evidence = SnapshotFixture3D::newerLidarEvidence(
       *lidar_blocked.latest_lidar_evidence,
       std::vector<Point3>{lidar_blocked.position});
@@ -534,6 +545,24 @@ TEST(ExecutionRouteSnapshot3DTest,
       transferToExecutionHold3D(*active, active->version, std::move(lidar_blocked))
           .status,
       ExecutionRouteTransitionStatus3D::kInvalidCandidate);
+
+  // Evidence at the vehicle's own pose is contact: holding there stays
+  // certifiable, so a vehicle standing in fresh evidence keeps a commanded
+  // stop instead of losing every executable option.
+  StationaryExecutionHoldCertification3D contact =
+      SnapshotFixture3D::holdCertification(*active);
+  ObservedOccupancyGrid3D contact_occupancy = fixture.raw_occupancy;
+  const std::optional<GridIndex3D> contact_cell =
+      contact_occupancy.worldToCell(contact.position);
+  ASSERT_TRUE(contact_cell.has_value());
+  ASSERT_TRUE(contact_occupancy.setState(
+      contact_cell.value(), // NOLINT(bugprone-unchecked-optional-access)
+      ObservedVoxelState::kOccupied));
+  contact.observed_raw_world =
+      fixture.rawWorld(SnapshotFixture3D::kLatestRawRevision + 1U, &contact_occupancy);
+  EXPECT_EQ(
+      transferToExecutionHold3D(*active, active->version, std::move(contact)).status,
+      ExecutionRouteTransitionStatus3D::kApplied);
 }
 
 TEST(ExecutionRouteSnapshot3DTest,

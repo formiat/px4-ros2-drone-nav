@@ -154,5 +154,50 @@ TEST(OccupiedCollisionOracle3DTest, ProprioceptiveSeedMakesTheOwnPoseAValidDepar
   EXPECT_EQ(approach.source, OccupiedCollisionSource3D::kObservedOccupancy);
 }
 
+TEST(OccupiedCollisionOracle3DTest, ContactEvidenceIsTiedToTheSeedNotTheWorld) {
+  // Two seeds on the same world: the vehicle standing in the contact voxel
+  // may depart from it, while a vehicle two metres away sees the same voxel
+  // as an obstacle. Contact is a property of where the body stands.
+  ObservedOccupancyGrid3D observed{GridBounds3D{0.0, 0.0, 0.0, 0.25, 40, 40, 40}};
+  ASSERT_TRUE(
+      observed.setState(GridIndex3D{24, 20, 20}, ObservedVoxelState::kOccupied));
+  const SweptFootprintConfig footprint{.radius_m = 0.5,
+                                       .lower_extent_m = 0.25,
+                                       .upper_extent_m = 0.25,
+                                       .sweep_step_m = 0.125};
+  const FootprintBodyAxis axis{};
+  const Point3 contact_position{5.6, 5.1, 5.1};
+  const Point3 distant_position{3.6, 5.1, 5.1};
+  const ProprioceptiveFreeSpaceSeed3D contact_seed{
+      .position = contact_position,
+      .body_axis = axis,
+      .footprint = footprint,
+      .contact_tolerance_m = 0.125,
+  };
+  const ProprioceptiveFreeSpaceSeed3D distant_seed{
+      .position = distant_position,
+      .body_axis = axis,
+      .footprint = footprint,
+      .contact_tolerance_m = 0.125,
+  };
+  const auto oracle_for = [&](const ProprioceptiveFreeSpaceSeed3D& seed) {
+    return OccupiedCollisionOracle3D{OccupiedCollisionWorld3D{
+        .observed_occupancy = &observed,
+        .proprioceptive_free_space_seed = &seed,
+        .footprint = footprint,
+        .flight_envelope = FlightEnvelopeConfig{0.0, 10.0},
+    }};
+  };
+
+  EXPECT_TRUE(oracle_for(contact_seed).validatePoint(contact_position, axis).clear());
+  EXPECT_TRUE(oracle_for(contact_seed)
+                  .validateSegment(contact_position, axis, distant_position, axis)
+                  .clear());
+  EXPECT_EQ(oracle_for(distant_seed)
+                .validateSegment(distant_position, axis, contact_position, axis)
+                .status,
+            OccupiedCollisionStatus3D::kRawCollision);
+}
+
 } // namespace
 } // namespace drone_city_nav

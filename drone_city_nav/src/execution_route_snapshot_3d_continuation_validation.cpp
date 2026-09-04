@@ -1,5 +1,6 @@
 #include "drone_city_nav/execution_route_certification_3d.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
+#include "drone_city_nav/proprioceptive_contact_seed_3d.hpp"
 
 #include <memory>
 #include <optional>
@@ -47,6 +48,15 @@ FiniteExecutionPathValidation3D validateRemainingFiniteExecutionAgainstObservedW
   if (points.empty()) {
     return {};
   }
+  // Contact evidence is the vehicle's pose now: the question is whether the
+  // published path continues from where the vehicle stands.
+  const std::optional<ProprioceptiveFreeSpaceSeed3D> live_seed =
+      proprioceptiveContactSeed3D(Point3{current_input.state().x,
+                                         current_input.state().y,
+                                         current_input.state().z},
+                                  current_input.previousControl(),
+                                  execution.validation_policy->sweptFootprint(),
+                                  std::addressof(current_world.occupancy()));
   const FiniteExecutionPathWorld3D validation_world{
       .flight_envelope = &execution.validation_policy->flightEnvelope(),
       .dynamics = &execution.validation_policy->dynamics(),
@@ -55,8 +65,7 @@ FiniteExecutionPathValidation3D validateRemainingFiniteExecutionAgainstObservedW
       .static_occupancy = nullptr,
       .observed_occupancy = &current_world.occupancy(),
       .launch_support_contact = optionalAddress(current_world.launchSupportContact()),
-      .proprioceptive_free_space_seed =
-          optionalAddress(current_world.proprioceptiveFreeSpaceSeed()),
+      .proprioceptive_free_space_seed = optionalAddress(live_seed),
       .raw_occupancy = nullptr,
       .latest_lidar_obstacle_points = {},
       .terminal_boundary = std::nullopt,
@@ -96,6 +105,14 @@ FiniteExecutionPathValidation3D validateRemainingFiniteExecutionAgainstLatestLid
   }
   const VersionedObservedRawWorld3D* const observed_world =
       execution.observed_raw_world.get();
+  const std::optional<ProprioceptiveFreeSpaceSeed3D> live_seed =
+      proprioceptiveContactSeed3D(
+          Point3{execution.execution_input->state().x,
+                 execution.execution_input->state().y,
+                 execution.execution_input->state().z},
+          execution.execution_input->previousControl(),
+          execution.validation_policy->sweptFootprint(),
+          observed_mode ? std::addressof(observed_world->occupancy()) : nullptr);
   const FiniteExecutionPathWorld3D validation_world{
       .flight_envelope = &execution.validation_policy->flightEnvelope(),
       .dynamics = &execution.validation_policy->dynamics(),
@@ -106,9 +123,7 @@ FiniteExecutionPathValidation3D validateRemainingFiniteExecutionAgainstLatestLid
       .launch_support_contact =
           observed_mode ? optionalAddress(observed_world->launchSupportContact())
                         : nullptr,
-      .proprioceptive_free_space_seed =
-          observed_mode ? optionalAddress(observed_world->proprioceptiveFreeSpaceSeed())
-                        : nullptr,
+      .proprioceptive_free_space_seed = optionalAddress(live_seed),
       .raw_occupancy = nullptr,
       .latest_lidar_obstacle_points =
           std::span<const Point3>{current_lidar.hitPointsMapM()},

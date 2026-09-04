@@ -4,6 +4,7 @@
 #include "drone_city_nav/motion_dynamics_3d.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
 #include "drone_city_nav/occupied_collision_oracle_3d.hpp"
+#include "drone_city_nav/proprioceptive_contact_seed_3d.hpp"
 
 #include <cmath>
 #include <cstddef>
@@ -41,11 +42,14 @@ bool stationaryHoldRawSafe(
       launch_support_owner != nullptr && launch_support_owner->has_value()
           ? std::addressof(**launch_support_owner)
           : nullptr;
-  const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_seed =
-      observed_raw_world != nullptr &&
-              observed_raw_world->proprioceptiveFreeSpaceSeed().has_value()
-          ? std::addressof(*observed_raw_world->proprioceptiveFreeSpaceSeed())
-          : nullptr;
+  const std::optional<ProprioceptiveFreeSpaceSeed3D> proprioceptive_seed =
+      proprioceptiveContactSeed3D(Point3{execution_input.state().x,
+                                         execution_input.state().y,
+                                         execution_input.state().z},
+                                  control, validation_policy.sweptFootprint(),
+                                  observed_raw_world != nullptr
+                                      ? std::addressof(observed_raw_world->occupancy())
+                                      : nullptr);
   const OccupiedCollisionOracle3D oracle{OccupiedCollisionWorld3D{
       .observed_occupancy = observed_raw_world != nullptr
                                 ? std::addressof(observed_raw_world->occupancy())
@@ -55,7 +59,9 @@ bool stationaryHoldRawSafe(
       .planar_occupancy = nullptr,
       .raw_point_cloud = latest_lidar_evidence.hitPointsMapM(),
       .launch_support_contact = launch_support,
-      .proprioceptive_free_space_seed = proprioceptive_seed,
+      .proprioceptive_free_space_seed = proprioceptive_seed.has_value()
+                                            ? std::addressof(*proprioceptive_seed)
+                                            : nullptr,
       .footprint = validation_policy.sweptFootprint(),
       .flight_envelope = validation_policy.flightEnvelope(),
   }};

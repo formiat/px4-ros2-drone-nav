@@ -244,19 +244,19 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
               ? std::nullopt
               : finiteRouteTerminalBoundary(input, finite_boundary_endpoint_semantics);
   const LaunchSupportContact3D* launch_support_contact_owner{nullptr};
-  const ProprioceptiveFreeSpaceSeed3D* proprioceptive_seed_owner{nullptr};
   if (exact_snapshot_world && direct_observed_world != nullptr) {
     launch_support_contact_owner =
         optionalAddress(direct_observed_world->launchSupportContact());
-    proprioceptive_seed_owner =
-        optionalAddress(direct_observed_world->proprioceptiveFreeSpaceSeed());
   } else if (exact_snapshot_world && selected_snapshot_route != nullptr &&
              selected_snapshot_route->observed_raw_world != nullptr) {
     launch_support_contact_owner = optionalAddress(
         selected_snapshot_route->observed_raw_world->launchSupportContact());
-    proprioceptive_seed_owner = optionalAddress(
-        selected_snapshot_route->observed_raw_world->proprioceptiveFreeSpaceSeed());
   }
+  // Contact evidence for this cycle's validations is the vehicle's pose now,
+  // the same seed the observed world was derived with.
+  const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_seed_owner =
+      observed_occupancy != nullptr ? std::addressof(proprioceptive_free_space_seed)
+                                    : nullptr;
   const FlightEnvelopeConfig* const execution_flight_envelope =
       exact_snapshot_world ? &selected_policy->flightEnvelope() : nullptr;
   const mppi::DynamicsConfig* const execution_dynamics =

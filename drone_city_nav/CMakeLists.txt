@@ -278,6 +278,7 @@ add_drone_city_nav_layer(
   src/observed_world_content_hash_3d.cpp
   src/occupied_collision_oracle_3d.cpp
   src/sensor_braking_contract_3d.cpp
+  src/proprioceptive_contact_seed_3d.cpp
   src/swept_footprint.cpp
   src/swept_footprint_2d.cpp
   src/swept_footprint_esdf.cpp

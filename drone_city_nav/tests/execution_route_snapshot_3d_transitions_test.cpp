@@ -252,6 +252,9 @@ TEST(ExecutionRouteSnapshot3DTest,
           *far_route_world, stationary_execution->valid_from_ns);
   EXPECT_EQ(unaffected.status, FiniteExecutionPathStatus3D::kValid);
 
+  // Evidence the body already overlaps at the vehicle's own pose is contact,
+  // not an obstacle: the immediate braking path departs from it and stays
+  // executable. Refusing it would leave a moving vehicle no validated motion.
   ObservedOccupancyGrid3D active_trajectory_obstacle = fixture.raw_occupancy;
   const MotionState3D& active_state = stationary_execution->execution_input->state();
   const std::optional<GridIndex3D> active_cell = active_trajectory_obstacle.worldToCell(
@@ -264,11 +267,11 @@ TEST(ExecutionRouteSnapshot3DTest,
                        &active_trajectory_obstacle);
   ASSERT_NE(active_world, nullptr);
 
-  const FiniteExecutionPathValidation3D blocked =
+  const FiniteExecutionPathValidation3D contact =
       validateRemainingFiniteExecutionAgainstObservedWorld3D(
           *stationary_execution, *stationary_execution->execution_input, *active_world,
           stationary_execution->valid_from_ns);
-  EXPECT_EQ(blocked.status, FiniteExecutionPathStatus3D::kRawCollision);
+  EXPECT_EQ(contact.status, FiniteExecutionPathStatus3D::kValid);
 }
 
 TEST(ExecutionRouteSnapshot3DTest,
@@ -550,6 +553,8 @@ TEST(ExecutionRouteSnapshot3DTest,
                       FiniteExecutionKind3D::kEmergencyBrakeTail)
           .has_value());
 
+  // Evidence the body overlaps at the vehicle's own pose is contact: the
+  // braking tail departs from it and remains certifiable.
   const MotionState3D& current_state =
       following.next->route()->progress.execution_input->state();
   const Point3 current_position{current_state.x, current_state.y, current_state.z};
@@ -557,7 +562,7 @@ TEST(ExecutionRouteSnapshot3DTest,
       unsafe_occupancy.worldToCell(current_position);
   ASSERT_TRUE(current_cell.has_value());
   ASSERT_TRUE(unsafe_occupancy.setState(*current_cell, ObservedVoxelState::kOccupied));
-  EXPECT_FALSE(
+  EXPECT_TRUE(
       certify_against(invalidation,
                       fixture.rawWorld(invalidation.raw_revision, &unsafe_occupancy),
                       FiniteExecutionKind3D::kEmergencyBrakeTail)
@@ -627,9 +632,11 @@ TEST(ExecutionRouteSnapshot3DTest,
   const std::shared_ptr<const VersionedObservedRawWorld3D> invalidating_world =
       fixture.rawWorld(invalidation.raw_revision);
   ASSERT_NE(invalidating_world, nullptr);
+  // The blocking cell sits on the connector but away from the body at the
+  // certified start pose, so it is an obstacle rather than contact evidence.
   ObservedOccupancyGrid3D blocked_connector_occupancy = fixture.raw_occupancy;
   const std::optional<GridIndex3D> blocked_connector_cell =
-      blocked_connector_occupancy.worldToCell(Point3{3.0, 0.0, 5.0});
+      blocked_connector_occupancy.worldToCell(Point3{2.5, 0.0, 5.0});
   ASSERT_TRUE(blocked_connector_cell.has_value());
   ASSERT_TRUE(blocked_connector_occupancy.setState(*blocked_connector_cell,
                                                    ObservedVoxelState::kOccupied));
