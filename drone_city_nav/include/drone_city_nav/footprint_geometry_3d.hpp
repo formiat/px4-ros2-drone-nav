@@ -39,6 +39,13 @@ struct ProprioceptiveFreeSpaceSeed3D {
   FootprintBodyAxis body_axis{};
   SweptFootprintConfig footprint{};
   double contact_tolerance_m{0.0};
+  // Distance from the seed to the nearest occupied evidence its body touches.
+  // It is what the contact may not be approached beyond: a body pressed
+  // against a surface keeps this stand-off while it moves along that surface,
+  // and gives it up only by departing. Negative means unknown, and then every
+  // contact is judged by its own distance to the seed, which forbids moving
+  // along a surface at all.
+  double contact_clearance_m{-1.0};
 };
 
 struct AxisAlignedBox3D {

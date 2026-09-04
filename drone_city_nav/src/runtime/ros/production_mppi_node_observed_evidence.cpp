@@ -1,5 +1,6 @@
 #include "drone_city_nav/launch_support_contact_3d.hpp"
 #include "drone_city_nav/occupied_collision_oracle_3d.hpp"
+#include "drone_city_nav/proprioceptive_contact_seed_3d.hpp"
 
 #include <algorithm>
 #include <cinttypes>
@@ -58,12 +59,9 @@ ProductionMppiNode::prepareObservedExecutionEvidence3D(
           config_.execution.maximum_pose_age_ms);
   const std::optional<ProprioceptiveFreeSpaceSeed3D> free_space_seed =
       current_body_axis.has_value()
-          ? std::optional<ProprioceptiveFreeSpaceSeed3D>{ProprioceptiveFreeSpaceSeed3D{
-                .position = position,
-                .body_axis = *current_body_axis,
-                .footprint = config_.world.physical_footprint,
-                .contact_tolerance_m = raw_world.proprioceptiveContactToleranceM(),
-            }}
+          ? proprioceptiveContactSeed3D(position, *current_body_axis,
+                                        config_.world.physical_footprint,
+                                        occupancy.get())
           : std::nullopt;
   const double vehicle_speed_mps =
       std::hypot(std::hypot(static_cast<double>(navigation.state.vx),

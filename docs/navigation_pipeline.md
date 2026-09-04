@@ -110,11 +110,15 @@ that overlaps the body at the proprioceptive seed (the current pose, widened by
 half an observed voxel) is contact rather than an obstacle: the vehicle
 demonstrably occupies that volume. Every raw validator (planner departure,
 route candidates, certification, the finite execution path, hold validation)
-suppresses such contact for body positions that come no closer to it than the
-seed. Holding and departing stay executable; any motion that closes on the
-contact, sideways into neighbouring evidence of the same surface included, is
-a collision, and the half-voxel tolerance widens what counts as contact but
-never how far the body may close on it. The seed is transient evidence
+suppresses it while the body keeps the stand-off it already has: the seed
+reports the distance from the vehicle to the nearest evidence its body touches,
+and a candidate position is admissible while every piece of evidence stays at
+least that far away. A vehicle pressed against a face can therefore hold,
+depart, and fly along that face, its smallest clearance never shrinks, and the
+exemption ends by itself once the body clears its own footprint again. When no
+stand-off is known only the evidence the body touches at the seed is contact,
+each piece judged by its own distance, and the half-voxel tolerance widens what
+counts as contact but never how far the body may close on it. The seed is transient evidence
 like the newest lidar returns: each validation builds it from the pose its own
 execution input reports, never from the pose a resident route was certified
 from. A seed frozen into a certified world would stop exempting evidence that

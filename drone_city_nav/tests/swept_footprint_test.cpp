@@ -780,11 +780,31 @@ TEST(SweptFootprintTest, ProprioceptiveSeedExemptsContactOnlyWhileNotApproaching
                                         Point3{2.0, 2.0, 2.0}, axis, footprint, nullptr,
                                         &seed)
                   .accepted());
-  // Sliding along the wall in contact enters wall voxels the body was farther
-  // from at the seed, so it is an approach like any other.
+  // Without a stand-off every contact is judged by its own distance, so
+  // sliding along the wall counts as an approach.
   EXPECT_EQ(validateRawSweptFootprint(occupancy, seed.position, axis,
                                       Point3{2.6, 2.1, 2.0}, axis, footprint, nullptr,
                                       &seed)
+                .status,
+            SweptFootprintStatus::kRawCollision);
+
+  // With the stand-off the body keeps from the wall it touches, moving along
+  // that wall stays valid while closing on it still collides. A vehicle
+  // pressed against a face must be able to leave along it, not only backwards,
+  // or it is frozen where it stands.
+  ProprioceptiveFreeSpaceSeed3D standoff_seed = seed;
+  standoff_seed.contact_clearance_m = 0.4;
+  EXPECT_TRUE(validateRawSweptFootprint(occupancy, seed.position, axis,
+                                        Point3{2.6, 2.6, 2.0}, axis, footprint, nullptr,
+                                        &standoff_seed)
+                  .accepted());
+  EXPECT_TRUE(validateRawSweptFootprint(occupancy, seed.position, axis,
+                                        Point3{2.6, 2.0, 2.6}, axis, footprint, nullptr,
+                                        &standoff_seed)
+                  .accepted());
+  EXPECT_EQ(validateRawSweptFootprint(occupancy, seed.position, axis,
+                                      Point3{2.7, 2.0, 2.0}, axis, footprint, nullptr,
+                                      &standoff_seed)
                 .status,
             SweptFootprintStatus::kRawCollision);
   EXPECT_EQ(validateRawSweptFootprint(occupancy, seed.position, axis,

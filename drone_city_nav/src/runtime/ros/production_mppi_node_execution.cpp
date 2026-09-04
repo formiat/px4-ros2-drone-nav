@@ -1,6 +1,7 @@
 #include "drone_city_nav/execution_horizon_timing.hpp"
 #include "drone_city_nav/mppi/finite_execution_path.hpp"
 #include "drone_city_nav/mppi/mppi_finite_horizon.hpp"
+#include "drone_city_nav/proprioceptive_contact_seed_3d.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
 
 #include <algorithm>
@@ -136,18 +137,17 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       route_execution.direct_tracking_identity.has_value();
   const CertifiedRouteSuffix3D* const selected_snapshot_route =
       !direct_tracking_requested ? route_execution.route.get() : nullptr;
-  const ProprioceptiveFreeSpaceSeed3D proprioceptive_free_space_seed{
-      .position =
+  const ProprioceptiveFreeSpaceSeed3D proprioceptive_free_space_seed =
+      proprioceptiveContactSeed3D(
           Point3{exact_initial_state.x, exact_initial_state.y, exact_initial_state.z},
-      .body_axis = bodyAxisFromWorldAcceleration(Vec3{exact_previous_control.ax,
-                                                      exact_previous_control.ay,
-                                                      exact_previous_control.az}),
-      .footprint = config_.world.physical_footprint,
-      .contact_tolerance_m =
+          exact_previous_control, config_.world.physical_footprint,
           latest_raw_world_3d != nullptr
-              ? latest_raw_world_3d->proprioceptiveContactToleranceM()
-              : 0.0,
-  };
+              ? std::addressof(latest_raw_world_3d->occupancy())
+              : nullptr)
+          .value_or(proprioceptiveContactSeed3D(
+              Point3{exact_initial_state.x, exact_initial_state.y,
+                     exact_initial_state.z},
+              exact_previous_control, config_.world.physical_footprint, 0.0));
   std::shared_ptr<const VersionedObservedRawWorld3D> direct_observed_world;
   std::shared_ptr<const VersionedStaticWorld3D> direct_static_world;
   if (direct_tracking_requested || stationary_capture_rearm) {
