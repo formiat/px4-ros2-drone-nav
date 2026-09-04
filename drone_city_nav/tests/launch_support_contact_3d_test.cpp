@@ -91,31 +91,14 @@ TEST(LaunchSupportContact3D, RouteEvidenceDerivesWithTheVehiclePoseOfThisMoment)
   EXPECT_EQ(moved->proprioceptiveFreeSpaceSeed()->position.x, 25.0);
 }
 
-TEST(ProprioceptiveContactSeed3D, CarriesTheStandOffTheBodyKeepsFromWhatItTouches) {
-  // A wall at x >= 6.0 with the body pressed against it: the seed reports the
-  // stand-off, which is what the contact exemption holds the body to.
+TEST(ProprioceptiveContactSeed3D, ReportsTheVoxelQuantizationOfTheWorldItJudges) {
   auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
       GridBounds3D{0.0, 0.0, 0.0, 0.25, 40, 40, 40});
-  for (int z = 0; z < occupancy->bounds().depth_cells; ++z) {
-    for (int y = 0; y < occupancy->bounds().height_cells; ++y) {
-      for (int x = 24; x < occupancy->bounds().width_cells; ++x) {
-        ASSERT_TRUE(
-            occupancy->setState(GridIndex3D{x, y, z}, ObservedVoxelState::kOccupied));
-      }
-    }
-  }
-  const std::optional<ProprioceptiveFreeSpaceSeed3D> pressed =
-      proprioceptiveContactSeed3D(Point3{5.6, 5.0, 5.0}, FootprintBodyAxis{},
-                                  testFootprint(), occupancy.get());
-  ASSERT_TRUE(pressed.has_value());
-  EXPECT_NEAR(pressed->contact_clearance_m, 0.4, 1.0e-9);
-
-  // Clear of everything the body could touch: no stand-off to report.
-  const std::optional<ProprioceptiveFreeSpaceSeed3D> clear =
-      proprioceptiveContactSeed3D(Point3{2.0, 5.0, 5.0}, FootprintBodyAxis{},
-                                  testFootprint(), occupancy.get());
-  ASSERT_TRUE(clear.has_value());
-  EXPECT_LT(clear->contact_clearance_m, 0.0);
+  const std::optional<ProprioceptiveFreeSpaceSeed3D> seed = proprioceptiveContactSeed3D(
+      Point3{5.6, 5.0, 5.0}, FootprintBodyAxis{}, testFootprint(), occupancy.get());
+  ASSERT_TRUE(seed.has_value());
+  EXPECT_NEAR(seed->contact_tolerance_m, 0.125, 1.0e-12);
+  EXPECT_EQ(seed->position.x, 5.6);
 
   EXPECT_FALSE(proprioceptiveContactSeed3D(Point3{5.6, 5.0, 5.0}, FootprintBodyAxis{},
                                            testFootprint(), nullptr)

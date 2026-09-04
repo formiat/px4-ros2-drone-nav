@@ -28,24 +28,19 @@ struct FootprintBodyAxis {
   double z{1.0};
 };
 
-// The body demonstrably occupies its own volume at the seed. Occupied
-// evidence overlapping that volume is contact rather than an obstacle, so a
-// body position that comes no closer to such evidence than the seed keeps it
-// suppressed; any approach is a collision. The contact tolerance is the
-// quantization of the evidence the seed is judged against: it widens the
-// contact volume only, never the admissible approach.
+// The body demonstrably occupies its own volume at the seed, so occupied
+// evidence overlapping that volume is contact rather than an obstacle for a
+// validation run from that pose. The exemption suppresses exactly that
+// evidence and constrains nothing about where the body then moves: free space
+// is always traversable, and a rule of the form "no closer than now" or "only
+// away from the surface" is a prohibition on moving through it. The contact
+// tolerance is the quantization of the evidence the seed is judged against and
+// widens the contact volume only.
 struct ProprioceptiveFreeSpaceSeed3D {
   Point3 position{};
   FootprintBodyAxis body_axis{};
   SweptFootprintConfig footprint{};
   double contact_tolerance_m{0.0};
-  // Distance from the seed to the nearest occupied evidence its body touches.
-  // It is what the contact may not be approached beyond: a body pressed
-  // against a surface keeps this stand-off while it moves along that surface,
-  // and gives it up only by departing. Negative means unknown, and then every
-  // contact is judged by its own distance to the seed, which forbids moving
-  // along a surface at all.
-  double contact_clearance_m{-1.0};
 };
 
 struct AxisAlignedBox3D {

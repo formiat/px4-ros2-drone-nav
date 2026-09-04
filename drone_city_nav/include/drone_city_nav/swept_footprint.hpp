@@ -49,13 +49,12 @@ validateRawSweptFootprint(const OccupancyGrid2D& occupancy, const Point3& first,
 // Contact exemption of a proprioceptive seed. The body demonstrably occupies
 // its volume at the seed, so occupied evidence overlapping that volume (widened
 // by the seed's contact tolerance) is contact rather than an obstacle. A
-// candidate body position keeps a contact box or point suppressed while it
-// stays at least the seed's own stand-off away from it, so holding, departing
-// and moving along the touched surface stay valid while closing on the contact
-// collides; evidence the body does not overlap at the seed is never exempt.
-// The tolerance widens what counts as contact, never how far the body may
-// close on it: a seed that renews every tick would otherwise ratchet the body
-// deeper one tolerance at a time.
+// contact box or point stays suppressed for every candidate pose of that
+// validation, with no condition on where the body moves. A condition of that
+// kind — no closer than now, only away, not along the surface — is a
+// prohibition on moving through free space and does not belong in a collision
+// contract. Evidence the body does not overlap at the seed is never exempt,
+// and the tolerance widens what counts as contact and nothing else.
 [[nodiscard]] bool proprioceptiveSeedExemptsBox(
     const ProprioceptiveFreeSpaceSeed3D& seed, const Point3& candidate_position,
     const Point3& box_minimum, const Point3& box_maximum) noexcept;

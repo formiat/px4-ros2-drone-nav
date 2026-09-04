@@ -93,8 +93,7 @@ sameFreeSpaceSeed(const ProprioceptiveFreeSpaceSeed3D& first,
          first.body_axis.y == second.body_axis.y &&
          first.body_axis.z == second.body_axis.z &&
          sameFootprintConfig(first.footprint, second.footprint) &&
-         first.contact_tolerance_m == second.contact_tolerance_m &&
-         first.contact_clearance_m == second.contact_clearance_m;
+         first.contact_tolerance_m == second.contact_tolerance_m;
 }
 
 [[nodiscard]] bool sameAxisAlignedBox(const AxisAlignedBox3D& first,
@@ -165,15 +164,13 @@ void hashFootprint(std::uint64_t& hash,
       !std::isfinite(free_space_seed->body_axis.z) ||
       !footprintValid(free_space_seed->footprint) ||
       !std::isfinite(free_space_seed->contact_tolerance_m) ||
-      free_space_seed->contact_tolerance_m < 0.0 ||
-      !std::isfinite(free_space_seed->contact_clearance_m)) {
+      free_space_seed->contact_tolerance_m < 0.0) {
     return false;
   }
   hashPoint(hash, free_space_seed->position);
   hashAxis(hash, free_space_seed->body_axis);
   hashFootprint(hash, free_space_seed->footprint);
   hashValue(hash, canonicalDoubleBits(free_space_seed->contact_tolerance_m));
-  hashValue(hash, canonicalDoubleBits(free_space_seed->contact_clearance_m));
   return true;
 }
 

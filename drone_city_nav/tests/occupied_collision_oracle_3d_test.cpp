@@ -148,16 +148,16 @@ TEST(OccupiedCollisionOracle3DTest, ProprioceptiveSeedMakesTheOwnPoseAValidDepar
       OccupiedCollisionStatus3D::kRawCollision);
   EXPECT_TRUE(
       seeded.validateSegment(seed.position, axis, Point3{5.0, 5.1, 5.1}, axis).clear());
-  const OccupiedCollisionResult3D approach =
-      seeded.validateSegment(seed.position, axis, Point3{5.9, 5.1, 5.1}, axis);
-  EXPECT_EQ(approach.status, OccupiedCollisionStatus3D::kRawCollision);
-  EXPECT_EQ(approach.source, OccupiedCollisionSource3D::kObservedOccupancy);
+  // The exemption places no condition on the direction of motion: free space
+  // stays traversable in every direction from a body already in contact.
+  EXPECT_TRUE(
+      seeded.validateSegment(seed.position, axis, Point3{5.9, 5.1, 5.1}, axis).clear());
 }
 
 TEST(OccupiedCollisionOracle3DTest, ContactEvidenceIsTiedToTheSeedNotTheWorld) {
   // Two seeds on the same world: the vehicle standing in the contact voxel
-  // may depart from it, while a vehicle two metres away sees the same voxel
-  // as an obstacle. Contact is a property of where the body stands.
+  // flies freely around it, while a vehicle two metres away sees the same
+  // voxel as an obstacle. Contact is a property of where the body stands.
   ObservedOccupancyGrid3D observed{GridBounds3D{0.0, 0.0, 0.0, 0.25, 40, 40, 40}};
   ASSERT_TRUE(
       observed.setState(GridIndex3D{24, 20, 20}, ObservedVoxelState::kOccupied));

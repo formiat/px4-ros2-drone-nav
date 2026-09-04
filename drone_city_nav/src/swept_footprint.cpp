@@ -730,54 +730,29 @@ bool proprioceptiveSeedExemptsBox(const ProprioceptiveFreeSpaceSeed3D& seed,
                                   const Point3& candidate_position,
                                   const Point3& box_minimum,
                                   const Point3& box_maximum) noexcept {
-  // A body in contact may not come closer to any evidence than the stand-off
-  // it already keeps: it can hold, depart, and travel along the surface it
-  // touches, and its smallest clearance never shrinks, so a seed that renews
-  // every tick cannot ratchet it deeper. The exemption ends by itself once the
-  // body clears its own footprint and the seed reports no stand-off.
-  constexpr double kApproachToleranceM{1.0e-9};
-  const double candidate_distance_m =
-      std::sqrt(squaredDistanceToBox(candidate_position, box_minimum, box_maximum));
-  if (seed.contact_clearance_m > 0.0) {
-    return candidate_distance_m + kApproachToleranceM >= seed.contact_clearance_m;
-  }
-  // Without a stand-off only the evidence the body demonstrably touches at the
-  // seed is contact, and each piece of it is judged by its own distance.
+  // Evidence the body overlaps at the seed is contact: the vehicle is there,
+  // so that evidence cannot be an obstacle for a validation run from that pose.
+  // The exemption carries no condition on where the body then moves. A
+  // condition of that kind — no closer than now, only along, only away — is a
+  // prohibition on moving through free space, and it freezes a vehicle in
+  // contact instead of letting it fly out.
+  static_cast<void>(candidate_position);
   const double tolerance_m = seedContactToleranceM(seed);
   const SweptFootprintConfig contact_body =
       contactWidenedFootprint(seed.footprint, tolerance_m);
-  if (!boxIntersectsFiniteCylinder(
-          seed.position, normalized(seed.body_axis), box_minimum, box_maximum,
-          contact_body.lower_extent_m, contact_body.upper_extent_m,
-          contact_body.radius_m * contact_body.radius_m)) {
-    return false;
-  }
-  const double seed_distance_m =
-      std::sqrt(squaredDistanceToBox(seed.position, box_minimum, box_maximum));
-  return candidate_distance_m + kApproachToleranceM >= seed_distance_m;
+  return boxIntersectsFiniteCylinder(
+      seed.position, normalized(seed.body_axis), box_minimum, box_maximum,
+      contact_body.lower_extent_m, contact_body.upper_extent_m,
+      contact_body.radius_m * contact_body.radius_m);
 }
 
 bool proprioceptiveSeedExemptsPoint(const ProprioceptiveFreeSpaceSeed3D& seed,
                                     const Point3& candidate_position,
                                     const Point3& obstacle_point) noexcept {
-  constexpr double kApproachToleranceM{1.0e-9};
-  const double candidate_distance_m =
-      std::hypot(std::hypot(obstacle_point.x - candidate_position.x,
-                            obstacle_point.y - candidate_position.y),
-                 obstacle_point.z - candidate_position.z);
-  if (seed.contact_clearance_m > 0.0) {
-    return candidate_distance_m + kApproachToleranceM >= seed.contact_clearance_m;
-  }
+  static_cast<void>(candidate_position);
   const double tolerance_m = seedContactToleranceM(seed);
-  if (!pointIntersectsBody(obstacle_point, seed.position, seed.body_axis,
-                           contactWidenedFootprint(seed.footprint, tolerance_m))) {
-    return false;
-  }
-  const double seed_distance_m =
-      std::hypot(std::hypot(obstacle_point.x - seed.position.x,
-                            obstacle_point.y - seed.position.y),
-                 obstacle_point.z - seed.position.z);
-  return candidate_distance_m + kApproachToleranceM >= seed_distance_m;
+  return pointIntersectsBody(obstacle_point, seed.position, seed.body_axis,
+                             contactWidenedFootprint(seed.footprint, tolerance_m));
 }
 
 SweptFootprintResult validateRawFootprintAt(

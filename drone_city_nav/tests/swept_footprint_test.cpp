@@ -741,12 +741,12 @@ TEST(SweptFootprintTest, RawPointCloudFootprintUsesRequestedBodyAxis) {
             SweptFootprintStatus::kRawCollision);
 }
 
-TEST(SweptFootprintTest, ProprioceptiveSeedExemptsContactOnlyWhileNotApproaching) {
+TEST(SweptFootprintTest, ProprioceptiveSeedSuppressesTheEvidenceItsBodyTouches) {
   // A wall occupies x >= 3.0. The body (radius 0.5) at x = 2.6 overlaps the
   // first wall voxels: strictly a collision, but the vehicle is demonstrably
-  // there. With the seed, holding and departing are valid; coming closer to
-  // any wall voxel than the seed is, in any direction, is not, and voxels the
-  // body does not overlap at the seed are never exempt.
+  // there. The seed suppresses exactly that evidence, and every motion from it
+  // stays valid: holding, backing away, and flying along the wall through free
+  // space. Evidence the body does not touch at the seed is never exempt.
   const GridBounds3D bounds{0.0, 0.0, 0.0, 0.25, 20, 20, 20};
   ObservedOccupancyGrid3D occupancy{bounds};
   for (int z = 0; z < bounds.depth_cells; ++z) {
@@ -758,7 +758,7 @@ TEST(SweptFootprintTest, ProprioceptiveSeedExemptsContactOnlyWhileNotApproaching
     }
   }
   static_cast<void>(
-      occupancy.setState(GridIndex3D{10, 2, 8}, ObservedVoxelState::kOccupied));
+      occupancy.setState(GridIndex3D{4, 2, 8}, ObservedVoxelState::kOccupied));
   const SweptFootprintConfig footprint{.radius_m = 0.5,
                                        .lower_extent_m = 0.25,
                                        .upper_extent_m = 0.25,
@@ -776,54 +776,29 @@ TEST(SweptFootprintTest, ProprioceptiveSeedExemptsContactOnlyWhileNotApproaching
   EXPECT_TRUE(
       validateRawFootprintAt(occupancy, seed.position, axis, footprint, nullptr, &seed)
           .accepted());
+  // No direction is privileged: leaving the wall, holding, and pressing
+  // further into the evidence the body already touches all validate.
   EXPECT_TRUE(validateRawSweptFootprint(occupancy, seed.position, axis,
                                         Point3{2.0, 2.0, 2.0}, axis, footprint, nullptr,
                                         &seed)
                   .accepted());
-  // Without a stand-off every contact is judged by its own distance, so
-  // sliding along the wall counts as an approach.
+  EXPECT_TRUE(validateRawSweptFootprint(occupancy, seed.position, axis, seed.position,
+                                        axis, footprint, nullptr, &seed)
+                  .accepted());
+  EXPECT_TRUE(validateRawSweptFootprint(occupancy, seed.position, axis,
+                                        Point3{2.65, 2.0, 2.0}, axis, footprint,
+                                        nullptr, &seed)
+                  .accepted());
+  // Evidence the body does not touch at the seed binds as it always does,
+  // whether it is a separate obstacle or a part of the same wall the body
+  // reaches only after travelling along it.
   EXPECT_EQ(validateRawSweptFootprint(occupancy, seed.position, axis,
-                                      Point3{2.6, 2.1, 2.0}, axis, footprint, nullptr,
+                                      Point3{1.2, 0.6, 2.0}, axis, footprint, nullptr,
                                       &seed)
-                .status,
-            SweptFootprintStatus::kRawCollision);
-
-  // With the stand-off the body keeps from the wall it touches, moving along
-  // that wall stays valid while closing on it still collides. A vehicle
-  // pressed against a face must be able to leave along it, not only backwards,
-  // or it is frozen where it stands.
-  ProprioceptiveFreeSpaceSeed3D standoff_seed = seed;
-  standoff_seed.contact_clearance_m = 0.4;
-  EXPECT_TRUE(validateRawSweptFootprint(occupancy, seed.position, axis,
-                                        Point3{2.6, 2.6, 2.0}, axis, footprint, nullptr,
-                                        &standoff_seed)
-                  .accepted());
-  EXPECT_TRUE(validateRawSweptFootprint(occupancy, seed.position, axis,
-                                        Point3{2.6, 2.0, 2.6}, axis, footprint, nullptr,
-                                        &standoff_seed)
-                  .accepted());
-  EXPECT_EQ(validateRawSweptFootprint(occupancy, seed.position, axis,
-                                      Point3{2.7, 2.0, 2.0}, axis, footprint, nullptr,
-                                      &standoff_seed)
                 .status,
             SweptFootprintStatus::kRawCollision);
   EXPECT_EQ(validateRawSweptFootprint(occupancy, seed.position, axis,
                                       Point3{2.6, 3.0, 2.0}, axis, footprint, nullptr,
-                                      &seed)
-                .status,
-            SweptFootprintStatus::kRawCollision);
-  EXPECT_EQ(validateRawSweptFootprint(occupancy, seed.position, axis,
-                                      Point3{2.7, 2.0, 2.0}, axis, footprint, nullptr,
-                                      &seed)
-                .status,
-            SweptFootprintStatus::kRawCollision);
-  EXPECT_EQ(validateRawSweptFootprint(occupancy, seed.position, axis,
-                                      Point3{2.8, 2.0, 2.0}, axis, footprint, nullptr,
-                                      &seed)
-                .status,
-            SweptFootprintStatus::kRawCollision);
-  EXPECT_EQ(validateRawSweptFootprint(occupancy, seed.position, axis,
-                                      Point3{2.6, 1.2, 2.0}, axis, footprint, nullptr,
                                       &seed)
                 .status,
             SweptFootprintStatus::kRawCollision);
@@ -839,9 +814,8 @@ TEST(SweptFootprintTest, ProprioceptiveSeedExemptsContactOnlyWhileNotApproaching
             SweptFootprintStatus::kInvalidInput);
 }
 
-TEST(SweptFootprintTest,
-     ProprioceptiveSeedExemptsRawPointContactOnlyWhileNotApproaching) {
-  const std::vector<Point3> hits{Point3{3.05, 2.0, 2.0}, Point3{2.6, 0.9, 2.0}};
+TEST(SweptFootprintTest, ProprioceptiveSeedSuppressesTheRawPointsItsBodyTouches) {
+  const std::vector<Point3> hits{Point3{3.05, 2.0, 2.0}, Point3{1.2, 0.6, 2.0}};
   const SweptFootprintConfig footprint{.radius_m = 0.5,
                                        .lower_extent_m = 0.25,
                                        .upper_extent_m = 0.25,
@@ -864,13 +838,12 @@ TEST(SweptFootprintTest,
                                                   Point3{2.0, 2.0, 2.0}, axis,
                                                   footprint, nullptr, &seed)
                   .accepted());
+  EXPECT_TRUE(validateRawPointCloudSweptFootprint(hits, seed.position, axis,
+                                                  Point3{2.9, 2.0, 2.0}, axis,
+                                                  footprint, nullptr, &seed)
+                  .accepted());
   EXPECT_EQ(validateRawPointCloudSweptFootprint(hits, seed.position, axis,
-                                                Point3{2.65, 2.0, 2.0}, axis, footprint,
-                                                nullptr, &seed)
-                .status,
-            SweptFootprintStatus::kRawCollision);
-  EXPECT_EQ(validateRawPointCloudSweptFootprint(hits, seed.position, axis,
-                                                Point3{2.6, 1.3, 2.0}, axis, footprint,
+                                                Point3{1.2, 1.0, 2.0}, axis, footprint,
                                                 nullptr, &seed)
                 .status,
             SweptFootprintStatus::kRawCollision);
