@@ -4,11 +4,13 @@
 #include "drone_city_nav/motion_dynamics_3d.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <limits>
 #include <optional>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 namespace drone_city_nav {
@@ -81,10 +83,6 @@ void appendControl(FiniteMotionHorizon3D& horizon, const MotionControl3D& contro
 struct ArrivalProfileSimulation {
   std::vector<MotionControl3D> controls;
   MotionState3D terminal;
-  // Full-amplitude step equivalents each channel commands over the profile:
-  // the impulse the profile delivers is amplitude * dt * weight.
-  double translational_weight{0.0};
-  double yaw_weight{0.0};
 };
 
 // The arrival profile: a jerk-limited ramp from the control being applied now
@@ -130,31 +128,10 @@ simulateArrivalProfile(const MotionState3D& initial, const MotionControl3D& prev
   if (simulation.controls.empty() && !append(rest)) {
     return std::nullopt;
   }
-
-  const double amplitude_norm = std::hypot(
-      std::hypot(static_cast<double>(amplitude.ax), static_cast<double>(amplitude.ay)),
-      static_cast<double>(amplitude.az));
-  const double yaw_amplitude = std::abs(static_cast<double>(amplitude.yaw_accel));
   simulation.terminal = initial;
   for (const MotionControl3D& step : simulation.controls) {
     simulation.terminal = integrateMotionState3D(simulation.terminal, step, dynamics);
-    if (amplitude_norm > 0.0) {
-      simulation.translational_weight +=
-          (static_cast<double>(step.ax) * static_cast<double>(amplitude.ax) +
-           static_cast<double>(step.ay) * static_cast<double>(amplitude.ay) +
-           static_cast<double>(step.az) * static_cast<double>(amplitude.az)) /
-          (amplitude_norm * amplitude_norm);
-    }
-    if (yaw_amplitude > 0.0) {
-      simulation.yaw_weight += static_cast<double>(step.yaw_accel) /
-                               static_cast<double>(amplitude.yaw_accel);
-    }
   }
-  // A profile without a hold still delivers about one step of its amplitude
-  // over its ramps; the weight is what a correction divides by, so it is
-  // never allowed to vanish.
-  simulation.translational_weight = std::max(simulation.translational_weight, 1.0);
-  simulation.yaw_weight = std::max(simulation.yaw_weight, 1.0);
   return simulation;
 }
 
@@ -177,7 +154,7 @@ clampArrivalAmplitude(MotionControl3D amplitude,
 
 // The amplitude a bang profile with `hold_steps` of hold and symmetric ramps
 // at `ramp_delta` per step needs to deliver `impulse` over `dt_s` steps: the
-// starting guess the simulated corrections refine.
+// starting guess the solver refines.
 [[nodiscard]] double bangAmplitudeGuess(const double impulse, const double hold_steps,
                                         const double ramp_delta,
                                         const double dt_s) noexcept {
@@ -192,6 +169,211 @@ clampArrivalAmplitude(MotionControl3D amplitude,
          (std::sqrt(hold_steps * hold_steps + 4.0 * steps / ramp_delta) - hold_steps);
 }
 
+// The velocity a profile leaves, as the vector the solver drives to zero:
+// the three translational components and the yaw rate.
+using ArrivalResidual = std::array<double, 4U>;
+
+[[nodiscard]] ArrivalResidual arrivalResidual(const MotionState3D& terminal) noexcept {
+  return {static_cast<double>(terminal.vx), static_cast<double>(terminal.vy),
+          static_cast<double>(terminal.vz), static_cast<double>(terminal.yaw_rate)};
+}
+
+[[nodiscard]] bool arrivalResidualWithinTolerance(const ArrivalResidual& residual,
+                                                  const double tolerance) noexcept {
+  return std::hypot(std::hypot(residual[0], residual[1]), residual[2]) <= tolerance &&
+         std::abs(residual[3]) <= tolerance;
+}
+
+[[nodiscard]] double arrivalResidualNorm(const ArrivalResidual& residual) noexcept {
+  return std::sqrt(residual[0] * residual[0] + residual[1] * residual[1] +
+                   residual[2] * residual[2] + residual[3] * residual[3]);
+}
+
+[[nodiscard]] MotionControl3D amplitudeComponentOffset(MotionControl3D amplitude,
+                                                       const std::size_t component,
+                                                       const double offset) noexcept {
+  switch (component) {
+    case 0U:
+      amplitude.ax = static_cast<float>(static_cast<double>(amplitude.ax) + offset);
+      break;
+    case 1U:
+      amplitude.ay = static_cast<float>(static_cast<double>(amplitude.ay) + offset);
+      break;
+    case 2U:
+      amplitude.az = static_cast<float>(static_cast<double>(amplitude.az) + offset);
+      break;
+    default:
+      amplitude.yaw_accel =
+          static_cast<float>(static_cast<double>(amplitude.yaw_accel) + offset);
+      break;
+  }
+  return amplitude;
+}
+
+// Solves J * step = -residual by Gaussian elimination with partial pivoting.
+[[nodiscard]] std::optional<ArrivalResidual>
+solveNewtonStep(std::array<ArrivalResidual, 4U> jacobian_columns,
+                ArrivalResidual residual) noexcept {
+  // jacobian_columns.at(j).at(i) is d residual_i / d amplitude_j.
+  constexpr std::size_t kDimension{4U};
+  constexpr double kPivotTolerance{1.0e-9};
+  std::array<std::array<double, kDimension>, kDimension> matrix{};
+  for (std::size_t row = 0U; row < kDimension; ++row) {
+    for (std::size_t column = 0U; column < kDimension; ++column) {
+      matrix.at(row).at(column) = jacobian_columns.at(column).at(row);
+    }
+    residual.at(row) = -residual.at(row);
+  }
+  for (std::size_t pivot = 0U; pivot < kDimension; ++pivot) {
+    std::size_t best = pivot;
+    for (std::size_t row = pivot + 1U; row < kDimension; ++row) {
+      if (std::abs(matrix.at(row).at(pivot)) > std::abs(matrix.at(best).at(pivot))) {
+        best = row;
+      }
+    }
+    if (std::abs(matrix.at(best).at(pivot)) <= kPivotTolerance) {
+      return std::nullopt;
+    }
+    std::swap(matrix.at(pivot), matrix.at(best));
+    std::swap(residual.at(pivot), residual.at(best));
+    for (std::size_t row = pivot + 1U; row < kDimension; ++row) {
+      const double factor = matrix.at(row).at(pivot) / matrix.at(pivot).at(pivot);
+      for (std::size_t column = pivot; column < kDimension; ++column) {
+        matrix.at(row).at(column) -= factor * matrix.at(pivot).at(column);
+      }
+      residual.at(row) -= factor * residual.at(pivot);
+    }
+  }
+  ArrivalResidual step{};
+  for (std::size_t index = kDimension; index-- > 0U;) {
+    double sum = residual.at(index);
+    for (std::size_t column = index + 1U; column < kDimension; ++column) {
+      sum -= matrix.at(index).at(column) * step.at(column);
+    }
+    step.at(index) = sum / matrix.at(index).at(index);
+  }
+  return step;
+}
+
+struct ArrivalAmplitudeSolution {
+  std::optional<std::vector<MotionControl3D>> controls;
+  // The amplitude the solver ended on and the velocity it still leaves, for
+  // the caller to size a longer hold from when the limits were reached.
+  MotionControl3D amplitude;
+  ArrivalResidual residual{};
+  bool fits{false};
+};
+
+// Finds the amplitude that rests the vehicle for one hold length: Newton on
+// the simulated terminal velocity, the Jacobian by forward differences, steps
+// damped until the residual shrinks and clamped to the acceleration limits.
+// The profile is simulated under the integrator the horizon is checked
+// against, so the drag and the shedding above a speed cap are all in the
+// residual.
+[[nodiscard]] ArrivalAmplitudeSolution
+solveArrivalAmplitude(const MotionState3D& initial, const MotionControl3D& previous,
+                      MotionControl3D amplitude, const std::size_t hold_steps,
+                      const MotionDynamicsConfig3D& dynamics,
+                      const std::size_t maximum_steps, const double tolerance) {
+  constexpr std::size_t kNewtonIterations{24U};
+  constexpr std::size_t kDampingHalvings{6U};
+  constexpr double kDifferenceStep{0.05};
+  ArrivalAmplitudeSolution solution;
+  solution.amplitude = amplitude;
+  std::optional<ArrivalProfileSimulation> simulation = simulateArrivalProfile(
+      initial, previous, amplitude, hold_steps, dynamics, maximum_steps);
+  if (!simulation.has_value()) {
+    return solution;
+  }
+  solution.fits = true;
+  ArrivalResidual residual = arrivalResidual(simulation->terminal);
+  for (std::size_t iteration = 0U; iteration < kNewtonIterations; ++iteration) {
+    solution.amplitude = amplitude;
+    solution.residual = residual;
+    if (arrivalResidualWithinTolerance(residual, tolerance)) {
+      solution.controls = std::move(simulation->controls);
+      return solution;
+    }
+    std::array<ArrivalResidual, 4U> jacobian_columns{};
+    bool jacobian_valid{true};
+    for (std::size_t component = 0U; component < 4U && jacobian_valid; ++component) {
+      double step = kDifferenceStep;
+      std::optional<ArrivalProfileSimulation> offset = simulateArrivalProfile(
+          initial, previous, amplitudeComponentOffset(amplitude, component, step),
+          hold_steps, dynamics, maximum_steps);
+      if (!offset.has_value()) {
+        step = -kDifferenceStep;
+        offset = simulateArrivalProfile(
+            initial, previous, amplitudeComponentOffset(amplitude, component, step),
+            hold_steps, dynamics, maximum_steps);
+      }
+      if (!offset.has_value()) {
+        jacobian_valid = false;
+        break;
+      }
+      const ArrivalResidual offset_residual = arrivalResidual(offset->terminal);
+      for (std::size_t row = 0U; row < 4U; ++row) {
+        jacobian_columns.at(component).at(row) =
+            (offset_residual.at(row) - residual.at(row)) / step;
+      }
+    }
+    if (!jacobian_valid) {
+      return solution;
+    }
+    const std::optional<ArrivalResidual> newton_step =
+        solveNewtonStep(jacobian_columns, residual);
+    if (!newton_step.has_value()) {
+      return solution;
+    }
+    const double residual_norm = arrivalResidualNorm(residual);
+    bool accepted{false};
+    double damping = 1.0;
+    for (std::size_t halving = 0U; halving <= kDampingHalvings; ++halving) {
+      const MotionControl3D candidate = clampArrivalAmplitude(
+          MotionControl3D{
+              .ax = static_cast<float>(static_cast<double>(amplitude.ax) +
+                                       damping * (*newton_step)[0]),
+              .ay = static_cast<float>(static_cast<double>(amplitude.ay) +
+                                       damping * (*newton_step)[1]),
+              .az = static_cast<float>(static_cast<double>(amplitude.az) +
+                                       damping * (*newton_step)[2]),
+              .yaw_accel = static_cast<float>(static_cast<double>(amplitude.yaw_accel) +
+                                              damping * (*newton_step)[3]),
+          },
+          dynamics);
+      if (controlsEqual(candidate, amplitude)) {
+        // Clamped back onto the amplitude it already has: the limits are
+        // reached, only a longer hold can deliver the rest of the impulse.
+        return solution;
+      }
+      std::optional<ArrivalProfileSimulation> candidate_simulation =
+          simulateArrivalProfile(initial, previous, candidate, hold_steps, dynamics,
+                                 maximum_steps);
+      if (candidate_simulation.has_value()) {
+        const ArrivalResidual candidate_residual =
+            arrivalResidual(candidate_simulation->terminal);
+        if (arrivalResidualNorm(candidate_residual) < residual_norm) {
+          amplitude = candidate;
+          simulation = std::move(candidate_simulation);
+          residual = candidate_residual;
+          accepted = true;
+          break;
+        }
+      }
+      damping *= 0.5;
+    }
+    if (!accepted) {
+      return solution;
+    }
+  }
+  solution.amplitude = amplitude;
+  solution.residual = residual;
+  if (arrivalResidualWithinTolerance(residual, tolerance)) {
+    solution.controls = std::move(simulation->controls);
+  }
+  return solution;
+}
+
 [[nodiscard]] std::optional<std::vector<MotionControl3D>>
 buildArrivalControls(const MotionState3D& initial, const MotionControl3D& previous,
                      const MotionDynamicsConfig3D& dynamics,
@@ -201,6 +383,7 @@ buildArrivalControls(const MotionState3D& initial, const MotionControl3D& previo
     return std::nullopt;
   }
   const double dt_s = static_cast<double>(dynamics.dt_s);
+  const double tolerance = static_cast<double>(velocity_tolerance_mps);
   const double initial_speed = std::hypot(
       std::hypot(static_cast<double>(initial.vx), static_cast<double>(initial.vy)),
       static_cast<double>(initial.vz));
@@ -208,18 +391,22 @@ buildArrivalControls(const MotionState3D& initial, const MotionControl3D& previo
       static_cast<double>(dynamics.maximum_control_jerk_mps3) * dt_s;
   const double yaw_delta =
       static_cast<double>(dynamics.maximum_yaw_acceleration_radps2);
-  // The profile is simulated under the integrator the horizon is checked
-  // against, so the shedding above a speed cap and the drag are all in the
-  // residual; each correction moves the amplitude by the residual the profile
-  // still leaves, the shortest hold that rests within the tolerance wins.
-  constexpr std::size_t kAmplitudeCorrections{24U};
-  for (std::size_t hold_steps = 0U; hold_steps < maximum_steps; ++hold_steps) {
+  const double amplitude_floor =
+      std::max({static_cast<double>(dynamics.maximum_horizontal_acceleration_mps2),
+                static_cast<double>(dynamics.maximum_vertical_acceleration_mps2),
+                static_cast<double>(dynamics.maximum_yaw_acceleration_radps2), 1.0e-3});
+  // The shortest hold that rests within the tolerance wins. A hold whose
+  // amplitude hits the limits is lengthened by the steps the velocity it
+  // still leaves needs at those limits, so the search does not crawl one step
+  // at a time from a fast state.
+  std::size_t hold_steps{0U};
+  while (hold_steps < maximum_steps) {
     const double translational_guess = bangAmplitudeGuess(
         initial_speed, static_cast<double>(hold_steps), translational_delta, dt_s);
     const double yaw_guess =
         bangAmplitudeGuess(std::abs(static_cast<double>(initial.yaw_rate)),
                            static_cast<double>(hold_steps), yaw_delta, dt_s);
-    MotionControl3D amplitude = clampArrivalAmplitude(
+    const MotionControl3D guess = clampArrivalAmplitude(
         MotionControl3D{
             .ax = initial_speed > 0.0 ? static_cast<float>(-translational_guess *
                                                            initial.vx / initial_speed)
@@ -234,53 +421,20 @@ buildArrivalControls(const MotionState3D& initial, const MotionControl3D& previo
                 -std::copysign(yaw_guess, static_cast<double>(initial.yaw_rate))),
         },
         dynamics);
-    bool fits{false};
-    for (std::size_t correction = 0U; correction < kAmplitudeCorrections;
-         ++correction) {
-      const std::optional<ArrivalProfileSimulation> simulation = simulateArrivalProfile(
-          initial, previous, amplitude, hold_steps, dynamics, maximum_steps);
-      if (!simulation.has_value()) {
-        break;
-      }
-      fits = true;
-      const MotionState3D& terminal = simulation->terminal;
-      const double residual_speed =
-          std::hypot(std::hypot(static_cast<double>(terminal.vx),
-                                static_cast<double>(terminal.vy)),
-                     static_cast<double>(terminal.vz));
-      if (residual_speed <= static_cast<double>(velocity_tolerance_mps) &&
-          std::abs(static_cast<double>(terminal.yaw_rate)) <=
-              static_cast<double>(velocity_tolerance_mps)) {
-        return simulation->controls;
-      }
-      const double translational_gain = 1.0 / (dt_s * simulation->translational_weight);
-      const double yaw_gain = 1.0 / (dt_s * simulation->yaw_weight);
-      const MotionControl3D corrected = clampArrivalAmplitude(
-          MotionControl3D{
-              .ax = static_cast<float>(static_cast<double>(amplitude.ax) -
-                                       static_cast<double>(terminal.vx) *
-                                           translational_gain),
-              .ay = static_cast<float>(static_cast<double>(amplitude.ay) -
-                                       static_cast<double>(terminal.vy) *
-                                           translational_gain),
-              .az = static_cast<float>(static_cast<double>(amplitude.az) -
-                                       static_cast<double>(terminal.vz) *
-                                           translational_gain),
-              .yaw_accel =
-                  static_cast<float>(static_cast<double>(amplitude.yaw_accel) -
-                                     static_cast<double>(terminal.yaw_rate) * yaw_gain),
-          },
-          dynamics);
-      if (controlsEqual(corrected, amplitude)) {
-        // Saturated: this hold cannot deliver the impulse, a longer one must.
-        break;
-      }
-      amplitude = corrected;
+    ArrivalAmplitudeSolution solution = solveArrivalAmplitude(
+        initial, previous, guess, hold_steps, dynamics, maximum_steps, tolerance);
+    if (solution.controls.has_value()) {
+      return std::move(solution.controls);
     }
-    if (!fits) {
+    if (!solution.fits) {
       // Even the ramps alone overrun the steps left; longer holds only add.
       return std::nullopt;
     }
+    const double remaining = arrivalResidualNorm(solution.residual);
+    const std::size_t extra_steps = static_cast<std::size_t>(
+        std::clamp(std::ceil(remaining / (dt_s * amplitude_floor)), 1.0,
+                   static_cast<double>(maximum_steps)));
+    hold_steps += extra_steps;
   }
   return std::nullopt;
 }

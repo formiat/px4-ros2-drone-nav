@@ -5,6 +5,7 @@
 
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <vector>
 
@@ -177,6 +178,87 @@ TEST(FiniteMotionHorizon3DTest, AnArrivalCancelsTheVelocityItsOwnRampInjects) {
   }
   EXPECT_LE(std::hypot(std::hypot(simulated.vx, simulated.vy), simulated.vz),
             FiniteMotionHorizonConfig3D{}.terminal_velocity_tolerance_mps);
+}
+
+TEST(FiniteMotionHorizon3DTest, ABrakingHorizonExistsFromEveryAdmissibleControl) {
+  // A stop is the last thing the planner has for a vehicle without a plan.
+  // The profile has to rest from every state the vehicle can be in, whatever
+  // control it was applying: braking harder than the stop needs, accelerating
+  // along the motion, or pushing across it.
+  MotionDynamicsConfig3D dynamics;
+  dynamics.dt_s = 0.05F;
+  dynamics.linear_drag_1ps = 0.08F;
+  dynamics.maximum_horizontal_acceleration_mps2 = 4.0F;
+  dynamics.maximum_vertical_acceleration_mps2 = 4.0F;
+  dynamics.maximum_control_jerk_mps3 = 12.0F;
+  dynamics.maximum_translational_speed_mps = 6.567F;
+  const FiniteMotionHorizonConfig3D config = makeFiniteMotionHorizonConfig3D(
+      StoppingCapability{.maximum_commanded_horizontal_deceleration_mps2 = 4.0,
+                         .guaranteed_horizontal_deceleration_mps2 = 4.0,
+                         .guaranteed_vertical_deceleration_mps2 = 2.0,
+                         .reaction_latency_s = 0.1});
+  const std::vector<MotionState3D> states{
+      MotionState3D{.vx = 0.362F, .vy = 0.569F, .vz = 0.235F},
+      MotionState3D{.vx = 0.05F},
+      MotionState3D{.vx = 0.7F, .vy = -0.7F},
+      MotionState3D{.vx = 2.0F, .vz = -1.0F},
+      MotionState3D{.vx = -4.0F, .vy = 3.0F, .vz = 0.5F},
+      MotionState3D{.vx = 6.0F, .vy = 2.5F},
+      MotionState3D{.vx = 7.0F, .vy = 7.0F, .vz = 1.0F},
+      MotionState3D{.yaw_rate = 0.8F},
+  };
+  const std::vector<MotionControl3D> applied{
+      MotionControl3D{},
+      MotionControl3D{.ax = -0.049F, .ay = -2.286F, .az = -0.549F},
+      MotionControl3D{.ax = 0.755F, .ay = -2.539F, .az = -1.298F},
+      MotionControl3D{.ax = 2.5F, .ay = 3.0F},
+      MotionControl3D{.ax = -3.9F, .ay = 0.5F, .az = 3.5F},
+      MotionControl3D{.ax = 0.0F, .ay = 0.0F, .az = -4.0F},
+      MotionControl3D{.ax = 1.0F, .ay = -1.0F, .yaw_accel = -1.5F},
+  };
+  constexpr std::size_t kControls{200U};
+  const auto expect_rests = [&](const MotionState3D& state,
+                                const MotionControl3D& control) {
+    const std::optional<FiniteMotionHorizon3D> horizon =
+        buildFiniteBrakingHorizon3D(state, kControls, dynamics, control, config);
+    ASSERT_TRUE(horizon.has_value())
+        << "v=(" << state.vx << "," << state.vy << "," << state.vz
+        << ") yaw_rate=" << state.yaw_rate << " applied=(" << control.ax << ","
+        << control.ay << "," << control.az << "," << control.yaw_accel << ")";
+    EXPECT_TRUE(finiteMotionHorizonHasTerminalRestState3D(*horizon));
+  };
+  for (const MotionState3D& state : states) {
+    for (const MotionControl3D& control : applied) {
+      expect_rests(state, control);
+    }
+  }
+  // A deterministic sweep over the whole admissible envelope: any speed up
+  // to the cruise overshoot, any direction, any applied control inside the
+  // acceleration limits.
+  std::uint32_t seed{20260905U};
+  const auto unit = [&seed]() {
+    seed = seed * 1664525U + 1013904223U;
+    return static_cast<float>(seed >> 8U) / static_cast<float>(1U << 24U);
+  };
+  for (int sample = 0; sample < 500; ++sample) {
+    const float speed = 10.0F * unit();
+    const float azimuth = 6.2831853F * unit();
+    const float climb = (unit() - 0.5F) * 1.2F;
+    MotionState3D state;
+    state.vx = speed * std::cos(azimuth) * std::cos(climb);
+    state.vy = speed * std::sin(azimuth) * std::cos(climb);
+    state.vz = speed * std::sin(climb);
+    state.yaw_rate = (unit() - 0.5F) * 2.0F;
+    const float control_magnitude = 4.0F * unit();
+    const float control_azimuth = 6.2831853F * unit();
+    const MotionControl3D control{
+        .ax = control_magnitude * std::cos(control_azimuth),
+        .ay = control_magnitude * std::sin(control_azimuth),
+        .az = (unit() - 0.5F) * 8.0F,
+        .yaw_accel = (unit() - 0.5F) * 4.0F,
+    };
+    expect_rests(state, control);
+  }
 }
 
 } // namespace
