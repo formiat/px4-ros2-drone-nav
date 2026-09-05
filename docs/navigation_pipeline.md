@@ -121,7 +121,11 @@ forbidden here: free space stays traversable in every layer. What the
 exemption never removes is the body: evidence in the margin between the body
 and the envelope at the seed stays binding for the body, so a candidate pose
 whose physical body reaches it is a collision like any other, while evidence
-the body itself overlaps at the seed is contact through and through. Evidence
+the body itself overlaps at the seed is contact through and through, allowed
+exactly as far in as the vehicle already is: an occupied voxel says nothing
+about where inside it the surface lies, so pressing deeper into it is not
+moving through free space, while holding, departing and every free direction
+stay open. Evidence
 the envelope does not touch at the seed binds exactly as it always does. The
 half-voxel tolerance widens what counts as contact and nothing else. The seed is transient evidence
 like the newest lidar returns: each validation builds it from the pose its own

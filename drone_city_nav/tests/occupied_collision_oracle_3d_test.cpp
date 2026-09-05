@@ -149,12 +149,13 @@ TEST(OccupiedCollisionOracle3DTest, ProprioceptiveSeedMakesTheOwnPoseAValidDepar
       OccupiedCollisionStatus3D::kRawCollision);
   EXPECT_TRUE(
       seeded.validateSegment(seed.position, axis, Point3{5.0, 5.1, 5.1}, axis).clear());
-  // The exemption places no condition on the direction of motion: free space
-  // stays traversable in every direction from a body already in contact. The
-  // body itself overlaps this voxel at the seed, so it is contact through and
-  // through, not margin evidence the body may never reach.
-  EXPECT_TRUE(
-      seeded.validateSegment(seed.position, axis, Point3{5.9, 5.1, 5.1}, axis).clear());
+  // The body itself overlaps this voxel at the seed. Free space stays
+  // traversable in every direction from there; the one motion refused is
+  // pressing deeper into the voxel the body already occupies, since nothing
+  // says where inside it the surface lies - that is not free space.
+  EXPECT_EQ(
+      seeded.validateSegment(seed.position, axis, Point3{5.9, 5.1, 5.1}, axis).status,
+      OccupiedCollisionStatus3D::kRawCollision);
 }
 
 TEST(OccupiedCollisionOracle3DTest, ContactExemptsTheEnvelopeNeverTheBody) {
@@ -219,6 +220,30 @@ TEST(OccupiedCollisionOracle3DTest, ContactExemptsTheEnvelopeNeverTheBody) {
   EXPECT_TRUE(voxels_only.validatePoint(seed.position, axis).clear());
   EXPECT_EQ(
       voxels_only.validateSegment(seed.position, axis, Point3{5.0, 5.55, 5.1}, axis)
+          .status,
+      OccupiedCollisionStatus3D::kRawCollision);
+
+  // Braking left the body itself on the wall's surface voxel: the vehicle may
+  // hold there and fly out, and may not press further in.
+  const ProprioceptiveFreeSpaceSeed3D touching{
+      .position = Point3{5.0, 5.5, 5.1},
+      .body_axis = FootprintBodyAxis{},
+      .footprint = footprint,
+      .contact_tolerance_m = 0.125,
+  };
+  const OccupiedCollisionOracle3D in_contact{OccupiedCollisionWorld3D{
+      .observed_occupancy = &observed,
+      .raw_point_cloud = std::span<const Point3>{face},
+      .proprioceptive_free_space_seed = &touching,
+      .footprint = footprint,
+      .flight_envelope = FlightEnvelopeConfig{0.0, 10.0},
+  }};
+  EXPECT_TRUE(in_contact.validatePoint(touching.position, axis).clear());
+  EXPECT_TRUE(
+      in_contact.validateSegment(touching.position, axis, Point3{5.0, 4.9, 5.1}, axis)
+          .clear());
+  EXPECT_EQ(
+      in_contact.validateSegment(touching.position, axis, Point3{5.0, 5.7, 5.1}, axis)
           .status,
       OccupiedCollisionStatus3D::kRawCollision);
 }

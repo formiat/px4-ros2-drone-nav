@@ -737,8 +737,11 @@ bool proprioceptiveSeedAllowsSupportContact(
 // What it never removes is the body. Evidence in the margin between the body
 // and the envelope at the seed stays binding for the body: a candidate pose
 // whose physical body reaches it is a collision. Evidence the body itself
-// overlaps at the seed is inside the vehicle, and is contact through and
-// through - the vehicle demonstrably stands there.
+// overlaps at the seed is contact through and through - the vehicle
+// demonstrably stands there - and stays allowed exactly as far in as the
+// vehicle already is: an occupied voxel says nothing about where inside it
+// the surface lies, so pressing deeper into it is not moving through free
+// space. Departing, holding and every free direction remain open.
 [[nodiscard]] SweptFootprintConfig
 physicalBody(const SweptFootprintConfig& footprint) noexcept {
   SweptFootprintConfig body = footprint;
@@ -746,6 +749,19 @@ physicalBody(const SweptFootprintConfig& footprint) noexcept {
                            std::max(0.0, footprint.radius_m));
   return body;
 }
+
+// The closest approach of a point to an axis-aligned box.
+[[nodiscard]] double distanceToBox(const Point3& point, const Point3& box_minimum,
+                                   const Point3& box_maximum) noexcept {
+  const double dx = std::max({box_minimum.x - point.x, 0.0, point.x - box_maximum.x});
+  const double dy = std::max({box_minimum.y - point.y, 0.0, point.y - box_maximum.y});
+  const double dz = std::max({box_minimum.z - point.z, 0.0, point.z - box_maximum.z});
+  return std::sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+// Contact the body already has may not deepen; float noise must not turn a
+// hold into a collision.
+constexpr double kContactDepthToleranceM{1.0e-3};
 
 bool proprioceptiveSeedExemptsBox(const ProprioceptiveFreeSpaceSeed3D& seed,
                                   const Point3& candidate_position,
@@ -765,9 +781,13 @@ bool proprioceptiveSeedExemptsBox(const ProprioceptiveFreeSpaceSeed3D& seed,
   const double body_lower_m = std::max(0.0, body.lower_extent_m);
   const double body_upper_m = std::max(0.0, body.upper_extent_m);
   const double body_radius_squared = body.radius_m * body.radius_m;
-  return boxIntersectsFiniteCylinder(seed.position, axis, box_minimum, box_maximum,
-                                     body_lower_m, body_upper_m, body_radius_squared) ||
-         !boxIntersectsFiniteCylinder(candidate_position, axis, box_minimum,
+  if (boxIntersectsFiniteCylinder(seed.position, axis, box_minimum, box_maximum,
+                                  body_lower_m, body_upper_m, body_radius_squared)) {
+    return distanceToBox(candidate_position, box_minimum, box_maximum) +
+               kContactDepthToleranceM >=
+           distanceToBox(seed.position, box_minimum, box_maximum);
+  }
+  return !boxIntersectsFiniteCylinder(candidate_position, axis, box_minimum,
                                       box_maximum, body_lower_m, body_upper_m,
                                       body_radius_squared);
 }
@@ -781,8 +801,11 @@ bool proprioceptiveSeedExemptsPoint(const ProprioceptiveFreeSpaceSeed3D& seed,
     return false;
   }
   const SweptFootprintConfig body = physicalBody(seed.footprint);
-  return pointIntersectsBody(obstacle_point, seed.position, seed.body_axis, body) ||
-         !pointIntersectsBody(obstacle_point, candidate_position, seed.body_axis, body);
+  if (pointIntersectsBody(obstacle_point, seed.position, seed.body_axis, body)) {
+    return distance3D(candidate_position, obstacle_point) + kContactDepthToleranceM >=
+           distance3D(seed.position, obstacle_point);
+  }
+  return !pointIntersectsBody(obstacle_point, candidate_position, seed.body_axis, body);
 }
 
 SweptFootprintResult validateRawFootprintAt(

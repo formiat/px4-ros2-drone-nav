@@ -776,8 +776,9 @@ TEST(SweptFootprintTest, ProprioceptiveSeedSuppressesTheEvidenceItsBodyTouches) 
   EXPECT_TRUE(
       validateRawFootprintAt(occupancy, seed.position, axis, footprint, nullptr, &seed)
           .accepted());
-  // No direction is privileged: leaving the wall, holding, and pressing
-  // further into the evidence the body already touches all validate.
+  // Leaving the wall and holding validate. Pressing further into the voxel
+  // the body already occupies does not: nothing says where inside it the
+  // surface lies, so that is not free space.
   EXPECT_TRUE(validateRawSweptFootprint(occupancy, seed.position, axis,
                                         Point3{2.0, 2.0, 2.0}, axis, footprint, nullptr,
                                         &seed)
@@ -785,10 +786,11 @@ TEST(SweptFootprintTest, ProprioceptiveSeedSuppressesTheEvidenceItsBodyTouches) 
   EXPECT_TRUE(validateRawSweptFootprint(occupancy, seed.position, axis, seed.position,
                                         axis, footprint, nullptr, &seed)
                   .accepted());
-  EXPECT_TRUE(validateRawSweptFootprint(occupancy, seed.position, axis,
-                                        Point3{2.65, 2.0, 2.0}, axis, footprint,
-                                        nullptr, &seed)
-                  .accepted());
+  EXPECT_EQ(validateRawSweptFootprint(occupancy, seed.position, axis,
+                                      Point3{2.65, 2.0, 2.0}, axis, footprint, nullptr,
+                                      &seed)
+                .status,
+            SweptFootprintStatus::kRawCollision);
   // Evidence the body does not touch at the seed binds as it always does,
   // whether it is a separate obstacle or a part of the same wall the body
   // reaches only after travelling along it.
@@ -838,10 +840,12 @@ TEST(SweptFootprintTest, ProprioceptiveSeedSuppressesTheRawPointsItsBodyTouches)
                                                   Point3{2.0, 2.0, 2.0}, axis,
                                                   footprint, nullptr, &seed)
                   .accepted());
-  EXPECT_TRUE(validateRawPointCloudSweptFootprint(hits, seed.position, axis,
-                                                  Point3{2.9, 2.0, 2.0}, axis,
-                                                  footprint, nullptr, &seed)
-                  .accepted());
+  // The return the body already touches may not be pressed into further.
+  EXPECT_EQ(validateRawPointCloudSweptFootprint(hits, seed.position, axis,
+                                                Point3{2.9, 2.0, 2.0}, axis, footprint,
+                                                nullptr, &seed)
+                .status,
+            SweptFootprintStatus::kRawCollision);
   EXPECT_EQ(validateRawPointCloudSweptFootprint(hits, seed.position, axis,
                                                 Point3{1.2, 1.0, 2.0}, axis, footprint,
                                                 nullptr, &seed)
