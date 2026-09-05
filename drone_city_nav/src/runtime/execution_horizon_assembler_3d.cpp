@@ -44,6 +44,8 @@ void captureValidationTelemetry(HorizonCandidate3D& candidate,
   candidate.finite_path_rejected_precondition = validation.rejected_precondition;
   candidate.nominal_candidate_degraded = nominal_candidate_degraded;
   candidate.path_validation_backoff = validation.path_validation_backoff;
+  candidate.persistent_raw_path_validation_backoff =
+      validation.persistent_raw_path_validation_backoff;
   candidate.latest_lidar_path_validation_backoff =
       validation.latest_lidar_path_validation_backoff;
 }

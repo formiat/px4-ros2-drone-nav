@@ -138,6 +138,25 @@ TEST(ExecutionSupervisorStop3DTest, AStandingVehicleIsLeftToTheStationaryHold) {
   EXPECT_EQ(supervisor.plan(), active);
 }
 
+TEST(ExecutionSupervisorStop3DTest, AVehicleCreepingToRestIsLeftToTheStationaryHold) {
+  SnapshotFixture3D fixture;
+  ExecutionSupervisor3D supervisor;
+  const std::shared_ptr<const ExecutionPlan3D> active =
+      installRouteOwner(supervisor, fixture);
+  ASSERT_NE(active, nullptr);
+  ASSERT_NE(active->finiteExecution(), nullptr);
+
+  // Just above the rest speed, the vehicle would stop within the distance a
+  // hold pins its position with: a stop would change nothing but the lease.
+  const ExecutionStopPreparation3D prepared = supervisor.prepareStop(stopRequest(
+      fixture, active, movingInput(*active->finiteExecution()->execution_input, 0.3F)));
+
+  EXPECT_EQ(prepared.status, ExecutionStopStatus3D::kAtRest);
+  EXPECT_FALSE(prepared.prepared());
+  EXPECT_LE(prepared.stop_distance_m, kStationaryExecutionHoldPositionToleranceM);
+  EXPECT_EQ(supervisor.plan(), active);
+}
+
 TEST(ExecutionSupervisorStop3DTest, AMovingVehicleStopsAlongAValidatedTrajectory) {
   SnapshotFixture3D fixture;
   ExecutionSupervisor3D supervisor;

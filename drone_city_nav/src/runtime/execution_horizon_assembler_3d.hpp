@@ -161,6 +161,7 @@ struct HorizonCandidate3D {
   double route_adherence_failure_distance_m{-1.0};
   bool nominal_candidate_degraded{false};
   bool path_validation_backoff{false};
+  bool persistent_raw_path_validation_backoff{false};
   bool latest_lidar_path_validation_backoff{false};
 
   [[nodiscard]] bool planned() const noexcept {

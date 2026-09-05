@@ -309,6 +309,14 @@ ExecutionSupervisor3D::prepareStop(ExecutionStopRequest3D request) const {
                                              owned_request.exact_initial_state.y,
                                              owned_request.exact_initial_state.z},
                                       Point3{rest_state.x, rest_state.y, rest_state.z});
+  // A vehicle that would come to rest within the tolerance a stationary hold
+  // pins its position with is already where it will rest: there is nothing
+  // for a stop to change, and publishing one only churns the lease that the
+  // hold, or the goal capture, is about to take.
+  if (result.stop_distance_m <= kStationaryExecutionHoldPositionToleranceM) {
+    result.status = ExecutionStopStatus3D::kAtRest;
+    return result;
+  }
   const ExecutionRouteTransitionResult3D transition = enterStopExecution3D(
       *expected, expected->version,
       StopExecutionCertification3D{

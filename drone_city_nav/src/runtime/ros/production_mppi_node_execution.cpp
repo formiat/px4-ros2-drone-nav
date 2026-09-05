@@ -601,8 +601,13 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPreparedExecutionC
       return status == mppi::FiniteExecutionPathStatus::kRawCollision ||
              status == mppi::FiniteExecutionPathStatus::kLatestLidarRawCollision;
     };
+    // Physical means collision evidence against the path. A validation
+    // backoff on its own is not: a candidate rejected at its route endpoint
+    // or for adherence backs off exactly the same way, and a vehicle arriving
+    // at its goal must not be stopped and revoked for it.
     const bool physical_candidate_rejection =
-        candidate.physical_rejection.has_value() || candidate.path_validation_backoff ||
+        candidate.physical_rejection.has_value() ||
+        candidate.persistent_raw_path_validation_backoff ||
         candidate.latest_lidar_path_validation_backoff ||
         physical_status(candidate.validation_status) ||
         physical_status(candidate.first_failed_validation_status);
