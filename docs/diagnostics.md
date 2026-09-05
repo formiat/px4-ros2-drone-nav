@@ -167,6 +167,12 @@ under the preparation). `at_rest` and `resident_stop_current` are not failures
 and are not logged: the vehicle is already standing, or the stop that owns it is
 still executable.
 
+`STOP_EXECUTION completed=true speed_mps=<s> position=(x,y,z)
+action=revoke_and_hold_locally` reports that the stop has brought the vehicle to
+rest: the execution is revoked, the offboard holds the position, and the next
+certified route activates from the revoked plan, exactly as after a captured
+goal.
+
 `EXECUTION_RETENTION ... stage=braking_delegated_to_stop` reports that a
 lifecycle event ended the resident path's claim on the vehicle. Retention only
 continues a path that is still executable, so it hands braking to the stop

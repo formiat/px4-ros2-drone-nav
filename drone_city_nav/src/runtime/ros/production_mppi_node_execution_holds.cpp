@@ -192,20 +192,28 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishNoExecutablePathHo
       return hold;
     }
   }
-  // A stop that has brought the vehicle to rest hands it to the stationary
-  // hold. The hold is what owns a resting vehicle and keeps its lease alive,
-  // and a certified route hands off from it exactly as from any other hold.
-  // It pins the position the vehicle actually rests at: the stop's rest point
-  // is a prediction, and braking leaves the vehicle near it, not on it.
+  // A stop that has brought the vehicle to rest is finished. The resting
+  // vehicle is handed over exactly as a captured goal is: the execution is
+  // revoked, the offboard holds the position it is at, and the next certified
+  // route takes the vehicle back from the revoked plan. A stationary hold
+  // would need control feedback the offboard stops sending once it holds
+  // locally, and its lease would expire with nothing to retire it.
   if (cycle.route.execution.source_snapshot != nullptr &&
       cycle.route.execution.source_snapshot->stopExecution() != nullptr &&
       vehicleAtRest(cycle.evidence.exact_initial_state)) {
-    const mppi::State& rest = cycle.evidence.exact_initial_state;
-    ProductionMppiExecutionPublication hold =
-        publishPositionHold(cycle, Point3{rest.x, rest.y, rest.z}, reason,
-                            ExecutionHoldIntent3D::kExplicitTransfer);
-    if (hold.published) {
-      return hold;
+    ProductionMppiExecutionPublication completed = publishExecutionRevocation(
+        reason, cycle.controller.now_ns, /*physical_route_invalidation=*/true);
+    if (completed.published) {
+      RCLCPP_INFO(
+          get_logger(),
+          "STOP_EXECUTION completed=true speed_mps=%.2f position=(%.2f,%.2f,%.2f) "
+          "action=revoke_and_hold_locally",
+          std::hypot(std::hypot(cycle.evidence.exact_initial_state.vx,
+                                cycle.evidence.exact_initial_state.vy),
+                     cycle.evidence.exact_initial_state.vz),
+          cycle.evidence.exact_initial_state.x, cycle.evidence.exact_initial_state.y,
+          cycle.evidence.exact_initial_state.z);
+      return completed;
     }
   }
   bool retention_physically_rejected{false};

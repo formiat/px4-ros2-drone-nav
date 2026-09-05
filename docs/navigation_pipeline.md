@@ -317,10 +317,15 @@ path that was just invalidated. Only the offboard's local position latch remains
 behind the stop, and only for a genuine loss of the planner.
 
 A stop never survives its own completion. It is finite by construction: once
-flown, the plan rests, the stationary hold takes it over, and a certified route
-activates from wherever the vehicle stopped. A route may also take the vehicle
-back while the stop is still braking, so no approach to any obstacle is ever
-withheld.
+the vehicle rests, the execution is revoked exactly as it is at a captured
+goal, the offboard holds the position the vehicle is at, and the next certified
+route activates from the revoked plan. A route may also take the vehicle back
+while the stop is still braking, so no approach to any obstacle is ever
+withheld. Stopping is not a route state, so the stop's length follows the
+vehicle's state and its guaranteed deceleration rather than the controller's
+control count, and its profile is shaped against the same integrator that
+validates it, including the shedding of an inherited excess above the speed
+cap.
 
 The liveness monitor compares predicted and actual full-3D route progress.
 Persistent prediction without real movement can reseed the MPPI nominal controls
