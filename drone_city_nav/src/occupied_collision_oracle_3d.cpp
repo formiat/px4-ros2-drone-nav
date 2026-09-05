@@ -42,6 +42,7 @@ withSource(OccupiedCollisionResult3D result,
 
 [[nodiscard]] bool validFootprint(const SweptFootprintConfig& footprint) noexcept {
   return std::isfinite(footprint.radius_m) && footprint.radius_m >= 0.0 &&
+         std::isfinite(footprint.body_radius_m) && footprint.body_radius_m >= 0.0 &&
          std::isfinite(footprint.lower_extent_m) && footprint.lower_extent_m >= 0.0 &&
          std::isfinite(footprint.upper_extent_m) && footprint.upper_extent_m >= 0.0 &&
          std::isfinite(footprint.sweep_step_m) && footprint.sweep_step_m > 0.0 &&

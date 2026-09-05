@@ -710,6 +710,8 @@ validProprioceptiveSeed(const ProprioceptiveFreeSpaceSeed3D* const seed) noexcep
   return swept_footprint_detail::finitePoint(seed->position) &&
          std::isfinite(axis_norm) && axis_norm > 1.0e-9 &&
          std::isfinite(seed->footprint.radius_m) && seed->footprint.radius_m >= 0.0 &&
+         std::isfinite(seed->footprint.body_radius_m) &&
+         seed->footprint.body_radius_m >= 0.0 &&
          std::isfinite(seed->footprint.lower_extent_m) &&
          seed->footprint.lower_extent_m >= 0.0 &&
          std::isfinite(seed->footprint.upper_extent_m) &&
@@ -726,33 +728,61 @@ bool proprioceptiveSeedAllowsSupportContact(
                                   occupancy_resolution_m);
 }
 
+// Evidence the envelope overlaps at the seed is contact: the vehicle is there,
+// so that evidence cannot be an obstacle for a validation run from that pose.
+// The exemption removes the envelope's clearance margin from that evidence and
+// nothing else: it carries no condition on where the body then moves — no
+// closer than now, only along, only away — since such a condition is a
+// prohibition on moving through free space and freezes a vehicle in contact.
+// What it never removes is the body. Evidence in the margin between the body
+// and the envelope at the seed stays binding for the body: a candidate pose
+// whose physical body reaches it is a collision. Evidence the body itself
+// overlaps at the seed is inside the vehicle, and is contact through and
+// through - the vehicle demonstrably stands there.
+[[nodiscard]] SweptFootprintConfig
+physicalBody(const SweptFootprintConfig& footprint) noexcept {
+  SweptFootprintConfig body = footprint;
+  body.radius_m = std::min(std::max(0.0, footprint.body_radius_m),
+                           std::max(0.0, footprint.radius_m));
+  return body;
+}
+
 bool proprioceptiveSeedExemptsBox(const ProprioceptiveFreeSpaceSeed3D& seed,
                                   const Point3& candidate_position,
                                   const Point3& box_minimum,
                                   const Point3& box_maximum) noexcept {
-  // Evidence the body overlaps at the seed is contact: the vehicle is there,
-  // so that evidence cannot be an obstacle for a validation run from that pose.
-  // The exemption carries no condition on where the body then moves. A
-  // condition of that kind — no closer than now, only along, only away — is a
-  // prohibition on moving through free space, and it freezes a vehicle in
-  // contact instead of letting it fly out.
-  static_cast<void>(candidate_position);
   const double tolerance_m = seedContactToleranceM(seed);
-  const SweptFootprintConfig contact_body =
+  const SweptFootprintConfig contact_envelope =
       contactWidenedFootprint(seed.footprint, tolerance_m);
-  return boxIntersectsFiniteCylinder(
-      seed.position, normalized(seed.body_axis), box_minimum, box_maximum,
-      contact_body.lower_extent_m, contact_body.upper_extent_m,
-      contact_body.radius_m * contact_body.radius_m);
+  const FootprintBodyAxis axis = normalized(seed.body_axis);
+  if (!boxIntersectsFiniteCylinder(
+          seed.position, axis, box_minimum, box_maximum,
+          contact_envelope.lower_extent_m, contact_envelope.upper_extent_m,
+          contact_envelope.radius_m * contact_envelope.radius_m)) {
+    return false;
+  }
+  const SweptFootprintConfig body = physicalBody(seed.footprint);
+  const double body_lower_m = std::max(0.0, body.lower_extent_m);
+  const double body_upper_m = std::max(0.0, body.upper_extent_m);
+  const double body_radius_squared = body.radius_m * body.radius_m;
+  return boxIntersectsFiniteCylinder(seed.position, axis, box_minimum, box_maximum,
+                                     body_lower_m, body_upper_m, body_radius_squared) ||
+         !boxIntersectsFiniteCylinder(candidate_position, axis, box_minimum,
+                                      box_maximum, body_lower_m, body_upper_m,
+                                      body_radius_squared);
 }
 
 bool proprioceptiveSeedExemptsPoint(const ProprioceptiveFreeSpaceSeed3D& seed,
                                     const Point3& candidate_position,
                                     const Point3& obstacle_point) noexcept {
-  static_cast<void>(candidate_position);
   const double tolerance_m = seedContactToleranceM(seed);
-  return pointIntersectsBody(obstacle_point, seed.position, seed.body_axis,
-                             contactWidenedFootprint(seed.footprint, tolerance_m));
+  if (!pointIntersectsBody(obstacle_point, seed.position, seed.body_axis,
+                           contactWidenedFootprint(seed.footprint, tolerance_m))) {
+    return false;
+  }
+  const SweptFootprintConfig body = physicalBody(seed.footprint);
+  return pointIntersectsBody(obstacle_point, seed.position, seed.body_axis, body) ||
+         !pointIntersectsBody(obstacle_point, candidate_position, seed.body_axis, body);
 }
 
 SweptFootprintResult validateRawFootprintAt(

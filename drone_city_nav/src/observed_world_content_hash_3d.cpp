@@ -49,6 +49,7 @@ void hashAxis(std::uint64_t& hash, const FootprintBodyAxis& axis) noexcept {
 
 [[nodiscard]] bool footprintValid(const SweptFootprintConfig& footprint) noexcept {
   return std::isfinite(footprint.radius_m) && footprint.radius_m >= 0.0 &&
+         std::isfinite(footprint.body_radius_m) && footprint.body_radius_m >= 0.0 &&
          std::isfinite(footprint.lower_extent_m) && footprint.lower_extent_m >= 0.0 &&
          std::isfinite(footprint.upper_extent_m) && footprint.upper_extent_m >= 0.0 &&
          std::isfinite(footprint.sweep_step_m) && footprint.sweep_step_m > 0.0 &&
@@ -138,6 +139,7 @@ launchSupportMatchesOwnedOccupancy(const LaunchSupportContact3D& support,
 void hashFootprint(std::uint64_t& hash,
                    const SweptFootprintConfig& footprint) noexcept {
   hashValue(hash, canonicalDoubleBits(footprint.radius_m));
+  hashValue(hash, canonicalDoubleBits(footprint.body_radius_m));
   hashValue(hash, canonicalDoubleBits(footprint.lower_extent_m));
   hashValue(hash, canonicalDoubleBits(footprint.upper_extent_m));
   hashValue(hash, static_cast<std::uint64_t>(footprint.perimeter_samples));

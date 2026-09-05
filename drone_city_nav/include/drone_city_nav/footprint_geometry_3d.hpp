@@ -12,9 +12,15 @@ namespace drone_city_nav {
 // terms of it. These are value contracts with no occupancy dependency, so the
 // world layer can publish them without reaching into collision checking.
 struct SweptFootprintConfig {
+  // The validation envelope: the body plus the clearance every motion keeps
+  // from evidence it is not already in contact with.
   double radius_m{0.82};
   double lower_extent_m{0.23};
   double upper_extent_m{0.35};
+  // The physical body itself, rotor tips included. Contact evidence is exempt
+  // from the envelope, never from the body: a pose whose body overlaps
+  // evidence is a collision whether or not the vehicle already touched it.
+  double body_radius_m{0.55};
   std::size_t perimeter_samples{12U};
   std::size_t radial_rings{2U};
   std::size_t axial_samples{3U};

@@ -151,6 +151,8 @@ private:
         declare<double>("maximum_target_z_m", 32.0);
     world.physical_footprint.radius_m =
         declare<double>("physical_footprint_radius_m", 0.82);
+    world.physical_footprint.body_radius_m =
+        declare<double>("physical_footprint_body_radius_m", 0.55);
     world.physical_footprint.lower_extent_m =
         declare<double>("physical_footprint_lower_extent_m", 0.23);
     world.physical_footprint.upper_extent_m =

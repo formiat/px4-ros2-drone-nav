@@ -105,19 +105,25 @@ never requires the vehicle's current pose to match it, or an unreleased support
 would reject every observed world once the vehicle moved and leave the stack
 without evidence at all.
 
-The vehicle's own pose is proprioceptive contact evidence. Occupied evidence
-that overlaps the body at the proprioceptive seed (the current pose, widened by
-half an observed voxel) is contact rather than an obstacle: the vehicle
-demonstrably occupies that volume. Every raw validator (planner departure,
+The vehicle's own pose is proprioceptive contact evidence. The footprint has
+two radii: the validation envelope (`physical_footprint_radius_m`, the body
+plus the clearance every motion keeps) and the physical body itself
+(`physical_footprint_body_radius_m`, rotor tips included). Occupied evidence
+that overlaps the envelope at the proprioceptive seed (the current pose,
+widened by half an observed voxel) is contact rather than an obstacle: the
+vehicle demonstrably stands there. Every raw validator (planner departure,
 route candidates, certification, the finite execution path, hold validation)
-suppresses exactly that evidence, for every candidate pose of that validation,
-with no condition whatsoever on where the body then moves. A rule of the form
-"no closer than it already is", "only away from the surface", or "not along the
-wall" is a prohibition on moving through free space and is forbidden here: free
-space stays traversable in every layer, and the swept physical footprint
-against raw occupied evidence remains the only ground for rejecting motion.
-Evidence the body does not touch at the seed binds exactly as it always does.
-The half-voxel tolerance widens what counts as contact and nothing else. The seed is transient evidence
+exempts exactly that evidence from the envelope, for every candidate pose of
+that validation, with no condition whatsoever on where the body then moves. A
+rule of the form "no closer than it already is", "only away from the surface",
+or "not along the wall" is a prohibition on moving through free space and is
+forbidden here: free space stays traversable in every layer. What the
+exemption never removes is the body: evidence in the margin between the body
+and the envelope at the seed stays binding for the body, so a candidate pose
+whose physical body reaches it is a collision like any other, while evidence
+the body itself overlaps at the seed is contact through and through. Evidence
+the envelope does not touch at the seed binds exactly as it always does. The
+half-voxel tolerance widens what counts as contact and nothing else. The seed is transient evidence
 like the newest lidar returns: each validation builds it from the pose its own
 execution input reports, never from the pose a resident route was certified
 from. A seed frozen into a certified world would stop exempting evidence that

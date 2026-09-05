@@ -334,6 +334,10 @@ production_mppi_node:
     constrained_route_vertical_capture_margin_m: 0.5
     constrained_route_vertical_capture_speed_mps: 0.75
     physical_footprint_radius_m: 0.82
+    # The body itself, rotor tips included (x500: 0.55 m arm box plus 0.14 m
+    # rotors). Contact evidence is exempt from the 0.82 m envelope, never from
+    # the body: a pose whose body overlaps evidence is a collision.
+    physical_footprint_body_radius_m: 0.55
     physical_footprint_lower_extent_m: 0.23
     physical_footprint_upper_extent_m: 0.35
     physical_footprint_samples: 12

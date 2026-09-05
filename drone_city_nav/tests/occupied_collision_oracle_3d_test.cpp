@@ -4,6 +4,7 @@
 
 #include <array>
 #include <limits>
+#include <span>
 
 namespace drone_city_nav {
 namespace {
@@ -149,9 +150,77 @@ TEST(OccupiedCollisionOracle3DTest, ProprioceptiveSeedMakesTheOwnPoseAValidDepar
   EXPECT_TRUE(
       seeded.validateSegment(seed.position, axis, Point3{5.0, 5.1, 5.1}, axis).clear());
   // The exemption places no condition on the direction of motion: free space
-  // stays traversable in every direction from a body already in contact.
+  // stays traversable in every direction from a body already in contact. The
+  // body itself overlaps this voxel at the seed, so it is contact through and
+  // through, not margin evidence the body may never reach.
   EXPECT_TRUE(
       seeded.validateSegment(seed.position, axis, Point3{5.9, 5.1, 5.1}, axis).clear());
+}
+
+TEST(OccupiedCollisionOracle3DTest, ContactExemptsTheEnvelopeNeverTheBody) {
+  // The vehicle rests beside a wall: the 0.82 m envelope overlaps the wall's
+  // voxels and the lidar returns on its face, the 0.55 m body does not. The
+  // exemption lets it hold and fly away from the face; the pose whose body
+  // would reach the face is a collision like any other.
+  ObservedOccupancyGrid3D observed{GridBounds3D{0.0, 0.0, 0.0, 0.25, 40, 40, 40}};
+  for (int x = 16; x < 24; ++x) {
+    for (int z = 18; z < 23; ++z) {
+      ASSERT_TRUE(
+          observed.setState(GridIndex3D{x, 24, z}, ObservedVoxelState::kOccupied));
+    }
+  }
+  const std::array<Point3, 3> face{Point3{4.6, 6.0, 5.1}, Point3{5.0, 6.0, 5.1},
+                                   Point3{5.4, 6.0, 5.1}};
+  const SweptFootprintConfig footprint{.radius_m = 0.82,
+                                       .lower_extent_m = 0.25,
+                                       .upper_extent_m = 0.25,
+                                       .body_radius_m = 0.55,
+                                       .sweep_step_m = 0.125};
+  // Centre 0.75 m from the face: inside the envelope, outside the body.
+  const ProprioceptiveFreeSpaceSeed3D seed{
+      .position = Point3{5.0, 5.25, 5.1},
+      .body_axis = FootprintBodyAxis{},
+      .footprint = footprint,
+      .contact_tolerance_m = 0.125,
+  };
+  const FootprintBodyAxis axis{};
+  const OccupiedCollisionOracle3D strict{OccupiedCollisionWorld3D{
+      .observed_occupancy = &observed,
+      .raw_point_cloud = std::span<const Point3>{face},
+      .footprint = footprint,
+      .flight_envelope = FlightEnvelopeConfig{0.0, 10.0},
+  }};
+  const OccupiedCollisionOracle3D seeded{OccupiedCollisionWorld3D{
+      .observed_occupancy = &observed,
+      .raw_point_cloud = std::span<const Point3>{face},
+      .proprioceptive_free_space_seed = &seed,
+      .footprint = footprint,
+      .flight_envelope = FlightEnvelopeConfig{0.0, 10.0},
+  }};
+
+  EXPECT_EQ(strict.validatePoint(seed.position, axis).status,
+            OccupiedCollisionStatus3D::kRawCollision);
+  EXPECT_TRUE(seeded.validatePoint(seed.position, axis).clear());
+  // Holding and flying away from the face: clear.
+  EXPECT_TRUE(seeded.validateSegment(seed.position, axis, seed.position, axis).clear());
+  EXPECT_TRUE(
+      seeded.validateSegment(seed.position, axis, Point3{5.0, 4.6, 5.1}, axis).clear());
+  // A drift of 0.3 m into the face brings the body onto the wall: a collision,
+  // by the lidar returns and by the voxels alike.
+  EXPECT_EQ(
+      seeded.validateSegment(seed.position, axis, Point3{5.0, 5.55, 5.1}, axis).status,
+      OccupiedCollisionStatus3D::kRawCollision);
+  const OccupiedCollisionOracle3D voxels_only{OccupiedCollisionWorld3D{
+      .observed_occupancy = &observed,
+      .proprioceptive_free_space_seed = &seed,
+      .footprint = footprint,
+      .flight_envelope = FlightEnvelopeConfig{0.0, 10.0},
+  }};
+  EXPECT_TRUE(voxels_only.validatePoint(seed.position, axis).clear());
+  EXPECT_EQ(
+      voxels_only.validateSegment(seed.position, axis, Point3{5.0, 5.55, 5.1}, axis)
+          .status,
+      OccupiedCollisionStatus3D::kRawCollision);
 }
 
 TEST(OccupiedCollisionOracle3DTest, ContactEvidenceIsTiedToTheSeedNotTheWorld) {

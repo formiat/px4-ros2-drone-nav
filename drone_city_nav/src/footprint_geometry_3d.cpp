@@ -9,6 +9,7 @@ namespace {
 
 [[nodiscard]] bool finiteFootprintConfig(const SweptFootprintConfig& config) noexcept {
   return std::isfinite(config.radius_m) && config.radius_m >= 0.0 &&
+         std::isfinite(config.body_radius_m) && config.body_radius_m >= 0.0 &&
          std::isfinite(config.lower_extent_m) && config.lower_extent_m >= 0.0 &&
          std::isfinite(config.upper_extent_m) && config.upper_extent_m >= 0.0 &&
          std::isfinite(config.sweep_step_m) && config.sweep_step_m > 0.0 &&
@@ -46,6 +47,7 @@ bool sameProprioceptiveFreeSpaceSeed3D(
          first.body_axis.y == second.body_axis.y &&
          first.body_axis.z == second.body_axis.z &&
          first.footprint.radius_m == second.footprint.radius_m &&
+         first.footprint.body_radius_m == second.footprint.body_radius_m &&
          first.footprint.lower_extent_m == second.footprint.lower_extent_m &&
          first.footprint.upper_extent_m == second.footprint.upper_extent_m &&
          first.footprint.perimeter_samples == second.footprint.perimeter_samples &&

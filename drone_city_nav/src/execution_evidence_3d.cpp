@@ -87,6 +87,7 @@ validAltitudeEnvelope(const MotionAltitudeEnvelopeConfig3D& config,
 
 [[nodiscard]] bool validSweptFootprint(const SweptFootprintConfig& config) noexcept {
   return std::isfinite(config.radius_m) && config.radius_m >= 0.0 &&
+         std::isfinite(config.body_radius_m) && config.body_radius_m >= 0.0 &&
          std::isfinite(config.lower_extent_m) && config.lower_extent_m >= 0.0 &&
          std::isfinite(config.upper_extent_m) && config.upper_extent_m >= 0.0 &&
          (config.radius_m == 0.0 ||
@@ -146,6 +147,7 @@ void hashAltitudeEnvelope(std::uint64_t& hash,
 void hashSweptFootprint(std::uint64_t& hash,
                         const SweptFootprintConfig& config) noexcept {
   hashValue(hash, canonicalDoubleBits(config.radius_m));
+  hashValue(hash, canonicalDoubleBits(config.body_radius_m));
   hashValue(hash, canonicalDoubleBits(config.lower_extent_m));
   hashValue(hash, canonicalDoubleBits(config.upper_extent_m));
   hashValue(hash, static_cast<std::uint64_t>(config.perimeter_samples));
