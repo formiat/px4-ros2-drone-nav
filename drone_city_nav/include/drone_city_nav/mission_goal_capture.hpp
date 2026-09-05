@@ -11,6 +11,10 @@ namespace drone_city_nav {
 // then pins the vehicle where it came to rest rather than at the exact goal
 // coordinate. Latching while still moving would hand the goal to a stationary
 // hold that cannot be certified, with no controller left to stop the vehicle.
+// The latch releases again when the vehicle leaves the capture radius: the
+// capture itself is only acknowledged while the vehicle stays inside it, and
+// a latched planner flies no route, so a vehicle that drifted out would
+// otherwise stay out with nothing left to bring it back.
 struct MissionGoalCaptureConfig {
   double capture_radius_m{2.0};
   double stationary_speed_tolerance_mps{kStationaryExecutionHoldSpeedToleranceMps};

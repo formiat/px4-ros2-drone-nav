@@ -60,7 +60,10 @@ TEST(MissionGoalCaptureLatchTest, LatchesOnlyWhenRestingInsideTheCaptureRadius) 
   EXPECT_NEAR(resting.distance_m, 1.0, 1.0e-6);
 }
 
-TEST(MissionGoalCaptureLatchTest, RemainsLatchedAfterLeavingCaptureRadius) {
+TEST(MissionGoalCaptureLatchTest, ReleasesAfterLeavingTheCaptureRadius) {
+  // A latched planner holds and flies no route. A vehicle that drifted out of
+  // the capture radius cannot be acknowledged there, so the latch releases
+  // and the route takes it back inside; resting inside latches it again.
   MissionGoalCaptureLatch latch;
   mppi::State state;
   state.x = 10.0F;
@@ -74,15 +77,48 @@ TEST(MissionGoalCaptureLatchTest, RemainsLatchedAfterLeavingCaptureRadius) {
                   })
                   .newly_latched);
 
-  state.x = 20.0F;
-  const MissionGoalCaptureResult result = latch.update(MissionGoalCaptureObservation{
+  // Still inside the radius: the latch holds, moving or not.
+  state.x = 11.5F;
+  state.vx = 0.5F;
+  const MissionGoalCaptureResult inside = latch.update(MissionGoalCaptureObservation{
       .mission_goal = Point3{10.0, 10.0, 18.0},
       .state = state,
       .terminal_route_available = false,
   });
+  EXPECT_TRUE(inside.latched);
+  EXPECT_FALSE(inside.newly_latched);
 
-  EXPECT_TRUE(result.latched);
-  EXPECT_FALSE(result.newly_latched);
+  state.x = 12.1F;
+  state.vx = 0.0F;
+  const MissionGoalCaptureResult outside = latch.update(MissionGoalCaptureObservation{
+      .mission_goal = Point3{10.0, 10.0, 18.0},
+      .state = state,
+      .terminal_route_available = false,
+  });
+  EXPECT_FALSE(outside.latched);
+  EXPECT_FALSE(outside.newly_latched);
+  EXPECT_FALSE(latch.latchedFor(Point3{10.0, 10.0, 18.0}));
+
+  // Back inside but moving: not yet.
+  state.x = 11.0F;
+  state.vx = 1.0F;
+  EXPECT_FALSE(latch
+                   .update(MissionGoalCaptureObservation{
+                       .mission_goal = Point3{10.0, 10.0, 18.0},
+                       .state = state,
+                       .terminal_route_available = true,
+                   })
+                   .latched);
+
+  state.vx = 0.0F;
+  const MissionGoalCaptureResult relatched = latch.update(MissionGoalCaptureObservation{
+      .mission_goal = Point3{10.0, 10.0, 18.0},
+      .state = state,
+      .terminal_route_available = true,
+  });
+  EXPECT_TRUE(relatched.latched);
+  EXPECT_TRUE(relatched.newly_latched);
+  EXPECT_TRUE(latch.latchedFor(Point3{10.0, 10.0, 18.0}));
 }
 
 TEST(MissionGoalCaptureLatchTest, NewMissionResetsLatch) {

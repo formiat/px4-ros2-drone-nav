@@ -350,7 +350,11 @@ the goal hold pins the vehicle's rest position rather than the goal coordinate,
 so the mission never waits for the controller to creep onto an exact point,
 while the route target that reached the goal still has to match it exactly. A
 goal hold may also replace a resident finite execution before its lease ends
-once the remaining lease commands nothing but rest at the hold position.
+once the remaining lease commands nothing but rest at the hold position. The
+capture is acknowledged only while the vehicle stays inside the radius, and a
+captured goal flies no route, so the capture releases again when the vehicle
+leaves the radius: the route takes it back inside, where resting captures the
+goal once more.
 
 The finite intercept mission runs four complete navigation stacks: three
 interceptors and one evader, each with a separate PX4 DDS namespace, planner,
