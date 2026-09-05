@@ -47,8 +47,6 @@ enum class ExecutionRouteTransitionDetail3D : std::uint8_t {
   kProgressObservedTravelInvalid,
   kProgressCompositionMismatch,
   kLifecycleEventUnknown,
-  kLifecycleRetainedExecutionUnexpected,
-  kLifecycleControlCandidateRejectedUnsupported,
   kHoldCertificationStale,
   kHoldPointUnsafe,
   // A successor's evidence is older than the resident route's. The successor
@@ -92,10 +90,9 @@ struct ReplaceFiniteExecutionPlanCommand3D {
   FiniteExecutionPlan3D execution{};
 };
 
-struct RetireCertifiedRouteCommand3D {
+struct CompleteCertifiedRouteCommand3D {
   ExecutionRouteTransitionGuard3D guard{};
   RouteLifecycleEvent3D event{};
-  std::optional<FiniteExecutionState3D> retained_safe_execution;
 };
 
 struct ReplaceCertifiedRouteCommand3D {
@@ -137,6 +134,11 @@ struct ArmStationaryCaptureHoldCommand3D {
   StationaryExecutionHoldCertification3D certification{};
 };
 
+struct EnterStopExecutionCommand3D {
+  std::uint64_t expected_snapshot_version{0U};
+  StopExecutionCertification3D certification{};
+};
+
 struct RevokeExecutionCommand3D {
   std::uint64_t expected_snapshot_version{0U};
 };
@@ -147,12 +149,12 @@ struct SuspendFiniteExecutionCommand3D {
 
 using ExecutionPlanTransitionCommand3D = std::variant<
     ActivateCertifiedRouteCommand3D, AdvanceCertifiedRouteCommand3D,
-    ReplaceFiniteExecutionPlanCommand3D, RetireCertifiedRouteCommand3D,
+    ReplaceFiniteExecutionPlanCommand3D, CompleteCertifiedRouteCommand3D,
     ReplaceCertifiedRouteCommand3D, ReplaceCertifiedRouteAtHandoffCommand3D,
     TransferToDirectTrackingCommand3D, ReplaceDirectTrackingExecutionCommand3D,
     TransferDirectTrackingToCertifiedRouteCommand3D, TransferToExecutionHoldCommand3D,
-    ArmStationaryCaptureHoldCommand3D, RevokeExecutionCommand3D,
-    SuspendFiniteExecutionCommand3D>;
+    ArmStationaryCaptureHoldCommand3D, EnterStopExecutionCommand3D,
+    RevokeExecutionCommand3D, SuspendFiniteExecutionCommand3D>;
 
 class ExecutionRouteTransitionFactory3D;
 class RouteExecutionManager3D;
@@ -200,11 +202,14 @@ replaceFiniteExecutionPlan3D(const ExecutionPlan3D& current,
                              const ExecutionRouteTransitionGuard3D& guard,
                              FiniteExecutionPlan3D execution);
 
+// The route reached its own end: a continuation route parks its plan for the
+// successor, a mission or local stop hands it to the certified terminal hold.
+// Completion is the only lifecycle event a route retires on; every other one
+// means the vehicle needs a stop, not a finished route.
 [[nodiscard]] ExecutionRouteTransitionResult3D
-retireCertifiedRoute3D(const ExecutionPlan3D& current,
-                       const ExecutionRouteTransitionGuard3D& guard,
-                       const RouteLifecycleEvent3D& event,
-                       std::optional<FiniteExecutionState3D> retained_safe_execution);
+completeCertifiedRoute3D(const ExecutionPlan3D& current,
+                         const ExecutionRouteTransitionGuard3D& guard,
+                         const RouteLifecycleEvent3D& event);
 
 [[nodiscard]] ExecutionRouteTransitionResult3D replaceCertifiedRoute3D(
     const ExecutionPlan3D& current, const ExecutionRouteTransitionGuard3D& guard,
@@ -243,6 +248,15 @@ transferToExecutionHold3D(const ExecutionPlan3D& current,
 armStationaryCaptureHold3D(const ExecutionPlan3D& current,
                            std::uint64_t expected_snapshot_version,
                            StationaryExecutionHoldCertification3D certification);
+
+// Leaves whatever the plan was executing and takes ownership of the vehicle
+// with the certified braking trajectory. Admissible from every phase that can
+// still be moving, because a stop must never depend on the route state that
+// failed.
+[[nodiscard]] ExecutionRouteTransitionResult3D
+enterStopExecution3D(const ExecutionPlan3D& current,
+                     std::uint64_t expected_snapshot_version,
+                     StopExecutionCertification3D certification);
 
 [[nodiscard]] ExecutionRouteTransitionResult3D
 revokeExecution3D(const ExecutionPlan3D& current,

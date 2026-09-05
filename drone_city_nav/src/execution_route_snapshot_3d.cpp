@@ -441,8 +441,8 @@ ExecutionRoutePhase3D ExecutionPlan3D::phase() const noexcept {
   if (std::holds_alternative<DirectTrackingPlan3D>(state)) {
     return ExecutionRoutePhase3D::kDirectTracking;
   }
-  if (std::holds_alternative<BrakingPlan3D>(state)) {
-    return ExecutionRoutePhase3D::kBraking;
+  if (std::holds_alternative<StopPlan3D>(state)) {
+    return ExecutionRoutePhase3D::kStopping;
   }
   if (std::holds_alternative<StationaryHoldPlan3D>(state)) {
     return ExecutionRoutePhase3D::kStopped;
@@ -456,9 +456,6 @@ ExecutionRoutePhase3D ExecutionPlan3D::phase() const noexcept {
 const CertifiedRouteSuffix3D* ExecutionPlan3D::route() const noexcept {
   if (const auto* following = std::get_if<FollowingPlan3D>(&state)) {
     return std::addressof(following->route);
-  }
-  if (const auto* braking = std::get_if<BrakingPlan3D>(&state)) {
-    return std::addressof(braking->route);
   }
   if (const auto* stationary = std::get_if<StationaryHoldPlan3D>(&state)) {
     const auto* certified =
@@ -480,9 +477,6 @@ const FiniteExecutionState3D* ExecutionPlan3D::finiteExecution() const noexcept 
   if (const auto* following = std::get_if<FollowingPlan3D>(&state)) {
     return std::addressof(following->execution.command_horizon);
   }
-  if (const auto* braking = std::get_if<BrakingPlan3D>(&state)) {
-    return std::addressof(braking->execution);
-  }
   if (const auto* stationary = std::get_if<StationaryHoldPlan3D>(&state)) {
     const auto* certified =
         std::get_if<CertifiedTerminalHoldPlan3D>(&stationary->owner);
@@ -502,9 +496,6 @@ const FiniteExecutionState3D* ExecutionPlan3D::brakingFallback() const noexcept 
   if (const auto* following = std::get_if<FollowingPlan3D>(&state)) {
     return std::addressof(following->execution.braking_tail);
   }
-  if (const auto* braking = std::get_if<BrakingPlan3D>(&state)) {
-    return std::addressof(braking->execution);
-  }
   if (const auto* stationary = std::get_if<StationaryHoldPlan3D>(&state)) {
     const auto* certified =
         std::get_if<CertifiedTerminalHoldPlan3D>(&stationary->owner);
@@ -523,6 +514,11 @@ const DirectTrackingFiniteExecution3D*
 ExecutionPlan3D::directTrackingExecution() const noexcept {
   const auto* direct = std::get_if<DirectTrackingPlan3D>(&state);
   return direct != nullptr ? std::addressof(direct->execution) : nullptr;
+}
+
+const StopExecution3D* ExecutionPlan3D::stopExecution() const noexcept {
+  const auto* stopping = std::get_if<StopPlan3D>(&state);
+  return stopping != nullptr ? std::addressof(stopping->execution) : nullptr;
 }
 
 const StationaryExecutionHold3D* ExecutionPlan3D::stationaryHold() const noexcept {
@@ -588,16 +584,8 @@ bool ExecutionPlan3D::valid() const noexcept {
   if (const auto* plan = std::get_if<DirectTrackingPlan3D>(&state)) {
     return plan->execution.valid() && plan->execution.source_snapshot_version < version;
   }
-  if (const auto* plan = std::get_if<BrakingPlan3D>(&state)) {
-    if (!plan->execution.validFor(std::addressof(plan->route)) ||
-        plan->execution.source_snapshot_version >= version ||
-        plan->execution.kind != FiniteExecutionKind3D::kEmergencyBrakeTail ||
-        plan->execution.revalidation_required) {
-      return false;
-    }
-    const ExecutionInputProgressRelation3D relation = executionInputProgressRelation(
-        *plan->route.progress.execution_input, *plan->execution.execution_input);
-    return relation == ExecutionInputProgressRelation3D::kReplay;
+  if (const auto* plan = std::get_if<StopPlan3D>(&state)) {
+    return plan->execution.valid() && plan->execution.source_snapshot_version < version;
   }
   if (const auto* plan = std::get_if<StationaryHoldPlan3D>(&state)) {
     if (plan->owner.valueless_by_exception()) {
@@ -635,6 +623,12 @@ bool ExecutionPlan3D::valid() const noexcept {
 bool ExecutionPlan3D::publishable() const noexcept {
   if (!valid()) {
     return false;
+  }
+  // A stop owns the vehicle on its own: it has no command/braking pair to
+  // agree with, and nothing about it can require revalidation before it is
+  // published, because it is what the vehicle falls back to.
+  if (std::holds_alternative<StopPlan3D>(state)) {
+    return true;
   }
   const FiniteExecutionState3D* const command = finiteExecution();
   const FiniteExecutionState3D* const braking = brakingFallback();

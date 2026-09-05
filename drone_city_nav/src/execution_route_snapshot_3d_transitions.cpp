@@ -86,23 +86,12 @@ namespace {
                                ExecutionRouteTransitionDetail3D::kSpliceNotReady);
     }
   }
-  // A splice-free handoff is certified from the vehicle's current state. The
-  // resident route progress can be older after a physical stop, so requiring
-  // both routes to share that stale position would reject the recovery path.
-  // The successor finite plan and its raw-safe connector are validated below
-  // against the exact current execution input before either route is replaced.
-  const bool splice_free_braking_handoff =
-      splice == nullptr && current.phase() == ExecutionRoutePhase3D::kBraking;
   ExecutionRouteTransitionDetail3D successor_evidence_regression =
       ExecutionRouteTransitionDetail3D::kNone;
   if (current.finiteExecution() != nullptr) {
     successor_evidence_regression =
-        splice_free_braking_handoff
-            ? successorRouteEvidenceRegression(*current_route, successor,
-                                               successor_execution.command_horizon)
-            : successorEvidenceRegression(*current_route, *current.finiteExecution(),
-                                          successor,
-                                          successor_execution.command_horizon);
+        successorEvidenceRegression(*current_route, *current.finiteExecution(),
+                                    successor, successor_execution.command_horizon);
   } else if (current_route->progress.execution_input == nullptr) {
     successor_evidence_regression =
         ExecutionRouteTransitionDetail3D::kResidentProgressInputMissing;
@@ -175,10 +164,18 @@ ExecutionRouteTransitionResult3D applyActivateCertifiedRouteCommand3D(
       current.stationaryHold() == nullptr;
   const bool stationary_owner = current.phase() == ExecutionRoutePhase3D::kStopped &&
                                 current.stationaryHold() != nullptr;
-  if ((!empty_owner && !stationary_owner) ||
+  // A stop is a finite trajectory, never a state that withholds movement: the
+  // moment a route is certified from the vehicle, it takes the vehicle back,
+  // whether the stop has already been flown to rest or is still braking.
+  const bool stopping_owner = current.phase() == ExecutionRoutePhase3D::kStopping &&
+                              current.stopExecution() != nullptr;
+  if ((!empty_owner && !stationary_owner && !stopping_owner) ||
       (stationary_owner &&
        !routeExecutionEvidenceNotOlderThanHold(candidate_execution.command_horizon,
-                                               *current.stationaryHold()))) {
+                                               *current.stationaryHold())) ||
+      (stopping_owner &&
+       !routeExecutionEvidenceNotOlderThanStop(candidate_execution.command_horizon,
+                                               *current.stopExecution()))) {
     return transitionFailure(
         ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
   }
@@ -468,9 +465,7 @@ applyReplaceFiniteExecutionPlanCommand3D(const ExecutionPlan3D& current,
       current.phase() == ExecutionRoutePhase3D::kStopped ||
       finiteExecutionValidatedAgainstNewerRawWorld(execution.command_horizon) ||
       (current.phase() == ExecutionRoutePhase3D::kAwaitingSuccessor &&
-       execution.command_horizon.kind != FiniteExecutionKind3D::kNominal) ||
-      (current.phase() == ExecutionRoutePhase3D::kBraking &&
-       execution.command_horizon.kind == FiniteExecutionKind3D::kNominal)) {
+       execution.command_horizon.kind != FiniteExecutionKind3D::kNominal)) {
     return transitionFailure(
         ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
   }
@@ -492,20 +487,9 @@ applyReplaceFiniteExecutionPlanCommand3D(const ExecutionPlan3D& current,
   }
   ++next.version;
   CertifiedRouteSuffix3D rebound = std::move(*rebound_route);
-  if (current.phase() == ExecutionRoutePhase3D::kBraking) {
-    if (finiteExecutionArtifactFingerprint(execution.command_horizon) !=
-        finiteExecutionArtifactFingerprint(execution.braking_tail)) {
-      return transitionFailure(
-          ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
-    }
-    next.state = BrakingPlan3D{
-        .route = std::move(rebound),
-        .execution = std::move(execution.command_horizon),
-    };
-  } else if (const auto* const awaiting =
-                 std::get_if<AwaitingSuccessorPlan3D>(&current.state);
-             awaiting != nullptr &&
-             std::holds_alternative<ContinuationStopPlan3D>(awaiting->owner)) {
+  if (const auto* const awaiting = std::get_if<AwaitingSuccessorPlan3D>(&current.state);
+      awaiting != nullptr &&
+      std::holds_alternative<ContinuationStopPlan3D>(awaiting->owner)) {
     next.state = AwaitingSuccessorPlan3D{
         .owner =
             ContinuationStopPlan3D{
@@ -522,10 +506,10 @@ applyReplaceFiniteExecutionPlanCommand3D(const ExecutionPlan3D& current,
   return finishTransition(current, std::move(next));
 }
 
-ExecutionRouteTransitionResult3D applyRetireCertifiedRouteCommand3D(
-    const ExecutionPlan3D& current, const ExecutionRouteTransitionGuard3D& guard,
-    const RouteLifecycleEvent3D& event,
-    std::optional<FiniteExecutionState3D> retained_safe_execution) {
+ExecutionRouteTransitionResult3D
+applyCompleteCertifiedRouteCommand3D(const ExecutionPlan3D& current,
+                                     const ExecutionRouteTransitionGuard3D& guard,
+                                     const RouteLifecycleEvent3D& event) {
   const ExecutionRouteTransitionStatus3D guard_status = checkGuard(current, guard);
   if (guard_status != ExecutionRouteTransitionStatus3D::kApplied) {
     return transitionFailure(guard_status);
@@ -542,253 +526,66 @@ ExecutionRouteTransitionResult3D applyRetireCertifiedRouteCommand3D(
     return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate,
                              ExecutionRouteTransitionDetail3D::kLifecycleEventUnknown);
   }
-  if (event.kind == RouteLifecycleEventKind3D::kControlCandidateRejected) {
-    if (retained_safe_execution.has_value()) {
-      return transitionFailure(
-          ExecutionRouteTransitionStatus3D::kInvalidCandidate,
-          ExecutionRouteTransitionDetail3D::kLifecycleRetainedExecutionUnexpected);
-    }
+  // Only completion retires a route in place. Every other lifecycle event says
+  // the vehicle should no longer be executing this path, which is answered by
+  // a stop derived from the vehicle, not by a transition of the route.
+  if (event.kind != RouteLifecycleEventKind3D::kCompleted) {
     return transitionFailure(ExecutionRouteTransitionStatus3D::kNoChange);
   }
-
-  if (event.kind == RouteLifecycleEventKind3D::kCompleted) {
-    if (current.phase() == ExecutionRoutePhase3D::kAwaitingSuccessor ||
-        current.phase() == ExecutionRoutePhase3D::kStopped) {
-      return transitionFailure(ExecutionRouteTransitionStatus3D::kNoChange);
-    }
-    if (current.phase() != ExecutionRoutePhase3D::kFollowing ||
-        current_route->remainingM() > kCompletionStationToleranceM ||
-        (current.finiteExecution() != nullptr &&
-         (current.finiteExecution()->kind != FiniteExecutionKind3D::kNominal ||
-          current.finiteExecution()->revalidation_required))) {
-      return transitionFailure(
-          ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
-    }
-    if (current_route->planned_endpoint_semantics !=
-            RouteEndpointSemantics3D::kContinuation &&
-        (current.finiteExecution() == nullptr ||
-         current.finiteExecution()->stop_boundary.station_m +
-                 kCompletionStationToleranceM <
-             current_route->endStationM())) {
-      return transitionFailure(
-          ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
-    }
-  }
-  if (current.phase() == ExecutionRoutePhase3D::kStopped) {
+  if (current.phase() == ExecutionRoutePhase3D::kAwaitingSuccessor ||
+      current.phase() == ExecutionRoutePhase3D::kStopped) {
     return transitionFailure(ExecutionRouteTransitionStatus3D::kNoChange);
   }
-  if (current.phase() == ExecutionRoutePhase3D::kBraking &&
-      !retained_safe_execution.has_value() &&
-      (event.kind == RouteLifecycleEventKind3D::kLatestLidarInvalidated ||
-       event.kind == RouteLifecycleEventKind3D::kObjectiveSuperseded ||
-       event.kind == RouteLifecycleEventKind3D::kCrossTrackExceeded ||
-       event.kind == RouteLifecycleEventKind3D::kTrackingTubeExceeded)) {
-    return transitionFailure(ExecutionRouteTransitionStatus3D::kNoChange);
-  }
-  if (!retained_safe_execution.has_value() &&
-      (event.kind == RouteLifecycleEventKind3D::kObjectiveSuperseded ||
-       event.kind == RouteLifecycleEventKind3D::kCrossTrackExceeded ||
-       event.kind == RouteLifecycleEventKind3D::kTrackingTubeExceeded)) {
-    if (current.brakingFallback() != nullptr) {
-      retained_safe_execution = *current.brakingFallback();
-    }
-  }
-
-  const auto* const current_raw_certificate =
-      std::get_if<ObservedRawRouteCertificate3D>(&current_route->certificate);
-  if (event.kind == RouteLifecycleEventKind3D::kRawInvalidated) {
-    if (current_raw_certificate == nullptr || event.raw_producer_instance_id == 0U ||
-        event.raw_revision == 0U || event.latest_lidar_evidence.valid() ||
-        event.raw_producer_instance_id !=
-            current_raw_certificate->producer_instance_id) {
-      return transitionFailure(
-          ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
-    }
-    if (event.raw_revision <= current_raw_certificate->validated_through_revision) {
-      return transitionFailure(ExecutionRouteTransitionStatus3D::kNoChange);
-    }
-    if (current.phase() == ExecutionRoutePhase3D::kBraking &&
-        !retained_safe_execution.has_value()) {
-      const FiniteExecutionState3D* const current_execution = current.finiteExecution();
-      const auto* const existing_raw_lineage =
-          current_execution != nullptr
-              ? std::get_if<ObservedRawFiniteExecutionValidationLineage3D>(
-                    &current_execution->validation_proof.lineage)
-              : nullptr;
-      if (existing_raw_lineage != nullptr &&
-          existing_raw_lineage->producer_instance_id ==
-              event.raw_producer_instance_id &&
-          existing_raw_lineage->validated_through_raw_revision >= event.raw_revision) {
-        return transitionFailure(ExecutionRouteTransitionStatus3D::kNoChange);
-      }
-    }
-  }
-  if (event.kind == RouteLifecycleEventKind3D::kLatestLidarInvalidated &&
-      (event.raw_producer_instance_id != 0U || event.raw_revision != 0U ||
-       !event.latest_lidar_evidence.valid() || !retained_safe_execution.has_value() ||
-       !latestLidarInvalidationProofMatchesEvent(*retained_safe_execution, event))) {
+  if (current.phase() != ExecutionRoutePhase3D::kFollowing ||
+      current_route->remainingM() > kCompletionStationToleranceM ||
+      (current.finiteExecution() != nullptr &&
+       (current.finiteExecution()->kind != FiniteExecutionKind3D::kNominal ||
+        current.finiteExecution()->revalidation_required))) {
     return transitionFailure(
         ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
   }
-
-  const bool has_retained_safe_execution = retained_safe_execution.has_value();
-  if (event.kind != RouteLifecycleEventKind3D::kRawInvalidated &&
-      has_retained_safe_execution &&
-      finiteExecutionValidatedAgainstNewerRawWorld(*retained_safe_execution)) {
-    return transitionFailure(
-        ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
-  }
-  if (event.kind == RouteLifecycleEventKind3D::kCompleted &&
-      current_route->planned_endpoint_semantics ==
+  if (current_route->planned_endpoint_semantics !=
           RouteEndpointSemantics3D::kContinuation &&
-      has_retained_safe_execution) {
+      (current.finiteExecution() == nullptr ||
+       current.finiteExecution()->stop_boundary.station_m +
+               kCompletionStationToleranceM <
+           current_route->endStationM())) {
     return transitionFailure(
-        ExecutionRouteTransitionStatus3D::kInvalidCandidate,
-        ExecutionRouteTransitionDetail3D::kLifecycleRetainedExecutionUnexpected);
+        ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
   }
-
+  if (current.version == std::numeric_limits<std::uint64_t>::max()) {
+    return transitionFailure(ExecutionRouteTransitionStatus3D::kVersionExhausted);
+  }
   ExecutionPlan3D next = current;
-  if (retained_safe_execution.has_value()) {
-    CertifiedRouteSuffix3D* const rebound_route = routePointer(next);
-    if (rebound_route == nullptr) {
-      return transitionFailure(
-          ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
-    }
-    if (event.kind == RouteLifecycleEventKind3D::kRawInvalidated) {
-      if (current_route->progress.execution_input == nullptr ||
-          retained_safe_execution->execution_input == nullptr ||
-          executionInputProgressRelation(*retained_safe_execution->execution_input,
-                                         *current_route->progress.execution_input) !=
-              ExecutionInputProgressRelation3D::kStrictlyNewer ||
-          retained_safe_execution->horizon == nullptr ||
-          retained_safe_execution->horizon->states.empty() ||
-          !rawInvalidationProofMatchesEvent(*retained_safe_execution, event) ||
-          retained_safe_execution->begin_route_station_m + kStationToleranceM <
-              current_route->progress.station_m ||
-          retained_safe_execution->begin_route_station_m >
-              current_route->endStationM() + kStationToleranceM) {
-        return transitionFailure(
-            ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
-      }
-      const std::span<const Point3> latest_lidar_obstacle_points =
-          retained_safe_execution->latest_lidar_evidence != nullptr
-              ? std::span<const Point3>{retained_safe_execution->latest_lidar_evidence
-                                            ->hitPointsMapM()}
-              : std::span<const Point3>{};
-      const std::optional<RouteAdherenceAssessment3D> rebound_connector =
-          validateExecutionProgressConnector(
-              *current_route,
-              executionInputPosition(*retained_safe_execution->execution_input),
-              retained_safe_execution->execution_input,
-              retained_safe_execution->observed_raw_world,
-              latest_lidar_obstacle_points);
-      if (!rebound_connector.has_value() ||
-          std::abs(rebound_connector->stop.station_m -
-                   retained_safe_execution->begin_route_station_m) >
-              kStationToleranceM) {
-        return transitionFailure(
-            ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
-      }
-      bindProgressToExecutionInput(rebound_route->progress,
-                                   retained_safe_execution->execution_input,
-                                   retained_safe_execution->begin_route_station_m);
-    } else {
-      if (current_route->progress.execution_input == nullptr ||
-          retained_safe_execution->execution_input == nullptr ||
-          executionInputProgressRelation(*retained_safe_execution->execution_input,
-                                         *current_route->progress.execution_input) ==
-              ExecutionInputProgressRelation3D::kInvalid) {
-        return transitionFailure(
-            ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
-      }
-      bindProgressToExecutionInput(
-          rebound_route->progress, retained_safe_execution->execution_input,
-          std::max(current_route->progress.station_m,
-                   retained_safe_execution->begin_route_station_m));
-    }
-    const bool activates_resident_fallback =
-        current.brakingFallback() != nullptr &&
-        finiteExecutionArtifactFingerprint(*retained_safe_execution) ==
-            finiteExecutionArtifactFingerprint(*current.brakingFallback());
-    if (retained_safe_execution->kind != FiniteExecutionKind3D::kEmergencyBrakeTail ||
-        (!activates_resident_fallback &&
-         !candidateFiniteExecutionValid(*retained_safe_execution, current,
-                                        rebound_route, true))) {
-      return transitionFailure(
-          ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
-    }
+  CertifiedRouteSuffix3D* const completed_route = routePointer(next);
+  const FiniteExecutionState3D* const completed_execution = next.finiteExecution();
+  const FiniteExecutionState3D* const completed_braking = next.brakingFallback();
+  if (completed_route == nullptr || completed_execution == nullptr ||
+      completed_braking == nullptr) {
+    return transitionFailure(
+        ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
   }
-
-  switch (event.kind) {
-    case RouteLifecycleEventKind3D::kCompleted: {
-      CertifiedRouteSuffix3D* const completed_route = routePointer(next);
-      const FiniteExecutionState3D* const completed_execution = next.finiteExecution();
-      const FiniteExecutionState3D* const completed_braking = next.brakingFallback();
-      if (completed_route == nullptr || completed_execution == nullptr ||
-          completed_braking == nullptr) {
-        return transitionFailure(
-            ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
-      }
-      CertifiedRouteSuffix3D route = std::move(*completed_route);
-      FiniteExecutionPlan3D execution{
-          .command_horizon = *completed_execution,
-          .braking_tail = *completed_braking,
-      };
-      if (route.planned_endpoint_semantics == RouteEndpointSemantics3D::kContinuation) {
-        next.state = AwaitingSuccessorPlan3D{
-            .owner =
-                ContinuationStopPlan3D{
-                    .route = std::move(route),
-                    .execution = std::move(execution),
-                },
-        };
-      } else {
-        next.state = StationaryHoldPlan3D{
-            .owner =
-                CertifiedTerminalHoldPlan3D{
-                    .route = std::move(route),
-                    .execution = std::move(execution),
-                },
-        };
-      }
-      break;
-    }
-    case RouteLifecycleEventKind3D::kRawInvalidated: {
-      const auto* const retained_raw_lineage =
-          retained_safe_execution.has_value()
-              ? std::get_if<ObservedRawFiniteExecutionValidationLineage3D>(
-                    &retained_safe_execution->validation_proof.lineage)
-              : nullptr;
-      if (!retained_safe_execution.has_value() || retained_raw_lineage == nullptr ||
-          retained_raw_lineage->producer_instance_id !=
-              event.raw_producer_instance_id ||
-          retained_raw_lineage->validated_through_raw_revision != event.raw_revision ||
-          retained_safe_execution->kind != FiniteExecutionKind3D::kEmergencyBrakeTail) {
-        return transitionFailure(
-            ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
-      }
-      [[fallthrough]];
-    }
-    case RouteLifecycleEventKind3D::kLatestLidarInvalidated:
-    case RouteLifecycleEventKind3D::kObjectiveSuperseded:
-    case RouteLifecycleEventKind3D::kCrossTrackExceeded:
-    case RouteLifecycleEventKind3D::kTrackingTubeExceeded: {
-      CertifiedRouteSuffix3D* const braking_route = routePointer(next);
-      if (braking_route == nullptr || !retained_safe_execution.has_value() ||
-          retained_safe_execution->kind == FiniteExecutionKind3D::kNominal) {
-        return transitionFailure(
-            ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
-      }
-      next.state = BrakingPlan3D{
-          .route = std::move(*braking_route),
-          .execution = std::move(*retained_safe_execution),
-      };
-      break;
-    }
-    case RouteLifecycleEventKind3D::kControlCandidateRejected:
-      return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate,
-                               ExecutionRouteTransitionDetail3D::
-                                   kLifecycleControlCandidateRejectedUnsupported);
+  CertifiedRouteSuffix3D route = std::move(*completed_route);
+  FiniteExecutionPlan3D execution{
+      .command_horizon = *completed_execution,
+      .braking_tail = *completed_braking,
+  };
+  if (route.planned_endpoint_semantics == RouteEndpointSemantics3D::kContinuation) {
+    next.state = AwaitingSuccessorPlan3D{
+        .owner =
+            ContinuationStopPlan3D{
+                .route = std::move(route),
+                .execution = std::move(execution),
+            },
+    };
+  } else {
+    next.state = StationaryHoldPlan3D{
+        .owner =
+            CertifiedTerminalHoldPlan3D{
+                .route = std::move(route),
+                .execution = std::move(execution),
+            },
+    };
   }
   ++next.version;
   return finishTransition(current, std::move(next));

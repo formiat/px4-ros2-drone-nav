@@ -43,14 +43,11 @@ enum class FiniteExecutionCertificationStatus3D : std::uint8_t {
   kInvalidInput,
   kTargetRelationRejected,
   kProgressRelationRejected,
-  kRawInvalidationContractRejected,
-  kLifecycleBrakingContractRejected,
   kEvidenceContractRejected,
   kCollisionPolicyInvalid,
   kHorizonContractRejected,
   kInitialStateMismatch,
   kExecutionBindingRejected,
-  kRawInvalidationConnectorRejected,
   kRouteAdherenceRejected,
   kTrackingTubeHandoffRejected,
   kTerminalBoundaryInvalid,
@@ -100,17 +97,6 @@ struct FiniteExecutionPlanCertificationResult3D {
   [[nodiscard]] bool certified() const noexcept;
 };
 
-struct RawInvalidatedFiniteExecutionCertification3D {
-  RouteLifecycleEvent3D invalidation{};
-  std::shared_ptr<const VersionedObservedRawWorld3D> invalidating_observed_raw_world;
-  FiniteExecutionCertification3D finite_execution{};
-};
-
-struct LifecycleBrakingFiniteExecutionCertification3D {
-  RouteLifecycleEvent3D lifecycle_event{};
-  FiniteExecutionCertification3D finite_execution{};
-};
-
 struct DirectTrackingExecutionCertification3D {
   DirectTrackingOwnerIdentity3D identity{};
   std::uint64_t trajectory_revision{0U};
@@ -123,6 +109,20 @@ struct DirectTrackingExecutionCertification3D {
   std::shared_ptr<const VersionedLatestLidarEvidence3D> latest_lidar_evidence;
   std::int64_t valid_from_ns{0};
   FiniteExecutionKind3D kind{FiniteExecutionKind3D::kNominal};
+};
+
+// Everything a stop is certified from: the braking horizon itself and the
+// evidence it is swept against. No route, no adherence corridor, no route
+// certificate: a stop answers only to physics.
+struct StopExecutionCertification3D {
+  std::uint64_t trajectory_revision{0U};
+  FiniteMotionHorizon3D horizon{};
+  std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_world;
+  std::shared_ptr<const VersionedStaticWorld3D> static_world;
+  std::shared_ptr<const VersionedExecutionValidationPolicy3D> validation_policy;
+  std::shared_ptr<const VersionedExecutionInput3D> execution_input;
+  std::shared_ptr<const VersionedLatestLidarEvidence3D> latest_lidar_evidence;
+  std::int64_t valid_from_ns{0};
 };
 
 struct StationaryExecutionHoldCertification3D {
@@ -169,29 +169,13 @@ certifyFiniteExecution3D(const ExecutionPlan3D& current,
     const ExecutionPlan3D& current, const CertifiedRouteSuffix3D& target_route,
     const VersionedExecutionInput3D& current_execution_input) noexcept;
 
-[[nodiscard]] std::optional<FiniteExecutionState3D>
-certifyRawInvalidatedFiniteExecution3D(
-    const ExecutionPlan3D& current,
-    RawInvalidatedFiniteExecutionCertification3D certification);
-
-[[nodiscard]] FiniteExecutionCertificationResult3D
-certifyRawInvalidatedFiniteExecution3DDetailed(
-    const ExecutionPlan3D& current,
-    RawInvalidatedFiniteExecutionCertification3D certification);
-
-[[nodiscard]] std::optional<FiniteExecutionState3D>
-certifyLifecycleBrakingFiniteExecution3D(
-    const ExecutionPlan3D& current,
-    LifecycleBrakingFiniteExecutionCertification3D certification);
-
-[[nodiscard]] FiniteExecutionCertificationResult3D
-certifyLifecycleBrakingFiniteExecution3DDetailed(
-    const ExecutionPlan3D& current,
-    LifecycleBrakingFiniteExecutionCertification3D certification);
-
 [[nodiscard]] std::optional<DirectTrackingFiniteExecution3D>
 certifyDirectTrackingExecution3D(const ExecutionPlan3D& current,
                                  DirectTrackingExecutionCertification3D certification);
+
+[[nodiscard]] std::optional<StopExecution3D>
+certifyStopExecution3D(const ExecutionPlan3D& current,
+                       StopExecutionCertification3D certification);
 
 [[nodiscard]] std::string_view finiteExecutionCertificationStatus3DName(
     FiniteExecutionCertificationStatus3D status) noexcept;

@@ -88,6 +88,14 @@ enum class RouteLifecycleEventKind3D : std::uint8_t {
   kTrackingTubeExceeded,
 };
 
+// True when the event ends the resident path's claim on the vehicle: the path
+// is no longer the thing the vehicle should be executing, so a moving vehicle
+// is brought to rest along a certified stop and a new route is planned from
+// where it stands. A control candidate that was merely rejected does not
+// qualify: the resident path is still what the vehicle is following.
+[[nodiscard]] bool
+routeLifecycleEventEndsPathClaim3D(RouteLifecycleEventKind3D kind) noexcept;
+
 struct RouteLifecycleEvent3D {
   RouteLifecycleEventKind3D kind{RouteLifecycleEventKind3D::kCompleted};
   std::uint64_t generation{0U};

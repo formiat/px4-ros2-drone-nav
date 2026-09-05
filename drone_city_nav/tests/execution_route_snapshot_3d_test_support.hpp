@@ -537,40 +537,6 @@ struct SnapshotFixture3D {
       const std::size_t extra_stationary_control_count = 0U,
       const double begin_station_m = -1.0);
 
-  [[nodiscard]] static FiniteExecutionState3D rawInvalidatedFiniteExecution(
-      const ExecutionPlan3D& snapshot, const RouteLifecycleEvent3D& invalidation,
-      std::shared_ptr<const VersionedObservedRawWorld3D> invalidating_world,
-      const FiniteExecutionKind3D kind = FiniteExecutionKind3D::kEmergencyBrakeTail,
-      const bool terminal_rest = true, const std::uint64_t trajectory_revision = 101U,
-      const std::uint64_t source_navigation_revision = 55U,
-      const std::size_t extra_stationary_control_count = 0U,
-      const double begin_station_m = -1.0) {
-    const CertifiedRouteSuffix3D* const route = snapshot.route();
-    if (route == nullptr) {
-      throw std::logic_error{"raw revalidation fixture requires a route"};
-    }
-    const std::optional<FiniteExecutionState3D> certified =
-        certifyRawInvalidatedFiniteExecution3D(
-            snapshot,
-            RawInvalidatedFiniteExecutionCertification3D{
-                .invalidation = invalidation,
-                .invalidating_observed_raw_world = std::move(invalidating_world),
-                .finite_execution = finiteCertificationForRoute(
-                    *route, kind, trajectory_revision, source_navigation_revision,
-                    extra_stationary_control_count, begin_station_m),
-            });
-    if (!certified.has_value()) {
-      throw std::logic_error{"valid raw revalidation fixture was rejected"};
-    }
-    FiniteExecutionState3D result = certified.value();
-    if (!terminal_rest) {
-      auto changed_horizon = std::make_shared<FiniteMotionHorizon3D>(*result.horizon);
-      changed_horizon->states.back().vx = 1.0F;
-      result.horizon = std::move(changed_horizon);
-    }
-    return result;
-  }
-
   [[nodiscard]] static FiniteExecutionState3D
   finiteExecution(const ExecutionPlan3D& snapshot,
                   const FiniteExecutionKind3D kind = FiniteExecutionKind3D::kNominal,
@@ -744,6 +710,9 @@ struct SnapshotFixture3D {
     if (const DirectTrackingFiniteExecution3D* const execution =
             plan.directTrackingExecution()) {
       return execution->execution_input;
+    }
+    if (const StopExecution3D* const stop = plan.stopExecution()) {
+      return stop->execution_input;
     }
     if (const StationaryExecutionHold3D* const hold = plan.stationaryHold()) {
       return hold->terminal_execution_input;

@@ -149,6 +149,29 @@ Compare:
 High terminal progress with no actual displacement indicates an ineffective
 horizon, not successful navigation.
 
+### Stop Execution
+
+`STOP_EXECUTION published=true trajectory_revision=<n> snapshot_version=<v>
+speed_mps=<s> stop_distance_m=<d> controls=<n> rest=(x,y,z)
+replacement_failure=<reason>` reports that no route-directed horizon could be
+published while the vehicle was moving, so a certified braking trajectory from
+the exact current state took the vehicle to rest. It is normal after physical
+evidence against the resident path; a run with none of these lines never lost
+its plan while moving.
+
+`STOP_EXECUTION published=false status=<status>` names why a stop could not be
+derived: `validation_world_unavailable` (no usable raw/lidar evidence),
+`horizon_unavailable` (the dynamics admit no braking horizon of that length),
+`transition_rejected` or `publication_commit_rejected` (the plan or lease moved
+under the preparation). `at_rest` and `resident_stop_current` are not failures
+and are not logged: the vehicle is already standing, or the stop that owns it is
+still executable.
+
+`EXECUTION_RETENTION ... stage=braking_delegated_to_stop` reports that a
+lifecycle event ended the resident path's claim on the vehicle. Retention only
+continues a path that is still executable, so it hands braking to the stop
+instead of rebuilding a braking tail out of the invalidated path.
+
 ### Execution Plan Transition Rejections
 
 `EXECUTION_HORIZON_ASSEMBLY ... transition=<status> detail=<detail>`,

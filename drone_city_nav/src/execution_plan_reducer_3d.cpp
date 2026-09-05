@@ -33,9 +33,8 @@ applyCommand(const ExecutionPlan3D& current,
 }
 
 [[nodiscard]] ExecutionRouteTransitionResult3D
-applyCommand(const ExecutionPlan3D& current, RetireCertifiedRouteCommand3D command) {
-  return applyRetireCertifiedRouteCommand3D(current, command.guard, command.event,
-                                            std::move(command.retained_safe_execution));
+applyCommand(const ExecutionPlan3D& current, CompleteCertifiedRouteCommand3D command) {
+  return applyCompleteCertifiedRouteCommand3D(current, command.guard, command.event);
 }
 
 [[nodiscard]] ExecutionRouteTransitionResult3D
@@ -91,6 +90,12 @@ applyCommand(const ExecutionPlan3D& current,
              ArmStationaryCaptureHoldCommand3D command) {
   return applyArmStationaryCaptureHoldCommand3D(
       current, command.expected_snapshot_version, std::move(command.certification));
+}
+
+[[nodiscard]] ExecutionRouteTransitionResult3D
+applyCommand(const ExecutionPlan3D& current, EnterStopExecutionCommand3D command) {
+  return applyEnterStopExecutionCommand3D(current, command.expected_snapshot_version,
+                                          std::move(command.certification));
 }
 
 [[nodiscard]] ExecutionRouteTransitionResult3D
@@ -153,16 +158,13 @@ replaceFiniteExecutionPlan3D(const ExecutionPlan3D& current,
 }
 
 ExecutionRouteTransitionResult3D
-retireCertifiedRoute3D(const ExecutionPlan3D& current,
-                       const ExecutionRouteTransitionGuard3D& guard,
-                       const RouteLifecycleEvent3D& event,
-                       std::optional<FiniteExecutionState3D> retained_safe_execution) {
-  return reduceExecutionPlan3D(
-      current, RetireCertifiedRouteCommand3D{
-                   .guard = guard,
-                   .event = event,
-                   .retained_safe_execution = std::move(retained_safe_execution),
-               });
+completeCertifiedRoute3D(const ExecutionPlan3D& current,
+                         const ExecutionRouteTransitionGuard3D& guard,
+                         const RouteLifecycleEvent3D& event) {
+  return reduceExecutionPlan3D(current, CompleteCertifiedRouteCommand3D{
+                                            .guard = guard,
+                                            .event = event,
+                                        });
 }
 
 ExecutionRouteTransitionResult3D replaceCertifiedRoute3D(
@@ -239,6 +241,17 @@ armStationaryCaptureHold3D(const ExecutionPlan3D& current,
                            StationaryExecutionHoldCertification3D certification) {
   return reduceExecutionPlan3D(
       current, ArmStationaryCaptureHoldCommand3D{
+                   .expected_snapshot_version = expected_snapshot_version,
+                   .certification = std::move(certification),
+               });
+}
+
+ExecutionRouteTransitionResult3D
+enterStopExecution3D(const ExecutionPlan3D& current,
+                     const std::uint64_t expected_snapshot_version,
+                     StopExecutionCertification3D certification) {
+  return reduceExecutionPlan3D(
+      current, EnterStopExecutionCommand3D{
                    .expected_snapshot_version = expected_snapshot_version,
                    .certification = std::move(certification),
                });

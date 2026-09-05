@@ -41,6 +41,32 @@ struct DirectTrackingFiniteExecution3D {
   [[nodiscard]] bool valid() const noexcept;
 };
 
+// A stop is the vehicle's own physics rather than a route action: a finite
+// braking trajectory that starts at the exact current state and ends at rest.
+// It carries no route, no adherence corridor and no route certificate, so it
+// stays available in exactly the situations where the route machinery can
+// produce nothing. It is finite by construction: once flown, the plan rests
+// and the next certified route activates from where the vehicle stands, so it
+// never becomes a state that withholds movement.
+struct StopExecution3D {
+  std::uint64_t trajectory_revision{0U};
+  std::uint64_t source_snapshot_version{0U};
+  std::uint64_t source_navigation_revision{0U};
+  Point3 rest_position{};
+  std::shared_ptr<const FiniteMotionHorizon3D> horizon;
+  std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_world;
+  std::shared_ptr<const VersionedStaticWorld3D> static_world;
+  std::shared_ptr<const VersionedExecutionValidationPolicy3D> validation_policy;
+  std::shared_ptr<const VersionedExecutionInput3D> execution_input;
+  std::shared_ptr<const VersionedLatestLidarEvidence3D> latest_lidar_evidence;
+  std::int64_t valid_from_ns{0};
+  std::int64_t valid_until_ns{0};
+  std::int64_t control_interval_ns{0};
+  FiniteExecutionValidationProof3D validation_proof{};
+
+  [[nodiscard]] bool valid() const noexcept;
+};
+
 inline constexpr double kStationaryExecutionHoldPositionToleranceM{0.25};
 inline constexpr double kStationaryExecutionHoldSpeedToleranceMps{0.25};
 inline constexpr double kStationaryExecutionHoldYawRateToleranceRadps{0.25};
@@ -69,7 +95,7 @@ enum class ExecutionRoutePhase3D : std::uint8_t {
   kFollowing,
   kDirectTracking,
   kAwaitingSuccessor,
-  kBraking,
+  kStopping,
   kStopped,
   kRevoked,
 };
@@ -83,9 +109,8 @@ struct DirectTrackingPlan3D {
   DirectTrackingFiniteExecution3D execution{};
 };
 
-struct BrakingPlan3D {
-  CertifiedRouteSuffix3D route{};
-  FiniteExecutionState3D execution{};
+struct StopPlan3D {
+  StopExecution3D execution{};
 };
 
 struct CertifiedTerminalHoldPlan3D {
@@ -118,7 +143,7 @@ struct AwaitingSuccessorPlan3D {
 struct RevokedPlan3D final {};
 
 using ExecutionPlanState3D =
-    std::variant<FollowingPlan3D, DirectTrackingPlan3D, BrakingPlan3D,
+    std::variant<FollowingPlan3D, DirectTrackingPlan3D, StopPlan3D,
                  StationaryHoldPlan3D, AwaitingSuccessorPlan3D, RevokedPlan3D>;
 
 struct ExecutionPlan3D {
@@ -136,6 +161,7 @@ struct ExecutionPlan3D {
   [[nodiscard]] const FiniteExecutionState3D* brakingFallback() const noexcept;
   [[nodiscard]] const DirectTrackingFiniteExecution3D*
   directTrackingExecution() const noexcept;
+  [[nodiscard]] const StopExecution3D* stopExecution() const noexcept;
   [[nodiscard]] const StationaryExecutionHold3D* stationaryHold() const noexcept;
 };
 

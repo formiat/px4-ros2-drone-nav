@@ -295,6 +295,14 @@ private:
   publishNoExecutablePathHold(const ProductionMppiExecutionCycle& cycle,
                               ProductionMppiExecutionReason reason,
                               bool physical_candidate_rejection = false);
+  // The single way a moving vehicle is brought to rest when no route-directed
+  // horizon can be published: a finite braking trajectory from the exact
+  // current state, validated against the newest evidence and published as the
+  // planned horizon. Nothing about it survives its own completion; the next
+  // certified route takes the vehicle from wherever it stopped.
+  [[nodiscard]] ProductionMppiExecutionPublication
+  publishStopExecution(const ProductionMppiExecutionCycle& cycle,
+                       ProductionMppiExecutionReason reason);
   [[nodiscard]] ProductionMppiExecutionPublication
   publishExecutionRevocation(ProductionMppiExecutionReason reason, std::int64_t now_ns,
                              bool physical_route_invalidation = false);

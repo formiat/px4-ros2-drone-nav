@@ -207,10 +207,15 @@ execution_route_snapshot_3d_internal::applyTransferToExecutionHoldCommand3D(
   const FiniteExecutionState3D* const route_execution = current.finiteExecution();
   const DirectTrackingFiniteExecution3D* const direct_execution =
       current.directTrackingExecution();
+  // A flown stop is the ordinary way a moving vehicle reaches rest, so it is a
+  // hold source like any other terminal execution. Without this the plan would
+  // have no way out of the stop it just completed.
+  const StopExecution3D* const stop_execution = current.stopExecution();
   const StationaryExecutionHold3D* const resident_hold = current.stationaryHold();
   const std::size_t source_count =
       static_cast<std::size_t>(route_execution != nullptr) +
       static_cast<std::size_t>(direct_execution != nullptr) +
+      static_cast<std::size_t>(stop_execution != nullptr) +
       static_cast<std::size_t>(resident_hold != nullptr);
   if (source_count != 1U) {
     return transitionFailure(
@@ -236,6 +241,13 @@ execution_route_snapshot_3d_internal::applyTransferToExecutionHoldCommand3D(
     source_static = direct_execution->static_world.get();
     source_lidar = direct_execution->latest_lidar_evidence.get();
     source_policy = direct_execution->validation_policy.get();
+  } else if (stop_execution != nullptr) {
+    source_horizon = stop_execution->horizon.get();
+    source_input = stop_execution->execution_input;
+    source_observed = stop_execution->observed_raw_world.get();
+    source_static = stop_execution->static_world.get();
+    source_lidar = stop_execution->latest_lidar_evidence.get();
+    source_policy = stop_execution->validation_policy.get();
   } else {
     source_input = resident_hold->terminal_execution_input;
     source_observed = resident_hold->observed_raw_world.get();
@@ -293,27 +305,41 @@ execution_route_snapshot_3d_internal::applyTransferToExecutionHoldCommand3D(
         source_horizon == nullptr || source_horizon->states.empty()) {
       return transitionFailure(ExecutionRouteTransitionStatus3D::kVersionExhausted);
     }
-    const std::int64_t valid_from_ns = route_execution != nullptr
-                                           ? route_execution->valid_from_ns
-                                           : direct_execution->valid_from_ns;
-    const std::int64_t valid_until_ns = route_execution != nullptr
-                                            ? route_execution->valid_until_ns
-                                            : direct_execution->valid_until_ns;
-    const std::int64_t control_interval_ns =
-        route_execution != nullptr ? route_execution->control_interval_ns
-                                   : direct_execution->control_interval_ns;
+
+    // The one terminal execution the hold is taken over from, whatever kind of
+    // execution owned the vehicle.
+    struct TerminalExecutionLease3D {
+      std::int64_t valid_from_ns{0};
+      std::int64_t valid_until_ns{0};
+      std::int64_t control_interval_ns{0};
+      std::uint64_t trajectory_revision{0U};
+    };
+
+    const TerminalExecutionLease3D lease = [&]() -> TerminalExecutionLease3D {
+      if (route_execution != nullptr) {
+        return {route_execution->valid_from_ns, route_execution->valid_until_ns,
+                route_execution->control_interval_ns,
+                route_execution->trajectory_revision};
+      }
+      if (direct_execution != nullptr) {
+        return {direct_execution->valid_from_ns, direct_execution->valid_until_ns,
+                direct_execution->control_interval_ns,
+                direct_execution->trajectory_revision};
+      }
+      return {stop_execution->valid_from_ns, stop_execution->valid_until_ns,
+              stop_execution->control_interval_ns, stop_execution->trajectory_revision};
+    }();
     const MotionState3D& terminal = source_horizon->states.back();
     if (distance3D(certification.position, Point3{terminal.x, terminal.y, terminal.z}) >
             kStationaryExecutionHoldPositionToleranceM ||
         !finiteExecutionLeaseRestsAt(
-            *source_horizon, valid_from_ns, valid_until_ns, control_interval_ns,
+            *source_horizon, lease.valid_from_ns, lease.valid_until_ns,
+            lease.control_interval_ns,
             certification.execution_input->effectiveStampNs())) {
       return transitionFailure(
           ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
     }
-    source_trajectory_revision = route_execution != nullptr
-                                     ? route_execution->trajectory_revision
-                                     : direct_execution->trajectory_revision;
+    source_trajectory_revision = lease.trajectory_revision;
     hold_id = current.execution_owner_epoch + 1U;
   }
 
@@ -391,8 +417,7 @@ execution_route_snapshot_3d_internal::applySuspendFiniteExecutionCommand3D(
     return transitionFailure(ExecutionRouteTransitionStatus3D::kNoChange);
   }
   const bool suspendable_route_phase =
-      current.phase() == ExecutionRoutePhase3D::kFollowing ||
-      current.phase() == ExecutionRoutePhase3D::kBraking;
+      current.phase() == ExecutionRoutePhase3D::kFollowing;
   if (!suspendable_route_phase || current.route() == nullptr ||
       current.finiteExecution() == nullptr || current.brakingFallback() == nullptr ||
       current.execution_owner_epoch == std::numeric_limits<std::uint64_t>::max()) {

@@ -27,6 +27,7 @@ enum class ExecutionRetentionStatus3D : std::uint8_t {
   kValidationWorldUnavailable,
   kTrajectoryRevisionExhausted,
   kRebuildRejected,
+  kBrakingDelegatedToStop,
   kCertificationRejected,
   kTransitionRejected,
 };

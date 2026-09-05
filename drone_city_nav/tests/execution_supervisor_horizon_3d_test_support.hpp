@@ -29,6 +29,9 @@ executionHorizonTestRawOwner(const ExecutionPlan3D& plan) {
           plan.directTrackingExecution()) {
     return execution->observed_raw_world;
   }
+  if (const StopExecution3D* const stop = plan.stopExecution()) {
+    return stop->observed_raw_world;
+  }
   if (const StationaryExecutionHold3D* const hold = plan.stationaryHold()) {
     return hold->observed_raw_world;
   }
@@ -43,6 +46,9 @@ executionHorizonTestLidarOwner(const ExecutionPlan3D& plan) {
   if (const DirectTrackingFiniteExecution3D* const execution =
           plan.directTrackingExecution()) {
     return execution->latest_lidar_evidence;
+  }
+  if (const StopExecution3D* const stop = plan.stopExecution()) {
+    return stop->latest_lidar_evidence;
   }
   if (const StationaryExecutionHold3D* const hold = plan.stationaryHold()) {
     return hold->latest_lidar_evidence;

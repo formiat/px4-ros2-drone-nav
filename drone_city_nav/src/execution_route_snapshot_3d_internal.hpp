@@ -469,6 +469,10 @@ directTrackingWorldNotOlder(const DirectTrackingFiniteExecution3D& candidate,
     const FiniteExecutionState3D& candidate,
     const DirectTrackingFiniteExecution3D& previous) noexcept;
 
+[[nodiscard]] bool
+routeExecutionEvidenceNotOlderThanStop(const FiniteExecutionState3D& candidate,
+                                       const StopExecution3D& previous) noexcept;
+
 [[nodiscard]] bool routeExecutionEvidenceNotOlderThanHold(
     const FiniteExecutionState3D& candidate,
     const StationaryExecutionHold3D& previous) noexcept;
@@ -523,10 +527,10 @@ applyReplaceFiniteExecutionPlanCommand3D(const ExecutionPlan3D& current,
                                          const ExecutionRouteTransitionGuard3D& guard,
                                          FiniteExecutionPlan3D execution);
 
-[[nodiscard]] ExecutionRouteTransitionResult3D applyRetireCertifiedRouteCommand3D(
-    const ExecutionPlan3D& current, const ExecutionRouteTransitionGuard3D& guard,
-    const RouteLifecycleEvent3D& event,
-    std::optional<FiniteExecutionState3D> retained_safe_execution);
+[[nodiscard]] ExecutionRouteTransitionResult3D
+applyCompleteCertifiedRouteCommand3D(const ExecutionPlan3D& current,
+                                     const ExecutionRouteTransitionGuard3D& guard,
+                                     const RouteLifecycleEvent3D& event);
 
 [[nodiscard]] ExecutionRouteTransitionResult3D applyReplaceCertifiedRouteCommand3D(
     const ExecutionPlan3D& current, const ExecutionRouteTransitionGuard3D& guard,
@@ -559,6 +563,11 @@ applyTransferDirectTrackingToCertifiedRouteCommand3D(
 [[nodiscard]] ExecutionRouteTransitionResult3D applyArmStationaryCaptureHoldCommand3D(
     const ExecutionPlan3D& current, std::uint64_t expected_snapshot_version,
     StationaryExecutionHoldCertification3D certification);
+
+[[nodiscard]] ExecutionRouteTransitionResult3D
+applyEnterStopExecutionCommand3D(const ExecutionPlan3D& current,
+                                 std::uint64_t expected_snapshot_version,
+                                 StopExecutionCertification3D certification);
 
 [[nodiscard]] ExecutionRouteTransitionResult3D
 applyRevokeExecutionCommand3D(const ExecutionPlan3D& current,

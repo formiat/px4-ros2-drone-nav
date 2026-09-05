@@ -57,7 +57,6 @@ bool executionRouteAcceptsCertifiedReplacement3D(
   constexpr double kEndpointStopToleranceM{0.5};
   return snapshot.phase() == ExecutionRoutePhase3D::kFollowing ||
          snapshot.phase() == ExecutionRoutePhase3D::kAwaitingSuccessor ||
-         snapshot.phase() == ExecutionRoutePhase3D::kBraking ||
          (snapshot.phase() == ExecutionRoutePhase3D::kStopped &&
           (route->planned_endpoint_semantics == RouteEndpointSemantics3D::kLocalStop ||
            route->remainingM() > kEndpointStopToleranceM));
@@ -83,8 +82,8 @@ std::string_view executionRoutePhase3DName(const ExecutionRoutePhase3D phase) no
       return "direct_tracking";
     case ExecutionRoutePhase3D::kAwaitingSuccessor:
       return "awaiting_successor";
-    case ExecutionRoutePhase3D::kBraking:
-      return "braking";
+    case ExecutionRoutePhase3D::kStopping:
+      return "stopping";
     case ExecutionRoutePhase3D::kStopped:
       return "stopped";
     case ExecutionRoutePhase3D::kRevoked:
@@ -159,11 +158,6 @@ std::string_view executionRouteTransitionDetail3DName(
       return "progress_composition_mismatch";
     case ExecutionRouteTransitionDetail3D::kLifecycleEventUnknown:
       return "lifecycle_event_unknown";
-    case ExecutionRouteTransitionDetail3D::kLifecycleRetainedExecutionUnexpected:
-      return "lifecycle_retained_execution_unexpected";
-    case ExecutionRouteTransitionDetail3D::
-        kLifecycleControlCandidateRejectedUnsupported:
-      return "lifecycle_control_candidate_rejected_unsupported";
     case ExecutionRouteTransitionDetail3D::kHoldCertificationStale:
       return "hold_certification_stale";
     case ExecutionRouteTransitionDetail3D::kHoldPointUnsafe:

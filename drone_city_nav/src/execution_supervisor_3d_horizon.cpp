@@ -144,6 +144,14 @@ timedExecutionPathPoints(const FiniteExecutionEvidenceView3D& view) {
     return view.has_value() &&
            revalidateFiniteExecution(*view, latest_raw, latest_lidar);
   }
+  // A stop carries no braking fallback of its own: it is the fallback, and its
+  // evidence is the same swept body against the newest world.
+  if (const StopExecution3D* const stop = snapshot.stopExecution()) {
+    const std::optional<FiniteExecutionEvidenceView3D> view =
+        finiteExecutionEvidenceView(*stop);
+    return view.has_value() &&
+           revalidateFiniteExecution(*view, latest_raw, latest_lidar);
+  }
   // A stationary hold executes no path; its evidence on the newest world is
   // the body at the hold position staying clear of raw occupancy. Without this
   // a re-lease fails on every world change and the hold churns through
@@ -180,6 +188,10 @@ snapshotRawOwner(const ExecutionPlan3D& snapshot) {
       execution != nullptr && execution->observed_raw_world != nullptr) {
     return execution->observed_raw_world;
   }
+  if (const StopExecution3D* const stop = snapshot.stopExecution();
+      stop != nullptr && stop->observed_raw_world != nullptr) {
+    return stop->observed_raw_world;
+  }
   const CertifiedRouteSuffix3D* const route = snapshot.route();
   return route != nullptr ? route->observed_raw_world : nullptr;
 }
@@ -192,9 +204,12 @@ snapshotLidarOwner(const ExecutionPlan3D& snapshot) {
   if (const FiniteExecutionState3D* const execution = snapshot.finiteExecution()) {
     return execution->latest_lidar_evidence;
   }
-  const DirectTrackingFiniteExecution3D* const execution =
-      snapshot.directTrackingExecution();
-  return execution != nullptr ? execution->latest_lidar_evidence : nullptr;
+  if (const DirectTrackingFiniteExecution3D* const execution =
+          snapshot.directTrackingExecution()) {
+    return execution->latest_lidar_evidence;
+  }
+  const StopExecution3D* const stop = snapshot.stopExecution();
+  return stop != nullptr ? stop->latest_lidar_evidence : nullptr;
 }
 
 [[nodiscard]] std::shared_ptr<const VersionedExecutionValidationPolicy3D>
@@ -208,6 +223,9 @@ snapshotValidationPolicy(const ExecutionPlan3D& snapshot) {
   if (const DirectTrackingFiniteExecution3D* const execution =
           snapshot.directTrackingExecution()) {
     return execution->validation_policy;
+  }
+  if (const StopExecution3D* const stop = snapshot.stopExecution()) {
+    return stop->validation_policy;
   }
   const CertifiedRouteSuffix3D* const route = snapshot.route();
   return route != nullptr ? route->validation_policy : nullptr;

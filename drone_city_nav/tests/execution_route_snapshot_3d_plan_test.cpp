@@ -276,59 +276,5 @@ TEST(ExecutionRouteSnapshot3DTest,
   EXPECT_TRUE(installed_snapshot.publishable());
 }
 
-TEST(ExecutionRouteSnapshot3DTest, SafeReplacementCannotExtendDeadline) {
-  SnapshotFixture3D fixture;
-  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
-  if (active == nullptr) {
-    ADD_FAILURE() << "The fixture must activate a route snapshot";
-    return;
-  }
-  const ExecutionPlan3D& active_snapshot = *active;
-  if (active_snapshot.finiteExecution() == nullptr ||
-      active_snapshot.brakingFallback() == nullptr) {
-    ADD_FAILURE() << "An active route must own a complete execution plan";
-    return;
-  }
-  const RouteLifecycleEvent3D superseded{
-      .kind = RouteLifecycleEventKind3D::kObjectiveSuperseded,
-      .generation = SnapshotFixture3D::kRouteGeneration,
-  };
-
-  const FiniteExecutionState3D& fallback = active_snapshot.brakingFallback()[0];
-  const ExecutionRouteTransitionResult3D accepted =
-      retireCertifiedRoute3D(active_snapshot, SnapshotFixture3D::guard(active_snapshot),
-                             superseded, std::nullopt);
-  if (!accepted.applied() || accepted.next == nullptr) {
-    ADD_FAILURE() << "Retirement must produce a braking snapshot";
-    return;
-  }
-  const ExecutionPlan3D& braking_snapshot = *accepted.next;
-  if (braking_snapshot.finiteExecution() == nullptr) {
-    ADD_FAILURE() << "Retirement must select the permanent braking fallback";
-    return;
-  }
-  EXPECT_EQ(braking_snapshot.phase(), ExecutionRoutePhase3D::kBraking);
-  EXPECT_EQ(braking_snapshot.finiteExecution()[0].validation_proof.artifact_fingerprint,
-            fallback.validation_proof.artifact_fingerprint);
-
-  const FiniteExecutionState3D retained = SnapshotFixture3D::finiteExecution(
-      active_snapshot, FiniteExecutionKind3D::kRetained, true, 101U);
-  EXPECT_EQ(retireCertifiedRoute3D(active_snapshot,
-                                   SnapshotFixture3D::guard(active_snapshot),
-                                   superseded, retained)
-                .status,
-            ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
-
-  const FiniteExecutionState3D extended_deadline = SnapshotFixture3D::finiteExecution(
-      active_snapshot, FiniteExecutionKind3D::kEmergencyBrakeTail, true, 102U, 55U, 1U);
-  EXPECT_GT(extended_deadline.valid_until_ns,
-            active_snapshot.finiteExecution()[0].valid_until_ns);
-  EXPECT_EQ(retireCertifiedRoute3D(active_snapshot,
-                                   SnapshotFixture3D::guard(active_snapshot),
-                                   superseded, extended_deadline)
-                .status,
-            ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
-}
-
 } // namespace
 } // namespace drone_city_nav

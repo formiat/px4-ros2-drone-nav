@@ -354,6 +354,7 @@ add_drone_city_nav_layer(
   src/execution_route_snapshot_3d_geometry.cpp
   src/execution_route_snapshot_3d_hold.cpp
   src/execution_route_snapshot_3d_progress.cpp
+  src/execution_route_snapshot_3d_stop.cpp
   src/execution_route_snapshot_3d_tracking_tube.cpp
   src/execution_route_snapshot_3d_transitions.cpp
   src/execution_route_snapshot_3d_validation.cpp
@@ -361,6 +362,7 @@ add_drone_city_nav_layer(
   src/execution_supervisor_3d_hold.cpp
   src/execution_supervisor_3d_horizon.cpp
   src/execution_supervisor_3d_retention.cpp
+  src/execution_supervisor_3d_stop.cpp
   src/mission_goal_capture.cpp
   src/mission_waypoint_acknowledgement_admission.cpp
   src/mission_waypoint_capture_gate.cpp
@@ -556,6 +558,7 @@ set(DRONE_CITY_NAV_EXECUTION_HEADERS
     include/drone_city_nav/execution_route_model_3d.hpp
     include/drone_city_nav/execution_route_store_3d.hpp
     include/drone_city_nav/execution_route_transitions_3d.hpp
+    include/drone_city_nav/execution_stop_3d.hpp
     include/drone_city_nav/execution_supervisor_3d.hpp
     include/drone_city_nav/mission_goal_capture.hpp
     include/drone_city_nav/mission_waypoint_acknowledgement_admission.hpp
@@ -1155,7 +1158,8 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     src/runtime/ros/production_mppi_node_execution.cpp
     src/runtime/ros/production_mppi_node_execution_publication.cpp
     src/runtime/ros/production_mppi_node_execution_holds.cpp
-    src/runtime/ros/production_mppi_node_execution_retention.cpp)
+    src/runtime/ros/production_mppi_node_execution_retention.cpp
+    src/runtime/ros/production_mppi_node_execution_stop.cpp)
   target_compile_features(drone_city_nav_production_mppi_component PRIVATE cxx_std_20)
   target_include_directories(
     drone_city_nav_production_mppi_component
@@ -2003,7 +2007,6 @@ if(BUILD_TESTING)
                   tests/execution_route_snapshot_3d_test.cpp
                   tests/execution_route_snapshot_3d_certification_test.cpp
                   tests/execution_route_snapshot_3d_edge_cases_test.cpp
-                  tests/execution_route_snapshot_3d_lifecycle_braking_test.cpp
                   tests/execution_route_snapshot_3d_optional_constraints_test.cpp
                   tests/execution_route_snapshot_3d_plan_test.cpp
                   tests/execution_route_snapshot_3d_successor_evidence_test.cpp
@@ -2023,6 +2026,12 @@ if(BUILD_TESTING)
   target_link_libraries(route_execution_manager_pending_publication_test
                         drone_city_nav_core)
   enable_project_warnings(route_execution_manager_pending_publication_test)
+
+  ament_add_gtest(execution_supervisor_stop_3d_test
+                  tests/execution_supervisor_stop_3d_test.cpp)
+  target_compile_features(execution_supervisor_stop_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(execution_supervisor_stop_3d_test drone_city_nav_execution)
+  enable_project_warnings(execution_supervisor_stop_3d_test)
 
   ament_add_gtest(execution_supervisor_3d_test
                   tests/execution_supervisor_3d_test.cpp)

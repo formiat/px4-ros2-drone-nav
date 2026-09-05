@@ -188,55 +188,24 @@ directValidationWorld(const ExecutionRetentionRequest3D& request,
   }
   result.source_trajectory_revision = active->trajectory_revision;
 
-  const RouteLifecycleEvent3D* const raw_invalidation =
+  const RouteLifecycleEvent3D* const path_claim_ended =
       request.lifecycle_event.has_value() &&
-              request.lifecycle_event->kind ==
-                  RouteLifecycleEventKind3D::kRawInvalidated
+              routeLifecycleEventEndsPathClaim3D(request.lifecycle_event->kind)
           ? std::addressof(*request.lifecycle_event)
           : nullptr;
-  const RouteLifecycleEvent3D* const latest_lidar_invalidation =
-      request.lifecycle_event.has_value() &&
-              request.lifecycle_event->kind ==
-                  RouteLifecycleEventKind3D::kLatestLidarInvalidated
-          ? std::addressof(*request.lifecycle_event)
-          : nullptr;
-  const RouteLifecycleEvent3D* const lifecycle_braking =
-      request.lifecycle_event.has_value() &&
-              (latest_lidar_invalidation != nullptr ||
-               request.lifecycle_event->kind ==
-                   RouteLifecycleEventKind3D::kObjectiveSuperseded ||
-               request.lifecycle_event->kind ==
-                   RouteLifecycleEventKind3D::kCrossTrackExceeded ||
-               request.lifecycle_event->kind ==
-                   RouteLifecycleEventKind3D::kTrackingTubeExceeded)
-          ? std::addressof(*request.lifecycle_event)
-          : nullptr;
-  const RouteLifecycleEvent3D* const braking_event =
-      raw_invalidation != nullptr ? raw_invalidation : lifecycle_braking;
-  if (braking_event != nullptr) {
-    result.braking_event = braking_event->kind;
-  }
-  if (raw_invalidation != nullptr &&
-      (request.lifecycle_source_plan != expected ||
-       route->observed_raw_world == nullptr ||
-       request.lifecycle_observed_raw_world == nullptr ||
-       !request.lifecycle_observed_raw_world->valid() ||
-       raw_invalidation->generation != route->identity.generation ||
-       route->observed_raw_world->version().producer_instance_id !=
-           raw_invalidation->raw_producer_instance_id ||
-       request.lifecycle_observed_raw_world->version().producer_instance_id !=
-           raw_invalidation->raw_producer_instance_id ||
-       request.lifecycle_observed_raw_world->version().revision !=
-           raw_invalidation->raw_revision)) {
-    result.status = ExecutionRetentionStatus3D::kInvalidLifecycleOwner;
-    return result;
-  }
-  if (lifecycle_braking != nullptr &&
-      (request.lifecycle_source_plan != expected ||
-       lifecycle_braking->generation != route->identity.generation ||
-       lifecycle_braking->raw_producer_instance_id != 0U ||
-       lifecycle_braking->raw_revision != 0U)) {
-    result.status = ExecutionRetentionStatus3D::kInvalidLifecycleOwner;
+  if (path_claim_ended != nullptr) {
+    result.braking_event = path_claim_ended->kind;
+    if (request.lifecycle_source_plan != expected ||
+        path_claim_ended->generation != route->identity.generation) {
+      result.status = ExecutionRetentionStatus3D::kInvalidLifecycleOwner;
+      return result;
+    }
+    // Retention answers one question: is the resident path still executable
+    // from where the vehicle is. This event says the path has lost its claim
+    // on the vehicle, so continuing it is not the answer, and neither is a
+    // braking tail rebuilt out of it: bringing the vehicle to rest is the
+    // stop's job, and the stop validates the braking trajectory itself.
+    result.status = ExecutionRetentionStatus3D::kBrakingDelegatedToStop;
     return result;
   }
 
@@ -251,10 +220,7 @@ directValidationWorld(const ExecutionRetentionRequest3D& request,
   std::optional<ProprioceptiveFreeSpaceSeed3D> live_seed;
   const std::optional<FiniteExecutionPathWorld3D> continuation_world =
       snapshotValidationWorld(
-          request, *route,
-          lifecycle_braking != nullptr
-              ? std::nullopt
-              : validationTerminalBoundary(*active, *route, mppi_reference),
+          request, *route, validationTerminalBoundary(*active, *route, mppi_reference),
           live_seed);
   if (!continuation_world.has_value()) {
     result.status = ExecutionRetentionStatus3D::kValidationWorldUnavailable;
@@ -271,7 +237,6 @@ directValidationWorld(const ExecutionRetentionRequest3D& request,
     return result;
   }
   result.prepared_trajectory_revision = active->trajectory_revision + 1U;
-  std::optional<FiniteExecutionState3D> recertified_braking_tail;
   std::optional<FiniteExecutionPlan3D> recertified_plan;
   const FiniteExecutionPathCandidateValidator3D candidate_validator =
       [&](const FiniteMotionHorizon3D& candidate) {
@@ -294,30 +259,6 @@ directValidationWorld(const ExecutionRetentionRequest3D& request,
             .valid_from_ns = request.now_ns,
             .kind = FiniteExecutionKind3D::kRetained,
         };
-        if (raw_invalidation != nullptr) {
-          finite_execution.horizon = *braking_tail;
-          finite_execution.kind = FiniteExecutionKind3D::kEmergencyBrakeTail;
-          result.certification = certifyRawInvalidatedFiniteExecution3DDetailed(
-              *expected, RawInvalidatedFiniteExecutionCertification3D{
-                             .invalidation = *raw_invalidation,
-                             .invalidating_observed_raw_world =
-                                 request.lifecycle_observed_raw_world,
-                             .finite_execution = finite_execution,
-                         });
-          recertified_braking_tail = result.certification.execution;
-          return result.certification.certified();
-        }
-        if (lifecycle_braking != nullptr) {
-          finite_execution.horizon = *braking_tail;
-          finite_execution.kind = FiniteExecutionKind3D::kEmergencyBrakeTail;
-          result.certification = certifyLifecycleBrakingFiniteExecution3DDetailed(
-              *expected, LifecycleBrakingFiniteExecutionCertification3D{
-                             .lifecycle_event = *lifecycle_braking,
-                             .finite_execution = std::move(finite_execution),
-                         });
-          recertified_braking_tail = result.certification.execution;
-          return recertified_braking_tail.has_value();
-        }
         FiniteExecutionPlanCertificationResult3D certification =
             certifyFiniteExecutionPlan3DDetailed(
                 *expected, *route,
@@ -345,8 +286,7 @@ directValidationWorld(const ExecutionRetentionRequest3D& request,
     result.status = ExecutionRetentionStatus3D::kRebuildRejected;
     return result;
   }
-  if ((braking_event != nullptr && !recertified_braking_tail.has_value()) ||
-      (braking_event == nullptr && !recertified_plan.has_value())) {
+  if (!recertified_plan.has_value()) {
     result.status = ExecutionRetentionStatus3D::kCertificationRejected;
     return result;
   }
@@ -355,16 +295,10 @@ directValidationWorld(const ExecutionRetentionRequest3D& request,
       .expected_route_generation = route->identity.generation,
       .expected_geometry_revision = route->geometry->compiled_trajectory_revision,
   };
-  const ExecutionRouteTransitionResult3D transition = [&] {
-    if (braking_event != nullptr) {
-      return retireCertifiedRoute3D(*expected, guard, *braking_event,
-                                    std::move(recertified_braking_tail));
-    }
-    return replaceFiniteExecutionPlan3D(
-        *expected, guard,
-        std::move(recertified_plan)
-            .value()); // NOLINT(bugprone-unchecked-optional-access)
-  }();
+  const ExecutionRouteTransitionResult3D transition = replaceFiniteExecutionPlan3D(
+      *expected, guard,
+      std::move(recertified_plan)
+          .value()); // NOLINT(bugprone-unchecked-optional-access)
   const FiniteExecutionState3D* const transitioned_execution =
       transition.next != nullptr ? transition.next->finiteExecution() : nullptr;
   const FiniteExecutionState3D* const transitioned_braking =
@@ -372,9 +306,7 @@ directValidationWorld(const ExecutionRetentionRequest3D& request,
   if (!transition.applied() || transition.next == nullptr ||
       transitioned_execution == nullptr || transitioned_braking == nullptr ||
       transitioned_execution->horizon == nullptr ||
-      transition.next->route() == nullptr ||
-      (braking_event != nullptr &&
-       transition.next->phase() != ExecutionRoutePhase3D::kBraking)) {
+      transition.next->route() == nullptr) {
     result.status = ExecutionRetentionStatus3D::kTransitionRejected;
     return result;
   }
@@ -505,6 +437,8 @@ executionRetentionStatus3DName(const ExecutionRetentionStatus3D status) noexcept
       return "trajectory_revision_exhausted";
     case ExecutionRetentionStatus3D::kRebuildRejected:
       return "rebuild_rejected";
+    case ExecutionRetentionStatus3D::kBrakingDelegatedToStop:
+      return "braking_delegated_to_stop";
     case ExecutionRetentionStatus3D::kCertificationRejected:
       return "certification_rejected";
     case ExecutionRetentionStatus3D::kTransitionRejected:

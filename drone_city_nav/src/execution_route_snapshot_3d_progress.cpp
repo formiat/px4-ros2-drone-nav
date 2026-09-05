@@ -100,9 +100,6 @@ routePointer(const ExecutionPlan3D& snapshot) noexcept {
   if (auto* following = std::get_if<FollowingPlan3D>(&snapshot.state)) {
     return std::addressof(following->route);
   }
-  if (auto* braking = std::get_if<BrakingPlan3D>(&snapshot.state)) {
-    return std::addressof(braking->route);
-  }
   if (auto* stationary = std::get_if<StationaryHoldPlan3D>(&snapshot.state)) {
     auto* certified = std::get_if<CertifiedTerminalHoldPlan3D>(&stationary->owner);
     return certified != nullptr ? std::addressof(certified->route) : nullptr;
@@ -122,9 +119,6 @@ FiniteExecutionState3D* finiteExecutionPointer(ExecutionPlan3D& snapshot) noexce
   if (auto* following = std::get_if<FollowingPlan3D>(&snapshot.state)) {
     return std::addressof(following->execution.command_horizon);
   }
-  if (auto* braking = std::get_if<BrakingPlan3D>(&snapshot.state)) {
-    return std::addressof(braking->execution);
-  }
   if (auto* stationary = std::get_if<StationaryHoldPlan3D>(&snapshot.state)) {
     auto* certified = std::get_if<CertifiedTerminalHoldPlan3D>(&stationary->owner);
     return certified != nullptr ? std::addressof(certified->execution.command_horizon)
@@ -142,9 +136,6 @@ FiniteExecutionState3D* finiteExecutionPointer(ExecutionPlan3D& snapshot) noexce
 FiniteExecutionState3D* brakingFallbackPointer(ExecutionPlan3D& snapshot) noexcept {
   if (auto* following = std::get_if<FollowingPlan3D>(&snapshot.state)) {
     return std::addressof(following->execution.braking_tail);
-  }
-  if (auto* braking = std::get_if<BrakingPlan3D>(&snapshot.state)) {
-    return std::addressof(braking->execution);
   }
   if (auto* stationary = std::get_if<StationaryHoldPlan3D>(&snapshot.state)) {
     auto* certified = std::get_if<CertifiedTerminalHoldPlan3D>(&stationary->owner);

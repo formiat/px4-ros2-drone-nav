@@ -148,8 +148,8 @@ across ordinary world updates and owns the pending successor and resident plan
 under one lock. Successor search starts from a
 certified future station and must preserve stopping distance, measured p99
 planning latency, and overlap reserve. A newer occupied observation repairs only
-the affected suffix or transfers ownership to the certified braking plan; it
-never clears a still-valid prefix.
+the affected suffix or hands the vehicle to a certified stop; it never clears a
+still-valid prefix.
 
 Offline `FreeSpaceTopology3D` remains optional static evidence for passage
 identities and constrained spans. It is not an online route producer, does not
@@ -291,11 +291,36 @@ complete rebuilt path. The rebuilt command starts at the current timestamp, but
 its deadline never exceeds the previous `valid_until`.
 
 Route validity is checked separately. Every non-terminal execution plan includes
-a certified braking fallback and admits motion only while its remaining route
+a certified braking tail and admits motion only while its remaining route
 reserve covers stopping, measured planning latency, and required overlap. If no
 physically executable route remains, the planner latches the current admissible
 position and publishes `no_executable_route` hold horizons until a replacement
 route is atomically accepted.
+
+### Stopping A Moving Vehicle
+
+A stop is the vehicle's own physics rather than a route action: a finite braking
+trajectory that starts at the exact current state, ends at rest, and is
+validated against the flight envelope, the dynamics, and the swept body versus
+raw occupancy with the live contact exemption. It carries no route, no adherence
+corridor, and no route certificate, which is exactly why it stays available when
+the route machinery can produce nothing. `ExecutionSupervisor3D::prepareStop` is
+its single entry point; the plan state it installs is `kStopping`.
+
+Every situation that would otherwise leave a moving vehicle without a plan asks
+for a stop: physical evidence against the resident path, a lifecycle event that
+ends that path's claim on the vehicle, and the loss of a lease that can no
+longer be continued. Retention keeps its one job, continuing a path that is
+still executable, and delegates braking to the stop
+(`braking_delegated_to_stop`) instead of rebuilding a braking tail out of the
+path that was just invalidated. Only the offboard's local position latch remains
+behind the stop, and only for a genuine loss of the planner.
+
+A stop never survives its own completion. It is finite by construction: once
+flown, the plan rests, the stationary hold takes it over, and a certified route
+activates from wherever the vehicle stopped. A route may also take the vehicle
+back while the stop is still braking, so no approach to any obstacle is ever
+withheld.
 
 The liveness monitor compares predicted and actual full-3D route progress.
 Persistent prediction without real movement can reseed the MPPI nominal controls

@@ -683,13 +683,12 @@ TEST(ExecutionRouteSnapshot3DTest, PendingRouteIsObsoleteAtMissionTerminalStop) 
       *at_endpoint.next, SnapshotFixture3D::guard(*at_endpoint.next),
       SnapshotFixture3D::finiteExecution(*at_endpoint.next));
   ASSERT_TRUE(terminal_execution.applied());
-  const ExecutionRouteTransitionResult3D stopped = retireCertifiedRoute3D(
+  const ExecutionRouteTransitionResult3D stopped = completeCertifiedRoute3D(
       *terminal_execution.next, SnapshotFixture3D::guard(*terminal_execution.next),
       RouteLifecycleEvent3D{
           .kind = RouteLifecycleEventKind3D::kCompleted,
           .generation = SnapshotFixture3D::kRouteGeneration,
-      },
-      std::nullopt);
+      });
   ASSERT_TRUE(stopped.applied());
   ASSERT_EQ(stopped.next->phase(), ExecutionRoutePhase3D::kStopped);
   ASSERT_TRUE(stopped.next->route() != nullptr);

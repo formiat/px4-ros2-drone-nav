@@ -123,7 +123,7 @@ TEST(ExecutionSupervisorRetention3DTest,
 }
 
 TEST(ExecutionSupervisorRetention3DTest,
-     RawInvalidationPreparesOnlyAnExactOwnerEmergencyBrakeTail) {
+     RawInvalidationDelegatesBrakingToTheStopWithoutRetainingThePath) {
   SnapshotFixture3D fixture;
   ExecutionSupervisor3D supervisor;
   const std::shared_ptr<const ExecutionPlan3D> active =
@@ -144,17 +144,17 @@ TEST(ExecutionSupervisorRetention3DTest,
 
   const ExecutionRetentionResult3D prepared = supervisor.prepareRetention(request);
 
-  ASSERT_TRUE(prepared.prepared()) << executionRetentionStatus3DName(prepared.status);
+  // Retention answers only for continuing an executable path. An event that
+  // ends the resident path's claim on the vehicle is handed to the stop, which
+  // validates the braking trajectory itself instead of a tail rebuilt out of
+  // the path that was just invalidated.
+  EXPECT_EQ(prepared.status, ExecutionRetentionStatus3D::kBrakingDelegatedToStop);
+  EXPECT_FALSE(prepared.prepared());
   ASSERT_TRUE(prepared.braking_event.has_value());
   const RouteLifecycleEventKind3D braking_event =
       prepared.braking_event.value(); // NOLINT(bugprone-unchecked-optional-access)
   EXPECT_EQ(braking_event, RouteLifecycleEventKind3D::kRawInvalidated);
-  ASSERT_NE(prepared.transition->next->finiteExecution(), nullptr);
-  EXPECT_EQ(prepared.transition->next->phase(), ExecutionRoutePhase3D::kBraking);
-  EXPECT_EQ(prepared.transition->next->finiteExecution()->kind,
-            FiniteExecutionKind3D::kEmergencyBrakeTail);
-  EXPECT_EQ(prepared.transition->next->finiteExecution()->observed_raw_world,
-            invalidating_world);
+  EXPECT_EQ(prepared.transition, nullptr);
   EXPECT_EQ(supervisor.plan(), active);
 
   request.lifecycle_source_plan = makeInitialExecutionRouteSnapshot3D();

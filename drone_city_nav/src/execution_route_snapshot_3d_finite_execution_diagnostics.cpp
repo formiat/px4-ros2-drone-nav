@@ -24,10 +24,6 @@ std::string_view finiteExecutionCertificationStatus3DName(
       return "target_relation_rejected";
     case FiniteExecutionCertificationStatus3D::kProgressRelationRejected:
       return "progress_relation_rejected";
-    case FiniteExecutionCertificationStatus3D::kRawInvalidationContractRejected:
-      return "raw_invalidation_contract_rejected";
-    case FiniteExecutionCertificationStatus3D::kLifecycleBrakingContractRejected:
-      return "lifecycle_braking_contract_rejected";
     case FiniteExecutionCertificationStatus3D::kEvidenceContractRejected:
       return "evidence_contract_rejected";
     case FiniteExecutionCertificationStatus3D::kCollisionPolicyInvalid:
@@ -38,8 +34,6 @@ std::string_view finiteExecutionCertificationStatus3DName(
       return "initial_state_mismatch";
     case FiniteExecutionCertificationStatus3D::kExecutionBindingRejected:
       return "execution_binding_rejected";
-    case FiniteExecutionCertificationStatus3D::kRawInvalidationConnectorRejected:
-      return "raw_invalidation_connector_rejected";
     case FiniteExecutionCertificationStatus3D::kRouteAdherenceRejected:
       return "route_adherence_rejected";
     case FiniteExecutionCertificationStatus3D::kTrackingTubeHandoffRejected:

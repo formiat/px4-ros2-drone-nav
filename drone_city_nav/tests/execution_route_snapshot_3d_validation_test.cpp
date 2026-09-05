@@ -911,8 +911,8 @@ TEST(ExecutionRouteSnapshot3DTest, RejectsUnknownFiniteAndLifecycleEnumValues) {
       .kind = static_cast<RouteLifecycleEventKind3D>(255U),
       .generation = active->route()->identity.generation,
   };
-  EXPECT_EQ(retireCertifiedRoute3D(*active, SnapshotFixture3D::guard(*active),
-                                   unknown_event, std::nullopt)
+  EXPECT_EQ(completeCertifiedRoute3D(*active, SnapshotFixture3D::guard(*active),
+                                     unknown_event)
                 .status,
             ExecutionRouteTransitionStatus3D::kInvalidCandidate);
 }

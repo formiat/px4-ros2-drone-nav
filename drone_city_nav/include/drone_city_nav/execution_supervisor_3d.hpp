@@ -4,6 +4,7 @@
 #include "drone_city_nav/execution_horizon_commit_3d.hpp"
 #include "drone_city_nav/execution_retention_3d.hpp"
 #include "drone_city_nav/execution_route_store_3d.hpp"
+#include "drone_city_nav/execution_stop_3d.hpp"
 
 #include <memory>
 
@@ -45,6 +46,12 @@ public:
 
   [[nodiscard]] ExecutionHoldPreparation3D
   prepareHold(ExecutionHoldRequest3D request) const;
+
+  // The single entry point for bringing a moving vehicle to rest. Every caller
+  // that can no longer publish a route-directed horizon asks for a stop here
+  // instead of leaving the vehicle to a lease it can no longer justify.
+  [[nodiscard]] ExecutionStopPreparation3D
+  prepareStop(ExecutionStopRequest3D request) const;
 
   [[nodiscard]] ExecutionHorizonCommitResult3D
   commitHorizon(ExecutionHorizonCommitRequest3D request);

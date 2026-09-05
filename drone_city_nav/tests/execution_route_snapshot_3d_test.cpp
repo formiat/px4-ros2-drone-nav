@@ -102,12 +102,6 @@ TEST(ExecutionRouteSnapshot3DTest,
   EXPECT_TRUE(executionRouteAcceptsCertifiedReplacement3D(*active));
 
   ExecutionPlan3D snapshot = *active;
-  snapshot.state = BrakingPlan3D{
-      .route = following->route,
-      .execution = following->execution.braking_tail,
-  };
-  EXPECT_TRUE(executionRouteAcceptsCertifiedReplacement3D(snapshot));
-
   snapshot.state = AwaitingSuccessorPlan3D{
       .owner = SuspendedRoutePlan3D{.route = following->route},
   };

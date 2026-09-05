@@ -203,6 +203,22 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishNoExecutablePathHo
             RouteLifecycleEventKind3D::kRawInvalidated ||
         cycle.route.execution.lifecycle_event->kind ==
             RouteLifecycleEventKind3D::kLatestLidarInvalidated));
+  // Any lifecycle event that ends the resident path's claim on the vehicle
+  // leaves the vehicle without a plan to execute, physical or not.
+  const bool path_claim_ended =
+      cycle.route.execution.lifecycle_event.has_value() &&
+      routeLifecycleEventEndsPathClaim3D(cycle.route.execution.lifecycle_event->kind);
+  // Physical evidence against the resident path ends that path's claim on the
+  // vehicle. Revoking it would hand the moving vehicle to the offboard's local
+  // hold, which knows nothing about obstacles; a certified stop is the same
+  // decision carried out along a trajectory the world was actually checked
+  // against.
+  if (physical_route_invalidation || path_claim_ended) {
+    ProductionMppiExecutionPublication stop = publishStopExecution(cycle, reason);
+    if (stop.published) {
+      return stop;
+    }
+  }
   ProductionMppiExecutionPublication revocation = publishExecutionRevocation(
       reason, cycle.controller.now_ns, physical_route_invalidation);
   if (revocation.published ||
@@ -211,10 +227,19 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishNoExecutablePathHo
                                      .nonphysical_execution_revocation_enabled)) {
     return revocation;
   }
-  return residentOwnerContinuation(
+  ProductionMppiExecutionPublication continuation = residentOwnerContinuation(
       reason, cycle.controller.now_ns, revocation,
       cycle.route.planning_state ==
           ProductionMppiPlanningState::kMissionGoalPositionHold);
+  if (continuation.resident_owner_continues) {
+    return continuation;
+  }
+  // Nothing owns the vehicle any more: no replacement, no retained path and no
+  // lease left to continue. Whatever the vehicle is still carrying, it is
+  // carrying it without a plan, so it is stopped along a validated trajectory
+  // instead of being left to coast into the offboard's blind hold.
+  ProductionMppiExecutionPublication stop = publishStopExecution(cycle, reason);
+  return stop.published ? stop : continuation;
 }
 
 bool ProductionMppiNode::residentHoldLeaseNearExpiry(const std::int64_t now_ns) const {

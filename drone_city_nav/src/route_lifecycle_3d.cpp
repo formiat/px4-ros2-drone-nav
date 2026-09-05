@@ -517,6 +517,21 @@ assessRouteSegmentCompletion3D(const std::span<const RouteSample3D> route,
   return result;
 }
 
+bool routeLifecycleEventEndsPathClaim3D(const RouteLifecycleEventKind3D kind) noexcept {
+  switch (kind) {
+    case RouteLifecycleEventKind3D::kRawInvalidated:
+    case RouteLifecycleEventKind3D::kLatestLidarInvalidated:
+    case RouteLifecycleEventKind3D::kObjectiveSuperseded:
+    case RouteLifecycleEventKind3D::kCrossTrackExceeded:
+    case RouteLifecycleEventKind3D::kTrackingTubeExceeded:
+      return true;
+    case RouteLifecycleEventKind3D::kCompleted:
+    case RouteLifecycleEventKind3D::kControlCandidateRejected:
+      return false;
+  }
+  return false;
+}
+
 std::string_view
 routeLifecycleEventKind3DName(const RouteLifecycleEventKind3D kind) noexcept {
   switch (kind) {
