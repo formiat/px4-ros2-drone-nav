@@ -56,6 +56,9 @@ pendingExecutionBaseKind(const ExecutionPlan3D& snapshot,
   if (snapshot.directTrackingExecution() != nullptr) {
     return PendingExecutionBaseKind3D::kDirectTracking;
   }
+  if (snapshot.stopExecution() != nullptr) {
+    return PendingExecutionBaseKind3D::kStop;
+  }
   if (snapshot.route() != nullptr) {
     return route_splice_required ? PendingExecutionBaseKind3D::kRoute
                                  : PendingExecutionBaseKind3D::kRouteHandoff;

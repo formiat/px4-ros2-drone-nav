@@ -1,5 +1,7 @@
+#include "drone_city_nav/execution_hold_3d.hpp"
 #include "drone_city_nav/execution_stop_3d.hpp"
 #include "drone_city_nav/execution_supervisor_3d.hpp"
+#include "drone_city_nav/pending_certified_route_3d.hpp"
 
 #include <gtest/gtest.h>
 
@@ -237,6 +239,123 @@ TEST(ExecutionSupervisorStop3DTest, TheCommittedStopOwnsTheVehicleWhileItIsExecu
   EXPECT_EQ(again.status, ExecutionStopStatus3D::kResidentStopCurrent);
   EXPECT_FALSE(again.prepared());
   EXPECT_EQ(supervisor.plan(), stopping);
+}
+
+// The stop that owns the vehicle after it has been committed on the wire.
+[[nodiscard]] std::shared_ptr<const ExecutionPlan3D>
+commitStop(ExecutionSupervisor3D& supervisor,
+           const ExecutionStopPreparation3D& prepared,
+           const std::shared_ptr<const VersionedExecutionInput3D>& input) {
+  if (!prepared.prepared() || prepared.transition == nullptr ||
+      prepared.transition->next == nullptr) {
+    return nullptr;
+  }
+  const ExecutionHorizonCommitResult3D committed = commitExecutionHorizonForTest(
+      supervisor,
+      ExecutionHorizonTestTransaction3D{
+          .kind = ExecutionHorizonCommitKind3D::kTransition,
+          .expected_authority = prepared.expected_authority,
+          .expected_plan = prepared.expectedPlan(),
+          .transition = *prepared.transition,
+          .expected_pending = nullptr,
+          .owner = SnapshotFixture3D::committedOwner(*prepared.transition->next, 2U),
+          .input = input,
+      });
+  return committed.committed() ? supervisor.plan() : nullptr;
+}
+
+TEST(ExecutionSupervisorStop3DTest, AStopFlownToRestBecomesAStationaryHold) {
+  SnapshotFixture3D fixture;
+  ExecutionSupervisor3D supervisor;
+  const std::shared_ptr<const ExecutionPlan3D> active =
+      installRouteOwner(supervisor, fixture);
+  ASSERT_NE(active, nullptr);
+  ASSERT_NE(active->finiteExecution(), nullptr);
+  const std::shared_ptr<const VersionedExecutionInput3D> input =
+      movingInput(*active->finiteExecution()->execution_input, 4.0F);
+  const std::shared_ptr<const ExecutionPlan3D> stopping = commitStop(
+      supervisor, supervisor.prepareStop(stopRequest(fixture, active, input)), input);
+  ASSERT_NE(stopping, nullptr);
+  const StopExecution3D* const stop = stopping->stopExecution();
+  ASSERT_NE(stop, nullptr);
+
+  // The vehicle observed at rest where the stop ends, once the stop has been
+  // flown out: the hold takes the vehicle over from the stop exactly as it
+  // takes it over from a route that reached its own rest.
+  const StationaryExecutionHoldCertification3D certification =
+      SnapshotFixture3D::holdCertification(*stopping);
+  const ExecutionHoldPreparation3D hold = supervisor.prepareHold(ExecutionHoldRequest3D{
+      .intent = ExecutionHoldIntent3D::kExplicitTransfer,
+      .requested_position = stop->rest_position,
+      .cycle_source_plan = stopping,
+      .execution_input = certification.execution_input,
+      .latest_lidar_evidence = certification.latest_lidar_evidence,
+      .current_lidar_evidence = certification.latest_lidar_evidence,
+      .current_observed_raw_world = certification.observed_raw_world,
+      .stationary_capture_observed_raw_world = nullptr,
+      .stationary_capture_static_world = nullptr,
+      .selected_validation_policy = nullptr,
+      .stationary_capture_validation_policy = certification.validation_policy,
+      .validation_now_ns = certification.execution_input->effectiveStampNs(),
+  });
+
+  ASSERT_EQ(hold.status, ExecutionHoldPreparationStatus3D::kPrepared)
+      << executionHoldPreparationStatus3DName(hold.status) << " "
+      << executionRouteTransitionStatus3DName(hold.transition_status);
+  ASSERT_EQ(hold.kind, ExecutionHoldPreparationKind3D::kTransition);
+  ASSERT_NE(hold.transition, nullptr);
+  ASSERT_NE(hold.transition->next, nullptr);
+  EXPECT_EQ(hold.transition->next->phase(), ExecutionRoutePhase3D::kStopped);
+  EXPECT_NE(hold.transition->next->stationaryHold(), nullptr);
+  EXPECT_EQ(hold.transition->next->stopExecution(), nullptr);
+  EXPECT_NEAR(hold.position.x, stop->rest_position.x, 1.0e-6);
+  EXPECT_NEAR(hold.position.y, stop->rest_position.y, 1.0e-6);
+}
+
+TEST(ExecutionSupervisorStop3DTest, ACertifiedSuccessorIsPublishedPendingAgainstAStop) {
+  SnapshotFixture3D fixture;
+  ExecutionSupervisor3D supervisor;
+  const std::shared_ptr<const ExecutionPlan3D> active =
+      installRouteOwner(supervisor, fixture);
+  ASSERT_NE(active, nullptr);
+  ASSERT_NE(active->finiteExecution(), nullptr);
+  const std::shared_ptr<const VersionedExecutionInput3D> input =
+      movingInput(*active->finiteExecution()->execution_input, 4.0F);
+  const std::shared_ptr<const ExecutionPlan3D> stopping = commitStop(
+      supervisor, supervisor.prepareStop(stopRequest(fixture, active, input)), input);
+  ASSERT_NE(stopping, nullptr);
+  ASSERT_NE(stopping->stopExecution(), nullptr);
+
+  ExecutionRouteActivation3D successor_activation = fixture.activation();
+  successor_activation.route_generation = stopping->routeGenerationHighWater() + 1U;
+  successor_activation =
+      rebindUnconstrainedDecorations(std::move(successor_activation));
+  const std::optional<CertifiedRouteSuffix3D> successor =
+      certifyExecutionRoute3D(successor_activation);
+  ASSERT_TRUE(successor.has_value());
+  // A route certified while the vehicle stops is planned from the vehicle and
+  // hands off from the stop: it follows no route of its own and carries no
+  // splice, like a successor offered against a hold.
+  PendingCertifiedRoute3D pending{
+      .publication_sequence = 0U,
+      .base_execution_owner_epoch = stopping->execution_owner_epoch,
+      .base_kind = PendingExecutionBaseKind3D::kStop,
+      .base_route_generation = stopping->routeGenerationHighWater(),
+      .base_geometry_revision = 0U,
+      .base_continuity_id = 0U,
+      .base_direct_tracking_identity = std::nullopt,
+      .route_splice = std::nullopt,
+      .route = successor.value(), // NOLINT(bugprone-unchecked-optional-access)
+  };
+
+  const PendingRoutePublicationResult3D published =
+      supervisor.publishPendingForCurrentBase(stopping, pending);
+
+  EXPECT_EQ(published.status, PendingRoutePublicationStatus3D::kPublished);
+  ASSERT_NE(published.pending, nullptr);
+  EXPECT_TRUE(published.pending->valid());
+  EXPECT_TRUE(pendingCertifiedRouteEligible3D(*published.pending, *stopping));
+  EXPECT_EQ(supervisor.pending(), published.pending);
 }
 
 TEST(ExecutionSupervisorStop3DTest, ACertifiedRouteTakesTheVehicleBackFromAStop) {

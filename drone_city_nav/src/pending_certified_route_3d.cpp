@@ -84,6 +84,7 @@ bool PendingCertifiedRoute3D::valid() const noexcept {
              base_direct_tracking_identity->valid() && !route_splice.has_value() &&
              successor_generation;
     case PendingExecutionBaseKind3D::kStationaryHold:
+    case PendingExecutionBaseKind3D::kStop:
     case PendingExecutionBaseKind3D::kRevoked:
       return base_geometry_revision == 0U && base_continuity_id == 0U &&
              !base_direct_tracking_identity.has_value() && !route_splice.has_value() &&
@@ -146,6 +147,13 @@ bool pendingCertifiedRouteEligible3D(const PendingCertifiedRoute3D& pending,
     case PendingExecutionBaseKind3D::kStationaryHold:
       return snapshot.phase() == ExecutionRoutePhase3D::kStopped && hold != nullptr &&
              hold->hold_id == pending.base_execution_owner_epoch;
+    case PendingExecutionBaseKind3D::kStop:
+      // A stop follows no route, so a successor is planned from the vehicle and
+      // hands off from the stop itself, flown to rest or still braking.
+      return snapshot.phase() == ExecutionRoutePhase3D::kStopping &&
+             snapshot.stopExecution() != nullptr && route == nullptr &&
+             snapshot.finiteExecution() == nullptr && direct == nullptr &&
+             hold == nullptr;
     case PendingExecutionBaseKind3D::kRevoked:
       return snapshot.phase() == ExecutionRoutePhase3D::kRevoked && route == nullptr &&
              snapshot.finiteExecution() == nullptr && direct == nullptr &&

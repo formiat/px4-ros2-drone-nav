@@ -560,27 +560,57 @@ struct SnapshotFixture3D {
       const std::optional<std::int64_t> requested_effective_stamp_ns = std::nullopt,
       const std::optional<float> residual_velocity_x_mps = std::nullopt,
       const std::optional<MotionControl3D> measured_control = std::nullopt) {
-    const FiniteExecutionState3D* const route_execution = snapshot.finiteExecution();
-    const DirectTrackingFiniteExecution3D* const direct_execution =
-        snapshot.directTrackingExecution();
+    // The one execution the hold is taken over from, whatever owns the vehicle.
+    struct HoldSource {
+      std::shared_ptr<const VersionedExecutionInput3D> input;
+      const FiniteMotionHorizon3D* horizon{nullptr};
+      std::optional<std::int64_t> valid_until_ns;
+      std::shared_ptr<const VersionedLatestLidarEvidence3D> lidar;
+      std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_world;
+      std::shared_ptr<const VersionedStaticWorld3D> static_world;
+      std::shared_ptr<const VersionedExecutionValidationPolicy3D> validation_policy;
+    };
+
     const StationaryExecutionHold3D* const resident_hold = snapshot.stationaryHold();
-    const std::shared_ptr<const VersionedExecutionInput3D> source_input =
-        route_execution != nullptr    ? route_execution->execution_input
-        : direct_execution != nullptr ? direct_execution->execution_input
-        : resident_hold != nullptr    ? resident_hold->terminal_execution_input
-                                      : nullptr;
-    const FiniteMotionHorizon3D* const source_horizon =
-        route_execution != nullptr    ? route_execution->horizon.get()
-        : direct_execution != nullptr ? direct_execution->horizon.get()
-                                      : nullptr;
+    const HoldSource source = [&]() -> HoldSource {
+      if (const FiniteExecutionState3D* const route = snapshot.finiteExecution()) {
+        return {route->execution_input,    route->horizon.get(),
+                route->valid_until_ns,     route->latest_lidar_evidence,
+                route->observed_raw_world, route->static_world,
+                route->validation_policy};
+      }
+      if (const DirectTrackingFiniteExecution3D* const direct =
+              snapshot.directTrackingExecution()) {
+        return {direct->execution_input,    direct->horizon.get(),
+                direct->valid_until_ns,     direct->latest_lidar_evidence,
+                direct->observed_raw_world, direct->static_world,
+                direct->validation_policy};
+      }
+      if (const StopExecution3D* const stop = snapshot.stopExecution()) {
+        return {stop->execution_input,    stop->horizon.get(),
+                stop->valid_until_ns,     stop->latest_lidar_evidence,
+                stop->observed_raw_world, stop->static_world,
+                stop->validation_policy};
+      }
+      if (resident_hold != nullptr) {
+        return {resident_hold->terminal_execution_input,
+                nullptr,
+                std::nullopt,
+                resident_hold->latest_lidar_evidence,
+                resident_hold->observed_raw_world,
+                resident_hold->static_world,
+                resident_hold->validation_policy};
+      }
+      return {};
+    }();
+    const std::shared_ptr<const VersionedExecutionInput3D>& source_input = source.input;
+    const FiniteMotionHorizon3D* const source_horizon = source.horizon;
     if (source_input == nullptr ||
         (source_horizon == nullptr && resident_hold == nullptr)) {
       throw std::logic_error{"hold fixture requires an execution owner"};
     }
     const std::int64_t source_valid_until_ns =
-        route_execution != nullptr    ? route_execution->valid_until_ns
-        : direct_execution != nullptr ? direct_execution->valid_until_ns
-                                      : source_input->effectiveStampNs();
+        source.valid_until_ns.value_or(source_input->effectiveStampNs());
     if (source_input->captureSequence() == std::numeric_limits<std::uint64_t>::max() ||
         source_input->poseRevision() == std::numeric_limits<std::uint64_t>::max() ||
         source_input->poseSourceTimestampUs() ==
@@ -637,10 +667,8 @@ struct SnapshotFixture3D {
     if (terminal_input == nullptr) {
       throw std::logic_error{"failed to capture terminal hold input"};
     }
-    const std::shared_ptr<const VersionedLatestLidarEvidence3D> source_lidar =
-        resident_hold != nullptr     ? resident_hold->latest_lidar_evidence
-        : route_execution != nullptr ? route_execution->latest_lidar_evidence
-                                     : direct_execution->latest_lidar_evidence;
+    const std::shared_ptr<const VersionedLatestLidarEvidence3D>& source_lidar =
+        source.lidar;
     if (source_lidar == nullptr ||
         source_lidar->sequence() == std::numeric_limits<std::uint64_t>::max() ||
         source_lidar->poseGeneration() == std::numeric_limits<std::uint64_t>::max()) {
@@ -665,17 +693,9 @@ struct SnapshotFixture3D {
     return StationaryExecutionHoldCertification3D{
         .position = requested_position.value_or(terminal_position),
         .execution_input = terminal_input,
-        .observed_raw_world =
-            resident_hold != nullptr     ? resident_hold->observed_raw_world
-            : route_execution != nullptr ? route_execution->observed_raw_world
-                                         : direct_execution->observed_raw_world,
-        .static_world = resident_hold != nullptr     ? resident_hold->static_world
-                        : route_execution != nullptr ? route_execution->static_world
-                                                     : direct_execution->static_world,
-        .validation_policy = resident_hold != nullptr ? resident_hold->validation_policy
-                             : route_execution != nullptr
-                                 ? route_execution->validation_policy
-                                 : direct_execution->validation_policy,
+        .observed_raw_world = source.observed_raw_world,
+        .static_world = source.static_world,
+        .validation_policy = source.validation_policy,
         .latest_lidar_evidence = current_lidar,
     };
   }

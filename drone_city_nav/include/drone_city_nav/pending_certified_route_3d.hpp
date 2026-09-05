@@ -16,6 +16,7 @@ enum class PendingExecutionBaseKind3D : std::uint8_t {
   kRouteHandoff,
   kDirectTracking,
   kStationaryHold,
+  kStop,
   kRevoked,
 };
 

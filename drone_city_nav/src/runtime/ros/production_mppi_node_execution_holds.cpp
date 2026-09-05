@@ -20,6 +20,13 @@ constexpr std::uint64_t kExecutionRevocationReasonMask{0xffU};
 constexpr std::uint64_t kExecutionRevocationRequestStep{kExecutionRevocationReasonMask +
                                                         1U};
 
+[[nodiscard]] bool vehicleAtRest(const mppi::State& state) noexcept {
+  return std::hypot(
+             std::hypot(static_cast<double>(state.vx), static_cast<double>(state.vy)),
+             static_cast<double>(state.vz)) <=
+         kStationaryExecutionHoldSpeedToleranceMps;
+}
+
 [[nodiscard]] bool
 failClosedExecutionReason(const ProductionMppiExecutionReason reason) noexcept {
   return reason == ProductionMppiExecutionReason::kNoExecutableHorizon ||
@@ -185,6 +192,20 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishNoExecutablePathHo
       return hold;
     }
   }
+  // A stop that has brought the vehicle to rest hands it to the stationary
+  // hold. The hold is what owns a resting vehicle and keeps its lease alive,
+  // and a certified route hands off from it exactly as from any other hold.
+  if (const StopExecution3D* const stop =
+          cycle.route.execution.source_snapshot != nullptr
+              ? cycle.route.execution.source_snapshot->stopExecution()
+              : nullptr;
+      stop != nullptr && vehicleAtRest(cycle.evidence.exact_initial_state)) {
+    ProductionMppiExecutionPublication hold = publishPositionHold(
+        cycle, stop->rest_position, reason, ExecutionHoldIntent3D::kExplicitTransfer);
+    if (hold.published) {
+      return hold;
+    }
+  }
   bool retention_physically_rejected{false};
   // At the mission goal the route is finished: re-leasing its finite path
   // would keep extending the lease the goal hold has to outlive.
@@ -286,6 +307,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::residentOwnerContinuation
   } else if (const DirectTrackingFiniteExecution3D* const direct =
                  plan->directTrackingExecution()) {
     resident_horizon = direct->horizon.get();
+  } else if (const StopExecution3D* const stop = plan->stopExecution()) {
+    resident_horizon = stop->horizon.get();
   }
   if (resident_horizon == nullptr || resident_horizon->controls.empty()) {
     return unpublished_revocation;
@@ -556,9 +579,10 @@ bool ProductionMppiNode::handleRequestedExecutionRevocation(const std::int64_t n
     const std::shared_ptr<const ExecutionPlan3D> snapshot =
         authority != nullptr ? authority->plan() : nullptr;
     const bool snapshot_has_executable_authority =
-        snapshot != nullptr && (snapshot->finiteExecution() != nullptr ||
-                                snapshot->directTrackingExecution() != nullptr ||
-                                snapshot->stationaryHold() != nullptr);
+        snapshot != nullptr &&
+        (snapshot->finiteExecution() != nullptr ||
+         snapshot->directTrackingExecution() != nullptr ||
+         snapshot->stopExecution() != nullptr || snapshot->stationaryHold() != nullptr);
     revocation_already_satisfied = !snapshot_has_executable_authority &&
                                    authority != nullptr && !authority->owner().valid;
   }
@@ -575,10 +599,11 @@ void ProductionMppiNode::publishFailClosedExecutionRevocation(
   }
   const std::shared_ptr<const ExecutionPlan3D> snapshot = execution_supervisor_.plan();
   const bool authority_present =
-      snapshot != nullptr && (snapshot->phase() == ExecutionRoutePhase3D::kRevoked ||
-                              snapshot->finiteExecution() != nullptr ||
-                              snapshot->directTrackingExecution() != nullptr ||
-                              snapshot->stationaryHold() != nullptr);
+      snapshot != nullptr &&
+      (snapshot->phase() == ExecutionRoutePhase3D::kRevoked ||
+       snapshot->finiteExecution() != nullptr ||
+       snapshot->directTrackingExecution() != nullptr ||
+       snapshot->stopExecution() != nullptr || snapshot->stationaryHold() != nullptr);
   if (authority_present) {
     static_cast<void>(publishExecutionRevocation(reason, now_ns));
   }

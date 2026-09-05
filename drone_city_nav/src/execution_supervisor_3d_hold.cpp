@@ -47,6 +47,13 @@ residentHoldSourceEvidence(const ExecutionPlan3D& plan) {
         .validation_policy = direct->validation_policy,
     };
   }
+  if (const StopExecution3D* const stop = plan.stopExecution()) {
+    return {
+        .observed_raw_world = stop->observed_raw_world,
+        .static_world = stop->static_world,
+        .validation_policy = stop->validation_policy,
+    };
+  }
   return {};
 }
 
