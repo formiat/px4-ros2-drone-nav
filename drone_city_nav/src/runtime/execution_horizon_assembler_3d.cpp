@@ -166,6 +166,11 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
     } else if (const DirectTrackingFiniteExecution3D* const direct =
                    execution_certification_snapshot->directTrackingExecution()) {
       previous_trajectory_revision = direct->trajectory_revision;
+    } else if (const StopExecution3D* const stop =
+                   execution_certification_snapshot->stopExecution()) {
+      // A route certified from a stopping vehicle takes the vehicle back from
+      // the stop, so its trajectory succeeds the stop's.
+      previous_trajectory_revision = stop->trajectory_revision;
     }
     if (route_certification_target == nullptr ||
         previous_trajectory_revision == std::numeric_limits<std::uint64_t>::max()) {
@@ -260,6 +265,8 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
       previous_trajectory_revision = expected_direct->trajectory_revision;
     } else if (expected_finite != nullptr) {
       previous_trajectory_revision = expected_finite->trajectory_revision;
+    } else if (const StopExecution3D* const expected_stop = expected->stopExecution()) {
+      previous_trajectory_revision = expected_stop->trajectory_revision;
     }
     if (previous_trajectory_revision == std::numeric_limits<std::uint64_t>::max()) {
       candidate.status = HorizonCandidateStatus3D::kCertificationRejected;

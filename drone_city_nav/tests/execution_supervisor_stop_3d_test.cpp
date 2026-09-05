@@ -312,6 +312,100 @@ TEST(ExecutionSupervisorStop3DTest, AStopFlownToRestBecomesAStationaryHold) {
   EXPECT_NEAR(hold.position.y, stop->rest_position.y, 1.0e-6);
 }
 
+// The vehicle observed at rest at `position`, after the stop's lease ended.
+[[nodiscard]] std::shared_ptr<const VersionedExecutionInput3D>
+restingInputAt(const VersionedExecutionInput3D& previous, const Point3& position,
+               const std::int64_t effective_stamp_ns) {
+  MotionState3D state = previous.state();
+  state.x = static_cast<float>(position.x);
+  state.y = static_cast<float>(position.y);
+  state.z = static_cast<float>(position.z);
+  state.vx = 0.0F;
+  state.vy = 0.0F;
+  state.vz = 0.0F;
+  state.yaw_rate = 0.0F;
+  constexpr ExecutionStateFieldProvenance3D kSample{
+      ExecutionStateFieldProvenance3D::kSourceSample};
+  return VersionedExecutionInput3D::capture(ExecutionInputCapture3D{
+      .capture_sequence = previous.captureSequence() + 2U,
+      .pose_revision = previous.poseRevision() + 2U,
+      .pose_source_timestamp_us = previous.poseSourceTimestampUs() + 2U,
+      .pose_receive_stamp_ns = effective_stamp_ns - 30'000LL,
+      .effective_stamp_ns = effective_stamp_ns,
+      .state = state,
+      .full_state_authoritative = true,
+      .state_provenance =
+          ExecutionStateProvenance3D{
+              .x = kSample,
+              .y = kSample,
+              .z = kSample,
+              .vx = kSample,
+              .vy = kSample,
+              .vz = kSample,
+              .yaw = kSample,
+              .yaw_rate = kSample,
+          },
+      .previous_control = {},
+      .previous_control_source = previous.previousControlSource(),
+      .previous_control_source_producer_instance_id =
+          previous.previousControlSourceProducerInstanceId(),
+      .previous_control_source_sequence = previous.previousControlSourceSequence() + 2U,
+      .previous_control_source_stamp_ns = effective_stamp_ns - 20'000LL,
+      .previous_control_receive_stamp_ns = effective_stamp_ns - 10'000LL,
+  });
+}
+
+TEST(ExecutionSupervisorStop3DTest, TheHoldPinsWhereTheVehicleActuallyStopped) {
+  SnapshotFixture3D fixture;
+  ExecutionSupervisor3D supervisor;
+  const std::shared_ptr<const ExecutionPlan3D> active =
+      installRouteOwner(supervisor, fixture);
+  ASSERT_NE(active, nullptr);
+  ASSERT_NE(active->finiteExecution(), nullptr);
+  const std::shared_ptr<const VersionedExecutionInput3D> input =
+      movingInput(*active->finiteExecution()->execution_input, 4.0F);
+  const std::shared_ptr<const ExecutionPlan3D> stopping = commitStop(
+      supervisor, supervisor.prepareStop(stopRequest(fixture, active, input)), input);
+  ASSERT_NE(stopping, nullptr);
+  const StopExecution3D* const stop = stopping->stopExecution();
+  ASSERT_NE(stop, nullptr);
+
+  // Braking left the vehicle well past the rest point the stop predicted: the
+  // stop's rest is a model prediction, and the hold is pinned where the
+  // vehicle measurably rests once the stop's lease commands nothing else.
+  const Point3 actual_rest{stop->rest_position.x + 0.6, stop->rest_position.y,
+                           stop->rest_position.z};
+  const StationaryExecutionHoldCertification3D evidence =
+      SnapshotFixture3D::holdCertification(*stopping);
+  const std::shared_ptr<const VersionedExecutionInput3D> resting =
+      restingInputAt(*stop->execution_input, actual_rest, stop->valid_until_ns + 1);
+  ASSERT_NE(resting, nullptr);
+  const ExecutionHoldPreparation3D hold = supervisor.prepareHold(ExecutionHoldRequest3D{
+      .intent = ExecutionHoldIntent3D::kExplicitTransfer,
+      .requested_position = actual_rest,
+      .cycle_source_plan = stopping,
+      .execution_input = resting,
+      .latest_lidar_evidence = evidence.latest_lidar_evidence,
+      .current_lidar_evidence = evidence.latest_lidar_evidence,
+      .current_observed_raw_world = evidence.observed_raw_world,
+      .stationary_capture_observed_raw_world = nullptr,
+      .stationary_capture_static_world = nullptr,
+      .selected_validation_policy = nullptr,
+      .stationary_capture_validation_policy = evidence.validation_policy,
+      .validation_now_ns = resting->effectiveStampNs(),
+  });
+
+  ASSERT_EQ(hold.status, ExecutionHoldPreparationStatus3D::kPrepared)
+      << executionHoldPreparationStatus3DName(hold.status) << " "
+      << executionRouteTransitionStatus3DName(hold.transition_status) << " "
+      << executionRouteTransitionDetail3DName(hold.transition_detail);
+  ASSERT_NE(hold.transition, nullptr);
+  ASSERT_NE(hold.transition->next, nullptr);
+  ASSERT_NE(hold.transition->next->stationaryHold(), nullptr);
+  EXPECT_NEAR(hold.transition->next->stationaryHold()->position.x, actual_rest.x,
+              1.0e-6);
+}
+
 TEST(ExecutionSupervisorStop3DTest, ACertifiedSuccessorIsPublishedPendingAgainstAStop) {
   SnapshotFixture3D fixture;
   ExecutionSupervisor3D supervisor;

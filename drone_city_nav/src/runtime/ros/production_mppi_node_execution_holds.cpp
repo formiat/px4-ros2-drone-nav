@@ -195,13 +195,15 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishNoExecutablePathHo
   // A stop that has brought the vehicle to rest hands it to the stationary
   // hold. The hold is what owns a resting vehicle and keeps its lease alive,
   // and a certified route hands off from it exactly as from any other hold.
-  if (const StopExecution3D* const stop =
-          cycle.route.execution.source_snapshot != nullptr
-              ? cycle.route.execution.source_snapshot->stopExecution()
-              : nullptr;
-      stop != nullptr && vehicleAtRest(cycle.evidence.exact_initial_state)) {
-    ProductionMppiExecutionPublication hold = publishPositionHold(
-        cycle, stop->rest_position, reason, ExecutionHoldIntent3D::kExplicitTransfer);
+  // It pins the position the vehicle actually rests at: the stop's rest point
+  // is a prediction, and braking leaves the vehicle near it, not on it.
+  if (cycle.route.execution.source_snapshot != nullptr &&
+      cycle.route.execution.source_snapshot->stopExecution() != nullptr &&
+      vehicleAtRest(cycle.evidence.exact_initial_state)) {
+    const mppi::State& rest = cycle.evidence.exact_initial_state;
+    ProductionMppiExecutionPublication hold =
+        publishPositionHold(cycle, Point3{rest.x, rest.y, rest.z}, reason,
+                            ExecutionHoldIntent3D::kExplicitTransfer);
     if (hold.published) {
       return hold;
     }

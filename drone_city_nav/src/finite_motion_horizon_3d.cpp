@@ -114,41 +114,75 @@ void appendControl(FiniteMotionHorizon3D& horizon, const MotionControl3D& contro
           !(yaw_sum > std::numeric_limits<double>::epsilon())) {
         continue;
       }
-      const double translation_scale =
+      double translation_scale =
           -std::pow(static_cast<double>(drag), static_cast<double>(active_steps)) /
           (static_cast<double>(dt_s) * weighted_sum);
       const double yaw_scale = -1.0 / (static_cast<double>(dt_s) * yaw_sum);
-      const MotionControl3D amplitude{
-          .ax = static_cast<float>(translation_scale * initial.vx),
-          .ay = static_cast<float>(translation_scale * initial.vy),
-          .az = static_cast<float>(translation_scale * initial.vz),
-          .yaw_accel = static_cast<float>(yaw_scale * initial.yaw_rate),
-      };
-
-      std::vector<MotionControl3D> controls;
-      controls.reserve(active_steps + 1U);
-      MotionControl3D previous{};
-      bool valid = true;
-      for (std::size_t step = 0U; step < active_steps; ++step) {
-        const float shape = arrivalShape(step, active_steps, ramp_steps);
-        const MotionControl3D control{
-            .ax = amplitude.ax * shape,
-            .ay = amplitude.ay * shape,
-            .az = amplitude.az * shape,
-            .yaw_accel = amplitude.yaw_accel * shape,
+      // The closed form above assumes the drag model alone. The integrator
+      // also sheds an inherited excess above a speed cap at the maximum
+      // deceleration whatever the control commands, so a profile that ramps
+      // in gently from above the cap overshoots rest by the excess shed while
+      // its command was still below that rate. The residual of the simulated
+      // profile is linear in the amplitude once the shedding pattern settles,
+      // so a few corrections converge on the amplitude that actually rests.
+      constexpr std::size_t kAmplitudeCorrections{6U};
+      for (std::size_t correction = 0U; correction <= kAmplitudeCorrections;
+           ++correction) {
+        const MotionControl3D amplitude{
+            .ax = static_cast<float>(translation_scale * initial.vx),
+            .ay = static_cast<float>(translation_scale * initial.vy),
+            .az = static_cast<float>(translation_scale * initial.vz),
+            .yaw_accel = static_cast<float>(yaw_scale * initial.yaw_rate),
         };
-        if (!controlWithinLimits(control, previous, dynamics)) {
-          valid = false;
+
+        std::vector<MotionControl3D> controls;
+        controls.reserve(active_steps + 1U);
+        MotionControl3D previous{};
+        MotionState3D simulated = initial;
+        bool valid = true;
+        for (std::size_t step = 0U; step < active_steps; ++step) {
+          const float shape = arrivalShape(step, active_steps, ramp_steps);
+          const MotionControl3D control{
+              .ax = amplitude.ax * shape,
+              .ay = amplitude.ay * shape,
+              .az = amplitude.az * shape,
+              .yaw_accel = amplitude.yaw_accel * shape,
+          };
+          if (!controlWithinLimits(control, previous, dynamics)) {
+            valid = false;
+            break;
+          }
+          controls.push_back(control);
+          simulated = integrateMotionState3D(simulated, control, dynamics);
+          previous = control;
+        }
+        if (!valid || !controlWithinLimits(MotionControl3D{}, previous, dynamics)) {
           break;
         }
-        controls.push_back(control);
-        previous = control;
+        const double residual_speed_mps =
+            std::hypot(std::hypot(static_cast<double>(simulated.vx),
+                                  static_cast<double>(simulated.vy)),
+                       static_cast<double>(simulated.vz));
+        if (residual_speed_mps <= static_cast<double>(velocity_tolerance_mps) &&
+            std::abs(static_cast<double>(simulated.yaw_rate)) <=
+                static_cast<double>(velocity_tolerance_mps)) {
+          controls.push_back(MotionControl3D{});
+          return controls;
+        }
+        if (!translation_required || !(initial_speed > 0.0F)) {
+          break;
+        }
+        // Shedding keeps the velocity collinear with the initial one, so the
+        // residual along it is the whole residual.
+        const double residual_along_mps =
+            (static_cast<double>(simulated.vx) * static_cast<double>(initial.vx) +
+             static_cast<double>(simulated.vy) * static_cast<double>(initial.vy) +
+             static_cast<double>(simulated.vz) * static_cast<double>(initial.vz)) /
+            static_cast<double>(initial_speed);
+        translation_scale -=
+            residual_along_mps / (static_cast<double>(dt_s) * weighted_sum *
+                                  static_cast<double>(initial_speed));
       }
-      if (!valid || !controlWithinLimits(MotionControl3D{}, previous, dynamics)) {
-        continue;
-      }
-      controls.push_back(MotionControl3D{});
-      return controls;
     }
   }
   return std::nullopt;

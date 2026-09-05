@@ -329,9 +329,16 @@ execution_route_snapshot_3d_internal::applyTransferToExecutionHoldCommand3D(
       return {stop_execution->valid_from_ns, stop_execution->valid_until_ns,
               stop_execution->control_interval_ns, stop_execution->trajectory_revision};
     }();
+    // A route or a tracking horizon is handed over at the rest it commanded.
+    // A stop's rest point is a prediction from the vehicle's dynamics, and
+    // the vehicle rests wherever braking actually left it; the hold pins that
+    // measured position, which the certification has already been checked
+    // against, once the stop's remaining lease commands nothing but rest.
     const MotionState3D& terminal = source_horizon->states.back();
-    if (distance3D(certification.position, Point3{terminal.x, terminal.y, terminal.z}) >
-            kStationaryExecutionHoldPositionToleranceM ||
+    if ((stop_execution == nullptr &&
+         distance3D(certification.position,
+                    Point3{terminal.x, terminal.y, terminal.z}) >
+             kStationaryExecutionHoldPositionToleranceM) ||
         !finiteExecutionLeaseRestsAt(
             *source_horizon, lease.valid_from_ns, lease.valid_until_ns,
             lease.control_interval_ns,
