@@ -1,5 +1,7 @@
 #include "drone_city_nav/execution_horizon_contract_ros.hpp"
 #include "drone_city_nav/execution_stop_3d.hpp"
+#include "drone_city_nav/proprioceptive_contact_seed_3d.hpp"
+#include "drone_city_nav/world_snapshot_3d.hpp"
 
 #include <cinttypes>
 #include <cmath>
@@ -21,18 +23,50 @@ ProductionMppiNode::publishStopExecution(const ProductionMppiExecutionCycle& cyc
     return publication;
   }
   const auto evidence_lock = evidence_boundary_.evidenceWithLatestLidar();
+  // A route-directed cycle derives no validation world of its own: the route
+  // owns one, and a stop is exactly the answer to a route whose world can no
+  // longer be trusted. Derive the newest observed evidence here, the way a
+  // hold derives it.
+  std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_world =
+      cycle.evidence.direct_observed_world;
+  std::shared_ptr<const VersionedStaticWorld3D> static_world =
+      cycle.evidence.direct_static_world;
+  const WorldSnapshot3D& world = cycle.controller.worldRef();
+  if (observed_raw_world == nullptr && static_world == nullptr) {
+    if (config_.world.use_static_map && world.static_occupancy != nullptr) {
+      static_world = VersionedStaticWorld3D::captureOwned(
+          navigationWorldCertificate3D(world), world.static_occupancy);
+    } else if (const RawWorldIngressSnapshot3D world_input =
+                   raw_world_ingress_->snapshot();
+               world_input.latest_raw_world != nullptr) {
+      const Point3 body_position{cycle.evidence.exact_initial_state.x,
+                                 cycle.evidence.exact_initial_state.y,
+                                 cycle.evidence.exact_initial_state.z};
+      observed_raw_world = world_input.latest_raw_world->deriveRouteEvidence(
+          proprioceptiveContactSeed3D(
+              body_position, cycle.evidence.exact_previous_control,
+              config_.world.physical_footprint,
+              std::addressof(world_input.latest_raw_world->occupancy()))
+              .value_or(proprioceptiveContactSeed3D(
+                  body_position, cycle.evidence.exact_previous_control,
+                  config_.world.physical_footprint, 0.0)),
+          world.launch_support_contact);
+    }
+  }
   const ExecutionStopPreparation3D prepared =
       execution_supervisor_.prepareStop(ExecutionStopRequest3D{
           .cycle_source_plan = cycle.route.execution.source_snapshot,
           .execution_input = cycle.evidence.execution_input,
           .latest_lidar_evidence = cycle.evidence.latest_lidar_evidence,
-          .observed_raw_world = cycle.evidence.direct_observed_world,
-          .static_world = cycle.evidence.direct_static_world,
-          .validation_policy = cycle.evidence.selected_policy,
+          .observed_raw_world = observed_raw_world,
+          .static_world = static_world,
+          .validation_policy = cycle.evidence.selected_policy != nullptr
+                                   ? cycle.evidence.selected_policy
+                                   : config_.execution.validation_policy,
           .exact_initial_state = cycle.evidence.exact_initial_state,
           .exact_previous_control = cycle.evidence.exact_previous_control,
           .finite_horizon_config = config_.execution.finite_horizon,
-          .maximum_control_count = cycle.controller.resultRef().controls.size(),
+          .minimum_control_count = cycle.controller.resultRef().controls.size(),
           .now_ns = cycle.controller.now_ns,
       });
   const StopExecution3D* const stop = prepared.stopExecution();

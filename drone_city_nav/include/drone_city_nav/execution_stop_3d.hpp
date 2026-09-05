@@ -40,7 +40,10 @@ struct ExecutionStopRequest3D {
   MotionState3D exact_initial_state{};
   MotionControl3D exact_previous_control{};
   FiniteMotionHorizonConfig3D finite_horizon_config{};
-  std::size_t maximum_control_count{0U};
+  // A floor on the trajectory length. The stop derives its own length from
+  // the state and the dynamics; this only keeps it at least as long as the
+  // control sequence the caller is replacing.
+  std::size_t minimum_control_count{0U};
   std::int64_t now_ns{0};
 };
 

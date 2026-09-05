@@ -4,6 +4,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -90,7 +91,8 @@ movingInput(const VersionedExecutionInput3D& previous, const float speed_mps) {
 [[nodiscard]] ExecutionStopRequest3D
 stopRequest(const SnapshotFixture3D& fixture,
             const std::shared_ptr<const ExecutionPlan3D>& source,
-            const std::shared_ptr<const VersionedExecutionInput3D>& input) {
+            const std::shared_ptr<const VersionedExecutionInput3D>& input,
+            const std::size_t minimum_control_count = 100U) {
   const FiniteExecutionState3D* const active =
       source != nullptr ? source->finiteExecution() : nullptr;
   const StopExecution3D* const resident =
@@ -111,7 +113,7 @@ stopRequest(const SnapshotFixture3D& fixture,
       .exact_initial_state = input->state(),
       .exact_previous_control = input->previousControl(),
       .finite_horizon_config = {},
-      .maximum_control_count = 100U,
+      .minimum_control_count = minimum_control_count,
       .now_ns = input->effectiveStampNs(),
   };
 }
@@ -168,6 +170,32 @@ TEST(ExecutionSupervisorStop3DTest, AMovingVehicleStopsAlongAValidatedTrajectory
   ASSERT_NE(stop->horizon, nullptr);
   EXPECT_TRUE(finiteMotionHorizonHasTerminalRestState3D(*stop->horizon));
   EXPECT_GT(stop->trajectory_revision, active->finiteExecution()->trajectory_revision);
+}
+
+TEST(ExecutionSupervisorStop3DTest, TheStopOutlivesATruncatedControlSequence) {
+  SnapshotFixture3D fixture;
+  ExecutionSupervisor3D supervisor;
+  const std::shared_ptr<const ExecutionPlan3D> active =
+      installRouteOwner(supervisor, fixture);
+  ASSERT_NE(active, nullptr);
+  ASSERT_NE(active->finiteExecution(), nullptr);
+  const std::shared_ptr<const VersionedExecutionInput3D> input =
+      movingInput(*active->finiteExecution()->execution_input, 4.0F);
+
+  // The controller sequence a stop replaces is often the truncated remainder
+  // of a route that just stopped being executable. The stop follows the
+  // physics of stopping instead, so it is as long as bringing this vehicle to
+  // rest takes.
+  const ExecutionStopPreparation3D prepared =
+      supervisor.prepareStop(stopRequest(fixture, active, input, 8U));
+
+  ASSERT_EQ(prepared.status, ExecutionStopStatus3D::kPrepared)
+      << executionStopStatus3DName(prepared.status);
+  const StopExecution3D* const stop = prepared.stopExecution();
+  ASSERT_NE(stop, nullptr);
+  ASSERT_NE(stop->horizon, nullptr);
+  EXPECT_GT(stop->horizon->controls.size(), 8U);
+  EXPECT_TRUE(finiteMotionHorizonHasTerminalRestState3D(*stop->horizon));
 }
 
 TEST(ExecutionSupervisorStop3DTest, TheCommittedStopOwnsTheVehicleWhileItIsExecutable) {

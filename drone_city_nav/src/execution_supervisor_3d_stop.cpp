@@ -99,6 +99,65 @@ residentStopStillExecutable(const StopExecution3D& stop,
       .accepted();
 }
 
+// The longest stop the supervisor will ask for. At the absolute speed limit
+// and the guaranteed vertical deceleration a stop takes about six seconds,
+// so this bounds the arrival search well above every state the vehicle can
+// reach while leaving the trajectory finite.
+constexpr std::size_t kMaximumStopControlCount{200U};
+
+// A stop is a physics artifact: its length follows from the state the
+// vehicle is in and the deceleration it is guaranteed, never from the
+// number of controls the controller happened to produce. A route whose
+// horizon was truncated to a handful of controls is exactly the situation
+// that asks for a stop, and braking inside that many controls is
+// impossible at cruise speed.
+[[nodiscard]] std::size_t
+stopControlCountEstimate(const MotionState3D& state, const MotionControl3D& previous,
+                         const MotionDynamicsConfig3D& dynamics,
+                         const FiniteMotionHorizonConfig3D& config) noexcept {
+  const double dt_s = static_cast<double>(dynamics.dt_s);
+  const double jerk_mps3 = static_cast<double>(dynamics.maximum_control_jerk_mps3);
+  const double horizontal_deceleration_mps2 =
+      std::min(static_cast<double>(dynamics.maximum_horizontal_acceleration_mps2),
+               config.stopping_capability.guaranteed_horizontal_deceleration_mps2);
+  const double vertical_deceleration_mps2 =
+      std::min(static_cast<double>(dynamics.maximum_vertical_acceleration_mps2),
+               config.stopping_capability.guaranteed_vertical_deceleration_mps2);
+  if (!(dt_s > 0.0) || !(jerk_mps3 > 0.0) || !(horizontal_deceleration_mps2 > 0.0) ||
+      !(vertical_deceleration_mps2 > 0.0)) {
+    return kMaximumStopControlCount;
+  }
+  const double release_s = std::max({std::abs(static_cast<double>(previous.ax)),
+                                     std::abs(static_cast<double>(previous.ay)),
+                                     std::abs(static_cast<double>(previous.az))}) /
+                           jerk_mps3;
+  const double translation_s =
+      std::max(
+          std::hypot(static_cast<double>(state.vx), static_cast<double>(state.vy)) /
+              horizontal_deceleration_mps2,
+          std::abs(static_cast<double>(state.vz)) / vertical_deceleration_mps2) +
+      2.0 * std::max(horizontal_deceleration_mps2, vertical_deceleration_mps2) /
+          jerk_mps3;
+  const double yaw_s =
+      dynamics.maximum_yaw_acceleration_radps2 > 0.0F
+          ? std::abs(static_cast<double>(state.yaw_rate)) /
+                static_cast<double>(dynamics.maximum_yaw_acceleration_radps2)
+          : 0.0;
+  // The arrival profile is shaped, not a bang profile: it spends longer than
+  // the constant-deceleration bound, and the terminal rest state needs a
+  // control step of its own.
+  constexpr double kShapedProfileMargin{1.5};
+  constexpr double kTerminalControls{8.0};
+  const double controls =
+      std::ceil(kShapedProfileMargin * (release_s + std::max(translation_s, yaw_s)) /
+                dt_s) +
+      kTerminalControls;
+  return !std::isfinite(controls) ||
+                 controls >= static_cast<double>(kMaximumStopControlCount)
+             ? kMaximumStopControlCount
+             : static_cast<std::size_t>(controls);
+}
+
 [[nodiscard]] std::uint64_t
 nextStopTrajectoryRevision(const ExecutionPlan3D& plan) noexcept {
   std::uint64_t resident{0U};
@@ -194,7 +253,7 @@ ExecutionSupervisor3D::prepareStop(ExecutionStopRequest3D request) const {
   if (owned_request.execution_input == nullptr ||
       !owned_request.execution_input->valid() ||
       !owned_request.execution_input->nominalStateAuthoritative() ||
-      owned_request.now_ns <= 0 || owned_request.maximum_control_count == 0U) {
+      owned_request.now_ns <= 0 || owned_request.minimum_control_count == 0U) {
     result.status = ExecutionStopStatus3D::kExecutionInputInvalid;
     return result;
   }
@@ -224,10 +283,23 @@ ExecutionSupervisor3D::prepareStop(ExecutionStopRequest3D request) const {
     result.status = ExecutionStopStatus3D::kRevisionExhausted;
     return result;
   }
-  const std::optional<FiniteMotionHorizon3D> horizon = buildFiniteBrakingHorizon3D(
-      owned_request.exact_initial_state, owned_request.maximum_control_count,
-      owned_request.validation_policy->dynamics(), owned_request.exact_previous_control,
-      owned_request.finite_horizon_config);
+  const MotionDynamicsConfig3D& dynamics = owned_request.validation_policy->dynamics();
+  const std::size_t requested_control_count =
+      std::max(owned_request.minimum_control_count,
+               stopControlCountEstimate(owned_request.exact_initial_state,
+                                        owned_request.exact_previous_control, dynamics,
+                                        owned_request.finite_horizon_config));
+  std::optional<FiniteMotionHorizon3D> horizon = buildFiniteBrakingHorizon3D(
+      owned_request.exact_initial_state, requested_control_count, dynamics,
+      owned_request.exact_previous_control, owned_request.finite_horizon_config);
+  if (!horizon.has_value() && requested_control_count < kMaximumStopControlCount) {
+    // The estimate bounds a shaped profile from below. A state it underrates
+    // still deserves the longest stop the supervisor will ask for before the
+    // vehicle is left without one.
+    horizon = buildFiniteBrakingHorizon3D(
+        owned_request.exact_initial_state, kMaximumStopControlCount, dynamics,
+        owned_request.exact_previous_control, owned_request.finite_horizon_config);
+  }
   if (!horizon.has_value() || horizon->states.empty()) {
     result.status = ExecutionStopStatus3D::kHorizonUnavailable;
     return result;
