@@ -171,8 +171,15 @@ MissionWaypointUpdate ProductionMppiNode::updateMissionWaypoint(
         vehicleStatusAuthoritativeForExecution(
             vehicle_status_, true, commit_now_ns,
             config_.execution.maximum_vehicle_status_age_ms);
-    const bool authority_current =
-        execution_supervisor_.authority() == execution_authority;
+    // The offboard's control feedback installs a new authority revision on
+    // every message, for the same plan, lease and input. That successor is
+    // the same authority for the capture: only a plan or lease change makes
+    // the tick's witness stale.
+    const std::shared_ptr<const CommittedExecutionAuthority3D> current_authority =
+        execution_supervisor_.authority();
+    const bool authority_current = current_authority == execution_authority ||
+                                   isControlEvidenceOnlyAuthoritySuccessor3D(
+                                       execution_authority, current_authority);
     const bool owner_current = authority_current && execution_horizon_owner.valid &&
                                execution_horizon_owner.valid_from_ns > 0 &&
                                execution_horizon_owner.valid_until_ns >
