@@ -5,36 +5,20 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <limits>
+#include <optional>
 #include <stdexcept>
+#include <vector>
 
 namespace drone_city_nav {
 namespace {
-
-[[nodiscard]] float moveTowardZero(const float value,
-                                   const float maximum_delta) noexcept {
-  if (value > maximum_delta) {
-    return value - maximum_delta;
-  }
-  if (value < -maximum_delta) {
-    return value + maximum_delta;
-  }
-  return 0.0F;
-}
 
 [[nodiscard]] bool translationalControlIsZero(const MotionControl3D& control) noexcept {
   constexpr float kControlTolerance{1.0e-6F};
   return std::abs(control.ax) <= kControlTolerance &&
          std::abs(control.ay) <= kControlTolerance &&
          std::abs(control.az) <= kControlTolerance;
-}
-
-[[nodiscard]] float arrivalShape(const std::size_t step, const std::size_t active_steps,
-                                 const std::size_t ramp_steps) noexcept {
-  const float rising = static_cast<float>(step + 1U) / static_cast<float>(ramp_steps);
-  const float falling =
-      static_cast<float>(active_steps - step) / static_cast<float>(ramp_steps);
-  return std::min({1.0F, rising, falling});
 }
 
 [[nodiscard]] bool
@@ -60,129 +44,242 @@ void appendControl(FiniteMotionHorizon3D& horizon, const MotionControl3D& contro
       integrateMotionState3D(horizon.states.back(), control, dynamics));
 }
 
-[[nodiscard]] bool appendControlRelease(FiniteMotionHorizon3D& horizon,
-                                        MotionControl3D& previous,
-                                        const MotionDynamicsConfig3D& dynamics,
-                                        const std::size_t maximum_steps) {
-  const float maximum_delta = dynamics.maximum_control_jerk_mps3 * dynamics.dt_s;
-  while (!translationalControlIsZero(previous)) {
-    if (horizon.arrival_control_count >= maximum_steps) {
-      return false;
-    }
-    const MotionControl3D control{
-        .ax = moveTowardZero(previous.ax, maximum_delta),
-        .ay = moveTowardZero(previous.ay, maximum_delta),
-        .az = moveTowardZero(previous.az, maximum_delta),
-    };
-    if (!controlWithinLimits(control, previous, dynamics)) {
-      return false;
-    }
-    appendControl(horizon, control, dynamics);
-    previous = control;
-    ++horizon.arrival_control_count;
+// One jerk-limited step from `from` toward `target`: the translational
+// control moves along the straight segment between them by at most
+// `translational_delta`, so every component changes by no more than the jerk
+// limit allows and a control between two admissible ones stays admissible.
+// The yaw channel has no jerk limit of its own and moves by at most
+// `yaw_delta`.
+[[nodiscard]] MotionControl3D stepToward(const MotionControl3D& from,
+                                         const MotionControl3D& target,
+                                         const float translational_delta,
+                                         const float yaw_delta) noexcept {
+  MotionControl3D next = target;
+  const float dx = target.ax - from.ax;
+  const float dy = target.ay - from.ay;
+  const float dz = target.az - from.az;
+  const float distance = std::hypot(std::hypot(dx, dy), dz);
+  if (distance > translational_delta) {
+    const float scale = translational_delta / distance;
+    next.ax = from.ax + dx * scale;
+    next.ay = from.ay + dy * scale;
+    next.az = from.az + dz * scale;
   }
-  previous.yaw_accel = 0.0F;
-  return true;
+  const float dyaw = target.yaw_accel - from.yaw_accel;
+  if (std::abs(dyaw) > yaw_delta) {
+    next.yaw_accel = from.yaw_accel + std::copysign(yaw_delta, dyaw);
+  }
+  return next;
 }
 
-[[nodiscard]] std::optional<std::vector<MotionControl3D>> buildArrivalControls(
-    const MotionState3D& initial, const MotionDynamicsConfig3D& dynamics,
-    const std::size_t maximum_steps, const float velocity_tolerance_mps) {
-  const float dt_s = dynamics.dt_s;
-  const float drag = std::max(0.0F, 1.0F - dynamics.linear_drag_1ps * dt_s);
-  const float initial_speed =
-      std::hypot(std::hypot(initial.vx, initial.vy), initial.vz);
-  const bool translation_required = initial_speed > velocity_tolerance_mps;
-  const bool yaw_required = std::abs(initial.yaw_rate) > velocity_tolerance_mps;
-  if (!translation_required && !yaw_required) {
-    return std::vector<MotionControl3D>{MotionControl3D{}};
+[[nodiscard]] bool controlsEqual(const MotionControl3D& left,
+                                 const MotionControl3D& right) noexcept {
+  return left.ax == right.ax && left.ay == right.ay && left.az == right.az &&
+         left.yaw_accel == right.yaw_accel;
+}
+
+struct ArrivalProfileSimulation {
+  std::vector<MotionControl3D> controls;
+  MotionState3D terminal;
+  // Full-amplitude step equivalents each channel commands over the profile:
+  // the impulse the profile delivers is amplitude * dt * weight.
+  double translational_weight{0.0};
+  double yaw_weight{0.0};
+};
+
+// The arrival profile: a jerk-limited ramp from the control being applied now
+// to the rest amplitude, a hold at that amplitude, and a jerk-limited ramp to
+// zero. Starting from the applied control is what lets a profile rebuilt every
+// tick carry the deceleration already reached forward; a profile that ramped
+// in from zero every time would never get past the start of its own ramp
+// under receding-horizon replanning.
+[[nodiscard]] std::optional<ArrivalProfileSimulation>
+simulateArrivalProfile(const MotionState3D& initial, const MotionControl3D& previous,
+                       const MotionControl3D& amplitude, const std::size_t hold_steps,
+                       const MotionDynamicsConfig3D& dynamics,
+                       const std::size_t maximum_steps) {
+  const float translational_delta = dynamics.maximum_control_jerk_mps3 * dynamics.dt_s;
+  const float yaw_delta = std::max(dynamics.maximum_yaw_acceleration_radps2,
+                                   std::numeric_limits<float>::min());
+  ArrivalProfileSimulation simulation;
+  MotionControl3D control = previous;
+  const auto append = [&](const MotionControl3D& next) {
+    if (simulation.controls.size() >= maximum_steps) {
+      return false;
+    }
+    simulation.controls.push_back(next);
+    control = next;
+    return true;
+  };
+  while (!controlsEqual(control, amplitude)) {
+    if (!append(stepToward(control, amplitude, translational_delta, yaw_delta))) {
+      return std::nullopt;
+    }
+  }
+  for (std::size_t step = 0U; step < hold_steps; ++step) {
+    if (!append(amplitude)) {
+      return std::nullopt;
+    }
+  }
+  const MotionControl3D rest{};
+  while (!controlsEqual(control, rest)) {
+    if (!append(stepToward(control, rest, translational_delta, yaw_delta))) {
+      return std::nullopt;
+    }
+  }
+  if (simulation.controls.empty() && !append(rest)) {
+    return std::nullopt;
   }
 
-  for (std::size_t active_steps = 2U; active_steps + 1U <= maximum_steps;
-       ++active_steps) {
-    for (std::size_t ramp_steps = 1U; ramp_steps <= active_steps; ++ramp_steps) {
-      double weighted_sum = 0.0;
-      double yaw_sum = 0.0;
-      for (std::size_t step = 0U; step < active_steps; ++step) {
-        const double shape = arrivalShape(step, active_steps, ramp_steps);
-        weighted_sum += std::pow(static_cast<double>(drag),
-                                 static_cast<double>(active_steps - 1U - step)) *
-                        shape;
-        yaw_sum += shape;
-      }
-      if (!(weighted_sum > std::numeric_limits<double>::epsilon()) ||
-          !(yaw_sum > std::numeric_limits<double>::epsilon())) {
-        continue;
-      }
-      double translation_scale =
-          -std::pow(static_cast<double>(drag), static_cast<double>(active_steps)) /
-          (static_cast<double>(dt_s) * weighted_sum);
-      const double yaw_scale = -1.0 / (static_cast<double>(dt_s) * yaw_sum);
-      // The closed form above assumes the drag model alone. The integrator
-      // also sheds an inherited excess above a speed cap at the maximum
-      // deceleration whatever the control commands, so a profile that ramps
-      // in gently from above the cap overshoots rest by the excess shed while
-      // its command was still below that rate. The residual of the simulated
-      // profile is linear in the amplitude once the shedding pattern settles,
-      // so a few corrections converge on the amplitude that actually rests.
-      constexpr std::size_t kAmplitudeCorrections{6U};
-      for (std::size_t correction = 0U; correction <= kAmplitudeCorrections;
-           ++correction) {
-        const MotionControl3D amplitude{
-            .ax = static_cast<float>(translation_scale * initial.vx),
-            .ay = static_cast<float>(translation_scale * initial.vy),
-            .az = static_cast<float>(translation_scale * initial.vz),
-            .yaw_accel = static_cast<float>(yaw_scale * initial.yaw_rate),
-        };
+  const double amplitude_norm = std::hypot(
+      std::hypot(static_cast<double>(amplitude.ax), static_cast<double>(amplitude.ay)),
+      static_cast<double>(amplitude.az));
+  const double yaw_amplitude = std::abs(static_cast<double>(amplitude.yaw_accel));
+  simulation.terminal = initial;
+  for (const MotionControl3D& step : simulation.controls) {
+    simulation.terminal = integrateMotionState3D(simulation.terminal, step, dynamics);
+    if (amplitude_norm > 0.0) {
+      simulation.translational_weight +=
+          (static_cast<double>(step.ax) * static_cast<double>(amplitude.ax) +
+           static_cast<double>(step.ay) * static_cast<double>(amplitude.ay) +
+           static_cast<double>(step.az) * static_cast<double>(amplitude.az)) /
+          (amplitude_norm * amplitude_norm);
+    }
+    if (yaw_amplitude > 0.0) {
+      simulation.yaw_weight += static_cast<double>(step.yaw_accel) /
+                               static_cast<double>(amplitude.yaw_accel);
+    }
+  }
+  // A profile without a hold still delivers about one step of its amplitude
+  // over its ramps; the weight is what a correction divides by, so it is
+  // never allowed to vanish.
+  simulation.translational_weight = std::max(simulation.translational_weight, 1.0);
+  simulation.yaw_weight = std::max(simulation.yaw_weight, 1.0);
+  return simulation;
+}
 
-        std::vector<MotionControl3D> controls;
-        controls.reserve(active_steps + 1U);
-        MotionControl3D previous{};
-        MotionState3D simulated = initial;
-        bool valid = true;
-        for (std::size_t step = 0U; step < active_steps; ++step) {
-          const float shape = arrivalShape(step, active_steps, ramp_steps);
-          const MotionControl3D control{
-              .ax = amplitude.ax * shape,
-              .ay = amplitude.ay * shape,
-              .az = amplitude.az * shape,
-              .yaw_accel = amplitude.yaw_accel * shape,
-          };
-          if (!controlWithinLimits(control, previous, dynamics)) {
-            valid = false;
-            break;
-          }
-          controls.push_back(control);
-          simulated = integrateMotionState3D(simulated, control, dynamics);
-          previous = control;
-        }
-        if (!valid || !controlWithinLimits(MotionControl3D{}, previous, dynamics)) {
-          break;
-        }
-        const double residual_speed_mps =
-            std::hypot(std::hypot(static_cast<double>(simulated.vx),
-                                  static_cast<double>(simulated.vy)),
-                       static_cast<double>(simulated.vz));
-        if (residual_speed_mps <= static_cast<double>(velocity_tolerance_mps) &&
-            std::abs(static_cast<double>(simulated.yaw_rate)) <=
-                static_cast<double>(velocity_tolerance_mps)) {
-          controls.push_back(MotionControl3D{});
-          return controls;
-        }
-        if (!translation_required || !(initial_speed > 0.0F)) {
-          break;
-        }
-        // Shedding keeps the velocity collinear with the initial one, so the
-        // residual along it is the whole residual.
-        const double residual_along_mps =
-            (static_cast<double>(simulated.vx) * static_cast<double>(initial.vx) +
-             static_cast<double>(simulated.vy) * static_cast<double>(initial.vy) +
-             static_cast<double>(simulated.vz) * static_cast<double>(initial.vz)) /
-            static_cast<double>(initial_speed);
-        translation_scale -=
-            residual_along_mps / (static_cast<double>(dt_s) * weighted_sum *
-                                  static_cast<double>(initial_speed));
+[[nodiscard]] MotionControl3D
+clampArrivalAmplitude(MotionControl3D amplitude,
+                      const MotionDynamicsConfig3D& dynamics) {
+  const float horizontal = std::hypot(amplitude.ax, amplitude.ay);
+  if (horizontal > dynamics.maximum_horizontal_acceleration_mps2) {
+    const float scale = dynamics.maximum_horizontal_acceleration_mps2 / horizontal;
+    amplitude.ax *= scale;
+    amplitude.ay *= scale;
+  }
+  amplitude.az = std::clamp(amplitude.az, -dynamics.maximum_vertical_acceleration_mps2,
+                            dynamics.maximum_vertical_acceleration_mps2);
+  amplitude.yaw_accel =
+      std::clamp(amplitude.yaw_accel, -dynamics.maximum_yaw_acceleration_radps2,
+                 dynamics.maximum_yaw_acceleration_radps2);
+  return amplitude;
+}
+
+// The amplitude a bang profile with `hold_steps` of hold and symmetric ramps
+// at `ramp_delta` per step needs to deliver `impulse` over `dt_s` steps: the
+// starting guess the simulated corrections refine.
+[[nodiscard]] double bangAmplitudeGuess(const double impulse, const double hold_steps,
+                                        const double ramp_delta,
+                                        const double dt_s) noexcept {
+  if (!(impulse > 0.0) || !(dt_s > 0.0)) {
+    return 0.0;
+  }
+  if (!(ramp_delta > 0.0) || !std::isfinite(ramp_delta)) {
+    return impulse / (dt_s * std::max(hold_steps, 1.0));
+  }
+  const double steps = impulse / dt_s;
+  return 0.5 * ramp_delta *
+         (std::sqrt(hold_steps * hold_steps + 4.0 * steps / ramp_delta) - hold_steps);
+}
+
+[[nodiscard]] std::optional<std::vector<MotionControl3D>>
+buildArrivalControls(const MotionState3D& initial, const MotionControl3D& previous,
+                     const MotionDynamicsConfig3D& dynamics,
+                     const std::size_t maximum_steps,
+                     const float velocity_tolerance_mps) {
+  if (maximum_steps == 0U) {
+    return std::nullopt;
+  }
+  const double dt_s = static_cast<double>(dynamics.dt_s);
+  const double initial_speed = std::hypot(
+      std::hypot(static_cast<double>(initial.vx), static_cast<double>(initial.vy)),
+      static_cast<double>(initial.vz));
+  const double translational_delta =
+      static_cast<double>(dynamics.maximum_control_jerk_mps3) * dt_s;
+  const double yaw_delta =
+      static_cast<double>(dynamics.maximum_yaw_acceleration_radps2);
+  // The profile is simulated under the integrator the horizon is checked
+  // against, so the shedding above a speed cap and the drag are all in the
+  // residual; each correction moves the amplitude by the residual the profile
+  // still leaves, the shortest hold that rests within the tolerance wins.
+  constexpr std::size_t kAmplitudeCorrections{24U};
+  for (std::size_t hold_steps = 0U; hold_steps < maximum_steps; ++hold_steps) {
+    const double translational_guess = bangAmplitudeGuess(
+        initial_speed, static_cast<double>(hold_steps), translational_delta, dt_s);
+    const double yaw_guess =
+        bangAmplitudeGuess(std::abs(static_cast<double>(initial.yaw_rate)),
+                           static_cast<double>(hold_steps), yaw_delta, dt_s);
+    MotionControl3D amplitude = clampArrivalAmplitude(
+        MotionControl3D{
+            .ax = initial_speed > 0.0 ? static_cast<float>(-translational_guess *
+                                                           initial.vx / initial_speed)
+                                      : 0.0F,
+            .ay = initial_speed > 0.0 ? static_cast<float>(-translational_guess *
+                                                           initial.vy / initial_speed)
+                                      : 0.0F,
+            .az = initial_speed > 0.0 ? static_cast<float>(-translational_guess *
+                                                           initial.vz / initial_speed)
+                                      : 0.0F,
+            .yaw_accel = static_cast<float>(
+                -std::copysign(yaw_guess, static_cast<double>(initial.yaw_rate))),
+        },
+        dynamics);
+    bool fits{false};
+    for (std::size_t correction = 0U; correction < kAmplitudeCorrections;
+         ++correction) {
+      const std::optional<ArrivalProfileSimulation> simulation = simulateArrivalProfile(
+          initial, previous, amplitude, hold_steps, dynamics, maximum_steps);
+      if (!simulation.has_value()) {
+        break;
       }
+      fits = true;
+      const MotionState3D& terminal = simulation->terminal;
+      const double residual_speed =
+          std::hypot(std::hypot(static_cast<double>(terminal.vx),
+                                static_cast<double>(terminal.vy)),
+                     static_cast<double>(terminal.vz));
+      if (residual_speed <= static_cast<double>(velocity_tolerance_mps) &&
+          std::abs(static_cast<double>(terminal.yaw_rate)) <=
+              static_cast<double>(velocity_tolerance_mps)) {
+        return simulation->controls;
+      }
+      const double translational_gain = 1.0 / (dt_s * simulation->translational_weight);
+      const double yaw_gain = 1.0 / (dt_s * simulation->yaw_weight);
+      const MotionControl3D corrected = clampArrivalAmplitude(
+          MotionControl3D{
+              .ax = static_cast<float>(static_cast<double>(amplitude.ax) -
+                                       static_cast<double>(terminal.vx) *
+                                           translational_gain),
+              .ay = static_cast<float>(static_cast<double>(amplitude.ay) -
+                                       static_cast<double>(terminal.vy) *
+                                           translational_gain),
+              .az = static_cast<float>(static_cast<double>(amplitude.az) -
+                                       static_cast<double>(terminal.vz) *
+                                           translational_gain),
+              .yaw_accel =
+                  static_cast<float>(static_cast<double>(amplitude.yaw_accel) -
+                                     static_cast<double>(terminal.yaw_rate) * yaw_gain),
+          },
+          dynamics);
+      if (controlsEqual(corrected, amplitude)) {
+        // Saturated: this hold cannot deliver the impulse, a longer one must.
+        break;
+      }
+      amplitude = corrected;
+    }
+    if (!fits) {
+      // Even the ramps alone overrun the steps left; longer holds only add.
+      return std::nullopt;
     }
   }
   return std::nullopt;
@@ -233,11 +330,6 @@ buildFiniteMotionHorizon3D(const std::span<const MotionState3D> planned_states,
                : std::nullopt;
   }
 
-  if (!appendControlRelease(horizon, previous, dynamics, available_steps)) {
-    return std::nullopt;
-  }
-
-  const std::size_t remaining_steps = available_steps - horizon.arrival_control_count;
   MotionDynamicsConfig3D arrival_dynamics = dynamics;
   arrival_dynamics.maximum_horizontal_acceleration_mps2 =
       std::min(dynamics.maximum_horizontal_acceleration_mps2,
@@ -247,9 +339,12 @@ buildFiniteMotionHorizon3D(const std::span<const MotionState3D> planned_states,
       std::min(dynamics.maximum_vertical_acceleration_mps2,
                static_cast<float>(
                    config.stopping_capability.guaranteed_vertical_deceleration_mps2));
+  // The arrival continues from the control the prefix ends on, or from the
+  // applied control when there is no prefix: nothing is released to zero
+  // first, the profile ramps straight from where the vehicle's command is.
   const std::optional<std::vector<MotionControl3D>> arrival_controls =
-      buildArrivalControls(horizon.states.back(), arrival_dynamics, remaining_steps,
-                           config.terminal_velocity_tolerance_mps);
+      buildArrivalControls(horizon.states.back(), previous, arrival_dynamics,
+                           available_steps, config.terminal_velocity_tolerance_mps);
   if (!arrival_controls.has_value()) {
     return std::nullopt;
   }

@@ -127,6 +127,8 @@ stopControlCountEstimate(const MotionState3D& state, const MotionControl3D& prev
       !(vertical_deceleration_mps2 > 0.0)) {
     return kMaximumStopControlCount;
   }
+  // The arrival ramps from the applied control to the deceleration and back
+  // to zero; the applied control bounds how much further the first ramp is.
   const double release_s = std::max({std::abs(static_cast<double>(previous.ax)),
                                      std::abs(static_cast<double>(previous.ay)),
                                      std::abs(static_cast<double>(previous.az))}) /

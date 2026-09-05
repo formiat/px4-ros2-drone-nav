@@ -297,7 +297,11 @@ full swept footprint, and fresh direct lidar returns. The already published path
 continues without republishing when that trajectory remains valid. If it does
 not, the planner may re-simulate the unexecuted controls from the current state,
 reshape the arrival profile in the remaining duration, and validate the
-complete rebuilt path. The rebuilt command starts at the current timestamp, but
+complete rebuilt path. The arrival profile starts from the control being
+applied now: a jerk-limited ramp from that control to the deceleration, a hold,
+and a ramp back to zero, so a profile rebuilt every tick carries the
+deceleration already reached forward instead of releasing it and ramping in
+again from zero. The rebuilt command starts at the current timestamp, but
 its deadline never exceeds the previous `valid_until`.
 
 Route validity is checked separately. Every non-terminal execution plan includes
