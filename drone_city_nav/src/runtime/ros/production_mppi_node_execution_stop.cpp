@@ -110,11 +110,24 @@ ProductionMppiNode::publishStopExecution(const ProductionMppiExecutionCycle& cyc
     return publication;
   }
   const std::shared_ptr<const ExecutionPlan3D> expected = prepared.expectedPlan();
-  if (expected == nullptr ||
-      commitExecutionSnapshotHorizon(cycle, expected, *prepared.transition, horizon,
-                                     nullptr, expected, nullptr,
-                                     prepared.expected_authority) !=
-          ProductionMppiHorizonCommitStatus::kPublished) {
+  // The evidence boundary is already held for the whole preparation, so the
+  // stop commits through the same boundary the way a hold does instead of
+  // re-entering it through the snapshot commit.
+  if (expected == nullptr || commitAndPublishExecutionHorizon(
+                                 cycle, horizon,
+                                 ExecutionHorizonLeaseCandidate3D{
+                                     .kind = ExecutionHorizonCommitKind3D::kTransition,
+                                     .expected_authority = prepared.expected_authority,
+                                     .expected_plan = expected,
+                                     .certification_plan = expected,
+                                     .progress_preparation = nullptr,
+                                     .transition = prepared.transition,
+                                     .expected_pending = nullptr,
+                                     .owner = {},
+                                     .expected_horizon_producer_instance_id = 0U,
+                                     .execution_input = cycle.evidence.execution_input,
+                                     .stationary_capture_rearm_intent = false,
+                                 }) != ProductionMppiHorizonCommitStatus::kPublished) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
                          "STOP_EXECUTION published=false status=publication_commit_"
                          "rejected speed_mps=%.2f",
