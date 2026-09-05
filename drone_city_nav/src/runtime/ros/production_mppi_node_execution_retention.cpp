@@ -133,7 +133,8 @@ ProductionMppiNode::retainActiveFinitePath(
   }
   if (!production_mppi_execution_detail::appendFiniteExecutionPoints(
           horizon, retained_horizon->states, retained_horizon->controls,
-          cycle.evidence.exact_previous_control, retained_control_interval_ns)) {
+          cycle.evidence.exact_previous_control, retained_control_interval_ns,
+          config_.control.mppi.dynamics)) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
                          "EXECUTION_RETENTION prepared=false kind=%s "
                          "stage=horizon_encoding_rejected snapshot_version=%" PRIu64,

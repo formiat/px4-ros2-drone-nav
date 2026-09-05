@@ -45,10 +45,15 @@ void appendStationaryHoldPoint(msg::MppiTrajectoryHorizon& horizon,
                                const Point3& hold_position,
                                std::int64_t time_from_start_ns, float yaw_rad);
 
+// Encodes the states as horizon points whose acceleration is the acceleration
+// the trajectory actually carries out: the command where the integrator let
+// it through, the command plus the clamp's share where a speed cap shed the
+// excess the command would have added.
 [[nodiscard]] bool appendFiniteExecutionPoints(
     msg::MppiTrajectoryHorizon& horizon, std::span<const mppi::State> states,
     std::span<const mppi::Control> controls,
-    const mppi::Control& previous_applied_control, std::int64_t control_interval_ns);
+    const mppi::Control& previous_applied_control, std::int64_t control_interval_ns,
+    const mppi::DynamicsConfig& dynamics);
 
 } // namespace production_mppi_execution_detail
 

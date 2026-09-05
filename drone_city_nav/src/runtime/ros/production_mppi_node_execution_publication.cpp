@@ -1,9 +1,11 @@
 #include "drone_city_nav/execution_horizon_contract_ros.hpp"
 #include "drone_city_nav/mppi/finite_execution_path.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cinttypes>
+#include <cmath>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -87,11 +89,54 @@ void appendStationaryHoldPoint(msg::MppiTrajectoryHorizon& horizon,
   horizon.points.push_back(point);
 }
 
+namespace {
+
+// The acceleration a horizon point carries is the acceleration of the
+// trajectory the offboard is asked to fly, which the offboard feeds forward
+// to the vehicle and reports back as the applied control. Where the
+// integrator let the command through, that is the command itself. Where a
+// speed cap clamped the step, the command was neutralised: the trajectory
+// sheds the excess at the maximum deceleration whatever the command says,
+// and feeding the command forward would have the vehicle accelerate past a
+// cap the model believes it is braking under. The clamp's share is folded
+// into the published acceleration so the vehicle carries out the step the
+// model predicted.
+[[nodiscard]] mppi::Control
+effectivePointControl(const mppi::State& previous_state, const mppi::Control& control,
+                      const mppi::State& state, const mppi::DynamicsConfig& dynamics) {
+  // Below the tolerance the step was not clamped: the command is republished
+  // exactly, so the applied-control witness keeps matching the command.
+  constexpr float kClampToleranceMps{1.0e-4F};
+  const float dt_s = dynamics.dt_s;
+  if (!(dt_s > 0.0F)) {
+    return control;
+  }
+  const float drag = std::max(0.0F, 1.0F - dynamics.linear_drag_1ps * dt_s);
+  mppi::Control effective = control;
+  const float clamped_vx = state.vx - (previous_state.vx * drag + control.ax * dt_s);
+  const float clamped_vy = state.vy - (previous_state.vy * drag + control.ay * dt_s);
+  const float clamped_vz = state.vz - (previous_state.vz * drag + control.az * dt_s);
+  if (std::hypot(std::hypot(clamped_vx, clamped_vy), clamped_vz) > kClampToleranceMps) {
+    effective.ax += clamped_vx / dt_s;
+    effective.ay += clamped_vy / dt_s;
+    effective.az += clamped_vz / dt_s;
+  }
+  const float clamped_yaw_rate =
+      state.yaw_rate - (previous_state.yaw_rate + control.yaw_accel * dt_s);
+  if (std::abs(clamped_yaw_rate) > kClampToleranceMps) {
+    effective.yaw_accel += clamped_yaw_rate / dt_s;
+  }
+  return effective;
+}
+
+} // namespace
+
 bool appendFiniteExecutionPoints(msg::MppiTrajectoryHorizon& horizon,
                                  const std::span<const mppi::State> states,
                                  const std::span<const mppi::Control> controls,
                                  const mppi::Control& previous_applied_control,
-                                 const std::int64_t control_interval_ns) {
+                                 const std::int64_t control_interval_ns,
+                                 const mppi::DynamicsConfig& dynamics) {
   if (!horizon.points.empty() || controls.empty() ||
       states.size() != controls.size() + 1U || control_interval_ns <= 0 ||
       states.size() - 1U >
@@ -102,8 +147,10 @@ bool appendFiniteExecutionPoints(msg::MppiTrajectoryHorizon& horizon,
   horizon.points.reserve(states.size());
   for (std::size_t index = 0U; index < states.size(); ++index) {
     const mppi::State& state = states[index];
-    const mppi::Control& point_control =
-        index == 0U ? previous_applied_control : controls[index - 1U];
+    const mppi::Control point_control =
+        index == 0U ? previous_applied_control
+                    : effectivePointControl(states[index - 1U], controls[index - 1U],
+                                            state, dynamics);
     msg::MppiHorizonPoint point;
     point.time_from_start_ns = static_cast<std::int64_t>(index) * control_interval_ns;
     point.time_from_start_s = static_cast<float>(

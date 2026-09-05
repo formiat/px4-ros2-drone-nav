@@ -1769,6 +1769,15 @@ if(BUILD_TESTING)
     target_link_libraries(production_mppi_config_test
                           drone_city_nav_production_mppi_component)
     enable_project_warnings(production_mppi_config_test)
+
+    ament_add_gtest(production_mppi_execution_points_test
+                    tests/production_mppi_execution_points_test.cpp)
+    target_compile_features(production_mppi_execution_points_test PRIVATE cxx_std_20)
+    target_include_directories(production_mppi_execution_points_test
+                               PRIVATE src/runtime/ros)
+    target_link_libraries(production_mppi_execution_points_test
+                          drone_city_nav_production_mppi_component)
+    enable_project_warnings(production_mppi_execution_points_test)
   endif()
 
   ament_add_gtest(route_progress_3d_test

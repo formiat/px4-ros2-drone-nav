@@ -675,7 +675,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPreparedExecutionC
   if (!production_mppi_execution_detail::appendFiniteExecutionPoints(
           horizon, execution_states, execution_controls,
           cycle.evidence.exact_previous_control,
-          cycle.controller.finite_path_control_interval_ns)) {
+          cycle.controller.finite_path_control_interval_ns,
+          config_.control.mppi.dynamics)) {
     return publishNoExecutablePathHold(
         cycle, ProductionMppiExecutionReason::kNoExecutableHorizon);
   }

@@ -181,6 +181,12 @@ abandoned if the resident world, objective, or captured raw snapshot changes
 before the execution manager commits it. Unknown voxels remain traversable
 during this raw check.
 
+The acceleration a horizon point carries is the acceleration of the trajectory
+the offboard is asked to fly, which it feeds forward to the vehicle: the
+command where the integrator let it through, and the command plus the clamp's
+share where a speed cap shed the excess the command would have added, so the
+vehicle never accelerates past a cap the model believes it is braking under.
+
 The offboard's applied-control feedback names the horizon it executes. The
 owner installs it as the applied control when it names the owner's horizon
 or, in planned mode, the immediate predecessor: the owner republishes its

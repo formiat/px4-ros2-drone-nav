@@ -102,7 +102,8 @@ ProductionMppiNode::publishStopExecution(const ProductionMppiExecutionCycle& cyc
   }
   if (!production_mppi_execution_detail::appendFiniteExecutionPoints(
           horizon, stop->horizon->states, stop->horizon->controls,
-          cycle.evidence.exact_previous_control, stop->control_interval_ns)) {
+          cycle.evidence.exact_previous_control, stop->control_interval_ns,
+          config_.control.mppi.dynamics)) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
                          "STOP_EXECUTION published=false status=horizon_encoding_"
                          "rejected speed_mps=%.2f",
