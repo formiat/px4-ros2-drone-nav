@@ -426,6 +426,12 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn('DeclareLaunchArgument(\n                "point_to_point_scenario_path"', self.launch_text)
         self.assertIn('"px4_local_origin_x_m": start_x_m', self.launch_text)
         self.assertIn('"px4_local_origin_z_m": start_z_m', self.launch_text)
+        self.assertIn('px4_to_map_matrix = scenario["px4_to_map_matrix"]', self.launch_text)
+        for index, entry in enumerate(("m00", "m01", "m10", "m11")):
+            self.assertIn(
+                f'"px4_to_map_{entry}": px4_to_map_matrix[{index}]', self.launch_text
+            )
+        self.assertIn("**px4_frame_overrides,", self.launch_text)
         self.assertNotIn('"initial_altitude_m"', self.launch_text)
         self.assertIn('"mission_goal_sequence_xyz_m": [', self.launch_text)
         self.assertNotIn('"goal_x_m": goal_x_m', self.launch_text)

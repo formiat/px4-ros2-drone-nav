@@ -19,6 +19,10 @@ _LIDAR_PROFILE_SUPPORT = runpy.run_path(
 )
 _DEFAULT_LIDAR_PROFILE = _LIDAR_PROFILE_SUPPORT["DEFAULT_LIDAR_PROFILE"]
 _resolve_lidar_model_identity = _LIDAR_PROFILE_SUPPORT["resolve_model_identity"]
+_PX4_MAP_FRAME_SUPPORT = runpy.run_path(
+    str(Path(__file__).with_name("px4_map_frame.py"))
+)
+_px4_to_map_matrix = _PX4_MAP_FRAME_SUPPORT["px4_to_map_matrix"]
 
 
 def _finite_vector(value: Any, label: str) -> tuple[float, float, float]:
@@ -196,6 +200,7 @@ def load_point_to_point_scenario(
         "gazebo_model_name": gazebo_model_name,
         "map_start_m": start,
         "gazebo_spawn_m": _map_to_sdf(start, transform),
+        "px4_to_map_matrix": _px4_to_map_matrix(transform),
         "yaw_rad": yaw_rad,
         "mission_goal_sequence_m": mission_goal_sequence,
         "initial_altitude_m": initial_altitude,

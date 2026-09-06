@@ -31,6 +31,10 @@ _LIDAR_PROFILE_SUPPORT = runpy.run_path(
 )
 _DEFAULT_LIDAR_PROFILE = _LIDAR_PROFILE_SUPPORT["DEFAULT_LIDAR_PROFILE"]
 _apply_lidar_profile = _LIDAR_PROFILE_SUPPORT["apply_profile_to_vehicle"]
+_PX4_MAP_FRAME_SUPPORT = runpy.run_path(
+    str(Path(__file__).with_name("px4_map_frame.py"))
+)
+_px4_to_map_matrix = _PX4_MAP_FRAME_SUPPORT["px4_to_map_matrix"]
 
 
 def _finite_vector(value: Any, length: int, label: str) -> tuple[float, ...]:
@@ -125,22 +129,6 @@ def _navigation_profile(
     ):
         raise ValueError("canonical world initial altitude is outside its envelope")
     return navigation
-
-
-def _px4_to_map_matrix(transform: dict[str, Any]) -> tuple[float, ...]:
-    source_x = transform["sdf_x_from"]
-    source_y = transform["sdf_y_from"]
-    scale_x = float(transform.get("sdf_x_scale", 1.0))
-    scale_y = float(transform.get("sdf_y_scale", 1.0))
-    sdf_x_row = (
-        scale_x if source_x == "map_x" else 0.0,
-        scale_x if source_x == "map_y" else 0.0,
-    )
-    sdf_y_row = (
-        scale_y if source_y == "map_x" else 0.0,
-        scale_y if source_y == "map_y" else 0.0,
-    )
-    return (sdf_y_row[0], sdf_x_row[0], sdf_y_row[1], sdf_x_row[1])
 
 
 def load_multi_vehicle_scenario(

@@ -40,6 +40,9 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
         self.assertEqual(scenario["px4_model_target"], "gz_x500_lidar_3d")
         self.assertEqual(scenario["gazebo_model_name"], "x500_lidar_3d_0")
         self.assertEqual(scenario["map_start_m"], scenario["gazebo_spawn_m"])
+        # The map frame equals the SDF frame here, so PX4 north (NED X) is the
+        # map +Y axis and PX4 east (NED Y) the map +X axis.
+        self.assertEqual(scenario["px4_to_map_matrix"], (0.0, 1.0, 1.0, 0.0))
         # Point A rests on the staging-area floor of the base-station room, six
         # metres south of the tent, without any synthetic launch platform.
         self.assertEqual(

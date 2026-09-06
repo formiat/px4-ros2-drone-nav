@@ -46,7 +46,14 @@ The offboard node publishes:
 - `/fmu/in/vehicle_command`
 
 PX4 local coordinates are aligned with the planner map through configured
-origin parameters such as `px4_local_origin_x_m` and `px4_local_origin_y_m`.
+origin parameters such as `px4_local_origin_x_m` and `px4_local_origin_y_m`
+and the `px4_to_map_m00..m11` matrix. PX4 reports NED positions (X north, Y
+east) while Gazebo worlds are ENU, so the launch derives the matrix from the
+canonical world's `map_to_sdf`: the Manhattan world already swaps its map axes
+and keeps the identity, whereas a world whose map frame equals the SDF frame
+(Urban Circuit) receives the axis swap `(0, 1, 1, 0)`. Every node that turns
+a PX4 pose into map coordinates, including the mission monitor, receives the
+same matrix.
 
 ## Spawn, Start, And Goal
 

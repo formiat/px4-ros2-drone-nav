@@ -3,6 +3,7 @@
 #include "drone_city_nav/msg/mission_waypoint_acknowledgement.hpp"
 #include "drone_city_nav/msg/navigation_health.hpp"
 #include "drone_city_nav/msg/vehicle_destroyed.hpp"
+#include "drone_city_nav/px4_map_frame_transform.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <px4_msgs/msg/vehicle_local_position.hpp>
@@ -158,8 +159,19 @@ public:
       : Node{"mission_monitor_node"} {
     start_ = Point2{declare_parameter<double>("start_x_m", 54.0),
                     declare_parameter<double>("start_y_m", 54.0)};
-    px4_local_origin_ = Point2{declare_parameter<double>("px4_local_origin_x_m", 54.0),
-                               declare_parameter<double>("px4_local_origin_y_m", 54.0)};
+    // PX4 reports NED local positions; the launch derives this matrix from the
+    // canonical world so the monitor judges the same map position the planner
+    // and the offboard controller use.
+    px4_map_transform_ = Px4MapFrameTransform{
+        .map_origin = Point3{declare_parameter<double>("px4_local_origin_x_m", 54.0),
+                             declare_parameter<double>("px4_local_origin_y_m", 54.0),
+                             declare_parameter<double>("px4_local_origin_z_m", 0.0)},
+        .m00 = declare_parameter<double>("px4_to_map_m00", 1.0),
+        .m01 = declare_parameter<double>("px4_to_map_m01", 0.0),
+        .m10 = declare_parameter<double>("px4_to_map_m10", 0.0),
+        .m11 = declare_parameter<double>("px4_to_map_m11", 1.0),
+    };
+    px4_map_transform_.validate();
     spawn_tolerance_m_ = declare_parameter<double>("spawn_tolerance_m", 1.0);
     minimum_movement_m_ = declare_parameter<double>("min_movement_distance_m", 5.0);
     acknowledgement_target_tolerance_m_ =
@@ -278,8 +290,8 @@ private:
       latest_position_valid_ = false;
       return;
     }
-    latest_position_ = Point2{static_cast<double>(message.x) + px4_local_origin_.x,
-                              static_cast<double>(message.y) + px4_local_origin_.y};
+    latest_position_ = px4_map_transform_.localPositionToMap(
+        Point2{static_cast<double>(message.x), static_cast<double>(message.y)});
     latest_altitude_m_ = -static_cast<double>(message.z);
     latest_speed_mps_ = std::hypot(
         std::hypot(static_cast<double>(message.vx), static_cast<double>(message.vy)),
@@ -447,7 +459,7 @@ private:
 
   Point2 start_{};
   Point2 goal_{};
-  Point2 px4_local_origin_{};
+  Px4MapFrameTransform px4_map_transform_{};
   Point2 latest_position_{};
   std::vector<Point3> waypoints_;
   std::string frame_id_{"map"};

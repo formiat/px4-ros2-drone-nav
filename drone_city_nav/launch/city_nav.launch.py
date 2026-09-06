@@ -214,10 +214,21 @@ def generate_launch_description():
         if scenario_path:
             scenario = load_point_to_point_scenario(scenario_path, profile)
             start_x_m, start_y_m, start_z_m = scenario["map_start_m"]
-            navigation_overrides = {
+            # PX4 reports NED local positions; the canonical world decides how
+            # north and east map onto the map axes, so every node that turns a
+            # PX4 pose into map coordinates receives the same matrix.
+            px4_to_map_matrix = scenario["px4_to_map_matrix"]
+            px4_frame_overrides = {
                 "px4_local_origin_x_m": start_x_m,
                 "px4_local_origin_y_m": start_y_m,
                 "px4_local_origin_z_m": start_z_m,
+                "px4_to_map_m00": px4_to_map_matrix[0],
+                "px4_to_map_m01": px4_to_map_matrix[1],
+                "px4_to_map_m10": px4_to_map_matrix[2],
+                "px4_to_map_m11": px4_to_map_matrix[3],
+            }
+            navigation_overrides = {
+                **px4_frame_overrides,
                 "minimum_target_z_m": scenario["minimum_target_z_m"],
                 "maximum_target_z_m": scenario["maximum_target_z_m"],
                 "start_x_m": start_x_m,
@@ -231,9 +242,7 @@ def generate_launch_description():
             }
             obstacle_memory_overrides.update(
                 {
-                    "px4_local_origin_x_m": start_x_m,
-                    "px4_local_origin_y_m": start_y_m,
-                    "px4_local_origin_z_m": start_z_m,
+                    **px4_frame_overrides,
                     "initial_x_m": start_x_m,
                     "initial_y_m": start_y_m,
                 }
