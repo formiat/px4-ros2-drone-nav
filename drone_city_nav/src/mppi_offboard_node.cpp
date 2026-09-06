@@ -48,7 +48,10 @@ public:
     // Takeoff climbs a fixed height above the spawn point in every scenario.
     // The climb has to be a real climb: a vehicle that never leaves its rest
     // never lets the EKF certify a control-grade heading, and the planner has
-    // no body axis to seed its proprioceptive footprint from.
+    // no body axis to seed its proprioceptive footprint from. When the spawn
+    // support sits below the flight envelope floor (a street at z = 0), the
+    // climb ends at that floor plus the capture tolerance instead, because
+    // the planner rejects a route request whose start is below the floor.
     takeoff_climb_m_ = declare_parameter<double>("takeoff_climb_m", 2.0);
     if (!std::isfinite(takeoff_climb_m_) || takeoff_climb_m_ <= 0.0) {
       throw std::invalid_argument{"takeoff climb must be a positive height"};
@@ -638,7 +641,8 @@ private:
       if (takeoff_ready && require_mission_start_signal_ && !mission_started_) {
         exact_horizon_feedback_published = publishPrestartPlannedHorizonReceipt();
       }
-      if (position_valid_ && altitude_m_ >= takeoff_climb_m_ - 0.5 &&
+      if (position_valid_ &&
+          mapAltitudeM() >= takeoffAltitudeM() - kTakeoffCaptureToleranceM &&
           !takeoff_complete_stamp_.has_value()) {
         takeoff_complete_stamp_ = now();
       }
@@ -682,10 +686,9 @@ private:
   }
 
   void publishTakeoffSetpoint() {
-    // The PX4 local frame rests at zero altitude on the spawn support, so the
-    // climb is the local altitude of the takeoff setpoint.
     setpoint_pub_->publish(buildPositionTrajectorySetpoint(
-        nowMicros(), Point2{local_x_, local_y_}, takeoff_climb_m_,
+        nowMicros(), Point2{local_x_, local_y_},
+        takeoffAltitudeM() - px4_map_transform_.map_origin.z,
         px4_map_transform_.mapYawToPx4Heading(heading_rad_)));
   }
 
@@ -872,7 +875,9 @@ private:
   }
 
   [[nodiscard]] double takeoffAltitudeM() const noexcept {
-    return px4_map_transform_.map_origin.z + takeoff_climb_m_;
+    return std::max(px4_map_transform_.map_origin.z + takeoff_climb_m_,
+                    flight_envelope_config_.minimum_target_z_m +
+                        kTakeoffCaptureToleranceM);
   }
 
   void publishCommand(const std::uint32_t command, const float param1,
@@ -886,6 +891,7 @@ private:
                                       1000);
   }
 
+  static constexpr double kTakeoffCaptureToleranceM{0.5};
   double takeoff_climb_m_{2.0};
   FlightEnvelopeConfig flight_envelope_config_{};
   double takeoff_hover_s_{1.0};

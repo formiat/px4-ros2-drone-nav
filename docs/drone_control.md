@@ -9,8 +9,11 @@ Before navigation, offboard sends a position setpoint `takeoff_climb_m`
 (2.0 m by default) above the spawn point in every scenario. The climb is a
 real climb on purpose: a vehicle that never leaves its rest never lets the EKF
 certify a control-grade heading, and the planner has no body axis to seed its
-proprioceptive footprint from. Takeoff completion is latched after altitude
-capture and the configured hover interval.
+proprioceptive footprint from. When the spawn support sits below the flight
+envelope floor (a street at `z = 0` with a `2.0 m` floor), the takeoff ends at
+the floor plus the `0.5 m` capture tolerance instead, because the planner
+rejects a route request whose start is below the floor. Takeoff completion is
+latched after altitude capture and the configured hover interval.
 
 ## Horizon Execution
 

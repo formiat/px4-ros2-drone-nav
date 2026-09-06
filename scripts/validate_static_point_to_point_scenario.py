@@ -21,6 +21,7 @@ from validate_static_cooperative_scenario import (  # noqa: E402
     load_physical_footprint,
     load_takeoff_climb_m,
     planar_segment_is_clear,
+    takeoff_altitude_m as takeoff_altitude_for,
     platform_supports_spawn,
     shortest_planar_route_m,
     swept_segment_is_clear,
@@ -49,7 +50,9 @@ def validate(args: argparse.Namespace) -> None:
     start = scenario["map_start_m"]
     mission_goal_sequence = scenario["mission_goal_sequence_m"]
     takeoff_climb_m = load_takeoff_climb_m(args.planner_config.resolve())
-    takeoff_altitude_m = start[2] + takeoff_climb_m
+    takeoff_altitude_m = takeoff_altitude_for(
+        start[2], takeoff_climb_m, scenario["minimum_target_z_m"]
+    )
     takeoff = (start[0], start[1], takeoff_altitude_m)
     launch_platforms = scenario["launch_platforms"]
     platform = None
