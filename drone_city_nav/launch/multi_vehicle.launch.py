@@ -564,7 +564,6 @@ def generate_multi_vehicle_launch_description(mission_kind):
                     "px4_to_map_m01": px4_to_map_matrix[1],
                     "px4_to_map_m10": px4_to_map_matrix[2],
                     "px4_to_map_m11": px4_to_map_matrix[3],
-                    "initial_altitude_m": navigation["initial_altitude_m"],
                     "minimum_target_z_m": navigation["minimum_target_z_m"],
                     "maximum_target_z_m": navigation["maximum_target_z_m"],
                     "target_system": config["target_system"],

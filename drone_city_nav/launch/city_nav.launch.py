@@ -218,7 +218,6 @@ def generate_launch_description():
                 "px4_local_origin_x_m": start_x_m,
                 "px4_local_origin_y_m": start_y_m,
                 "px4_local_origin_z_m": start_z_m,
-                "initial_altitude_m": scenario["initial_altitude_m"],
                 "minimum_target_z_m": scenario["minimum_target_z_m"],
                 "maximum_target_z_m": scenario["maximum_target_z_m"],
                 "start_x_m": start_x_m,

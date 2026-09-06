@@ -45,14 +45,18 @@ public:
     constexpr std::uint64_t kOffboardFeedbackProducerDomain{0x4f4646424f415244ULL};
     offboard_producer_instance_id_ =
         createProducerInstanceId(kOffboardFeedbackProducerDomain);
-    initial_altitude_m_ = declare_parameter<double>("initial_altitude_m", 18.0);
+    // Takeoff climbs a fixed height above the spawn point in every scenario.
+    // The climb has to be a real climb: a vehicle that never leaves its rest
+    // never lets the EKF certify a control-grade heading, and the planner has
+    // no body axis to seed its proprioceptive footprint from.
+    takeoff_climb_m_ = declare_parameter<double>("takeoff_climb_m", 2.0);
+    if (!std::isfinite(takeoff_climb_m_) || takeoff_climb_m_ <= 0.0) {
+      throw std::invalid_argument{"takeoff climb must be a positive height"};
+    }
     flight_envelope_config_.minimum_target_z_m =
         declare_parameter<double>("minimum_target_z_m", 1.0);
     flight_envelope_config_.maximum_target_z_m =
         declare_parameter<double>("maximum_target_z_m", 32.0);
-    if (!insideFlightEnvelope(initial_altitude_m_, flight_envelope_config_)) {
-      throw std::invalid_argument{"takeoff altitude is outside flight envelope"};
-    }
     takeoff_hover_s_ = declare_parameter<double>("takeoff_hover_s", 1.0);
     const double control_lookahead_s =
         declare_parameter<double>("mppi_control_lookahead_s", 0.05);
@@ -97,6 +101,9 @@ public:
         .m10 = declare_parameter<double>("px4_to_map_m10", 0.0),
         .m11 = declare_parameter<double>("px4_to_map_m11", 1.0),
     };
+    if (!insideFlightEnvelope(takeoffAltitudeM(), flight_envelope_config_)) {
+      throw std::invalid_argument{"takeoff altitude is outside flight envelope"};
+    }
     px4_map_transform_.validate();
     if (rviz_drone_follow_tf_enabled_) {
       rviz_drone_follow_tf_broadcaster_ =
@@ -244,8 +251,10 @@ public:
         now() - rclcpp::Duration::from_seconds(command_resend_period_s_);
     timer_ =
         create_wall_timer(std::chrono::milliseconds{20}, [this]() { controlTick(); });
-    RCLCPP_INFO(get_logger(), "Production MPPI offboard ready: altitude=%.1f",
-                initial_altitude_m_);
+    RCLCPP_INFO(get_logger(),
+                "Production MPPI offboard ready: takeoff_climb_m=%.1f "
+                "takeoff_altitude_m=%.1f",
+                takeoff_climb_m_, takeoffAltitudeM());
   }
 
 private:
@@ -629,7 +638,7 @@ private:
       if (takeoff_ready && require_mission_start_signal_ && !mission_started_) {
         exact_horizon_feedback_published = publishPrestartPlannedHorizonReceipt();
       }
-      if (position_valid_ && mapAltitudeM() >= initial_altitude_m_ - 0.5 &&
+      if (position_valid_ && altitude_m_ >= takeoff_climb_m_ - 0.5 &&
           !takeoff_complete_stamp_.has_value()) {
         takeoff_complete_stamp_ = now();
       }
@@ -673,9 +682,10 @@ private:
   }
 
   void publishTakeoffSetpoint() {
+    // The PX4 local frame rests at zero altitude on the spawn support, so the
+    // climb is the local altitude of the takeoff setpoint.
     setpoint_pub_->publish(buildPositionTrajectorySetpoint(
-        nowMicros(), Point2{local_x_, local_y_},
-        initial_altitude_m_ - px4_map_transform_.map_origin.z,
+        nowMicros(), Point2{local_x_, local_y_}, takeoff_climb_m_,
         px4_map_transform_.mapYawToPx4Heading(heading_rad_)));
   }
 
@@ -861,6 +871,10 @@ private:
     return altitude_m_ + px4_map_transform_.map_origin.z;
   }
 
+  [[nodiscard]] double takeoffAltitudeM() const noexcept {
+    return px4_map_transform_.map_origin.z + takeoff_climb_m_;
+  }
+
   void publishCommand(const std::uint32_t command, const float param1,
                       const float param2 = 0.0F) {
     command_pub_->publish(
@@ -872,7 +886,7 @@ private:
                                       1000);
   }
 
-  double initial_altitude_m_{18.0};
+  double takeoff_climb_m_{2.0};
   FlightEnvelopeConfig flight_envelope_config_{};
   double takeoff_hover_s_{1.0};
   std::int64_t control_lookahead_ns_{50'000'000};

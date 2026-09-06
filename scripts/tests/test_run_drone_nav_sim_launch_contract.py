@@ -426,7 +426,7 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn('DeclareLaunchArgument(\n                "point_to_point_scenario_path"', self.launch_text)
         self.assertIn('"px4_local_origin_x_m": start_x_m', self.launch_text)
         self.assertIn('"px4_local_origin_z_m": start_z_m', self.launch_text)
-        self.assertIn('"initial_altitude_m": scenario["initial_altitude_m"]', self.launch_text)
+        self.assertNotIn('"initial_altitude_m"', self.launch_text)
         self.assertIn('"mission_goal_sequence_xyz_m": [', self.launch_text)
         self.assertNotIn('"goal_x_m": goal_x_m', self.launch_text)
         self.assertIn(

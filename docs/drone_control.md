@@ -5,9 +5,12 @@
 
 ## Takeoff
 
-Before navigation, offboard sends a position setpoint at the configured initial
-altitude. Takeoff completion is latched after altitude capture and the
-configured hover interval.
+Before navigation, offboard sends a position setpoint `takeoff_climb_m`
+(2.0 m by default) above the spawn point in every scenario. The climb is a
+real climb on purpose: a vehicle that never leaves its rest never lets the EKF
+certify a control-grade heading, and the planner has no body axis to seed its
+proprioceptive footprint from. Takeoff completion is latched after altitude
+capture and the configured hover interval.
 
 ## Horizon Execution
 

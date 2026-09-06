@@ -366,6 +366,16 @@ def load_physical_footprint(config_path: Path) -> Footprint:
     return physical
 
 
+def load_takeoff_climb_m(config_path: Path) -> float:
+    """Read the offboard takeoff climb so validation mirrors the real takeoff."""
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    parameters = config["mppi_offboard_node"]["ros__parameters"]
+    climb_m = float(parameters["takeoff_climb_m"])
+    if not math.isfinite(climb_m) or climb_m <= 0.0:
+        raise ScenarioValidationError("takeoff climb must be a positive height")
+    return climb_m
+
+
 def canonical_world_path(scenario_path: Path, scenario: dict) -> Path:
     path = Path(scenario["canonical_world"])
     return path if path.is_absolute() else (scenario_path.parent / path).resolve()
@@ -546,9 +556,9 @@ def validate(args: argparse.Namespace) -> None:
     world = json.loads(
         canonical_world_path(scenario_path, scenario).read_text(encoding="utf-8")
     )
-    initial_altitude_m = float(world["navigation"]["initial_altitude_m"])
     occupancy = Occupancy3D.load(args.occupancy.resolve())
     physical_footprint = load_physical_footprint(args.planner_config.resolve())
+    takeoff_climb_m = load_takeoff_climb_m(args.planner_config.resolve())
     vehicles = scenario["vehicles"]
     if len(vehicles) < 2 or len(vehicles) % 2 != 0:
         raise ScenarioValidationError("cooperative crossing scenario needs two equal groups")
@@ -563,7 +573,7 @@ def validate(args: argparse.Namespace) -> None:
         vehicle_id = vehicle["id"]
         start = start_positions[vehicle_id]
         goal = tuple(float(value) for value in vehicle["goal_m"])
-        takeoff_altitude_m = max(start[2], initial_altitude_m)
+        takeoff_altitude_m = start[2] + takeoff_climb_m
         takeoff = (start[0], start[1], takeoff_altitude_m)
         if not occupancy.center_is_clear(start, physical_footprint):
             raise ScenarioValidationError(
@@ -602,8 +612,8 @@ def validate(args: argparse.Namespace) -> None:
                     f" center=({platform.center_x_m:.3f},{platform.center_y_m:.3f})"
                     f" top_z_m={platform.top_z_m:.3f} status=valid"
                 )
-        if start[2] < initial_altitude_m and not occupancy.vertical_sweep_is_clear(
-            start, initial_altitude_m, physical_footprint
+        if not occupancy.vertical_sweep_is_clear(
+            start, takeoff_altitude_m, physical_footprint
         ):
             raise ScenarioValidationError(
                 f"{vehicle_id} vertical takeoff footprint intersects Occupancy3D"

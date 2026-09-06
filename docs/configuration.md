@@ -271,7 +271,7 @@ Speed policy and liveness:
 - execution-horizon and PX4 topics;
 - maximum receive age and control lookahead;
 - finite-path receive age, deadline, and control lookahead;
-- takeoff altitude and hover time;
+- takeoff climb above the spawn point and hover time;
 - the same minimum/maximum target altitude contract as the planner;
 - expected vehicle role, mission epoch, and destruction topic;
 - bounded death force-disarm retry period;

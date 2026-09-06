@@ -40,23 +40,18 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
         self.assertEqual(scenario["px4_model_target"], "gz_x500_lidar_3d")
         self.assertEqual(scenario["gazebo_model_name"], "x500_lidar_3d_0")
         self.assertEqual(scenario["map_start_m"], scenario["gazebo_spawn_m"])
+        # Point A rests on the staging-area floor of the base-station room, six
+        # metres south of the tent, without any synthetic launch platform.
         self.assertEqual(
             scenario["map_start_m"],
-            (0.749319792, 27.246976852, 12.051717758),
-        )
-        # The departure platform sits three metres below the takeoff altitude so
-        # the bootstrap climb is a real climb: a spawn at the takeoff altitude
-        # never moves, the EKF heading never becomes control-grade, and the
-        # planner has no body axis to seed its footprint from.
-        self.assertLess(
-            scenario["map_start_m"][2] + 2.5, scenario["initial_altitude_m"]
+            (0.749319792, 21.246976852, 7.8),
         )
         self.assertEqual(
             scenario["mission_goal_sequence_m"],
             ((63.009487152, 23.856639862, 12.592997551),),
         )
         self.assertEqual(scenario["initial_altitude_m"], 15.051717758)
-        self.assertEqual(len(scenario["launch_platforms"]), 1)
+        self.assertEqual(scenario["launch_platforms"], ())
         final_waypoint = scenario["mission_goal_sequence_m"][-1]
         route_distance_m = (
             (final_waypoint[0] - scenario["map_start_m"][0]) ** 2

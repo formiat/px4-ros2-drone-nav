@@ -19,6 +19,7 @@ from validate_static_cooperative_scenario import (  # noqa: E402
     Occupancy3D,
     ScenarioValidationError,
     load_physical_footprint,
+    load_takeoff_climb_m,
     planar_segment_is_clear,
     platform_supports_spawn,
     shortest_planar_route_m,
@@ -47,8 +48,8 @@ def validate(args: argparse.Namespace) -> None:
     physical_footprint = load_physical_footprint(args.planner_config.resolve())
     start = scenario["map_start_m"]
     mission_goal_sequence = scenario["mission_goal_sequence_m"]
-    initial_altitude_m = scenario["initial_altitude_m"]
-    takeoff_altitude_m = max(start[2], initial_altitude_m)
+    takeoff_climb_m = load_takeoff_climb_m(args.planner_config.resolve())
+    takeoff_altitude_m = start[2] + takeoff_climb_m
     takeoff = (start[0], start[1], takeoff_altitude_m)
     launch_platforms = scenario["launch_platforms"]
     platform = None
@@ -100,8 +101,8 @@ def validate(args: argparse.Namespace) -> None:
             f"{platform.center_y_m:.3f}) top_z_m={platform.top_z_m:.3f}"
             " status=valid"
         )
-    if start[2] < initial_altitude_m and not occupancy.vertical_sweep_is_clear(
-        start, initial_altitude_m, physical_footprint
+    if not occupancy.vertical_sweep_is_clear(
+        start, takeoff_altitude_m, physical_footprint
     ):
         raise ScenarioValidationError(
             "vertical takeoff footprint intersects Occupancy3D"
@@ -150,7 +151,7 @@ def validate(args: argparse.Namespace) -> None:
         f" waypoint_count={len(mission_goal_sequence)}"
         f" direct_m={total_direct_length_m:.1f}"
         f" geodesic_m={total_route_length_m:.1f}"
-        f" altitude_m={initial_altitude_m:.1f}"
+        f" takeoff_altitude_m={takeoff_altitude_m:.1f}"
         f" route_contract={args.route_contract}"
         f" direct_clear={str(all_direct_clear).lower()} status=valid"
     )
