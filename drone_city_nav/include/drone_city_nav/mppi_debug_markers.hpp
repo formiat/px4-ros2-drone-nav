@@ -30,6 +30,7 @@ struct MppiDebugMarkerInput {
   Point3 resolved_tracking_target{};
   bool tracking_objective_active{false};
   mppi::RiskTier selected_tier{mppi::RiskTier::kCollision};
+  bool gazebo_aligned_axes_swapped{true};
 };
 
 [[nodiscard]] visualization_msgs::msg::MarkerArray

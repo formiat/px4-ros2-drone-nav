@@ -36,10 +36,12 @@ void mergeDirtyChunks(std::vector<OccupancyChunkIndex3D>& destination,
 
 } // namespace
 
-ObstacleMemoryTransport3D::ObstacleMemoryTransport3D(rclcpp::Node& node,
-                                                     std::string frame_id)
+ObstacleMemoryTransport3D::ObstacleMemoryTransport3D(
+    rclcpp::Node& node, std::string frame_id,
+    const bool gazebo_aligned_rviz_axes_swapped)
     : node_{node},
       frame_id_{std::move(frame_id)},
+      gazebo_aligned_rviz_axes_swapped_{gazebo_aligned_rviz_axes_swapped},
       policy_{ObstacleMemoryTransportPolicy3DConfig{
           .minimum_snapshot_period_s =
               std::clamp(node_.declare_parameter<double>(
@@ -236,7 +238,8 @@ void ObstacleMemoryTransport3D::publishUpdate(PendingUpdate update) {
                                    static_cast<std::int64_t>(debug_period_s_ * 1.0e9));
   if (debug_cloud_due) {
     memory_cloud_pub_->publish(buildObservedOccupancyPointCloud3D(
-        update.grid, header.stamp, frame_id_, debug_stride_));
+        update.grid, header.stamp, frame_id_, gazebo_aligned_rviz_axes_swapped_,
+        debug_stride_));
     last_debug_steady_ns_ = now_steady_ns;
   }
 

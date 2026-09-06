@@ -20,6 +20,7 @@ void LidarDebugNode::applyConfig(const LidarDebugNodeConfig& config) {
       .m11 = config.px4_to_map_m11,
   };
   px4_map_transform_.validate();
+  gazebo_aligned_rviz_axes_swapped_ = config.gazebo_aligned_rviz_axes_swapped;
   scan_yaw_offset_rad_ = config.scan_yaw_offset_rad;
   motion_compensate_lidar_pose_ = config.motion_compensate_lidar_pose;
   lidar_pose_latency_s_ = config.lidar_pose_latency_s;

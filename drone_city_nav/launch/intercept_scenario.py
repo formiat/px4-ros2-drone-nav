@@ -35,6 +35,7 @@ _PX4_MAP_FRAME_SUPPORT = runpy.run_path(
     str(Path(__file__).with_name("px4_map_frame.py"))
 )
 _px4_to_map_matrix = _PX4_MAP_FRAME_SUPPORT["px4_to_map_matrix"]
+_map_to_sdf_swaps_axes = _PX4_MAP_FRAME_SUPPORT["map_to_sdf_swaps_axes"]
 
 
 def _finite_vector(value: Any, length: int, label: str) -> tuple[float, ...]:
@@ -308,6 +309,7 @@ def load_multi_vehicle_scenario(
         "gazebo_world_name": gazebo_world_name,
         "map_to_sdf": transform,
         "px4_to_map_matrix": _px4_to_map_matrix(transform),
+        "gazebo_axes_swapped": _map_to_sdf_swaps_axes(transform),
         "navigation": navigation,
         "vehicles": vehicles,
         "interceptor_ids": [

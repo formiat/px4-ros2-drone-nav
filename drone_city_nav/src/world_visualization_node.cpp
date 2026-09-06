@@ -3,6 +3,7 @@
 #include "drone_city_nav/msg/raw_obstacle_snapshot.hpp"
 #include "drone_city_nav/occupancy_grid_3d.hpp"
 #include "drone_city_nav/static_map_debug.hpp"
+#include "drone_city_nav/visualization_marker_helpers.hpp"
 
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -23,6 +24,8 @@ public:
   explicit WorldVisualizationNode(const rclcpp::NodeOptions& options)
       : Node{"world_visualization_node", options} {
     frame_id_ = declare_parameter<std::string>("frame_id", "map");
+    gazebo_aligned_axes_swapped_ = declare_parameter<bool>(
+        std::string{kGazeboAlignedRvizAxesSwappedParameter}, true);
     const auto durable_qos = rclcpp::QoS{1}.reliable().transient_local();
     raw_grid_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(
         declare_parameter<std::string>("raw_obstacle_grid_topic",
@@ -81,7 +84,7 @@ private:
           declare_parameter<std::int64_t>("static_map_visualization_stride_cells", 4);
       const std::size_t stride =
           static_cast<std::size_t>(std::max<std::int64_t>(1, configured_stride));
-      const StaticMapDebugConfig debug{header(), stride};
+      const StaticMapDebugConfig debug{header(), stride, gazebo_aligned_axes_swapped_};
       const sensor_msgs::msg::PointCloud2 points =
           staticMapPointCloud3D(occupancy, debug);
       static_points_pub_->publish(points);
@@ -96,6 +99,7 @@ private:
   }
 
   std::string frame_id_{"map"};
+  bool gazebo_aligned_axes_swapped_{true};
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr raw_grid_pub_;
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr static_grid_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr static_points_pub_;

@@ -19,6 +19,7 @@
 #include "drone_city_nav/spectator_diagnostics_selection.hpp"
 #include "drone_city_nav/spectator_diagnostics_selection_ros.hpp"
 #include "drone_city_nav/tracked_agent_lidar_filter.hpp"
+#include "drone_city_nav/visualization_marker_helpers.hpp"
 
 #include <px4_msgs/msg/timesync_status.hpp>
 #include <px4_msgs/msg/vehicle_attitude.hpp>
@@ -76,6 +77,8 @@ public:
       memory_ = std::make_unique<ObstacleMemoryGrid>(memory_bounds);
     }
     frame_id_ = declare_parameter<std::string>("frame_id", "map");
+    const bool gazebo_aligned_rviz_axes_swapped = declare_parameter<bool>(
+        std::string{kGazeboAlignedRvizAxesSwappedParameter}, true);
     const double risk_critical_distance_m =
         declare_parameter<double>("risk_critical_distance_m", 1.0);
     const double risk_preferred_distance_m =
@@ -87,8 +90,8 @@ public:
     const bool use_static_map = get_parameter("use_static_map").as_bool();
     if (persistent_memory_enabled_) {
       memory_transport_ = std::make_unique<ObstacleMemoryTransport>(
-          *this, frame_id_, use_static_map, std::move(static_grid),
-          risk_critical_distance_m, risk_preferred_distance_m);
+          *this, frame_id_, gazebo_aligned_rviz_axes_swapped, use_static_map,
+          std::move(static_grid), risk_critical_distance_m, risk_preferred_distance_m);
     }
     const LidarMappingYawConfig mapping_yaw_config =
         declareLidarMappingYawConfig(*this);

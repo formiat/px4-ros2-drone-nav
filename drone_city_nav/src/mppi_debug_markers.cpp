@@ -54,8 +54,8 @@ horizonMarker(const MppiDebugMarkerInput& input) {
   marker.color = riskColor(input.selected_tier);
   marker.points.reserve(input.horizon.size());
   for (const mppi::State& state : input.horizon) {
-    marker.points.push_back(
-        gazeboAlignedRvizMarkerPoint(Point3{state.x, state.y, state.z}));
+    marker.points.push_back(gazeboAlignedRvizMarkerPoint(
+        Point3{state.x, state.y, state.z}, input.gazebo_aligned_axes_swapped));
   }
   return marker;
 }
@@ -73,8 +73,8 @@ executionHorizonMarker(const MppiDebugMarkerInput& input) {
   marker.color = rgba(0.15F, 0.55F, 1.0F, 1.0F);
   marker.points.reserve(input.execution_horizon.size());
   for (const mppi::State& state : input.execution_horizon) {
-    marker.points.push_back(
-        gazeboAlignedRvizMarkerPoint(Point3{state.x, state.y, state.z}));
+    marker.points.push_back(gazeboAlignedRvizMarkerPoint(
+        Point3{state.x, state.y, state.z}, input.gazebo_aligned_axes_swapped));
   }
   return marker;
 }
@@ -84,7 +84,8 @@ targetMarker(const MppiDebugMarkerInput& input) {
   visualization_msgs::msg::Marker marker = makeMarker(
       input.header, kMppiTargetNamespace, 0, visualization_msgs::msg::Marker::SPHERE);
   marker.pose.position = gazeboAlignedRvizMarkerPoint(
-      Point3{input.target.x, input.target.y, input.target.z});
+      Point3{input.target.x, input.target.y, input.target.z},
+      input.gazebo_aligned_axes_swapped);
   marker.scale.x = 1.2;
   marker.scale.y = 1.2;
   marker.scale.z = 1.2;
@@ -102,7 +103,8 @@ trackingTargetMarker(const MppiDebugMarkerInput& input,
   }
   visualization_msgs::msg::Marker marker = makeMarker(
       input.header, marker_namespace, 0, visualization_msgs::msg::Marker::SPHERE);
-  marker.pose.position = gazeboAlignedRvizMarkerPoint(position);
+  marker.pose.position =
+      gazeboAlignedRvizMarkerPoint(position, input.gazebo_aligned_axes_swapped);
   marker.scale.x = scale;
   marker.scale.y = scale;
   marker.scale.z = scale;
@@ -117,7 +119,8 @@ missionMarker(const MppiDebugMarkerInput& input, const bool start) {
                  start ? visualization_msgs::msg::Marker::CYLINDER
                        : visualization_msgs::msg::Marker::SPHERE);
   marker.pose.position =
-      gazeboAlignedRvizMarkerPoint(start ? input.mission_start : input.mission_goal);
+      gazeboAlignedRvizMarkerPoint(start ? input.mission_start : input.mission_goal,
+                                   input.gazebo_aligned_axes_swapped);
   marker.scale.x = 2.0;
   marker.scale.y = 2.0;
   marker.scale.z = start ? 0.35 : 2.0;
@@ -135,8 +138,8 @@ previousHorizonMarker(const MppiDebugMarkerInput& input) {
   marker.color.a = 0.25F;
   marker.points.reserve(input.previous_horizon.size());
   for (const mppi::State& state : input.previous_horizon) {
-    marker.points.push_back(
-        gazeboAlignedRvizMarkerPoint(Point3{state.x, state.y, state.z}));
+    marker.points.push_back(gazeboAlignedRvizMarkerPoint(
+        Point3{state.x, state.y, state.z}, input.gazebo_aligned_axes_swapped));
   }
   return marker;
 }
@@ -154,8 +157,8 @@ persistentRouteMarker(const MppiDebugMarkerInput& input) {
   marker.color = rgba(1.0F, 0.52F, 0.08F, 0.95F);
   marker.points.reserve(input.persistent_route.size());
   for (const mppi::RouteSample3D& sample : input.persistent_route) {
-    marker.points.push_back(
-        gazeboAlignedRvizMarkerPoint(Point3{sample.x_m, sample.y_m, sample.z_m}));
+    marker.points.push_back(gazeboAlignedRvizMarkerPoint(
+        Point3{sample.x_m, sample.y_m, sample.z_m}, input.gazebo_aligned_axes_swapped));
   }
   return marker;
 }
@@ -178,7 +181,8 @@ passageMarker(const MppiDebugMarkerInput& input, const PassageTraversalEdge& pas
       selected ? rgba(0.15F, 1.0F, 0.25F, 1.0F) : rgba(0.35F, 0.65F, 1.0F, 0.55F);
   marker.points.reserve(passage.centerline.size());
   for (const RouteSample3D& sample : passage.centerline) {
-    marker.points.push_back(gazeboAlignedRvizMarkerPoint(sample.position));
+    marker.points.push_back(gazeboAlignedRvizMarkerPoint(
+        sample.position, input.gazebo_aligned_axes_swapped));
   }
   return marker;
 }

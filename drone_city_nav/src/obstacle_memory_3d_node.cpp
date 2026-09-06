@@ -20,6 +20,7 @@
 #include "drone_city_nav/spectator_diagnostics_selection.hpp"
 #include "drone_city_nav/spectator_diagnostics_selection_ros.hpp"
 #include "drone_city_nav/tracked_agent_lidar_filter.hpp"
+#include "drone_city_nav/visualization_marker_helpers.hpp"
 
 #include <px4_msgs/msg/timesync_status.hpp>
 #include <px4_msgs/msg/vehicle_attitude.hpp>
@@ -182,6 +183,8 @@ public:
     const std::string spectator_target_topic = declare_parameter<std::string>(
         "persistent_memory_spectator_target_topic", "/drone_city_nav/spectator_target");
     frame_id_ = declare_parameter<std::string>("frame_id", "map");
+    gazebo_aligned_rviz_axes_swapped_ = declare_parameter<bool>(
+        std::string{kGazeboAlignedRvizAxesSwappedParameter}, true);
     static_cast<void>(declare_parameter<bool>("use_static_map", false));
 
     scan_config_.horizontal_samples = static_cast<std::size_t>(std::clamp<std::int64_t>(
@@ -280,7 +283,7 @@ public:
     if (persistent_memory_enabled_) {
       memory_worker_ = std::make_unique<ObstacleMemory3DWorker>(
           *this, bounds_, memory_config, min_mapping_altitude_m_, frame_id_,
-          memory_scan_queue_capacity);
+          gazebo_aligned_rviz_axes_swapped_, memory_scan_queue_capacity);
     }
 
     projection_config_.max_lidar_range_m = scan_config_.maximum_range_m;
@@ -812,7 +815,8 @@ private:
                                        persistent_memory_selection_.selected();
     if (publish_current_cloud) {
       current_returns_pub_->publish(buildLidarDebugPointCloud(
-          hit_points_map, rclcpp::Time{acquisition_stamp_ns, RCL_ROS_TIME}, frame_id_));
+          hit_points_map, rclcpp::Time{acquisition_stamp_ns, RCL_ROS_TIME}, frame_id_,
+          gazebo_aligned_rviz_axes_swapped_));
     }
 
     bool memory_scan_dropped{false};
@@ -875,6 +879,7 @@ private:
   LatestProcessingQueue<PendingPointCloud3D> pending_clouds_;
   std::mutex pose_history_mutex_;
   std::string frame_id_{"map"};
+  bool gazebo_aligned_rviz_axes_swapped_{true};
   double initial_heading_rad_{0.0};
   double maximum_heading_variance_rad2_{0.05};
   double startup_heading_maximum_sample_delta_rad_{0.05};

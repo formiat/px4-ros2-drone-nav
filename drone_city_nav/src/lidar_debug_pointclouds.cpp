@@ -45,10 +45,11 @@ makeXyzPointCloud(const std::size_t point_count,
 }
 
 void writeXyzPoint(sensor_msgs::msg::PointCloud2& cloud, const std::size_t index,
-                   const Point3& point) {
+                   const Point3& point, const bool gazebo_aligned_axes_swapped) {
   const float x = static_cast<float>(point.x);
   const float y = static_cast<float>(point.y);
-  const float z = static_cast<float>(gazeboAlignedRvizZ(point.z));
+  const float z =
+      static_cast<float>(gazeboAlignedRvizZ(point.z, gazebo_aligned_axes_swapped));
   const std::size_t offset = index * static_cast<std::size_t>(cloud.point_step);
   std::memcpy(&cloud.data[offset], &x, sizeof(float));
   std::memcpy(&cloud.data[offset + 4U], &y, sizeof(float));
@@ -109,32 +110,34 @@ collectOccupiedGridPoints(const nav_msgs::msg::OccupancyGrid& grid) {
 [[nodiscard]] sensor_msgs::msg::PointCloud2
 buildLidarDebugPointCloud(const std::span<const Point2> points, const double z_m,
                           const builtin_interfaces::msg::Time& stamp,
-                          const std::string_view frame_id) {
+                          const std::string_view frame_id,
+                          const bool gazebo_aligned_axes_swapped) {
   sensor_msgs::msg::PointCloud2 cloud =
       makeXyzPointCloud(points.size(), stamp, frame_id);
 
   for (std::size_t i = 0U; i < points.size(); ++i) {
     writeXyzPoint(cloud, i,
-                  Point3{points[i].x, points[i].y, std::isfinite(z_m) ? z_m : 0.0});
+                  Point3{points[i].x, points[i].y, std::isfinite(z_m) ? z_m : 0.0},
+                  gazebo_aligned_axes_swapped);
   }
   return cloud;
 }
 
-[[nodiscard]] sensor_msgs::msg::PointCloud2
-buildLidarDebugPointCloud(const std::span<const Point3> points,
-                          const builtin_interfaces::msg::Time& stamp,
-                          const std::string_view frame_id) {
+[[nodiscard]] sensor_msgs::msg::PointCloud2 buildLidarDebugPointCloud(
+    const std::span<const Point3> points, const builtin_interfaces::msg::Time& stamp,
+    const std::string_view frame_id, const bool gazebo_aligned_axes_swapped) {
   sensor_msgs::msg::PointCloud2 cloud =
       makeXyzPointCloud(points.size(), stamp, frame_id);
   for (std::size_t i = 0U; i < points.size(); ++i) {
-    writeXyzPoint(cloud, i, points[i]);
+    writeXyzPoint(cloud, i, points[i], gazebo_aligned_axes_swapped);
   }
   return cloud;
 }
 
 sensor_msgs::msg::PointCloud2 buildObservedOccupancyPointCloud3D(
     const ObservedOccupancyGrid3D& grid, const builtin_interfaces::msg::Time& stamp,
-    const std::string_view frame_id, const std::size_t stride) {
+    const std::string_view frame_id, const bool gazebo_aligned_axes_swapped,
+    const std::size_t stride) {
   const std::size_t effective_stride = std::max<std::size_t>(1U, stride);
   std::vector<Point3> points;
   points.reserve(grid.occupiedVoxelCount() / effective_stride + 1U);
@@ -170,12 +173,14 @@ sensor_msgs::msg::PointCloud2 buildObservedOccupancyPointCloud3D(
       }
     }
   }
-  return buildLidarDebugPointCloud(points, stamp, frame_id);
+  return buildLidarDebugPointCloud(points, stamp, frame_id,
+                                   gazebo_aligned_axes_swapped);
 }
 
 [[nodiscard]] sensor_msgs::msg::PointCloud2 buildObstacleMemoryTriggerPointCloud(
     const std::unordered_map<std::size_t, MemoryCellProvenance>& active_provenance,
-    const builtin_interfaces::msg::Time& stamp, const std::string_view frame_id) {
+    const builtin_interfaces::msg::Time& stamp, const std::string_view frame_id,
+    const bool gazebo_aligned_axes_swapped) {
   std::vector<std::pair<std::size_t, const MemoryCellProvenance*>> sorted_records;
   sorted_records.reserve(active_provenance.size());
   for (const auto& [index, provenance] : active_provenance) {
@@ -194,7 +199,8 @@ sensor_msgs::msg::PointCloud2 buildObservedOccupancyPointCloud3D(
       points.push_back(projection.endpoint_map_m);
     }
   }
-  return buildLidarDebugPointCloud(points, stamp, frame_id);
+  return buildLidarDebugPointCloud(points, stamp, frame_id,
+                                   gazebo_aligned_axes_swapped);
 }
 
 } // namespace drone_city_nav

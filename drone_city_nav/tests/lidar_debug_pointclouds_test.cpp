@@ -34,7 +34,7 @@ buildTriggerCloud(const Point3 endpoint, const bool endpoint_xyz_valid = true) {
   std::unordered_map<std::size_t, MemoryCellProvenance> provenance;
   provenance.emplace(1U, makeProvenance(endpoint, endpoint_xyz_valid));
   const builtin_interfaces::msg::Time stamp;
-  return buildObstacleMemoryTriggerPointCloud(provenance, stamp, "map");
+  return buildObstacleMemoryTriggerPointCloud(provenance, stamp, "map", true);
 }
 
 TEST(LidarDebugPointcloudsTest, CollectsOnlyOccupiedCells) {
@@ -69,7 +69,7 @@ TEST(LidarDebugPointcloudsTest, BuildsPointCloud2WithXyzFloatLayout) {
   const std::vector<Point2> points{Point2{1.5, -2.0}, Point2{3.0, 4.5}};
 
   const sensor_msgs::msg::PointCloud2 cloud = buildLidarDebugPointCloud(
-      points, std::numeric_limits<double>::quiet_NaN(), stamp, "map");
+      points, std::numeric_limits<double>::quiet_NaN(), stamp, "map", true);
 
   EXPECT_EQ(cloud.header.stamp.sec, 12);
   EXPECT_EQ(cloud.header.stamp.nanosec, 34U);
@@ -96,10 +96,23 @@ TEST(LidarDebugPointcloudsTest, CompensatesZForGazeboAlignedRvizFrame) {
   const std::vector<Point2> points{Point2{1.5, -2.0}};
 
   const sensor_msgs::msg::PointCloud2 cloud =
-      buildLidarDebugPointCloud(points, 2.5, stamp, "map");
+      buildLidarDebugPointCloud(points, 2.5, stamp, "map", true);
 
   ASSERT_EQ(cloud.data.size(), 12U);
   EXPECT_FLOAT_EQ(readFloat(cloud.data, 8U), -2.5F);
+}
+
+TEST(LidarDebugPointcloudsTest, KeepsAltitudeWhenGazeboAxesAreNotSwapped) {
+  // A world whose map frame equals the SDF frame uses the identity
+  // gazebo_map -> map transform, so overlays carry the map altitude verbatim.
+  builtin_interfaces::msg::Time stamp;
+  const std::vector<Point2> points{Point2{1.5, -2.0}};
+
+  const sensor_msgs::msg::PointCloud2 cloud =
+      buildLidarDebugPointCloud(points, 2.5, stamp, "map", false);
+
+  ASSERT_EQ(cloud.data.size(), 12U);
+  EXPECT_FLOAT_EQ(readFloat(cloud.data, 8U), 2.5F);
 }
 
 TEST(LidarDebugPointcloudsTest, Builds3dCurrentLidarCloudWithTrueEndpointAltitude) {
@@ -107,7 +120,7 @@ TEST(LidarDebugPointcloudsTest, Builds3dCurrentLidarCloudWithTrueEndpointAltitud
   const std::vector<Point3> points{Point3{1.5, -2.0, 7.25}};
 
   const sensor_msgs::msg::PointCloud2 cloud =
-      buildLidarDebugPointCloud(points, stamp, "map");
+      buildLidarDebugPointCloud(points, stamp, "map", true);
 
   ASSERT_EQ(cloud.width, 1U);
   ASSERT_EQ(cloud.data.size(), 12U);
@@ -126,7 +139,7 @@ TEST(LidarDebugPointcloudsTest, BuildsSortedCloudFromOccupancyTriggerEndpoints) 
   provenance.at(2U).last_hit.beam.projection.endpoint_map_m = Point3{20.0, 30.0, 40.0};
 
   const sensor_msgs::msg::PointCloud2 cloud =
-      buildObstacleMemoryTriggerPointCloud(provenance, stamp, "map");
+      buildObstacleMemoryTriggerPointCloud(provenance, stamp, "map", true);
 
   EXPECT_EQ(cloud.header.stamp.sec, 45);
   EXPECT_EQ(cloud.header.stamp.nanosec, 67U);
@@ -178,7 +191,7 @@ TEST(LidarDebugPointcloudsTest, BuildsEmptyCloudForEmptyProvenance) {
   const builtin_interfaces::msg::Time stamp;
 
   const sensor_msgs::msg::PointCloud2 cloud =
-      buildObstacleMemoryTriggerPointCloud(provenance, stamp, "map");
+      buildObstacleMemoryTriggerPointCloud(provenance, stamp, "map", true);
 
   EXPECT_EQ(cloud.height, 1U);
   EXPECT_EQ(cloud.width, 0U);
@@ -197,7 +210,7 @@ TEST(LidarDebugPointcloudsTest, EmitsOnePointPerActiveCell) {
   const builtin_interfaces::msg::Time stamp;
 
   const sensor_msgs::msg::PointCloud2 cloud =
-      buildObstacleMemoryTriggerPointCloud(provenance, stamp, "map");
+      buildObstacleMemoryTriggerPointCloud(provenance, stamp, "map", true);
 
   EXPECT_EQ(cloud.width, 1U);
   EXPECT_EQ(cloud.data.size(), 12U);

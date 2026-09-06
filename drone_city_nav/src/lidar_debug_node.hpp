@@ -176,6 +176,7 @@ private:
   nav_msgs::msg::Path last_path_;
   Pose2 current_pose_{};
   Px4MapFrameTransform px4_map_transform_{};
+  bool gazebo_aligned_rviz_axes_swapped_{true};
   Point2 current_velocity_{};
   AttitudeEuler attitude_{};
   LidarPoseHistory lidar_pose_history_{};

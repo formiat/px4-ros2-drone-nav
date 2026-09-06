@@ -51,6 +51,7 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
             scenario["px4_to_map_matrix"],
             (0.0, 1.0, 1.0, 0.0),
         )
+        self.assertFalse(scenario["gazebo_axes_swapped"])
         for vehicle in scenario["vehicles"]:
             self.assertEqual(vehicle["map_start_m"], vehicle["gazebo_spawn_m"])
 
@@ -199,6 +200,7 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
             "px4_to_map_m01",
             "px4_to_map_m10",
             "px4_to_map_m11",
+            "gazebo_aligned_rviz_axes_swapped",
         ):
             self.assertGreaterEqual(launch.count(f'"{parameter}"'), 4)
         self.assertIn('"tracking_error_tube_response_time_s"', launch)

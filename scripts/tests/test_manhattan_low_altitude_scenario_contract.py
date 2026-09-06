@@ -73,6 +73,7 @@ class ManhattanLowAltitudeScenarioContractTest(unittest.TestCase):
         # The Manhattan map_to_sdf already swaps the axes, so PX4 NED north and
         # east fall on map +X and +Y without a further swap.
         self.assertEqual(scenario["px4_to_map_matrix"], (1.0, 0.0, 0.0, 1.0))
+        self.assertTrue(scenario["gazebo_axes_swapped"])
 
     def test_3d_mapping_activates_below_the_shared_flight_altitude(self) -> None:
         params = yaml.safe_load(PARAMS_PATH.read_text(encoding="utf-8"))

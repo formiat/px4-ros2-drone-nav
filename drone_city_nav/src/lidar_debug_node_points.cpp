@@ -205,8 +205,8 @@ void LidarDebugNode::publishPointCloud(
   if (!publisher) {
     return;
   }
-  sensor_msgs::msg::PointCloud2 cloud =
-      buildLidarDebugPointCloud(points, z_m, now(), "map");
+  sensor_msgs::msg::PointCloud2 cloud = buildLidarDebugPointCloud(
+      points, z_m, now(), "map", gazebo_aligned_rviz_axes_swapped_);
   publisher->publish(cloud);
 }
 
@@ -214,8 +214,8 @@ void LidarDebugNode::publishRawLidarPointCloud(const std::vector<Point3>& points
   if (!raw_lidar_3d_pointcloud_pub_) {
     return;
   }
-  raw_lidar_3d_pointcloud_pub_->publish(
-      buildLidarDebugPointCloud(points, last_scan_.header.stamp, "map"));
+  raw_lidar_3d_pointcloud_pub_->publish(buildLidarDebugPointCloud(
+      points, last_scan_.header.stamp, "map", gazebo_aligned_rviz_axes_swapped_));
 }
 
 } // namespace drone_city_nav

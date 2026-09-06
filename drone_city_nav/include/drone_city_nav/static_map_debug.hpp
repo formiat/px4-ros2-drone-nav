@@ -13,6 +13,7 @@ namespace drone_city_nav {
 struct StaticMapDebugConfig {
   std_msgs::msg::Header header;
   std::size_t voxel_stride{1U};
+  bool gazebo_aligned_axes_swapped{true};
 };
 
 [[nodiscard]] sensor_msgs::msg::PointCloud2

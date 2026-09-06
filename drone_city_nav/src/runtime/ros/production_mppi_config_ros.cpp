@@ -3,6 +3,7 @@
 #include "drone_city_nav/mission_waypoint_sequence.hpp"
 #include "drone_city_nav/sensor_braking_contract_3d.hpp"
 #include "drone_city_nav/trajectory_compiler_3d.hpp"
+#include "drone_city_nav/visualization_marker_helpers.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -135,6 +136,8 @@ private:
     world.no_static_3d_esdf_window.vertical_recenter_margin_m =
         declare<double>("no_static_3d_esdf_vertical_recenter_margin_m", 9.0);
     world.frame_id = declare<std::string>("frame_id", "map");
+    world.gazebo_aligned_rviz_axes_swapped =
+        declare<bool>(kGazeboAlignedRvizAxesSwappedParameter.data(), true);
     world.px4_map_transform = Px4MapFrameTransform{
         .map_origin = Point3{declare<double>("px4_local_origin_x_m", 54.0),
                              declare<double>("px4_local_origin_y_m", 54.0),

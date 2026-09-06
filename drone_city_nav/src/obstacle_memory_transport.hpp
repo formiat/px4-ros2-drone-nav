@@ -24,7 +24,8 @@ namespace drone_city_nav {
 
 class ObstacleMemoryTransport final {
 public:
-  ObstacleMemoryTransport(rclcpp::Node& node, std::string frame_id, bool use_static_map,
+  ObstacleMemoryTransport(rclcpp::Node& node, std::string frame_id,
+                          bool gazebo_aligned_rviz_axes_swapped, bool use_static_map,
                           std::optional<OccupancyGrid2D> static_grid,
                           double risk_critical_distance_m,
                           double risk_preferred_distance_m);
@@ -47,6 +48,7 @@ private:
 
   rclcpp::Node& node_;
   std::string frame_id_;
+  bool gazebo_aligned_rviz_axes_swapped_{true};
   std::optional<OccupancyGrid2D> static_grid_;
   double debug_publish_period_s_{1.0};
   double diagnostic_period_s_{5.0};

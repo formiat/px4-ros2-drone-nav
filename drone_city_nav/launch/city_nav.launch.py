@@ -19,6 +19,7 @@ from launch_ros.actions import Node
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from point_to_point_scenario import load_point_to_point_scenario
+from px4_map_frame import gazebo_aligned_map_transform_arguments
 from lidar_profile import DEFAULT_LIDAR_PROFILE, validate_lidar_profile
 
 
@@ -255,6 +256,32 @@ def generate_launch_description():
             if profile == "3d":
                 lidar_gz_topic += "/points"
 
+        # RViz shows the `gazebo_map` fixed frame, the Gazebo SDF frame of the
+        # canonical world. Without a scenario the legacy generated-city
+        # convention applies: its map_to_sdf exchanges the axes, so the
+        # transform is the legacy rotation and overlays compensate Z. A world
+        # whose map frame equals the SDF frame gets the identity transform and
+        # every RViz publisher renders map coordinates verbatim.
+        gazebo_axes_swapped = True
+        map_to_sdf = {"sdf_x_from": "map_y", "sdf_y_from": "map_x"}
+        if scenario_path:
+            gazebo_axes_swapped = scenario["gazebo_axes_swapped"]
+            map_to_sdf = scenario["map_to_sdf"]
+        rviz_overrides = {"gazebo_aligned_rviz_axes_swapped": gazebo_axes_swapped}
+        navigation_overrides.update(rviz_overrides)
+        obstacle_memory_overrides.update(rviz_overrides)
+        gazebo_aligned_map_tf = Node(
+            package="tf2_ros",
+            executable="static_transform_publisher",
+            name="gazebo_aligned_map_tf",
+            output="screen",
+            condition=IfCondition(enable_rviz),
+            arguments=gazebo_aligned_map_transform_arguments(
+                map_to_sdf, gazebo_axes_swapped
+            ),
+            parameters=[{"use_sim_time": True}],
+        )
+
         static_world_path_override = static_occupancy_3d_path.perform(context).strip()
         if static_world_path_override and profile != "3d":
             obstacle_memory_overrides["static_occupancy_3d_path"] = (
@@ -348,7 +375,7 @@ def generate_launch_description():
             production_mppi_parameters.append(
                 {"static_free_space_topology_3d_path": ""}
             )
-        nodes = []
+        nodes = [gazebo_aligned_map_tf]
         if gazebo_bridge_enabled and lidar_enabled:
             bridge_contract = (
                 f"{lidar_gz_topic}@sensor_msgs/msg/PointCloud2"
@@ -490,47 +517,6 @@ def generate_launch_description():
         name="collision_crash_node",
         output="screen",
         parameters=[params_file, {"use_sim_time": True}],
-    )
-
-    # This transform is intentional and must not be "fixed" by changing RViz back
-    # to the raw navigation map frame. The generated Gazebo world and the
-    # navigation stack historically use different visual conventions: the
-    # navigation map is the authoritative planning/control frame, while the RViz
-    # debug view is aligned to the way the city is presented in Gazebo. The
-    # quaternion below applies the legacy Gazebo-aligned visualization mapping
-    # that swaps the horizontal X/Y axes and flips Z for RViz overlays. That looks
-    # unusual in isolation, especially now that we publish 3D buildings and
-    # 3D world points, but it is a deliberate compatibility shim for matching the
-    # visual world that operators inspect in Gazebo. Do not remove this transform
-    # or change the RViz fixed frame to "map" unless the Gazebo world convention,
-    # static map coordinates, and all debug overlays are migrated together.
-    gazebo_aligned_map_tf = Node(
-        package="tf2_ros",
-        executable="static_transform_publisher",
-        name="gazebo_aligned_map_tf",
-        output="screen",
-        condition=IfCondition(enable_rviz),
-        arguments=[
-            "--x",
-            "0.0",
-            "--y",
-            "0.0",
-            "--z",
-            "0.0",
-            "--qx",
-            "0.7071067811865476",
-            "--qy",
-            "0.7071067811865476",
-            "--qz",
-            "0.0",
-            "--qw",
-            "0.0",
-            "--frame-id",
-            "gazebo_map",
-            "--child-frame-id",
-            "map",
-        ],
-        parameters=[{"use_sim_time": True}],
     )
 
     rviz = Node(
@@ -697,7 +683,6 @@ def generate_launch_description():
             simulation_bridge,
             OpaqueFunction(function=source_nodes),
             collision_crash,
-            gazebo_aligned_map_tf,
             rviz,
         ]
     )

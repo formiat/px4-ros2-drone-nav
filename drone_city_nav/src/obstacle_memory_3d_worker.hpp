@@ -42,6 +42,7 @@ public:
   ObstacleMemory3DWorker(rclcpp::Node& node, const GridBounds3D& bounds,
                          const ObstacleMemory3DConfig& memory_config,
                          double minimum_mapping_altitude_m, std::string frame_id,
+                         bool gazebo_aligned_rviz_axes_swapped,
                          std::size_t scan_queue_capacity = 8U);
   ~ObstacleMemory3DWorker();
 

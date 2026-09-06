@@ -134,11 +134,13 @@ The GUI launch asks the Gazebo `CameraTracking` GUI plugin to follow
 - Stale Gazebo or PX4 processes can keep ports/resources busy. Use
   `./scripts/stop_sim.sh`.
 - GUI display forwarding can fail on restrictive X11/Wayland setups.
-- RViz navigation debug intentionally uses the `gazebo_map` fixed frame plus
-  the `gazebo_aligned_map_tf` transform from the launch file. This is a legacy
-  visualization compatibility shim, not a frame bug: it swaps the horizontal
-  axes and flips Z so navigation overlays line up with the way the generated
-  city is inspected in Gazebo.
+- RViz navigation debug uses the `gazebo_map` fixed frame plus the
+  `gazebo_aligned_map_tf` transform from the launch file, derived from the
+  canonical world's `map_to_sdf`. The generated city keeps the legacy rotation
+  that swaps the horizontal axes and flips Z; a world whose map frame equals
+  the SDF frame (Urban Circuit) gets the identity transform. Every overlay
+  publisher receives the matching `gazebo_aligned_rviz_axes_swapped`
+  parameter.
 - Multiple simultaneous Gazebo instances are not supported by the standard
   workflow.
 

@@ -43,6 +43,9 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
         # The map frame equals the SDF frame here, so PX4 north (NED X) is the
         # map +Y axis and PX4 east (NED Y) the map +X axis.
         self.assertEqual(scenario["px4_to_map_matrix"], (0.0, 1.0, 1.0, 0.0))
+        # RViz therefore shows the world through the identity gazebo_map -> map
+        # transform instead of the legacy axis-exchanging rotation.
+        self.assertFalse(scenario["gazebo_axes_swapped"])
         # Point A rests on the staging-area floor of the base-station room, six
         # metres south of the tent, without any synthetic launch platform.
         self.assertEqual(

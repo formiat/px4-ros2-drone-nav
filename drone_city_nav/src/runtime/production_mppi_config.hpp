@@ -84,6 +84,9 @@ struct ProductionMppiConfig final {
     std::size_t world_worker_count{2U};
     LocalObservedEsdfWindow3D no_static_3d_esdf_window{};
     std::string frame_id{"map"};
+    // RViz overlay convention for the `gazebo_map` fixed frame; see
+    // visualization_marker_helpers.hpp.
+    bool gazebo_aligned_rviz_axes_swapped{true};
     Px4MapFrameTransform px4_map_transform{};
     FlightEnvelopeConfig flight_envelope{};
     SweptFootprintConfig physical_footprint{};

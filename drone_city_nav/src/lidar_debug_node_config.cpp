@@ -1,5 +1,7 @@
 #include "drone_city_nav/lidar_debug_node_config.hpp"
 
+#include "drone_city_nav/visualization_marker_helpers.hpp"
+
 #include <rclcpp/rclcpp.hpp>
 
 #include <cmath>
@@ -68,6 +70,9 @@ void sanitizeLidarDebugNodeConfig(LidarDebugNodeConfig& config) {
   config.px4_to_map_m01 = node.declare_parameter<double>("px4_to_map_m01", 0.0);
   config.px4_to_map_m10 = node.declare_parameter<double>("px4_to_map_m10", 0.0);
   config.px4_to_map_m11 = node.declare_parameter<double>("px4_to_map_m11", 1.0);
+  config.gazebo_aligned_rviz_axes_swapped =
+      node.declare_parameter<bool>(std::string{kGazeboAlignedRvizAxesSwappedParameter},
+                                   config.gazebo_aligned_rviz_axes_swapped);
   config.scan_yaw_offset_rad =
       node.declare_parameter<double>("scan_yaw_offset_rad", config.scan_yaw_offset_rad);
   config.motion_compensate_lidar_pose = node.declare_parameter<bool>(

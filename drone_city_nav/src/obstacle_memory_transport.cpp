@@ -34,11 +34,13 @@ namespace {
 } // namespace
 
 ObstacleMemoryTransport::ObstacleMemoryTransport(
-    rclcpp::Node& node, std::string frame_id, const bool use_static_map,
+    rclcpp::Node& node, std::string frame_id,
+    const bool gazebo_aligned_rviz_axes_swapped, const bool use_static_map,
     std::optional<OccupancyGrid2D> static_grid, const double risk_critical_distance_m,
     const double risk_preferred_distance_m)
     : node_{node},
       frame_id_{std::move(frame_id)},
+      gazebo_aligned_rviz_axes_swapped_{gazebo_aligned_rviz_axes_swapped},
       static_grid_{std::move(static_grid)},
       risk_critical_distance_m_{risk_critical_distance_m},
       risk_preferred_distance_m_{risk_preferred_distance_m},
@@ -198,7 +200,8 @@ void ObstacleMemoryTransport::publish(
     raw_grid_pub_->publish(snapshot_message->grid);
     provenance_pub_->publish(snapshot_message->provenance);
     raw_memory_3d_pointcloud_pub_->publish(buildObstacleMemoryTriggerPointCloud(
-        provenance, snapshot_message->grid.header.stamp, frame_id_));
+        provenance, snapshot_message->grid.header.stamp, frame_id_,
+        gazebo_aligned_rviz_axes_swapped_));
     last_debug_publish_stamp_ns_ = stamp_ns;
     ++debug_publications_;
   }

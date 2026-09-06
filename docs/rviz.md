@@ -12,11 +12,19 @@ top-down configuration instead of the `drone_follow` view.
 ## Frames
 
 - `map`: planner and mission frame.
-- `gazebo_map`: Gazebo-aligned visualization frame.
+- `gazebo_map`: Gazebo-aligned visualization frame, the SDF frame of the
+  canonical world.
 - `drone_follow`: visualization-only moving target published by offboard.
 
-Do not infer a planner coordinate error until the displayed fixed frame and the
-`gazebo_map -> map` transform are verified.
+The launch derives the `gazebo_map -> map` transform from the canonical
+world's `map_to_sdf`. The generated city exchanges its map axes in the SDF
+frame, which is a reflection and has no rigid-transform equivalent, so it keeps
+the legacy rotation that exchanges X/Y and flips Z; map-frame overlays negate Z
+and `gazebo_map`-frame overlays exchange X/Y to compensate. A world whose map
+frame equals the SDF frame, such as Urban Circuit, gets the identity transform
+and every overlay renders map coordinates verbatim. All RViz publishers receive
+the same `gazebo_aligned_rviz_axes_swapped` parameter, so a mirrored picture
+means the parameter and the transform disagree, not a planner coordinate error.
 
 ## Current Layers
 

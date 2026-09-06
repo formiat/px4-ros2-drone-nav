@@ -23,6 +23,7 @@ _PX4_MAP_FRAME_SUPPORT = runpy.run_path(
     str(Path(__file__).with_name("px4_map_frame.py"))
 )
 _px4_to_map_matrix = _PX4_MAP_FRAME_SUPPORT["px4_to_map_matrix"]
+_map_to_sdf_swaps_axes = _PX4_MAP_FRAME_SUPPORT["map_to_sdf_swaps_axes"]
 
 
 def _finite_vector(value: Any, label: str) -> tuple[float, float, float]:
@@ -201,6 +202,8 @@ def load_point_to_point_scenario(
         "map_start_m": start,
         "gazebo_spawn_m": _map_to_sdf(start, transform),
         "px4_to_map_matrix": _px4_to_map_matrix(transform),
+        "map_to_sdf": transform,
+        "gazebo_axes_swapped": _map_to_sdf_swaps_axes(transform),
         "yaw_rad": yaw_rad,
         "mission_goal_sequence_m": mission_goal_sequence,
         "initial_altitude_m": initial_altitude,

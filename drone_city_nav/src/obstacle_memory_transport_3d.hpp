@@ -25,7 +25,8 @@ namespace drone_city_nav {
 
 class ObstacleMemoryTransport3D final {
 public:
-  ObstacleMemoryTransport3D(rclcpp::Node& node, std::string frame_id);
+  ObstacleMemoryTransport3D(rclcpp::Node& node, std::string frame_id,
+                            bool gazebo_aligned_rviz_axes_swapped);
   ~ObstacleMemoryTransport3D();
 
   ObstacleMemoryTransport3D(const ObstacleMemoryTransport3D&) = delete;
@@ -52,6 +53,7 @@ private:
 
   rclcpp::Node& node_;
   std::string frame_id_;
+  bool gazebo_aligned_rviz_axes_swapped_{true};
   ObstacleMemoryTransportPolicy3D policy_;
   double update_period_s_{0.5};
   double debug_period_s_{1.0};

@@ -43,6 +43,7 @@ struct LidarDebugNodeConfig {
   double px4_to_map_m01{0.0};
   double px4_to_map_m10{0.0};
   double px4_to_map_m11{1.0};
+  bool gazebo_aligned_rviz_axes_swapped{true};
   double scan_yaw_offset_rad{0.0};
   bool motion_compensate_lidar_pose{true};
   double lidar_pose_latency_s{0.05};

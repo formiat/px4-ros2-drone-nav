@@ -34,6 +34,12 @@ _MULTI_VEHICLE_LIDAR_SUPPORT = runpy.run_path(
 _VALUE_SUPPORT = runpy.run_path(
     str(Path(__file__).with_name("multi_vehicle_launch_values.py"))
 )
+_PX4_MAP_FRAME_SUPPORT = runpy.run_path(
+    str(Path(__file__).with_name("px4_map_frame.py"))
+)
+_gazebo_aligned_map_transform_arguments = _PX4_MAP_FRAME_SUPPORT[
+    "gazebo_aligned_map_transform_arguments"
+]
 _load_intercept_scenario = _SCENARIO_SUPPORT["load_intercept_scenario"]
 _load_multi_vehicle_scenario = _SCENARIO_SUPPORT["load_multi_vehicle_scenario"]
 _make_simulation_truth_adapter = _TRUTH_SUPPORT["make_simulation_truth_adapter"]
@@ -297,6 +303,7 @@ def generate_multi_vehicle_launch_description(mission_kind):
         world_name = scenario["gazebo_world_name"]
         navigation = scenario["navigation"]
         px4_to_map_matrix = scenario["px4_to_map_matrix"]
+        gazebo_axes_swapped = scenario["gazebo_axes_swapped"]
         cooperative_desired_separation_m = 5.0
         cooperative_release_separation_m = 7.0
         cooperative_prediction_horizon_s = 5.0
@@ -452,6 +459,7 @@ def generate_multi_vehicle_launch_description(mission_kind):
                     "px4_to_map_m01": px4_to_map_matrix[1],
                     "px4_to_map_m10": px4_to_map_matrix[2],
                     "px4_to_map_m11": px4_to_map_matrix[3],
+                    "gazebo_aligned_rviz_axes_swapped": gazebo_axes_swapped,
                     "start_x_m": config["map_start_x"],
                     "start_y_m": config["map_start_y"],
                     "start_z_m": config["map_start_z"],
@@ -564,6 +572,7 @@ def generate_multi_vehicle_launch_description(mission_kind):
                     "px4_to_map_m01": px4_to_map_matrix[1],
                     "px4_to_map_m10": px4_to_map_matrix[2],
                     "px4_to_map_m11": px4_to_map_matrix[3],
+                    "gazebo_aligned_rviz_axes_swapped": gazebo_axes_swapped,
                     "minimum_target_z_m": navigation["minimum_target_z_m"],
                     "maximum_target_z_m": navigation["maximum_target_z_m"],
                     "target_system": config["target_system"],
@@ -600,6 +609,7 @@ def generate_multi_vehicle_launch_description(mission_kind):
                     "drone_collision_filter": config["model"],
                 },
             )
+            memory_params["gazebo_aligned_rviz_axes_swapped"] = gazebo_axes_swapped
             nodes.append(
                 Node(
                     package="drone_city_nav",
@@ -648,6 +658,7 @@ def generate_multi_vehicle_launch_description(mission_kind):
                     "px4_to_map_m01": px4_to_map_matrix[1],
                     "px4_to_map_m10": px4_to_map_matrix[2],
                     "px4_to_map_m11": px4_to_map_matrix[3],
+                    "gazebo_aligned_rviz_axes_swapped": gazebo_axes_swapped,
                     "raw_obstacle_grid_topic": "/drone_city_nav/raw_obstacle_grid",
                     "memory_grid_topic": f"{prefix}/obstacle_memory_grid",
                     "path_topic": path_topic,
@@ -728,6 +739,7 @@ def generate_multi_vehicle_launch_description(mission_kind):
             {
                 "use_static_map": use_static_map,
                 "static_occupancy_3d_path": static_path,
+                "gazebo_aligned_rviz_axes_swapped": gazebo_axes_swapped,
             },
         )
         diagnostics_components.append(_make_world_visualization_component(world_params))
@@ -773,6 +785,7 @@ def generate_multi_vehicle_launch_description(mission_kind):
                 spectator_initial_vehicle_id,
                 spectator_reselection_policy,
                 spectator_reselection_delay_s,
+                gazebo_axes_swapped,
             )
         )
         nodes.append(
@@ -786,13 +799,9 @@ def generate_multi_vehicle_launch_description(mission_kind):
                 output="screen",
                 condition=IfCondition(enable_rviz),
                 prefix=diagnostics_prefix,
-                arguments=[
-                    "--x", "0.0", "--y", "0.0", "--z", "0.0",
-                    "--qx", "0.7071067811865476",
-                    "--qy", "0.7071067811865476",
-                    "--qz", "0.0", "--qw", "0.0",
-                    "--frame-id", "gazebo_map", "--child-frame-id", "map",
-                ],
+                arguments=_gazebo_aligned_map_transform_arguments(
+                    scenario["map_to_sdf"], gazebo_axes_swapped
+                ),
                 parameters=[{"use_sim_time": True}],
             )
         )

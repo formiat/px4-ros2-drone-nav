@@ -4,6 +4,7 @@
 #include "drone_city_nav/msg/vehicle_destroyed.hpp"
 #include "drone_city_nav/msg/vehicle_navigation_state.hpp"
 #include "drone_city_nav/spectator_selection.hpp"
+#include "drone_city_nav/visualization_marker_helpers.hpp"
 
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -46,6 +47,8 @@ public:
         static_cast<std::uint64_t>(declare_parameter<std::int64_t>("mission_epoch", 1));
     parent_frame_ = declare_parameter<std::string>("parent_frame", "gazebo_map");
     follow_frame_ = declare_parameter<std::string>("follow_frame", "drone_follow");
+    gazebo_aligned_rviz_axes_swapped_ = declare_parameter<bool>(
+        std::string{kGazeboAlignedRvizAxesSwappedParameter}, true);
     ids_ = declare_parameter<std::vector<std::string>>(
         "vehicle_ids", {"interceptor_0", "interceptor_1", "interceptor_2"});
     if (ids_.empty()) {
@@ -258,9 +261,12 @@ private:
     transform.header.stamp = now();
     transform.header.frame_id = parent_frame_;
     transform.child_frame_id = follow_frame_;
-    transform.transform.translation.x = state->position.y;
-    transform.transform.translation.y = state->position.x;
-    transform.transform.translation.z = state->position.z;
+    const Point3 position = gazeboAlignedRvizFramePosition(
+        Point3{state->position.x, state->position.y, state->position.z},
+        gazebo_aligned_rviz_axes_swapped_);
+    transform.transform.translation.x = position.x;
+    transform.transform.translation.y = position.y;
+    transform.transform.translation.z = position.z;
     transform.transform.rotation.w = 1.0;
     tf_broadcaster_->sendTransform(transform);
   }
@@ -276,6 +282,7 @@ private:
   std::size_t displayed_index_{0U};
   double reselection_delay_s_{3.0};
   std::string parent_frame_;
+  bool gazebo_aligned_rviz_axes_swapped_{true};
   std::string follow_frame_;
   std::uint64_t mission_epoch_{1U};
   std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;

@@ -11,11 +11,11 @@ ObstacleMemory3DWorker::ObstacleMemory3DWorker(
     rclcpp::Node& node, const GridBounds3D& bounds,
     const ObstacleMemory3DConfig& memory_config,
     const double minimum_mapping_altitude_m, std::string frame_id,
-    const std::size_t scan_queue_capacity)
+    const bool gazebo_aligned_rviz_axes_swapped, const std::size_t scan_queue_capacity)
     : node_{node},
       memory_{bounds, memory_config},
       mapping_lifecycle_{minimum_mapping_altitude_m},
-      transport_{node, std::move(frame_id)},
+      transport_{node, std::move(frame_id), gazebo_aligned_rviz_axes_swapped},
       mailbox_{scan_queue_capacity},
       worker_{[this](const std::stop_token token) { workerLoop(token); }} {
 }

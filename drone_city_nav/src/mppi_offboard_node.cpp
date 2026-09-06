@@ -95,6 +95,8 @@ public:
         declare_parameter<std::string>("rviz_drone_follow_parent_frame", "gazebo_map");
     rviz_drone_follow_frame_ =
         declare_parameter<std::string>("rviz_drone_follow_frame", "drone_follow");
+    gazebo_aligned_rviz_axes_swapped_ = declare_parameter<bool>(
+        std::string{kGazeboAlignedRvizAxesSwappedParameter}, true);
     px4_map_transform_ = Px4MapFrameTransform{
         .map_origin = Point3{declare_parameter<double>("px4_local_origin_x_m", 54.0),
                              declare_parameter<double>("px4_local_origin_y_m", 54.0),
@@ -405,7 +407,9 @@ private:
   [[nodiscard]] Point3 rvizDronePosition() const noexcept {
     const Point2 map_position =
         px4_map_transform_.localPositionToMap(Point2{local_x_, local_y_});
-    return Point3{map_position.y, map_position.x, mapAltitudeM()};
+    return gazeboAlignedRvizFramePosition(
+        Point3{map_position.x, map_position.y, mapAltitudeM()},
+        gazebo_aligned_rviz_axes_swapped_);
   }
 
   void onHorizon(const msg::MppiTrajectoryHorizon& horizon) {
@@ -939,6 +943,7 @@ private:
   ExecutionHorizonAdmissionState horizon_admission_{};
   rclcpp::Time last_command_time_{0, 0, RCL_ROS_TIME};
   std::string rviz_drone_follow_parent_frame_{"gazebo_map"};
+  bool gazebo_aligned_rviz_axes_swapped_{true};
   std::string rviz_drone_follow_frame_{"drone_follow"};
   std::string applied_control_feedback_frame_id_{"map"};
   std::string destruction_detail_;

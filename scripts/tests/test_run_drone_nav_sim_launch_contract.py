@@ -432,6 +432,18 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
                 f'"px4_to_map_{entry}": px4_to_map_matrix[{index}]', self.launch_text
             )
         self.assertIn("**px4_frame_overrides,", self.launch_text)
+        # The RViz gazebo_map transform and every overlay convention follow the
+        # canonical world instead of the legacy generated-city rotation.
+        self.assertIn(
+            'gazebo_axes_swapped = scenario["gazebo_axes_swapped"]', self.launch_text
+        )
+        self.assertIn(
+            '"gazebo_aligned_rviz_axes_swapped": gazebo_axes_swapped', self.launch_text
+        )
+        self.assertIn(
+            "gazebo_aligned_map_transform_arguments(", self.launch_text
+        )
+        self.assertNotIn('"0.7071067811865476"', self.launch_text)
         self.assertNotIn('"initial_altitude_m"', self.launch_text)
         self.assertIn('"mission_goal_sequence_xyz_m": [', self.launch_text)
         self.assertNotIn('"goal_x_m": goal_x_m', self.launch_text)

@@ -30,7 +30,8 @@ void ProductionMppiNode::publishRviz(
     pose.header = path.header;
     pose.pose.position.x = state.x;
     pose.pose.position.y = state.y;
-    pose.pose.position.z = gazeboAlignedRvizZ(state.z);
+    pose.pose.position.z =
+        gazeboAlignedRvizZ(state.z, config_.world.gazebo_aligned_rviz_axes_swapped);
     pose.pose.orientation.w = 1.0;
     path.poses.push_back(pose);
   }
@@ -62,6 +63,7 @@ void ProductionMppiNode::publishRviz(
       .mission_start = config_.planning.mission_start,
       .mission_goal = mission_goal,
       .selected_tier = snapshot.result.selected_tier,
+      .gazebo_aligned_axes_swapped = config_.world.gazebo_aligned_rviz_axes_swapped,
   };
   detail::populateTrackingObjectiveMarkers(objective.get(), marker_input);
   const visualization_msgs::msg::MarkerArray markers =
