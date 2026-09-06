@@ -54,9 +54,13 @@ buildPositionTrajectorySetpoint(const std::uint64_t timestamp_us,
   const float nan = std::numeric_limits<float>::quiet_NaN();
   px4_msgs::msg::TrajectorySetpoint msg;
   msg.timestamp = timestamp_us;
+  // The target altitude is measured upward from the PX4 local origin and may
+  // be negative when the vehicle flies below its spawn level; NED simply
+  // negates it. Folding the sign away would send a vehicle holding below the
+  // origin to the mirrored altitude above it.
   msg.position = std::array<float, 3>{static_cast<float>(local_target.x),
                                       static_cast<float>(local_target.y),
-                                      static_cast<float>(-std::abs(target_altitude_m))};
+                                      static_cast<float>(-target_altitude_m)};
   msg.velocity =
       std::array<float, 3>{nan, nan,
                            std::isfinite(vertical_velocity_up_mps)

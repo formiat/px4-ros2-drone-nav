@@ -43,6 +43,14 @@ TEST(Px4OffboardSetpointIo, BuildsPositionSetpointWithNedAltitude) {
   EXPECT_TRUE(std::isnan(msg.yawspeed));
 }
 
+TEST(Px4OffboardSetpointIo, KeepsPositionSetpointBelowTheLocalOrigin) {
+  // A hold 3.77 m below the spawn level stays below it in NED instead of being
+  // mirrored to 3.77 m above.
+  const auto msg = buildPositionTrajectorySetpoint(102U, Point2{1.0, 2.0}, -3.77, 0.0);
+
+  EXPECT_FLOAT_EQ(msg.position[2], 3.77F);
+}
+
 TEST(Px4OffboardSetpointIo, BuildsVelocitySetpointWithoutPosition) {
   const auto msg =
       buildVelocityTrajectorySetpoint(200U, Point2{5.0, -6.0}, -0.75, -1.0);
