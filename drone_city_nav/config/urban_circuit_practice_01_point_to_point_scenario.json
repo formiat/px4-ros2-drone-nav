@@ -6,13 +6,13 @@
       "id": "departure",
       "vehicle_ids": ["point_to_point_vehicle"],
       "size_m": [6.0, 6.0, 0.5],
-      "top_z_m": 14.751717758
+      "top_z_m": 11.751717758
     }
   ],
   "vehicle": {
     "px4_model_target": "gz_x500_lidar_2d",
     "gazebo_model_name": "x500_lidar_2d_0",
-    "map_start_m": [0.749319792, 27.246976852, 15.051717758],
+    "map_start_m": [0.749319792, 27.246976852, 12.051717758],
     "yaw_rad": 2.4116276060443145
   },
   "mission_goal_sequence_m": [[63.009487152, 23.856639862, 12.592997551]]

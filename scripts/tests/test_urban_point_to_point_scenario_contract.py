@@ -42,7 +42,14 @@ class UrbanPointToPointScenarioContractTest(unittest.TestCase):
         self.assertEqual(scenario["map_start_m"], scenario["gazebo_spawn_m"])
         self.assertEqual(
             scenario["map_start_m"],
-            (0.749319792, 27.246976852, 15.051717758),
+            (0.749319792, 27.246976852, 12.051717758),
+        )
+        # The departure platform sits three metres below the takeoff altitude so
+        # the bootstrap climb is a real climb: a spawn at the takeoff altitude
+        # never moves, the EKF heading never becomes control-grade, and the
+        # planner has no body axis to seed its footprint from.
+        self.assertLess(
+            scenario["map_start_m"][2] + 2.5, scenario["initial_altitude_m"]
         )
         self.assertEqual(
             scenario["mission_goal_sequence_m"],
