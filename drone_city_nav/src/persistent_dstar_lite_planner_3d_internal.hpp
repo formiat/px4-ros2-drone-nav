@@ -13,6 +13,7 @@
 #include <memory>
 #include <optional>
 #include <queue>
+#include <span>
 #include <tuple>
 #include <unordered_map>
 #include <unordered_set>
@@ -270,7 +271,10 @@ public:
   // like any other, not an exemption from the body contract.
   struct DepartureConnection3D {
     std::optional<PersistentPlannerNode3D> anchor;
-    std::optional<Point3> waypoint;
+    // Free points the vehicle flies through before the anchor, in order.
+    // Empty in ordinary flight; one point from the departure refinement; a
+    // chain from the escape search.
+    std::vector<Point3> waypoints;
 
     [[nodiscard]] bool available() const noexcept {
       return anchor.has_value();
@@ -300,7 +304,7 @@ public:
   // for contact evidence the body already holds; every later leg is ordinary
   // raw evidence.
   [[nodiscard]] bool departureReachable(const Point3& start,
-                                        const std::optional<Point3>& waypoint,
+                                        std::span<const Point3> waypoints,
                                         const Point3& target) const;
   // A short step off the straight segment between two node centres that clears
   // the body on both legs, or nothing. The lattice steps 2 m horizontally
@@ -659,8 +663,7 @@ public:
                                          std::size_t& expansions);
   [[nodiscard]] std::vector<Point3>
   extractPath(const Point3& exact_start, const Point3& exact_goal,
-              const std::optional<Point3>& departure_waypoint,
-              std::size_t& adaptive_edges);
+              std::span<const Point3> departure_waypoints, std::size_t& adaptive_edges);
 
   [[nodiscard]] std::uint64_t searchGeneration() const noexcept;
   [[nodiscard]] std::uint64_t repairGeneration() const noexcept;
@@ -713,7 +716,7 @@ public:
     Point3 exact_start{};
     Point3 exact_goal{};
     // See PlannerLattice3D::DepartureConnection3D.
-    std::optional<Point3> departure_waypoint;
+    std::vector<Point3> departure_waypoints;
   };
 
   FeasiblePathSearch3D(const PersistentPlannerConfig3D& config,
@@ -733,8 +736,16 @@ public:
   // search next touches the label, and the labels behind an edge that no
   // longer survives are dropped and re-entered from their intact neighbours.
   void noteWorldChanged() noexcept;
-  // True when the last advance() emptied the frontier without a candidate.
+  // True when the last advance() emptied the frontier without a candidate,
+  // whether or not it restarted afterwards within the same call.
   [[nodiscard]] bool frontierExhausted() const noexcept;
+  // The lattice nodes the frontier had labelled when it emptied, accumulated
+  // over every exhaustion since the last clear: the components of the lattice
+  // graph this start reaches and the goal is not in. An escape has to leave
+  // them. Cleared by the owner when the vehicle moves on.
+  [[nodiscard]] bool closedComponentMarked() const noexcept;
+  [[nodiscard]] bool inClosedComponent(PersistentPlannerNode3D node) const noexcept;
+  void clearClosedComponent() noexcept;
   [[nodiscard]] std::size_t exploredNodes() const noexcept;
   // Smallest distance from any expanded node to the exact goal so far.
   [[nodiscard]] double closestGoalDistanceM() const noexcept;
@@ -758,11 +769,18 @@ public:
 
 private:
   static constexpr std::uint32_t kNoParent{std::numeric_limits<std::uint32_t>::max()};
+  // The body of advance(); `exhausted` reports whether the frontier emptied
+  // during this call, before any restart.
+  [[nodiscard]] std::optional<std::vector<Point3>> advanceFrontier(
+      const Endpoints3D& endpoints, std::chrono::steady_clock::time_point deadline,
+      std::size_t maximum_expansions, std::size_t& expansions, bool& exhausted);
   // Longest parent chain any walk follows; longer means a loop of links.
   static constexpr std::size_t kMaximumChainWalk{1U << 20U};
 
   void initialize(const Endpoints3D& endpoints);
   void ensureLabelStorage();
+  // Adds every labelled node to the closed component.
+  void markClosedComponent();
   [[nodiscard]] bool labelled(std::size_t index) const noexcept;
   // Writes a label reached through a chain validated on the resident world.
   // Refuses a parent that descends from the label.
@@ -828,6 +846,8 @@ private:
   std::uint32_t validation_epoch_{1U};
   std::vector<std::uint32_t> chain_;
   std::vector<std::uint32_t> invalidation_queue_;
+  std::vector<std::uint8_t> closed_component_;
+  bool closed_component_marked_{false};
   // Edges the raw sweep rejected on the resident world: the sweep is the
   // authority for a candidate, so the search never offers them again on it.
   std::unordered_set<PersistentPlannerEdge3D, PersistentPlannerEdge3DHash>
@@ -849,6 +869,98 @@ directionForVector3D(const Vec3& vector) noexcept;
 directionForEdge3D(PersistentPlannerNode3D first,
                    PersistentPlannerNode3D second) noexcept;
 
+// Resumable search for a way out of a closed component of the lattice graph.
+//
+// The lattice is sparse relative to the map: a 2.4 m corridor carries no valid
+// node unless its centre happens to fall on the grid, and once its walls are
+// observed the nodes inside it vanish from the graph. A vehicle that entered
+// such a corridor on a route the graph still had then stands in a region whose
+// lattice component the goal is not in; both lattice searches exhaust it and
+// can only start over. The way out exists at the body's own scale, and this
+// search finds it there: it flood-fills a grid
+// `departure_refinement_subdivisions` times finer than the lattice around the
+// vehicle, validating every step with the ordinary raw rule (the first with the
+// departure exemption), until it reaches a point from which a lattice node
+// outside the closed component is reachable. That chain becomes the departure,
+// so the body contract is unchanged: every leg is a raw-validated segment.
+class EscapeSearch3D final {
+public:
+  struct Result3D {
+    PersistentPlannerNode3D anchor{};
+    std::vector<Point3> waypoints;
+  };
+
+  EscapeSearch3D(const PersistentPlannerConfig3D& config,
+                 PlannerLattice3D& lattice) noexcept;
+
+  void reset() noexcept;
+  [[nodiscard]] bool initialized() const noexcept;
+  // The fill emptied its frontier without reaching a way out.
+  [[nodiscard]] bool exhausted() const noexcept;
+  [[nodiscard]] std::size_t exploredCells() const noexcept;
+  [[nodiscard]] std::size_t totalProbes() const noexcept;
+  // Continues the fill from `start` (re-seeded when the vehicle moved by more
+  // than a fine step) until a way out is found, the probe budget is spent, or
+  // the deadline passes. `closed` says whether a lattice node belongs to a
+  // component the lattice searches already exhausted.
+  [[nodiscard]] std::optional<Result3D>
+  advance(const Point3& start,
+          const std::function<bool(PersistentPlannerNode3D)>& closed,
+          std::chrono::steady_clock::time_point deadline, std::size_t maximum_probes,
+          std::size_t& probes);
+
+private:
+  static constexpr std::uint32_t kNoCell{std::numeric_limits<std::uint32_t>::max()};
+
+  struct CellOffset3D {
+    int x{0};
+    int y{0};
+    int z{0};
+  };
+
+  struct QueueEntry3D {
+    double cost_m{0.0};
+    std::uint32_t cell{0U};
+
+    [[nodiscard]] bool operator>(const QueueEntry3D& other) const noexcept {
+      return cost_m != other.cost_m ? cost_m > other.cost_m : cell > other.cell;
+    }
+  };
+
+  void begin(const Point3& start);
+  [[nodiscard]] std::optional<std::uint32_t> cellAt(int x, int y, int z) const noexcept;
+  [[nodiscard]] CellOffset3D offsetOf(std::uint32_t cell) const noexcept;
+  [[nodiscard]] Point3 pointOf(std::uint32_t cell) const noexcept;
+  [[nodiscard]] bool insideMap(const Point3& point) const noexcept;
+  // A lattice node one lattice step around the point, outside the closed
+  // components, that the body reaches from it.
+  [[nodiscard]] std::optional<PersistentPlannerNode3D>
+  exitFrom(const Point3& point, bool from_origin,
+           const std::function<bool(PersistentPlannerNode3D)>& closed,
+           std::size_t& probes);
+
+  const PersistentPlannerConfig3D* config_{nullptr};
+  PlannerLattice3D* lattice_{nullptr};
+  bool initialized_{false};
+  bool exhausted_{false};
+  Point3 origin_{};
+  std::uint32_t origin_cell_{0U};
+  int span_{0};
+  int vertical_span_{0};
+  int side_{0};
+  double horizontal_step_m_{0.0};
+  double vertical_step_m_{0.0};
+  std::vector<std::uint8_t> settled_;
+  std::vector<double> cost_m_;
+  std::vector<std::uint32_t> parent_;
+  std::priority_queue<QueueEntry3D, std::vector<QueueEntry3D>, std::greater<>> open_;
+  // Node validity is one sweep per node; cached for the life of the fill.
+  std::unordered_map<PersistentPlannerNode3D, bool, PersistentPlannerNode3DHash>
+      node_valid_;
+  std::size_t explored_{0U};
+  std::size_t probes_{0U};
+};
+
 // Refines a spatial route into the fastest executable one by searching over
 // direction-aware time states. It is seeded from a spatial incumbent and keeps
 // its own frontier across updates, so it owns that state rather than exposing
@@ -861,7 +973,7 @@ public:
     Point3 exact_start{};
     Point3 exact_goal{};
     // See PlannerLattice3D::DepartureConnection3D.
-    std::optional<Point3> departure_waypoint;
+    std::vector<Point3> departure_waypoints;
     bool start_from_rest{false};
   };
 
@@ -1061,9 +1173,11 @@ private:
   // Anchored start of the feasibility search; see plan() for the hysteresis.
   PersistentPlannerNode3D goal_{};
   Point3 exact_start_{};
-  // The short free step the search leaves the vehicle through when no lattice
-  // node is reachable from where it stands. Absent in ordinary flight.
-  std::optional<Point3> departure_waypoint_;
+  // The free points the search leaves the vehicle through before the anchor
+  // when no lattice node is reachable from where it stands, or when the nodes
+  // it reaches belong to a component the goal is not in. Empty in ordinary
+  // flight.
+  std::vector<Point3> departure_waypoints_;
   // How many of the start's admissible anchors the search has already tried
   // and exhausted itself against. Reset whenever a route is found or the
   // search restarts.
@@ -1074,6 +1188,16 @@ private:
   DStarLiteSession3D dstar_session_;
   FeasiblePathSearch3D feasibility_search_;
   ExecutionTimeRefiner3D execution_time_refiner_;
+  EscapeSearch3D escape_search_;
+  // The way out of a closed component the vehicle is flying, trimmed as it
+  // passes each point; see EscapeSearch3D. Absent in ordinary flight.
+  std::optional<EscapeSearch3D::Result3D> escape_connection_;
+  // The feasibility search exhausted the start's component and the escape
+  // search has work to do on the next updates.
+  bool escape_search_pending_{false};
+  // Where the vehicle stood when its component closed; moving away from it
+  // discards what was learnt about the component.
+  std::optional<Point3> closed_component_origin_;
   PathPostprocessor3D path_postprocessor_{};
   AnytimePlannerCoordinator3D coordinator_;
   std::size_t adaptive_edges_in_extracted_path_{0U};

@@ -69,7 +69,7 @@ std::optional<std::vector<Point3>> FeasiblePathSearch3D::pathFromNodes(
     const Point3 point = lattice_->pointFor(nodes[index]);
     if (distance3D(endpoints.exact_start, point) <= kCostTolerance ||
         lattice_->departureReachable(endpoints.exact_start,
-                                     endpoints.departure_waypoint, point)) {
+                                     endpoints.departure_waypoints, point)) {
       first = index;
       break;
     }
@@ -80,9 +80,10 @@ std::optional<std::vector<Point3>> FeasiblePathSearch3D::pathFromNodes(
   std::vector<Point3> path;
   path.reserve(nodes.size() - first + 2U);
   path.push_back(endpoints.exact_start);
-  if (endpoints.departure_waypoint.has_value() &&
-      distance3D(path.back(), *endpoints.departure_waypoint) > kCostTolerance) {
-    path.push_back(*endpoints.departure_waypoint);
+  for (const Point3& waypoint : endpoints.departure_waypoints) {
+    if (distance3D(path.back(), waypoint) > kCostTolerance) {
+      path.push_back(waypoint);
+    }
   }
   for (std::size_t index = first; index < nodes.size(); ++index) {
     // An edge whose straight segment does not clear the body is traversable
@@ -347,6 +348,21 @@ void FeasiblePathSearch3D::drainInvalidations(
 std::optional<std::vector<Point3>> FeasiblePathSearch3D::advance(
     const Endpoints3D& endpoints, const std::chrono::steady_clock::time_point deadline,
     const std::size_t maximum_expansions, std::size_t& expansions) {
+  // The restart inside advanceFrontier re-seeds the labels through reset(),
+  // which clears the exhaustion flag; the flag has to report what happened in
+  // this call, or an exhaustion followed by a restart looks like an ordinary
+  // update and nothing above the search ever learns that the start's
+  // component is closed.
+  bool exhausted = false;
+  std::optional<std::vector<Point3>> candidate =
+      advanceFrontier(endpoints, deadline, maximum_expansions, expansions, exhausted);
+  frontier_exhausted_ = exhausted;
+  return candidate;
+}
+
+std::optional<std::vector<Point3>> FeasiblePathSearch3D::advanceFrontier(
+    const Endpoints3D& endpoints, const std::chrono::steady_clock::time_point deadline,
+    const std::size_t maximum_expansions, std::size_t& expansions, bool& exhausted) {
   expansions = 0U;
   if (!initialized_) {
     initialize(endpoints);
@@ -358,7 +374,6 @@ std::optional<std::vector<Point3>> FeasiblePathSearch3D::advance(
   // the search on the resident world from the current start anchor once per
   // call.
   bool restarted{false};
-  frontier_exhausted_ = false;
   while (expansions < maximum_expansions &&
          std::chrono::steady_clock::now() < deadline) {
     if (!invalidation_queue_.empty()) {
@@ -367,7 +382,8 @@ std::optional<std::vector<Point3>> FeasiblePathSearch3D::advance(
       continue;
     }
     if (open_.empty()) {
-      frontier_exhausted_ = true;
+      exhausted = true;
+      markClosedComponent();
       if (restarted) {
         break;
       }
@@ -563,6 +579,36 @@ PersistentPlannerNode3D FeasiblePathSearch3D::anchor() const noexcept {
 
 bool FeasiblePathSearch3D::frontierExhausted() const noexcept {
   return frontier_exhausted_;
+}
+
+void FeasiblePathSearch3D::markClosedComponent() {
+  if (closed_component_.size() != label_generation_.size()) {
+    closed_component_.assign(label_generation_.size(), 0U);
+  }
+  for (std::size_t index = 0U; index < label_generation_.size(); ++index) {
+    if (label_generation_[index] == generation_) {
+      closed_component_[index] = 1U;
+    }
+  }
+  closed_component_marked_ = true;
+}
+
+bool FeasiblePathSearch3D::closedComponentMarked() const noexcept {
+  return closed_component_marked_;
+}
+
+bool FeasiblePathSearch3D::inClosedComponent(
+    const PersistentPlannerNode3D node) const noexcept {
+  if (!closed_component_marked_ || !lattice_->nodeInside(node)) {
+    return false;
+  }
+  const std::size_t index = lattice_->linearIndex(node);
+  return index < closed_component_.size() && closed_component_[index] != 0U;
+}
+
+void FeasiblePathSearch3D::clearClosedComponent() noexcept {
+  std::ranges::fill(closed_component_, 0U);
+  closed_component_marked_ = false;
 }
 
 std::size_t FeasiblePathSearch3D::exploredNodes() const noexcept {

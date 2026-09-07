@@ -531,6 +531,17 @@ production_mppi_node:
     persistent_planner_maximum_edge_refinement_probes: 256
     persistent_planner_departure_refinement_subdivisions: 4
     persistent_planner_maximum_departure_refinement_probes: 512
+    # A 2.4 m corridor carries no valid lattice node unless its centre falls
+    # on the grid, and once its walls are observed the nodes inside it vanish
+    # from the graph. A vehicle that entered it on a route the graph still had
+    # then stands in a component the goal is not in, and both lattice searches
+    # exhaust it. The escape search flood-fills a grid four times finer than
+    # the lattice around the vehicle, within this many lattice cells, through
+    # raw-validated steps to a node outside that component; the chain becomes
+    # the departure. The probe budget bounds one update's share; the fill
+    # resumes on the next.
+    persistent_planner_escape_search_radius_cells: 6
+    persistent_planner_escape_search_maximum_probes_per_update: 512
     persistent_planner_clearance_centering_passes: 3
     persistent_planner_maximum_clearance_centering_queries: 4096
     persistent_planner_clearance_ranking_weight: 1.5

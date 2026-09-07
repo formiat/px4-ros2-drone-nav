@@ -370,6 +370,10 @@ void ProductionMppiConfigLoader::declarePlanning() {
       declarePositiveSize("persistent_planner_departure_refinement_subdivisions", 4);
   planner.maximum_departure_refinement_probes = declarePositiveSize(
       "persistent_planner_maximum_departure_refinement_probes", 512);
+  planner.escape_search_radius_cells =
+      declarePositiveSize("persistent_planner_escape_search_radius_cells", 6);
+  planner.escape_search_maximum_probes_per_update = declarePositiveSize(
+      "persistent_planner_escape_search_maximum_probes_per_update", 512);
   planner.clearance_centering_passes =
       declarePositiveSize("persistent_planner_clearance_centering_passes", 3);
   planner.maximum_clearance_centering_queries = declarePositiveSize(

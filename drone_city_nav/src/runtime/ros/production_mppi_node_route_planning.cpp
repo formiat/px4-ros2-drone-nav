@@ -118,7 +118,10 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
         "feasibility_ms=%.1f repair_ms=%.1f spatial_search_ms=%.1f "
         "refinement_ms=%.1f world_diff_ms=%.1f world_install_ms=%.1f "
         "schedule_ms=%.1f schedule_ranking_ms=%.1f edges_forgotten=%zu "
-        "clearances_tightened=%zu clearances_rederived=%zu",
+        "clearances_tightened=%zu clearances_rederived=%zu "
+        "departure_waypoints=%zu anchor_skip=%zu escape_attempted=%s escape_found=%s "
+        "escape_active=%s escape_exhausted=%s escape_probes=%zu escape_cells=%zu "
+        "escape_ms=%.1f",
         planner_telemetry.planned_on_revision, planner_telemetry.mission_epoch,
         plannerInputStatus3DName(planner_update.planner_input_status),
         planner_telemetry.input_failure,
@@ -169,7 +172,16 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
         planner_telemetry.schedule_ms, planner_telemetry.schedule_ranking_ms,
         planner_telemetry.schedule_edges_forgotten,
         planner_telemetry.schedule_clearances_tightened,
-        planner_telemetry.schedule_clearances_rederived);
+        planner_telemetry.schedule_clearances_rederived,
+        planner_telemetry.departure_waypoint_count,
+        planner_telemetry.departure_anchor_skip,
+        planner_telemetry.escape_search_attempted ? "true" : "false",
+        planner_telemetry.escape_search_found ? "true" : "false",
+        planner_telemetry.escape_connection_active ? "true" : "false",
+        planner_telemetry.escape_search_exhausted ? "true" : "false",
+        planner_telemetry.escape_search_probes,
+        planner_telemetry.escape_search_explored_cells,
+        planner_telemetry.escape_search_ms);
   }
 
   if (update.status == RouteLifecycleAdvanceStatus3D::kContinuationQueued) {

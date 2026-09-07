@@ -242,6 +242,47 @@ any other: the body contract validates both legs, the leg leaving the vehicle
 under the departure exemption and every later leg under ordinary raw evidence.
 `PRODUCTION_MPPI_ROUTE3D` reports `departure_waypoint=true` when it was needed.
 
+## Leaving A Closed Component
+
+A vehicle can stand where every lattice node it reaches belongs to a component
+the goal is not in. The lattice is sparse relative to the map: a 2.4 m
+corridor carries no valid node unless its centre happens to fall on the grid,
+and once its walls are fully observed the nodes inside it vanish from the
+graph. A vehicle that entered the corridor on a route the graph still had —
+while the walls were partly unobserved — then stands in a region the graph has
+no way out of. Both lattice searches exhaust it: the feasibility search
+empties its frontier, restarts from the same anchor and empties it again, and
+D* holds no route. Two recorded Urban runs ended this way in the shaft at
+x ≈ 54–61, the vehicle holding for 540 s and 640 s with the planner reporting
+`feasibility_exhausted=false` throughout, because the restart cleared the
+flag it had just set.
+
+The exhaustion is now reported for the update it happened in, whatever the
+search did afterwards, and the nodes the frontier had labelled are remembered
+as the closed component for as long as the vehicle stays put. The anchor walk
+advances on it, and the escape search runs on the next updates: a flood fill
+over a grid `persistent_planner_departure_refinement_subdivisions` times finer
+than the lattice, within `persistent_planner_escape_search_radius_cells` of the
+vehicle, through steps validated by the ordinary raw rule (the first under the
+departure exemption), until it reaches a point from which a lattice node
+outside the closed component is reachable. The chain of fine steps becomes the
+departure: the route leaves the vehicle through every point of it and joins
+the lattice at that node, so the body contract is unchanged — every leg is a
+raw-validated segment — and the searches are re-seeded from the node outside.
+The vehicle flies the chain and the planner trims it as each point is passed.
+`persistent_planner_escape_search_maximum_probes_per_update` bounds the sweeps
+one update spends on the fill; it resumes on the next update, and a fill that
+found nothing is repeated only when the world changed. `PERSISTENT_PLANNER3D`
+reports `escape_attempted`, `escape_found`, `escape_active`, `escape_exhausted`,
+`escape_probes` and `escape_cells`; `departure_waypoints` counts the chain.
+
+The choice was between this and validating the way out with the physical
+body (0.55 m) instead of the envelope (0.82 m). The vehicle entered the region
+on the envelope, so a way out on the envelope exists with high probability and
+is simply not expressible on the lattice; the fill finds it without touching
+the safety contract, whereas a body-radius exit would have to be accepted by
+the executor as well, which validates on the envelope.
+
 ## Liveness And Safety
 
 The liveness monitor measures progress the vehicle actually made over an

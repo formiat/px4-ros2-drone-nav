@@ -315,6 +315,7 @@ PersistentDStarLitePlanner3DImpl::PersistentDStarLitePlanner3DImpl(
       dstar_session_{config_, lattice_},
       feasibility_search_{config_, lattice_},
       execution_time_refiner_{config_, lattice_, dstar_session_},
+      escape_search_{config_, lattice_},
       coordinator_{config_.continuity_improvement_margin_s} {
 }
 
@@ -340,7 +341,7 @@ PersistentDStarLitePlanner3DImpl::searchEndpoints() const noexcept {
       .goal = goal_,
       .exact_start = exact_start_,
       .exact_goal = exact_goal_,
-      .departure_waypoint = departure_waypoint_,
+      .departure_waypoints = departure_waypoints_,
   };
 }
 
@@ -357,8 +358,12 @@ void PersistentDStarLitePlanner3DImpl::reset() noexcept {
   last_start_ = {};
   goal_ = {};
   exact_start_ = {};
-  departure_waypoint_.reset();
+  departure_waypoints_.clear();
   departure_anchor_skip_ = 0U;
+  escape_search_.reset();
+  escape_connection_.reset();
+  escape_search_pending_ = false;
+  closed_component_origin_.reset();
   exact_goal_ = {};
   mission_epoch_ = 0U;
   dstar_session_.reset();
@@ -472,17 +477,83 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   telemetry.changed_occupied_voxels = world_update.changed_cells.size();
   telemetry.occupied_world_unchanged = world_update.occupied_world_unchanged;
 
+  // What was learnt about the start's component holds where the vehicle
+  // stood; a vehicle that moved a lattice step away is in new territory.
+  if (closed_component_origin_.has_value() &&
+      distance3D(request.start, *closed_component_origin_) >
+          config_.minimum_horizontal_step_m) {
+    closed_component_origin_.reset();
+    feasibility_search_.clearClosedComponent();
+    escape_search_.reset();
+    escape_search_pending_ = false;
+  }
+  bool departure_from_escape = false;
+  if (escape_connection_.has_value()) {
+    // The vehicle flies the chain: the points it has reached are dropped, and
+    // the rest has to survive the current world, or the way out is gone.
+    std::vector<Point3>& chain = escape_connection_->waypoints;
+    const double reached_m = config_.minimum_horizontal_step_m /
+                             static_cast<double>(std::max<std::size_t>(
+                                 config_.departure_refinement_subdivisions, 1U));
+    while (!chain.empty() && distance3D(request.start, chain.front()) <= reached_m) {
+      chain.erase(chain.begin());
+    }
+    const Point3 anchor_point = lattice_.pointFor(escape_connection_->anchor);
+    if (chain.empty() || !lattice_.nodeValid(escape_connection_->anchor) ||
+        !lattice_.departureReachable(request.start, chain, anchor_point)) {
+      escape_connection_.reset();
+    }
+  }
+  if (!escape_connection_.has_value() && escape_search_pending_ &&
+      coordinator_.incumbent() == nullptr) {
+    const auto escape_started = std::chrono::steady_clock::now();
+    const auto escape_deadline =
+        escape_started +
+        std::min((deadline - escape_started) / 3, spatial_search_reserve / 2);
+    telemetry.escape_search_attempted = true;
+    std::size_t probes = 0U;
+    std::optional<EscapeSearch3D::Result3D> found = escape_search_.advance(
+        request.start,
+        [&](const PersistentPlannerNode3D node) {
+          return feasibility_search_.inClosedComponent(node);
+        },
+        escape_deadline, config_.escape_search_maximum_probes_per_update, probes);
+    telemetry.escape_search_probes = probes;
+    telemetry.escape_search_explored_cells = escape_search_.exploredCells();
+    telemetry.escape_search_exhausted = escape_search_.exhausted();
+    telemetry.escape_search_ms = std::chrono::duration<double, std::milli>(
+                                     std::chrono::steady_clock::now() - escape_started)
+                                     .count();
+    if (found.has_value()) {
+      escape_connection_ = std::move(found);
+      departure_from_escape = true;
+      telemetry.escape_search_found = true;
+      escape_search_pending_ = false;
+      escape_search_.reset();
+    } else if (escape_search_.exhausted()) {
+      // Nothing within reach at the body's scale either: the walk over the
+      // anchors and the world's own changes are what remains.
+      escape_search_pending_ = false;
+    }
+  }
+  telemetry.escape_connection_active = escape_connection_.has_value();
   const PlannerLattice3D::DepartureConnection3D departure =
-      lattice_.selectDepartureConnection(request.start, departure_anchor_skip_,
-                                         initialized_ ? std::optional{start_}
-                                                      : std::nullopt);
+      escape_connection_.has_value()
+          ? PlannerLattice3D::DepartureConnection3D{.anchor =
+                                                        escape_connection_->anchor,
+                                                    .waypoints =
+                                                        escape_connection_->waypoints}
+          : lattice_.selectDepartureConnection(request.start, departure_anchor_skip_,
+                                               initialized_ ? std::optional{start_}
+                                                            : std::nullopt);
   if (!departure.available()) {
     update.input_status = PlannerInputStatus3D::kStartUnavailable;
     return update;
   }
   const std::optional<PersistentPlannerNode3D>& start_anchor = departure.anchor;
-  departure_waypoint_ = departure.waypoint;
-  telemetry.departure_waypoint_used = departure.waypoint.has_value();
+  departure_waypoints_ = departure.waypoints;
+  telemetry.departure_waypoint_used = !departure.waypoints.empty();
+  telemetry.departure_waypoint_count = departure.waypoints.size();
   const std::optional<PersistentPlannerNode3D> goal_anchor =
       lattice_.selectAnchor(request.mission_goal, false);
   if (!goal_anchor.has_value()) {
@@ -548,10 +619,13 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
       // candidate it returns is raw-validated there as well.
       feasibility_search_.noteWorldChanged();
     }
-    if (feasibility_start_changed) {
+    // The escape anchor is outside the component the searches were seeded
+    // in; they start over from it whatever the distance to the old anchor.
+    if (feasibility_start_changed || departure_from_escape) {
       feasibility_search_.reset();
     }
-    if (execution_time_start_changed || execution_time_goal_changed) {
+    if (execution_time_start_changed || execution_time_goal_changed ||
+        departure_from_escape) {
       execution_time_refiner_.reset();
     } else if (!world_update.changed_cells.empty()) {
       execution_time_refiner_.rebaseWorld();
@@ -708,13 +782,13 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     if (!execution_time_refiner_.initialized()) {
       execution_time_refiner_.begin(
           refinement_request,
-          dstar_session_.extractPath(exact_start_, exact_goal_, departure_waypoint_,
+          dstar_session_.extractPath(exact_start_, exact_goal_, departure_waypoints_,
                                      adaptive_edges_in_extracted_path_));
     } else if (!execution_time_refiner_.hasIncumbent()) {
       // The world change dropped the refinement incumbent; the repaired D*
       // route is the new anytime bound.
       execution_time_refiner_.seedIncumbent(
-          dstar_session_.extractPath(exact_start_, exact_goal_, departure_waypoint_,
+          dstar_session_.extractPath(exact_start_, exact_goal_, departure_waypoints_,
                                      adaptive_edges_in_extracted_path_));
     }
     const std::size_t graph_expansions =
@@ -781,8 +855,25 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     departure_anchor_skip_ =
         anchors > 1U ? (departure_anchor_skip_ + 1U) % anchors : 0U;
     telemetry.departure_anchor_skip = departure_anchor_skip_;
+    // The component is closed at the lattice's scale. The escape search
+    // looks for the way out at the body's scale from the next update on,
+    // unless the vehicle is already leaving through one.
+    if (!closed_component_origin_.has_value()) {
+      closed_component_origin_ = request.start;
+    }
+    // A fill that found nothing is worth repeating only on a changed world.
+    if (config_.escape_search_radius_cells > 0U && !escape_connection_.has_value() &&
+        !escape_search_pending_ &&
+        (!escape_search_.exhausted() || !world_update.changed_cells.empty())) {
+      if (escape_search_.exhausted()) {
+        escape_search_.reset();
+      }
+      escape_search_pending_ = true;
+    }
   } else if (coordinator_.incumbent() != nullptr) {
     departure_anchor_skip_ = 0U;
+    escape_search_pending_ = false;
+    escape_search_.reset();
   }
 
   const bool search_complete =

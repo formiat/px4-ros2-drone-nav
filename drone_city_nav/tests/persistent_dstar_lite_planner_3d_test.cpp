@@ -1228,5 +1228,114 @@ TEST(PersistentDStarLitePlanner3DTest, TheStartAnchorIsKeptWhileItStaysAdmissibl
   EXPECT_EQ(*released.anchor, next);
 }
 
+// Two rooms joined by a corridor 1.5 m wide whose centreline lies half a
+// lattice step off the lattice rows: on a 2 m lattice over a 0.25 m map with a
+// 0.5 m body, no node inside the corridor is valid and no straight lattice
+// edge crosses it, so the graph has no path from one room to the other. The
+// corridor is wide enough for the body, and a vehicle in the first room has a
+// way out at the body's own scale.
+struct NodelessCorridorFixture {
+  static constexpr double kResolution = 0.25;
+  static constexpr int kWidth = 64;  // 16 m
+  static constexpr int kHeight = 24; // 6 m
+  static constexpr int kDepth = 8;   // 2 m
+  std::shared_ptr<ObservedOccupancyGrid3D> occupancy{
+      std::make_shared<ObservedOccupancyGrid3D>(
+          GridBounds3D{0.0, 0.0, 0.0, kResolution, kWidth, kHeight, kDepth})};
+  PersistentPlannerConfig3D config{testConfig()};
+  Point3 start{3.0, 3.5, 1.0};
+  Point3 goal{13.0, 3.0, 1.0};
+
+  NodelessCorridorFixture() {
+    // Walls between the rooms, x in [6, 10), except the corridor y in
+    // [2.75, 4.25).
+    for (int x = 24; x < 40; ++x) {
+      for (int y = 0; y < kHeight; ++y) {
+        const double y_m = static_cast<double>(y) * kResolution;
+        if (y_m >= 2.75 && y_m < 4.25) {
+          continue;
+        }
+        for (int z = 0; z < kDepth; ++z) {
+          if (!occupancy->setState({x, y, z}, ObservedVoxelState::kOccupied)) {
+            throw std::logic_error{"fixture cell outside the grid"};
+          }
+        }
+      }
+    }
+    config.minimum_horizontal_step_m = 2.0;
+    config.minimum_vertical_step_m = 2.0;
+    config.physical_footprint.radius_m = 0.5;
+    config.physical_footprint.perimeter_samples = 8U;
+    config.physical_footprint.radial_rings = 1U;
+    config.physical_footprint.axial_samples = 1U;
+    config.physical_footprint.sweep_step_m = 0.1;
+    config.flight_envelope.maximum_target_z_m = 2.0;
+    config.feasibility_first_enabled = true;
+    config.maximum_compute_time_ms = 200.0;
+    config.maximum_feasibility_compute_time_ms = 100.0;
+    config.departure_refinement_subdivisions = 4U;
+    config.escape_search_radius_cells = 4U;
+    config.escape_search_maximum_probes_per_update = 1U << 16U;
+  }
+};
+
+TEST(PersistentDStarLitePlanner3DTest,
+     AnExhaustedFrontierIsReportedAndWalksTheAnchors) {
+  // Without an escape search a closed component is terminal, and the planner
+  // has to say so: the exhaustion survives the search's own restart, and the
+  // walk over the start's anchors advances on it.
+  NodelessCorridorFixture fixture;
+  fixture.config.escape_search_radius_cells = 0U;
+  PersistentDStarLitePlanner3D planner{fixture.config};
+  bool exhausted = false;
+  std::size_t skip = 0U;
+  PlannerUpdate3D update;
+  for (int attempt = 0; attempt < 12; ++attempt) {
+    update = planner.plan(
+        request(fixture.start, fixture.goal, world(fixture.occupancy, 1U)));
+    exhausted = exhausted || update.telemetry.feasibility_frontier_exhausted;
+    skip = std::max(skip, update.telemetry.departure_anchor_skip);
+  }
+  EXPECT_FALSE(update.publishable());
+  EXPECT_TRUE(exhausted) << "the exhaustion was hidden by the restart";
+  EXPECT_GT(skip, 0U) << "the anchor walk never advanced";
+  EXPECT_FALSE(update.telemetry.escape_search_attempted);
+}
+
+TEST(PersistentDStarLitePlanner3DTest,
+     TheEscapeSearchLeavesAClosedComponentThroughTheCorridor) {
+  NodelessCorridorFixture fixture;
+  PersistentDStarLitePlanner3D planner{fixture.config};
+  bool exhausted = false;
+  bool escape_found = false;
+  PlannerUpdate3D update;
+  for (int attempt = 0; attempt < 40; ++attempt) {
+    update = planner.plan(
+        request(fixture.start, fixture.goal, world(fixture.occupancy, 1U)));
+    exhausted = exhausted || update.telemetry.feasibility_frontier_exhausted;
+    escape_found = escape_found || update.telemetry.escape_search_found;
+    if (update.publishable()) {
+      break;
+    }
+  }
+  EXPECT_TRUE(exhausted);
+  EXPECT_TRUE(escape_found) << "explored="
+                            << update.telemetry.escape_search_explored_cells
+                            << " exhausted="
+                            << update.telemetry.escape_search_exhausted;
+  ASSERT_TRUE(update.publishable()) << "no route through the corridor";
+  EXPECT_TRUE(update.telemetry.escape_connection_active);
+  EXPECT_TRUE(update.telemetry.departure_waypoint_used);
+  EXPECT_GT(update.telemetry.departure_waypoint_count, 1U);
+  const std::vector<Point3>& points = candidate(update).points;
+  ASSERT_GE(points.size(), 2U);
+  EXPECT_NEAR(points.front().x, fixture.start.x, 1.0e-9);
+  EXPECT_NEAR(points.back().x, fixture.goal.x, 1.0e-9);
+  EXPECT_TRUE(std::ranges::any_of(points, [](const Point3& point) {
+    return point.x > 6.0 && point.x < 10.0 && point.y > 2.9 && point.y < 4.1;
+  })) << "the route does not pass the corridor";
+  expectRawValid(points, *fixture.occupancy, planner.config().physical_footprint);
+}
+
 } // namespace
 } // namespace drone_city_nav

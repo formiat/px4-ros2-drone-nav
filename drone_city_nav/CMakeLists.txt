@@ -303,6 +303,7 @@ add_drone_city_nav_layer(
   src/free_space_topology_extractor_3d_graph.cpp
   src/passage_traversal_selection_3d.cpp
   src/persistent_dstar_lite_planner_3d.cpp
+  src/persistent_dstar_lite_planner_3d_escape_search.cpp
   src/persistent_dstar_lite_planner_3d_feasible_search.cpp
   src/persistent_dstar_lite_planner_3d_lattice.cpp
   src/persistent_dstar_lite_planner_3d_lattice_ranking.cpp

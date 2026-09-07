@@ -116,7 +116,8 @@ ExecutionTimeRefiner3D::Request3D PersistentDStarLitePlanner3DImpl::refinementRe
   const Point3 anchor = lattice_.pointFor(start_anchor);
   // The first heading the vehicle takes is toward whatever it leaves through:
   // the waypoint when the departure needs one, otherwise the anchor itself.
-  const Point3 first_target = departure_waypoint_.value_or(anchor);
+  const Point3 first_target =
+      departure_waypoints_.empty() ? anchor : departure_waypoints_.front();
   Vec3 incoming{
       first_target.x - request.start.x,
       first_target.y - request.start.y,
@@ -134,7 +135,7 @@ ExecutionTimeRefiner3D::Request3D PersistentDStarLitePlanner3DImpl::refinementRe
       .goal_anchor = goal_anchor,
       .exact_start = request.start,
       .exact_goal = request.mission_goal,
-      .departure_waypoint = departure_waypoint_,
+      .departure_waypoints = departure_waypoints_,
       .start_from_rest = std::hypot(std::hypot(request.velocity.x, request.velocity.y),
                                     request.velocity.z) <= kDirectionEpsilon,
   };
@@ -476,9 +477,10 @@ std::vector<Point3> ExecutionTimeRefiner3D::extractPath() {
   std::vector<Point3> path;
   path.reserve(states.size() + 2U);
   path.push_back(request_.exact_start);
-  if (request_.departure_waypoint.has_value() &&
-      distance3D(path.back(), *request_.departure_waypoint) > kDirectionEpsilon) {
-    path.push_back(*request_.departure_waypoint);
+  for (const Point3& waypoint : request_.departure_waypoints) {
+    if (distance3D(path.back(), waypoint) > kDirectionEpsilon) {
+      path.push_back(waypoint);
+    }
   }
   for (std::size_t index = 0U; index < states.size(); ++index) {
     // An edge whose straight segment does not clear the body is traversable

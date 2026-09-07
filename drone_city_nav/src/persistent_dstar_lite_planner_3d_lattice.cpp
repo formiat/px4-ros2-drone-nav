@@ -12,6 +12,7 @@
 #include <numbers>
 #include <optional>
 #include <ranges>
+#include <span>
 #include <tuple>
 #include <unordered_set>
 #include <utility>
@@ -500,7 +501,7 @@ PlannerLattice3D::DepartureConnection3D PlannerLattice3D::selectDepartureConnect
     const std::optional<PersistentPlannerNode3D> anchor = selectAnchor(waypoint, false);
     if (anchor.has_value()) {
       result.anchor = anchor;
-      result.waypoint = waypoint;
+      result.waypoints = {waypoint};
       return result;
     }
   }
@@ -508,12 +509,21 @@ PlannerLattice3D::DepartureConnection3D PlannerLattice3D::selectDepartureConnect
 }
 
 bool PlannerLattice3D::departureReachable(const Point3& start,
-                                          const std::optional<Point3>& waypoint,
+                                          const std::span<const Point3> waypoints,
                                           const Point3& target) const {
-  if (!waypoint.has_value()) {
-    return departureSegmentValid(start, target);
+  // The leg leaving the vehicle carries the departure exemption; every later
+  // leg is ordinary raw evidence.
+  Point3 previous = start;
+  for (std::size_t index = 0U; index < waypoints.size(); ++index) {
+    const bool valid = index == 0U ? departureSegmentValid(previous, waypoints[index])
+                                   : rawSegmentValid(previous, waypoints[index]);
+    if (!valid) {
+      return false;
+    }
+    previous = waypoints[index];
   }
-  return departureSegmentValid(start, *waypoint) && rawSegmentValid(*waypoint, target);
+  return waypoints.empty() ? departureSegmentValid(previous, target)
+                           : rawSegmentValid(previous, target);
 }
 
 void PlannerLattice3D::beginEdgeRefinementBudget() noexcept {

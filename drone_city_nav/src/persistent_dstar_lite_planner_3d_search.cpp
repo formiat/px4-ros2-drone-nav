@@ -9,6 +9,7 @@
 #include <numbers>
 #include <optional>
 #include <ranges>
+#include <span>
 #include <tuple>
 #include <unordered_map>
 #include <unordered_set>
@@ -574,7 +575,7 @@ bool DStarLiteSession3D::computeShortestPath(
 
 std::vector<Point3>
 DStarLiteSession3D::extractPath(const Point3& exact_start, const Point3& exact_goal,
-                                const std::optional<Point3>& departure_waypoint,
+                                const std::span<const Point3> departure_waypoints,
                                 std::size_t& adaptive_edges) {
   const auto start_record = records_.find(start_);
   if (start_record == records_.end() || !std::isfinite(start_record->second.g)) {
@@ -583,9 +584,10 @@ DStarLiteSession3D::extractPath(const Point3& exact_start, const Point3& exact_g
   std::vector<Point3> path;
   path.reserve(std::min(config_->maximum_extracted_path_nodes, lattice_->nodeSpan()));
   path.push_back(exact_start);
-  if (departure_waypoint.has_value() &&
-      distance3D(path.back(), *departure_waypoint) > 1.0e-9) {
-    path.push_back(*departure_waypoint);
+  for (const Point3& waypoint : departure_waypoints) {
+    if (distance3D(path.back(), waypoint) > 1.0e-9) {
+      path.push_back(waypoint);
+    }
   }
   const Point3 start_anchor = lattice_->pointFor(start_);
   if (distance3D(path.back(), start_anchor) > 1.0e-9) {

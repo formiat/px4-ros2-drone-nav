@@ -86,6 +86,16 @@ struct PersistentPlannerConfig3D {
   // refinement runs only on updates the planner would otherwise abandon, but
   // it still has to fit inside the update budget.
   std::size_t maximum_departure_refinement_probes{512U};
+  // Reach of the escape search around the vehicle, in lattice cells, once
+  // the feasibility search has exhausted the start's component without a
+  // route: a fine flood fill (departure_refinement_subdivisions per cell)
+  // through raw-validated steps to a node outside that component. Zero
+  // disables it, and a closed component is then terminal for as long as the
+  // vehicle stays where it is.
+  std::size_t escape_search_radius_cells{6U};
+  // Sweeps one update may spend on the escape search; the fill resumes on the
+  // next update.
+  std::size_t escape_search_maximum_probes_per_update{512U};
   // The feasibility-first search tries the direct raw connector to the exact
   // goal only from nodes within this distance; a raw sweep across the whole
   // remaining route on every expansion would dominate the search budget.
@@ -260,9 +270,19 @@ struct PlannerTelemetry3D {
   // The search had to leave the vehicle through a refined free step because no
   // lattice node was reachable from where it stands.
   bool departure_waypoint_used{false};
+  std::size_t departure_waypoint_count{0U};
   // How many of the start's reachable anchors the search has already tried and
   // exhausted itself against.
   std::size_t departure_anchor_skip{0U};
+  // The escape search ran this update / found a way out this update / the
+  // vehicle is leaving through one; see EscapeSearch3D.
+  bool escape_search_attempted{false};
+  bool escape_search_found{false};
+  bool escape_search_exhausted{false};
+  bool escape_connection_active{false};
+  std::size_t escape_search_probes{0U};
+  std::size_t escape_search_explored_cells{0U};
+  double escape_search_ms{0.0};
   bool search_state_reused{false};
   bool occupied_world_unchanged{false};
   bool incumbent_retained{false};
