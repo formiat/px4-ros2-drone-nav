@@ -126,6 +126,14 @@ struct PersistentPlannerConfig3D {
   // the refinement is what turns a first-found feasibility route into a
   // ranked one.
   double guaranteed_refinement_expansion_fraction{0.34};
+  // How much better a candidate that leaves the vehicle on a different heading
+  // has to be before it replaces the incumbent. Taking such a candidate turns
+  // the vehicle around and discards the motion it has, and the recorded runs
+  // are full of that: a hundred route generations in four hundred seconds,
+  // twenty-one of them reversing the remaining distance by tens of metres. A
+  // candidate continuing the same heading needs no margin at all. Zero
+  // restores the plain best-objective rule.
+  double continuity_improvement_margin_s{1.0};
   // Soft clearance ranking. An edge whose endpoints' body surface lies within
   // clearance_ranking_distance_m of raw occupied evidence costs its flight
   // time scaled by 1 + weight * (1 - clearance / distance)^2, where the
@@ -162,7 +170,7 @@ struct PersistentPlannerRequest3D {
   // execution found it blocked on newer evidence). The first update of the
   // session drops the resident incumbent so the search delivers a route found
   // on the current world instead of re-offering the rejected one.
-  bool discard_incumbent{false};
+
   // Counts the incumbents this consumer rejected at activation for reasons
   // relative to the vehicle (a handoff it cannot fly, a connector its raw
   // evidence blocks). A sequence newer than the one the planner last applied

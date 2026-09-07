@@ -52,6 +52,44 @@ TEST(PersistentDStarLitePlanner3DTest,
   EXPECT_TRUE(dispatch.terminal);
 }
 
+TEST(PersistentDStarLitePlanner3DTest, AReversalHasToEarnItsReplacement) {
+  const auto route = [](const double second_x, const double second_y,
+                        const double objective_s) {
+    SpatialRouteCandidate3D candidate{
+        .points = {{0.0, 0.0, 1.0}, {second_x, second_y, 1.0}, {20.0, 0.0, 1.0}},
+        .source = SpatialRouteCandidateSource3D::kFeasibilitySearch,
+        .path_length_m = 20.0,
+        .estimated_execution_time_s = objective_s,
+        .estimated_translation_time_s = objective_s,
+        .estimated_stationary_turn_time_s = 0.0,
+    };
+    return candidate;
+  };
+  constexpr double kMargin{1.0};
+
+  // A candidate continuing the same heading replaces the incumbent as soon as
+  // it is better at all.
+  {
+    detail::AnytimePlannerCoordinator3D coordinator{kMargin};
+    ASSERT_TRUE(coordinator.consider(route(1.0, 0.0, 10.0)).has_value());
+    EXPECT_TRUE(coordinator.consider(route(1.0, 0.0, 9.9)).has_value());
+  }
+  // One that turns the vehicle around does not, until it is better by the
+  // margin.
+  {
+    detail::AnytimePlannerCoordinator3D coordinator{kMargin};
+    ASSERT_TRUE(coordinator.consider(route(1.0, 0.0, 10.0)).has_value());
+    EXPECT_FALSE(coordinator.consider(route(-1.0, 0.0, 9.9)).has_value());
+    EXPECT_TRUE(coordinator.consider(route(-1.0, 0.0, 8.5)).has_value());
+  }
+  // A zero margin restores the plain best-objective rule.
+  {
+    detail::AnytimePlannerCoordinator3D coordinator{0.0};
+    ASSERT_TRUE(coordinator.consider(route(1.0, 0.0, 10.0)).has_value());
+    EXPECT_TRUE(coordinator.consider(route(-1.0, 0.0, 9.9)).has_value());
+  }
+}
+
 TEST(PersistentDStarLitePlanner3DTest, CandidatesCompeteOnTheRankedExecutionTime) {
   SpatialRouteCandidate3D plain{
       .points = {{0.0, 0.0, 1.0}, {1.0, 0.0, 1.0}},

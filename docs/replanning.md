@@ -91,6 +91,29 @@ anytime *bound*, so a feasibility seed makes it declare at once that it cannot
 improve on that route by the admissible margin, and it never expands. What
 makes a ranked route exist is the budget, not a different seed.
 
+## Choosing Between Candidates
+
+The planner keeps one incumbent and replaces it when a candidate is better on
+ranked execution time. Two rules shape that comparison.
+
+A candidate that leaves the vehicle's own position on a different heading than
+the incumbent turns the vehicle around and discards the motion it already has.
+Such a candidate must be better by
+`persistent_planner_continuity_improvement_margin_s`; one that continues the
+same heading replaces the incumbent as soon as it is better at all. Only the
+first segment matters, because that is the part the vehicle is flying now.
+
+A release reason no longer discards the incumbent. A route released as blocked
+is blocked at one station, not everywhere, and throwing it away restarted the
+search from nothing: the feasibility branch then published another first-found
+route, which the next observed voxel blocked in turn — the churn that gave
+routes a median life of under two seconds. Evidence decides instead: the
+incumbent is re-validated against the current world every update and reset when
+it no longer clears the body, which is the same outcome whenever the block is
+real and on the part still to fly. A consumer that could not enter the
+incumbent it was delivered says so through the rejection sequence, and that
+does reset it.
+
 ## Published Route Geometry
 
 Every published route — from the feasibility search and from the execution-time

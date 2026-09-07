@@ -188,12 +188,6 @@ RoutePlannerUpdate3D RoutePlanner3D::update(
                     .mission_epoch = transaction.objective.mission_epoch,
                     .world = std::move(planner_world),
                     .session_id = ++next_session_id_,
-                    // A route released as blocked or diverged is the incumbent
-                    // the vehicle cannot follow; delivering it again would only
-                    // repeat the release.
-                    .discard_incumbent =
-                        transaction.release_reason == RouteReleaseReason3D::kBlocked ||
-                        transaction.release_reason == RouteReleaseReason3D::kDiverged,
                 },
             .mission_goal = mission_goal,
             .search_start = search_start,

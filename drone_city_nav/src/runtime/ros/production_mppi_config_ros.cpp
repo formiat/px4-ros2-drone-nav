@@ -360,6 +360,8 @@ void ProductionMppiConfigLoader::declarePlanning() {
       declare<double>("persistent_planner_guaranteed_spatial_search_fraction", 0.34);
   planner.guaranteed_refinement_expansion_fraction = declare<double>(
       "persistent_planner_guaranteed_refinement_expansion_fraction", 0.34);
+  planner.continuity_improvement_margin_s =
+      declare<double>("persistent_planner_continuity_improvement_margin_s", 1.0);
   planner.departure_refinement_subdivisions =
       declarePositiveSize("persistent_planner_departure_refinement_subdivisions", 4);
   planner.maximum_departure_refinement_probes = declarePositiveSize(

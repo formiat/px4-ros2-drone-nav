@@ -914,13 +914,24 @@ public:
 
 class AnytimePlannerCoordinator3D final {
 public:
+  explicit AnytimePlannerCoordinator3D(
+      double continuity_improvement_margin_s = 0.0) noexcept
+      : continuity_improvement_margin_s_{continuity_improvement_margin_s} {
+  }
+
   void reset() noexcept;
   void retain(SpatialRouteCandidate3D candidate);
+  // Replaces the incumbent when the candidate is better. A candidate that
+  // leaves the vehicle on a different heading has to be better by
+  // `continuity_improvement_margin_s`, because taking it turns the vehicle
+  // around and discards the motion it already has; one that continues the same
+  // heading replaces the incumbent as soon as it is better at all.
   [[nodiscard]] std::optional<SpatialRouteCandidate3D>
   consider(SpatialRouteCandidate3D candidate);
   [[nodiscard]] const SpatialRouteCandidate3D* incumbent() const noexcept;
 
 private:
+  double continuity_improvement_margin_s_{0.0};
   std::optional<SpatialRouteCandidate3D> incumbent_;
 };
 
@@ -999,7 +1010,6 @@ private:
   // PersistentPlannerRequest3D::session_id.
   std::uint64_t published_session_id_{0U};
   // Session whose incumbent-discard request was already honoured.
-  std::uint64_t discarded_session_id_{0U};
   std::uint64_t applied_incumbent_rejection_sequence_{0U};
 };
 

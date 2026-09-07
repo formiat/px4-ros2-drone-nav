@@ -513,6 +513,11 @@ production_mppi_node:
     # what the spatial search left means it runs only while D* is idle, and it
     # is what turns a first-found feasibility route into a ranked one.
     persistent_planner_guaranteed_refinement_expansion_fraction: 0.34
+    # How much better a candidate that leaves the vehicle on a different
+    # heading has to be before it replaces the incumbent. Taking such a
+    # candidate turns the vehicle around and discards the motion it has; one
+    # that continues the same heading needs no margin.
+    persistent_planner_continuity_improvement_margin_s: 1.0
     persistent_planner_departure_refinement_subdivisions: 4
     persistent_planner_maximum_departure_refinement_probes: 512
     persistent_planner_clearance_centering_passes: 3

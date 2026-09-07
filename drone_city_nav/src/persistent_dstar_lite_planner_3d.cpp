@@ -169,6 +169,44 @@ spatialRouteCandidateSource3DName(const SpatialRouteCandidateSource3D source) no
 
 namespace detail {
 
+namespace {
+
+// Whether two routes leave the vehicle's position on the same heading. Only
+// the first segment matters: that is the part the vehicle is flying now, and
+// a candidate that starts by turning it around discards the motion it has.
+[[nodiscard]] bool leavesOnTheSameHeading(const SpatialRouteCandidate3D& incumbent,
+                                          const SpatialRouteCandidate3D& candidate) {
+  constexpr double kMinimumSegmentM{1.0e-3};
+  // Cosine of the angle beyond which a heading change reads as a reversal
+  // rather than an adjustment.
+  constexpr double kSameHeadingCosine{0.5};
+  if (incumbent.points.size() < 2U || candidate.points.size() < 2U) {
+    return true;
+  }
+  const auto heading = [](const SpatialRouteCandidate3D& route) {
+    const Vec3 delta{route.points[1U].x - route.points.front().x,
+                     route.points[1U].y - route.points.front().y,
+                     route.points[1U].z - route.points.front().z};
+    const double length =
+        std::sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
+    return length > kMinimumSegmentM
+               ? std::optional<Vec3>{Vec3{delta.x / length, delta.y / length,
+                                          delta.z / length}}
+               : std::nullopt;
+  };
+  const std::optional<Vec3> incumbent_heading = heading(incumbent);
+  const std::optional<Vec3> candidate_heading = heading(candidate);
+  if (!incumbent_heading.has_value() || !candidate_heading.has_value()) {
+    return true;
+  }
+  return incumbent_heading->x * candidate_heading->x +
+             incumbent_heading->y * candidate_heading->y +
+             incumbent_heading->z * candidate_heading->z >=
+         kSameHeadingCosine;
+}
+
+} // namespace
+
 void AnytimePlannerCoordinator3D::reset() noexcept {
   incumbent_.reset();
 }
@@ -187,13 +225,26 @@ AnytimePlannerCoordinator3D::consider(SpatialRouteCandidate3D candidate) {
   if (!candidate.valid()) {
     return std::nullopt;
   }
-  const bool improved =
-      !incumbent_.has_value() ||
-      candidate.objectiveS() <
-          incumbent_->objectiveS() -
-              kObjectiveTolerance *
-                  std::max({1.0, candidate.objectiveS(), incumbent_->objectiveS()});
-  if (!improved) {
+  if (!incumbent_.has_value()) {
+    incumbent_ = std::move(candidate);
+    return incumbent_;
+  }
+  const double scale =
+      std::max({1.0, candidate.objectiveS(), incumbent_->objectiveS()});
+  if (candidate.objectiveS() >=
+      incumbent_->objectiveS() - kObjectiveTolerance * scale) {
+    return std::nullopt;
+  }
+  // A candidate that leaves the vehicle's own position on a different heading
+  // than the incumbent turns the vehicle around, and the recorded runs are
+  // full of that: a hundred generation changes in four hundred seconds, with
+  // twenty-one of them reversing the remaining distance by tens of metres.
+  // Such a candidate has to be better by the margin a successor needs, not
+  // merely better by a numerical epsilon; one that continues the same heading
+  // replaces the incumbent as soon as it is better at all.
+  if (!leavesOnTheSameHeading(*incumbent_, candidate) &&
+      candidate.objectiveS() >
+          incumbent_->objectiveS() - continuity_improvement_margin_s_) {
     return std::nullopt;
   }
   incumbent_ = std::move(candidate);
@@ -263,7 +314,8 @@ PersistentDStarLitePlanner3DImpl::PersistentDStarLitePlanner3DImpl(
       lattice_{config_},
       dstar_session_{config_, lattice_},
       feasibility_search_{config_, lattice_},
-      execution_time_refiner_{config_, lattice_, dstar_session_} {
+      execution_time_refiner_{config_, lattice_, dstar_session_},
+      coordinator_{config_.continuity_improvement_margin_s} {
 }
 
 void PersistentDStarLitePlanner3DImpl::initializeSearch(
@@ -315,7 +367,6 @@ void PersistentDStarLitePlanner3DImpl::reset() noexcept {
   coordinator_.reset();
   adaptive_edges_in_extracted_path_ = 0U;
   published_session_id_ = 0U;
-  discarded_session_id_ = 0U;
   applied_incumbent_rejection_sequence_ = 0U;
 }
 
@@ -505,12 +556,17 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     }
   }
 
-  if (request.discard_incumbent && request.session_id != 0U &&
-      request.session_id != discarded_session_id_) {
-    discarded_session_id_ = request.session_id;
-    coordinator_.reset();
-    execution_time_refiner_.reset();
-  }
+  // A release reason no longer discards the incumbent. A route released as
+  // blocked is blocked at one station, not everywhere, and throwing it away
+  // restarted the search from nothing: the feasibility branch then published
+  // another first-found route, which the next observed voxel blocked in turn —
+  // the churn that gave routes a median life of under two seconds.
+  //
+  // Evidence decides instead. The incumbent is re-validated against the
+  // current world below and reset when it no longer clears the body, which is
+  // the same outcome whenever the block is real and on the part still to fly.
+  // A consumer that could not enter the incumbent it was delivered says so
+  // through the rejection sequence, and that does reset it.
   if (request.incumbent_rejection_sequence > applied_incumbent_rejection_sequence_) {
     // The consumer could not enter the incumbent it was delivered. Keeping it
     // would keep the feasibility search idle and leave the vehicle waiting on
