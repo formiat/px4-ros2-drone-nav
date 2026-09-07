@@ -19,7 +19,8 @@ of August 2026.
 The project roadmap is maintained in [`docs/roadmap.md`](docs/roadmap.md). It
 covers the interceptor mission, radar-derived target tracking, predictive
 guidance, multi-drone scenarios, cooperative air traffic, generalized static 3D
-passages, and future no-static 3D perception.
+passages, no-static 3D lidar perception, lidar-inertial localization, and
+vision-only 3D perception without lidar or static maps.
 
 ## Status And Safety
 

@@ -789,3 +789,138 @@ This stage is complete when repeated static-map and no-static 3D-lidar missions
 run without GNSS, magnetometer data, or control-visible simulator ground truth,
 and localization failures produce an explicit safe finite-path outcome instead
 of silent frame corruption.
+
+## 14. Vision-Only 3D Perception Without Lidar Or Static Maps
+
+**Type:** dependent perception stage.
+
+**Hard prerequisites:** items 8 and 12.
+
+**Validation prerequisite:** item 9's complex environments.
+
+Navigate the same no-static missions that item 8 and item 12 accept with the
+3D lidar, with no lidar at all and no static map: the vehicle carries only a
+video camera, and software recovers the shape of the surrounding geometry from
+the video stream. The world model does not change. Item 8 fixed the boundary
+between sensing and the raw world as a bundle of timestamped rays with a hit
+at a range or a miss to a range, integrated into revisioned
+`unknown/free/occupied` `Occupancy3D` under one full-6DoF acquisition pose. A
+depth image is exactly such a bundle: one ray per pixel through the calibrated
+optics, a hit where the pixel's depth is known and free space along the ray up
+to it. Vision therefore enters the pipeline as a second producer of the same
+beam observations that `obstacle_memory_3d_node` already integrates, and
+everything downstream — obstacle memory, dirty-chunk transport, immutable raw
+snapshots, swept validation, the persistent planner, MPPI, finite raw-safe
+execution — runs unchanged. The stage proves that the world model is not
+bound to one sensor, which is the property a real vehicle needs before any
+sensor is swapped or lost.
+
+### What The Simulator Provides
+
+The simulator provides a calibrated stereo pair of RGB cameras rigidly
+mounted on the airframe, their intrinsics and baseline, the IMU, and the same
+pose source the lidar profile uses. It provides no depth camera, no RGB-D
+sensor and no point cloud in the control path: depth from a simulated depth
+sensor is a lidar by another name and would prove nothing. Simulator depth and
+Gazebo truth occupancy are available to evaluation and referee components
+only, as item 13 treats ground-truth pose, and must never cross into the
+perception, planning or control data path.
+
+Environments used for acceptance must carry surface texture. A stereo matcher
+recovers depth from texture; an untextured flat wall is exactly where it
+fails, and a wall that yields no depth is unobserved, not absent. Environment
+candidates that render as uniform flat colour are textured before they are
+used for this stage; the geometry, spawn points and mission goals do not
+change.
+
+### Depth Recovery
+
+The primary track is classical calibrated stereo: rectification, a dense
+disparity matcher such as semi-global matching, left-right consistency and
+texture checks, and metric depth from the known baseline. It is deterministic,
+metric without a learnt scale, runs on the CPU or the GPU the controller
+already uses, and its failure modes are known and observable. Two tracks may
+follow it, ordered by what they add:
+
+1. multi-view depth from the vehicle's own motion, using the timestamped pose
+   contract for the baseline, to densify depth where the stereo baseline is
+   too short for the range;
+2. learnt monocular depth as a prior for regions the stereo matcher rejects,
+   with its metric scale anchored by stereo and never used alone.
+
+Depth is a measurement with a range-dependent error: for a baseline `b`, focal
+length `f` and disparity error `e`, the depth error at range `z` is about
+`z² · e / (b · f)`. Every pixel therefore carries a confidence and a range
+beyond which it is not evidence. Only a confident depth becomes a hit, and only
+up to its confident range; a pixel without depth contributes nothing, not a
+miss. This is the one semantic difference from the lidar, whose maximum-range
+miss is real evidence: a vision miss exists only along a ray that ended in a
+confident hit. Semantic understanding of what the shapes are — doors, glass,
+vegetation, vehicles — is a separate stage; this stage recovers geometry only.
+
+### What Changes Above The Sensor Boundary
+
+Unknown space stays traversable without penalty; nothing in this stage may
+add a prohibition, a penalty or a latch on space the camera has not seen. What
+protects the vehicle in unobserved space is the sensor braking law the speed
+policy already applies: the vehicle never moves faster than it can stop within
+the range at which it is guaranteed to detect an obstacle. The lidar profile
+states that range as one omnidirectional number. A camera sees a cone. The
+guaranteed detection range becomes a function of direction relative to the
+camera frustum and of the confident depth range, and the speed policy limits
+speed along the commanded motion by the guaranteed range in that direction. A
+vehicle commanded sideways, backwards or vertically out of its own frustum
+slows to what unobserved motion allows, which is the existing law applied
+honestly rather than a new rule.
+
+That makes heading a perception decision. The execution layer gains a gaze
+policy that yaws the camera toward the commanded motion before the motion
+exceeds what unobserved space allows, so that ordinary forward flight is
+observed flight. Active choice of viewpoint for its own sake — moving to see
+into a shaft before committing to it — is a later stage; here the camera only
+follows the motion. The latest-lidar evidence that item 8 admits for bounded
+final execution revalidation becomes latest raw evidence from whichever
+sensor produced it; the admission rule, the freshness bound and the swept
+validation do not change.
+
+Localization is not part of this stage. The vehicle keeps the pose source the
+lidar profile uses, and item 13's rule holds in reverse: visual-inertial
+odometry, if it is ever added, is a separate estimator that this stage must
+not depend on and must not be depended on by. The roadmap dependency between
+the two must not become a code dependency.
+
+### Implementation Order
+
+1. Add the stereo rig to the vehicle model and bridge images and camera
+   information; record timestamped stereo pairs and poses from lidar missions,
+   and evaluate recovered depth offline against evaluation-only simulator depth
+   by range, texture and view angle to fix the confident range model.
+2. Add the stereo depth producer and the depth-to-beam adapter that emits the
+   item 8 beam observations with per-ray confidence, and integrate them in
+   shadow: lidar remains authoritative, and the vision occupancy is compared
+   with lidar occupancy and truth occupancy for occupied precision and recall,
+   unknown fraction and latency.
+3. Make the guaranteed detection range directional and the gaze policy part of
+   execution; validate with lidar still integrated that speed and heading
+   behave as the observability model says.
+4. Fly no-static Manhattan on the stereo profile alone, with the lidar removed
+   from the model, against item 8's mission gates.
+5. Fly the complex environments — Urban, tunnels, caves — on the stereo profile
+   alone against item 12's gates, then cooperative missions with every vehicle
+   on its own cameras.
+
+### Measurement And Completion
+
+Measure depth coverage and depth error against evaluation-only truth by range
+and view angle, occupied precision and recall of the vision raw world against
+truth occupancy, the fraction of the flown route that was observed before it
+was entered, time spent speed-limited by observability, perception latency
+from exposure to raw-world revision, planner p95, route availability, minimum
+obstacle clearance and physical collisions.
+
+This stage is complete when repeated no-static Manhattan and complex-environment
+missions run with the lidar absent from the vehicle model, no depth or point
+cloud sensor in the control path, the raw-world and planner contracts
+unchanged, and the same mission gates as the 3D-lidar profile: mission
+complete, collision-free, route availability above 99 percent after bootstrap,
+and planner p95 below 200 ms.
