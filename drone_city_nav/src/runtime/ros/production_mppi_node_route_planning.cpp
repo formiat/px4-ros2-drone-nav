@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cinttypes>
+#include <format>
 #include <memory>
 #include <optional>
 #include <string>
@@ -410,6 +411,33 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
       admission.assessment.raw_validation.connector_validated ? "true" : "false",
       admission.assessment.raw_validation.suffix_validated ? "true" : "false",
       materialized.fingerprint);
+  if (admission.certified_pending && activation.trajectory != nullptr &&
+      activation.trajectory->route != nullptr &&
+      activation.trajectory->route->size() >= 2U) {
+    // The geometry the vehicle is about to fly. Without it a run's log records
+    // that a route changed and how long it is, but not where it goes, and a
+    // reversal between two passages cannot be told from a local adjustment
+    // after the fact.
+    constexpr std::size_t kMaximumLoggedRoutePoints{24U};
+    const std::vector<RouteSample3D>& route = *activation.trajectory->route;
+    const std::size_t stride =
+        std::max<std::size_t>(1U, (route.size() + kMaximumLoggedRoutePoints - 1U) /
+                                      kMaximumLoggedRoutePoints);
+    std::string points;
+    for (std::size_t index = 0U; index < route.size(); index += stride) {
+      points += (points.empty() ? "" : " ");
+      points += std::format("({:.1f},{:.1f},{:.1f})", route[index].position.x,
+                            route[index].position.y, route[index].position.z);
+    }
+    if ((route.size() - 1U) % stride != 0U) {
+      points += std::format(" ({:.1f},{:.1f},{:.1f})", route.back().position.x,
+                            route.back().position.y, route.back().position.z);
+    }
+    RCLCPP_INFO(
+        get_logger(),
+        "ROUTE_GEOMETRY route_generation=%" PRIu64 " samples=%zu stride=%zu points=%s",
+        materialized.candidate_generation, route.size(), stride, points.c_str());
+  }
   if (activation.trajectory != nullptr && tracking_profile != nullptr &&
       tracking_profile->constrained_segment_count > 0U &&
       activation.trajectory->route != nullptr) {

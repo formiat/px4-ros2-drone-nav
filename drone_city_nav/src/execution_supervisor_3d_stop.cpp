@@ -319,6 +319,7 @@ ExecutionSupervisor3D::prepareStop(ExecutionStopRequest3D request) const {
     result.status = ExecutionStopStatus3D::kAtRest;
     return result;
   }
+  StopCertificationResult3D certification_report;
   const ExecutionRouteTransitionResult3D transition = enterStopExecution3D(
       *expected, expected->version,
       StopExecutionCertification3D{
@@ -330,9 +331,14 @@ ExecutionSupervisor3D::prepareStop(ExecutionStopRequest3D request) const {
           .execution_input = owned_request.execution_input,
           .latest_lidar_evidence = owned_request.latest_lidar_evidence,
           .valid_from_ns = owned_request.now_ns,
-      });
+      },
+      &certification_report);
   result.transition_status = transition.status;
   result.transition_detail = transition.detail;
+  result.certification.status = certification_report.status;
+  result.certification.dynamics_consistency = certification_report.dynamics_consistency;
+  result.certification.path_validation_status =
+      certification_report.path_validation_status;
   if (!transition.applied() || transition.next == nullptr ||
       transition.next->stopExecution() == nullptr) {
     result.status = ExecutionStopStatus3D::kTransitionRejected;

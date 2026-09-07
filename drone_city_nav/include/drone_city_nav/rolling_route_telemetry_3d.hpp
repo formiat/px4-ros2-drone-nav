@@ -29,6 +29,11 @@ struct RollingRouteTelemetryObservation3D {
   double speed_mps{0.0};
   bool resident_route_available{false};
   bool execution_owner_available{false};
+  // An owner that carries the vehicle along the route, as opposed to one that
+  // pins it where it stands. A stationary hold is an execution owner and a
+  // resident route can sit behind it for minutes, which is how a vehicle stuck
+  // in a pocket reported 99.8% route availability.
+  bool route_execution_owner_available{false};
   bool endpoint_limiter_active{false};
   bool raw_invalidation_active{false};
   bool finite_braking_tail_active{false};
@@ -57,6 +62,10 @@ struct RollingRouteTelemetrySnapshot3D {
   std::uint64_t geometry_revision_changes{0U};
   std::uint64_t post_bootstrap_observations{0U};
   std::uint64_t post_bootstrap_route_available_ticks{0U};
+  // Ticks where a route was resident and something was flying it. This is the
+  // availability that describes progress; the count above only says a route
+  // and some owner both existed.
+  std::uint64_t post_bootstrap_route_executable_ticks{0U};
   std::uint64_t post_bootstrap_no_executable_route_hold_ticks{0U};
   double minimum_continuation_boundary_speed_mps{
       std::numeric_limits<double>::infinity()};
@@ -66,6 +75,7 @@ struct RollingRouteTelemetrySnapshot3D {
 
   [[nodiscard]] bool regressionFree() const noexcept;
   [[nodiscard]] double postBootstrapRouteAvailabilityRatio() const noexcept;
+  [[nodiscard]] double postBootstrapRouteExecutableRatio() const noexcept;
 };
 
 class RollingRouteTelemetry3D final {

@@ -179,9 +179,41 @@ certifyFiniteExecution3D(const ExecutionPlan3D& current,
 certifyDirectTrackingExecution3D(const ExecutionPlan3D& current,
                                  DirectTrackingExecutionCertification3D certification);
 
-[[nodiscard]] std::optional<StopExecution3D>
+// Why a stop could not be certified. A stop is the last thing a vehicle with
+// no executable route can do, so a refusal that reaches the log as a bare
+// "next_plan_invalid" leaves nothing to act on.
+enum class StopCertificationStatus3D : std::uint8_t {
+  kCertified,
+  kInvalidInput,
+  kEvidenceContractRejected,
+  kHorizonContractRejected,
+  kInitialStateMismatch,
+  kPathValidationRejected,
+  kValidationContractInvalid,
+  kInvalidArtifact,
+};
+
+struct StopCertificationResult3D {
+  StopCertificationStatus3D status{StopCertificationStatus3D::kInvalidInput};
+  // Which dynamics law a kHorizonContractRejected verdict broke.
+  MotionDynamicsConsistency3D dynamics_consistency{
+      MotionDynamicsConsistency3D::kConsistent};
+  // Which physical rule a kPathValidationRejected verdict broke.
+  FiniteExecutionPathStatus3D path_validation_status{
+      FiniteExecutionPathStatus3D::kValid};
+  std::optional<StopExecution3D> execution;
+
+  [[nodiscard]] bool certified() const noexcept {
+    return status == StopCertificationStatus3D::kCertified && execution.has_value();
+  }
+};
+
+[[nodiscard]] StopCertificationResult3D
 certifyStopExecution3D(const ExecutionPlan3D& current,
                        StopExecutionCertification3D certification);
+
+[[nodiscard]] std::string_view
+stopCertificationStatus3DName(StopCertificationStatus3D status) noexcept;
 
 [[nodiscard]] std::string_view finiteExecutionCertificationStatus3DName(
     FiniteExecutionCertificationStatus3D status) noexcept;

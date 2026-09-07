@@ -187,6 +187,12 @@ void ProductionMppiNode::finalizePlanningTick(
           Vec3{navigation.state.vx, navigation.state.vy, navigation.state.vz}),
       .resident_route_available = committed_route != nullptr || committed_direct_owner,
       .execution_owner_available = committed_execution_owner,
+      // A stationary hold owns execution without carrying the vehicle
+      // anywhere; only a finite or direct execution flies a route.
+      .route_execution_owner_available =
+          committed_execution_snapshot != nullptr &&
+          (committed_execution_snapshot->finiteExecution() != nullptr ||
+           committed_direct_owner),
       .endpoint_limiter_active =
           speed_policy.active_limiter == MppiSpeedLimiter::kRouteEndpoint,
       .raw_invalidation_active = raw_invalidation_active,

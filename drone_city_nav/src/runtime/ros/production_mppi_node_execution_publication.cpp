@@ -240,10 +240,11 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
     const msg::MppiTrajectoryHorizon& horizon,
     ExecutionHorizonLeaseCandidate3D candidate) {
   using production_mppi_execution_detail::timeToNanoseconds;
-  const auto report_commit_failure = [this](const char* const stage) {
+  const auto report_commit_failure = [this](const std::string_view stage) {
     horizon_commit_rejections_.fetch_add(1U, std::memory_order_relaxed);
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
-                         "EXECUTION_HORIZON_COMMIT committed=false stage=%s", stage);
+                         "EXECUTION_HORIZON_COMMIT committed=false stage=%.*s",
+                         static_cast<int>(stage.size()), stage.data());
   };
 
   const std::shared_ptr<const VersionedExecutionInput3D>& publication_execution_input =
@@ -259,12 +260,18 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
   }
   msg::MppiTrajectoryHorizon publication_horizon = horizon;
   publication_horizon.sequence = execution_horizon_sequence_ + 1U;
-  if (assessExecutionHorizonPayload(
-          publication_horizon, ExecutionHorizonPayloadValidationConfig{
-                                   .expected_frame_id = config_.world.frame_id,
-                                   .flight_envelope = &config_.world.flight_envelope,
-                               }) != ExecutionHorizonPayloadStatus::kValid) {
-    report_commit_failure("invalid_payload");
+  // The payload assessment already knows which rule the horizon broke; a bare
+  // "invalid_payload" in the log leaves a commit refusal with nothing to act
+  // on, and these are the most frequent refusals a run records.
+  if (const ExecutionHorizonPayloadStatus payload_status =
+          assessExecutionHorizonPayload(
+              publication_horizon,
+              ExecutionHorizonPayloadValidationConfig{
+                  .expected_frame_id = config_.world.frame_id,
+                  .flight_envelope = &config_.world.flight_envelope,
+              });
+      payload_status != ExecutionHorizonPayloadStatus::kValid) {
+    report_commit_failure(executionHorizonPayloadStatusName(payload_status));
     return ProductionMppiHorizonCommitStatus::kRejected;
   }
   const ExecutionOwnerIdentity3D owner{

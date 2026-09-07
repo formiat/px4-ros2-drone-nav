@@ -137,6 +137,8 @@ struct ArmStationaryCaptureHoldCommand3D {
 struct EnterStopExecutionCommand3D {
   std::uint64_t expected_snapshot_version{0U};
   StopExecutionCertification3D certification{};
+  // Diagnostics only: see enterStopExecution3D.
+  StopCertificationResult3D* certification_report{nullptr};
 };
 
 struct RevokeExecutionCommand3D {
@@ -253,10 +255,16 @@ armStationaryCaptureHold3D(const ExecutionPlan3D& current,
 // with the certified braking trajectory. Admissible from every phase that can
 // still be moving, because a stop must never depend on the route state that
 // failed.
+// `certification_report`, when given, receives why the stop's certification
+// failed. The transition result is an immutable authorisation and carries no
+// diagnostics of its own; a stop is the last thing a vehicle with no
+// executable route can do, so its refusal must not reach the log as a bare
+// "next_plan_invalid".
 [[nodiscard]] ExecutionRouteTransitionResult3D
 enterStopExecution3D(const ExecutionPlan3D& current,
                      std::uint64_t expected_snapshot_version,
-                     StopExecutionCertification3D certification);
+                     StopExecutionCertification3D certification,
+                     StopCertificationResult3D* certification_report = nullptr);
 
 [[nodiscard]] ExecutionRouteTransitionResult3D
 revokeExecution3D(const ExecutionPlan3D& current,

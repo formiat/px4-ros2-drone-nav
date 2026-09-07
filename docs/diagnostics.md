@@ -65,6 +65,29 @@ Relevant stages include:
 - total GPU and host tick time;
 - asynchronous RViz/JSONL work.
 
+Refusals name the rule they broke rather than the stage they happened in:
+
+- `EXECUTION_HORIZON_COMMIT committed=false stage=<payload status>` reports
+  which payload rule the horizon failed, not a bare `invalid_payload`. These
+  are the most frequent commit refusals a run records.
+- `STOP_EXECUTION published=false` carries `certification=`,
+  `certification_dynamics=` and `certification_path=` beside the transition
+  status. A stop is the last thing a vehicle with no executable route can do,
+  so `next_plan_invalid` on its own left nothing to act on.
+- `EXECUTION_HORIZON_ASSEMBLY` carries `dynamics=` beside `validation=`.
+
+`ROUTE_GEOMETRY` records, for every activated route, its generation, sample
+count and a strided list of its points. Without it a log shows that a route
+changed and how long it is, but not where it goes, and a reversal between two
+passages cannot be told from a local adjustment after the fact.
+
+`PRODUCTION_MPPI_SUMMARY` reports two route-availability figures.
+`post_bootstrap_route_availability_ratio` counts ticks where a route was
+resident and *something* owned execution — a stationary hold counts, which is
+how a vehicle stuck in a pocket for eleven minutes reported 99.8% availability.
+`post_bootstrap_route_executable_ratio` counts only ticks where an owner was
+actually flying the route, and is the figure that describes progress.
+
 `PRODUCTION_MPPI_SUMMARY` reports two deadline counters. `deadline_misses`
 counts ticks whose whole cycle — snapshot, cycle preparation, controller,
 publication and commit — overran the planning period: this is the rate at which

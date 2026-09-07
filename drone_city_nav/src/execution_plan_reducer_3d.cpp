@@ -95,7 +95,8 @@ applyCommand(const ExecutionPlan3D& current,
 [[nodiscard]] ExecutionRouteTransitionResult3D
 applyCommand(const ExecutionPlan3D& current, EnterStopExecutionCommand3D command) {
   return applyEnterStopExecutionCommand3D(current, command.expected_snapshot_version,
-                                          std::move(command.certification));
+                                          std::move(command.certification),
+                                          command.certification_report);
 }
 
 [[nodiscard]] ExecutionRouteTransitionResult3D
@@ -249,11 +250,13 @@ armStationaryCaptureHold3D(const ExecutionPlan3D& current,
 ExecutionRouteTransitionResult3D
 enterStopExecution3D(const ExecutionPlan3D& current,
                      const std::uint64_t expected_snapshot_version,
-                     StopExecutionCertification3D certification) {
+                     StopExecutionCertification3D certification,
+                     StopCertificationResult3D* const certification_report) {
   return reduceExecutionPlan3D(
       current, EnterStopExecutionCommand3D{
                    .expected_snapshot_version = expected_snapshot_version,
                    .certification = std::move(certification),
+                   .certification_report = certification_report,
                });
 }
 

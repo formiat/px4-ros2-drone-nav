@@ -78,7 +78,8 @@ ProductionMppiNode::publishStopExecution(const ProductionMppiExecutionCycle& cyc
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 1000,
           "STOP_EXECUTION published=false status=%s transition=%.*s "
-          "detail=%.*s speed_mps=%.2f replacement_failure=%s",
+          "detail=%.*s certification=%.*s certification_dynamics=%s "
+          "certification_path=%s speed_mps=%.2f replacement_failure=%s",
           executionStopStatus3DName(prepared.status),
           static_cast<int>(
               executionRouteTransitionStatus3DName(prepared.transition_status).size()),
@@ -86,6 +87,12 @@ ProductionMppiNode::publishStopExecution(const ProductionMppiExecutionCycle& cyc
           static_cast<int>(
               executionRouteTransitionDetail3DName(prepared.transition_detail).size()),
           executionRouteTransitionDetail3DName(prepared.transition_detail).data(),
+          static_cast<int>(
+              stopCertificationStatus3DName(prepared.certification.status).size()),
+          stopCertificationStatus3DName(prepared.certification.status).data(),
+          motionDynamicsConsistency3DName(prepared.certification.dynamics_consistency),
+          finiteExecutionPathStatus3DName(
+              prepared.certification.path_validation_status),
           prepared.initial_speed_mps, productionMppiExecutionReasonName(reason));
     }
     return publication;

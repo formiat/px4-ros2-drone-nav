@@ -132,6 +132,8 @@ void ProductionMppiNode::publishSummary() {
       " post_bootstrap_route_observations=%" PRIu64
       " post_bootstrap_route_available_ticks=%" PRIu64
       " post_bootstrap_route_availability_ratio=%.6f"
+      " post_bootstrap_route_executable_ticks=%" PRIu64
+      " post_bootstrap_route_executable_ratio=%.6f"
       " post_bootstrap_no_executable_route_hold_ticks=%" PRIu64
       " planner_latency_samples=%zu planner_p95_ms=%.3f planner_p99_ms=%.3f"
       " planner_build_and_planning_p99_ms=%.3f"
@@ -198,6 +200,8 @@ void ProductionMppiNode::publishSummary() {
       rolling_route.post_bootstrap_observations,
       rolling_route.post_bootstrap_route_available_ticks,
       rolling_route.postBootstrapRouteAvailabilityRatio(),
+      rolling_route.post_bootstrap_route_executable_ticks,
+      rolling_route.postBootstrapRouteExecutableRatio(),
       rolling_route.post_bootstrap_no_executable_route_hold_ticks,
       planning_latency.sample_count, planning_latency.planning_p95_ms,
       planning_latency.planning_p99_ms, planning_latency.build_and_planning_p99_ms,

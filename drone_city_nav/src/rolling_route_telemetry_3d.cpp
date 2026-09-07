@@ -38,6 +38,14 @@ RollingRouteTelemetrySnapshot3D::postBootstrapRouteAvailabilityRatio() const noe
                    static_cast<double>(post_bootstrap_observations);
 }
 
+double
+RollingRouteTelemetrySnapshot3D::postBootstrapRouteExecutableRatio() const noexcept {
+  return post_bootstrap_observations == 0U
+             ? 0.0
+             : static_cast<double>(post_bootstrap_route_executable_ticks) /
+                   static_cast<double>(post_bootstrap_observations);
+}
+
 RollingRouteTelemetry3D::RollingRouteTelemetry3D(RollingRouteTelemetryConfig3D config)
     : config_{config} {
   if (!std::isfinite(config_.continuation_boundary_distance_m) ||
@@ -130,6 +138,11 @@ void RollingRouteTelemetry3D::observe(
   if (route_bootstrapped_) {
     ++snapshot_.post_bootstrap_observations;
     snapshot_.post_bootstrap_route_available_ticks += route_available ? 1U : 0U;
+    snapshot_.post_bootstrap_route_executable_ticks +=
+        observation.resident_route_available &&
+                observation.route_execution_owner_available
+            ? 1U
+            : 0U;
     snapshot_.post_bootstrap_no_executable_route_hold_ticks +=
         observation.no_executable_route_hold ? 1U : 0U;
   }

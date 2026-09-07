@@ -181,9 +181,14 @@ bool StopExecution3D::valid() const noexcept {
              stopExecutionArtifactFingerprint(*this);
 }
 
-std::optional<StopExecution3D>
+StopCertificationResult3D
 certifyStopExecution3D(const ExecutionPlan3D& current,
                        StopExecutionCertification3D certification) {
+  const auto rejected = [](const StopCertificationStatus3D status) {
+    StopCertificationResult3D result;
+    result.status = status;
+    return result;
+  };
   const bool raw_mode = certification.observed_raw_world != nullptr;
   const bool static_mode = certification.static_world != nullptr;
   if (!current.valid() || certification.trajectory_revision == 0U ||
@@ -205,25 +210,36 @@ certifyStopExecution3D(const ExecutionPlan3D& current,
                                   certification.valid_from_ns) ||
       (raw_mode && !certification.observed_raw_world->valid()) ||
       (static_mode && !certification.static_world->valid())) {
-    return std::nullopt;
+    return rejected(certification.execution_input == nullptr ||
+                            certification.latest_lidar_evidence == nullptr ||
+                            certification.validation_policy == nullptr
+                        ? StopCertificationStatus3D::kInvalidInput
+                        : StopCertificationStatus3D::kEvidenceContractRejected);
   }
 
   const FiniteMotionHorizon3D& horizon = certification.horizon;
   const std::int64_t control_interval_ns = finitePathControlIntervalNanoseconds3D(
       certification.validation_policy->dynamics().dt_s);
+  const MotionDynamicsConsistency3D horizon_dynamics =
+      finiteMotionHorizonDynamicsConsistency3D(
+          horizon, certification.execution_input->previousControl(),
+          certification.validation_policy->dynamics());
   if (horizon.controls.empty() ||
       horizon.states.size() != horizon.controls.size() + 1U ||
       control_interval_ns <= 0 || !finiteMotionHorizonHasTerminalRestState3D(horizon) ||
-      !finiteHorizonDynamicallyConsistent(
-          horizon, certification.execution_input->previousControl(),
-          certification.validation_policy->dynamics()) ||
-      !finiteStateNearlyEqual(horizon.states.front(),
-                              certification.execution_input->state()) ||
+      horizon_dynamics != MotionDynamicsConsistency3D::kConsistent ||
       horizon.controls.size() >
           static_cast<std::uint64_t>(
               (std::numeric_limits<std::int64_t>::max() - certification.valid_from_ns) /
               control_interval_ns)) {
-    return std::nullopt;
+    StopCertificationResult3D rejection =
+        rejected(StopCertificationStatus3D::kHorizonContractRejected);
+    rejection.dynamics_consistency = horizon_dynamics;
+    return rejection;
+  }
+  if (!finiteStateNearlyEqual(horizon.states.front(),
+                              certification.execution_input->state())) {
+    return rejected(StopCertificationStatus3D::kInitialStateMismatch);
   }
 
   const LaunchSupportContact3D* const launch_support_contact =
@@ -262,11 +278,15 @@ certifyStopExecution3D(const ExecutionPlan3D& current,
       timedExecutionPathPoints(horizon,
                                certification.execution_input->previousControl(),
                                control_interval_ns);
-  if (!validateCompleteFiniteExecutionPath3D(
-           validation_points, certification.execution_input->previousControl(),
-           validation_world)
-           .accepted()) {
-    return std::nullopt;
+  const FiniteExecutionPathValidation3D path_validation =
+      validateCompleteFiniteExecutionPath3D(
+          validation_points, certification.execution_input->previousControl(),
+          validation_world);
+  if (!path_validation.accepted()) {
+    StopCertificationResult3D rejection =
+        rejected(StopCertificationStatus3D::kPathValidationRejected);
+    rejection.path_validation_status = path_validation.status;
+    return rejection;
   }
 
   const std::uint64_t collision_policy_fingerprint = validationPolicyFingerprint(
@@ -279,7 +299,7 @@ certifyStopExecution3D(const ExecutionPlan3D& current,
           .latest_lidar_evidence = certification.latest_lidar_evidence.get(),
       });
   if (collision_policy_fingerprint == 0U || validation_contract_fingerprint == 0U) {
-    return std::nullopt;
+    return rejected(StopCertificationStatus3D::kValidationContractInvalid);
   }
   FiniteExecutionValidationLineage3D lineage{
       StaticFiniteExecutionValidationLineage3D{}};
@@ -329,8 +349,36 @@ certifyStopExecution3D(const ExecutionPlan3D& current,
   };
   execution.validation_proof.artifact_fingerprint =
       stopExecutionArtifactFingerprint(execution);
-  return execution.valid() ? std::optional<StopExecution3D>{std::move(execution)}
-                           : std::nullopt;
+  if (!execution.valid()) {
+    return rejected(StopCertificationStatus3D::kInvalidArtifact);
+  }
+  return StopCertificationResult3D{
+      .status = StopCertificationStatus3D::kCertified,
+      .execution = std::move(execution),
+  };
+}
+
+std::string_view
+stopCertificationStatus3DName(const StopCertificationStatus3D status) noexcept {
+  switch (status) {
+    case StopCertificationStatus3D::kCertified:
+      return "certified";
+    case StopCertificationStatus3D::kInvalidInput:
+      return "invalid_input";
+    case StopCertificationStatus3D::kEvidenceContractRejected:
+      return "evidence_contract_rejected";
+    case StopCertificationStatus3D::kHorizonContractRejected:
+      return "horizon_contract_rejected";
+    case StopCertificationStatus3D::kInitialStateMismatch:
+      return "initial_state_mismatch";
+    case StopCertificationStatus3D::kPathValidationRejected:
+      return "path_validation_rejected";
+    case StopCertificationStatus3D::kValidationContractInvalid:
+      return "validation_contract_invalid";
+    case StopCertificationStatus3D::kInvalidArtifact:
+      return "invalid_artifact";
+  }
+  return "unknown";
 }
 
 bool execution_route_snapshot_3d_internal::routeExecutionEvidenceNotOlderThanStop(
@@ -355,7 +403,8 @@ bool execution_route_snapshot_3d_internal::routeExecutionEvidenceNotOlderThanSto
 ExecutionRouteTransitionResult3D
 execution_route_snapshot_3d_internal::applyEnterStopExecutionCommand3D(
     const ExecutionPlan3D& current, const std::uint64_t expected_snapshot_version,
-    StopExecutionCertification3D certification) {
+    StopExecutionCertification3D certification,
+    StopCertificationResult3D* const certification_report) {
   const ExecutionRouteTransitionStatus3D status =
       checkCurrentAndVersion(current, expected_snapshot_version);
   if (status != ExecutionRouteTransitionStatus3D::kApplied) {
@@ -388,16 +437,21 @@ execution_route_snapshot_3d_internal::applyEnterStopExecutionCommand3D(
     return transitionFailure(
         ExecutionRouteTransitionStatus3D::kFiniteExecutionConflict);
   }
-  std::optional<StopExecution3D> certified =
+  StopCertificationResult3D certified =
       certifyStopExecution3D(current, std::move(certification));
-  if (!certified.has_value()) {
+  if (certification_report != nullptr) {
+    certification_report->status = certified.status;
+    certification_report->dynamics_consistency = certified.dynamics_consistency;
+    certification_report->path_validation_status = certified.path_validation_status;
+  }
+  if (!certified.certified()) {
     return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate,
                              ExecutionRouteTransitionDetail3D::kNextPlanInvalid);
   }
   ExecutionPlan3D next = current;
   ++next.version;
   next.route_generation_high_water = current.routeGenerationHighWater();
-  next.state = StopPlan3D{.execution = std::move(certified).value()};
+  next.state = StopPlan3D{.execution = std::move(certified.execution).value()};
   ++next.execution_owner_epoch;
   return finishTransition(current, std::move(next));
 }

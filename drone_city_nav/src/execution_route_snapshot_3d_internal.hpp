@@ -569,7 +569,8 @@ applyTransferDirectTrackingToCertifiedRouteCommand3D(
 [[nodiscard]] ExecutionRouteTransitionResult3D
 applyEnterStopExecutionCommand3D(const ExecutionPlan3D& current,
                                  std::uint64_t expected_snapshot_version,
-                                 StopExecutionCertification3D certification);
+                                 StopExecutionCertification3D certification,
+                                 StopCertificationResult3D* certification_report);
 
 [[nodiscard]] ExecutionRouteTransitionResult3D
 applyRevokeExecutionCommand3D(const ExecutionPlan3D& current,

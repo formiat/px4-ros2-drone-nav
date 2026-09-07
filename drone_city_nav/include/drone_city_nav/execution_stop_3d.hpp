@@ -57,6 +57,9 @@ struct ExecutionStopPreparation3D {
       ExecutionRouteTransitionStatus3D::kInvalidCandidate};
   ExecutionRouteTransitionDetail3D transition_detail{
       ExecutionRouteTransitionDetail3D::kNone};
+  // Why the stop's certification refused it, when the transition rejected it
+  // as an invalid candidate.
+  StopCertificationResult3D certification{};
   double initial_speed_mps{0.0};
   double stop_distance_m{0.0};
 
