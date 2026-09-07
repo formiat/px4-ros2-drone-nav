@@ -69,6 +69,12 @@ estimatedFlightStopAndTurnDelay3D(const Vec3& incoming, const Vec3& outgoing,
 // Time-parameterizes one spatial path. speed_limits_mps and stop_turn_flags
 // are point-aligned; a nonzero flag requires zero translational speed and a
 // physically bounded stationary yaw turn at that point.
+//
+// The profile carries its acceleration across points: a speed is bounded by
+// what the preceding point can accelerate to and what the following point can
+// be braked to over the whole path between them, and the jerk limit is charged
+// once per acceleration phase, not once per sample. The result depends on the
+// path's geometry and limits, not on how densely it is sampled.
 [[nodiscard]] FlightPathTimeProfile3D parameterizeFlightPathTime3D(
     std::span<const Point3> points, std::span<const double> speed_limits_mps,
     std::span<const std::uint8_t> stop_turn_flags, const Vec3& initial_velocity,

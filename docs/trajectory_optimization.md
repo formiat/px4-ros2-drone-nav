@@ -296,6 +296,17 @@ since activation, and the goal. A profile compiled when the route was activated
 answers for the route's geometry; it cannot answer for what the lidar saw two
 seconds ago.
 
+The route profile itself is a continuous acceleration profile over the dense
+route samples: each sample's speed is bounded by what the previous sample can
+accelerate to and what the next can be braked to over the whole path between
+them, and the jerk limit is charged once per acceleration phase, at the point
+where the phase ends. The same profile prices routes in the planner's ranking.
+It used to be built from one jerk-limited transition per sample, each starting
+and ending at zero acceleration, so a straight metre sampled every half metre
+cost about a quarter more than the same metre sampled once, and the reference
+the optimiser was offered on a dense route sat well below what the geometry
+allowed.
+
 ## Continuity And Liveness
 
 - The first command is bounded relative to applied-control feedback.

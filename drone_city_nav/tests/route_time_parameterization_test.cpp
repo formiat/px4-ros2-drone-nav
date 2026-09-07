@@ -51,6 +51,41 @@ TEST(RouteTimeParameterizationTest,
   EXPECT_TRUE(std::isfinite(profile.travel_time_s));
 }
 
+TEST(RouteTimeParameterizationTest, TheTimeProfileDoesNotDependOnTheSampleSpacing) {
+  // The same 30 m straight, entered at 1 m/s and limited to 5 m/s, sampled
+  // every half metre and sampled twice. The profile carries its acceleration
+  // across samples and charges the jerk ramps once per acceleration phase, so
+  // both readings are the one physical answer: 3 m and 1 s to reach 5 m/s, 27 m
+  // of cruise, and one jerk allowance of a third of a second.
+  std::vector<RouteSample3D> dense;
+  for (int index = 0; index <= 60; ++index) {
+    const double station_m = 0.5 * static_cast<double>(index);
+    dense.push_back({.position = {station_m, 0.0, 0.0},
+                     .tangent = {1.0, 0.0, 0.0},
+                     .station_m = station_m});
+  }
+  const std::vector<RouteSample3D> coarse = straightRoute(30.0);
+  const Vec3 entry_velocity{1.0, 0.0, 0.0};
+  FlightTimeModel3D model = testTimeModel();
+  model.maximum_horizontal_speed_mps = 5.0;
+  const RouteTimeParameterization3D dense_profile = parameterizeRouteTime3D(
+      dense, {}, 5.0, 3.0, RouteEndpointSemantics3D::kContinuation, 4.0, model,
+      entry_velocity);
+  const RouteTimeParameterization3D coarse_profile = parameterizeRouteTime3D(
+      coarse, {}, 5.0, 3.0, RouteEndpointSemantics3D::kContinuation, 4.0, model,
+      entry_velocity);
+
+  ASSERT_TRUE(dense_profile.valid);
+  ASSERT_TRUE(coarse_profile.valid);
+  const double expected_s = 1.0 + 27.0 / 5.0 + (4.0 / 4.0 + 4.0 / 12.0 - 1.0);
+  EXPECT_NEAR(dense_profile.travel_time_s, expected_s, 1.0e-3);
+  EXPECT_NEAR(coarse_profile.travel_time_s, expected_s, 1.0e-3);
+  // Interior samples carry the acceleration: at 1.5 m the profile has reached
+  // sqrt(1 + 2 * 4 * 1.5) m/s, not a from-rest transition's fraction of it.
+  EXPECT_NEAR(dense_profile.reference_speeds_mps[3U], std::sqrt(13.0), 1.0e-9);
+  EXPECT_DOUBLE_EQ(dense_profile.reference_speeds_mps[30U], 5.0);
+}
+
 TEST(RouteTimeParameterizationTest, CurvatureAndVerticalMotionCapTheSameProfile) {
   const std::vector<RouteSample3D> turn_route{
       {.position = {0.0, 0.0, 0.0}, .tangent = {1.0, 0.0, 0.0}, .station_m = 0.0},

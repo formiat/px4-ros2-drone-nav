@@ -61,6 +61,9 @@ constexpr double kEpsilon{1.0e-9};
   return std::min(horizontal_limit, vertical_limit);
 }
 
+// Duration of one jerk-limited speed change of `delta_speed_mps` that starts
+// and ends at zero acceleration: a triangular acceleration pulse when the
+// change is too small to reach `acceleration_mps2`, an S-curve otherwise.
 [[nodiscard]] double velocityTransitionTime(const double delta_speed_mps,
                                             const double acceleration_mps2,
                                             const double jerk_mps3) noexcept {
@@ -74,86 +77,55 @@ constexpr double kEpsilon{1.0e-9};
   return delta_speed_mps / acceleration_mps2 + acceleration_mps2 / jerk_mps3;
 }
 
-[[nodiscard]] double velocityTransitionDistance(const double lower_speed_mps,
-                                                const double upper_speed_mps,
-                                                const double acceleration_mps2,
-                                                const double jerk_mps3) noexcept {
-  return 0.5 * (lower_speed_mps + upper_speed_mps) *
-         velocityTransitionTime(upper_speed_mps - lower_speed_mps, acceleration_mps2,
-                                jerk_mps3);
+// Time a jerk-limited transition takes over the constant-acceleration one
+// for the same speed change: the acceleration ramps the jerk limit adds.
+[[nodiscard]] double jerkRampAllowanceS(const double delta_speed_mps,
+                                        const double acceleration_mps2,
+                                        const double jerk_mps3) noexcept {
+  if (!(delta_speed_mps > kEpsilon) || !(acceleration_mps2 > kEpsilon)) {
+    return 0.0;
+  }
+  return std::max(
+      0.0, velocityTransitionTime(delta_speed_mps, acceleration_mps2, jerk_mps3) -
+               delta_speed_mps / acceleration_mps2);
 }
 
-[[nodiscard]] double reachableSpeed(const double lower_speed_mps,
-                                    const double distance_m,
-                                    const double upper_limit_mps,
-                                    const double acceleration_mps2,
-                                    const double jerk_mps3) noexcept {
-  if (!(upper_limit_mps > lower_speed_mps) || !(distance_m > 0.0)) {
-    return std::min(lower_speed_mps, upper_limit_mps);
-  }
-  if (velocityTransitionDistance(lower_speed_mps, upper_limit_mps, acceleration_mps2,
-                                 jerk_mps3) <= distance_m) {
-    return upper_limit_mps;
-  }
-  double lower = lower_speed_mps;
-  double upper = upper_limit_mps;
-  for (std::size_t iteration = 0U; iteration < 64U; ++iteration) {
-    const double middle = 0.5 * (lower + upper);
-    if (velocityTransitionDistance(lower_speed_mps, middle, acceleration_mps2,
-                                   jerk_mps3) <= distance_m) {
-      lower = middle;
-    } else {
-      upper = middle;
-    }
-  }
-  return lower;
-}
-
-[[nodiscard]] double
-segmentTravelTime(const double distance_m, const double first_speed_mps,
-                  const double second_speed_mps, const double speed_limit_mps,
-                  const double acceleration_mps2, const double jerk_mps3) noexcept {
+// Time along one segment under constant acceleration bounded by
+// `acceleration_mps2`: the speed changes as early (accelerating) or as late
+// (braking) as the bound allows and the segment cruises for the rest. The
+// endpoint speeds are already reachable within the segment.
+[[nodiscard]] double segmentTravelTime(const double distance_m,
+                                       const double first_speed_mps,
+                                       const double second_speed_mps,
+                                       const double speed_limit_mps,
+                                       const double acceleration_mps2) noexcept {
   if (!(distance_m > 0.0) || !(speed_limit_mps > 0.0)) {
     return std::numeric_limits<double>::infinity();
   }
   const double slower = std::min(first_speed_mps, second_speed_mps);
   const double faster = std::max(first_speed_mps, second_speed_mps);
   if (faster - slower > kEpsilon) {
-    const double transition_time =
-        velocityTransitionTime(faster - slower, acceleration_mps2, jerk_mps3);
-    const double transition_distance = 0.5 * (slower + faster) * transition_time;
+    const double transition_distance =
+        (faster * faster - slower * slower) / (2.0 * acceleration_mps2);
     if (transition_distance > distance_m + 1.0e-7) {
       return std::numeric_limits<double>::infinity();
     }
-    return transition_time + std::max(0.0, distance_m - transition_distance) / faster;
+    return (faster - slower) / acceleration_mps2 +
+           std::max(0.0, distance_m - transition_distance) / faster;
   }
   if (faster > kEpsilon) {
     return distance_m / faster;
   }
-
-  // A short leg bounded by two full stops still has a valid accelerate/brake
-  // profile even though both endpoint speeds are zero.
-  double lower_peak = 0.0;
-  double upper_peak = speed_limit_mps;
-  for (std::size_t iteration = 0U; iteration < 64U; ++iteration) {
-    const double middle = 0.5 * (lower_peak + upper_peak);
-    const double transition_distance =
-        2.0 * velocityTransitionDistance(0.0, middle, acceleration_mps2, jerk_mps3);
-    if (transition_distance <= distance_m) {
-      lower_peak = middle;
-    } else {
-      upper_peak = middle;
-    }
-  }
-  if (!(lower_peak > kEpsilon)) {
+  // A leg bounded by two full stops accelerates to a peak and brakes again.
+  const double peak_speed_mps =
+      std::min(speed_limit_mps, std::sqrt(acceleration_mps2 * distance_m));
+  if (!(peak_speed_mps > kEpsilon)) {
     return std::numeric_limits<double>::infinity();
   }
-  const double transition_time =
-      velocityTransitionTime(lower_peak, acceleration_mps2, jerk_mps3);
   const double transition_distance =
-      2.0 * velocityTransitionDistance(0.0, lower_peak, acceleration_mps2, jerk_mps3);
-  return 2.0 * transition_time +
-         std::max(0.0, distance_m - transition_distance) / lower_peak;
+      peak_speed_mps * peak_speed_mps / acceleration_mps2;
+  return 2.0 * peak_speed_mps / acceleration_mps2 +
+         std::max(0.0, distance_m - transition_distance) / peak_speed_mps;
 }
 
 [[nodiscard]] double stationaryYawTurnTime(const Vec3& incoming, const Vec3& outgoing,
@@ -231,7 +203,7 @@ double estimatedFlightRestTransitionDelay3D(const Vec3& tangent,
   if (!finitePositive(speed_limit) || !finitePositive(acceleration_limit)) {
     return std::numeric_limits<double>::infinity();
   }
-  // The shared S-curve transition travels at the mean endpoint speed. Against
+  // The jerk-limited transition travels at the mean endpoint speed. Against
   // an instantaneous full-speed translation lower bound, half of its duration
   // is therefore the incremental delay.
   return 0.5 * velocityTransitionTime(speed_limit, acceleration_limit,
@@ -293,54 +265,88 @@ parameterizeFlightPathTime3D(const std::span<const Point3> points,
     }
   }
 
-  result.reference_speeds_mps.resize(points.size());
+  std::vector<double>& speeds = result.reference_speeds_mps;
+  speeds.resize(points.size());
   for (std::size_t index = 0U; index < points.size(); ++index) {
     const double incoming_limit = index > 0U ? segment_speed_limits[index - 1U]
                                              : std::numeric_limits<double>::infinity();
     const double outgoing_limit = index < segment_count
                                       ? segment_speed_limits[index]
                                       : std::numeric_limits<double>::infinity();
-    result.reference_speeds_mps[index] =
-        std::min({speed_limits_mps[index], incoming_limit, outgoing_limit});
+    speeds[index] = std::min({speed_limits_mps[index], incoming_limit, outgoing_limit});
     if (stop_turn_flags[index] != 0U) {
-      result.reference_speeds_mps[index] = 0.0;
+      speeds[index] = 0.0;
     }
   }
   const double initial_along_route =
       std::max(0.0, initial_velocity.x * tangents.front().x +
                         initial_velocity.y * tangents.front().y +
                         initial_velocity.z * tangents.front().z);
-  result.reference_speeds_mps.front() =
-      std::min(result.reference_speeds_mps.front(), initial_along_route);
+  speeds.front() = std::min(speeds.front(), initial_along_route);
   if (terminal_stop) {
-    result.reference_speeds_mps.back() = 0.0;
+    speeds.back() = 0.0;
   }
 
-  // Each transition uses a zero-acceleration S-curve at its boundaries. A few
-  // symmetric passes propagate both acceleration and jerk reachability through
-  // short adjacent segments and stop-turn boundaries.
-  for (std::size_t pass = 0U; pass < 3U; ++pass) {
-    for (std::size_t index = 0U; index < segment_count; ++index) {
-      result.reference_speeds_mps[index + 1U] = std::min(
-          result.reference_speeds_mps[index + 1U],
-          reachableSpeed(result.reference_speeds_mps[index], lengths[index],
-                         result.reference_speeds_mps[index + 1U],
-                         acceleration_limits[index], model.maximum_control_jerk_mps3));
-    }
-    for (std::size_t index = segment_count; index > 0U; --index) {
-      const std::size_t segment = index - 1U;
-      result.reference_speeds_mps[segment] =
-          std::min(result.reference_speeds_mps[segment],
-                   reachableSpeed(result.reference_speeds_mps[index], lengths[segment],
-                                  result.reference_speeds_mps[segment],
-                                  acceleration_limits[segment],
-                                  model.maximum_control_jerk_mps3));
-    }
+  // The profile carries its acceleration across points: a speed is bounded by
+  // what the preceding point can accelerate to and by what the following
+  // point can be braked to, over the whole path length between them. Treating
+  // every sample as a transition that starts and ends at rest acceleration
+  // priced a dense route by its sample spacing, not by its geometry — a
+  // straight metre sampled every half metre cost a quarter more than the same
+  // metre sampled once.
+  for (std::size_t index = 0U; index < segment_count; ++index) {
+    speeds[index + 1U] =
+        std::min(speeds[index + 1U],
+                 std::sqrt(speeds[index] * speeds[index] +
+                           2.0 * acceleration_limits[index] * lengths[index]));
+  }
+  for (std::size_t index = segment_count; index > 0U; --index) {
+    const std::size_t segment = index - 1U;
+    speeds[segment] =
+        std::min(speeds[segment],
+                 std::sqrt(speeds[index] * speeds[index] +
+                           2.0 * acceleration_limits[segment] * lengths[segment]));
   }
 
+  // Segment times under the acceleration bound, then the jerk ramps once per
+  // acceleration phase: a run of segments that keeps accelerating, or keeps
+  // braking, is one jerk-limited transition however many samples it spans,
+  // and its ramps are charged at the point where the phase ends.
   result.arrival_times_s.assign(points.size(), 0.0);
   result.departure_times_s.assign(points.size(), 0.0);
+  int phase_sign{0};
+  double phase_start_speed_mps{0.0};
+  double phase_acceleration_mps2{0.0};
+  const auto closePhase = [&](const double end_speed_mps) {
+    const double allowance_s =
+        jerkRampAllowanceS(std::abs(end_speed_mps - phase_start_speed_mps),
+                           phase_acceleration_mps2, model.maximum_control_jerk_mps3);
+    result.translation_time_s += allowance_s;
+    phase_sign = 0;
+    phase_acceleration_mps2 = 0.0;
+    return allowance_s;
+  };
   for (std::size_t index = 0U; index < segment_count; ++index) {
+    const double delta_speed_mps = speeds[index + 1U] - speeds[index];
+    const int sign = delta_speed_mps > kEpsilon    ? 1
+                     : delta_speed_mps < -kEpsilon ? -1
+                                                   : 0;
+    if (sign != phase_sign) {
+      if (phase_sign != 0) {
+        result.arrival_times_s[index] += closePhase(speeds[index]);
+      }
+      if (sign != 0) {
+        phase_sign = sign;
+        phase_start_speed_mps = speeds[index];
+      }
+    }
+    if (sign != 0) {
+      // The transition within a segment runs at the segment's acceleration
+      // limit and cruises for the rest, so the phase's ramps are those of the
+      // steepest limit it touched.
+      phase_acceleration_mps2 =
+          std::max(phase_acceleration_mps2, acceleration_limits[index]);
+    }
     double stationary_turn_time_s{0.0};
     if (index > 0U && stop_turn_flags[index] != 0U) {
       stationary_turn_time_s =
@@ -352,15 +358,17 @@ parameterizeFlightPathTime3D(const std::span<const Point3> points,
     result.stationary_turn_time_s += stationary_turn_time_s;
     result.departure_times_s[index] =
         result.arrival_times_s[index] + stationary_turn_time_s;
-    const double segment_time = segmentTravelTime(
-        lengths[index], result.reference_speeds_mps[index],
-        result.reference_speeds_mps[index + 1U], segment_speed_limits[index],
-        acceleration_limits[index], model.maximum_control_jerk_mps3);
+    const double segment_time =
+        segmentTravelTime(lengths[index], speeds[index], speeds[index + 1U],
+                          segment_speed_limits[index], acceleration_limits[index]);
     if (!std::isfinite(segment_time)) {
       return {};
     }
     result.translation_time_s += segment_time;
     result.arrival_times_s[index + 1U] = result.departure_times_s[index] + segment_time;
+  }
+  if (phase_sign != 0) {
+    result.arrival_times_s.back() += closePhase(speeds.back());
   }
   result.departure_times_s.back() = result.arrival_times_s.back();
   result.travel_time_s = result.arrival_times_s.back();
