@@ -286,6 +286,7 @@ add_drone_city_nav_layer(
 target_link_libraries(drone_city_nav_collision PUBLIC drone_city_nav_world)
 
 add_drone_city_nav_layer(drone_city_nav_finite_execution
+                         src/executed_horizon_clearance_3d.cpp
                          src/finite_execution_path_3d.cpp)
 target_link_libraries(drone_city_nav_finite_execution
                       PUBLIC drone_city_nav_collision
@@ -496,6 +497,7 @@ set(DRONE_CITY_NAV_WORLD_HEADERS
 
 set(DRONE_CITY_NAV_COLLISION_HEADERS
     include/drone_city_nav/derived_clearance_3d.hpp
+    include/drone_city_nav/executed_horizon_clearance_3d.hpp
     include/drone_city_nav/flight_envelope.hpp
     include/drone_city_nav/launch_support_contact_3d.hpp
     include/drone_city_nav/observed_esdf_footprint_3d.hpp

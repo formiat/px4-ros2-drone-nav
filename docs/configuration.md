@@ -264,7 +264,10 @@ Speed policy and liveness:
 - lidar evidence age, reaction latency, guaranteed 3D deceleration, worst
   forward acceleration, control jerk, detection range, and physical margin;
 - finite-route reserve and mission-goal stopping margins;
-- actual-displacement and predicted-progress thresholds.
+- liveness observation window, the along-route displacement that counts as
+  progress, the off-route displacement that counts as movement
+  (`liveness_minimum_offroute_displacement_m`), and how many consecutive stalled
+  windows a reseed needs (`liveness_stalled_windows_before_reseed`).
 
 ## `mppi_offboard_node`
 

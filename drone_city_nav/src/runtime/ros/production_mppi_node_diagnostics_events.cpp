@@ -23,13 +23,14 @@ void ProductionMppiNode::logDiagnosticsEvents(
     RCLCPP_WARN(get_logger(),
                 "MPPI_LIVENESS_RESEED generation=%" PRIu64
                 " observation_age_s=%.3f actual_displacement_m=%.3f "
-                "along_route_progress_m=%.3f route_progress_used=%s speed_mps=%.3f "
-                "predicted_head_progress_m=%.3f predicted_terminal_progress_m=%.3f",
+                "along_route_progress_m=%.3f tangential_progress_m=%.3f "
+                "useful_progress_m=%.3f route_progress_used=%s speed_mps=%.3f "
+                "predicted_head_progress_m=%.3f",
                 liveness.reseed_generation, liveness.observation_age_s,
                 liveness.actual_displacement_m, liveness.actual_route_progress_m,
+                liveness.tangential_progress_m, liveness.useful_progress_m,
                 liveness.used_route_progress ? "true" : "false",
-                liveness.actual_speed_mps, liveness.predicted_head_progress_m,
-                liveness.predicted_terminal_progress_m);
+                liveness.actual_speed_mps, liveness.predicted_head_progress_m);
   }
   if (snapshot.route_progress.local_reseed_requested) {
     RCLCPP_WARN(get_logger(),

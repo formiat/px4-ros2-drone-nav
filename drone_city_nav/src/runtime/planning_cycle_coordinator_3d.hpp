@@ -41,6 +41,10 @@ struct PlanningCycleCoordinatorConfig3D {
   NonCooperativeAvoidanceConfig noncooperative_avoidance{};
   FlightEnvelopeConfig flight_envelope{};
   mppi::DynamicsConfig dynamics{};
+  // The body the executed-horizon clearance is measured for, and the clearance
+  // below which a sample on that horizon constrains the reference speed.
+  SweptFootprintConfig physical_footprint{};
+  double executed_horizon_constraint_clearance_m{1.0};
   std::string vehicle_id;
   std::size_t horizon_steps{0U};
   double tracking_capture_radius_m{0.0};
@@ -164,6 +168,11 @@ public:
   [[nodiscard]] PlanningCycleOutcome3D prepare(const PlanningCycleRequest3D& request);
 
 private:
+  // Clearance of the horizon execution currently owns, against the world as it
+  // stands now. Absent when nothing owns vehicle motion.
+  [[nodiscard]] std::optional<ExecutedHorizonClearance3D>
+  measureResidentExecutionClearance(const PlanningCycleRequest3D& request) const;
+
   ExecutionSupervisor3D& execution_supervisor_;
   PlanningCycleCoordinatorConfig3D config_{};
   RouteExecutionSelector3D route_execution_selector_;
@@ -173,6 +182,10 @@ private:
   MissionGoalCaptureLatch goal_capture_latch_;
   DirectTrackingManeuverLifecycle direct_tracking_maneuver_lifecycle_;
   ConstrainedRouteCoordinator constrained_route_coordinator_{};
+  // The reference speed the previous cycle published and when, for the rise
+  // limit the speed policy applies.
+  std::optional<double> previous_reference_speed_mps_;
+  std::int64_t previous_reference_stamp_ns_{0};
   PassageTraversalEvidenceTracker passage_traversal_evidence_tracker_{};
   PassageGeometryEvidenceTracker passage_geometry_evidence_tracker_{};
   std::unique_ptr<NonCooperativeCollisionAvoidance> noncooperative_avoidance_;

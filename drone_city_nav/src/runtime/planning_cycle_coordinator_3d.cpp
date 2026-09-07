@@ -1,7 +1,9 @@
 #include "planning_cycle_coordinator_3d.hpp"
 
+#include "drone_city_nav/control_route_projection_3d.hpp"
 #include "drone_city_nav/cooperative_mppi_adapter.hpp"
 #include "drone_city_nav/esdf_query.hpp"
+#include "drone_city_nav/executed_horizon_clearance_3d.hpp"
 #include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/intercept_guidance.hpp"
 #include "drone_city_nav/mppi/mppi_control_sequence.hpp"
@@ -251,6 +253,47 @@ bool PlanningCycleCoordinator3D::goalCaptureLatchedFor(
   return goal_capture_latch_.latchedFor(mission_goal);
 }
 
+std::optional<ExecutedHorizonClearance3D>
+PlanningCycleCoordinator3D::measureResidentExecutionClearance(
+    const PlanningCycleRequest3D& request) const {
+  const std::shared_ptr<const ExecutionPlan3D> plan = execution_supervisor_.plan();
+  if (plan == nullptr || request.world == nullptr ||
+      request.world->distances_m == nullptr) {
+    return std::nullopt;
+  }
+  const FiniteMotionHorizon3D* horizon{nullptr};
+  std::int64_t valid_from_ns{0};
+  std::int64_t control_interval_ns{0};
+  if (const FiniteExecutionState3D* const finite = plan->finiteExecution();
+      finite != nullptr && finite->horizon != nullptr) {
+    horizon = finite->horizon.get();
+    valid_from_ns = finite->valid_from_ns;
+    control_interval_ns = finite->control_interval_ns;
+  } else if (const DirectTrackingFiniteExecution3D* const direct =
+                 plan->directTrackingExecution();
+             direct != nullptr && direct->horizon != nullptr) {
+    horizon = direct->horizon.get();
+    valid_from_ns = direct->valid_from_ns;
+    control_interval_ns = direct->control_interval_ns;
+  }
+  if (horizon == nullptr || control_interval_ns <= 0 || valid_from_ns <= 0 ||
+      horizon->states.size() < 2U) {
+    return std::nullopt;
+  }
+  // Only the part still ahead of the vehicle constrains what it may do next.
+  const std::int64_t elapsed_ns =
+      std::max<std::int64_t>(0, request.now_ns - valid_from_ns);
+  const std::size_t first_remaining_state_index =
+      std::min(static_cast<std::size_t>(elapsed_ns / control_interval_ns),
+               horizon->states.size() - 2U);
+  const ExecutedHorizonClearance3D clearance = measureExecutedHorizonClearance3D(
+      *horizon, first_remaining_state_index, request.world->grid,
+      *request.world->distances_m, config_.physical_footprint,
+      config_.executed_horizon_constraint_clearance_m);
+  return clearance.available ? std::optional<ExecutedHorizonClearance3D>{clearance}
+                             : std::nullopt;
+}
+
 PlanningCycleOutcome3D
 PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
   PlanningCycleOutcome3D output;
@@ -381,6 +424,15 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
   output.route.local_stop_is_terminal =
       output.route.usable && output.route.projection.valid &&
       route_endpoint_semantics == RouteEndpointSemantics3D::kLocalStop;
+  // The clearance the speed policy answers to is the clearance of the motion
+  // the vehicle is carrying out, measured against the world as it stands now.
+  // A controller candidate that never reached the offboard moved nothing.
+  const std::optional<ExecutedHorizonClearance3D> executed_horizon_clearance =
+      measureResidentExecutionClearance(request);
+  const double reference_elapsed_s =
+      previous_reference_stamp_ns_ > 0 && request.now_ns > previous_reference_stamp_ns_
+          ? static_cast<double>(request.now_ns - previous_reference_stamp_ns_) * 1.0e-9
+          : 0.0;
   output.controller.speed_policy = evaluateMppiSpeedPolicy(
       config_.speed_policy,
       MppiSpeedPolicyInput{
@@ -403,16 +455,14 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
                         0.0, *output.route.execution.raw_blocked_station_m -
                                  output.route.projection.station_m)}
                   : std::nullopt,
-          .executed_horizon_clearance_m =
-              request.previous_result != nullptr &&
-                      !request.previous_result->horizon.empty() &&
-                      request.previous_result->post_update_classification.executable
-                  ? std::optional<double>{static_cast<double>(
-                        request.previous_result->minimum_esdf_distance_m)}
-                  : std::nullopt,
+          .executed_horizon_clearance = executed_horizon_clearance,
+          .previous_reference_speed_mps = previous_reference_speed_mps_,
+          .elapsed_since_previous_reference_s = reference_elapsed_s,
           .route_endpoint_semantics = route_endpoint_semantics,
           .terminal_goal_limit_enabled = request.terminal_hold_enabled,
       });
+  previous_reference_speed_mps_ = output.controller.speed_policy.reference_speed_mps;
+  previous_reference_stamp_ns_ = request.now_ns;
   const std::span<const CooperativePassageAssignment> passage_assignments =
       passage_assignments_owner != nullptr
           ? std::span<const CooperativePassageAssignment>{*passage_assignments_owner}
@@ -549,6 +599,17 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
   }
 
   if (!request.direct_tracking_interception) {
+    // The route tangent where the vehicle projects: displacement along it is
+    // progress the station coordinate misses whenever the route the vehicle
+    // follows is replaced under it.
+    const std::span<const mppi::RouteSample3D> liveness_route =
+        output.route.controller_route != nullptr
+            ? std::span<const mppi::RouteSample3D>{*output.route.controller_route}
+            : std::span<const mppi::RouteSample3D>{};
+    const ControlRouteProjection3D liveness_projection =
+        liveness_route.size() >= 2U
+            ? projectOntoControlRoute3D(request.navigation.state, liveness_route, 0.0F)
+            : ControlRouteProjection3D{};
     output.controller.liveness = liveness_supervisor_.evaluate(MppiLivenessObservation{
         .stamp_ns = request.now_ns,
         .actual_state = request.navigation.state,
@@ -559,13 +620,13 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
         .predicted_head_progress_m = request.previous_result != nullptr
                                          ? request.previous_result->head_progress_m
                                          : 0.0,
-        .predicted_terminal_progress_m =
-            request.previous_result != nullptr
-                ? request.previous_result->terminal_progress_m
-                : 0.0,
         .route_generation = output.route.generation,
         .route_station_m = output.route.projection.station_m,
         .route_station_valid = output.route.projection.valid,
+        .route_tangent = Vec3{static_cast<double>(liveness_projection.tangent_x),
+                              static_cast<double>(liveness_projection.tangent_y),
+                              static_cast<double>(liveness_projection.tangent_z)},
+        .route_tangent_valid = liveness_projection.valid,
     });
   }
   if (route_progress_tracker_ != nullptr && !request.direct_tracking_interception) {

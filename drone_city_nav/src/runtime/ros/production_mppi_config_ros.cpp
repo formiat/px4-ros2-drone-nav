@@ -535,8 +535,11 @@ void ProductionMppiConfigLoader::declarePlanning() {
       declare<double>("liveness_observation_window_s", 1.0);
   planning.liveness.minimum_actual_displacement_m =
       declare<double>("liveness_minimum_actual_displacement_m", 0.5);
-  planning.liveness.minimum_predicted_terminal_progress_m =
-      declare<double>("liveness_minimum_predicted_terminal_progress_m", 5.0);
+  planning.liveness.minimum_offroute_displacement_m =
+      declare<double>("liveness_minimum_offroute_displacement_m", 2.0);
+  planning.liveness.stalled_windows_before_reseed =
+      static_cast<std::size_t>(std::max<std::int64_t>(
+          1, declare<std::int64_t>("liveness_stalled_windows_before_reseed", 2)));
   planning.topics.navigation_objective = declare<std::string>(
       "navigation_objective_topic", "/drone_city_nav/navigation_objective");
   planning.topics.radar_track_mode_command = declare<std::string>(
@@ -606,6 +609,9 @@ void ProductionMppiConfigLoader::declareControl() {
       declare<double>("maximum_control_jerk_mps3", 12.0);
   control.speed_policy.maximum_lateral_acceleration_mps2 =
       maximum_horizontal_acceleration_mps2;
+  // The reference climbs no faster than the airframe can follow it, so a
+  // limit that lifts cannot snap the reference back up.
+  control.speed_policy.reference_speed_rise_mps2 = maximum_horizontal_acceleration_mps2;
   control.speed_policy.stopping_capability
       .maximum_commanded_horizontal_deceleration_mps2 =
       maximum_horizontal_acceleration_mps2;

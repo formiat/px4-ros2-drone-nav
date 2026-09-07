@@ -420,7 +420,13 @@ production_mppi_node:
     liveness_enabled: true
     liveness_observation_window_s: 1.0
     liveness_minimum_actual_displacement_m: 0.5
-    liveness_minimum_predicted_terminal_progress_m: 5.0
+    # Recovery is for a vehicle that stopped making progress. Ground covered
+    # off the route still counts as movement above this displacement, so a
+    # lateral or vertical manoeuvre around an obstacle keeps its optimised
+    # sequence; loops in place stay below it. A stall must also show in two
+    # consecutive windows before a reseed replaces the sequence.
+    liveness_minimum_offroute_displacement_m: 2.0
+    liveness_stalled_windows_before_reseed: 2
     # Static and observed worlds feed the same persistent full-3D planner. The
     # level-zero 26-connected lattice remains complete; aligned higher levels
     # add lazy 2x/4x edges for open volume and fall back to level zero around

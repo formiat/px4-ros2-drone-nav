@@ -85,7 +85,8 @@ void validateConfig(const MppiSpeedPolicyConfig& config) {
       !(config.minimum_target_lookahead_m > 0.0) ||
       !(config.maximum_target_lookahead_m >= config.minimum_target_lookahead_m) ||
       !(config.clearance_response_time_s > 0.0) ||
-      !(config.clearance_minimum_progress_speed_mps >= 0.0)) {
+      !(config.clearance_minimum_progress_speed_mps >= 0.0) ||
+      !(config.reference_speed_rise_mps2 > 0.0)) {
     throw std::invalid_argument{"invalid MPPI speed policy configuration"};
   }
 }
@@ -160,18 +161,31 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
                           config.sensor_braking_contract.physical_margin_m),
         0.0, config.stopping_capability);
   }
-  if (input.executed_horizon_clearance_m.has_value()) {
-    // The motion under execution passes this close to known occupied
-    // evidence. Whatever the route promised when it was certified, the
+  if (input.executed_horizon_clearance.has_value() &&
+      input.executed_horizon_clearance->constrained()) {
+    // The motion under execution comes this close to known occupied evidence,
+    // this far ahead. Whatever the route promised when it was certified, the
     // tracking error the controller can accumulate within its response time
-    // must fit inside the clearance the vehicle actually has: the same tube
-    // law the route certification applies, enforced on live evidence. The
+    // must fit inside the clearance the vehicle actually has there: the same
+    // tube law the route certification applies, enforced on live evidence. The
     // floor keeps a tight spot leavable; the body validation stays the only
     // hard authority.
-    result.clearance_limit_mps =
+    //
+    // The tube speed applies at the tight point, and the stopping law decides
+    // what the vehicle may carry on the way to it. Reading the tube speed as
+    // an immediate cap is what made the reference oscillate: a grazing sample
+    // far ahead dropped the reference, the horizon shortened out of reach of
+    // the obstacle, the reference jumped back, and the longer horizon found
+    // the obstacle again.
+    const ExecutedHorizonClearance3D& clearance = *input.executed_horizon_clearance;
+    const double tube_speed_mps =
         std::max(config.clearance_minimum_progress_speed_mps,
-                 std::max(0.0, *input.executed_horizon_clearance_m) /
+                 std::max(0.0, clearance.constrained_clearance_m) /
                      config.clearance_response_time_s);
+    result.clearance_limit_mps =
+        std::max(tube_speed_mps,
+                 stoppingLimitedSpeed(clearance.distance_to_constraint_m,
+                                      tube_speed_mps, config.stopping_capability));
   }
   if (input.route_constraint_speed_limit_mps.has_value()) {
     result.route_constraint_limit_mps =
@@ -237,6 +251,23 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
     // the excess instead of being asked to stop outright and then released
     // again on the next tick.
     result.active_limiter = MppiSpeedLimiter::kSensorBraking;
+  }
+  // A cap is always allowed to bite at once, so the reference may fall as far
+  // as any limiter asks. It may only climb at the rate the airframe can
+  // follow: a limit that lifts as the horizon shifts must not snap the
+  // reference back up, because the controller answers each step with a fresh
+  // burst of acceleration.
+  result.unslewed_reference_speed_mps = result.reference_speed_mps;
+  if (input.previous_reference_speed_mps.has_value() &&
+      input.elapsed_since_previous_reference_s > 0.0 &&
+      config.reference_speed_rise_mps2 > 0.0) {
+    const double rise_ceiling_mps =
+        std::max(0.0, *input.previous_reference_speed_mps) +
+        config.reference_speed_rise_mps2 * input.elapsed_since_previous_reference_s;
+    if (result.reference_speed_mps > rise_ceiling_mps) {
+      result.reference_speed_mps = rise_ceiling_mps;
+      result.reference_speed_rise_limited = true;
+    }
   }
   result.target_lookahead_m =
       std::clamp(result.reference_speed_mps * config.horizon_duration_s,

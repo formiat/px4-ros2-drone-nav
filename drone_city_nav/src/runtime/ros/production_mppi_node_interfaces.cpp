@@ -258,6 +258,12 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
           .noncooperative_avoidance = config_.planning.noncooperative_avoidance,
           .flight_envelope = config_.world.flight_envelope,
           .dynamics = config_.control.mppi.dynamics,
+          .physical_footprint = config_.world.physical_footprint,
+          // A sample of the executing horizon constrains the reference speed
+          // once it enters the same critical band the controller costs use, so
+          // the speed policy and the optimiser answer to one notion of "close".
+          .executed_horizon_constraint_clearance_m =
+              static_cast<double>(config_.control.mppi.risk.critical_distance_m),
           .vehicle_id = config_.planning.vehicle_id,
           .horizon_steps = config_.control.mppi.steps,
           .tracking_capture_radius_m = config_.planning.tracking_capture_radius_m,

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/executed_horizon_clearance_3d.hpp"
 #include "drone_city_nav/mppi/mppi_types.hpp"
 #include "drone_city_nav/route_3d.hpp"
 #include "drone_city_nav/route_execution_contract_3d.hpp"
@@ -46,6 +47,13 @@ struct MppiSpeedPolicyConfig {
   // authority there. Both mirror the route tube configuration.
   double clearance_response_time_s{0.15};
   double clearance_minimum_progress_speed_mps{1.0};
+  // The reference speed may rise no faster than this. Every limiter can still
+  // cut the reference immediately — a cap is always allowed to bite at once —
+  // but a limit that lifts as the horizon shifts must not snap the reference
+  // back up, because the controller answers each step with a fresh burst of
+  // acceleration. The vehicle's own horizontal acceleration is the honest
+  // rate: the reference climbs no faster than the airframe can follow it.
+  double reference_speed_rise_mps2{4.0};
 };
 
 struct MppiSpeedPolicyInput {
@@ -58,9 +66,15 @@ struct MppiSpeedPolicyInput {
   // is still followed and a replacement is searched: the vehicle must be able
   // to stop before it.
   std::optional<double> blocked_route_remaining_m;
-  // Body clearance to known occupied evidence along the motion the vehicle
-  // executes right now: the tracking-error tube must fit inside it.
-  std::optional<double> executed_horizon_clearance_m;
+  // Where the motion the vehicle executes right now first comes close to known
+  // occupied evidence: how far along it that point lies, and the body
+  // clearance there. The tube law applies at that point, and the stopping law
+  // decides what the vehicle may carry on the way to it.
+  std::optional<ExecutedHorizonClearance3D> executed_horizon_clearance;
+  // Reference speed the previous cycle published, and how long ago, for the
+  // rise limit. Absent on the first cycle, which then starts unconstrained.
+  std::optional<double> previous_reference_speed_mps;
+  double elapsed_since_previous_reference_s{0.0};
   RouteEndpointSemantics3D route_endpoint_semantics{
       RouteEndpointSemantics3D::kContinuation};
   bool terminal_goal_limit_enabled{true};
@@ -78,6 +92,10 @@ struct MppiSpeedPolicyResult {
   double route_constraint_limit_mps{std::numeric_limits<double>::infinity()};
   double blocked_route_limit_mps{std::numeric_limits<double>::infinity()};
   double clearance_limit_mps{std::numeric_limits<double>::infinity()};
+  // The reference before the rise limit, so diagnostics show when the limit is
+  // what is holding the vehicle back.
+  double unslewed_reference_speed_mps{0.0};
+  bool reference_speed_rise_limited{false};
   double maximum_preview_curvature_1pm{0.0};
   double target_lookahead_m{0.0};
   SensorBrakingAssessment3D sensor_braking_assessment{};

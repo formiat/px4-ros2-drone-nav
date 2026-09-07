@@ -70,10 +70,25 @@ last zero-velocity sample, offboard holds that same terminal position.
 
 ## Liveness And Safety
 
-The liveness monitor compares predicted route progress with measured full-3D
-motion. Recovery may reseed MPPI, request strategic suffix repair, or publish a
-typed hold while persistent search continues. It cannot manufacture direct goal
-motion or revive an expired horizon.
+The liveness monitor measures progress the vehicle actually made over an
+observation window. Progress is the larger of the route-station gain and the
+displacement projected on the route tangent held when the window opened: a
+route replaced under a moving vehicle restarts its station from a new geometry,
+and the ground covered along the route it was following is progress the station
+coordinate alone misses. A route generation change restarts the window, because
+the two stations are not comparable.
+
+Ground covered without route progress above
+`liveness_minimum_offroute_displacement_m` is movement: a lateral or vertical
+manoeuvre around an obstacle is flying, and replacing its optimised sequence
+with a route connector would cut the manoeuvre short. Loops in place stay below
+it, so a collapsed sampler oscillating on the spot is still recovered. A stall
+must show in `liveness_stalled_windows_before_reseed` consecutive windows before
+a reseed is requested.
+
+Recovery may reseed MPPI, request strategic suffix repair, or publish a typed
+hold while persistent search continues. It cannot manufacture direct goal motion
+or revive an expired horizon.
 
 Every retained or rebuilt continuation is validated from the measured state
 against current raw occupied evidence and the physical swept footprint. Low

@@ -86,7 +86,7 @@ TEST(MppiSpeedPolicyTest, ABlockedRouteLimitsSpeedToStopBeforeTheBlock) {
   EXPECT_DOUBLE_EQ(open.reference_speed_mps, 20.0);
 }
 
-TEST(MppiSpeedPolicyTest, TheExecutedHorizonClearanceCapsTheReferenceSpeed) {
+MppiSpeedPolicyConfig clearanceLimiterConfig() {
   MppiSpeedPolicyConfig config;
   config.cruise_speed_mps = 20.0;
   config.absolute_speed_limit_mps = 20.0;
@@ -96,25 +96,76 @@ TEST(MppiSpeedPolicyTest, TheExecutedHorizonClearanceCapsTheReferenceSpeed) {
   config.clearance_response_time_s = 0.5;
   config.clearance_minimum_progress_speed_mps = 1.0;
   allowHighSensorBrakingSpeed(config);
+  return config;
+}
+
+ExecutedHorizonClearance3D executedClearance(const double distance_m,
+                                             const double clearance_m) {
+  return ExecutedHorizonClearance3D{
+      .available = true,
+      .distance_to_constraint_m = distance_m,
+      .constrained_clearance_m = clearance_m,
+      .minimum_clearance_m = clearance_m,
+  };
+}
+
+TEST(MppiSpeedPolicyTest,
+     TheExecutedHorizonClearanceCapsTheReferenceSpeedAtTheTightPoint) {
+  const MppiSpeedPolicyConfig config = clearanceLimiterConfig();
   MppiSpeedPolicyInput input;
   input.terminal_goal_limit_enabled = false;
-  input.executed_horizon_clearance_m = 2.0;
+  input.executed_horizon_clearance = executedClearance(0.0, 2.0);
 
-  const MppiSpeedPolicyResult near = evaluateMppiSpeedPolicy(config, input);
-  EXPECT_EQ(near.active_limiter, MppiSpeedLimiter::kClearance);
-  EXPECT_STREQ(mppiSpeedLimiterName(near.active_limiter), "clearance");
-  EXPECT_NEAR(near.clearance_limit_mps, 2.0 / 0.5, 1.0e-6);
-  EXPECT_DOUBLE_EQ(near.reference_speed_mps, near.clearance_limit_mps);
+  const MppiSpeedPolicyResult beside = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_EQ(beside.active_limiter, MppiSpeedLimiter::kClearance);
+  EXPECT_STREQ(mppiSpeedLimiterName(beside.active_limiter), "clearance");
+  EXPECT_NEAR(beside.clearance_limit_mps, 2.0 / 0.5, 1.0e-6);
+  EXPECT_DOUBLE_EQ(beside.reference_speed_mps, beside.clearance_limit_mps);
 
-  input.executed_horizon_clearance_m = 0.0;
+  input.executed_horizon_clearance = executedClearance(0.0, 0.0);
   const MppiSpeedPolicyResult touching = evaluateMppiSpeedPolicy(config, input);
   EXPECT_EQ(touching.active_limiter, MppiSpeedLimiter::kClearance);
   EXPECT_DOUBLE_EQ(touching.reference_speed_mps, 1.0);
 
-  input.executed_horizon_clearance_m = std::numeric_limits<double>::infinity();
+  input.executed_horizon_clearance = std::nullopt;
   const MppiSpeedPolicyResult open = evaluateMppiSpeedPolicy(config, input);
   EXPECT_NE(open.active_limiter, MppiSpeedLimiter::kClearance);
   EXPECT_DOUBLE_EQ(open.reference_speed_mps, 20.0);
+}
+
+TEST(MppiSpeedPolicyTest, ATightPointFarAheadOnlyHasToBeReachedSlowly) {
+  const MppiSpeedPolicyConfig config = clearanceLimiterConfig();
+  MppiSpeedPolicyInput input;
+  input.terminal_goal_limit_enabled = false;
+  // The tube admits 1 m/s where the horizon grazes an obstacle fifteen metres
+  // ahead. Braking at 4 m/s^2 the vehicle may still be doing 11 m/s now.
+  input.executed_horizon_clearance = executedClearance(15.0, 0.5);
+
+  const MppiSpeedPolicyResult result = evaluateMppiSpeedPolicy(config, input);
+
+  EXPECT_NEAR(result.clearance_limit_mps, std::sqrt(1.0 + 2.0 * 4.0 * 15.0), 1.0e-6);
+  EXPECT_GT(result.clearance_limit_mps, 10.0);
+}
+
+TEST(MppiSpeedPolicyTest, TheReferenceSpeedRisesNoFasterThanTheAirframeFollows) {
+  MppiSpeedPolicyConfig config = clearanceLimiterConfig();
+  config.reference_speed_rise_mps2 = 4.0;
+  MppiSpeedPolicyInput input;
+  input.terminal_goal_limit_enabled = false;
+  input.previous_reference_speed_mps = 1.0;
+  input.elapsed_since_previous_reference_s = 0.05;
+
+  const MppiSpeedPolicyResult rising = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_TRUE(rising.reference_speed_rise_limited);
+  EXPECT_DOUBLE_EQ(rising.unslewed_reference_speed_mps, 20.0);
+  EXPECT_DOUBLE_EQ(rising.reference_speed_mps, 1.0 + 4.0 * 0.05);
+
+  // A cap is always allowed to bite at once, so a fall is never slewed.
+  input.previous_reference_speed_mps = 20.0;
+  input.executed_horizon_clearance = executedClearance(0.0, 0.0);
+  const MppiSpeedPolicyResult falling = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_FALSE(falling.reference_speed_rise_limited);
+  EXPECT_DOUBLE_EQ(falling.reference_speed_mps, 1.0);
 }
 
 TEST(MppiSpeedPolicyTest, StraightGuideUsesCruiseAndHundredMeterLookahead) {
