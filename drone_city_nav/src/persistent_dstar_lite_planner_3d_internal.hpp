@@ -317,11 +317,15 @@ public:
   // Resets the per-update refinement probe budget.
   void beginEdgeRefinementBudget() noexcept;
   [[nodiscard]] bool edgeRefinementBudgetRemaining() const noexcept;
-  // Farthest a refined edge's waypoint can lie from the edge's straight
-  // segment; zero when refinement is disabled. A change that can touch a
-  // refined edge's legs can lie that much farther from its nodes than a
-  // change touching a straight edge.
-  [[nodiscard]] double maximumEdgeRefinementOffsetM() const noexcept;
+  // Forgets refined edges that an occupied cell that appeared can move: the
+  // cell has to touch one of the edge's two legs through its waypoint, which
+  // is the geometry the vehicle flies and lies off the straight segment the
+  // node walk tests. Only edges indexed under a changed chunk are tested, as
+  // for adaptive edges, so the cost stays bounded by the refined edges near
+  // the change rather than by a wider node walk for every change.
+  [[nodiscard]] std::vector<PersistentPlannerEdge3D>
+  forgetRefinedEdgesTouching(const LatticeChangesByChunk3D& changes,
+                             const LatticeSegmentTouch3D& touches);
 
   // The lattice edge a path segment stands for, in path order, or nullopt when
   // the lattice never priced that segment: the departure from the exact start,
@@ -576,6 +580,15 @@ private:
   double adaptive_edge_vertical_margin_m_{0.0};
   void indexAdaptiveEdge(const PersistentPlannerEdge3D& edge);
   void unindexAdaptiveEdge(const PersistentPlannerEdge3D& edge);
+  // Refined edges by the chunks their legs touch, for the same reason.
+  std::unordered_map<OccupancyChunkIndex3D, std::vector<PersistentPlannerEdge3D>,
+                     OccupancyChunkIndex3DHash>
+      refined_edges_by_chunk_;
+  // Records a refined edge's waypoint and indexes its legs.
+  void rememberRefinedWaypoint(const PersistentPlannerEdge3D& edge,
+                               const Point3& waypoint);
+  // Drops a refined edge's waypoint and its index entries, if any.
+  void forgetRefinedWaypoint(const PersistentPlannerEdge3D& edge);
   template<typename Visitor>
   void forEachChunkTouching(const Point3& first, const Point3& second,
                             Visitor&& visitor) const;

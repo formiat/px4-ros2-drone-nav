@@ -602,12 +602,6 @@ PlannerLattice3D::edgeWaypoint(const PersistentPlannerNode3D first,
                                                 : std::nullopt;
 }
 
-double PlannerLattice3D::maximumEdgeRefinementOffsetM() const noexcept {
-  const auto offsets = static_cast<double>(config_->edge_refinement_offsets);
-  return offsets > 0.0 ? config_->minimum_horizontal_step_m * offsets / (offsets + 1.0)
-                       : 0.0;
-}
-
 std::optional<PlannerLattice3D::PathSegmentEdge3D>
 PlannerLattice3D::pricedEdgeForSegment(const std::vector<Point3>& path,
                                        const std::size_t segment) const {
@@ -777,7 +771,7 @@ double PlannerLattice3D::rawEdgeCost(const PersistentPlannerNode3D first,
         } else if (const std::optional<Point3> waypoint =
                        refineBlockedEdge(edge.first, edge.second);
                    waypoint.has_value()) {
-          refined_edge_waypoints_.insert_or_assign(edge, *waypoint);
+          rememberRefinedWaypoint(edge, *waypoint);
           state = kLevelZeroEdgeRefined;
           setLevelZeroState(slot, state);
         } else {
@@ -931,6 +925,83 @@ PlannerLattice3D::forgetAdaptiveEdgesTouching(const LatticeChangesByChunk3D& cha
   return forgotten;
 }
 
+void PlannerLattice3D::rememberRefinedWaypoint(const PersistentPlannerEdge3D& edge,
+                                               const Point3& waypoint) {
+  forgetRefinedWaypoint(edge);
+  refined_edge_waypoints_.insert_or_assign(edge, waypoint);
+  std::vector<OccupancyChunkIndex3D> chunks;
+  const auto collect = [&](const OccupancyChunkIndex3D chunk) {
+    if (std::ranges::find(chunks, chunk) == chunks.end()) {
+      chunks.push_back(chunk);
+    }
+  };
+  forEachChunkTouching(pointFor(edge.first), waypoint, collect);
+  forEachChunkTouching(waypoint, pointFor(edge.second), collect);
+  for (const OccupancyChunkIndex3D& chunk : chunks) {
+    refined_edges_by_chunk_[chunk].push_back(edge);
+  }
+}
+
+void PlannerLattice3D::forgetRefinedWaypoint(const PersistentPlannerEdge3D& edge) {
+  const auto found = refined_edge_waypoints_.find(edge);
+  if (found == refined_edge_waypoints_.end()) {
+    return;
+  }
+  const Point3 waypoint = found->second;
+  refined_edge_waypoints_.erase(found);
+  const auto unindex = [&](const OccupancyChunkIndex3D chunk) {
+    const auto entry = refined_edges_by_chunk_.find(chunk);
+    if (entry == refined_edges_by_chunk_.end()) {
+      return;
+    }
+    std::erase(entry->second, edge);
+    if (entry->second.empty()) {
+      refined_edges_by_chunk_.erase(entry);
+    }
+  };
+  forEachChunkTouching(pointFor(edge.first), waypoint, unindex);
+  forEachChunkTouching(waypoint, pointFor(edge.second), unindex);
+}
+
+std::vector<PersistentPlannerEdge3D>
+PlannerLattice3D::forgetRefinedEdgesTouching(const LatticeChangesByChunk3D& changes,
+                                             const LatticeSegmentTouch3D& touches) {
+  std::vector<PersistentPlannerEdge3D> forgotten;
+  for (const auto& [chunk, cells] : changes) {
+    const auto found = refined_edges_by_chunk_.find(chunk);
+    if (found == refined_edges_by_chunk_.end()) {
+      continue;
+    }
+    // Forgetting unindexes the edge, so iterate a copy of the chunk's list.
+    const std::vector<PersistentPlannerEdge3D> candidates = found->second;
+    for (const PersistentPlannerEdge3D& edge : candidates) {
+      const LevelZeroSlot slot = levelZeroSlot(edge);
+      const auto waypoint = refined_edge_waypoints_.find(edge);
+      if (levelZeroState(slot) != kLevelZeroEdgeRefined ||
+          waypoint == refined_edge_waypoints_.end()) {
+        continue;
+      }
+      const Point3 first_point = pointFor(edge.first);
+      const Point3 second_point = pointFor(edge.second);
+      const Point3 middle = waypoint->second;
+      // A refined edge is traversable, so only a cell that appeared can move
+      // it, and only through one of its legs.
+      const bool moved =
+          std::ranges::any_of(cells, [&](const LatticeChangedCell3D& cell) {
+            return cell.occupied_now && (touches(cell.center, first_point, middle) ||
+                                         touches(cell.center, middle, second_point));
+          });
+      if (!moved) {
+        continue;
+      }
+      setLevelZeroState(slot, kLevelZeroEdgeUnknown);
+      forgetRefinedWaypoint(edge);
+      forgotten.push_back(edge);
+    }
+  }
+  return forgotten;
+}
+
 void PlannerLattice3D::reset() noexcept {
   raw_bounds_ = {};
   width_ = 0;
@@ -938,6 +1009,7 @@ void PlannerLattice3D::reset() noexcept {
   depth_ = 0;
   level_zero_edge_states_.clear();
   refined_edge_waypoints_.clear();
+  refined_edges_by_chunk_.clear();
   chunk_change_epoch_.clear();
   chunk_occupied_ring_.clear();
   chunk_columns_ = 0;
@@ -949,6 +1021,7 @@ void PlannerLattice3D::reset() noexcept {
 void PlannerLattice3D::resetEdgeEvidence() noexcept {
   std::ranges::fill(level_zero_edge_states_, 0U);
   refined_edge_waypoints_.clear();
+  refined_edges_by_chunk_.clear();
   sweep_rejected_edges_.clear();
   adaptive_edge_cost_cache_.clear();
   resetNodeClearances();
@@ -1012,7 +1085,7 @@ bool PlannerLattice3D::forgetEdgeCost(const PersistentPlannerEdge3D& edge) {
       return false;
     }
     setLevelZeroState(slot, kLevelZeroEdgeUnknown);
-    refined_edge_waypoints_.erase(canonical);
+    forgetRefinedWaypoint(canonical);
     return true;
   }
   return adaptive_edge_cost_cache_.erase(edge) != 0U;
@@ -1037,7 +1110,7 @@ bool PlannerLattice3D::forgetEdgeCostForChange(const PersistentPlannerEdge3D& ed
     }
     setLevelZeroState(slot, kLevelZeroEdgeUnknown);
     if (state == kLevelZeroEdgeRefined) {
-      refined_edge_waypoints_.erase(canonicalEdge(edge.first, edge.second));
+      forgetRefinedWaypoint(canonicalEdge(edge.first, edge.second));
     }
     return true;
   }
@@ -1082,7 +1155,7 @@ bool PlannerLattice3D::forgetNodeEdgesForChange(const PersistentPlannerNode3D no
         if (movable) {
           setLevelZeroState(slot, kLevelZeroEdgeUnknown);
           if (state == kLevelZeroEdgeRefined) {
-            refined_edge_waypoints_.erase(edge);
+            forgetRefinedWaypoint(edge);
           }
           forgotten = true;
         }

@@ -448,7 +448,6 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
           std::chrono::duration<double, std::milli>{
               config_.maximum_compute_time_ms *
               std::clamp(config_.guaranteed_spatial_search_fraction, 0.0, 0.9)});
-  const auto preparatory_deadline = deadline - spatial_search_reserve;
 
   const std::uint64_t previous_producer = world_.producer_instance_id;
   const std::uint64_t previous_mission_epoch = mission_epoch_;
@@ -631,15 +630,17 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     const auto feasibility_started = std::chrono::steady_clock::now();
     const bool persistent_search_has_work = dstar_session_.pendingRepairNodes() > 0U ||
                                             !dstar_session_.shortestPathComplete();
-    const auto feasibility_deadline = std::min(
-        preparatory_deadline,
+    // The search's share is a share of what is left when it starts, never a
+    // point on the clock: a fixed point starved it whenever the change
+    // scheduling ran long, and a vehicle without a route waited on D* alone.
+    const auto feasibility_deadline =
         feasibility_started +
-            feasibilitySearchBudget3D(
-                deadline - feasibility_started,
-                std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-                    std::chrono::duration<double, std::milli>{
-                        config_.maximum_feasibility_compute_time_ms}),
-                persistent_search_has_work));
+        feasibilitySearchBudget3D(
+            deadline - feasibility_started,
+            std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                std::chrono::duration<double, std::milli>{
+                    config_.maximum_feasibility_compute_time_ms}),
+            persistent_search_has_work);
     std::optional<std::vector<Point3>> path =
         feasibility_search_.advance(searchEndpoints(), feasibility_deadline,
                                     config_.maximum_feasibility_expansions_per_update,

@@ -98,6 +98,15 @@ the repair takes half the update and the search the rest; while none is, the
 repair is bounded by half the session's reserve, so the feasibility search
 still gets most of the update for a first route.
 
+Every share is a share of what is left when its stage starts, never a point
+on the clock. Change scheduling is not budgeted — it has to see every change —
+and on a fresh scan it runs long; a feasibility deadline fixed at the reserve
+boundary then fell before the search began, and a vehicle without a route
+waited on D* alone for the first route. The feasibility search keeps the
+session's reserve out of what remains when it starts
+(`persistent_planner_maximum_feasibility_compute_time_ms`, capped at a third
+of the remainder) and takes the rest.
+
 Seeding the refinement with the feasibility route — so that it would improve it
 directly — was tried and does not work: the refinement treats its seed as an
 anytime *bound*, so a feasibility seed makes it declare at once that it cannot
@@ -178,7 +187,10 @@ cached like any other and is re-examined when occupied evidence lands on
 either of its legs: the change scheduling tests the geometry the vehicle
 flies, not the straight segment, because the waypoint can lie a metre off it
 and a voxel beside the waypoint would otherwise leave the cache admitting a
-leg the sweep rejects.
+leg the sweep rejects. Refined edges are indexed by the chunks their legs
+touch, as adaptive edges are, and tested from that index; widening the node
+walk that tests straight edges by the waypoint offset instead tripled the
+scheduling cost of every change.
 `persistent_planner_maximum_edge_refinement_probes` bounds the sweeps one
 update may spend on refinement: near occupied evidence most edges fail their
 straight sweep, and unbounded the refinement would take the whole compute
