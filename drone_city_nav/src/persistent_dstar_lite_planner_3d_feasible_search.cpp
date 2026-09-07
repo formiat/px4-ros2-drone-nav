@@ -463,9 +463,13 @@ std::optional<std::vector<Point3>> FeasiblePathSearch3D::advanceFrontier(
       // dropped and re-entered from the intact labels around them. Restarting
       // instead would find the same edge again from the same cache and reject
       // it again, forever.
-      if (const std::optional<PlannerLattice3D::PathSegmentEdge3D> priced =
-              lattice_->pricedEdgeForSegment(*candidate, *invalid_segment);
-          priced.has_value()) {
+      // A missing candidate (the departure reaches no leading node) has no
+      // segment to name; it restarts below.
+      const std::optional<PlannerLattice3D::PathSegmentEdge3D> priced =
+          candidate.has_value()
+              ? lattice_->pricedEdgeForSegment(*candidate, *invalid_segment)
+              : std::nullopt;
+      if (priced.has_value()) {
         const PersistentPlannerEdge3D edge = canonicalEdge(priced->from, priced->to);
         static_cast<void>(lattice_->rejectEdgeBySweep(edge));
         rejected_edges_.insert(edge);
