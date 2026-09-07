@@ -339,12 +339,18 @@ production_mppi_node:
     static_occupancy_3d_path: worlds/generated_city.occupancy3d
     static_free_space_topology_3d_path: worlds/generated_city.topology3d
     static_esdf_3d_cache_path: worlds/generated_city.esdf3d
-    # Cruise sits just under the sensor-braking limit (6.57 m/s for the 30 m
-    # guaranteed lidar range): the motion model caps every rollout there, so a
-    # higher cruise buys nothing and a lower one only lengthens open legs.
+    # Cruise sits under the speed the sensor-braking contract admits along its
+    # worst direction for the 30 m guaranteed lidar range: the motion model
+    # caps every rollout there, so a higher cruise buys nothing and a lower
+    # one only lengthens open legs. The simulation targets pass the same value.
     cruise_speed_mps: 6.5
     absolute_speed_limit_mps: 10.0
     maximum_horizontal_acceleration_mps2: 4.0
+    # Lateral acceleration a turn may demand, for the curvature limiter and
+    # the route time profile. The airframe banks for it: PX4's 45 degree tilt
+    # limit admits about 9.8 m/s^2, so it is not bound to the longitudinal
+    # acceleration the speed profile is built from.
+    maximum_lateral_acceleration_mps2: 6.0
     guaranteed_vertical_stopping_deceleration_mps2: 2.0
     maximum_control_jerk_mps3: 12.0
     speed_reaction_latency_s: 0.10

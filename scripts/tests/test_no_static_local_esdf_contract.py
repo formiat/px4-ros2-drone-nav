@@ -130,9 +130,17 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
             "config_.execution.latest_lidar_obstacle_maximum_age_ms * 1.0e-3",
             source,
         )
-        self.assertIn("std::hypot(", source)
-        self.assertIn("maximum_horizontal_acceleration_mps2", source)
-        self.assertIn("maximum_vertical_acceleration_mps2", source)
+        # The contract carries each axis's acceleration separately and assesses
+        # the stop along the direction of motion; a vector sum of both axes
+        # paired with the weakest deceleration used to bound every direction.
+        self.assertIn(
+            ".maximum_horizontal_acceleration_mps2 = maximum_horizontal_acceleration_mps2",
+            source,
+        )
+        self.assertIn(
+            ".maximum_vertical_acceleration_mps2 = maximum_vertical_acceleration_mps2",
+            source,
+        )
         self.assertIn(
             ".maximum_control_jerk_mps3 = maximum_control_jerk_mps3", source
         )

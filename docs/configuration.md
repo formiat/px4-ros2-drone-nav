@@ -112,7 +112,10 @@ Mode policy:
 
 - `use_static_map`;
 - map-independent cruise and absolute speed;
-- acceleration, lateral acceleration, braking, and jerk limits;
+- acceleration, braking, and jerk limits, and `maximum_lateral_acceleration_mps2`,
+  the acceleration a turn may demand for the curvature limiter and the route
+  time profile — a separate capability, since the airframe banks for it and
+  PX4's tilt limit admits more than the longitudinal acceleration;
 - the conservative terminal-path horizontal deceleration limit, independently
   of the larger acceleration available to ordinary manoeuvres;
 - route lookahead and curvature preview;
@@ -158,15 +161,21 @@ speed * total_latency + jerk_limited_stopping_distance + physical_margin
   <= guaranteed_lidar_detection_range
 ```
 
-The stopping term uses the weaker of the guaranteed horizontal and vertical
-decelerations, the worst forward 3D acceleration derived from the configured
-horizontal and vertical acceleration limits, and
-`maximum_control_jerk_mps3`. The same jerk-limited stopping implementation is
-used by route-reserve certification. The resulting speed is a hard norm limit
-for the complete `(vx, vy, vz)` vector in CPU and CUDA dynamics and is also part
-of strategic ETA and route time parameterization. A measured speed above the
-contract requests braking instead of new motion. Free and unknown space use the
-same limit; freshness changes admission, not occupancy semantics.
+The stopping term is assessed along the direction of motion: the guaranteed
+deceleration and the acceleration the vehicle may still carry are the per-axis
+limits (horizontal and vertical) divided by that direction's axis shares, with
+`maximum_control_jerk_mps3`. Level flight is therefore bounded by the horizontal
+axis alone and a climb by the weaker vertical deceleration; the weakest
+deceleration of either axis used to be paired with the vector sum of both
+accelerations for every direction, so raising the horizontal acceleration
+lowered the speed the contract admitted in level flight. The reference speed
+applies the vehicle's velocity direction (the route tangent while it stands);
+the worst direction over all of them is the hard norm limit for the complete
+`(vx, vy, vz)` vector in CPU and CUDA dynamics and is also part of strategic ETA
+and route time parameterization. The same jerk-limited stopping implementation
+is used by route-reserve certification. A measured speed above the contract
+requests braking instead of new motion. Free and unknown space use the same
+limit; freshness changes admission, not occupancy semantics.
 
 Risk:
 

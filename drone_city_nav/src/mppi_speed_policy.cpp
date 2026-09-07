@@ -75,6 +75,26 @@ nearestGuideIndex(const mppi::State& state,
                        route[last_index].position);
 }
 
+// The direction the sensor-braking contract is assessed along: the velocity
+// while the vehicle moves, the route tangent where it stands, the worst
+// direction when it has neither. Level flight is bounded by the horizontal
+// limits alone; a climb answers to the weaker vertical deceleration.
+constexpr double kMotionDirectionSpeedThresholdMps{0.25};
+
+[[nodiscard]] Vec3 motionDirection(const MppiSpeedPolicyInput& input) noexcept {
+  const Vec3 velocity{static_cast<double>(input.state.vx),
+                      static_cast<double>(input.state.vy),
+                      static_cast<double>(input.state.vz)};
+  if (std::hypot(std::hypot(velocity.x, velocity.y), velocity.z) >=
+      kMotionDirectionSpeedThresholdMps) {
+    return velocity;
+  }
+  if (!input.route.empty()) {
+    return input.route[nearestGuideIndex(input.state, input.route)].tangent;
+  }
+  return Vec3{};
+}
+
 void validateConfig(const MppiSpeedPolicyConfig& config) {
   if (!(config.cruise_speed_mps > 0.0) || !(config.absolute_speed_limit_mps > 0.0) ||
       !(config.maximum_lateral_acceleration_mps2 > 0.0) ||
@@ -123,9 +143,10 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
   result.route_endpoint_stop_required =
       routeEndpointHasTerminalStop3D(input.route_endpoint_semantics);
   result.terminal_goal_limit_enabled = input.terminal_goal_limit_enabled;
+  const Vec3 braking_direction = motionDirection(input);
   result.sensor_braking_limit_mps = sensorBrakingMaximumSpeedMps(
       config.sensor_braking_contract, config.stopping_capability,
-      config.absolute_speed_limit_mps);
+      config.absolute_speed_limit_mps, braking_direction);
   if (input.terminal_goal_limit_enabled) {
     const double goal_distance =
         std::max(0.0, distance3D(input.mission_goal,
@@ -253,7 +274,7 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
                  static_cast<double>(input.state.vz));
   result.sensor_braking_assessment = assessSensorBrakingContract3D(
       config.sensor_braking_contract, config.stopping_capability,
-      std::max(result.reference_speed_mps, measured_speed_mps));
+      std::max(result.reference_speed_mps, measured_speed_mps), braking_direction);
   if (!result.sensor_braking_assessment.accepted()) {
     // The measured speed exceeds what the sensor range can stop within. The
     // reference already sits at or below the sensor-braking limit and the

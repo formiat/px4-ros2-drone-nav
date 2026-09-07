@@ -629,8 +629,12 @@ void ProductionMppiConfigLoader::declareControl() {
       declare<double>("maximum_vertical_acceleration_mps2", 4.0);
   const double maximum_control_jerk_mps3 =
       declare<double>("maximum_control_jerk_mps3", 12.0);
+  // The lateral acceleration a turn may demand is a separate capability from
+  // the longitudinal one: the airframe banks for it and PX4's tilt limit
+  // admits more than the acceleration the speed profile is built from. The
+  // curvature limiter and the route time profile read this one value.
   control.speed_policy.maximum_lateral_acceleration_mps2 =
-      maximum_horizontal_acceleration_mps2;
+      declare<double>("maximum_lateral_acceleration_mps2", 6.0);
   // The reference climbs no faster than the airframe can follow it, so a
   // limit that lifts cannot snap the reference back up.
   control.speed_policy.reference_speed_rise_mps2 = maximum_horizontal_acceleration_mps2;
@@ -649,8 +653,8 @@ void ProductionMppiConfigLoader::declareControl() {
       .maximum_evidence_age_s =
           config_.execution.latest_lidar_obstacle_maximum_age_ms * 1.0e-3,
       .physical_margin_m = declare<double>("sensor_braking_physical_margin_m", 3.0),
-      .maximum_forward_acceleration_mps2 = std::hypot(
-          maximum_horizontal_acceleration_mps2, maximum_vertical_acceleration_mps2),
+      .maximum_horizontal_acceleration_mps2 = maximum_horizontal_acceleration_mps2,
+      .maximum_vertical_acceleration_mps2 = maximum_vertical_acceleration_mps2,
       .maximum_control_jerk_mps3 = maximum_control_jerk_mps3,
   };
   // Braking completes at the goal capture's stationary tolerance: a wider
@@ -671,6 +675,9 @@ void ProductionMppiConfigLoader::declareControl() {
   mppi.stopping_capability = control.speed_policy.stopping_capability;
   mppi.dynamics.maximum_horizontal_speed_mps =
       static_cast<float>(control.speed_policy.absolute_speed_limit_mps);
+  // Every rollout, whichever way it points, stays under the speed the
+  // contract admits along its worst direction; the reference speed applies
+  // the direction the vehicle actually moves in.
   const double sensor_braking_speed_limit_mps =
       sensorBrakingMaximumSpeedMps(control.speed_policy.sensor_braking_contract,
                                    control.speed_policy.stopping_capability,

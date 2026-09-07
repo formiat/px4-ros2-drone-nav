@@ -239,14 +239,16 @@ sequence unless `MISSION_GOALS_XYZ_M` is also supplied explicitly.
 ## Flight Speed Profile
 
 Navigation uses one map-independent horizontal flight profile. The defaults are
-5 m/s cruise speed, 10 m/s absolute speed limit, and 4 m/s² maximum horizontal
-acceleration. The planner, finite-path stopping model, and PX4 configuration
-receive the same values.
+6.5 m/s cruise speed (just under the speed the sensor-braking contract admits
+for the guaranteed lidar range), 10 m/s absolute speed limit, 4 m/s² maximum
+horizontal acceleration and 6 m/s² lateral acceleration in turns. The planner,
+finite-path stopping model, and PX4 configuration receive the same values, and
+the simulation targets in the `Makefile` pass the same cruise.
 
 Override the profile for an individual run with environment variables:
 
 ```bash
-CRUISE_SPEED_MPS=5 \
+CRUISE_SPEED_MPS=6.5 \
 ABSOLUTE_SPEED_LIMIT_MPS=10 \
 MAXIMUM_HORIZONTAL_ACCELERATION_MPS2=4 \
 ./scripts/sim_cooperative_traffic_headless.sh

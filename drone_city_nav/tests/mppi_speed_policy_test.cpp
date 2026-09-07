@@ -23,7 +23,8 @@ TEST(MppiSpeedPolicyTest, SensorBrakingContractLimitsReferenceSpeed) {
   config.sensor_braking_contract.guaranteed_detection_range_m = 30.0;
   config.sensor_braking_contract.maximum_evidence_age_s = 1.0;
   config.sensor_braking_contract.physical_margin_m = 3.0;
-  config.sensor_braking_contract.maximum_forward_acceleration_mps2 = 5.0;
+  config.sensor_braking_contract.maximum_horizontal_acceleration_mps2 = 5.0;
+  config.sensor_braking_contract.maximum_vertical_acceleration_mps2 = 5.0;
   config.stopping_capability.maximum_commanded_horizontal_deceleration_mps2 = 4.0;
   config.stopping_capability.reaction_latency_s = 0.1;
   MppiSpeedPolicyInput input;
