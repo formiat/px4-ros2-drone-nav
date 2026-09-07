@@ -119,6 +119,7 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     drone_city_nav_mppi_cuda
     src/mppi/mppi_acquisition_diagnostics.cpp
     src/mppi/mppi_engine.cu
+    src/mppi/mppi_engine_host_evaluation.cpp
     src/mppi/mppi_control_arbitration.cpp
     src/mppi/mppi_control_sequence.cpp
     src/mppi/mppi_temperature_regulator.cpp
@@ -307,6 +308,7 @@ add_drone_city_nav_layer(
   src/persistent_dstar_lite_planner_3d_escape_search.cpp
   src/persistent_dstar_lite_planner_3d_feasible_search.cpp
   src/persistent_dstar_lite_planner_3d_lattice.cpp
+  src/persistent_dstar_lite_planner_3d_lattice_edge_cache.cpp
   src/persistent_dstar_lite_planner_3d_lattice_ranking.cpp
   src/persistent_dstar_lite_planner_3d_search.cpp
   src/persistent_dstar_lite_planner_3d_time_search.cpp
@@ -1830,6 +1832,16 @@ if(BUILD_TESTING)
   target_include_directories(persistent_dstar_lite_planner_3d_test PRIVATE src)
   target_link_libraries(persistent_dstar_lite_planner_3d_test drone_city_nav_core)
   enable_project_warnings(persistent_dstar_lite_planner_3d_test)
+
+  ament_add_gtest(persistent_dstar_lite_planner_3d_refinement_test
+                  tests/persistent_dstar_lite_planner_3d_refinement_test.cpp)
+  target_compile_features(persistent_dstar_lite_planner_3d_refinement_test
+                          PRIVATE cxx_std_20)
+  target_include_directories(persistent_dstar_lite_planner_3d_refinement_test
+                             PRIVATE src)
+  target_link_libraries(persistent_dstar_lite_planner_3d_refinement_test
+                        drone_city_nav_core)
+  enable_project_warnings(persistent_dstar_lite_planner_3d_refinement_test)
 
   ament_add_gtest(persistent_dstar_lite_planner_3d_centering_test
                   tests/persistent_dstar_lite_planner_3d_centering_test.cpp)

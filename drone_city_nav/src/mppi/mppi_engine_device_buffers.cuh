@@ -1,6 +1,5 @@
-// Textual include for mppi_engine.cu only: the persistent device buffer set and
-// the evaluated reference-sequence record live in the engine's anonymous
-// namespace together with the kernels.
+// Textual include for mppi_engine.cu only: the persistent device buffer set
+// lives in the engine's anonymous namespace together with the kernels.
 #pragma once
 
 struct DeviceBuffers {
@@ -81,14 +80,4 @@ struct DeviceBuffers {
            route_points.bytes() + dynamic_aircraft_samples.bytes() +
            dynamic_aircraft_radii.bytes() + dynamic_aircraft_active_steps.bytes();
   }
-};
-
-struct EvaluatedControlSequence {
-  ReferenceSimulationTrace trace;
-  RolloutMetrics metrics{};
-  MppiPostUpdateClassificationResult classification{};
-  bool route_terminal_cross_track_violation{false};
-  float terminal_route_cross_track_m{-1.0F};
-  std::size_t route_terminal_arrival_shaping_attempts{0U};
-  std::size_t route_terminal_nominal_prefix_control_count{0U};
 };

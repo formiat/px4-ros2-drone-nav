@@ -27,6 +27,7 @@
 
 #include "mppi_cuda_resources.cuh"
 #include "mppi_device_route_window.hpp"
+#include "mppi_engine_host_evaluation.hpp"
 
 namespace drone_city_nav::mppi {
 namespace {
@@ -37,7 +38,6 @@ constexpr std::size_t kControlUpdateRolloutLanes{8U};
 constexpr std::size_t kControlUpdatePartitions{16U};
 constexpr std::size_t kMaximumDeviceRoutePoints{512U};
 constexpr std::size_t kMaximumDynamicAircraft{16U};
-constexpr std::size_t kMaximumRepairCandidateCount{7U};
 // The selected sequence and the route-directed candidate.
 constexpr std::size_t kReportedSequenceCount{2U};
 constexpr float kPi{3.14159265358979323846F};
@@ -45,11 +45,18 @@ constexpr float kInfinity{std::numeric_limits<float>::infinity()};
 static_assert(kControlUpdateStepTile * kControlUpdateRolloutLanes ==
               static_cast<std::size_t>(kThreadsPerBlock));
 
+using detail::buildRepairCandidateSequences;
 using detail::checkCuda;
+using detail::ControlSequenceEvaluationContext;
 using detail::DeviceBuffer;
 using detail::elapsedMs;
 using detail::EsdfTexture;
+using detail::evaluateControlSequence;
+using detail::EvaluatedControlSequence;
 using detail::Event;
+using detail::kMaximumRepairCandidateCount;
+using detail::kRepairBacktrackRatios;
+using detail::RepairCandidateInput;
 
 #include "mppi_engine_device_buffers.cuh"
 #include "mppi_engine_kernels.cuh"
@@ -386,25 +393,36 @@ public:
                 "inject cooperative yaw acceleration");
     }
     noise_done_.record(stream_);
-    simulate<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
-        buffers_.noise_ax.get(), buffers_.noise_ay.get(), buffers_.noise_az.get(),
-        buffers_.noise_yaw.get(), buffers_.nominal.get(), buffers_.soft_cost.get(),
-        buffers_.critical_exposure.get(), buffers_.planning_exposure.get(),
-        buffers_.minimum_clearance.get(), buffers_.altitude_envelope_violation.get(),
-        buffers_.collision_violation.get(), buffers_.worst_tier.get(), active_rollouts,
-        config_.steps, input.initial_state, input.target, moving_target,
-        moving_target_enabled, config_.dynamics, config_.risk, config_.footprint,
-        config_.altitude_envelope, config_.costs, config_.horizon_sampling,
-        textures_[active_texture_].grid(), textures_[active_texture_].texture(),
-        buffers_.route_points.get(), route_active ? route_point_count_ : 0U,
-        route_active ? input.route->initial_station_m : 0.0F,
-        buffers_.dynamic_aircraft_samples.get(), buffers_.dynamic_aircraft_radii.get(),
-        buffers_.dynamic_aircraft_active_steps.get(), dynamic_aircraft_count,
-        dynamic_aircraft_cost_policy, config_.cooperative,
-        cooperative_preferred_acceleration, cooperative_preference_steps,
-        input.cooperative_maneuver.has_value(), previous_applied_control,
-        first_control_interval_s, input.reference_speed_mps,
-        config_.early_exit_on_altitude_envelope_violation, nullptr, nullptr);
+    // One launch shape for every simulation this tick runs: the population,
+    // the repair candidates and the reported sequences differ only in how many
+    // rollouts they cover, where their controls come from and whether their
+    // cost terms are written back.
+    const auto launch_simulate = [&](const int blocks, const std::size_t rollouts,
+                                     const Control* const direct_controls,
+                                     RolloutCostTerms* const cost_terms) {
+      simulate<<<blocks, kThreadsPerBlock, 0U, stream_>>>(
+          buffers_.noise_ax.get(), buffers_.noise_ay.get(), buffers_.noise_az.get(),
+          buffers_.noise_yaw.get(), buffers_.nominal.get(), buffers_.soft_cost.get(),
+          buffers_.critical_exposure.get(), buffers_.planning_exposure.get(),
+          buffers_.minimum_clearance.get(), buffers_.altitude_envelope_violation.get(),
+          buffers_.collision_violation.get(), buffers_.worst_tier.get(), rollouts,
+          config_.steps, input.initial_state, input.target, moving_target,
+          moving_target_enabled, config_.dynamics, config_.risk, config_.footprint,
+          config_.altitude_envelope, config_.costs, config_.horizon_sampling,
+          textures_[active_texture_].grid(), textures_[active_texture_].texture(),
+          buffers_.route_points.get(), route_active ? route_point_count_ : 0U,
+          route_active ? input.route->initial_station_m : 0.0F,
+          buffers_.dynamic_aircraft_samples.get(),
+          buffers_.dynamic_aircraft_radii.get(),
+          buffers_.dynamic_aircraft_active_steps.get(), dynamic_aircraft_count,
+          dynamic_aircraft_cost_policy, config_.cooperative,
+          cooperative_preferred_acceleration, cooperative_preference_steps,
+          input.cooperative_maneuver.has_value(), previous_applied_control,
+          first_control_interval_s, input.reference_speed_mps,
+          config_.early_exit_on_altitude_envelope_violation, direct_controls,
+          cost_terms);
+    };
+    launch_simulate(rollout_blocks, active_rollouts, nullptr, nullptr);
     simulation_done_.record(stream_);
     // See MppiTemperatureRegulator: the temperature this tick uses was chosen
     // from the effective sample size the previous one achieved.
@@ -635,79 +653,39 @@ public:
     populateSeparationAcquisitionResult(result, acquisition_lifecycle,
                                         cooperative_avoidance_enabled,
                                         dynamic_aircraft_count);
+    const ControlSequenceEvaluationContext evaluation_context{
+        .input = input,
+        .config = config_,
+        .grid = textures_[active_texture_].grid(),
+        .esdf = activeEsdfHost(),
+        .zero_noise = zero_noise_,
+        .active_route = active_route,
+        .previous_applied_control = previous_applied_control,
+        .dynamic_aircraft_cost_policy = dynamic_aircraft_cost_policy,
+        .feasibility_contract = result.feasibility_contract,
+    };
     const auto evaluate_controls = [&](const std::span<const Control> controls) {
-      EvaluatedControlSequence evaluation;
-      evaluation.metrics = simulateReference(
-          input.initial_state, controls, zero_noise_, config_.dynamics, config_.risk,
-          config_.costs, textures_[active_texture_].grid(), activeEsdfHost(),
-          input.target.x, input.target.y,
-          config_.early_exit_on_altitude_envelope_violation, previous_applied_control,
-          input.reference_speed_mps, config_.footprint, input.moving_target,
-          &evaluation.trace, input.dynamic_aircraft, input.cooperative_maneuver,
-          config_.cooperative, dynamic_aircraft_cost_policy, config_.altitude_envelope,
-          input.target.z);
-      if (route_active && input.route->terminal_cross_track_tolerance_m &&
-          !evaluation.trace.horizon.empty()) {
-        const RouteConvergentFiniteHorizon finite_route =
-            buildRouteConvergentFiniteHorizon(
-                evaluation.trace.horizon, controls, previous_applied_control,
-                config_.dynamics, active_route, input.route->initial_station_m,
-                *input.route->terminal_cross_track_tolerance_m,
-                finiteHorizonArrivalSearchStepControls(config_.dynamics.dt_s),
-                makeFiniteHorizonConfig(config_.stopping_capability));
-        evaluation.terminal_route_cross_track_m =
-            finite_route.closest_terminal_cross_track_m;
-        evaluation.route_terminal_cross_track_violation = !finite_route.accepted();
-        evaluation.route_terminal_arrival_shaping_attempts =
-            finite_route.arrival_shaping_attempts;
-        if (finite_route.accepted()) {
-          evaluation.route_terminal_nominal_prefix_control_count =
-              finite_route.nominal_prefix_control_count;
-        }
-      }
-      evaluation.classification = classifyMppiPostUpdate(
-          result.feasibility_contract,
-          MppiPostUpdateObservation{
-              .altitude_envelope_violation =
-                  evaluation.metrics.altitude_envelope_violation,
-              .route_terminal_cross_track_violation =
-                  evaluation.route_terminal_cross_track_violation,
-          });
-      return evaluation;
+      return evaluateControlSequence(evaluation_context, controls);
     };
     const auto post_update_evaluation_started = std::chrono::steady_clock::now();
     EvaluatedControlSequence selected_evaluation = evaluate_controls(updated_);
     double repair_validation_ms{0.0};
     if (!selected_evaluation.classification.executable &&
         result.feasibility_contract.available) {
-      std::vector<Control> limited_nominal = nominal_;
-      limitControlSequence(limited_nominal, config_.dynamics, previous_applied_control,
-                           first_control_interval_s);
-      constexpr std::array backtrack_ratios{0.5F, 0.25F, 0.125F, 0.0625F, 0.0F};
-      for (std::size_t candidate_index = 0U; candidate_index < backtrack_ratios.size();
-           ++candidate_index) {
-        const float ratio = backtrack_ratios[candidate_index];
-        std::span<Control> candidate{
-            repair_candidates_.data() + candidate_index * config_.steps, config_.steps};
-        for (std::size_t index = 0U; index < candidate.size(); ++index) {
-          candidate[index] =
-              interpolateControl(limited_nominal[index], updated_[index], ratio);
-        }
-        limitControlSequence(candidate, config_.dynamics, previous_applied_control,
-                             first_control_interval_s);
-      }
-      std::ranges::copy(
-          best_feasible_,
-          repair_candidates_.begin() +
-              static_cast<std::ptrdiff_t>(backtrack_ratios.size() * config_.steps));
-      std::size_t candidate_count = backtrack_ratios.size() + 1U;
-      if (deterministic_candidate_enabled) {
-        std::ranges::copy(
-            reacquisition_candidate_,
-            repair_candidates_.begin() +
-                static_cast<std::ptrdiff_t>(candidate_count * config_.steps));
-        ++candidate_count;
-      }
+      const std::size_t candidate_count = buildRepairCandidateSequences(
+          RepairCandidateInput{
+              .nominal = nominal_,
+              .updated = updated_,
+              .best_feasible = best_feasible_,
+              .deterministic_candidate =
+                  deterministic_candidate_enabled
+                      ? std::span<const Control>{reacquisition_candidate_}
+                      : std::span<const Control>{},
+              .dynamics = config_.dynamics,
+              .previous_applied_control = previous_applied_control,
+              .first_control_interval_s = first_control_interval_s,
+          },
+          config_.steps, repair_candidates_);
 
       repair_started_.record(stream_);
       checkCuda(cudaMemcpyAsync(buffers_.repair_candidates.get(),
@@ -717,28 +695,8 @@ public:
                 "upload post-update repair candidates");
       const int repair_blocks = static_cast<int>(
           (candidate_count + kThreadsPerBlock - 1U) / kThreadsPerBlock);
-      simulate<<<repair_blocks, kThreadsPerBlock, 0U, stream_>>>(
-          buffers_.noise_ax.get(), buffers_.noise_ay.get(), buffers_.noise_az.get(),
-          buffers_.noise_yaw.get(), buffers_.nominal.get(), buffers_.soft_cost.get(),
-          buffers_.critical_exposure.get(), buffers_.planning_exposure.get(),
-          buffers_.minimum_clearance.get(), buffers_.altitude_envelope_violation.get(),
-          buffers_.collision_violation.get(), buffers_.worst_tier.get(),
-          candidate_count, config_.steps, input.initial_state, input.target,
-          moving_target, moving_target_enabled, config_.dynamics, config_.risk,
-          config_.footprint, config_.altitude_envelope, config_.costs,
-          config_.horizon_sampling, textures_[active_texture_].grid(),
-          textures_[active_texture_].texture(), buffers_.route_points.get(),
-          route_active ? route_point_count_ : 0U,
-          route_active ? input.route->initial_station_m : 0.0F,
-          buffers_.dynamic_aircraft_samples.get(),
-          buffers_.dynamic_aircraft_radii.get(),
-          buffers_.dynamic_aircraft_active_steps.get(), dynamic_aircraft_count,
-          dynamic_aircraft_cost_policy, config_.cooperative,
-          cooperative_preferred_acceleration, cooperative_preference_steps,
-          input.cooperative_maneuver.has_value(), previous_applied_control,
-          first_control_interval_s, input.reference_speed_mps,
-          config_.early_exit_on_altitude_envelope_violation,
-          buffers_.repair_candidates.get(), nullptr);
+      launch_simulate(repair_blocks, candidate_count, buffers_.repair_candidates.get(),
+                      nullptr);
       checkCuda(cudaMemcpyAsync(repair_altitude_envelope_violation_.data(),
                                 buffers_.altitude_envelope_violation.get(),
                                 candidate_count * sizeof(std::uint8_t),
@@ -770,10 +728,10 @@ public:
         }
         std::ranges::copy(candidate, updated_.begin());
         selected_evaluation = std::move(confirmed);
-        if (candidate_index < backtrack_ratios.size()) {
+        if (candidate_index < kRepairBacktrackRatios.size()) {
           result.post_update_repair = MppiPostUpdateRepair::kBacktracked;
-          result.post_update_backtrack_ratio = backtrack_ratios[candidate_index];
-        } else if (candidate_index == backtrack_ratios.size()) {
+          result.post_update_backtrack_ratio = kRepairBacktrackRatios[candidate_index];
+        } else if (candidate_index == kRepairBacktrackRatios.size()) {
           result.post_update_repair = MppiPostUpdateRepair::kBestFeasibleRollout;
           result.post_update_backtrack_ratio = 0.0F;
         } else {
@@ -809,27 +767,8 @@ public:
                                 reported_count * config_.steps * sizeof(Control),
                                 cudaMemcpyHostToDevice, stream_),
                 "upload reported control sequences");
-      simulate<<<1, kThreadsPerBlock, 0U, stream_>>>(
-          buffers_.noise_ax.get(), buffers_.noise_ay.get(), buffers_.noise_az.get(),
-          buffers_.noise_yaw.get(), buffers_.nominal.get(), buffers_.soft_cost.get(),
-          buffers_.critical_exposure.get(), buffers_.planning_exposure.get(),
-          buffers_.minimum_clearance.get(), buffers_.altitude_envelope_violation.get(),
-          buffers_.collision_violation.get(), buffers_.worst_tier.get(), reported_count,
-          config_.steps, input.initial_state, input.target, moving_target,
-          moving_target_enabled, config_.dynamics, config_.risk, config_.footprint,
-          config_.altitude_envelope, config_.costs, config_.horizon_sampling,
-          textures_[active_texture_].grid(), textures_[active_texture_].texture(),
-          buffers_.route_points.get(), route_active ? route_point_count_ : 0U,
-          route_active ? input.route->initial_station_m : 0.0F,
-          buffers_.dynamic_aircraft_samples.get(),
-          buffers_.dynamic_aircraft_radii.get(),
-          buffers_.dynamic_aircraft_active_steps.get(), dynamic_aircraft_count,
-          dynamic_aircraft_cost_policy, config_.cooperative,
-          cooperative_preferred_acceleration, cooperative_preference_steps,
-          input.cooperative_maneuver.has_value(), previous_applied_control,
-          first_control_interval_s, input.reference_speed_mps,
-          config_.early_exit_on_altitude_envelope_violation,
-          buffers_.reported_controls.get(), buffers_.reported_cost_terms.get());
+      launch_simulate(1, reported_count, buffers_.reported_controls.get(),
+                      buffers_.reported_cost_terms.get());
       std::array<RolloutCostTerms, kReportedSequenceCount> reported_terms{};
       checkCuda(cudaMemcpyAsync(reported_terms.data(),
                                 buffers_.reported_cost_terms.get(),
