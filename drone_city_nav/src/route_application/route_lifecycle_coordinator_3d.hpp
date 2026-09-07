@@ -336,8 +336,13 @@ public:
   void finishSearch(const PlannerSearchTransaction3D& transaction,
                     bool route_activated = false);
 
+  // Lead time of a route request: what the lookahead extension is sized from.
   [[nodiscard]] StaticRoutePlanningLatencyStats
   planningLatencyStatistics() const noexcept;
+  // Duration of one planner update's search step: whether the planner returns
+  // within its compute budget.
+  [[nodiscard]] StaticRoutePlanningLatencyStats
+  plannerUpdateLatencyStatistics() const noexcept;
   [[nodiscard]] std::uint64_t recoverySequence() const noexcept;
 
 private:
@@ -382,7 +387,18 @@ private:
   double extension_last_request_station_m_{0.0};
   std::int64_t extension_last_request_stamp_ns_{0};
   double latest_route_search_ms_{0.0};
+  // Two different questions, two trackers.
+  //
+  // `planning_latency_tracker_` holds the lead time of a route request: queue,
+  // every search continuation and the activation attempt. That is what the
+  // lookahead extension policy has to plan around, and sizing it from
+  // anything shorter is why the extension underestimated the margin it needed.
+  //
+  // `planner_update_latency_tracker_` holds how long one planner update's
+  // search step took. That is the question "does the planner return within its
+  // compute budget", which is a property of one update and not of a request.
   StaticRoutePlanningLatencyTracker planning_latency_tracker_{};
+  StaticRoutePlanningLatencyTracker planner_update_latency_tracker_{};
   StaticRouteDeferredReplanLatch deferred_replan_latch_{};
   StaticRouteReplanGate replan_gate_{};
   // Mission epoch of the objective the in-flight replan search serves.

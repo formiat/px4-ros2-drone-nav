@@ -331,6 +331,8 @@ RouteLifecycleCoordinator3D::advance(RoutePlanningUpdateEvent3D event) {
     {
       const std::scoped_lock lock{lifecycle_mutex_};
       latest_route_search_ms_ = result.planner_update.search_ms;
+      planner_update_latency_tracker_.record(result.planner_update.search_ms,
+                                             world_telemetry.build_ms);
     }
     observeRecoveryEpisode(transaction->objective.mission_epoch);
     return result;
@@ -466,6 +468,8 @@ RouteLifecycleCoordinator3D::advance(RoutePlanningUpdateEvent3D event) {
   {
     const std::scoped_lock lock{lifecycle_mutex_};
     latest_route_search_ms_ = result.planner_update.search_ms;
+    planner_update_latency_tracker_.record(result.planner_update.search_ms,
+                                           world_telemetry.build_ms);
     if (result.search_latency_complete) {
       planning_latency_tracker_.record(search_latency_ms, world_telemetry.build_ms);
     }
@@ -771,6 +775,12 @@ StaticRoutePlanningLatencyStats
 RouteLifecycleCoordinator3D::planningLatencyStatistics() const noexcept {
   const std::scoped_lock lock{lifecycle_mutex_};
   return planning_latency_tracker_.stats();
+}
+
+StaticRoutePlanningLatencyStats
+RouteLifecycleCoordinator3D::plannerUpdateLatencyStatistics() const noexcept {
+  const std::scoped_lock lock{lifecycle_mutex_};
+  return planner_update_latency_tracker_.stats();
 }
 
 std::uint64_t RouteLifecycleCoordinator3D::recoverySequence() const noexcept {

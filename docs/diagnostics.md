@@ -155,13 +155,16 @@ Inspect:
 - path length, remaining goal distance, execution-time estimate, and split
   translation/stationary-turn estimates;
 - planner world-update, planner-search, route-search, and end-to-end
-  route-planning latency. `route_planning_ms` is the slice one update spent
-  applying a planner result that had already come back; the lead time a route
-  request actually needs — queue, every search continuation and the activation
-  attempt — is measured from the request stamp the transaction carries and
-  reported as `planner_p95_ms`/`planner_p99_ms`. The lookahead extension policy
-  is sized from the latter, because the former sees only the last few
-  milliseconds of a search that typically runs for hundreds;
+  route-planning latency. Two different questions are measured separately.
+  `planner_p95_ms`/`planner_p99_ms` describe one planner update's search step:
+  whether the planner returns within its compute budget.
+  `route_lead_time_p95_ms`/`route_lead_time_p99_ms` describe the lead time of a
+  route *request* — queue, every search continuation and the activation attempt
+  — measured from the request stamp the transaction carries, and longer by
+  orders of magnitude. The lookahead extension policy is sized from the lead
+  time; it used to be sized from `route_planning_ms`, the slice one update
+  spent applying a result that had already come back, which is why it
+  underestimated the margin it needed;
 - route fingerprint, generation, mission-target identity, and release reason;
 - current route station and remaining distance;
 - certified-reserve, compilation, validation, publication, and activation

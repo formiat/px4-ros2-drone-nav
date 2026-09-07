@@ -90,7 +90,14 @@ void ProductionMppiNode::publishSummary() {
       world_worker_pool_ ? world_worker_pool_->snapshot() : BoundedWorkerPoolSnapshot{};
   constexpr std::size_t kWorldLane{
       static_cast<std::size_t>(WorkerTaskLane::kWorldUpdate)};
+  // `planner_*` describes one planner update's search step: whether the
+  // planner returns within its compute budget. `route_lead_time_*` describes
+  // the lead time of a route request — queue, every search continuation and
+  // the activation attempt — which is what the lookahead extension is sized
+  // from and is longer by orders of magnitude.
   const StaticRoutePlanningLatencyStats planning_latency =
+      route_lifecycle_coordinator_->plannerUpdateLatencyStatistics();
+  const StaticRoutePlanningLatencyStats route_lead_time =
       route_lifecycle_coordinator_->planningLatencyStatistics();
   RCLCPP_INFO(
       get_logger(),
@@ -137,6 +144,8 @@ void ProductionMppiNode::publishSummary() {
       " post_bootstrap_no_executable_route_hold_ticks=%" PRIu64
       " planner_latency_samples=%zu planner_p95_ms=%.3f planner_p99_ms=%.3f"
       " planner_build_and_planning_p99_ms=%.3f"
+      " route_lead_time_samples=%zu route_lead_time_p95_ms=%.3f"
+      " route_lead_time_p99_ms=%.3f"
       " worker_route_pending=%zu worker_world_pending=%zu "
       "worker_background_pending=%zu worker_route_capacity_waits=%" PRIu64
       " worker_world_capacity_waits=%" PRIu64
@@ -205,9 +214,11 @@ void ProductionMppiNode::publishSummary() {
       rolling_route.post_bootstrap_no_executable_route_hold_ticks,
       planning_latency.sample_count, planning_latency.planning_p95_ms,
       planning_latency.planning_p99_ms, planning_latency.build_and_planning_p99_ms,
-      workers.lanes[0U].pending, world_workers.lanes[kWorldLane].pending,
-      workers.lanes[2U].pending, workers.lanes[0U].capacity_waits,
-      world_workers.lanes[kWorldLane].capacity_waits, workers.lanes[2U].capacity_waits,
+      route_lead_time.sample_count, route_lead_time.planning_p95_ms,
+      route_lead_time.planning_p99_ms, workers.lanes[0U].pending,
+      world_workers.lanes[kWorldLane].pending, workers.lanes[2U].pending,
+      workers.lanes[0U].capacity_waits, world_workers.lanes[kWorldLane].capacity_waits,
+      workers.lanes[2U].capacity_waits,
       world_statistics.superseded_planning_generations,
       world_statistics.rejected_world_publications,
       world_statistics.processing_failures, world_statistics.failure_handler_failures,

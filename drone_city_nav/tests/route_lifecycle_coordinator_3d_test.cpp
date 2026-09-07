@@ -91,6 +91,13 @@ TEST(RouteLifecycleCoordinator3DTest,
   EXPECT_DOUBLE_EQ(latency.planning_p95_ms, kFixtureSearchLatencyMs);
   EXPECT_DOUBLE_EQ(latency.planning_p99_ms, kFixtureSearchLatencyMs);
   EXPECT_DOUBLE_EQ(latency.build_and_planning_p99_ms, kFixtureSearchLatencyMs + 12.5);
+  // The update tracker answers a different question — how long one planner
+  // update's search step took — and is measured from the planner's own report,
+  // not from the request stamp.
+  const StaticRoutePlanningLatencyStats update_latency =
+      coordinator.plannerUpdateLatencyStatistics();
+  EXPECT_EQ(update_latency.sample_count, 1U);
+  EXPECT_DOUBLE_EQ(update_latency.planning_p95_ms, result.planner_update.search_ms);
 }
 
 TEST(RouteLifecycleCoordinator3DTest,
