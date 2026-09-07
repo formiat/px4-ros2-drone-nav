@@ -288,6 +288,7 @@ void ProductionMppiNode::finalizePlanningTick(
       .cooperative = cooperative,
       .noncooperative = noncooperative,
       .route_required_risk_tier = route_required_risk_tier,
+      .executed_horizon_clearance = finalization.executed_horizon_clearance,
   }));
 }
 

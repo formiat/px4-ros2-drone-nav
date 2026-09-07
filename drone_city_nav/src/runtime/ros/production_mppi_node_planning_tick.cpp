@@ -651,6 +651,7 @@ void ProductionMppiNode::planningTick() {
       .planning_state = planning.controller.planning_state,
       .previous_control_source = execution_input_preparation.previous_control_source,
       .route_required_risk_tier = planning.controller.route_required_risk_tier,
+      .executed_horizon_clearance = planning.controller.executed_horizon_clearance,
       .route_usable = planning.route.usable,
       .direct_tracking_interception = direct_tracking_interception,
       .local_route_stop_is_terminal = planning.route.local_stop_is_terminal,

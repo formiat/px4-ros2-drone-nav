@@ -480,6 +480,7 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
       });
   previous_reference_speed_mps_ = output.controller.speed_policy.reference_speed_mps;
   previous_reference_stamp_ns_ = request.now_ns;
+  output.controller.executed_horizon_clearance = executed_horizon_clearance;
   const std::span<const CooperativePassageAssignment> passage_assignments =
       passage_assignments_owner != nullptr
           ? std::span<const CooperativePassageAssignment>{*passage_assignments_owner}

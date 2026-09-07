@@ -38,6 +38,8 @@ constexpr std::size_t kControlUpdatePartitions{16U};
 constexpr std::size_t kMaximumDeviceRoutePoints{512U};
 constexpr std::size_t kMaximumDynamicAircraft{16U};
 constexpr std::size_t kMaximumRepairCandidateCount{7U};
+// The selected sequence and the route-directed candidate.
+constexpr std::size_t kReportedSequenceCount{2U};
 constexpr float kPi{3.14159265358979323846F};
 constexpr float kInfinity{std::numeric_limits<float>::infinity()};
 static_assert(kControlUpdateStepTile * kControlUpdateRolloutLanes ==
@@ -63,6 +65,7 @@ public:
         updated_(config_.steps),
         best_feasible_(config_.steps),
         repair_candidates_(kMaximumRepairCandidateCount * config_.steps),
+        reported_controls_(kReportedSequenceCount * config_.steps),
         reacquisition_candidate_(config_.steps),
         reacquisition_noise_ax_(config_.steps),
         reacquisition_noise_ay_(config_.steps),
@@ -401,7 +404,7 @@ public:
         cooperative_preferred_acceleration, cooperative_preference_steps,
         input.cooperative_maneuver.has_value(), previous_applied_control,
         first_control_interval_s, input.reference_speed_mps,
-        config_.early_exit_on_altitude_envelope_violation, nullptr);
+        config_.early_exit_on_altitude_envelope_violation, nullptr, nullptr);
     simulation_done_.record(stream_);
     // See MppiTemperatureRegulator: the temperature this tick uses was chosen
     // from the effective sample size the previous one achieved.
@@ -735,7 +738,7 @@ public:
           input.cooperative_maneuver.has_value(), previous_applied_control,
           first_control_interval_s, input.reference_speed_mps,
           config_.early_exit_on_altitude_envelope_violation,
-          buffers_.repair_candidates.get());
+          buffers_.repair_candidates.get(), nullptr);
       checkCuda(cudaMemcpyAsync(repair_altitude_envelope_violation_.data(),
                                 buffers_.altitude_envelope_violation.get(),
                                 candidate_count * sizeof(std::uint8_t),
@@ -788,6 +791,59 @@ public:
       }
     }
     control_arbitration_.previous_selection = result.control_selection;
+    {
+      // The decision, itemised: the selected sequence and the route-directed
+      // candidate simulated once more by the same kernel that ranked the
+      // population, with every weighted term reported. Two rollouts cost one
+      // launch; a tick that preferred the slower sequence then names the
+      // term that made the faster one dear.
+      std::ranges::copy(updated_, reported_controls_.begin());
+      const std::size_t reported_count = route_directed_candidate ? 2U : 1U;
+      if (route_directed_candidate) {
+        std::ranges::copy(reacquisition_candidate_,
+                          reported_controls_.begin() +
+                              static_cast<std::ptrdiff_t>(config_.steps));
+      }
+      checkCuda(cudaMemcpyAsync(buffers_.reported_controls.get(),
+                                reported_controls_.data(),
+                                reported_count * config_.steps * sizeof(Control),
+                                cudaMemcpyHostToDevice, stream_),
+                "upload reported control sequences");
+      simulate<<<1, kThreadsPerBlock, 0U, stream_>>>(
+          buffers_.noise_ax.get(), buffers_.noise_ay.get(), buffers_.noise_az.get(),
+          buffers_.noise_yaw.get(), buffers_.nominal.get(), buffers_.soft_cost.get(),
+          buffers_.critical_exposure.get(), buffers_.planning_exposure.get(),
+          buffers_.minimum_clearance.get(), buffers_.altitude_envelope_violation.get(),
+          buffers_.collision_violation.get(), buffers_.worst_tier.get(), reported_count,
+          config_.steps, input.initial_state, input.target, moving_target,
+          moving_target_enabled, config_.dynamics, config_.risk, config_.footprint,
+          config_.altitude_envelope, config_.costs, config_.horizon_sampling,
+          textures_[active_texture_].grid(), textures_[active_texture_].texture(),
+          buffers_.route_points.get(), route_active ? route_point_count_ : 0U,
+          route_active ? input.route->initial_station_m : 0.0F,
+          buffers_.dynamic_aircraft_samples.get(),
+          buffers_.dynamic_aircraft_radii.get(),
+          buffers_.dynamic_aircraft_active_steps.get(), dynamic_aircraft_count,
+          dynamic_aircraft_cost_policy, config_.cooperative,
+          cooperative_preferred_acceleration, cooperative_preference_steps,
+          input.cooperative_maneuver.has_value(), previous_applied_control,
+          first_control_interval_s, input.reference_speed_mps,
+          config_.early_exit_on_altitude_envelope_violation,
+          buffers_.reported_controls.get(), buffers_.reported_cost_terms.get());
+      std::array<RolloutCostTerms, kReportedSequenceCount> reported_terms{};
+      checkCuda(cudaMemcpyAsync(reported_terms.data(),
+                                buffers_.reported_cost_terms.get(),
+                                reported_count * sizeof(RolloutCostTerms),
+                                cudaMemcpyDeviceToHost, stream_),
+                "copy reported cost terms");
+      checkCuda(cudaStreamSynchronize(stream_), "synchronize reported cost terms");
+      checkCuda(cudaGetLastError(), "reported cost terms");
+      result.selected_cost_terms = reported_terms[0];
+      result.route_directed_candidate_cost_terms_available = route_directed_candidate;
+      if (route_directed_candidate) {
+        result.route_directed_candidate_cost_terms = reported_terms[1];
+      }
+    }
     result.controls = updated_;
     result.warm_start_shift_s = elapsed_s;
     result.nominal_reseeded =
@@ -962,6 +1018,7 @@ private:
   std::vector<Control> best_feasible_;
   std::vector<Control> repair_candidates_;
   std::vector<Control> reacquisition_candidate_;
+  std::vector<Control> reported_controls_;
   std::vector<float> reacquisition_noise_ax_;
   std::vector<float> reacquisition_noise_ay_;
   std::vector<float> reacquisition_noise_az_;

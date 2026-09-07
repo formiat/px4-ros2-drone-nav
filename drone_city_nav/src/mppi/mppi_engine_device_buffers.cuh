@@ -21,6 +21,10 @@ struct DeviceBuffers {
   DeviceBuffer<Control> control_update_partials;
   DeviceBuffer<Control> best_feasible;
   DeviceBuffer<Control> repair_candidates;
+  // The selected sequence and the route-directed candidate, simulated once
+  // more with their cost terms reported.
+  DeviceBuffer<Control> reported_controls;
+  DeviceBuffer<RolloutCostTerms> reported_cost_terms;
   DeviceBuffer<int> best_rollout;
   DeviceBuffer<float> minimum_soft;
   DeviceBuffer<float> weight_sum;
@@ -51,6 +55,8 @@ struct DeviceBuffers {
         control_update_partials{kControlUpdatePartitions * steps},
         best_feasible{steps},
         repair_candidates{kMaximumRepairCandidateCount * steps},
+        reported_controls{kReportedSequenceCount * steps},
+        reported_cost_terms{kReportedSequenceCount},
         best_rollout{1U},
         minimum_soft{1U},
         weight_sum{1U},
@@ -67,12 +73,13 @@ struct DeviceBuffers {
            minimum_clearance.bytes() + altitude_envelope_violation.bytes() +
            collision_violation.bytes() + worst_tier.bytes() + weights.bytes() +
            nominal.bytes() + updated.bytes() + control_update_partials.bytes() +
-           best_feasible.bytes() + repair_candidates.bytes() + best_rollout.bytes() +
-           minimum_soft.bytes() + weight_sum.bytes() + weight_square_sum.bytes() +
-           feasible_cost_sum.bytes() + feasible_count.bytes() +
-           effective_temperature.bytes() + route_points.bytes() +
-           dynamic_aircraft_samples.bytes() + dynamic_aircraft_radii.bytes() +
-           dynamic_aircraft_active_steps.bytes();
+           best_feasible.bytes() + repair_candidates.bytes() +
+           reported_controls.bytes() + reported_cost_terms.bytes() +
+           best_rollout.bytes() + minimum_soft.bytes() + weight_sum.bytes() +
+           weight_square_sum.bytes() + feasible_cost_sum.bytes() +
+           feasible_count.bytes() + effective_temperature.bytes() +
+           route_points.bytes() + dynamic_aircraft_samples.bytes() +
+           dynamic_aircraft_radii.bytes() + dynamic_aircraft_active_steps.bytes();
   }
 };
 

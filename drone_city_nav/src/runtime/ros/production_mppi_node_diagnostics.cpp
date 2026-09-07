@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cinttypes>
 #include <iomanip>
+#include <limits>
 #include <numeric>
 #include <sstream>
 
@@ -714,6 +715,15 @@ void ProductionMppiNode::processDiagnostics(
          << ",\"liveness_reseed_generation\":" << liveness.reseed_generation
          << ",\"route_required_risk_tier\":\""
          << mppi::mppiRiskTierName(snapshot.route_required_risk_tier) << '"'
+         << detail::executedHorizonClearanceJsonFields(
+                snapshot.executed_horizon_clearance)
+         << ",\"selected_costs\":"
+         << detail::rolloutCostTermsJson(result.selected_cost_terms)
+         << ",\"route_directed_candidate_costs\":"
+         << (result.route_directed_candidate_cost_terms_available
+                 ? detail::rolloutCostTermsJson(
+                       result.route_directed_candidate_cost_terms)
+                 : std::string{"null"})
          << ",\"maximum_acceleration_mps2\":" << result.maximum_acceleration_mps2
          << ",\"maximum_jerk_mps3\":" << result.maximum_jerk_mps3
          << ",\"first_control_delta\":" << result.first_control_delta
@@ -746,6 +756,19 @@ void ProductionMppiNode::processDiagnostics(
           << speed_policy.unslewed_reference_speed_mps << ",\"limiter\":\""
           << mppiSpeedLimiterName(speed_policy.active_limiter)
           << "\",\"minimum_esdf_m\":" << result.minimum_esdf_distance_m
+          << ",\"head_speed_mps\":" << result.selected_cost_terms.head_speed_mps
+          << ",\"contact_distance_m\":"
+          << finiteOrNegative(result.selected_cost_terms.contact_distance_m)
+          << ",\"constrained_clearance_m\":"
+          << finiteOrNegative(
+                 snapshot.executed_horizon_clearance.has_value()
+                     ? snapshot.executed_horizon_clearance->constrainedClearanceM()
+                     : std::numeric_limits<double>::infinity())
+          << ",\"distance_to_constraint_m\":"
+          << finiteOrNegative(
+                 snapshot.executed_horizon_clearance.has_value()
+                     ? snapshot.executed_horizon_clearance->distanceToConstraintM()
+                     : std::numeric_limits<double>::infinity())
           << ",\"risk_tier\":\"" << mppi::mppiRiskTierName(result.selected_tier)
           << "\",\"route_generation\":"
           << (execution_route != nullptr ? execution_route->identity.generation : 0U)

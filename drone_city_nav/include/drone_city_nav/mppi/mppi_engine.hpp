@@ -146,6 +146,11 @@ struct MppiTickResult {
   // so a rejected candidate names what the executor objected to.
   float route_directed_candidate_critical_exposure_m{0.0F};
   float route_directed_candidate_minimum_clearance_m{0.0F};
+  // The decision itemised: the weighted terms of the selected sequence and of
+  // the route-directed candidate, from the kernel that ranked the population.
+  RolloutCostTerms selected_cost_terms{};
+  RolloutCostTerms route_directed_candidate_cost_terms{};
+  bool route_directed_candidate_cost_terms_available{false};
   // Every rollout intersected raw occupancy in the sampler, so the body gate
   // was lifted for this update and the raw validators decide alone.
   bool collision_gate_lifted{false};

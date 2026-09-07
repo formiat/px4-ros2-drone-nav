@@ -212,6 +212,40 @@ struct CostBreakdown {
   float terminal{0.0F};
 };
 
+// Weighted contributions of one rollout to its soft cost, in the units the
+// optimiser sums, and what the rollout kept clear of. The engine reports
+// them for the sequence it selected and for the route-directed candidate, so
+// a tick that chose the slower of the two names the term that made the
+// faster one dear.
+struct RolloutCostTerms {
+  float head_progress{0.0F};
+  float progress{0.0F};
+  float route_progress_integral{0.0F};
+  float speed_tracking{0.0F};
+  float overspeed{0.0F};
+  float guide_deviation{0.0F};
+  float altitude_tracking{0.0F};
+  float acceleration{0.0F};
+  float jerk{0.0F};
+  float yaw_change{0.0F};
+  float dynamic_aircraft{0.0F};
+  float maneuver_preference{0.0F};
+  float clearance_preference{0.0F};
+  float obstacle_approach{0.0F};
+  float stopping_deficit{0.0F};
+  float terminal{0.0F};
+  float soft_cost{0.0F};
+  float minimum_clearance_m{0.0F};
+  // Path length to the first state whose envelope enters occupied evidence;
+  // infinite when the rollout keeps clear of it.
+  float contact_distance_m{0.0F};
+  // Speed at the head of the rollout: what the sequence intends within the
+  // head-progress horizon, against the reference it was asked to track.
+  float head_speed_mps{0.0F};
+  bool collision{false};
+  bool altitude_envelope_violation{false};
+};
+
 struct RolloutMetrics {
   State terminal_state{};
   CostBreakdown costs{};

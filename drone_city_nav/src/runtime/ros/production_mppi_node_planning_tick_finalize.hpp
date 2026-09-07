@@ -54,6 +54,7 @@ struct ProductionMppiPlanningTickFinalization {
   ProductionMppiPlanningState planning_state;
   ProductionMppiPreviousControlSource previous_control_source;
   mppi::RiskTier route_required_risk_tier;
+  const std::optional<ExecutedHorizonClearance3D>& executed_horizon_clearance;
   bool route_usable;
   bool direct_tracking_interception;
   bool local_route_stop_is_terminal;

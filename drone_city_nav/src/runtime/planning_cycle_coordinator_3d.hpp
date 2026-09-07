@@ -129,6 +129,9 @@ struct PlanningControllerCycle3D {
   ProductionMppiCooperativeUpdate cooperative{};
   ProductionMppiNonCooperativeUpdate noncooperative{};
   mppi::RiskTier route_required_risk_tier{mppi::RiskTier::kPreferred};
+  // The clearance the speed policy answered to: where the motion under
+  // execution comes close to known occupied evidence.
+  std::optional<ExecutedHorizonClearance3D> executed_horizon_clearance;
   ProductionMppiPlanningState planning_state{ProductionMppiPlanningState::kPlanned};
   std::string target_source;
 };

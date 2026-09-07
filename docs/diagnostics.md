@@ -46,19 +46,39 @@ the script rather than assuming that `log/latest` belongs to the intended run.
 (`cruise`, `curvature`, `sensor_braking`, `goal`, `route_endpoint`,
 `route_constraint`, `blocked_route`, `clearance`), and the
 `*_speed_limit_mps` fields carry each limit; `clearance_speed_limit_mps` is
-the tracking-tube speed the executed horizon's body clearance admits.
+the tracking-tube speed the executed horizon's body clearance admits, folded
+with the stopping law on the way to each constrained sample.
 
 The JSONL record carries the same data in machine-readable form. It is written
 at `diagnostics_file_rate_hz`, well below the tick rate, because the record is
-large.
+large. It additionally itemises the decision:
+
+- `executed_horizon_*`: the clearance the speed policy answered to — the
+  minimum over the motion under execution, the first constrained sample's
+  clearance and distance, and `executed_horizon_constrained_samples`, every
+  constrained sample as `[distance_m, clearance_m]` in path order;
+- `selected_costs` and `route_directed_candidate_costs`: the weighted cost
+  terms of the sequence the tick selected and of the route-directed candidate
+  (`null` when none was injected), reported by the same kernel that ranked the
+  population — `head_progress`, `progress`, `route_progress_integral`,
+  `speed_tracking`, `overspeed`, `guide_deviation`, `altitude_tracking`,
+  `acceleration`, `jerk`, `yaw_change`, `dynamic_aircraft`,
+  `maneuver_preference`, `clearance_preference`, `obstacle_approach`,
+  `stopping_deficit`, `terminal`, their sum `soft_cost`, plus the rollout's
+  `minimum_clearance_m`, `contact_distance_m` (path length to the first
+  envelope contact, `null` when clear), `head_speed_mps` and its collision and
+  altitude-envelope flags. A tick that preferred the slower sequence names the
+  term that made the faster one dear.
 
 `mppi_track.jsonl` carries one compact line per tick regardless of that rate:
 position, velocity, the first control, the control-selection source, the
 reference speed before and after its rise limit, the active limiter, the
-minimum ESDF distance, the risk tier, the route generation, the planning state
-and the execution reason. A throttled record cannot answer how often the
-reference speed flips, how often the first control opposes the velocity, or how
-long a stall lasted — those are properties of the ticks it skips.
+minimum ESDF distance, the selected sequence's head speed and contact distance,
+the executed horizon's first constrained clearance and its distance (`-1` when
+unconstrained), the risk tier, the route generation, the planning state and
+the execution reason. A throttled record cannot answer how often the reference
+speed flips, how often the first control opposes the velocity, or how long a
+stall lasted — those are properties of the ticks it skips.
 
 ## Timing
 

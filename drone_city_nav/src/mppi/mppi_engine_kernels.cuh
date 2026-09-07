@@ -330,7 +330,8 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
          CooperativeConfig cooperative, Control cooperative_preferred_acceleration,
          std::size_t cooperative_preference_steps, bool cooperative_preference_enabled,
          Control previous_applied_control, float first_control_interval_s,
-         float reference_speed_mps, bool early_exit, const Control* direct_controls) {
+         float reference_speed_mps, bool early_exit, const Control* direct_controls,
+         RolloutCostTerms* cost_terms) {
   const std::size_t rollout =
       static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (rollout >= rollouts) {
@@ -353,6 +354,8 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
   float stopping_deficit_m2_s = 0.0F;
   float clearance_preference_s = 0.0F;
   float minimum_clearance_m = kInfinity;
+  float contact_distance_m = kInfinity;
+  float head_speed_mps = 0.0F;
   bool collision_hit = false;
   // Path length and speed of each state, for the stopping law once the first
   // contact is reached. Index 0 is the initial state.
@@ -452,6 +455,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
       trace_speed_mps[step + 1U] = segment_speed_mps;
       if (step_contact) {
         collision_hit = true;
+        contact_distance_m = traveled_distance_m;
         for (std::size_t prior = 0U; prior <= step; ++prior) {
           stopping_deficit_m2_s +=
               dynamics.dt_s * stoppingDistanceDeficitM2(
@@ -574,6 +578,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
       }
     }
     if (step + 1U == head_steps) {
+      head_speed_mps = segment_speed_mps;
       head_progress = moving_target_enabled ? initial_distance - target_distance
                       : route_projection.valid
                           ? terminal_route_progress
@@ -600,22 +605,43 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
       moving_target_enabled     ? initial_distance - minimum_target_separation_m
       : route_point_count >= 2U ? terminal_route_progress
                                 : initial_distance - terminal_distance;
-  soft_cost[rollout] =
-      costs.head_progress_weight * -head_progress + costs.progress_weight * -progress +
-      costs.route_progress_integral_weight * -route_progress_integral_m_s +
-      costs.speed_tracking_weight * dynamics.dt_s * speed_tracking_cost +
-      costs.overspeed_weight * dynamics.dt_s * overspeed_cost +
-      costs.guide_deviation_weight * dynamics.dt_s * guide_cost +
-      costs.altitude_tracking_weight * dynamics.dt_s * altitude_cost +
-      costs.acceleration_weight * dynamics.dt_s * acceleration_cost +
-      costs.jerk_weight * jerk_cost + costs.yaw_change_weight * yaw_cost +
-      dynamics.dt_s * dynamic_aircraft_survival_cost +
-      costs.cooperative_maneuver_preference_weight * dynamics.dt_s *
-          maneuver_preference_cost +
-      costs.clearance_preference_weight * clearance_preference_s +
-      costs.obstacle_approach_weight *
-          (obstacle_approach_m2_s + stopping_deficit_m2_s) +
-      costs.terminal_weight * terminal_distance;
+  RolloutCostTerms terms;
+  terms.head_progress = costs.head_progress_weight * -head_progress;
+  terms.progress = costs.progress_weight * -progress;
+  terms.route_progress_integral =
+      costs.route_progress_integral_weight * -route_progress_integral_m_s;
+  terms.speed_tracking =
+      costs.speed_tracking_weight * dynamics.dt_s * speed_tracking_cost;
+  terms.overspeed = costs.overspeed_weight * dynamics.dt_s * overspeed_cost;
+  terms.guide_deviation = costs.guide_deviation_weight * dynamics.dt_s * guide_cost;
+  terms.altitude_tracking =
+      costs.altitude_tracking_weight * dynamics.dt_s * altitude_cost;
+  terms.acceleration = costs.acceleration_weight * dynamics.dt_s * acceleration_cost;
+  terms.jerk = costs.jerk_weight * jerk_cost;
+  terms.yaw_change = costs.yaw_change_weight * yaw_cost;
+  terms.dynamic_aircraft = dynamics.dt_s * dynamic_aircraft_survival_cost;
+  terms.maneuver_preference = costs.cooperative_maneuver_preference_weight *
+                              dynamics.dt_s * maneuver_preference_cost;
+  terms.clearance_preference =
+      costs.clearance_preference_weight * clearance_preference_s;
+  terms.obstacle_approach = costs.obstacle_approach_weight * obstacle_approach_m2_s;
+  terms.stopping_deficit = costs.obstacle_approach_weight * stopping_deficit_m2_s;
+  terms.terminal = costs.terminal_weight * terminal_distance;
+  terms.soft_cost =
+      terms.head_progress + terms.progress + terms.route_progress_integral +
+      terms.speed_tracking + terms.overspeed + terms.guide_deviation +
+      terms.altitude_tracking + terms.acceleration + terms.jerk + terms.yaw_change +
+      terms.dynamic_aircraft + terms.maneuver_preference + terms.clearance_preference +
+      terms.obstacle_approach + terms.stopping_deficit + terms.terminal;
+  terms.minimum_clearance_m = minimum_clearance_m;
+  terms.contact_distance_m = contact_distance_m;
+  terms.head_speed_mps = head_speed_mps;
+  terms.collision = collision_hit;
+  terms.altitude_envelope_violation = altitude_envelope_hit;
+  soft_cost[rollout] = terms.soft_cost;
+  if (cost_terms != nullptr) {
+    cost_terms[rollout] = terms;
+  }
   critical_exposure[rollout] = critical_m;
   planning_exposure[rollout] = planning_m;
   minimum_clearance[rollout] = minimum_clearance_m;
