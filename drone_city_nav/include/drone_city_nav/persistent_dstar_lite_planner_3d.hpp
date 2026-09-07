@@ -113,6 +113,19 @@ struct PersistentPlannerConfig3D {
   std::size_t clearance_centering_passes{3U};
   std::size_t maximum_clearance_centering_queries{4096U};
   double maximum_compute_time_ms{150.0};
+  // Share of one update reserved for the shortest-path search, whatever the
+  // stages before it spend. Repair, change scheduling and the feasibility
+  // search all run first against the same budget, and between them they took
+  // all of it: D* was measured expanding nothing in over half the updates, so
+  // the route the vehicle flew came from the unranked feasibility branch again
+  // and again. Zero restores the previous first-come division.
+  double guaranteed_spatial_search_fraction{0.34};
+  // Share of one update's expansions the execution-time refinement is
+  // guaranteed. The refinement searches its own graph, so charging it only
+  // what the spatial search left means it runs only while D* is idle — and
+  // the refinement is what turns a first-found feasibility route into a
+  // ranked one.
+  double guaranteed_refinement_expansion_fraction{0.34};
   // Soft clearance ranking. An edge whose endpoints' body surface lies within
   // clearance_ranking_distance_m of raw occupied evidence costs its flight
   // time scaled by 1 + weight * (1 - clearance / distance)^2, where the

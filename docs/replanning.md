@@ -68,6 +68,29 @@ its position, velocity, and acceleration feed-forward and publishes exact applie
 control feedback. A finite path contains its own terminal deceleration; after the
 last zero-velocity sample, offboard holds that same terminal position.
 
+## The Planner Update Budget
+
+One planner update runs, in order: the feasibility search, affected-vertex
+repair, change scheduling, the D* Lite shortest-path search, and the
+execution-time refinement. They shared the update first-come, and between them
+the stages that run first took all of it: D* Lite was measured expanding
+nothing in over half the recorded updates, and 105 of 166 published routes came
+from the unranked feasibility branch.
+
+The tail of the update is now reserved for the shortest-path search
+(`persistent_planner_guaranteed_spatial_search_fraction`), and the
+execution-time refinement is guaranteed a share of the update's expansions
+(`persistent_planner_guaranteed_refinement_expansion_fraction`) rather than
+only what the spatial search leaves. Without the second one the refinement runs
+only while D* is idle, and the refinement is what turns a first-found route
+into a ranked one.
+
+Seeding the refinement with the feasibility route — so that it would improve it
+directly — was tried and does not work: the refinement treats its seed as an
+anytime *bound*, so a feasibility seed makes it declare at once that it cannot
+improve on that route by the admissible margin, and it never expands. What
+makes a ranked route exist is the budget, not a different seed.
+
 ## Published Route Geometry
 
 Every published route — from the feasibility search and from the execution-time

@@ -379,10 +379,23 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     telemetry.input_failure = "request_invalid";
     return update;
   }
+  // What the shortest-path search is guaranteed, whatever the stages before it
+  // spend. Repair, change scheduling and the feasibility search all ran before
+  // it against the same budget, and between them they took all of it: D* was
+  // measured expanding nothing in over half of the updates, so the route the
+  // vehicle flew came from the unranked feasibility branch again and again.
+  // Reserving the tail of the update for the search is what lets the ranked
+  // route exist at all.
   const auto deadline =
       operation_started +
       std::chrono::duration_cast<std::chrono::steady_clock::duration>(
           std::chrono::duration<double, std::milli>{config_.maximum_compute_time_ms});
+  const auto spatial_search_reserve =
+      std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+          std::chrono::duration<double, std::milli>{
+              config_.maximum_compute_time_ms *
+              std::clamp(config_.guaranteed_spatial_search_fraction, 0.0, 0.9)});
+  const auto preparatory_deadline = deadline - spatial_search_reserve;
 
   const std::uint64_t previous_producer = world_.producer_instance_id;
   const std::uint64_t previous_mission_epoch = mission_epoch_;
@@ -526,14 +539,15 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     const auto feasibility_started = std::chrono::steady_clock::now();
     const bool persistent_search_has_work = dstar_session_.pendingRepairNodes() > 0U ||
                                             !dstar_session_.shortestPathComplete();
-    const auto feasibility_deadline =
+    const auto feasibility_deadline = std::min(
+        preparatory_deadline,
         feasibility_started +
-        feasibilitySearchBudget3D(
-            deadline - feasibility_started,
-            std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-                std::chrono::duration<double, std::milli>{
-                    config_.maximum_feasibility_compute_time_ms}),
-            persistent_search_has_work);
+            feasibilitySearchBudget3D(
+                deadline - feasibility_started,
+                std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                    std::chrono::duration<double, std::milli>{
+                        config_.maximum_feasibility_compute_time_ms}),
+                persistent_search_has_work));
     std::optional<std::vector<Point3>> path =
         feasibility_search_.advance(searchEndpoints(), feasibility_deadline,
                                     config_.maximum_feasibility_expansions_per_update,
@@ -576,8 +590,9 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   const auto repair_started = std::chrono::steady_clock::now();
   const auto repair_deadline =
       dstar_session_.pendingRepairNodes() > 0U && deadline > repair_started
-          ? repair_started + (deadline - repair_started) / 2
-          : deadline;
+          ? std::min(repair_started + (deadline - repair_started) / 2,
+                     preparatory_deadline)
+          : preparatory_deadline;
   static_cast<void>(dstar_session_.continueAffectedVertexRepair(
       repair_deadline, config_.maximum_expansions_per_update,
       telemetry.repair_lattice_states_processed));
@@ -606,6 +621,12 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   telemetry.repair_pending = !repair_complete;
   const bool spatial_route_available =
       spatial_search_complete && dstar_session_.startResolved(start_);
+  // Seeding the refinement with the feasibility route was tried and is wrong:
+  // the refinement treats its seed as an anytime *bound*, so a feasibility
+  // route handed to it as a seed makes it declare at once that it cannot
+  // improve on it by the admissible margin, and it never expands. The way a
+  // ranked route comes to exist is the budget the searches are guaranteed
+  // above, not a different seed.
   if (spatial_route_available) {
     if (!execution_time_refiner_.initialized()) {
       execution_time_refiner_.begin(
@@ -621,10 +642,14 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     }
     const std::size_t graph_expansions =
         telemetry.repair_lattice_states_processed + telemetry.expansions;
+    const std::size_t guaranteed_refinement_expansions = static_cast<std::size_t>(
+        static_cast<double>(config_.maximum_expansions_per_update) *
+        std::clamp(config_.guaranteed_refinement_expansion_fraction, 0.0, 1.0));
     const std::size_t refinement_budget =
-        graph_expansions < config_.maximum_expansions_per_update
-            ? config_.maximum_expansions_per_update - graph_expansions
-            : 0U;
+        std::max(graph_expansions < config_.maximum_expansions_per_update
+                     ? config_.maximum_expansions_per_update - graph_expansions
+                     : 0U,
+                 std::max<std::size_t>(guaranteed_refinement_expansions, 1U));
     std::optional<std::vector<Point3>> path = execution_time_refiner_.advance(
         deadline, refinement_budget, telemetry.execution_time_search_expansions);
     if (path.has_value()) {

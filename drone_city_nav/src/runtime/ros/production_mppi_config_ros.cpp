@@ -356,6 +356,10 @@ void ProductionMppiConfigLoader::declarePlanning() {
       declarePositiveSize("persistent_planner_maximum_extracted_path_nodes", 8'192);
   planner.maximum_shortcut_checks =
       declarePositiveSize("persistent_planner_maximum_shortcut_checks", 8'192);
+  planner.guaranteed_spatial_search_fraction =
+      declare<double>("persistent_planner_guaranteed_spatial_search_fraction", 0.34);
+  planner.guaranteed_refinement_expansion_fraction = declare<double>(
+      "persistent_planner_guaranteed_refinement_expansion_fraction", 0.34);
   planner.departure_refinement_subdivisions =
       declarePositiveSize("persistent_planner_departure_refinement_subdivisions", 4);
   planner.maximum_departure_refinement_probes = declarePositiveSize(

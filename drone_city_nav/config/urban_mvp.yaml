@@ -497,6 +497,16 @@ production_mppi_node:
     # long as the vehicle stays put, which is the pocket that ended two of the
     # four recorded Urban runs. The step is ordinary free space: the body
     # contract validates it like any other segment.
+    # Share of one update reserved for the shortest-path search. Repair,
+    # change scheduling and the feasibility search all run before it against
+    # the same budget, and between them they took all of it: D* expanded
+    # nothing in over half the recorded updates, so the route the vehicle flew
+    # came from the unranked feasibility branch again and again.
+    persistent_planner_guaranteed_spatial_search_fraction: 0.34
+    # The execution-time refinement searches its own graph; charging it only
+    # what the spatial search left means it runs only while D* is idle, and it
+    # is what turns a first-found feasibility route into a ranked one.
+    persistent_planner_guaranteed_refinement_expansion_fraction: 0.34
     persistent_planner_departure_refinement_subdivisions: 4
     persistent_planner_maximum_departure_refinement_probes: 512
     persistent_planner_clearance_centering_passes: 3
