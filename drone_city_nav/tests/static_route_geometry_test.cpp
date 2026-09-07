@@ -4,6 +4,8 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cstddef>
+#include <limits>
 #include <optional>
 #include <ranges>
 #include <vector>
@@ -118,6 +120,56 @@ TEST(StaticRouteGeometryTest, MaterializesRawSafeRightAngleAsFillet) {
     EXPECT_TRUE(collision_oracle
                     .validateSegment(result.route[index - 1U].position,
                                      FootprintBodyAxis{}, result.route[index].position,
+                                     FootprintBodyAxis{})
+                    .clear());
+  }
+}
+
+TEST(StaticRouteGeometryTest, ACornerTakesTheWidestFilletTheBodyAdmits) {
+  // The same right angle twice. In open space the fillet uses the whole
+  // configured distance, so the route passes well inside the corner. With an
+  // occupied cell where that wide arc would run, the arc that fits is taken
+  // instead of leaving the corner sharp.
+  const std::vector<RouteSample3D> route = sampleRoute3D(
+      std::vector<Point3>{
+          {5.0, 5.0, 5.0}, {20.0, 5.0, 5.0}, {20.0, 20.0, 5.0}, {35.0, 20.0, 5.0}},
+      0.5, 20.0);
+  const SweptFootprintConfig footprint{.radius_m = 0.0, .perimeter_samples = 0U};
+  StaticRouteGeometryConfig config = enabledGeometryConfig();
+  config.shortcut_optimization_enabled = false;
+  config.corner_smoothing_distance_m = 6.0;
+  config.corner_smoothing_minimum_distance_m = 0.5;
+  const Point3 corner{20.0, 5.0, 5.0};
+  const auto closest_approach = [&](const StaticRouteGeometryResult& result) {
+    double closest = std::numeric_limits<double>::infinity();
+    for (const RouteSample3D& sample : result.route) {
+      closest = std::min(closest, distance3D(sample.position, corner));
+    }
+    return closest;
+  };
+
+  const OccupancyGrid3D open{GridBounds3D{0.0, 0.0, 0.0, 1.0, 80, 80, 20}};
+  const StaticRouteGeometryResult wide = optimizeStaticRouteGeometry(
+      route, {}, staticCollisionWorld(open, footprint), config, RouteEnvelopeConfig{});
+  ASSERT_EQ(wide.corners_smoothed, 2U);
+  // A 6 m fillet passes 6 / 4 * sqrt(2) = 2.1 m inside the corner.
+  EXPECT_GT(closest_approach(wide), 1.8);
+
+  OccupancyGrid3D blocked{GridBounds3D{0.0, 0.0, 0.0, 1.0, 80, 80, 20}};
+  // The wide arc's midpoint is (18.5, 6.5); the cell [18, 19) x [6, 7) blocks
+  // it, and a 3 m arc with its midpoint at (19.25, 5.75) clears.
+  blocked.setOccupied(GridIndex3D{18, 6, 5});
+  const StaticRouteGeometryResult fitted =
+      optimizeStaticRouteGeometry(route, {}, staticCollisionWorld(blocked, footprint),
+                                  config, RouteEnvelopeConfig{});
+  ASSERT_EQ(fitted.corners_smoothed, 2U);
+  EXPECT_LT(closest_approach(fitted), closest_approach(wide));
+  EXPECT_GT(closest_approach(fitted), 0.1);
+  const OccupiedCollisionOracle3D oracle{staticCollisionWorld(blocked, footprint)};
+  for (std::size_t index = 1U; index < fitted.route.size(); ++index) {
+    EXPECT_TRUE(oracle
+                    .validateSegment(fitted.route[index - 1U].position,
+                                     FootprintBodyAxis{}, fitted.route[index].position,
                                      FootprintBodyAxis{})
                     .clear());
   }

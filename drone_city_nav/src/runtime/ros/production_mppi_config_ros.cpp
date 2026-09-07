@@ -405,7 +405,9 @@ void ProductionMppiConfigLoader::declarePlanning() {
       static_cast<std::size_t>(std::max<std::int64_t>(
           0, declare<std::int64_t>("static_route_shortcut_validation_batch_size", 4)));
   planning.static_route_geometry.corner_smoothing_distance_m =
-      declare<double>("static_route_corner_smoothing_distance_m", 2.0);
+      declare<double>("static_route_corner_smoothing_distance_m", 6.0);
+  planning.static_route_geometry.corner_smoothing_minimum_distance_m =
+      declare<double>("static_route_corner_smoothing_minimum_distance_m", 0.5);
   planning.static_route_geometry.corner_curve_samples = static_cast<std::size_t>(
       declare<std::int64_t>("static_route_corner_curve_samples", 4));
   const double static_route_replan_remaining_m =

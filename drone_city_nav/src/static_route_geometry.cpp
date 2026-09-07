@@ -234,25 +234,16 @@ maximumShortcutIndex(const std::span<const RouteSample3D> route,
   return candidates;
 }
 
+// The quadratic fillet of one corner at control distance `smoothing_m`, or
+// nothing when its curve does not clear the raw body.
 [[nodiscard]] std::optional<std::vector<Point3>>
-smoothCorner(const Point3& previous, const Point3& corner, const Point3& next,
-             const OccupiedCollisionOracle3D& collision_oracle,
-             const StaticRouteGeometryConfig& geometry_config) {
+filletCorner(const Point3& previous, const Point3& corner, const Point3& next,
+             const double smoothing_m, const std::size_t samples,
+             const OccupiedCollisionOracle3D& collision_oracle) {
   const double incoming_length = distance3D(previous, corner);
   const double outgoing_length = distance3D(corner, next);
-  const double smoothing_m = std::min({geometry_config.corner_smoothing_distance_m,
-                                       incoming_length * 0.4, outgoing_length * 0.4});
-  // The final route is resampled after corner materialization. A fillet must
-  // therefore not be rejected merely because its radius is smaller than the
-  // sampling interval; that rejected valid fillet is what leaves a raw-safe
-  // Manhattan corner as an execution-time tangent discontinuity.
-  if (!(smoothing_m > 1.0e-3)) {
-    return std::nullopt;
-  }
   const Point3 entry = lerpPoint(corner, previous, smoothing_m / incoming_length);
   const Point3 exit = lerpPoint(corner, next, smoothing_m / outgoing_length);
-  const std::size_t samples =
-      std::max<std::size_t>(2U, geometry_config.corner_curve_samples);
   std::vector<Point3> curve;
   curve.reserve(samples + 1U);
   for (std::size_t sample = 0U; sample <= samples; ++sample) {
@@ -273,6 +264,43 @@ smoothCorner(const Point3& previous, const Point3& corner, const Point3& next,
     }
   }
   return curve;
+}
+
+// The widest fillet of a corner the raw body admits: the control distance
+// starts at the configured maximum, bounded by the incident segments, and
+// halves toward the minimum until a curve validates. The turn speed the
+// curvature limiter admits grows with the square root of the radius, so a
+// corner in open space is worth the wider arc, and a corner in a passage still
+// gets the arc that fits instead of a stop-and-turn.
+[[nodiscard]] std::optional<std::vector<Point3>>
+smoothCorner(const Point3& previous, const Point3& corner, const Point3& next,
+             const OccupiedCollisionOracle3D& collision_oracle,
+             const StaticRouteGeometryConfig& geometry_config) {
+  const double incoming_length = distance3D(previous, corner);
+  const double outgoing_length = distance3D(corner, next);
+  const double maximum_m = std::min({geometry_config.corner_smoothing_distance_m,
+                                     incoming_length * 0.4, outgoing_length * 0.4});
+  // The final route is resampled after corner materialization. A fillet must
+  // therefore not be rejected merely because its radius is smaller than the
+  // sampling interval; that rejected valid fillet is what leaves a raw-safe
+  // Manhattan corner as an execution-time tangent discontinuity.
+  if (!(maximum_m > 1.0e-3)) {
+    return std::nullopt;
+  }
+  const double minimum_m = std::clamp(
+      geometry_config.corner_smoothing_minimum_distance_m, 1.0e-3, maximum_m);
+  const std::size_t samples =
+      std::max<std::size_t>(2U, geometry_config.corner_curve_samples);
+  for (double smoothing_m = maximum_m;; smoothing_m *= 0.5) {
+    if (smoothing_m < minimum_m) {
+      smoothing_m = minimum_m;
+    }
+    std::optional<std::vector<Point3>> curve =
+        filletCorner(previous, corner, next, smoothing_m, samples, collision_oracle);
+    if (curve.has_value() || smoothing_m <= minimum_m) {
+      return curve;
+    }
+  }
 }
 
 } // namespace

@@ -601,7 +601,14 @@ production_mppi_node:
     static_route_sparse_deviation_tolerance_m: 0.05
     static_route_maximum_shortcut_turn_increase_rad: 0.35
     static_route_shortcut_validation_batch_size: 4
-    static_route_corner_smoothing_distance_m: 2.0
+    # A corner is filleted with the largest control distance, from the maximum
+    # down to the minimum, whose arc the raw swept body validates: a wide arc
+    # in open space, a tight one in a passage, a sharp corner only where even
+    # the minimum does not clear. The turn speed grows with the square root of
+    # the radius; one fixed 2 m distance left every corner a 2.4 m/s turn and
+    # every corner that 2 m did not clear a stop-and-turn.
+    static_route_corner_smoothing_distance_m: 6.0
+    static_route_corner_smoothing_minimum_distance_m: 0.5
     static_route_corner_curve_samples: 4
     static_route_replan_remaining_m: 45.0
     no_static_route_replan_remaining_m: 15.0

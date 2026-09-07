@@ -151,7 +151,8 @@ does reset it.
 ## Published Route Geometry
 
 Every published route — from the feasibility search and from the execution-time
-refinement alike — goes through the same two passes before it is offered:
+refinement alike — goes through the same two passes before it is offered, and
+the materialised route's corners are then filleted:
 
 1. **Shortcut simplification.** A lattice zig-zag left in a route costs a
    stop-and-turn at every corner during execution. Each shortcut is raw-
@@ -180,6 +181,16 @@ refinement alike — goes through the same two passes before it is offered:
 `persistent_planner_clearance_centering_passes` and
 `persistent_planner_maximum_clearance_centering_queries` bound the work, and
 `PRODUCTION_MPPI_ROUTE3D` reports `clearance_centering=<moves>/<queries>`.
+
+3. **Corner fillets.** Each corner of the materialised route is replaced by
+   the widest quadratic fillet the raw swept body admits: the control distance
+   starts at `static_route_corner_smoothing_distance_m`, bounded by the
+   incident segments, and halves toward
+   `static_route_corner_smoothing_minimum_distance_m` until a curve validates.
+   The turn speed the curvature limiter admits grows with the square root of
+   the radius, so a corner in open space is worth the wide arc, and a corner in
+   a passage still gets the arc that fits instead of the stop-and-turn one
+   fixed distance left it with whenever that distance did not clear.
 
 ## Lattice Resolution
 

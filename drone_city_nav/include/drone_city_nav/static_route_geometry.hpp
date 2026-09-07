@@ -21,7 +21,14 @@ struct StaticRouteGeometryConfig {
   double sparse_deviation_tolerance_m{0.05};
   double maximum_shortcut_turn_increase_rad{0.35};
   std::size_t shortcut_validation_batch_size{4U};
-  double corner_smoothing_distance_m{2.0};
+  // A corner is filleted with the largest control distance, from this one
+  // down to the minimum, whose curve the raw swept body validates: a wide arc
+  // where the space allows it, a tight one where it does not, a sharp corner
+  // only where even the minimum does not clear. The turn speed the curvature
+  // limiter admits grows with the square root of the radius, so a corner in
+  // open space is worth the wider arc.
+  double corner_smoothing_distance_m{6.0};
+  double corner_smoothing_minimum_distance_m{0.5};
   std::size_t corner_curve_samples{4U};
   // An activated route prefix is already executable evidence. Geometry
   // optimization may only operate after this station.

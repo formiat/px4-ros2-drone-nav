@@ -104,6 +104,9 @@ bool ProductionMppiConfig::valid() const noexcept {
          planning.static_route_geometry.maximum_shortcut_turn_increase_rad >= 0.0 &&
          planning.static_route_geometry.shortcut_validation_batch_size > 0U &&
          planning.static_route_geometry.corner_smoothing_distance_m >= 0.0 &&
+         planning.static_route_geometry.corner_smoothing_minimum_distance_m >= 0.0 &&
+         planning.static_route_geometry.corner_smoothing_minimum_distance_m <=
+             planning.static_route_geometry.corner_smoothing_distance_m &&
          planning.static_route_geometry.corner_curve_samples >= 2U &&
          trackingErrorTubeConfig3DIsValid(control.tracking_error_tube) &&
          world.physical_footprint.sweep_step_m > 0.0 &&
