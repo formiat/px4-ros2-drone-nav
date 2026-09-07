@@ -321,6 +321,7 @@ RouteLifecycleCoordinator3D::advance(RoutePlanningUpdateEvent3D event) {
 
   if (result.search_running && !result.candidate.available) {
     result.planner_update = std::move(planner_update);
+    result.search_retired = searchRetired(*transaction);
     result.continuation_queued = queueContinuation(result);
     result.route_planning_ms = elapsedMilliseconds(planning_started);
     result.status = RouteLifecycleAdvanceStatus3D::kContinuationQueued;
@@ -798,6 +799,19 @@ std::uint64_t RouteLifecycleCoordinator3D::nextRouteGeneration() const noexcept 
 
 bool RouteLifecycleCoordinator3D::searchRetired(
     const PlannerSearchTransaction3D& transaction) const noexcept {
+  if (transaction.request.kind == StaticRouteSearchRequestKind::kInitial) {
+    // The search an observed world raises for a vehicle without a route holds
+    // no replan gate, so the gate cannot retire it; the route that ends it is
+    // the one that becomes resident, however it was found. Until then its
+    // continuation carries the search from one update straight into the next.
+    // Judged by the gate it never held, it ended after every update and waited
+    // for the next observed world to be raised again, so the planner searched
+    // for a fraction of each second while the vehicle held at the start.
+    const std::shared_ptr<const ExecutionPlan3D> resident_execution =
+        execution_supervisor_.plan();
+    return resident_execution != nullptr &&
+           resident_execution->routeGenerationHighWater() != 0U;
+  }
   const std::scoped_lock lock{lifecycle_mutex_};
   if (transaction.extension()) {
     return !extension_request_in_flight_ ||

@@ -28,6 +28,18 @@ Ordinary world updates do not replace a still-valid route. Planning starts from
 the current mission coordinate or from a certified future stitch station;
 vehicle yaw is never a strategic search constraint.
 
+### The First Route
+
+A vehicle without a route asks for a search once per observed world. That
+search holds no replan gate, so the gate cannot retire it: the route that ends
+it is the one that becomes resident, however it was found. Until then the
+search's own continuation is queued straight after every planner update, so
+the planner searches continuously instead of spending one budget per observed
+world and idling until the next one arrives, and a later world request finds
+the continuation already queued and leaves it in place. Judged by the gate it
+never held, the initial search used to end after every update; the planner
+ran for a fraction of each second while the vehicle held at the start.
+
 ## Successors And Suffix Repair
 
 A non-terminal route must retain enough certified suffix for:

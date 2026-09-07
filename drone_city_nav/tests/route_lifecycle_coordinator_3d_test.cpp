@@ -203,7 +203,7 @@ TEST(RouteLifecycleCoordinator3DTest,
 }
 
 TEST(RouteLifecycleCoordinator3DTest,
-     SameWorldRawCollisionDoesNotSupersedeRunningSearch) {
+     SameWorldRawCollisionDoesNotSupersedeRunningSearchAndTheInitialSearchContinues) {
   ExecutionSupervisor3D supervisor;
   const LifecycleFixture3D input = fixture();
   ASSERT_NE(input.transaction, nullptr);
@@ -227,6 +227,7 @@ TEST(RouteLifecycleCoordinator3DTest,
         return RouteActivationCommitResult3D{.result = std::move(activation)};
       };
   RouteLifecycleCoordinator3D coordinator{supervisor, std::move(config)};
+  coordinator.start();
 
   RoutePlanner3D planner{plannerConfig()};
   const RoutePlannerVehicleState3D vehicle_state = vehicleState(input);
@@ -247,13 +248,93 @@ TEST(RouteLifecycleCoordinator3DTest,
       .vehicle_state = vehicle_state,
       .update = std::move(planner_update),
   });
+  coordinator.stop();
 
   EXPECT_TRUE(result.search_running);
   EXPECT_FALSE(result.search_superseded_by_activation);
-  EXPECT_FALSE(result.continuation_queued);
-  EXPECT_EQ(commit_count, 1U);
+  // No route is resident, so the initial search is not retired: its
+  // continuation is queued rather than left to the next observed world.
+  EXPECT_FALSE(result.search_retired);
+  EXPECT_TRUE(result.continuation_queued);
+  EXPECT_GE(commit_count, 1U);
   EXPECT_EQ(result.activation.admission.snapshot_raw_revision,
             result.planner_update.planner_telemetry.planned_on_revision);
+}
+
+TEST(RouteLifecycleCoordinator3DTest,
+     AnInitialSearchWithoutACandidateQueuesItsContinuationUntilARouteIsResident) {
+  ExecutionSupervisor3D supervisor;
+  const LifecycleFixture3D input = fixture();
+  ASSERT_NE(input.transaction, nullptr);
+  ASSERT_EQ(input.transaction->request.kind, StaticRouteSearchRequestKind::kInitial);
+  std::size_t commit_count{0U};
+  {
+    RouteLifecycleCoordinator3D coordinator{
+        supervisor, lifecycleConfig(input, supervisor, commit_count)};
+    coordinator.start();
+    RoutePlanner3D planner{plannerConfig()};
+    const RoutePlannerVehicleState3D vehicle_state = vehicleState(input);
+    RoutePlannerUpdate3D planner_update =
+        planner.update(*input.transaction, vehicle_state);
+    ASSERT_NE(planner_update.planner_session, nullptr);
+    // The update found nothing yet and the search is still running.
+    planner_update.improved_incumbent.reset();
+    planner_update.planner_invoked = true;
+    planner_update.planner_progress = SearchProgress3D::kRunning;
+    planner_update.dispatch.continue_search = true;
+
+    const RouteLifecycleUpdate3D result =
+        coordinator.advance(RoutePlanningUpdateEvent3D{
+            .request =
+                RoutePlanningRequest3D{
+                    .transaction = input.transaction,
+                    .continuation_session = nullptr,
+                },
+            .vehicle_state = vehicle_state,
+            .update = std::move(planner_update),
+        });
+    coordinator.stop();
+
+    EXPECT_EQ(result.status, RouteLifecycleAdvanceStatus3D::kContinuationQueued);
+    EXPECT_TRUE(result.search_running);
+    EXPECT_FALSE(result.search_retired);
+    EXPECT_TRUE(result.continuation_queued);
+  }
+
+  // Once a route is resident the same search is retired: the route ended it.
+  {
+    RouteLifecycleCoordinator3D activation_coordinator{
+        supervisor, lifecycleConfig(input, supervisor, commit_count)};
+    planAndActivateInitialRoute(activation_coordinator, supervisor, input);
+  }
+  ASSERT_NE(supervisor.plan(), nullptr);
+  ASSERT_NE(supervisor.plan()->routeGenerationHighWater(), 0U);
+  RouteLifecycleCoordinator3D coordinator{
+      supervisor, lifecycleConfig(input, supervisor, commit_count)};
+  RoutePlanner3D planner{plannerConfig()};
+  const RoutePlannerVehicleState3D vehicle_state = vehicleState(input);
+  RoutePlannerUpdate3D planner_update =
+      planner.update(*input.transaction, vehicle_state);
+  ASSERT_NE(planner_update.planner_session, nullptr);
+  planner_update.improved_incumbent.reset();
+  planner_update.planner_invoked = true;
+  planner_update.planner_progress = SearchProgress3D::kRunning;
+  planner_update.dispatch.continue_search = true;
+
+  const RouteLifecycleUpdate3D retired = coordinator.advance(RoutePlanningUpdateEvent3D{
+      .request =
+          RoutePlanningRequest3D{
+              .transaction = input.transaction,
+              .continuation_session = nullptr,
+          },
+      .vehicle_state = vehicle_state,
+      .update = std::move(planner_update),
+  });
+
+  EXPECT_EQ(retired.status, RouteLifecycleAdvanceStatus3D::kContinuationQueued);
+  EXPECT_TRUE(retired.search_retired);
+  EXPECT_FALSE(retired.continuation_queued);
+  EXPECT_FALSE(coordinator.pending());
 }
 
 TEST(RouteLifecycleCoordinator3DTest,

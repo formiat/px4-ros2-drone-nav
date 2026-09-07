@@ -193,7 +193,9 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
         "repair_pending=%zu feasibility_attempted=%s "
         "feasibility_found=%s feasibility_expansions=%zu "
         "route_planning_ms=%.3f",
-        update.continuation_queued ? "true" : "newer_world_pending",
+        update.continuation_queued ? "true"
+        : update.search_retired    ? "retired"
+                                   : "not_queued",
         planner_update.planner_telemetry.planned_on_revision,
         planner_update.planner_telemetry.search_generation,
         planner_update.planner_telemetry.repair_generation,
@@ -283,7 +285,7 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
                 "queued=%s raw_revision=%" PRIu64 " search_generation=%" PRIu64,
                 update.continuation_queued ? "true"
                 : update.search_retired    ? "retired"
-                                           : "newer_world_pending",
+                                           : "not_queued",
                 planner_update.planner_telemetry.planned_on_revision,
                 planner_update.planner_telemetry.search_generation);
   }
@@ -548,13 +550,16 @@ bool ProductionMppiNode::requestInitialRouteSearch3D(
                  world->source_raw_revision);
     return false;
   }
+  // A vehicle without a route asks for a search once per observed world; the
+  // search's own continuation is already queued while it runs, and displacing
+  // it with a fresh request would drop the world the continuation absorbs.
   const RoutePlanningEnqueueResult3D enqueue = route_lifecycle_coordinator_->enqueue(
       RoutePlanningRequest3D{
           .transaction = transaction,
           .world_telemetry = world_telemetry,
           .continuation_session = nullptr,
       },
-      RoutePlanningQueuePolicy3D::kReplacePending);
+      RoutePlanningQueuePolicy3D::kKeepPending);
   replaced_pending = enqueue.displaced.has_value();
   return enqueue.queued();
 }
