@@ -349,10 +349,8 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
   float maneuver_preference_cost = 0.0F;
   float critical_m = 0.0F;
   float planning_m = 0.0F;
-  float critical_clearance_proximity_s = 0.0F;
   float obstacle_approach_m2_s = 0.0F;
   float minimum_clearance_m = kInfinity;
-  float previous_clearance_m = kInfinity;
   bool collision_hit = false;
   bool altitude_envelope_hit = !altitudeEnvelopeDynamicallyRecoverable(
       initial, previous_applied_control, dynamics, altitude_envelope);
@@ -423,20 +421,15 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
     if (clearance < risk.critical_distance_m) {
       tier = max(tier, static_cast<std::uint8_t>(RiskTier::kCritical));
       critical_m += segment_m;
-      critical_clearance_proximity_s +=
-          dynamics.dt_s *
-          criticalClearanceProximitySeverity(clearance, risk.critical_distance_m);
     } else if (clearance < risk.preferred_distance_m) {
       tier = max(tier, static_cast<std::uint8_t>(RiskTier::kPlanning));
       planning_m += segment_m;
     }
     obstacle_approach_m2_s +=
-        dynamics.dt_s *
-        obstacleApproachSeverityM2(previous_clearance_m, clearance, segment_speed_mps,
-                                   dynamics.dt_s, risk.critical_distance_m,
-                                   risk.obstacle_approach_response_time_s,
-                                   risk.obstacle_approach_deceleration_mps2);
-    previous_clearance_m = clearance;
+        dynamics.dt_s * stoppingClearanceDeficitM2(
+                            clearance, segment_speed_mps, risk.critical_distance_m,
+                            risk.obstacle_approach_response_time_s,
+                            risk.obstacle_approach_deceleration_mps2);
     const float target_elapsed_s = static_cast<float>(step + 1U) * dynamics.dt_s;
     const float target_distance =
         moving_target_enabled
@@ -589,7 +582,6 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
       costs.cooperative_maneuver_preference_weight * dynamics.dt_s *
           maneuver_preference_cost +
       costs.planning_exposure_weight * planning_m +
-      costs.critical_clearance_proximity_weight * critical_clearance_proximity_s +
       costs.obstacle_approach_weight * obstacle_approach_m2_s +
       costs.terminal_weight * terminal_distance;
   critical_exposure[rollout] = critical_m;

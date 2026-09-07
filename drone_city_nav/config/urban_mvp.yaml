@@ -244,20 +244,20 @@ production_mppi_node:
     # raw-valid passages occupied, which leaves the update hovering; the raw
     # finite-path validators keep the hard authority, so the gate stays off.
     mppi_body_collision_gate_enabled: false
-    # Squared depth into the critical band, charged per second. It is monotone
-    # in clearance and prices depth, not motion.
-    critical_clearance_proximity_weight: 4000.0
     # Squared shortfall, in metres, between the clearance a rollout keeps to
-    # known occupied evidence and the clearance it needs to stop before it
-    # (critical distance + approach speed * response time + braking distance).
-    # This is the stopping law along the rollout: the same law the speed
-    # policy's clearance limiter applies, so the optimiser and the reference
-    # speed answer to one notion of "too close, too fast". What used to sit
-    # beside it — a flat 2000 per metre *travelled* inside the critical band —
-    # priced motion itself: in a 4.4 m corridor the whole section is inside the
-    # band, and a metre flown through it cost two orders of magnitude more than
-    # the progress it earned, so the weighted update converged on standing
-    # still. Unknown space carries no clearance and no approach cost.
+    # known occupied evidence and the clearance its own speed needs to stop
+    # within (critical distance + speed * response time + braking distance).
+    # This is the only clearance charge a rollout carries, and the speed
+    # policy's clearance limiter reads the same expression in the other
+    # direction, so the optimiser and the reference speed cannot disagree about
+    # what "too close, too fast" means. Two charges used to sit here instead: a
+    # flat 2000 per metre *travelled* inside the critical band, which priced
+    # motion itself — in a 4.4 m corridor the whole section is inside the band
+    # and a metre of flight cost two orders of magnitude more than the progress
+    # it earned, so the weighted update converged on standing still — and a
+    # band-normalised squared depth, which priced position without regard to
+    # speed and so said nothing about running fast along a wall. Unknown space
+    # carries no clearance and no cost.
     obstacle_approach_weight: 1000.0
     obstacle_approach_response_time_s: 0.25
     obstacle_approach_deceleration_mps2: 4.0
@@ -465,11 +465,13 @@ production_mppi_node:
     # The feasibility-first search tries the direct raw connector to the goal
     # only from nodes within this reach.
     persistent_planner_feasibility_goal_connector_reach_m: 40.0
-    # The feasibility-first search ranks its edges by raw clearance like the
-    # D* search but derives clearances only within this reach: enough to keep
-    # the first route's body out of the execution critical band (1 m plus the
-    # footprint) without the full 6 m reach on every explored node.
-    persistent_planner_feasibility_clearance_ranking_distance_m: 2.0
+    # The feasibility-first search ranks its edges by raw clearance like the D*
+    # search. A short reach only sees the execution critical band, so a route
+    # that clears the band by a centimetre ranks as well as one down the middle
+    # of a corridor, and most of the routes the vehicle flew came from this
+    # branch. It now derives clearances over the same reach D* uses, so both
+    # branches rank a route by the same notion of "away from the walls".
+    persistent_planner_feasibility_clearance_ranking_distance_m: 6.0
     persistent_planner_maximum_expansions_per_update: 200000
     persistent_planner_maximum_incremental_changed_voxels: 32768
     persistent_planner_maximum_extracted_path_nodes: 8192

@@ -61,18 +61,19 @@ struct CostConfig {
   float cooperative_maneuver_preference_weight{1.5F};
   float terminal_weight{2.0F};
   float planning_exposure_weight{2.0F};
-  // How deep into the critical band a rollout goes, charged per second, and
-  // the stopping-clearance shortfall along it. Both are monotone in clearance
-  // and neither prices motion as such.
+  // The one clearance charge a rollout carries: the squared shortfall between
+  // the clearance it keeps and the clearance its own speed needs to stop
+  // within. It is the same law the speed policy's clearance limiter reads in
+  // the other direction, so the optimiser and the reference speed cannot
+  // disagree about what "too close, too fast" means.
   //
-  // What used to sit beside them — a flat charge per metre *travelled* inside
-  // the critical band — did price motion: a metre flown through a corridor
-  // narrower than the band cost two orders of magnitude more than the progress
-  // it earned, so the weighted update converged on standing still and the
-  // vehicle was carried by the deterministic route candidate and by liveness
-  // recovery instead. Distance inside the band is still measured, for the risk
-  // tier and diagnostics; it no longer prices a rollout.
-  float critical_clearance_proximity_weight{400.0F};
+  // Two charges used to sit here instead. A flat price per metre *travelled*
+  // inside the critical band priced motion itself: in a corridor narrower than
+  // the band a metre of flight cost two orders of magnitude more than the
+  // progress it earned, and the weighted update converged on standing still. A
+  // band-normalised squared depth priced position without regard to speed, so
+  // it said nothing about running fast along a wall. Distance inside the band
+  // is still measured, for the risk tier and diagnostics.
   float obstacle_approach_weight{40.0F};
   float temperature{8.0F};
   // The softmax temperature grows with the mean feasible cost excess above the

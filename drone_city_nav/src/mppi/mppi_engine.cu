@@ -823,8 +823,6 @@ public:
         selected_evaluation.route_terminal_nominal_prefix_control_count;
     result.critical_exposure_m = metrics.critical_exposure_m;
     result.planning_exposure_m = metrics.planning_exposure_m;
-    result.critical_clearance_proximity_s =
-        metrics.costs.critical_clearance_proximity_s;
     result.obstacle_approach_m2_s = metrics.costs.obstacle_approach_m2_s;
     result.minimum_esdf_distance_m = metrics.minimum_clearance_m;
     result.minimum_target_separation_m = metrics.minimum_target_separation_m;

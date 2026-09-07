@@ -253,7 +253,6 @@ void ProductionMppiNode::processDiagnostics(
        << result.route_terminal_nominal_prefix_control_count
        << " critical_exposure_m=" << result.critical_exposure_m
        << " planning_exposure_m=" << result.planning_exposure_m
-       << " critical_clearance_proximity_s=" << result.critical_clearance_proximity_s
        << " obstacle_approach_m2_s=" << result.obstacle_approach_m2_s
        << " feasible_available="
        << (result.feasibility_contract.available ? "true" : "false")
@@ -651,8 +650,6 @@ void ProductionMppiNode::processDiagnostics(
          << ",\"post_update_backtrack_ratio\":" << result.post_update_backtrack_ratio
          << ",\"critical_exposure_m\":" << result.critical_exposure_m
          << ",\"planning_exposure_m\":" << result.planning_exposure_m
-         << ",\"critical_clearance_proximity_s\":"
-         << result.critical_clearance_proximity_s
          << ",\"obstacle_approach_m2_s\":" << result.obstacle_approach_m2_s
          << ",\"head_progress_m\":" << result.head_progress_m
          << ",\"terminal_progress_m\":" << result.terminal_progress_m

@@ -120,8 +120,6 @@ bool benchmarkConfigIsValid(const BenchmarkConfig& config) noexcept {
          config.costs.overspeed_weight >= 0.0F &&
          std::isfinite(config.costs.planning_exposure_weight) &&
          config.costs.planning_exposure_weight >= 0.0F &&
-         std::isfinite(config.costs.critical_clearance_proximity_weight) &&
-         config.costs.critical_clearance_proximity_weight >= 0.0F &&
          std::isfinite(config.costs.obstacle_approach_weight) &&
          config.costs.obstacle_approach_weight >= 0.0F &&
          std::isfinite(config.costs.peer_separation_weight) &&
@@ -250,7 +248,6 @@ RolloutMetrics simulateReference(
     trace->horizon.push_back(state);
   }
   Control previous = previous_applied_control;
-  float previous_clearance_m = std::numeric_limits<float>::infinity();
   const float target_z_m = fixed_target_z_m.value_or(initial_state.z);
   const auto fixedTargetDistance = [&](const State& sample) noexcept {
     return std::hypot(std::hypot(target_x_m - sample.x, target_y_m - sample.y),
@@ -314,20 +311,15 @@ RolloutMetrics simulateReference(
     if (known_clearance && clearance < risk.critical_distance_m) {
       metrics.worst_tier = std::max(metrics.worst_tier, RiskTier::kCritical);
       metrics.critical_exposure_m += segment_m;
-      metrics.costs.critical_clearance_proximity_s +=
-          dynamics.dt_s *
-          criticalClearanceProximitySeverity(clearance, risk.critical_distance_m);
     } else if (known_clearance && clearance < risk.preferred_distance_m) {
       metrics.worst_tier = std::max(metrics.worst_tier, RiskTier::kPlanning);
       metrics.planning_exposure_m += segment_m;
     }
     metrics.costs.obstacle_approach_m2_s +=
-        dynamics.dt_s *
-        obstacleApproachSeverityM2(previous_clearance_m, clearance, segment_speed_mps,
-                                   dynamics.dt_s, risk.critical_distance_m,
-                                   risk.obstacle_approach_response_time_s,
-                                   risk.obstacle_approach_deceleration_mps2);
-    previous_clearance_m = clearance;
+        dynamics.dt_s * stoppingClearanceDeficitM2(
+                            clearance, segment_speed_mps, risk.critical_distance_m,
+                            risk.obstacle_approach_response_time_s,
+                            risk.obstacle_approach_deceleration_mps2);
 
     const float target_distance =
         moving_target.has_value()
@@ -439,8 +431,6 @@ RolloutMetrics simulateReference(
       costs.yaw_change_weight * metrics.costs.yaw_change +
       costs.control_effort_weight * dynamics.dt_s * metrics.costs.control_effort +
       costs.planning_exposure_weight * metrics.planning_exposure_m +
-      costs.critical_clearance_proximity_weight *
-          metrics.costs.critical_clearance_proximity_s +
       costs.obstacle_approach_weight * metrics.costs.obstacle_approach_m2_s +
       dynamics.dt_s * metrics.costs.dynamic_aircraft_survival +
       costs.cooperative_maneuver_preference_weight * dynamics.dt_s *

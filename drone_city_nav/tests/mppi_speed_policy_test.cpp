@@ -119,7 +119,12 @@ TEST(MppiSpeedPolicyTest,
   const MppiSpeedPolicyResult beside = evaluateMppiSpeedPolicy(config, input);
   EXPECT_EQ(beside.active_limiter, MppiSpeedLimiter::kClearance);
   EXPECT_STREQ(mppiSpeedLimiterName(beside.active_limiter), "clearance");
-  EXPECT_NEAR(beside.clearance_limit_mps, 2.0 / 0.5, 1.0e-6);
+  // Two laws answer for the tight point and the tighter one wins. The tube
+  // admits 2.0 / 0.5 = 4 m/s; the stopping law, with a 1 m margin, a 0.5 s
+  // response and 4 m/s^2, admits sqrt((4*0.5)^2 + 2*4*(2 - 1)) - 4*0.5.
+  const double stopping_speed_mps = std::sqrt(4.0 + 8.0) - 2.0;
+  EXPECT_LT(stopping_speed_mps, 2.0 / 0.5);
+  EXPECT_NEAR(beside.clearance_limit_mps, stopping_speed_mps, 1.0e-6);
   EXPECT_DOUBLE_EQ(beside.reference_speed_mps, beside.clearance_limit_mps);
 
   input.executed_horizon_clearance = executedClearance(0.0, 0.0);
@@ -137,8 +142,10 @@ TEST(MppiSpeedPolicyTest, ATightPointFarAheadOnlyHasToBeReachedSlowly) {
   const MppiSpeedPolicyConfig config = clearanceLimiterConfig();
   MppiSpeedPolicyInput input;
   input.terminal_goal_limit_enabled = false;
-  // The tube admits 1 m/s where the horizon grazes an obstacle fifteen metres
-  // ahead. Braking at 4 m/s^2 the vehicle may still be doing 11 m/s now.
+  // Both laws put the admissible speed at the floor where the horizon grazes
+  // an obstacle fifteen metres ahead: the stopping law admits nothing at a
+  // clearance below its margin. Braking at 4 m/s^2 the vehicle may still be
+  // doing 11 m/s now.
   input.executed_horizon_clearance = executedClearance(15.0, 0.5);
 
   const MppiSpeedPolicyResult result = evaluateMppiSpeedPolicy(config, input);

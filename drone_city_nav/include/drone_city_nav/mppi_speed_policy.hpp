@@ -47,6 +47,10 @@ struct MppiSpeedPolicyConfig {
   // authority there. Both mirror the route tube configuration.
   double clearance_response_time_s{0.15};
   double clearance_minimum_progress_speed_mps{1.0};
+  // Margin the stopping law keeps beyond the body when it decides how fast the
+  // vehicle may be at a constrained point. It is the controller's critical
+  // distance, so the reference speed and the rollout cost read one law.
+  double stopping_clearance_margin_m{1.0};
   // The reference speed may rise no faster than this. Every limiter can still
   // cut the reference immediately — a cap is always allowed to bite at once —
   // but a limit that lifts as the horizon shifts must not snap the reference

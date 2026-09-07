@@ -120,24 +120,19 @@ TEST_F(ProductionMppiConfigTest, DisablesOptionalClearanceCostsAtComposition) {
   const auto disabled_node =
       makeNode("production_mppi_config_clearance_disabled",
                {rclcpp::Parameter{"planning_exposure_weight", 7.0},
-                rclcpp::Parameter{"critical_clearance_proximity_weight", 9.0},
                 rclcpp::Parameter{"obstacle_approach_weight", 10.0}});
   const auto enabled_node =
       makeNode("production_mppi_config_clearance_enabled",
                {rclcpp::Parameter{"clearance_costs_enabled", true},
                 rclcpp::Parameter{"planning_exposure_weight", 7.0},
-                rclcpp::Parameter{"critical_clearance_proximity_weight", 9.0},
                 rclcpp::Parameter{"obstacle_approach_weight", 10.0}});
 
   const ProductionMppiConfig disabled = declareProductionMppiConfig(*disabled_node);
   const ProductionMppiConfig enabled = declareProductionMppiConfig(*enabled_node);
 
   EXPECT_FLOAT_EQ(disabled.control.mppi.costs.planning_exposure_weight, 0.0F);
-  EXPECT_FLOAT_EQ(disabled.control.mppi.costs.critical_clearance_proximity_weight,
-                  0.0F);
   EXPECT_FLOAT_EQ(disabled.control.mppi.costs.obstacle_approach_weight, 0.0F);
   EXPECT_FLOAT_EQ(enabled.control.mppi.costs.planning_exposure_weight, 7.0F);
-  EXPECT_FLOAT_EQ(enabled.control.mppi.costs.critical_clearance_proximity_weight, 9.0F);
   EXPECT_FLOAT_EQ(enabled.control.mppi.costs.obstacle_approach_weight, 10.0F);
 }
 

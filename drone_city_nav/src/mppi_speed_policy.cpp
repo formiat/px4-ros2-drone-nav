@@ -1,5 +1,7 @@
 #include "drone_city_nav/mppi_speed_policy.hpp"
 
+#include "drone_city_nav/mppi/mppi_clearance_cost.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -86,6 +88,7 @@ void validateConfig(const MppiSpeedPolicyConfig& config) {
       !(config.maximum_target_lookahead_m >= config.minimum_target_lookahead_m) ||
       !(config.clearance_response_time_s > 0.0) ||
       !(config.clearance_minimum_progress_speed_mps >= 0.0) ||
+      !(config.stopping_clearance_margin_m >= 0.0) ||
       !(config.reference_speed_rise_mps2 > 0.0)) {
     throw std::invalid_argument{"invalid MPPI speed policy configuration"};
   }
@@ -178,14 +181,29 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
     // the obstacle, the reference jumped back, and the longer horizon found
     // the obstacle again.
     const ExecutedHorizonClearance3D& clearance = *input.executed_horizon_clearance;
-    const double tube_speed_mps =
+    // Two laws answer "how fast may the vehicle be at that point", and the
+    // tighter one wins. The tracking-error tube asks that the error the
+    // controller can accumulate within its response time fit inside the
+    // clearance. The stopping law asks that the vehicle be able to stop within
+    // it — the same expression the rollout cost charges its shortfall against,
+    // read in the other direction, so the optimiser and the reference speed
+    // cannot disagree about what "too close, too fast" means.
+    const double tube_speed_mps = std::max(0.0, clearance.constrained_clearance_m) /
+                                  config.clearance_response_time_s;
+    const double stopping_speed_mps =
+        static_cast<double>(mppi::stoppingAdmissibleSpeedMps(
+            static_cast<float>(std::max(0.0, clearance.constrained_clearance_m)),
+            static_cast<float>(config.stopping_clearance_margin_m),
+            static_cast<float>(config.clearance_response_time_s),
+            static_cast<float>(
+                config.stopping_capability.guaranteed_horizontal_deceleration_mps2)));
+    const double admissible_speed_mps =
         std::max(config.clearance_minimum_progress_speed_mps,
-                 std::max(0.0, clearance.constrained_clearance_m) /
-                     config.clearance_response_time_s);
-    result.clearance_limit_mps =
-        std::max(tube_speed_mps,
-                 stoppingLimitedSpeed(clearance.distance_to_constraint_m,
-                                      tube_speed_mps, config.stopping_capability));
+                 std::min(tube_speed_mps, stopping_speed_mps));
+    result.clearance_limit_mps = std::max(
+        admissible_speed_mps,
+        stoppingLimitedSpeed(clearance.distance_to_constraint_m, admissible_speed_mps,
+                             config.stopping_capability));
   }
   if (input.route_constraint_speed_limit_mps.has_value()) {
     result.route_constraint_limit_mps =

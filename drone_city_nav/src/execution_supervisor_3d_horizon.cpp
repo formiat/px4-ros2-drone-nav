@@ -67,29 +67,16 @@ timedExecutionPathPoints(const FiniteExecutionEvidenceView3D& view) {
   return points;
 }
 
-// The part of a published horizon the vehicle has already flown will not be
-// flown again, so `now_ns` decides how much of it this revalidation still has
-// to sweep. Sweeping the whole horizon on every commit was the second largest
-// cost of the planning cycle, and it could also revoke a perfectly executable
-// horizon for evidence that appeared behind the vehicle.
-[[nodiscard]] std::size_t
-flownLeadingPointCount(const FiniteExecutionEvidenceView3D& view,
-                       const std::int64_t now_ns) noexcept {
-  if (view.control_interval_ns <= 0 || view.valid_from_ns <= 0 ||
-      now_ns <= view.valid_from_ns || view.horizon == nullptr ||
-      view.horizon->states.size() < 2U) {
-    return 0U;
-  }
-  const std::int64_t elapsed_ns = now_ns - view.valid_from_ns;
-  return std::min(static_cast<std::size_t>(elapsed_ns / view.control_interval_ns),
-                  view.horizon->states.size() - 1U);
-}
-
+// Discharging the already-flown prefix of a published horizon from this
+// revalidation was tried and withdrawn. Elapsed time says which point the
+// trajectory is at, not which point the vehicle is at: a vehicle behind its
+// trajectory has not yet reached points the clock has passed, and skipping
+// their sweep would leave new evidence on ground it is still going to cover
+// unchecked. The commit revalidation sweeps the whole horizon.
 [[nodiscard]] bool revalidateFiniteExecution(
     const FiniteExecutionEvidenceView3D& view,
     const std::shared_ptr<const VersionedObservedRawWorld3D>& latest_raw,
-    const std::shared_ptr<const VersionedLatestLidarEvidence3D>& latest_lidar,
-    const std::int64_t now_ns) {
+    const std::shared_ptr<const VersionedLatestLidarEvidence3D>& latest_lidar) {
   if (view.horizon == nullptr || view.execution_input == nullptr ||
       view.policy == nullptr || !view.policy->valid() || latest_lidar == nullptr ||
       !latest_lidar->valid() || view.control_interval_ns <= 0 ||
@@ -136,16 +123,14 @@ flownLeadingPointCount(const FiniteExecutionEvidenceView3D& view,
       .terminal_boundary = std::nullopt,
   };
   return validateCompleteFiniteExecutionPath3D(
-             points, view.execution_input->previousControl(), world,
-             flownLeadingPointCount(view, now_ns))
+             points, view.execution_input->previousControl(), world)
       .accepted();
 }
 
 [[nodiscard]] bool revalidateFiniteExecution(
     const ExecutionPlan3D& snapshot,
     const std::shared_ptr<const VersionedObservedRawWorld3D>& latest_raw,
-    const std::shared_ptr<const VersionedLatestLidarEvidence3D>& latest_lidar,
-    const std::int64_t now_ns) {
+    const std::shared_ptr<const VersionedLatestLidarEvidence3D>& latest_lidar) {
   if (const FiniteExecutionState3D* const execution = snapshot.finiteExecution()) {
     const FiniteExecutionState3D* const braking = snapshot.brakingFallback();
     if (braking == nullptr) {
@@ -156,8 +141,8 @@ flownLeadingPointCount(const FiniteExecutionEvidenceView3D& view,
     const std::optional<FiniteExecutionEvidenceView3D> fallback =
         finiteExecutionEvidenceView(*braking);
     return command.has_value() && fallback.has_value() &&
-           revalidateFiniteExecution(*command, latest_raw, latest_lidar, now_ns) &&
-           revalidateFiniteExecution(*fallback, latest_raw, latest_lidar, now_ns);
+           revalidateFiniteExecution(*command, latest_raw, latest_lidar) &&
+           revalidateFiniteExecution(*fallback, latest_raw, latest_lidar);
   }
   const DirectTrackingFiniteExecution3D* const direct =
       snapshot.directTrackingExecution();
@@ -165,7 +150,7 @@ flownLeadingPointCount(const FiniteExecutionEvidenceView3D& view,
     const std::optional<FiniteExecutionEvidenceView3D> view =
         finiteExecutionEvidenceView(*direct);
     return view.has_value() &&
-           revalidateFiniteExecution(*view, latest_raw, latest_lidar, now_ns);
+           revalidateFiniteExecution(*view, latest_raw, latest_lidar);
   }
   // A stop carries no braking fallback of its own: it is the fallback, and its
   // evidence is the same swept body against the newest world.
@@ -173,7 +158,7 @@ flownLeadingPointCount(const FiniteExecutionEvidenceView3D& view,
     const std::optional<FiniteExecutionEvidenceView3D> view =
         finiteExecutionEvidenceView(*stop);
     return view.has_value() &&
-           revalidateFiniteExecution(*view, latest_raw, latest_lidar, now_ns);
+           revalidateFiniteExecution(*view, latest_raw, latest_lidar);
   }
   // A stationary hold executes no path; its evidence on the newest world is
   // the body at the hold position staying clear of raw occupancy. Without this
@@ -695,8 +680,7 @@ ExecutionSupervisor3D::commitHorizon(ExecutionHorizonCommitRequest3D request) {
       result.publication_currentness ==
           ExecutionPublicationCurrentnessStatus3D::kRevalidationRequired &&
       revalidateFiniteExecution(*publication_plan, request.current_observed_raw_world,
-                                request.current_lidar_evidence,
-                                request.publication_now_ns);
+                                request.current_lidar_evidence);
   if (result.publication_currentness !=
           ExecutionPublicationCurrentnessStatus3D::kCurrent &&
       !result.latest_evidence_revalidated) {

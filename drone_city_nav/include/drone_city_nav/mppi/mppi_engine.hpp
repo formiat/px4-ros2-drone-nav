@@ -156,7 +156,6 @@ struct MppiTickResult {
   std::size_t route_terminal_nominal_prefix_control_count{0U};
   float critical_exposure_m{0.0F};
   float planning_exposure_m{0.0F};
-  float critical_clearance_proximity_s{0.0F};
   float obstacle_approach_m2_s{0.0F};
   float minimum_esdf_distance_m{0.0F};
   float head_progress_m{0.0F};

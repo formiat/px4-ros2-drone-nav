@@ -10,16 +10,47 @@ namespace drone_city_nav::mppi {
 #define DRONE_CITY_NAV_MPPI_CLEARANCE_HOST_DEVICE
 #endif
 
+// The clearance a body moving at `speed_mps` needs before occupied evidence:
+// the margin it keeps, the distance it covers while it reacts, and its braking
+// distance.
 [[nodiscard]] DRONE_CITY_NAV_MPPI_CLEARANCE_HOST_DEVICE inline float
-criticalClearanceProximitySeverity(const float clearance_m,
-                                   const float critical_distance_m) noexcept {
-  if (!(critical_distance_m > 0.0F) || !(clearance_m < critical_distance_m)) {
+requiredStoppingClearanceM(const float speed_mps, const float margin_m,
+                           const float response_time_s,
+                           const float deceleration_mps2) noexcept {
+  const float speed = speed_mps > 0.0F ? speed_mps : 0.0F;
+  if (!(deceleration_mps2 > 0.0F)) {
+    return margin_m;
+  }
+  return margin_m + speed * response_time_s +
+         speed * speed / (2.0F * deceleration_mps2);
+}
+
+// The inverse: the fastest a body may travel and still have `clearance_m`
+// satisfy requiredStoppingClearanceM. This and the deficit below are one law
+// read in two directions — the speed policy reads it as a speed cap, the
+// rollout cost reads it as a shortfall — so the reference speed and the
+// optimiser cannot disagree about what "too close, too fast" means.
+[[nodiscard]] DRONE_CITY_NAV_MPPI_CLEARANCE_HOST_DEVICE inline float
+stoppingAdmissibleSpeedMps(const float clearance_m, const float margin_m,
+                           const float response_time_s,
+                           const float deceleration_mps2) noexcept {
+  if (!(deceleration_mps2 > 0.0F)) {
     return 0.0F;
   }
-  const float bounded_clearance_m = clearance_m > 0.0F ? clearance_m : 0.0F;
-  const float normalized_deficit =
-      (critical_distance_m - bounded_clearance_m) / critical_distance_m;
-  return normalized_deficit * normalized_deficit;
+  const float usable_m = clearance_m - margin_m;
+  if (!(usable_m > 0.0F)) {
+    return 0.0F;
+  }
+  const float latency_speed = deceleration_mps2 * response_time_s;
+#if defined(__CUDA_ARCH__)
+  const float root =
+      sqrtf(latency_speed * latency_speed + 2.0F * deceleration_mps2 * usable_m);
+#else
+  const float root =
+      std::sqrt(latency_speed * latency_speed + 2.0F * deceleration_mps2 * usable_m);
+#endif
+  const float speed = root - latency_speed;
+  return speed > 0.0F ? speed : 0.0F;
 }
 
 [[nodiscard]] DRONE_CITY_NAV_MPPI_CLEARANCE_HOST_DEVICE inline bool
@@ -31,31 +62,23 @@ mppiClearanceFinite(const float value) noexcept {
 #endif
 }
 
+// The squared shortfall between the clearance a rollout keeps and the
+// clearance its own speed needs to stop within. Charging it at the rollout's
+// speed rather than only at the rate it closes on the obstacle is what makes
+// it the same law the speed policy applies: running fast along a wall is
+// priced even when the wall never gets nearer, which is the case a
+// closing-rate law prices at nothing.
 [[nodiscard]] DRONE_CITY_NAV_MPPI_CLEARANCE_HOST_DEVICE inline float
-obstacleApproachSeverityM2(const float previous_clearance_m, const float clearance_m,
-                           const float segment_speed_mps, const float dt_s,
-                           const float minimum_clearance_m, const float response_time_s,
+stoppingClearanceDeficitM2(const float clearance_m, const float speed_mps,
+                           const float margin_m, const float response_time_s,
                            const float deceleration_mps2) noexcept {
-  if (!mppiClearanceFinite(previous_clearance_m) || !mppiClearanceFinite(clearance_m) ||
-      !mppiClearanceFinite(segment_speed_mps) || !(dt_s > 0.0F) ||
-      !(minimum_clearance_m >= 0.0F) || !(response_time_s >= 0.0F) ||
+  if (!mppiClearanceFinite(clearance_m) || !mppiClearanceFinite(speed_mps) ||
+      !(margin_m >= 0.0F) || !(response_time_s >= 0.0F) ||
       !(deceleration_mps2 > 0.0F)) {
     return 0.0F;
   }
-  const float clearance_decrease_m = previous_clearance_m - clearance_m;
-  if (!(clearance_decrease_m > 0.0F)) {
-    return 0.0F;
-  }
-  const float estimated_approach_speed_mps = clearance_decrease_m / dt_s;
-  const float bounded_segment_speed_mps =
-      segment_speed_mps > 0.0F ? segment_speed_mps : 0.0F;
-  const float approach_speed_mps =
-      estimated_approach_speed_mps < bounded_segment_speed_mps
-          ? estimated_approach_speed_mps
-          : bounded_segment_speed_mps;
-  const float required_clearance_m =
-      minimum_clearance_m + approach_speed_mps * response_time_s +
-      approach_speed_mps * approach_speed_mps / (2.0F * deceleration_mps2);
+  const float required_clearance_m = requiredStoppingClearanceM(
+      speed_mps, margin_m, response_time_s, deceleration_mps2);
   const float shortfall_m = required_clearance_m - clearance_m;
   return shortfall_m > 0.0F ? shortfall_m * shortfall_m : 0.0F;
 }

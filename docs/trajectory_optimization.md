@@ -210,23 +210,30 @@ each step with a fresh burst of acceleration.
 
 ## Clearance Costs And Control Selection
 
-A rollout's clearance charges are monotone in clearance and price depth and
-approach, never motion:
+A rollout carries exactly one clearance charge, `obstacle_approach_weight`: the
+squared shortfall between the clearance it keeps to known occupied evidence and
+the clearance its own speed needs to stop within — the margin it keeps, the
+distance it covers while it reacts, and its braking distance.
 
-- `critical_clearance_proximity_weight` grows with the squared depth into the
-  critical band, charged per second.
-- `obstacle_approach_weight` prices the stopping law along the rollout: the
-  squared shortfall between the clearance kept to known occupied evidence and
-  the clearance needed to stop before it. This is the same law the speed
-  policy's `clearance` limiter applies, so the optimiser and the reference
-  speed answer to one notion of "too close, too fast".
+That expression is one law read in two directions. The rollout cost reads it as
+a shortfall; the speed policy's `clearance` limiter reads its inverse,
+`stoppingAdmissibleSpeedMps`, as a speed cap at the first constrained point.
+The optimiser and the reference speed therefore cannot disagree about what "too
+close, too fast" means. The limiter additionally keeps the tracking-error tube
+cap and takes whichever of the two is tighter.
 
-There is deliberately no charge per metre travelled inside the critical band.
-In a corridor narrower than the band the whole section is inside it, and a flat
-charge per metre priced a metre of flight far above the progress it earned; the
-weighted update converged on standing still and the vehicle was carried by the
-deterministic route candidate and by liveness recovery instead. Distance inside
-the band is still measured for the risk tier and diagnostics.
+Two charges used to sit here instead, and both are gone:
+
+- A flat price per metre *travelled* inside the critical band priced motion
+  itself. In a corridor narrower than the band the whole section is inside it,
+  and a metre of flight cost two orders of magnitude more than the progress it
+  earned; the weighted update converged on standing still and the vehicle was
+  carried by the deterministic route candidate and by liveness recovery.
+- A band-normalised squared depth priced position without regard to speed, so
+  it said nothing about running fast along a wall that never gets nearer —
+  which the stopping law prices and a closing-rate law does not.
+
+Distance inside the band is still measured for the risk tier and diagnostics.
 
 With that spread gone, the softmax temperature adapts again
 (`mppi_adaptive_temperature_cost_fraction`): a fixed temperature against a

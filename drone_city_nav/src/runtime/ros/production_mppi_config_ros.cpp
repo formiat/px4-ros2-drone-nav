@@ -754,18 +754,13 @@ void ProductionMppiConfigLoader::declareControl() {
       static_cast<float>(declare<double>("route_progress_integral_weight", 2.0));
   const float planning_exposure_weight =
       static_cast<float>(declare<double>("planning_exposure_weight", 2.0));
-  const float critical_clearance_proximity_weight =
-      static_cast<float>(declare<double>("critical_clearance_proximity_weight", 400.0));
   const float obstacle_approach_weight =
       static_cast<float>(declare<double>("obstacle_approach_weight", 40.0));
   if (config_.planning.optional_constraints.clearance_costs_enabled) {
     mppi.costs.planning_exposure_weight = planning_exposure_weight;
-    mppi.costs.critical_clearance_proximity_weight =
-        critical_clearance_proximity_weight;
     mppi.costs.obstacle_approach_weight = obstacle_approach_weight;
   } else {
     mppi.costs.planning_exposure_weight = 0.0F;
-    mppi.costs.critical_clearance_proximity_weight = 0.0F;
     mppi.costs.obstacle_approach_weight = 0.0F;
   }
   mppi.horizon_sampling.full_rate_duration_s =
@@ -783,6 +778,10 @@ void ProductionMppiConfigLoader::declareControl() {
       static_cast<float>(declare<double>("overspeed_weight", 200.0));
   mppi.risk.critical_distance_m =
       static_cast<float>(declare<double>("critical_distance_m", 1.0));
+  // One law, one margin: the reference speed and the rollout cost both measure
+  // the stopping clearance from the controller's critical distance.
+  control.speed_policy.stopping_clearance_margin_m =
+      static_cast<double>(mppi.risk.critical_distance_m);
   mppi.risk.preferred_distance_m =
       static_cast<float>(declare<double>("preferred_distance_m", 6.0));
   mppi.risk.obstacle_approach_response_time_s =
