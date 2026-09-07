@@ -151,20 +151,26 @@ evidence therefore needs a sparse, chunk-local node set, which is a redesign of
 the lattice indexing together with the edge cache, the occupied-change stamping
 and the D* label storage.
 
-Two consequences of the sparse lattice are addressed from other directions
-instead: a vehicle in a column that carries no node leaves through a refined
-free waypoint (below), and a route whose nodes land against a jamb has its
-vertices slid to the middle of the passage before it is published. Neither
-gives the search finer *routing* through a passage; that remains the open item.
+Finer routing therefore comes from refining the *edges* rather than the nodes.
+A level-zero edge whose straight node-to-node segment fails its sweep is not
+blocked outright: the search probes `persistent_planner_edge_refinement_offsets`
+points across the edge, perpendicular to it in the horizontal plane, for a
+waypoint that clears the body on both legs. Both legs are validated by the
+ordinary raw rule, so the hard criterion of what the body may touch is
+unchanged; the refinement widens what the graph can express. The edge keeps
+its straight-line cost and the waypoint is carried in every extracted path —
+the D* path, the feasibility path and the execution-time refiner's — so the
+route the executor validates is the one the search priced. A refined edge is
+cached like any other and is re-examined when occupied evidence lands on it.
+`persistent_planner_maximum_edge_refinement_probes` bounds the sweeps one
+update may spend on refinement: near occupied evidence most edges fail their
+straight sweep, and unbounded the refinement would take the whole compute
+budget. Zero offsets disable it.
 
-Refining the *edges* instead of the nodes — admitting a level-zero edge whose
-straight segment is blocked when a short step off it clears the body on both
-legs — was built and withdrawn. It made more of the graph traversable, as
-intended, but it also changed which routes the existing planner acceptance
-scenarios produce, and two of them stopped publishing a route at all for
-reasons that were not established. Edge traversability is the rule the whole
-route contract rests on; a change to it that is not understood does not belong
-in the tree, whatever its intent.
+The two other consequences of the sparse lattice are addressed as before: a
+vehicle in a column that carries no node leaves through a refined free
+waypoint (below), and a route whose nodes land against a jamb has its vertices
+slid to the middle of the passage before it is published.
 
 ## Leaving The Vehicle's Own Position
 

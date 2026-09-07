@@ -68,6 +68,15 @@ struct PersistentPlannerConfig3D {
   double minimum_continuous_turn_alignment{0.7071067811865476};
   double goal_tolerance_m{1.0};
   std::size_t connector_search_radius_cells{2U};
+  // How many offsets across a blocked level-zero edge the search probes for a
+  // waypoint that clears the body, and the total probes one update may spend.
+  // The lattice steps 2 m horizontally against a 0.25 m map, so a doorway can
+  // be wide enough for the body and still admit no straight node-to-node
+  // segment; without this the search cannot route through it at all. Both legs
+  // are validated by the ordinary raw rule, so the hard criterion is
+  // unchanged. Zero offsets disable the refinement.
+  std::size_t edge_refinement_offsets{3U};
+  std::size_t maximum_edge_refinement_probes{256U};
   // Subdivisions of one lattice cell the departure refinement probes when no
   // node in the connector radius is reachable in a single segment. Zero
   // disables the refinement, and start_unavailable is then terminal for as

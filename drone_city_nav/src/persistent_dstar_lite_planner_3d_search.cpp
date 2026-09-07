@@ -597,6 +597,14 @@ DStarLiteSession3D::extractPath(const Point3& exact_start, const Point3& exact_g
     node = *selected;
     adaptive_edges += lattice_->level(previous_node, node) > 0U ? 1U : 0U;
     visited.insert(node);
+    // An edge whose straight segment does not clear the body is traversable
+    // through a waypoint; the path has to carry it, or it describes a segment
+    // the body cannot fly.
+    if (const std::optional<Point3> waypoint =
+            lattice_->edgeWaypoint(previous_node, node);
+        waypoint.has_value() && distance3D(path.back(), *waypoint) > 1.0e-9) {
+      path.push_back(*waypoint);
+    }
     const Point3 point = lattice_->pointFor(node);
     if (distance3D(path.back(), point) > 1.0e-9) {
       path.push_back(point);

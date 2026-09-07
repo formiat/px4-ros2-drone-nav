@@ -296,6 +296,21 @@ public:
   [[nodiscard]] bool departureReachable(const Point3& start,
                                         const std::optional<Point3>& waypoint,
                                         const Point3& target) const;
+  // A short step off the straight segment between two node centres that clears
+  // the body on both legs, or nothing. The lattice steps 2 m horizontally
+  // against a 0.25 m map, so a doorway can be wide enough for the body and
+  // still admit no straight node-to-node segment. Both legs are validated by
+  // the ordinary raw rule, so this widens what the search can express, not
+  // what the body may touch.
+  [[nodiscard]] std::optional<Point3> refineBlockedEdge(PersistentPlannerNode3D first,
+                                                        PersistentPlannerNode3D second);
+  // The waypoint of a refined edge, for path extraction. Empty unless the
+  // edge's cached state still says refined.
+  [[nodiscard]] std::optional<Point3>
+  edgeWaypoint(PersistentPlannerNode3D first, PersistentPlannerNode3D second) const;
+  // Resets the per-update refinement probe budget.
+  void beginEdgeRefinementBudget() noexcept;
+  [[nodiscard]] bool edgeRefinementBudgetRemaining() const noexcept;
   [[nodiscard]] bool pointInsideFlightEnvelope(const Point3& point) const noexcept;
   [[nodiscard]] bool rawSegmentValid(const Point3& first, const Point3& second) const;
   [[nodiscard]] bool departureSegmentValid(const Point3& first,
@@ -460,6 +475,17 @@ private:
   // Adaptive (level > 0) edges are sparse and keep a keyed cache.
   std::unordered_map<PersistentPlannerEdge3D, double, PersistentPlannerEdge3DHash>
       adaptive_edge_cost_cache_;
+  // Level-zero edges whose straight segment does not clear the body but which
+  // a short step off it does. Only edges that failed the straight sweep are
+  // here, so the map stays small and lives near occupied evidence. The cached
+  // edge state, not this map, decides whether a waypoint is current.
+  std::unordered_map<PersistentPlannerEdge3D, Point3, PersistentPlannerEdge3DHash>
+      refined_edge_waypoints_;
+  // Refinement probes spent in the current update. Every edge that fails its
+  // straight sweep would otherwise pay for a fan of extra sweeps, and near
+  // occupied evidence most edges fail: unbounded, the refinement takes the
+  // whole compute budget and the search stops converging.
+  std::size_t edge_refinement_probes_{0U};
 
   struct CachedNodeClearance {
     double clearance_m{0.0};

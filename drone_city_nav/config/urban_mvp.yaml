@@ -518,6 +518,17 @@ production_mppi_node:
     # candidate turns the vehicle around and discards the motion it has; one
     # that continues the same heading needs no margin.
     persistent_planner_continuity_improvement_margin_s: 1.0
+    # The lattice steps 2 m horizontally against a 0.25 m map, so a 2.4 m
+    # doorway is wide enough for the 0.82 m envelope and still admits no
+    # straight node-to-node segment unless its centre happens to fall on the
+    # grid. When a level-zero edge fails its straight sweep the search probes
+    # this many offsets across it for a waypoint that clears the body on both
+    # legs; both legs are validated by the ordinary raw rule, so the hard
+    # criterion is unchanged. The probe budget bounds what one update spends:
+    # near occupied evidence most edges fail their straight sweep, and
+    # unbounded the refinement would take the whole compute budget.
+    persistent_planner_edge_refinement_offsets: 3
+    persistent_planner_maximum_edge_refinement_probes: 256
     persistent_planner_departure_refinement_subdivisions: 4
     persistent_planner_maximum_departure_refinement_probes: 512
     persistent_planner_clearance_centering_passes: 3

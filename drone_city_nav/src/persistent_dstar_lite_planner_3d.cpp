@@ -442,6 +442,7 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
       operation_started +
       std::chrono::duration_cast<std::chrono::steady_clock::duration>(
           std::chrono::duration<double, std::milli>{config_.maximum_compute_time_ms});
+  lattice_.beginEdgeRefinementBudget();
   const auto spatial_search_reserve =
       std::chrono::duration_cast<std::chrono::steady_clock::duration>(
           std::chrono::duration<double, std::milli>{

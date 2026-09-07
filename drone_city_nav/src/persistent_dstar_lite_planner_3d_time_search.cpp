@@ -176,6 +176,13 @@ void ExecutionTimeRefiner3D::seedIncumbent(const std::vector<Point3>& spatial_ro
     };
     const double transition = transitionCost(current, successor);
     if (!std::isfinite(transition)) {
+      // A refined edge carries a waypoint that is no lattice node; when its
+      // nearest node is not the next node on the route the leg is still
+      // priced by the edge itself, so the point contributes nothing here.
+      if (distance3D(lattice_->pointFor(position), spatial_path[index]) >
+          kDirectionEpsilon) {
+        continue;
+      }
       return;
     }
     cost += transition;
@@ -462,8 +469,18 @@ std::vector<Point3> ExecutionTimeRefiner3D::extractPath() {
       distance3D(path.back(), *request_.departure_waypoint) > kDirectionEpsilon) {
     path.push_back(*request_.departure_waypoint);
   }
-  for (const PersistentPlannerTimeState3D& state : states) {
-    const Point3 point = lattice_->pointFor(state.position);
+  for (std::size_t index = 0U; index < states.size(); ++index) {
+    // An edge whose straight segment does not clear the body is traversable
+    // through a waypoint; the path has to carry it.
+    if (index > 0U) {
+      if (const std::optional<Point3> waypoint = lattice_->edgeWaypoint(
+              states[index - 1U].position, states[index].position);
+          waypoint.has_value() &&
+          distance3D(path.back(), *waypoint) > kDirectionEpsilon) {
+        path.push_back(*waypoint);
+      }
+    }
+    const Point3 point = lattice_->pointFor(states[index].position);
     if (distance3D(path.back(), point) > kDirectionEpsilon) {
       path.push_back(point);
     }

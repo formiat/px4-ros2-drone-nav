@@ -38,6 +38,17 @@ constexpr double kGeometryTolerance{1.0e-9};
 constexpr unsigned kLevelZeroEdgeUnknown{0U};
 constexpr unsigned kLevelZeroEdgeClear{1U};
 constexpr unsigned kLevelZeroEdgeBlocked{2U};
+// The straight segment between two node centres does not clear the body, but a
+// short step off it does: the edge is traversable through a stored waypoint.
+// The lattice steps 2 m horizontally against a 0.25 m map, so a doorway can be
+// wide enough for the body and still admit no straight node-to-node segment
+// unless its centre happens to fall on the grid.
+//
+// The state is the single source of truth. The waypoint map is consulted only
+// while the state says refined, because a bulk clear or an occupied change can
+// overwrite the state without the map knowing, and a waypoint validated
+// against an older world must never reach a path.
+constexpr unsigned kLevelZeroEdgeRefined{3U};
 
 struct LevelZeroOffset3D {
   int x{0};
@@ -499,6 +510,92 @@ bool PlannerLattice3D::departureReachable(const Point3& start,
   return departureSegmentValid(start, *waypoint) && rawSegmentValid(*waypoint, target);
 }
 
+void PlannerLattice3D::beginEdgeRefinementBudget() noexcept {
+  edge_refinement_probes_ = 0U;
+}
+
+bool PlannerLattice3D::edgeRefinementBudgetRemaining() const noexcept {
+  return config_->edge_refinement_offsets == 0U ||
+         edge_refinement_probes_ < config_->maximum_edge_refinement_probes;
+}
+
+std::optional<Point3>
+PlannerLattice3D::refineBlockedEdge(const PersistentPlannerNode3D first,
+                                    const PersistentPlannerNode3D second) {
+  if (config_->edge_refinement_offsets == 0U || !edgeRefinementBudgetRemaining()) {
+    return std::nullopt;
+  }
+  const Point3 first_point = pointFor(first);
+  const Point3 second_point = pointFor(second);
+  const Vec3 along{second_point.x - first_point.x, second_point.y - first_point.y,
+                   second_point.z - first_point.z};
+  const double length =
+      std::sqrt(along.x * along.x + along.y * along.y + along.z * along.z);
+  if (!(length > 1.0e-6)) {
+    return std::nullopt;
+  }
+  const Vec3 unit{along.x / length, along.y / length, along.z / length};
+  // Two directions across the edge: one horizontal, one carrying whatever
+  // vertical freedom the edge leaves. A doorway is missed across the edge, not
+  // along it.
+  const double horizontal_length = std::hypot(unit.x, unit.y);
+  const Vec3 lateral =
+      horizontal_length > 1.0e-6
+          ? Vec3{-unit.y / horizontal_length, unit.x / horizontal_length, 0.0}
+          : Vec3{1.0, 0.0, 0.0};
+  const Vec3 vertical{lateral.y * unit.z - lateral.z * unit.y,
+                      lateral.z * unit.x - lateral.x * unit.z,
+                      lateral.x * unit.y - lateral.y * unit.x};
+  const Point3 middle{0.5 * (first_point.x + second_point.x),
+                      0.5 * (first_point.y + second_point.y),
+                      0.5 * (first_point.z + second_point.z)};
+  const auto offsets = static_cast<int>(config_->edge_refinement_offsets);
+  const double step_m =
+      config_->minimum_horizontal_step_m / static_cast<double>(offsets + 1);
+  // Nearest first: the shortest detour that clears the body wins.
+  for (int magnitude = 1; magnitude <= offsets; ++magnitude) {
+    const double distance_m = static_cast<double>(magnitude) * step_m;
+    for (const Vec3& axis : {lateral, vertical}) {
+      for (const double sign : {1.0, -1.0}) {
+        const Point3 waypoint{middle.x + sign * distance_m * axis.x,
+                              middle.y + sign * distance_m * axis.y,
+                              middle.z + sign * distance_m * axis.z};
+        if (!pointInsideFlightEnvelope(waypoint)) {
+          continue;
+        }
+        if (!edgeRefinementBudgetRemaining()) {
+          return std::nullopt;
+        }
+        ++edge_refinement_probes_;
+        if (rawSegmentValid(first_point, waypoint) &&
+            rawSegmentValid(waypoint, second_point)) {
+          return waypoint;
+        }
+      }
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<Point3>
+PlannerLattice3D::edgeWaypoint(const PersistentPlannerNode3D first,
+                               const PersistentPlannerNode3D second) const {
+  if (!nodeInside(first) || !nodeInside(second) || first == second ||
+      level(first, second) != 0U) {
+    return std::nullopt;
+  }
+  const PersistentPlannerEdge3D edge = canonicalEdge(first, second);
+  // The state decides. A bulk clear or an occupied change can overwrite it
+  // without the map knowing, and a waypoint validated against an older world
+  // must never reach a path.
+  if (levelZeroState(levelZeroSlot(edge)) != kLevelZeroEdgeRefined) {
+    return std::nullopt;
+  }
+  const auto found = refined_edge_waypoints_.find(edge);
+  return found != refined_edge_waypoints_.end() ? std::optional<Point3>{found->second}
+                                                : std::nullopt;
+}
+
 bool PlannerLattice3D::pointInsideFlightEnvelope(const Point3& point) const noexcept {
   return std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z) &&
          evaluateFlightEnvelopeAltitude(point.z, config_->flight_envelope) ==
@@ -592,14 +689,45 @@ double PlannerLattice3D::rawEdgeCost(const PersistentPlannerNode3D first,
       }
       if (state == kLevelZeroEdgeUnknown) {
         ++raw_edge_validation_checks_;
-        state = rawSegmentValid(pointFor(first), pointFor(second))
-                    ? kLevelZeroEdgeClear
-                    : kLevelZeroEdgeBlocked;
-        setLevelZeroState(slot, state);
+        if (rawSegmentValid(pointFor(first), pointFor(second))) {
+          state = kLevelZeroEdgeClear;
+          setLevelZeroState(slot, state);
+        } else if (const std::optional<Point3> waypoint =
+                       refineBlockedEdge(edge.first, edge.second);
+                   waypoint.has_value()) {
+          refined_edge_waypoints_.insert_or_assign(edge, *waypoint);
+          state = kLevelZeroEdgeRefined;
+          setLevelZeroState(slot, state);
+        } else {
+          // The straight sweep answered: this edge is blocked. Refinement is an
+          // opportunistic upgrade on top of that answer, so an edge the probe
+          // budget could not reach is cached blocked exactly as it was before
+          // refinement existed. Leaving it unknown instead would re-run the
+          // straight sweep on every later query in the same update, and a
+          // search that revalidates the same edges cannot converge inside its
+          // budget.
+          state = kLevelZeroEdgeBlocked;
+          setLevelZeroState(slot, state);
+        }
       }
     }
-    return state == kLevelZeroEdgeClear ? level_zero_edge_time_s_[slot.direction]
-                                        : std::numeric_limits<double>::infinity();
+    if (state == kLevelZeroEdgeClear) {
+      return level_zero_edge_time_s_[slot.direction];
+    }
+    if (state == kLevelZeroEdgeRefined) {
+      const auto found = refined_edge_waypoints_.find(edge);
+      if (found == refined_edge_waypoints_.end()) {
+        setLevelZeroState(slot, kLevelZeroEdgeUnknown);
+        return std::numeric_limits<double>::infinity();
+      }
+      // The detour is what the vehicle actually flies, so it is what the edge
+      // costs.
+      return minimumFlightTranslationTime3D(pointFor(edge.first), found->second,
+                                            config_->time_model) +
+             minimumFlightTranslationTime3D(found->second, pointFor(edge.second),
+                                            config_->time_model);
+    }
+    return std::numeric_limits<double>::infinity();
   }
   ++adaptive_edge_queries_;
   maximum_queried_level_ = std::max(maximum_queried_level_, queried_level);
@@ -727,6 +855,7 @@ void PlannerLattice3D::reset() noexcept {
   height_ = 0;
   depth_ = 0;
   level_zero_edge_states_.clear();
+  refined_edge_waypoints_.clear();
   chunk_change_epoch_.clear();
   chunk_occupied_ring_.clear();
   chunk_columns_ = 0;
@@ -737,6 +866,7 @@ void PlannerLattice3D::reset() noexcept {
 
 void PlannerLattice3D::resetEdgeEvidence() noexcept {
   std::ranges::fill(level_zero_edge_states_, 0U);
+  refined_edge_waypoints_.clear();
   adaptive_edge_cost_cache_.clear();
   resetNodeClearances();
   adaptive_edges_by_chunk_.clear();
@@ -813,8 +943,10 @@ bool PlannerLattice3D::forgetEdgeCostForChange(const PersistentPlannerEdge3D& ed
   if (level(edge.first, edge.second) == 0U) {
     const LevelZeroSlot slot = levelZeroSlot(canonicalEdge(edge.first, edge.second));
     const unsigned state = levelZeroState(slot);
-    const bool movable = (state == kLevelZeroEdgeClear && occupied_cell_added) ||
-                         (state == kLevelZeroEdgeBlocked && occupied_cell_removed);
+    const bool movable =
+        ((state == kLevelZeroEdgeClear || state == kLevelZeroEdgeRefined) &&
+         occupied_cell_added) ||
+        (state == kLevelZeroEdgeBlocked && occupied_cell_removed);
     if (!movable) {
       return false;
     }

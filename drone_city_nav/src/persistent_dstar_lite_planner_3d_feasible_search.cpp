@@ -90,6 +90,16 @@ FeasiblePathSearch3D::pathFromNodes(const Endpoints3D& endpoints,
     path_nodes.push_back(kNoPathNode);
   }
   for (std::size_t index = first; index < nodes.size(); ++index) {
+    // An edge whose straight segment does not clear the body is traversable
+    // through a waypoint; the path has to carry it.
+    if (index > first) {
+      if (const std::optional<Point3> waypoint =
+              lattice_->edgeWaypoint(nodes[index - 1U], nodes[index]);
+          waypoint.has_value() && distance3D(path.back(), *waypoint) > kCostTolerance) {
+        path.push_back(*waypoint);
+        path_nodes.push_back(kNoPathNode);
+      }
+    }
     const Point3 point = lattice_->pointFor(nodes[index]);
     if (distance3D(path.back(), point) > kCostTolerance) {
       path.push_back(point);

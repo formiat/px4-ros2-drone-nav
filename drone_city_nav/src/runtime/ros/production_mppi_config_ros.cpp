@@ -362,6 +362,10 @@ void ProductionMppiConfigLoader::declarePlanning() {
       "persistent_planner_guaranteed_refinement_expansion_fraction", 0.34);
   planner.continuity_improvement_margin_s =
       declare<double>("persistent_planner_continuity_improvement_margin_s", 1.0);
+  planner.edge_refinement_offsets =
+      declarePositiveSize("persistent_planner_edge_refinement_offsets", 3);
+  planner.maximum_edge_refinement_probes =
+      declarePositiveSize("persistent_planner_maximum_edge_refinement_probes", 256);
   planner.departure_refinement_subdivisions =
       declarePositiveSize("persistent_planner_departure_refinement_subdivisions", 4);
   planner.maximum_departure_refinement_probes = declarePositiveSize(
