@@ -519,6 +519,11 @@ private:
   // The feasibility search exhausted the start's component and the escape
   // search has work to do on the next updates.
   bool escape_search_pending_{false};
+  // When the resident incumbent was lost to a block, and the feasibility route
+  // held back while the persistent search repairs; see
+  // PersistentPlannerConfig3D::incumbent_repair_grace_ms.
+  std::optional<std::chrono::steady_clock::time_point> incumbent_lost_at_;
+  std::optional<SpatialRouteCandidate3D> deferred_feasibility_candidate_;
   // Where the vehicle stood when its component closed; moving away from it
   // discards what was learnt about the component.
   std::optional<Point3> closed_component_origin_;

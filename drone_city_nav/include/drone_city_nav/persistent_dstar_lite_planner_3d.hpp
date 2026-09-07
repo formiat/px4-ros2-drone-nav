@@ -154,6 +154,17 @@ struct PersistentPlannerConfig3D {
   // candidate continuing the same heading needs no margin at all. Zero
   // restores the plain best-objective rule.
   double continuity_improvement_margin_s{1.0};
+  // How long after the resident incumbent is lost to a block the first-found
+  // feasibility route is held back while the persistent search repairs the
+  // same tree the incumbent came from. A block is at one station, and the
+  // repaired shortest path usually threads past it; publishing the first route
+  // the feasibility branch found instead sent the vehicle the long way round,
+  // until the next update found the short way again and the route flipped
+  // back — the yo-yo that cost a minute at every doorway. The window closes
+  // when the repair delivers, when the persistent search has nothing left to
+  // do, or when this much time has passed, and the held route publishes then.
+  // Zero keeps first-found publication.
+  double incumbent_repair_grace_ms{1500.0};
   // Soft clearance ranking. An edge whose endpoints' body surface lies within
   // clearance_ranking_distance_m of raw occupied evidence costs its flight
   // time scaled by 1 + weight * (1 - clearance / distance)^2, where the
@@ -290,6 +301,10 @@ struct PlannerTelemetry3D {
   bool repair_pending{false};
   bool feasibility_attempted{false};
   bool feasibility_route_found{false};
+  // The feasibility branch found a route but held it back: the incumbent was
+  // just lost to a block and the persistent search is still repairing.
+  bool feasibility_candidate_deferred{false};
+  bool incumbent_repair_window_open{false};
   // The feasibility frontier emptied without a raw-valid candidate: every
   // lattice node reachable from the anchor was explored.
   bool feasibility_frontier_exhausted{false};

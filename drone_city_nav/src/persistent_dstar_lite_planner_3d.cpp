@@ -9,6 +9,7 @@
 #include <limits>
 #include <memory>
 #include <numbers>
+#include <optional>
 #include <utility>
 
 #include "persistent_dstar_lite_planner_3d_internal.hpp"
@@ -370,6 +371,8 @@ void PersistentDStarLitePlanner3DImpl::reset() noexcept {
   feasibility_search_.reset();
   execution_time_refiner_.reset();
   coordinator_.reset();
+  incumbent_lost_at_.reset();
+  deferred_feasibility_candidate_.reset();
   adaptive_edges_in_extracted_path_ = 0U;
   published_session_id_ = 0U;
   applied_incumbent_rejection_sequence_ = 0U;
@@ -568,6 +571,8 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   if (!initialized_ || world_update.requires_reset || mission_changed) {
     if (mission_changed || producer_changed) {
       coordinator_.reset();
+      incumbent_lost_at_.reset();
+      deferred_feasibility_candidate_.reset();
     }
     initializeSearch(request, *start_anchor, *goal_anchor);
   } else {
@@ -646,6 +651,10 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     coordinator_.reset();
     execution_time_refiner_.reset();
     feasibility_search_.reset();
+    // The consumer wants a fresh search, not a repair of the route it could
+    // not enter: the first route found is the one to publish.
+    incumbent_lost_at_.reset();
+    deferred_feasibility_candidate_.reset();
   }
   if (const SpatialRouteCandidate3D* const incumbent = coordinator_.incumbent();
       incumbent != nullptr) {
@@ -658,9 +667,27 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
       coordinator_.retain(std::move(*rebased));
       telemetry.incumbent_retained = true;
     } else {
+      // Lost to evidence at one station of a route whose tree the persistent
+      // search already holds: the repair window opens.
       coordinator_.reset();
+      if (!incumbent_lost_at_.has_value()) {
+        incumbent_lost_at_ = operation_started;
+      }
     }
   }
+  // While the window is open the persistent search's repair is the answer the
+  // vehicle waits for. The feasibility branch still searches, so that its
+  // route is ready the moment the window closes without one.
+  const auto repair_window_open = [this, operation_started]() {
+    if (!incumbent_lost_at_.has_value() || !(config_.incumbent_repair_grace_ms > 0.0)) {
+      return false;
+    }
+    const auto grace = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+        std::chrono::duration<double, std::milli>{config_.incumbent_repair_grace_ms});
+    const bool persistent_search_busy = dstar_session_.pendingRepairNodes() > 0U ||
+                                        !dstar_session_.shortestPathComplete();
+    return persistent_search_busy && operation_started - *incumbent_lost_at_ < grace;
+  };
 
   // Repair runs first. The persistent session's labels are only as good as
   // its repair queue is short: with repairs pending, the session reports its
@@ -725,7 +752,12 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
              : std::nullopt;
     if (candidate) {
       telemetry.feasibility_route_found = true;
-      update.improved_incumbent = coordinator_.consider(std::move(*candidate));
+      if (repair_window_open()) {
+        deferred_feasibility_candidate_ = std::move(*candidate);
+        telemetry.feasibility_candidate_deferred = true;
+      } else {
+        update.improved_incumbent = coordinator_.consider(std::move(*candidate));
+      }
     }
     telemetry.feasibility_frontier_exhausted = feasibility_search_.frontierExhausted();
     telemetry.feasibility_explored_nodes = feasibility_search_.exploredNodes();
@@ -826,6 +858,24 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   telemetry.refinement_ms = std::chrono::duration<double, std::milli>(
                                 std::chrono::steady_clock::now() - refinement_started)
                                 .count();
+  // The repair window closes with the route the persistent search delivered,
+  // or when the search runs out of work or time; a held feasibility route
+  // publishes then, re-validated against the world as it stands now.
+  if (coordinator_.incumbent() != nullptr) {
+    incumbent_lost_at_.reset();
+    deferred_feasibility_candidate_.reset();
+  } else if (incumbent_lost_at_.has_value()) {
+    telemetry.incumbent_repair_window_open = repair_window_open();
+    if (!telemetry.incumbent_repair_window_open) {
+      incumbent_lost_at_.reset();
+      std::optional<SpatialRouteCandidate3D> deferred =
+          std::move(deferred_feasibility_candidate_);
+      deferred_feasibility_candidate_.reset();
+      if (deferred && lattice_.pathTraversable(deferred->points)) {
+        update.improved_incumbent = coordinator_.consider(std::move(*deferred));
+      }
+    }
+  }
   // An edge the refinement's validation rejected is repaired on the next
   // update; the feasibility search's rejections were scheduled above.
   dstar_session_.scheduleSweepRejectedEdges();

@@ -536,6 +536,14 @@ production_mppi_node:
     # candidate turns the vehicle around and discards the motion it has; one
     # that continues the same heading needs no margin.
     persistent_planner_continuity_improvement_margin_s: 1.0
+    # How long after a block takes the incumbent the first-found feasibility
+    # route is held back while the persistent search repairs the tree the
+    # incumbent came from. The repaired shortest path threads past the block;
+    # publishing the first route the feasibility branch found instead sent
+    # the vehicle the long way round until the next update found the short
+    # way again — the route flip that cost a minute at every doorway. Zero
+    # publishes the first route found.
+    persistent_planner_incumbent_repair_grace_ms: 1500.0
     # The lattice steps 2 m horizontally against a 0.25 m map, so a 2.4 m
     # doorway is wide enough for the 0.82 m envelope and still admits no
     # straight node-to-node segment unless its centre happens to fall on the

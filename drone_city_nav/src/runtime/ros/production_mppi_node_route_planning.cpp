@@ -105,7 +105,8 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
         "time_search_complete=%s points=%zu expansions=%zu time_expansions=%zu "
         "changed_occupied=%zu affected_states=%zu repair_processed=%zu "
         "repair_pending=%zu repair_in_progress=%s feasibility_attempted=%s "
-        "feasibility_found=%s feasibility_expansions=%zu "
+        "feasibility_found=%s feasibility_deferred=%s repair_window_open=%s "
+        "feasibility_expansions=%zu "
         "feasibility_exhausted=%s feasibility_explored=%zu "
         "feasibility_closest_goal_m=%.1f feasibility_restarts=%zu "
         "feasibility_invalidated_labels=%zu feasibility_adopted_labels=%zu "
@@ -143,6 +144,8 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
         planner_telemetry.repair_pending ? "true" : "false",
         planner_telemetry.feasibility_attempted ? "true" : "false",
         planner_telemetry.feasibility_route_found ? "true" : "false",
+        planner_telemetry.feasibility_candidate_deferred ? "true" : "false",
+        planner_telemetry.incumbent_repair_window_open ? "true" : "false",
         planner_telemetry.feasibility_expansions,
         planner_telemetry.feasibility_frontier_exhausted ? "true" : "false",
         planner_telemetry.feasibility_explored_nodes,
@@ -191,7 +194,8 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
         "queued=%s raw_revision=%" PRIu64 " search_generation=%" PRIu64
         " repair_generation=%" PRIu64 " repair_processed=%zu "
         "repair_pending=%zu feasibility_attempted=%s "
-        "feasibility_found=%s feasibility_expansions=%zu "
+        "feasibility_found=%s feasibility_deferred=%s repair_window_open=%s "
+        "feasibility_expansions=%zu "
         "route_planning_ms=%.3f",
         update.continuation_queued ? "true"
         : update.search_retired    ? "retired"
@@ -203,6 +207,10 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
         planner_update.planner_telemetry.repair_lattice_states_pending,
         planner_update.planner_telemetry.feasibility_attempted ? "true" : "false",
         planner_update.planner_telemetry.feasibility_route_found ? "true" : "false",
+        planner_update.planner_telemetry.feasibility_candidate_deferred ? "true"
+                                                                        : "false",
+        planner_update.planner_telemetry.incumbent_repair_window_open ? "true"
+                                                                      : "false",
         planner_update.planner_telemetry.feasibility_expansions,
         update.route_planning_ms);
     return;

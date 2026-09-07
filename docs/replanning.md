@@ -148,6 +148,20 @@ real and on the part still to fly. A consumer that could not enter the
 incumbent it was delivered says so through the rejection sequence, and that
 does reset it.
 
+Losing the incumbent to a block opens a repair window,
+`persistent_planner_incumbent_repair_grace_ms` long. The persistent search
+already holds the tree the incumbent came from, and its repair usually threads
+the shortest path past the block; the feasibility branch, restarted at the same
+moment, finds *a* route first, and publishing that first route sent the vehicle
+the long way round until the repair delivered and the route flipped back — a
+minute lost at a doorway. While the window is open the feasibility branch keeps
+searching but its route is held; the window closes when the repair delivers a
+route, when the persistent search has nothing left to do, or when the grace has
+passed, and a held route publishes then, re-validated against the current world.
+A rejection sequence, a mission change and a search reset close the window
+without a hold: those are requests for a fresh search, not a repair. Telemetry
+reports `feasibility_deferred` and `repair_window_open`.
+
 ## Published Route Geometry
 
 Every published route — from the feasibility search and from the execution-time
