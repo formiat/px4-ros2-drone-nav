@@ -61,7 +61,17 @@ struct CostConfig {
   float cooperative_maneuver_preference_weight{1.5F};
   float terminal_weight{2.0F};
   float planning_exposure_weight{2.0F};
-  float critical_exposure_weight{20.0F};
+  // How deep into the critical band a rollout goes, charged per second, and
+  // the stopping-clearance shortfall along it. Both are monotone in clearance
+  // and neither prices motion as such.
+  //
+  // What used to sit beside them — a flat charge per metre *travelled* inside
+  // the critical band — did price motion: a metre flown through a corridor
+  // narrower than the band cost two orders of magnitude more than the progress
+  // it earned, so the weighted update converged on standing still and the
+  // vehicle was carried by the deterministic route candidate and by liveness
+  // recovery instead. Distance inside the band is still measured, for the risk
+  // tier and diagnostics; it no longer prices a rollout.
   float critical_clearance_proximity_weight{400.0F};
   float obstacle_approach_weight{40.0F};
   float temperature{8.0F};
@@ -77,6 +87,13 @@ struct CostConfig {
   // Share of that mean excess the deterministic route candidate may cost more
   // than the best feasible rollout and still override the weighted update.
   float route_directed_candidate_cost_tolerance{0.5F};
+  // Consecutive ticks the deterministic candidate must stay preferable before
+  // it takes the update over from the weighted one. The two sources produce
+  // visibly different first controls, so a preference that flips tick to tick
+  // is felt as a jerk; a candidate that is genuinely better stays better for
+  // several ticks. Switching back the other way needs the preference to lapse,
+  // which is immediate: the weighted update is the default owner.
+  std::uint32_t route_directed_candidate_switch_ticks{3U};
 };
 
 struct CooperativeConfig {

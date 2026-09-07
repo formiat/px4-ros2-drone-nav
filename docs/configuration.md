@@ -316,12 +316,17 @@ overrides.
 3. Verify physical finite-path validation, route-unavailable hold, and terminal
    path hold behavior.
 4. Tune reference speed and lookahead.
-5. Tune risk-band exposure and `critical_clearance_proximity_weight`. The latter
-   is a bounded soft cost inside the critical band; it must not be used as a
-   reachability or hold threshold. `obstacle_approach_weight` prices the
-   stopping law along the rollout (the shortfall between the clearance kept
-   to known evidence and the clearance needed to stop before it); keep it
-   strong enough to brake before the critical band rather than inside it.
+5. Tune `critical_clearance_proximity_weight` and `obstacle_approach_weight`.
+   The first is a bounded soft cost that grows with depth into the critical
+   band, charged per second; the second prices the stopping law along the
+   rollout (the shortfall between the clearance kept to known evidence and the
+   clearance needed to stop before it), the same law the speed policy's
+   `clearance` limiter applies. Neither may be used as a reachability or hold
+   threshold. Both are monotone in clearance and neither prices motion as
+   such: there is deliberately no charge per metre *travelled* inside the
+   critical band, because a corridor narrower than the band would then price
+   every metre through it far above the progress it earns, and the weighted
+   update converges on standing still.
 6. Tune `altitude_tracking_weight`: it is the only term holding the vertical
    channel, since no progress term rewards vertical motion and speed tracking
    follows the route tangent.

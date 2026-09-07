@@ -533,8 +533,12 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
         feasibility_search_.advance(searchEndpoints(), feasibility_deadline,
                                     config_.maximum_feasibility_expansions_per_update,
                                     telemetry.feasibility_expansions);
+    // The feasibility branch publishes most of the routes this vehicle flies,
+    // so it gets the same simplification and clearance centering the
+    // refinement branch has always had. A first-found lattice path handed
+    // straight to execution is what put routes against door jambs.
     std::optional<SpatialRouteCandidate3D> candidate =
-        path ? makeCandidate(std::move(*path),
+        path ? makeCandidate(refinePublishedPath(std::move(*path), request, telemetry),
                              SpatialRouteCandidateSource3D::kFeasibilitySearch,
                              request.velocity)
              : std::nullopt;
@@ -624,25 +628,7 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
           execution_time_refiner_.adaptiveEdgesInExtractedPath();
     }
     if (path && path->size() >= 2U) {
-      // Every published path, anytime or converged, is shortcut-simplified:
-      // each shortcut is raw-validated, and a lattice zig-zag left in a route
-      // costs a stop-and-turn at every corner during execution.
-      *path = path_postprocessor_.shortcut(
-          *path,
-          PathPostprocessorContext3D{
-              .maximum_shortcut_checks = config_.maximum_shortcut_checks,
-              .segment_valid =
-                  [this](const Point3& first, const Point3& second,
-                         const bool departure) {
-                    return departure ? lattice_.departureSegmentValid(first, second)
-                                     : lattice_.rawSegmentValid(first, second);
-                  },
-              .time_profile =
-                  [this, &request](const std::vector<Point3>& points) {
-                    return pathTimeProfile(points, request.velocity);
-                  },
-          },
-          telemetry.shortcut_checks, telemetry.shortcuts_applied);
+      *path = refinePublishedPath(std::move(*path), request, telemetry);
     }
     if (path && path->size() >= 2U &&
         distance3D(path->back(), request.mission_goal) <= config_.goal_tolerance_m) {

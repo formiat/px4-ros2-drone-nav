@@ -339,6 +339,7 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
       "repair_pending=%zu feasibility_attempted=%s feasibility_found=%s "
       "feasibility_expansions=%zu records=%zu open=%zu "
       "time_records=%zu time_open=%zu shortcuts=%zu/%zu "
+      "clearance_centering=%zu/%zu "
       "edge_queries=%zu raw_edge_checks=%zu adaptive_edge_queries=%zu "
       "adaptive_path_edges=%zu maximum_adaptive_level=%zu "
       "path_length_m=%.3f time_objective_s=%.3f eta_s=%.3f "
@@ -395,10 +396,11 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
       plan.feasibility_route_found ? "true" : "false", plan.feasibility_expansions,
       plan.records, plan.open_entries, plan.execution_time_search_records,
       plan.execution_time_search_open_entries, plan.shortcuts_applied,
-      plan.shortcut_checks, plan.lattice_edge_queries, plan.raw_edge_validation_checks,
-      plan.adaptive_edge_queries, plan.adaptive_edges_in_extracted_path,
-      plan.maximum_queried_lattice_level, telemetry.planner.path_length_m,
-      plan.execution_time_search_objective_s,
+      plan.shortcut_checks, plan.clearance_centering_moves,
+      plan.clearance_centering_queries, plan.lattice_edge_queries,
+      plan.raw_edge_validation_checks, plan.adaptive_edge_queries,
+      plan.adaptive_edges_in_extracted_path, plan.maximum_queried_lattice_level,
+      telemetry.planner.path_length_m, plan.execution_time_search_objective_s,
       telemetry.planner.estimated_execution_time_s,
       telemetry.planner.estimated_translation_time_s,
       telemetry.planner.estimated_stationary_turn_time_s, planner_update.search_ms,

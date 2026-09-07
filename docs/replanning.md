@@ -68,6 +68,31 @@ its position, velocity, and acceleration feed-forward and publishes exact applie
 control feedback. A finite path contains its own terminal deceleration; after the
 last zero-velocity sample, offboard holds that same terminal position.
 
+## Published Route Geometry
+
+Every published route — from the feasibility search and from the execution-time
+refinement alike — goes through the same two passes before it is offered:
+
+1. **Shortcut simplification.** A lattice zig-zag left in a route costs a
+   stop-and-turn at every corner during execution. Each shortcut is raw-
+   validated, and a shortcut is judged on the clearance-ranked execution time
+   the candidates themselves compete on, not on raw travel time: judging it on
+   travel time alone lets a shortcut buy seconds by dragging the route back
+   against the wall the search climbed away from.
+2. **Clearance centering.** A lattice node lands wherever the grid puts it, so
+   a route through a 2.4 m doorway runs within centimetres of the jamb:
+   execution then has to crawl through it, and the first freshly observed voxel
+   of that jamb blocks the route. Each interior vertex slides across the local
+   route direction toward the clearance maximum, which in a passage is its
+   middle. A move is kept only when it raises that vertex's clearance and both
+   incident segments still validate against raw evidence, so the pass can never
+   turn a valid route into an invalid one. Endpoints never move: the first is
+   the vehicle's own position and the last is the goal.
+
+`persistent_planner_clearance_centering_passes` and
+`persistent_planner_maximum_clearance_centering_queries` bound the work, and
+`PRODUCTION_MPPI_ROUTE3D` reports `clearance_centering=<moves>/<queries>`.
+
 ## Liveness And Safety
 
 The liveness monitor measures progress the vehicle actually made over an

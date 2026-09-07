@@ -589,7 +589,6 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
       costs.cooperative_maneuver_preference_weight * dynamics.dt_s *
           maneuver_preference_cost +
       costs.planning_exposure_weight * planning_m +
-      costs.critical_exposure_weight * critical_m +
       costs.critical_clearance_proximity_weight * critical_clearance_proximity_s +
       costs.obstacle_approach_weight * obstacle_approach_m2_s +
       costs.terminal_weight * terminal_distance;

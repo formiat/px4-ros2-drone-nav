@@ -593,11 +593,23 @@ public:
     const bool policy_prefers_route_candidate = input.prefer_route_directed_candidate &&
                                                 !arbitration_stochastic &&
                                                 candidate_within_tolerance;
+    route_directed_candidate_preferred_ticks_ =
+        policy_prefers_route_candidate ? route_directed_candidate_preferred_ticks_ + 1U
+                                       : 0U;
+    // Taking the update over from the weighted one is a switch, and a switch
+    // has to be earned: the candidate stays preferable for several ticks
+    // first. Handing it back is immediate — the weighted update is the default
+    // owner, and a candidate that stops being preferable has nothing to hold.
+    const bool sticky_prefers_route_candidate =
+        policy_prefers_route_candidate &&
+        (previous_control_selection_ == MppiControlSelection::kRouteDirectedCandidate ||
+         route_directed_candidate_preferred_ticks_ >=
+             config_.costs.route_directed_candidate_switch_ticks);
     const bool route_candidate_forced =
         input.force_route_directed_candidate && !arbitration_stochastic;
     if (result.route_directed_candidate_device_feasible &&
         (result.route_directed_candidate_best_feasible || route_candidate_forced ||
-         policy_prefers_route_candidate)) {
+         sticky_prefers_route_candidate)) {
       std::ranges::copy(reacquisition_candidate_, updated_.begin());
       limitControlSequence(updated_, config_.dynamics, previous_applied_control,
                            first_control_interval_s);
@@ -761,6 +773,7 @@ public:
         result.post_update_repair = MppiPostUpdateRepair::kFailed;
       }
     }
+    previous_control_selection_ = result.control_selection;
     result.controls = updated_;
     result.warm_start_shift_s = elapsed_s;
     result.nominal_reseeded =
@@ -926,6 +939,13 @@ private:
   std::size_t route_point_count_{0U};
   std::uint64_t route_generation_{0U};
   bool route_uploaded_{false};
+  // Which source last owned the update, and how long the deterministic route
+  // candidate has been preferable in a row. The two sources produce visibly
+  // different first controls, so a preference that flips tick to tick is felt
+  // as a jerk; the candidate has to hold its preference before it takes over.
+  MppiControlSelection previous_control_selection_{
+      MppiControlSelection::kWeightedUpdate};
+  std::uint32_t route_directed_candidate_preferred_ticks_{0U};
   std::vector<Control> nominal_;
   std::vector<Control> updated_;
   std::vector<Control> best_feasible_;

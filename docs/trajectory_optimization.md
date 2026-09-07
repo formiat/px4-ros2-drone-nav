@@ -208,6 +208,41 @@ vehicle's own horizontal acceleration. A limit that lifts as the horizon shifts
 therefore cannot snap the reference back up, because the controller answers
 each step with a fresh burst of acceleration.
 
+## Clearance Costs And Control Selection
+
+A rollout's clearance charges are monotone in clearance and price depth and
+approach, never motion:
+
+- `critical_clearance_proximity_weight` grows with the squared depth into the
+  critical band, charged per second.
+- `obstacle_approach_weight` prices the stopping law along the rollout: the
+  squared shortfall between the clearance kept to known occupied evidence and
+  the clearance needed to stop before it. This is the same law the speed
+  policy's `clearance` limiter applies, so the optimiser and the reference
+  speed answer to one notion of "too close, too fast".
+
+There is deliberately no charge per metre travelled inside the critical band.
+In a corridor narrower than the band the whole section is inside it, and a flat
+charge per metre priced a metre of flight far above the progress it earned; the
+weighted update converged on standing still and the vehicle was carried by the
+deterministic route candidate and by liveness recovery instead. Distance inside
+the band is still measured for the risk tier and diagnostics.
+
+With that spread gone, the softmax temperature adapts again
+(`mppi_adaptive_temperature_cost_fraction`): a fixed temperature against a
+population spread over thousands of cost units collapses the weights onto the
+single best sample, and the weighted update degenerates into "best of N
+random".
+
+Two sources can own the update: the weighted update and the deterministic
+route-directed candidate. They produce visibly different first controls, so a
+preference that flips tick to tick is felt as a jerk. The candidate takes the
+update over only after staying preferable for
+`route_directed_candidate_switch_ticks` consecutive ticks; handing it back is
+immediate, because the weighted update is the default owner. A candidate that
+is itself the best feasible rollout, and a liveness-forced candidate, still win
+at once.
+
 ## Continuity And Liveness
 
 - The first command is bounded relative to applied-control feedback.

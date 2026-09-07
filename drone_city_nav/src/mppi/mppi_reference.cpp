@@ -107,6 +107,7 @@ bool benchmarkConfigIsValid(const BenchmarkConfig& config) noexcept {
          config.costs.adaptive_temperature_cost_fraction >= 0.0F &&
          std::isfinite(config.costs.route_directed_candidate_cost_tolerance) &&
          config.costs.route_directed_candidate_cost_tolerance >= 0.0F &&
+         config.costs.route_directed_candidate_switch_ticks > 0U &&
          std::isfinite(config.costs.head_progress_horizon_s) &&
          config.costs.head_progress_horizon_s > 0.0F &&
          std::isfinite(config.costs.head_progress_weight) &&
@@ -119,8 +120,6 @@ bool benchmarkConfigIsValid(const BenchmarkConfig& config) noexcept {
          config.costs.overspeed_weight >= 0.0F &&
          std::isfinite(config.costs.planning_exposure_weight) &&
          config.costs.planning_exposure_weight >= 0.0F &&
-         std::isfinite(config.costs.critical_exposure_weight) &&
-         config.costs.critical_exposure_weight >= 0.0F &&
          std::isfinite(config.costs.critical_clearance_proximity_weight) &&
          config.costs.critical_clearance_proximity_weight >= 0.0F &&
          std::isfinite(config.costs.obstacle_approach_weight) &&
@@ -440,7 +439,6 @@ RolloutMetrics simulateReference(
       costs.yaw_change_weight * metrics.costs.yaw_change +
       costs.control_effort_weight * dynamics.dt_s * metrics.costs.control_effort +
       costs.planning_exposure_weight * metrics.planning_exposure_m +
-      costs.critical_exposure_weight * metrics.critical_exposure_m +
       costs.critical_clearance_proximity_weight *
           metrics.costs.critical_clearance_proximity_s +
       costs.obstacle_approach_weight * metrics.costs.obstacle_approach_m2_s +

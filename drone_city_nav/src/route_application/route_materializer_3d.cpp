@@ -117,6 +117,8 @@ RouteMaterializer3D::materialize(RouteMaterializationRequest3D request) const {
       .open_entries = plan.open_entries,
       .shortcut_checks = plan.shortcut_checks,
       .shortcuts_applied = plan.shortcuts_applied,
+      .clearance_centering_queries = plan.clearance_centering_queries,
+      .clearance_centering_moves = plan.clearance_centering_moves,
       .lattice_edge_queries = plan.lattice_edge_queries,
       .raw_edge_validation_checks = plan.raw_edge_validation_checks,
       .adaptive_edge_queries = plan.adaptive_edge_queries,

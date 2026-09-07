@@ -356,6 +356,10 @@ void ProductionMppiConfigLoader::declarePlanning() {
       declarePositiveSize("persistent_planner_maximum_extracted_path_nodes", 8'192);
   planner.maximum_shortcut_checks =
       declarePositiveSize("persistent_planner_maximum_shortcut_checks", 8'192);
+  planner.clearance_centering_passes =
+      declarePositiveSize("persistent_planner_clearance_centering_passes", 3);
+  planner.maximum_clearance_centering_queries = declarePositiveSize(
+      "persistent_planner_maximum_clearance_centering_queries", 4'096);
   planner.maximum_compute_time_ms =
       declare<double>("persistent_planner_maximum_compute_time_ms", 150.0);
   planner.clearance_ranking_weight =
@@ -727,6 +731,9 @@ void ProductionMppiConfigLoader::declareControl() {
       declare<bool>("mppi_body_collision_gate_enabled", false);
   mppi.costs.route_directed_candidate_cost_tolerance = static_cast<float>(
       declare<double>("route_directed_candidate_cost_tolerance", 0.5));
+  mppi.costs.route_directed_candidate_switch_ticks =
+      static_cast<std::uint32_t>(std::max<std::int64_t>(
+          1, declare<std::int64_t>("route_directed_candidate_switch_ticks", 3)));
   mppi.costs.head_progress_horizon_s =
       static_cast<float>(declare<double>("head_progress_horizon_s", 0.4));
   mppi.costs.head_progress_weight =
@@ -737,21 +744,17 @@ void ProductionMppiConfigLoader::declareControl() {
       static_cast<float>(declare<double>("route_progress_integral_weight", 2.0));
   const float planning_exposure_weight =
       static_cast<float>(declare<double>("planning_exposure_weight", 2.0));
-  const float critical_exposure_weight =
-      static_cast<float>(declare<double>("critical_exposure_weight", 20.0));
   const float critical_clearance_proximity_weight =
       static_cast<float>(declare<double>("critical_clearance_proximity_weight", 400.0));
   const float obstacle_approach_weight =
       static_cast<float>(declare<double>("obstacle_approach_weight", 40.0));
   if (config_.planning.optional_constraints.clearance_costs_enabled) {
     mppi.costs.planning_exposure_weight = planning_exposure_weight;
-    mppi.costs.critical_exposure_weight = critical_exposure_weight;
     mppi.costs.critical_clearance_proximity_weight =
         critical_clearance_proximity_weight;
     mppi.costs.obstacle_approach_weight = obstacle_approach_weight;
   } else {
     mppi.costs.planning_exposure_weight = 0.0F;
-    mppi.costs.critical_exposure_weight = 0.0F;
     mppi.costs.critical_clearance_proximity_weight = 0.0F;
     mppi.costs.obstacle_approach_weight = 0.0F;
   }

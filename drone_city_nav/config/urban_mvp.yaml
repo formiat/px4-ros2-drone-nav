@@ -230,27 +230,34 @@ production_mppi_node:
     # cannot indefinitely postpone an otherwise executable route segment.
     route_progress_integral_weight: 2.0
     planning_exposure_weight: 8.0
-    # Softmax temperature and its optional adaptive floor: the effective
-    # temperature is max(mppi_temperature, fraction * mean feasible cost
-    # excess). With the exposure costs in the thousands a fraction above zero
-    # flattens the weights into the noise mean and the update stops making
-    # progress, so the adaptive floor stays off.
+    # Softmax temperature and its adaptive floor: the effective temperature is
+    # max(mppi_temperature, fraction * mean feasible cost excess). A fixed 8
+    # against a population spread over thousands of cost units collapses the
+    # weights onto the single best sample, and the weighted update degenerates
+    # into "best of 8192 random". The flat critical-band charges that produced
+    # that spread are gone, so the adaptive floor scales the temperature with
+    # the spread the population actually has.
     mppi_temperature: 8.0
-    mppi_adaptive_temperature_cost_fraction: 0.0
+    mppi_adaptive_temperature_cost_fraction: 0.5
     # The sampler's body gate excludes rollouts inside occupied ESDF voxels from
     # the weighted update. The ESDF is coarser than the raw grid and marks
     # raw-valid passages occupied, which leaves the update hovering; the raw
     # finite-path validators keep the hard authority, so the gate stays off.
     mppi_body_collision_gate_enabled: false
-    critical_exposure_weight: 2000.0
+    # Squared depth into the critical band, charged per second. It is monotone
+    # in clearance and prices depth, not motion.
     critical_clearance_proximity_weight: 4000.0
     # Squared shortfall, in metres, between the clearance a rollout keeps to
     # known occupied evidence and the clearance it needs to stop before it
-    # (critical distance + approach speed * response time + braking
-    # distance). This is the stopping law along the rollout; at 40 it was two
-    # orders below the critical-band proximity cost, so the vehicle only
-    # reacted inside the band with maximum acceleration and overshot into the
-    # opposite band. Unknown space carries no clearance and no approach cost.
+    # (critical distance + approach speed * response time + braking distance).
+    # This is the stopping law along the rollout: the same law the speed
+    # policy's clearance limiter applies, so the optimiser and the reference
+    # speed answer to one notion of "too close, too fast". What used to sit
+    # beside it — a flat 2000 per metre *travelled* inside the critical band —
+    # priced motion itself: in a 4.4 m corridor the whole section is inside the
+    # band, and a metre flown through it cost two orders of magnitude more than
+    # the progress it earned, so the weighted update converged on standing
+    # still. Unknown space carries no clearance and no approach cost.
     obstacle_approach_weight: 1000.0
     obstacle_approach_response_time_s: 0.25
     obstacle_approach_deceleration_mps2: 4.0
@@ -469,14 +476,21 @@ production_mppi_node:
     # above 3 m indifferent, so routes rode the lowest lattice levels along the
     # floor discovery frontier, where each freshly seen floor cell turned the
     # route critical for execution and the vehicle crawled.
+    # Every published route has its interior vertices slid across the passage
+    # toward the local clearance maximum, with both incident segments
+    # re-validated against raw evidence. A lattice node lands wherever the grid
+    # puts it, so a route through a 2.4 m doorway runs against the jamb:
+    # execution crawls through it and the first freshly observed voxel of that
+    # jamb blocks the route.
+    persistent_planner_clearance_centering_passes: 3
+    persistent_planner_maximum_clearance_centering_queries: 4096
     persistent_planner_clearance_ranking_weight: 1.5
     persistent_planner_clearance_ranking_distance_m: 6.0
     # Below the execution risk model's critical_distance_m the ranking factor
     # additionally grows by this weight times (1 - clearance / critical)^2.
-    # The executor charges critical_exposure_weight per critical metre, about
-    # a hundred times its progress reward per metre; the planner mirrors that
-    # ratio so it detours around a critical metre the way execution would,
-    # instead of handing execution a route it can only crawl along.
+    # Execution has to slow down where its stopping clearance runs short, so a
+    # route that hugs a wall is one it can only crawl along; the planner
+    # detours around such a metre rather than handing it over.
     persistent_planner_clearance_ranking_critical_weight: 100.0
     route_sampling_step_m: 0.5
     route_completion_tolerance_m: 2.0
@@ -488,9 +502,13 @@ production_mppi_node:
     static_route_shortcut_optimization_enabled: false
     # The certified route candidate overrides the weighted update only while
     # its cost stays within this share of the feasible cost spread above the
-    # best rollout; liveness recovery may still force it.
+    # best rollout, and only after it has stayed preferable for this many
+    # consecutive ticks; liveness recovery may still force it. The two sources
+    # produce visibly different first controls, so a preference that flips tick
+    # to tick is felt as a jerk.
     stochastic_trajectory_selection_enabled: false
     route_directed_candidate_cost_tolerance: 0.5
+    route_directed_candidate_switch_ticks: 3
     execution_route_cross_track_constraints_enabled: false
     execution_route_tracking_tube_constraints_enabled: false
     route_progress_replan_enabled: false

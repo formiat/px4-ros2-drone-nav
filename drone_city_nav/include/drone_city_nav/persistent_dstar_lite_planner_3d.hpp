@@ -95,6 +95,14 @@ struct PersistentPlannerConfig3D {
   std::size_t maximum_incremental_changed_voxels{32768U};
   std::size_t maximum_extracted_path_nodes{8192U};
   std::size_t maximum_shortcut_checks{8192U};
+  // Every published route has its interior vertices slid across the passage
+  // toward the local clearance maximum before it is offered. A lattice node
+  // lands wherever the grid puts it, so a route through a narrow doorway runs
+  // against the jamb: execution has to crawl through it, and the first freshly
+  // observed voxel of that jamb blocks the route. The move keeps the path
+  // length and is only kept when both incident segments still validate.
+  std::size_t clearance_centering_passes{3U};
+  std::size_t maximum_clearance_centering_queries{4096U};
   double maximum_compute_time_ms{150.0};
   // Soft clearance ranking. An edge whose endpoints' body surface lies within
   // clearance_ranking_distance_m of raw occupied evidence costs its flight
@@ -180,6 +188,8 @@ struct PlannerTelemetry3D {
   std::size_t open_entries{0U};
   std::size_t shortcut_checks{0U};
   std::size_t shortcuts_applied{0U};
+  std::size_t clearance_centering_queries{0U};
+  std::size_t clearance_centering_moves{0U};
   std::size_t lattice_edge_queries{0U};
   std::size_t raw_edge_validation_checks{0U};
   std::size_t adaptive_edge_queries{0U};

@@ -232,7 +232,6 @@ TEST(MppiReferenceTest, CriticalClearanceProximityCostIsContinuousAndMonotonic) 
   DynamicsConfig dynamics{};
   dynamics.dt_s = 0.25F;
   CostConfig costs{};
-  costs.critical_exposure_weight = 0.0F;
   costs.critical_clearance_proximity_weight = 400.0F;
   const auto simulate = [&](const float clearance_m) {
     const std::array esdf{clearance_m, clearance_m};

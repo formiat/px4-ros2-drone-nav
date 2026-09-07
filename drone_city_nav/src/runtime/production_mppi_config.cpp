@@ -114,7 +114,7 @@ bool ProductionMppiConfig::valid() const noexcept {
          world.physical_footprint.radial_rings > 0U &&
          world.physical_footprint.axial_samples >= 2U &&
          control.mppi.costs.planning_exposure_weight >= 0.0F &&
-         control.mppi.costs.critical_exposure_weight >= 0.0F &&
+         control.mppi.costs.critical_clearance_proximity_weight >= 0.0F &&
          control.mppi.costs.route_progress_integral_weight >= 0.0F &&
          control.mppi.costs.obstacle_approach_weight >= 0.0F &&
          control.mppi.risk.obstacle_approach_response_time_s >= 0.0F &&

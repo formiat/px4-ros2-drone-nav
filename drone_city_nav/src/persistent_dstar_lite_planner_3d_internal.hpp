@@ -815,6 +815,34 @@ struct PathPostprocessorContext3D {
   std::size_t maximum_shortcut_checks{0U};
   std::function<bool(const Point3&, const Point3&, bool)> segment_valid;
   std::function<FlightPathTimeProfile3D(const std::vector<Point3>&)> time_profile;
+  // What a shortcut is judged on: the same clearance-ranked execution time the
+  // candidates compete on. Judging a shortcut on raw travel time lets it buy
+  // seconds by dragging the route back against the wall the search climbed
+  // away from, which is the objective the search was minimising in the first
+  // place.
+  std::function<double(const std::vector<Point3>&, const FlightPathTimeProfile3D&)>
+      ranked_time;
+};
+
+// Moving a route's interior vertices off the walls they were placed against.
+//
+// A lattice node lands wherever the grid puts it, so a route through a 2.4 m
+// doorway runs within a few centimetres of the jamb: execution then has to
+// crawl through it, and the first freshly observed voxel of that jamb blocks
+// the route. Sliding each vertex across the passage toward the local clearance
+// maximum costs nothing in path length and buys the tube the width it needs.
+struct PathClearanceCenteringContext3D {
+  std::function<bool(const Point3&, const Point3&, bool)> segment_valid;
+  // Raw clearance at a point: distance to the nearest occupied evidence.
+  std::function<double(const Point3&)> clearance;
+  // Raw clearance a vertex is content with; ascent stops there. In a passage
+  // narrower than this the local maximum is the middle of the passage, which
+  // is what the ascent finds.
+  double target_clearance_m{0.0};
+  double probe_step_m{0.25};
+  std::size_t maximum_passes{3U};
+  // Upper bound on clearance queries, so centering cannot eat a search budget.
+  std::size_t maximum_clearance_queries{0U};
 };
 
 class PathPostprocessor3D final {
@@ -823,6 +851,15 @@ public:
                                              const PathPostprocessorContext3D& context,
                                              std::size_t& checks,
                                              std::size_t& applied) const;
+
+  // Slides interior vertices across the passage toward more clearance. A move
+  // is kept only when it raises the vertex's clearance and both incident
+  // segments still validate against raw evidence, so the pass can never turn a
+  // valid route into an invalid one.
+  [[nodiscard]] std::vector<Point3>
+  centerOnClearance(const std::vector<Point3>& path,
+                    const PathClearanceCenteringContext3D& context,
+                    std::size_t& queries, std::size_t& moved) const;
 };
 
 class AnytimePlannerCoordinator3D final {
@@ -866,6 +903,15 @@ private:
   [[nodiscard]] std::optional<SpatialRouteCandidate3D>
   makeCandidate(std::vector<Point3> path, SpatialRouteCandidateSource3D source,
                 const Vec3& initial_velocity) const;
+  // Shortcut simplification and clearance centering, applied to every path
+  // before it becomes a candidate whatever produced it. A lattice zig-zag left
+  // in a route costs a stop-and-turn at every corner during execution, and a
+  // vertex left against a jamb costs a crawl through the doorway and a route
+  // the next observed voxel blocks.
+  [[nodiscard]] std::vector<Point3>
+  refinePublishedPath(std::vector<Point3> path,
+                      const PersistentPlannerRequest3D& request,
+                      PlannerTelemetry3D& telemetry) const;
   [[nodiscard]] ExecutionTimeRefiner3D::Request3D
   refinementRequest(const PersistentPlannerRequest3D& request,
                     PersistentPlannerNode3D start_anchor,

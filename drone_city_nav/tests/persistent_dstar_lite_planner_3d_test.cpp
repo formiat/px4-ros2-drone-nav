@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -14,6 +15,7 @@
 #include <utility>
 #include <vector>
 
+#include "persistent_dstar_lite_planner_3d_internal.hpp"
 #include "persistent_dstar_lite_planner_3d_test_support.hpp"
 
 namespace drone_city_nav {
@@ -214,6 +216,81 @@ TEST(PersistentDStarLitePlanner3DTest,
   EXPECT_TRUE(updated.telemetry.incumbent_retained);
   EXPECT_TRUE(updated.telemetry.incumbent_available);
   EXPECT_EQ(updated.progress, SearchProgress3D::kConverged);
+}
+
+TEST(PersistentDStarLitePlanner3DTest, ClearanceCenteringSlidesVerticesOffTheWall) {
+  // A straight corridor whose free lane runs from y = 4 to y = 6: its middle
+  // is y = 5. The lattice put the route's interior vertices against the
+  // southern wall at y = 4.2, which is where a node row happens to lie.
+  const auto clearance = [](const Point3& point) {
+    return std::min(point.y - 4.0, 6.0 - point.y);
+  };
+  const auto segment_valid = [](const Point3& first, const Point3& second, bool) {
+    const auto inside = [](const Point3& point) {
+      return point.y > 4.05 && point.y < 5.95;
+    };
+    return inside(first) && inside(second);
+  };
+  const std::vector<Point3> path{
+      {0.0, 4.2, 2.0}, {2.0, 4.2, 2.0}, {4.0, 4.2, 2.0}, {6.0, 4.2, 2.0}};
+  detail::PathPostprocessor3D postprocessor;
+  std::size_t queries{0U};
+  std::size_t moved{0U};
+  const std::vector<Point3> centred =
+      postprocessor.centerOnClearance(path,
+                                      detail::PathClearanceCenteringContext3D{
+                                          .segment_valid = segment_valid,
+                                          .clearance = clearance,
+                                          .target_clearance_m = 1.0,
+                                          .probe_step_m = 0.1,
+                                          .maximum_passes = 12U,
+                                          .maximum_clearance_queries = 4'096U,
+                                      },
+                                      queries, moved);
+
+  ASSERT_EQ(centred.size(), path.size());
+  EXPECT_GT(queries, 0U);
+  EXPECT_GT(moved, 0U);
+  // The endpoints are the vehicle's own position and the goal; only the
+  // interior slides, and it stops at the middle of the passage.
+  EXPECT_DOUBLE_EQ(centred.front().y, path.front().y);
+  EXPECT_DOUBLE_EQ(centred.back().y, path.back().y);
+  for (std::size_t index = 1U; index + 1U < centred.size(); ++index) {
+    EXPECT_NEAR(centred[index].y, 5.0, 0.15) << "vertex " << index;
+    // The move is across the local route direction, so a vertex slides along
+    // the corridor only as far as its neighbours' own moves tilt that
+    // direction.
+    EXPECT_NEAR(centred[index].x, path[index].x, 0.3) << "vertex " << index;
+    EXPECT_DOUBLE_EQ(centred[index].z, path[index].z);
+  }
+}
+
+TEST(PersistentDStarLitePlanner3DTest,
+     ClearanceCenteringKeepsAMoveOnlyWhenItValidates) {
+  // The same corridor, but every candidate position is refused: the pass may
+  // not turn a valid route into one raw evidence rejects, so the path comes
+  // back untouched.
+  const auto clearance = [](const Point3& point) {
+    return std::min(point.y - 4.0, 6.0 - point.y);
+  };
+  const std::vector<Point3> path{{0.0, 4.2, 2.0}, {2.0, 4.2, 2.0}, {4.0, 4.2, 2.0}};
+  detail::PathPostprocessor3D postprocessor;
+  std::size_t queries{0U};
+  std::size_t moved{0U};
+  const std::vector<Point3> unchanged = postprocessor.centerOnClearance(
+      path,
+      detail::PathClearanceCenteringContext3D{
+          .segment_valid = [](const Point3&, const Point3&, bool) { return false; },
+          .clearance = clearance,
+          .target_clearance_m = 1.0,
+          .probe_step_m = 0.1,
+          .maximum_passes = 4U,
+          .maximum_clearance_queries = 4'096U,
+      },
+      queries, moved);
+
+  EXPECT_EQ(moved, 0U);
+  expectSamePath(unchanged, path);
 }
 
 TEST(PersistentDStarLitePlanner3DTest,

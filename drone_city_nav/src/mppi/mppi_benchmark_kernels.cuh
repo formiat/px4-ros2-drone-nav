@@ -231,7 +231,6 @@ simulateKernel(const float* const noise_ax, const float* const noise_ay,
       costs.jerk_weight * jerk_cost + costs.yaw_change_weight * yaw_cost +
       costs.control_effort_weight * dynamics.dt_s * effort_cost +
       costs.planning_exposure_weight * planning_m +
-      costs.critical_exposure_weight * critical_m +
       costs.critical_clearance_proximity_weight * critical_clearance_proximity_s +
       costs.obstacle_approach_weight * obstacle_approach_m2_s +
       costs.terminal_weight * terminal_distance;
