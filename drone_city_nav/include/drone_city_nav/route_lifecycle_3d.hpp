@@ -254,6 +254,17 @@ validateRawRouteSuffix3D(std::span<const RouteSample3D> route, const Point3& pos
                          const RouteProjection3D& projection,
                          const OccupiedCollisionWorld3D& collision_world) noexcept;
 
+// Validates the route from the projection forward for `lookahead_m` of station
+// against the collision world, without the connector from the vehicle: the
+// question is whether the route ahead is clear of the evidence, not whether
+// the vehicle can reach it from where it stands. `suffix_validated` is true
+// when every segment inside the window is clear; a failure names the first
+// route segment the evidence touches.
+[[nodiscard]] RawRouteSuffixValidation3D
+validateRawRouteWindow3D(std::span<const RouteSample3D> route,
+                         const RouteProjection3D& projection, double lookahead_m,
+                         const OccupiedCollisionWorld3D& collision_world) noexcept;
+
 [[nodiscard]] RouteExecutionAssessment3D
 assessRouteExecution3D(const ActivatedRouteIdentity3D* active_route,
                        std::span<const RouteSample3D> route,

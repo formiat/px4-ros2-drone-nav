@@ -1,4 +1,5 @@
 #include "drone_city_nav/mppi/static_route_handoff.hpp"
+#include "drone_city_nav/sensor_braking_contract_3d.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -240,6 +241,16 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
                   .route_tracking_tube_constraints_enabled =
                       config_.planning.optional_constraints
                           .route_tracking_tube_constraints_enabled,
+                  // The scan is checked along the route for the distance the
+                  // vehicle needs to react to an obstacle at its absolute
+                  // speed limit: latency, stopping distance and the physical
+                  // margin the sensor braking contract keeps.
+                  .latest_lidar_route_lookahead_m =
+                      assessSensorBrakingContract3D(
+                          config_.control.speed_policy.sensor_braking_contract,
+                          config_.control.speed_policy.stopping_capability,
+                          config_.control.speed_policy.absolute_speed_limit_mps)
+                          .required_detection_range_m,
               },
           .liveness = config_.planning.liveness,
           .route_progress =

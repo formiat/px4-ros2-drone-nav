@@ -23,6 +23,29 @@
 namespace drone_city_nav {
 namespace {
 
+// The nearer of the persistent block and the latest scan's block ahead, as
+// distance along the route from the vehicle; nullopt when neither exists.
+[[nodiscard]] std::optional<double>
+blockedRouteRemainingM(const PlanningRouteDecision3D& route) noexcept {
+  if (!route.usable || !route.projection.valid) {
+    return std::nullopt;
+  }
+  std::optional<double> blocked_station_m = route.execution.raw_blocked_station_m;
+  if (route.execution.latest_lidar_blocked_station_m.has_value() &&
+      (!blocked_station_m.has_value() ||
+       *route.execution.latest_lidar_blocked_station_m < *blocked_station_m)) {
+    blocked_station_m = route.execution.latest_lidar_blocked_station_m;
+  }
+  if (!blocked_station_m.has_value()) {
+    return std::nullopt;
+  }
+  return std::max(0.0, *blocked_station_m - route.projection.station_m);
+}
+
+} // namespace
+
+namespace {
+
 [[nodiscard]] mppi::DeterministicCandidateKind planningDeterministicCandidate(
     const bool direct_tracking_interception,
     const ProductionMppiPlanningState planning_state, const bool route_usable,
@@ -448,13 +471,7 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
               route_control.active
                   ? std::optional<double>{route_control.speed_limit_mps}
                   : std::nullopt,
-          .blocked_route_remaining_m =
-              output.route.usable && output.route.projection.valid &&
-                      output.route.execution.raw_blocked_station_m.has_value()
-                  ? std::optional<double>{std::max(
-                        0.0, *output.route.execution.raw_blocked_station_m -
-                                 output.route.projection.station_m)}
-                  : std::nullopt,
+          .blocked_route_remaining_m = blockedRouteRemainingM(output.route),
           .executed_horizon_clearance = executed_horizon_clearance,
           .previous_reference_speed_mps = previous_reference_speed_mps_,
           .elapsed_since_previous_reference_s = reference_elapsed_s,

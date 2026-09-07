@@ -382,6 +382,43 @@ validateRawRouteSuffix3D(const std::span<const RouteSample3D> route,
   return result;
 }
 
+RawRouteSuffixValidation3D
+validateRawRouteWindow3D(const std::span<const RouteSample3D> route,
+                         const RouteProjection3D& projection, const double lookahead_m,
+                         const OccupiedCollisionWorld3D& collision_world) noexcept {
+  RawRouteSuffixValidation3D result;
+  if (route.size() < 2U || !projection.valid || !finitePoint(projection.point) ||
+      !std::isfinite(projection.station_m) || !std::isfinite(lookahead_m) ||
+      lookahead_m <= 0.0) {
+    return result;
+  }
+  const OccupiedCollisionOracle3D collision_oracle{collision_world};
+  result.status = RawRouteSuffixStatus3D::kValid;
+  result.validated_from_station_m = projection.station_m;
+  result.connector_validated = true;
+  const double window_end_station_m = projection.station_m + lookahead_m;
+  const std::size_t first_route_sample =
+      firstRouteSampleAfter(route, projection.station_m);
+  result.first_validated_route_segment =
+      first_route_sample == 0U ? 0U : first_route_sample - 1U;
+  Point3 previous = projection.point;
+  for (std::size_t index = first_route_sample; index < route.size(); ++index) {
+    if (route[index].station_m > window_end_station_m && index > first_route_sample) {
+      break;
+    }
+    if (!validateCollisionSegment(collision_oracle, previous, route[index].position,
+                                  index == 0U ? 0U : index - 1U, result)) {
+      return result;
+    }
+    previous = route[index].position;
+    if (route[index].station_m > window_end_station_m) {
+      break;
+    }
+  }
+  result.suffix_validated = true;
+  return result;
+}
+
 RouteExecutionAssessment3D
 assessRouteExecution3D(const ActivatedRouteIdentity3D* const active_route,
                        const std::span<const RouteSample3D> route,

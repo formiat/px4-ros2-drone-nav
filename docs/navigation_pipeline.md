@@ -229,6 +229,17 @@ Reference speed is bounded by:
 - sensor-observation range and physical stopping capability;
 - goal approach;
 - the finite certified route endpoint and the reserve needed to stop before it;
+- the first route sample the persistent raw world blocks, braked toward as
+  toward a route end while the replacement is searched;
+- the first route sample the latest lidar scan touches within the distance the
+  vehicle needs to react at its absolute speed limit (the sensor braking
+  contract's required detection range), braked toward in the same way. The
+  persistent memory integrates a hit only after its own confidence stages;
+  until then the route is clear to everything but the horizon's own
+  validation, which meets the hit at the end of the horizon and stops the
+  vehicle hard. The scan bounds the route ahead as it bounds the horizon; the
+  persistent memory stays the authority on the route itself, so a single scan
+  slows the vehicle and never releases the route;
 - constrained-route span limits.
 
 When no executable route exists in either mode, direct flight to the distant
@@ -330,7 +341,12 @@ its single entry point; the plan state it installs is `kStopping`.
 Every situation that would otherwise leave a moving vehicle without a plan asks
 for a stop: physical evidence against the resident path, a lifecycle event that
 ends that path's claim on the vehicle, and the loss of a lease that can no
-longer be continued. Retention keeps its one job, continuing a path that is
+longer be continued. Physical evidence that forces a stop also requests the
+resident route's successor at that moment, latched once per route generation:
+the search anchors at the vehicle while it is still braking, and the successor
+is ready when the stop is finished instead of being requested only then. One
+recorded run spent a full second holding after every such stop for exactly
+that reason. Retention keeps its one job, continuing a path that is
 still executable, and delegates braking to the stop
 (`braking_delegated_to_stop`) instead of rebuilding a braking tail out of the
 path that was just invalidated. Only the offboard's local position latch remains

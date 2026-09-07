@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include <optional>
+#include <span>
 #include <stdexcept>
 #include <vector>
 
@@ -466,6 +468,62 @@ TEST(RouteLifecycle3DTest, PublicationStatusesHaveStableDiagnosticNames) {
   EXPECT_EQ(routePublicationStatus3DName(
                 RoutePublicationStatus3D::kResidentWorldPredatesPlan),
             "resident_world_predates_plan");
+}
+
+TEST(RouteLifecycle3DTest, LatestScanWindowNamesTheFirstHitWithinTheLookaheadOnly) {
+  // A hit on the route 2 m ahead of the projection lies inside a 3 m window
+  // and names its segment; the same hit lies outside a 1 m window, and a hit
+  // behind the projection never counts. The vehicle's own connector is not
+  // part of the window.
+  const std::vector<RouteSample3D> route = straightRoute();
+  const RouteProjection3D projection{
+      .valid = true,
+      .station_m = 3.0,
+      .remaining_m = 5.0,
+      .distance_m = 0.0,
+      .point = {4.5, 1.5, 1.5},
+  };
+  const SweptFootprintConfig footprint{.radius_m = 0.4,
+                                       .lower_extent_m = 0.0,
+                                       .upper_extent_m = 0.0,
+                                       .perimeter_samples = 8U,
+                                       .radial_rings = 0U,
+                                       .axial_samples = 1U,
+                                       .sweep_step_m = 0.25};
+  const std::vector<Point3> ahead{{6.5, 1.6, 1.5}};
+  const std::vector<Point3> behind{{2.5, 1.6, 1.5}};
+  const auto world = [&](const std::vector<Point3>& hits) {
+    return OccupiedCollisionWorld3D{
+        .observed_occupancy = nullptr,
+        .static_occupancy = nullptr,
+        .planar_occupancy = nullptr,
+        .raw_point_cloud = std::span<const Point3>{hits},
+        .launch_support_contact = nullptr,
+        .proprioceptive_free_space_seed = nullptr,
+        .footprint = footprint,
+        .flight_envelope = std::nullopt,
+    };
+  };
+
+  const RawRouteSuffixValidation3D inside =
+      validateRawRouteWindow3D(route, projection, 3.0, world(ahead));
+  EXPECT_EQ(inside.status, RawRouteSuffixStatus3D::kRawCollision);
+  EXPECT_EQ(inside.failure_route_segment, 2U);
+  EXPECT_FALSE(inside.suffix_validated);
+
+  const RawRouteSuffixValidation3D outside =
+      validateRawRouteWindow3D(route, projection, 1.0, world(ahead));
+  EXPECT_EQ(outside.status, RawRouteSuffixStatus3D::kValid);
+  EXPECT_TRUE(outside.suffix_validated);
+
+  const RawRouteSuffixValidation3D passed =
+      validateRawRouteWindow3D(route, projection, 3.0, world(behind));
+  EXPECT_EQ(passed.status, RawRouteSuffixStatus3D::kValid);
+  EXPECT_TRUE(passed.suffix_validated);
+
+  const RawRouteSuffixValidation3D disabled =
+      validateRawRouteWindow3D(route, projection, 0.0, world(ahead));
+  EXPECT_EQ(disabled.status, RawRouteSuffixStatus3D::kInvalidRoute);
 }
 
 TEST(RouteLifecycle3DTest, PassedPrefixCollisionDoesNotInvalidateRemainingSuffix) {

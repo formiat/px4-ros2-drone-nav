@@ -24,6 +24,11 @@ struct RouteExecutionSelectorConfig3D {
   RouteTrackingPolicy3D route_tracking{};
   bool route_cross_track_constraints_enabled{false};
   bool route_tracking_tube_constraints_enabled{false};
+  // How far ahead along the followed route the latest lidar scan is checked
+  // for hits the persistent memory has not integrated yet. Zero disables it.
+  // The distance the vehicle needs to react to an obstacle at its absolute
+  // speed limit is the natural value: a hit farther away bounds nothing yet.
+  double latest_lidar_route_lookahead_m{0.0};
 };
 
 struct RouteExecutionSelectorRequest3D {
@@ -75,8 +80,29 @@ public:
   select(const RouteExecutionSelectorRequest3D& request);
 
 private:
+  // Station of the first route sample within the lookahead that the latest
+  // scan's hits touch, or nullopt when the window is clear.
+  [[nodiscard]] std::optional<double>
+  latestLidarBlockedStation(const CertifiedRouteSuffix3D& route,
+                            const RouteProjection3D& projection,
+                            const VersionedLatestLidarEvidence3D& latest_lidar,
+                            const VersionedObservedRawWorld3D* contact_world);
+
+  // The latest lidar window is one point-cloud sweep of the route ahead; a
+  // scan and a route geometry that did not change give the same answer, so
+  // the answer is kept until either does.
+  struct LatestLidarWindowCache3D {
+    std::uint64_t lidar_producer_instance_id{0U};
+    std::uint64_t lidar_sequence{0U};
+    std::uint64_t route_generation{0U};
+    std::uint64_t geometry_revision{0U};
+    std::optional<double> blocked_station_m;
+    bool valid{false};
+  };
+
   ExecutionSupervisor3D& execution_supervisor_;
   RouteExecutionSelectorConfig3D config_{};
+  LatestLidarWindowCache3D latest_lidar_window_cache_{};
 };
 
 } // namespace drone_city_nav

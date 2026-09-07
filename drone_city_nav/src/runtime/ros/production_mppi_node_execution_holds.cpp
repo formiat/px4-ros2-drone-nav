@@ -245,6 +245,22 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishNoExecutablePathHo
   // decision carried out along a trajectory the world was actually checked
   // against.
   if (physical_route_invalidation || path_claim_ended) {
+    // The stop is the resident route's end from where the vehicle stands: the
+    // successor is searched from now on, while the vehicle is still braking,
+    // not once it has come to rest. The route stays resident through the
+    // stop, so the search anchors at the vehicle and the successor takes over
+    // as soon as the stop is finished. The request is latched per route
+    // generation, as for a resident owner the selector invalidated.
+    if (physical_route_invalidation && cycle.route.execution.route != nullptr) {
+      handlePhysicalTrajectoryCollision(
+          cycle.route.execution.route->identity.generation,
+          cycle.route.execution.lifecycle_observed_raw_world != nullptr
+              ? cycle.route.execution.lifecycle_observed_raw_world
+              : cycle.route.execution.route->observed_raw_world,
+          physical_candidate_rejection ? "physical_stop_after_candidate_rejection"
+                                       : "physical_stop_after_resident_rejection",
+          ProductionMppiPhysicalTrajectoryAuthority::kResidentOwner);
+    }
     ProductionMppiExecutionPublication stop = publishStopExecution(cycle, reason);
     if (stop.published) {
       return stop;

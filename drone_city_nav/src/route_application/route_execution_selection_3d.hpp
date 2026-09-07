@@ -40,6 +40,12 @@ struct ProductionRouteExecutionSelection3D {
   // the route is still followed and its replacement is being searched: the
   // speed policy brakes toward it as toward a route end.
   std::optional<double> raw_blocked_station_m;
+  // Station of the first route sample within the lookahead that the latest
+  // lidar scan touches. The scan is evidence the persistent memory reaches
+  // only after its own integration; the vehicle brakes toward it now, as it
+  // brakes toward a persistent block, instead of meeting it at the end of its
+  // horizon and stopping hard.
+  std::optional<double> latest_lidar_blocked_station_m;
   std::optional<DirectTrackingOwnerIdentity3D> direct_tracking_identity;
 };
 
