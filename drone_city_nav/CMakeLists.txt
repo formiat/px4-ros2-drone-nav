@@ -119,7 +119,9 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     drone_city_nav_mppi_cuda
     src/mppi/mppi_acquisition_diagnostics.cpp
     src/mppi/mppi_engine.cu
+    src/mppi/mppi_control_arbitration.cpp
     src/mppi/mppi_control_sequence.cpp
+    src/mppi/mppi_temperature_regulator.cpp
     src/mppi/mppi_input_validation.cpp
     src/mppi/mppi_noncooperative_acquisition.cpp
     src/mppi/static_route_handoff.cpp)
@@ -1711,6 +1713,12 @@ if(BUILD_TESTING)
   enable_project_warnings(mppi_horizon_sampling_test)
 
   if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
+    ament_add_gtest(mppi_temperature_regulator_test
+                    tests/mppi_temperature_regulator_test.cpp)
+    target_compile_features(mppi_temperature_regulator_test PRIVATE cxx_std_20)
+    target_link_libraries(mppi_temperature_regulator_test drone_city_nav_mppi_cuda)
+    enable_project_warnings(mppi_temperature_regulator_test)
+
     ament_add_gtest(mppi_control_sequence_test_current
                     tests/mppi_control_sequence_test.cpp)
     target_compile_features(mppi_control_sequence_test_current PRIVATE cxx_std_20)

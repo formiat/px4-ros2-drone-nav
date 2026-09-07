@@ -24,6 +24,7 @@ struct DeviceBuffers {
   DeviceBuffer<int> best_rollout;
   DeviceBuffer<float> minimum_soft;
   DeviceBuffer<float> weight_sum;
+  DeviceBuffer<float> weight_square_sum;
   DeviceBuffer<float> feasible_cost_sum;
   DeviceBuffer<unsigned int> feasible_count;
   DeviceBuffer<float> effective_temperature;
@@ -53,6 +54,7 @@ struct DeviceBuffers {
         best_rollout{1U},
         minimum_soft{1U},
         weight_sum{1U},
+        weight_square_sum{1U},
         feasible_cost_sum{1U},
         feasible_count{1U},
         effective_temperature{1U},
@@ -66,10 +68,11 @@ struct DeviceBuffers {
            collision_violation.bytes() + worst_tier.bytes() + weights.bytes() +
            nominal.bytes() + updated.bytes() + control_update_partials.bytes() +
            best_feasible.bytes() + repair_candidates.bytes() + best_rollout.bytes() +
-           minimum_soft.bytes() + weight_sum.bytes() + feasible_cost_sum.bytes() +
-           feasible_count.bytes() + effective_temperature.bytes() +
-           route_points.bytes() + dynamic_aircraft_samples.bytes() +
-           dynamic_aircraft_radii.bytes() + dynamic_aircraft_active_steps.bytes();
+           minimum_soft.bytes() + weight_sum.bytes() + weight_square_sum.bytes() +
+           feasible_cost_sum.bytes() + feasible_count.bytes() +
+           effective_temperature.bytes() + route_points.bytes() +
+           dynamic_aircraft_samples.bytes() + dynamic_aircraft_radii.bytes() +
+           dynamic_aircraft_active_steps.bytes();
   }
 };
 

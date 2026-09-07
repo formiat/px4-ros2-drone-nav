@@ -304,6 +304,7 @@ void ProductionMppiNode::processDiagnostics(
        << " route_directed_candidate_cost_excess="
        << result.route_directed_candidate_cost_excess
        << " effective_temperature=" << result.effective_temperature
+       << " effective_sample_fraction=" << result.effective_sample_fraction
        << " collision_gate_lifted=" << (result.collision_gate_lifted ? "true" : "false")
        << " route_directed_candidate_generation="
        << result.route_directed_candidate_generation << " local_route_stop_is_terminal="
@@ -689,6 +690,7 @@ void ProductionMppiNode::processDiagnostics(
          << ",\"route_directed_candidate_minimum_clearance_m\":"
          << result.route_directed_candidate_minimum_clearance_m
          << ",\"effective_temperature\":" << result.effective_temperature
+         << ",\"effective_sample_fraction\":" << result.effective_sample_fraction
          << ",\"collision_gate_lifted\":"
          << (result.collision_gate_lifted ? "true" : "false")
          << ",\"route_directed_candidate_generation\":"

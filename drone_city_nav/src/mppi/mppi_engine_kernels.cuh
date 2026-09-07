@@ -607,11 +607,13 @@ __device__ float atomicMinFloat(float* address, float value) {
 }
 
 __global__ void initializeReduction(float* minimum_soft, float* weight_sum,
-                                    int* best_rollout, float* feasible_cost_sum,
+                                    float* weight_square_sum, int* best_rollout,
+                                    float* feasible_cost_sum,
                                     unsigned int* feasible_count) {
   if (blockIdx.x == 0 && threadIdx.x == 0) {
     *minimum_soft = kInfinity;
     *weight_sum = 0.0F;
+    *weight_square_sum = 0.0F;
     *best_rollout = INT_MAX;
     *feasible_cost_sum = 0.0F;
     *feasible_count = 0U;
@@ -755,29 +757,20 @@ __global__ void accumulateFeasibleCost(
   }
 }
 
-__device__ float effectiveTemperature(const float base_temperature,
-                                      const float adaptive_cost_fraction,
-                                      const float feasible_cost_sum,
-                                      const unsigned int feasible_count) {
-  if (!(adaptive_cost_fraction > 0.0F) || feasible_count == 0U) {
-    return base_temperature;
-  }
-  const float mean_excess = feasible_cost_sum / static_cast<float>(feasible_count);
-  return fmaxf(base_temperature, adaptive_cost_fraction * mean_excess);
-}
-
+// The temperature is chosen by the host from the effective sample size the
+// previous tick achieved, so the softmax is a distribution over a target share
+// of the population instead of collapsing onto whichever sample happens to be
+// best. The squared weight sum is what makes that measurable: with it,
+// ESS = (sum w)^2 / sum w^2.
 __global__ void
 calculateWeights(const float* soft, const std::uint8_t* altitude_envelope_violation,
                  const std::uint8_t* collision_violation, bool ignore_collision,
                  float* weights, std::size_t count, const float* minimum_soft,
-                 float base_temperature, float adaptive_cost_fraction,
-                 const float* feasible_cost_sum, const unsigned int* feasible_count,
-                 float* weight_sum, float* effective_temperature) {
+                 float temperature, float* weight_sum, float* weight_square_sum,
+                 float* effective_temperature) {
   const std::size_t index =
       static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   const bool valid = index < count;
-  const float temperature = effectiveTemperature(
-      base_temperature, adaptive_cost_fraction, *feasible_cost_sum, *feasible_count);
   float weight = 0.0F;
   if (valid && rolloutFeasible(altitude_envelope_violation[index],
                                collision_violation[index], ignore_collision)) {
@@ -787,8 +780,10 @@ calculateWeights(const float* soft, const std::uint8_t* altitude_envelope_violat
     weights[index] = weight;
   }
   const float block_weight_sum = blockSum(weight);
+  const float block_weight_square_sum = blockSum(weight * weight);
   if (threadIdx.x == 0) {
     atomicAdd(weight_sum, block_weight_sum);
+    atomicAdd(weight_square_sum, block_weight_square_sum);
     if (blockIdx.x == 0) {
       *effective_temperature = temperature;
     }

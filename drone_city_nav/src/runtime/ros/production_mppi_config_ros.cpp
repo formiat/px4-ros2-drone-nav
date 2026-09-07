@@ -735,8 +735,10 @@ void ProductionMppiConfigLoader::declareControl() {
   mppi.footprint.clearance_broad_phase_enabled =
       declare<bool>("mppi_footprint_clearance_broad_phase_enabled", true);
   mppi.costs.temperature = static_cast<float>(declare<double>("mppi_temperature", 8.0));
-  mppi.costs.adaptive_temperature_cost_fraction = static_cast<float>(
-      declare<double>("mppi_adaptive_temperature_cost_fraction", 0.0));
+  mppi.costs.target_effective_sample_fraction = static_cast<float>(
+      declare<double>("mppi_target_effective_sample_fraction", 0.07));
+  mppi.costs.maximum_temperature_growth =
+      static_cast<float>(declare<double>("mppi_maximum_temperature_growth", 1000.0));
   mppi.costs.body_collision_gate_enabled =
       declare<bool>("mppi_body_collision_gate_enabled", false);
   mppi.costs.route_directed_candidate_cost_tolerance = static_cast<float>(

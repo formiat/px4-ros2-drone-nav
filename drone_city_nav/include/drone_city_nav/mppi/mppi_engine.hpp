@@ -138,6 +138,9 @@ struct MppiTickResult {
   MppiPostUpdateClassificationResult post_update_classification{};
   MppiControlSelection control_selection{MppiControlSelection::kWeightedUpdate};
   float effective_temperature{0.0F};
+  // Effective sample size as a share of the feasible population: the fraction
+  // of rollouts that actually carried weight in the update.
+  float effective_sample_fraction{0.0F};
   float route_directed_candidate_cost_excess{0.0F};
   // Exposure and clearance of the route-directed candidate rollout itself,
   // so a rejected candidate names what the executor objected to.

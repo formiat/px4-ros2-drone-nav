@@ -235,11 +235,17 @@ Two charges used to sit here instead, and both are gone:
 
 Distance inside the band is still measured for the risk tier and diagnostics.
 
-With that spread gone, the softmax temperature adapts again
-(`mppi_adaptive_temperature_cost_fraction`): a fixed temperature against a
-population spread over thousands of cost units collapses the weights onto the
-single best sample, and the weighted update degenerates into "best of N
-random".
+The softmax temperature is regulated, not configured. A fixed temperature
+against a population spread over thousands of cost units collapses the weights
+onto the single best sample, and the weighted update degenerates into "best of
+N random"; scaling the temperature by a share of the mean cost excess tracked
+the spread's scale but not how many samples actually carried weight, which is
+the quantity that matters. The regulator measures the effective sample size,
+`(sum w)^2 / (N sum w^2)`, from the weights each tick produced and nudges the
+temperature toward `mppi_target_effective_sample_fraction` for the next one,
+bounded below by `mppi_temperature`, above by `mppi_maximum_temperature_growth`
+and per tick by a factor of two, so the loop settles within a few ticks and one
+odd tick cannot swing it. `effective_sample_fraction` reports what it achieved.
 
 Two sources can own the update: the weighted update and the deterministic
 route-directed candidate. They produce visibly different first controls, so a

@@ -103,8 +103,11 @@ bool benchmarkConfigIsValid(const BenchmarkConfig& config) noexcept {
          config.deadline_ms > 0.0 && std::isfinite(config.dynamics.dt_s) &&
          config.dynamics.dt_s > 0.0F && std::isfinite(config.costs.temperature) &&
          config.costs.temperature > 0.0F &&
-         std::isfinite(config.costs.adaptive_temperature_cost_fraction) &&
-         config.costs.adaptive_temperature_cost_fraction >= 0.0F &&
+         std::isfinite(config.costs.target_effective_sample_fraction) &&
+         config.costs.target_effective_sample_fraction >= 0.0F &&
+         config.costs.target_effective_sample_fraction <= 1.0F &&
+         std::isfinite(config.costs.maximum_temperature_growth) &&
+         config.costs.maximum_temperature_growth >= 1.0F &&
          std::isfinite(config.costs.route_directed_candidate_cost_tolerance) &&
          config.costs.route_directed_candidate_cost_tolerance >= 0.0F &&
          config.costs.route_directed_candidate_switch_ticks > 0U &&

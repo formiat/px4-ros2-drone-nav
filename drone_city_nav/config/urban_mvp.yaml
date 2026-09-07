@@ -230,15 +230,19 @@ production_mppi_node:
     # cannot indefinitely postpone an otherwise executable route segment.
     route_progress_integral_weight: 2.0
     planning_exposure_weight: 8.0
-    # Softmax temperature and its adaptive floor: the effective temperature is
-    # max(mppi_temperature, fraction * mean feasible cost excess). A fixed 8
-    # against a population spread over thousands of cost units collapses the
-    # weights onto the single best sample, and the weighted update degenerates
-    # into "best of 8192 random". The flat critical-band charges that produced
-    # that spread are gone, so the adaptive floor scales the temperature with
-    # the spread the population actually has.
+    # Floor of the regulated softmax temperature, and the share of the feasible
+    # population the softmax should spread its weight over, measured as the
+    # effective sample size (sum w)^2 / (N sum w^2). A fixed 8 against a
+    # population spread over thousands of cost units collapses the weights onto
+    # the single best sample and the weighted update degenerates into "best of
+    # 8192 random"; scaling the temperature by a share of the mean cost excess
+    # tracked the spread's scale but not how many samples actually carried
+    # weight, which is the quantity that matters. The regulator measures the
+    # effective sample size each tick and nudges the temperature toward the
+    # target.
     mppi_temperature: 8.0
-    mppi_adaptive_temperature_cost_fraction: 0.5
+    mppi_target_effective_sample_fraction: 0.07
+    mppi_maximum_temperature_growth: 1000.0
     # The sampler's body gate excludes rollouts inside occupied ESDF voxels from
     # the weighted update. The ESDF is coarser than the raw grid and marks
     # raw-valid passages occupied, which leaves the update hovering; the raw

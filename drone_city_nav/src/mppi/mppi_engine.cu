@@ -1,6 +1,7 @@
 #include "drone_city_nav/mppi/mppi_acquisition_diagnostics.hpp"
 #include "drone_city_nav/mppi/mppi_altitude_envelope.hpp"
 #include "drone_city_nav/mppi/mppi_clearance_cost.hpp"
+#include "drone_city_nav/mppi/mppi_control_arbitration.hpp"
 #include "drone_city_nav/mppi/mppi_control_limits.hpp"
 #include "drone_city_nav/mppi/mppi_control_sequence.hpp"
 #include "drone_city_nav/mppi/mppi_engine.hpp"
@@ -9,6 +10,7 @@
 #include "drone_city_nav/mppi/mppi_reference.hpp"
 #include "drone_city_nav/mppi/mppi_route_projection.hpp"
 #include "drone_city_nav/mppi/mppi_separation_acquisition_coordinator.hpp"
+#include "drone_city_nav/mppi/mppi_temperature_regulator.hpp"
 
 #include <algorithm>
 #include <array>
@@ -401,11 +403,14 @@ public:
         first_control_interval_s, input.reference_speed_mps,
         config_.early_exit_on_altitude_envelope_violation, nullptr);
     simulation_done_.record(stream_);
+    // See MppiTemperatureRegulator: the temperature this tick uses was chosen
+    // from the effective sample size the previous one achieved.
+    const float regulated_temperature = temperature_;
     const auto run_weighting = [&](const bool ignore_collision) {
       initializeReduction<<<1, 1, 0U, stream_>>>(
           buffers_.minimum_soft.get(), buffers_.weight_sum.get(),
-          buffers_.best_rollout.get(), buffers_.feasible_cost_sum.get(),
-          buffers_.feasible_count.get());
+          buffers_.weight_square_sum.get(), buffers_.best_rollout.get(),
+          buffers_.feasible_cost_sum.get(), buffers_.feasible_count.get());
       reduceSoft<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
           buffers_.soft_cost.get(), buffers_.altitude_envelope_violation.get(),
           buffers_.collision_violation.get(), ignore_collision, active_rollouts,
@@ -419,10 +424,9 @@ public:
       calculateWeights<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
           buffers_.soft_cost.get(), buffers_.altitude_envelope_violation.get(),
           buffers_.collision_violation.get(), ignore_collision, buffers_.weights.get(),
-          active_rollouts, buffers_.minimum_soft.get(), config_.costs.temperature,
-          config_.costs.adaptive_temperature_cost_fraction,
-          buffers_.feasible_cost_sum.get(), buffers_.feasible_count.get(),
-          buffers_.weight_sum.get(), buffers_.effective_temperature.get());
+          active_rollouts, buffers_.minimum_soft.get(), regulated_temperature,
+          buffers_.weight_sum.get(), buffers_.weight_square_sum.get(),
+          buffers_.effective_temperature.get());
       selectBestFeasibleRollout<<<rollout_blocks, kThreadsPerBlock, 0U, stream_>>>(
           buffers_.weights.get(), buffers_.soft_cost.get(), buffers_.minimum_soft.get(),
           active_rollouts, buffers_.best_rollout.get());
@@ -433,11 +437,17 @@ public:
     float feasible_cost_excess_sum = 0.0F;
     unsigned int feasible_count = 0U;
     float minimum_soft_cost = 0.0F;
+    float feasible_weight_square_sum = 0.0F;
     const auto fetch_weighting_summary = [&]() {
       checkCuda(cudaMemcpyAsync(&feasible_weight_sum, buffers_.weight_sum.get(),
                                 sizeof(feasible_weight_sum), cudaMemcpyDeviceToHost,
                                 stream_),
                 "copy feasible weight sum");
+      checkCuda(cudaMemcpyAsync(&feasible_weight_square_sum,
+                                buffers_.weight_square_sum.get(),
+                                sizeof(feasible_weight_square_sum),
+                                cudaMemcpyDeviceToHost, stream_),
+                "copy feasible weight square sum");
       checkCuda(cudaMemcpyAsync(
                     &effective_temperature, buffers_.effective_temperature.get(),
                     sizeof(effective_temperature), cudaMemcpyDeviceToHost, stream_),
@@ -549,6 +559,16 @@ public:
         .weight_sum = feasible_weight_sum,
     };
     result.effective_temperature = effective_temperature;
+    result.effective_sample_fraction = effectiveSampleFraction(
+        feasible_weight_sum, feasible_weight_square_sum, feasible_count);
+    temperature_ = regulatedTemperature(
+        MppiTemperatureRegulatorConfig{
+            .minimum_temperature = config_.costs.temperature,
+            .target_effective_sample_fraction =
+                config_.costs.target_effective_sample_fraction,
+            .maximum_growth = config_.costs.maximum_temperature_growth,
+        },
+        temperature_, result.effective_sample_fraction);
     result.collision_gate_lifted = collision_gate_lifted;
     const bool deterministic_candidate_device_feasible =
         reacquisition_altitude_envelope_violation == 0U &&
@@ -593,18 +613,12 @@ public:
     const bool policy_prefers_route_candidate = input.prefer_route_directed_candidate &&
                                                 !arbitration_stochastic &&
                                                 candidate_within_tolerance;
-    route_directed_candidate_preferred_ticks_ =
-        policy_prefers_route_candidate ? route_directed_candidate_preferred_ticks_ + 1U
-                                       : 0U;
-    // Taking the update over from the weighted one is a switch, and a switch
-    // has to be earned: the candidate stays preferable for several ticks
-    // first. Handing it back is immediate — the weighted update is the default
-    // owner, and a candidate that stops being preferable has nothing to hold.
-    const bool sticky_prefers_route_candidate =
-        policy_prefers_route_candidate &&
-        (previous_control_selection_ == MppiControlSelection::kRouteDirectedCandidate ||
-         route_directed_candidate_preferred_ticks_ >=
-             config_.costs.route_directed_candidate_switch_ticks);
+    const bool sticky_prefers_route_candidate = stickyRouteCandidatePreference(
+        control_arbitration_,
+        MppiControlArbitrationInput{
+            .candidate_preferable = policy_prefers_route_candidate,
+            .switch_ticks = config_.costs.route_directed_candidate_switch_ticks,
+        });
     const bool route_candidate_forced =
         input.force_route_directed_candidate && !arbitration_stochastic;
     if (result.route_directed_candidate_device_feasible &&
@@ -773,7 +787,7 @@ public:
         result.post_update_repair = MppiPostUpdateRepair::kFailed;
       }
     }
-    previous_control_selection_ = result.control_selection;
+    control_arbitration_.previous_selection = result.control_selection;
     result.controls = updated_;
     result.warm_start_shift_s = elapsed_s;
     result.nominal_reseeded =
@@ -937,13 +951,12 @@ private:
   std::size_t route_point_count_{0U};
   std::uint64_t route_generation_{0U};
   bool route_uploaded_{false};
-  // Which source last owned the update, and how long the deterministic route
-  // candidate has been preferable in a row. The two sources produce visibly
-  // different first controls, so a preference that flips tick to tick is felt
-  // as a jerk; the candidate has to hold its preference before it takes over.
-  MppiControlSelection previous_control_selection_{
-      MppiControlSelection::kWeightedUpdate};
-  std::uint32_t route_directed_candidate_preferred_ticks_{0U};
+  // The regulated softmax temperature. It starts at the configured floor and
+  // is nudged each tick toward the target effective sample size.
+  float temperature_{config_.costs.temperature};
+  // See MppiControlArbitration: which source last owned the update, and how
+  // long the deterministic route candidate has been preferable in a row.
+  MppiControlArbitrationState control_arbitration_{};
   std::vector<Control> nominal_;
   std::vector<Control> updated_;
   std::vector<Control> best_feasible_;

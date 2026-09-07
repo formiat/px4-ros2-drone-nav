@@ -75,11 +75,20 @@ struct CostConfig {
   // it said nothing about running fast along a wall. Distance inside the band
   // is still measured, for the risk tier and diagnostics.
   float obstacle_approach_weight{40.0F};
+  // Floor of the regulated softmax temperature.
   float temperature{8.0F};
-  // The softmax temperature grows with the mean feasible cost excess above the
-  // best rollout so a population spread over thousands of cost units does not
-  // collapse onto a single sample. Zero keeps the fixed temperature.
-  float adaptive_temperature_cost_fraction{0.5F};
+  // Share of the feasible population the softmax should spread its weight
+  // over, measured as the effective sample size (sum w)^2 / (N sum w^2). The
+  // temperature is nudged toward it each tick. A fixed temperature against a
+  // population spread over thousands of cost units collapses the weights onto
+  // whichever sample happens to be best and the weighted update degenerates
+  // into "best of N random"; scaling the temperature by a share of the mean
+  // cost excess tracked the spread's scale but not how many samples actually
+  // carried weight, which is the quantity that matters. Zero disables the
+  // regulator and keeps the floor.
+  float target_effective_sample_fraction{0.07F};
+  // How far above the floor the regulator may take the temperature.
+  float maximum_temperature_growth{1000.0F};
   // Excludes rollouts whose body enters an occupied ESDF voxel from the
   // weighted update while any other rollout stays feasible. The device ESDF is
   // coarser than the raw grid, so the gate can reject raw-valid passages and
