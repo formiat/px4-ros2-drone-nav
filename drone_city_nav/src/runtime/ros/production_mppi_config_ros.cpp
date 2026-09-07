@@ -597,6 +597,8 @@ void ProductionMppiConfigLoader::declareControl() {
   config_.execution.stale_esdf_execution_window_ms =
       1000.0 * (config_.world.use_static_map ? static_stale_esdf_execution_window_s
                                              : no_static_stale_esdf_execution_window_s);
+  config_.execution.maximum_assembly_ms =
+      declare<double>("execution_maximum_assembly_ms", 12.0);
   const double horizon_steps =
       std::ceil(active_horizon_duration_s / static_cast<double>(mppi.dynamics.dt_s));
   if (!std::isfinite(horizon_steps) || horizon_steps < 1.0 ||

@@ -140,6 +140,7 @@ struct HorizonCandidate3D {
       ExecutionRouteTransitionDetail3D::kNone};
   std::optional<HorizonCandidatePhysicalRejection3D> physical_rejection;
   std::size_t arrival_shaping_attempts{0U};
+  bool arrival_shaping_budget_exhausted{false};
   mppi::FiniteExecutionPathStatus validation_status{
       mppi::FiniteExecutionPathStatus::kInvalidContract};
   mppi::FiniteExecutionPathStatus first_failed_validation_status{
@@ -177,6 +178,8 @@ struct HorizonCandidate3D {
 struct ExecutionHorizonAssemblerConfig3D {
   FlightEnvelopeConfig flight_envelope{};
   mppi::FiniteHorizonConfig finite_horizon{};
+  // Wall-clock bound on one horizon assembly. Zero leaves it unbounded.
+  double maximum_assembly_ms{0.0};
   std::shared_ptr<const VersionedExecutionValidationPolicy3D>
       direct_tracking_validation_policy;
 };

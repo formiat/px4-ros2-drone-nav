@@ -266,7 +266,8 @@ timedPathPoints(const FiniteMotionHorizon3D& horizon,
 FiniteExecutionPathValidation3D validateCompleteFiniteExecutionPath3D(
     const std::span<const TimedExecutionPathPoint3D> points,
     const MotionControl3D& previous_applied_control,
-    const FiniteExecutionPathWorld3D& world) noexcept {
+    const FiniteExecutionPathWorld3D& world,
+    const std::size_t discharged_leading_point_count) noexcept {
   if (!validWorld(world) || !finite(previous_applied_control)) {
     return {};
   }
@@ -292,6 +293,10 @@ FiniteExecutionPathValidation3D validateCompleteFiniteExecutionPath3D(
   }
 
   Point3 failure_point{};
+  FiniteExecutionPathValidation3D result{
+      .status = FiniteExecutionPathStatus3D::kValid,
+  };
+  result.physically_validated_point_count = points.empty() ? 0U : 1U;
   for (std::size_t index = 1U; index < points.size(); ++index) {
     const TimedExecutionPathPoint3D& first = points[index - 1U];
     const TimedExecutionPathPoint3D& second = points[index];
@@ -307,16 +312,25 @@ FiniteExecutionPathValidation3D validateCompleteFiniteExecutionPath3D(
       return reject(FiniteExecutionPathStatus3D::kRouteEndpointExceeded, 0U, index - 1U,
                     position(second.state), 0.0);
     }
+    // A leading point whose sweep the caller has discharged is not swept
+    // again: either an earlier attempt proved it clear on an identical prefix,
+    // or the vehicle has already flown past it.
+    if (index < discharged_leading_point_count) {
+      result.physically_validated_point_count = index + 1U;
+      continue;
+    }
     const FiniteExecutionPathStatus3D segment_status = validatePhysicalSegment(
         position(first.state), bodyAxis(first.control), position(second.state),
         bodyAxis(second.control), world, failure_point);
     if (segment_status != FiniteExecutionPathStatus3D::kValid) {
-      return reject(segment_status, 0U, index - 1U, failure_point, 0.0);
+      FiniteExecutionPathValidation3D rejection =
+          reject(segment_status, 0U, index - 1U, failure_point, 0.0);
+      rejection.physically_validated_point_count = index;
+      return rejection;
     }
+    result.physically_validated_point_count = index + 1U;
   }
-  return FiniteExecutionPathValidation3D{
-      .status = FiniteExecutionPathStatus3D::kValid,
-  };
+  return result;
 }
 
 [[nodiscard]] static ValidatedFiniteExecutionPath3D
@@ -330,7 +344,8 @@ buildValidatedFiniteExecutionPath3DFromPreservedPrefix(
     const FiniteExecutionPathWorld3D& world,
     const std::size_t initial_preserved_prefix_control_count,
     const std::size_t maximum_nominal_prefix_control_count,
-    FiniteExecutionPathCandidateValidator3D candidate_validator) {
+    FiniteExecutionPathCandidateValidator3D candidate_validator,
+    const FiniteExecutionPathBudget3D& budget) {
   ValidatedFiniteExecutionPath3D result;
   const auto precondition_failure = [&]() -> const char* {
     if (!validWorld(world)) {
@@ -359,8 +374,19 @@ buildValidatedFiniteExecutionPath3DFromPreservedPrefix(
     return result;
   }
 
+  // Every candidate this search builds shares its leading states and controls
+  // with the longer one before it, so a point once proved clear of occupied
+  // evidence stays clear for the rest of the search. The watermark is clamped
+  // to the prefix each candidate actually shares.
+  std::size_t physically_validated_point_count{0U};
   std::size_t preserved_prefix_control_count = initial_preserved_prefix_control_count;
   while (true) {
+    if (result.arrival_shaping_attempts > 0U && budget.expired()) {
+      // Out of budget with nothing accepted: the caller holds instead of
+      // receiving a horizon several periods late.
+      result.arrival_shaping_budget_exhausted = true;
+      return result;
+    }
     ++result.arrival_shaping_attempts;
     std::optional<FiniteMotionHorizon3D> candidate = buildFiniteMotionHorizon3D(
         planned_states, planned_controls, preserved_prefix_control_count, dynamics,
@@ -398,7 +424,12 @@ buildValidatedFiniteExecutionPath3DFromPreservedPrefix(
       }
       result.validation = validateCompleteFiniteExecutionPath3D(
           timedPathPoints(*candidate, previous_applied_control, dynamics.dt_s),
-          previous_applied_control, world);
+          previous_applied_control, world,
+          std::min(physically_validated_point_count,
+                   preserved_prefix_control_count + 1U));
+      physically_validated_point_count =
+          std::max(physically_validated_point_count,
+                   result.validation.physically_validated_point_count);
       if (result.validation.accepted() &&
           (!candidate_validator || candidate_validator(*candidate))) {
         result.horizon = std::move(candidate);
@@ -442,11 +473,13 @@ ValidatedFiniteExecutionPath3D buildValidatedFiniteExecutionPath3D(
     const std::size_t arrival_search_step_controls,
     const FiniteMotionHorizonConfig3D& finite_horizon_config,
     const FiniteExecutionPathWorld3D& world,
-    FiniteExecutionPathCandidateValidator3D candidate_validator) {
+    FiniteExecutionPathCandidateValidator3D candidate_validator,
+    const FiniteExecutionPathBudget3D& budget) {
   return buildValidatedFiniteExecutionPath3DFromPreservedPrefix(
       planned_states, planned_controls, previous_applied_control, dynamics,
       arrival_search_step_controls, finite_horizon_config, world,
-      planned_controls.size(), planned_controls.size(), std::move(candidate_validator));
+      planned_controls.size(), planned_controls.size(), std::move(candidate_validator),
+      budget);
 }
 
 FiniteExecutionPathValidation3D validateFiniteExecutionTrajectoryContinuation3D(
@@ -697,7 +730,8 @@ RebuiltFiniteExecutionPathContinuation3D rebuildFiniteExecutionPathContinuation3
       buildValidatedFiniteExecutionPath3DFromPreservedPrefix(
           states, controls, current_control, dynamics, arrival_search_step_controls,
           finite_horizon_config, world, remaining_preserved_prefix_control_count,
-          remaining_nominal_prefix_control_count, std::move(candidate_validator));
+          remaining_nominal_prefix_control_count, std::move(candidate_validator),
+          FiniteExecutionPathBudget3D{});
   result.validation = rebuilt.validation;
   result.arrival_shaping_attempts = rebuilt.arrival_shaping_attempts;
   result.path_validation_backoff = rebuilt.path_validation_backoff;

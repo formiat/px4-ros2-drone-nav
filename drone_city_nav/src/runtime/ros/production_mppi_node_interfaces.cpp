@@ -285,6 +285,7 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
       std::make_unique<ExecutionHorizonAssembler3D>(ExecutionHorizonAssemblerConfig3D{
           .flight_envelope = config_.world.flight_envelope,
           .finite_horizon = config_.execution.finite_horizon,
+          .maximum_assembly_ms = config_.execution.maximum_assembly_ms,
           .direct_tracking_validation_policy = config_.execution.validation_policy,
       });
   route_lifecycle_coordinator_ = std::make_unique<RouteLifecycleCoordinator3D>(

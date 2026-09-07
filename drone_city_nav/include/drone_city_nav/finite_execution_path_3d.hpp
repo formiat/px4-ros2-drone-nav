@@ -9,6 +9,7 @@
 #include "drone_city_nav/occupied_collision_oracle_3d.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -58,6 +59,11 @@ struct FiniteExecutionPathValidation3D {
   // status is not kDynamicsInconsistent.
   MotionDynamicsConsistency3D dynamics_consistency{
       MotionDynamicsConsistency3D::kConsistent};
+  // How many leading points are known clear of occupied evidence after this
+  // call, including the ones whose sweep the caller had already discharged. A
+  // later call on a path sharing that many leading points may discharge them
+  // in turn.
+  std::size_t physically_validated_point_count{0U};
   std::size_t first_remaining_point_index{0U};
   std::size_t failure_segment_index{0U};
   Point3 failure_point{};
@@ -119,6 +125,9 @@ struct ValidatedFiniteExecutionPath3D {
       .status = FiniteExecutionPathStatus3D::kValid};
   bool persistent_raw_path_validation_backoff{false};
   bool latest_lidar_path_validation_backoff{false};
+  // The arrival-shaping search ran out of its wall-clock budget before any
+  // candidate was accepted.
+  bool arrival_shaping_budget_exhausted{false};
 
   [[nodiscard]] bool accepted() const noexcept {
     return horizon.has_value() && validation.accepted();
@@ -133,10 +142,43 @@ struct ValidatedFiniteExecutionPath3D {
 using FiniteExecutionPathCandidateValidator3D =
     std::function<bool(const FiniteMotionHorizon3D&)>;
 
-[[nodiscard]] FiniteExecutionPathValidation3D
-validateCompleteFiniteExecutionPath3D(std::span<const TimedExecutionPathPoint3D> points,
-                                      const MotionControl3D& previous_applied_control,
-                                      const FiniteExecutionPathWorld3D& world) noexcept;
+// `discharged_leading_point_count` names how many leading points of `points`
+// need no swept-footprint check from this call, because the caller has already
+// discharged it. Two callers do:
+//
+//   - the arrival-shaping search, which rebuilds the same horizon with a
+//     shorter and shorter nominal prefix; every candidate shares that prefix
+//     bit for bit with the longer one before it, and a point once proved clear
+//     stays clear for the rest of the search;
+//   - the commit-time revalidation, which asks whether a published horizon is
+//     still executable; the part of it the vehicle has already flown will not
+//     be flown again.
+//
+// The sweep is by far the most expensive part of this validation, and
+// re-running it made horizon assembly and the commit the two largest costs of
+// the planning cycle. Everything else is still checked for every point: the
+// contract, the dynamics, the flight envelope and the terminal boundary.
+[[nodiscard]] FiniteExecutionPathValidation3D validateCompleteFiniteExecutionPath3D(
+    std::span<const TimedExecutionPathPoint3D> points,
+    const MotionControl3D& previous_applied_control,
+    const FiniteExecutionPathWorld3D& world,
+    std::size_t discharged_leading_point_count = 0U) noexcept;
+
+// A wall-clock bound on the whole arrival-shaping search. The search rebuilds
+// and revalidates the horizon once per shortened prefix, and each rebuild
+// solves an arrival profile by damped Newton; on a bad tick that ran the
+// planning cycle several times past its period, which delays every horizon the
+// vehicle receives. Past the deadline the search stops shortening and returns
+// what it has, so a slow tick degrades into a hold instead of into a late
+// horizon. Absent means unbounded, which is what the tests and offline tools
+// want.
+struct FiniteExecutionPathBudget3D {
+  std::optional<std::chrono::steady_clock::time_point> deadline;
+
+  [[nodiscard]] bool expired() const noexcept {
+    return deadline.has_value() && std::chrono::steady_clock::now() >= *deadline;
+  }
+};
 
 [[nodiscard]] ValidatedFiniteExecutionPath3D buildValidatedFiniteExecutionPath3D(
     std::span<const MotionState3D> planned_states,
@@ -145,7 +187,8 @@ validateCompleteFiniteExecutionPath3D(std::span<const TimedExecutionPathPoint3D>
     const MotionDynamicsConfig3D& dynamics, std::size_t arrival_search_step_controls,
     const FiniteMotionHorizonConfig3D& finite_horizon_config,
     const FiniteExecutionPathWorld3D& world,
-    FiniteExecutionPathCandidateValidator3D candidate_validator = {});
+    FiniteExecutionPathCandidateValidator3D candidate_validator = {},
+    const FiniteExecutionPathBudget3D& budget = {});
 
 [[nodiscard]] FiniteExecutionPathValidation3D
 validateFiniteExecutionTrajectoryContinuation3D(

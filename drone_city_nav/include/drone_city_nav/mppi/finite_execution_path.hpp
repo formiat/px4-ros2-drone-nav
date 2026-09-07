@@ -23,6 +23,7 @@ using RebuiltFiniteExecutionPathContinuation =
 using ValidatedFiniteExecutionPath = drone_city_nav::ValidatedFiniteExecutionPath3D;
 using FiniteExecutionPathCandidateValidator =
     drone_city_nav::FiniteExecutionPathCandidateValidator3D;
+using FiniteExecutionPathBudget = drone_city_nav::FiniteExecutionPathBudget3D;
 
 [[nodiscard]] inline FiniteExecutionPathValidation validateCompleteFiniteExecutionPath(
     const std::span<const TimedExecutionPathPoint> points,
@@ -38,11 +39,12 @@ using FiniteExecutionPathCandidateValidator =
     const std::size_t arrival_search_step_controls,
     const FiniteHorizonConfig& finite_horizon_config,
     const FiniteExecutionPathWorld& world,
-    FiniteExecutionPathCandidateValidator candidate_validator = {}) {
+    FiniteExecutionPathCandidateValidator candidate_validator = {},
+    const FiniteExecutionPathBudget3D& budget = {}) {
   return buildValidatedFiniteExecutionPath3D(
       planned_states, planned_controls, previous_applied_control, dynamics,
       arrival_search_step_controls, finite_horizon_config, world,
-      std::move(candidate_validator));
+      std::move(candidate_validator), budget);
 }
 
 [[nodiscard]] inline FiniteExecutionPathValidation

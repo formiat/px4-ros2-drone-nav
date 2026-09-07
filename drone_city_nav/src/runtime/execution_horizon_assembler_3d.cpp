@@ -1,7 +1,9 @@
 #include "execution_horizon_assembler_3d.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <limits>
+#include <optional>
 #include <ranges>
 #include <utility>
 
@@ -32,6 +34,8 @@ void captureValidationTelemetry(HorizonCandidate3D& candidate,
                                 const mppi::ValidatedFiniteExecutionPath& validation,
                                 const bool nominal_candidate_degraded) noexcept {
   candidate.arrival_shaping_attempts = validation.arrival_shaping_attempts;
+  candidate.arrival_shaping_budget_exhausted =
+      validation.arrival_shaping_budget_exhausted;
   candidate.validation_failure_segment = validation.validation.failure_segment_index;
   candidate.validation_first_remaining_point =
       validation.validation.first_remaining_point_index;
@@ -214,12 +218,26 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
         };
   }
 
+  // The arrival-shaping search is the largest single cost of the planning
+  // cycle, and it grows with the number of prefixes it has to try. Past this
+  // point the cycle is already late, so the search returns what it has and the
+  // vehicle holds instead of receiving a horizon several periods old.
+  const std::optional<std::chrono::steady_clock::time_point> assembly_deadline =
+      config_.maximum_assembly_ms > 0.0
+          ? std::optional<std::chrono::steady_clock::
+                              time_point>{std::chrono::steady_clock::now() +
+                                          std::chrono::duration_cast<
+                                              std::chrono::steady_clock::duration>(
+                                              std::chrono::duration<double, std::milli>{
+                                                  config_.maximum_assembly_ms})}
+          : std::nullopt;
   mppi::ValidatedFiniteExecutionPath validated_path =
       mppi::buildValidatedFiniteExecutionPath(
           states, controls, evidence.exact_previous_control,
           *evidence.execution_dynamics, cycle.controller.arrival_search_step_controls,
           config_.finite_horizon, evidence.execution_path_world,
-          std::move(route_candidate_validator));
+          std::move(route_candidate_validator),
+          mppi::FiniteExecutionPathBudget{.deadline = assembly_deadline});
   HorizonCandidate3D candidate;
   captureValidationTelemetry(candidate, validated_path, nominal_candidate_degraded);
   if (route_certification.has_value()) {

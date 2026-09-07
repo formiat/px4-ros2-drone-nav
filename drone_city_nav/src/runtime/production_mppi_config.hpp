@@ -158,6 +158,11 @@ struct ProductionMppiConfig final {
     MissionWaypointCaptureGateConfig mission_waypoint_capture_gate{};
     NavigationHealthConfig navigation_health{};
     mppi::FiniteHorizonConfig finite_horizon{};
+    // Wall-clock bound on one horizon assembly. The arrival-shaping search
+    // rebuilds and revalidates the horizon once per shortened prefix, and past
+    // this point the planning cycle is already late: the search returns what
+    // it has and the vehicle holds instead of receiving a stale horizon.
+    double maximum_assembly_ms{0.0};
     std::shared_ptr<const VersionedExecutionValidationPolicy3D> validation_policy;
     ProductionMppiExecutionTopics topics{};
   };

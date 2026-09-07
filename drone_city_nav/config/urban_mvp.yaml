@@ -276,6 +276,14 @@ production_mppi_node:
     overspeed_weight: 200.0
     no_static_speed_tracking_weight: 1.0
     deadline_ms: 20.0
+    # Wall-clock bound on one horizon assembly. The arrival-shaping search
+    # rebuilds and revalidates the horizon once per shortened prefix, and the
+    # rebuild solves an arrival profile by damped Newton; unbounded, it made
+    # assembly the largest single cost of the planning cycle and ran the cycle
+    # several times past its period. Past this point the cycle is already late,
+    # so the search returns what it has and the vehicle holds instead of
+    # receiving a horizon several periods old.
+    execution_maximum_assembly_ms: 12.0
     maximum_pose_age_ms: 150.0
     maximum_vehicle_status_age_ms: 1000.0
     maximum_pose_prediction_age_ms: 1000.0

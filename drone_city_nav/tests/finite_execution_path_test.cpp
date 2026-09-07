@@ -3,7 +3,9 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -306,6 +308,62 @@ TEST(FiniteExecutionPathTest,
   EXPECT_TRUE(path.physicalObstacleValidationBackoff());
   EXPECT_TRUE(finiteHorizonHasTerminalRestState(horizon));
   EXPECT_LT(horizon.states.back().x, 4.75F);
+}
+
+TEST(FiniteExecutionPathTest, ADischargedLeadingPrefixIsNotSweptAgain) {
+  // The occupied cell sits under the path's second segment, so a full sweep
+  // rejects it. Telling the validation that both leading points are already
+  // known clear leaves nothing for it to sweep, and it accepts.
+  TestWorld world;
+  world.occupancy.setOccupied(GridIndex3D{7, 2, 10});
+  const std::vector<TimedExecutionPathPoint> path = testPath();
+
+  const FiniteExecutionPathValidation swept =
+      validateCompleteFiniteExecutionPath(path, Control{}, world.view());
+  ASSERT_EQ(swept.status, FiniteExecutionPathStatus::kRawCollision);
+  // The first two points are clear; the segment reaching the third is not.
+  EXPECT_EQ(swept.physically_validated_point_count, 2U);
+
+  const FiniteExecutionPathValidation discharged =
+      validateCompleteFiniteExecutionPath3D(path, Control{}, world.view(), path.size());
+  EXPECT_TRUE(discharged.accepted());
+  EXPECT_EQ(discharged.physically_validated_point_count, path.size());
+
+  // A discharge that stops short still sweeps the rest, and still rejects.
+  const FiniteExecutionPathValidation partial =
+      validateCompleteFiniteExecutionPath3D(path, Control{}, world.view(), 2U);
+  EXPECT_EQ(partial.status, FiniteExecutionPathStatus::kRawCollision);
+}
+
+TEST(FiniteExecutionPathTest, TheArrivalSearchStopsWhenItsBudgetIsSpent) {
+  // A deadline already in the past: the first attempt still runs, and the
+  // search then returns without shortening the prefix any further.
+  TestWorld world;
+  world.dynamics.dt_s = 0.1F;
+  world.occupancy.setOccupied(GridIndex3D{10, 2, 10});
+  std::vector<Control> planned_controls(40U);
+  std::vector<State> planned_states{State{.x = 1.0F, .y = 1.0F, .z = 5.0F, .vx = 2.0F}};
+  for (const Control& control : planned_controls) {
+    planned_states.push_back(
+        integrateReference(planned_states.back(), control, world.dynamics));
+  }
+
+  const ValidatedFiniteExecutionPath unbounded = buildValidatedFiniteExecutionPath(
+      planned_states, planned_controls, Control{}, world.dynamics, 5U,
+      FiniteHorizonConfig{}, world.view());
+  ASSERT_TRUE(unbounded.accepted());
+  ASSERT_GT(unbounded.arrival_shaping_attempts, 1U);
+  EXPECT_FALSE(unbounded.arrival_shaping_budget_exhausted);
+
+  const ValidatedFiniteExecutionPath bounded = buildValidatedFiniteExecutionPath(
+      planned_states, planned_controls, Control{}, world.dynamics, 5U,
+      FiniteHorizonConfig{}, world.view(), {},
+      FiniteExecutionPathBudget{.deadline = std::chrono::steady_clock::now() -
+                                            std::chrono::seconds{1}});
+
+  EXPECT_TRUE(bounded.arrival_shaping_budget_exhausted);
+  EXPECT_EQ(bounded.arrival_shaping_attempts, 1U);
+  EXPECT_FALSE(bounded.accepted());
 }
 
 TEST(FiniteExecutionPathTest,

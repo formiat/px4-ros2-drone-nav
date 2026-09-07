@@ -1,6 +1,36 @@
 # Performance
 
-The main runtime costs are ESDF preparation and CUDA MPPI.
+The main runtime costs are ESDF preparation, horizon assembly and the horizon
+commit; CUDA MPPI is a smaller share than any of them.
+
+## The Planning Cycle Budget
+
+A planning tick is snapshot preparation, the controller, and publication
+(assembly, commit, wire). The controller is the part with a GPU in it and the
+smallest part of the cycle: measured at p50 around 7 ms against a 20 ms period,
+while the whole cycle sat near 48 ms. Two things dominated it, and both were
+re-doing work already done:
+
+- **Horizon assembly.** The arrival-shaping search rebuilds the horizon once
+  per shortened nominal prefix, and each rebuild solves an arrival profile by
+  damped Newton and then re-swept the *whole* path against occupied evidence.
+  Every candidate shares its leading states and controls bit for bit with the
+  longer one before it, so a point once proved clear stays clear for the rest of
+  the search: `validateCompleteFiniteExecutionPath3D` now takes the number of
+  leading points whose sweep the caller has discharged.
+  `execution_maximum_assembly_ms` bounds the whole search, so a bad tick
+  degrades into a hold rather than into a horizon delivered several periods
+  late.
+- **The commit revalidation.** A commit whose evidence moved since the
+  candidate was prepared revalidates the published horizon, and swept all of
+  it. The part the vehicle has already flown will not be flown again, so the
+  revalidation now discharges it — which also stops a perfectly executable
+  horizon being revoked for evidence that appeared behind the vehicle.
+
+`deadline_misses` in `PRODUCTION_MPPI_SUMMARY` measures the whole cycle against
+the period, and `controller_deadline_misses` the controller's own share. A run
+with thousands of the former and none of the latter is telling you the cost is
+around the optimiser, not in it.
 
 ## CUDA MPPI
 
