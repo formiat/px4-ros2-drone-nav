@@ -139,6 +139,24 @@ refinement alike — goes through the same two passes before it is offered:
 `persistent_planner_maximum_clearance_centering_queries` bound the work, and
 `PRODUCTION_MPPI_ROUTE3D` reports `clearance_centering=<moves>/<queries>`.
 
+## Lattice Resolution
+
+The planner lattice is a dense integer grid at `minimum_horizontal_step_m` /
+`minimum_vertical_step_m`, and its adaptive levels are *coarser* multiples of
+that step. There is no finer level, and there cannot be one without changing
+the representation: the Urban world at 0.5 m spacing is 58 million nodes, and
+one of the several per-node arrays alone would be 232 MB, before the D* label
+maps and the edge cache. A finer level confined to chunks near occupied
+evidence therefore needs a sparse, chunk-local node set, which is a redesign of
+the lattice indexing together with the edge cache, the occupied-change stamping
+and the D* label storage.
+
+Two consequences of the sparse lattice are addressed from other directions
+instead: a vehicle in a column that carries no node leaves through a refined
+free waypoint (below), and a route whose nodes land against a jamb has its
+vertices slid to the middle of the passage before it is published. Neither
+gives the search finer *routing* through a passage; that remains the open item.
+
 ## Leaving The Vehicle's Own Position
 
 The search reaches the lattice from wherever the vehicle stands. Normally that

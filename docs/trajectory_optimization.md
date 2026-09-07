@@ -256,6 +256,20 @@ immediate, because the weighted update is the default owner. A candidate that
 is itself the best feasible rollout, and a liveness-forced candidate, still win
 at once.
 
+## Reference Speed And The Route Profile
+
+The controller does not track a bare scalar reference. Every route sample
+carries its own `reference_speed_mps`, and the rollout cost tracks
+`min(scalar reference, route profile at the rollout's own station)` — for the
+speed-tracking term and for the overspeed term alike.
+
+The scalar remains, and deliberately. It carries the limits that depend on
+evidence the compiled route profile cannot see: the clearance of the horizon
+the vehicle is executing right now, the sensor-braking range, a route blocked
+since activation, and the goal. A profile compiled when the route was activated
+answers for the route's geometry; it cannot answer for what the lidar saw two
+seconds ago.
+
 ## Continuity And Liveness
 
 - The first command is bounded relative to applied-control feedback.
