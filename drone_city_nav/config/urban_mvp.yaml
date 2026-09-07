@@ -482,6 +482,15 @@ production_mppi_node:
     # puts it, so a route through a 2.4 m doorway runs against the jamb:
     # execution crawls through it and the first freshly observed voxel of that
     # jamb blocks the route.
+    # When no lattice node is reachable in one segment from where the vehicle
+    # stands — beside a wall after a blocked-route stop — the search probes a
+    # grid this many times finer than one lattice cell for a free step it can
+    # leave through. Without it the planner reports start_unavailable for as
+    # long as the vehicle stays put, which is the pocket that ended two of the
+    # four recorded Urban runs. The step is ordinary free space: the body
+    # contract validates it like any other segment.
+    persistent_planner_departure_refinement_subdivisions: 4
+    persistent_planner_maximum_departure_refinement_probes: 512
     persistent_planner_clearance_centering_passes: 3
     persistent_planner_maximum_clearance_centering_queries: 4096
     persistent_planner_clearance_ranking_weight: 1.5

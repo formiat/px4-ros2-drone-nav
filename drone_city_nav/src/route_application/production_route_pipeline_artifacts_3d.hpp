@@ -46,6 +46,7 @@ struct ProductionPersistentPlannerTelemetry3D {
   std::size_t shortcuts_applied{0U};
   std::size_t clearance_centering_queries{0U};
   std::size_t clearance_centering_moves{0U};
+  bool departure_waypoint_used{false};
   std::size_t lattice_edge_queries{0U};
   std::size_t raw_edge_validation_checks{0U};
   std::size_t adaptive_edge_queries{0U};

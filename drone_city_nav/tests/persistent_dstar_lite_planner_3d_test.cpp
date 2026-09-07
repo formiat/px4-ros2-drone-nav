@@ -218,6 +218,68 @@ TEST(PersistentDStarLitePlanner3DTest,
   EXPECT_EQ(updated.progress, SearchProgress3D::kConverged);
 }
 
+TEST(PersistentDStarLitePlanner3DTest, ARefinedDepartureLeavesAPocketNoNodeReaches) {
+  // A corridor with an alcove off it, and a lattice twice as coarse as the
+  // map. The alcove is one cell wide and its column carries no lattice node,
+  // so the vehicle resting inside it reaches no node in a single segment: the
+  // swept body clips a jamb on every straight line out. Two legs clear it —
+  // straight out of the mouth, then across to a corridor node.
+  constexpr int kWidth = 16;
+  constexpr int kHeight = 9;
+  constexpr int kDepth = 5;
+  auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 1.0, kWidth, kHeight, kDepth});
+  for (int x = 0; x < kWidth; ++x) {
+    for (int z = 0; z < kDepth; ++z) {
+      // South wall of the corridor, and its north wall with the alcove mouth.
+      ASSERT_TRUE(occupancy->setState({x, 1, z}, ObservedVoxelState::kOccupied));
+      if (x != 2) {
+        ASSERT_TRUE(occupancy->setState({x, 4, z}, ObservedVoxelState::kOccupied));
+      }
+      // Everything north of the mouth except the alcove column itself.
+      if (x != 2) {
+        ASSERT_TRUE(occupancy->setState({x, 5, z}, ObservedVoxelState::kOccupied));
+      }
+      for (int y = 6; y < kHeight; ++y) {
+        ASSERT_TRUE(occupancy->setState({x, y, z}, ObservedVoxelState::kOccupied));
+      }
+    }
+  }
+  PersistentPlannerConfig3D config = testConfig();
+  config.minimum_horizontal_step_m = 2.0;
+  config.minimum_vertical_step_m = 2.0;
+  config.physical_footprint.radius_m = 0.4;
+  config.physical_footprint.perimeter_samples = 8U;
+  config.physical_footprint.radial_rings = 1U;
+  config.physical_footprint.axial_samples = 1U;
+  const Point3 start{2.5, 5.5, 2.5};
+  const Point3 goal{14.5, 2.5, 2.5};
+
+  PersistentPlannerConfig3D unrefined_config = config;
+  unrefined_config.departure_refinement_subdivisions = 0U;
+  PersistentDStarLitePlanner3D unrefined{unrefined_config};
+  const PlannerUpdate3D stuck =
+      unrefined.plan(request(start, goal, world(occupancy, 1U)));
+  ASSERT_EQ(stuck.input_status, PlannerInputStatus3D::kStartUnavailable)
+      << "the fixture no longer reproduces a pocket";
+
+  PersistentDStarLitePlanner3D refined{config};
+  PlannerUpdate3D update = refined.plan(request(start, goal, world(occupancy, 1U)));
+  for (int attempt = 0; attempt < 8 && !update.publishable(); ++attempt) {
+    update = refined.plan(request(start, goal, world(occupancy, 1U)));
+  }
+
+  EXPECT_NE(update.input_status, PlannerInputStatus3D::kStartUnavailable);
+  ASSERT_TRUE(update.publishable())
+      << "refined departure did not recover a pocket the plain one lost";
+  EXPECT_TRUE(update.telemetry.departure_waypoint_used);
+  const std::vector<Point3>& points = candidate(update).points;
+  ASSERT_GE(points.size(), 2U);
+  EXPECT_NEAR(points.front().x, start.x, 1.0e-9);
+  EXPECT_NEAR(points.front().y, start.y, 1.0e-9);
+  expectRawValid(points, *occupancy, refined.config().physical_footprint);
+}
+
 TEST(PersistentDStarLitePlanner3DTest, ClearanceCenteringSlidesVerticesOffTheWall) {
   // A straight corridor whose free lane runs from y = 4 to y = 6: its middle
   // is y = 5. The lattice put the route's interior vertices against the

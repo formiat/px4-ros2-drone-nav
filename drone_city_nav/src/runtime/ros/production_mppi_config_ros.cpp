@@ -356,6 +356,10 @@ void ProductionMppiConfigLoader::declarePlanning() {
       declarePositiveSize("persistent_planner_maximum_extracted_path_nodes", 8'192);
   planner.maximum_shortcut_checks =
       declarePositiveSize("persistent_planner_maximum_shortcut_checks", 8'192);
+  planner.departure_refinement_subdivisions =
+      declarePositiveSize("persistent_planner_departure_refinement_subdivisions", 4);
+  planner.maximum_departure_refinement_probes = declarePositiveSize(
+      "persistent_planner_maximum_departure_refinement_probes", 512);
   planner.clearance_centering_passes =
       declarePositiveSize("persistent_planner_clearance_centering_passes", 3);
   planner.maximum_clearance_centering_queries = declarePositiveSize(

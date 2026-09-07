@@ -251,6 +251,38 @@ public:
   [[nodiscard]] PersistentPlannerNode3D nearestNode(const Point3& point) const noexcept;
   [[nodiscard]] std::optional<PersistentPlannerNode3D>
   selectAnchor(const Point3& point, bool start_anchor) const;
+
+  // How the search leaves the vehicle's exact position for the lattice.
+  //
+  // Normally that is one segment straight to the nearest admissible node.
+  // Where the vehicle has come to rest close to occupied evidence — beside a
+  // wall after a blocked-route stop — the swept body sweeps a jamb on every
+  // such segment, no node in the connector radius is reachable, and the
+  // planner reports start_unavailable for as long as the vehicle stays put:
+  // the pocket that ended two of four recorded Urban runs. The lattice is
+  // sparse, so the way out is almost always a short step the lattice cannot
+  // express. A departure waypoint is that step: a free point off the lattice
+  // that the body reaches from where it stands, and from which a node is
+  // reachable under the ordinary raw rule. It is a route through free space
+  // like any other, not an exemption from the body contract.
+  struct DepartureConnection3D {
+    std::optional<PersistentPlannerNode3D> anchor;
+    std::optional<Point3> waypoint;
+
+    [[nodiscard]] bool available() const noexcept {
+      return anchor.has_value();
+    }
+  };
+
+  [[nodiscard]] DepartureConnection3D
+  selectDepartureConnection(const Point3& start) const;
+  // Whether the body reaches `target` from `start`, through `waypoint` when
+  // one is set. The leg leaving the vehicle carries the departure exemption
+  // for contact evidence the body already holds; every later leg is ordinary
+  // raw evidence.
+  [[nodiscard]] bool departureReachable(const Point3& start,
+                                        const std::optional<Point3>& waypoint,
+                                        const Point3& target) const;
   [[nodiscard]] bool pointInsideFlightEnvelope(const Point3& point) const noexcept;
   [[nodiscard]] bool rawSegmentValid(const Point3& first, const Point3& second) const;
   [[nodiscard]] bool departureSegmentValid(const Point3& first,
@@ -537,9 +569,10 @@ public:
   [[nodiscard]] bool computeShortestPath(std::chrono::steady_clock::time_point deadline,
                                          std::size_t maximum_expansions,
                                          std::size_t& expansions);
-  [[nodiscard]] std::vector<Point3> extractPath(const Point3& exact_start,
-                                                const Point3& exact_goal,
-                                                std::size_t& adaptive_edges);
+  [[nodiscard]] std::vector<Point3>
+  extractPath(const Point3& exact_start, const Point3& exact_goal,
+              const std::optional<Point3>& departure_waypoint,
+              std::size_t& adaptive_edges);
 
   [[nodiscard]] std::uint64_t searchGeneration() const noexcept;
   [[nodiscard]] std::uint64_t repairGeneration() const noexcept;
@@ -591,6 +624,8 @@ public:
     PersistentPlannerNode3D goal{};
     Point3 exact_start{};
     Point3 exact_goal{};
+    // See PlannerLattice3D::DepartureConnection3D.
+    std::optional<Point3> departure_waypoint;
   };
 
   FeasiblePathSearch3D(const PersistentPlannerConfig3D& config,
@@ -741,6 +776,8 @@ public:
     PersistentPlannerNode3D goal_anchor{};
     Point3 exact_start{};
     Point3 exact_goal{};
+    // See PlannerLattice3D::DepartureConnection3D.
+    std::optional<Point3> departure_waypoint;
     bool start_from_rest{false};
   };
 
@@ -929,6 +966,9 @@ private:
   // Anchored start of the feasibility search; see plan() for the hysteresis.
   PersistentPlannerNode3D goal_{};
   Point3 exact_start_{};
+  // The short free step the search leaves the vehicle through when no lattice
+  // node is reachable from where it stands. Absent in ordinary flight.
+  std::optional<Point3> departure_waypoint_;
   Point3 exact_goal_{};
   std::uint64_t mission_epoch_{0U};
   bool initialized_{false};

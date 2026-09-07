@@ -68,6 +68,15 @@ struct PersistentPlannerConfig3D {
   double minimum_continuous_turn_alignment{0.7071067811865476};
   double goal_tolerance_m{1.0};
   std::size_t connector_search_radius_cells{2U};
+  // Subdivisions of one lattice cell the departure refinement probes when no
+  // node in the connector radius is reachable in a single segment. Zero
+  // disables the refinement, and start_unavailable is then terminal for as
+  // long as the vehicle stays where it is.
+  std::size_t departure_refinement_subdivisions{4U};
+  // Upper bound on the waypoints that refinement examines, nearest first. The
+  // refinement runs only on updates the planner would otherwise abandon, but
+  // it still has to fit inside the update budget.
+  std::size_t maximum_departure_refinement_probes{512U};
   // The feasibility-first search tries the direct raw connector to the exact
   // goal only from nodes within this distance; a raw sweep across the whole
   // remaining route on every expansion would dominate the search budget.
@@ -218,6 +227,9 @@ struct PlannerTelemetry3D {
   std::size_t schedule_edges_forgotten{0U};
   std::size_t schedule_clearances_tightened{0U};
   std::size_t schedule_clearances_rederived{0U};
+  // The search had to leave the vehicle through a refined free step because no
+  // lattice node was reachable from where it stands.
+  bool departure_waypoint_used{false};
   bool search_state_reused{false};
   bool occupied_world_unchanged{false};
   bool incumbent_retained{false};

@@ -93,6 +93,29 @@ refinement alike — goes through the same two passes before it is offered:
 `persistent_planner_maximum_clearance_centering_queries` bound the work, and
 `PRODUCTION_MPPI_ROUTE3D` reports `clearance_centering=<moves>/<queries>`.
 
+## Leaving The Vehicle's Own Position
+
+The search reaches the lattice from wherever the vehicle stands. Normally that
+is one segment to the nearest admissible node, with the departure exemption for
+contact evidence the body already holds.
+
+A vehicle that has come to rest close to occupied evidence — beside a wall
+after a blocked-route stop — can be in a position where the swept body sweeps a
+jamb on every such segment. The lattice is sparse relative to the map, so the
+column the vehicle sits in may carry no node at all. The planner then reports
+`start_unavailable` for as long as the vehicle stays put, and nothing changes
+it: this is the pocket that ended two of the four recorded Urban runs.
+
+When no node is reachable in a single segment, the search probes a grid
+`persistent_planner_departure_refinement_subdivisions` times finer than one
+lattice cell around the vehicle, nearest first and bounded by
+`persistent_planner_maximum_departure_refinement_probes`, for a free point it
+can reach and from which a node is reachable under the ordinary raw rule. That
+point becomes the route's first waypoint. It is a route through free space like
+any other: the body contract validates both legs, the leg leaving the vehicle
+under the departure exemption and every later leg under ordinary raw evidence.
+`PRODUCTION_MPPI_ROUTE3D` reports `departure_waypoint=true` when it was needed.
+
 ## Liveness And Safety
 
 The liveness monitor measures progress the vehicle actually made over an

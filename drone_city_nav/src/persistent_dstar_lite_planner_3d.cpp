@@ -288,6 +288,7 @@ PersistentDStarLitePlanner3DImpl::searchEndpoints() const noexcept {
       .goal = goal_,
       .exact_start = exact_start_,
       .exact_goal = exact_goal_,
+      .departure_waypoint = departure_waypoint_,
   };
 }
 
@@ -304,6 +305,7 @@ void PersistentDStarLitePlanner3DImpl::reset() noexcept {
   last_start_ = {};
   goal_ = {};
   exact_start_ = {};
+  departure_waypoint_.reset();
   exact_goal_ = {};
   mission_epoch_ = 0U;
   dstar_session_.reset();
@@ -405,12 +407,15 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   telemetry.changed_occupied_voxels = world_update.changed_cells.size();
   telemetry.occupied_world_unchanged = world_update.occupied_world_unchanged;
 
-  const std::optional<PersistentPlannerNode3D> start_anchor =
-      lattice_.selectAnchor(request.start, true);
-  if (!start_anchor.has_value()) {
+  const PlannerLattice3D::DepartureConnection3D departure =
+      lattice_.selectDepartureConnection(request.start);
+  if (!departure.available()) {
     update.input_status = PlannerInputStatus3D::kStartUnavailable;
     return update;
   }
+  const std::optional<PersistentPlannerNode3D>& start_anchor = departure.anchor;
+  departure_waypoint_ = departure.waypoint;
+  telemetry.departure_waypoint_used = departure.waypoint.has_value();
   const std::optional<PersistentPlannerNode3D> goal_anchor =
       lattice_.selectAnchor(request.mission_goal, false);
   if (!goal_anchor.has_value()) {
@@ -605,13 +610,14 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     if (!execution_time_refiner_.initialized()) {
       execution_time_refiner_.begin(
           refinement_request,
-          dstar_session_.extractPath(exact_start_, exact_goal_,
+          dstar_session_.extractPath(exact_start_, exact_goal_, departure_waypoint_,
                                      adaptive_edges_in_extracted_path_));
     } else if (!execution_time_refiner_.hasIncumbent()) {
       // The world change dropped the refinement incumbent; the repaired D*
       // route is the new anytime bound.
-      execution_time_refiner_.seedIncumbent(dstar_session_.extractPath(
-          exact_start_, exact_goal_, adaptive_edges_in_extracted_path_));
+      execution_time_refiner_.seedIncumbent(
+          dstar_session_.extractPath(exact_start_, exact_goal_, departure_waypoint_,
+                                     adaptive_edges_in_extracted_path_));
     }
     const std::size_t graph_expansions =
         telemetry.repair_lattice_states_processed + telemetry.expansions;

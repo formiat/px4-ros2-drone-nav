@@ -407,6 +407,80 @@ PlannerLattice3D::selectAnchor(const Point3& point, const bool start_anchor) con
   return std::nullopt;
 }
 
+PlannerLattice3D::DepartureConnection3D
+PlannerLattice3D::selectDepartureConnection(const Point3& start) const {
+  DepartureConnection3D result;
+  result.anchor = selectAnchor(start, true);
+  if (result.anchor.has_value() || config_->departure_refinement_subdivisions == 0U) {
+    return result;
+  }
+  // No node in the connector radius is reachable in one segment. Probe a grid
+  // finer than the lattice around the vehicle for a free point it can reach,
+  // and from which a node is reachable; the nearest such point wins, so the
+  // detour stays as short as the geometry allows.
+  const auto subdivisions =
+      static_cast<int>(config_->departure_refinement_subdivisions);
+  const double horizontal_step_m =
+      config_->minimum_horizontal_step_m / static_cast<double>(subdivisions);
+  const double vertical_step_m =
+      config_->minimum_vertical_step_m / static_cast<double>(subdivisions);
+  const auto radius = static_cast<int>(config_->connector_search_radius_cells);
+  const int span = radius * subdivisions;
+  std::vector<Point3> waypoints;
+  const auto span_size = static_cast<std::size_t>(2 * span + 1);
+  waypoints.reserve(span_size * span_size * span_size);
+  for (int z_offset = -span; z_offset <= span; ++z_offset) {
+    for (int y_offset = -span; y_offset <= span; ++y_offset) {
+      for (int x_offset = -span; x_offset <= span; ++x_offset) {
+        if (x_offset == 0 && y_offset == 0 && z_offset == 0) {
+          continue;
+        }
+        const Point3 waypoint{
+            start.x + static_cast<double>(x_offset) * horizontal_step_m,
+            start.y + static_cast<double>(y_offset) * horizontal_step_m,
+            start.z + static_cast<double>(z_offset) * vertical_step_m};
+        if (pointInsideFlightEnvelope(waypoint)) {
+          waypoints.push_back(waypoint);
+        }
+      }
+    }
+  }
+  std::ranges::sort(waypoints, [&](const Point3& first, const Point3& second) {
+    const double first_distance = distance3D(start, first);
+    const double second_distance = distance3D(start, second);
+    if (first_distance != second_distance) {
+      return first_distance < second_distance;
+    }
+    return std::tie(first.z, first.y, first.x) < std::tie(second.z, second.y, second.x);
+  });
+  std::size_t probes{0U};
+  for (const Point3& waypoint : waypoints) {
+    if (probes >= config_->maximum_departure_refinement_probes) {
+      break;
+    }
+    ++probes;
+    if (!departureSegmentValid(start, waypoint)) {
+      continue;
+    }
+    const std::optional<PersistentPlannerNode3D> anchor = selectAnchor(waypoint, false);
+    if (anchor.has_value()) {
+      result.anchor = anchor;
+      result.waypoint = waypoint;
+      return result;
+    }
+  }
+  return result;
+}
+
+bool PlannerLattice3D::departureReachable(const Point3& start,
+                                          const std::optional<Point3>& waypoint,
+                                          const Point3& target) const {
+  if (!waypoint.has_value()) {
+    return departureSegmentValid(start, target);
+  }
+  return departureSegmentValid(start, *waypoint) && rawSegmentValid(*waypoint, target);
+}
+
 bool PlannerLattice3D::pointInsideFlightEnvelope(const Point3& point) const noexcept {
   return std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z) &&
          evaluateFlightEnvelopeAltitude(point.z, config_->flight_envelope) ==

@@ -114,10 +114,13 @@ ExecutionTimeRefiner3D::Request3D PersistentDStarLitePlanner3DImpl::refinementRe
     const PersistentPlannerNode3D start_anchor,
     const PersistentPlannerNode3D goal_anchor) const noexcept {
   const Point3 anchor = lattice_.pointFor(start_anchor);
+  // The first heading the vehicle takes is toward whatever it leaves through:
+  // the waypoint when the departure needs one, otherwise the anchor itself.
+  const Point3 first_target = departure_waypoint_.value_or(anchor);
   Vec3 incoming{
-      anchor.x - request.start.x,
-      anchor.y - request.start.y,
-      anchor.z - request.start.z,
+      first_target.x - request.start.x,
+      first_target.y - request.start.y,
+      first_target.z - request.start.z,
   };
   if (std::hypot(std::hypot(incoming.x, incoming.y), incoming.z) <= kDirectionEpsilon) {
     incoming = request.velocity;
@@ -131,6 +134,7 @@ ExecutionTimeRefiner3D::Request3D PersistentDStarLitePlanner3DImpl::refinementRe
       .goal_anchor = goal_anchor,
       .exact_start = request.start,
       .exact_goal = request.mission_goal,
+      .departure_waypoint = departure_waypoint_,
       .start_from_rest = std::hypot(std::hypot(request.velocity.x, request.velocity.y),
                                     request.velocity.z) <= kDirectionEpsilon,
   };
@@ -454,6 +458,10 @@ std::vector<Point3> ExecutionTimeRefiner3D::extractPath() {
   std::vector<Point3> path;
   path.reserve(states.size() + 2U);
   path.push_back(request_.exact_start);
+  if (request_.departure_waypoint.has_value() &&
+      distance3D(path.back(), *request_.departure_waypoint) > kDirectionEpsilon) {
+    path.push_back(*request_.departure_waypoint);
+  }
   for (const PersistentPlannerTimeState3D& state : states) {
     const Point3 point = lattice_->pointFor(state.position);
     if (distance3D(path.back(), point) > kDirectionEpsilon) {

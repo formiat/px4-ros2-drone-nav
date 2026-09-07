@@ -69,7 +69,8 @@ FeasiblePathSearch3D::pathFromNodes(const Endpoints3D& endpoints,
        ++index) {
     const Point3 point = lattice_->pointFor(nodes[index]);
     if (distance3D(endpoints.exact_start, point) <= kCostTolerance ||
-        lattice_->departureSegmentValid(endpoints.exact_start, point)) {
+        lattice_->departureReachable(endpoints.exact_start,
+                                     endpoints.departure_waypoint, point)) {
       first = index;
       break;
     }
@@ -83,6 +84,11 @@ FeasiblePathSearch3D::pathFromNodes(const Endpoints3D& endpoints,
   path_nodes.reserve(nodes.size() - first + 2U);
   path.push_back(endpoints.exact_start);
   path_nodes.push_back(kNoPathNode);
+  if (endpoints.departure_waypoint.has_value() &&
+      distance3D(path.back(), *endpoints.departure_waypoint) > kCostTolerance) {
+    path.push_back(*endpoints.departure_waypoint);
+    path_nodes.push_back(kNoPathNode);
+  }
   for (std::size_t index = first; index < nodes.size(); ++index) {
     const Point3 point = lattice_->pointFor(nodes[index]);
     if (distance3D(path.back(), point) > kCostTolerance) {
