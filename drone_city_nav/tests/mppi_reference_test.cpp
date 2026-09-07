@@ -7,6 +7,8 @@
 
 #include <array>
 #include <cmath>
+#include <limits>
+#include <span>
 #include <vector>
 
 namespace drone_city_nav::mppi {
@@ -219,74 +221,123 @@ TEST(MppiReferenceTest, ClearanceExposureIsStronglyPenalizedWithoutBlockingMotio
   EXPECT_GT(critical.soft_cost, planning.soft_cost);
 }
 
-TEST(MppiReferenceTest, TheStoppingClearanceLawReadsBothWays) {
-  // The cost is the squared shortfall against what the speed needs; the speed
-  // cap is the inverse of the same expression. Feeding one into the other has
-  // to close.
-  constexpr float kMargin{1.0F};
-  constexpr float kResponse{0.25F};
-  constexpr float kDeceleration{4.0F};
-
-  EXPECT_FLOAT_EQ(requiredStoppingClearanceM(0.0F, kMargin, kResponse, kDeceleration),
-                  kMargin);
-  EXPECT_NEAR(requiredStoppingClearanceM(4.0F, kMargin, kResponse, kDeceleration),
-              1.0F + 1.0F + 2.0F, 1.0e-5F);
-
-  for (const float clearance_m : {1.0F, 1.5F, 3.0F, 8.0F}) {
-    const float speed_mps =
-        stoppingAdmissibleSpeedMps(clearance_m, kMargin, kResponse, kDeceleration);
-    EXPECT_NEAR(
-        requiredStoppingClearanceM(speed_mps, kMargin, kResponse, kDeceleration),
-        clearance_m, 1.0e-4F)
-        << "clearance " << clearance_m;
-    EXPECT_FLOAT_EQ(stoppingClearanceDeficitM2(clearance_m, speed_mps, kMargin,
-                                               kResponse, kDeceleration),
-                    0.0F);
+TEST(MppiReferenceTest, TheTubeLawReadsBothWays) {
+  // The cost is the squared shortfall against the tracking error the speed
+  // can accumulate; the speed cap is the inverse of the same expression.
+  // Feeding one into the other has to close.
+  constexpr float kResponse{0.15F};
+  for (const float clearance_m : {0.1F, 0.5F, 1.0F, 3.0F}) {
+    const float speed_mps = tubeAdmissibleSpeedMps(clearance_m, kResponse);
+    EXPECT_NEAR(speed_mps * kResponse, clearance_m, 1.0e-5F);
+    EXPECT_FLOAT_EQ(tubeClearanceDeficitM2(clearance_m, speed_mps, kResponse), 0.0F);
+    EXPECT_GT(tubeClearanceDeficitM2(clearance_m, 2.0F * speed_mps, kResponse), 0.0F);
   }
-  // Below the margin nothing is admissible, and standing still costs the
-  // margin shortfall and no more.
-  EXPECT_FLOAT_EQ(stoppingAdmissibleSpeedMps(0.5F, kMargin, kResponse, kDeceleration),
-                  0.0F);
-  EXPECT_NEAR(stoppingClearanceDeficitM2(0.5F, 0.0F, kMargin, kResponse, kDeceleration),
-              0.25F, 1.0e-6F);
+  // At contact nothing is admissible, and standing still costs nothing.
+  EXPECT_FLOAT_EQ(tubeAdmissibleSpeedMps(0.0F, kResponse), 0.0F);
+  EXPECT_FLOAT_EQ(tubeClearanceDeficitM2(0.0F, 0.0F, kResponse), 0.0F);
+  EXPECT_NEAR(tubeClearanceDeficitM2(0.0F, 2.0F, kResponse), 0.09F, 1.0e-6F);
 }
 
-TEST(MppiReferenceTest, TheStoppingClearanceCostRisesWithSpeedBesideAWall) {
-  // A wall that never gets nearer: a closing-rate law prices this at nothing,
-  // while the stopping law prices the speed the vehicle carries beside it.
-  const EsdfGrid grid{2, 1, 1.0F, 0.0F, 0.0F};
+TEST(MppiReferenceTest, TheStoppingLawPricesTheFreePathAhead) {
+  // 4 m/s with 0.1 s reaction and 4 m/s^2 needs 0.4 + 2 = 2.4 m.
+  EXPECT_NEAR(requiredStoppingDistanceM(4.0F, 0.1F, 4.0F), 2.4F, 1.0e-5F);
+  EXPECT_FLOAT_EQ(stoppingDistanceDeficitM2(10.0F, 4.0F, 0.1F, 4.0F), 0.0F);
+  EXPECT_FLOAT_EQ(stoppingDistanceDeficitM2(2.4F, 4.0F, 0.1F, 4.0F), 0.0F);
+  const float moderate = stoppingDistanceDeficitM2(2.0F, 4.0F, 0.1F, 4.0F);
+  const float close = stoppingDistanceDeficitM2(1.0F, 4.0F, 0.1F, 4.0F);
+  EXPECT_GT(moderate, 0.0F);
+  EXPECT_GT(close, moderate);
+  // Nothing is owed while standing still.
+  EXPECT_FLOAT_EQ(stoppingDistanceDeficitM2(0.0F, 0.0F, 0.1F, 4.0F), 0.0F);
+}
+
+TEST(MppiReferenceTest, TheClearancePreferencePricesDepthNotMotion) {
+  EXPECT_FLOAT_EQ(clearancePreferenceDepth(6.0F, 6.0F), 0.0F);
+  EXPECT_FLOAT_EQ(clearancePreferenceDepth(10.0F, 6.0F), 0.0F);
+  EXPECT_NEAR(clearancePreferenceDepth(3.0F, 6.0F), 0.5F, 1.0e-6F);
+  EXPECT_FLOAT_EQ(clearancePreferenceDepth(0.0F, 6.0F), 1.0F);
+  EXPECT_FLOAT_EQ(
+      clearancePreferenceDepth(std::numeric_limits<float>::infinity(), 6.0F), 0.0F);
+}
+
+TEST(MppiReferenceTest, BesideAWallOnlyTheTubeLawIsPriced) {
+  // A wall that never gets nearer owes no braking distance: below the tube
+  // speed the approach charge is zero however far the rollout flies, and only
+  // a speed whose tracking error would not fit the clearance is priced.
+  constexpr int kWidth = 16;
+  const EsdfGrid grid{kWidth, 1, 1.0F, 0.0F, 0.0F};
   const std::array<Control, 4> controls{};
   const std::array<Control, 4> noise{};
   DynamicsConfig dynamics{};
   dynamics.dt_s = 0.25F;
   dynamics.linear_drag_1ps = 0.0F;
   CostConfig costs{};
+  RiskConfig risk{};
+  risk.tube_response_time_s = 0.15F;
   const auto simulate = [&](const float clearance_m, const float speed_mps) {
-    const std::array esdf{clearance_m, clearance_m};
-    return simulateReference(State{.x = 0.5F, .y = 0.5F, .vy = speed_mps}, controls,
-                             noise, dynamics, RiskConfig{}, costs, grid, esdf, 0.5F,
-                             0.5F, false);
+    const std::vector<float> esdf(static_cast<std::size_t>(kWidth), clearance_m);
+    return simulateReference(State{.x = 0.5F, .y = 0.5F, .vx = speed_mps}, controls,
+                             noise, dynamics, risk, costs, grid, esdf, 15.5F, 0.5F,
+                             false);
   };
 
   const RolloutMetrics open_slow = simulate(10.0F, 0.5F);
-  const RolloutMetrics close_slow = simulate(0.5F, 0.5F);
-  const RolloutMetrics close_fast = simulate(0.5F, 4.0F);
+  const RolloutMetrics close_slow = simulate(2.0F, 4.0F);
+  const RolloutMetrics close_fast = simulate(2.0F, 9.0F);
 
   EXPECT_FLOAT_EQ(open_slow.costs.obstacle_approach_m2_s, 0.0F);
-  EXPECT_GT(close_slow.costs.obstacle_approach_m2_s, 0.0F);
-  EXPECT_GT(close_fast.costs.obstacle_approach_m2_s,
-            close_slow.costs.obstacle_approach_m2_s);
+  // The conservative query leaves at least 2 - 0.5 - 0.707 = 0.79 m along the
+  // row: 4 m/s needs 0.6 m, 9 m/s needs 1.35 m.
+  EXPECT_FLOAT_EQ(close_slow.costs.obstacle_approach_m2_s, 0.0F);
+  EXPECT_GT(close_fast.costs.obstacle_approach_m2_s, 0.0F);
+  EXPECT_FLOAT_EQ(close_slow.costs.stopping_deficit_m2_s, 0.0F);
+  EXPECT_FLOAT_EQ(close_fast.costs.stopping_deficit_m2_s, 0.0F);
+  EXPECT_TRUE(std::isinf(close_fast.contact_distance_m));
+  // Position is still priced, at either speed, and open space is not.
+  EXPECT_FLOAT_EQ(open_slow.costs.clearance_preference_s, 0.0F);
+  EXPECT_GT(close_slow.costs.clearance_preference_s, 0.0F);
+  EXPECT_GT(close_fast.costs.clearance_preference_s, 0.0F);
 }
 
-TEST(MppiReferenceTest, TheStoppingClearanceCostIsSoftAndMonotoneInClearance) {
-  // At 4 m/s the law needs 1 + 1 + 2 = 4 m, which 10 m clears.
-  EXPECT_FLOAT_EQ(stoppingClearanceDeficitM2(10.0F, 4.0F, 1.0F, 0.25F, 4.0F), 0.0F);
+TEST(MppiReferenceTest, AWallAheadChargesTheStatesThatCannotStopBeforeIt) {
+  // One occupied cell three metres ahead of a rollout at 4 m/s: its envelope
+  // enters the cell on the third step, and every state before that owed the
+  // stopping law the free path it had. The same motion across an open grid
+  // owes nothing.
+  constexpr int kWidth = 6;
+  constexpr int kHeight = 3;
+  const EsdfGrid grid{kWidth, kHeight, 1.0F, 0.0F, 0.0F};
+  std::vector<float> walled(static_cast<std::size_t>(kWidth * kHeight), 0.0F);
+  for (int y = 0; y < kHeight; ++y) {
+    for (int x = 0; x < kWidth; ++x) {
+      walled[static_cast<std::size_t>(y) * static_cast<std::size_t>(kWidth) +
+             static_cast<std::size_t>(x)] =
+          std::hypot(static_cast<float>(x - 3), static_cast<float>(y - 1));
+    }
+  }
+  const std::vector<float> open(static_cast<std::size_t>(kWidth * kHeight), 10.0F);
+  const std::array<Control, 4> controls{};
+  const std::array<Control, 4> noise{};
+  DynamicsConfig dynamics{};
+  dynamics.dt_s = 0.25F;
+  dynamics.linear_drag_1ps = 0.0F;
+  RiskConfig risk{};
+  risk.stopping_response_time_s = 0.1F;
+  risk.stopping_deceleration_mps2 = 4.0F;
+  const auto simulate = [&](const std::span<const float> esdf) {
+    return simulateReference(State{.x = 0.5F, .y = 1.5F, .vx = 4.0F}, controls, noise,
+                             dynamics, risk, CostConfig{}, grid, esdf, 5.5F, 1.5F,
+                             false);
+  };
 
-  const float moderate = stoppingClearanceDeficitM2(8.0F, 10.0F, 1.0F, 0.25F, 4.0F);
-  const float close = stoppingClearanceDeficitM2(4.0F, 10.0F, 1.0F, 0.25F, 4.0F);
+  const RolloutMetrics blocked = simulate(walled);
+  const RolloutMetrics clear = simulate(open);
 
-  EXPECT_GT(moderate, 0.0F);
-  EXPECT_GT(close, moderate);
+  EXPECT_NEAR(blocked.contact_distance_m, 3.0F, 1.0e-4F);
+  EXPECT_GT(blocked.costs.stopping_deficit_m2_s, 0.0F);
+  EXPECT_TRUE(std::isinf(clear.contact_distance_m));
+  EXPECT_FLOAT_EQ(clear.costs.stopping_deficit_m2_s, 0.0F);
+  EXPECT_GT(blocked.soft_cost, clear.soft_cost);
 }
 
 TEST(MppiReferenceTest, PhysicalFootprintAnnotatesAdjacentDerivedZeroClearance) {

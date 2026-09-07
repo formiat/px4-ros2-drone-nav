@@ -16,6 +16,9 @@ enum class EsdfQueryStatus {
 struct EsdfQueryResult {
   float clearance_m{0.0F};
   EsdfQueryStatus status{EsdfQueryStatus::kOutsideGrid};
+  // The queried point lies inside a raw occupied voxel. Unlike the
+  // conservative clearance this is an exact fact, not a bound.
+  bool inside_occupied{false};
 };
 
 [[nodiscard]] EsdfQueryResult queryConservativeEsdf(const EsdfGrid3D& grid,

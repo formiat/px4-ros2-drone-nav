@@ -52,6 +52,7 @@ EsdfQueryResult queryConservativeEsdf(const EsdfGrid3D& grid,
       .clearance_m = std::max(0.0F, center_distance_m - query_to_center_m -
                                         occupied_cell_radius_m),
       .status = EsdfQueryStatus::kValid,
+      .inside_occupied = center_distance_m == 0.0F,
   };
 }
 
@@ -112,7 +113,8 @@ EsdfQueryResult queryConservativeEsdf3D(const EsdfGrid3D& grid,
   const float correction_m = std::sqrt(dx * dx + dy * dy + dz * dz) +
                              kHalfVoxelDiagonalScale * grid.resolution_m;
   return {.clearance_m = std::max(0.0F, center_distance_m - correction_m),
-          .status = EsdfQueryStatus::kValid};
+          .status = EsdfQueryStatus::kValid,
+          .inside_occupied = center_distance_m == 0.0F};
 }
 
 } // namespace drone_city_nav

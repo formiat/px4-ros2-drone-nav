@@ -21,8 +21,7 @@ namespace {
 ExecutedHorizonClearance3D measureExecutedHorizonClearance3D(
     const FiniteMotionHorizon3D& horizon, const std::size_t first_remaining_state_index,
     const EsdfGrid3D& grid, const std::span<const float> esdf_m,
-    const SweptFootprintConfig& footprint,
-    const double constraint_clearance_m) noexcept {
+    const SweptFootprintConfig& footprint, const double constraint_clearance_m) {
   ExecutedHorizonClearance3D result;
   if (horizon.states.size() < 2U ||
       first_remaining_state_index + 1U >= horizon.states.size() || esdf_m.empty() ||
@@ -40,10 +39,9 @@ ExecutedHorizonClearance3D measureExecutedHorizonClearance3D(
     if (clearance.evidence.known_clearance_observed) {
       const double clearance_m = clearance.evidence.minimum_known_clearance_m;
       result.minimum_clearance_m = std::min(result.minimum_clearance_m, clearance_m);
-      if (clearance_m < constraint_clearance_m &&
-          !std::isfinite(result.distance_to_constraint_m)) {
-        result.distance_to_constraint_m = travelled_m;
-        result.constrained_clearance_m = clearance_m;
+      if (clearance_m < constraint_clearance_m) {
+        result.constrained_samples.push_back(ConstrainedHorizonSample3D{
+            .distance_m = travelled_m, .clearance_m = clearance_m});
       }
     }
     travelled_m += segmentLength(first, second);

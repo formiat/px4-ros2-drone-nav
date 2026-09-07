@@ -350,8 +350,16 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
   float critical_m = 0.0F;
   float planning_m = 0.0F;
   float obstacle_approach_m2_s = 0.0F;
+  float stopping_deficit_m2_s = 0.0F;
+  float clearance_preference_s = 0.0F;
   float minimum_clearance_m = kInfinity;
   bool collision_hit = false;
+  // Path length and speed of each state, for the stopping law once the first
+  // contact is reached. Index 0 is the initial state.
+  float trace_station_m[kMaximumHorizonSteps + 1U];
+  float trace_speed_mps[kMaximumHorizonSteps + 1U];
+  trace_station_m[0] = 0.0F;
+  trace_speed_mps[0] = hypotf(hypotf(initial.vx, initial.vy), initial.vz);
   bool altitude_envelope_hit = !altitudeEnvelopeDynamicallyRecoverable(
       initial, previous_applied_control, dynamics, altitude_envelope);
   std::uint8_t tier = static_cast<std::uint8_t>(RiskTier::kPreferred);
@@ -396,6 +404,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
     const int validation_samples =
         max(1, static_cast<int>(ceilf(segment_length_m / validation_step_m)));
     float clearance = kInfinity;
+    bool step_contact = false;
     const DeviceBodyAxis body_axis = bodyAxisFromControl(control);
     for (int sample = 1; sample <= validation_samples; ++sample) {
       const float ratio =
@@ -410,7 +419,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
           grid, esdf_texture);
       // A body sample inside a raw occupied voxel is a physical intersection,
       // not a clearance preference: such a rollout cannot be executed.
-      collision_hit = collision_hit || esdf_query.inside_occupied;
+      step_contact = step_contact || esdf_query.inside_occupied;
       if (!esdf_query.unknown_space) {
         clearance = fminf(clearance, esdf_query.clearance_m);
       }
@@ -425,11 +434,33 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
       tier = max(tier, static_cast<std::uint8_t>(RiskTier::kPlanning));
       planning_m += segment_m;
     }
+    {
+      const float depth =
+          clearancePreferenceDepth(clearance, risk.preferred_distance_m);
+      clearance_preference_s += dynamics.dt_s * depth * depth;
+    }
+    // Evidence beside the motion: the tube law at this state's clearance.
     obstacle_approach_m2_s +=
-        dynamics.dt_s * stoppingClearanceDeficitM2(
-                            clearance, segment_speed_mps, risk.critical_distance_m,
-                            risk.obstacle_approach_response_time_s,
-                            risk.obstacle_approach_deceleration_mps2);
+        dynamics.dt_s *
+        tubeClearanceDeficitM2(clearance, segment_speed_mps, risk.tube_response_time_s);
+    // Evidence ahead on the motion: once the envelope enters occupied
+    // evidence, every state before it owed the stopping law the free path it
+    // had to that point. States after the first contact are not charged
+    // again; the rollout is already intersecting.
+    if (!collision_hit) {
+      trace_station_m[step + 1U] = traveled_distance_m;
+      trace_speed_mps[step + 1U] = segment_speed_mps;
+      if (step_contact) {
+        collision_hit = true;
+        for (std::size_t prior = 0U; prior <= step; ++prior) {
+          stopping_deficit_m2_s +=
+              dynamics.dt_s * stoppingDistanceDeficitM2(
+                                  traveled_distance_m - trace_station_m[prior],
+                                  trace_speed_mps[prior], risk.stopping_response_time_s,
+                                  risk.stopping_deceleration_mps2);
+        }
+      }
+    }
     const float target_elapsed_s = static_cast<float>(step + 1U) * dynamics.dt_s;
     const float target_distance =
         moving_target_enabled
@@ -581,8 +612,9 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
       dynamics.dt_s * dynamic_aircraft_survival_cost +
       costs.cooperative_maneuver_preference_weight * dynamics.dt_s *
           maneuver_preference_cost +
-      costs.planning_exposure_weight * planning_m +
-      costs.obstacle_approach_weight * obstacle_approach_m2_s +
+      costs.clearance_preference_weight * clearance_preference_s +
+      costs.obstacle_approach_weight *
+          (obstacle_approach_m2_s + stopping_deficit_m2_s) +
       costs.terminal_weight * terminal_distance;
   critical_exposure[rollout] = critical_m;
   planning_exposure[rollout] = planning_m;

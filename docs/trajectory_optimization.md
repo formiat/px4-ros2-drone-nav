@@ -68,26 +68,36 @@ Rollout feasibility has a narrow physical contract:
 2. the swept physical footprint does not intersect raw occupancy;
 3. the generic known-solid collision contract is not violated.
 
-Critical and planning clearance exposure are strong soft costs. Inside the
-critical band, a bounded quadratic proximity term additionally distinguishes a
-shallow exposure from a trajectory that nearly touches a wall. The term is
-integrated over time, so remaining stationary near a wall does not avoid its
-cost. An obstacle-approach term prices the stopping law along the rollout:
-the squared shortfall between the clearance a state keeps to known occupied
-evidence and the clearance its approach speed needs to stop before it, so a
-rollout brakes before the critical band instead of reacting inside it.
+Clearance is priced by two laws, each answering a different physical
+question, and by one mild preference:
+
+- Beside the motion, the **tracking-error tube law**: the error the controller
+  can accumulate within its response time must fit inside the body clearance.
+  A wall the vehicle flies along never gets nearer, so no braking distance is
+  owed to it. This is the law that certifies a route's speed profile and that
+  the speed policy's `clearance` limiter applies.
+- Ahead on the motion, the **stopping law**: the path the body covers while it
+  reacts and brakes must fit inside the free path to the point where its
+  envelope enters occupied evidence. It is charged along the rollout's own
+  simulated future, on every state before the contact, so a control that will
+  turn the vehicle into a wall is priced before the wall is beside it.
+- The **clearance preference**: squared normalised depth into the preferred
+  band, integrated over time. It prices position, never motion, so it nudges
+  the horizon toward the middle of a passage without making standing still
+  cheaper than progress.
+
 These terms rank safe rollouts together with route deviation, mission
 progress, early/head progress, altitude error, speed tracking, overspeed
 (speed above the dynamics caps or above the reference speed the speed policy
 derives from its stopping laws, priced so that shedding it outweighs the
 progress it buys), acceleration, jerk, yaw motion, terminal error, and control
-effort. Low clearance alone cannot
-make a rollout unreachable or force a position hold.
+effort. Low clearance alone cannot make a rollout unreachable or force a
+position hold.
 
-Conservative ESDF distance classifies the critical and planning bands and feeds
-the soft proximity term. Hard raw collision is reported only when the swept
-oriented physical footprint intersects a raw occupied cell; there is no
-additional prohibited inflation layer.
+Conservative ESDF distance classifies the critical and planning bands for the
+risk tier and diagnostics and feeds the soft terms. Hard raw collision is
+reported only when the swept oriented physical footprint intersects a raw
+occupied cell; there is no additional prohibited inflation layer.
 
 ## Static And No-Static Geometry Profiles
 
@@ -194,13 +204,20 @@ doing:
   A controller candidate that was never published moved nothing, so sizing the
   reference from its clearance makes the reference chase trajectories the
   vehicle never flew.
-- It applies the tube law at the **first** sample of that horizon whose body
-  clearance falls below the critical distance, and lets the stopping law decide
-  what the vehicle may carry on the way there. Treating the minimum clearance
-  over the whole horizon as an immediate cap is what made the reference
-  oscillate: a grazing sample far ahead dropped the reference, the horizon
-  shortened out of reach of the obstacle, the reference jumped back, and the
-  longer horizon found the obstacle again.
+- It applies the tube law at **every** sample of that horizon whose body
+  clearance falls below cruise times the tube response time — the clearance
+  at which the tube admits exactly cruise, so nothing else defines "close" —
+  and lets the stopping law decide what the vehicle may carry on the way to
+  each; the tightest answer wins, so a mild constraint nearby cannot hide a
+  tight one behind it. Treating the minimum clearance over the whole horizon
+  as an immediate cap is what made the reference oscillate: a grazing sample
+  far ahead dropped the reference, the horizon shortened out of reach of the
+  obstacle, the reference jumped back, and the longer horizon found the
+  obstacle again.
+- Evidence beside the motion owes no braking distance. The horizon is
+  validated by the body against the raw world and ends at rest, so "stop
+  within the lateral clearance" is not a physical requirement; asking for it
+  pinned every corridor to the limiter's progress floor.
 
 The reference may fall as fast as any limiter asks — a cap is always allowed to
 bite at once — but it may only climb at `reference_speed_rise_mps2`, the
@@ -210,30 +227,39 @@ each step with a fresh burst of acceleration.
 
 ## Clearance Costs And Control Selection
 
-A rollout carries exactly one clearance charge, `obstacle_approach_weight`: the
-squared shortfall between the clearance it keeps to known occupied evidence and
-the clearance its own speed needs to stop within — the margin it keeps, the
-distance it covers while it reacts, and its braking distance.
+A rollout carries one obstacle approach charge, `obstacle_approach_weight`,
+made of two laws that share the weight and no parameters of their own:
 
-That expression is one law read in two directions. The rollout cost reads it as
-a shortfall; the speed policy's `clearance` limiter reads its inverse,
-`stoppingAdmissibleSpeedMps`, as a speed cap at the first constrained point.
-The optimiser and the reference speed therefore cannot disagree about what "too
-close, too fast" means. The limiter additionally keeps the tracking-error tube
-cap and takes whichever of the two is tighter.
+- the tracking-error tube law beside the motion, read from
+  `tracking_error_tube_response_time_s` — the same configuration the route
+  certification uses and the speed policy's `clearance` limiter reads as a
+  speed cap;
+- the stopping law ahead of the motion, read from the speed policy's stopping
+  capability (`speed_reaction_latency_s`, the horizontal acceleration), which
+  the same policy applies to a blocked route, a route endpoint and the goal.
 
-Two charges used to sit here instead, and both are gone:
+Each law is one expression read in two directions: the rollout cost reads it
+as a shortfall, the reference speed as a cap. Two copies of one law drift
+apart, and the reference speed then admits what the optimiser prices as too
+fast; that is why neither law is tunable here separately.
+
+Charges that used to sit here, and why they are gone:
 
 - A flat price per metre *travelled* inside the critical band priced motion
   itself. In a corridor narrower than the band the whole section is inside it,
   and a metre of flight cost two orders of magnitude more than the progress it
-  earned; the weighted update converged on standing still and the vehicle was
-  carried by the deterministic route candidate and by liveness recovery.
-- A band-normalised squared depth priced position without regard to speed, so
-  it said nothing about running fast along a wall that never gets nearer —
-  which the stopping law prices and a closing-rate law does not.
+  earned; the weighted update converged on standing still.
+- An isotropic stopping law priced the nearest surface, whichever way it lay:
+  a wall beside the vehicle demanded the braking distance a wall ahead would
+  need. In a 4.4 m corridor the law admitted 1 m/s, the reference sat on the
+  limiter's progress floor for more than half of every flight, and the same
+  law in the optimiser made every faster rollout more expensive than the
+  crawl. The tube law is what the passage was certified for.
 
-Distance inside the band is still measured for the risk tier and diagnostics.
+Position is still priced, mildly, by `clearance_preference_weight`: squared
+normalised depth into the preferred band per second, the same for a rollout
+that hovers beside a wall and one that flies past it. Distance inside the
+bands is still measured for the risk tier and diagnostics.
 
 The softmax temperature is regulated, not configured. A fixed temperature
 against a population spread over thousands of cost units collapses the weights

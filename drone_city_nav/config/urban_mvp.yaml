@@ -229,7 +229,13 @@ production_mppi_node:
     # Prefer progress earlier in the finite horizon so receding-horizon updates
     # cannot indefinitely postpone an otherwise executable route segment.
     route_progress_integral_weight: 2.0
-    planning_exposure_weight: 8.0
+    # Squared normalised depth into the preferred band, charged per second.
+    # It prices position, never motion: a rollout hovering beside a wall pays
+    # as much as one flying past it, so it only nudges the horizon toward the
+    # middle of a passage. A charge per metre travelled inside the band used
+    # to sit here; in a corridor narrower than the band it priced every metre
+    # of flight and ate most of the progress reward.
+    clearance_preference_weight: 4.0
     # Floor of the regulated softmax temperature, and the share of the feasible
     # population the softmax should spread its weight over, measured as the
     # effective sample size (sum w)^2 / (N sum w^2). A fixed 8 against a
@@ -248,26 +254,30 @@ production_mppi_node:
     # raw-valid passages occupied, which leaves the update hovering; the raw
     # finite-path validators keep the hard authority, so the gate stays off.
     mppi_body_collision_gate_enabled: false
-    # Squared shortfall, in metres, between the clearance a rollout keeps to
-    # known occupied evidence and the clearance its own speed needs to stop
-    # within (critical distance + speed * response time + braking distance).
-    # This is the only clearance charge a rollout carries, and the speed
-    # policy's clearance limiter reads the same expression in the other
-    # direction, so the optimiser and the reference speed cannot disagree about
-    # what "too close, too fast" means. Two charges used to sit here instead: a
-    # flat 2000 per metre *travelled* inside the critical band, which priced
-    # motion itself — in a 4.4 m corridor the whole section is inside the band
-    # and a metre of flight cost two orders of magnitude more than the progress
-    # it earned, so the weighted update converged on standing still — and a
-    # band-normalised squared depth, which priced position without regard to
-    # speed and so said nothing about running fast along a wall. Unknown space
-    # carries no clearance and no cost.
-    obstacle_approach_weight: 1000.0
-    obstacle_approach_response_time_s: 0.25
-    obstacle_approach_deceleration_mps2: 4.0
+    # The obstacle approach charge: two laws under one weight, each answering
+    # a different physical question. Beside the motion, the squared shortfall
+    # between the clearance a rollout keeps to known occupied evidence and the
+    # tracking error its speed can accumulate within the tube response time
+    # (tracking_error_tube_response_time_s) — the law that certifies a route's
+    # speed profile and that the speed policy's clearance limiter applies, so
+    # the route, the reference speed and the optimiser read one expression.
+    # Ahead on the motion, the squared shortfall between the free path to the
+    # point where the rollout's envelope enters occupied evidence and the path
+    # its speed needs to stop within (speed_reaction_latency_s and the
+    # horizontal acceleration), charged on every state before the contact.
+    # Neither law has its own parameters here: two copies of one law drift
+    # apart. An isotropic stopping law used to price both from the nearest
+    # surface, and demanded of a wall beside the vehicle the braking distance
+    # it would need for a wall ahead: a 4.4 m corridor then admitted 1 m/s.
+    # Unknown space carries no clearance and no cost.
+    obstacle_approach_weight: 500.0
     far_horizon_full_rate_duration_s: 2.0
     far_horizon_cost_stride: 2
-    static_speed_tracking_weight: 1.0
+    # Cost per second of squared error between a rollout's speed along the
+    # route and the reference speed. At 1 the reference was advisory: with the
+    # progress terms nearly cancelled by the clearance charges, the weighted
+    # update sat well below a reference of 5 m/s in every corridor.
+    speed_tracking_weight: 4.0
     # Cost per second of squared speed above the dynamics caps (the absolute
     # limit horizontally, the sensor-braking limit translationally) and above
     # the reference speed the speed policy derives (the stopping laws for a
@@ -278,7 +288,6 @@ production_mppi_node:
     # symmetric speed tracking weight below only pulls speed up to the
     # reference and cannot outweigh progress on its own.
     overspeed_weight: 200.0
-    no_static_speed_tracking_weight: 1.0
     deadline_ms: 20.0
     # Wall-clock bound on one horizon assembly. The arrival-shaping search
     # rebuilds and revalidates the horizon once per shortened prefix, and the
@@ -374,6 +383,9 @@ production_mppi_node:
     mppi_footprint_clearance_broad_phase_enabled: true
     route_constraint_diagnostics_distance_m: 30.0
     maximum_vertical_acceleration_mps2: 4.0
+    # Risk-tier bands, for route annotation and diagnostics only. No law
+    # measures a margin from them: the clearance laws are the tracking-error
+    # tube beside the motion and the stopping capability ahead of it.
     critical_distance_m: 1.0
     preferred_distance_m: 6.0
     seed: 42
@@ -546,12 +558,12 @@ production_mppi_node:
     persistent_planner_maximum_clearance_centering_queries: 4096
     persistent_planner_clearance_ranking_weight: 1.5
     persistent_planner_clearance_ranking_distance_m: 6.0
-    # Below the execution risk model's critical_distance_m the ranking factor
-    # additionally grows by this weight times (1 - clearance / critical)^2.
-    # Execution has to slow down where its stopping clearance runs short, so a
-    # route that hugs a wall is one it can only crawl along; the planner
-    # detours around such a metre rather than handing it over.
-    persistent_planner_clearance_ranking_critical_weight: 100.0
+    # Below cruise times tracking_error_tube_response_time_s the tube law caps
+    # the speed execution may carry, and the planner scales such an edge's
+    # flight time by the same ratio: a route that hugs a wall ranks as the
+    # crawl it will be, and the planner detours around it exactly when the
+    # detour is faster. There is no separate weight for this; it is the
+    # execution time.
     route_sampling_step_m: 0.5
     route_completion_tolerance_m: 2.0
     static_esdf_route_lookahead_m: 180.0

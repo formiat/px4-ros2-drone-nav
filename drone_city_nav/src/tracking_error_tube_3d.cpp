@@ -174,20 +174,10 @@ worldConfigurationIsValid(const TrackingErrorTubeWorld3D& world) noexcept {
   if (margin_m >= maximum_margin_m) {
     return maximum_speed_mps;
   }
-  const double clearance_limit_mps =
-      std::clamp(margin_m / config.response_time_s, 0.0, maximum_speed_mps);
-  return std::clamp(std::max(clearance_limit_mps, config.minimum_progress_speed_mps),
-                    0.0, maximum_speed_mps);
+  return trackingErrorTubeSpeedLimitMps(config, margin_m, maximum_speed_mps);
 }
 
 } // namespace
-
-bool trackingErrorTubeConfig3DIsValid(
-    const TrackingErrorTubeConfig3D& config) noexcept {
-  return std::isfinite(config.response_time_s) && config.response_time_s > 0.0 &&
-         std::isfinite(config.minimum_progress_speed_mps) &&
-         config.minimum_progress_speed_mps >= 0.0;
-}
 
 bool trackingErrorTubeProfile3DIsValid(const TrackingErrorTubeProfile3D& profile,
                                        const std::size_t route_sample_count) noexcept {
@@ -222,15 +212,6 @@ bool trackingErrorTubeProfile3DIsValid(const TrackingErrorTubeProfile3D& profile
           std::ranges::all_of(profile.speed_limits_mps, [&](const double limit_mps) {
             return nearlyEqual(limit_mps, profile.unconstrained_speed_limit_mps);
           }));
-}
-
-double trackingErrorTubeRadiusM(const TrackingErrorTubeConfig3D& config,
-                                const double speed_mps) noexcept {
-  if (!trackingErrorTubeConfig3DIsValid(config) || !std::isfinite(speed_mps) ||
-      speed_mps < 0.0) {
-    return std::numeric_limits<double>::quiet_NaN();
-  }
-  return config.response_time_s * speed_mps;
 }
 
 TrackingErrorTubeProfile3D makeTrackingErrorTubeProfile3D(

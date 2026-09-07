@@ -17,6 +17,9 @@ struct DerivedClearanceEvidence3D {
   bool invalid_esdf_exposure{false};
   bool known_clearance_observed{false};
   double minimum_known_clearance_m{std::numeric_limits<double>::infinity()};
+  // A body sample lies inside a raw occupied voxel. The conservative clearance
+  // is a bound; this is an exact fact about the sampled envelope.
+  bool inside_occupied{false};
 };
 
 struct DerivedFootprintClearance3D {

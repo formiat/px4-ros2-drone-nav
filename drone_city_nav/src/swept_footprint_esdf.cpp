@@ -54,10 +54,12 @@ makeStatusResult(const EsdfQueryStatus status,
 }
 
 [[nodiscard]] DerivedFootprintClearance3D
-makeKnownClearanceResult(const double clearance_m) noexcept {
+makeKnownClearanceResult(const double clearance_m,
+                         const bool inside_occupied) noexcept {
   DerivedFootprintClearance3D result{.status = EsdfQueryStatus::kValid};
   result.evidence.known_clearance_observed = true;
   result.evidence.minimum_known_clearance_m = clearance_m;
+  result.evidence.inside_occupied = inside_occupied;
   return result;
 }
 
@@ -75,6 +77,8 @@ void mergeEvidence(DerivedFootprintClearance3D& target,
         std::min(target.evidence.minimum_known_clearance_m,
                  source.evidence.minimum_known_clearance_m);
   }
+  target.evidence.inside_occupied =
+      target.evidence.inside_occupied || source.evidence.inside_occupied;
   if (statusPriority(source.status) > statusPriority(target.status)) {
     target.status = source.status;
     target.diagnostic_point = source.diagnostic_point;
@@ -118,7 +122,7 @@ queryPoint(const EsdfGrid3D& grid, const std::span<const float> esdf_m,
   if (query.status != EsdfQueryStatus::kValid) {
     return makeStatusResult(EsdfQueryStatus::kInvalidDistance, query_point);
   }
-  return makeKnownClearanceResult(query.clearance_m);
+  return makeKnownClearanceResult(query.clearance_m, query.inside_occupied);
 }
 
 [[nodiscard]] DerivedFootprintClearance3D samplePlanarCircleClearanceCells(
@@ -186,6 +190,7 @@ queryPoint(const EsdfGrid3D& grid, const std::span<const float> esdf_m,
       if (center_distance_m == 0.0F) {
         result.evidence.known_clearance_observed = true;
         result.evidence.minimum_known_clearance_m = 0.0;
+        result.evidence.inside_occupied = true;
       }
     }
   }

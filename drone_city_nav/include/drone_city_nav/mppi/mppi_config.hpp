@@ -13,6 +13,12 @@ namespace drone_city_nav::mppi {
 
 using DynamicsConfig = drone_city_nav::MotionDynamicsConfig3D;
 
+// The stopping law charges every state before a rollout's first contact for
+// the free path it had, and those states are known only once the contact is
+// reached: each rollout keeps its path and speed history up to this many
+// steps. A configuration with a longer horizon is rejected.
+inline constexpr std::size_t kMaximumHorizonSteps{256U};
+
 struct NoiseConfig {
   float horizontal_acceleration_sigma_mps2{3.0F};
   float vertical_acceleration_sigma_mps2{1.5F};
@@ -20,10 +26,22 @@ struct NoiseConfig {
 };
 
 struct RiskConfig {
+  // Risk-tier bands, for classification and diagnostics only: distance inside
+  // the critical band is the critical tier, inside the preferred band the
+  // planning tier. Neither is a margin any law measures from.
   float critical_distance_m{1.0F};
+  // The preferred band is also the reach of the clearance preference: depth
+  // into it is priced per second, position rather than motion.
   float preferred_distance_m{6.0F};
-  float obstacle_approach_response_time_s{0.25F};
-  float obstacle_approach_deceleration_mps2{4.0F};
+  // Tracking-error tube law for evidence beside the motion: the error the
+  // controller can accumulate within this response time must fit inside the
+  // body clearance. Shared with the route certification and the speed policy.
+  float tube_response_time_s{0.15F};
+  // Stopping law for evidence ahead on the motion: reaction time and the
+  // guaranteed deceleration the body stops with. Shared with the speed
+  // policy's stopping capability.
+  float stopping_response_time_s{0.10F};
+  float stopping_deceleration_mps2{4.0F};
   float critical_exposure_tolerance_m{0.5F};
   float planning_exposure_tolerance_m{1.0F};
 };
@@ -60,20 +78,22 @@ struct CostConfig {
   float peer_separation_weight{80.0F};
   float cooperative_maneuver_preference_weight{1.5F};
   float terminal_weight{2.0F};
-  float planning_exposure_weight{2.0F};
-  // The one clearance charge a rollout carries: the squared shortfall between
-  // the clearance it keeps and the clearance its own speed needs to stop
-  // within. It is the same law the speed policy's clearance limiter reads in
-  // the other direction, so the optimiser and the reference speed cannot
-  // disagree about what "too close, too fast" means.
-  //
-  // Two charges used to sit here instead. A flat price per metre *travelled*
-  // inside the critical band priced motion itself: in a corridor narrower than
-  // the band a metre of flight cost two orders of magnitude more than the
-  // progress it earned, and the weighted update converged on standing still. A
-  // band-normalised squared depth priced position without regard to speed, so
-  // it said nothing about running fast along a wall. Distance inside the band
-  // is still measured, for the risk tier and diagnostics.
+  // Squared normalised depth into the preferred band, per second. It prices
+  // position, never motion: a rollout hovering beside a wall pays as much as
+  // one flying past it, so a corridor narrower than the band cannot make
+  // standing still cheaper than progress. A price per metre *travelled* inside
+  // the band used to sit here and did exactly that.
+  float clearance_preference_weight{2.0F};
+  // The obstacle approach charge, two laws under one weight. Beside the
+  // motion, the squared shortfall between the clearance a rollout keeps and
+  // the tracking error its speed can accumulate within the tube response
+  // time — the law the route certification and the speed policy's clearance
+  // limiter apply. Ahead on the motion, the squared shortfall between the free
+  // path to the point where the rollout's envelope enters occupied evidence
+  // and the path its speed needs to stop within. An isotropic stopping law
+  // used to price both from the nearest surface: a wall beside the vehicle
+  // then demanded a braking distance it never needed, and the corridor speed
+  // was pinned to the floor of the speed policy.
   float obstacle_approach_weight{40.0F};
   // Floor of the regulated softmax temperature.
   float temperature{8.0F};

@@ -202,7 +202,13 @@ struct CostBreakdown {
   float dynamic_aircraft_anticipation{0.0F};
   float dynamic_aircraft_survival{0.0F};
   float maneuver_preference{0.0F};
+  // Tube law beside the motion: squared clearance shortfall, integrated.
   float obstacle_approach_m2_s{0.0F};
+  // Stopping law ahead on the motion: squared free-path shortfall to the first
+  // contact, integrated over the states before it.
+  float stopping_deficit_m2_s{0.0F};
+  // Squared normalised depth into the preferred band, integrated.
+  float clearance_preference_s{0.0F};
   float terminal{0.0F};
 };
 
@@ -213,6 +219,9 @@ struct RolloutMetrics {
   float critical_exposure_m{0.0F};
   float planning_exposure_m{0.0F};
   float minimum_clearance_m{0.0F};
+  // Path length to the first state whose envelope enters occupied evidence;
+  // infinite when the rollout keeps clear of it.
+  float contact_distance_m{0.0F};
   float minimum_target_separation_m{0.0F};
   float minimum_peer_separation_m{0.0F};
   float predicted_capture_time_s{-1.0F};

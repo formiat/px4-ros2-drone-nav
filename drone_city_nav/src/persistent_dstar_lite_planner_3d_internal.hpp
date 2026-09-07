@@ -422,8 +422,8 @@ public:
   // The same clearance at an arbitrary point, uncached.
   [[nodiscard]] double pointClearanceM(const Point3& point) const;
   // Ranking factor of a body clearance (raw clearance less the footprint
-  // radius): 1 beyond the ranking distance, growing through the soft band
-  // and steeply through the critical band.
+  // radius): 1 beyond the ranking distance, growing through the soft band,
+  // and by the execution-time ratio the tube law imposes below cruise.
   [[nodiscard]] double
   rankingFactorForBodyClearance(double body_clearance_m) const noexcept;
   // The same curve scaled to another reach: unity at and beyond it.

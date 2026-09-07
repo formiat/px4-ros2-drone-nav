@@ -4,6 +4,7 @@
 #include "drone_city_nav/flight_time_model_3d.hpp"
 #include "drone_city_nav/observed_occupancy_grid_3d.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
+#include "drone_city_nav/tracking_error_tube_config_3d.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <chrono>
@@ -161,14 +162,14 @@ struct PersistentPlannerConfig3D {
   // body check rejects.
   double clearance_ranking_weight{0.0};
   double clearance_ranking_distance_m{6.0};
-  // Critical band of the same ranking: below clearance_ranking_critical_distance_m
-  // the factor additionally grows by critical_weight * (1 - clearance /
-  // critical_distance)^2. It mirrors the execution risk model, whose critical
-  // exposure makes a route inside that band nearly unexecutable, so the
-  // planner prefers a long detour over a critical metre just as the executor
-  // does. Zero weight disables the band; it never rejects an edge.
-  double clearance_ranking_critical_distance_m{1.0};
-  double clearance_ranking_critical_weight{0.0};
+  // Execution time of a tight metre. The tracking-error tube law caps the
+  // speed execution may carry beside evidence at clearance / response time,
+  // no lower than the progress floor; where that is below the time model's
+  // cruise, the edge's flight time grows by the same ratio. This is the law
+  // the route certification and the controller apply, so the planner compares
+  // a short tight passage and a longer open detour by the time each will
+  // actually take. It never rejects an edge.
+  TrackingErrorTubeConfig3D tracking_error_tube{};
   SweptFootprintConfig physical_footprint{};
   FlightEnvelopeConfig flight_envelope{};
 };

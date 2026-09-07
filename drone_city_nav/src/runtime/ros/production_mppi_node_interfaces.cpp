@@ -271,10 +271,12 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
           .dynamics = config_.control.mppi.dynamics,
           .physical_footprint = config_.world.physical_footprint,
           // A sample of the executing horizon constrains the reference speed
-          // once it enters the same critical band the controller costs use, so
-          // the speed policy and the optimiser answer to one notion of "close".
+          // once the tube law there admits less than cruise: below cruise
+          // times the tube response time the clearance binds, above it the
+          // limiter could never bite. Nothing else defines "close".
           .executed_horizon_constraint_clearance_m =
-              static_cast<double>(config_.control.mppi.risk.critical_distance_m),
+              config_.control.speed_policy.cruise_speed_mps *
+              config_.control.tracking_error_tube.response_time_s,
           .vehicle_id = config_.planning.vehicle_id,
           .horizon_steps = config_.control.mppi.steps,
           .tracking_capture_radius_m = config_.planning.tracking_capture_radius_m,

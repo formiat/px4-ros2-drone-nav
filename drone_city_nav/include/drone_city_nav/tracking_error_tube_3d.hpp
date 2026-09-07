@@ -3,6 +3,7 @@
 #include "drone_city_nav/occupied_collision_oracle_3d.hpp"
 #include "drone_city_nav/route_3d.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
+#include "drone_city_nav/tracking_error_tube_config_3d.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -12,24 +13,6 @@
 #include <vector>
 
 namespace drone_city_nav {
-
-// Bounds the translational tracking error accumulated during the closed-loop
-// response horizon. The tube collapses with commanded speed instead of
-// inflating the hard planning footprint by a fixed margin.
-struct TrackingErrorTubeConfig3D {
-  double response_time_s{0.15};
-  // Lower bound on a constrained segment's speed ceiling wherever the physical
-  // body itself clears raw occupancy. The tube then admits a small, bounded
-  // tracking excursion instead of collapsing progress to centimetres per second
-  // beside a wall. Zero keeps the pure clearance-derived ceiling.
-  double minimum_progress_speed_mps{0.0};
-};
-
-[[nodiscard]] bool
-trackingErrorTubeConfig3DIsValid(const TrackingErrorTubeConfig3D& config) noexcept;
-
-[[nodiscard]] double trackingErrorTubeRadiusM(const TrackingErrorTubeConfig3D& config,
-                                              double speed_mps) noexcept;
 
 // Exactly one occupancy source may be present. An unavailable source is
 // deliberately neutral: missing distance evidence must not make unknown space

@@ -170,8 +170,12 @@ same limit; freshness changes admission, not occupancy semantics.
 
 Risk:
 
-- `critical_distance_m`;
-- `preferred_distance_m`.
+- `critical_distance_m` and `preferred_distance_m` are risk-tier bands for
+  route annotation and diagnostics; the preferred band is also the reach of
+  the clearance preference. No law measures a margin from them: the clearance
+  laws are the tracking-error tube beside the motion and the stopping
+  capability ahead of it, so the reference speed, the rollout cost and the
+  route certification cannot disagree about what "too close, too fast" means.
 
 Sampler:
 
@@ -223,10 +227,11 @@ Persistent 3D planner and route lifecycle:
   whenever the raw swept body check accepts it;
   `persistent_planner_feasibility_clearance_ranking_distance_m` is the shorter
   reach within which the feasibility-first search derives the same ranking, so
-  the first route already keeps its body out of the critical band;
-  `persistent_planner_clearance_ranking_critical_weight` adds a steep band
-  below the execution risk model's `critical_distance_m`, so the planner detours
-  around a critical metre the way the executor's critical exposure cost would;
+  the first route already keeps its body clear of the walls; below cruise times
+  `tracking_error_tube_response_time_s` the same ranking scales an edge's
+  flight time by the ratio the tube law will impose on execution there, so a
+  short tight passage and a longer open detour are compared by the time each
+  will actually take — there is no separate weight for this;
 - `clearance_costs_enabled` and `static_route_geometry_optimization_enabled`
   are on in the production profile.
 
@@ -316,17 +321,18 @@ overrides.
 3. Verify physical finite-path validation, route-unavailable hold, and terminal
    path hold behavior.
 4. Tune reference speed and lookahead.
-5. Tune `critical_clearance_proximity_weight` and `obstacle_approach_weight`.
-   The first is a bounded soft cost that grows with depth into the critical
-   band, charged per second; the second prices the stopping law along the
-   rollout (the shortfall between the clearance kept to known evidence and the
-   clearance needed to stop before it), the same law the speed policy's
-   `clearance` limiter applies. Neither may be used as a reachability or hold
+5. Tune `clearance_preference_weight` and `obstacle_approach_weight`. The
+   first is a bounded soft cost that grows with depth into the preferred band,
+   charged per second; the second prices the tracking-error tube law beside
+   the motion and the stopping law ahead of it, the laws the route
+   certification and the speed policy's `clearance` limiter apply, each read
+   from that one configuration. Neither may be used as a reachability or hold
    threshold. Both are monotone in clearance and neither prices motion as
-   such: there is deliberately no charge per metre *travelled* inside the
-   critical band, because a corridor narrower than the band would then price
-   every metre through it far above the progress it earns, and the weighted
-   update converges on standing still.
+   such: there is deliberately no charge per metre *travelled* inside a band,
+   because a corridor narrower than the band would then price every metre
+   through it far above the progress it earns, and the weighted update
+   converges on standing still; and no braking distance is charged to a wall
+   beside the vehicle, because it never gets nearer.
 6. Tune `altitude_tracking_weight`: it is the only term holding the vertical
    channel, since no progress term rewards vertical motion and speed tracking
    follows the route tangent.

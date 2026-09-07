@@ -164,6 +164,7 @@ simulateKernel(const float* const noise_ax, const float* const noise_ay,
   float critical_m = 0.0F;
   float planning_m = 0.0F;
   float obstacle_approach_m2_s = 0.0F;
+  float clearance_preference_s = 0.0F;
   float minimum_clearance_m = kInfinity;
   std::uint8_t tier = static_cast<std::uint8_t>(RiskTier::kPreferred);
   const float initial_distance = hypotf(target_x - state.x, target_y - state.y);
@@ -195,11 +196,14 @@ simulateKernel(const float* const noise_ax, const float* const noise_ay,
       tier = max(tier, static_cast<std::uint8_t>(RiskTier::kPlanning));
       planning_m += segment_m;
     }
+    {
+      const float depth =
+          clearancePreferenceDepth(clearance, risk.preferred_distance_m);
+      clearance_preference_s += dynamics.dt_s * depth * depth;
+    }
     obstacle_approach_m2_s +=
-        dynamics.dt_s * stoppingClearanceDeficitM2(
-                            clearance, segment_speed_mps, risk.critical_distance_m,
-                            risk.obstacle_approach_response_time_s,
-                            risk.obstacle_approach_deceleration_mps2);
+        dynamics.dt_s *
+        tubeClearanceDeficitM2(clearance, segment_speed_mps, risk.tube_response_time_s);
     guide_cost += (state.y - initial.y) * (state.y - initial.y);
     acceleration_cost +=
         control.ax * control.ax + control.ay * control.ay + control.az * control.az;
@@ -223,7 +227,7 @@ simulateKernel(const float* const noise_ax, const float* const noise_ay,
                        costs.jerk_weight * jerk_cost +
                        costs.yaw_change_weight * yaw_cost +
                        costs.control_effort_weight * dynamics.dt_s * effort_cost +
-                       costs.planning_exposure_weight * planning_m +
+                       costs.clearance_preference_weight * clearance_preference_s +
                        costs.obstacle_approach_weight * obstacle_approach_m2_s +
                        costs.terminal_weight * terminal_distance;
   critical_exposure[rollout] = critical_m;

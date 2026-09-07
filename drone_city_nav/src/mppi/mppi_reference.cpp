@@ -9,6 +9,7 @@
 #include <cmath>
 #include <limits>
 #include <stdexcept>
+#include <vector>
 
 namespace drone_city_nav::mppi {
 namespace {
@@ -99,10 +100,10 @@ resolveCooperativePreferredAcceleration(const CooperativeManeuverPreference& pre
 
 bool benchmarkConfigIsValid(const BenchmarkConfig& config) noexcept {
   return !config.scenario.empty() && config.rollouts > 0U && config.steps >= 2U &&
-         config.measured_ticks > 0U && std::isfinite(config.deadline_ms) &&
-         config.deadline_ms > 0.0 && std::isfinite(config.dynamics.dt_s) &&
-         config.dynamics.dt_s > 0.0F && std::isfinite(config.costs.temperature) &&
-         config.costs.temperature > 0.0F &&
+         config.steps <= kMaximumHorizonSteps && config.measured_ticks > 0U &&
+         std::isfinite(config.deadline_ms) && config.deadline_ms > 0.0 &&
+         std::isfinite(config.dynamics.dt_s) && config.dynamics.dt_s > 0.0F &&
+         std::isfinite(config.costs.temperature) && config.costs.temperature > 0.0F &&
          std::isfinite(config.costs.target_effective_sample_fraction) &&
          config.costs.target_effective_sample_fraction >= 0.0F &&
          config.costs.target_effective_sample_fraction <= 1.0F &&
@@ -121,8 +122,8 @@ bool benchmarkConfigIsValid(const BenchmarkConfig& config) noexcept {
          config.costs.speed_tracking_weight >= 0.0F &&
          std::isfinite(config.costs.overspeed_weight) &&
          config.costs.overspeed_weight >= 0.0F &&
-         std::isfinite(config.costs.planning_exposure_weight) &&
-         config.costs.planning_exposure_weight >= 0.0F &&
+         std::isfinite(config.costs.clearance_preference_weight) &&
+         config.costs.clearance_preference_weight >= 0.0F &&
          std::isfinite(config.costs.obstacle_approach_weight) &&
          config.costs.obstacle_approach_weight >= 0.0F &&
          std::isfinite(config.costs.peer_separation_weight) &&
@@ -162,8 +163,12 @@ bool benchmarkConfigIsValid(const BenchmarkConfig& config) noexcept {
            config.footprint.axial_samples >= 2U)) &&
          config.risk.critical_distance_m > 0.0F &&
          config.risk.preferred_distance_m >= config.risk.critical_distance_m &&
-         config.risk.obstacle_approach_response_time_s >= 0.0F &&
-         config.risk.obstacle_approach_deceleration_mps2 > 0.0F;
+         std::isfinite(config.risk.tube_response_time_s) &&
+         config.risk.tube_response_time_s > 0.0F &&
+         std::isfinite(config.risk.stopping_response_time_s) &&
+         config.risk.stopping_response_time_s >= 0.0F &&
+         std::isfinite(config.risk.stopping_deceleration_mps2) &&
+         config.risk.stopping_deceleration_mps2 > 0.0F;
 }
 
 MppiProgressDiagnostics resolveUnroutedProgressDiagnostics(
@@ -274,6 +279,15 @@ RolloutMetrics simulateReference(
                                   cooperative.candidate_duration_s / dynamics.dt_s)),
                               1U, nominal_controls.size());
   std::size_t simulated_steps = 0U;
+  metrics.contact_distance_m = std::numeric_limits<float>::infinity();
+  float traveled_distance_m = 0.0F;
+  // Path length and speed of each state, index 0 the initial one, for the
+  // stopping law once the first contact is reached.
+  std::vector<float> trace_station_m{0.0F};
+  std::vector<float> trace_speed_mps{
+      std::hypot(std::hypot(initial_state.vx, initial_state.vy), initial_state.vz)};
+  trace_station_m.reserve(nominal_controls.size() + 1U);
+  trace_speed_mps.reserve(nominal_controls.size() + 1U);
   for (std::size_t step = 0U; step < nominal_controls.size(); ++step) {
     Control control{
         .ax = nominal_controls[step].ax + noise_controls[step].ax,
@@ -311,6 +325,9 @@ RolloutMetrics simulateReference(
     const float segment_speed_mps =
         std::hypot(std::hypot(state.vx, state.vy), state.vz);
     const float segment_m = dynamics.dt_s * segment_speed_mps;
+    traveled_distance_m +=
+        std::hypot(std::hypot(state.x - previous_state.x, state.y - previous_state.y),
+                   state.z - previous_state.z);
     if (known_clearance && clearance < risk.critical_distance_m) {
       metrics.worst_tier = std::max(metrics.worst_tier, RiskTier::kCritical);
       metrics.critical_exposure_m += segment_m;
@@ -318,11 +335,30 @@ RolloutMetrics simulateReference(
       metrics.worst_tier = std::max(metrics.worst_tier, RiskTier::kPlanning);
       metrics.planning_exposure_m += segment_m;
     }
+    metrics.costs.clearance_preference_s +=
+        dynamics.dt_s *
+        squared(clearancePreferenceDepth(clearance, risk.preferred_distance_m));
+    // Evidence beside the motion: the tube law at this state's clearance.
     metrics.costs.obstacle_approach_m2_s +=
-        dynamics.dt_s * stoppingClearanceDeficitM2(
-                            clearance, segment_speed_mps, risk.critical_distance_m,
-                            risk.obstacle_approach_response_time_s,
-                            risk.obstacle_approach_deceleration_mps2);
+        dynamics.dt_s *
+        tubeClearanceDeficitM2(clearance, segment_speed_mps, risk.tube_response_time_s);
+    // Evidence ahead on the motion: once the envelope enters occupied
+    // evidence, every state before it owed the stopping law the free path it
+    // had to that point. Later states are not charged again.
+    if (!std::isfinite(metrics.contact_distance_m)) {
+      trace_station_m.push_back(traveled_distance_m);
+      trace_speed_mps.push_back(segment_speed_mps);
+      if (footprint_clearance.evidence.inside_occupied) {
+        metrics.contact_distance_m = traveled_distance_m;
+        for (std::size_t prior = 0U; prior + 1U < trace_station_m.size(); ++prior) {
+          metrics.costs.stopping_deficit_m2_s +=
+              dynamics.dt_s * stoppingDistanceDeficitM2(
+                                  traveled_distance_m - trace_station_m[prior],
+                                  trace_speed_mps[prior], risk.stopping_response_time_s,
+                                  risk.stopping_deceleration_mps2);
+        }
+      }
+    }
 
     const float target_distance =
         moving_target.has_value()
@@ -433,8 +469,9 @@ RolloutMetrics simulateReference(
       costs.jerk_weight * metrics.costs.jerk +
       costs.yaw_change_weight * metrics.costs.yaw_change +
       costs.control_effort_weight * dynamics.dt_s * metrics.costs.control_effort +
-      costs.planning_exposure_weight * metrics.planning_exposure_m +
-      costs.obstacle_approach_weight * metrics.costs.obstacle_approach_m2_s +
+      costs.clearance_preference_weight * metrics.costs.clearance_preference_s +
+      costs.obstacle_approach_weight *
+          (metrics.costs.obstacle_approach_m2_s + metrics.costs.stopping_deficit_m2_s) +
       dynamics.dt_s * metrics.costs.dynamic_aircraft_survival +
       costs.cooperative_maneuver_preference_weight * dynamics.dt_s *
           metrics.costs.maneuver_preference +

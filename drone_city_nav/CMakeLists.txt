@@ -213,6 +213,7 @@ add_drone_city_nav_layer(
   src/radar_model.cpp
   src/simulation_truth_alignment.cpp
   src/stopping_distance.cpp
+  src/tracking_error_tube_config_3d.cpp
   src/world_generation.cpp)
 
 add_drone_city_nav_layer(
@@ -440,6 +441,7 @@ set(DRONE_CITY_NAV_MODEL_HEADERS
     include/drone_city_nav/stopping_distance.hpp
     include/drone_city_nav/strong_string_id.hpp
     include/drone_city_nav/timed_vehicle_state.hpp
+    include/drone_city_nav/tracking_error_tube_config_3d.hpp
     include/drone_city_nav/types.hpp
     include/drone_city_nav/vehicle_state_3d.hpp
     include/drone_city_nav/world_generation.hpp)

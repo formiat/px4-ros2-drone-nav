@@ -384,8 +384,6 @@ void ProductionMppiConfigLoader::declarePlanning() {
       declare<double>("persistent_planner_clearance_ranking_weight", 1.5);
   planner.clearance_ranking_distance_m =
       declare<double>("persistent_planner_clearance_ranking_distance_m", 6.0);
-  planner.clearance_ranking_critical_weight =
-      declare<double>("persistent_planner_clearance_ranking_critical_weight", 100.0);
 
   planning.route_sampling_step_m = declare<double>("route_sampling_step_m", 0.5);
   planning.route_completion_tolerance_m =
@@ -764,42 +762,40 @@ void ProductionMppiConfigLoader::declareControl() {
       static_cast<float>(declare<double>("altitude_tracking_weight", 4.0));
   mppi.costs.route_progress_integral_weight =
       static_cast<float>(declare<double>("route_progress_integral_weight", 2.0));
-  const float planning_exposure_weight =
-      static_cast<float>(declare<double>("planning_exposure_weight", 2.0));
+  const float clearance_preference_weight =
+      static_cast<float>(declare<double>("clearance_preference_weight", 2.0));
   const float obstacle_approach_weight =
       static_cast<float>(declare<double>("obstacle_approach_weight", 40.0));
   if (config_.planning.optional_constraints.clearance_costs_enabled) {
-    mppi.costs.planning_exposure_weight = planning_exposure_weight;
+    mppi.costs.clearance_preference_weight = clearance_preference_weight;
     mppi.costs.obstacle_approach_weight = obstacle_approach_weight;
   } else {
-    mppi.costs.planning_exposure_weight = 0.0F;
+    mppi.costs.clearance_preference_weight = 0.0F;
     mppi.costs.obstacle_approach_weight = 0.0F;
   }
   mppi.horizon_sampling.full_rate_duration_s =
       static_cast<float>(declare<double>("far_horizon_full_rate_duration_s", 2.0));
   mppi.horizon_sampling.far_cost_stride =
       static_cast<std::uint32_t>(declare<std::int64_t>("far_horizon_cost_stride", 2));
-  const double static_speed_tracking_weight =
-      declare<double>("static_speed_tracking_weight", 1.0);
-  const double no_static_speed_tracking_weight =
-      declare<double>("no_static_speed_tracking_weight", 1.0);
-  mppi.costs.speed_tracking_weight = static_cast<float>(
-      config_.world.use_static_map ? static_speed_tracking_weight
-                                   : no_static_speed_tracking_weight);
+  mppi.costs.speed_tracking_weight =
+      static_cast<float>(declare<double>("speed_tracking_weight", 1.0));
   mppi.costs.overspeed_weight =
       static_cast<float>(declare<double>("overspeed_weight", 200.0));
   mppi.risk.critical_distance_m =
       static_cast<float>(declare<double>("critical_distance_m", 1.0));
-  // One law, one margin: the reference speed and the rollout cost both measure
-  // the stopping clearance from the controller's critical distance.
-  control.speed_policy.stopping_clearance_margin_m =
-      static_cast<double>(mppi.risk.critical_distance_m);
   mppi.risk.preferred_distance_m =
       static_cast<float>(declare<double>("preferred_distance_m", 6.0));
-  mppi.risk.obstacle_approach_response_time_s =
-      static_cast<float>(declare<double>("obstacle_approach_response_time_s", 0.25));
-  mppi.risk.obstacle_approach_deceleration_mps2 =
-      static_cast<float>(declare<double>("obstacle_approach_deceleration_mps2", 4.0));
+  // One source for each law. The tube law the rollout cost charges beside the
+  // motion is the route certification's tube; the stopping law it charges
+  // ahead of the motion is the speed policy's stopping capability. Neither is
+  // a separate tunable: two copies of one law drift apart, and the reference
+  // speed then admits what the optimiser prices as too fast.
+  mppi.risk.tube_response_time_s =
+      static_cast<float>(control.tracking_error_tube.response_time_s);
+  mppi.risk.stopping_response_time_s =
+      static_cast<float>(control.speed_policy.stopping_capability.reaction_latency_s);
+  mppi.risk.stopping_deceleration_mps2 = static_cast<float>(
+      control.speed_policy.stopping_capability.guaranteed_horizontal_deceleration_mps2);
   const std::int64_t seed = declare<std::int64_t>("seed", 42);
   if (seed < 0) {
     throw std::invalid_argument{"seed must be non-negative"};
@@ -836,10 +832,10 @@ void ProductionMppiConfigLoader::finalize() {
     throw std::invalid_argument{
         "planning tick phase offset must be in [0, one planning tick period)"};
   }
-  // The planner's critical ranking band is the execution risk model's critical
-  // distance: both sides then agree on which metres are nearly unexecutable.
-  planning.persistent_planner.clearance_ranking_critical_distance_m =
-      static_cast<double>(control.mppi.risk.critical_distance_m);
+  // The planner ranks a tight metre by the time execution will actually spend
+  // on it: the tracking-error tube law caps the speed there, and the same
+  // tube configuration tells the planner how much.
+  planning.persistent_planner.tracking_error_tube = control.tracking_error_tube;
   execution.stationary_hold_validity_ns = durationNanoseconds(
       execution.stationary_hold_validity_s, "stationary_hold_validity_s");
   execution.horizon_acknowledgement_grace_ns =

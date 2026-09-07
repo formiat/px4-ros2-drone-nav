@@ -16,6 +16,14 @@
 // let open air rank at unity without a query.
 
 namespace drone_city_nav::detail {
+namespace {
+
+// Bounds the execution-time factor where the tube law admits almost nothing
+// and no progress floor is configured: the ranking stays finite and an edge
+// stays traversable however tight it is.
+constexpr double kMinimumRankedTubeSpeedFraction{0.05};
+
+} // namespace
 
 double PlannerLattice3D::rankedEdgeCost(const PersistentPlannerNode3D first,
                                         const PersistentPlannerNode3D second) {
@@ -77,15 +85,21 @@ double PlannerLattice3D::rankingFactorForBodyClearance(
     return 1.0;
   }
   const double shortfall = 1.0 - body_clearance_m / distance_m;
-  double factor = 1.0 + config_->clearance_ranking_weight * shortfall * shortfall;
-  const double critical_m = config_->clearance_ranking_critical_distance_m;
-  if (config_->clearance_ranking_critical_weight > 0.0 && critical_m > 0.0 &&
-      body_clearance_m < critical_m) {
-    const double critical_shortfall = 1.0 - body_clearance_m / critical_m;
-    factor += config_->clearance_ranking_critical_weight * critical_shortfall *
-              critical_shortfall;
-  }
-  return factor;
+  const double preference_factor =
+      1.0 + config_->clearance_ranking_weight * shortfall * shortfall;
+  // Execution spends on a tight metre the time the tube law leaves it: the
+  // speed there is the clearance over the response time, no lower than the
+  // progress floor, and the edge costs its flight time scaled by how far that
+  // falls short of cruise. The floor keeps the factor finite at contact; a
+  // route through it stays traversable, it only ranks as the slow crawl it is.
+  const double cruise_mps = config_->time_model.maximum_horizontal_speed_mps;
+  const double tube_speed_mps =
+      std::max(kMinimumRankedTubeSpeedFraction * cruise_mps,
+               trackingErrorTubeSpeedLimitMps(config_->tracking_error_tube,
+                                              body_clearance_m, cruise_mps));
+  const double execution_time_factor =
+      tube_speed_mps > 0.0 ? cruise_mps / tube_speed_mps : 1.0;
+  return preference_factor * execution_time_factor;
 }
 
 double PlannerLattice3D::pointClearanceM(const Point3& point) const {

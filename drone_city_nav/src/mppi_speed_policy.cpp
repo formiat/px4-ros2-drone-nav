@@ -88,7 +88,6 @@ void validateConfig(const MppiSpeedPolicyConfig& config) {
       !(config.maximum_target_lookahead_m >= config.minimum_target_lookahead_m) ||
       !(config.clearance_response_time_s > 0.0) ||
       !(config.clearance_minimum_progress_speed_mps >= 0.0) ||
-      !(config.stopping_clearance_margin_m >= 0.0) ||
       !(config.reference_speed_rise_mps2 > 0.0)) {
     throw std::invalid_argument{"invalid MPPI speed policy configuration"};
   }
@@ -170,40 +169,33 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
     // this far ahead. Whatever the route promised when it was certified, the
     // tracking error the controller can accumulate within its response time
     // must fit inside the clearance the vehicle actually has there: the same
-    // tube law the route certification applies, enforced on live evidence. The
-    // floor keeps a tight spot leavable; the body validation stays the only
-    // hard authority.
+    // tube law the route certification applies, enforced on live evidence.
+    // The floor keeps a tight spot leavable; the body validation stays the
+    // only hard authority.
     //
-    // The tube speed applies at the tight point, and the stopping law decides
-    // what the vehicle may carry on the way to it. Reading the tube speed as
-    // an immediate cap is what made the reference oscillate: a grazing sample
-    // far ahead dropped the reference, the horizon shortened out of reach of
-    // the obstacle, the reference jumped back, and the longer horizon found
-    // the obstacle again.
-    const ExecutedHorizonClearance3D& clearance = *input.executed_horizon_clearance;
-    // Two laws answer "how fast may the vehicle be at that point", and the
-    // tighter one wins. The tracking-error tube asks that the error the
-    // controller can accumulate within its response time fit inside the
-    // clearance. The stopping law asks that the vehicle be able to stop within
-    // it — the same expression the rollout cost charges its shortfall against,
-    // read in the other direction, so the optimiser and the reference speed
-    // cannot disagree about what "too close, too fast" means.
-    const double tube_speed_mps = std::max(0.0, clearance.constrained_clearance_m) /
-                                  config.clearance_response_time_s;
-    const double stopping_speed_mps =
-        static_cast<double>(mppi::stoppingAdmissibleSpeedMps(
-            static_cast<float>(std::max(0.0, clearance.constrained_clearance_m)),
-            static_cast<float>(config.stopping_clearance_margin_m),
-            static_cast<float>(config.clearance_response_time_s),
-            static_cast<float>(
-                config.stopping_capability.guaranteed_horizontal_deceleration_mps2)));
-    const double admissible_speed_mps =
-        std::max(config.clearance_minimum_progress_speed_mps,
-                 std::min(tube_speed_mps, stopping_speed_mps));
-    result.clearance_limit_mps = std::max(
-        admissible_speed_mps,
-        stoppingLimitedSpeed(clearance.distance_to_constraint_m, admissible_speed_mps,
-                             config.stopping_capability));
+    // The tube speed applies at each tight point, and the stopping law decides
+    // what the vehicle may carry on the way to it; the tightest answer wins.
+    // Reading the tube speed as an immediate cap is what made the reference
+    // oscillate: a grazing sample far ahead dropped the reference, the horizon
+    // shortened out of reach of the obstacle, the reference jumped back, and
+    // the longer horizon found the obstacle again. Evidence beside the motion
+    // owes no braking distance: the horizon is validated by the body against
+    // the raw world and ends at rest, so "stop within the lateral clearance"
+    // is not a physical requirement, and asking for it pinned every corridor
+    // to the floor.
+    for (const ConstrainedHorizonSample3D& sample :
+         input.executed_horizon_clearance->constrained_samples) {
+      const double admissible_speed_mps =
+          std::max(config.clearance_minimum_progress_speed_mps,
+                   static_cast<double>(mppi::tubeAdmissibleSpeedMps(
+                       static_cast<float>(std::max(0.0, sample.clearance_m)),
+                       static_cast<float>(config.clearance_response_time_s))));
+      result.clearance_limit_mps = std::min(
+          result.clearance_limit_mps,
+          std::max(admissible_speed_mps,
+                   stoppingLimitedSpeed(sample.distance_m, admissible_speed_mps,
+                                        config.stopping_capability)));
+    }
   }
   if (input.route_constraint_speed_limit_mps.has_value()) {
     result.route_constraint_limit_mps =

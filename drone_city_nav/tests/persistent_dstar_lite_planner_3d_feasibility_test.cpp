@@ -20,10 +20,13 @@ namespace drone_city_nav {
 namespace {
 
 TEST(PersistentDStarLitePlanner3DTest,
-     TheFeasibilityFirstRouteKeepsItsBodyOutOfTheCriticalBand) {
+     TheFeasibilityFirstRouteClimbsOutOfAMetreItCouldOnlyCrawlAlong) {
   // A known floor two cells thick under a corridor: the unranked feasibility
-  // search would fly the lowest level right above it; ranked within its short
-  // reach, it lifts the interior of the route clear of the critical band.
+  // search would fly the lowest level right above it. Ranked within its short
+  // reach, the tube law prices that level by the crawl execution would have
+  // to make there — half a metre of clearance over a 0.5 s response admits
+  // 1 m/s against a cruise of 5 — and the search lifts the interior of the
+  // route to where the tube admits cruise.
   auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
       GridBounds3D{0.0, 0.0, 0.0, 1.0, 14, 3, 8});
   for (int x = 0; x < 14; ++x) {
@@ -37,8 +40,8 @@ TEST(PersistentDStarLitePlanner3DTest,
   config.feasibility_first_enabled = true;
   config.clearance_ranking_weight = 1.5;
   config.clearance_ranking_distance_m = 6.0;
-  config.clearance_ranking_critical_distance_m = 1.0;
-  config.clearance_ranking_critical_weight = 100.0;
+  config.tracking_error_tube = TrackingErrorTubeConfig3D{
+      .response_time_s = 0.5, .minimum_progress_speed_mps = 0.5};
   config.feasibility_clearance_ranking_distance_m = 2.0;
   PersistentDStarLitePlanner3D planner{config};
   const Point3 start{1.5, 1.5, 2.5};
@@ -56,7 +59,7 @@ TEST(PersistentDStarLitePlanner3DTest,
     interior_minimum_z = std::min(interior_minimum_z, points[index].z);
   }
   // Node centres at z = 2.5 sit half a metre above the floor's top at 2.0;
-  // the ranked search climbs at least one level to leave the critical band.
+  // the ranked search climbs at least one level, where the tube admits more.
   EXPECT_GE(interior_minimum_z, 3.4) << "interior minimum z " << interior_minimum_z;
   expectRawValid(points, *occupancy, planner.config().physical_footprint);
 }

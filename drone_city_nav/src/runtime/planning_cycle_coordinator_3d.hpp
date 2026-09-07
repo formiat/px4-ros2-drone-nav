@@ -42,9 +42,10 @@ struct PlanningCycleCoordinatorConfig3D {
   FlightEnvelopeConfig flight_envelope{};
   mppi::DynamicsConfig dynamics{};
   // The body the executed-horizon clearance is measured for, and the clearance
-  // below which a sample on that horizon constrains the reference speed.
+  // below which a sample on that horizon constrains the reference speed: the
+  // clearance at which the tube law admits exactly the cruise speed.
   SweptFootprintConfig physical_footprint{};
-  double executed_horizon_constraint_clearance_m{1.0};
+  double executed_horizon_constraint_clearance_m{0.75};
   std::string vehicle_id;
   std::size_t horizon_steps{0U};
   double tracking_capture_radius_m{0.0};

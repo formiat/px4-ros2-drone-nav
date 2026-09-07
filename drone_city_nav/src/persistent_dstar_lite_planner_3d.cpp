@@ -411,12 +411,7 @@ bool PersistentDStarLitePlanner3DImpl::validRequest(
          config_.clearance_ranking_weight >= 0.0 &&
          std::isfinite(config_.clearance_ranking_distance_m) &&
          config_.clearance_ranking_distance_m > 0.0 &&
-         std::isfinite(config_.clearance_ranking_critical_distance_m) &&
-         config_.clearance_ranking_critical_distance_m >= 0.0 &&
-         config_.clearance_ranking_critical_distance_m <=
-             config_.clearance_ranking_distance_m &&
-         std::isfinite(config_.clearance_ranking_critical_weight) &&
-         config_.clearance_ranking_critical_weight >= 0.0 &&
+         trackingErrorTubeConfig3DIsValid(config_.tracking_error_tube) &&
          config_.physical_footprint.sweep_step_m > 0.0 &&
          lattice_.pointInsideFlightEnvelope(request.start) &&
          lattice_.pointInsideFlightEnvelope(request.mission_goal);

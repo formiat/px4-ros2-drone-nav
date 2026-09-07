@@ -318,16 +318,18 @@ class InterceptRadarContractTest(unittest.TestCase):
         ):
             with self.subTest(forbidden=forbidden):
                 self.assertNotIn(forbidden, planner)
-        # The obstacle response is priced as soft cost, never latched. It is
-        # one law: the squared shortfall between the clearance a rollout keeps
-        # and the clearance its own speed needs to stop within. A flat charge
-        # per metre travelled inside the critical band priced motion itself and
-        # converged the weighted update on standing still; a band-normalised
-        # depth priced position without regard to speed. Both are gone.
-        self.assertIn("planning_exposure_weight", planner)
+        # The obstacle response is priced as soft cost, never latched: the
+        # tracking-error tube law beside the motion and the stopping law ahead
+        # of it, each sourced from the one configuration the route
+        # certification and the speed policy already share. A flat charge per
+        # metre travelled inside the critical band priced motion itself and
+        # converged the weighted update on standing still; it is gone.
+        self.assertIn("clearance_preference_weight", planner)
         self.assertIn("obstacle_approach_weight", planner)
-        self.assertIn("obstacle_approach_response_time_s", planner)
-        self.assertIn("obstacle_approach_deceleration_mps2", planner)
+        self.assertIn("mppi.risk.tube_response_time_s", planner)
+        self.assertIn("mppi.risk.stopping_response_time_s", planner)
+        self.assertNotIn("obstacle_approach_response_time_s", planner)
+        self.assertNotIn("planning_exposure_weight", planner)
 
     def test_truth_boundary_allows_only_sensor_simulators_and_referee(self) -> None:
         boundary = GROUND_TRUTH_BOUNDARY.read_text(encoding="utf-8")

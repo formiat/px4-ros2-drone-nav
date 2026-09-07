@@ -47,10 +47,6 @@ struct MppiSpeedPolicyConfig {
   // authority there. Both mirror the route tube configuration.
   double clearance_response_time_s{0.15};
   double clearance_minimum_progress_speed_mps{1.0};
-  // Margin the stopping law keeps beyond the body when it decides how fast the
-  // vehicle may be at a constrained point. It is the controller's critical
-  // distance, so the reference speed and the rollout cost read one law.
-  double stopping_clearance_margin_m{1.0};
   // The reference speed may rise no faster than this. Every limiter can still
   // cut the reference immediately — a cap is always allowed to bite at once —
   // but a limit that lifts as the horizon shifts must not snap the reference
@@ -70,9 +66,9 @@ struct MppiSpeedPolicyInput {
   // is still followed and a replacement is searched: the vehicle must be able
   // to stop before it.
   std::optional<double> blocked_route_remaining_m;
-  // Where the motion the vehicle executes right now first comes close to known
-  // occupied evidence: how far along it that point lies, and the body
-  // clearance there. The tube law applies at that point, and the stopping law
+  // Where the motion the vehicle executes right now comes close to known
+  // occupied evidence: how far along it each such point lies, and the body
+  // clearance there. The tube law applies at each point, and the stopping law
   // decides what the vehicle may carry on the way to it.
   std::optional<ExecutedHorizonClearance3D> executed_horizon_clearance;
   // Reference speed the previous cycle published, and how long ago, for the
