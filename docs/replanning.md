@@ -155,7 +155,15 @@ refinement alike — goes through the same two passes before it is offered:
    middle. A move is kept only when it raises that vertex's clearance and both
    incident segments still validate against raw evidence, so the pass can never
    turn a valid route into an invalid one. Endpoints never move: the first is
-   the vehicle's own position and the last is the goal.
+   the vehicle's own position and the last is the goal. The clearance is
+   measured to observed evidence only, so beside a wall that has not been
+   scanned yet it grows without bound and its gradient points into the
+   unknown; a vertex slid that way used to sit against the jamb or the lintel
+   the first scan revealed, and the route was blocked there. A probe in
+   unobserved space therefore contributes no gradient and a candidate in
+   unobserved space is never taken: the vertex stays where the observed lane
+   puts it. Unknown space remains traversable and free of charge — this only
+   decides where an optional refinement may move a vertex.
 
 `persistent_planner_clearance_centering_passes` and
 `persistent_planner_maximum_clearance_centering_queries` bound the work, and

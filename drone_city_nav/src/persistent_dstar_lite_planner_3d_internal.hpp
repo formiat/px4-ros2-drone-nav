@@ -421,6 +421,10 @@ public:
   [[nodiscard]] double nodeClearanceM(PersistentPlannerNode3D node);
   // The same clearance at an arbitrary point, uncached.
   [[nodiscard]] double pointClearanceM(const Point3& point) const;
+  // Whether the point and the body's reach around it lie in observed space.
+  // A static world is observed everywhere; an observed world answers from its
+  // known voxels at the point and one footprint radius along each axis.
+  [[nodiscard]] bool pointObserved(const Point3& point) const;
   // Ranking factor of a body clearance (raw clearance less the footprint
   // radius): 1 beyond the ranking distance, growing through the soft band,
   // and by the execution-time ratio the tube law imposes below cruise.
@@ -1068,6 +1072,15 @@ struct PathClearanceCenteringContext3D {
   std::function<bool(const Point3&, const Point3&, bool)> segment_valid;
   // Raw clearance at a point: distance to the nearest occupied evidence.
   std::function<double(const Point3&)> clearance;
+  // Whether a point and the body around it lie in observed space, free or
+  // occupied. The clearance above is measured to *observed* evidence only, so
+  // beside an unobserved wall it grows without bound and its gradient points
+  // into the unknown; a vertex slid that way sits against the jamb the first
+  // scan of it reveals. A probe in unobserved space contributes no gradient
+  // and a candidate in unobserved space is never taken. Unknown space stays
+  // traversable and free of charge: this only decides where an optional
+  // geometric refinement may move a vertex. Empty means everything is observed.
+  std::function<bool(const Point3&)> observed;
   // Raw clearance a vertex is content with; ascent stops there. In a passage
   // narrower than this the local maximum is the middle of the passage, which
   // is what the ascent finds.

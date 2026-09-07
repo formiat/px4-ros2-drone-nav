@@ -1831,6 +1831,16 @@ if(BUILD_TESTING)
   target_link_libraries(persistent_dstar_lite_planner_3d_test drone_city_nav_core)
   enable_project_warnings(persistent_dstar_lite_planner_3d_test)
 
+  ament_add_gtest(persistent_dstar_lite_planner_3d_centering_test
+                  tests/persistent_dstar_lite_planner_3d_centering_test.cpp)
+  target_compile_features(persistent_dstar_lite_planner_3d_centering_test
+                          PRIVATE cxx_std_20)
+  target_include_directories(persistent_dstar_lite_planner_3d_centering_test
+                             PRIVATE src)
+  target_link_libraries(persistent_dstar_lite_planner_3d_centering_test
+                        drone_city_nav_core)
+  enable_project_warnings(persistent_dstar_lite_planner_3d_centering_test)
+
   ament_add_gtest(persistent_dstar_lite_planner_3d_feasibility_test
                   tests/persistent_dstar_lite_planner_3d_feasibility_test.cpp)
   target_compile_features(persistent_dstar_lite_planner_3d_feasibility_test

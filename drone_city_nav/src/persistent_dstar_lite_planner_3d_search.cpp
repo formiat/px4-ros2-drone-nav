@@ -715,6 +715,9 @@ PathPostprocessor3D::centerOnClearance(const std::vector<Point3>& path,
     ++queries;
     return context.clearance(point);
   };
+  const auto observed = [&](const Point3& point) {
+    return !context.observed || context.observed(point);
+  };
   // The vertex slides across the passage, not along the route: a move along
   // the local tangent only re-parameterises the path and can lengthen it.
   const auto acrossPath = [](const Vec3& gradient, const Point3& previous,
@@ -744,11 +747,17 @@ PathPostprocessor3D::centerOnClearance(const std::vector<Point3>& path,
         continue;
       }
       const double step_m = context.probe_step_m;
+      // A probe in unobserved space says nothing about the clearance there:
+      // the measured distance runs to observed evidence only, so it would
+      // point the vertex into whatever the next scan reveals.
       const auto axisGradient = [&](const Vec3& axis) {
         const Point3 forward{vertex.x + step_m * axis.x, vertex.y + step_m * axis.y,
                              vertex.z + step_m * axis.z};
         const Point3 backward{vertex.x - step_m * axis.x, vertex.y - step_m * axis.y,
                               vertex.z - step_m * axis.z};
+        if (!observed(forward) || !observed(backward)) {
+          return 0.0;
+        }
         return measure(forward) - measure(backward);
       };
       Vec3 gradient{axisGradient(Vec3{1.0, 0.0, 0.0}),
@@ -764,7 +773,7 @@ PathPostprocessor3D::centerOnClearance(const std::vector<Point3>& path,
       const Point3 candidate{vertex.x + scale * gradient.x,
                              vertex.y + scale * gradient.y,
                              vertex.z + scale * gradient.z};
-      if (measure(candidate) <= clearance_m) {
+      if (!observed(candidate) || measure(candidate) <= clearance_m) {
         continue;
       }
       // A departure segment leaves the vehicle's own position, where contact
@@ -888,6 +897,8 @@ std::vector<Point3> PersistentDStarLitePlanner3DImpl::refinePublishedPath(
           .segment_valid = segment_valid,
           .clearance =
               [this](const Point3& point) { return lattice_.pointClearanceM(point); },
+          .observed =
+              [this](const Point3& point) { return lattice_.pointObserved(point); },
           .target_clearance_m = config_.clearance_ranking_distance_m,
           .probe_step_m = std::max(0.05, 0.25 * config_.minimum_vertical_step_m),
           .maximum_passes = config_.clearance_centering_passes,

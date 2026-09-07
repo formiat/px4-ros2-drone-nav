@@ -121,6 +121,28 @@ double PlannerLattice3D::pointClearanceM(const Point3& point) const {
   return clearance_m;
 }
 
+bool PlannerLattice3D::pointObserved(const Point3& point) const {
+  if (!resident_collision_oracle_.has_value()) {
+    return false;
+  }
+  const OccupiedCollisionWorld3D& world = resident_collision_oracle_->world();
+  if (world.observed_occupancy == nullptr) {
+    return true;
+  }
+  const ObservedOccupancyGrid3D& occupancy = *world.observed_occupancy;
+  const auto known = [&occupancy](const Point3& probe) {
+    const std::optional<GridIndex3D> cell = occupancy.worldToCell(probe);
+    return cell.has_value() && occupancy.isKnown(*cell);
+  };
+  const double reach_m = std::max(0.0, config_->physical_footprint.radius_m);
+  return known(point) && known(Point3{point.x + reach_m, point.y, point.z}) &&
+         known(Point3{point.x - reach_m, point.y, point.z}) &&
+         known(Point3{point.x, point.y + reach_m, point.z}) &&
+         known(Point3{point.x, point.y - reach_m, point.z}) &&
+         known(Point3{point.x, point.y, point.z + reach_m}) &&
+         known(Point3{point.x, point.y, point.z - reach_m});
+}
+
 double PlannerLattice3D::rankedSegmentTimeS(const Point3& first, const Point3& second,
                                             const double clearance_reach_m) const {
   const double segment_s =
