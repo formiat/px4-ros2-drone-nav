@@ -113,7 +113,18 @@ struct RouteLifecycleUpdate3D {
   std::optional<RouteRiskAnnotationResult3D> geometry_optimization_fallback;
   RouteLifecycleTrackingFollowup3D tracking_followup{};
   Point3 search_start{};
+  // Wall time this update spent applying an already-delivered planner result:
+  // candidate materialisation, validation and activation.
   double route_planning_ms{0.0};
+  // Wall time from the moment the search was first enqueued to this update,
+  // covering the queue, every search continuation and the activation attempt.
+  // This is the lead time a route request actually needs, and the quantity the
+  // lookahead extension policy is sized from; route_planning_ms sees only the
+  // last slice of it.
+  double route_search_latency_ms{0.0};
+  // True when this update ends the search: it activated a route, failed, or
+  // was retired. Only then is route_search_latency_ms a complete measurement.
+  bool search_latency_complete{false};
   RouteCandidateDisposition3D candidate_disposition{
       RouteCandidateDisposition3D::kContinueForImprovement};
   std::size_t activation_attempts{0U};

@@ -65,6 +65,14 @@ Relevant stages include:
 - total GPU and host tick time;
 - asynchronous RViz/JSONL work.
 
+`PRODUCTION_MPPI_SUMMARY` reports two deadline counters. `deadline_misses`
+counts ticks whose whole cycle — snapshot, cycle preparation, controller,
+publication and commit — overran the planning period: this is the rate at which
+the vehicle actually receives a fresh executable horizon.
+`controller_deadline_misses` counts the optimiser's own share of that overrun.
+A controller comfortably inside its budget with a cycle several times the period
+shows up as zero controller misses and a high full-cycle count.
+
 ESDF build latency is asynchronous and must not be interpreted as part of
 `gpu_total_ms`.
 
@@ -100,7 +108,13 @@ Inspect:
 - path length, remaining goal distance, execution-time estimate, and split
   translation/stationary-turn estimates;
 - planner world-update, planner-search, route-search, and end-to-end
-  route-planning latency;
+  route-planning latency. `route_planning_ms` is the slice one update spent
+  applying a planner result that had already come back; the lead time a route
+  request actually needs — queue, every search continuation and the activation
+  attempt — is measured from the request stamp the transaction carries and
+  reported as `planner_p95_ms`/`planner_p99_ms`. The lookahead extension policy
+  is sized from the latter, because the former sees only the last few
+  milliseconds of a search that typically runs for hundreds;
 - route fingerprint, generation, mission-target identity, and release reason;
 - current route station and remaining distance;
 - certified-reserve, compilation, validation, publication, and activation

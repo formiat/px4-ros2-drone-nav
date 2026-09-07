@@ -265,7 +265,8 @@ void ProductionMppiNode::handleStaticWorldUpdate3D(const StaticWorldUpdate3D& up
             staticRouteObjective(update.request.objective), request_identity,
             std::move(continuity_base),
             tracking_refresh ? RouteReleaseReason3D::kObjectiveChanged
-                             : RouteReleaseReason3D::kNone);
+                             : RouteReleaseReason3D::kNone,
+            get_clock()->now().nanoseconds());
     RoutePlanningEnqueueResult3D enqueue;
     if (transaction != nullptr) {
       enqueue = route_lifecycle_coordinator_->enqueue(

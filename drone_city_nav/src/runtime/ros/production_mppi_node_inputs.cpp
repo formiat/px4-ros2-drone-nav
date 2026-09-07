@@ -272,7 +272,9 @@ void ProductionMppiNode::onNavigationReadiness(const std_msgs::msg::Bool& messag
             makeStaticRouteObjective(*objective),
             StaticRouteSearchRequestIdentity{
                 .kind = StaticRouteSearchRequestKind::kInitial,
-            });
+            },
+            std::nullopt, RouteReleaseReason3D::kNone,
+            get_clock()->now().nanoseconds());
         world_telemetry = resident.telemetry;
       }
     }

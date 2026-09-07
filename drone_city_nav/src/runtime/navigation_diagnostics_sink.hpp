@@ -48,7 +48,13 @@ struct NavigationDiagnosticsStatistics {
   std::vector<double> tick_total_samples_ms;
   RollingRouteTelemetrySnapshot3D rolling_route{};
   std::uint64_t completed_ticks{0U};
+  // Ticks whose whole cycle — snapshot, cycle preparation, controller,
+  // publication and commit — overran the planning period. This is the rate at
+  // which the vehicle actually receives a fresh executable horizon, so it is
+  // the deadline that matters; the controller-only count below separates the
+  // optimiser's own share of an overrun from the work around it.
   std::uint64_t deadline_misses{0U};
+  std::uint64_t controller_deadline_misses{0U};
   std::uint64_t altitude_envelope_violation_horizons{0U};
   std::uint64_t post_update_contract_violations{0U};
   std::uint64_t no_progress_horizons{0U};

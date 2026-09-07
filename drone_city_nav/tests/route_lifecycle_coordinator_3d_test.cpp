@@ -80,12 +80,17 @@ TEST(RouteLifecycleCoordinator3DTest,
   ASSERT_NE(supervisor.pending(), nullptr);
   EXPECT_EQ(supervisor.pending()->route.identity.generation, 1U);
   EXPECT_GT(result.route_planning_ms, 0.0);
+  // The tracked latency is the lead time of the whole request — queue, search
+  // and activation — not the slice this update spent applying a result that
+  // had already come back.
+  EXPECT_TRUE(result.search_latency_complete);
+  EXPECT_DOUBLE_EQ(result.route_search_latency_ms, kFixtureSearchLatencyMs);
   const StaticRoutePlanningLatencyStats latency =
       coordinator.planningLatencyStatistics();
   EXPECT_EQ(latency.sample_count, 1U);
-  EXPECT_DOUBLE_EQ(latency.planning_p95_ms, result.route_planning_ms);
-  EXPECT_DOUBLE_EQ(latency.planning_p99_ms, result.route_planning_ms);
-  EXPECT_DOUBLE_EQ(latency.build_and_planning_p99_ms, result.route_planning_ms + 12.5);
+  EXPECT_DOUBLE_EQ(latency.planning_p95_ms, kFixtureSearchLatencyMs);
+  EXPECT_DOUBLE_EQ(latency.planning_p99_ms, kFixtureSearchLatencyMs);
+  EXPECT_DOUBLE_EQ(latency.build_and_planning_p99_ms, kFixtureSearchLatencyMs + 12.5);
 }
 
 TEST(RouteLifecycleCoordinator3DTest,

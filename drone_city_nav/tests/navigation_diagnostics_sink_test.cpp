@@ -217,14 +217,20 @@ TEST(NavigationDiagnosticsSinkTest, PublishesOneCoherentStatisticsSnapshot) {
   execution.arrival_control_count = 3U;
   execution.arrival_shaping_attempts = 2U;
 
+  // The deadline that matters is the whole cycle: the rate at which the
+  // vehicle receives a fresh executable horizon, not the optimiser's own share
+  // of it. The controller-only overrun is counted separately.
+  const ProductionMppiTickPhaseTimings phases{.controller_ms = 25.0, .total_ms = 60.0};
+
   sink.recordTick(result, ProductionMppiPlanningState::kPlanned, execution, true,
-                  RollingRouteTelemetryObservation3D{});
+                  RollingRouteTelemetryObservation3D{}, phases);
   const NavigationDiagnosticsStatistics statistics = sink.statistics();
 
   ASSERT_EQ(statistics.runtime_samples_ms.size(), 1U);
   EXPECT_DOUBLE_EQ(statistics.runtime_samples_ms.front(), 25.0);
   EXPECT_EQ(statistics.completed_ticks, 1U);
   EXPECT_EQ(statistics.deadline_misses, 1U);
+  EXPECT_EQ(statistics.controller_deadline_misses, 1U);
   EXPECT_EQ(statistics.altitude_envelope_violation_horizons, 1U);
   EXPECT_EQ(statistics.post_update_contract_violations, 1U);
   EXPECT_EQ(statistics.no_progress_horizons, 1U);

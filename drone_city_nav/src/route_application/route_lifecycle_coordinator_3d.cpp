@@ -269,6 +269,16 @@ RouteLifecycleCoordinator3D::advance(RoutePlanningUpdateEvent3D event) {
   const auto planning_started = std::chrono::steady_clock::now();
   const std::shared_ptr<const PlannerSearchTransaction3D> transaction =
       event.request.transaction;
+  // How long ago this search was asked for: the queue, every continuation and
+  // this activation attempt. Recorded on the update that ends the search, so
+  // the tracker holds complete measurements only.
+  const bool search_latency_measured = transaction->requested_stamp_ns > 0;
+  const double search_latency_ms =
+      search_latency_measured
+          ? std::max(0.0, static_cast<double>(config_.stamp_provider() -
+                                              transaction->requested_stamp_ns) *
+                              1.0e-6)
+          : 0.0;
   const ProductionWorldBuildTelemetry3D world_telemetry = event.request.world_telemetry;
   RoutePlannerUpdate3D planner_update = std::move(event.update);
   result.request = std::move(event.request);
@@ -303,6 +313,7 @@ RouteLifecycleCoordinator3D::advance(RoutePlanningUpdateEvent3D event) {
       result.candidate = {};
       result.planner_update = std::move(planner_update);
       result.route_planning_ms = elapsedMilliseconds(planning_started);
+      result.route_search_latency_ms = search_latency_ms;
       result.status = RouteLifecycleAdvanceStatus3D::kCompleted;
       return result;
     }
@@ -316,11 +327,10 @@ RouteLifecycleCoordinator3D::advance(RoutePlanningUpdateEvent3D event) {
     if (!result.continuation_queued) {
       finishSearch(*transaction);
     }
+    result.route_search_latency_ms = search_latency_ms;
     {
       const std::scoped_lock lock{lifecycle_mutex_};
       latest_route_search_ms_ = result.planner_update.search_ms;
-      planning_latency_tracker_.record(result.route_planning_ms,
-                                       world_telemetry.build_ms);
     }
     observeRecoveryEpisode(transaction->objective.mission_epoch);
     return result;
@@ -449,11 +459,16 @@ RouteLifecycleCoordinator3D::advance(RoutePlanningUpdateEvent3D event) {
   }();
   const std::int64_t failed_search_stamp_ns =
       latch_failed_search ? config_.stamp_provider() : 0;
+  result.route_search_latency_ms = search_latency_ms;
+  // The search ends here unless a continuation carries it on, so this is the
+  // full lead time the request took.
+  result.search_latency_complete = !result.search_running && search_latency_measured;
   {
     const std::scoped_lock lock{lifecycle_mutex_};
     latest_route_search_ms_ = result.planner_update.search_ms;
-    planning_latency_tracker_.record(result.route_planning_ms,
-                                     world_telemetry.build_ms);
+    if (result.search_latency_complete) {
+      planning_latency_tracker_.record(search_latency_ms, world_telemetry.build_ms);
+    }
 
     if (lifecycle_search) {
       if (result.activation.admission.certified_pending) {
@@ -629,7 +644,8 @@ RouteLifecycleExtensionOutcome3D RouteLifecycleCoordinator3D::requestExtension(
               PlannerSearchContinuityBase3D{
                   .route = std::move(request.active_route),
                   .request_projection = request.route_projection,
-              });
+              },
+              RouteReleaseReason3D::kNone, config_.stamp_provider());
       if (transaction == nullptr) {
         rollback_reservation();
         outcome.status = RouteLifecycleExtensionStatus3D::kInvalidTransaction;

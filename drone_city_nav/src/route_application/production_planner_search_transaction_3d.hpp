@@ -37,6 +37,11 @@ struct PlannerSearchTransaction3D {
   StaticRouteSearchRequestIdentity request{};
   std::optional<PlannerSearchContinuityBase3D> continuity_base;
   RouteReleaseReason3D release_reason{RouteReleaseReason3D::kNone};
+  // When the route was asked for. A search continues across several planner
+  // updates, so the lead time a caller has to plan around is measured from
+  // here, not from the update that happens to deliver the result. Zero means
+  // the request carries no stamp and its latency is not measured.
+  std::int64_t requested_stamp_ns{0};
 
   [[nodiscard]] bool valid() const noexcept {
     if (world == nullptr || planner_world == nullptr || !planner_world->valid() ||
@@ -98,7 +103,8 @@ makePlannerSearchTransaction3D(
     const StaticRouteObjective& objective,
     const StaticRouteSearchRequestIdentity request,
     std::optional<PlannerSearchContinuityBase3D> continuity_base = std::nullopt,
-    const RouteReleaseReason3D release_reason = RouteReleaseReason3D::kNone) {
+    const RouteReleaseReason3D release_reason = RouteReleaseReason3D::kNone,
+    const std::int64_t requested_stamp_ns = 0) {
   auto transaction =
       std::make_shared<const PlannerSearchTransaction3D>(PlannerSearchTransaction3D{
           .world = std::move(world),
@@ -107,6 +113,7 @@ makePlannerSearchTransaction3D(
           .request = request,
           .continuity_base = std::move(continuity_base),
           .release_reason = release_reason,
+          .requested_stamp_ns = requested_stamp_ns,
       });
   return transaction->valid() ? std::move(transaction) : nullptr;
 }

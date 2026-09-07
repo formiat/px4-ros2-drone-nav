@@ -17,6 +17,12 @@
 namespace drone_city_nav {
 namespace {
 
+// The fixture clock stands at kFixtureStampNs, so a search requested at
+// kFixtureSearchRequestStampNs has a measurable lead time when it activates.
+inline constexpr std::int64_t kFixtureStampNs{100'000'000};
+inline constexpr std::int64_t kFixtureSearchRequestStampNs{75'000'000};
+inline constexpr double kFixtureSearchLatencyMs{25.0};
+
 struct LifecycleFixture3D {
   std::shared_ptr<const WorldSnapshot3D> world;
   std::shared_ptr<const PersistentPlannerWorld3D> planner_world;
@@ -156,7 +162,9 @@ struct LifecycleFixture3D {
                                      StaticRouteSearchRequestIdentity{
                                          .kind = StaticRouteSearchRequestKind::kInitial,
                                          .base_route_generation = 0U,
-                                     });
+                                     },
+                                     std::nullopt, RouteReleaseReason3D::kNone,
+                                     kFixtureSearchRequestStampNs);
   auto objective = std::make_shared<const ProductionNavigationObjective>(
       ProductionNavigationObjective{
           .goal = goal,
@@ -264,7 +272,7 @@ lifecycleConfig(const LifecycleFixture3D& input, ExecutionSupervisor3D& supervis
         .base_route_generation = generation,
     };
   };
-  config.stamp_provider = []() { return 100; };
+  config.stamp_provider = []() { return kFixtureStampNs; };
   config.update_handler = [](RouteLifecycleUpdate3D) {};
   config.rejection_handler = [](const RoutePlanningRejection3D&) {};
   return config;

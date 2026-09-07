@@ -81,7 +81,8 @@ void NavigationDiagnosticsSink::recordTick(
   statistics_.controller_phase_samples_ms.push_back(phases.controller_ms);
   statistics_.publication_phase_samples_ms.push_back(phases.publication_ms);
   statistics_.tick_total_samples_ms.push_back(phases.total_ms);
-  statistics_.deadline_misses +=
+  statistics_.deadline_misses += phases.total_ms > config_.deadline_ms ? 1U : 0U;
+  statistics_.controller_deadline_misses +=
       result.timings.host_total_ms > config_.deadline_ms ? 1U : 0U;
   statistics_.altitude_envelope_violation_horizons +=
       result.altitude_envelope_violation ? 1U : 0U;

@@ -57,8 +57,10 @@ def validate_observed_3d_route_volume(
     require_pattern(
         "a raw-safe persistent 3D route is certified",
         ros_log,
+        # A candidate the route pipeline admits logs validation=accepted; the
+        # status name never reads "valid".
         r"PRODUCTION_MPPI_ROUTE3D planner=persistent_dstar_lite .*"
-        r"certified_pending=true .*validation=valid",
+        r"certified_pending=true .*validation=accepted",
         errors,
     )
     if re.search(r"INCREMENTAL_TOPOLOG|ONLINE_FREE_SPACE_TOPOLOGY3D", ros_log):

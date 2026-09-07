@@ -211,7 +211,8 @@ RouteLifecycleReplanOutcome3D RouteLifecycleCoordinator3D::requestReplanImpl(
   const std::shared_ptr<const PlannerSearchTransaction3D> transaction =
       makePlannerSearchTransaction3D(snapshot.resident_world, std::move(planner_world),
                                      makeStaticRouteObjective(*snapshot.objective),
-                                     request_identity, std::nullopt, reason);
+                                     request_identity, std::nullopt, reason,
+                                     config_.stamp_provider());
   if (transaction == nullptr) {
     outcome.status = RouteLifecycleReplanStatus3D::kInvalidTransaction;
     return complete(outcome);

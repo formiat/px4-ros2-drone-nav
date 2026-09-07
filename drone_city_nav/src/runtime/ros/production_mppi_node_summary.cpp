@@ -31,6 +31,8 @@ void ProductionMppiNode::publishSummary() {
   const std::vector<double>& runtime_samples_ms = diagnostics.runtime_samples_ms;
   const std::uint64_t completed_ticks = diagnostics.completed_ticks;
   const std::uint64_t deadline_misses = diagnostics.deadline_misses;
+  const std::uint64_t controller_deadline_misses =
+      diagnostics.controller_deadline_misses;
   const std::uint64_t altitude_envelope_violation_horizons =
       diagnostics.altitude_envelope_violation_horizons;
   const std::uint64_t post_update_contract_violations =
@@ -94,7 +96,8 @@ void ProductionMppiNode::publishSummary() {
       get_logger(),
       "PRODUCTION_MPPI_SUMMARY ticks=%" PRIu64
       " runtime_p50=%.3f runtime_p95=%.3f runtime_p99=%.3f runtime_max=%.3f "
-      "deadline_misses=%" PRIu64 " altitude_envelope_violation_horizons=%" PRIu64
+      "deadline_misses=%" PRIu64 " controller_deadline_misses=%" PRIu64
+      " altitude_envelope_violation_horizons=%" PRIu64
       " post_update_contract_violations=%" PRIu64 " no_progress_horizons=%" PRIu64
       " liveness_reseeds=%" PRIu64 " mission_goal_position_hold_ticks=%" PRIu64
       " no_executable_route_hold_ticks=%" PRIu64
@@ -158,19 +161,20 @@ void ProductionMppiNode::publishSummary() {
       " resident_owner_continuation_ticks=%" PRIu64,
       completed_ticks, percentile(runtime_samples_ms, 0.50),
       percentile(runtime_samples_ms, 0.95), percentile(runtime_samples_ms, 0.99),
-      maximum, deadline_misses, altitude_envelope_violation_horizons,
-      post_update_contract_violations, no_progress_horizons, liveness_reseeds,
-      mission_goal_position_hold_ticks, no_executable_route_hold_ticks,
-      no_executable_horizon_hold_ticks, terminal_rest_horizon_ticks,
-      finite_path_validation_backoff_ticks, latest_lidar_path_validation_backoff_ticks,
-      retained_previous_finite_path_ticks, average_arrival_controls,
-      average_arrival_shaping_attempts, world_statistics.dropped_raw_worlds,
-      world_statistics.raw_updates, world_statistics.observedBuilds(),
-      world_statistics.throttled_observed_builds, world_statistics.static_builds,
-      world_statistics.static_cpu_reuses, world_statistics.static_gpu_reuses,
-      world_statistics.static_refreshes, diagnostics_sink_->droppedSnapshots(),
-      full_rollout_ticks, reduced_rollout_ticks, average_active_rollouts,
-      rolling_route.observations, rolling_route.continuation_boundary_ticks,
+      maximum, deadline_misses, controller_deadline_misses,
+      altitude_envelope_violation_horizons, post_update_contract_violations,
+      no_progress_horizons, liveness_reseeds, mission_goal_position_hold_ticks,
+      no_executable_route_hold_ticks, no_executable_horizon_hold_ticks,
+      terminal_rest_horizon_ticks, finite_path_validation_backoff_ticks,
+      latest_lidar_path_validation_backoff_ticks, retained_previous_finite_path_ticks,
+      average_arrival_controls, average_arrival_shaping_attempts,
+      world_statistics.dropped_raw_worlds, world_statistics.raw_updates,
+      world_statistics.observedBuilds(), world_statistics.throttled_observed_builds,
+      world_statistics.static_builds, world_statistics.static_cpu_reuses,
+      world_statistics.static_gpu_reuses, world_statistics.static_refreshes,
+      diagnostics_sink_->droppedSnapshots(), full_rollout_ticks, reduced_rollout_ticks,
+      average_active_rollouts, rolling_route.observations,
+      rolling_route.continuation_boundary_ticks,
       std::isfinite(rolling_route.minimum_continuation_boundary_speed_mps)
           ? rolling_route.minimum_continuation_boundary_speed_mps
           : -1.0,

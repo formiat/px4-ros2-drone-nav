@@ -495,7 +495,9 @@ bool ProductionMppiNode::requestInitialRouteSearch3D(
                                      makeStaticRouteObjective(*objective),
                                      StaticRouteSearchRequestIdentity{
                                          .kind = StaticRouteSearchRequestKind::kInitial,
-                                     });
+                                     },
+                                     std::nullopt, RouteReleaseReason3D::kNone,
+                                     get_clock()->now().nanoseconds());
   if (transaction == nullptr) {
     RCLCPP_ERROR(get_logger(),
                  "PRODUCTION_MPPI_ROUTE3D status=invalid_initial_transaction "
