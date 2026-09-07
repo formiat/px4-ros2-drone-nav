@@ -57,10 +57,9 @@ FeasiblePathSearch3D::reconstructNodes(const PersistentPlannerNode3D terminal) c
   return nodes;
 }
 
-std::optional<std::vector<Point3>>
-FeasiblePathSearch3D::pathFromNodes(const Endpoints3D& endpoints,
-                                    const std::vector<PersistentPlannerNode3D>& nodes,
-                                    std::vector<std::uint32_t>& path_nodes) const {
+std::optional<std::vector<Point3>> FeasiblePathSearch3D::pathFromNodes(
+    const Endpoints3D& endpoints,
+    const std::vector<PersistentPlannerNode3D>& nodes) const {
   // The vehicle may have drifted from the anchor since the labels were seeded;
   // the departure joins the first of the leading nodes it still reaches.
   constexpr std::size_t kDepartureCandidates{8U};
@@ -80,14 +79,10 @@ FeasiblePathSearch3D::pathFromNodes(const Endpoints3D& endpoints,
   }
   std::vector<Point3> path;
   path.reserve(nodes.size() - first + 2U);
-  path_nodes.clear();
-  path_nodes.reserve(nodes.size() - first + 2U);
   path.push_back(endpoints.exact_start);
-  path_nodes.push_back(kNoPathNode);
   if (endpoints.departure_waypoint.has_value() &&
       distance3D(path.back(), *endpoints.departure_waypoint) > kCostTolerance) {
     path.push_back(*endpoints.departure_waypoint);
-    path_nodes.push_back(kNoPathNode);
   }
   for (std::size_t index = first; index < nodes.size(); ++index) {
     // An edge whose straight segment does not clear the body is traversable
@@ -97,21 +92,15 @@ FeasiblePathSearch3D::pathFromNodes(const Endpoints3D& endpoints,
               lattice_->edgeWaypoint(nodes[index - 1U], nodes[index]);
           waypoint.has_value() && distance3D(path.back(), *waypoint) > kCostTolerance) {
         path.push_back(*waypoint);
-        path_nodes.push_back(kNoPathNode);
       }
     }
     const Point3 point = lattice_->pointFor(nodes[index]);
     if (distance3D(path.back(), point) > kCostTolerance) {
       path.push_back(point);
-      path_nodes.push_back(static_cast<std::uint32_t>(index));
-    } else {
-      // The exact start sits on this node: the point stands for both.
-      path_nodes.back() = static_cast<std::uint32_t>(index);
     }
   }
   if (distance3D(path.back(), endpoints.exact_goal) > kCostTolerance) {
     path.push_back(endpoints.exact_goal);
-    path_nodes.push_back(kNoPathNode);
   }
   return path.size() >= 2U ? std::optional<std::vector<Point3>>{std::move(path)}
                            : std::nullopt;
@@ -442,7 +431,7 @@ std::optional<std::vector<Point3>> FeasiblePathSearch3D::advance(
     if (current.goal_connector && goal_connector_valid) {
       const std::vector<PersistentPlannerNode3D> nodes = reconstructNodes(current.node);
       std::optional<std::vector<Point3>> candidate =
-          nodes.empty() ? std::nullopt : pathFromNodes(endpoints, nodes, path_nodes_);
+          nodes.empty() ? std::nullopt : pathFromNodes(endpoints, nodes);
       const std::optional<std::size_t> invalid_segment =
           candidate.has_value() ? lattice_->firstInvalidSegment(*candidate)
                                 : std::optional<std::size_t>{0U};
@@ -450,23 +439,22 @@ std::optional<std::vector<Point3>> FeasiblePathSearch3D::advance(
         return candidate;
       }
       last_invalid_segment_ = *invalid_segment;
-      // Segment s joins candidate[s-1] and candidate[s]. When both are lattice
-      // nodes, the lattice priced their edge traversable and the sweep rejects
-      // it on the resident world: the sweep is the authority, so the edge is
-      // forgotten for re-derivation, withheld from this search on this world,
-      // and the labels behind it are dropped and re-entered from the intact
-      // labels around them.
-      const std::size_t segment = *invalid_segment;
-      if (segment >= 1U && segment < path_nodes_.size() &&
-          path_nodes_[segment - 1U] != kNoPathNode &&
-          path_nodes_[segment] != kNoPathNode) {
-        const PersistentPlannerNode3D from = nodes[path_nodes_[segment - 1U]];
-        const PersistentPlannerNode3D to = nodes[path_nodes_[segment]];
-        const PersistentPlannerEdge3D edge = canonicalEdge(from, to);
-        static_cast<void>(lattice_->forgetEdgeCost(edge));
+      // Segment s joins candidate[s-1] and candidate[s]. When the lattice
+      // priced that segment — a straight edge, or a leg of a refined edge
+      // through its waypoint — and the sweep rejects it on the resident world,
+      // the sweep is the authority: the edge is forgotten for re-derivation,
+      // withheld from this search on this world, and the labels behind it are
+      // dropped and re-entered from the intact labels around them. Restarting
+      // instead would find the same edge again from the same cache and reject
+      // it again, forever.
+      if (const std::optional<PlannerLattice3D::PathSegmentEdge3D> priced =
+              lattice_->pricedEdgeForSegment(*candidate, *invalid_segment);
+          priced.has_value()) {
+        const PersistentPlannerEdge3D edge = canonicalEdge(priced->from, priced->to);
+        static_cast<void>(lattice_->rejectEdgeBySweep(edge));
         rejected_edges_.insert(edge);
         advanceValidationEpoch();
-        invalidateLabel(lattice_->linearIndex(to));
+        invalidateLabel(lattice_->linearIndex(priced->to));
         drainInvalidations(deadline);
         continue;
       }

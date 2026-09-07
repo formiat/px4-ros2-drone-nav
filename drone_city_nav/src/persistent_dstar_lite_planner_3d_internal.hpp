@@ -235,8 +235,8 @@ public:
   [[nodiscard]] bool rankingRepairRequired(double previous_clearance_m,
                                            double current_clearance_m) const noexcept;
   // Forgets every level-zero edge incident to the node that the change can
-  // move (clear edges for an occupied cell that appeared, blocked edges for
-  // one that vanished); returns true when anything was forgotten. Coarse
+  // move (clear and refined edges for an occupied cell that appeared, blocked
+  // edges for one that vanished); returns true when anything was forgotten. Coarse
   // scheduling of a very large change set uses it over the nodes of the
   // changed chunks.
   bool forgetNodeEdgesForChange(PersistentPlannerNode3D node, bool occupied_cell_added,
@@ -284,9 +284,15 @@ public:
   // another node two metres away would have done. Advancing the skip on
   // evidence of exhaustion turns the single commitment into a bounded walk
   // over the reachable anchors.
-  [[nodiscard]] DepartureConnection3D
-  selectDepartureConnection(const Point3& start,
-                            std::size_t skipped_connections = 0U) const;
+  //
+  // `preferred` is the anchor the searches are already seeded from. While it
+  // stays admissible it is kept, whatever node is nearest now: a vehicle
+  // resting near occupied evidence sees its nearest reachable node flip with
+  // every raw scan, and each flip beyond a lattice diagonal restarts the
+  // searches from nothing. The walk on exhaustion takes precedence.
+  [[nodiscard]] DepartureConnection3D selectDepartureConnection(
+      const Point3& start, std::size_t skipped_connections = 0U,
+      std::optional<PersistentPlannerNode3D> preferred = std::nullopt) const;
   // How many admissible connections the start has, for bounding that walk.
   [[nodiscard]] std::size_t departureConnectionCount(const Point3& start) const;
   // Whether the body reaches `target` from `start`, through `waypoint` when
@@ -311,6 +317,30 @@ public:
   // Resets the per-update refinement probe budget.
   void beginEdgeRefinementBudget() noexcept;
   [[nodiscard]] bool edgeRefinementBudgetRemaining() const noexcept;
+  // Farthest a refined edge's waypoint can lie from the edge's straight
+  // segment; zero when refinement is disabled. A change that can touch a
+  // refined edge's legs can lie that much farther from its nodes than a
+  // change touching a straight edge.
+  [[nodiscard]] double maximumEdgeRefinementOffsetM() const noexcept;
+
+  // The lattice edge a path segment stands for, in path order, or nullopt when
+  // the lattice never priced that segment: the departure from the exact start,
+  // the connector to the exact goal, a degenerate segment. A segment touching
+  // a refined edge's waypoint names that edge. The raw sweep is the authority
+  // on a candidate, and a leg it rejects has to reach the cache entry that
+  // admitted it, whether that entry is a straight edge or a refined one.
+  struct PathSegmentEdge3D {
+    PersistentPlannerNode3D from{};
+    PersistentPlannerNode3D to{};
+  };
+
+  [[nodiscard]] std::optional<PathSegmentEdge3D>
+  pricedEdgeForSegment(const std::vector<Point3>& path, std::size_t segment) const;
+  // Forgets an edge the raw sweep rejected on the resident world, and records
+  // it for the persistent session: labels priced through the edge are stale
+  // and the session repairs them. Returns whether anything was cached.
+  bool rejectEdgeBySweep(const PersistentPlannerEdge3D& edge);
+  [[nodiscard]] std::vector<PersistentPlannerEdge3D> takeSweepRejectedEdges();
   [[nodiscard]] bool pointInsideFlightEnvelope(const Point3& point) const noexcept;
   [[nodiscard]] bool rawSegmentValid(const Point3& first, const Point3& second) const;
   [[nodiscard]] bool departureSegmentValid(const Point3& first,
@@ -524,6 +554,8 @@ private:
   [[nodiscard]] bool nearOccupied(const Point3& point, double reach_m) const noexcept;
   std::uint64_t change_epoch_{0U};
   std::vector<PersistentPlannerNode3D> moved_clearances_;
+  // Edges the raw sweep rejected since the last take; see rejectEdgeBySweep.
+  std::vector<PersistentPlannerEdge3D> sweep_rejected_edges_;
   std::size_t clearances_rederived_{0U};
   // Whether a chunk within `reach_m` of the point changed after the given
   // epoch.
@@ -603,6 +635,10 @@ public:
                                std::size_t& processed_vertices);
   // Queues repair for the labelled nodes whose lazily re-derived clearance
   // moved their ranking factor, and for their labelled neighbours.
+  // Repairs the labelled endpoints of every edge the raw sweep rejected since
+  // the last call: a label priced through such an edge is stale, and the
+  // change scheduling never sees a rejection the sweep made on a candidate.
+  void scheduleSweepRejectedEdges();
   void scheduleMovedClearances();
   [[nodiscard]] bool shortestPathComplete();
   [[nodiscard]] bool computeShortestPath(std::chrono::steady_clock::time_point deadline,
@@ -709,7 +745,6 @@ public:
 
 private:
   static constexpr std::uint32_t kNoParent{std::numeric_limits<std::uint32_t>::max()};
-  static constexpr std::uint32_t kNoPathNode{std::numeric_limits<std::uint32_t>::max()};
   // Longest parent chain any walk follows; longer means a loop of links.
   static constexpr std::size_t kMaximumChainWalk{1U << 20U};
 
@@ -749,15 +784,13 @@ private:
   // chain is broken or too long.
   [[nodiscard]] std::vector<PersistentPlannerNode3D>
   reconstructNodes(PersistentPlannerNode3D terminal) const;
-  // Exact-start departure, the nodes, and the exact goal. The departure joins
-  // the first node the exact start reaches directly; nodes before it are
-  // dropped, so a drifted vehicle keeps the labels it can still use.
-  // `path_nodes` names, per path point, the index into `nodes` it stands for,
-  // or kNoPathNode for an exact endpoint that is not on a node.
+  // Exact-start departure, the nodes with the waypoints of refined edges
+  // between them, and the exact goal. The departure joins the first node the
+  // exact start reaches directly; nodes before it are dropped, so a drifted
+  // vehicle keeps the labels it can still use.
   [[nodiscard]] std::optional<std::vector<Point3>>
   pathFromNodes(const Endpoints3D& endpoints,
-                const std::vector<PersistentPlannerNode3D>& nodes,
-                std::vector<std::uint32_t>& path_nodes) const;
+                const std::vector<PersistentPlannerNode3D>& nodes) const;
 
   const PersistentPlannerConfig3D* config_{nullptr};
   PlannerLattice3D* lattice_{nullptr};
@@ -782,7 +815,6 @@ private:
   std::uint32_t validation_epoch_{1U};
   std::vector<std::uint32_t> chain_;
   std::vector<std::uint32_t> invalidation_queue_;
-  std::vector<std::uint32_t> path_nodes_;
   // Edges the raw sweep rejected on the resident world: the sweep is the
   // authority for a candidate, so the search never offers them again on it.
   std::unordered_set<PersistentPlannerEdge3D, PersistentPlannerEdge3DHash>

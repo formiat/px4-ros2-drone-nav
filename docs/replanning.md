@@ -70,20 +70,33 @@ last zero-velocity sample, offboard holds that same terminal position.
 
 ## The Planner Update Budget
 
-One planner update runs, in order: the feasibility search, affected-vertex
-repair, change scheduling, the D* Lite shortest-path search, and the
-execution-time refinement. They shared the update first-come, and between them
-the stages that run first took all of it: D* Lite was measured expanding
-nothing in over half the recorded updates, and 105 of 166 published routes came
-from the unranked feasibility branch.
+One planner update runs, in order: change scheduling, affected-vertex repair,
+the feasibility search (only while no route is held), the D* Lite
+shortest-path search, and the execution-time refinement. They once shared the
+update first-come, and between them the stages that ran first took all of it:
+D* Lite was measured expanding nothing in over half the recorded updates, and
+105 of 166 published routes came from the unranked feasibility branch.
 
-The tail of the update is now reserved for the shortest-path search
+The tail of the update is reserved for the persistent session
 (`persistent_planner_guaranteed_spatial_search_fraction`), and the
 execution-time refinement is guaranteed a share of the update's expansions
 (`persistent_planner_guaranteed_refinement_expansion_fraction`) rather than
 only what the spatial search leaves. Without the second one the refinement runs
 only while D* is idle, and the refinement is what turns a first-found route
 into a ranked one.
+
+The repair runs before the feasibility search, not after it. The session's
+labels are only as true as its repair queue is short: with repairs pending, D*
+reports its shortest path complete on labels the world has already moved, the
+refinement then searches from that answer, and the reserve meant for the
+session goes to a refinement of a route that is not there. With the repair
+after the feasibility search, and its deadline clamped to the same point the
+feasibility search ran up to, the repair received nothing at all while no
+route existed — the situation it exists for; one recorded Urban run held
+4,118 pending repairs for 540 s without processing one. While a route is held
+the repair takes half the update and the search the rest; while none is, the
+repair is bounded by half the session's reserve, so the feasibility search
+still gets most of the update for a first route.
 
 Seeding the refinement with the feasibility route — so that it would improve it
 directly — was tried and does not work: the refinement treats its seed as an
@@ -161,11 +174,28 @@ unchanged; the refinement widens what the graph can express. The edge keeps
 its straight-line cost and the waypoint is carried in every extracted path —
 the D* path, the feasibility path and the execution-time refiner's — so the
 route the executor validates is the one the search priced. A refined edge is
-cached like any other and is re-examined when occupied evidence lands on it.
+cached like any other and is re-examined when occupied evidence lands on
+either of its legs: the change scheduling tests the geometry the vehicle
+flies, not the straight segment, because the waypoint can lie a metre off it
+and a voxel beside the waypoint would otherwise leave the cache admitting a
+leg the sweep rejects.
 `persistent_planner_maximum_edge_refinement_probes` bounds the sweeps one
 update may spend on refinement: near occupied evidence most edges fail their
 straight sweep, and unbounded the refinement would take the whole compute
 budget. Zero offsets disable it.
+
+The raw sweep is the authority on every candidate, and a segment it rejects
+has to reach the cache entry that admitted it. A rejected segment names the
+lattice edge it stands for — a straight edge, or a refined edge through its
+waypoint — and that edge is forgotten, withheld from the feasibility search on
+this world, and repaired in the D* session; only a rejected departure or a
+degenerate candidate restarts the feasibility search from nothing. The first
+version of the refinement treated the waypoint as it treated the departure,
+and a stale refined edge then restarted the search on every update: it found
+the same edge in the same cache, and the same leg failed, 2,821 times over the
+540 s a vehicle stood without a route in the shaft at x ≈ 54 of the Urban
+world. The execution-time refinement discards its search state on a blocked
+path in the same way, forgetting the edge first.
 
 The two other consequences of the sparse lattice are addressed as before: a
 vehicle in a column that carries no node leaves through a refined free
@@ -176,7 +206,12 @@ slid to the middle of the passage before it is published.
 
 The search reaches the lattice from wherever the vehicle stands. Normally that
 is one segment to the nearest admissible node, with the departure exemption for
-contact evidence the body already holds.
+contact evidence the body already holds. The anchor the searches are seeded
+from is kept for as long as it stays admissible, whichever node is nearest at
+the moment: a vehicle resting near occupied evidence sees its nearest reachable
+node flip with every raw scan, and each flip beyond a lattice diagonal restarts
+the feasibility search from nothing. The walk over the anchors on exhaustion
+takes precedence over the preference.
 
 A vehicle that has come to rest close to occupied evidence — beside a wall
 after a blocked-route stop — can be in a position where the swept body sweeps a

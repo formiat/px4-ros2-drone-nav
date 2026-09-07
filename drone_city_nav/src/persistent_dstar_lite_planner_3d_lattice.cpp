@@ -433,10 +433,16 @@ std::size_t PlannerLattice3D::departureConnectionCount(const Point3& start) cons
 }
 
 PlannerLattice3D::DepartureConnection3D PlannerLattice3D::selectDepartureConnection(
-    const Point3& start, const std::size_t skipped_connections) const {
+    const Point3& start, const std::size_t skipped_connections,
+    const std::optional<PersistentPlannerNode3D> preferred) const {
   DepartureConnection3D result;
   const std::vector<PersistentPlannerNode3D> anchors = admissibleAnchors(start, true);
   if (!anchors.empty()) {
+    if (skipped_connections == 0U && preferred.has_value() &&
+        std::ranges::find(anchors, *preferred) != anchors.end()) {
+      result.anchor = *preferred;
+      return result;
+    }
     result.anchor = anchors[skipped_connections % anchors.size()];
     return result;
   }
@@ -594,6 +600,82 @@ PlannerLattice3D::edgeWaypoint(const PersistentPlannerNode3D first,
   const auto found = refined_edge_waypoints_.find(edge);
   return found != refined_edge_waypoints_.end() ? std::optional<Point3>{found->second}
                                                 : std::nullopt;
+}
+
+double PlannerLattice3D::maximumEdgeRefinementOffsetM() const noexcept {
+  const auto offsets = static_cast<double>(config_->edge_refinement_offsets);
+  return offsets > 0.0 ? config_->minimum_horizontal_step_m * offsets / (offsets + 1.0)
+                       : 0.0;
+}
+
+std::optional<PlannerLattice3D::PathSegmentEdge3D>
+PlannerLattice3D::pricedEdgeForSegment(const std::vector<Point3>& path,
+                                       const std::size_t segment) const {
+  if (segment == 0U || segment >= path.size()) {
+    return std::nullopt;
+  }
+  constexpr double kOnNodeTolerance{1.0e-6};
+  const auto node_at =
+      [&](const std::size_t index) -> std::optional<PersistentPlannerNode3D> {
+    if (index >= path.size() || !pointInsideFlightEnvelope(path[index])) {
+      return std::nullopt;
+    }
+    const PersistentPlannerNode3D node = nearestNode(path[index]);
+    if (!nodeInside(node) ||
+        distance3D(pointFor(node), path[index]) > kOnNodeTolerance) {
+      return std::nullopt;
+    }
+    return node;
+  };
+  const auto adjacent = [&](const PersistentPlannerNode3D from,
+                            const PersistentPlannerNode3D to) {
+    return from != to && level(from, to) == 0U;
+  };
+  const auto is_waypoint_of = [&](const PersistentPlannerNode3D from,
+                                  const PersistentPlannerNode3D to,
+                                  const Point3& point) {
+    const std::optional<Point3> waypoint =
+        adjacent(from, to) ? edgeWaypoint(from, to) : std::nullopt;
+    return waypoint.has_value() && distance3D(*waypoint, point) <= kOnNodeTolerance;
+  };
+  const std::optional<PersistentPlannerNode3D> before = node_at(segment - 1U);
+  const std::optional<PersistentPlannerNode3D> after = node_at(segment);
+  if (before && after) {
+    // A straight lattice edge, level zero or adaptive.
+    return before != after ? std::optional{PathSegmentEdge3D{*before, *after}}
+                           : std::nullopt;
+  }
+  if (before && !after) {
+    // Leg into a refined edge's waypoint: the edge continues to the next node.
+    const std::optional<PersistentPlannerNode3D> next = node_at(segment + 1U);
+    if (next && is_waypoint_of(*before, *next, path[segment])) {
+      return PathSegmentEdge3D{*before, *next};
+    }
+    return std::nullopt;
+  }
+  if (!before && after && segment >= 2U) {
+    // Leg out of a refined edge's waypoint: the edge started at the node
+    // before it.
+    const std::optional<PersistentPlannerNode3D> previous = node_at(segment - 2U);
+    if (previous && is_waypoint_of(*previous, *after, path[segment - 1U])) {
+      return PathSegmentEdge3D{*previous, *after};
+    }
+  }
+  return std::nullopt;
+}
+
+bool PlannerLattice3D::rejectEdgeBySweep(const PersistentPlannerEdge3D& edge) {
+  if (!forgetEdgeCost(edge)) {
+    return false;
+  }
+  sweep_rejected_edges_.push_back(canonicalEdge(edge.first, edge.second));
+  return true;
+}
+
+std::vector<PersistentPlannerEdge3D> PlannerLattice3D::takeSweepRejectedEdges() {
+  std::vector<PersistentPlannerEdge3D> taken;
+  taken.swap(sweep_rejected_edges_);
+  return taken;
 }
 
 bool PlannerLattice3D::pointInsideFlightEnvelope(const Point3& point) const noexcept {
@@ -867,6 +949,7 @@ void PlannerLattice3D::reset() noexcept {
 void PlannerLattice3D::resetEdgeEvidence() noexcept {
   std::ranges::fill(level_zero_edge_states_, 0U);
   refined_edge_waypoints_.clear();
+  sweep_rejected_edges_.clear();
   adaptive_edge_cost_cache_.clear();
   resetNodeClearances();
   adaptive_edges_by_chunk_.clear();
@@ -923,11 +1006,13 @@ bool PlannerLattice3D::forgetEdgeCost(const PersistentPlannerEdge3D& edge) {
     return false;
   }
   if (level(edge.first, edge.second) == 0U) {
-    const LevelZeroSlot slot = levelZeroSlot(canonicalEdge(edge.first, edge.second));
+    const PersistentPlannerEdge3D canonical = canonicalEdge(edge.first, edge.second);
+    const LevelZeroSlot slot = levelZeroSlot(canonical);
     if (levelZeroState(slot) == kLevelZeroEdgeUnknown) {
       return false;
     }
     setLevelZeroState(slot, kLevelZeroEdgeUnknown);
+    refined_edge_waypoints_.erase(canonical);
     return true;
   }
   return adaptive_edge_cost_cache_.erase(edge) != 0U;
@@ -951,6 +1036,9 @@ bool PlannerLattice3D::forgetEdgeCostForChange(const PersistentPlannerEdge3D& ed
       return false;
     }
     setLevelZeroState(slot, kLevelZeroEdgeUnknown);
+    if (state == kLevelZeroEdgeRefined) {
+      refined_edge_waypoints_.erase(canonicalEdge(edge.first, edge.second));
+    }
     return true;
   }
   const auto cost = adaptive_edge_cost_cache_.find(edge);
@@ -984,12 +1072,18 @@ bool PlannerLattice3D::forgetNodeEdgesForChange(const PersistentPlannerNode3D no
         if (!nodeInside(neighbor)) {
           continue;
         }
-        const LevelZeroSlot slot = levelZeroSlot(canonicalEdge(node, neighbor));
+        const PersistentPlannerEdge3D edge = canonicalEdge(node, neighbor);
+        const LevelZeroSlot slot = levelZeroSlot(edge);
         const unsigned state = levelZeroState(slot);
-        const bool movable = (state == kLevelZeroEdgeClear && occupied_cell_added) ||
-                             (state == kLevelZeroEdgeBlocked && occupied_cell_removed);
+        const bool movable =
+            ((state == kLevelZeroEdgeClear || state == kLevelZeroEdgeRefined) &&
+             occupied_cell_added) ||
+            (state == kLevelZeroEdgeBlocked && occupied_cell_removed);
         if (movable) {
           setLevelZeroState(slot, kLevelZeroEdgeUnknown);
+          if (state == kLevelZeroEdgeRefined) {
+            refined_edge_waypoints_.erase(edge);
+          }
           forgotten = true;
         }
       }

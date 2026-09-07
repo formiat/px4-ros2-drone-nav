@@ -189,9 +189,14 @@ void DStarLiteSession3D::scheduleAffectedVertices(
   const double vertical_margin = std::max(config_->physical_footprint.lower_extent_m,
                                           config_->physical_footprint.upper_extent_m) +
                                  raw_half_diagonal;
+  // A refined edge's legs run through a waypoint off the straight segment,
+  // so a change that touches them can lie that much farther from the nodes.
+  const double refinement_offset = lattice_->maximumEdgeRefinementOffsetM();
   const double horizontal_reach =
-      horizontal_margin + std::numbers::sqrt2 * config_->minimum_horizontal_step_m;
-  const double vertical_reach = vertical_margin + config_->minimum_vertical_step_m;
+      horizontal_margin + std::numbers::sqrt2 * config_->minimum_horizontal_step_m +
+      refinement_offset;
+  const double vertical_reach =
+      vertical_margin + config_->minimum_vertical_step_m + refinement_offset;
   for (const GridIndex3D cell : changed_cells) {
     changed_chunks.insert(OccupancyGrid3D::chunkIndex(cell));
   }
@@ -415,10 +420,22 @@ void DStarLiteSession3D::scheduleAffectedVertices(
                   continue;
                 }
                 const Point3 neighbor_point = lattice_->pointFor(neighbor);
+                // The geometry a change has to touch is the geometry the
+                // vehicle flies: the straight segment, or the two legs of a
+                // refined edge through its waypoint.
+                const std::optional<Point3> waypoint =
+                    lattice_->edgeWaypoint(node, neighbor);
+                const auto touches = [&](const Point3& center) {
+                  return waypoint.has_value()
+                             ? cell_touches_segment(center, node_point, *waypoint) ||
+                                   cell_touches_segment(center, *waypoint,
+                                                        neighbor_point)
+                             : cell_touches_segment(center, node_point, neighbor_point);
+                };
                 bool occupied_cell_added = false;
                 bool occupied_cell_removed = false;
                 for (const ChangedCell& change : changes) {
-                  if (cell_touches_segment(change.center, node_point, neighbor_point)) {
+                  if (touches(change.center)) {
                     (change.occupied_now ? occupied_cell_added
                                          : occupied_cell_removed) = true;
                   }
@@ -450,6 +467,19 @@ void DStarLiteSession3D::scheduleAffectedVertices(
       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                 schedule_started)
           .count();
+}
+
+void DStarLiteSession3D::scheduleSweepRejectedEdges() {
+  for (const PersistentPlannerEdge3D& edge : lattice_->takeSweepRejectedEdges()) {
+    for (const PersistentPlannerNode3D node : {edge.first, edge.second}) {
+      if (node != start_ && node != goal_ && !records_.contains(node)) {
+        continue;
+      }
+      if (pending_repair_members_.insert(node).second) {
+        pending_repair_nodes_.push_back(node);
+      }
+    }
+  }
 }
 
 void DStarLiteSession3D::scheduleMovedClearances() {

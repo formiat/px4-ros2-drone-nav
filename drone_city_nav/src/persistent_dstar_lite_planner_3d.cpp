@@ -431,13 +431,13 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     telemetry.input_failure = "request_invalid";
     return update;
   }
-  // What the shortest-path search is guaranteed, whatever the stages before it
-  // spend. Repair, change scheduling and the feasibility search all ran before
-  // it against the same budget, and between them they took all of it: D* was
-  // measured expanding nothing in over half of the updates, so the route the
-  // vehicle flew came from the unranked feasibility branch again and again.
-  // Reserving the tail of the update for the search is what lets the ranked
-  // route exist at all.
+  // What the persistent session — its repair and its shortest-path search —
+  // is guaranteed, whatever the stages before it spend. Change scheduling and
+  // the feasibility search ran before it against the same budget, and between
+  // them they took all of it: D* was measured expanding nothing in over half
+  // of the updates, so the route the vehicle flew came from the unranked
+  // feasibility branch again and again. Reserving the tail of the update for
+  // the session is what lets the ranked route exist at all.
   const auto deadline =
       operation_started +
       std::chrono::duration_cast<std::chrono::steady_clock::duration>(
@@ -474,7 +474,9 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   telemetry.occupied_world_unchanged = world_update.occupied_world_unchanged;
 
   const PlannerLattice3D::DepartureConnection3D departure =
-      lattice_.selectDepartureConnection(request.start, departure_anchor_skip_);
+      lattice_.selectDepartureConnection(request.start, departure_anchor_skip_,
+                                         initialized_ ? std::optional{start_}
+                                                      : std::nullopt);
   if (!departure.available()) {
     update.input_status = PlannerInputStatus3D::kStartUnavailable;
     return update;
@@ -592,7 +594,39 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     }
   }
 
-  if (config_.feasibility_first_enabled && coordinator_.incumbent() == nullptr) {
+  // Repair runs first. The persistent session's labels are only as good as
+  // its repair queue is short: with repairs pending, the session reports its
+  // shortest path complete on labels the world has already moved, and every
+  // stage that consumes that answer — the refinement, the search reserve —
+  // works on a route that is not there. The feasibility search used to run
+  // before the repair and took the update up to the reserve, and the repair's
+  // deadline was clamped to that same point: the repair got nothing at all
+  // while no route existed, the situation it exists for.
+  //
+  // With a route held the repair takes half the update and the search the
+  // rest. Without one the feasibility search still needs most of the update
+  // to find a first route, so the repair is bounded by half the reserve the
+  // persistent session is guaranteed and the feasibility search follows.
+  const bool feasibility_will_run =
+      config_.feasibility_first_enabled && coordinator_.incumbent() == nullptr;
+  const auto repair_started = std::chrono::steady_clock::now();
+  const auto repair_share =
+      feasibility_will_run
+          ? std::min((deadline - repair_started) / 2, spatial_search_reserve / 2)
+          : (deadline - repair_started) / 2;
+  const auto repair_deadline =
+      dstar_session_.pendingRepairNodes() > 0U && deadline > repair_started
+          ? repair_started + repair_share
+          : repair_started;
+  static_cast<void>(dstar_session_.continueAffectedVertexRepair(
+      repair_deadline, config_.maximum_expansions_per_update,
+      telemetry.repair_lattice_states_processed));
+  dstar_session_.scheduleMovedClearances();
+  telemetry.repair_ms = std::chrono::duration<double, std::milli>(
+                            std::chrono::steady_clock::now() - repair_started)
+                            .count();
+
+  if (feasibility_will_run) {
     telemetry.feasibility_attempted = true;
     const auto feasibility_started = std::chrono::steady_clock::now();
     const bool persistent_search_has_work = dstar_session_.pendingRepairNodes() > 0U ||
@@ -641,24 +675,7 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
             .count();
   }
 
-  // Repair and search share the update: while a changing world keeps the
-  // repair queue from ever draining, the search still gets half the budget so
-  // it can expand and hand out an anytime route on the labels it has. Labels
-  // a later repair moves re-enter the queue and the search re-converges.
-  const auto repair_started = std::chrono::steady_clock::now();
-  const auto repair_deadline =
-      dstar_session_.pendingRepairNodes() > 0U && deadline > repair_started
-          ? std::min(repair_started + (deadline - repair_started) / 2,
-                     preparatory_deadline)
-          : preparatory_deadline;
-  static_cast<void>(dstar_session_.continueAffectedVertexRepair(
-      repair_deadline, config_.maximum_expansions_per_update,
-      telemetry.repair_lattice_states_processed));
-  dstar_session_.scheduleMovedClearances();
   const auto spatial_search_started = std::chrono::steady_clock::now();
-  telemetry.repair_ms =
-      std::chrono::duration<double, std::milli>(spatial_search_started - repair_started)
-          .count();
   const std::size_t remaining_spatial_expansions =
       telemetry.repair_lattice_states_processed < config_.maximum_expansions_per_update
           ? config_.maximum_expansions_per_update -
@@ -670,6 +687,7 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
         deadline, remaining_spatial_expansions, telemetry.expansions);
   }
   dstar_session_.scheduleMovedClearances();
+  dstar_session_.scheduleSweepRejectedEdges();
   const auto refinement_started = std::chrono::steady_clock::now();
   telemetry.spatial_search_ms = std::chrono::duration<double, std::milli>(
                                     refinement_started - spatial_search_started)
@@ -738,6 +756,9 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   telemetry.refinement_ms = std::chrono::duration<double, std::milli>(
                                 std::chrono::steady_clock::now() - refinement_started)
                                 .count();
+  // An edge the refinement's validation rejected is repaired on the next
+  // update; the feasibility search's rejections were scheduled above.
+  dstar_session_.scheduleSweepRejectedEdges();
 
   // A consumer that opened a new session holds no route of this search: its
   // first update delivers the resident incumbent, later ones improvements only.

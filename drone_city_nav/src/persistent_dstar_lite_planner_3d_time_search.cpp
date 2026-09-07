@@ -344,9 +344,20 @@ ExecutionTimeRefiner3D::advance(const std::chrono::steady_clock::time_point dead
       return std::nullopt;
     }
     std::vector<Point3> path = bestPath();
-    if (path.size() < 2U || !lattice_->pathTraversable(path)) {
-      // Stale labels from an earlier world produced a blocked path: discard
-      // the search state rather than publish it.
+    const std::optional<std::size_t> invalid_segment =
+        path.size() < 2U ? std::optional<std::size_t>{0U}
+                         : lattice_->firstInvalidSegment(path);
+    if (invalid_segment.has_value()) {
+      // Stale labels produced a blocked path. The sweep is the authority: the
+      // edge it rejected is forgotten in the shared cache before the search
+      // state is discarded, or the next search would price the same edge from
+      // the same cache and arrive at the same blocked path.
+      if (const std::optional<PlannerLattice3D::PathSegmentEdge3D> priced =
+              lattice_->pricedEdgeForSegment(path, *invalid_segment);
+          priced.has_value()) {
+        static_cast<void>(
+            lattice_->rejectEdgeBySweep(canonicalEdge(priced->from, priced->to)));
+      }
       reset();
       return std::nullopt;
     }
