@@ -144,6 +144,10 @@ struct HorizonCandidate3D {
       mppi::FiniteExecutionPathStatus::kInvalidContract};
   mppi::FiniteExecutionPathStatus first_failed_validation_status{
       mppi::FiniteExecutionPathStatus::kValid};
+  // Which dynamics law a kDynamicsInconsistent rejection broke, so a refused
+  // horizon names its cause instead of arriving as a bare status.
+  MotionDynamicsConsistency3D validation_dynamics_consistency{
+      MotionDynamicsConsistency3D::kConsistent};
   const char* finite_path_rejected_precondition{"none"};
   // Segment at which the finite path validation failed, for diagnostics.
   std::size_t validation_failure_segment{0U};

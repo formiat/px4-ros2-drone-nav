@@ -570,13 +570,14 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPreparedExecutionC
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "EXECUTION_HORIZON_ASSEMBLY planned=false status=%.*s "
-        "validation=%s precondition=%s attempts=%zu "
+        "validation=%s dynamics=%s precondition=%s attempts=%zu "
         "failure_segment=%zu first_remaining=%zu "
         "first_failure=%s@%zu(%.2f,%.2f,%.2f) "
         "certification=%.*s braking_tail=%.*s adherence_failure_m=%.2f "
         "transition=%.*s detail=%.*s action=hold_no_executable_path",
         static_cast<int>(status_name.size()), status_name.data(),
         mppi::finiteExecutionPathStatusName(candidate.validation_status),
+        motionDynamicsConsistency3DName(candidate.validation_dynamics_consistency),
         candidate.finite_path_rejected_precondition, candidate.arrival_shaping_attempts,
         candidate.validation_failure_segment,
         candidate.validation_first_remaining_point,

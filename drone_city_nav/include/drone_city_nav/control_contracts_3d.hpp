@@ -54,8 +54,18 @@ struct ControlRouteSample3D {
   ControlRouteRiskTier3D required_risk_tier{ControlRouteRiskTier3D::kPreferred};
 };
 
+// Terminal rest has one definition across the whole execution path: the
+// builder that shapes the arrival, the certificate that admits the horizon and
+// the wire contract the offboard accepts all read these two tolerances. A
+// horizon rests when its last state is slower than the velocity tolerance and
+// its last control commands no acceleration beyond the control tolerance.
+// Keeping them here is what stops one stage from producing a rest another
+// stage refuses.
+inline constexpr float kTerminalRestVelocityToleranceMps{1.0e-3F};
+inline constexpr float kTerminalRestControlToleranceMps2{1.0e-6F};
+
 struct FiniteMotionHorizonConfig3D {
-  float terminal_velocity_tolerance_mps{1.0e-3F};
+  float terminal_velocity_tolerance_mps{kTerminalRestVelocityToleranceMps};
   StoppingCapability stopping_capability{
       .maximum_commanded_horizontal_deceleration_mps2 =
           std::numeric_limits<double>::max(),

@@ -151,6 +151,62 @@ Arrival shaping uses
 `finite_path_arrival_maximum_horizontal_deceleration_mps2`, a conservative contract
 separate from the higher acceleration available to ordinary manoeuvres. This
 prevents a finite path from claiming stopping performance that PX4 cannot track.
+That contract bounds the arrival profile's *amplitude* only. The profile is
+integrated, jerk-limited and validated under the one canonical dynamics
+configuration, so the states the builder records are the states every later
+stage reconstructs from the same controls. Integrating the arrival under
+reduced limits while the certificate re-integrated it under the full ones made
+the builder's own output dynamically inconsistent whenever the control already
+applied exceeded the guaranteed deceleration.
+
+The terminal state is the one the integrator produced, never a velocity forced
+to zero afterwards. The publisher derives each point's acceleration from the
+velocity step between neighbouring states, so a fabricated jump reads as a
+terminal acceleration the wire contract rejects. `kTerminalRestVelocityToleranceMps`
+and `kTerminalRestControlToleranceMps2` in `control_contracts_3d.hpp` are the
+single definition of rest, shared by the builder, the physical path validator,
+the execution certificate and the ROS contract.
+
+`motionStepDynamicallyConsistent3D` and `finiteMotionHorizonDynamicsConsistency3D`
+in `motion_dynamics_3d.hpp` are the single dynamics law: acceleration envelope,
+jerk relative to the previously applied control, and agreement between the
+recorded state and the integrated one. The finite-path builder checks what it
+emits with it and the execution certificate admits a horizon by it, so neither
+can refuse what the other accepted. A rejection carries the reason it broke
+(`acceleration_limit`, `jerk_limit`, `state_mismatch`), reported as
+`validation=dynamics_inconsistent dynamics=<reason>` in
+`EXECUTION_HORIZON_ASSEMBLY`.
+
+The host sampler and the CUDA rollouts share one admissible-control law,
+`limitMotionControlStep3D` in `mppi/mppi_control_limits.hpp`. Clamping the
+horizontal axes independently, as the device kernel once did, can leave the
+acceleration disk during a direction change and produce candidates the host
+validator then refuses.
+
+## Reference Speed
+
+The reference speed the controller aims for is capped by several limiters, and
+the tightest one wins. Two of them are shaped by what the vehicle is actually
+doing:
+
+- The `clearance` limiter reads the horizon **execution currently owns**,
+  measured against the world as it stands now (`executed_horizon_clearance_3d`).
+  A controller candidate that was never published moved nothing, so sizing the
+  reference from its clearance makes the reference chase trajectories the
+  vehicle never flew.
+- It applies the tube law at the **first** sample of that horizon whose body
+  clearance falls below the critical distance, and lets the stopping law decide
+  what the vehicle may carry on the way there. Treating the minimum clearance
+  over the whole horizon as an immediate cap is what made the reference
+  oscillate: a grazing sample far ahead dropped the reference, the horizon
+  shortened out of reach of the obstacle, the reference jumped back, and the
+  longer horizon found the obstacle again.
+
+The reference may fall as fast as any limiter asks — a cap is always allowed to
+bite at once — but it may only climb at `reference_speed_rise_mps2`, the
+vehicle's own horizontal acceleration. A limit that lifts as the horizon shifts
+therefore cannot snap the reference back up, because the controller answers
+each step with a fresh burst of acceleration.
 
 ## Continuity And Liveness
 

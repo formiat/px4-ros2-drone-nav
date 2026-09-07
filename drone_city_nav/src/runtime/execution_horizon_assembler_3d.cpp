@@ -36,6 +36,8 @@ void captureValidationTelemetry(HorizonCandidate3D& candidate,
   candidate.validation_first_remaining_point =
       validation.validation.first_remaining_point_index;
   candidate.validation_status = validation.validation.status;
+  candidate.validation_dynamics_consistency =
+      validation.validation.dynamics_consistency;
   candidate.first_failed_validation_status = validation.first_failed_validation_status;
   candidate.first_failed_validation_segment =
       validation.first_failed_validation.failure_segment_index;

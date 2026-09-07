@@ -187,6 +187,8 @@ timedExecutionPathPoints(const FiniteMotionHorizon3D& horizon,
 [[nodiscard]] bool finiteStateNearlyEqual(const MotionState3D& first,
                                           const MotionState3D& second) noexcept;
 
+// The boolean form of finiteMotionHorizonDynamicsConsistency3D, for callers
+// that only admit or refuse.
 [[nodiscard]] bool
 finiteHorizonDynamicallyConsistent(const FiniteMotionHorizon3D& horizon,
                                    const MotionControl3D& previous_applied_control,

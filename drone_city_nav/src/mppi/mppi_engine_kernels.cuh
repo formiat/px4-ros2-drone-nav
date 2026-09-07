@@ -105,23 +105,12 @@ __device__ State integrate(State state, Control control, DynamicsConfig config) 
   return state;
 }
 
+// The device rollouts and the host sampler share one admissible-control law:
+// see limitMotionControlStep3D.
 __device__ Control limitControlStep(Control control, const Control previous,
                                     const DynamicsConfig config,
                                     const float interval_s) {
-  clampHorizontal(control.ax, control.ay, config.maximum_horizontal_acceleration_mps2);
-  control.az = clampValue(control.az, -config.maximum_vertical_acceleration_mps2,
-                          config.maximum_vertical_acceleration_mps2);
-  control.yaw_accel =
-      clampValue(control.yaw_accel, -config.maximum_yaw_acceleration_radps2,
-                 config.maximum_yaw_acceleration_radps2);
-  const float maximum_delta = config.maximum_control_jerk_mps3 * interval_s;
-  control.ax =
-      clampValue(control.ax, previous.ax - maximum_delta, previous.ax + maximum_delta);
-  control.ay =
-      clampValue(control.ay, previous.ay - maximum_delta, previous.ay + maximum_delta);
-  control.az =
-      clampValue(control.az, previous.az - maximum_delta, previous.az + maximum_delta);
-  return control;
+  return limitMotionControlStep3D(control, previous, config, interval_s);
 }
 
 struct DeviceBodyAxis {

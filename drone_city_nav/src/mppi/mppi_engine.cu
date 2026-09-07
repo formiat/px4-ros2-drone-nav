@@ -1,6 +1,7 @@
 #include "drone_city_nav/mppi/mppi_acquisition_diagnostics.hpp"
 #include "drone_city_nav/mppi/mppi_altitude_envelope.hpp"
 #include "drone_city_nav/mppi/mppi_clearance_cost.hpp"
+#include "drone_city_nav/mppi/mppi_control_limits.hpp"
 #include "drone_city_nav/mppi/mppi_control_sequence.hpp"
 #include "drone_city_nav/mppi/mppi_engine.hpp"
 #include "drone_city_nav/mppi/mppi_finite_horizon.hpp"

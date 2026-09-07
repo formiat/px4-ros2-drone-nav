@@ -1,6 +1,7 @@
 #include "drone_city_nav/execution_horizon_contract_ros.hpp"
 
 #include "drone_city_nav/committed_execution_authority_3d.hpp"
+#include "drone_city_nav/control_contracts_3d.hpp"
 #include "drone_city_nav/execution_horizon_timing.hpp"
 
 #include <bit>
@@ -204,8 +205,10 @@ validRevocationTiming(const msg::MppiTrajectoryHorizon& horizon) noexcept {
 }
 
 [[nodiscard]] bool terminalRest(const msg::MppiHorizonPoint& point) noexcept {
-  constexpr double kVelocityTolerance{1.0e-3};
-  constexpr double kControlTolerance{1.0e-6};
+  // The same two tolerances the horizon builder shapes its arrival to and the
+  // certificate admits it under.
+  constexpr double kVelocityTolerance{kTerminalRestVelocityToleranceMps};
+  constexpr double kControlTolerance{kTerminalRestControlToleranceMps2};
   return std::hypot(std::hypot(point.velocity.x, point.velocity.y), point.velocity.z) <=
              kVelocityTolerance &&
          std::abs(point.yaw_rate_radps) <= kVelocityTolerance &&

@@ -17,10 +17,9 @@ namespace drone_city_nav {
 namespace {
 
 [[nodiscard]] bool translationalControlIsZero(const MotionControl3D& control) noexcept {
-  constexpr float kControlTolerance{1.0e-6F};
-  return std::abs(control.ax) <= kControlTolerance &&
-         std::abs(control.ay) <= kControlTolerance &&
-         std::abs(control.az) <= kControlTolerance;
+  return std::abs(control.ax) <= kTerminalRestControlToleranceMps2 &&
+         std::abs(control.ay) <= kTerminalRestControlToleranceMps2 &&
+         std::abs(control.az) <= kTerminalRestControlToleranceMps2;
 }
 
 [[nodiscard]] bool
@@ -135,20 +134,48 @@ simulateArrivalProfile(const MotionState3D& initial, const MotionControl3D& prev
   return simulation;
 }
 
+// The acceleration the arrival profile is allowed to command. It is the
+// vehicle's guaranteed braking capability, which is weaker than the modelled
+// maximum: a stop the profile promises must be one the airframe delivers even
+// at the low end of its authority. It bounds the amplitude only. Integration,
+// the jerk limit and the admissible-control envelope stay the canonical
+// dynamics the horizon is later validated, certified and executed under, so
+// the profile the builder simulates is the profile every downstream stage
+// reconstructs from the same controls.
+struct ArrivalAmplitudeLimits3D {
+  float maximum_horizontal_acceleration_mps2{0.0F};
+  float maximum_vertical_acceleration_mps2{0.0F};
+  float maximum_yaw_acceleration_radps2{0.0F};
+};
+
+[[nodiscard]] ArrivalAmplitudeLimits3D
+arrivalAmplitudeLimits(const MotionDynamicsConfig3D& dynamics,
+                       const StoppingCapability& capability) noexcept {
+  return ArrivalAmplitudeLimits3D{
+      .maximum_horizontal_acceleration_mps2 = std::min(
+          dynamics.maximum_horizontal_acceleration_mps2,
+          static_cast<float>(capability.guaranteed_horizontal_deceleration_mps2)),
+      .maximum_vertical_acceleration_mps2 = std::min(
+          dynamics.maximum_vertical_acceleration_mps2,
+          static_cast<float>(capability.guaranteed_vertical_deceleration_mps2)),
+      .maximum_yaw_acceleration_radps2 = dynamics.maximum_yaw_acceleration_radps2,
+  };
+}
+
 [[nodiscard]] MotionControl3D
 clampArrivalAmplitude(MotionControl3D amplitude,
-                      const MotionDynamicsConfig3D& dynamics) {
+                      const ArrivalAmplitudeLimits3D& limits) {
   const float horizontal = std::hypot(amplitude.ax, amplitude.ay);
-  if (horizontal > dynamics.maximum_horizontal_acceleration_mps2) {
-    const float scale = dynamics.maximum_horizontal_acceleration_mps2 / horizontal;
+  if (horizontal > limits.maximum_horizontal_acceleration_mps2) {
+    const float scale = limits.maximum_horizontal_acceleration_mps2 / horizontal;
     amplitude.ax *= scale;
     amplitude.ay *= scale;
   }
-  amplitude.az = std::clamp(amplitude.az, -dynamics.maximum_vertical_acceleration_mps2,
-                            dynamics.maximum_vertical_acceleration_mps2);
+  amplitude.az = std::clamp(amplitude.az, -limits.maximum_vertical_acceleration_mps2,
+                            limits.maximum_vertical_acceleration_mps2);
   amplitude.yaw_accel =
-      std::clamp(amplitude.yaw_accel, -dynamics.maximum_yaw_acceleration_radps2,
-                 dynamics.maximum_yaw_acceleration_radps2);
+      std::clamp(amplitude.yaw_accel, -limits.maximum_yaw_acceleration_radps2,
+                 limits.maximum_yaw_acceleration_radps2);
   return amplitude;
 }
 
@@ -274,6 +301,7 @@ struct ArrivalAmplitudeSolution {
 solveArrivalAmplitude(const MotionState3D& initial, const MotionControl3D& previous,
                       MotionControl3D amplitude, const std::size_t hold_steps,
                       const MotionDynamicsConfig3D& dynamics,
+                      const ArrivalAmplitudeLimits3D& limits,
                       const std::size_t maximum_steps, const double tolerance) {
   constexpr std::size_t kNewtonIterations{24U};
   constexpr std::size_t kDampingHalvings{6U};
@@ -340,7 +368,7 @@ solveArrivalAmplitude(const MotionState3D& initial, const MotionControl3D& previ
               .yaw_accel = static_cast<float>(static_cast<double>(amplitude.yaw_accel) +
                                               damping * (*newton_step)[3]),
           },
-          dynamics);
+          limits);
       if (controlsEqual(candidate, amplitude)) {
         // Clamped back onto the amplitude it already has: the limits are
         // reached, only a longer hold can deliver the rest of the impulse.
@@ -374,11 +402,10 @@ solveArrivalAmplitude(const MotionState3D& initial, const MotionControl3D& previ
   return solution;
 }
 
-[[nodiscard]] std::optional<std::vector<MotionControl3D>>
-buildArrivalControls(const MotionState3D& initial, const MotionControl3D& previous,
-                     const MotionDynamicsConfig3D& dynamics,
-                     const std::size_t maximum_steps,
-                     const float velocity_tolerance_mps) {
+[[nodiscard]] std::optional<std::vector<MotionControl3D>> buildArrivalControls(
+    const MotionState3D& initial, const MotionControl3D& previous,
+    const MotionDynamicsConfig3D& dynamics, const ArrivalAmplitudeLimits3D& limits,
+    const std::size_t maximum_steps, const float velocity_tolerance_mps) {
   if (maximum_steps == 0U) {
     return std::nullopt;
   }
@@ -392,9 +419,9 @@ buildArrivalControls(const MotionState3D& initial, const MotionControl3D& previo
   const double yaw_delta =
       static_cast<double>(dynamics.maximum_yaw_acceleration_radps2);
   const double amplitude_floor =
-      std::max({static_cast<double>(dynamics.maximum_horizontal_acceleration_mps2),
-                static_cast<double>(dynamics.maximum_vertical_acceleration_mps2),
-                static_cast<double>(dynamics.maximum_yaw_acceleration_radps2), 1.0e-3});
+      std::max({static_cast<double>(limits.maximum_horizontal_acceleration_mps2),
+                static_cast<double>(limits.maximum_vertical_acceleration_mps2),
+                static_cast<double>(limits.maximum_yaw_acceleration_radps2), 1.0e-3});
   // The shortest hold that rests within the tolerance wins. A hold whose
   // amplitude hits the limits is lengthened by the steps the velocity it
   // still leaves needs at those limits, so the search does not crawl one step
@@ -420,9 +447,10 @@ buildArrivalControls(const MotionState3D& initial, const MotionControl3D& previo
             .yaw_accel = static_cast<float>(
                 -std::copysign(yaw_guess, static_cast<double>(initial.yaw_rate))),
         },
-        dynamics);
-    ArrivalAmplitudeSolution solution = solveArrivalAmplitude(
-        initial, previous, guess, hold_steps, dynamics, maximum_steps, tolerance);
+        limits);
+    ArrivalAmplitudeSolution solution =
+        solveArrivalAmplitude(initial, previous, guess, hold_steps, dynamics, limits,
+                              maximum_steps, tolerance);
     if (solution.controls.has_value()) {
       return std::move(solution.controls);
     }
@@ -484,47 +512,40 @@ buildFiniteMotionHorizon3D(const std::span<const MotionState3D> planned_states,
                : std::nullopt;
   }
 
-  MotionDynamicsConfig3D arrival_dynamics = dynamics;
-  arrival_dynamics.maximum_horizontal_acceleration_mps2 =
-      std::min(dynamics.maximum_horizontal_acceleration_mps2,
-               static_cast<float>(
-                   config.stopping_capability.guaranteed_horizontal_deceleration_mps2));
-  arrival_dynamics.maximum_vertical_acceleration_mps2 =
-      std::min(dynamics.maximum_vertical_acceleration_mps2,
-               static_cast<float>(
-                   config.stopping_capability.guaranteed_vertical_deceleration_mps2));
+  const ArrivalAmplitudeLimits3D arrival_limits =
+      arrivalAmplitudeLimits(dynamics, config.stopping_capability);
   // The arrival continues from the control the prefix ends on, or from the
   // applied control when there is no prefix: nothing is released to zero
   // first, the profile ramps straight from where the vehicle's command is.
   const std::optional<std::vector<MotionControl3D>> arrival_controls =
-      buildArrivalControls(horizon.states.back(), previous, arrival_dynamics,
+      buildArrivalControls(horizon.states.back(), previous, dynamics, arrival_limits,
                            available_steps, config.terminal_velocity_tolerance_mps);
   if (!arrival_controls.has_value()) {
     return std::nullopt;
   }
   for (const MotionControl3D& control : *arrival_controls) {
-    appendControl(horizon, control, arrival_dynamics);
+    appendControl(horizon, control, dynamics);
     ++horizon.arrival_control_count;
   }
   while (horizon.controls.size() < planned_controls.size()) {
-    appendControl(horizon, MotionControl3D{}, arrival_dynamics);
+    appendControl(horizon, MotionControl3D{}, dynamics);
     ++horizon.arrival_control_count;
   }
   if (horizon.controls.size() != planned_controls.size()) {
     return std::nullopt;
   }
 
-  MotionState3D& terminal = horizon.states.back();
-  if (std::hypot(std::hypot(terminal.vx, terminal.vy), terminal.vz) >
-          config.terminal_velocity_tolerance_mps ||
-      std::abs(terminal.yaw_rate) > config.terminal_velocity_tolerance_mps) {
-    return std::nullopt;
-  }
-  terminal.vx = 0.0F;
-  terminal.vy = 0.0F;
-  terminal.vz = 0.0F;
-  terminal.yaw_rate = 0.0F;
-  return horizon;
+  // The horizon rests on the states the integrator produced. A terminal
+  // velocity forced to exactly zero would be a state no control in the
+  // sequence explains: the publisher reconstructs each point's acceleration
+  // from the velocity step, and would read the fabricated jump as a terminal
+  // acceleration the wire contract rejects. The residual the profile leaves
+  // is what `finiteMotionHorizonHasTerminalRestState3D` and the wire contract
+  // both call rest.
+  return finiteMotionHorizonHasTerminalRestState3D(
+             horizon, config.terminal_velocity_tolerance_mps)
+             ? std::optional<FiniteMotionHorizon3D>{std::move(horizon)}
+             : std::nullopt;
 }
 
 std::optional<FiniteMotionHorizon3D>
@@ -633,7 +654,7 @@ bool finiteMotionHorizonHasTerminalRestState3D(
              velocity_tolerance_mps &&
          std::abs(terminal.yaw_rate) <= velocity_tolerance_mps &&
          translationalControlIsZero(terminal_control) &&
-         std::abs(terminal_control.yaw_accel) <= 1.0e-6F;
+         std::abs(terminal_control.yaw_accel) <= kTerminalRestControlToleranceMps2;
 }
 
 bool finiteMotionHorizonRestsFromState3D(const FiniteMotionHorizon3D& horizon,

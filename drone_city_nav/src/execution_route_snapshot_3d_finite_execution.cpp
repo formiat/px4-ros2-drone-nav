@@ -301,18 +301,22 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
   const FiniteMotionHorizon3D& validated_horizon = certification.horizon;
   const std::int64_t control_interval_ns =
       finitePathControlIntervalNanoseconds3D(policy->dynamics().dt_s);
+  const MotionDynamicsConsistency3D horizon_dynamics =
+      finiteMotionHorizonDynamicsConsistency3D(
+          validated_horizon, certification.execution_input->previousControl(),
+          policy->dynamics());
   if (validated_horizon.controls.empty() || validated_horizon.states.empty() ||
       validated_horizon.states.size() != validated_horizon.controls.size() + 1U ||
       control_interval_ns <= 0 ||
-      !finiteHorizonDynamicallyConsistent(
-          validated_horizon, certification.execution_input->previousControl(),
-          policy->dynamics()) ||
+      horizon_dynamics != MotionDynamicsConsistency3D::kConsistent ||
       validated_horizon.controls.size() >
           static_cast<std::uint64_t>(
               (std::numeric_limits<std::int64_t>::max() - certification.valid_from_ns) /
               control_interval_ns)) {
-    return rejectedFiniteExecution(
+    FiniteExecutionCertificationResult3D rejection = rejectedFiniteExecution(
         FiniteExecutionCertificationStatus3D::kHorizonContractRejected);
+    rejection.dynamics_consistency = horizon_dynamics;
+    return rejection;
   }
 
   const CertificateView3D certificate_view = certificateView(target_route.certificate);

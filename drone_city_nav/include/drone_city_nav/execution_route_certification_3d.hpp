@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/execution_plan_3d.hpp"
+#include "drone_city_nav/motion_dynamics_3d.hpp"
 #include "drone_city_nav/tracking_error_tube_handoff_3d.hpp"
 
 #include <cstddef>
@@ -80,6 +81,11 @@ enum class FiniteExecutionRouteAdherenceStatus3D : std::uint8_t {
 struct FiniteExecutionCertificationResult3D {
   FiniteExecutionCertificationStatus3D status{
       FiniteExecutionCertificationStatus3D::kInvalidInput};
+  // Which dynamics law a kHorizonContractRejected verdict broke. The physical
+  // path validator applies the same law, so the two stages agree; carrying the
+  // reason out is what makes a refusal readable in the log.
+  MotionDynamicsConsistency3D dynamics_consistency{
+      MotionDynamicsConsistency3D::kConsistent};
   std::optional<FiniteExecutionState3D> execution;
   FiniteExecutionRouteAdherenceStatus3D route_adherence_status{
       FiniteExecutionRouteAdherenceStatus3D::kNotEvaluated};

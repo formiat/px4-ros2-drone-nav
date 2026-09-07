@@ -1,5 +1,6 @@
 #include "drone_city_nav/mppi/mppi_control_sequence.hpp"
 
+#include "drone_city_nav/mppi/mppi_control_limits.hpp"
 #include "drone_city_nav/mppi/mppi_finite_horizon.hpp"
 #include "drone_city_nav/mppi/mppi_reference.hpp"
 #include "drone_city_nav/mppi/mppi_route_projection.hpp"
@@ -27,21 +28,6 @@ void clampHorizontal(float& x, float& y, const float limit) noexcept {
     x *= scale;
     y *= scale;
   }
-}
-
-void limitHorizontalJerk(float& x, float& y, const float previous_x,
-                         const float previous_y, const float maximum_delta) noexcept {
-  const float delta_x = x - previous_x;
-  const float delta_y = y - previous_y;
-  float scale = 1.0F;
-  if (std::abs(delta_x) > maximum_delta) {
-    scale = std::min(scale, maximum_delta / std::abs(delta_x));
-  }
-  if (std::abs(delta_y) > maximum_delta) {
-    scale = std::min(scale, maximum_delta / std::abs(delta_y));
-  }
-  x = std::lerp(previous_x, x, scale);
-  y = std::lerp(previous_y, y, scale);
 }
 
 void clampTranslational(float& x, float& y, float& z, const float limit) noexcept {
@@ -193,22 +179,8 @@ void limitControlSequence(const std::span<Control> controls,
   Control previous = previous_applied_control;
   for (std::size_t step = 0U; step < controls.size(); ++step) {
     const float interval_s = step == 0U ? first_control_interval_s : dynamics.dt_s;
-    const float maximum_delta = dynamics.maximum_control_jerk_mps3 * interval_s;
     Control& control = controls[step];
-    clampHorizontal(control.ax, control.ay,
-                    dynamics.maximum_horizontal_acceleration_mps2);
-    control.az =
-        clampMagnitude(control.az, dynamics.maximum_vertical_acceleration_mps2);
-    control.yaw_accel =
-        clampMagnitude(control.yaw_accel, dynamics.maximum_yaw_acceleration_radps2);
-    // Both endpoints are inside the horizontal acceleration disk, so moving
-    // along their connecting segment preserves that limit while the common
-    // scale also satisfies each axis' jerk bound. Independent axis clamping
-    // can leave the disk during a direction change.
-    limitHorizontalJerk(control.ax, control.ay, previous.ax, previous.ay,
-                        maximum_delta);
-    control.az = std::clamp(control.az, previous.az - maximum_delta,
-                            previous.az + maximum_delta);
+    control = limitMotionControlStep3D(control, previous, dynamics, interval_s);
     previous = control;
   }
 }

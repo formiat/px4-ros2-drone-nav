@@ -400,50 +400,9 @@ timedExecutionPathPoints(const FiniteMotionHorizon3D& horizon,
 finiteHorizonDynamicallyConsistent(const FiniteMotionHorizon3D& horizon,
                                    const MotionControl3D& previous_applied_control,
                                    const MotionDynamicsConfig3D& dynamics) noexcept {
-  if (horizon.controls.empty() ||
-      horizon.states.size() != horizon.controls.size() + 1U ||
-      !finiteControl(previous_applied_control) || !std::isfinite(dynamics.dt_s) ||
-      dynamics.dt_s <= 0.0F ||
-      !std::isfinite(dynamics.maximum_horizontal_acceleration_mps2) ||
-      dynamics.maximum_horizontal_acceleration_mps2 <= 0.0F ||
-      !std::isfinite(dynamics.maximum_vertical_acceleration_mps2) ||
-      dynamics.maximum_vertical_acceleration_mps2 <= 0.0F ||
-      !std::isfinite(dynamics.maximum_yaw_acceleration_radps2) ||
-      dynamics.maximum_yaw_acceleration_radps2 <= 0.0F ||
-      !std::isfinite(dynamics.maximum_control_jerk_mps3) ||
-      dynamics.maximum_control_jerk_mps3 <= 0.0F) {
-    return false;
-  }
-
-  constexpr float kControlTolerance{1.0e-4F};
-  const float maximum_control_delta =
-      dynamics.maximum_control_jerk_mps3 * dynamics.dt_s;
-  MotionControl3D previous_control = previous_applied_control;
-  for (std::size_t index = 0U; index < horizon.controls.size(); ++index) {
-    const MotionControl3D& control = horizon.controls[index];
-    if (!finiteControl(control) ||
-        std::hypot(control.ax, control.ay) >
-            dynamics.maximum_horizontal_acceleration_mps2 + kControlTolerance ||
-        std::abs(control.az) >
-            dynamics.maximum_vertical_acceleration_mps2 + kControlTolerance ||
-        std::abs(control.yaw_accel) >
-            dynamics.maximum_yaw_acceleration_radps2 + kControlTolerance ||
-        std::abs(control.ax - previous_control.ax) >
-            maximum_control_delta + kControlTolerance ||
-        std::abs(control.ay - previous_control.ay) >
-            maximum_control_delta + kControlTolerance ||
-        std::abs(control.az - previous_control.az) >
-            maximum_control_delta + kControlTolerance) {
-      return false;
-    }
-    const MotionState3D expected =
-        integrateMotionState3D(horizon.states[index], control, dynamics);
-    if (!finiteStateNearlyEqual(expected, horizon.states[index + 1U])) {
-      return false;
-    }
-    previous_control = control;
-  }
-  return true;
+  return finiteMotionHorizonDynamicsConsistency3D(horizon, previous_applied_control,
+                                                  dynamics) ==
+         MotionDynamicsConsistency3D::kConsistent;
 }
 
 } // namespace drone_city_nav::execution_route_snapshot_3d_internal

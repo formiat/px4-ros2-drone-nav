@@ -2,6 +2,7 @@
 
 #include "drone_city_nav/control_contracts_3d.hpp"
 #include "drone_city_nav/flight_envelope.hpp"
+#include "drone_city_nav/motion_dynamics_3d.hpp"
 #include "drone_city_nav/observed_occupancy_grid_3d.hpp"
 #include "drone_city_nav/occupancy_grid.hpp"
 #include "drone_city_nav/occupancy_grid_3d.hpp"
@@ -29,6 +30,7 @@ struct TimedExecutionPathPoint3D {
 enum class FiniteExecutionPathStatus3D {
   kValid,
   kInvalidContract,
+  kDynamicsInconsistent,
   kCandidateRejected,
   kNotActive,
   kRouteEndpointExceeded,
@@ -52,6 +54,10 @@ struct FiniteExecutionPathTerminalBoundary3D {
 
 struct FiniteExecutionPathValidation3D {
   FiniteExecutionPathStatus3D status{FiniteExecutionPathStatus3D::kInvalidContract};
+  // Which dynamics law the rejected step broke; kConsistent whenever the
+  // status is not kDynamicsInconsistent.
+  MotionDynamicsConsistency3D dynamics_consistency{
+      MotionDynamicsConsistency3D::kConsistent};
   std::size_t first_remaining_point_index{0U};
   std::size_t failure_segment_index{0U};
   Point3 failure_point{};

@@ -36,7 +36,7 @@ buildRouteConvergentFiniteMotionHorizon3D(
 
 [[nodiscard]] bool finiteMotionHorizonHasTerminalRestState3D(
     const FiniteMotionHorizon3D& horizon,
-    float velocity_tolerance_mps = 1.0e-3F) noexcept;
+    float velocity_tolerance_mps = kTerminalRestVelocityToleranceMps) noexcept;
 
 // True when every state from `first_state_index` onward already rests at the
 // terminal state: within `position_tolerance_m` of it and slower than

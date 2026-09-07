@@ -17,7 +17,10 @@ namespace drone_city_nav {
 namespace {
 
 constexpr double kNanosecondsPerSecond{1.0e9};
-constexpr double kTerminalRestTolerance{1.0e-3};
+// Terminal rest, in the one representation the builder shapes to, the
+// certificate admits and the wire contract accepts.
+constexpr double kTerminalRestVelocityTolerance{kTerminalRestVelocityToleranceMps};
+constexpr double kTerminalRestControlTolerance{kTerminalRestControlToleranceMps2};
 
 [[nodiscard]] bool finite(const MotionState3D& state) noexcept {
   return std::isfinite(state.x) && std::isfinite(state.y) && std::isfinite(state.z) &&
@@ -210,11 +213,12 @@ validatePathContract(const std::span<const TimedExecutionPathPoint3D> points) no
   }
   const TimedExecutionPathPoint3D& terminal = points.back();
   if (std::hypot(std::hypot(terminal.state.vx, terminal.state.vy), terminal.state.vz) >
-          kTerminalRestTolerance ||
-      std::abs(terminal.state.yaw_rate) > kTerminalRestTolerance ||
-      std::hypot(std::hypot(terminal.control.ax, terminal.control.ay),
-                 terminal.control.az) > kTerminalRestTolerance ||
-      std::abs(terminal.control.yaw_accel) > kTerminalRestTolerance) {
+          kTerminalRestVelocityTolerance ||
+      std::abs(terminal.state.yaw_rate) > kTerminalRestVelocityTolerance ||
+      std::abs(terminal.control.ax) > kTerminalRestControlTolerance ||
+      std::abs(terminal.control.ay) > kTerminalRestControlTolerance ||
+      std::abs(terminal.control.az) > kTerminalRestControlTolerance ||
+      std::abs(terminal.control.yaw_accel) > kTerminalRestControlTolerance) {
     return reject(FiniteExecutionPathStatus3D::kInvalidContract, 0U, points.size() - 1U,
                   position(terminal.state), 0.0);
   }
@@ -366,6 +370,32 @@ buildValidatedFiniteExecutionPath3DFromPreservedPrefix(
           maximum_nominal_prefix_control_count, preserved_prefix_control_count);
       candidate->arrival_control_count =
           candidate->controls.size() - candidate->nominal_prefix_control_count;
+      // The dynamics law the execution certificate admits by, applied to what
+      // this builder emits. Checking it here is what keeps the builder from
+      // handing on a horizon a later stage refuses, and names the law it broke
+      // instead of leaving the caller with a bare rejection two stages away.
+      const MotionDynamicsConsistency3D dynamics_consistency =
+          finiteMotionHorizonDynamicsConsistency3D(*candidate, previous_applied_control,
+                                                   dynamics);
+      if (dynamics_consistency != MotionDynamicsConsistency3D::kConsistent) {
+        result.validation = reject(FiniteExecutionPathStatus3D::kDynamicsInconsistent,
+                                   0U, preserved_prefix_control_count,
+                                   position(candidate->states.back()), 0.0);
+        result.validation.dynamics_consistency = dynamics_consistency;
+        if (!result.path_validation_backoff) {
+          result.first_failed_validation_status = result.validation.status;
+          result.first_failed_validation = result.validation;
+        }
+        result.path_validation_backoff = true;
+        if (preserved_prefix_control_count == 0U) {
+          return result;
+        }
+        preserved_prefix_control_count =
+            preserved_prefix_control_count > arrival_search_step_controls
+                ? preserved_prefix_control_count - arrival_search_step_controls
+                : 0U;
+        continue;
+      }
       result.validation = validateCompleteFiniteExecutionPath3D(
           timedPathPoints(*candidate, previous_applied_control, dynamics.dt_s),
           previous_applied_control, world);
@@ -694,6 +724,8 @@ finiteExecutionPathStatus3DName(const FiniteExecutionPathStatus3D status) noexce
       return "valid";
     case FiniteExecutionPathStatus3D::kInvalidContract:
       return "invalid_contract";
+    case FiniteExecutionPathStatus3D::kDynamicsInconsistent:
+      return "dynamics_inconsistent";
     case FiniteExecutionPathStatus3D::kCandidateRejected:
       return "candidate_rejected";
     case FiniteExecutionPathStatus3D::kNotActive:
