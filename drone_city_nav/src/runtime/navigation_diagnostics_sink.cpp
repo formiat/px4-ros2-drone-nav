@@ -25,6 +25,7 @@ NavigationDiagnosticsSink::NavigationDiagnosticsSink(
                            std::ios::trunc);
   diagnostics_error_stream_.open(config_.output_directory / "mppi_error_context.jsonl",
                                  std::ios::trunc);
+  track_stream_.open(config_.output_directory / "mppi_track.jsonl", std::ios::trunc);
   last_flush_time_ = std::chrono::steady_clock::now();
 }
 
@@ -173,11 +174,23 @@ void NavigationDiagnosticsSink::appendFileRecord(
   diagnostics_error_active_ = decision.diagnostics_error;
 }
 
+void NavigationDiagnosticsSink::appendTrackRecord(const std::string& json_line) {
+  const std::scoped_lock lock{file_mutex_};
+  if (track_stream_) {
+    track_stream_ << json_line;
+  }
+}
+
 void NavigationDiagnosticsSink::flushFileIfDue() {
   const std::scoped_lock lock{file_mutex_};
   const auto now = std::chrono::steady_clock::now();
-  if (diagnostics_stream_ && now - last_flush_time_ >= config_.flush_period) {
-    diagnostics_stream_.flush();
+  if (now - last_flush_time_ >= config_.flush_period) {
+    if (diagnostics_stream_) {
+      diagnostics_stream_.flush();
+    }
+    if (track_stream_) {
+      track_stream_.flush();
+    }
     last_flush_time_ = now;
   }
 }
@@ -239,6 +252,9 @@ void NavigationDiagnosticsSink::flushFilesLocked() {
   }
   if (diagnostics_error_stream_) {
     diagnostics_error_stream_.flush();
+  }
+  if (track_stream_) {
+    track_stream_.flush();
   }
   last_flush_time_ = std::chrono::steady_clock::now();
 }

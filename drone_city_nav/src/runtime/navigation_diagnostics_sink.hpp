@@ -106,6 +106,12 @@ public:
   assessFileRecord(std::int64_t now_ns, bool diagnostics_error);
   void appendFileRecord(const NavigationDiagnosticsFileRecordDecision& decision,
                         std::uint64_t trigger_tick, std::string json_line);
+  // One line per tick, whatever the file record rate. The full record is far
+  // too large to write at the tick rate, so it is throttled — and a throttled
+  // record cannot answer how often the reference speed flips, how often the
+  // first control opposes the velocity, or how long a stall lasted, because
+  // those are properties of the ticks it skipped.
+  void appendTrackRecord(const std::string& json_line);
   void flushFileIfDue();
 
   [[nodiscard]] std::uint64_t droppedSnapshots() const noexcept;
@@ -139,6 +145,7 @@ private:
   mutable std::mutex file_mutex_;
   std::ofstream diagnostics_stream_;
   std::ofstream diagnostics_error_stream_;
+  std::ofstream track_stream_;
   std::deque<std::string> diagnostics_error_ring_;
   std::chrono::steady_clock::time_point last_flush_time_{};
   std::int64_t last_file_stamp_ns_{0};

@@ -48,7 +48,17 @@ the script rather than assuming that `log/latest` belongs to the intended run.
 `*_speed_limit_mps` fields carry each limit; `clearance_speed_limit_mps` is
 the tracking-tube speed the executed horizon's body clearance admits.
 
-The JSONL record carries the same data in machine-readable form.
+The JSONL record carries the same data in machine-readable form. It is written
+at `diagnostics_file_rate_hz`, well below the tick rate, because the record is
+large.
+
+`mppi_track.jsonl` carries one compact line per tick regardless of that rate:
+position, velocity, the first control, the control-selection source, the
+reference speed before and after its rise limit, the active limiter, the
+minimum ESDF distance, the risk tier, the route generation, the planning state
+and the execution reason. A throttled record cannot answer how often the
+reference speed flips, how often the first control opposes the velocity, or how
+long a stall lasted — those are properties of the ticks it skips.
 
 ## Timing
 

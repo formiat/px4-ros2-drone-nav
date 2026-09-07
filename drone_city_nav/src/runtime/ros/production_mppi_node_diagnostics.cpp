@@ -725,6 +725,36 @@ void ProductionMppiNode::processDiagnostics(
     diagnostics_sink_->appendFileRecord(file_record, snapshot.tick_sequence,
                                         json.str());
   }
+  {
+    // One compact line per tick. The full record above is far too large to
+    // write at the tick rate and is throttled, and a throttled record cannot
+    // answer how often the reference speed flips, how often the first control
+    // opposes the velocity, or how long a stall lasted: those are properties
+    // of the ticks it skips.
+    JsonOutputStream track;
+    track << "{\"tick\":" << snapshot.tick_sequence << ",\"stamp_ns\":" << now_ns
+          << ",\"p\":[" << input.initial_state.x << ',' << input.initial_state.y << ','
+          << input.initial_state.z << "],\"v\":[" << input.initial_state.vx << ','
+          << input.initial_state.vy << ',' << input.initial_state.vz
+          << "],\"first_control\":["
+          << (result.controls.empty() ? 0.0F : result.controls.front().ax) << ','
+          << (result.controls.empty() ? 0.0F : result.controls.front().ay) << ','
+          << (result.controls.empty() ? 0.0F : result.controls.front().az)
+          << "],\"control_selection\":\""
+          << mppi::mppiControlSelectionName(result.control_selection)
+          << "\",\"reference_speed_mps\":" << speed_policy.reference_speed_mps
+          << ",\"unslewed_reference_speed_mps\":"
+          << speed_policy.unslewed_reference_speed_mps << ",\"limiter\":\""
+          << mppiSpeedLimiterName(speed_policy.active_limiter)
+          << "\",\"minimum_esdf_m\":" << result.minimum_esdf_distance_m
+          << ",\"risk_tier\":\"" << mppi::mppiRiskTierName(result.selected_tier)
+          << "\",\"route_generation\":"
+          << (execution_route != nullptr ? execution_route->identity.generation : 0U)
+          << ",\"planning_state\":\"" << productionMppiPlanningStateName(planning_state)
+          << "\",\"execution_reason\":\""
+          << productionMppiExecutionReasonName(snapshot.execution.reason) << "\"}\n";
+    diagnostics_sink_->appendTrackRecord(track.str());
+  }
   diagnostics_sink_->flushFileIfDue();
   if (now_ns - last_summary_stamp_ns_ >= 5000000000LL) {
     publishSummary();
