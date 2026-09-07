@@ -157,6 +157,15 @@ free waypoint (below), and a route whose nodes land against a jamb has its
 vertices slid to the middle of the passage before it is published. Neither
 gives the search finer *routing* through a passage; that remains the open item.
 
+Refining the *edges* instead of the nodes — admitting a level-zero edge whose
+straight segment is blocked when a short step off it clears the body on both
+legs — was built and withdrawn. It made more of the graph traversable, as
+intended, but it also changed which routes the existing planner acceptance
+scenarios produce, and two of them stopped publishing a route at all for
+reasons that were not established. Edge traversability is the rule the whole
+route contract rests on; a change to it that is not understood does not belong
+in the tree, whatever its intent.
+
 ## Leaving The Vehicle's Own Position
 
 The search reaches the lattice from wherever the vehicle stands. Normally that
