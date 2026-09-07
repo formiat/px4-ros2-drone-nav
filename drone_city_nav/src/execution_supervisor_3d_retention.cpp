@@ -124,8 +124,7 @@ latestLidarEvidenceFresh(const ExecutionRetentionRequest3D& request,
       .launch_support_contact = launch_support_contact,
       .proprioceptive_free_space_seed = optionalAddress(live_seed),
       .raw_occupancy = nullptr,
-      .latest_lidar_obstacle_points =
-          std::span<const Point3>{request.latest_lidar_evidence->hitPointsMapM()},
+      .latest_lidar_obstacle_points = request.latest_lidar_evidence->indexedHitPoints(),
       .terminal_boundary = terminal_boundary,
   };
 }

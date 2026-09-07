@@ -382,18 +382,15 @@ extentMayContainOccupied(const Occupancy& occupancy,
          point.z >= extent.minimum.z && point.z <= extent.maximum.z;
 }
 
-// Points that can touch the swept body over a segment. One pass over the scan
-// replaces a full scan per sweep interval.
+// Points that can touch the body over a sweep or at a pose: the cloud's own
+// cells answer for the extent, so a segment costs the few cells it overlaps
+// rather than one pass over the whole scan.
 [[nodiscard]] std::span<const Point3>
-pointsInsideExtent(const std::span<const Point3> points,
+pointsInsideExtent(const IndexedPointCloudView3D& points,
                    const AxisAlignedExtent3D& extent) {
   thread_local std::vector<Point3> scratch;
   scratch.clear();
-  for (const Point3& point : points) {
-    if (pointInsideExtent(point, extent)) {
-      scratch.push_back(point);
-    }
-  }
+  points.collectInsideBox(extent.minimum, extent.maximum, scratch);
   return scratch;
 }
 
@@ -875,7 +872,7 @@ bool footprintIntersectsAxisAlignedBox(const Point3& position,
 }
 
 SweptFootprintResult validateRawPointCloudFootprintAt(
-    const std::span<const Point3> obstacle_points, const Point3& position,
+    const IndexedPointCloudView3D& obstacle_points, const Point3& position,
     const FootprintBodyAxis& body_axis, const SweptFootprintConfig& config,
     const LaunchSupportContact3D* const launch_support_contact,
     const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_seed) noexcept {
@@ -885,12 +882,13 @@ SweptFootprintResult validateRawPointCloudFootprintAt(
     return makeStatusResult(SweptFootprintStatus::kInvalidInput, position);
   }
   return validateRawPointCloudFootprintAt3D(
-      obstacle_points, position, body_axis, config,
+      pointsInsideExtent(obstacle_points, bodyExtent(position, body_axis, config)),
+      position, body_axis, config,
       poseExemption(launch_support_contact, proprioceptive_seed, position));
 }
 
 SweptFootprintResult validateRawPointCloudSweptFootprint(
-    const std::span<const Point3> all_obstacle_points, const Point3& first,
+    const IndexedPointCloudView3D& all_obstacle_points, const Point3& first,
     const FootprintBodyAxis& first_body_axis, const Point3& second,
     const FootprintBodyAxis& second_body_axis, const SweptFootprintConfig& config,
     const LaunchSupportContact3D* const launch_support_contact,

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/flight_envelope.hpp"
+#include "drone_city_nav/indexed_point_cloud_3d.hpp"
 #include "drone_city_nav/observed_occupancy_grid_3d.hpp"
 #include "drone_city_nav/occupancy_grid.hpp"
 #include "drone_city_nav/occupancy_grid_3d.hpp"
@@ -21,7 +22,7 @@ struct OccupiedCollisionWorld3D {
   const ObservedOccupancyGrid3D* observed_occupancy{nullptr};
   const OccupancyGrid3D* static_occupancy{nullptr};
   const OccupancyGrid2D* planar_occupancy{nullptr};
-  std::span<const Point3> raw_point_cloud;
+  IndexedPointCloudView3D raw_point_cloud;
   const LaunchSupportContact3D* launch_support_contact{nullptr};
   // Proprioceptive contact evidence: occupied evidence the body overlaps at
   // the seed is contact, suppressed for body positions that come no closer to

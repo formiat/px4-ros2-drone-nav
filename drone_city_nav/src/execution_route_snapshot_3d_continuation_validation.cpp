@@ -125,8 +125,7 @@ FiniteExecutionPathValidation3D validateRemainingFiniteExecutionAgainstLatestLid
                         : nullptr,
       .proprioceptive_free_space_seed = optionalAddress(live_seed),
       .raw_occupancy = nullptr,
-      .latest_lidar_obstacle_points =
-          std::span<const Point3>{current_lidar.hitPointsMapM()},
+      .latest_lidar_obstacle_points = current_lidar.indexedHitPoints(),
       .terminal_boundary = std::nullopt,
   };
   return validateFiniteExecutionTrajectoryContinuation3D(

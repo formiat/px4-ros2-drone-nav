@@ -203,6 +203,7 @@ add_drone_city_nav_layer(
   src/bounded_worker_pool.cpp
   src/flight_time_model_3d.cpp
   src/footprint_geometry_3d.cpp
+  src/indexed_point_cloud_3d.cpp
   src/navigation_angular_derivative.cpp
   src/navigation_pose.cpp
   src/navigation_recovery_episode_tracker.cpp
@@ -346,6 +347,7 @@ add_drone_city_nav_layer(
   src/committed_execution_authority_3d.cpp
   src/direct_tracking_maneuver_lifecycle.cpp
   src/execution_evidence_3d.cpp
+  src/execution_evidence_3d_lidar.cpp
   src/execution_horizon_admission.cpp
   src/execution_horizon_timing.cpp
   src/execution_horizon_witness.cpp
@@ -424,6 +426,7 @@ set(DRONE_CITY_NAV_MODEL_HEADERS
     include/drone_city_nav/bounded_worker_pool.hpp
     include/drone_city_nav/flight_time_model_3d.hpp
     include/drone_city_nav/footprint_geometry_3d.hpp
+    include/drone_city_nav/indexed_point_cloud_3d.hpp
     include/drone_city_nav/json_output.hpp
     include/drone_city_nav/latest_processing_queue.hpp
     include/drone_city_nav/latest_value_mailbox.hpp
@@ -1550,6 +1553,11 @@ if(BUILD_TESTING)
   target_link_libraries(execution_horizon_contract_ros_test
                         drone_city_nav_ros_adapters)
   enable_project_warnings(execution_horizon_contract_ros_test)
+
+  ament_add_gtest(indexed_point_cloud_3d_test tests/indexed_point_cloud_3d_test.cpp)
+  target_compile_features(indexed_point_cloud_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(indexed_point_cloud_3d_test drone_city_nav_core)
+  enable_project_warnings(indexed_point_cloud_3d_test)
 
   ament_add_gtest(flight_envelope_test tests/flight_envelope_test.cpp)
   target_compile_features(flight_envelope_test PRIVATE cxx_std_20)

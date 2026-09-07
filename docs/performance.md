@@ -26,6 +26,13 @@ re-doing work already done:
   it. The part the vehicle has already flown will not be flown again, so the
   revalidation now discharges it — which also stops a perfectly executable
   horizon being revoked for evidence that appeared behind the vehicle.
+- **The latest lidar scan.** Every swept segment of the horizon asks which of
+  the scan's tens of thousands of returns can touch the body, and the answer
+  used to be one pass over the whole scan per segment: a hundred segments per
+  validation, several validations per assembly, and the commit's revalidation
+  on top. The scan is now bucketed into cubic cells once when it is captured
+  (`IndexedPointCloud3D`), and a segment visits only the cells its sweep
+  overlaps.
 
 `deadline_misses` in `PRODUCTION_MPPI_SUMMARY` measures the whole cycle against
 the period, and `controller_deadline_misses` the controller's own share. A run

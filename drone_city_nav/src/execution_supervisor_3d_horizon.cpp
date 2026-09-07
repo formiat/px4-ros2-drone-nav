@@ -118,8 +118,7 @@ timedExecutionPathPoints(const FiniteExecutionEvidenceView3D& view) {
       .proprioceptive_free_space_seed =
           proprioceptive_seed ? std::addressof(*proprioceptive_seed) : nullptr,
       .raw_occupancy = nullptr,
-      .latest_lidar_obstacle_points =
-          std::span<const Point3>{latest_lidar->hitPointsMapM()},
+      .latest_lidar_obstacle_points = latest_lidar->indexedHitPoints(),
       .terminal_boundary = std::nullopt,
   };
   return validateCompleteFiniteExecutionPath3D(

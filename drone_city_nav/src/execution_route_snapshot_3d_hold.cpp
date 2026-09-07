@@ -57,7 +57,7 @@ bool stationaryHoldRawSafe(
       .static_occupancy =
           static_world != nullptr ? std::addressof(static_world->occupancy()) : nullptr,
       .planar_occupancy = nullptr,
-      .raw_point_cloud = latest_lidar_evidence.hitPointsMapM(),
+      .raw_point_cloud = latest_lidar_evidence.indexedHitPoints(),
       .launch_support_contact = launch_support,
       .proprioceptive_free_space_seed = proprioceptive_seed.has_value()
                                             ? std::addressof(*proprioceptive_seed)

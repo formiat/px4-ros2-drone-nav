@@ -265,7 +265,7 @@ std::optional<double> RouteExecutionSelector3D::latestLidarBlockedStation(
             .observed_occupancy = nullptr,
             .static_occupancy = nullptr,
             .planar_occupancy = nullptr,
-            .raw_point_cloud = std::span<const Point3>{latest_lidar.hitPointsMapM()},
+            .raw_point_cloud = latest_lidar.indexedHitPoints(),
             .launch_support_contact = launch_support_contact,
             .proprioceptive_free_space_seed = proprioceptive_seed,
             .footprint = config_.physical_footprint,

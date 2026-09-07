@@ -185,7 +185,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   double latest_lidar_obstacle_age_ms{-1.0};
   bool latest_lidar_obstacle_fresh{false};
   bool latest_lidar_obstacle_receive_time_fallback{false};
-  std::span<const Point3> latest_lidar_obstacle_points;
+  IndexedPointCloudView3D latest_lidar_obstacle_points;
   if (latest_lidar_evidence != nullptr) {
     latest_lidar_obstacle_age_ms = latest_lidar_freshness.age_ms;
     latest_lidar_obstacle_fresh = latest_lidar_freshness.fresh;
@@ -194,8 +194,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
     if (latest_lidar_obstacle_fresh ||
         (selected_policy != nullptr &&
          !selected_policy->latestLidarFreshnessRequired())) {
-      latest_lidar_obstacle_points =
-          std::span<const Point3>{latest_lidar_evidence->hitPointsMapM()};
+      latest_lidar_obstacle_points = latest_lidar_evidence->indexedHitPoints();
     }
   }
   const std::uint64_t latest_lidar_obstacle_sequence =

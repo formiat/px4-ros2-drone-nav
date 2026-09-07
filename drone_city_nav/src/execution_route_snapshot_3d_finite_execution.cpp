@@ -58,7 +58,7 @@ std::optional<RouteAdherenceAssessment3D> validateExecutionProgressConnector(
     const CertifiedRouteSuffix3D& route, const Point3& execution_position,
     const std::shared_ptr<const VersionedExecutionInput3D>& execution_input,
     const std::shared_ptr<const VersionedObservedRawWorld3D>& observed_raw_world,
-    const std::span<const Point3> latest_lidar_obstacle_points) {
+    const IndexedPointCloudView3D& latest_lidar_obstacle_points) {
   if (route.progress.execution_input == nullptr || execution_input == nullptr) {
     return std::nullopt;
   }
@@ -327,11 +327,10 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
     return rejectedFiniteExecution(
         FiniteExecutionCertificationStatus3D::kInitialStateMismatch);
   }
-  const std::span<const Point3> latest_lidar_obstacle_points =
+  const IndexedPointCloudView3D latest_lidar_obstacle_points =
       certification.latest_lidar_evidence != nullptr
-          ? std::span<const Point3>{certification.latest_lidar_evidence
-                                        ->hitPointsMapM()}
-          : std::span<const Point3>{};
+          ? certification.latest_lidar_evidence->indexedHitPoints()
+          : IndexedPointCloudView3D{};
   double execution_begin_station_m = target_route.progress.station_m;
   if (target_route.progress.execution_input == nullptr) {
     // An asynchronous successor has not owned execution yet. Motion from its
@@ -734,8 +733,8 @@ certifyDirectTrackingExecution3D(const ExecutionPlan3D& current,
           certification.validation_policy->sweptFootprint(),
           raw_mode ? std::addressof(certification.observed_raw_world->occupancy())
                    : nullptr);
-  const std::span<const Point3> latest_lidar_obstacle_points{
-      certification.latest_lidar_evidence->hitPointsMapM()};
+  const IndexedPointCloudView3D latest_lidar_obstacle_points =
+      certification.latest_lidar_evidence->indexedHitPoints();
   FiniteExecutionPathWorld3D validation_world{
       .flight_envelope = &certification.validation_policy->flightEnvelope(),
       .dynamics = &certification.validation_policy->dynamics(),

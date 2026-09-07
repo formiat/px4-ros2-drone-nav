@@ -255,8 +255,8 @@ certifyStopExecution3D(const ExecutionPlan3D& current,
           certification.validation_policy->sweptFootprint(),
           raw_mode ? std::addressof(certification.observed_raw_world->occupancy())
                    : nullptr);
-  const std::span<const Point3> latest_lidar_obstacle_points{
-      certification.latest_lidar_evidence->hitPointsMapM()};
+  const IndexedPointCloudView3D latest_lidar_obstacle_points =
+      certification.latest_lidar_evidence->indexedHitPoints();
   // No terminal boundary: a stop answers to the flight envelope, the vehicle's
   // dynamics and the swept body against raw occupancy, and to nothing else.
   const FiniteExecutionPathWorld3D validation_world{

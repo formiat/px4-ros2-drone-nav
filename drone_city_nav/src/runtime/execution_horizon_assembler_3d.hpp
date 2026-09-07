@@ -36,7 +36,7 @@ struct EvidenceSnapshot3D {
   double latest_lidar_obstacle_age_ms{-1.0};
   bool latest_lidar_obstacle_fresh{false};
   bool latest_lidar_obstacle_receive_time_fallback{false};
-  std::span<const Point3> latest_lidar_obstacle_points;
+  IndexedPointCloudView3D latest_lidar_obstacle_points;
   std::uint64_t latest_lidar_obstacle_sequence{0U};
   bool exact_snapshot_world{false};
   const FlightEnvelopeConfig* execution_flight_envelope{nullptr};

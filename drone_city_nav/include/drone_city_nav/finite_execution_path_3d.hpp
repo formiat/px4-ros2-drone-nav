@@ -2,6 +2,7 @@
 
 #include "drone_city_nav/control_contracts_3d.hpp"
 #include "drone_city_nav/flight_envelope.hpp"
+#include "drone_city_nav/indexed_point_cloud_3d.hpp"
 #include "drone_city_nav/motion_dynamics_3d.hpp"
 #include "drone_city_nav/observed_occupancy_grid_3d.hpp"
 #include "drone_city_nav/occupancy_grid.hpp"
@@ -84,7 +85,7 @@ struct FiniteExecutionPathWorld3D {
   const LaunchSupportContact3D* launch_support_contact{nullptr};
   const ProprioceptiveFreeSpaceSeed3D* proprioceptive_free_space_seed{nullptr};
   const OccupancyGrid2D* raw_occupancy{nullptr};
-  std::span<const Point3> latest_lidar_obstacle_points;
+  IndexedPointCloudView3D latest_lidar_obstacle_points;
   std::optional<FiniteExecutionPathTerminalBoundary3D> terminal_boundary;
 };
 

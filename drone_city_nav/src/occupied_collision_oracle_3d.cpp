@@ -65,7 +65,7 @@ validProprioceptiveSeed(const ProprioceptiveFreeSpaceSeed3D* const seed) noexcep
 [[nodiscard]] bool validWorldContract(const OccupiedCollisionWorld3D& world) noexcept {
   return validFootprint(world.footprint) &&
          validProprioceptiveSeed(world.proprioceptive_free_space_seed) &&
-         finiteRawPointCloud(world.raw_point_cloud) &&
+         finiteRawPointCloud(world.raw_point_cloud.points()) &&
          (!world.flight_envelope ||
           evaluateFlightEnvelopeAltitude(world.flight_envelope->minimum_target_z_m,
                                          *world.flight_envelope) ==

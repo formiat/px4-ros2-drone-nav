@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/footprint_geometry_3d.hpp"
+#include "drone_city_nav/indexed_point_cloud_3d.hpp"
 #include "drone_city_nav/observed_occupancy_grid_3d.hpp"
 #include "drone_city_nav/occupancy_grid.hpp"
 #include "drone_city_nav/occupancy_grid_3d.hpp"
@@ -98,13 +99,13 @@ proprioceptiveSeedExemptsPoint(const ProprioceptiveFreeSpaceSeed3D& seed,
     const Point3& box_maximum) noexcept;
 
 [[nodiscard]] SweptFootprintResult validateRawPointCloudFootprintAt(
-    std::span<const Point3> obstacle_points, const Point3& position,
+    const IndexedPointCloudView3D& obstacle_points, const Point3& position,
     const FootprintBodyAxis& body_axis, const SweptFootprintConfig& config,
     const LaunchSupportContact3D* launch_support_contact = nullptr,
     const ProprioceptiveFreeSpaceSeed3D* proprioceptive_seed = nullptr) noexcept;
 
 [[nodiscard]] SweptFootprintResult validateRawPointCloudSweptFootprint(
-    std::span<const Point3> obstacle_points, const Point3& first,
+    const IndexedPointCloudView3D& obstacle_points, const Point3& first,
     const FootprintBodyAxis& first_body_axis, const Point3& second,
     const FootprintBodyAxis& second_body_axis, const SweptFootprintConfig& config,
     const LaunchSupportContact3D* launch_support_contact = nullptr,

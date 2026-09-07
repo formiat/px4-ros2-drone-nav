@@ -2,6 +2,7 @@
 
 #include "drone_city_nav/control_contracts_3d.hpp"
 #include "drone_city_nav/flight_envelope.hpp"
+#include "drone_city_nav/indexed_point_cloud_3d.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
 #include "drone_city_nav/types.hpp"
 
@@ -253,6 +254,9 @@ public:
   [[nodiscard]] std::size_t sourceBeamCount() const noexcept;
   [[nodiscard]] std::size_t invalidBeamCount() const noexcept;
   [[nodiscard]] const std::vector<Point3>& hitPointsMapM() const noexcept;
+  // The hit points bucketed into cells for the swept-body validators: the same
+  // returns as hitPointsMapM, reordered by cell, built once at capture.
+  [[nodiscard]] IndexedPointCloudView3D indexedHitPoints() const noexcept;
   [[nodiscard]] LatestLidarEvidenceId3D evidenceId() const noexcept;
   // Fingerprint of producer-owned content. Local receipt time is deliberately
   // excluded so retransmission cannot rejuvenate an observation.
@@ -264,6 +268,7 @@ public:
 
 private:
   LatestLidarEvidenceCapture3D capture_{};
+  IndexedPointCloud3D indexed_hit_points_{};
   std::uint64_t source_content_fingerprint_{0U};
   std::uint64_t content_fingerprint_{0U};
   bool valid_{false};

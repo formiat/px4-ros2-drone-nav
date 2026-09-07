@@ -192,15 +192,15 @@ validationWorldOwnerContent(const FiniteExecutionPathWorld3D& world,
 // Lidar content is likewise authenticated once. The span must be the complete
 // owner-backed point array before its cached fingerprint can enter the proof.
 [[nodiscard]] std::uint64_t validationLidarOwnerContentFingerprint(
-    const std::span<const Point3> points,
+    const IndexedPointCloudView3D& points,
     const VersionedLatestLidarEvidence3D* const owner) noexcept {
   if (owner == nullptr) {
     return 0U;
   }
-  const std::vector<Point3>& owned_points = owner->hitPointsMapM();
+  const std::span<const Point3> owned_points = owner->indexedHitPoints().points();
   const std::uint64_t content_fingerprint = owner->contentFingerprint();
-  if (content_fingerprint == 0U || points.size() != owned_points.size() ||
-      points.data() != owned_points.data()) {
+  if (content_fingerprint == 0U || points.points().size() != owned_points.size() ||
+      points.points().data() != owned_points.data()) {
     return 0U;
   }
   return content_fingerprint;
