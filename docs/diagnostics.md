@@ -76,6 +76,20 @@ Refusals name the rule they broke rather than the stage they happened in:
   so `next_plan_invalid` on its own left nothing to act on.
 - `EXECUTION_HORIZON_ASSEMBLY` carries `dynamics=` beside `validation=`.
 
+Every log of a run lands in that run's own directory (`log/runs/<id>/`) beside
+its manifest and raw snapshots. Writing them to a fixed path meant the next run
+overwrote the previous one's evidence, so two runs could never be compared
+after the fact. The manifest records the launch overrides that were actually in
+force (`effective_overrides`): the configuration file's hash alone does not
+identify a run, because the launch takes overrides that change speed limits,
+accelerations, the map mode and the duration without touching the file.
+
+`RAW_SNAPSHOT_BOUNDS_M` places the raw Occupancy3D capture volume
+independently of `OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M`. The latter is the
+acceptance volume and sits near the start, because that is the geometry the
+crossing check is about; a pocket the vehicle gets stuck in is somewhere else,
+and snapshots taken at the start cannot reproduce it offline.
+
 `ROUTE_GEOMETRY` records, for every activated route, its generation, sample
 count and a strided list of its points. Without it a log shows that a route
 changed and how long it is, but not where it goes, and a reversal between two

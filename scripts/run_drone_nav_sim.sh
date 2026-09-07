@@ -156,7 +156,21 @@ if [[ -n "${OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M:-}" ]]; then
     exit 1
   fi
 fi
-px4_log_file="${PX4_LOG_FILE:-${run_log_dir}/px4_drone_nav.log}"
+# Where the raw Occupancy3D bits are persisted from. The acceptance volume sits
+# near the start, because that is the geometry the crossing check is about; a
+# pocket the vehicle gets stuck in is somewhere else entirely, and the snapshots
+# taken at the start cannot reproduce it offline. Setting this points the
+# capture at the volume under investigation instead.
+raw_snapshot_bounds_m="${observed_3d_route_volume_bounds_m}"
+if [[ -n "${RAW_SNAPSHOT_BOUNDS_M:-}" ]]; then
+  if ! raw_snapshot_bounds_m="$(
+    normalize_route_volume_bounds "${RAW_SNAPSHOT_BOUNDS_M}"
+  )"; then
+    echo "Invalid RAW_SNAPSHOT_BOUNDS_M" >&2
+    exit 1
+  fi
+fi
+px4_log_file="${PX4_LOG_FILE:-${runtime_artifact_dir}/px4_drone_nav.log}"
 multi_vehicle_px4_logs=()
 if bool_is_true "${multi_vehicle_mission}"; then
   for instance in "${!multi_vehicle_ids[@]}"; do
@@ -168,16 +182,20 @@ if bool_is_true "${multi_vehicle_mission}"; then
       tr '[:lower:]-' '[:upper:]_')_PX4_LOG_FILE"
     log_override="${!log_env_name:-}"
     multi_vehicle_px4_logs+=(
-      "${log_override:-${run_log_dir}/px4_${multi_vehicle_ids[instance]}_nav.log}"
+      "${log_override:-${runtime_artifact_dir}/px4_${multi_vehicle_ids[instance]}_nav.log}"
     )
   done
 fi
-uxrce_log_file="${UXRCE_AGENT_LOG_FILE:-${run_log_dir}/uxrce_agent_drone_nav.log}"
-ros_log_file="${ROS_LOG_FILE:-${run_log_dir}/ros_drone_nav.log}"
-gz_log_file="${GZ_LOG_FILE:-${run_log_dir}/gz_drone_nav.log}"
-gz_gui_log_file="${GZ_GUI_LOG_FILE:-${run_log_dir}/gz_gui_drone_nav.log}"
-gz_spectator_log_file="${GZ_SPECTATOR_LOG_FILE:-${run_log_dir}/gz_spectator_follow.log}"
-gz_scene_diagnostics_dir="${GZ_SCENE_DIAGNOSTICS_DIR:-${run_log_dir}/gazebo_scene_debug}"
+# Every log of a run lands in that run's own directory beside its manifest and
+# raw snapshots. Writing them to a fixed path meant the next run overwrote the
+# evidence of the previous one, so two runs could never be compared after the
+# fact — which is exactly what a review of flight repeatability needs.
+uxrce_log_file="${UXRCE_AGENT_LOG_FILE:-${runtime_artifact_dir}/uxrce_agent_drone_nav.log}"
+ros_log_file="${ROS_LOG_FILE:-${runtime_artifact_dir}/ros_drone_nav.log}"
+gz_log_file="${GZ_LOG_FILE:-${runtime_artifact_dir}/gz_drone_nav.log}"
+gz_gui_log_file="${GZ_GUI_LOG_FILE:-${runtime_artifact_dir}/gz_gui_drone_nav.log}"
+gz_spectator_log_file="${GZ_SPECTATOR_LOG_FILE:-${runtime_artifact_dir}/gz_spectator_follow.log}"
+gz_scene_diagnostics_dir="${GZ_SCENE_DIAGNOSTICS_DIR:-${runtime_artifact_dir}/gazebo_scene_debug}"
 lidar_debug_dir="${LIDAR_DEBUG_DIR:-${run_log_dir}/lidar_debug/${run_id}}"
 lidar_memory_hit_dump_path="${LIDAR_MEMORY_HIT_DUMP_PATH:-${run_log_dir}/lidar_memory_hits/${run_id}.jsonl}"
 default_city_nav_params_file="${repo_root}/drone_city_nav/config/urban_mvp.yaml"

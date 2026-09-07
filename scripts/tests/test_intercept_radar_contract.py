@@ -318,8 +318,13 @@ class InterceptRadarContractTest(unittest.TestCase):
         ):
             with self.subTest(forbidden=forbidden):
                 self.assertNotIn(forbidden, planner)
+        # The obstacle response is priced as soft cost, never latched. There is
+        # deliberately no charge per metre travelled inside the critical band:
+        # in a corridor narrower than the band that priced motion itself and
+        # the weighted update converged on standing still, so the costs that
+        # remain price depth into the band and the stopping-clearance
+        # shortfall.
         self.assertIn("planning_exposure_weight", planner)
-        self.assertIn("critical_exposure_weight", planner)
         self.assertIn("critical_clearance_proximity_weight", planner)
         self.assertIn("obstacle_approach_weight", planner)
         self.assertIn("obstacle_approach_response_time_s", planner)

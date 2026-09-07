@@ -11,6 +11,7 @@ import subprocess
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+from collections.abc import Sequence
 from typing import Any
 
 
@@ -137,11 +138,31 @@ def create_manifest(args: argparse.Namespace) -> dict[str, Any]:
             "static_map_enabled": args.static_map_enabled,
         },
         "constrained_route_volume_bounds_m": args.route_volume_bounds,
+        "raw_snapshot_bounds_m": args.raw_snapshot_bounds,
+        # The configuration file's hash alone does not identify the run: the
+        # launch takes environment overrides that change speed limits,
+        # accelerations, the map mode and the duration without touching the
+        # file. Two runs with different limits therefore recorded the same
+        # configuration, which is how a GUI run at cruise 20 came to be
+        # compared against headless runs at 5.
+        "effective_overrides": dict(sorted(args.effective_overrides.items())),
         "raw_snapshot": {"status": "pending"},
     }
     if args.scenario is not None:
         document["mission"]["scenario"] = file_record(args.scenario, repository)
     return document
+
+
+def parse_overrides(values: Sequence[str]) -> dict[str, str]:
+    overrides: dict[str, str] = {}
+    for value in values:
+        name, separator, setting = value.partition("=")
+        if not separator or not name:
+            raise argparse.ArgumentTypeError(
+                "effective overrides must be given as NAME=VALUE"
+            )
+        overrides[name] = setting
+    return overrides
 
 
 def main() -> int:
@@ -159,8 +180,11 @@ def main() -> int:
         "--static-map-enabled", required=True, choices=("true", "false")
     )
     parser.add_argument("--route-volume-bounds", type=parse_bounds)
+    parser.add_argument("--raw-snapshot-bounds", type=parse_bounds)
+    parser.add_argument("--effective-override", action="append", default=[])
     args = parser.parse_args()
     args.static_map_enabled = args.static_map_enabled == "true"
+    args.effective_overrides = parse_overrides(args.effective_override)
     atomic_write_json(args.output, create_manifest(args))
     return 0
 

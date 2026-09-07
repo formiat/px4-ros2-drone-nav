@@ -306,6 +306,7 @@ void PersistentDStarLitePlanner3DImpl::reset() noexcept {
   goal_ = {};
   exact_start_ = {};
   departure_waypoint_.reset();
+  departure_anchor_skip_ = 0U;
   exact_goal_ = {};
   mission_epoch_ = 0U;
   dstar_session_.reset();
@@ -421,7 +422,7 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   telemetry.occupied_world_unchanged = world_update.occupied_world_unchanged;
 
   const PlannerLattice3D::DepartureConnection3D departure =
-      lattice_.selectDepartureConnection(request.start);
+      lattice_.selectDepartureConnection(request.start, departure_anchor_skip_);
   if (!departure.available()) {
     update.input_status = PlannerInputStatus3D::kStartUnavailable;
     return update;
@@ -689,6 +690,20 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   }
   if (update.improved_incumbent.has_value()) {
     published_session_id_ = request.session_id;
+  }
+
+  // A search that exhausted its frontier without a route says nothing about
+  // the world: it says this start could not reach the goal. The nearest
+  // reachable node is not always a useful one — it can belong to a component
+  // the goal is not in — so the next update starts from the next node the body
+  // reaches, and the walk wraps once every one of them has been tried.
+  if (coordinator_.incumbent() == nullptr && telemetry.feasibility_frontier_exhausted) {
+    const std::size_t anchors = lattice_.departureConnectionCount(request.start);
+    departure_anchor_skip_ =
+        anchors > 1U ? (departure_anchor_skip_ + 1U) % anchors : 0U;
+    telemetry.departure_anchor_skip = departure_anchor_skip_;
+  } else if (coordinator_.incumbent() != nullptr) {
+    departure_anchor_skip_ = 0U;
   }
 
   const bool search_complete =

@@ -243,6 +243,9 @@ struct PlannerTelemetry3D {
   // The search had to leave the vehicle through a refined free step because no
   // lattice node was reachable from where it stands.
   bool departure_waypoint_used{false};
+  // How many of the start's reachable anchors the search has already tried and
+  // exhausted itself against.
+  std::size_t departure_anchor_skip{0U};
   bool search_state_reused{false};
   bool occupied_world_unchanged{false};
   bool incumbent_retained{false};

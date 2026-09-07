@@ -34,6 +34,24 @@ prepare_runtime_evidence() {
       --route-volume-bounds "${observed_3d_route_volume_bounds_m}"
     )
   fi
+  if [[ -n "${raw_snapshot_bounds_m}" ]]; then
+    runtime_manifest_args+=(--raw-snapshot-bounds "${raw_snapshot_bounds_m}")
+  fi
+  # The launch overrides that change what was flown. Without them the manifest
+  # binds a configuration file two runs share while their speed limits differ.
+  local override_name
+  for override_name in \
+    CRUISE_SPEED_MPS ABSOLUTE_SPEED_LIMIT_MPS MAXIMUM_HORIZONTAL_ACCELERATION_MPS2 \
+    MAXIMUM_VERTICAL_ACCELERATION_MPS2 MAXIMUM_CONTROL_JERK_MPS3 \
+    ENABLE_STATIC_MAP LIDAR_PROFILE HEADLESS SMOKE_DURATION_S \
+    MISSION_GOALS_XYZ_M POINT_TO_POINT_SCENARIO_PATH CITY_NAV_PARAMS_FILE \
+    OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M RAW_SNAPSHOT_BOUNDS_M; do
+    if [[ -n "${!override_name:-}" ]]; then
+      runtime_manifest_args+=(
+        --effective-override "${override_name}=${!override_name}"
+      )
+    fi
+  done
   python3 "${repo_root}/scripts/runtime_manifest.py" "${runtime_manifest_args[@]}"
 }
 
@@ -41,13 +59,13 @@ start_runtime_evidence_capture() {
   echo "Runtime manifest: ${runtime_manifest_path}"
   if bool_is_true "${multi_vehicle_mission}" ||
     bool_is_true "${active_static_map}" || [[ "${lidar_profile}" != "3d" ]] ||
-    [[ -z "${observed_3d_route_volume_bounds_m}" ]]; then
+    [[ -z "${raw_snapshot_bounds_m}" ]]; then
     return
   fi
   python3 "${repo_root}/scripts/capture_raw_snapshot_3d.py" \
     --topic /drone_city_nav/raw_obstacle_snapshot_3d \
     --output-directory "${runtime_artifact_dir}" \
     --manifest "${runtime_manifest_path}" \
-    --bounds "${observed_3d_route_volume_bounds_m}" \
+    --bounds "${raw_snapshot_bounds_m}" \
     > "${raw_snapshot_capture_log_file}" 2>&1 &
 }

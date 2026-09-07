@@ -249,6 +249,9 @@ public:
                                   PersistentPlannerNode3D second) const noexcept;
   [[nodiscard]] Point3 pointFor(PersistentPlannerNode3D node) const noexcept;
   [[nodiscard]] PersistentPlannerNode3D nearestNode(const Point3& point) const noexcept;
+  // Every node in the connector radius the body reaches, nearest first.
+  [[nodiscard]] std::vector<PersistentPlannerNode3D>
+  admissibleAnchors(const Point3& point, bool start_anchor) const;
   [[nodiscard]] std::optional<PersistentPlannerNode3D>
   selectAnchor(const Point3& point, bool start_anchor) const;
 
@@ -274,8 +277,18 @@ public:
     }
   };
 
+  // `skipped_connections` passes over that many admissible connections before
+  // returning one. The nearest reachable node is not always a useful one: it
+  // can belong to a component the goal is not in, and the search then
+  // exhausts itself against a start that was never going to work while
+  // another node two metres away would have done. Advancing the skip on
+  // evidence of exhaustion turns the single commitment into a bounded walk
+  // over the reachable anchors.
   [[nodiscard]] DepartureConnection3D
-  selectDepartureConnection(const Point3& start) const;
+  selectDepartureConnection(const Point3& start,
+                            std::size_t skipped_connections = 0U) const;
+  // How many admissible connections the start has, for bounding that walk.
+  [[nodiscard]] std::size_t departureConnectionCount(const Point3& start) const;
   // Whether the body reaches `target` from `start`, through `waypoint` when
   // one is set. The leg leaving the vehicle carries the departure exemption
   // for contact evidence the body already holds; every later leg is ordinary
@@ -969,6 +982,10 @@ private:
   // The short free step the search leaves the vehicle through when no lattice
   // node is reachable from where it stands. Absent in ordinary flight.
   std::optional<Point3> departure_waypoint_;
+  // How many of the start's admissible anchors the search has already tried
+  // and exhausted itself against. Reset whenever a route is found or the
+  // search restarts.
+  std::size_t departure_anchor_skip_{0U};
   Point3 exact_goal_{};
   std::uint64_t mission_epoch_{0U};
   bool initialized_{false};

@@ -497,7 +497,6 @@ set(DRONE_CITY_NAV_WORLD_HEADERS
 
 set(DRONE_CITY_NAV_COLLISION_HEADERS
     include/drone_city_nav/derived_clearance_3d.hpp
-    include/drone_city_nav/executed_horizon_clearance_3d.hpp
     include/drone_city_nav/flight_envelope.hpp
     include/drone_city_nav/launch_support_contact_3d.hpp
     include/drone_city_nav/observed_esdf_footprint_3d.hpp
@@ -510,6 +509,7 @@ set(DRONE_CITY_NAV_COLLISION_HEADERS
     include/drone_city_nav/versioned_world_evidence_3d.hpp)
 
 set(DRONE_CITY_NAV_FINITE_EXECUTION_HEADERS
+    include/drone_city_nav/executed_horizon_clearance_3d.hpp
     include/drone_city_nav/finite_execution_path_3d.hpp)
 
 set(DRONE_CITY_NAV_PLANNING_HEADERS

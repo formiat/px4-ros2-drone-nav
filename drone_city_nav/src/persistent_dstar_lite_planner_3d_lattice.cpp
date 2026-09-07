@@ -367,8 +367,9 @@ PlannerLattice3D::nearestNode(const Point3& point) const noexcept {
   };
 }
 
-std::optional<PersistentPlannerNode3D>
-PlannerLattice3D::selectAnchor(const Point3& point, const bool start_anchor) const {
+std::vector<PersistentPlannerNode3D>
+PlannerLattice3D::admissibleAnchors(const Point3& point,
+                                    const bool start_anchor) const {
   const PersistentPlannerNode3D center = nearestNode(point);
   const auto radius = static_cast<int>(config_->connector_search_radius_cells);
   std::vector<PersistentPlannerNode3D> candidates;
@@ -393,6 +394,7 @@ PlannerLattice3D::selectAnchor(const Point3& point, const bool start_anchor) con
     return first_distance == second_distance ? nodeLess(first, second)
                                              : first_distance < second_distance;
   });
+  std::vector<PersistentPlannerNode3D> anchors;
   for (const PersistentPlannerNode3D candidate : candidates) {
     const Point3 anchor = pointFor(candidate);
     if (!nodeValid(candidate)) {
@@ -401,17 +403,33 @@ PlannerLattice3D::selectAnchor(const Point3& point, const bool start_anchor) con
     const bool connector_valid = start_anchor ? departureSegmentValid(point, anchor)
                                               : rawSegmentValid(anchor, point);
     if (connector_valid) {
-      return candidate;
+      anchors.push_back(candidate);
     }
   }
-  return std::nullopt;
+  return anchors;
 }
 
-PlannerLattice3D::DepartureConnection3D
-PlannerLattice3D::selectDepartureConnection(const Point3& start) const {
+std::optional<PersistentPlannerNode3D>
+PlannerLattice3D::selectAnchor(const Point3& point, const bool start_anchor) const {
+  const std::vector<PersistentPlannerNode3D> anchors =
+      admissibleAnchors(point, start_anchor);
+  return anchors.empty() ? std::nullopt
+                         : std::optional<PersistentPlannerNode3D>{anchors.front()};
+}
+
+std::size_t PlannerLattice3D::departureConnectionCount(const Point3& start) const {
+  return admissibleAnchors(start, true).size();
+}
+
+PlannerLattice3D::DepartureConnection3D PlannerLattice3D::selectDepartureConnection(
+    const Point3& start, const std::size_t skipped_connections) const {
   DepartureConnection3D result;
-  result.anchor = selectAnchor(start, true);
-  if (result.anchor.has_value() || config_->departure_refinement_subdivisions == 0U) {
+  const std::vector<PersistentPlannerNode3D> anchors = admissibleAnchors(start, true);
+  if (!anchors.empty()) {
+    result.anchor = anchors[skipped_connections % anchors.size()];
+    return result;
+  }
+  if (config_->departure_refinement_subdivisions == 0U) {
     return result;
   }
   // No node in the connector radius is reachable in one segment. Probe a grid
