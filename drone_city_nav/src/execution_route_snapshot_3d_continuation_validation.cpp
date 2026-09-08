@@ -26,7 +26,7 @@ template<typename T>
 } // namespace
 
 FiniteExecutionPathValidation3D validateRemainingFiniteExecutionAgainstObservedWorld3D(
-    const FiniteExecutionState3D& execution,
+    const FiniteExecutionState3D& execution, const CertifiedRouteSuffix3D* const route,
     const VersionedExecutionInput3D& current_input,
     const VersionedObservedRawWorld3D& current_world,
     const std::int64_t validation_stamp_ns) noexcept {
@@ -51,12 +51,14 @@ FiniteExecutionPathValidation3D validateRemainingFiniteExecutionAgainstObservedW
   // Contact evidence is the vehicle's pose now: the question is whether the
   // published path continues from where the vehicle stands.
   const std::optional<ProprioceptiveFreeSpaceSeed3D> live_seed =
-      proprioceptiveContactSeed3D(Point3{current_input.state().x,
-                                         current_input.state().y,
-                                         current_input.state().z},
-                                  current_input.previousControl(),
-                                  execution.validation_policy->sweptFootprint(),
-                                  std::addressof(current_world.occupancy()));
+      seedWithRouteDeparture3D(
+          proprioceptiveContactSeed3D(Point3{current_input.state().x,
+                                             current_input.state().y,
+                                             current_input.state().z},
+                                      current_input.previousControl(),
+                                      execution.validation_policy->sweptFootprint(),
+                                      std::addressof(current_world.occupancy())),
+          route);
   const FiniteExecutionPathWorld3D validation_world{
       .flight_envelope = &execution.validation_policy->flightEnvelope(),
       .dynamics = &execution.validation_policy->dynamics(),
@@ -76,7 +78,7 @@ FiniteExecutionPathValidation3D validateRemainingFiniteExecutionAgainstObservedW
 }
 
 FiniteExecutionPathValidation3D validateRemainingFiniteExecutionAgainstLatestLidar3D(
-    const FiniteExecutionState3D& execution,
+    const FiniteExecutionState3D& execution, const CertifiedRouteSuffix3D* const route,
     const VersionedExecutionInput3D& current_input,
     const VersionedLatestLidarEvidence3D& current_lidar,
     const std::int64_t validation_stamp_ns) noexcept {
@@ -106,13 +108,15 @@ FiniteExecutionPathValidation3D validateRemainingFiniteExecutionAgainstLatestLid
   const VersionedObservedRawWorld3D* const observed_world =
       execution.observed_raw_world.get();
   const std::optional<ProprioceptiveFreeSpaceSeed3D> live_seed =
-      proprioceptiveContactSeed3D(
-          Point3{execution.execution_input->state().x,
-                 execution.execution_input->state().y,
-                 execution.execution_input->state().z},
-          execution.execution_input->previousControl(),
-          execution.validation_policy->sweptFootprint(),
-          observed_mode ? std::addressof(observed_world->occupancy()) : nullptr);
+      seedWithRouteDeparture3D(
+          proprioceptiveContactSeed3D(
+              Point3{execution.execution_input->state().x,
+                     execution.execution_input->state().y,
+                     execution.execution_input->state().z},
+              execution.execution_input->previousControl(),
+              execution.validation_policy->sweptFootprint(),
+              observed_mode ? std::addressof(observed_world->occupancy()) : nullptr),
+          route);
   const FiniteExecutionPathWorld3D validation_world{
       .flight_envelope = &execution.validation_policy->flightEnvelope(),
       .dynamics = &execution.validation_policy->dynamics(),

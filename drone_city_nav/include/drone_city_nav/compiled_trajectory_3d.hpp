@@ -45,6 +45,10 @@ public:
   const CompiledTrajectoryTimeProfile3D time_profile;
   const std::uint64_t materialized_route_fingerprint;
   const std::uint64_t physical_route_fingerprint;
+  // The station the route's departure ends at: the route up to it was flown
+  // at hover on the departure body and is contact for the seed's exemption
+  // wherever the route is validated; see departureChain3D.
+  const double departure_end_station_m;
   const std::uint64_t compiled_trajectory_revision;
 
 private:
@@ -59,7 +63,8 @@ private:
           compiled_constrained_spans,
       CompiledTrajectoryTimeProfile3D compiled_time_profile,
       std::uint64_t compiled_materialized_route_fingerprint,
-      std::uint64_t compiled_physical_route_fingerprint);
+      std::uint64_t compiled_physical_route_fingerprint,
+      double compiled_departure_end_station_m);
 };
 
 enum class CompiledTrajectoryFailureReason3D : std::uint8_t {

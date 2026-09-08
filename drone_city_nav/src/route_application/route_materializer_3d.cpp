@@ -237,6 +237,24 @@ RouteMaterializer3D::materialize(RouteMaterializationRequest3D request) const {
   }
   const std::size_t expected_span_count = initial_spans.size();
   const std::vector<RouteSample3D> canonical_route = *mutable_route;
+  // The departure ends at the planner's anchor: the node after the departure
+  // waypoints, which the departure body admitted and the route body may not.
+  route.departure_end_station_m = 0.0;
+  if (const std::size_t anchor_index = 1U + plan.departure_waypoint_count;
+      anchor_index < spatial_route.points.size() && !canonical_route.empty()) {
+    const Point3& anchor = spatial_route.points[anchor_index];
+    const RouteSample3D& nearest = *std::ranges::min_element(
+        canonical_route, {}, [&](const RouteSample3D& sample) {
+          return distance3D(sample.position, anchor);
+        });
+    route.departure_end_station_m = nearest.station_m;
+  }
+  std::optional<ProprioceptiveFreeSpaceSeed3D> departure_seed;
+  if (transaction.world->proprioceptive_free_space_seed) {
+    departure_seed = *transaction.world->proprioceptive_free_space_seed;
+    departure_seed->departure_chain =
+        departureChain3D(canonical_route, route.departure_end_station_m);
+  }
   const auto smoothing_started = std::chrono::steady_clock::now();
   StaticRouteGeometryConfig geometry_config = config_.route_geometry;
   if (frozen_prefix.has_value()) {
@@ -257,9 +275,7 @@ RouteMaterializer3D::materialize(RouteMaterializationRequest3D request) const {
               ? std::addressof(*transaction.world->launch_support_contact)
               : nullptr,
       .proprioceptive_free_space_seed =
-          transaction.world->proprioceptive_free_space_seed
-              ? std::addressof(*transaction.world->proprioceptive_free_space_seed)
-              : nullptr,
+          departure_seed ? std::addressof(*departure_seed) : nullptr,
       .footprint = config_.physical_footprint,
       .flight_envelope = config_.flight_envelope,
   };

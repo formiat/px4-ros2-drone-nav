@@ -120,9 +120,28 @@ body per command in the execution validators while the planner validated the
 upright hull laid routes a quarter of a metre above roofs, where every
 accelerating horizon and every stop swept the roof once tilted; one recorded
 flight rested beside such a roof for a quarter of its mission with every
-route certified from where it stood rejected the same way. One body, stood
-upright everywhere, is what lets the planner depart from wherever the
-execution was allowed to bring the vehicle. Occupied evidence
+route certified from where it stood rejected the same way.
+
+The envelope is the tilt's business, the body is the hull's: the hull's own
+extents stay on the body (`body_lower_extent_m`, `body_upper_extent_m`), so
+contact evidence is judged against what the vehicle physically occupies. A
+vehicle leaves a tight spot the way it entered it, at hover and upright, so a
+departure is validated with the hull as configured (`hull_footprint`,
+`PersistentPlannerConfig3D::departure_footprint`): the legs leaving the
+vehicle, the departure waypoints and every step of the escape fill. The route
+records the station its departure ends at
+(`CompiledTrajectory3D::departure_end_station_m`), and every validator that
+holds the route, the route compiler, the certification, the executed-horizon
+validators and the continuation checks, gives its proprioceptive seed that
+departure as a chain (`ProprioceptiveFreeSpaceSeed3D::departure_chain`,
+`departureChain3D`): the contact volume is swept along it, so evidence the
+envelope cannot clear while the vehicle threads its way out is contact for the
+whole departure and an obstacle nowhere else, and the physical body stays a
+hard rule at every pose of it. A slot 1.25 m tall under an awning, entered
+while the awning was unknown, kept one recorded flight resting for two
+hundred seconds once the awning was mapped: no lattice node fitted the
+enveloped body, the fill found no way out for it either, and the vehicle,
+which fitted at hover, was never asked to leave at hover. Occupied evidence
 that overlaps the envelope at the proprioceptive seed (the current pose,
 widened by half an observed voxel) is contact rather than an obstacle: the
 vehicle demonstrably stands there. Every raw validator (planner departure,

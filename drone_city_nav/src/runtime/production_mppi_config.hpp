@@ -90,10 +90,14 @@ struct ProductionMppiConfig final {
     Px4MapFrameTransform px4_map_transform{};
     FlightEnvelopeConfig flight_envelope{};
     // The one swept body every validator answers to, planner and execution
-    // alike: the configured hull whose body is the body at every tilt the
-    // dynamics reach, enveloped once here so that every validator can stand
-    // it upright.
+    // alike: the configured hull, whose envelope contains the hull at every
+    // tilt the dynamics reach, enveloped once here so that every validator
+    // can stand it upright.
     SweptFootprintConfig physical_footprint{};
+    // The hull as configured, before the envelope grew with the tilt: the
+    // body a departure is validated with, since a vehicle leaves a tight
+    // spot the way it entered it, at hover and upright.
+    SweptFootprintConfig hull_footprint{};
     std::filesystem::path static_occupancy_3d_path{"worlds/generated_city.occupancy3d"};
     std::filesystem::path static_esdf_3d_cache_path{"worlds/generated_city.esdf3d"};
     std::filesystem::path static_free_space_topology_3d_path{};

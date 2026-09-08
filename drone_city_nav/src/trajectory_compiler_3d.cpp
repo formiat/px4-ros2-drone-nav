@@ -133,7 +133,11 @@ TrajectoryCompiler3D::compile(TrajectoryCompilerInput3D input) {
       std::shared_ptr<const CompiledTrajectory3D>{new CompiledTrajectory3D(
           input.exact_initial_state, input.endpoint_semantics, route,
           std::move(tracking_error_tube), constrained_spans, time_profile,
-          input.materialized_route_fingerprint, physical_route_fingerprint)};
+          input.materialized_route_fingerprint, physical_route_fingerprint,
+          std::isfinite(input.departure_end_station_m) &&
+                  input.departure_end_station_m > 0.0
+              ? input.departure_end_station_m
+              : 0.0)};
   if (!compiledTrajectoryResourcesValid3D(*trajectory, input.route_generation)) {
     result.validation = {Failure::kDerivedResourceMismatch, 0U};
     return result;

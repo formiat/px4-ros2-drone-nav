@@ -889,11 +889,17 @@ TEST(SweptFootprintTest, TiltEnvelopedFootprintContainsThePhysicalBodyAtEveryTil
 
   const double tilt_rad = maximumBodyTiltRad(4.0, 4.0);
   const SweptFootprintConfig enveloped = tiltEnvelopedFootprint(footprint, tilt_rad);
-  EXPECT_GT(enveloped.body_radius_m, footprint.body_radius_m);
-  EXPECT_GE(enveloped.radius_m, enveloped.body_radius_m);
+  // The body is the hull; only the envelope grows.
+  EXPECT_NEAR(enveloped.body_radius_m, footprint.body_radius_m, 1.0e-12);
+  EXPECT_NEAR(enveloped.body_lower_extent_m, footprint.body_lower_extent_m, 1.0e-12);
+  EXPECT_NEAR(enveloped.body_upper_extent_m, footprint.body_upper_extent_m, 1.0e-12);
   EXPECT_NEAR(enveloped.radius_m, footprint.radius_m, 1.0e-12);
   EXPECT_GT(enveloped.lower_extent_m, footprint.lower_extent_m);
   EXPECT_GT(enveloped.upper_extent_m, footprint.upper_extent_m);
+  const SweptFootprintConfig hull = physicalBodyFootprint(enveloped);
+  EXPECT_NEAR(hull.radius_m, footprint.body_radius_m, 1.0e-12);
+  EXPECT_NEAR(hull.lower_extent_m, footprint.body_lower_extent_m, 1.0e-12);
+  EXPECT_NEAR(hull.upper_extent_m, footprint.body_upper_extent_m, 1.0e-12);
   EXPECT_EQ(enveloped.perimeter_samples, footprint.perimeter_samples);
   EXPECT_EQ(enveloped.sweep_step_m, footprint.sweep_step_m);
   EXPECT_EQ(enveloped.safe_clearance_threshold_m, footprint.safe_clearance_threshold_m);
@@ -922,13 +928,88 @@ TEST(SweptFootprintTest, TiltEnvelopedFootprintContainsThePhysicalBodyAtEveryTil
           const double x = axial * ax + body_radius_m * rx;
           const double y = axial * ay + body_radius_m * ry;
           const double z = axial * az + body_radius_m * rz;
-          EXPECT_LE(std::hypot(x, y), enveloped.body_radius_m + kTolerance);
+          EXPECT_LE(std::hypot(x, y), enveloped.radius_m + kTolerance);
           EXPECT_GE(z, -enveloped.lower_extent_m - kTolerance);
           EXPECT_LE(z, enveloped.upper_extent_m + kTolerance);
         }
       }
     }
   }
+}
+
+// A vehicle threading its way out of a low slot at hover: the envelope
+// cannot clear the ceiling anywhere along the departure while the body does.
+// Evidence the envelope overlaps along the departure chain is contact for the
+// whole chain, an obstacle beyond it, and the body stays a hard rule at every
+// pose of it.
+TEST(SweptFootprintTest, TheDepartureChainCarriesTheContactExemptionAlongIt) {
+  const GridBounds3D bounds{0.0, 0.0, 0.0, 0.25, 40, 12, 28};
+  ObservedOccupancyGrid3D occupancy{bounds};
+  // A ceiling slab from z = 6.0 m up.
+  for (int z = 24; z < bounds.depth_cells; ++z) {
+    for (int y = 0; y < bounds.height_cells; ++y) {
+      for (int x = 0; x < bounds.width_cells; ++x) {
+        static_cast<void>(
+            occupancy.setState(GridIndex3D{x, y, z}, ObservedVoxelState::kOccupied));
+      }
+    }
+  }
+  // The envelope reaches 0.8 m up, the body 0.3 m: at z = 5.6 m the envelope
+  // overlaps the ceiling and the body clears it by 0.1 m.
+  const SweptFootprintConfig footprint{.radius_m = 0.5,
+                                       .lower_extent_m = 0.2,
+                                       .upper_extent_m = 0.8,
+                                       .body_radius_m = 0.3,
+                                       .body_lower_extent_m = 0.2,
+                                       .body_upper_extent_m = 0.3,
+                                       .sweep_step_m = 0.125};
+  const FootprintBodyAxis axis{};
+  const Point3 start{1.0, 1.5, 5.6};
+  const ProprioceptiveFreeSpaceSeed3D point_seed{
+      .position = start,
+      .body_axis = axis,
+      .footprint = footprint,
+      .contact_tolerance_m = 0.5 * bounds.resolution_m,
+  };
+  ProprioceptiveFreeSpaceSeed3D departing_seed = point_seed;
+  departing_seed.departure_chain = {Point3{2.5, 1.5, 5.6}, Point3{4.0, 1.5, 5.6}};
+  const Point3 along_departure{3.0, 1.5, 5.6};
+  const Point3 past_departure{6.0, 1.5, 5.6};
+  const Point3 body_into_ceiling{3.0, 1.5, 5.85};
+
+  // The ceiling binds along the departure for a point seed: two metres from
+  // the seed is outside its contact volume.
+  EXPECT_EQ(validateRawFootprintAt(occupancy, along_departure, axis, footprint, nullptr,
+                                   &point_seed)
+                .status,
+            SweptFootprintStatus::kRawCollision);
+  // The departing seed exempts it along the whole chain, and the sweep from
+  // the seed to the end of the chain validates.
+  EXPECT_TRUE(validateRawFootprintAt(occupancy, along_departure, axis, footprint,
+                                     nullptr, &departing_seed)
+                  .accepted());
+  EXPECT_TRUE(validateRawSweptFootprint(occupancy, start, axis, Point3{4.0, 1.5, 5.6},
+                                        axis, footprint, nullptr, &departing_seed)
+                  .accepted());
+  // Beyond the departure the envelope binds again.
+  EXPECT_EQ(validateRawFootprintAt(occupancy, past_departure, axis, footprint, nullptr,
+                                   &departing_seed)
+                .status,
+            SweptFootprintStatus::kRawCollision);
+  // The body is never exempt: a pose whose body enters the ceiling collides
+  // even on the chain.
+  EXPECT_EQ(validateRawFootprintAt(occupancy, body_into_ceiling, axis, footprint,
+                                   nullptr, &departing_seed)
+                .status,
+            SweptFootprintStatus::kRawCollision);
+  // A chain that is not finite is not a seed.
+  ProprioceptiveFreeSpaceSeed3D malformed = departing_seed;
+  malformed.departure_chain.push_back(
+      Point3{std::numeric_limits<double>::quiet_NaN(), 1.5, 5.6});
+  EXPECT_EQ(validateRawFootprintAt(occupancy, along_departure, axis, footprint, nullptr,
+                                   &malformed)
+                .status,
+            SweptFootprintStatus::kInvalidInput);
 }
 
 } // namespace

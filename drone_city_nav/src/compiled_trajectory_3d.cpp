@@ -186,6 +186,7 @@ calculateCompiledTrajectoryRevision(const CompiledTrajectory3D& trajectory) noex
   }
   hash.value(trajectory.materialized_route_fingerprint);
   hash.value(trajectory.physical_route_fingerprint);
+  hash.number(trajectory.departure_end_station_m);
   return hash.result();
 }
 
@@ -243,7 +244,8 @@ CompiledTrajectory3D::CompiledTrajectory3D(
     std::shared_ptr<const std::vector<ConstrainedRouteSpan>> compiled_constrained_spans,
     CompiledTrajectoryTimeProfile3D compiled_time_profile,
     const std::uint64_t compiled_materialized_route_fingerprint,
-    const std::uint64_t compiled_physical_route_fingerprint)
+    const std::uint64_t compiled_physical_route_fingerprint,
+    const double compiled_departure_end_station_m)
     : exact_initial_state{initial_state},
       endpoint_semantics{compiled_endpoint_semantics},
       route{std::move(compiled_route)},
@@ -252,6 +254,7 @@ CompiledTrajectory3D::CompiledTrajectory3D(
       time_profile{std::move(compiled_time_profile)},
       materialized_route_fingerprint{compiled_materialized_route_fingerprint},
       physical_route_fingerprint{compiled_physical_route_fingerprint},
+      departure_end_station_m{compiled_departure_end_station_m},
       compiled_trajectory_revision{calculateCompiledTrajectoryRevision(*this)} {
 }
 

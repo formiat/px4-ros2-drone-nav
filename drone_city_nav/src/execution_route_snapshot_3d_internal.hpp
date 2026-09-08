@@ -291,6 +291,13 @@ constrainedStationEvents(const CompiledTrajectory3D& geometry,
     const ExecutionPlan3D& current,
     const CertifiedRouteSuffix3D& target_route) noexcept;
 
+// The seed with the route's departure: contact along the departure the
+// route was planned to leave along, an obstacle nowhere else. The seed is
+// returned unchanged for a null route or one without a departure.
+[[nodiscard]] std::optional<ProprioceptiveFreeSpaceSeed3D>
+seedWithRouteDeparture3D(std::optional<ProprioceptiveFreeSpaceSeed3D> seed,
+                         const CertifiedRouteSuffix3D* route);
+
 [[nodiscard]] bool validateTrackingTubeHandoffClearance(
     const CertifiedRouteSuffix3D& route, const FiniteMotionHorizon3D& horizon,
     double begin_route_station_m, const FiniteExecutionPathWorld3D& world) noexcept;

@@ -28,6 +28,8 @@ struct TrajectoryCompilerInput3D {
   std::vector<ConstrainedRouteSpan> constrained_spans;
   RouteEndpointSemantics3D endpoint_semantics{RouteEndpointSemantics3D::kContinuation};
   std::uint64_t materialized_route_fingerprint{0U};
+  // The station the route's departure ends at; see MaterializedRoute3D.
+  double departure_end_station_m{0.0};
   TrackingErrorTubeWorld3D tracking_world{};
   TrajectoryCompilerConfig3D config{};
 };

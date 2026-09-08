@@ -168,7 +168,7 @@ TEST(ExecutionRouteSnapshot3DTest,
 
   const FiniteExecutionPathValidation3D unaffected =
       validateRemainingFiniteExecutionAgainstObservedWorld3D(
-          *stationary_execution, *stationary_execution->execution_input,
+          *stationary_execution, nullptr, *stationary_execution->execution_input,
           *far_route_world, stationary_execution->valid_from_ns);
   EXPECT_EQ(unaffected.status, FiniteExecutionPathStatus3D::kValid);
 
@@ -189,8 +189,8 @@ TEST(ExecutionRouteSnapshot3DTest,
 
   const FiniteExecutionPathValidation3D contact =
       validateRemainingFiniteExecutionAgainstObservedWorld3D(
-          *stationary_execution, *stationary_execution->execution_input, *active_world,
-          stationary_execution->valid_from_ns);
+          *stationary_execution, nullptr, *stationary_execution->execution_input,
+          *active_world, stationary_execution->valid_from_ns);
   EXPECT_EQ(contact.status, FiniteExecutionPathStatus3D::kValid);
 }
 

@@ -50,6 +50,10 @@ void hashAxis(std::uint64_t& hash, const FootprintBodyAxis& axis) noexcept {
 [[nodiscard]] bool footprintValid(const SweptFootprintConfig& footprint) noexcept {
   return std::isfinite(footprint.radius_m) && footprint.radius_m >= 0.0 &&
          std::isfinite(footprint.body_radius_m) && footprint.body_radius_m >= 0.0 &&
+         std::isfinite(footprint.body_lower_extent_m) &&
+         footprint.body_lower_extent_m >= 0.0 &&
+         std::isfinite(footprint.body_upper_extent_m) &&
+         footprint.body_upper_extent_m >= 0.0 &&
          std::isfinite(footprint.lower_extent_m) && footprint.lower_extent_m >= 0.0 &&
          std::isfinite(footprint.upper_extent_m) && footprint.upper_extent_m >= 0.0 &&
          std::isfinite(footprint.sweep_step_m) && footprint.sweep_step_m > 0.0 &&
@@ -60,6 +64,9 @@ void hashAxis(std::uint64_t& hash, const FootprintBodyAxis& axis) noexcept {
 [[nodiscard]] bool sameFootprintConfig(const SweptFootprintConfig& first,
                                        const SweptFootprintConfig& second) noexcept {
   return first.radius_m == second.radius_m &&
+         first.body_radius_m == second.body_radius_m &&
+         first.body_lower_extent_m == second.body_lower_extent_m &&
+         first.body_upper_extent_m == second.body_upper_extent_m &&
          first.lower_extent_m == second.lower_extent_m &&
          first.upper_extent_m == second.upper_extent_m &&
          first.perimeter_samples == second.perimeter_samples &&
@@ -74,6 +81,9 @@ footprintConservativelyContains(const SweptFootprintConfig& outer,
                                 const SweptFootprintConfig& inner) noexcept {
   return footprintValid(outer) && footprintValid(inner) &&
          outer.radius_m + kGeometryTolerance >= inner.radius_m &&
+         outer.body_radius_m + kGeometryTolerance >= inner.body_radius_m &&
+         outer.body_lower_extent_m + kGeometryTolerance >= inner.body_lower_extent_m &&
+         outer.body_upper_extent_m + kGeometryTolerance >= inner.body_upper_extent_m &&
          outer.lower_extent_m + kGeometryTolerance >= inner.lower_extent_m &&
          outer.upper_extent_m + kGeometryTolerance >= inner.upper_extent_m &&
          outer.perimeter_samples >= inner.perimeter_samples &&
@@ -94,7 +104,14 @@ sameFreeSpaceSeed(const ProprioceptiveFreeSpaceSeed3D& first,
          first.body_axis.y == second.body_axis.y &&
          first.body_axis.z == second.body_axis.z &&
          sameFootprintConfig(first.footprint, second.footprint) &&
-         first.contact_tolerance_m == second.contact_tolerance_m;
+         first.contact_tolerance_m == second.contact_tolerance_m &&
+         first.departure_chain.size() == second.departure_chain.size() &&
+         std::equal(first.departure_chain.begin(), first.departure_chain.end(),
+                    second.departure_chain.begin(),
+                    [](const Point3& left, const Point3& right) noexcept {
+                      return left.x == right.x && left.y == right.y &&
+                             left.z == right.z;
+                    });
 }
 
 [[nodiscard]] bool sameAxisAlignedBox(const AxisAlignedBox3D& first,
@@ -140,6 +157,8 @@ void hashFootprint(std::uint64_t& hash,
                    const SweptFootprintConfig& footprint) noexcept {
   hashValue(hash, canonicalDoubleBits(footprint.radius_m));
   hashValue(hash, canonicalDoubleBits(footprint.body_radius_m));
+  hashValue(hash, canonicalDoubleBits(footprint.body_lower_extent_m));
+  hashValue(hash, canonicalDoubleBits(footprint.body_upper_extent_m));
   hashValue(hash, canonicalDoubleBits(footprint.lower_extent_m));
   hashValue(hash, canonicalDoubleBits(footprint.upper_extent_m));
   hashValue(hash, static_cast<std::uint64_t>(footprint.perimeter_samples));
@@ -169,10 +188,17 @@ void hashFootprint(std::uint64_t& hash,
       free_space_seed->contact_tolerance_m < 0.0) {
     return false;
   }
+  if (!std::ranges::all_of(free_space_seed->departure_chain, finitePoint)) {
+    return false;
+  }
   hashPoint(hash, free_space_seed->position);
   hashAxis(hash, free_space_seed->body_axis);
   hashFootprint(hash, free_space_seed->footprint);
   hashValue(hash, canonicalDoubleBits(free_space_seed->contact_tolerance_m));
+  hashValue(hash, static_cast<std::uint64_t>(free_space_seed->departure_chain.size()));
+  for (const Point3& pose : free_space_seed->departure_chain) {
+    hashPoint(hash, pose);
+  }
   return true;
 }
 

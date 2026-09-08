@@ -171,6 +171,14 @@ struct PersistentPlannerConfig3D {
   // actually take. It never rejects an edge.
   TrackingErrorTubeConfig3D tracking_error_tube{};
   SweptFootprintConfig physical_footprint{};
+  // The body a departure is validated with: the legs leaving the vehicle,
+  // the departure waypoints and the escape fill. A vehicle leaves a tight
+  // spot the way it entered it, at hover and upright, so the departure
+  // answers to the hull the vehicle measures rather than to the envelope
+  // that contains the hull at every tilt; everything after the departure
+  // answers to physical_footprint. Unset, the departure uses
+  // physical_footprint.
+  std::optional<SweptFootprintConfig> departure_footprint;
   FlightEnvelopeConfig flight_envelope{};
 };
 

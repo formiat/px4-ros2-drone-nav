@@ -21,6 +21,8 @@ struct FiniteExecutionEvidenceView3D {
   const VersionedExecutionValidationPolicy3D* policy{nullptr};
   // The swept body the execution was certified with.
   const SweptFootprintConfig* footprint{nullptr};
+  // The route the execution follows, for the departure its seed answers for.
+  const CertifiedRouteSuffix3D* route{nullptr};
   const VersionedStaticWorld3D* static_world{nullptr};
   std::int64_t valid_from_ns{0};
   std::int64_t control_interval_ns{0};
@@ -116,11 +118,14 @@ timedExecutionPathPoints(const FiniteExecutionEvidenceView3D& view) {
   // the published path is still executable from where the vehicle stands.
   const std::optional<ProprioceptiveFreeSpaceSeed3D> proprioceptive_seed =
       !static_world
-          ? proprioceptiveContactSeed3D(
-                Point3{view.execution_input->state().x, view.execution_input->state().y,
-                       view.execution_input->state().z},
-                view.execution_input->previousControl(), *view.footprint,
-                std::addressof(latest_raw->occupancy()))
+          ? execution_route_snapshot_3d_internal::seedWithRouteDeparture3D(
+                proprioceptiveContactSeed3D(Point3{view.execution_input->state().x,
+                                                   view.execution_input->state().y,
+                                                   view.execution_input->state().z},
+                                            view.execution_input->previousControl(),
+                                            *view.footprint,
+                                            std::addressof(latest_raw->occupancy())),
+                view.route)
           : std::optional<ProprioceptiveFreeSpaceSeed3D>{};
   const FiniteExecutionPathWorld3D world{
       .flight_envelope = &view.policy->flightEnvelope(),
@@ -151,10 +156,16 @@ timedExecutionPathPoints(const FiniteExecutionEvidenceView3D& view) {
     if (braking == nullptr) {
       return false;
     }
-    const std::optional<FiniteExecutionEvidenceView3D> command =
+    std::optional<FiniteExecutionEvidenceView3D> command =
         finiteExecutionEvidenceView(*execution);
-    const std::optional<FiniteExecutionEvidenceView3D> fallback =
+    std::optional<FiniteExecutionEvidenceView3D> fallback =
         finiteExecutionEvidenceView(*braking);
+    if (command.has_value()) {
+      command->route = snapshot.route();
+    }
+    if (fallback.has_value()) {
+      fallback->route = snapshot.route();
+    }
     return command.has_value() && fallback.has_value() &&
            revalidateFiniteExecution(*command, latest_raw, latest_lidar) &&
            revalidateFiniteExecution(*fallback, latest_raw, latest_lidar);

@@ -170,16 +170,18 @@ struct FiniteExecutionState3D {
 
 // Raw-world and acquisition-aligned lidar changes invalidate only an occupied
 // intersection with the still-active part of an already-published finite path.
+// `route` is the route the execution follows, whose departure the live seed
+// answers for; null for an execution that follows none.
 [[nodiscard]] FiniteExecutionPathValidation3D
 validateRemainingFiniteExecutionAgainstObservedWorld3D(
-    const FiniteExecutionState3D& execution,
+    const FiniteExecutionState3D& execution, const CertifiedRouteSuffix3D* route,
     const VersionedExecutionInput3D& current_input,
     const VersionedObservedRawWorld3D& current_world,
     std::int64_t validation_stamp_ns) noexcept;
 
 [[nodiscard]] FiniteExecutionPathValidation3D
 validateRemainingFiniteExecutionAgainstLatestLidar3D(
-    const FiniteExecutionState3D& execution,
+    const FiniteExecutionState3D& execution, const CertifiedRouteSuffix3D* route,
     const VersionedExecutionInput3D& current_input,
     const VersionedLatestLidarEvidence3D& current_lidar,
     std::int64_t validation_stamp_ns) noexcept;

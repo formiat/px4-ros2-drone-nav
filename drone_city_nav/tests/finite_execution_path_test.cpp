@@ -196,6 +196,7 @@ TEST(FiniteExecutionPathTest,
   world.footprint.radius_m = 0.1;
   world.footprint.body_radius_m = 0.1;
   world.footprint.upper_extent_m = 0.8;
+  world.footprint.body_upper_extent_m = 0.8;
   std::vector<TimedExecutionPathPoint> tilted_path = testPath();
   tilted_path[1].control = Control{.ay = 4.0F};
   const std::vector<Point3> tilted_body_obstacle{{3.0, 1.25, 5.6}};

@@ -20,7 +20,11 @@ struct SweptFootprintConfig {
   // The physical body itself, rotor tips included. Contact evidence is exempt
   // from the envelope, never from the body: a pose whose body overlaps
   // evidence is a collision whether or not the vehicle already touched it.
+  // The body's axial extents are its own: the envelope's extents grow with
+  // the tilt the airframe reaches, the body's stay what the hull measures.
   double body_radius_m{0.55};
+  double body_lower_extent_m{0.23};
+  double body_upper_extent_m{0.35};
   std::size_t perimeter_samples{12U};
   std::size_t radial_rings{2U};
   std::size_t axial_samples{3U};
@@ -47,6 +51,13 @@ struct ProprioceptiveFreeSpaceSeed3D {
   FootprintBodyAxis body_axis{};
   SweptFootprintConfig footprint{};
   double contact_tolerance_m{0.0};
+  // The departure the vehicle leaves along, from the seed to the first node
+  // of its route: the poses the departure oracle admitted for the upright
+  // hull. The contact volume is swept along it, so evidence the envelope
+  // cannot clear while the vehicle threads its way out of a tight spot at
+  // hover is contact for the whole departure and an obstacle nowhere else;
+  // the physical body stays a hard rule at every pose of it.
+  std::vector<Point3> departure_chain;
 };
 
 struct AxisAlignedBox3D {

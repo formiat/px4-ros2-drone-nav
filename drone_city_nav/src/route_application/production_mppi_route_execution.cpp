@@ -416,8 +416,8 @@ RouteExecutionSelector3D::select(const RouteExecutionSelectorRequest3D& request)
             active_finite_execution != nullptr) {
           active_trajectory_raw_validation =
               validateRemainingFiniteExecutionAgainstObservedWorld3D(
-                  *active_finite_execution, *execution_input, *latest_observed_owner,
-                  execution_input->effectiveStampNs());
+                  *active_finite_execution, &active_route, *execution_input,
+                  *latest_observed_owner, execution_input->effectiveStampNs());
           active_trajectory_raw_collision = active_trajectory_raw_validation.status ==
                                             FiniteExecutionPathStatus3D::kRawCollision;
         }
@@ -437,8 +437,8 @@ RouteExecutionSelector3D::select(const RouteExecutionSelectorRequest3D& request)
           active_finite_execution != nullptr) {
         active_trajectory_lidar_validation =
             validateRemainingFiniteExecutionAgainstLatestLidar3D(
-                *active_finite_execution, *execution_input, *latest_lidar_evidence,
-                validation_stamp_ns);
+                *active_finite_execution, &active_route, *execution_input,
+                *latest_lidar_evidence, validation_stamp_ns);
         active_trajectory_latest_lidar_collision =
             active_trajectory_lidar_validation.status ==
             FiniteExecutionPathStatus3D::kLatestLidarRawCollision;

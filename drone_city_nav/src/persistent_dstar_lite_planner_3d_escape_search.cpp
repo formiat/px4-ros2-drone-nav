@@ -130,7 +130,7 @@ bool EscapeSearch3D::insideMap(const Point3& point) const noexcept {
 }
 
 std::optional<PersistentPlannerNode3D>
-EscapeSearch3D::exitFrom(const Point3& point, const bool from_origin,
+EscapeSearch3D::exitFrom(const Point3& point,
                          const std::function<bool(PersistentPlannerNode3D)>& closed,
                          std::size_t& probes) {
   // Only nodes one lattice step around the point: the exit segment is short
@@ -158,10 +158,9 @@ EscapeSearch3D::exitFrom(const Point3& point, const bool from_origin,
         ++probes;
         ++probes_;
         const Point3 target = lattice_->pointFor(node);
-        const bool reachable = from_origin
-                                   ? lattice_->departureSegmentValid(point, target)
-                                   : lattice_->rawSegmentValid(point, target);
-        if (reachable) {
+        // The escape is flown at hover as the route's departure, so every
+        // step of it answers to the departure body and exemption.
+        if (lattice_->departureSegmentValid(point, target)) {
           return node;
         }
       }
@@ -195,9 +194,8 @@ EscapeSearch3D::advance(const Point3& start,
     settled_[current.cell] = 1U;
     ++explored_;
     const Point3 point = pointOf(current.cell);
-    const bool from_origin = current.cell == origin_cell;
     if (const std::optional<PersistentPlannerNode3D> exit =
-            exitFrom(point, from_origin, closed, probes);
+            exitFrom(point, closed, probes);
         exit.has_value()) {
       Result3D result{.anchor = *exit, .waypoints = {}};
       for (std::uint32_t cell = current.cell; cell != origin_cell;
@@ -233,10 +231,7 @@ EscapeSearch3D::advance(const Point3& start,
           }
           ++probes;
           ++probes_;
-          const bool valid = from_origin
-                                 ? lattice_->departureSegmentValid(point, target)
-                                 : lattice_->rawSegmentValid(point, target);
-          if (!valid) {
+          if (!lattice_->departureSegmentValid(point, target)) {
             continue;
           }
           cost_m_[*neighbor] = candidate_cost;

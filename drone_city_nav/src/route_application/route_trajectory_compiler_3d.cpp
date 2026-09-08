@@ -23,7 +23,8 @@ materializedResourcesAvailable(const MaterializedRoute3D& materialized) noexcept
 
 [[nodiscard]] std::optional<TrackingErrorTubeWorld3D> trackingWorld(
     const MaterializedRoute3D& materialized,
-    const std::shared_ptr<const VersionedObservedRawWorld3D>& observed_raw_world) {
+    const std::shared_ptr<const VersionedObservedRawWorld3D>& observed_raw_world,
+    const std::optional<ProprioceptiveFreeSpaceSeed3D>& departure_seed) {
   if (materialized.world->observed_occupancy != nullptr) {
     if (observed_raw_world == nullptr || !observed_raw_world->valid()) {
       return std::nullopt;
@@ -34,8 +35,7 @@ materializedResourcesAvailable(const MaterializedRoute3D& materialized) noexcept
             observed_raw_world->occupiedContentFingerprint(),
         .launch_support_contact =
             optionalAddress(materialized.world->launch_support_contact),
-        .proprioceptive_free_space_seed =
-            optionalAddress(materialized.world->proprioceptive_free_space_seed),
+        .proprioceptive_free_space_seed = optionalAddress(departure_seed),
     };
   }
   return TrackingErrorTubeWorld3D{
@@ -66,8 +66,16 @@ RouteTrajectoryCompilationResult3D RouteTrajectoryCompiler3D::compile(
         .stop_turn_count = 0U,
     };
   }
+  // The seed the route is compiled against carries the route's own
+  // departure: contact along it, an obstacle nowhere else.
+  std::optional<ProprioceptiveFreeSpaceSeed3D> departure_seed =
+      request.materialized.world->proprioceptive_free_space_seed;
+  if (departure_seed.has_value()) {
+    departure_seed->departure_chain = departureChain3D(
+        *request.materialized.route, request.materialized.departure_end_station_m);
+  }
   const std::optional<TrackingErrorTubeWorld3D> tracking_world =
-      trackingWorld(request.materialized, request.observed_raw_world);
+      trackingWorld(request.materialized, request.observed_raw_world, departure_seed);
   if (!tracking_world.has_value()) {
     return RouteTrajectoryCompilationResult3D{
         .trajectory = nullptr,
@@ -87,6 +95,7 @@ RouteTrajectoryCompilationResult3D RouteTrajectoryCompiler3D::compile(
           .constrained_spans = *materialized.constrained_spans,
           .endpoint_semantics = request.endpoint_semantics,
           .materialized_route_fingerprint = materialized.fingerprint,
+          .departure_end_station_m = materialized.departure_end_station_m,
           .tracking_world = tracking_world.value(),
           .config = config_.trajectory,
       });

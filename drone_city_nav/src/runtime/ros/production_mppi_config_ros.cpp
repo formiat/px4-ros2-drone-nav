@@ -161,6 +161,12 @@ private:
         declare<double>("physical_footprint_lower_extent_m", 0.23);
     world.physical_footprint.upper_extent_m =
         declare<double>("physical_footprint_upper_extent_m", 0.35);
+    // The configured extents measure the hull; the envelope's grow with the
+    // tilt the dynamics reach once those are known.
+    world.physical_footprint.body_lower_extent_m =
+        world.physical_footprint.lower_extent_m;
+    world.physical_footprint.body_upper_extent_m =
+        world.physical_footprint.upper_extent_m;
     world.physical_footprint.perimeter_samples =
         declarePositiveSize("physical_footprint_samples", 12);
     world.physical_footprint.radial_rings =
@@ -880,6 +886,7 @@ void ProductionMppiConfigLoader::finalize() {
   // a roof, where every accelerating horizon and every stop swept the roof
   // once tilted, left one recorded flight resting beside the roof for a
   // quarter of its mission.
+  world.hull_footprint = world.physical_footprint;
   world.physical_footprint = tiltEnvelopedFootprint(
       world.physical_footprint,
       maximumBodyTiltRad(
@@ -930,6 +937,7 @@ void ProductionMppiConfigLoader::finalize() {
   planning.persistent_planner.minimum_continuous_turn_alignment =
       planning.future_route_connector.minimum_continuous_turn_alignment;
   planning.persistent_planner.physical_footprint = world.physical_footprint;
+  planning.persistent_planner.departure_footprint = world.hull_footprint;
   planning.persistent_planner.flight_envelope = world.flight_envelope;
 
   diagnostics.rviz_period_ns =

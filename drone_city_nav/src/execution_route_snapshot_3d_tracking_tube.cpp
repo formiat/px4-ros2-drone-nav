@@ -77,6 +77,17 @@ bool certifiedTrackingTubeHandoffPending(
              .accepted();
 }
 
+std::optional<ProprioceptiveFreeSpaceSeed3D>
+seedWithRouteDeparture3D(std::optional<ProprioceptiveFreeSpaceSeed3D> seed,
+                         const CertifiedRouteSuffix3D* const route) {
+  if (seed.has_value() && route != nullptr && route->geometry != nullptr &&
+      route->geometry->route != nullptr) {
+    seed->departure_chain = departureChain3D(*route->geometry->route,
+                                             route->geometry->departure_end_station_m);
+  }
+  return seed;
+}
+
 bool validateTrackingTubeHandoffClearance(
     const CertifiedRouteSuffix3D& route, const FiniteMotionHorizon3D& horizon,
     const double begin_route_station_m,

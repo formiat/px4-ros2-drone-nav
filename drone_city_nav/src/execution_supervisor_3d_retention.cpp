@@ -11,6 +11,8 @@
 #include <utility>
 #include <vector>
 
+#include "execution_route_snapshot_3d_internal.hpp"
+
 namespace drone_city_nav {
 
 namespace {
@@ -109,11 +111,13 @@ latestLidarEvidenceFresh(const ExecutionRetentionRequest3D& request,
   // Live contact evidence: the vehicle's pose now, not the pose the route was
   // certified from. Without it a wall that closed in on a moving vehicle
   // leaves it no validated motion at all, not even a stop.
-  live_seed = proprioceptiveContactSeed3D(
-      Point3{request.exact_initial_state.x, request.exact_initial_state.y,
-             request.exact_initial_state.z},
-      request.exact_previous_control, route.validation_policy->sweptFootprint(),
-      observed_route ? std::addressof(observed_world->occupancy()) : nullptr);
+  live_seed = execution_route_snapshot_3d_internal::seedWithRouteDeparture3D(
+      proprioceptiveContactSeed3D(
+          Point3{request.exact_initial_state.x, request.exact_initial_state.y,
+                 request.exact_initial_state.z},
+          request.exact_previous_control, route.validation_policy->sweptFootprint(),
+          observed_route ? std::addressof(observed_world->occupancy()) : nullptr),
+      &route);
   return FiniteExecutionPathWorld3D{
       .flight_envelope = &route.validation_policy->flightEnvelope(),
       .dynamics = &route.validation_policy->dynamics(),

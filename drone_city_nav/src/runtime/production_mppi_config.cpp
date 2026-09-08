@@ -113,6 +113,13 @@ bool ProductionMppiConfig::valid() const noexcept {
          world.physical_footprint.radius_m >= 0.0 &&
          world.physical_footprint.lower_extent_m >= 0.0 &&
          world.physical_footprint.upper_extent_m >= 0.0 &&
+         world.physical_footprint.body_radius_m >= 0.0 &&
+         world.physical_footprint.body_lower_extent_m >= 0.0 &&
+         world.physical_footprint.body_upper_extent_m >= 0.0 &&
+         world.physical_footprint.body_lower_extent_m <=
+             world.physical_footprint.lower_extent_m &&
+         world.physical_footprint.body_upper_extent_m <=
+             world.physical_footprint.upper_extent_m &&
          world.physical_footprint.perimeter_samples > 0U &&
          world.physical_footprint.radial_rings > 0U &&
          world.physical_footprint.axial_samples >= 2U &&

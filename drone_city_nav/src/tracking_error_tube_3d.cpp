@@ -23,6 +23,11 @@ constexpr double kHandoffStationToleranceM{1.0e-6};
 [[nodiscard]] bool
 physicalFootprintIsValid(const SweptFootprintConfig& footprint) noexcept {
   return std::isfinite(footprint.radius_m) && footprint.radius_m >= 0.0 &&
+         std::isfinite(footprint.body_radius_m) && footprint.body_radius_m >= 0.0 &&
+         std::isfinite(footprint.body_lower_extent_m) &&
+         footprint.body_lower_extent_m >= 0.0 &&
+         std::isfinite(footprint.body_upper_extent_m) &&
+         footprint.body_upper_extent_m >= 0.0 &&
          std::isfinite(footprint.lower_extent_m) && footprint.lower_extent_m >= 0.0 &&
          std::isfinite(footprint.upper_extent_m) && footprint.upper_extent_m >= 0.0 &&
          footprint.perimeter_samples >= 3U && footprint.radial_rings > 0U &&

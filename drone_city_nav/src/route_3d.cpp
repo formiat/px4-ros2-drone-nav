@@ -777,4 +777,20 @@ bool validateConstrainedRouteSpans(
   return true;
 }
 
+std::vector<Point3> departureChain3D(const std::span<const RouteSample3D> route,
+                                     const double departure_end_station_m) {
+  std::vector<Point3> chain;
+  if (!std::isfinite(departure_end_station_m) || departure_end_station_m <= 0.0) {
+    return chain;
+  }
+  constexpr double kStationToleranceM{1.0e-6};
+  for (const RouteSample3D& sample : route) {
+    if (sample.station_m > departure_end_station_m + kStationToleranceM) {
+      break;
+    }
+    chain.push_back(sample.position);
+  }
+  return chain;
+}
+
 } // namespace drone_city_nav

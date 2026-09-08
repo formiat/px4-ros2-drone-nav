@@ -286,6 +286,7 @@ add_drone_city_nav_layer(
   src/proprioceptive_contact_seed_3d.cpp
   src/swept_footprint.cpp
   src/swept_footprint_2d.cpp
+  src/swept_footprint_body.cpp
   src/swept_footprint_esdf.cpp
   src/versioned_world_evidence_3d.cpp)
 target_link_libraries(drone_city_nav_collision PUBLIC drone_city_nav_world)

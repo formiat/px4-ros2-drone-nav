@@ -48,6 +48,7 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
   owned_observation.flight_envelope = activation.validation_policy->flightEnvelope();
   const LaunchSupportContact3D* observed_launch_support{nullptr};
   const ProprioceptiveFreeSpaceSeed3D* observed_proprioceptive_seed{nullptr};
+  std::optional<ProprioceptiveFreeSpaceSeed3D> departure_seed;
   if (requires_observed_raw_certificate) {
     if (activation.static_world != nullptr ||
         activation.observed_raw_world == nullptr ||
@@ -69,11 +70,18 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
     observed_launch_support =
         launch_support.has_value() ? std::addressof(*launch_support) : nullptr;
     owned_observation.launch_support_contact = observed_launch_support;
+    // The seed answers for the route's own departure: contact along it, an
+    // obstacle nowhere else.
     const std::optional<ProprioceptiveFreeSpaceSeed3D>& proprioceptive_seed =
         activation.observed_raw_world->proprioceptiveFreeSpaceSeed();
-    observed_proprioceptive_seed = proprioceptive_seed.has_value()
-                                       ? std::addressof(*proprioceptive_seed)
-                                       : nullptr;
+    if (proprioceptive_seed.has_value() && activation.geometry != nullptr &&
+        activation.geometry->route != nullptr) {
+      departure_seed = *proprioceptive_seed;
+      departure_seed->departure_chain = departureChain3D(
+          *activation.geometry->route, activation.geometry->departure_end_station_m);
+    }
+    observed_proprioceptive_seed =
+        departure_seed.has_value() ? std::addressof(*departure_seed) : nullptr;
     owned_observation.proprioceptive_free_space_seed = observed_proprioceptive_seed;
   } else {
     if (activation.observed_raw_world != nullptr ||

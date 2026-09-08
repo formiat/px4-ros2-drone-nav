@@ -264,7 +264,7 @@ void PlannerLattice3D::installDepartureEvidence(const PersistentPlannerWorld3D& 
           world.proprioceptive_free_space_seed
               ? std::addressof(*world.proprioceptive_free_space_seed)
               : nullptr,
-      .footprint = config_->physical_footprint,
+      .footprint = config_->departure_footprint.value_or(config_->physical_footprint),
       .flight_envelope = config_->flight_envelope,
   });
 }

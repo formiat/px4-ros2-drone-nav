@@ -137,7 +137,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
       route_execution.direct_tracking_identity.has_value();
   const CertifiedRouteSuffix3D* const selected_snapshot_route =
       !direct_tracking_requested ? route_execution.route.get() : nullptr;
-  const ProprioceptiveFreeSpaceSeed3D proprioceptive_free_space_seed =
+  ProprioceptiveFreeSpaceSeed3D proprioceptive_free_space_seed =
       proprioceptiveContactSeed3D(
           Point3{exact_initial_state.x, exact_initial_state.y, exact_initial_state.z},
           exact_previous_control, config_.world.physical_footprint,
@@ -148,6 +148,15 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
               Point3{exact_initial_state.x, exact_initial_state.y,
                      exact_initial_state.z},
               exact_previous_control, config_.world.physical_footprint, 0.0));
+  // The seed answers for the departure of the route the horizon follows:
+  // contact along it, an obstacle nowhere else.
+  if (selected_snapshot_route != nullptr &&
+      selected_snapshot_route->geometry != nullptr &&
+      selected_snapshot_route->geometry->route != nullptr) {
+    proprioceptive_free_space_seed.departure_chain =
+        departureChain3D(*selected_snapshot_route->geometry->route,
+                         selected_snapshot_route->geometry->departure_end_station_m);
+  }
   std::shared_ptr<const VersionedObservedRawWorld3D> direct_observed_world;
   std::shared_ptr<const VersionedStaticWorld3D> direct_static_world;
   if (direct_tracking_requested || stationary_capture_rearm) {

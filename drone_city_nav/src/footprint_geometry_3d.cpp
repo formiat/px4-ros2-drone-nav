@@ -10,9 +10,13 @@ namespace {
 [[nodiscard]] bool finiteFootprintConfig(const SweptFootprintConfig& config) noexcept {
   return std::isfinite(config.radius_m) && config.radius_m >= 0.0 &&
          std::isfinite(config.body_radius_m) && config.body_radius_m >= 0.0 &&
-         std::isfinite(config.lower_extent_m) && config.lower_extent_m >= 0.0 &&
-         std::isfinite(config.upper_extent_m) && config.upper_extent_m >= 0.0 &&
-         std::isfinite(config.sweep_step_m) && config.sweep_step_m > 0.0 &&
+         std::isfinite(config.body_lower_extent_m) &&
+         config.body_lower_extent_m >= 0.0 &&
+         std::isfinite(config.body_upper_extent_m) &&
+         config.body_upper_extent_m >= 0.0 && std::isfinite(config.lower_extent_m) &&
+         config.lower_extent_m >= 0.0 && std::isfinite(config.upper_extent_m) &&
+         config.upper_extent_m >= 0.0 && std::isfinite(config.sweep_step_m) &&
+         config.sweep_step_m > 0.0 &&
          std::isfinite(config.safe_clearance_threshold_m) &&
          config.safe_clearance_threshold_m >= 0.0 && config.axial_samples > 0U;
 }
@@ -48,6 +52,8 @@ bool sameProprioceptiveFreeSpaceSeed3D(
          first.body_axis.z == second.body_axis.z &&
          first.footprint.radius_m == second.footprint.radius_m &&
          first.footprint.body_radius_m == second.footprint.body_radius_m &&
+         first.footprint.body_lower_extent_m == second.footprint.body_lower_extent_m &&
+         first.footprint.body_upper_extent_m == second.footprint.body_upper_extent_m &&
          first.footprint.lower_extent_m == second.footprint.lower_extent_m &&
          first.footprint.upper_extent_m == second.footprint.upper_extent_m &&
          first.footprint.perimeter_samples == second.footprint.perimeter_samples &&
@@ -56,7 +62,14 @@ bool sameProprioceptiveFreeSpaceSeed3D(
          first.footprint.sweep_step_m == second.footprint.sweep_step_m &&
          first.footprint.safe_clearance_threshold_m ==
              second.footprint.safe_clearance_threshold_m &&
-         first.contact_tolerance_m == second.contact_tolerance_m;
+         first.contact_tolerance_m == second.contact_tolerance_m &&
+         first.departure_chain.size() == second.departure_chain.size() &&
+         std::equal(first.departure_chain.begin(), first.departure_chain.end(),
+                    second.departure_chain.begin(),
+                    [](const Point3& left, const Point3& right) noexcept {
+                      return left.x == right.x && left.y == right.y &&
+                             left.z == right.z;
+                    });
 }
 
 bool sameLaunchSupportContact3D(const LaunchSupportContact3D& first,

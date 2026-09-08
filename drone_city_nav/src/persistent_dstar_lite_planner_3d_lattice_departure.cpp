@@ -230,19 +230,17 @@ PlannerLattice3D::selectGoalConnection(const Point3& goal,
 bool PlannerLattice3D::departureReachable(const Point3& start,
                                           const std::span<const Point3> waypoints,
                                           const Point3& target) const {
-  // The leg leaving the vehicle carries the departure exemption; every later
-  // leg is ordinary raw evidence.
+  // The whole departure, every waypoint leg and the leg onto the node, is
+  // flown at hover and carries the departure exemption and the departure
+  // body; the route is ordinary raw evidence from the node on.
   Point3 previous = start;
-  for (std::size_t index = 0U; index < waypoints.size(); ++index) {
-    const bool valid = index == 0U ? departureSegmentValid(previous, waypoints[index])
-                                   : rawSegmentValid(previous, waypoints[index]);
-    if (!valid) {
+  for (const Point3& waypoint : waypoints) {
+    if (!departureSegmentValid(previous, waypoint)) {
       return false;
     }
-    previous = waypoints[index];
+    previous = waypoint;
   }
-  return waypoints.empty() ? departureSegmentValid(previous, target)
-                           : rawSegmentValid(previous, target);
+  return departureSegmentValid(previous, target);
 }
 
 } // namespace drone_city_nav::detail

@@ -125,6 +125,10 @@ struct MaterializedRoute3D {
   std::uint64_t fingerprint{0U};
   bool reaches_mission_goal{false};
   bool planner_executable{false};
+  // The station the planner left the vehicle at: the first lattice node, or
+  // the last departure waypoint before it. The route up to it is flown at
+  // hover as the departure and is contact for the seed's exemption.
+  double departure_end_station_m{0.0};
 };
 
 // Telemetry is a separate event payload. It is never written back into a world

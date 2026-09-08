@@ -23,6 +23,26 @@ TEST(Route3DTest, SamplesContinuousAltitudeProfile) {
   EXPECT_EQ(route.back().reference_speed_mps, 10.0);
 }
 
+// The departure of a route is its samples up to the station the planner left
+// the vehicle at, and nothing when it carries no departure.
+TEST(Route3DTest, DepartureChainCoversTheRouteUpToItsDepartureStation) {
+  const std::vector<RouteSample3D> route =
+      sampleRoute3D(std::vector<Point3>{{0.0, 0.0, 2.0}, {4.0, 0.0, 2.0}}, 1.0, 10.0);
+  ASSERT_GE(route.size(), 5U);
+
+  const std::vector<Point3> chain = departureChain3D(route, 2.0);
+  ASSERT_FALSE(chain.empty());
+  EXPECT_EQ(chain.front().x, route.front().position.x);
+  EXPECT_LE(chain.back().x, 2.0 + 1.0e-6);
+  EXPECT_LT(chain.size(), route.size());
+  for (std::size_t index = 0U; index < chain.size(); ++index) {
+    EXPECT_LE(route[index].station_m, 2.0 + 1.0e-6);
+  }
+  EXPECT_TRUE(departureChain3D(route, 0.0).empty());
+  EXPECT_TRUE(departureChain3D(route, -1.0).empty());
+  EXPECT_EQ(departureChain3D(route, 100.0).size(), route.size());
+}
+
 TEST(Route3DTest, RouteFingerprintIsStableAndGeometrySensitive) {
   const std::vector<RouteSample3D> first =
       sampleRoute3D(std::vector<Point3>{{0.0, 0.0, 2.0}, {4.0, 0.0, 2.0}}, 1.0, 10.0);

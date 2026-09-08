@@ -250,7 +250,7 @@ private:
   // A lattice node one lattice step around the point, outside the closed
   // components, that the body reaches from it.
   [[nodiscard]] std::optional<PersistentPlannerNode3D>
-  exitFrom(const Point3& point, bool from_origin,
+  exitFrom(const Point3& point,
            const std::function<bool(PersistentPlannerNode3D)>& closed,
            std::size_t& probes);
 

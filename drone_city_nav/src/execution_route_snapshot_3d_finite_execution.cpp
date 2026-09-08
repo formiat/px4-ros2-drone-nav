@@ -105,12 +105,14 @@ std::optional<RouteAdherenceAssessment3D> validateExecutionProgressConnector(
           ? optionalAddress(observed_raw_world->launchSupportContact())
           : nullptr;
   const std::optional<ProprioceptiveFreeSpaceSeed3D> proprioceptive_seed =
-      proprioceptiveContactSeed3D(
-          executionInputPosition(*execution_input), current_execution_control,
-          route.validation_policy->sweptFootprint(),
-          raw_certificate != nullptr && observed_raw_world != nullptr
-              ? std::addressof(observed_raw_world->occupancy())
-              : nullptr);
+      seedWithRouteDeparture3D(
+          proprioceptiveContactSeed3D(
+              executionInputPosition(*execution_input), current_execution_control,
+              route.validation_policy->sweptFootprint(),
+              raw_certificate != nullptr && observed_raw_world != nullptr
+                  ? std::addressof(observed_raw_world->occupancy())
+                  : nullptr),
+          &route);
   const OccupiedCollisionOracle3D collision_oracle{OccupiedCollisionWorld3D{
       .observed_occupancy = raw_certificate != nullptr && observed_raw_world != nullptr
                                 ? std::addressof(observed_raw_world->occupancy())
@@ -282,11 +284,14 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
       raw_mode ? optionalAddress(observed_raw_validation_world->launchSupportContact())
                : nullptr;
   const std::optional<ProprioceptiveFreeSpaceSeed3D> proprioceptive_seed =
-      proprioceptiveContactSeed3D(
-          executionInputPosition(*certification.execution_input),
-          certification.execution_input->previousControl(), policy->sweptFootprint(),
-          raw_mode ? std::addressof(observed_raw_validation_world->occupancy())
-                   : nullptr);
+      seedWithRouteDeparture3D(
+          proprioceptiveContactSeed3D(
+              executionInputPosition(*certification.execution_input),
+              certification.execution_input->previousControl(),
+              policy->sweptFootprint(),
+              raw_mode ? std::addressof(observed_raw_validation_world->occupancy())
+                       : nullptr),
+          &target_route);
   const std::uint64_t execution_collision_policy_fingerprint =
       validationPolicyFingerprint(policy->sweptFootprint(), launch_support_contact);
   if (execution_collision_policy_fingerprint == 0U) {

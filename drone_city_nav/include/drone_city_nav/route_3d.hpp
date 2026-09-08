@@ -424,4 +424,10 @@ void mergeAdjacentConstrainedRouteSpans(std::vector<ConstrainedRouteSpan>& spans
 validateConstrainedRouteSpans(std::span<const RouteSample3D> route,
                               std::span<const ConstrainedRouteSpan> spans) noexcept;
 
+// The departure of a route: its sample positions up to the station its
+// planner left the vehicle at, the first node of the lattice or the last
+// departure waypoint before it. Empty when the route carries no departure.
+[[nodiscard]] std::vector<Point3> departureChain3D(std::span<const RouteSample3D> route,
+                                                   double departure_end_station_m);
+
 } // namespace drone_city_nav

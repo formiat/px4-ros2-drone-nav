@@ -41,6 +41,9 @@ void hashFootprint(std::uint64_t& hash,
   hashDouble(hash, footprint.radius_m);
   hashDouble(hash, footprint.lower_extent_m);
   hashDouble(hash, footprint.upper_extent_m);
+  hashDouble(hash, footprint.body_radius_m);
+  hashDouble(hash, footprint.body_lower_extent_m);
+  hashDouble(hash, footprint.body_upper_extent_m);
   hashValue(hash, static_cast<std::uint64_t>(footprint.perimeter_samples));
   hashValue(hash, static_cast<std::uint64_t>(footprint.radial_rings));
   hashValue(hash, static_cast<std::uint64_t>(footprint.axial_samples));
