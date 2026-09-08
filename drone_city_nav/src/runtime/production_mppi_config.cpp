@@ -145,8 +145,6 @@ bool ProductionMppiConfig::valid() const noexcept {
              control.navigation_angular_derivative) &&
          execution.validation_policy != nullptr &&
          planning.persistent_planner.time_model.valid() &&
-         std::isfinite(planning.persistent_planner.incumbent_repair_grace_ms) &&
-         planning.persistent_planner.incumbent_repair_grace_ms >= 0.0 &&
          std::isfinite(planning.persistent_planner.minimum_continuous_turn_alignment) &&
          planning.persistent_planner.minimum_continuous_turn_alignment >= -1.0 &&
          planning.persistent_planner.minimum_continuous_turn_alignment <= 1.0;

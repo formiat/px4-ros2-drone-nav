@@ -182,9 +182,6 @@ TEST(PersistentDStarLitePlanner3DTest,
   config.maximum_feasibility_expansions_per_update = 100000U;
   config.maximum_feasibility_compute_time_ms = 900.0;
   config.maximum_expansions_per_update = 8U;
-  // The test measures the feasibility branch's own label reuse across the
-  // change, so its route publishes as found rather than waiting on the repair.
-  config.incumbent_repair_grace_ms = 0.0;
   const Point3 start{1.5, 1.5, 1.5};
   const Point3 goal{110.5, 8.5, 1.5};
   const auto planUntilPublishable =
@@ -581,121 +578,6 @@ TEST(PersistentDStarLitePlanner3DTest,
     ASSERT_LT(call_ms, 500.0) << "call " << call << " took " << call_ms << " ms";
   }
   EXPECT_LT(worst_call_ms, 500.0);
-}
-
-TEST(PersistentDStarLitePlanner3DTest,
-     ABlockedIncumbentHoldsTheFirstFoundRouteWhileTheRepairRuns) {
-  // A wall closes across the incumbent with one hole far from it. The
-  // persistent search repairs one state per update, so it is busy for many
-  // updates; the feasibility branch finds a route through the hole at once.
-  // With the repair window open that route is held and nothing publishes;
-  // with the window disabled it publishes as found.
-  const auto run = [](const double grace_ms) {
-    auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
-        GridBounds3D{0.0, 0.0, 0.0, 1.0, 14, 10, 6});
-    PersistentPlannerConfig3D config = testConfig();
-    config.feasibility_first_enabled = true;
-    config.maximum_feasibility_expansions_per_update = 100000U;
-    config.maximum_feasibility_compute_time_ms = 900.0;
-    config.maximum_expansions_per_update = 1U;
-    config.incumbent_repair_grace_ms = grace_ms;
-    PersistentDStarLitePlanner3D planner{config};
-    const Point3 start{1.5, 5.5, 2.5};
-    const Point3 goal{12.5, 5.5, 2.5};
-    PlannerUpdate3D initial = planner.plan(request(start, goal, world(occupancy, 1U)));
-    for (std::size_t attempt = 0U; attempt < 64U && !initial.publishable(); ++attempt) {
-      initial = planner.plan(request(start, goal, world(occupancy, 1U)));
-    }
-    if (!initial.publishable()) {
-      throw std::logic_error{"no initial route"};
-    }
-
-    auto walled = std::make_shared<ObservedOccupancyGrid3D>(*occupancy);
-    std::vector<OccupancyChunkIndex3D> dirty;
-    for (int y = 0; y < 10; ++y) {
-      for (int z = 0; z < 6; ++z) {
-        if (y == 0 && z == 5) {
-          continue;
-        }
-        const GridIndex3D cell{7, y, z};
-        if (walled->setState(cell, ObservedVoxelState::kOccupied)) {
-          dirty.push_back(ObservedOccupancyGrid3D::chunkIndex(cell));
-        }
-      }
-    }
-    PlannerUpdate3D blocked =
-        planner.plan(request(start, goal, world(walled, 2U, dirty)));
-    for (std::size_t attempt = 0U;
-         attempt < 64U && !blocked.telemetry.feasibility_route_found &&
-         !blocked.publishable();
-         ++attempt) {
-      blocked = planner.plan(request(start, goal, world(walled, 2U, dirty)));
-    }
-    return blocked;
-  };
-
-  const PlannerUpdate3D held = run(60'000.0);
-  EXPECT_FALSE(held.telemetry.incumbent_retained);
-  ASSERT_TRUE(held.telemetry.feasibility_route_found);
-  EXPECT_TRUE(held.telemetry.feasibility_candidate_deferred);
-  EXPECT_TRUE(held.telemetry.incumbent_repair_window_open);
-  EXPECT_FALSE(held.publishable());
-  EXPECT_EQ(held.progress, SearchProgress3D::kRunning);
-
-  const PlannerUpdate3D published = run(0.0);
-  ASSERT_TRUE(published.telemetry.feasibility_route_found);
-  EXPECT_FALSE(published.telemetry.feasibility_candidate_deferred);
-  EXPECT_FALSE(published.telemetry.incumbent_repair_window_open);
-  ASSERT_TRUE(published.publishable());
-  EXPECT_EQ(candidate(published).source,
-            SpatialRouteCandidateSource3D::kFeasibilitySearch);
-}
-
-TEST(PersistentDStarLitePlanner3DTest, TheRepairWindowClosesAndTheHeldRoutePublishes) {
-  // The same wall, with a short grace: whichever ends first — the repair or
-  // the grace — a route publishes, and it clears the wall.
-  auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
-      GridBounds3D{0.0, 0.0, 0.0, 1.0, 14, 10, 6});
-  PersistentPlannerConfig3D config = testConfig();
-  config.feasibility_first_enabled = true;
-  config.maximum_feasibility_expansions_per_update = 100000U;
-  config.maximum_feasibility_compute_time_ms = 900.0;
-  config.maximum_expansions_per_update = 1U;
-  config.incumbent_repair_grace_ms = 50.0;
-  PersistentDStarLitePlanner3D planner{config};
-  const Point3 start{1.5, 5.5, 2.5};
-  const Point3 goal{12.5, 5.5, 2.5};
-  PlannerUpdate3D initial = planner.plan(request(start, goal, world(occupancy, 1U)));
-  for (std::size_t attempt = 0U; attempt < 64U && !initial.publishable(); ++attempt) {
-    initial = planner.plan(request(start, goal, world(occupancy, 1U)));
-  }
-  ASSERT_TRUE(initial.publishable());
-
-  auto walled = std::make_shared<ObservedOccupancyGrid3D>(*occupancy);
-  std::vector<OccupancyChunkIndex3D> dirty;
-  for (int y = 0; y < 10; ++y) {
-    for (int z = 0; z < 6; ++z) {
-      if (y == 0 && z == 5) {
-        continue;
-      }
-      const GridIndex3D cell{7, y, z};
-      if (walled->setState(cell, ObservedVoxelState::kOccupied)) {
-        dirty.push_back(ObservedOccupancyGrid3D::chunkIndex(cell));
-      }
-    }
-  }
-  PlannerUpdate3D blocked =
-      planner.plan(request(start, goal, world(walled, 2U, dirty)));
-  bool was_held = blocked.telemetry.feasibility_candidate_deferred;
-  for (std::size_t attempt = 0U; attempt < 5000U && !blocked.publishable(); ++attempt) {
-    blocked = planner.plan(request(start, goal, world(walled, 2U, dirty)));
-    was_held = was_held || blocked.telemetry.feasibility_candidate_deferred;
-  }
-  ASSERT_TRUE(blocked.publishable());
-  EXPECT_TRUE(was_held);
-  EXPECT_FALSE(blocked.telemetry.incumbent_repair_window_open);
-  expectRawValid(candidate(blocked).points, *walled,
-                 planner.config().physical_footprint);
 }
 
 } // namespace
