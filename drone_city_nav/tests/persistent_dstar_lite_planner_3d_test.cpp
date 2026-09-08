@@ -166,6 +166,43 @@ TEST(PersistentDStarLitePlanner3DTest,
   EXPECT_FALSE(planner.plan(rejected).publishable());
 }
 
+TEST(PersistentDStarLitePlanner3DTest, ARejectedIncumbentKeepsTheFeasibilityLabels) {
+  // The consumer could not enter the delivered incumbent on evidence the
+  // planner's world does not carry yet. The incumbent is dropped, but the
+  // feasibility labels are kept and re-validated lazily: the next candidate
+  // is extracted from what was explored, not searched for from nothing.
+  auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 1.0, 18, 18, 8});
+  PersistentPlannerConfig3D config = testConfig();
+  config.feasibility_first_enabled = true;
+  PersistentDStarLitePlanner3D planner{config};
+  const Point3 start{1.5, 1.5, 1.5};
+  const Point3 goal{16.5, 16.5, 6.5};
+  PersistentPlannerRequest3D session = request(start, goal, world(occupancy, 1U));
+  session.session_id = 1U;
+  PlannerUpdate3D update = planner.plan(session);
+  for (int attempt = 0; attempt < 20 && !update.telemetry.feasibility_route_found;
+       ++attempt) {
+    update = planner.plan(session);
+  }
+  ASSERT_TRUE(update.telemetry.feasibility_route_found);
+  const std::size_t explored_before = update.telemetry.feasibility_explored_nodes;
+  ASSERT_GT(explored_before, 0U);
+
+  PersistentPlannerRequest3D rejected = session;
+  rejected.incumbent_rejection_sequence = 1U;
+  update = planner.plan(rejected);
+  EXPECT_FALSE(update.telemetry.incumbent_retained);
+  EXPECT_GE(update.telemetry.feasibility_explored_nodes, explored_before)
+      << "the labels were dropped instead of being kept";
+  for (int attempt = 0; attempt < 3 && !update.publishable(); ++attempt) {
+    update = planner.plan(rejected);
+  }
+  ASSERT_TRUE(update.publishable());
+  EXPECT_TRUE(update.telemetry.feasibility_route_found);
+  EXPECT_DOUBLE_EQ(candidate(update).points.front().x, start.x);
+}
+
 TEST(PersistentDStarLitePlanner3DTest,
      SolvesOneWorldFixedTwentySixConnectedMissionToTheExactGoal) {
   auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(

@@ -146,7 +146,13 @@ incumbent is re-validated against the current world every update and reset when
 it no longer clears the body, which is the same outcome whenever the block is
 real and on the part still to fly. A consumer that could not enter the
 incumbent it was delivered says so through the rejection sequence, and that
-does reset it.
+does drop it — the incumbent, not the feasibility labels. The labels are
+validated lazily against the resident world, which the consumer's evidence
+reaches through the raw overlay, so the chains through the block are dropped
+and re-parented where the search next touches them and the next candidate is
+extracted from what was explored. Restarting the search from nothing cost one
+to two seconds per rejection and, whenever the world had not changed, found
+the same first route again.
 
 Holding the first-found feasibility route back after such a loss — to give
 the persistent search's repair a chance to deliver the shortest path past the

@@ -662,11 +662,18 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   if (request.incumbent_rejection_sequence > applied_incumbent_rejection_sequence_) {
     // The consumer could not enter the incumbent it was delivered. Keeping it
     // would keep the feasibility search idle and leave the vehicle waiting on
-    // an incremental repair that newer evidence may never let converge.
+    // an incremental repair that newer evidence may never let converge. The
+    // feasibility labels stay: they are validated lazily against the resident
+    // world, which the consumer's evidence reaches through the raw overlay,
+    // so the chains through the block are dropped and re-parented where the
+    // search next touches them, and the next candidate is extracted from
+    // what was explored instead of from nothing. Restarting the search from
+    // scratch cost one to two seconds per rejection and found the same first
+    // route again whenever the world had not changed.
     applied_incumbent_rejection_sequence_ = request.incumbent_rejection_sequence;
     coordinator_.reset();
     execution_time_refiner_.reset();
-    feasibility_search_.reset();
+    feasibility_search_.noteWorldChanged();
   }
   if (const SpatialRouteCandidate3D* const incumbent = coordinator_.incumbent();
       incumbent != nullptr) {

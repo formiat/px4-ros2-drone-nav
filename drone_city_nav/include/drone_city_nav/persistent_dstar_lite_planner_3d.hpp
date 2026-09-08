@@ -194,9 +194,10 @@ struct PersistentPlannerRequest3D {
   // Counts the incumbents this consumer rejected at activation for reasons
   // relative to the vehicle (a handoff it cannot fly, a connector its raw
   // evidence blocks). A sequence newer than the one the planner last applied
-  // drops the resident incumbent and restarts the feasibility search from the
-  // current start, so a session whose incremental repair lags behind the
-  // evidence still delivers a route the vehicle can enter.
+  // drops the resident incumbent and re-validates the feasibility labels on
+  // the resident world, so a session whose incremental repair lags behind the
+  // evidence still delivers a route the vehicle can enter — from what it has
+  // already explored, not from nothing.
   std::uint64_t incumbent_rejection_sequence{0U};
 };
 
