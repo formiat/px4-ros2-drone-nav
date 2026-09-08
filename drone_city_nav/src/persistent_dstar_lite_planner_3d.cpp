@@ -884,10 +884,17 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     if (!closed_component_origin_.has_value()) {
       closed_component_origin_ = request.start;
     }
-    // A fill that found nothing is worth repeating only on a changed world.
-    if (config_.escape_search_radius_cells > 0U && !escape_connection_.has_value() &&
-        !escape_search_pending_ &&
-        (!escape_search_.exhausted() || !world_update.changed_cells.empty())) {
+    if (escape_connection_.has_value()) {
+      // The exit the fill found leads into a component the search has now
+      // exhausted as well: it was no way out. Its states are closed with the
+      // origin's, so the fill resumes from the vehicle for another exit
+      // instead of holding the vehicle on a departure that leads nowhere.
+      escape_connection_.reset();
+      escape_search_.reset();
+      escape_search_pending_ = config_.escape_search_radius_cells > 0U;
+    } else if (config_.escape_search_radius_cells > 0U && !escape_search_pending_ &&
+               (!escape_search_.exhausted() || !world_update.changed_cells.empty())) {
+      // A fill that found nothing is worth repeating only on a changed world.
       if (escape_search_.exhausted()) {
         escape_search_.reset();
       }
