@@ -50,6 +50,10 @@ struct FootprintConfig {
   float radius_m{0.0F};
   float lower_extent_m{0.0F};
   float upper_extent_m{0.0F};
+  // The physical body inside the envelope; see SweptFootprintConfig.
+  float body_radius_m{0.55F};
+  float body_lower_extent_m{0.23F};
+  float body_upper_extent_m{0.35F};
   std::uint32_t perimeter_samples{0U};
   std::uint32_t radial_rings{0U};
   std::uint32_t axial_samples{0U};

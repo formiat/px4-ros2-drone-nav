@@ -749,6 +749,12 @@ void ProductionMppiConfigLoader::declareControl() {
           static_cast<float>(config_.world.physical_footprint.lower_extent_m),
       .upper_extent_m =
           static_cast<float>(config_.world.physical_footprint.upper_extent_m),
+      .body_radius_m =
+          static_cast<float>(config_.world.physical_footprint.body_radius_m),
+      .body_lower_extent_m =
+          static_cast<float>(config_.world.physical_footprint.body_lower_extent_m),
+      .body_upper_extent_m =
+          static_cast<float>(config_.world.physical_footprint.body_upper_extent_m),
       .perimeter_samples = static_cast<std::uint32_t>(
           config_.world.physical_footprint.perimeter_samples),
       .radial_rings =
@@ -899,6 +905,9 @@ void ProductionMppiConfigLoader::finalize() {
       .radius_m = world.physical_footprint.radius_m,
       .lower_extent_m = world.physical_footprint.lower_extent_m,
       .upper_extent_m = world.physical_footprint.upper_extent_m,
+      .body_radius_m = world.physical_footprint.body_radius_m,
+      .body_lower_extent_m = world.physical_footprint.body_lower_extent_m,
+      .body_upper_extent_m = world.physical_footprint.body_upper_extent_m,
       .perimeter_samples = world.physical_footprint.perimeter_samples,
       .radial_rings = world.physical_footprint.radial_rings,
       .axial_samples = world.physical_footprint.axial_samples,
