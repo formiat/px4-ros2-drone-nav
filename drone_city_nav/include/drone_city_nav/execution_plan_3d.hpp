@@ -168,6 +168,12 @@ struct ExecutionPlan3D {
   directTrackingExecution() const noexcept;
   [[nodiscard]] const StopExecution3D* stopExecution() const noexcept;
   [[nodiscard]] const StationaryExecutionHold3D* stationaryHold() const noexcept;
+  // The highest trajectory revision the resident owner carries: a finite,
+  // direct-tracking or stop execution's own revision, or the revision a
+  // stationary hold took the vehicle over from. Every trajectory that
+  // succeeds the owner must carry a higher one, so this is where a successor
+  // derives its revision from. Zero when no owner carries one.
+  [[nodiscard]] std::uint64_t ownerTrajectoryRevision() const noexcept;
 };
 
 [[nodiscard]] bool

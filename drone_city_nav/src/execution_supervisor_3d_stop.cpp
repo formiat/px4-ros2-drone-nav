@@ -171,20 +171,7 @@ stopControlCountEstimate(const MotionState3D& state, const MotionControl3D& prev
 
 [[nodiscard]] std::uint64_t
 nextStopTrajectoryRevision(const ExecutionPlan3D& plan) noexcept {
-  std::uint64_t resident{0U};
-  if (const FiniteExecutionState3D* const finite = plan.finiteExecution()) {
-    resident = finite->trajectory_revision;
-  }
-  if (const FiniteExecutionState3D* const braking = plan.brakingFallback()) {
-    resident = std::max(resident, braking->trajectory_revision);
-  }
-  if (const DirectTrackingFiniteExecution3D* const direct =
-          plan.directTrackingExecution()) {
-    resident = std::max(resident, direct->trajectory_revision);
-  }
-  if (const StopExecution3D* const stop = plan.stopExecution()) {
-    resident = std::max(resident, stop->trajectory_revision);
-  }
+  const std::uint64_t resident = plan.ownerTrajectoryRevision();
   return resident == std::numeric_limits<std::uint64_t>::max() ? 0U : resident + 1U;
 }
 

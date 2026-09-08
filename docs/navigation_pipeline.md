@@ -370,9 +370,15 @@ flying the last horizon it had accepted, certified before the evidence that
 had just invalidated it, to that horizon's rest point; one recorded flight
 ended against a wall that way. The rest position is held explicitly instead
 (`EXECUTION_HOLD rest=true`): a stationary hold supersedes the stale horizon
-on the wire, and the next certified route takes the vehicle back from it. A route may also take the vehicle back
-while the stop is still braking, so no approach to any obstacle is ever
-withheld. Stopping is not a route state, so the stop's length follows the
+on the wire, and the next certified route takes the vehicle back from it. That
+hold carries the trajectory revision of the execution it took over, and the
+route's trajectory is numbered after whatever owns the vehicle
+(`ExecutionPlan3D::ownerTrajectoryRevision`): the execution it replaces, the
+stop it takes the vehicle back from, or the hold's source. Numbering it as if
+nothing had owned the vehicle kept one recorded flight resting for half a
+minute with a certified route pending (`finite_execution_conflict`). A route
+may also take the vehicle back while the stop is still braking, so no approach
+to any obstacle is ever withheld. Stopping is not a route state, so the stop's length follows the
 vehicle's state and its guaranteed deceleration rather than the controller's
 control count, and its profile is shaped against the same integrator that
 validates it, including the shedding of an inherited excess above the speed

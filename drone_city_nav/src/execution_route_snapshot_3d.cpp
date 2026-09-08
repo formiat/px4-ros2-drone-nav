@@ -531,6 +531,26 @@ const StationaryExecutionHold3D* ExecutionPlan3D::stationaryHold() const noexcep
              : nullptr;
 }
 
+std::uint64_t ExecutionPlan3D::ownerTrajectoryRevision() const noexcept {
+  std::uint64_t revision{0U};
+  if (const FiniteExecutionState3D* const finite = finiteExecution()) {
+    revision = std::max(revision, finite->trajectory_revision);
+  }
+  if (const FiniteExecutionState3D* const braking = brakingFallback()) {
+    revision = std::max(revision, braking->trajectory_revision);
+  }
+  if (const DirectTrackingFiniteExecution3D* const direct = directTrackingExecution()) {
+    revision = std::max(revision, direct->trajectory_revision);
+  }
+  if (const StopExecution3D* const stop = stopExecution()) {
+    revision = std::max(revision, stop->trajectory_revision);
+  }
+  if (const StationaryExecutionHold3D* const hold = stationaryHold()) {
+    revision = std::max(revision, hold->source_trajectory_revision);
+  }
+  return revision;
+}
+
 bool ExecutionPlan3D::valid() const noexcept {
   if (version == 0U || execution_owner_epoch == 0U || state.valueless_by_exception()) {
     return false;

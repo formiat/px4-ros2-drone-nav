@@ -139,4 +139,47 @@ commitExecutionHorizonForTest(ExecutionSupervisor3D& supervisor,
       makeExecutionHorizonTestRequest(std::move(transaction)));
 }
 
+// The vehicle observed at rest at `position`, after its owner's lease ended.
+[[nodiscard]] inline std::shared_ptr<const VersionedExecutionInput3D>
+restingInputAt(const VersionedExecutionInput3D& previous, const Point3& position,
+               const std::int64_t effective_stamp_ns) {
+  MotionState3D state = previous.state();
+  state.x = static_cast<float>(position.x);
+  state.y = static_cast<float>(position.y);
+  state.z = static_cast<float>(position.z);
+  state.vx = 0.0F;
+  state.vy = 0.0F;
+  state.vz = 0.0F;
+  state.yaw_rate = 0.0F;
+  constexpr ExecutionStateFieldProvenance3D kSample{
+      ExecutionStateFieldProvenance3D::kSourceSample};
+  return VersionedExecutionInput3D::capture(ExecutionInputCapture3D{
+      .capture_sequence = previous.captureSequence() + 2U,
+      .pose_revision = previous.poseRevision() + 2U,
+      .pose_source_timestamp_us = previous.poseSourceTimestampUs() + 2U,
+      .pose_receive_stamp_ns = effective_stamp_ns - 30'000LL,
+      .effective_stamp_ns = effective_stamp_ns,
+      .state = state,
+      .full_state_authoritative = true,
+      .state_provenance =
+          ExecutionStateProvenance3D{
+              .x = kSample,
+              .y = kSample,
+              .z = kSample,
+              .vx = kSample,
+              .vy = kSample,
+              .vz = kSample,
+              .yaw = kSample,
+              .yaw_rate = kSample,
+          },
+      .previous_control = {},
+      .previous_control_source = previous.previousControlSource(),
+      .previous_control_source_producer_instance_id =
+          previous.previousControlSourceProducerInstanceId(),
+      .previous_control_source_sequence = previous.previousControlSourceSequence() + 2U,
+      .previous_control_source_stamp_ns = effective_stamp_ns - 20'000LL,
+      .previous_control_receive_stamp_ns = effective_stamp_ns - 10'000LL,
+  });
+}
+
 } // namespace drone_city_nav

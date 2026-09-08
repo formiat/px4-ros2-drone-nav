@@ -414,49 +414,6 @@ TEST(ExecutionSupervisorStop3DTest, AStopFlownToRestBecomesAStationaryHold) {
   EXPECT_NEAR(hold.position.y, stop->rest_position.y, 1.0e-6);
 }
 
-// The vehicle observed at rest at `position`, after the stop's lease ended.
-[[nodiscard]] std::shared_ptr<const VersionedExecutionInput3D>
-restingInputAt(const VersionedExecutionInput3D& previous, const Point3& position,
-               const std::int64_t effective_stamp_ns) {
-  MotionState3D state = previous.state();
-  state.x = static_cast<float>(position.x);
-  state.y = static_cast<float>(position.y);
-  state.z = static_cast<float>(position.z);
-  state.vx = 0.0F;
-  state.vy = 0.0F;
-  state.vz = 0.0F;
-  state.yaw_rate = 0.0F;
-  constexpr ExecutionStateFieldProvenance3D kSample{
-      ExecutionStateFieldProvenance3D::kSourceSample};
-  return VersionedExecutionInput3D::capture(ExecutionInputCapture3D{
-      .capture_sequence = previous.captureSequence() + 2U,
-      .pose_revision = previous.poseRevision() + 2U,
-      .pose_source_timestamp_us = previous.poseSourceTimestampUs() + 2U,
-      .pose_receive_stamp_ns = effective_stamp_ns - 30'000LL,
-      .effective_stamp_ns = effective_stamp_ns,
-      .state = state,
-      .full_state_authoritative = true,
-      .state_provenance =
-          ExecutionStateProvenance3D{
-              .x = kSample,
-              .y = kSample,
-              .z = kSample,
-              .vx = kSample,
-              .vy = kSample,
-              .vz = kSample,
-              .yaw = kSample,
-              .yaw_rate = kSample,
-          },
-      .previous_control = {},
-      .previous_control_source = previous.previousControlSource(),
-      .previous_control_source_producer_instance_id =
-          previous.previousControlSourceProducerInstanceId(),
-      .previous_control_source_sequence = previous.previousControlSourceSequence() + 2U,
-      .previous_control_source_stamp_ns = effective_stamp_ns - 20'000LL,
-      .previous_control_receive_stamp_ns = effective_stamp_ns - 10'000LL,
-  });
-}
-
 TEST(ExecutionSupervisorStop3DTest, TheHoldPinsWhereTheVehicleActuallyStopped) {
   SnapshotFixture3D fixture;
   ExecutionSupervisor3D supervisor;
@@ -506,6 +463,85 @@ TEST(ExecutionSupervisorStop3DTest, TheHoldPinsWhereTheVehicleActuallyStopped) {
   ASSERT_NE(hold.transition->next->stationaryHold(), nullptr);
   EXPECT_NEAR(hold.transition->next->stationaryHold()->position.x, actual_rest.x,
               1.0e-6);
+}
+
+// A hold taken over from a stop carries that stop's trajectory revision, and
+// the route that takes the resting vehicle back is numbered after it. Numbering
+// it as if nothing had owned the vehicle left one recorded flight resting for
+// half a minute with a certified route pending.
+TEST(ExecutionSupervisorStop3DTest, ACertifiedRouteTakesTheVehicleBackFromARestHold) {
+  SnapshotFixture3D fixture;
+  ExecutionSupervisor3D supervisor;
+  const std::shared_ptr<const ExecutionPlan3D> active =
+      installRouteOwner(supervisor, fixture);
+  ASSERT_NE(active, nullptr);
+  ASSERT_NE(active->finiteExecution(), nullptr);
+  const std::shared_ptr<const VersionedExecutionInput3D> input =
+      movingInput(*active->finiteExecution()->execution_input, 4.0F);
+  const std::shared_ptr<const ExecutionPlan3D> stopping = commitStop(
+      supervisor, supervisor.prepareStop(stopRequest(fixture, active, input)), input);
+  ASSERT_NE(stopping, nullptr);
+  const StopExecution3D* const stop = stopping->stopExecution();
+  ASSERT_NE(stop, nullptr);
+  EXPECT_EQ(stopping->ownerTrajectoryRevision(), stop->trajectory_revision);
+
+  const Point3 rest_position = stop->rest_position;
+  const StationaryExecutionHoldCertification3D evidence =
+      SnapshotFixture3D::holdCertification(*stopping);
+  const std::shared_ptr<const VersionedExecutionInput3D> resting_input =
+      restingInputAt(*stop->execution_input, rest_position, stop->valid_until_ns + 1);
+  ASSERT_NE(resting_input, nullptr);
+  const ExecutionHoldPreparation3D hold = supervisor.prepareHold(ExecutionHoldRequest3D{
+      .intent = ExecutionHoldIntent3D::kExplicitTransfer,
+      .requested_position = rest_position,
+      .cycle_source_plan = stopping,
+      .execution_input = resting_input,
+      .latest_lidar_evidence = evidence.latest_lidar_evidence,
+      .current_lidar_evidence = evidence.latest_lidar_evidence,
+      .current_observed_raw_world = evidence.observed_raw_world,
+      .stationary_capture_observed_raw_world = nullptr,
+      .stationary_capture_static_world = nullptr,
+      .selected_validation_policy = nullptr,
+      .stationary_capture_validation_policy = evidence.validation_policy,
+      .validation_now_ns = resting_input->effectiveStampNs(),
+  });
+  ASSERT_TRUE(hold.prepared())
+      << executionHoldPreparationStatus3DName(hold.status) << " "
+      << executionRouteTransitionStatus3DName(hold.transition_status) << " "
+      << executionRouteTransitionDetail3DName(hold.transition_detail);
+  ASSERT_NE(hold.transition, nullptr);
+  const std::shared_ptr<const ExecutionPlan3D> resting = hold.transition->next;
+  ASSERT_NE(resting, nullptr);
+  ASSERT_NE(resting->stationaryHold(), nullptr);
+  EXPECT_EQ(resting->stationaryHold()->source_trajectory_revision,
+            stop->trajectory_revision);
+  EXPECT_EQ(resting->ownerTrajectoryRevision(), stop->trajectory_revision);
+
+  // The successor is certified from where the vehicle rests, along the route.
+  ExecutionRouteActivation3D successor_activation = fixture.activation();
+  successor_activation.route_generation = resting->routeGenerationHighWater() + 1U;
+  successor_activation =
+      rebindUnconstrainedDecorations(std::move(successor_activation));
+  const std::optional<CertifiedRouteSuffix3D> successor =
+      certifyExecutionRoute3D(successor_activation);
+  ASSERT_TRUE(successor.has_value());
+  const CertifiedRouteSuffix3D& successor_route =
+      successor.value(); // NOLINT(bugprone-unchecked-optional-access)
+  const ExecutionRouteTransitionResult3D activation = activateCertifiedRoute3D(
+      *resting, resting->version, successor_route,
+      SnapshotFixture3D::finitePlanForRoute(
+          *resting, successor_route, FiniteExecutionKind3D::kNominal,
+          resting->ownerTrajectoryRevision() + 1U, 55U, 0U, rest_position.x));
+
+  ASSERT_TRUE(activation.applied())
+      << executionRouteTransitionStatus3DName(activation.status) << " "
+      << executionRouteTransitionDetail3DName(activation.detail);
+  ASSERT_NE(activation.next, nullptr);
+  EXPECT_EQ(activation.next->phase(), ExecutionRoutePhase3D::kFollowing);
+  EXPECT_EQ(activation.next->stationaryHold(), nullptr);
+  ASSERT_NE(activation.next->finiteExecution(), nullptr);
+  EXPECT_GT(activation.next->finiteExecution()->trajectory_revision,
+            stop->trajectory_revision);
 }
 
 TEST(ExecutionSupervisorStop3DTest, ACertifiedSuccessorIsPublishedPendingAgainstAStop) {

@@ -168,19 +168,14 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
     route_certification_target = route_execution.pending_activation
                                      ? route_execution.route.get()
                                      : execution_certification_snapshot->route();
-    std::uint64_t previous_trajectory_revision{0U};
-    if (const FiniteExecutionState3D* const finite =
-            execution_certification_snapshot->finiteExecution()) {
-      previous_trajectory_revision = finite->trajectory_revision;
-    } else if (const DirectTrackingFiniteExecution3D* const direct =
-                   execution_certification_snapshot->directTrackingExecution()) {
-      previous_trajectory_revision = direct->trajectory_revision;
-    } else if (const StopExecution3D* const stop =
-                   execution_certification_snapshot->stopExecution()) {
-      // A route certified from a stopping vehicle takes the vehicle back from
-      // the stop, so its trajectory succeeds the stop's.
-      previous_trajectory_revision = stop->trajectory_revision;
-    }
+    // The route's trajectory succeeds whatever owns the vehicle now: the
+    // execution being replaced, the stop it takes the vehicle back from, or
+    // the hold a resting vehicle is taken back from, which carries the
+    // revision of the execution it once took over. One recorded flight spent
+    // half a minute at rest because a route certified from such a hold was
+    // numbered as if nothing had owned the vehicle before.
+    const std::uint64_t previous_trajectory_revision =
+        execution_certification_snapshot->ownerTrajectoryRevision();
     if (route_certification_target == nullptr ||
         previous_trajectory_revision == std::numeric_limits<std::uint64_t>::max()) {
       return failedCandidate(HorizonCandidateStatus3D::kCertificationRejected);
@@ -280,17 +275,8 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
       candidate.status = HorizonCandidateStatus3D::kCertificationRejected;
       return candidate;
     }
-    const DirectTrackingFiniteExecution3D* const expected_direct =
-        expected->directTrackingExecution();
-    const FiniteExecutionState3D* const expected_finite = expected->finiteExecution();
-    std::uint64_t previous_trajectory_revision{0U};
-    if (expected_direct != nullptr) {
-      previous_trajectory_revision = expected_direct->trajectory_revision;
-    } else if (expected_finite != nullptr) {
-      previous_trajectory_revision = expected_finite->trajectory_revision;
-    } else if (const StopExecution3D* const expected_stop = expected->stopExecution()) {
-      previous_trajectory_revision = expected_stop->trajectory_revision;
-    }
+    const std::uint64_t previous_trajectory_revision =
+        expected->ownerTrajectoryRevision();
     if (previous_trajectory_revision == std::numeric_limits<std::uint64_t>::max()) {
       candidate.status = HorizonCandidateStatus3D::kCertificationRejected;
       return candidate;

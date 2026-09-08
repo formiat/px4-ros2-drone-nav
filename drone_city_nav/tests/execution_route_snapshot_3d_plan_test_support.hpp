@@ -10,18 +10,22 @@ FiniteExecutionPlan3D SnapshotFixture3D::finitePlanForRoute(
     const FiniteExecutionKind3D command_kind, const std::uint64_t trajectory_revision,
     const std::uint64_t source_navigation_revision,
     const std::size_t extra_stationary_control_count, const double begin_station_m) {
-  // A stop owns no route and no finite execution, yet its evidence is the
-  // newest the plan has seen: a successor certified over it must not regress.
+  // A stop or a stationary hold owns no route and no finite execution, yet
+  // its evidence is the newest the plan has seen: a successor certified over
+  // it must not regress.
   const StopExecution3D* const stop = snapshot.stopExecution();
+  const StationaryExecutionHold3D* const hold = snapshot.stationaryHold();
   FiniteExecutionCertification3D command = finiteCertificationForRoute(
       suffix, command_kind, trajectory_revision, source_navigation_revision,
       extra_stationary_control_count, begin_station_m,
       snapshot.route() != nullptr ? snapshot.route()->progress.execution_input.get()
       : stop != nullptr           ? stop->execution_input.get()
+      : hold != nullptr           ? hold->terminal_execution_input.get()
                                   : nullptr,
       snapshot.finiteExecution() != nullptr
           ? snapshot.finiteExecution()->latest_lidar_evidence.get()
       : stop != nullptr ? stop->latest_lidar_evidence.get()
+      : hold != nullptr ? hold->latest_lidar_evidence.get()
                         : nullptr);
   const std::optional<FiniteMotionHorizon3D> braking = buildFiniteBrakingHorizon3D(
       command.horizon.states.front(), command.horizon.controls.size(),
