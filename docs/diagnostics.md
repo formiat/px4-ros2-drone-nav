@@ -44,10 +44,13 @@ the script rather than assuming that `log/latest` belongs to the intended run.
 
 `active_speed_limiter` names the speed limit that set the reference speed
 (`cruise`, `curvature`, `sensor_braking`, `goal`, `route_endpoint`,
-`route_constraint`, `blocked_route`, `clearance`), and the
-`*_speed_limit_mps` fields carry each limit; `clearance_speed_limit_mps` is
+`route_constraint`, `blocked_route`, `clearance`, `unobserved_frontier`), and
+the `*_speed_limit_mps` fields carry each limit; `clearance_speed_limit_mps` is
 the tracking-tube speed the executed horizon's body clearance admits, folded
-with the stopping law on the way to each constrained sample.
+with the stopping law on the way to each constrained sample, and
+`unobserved_frontier_speed_limit_mps` is the sensor-braking contract read with
+the range the evidence covers along the executed horizon, where that horizon
+enters space the lidar has not observed.
 
 The JSONL record carries the same data in machine-readable form. It is written
 at `diagnostics_file_rate_hz`, well below the tick rate, because the record is
@@ -55,8 +58,11 @@ large. It additionally itemises the decision:
 
 - `executed_horizon_*`: the clearance the speed policy answered to — the
   minimum over the motion under execution, the first constrained sample's
-  clearance and distance, and `executed_horizon_constrained_samples`, every
-  constrained sample as `[distance_m, clearance_m]` in path order;
+  clearance and distance, `executed_horizon_distance_to_unobserved_m`, the
+  path length to the first sample whose body envelope reaches unobserved
+  space (`inf` when the whole motion is observed), and
+  `executed_horizon_constrained_samples`, every constrained sample as
+  `[distance_m, clearance_m]` in path order;
 - `selected_costs` and `route_directed_candidate_costs`: the weighted cost
   terms of the sequence the tick selected and of the route-directed candidate
   (`null` when none was injected), reported by the same kernel that ranked the
@@ -75,7 +81,8 @@ position, velocity, the first control, the control-selection source, the
 reference speed before and after its rise limit, the active limiter, the
 minimum ESDF distance, the selected sequence's head speed and contact distance,
 the executed horizon's first constrained clearance and its distance (`-1` when
-unconstrained), the risk tier, the route generation, the planning state and
+unconstrained), the distance to its first unobserved sample (`-1` when the
+motion is observed throughout), the risk tier, the route generation, the planning state and
 the execution reason. A throttled record cannot answer how often the reference
 speed flips, how often the first control opposes the velocity, or how long a
 stall lasted — those are properties of the ticks it skips.

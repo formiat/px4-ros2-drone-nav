@@ -26,6 +26,7 @@ enum class MppiSpeedLimiter : std::uint8_t {
   kRouteConstraint,
   kBlockedRoute,
   kClearance,
+  kUnobservedFrontier,
 };
 
 struct MppiSpeedPolicyConfig {
@@ -69,7 +70,10 @@ struct MppiSpeedPolicyInput {
   // Where the motion the vehicle executes right now comes close to known
   // occupied evidence: how far along it each such point lies, and the body
   // clearance there. The tube law applies at each point, and the stopping law
-  // decides what the vehicle may carry on the way to it.
+  // decides what the vehicle may carry on the way to it. It also says how far
+  // along that motion the evidence reaches: past the first unobserved sample
+  // the sensor-braking contract's guaranteed range no longer applies, and the
+  // same contract is read with the observed range instead.
   std::optional<ExecutedHorizonClearance3D> executed_horizon_clearance;
   // Reference speed the previous cycle published, and how long ago, for the
   // rise limit. Absent on the first cycle, which then starts unconstrained.
@@ -92,6 +96,7 @@ struct MppiSpeedPolicyResult {
   double route_constraint_limit_mps{std::numeric_limits<double>::infinity()};
   double blocked_route_limit_mps{std::numeric_limits<double>::infinity()};
   double clearance_limit_mps{std::numeric_limits<double>::infinity()};
+  double unobserved_frontier_limit_mps{std::numeric_limits<double>::infinity()};
   // The reference before the rise limit, so diagnostics show when the limit is
   // what is holding the vehicle back.
   double unslewed_reference_speed_mps{0.0};

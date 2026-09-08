@@ -129,7 +129,10 @@ controller can accumulate within its response time must fit inside the
 clearance to known occupied evidence (unknown space does not count), whatever
 the route promised when it was certified. The minimum progress speed floors
 that limit so a tight spot stays leavable; the body validation remains the
-only hard authority.
+only hard authority. Where that horizon enters space the lidar has not
+observed, the sensor-braking contract below is read with the observed range
+along the motion in place of `guaranteed_lidar_detection_range_m`, floored by
+the same minimum progress speed.
 
 `guaranteed_lidar_detection_range_m` and
 `sensor_braking_physical_margin_m` define the physical sensor side of the

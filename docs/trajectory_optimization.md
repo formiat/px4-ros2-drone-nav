@@ -218,6 +218,21 @@ doing:
   validated by the body against the raw world and ends at rest, so "stop
   within the lateral clearance" is not a physical requirement; asking for it
   pinned every corridor to the limiter's progress floor.
+- The `unobserved_frontier` limiter reads the same executed horizon for where
+  the evidence ends. The sensor-braking contract bounds the speed by the range
+  the lidar is guaranteed to have seen, which holds in the open; the inside of
+  an opening the vehicle is about to turn into has not been seen at all until
+  the lidar looks in. Along the executed horizon the evidence reaches only as
+  far as the first sample whose body envelope enters unobserved space, and the
+  contract is read with that range in place of the guaranteed one — the same
+  latency, stopping distance and physical margin. Unobserved space stays
+  traversable and carries no penalty: inside the margin the limiter is the
+  tube limiter's progress floor, the speed the raw validators certify every
+  horizon for, and the range grows back as the view opens. Without it a jamb
+  the lidar revealed late was met at four to five metres per second, the
+  finite path was rejected too late for anything but a physical stop, and the
+  stop left the body beside the evidence, where every entry into the next route
+  collided.
 
 The reference may fall as fast as any limiter asks — a cap is always allowed to
 bite at once — but it may only climb at `reference_speed_rise_mps2`, the

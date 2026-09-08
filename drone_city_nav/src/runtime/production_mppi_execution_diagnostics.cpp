@@ -153,6 +153,9 @@ std::string executedHorizonClearanceJsonFields(
          << ",\"executed_horizon_distance_to_constraint_m\":"
          << (constrained ? clearance->distanceToConstraintM()
                          : std::numeric_limits<double>::infinity())
+         << ",\"executed_horizon_distance_to_unobserved_m\":"
+         << (clearance.has_value() ? clearance->distanceToUnobservedM()
+                                   : std::numeric_limits<double>::infinity())
          << ",\"executed_horizon_constrained_samples\":[";
   if (constrained) {
     bool first = true;

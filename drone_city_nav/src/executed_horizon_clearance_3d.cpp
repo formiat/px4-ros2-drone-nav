@@ -36,6 +36,9 @@ ExecutedHorizonClearance3D measureExecutedHorizonClearance3D(
     const Point3 second = position(horizon.states[index + 1U]);
     const DerivedFootprintClearance3D clearance =
         querySweptFootprintClearance3D(grid, esdf_m, first, second, footprint);
+    if (clearance.evidence.unknown_exposure && !result.unobserved_distance_m) {
+      result.unobserved_distance_m = travelled_m;
+    }
     if (clearance.evidence.known_clearance_observed) {
       const double clearance_m = clearance.evidence.minimum_known_clearance_m;
       result.minimum_clearance_m = std::min(result.minimum_clearance_m, clearance_m);

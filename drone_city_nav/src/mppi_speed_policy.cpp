@@ -218,6 +218,30 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
                                         config.stopping_capability)));
     }
   }
+  if (input.executed_horizon_clearance.has_value() &&
+      input.executed_horizon_clearance->unobserved()) {
+    // The motion under execution enters space the evidence has not observed.
+    // The sensor-braking contract bounds the speed by the range the sensor is
+    // guaranteed to have seen; along this motion the evidence reaches only as
+    // far as the first unobserved sample, so the contract is read with that
+    // range in place of the guaranteed one. An opening whose inside the lidar
+    // has not looked into yet is approached at the speed the vehicle can stop
+    // from before it, and the range grows back as the view opens. The floor
+    // keeps unobserved space enterable — it is traversable and carries no
+    // penalty — at the speed the raw validators certify every horizon for.
+    const double observed_range_m =
+        input.executed_horizon_clearance->distanceToUnobservedM();
+    double frontier_limit_mps = config.clearance_minimum_progress_speed_mps;
+    if (observed_range_m > config.sensor_braking_contract.physical_margin_m) {
+      SensorBrakingContract3D observed_contract = config.sensor_braking_contract;
+      observed_contract.guaranteed_detection_range_m = observed_range_m;
+      frontier_limit_mps = std::max(
+          frontier_limit_mps, sensorBrakingMaximumSpeedMps(
+                                  observed_contract, config.stopping_capability,
+                                  config.absolute_speed_limit_mps, braking_direction));
+    }
+    result.unobserved_frontier_limit_mps = frontier_limit_mps;
+  }
   if (input.route_constraint_speed_limit_mps.has_value()) {
     result.route_constraint_limit_mps =
         std::max(0.0, *input.route_constraint_speed_limit_mps);
@@ -247,11 +271,12 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
     }
   }
 
-  result.reference_speed_mps = std::min(
-      {result.cruise_limit_mps, result.absolute_limit_mps, result.curvature_limit_mps,
-       result.sensor_braking_limit_mps, result.goal_limit_mps,
-       result.route_endpoint_limit_mps, result.route_constraint_limit_mps,
-       result.blocked_route_limit_mps, result.clearance_limit_mps});
+  result.reference_speed_mps =
+      std::min({result.cruise_limit_mps, result.absolute_limit_mps,
+                result.curvature_limit_mps, result.sensor_braking_limit_mps,
+                result.goal_limit_mps, result.route_endpoint_limit_mps,
+                result.route_constraint_limit_mps, result.blocked_route_limit_mps,
+                result.clearance_limit_mps, result.unobserved_frontier_limit_mps});
   const std::array limits{
       std::pair{result.cruise_limit_mps, MppiSpeedLimiter::kCruise},
       std::pair{result.absolute_limit_mps, MppiSpeedLimiter::kAbsolute},
@@ -262,6 +287,8 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
       std::pair{result.route_constraint_limit_mps, MppiSpeedLimiter::kRouteConstraint},
       std::pair{result.blocked_route_limit_mps, MppiSpeedLimiter::kBlockedRoute},
       std::pair{result.clearance_limit_mps, MppiSpeedLimiter::kClearance},
+      std::pair{result.unobserved_frontier_limit_mps,
+                MppiSpeedLimiter::kUnobservedFrontier},
   };
   result.active_limiter = std::min_element(limits.begin(), limits.end(),
                                            [](const auto& first, const auto& second) {
@@ -326,6 +353,8 @@ const char* mppiSpeedLimiterName(const MppiSpeedLimiter limiter) noexcept {
       return "blocked_route";
     case MppiSpeedLimiter::kClearance:
       return "clearance";
+    case MppiSpeedLimiter::kUnobservedFrontier:
+      return "unobserved_frontier";
   }
   return "unknown";
 }

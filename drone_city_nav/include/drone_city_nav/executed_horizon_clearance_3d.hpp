@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <limits>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -39,6 +40,15 @@ struct ExecutedHorizonClearance3D {
   std::vector<ConstrainedHorizonSample3D> constrained_samples;
   // Smallest body clearance anywhere on the remaining motion, for diagnostics.
   double minimum_clearance_m{std::numeric_limits<double>::infinity()};
+  // Path length along the remaining motion to the first sample whose body
+  // envelope reaches space the evidence has not observed. Unknown space is not
+  // a clearance constraint — it stays traversable and carries no penalty — but
+  // it is where the sensor's guarantee ends along this motion: nothing beyond
+  // it has been seen, so the sensor-braking law reads this as the range the
+  // evidence actually covers, in place of the range the sensor guarantees in
+  // the open. Absent when the whole remaining motion runs through observed
+  // space.
+  std::optional<double> unobserved_distance_m;
 
   [[nodiscard]] bool constrained() const noexcept {
     return available && !constrained_samples.empty();
@@ -55,12 +65,24 @@ struct ExecutedHorizonClearance3D {
     return constrained() ? constrained_samples.front().clearance_m
                          : std::numeric_limits<double>::infinity();
   }
+
+  // The remaining motion enters space the evidence has not observed.
+  [[nodiscard]] bool unobserved() const noexcept {
+    return available && unobserved_distance_m.has_value();
+  }
+
+  // Path length along the remaining motion to the first unobserved sample.
+  [[nodiscard]] double distanceToUnobservedM() const noexcept {
+    return unobserved() ? *unobserved_distance_m
+                        : std::numeric_limits<double>::infinity();
+  }
 };
 
 // Measures the remaining part of `horizon` from `first_remaining_state_index`
 // against the current evidence. Samples whose clearance is unknown or off the
 // grid are not constraints: unknown space stays traversable and carries no
-// penalty, and the body validation remains the only hard authority.
+// penalty, and the body validation remains the only hard authority. The first
+// such sample is recorded as the end of the observed range along the motion.
 [[nodiscard]] ExecutedHorizonClearance3D measureExecutedHorizonClearance3D(
     const FiniteMotionHorizon3D& horizon, std::size_t first_remaining_state_index,
     const EsdfGrid3D& grid, std::span<const float> esdf_m,

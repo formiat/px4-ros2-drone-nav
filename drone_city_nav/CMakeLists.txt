@@ -1559,6 +1559,12 @@ if(BUILD_TESTING)
   target_link_libraries(indexed_point_cloud_3d_test drone_city_nav_core)
   enable_project_warnings(indexed_point_cloud_3d_test)
 
+  ament_add_gtest(executed_horizon_clearance_3d_test
+    tests/executed_horizon_clearance_3d_test.cpp)
+  target_compile_features(executed_horizon_clearance_3d_test PRIVATE cxx_std_20)
+  target_link_libraries(executed_horizon_clearance_3d_test drone_city_nav_core)
+  enable_project_warnings(executed_horizon_clearance_3d_test)
+
   ament_add_gtest(flight_envelope_test tests/flight_envelope_test.cpp)
   target_compile_features(flight_envelope_test PRIVATE cxx_std_20)
   target_link_libraries(flight_envelope_test drone_city_nav_core)

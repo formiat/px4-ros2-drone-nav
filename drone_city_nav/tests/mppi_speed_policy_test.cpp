@@ -137,6 +137,60 @@ TEST(MppiSpeedPolicyTest,
   EXPECT_DOUBLE_EQ(open.reference_speed_mps, 20.0);
 }
 
+TEST(MppiSpeedPolicyTest,
+     TheObservedRangeAlongTheMotionBoundsTheSpeedLikeTheSensorRange) {
+  // The sensor-braking contract bounds the speed by the range the sensor is
+  // guaranteed to have seen. Where the motion under execution enters space the
+  // evidence has not observed, the same contract is read with the range the
+  // evidence actually covers along that motion.
+  MppiSpeedPolicyConfig config;
+  config.cruise_speed_mps = 20.0;
+  config.absolute_speed_limit_mps = 20.0;
+  config.sensor_braking_contract.guaranteed_detection_range_m = 30.0;
+  config.sensor_braking_contract.maximum_evidence_age_s = 0.25;
+  config.sensor_braking_contract.physical_margin_m = 3.0;
+  config.clearance_minimum_progress_speed_mps = 1.0;
+  MppiSpeedPolicyInput input;
+  input.terminal_goal_limit_enabled = false;
+  ExecutedHorizonClearance3D clearance;
+  clearance.available = true;
+
+  clearance.unobserved_distance_m = 10.0;
+  input.executed_horizon_clearance = clearance;
+  const MppiSpeedPolicyResult near = evaluateMppiSpeedPolicy(config, input);
+  SensorBrakingContract3D observed = config.sensor_braking_contract;
+  observed.guaranteed_detection_range_m = 10.0;
+  const double expected_mps = sensorBrakingMaximumSpeedMps(
+      observed, config.stopping_capability, config.absolute_speed_limit_mps, Vec3{});
+  EXPECT_EQ(near.active_limiter, MppiSpeedLimiter::kUnobservedFrontier);
+  EXPECT_STREQ(mppiSpeedLimiterName(near.active_limiter), "unobserved_frontier");
+  EXPECT_NEAR(near.unobserved_frontier_limit_mps, expected_mps, 1.0e-9);
+  EXPECT_LT(near.unobserved_frontier_limit_mps, near.sensor_braking_limit_mps);
+  EXPECT_DOUBLE_EQ(near.reference_speed_mps, near.unobserved_frontier_limit_mps);
+
+  // Inside the physical margin the contract admits nothing; unobserved space
+  // stays enterable at the progress floor.
+  clearance.unobserved_distance_m = 2.0;
+  input.executed_horizon_clearance = clearance;
+  const MppiSpeedPolicyResult touching = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_EQ(touching.active_limiter, MppiSpeedLimiter::kUnobservedFrontier);
+  EXPECT_DOUBLE_EQ(touching.unobserved_frontier_limit_mps, 1.0);
+  EXPECT_DOUBLE_EQ(touching.reference_speed_mps, 1.0);
+
+  // Beyond the guaranteed range the observed range adds nothing.
+  clearance.unobserved_distance_m = 60.0;
+  input.executed_horizon_clearance = clearance;
+  const MppiSpeedPolicyResult far = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_NE(far.active_limiter, MppiSpeedLimiter::kUnobservedFrontier);
+  EXPECT_GE(far.unobserved_frontier_limit_mps, far.sensor_braking_limit_mps);
+
+  clearance.unobserved_distance_m.reset();
+  input.executed_horizon_clearance = clearance;
+  const MppiSpeedPolicyResult observed_throughout =
+      evaluateMppiSpeedPolicy(config, input);
+  EXPECT_TRUE(std::isinf(observed_throughout.unobserved_frontier_limit_mps));
+}
+
 TEST(MppiSpeedPolicyTest, ATightPointFarAheadOnlyHasToBeReachedSlowly) {
   const MppiSpeedPolicyConfig config = clearanceLimiterConfig();
   MppiSpeedPolicyInput input;
