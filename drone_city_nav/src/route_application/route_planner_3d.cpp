@@ -101,7 +101,8 @@ RoutePlanner3D::RoutePlanner3D(const RoutePlannerConfig3D& config)
 RoutePlannerUpdate3D RoutePlanner3D::update(
     const PlannerSearchTransaction3D& transaction,
     const RoutePlannerVehicleState3D& vehicle_state,
-    std::shared_ptr<const RoutePlannerSession3D> continuation_session) {
+    std::shared_ptr<const RoutePlannerSession3D> continuation_session,
+    const bool renew_consumer_session) {
   const auto search_started = std::chrono::steady_clock::now();
   RoutePlannerUpdate3D result;
   const auto finish = [search_started](RoutePlannerUpdate3D update) {
@@ -203,6 +204,11 @@ RoutePlannerUpdate3D RoutePlanner3D::update(
           continuation_session->request.mission_epoch ||
       distance3D(mission_goal, continuation_session->mission_goal) > 1.0e-9) {
     return finish(std::move(result));
+  }
+  if (renew_consumer_session) {
+    auto renewed = std::make_shared<RoutePlannerSession3D>(*continuation_session);
+    renewed->request.session_id = ++next_session_id_;
+    continuation_session = std::move(renewed);
   }
   const ObservedOccupancyGrid3D* const route_search_occupancy =
       continuation_session->request.world.observed_occupancy.get();

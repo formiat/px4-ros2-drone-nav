@@ -324,6 +324,19 @@ found nothing is repeated only when the world changed. `PERSISTENT_PLANNER3D`
 reports `escape_attempted`, `escape_found`, `escape_active`, `escape_exhausted`,
 `escape_probes` and `escape_cells`; `departure_waypoints` counts the chain.
 
+A route search serves a consumer session: the first update of a session
+delivers the search's incumbent, later updates only improvements. A vehicle
+that lost its route — its execution revoked after a certified stop, its
+pending route retired with the execution base — holds nothing of the search
+any more, and the fresh request it raises for a route is displaced by, or
+held behind, the continuation of the search that is already running for the
+same base. That continuation therefore opens a new consumer session whenever
+the vehicle holds neither a resident nor a pending route, and the planner
+delivers its incumbent again on the next update. Before this, a continuation
+that kept its session answered with improvements only, and one recorded run
+held for five seconds after every stop until the refinement happened to find
+one.
+
 The goal end of the search has the same weakness in a smaller form. The
 search ends at a lattice node within the connector radius of the goal whose
 straight connector to the goal validates. A goal set a hand's breadth above a

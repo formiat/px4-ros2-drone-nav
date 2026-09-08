@@ -24,6 +24,12 @@ struct RoutePlanningRequest3D {
   std::shared_ptr<const PlannerSearchTransaction3D> transaction;
   ProductionWorldBuildTelemetry3D world_telemetry{};
   std::shared_ptr<const RoutePlannerSession3D> continuation_session;
+  // The consumer holds no route of this search any more — its execution was
+  // revoked, or its pending route was retired — so the continuation opens a
+  // new consumer session: the planner delivers its incumbent again instead
+  // of improvements only. A continuation that kept its session republished
+  // nothing until the incumbent improved, and the vehicle held for as long.
+  bool renew_consumer_session{false};
 
   [[nodiscard]] bool valid() const noexcept {
     return transaction != nullptr && transaction->valid();

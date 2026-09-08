@@ -234,7 +234,8 @@ void RoutePlanningCoordinator3D::run(const std::stop_token stop_token) noexcept 
         continue;
       }
       RoutePlannerUpdate3D update =
-          planner_.update(*transaction, vehicle_state, request->continuation_session);
+          planner_.update(*transaction, vehicle_state, request->continuation_session,
+                          request->renew_consumer_session);
       try {
         config_.update_handler(RoutePlanningUpdateEvent3D{
             .request = *request,

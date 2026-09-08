@@ -173,5 +173,39 @@ TEST(RoutePlanner3DTest, RejectsAContinuationCapturedForAnotherMission) {
   EXPECT_FALSE(mismatched.improved_incumbent.has_value());
 }
 
+TEST(RoutePlanner3DTest, ARenewedConsumerSessionReceivesTheIncumbentAgain) {
+  // The first update delivers the incumbent; a continuation of the same
+  // session gets improvements only, and a converged search has none. A
+  // continuation that renews the consumer session is a consumer that holds no
+  // route of this search: it receives the incumbent again, under a new
+  // session id, and later continuations of that session are improvement-only.
+  const PlannerFixture3D input = fixture();
+  ASSERT_NE(input.transaction, nullptr);
+  RoutePlanner3D planner{plannerConfig()};
+  const RoutePlannerUpdate3D first = planner.update(*input.transaction, vehicleState());
+  ASSERT_NE(first.planner_session, nullptr);
+  ASSERT_TRUE(first.improved_incumbent.has_value());
+  const std::uint64_t first_session = first.planner_session->request.session_id;
+  ASSERT_NE(first_session, 0U);
+
+  const RoutePlannerUpdate3D same_session =
+      planner.update(*input.transaction, vehicleState(), first.planner_session);
+  EXPECT_EQ(same_session.status, RoutePlannerUpdateStatus3D::kUpdated);
+  EXPECT_FALSE(same_session.improved_incumbent.has_value());
+  EXPECT_EQ(same_session.planner_session->request.session_id, first_session);
+
+  const RoutePlannerUpdate3D renewed = planner.update(
+      *input.transaction, vehicleState(), same_session.planner_session, true);
+  EXPECT_EQ(renewed.status, RoutePlannerUpdateStatus3D::kUpdated);
+  ASSERT_NE(renewed.planner_session, nullptr);
+  EXPECT_NE(renewed.planner_session->request.session_id, first_session);
+  ASSERT_TRUE(renewed.improved_incumbent.has_value());
+  EXPECT_TRUE(candidate(renewed).spatial_route.valid());
+
+  const RoutePlannerUpdate3D after =
+      planner.update(*input.transaction, vehicleState(), renewed.planner_session);
+  EXPECT_FALSE(after.improved_incumbent.has_value());
+}
+
 } // namespace
 } // namespace drone_city_nav

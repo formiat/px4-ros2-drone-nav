@@ -87,10 +87,14 @@ public:
   RoutePlanner3D(RoutePlanner3D&&) = delete;
   RoutePlanner3D& operator=(RoutePlanner3D&&) = delete;
 
+  // A continuation with `renew_consumer_session` opens a new consumer session
+  // on the same persistent search: the planner delivers its incumbent again
+  // on that update, whatever it delivered to the previous session.
   [[nodiscard]] RoutePlannerUpdate3D
   update(const PlannerSearchTransaction3D& transaction,
          const RoutePlannerVehicleState3D& vehicle_state,
-         std::shared_ptr<const RoutePlannerSession3D> continuation_session = nullptr);
+         std::shared_ptr<const RoutePlannerSession3D> continuation_session = nullptr,
+         bool renew_consumer_session = false);
 
   void reset() noexcept;
 

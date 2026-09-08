@@ -365,6 +365,9 @@ private:
   void refreshContinuationStart(RoutePlanningRequest3D& request) const;
   void handleWorkerUpdate(RoutePlanningUpdateEvent3D event);
   void handleWorkerRejection(const RoutePlanningRejection3D& rejection);
+  // Neither a resident route nor a pending certified route: the vehicle holds
+  // nothing of the search it is served by.
+  [[nodiscard]] bool consumerHoldsNoRoute() const noexcept;
   void observeRecoveryEpisode(std::uint64_t mission_epoch) noexcept;
   void finishExtension(std::uint64_t base_generation, bool route_activated);
   void finishReplan(std::uint64_t base_generation, bool route_activated);

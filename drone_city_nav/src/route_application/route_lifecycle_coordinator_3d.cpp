@@ -847,6 +847,13 @@ bool RouteLifecycleCoordinator3D::queueContinuation(
         ++incumbent_rejection_sequence_;
     request.continuation_session = std::move(rejected_session);
   }
+  // A consumer without a route of this search — its execution revoked after a
+  // stop, its pending route retired — needs the incumbent again, not its next
+  // improvement. The continuation opens a new consumer session for it; the
+  // request it would otherwise have raised was displaced by this very
+  // continuation, or held behind its gate, and a search that answered only
+  // with improvements left the vehicle holding until one came.
+  request.renew_consumer_session = consumerHoldsNoRoute();
   // A running search carries the incumbent search state; dropping its
   // continuation behind a request that happened to be queued first would end
   // the search silently, and a displaced request loses nothing: the trigger
@@ -989,13 +996,15 @@ void RouteLifecycleCoordinator3D::handleWorkerRejection(
   config_.rejection_handler(rejection);
 }
 
-void RouteLifecycleCoordinator3D::observeRecoveryEpisode(
-    const std::uint64_t mission_epoch) noexcept {
+bool RouteLifecycleCoordinator3D::consumerHoldsNoRoute() const noexcept {
   const RouteExecutionManagerSnapshot3D execution = execution_supervisor_.snapshot();
   const std::shared_ptr<const ExecutionPlan3D> plan = execution.plan();
-  const bool recovery_active =
-      (plan == nullptr || plan->route() == nullptr) && execution.pending == nullptr;
-  static_cast<void>(recovery_episodes_.observe(mission_epoch, recovery_active));
+  return (plan == nullptr || plan->route() == nullptr) && execution.pending == nullptr;
+}
+
+void RouteLifecycleCoordinator3D::observeRecoveryEpisode(
+    const std::uint64_t mission_epoch) noexcept {
+  static_cast<void>(recovery_episodes_.observe(mission_epoch, consumerHoldsNoRoute()));
 }
 
 void RouteLifecycleCoordinator3D::finishExtension(const std::uint64_t base_generation,
