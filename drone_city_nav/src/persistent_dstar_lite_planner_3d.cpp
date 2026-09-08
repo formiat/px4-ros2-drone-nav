@@ -467,6 +467,11 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     return update;
   }
   update.input_status = PlannerInputStatus3D::kAccepted;
+  telemetry.departure_seed_distance_m = anchorDepartureEvidence(request.start);
+  if (world_.proprioceptive_free_space_seed.has_value()) {
+    telemetry.departure_seed_contact_tolerance_m =
+        world_.proprioceptive_free_space_seed->contact_tolerance_m;
+  }
   if (world_update.resident_world_retained) {
     telemetry.planned_on_revision = world_.revision;
     telemetry.occupied_fingerprint = world_.occupied_fingerprint;
@@ -552,12 +557,6 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
       departure.diagnostics.first_leg_failure_available;
   telemetry.departure_first_failure =
       departure.diagnostics.first_leg_failure.failure_point;
-  if (world_.proprioceptive_free_space_seed.has_value()) {
-    telemetry.departure_seed_distance_m =
-        distance3D(request.start, world_.proprioceptive_free_space_seed->position);
-    telemetry.departure_seed_contact_tolerance_m =
-        world_.proprioceptive_free_space_seed->contact_tolerance_m;
-  }
   if (!departure.available()) {
     update.input_status = PlannerInputStatus3D::kStartUnavailable;
     return update;

@@ -467,6 +467,13 @@ private:
   // Adopts the request's departure evidence into the resident world when the
   // occupied evidence itself is retained.
   void installDepartureEvidence(const PersistentPlannerWorld3D& world);
+  // Re-anchors the proprioceptive seed at the request start. The seed is the
+  // vehicle's own pose, and the start is that pose now; the world's copy was
+  // made when the raw world was captured — a continuation earlier — and a
+  // vehicle that has drifted into contact since was refused every departure
+  // the node's own validators, seeded at the current pose, still grant.
+  // Returns how far the seed lay from the start, negative without a seed.
+  double anchorDepartureEvidence(const Point3& start);
   // Starts every search over: the backward session, the feasibility frontier,
   // and the execution-time refinement all restart from these endpoints.
   void initializeSearch(const PersistentPlannerRequest3D& request,

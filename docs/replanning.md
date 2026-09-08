@@ -290,6 +290,17 @@ any other: the body contract validates both legs, the leg leaving the vehicle
 under the departure exemption and every later leg under ordinary raw evidence.
 `PRODUCTION_MPPI_ROUTE3D` reports `departure_waypoint=true` when it was needed.
 
+The leg leaving the vehicle carries the departure exemption for contact the
+body already holds, and the proprioceptive seed that grants it is the
+vehicle's own pose. The request's copy of the seed was made when its raw
+world was captured — a continuation earlier — while the request start is
+the vehicle's pose now: the planner re-anchors the seed at the start before
+it selects a departure, and reports how far the copy had lagged
+(`seed_distance_m`). Over one urban flight the copy lay 0.4–2.5 m from the
+start at every refusal, and a vehicle that had drifted into contact since
+was refused every departure the node's own validators, seeded at the current
+pose, still granted.
+
 A refusal at the input stage — `start_unavailable`, `goal_unavailable` — runs
 no search and is decided by the raw world alone. The lifecycle latches a
 failed search so that an exhausted search is not repeated on the same input,

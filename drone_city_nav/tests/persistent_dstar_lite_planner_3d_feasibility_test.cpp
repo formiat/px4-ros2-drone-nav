@@ -478,6 +478,40 @@ TEST(PersistentDStarLitePlanner3DTest,
   EXPECT_NEAR(path.back().z, goal.z, 1.0e-9);
 }
 
+TEST(PersistentDStarLitePlanner3DTest, AStaleSeedIsReanchoredAtTheRequestStart) {
+  // The request's seed was captured a continuation earlier, two metres from
+  // where the vehicle now stands in contact with observed evidence. The seed
+  // is the vehicle's own pose, so the planner re-anchors it at the start and
+  // the departure validates as it does for the node's own validators; the
+  // telemetry reports how far the copy had lagged.
+  auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 1.0, 18, 18, 8});
+  ASSERT_TRUE(occupancy->setState(GridIndex3D{1, 1, 1}, ObservedVoxelState::kOccupied));
+  PersistentPlannerConfig3D config = testConfig();
+  PersistentDStarLitePlanner3D planner{config};
+  const Point3 start{1.5, 1.5, 1.5};
+  const Point3 goal{16.5, 16.5, 6.5};
+
+  PersistentPlannerWorld3D stale_world = world(occupancy, 1U);
+  stale_world.proprioceptive_free_space_seed = ProprioceptiveFreeSpaceSeed3D{
+      .position = Point3{3.5, 1.5, 1.5},
+      .body_axis = FootprintBodyAxis{},
+      .footprint = config.physical_footprint,
+      .contact_tolerance_m = 0.5,
+  };
+  const PlannerUpdate3D update =
+      planner.plan(request(start, goal, std::move(stale_world)));
+
+  ASSERT_EQ(update.input_status, PlannerInputStatus3D::kAccepted);
+  EXPECT_NEAR(update.telemetry.departure_seed_distance_m, 2.0, 1.0e-9);
+  EXPECT_NEAR(update.telemetry.departure_seed_contact_tolerance_m, 0.5, 1.0e-9);
+  ASSERT_TRUE(update.improved_incumbent.has_value());
+  const std::vector<Point3>& path = candidate(update).points;
+  ASSERT_GE(path.size(), 2U);
+  EXPECT_NEAR(path.front().x, start.x, 1.0e-9);
+  EXPECT_NEAR(path.front().y, start.y, 1.0e-9);
+}
+
 TEST(PersistentDStarLitePlanner3DTest,
      ALabelDroppedNearTheAnchorReparentsTheExploredTreeInsteadOfDroppingIt) {
   // A corridor explored end to end; then occupied evidence closes its second

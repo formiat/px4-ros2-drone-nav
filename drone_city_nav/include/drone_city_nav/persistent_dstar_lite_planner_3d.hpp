@@ -279,8 +279,9 @@ struct PlannerTelemetry3D {
   // connector radius and how many of them the body clears, the departure legs
   // the body sweeps into evidence and the first such collision, and the
   // refinement probes tried and reached. With them, the proprioceptive seed
-  // the departure exemption holds: how far it lies from the start (negative
-  // without one) and its contact tolerance.
+  // the departure exemption holds: how far the request's copy lay from the
+  // start before it was re-anchored there (negative without one) and its
+  // contact tolerance.
   std::size_t departure_candidate_nodes{0U};
   std::size_t departure_valid_nodes{0U};
   std::size_t departure_rejected_legs{0U};

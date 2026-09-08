@@ -50,6 +50,20 @@ void PersistentDStarLitePlanner3DImpl::installDepartureEvidence(
   lattice_.installDepartureEvidence(world_);
 }
 
+double PersistentDStarLitePlanner3DImpl::anchorDepartureEvidence(const Point3& start) {
+  if (!world_.proprioceptive_free_space_seed.has_value()) {
+    return -1.0;
+  }
+  ProprioceptiveFreeSpaceSeed3D& seed = *world_.proprioceptive_free_space_seed;
+  const double distance_m = distance3D(seed.position, start);
+  if (distance_m <= 0.0) {
+    return distance_m;
+  }
+  seed.position = start;
+  lattice_.installDepartureEvidence(world_);
+  return distance_m;
+}
+
 PersistentPlannerWorldUpdate3D
 PersistentDStarLitePlanner3DImpl::updateWorld(const PersistentPlannerWorld3D& world) {
   PersistentPlannerWorldUpdate3D update;
