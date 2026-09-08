@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <cstddef>
+#include <optional>
 #include <vector>
 
 namespace drone_city_nav {
@@ -92,6 +93,44 @@ TEST(ExecutedHorizonClearance3DTest, TheRangeIsMeasuredFromTheRemainingMotion) {
       horizonAlongX(0.5F, 15U), 4U, grid(), esdf(), pointFootprint(), 0.1);
   ASSERT_TRUE(clearance.available);
   EXPECT_NEAR(clearance.distanceToUnobservedM(), 5.0, 1.0e-6);
+}
+
+[[nodiscard]] std::vector<RouteSample3D> routeAlongX(const double first_x,
+                                                     const std::size_t samples) {
+  std::vector<RouteSample3D> route;
+  for (std::size_t index = 0U; index < samples; ++index) {
+    route.push_back(RouteSample3D{
+        .position = {first_x + static_cast<double>(index), 1.5, 1.5},
+        .tangent = {1.0, 0.0, 0.0},
+        .station_m = static_cast<double>(index),
+    });
+  }
+  return route;
+}
+
+TEST(ExecutedHorizonClearance3DTest, TheRouteAheadReportsTheFrontierBeyondTheHorizon) {
+  // The route runs from x = 0.5 one metre per sample; the vehicle projects at
+  // station 2. The segment leaving x = 9.5 (station 9) sweeps into the unknown
+  // cells from x = 10: the observed range along the route is seven metres.
+  const std::optional<double> range_m = measureRouteObservedRange3D(
+      routeAlongX(0.5, 20U), 2.0, 30.0, grid(), esdf(), pointFootprint());
+  ASSERT_TRUE(range_m.has_value());
+  EXPECT_NEAR(*range_m, 7.0, 1.0e-6);
+}
+
+TEST(ExecutedHorizonClearance3DTest, TheRouteIsProbedNoFartherThanTheLookahead) {
+  EXPECT_FALSE(measureRouteObservedRange3D(routeAlongX(0.5, 20U), 2.0, 5.0, grid(),
+                                           esdf(), pointFootprint())
+                   .has_value());
+  EXPECT_TRUE(measureRouteObservedRange3D(routeAlongX(0.5, 20U), 2.0, 8.0, grid(),
+                                          esdf(), pointFootprint())
+                  .has_value());
+}
+
+TEST(ExecutedHorizonClearance3DTest, ARouteThroughObservedSpaceHasNoFrontier) {
+  EXPECT_FALSE(measureRouteObservedRange3D(routeAlongX(0.5, 8U), 0.0, 30.0, grid(),
+                                           esdf(), pointFootprint())
+                   .has_value());
 }
 
 } // namespace

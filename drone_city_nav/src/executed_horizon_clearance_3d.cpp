@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 
 namespace drone_city_nav {
 namespace {
@@ -50,6 +51,36 @@ ExecutedHorizonClearance3D measureExecutedHorizonClearance3D(
     travelled_m += segmentLength(first, second);
   }
   return result;
+}
+
+std::optional<double>
+measureRouteObservedRange3D(const std::span<const RouteSample3D> route,
+                            const double from_station_m, const double lookahead_m,
+                            const EsdfGrid3D& grid, const std::span<const float> esdf_m,
+                            const SweptFootprintConfig& footprint) {
+  if (route.size() < 2U || !std::isfinite(from_station_m) ||
+      !std::isfinite(lookahead_m) || !(lookahead_m > 0.0) || esdf_m.empty()) {
+    return std::nullopt;
+  }
+  const double end_station_m = from_station_m + lookahead_m;
+  Point3 previous = sampleRoute3DAtStation(route, from_station_m).position;
+  double previous_station_m = from_station_m;
+  for (const RouteSample3D& sample : route) {
+    if (sample.station_m <= from_station_m) {
+      continue;
+    }
+    const DerivedFootprintClearance3D clearance = querySweptFootprintClearance3D(
+        grid, esdf_m, previous, sample.position, footprint);
+    if (clearance.evidence.unknown_exposure) {
+      return std::max(0.0, previous_station_m - from_station_m);
+    }
+    if (sample.station_m >= end_station_m) {
+      break;
+    }
+    previous = sample.position;
+    previous_station_m = sample.station_m;
+  }
+  return std::nullopt;
 }
 
 } // namespace drone_city_nav

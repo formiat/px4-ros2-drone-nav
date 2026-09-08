@@ -75,6 +75,12 @@ struct MppiSpeedPolicyInput {
   // the sensor-braking contract's guaranteed range no longer applies, and the
   // same contract is read with the observed range instead.
   std::optional<ExecutedHorizonClearance3D> executed_horizon_clearance;
+  // Route length from the vehicle's projection to the first route segment
+  // whose body envelope reaches unobserved space, probed as far as the latest
+  // scan is checked along the route. The executed horizon ends where the
+  // vehicle can rest, so its own frontier is never beyond the stopping path;
+  // the route says where the evidence ends ahead of that.
+  std::optional<double> route_observed_range_m;
   // Reference speed the previous cycle published, and how long ago, for the
   // rise limit. Absent on the first cycle, which then starts unconstrained.
   std::optional<double> previous_reference_speed_mps;
@@ -97,6 +103,8 @@ struct MppiSpeedPolicyResult {
   double blocked_route_limit_mps{std::numeric_limits<double>::infinity()};
   double clearance_limit_mps{std::numeric_limits<double>::infinity()};
   double unobserved_frontier_limit_mps{std::numeric_limits<double>::infinity()};
+  // The observed range the frontier limiter read the contract with.
+  double unobserved_frontier_range_m{std::numeric_limits<double>::infinity()};
   // The reference before the rise limit, so diagnostics show when the limit is
   // what is holding the vehicle back.
   double unslewed_reference_speed_mps{0.0};

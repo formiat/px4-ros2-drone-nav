@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
+#include <optional>
 #include <stdexcept>
 #include <utility>
 
@@ -218,10 +220,21 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
                                         config.stopping_capability)));
     }
   }
+  std::optional<double> observed_range_m;
   if (input.executed_horizon_clearance.has_value() &&
       input.executed_horizon_clearance->unobserved()) {
-    // The motion under execution enters space the evidence has not observed.
-    // The sensor-braking contract bounds the speed by the range the sensor is
+    observed_range_m = input.executed_horizon_clearance->distanceToUnobservedM();
+  }
+  if (input.route_observed_range_m.has_value() &&
+      std::isfinite(*input.route_observed_range_m) &&
+      *input.route_observed_range_m >= 0.0) {
+    observed_range_m =
+        std::min(observed_range_m.value_or(std::numeric_limits<double>::infinity()),
+                 *input.route_observed_range_m);
+  }
+  if (observed_range_m.has_value()) {
+    // The motion ahead enters space the evidence has not observed. The
+    // sensor-braking contract bounds the speed by the range the sensor is
     // guaranteed to have seen; along this motion the evidence reaches only as
     // far as the first unobserved sample, so the contract is read with that
     // range in place of the guaranteed one. An opening whose inside the lidar
@@ -229,18 +242,20 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
     // from before it, and the range grows back as the view opens. The floor
     // keeps unobserved space enterable — it is traversable and carries no
     // penalty — at the speed the raw validators certify every horizon for.
-    const double observed_range_m =
-        input.executed_horizon_clearance->distanceToUnobservedM();
+    // The executed horizon ends where the vehicle can rest, so it reports a
+    // frontier only once the vehicle can no longer stop before it; the route
+    // ahead reports the frontier while there is still room to slow for it.
     double frontier_limit_mps = config.clearance_minimum_progress_speed_mps;
-    if (observed_range_m > config.sensor_braking_contract.physical_margin_m) {
+    if (*observed_range_m > config.sensor_braking_contract.physical_margin_m) {
       SensorBrakingContract3D observed_contract = config.sensor_braking_contract;
-      observed_contract.guaranteed_detection_range_m = observed_range_m;
+      observed_contract.guaranteed_detection_range_m = *observed_range_m;
       frontier_limit_mps = std::max(
           frontier_limit_mps, sensorBrakingMaximumSpeedMps(
                                   observed_contract, config.stopping_capability,
                                   config.absolute_speed_limit_mps, braking_direction));
     }
     result.unobserved_frontier_limit_mps = frontier_limit_mps;
+    result.unobserved_frontier_range_m = *observed_range_m;
   }
   if (input.route_constraint_speed_limit_mps.has_value()) {
     result.route_constraint_limit_mps =

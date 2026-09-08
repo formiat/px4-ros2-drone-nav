@@ -3,6 +3,7 @@
 #include "drone_city_nav/control_contracts_3d.hpp"
 #include "drone_city_nav/derived_clearance_3d.hpp"
 #include "drone_city_nav/esdf_grid_3d.hpp"
+#include "drone_city_nav/route_3d.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
 
 #include <cstddef>
@@ -87,5 +88,19 @@ struct ExecutedHorizonClearance3D {
     const FiniteMotionHorizon3D& horizon, std::size_t first_remaining_state_index,
     const EsdfGrid3D& grid, std::span<const float> esdf_m,
     const SweptFootprintConfig& footprint, double constraint_clearance_m);
+
+// Route length from `from_station_m` to the start of the first route segment
+// whose body envelope reaches space the evidence has not observed, probing no
+// farther than `lookahead_m`. The executed horizon ends where the vehicle can
+// come to rest, so the frontier it can find is never beyond the stopping path
+// and it finds none while the vehicle can still stop before it; the route is
+// where the vehicle goes next, and the evidence along it is probed as far as
+// the latest scan is. Absent when the route stays observed through the
+// lookahead, or ends inside it.
+[[nodiscard]] std::optional<double>
+measureRouteObservedRange3D(std::span<const RouteSample3D> route, double from_station_m,
+                            double lookahead_m, const EsdfGrid3D& grid,
+                            std::span<const float> esdf_m,
+                            const SweptFootprintConfig& footprint);
 
 } // namespace drone_city_nav

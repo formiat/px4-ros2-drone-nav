@@ -233,6 +233,18 @@ doing:
   finite path was rejected too late for anything but a physical stop, and the
   stop left the body beside the evidence, where every entry into the next route
   collided.
+- The executed horizon alone is not enough to find that frontier. The horizon
+  ends where the vehicle can come to rest, so the frontier it reaches is never
+  beyond the stopping path: it reports one only once the vehicle can no longer
+  stop before it, and over a whole urban flight it reported none at all while
+  walls the lidar had not looked at were met one to three metres ahead. The
+  followed route is where the vehicle goes next, so the same measurement is
+  taken along the route from the vehicle's projection, as far as the latest
+  scan is checked along it — the distance the vehicle needs to react at its
+  absolute speed limit — and the limiter reads the contract with the shorter
+  of the two ranges. Only the speed changes: the route through unobserved
+  space is flown as planned, at the speed the vehicle can stop from before
+  the space it has not seen.
 
 The reference may fall as fast as any limiter asks — a cap is always allowed to
 bite at once — but it may only climb at `reference_speed_rise_mps2`, the

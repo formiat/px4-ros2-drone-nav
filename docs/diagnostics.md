@@ -49,8 +49,10 @@ the `*_speed_limit_mps` fields carry each limit; `clearance_speed_limit_mps` is
 the tracking-tube speed the executed horizon's body clearance admits, folded
 with the stopping law on the way to each constrained sample, and
 `unobserved_frontier_speed_limit_mps` is the sensor-braking contract read with
-the range the evidence covers along the executed horizon, where that horizon
-enters space the lidar has not observed.
+the range the evidence covers ahead of the vehicle — along the executed horizon
+and along the followed route, whichever ends first in space the lidar has not
+observed — and `unobserved_frontier_range_m` is that range (`-1` when both stay
+observed).
 
 The JSONL record carries the same data in machine-readable form. It is written
 at `diagnostics_file_rate_hz`, well below the tick rate, because the record is

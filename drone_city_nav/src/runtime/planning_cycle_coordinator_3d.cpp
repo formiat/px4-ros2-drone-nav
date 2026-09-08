@@ -452,6 +452,22 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
   // A controller candidate that never reached the offboard moved nothing.
   const std::optional<ExecutedHorizonClearance3D> executed_horizon_clearance =
       measureResidentExecutionClearance(request);
+  // The executed horizon ends where the vehicle can come to rest, so the
+  // frontier it can find is never beyond the stopping path: it reports one
+  // only once the vehicle can no longer stop before it. The route is where
+  // the vehicle goes next; the evidence along it is probed as far as the
+  // latest scan is checked along the route, the distance the vehicle needs to
+  // react at its absolute speed limit, so an opening the lidar has not looked
+  // into is approached at the speed the vehicle can stop from before it.
+  const std::optional<double> route_observed_range_m =
+      output.route.usable && output.route.projection.valid && !route.empty() &&
+              request.world->distances_m != nullptr
+          ? measureRouteObservedRange3D(
+                route, output.route.projection.station_m,
+                config_.route_execution.latest_lidar_route_lookahead_m,
+                request.world->grid, *request.world->distances_m,
+                config_.physical_footprint)
+          : std::nullopt;
   const double reference_elapsed_s =
       previous_reference_stamp_ns_ > 0 && request.now_ns > previous_reference_stamp_ns_
           ? static_cast<double>(request.now_ns - previous_reference_stamp_ns_) * 1.0e-9
@@ -473,6 +489,7 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
                   : std::nullopt,
           .blocked_route_remaining_m = blockedRouteRemainingM(output.route),
           .executed_horizon_clearance = executed_horizon_clearance,
+          .route_observed_range_m = route_observed_range_m,
           .previous_reference_speed_mps = previous_reference_speed_mps_,
           .elapsed_since_previous_reference_s = reference_elapsed_s,
           .route_endpoint_semantics = route_endpoint_semantics,

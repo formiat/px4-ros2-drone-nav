@@ -191,6 +191,47 @@ TEST(MppiSpeedPolicyTest,
   EXPECT_TRUE(std::isinf(observed_throughout.unobserved_frontier_limit_mps));
 }
 
+TEST(MppiSpeedPolicyTest, TheRouteAheadBoundsTheSpeedWhereTheHorizonSeesNoFrontier) {
+  // The executed horizon ends where the vehicle can rest, so it reports no
+  // frontier while the vehicle can still stop before one; the route ahead
+  // does, and the contract is read with the shorter of the two ranges.
+  MppiSpeedPolicyConfig config;
+  config.cruise_speed_mps = 20.0;
+  config.absolute_speed_limit_mps = 20.0;
+  config.sensor_braking_contract.guaranteed_detection_range_m = 30.0;
+  config.sensor_braking_contract.maximum_evidence_age_s = 0.25;
+  config.sensor_braking_contract.physical_margin_m = 3.0;
+  config.clearance_minimum_progress_speed_mps = 1.0;
+  MppiSpeedPolicyInput input;
+  input.terminal_goal_limit_enabled = false;
+  ExecutedHorizonClearance3D clearance;
+  clearance.available = true;
+  input.executed_horizon_clearance = clearance;
+
+  input.route_observed_range_m = 10.0;
+  const MppiSpeedPolicyResult route_only = evaluateMppiSpeedPolicy(config, input);
+  SensorBrakingContract3D observed = config.sensor_braking_contract;
+  observed.guaranteed_detection_range_m = 10.0;
+  const double expected_mps = sensorBrakingMaximumSpeedMps(
+      observed, config.stopping_capability, config.absolute_speed_limit_mps, Vec3{});
+  EXPECT_EQ(route_only.active_limiter, MppiSpeedLimiter::kUnobservedFrontier);
+  EXPECT_NEAR(route_only.unobserved_frontier_limit_mps, expected_mps, 1.0e-9);
+  EXPECT_DOUBLE_EQ(route_only.unobserved_frontier_range_m, 10.0);
+
+  clearance.unobserved_distance_m = 6.0;
+  input.executed_horizon_clearance = clearance;
+  const MppiSpeedPolicyResult nearer_horizon = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_DOUBLE_EQ(nearer_horizon.unobserved_frontier_range_m, 6.0);
+  EXPECT_LT(nearer_horizon.unobserved_frontier_limit_mps,
+            route_only.unobserved_frontier_limit_mps);
+
+  input.route_observed_range_m.reset();
+  input.executed_horizon_clearance.reset();
+  const MppiSpeedPolicyResult unbounded = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_TRUE(std::isinf(unbounded.unobserved_frontier_limit_mps));
+  EXPECT_TRUE(std::isinf(unbounded.unobserved_frontier_range_m));
+}
+
 TEST(MppiSpeedPolicyTest, ATightPointFarAheadOnlyHasToBeReachedSlowly) {
   const MppiSpeedPolicyConfig config = clearanceLimiterConfig();
   MppiSpeedPolicyInput input;
