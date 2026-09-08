@@ -437,6 +437,12 @@ public:
   // The same curve scaled to another reach: unity at and beyond it.
   [[nodiscard]] double rankingFactorForBodyClearance(double body_clearance_m,
                                                      double distance_m) const noexcept;
+  // Worst ranking factor sampled along one segment of a point path: what the
+  // segment's translation time is scaled by. It depends on the segment's
+  // geometry alone, so a path's factors survive every edit that leaves the
+  // segment in place.
+  [[nodiscard]] double rankedSegmentFactor(const Point3& first,
+                                           const Point3& second) const;
   // Execution time of a point path with every segment scaled by the worst
   // ranking factor sampled along it; stationary turn time is not scaled.
   [[nodiscard]] double rankedPathTimeS(const std::vector<Point3>& path,

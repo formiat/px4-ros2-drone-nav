@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <memory>
 #include <vector>
@@ -203,6 +205,92 @@ TEST(PersistentDStarLitePlanner3DTest,
     EXPECT_LT(points[index].z, 10.0) << "vertex " << index << " left the observed lane";
   }
   expectRawValid(points, *occupancy, planner.config().physical_footprint);
+}
+
+// A time profile at one metre per second with no stationary turns: arrival and
+// departure at every point are the path length to it.
+[[nodiscard]] FlightPathTimeProfile3D
+unitSpeedProfile(const std::vector<Point3>& path) {
+  FlightPathTimeProfile3D profile;
+  profile.valid = true;
+  double station_m = 0.0;
+  for (std::size_t index = 0U; index < path.size(); ++index) {
+    if (index > 0U) {
+      const Point3& previous = path[index - 1U];
+      const Point3& point = path[index];
+      station_m += std::sqrt((point.x - previous.x) * (point.x - previous.x) +
+                             (point.y - previous.y) * (point.y - previous.y) +
+                             (point.z - previous.z) * (point.z - previous.z));
+    }
+    profile.arrival_times_s.push_back(station_m);
+    profile.departure_times_s.push_back(station_m);
+  }
+  profile.travel_time_s = station_m;
+  profile.translation_time_s = station_m;
+  return profile;
+}
+
+TEST(PersistentDStarLitePlanner3DTest,
+     AShortcutAsksForTheFactorOfTheSegmentItAddsAlone) {
+  // A four-segment zig-zag whose endpoints a straight segment joins. The
+  // pass asks for the factor of each original segment once and for the
+  // straight segment once; it never re-samples the segments a shortcut leaves.
+  const std::vector<Point3> path{{0.0, 0.0, 1.0},
+                                 {2.0, 1.0, 1.0},
+                                 {4.0, 0.0, 1.0},
+                                 {6.0, 1.0, 1.0},
+                                 {8.0, 0.0, 1.0}};
+  detail::PathPostprocessor3D postprocessor;
+  std::size_t factor_calls{0U};
+  std::size_t checks{0U};
+  std::size_t applied{0U};
+  const std::vector<Point3> simplified = postprocessor.shortcut(
+      path,
+      detail::PathPostprocessorContext3D{
+          .maximum_shortcut_checks = 64U,
+          .segment_valid = [](const Point3&, const Point3&, bool) { return true; },
+          .time_profile = unitSpeedProfile,
+          .segment_factor =
+              [&factor_calls](const Point3&, const Point3&) {
+                ++factor_calls;
+                return 1.0;
+              },
+      },
+      checks, applied);
+
+  ASSERT_EQ(simplified.size(), 2U);
+  expectSamePath(simplified, {path.front(), path.back()});
+  EXPECT_EQ(applied, 3U);
+  EXPECT_EQ(checks, 1U);
+  EXPECT_EQ(factor_calls, path.size() - 1U + 1U);
+}
+
+TEST(PersistentDStarLitePlanner3DTest, TheShortcutPassStopsAtTheDeadline) {
+  const std::vector<Point3> path{
+      {0.0, 0.0, 1.0}, {2.0, 1.0, 1.0}, {4.0, 0.0, 1.0}, {6.0, 1.0, 1.0}};
+  detail::PathPostprocessor3D postprocessor;
+  std::size_t factor_calls{0U};
+  std::size_t checks{0U};
+  std::size_t applied{0U};
+  const std::vector<Point3> untouched = postprocessor.shortcut(
+      path,
+      detail::PathPostprocessorContext3D{
+          .maximum_shortcut_checks = 64U,
+          .segment_valid = [](const Point3&, const Point3&, bool) { return true; },
+          .time_profile = unitSpeedProfile,
+          .segment_factor =
+              [&factor_calls](const Point3&, const Point3&) {
+                ++factor_calls;
+                return 1.0;
+              },
+          .deadline = std::chrono::steady_clock::now() - std::chrono::seconds{1},
+      },
+      checks, applied);
+
+  expectSamePath(untouched, path);
+  EXPECT_EQ(applied, 0U);
+  EXPECT_EQ(checks, 0U);
+  EXPECT_EQ(factor_calls, 0U);
 }
 
 } // namespace

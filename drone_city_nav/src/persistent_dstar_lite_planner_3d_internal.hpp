@@ -364,12 +364,19 @@ struct PathPostprocessorContext3D {
   std::function<bool(const Point3&, const Point3&, bool)> segment_valid;
   std::function<FlightPathTimeProfile3D(const std::vector<Point3>&)> time_profile;
   // What a shortcut is judged on: the same clearance-ranked execution time the
-  // candidates compete on. Judging a shortcut on raw travel time lets it buy
-  // seconds by dragging the route back against the wall the search climbed
-  // away from, which is the objective the search was minimising in the first
-  // place.
-  std::function<double(const std::vector<Point3>&, const FlightPathTimeProfile3D&)>
-      ranked_time;
+  // candidates compete on — every segment's translation time scaled by the
+  // worst ranking factor sampled along it. Judging a shortcut on raw travel
+  // time lets it buy seconds by dragging the route back against the wall the
+  // search climbed away from, which is the objective the search was minimising
+  // in the first place. The factor is asked per segment because it depends on
+  // the segment's geometry alone: a shortcut changes one segment and leaves
+  // the rest, and re-sampling the whole route's clearance for every candidate
+  // shortcut is what made one update take sixty times its budget.
+  std::function<double(const Point3&, const Point3&)> segment_factor;
+  // The update's deadline. The pass is part of an anytime search: past the
+  // deadline the route publishes as simplified so far, and the next update
+  // simplifies further.
+  std::optional<std::chrono::steady_clock::time_point> deadline;
 };
 
 // Moving a route's interior vertices off the walls they were placed against.
@@ -400,6 +407,8 @@ struct PathClearanceCenteringContext3D {
   std::size_t maximum_passes{3U};
   // Upper bound on clearance queries, so centering cannot eat a search budget.
   std::size_t maximum_clearance_queries{0U};
+  // The update's deadline; centering stops there and the next update resumes.
+  std::optional<std::chrono::steady_clock::time_point> deadline;
 };
 
 class PathPostprocessor3D final {
@@ -479,6 +488,7 @@ private:
   [[nodiscard]] std::vector<Point3>
   refinePublishedPath(std::vector<Point3> path,
                       const PersistentPlannerRequest3D& request,
+                      std::chrono::steady_clock::time_point deadline,
                       PlannerTelemetry3D& telemetry) const;
   [[nodiscard]] ExecutionTimeRefiner3D::Request3D
   refinementRequest(const PersistentPlannerRequest3D& request,

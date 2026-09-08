@@ -170,6 +170,13 @@ the materialised route's corners are then filleted:
    the candidates themselves compete on, not on raw travel time: judging it on
    travel time alone lets a shortcut buy seconds by dragging the route back
    against the wall the search climbed away from.
+   The ranking factor is sampled per segment and kept: a shortcut replaces one
+   run of segments with one segment and leaves the rest, so only the new
+   segment is sampled. Re-sampling the whole route's clearance for every
+   candidate shortcut — a raw search of the occupancy for each sample — is what
+   let one update take sixty times its budget. The pass, like the centering
+   after it, stops at the update's deadline and publishes the route as
+   simplified so far; the next update simplifies further.
 2. **Clearance centering.** A lattice node lands wherever the grid puts it, so
    a route through a 2.4 m doorway runs within centimetres of the jamb:
    execution then has to crawl through it, and the first freshly observed voxel

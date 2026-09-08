@@ -719,9 +719,9 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     // refinement branch has always had. A first-found lattice path handed
     // straight to execution is what put routes against door jambs.
     std::optional<SpatialRouteCandidate3D> candidate =
-        path ? makeCandidate(refinePublishedPath(std::move(*path), request, telemetry),
-                             SpatialRouteCandidateSource3D::kFeasibilitySearch,
-                             request.velocity)
+        path ? makeCandidate(
+                   refinePublishedPath(std::move(*path), request, deadline, telemetry),
+                   SpatialRouteCandidateSource3D::kFeasibilitySearch, request.velocity)
              : std::nullopt;
     if (candidate) {
       telemetry.feasibility_route_found = true;
@@ -805,7 +805,7 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
           execution_time_refiner_.adaptiveEdgesInExtractedPath();
     }
     if (path && path->size() >= 2U) {
-      *path = refinePublishedPath(std::move(*path), request, telemetry);
+      *path = refinePublishedPath(std::move(*path), request, deadline, telemetry);
     }
     if (path && path->size() >= 2U &&
         distance3D(path->back(), request.mission_goal) <= config_.goal_tolerance_m) {

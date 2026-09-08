@@ -647,152 +647,6 @@ DStarLiteSession3D::extractPath(const Point3& exact_start, const Point3& exact_g
   return path;
 }
 
-std::vector<Point3>
-PathPostprocessor3D::shortcut(const std::vector<Point3>& path,
-                              const PathPostprocessorContext3D& context,
-                              std::size_t& checks, std::size_t& applied) const {
-  if (path.size() < 3U || context.maximum_shortcut_checks == 0U ||
-      !context.segment_valid || !context.time_profile || !context.ranked_time) {
-    return path;
-  }
-  std::vector<Point3> result = path;
-  FlightPathTimeProfile3D current_profile = context.time_profile(result);
-  if (!current_profile.valid) {
-    return path;
-  }
-  double current_ranked_time_s = context.ranked_time(result, current_profile);
-  std::size_t anchor = 0U;
-  while (anchor + 2U < result.size()) {
-    bool shortcut_applied{false};
-    for (std::size_t candidate = result.size() - 1U; candidate > anchor + 1U;
-         --candidate) {
-      if (checks >= context.maximum_shortcut_checks) {
-        break;
-      }
-      ++checks;
-      const bool shortcut_valid =
-          context.segment_valid(result[anchor], result[candidate], anchor == 0U);
-      if (!shortcut_valid) {
-        continue;
-      }
-      std::vector<Point3> trial = result;
-      trial.erase(std::next(trial.begin(), static_cast<std::ptrdiff_t>(anchor + 1U)),
-                  std::next(trial.begin(), static_cast<std::ptrdiff_t>(candidate)));
-      FlightPathTimeProfile3D trial_profile = context.time_profile(trial);
-      if (!trial_profile.valid) {
-        continue;
-      }
-      const double trial_ranked_time_s = context.ranked_time(trial, trial_profile);
-      if (trial_ranked_time_s > current_ranked_time_s + kCostTolerance) {
-        continue;
-      }
-      applied += candidate - anchor - 1U;
-      result = std::move(trial);
-      current_profile = std::move(trial_profile);
-      current_ranked_time_s = trial_ranked_time_s;
-      shortcut_applied = true;
-      break;
-    }
-    ++anchor;
-    if (checks >= context.maximum_shortcut_checks && !shortcut_applied) {
-      break;
-    }
-  }
-  return result;
-}
-
-std::vector<Point3>
-PathPostprocessor3D::centerOnClearance(const std::vector<Point3>& path,
-                                       const PathClearanceCenteringContext3D& context,
-                                       std::size_t& queries, std::size_t& moved) const {
-  if (path.size() < 3U || !context.segment_valid || !context.clearance ||
-      !(context.target_clearance_m > 0.0) || !(context.probe_step_m > 0.0) ||
-      context.maximum_passes == 0U || context.maximum_clearance_queries == 0U) {
-    return path;
-  }
-  std::vector<Point3> result = path;
-  const auto measure = [&](const Point3& point) {
-    ++queries;
-    return context.clearance(point);
-  };
-  const auto observed = [&](const Point3& point) {
-    return !context.observed || context.observed(point);
-  };
-  // The vertex slides across the passage, not along the route: a move along
-  // the local tangent only re-parameterises the path and can lengthen it.
-  const auto acrossPath = [](const Vec3& gradient, const Point3& previous,
-                             const Point3& next) {
-    const Vec3 tangent{next.x - previous.x, next.y - previous.y, next.z - previous.z};
-    const double tangent_length = std::sqrt(
-        tangent.x * tangent.x + tangent.y * tangent.y + tangent.z * tangent.z);
-    if (!(tangent_length > 1.0e-6)) {
-      return gradient;
-    }
-    const Vec3 unit{tangent.x / tangent_length, tangent.y / tangent_length,
-                    tangent.z / tangent_length};
-    const double along =
-        gradient.x * unit.x + gradient.y * unit.y + gradient.z * unit.z;
-    return Vec3{gradient.x - along * unit.x, gradient.y - along * unit.y,
-                gradient.z - along * unit.z};
-  };
-  for (std::size_t pass = 0U; pass < context.maximum_passes; ++pass) {
-    bool moved_in_pass{false};
-    for (std::size_t index = 1U; index + 1U < result.size(); ++index) {
-      if (queries >= context.maximum_clearance_queries) {
-        return result;
-      }
-      const Point3 vertex = result[index];
-      const double clearance_m = measure(vertex);
-      if (clearance_m >= context.target_clearance_m) {
-        continue;
-      }
-      const double step_m = context.probe_step_m;
-      // A probe in unobserved space says nothing about the clearance there:
-      // the measured distance runs to observed evidence only, so it would
-      // point the vertex into whatever the next scan reveals.
-      const auto axisGradient = [&](const Vec3& axis) {
-        const Point3 forward{vertex.x + step_m * axis.x, vertex.y + step_m * axis.y,
-                             vertex.z + step_m * axis.z};
-        const Point3 backward{vertex.x - step_m * axis.x, vertex.y - step_m * axis.y,
-                              vertex.z - step_m * axis.z};
-        if (!observed(forward) || !observed(backward)) {
-          return 0.0;
-        }
-        return measure(forward) - measure(backward);
-      };
-      Vec3 gradient{axisGradient(Vec3{1.0, 0.0, 0.0}),
-                    axisGradient(Vec3{0.0, 1.0, 0.0}),
-                    axisGradient(Vec3{0.0, 0.0, 1.0})};
-      gradient = acrossPath(gradient, result[index - 1U], result[index + 1U]);
-      const double gradient_length = std::sqrt(
-          gradient.x * gradient.x + gradient.y * gradient.y + gradient.z * gradient.z);
-      if (!(gradient_length > 1.0e-9)) {
-        continue;
-      }
-      const double scale = step_m / gradient_length;
-      const Point3 candidate{vertex.x + scale * gradient.x,
-                             vertex.y + scale * gradient.y,
-                             vertex.z + scale * gradient.z};
-      if (!observed(candidate) || measure(candidate) <= clearance_m) {
-        continue;
-      }
-      // A departure segment leaves the vehicle's own position, where contact
-      // evidence is exempt; the ordinary raw rule applies everywhere else.
-      if (!context.segment_valid(result[index - 1U], candidate, index == 1U) ||
-          !context.segment_valid(candidate, result[index + 1U], false)) {
-        continue;
-      }
-      result[index] = candidate;
-      ++moved;
-      moved_in_pass = true;
-    }
-    if (!moved_in_pass) {
-      break;
-    }
-  }
-  return result;
-}
-
 std::optional<std::vector<Point3>>
 PersistentDStarLitePlanner3DImpl::rebaseIncumbent(const std::vector<Point3>& incumbent,
                                                   const Point3& start,
@@ -858,6 +712,7 @@ PersistentDStarLitePlanner3DImpl::pathTimeProfile(const std::vector<Point3>& pat
 
 std::vector<Point3> PersistentDStarLitePlanner3DImpl::refinePublishedPath(
     std::vector<Point3> path, const PersistentPlannerRequest3D& request,
+    const std::chrono::steady_clock::time_point deadline,
     PlannerTelemetry3D& telemetry) const {
   if (path.size() < 3U) {
     return path;
@@ -879,11 +734,11 @@ std::vector<Point3> PersistentDStarLitePlanner3DImpl::refinePublishedPath(
               [this, &request](const std::vector<Point3>& points) {
                 return pathTimeProfile(points, request.velocity);
               },
-          .ranked_time =
-              [this](const std::vector<Point3>& points,
-                     const FlightPathTimeProfile3D& profile) {
-                return lattice_.rankedPathTimeS(points, profile);
+          .segment_factor =
+              [this](const Point3& first, const Point3& second) {
+                return lattice_.rankedSegmentFactor(first, second);
               },
+          .deadline = deadline,
       },
       telemetry.shortcut_checks, telemetry.shortcuts_applied);
   if (config_.clearance_centering_passes == 0U ||
@@ -903,6 +758,7 @@ std::vector<Point3> PersistentDStarLitePlanner3DImpl::refinePublishedPath(
           .probe_step_m = std::max(0.05, 0.25 * config_.minimum_vertical_step_m),
           .maximum_passes = config_.clearance_centering_passes,
           .maximum_clearance_queries = config_.maximum_clearance_centering_queries,
+          .deadline = deadline,
       },
       telemetry.clearance_centering_queries, telemetry.clearance_centering_moves);
 }

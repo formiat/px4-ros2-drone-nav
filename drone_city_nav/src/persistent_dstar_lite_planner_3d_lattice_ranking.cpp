@@ -175,6 +175,33 @@ double PlannerLattice3D::rankedSegmentTimeS(const Point3& first, const Point3& s
   return segment_s * worst_factor;
 }
 
+double PlannerLattice3D::rankedSegmentFactor(const Point3& first,
+                                             const Point3& second) const {
+  const double radius_m = config_->physical_footprint.radius_m;
+  const double reach_m = config_->clearance_ranking_distance_m;
+  const double sample_step_m = std::max(0.5, 0.5 * config_->minimum_horizontal_step_m);
+  const double length_m = distance3D(first, second);
+  const auto samples = static_cast<std::size_t>(std::ceil(length_m / sample_step_m));
+  double worst_factor = 1.0;
+  for (std::size_t sample = 0U; sample <= samples; ++sample) {
+    const double ratio =
+        samples == 0U ? 0.0
+                      : static_cast<double>(sample) / static_cast<double>(samples);
+    const Point3 point{first.x + ratio * (second.x - first.x),
+                       first.y + ratio * (second.y - first.y),
+                       first.z + ratio * (second.z - first.z)};
+    // A sample with no occupied chunk within the ranking reach has the unit
+    // factor: the chunk rings answer that without the raw search.
+    if (!nearOccupied(point, reach_m)) {
+      continue;
+    }
+    const double body_clearance_m = std::max(0.0, pointClearanceM(point) - radius_m);
+    worst_factor =
+        std::max(worst_factor, rankingFactorForBodyClearance(body_clearance_m));
+  }
+  return worst_factor;
+}
+
 double PlannerLattice3D::rankedPathTimeS(const std::vector<Point3>& path,
                                          const FlightPathTimeProfile3D& profile) const {
   if (path.size() < 2U || !profile.valid ||
@@ -182,31 +209,13 @@ double PlannerLattice3D::rankedPathTimeS(const std::vector<Point3>& path,
       profile.departure_times_s.size() != path.size()) {
     return 0.0;
   }
-  const double radius_m = config_->physical_footprint.radius_m;
-  const double sample_step_m = std::max(0.5, 0.5 * config_->minimum_horizontal_step_m);
   double ranked_s = 0.0;
   for (std::size_t index = 0U; index + 1U < path.size(); ++index) {
-    const Point3& first = path[index];
-    const Point3& second = path[index + 1U];
     const double segment_s = std::max(0.0, profile.arrival_times_s[index + 1U] -
                                                profile.departure_times_s[index]);
     const double turn_s = std::max(0.0, profile.departure_times_s[index] -
                                             profile.arrival_times_s[index]);
-    const double length_m = distance3D(first, second);
-    const auto samples = static_cast<std::size_t>(std::ceil(length_m / sample_step_m));
-    double worst_factor = 1.0;
-    for (std::size_t sample = 0U; sample <= samples; ++sample) {
-      const double ratio =
-          samples == 0U ? 0.0
-                        : static_cast<double>(sample) / static_cast<double>(samples);
-      const Point3 point{first.x + ratio * (second.x - first.x),
-                         first.y + ratio * (second.y - first.y),
-                         first.z + ratio * (second.z - first.z)};
-      const double body_clearance_m = std::max(0.0, pointClearanceM(point) - radius_m);
-      worst_factor =
-          std::max(worst_factor, rankingFactorForBodyClearance(body_clearance_m));
-    }
-    ranked_s += turn_s + segment_s * worst_factor;
+    ranked_s += turn_s + segment_s * rankedSegmentFactor(path[index], path[index + 1U]);
   }
   return ranked_s;
 }
