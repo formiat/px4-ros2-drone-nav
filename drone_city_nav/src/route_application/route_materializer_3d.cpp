@@ -249,9 +249,13 @@ RouteMaterializer3D::materialize(RouteMaterializationRequest3D request) const {
         });
     route.departure_end_station_m = nearest.station_m;
   }
+  // The world's seed was captured when the world was built and the vehicle
+  // has flown on since; the planner re-anchored its copy at the search start,
+  // and the candidate is validated from there, so the seed stands there too.
   std::optional<ProprioceptiveFreeSpaceSeed3D> departure_seed;
   if (transaction.world->proprioceptive_free_space_seed) {
     departure_seed = *transaction.world->proprioceptive_free_space_seed;
+    departure_seed->position = search_start;
     departure_seed->departure_chain =
         departureChain3D(canonical_route, route.departure_end_station_m);
   }

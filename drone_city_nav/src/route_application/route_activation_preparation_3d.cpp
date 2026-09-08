@@ -115,6 +115,9 @@ struct RouteActivationPreparationState3D final {
   StaticRoutePlanningLatencyStats planning_latency{};
   NavigationWorldCertificate3D planned_world_certificate{};
   std::shared_ptr<const VersionedObservedRawWorld3D> activation_raw_owner;
+  // The seed the candidate is validated with: the world's seed stood where
+  // the vehicle now stands, carrying the candidate's own departure.
+  std::optional<ProprioceptiveFreeSpaceSeed3D> departure_seed;
   std::optional<CertifiedRouteSuffix3D> certified_route;
   std::uint64_t base_generation{0U};
   bool raw_validation_required{false};
@@ -407,6 +410,16 @@ assessAdmission(RouteActivationPreparationState3D state,
           ? snapshot.minimum_tracking_route_sample_sequence
           : 0U;
   report.required_objective_sample = required_objective_sample;
+  state.departure_seed = candidate.world->proprioceptive_free_space_seed;
+  if (state.departure_seed.has_value()) {
+    state.departure_seed->position =
+        Point3{snapshot.navigation.state.x, snapshot.navigation.state.y,
+               snapshot.navigation.state.z};
+    state.departure_seed->departure_chain =
+        candidate.route != nullptr
+            ? departureChain3D(*candidate.route, candidate.departure_end_station_m)
+            : std::vector<Point3>{};
+  }
   report.assessment = assessRouteActivation3D(
       activation_identity,
       candidate.route != nullptr ? std::span<const RouteSample3D>{*candidate.route}
@@ -435,8 +448,7 @@ assessAdmission(RouteActivationPreparationState3D state,
           .footprint = activationFootprint(config),
           .launch_support_contact =
               optionalAddress(candidate.world->launch_support_contact),
-          .proprioceptive_free_space_seed =
-              optionalAddress(candidate.world->proprioceptive_free_space_seed),
+          .proprioceptive_free_space_seed = optionalAddress(state.departure_seed),
           .flight_envelope = config.flight_envelope,
           .raw_validation_required = state.raw_validation_required,
       });

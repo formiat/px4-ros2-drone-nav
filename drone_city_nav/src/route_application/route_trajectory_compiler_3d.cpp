@@ -71,6 +71,8 @@ RouteTrajectoryCompilationResult3D RouteTrajectoryCompiler3D::compile(
   std::optional<ProprioceptiveFreeSpaceSeed3D> departure_seed =
       request.materialized.world->proprioceptive_free_space_seed;
   if (departure_seed.has_value()) {
+    // The seed is the vehicle's pose now, not the pose the world was built at.
+    departure_seed->position = request.exact_initial_state.position;
     departure_seed->departure_chain = departureChain3D(
         *request.materialized.route, request.materialized.departure_end_station_m);
   }
