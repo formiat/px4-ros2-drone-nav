@@ -237,9 +237,11 @@ void ProductionMppiNode::logRouteLifecycleReplanOutcome3D(
           get_logger(), *get_clock(), 1000,
           "STATIC_ROUTE_REPLAN_REQUEST status=suppressed_failed_search "
           "generation=%" PRIu64
-          " pose_change_m=%.2f objective_change_m=%.2f elapsed_s=%.2f reason=%s",
+          " pose_change_m=%.2f objective_change_m=%.2f elapsed_s=%.2f "
+          "raw_world_changed=%s reason=%s",
           outcome.search_generation, outcome.retry.pose_change_m,
           outcome.retry.objective_change_m, outcome.retry.elapsed_s,
+          outcome.retry.raw_world_changed ? "true" : "false",
           routeReleaseReason3DName(outcome.reason));
       return;
     case RouteLifecycleReplanStatus3D::kInvalidTransaction:

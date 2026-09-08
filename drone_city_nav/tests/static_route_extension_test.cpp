@@ -643,6 +643,46 @@ TEST(StaticRouteExtensionTest, FailedSearchRetriesAfterMeaningfulStateChange) {
             StaticRouteSearchRetryTrigger::kRouteGenerationChanged);
 }
 
+TEST(StaticRouteExtensionTest, AnInputRejectedSearchRetriesOnANewerRawWorld) {
+  // The planner refused the start before any search ran. The refusal is
+  // decided by the raw world, so a newer raw world retries it at once; a
+  // search that ran and failed on the same world still waits for the retry
+  // interval, and neither retries on the world it failed on.
+  StaticRouteFailedSearchLatch latch;
+  StaticRouteSearchContext failure{
+      .base_route_generation = 0U,
+      .search_start = Point3{10.0, 20.0, 18.0},
+      .objective = StaticRouteObjective{.goal = Point3{100.0, 200.0, 18.0},
+                                        .mission_epoch = 3U,
+                                        .sample_sequence = 40U,
+                                        .available = true},
+      .stamp_ns = 1'000'000'000,
+      .raw_revision = 500U,
+      .input_rejected = true,
+  };
+  latch.recordFailure(failure);
+
+  StaticRouteSearchContext retry = failure;
+  retry.stamp_ns += 100'000'000;
+  StaticRouteSearchRetryDecision decision =
+      latch.evaluate(StaticRouteSearchRetryConfig{}, retry);
+  EXPECT_FALSE(decision.allow);
+  EXPECT_FALSE(decision.raw_world_changed);
+
+  retry.raw_revision = 505U;
+  decision = latch.evaluate(StaticRouteSearchRetryConfig{}, retry);
+  EXPECT_TRUE(decision.allow);
+  EXPECT_TRUE(decision.raw_world_changed);
+  EXPECT_EQ(decision.trigger, StaticRouteSearchRetryTrigger::kRawWorldChanged);
+
+  failure.input_rejected = false;
+  latch.recordFailure(failure);
+  decision = latch.evaluate(StaticRouteSearchRetryConfig{}, retry);
+  EXPECT_FALSE(decision.allow);
+  EXPECT_TRUE(decision.raw_world_changed);
+  EXPECT_EQ(decision.trigger, StaticRouteSearchRetryTrigger::kSuppressed);
+}
+
 TEST(StaticRouteExtensionTest, SuccessfulSearchClearsFailureLatch) {
   StaticRouteFailedSearchLatch latch;
   latch.recordFailure(StaticRouteSearchContext{.base_route_generation = 7U});

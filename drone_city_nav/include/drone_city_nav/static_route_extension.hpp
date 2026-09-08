@@ -106,6 +106,16 @@ struct StaticRouteSearchContext {
   StaticRouteObjective objective{};
   std::uint64_t minimum_tracking_sample_sequence{0U};
   std::int64_t stamp_ns{0};
+  // The raw world the search validated its start and goal against.
+  std::uint64_t raw_revision{0U};
+  // The planner rejected the request at its input stage — no node reachable
+  // from the start, or none at the goal — before any search ran. Such a
+  // failure costs nothing and is decided by the raw world alone: a vehicle
+  // that stopped beside evidence it had just met is refused a departure until
+  // the next scan and its own settling change what the body clears, so it is
+  // retried on every newer raw world rather than after the retry interval a
+  // search that ran to exhaustion has to wait.
+  bool input_rejected{false};
 };
 
 enum class StaticRouteSearchRetryTrigger : std::uint8_t {
@@ -113,6 +123,7 @@ enum class StaticRouteSearchRetryTrigger : std::uint8_t {
   kRouteGenerationChanged,
   kObjectiveChanged,
   kPoseChanged,
+  kRawWorldChanged,
   kRetryIntervalElapsed,
   kSuppressed,
 };
@@ -123,6 +134,7 @@ struct StaticRouteSearchRetryDecision {
   double pose_change_m{0.0};
   double objective_change_m{0.0};
   double elapsed_s{0.0};
+  bool raw_world_changed{false};
 };
 
 class StaticRouteFailedSearchLatch final {

@@ -796,6 +796,7 @@ set(DRONE_CITY_NAV_ROUTE_RUNTIME_SOURCES
     src/route_application/route_activation_coordinator_3d.cpp
     src/route_application/route_activation_preparation_3d.cpp
     src/route_application/route_lifecycle_coordinator_3d.cpp
+    src/route_application/route_lifecycle_coordinator_3d_names.cpp
     src/route_application/route_lifecycle_coordinator_3d_replan.cpp
     src/route_application/route_planner_3d.cpp
     src/route_application/route_planning_coordinator_3d.cpp

@@ -392,6 +392,13 @@ StaticRouteSearchRetryDecision StaticRouteFailedSearchLatch::evaluate(
     decision.trigger = StaticRouteSearchRetryTrigger::kPoseChanged;
     return decision;
   }
+  decision.raw_world_changed =
+      failure.raw_revision != 0U && context.raw_revision > failure.raw_revision;
+  if (failure.input_rejected && decision.raw_world_changed) {
+    decision.allow = true;
+    decision.trigger = StaticRouteSearchRetryTrigger::kRawWorldChanged;
+    return decision;
+  }
   if (decision.elapsed_s + 1.0e-9 >= std::max(0.0, config.minimum_retry_interval_s)) {
     decision.allow = true;
     decision.trigger = StaticRouteSearchRetryTrigger::kRetryIntervalElapsed;
@@ -763,6 +770,8 @@ std::string_view staticRouteSearchRetryTriggerName(
       return "objective_changed";
     case StaticRouteSearchRetryTrigger::kPoseChanged:
       return "pose_changed";
+    case StaticRouteSearchRetryTrigger::kRawWorldChanged:
+      return "raw_world_changed";
     case StaticRouteSearchRetryTrigger::kRetryIntervalElapsed:
       return "retry_interval_elapsed";
     case StaticRouteSearchRetryTrigger::kSuppressed:

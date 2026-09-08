@@ -290,6 +290,18 @@ any other: the body contract validates both legs, the leg leaving the vehicle
 under the departure exemption and every later leg under ordinary raw evidence.
 `PRODUCTION_MPPI_ROUTE3D` reports `departure_waypoint=true` when it was needed.
 
+A refusal at the input stage — `start_unavailable`, `goal_unavailable` — runs
+no search and is decided by the raw world alone. The lifecycle latches a
+failed search so that an exhausted search is not repeated on the same input,
+and retries it after `route_failed_search_retry_interval_s` unless the vehicle
+or the objective moved; an input refusal waited out the same interval. A
+vehicle that has just stopped beside evidence it met is refused a departure
+while it settles, and the next scans and its own settling are what change what
+the body clears: over one urban flight five such refusals held the vehicle for
+1.2–1.5 s each, most of it the interval. An input refusal is therefore retried
+on every newer raw world (`retry_trigger=raw_world_changed`); a search that
+ran and failed still waits.
+
 ## Leaving A Closed Component
 
 A vehicle can stand where every lattice node it reaches belongs to a component

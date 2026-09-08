@@ -185,6 +185,7 @@ RouteLifecycleReplanOutcome3D RouteLifecycleCoordinator3D::requestReplanImpl(
       .objective = makeStaticRouteObjective(*snapshot.objective),
       .minimum_tracking_sample_sequence = required_sample,
       .stamp_ns = snapshot.stamp_ns,
+      .raw_revision = planner_world != nullptr ? planner_world->revision : 0U,
   };
   outcome.search_start = retry_context.search_start;
   if (!snapshot.navigation.valid ||
