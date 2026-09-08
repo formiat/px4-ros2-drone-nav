@@ -122,13 +122,16 @@ accelerating horizon and every stop swept the roof once tilted; one recorded
 flight rested beside such a roof for a quarter of its mission with every
 route certified from where it stood rejected the same way.
 
-The envelope is the tilt's business, the body is the hull's: the hull's own
-extents stay on the body (`body_lower_extent_m`, `body_upper_extent_m`), so
-contact evidence is judged against what the vehicle physically occupies. A
-vehicle leaves a tight spot the way it entered it, at hover and upright, so a
-departure is validated with the hull as configured (`hull_footprint`,
-`PersistentPlannerConfig3D::departure_footprint`): the legs leaving the
-vehicle, the departure waypoints and every step of the escape fill. The route
+In flight the body is the hull at every tilt (`body_radius_m`,
+`body_lower_extent_m`, `body_upper_extent_m` grow with the tilt): the
+airframe may lean that far at any moment, so contact evidence is judged
+against the volume it can reach, and the vehicle never creeps deeper into
+evidence than that body admits. A vehicle leaves a tight spot the way it
+entered it, at hover and upright, so a departure is validated with the hull
+as configured (`hull_footprint`,
+`PersistentPlannerConfig3D::departure_footprint`), whose body is what the
+vehicle physically occupies: the legs leaving the vehicle, the departure
+waypoints and every step of the escape fill. The route
 records the station its departure ends at
 (`CompiledTrajectory3D::departure_end_station_m`), and every validator that
 holds the route, the route compiler, the certification, the executed-horizon

@@ -130,14 +130,15 @@ bodyAxisFromWorldAcceleration(const Vec3& acceleration_mps2,
                                         double maximum_vertical_acceleration_mps2,
                                         double gravity_mps2 = 9.80665) noexcept;
 
-// The footprint whose envelope contains the physical body at every tilt up
-// to `tilt_rad`: the envelope radius grows to the tilted rim's horizontal
-// reach and its extents to the rim's dip and rise, while the body itself
-// stays the hull the vehicle measures. Every validator then stands the
-// envelope upright, planner and execution alike, and a route clears
-// whatever the airframe reaches at any acceleration the dynamics let the
-// controller command along it. The sampling and the safe-clearance
-// threshold are kept.
+// The footprint whose body is the hull at every tilt up to `tilt_rad` and
+// whose envelope contains it: the body radius grows to the tilted rim's
+// horizontal reach and the body's extents to the rim's dip and rise, and the
+// envelope grows wherever that body outgrows it. Every validator then stands
+// the body upright, planner and execution alike, and a route clears whatever
+// the airframe reaches at any acceleration the dynamics let the controller
+// command along it. The hull as configured is the departure's body, where
+// the vehicle moves at hover. The sampling and the safe-clearance threshold
+// are kept.
 [[nodiscard]] SweptFootprintConfig
 tiltEnvelopedFootprint(const SweptFootprintConfig& footprint, double tilt_rad) noexcept;
 

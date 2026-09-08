@@ -889,17 +889,19 @@ TEST(SweptFootprintTest, TiltEnvelopedFootprintContainsThePhysicalBodyAtEveryTil
 
   const double tilt_rad = maximumBodyTiltRad(4.0, 4.0);
   const SweptFootprintConfig enveloped = tiltEnvelopedFootprint(footprint, tilt_rad);
-  // The body is the hull; only the envelope grows.
-  EXPECT_NEAR(enveloped.body_radius_m, footprint.body_radius_m, 1.0e-12);
-  EXPECT_NEAR(enveloped.body_lower_extent_m, footprint.body_lower_extent_m, 1.0e-12);
-  EXPECT_NEAR(enveloped.body_upper_extent_m, footprint.body_upper_extent_m, 1.0e-12);
+  // The body becomes the hull at every tilt; the envelope contains it and
+  // keeps the clearance it already carried.
+  EXPECT_GT(enveloped.body_radius_m, footprint.body_radius_m);
+  EXPECT_GT(enveloped.body_lower_extent_m, footprint.body_lower_extent_m);
+  EXPECT_GT(enveloped.body_upper_extent_m, footprint.body_upper_extent_m);
   EXPECT_NEAR(enveloped.radius_m, footprint.radius_m, 1.0e-12);
-  EXPECT_GT(enveloped.lower_extent_m, footprint.lower_extent_m);
-  EXPECT_GT(enveloped.upper_extent_m, footprint.upper_extent_m);
-  const SweptFootprintConfig hull = physicalBodyFootprint(enveloped);
-  EXPECT_NEAR(hull.radius_m, footprint.body_radius_m, 1.0e-12);
-  EXPECT_NEAR(hull.lower_extent_m, footprint.body_lower_extent_m, 1.0e-12);
-  EXPECT_NEAR(hull.upper_extent_m, footprint.body_upper_extent_m, 1.0e-12);
+  EXPECT_GE(enveloped.radius_m, enveloped.body_radius_m);
+  EXPECT_NEAR(enveloped.lower_extent_m, enveloped.body_lower_extent_m, 1.0e-12);
+  EXPECT_NEAR(enveloped.upper_extent_m, enveloped.body_upper_extent_m, 1.0e-12);
+  const SweptFootprintConfig body_at_any_tilt = physicalBodyFootprint(enveloped);
+  EXPECT_NEAR(body_at_any_tilt.radius_m, enveloped.body_radius_m, 1.0e-12);
+  EXPECT_NEAR(body_at_any_tilt.lower_extent_m, enveloped.body_lower_extent_m, 1.0e-12);
+  EXPECT_NEAR(body_at_any_tilt.upper_extent_m, enveloped.body_upper_extent_m, 1.0e-12);
   EXPECT_EQ(enveloped.perimeter_samples, footprint.perimeter_samples);
   EXPECT_EQ(enveloped.sweep_step_m, footprint.sweep_step_m);
   EXPECT_EQ(enveloped.safe_clearance_threshold_m, footprint.safe_clearance_threshold_m);
@@ -928,9 +930,9 @@ TEST(SweptFootprintTest, TiltEnvelopedFootprintContainsThePhysicalBodyAtEveryTil
           const double x = axial * ax + body_radius_m * rx;
           const double y = axial * ay + body_radius_m * ry;
           const double z = axial * az + body_radius_m * rz;
-          EXPECT_LE(std::hypot(x, y), enveloped.radius_m + kTolerance);
-          EXPECT_GE(z, -enveloped.lower_extent_m - kTolerance);
-          EXPECT_LE(z, enveloped.upper_extent_m + kTolerance);
+          EXPECT_LE(std::hypot(x, y), enveloped.body_radius_m + kTolerance);
+          EXPECT_GE(z, -enveloped.body_lower_extent_m - kTolerance);
+          EXPECT_LE(z, enveloped.body_upper_extent_m + kTolerance);
         }
       }
     }

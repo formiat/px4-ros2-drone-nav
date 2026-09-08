@@ -66,15 +66,24 @@ SweptFootprintConfig tiltEnvelopedFootprint(const SweptFootprintConfig& footprin
       body_radius_m * sine <= axial_extent_m * cosine
           ? body_radius_m * cosine + axial_extent_m * sine
           : std::hypot(body_radius_m, axial_extent_m);
-  // The body stays the hull; the envelope grows to contain the hull at every
-  // tilt, and keeps whatever clearance it already carried beyond that.
+  // The body becomes the hull at every tilt: in flight the airframe may lean
+  // that far at any moment, so contact evidence is judged against the volume
+  // it can reach, not only the volume it occupies upright. The envelope grows
+  // to contain that body and keeps whatever clearance it already carried
+  // beyond it. The hull as configured stays the departure's body, where the
+  // vehicle moves at hover.
+  const double leaned_lower_m = body_lower_m * cosine + body_radius_m * sine;
+  const double leaned_upper_m = body_upper_m * cosine + body_radius_m * sine;
   SweptFootprintConfig enveloped = footprint;
+  enveloped.body_radius_m = leaned_body_radius_m;
+  enveloped.body_lower_extent_m = leaned_lower_m;
+  enveloped.body_upper_extent_m = leaned_upper_m;
   enveloped.radius_m =
       std::max(std::max(0.0, footprint.radius_m), leaned_body_radius_m);
-  enveloped.lower_extent_m = std::max(std::max(0.0, footprint.lower_extent_m),
-                                      body_lower_m * cosine + body_radius_m * sine);
-  enveloped.upper_extent_m = std::max(std::max(0.0, footprint.upper_extent_m),
-                                      body_upper_m * cosine + body_radius_m * sine);
+  enveloped.lower_extent_m =
+      std::max(std::max(0.0, footprint.lower_extent_m), leaned_lower_m);
+  enveloped.upper_extent_m =
+      std::max(std::max(0.0, footprint.upper_extent_m), leaned_upper_m);
   return enveloped;
 }
 
