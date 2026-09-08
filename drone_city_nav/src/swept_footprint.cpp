@@ -859,6 +859,11 @@ SweptFootprintResult validateRawSweptFootprint(
                                      proprioceptive_seed);
 }
 
+SweptFootprintConfig
+physicalBodyFootprint(const SweptFootprintConfig& footprint) noexcept {
+  return physicalBody(footprint);
+}
+
 bool footprintIntersectsAxisAlignedBox(const Point3& position,
                                        const FootprintBodyAxis& requested_body_axis,
                                        const SweptFootprintConfig& config,

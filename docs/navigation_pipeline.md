@@ -378,6 +378,23 @@ control count, and its profile is shaped against the same integrator that
 validates it, including the shedding of an inherited excess above the speed
 cap.
 
+The swept body a stop is certified against is the policy's clearance envelope
+first. That envelope keeps clearance the vehicle may already have lost: the
+evidence that ended its path's claim was confirmed beside that path, or ahead
+of it, and a braking sweep that starts there cannot always keep the margin. A
+stop is the last motion the vehicle can be given, so when the envelope's sweep
+meets occupied evidence (`raw_collision`, `latest_lidar_raw_collision`) the
+same trajectory is certified again against the physical body alone
+(`physicalBodyFootprint`, the body radius with the axial extents kept). Braking
+with the body clear is strictly safer than the horizon it replaces; a stop the
+envelope refused and nothing replaced is how one recorded flight, still moving,
+flew its stale horizon into a wall. A body-certified stop records the body it
+answers to (`StopExecution3D::validation_footprint`, `physical_body_only`) and
+stays resident, and is revalidated on the wire, against that same body rather
+than the envelope, so the envelope's failure does not derive a new stop every
+tick. The stop log carries `body_only=true|false`. Other verdicts, a broken
+envelope or dynamics law, are not retried: no smaller body satisfies them.
+
 The liveness monitor compares predicted and actual full-3D route progress.
 Persistent prediction without real movement can reseed the MPPI nominal controls
 and, when explicitly enabled, request release and repair of a stalled route.

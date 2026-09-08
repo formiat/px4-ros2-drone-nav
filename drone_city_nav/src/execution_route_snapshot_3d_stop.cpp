@@ -1,5 +1,6 @@
 #include "drone_city_nav/execution_route_certification_3d.hpp"
 #include "drone_city_nav/proprioceptive_contact_seed_3d.hpp"
+#include "drone_city_nav/swept_footprint.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -246,13 +247,18 @@ certifyStopExecution3D(const ExecutionPlan3D& current,
       raw_mode
           ? optionalAddress(certification.observed_raw_world->launchSupportContact())
           : nullptr;
+  // The body the sweep answers to: the clearance envelope, or the physical
+  // body alone when the caller has already seen the envelope fail.
+  const SweptFootprintConfig validation_footprint =
+      certification.physical_body_only
+          ? physicalBodyFootprint(certification.validation_policy->sweptFootprint())
+          : certification.validation_policy->sweptFootprint();
   // Contact evidence at the pose the stop starts from. Evidence the body
   // already overlaps cannot forbid the vehicle from braking out of it.
   const std::optional<ProprioceptiveFreeSpaceSeed3D> proprioceptive_seed =
       proprioceptiveContactSeed3D(
           executionInputPosition(*certification.execution_input),
-          certification.execution_input->previousControl(),
-          certification.validation_policy->sweptFootprint(),
+          certification.execution_input->previousControl(), validation_footprint,
           raw_mode ? std::addressof(certification.observed_raw_world->occupancy())
                    : nullptr);
   const IndexedPointCloudView3D latest_lidar_obstacle_points =
@@ -263,7 +269,7 @@ certifyStopExecution3D(const ExecutionPlan3D& current,
       .flight_envelope = &certification.validation_policy->flightEnvelope(),
       .dynamics = &certification.validation_policy->dynamics(),
       .altitude_envelope = &certification.validation_policy->altitudeEnvelope(),
-      .footprint = &certification.validation_policy->sweptFootprint(),
+      .footprint = &validation_footprint,
       .static_occupancy =
           static_mode ? &certification.static_world->occupancy() : nullptr,
       .observed_occupancy =
@@ -286,11 +292,12 @@ certifyStopExecution3D(const ExecutionPlan3D& current,
     StopCertificationResult3D rejection =
         rejected(StopCertificationStatus3D::kPathValidationRejected);
     rejection.path_validation_status = path_validation.status;
+    rejection.physical_body_only = certification.physical_body_only;
     return rejection;
   }
 
-  const std::uint64_t collision_policy_fingerprint = validationPolicyFingerprint(
-      certification.validation_policy->sweptFootprint(), launch_support_contact);
+  const std::uint64_t collision_policy_fingerprint =
+      validationPolicyFingerprint(validation_footprint, launch_support_contact);
   const std::uint64_t validation_contract_fingerprint = validationContractFingerprint(
       validation_world, certification.execution_input->previousControl(),
       ValidationContractOwners3D{
@@ -347,6 +354,8 @@ certifyStopExecution3D(const ExecutionPlan3D& current,
               .lineage = lineage,
           },
   };
+  execution.validation_footprint = validation_footprint;
+  execution.physical_body_only = certification.physical_body_only;
   execution.validation_proof.artifact_fingerprint =
       stopExecutionArtifactFingerprint(execution);
   if (!execution.valid()) {
@@ -354,6 +363,7 @@ certifyStopExecution3D(const ExecutionPlan3D& current,
   }
   return StopCertificationResult3D{
       .status = StopCertificationStatus3D::kCertified,
+      .physical_body_only = certification.physical_body_only,
       .execution = std::move(execution),
   };
 }
@@ -443,15 +453,16 @@ execution_route_snapshot_3d_internal::applyEnterStopExecutionCommand3D(
     certification_report->status = certified.status;
     certification_report->dynamics_consistency = certified.dynamics_consistency;
     certification_report->path_validation_status = certified.path_validation_status;
+    certification_report->physical_body_only = certified.physical_body_only;
   }
-  if (!certified.certified()) {
+  if (!certified.certified() || !certified.execution.has_value()) {
     return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate,
                              ExecutionRouteTransitionDetail3D::kNextPlanInvalid);
   }
   ExecutionPlan3D next = current;
   ++next.version;
   next.route_generation_high_water = current.routeGenerationHighWater();
-  next.state = StopPlan3D{.execution = std::move(certified.execution).value()};
+  next.state = StopPlan3D{.execution = std::move(*certified.execution)};
   ++next.execution_owner_epoch;
   return finishTransition(current, std::move(next));
 }

@@ -19,6 +19,8 @@ struct FiniteExecutionEvidenceView3D {
   const FiniteMotionHorizon3D* horizon{nullptr};
   const VersionedExecutionInput3D* execution_input{nullptr};
   const VersionedExecutionValidationPolicy3D* policy{nullptr};
+  // The swept body the execution was certified with.
+  const SweptFootprintConfig* footprint{nullptr};
   const VersionedStaticWorld3D* static_world{nullptr};
   std::int64_t valid_from_ns{0};
   std::int64_t control_interval_ns{0};
@@ -37,10 +39,23 @@ finiteExecutionEvidenceView(const Execution& execution) noexcept {
       .horizon = execution.horizon.get(),
       .execution_input = execution.execution_input.get(),
       .policy = execution.validation_policy.get(),
+      .footprint = &execution.validation_policy->sweptFootprint(),
       .static_world = execution.static_world.get(),
       .valid_from_ns = execution.valid_from_ns,
       .control_interval_ns = execution.control_interval_ns,
   };
+}
+
+// A stop answers to the body it was certified with, which may be the physical
+// body alone rather than the policy's clearance envelope.
+[[nodiscard]] std::optional<FiniteExecutionEvidenceView3D>
+finiteExecutionEvidenceView(const StopExecution3D& execution) noexcept {
+  std::optional<FiniteExecutionEvidenceView3D> view =
+      finiteExecutionEvidenceView<StopExecution3D>(execution);
+  if (view.has_value()) {
+    view->footprint = &execution.validation_footprint;
+  }
+  return view;
 }
 
 [[nodiscard]] std::vector<TimedExecutionPathPoint3D>
@@ -78,8 +93,9 @@ timedExecutionPathPoints(const FiniteExecutionEvidenceView3D& view) {
     const std::shared_ptr<const VersionedObservedRawWorld3D>& latest_raw,
     const std::shared_ptr<const VersionedLatestLidarEvidence3D>& latest_lidar) {
   if (view.horizon == nullptr || view.execution_input == nullptr ||
-      view.policy == nullptr || !view.policy->valid() || latest_lidar == nullptr ||
-      !latest_lidar->valid() || view.control_interval_ns <= 0 ||
+      view.policy == nullptr || !view.policy->valid() || view.footprint == nullptr ||
+      latest_lidar == nullptr || !latest_lidar->valid() ||
+      view.control_interval_ns <= 0 ||
       view.horizon->states.size() != view.horizon->controls.size() + 1U ||
       view.horizon->controls.empty()) {
     return false;
@@ -103,14 +119,14 @@ timedExecutionPathPoints(const FiniteExecutionEvidenceView3D& view) {
           ? proprioceptiveContactSeed3D(
                 Point3{view.execution_input->state().x, view.execution_input->state().y,
                        view.execution_input->state().z},
-                view.execution_input->previousControl(), view.policy->sweptFootprint(),
+                view.execution_input->previousControl(), *view.footprint,
                 std::addressof(latest_raw->occupancy()))
           : std::optional<ProprioceptiveFreeSpaceSeed3D>{};
   const FiniteExecutionPathWorld3D world{
       .flight_envelope = &view.policy->flightEnvelope(),
       .dynamics = &view.policy->dynamics(),
       .altitude_envelope = &view.policy->altitudeEnvelope(),
-      .footprint = &view.policy->sweptFootprint(),
+      .footprint = view.footprint,
       .static_occupancy = static_world ? &view.static_world->occupancy() : nullptr,
       .observed_occupancy = !static_world ? &latest_raw->occupancy() : nullptr,
       .launch_support_contact =

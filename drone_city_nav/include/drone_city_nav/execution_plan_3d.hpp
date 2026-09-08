@@ -63,6 +63,11 @@ struct StopExecution3D {
   std::int64_t valid_until_ns{0};
   std::int64_t control_interval_ns{0};
   FiniteExecutionValidationProof3D validation_proof{};
+  // The swept body this stop was certified with and stays executable against:
+  // the policy's clearance envelope, or the physical body alone when the
+  // envelope could not clear the evidence the vehicle must brake through.
+  SweptFootprintConfig validation_footprint{};
+  bool physical_body_only{false};
 
   [[nodiscard]] bool valid() const noexcept;
 };

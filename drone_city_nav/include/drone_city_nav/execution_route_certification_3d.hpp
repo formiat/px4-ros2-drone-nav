@@ -130,6 +130,11 @@ struct StopExecutionCertification3D {
   std::shared_ptr<const VersionedExecutionInput3D> execution_input;
   std::shared_ptr<const VersionedLatestLidarEvidence3D> latest_lidar_evidence;
   std::int64_t valid_from_ns{0};
+  // Validate the braking sweep against the physical body instead of the
+  // policy's clearance envelope. A stop is the last motion the vehicle can be
+  // given: when the envelope cannot clear the evidence around it, braking
+  // with the body clear is still strictly safer than the horizon it replaces.
+  bool physical_body_only{false};
 };
 
 struct StationaryExecutionHoldCertification3D {
@@ -212,6 +217,8 @@ struct StopCertificationResult3D {
   // Which physical rule a kPathValidationRejected verdict broke.
   FiniteExecutionPathStatus3D path_validation_status{
       FiniteExecutionPathStatus3D::kValid};
+  // Whether the verdict was reached against the physical body alone.
+  bool physical_body_only{false};
   std::optional<StopExecution3D> execution;
 
   [[nodiscard]] bool certified() const noexcept {

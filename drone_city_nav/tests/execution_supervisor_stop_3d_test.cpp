@@ -260,6 +260,89 @@ TEST(ExecutionSupervisorStop3DTest, TheCommittedStopOwnsTheVehicleWhileItIsExecu
   EXPECT_EQ(supervisor.plan(), stopping);
 }
 
+// The clearance envelope is what a route keeps from evidence; a stop is the
+// last motion the vehicle can be given. Evidence the envelope would sweep
+// through while the physical body passes clear does not leave the vehicle
+// flying its stale horizon: the same trajectory is certified on the body, and
+// that stop stays resident while the body's path remains clear.
+TEST(ExecutionSupervisorStop3DTest, AStopTheEnvelopeCannotClearIsCertifiedOnTheBody) {
+  SnapshotFixture3D fixture;
+  ExecutionSupervisor3D supervisor;
+  const std::shared_ptr<const ExecutionPlan3D> active =
+      installRouteOwner(supervisor, fixture);
+  ASSERT_NE(active, nullptr);
+  ASSERT_NE(active->finiteExecution(), nullptr);
+  const std::shared_ptr<const VersionedExecutionInput3D> input =
+      movingInput(*active->finiteExecution()->execution_input, 6.0F);
+  // A voxel one metre beside the braking line, well past the contact volume
+  // around the vehicle's own pose: inside a 1.2 m envelope, clear of a 0.5 m
+  // body.
+  ObservedOccupancyGrid3D beside_occupancy = fixture.raw_occupancy;
+  const std::optional<GridIndex3D> beside =
+      beside_occupancy.worldToCell(Point3{5.5, 1.5, 5.5});
+  ASSERT_TRUE(beside.has_value());
+  ASSERT_TRUE(beside_occupancy.setState(beside.value(), ObservedVoxelState::kOccupied));
+  SweptFootprintConfig footprint = fixture.execution_footprint;
+  footprint.radius_m = 1.2;
+  footprint.body_radius_m = 0.5;
+  footprint.perimeter_samples = 12U;
+  footprint.radial_rings = 2U;
+  ExecutionStopRequest3D request = stopRequest(fixture, active, input);
+  request.observed_raw_world =
+      fixture.rawWorld(SnapshotFixture3D::kLatestRawRevision + 1U, &beside_occupancy);
+  request.validation_policy = VersionedExecutionValidationPolicy3D::capture(
+      fixture.validation_policy->flightEnvelope(),
+      fixture.validation_policy->dynamics(),
+      fixture.validation_policy->altitudeEnvelope(), footprint, 100.0, 1000.0, 1000.0,
+      true);
+  ASSERT_NE(request.validation_policy, nullptr);
+
+  const ExecutionStopPreparation3D prepared = supervisor.prepareStop(request);
+
+  ASSERT_EQ(prepared.status, ExecutionStopStatus3D::kPrepared)
+      << executionStopStatus3DName(prepared.status) << " certification="
+      << stopCertificationStatus3DName(prepared.certification.status) << " path="
+      << finiteExecutionPathStatus3DName(prepared.certification.path_validation_status);
+  EXPECT_GT(prepared.stop_distance_m, 4.0);
+  // The envelope was refused first; the body certified the same trajectory.
+  EXPECT_TRUE(prepared.certification.physical_body_only);
+  const StopExecution3D* const stop = prepared.stopExecution();
+  ASSERT_NE(stop, nullptr);
+  EXPECT_TRUE(stop->physical_body_only);
+  EXPECT_NEAR(stop->validation_footprint.radius_m, 0.5, 1.0e-9);
+  EXPECT_NEAR(stop->validation_footprint.body_radius_m, 0.5, 1.0e-9);
+
+  ASSERT_EQ(commitExecutionHorizonForTest(
+                supervisor,
+                ExecutionHorizonTestTransaction3D{
+                    .kind = ExecutionHorizonCommitKind3D::kTransition,
+                    .expected_authority = prepared.expected_authority,
+                    .expected_plan = prepared.expectedPlan(),
+                    .transition = *prepared.transition,
+                    .expected_pending = nullptr,
+                    .owner = SnapshotFixture3D::committedOwner(
+                        *prepared.transition->next, 2U),
+                    .input = input,
+                })
+                .status,
+            ExecutionHorizonCommitStatus3D::kCommitted);
+  const std::shared_ptr<const ExecutionPlan3D> stopping = supervisor.plan();
+  ASSERT_NE(stopping, nullptr);
+  ASSERT_NE(stopping->stopExecution(), nullptr);
+
+  // The resident stop is judged with the body it was certified with, so the
+  // envelope's failure does not derive a new stop every tick.
+  ExecutionStopRequest3D again_request =
+      stopRequest(fixture, stopping, movingInput(*input, 5.0F));
+  again_request.observed_raw_world = request.observed_raw_world;
+  again_request.validation_policy = request.validation_policy;
+  const ExecutionStopPreparation3D again = supervisor.prepareStop(again_request);
+
+  EXPECT_EQ(again.status, ExecutionStopStatus3D::kResidentStopCurrent)
+      << executionStopStatus3DName(again.status);
+  EXPECT_EQ(supervisor.plan(), stopping);
+}
+
 // The stop that owns the vehicle after it has been committed on the wire.
 [[nodiscard]] std::shared_ptr<const ExecutionPlan3D>
 commitStop(ExecutionSupervisor3D& supervisor,

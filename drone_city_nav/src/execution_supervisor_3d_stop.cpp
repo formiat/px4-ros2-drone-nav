@@ -38,6 +38,7 @@ template<typename T>
 // forbid the vehicle from braking out of it.
 [[nodiscard]] std::optional<FiniteExecutionPathWorld3D>
 stopValidationWorld(const ExecutionStopRequest3D& request,
+                    const SweptFootprintConfig& footprint,
                     std::optional<ProprioceptiveFreeSpaceSeed3D>& live_seed) {
   const bool raw_mode = request.observed_raw_world != nullptr;
   const bool static_mode = request.static_world != nullptr;
@@ -52,13 +53,13 @@ stopValidationWorld(const ExecutionStopRequest3D& request,
   live_seed = proprioceptiveContactSeed3D(
       Point3{request.exact_initial_state.x, request.exact_initial_state.y,
              request.exact_initial_state.z},
-      request.exact_previous_control, request.validation_policy->sweptFootprint(),
+      request.exact_previous_control, footprint,
       raw_mode ? std::addressof(request.observed_raw_world->occupancy()) : nullptr);
   return FiniteExecutionPathWorld3D{
       .flight_envelope = &request.validation_policy->flightEnvelope(),
       .dynamics = &request.validation_policy->dynamics(),
       .altitude_envelope = &request.validation_policy->altitudeEnvelope(),
-      .footprint = &request.validation_policy->sweptFootprint(),
+      .footprint = &footprint,
       .static_occupancy = static_mode ? &request.static_world->occupancy() : nullptr,
       .observed_occupancy =
           raw_mode ? &request.observed_raw_world->occupancy() : nullptr,
@@ -96,6 +97,15 @@ residentStopStillExecutable(const StopExecution3D& stop,
              points, stop.valid_from_ns, stop.valid_until_ns, request.now_ns,
              request.exact_initial_state, request.exact_previous_control, world)
       .accepted();
+}
+
+// Whether a path verdict means the swept body met occupied evidence, as
+// opposed to a broken contract, envelope or dynamics law that no smaller body
+// would satisfy either.
+[[nodiscard]] constexpr bool
+stopCollisionVerdict(const FiniteExecutionPathStatus3D status) noexcept {
+  return status == FiniteExecutionPathStatus3D::kRawCollision ||
+         status == FiniteExecutionPathStatus3D::kLatestLidarRawCollision;
 }
 
 // The longest stop the supervisor will ask for. At the absolute speed limit
@@ -266,15 +276,20 @@ ExecutionSupervisor3D::prepareStop(ExecutionStopRequest3D request) const {
     result.status = ExecutionStopStatus3D::kAtRest;
     return result;
   }
+  // A resident stop is judged with the body it was certified with; a fresh
+  // stop is certified below against its own world.
+  const StopExecution3D* const resident = expected->stopExecution();
   std::optional<ProprioceptiveFreeSpaceSeed3D> live_seed;
-  const std::optional<FiniteExecutionPathWorld3D> world =
-      stopValidationWorld(owned_request, live_seed);
+  const std::optional<FiniteExecutionPathWorld3D> world = stopValidationWorld(
+      owned_request,
+      resident != nullptr ? resident->validation_footprint
+                          : owned_request.validation_policy->sweptFootprint(),
+      live_seed);
   if (!world.has_value()) {
     result.status = ExecutionStopStatus3D::kValidationWorldUnavailable;
     return result;
   }
-  if (const StopExecution3D* const resident = expected->stopExecution();
-      resident != nullptr &&
+  if (resident != nullptr &&
       residentStopStillExecutable(*resident, owned_request, *world)) {
     result.status = ExecutionStopStatus3D::kResidentStopCurrent;
     return result;
@@ -318,26 +333,45 @@ ExecutionSupervisor3D::prepareStop(ExecutionStopRequest3D request) const {
     result.status = ExecutionStopStatus3D::kAtRest;
     return result;
   }
+  StopExecutionCertification3D certification{
+      .trajectory_revision = trajectory_revision,
+      .horizon = *horizon,
+      .observed_raw_world = owned_request.observed_raw_world,
+      .static_world = owned_request.static_world,
+      .validation_policy = owned_request.validation_policy,
+      .execution_input = owned_request.execution_input,
+      .latest_lidar_evidence = owned_request.latest_lidar_evidence,
+      .valid_from_ns = owned_request.now_ns,
+      .physical_body_only = false,
+  };
   StopCertificationResult3D certification_report;
-  const ExecutionRouteTransitionResult3D transition = enterStopExecution3D(
-      *expected, expected->version,
-      StopExecutionCertification3D{
-          .trajectory_revision = trajectory_revision,
-          .horizon = *horizon,
-          .observed_raw_world = owned_request.observed_raw_world,
-          .static_world = owned_request.static_world,
-          .validation_policy = owned_request.validation_policy,
-          .execution_input = owned_request.execution_input,
-          .latest_lidar_evidence = owned_request.latest_lidar_evidence,
-          .valid_from_ns = owned_request.now_ns,
-      },
-      &certification_report);
+  const ExecutionRouteTransitionResult3D transition = [&] {
+    ExecutionRouteTransitionResult3D envelope = enterStopExecution3D(
+        *expected, expected->version, certification, &certification_report);
+    // The envelope keeps clearance the vehicle may already have lost:
+    // evidence confirmed beside the path it was following, or a wall it is
+    // braking towards. A stop is the last motion the vehicle can be given, so
+    // when the envelope cannot sweep clear, the same trajectory is certified
+    // against the physical body alone. Braking with the body clear is
+    // strictly safer than the horizon it replaces; leaving that horizon in
+    // flight is what ended one flight against a wall.
+    if (envelope.applied() ||
+        certification_report.status !=
+            StopCertificationStatus3D::kPathValidationRejected ||
+        !stopCollisionVerdict(certification_report.path_validation_status)) {
+      return envelope;
+    }
+    certification.physical_body_only = true;
+    return enterStopExecution3D(*expected, expected->version, certification,
+                                &certification_report);
+  }();
   result.transition_status = transition.status;
   result.transition_detail = transition.detail;
   result.certification.status = certification_report.status;
   result.certification.dynamics_consistency = certification_report.dynamics_consistency;
   result.certification.path_validation_status =
       certification_report.path_validation_status;
+  result.certification.physical_body_only = certification_report.physical_body_only;
   if (!transition.applied() || transition.next == nullptr ||
       transition.next->stopExecution() == nullptr) {
     result.status = ExecutionStopStatus3D::kTransitionRejected;

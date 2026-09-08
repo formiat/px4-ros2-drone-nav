@@ -93,6 +93,13 @@ proprioceptiveSeedExemptsPoint(const ProprioceptiveFreeSpaceSeed3D& seed,
     const LaunchSupportContact3D* launch_support_contact = nullptr,
     const ProprioceptiveFreeSpaceSeed3D* proprioceptive_seed = nullptr) noexcept;
 
+// The footprint reduced to the physical body: the validation radius drops to
+// the body radius while the axial extents and sampling stay as configured.
+// This is the volume contact evidence is judged against, and the volume a
+// motion answers to when the clearance envelope has nowhere left to go.
+[[nodiscard]] SweptFootprintConfig
+physicalBodyFootprint(const SweptFootprintConfig& footprint) noexcept;
+
 [[nodiscard]] bool footprintIntersectsAxisAlignedBox(
     const Point3& position, const FootprintBodyAxis& body_axis,
     const SweptFootprintConfig& config, const Point3& box_minimum,
