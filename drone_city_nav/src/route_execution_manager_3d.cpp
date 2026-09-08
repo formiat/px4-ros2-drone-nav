@@ -180,8 +180,23 @@ ExecutionRoutePublicationStatus3D RouteExecutionManager3D::publishTransitionLock
   }
   const std::shared_ptr<const ExecutionPlan3D>& expected_plan =
       expected_authority->plan();
+  // A leased transition puts a horizon on the wire, so the plan it installs
+  // must have one to publish, and a plan that still carries an execution is
+  // publishable only once that execution is revalidated, leased or not. A
+  // detached transition that suspends the resident route's finite execution
+  // installs a plan with no execution at all: nothing in it needs a horizon
+  // or a revalidation, and refusing it for having nothing to publish left the
+  // revocation uncommittable while a route was resident — the offboard then
+  // kept flying the last horizon it had accepted, certified before the
+  // evidence that invalidated it, and two recorded flights ended against
+  // walls that way.
+  const bool horizon_publication_required =
+      owner.valid || transition.next == nullptr ||
+      transition.next->finiteExecution() != nullptr ||
+      transition.next->brakingFallback() != nullptr ||
+      transition.next->directTrackingExecution() != nullptr;
   if (expected_plan == nullptr || !transition.applied() || transition.next == nullptr ||
-      !transition.next->publishable() ||
+      (horizon_publication_required && !transition.next->publishable()) ||
       expected_plan->version == std::numeric_limits<std::uint64_t>::max() ||
       transition.next->version <= expected_plan->version) {
     return ExecutionRoutePublicationStatus3D::kInvalidCandidate;

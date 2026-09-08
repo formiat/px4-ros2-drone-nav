@@ -29,6 +29,33 @@ TEST(ExecutionRouteSnapshot3DTest,
   EXPECT_EQ(suspendFiniteExecution3D(*suspended.next, suspended.next->version).status,
             ExecutionRouteTransitionStatus3D::kNoChange);
 
+  // A detached revocation commits the suspension: it leases no horizon, so
+  // the plan it installs needs none. The route stays resident for the next
+  // executable horizon or a certified successor to resume from.
+  RouteExecutionManager3D manager;
+  const std::shared_ptr<const CommittedExecutionAuthority3D> initial_authority =
+      manager.authority();
+  ASSERT_NE(initial_authority, nullptr);
+  ASSERT_NE(manager.plan(), nullptr);
+  const ExecutionRouteTransitionResult3D activation = activateCertifiedRoute3D(
+      *manager.plan(), manager.plan()->version, *active->route(),
+      SnapshotFixture3D::finitePlanForRoute(*manager.plan(), *active->route(),
+                                            FiniteExecutionKind3D::kNominal, 100U));
+  ASSERT_TRUE(activation.applied());
+  ASSERT_EQ(manager.publishDetachedTransition(initial_authority, activation),
+            ExecutionRoutePublicationStatus3D::kPublished);
+  const std::shared_ptr<const CommittedExecutionAuthority3D> active_authority =
+      manager.authority();
+  const ExecutionRouteTransitionResult3D detached_suspension =
+      suspendFiniteExecution3D(*manager.plan(), manager.plan()->version);
+  ASSERT_TRUE(detached_suspension.applied());
+  EXPECT_EQ(manager.publishDetachedTransition(active_authority, detached_suspension),
+            ExecutionRoutePublicationStatus3D::kPublished);
+  ASSERT_EQ(manager.plan(), detached_suspension.next);
+  EXPECT_EQ(manager.plan()->phase(), ExecutionRoutePhase3D::kAwaitingSuccessor);
+  ASSERT_NE(manager.plan()->route(), nullptr);
+  EXPECT_EQ(manager.plan()->finiteExecution(), nullptr);
+
   FiniteExecutionPlan3D resumed_plan = SnapshotFixture3D::finitePlanForRoute(
       *suspended.next, *suspended.next->route(), FiniteExecutionKind3D::kNominal, 101U);
   const ExecutionRouteTransitionResult3D resumed = replaceFiniteExecutionPlan3D(
