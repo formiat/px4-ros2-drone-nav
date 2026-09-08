@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <iterator>
 #include <limits>
+#include <numbers>
 #include <optional>
 #include <span>
 #include <type_traits>
@@ -949,6 +950,60 @@ FootprintBodyAxis bodyAxisFromWorldAcceleration(const Vec3& acceleration_mps2,
                                                 const double gravity_mps2) noexcept {
   return normalized(FootprintBodyAxis{acceleration_mps2.x, acceleration_mps2.y,
                                       acceleration_mps2.z + gravity_mps2});
+}
+
+double maximumBodyTiltRad(const double maximum_horizontal_acceleration_mps2,
+                          const double maximum_vertical_acceleration_mps2,
+                          const double gravity_mps2) noexcept {
+  const double horizontal_mps2 =
+      std::isfinite(maximum_horizontal_acceleration_mps2)
+          ? std::max(0.0, maximum_horizontal_acceleration_mps2)
+          : 0.0;
+  const double vertical_mps2 = std::isfinite(maximum_vertical_acceleration_mps2)
+                                   ? std::max(0.0, maximum_vertical_acceleration_mps2)
+                                   : 0.0;
+  const double gravity =
+      std::isfinite(gravity_mps2) ? std::max(0.0, gravity_mps2) : 0.0;
+  // Descending at the vertical limit leaves the least thrust along gravity,
+  // so the same horizontal acceleration tilts the axis the furthest.
+  const double thrust_along_gravity_mps2 = gravity - vertical_mps2;
+  if (horizontal_mps2 <= 0.0) {
+    return 0.0;
+  }
+  if (thrust_along_gravity_mps2 <= 0.0) {
+    return std::numbers::pi / 2.0;
+  }
+  return std::atan2(horizontal_mps2, thrust_along_gravity_mps2);
+}
+
+SweptFootprintConfig tiltEnvelopedFootprint(const SweptFootprintConfig& footprint,
+                                            const double tilt_rad) noexcept {
+  const double tilt =
+      std::isfinite(tilt_rad) ? std::clamp(tilt_rad, 0.0, std::numbers::pi / 2.0) : 0.0;
+  const double sine = std::sin(tilt);
+  const double cosine = std::cos(tilt);
+  const double radius_m = std::max(0.0, footprint.radius_m);
+  const double body_radius_m = std::max(0.0, footprint.body_radius_m);
+  const double lower_extent_m = std::max(0.0, footprint.lower_extent_m);
+  const double upper_extent_m = std::max(0.0, footprint.upper_extent_m);
+  const double axial_extent_m = std::max(lower_extent_m, upper_extent_m);
+  // The horizontal reach of a cylinder tilted by the angle: its rim projects
+  // to an ellipse displaced by the extent's lean, whose farthest point from
+  // the axis is radius * cos + extent * sin while the tilt is shallower than
+  // the body's diagonal, and the diagonal itself, sqrt(radius^2 + extent^2),
+  // beyond that. The rim dips or rises by radius * sin beyond the extents'
+  // own projection, and that is exact.
+  const auto leaned_radius = [&](const double radius) noexcept {
+    return radius * sine <= axial_extent_m * cosine
+               ? radius * cosine + axial_extent_m * sine
+               : std::hypot(radius, axial_extent_m);
+  };
+  SweptFootprintConfig enveloped = footprint;
+  enveloped.radius_m = leaned_radius(radius_m);
+  enveloped.body_radius_m = leaned_radius(body_radius_m);
+  enveloped.lower_extent_m = lower_extent_m * cosine + radius_m * sine;
+  enveloped.upper_extent_m = upper_extent_m * cosine + radius_m * sine;
+  return enveloped;
 }
 
 const char* sweptFootprintStatusName(const SweptFootprintStatus status) noexcept {

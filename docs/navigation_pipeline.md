@@ -108,7 +108,18 @@ without evidence at all.
 The vehicle's own pose is proprioceptive contact evidence. The footprint has
 two radii: the validation envelope (`physical_footprint_radius_m`, the body
 plus the clearance every motion keeps) and the physical body itself
-(`physical_footprint_body_radius_m`, rotor tips included). Occupied evidence
+(`physical_footprint_body_radius_m`, rotor tips included). The execution
+validators tilt that body with the commanded acceleration, the way the
+airframe does; the planner, the route compiler and the route certification
+cannot know the acceleration the controller will command along a route, so
+they answer to the route footprint (`tiltEnvelopedFootprint`): the
+vertical-axis body that contains the physical footprint at every tilt the
+dynamics reach (`maximumBodyTiltRad`, the thrust axis at the horizontal and
+vertical acceleration limits together). With the physical footprint above, the
+route body is 0.89 m wide and reaches 0.66 m below and 0.76 m above the
+centre. One recorded flight was routed a quarter of a metre above a roof, where
+every accelerating horizon and every stop swept the roof once tilted, and it
+rested there for seconds at a time with routes rejected from where it stood. Occupied evidence
 that overlaps the envelope at the proprioceptive seed (the current pose,
 widened by half an observed voxel) is contact rather than an obstacle: the
 vehicle demonstrably stands there. Every raw validator (planner departure,

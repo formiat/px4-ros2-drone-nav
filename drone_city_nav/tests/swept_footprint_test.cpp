@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <iterator>
 #include <limits>
+#include <numbers>
 #include <ranges>
 #include <vector>
 
@@ -851,6 +852,79 @@ TEST(SweptFootprintTest, ProprioceptiveSeedSuppressesTheRawPointsItsBodyTouches)
                                                 nullptr, &seed)
                 .status,
             SweptFootprintStatus::kRawCollision);
+}
+
+// The thrust axis tilts by atan(horizontal / (gravity - vertical)) when the
+// controller accelerates at both limits while descending.
+TEST(SweptFootprintTest, MaximumBodyTiltFollowsTheThrustAxisAtTheDynamicsLimits) {
+  EXPECT_NEAR(maximumBodyTiltRad(4.0, 4.0, 9.80665), std::atan2(4.0, 5.80665), 1.0e-12);
+  EXPECT_NEAR(maximumBodyTiltRad(4.0, 0.0, 9.80665), std::atan2(4.0, 9.80665), 1.0e-12);
+  EXPECT_DOUBLE_EQ(maximumBodyTiltRad(0.0, 4.0, 9.80665), 0.0);
+  EXPECT_NEAR(maximumBodyTiltRad(4.0, 12.0, 9.80665), std::numbers::pi / 2.0, 1.0e-12);
+  const FootprintBodyAxis axis = bodyAxisFromWorldAcceleration(Vec3{4.0, 0.0, -4.0});
+  EXPECT_NEAR(std::acos(axis.z), maximumBodyTiltRad(4.0, 4.0), 1.0e-9);
+}
+
+// Every point of the body cylinder, tilted in any direction by any angle up
+// to the limit, lies inside the vertical cylinder the envelope describes; at
+// zero tilt the envelope is the footprint itself.
+TEST(SweptFootprintTest, TiltEnvelopedFootprintContainsTheBodyAtEveryTilt) {
+  const SweptFootprintConfig footprint{
+      .radius_m = 0.82,
+      .lower_extent_m = 0.23,
+      .upper_extent_m = 0.35,
+      .body_radius_m = 0.55,
+      .perimeter_samples = 12U,
+      .radial_rings = 2U,
+      .axial_samples = 3U,
+      .sweep_step_m = 0.25,
+      .safe_clearance_threshold_m = 0.1,
+  };
+  const SweptFootprintConfig untilted = tiltEnvelopedFootprint(footprint, 0.0);
+  EXPECT_NEAR(untilted.radius_m, footprint.radius_m, 1.0e-12);
+  EXPECT_NEAR(untilted.body_radius_m, footprint.body_radius_m, 1.0e-12);
+  EXPECT_NEAR(untilted.lower_extent_m, footprint.lower_extent_m, 1.0e-12);
+  EXPECT_NEAR(untilted.upper_extent_m, footprint.upper_extent_m, 1.0e-12);
+
+  const double tilt_rad = maximumBodyTiltRad(4.0, 4.0);
+  const SweptFootprintConfig enveloped = tiltEnvelopedFootprint(footprint, tilt_rad);
+  EXPECT_GT(enveloped.radius_m, footprint.radius_m);
+  EXPECT_GT(enveloped.lower_extent_m, footprint.lower_extent_m);
+  EXPECT_GT(enveloped.upper_extent_m, footprint.upper_extent_m);
+  EXPECT_EQ(enveloped.perimeter_samples, footprint.perimeter_samples);
+  EXPECT_EQ(enveloped.sweep_step_m, footprint.sweep_step_m);
+  EXPECT_EQ(enveloped.safe_clearance_threshold_m, footprint.safe_clearance_threshold_m);
+  constexpr double kTolerance{1.0e-9};
+  for (int tilt_step = 0; tilt_step <= 8; ++tilt_step) {
+    const double tilt = tilt_rad * tilt_step / 8.0;
+    for (int heading_step = 0; heading_step < 12; ++heading_step) {
+      const double heading = 2.0 * std::numbers::pi * heading_step / 12.0;
+      // The tilted axis and two perpendicular directions spanning its rim.
+      const double ax = std::sin(tilt) * std::cos(heading);
+      const double ay = std::sin(tilt) * std::sin(heading);
+      const double az = std::cos(tilt);
+      const double ux = std::cos(tilt) * std::cos(heading);
+      const double uy = std::cos(tilt) * std::sin(heading);
+      const double uz = -std::sin(tilt);
+      const double vx = -std::sin(heading);
+      const double vy = std::cos(heading);
+      for (const double axial :
+           {-footprint.lower_extent_m, 0.0, footprint.upper_extent_m}) {
+        for (int rim_step = 0; rim_step < 16; ++rim_step) {
+          const double rim = 2.0 * std::numbers::pi * rim_step / 16.0;
+          const double rx = std::cos(rim) * ux + std::sin(rim) * vx;
+          const double ry = std::cos(rim) * uy + std::sin(rim) * vy;
+          const double rz = std::cos(rim) * uz;
+          const double x = axial * ax + footprint.radius_m * rx;
+          const double y = axial * ay + footprint.radius_m * ry;
+          const double z = axial * az + footprint.radius_m * rz;
+          EXPECT_LE(std::hypot(x, y), enveloped.radius_m + kTolerance);
+          EXPECT_GE(z, -enveloped.lower_extent_m - kTolerance);
+          EXPECT_LE(z, enveloped.upper_extent_m + kTolerance);
+        }
+      }
+    }
+  }
 }
 
 } // namespace

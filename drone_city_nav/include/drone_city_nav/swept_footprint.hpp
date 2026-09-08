@@ -122,4 +122,22 @@ physicalBodyFootprint(const SweptFootprintConfig& footprint) noexcept;
 bodyAxisFromWorldAcceleration(const Vec3& acceleration_mps2,
                               double gravity_mps2 = 9.80665) noexcept;
 
+// The largest tilt the body axis reaches under the dynamics: the thrust axis
+// of a multirotor accelerating at the horizontal limit while its vertical
+// acceleration is at the limit too, the pose bodyAxisFromWorldAcceleration
+// derives for that control.
+[[nodiscard]] double maximumBodyTiltRad(double maximum_horizontal_acceleration_mps2,
+                                        double maximum_vertical_acceleration_mps2,
+                                        double gravity_mps2 = 9.80665) noexcept;
+
+// The vertical-axis body that contains `footprint` at every tilt up to
+// `tilt_rad`: a route validated with it clears the body the execution
+// validators tilt with the commanded acceleration, whatever acceleration the
+// dynamics let the controller command along it. The radius grows to the
+// tilted rim's horizontal reach, the extents by the rim's dip; the body
+// radius follows the same law, and the sampling and the safe-clearance
+// threshold are kept.
+[[nodiscard]] SweptFootprintConfig
+tiltEnvelopedFootprint(const SweptFootprintConfig& footprint, double tilt_rad) noexcept;
+
 } // namespace drone_city_nav

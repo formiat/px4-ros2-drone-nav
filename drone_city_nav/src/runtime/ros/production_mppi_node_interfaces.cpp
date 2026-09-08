@@ -144,7 +144,7 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
       .route_envelope = config_.planning.route_envelope,
       .future_route_connector = config_.planning.future_route_connector,
       .route_geometry = config_.planning.static_route_geometry,
-      .physical_footprint = config_.world.physical_footprint,
+      .physical_footprint = config_.world.route_footprint,
       .flight_envelope = config_.world.flight_envelope,
       .route_extension = config_.planning.static_route_extension,
       .passage_volume = config_.planning.cooperative_passage_volume,
@@ -202,7 +202,7 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
                               .maximum_yaw_rate_radps = static_cast<double>(
                                   config_.control.mppi.dynamics.maximum_yaw_rate_radps),
                           },
-                      .physical_footprint = config_.world.physical_footprint,
+                      .physical_footprint = config_.world.route_footprint,
                       .tracking_error_tube = config_.control.tracking_error_tube,
                   },
               .passage_volume = config_.planning.cooperative_passage_volume,
@@ -211,7 +211,7 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
       .successor_improvement = config_.planning.route_successor_improvement,
       .flight_envelope = config_.world.flight_envelope,
       .route_tracking = config_.planning.route_tracking_policy,
-      .physical_footprint = config_.world.physical_footprint,
+      .physical_footprint = config_.world.route_footprint,
       .certified_splice = config_.planning.certified_route_splice,
       .validation_policy = config_.execution.validation_policy,
       .route_risk =
