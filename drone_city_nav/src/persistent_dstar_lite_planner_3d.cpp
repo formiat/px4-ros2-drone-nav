@@ -321,13 +321,14 @@ PersistentDStarLitePlanner3DImpl::PersistentDStarLitePlanner3DImpl(
 
 void PersistentDStarLitePlanner3DImpl::initializeSearch(
     const PersistentPlannerRequest3D& request, const PersistentPlannerNode3D start,
-    const PersistentPlannerNode3D goal) {
+    const PersistentPlannerNode3D goal, const Point3& search_goal) {
   initialized_ = true;
   start_ = start;
   last_start_ = start;
   goal_ = goal;
   exact_start_ = request.start;
-  exact_goal_ = request.mission_goal;
+  exact_goal_ = search_goal;
+  mission_goal_ = request.mission_goal;
   mission_epoch_ = request.mission_epoch;
   dstar_session_.begin(start, goal);
   feasibility_search_.reset();
@@ -365,6 +366,7 @@ void PersistentDStarLitePlanner3DImpl::reset() noexcept {
   escape_search_pending_ = false;
   closed_component_origin_.reset();
   exact_goal_ = {};
+  mission_goal_ = {};
   mission_epoch_ = 0U;
   dstar_session_.reset();
   feasibility_search_.reset();
@@ -451,7 +453,7 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
 
   const std::uint64_t previous_producer = world_.producer_instance_id;
   const std::uint64_t previous_mission_epoch = mission_epoch_;
-  const Point3 previous_goal = exact_goal_;
+  const Point3 previous_goal = mission_goal_;
   const auto world_update_started = std::chrono::steady_clock::now();
   const PersistentPlannerWorldUpdate3D world_update = updateWorld(request.world);
   telemetry.world_diff_ms = world_update.diff_ms;
@@ -549,14 +551,18 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   departure_waypoints_ = departure.waypoints;
   telemetry.departure_waypoint_used = !departure.waypoints.empty();
   telemetry.departure_waypoint_count = departure.waypoints.size();
-  const std::optional<PersistentPlannerNode3D> goal_anchor =
-      lattice_.selectAnchor(request.mission_goal, false);
-  if (!goal_anchor.has_value()) {
+  const PlannerLattice3D::GoalConnection3D goal_connection =
+      lattice_.selectGoalConnection(request.mission_goal, config_.goal_tolerance_m);
+  if (!goal_connection.available()) {
     update.input_status = PlannerInputStatus3D::kGoalUnavailable;
     return update;
   }
+  const std::optional<PersistentPlannerNode3D>& goal_anchor = goal_connection.anchor;
+  const Point3& search_goal = goal_connection.endpoint;
+  telemetry.goal_refined = goal_connection.refined;
+  telemetry.search_goal = search_goal;
   const ExecutionTimeRefiner3D::Request3D refinement_request =
-      refinementRequest(request, *start_anchor, *goal_anchor);
+      refinementRequest(request, *start_anchor, *goal_anchor, search_goal);
 
   const bool mission_changed =
       initialized_ &&
@@ -569,7 +575,7 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     if (mission_changed || producer_changed) {
       coordinator_.reset();
     }
-    initializeSearch(request, *start_anchor, *goal_anchor);
+    initializeSearch(request, *start_anchor, *goal_anchor, search_goal);
   } else {
     // The feasibility search keeps its anchor while the vehicle stays within
     // one lattice diagonal of it: a hovering vehicle flips its nearest node
@@ -586,10 +592,11 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     const bool execution_time_start_changed = execution_time_refiner_.startChanged(
         refinement_request.start, refinement_request.start_from_rest);
     const bool execution_time_goal_changed =
-        execution_time_refiner_.goalChanged(request.mission_goal);
+        execution_time_refiner_.goalChanged(search_goal);
     telemetry.search_state_reused = true;
     exact_start_ = request.start;
-    exact_goal_ = request.mission_goal;
+    exact_goal_ = search_goal;
+    mission_goal_ = request.mission_goal;
     dstar_session_.rebaseStart(*start_anchor,
                                lattice_.heuristic(last_start_, *start_anchor));
     start_ = *start_anchor;

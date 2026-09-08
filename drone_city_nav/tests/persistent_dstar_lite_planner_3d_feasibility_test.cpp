@@ -580,5 +580,51 @@ TEST(PersistentDStarLitePlanner3DTest,
   EXPECT_LT(worst_call_ms, 500.0);
 }
 
+TEST(PersistentDStarLitePlanner3DTest,
+     AGoalInsideOccupiedEvidenceIsReachedWithinItsTolerance) {
+  // The goal's own cell is occupied — a floor the lidar has only just seen
+  // under a goal set a hand's breadth above it. No node reaches the goal, but
+  // the free space around it is within the goal tolerance: the search ends at
+  // the nearest such point instead of reporting the goal unavailable.
+  auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 1.0, 14, 6, 6});
+  const Point3 start{1.5, 2.5, 2.5};
+  const Point3 goal{12.5, 2.5, 2.5};
+  ASSERT_TRUE(
+      occupancy->setState(GridIndex3D{12, 2, 2}, ObservedVoxelState::kOccupied));
+  PersistentPlannerConfig3D config = testConfig();
+  config.feasibility_first_enabled = true;
+  config.goal_tolerance_m = 2.0;
+  config.departure_refinement_subdivisions = 4U;
+  config.maximum_departure_refinement_probes = 512U;
+  PersistentDStarLitePlanner3D planner{config};
+  PlannerUpdate3D update = planner.plan(request(start, goal, world(occupancy, 1U)));
+  for (int attempt = 0; attempt < 64 && !update.publishable(); ++attempt) {
+    update = planner.plan(request(start, goal, world(occupancy, 1U)));
+  }
+  ASSERT_EQ(update.input_status, PlannerInputStatus3D::kAccepted);
+  EXPECT_TRUE(update.telemetry.goal_refined);
+  ASSERT_TRUE(update.publishable());
+  const std::vector<Point3>& points = candidate(update).points;
+  ASSERT_GE(points.size(), 2U);
+  const Point3& endpoint = points.back();
+  EXPECT_GT(distance3D(endpoint, goal), 0.0);
+  EXPECT_LE(distance3D(endpoint, goal), config.goal_tolerance_m);
+  EXPECT_NEAR(distance3D(endpoint, update.telemetry.search_goal), 0.0, 1.0e-9);
+  expectRawValid(points, *occupancy, planner.config().physical_footprint);
+
+  // A goal in free space is reached exactly, without refinement.
+  PersistentDStarLitePlanner3D exact_planner{config};
+  const Point3 free_goal{12.5, 4.5, 2.5};
+  PlannerUpdate3D exact =
+      exact_planner.plan(request(start, free_goal, world(occupancy, 1U)));
+  for (int attempt = 0; attempt < 64 && !exact.publishable(); ++attempt) {
+    exact = exact_planner.plan(request(start, free_goal, world(occupancy, 1U)));
+  }
+  ASSERT_TRUE(exact.publishable());
+  EXPECT_FALSE(exact.telemetry.goal_refined);
+  EXPECT_NEAR(distance3D(candidate(exact).points.back(), free_goal), 0.0, 1.0e-9);
+}
+
 } // namespace
 } // namespace drone_city_nav

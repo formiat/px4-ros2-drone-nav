@@ -324,6 +324,20 @@ found nothing is repeated only when the world changed. `PERSISTENT_PLANNER3D`
 reports `escape_attempted`, `escape_found`, `escape_active`, `escape_exhausted`,
 `escape_probes` and `escape_cells`; `departure_waypoints` counts the chain.
 
+The goal end of the search has the same weakness in a smaller form. The
+search ends at a lattice node within the connector radius of the goal whose
+straight connector to the goal validates. A goal set a hand's breadth above a
+floor the lidar only sees late — or beside a wall a fresh scan has just put
+into the memory — loses every such node at once, and a planner with no goal
+anchor ran no search at all: one recorded run held for the rest of its
+mission with the planner reporting `goal_unavailable` on every update, the
+vehicle at rest and nothing left to observe the evidence away. The goal
+connection now probes the same fine grid around the goal, within
+`persistent_planner_goal_tolerance_m`, for the nearest free point a node
+reaches, and the searches end there; the route still counts as reaching the
+mission goal, which the mission captures within that tolerance.
+`PERSISTENT_PLANNER3D` reports `goal_refined`.
+
 The choice was between this and validating the way out with the physical
 body (0.55 m) instead of the envelope (0.82 m). The vehicle entered the region
 on the envelope, so a way out on the envelope exists with high probability and

@@ -447,6 +447,69 @@ PlannerLattice3D::DepartureConnection3D PlannerLattice3D::selectDepartureConnect
   return result;
 }
 
+PlannerLattice3D::GoalConnection3D
+PlannerLattice3D::selectGoalConnection(const Point3& goal,
+                                       const double tolerance_m) const {
+  GoalConnection3D result{.endpoint = goal};
+  result.anchor = selectAnchor(goal, false);
+  if (result.available() || config_->departure_refinement_subdivisions == 0U ||
+      !std::isfinite(tolerance_m) || !(tolerance_m > 0.0)) {
+    return result;
+  }
+  const auto subdivisions =
+      static_cast<int>(config_->departure_refinement_subdivisions);
+  const double horizontal_step_m =
+      config_->minimum_horizontal_step_m / static_cast<double>(subdivisions);
+  const double vertical_step_m =
+      config_->minimum_vertical_step_m / static_cast<double>(subdivisions);
+  const int horizontal_span =
+      static_cast<int>(std::ceil(tolerance_m / horizontal_step_m));
+  const int vertical_span = static_cast<int>(std::ceil(tolerance_m / vertical_step_m));
+  std::vector<Point3> probes;
+  for (int z_offset = -vertical_span; z_offset <= vertical_span; ++z_offset) {
+    for (int y_offset = -horizontal_span; y_offset <= horizontal_span; ++y_offset) {
+      for (int x_offset = -horizontal_span; x_offset <= horizontal_span; ++x_offset) {
+        if (x_offset == 0 && y_offset == 0 && z_offset == 0) {
+          continue;
+        }
+        const Point3 probe{goal.x + static_cast<double>(x_offset) * horizontal_step_m,
+                           goal.y + static_cast<double>(y_offset) * horizontal_step_m,
+                           goal.z + static_cast<double>(z_offset) * vertical_step_m};
+        if (distance3D(goal, probe) <= tolerance_m &&
+            pointInsideFlightEnvelope(probe)) {
+          probes.push_back(probe);
+        }
+      }
+    }
+  }
+  std::ranges::sort(probes, [&](const Point3& first, const Point3& second) {
+    const double first_distance = distance3D(goal, first);
+    const double second_distance = distance3D(goal, second);
+    if (first_distance != second_distance) {
+      return first_distance < second_distance;
+    }
+    return std::tie(first.z, first.y, first.x) < std::tie(second.z, second.y, second.x);
+  });
+  std::size_t attempts{0U};
+  for (const Point3& probe : probes) {
+    if (attempts >= config_->maximum_departure_refinement_probes) {
+      break;
+    }
+    ++attempts;
+    if (!rawSegmentValid(probe, probe)) {
+      continue;
+    }
+    const std::optional<PersistentPlannerNode3D> anchor = selectAnchor(probe, false);
+    if (anchor.has_value()) {
+      result.anchor = anchor;
+      result.endpoint = probe;
+      result.refined = true;
+      return result;
+    }
+  }
+  return result;
+}
+
 bool PlannerLattice3D::departureReachable(const Point3& start,
                                           const std::span<const Point3> waypoints,
                                           const Point3& target) const {

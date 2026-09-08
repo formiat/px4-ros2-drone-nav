@@ -119,7 +119,8 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
         "refinement_ms=%.1f world_diff_ms=%.1f world_install_ms=%.1f "
         "schedule_ms=%.1f schedule_ranking_ms=%.1f edges_forgotten=%zu "
         "clearances_tightened=%zu clearances_rederived=%zu "
-        "departure_waypoints=%zu anchor_skip=%zu escape_attempted=%s escape_found=%s "
+        "departure_waypoints=%zu anchor_skip=%zu goal_refined=%s escape_attempted=%s "
+        "escape_found=%s "
         "escape_active=%s escape_exhausted=%s escape_probes=%zu escape_cells=%zu "
         "escape_ms=%.1f",
         planner_telemetry.planned_on_revision, planner_telemetry.mission_epoch,
@@ -175,6 +176,7 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
         planner_telemetry.schedule_clearances_rederived,
         planner_telemetry.departure_waypoint_count,
         planner_telemetry.departure_anchor_skip,
+        planner_telemetry.goal_refined ? "true" : "false",
         planner_telemetry.escape_search_attempted ? "true" : "false",
         planner_telemetry.escape_search_found ? "true" : "false",
         planner_telemetry.escape_connection_active ? "true" : "false",

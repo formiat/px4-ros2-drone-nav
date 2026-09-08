@@ -303,6 +303,29 @@ public:
       std::optional<PersistentPlannerNode3D> preferred = std::nullopt) const;
   // How many admissible connections the start has, for bounding that walk.
   [[nodiscard]] std::size_t departureConnectionCount(const Point3& start) const;
+
+  struct GoalConnection3D {
+    std::optional<PersistentPlannerNode3D> anchor;
+    // The point the search ends at: the goal itself, or a free point within
+    // the goal tolerance when the goal's own surroundings admit no anchor.
+    Point3 endpoint{};
+    bool refined{false};
+
+    [[nodiscard]] bool available() const noexcept {
+      return anchor.has_value();
+    }
+  };
+
+  // The lattice node the search ends at and the exact point it reaches. The
+  // goal itself is taken while a node within the connector radius reaches it;
+  // otherwise the finer grid the departure refinement probes is searched
+  // around the goal, within `tolerance_m`, for the nearest free point a node
+  // reaches. A goal a fresh scan has just put inside occupied evidence — a
+  // point a hand's breadth above a floor the lidar only now sees — would
+  // otherwise leave the planner with no search at all until that evidence
+  // clears, and a vehicle that has stopped never clears it.
+  [[nodiscard]] GoalConnection3D selectGoalConnection(const Point3& goal,
+                                                      double tolerance_m) const;
   // Whether the body reaches `target` from `start`, through `waypoint` when
   // one is set. The leg leaving the vehicle carries the departure exemption
   // for contact evidence the body already holds; every later leg is ordinary

@@ -277,6 +277,11 @@ struct PlannerTelemetry3D {
   std::size_t departure_anchor_skip{0U};
   // The escape search ran this update / found a way out this update / the
   // vehicle is leaving through one; see EscapeSearch3D.
+  // The goal's own surroundings admitted no anchor and the search ends at a
+  // free point within the goal tolerance instead; see
+  // PlannerLattice3D::selectGoalConnection.
+  bool goal_refined{false};
+  Point3 search_goal{};
   bool escape_search_attempted{false};
   bool escape_search_found{false};
   bool escape_search_exhausted{false};

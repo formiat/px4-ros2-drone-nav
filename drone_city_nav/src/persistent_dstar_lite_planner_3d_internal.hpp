@@ -470,7 +470,8 @@ private:
   // Starts every search over: the backward session, the feasibility frontier,
   // and the execution-time refinement all restart from these endpoints.
   void initializeSearch(const PersistentPlannerRequest3D& request,
-                        PersistentPlannerNode3D start, PersistentPlannerNode3D goal);
+                        PersistentPlannerNode3D start, PersistentPlannerNode3D goal,
+                        const Point3& search_goal);
   [[nodiscard]] FeasiblePathSearch3D::Endpoints3D searchEndpoints() const noexcept;
   [[nodiscard]] std::optional<std::vector<Point3>>
   rebaseIncumbent(const std::vector<Point3>& incumbent, const Point3& start,
@@ -490,10 +491,9 @@ private:
                       const PersistentPlannerRequest3D& request,
                       std::chrono::steady_clock::time_point deadline,
                       PlannerTelemetry3D& telemetry) const;
-  [[nodiscard]] ExecutionTimeRefiner3D::Request3D
-  refinementRequest(const PersistentPlannerRequest3D& request,
-                    PersistentPlannerNode3D start_anchor,
-                    PersistentPlannerNode3D goal_anchor) const noexcept;
+  [[nodiscard]] ExecutionTimeRefiner3D::Request3D refinementRequest(
+      const PersistentPlannerRequest3D& request, PersistentPlannerNode3D start_anchor,
+      PersistentPlannerNode3D goal_anchor, const Point3& search_goal) const noexcept;
   [[nodiscard]] std::vector<GridIndex3D>
   changedOccupiedCells(const PersistentPlannerWorld3D& previous,
                        const PersistentPlannerWorld3D& current,
@@ -516,7 +516,11 @@ private:
   // and exhausted itself against. Reset whenever a route is found or the
   // search restarts.
   std::size_t departure_anchor_skip_{0U};
+  // The point the searches end at: the mission goal, or the free point the
+  // goal connection refined it to within the goal tolerance.
   Point3 exact_goal_{};
+  // The mission goal the searches were initialised for.
+  Point3 mission_goal_{};
   std::uint64_t mission_epoch_{0U};
   bool initialized_{false};
   DStarLiteSession3D dstar_session_;

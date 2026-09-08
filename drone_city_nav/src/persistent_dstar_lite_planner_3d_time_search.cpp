@@ -112,7 +112,8 @@ Vec3 ExecutionTimeRefiner3D::directionVector(
 ExecutionTimeRefiner3D::Request3D PersistentDStarLitePlanner3DImpl::refinementRequest(
     const PersistentPlannerRequest3D& request,
     const PersistentPlannerNode3D start_anchor,
-    const PersistentPlannerNode3D goal_anchor) const noexcept {
+    const PersistentPlannerNode3D goal_anchor,
+    const Point3& search_goal) const noexcept {
   const Point3 anchor = lattice_.pointFor(start_anchor);
   // The first heading the vehicle takes is toward whatever it leaves through:
   // the waypoint when the departure needs one, otherwise the anchor itself.
@@ -134,7 +135,7 @@ ExecutionTimeRefiner3D::Request3D PersistentDStarLitePlanner3DImpl::refinementRe
           },
       .goal_anchor = goal_anchor,
       .exact_start = request.start,
-      .exact_goal = request.mission_goal,
+      .exact_goal = search_goal,
       .departure_waypoints = departure_waypoints_,
       .start_from_rest = std::hypot(std::hypot(request.velocity.x, request.velocity.y),
                                     request.velocity.z) <= kDirectionEpsilon,
