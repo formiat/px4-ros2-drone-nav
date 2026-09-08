@@ -161,23 +161,16 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
         self.assertGreater(parameters["tracking_error_tube_response_time_s"], 0.0)
         self.assertNotIn("lattice_config_", config_source)
         self.assertNotIn("lattice_3d_config_", config_source)
-        # The hard body is the physical hull at every tilt the dynamics reach,
-        # enveloped once and stood upright by every validator, planner and
-        # execution alike; never a tracking margin.
+        # The hard body is the physical hull, stood upright by every validator,
+        # planner and execution alike; never a tracking margin. The tilt the
+        # airframe reaches is the tube's lean law.
         self.assertIn(
-            "world.physical_footprint = tiltEnvelopedFootprint(",
+            "control.tracking_error_tube.maximum_body_tilt_rad = maximumBodyTiltRad(",
             config_source,
         )
-        self.assertIn("maximumBodyTiltRad(", config_source)
         self.assertIn(
             "planning.persistent_planner.physical_footprint = "
             "world.physical_footprint;",
-            config_source,
-        )
-        # A departure is flown at hover on the hull as configured.
-        self.assertIn(
-            "planning.persistent_planner.departure_footprint = "
-            "world.hull_footprint;",
             config_source,
         )
         self.assertIn(

@@ -57,6 +57,61 @@ profile(const ObservedOccupancyGrid3D& occupancy) {
       SweptFootprintConfig{}, TrackingErrorTubeConfig3D{.response_time_s = 0.15}, 5.0);
 }
 
+// The lean law: a passage the upright hull clears with room to spare, but the
+// hull leaned to the dynamics' tilt does not, keeps its route and loses its
+// speed to the progress floor.
+TEST(TrackingErrorTube3DTest, TheLeanLawFloorsTheSpeedWhereTheLeaningHullDoesNotFit) {
+  ObservedOccupancyGrid3D occupancy{testBounds()};
+  // A ceiling from z = 2.7 m and a floor up to z = 1.5 m over the whole
+  // route: the 0.35 m / 0.23 m hull at z = 2 m clears both with room for
+  // speed, the hull leaned to 35 degrees reaches 0.6 m up and 0.5 m down and
+  // touches the floor.
+  const GridBounds3D& bounds = occupancy.bounds();
+  for (int x = 0; x < bounds.width_cells; ++x) {
+    for (int y = 0; y < bounds.height_cells; ++y) {
+      static_cast<void>(occupancy.setState({x, y, 27}, ObservedVoxelState::kOccupied));
+      static_cast<void>(occupancy.setState({x, y, 14}, ObservedVoxelState::kOccupied));
+    }
+  }
+  const std::vector<RouteSample3D> route = passageRoute();
+  const std::uint64_t occupied_fingerprint =
+      occupancy.occupiedSnapshot().contentFingerprint();
+  const TrackingErrorTubeWorld3D world{
+      .observed_occupancy = &occupancy,
+      .occupied_content_fingerprint = occupied_fingerprint,
+  };
+  const SweptFootprintConfig hull{.radius_m = 0.4,
+                                  .lower_extent_m = 0.23,
+                                  .upper_extent_m = 0.35,
+                                  .body_radius_m = 0.4,
+                                  .body_lower_extent_m = 0.23,
+                                  .body_upper_extent_m = 0.35};
+  const TrackingErrorTubeConfig3D upright{.response_time_s = 0.15,
+                                          .minimum_progress_speed_mps = 1.0};
+  TrackingErrorTubeConfig3D leaning = upright;
+  leaning.maximum_body_tilt_rad = maximumBodyTiltRad(4.0, 4.0);
+
+  const TrackingErrorTubeProfile3D upright_tube =
+      makeTrackingErrorTubeProfile3D(route, world, hull, upright, 5.0);
+  const TrackingErrorTubeProfile3D leaning_tube =
+      makeTrackingErrorTubeProfile3D(route, world, hull, leaning, 5.0);
+
+  ASSERT_TRUE(upright_tube.valid);
+  ASSERT_TRUE(leaning_tube.valid);
+  EXPECT_GT(upright_tube.minimum_speed_limit_mps, 1.0);
+  EXPECT_DOUBLE_EQ(leaning_tube.minimum_speed_limit_mps, 1.0);
+  EXPECT_EQ(leaning_tube.constrained_segment_count, route.size() - 1U);
+  // The leaning body is the tube's business only: the route stays valid.
+  EXPECT_TRUE(validateRawSweptFootprint(occupancy, route.front().position,
+                                        FootprintBodyAxis{}, route.back().position,
+                                        FootprintBodyAxis{}, hull)
+                  .accepted());
+  // A tilt the dynamics cannot reach is not a configuration.
+  TrackingErrorTubeConfig3D malformed = upright;
+  malformed.maximum_body_tilt_rad = 2.0;
+  EXPECT_FALSE(trackingErrorTubeConfig3DIsValid(malformed));
+}
+
 TEST(TrackingErrorTube3DTest, FullSpeedErrorMatchesClosedLoopResponseHorizon) {
   EXPECT_DOUBLE_EQ(
       trackingErrorTubeRadiusM(TrackingErrorTubeConfig3D{.response_time_s = 0.15}, 5.0),

@@ -108,31 +108,32 @@ without evidence at all.
 The vehicle's own pose is proprioceptive contact evidence. The footprint has
 two radii: the validation envelope (`physical_footprint_radius_m`, the body
 plus the clearance every motion keeps) and the physical body itself
-(`physical_footprint_body_radius_m`, rotor tips included). The airframe
-tilts with the acceleration it commands, so the body every validator answers
-to is the configured hull at every tilt the dynamics reach
-(`tiltEnvelopedFootprint`, `maximumBodyTiltRad`: the thrust axis at the
-horizontal and vertical acceleration limits together), enveloped once at
-configuration and stood upright by every validator, planner and execution
-alike. With the hull above, the body reaches 0.65 m from the axis, 0.50 m
-below and 0.60 m above the centre, inside the 0.82 m envelope. Tilting the
-body per command in the execution validators while the planner validated the
-upright hull laid routes a quarter of a metre above roofs, where every
-accelerating horizon and every stop swept the roof once tilted; one recorded
-flight rested beside such a roof for a quarter of its mission with every
-route certified from where it stood rejected the same way.
+(`physical_footprint_body_radius_m`, rotor tips included), and the hull's own
+axial extents stay on the body (`body_lower_extent_m`, `body_upper_extent_m`)
+while the envelope's may carry clearance beyond them. Every validator stands
+that hull upright, planner and execution alike: the planner's lattice, the
+route compiler, the certification and the executed-horizon validators all
+judge the same body, so a route the planner admits is one the executor can
+fly and the planner can depart from wherever the executor brought the
+vehicle. The tilt the airframe reaches is the tube's business, the lean law
+(`TrackingErrorTubeConfig3D::maximum_body_tilt_rad`, `maximumBodyTiltRad`:
+the thrust axis at the horizontal and vertical acceleration limits together,
+`tiltEnvelopedFootprint`): the tube measures its clearance from the hull
+enveloped over every tilt the dynamics reach, so where the leaning hull no
+longer fits the speed falls to the progress floor and the airframe is asked
+for no more than gentle motion. Tilting the whole body per command in the
+execution validators while the planner validated the upright hull laid routes
+a quarter of a metre above roofs where every accelerating horizon and every
+stop was rejected, and one recorded flight rested beside such a roof for a
+quarter of its mission; making the taller leaned body the hard rule of every
+validator instead turned every covered street into a trap once mapped, and
+two recorded flights rested under an awning for two hundred seconds each.
 
-In flight the body is the hull at every tilt (`body_radius_m`,
-`body_lower_extent_m`, `body_upper_extent_m` grow with the tilt): the
-airframe may lean that far at any moment, so contact evidence is judged
-against the volume it can reach, and the vehicle never creeps deeper into
-evidence than that body admits. A vehicle leaves a tight spot the way it
-entered it, at hover and upright, so a departure is validated with the hull
-as configured (`hull_footprint`,
-`PersistentPlannerConfig3D::departure_footprint`), whose body is what the
-vehicle physically occupies: the legs leaving the vehicle, the departure
-waypoints and every step of the escape fill. The route
-records the station its departure ends at
+A vehicle leaves a tight spot the way it entered it, at hover, so a departure
+is the hull's business too: the legs leaving the vehicle, the departure
+waypoints and every step of the escape fill are validated with the departure
+body (`PersistentPlannerConfig3D::departure_footprint`, the hull unless
+configured otherwise). The route records the station its departure ends at
 (`CompiledTrajectory3D::departure_end_station_m`), and every validator that
 holds the route, the route compiler, the certification, the executed-horizon
 validators and the continuation checks, gives its proprioceptive seed that
@@ -140,11 +141,8 @@ departure as a chain (`ProprioceptiveFreeSpaceSeed3D::departure_chain`,
 `departureChain3D`): the contact volume is swept along it, so evidence the
 envelope cannot clear while the vehicle threads its way out is contact for the
 whole departure and an obstacle nowhere else, and the physical body stays a
-hard rule at every pose of it. A slot 1.25 m tall under an awning, entered
-while the awning was unknown, kept one recorded flight resting for two
-hundred seconds once the awning was mapped: no lattice node fitted the
-enveloped body, the fill found no way out for it either, and the vehicle,
-which fitted at hover, was never asked to leave at hover. Occupied evidence
+hard rule at every pose of it. An escape whose exit the search then exhausts
+as well is retired and the fill resumes for another exit. Occupied evidence
 that overlaps the envelope at the proprioceptive seed (the current pose,
 widened by half an observed voxel) is contact rather than an obstacle: the
 vehicle demonstrably stands there. Every raw validator (planner departure,

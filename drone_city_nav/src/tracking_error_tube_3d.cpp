@@ -135,11 +135,17 @@ worldConfigurationIsValid(const TrackingErrorTubeWorld3D& world) noexcept {
 // each an exact distance query against nearby occupied voxel boxes.
 [[nodiscard]] double segmentInflationMarginM(
     const TrackingErrorTubeWorld3D& world, const Point3& first, const Point3& second,
-    const SweptFootprintConfig& physical_footprint, const double maximum_margin_m) {
+    const SweptFootprintConfig& physical_footprint, const double maximum_body_tilt_rad,
+    const double maximum_margin_m) {
+  // The lean law: the margin is measured from the body enveloped over every
+  // tilt the dynamics reach, so a segment the leaning body cannot clear gets
+  // no margin and the progress floor for a speed.
+  const SweptFootprintConfig leaning =
+      tiltEnvelopedFootprint(physical_footprint, maximum_body_tilt_rad);
   const RawClearanceBody3D body{
-      .radius_m = physical_footprint.radius_m,
-      .lower_extent_m = physical_footprint.lower_extent_m,
-      .upper_extent_m = physical_footprint.upper_extent_m,
+      .radius_m = leaning.radius_m,
+      .lower_extent_m = leaning.lower_extent_m,
+      .upper_extent_m = leaning.upper_extent_m,
   };
   const double length_m = distance3D(first, second);
   const auto pose_count = static_cast<std::size_t>(
@@ -174,8 +180,9 @@ worldConfigurationIsValid(const TrackingErrorTubeWorld3D& world) noexcept {
     return std::numeric_limits<double>::quiet_NaN();
   }
   const double maximum_margin_m = trackingErrorTubeRadiusM(config, maximum_speed_mps);
-  const double margin_m = segmentInflationMarginM(world, first, second,
-                                                  physical_footprint, maximum_margin_m);
+  const double margin_m =
+      segmentInflationMarginM(world, first, second, physical_footprint,
+                              config.maximum_body_tilt_rad, maximum_margin_m);
   if (margin_m >= maximum_margin_m) {
     return maximum_speed_mps;
   }
@@ -274,6 +281,9 @@ bool trackingErrorTubeProfile3DMatchesWorld(const std::span<const RouteSample3D>
       profile.unconstrained_speed_limit_mps);
   return derived.valid && derived.obstacle_evidence_available &&
          derived.config.response_time_s == profile.config.response_time_s &&
+         derived.config.maximum_body_tilt_rad == profile.config.maximum_body_tilt_rad &&
+         derived.config.minimum_progress_speed_mps ==
+             profile.config.minimum_progress_speed_mps &&
          derived.physical_footprint.radius_m == profile.physical_footprint.radius_m &&
          derived.physical_footprint.lower_extent_m ==
              profile.physical_footprint.lower_extent_m &&

@@ -885,21 +885,15 @@ void ProductionMppiConfigLoader::finalize() {
       goal_capture_hold_ns, goal_capture_feedback_margin_ns,
       goal_capture_tick_margin_ns, "mission goal capture hold lease");
 
-  // The airframe tilts with the acceleration it commands, and the body the
-  // validators answer to is the body at every tilt the dynamics reach, stood
-  // upright. Enveloping it once here keeps the planner and the execution
-  // validators judging the same body: routes laid a quarter of a metre above
-  // a roof, where every accelerating horizon and every stop swept the roof
-  // once tilted, left one recorded flight resting beside the roof for a
-  // quarter of its mission.
-  world.hull_footprint = world.physical_footprint;
-  world.physical_footprint = tiltEnvelopedFootprint(
-      world.physical_footprint,
-      maximumBodyTiltRad(
-          static_cast<double>(
-              control.mppi.dynamics.maximum_horizontal_acceleration_mps2),
-          static_cast<double>(
-              control.mppi.dynamics.maximum_vertical_acceleration_mps2)));
+  // The lean law: the airframe tilts with the acceleration it commands, so
+  // the tube measures its clearance from the hull enveloped over every tilt
+  // the dynamics reach and floors the speed where the leaning hull no longer
+  // fits. The upright hull stays the hard rule of every validator: a taller
+  // hard body turned every covered street into a trap once mapped, while the
+  // hull passes them at the speed the lean law leaves it.
+  control.tracking_error_tube.maximum_body_tilt_rad = maximumBodyTiltRad(
+      static_cast<double>(control.mppi.dynamics.maximum_horizontal_acceleration_mps2),
+      static_cast<double>(control.mppi.dynamics.maximum_vertical_acceleration_mps2));
   planning.cooperative_passage_volume.flight_envelope = world.flight_envelope;
   planning.cooperative_passage_volume.footprint = SweptFootprintConfig{
       .radius_m = world.physical_footprint.radius_m,
@@ -946,7 +940,6 @@ void ProductionMppiConfigLoader::finalize() {
   planning.persistent_planner.minimum_continuous_turn_alignment =
       planning.future_route_connector.minimum_continuous_turn_alignment;
   planning.persistent_planner.physical_footprint = world.physical_footprint;
-  planning.persistent_planner.departure_footprint = world.hull_footprint;
   planning.persistent_planner.flight_envelope = world.flight_envelope;
 
   diagnostics.rviz_period_ns =

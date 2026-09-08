@@ -16,6 +16,14 @@ struct TrackingErrorTubeConfig3D {
   // tracking excursion instead of collapsing progress to centimetres per second
   // beside a wall. Zero keeps the pure clearance-derived ceiling.
   double minimum_progress_speed_mps{0.0};
+  // The lean law. The airframe tilts with the acceleration it commands, and
+  // the body's rim dips and leans with it: the clearance the tube measures is
+  // taken from the body enveloped over every tilt the dynamics reach
+  // (tiltEnvelopedFootprint at this angle), so where the leaning body no
+  // longer fits the speed falls to the progress floor and the airframe is
+  // asked for no more than gentle motion. The hull itself, upright, stays the
+  // hard rule of every validator. Zero keeps the upright hull the tube's body.
+  double maximum_body_tilt_rad{0.0};
 };
 
 [[nodiscard]] bool

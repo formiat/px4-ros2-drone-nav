@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <numbers>
 
 namespace drone_city_nav {
 
@@ -10,7 +11,10 @@ bool trackingErrorTubeConfig3DIsValid(
     const TrackingErrorTubeConfig3D& config) noexcept {
   return std::isfinite(config.response_time_s) && config.response_time_s > 0.0 &&
          std::isfinite(config.minimum_progress_speed_mps) &&
-         config.minimum_progress_speed_mps >= 0.0;
+         config.minimum_progress_speed_mps >= 0.0 &&
+         std::isfinite(config.maximum_body_tilt_rad) &&
+         config.maximum_body_tilt_rad >= 0.0 &&
+         config.maximum_body_tilt_rad <= std::numbers::pi / 2.0;
 }
 
 double trackingErrorTubeRadiusM(const TrackingErrorTubeConfig3D& config,

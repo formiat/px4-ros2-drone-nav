@@ -140,6 +140,8 @@ void hashTrackingErrorTube(TrajectoryHasher& hash,
   hash.boolean(profile.valid);
   hash.boolean(profile.obstacle_evidence_available);
   hash.number(profile.config.response_time_s);
+  hash.number(profile.config.minimum_progress_speed_mps);
+  hash.number(profile.config.maximum_body_tilt_rad);
   hashSweptFootprint(hash, profile.physical_footprint);
   hash.value(static_cast<std::uint64_t>(profile.speed_limits_mps.size()));
   for (const double speed_limit_mps : profile.speed_limits_mps) {
