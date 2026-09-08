@@ -300,6 +300,14 @@ TEST(PersistentDStarLitePlanner3DTest, ARefinedDepartureLeavesAPocketNoNodeReach
       unrefined.plan(request(start, goal, world(occupancy, 1U)));
   ASSERT_EQ(stuck.input_status, PlannerInputStatus3D::kStartUnavailable)
       << "the fixture no longer reproduces a pocket";
+  // The refusal says what the connector radius held and what the body swept
+  // into: nodes existed, and every leg to a valid one was rejected.
+  EXPECT_GT(stuck.telemetry.departure_candidate_nodes, 0U);
+  EXPECT_GT(stuck.telemetry.departure_valid_nodes, 0U);
+  EXPECT_EQ(stuck.telemetry.departure_rejected_legs,
+            stuck.telemetry.departure_valid_nodes);
+  EXPECT_TRUE(stuck.telemetry.departure_first_failure_available);
+  EXPECT_EQ(stuck.telemetry.departure_refinement_probes, 0U);
 
   PersistentDStarLitePlanner3D refined{config};
   PlannerUpdate3D update = refined.plan(request(start, goal, world(occupancy, 1U)));

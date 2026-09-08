@@ -211,7 +211,15 @@ closed in on the body (`failure_point` names the voxel) and the validators are
 letting the vehicle depart without approaching it; `contact_tolerance_m` is the
 half-voxel tolerance in force. A persistent `planner_input=start_unavailable`
 together with `status=raw_collision` means no departure from the pose validates
-even with contact suppression.
+even with contact suppression. `PERSISTENT_PLANNER3D` says why on every update:
+`departure_nodes=valid/candidates` counts the lattice nodes in the connector
+radius and those whose own body clears the raw world,
+`departure_rejected_legs` the legs from the vehicle to a valid node that the
+swept body could not fly, `departure_failure` the first point such a leg met
+evidence at, `departure_probes=reachable/tried` the finer departure refinement
+probes and how many the body reached, and `seed_distance_m` /
+`seed_tolerance_m` where the proprioceptive seed the departure exemption holds
+lies relative to the start (negative without one) and its contact tolerance.
 
 `PRODUCTION_MPPI_SUMMARY` also reports the planning-service lifecycle counters:
 `route_planning_queued`, `route_planning_processed`,

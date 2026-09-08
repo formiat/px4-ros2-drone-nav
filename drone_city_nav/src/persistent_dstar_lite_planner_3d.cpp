@@ -543,6 +543,21 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
           : lattice_.selectDepartureConnection(request.start, departure_anchor_skip_,
                                                initialized_ ? std::optional{start_}
                                                             : std::nullopt);
+  telemetry.departure_candidate_nodes = departure.diagnostics.candidate_nodes;
+  telemetry.departure_valid_nodes = departure.diagnostics.valid_nodes;
+  telemetry.departure_rejected_legs = departure.diagnostics.rejected_legs;
+  telemetry.departure_refinement_probes = departure.diagnostics.refinement_probes;
+  telemetry.departure_refinement_reachable = departure.diagnostics.refinement_reachable;
+  telemetry.departure_first_failure_available =
+      departure.diagnostics.first_leg_failure_available;
+  telemetry.departure_first_failure =
+      departure.diagnostics.first_leg_failure.failure_point;
+  if (world_.proprioceptive_free_space_seed.has_value()) {
+    telemetry.departure_seed_distance_m =
+        distance3D(request.start, world_.proprioceptive_free_space_seed->position);
+    telemetry.departure_seed_contact_tolerance_m =
+        world_.proprioceptive_free_space_seed->contact_tolerance_m;
+  }
   if (!departure.available()) {
     update.input_status = PlannerInputStatus3D::kStartUnavailable;
     return update;

@@ -275,6 +275,21 @@ struct PlannerTelemetry3D {
   // How many of the start's reachable anchors the search has already tried and
   // exhausted itself against.
   std::size_t departure_anchor_skip{0U};
+  // Why the search could or could not leave the vehicle: the nodes in the
+  // connector radius and how many of them the body clears, the departure legs
+  // the body sweeps into evidence and the first such collision, and the
+  // refinement probes tried and reached. With them, the proprioceptive seed
+  // the departure exemption holds: how far it lies from the start (negative
+  // without one) and its contact tolerance.
+  std::size_t departure_candidate_nodes{0U};
+  std::size_t departure_valid_nodes{0U};
+  std::size_t departure_rejected_legs{0U};
+  std::size_t departure_refinement_probes{0U};
+  std::size_t departure_refinement_reachable{0U};
+  Point3 departure_first_failure{};
+  bool departure_first_failure_available{false};
+  double departure_seed_distance_m{-1.0};
+  double departure_seed_contact_tolerance_m{0.0};
   // The escape search ran this update / found a way out this update / the
   // vehicle is leaving through one; see EscapeSearch3D.
   // The goal's own surroundings admitted no anchor and the search ends at a

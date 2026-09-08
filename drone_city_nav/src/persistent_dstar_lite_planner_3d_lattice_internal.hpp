@@ -254,9 +254,25 @@ public:
                                   PersistentPlannerNode3D second) const noexcept;
   [[nodiscard]] Point3 pointFor(PersistentPlannerNode3D node) const noexcept;
   [[nodiscard]] PersistentPlannerNode3D nearestNode(const Point3& point) const noexcept;
+
+  // Why a departure could or could not be found: what the connector radius
+  // held, what the body cleared, and the first leg the body swept into
+  // evidence. A vehicle reporting start_unavailable says nothing else about
+  // itself; this is what the diagnosis of a pocket needs.
+  struct DepartureDiagnostics3D {
+    std::size_t candidate_nodes{0U};
+    std::size_t valid_nodes{0U};
+    std::size_t rejected_legs{0U};
+    std::size_t refinement_probes{0U};
+    std::size_t refinement_reachable{0U};
+    OccupiedCollisionResult3D first_leg_failure{};
+    bool first_leg_failure_available{false};
+  };
+
   // Every node in the connector radius the body reaches, nearest first.
   [[nodiscard]] std::vector<PersistentPlannerNode3D>
-  admissibleAnchors(const Point3& point, bool start_anchor) const;
+  admissibleAnchors(const Point3& point, bool start_anchor,
+                    DepartureDiagnostics3D* diagnostics = nullptr) const;
   [[nodiscard]] std::optional<PersistentPlannerNode3D>
   selectAnchor(const Point3& point, bool start_anchor) const;
 
@@ -279,6 +295,7 @@ public:
     // Empty in ordinary flight; one point from the departure refinement; a
     // chain from the escape search.
     std::vector<Point3> waypoints;
+    DepartureDiagnostics3D diagnostics;
 
     [[nodiscard]] bool available() const noexcept {
       return anchor.has_value();
@@ -380,6 +397,8 @@ public:
   [[nodiscard]] bool rawSegmentValid(const Point3& first, const Point3& second) const;
   [[nodiscard]] bool departureSegmentValid(const Point3& first,
                                            const Point3& second) const;
+  [[nodiscard]] OccupiedCollisionResult3D
+  departureSegmentValidation(const Point3& first, const Point3& second) const;
   [[nodiscard]] bool nodeValid(PersistentPlannerNode3D node) const;
   // A path is traversable when it stays inside the flight envelope and every
   // segment clears the physical body; the first segment is a departure.

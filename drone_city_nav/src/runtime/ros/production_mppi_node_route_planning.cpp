@@ -122,7 +122,9 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
         "departure_waypoints=%zu anchor_skip=%zu goal_refined=%s escape_attempted=%s "
         "escape_found=%s "
         "escape_active=%s escape_exhausted=%s escape_probes=%zu escape_cells=%zu "
-        "escape_ms=%.1f",
+        "escape_ms=%.1f departure_nodes=%zu/%zu departure_rejected_legs=%zu "
+        "departure_probes=%zu/%zu departure_failure=%s(%.2f,%.2f,%.2f) "
+        "seed_distance_m=%.2f seed_tolerance_m=%.3f",
         planner_telemetry.planned_on_revision, planner_telemetry.mission_epoch,
         plannerInputStatus3DName(planner_update.planner_input_status),
         planner_telemetry.input_failure,
@@ -183,7 +185,17 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
         planner_telemetry.escape_search_exhausted ? "true" : "false",
         planner_telemetry.escape_search_probes,
         planner_telemetry.escape_search_explored_cells,
-        planner_telemetry.escape_search_ms);
+        planner_telemetry.escape_search_ms, planner_telemetry.departure_valid_nodes,
+        planner_telemetry.departure_candidate_nodes,
+        planner_telemetry.departure_rejected_legs,
+        planner_telemetry.departure_refinement_reachable,
+        planner_telemetry.departure_refinement_probes,
+        planner_telemetry.departure_first_failure_available ? "" : "none",
+        planner_telemetry.departure_first_failure.x,
+        planner_telemetry.departure_first_failure.y,
+        planner_telemetry.departure_first_failure.z,
+        planner_telemetry.departure_seed_distance_m,
+        planner_telemetry.departure_seed_contact_tolerance_m);
   }
 
   if (update.status == RouteLifecycleAdvanceStatus3D::kContinuationQueued) {
