@@ -253,9 +253,12 @@ bool FiniteExecutionState3D::validFor(
                                  source_physical_route_fingerprint)) {
     return false;
   }
+  // A braking tail follows the command horizon for its nominal prefix and
+  // brakes to rest from there: the earliest stop along the horizon the world
+  // admitted. A prefix of zero is the stop that begins at once.
   if (kind == FiniteExecutionKind3D::kEmergencyBrakeTail &&
-      (horizon->nominal_prefix_control_count != 0U ||
-       horizon->arrival_control_count != horizon->controls.size())) {
+      horizon->nominal_prefix_control_count + horizon->arrival_control_count !=
+          horizon->controls.size()) {
     return false;
   }
   if (!std::all_of(horizon->states.begin(), horizon->states.end(), finiteState) ||
