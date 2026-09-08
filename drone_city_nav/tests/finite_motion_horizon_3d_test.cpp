@@ -261,5 +261,55 @@ TEST(FiniteMotionHorizon3DTest, ABrakingHorizonExistsFromEveryAdmissibleControl)
   }
 }
 
+TEST(FiniteMotionHorizon3DTest, TheStopsAlongAHorizonRunFromAtOnceToItsOwnArrival) {
+  // A command horizon that follows twenty planned controls and then arrives.
+  // The stops along it begin at once, then after every arrival search step,
+  // and the last is the horizon's own arrival: the horizon itself.
+  MotionDynamicsConfig3D dynamics;
+  dynamics.dt_s = 0.05F;
+  dynamics.maximum_horizontal_acceleration_mps2 = 4.0F;
+  dynamics.maximum_vertical_acceleration_mps2 = 4.0F;
+  dynamics.maximum_control_jerk_mps3 = 12.0F;
+  const FiniteMotionHorizonConfig3D config = makeFiniteMotionHorizonConfig3D(
+      StoppingCapability{.maximum_commanded_horizontal_deceleration_mps2 = 4.0,
+                         .guaranteed_horizontal_deceleration_mps2 = 4.0,
+                         .guaranteed_vertical_deceleration_mps2 = 2.0,
+                         .reaction_latency_s = 0.1});
+  constexpr std::size_t kControls{60U};
+  constexpr std::size_t kPrefix{20U};
+  const MotionControl3D applied{.ax = 0.5F};
+  std::vector<MotionState3D> states{MotionState3D{.vx = 2.0F}};
+  std::vector<MotionControl3D> controls(kControls, MotionControl3D{.ax = 0.5F});
+  for (const MotionControl3D& control : controls) {
+    states.push_back(integrateMotionState3D(states.back(), control, dynamics));
+  }
+  const std::optional<FiniteMotionHorizon3D> command =
+      buildFiniteMotionHorizon3D(states, controls, kPrefix, dynamics, applied, config);
+  ASSERT_TRUE(command.has_value());
+  const FiniteMotionHorizon3D& horizon =
+      command.value(); // NOLINT(bugprone-unchecked-optional-access)
+
+  const std::vector<FiniteMotionHorizon3D> tails =
+      buildFiniteBrakingHorizonsAlong3D(horizon, dynamics, applied, 5U, config);
+
+  ASSERT_EQ(tails.size(), 5U);
+  const std::optional<FiniteMotionHorizon3D> at_once =
+      buildFiniteBrakingHorizon3D(states.front(), kControls, dynamics, applied, config);
+  ASSERT_TRUE(at_once.has_value());
+  for (std::size_t index = 0U; index < tails.size(); ++index) {
+    EXPECT_EQ(tails[index].nominal_prefix_control_count, 5U * index);
+    EXPECT_TRUE(finiteMotionHorizonHasTerminalRestState3D(tails[index]));
+  }
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+  EXPECT_EQ(tails.front().controls.size(), at_once->controls.size());
+  EXPECT_FLOAT_EQ(tails.front().states.back().x, at_once->states.back().x);
+  EXPECT_EQ(tails.back().controls.size(), horizon.controls.size());
+  EXPECT_FLOAT_EQ(tails.back().states.back().x, horizon.states.back().x);
+  // Each later stop travels farther along the horizon before it rests.
+  for (std::size_t index = 1U; index < tails.size(); ++index) {
+    EXPECT_GT(tails[index].states.back().x, tails[index - 1U].states.back().x);
+  }
+}
+
 } // namespace
 } // namespace drone_city_nav

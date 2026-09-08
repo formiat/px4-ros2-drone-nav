@@ -237,17 +237,21 @@ directValidationWorld(const ExecutionRetentionRequest3D& request,
   }
   result.prepared_trajectory_revision = active->trajectory_revision + 1U;
   std::optional<FiniteExecutionPlan3D> recertified_plan;
+  const std::size_t arrival_search_step_controls =
+      finiteHorizonArrivalSearchStepControls3D(
+          route->validation_policy->dynamics().dt_s);
   const FiniteExecutionPathCandidateValidator3D candidate_validator =
       [&](const FiniteMotionHorizon3D& candidate) {
         if (candidate.states.empty() || candidate.controls.empty()) {
           return false;
         }
-        const std::optional<FiniteMotionHorizon3D> braking_tail =
-            buildFiniteBrakingHorizon3D(
-                candidate.states.front(), candidate.controls.size(),
-                route->validation_policy->dynamics(), request.exact_previous_control,
+        // The earliest stop along the retained path the world admits.
+        const std::vector<FiniteMotionHorizon3D> braking_tails =
+            buildFiniteBrakingHorizonsAlong3D(
+                candidate, route->validation_policy->dynamics(),
+                request.exact_previous_control, arrival_search_step_controls,
                 request.finite_horizon_config);
-        if (!braking_tail.has_value()) {
+        if (braking_tails.empty()) {
           return false;
         }
         FiniteExecutionCertification3D finite_execution{
@@ -260,11 +264,7 @@ directValidationWorld(const ExecutionRetentionRequest3D& request,
         };
         FiniteExecutionPlanCertificationResult3D certification =
             certifyFiniteExecutionPlan3DDetailed(
-                *expected, *route,
-                FiniteExecutionPlanCertification3D{
-                    .command_horizon = std::move(finite_execution),
-                    .braking_tail = *braking_tail,
-                });
+                *expected, *route, std::move(finite_execution), braking_tails);
         const bool certified = certification.certified();
         result.certification = certification.command_horizon;
         recertified_plan = std::move(certification.plan);
@@ -276,9 +276,8 @@ directValidationWorld(const ExecutionRetentionRequest3D& request,
           request.exact_initial_state, request.exact_previous_control,
           active->horizon->nominal_prefix_control_count,
           active->horizon->controls.size(), route->validation_policy->dynamics(),
-          finiteHorizonArrivalSearchStepControls3D(
-              route->validation_policy->dynamics().dt_s),
-          request.finite_horizon_config, *continuation_world, candidate_validator);
+          arrival_search_step_controls, request.finite_horizon_config,
+          *continuation_world, candidate_validator);
   result.rebuild_validation = rebuilt.validation;
   result.arrival_shaping_attempts = rebuilt.arrival_shaping_attempts;
   if (!rebuilt.accepted()) {

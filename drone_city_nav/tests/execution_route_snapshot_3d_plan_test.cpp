@@ -1,3 +1,5 @@
+#include <array>
+
 #include "execution_route_snapshot_3d_plan_test_support.hpp"
 
 namespace drone_city_nav {
@@ -274,6 +276,49 @@ TEST(ExecutionRouteSnapshot3DTest,
       *installed_snapshot.route(); // NOLINT(bugprone-unchecked-optional-access)
   EXPECT_DOUBLE_EQ(installed_route.progress.station_m, kRetainedStationM);
   EXPECT_TRUE(installed_snapshot.publishable());
+}
+
+TEST(ExecutionRouteSnapshot3DTest, ThePlanTakesTheFirstBrakingTailTheWorldAdmits) {
+  // The tails are the stops along the horizon, earliest first. A tail the
+  // certification cannot admit is passed over, and the plan carries the first
+  // one it can; with none admitted the plan is not certified.
+  SnapshotFixture3D fixture;
+  const std::optional<CertifiedRouteSuffix3D> suffix = fixture.certify();
+  const std::shared_ptr<const ExecutionPlan3D> initial =
+      makeInitialExecutionRouteSnapshot3D();
+  if (!suffix.has_value() || initial == nullptr) {
+    ADD_FAILURE() << "The fixture must provide an initial certified route";
+    return;
+  }
+  const CertifiedRouteSuffix3D& successor = suffix.value();
+  constexpr double kCurrentStationM{3.0};
+  const FiniteExecutionCertification3D command =
+      SnapshotFixture3D::finiteCertificationForRoute(
+          successor, FiniteExecutionKind3D::kNominal, 100U, 55U, 0U, kCurrentStationM);
+  ASSERT_NE(command.execution_input, nullptr);
+  const std::optional<FiniteMotionHorizon3D> admitted = buildFiniteBrakingHorizon3D(
+      command.horizon.states.front(), command.horizon.controls.size(),
+      successor.validation_policy->dynamics(),
+      command.execution_input->previousControl());
+  ASSERT_TRUE(admitted.has_value());
+  // A tail whose controls do not match its states is no finite motion at all.
+  FiniteMotionHorizon3D malformed = admitted.value();
+  malformed.controls.pop_back();
+
+  const std::array<FiniteMotionHorizon3D, 2U> tails{malformed, admitted.value()};
+  const FiniteExecutionPlanCertificationResult3D certification =
+      certifyFiniteExecutionPlan3DDetailed(*initial, successor, command, tails);
+  ASSERT_TRUE(certification.certified());
+  ASSERT_TRUE(certification.plan.has_value());
+  EXPECT_EQ(certification.plan->braking_tail.horizon->controls.size(),
+            admitted->controls.size());
+
+  const std::array<FiniteMotionHorizon3D, 1U> rejected{malformed};
+  const FiniteExecutionPlanCertificationResult3D none =
+      certifyFiniteExecutionPlan3DDetailed(*initial, successor, command, rejected);
+  EXPECT_TRUE(none.command_horizon.certified());
+  EXPECT_FALSE(none.certified());
+  EXPECT_FALSE(none.plan.has_value());
 }
 
 } // namespace

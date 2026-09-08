@@ -6,6 +6,7 @@
 #include <optional>
 #include <ranges>
 #include <utility>
+#include <vector>
 
 namespace drone_city_nav {
 namespace {
@@ -185,37 +186,37 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
       return failedCandidate(HorizonCandidateStatus3D::kCertificationRejected);
     }
     const std::uint64_t trajectory_revision = previous_trajectory_revision + 1U;
-    route_candidate_validator =
-        [&, trajectory_revision](const mppi::FiniteHorizon& candidate) {
-          if (candidate.states.empty() || candidate.controls.empty()) {
-            route_certification.reset();
-            return false;
-          }
-          const std::optional<mppi::FiniteHorizon> braking_tail =
-              mppi::buildFiniteBrakingHorizon(
-                  candidate.states.front(), candidate.controls.size(),
-                  *evidence.execution_dynamics, evidence.exact_previous_control,
-                  config_.finite_horizon);
-          if (!braking_tail.has_value()) {
-            route_certification.reset();
-            return false;
-          }
-          route_certification.emplace(certifyFiniteExecutionPlan3DDetailed(
-              *execution_certification_snapshot, *route_certification_target,
-              FiniteExecutionPlanCertification3D{
-                  .command_horizon =
-                      FiniteExecutionCertification3D{
-                          .trajectory_revision = trajectory_revision,
-                          .horizon = candidate,
-                          .execution_input = evidence.execution_input,
-                          .latest_lidar_evidence = evidence.latest_lidar_evidence,
-                          .valid_from_ns = cycle.controller.now_ns,
-                          .kind = FiniteExecutionKind3D::kNominal,
-                      },
-                  .braking_tail = *braking_tail,
-              }));
-          return route_certification->certified();
-        };
+    route_candidate_validator = [&, trajectory_revision](
+                                    const mppi::FiniteHorizon& candidate) {
+      if (candidate.states.empty() || candidate.controls.empty()) {
+        route_certification.reset();
+        return false;
+      }
+      // The braking tail is the earliest stop along the candidate the
+      // world admits: the stop that begins at once where it clears, and
+      // otherwise the first stop that follows the candidate's own turn
+      // away from the evidence a straight stop would run into.
+      const std::vector<mppi::FiniteHorizon> braking_tails =
+          buildFiniteBrakingHorizonsAlong3D(
+              candidate, *evidence.execution_dynamics, evidence.exact_previous_control,
+              cycle.controller.arrival_search_step_controls, config_.finite_horizon);
+      if (braking_tails.empty()) {
+        route_certification.reset();
+        return false;
+      }
+      route_certification.emplace(certifyFiniteExecutionPlan3DDetailed(
+          *execution_certification_snapshot, *route_certification_target,
+          FiniteExecutionCertification3D{
+              .trajectory_revision = trajectory_revision,
+              .horizon = candidate,
+              .execution_input = evidence.execution_input,
+              .latest_lidar_evidence = evidence.latest_lidar_evidence,
+              .valid_from_ns = cycle.controller.now_ns,
+              .kind = FiniteExecutionKind3D::kNominal,
+          },
+          braking_tails));
+      return route_certification->certified();
+    };
   }
 
   // The arrival-shaping search is the largest single cost of the planning

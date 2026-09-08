@@ -567,6 +567,34 @@ buildFiniteBrakingHorizon3D(const MotionState3D& initial_state,
                                     previous_applied_control, config);
 }
 
+std::vector<FiniteMotionHorizon3D>
+buildFiniteBrakingHorizonsAlong3D(const FiniteMotionHorizon3D& command_horizon,
+                                  const MotionDynamicsConfig3D& dynamics,
+                                  const MotionControl3D previous_applied_control,
+                                  const std::size_t arrival_search_step_controls,
+                                  const FiniteMotionHorizonConfig3D& config) {
+  std::vector<FiniteMotionHorizon3D> tails;
+  if (command_horizon.states.size() != command_horizon.controls.size() + 1U ||
+      command_horizon.controls.empty() ||
+      command_horizon.nominal_prefix_control_count > command_horizon.controls.size()) {
+    return tails;
+  }
+  const std::size_t step = std::max<std::size_t>(1U, arrival_search_step_controls);
+  const std::size_t last_prefix = command_horizon.nominal_prefix_control_count;
+  for (std::size_t prefix = 0U;; prefix = std::min(prefix + step, last_prefix)) {
+    std::optional<FiniteMotionHorizon3D> tail =
+        buildFiniteMotionHorizon3D(command_horizon.states, command_horizon.controls,
+                                   prefix, dynamics, previous_applied_control, config);
+    if (tail.has_value()) {
+      tails.push_back(std::move(*tail));
+    }
+    if (prefix >= last_prefix) {
+      break;
+    }
+  }
+  return tails;
+}
+
 RouteConvergentFiniteMotionHorizon3D buildRouteConvergentFiniteMotionHorizon3D(
     const std::span<const MotionState3D> planned_states,
     const std::span<const MotionControl3D> planned_controls,

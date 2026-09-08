@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string_view>
 
 namespace drone_city_nav {
@@ -166,6 +167,16 @@ certifyFiniteExecution3DDetailed(const ExecutionPlan3D& current,
 certifyFiniteExecutionPlan3DDetailed(const ExecutionPlan3D& current,
                                      const CertifiedRouteSuffix3D& target_route,
                                      FiniteExecutionPlanCertification3D certification);
+
+// Certifies the command horizon once and takes the first of `braking_tails`,
+// in order, the world admits as the plan's braking tail; the tails are the
+// stops along the horizon, earliest first. With none admitted the result
+// carries the last tail's rejection.
+[[nodiscard]] FiniteExecutionPlanCertificationResult3D
+certifyFiniteExecutionPlan3DDetailed(
+    const ExecutionPlan3D& current, const CertifiedRouteSuffix3D& target_route,
+    FiniteExecutionCertification3D command_horizon,
+    std::span<const FiniteMotionHorizon3D> braking_tails);
 
 [[nodiscard]] std::optional<FiniteExecutionState3D>
 certifyFiniteExecution3D(const ExecutionPlan3D& current,

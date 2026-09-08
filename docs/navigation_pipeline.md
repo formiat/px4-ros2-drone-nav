@@ -323,7 +323,14 @@ its deadline never exceeds the previous `valid_until`.
 
 Route validity is checked separately. Every non-terminal execution plan includes
 a certified braking tail and admits motion only while its remaining route
-reserve covers stopping, measured planning latency, and required overlap. If no
+reserve covers stopping, measured planning latency, and required overlap. The
+braking tail is the earliest stop along the command horizon the world admits:
+the stop that begins at once where it clears, and otherwise the first stop
+that follows the horizon's own turn away from the evidence a straight stop
+would run into — the last candidate is the horizon itself, which ends at
+rest. A plan whose horizon was certified is therefore never refused for the
+straight stop it would not fly; that refusal used to turn a valid turn beside
+a wall into a certified stop and a hold. If no
 physically executable route remains, the planner latches the current admissible
 position and publishes `no_executable_route` hold horizons until a replacement
 route is atomically accepted.

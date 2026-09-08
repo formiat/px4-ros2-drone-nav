@@ -617,44 +617,65 @@ FiniteExecutionPlanCertificationResult3D
 certifyFiniteExecutionPlan3DDetailed(const ExecutionPlan3D& current,
                                      const CertifiedRouteSuffix3D& target_route,
                                      FiniteExecutionPlanCertification3D certification) {
+  const std::array<FiniteMotionHorizon3D, 1U> tails{
+      std::move(certification.braking_tail)};
+  return certifyFiniteExecutionPlan3DDetailed(
+      current, target_route, std::move(certification.command_horizon), tails);
+}
+
+FiniteExecutionPlanCertificationResult3D certifyFiniteExecutionPlan3DDetailed(
+    const ExecutionPlan3D& current, const CertifiedRouteSuffix3D& target_route,
+    FiniteExecutionCertification3D command_horizon,
+    const std::span<const FiniteMotionHorizon3D> braking_tails) {
   FiniteExecutionPlanCertificationResult3D result;
-  if (certification.command_horizon.kind != FiniteExecutionKind3D::kNominal &&
-      certification.command_horizon.kind != FiniteExecutionKind3D::kRetained) {
+  if ((command_horizon.kind != FiniteExecutionKind3D::kNominal &&
+       command_horizon.kind != FiniteExecutionKind3D::kRetained) ||
+      braking_tails.empty()) {
     return result;
   }
-  FiniteExecutionCertification3D braking_certification{
-      .trajectory_revision = certification.command_horizon.trajectory_revision,
-      .horizon = std::move(certification.braking_tail),
-      .execution_input = certification.command_horizon.execution_input,
-      .latest_lidar_evidence = certification.command_horizon.latest_lidar_evidence,
-      .valid_from_ns = certification.command_horizon.valid_from_ns,
-      .kind = FiniteExecutionKind3D::kEmergencyBrakeTail,
-  };
-  result.command_horizon = certifyFiniteExecution3DDetailed(
-      current, target_route, std::move(certification.command_horizon));
+  const std::uint64_t trajectory_revision = command_horizon.trajectory_revision;
+  const std::shared_ptr<const VersionedExecutionInput3D> execution_input =
+      command_horizon.execution_input;
+  const std::shared_ptr<const VersionedLatestLidarEvidence3D> latest_lidar_evidence =
+      command_horizon.latest_lidar_evidence;
+  const std::int64_t valid_from_ns = command_horizon.valid_from_ns;
+  result.command_horizon = certifyFiniteExecution3DDetailed(current, target_route,
+                                                            std::move(command_horizon));
   if (!result.command_horizon.certified() ||
       !result.command_horizon.execution.has_value()) {
     return result;
   }
-  result.braking_tail = certifyFiniteExecutionAgainstOwnedWorld3D(
-      current, target_route, std::move(braking_certification),
-      target_route.observed_raw_world,
-      result.command_horizon.execution->begin_route_station_m);
-  if (!result.braking_tail.certified() || !result.braking_tail.execution.has_value()) {
+  for (const FiniteMotionHorizon3D& tail : braking_tails) {
+    result.braking_tail = certifyFiniteExecutionAgainstOwnedWorld3D(
+        current, target_route,
+        FiniteExecutionCertification3D{
+            .trajectory_revision = trajectory_revision,
+            .horizon = tail,
+            .execution_input = execution_input,
+            .latest_lidar_evidence = latest_lidar_evidence,
+            .valid_from_ns = valid_from_ns,
+            .kind = FiniteExecutionKind3D::kEmergencyBrakeTail,
+        },
+        target_route.observed_raw_world,
+        result.command_horizon.execution->begin_route_station_m);
+    if (!result.braking_tail.certified() ||
+        !result.braking_tail.execution.has_value()) {
+      continue;
+    }
+    FiniteExecutionPlan3D plan{
+        .command_horizon = result.command_horizon.execution.value(),
+        .braking_tail = result.braking_tail.execution.value(),
+    };
+    CertifiedRouteSuffix3D rebound_route = target_route;
+    bindProgressToExecutionInput(rebound_route.progress,
+                                 plan.command_horizon.execution_input,
+                                 plan.command_horizon.begin_route_station_m);
+    if (!rebound_route.valid() || !plan.validFor(rebound_route)) {
+      continue;
+    }
+    result.plan = std::move(plan);
     return result;
   }
-  FiniteExecutionPlan3D plan{
-      .command_horizon = result.command_horizon.execution.value(),
-      .braking_tail = result.braking_tail.execution.value(),
-  };
-  CertifiedRouteSuffix3D rebound_route = target_route;
-  bindProgressToExecutionInput(rebound_route.progress,
-                               plan.command_horizon.execution_input,
-                               plan.command_horizon.begin_route_station_m);
-  if (!rebound_route.valid() || !plan.validFor(rebound_route)) {
-    return result;
-  }
-  result.plan = std::move(plan);
   return result;
 }
 

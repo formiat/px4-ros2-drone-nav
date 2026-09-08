@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <vector>
 
 namespace drone_city_nav {
 
@@ -24,6 +25,23 @@ buildFiniteMotionHorizon3D(std::span<const MotionState3D> planned_states,
     const MotionState3D& initial_state, std::size_t maximum_control_count,
     const MotionDynamicsConfig3D& dynamics, MotionControl3D previous_applied_control,
     const FiniteMotionHorizonConfig3D& config = {});
+
+// The stops available along a command horizon, earliest first: the stop that
+// begins at once, then the stops that follow the horizon for one arrival
+// search step more each, and last the horizon's own arrival. A plan carries
+// the earliest of these the world admits as its braking tail. The stop that
+// begins at once runs straight along the vehicle's velocity; where it runs
+// into evidence the horizon itself was certified to turn away from, the next
+// stop along the horizon is the earliest one the world allows, and the last
+// is the command horizon, which ends at rest. Every entry follows the command
+// horizon's own controls for its prefix and brakes with the same jerk-limited
+// arrival the horizon was built with.
+[[nodiscard]] std::vector<FiniteMotionHorizon3D>
+buildFiniteBrakingHorizonsAlong3D(const FiniteMotionHorizon3D& command_horizon,
+                                  const MotionDynamicsConfig3D& dynamics,
+                                  MotionControl3D previous_applied_control,
+                                  std::size_t arrival_search_step_controls,
+                                  const FiniteMotionHorizonConfig3D& config = {});
 
 [[nodiscard]] RouteConvergentFiniteMotionHorizon3D
 buildRouteConvergentFiniteMotionHorizon3D(

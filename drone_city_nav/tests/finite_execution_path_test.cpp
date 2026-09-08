@@ -843,5 +843,35 @@ TEST(FiniteExecutionPathTest,
   EXPECT_TRUE(finiteHorizonHasTerminalRestState(*rebuilt.horizon));
 }
 
+TEST(FiniteExecutionPathTest, TheArrivalSearchContinuesFromTheFailingSegment) {
+  // The obstacle lies in the middle of the planned motion. Every prefix that
+  // still reaches it fails at the same segment, so the search continues from
+  // that segment instead of stepping down through prefixes that must fail.
+  TestWorld world;
+  world.dynamics.dt_s = 0.1F;
+  world.occupancy.setOccupied(GridIndex3D{10, 2, 10});
+  std::vector<Control> planned_controls(40U);
+  std::vector<State> planned_states{State{.x = 1.0F, .y = 1.0F, .z = 5.0F, .vx = 2.0F}};
+  for (const Control& control : planned_controls) {
+    planned_states.push_back(
+        integrateReference(planned_states.back(), control, world.dynamics));
+  }
+
+  const ValidatedFiniteExecutionPath path = buildValidatedFiniteExecutionPath(
+      planned_states, planned_controls, Control{}, world.dynamics, 5U,
+      FiniteHorizonConfig{}, world.view());
+
+  ASSERT_TRUE(path.accepted());
+  ASSERT_TRUE(path.horizon.has_value());
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+  EXPECT_LT(path.horizon->nominal_prefix_control_count, 20U);
+  // Forty and thirty-five controls leave the arrival no room to rest, thirty
+  // reaches the obstacle at segment twenty, and the search continues from
+  // twenty: five attempts, where the ladder of every five controls from
+  // forty down to fifteen took six.
+  EXPECT_EQ(path.first_failed_validation.failure_segment_index, 20U);
+  EXPECT_LT(path.arrival_shaping_attempts, 6U);
+}
+
 } // namespace
 } // namespace drone_city_nav::mppi

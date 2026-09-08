@@ -458,10 +458,14 @@ buildValidatedFiniteExecutionPath3DFromPreservedPrefix(
     if (preserved_prefix_control_count == 0U) {
       return result;
     }
+    // The states of the nominal prefix are the same for every longer prefix,
+    // so a failure inside the prefix persists until the prefix ends before
+    // it: the search continues from the failing segment, not one step down.
     preserved_prefix_control_count =
-        preserved_prefix_control_count > arrival_search_step_controls
-            ? preserved_prefix_control_count - arrival_search_step_controls
-            : 0U;
+        std::min(preserved_prefix_control_count > arrival_search_step_controls
+                     ? preserved_prefix_control_count - arrival_search_step_controls
+                     : 0U,
+                 result.validation.failure_segment_index);
   }
 }
 
