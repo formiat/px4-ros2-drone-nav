@@ -148,6 +148,16 @@ real and on the part still to fly. A consumer that could not enter the
 incumbent it was delivered says so through the rejection sequence, and that
 does reset it.
 
+Holding the first-found feasibility route back after such a loss — to give
+the persistent search's repair a chance to deliver the shortest path past the
+block before the vehicle commits to a detour — was tried and does not work.
+Measured over three urban flights, the repair delivered inside a 1.5 s window
+in fewer than one loss in five; the other losses ran the whole window with no
+route at all, 45–60 s per flight of no-route holds, and route availability
+fell from 99 % to 92–98 %. The feasibility route is therefore published as
+found, and the repaired route replaces it through the ordinary candidate
+comparison when it arrives.
+
 ## Published Route Geometry
 
 Every published route — from the feasibility search and from the execution-time
