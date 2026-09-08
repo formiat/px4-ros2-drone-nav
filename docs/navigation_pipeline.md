@@ -362,7 +362,15 @@ behind the stop, and only for a genuine loss of the planner.
 A stop never survives its own completion. It is finite by construction: once
 the vehicle rests, the execution is revoked exactly as it is at a captured
 goal, the offboard holds the position the vehicle is at, and the next certified
-route activates from the revoked plan. A route may also take the vehicle back
+route activates from the revoked plan. A vehicle that is already at rest when
+physical evidence ends its path's claim has no stop to fly, and a revocation
+cannot be committed while the route stays resident — the plan a suspension
+leaves is not publishable. Nothing then reached the offboard, which kept
+flying the last horizon it had accepted, certified before the evidence that
+had just invalidated it, to that horizon's rest point; one recorded flight
+ended against a wall that way. The rest position is held explicitly instead
+(`EXECUTION_HOLD rest=true`): a stationary hold supersedes the stale horizon
+on the wire, and the next certified route takes the vehicle back from it. A route may also take the vehicle back
 while the stop is still braking, so no approach to any obstacle is ever
 withheld. Stopping is not a route state, so the stop's length follows the
 vehicle's state and its guaranteed deceleration rather than the controller's

@@ -295,6 +295,13 @@ private:
   publishNoExecutablePathHold(const ProductionMppiExecutionCycle& cycle,
                               ProductionMppiExecutionReason reason,
                               bool physical_candidate_rejection = false);
+  // A vehicle at rest whose path has lost its claim on it, when no stop can be
+  // flown and no revocation committed: an explicit stationary hold at the rest
+  // position, so the offboard does not carry on along the last horizon it
+  // accepted. Unpublished when the vehicle still moves.
+  [[nodiscard]] ProductionMppiExecutionPublication
+  publishRestHold(const ProductionMppiExecutionCycle& cycle,
+                  ProductionMppiExecutionReason reason);
   // The single way a moving vehicle is brought to rest when no route-directed
   // horizon can be published: a finite braking trajectory from the exact
   // current state, validated against the newest evidence and published as the

@@ -166,6 +166,56 @@ TEST(ExecutionSupervisorHold3DTest,
 }
 
 TEST(ExecutionSupervisorHold3DTest,
+     ARestHoldTransfersFromARouteOwnerWhosePathTheNewestWorldBlocks) {
+  // The newest raw world blocks the route ahead of the vehicle; the resting
+  // vehicle itself stands clear. The hold takes the vehicle over from the
+  // route's finite execution on that world: it validates the rest position,
+  // never the path the evidence has just invalidated, and it is what the
+  // node publishes when a stop has nothing left to brake.
+  SnapshotFixture3D fixture;
+  ExecutionSupervisor3D supervisor;
+  const std::shared_ptr<const ExecutionPlan3D> active =
+      installRouteOwner(supervisor, fixture);
+  ASSERT_NE(active, nullptr);
+  ObservedOccupancyGrid3D blocked_occupancy = fixture.raw_occupancy;
+  const std::optional<GridIndex3D> blocked_cell =
+      blocked_occupancy.worldToCell(Point3{6.0, 0.0, 5.0});
+  ASSERT_TRUE(blocked_cell.has_value());
+  ASSERT_TRUE(
+      blocked_occupancy.setState(blocked_cell.value(), ObservedVoxelState::kOccupied));
+  StationaryExecutionHoldCertification3D certification =
+      SnapshotFixture3D::holdCertification(*active);
+  certification.observed_raw_world =
+      fixture.rawWorld(SnapshotFixture3D::kLatestRawRevision + 1U, &blocked_occupancy);
+  ASSERT_NE(certification.observed_raw_world, nullptr);
+
+  const ExecutionHoldPreparation3D prepared =
+      supervisor.prepareHold(holdRequest(active, certification));
+
+  ASSERT_TRUE(prepared.prepared())
+      << executionHoldPreparationStatus3DName(prepared.status);
+  ASSERT_NE(prepared.transition, nullptr);
+  ASSERT_NE(prepared.transition->next, nullptr);
+  ASSERT_NE(prepared.transition->next->stationaryHold(), nullptr);
+  EXPECT_EQ(commitExecutionHorizonForTest(
+                supervisor,
+                ExecutionHorizonTestTransaction3D{
+                    .kind = ExecutionHorizonCommitKind3D::kTransition,
+                    .expected_authority = prepared.expected_authority,
+                    .expected_plan = prepared.expectedPlan(),
+                    .transition = *prepared.transition,
+                    .expected_pending = nullptr,
+                    .owner = holdOwner(*prepared.transition->next, 2U),
+                    .input = prepared.executionInput(),
+                })
+                .status,
+            ExecutionHorizonCommitStatus3D::kCommitted);
+  ASSERT_NE(supervisor.plan(), nullptr);
+  ASSERT_NE(supervisor.plan()->stationaryHold(), nullptr);
+  EXPECT_EQ(supervisor.plan()->finiteExecution(), nullptr);
+}
+
+TEST(ExecutionSupervisorHold3DTest,
      RefreshesAResidentInputAndUsesNoChangeOnlyForTheExactOwnerEvidence) {
   SnapshotFixture3D fixture;
   ExecutionSupervisor3D supervisor;

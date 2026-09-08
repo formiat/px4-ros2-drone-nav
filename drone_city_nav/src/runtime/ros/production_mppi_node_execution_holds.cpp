@@ -265,6 +265,19 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishNoExecutablePathHo
     if (stop.published) {
       return stop;
     }
+    // A vehicle already at rest has no stop to fly, and a revocation cannot
+    // be committed while the route stays resident: the plan a suspension
+    // leaves is not publishable. Nothing then reached the offboard, which
+    // kept flying the last horizon it had accepted — certified before the
+    // evidence that has just invalidated it — to that horizon's rest point,
+    // and one recorded flight ended against a wall that way. The rest
+    // position is held explicitly instead: a stationary hold supersedes the
+    // stale horizon on the wire, and the next certified route takes the
+    // vehicle back from the hold.
+    ProductionMppiExecutionPublication rest_hold = publishRestHold(cycle, reason);
+    if (rest_hold.published) {
+      return rest_hold;
+    }
   }
   ProductionMppiExecutionPublication revocation = publishExecutionRevocation(
       reason, cycle.controller.now_ns, physical_route_invalidation);
@@ -284,9 +297,35 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishNoExecutablePathHo
   // Nothing owns the vehicle any more: no replacement, no retained path and no
   // lease left to continue. Whatever the vehicle is still carrying, it is
   // carrying it without a plan, so it is stopped along a validated trajectory
-  // instead of being left to coast into the offboard's blind hold.
+  // instead of being left to coast into the offboard's blind hold; a vehicle
+  // already at rest is held where it is for the same reason.
   ProductionMppiExecutionPublication stop = publishStopExecution(cycle, reason);
-  return stop.published ? stop : continuation;
+  if (stop.published) {
+    return stop;
+  }
+  ProductionMppiExecutionPublication rest_hold = publishRestHold(cycle, reason);
+  return rest_hold.published ? rest_hold : continuation;
+}
+
+ProductionMppiExecutionPublication
+ProductionMppiNode::publishRestHold(const ProductionMppiExecutionCycle& cycle,
+                                    const ProductionMppiExecutionReason reason) {
+  if (!vehicleAtRest(cycle.evidence.exact_initial_state)) {
+    return {};
+  }
+  const Point3 rest_position{cycle.evidence.exact_initial_state.x,
+                             cycle.evidence.exact_initial_state.y,
+                             cycle.evidence.exact_initial_state.z};
+  ProductionMppiExecutionPublication hold = publishPositionHold(
+      cycle, rest_position, reason, ExecutionHoldIntent3D::kExplicitTransfer);
+  if (hold.published) {
+    RCLCPP_WARN(get_logger(),
+                "EXECUTION_HOLD rest=true reason=%s position=(%.2f,%.2f,%.2f) "
+                "action=hold_rest_position_instead_of_stale_horizon",
+                productionMppiExecutionReasonName(reason), rest_position.x,
+                rest_position.y, rest_position.z);
+  }
+  return hold;
 }
 
 bool ProductionMppiNode::residentHoldLeaseNearExpiry(const std::int64_t now_ns) const {
