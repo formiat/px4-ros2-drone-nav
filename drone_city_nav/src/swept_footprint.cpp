@@ -982,27 +982,30 @@ SweptFootprintConfig tiltEnvelopedFootprint(const SweptFootprintConfig& footprin
       std::isfinite(tilt_rad) ? std::clamp(tilt_rad, 0.0, std::numbers::pi / 2.0) : 0.0;
   const double sine = std::sin(tilt);
   const double cosine = std::cos(tilt);
-  const double radius_m = std::max(0.0, footprint.radius_m);
-  const double body_radius_m = std::max(0.0, footprint.body_radius_m);
-  const double lower_extent_m = std::max(0.0, footprint.lower_extent_m);
-  const double upper_extent_m = std::max(0.0, footprint.upper_extent_m);
+  const SweptFootprintConfig body = physicalBody(footprint);
+  const double body_radius_m = std::max(0.0, body.radius_m);
+  const double lower_extent_m = std::max(0.0, body.lower_extent_m);
+  const double upper_extent_m = std::max(0.0, body.upper_extent_m);
   const double axial_extent_m = std::max(lower_extent_m, upper_extent_m);
-  // The horizontal reach of a cylinder tilted by the angle: its rim projects
-  // to an ellipse displaced by the extent's lean, whose farthest point from
-  // the axis is radius * cos + extent * sin while the tilt is shallower than
-  // the body's diagonal, and the diagonal itself, sqrt(radius^2 + extent^2),
-  // beyond that. The rim dips or rises by radius * sin beyond the extents'
-  // own projection, and that is exact.
-  const auto leaned_radius = [&](const double radius) noexcept {
-    return radius * sine <= axial_extent_m * cosine
-               ? radius * cosine + axial_extent_m * sine
-               : std::hypot(radius, axial_extent_m);
-  };
+  // The horizontal reach of the body cylinder tilted by the angle: its rim
+  // projects to an ellipse displaced by the extent's lean, whose farthest
+  // point from the axis is radius * cos + extent * sin while the tilt is
+  // shallower than the body's diagonal, and the diagonal itself,
+  // sqrt(radius^2 + extent^2), beyond that. The rim dips or rises by
+  // radius * sin beyond the extents' own projection, and that is exact.
+  const double leaned_body_radius_m =
+      body_radius_m * sine <= axial_extent_m * cosine
+          ? body_radius_m * cosine + axial_extent_m * sine
+          : std::hypot(body_radius_m, axial_extent_m);
   SweptFootprintConfig enveloped = footprint;
-  enveloped.radius_m = leaned_radius(radius_m);
-  enveloped.body_radius_m = leaned_radius(body_radius_m);
-  enveloped.lower_extent_m = lower_extent_m * cosine + radius_m * sine;
-  enveloped.upper_extent_m = upper_extent_m * cosine + radius_m * sine;
+  enveloped.body_radius_m =
+      std::max(std::max(0.0, footprint.body_radius_m), leaned_body_radius_m);
+  enveloped.radius_m =
+      std::max(std::max(0.0, footprint.radius_m), leaned_body_radius_m);
+  enveloped.lower_extent_m =
+      std::max(lower_extent_m, lower_extent_m * cosine + body_radius_m * sine);
+  enveloped.upper_extent_m =
+      std::max(upper_extent_m, upper_extent_m * cosine + body_radius_m * sine);
   return enveloped;
 }
 

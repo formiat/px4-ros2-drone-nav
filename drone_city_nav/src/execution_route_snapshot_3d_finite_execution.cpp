@@ -94,14 +94,10 @@ std::optional<RouteAdherenceAssessment3D> validateExecutionProgressConnector(
     return std::nullopt;
   }
 
-  const MotionControl3D& previous_route_control =
-      route.progress.execution_input->previousControl();
   const MotionControl3D& current_execution_control = execution_input->previousControl();
-  const FootprintBodyAxis previous_route_axis = bodyAxisFromWorldAcceleration(Vec3{
-      previous_route_control.ax, previous_route_control.ay, previous_route_control.az});
-  const FootprintBodyAxis current_execution_axis = bodyAxisFromWorldAcceleration(
-      Vec3{current_execution_control.ax, current_execution_control.ay,
-           current_execution_control.az});
+  // The body stands upright: it is the body at every tilt the dynamics reach.
+  constexpr FootprintBodyAxis previous_route_axis{};
+  constexpr FootprintBodyAxis current_execution_axis{};
   const auto* const raw_certificate =
       std::get_if<ObservedRawRouteCertificate3D>(&route.certificate);
   const LaunchSupportContact3D* const launch_support_contact =
@@ -445,9 +441,9 @@ certifyFiniteExecutionAgainstOwnedWorld3D(
           : makeValidationTerminalBoundary(terminal_boundary, target_route,
                                            *mppi_reference);
   if (policy->routeTrackingTubeConstraintsEnabled() && !certifies_braking_execution &&
-      !validateTrackingTubeHandoffClearance(
-          target_route, validated_horizon, begin_projection.station_m,
-          certification.execution_input->previousControl(), validation_world)) {
+      !validateTrackingTubeHandoffClearance(target_route, validated_horizon,
+                                            begin_projection.station_m,
+                                            validation_world)) {
     return rejectedFiniteExecution(
         FiniteExecutionCertificationStatus3D::kTrackingTubeHandoffRejected);
   }

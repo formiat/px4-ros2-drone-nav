@@ -161,23 +161,18 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
         self.assertGreater(parameters["tracking_error_tube_response_time_s"], 0.0)
         self.assertNotIn("lattice_config_", config_source)
         self.assertNotIn("lattice_3d_config_", config_source)
-        # The planner's hard body is the physical hull enveloped over every
-        # tilt the dynamics reach, never a tracking margin: the execution
-        # validators tilt the hull with the commanded acceleration, and a
-        # route must clear it at whatever acceleration is commanded along it.
+        # The hard body is the physical hull at every tilt the dynamics reach,
+        # enveloped once and stood upright by every validator, planner and
+        # execution alike; never a tracking margin.
         self.assertIn(
-            "world.route_footprint = tiltEnvelopedFootprint(",
+            "world.physical_footprint = tiltEnvelopedFootprint(",
             config_source,
         )
         self.assertIn("maximumBodyTiltRad(", config_source)
         self.assertIn(
             "planning.persistent_planner.physical_footprint = "
-            "world.route_footprint;",
+            "world.physical_footprint;",
             config_source,
-        )
-        self.assertIn(
-            ".physical_footprint = config_.world.route_footprint",
-            runtime_source,
         )
         self.assertIn(
             ".physical_footprint = config_.world.physical_footprint",

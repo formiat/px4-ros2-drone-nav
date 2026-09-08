@@ -306,8 +306,8 @@ RolloutMetrics simulateReference(
         !altitudeEnvelopeDynamicallyRecoverable(state, control, dynamics,
                                                 altitude_envelope);
     const float validation_step_m = std::max(0.05F, 0.5F * grid.resolution_m);
-    const FootprintBodyAxis body_axis =
-        bodyAxisFromWorldAcceleration(Vec3{control.ax, control.ay, control.az});
+    // The body stands upright: it is the body at every tilt the dynamics reach.
+    constexpr FootprintBodyAxis body_axis{};
     const DerivedFootprintClearance3D footprint_clearance =
         querySweptFootprintClearance3D(
             grid, esdf, Point3{previous_state.x, previous_state.y, previous_state.z},

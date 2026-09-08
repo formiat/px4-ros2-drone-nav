@@ -79,7 +79,7 @@ bool certifiedTrackingTubeHandoffPending(
 
 bool validateTrackingTubeHandoffClearance(
     const CertifiedRouteSuffix3D& route, const FiniteMotionHorizon3D& horizon,
-    const double begin_route_station_m, const MotionControl3D& previous_control,
+    const double begin_route_station_m,
     const FiniteExecutionPathWorld3D& world) noexcept {
   if (route.geometry == nullptr || route.geometry->route == nullptr ||
       route.geometry->tracking_error_tube == nullptr || horizon.states.size() < 2U ||
@@ -155,13 +155,10 @@ bool validateTrackingTubeHandoffClearance(
       inflated.radial_rings = std::max<std::size_t>(1U, inflated.radial_rings);
       inflated.axial_samples = std::max<std::size_t>(1U, inflated.axial_samples);
     }
-    const MotionControl3D& start_control =
-        index == 1U ? previous_control : horizon.controls[index - 2U];
-    const MotionControl3D& stop_control = horizon.controls[index - 1U];
-    const FootprintBodyAxis start_axis = bodyAxisFromWorldAcceleration(
-        Vec3{start_control.ax, start_control.ay, start_control.az});
-    const FootprintBodyAxis stop_axis = bodyAxisFromWorldAcceleration(
-        Vec3{stop_control.ax, stop_control.ay, stop_control.az});
+    // The body stands upright: it is the body at every tilt the dynamics
+    // reach, so the controls along the horizon tilt nothing here.
+    constexpr FootprintBodyAxis start_axis{};
+    constexpr FootprintBodyAxis stop_axis{};
     const OccupiedCollisionOracle3D oracle{OccupiedCollisionWorld3D{
         .observed_occupancy = world.observed_occupancy,
         .static_occupancy = world.static_occupancy,

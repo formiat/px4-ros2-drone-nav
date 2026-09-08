@@ -293,8 +293,7 @@ constrainedStationEvents(const CompiledTrajectory3D& geometry,
 
 [[nodiscard]] bool validateTrackingTubeHandoffClearance(
     const CertifiedRouteSuffix3D& route, const FiniteMotionHorizon3D& horizon,
-    double begin_route_station_m, const MotionControl3D& previous_control,
-    const FiniteExecutionPathWorld3D& world) noexcept;
+    double begin_route_station_m, const FiniteExecutionPathWorld3D& world) noexcept;
 
 [[nodiscard]] bool validStationInterval(const double begin_station_m,
                                         const double end_station_m,

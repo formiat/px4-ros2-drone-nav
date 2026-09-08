@@ -108,18 +108,21 @@ without evidence at all.
 The vehicle's own pose is proprioceptive contact evidence. The footprint has
 two radii: the validation envelope (`physical_footprint_radius_m`, the body
 plus the clearance every motion keeps) and the physical body itself
-(`physical_footprint_body_radius_m`, rotor tips included). The execution
-validators tilt that body with the commanded acceleration, the way the
-airframe does; the planner, the route compiler and the route certification
-cannot know the acceleration the controller will command along a route, so
-they answer to the route footprint (`tiltEnvelopedFootprint`): the
-vertical-axis body that contains the physical footprint at every tilt the
-dynamics reach (`maximumBodyTiltRad`, the thrust axis at the horizontal and
-vertical acceleration limits together). With the physical footprint above, the
-route body is 0.89 m wide and reaches 0.66 m below and 0.76 m above the
-centre. One recorded flight was routed a quarter of a metre above a roof, where
-every accelerating horizon and every stop swept the roof once tilted, and it
-rested there for seconds at a time with routes rejected from where it stood. Occupied evidence
+(`physical_footprint_body_radius_m`, rotor tips included). The airframe
+tilts with the acceleration it commands, so the body every validator answers
+to is the configured hull at every tilt the dynamics reach
+(`tiltEnvelopedFootprint`, `maximumBodyTiltRad`: the thrust axis at the
+horizontal and vertical acceleration limits together), enveloped once at
+configuration and stood upright by every validator, planner and execution
+alike. With the hull above, the body reaches 0.65 m from the axis, 0.50 m
+below and 0.60 m above the centre, inside the 0.82 m envelope. Tilting the
+body per command in the execution validators while the planner validated the
+upright hull laid routes a quarter of a metre above roofs, where every
+accelerating horizon and every stop swept the roof once tilted; one recorded
+flight rested beside such a roof for a quarter of its mission with every
+route certified from where it stood rejected the same way. One body, stood
+upright everywhere, is what lets the planner depart from wherever the
+execution was allowed to bring the vehicle. Occupied evidence
 that overlaps the envelope at the proprioceptive seed (the current pose,
 widened by half an observed voxel) is contact rather than an obstacle: the
 vehicle demonstrably stands there. Every raw validator (planner departure,

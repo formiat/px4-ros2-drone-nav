@@ -44,9 +44,11 @@ constexpr double kTerminalRestControlTolerance{kTerminalRestControlToleranceMps2
   return Point3{state.x, state.y, state.z};
 }
 
-[[nodiscard]] FootprintBodyAxis bodyAxis(const MotionControl3D& control) noexcept {
-  return bodyAxisFromWorldAcceleration(Vec3{control.ax, control.ay, control.az});
-}
+// The validation body stands upright: it is the physical body at every tilt
+// the dynamics reach, enveloped once at configuration, so the commanded
+// acceleration tilts nothing here and the planner's and the executor's
+// verdicts about the same path agree.
+constexpr FootprintBodyAxis kUprightBodyAxis{};
 
 [[nodiscard]] bool
 validRouteActivation(const FiniteExecutionPathTerminalBoundary3D& boundary) noexcept {
@@ -320,8 +322,8 @@ FiniteExecutionPathValidation3D validateCompleteFiniteExecutionPath3D(
       continue;
     }
     const FiniteExecutionPathStatus3D segment_status = validatePhysicalSegment(
-        position(first.state), bodyAxis(first.control), position(second.state),
-        bodyAxis(second.control), world, failure_point);
+        position(first.state), kUprightBodyAxis, position(second.state),
+        kUprightBodyAxis, world, failure_point);
     if (segment_status != FiniteExecutionPathStatus3D::kValid) {
       FiniteExecutionPathValidation3D rejection =
           reject(segment_status, 0U, index - 1U, failure_point, 0.0);
@@ -558,10 +560,9 @@ FiniteExecutionPathValidation3D validateFiniteExecutionTrajectoryContinuation3D(
   }
 
   Point3 failure_point{};
-  FiniteExecutionPathStatus3D segment_status =
-      validatePhysicalSegment(position(current_state), bodyAxis(current_control),
-                              position(first_remaining->state),
-                              bodyAxis(first_remaining->control), world, failure_point);
+  FiniteExecutionPathStatus3D segment_status = validatePhysicalSegment(
+      position(current_state), kUprightBodyAxis, position(first_remaining->state),
+      kUprightBodyAxis, world, failure_point);
   if (segment_status != FiniteExecutionPathStatus3D::kValid) {
     return reject(segment_status, first_remaining_index, first_remaining_index,
                   failure_point, remaining_duration_s);
@@ -569,9 +570,9 @@ FiniteExecutionPathValidation3D validateFiniteExecutionTrajectoryContinuation3D(
   for (std::size_t index = first_remaining_index + 1U; index < points.size(); ++index) {
     const TimedExecutionPathPoint3D& first = points[index - 1U];
     const TimedExecutionPathPoint3D& second = points[index];
-    segment_status = validatePhysicalSegment(
-        position(first.state), bodyAxis(first.control), position(second.state),
-        bodyAxis(second.control), world, failure_point);
+    segment_status = validatePhysicalSegment(position(first.state), kUprightBodyAxis,
+                                             position(second.state), kUprightBodyAxis,
+                                             world, failure_point);
     if (segment_status != FiniteExecutionPathStatus3D::kValid) {
       return reject(segment_status, first_remaining_index, index - 1U, failure_point,
                     remaining_duration_s);
@@ -636,9 +637,9 @@ FiniteExecutionPathValidation3D validateFiniteExecutionPathContinuation3D(
                     first_remaining_index, index, position(next_state),
                     trajectory_validation.remaining_duration_s);
     }
-    segment_status = validatePhysicalSegment(
-        position(simulated_state), bodyAxis(previous_control), position(next_state),
-        bodyAxis(control), world, failure_point);
+    segment_status = validatePhysicalSegment(position(simulated_state),
+                                             kUprightBodyAxis, position(next_state),
+                                             kUprightBodyAxis, world, failure_point);
     if (segment_status != FiniteExecutionPathStatus3D::kValid) {
       return reject(segment_status, first_remaining_index, index, failure_point,
                     trajectory_validation.remaining_duration_s);

@@ -130,13 +130,13 @@ bodyAxisFromWorldAcceleration(const Vec3& acceleration_mps2,
                                         double maximum_vertical_acceleration_mps2,
                                         double gravity_mps2 = 9.80665) noexcept;
 
-// The vertical-axis body that contains `footprint` at every tilt up to
-// `tilt_rad`: a route validated with it clears the body the execution
-// validators tilt with the commanded acceleration, whatever acceleration the
-// dynamics let the controller command along it. The radius grows to the
-// tilted rim's horizontal reach, the extents by the rim's dip; the body
-// radius follows the same law, and the sampling and the safe-clearance
-// threshold are kept.
+// The footprint whose physical body is the body at every tilt up to
+// `tilt_rad`, and whose envelope contains it: the body radius grows to the
+// tilted rim's horizontal reach, the extents to the rim's dip and rise, and
+// the envelope radius stays at least the body's. Every validator then stands
+// the body upright, planner and execution alike, and a route clears whatever
+// the airframe reaches at any acceleration the dynamics let the controller
+// command along it. The sampling and the safe-clearance threshold are kept.
 [[nodiscard]] SweptFootprintConfig
 tiltEnvelopedFootprint(const SweptFootprintConfig& footprint, double tilt_rad) noexcept;
 

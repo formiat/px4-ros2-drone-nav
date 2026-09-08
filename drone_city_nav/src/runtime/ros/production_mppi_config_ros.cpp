@@ -873,11 +873,14 @@ void ProductionMppiConfigLoader::finalize() {
       goal_capture_hold_ns, goal_capture_feedback_margin_ns,
       goal_capture_tick_margin_ns, "mission goal capture hold lease");
 
-  // Routes answer to the body at every tilt the controller may command
-  // along them. One recorded flight was routed a quarter of a metre above a
-  // roof, where every accelerating horizon and every stop the execution
-  // validators tilted swept the roof, and rested there for seconds at a time.
-  world.route_footprint = tiltEnvelopedFootprint(
+  // The airframe tilts with the acceleration it commands, and the body the
+  // validators answer to is the body at every tilt the dynamics reach, stood
+  // upright. Enveloping it once here keeps the planner and the execution
+  // validators judging the same body: routes laid a quarter of a metre above
+  // a roof, where every accelerating horizon and every stop swept the roof
+  // once tilted, left one recorded flight resting beside the roof for a
+  // quarter of its mission.
+  world.physical_footprint = tiltEnvelopedFootprint(
       world.physical_footprint,
       maximumBodyTiltRad(
           static_cast<double>(
@@ -886,13 +889,13 @@ void ProductionMppiConfigLoader::finalize() {
               control.mppi.dynamics.maximum_vertical_acceleration_mps2)));
   planning.cooperative_passage_volume.flight_envelope = world.flight_envelope;
   planning.cooperative_passage_volume.footprint = SweptFootprintConfig{
-      .radius_m = world.route_footprint.radius_m,
-      .lower_extent_m = world.route_footprint.lower_extent_m,
-      .upper_extent_m = world.route_footprint.upper_extent_m,
-      .perimeter_samples = world.route_footprint.perimeter_samples,
-      .radial_rings = world.route_footprint.radial_rings,
-      .axial_samples = world.route_footprint.axial_samples,
-      .sweep_step_m = world.route_footprint.sweep_step_m,
+      .radius_m = world.physical_footprint.radius_m,
+      .lower_extent_m = world.physical_footprint.lower_extent_m,
+      .upper_extent_m = world.physical_footprint.upper_extent_m,
+      .perimeter_samples = world.physical_footprint.perimeter_samples,
+      .radial_rings = world.physical_footprint.radial_rings,
+      .axial_samples = world.physical_footprint.axial_samples,
+      .sweep_step_m = world.physical_footprint.sweep_step_m,
   };
   planning.cooperative_passage_route.footprint =
       planning.cooperative_passage_volume.footprint;
@@ -926,7 +929,7 @@ void ProductionMppiConfigLoader::finalize() {
   };
   planning.persistent_planner.minimum_continuous_turn_alignment =
       planning.future_route_connector.minimum_continuous_turn_alignment;
-  planning.persistent_planner.physical_footprint = world.route_footprint;
+  planning.persistent_planner.physical_footprint = world.physical_footprint;
   planning.persistent_planner.flight_envelope = world.flight_envelope;
 
   diagnostics.rviz_period_ns =

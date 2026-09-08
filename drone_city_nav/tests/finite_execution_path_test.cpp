@@ -1,5 +1,6 @@
 #include "drone_city_nav/mppi/finite_execution_path.hpp"
 #include "drone_city_nav/mppi/mppi_reference.hpp"
+#include "drone_city_nav/swept_footprint.hpp"
 
 #include <gtest/gtest.h>
 
@@ -184,10 +185,16 @@ TEST(FiniteExecutionPathTest,
   EXPECT_EQ(result.status, FiniteExecutionPathStatus::kInvalidContract);
 }
 
+// The validation body stands upright whatever the path commands: the tilt
+// the airframe reaches is enveloped into the footprint once, so evidence the
+// tilted body would sweep is the enveloped footprint's business, in the
+// complete and the continuation checks alike, and the commanded
+// acceleration itself tilts nothing.
 TEST(FiniteExecutionPathTest,
-     ArrivalControlAxisDetectsFirstIntervalObstacleInCompleteAndContinuationChecks) {
+     TheUprightBodyEnvelopedOverTheTiltAnswersForTheCommandedAcceleration) {
   TestWorld world;
   world.footprint.radius_m = 0.1;
+  world.footprint.body_radius_m = 0.1;
   world.footprint.upper_extent_m = 0.8;
   std::vector<TimedExecutionPathPoint> tilted_path = testPath();
   tilted_path[1].control = Control{.ay = 4.0F};
@@ -196,6 +203,12 @@ TEST(FiniteExecutionPathTest,
   EXPECT_TRUE(validateCompleteFiniteExecutionPath(testPath(), Control{},
                                                   world.view(tilted_body_obstacle))
                   .accepted());
+  EXPECT_TRUE(validateCompleteFiniteExecutionPath(tilted_path, Control{},
+                                                  world.view(tilted_body_obstacle))
+                  .accepted());
+
+  world.footprint =
+      tiltEnvelopedFootprint(world.footprint, maximumBodyTiltRad(4.0, 0.0));
   const FiniteExecutionPathValidation complete_validation =
       validateCompleteFiniteExecutionPath(tilted_path, Control{},
                                           world.view(tilted_body_obstacle));

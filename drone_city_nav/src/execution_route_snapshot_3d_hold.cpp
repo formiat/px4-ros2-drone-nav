@@ -32,8 +32,8 @@ bool stationaryHoldRawSafe(
     return false;
   }
   const MotionControl3D& control = execution_input.previousControl();
-  const FootprintBodyAxis axis =
-      bodyAxisFromWorldAcceleration(Vec3{control.ax, control.ay, control.az});
+  // The body stands upright: it is the body at every tilt the dynamics reach.
+  constexpr FootprintBodyAxis axis{};
   const std::optional<LaunchSupportContact3D>* const launch_support_owner =
       observed_raw_world != nullptr
           ? std::addressof(observed_raw_world->launchSupportContact())

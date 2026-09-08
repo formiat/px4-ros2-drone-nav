@@ -89,12 +89,11 @@ struct ProductionMppiConfig final {
     bool gazebo_aligned_rviz_axes_swapped{true};
     Px4MapFrameTransform px4_map_transform{};
     FlightEnvelopeConfig flight_envelope{};
+    // The one swept body every validator answers to, planner and execution
+    // alike: the configured hull whose body is the body at every tilt the
+    // dynamics reach, enveloped once here so that every validator can stand
+    // it upright.
     SweptFootprintConfig physical_footprint{};
-    // The body routes are planned, compiled and certified with: the physical
-    // footprint enveloped over every tilt the dynamics reach, so a route
-    // clears the body the execution validators tilt with the commanded
-    // acceleration. Derived from physical_footprint and the dynamics.
-    SweptFootprintConfig route_footprint{};
     std::filesystem::path static_occupancy_3d_path{"worlds/generated_city.occupancy3d"};
     std::filesystem::path static_esdf_3d_cache_path{"worlds/generated_city.esdf3d"};
     std::filesystem::path static_free_space_topology_3d_path{};

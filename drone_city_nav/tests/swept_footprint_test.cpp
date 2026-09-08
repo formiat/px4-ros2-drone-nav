@@ -865,10 +865,11 @@ TEST(SweptFootprintTest, MaximumBodyTiltFollowsTheThrustAxisAtTheDynamicsLimits)
   EXPECT_NEAR(std::acos(axis.z), maximumBodyTiltRad(4.0, 4.0), 1.0e-9);
 }
 
-// Every point of the body cylinder, tilted in any direction by any angle up
-// to the limit, lies inside the vertical cylinder the envelope describes; at
-// zero tilt the envelope is the footprint itself.
-TEST(SweptFootprintTest, TiltEnvelopedFootprintContainsTheBodyAtEveryTilt) {
+// Every point of the physical body, tilted in any direction by any angle up
+// to the limit, lies inside the upright body the enveloped footprint
+// describes, and the envelope contains that body; at zero tilt the footprint
+// is unchanged.
+TEST(SweptFootprintTest, TiltEnvelopedFootprintContainsThePhysicalBodyAtEveryTilt) {
   const SweptFootprintConfig footprint{
       .radius_m = 0.82,
       .lower_extent_m = 0.23,
@@ -888,13 +889,16 @@ TEST(SweptFootprintTest, TiltEnvelopedFootprintContainsTheBodyAtEveryTilt) {
 
   const double tilt_rad = maximumBodyTiltRad(4.0, 4.0);
   const SweptFootprintConfig enveloped = tiltEnvelopedFootprint(footprint, tilt_rad);
-  EXPECT_GT(enveloped.radius_m, footprint.radius_m);
+  EXPECT_GT(enveloped.body_radius_m, footprint.body_radius_m);
+  EXPECT_GE(enveloped.radius_m, enveloped.body_radius_m);
+  EXPECT_NEAR(enveloped.radius_m, footprint.radius_m, 1.0e-12);
   EXPECT_GT(enveloped.lower_extent_m, footprint.lower_extent_m);
   EXPECT_GT(enveloped.upper_extent_m, footprint.upper_extent_m);
   EXPECT_EQ(enveloped.perimeter_samples, footprint.perimeter_samples);
   EXPECT_EQ(enveloped.sweep_step_m, footprint.sweep_step_m);
   EXPECT_EQ(enveloped.safe_clearance_threshold_m, footprint.safe_clearance_threshold_m);
   constexpr double kTolerance{1.0e-9};
+  const double body_radius_m = footprint.body_radius_m;
   for (int tilt_step = 0; tilt_step <= 8; ++tilt_step) {
     const double tilt = tilt_rad * tilt_step / 8.0;
     for (int heading_step = 0; heading_step < 12; ++heading_step) {
@@ -915,10 +919,10 @@ TEST(SweptFootprintTest, TiltEnvelopedFootprintContainsTheBodyAtEveryTilt) {
           const double rx = std::cos(rim) * ux + std::sin(rim) * vx;
           const double ry = std::cos(rim) * uy + std::sin(rim) * vy;
           const double rz = std::cos(rim) * uz;
-          const double x = axial * ax + footprint.radius_m * rx;
-          const double y = axial * ay + footprint.radius_m * ry;
-          const double z = axial * az + footprint.radius_m * rz;
-          EXPECT_LE(std::hypot(x, y), enveloped.radius_m + kTolerance);
+          const double x = axial * ax + body_radius_m * rx;
+          const double y = axial * ay + body_radius_m * ry;
+          const double z = axial * az + body_radius_m * rz;
+          EXPECT_LE(std::hypot(x, y), enveloped.body_radius_m + kTolerance);
           EXPECT_GE(z, -enveloped.lower_extent_m - kTolerance);
           EXPECT_LE(z, enveloped.upper_extent_m + kTolerance);
         }

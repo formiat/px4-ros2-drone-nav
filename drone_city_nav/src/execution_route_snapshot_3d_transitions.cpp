@@ -361,14 +361,9 @@ ExecutionRouteTransitionResult3D applyAdvanceCertifiedRouteCommand3D(
     return transitionFailure(
         ExecutionRouteTransitionStatus3D::kExecutionAssessmentRejected);
   }
-  const MotionControl3D& previous_route_control =
-      route.progress.execution_input->previousControl();
-  const MotionControl3D& current_execution_control = execution_input->previousControl();
-  const FootprintBodyAxis previous_route_axis = bodyAxisFromWorldAcceleration(Vec3{
-      previous_route_control.ax, previous_route_control.ay, previous_route_control.az});
-  const FootprintBodyAxis current_execution_axis = bodyAxisFromWorldAcceleration(
-      Vec3{current_execution_control.ax, current_execution_control.ay,
-           current_execution_control.az});
+  // The body stands upright: it is the body at every tilt the dynamics reach.
+  constexpr FootprintBodyAxis previous_route_axis{};
+  constexpr FootprintBodyAxis current_execution_axis{};
   const OccupiedCollisionOracle3D collision_oracle{OccupiedCollisionWorld3D{
       .observed_occupancy = old_certificate.observed_raw
                                 ? std::addressof(observed_raw_world->occupancy())
