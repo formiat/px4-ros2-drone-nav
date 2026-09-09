@@ -72,9 +72,17 @@ ProductionMppiNode::publishStopExecution(const ProductionMppiExecutionCycle& cyc
   const StopExecution3D* const stop = prepared.stopExecution();
   if (!prepared.prepared() || stop == nullptr || stop->horizon == nullptr) {
     // A resident stop that still holds the vehicle is the answer, not a
-    // failure: it is already the trajectory this call would have produced.
-    if (prepared.status != ExecutionStopStatus3D::kResidentStopCurrent &&
-        prepared.status != ExecutionStopStatus3D::kAtRest) {
+    // failure: it is already the trajectory this call would have produced,
+    // and it continues. Reported as nothing published, it fell through to a
+    // revocation that a stop plan, unlike a resident route, lets through: the
+    // braking vehicle was handed to the offboard's blind local hold a third
+    // of a second into its stop, and one recorded flight met the wall the
+    // stop had been braking for at the hold's own speed.
+    if (prepared.status == ExecutionStopStatus3D::kResidentStopCurrent) {
+      return residentOwnerContinuation(reason, cycle.controller.now_ns, {},
+                                       /*retire_route_on_expiry=*/false);
+    }
+    if (prepared.status != ExecutionStopStatus3D::kAtRest) {
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 1000,
           "STOP_EXECUTION published=false status=%s transition=%.*s "

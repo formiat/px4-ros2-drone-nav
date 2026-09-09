@@ -262,7 +262,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishNoExecutablePathHo
           ProductionMppiPhysicalTrajectoryAuthority::kResidentOwner);
     }
     ProductionMppiExecutionPublication stop = publishStopExecution(cycle, reason);
-    if (stop.published) {
+    if (stop.published || stop.resident_owner_continues) {
       return stop;
     }
     // A vehicle already at rest has no stop to fly, and a revocation cannot
@@ -300,7 +300,7 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishNoExecutablePathHo
   // instead of being left to coast into the offboard's blind hold; a vehicle
   // already at rest is held where it is for the same reason.
   ProductionMppiExecutionPublication stop = publishStopExecution(cycle, reason);
-  if (stop.published) {
+  if (stop.published || stop.resident_owner_continues) {
     return stop;
   }
   ProductionMppiExecutionPublication rest_hold = publishRestHold(cycle, reason);

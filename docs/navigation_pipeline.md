@@ -396,7 +396,14 @@ behind the stop, and only for a genuine loss of the planner.
 A stop never survives its own completion. It is finite by construction: once
 the vehicle rests, the execution is revoked exactly as it is at a captured
 goal, the offboard holds the position the vehicle is at, and the next certified
-route activates from the revoked plan. A vehicle that is already at rest when
+route activates from the revoked plan. Until then a resident stop that is
+still executable is the answer to every further request for one: it is
+reported as the resident owner continuing, never as nothing published. A stop
+plan, unlike a resident route, admits a revocation, and reporting the current
+stop as nothing published let one recorded flight fall through to that
+revocation a third of a second into its stop; the braking vehicle was handed to
+the offboard's blind local hold and met, at the hold's own speed, the wall the
+stop had been braking for. A vehicle that is already at rest when
 physical evidence ends its path's claim has no stop to fly, and a revocation
 cannot be committed while the route stays resident — the plan a suspension
 leaves is not publishable. Nothing then reached the offboard, which kept
