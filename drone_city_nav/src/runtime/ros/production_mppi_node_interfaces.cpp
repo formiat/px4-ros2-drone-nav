@@ -324,12 +324,21 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
           .vehicle_state_provider =
               [this]() {
                 const auto lock = evidence_boundary_.input();
+                // A route search needs where the vehicle is and how fast it
+                // moves, the same authority world construction needs; the
+                // heading and yaw-rate authorities belong to execution.
+                // Judged by the full contract, the first search waited for
+                // the heading to settle at the end of the takeoff climb and
+                // the vehicle then held at the start for the search it could
+                // have run during the climb.
                 return RoutePlannerVehicleState3D{
                     .position = Point3{navigation_.state.x, navigation_.state.y,
                                        navigation_.state.z},
                     .velocity = Vec3{navigation_.state.vx, navigation_.state.vy,
                                      navigation_.state.vz},
-                    .valid = navigation_.valid,
+                    .valid = navigation_.world_state_authoritative &&
+                             !navigation_revision_exhausted_ &&
+                             !navigation_frame_reset_unresolved_,
                 };
               },
           .activation_snapshot_provider =

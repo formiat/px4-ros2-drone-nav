@@ -40,6 +40,15 @@ the continuation already queued and leaves it in place. Judged by the gate it
 never held, the initial search used to end after every update; the planner
 ran for a fraction of each second while the vehicle held at the start.
 
+The search starts as soon as the vehicle's position and velocity are
+authoritative — the authority world construction needs — rather than waiting
+for the heading and yaw-rate authorities that only execution needs. Judged by
+the full contract, the first search began when the heading settled at the end
+of the takeoff climb, and the vehicle held at the start for a search it could
+have run during the climb; the search now runs from the climbing vehicle,
+rebasing its start as the vehicle rises, and the route is activated once the
+execution contract holds.
+
 The goal anchor is a terminal of the feasibility search in its own right. The
 search connects to the exact goal by a straight raw-valid segment from any
 label within `persistent_planner_feasibility_goal_connector_reach_m`, and that
