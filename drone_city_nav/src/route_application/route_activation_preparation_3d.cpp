@@ -636,6 +636,17 @@ assessReplacement(RouteActivationPreparationState3D state,
       captured_pending != nullptr ? std::addressof(captured_pending->route)
                                   : current_route;
   report.successor_compared_to_pending = captured_pending != nullptr;
+  // A resident route the vehicle is not following is no base a successor has
+  // to improve on either. A route the plan keeps while the vehicle brakes on a
+  // continuation stop is still measured against, and one recorded flight
+  // refused a successor for being two hundredths of a second slower while it
+  // had nothing to fly at all and was holding without an executable horizon. A
+  // pending certified route is different -- the vehicle is about to fly it --
+  // so it stays a base worth improving on.
+  const bool improvement_base_under_execution =
+      captured_pending != nullptr ||
+      (current_execution != nullptr &&
+       current_execution->phase() == ExecutionRoutePhase3D::kFollowing);
   if (improvement_resident != nullptr) {
     const std::optional<ActiveIntent3D> resident_intent =
         activeIntent3D(improvement_resident->identity.proposal);
@@ -650,6 +661,7 @@ assessReplacement(RouteActivationPreparationState3D state,
         same_intent && !resident_intent.value_or(ActiveIntent3D{}).continuous_tracking;
     report.successor_improvement_required =
         point_to_point_intent && !safety_replan_requested &&
+        improvement_base_under_execution &&
         improvement_resident->identity.proposal.reaches_mission_goal &&
         materialized_proposal.identity.reaches_mission_goal;
     if (report.successor_improvement_required &&

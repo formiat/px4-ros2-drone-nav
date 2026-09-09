@@ -205,6 +205,17 @@ extracted from what was explored. Restarting the search from nothing cost one
 to two seconds per rejection and, whenever the world had not changed, found
 the same first route again.
 
+Admission applies the same idea once more, against the route the vehicle
+actually has. A successor that reaches the same mission goal as the resident
+must be materially faster than it; a release as blocked or diverged waives
+that, because a route the vehicle cannot follow is no base to improve on. The
+base has to be one the vehicle is following, though: a route the plan keeps
+while the vehicle brakes on a continuation stop, or holds with no executable
+horizon, is not. Measured against such a route, one recorded flight refused a
+successor for being two hundredths of a second slower while it had nothing at
+all to fly. A pending certified route stays a base worth improving on, since
+the vehicle is about to fly it.
+
 A route blocked far enough ahead is replaced onto its own certified prefix.
 The replan carries the incumbent as the successor's continuity base
 (`RouteLifecycleReplanSnapshot3D::active_route`, `route_projection`,

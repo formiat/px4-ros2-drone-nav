@@ -522,6 +522,30 @@ TEST(RouteActivationCoordinator3DTest,
 }
 
 TEST(RouteActivationCoordinator3DTest,
+     ARouteTheVehicleIsFollowingIsTheBaseASuccessorImprovesOn) {
+  // The improvement requirement measures a successor against the route the
+  // vehicle is following. A route the plan merely keeps -- while the vehicle
+  // brakes on a continuation stop, or holds with no executable horizon -- is
+  // not one it is following, and one recorded flight refused a successor there
+  // for being two hundredths of a second slower while it had nothing to fly.
+  ExecutionSupervisor3D supervisor;
+  RouteActivationCoordinator3D coordinator{coordinatorConfig()};
+  PreparedRouteActivation3D first = prepare(coordinator, activationFixture(supervisor));
+  const RouteActivationCommitContext3D first_context = commitContext(first);
+  static_cast<void>(coordinator.commit(std::move(first), first_context, supervisor));
+  activatePending(supervisor);
+  ASSERT_NE(supervisor.plan(), nullptr);
+  ASSERT_EQ(supervisor.plan()->phase(), ExecutionRoutePhase3D::kFollowing);
+
+  const PreparedRouteActivation3D equivalent =
+      prepare(coordinator, activationFixture(supervisor));
+
+  EXPECT_TRUE(equivalent.result.admission.successor_improvement_required);
+  EXPECT_FALSE(equivalent.result.admission.successor_improvement.accepted());
+  EXPECT_FALSE(equivalent.pending_draft.has_value());
+}
+
+TEST(RouteActivationCoordinator3DTest,
      ADivergedReleaseWaivesTheSuccessorImprovementRequirement) {
   ExecutionSupervisor3D supervisor;
   RouteActivationCoordinator3D coordinator{coordinatorConfig()};

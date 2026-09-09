@@ -482,9 +482,13 @@ there published nothing at all. Every recorded flight showed the same shape:
 the node decided to revoke while the vehicle carried three to five metres a
 second, no message reached the offboard, and it went on flying the horizon
 whose evidence had just invalidated it — one of them into a structure a second
-later. A plan that cannot be suspended is therefore revoked outright. The
-route it was holding is lost and the search replans from the hold, which is
-the price of telling the vehicle the truth about the horizon it is flying. Certifying the brake anyway, with the hull's
+later. The revocation is therefore committed as a revocation and never as
+a suspension. The suspension keeps the certified route for a successor to
+resume from, but the plan it leaves is deliberately not publishable, and an
+authority transition is committed only to a publishable plan: every suspension
+the revocation offered was refused, and it returned with nothing sent. The
+route the plan was holding is lost and the search replans from the hold, which
+is the price of telling the vehicle the truth about the horizon it is flying. Certifying the brake anyway, with the hull's
 occupied-evidence verdict tolerated, was tried and withdrawn: the contact the
 vehicle already has is exempt through the proprioceptive seed, so a verdict
 that survives that exemption is evidence ahead of the vehicle, and a

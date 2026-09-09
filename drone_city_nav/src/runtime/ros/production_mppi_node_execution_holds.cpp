@@ -428,29 +428,20 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionRevocatio
   if (expected == nullptr) {
     return publication;
   }
-  const ExecutionRouteTransitionResult3D transition = [&] {
-    if (expected->route() != nullptr) {
-      ExecutionRouteTransitionResult3D suspension =
-          suspendFiniteExecution3D(*expected, expected->version);
-      if (suspension.applied() ||
-          suspension.status == ExecutionRouteTransitionStatus3D::kNoChange) {
-        return suspension;
-      }
-    }
-    // The suspension keeps the certified route for a successor to resume from,
-    // and it is admissible only while the plan still follows that route with
-    // its finite execution and braking fallback in place. A plan that has
-    // moved on -- awaiting a successor while it still owns the horizon the
-    // vehicle is flying -- refuses it, and giving up there left the revocation
-    // unpublished with nothing else to publish: the offboard went on flying
-    // the horizon whose evidence had just invalidated it, and one recorded
-    // flight met a structure a second after the node had decided to revoke.
-    // The wire message is the whole point of a fail-closed revocation, so the
-    // plan is revoked outright when it cannot be suspended. The route it was
-    // holding is worth less than the vehicle, and the search replans from the
-    // hold the revocation leaves.
-    return revokeExecution3D(*expected, expected->version);
-  }();
+  // The revocation is committed as a revocation, never as a suspension. The
+  // suspension keeps the certified route for a successor to resume from, but
+  // the plan it leaves is deliberately not publishable, and an authority
+  // transition is committed only to a publishable plan: every suspension
+  // offered here was refused, and the revocation returned with nothing sent.
+  // Every recorded flight showed the same shape -- the node decided to revoke
+  // while the vehicle carried three to five metres a second, no message
+  // reached the offboard, and it went on flying the horizon whose evidence had
+  // just invalidated it. One of them met a structure a second later. The route
+  // the plan was holding is worth less than the vehicle: it is dropped, the
+  // offboard is told the horizon is void, and the search replans from the hold
+  // the revocation leaves.
+  const ExecutionRouteTransitionResult3D transition =
+      revokeExecution3D(*expected, expected->version);
   const bool certified_route_preserved =
       expected->route() != nullptr &&
       ((transition.applied() && transition.next != nullptr &&
