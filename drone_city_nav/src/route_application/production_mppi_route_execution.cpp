@@ -157,20 +157,24 @@ void bindObservedRouteEvidence(
     const std::shared_ptr<const ProductionMppiRawWorld3D>& latest_raw_world,
     const std::uint64_t minimum_tracking_sample_sequence,
     const double maximum_cross_track_m, const SweptFootprintConfig& footprint,
-    const FlightEnvelopeConfig& flight_envelope) {
+    const FlightEnvelopeConfig& flight_envelope,
+    RouteCertificationStatus3D* const status) {
   const bool observed = pending.route.observed_raw_world != nullptr;
   std::shared_ptr<const VersionedObservedRawWorld3D> observed_owner;
   if (observed) {
     observed_owner = deriveLatestObservedRouteEvidence(latest_raw_world, pending.route);
     if (observed_owner == nullptr) {
+      if (status != nullptr) {
+        *status = RouteCertificationStatus3D::kRawEvidenceNotCurrent;
+      }
       return nullptr;
     }
   }
   const RouteActivationObservation3D observation = makeActivationObservation(
       world, objective, navigation, minimum_tracking_sample_sequence,
       maximum_cross_track_m, footprint, flight_envelope, observed);
-  const std::optional<CertifiedRouteSuffix3D> refreshed =
-      recertifyExecutionRoute3D(pending.route, observation, std::move(observed_owner));
+  const std::optional<CertifiedRouteSuffix3D> refreshed = recertifyExecutionRoute3D(
+      pending.route, observation, std::move(observed_owner), status);
   return refreshed.has_value()
              ? std::make_shared<const CertifiedRouteSuffix3D>(*refreshed)
              : nullptr;
@@ -717,11 +721,11 @@ RouteExecutionSelector3D::select(const RouteExecutionSelectorRequest3D& request)
         retain_snapshot_certificate
             ? std::make_shared<const CertifiedRouteSuffix3D>(
                   result.pending_route->route)
-            : refreshPendingRoute(*result.pending_route, world, objective,
-                                  execution_navigation, latest_raw_world,
-                                  minimum_tracking_sample_sequence,
-                                  config_.route_tracking.maximum_cross_track_m,
-                                  footprint, config_.flight_envelope);
+            : refreshPendingRoute(
+                  *result.pending_route, world, objective, execution_navigation,
+                  latest_raw_world, minimum_tracking_sample_sequence,
+                  config_.route_tracking.maximum_cross_track_m, footprint,
+                  config_.flight_envelope, &result.pending_refresh_status);
     RouteSpliceReadiness3D splice_readiness{.status =
                                                 RouteSpliceReadinessStatus3D::kReady};
     const bool route_splice_required =

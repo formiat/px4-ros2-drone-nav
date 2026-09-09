@@ -693,11 +693,15 @@ void ProductionMppiNode::reportUnadoptedPendingRoute(
     // successor was fine.
     const std::string_view splice =
         routeSpliceReadinessStatus3DName(execution.pending_splice_readiness);
+    const std::string_view refresh =
+        routeCertificationStatus3DName(execution.pending_refresh_status);
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 1000,
-        "PENDING_ROUTE3D adopted=false eligibility=eligible refreshed=%s splice=%.*s "
+        "PENDING_ROUTE3D adopted=false eligibility=eligible refreshed=%s "
+        "refresh_status=%.*s splice=%.*s "
         "pending_generation=%" PRIu64 " base_generation=%" PRIu64,
         execution.pending_refresh_available ? "true" : "false",
+        static_cast<int>(refresh.size()), refresh.data(),
         static_cast<int>(splice.size()), splice.data(),
         execution.pending_route->route.identity.generation,
         execution.pending_route->base_route_generation);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/certified_route_splice_3d.hpp"
+#include "drone_city_nav/execution_route_certification_3d.hpp"
 #include "drone_city_nav/execution_route_store_3d.hpp"
 #include "drone_city_nav/pending_certified_route_3d.hpp"
 #include "drone_city_nav/tracking_error_tube_3d.hpp"
@@ -47,6 +48,11 @@ struct ProductionRouteExecutionSelection3D {
   // route already certified, and it left no trace at all: the hold that
   // followed named the eligibility, which said the successor was fine.
   bool pending_refresh_available{false};
+  // Why the refresh against the current world produced no route, when it
+  // produced none. The recertification already decides this; discarding it
+  // left the wait unexplained.
+  RouteCertificationStatus3D pending_refresh_status{
+      RouteCertificationStatus3D::kNotAttempted};
   RouteSpliceReadinessStatus3D pending_splice_readiness{
       RouteSpliceReadinessStatus3D::kReady};
   bool physical_trajectory_invalidated{false};
