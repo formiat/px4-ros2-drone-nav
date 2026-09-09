@@ -366,17 +366,6 @@ braked and rested for two and a half seconds with the planner idle, a quarter
 of that run's no-route time. Both owners are now routeless owners, and the
 latch decides how often a search actually runs.
 
-The departure envelope decides which anchors a vehicle may leave through, and
-only where it admits none at all does the hull decide instead
-(`departure_hull=true` in `PRODUCTION_MPPI_ROUTE3D`). A vehicle leaves a tight
-spot at hover and upright, so the envelope that contains the hull at every
-tilt is not what decides whether it may leave; a vehicle resting beside
-evidence its own stop had just met was otherwise refused every departure with
-`start_unavailable` for a second or more at a time. Judging every departure by
-the hull was tried and withdrawn: ordinary routes then left the vehicle closer
-to evidence than the envelope admits, and the flights that followed were worse
-on every count, one of them lost to a collision.
-
 ## Leaving A Closed Component
 
 A vehicle can stand where every lattice node it reaches belongs to a component

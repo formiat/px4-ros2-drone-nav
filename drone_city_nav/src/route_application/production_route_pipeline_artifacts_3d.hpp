@@ -48,8 +48,6 @@ struct ProductionPersistentPlannerTelemetry3D {
   std::size_t clearance_centering_queries{0U};
   std::size_t clearance_centering_moves{0U};
   bool departure_waypoint_used{false};
-  // No anchor cleared the departure envelope and the hull was asked instead.
-  bool departure_hull_fallback{false};
   std::size_t lattice_edge_queries{0U};
   std::size_t raw_edge_validation_checks{0U};
   std::size_t adaptive_edge_queries{0U};

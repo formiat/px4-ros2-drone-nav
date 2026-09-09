@@ -120,7 +120,6 @@ RouteMaterializer3D::materialize(RouteMaterializationRequest3D request) const {
       .clearance_centering_queries = plan.clearance_centering_queries,
       .clearance_centering_moves = plan.clearance_centering_moves,
       .departure_waypoint_used = plan.departure_waypoint_used,
-      .departure_hull_fallback = plan.departure_hull_fallback,
       .lattice_edge_queries = plan.lattice_edge_queries,
       .raw_edge_validation_checks = plan.raw_edge_validation_checks,
       .adaptive_edge_queries = plan.adaptive_edge_queries,
