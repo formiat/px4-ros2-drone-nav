@@ -198,7 +198,22 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
   const RouteActivationAssessment3D assessment =
       assessRouteActivation3D(activation.proposal, *geometry->route, owned_observation);
   if (!assessment.accepted()) {
-    return rejected(RouteCertificationStatus3D::kAssessmentRejected);
+    // Name the rule the assessment refused on. A route the admission's own
+    // assessment accepted can still be refused here, because the
+    // certification measures the same route against the evidence and the body
+    // it will be executed with; a bare refusal left one recorded flight
+    // holding for over two seconds with nothing to act on.
+    return rejected(!assessment.publication.compatible()
+                        ? RouteCertificationStatus3D::kAssessmentPublicationIncompatible
+                    : !assessment.objective_matches
+                        ? RouteCertificationStatus3D::kAssessmentObjectiveMismatch
+                    : !assessment.projection.valid
+                        ? RouteCertificationStatus3D::kAssessmentProjectionInvalid
+                    : !assessment.cross_track_accepted
+                        ? RouteCertificationStatus3D::kAssessmentCrossTrackExceeded
+                    : !assessment.raw_world_compatible
+                        ? RouteCertificationStatus3D::kAssessmentRawWorldIncompatible
+                        : RouteCertificationStatus3D::kAssessmentRawValidationRejected);
   }
   const double end_station_m = geometry->route->back().station_m;
   const RouteInstanceId3D route_instance_id{
@@ -337,6 +352,18 @@ routeCertificationStatus3DName(const RouteCertificationStatus3D status) noexcept
       return "derivation_fingerprint_invalid";
     case RouteCertificationStatus3D::kAssessmentRejected:
       return "assessment_rejected";
+    case RouteCertificationStatus3D::kAssessmentPublicationIncompatible:
+      return "assessment_publication_incompatible";
+    case RouteCertificationStatus3D::kAssessmentObjectiveMismatch:
+      return "assessment_objective_mismatch";
+    case RouteCertificationStatus3D::kAssessmentProjectionInvalid:
+      return "assessment_projection_invalid";
+    case RouteCertificationStatus3D::kAssessmentCrossTrackExceeded:
+      return "assessment_cross_track_exceeded";
+    case RouteCertificationStatus3D::kAssessmentRawWorldIncompatible:
+      return "assessment_raw_world_incompatible";
+    case RouteCertificationStatus3D::kAssessmentRawValidationRejected:
+      return "assessment_raw_validation_rejected";
     case RouteCertificationStatus3D::kRawConnectorNotValidated:
       return "raw_connector_not_validated";
     case RouteCertificationStatus3D::kRawSuffixNotValidated:

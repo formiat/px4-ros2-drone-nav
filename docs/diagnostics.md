@@ -250,7 +250,12 @@ activation assessment and the dynamic handoff but the route certification
 refused it; `certification=<verdict>` names the rule
 (`RouteCertificationStatus3D`: `raw_evidence_not_current`,
 `tracking_tube_world_mismatch`, `passage_geometry_mismatch`,
-`assessment_rejected`, `raw_connector_not_validated`, ...). A handoff the
+`assessment_*`, `raw_connector_not_validated`, ...). The assessment verdicts
+name the rule the activation assessment refused on inside the certification —
+publication, objective, projection, cross-track, raw-world compatibility or
+raw validation — because a route the admission's own assessment accepted can
+still be refused there, the certification measuring it against the evidence
+and the body it will be executed with. A handoff the
 validator itself refused stays `dynamic_handoff_rejected`. Before the verdict
 was reported, one recorded flight rested for three seconds beside a wall with
 candidate after candidate logged as a handoff rejection and nothing to act on.
