@@ -323,9 +323,13 @@ public:
   // the path validation that follows it. Judged separately, the fallback found
   // a departure the candidate validation then refused on the same leg, and the
   // search spent whole updates on candidates nothing could publish.
+  // `excluded` names anchors the caller has already exhausted a search
+  // from; the walk over the anchors passes them by while any other anchor
+  // remains, and falls back to all of them when none does.
   [[nodiscard]] DepartureConnection3D selectDepartureConnection(
       const Point3& start, std::size_t skipped_connections = 0U,
-      std::optional<PersistentPlannerNode3D> preferred = std::nullopt);
+      std::optional<PersistentPlannerNode3D> preferred = std::nullopt,
+      const std::function<bool(PersistentPlannerNode3D)>& excluded = {});
   // The departure legs answer to the envelope again.
   void resetDepartureBody() noexcept;
   // How many admissible connections the start has, for bounding that walk.

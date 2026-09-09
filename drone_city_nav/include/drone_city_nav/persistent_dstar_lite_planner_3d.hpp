@@ -338,6 +338,9 @@ struct PlannerTelemetry3D {
   bool incumbent_retained{false};
   bool repair_pending{false};
   bool feasibility_attempted{false};
+  // The update's departure anchor lies in a component the search has already
+  // exhausted and the world has not changed: the search was not run.
+  bool feasibility_anchor_in_closed_component{false};
   bool feasibility_route_found{false};
   // The feasibility frontier emptied without a raw-valid candidate: every
   // lattice node reachable from the anchor was explored.

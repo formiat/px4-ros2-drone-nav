@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <iterator>
 #include <optional>
 #include <ranges>
 #include <span>
@@ -107,14 +108,26 @@ std::size_t PlannerLattice3D::departureConnectionCount(const Point3& start) cons
 
 PlannerLattice3D::DepartureConnection3D PlannerLattice3D::selectDepartureConnection(
     const Point3& start, const std::size_t skipped_connections,
-    const std::optional<PersistentPlannerNode3D> preferred) {
+    const std::optional<PersistentPlannerNode3D> preferred,
+    const std::function<bool(PersistentPlannerNode3D)>& excluded) {
   DepartureConnection3D result;
   departure_uses_hull_ = false;
-  const std::vector<PersistentPlannerNode3D> anchors =
+  std::vector<PersistentPlannerNode3D> anchors =
       admissibleAnchors(start, true, &result.diagnostics);
   // Every departure leg this update answers to the body the anchors were
   // found with, so the path validation cannot refuse what the selection took.
   departure_uses_hull_ = result.diagnostics.hull_fallback;
+  if (excluded) {
+    // An anchor inside a component the search has exhausted leads to the
+    // same exhaustion; the walk moves on to the anchors it has not closed.
+    std::vector<PersistentPlannerNode3D> open_anchors;
+    std::ranges::copy_if(
+        anchors, std::back_inserter(open_anchors),
+        [&](const PersistentPlannerNode3D anchor) { return !excluded(anchor); });
+    if (!open_anchors.empty()) {
+      anchors = std::move(open_anchors);
+    }
+  }
   if (!anchors.empty()) {
     if (skipped_connections == 0U && preferred.has_value() &&
         std::ranges::find(anchors, *preferred) != anchors.end()) {

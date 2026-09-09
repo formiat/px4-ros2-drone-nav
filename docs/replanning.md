@@ -488,7 +488,11 @@ flag it had just set.
 The exhaustion is now reported for the update it happened in, whatever the
 search did afterwards, and the nodes the frontier had labelled are remembered
 as the closed component for as long as the vehicle stays put. The anchor walk
-advances on it, and the escape search runs on the next updates: a flood fill
+advances on it past every anchor inside the closed component, and while every
+reachable anchor lies inside it the search is not run again on an unchanged
+world — every anchor of a vehicle in a closed pocket is in that pocket, and
+re-exploring it from each in turn spent whole updates learning nothing. A
+changed world runs it again. The escape search runs on the next updates: a flood fill
 over a grid `persistent_planner_departure_refinement_subdivisions` times finer
 than the lattice, within `persistent_planner_escape_search_radius_cells` of the
 vehicle, through steps validated by the ordinary raw rule (the first under the

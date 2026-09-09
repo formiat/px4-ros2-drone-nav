@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <numbers>
@@ -556,9 +557,17 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   telemetry.escape_connection_active = escape_connection_.has_value();
   const PlannerLattice3D::DepartureConnection3D departure = [&] {
     if (!escape_connection_.has_value()) {
-      return lattice_.selectDepartureConnection(request.start, departure_anchor_skip_,
-                                                initialized_ ? std::optional{start_}
-                                                             : std::nullopt);
+      const std::function<bool(PersistentPlannerNode3D)> closed =
+          feasibility_search_.closedComponentMarked()
+              ? std::function<bool(
+                    PersistentPlannerNode3D)>{[this](
+                                                  const PersistentPlannerNode3D node) {
+                  return feasibility_search_.inClosedComponent(node);
+                }}
+              : std::function<bool(PersistentPlannerNode3D)>{};
+      return lattice_.selectDepartureConnection(
+          request.start, departure_anchor_skip_,
+          initialized_ ? std::optional{start_} : std::nullopt, closed);
     }
     // The escape fill found this connection under the envelope, so the rest of
     // the update answers to the envelope as well.
@@ -751,8 +760,21 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   // rest. Without one the feasibility search still needs most of the update
   // to find a first route, so the repair is bounded by half the reserve the
   // persistent session is guaranteed and the feasibility search follows.
-  const bool feasibility_will_run =
-      config_.feasibility_first_enabled && coordinator_.incumbent() == nullptr;
+  // A search that exhausted its frontier closed the component it explored;
+  // an anchor inside that component on an unchanged world would only exhaust
+  // it again. Every reachable anchor of a vehicle in a closed pocket lies in
+  // that pocket, and re-exploring it from each of them in turn spent whole
+  // updates -- two thousand expansions each -- learning nothing the escape
+  // fill and the world's own changes could not. The search waits for either.
+  const bool anchor_in_closed_component =
+      !departure_from_escape && feasibility_search_.closedComponentMarked() &&
+      departure.anchor.has_value() &&
+      feasibility_search_.inClosedComponent(*departure.anchor) &&
+      world_update.changed_cells.empty();
+  telemetry.feasibility_anchor_in_closed_component = anchor_in_closed_component;
+  const bool feasibility_will_run = config_.feasibility_first_enabled &&
+                                    coordinator_.incumbent() == nullptr &&
+                                    !anchor_in_closed_component;
   if (!feasibility_will_run) {
     schedule_world_changes();
   }

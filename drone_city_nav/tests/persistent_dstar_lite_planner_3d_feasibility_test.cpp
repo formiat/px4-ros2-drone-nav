@@ -543,6 +543,84 @@ TEST(PersistentDStarLitePlanner3DTest, AStaleSeedIsReanchoredAtTheRequestStart) 
   EXPECT_NEAR(path.front().y, start.y, 1.0e-9);
 }
 
+TEST(PersistentDStarLitePlanner3DTest,
+     AnExhaustedPocketIsNotExploredAgainFromAnotherAnchorInsideIt) {
+  // The vehicle stands in a closed room: every reachable anchor is inside it,
+  // and a search from any of them exhausts the same room. Once exhausted on
+  // a world that does not change, the search is not run again from the next
+  // anchor of the walk; a world that opens the room runs it, and the route
+  // is found.
+  auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 1.0, 20, 10, 4});
+  const auto set = [&occupancy](const int x, const int y, const int z) {
+    if (occupancy->state(GridIndex3D{x, y, z}) != ObservedVoxelState::kOccupied) {
+      ASSERT_TRUE(occupancy->setState({x, y, z}, ObservedVoxelState::kOccupied));
+    }
+  };
+  for (int x = 0; x < 20; ++x) {
+    for (int y = 0; y < 10; ++y) {
+      set(x, y, 0);
+      set(x, y, 3);
+    }
+  }
+  for (int y = 0; y < 10; ++y) {
+    for (int z = 0; z < 4; ++z) {
+      set(0, y, z);
+      set(9, y, z);
+      set(19, y, z);
+    }
+  }
+  for (int x = 0; x < 20; ++x) {
+    for (int z = 0; z < 4; ++z) {
+      set(x, 0, z);
+      set(x, 9, z);
+    }
+  }
+  PersistentPlannerConfig3D config = testConfig();
+  config.feasibility_first_enabled = true;
+  config.feasibility_goal_connector_reach_m = 2.0;
+  PersistentDStarLitePlanner3D planner{config};
+  const Point3 start{4.5, 4.5, 1.5};
+  const Point3 goal{15.5, 4.5, 1.5};
+
+  PlannerUpdate3D update = planner.plan(request(start, goal, world(occupancy, 1U)));
+  int exhausted_at = -1;
+  for (int attempt = 0; attempt < 8; ++attempt) {
+    if (update.telemetry.feasibility_frontier_exhausted) {
+      exhausted_at = attempt;
+      break;
+    }
+    update = planner.plan(request(start, goal, world(occupancy, 1U)));
+  }
+  ASSERT_GE(exhausted_at, 0);
+  ASSERT_FALSE(update.telemetry.feasibility_route_found);
+
+  std::size_t skipped_updates = 0U;
+  for (int attempt = 0; attempt < 6; ++attempt) {
+    update = planner.plan(request(start, goal, world(occupancy, 1U)));
+    ASSERT_FALSE(update.telemetry.feasibility_route_found);
+    if (update.telemetry.feasibility_anchor_in_closed_component) {
+      EXPECT_FALSE(update.telemetry.feasibility_attempted);
+      ++skipped_updates;
+    }
+  }
+  EXPECT_GE(skipped_updates, 4U);
+
+  // The wall opens: the search runs on the changed world and finds the way.
+  auto opened = std::make_shared<ObservedOccupancyGrid3D>(*occupancy);
+  for (int z = 1; z < 3; ++z) {
+    ASSERT_TRUE(opened->setState({9, 4, z}, ObservedVoxelState::kFree));
+    ASSERT_TRUE(opened->setState({9, 5, z}, ObservedVoxelState::kFree));
+  }
+  update = planner.plan(request(start, goal, world(opened, 2U)));
+  for (int attempt = 0; attempt < 20 && !update.publishable(); ++attempt) {
+    update = planner.plan(request(start, goal, world(opened, 2U)));
+  }
+  ASSERT_TRUE(update.publishable());
+  expectRawValid(candidate(update).points, *opened,
+                 planner.config().physical_footprint);
+}
+
 TEST(PersistentDStarLitePlanner3DTest, AGoalTheBodyCannotOccupyIsReachedAtItsAnchor) {
   // The goal sits a hand's width from the corridor wall: a point the body
   // cannot occupy, so no straight connector to it clears, while its anchor

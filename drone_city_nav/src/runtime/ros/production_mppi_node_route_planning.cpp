@@ -105,6 +105,7 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
         "time_search_complete=%s points=%zu expansions=%zu time_expansions=%zu "
         "changed_occupied=%zu affected_states=%zu repair_processed=%zu "
         "repair_pending=%zu repair_in_progress=%s feasibility_attempted=%s "
+        "feasibility_anchor_closed=%s "
         "feasibility_found=%s feasibility_expansions=%zu "
         "feasibility_exhausted=%s feasibility_explored=%zu "
         "feasibility_closest_goal_m=%.1f feasibility_restarts=%zu "
@@ -147,6 +148,7 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
         planner_telemetry.repair_lattice_states_pending,
         planner_telemetry.repair_pending ? "true" : "false",
         planner_telemetry.feasibility_attempted ? "true" : "false",
+        planner_telemetry.feasibility_anchor_in_closed_component ? "true" : "false",
         planner_telemetry.feasibility_route_found ? "true" : "false",
         planner_telemetry.feasibility_expansions,
         planner_telemetry.feasibility_frontier_exhausted ? "true" : "false",
