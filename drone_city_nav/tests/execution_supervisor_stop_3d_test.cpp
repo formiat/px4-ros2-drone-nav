@@ -265,7 +265,8 @@ TEST(ExecutionSupervisorStop3DTest, TheCommittedStopOwnsTheVehicleWhileItIsExecu
 // through while the physical body passes clear does not leave the vehicle
 // flying its stale horizon: the same trajectory is certified on the body, and
 // that stop stays resident while the body's path remains clear.
-TEST(ExecutionSupervisorStop3DTest, AStopTheEnvelopeCannotClearIsCertifiedOnTheBody) {
+TEST(ExecutionSupervisorStop3DTest,
+     AStopTheEnvelopeCannotClearKeepsWhatClearanceItCan) {
   SnapshotFixture3D fixture;
   ExecutionSupervisor3D supervisor;
   const std::shared_ptr<const ExecutionPlan3D> active =
@@ -304,12 +305,14 @@ TEST(ExecutionSupervisorStop3DTest, AStopTheEnvelopeCannotClearIsCertifiedOnTheB
       << stopCertificationStatus3DName(prepared.certification.status) << " path="
       << finiteExecutionPathStatus3DName(prepared.certification.path_validation_status);
   EXPECT_GT(prepared.stop_distance_m, 4.0);
-  // The envelope was refused first; the body certified the same trajectory.
-  EXPECT_TRUE(prepared.certification.physical_body_only);
+  // The envelope was refused; the stop gave up part of its clearance and kept
+  // the rest, so its sweep stays wider than the bare hull.
+  EXPECT_GT(prepared.certification.clearance_reduction, 0.0);
   const StopExecution3D* const stop = prepared.stopExecution();
   ASSERT_NE(stop, nullptr);
-  EXPECT_TRUE(stop->physical_body_only);
-  EXPECT_NEAR(stop->validation_footprint.radius_m, 0.5, 1.0e-9);
+  EXPECT_GT(stop->clearance_reduction, 0.0);
+  EXPECT_GT(stop->validation_footprint.radius_m, 0.5);
+  EXPECT_LT(stop->validation_footprint.radius_m, 1.2);
   EXPECT_NEAR(stop->validation_footprint.body_radius_m, 0.5, 1.0e-9);
 
   ASSERT_EQ(commitExecutionHorizonForTest(
@@ -377,14 +380,14 @@ TEST(ExecutionSupervisorStop3DTest, AStopTheBodyCannotClearIsStillFlownWithTheVe
       << stopCertificationStatus3DName(prepared.certification.status) << " path="
       << finiteExecutionPathStatus3DName(prepared.certification.path_validation_status);
   EXPECT_GT(prepared.stop_distance_m, 3.0);
-  // The envelope and the body were both refused; the body's verdict is kept.
-  EXPECT_TRUE(prepared.certification.physical_body_only);
+  // Every rung of the clearance ladder was refused; the hull's verdict is kept.
+  EXPECT_DOUBLE_EQ(prepared.certification.clearance_reduction, 1.0);
   EXPECT_TRUE(prepared.certification.collision_tolerated);
   EXPECT_EQ(prepared.certification.path_validation_status,
             FiniteExecutionPathStatus3D::kRawCollision);
   const StopExecution3D* const stop = prepared.stopExecution();
   ASSERT_NE(stop, nullptr);
-  EXPECT_TRUE(stop->physical_body_only);
+  EXPECT_DOUBLE_EQ(stop->clearance_reduction, 1.0);
   EXPECT_TRUE(stop->collision_tolerated);
 
   ASSERT_EQ(commitExecutionHorizonForTest(

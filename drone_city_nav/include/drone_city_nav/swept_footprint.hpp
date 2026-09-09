@@ -100,6 +100,16 @@ proprioceptiveSeedExemptsPoint(const ProprioceptiveFreeSpaceSeed3D& seed,
 [[nodiscard]] SweptFootprintConfig
 physicalBodyFootprint(const SweptFootprintConfig& footprint) noexcept;
 
+// The footprint with `reduction` of its clearance given up: 0 leaves the
+// envelope as configured, 1 is the physical body, and the values between keep
+// that share of the margin the envelope carries over the body. A motion the
+// envelope cannot sweep clear keeps as much of it as the evidence admits
+// instead of dropping to the bare hull, which carries no allowance for the
+// tracking error every executed trajectory has.
+[[nodiscard]] SweptFootprintConfig
+clearanceReducedFootprint(const SweptFootprintConfig& footprint,
+                          double reduction) noexcept;
+
 [[nodiscard]] bool footprintIntersectsAxisAlignedBox(
     const Point3& position, const FootprintBodyAxis& body_axis,
     const SweptFootprintConfig& config, const Point3& box_minimum,

@@ -435,16 +435,22 @@ evidence that ended its path's claim was confirmed beside that path, or ahead
 of it, and a braking sweep that starts there cannot always keep the margin. A
 stop is the last motion the vehicle can be given, so when the envelope's sweep
 meets occupied evidence (`raw_collision`, `latest_lidar_raw_collision`) the
-same trajectory is certified again against the physical body alone
-(`physicalBodyFootprint`, the body radius with the axial extents kept). Braking
-with the body clear is strictly safer than the horizon it replaces; a stop the
-envelope refused and nothing replaced is how one recorded flight, still moving,
-flew its stale horizon into a wall. A body-certified stop records the body it
-answers to (`StopExecution3D::validation_footprint`, `physical_body_only`) and
-stays resident, and is revalidated on the wire, against that same body rather
-than the envelope, so the envelope's failure does not derive a new stop every
-tick. Other verdicts, a broken envelope or dynamics law, are not retried: no
-smaller body satisfies them.
+same trajectory is certified again with part of that clearance given up, a
+quarter of the margin at a time down to the physical body
+(`clearanceReducedFootprint`, `StopExecutionCertification3D::clearance_reduction`).
+The first rung that sweeps clear is the one flown, so the stop keeps every
+metre of margin the evidence leaves it. Dropping straight to the bare hull was
+tried and is not enough: the margin the envelope carries over the hull is the
+allowance every executed trajectory has for its own tracking error, and a
+recorded flight overran the rest point of a hull-certified stop by half a metre
+and met the wall beside it. A stop the envelope refused and nothing replaced is
+how another recorded flight, still moving, flew its stale horizon into a wall.
+The stop records the body it answers to
+(`StopExecution3D::validation_footprint`, `clearance_reduction`) and stays
+resident, and is revalidated on the wire, against that same body rather than
+the envelope, so the envelope's failure does not derive a new stop every tick.
+Other verdicts, a broken envelope or dynamics law, are not retried: no smaller
+body satisfies them.
 
 When the body's sweep meets occupied evidence too, the stop is still the
 answer. Braking with the dynamics' full authority is the least motion any
@@ -460,8 +466,8 @@ body refused, and whose route stayed resident so no revocation could be
 committed, was left on the horizon it had accepted before the evidence
 arrived. One recorded flight kept accelerating along that horizon for the
 better part of a second and met, at full speed, the platform edge the stop had
-been refused for. The stop log carries `body_only=true|false` and
-`collision_tolerated=true|false`.
+been refused for. The stop log carries
+`clearance_reduction` and `collision_tolerated=true|false`.
 
 The liveness monitor compares predicted and actual full-3D route progress.
 Persistent prediction without real movement can reseed the MPPI nominal controls

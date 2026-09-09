@@ -130,17 +130,17 @@ struct StopExecutionCertification3D {
   std::shared_ptr<const VersionedExecutionInput3D> execution_input;
   std::shared_ptr<const VersionedLatestLidarEvidence3D> latest_lidar_evidence;
   std::int64_t valid_from_ns{0};
-  // Validate the braking sweep against the physical body instead of the
-  // policy's clearance envelope. A stop is the last motion the vehicle can be
-  // given: when the envelope cannot clear the evidence around it, braking
-  // with the body clear is still strictly safer than the horizon it replaces.
-  bool physical_body_only{false};
+  // How much of the policy envelope's clearance the braking sweep gives up:
+  // 0 is the envelope as configured, 1 the physical body. A stop is the last
+  // motion the vehicle can be given, so when the envelope cannot clear the
+  // evidence around it the sweep gives up only as much clearance as it must.
+  double clearance_reduction{0.0};
   // Certify the braking horizon although the physical body's sweep meets
   // occupied evidence. Braking is the least motion the vehicle can be given:
   // when even the body cannot sweep clear, the collision is the dynamics'
   // answer to where the vehicle already is, and braking towards it at the
   // guaranteed deceleration is what every alternative is measured against.
-  // Requires physical_body_only; every other verdict still rejects.
+  // Requires the clearance fully given up; every other verdict still rejects.
   bool tolerate_body_collision{false};
 };
 
@@ -258,8 +258,9 @@ struct StopCertificationResult3D {
   // Which physical rule a kPathValidationRejected verdict broke.
   FiniteExecutionPathStatus3D path_validation_status{
       FiniteExecutionPathStatus3D::kValid};
-  // Whether the verdict was reached against the physical body alone.
-  bool physical_body_only{false};
+  // How much of the envelope's clearance the verdict was reached with given
+  // up; 1 means the physical body alone.
+  double clearance_reduction{0.0};
   // Whether the stop was certified with the body's occupied-evidence verdict
   // tolerated; path_validation_status then names that verdict.
   bool collision_tolerated{false};

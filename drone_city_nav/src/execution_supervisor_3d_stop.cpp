@@ -5,6 +5,7 @@
 #include "drone_city_nav/proprioceptive_contact_seed_3d.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <memory>
@@ -104,6 +105,11 @@ residentStopStillExecutable(const StopExecution3D& stop,
          (stop.collision_tolerated &&
           finiteExecutionPathOccupiedEvidenceVerdict3D(validation.status));
 }
+
+// How much of the envelope's clearance a stop gives up, in order. The first
+// rung that sweeps clear is the one flown, so a stop keeps every metre of
+// margin the evidence leaves it.
+constexpr std::array kStopClearanceReductionLadder{0.0, 0.25, 0.5, 0.75, 1.0};
 
 // The longest stop the supervisor will ask for. At the absolute speed limit
 // and the dynamics' vertical deceleration a stop takes a few seconds, so this
@@ -351,7 +357,7 @@ ExecutionSupervisor3D::prepareStop(ExecutionStopRequest3D request) const {
       .execution_input = owned_request.execution_input,
       .latest_lidar_evidence = owned_request.latest_lidar_evidence,
       .valid_from_ns = owned_request.now_ns,
-      .physical_body_only = false,
+      .clearance_reduction = 0.0,
       .tolerate_body_collision = false,
   };
   StopCertificationResult3D certification_report;
@@ -362,30 +368,29 @@ ExecutionSupervisor3D::prepareStop(ExecutionStopRequest3D request) const {
                certification_report.path_validation_status);
   };
   const ExecutionRouteTransitionResult3D transition = [&] {
-    ExecutionRouteTransitionResult3D envelope = enterStopExecution3D(
-        *expected, expected->version, certification, &certification_report);
     // The envelope keeps clearance the vehicle may already have lost:
     // evidence confirmed beside the path it was following, or a wall it is
     // braking towards. A stop is the last motion the vehicle can be given, so
     // when the envelope cannot sweep clear, the same trajectory is certified
-    // against the physical body alone. Braking with the body clear is
-    // strictly safer than the horizon it replaces; leaving that horizon in
-    // flight is what ended one flight against a wall.
-    if (envelope.applied() || !occupied_evidence_refusal()) {
-      return envelope;
+    // again with part of that clearance given up. It gives up only as much as
+    // the evidence makes it: the margin the envelope carries over the hull is
+    // the allowance every executed trajectory has for its own tracking error,
+    // and a stop certified on the bare hull keeps none of it — one recorded
+    // flight overran the rest point of such a stop and met the wall beside it.
+    for (const double reduction : kStopClearanceReductionLadder) {
+      certification.clearance_reduction = reduction;
+      ExecutionRouteTransitionResult3D attempt = enterStopExecution3D(
+          *expected, expected->version, certification, &certification_report);
+      if (attempt.applied() || !occupied_evidence_refusal()) {
+        return attempt;
+      }
     }
-    certification.physical_body_only = true;
-    ExecutionRouteTransitionResult3D body = enterStopExecution3D(
-        *expected, expected->version, certification, &certification_report);
-    // When the body cannot sweep clear either, the evidence stands where the
-    // vehicle's dynamics already carry it: braking at the guaranteed
-    // deceleration is the least motion any trajectory from this state can
+    // When the hull cannot sweep clear either, the evidence stands where the
+    // vehicle's dynamics already carry it: braking at the deceleration the
+    // dynamics admit is the least motion any trajectory from this state can
     // hold, so the same stop is certified with that verdict tolerated. Nothing
     // published here left one recorded flight on its stale horizon, still
     // accelerating, until it met the wall the stop had been refused for.
-    if (body.applied() || !occupied_evidence_refusal()) {
-      return body;
-    }
     certification.tolerate_body_collision = true;
     return enterStopExecution3D(*expected, expected->version, certification,
                                 &certification_report);
@@ -396,7 +401,7 @@ ExecutionSupervisor3D::prepareStop(ExecutionStopRequest3D request) const {
   result.certification.dynamics_consistency = certification_report.dynamics_consistency;
   result.certification.path_validation_status =
       certification_report.path_validation_status;
-  result.certification.physical_body_only = certification_report.physical_body_only;
+  result.certification.clearance_reduction = certification_report.clearance_reduction;
   result.certification.collision_tolerated = certification_report.collision_tolerated;
   if (!transition.applied() || transition.next == nullptr ||
       transition.next->stopExecution() == nullptr) {

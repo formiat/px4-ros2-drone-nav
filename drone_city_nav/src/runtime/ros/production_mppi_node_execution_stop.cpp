@@ -87,7 +87,7 @@ ProductionMppiNode::publishStopExecution(const ProductionMppiExecutionCycle& cyc
           get_logger(), *get_clock(), 1000,
           "STOP_EXECUTION published=false status=%s transition=%.*s "
           "detail=%.*s certification=%.*s certification_dynamics=%s "
-          "certification_path=%s body_only=%s collision_tolerated=%s "
+          "certification_path=%s clearance_reduction=%.2f collision_tolerated=%s "
           "speed_mps=%.2f replacement_failure=%s",
           executionStopStatus3DName(prepared.status),
           static_cast<int>(
@@ -102,7 +102,7 @@ ProductionMppiNode::publishStopExecution(const ProductionMppiExecutionCycle& cyc
           motionDynamicsConsistency3DName(prepared.certification.dynamics_consistency),
           finiteExecutionPathStatus3DName(
               prepared.certification.path_validation_status),
-          prepared.certification.physical_body_only ? "true" : "false",
+          prepared.certification.clearance_reduction,
           prepared.certification.collision_tolerated ? "true" : "false",
           prepared.initial_speed_mps, productionMppiExecutionReasonName(reason));
     }
@@ -177,13 +177,12 @@ ProductionMppiNode::publishStopExecution(const ProductionMppiExecutionCycle& cyc
   RCLCPP_WARN(get_logger(),
               "STOP_EXECUTION published=true trajectory_revision=%" PRIu64
               " snapshot_version=%" PRIu64 " speed_mps=%.2f stop_distance_m=%.2f "
-              "controls=%zu rest=(%.2f,%.2f,%.2f) body_only=%s "
+              "controls=%zu rest=(%.2f,%.2f,%.2f) clearance_reduction=%.2f "
               "collision_tolerated=%s replacement_failure=%s",
               stop->trajectory_revision, prepared.preparedPlan()->version,
               prepared.initial_speed_mps, prepared.stop_distance_m,
               stop->horizon->controls.size(), stop->rest_position.x,
-              stop->rest_position.y, stop->rest_position.z,
-              stop->physical_body_only ? "true" : "false",
+              stop->rest_position.y, stop->rest_position.z, stop->clearance_reduction,
               stop->collision_tolerated ? "true" : "false",
               productionMppiExecutionReasonName(reason));
   return publication;

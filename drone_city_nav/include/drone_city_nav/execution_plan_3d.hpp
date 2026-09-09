@@ -67,7 +67,9 @@ struct StopExecution3D {
   // the policy's clearance envelope, or the physical body alone when the
   // envelope could not clear the evidence the vehicle must brake through.
   SweptFootprintConfig validation_footprint{};
-  bool physical_body_only{false};
+  // How much of the policy envelope's clearance this stop gave up to sweep
+  // clear; 0 is the envelope, 1 the physical body.
+  double clearance_reduction{0.0};
   // The body's sweep met occupied evidence and the stop was certified anyway:
   // braking is the least motion the vehicle can be given. Revalidation on the
   // wire tolerates that same verdict, so the stop is not derived anew every

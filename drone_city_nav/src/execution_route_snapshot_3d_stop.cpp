@@ -105,7 +105,8 @@ stopExecutionArtifactFingerprint(const StopExecution3D& execution) noexcept {
   hashValue(hash, static_cast<std::uint64_t>(execution.valid_until_ns));
   hashValue(hash, static_cast<std::uint64_t>(execution.control_interval_ns));
   hashValue(hash, execution.validation_proof.validation_contract_fingerprint);
-  hashValue(hash, execution.physical_body_only ? 1U : 0U);
+  hashValue(hash, static_cast<std::uint64_t>(
+                      std::llround(execution.clearance_reduction * 1.0e6)));
   hashValue(hash, execution.collision_tolerated ? 1U : 0U);
   hashStopLineage(hash, execution);
   return hash == 0U ? 1U : hash;
@@ -249,12 +250,11 @@ certifyStopExecution3D(const ExecutionPlan3D& current,
       raw_mode
           ? optionalAddress(certification.observed_raw_world->launchSupportContact())
           : nullptr;
-  // The body the sweep answers to: the clearance envelope, or the physical
-  // body alone when the caller has already seen the envelope fail.
+  // The body the sweep answers to: the clearance envelope with as much of its
+  // margin given up as the caller has already seen it need.
   const SweptFootprintConfig validation_footprint =
-      certification.physical_body_only
-          ? physicalBodyFootprint(certification.validation_policy->sweptFootprint())
-          : certification.validation_policy->sweptFootprint();
+      clearanceReducedFootprint(certification.validation_policy->sweptFootprint(),
+                                certification.clearance_reduction);
   // Contact evidence at the pose the stop starts from. Evidence the body
   // already overlaps cannot forbid the vehicle from braking out of it.
   const std::optional<ProprioceptiveFreeSpaceSeed3D> proprioceptive_seed =
@@ -294,13 +294,13 @@ certifyStopExecution3D(const ExecutionPlan3D& current,
   // asked for it on the body: no other verdict, and no envelope sweep, is.
   const bool collision_tolerated =
       !path_validation.accepted() && certification.tolerate_body_collision &&
-      certification.physical_body_only &&
+      certification.clearance_reduction >= 1.0 &&
       finiteExecutionPathOccupiedEvidenceVerdict3D(path_validation.status);
   if (!path_validation.accepted() && !collision_tolerated) {
     StopCertificationResult3D rejection =
         rejected(StopCertificationStatus3D::kPathValidationRejected);
     rejection.path_validation_status = path_validation.status;
-    rejection.physical_body_only = certification.physical_body_only;
+    rejection.clearance_reduction = certification.clearance_reduction;
     return rejection;
   }
 
@@ -363,7 +363,7 @@ certifyStopExecution3D(const ExecutionPlan3D& current,
           },
   };
   execution.validation_footprint = validation_footprint;
-  execution.physical_body_only = certification.physical_body_only;
+  execution.clearance_reduction = certification.clearance_reduction;
   execution.collision_tolerated = collision_tolerated;
   execution.validation_proof.artifact_fingerprint =
       stopExecutionArtifactFingerprint(execution);
@@ -373,7 +373,7 @@ certifyStopExecution3D(const ExecutionPlan3D& current,
   return StopCertificationResult3D{
       .status = StopCertificationStatus3D::kCertified,
       .path_validation_status = path_validation.status,
-      .physical_body_only = certification.physical_body_only,
+      .clearance_reduction = certification.clearance_reduction,
       .collision_tolerated = collision_tolerated,
       .execution = std::move(execution),
   };
@@ -464,7 +464,7 @@ execution_route_snapshot_3d_internal::applyEnterStopExecutionCommand3D(
     certification_report->status = certified.status;
     certification_report->dynamics_consistency = certified.dynamics_consistency;
     certification_report->path_validation_status = certified.path_validation_status;
-    certification_report->physical_body_only = certified.physical_body_only;
+    certification_report->clearance_reduction = certified.clearance_reduction;
     certification_report->collision_tolerated = certified.collision_tolerated;
   }
   if (!certified.certified() || !certified.execution.has_value()) {

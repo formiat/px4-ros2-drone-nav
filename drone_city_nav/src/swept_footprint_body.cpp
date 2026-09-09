@@ -99,4 +99,24 @@ const char* sweptFootprintStatusName(const SweptFootprintStatus status) noexcept
   return "invalid_status";
 }
 
+SweptFootprintConfig clearanceReducedFootprint(const SweptFootprintConfig& footprint,
+                                               const double reduction) noexcept {
+  const double share = std::isfinite(reduction) ? std::clamp(reduction, 0.0, 1.0) : 1.0;
+  const SweptFootprintConfig body = physicalBodyFootprint(footprint);
+  if (!(share > 0.0)) {
+    return footprint;
+  }
+  if (!(share < 1.0)) {
+    return body;
+  }
+  const auto blend = [share](const double envelope_m, const double body_m) {
+    return envelope_m + share * (body_m - envelope_m);
+  };
+  SweptFootprintConfig reduced = footprint;
+  reduced.radius_m = blend(footprint.radius_m, body.radius_m);
+  reduced.lower_extent_m = blend(footprint.lower_extent_m, body.lower_extent_m);
+  reduced.upper_extent_m = blend(footprint.upper_extent_m, body.upper_extent_m);
+  return reduced;
+}
+
 } // namespace drone_city_nav
