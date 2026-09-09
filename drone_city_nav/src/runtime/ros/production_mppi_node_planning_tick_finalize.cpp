@@ -185,7 +185,13 @@ void ProductionMppiNode::finalizePlanningTick(
                                : std::numeric_limits<double>::infinity(),
       .speed_mps = routeSpeed3D(
           Vec3{navigation.state.vx, navigation.state.vy, navigation.state.vz}),
-      .resident_route_available = committed_route != nullptr || committed_direct_owner,
+      // A route the plan has suspended is held for the successor to resume
+      // from, not flown: it is not the resident route of an execution, and
+      // reading it as one made every fail-closed revocation an ownership gap.
+      .resident_route_available =
+          (committed_route != nullptr && committed_execution_snapshot != nullptr &&
+           !committed_execution_snapshot->routeSuspended()) ||
+          committed_direct_owner,
       .execution_owner_available = committed_execution_owner,
       // A stationary hold owns execution without carrying the vehicle
       // anywhere; only a finite or direct execution flies a route.

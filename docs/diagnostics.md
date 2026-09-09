@@ -435,6 +435,10 @@ For constrained no-static 3D-lidar acceptance, begin with the per-run
 and retained raw volume before log interpretation. The final
 `PRODUCTION_MPPI_SUMMARY` reports `post_bootstrap_route_availability_ratio`,
 post-bootstrap no-route holds, ownership gaps, and persistent-planner p95/p99.
+An ownership gap is a resident route with nothing owning the vehicle. A route
+the plan has suspended is not a resident one: it is held for the successor to
+resume from while the fail-closed revocation takes the horizon away, and the
+vehicle is deliberately unowned until that successor arrives.
 An admitted `PRODUCTION_MPPI_ROUTE3D` entry must report either `sufficient` or
 `terminal_exempt` reserve; a sufficient continuation must have
 `reserve_available_m >= reserve_required_m`.
