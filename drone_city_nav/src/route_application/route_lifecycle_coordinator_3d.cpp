@@ -350,13 +350,27 @@ RouteLifecycleCoordinator3D::advance(RoutePlanningUpdateEvent3D event) {
                                    RouteCandidateDisposition3D::kRetireSearchAndReplan;
 
   result.planner_update = std::move(planner_update);
+  // A route released as blocked and replaced from the vehicle rather than
+  // stitched onto its own certified prefix is a route the vehicle cannot
+  // follow at all. Left as the search's incumbent it kept the search
+  // improving it while the vehicle had nothing to fly, and the feasibility
+  // branch that finds the replacement stayed idle: recorded flights waited
+  // one to three planner updates for a successor at every such block, which
+  // is most of the time they spent without a route. A stitched replacement
+  // keeps the incumbent, because its prefix is exactly what the vehicle is
+  // still flying.
+  const bool blocked_replacement_from_the_vehicle =
+      transaction->replacement() &&
+      transaction->release_reason == RouteReleaseReason3D::kBlocked &&
+      !transaction->continuity_base.has_value();
   // A candidate the activation could not hand the vehicle over to, or whose
   // connector the raw evidence rejected, is not an incumbent worth improving:
   // the search keeps running, but from the vehicle rather than from it.
   result.incumbent_rejected =
       result.candidate_disposition ==
           RouteCandidateDisposition3D::kContinueForImprovement &&
-      (result.activation.admission.activation_status ==
+      (blocked_replacement_from_the_vehicle ||
+       result.activation.admission.activation_status ==
            StaticRouteActivationStatus::kDynamicHandoffRejected ||
        result.activation.admission.activation_status ==
            StaticRouteActivationStatus::kRouteCertificationRejected ||

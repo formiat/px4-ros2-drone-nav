@@ -105,6 +105,15 @@ while the refinement took up to nineteen hundred expansions an update and the
 feasibility search, which was finding the routes that flight actually flew,
 took a hundred and fifty.
 
+A route released as blocked and replaced from the vehicle, rather than
+stitched onto its own certified prefix, is a route the vehicle cannot follow
+at all: the search drops it as its incumbent and starts from the vehicle.
+Kept, it left the search improving a route nobody could fly while the
+feasibility branch that finds the replacement stayed idle, and recorded
+flights waited one to three planner updates for a successor at every such
+block. A stitched replacement keeps the incumbent, because its prefix is
+exactly what the vehicle is still flying.
+
 A route the session has resolved is published as it stands whenever the
 planner holds no incumbent (`spatial_search` in the candidate source). The
 refinement treats that route as its anytime bound and returns a path only when
