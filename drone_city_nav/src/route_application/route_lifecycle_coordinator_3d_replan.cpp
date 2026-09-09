@@ -222,13 +222,26 @@ RouteLifecycleReplanOutcome3D RouteLifecycleCoordinator3D::requestReplanImpl(
       snapshot.active_route->identity.generation == outcome.search_generation &&
       snapshot.route_projection.valid && snapshot.blocked_station_m.has_value() &&
       std::isfinite(*snapshot.blocked_station_m)) {
+    // The vehicle flies on while the successor is searched: the stitch lies
+    // beyond the distance the p99 planning latency lets it cover, so the frozen
+    // prefix is still ahead of it when the successor arrives.
     const double overlap_m = config_.extension.required_certified_overlap_m;
+    const StaticRoutePlanningLatencyStats latency = planning_latency_tracker_.stats();
+    const double latency_s =
+        0.001 * (latency.sample_count > 0U ? latency.planning_p99_ms
+                                           : std::max(0.0, latest_route_search_ms_));
+    const double speed_mps = std::hypot(
+        std::hypot(snapshot.navigation.state.vx, snapshot.navigation.state.vy),
+        snapshot.navigation.state.vz);
+    const double minimum_stitch_m =
+        snapshot.route_projection.station_m + overlap_m + speed_mps * latency_s;
     const double stitch_limit_m = *snapshot.blocked_station_m - overlap_m;
-    if (stitch_limit_m >= snapshot.route_projection.station_m + overlap_m) {
+    if (std::isfinite(minimum_stitch_m) && stitch_limit_m >= minimum_stitch_m) {
       continuity_base = PlannerSearchContinuityBase3D{
           .route = snapshot.active_route,
           .request_projection = snapshot.route_projection,
           .stitch_limit_station_m = stitch_limit_m,
+          .minimum_stitch_station_m = minimum_stitch_m,
       };
       outcome.stitch_limit_station_m = stitch_limit_m;
     }

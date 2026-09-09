@@ -147,14 +147,15 @@ RoutePlannerUpdate3D RoutePlanner3D::update(
           projectOntoRoute3DWithinStationWindow(active_geometry, search_start,
                                                 active_route->progress.station_m,
                                                 active_geometry.back().station_m);
-      const double stitch_station_m =
+      const double stitch_station_m = std::max(
           std::max({active_route->progress.station_m,
                     continuity_base->request_projection.valid
                         ? continuity_base->request_projection.station_m
                         : active_route->progress.station_m,
                     navigation_projection.valid ? navigation_projection.station_m
                                                 : active_route->progress.station_m}) +
-          config_.extension.required_certified_overlap_m;
+              config_.extension.required_certified_overlap_m,
+          continuity_base->minimum_stitch_station_m.value_or(0.0));
       result.attempted_stitch_station_m = stitch_station_m;
       result.certified_route_end_station_m = active_geometry.back().station_m;
       const bool stitch_beyond_limit =

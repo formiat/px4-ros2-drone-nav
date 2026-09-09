@@ -69,6 +69,17 @@ classifyCandidateDisposition(const PlannerSearchTransaction3D& transaction,
       (transaction.replacement() || transaction.extension())) {
     return RouteCandidateDisposition3D::kRetireSearchAndReplan;
   }
+  // A replacement stitched onto its incumbent whose prefix can no longer be
+  // materialized, because the vehicle passed the stitch or the incumbent went,
+  // delivers the same unusable candidate every update; the session is retired
+  // and the replan decides afresh whether anything is left to stitch onto.
+  if (transaction.replacement() && transaction.continuity_base.has_value() &&
+      admission.activation_status ==
+          StaticRouteActivationStatus::kCandidateValidationRejected &&
+      admission.candidate_validation.status ==
+          StaticRouteCandidateStatus::kInvalidPassageSpan) {
+    return RouteCandidateDisposition3D::kRetireSearchAndReplan;
+  }
   return RouteCandidateDisposition3D::kContinueForImprovement;
 }
 
