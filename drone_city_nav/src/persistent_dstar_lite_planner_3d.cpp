@@ -559,6 +559,7 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
       departure.diagnostics.first_leg_failure_available;
   telemetry.departure_first_failure =
       departure.diagnostics.first_leg_failure.failure_point;
+  telemetry.departure_hull_fallback = departure.diagnostics.hull_fallback;
   if (!departure.available()) {
     update.input_status = PlannerInputStatus3D::kStartUnavailable;
     return update;

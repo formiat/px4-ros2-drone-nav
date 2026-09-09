@@ -16,6 +16,15 @@ namespace drone_city_nav::detail {
 std::vector<PersistentPlannerNode3D>
 PlannerLattice3D::admissibleAnchors(const Point3& point, const bool start_anchor,
                                     DepartureDiagnostics3D* const diagnostics) const {
+  // The departure envelope decides first. Only when it admits no anchor at all
+  // does the hull decide instead: a vehicle leaves a tight spot at hover and
+  // upright, so the envelope that contains the hull at every tilt is not what
+  // decides whether it may leave, and a vehicle resting beside evidence its own
+  // stop had just met was otherwise refused every departure for a second or
+  // more at a time. Judging every departure by the hull was tried and
+  // withdrawn: it let ordinary routes leave the vehicle closer to evidence
+  // than the envelope admits, and the flights that followed were worse on
+  // every count.
   const PersistentPlannerNode3D center = nearestNode(point);
   const auto radius = static_cast<int>(config_->connector_search_radius_cells);
   std::vector<PersistentPlannerNode3D> candidates;
@@ -40,35 +49,45 @@ PlannerLattice3D::admissibleAnchors(const Point3& point, const bool start_anchor
     return first_distance == second_distance ? nodeLess(first, second)
                                              : first_distance < second_distance;
   });
-  std::vector<PersistentPlannerNode3D> anchors;
   if (diagnostics != nullptr) {
     diagnostics->candidate_nodes += candidates.size();
   }
-  for (const PersistentPlannerNode3D candidate : candidates) {
-    const Point3 anchor = pointFor(candidate);
-    if (!nodeValid(candidate)) {
-      continue;
-    }
-    if (diagnostics != nullptr) {
-      ++diagnostics->valid_nodes;
-    }
-    bool connector_valid{false};
-    if (start_anchor) {
-      const OccupiedCollisionResult3D validation =
-          departureSegmentValidation(point, anchor);
-      connector_valid = validation.clear();
-      if (!connector_valid && diagnostics != nullptr) {
-        ++diagnostics->rejected_legs;
-        if (!diagnostics->first_leg_failure_available) {
-          diagnostics->first_leg_failure = validation;
-          diagnostics->first_leg_failure_available = true;
-        }
+  const auto reachable = [&](const bool hull) {
+    std::vector<PersistentPlannerNode3D> anchors;
+    for (const PersistentPlannerNode3D candidate : candidates) {
+      const Point3 anchor = pointFor(candidate);
+      if (!nodeValid(candidate)) {
+        continue;
       }
-    } else {
-      connector_valid = rawSegmentValid(anchor, point);
+      if (diagnostics != nullptr && !hull) {
+        ++diagnostics->valid_nodes;
+      }
+      bool connector_valid{false};
+      if (start_anchor) {
+        const OccupiedCollisionResult3D validation =
+            departureSegmentValidation(point, anchor, hull);
+        connector_valid = validation.clear();
+        if (!connector_valid && diagnostics != nullptr && !hull) {
+          ++diagnostics->rejected_legs;
+          if (!diagnostics->first_leg_failure_available) {
+            diagnostics->first_leg_failure = validation;
+            diagnostics->first_leg_failure_available = true;
+          }
+        }
+      } else {
+        connector_valid = rawSegmentValid(anchor, point);
+      }
+      if (connector_valid) {
+        anchors.push_back(candidate);
+      }
     }
-    if (connector_valid) {
-      anchors.push_back(candidate);
+    return anchors;
+  };
+  std::vector<PersistentPlannerNode3D> anchors = reachable(false);
+  if (anchors.empty() && start_anchor) {
+    anchors = reachable(true);
+    if (!anchors.empty() && diagnostics != nullptr) {
+      diagnostics->hull_fallback = true;
     }
   }
   return anchors;

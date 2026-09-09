@@ -301,6 +301,8 @@ struct PlannerTelemetry3D {
   std::size_t departure_refinement_reachable{0U};
   Point3 departure_first_failure{};
   bool departure_first_failure_available{false};
+  // No anchor cleared the departure envelope and the hull was asked instead.
+  bool departure_hull_fallback{false};
   double departure_seed_distance_m{-1.0};
   double departure_seed_contact_tolerance_m{0.0};
   // The escape search ran this update / found a way out this update / the

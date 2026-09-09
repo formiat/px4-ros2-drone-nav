@@ -267,6 +267,22 @@ void PlannerLattice3D::installDepartureEvidence(const PersistentPlannerWorld3D& 
       .footprint = config_->departure_footprint.value_or(config_->physical_footprint),
       .flight_envelope = config_->flight_envelope,
   });
+  departure_hull_collision_oracle_.emplace(OccupiedCollisionWorld3D{
+      .observed_occupancy = world.observed_occupancy.get(),
+      .static_occupancy = world.static_occupancy.get(),
+      .planar_occupancy = nullptr,
+      .raw_point_cloud = {},
+      .launch_support_contact = world.launch_support_contact
+                                    ? std::addressof(*world.launch_support_contact)
+                                    : nullptr,
+      .proprioceptive_free_space_seed =
+          world.proprioceptive_free_space_seed
+              ? std::addressof(*world.proprioceptive_free_space_seed)
+              : nullptr,
+      .footprint = physicalBodyFootprint(
+          config_->departure_footprint.value_or(config_->physical_footprint)),
+      .flight_envelope = config_->flight_envelope,
+  });
 }
 
 bool PlannerLattice3D::nodeInside(const PersistentPlannerNode3D node) const noexcept {
@@ -498,13 +514,15 @@ bool PlannerLattice3D::departureSegmentValid(const Point3& first,
 }
 
 OccupiedCollisionResult3D
-PlannerLattice3D::departureSegmentValidation(const Point3& first,
-                                             const Point3& second) const {
-  if (!departure_collision_oracle_.has_value()) {
+PlannerLattice3D::departureSegmentValidation(const Point3& first, const Point3& second,
+                                             const bool hull) const {
+  const std::optional<OccupiedCollisionOracle3D>& oracle =
+      hull ? departure_hull_collision_oracle_ : departure_collision_oracle_;
+  if (!oracle.has_value()) {
     return {.status = OccupiedCollisionStatus3D::kInvalidInput, .failure_point = first};
   }
-  return departure_collision_oracle_->validateSegment(first, FootprintBodyAxis{},
-                                                      second, FootprintBodyAxis{});
+  return oracle->validateSegment(first, FootprintBodyAxis{}, second,
+                                 FootprintBodyAxis{});
 }
 
 bool PlannerLattice3D::nodeValid(const PersistentPlannerNode3D node) const {
