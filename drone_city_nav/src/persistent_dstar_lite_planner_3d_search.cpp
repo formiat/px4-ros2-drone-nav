@@ -375,6 +375,8 @@ void DStarLiteSession3D::scheduleAffectedVertices(
     Point3 changes_maximum{-std::numeric_limits<double>::infinity(),
                            -std::numeric_limits<double>::infinity(),
                            -std::numeric_limits<double>::infinity()};
+    bool bucket_occupied_added = false;
+    bool bucket_occupied_removed = false;
     for (const ChangedCell& change : changes) {
       changes_minimum.x = std::min(changes_minimum.x, change.center.x);
       changes_minimum.y = std::min(changes_minimum.y, change.center.y);
@@ -382,6 +384,7 @@ void DStarLiteSession3D::scheduleAffectedVertices(
       changes_maximum.x = std::max(changes_maximum.x, change.center.x);
       changes_maximum.y = std::max(changes_maximum.y, change.center.y);
       changes_maximum.z = std::max(changes_maximum.z, change.center.z);
+      (change.occupied_now ? bucket_occupied_added : bucket_occupied_removed) = true;
     }
     for_each_node_near(
         cell_node, horizontal_radius, vertical_radius,
@@ -422,12 +425,44 @@ void DStarLiteSession3D::scheduleAffectedVertices(
                   continue;
                 }
                 const Point3 neighbor_point = lattice_->pointFor(neighbor);
+                // A change can touch the edge only where the segment's box,
+                // grown by the touch margins, meets the bucket's box: an edge
+                // that leaves the box node away from its changes is rejected
+                // here instead of against every cell of the bucket. A scan
+                // painting a wall changes hundreds of contiguous cells in one
+                // node cell, and testing each of them against each priced edge
+                // of every node in reach took the whole update.
+                if (std::max(node_point.x, neighbor_point.x) + horizontal_margin <
+                        changes_minimum.x ||
+                    std::min(node_point.x, neighbor_point.x) - horizontal_margin >
+                        changes_maximum.x ||
+                    std::max(node_point.y, neighbor_point.y) + horizontal_margin <
+                        changes_minimum.y ||
+                    std::min(node_point.y, neighbor_point.y) - horizontal_margin >
+                        changes_maximum.y ||
+                    std::max(node_point.z, neighbor_point.z) + vertical_margin <
+                        changes_minimum.z ||
+                    std::min(node_point.z, neighbor_point.z) - vertical_margin >
+                        changes_maximum.z) {
+                  continue;
+                }
                 bool occupied_cell_added = false;
                 bool occupied_cell_removed = false;
                 for (const ChangedCell& change : changes) {
+                  // Each polarity is a yes/no per edge: once a polarity the
+                  // bucket holds has been seen, its remaining cells add
+                  // nothing, and the walk ends when both are settled.
+                  if (change.occupied_now ? occupied_cell_added
+                                          : occupied_cell_removed) {
+                    continue;
+                  }
                   if (cell_touches_segment(change.center, node_point, neighbor_point)) {
                     (change.occupied_now ? occupied_cell_added
                                          : occupied_cell_removed) = true;
+                    if (occupied_cell_added == bucket_occupied_added &&
+                        occupied_cell_removed == bucket_occupied_removed) {
+                      break;
+                    }
                   }
                 }
                 if (!lattice_->forgetEdgeCostForChange(edge, occupied_cell_added,
