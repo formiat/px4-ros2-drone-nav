@@ -545,6 +545,12 @@ private:
   // pending behind it, so running the search first never pushes the update
   // past its own budget.
   std::chrono::steady_clock::duration schedule_cost_estimate_{};
+  // The persistent session's labels were left behind while the vehicle had no
+  // route: its bookkeeping is the price of the ranked branch, and the ranked
+  // branch does not run while the feasibility search is the one finding a
+  // route. The session is begun again from the current world the moment a
+  // route exists to improve.
+  bool dstar_session_stale_{false};
   // Where the vehicle stood when its component closed; moving away from it
   // discards what was learnt about the component.
   std::optional<Point3> closed_component_origin_;

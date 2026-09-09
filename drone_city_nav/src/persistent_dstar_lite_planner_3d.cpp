@@ -26,52 +26,6 @@ namespace {
 
 } // namespace
 
-bool PersistentPlannerWorld3D::valid() const noexcept {
-  const bool observed = observed_occupancy != nullptr;
-  const bool known_static = static_occupancy != nullptr;
-  if (observed == known_static || producer_instance_id == 0U || revision == 0U ||
-      occupied_fingerprint == 0U) {
-    return false;
-  }
-  const GridBounds3D* const world_bounds = bounds();
-  return world_bounds != nullptr && world_bounds->resolution_m > 0.0 &&
-         world_bounds->width_cells > 0 && world_bounds->height_cells > 0 &&
-         world_bounds->depth_cells > 0;
-}
-
-const GridBounds3D* PersistentPlannerWorld3D::bounds() const noexcept {
-  if (observed_occupancy != nullptr) {
-    return &observed_occupancy->bounds();
-  }
-  return static_occupancy != nullptr ? &static_occupancy->bounds() : nullptr;
-}
-
-bool SpatialRouteCandidate3D::valid() const noexcept {
-  return points.size() >= 2U && std::isfinite(path_length_m) && path_length_m > 0.0 &&
-         std::isfinite(estimated_execution_time_s) &&
-         estimated_execution_time_s > 0.0 &&
-         std::isfinite(estimated_translation_time_s) &&
-         estimated_translation_time_s >= 0.0 &&
-         std::isfinite(estimated_stationary_turn_time_s) &&
-         estimated_stationary_turn_time_s >= 0.0 &&
-         std::isfinite(ranked_execution_time_s) && ranked_execution_time_s >= 0.0;
-}
-
-double SpatialRouteCandidate3D::objectiveS() const noexcept {
-  return ranked_execution_time_s > 0.0 ? ranked_execution_time_s
-                                       : estimated_execution_time_s;
-}
-
-bool PlannerUpdate3D::publishable() const noexcept {
-  return input_status == PlannerInputStatus3D::kAccepted &&
-         improved_incumbent.has_value() && improved_incumbent->valid();
-}
-
-bool PlannerUpdate3D::running() const noexcept {
-  return input_status == PlannerInputStatus3D::kAccepted &&
-         progress == SearchProgress3D::kRunning;
-}
-
 std::chrono::steady_clock::duration
 feasibilitySearchBudget3D(const std::chrono::steady_clock::duration remaining,
                           const std::chrono::steady_clock::duration configured,
@@ -748,23 +702,42 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   // while no route existed, the situation it exists for.
   //
   // With a route held the repair takes half the update and the search the
-  // rest. Without one the feasibility search still needs most of the update
-  // to find a first route, so the repair is bounded by half the reserve the
-  // persistent session is guaranteed and the feasibility search follows.
+  // rest.
+  //
+  // Without one the session's bookkeeping is not paid for at all. Mapping a
+  // scan's occupied changes onto the session's vertices and repairing the
+  // labels they touch is what keeps the ranked branch true, and the ranked
+  // branch does not run while the feasibility search is the one finding a
+  // route: measured on one recorded flight, an update with no route held
+  // spent 78 to 107 ms scheduling and 10 ms repairing, blew a 60 ms budget to
+  // 154, and D* expanded nothing at all for a whole second -- the repair
+  // queue stood at three thousand states while every scan added two thousand
+  // more, so the session reported its shortest path complete on labels the
+  // world had long moved. The vehicle waited on the feasibility search, which
+  // had a quarter of the update. Suspended instead, that whole cost goes to
+  // the search that finds the route, and the session is begun again from the
+  // current world as soon as there is a route to improve.
   const bool feasibility_will_run =
       config_.feasibility_first_enabled && coordinator_.incumbent() == nullptr;
-  if (!feasibility_will_run) {
+  if (feasibility_will_run) {
+    dstar_session_stale_ = dstar_session_stale_ || schedule_affected_vertices ||
+                           dstar_session_.pendingRepairNodes() > 0U;
+    schedule_affected_vertices = false;
+  } else {
+    if (dstar_session_stale_) {
+      dstar_session_.begin(start_, goal_);
+      dstar_session_stale_ = false;
+      telemetry.search_state_reused = false;
+      schedule_affected_vertices = false;
+    }
     schedule_world_changes();
   }
   const auto repair_started = std::chrono::steady_clock::now();
-  const auto repair_share =
-      feasibility_will_run
-          ? std::min((deadline - repair_started) / 2, spatial_search_reserve / 2)
-          : (deadline - repair_started) / 2;
-  const auto repair_deadline =
-      dstar_session_.pendingRepairNodes() > 0U && deadline > repair_started
-          ? repair_started + repair_share
-          : repair_started;
+  const auto repair_deadline = !feasibility_will_run &&
+                                       dstar_session_.pendingRepairNodes() > 0U &&
+                                       deadline > repair_started
+                                   ? repair_started + (deadline - repair_started) / 2
+                                   : repair_started;
   static_cast<void>(dstar_session_.continueAffectedVertexRepair(
       repair_deadline, config_.maximum_expansions_per_update,
       telemetry.repair_lattice_states_processed));
@@ -776,8 +749,11 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   if (feasibility_will_run) {
     telemetry.feasibility_attempted = true;
     const auto feasibility_started = std::chrono::steady_clock::now();
-    const bool persistent_search_has_work = dstar_session_.pendingRepairNodes() > 0U ||
-                                            !dstar_session_.shortestPathComplete();
+    // The persistent session is suspended for as long as the feasibility
+    // search is the branch finding a route, so it has no work this update
+    // whatever its queues still hold: reading the stale queues as work left
+    // the search a capped third of an update it now has all of.
+    const bool persistent_search_has_work = false;
     // The search's share is a share of what is left when it starts, never a
     // point on the clock: a fixed point starved it whenever the change
     // scheduling ran long, and a vehicle without a route waited on D* alone.
