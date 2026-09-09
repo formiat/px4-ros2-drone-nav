@@ -112,6 +112,25 @@ buildMppiTrajectorySetpoint(const std::uint64_t timestamp_us, const Point2 veloc
   return msg;
 }
 
+px4_msgs::msg::TrajectorySetpoint buildBrakingHoldTrajectorySetpoint(
+    const std::uint64_t timestamp_us, const Point2 local_target,
+    const double target_altitude_m, const Point2 local_velocity_xy,
+    const double vertical_velocity_up_mps, const double braking_acceleration_mps2,
+    const double yaw_rad) {
+  const double speed_mps =
+      std::hypot(local_velocity_xy.x, local_velocity_xy.y, vertical_velocity_up_mps);
+  if (!std::isfinite(speed_mps) || speed_mps <= 1.0e-6 ||
+      !std::isfinite(braking_acceleration_mps2) || braking_acceleration_mps2 <= 0.0) {
+    return buildPositionTrajectorySetpoint(timestamp_us, local_target,
+                                           target_altitude_m, yaw_rad);
+  }
+  const double scale = braking_acceleration_mps2 / speed_mps;
+  return buildMppiPathTrajectorySetpoint(
+      timestamp_us, local_target, target_altitude_m, Point2{0.0, 0.0}, 0.0,
+      Point2{-local_velocity_xy.x * scale, -local_velocity_xy.y * scale},
+      -vertical_velocity_up_mps * scale, yaw_rad, 0.0);
+}
+
 px4_msgs::msg::TrajectorySetpoint buildMppiPathTrajectorySetpoint(
     const std::uint64_t timestamp_us, const Point2 local_position_xy,
     const double altitude_m, const Point2 velocity_xy,

@@ -1,6 +1,7 @@
 #include "drone_city_nav/execution_horizon_admission.hpp"
 #include "drone_city_nav/execution_horizon_contract_ros.hpp"
 #include "drone_city_nav/execution_horizon_timing.hpp"
+#include "drone_city_nav/execution_plan_3d.hpp"
 #include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/msg/mppi_control_feedback.hpp"
 #include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
@@ -61,6 +62,16 @@ public:
     flight_envelope_config_.maximum_target_z_m =
         declare_parameter<double>("maximum_target_z_m", 32.0);
     takeoff_hover_s_ = declare_parameter<double>("takeoff_hover_s", 1.0);
+    // The deceleration the hold brakes with while nothing owns the vehicle's
+    // motion: the same horizontal acceleration the navigation stack plans its
+    // stopping distances against and PX4 is configured to.
+    unavailable_path_braking_acceleration_mps2_ =
+        declare_parameter<double>("unavailable_path_braking_acceleration_mps2", 4.0);
+    if (!std::isfinite(unavailable_path_braking_acceleration_mps2_) ||
+        unavailable_path_braking_acceleration_mps2_ <= 0.0) {
+      throw std::invalid_argument{
+          "unavailable path braking acceleration must be a positive acceleration"};
+    }
     const double control_lookahead_s =
         declare_parameter<double>("mppi_control_lookahead_s", 0.05);
     const long double control_lookahead_ns =
@@ -815,16 +826,30 @@ private:
           Point2{unavailable_path_hold_target_->x, unavailable_path_hold_target_->y});
       RCLCPP_WARN(get_logger(),
                   "FINITE_EXECUTION_PATH unavailable=true "
-                  "authority=local_non_authoritative action=position_hold "
+                  "authority=local_non_authoritative action=%s speed=%.2f "
                   "target=(%.3f,%.3f,%.3f)",
-                  map_target.x, map_target.y,
+                  currentSpeedMps() > kStationaryExecutionHoldSpeedToleranceMps
+                      ? "brake_then_position_hold"
+                      : "position_hold",
+                  currentSpeedMps(), map_target.x, map_target.y,
                   unavailable_path_hold_target_->z + px4_map_transform_.map_origin.z);
     }
+    const Point2 local_target{unavailable_path_hold_target_->x,
+                              unavailable_path_hold_target_->y};
+    const double yaw = px4_map_transform_.mapYawToPx4Heading(heading_rad_);
+    // While the vehicle still moves, the hold brakes it at the stack's own
+    // deceleration instead of leaving the braking to the position loop's
+    // response to a zero error; once it rests, the pinned position holds it.
+    if (currentSpeedMps() > kStationaryExecutionHoldSpeedToleranceMps) {
+      const Point2 local_velocity =
+          px4_map_transform_.mapVectorToLocal(Point2{velocity_x_, velocity_y_});
+      setpoint_pub_->publish(buildBrakingHoldTrajectorySetpoint(
+          nowMicros(), local_target, unavailable_path_hold_target_->z, local_velocity,
+          velocity_up_mps_, unavailable_path_braking_acceleration_mps2_, yaw));
+      return;
+    }
     setpoint_pub_->publish(buildPositionTrajectorySetpoint(
-        nowMicros(),
-        Point2{unavailable_path_hold_target_->x, unavailable_path_hold_target_->y},
-        unavailable_path_hold_target_->z,
-        px4_map_transform_.mapYawToPx4Heading(heading_rad_)));
+        nowMicros(), local_target, unavailable_path_hold_target_->z, yaw));
   }
 
   void publishAppliedControlFeedback(const Point2 acceleration,
@@ -904,6 +929,7 @@ private:
   double local_x_{0.0};
   double local_y_{0.0};
   double altitude_m_{0.0};
+  double unavailable_path_braking_acceleration_mps2_{4.0};
   double velocity_x_{0.0};
   double velocity_y_{0.0};
   double velocity_up_mps_{0.0};

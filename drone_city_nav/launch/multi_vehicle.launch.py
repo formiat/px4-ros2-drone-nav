@@ -594,6 +594,12 @@ def generate_multi_vehicle_launch_description(mission_kind):
                     "rviz_drone_marker_color_b": config["rviz_color"][2],
                 },
             )
+            if "maximum_horizontal_acceleration_mps2" in planner_params:
+                # The offboard's hold brakes with the deceleration the planner
+                # plans against.
+                offboard_params["unavailable_path_braking_acceleration_mps2"] = (
+                    planner_params["maximum_horizontal_acceleration_mps2"]
+                )
             crash_params = _parameters(
                 document,
                 "collision_crash_node",

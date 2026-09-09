@@ -334,6 +334,7 @@ def generate_launch_description():
         ):
             if override is not None:
                 production_mppi_parameters.append({parameter_name: override})
+        offboard_overrides = {}
         for argument_name, launch_config in (
             (
                 "tracking_error_tube_response_time_s",
@@ -351,6 +352,12 @@ def generate_launch_description():
             )
             if override is not None:
                 production_mppi_parameters.append({argument_name: override})
+                if argument_name == "maximum_horizontal_acceleration_mps2":
+                    # The offboard's hold brakes with the same deceleration the
+                    # planner plans against and PX4 is configured to.
+                    offboard_overrides[
+                        "unavailable_path_braking_acceleration_mps2"
+                    ] = override
         if static_world_path_override:
             production_mppi_parameters.append(
                 {"static_occupancy_3d_path": static_world_path_override}
@@ -505,6 +512,7 @@ def generate_launch_description():
                             "rviz_drone_follow_tf_enabled",
                         ),
                         **navigation_overrides,
+                        **offboard_overrides,
                     },
                 ],
             )

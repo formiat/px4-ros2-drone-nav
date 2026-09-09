@@ -642,6 +642,7 @@ mppi_offboard_node:
     applied_control_feedback_topic: /drone_city_nav/mppi/applied_control
     applied_control_feedback_frame_id: map
     mppi_control_lookahead_s: 0.05
+    unavailable_path_braking_acceleration_mps2: 4.0
     takeoff_climb_m: 2.0
     minimum_target_z_m: 2.0
     maximum_target_z_m: 32.0

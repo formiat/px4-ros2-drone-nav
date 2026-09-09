@@ -292,6 +292,10 @@ Speed policy and liveness:
 - maximum receive age and control lookahead;
 - finite-path receive age, deadline, and control lookahead;
 - takeoff climb above the spawn point and hover time;
+- `unavailable_path_braking_acceleration_mps2`: the deceleration the local hold
+  brakes a still-moving vehicle with when nothing owns its motion; the launch
+  passes `maximum_horizontal_acceleration_mps2` through to it so the hold
+  brakes as hard as the planner plans against and PX4 is configured to;
 - the same minimum/maximum target altitude contract as the planner;
 - expected vehicle role, mission epoch, and destruction topic;
 - bounded death force-disarm retry period;

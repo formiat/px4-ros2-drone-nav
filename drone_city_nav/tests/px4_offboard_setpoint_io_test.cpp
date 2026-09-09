@@ -29,6 +29,38 @@ TEST(Px4OffboardSetpointIo, BuildsPositionAndVelocityControlModes) {
   EXPECT_FALSE(velocity.acceleration);
 }
 
+TEST(Px4OffboardSetpointIo, BrakingHoldOpposesTheVelocityAtTheBrakingAcceleration) {
+  // Moving at 3-4-0 m/s (speed 5), the hold pins the position, asks for zero
+  // velocity, and brakes along the velocity at the given magnitude: 4 m/s^2
+  // splits as -2.4, -3.2 horizontally, nothing vertically.
+  const auto braking = buildBrakingHoldTrajectorySetpoint(
+      7U, Point2{1.0, 2.0}, 10.0, Point2{3.0, 4.0}, 0.0, 4.0, 0.5);
+  EXPECT_FLOAT_EQ(braking.position[0], 1.0F);
+  EXPECT_FLOAT_EQ(braking.position[1], 2.0F);
+  EXPECT_FLOAT_EQ(braking.position[2], -10.0F);
+  EXPECT_FLOAT_EQ(braking.velocity[0], 0.0F);
+  EXPECT_FLOAT_EQ(braking.velocity[1], 0.0F);
+  EXPECT_FLOAT_EQ(braking.velocity[2], 0.0F);
+  EXPECT_FLOAT_EQ(braking.acceleration[0], -2.4F);
+  EXPECT_FLOAT_EQ(braking.acceleration[1], -3.2F);
+  EXPECT_FLOAT_EQ(braking.acceleration[2], 0.0F);
+  EXPECT_FLOAT_EQ(braking.yaw, 0.5F);
+
+  // A climb is braked too, and upward motion reads as a downward (NED
+  // positive) acceleration.
+  const auto climbing = buildBrakingHoldTrajectorySetpoint(
+      7U, Point2{0.0, 0.0}, 10.0, Point2{0.0, 0.0}, 2.0, 4.0, 0.0);
+  EXPECT_FLOAT_EQ(climbing.acceleration[0], 0.0F);
+  EXPECT_FLOAT_EQ(climbing.acceleration[2], 4.0F);
+
+  // At rest the hold is the plain position hold, with no motion feedforward.
+  const auto resting = buildBrakingHoldTrajectorySetpoint(
+      7U, Point2{1.0, 2.0}, 10.0, Point2{0.0, 0.0}, 0.0, 4.0, 0.0);
+  EXPECT_FLOAT_EQ(resting.position[0], 1.0F);
+  EXPECT_TRUE(std::isnan(resting.velocity[0]));
+  EXPECT_TRUE(std::isnan(resting.acceleration[0]));
+}
+
 TEST(Px4OffboardSetpointIo, BuildsPositionSetpointWithNedAltitude) {
   const auto msg = buildPositionTrajectorySetpoint(100U, Point2{3.0, -4.0}, 12.5, 1.2);
 

@@ -412,7 +412,15 @@ plan, unlike a resident route, admits a revocation, and reporting the current
 stop as nothing published let one recorded flight fall through to that
 revocation a third of a second into its stop; the braking vehicle was handed to
 the offboard's blind local hold and met, at the hold's own speed, the wall the
-stop had been braking for. A vehicle that is already at rest when
+stop had been braking for. That hold now brakes before it holds: while the
+vehicle still moves, the setpoint it is pinned to carries a zero velocity and
+the stack's own braking acceleration against the vehicle's velocity
+(`unavailable_path_braking_acceleration_mps2`), and only a vehicle at rest is
+held by position alone. A position setpoint by itself brakes at whatever the
+position loop makes of a zero error: measured, a vehicle handed such a hold at
+1.9 m/s took nine tenths of a metre to stop, half the deceleration every
+stopping distance in the stack assumes, and met the structure it had been
+stopped for. A vehicle that is already at rest when
 physical evidence ends its path's claim has no stop to fly, and a revocation
 cannot be committed while the route stays resident — the plan a suspension
 leaves is not publishable. Nothing then reached the offboard, which kept

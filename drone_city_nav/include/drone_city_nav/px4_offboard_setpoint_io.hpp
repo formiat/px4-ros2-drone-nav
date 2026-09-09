@@ -42,6 +42,21 @@ buildOffboardControlMode(std::uint64_t timestamp_us, OffboardSetpointMode mode);
 buildVelocityTrajectorySetpoint(std::uint64_t timestamp_us, Point2 velocity_xy,
                                 double vertical_velocity_ned_mps, double yaw_rad);
 
+// The hold a vehicle is handed while nothing owns its motion and it still
+// moves. A position setpoint alone brakes at whatever the position loop makes
+// of a zero error: measured, a vehicle handed such a hold at 1.9 m/s took
+// nine tenths of a metre to stop, half the deceleration the navigation stack
+// plans its stopping distances against, and met the structure it had been
+// stopped for. The hold therefore carries the braking as well: the position
+// it is pinned to, a zero velocity, and the braking acceleration opposing the
+// vehicle's velocity at `braking_acceleration_mps2`. A vehicle already at rest
+// gets the plain position hold.
+[[nodiscard]] px4_msgs::msg::TrajectorySetpoint
+buildBrakingHoldTrajectorySetpoint(std::uint64_t timestamp_us, Point2 local_target,
+                                   double target_altitude_m, Point2 local_velocity_xy,
+                                   double vertical_velocity_up_mps,
+                                   double braking_acceleration_mps2, double yaw_rad);
+
 [[nodiscard]] px4_msgs::msg::TrajectorySetpoint
 buildMppiTrajectorySetpoint(std::uint64_t timestamp_us, Point2 velocity_xy,
                             double vertical_velocity_up_mps, Point2 acceleration_xy,
