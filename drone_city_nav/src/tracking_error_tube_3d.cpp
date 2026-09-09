@@ -113,15 +113,6 @@ worldConfigurationIsValid(const TrackingErrorTubeWorld3D& world) noexcept {
          world.occupied_content_fingerprint == canonical_fingerprint;
 }
 
-// The hull is what a segment must clear for the tube to price it at all. The
-// clearance the envelope carries over it is the tracking allowance the tube
-// exists to size, so refusing a segment for it is refusing the answer the tube
-// was asked for: the margin law already prices a hull-grazing segment at the
-// progress floor. Judged on the envelope instead, the tube rejected routes the
-// search had validated against the hull and the executor would have flown --
-// sixteen to twenty-four whole routes a recorded flight, each one a compile
-// that failed at the segment leaving the vehicle's own position while it stood
-// beside a wall with nothing to fly.
 [[nodiscard]] bool segmentAccepted(const TrackingErrorTubeWorld3D& world,
                                    const Point3& first, const Point3& second,
                                    const SweptFootprintConfig& footprint) noexcept {
@@ -133,7 +124,7 @@ worldConfigurationIsValid(const TrackingErrorTubeWorld3D& world) noexcept {
       .raw_point_cloud = {},
       .launch_support_contact = world.launch_support_contact,
       .proprioceptive_free_space_seed = world.proprioceptive_free_space_seed,
-      .footprint = physicalBodyFootprint(footprint),
+      .footprint = footprint,
       .flight_envelope = std::nullopt,
   }};
   return oracle.validateSegment(first, kBodyAxis, second, kBodyAxis).clear();
