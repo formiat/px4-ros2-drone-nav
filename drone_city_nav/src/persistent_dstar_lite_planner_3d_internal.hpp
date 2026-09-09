@@ -540,6 +540,11 @@ private:
   // The feasibility search exhausted the start's component and the escape
   // search has work to do on the next updates.
   bool escape_search_pending_{false};
+  // What the session's change scheduling last cost, decayed. The feasibility
+  // search reserves it out of the update whenever the scheduling is still
+  // pending behind it, so running the search first never pushes the update
+  // past its own budget.
+  std::chrono::steady_clock::duration schedule_cost_estimate_{};
   // Where the vehicle stood when its component closed; moving away from it
   // discards what was learnt about the component.
   std::optional<Point3> closed_component_origin_;

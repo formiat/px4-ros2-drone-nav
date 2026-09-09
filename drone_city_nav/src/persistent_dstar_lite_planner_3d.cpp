@@ -698,8 +698,14 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
       return;
     }
     schedule_affected_vertices = false;
+    const auto schedule_started = std::chrono::steady_clock::now();
     dstar_session_.scheduleAffectedVertices(world_, world_update.changed_cells,
                                             telemetry.affected_lattice_states);
+    // A decayed maximum: the reserve follows a heavier world at once and
+    // releases the update again as the scans quieten.
+    schedule_cost_estimate_ =
+        std::max(std::chrono::steady_clock::now() - schedule_started,
+                 (schedule_cost_estimate_ * 3) / 4);
     const auto& schedule = dstar_session_.scheduleStatistics();
     telemetry.schedule_ms = schedule.total_ms;
     telemetry.schedule_ranking_ms = schedule.ranking_ms;
@@ -757,10 +763,16 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     // The search's share is a share of what is left when it starts, never a
     // point on the clock: a fixed point starved it whenever the change
     // scheduling ran long, and a vehicle without a route waited on D* alone.
+    // The scheduling still owes this update its own time when it runs behind
+    // the search, so the search reserves what it last cost.
+    const auto feasibility_limit =
+        schedule_affected_vertices
+            ? std::max(feasibility_started, deadline - schedule_cost_estimate_)
+            : deadline;
     const auto feasibility_deadline =
         feasibility_started +
         feasibilitySearchBudget3D(
-            deadline - feasibility_started,
+            feasibility_limit - feasibility_started,
             std::chrono::duration_cast<std::chrono::steady_clock::duration>(
                 std::chrono::duration<double, std::milli>{
                     config_.maximum_feasibility_compute_time_ms}),
