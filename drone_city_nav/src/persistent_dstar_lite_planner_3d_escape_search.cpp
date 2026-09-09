@@ -178,9 +178,17 @@ EscapeSearch3D::advance(const Point3& start,
   if (config_->escape_search_radius_cells == 0U) {
     return std::nullopt;
   }
-  // The grid is anchored on the vehicle; a vehicle that moved by more than
-  // one fine step is searched from where it stands now.
-  if (!initialized_ || distance3D(start, origin_) > horizontal_step_m_) {
+  // The grid is anchored on the vehicle. Its cells are absolute points, and
+  // the chain an exit yields is validated from wherever the vehicle stands
+  // when it is used, so a vehicle that drifted within one lattice step keeps
+  // the fill; one that moved a lattice step or more is in new territory --
+  // the same distance the closed component it fills out of is kept for.
+  // Re-anchored at one fine step instead, the fill started over on every
+  // update while the vehicle hovered through half a metre of drift, never
+  // reached its own radius, never exhausted, and one recorded flight stood in
+  // a pocket for two and a half minutes with the exit a body's width away.
+  if (!initialized_ ||
+      distance3D(start, origin_) > config_->minimum_horizontal_step_m) {
     begin(start);
   }
   const std::uint32_t origin_cell = origin_cell_;

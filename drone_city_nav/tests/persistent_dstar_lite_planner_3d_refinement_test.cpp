@@ -503,6 +503,52 @@ TEST(PersistentDStarLitePlanner3DTest,
   expectRawValid(points, *fixture.occupancy, planner.config().physical_footprint);
 }
 
+// The escape fill is anchored on the vehicle, but its cells are absolute
+// points and the chain an exit yields is validated from wherever the vehicle
+// stands when it is used: a vehicle hovering through a fraction of a lattice
+// step of drift keeps the fill it has. Re-anchored at one fine step instead,
+// the fill started over on every update and never reached its own radius.
+TEST(PersistentDStarLitePlanner3DTest,
+     AVehicleDriftingWithinALatticeStepKeepsTheEscapeFill) {
+  NodelessCorridorFixture fixture;
+  ASSERT_GE(fixture.config.departure_refinement_subdivisions, 2U);
+  // A few probes an update: the fill takes many updates, so the drift lands
+  // in the middle of it.
+  fixture.config.escape_search_maximum_probes_per_update = 8U;
+  PersistentDStarLitePlanner3D planner{fixture.config};
+  PlannerUpdate3D update;
+  std::size_t explored_before{0U};
+  for (int attempt = 0; attempt < 60 && explored_before == 0U; ++attempt) {
+    update = planner.plan(
+        request(fixture.start, fixture.goal, world(fixture.occupancy, 1U)));
+    if (update.telemetry.escape_search_attempted &&
+        !update.telemetry.escape_search_found) {
+      explored_before = update.telemetry.escape_search_explored_cells;
+    }
+  }
+  ASSERT_GT(explored_before, 0U) << "the escape fill never started";
+
+  const Point3 drifted{fixture.start.x + 0.4 * fixture.config.minimum_horizontal_step_m,
+                       fixture.start.y, fixture.start.z};
+  update = planner.plan(request(drifted, fixture.goal, world(fixture.occupancy, 1U)));
+
+  EXPECT_TRUE(update.telemetry.escape_search_attempted ||
+              update.telemetry.escape_connection_active);
+  EXPECT_GE(update.telemetry.escape_search_explored_cells, explored_before)
+      << "the fill started over on a drift within a lattice step";
+
+  bool escape_found = update.telemetry.escape_search_found;
+  for (int attempt = 0; attempt < 200 && !escape_found; ++attempt) {
+    update = planner.plan(request(attempt % 2 == 0 ? drifted : fixture.start,
+                                  fixture.goal, world(fixture.occupancy, 1U)));
+    escape_found = update.telemetry.escape_search_found;
+  }
+  EXPECT_TRUE(escape_found) << "explored="
+                            << update.telemetry.escape_search_explored_cells
+                            << " exhausted="
+                            << update.telemetry.escape_search_exhausted;
+}
+
 // Two nodeless corridors leave the first room: the nearer one ends in a
 // walled pocket with a valid node of its own, the farther one leads to the
 // goal's room. The fill reaches the pocket first; the search from that exit

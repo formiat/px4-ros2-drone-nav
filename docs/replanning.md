@@ -530,6 +530,19 @@ is simply not expressible on the lattice; the fill finds it without touching
 the safety contract, whereas a body-radius exit would have to be accepted by
 the executor as well, which validates on the envelope.
 
+The escape fill is anchored on the vehicle, and it is re-anchored -- started
+over from where the vehicle now stands -- only once the vehicle has moved a
+lattice step (`persistent_planner_minimum_horizontal_step_m`), the same
+distance the closed component it fills out of is kept for. The fill's cells
+are absolute points and the chain an exit yields is validated from wherever the
+vehicle stands when it is used, so a vehicle hovering through a fraction of a
+step of drift keeps the fill it has. Re-anchored at one fine step of the
+departure refinement instead, the fill started over on nearly every update
+while the vehicle drifted through half a metre under the local hold, never
+reached its own radius and never exhausted; one recorded flight stood in a
+pocket for two and a half minutes with the exit a body's width away, its
+successor search in flight the whole time.
+
 ## Liveness And Safety
 
 The liveness monitor measures progress the vehicle actually made over an
