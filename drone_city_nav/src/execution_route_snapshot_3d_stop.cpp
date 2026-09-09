@@ -105,6 +105,8 @@ stopExecutionArtifactFingerprint(const StopExecution3D& execution) noexcept {
   hashValue(hash, static_cast<std::uint64_t>(execution.valid_until_ns));
   hashValue(hash, static_cast<std::uint64_t>(execution.control_interval_ns));
   hashValue(hash, execution.validation_proof.validation_contract_fingerprint);
+  hashValue(hash, execution.physical_body_only ? 1U : 0U);
+  hashValue(hash, execution.collision_tolerated ? 1U : 0U);
   hashStopLineage(hash, execution);
   return hash == 0U ? 1U : hash;
 }
@@ -288,7 +290,13 @@ certifyStopExecution3D(const ExecutionPlan3D& current,
       validateCompleteFiniteExecutionPath3D(
           validation_points, certification.execution_input->previousControl(),
           validation_world);
-  if (!path_validation.accepted()) {
+  // The body's occupied-evidence verdict is tolerated only when the caller
+  // asked for it on the body: no other verdict, and no envelope sweep, is.
+  const bool collision_tolerated =
+      !path_validation.accepted() && certification.tolerate_body_collision &&
+      certification.physical_body_only &&
+      finiteExecutionPathOccupiedEvidenceVerdict3D(path_validation.status);
+  if (!path_validation.accepted() && !collision_tolerated) {
     StopCertificationResult3D rejection =
         rejected(StopCertificationStatus3D::kPathValidationRejected);
     rejection.path_validation_status = path_validation.status;
@@ -356,6 +364,7 @@ certifyStopExecution3D(const ExecutionPlan3D& current,
   };
   execution.validation_footprint = validation_footprint;
   execution.physical_body_only = certification.physical_body_only;
+  execution.collision_tolerated = collision_tolerated;
   execution.validation_proof.artifact_fingerprint =
       stopExecutionArtifactFingerprint(execution);
   if (!execution.valid()) {
@@ -363,7 +372,9 @@ certifyStopExecution3D(const ExecutionPlan3D& current,
   }
   return StopCertificationResult3D{
       .status = StopCertificationStatus3D::kCertified,
+      .path_validation_status = path_validation.status,
       .physical_body_only = certification.physical_body_only,
+      .collision_tolerated = collision_tolerated,
       .execution = std::move(execution),
   };
 }
@@ -454,6 +465,7 @@ execution_route_snapshot_3d_internal::applyEnterStopExecutionCommand3D(
     certification_report->dynamics_consistency = certified.dynamics_consistency;
     certification_report->path_validation_status = certified.path_validation_status;
     certification_report->physical_body_only = certified.physical_body_only;
+    certification_report->collision_tolerated = certified.collision_tolerated;
   }
   if (!certified.certified() || !certified.execution.has_value()) {
     return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate,

@@ -26,6 +26,9 @@ struct FiniteExecutionEvidenceView3D {
   const VersionedStaticWorld3D* static_world{nullptr};
   std::int64_t valid_from_ns{0};
   std::int64_t control_interval_ns{0};
+  // The execution was certified with the body's occupied-evidence verdict
+  // tolerated, so that verdict alone does not end its executability.
+  bool occupied_evidence_tolerated{false};
 };
 
 template<typename Execution>
@@ -56,6 +59,7 @@ finiteExecutionEvidenceView(const StopExecution3D& execution) noexcept {
       finiteExecutionEvidenceView<StopExecution3D>(execution);
   if (view.has_value()) {
     view->footprint = &execution.validation_footprint;
+    view->occupied_evidence_tolerated = execution.collision_tolerated;
   }
   return view;
 }
@@ -142,9 +146,12 @@ timedExecutionPathPoints(const FiniteExecutionEvidenceView3D& view) {
       .latest_lidar_obstacle_points = latest_lidar->indexedHitPoints(),
       .terminal_boundary = std::nullopt,
   };
-  return validateCompleteFiniteExecutionPath3D(
-             points, view.execution_input->previousControl(), world)
-      .accepted();
+  const FiniteExecutionPathValidation3D validation =
+      validateCompleteFiniteExecutionPath3D(
+          points, view.execution_input->previousControl(), world);
+  return validation.accepted() ||
+         (view.occupied_evidence_tolerated &&
+          finiteExecutionPathOccupiedEvidenceVerdict3D(validation.status));
 }
 
 [[nodiscard]] bool revalidateFiniteExecution(

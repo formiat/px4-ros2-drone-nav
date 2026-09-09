@@ -135,6 +135,13 @@ struct StopExecutionCertification3D {
   // given: when the envelope cannot clear the evidence around it, braking
   // with the body clear is still strictly safer than the horizon it replaces.
   bool physical_body_only{false};
+  // Certify the braking horizon although the physical body's sweep meets
+  // occupied evidence. Braking is the least motion the vehicle can be given:
+  // when even the body cannot sweep clear, the collision is the dynamics'
+  // answer to where the vehicle already is, and braking towards it at the
+  // guaranteed deceleration is what every alternative is measured against.
+  // Requires physical_body_only; every other verdict still rejects.
+  bool tolerate_body_collision{false};
 };
 
 struct StationaryExecutionHoldCertification3D {
@@ -219,6 +226,9 @@ struct StopCertificationResult3D {
       FiniteExecutionPathStatus3D::kValid};
   // Whether the verdict was reached against the physical body alone.
   bool physical_body_only{false};
+  // Whether the stop was certified with the body's occupied-evidence verdict
+  // tolerated; path_validation_status then names that verdict.
+  bool collision_tolerated{false};
   std::optional<StopExecution3D> execution;
 
   [[nodiscard]] bool certified() const noexcept {

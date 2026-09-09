@@ -281,7 +281,7 @@ TEST(ExecutionSupervisorStop3DTest, AStopTheEnvelopeCannotClearIsCertifiedOnTheB
   const std::optional<GridIndex3D> beside =
       beside_occupancy.worldToCell(Point3{5.5, 1.5, 5.5});
   ASSERT_TRUE(beside.has_value());
-  ASSERT_TRUE(beside_occupancy.setState(beside.value(), ObservedVoxelState::kOccupied));
+  ASSERT_TRUE(beside_occupancy.setState(*beside, ObservedVoxelState::kOccupied));
   SweptFootprintConfig footprint = fixture.execution_footprint;
   footprint.radius_m = 1.2;
   footprint.body_radius_m = 0.5;
@@ -336,6 +336,79 @@ TEST(ExecutionSupervisorStop3DTest, AStopTheEnvelopeCannotClearIsCertifiedOnTheB
       stopRequest(fixture, stopping, movingInput(*input, 5.0F));
   again_request.observed_raw_world = request.observed_raw_world;
   again_request.validation_policy = request.validation_policy;
+  const ExecutionStopPreparation3D again = supervisor.prepareStop(again_request);
+
+  EXPECT_EQ(again.status, ExecutionStopStatus3D::kResidentStopCurrent)
+      << executionStopStatus3DName(again.status);
+  EXPECT_EQ(supervisor.plan(), stopping);
+}
+
+// Braking is the least motion the vehicle can be given. Evidence the physical
+// body itself would sweep through does not leave the vehicle flying its stale
+// horizon either: the same trajectory is certified with that verdict
+// tolerated, it stays resident under that verdict, and it is the answer to the
+// next tick's request instead of a stop derived anew.
+TEST(ExecutionSupervisorStop3DTest, AStopTheBodyCannotClearIsStillFlownWithTheVerdict) {
+  SnapshotFixture3D fixture;
+  ExecutionSupervisor3D supervisor;
+  const std::shared_ptr<const ExecutionPlan3D> active =
+      installRouteOwner(supervisor, fixture);
+  ASSERT_NE(active, nullptr);
+  ASSERT_NE(active->finiteExecution(), nullptr);
+  const std::shared_ptr<const VersionedExecutionInput3D> input =
+      movingInput(*active->finiteExecution()->execution_input, 6.0F);
+  // A voxel on the braking line itself, three metres ahead of the vehicle:
+  // past the contact volume around its own pose, inside any body.
+  const MotionState3D& state = input->state();
+  ObservedOccupancyGrid3D ahead_occupancy = fixture.raw_occupancy;
+  const std::optional<GridIndex3D> ahead = ahead_occupancy.worldToCell(
+      Point3{static_cast<double>(state.x) + 3.0, static_cast<double>(state.y),
+             static_cast<double>(state.z)});
+  ASSERT_TRUE(ahead.has_value());
+  ASSERT_TRUE(ahead_occupancy.setState(*ahead, ObservedVoxelState::kOccupied));
+  ExecutionStopRequest3D request = stopRequest(fixture, active, input);
+  request.observed_raw_world =
+      fixture.rawWorld(SnapshotFixture3D::kLatestRawRevision + 1U, &ahead_occupancy);
+
+  const ExecutionStopPreparation3D prepared = supervisor.prepareStop(request);
+
+  ASSERT_EQ(prepared.status, ExecutionStopStatus3D::kPrepared)
+      << executionStopStatus3DName(prepared.status) << " certification="
+      << stopCertificationStatus3DName(prepared.certification.status) << " path="
+      << finiteExecutionPathStatus3DName(prepared.certification.path_validation_status);
+  EXPECT_GT(prepared.stop_distance_m, 3.0);
+  // The envelope and the body were both refused; the body's verdict is kept.
+  EXPECT_TRUE(prepared.certification.physical_body_only);
+  EXPECT_TRUE(prepared.certification.collision_tolerated);
+  EXPECT_EQ(prepared.certification.path_validation_status,
+            FiniteExecutionPathStatus3D::kRawCollision);
+  const StopExecution3D* const stop = prepared.stopExecution();
+  ASSERT_NE(stop, nullptr);
+  EXPECT_TRUE(stop->physical_body_only);
+  EXPECT_TRUE(stop->collision_tolerated);
+
+  ASSERT_EQ(commitExecutionHorizonForTest(
+                supervisor,
+                ExecutionHorizonTestTransaction3D{
+                    .kind = ExecutionHorizonCommitKind3D::kTransition,
+                    .expected_authority = prepared.expected_authority,
+                    .expected_plan = prepared.expectedPlan(),
+                    .transition = *prepared.transition,
+                    .expected_pending = nullptr,
+                    .owner = SnapshotFixture3D::committedOwner(
+                        *prepared.transition->next, 2U),
+                    .input = input,
+                })
+                .status,
+            ExecutionHorizonCommitStatus3D::kCommitted);
+  const std::shared_ptr<const ExecutionPlan3D> stopping = supervisor.plan();
+  ASSERT_NE(stopping, nullptr);
+  ASSERT_NE(stopping->stopExecution(), nullptr);
+
+  // The verdict the stop was certified with does not retire it a tick later.
+  ExecutionStopRequest3D again_request =
+      stopRequest(fixture, stopping, movingInput(*input, 5.0F));
+  again_request.observed_raw_world = request.observed_raw_world;
   const ExecutionStopPreparation3D again = supervisor.prepareStop(again_request);
 
   EXPECT_EQ(again.status, ExecutionStopStatus3D::kResidentStopCurrent)

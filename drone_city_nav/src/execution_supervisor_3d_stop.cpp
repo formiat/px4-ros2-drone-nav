@@ -84,7 +84,10 @@ stopPathPoints(const StopExecution3D& stop) {
 
 // A resident stop keeps the vehicle only while the part of it that has not
 // been flown yet is still executable on the newest evidence. Once it no
-// longer is, a fresh stop is derived from where the vehicle now stands.
+// longer is, a fresh stop is derived from where the vehicle now stands. A
+// stop certified with the body's collision tolerated stays executable under
+// that same verdict: a fresh stop from the vehicle's pose would tolerate it
+// again, and re-deriving it every tick would only churn the lease.
 [[nodiscard]] bool
 residentStopStillExecutable(const StopExecution3D& stop,
                             const ExecutionStopRequest3D& request,
@@ -93,19 +96,13 @@ residentStopStillExecutable(const StopExecution3D& stop,
   if (points.empty() || request.now_ns >= stop.valid_until_ns) {
     return false;
   }
-  return validateFiniteExecutionPathContinuation3D(
-             points, stop.valid_from_ns, stop.valid_until_ns, request.now_ns,
-             request.exact_initial_state, request.exact_previous_control, world)
-      .accepted();
-}
-
-// Whether a path verdict means the swept body met occupied evidence, as
-// opposed to a broken contract, envelope or dynamics law that no smaller body
-// would satisfy either.
-[[nodiscard]] constexpr bool
-stopCollisionVerdict(const FiniteExecutionPathStatus3D status) noexcept {
-  return status == FiniteExecutionPathStatus3D::kRawCollision ||
-         status == FiniteExecutionPathStatus3D::kLatestLidarRawCollision;
+  const FiniteExecutionPathValidation3D validation =
+      validateFiniteExecutionPathContinuation3D(
+          points, stop.valid_from_ns, stop.valid_until_ns, request.now_ns,
+          request.exact_initial_state, request.exact_previous_control, world);
+  return validation.accepted() ||
+         (stop.collision_tolerated &&
+          finiteExecutionPathOccupiedEvidenceVerdict3D(validation.status));
 }
 
 // The longest stop the supervisor will ask for. At the absolute speed limit
@@ -330,8 +327,15 @@ ExecutionSupervisor3D::prepareStop(ExecutionStopRequest3D request) const {
       .latest_lidar_evidence = owned_request.latest_lidar_evidence,
       .valid_from_ns = owned_request.now_ns,
       .physical_body_only = false,
+      .tolerate_body_collision = false,
   };
   StopCertificationResult3D certification_report;
+  const auto occupied_evidence_refusal = [&certification_report] {
+    return certification_report.status ==
+               StopCertificationStatus3D::kPathValidationRejected &&
+           finiteExecutionPathOccupiedEvidenceVerdict3D(
+               certification_report.path_validation_status);
+  };
   const ExecutionRouteTransitionResult3D transition = [&] {
     ExecutionRouteTransitionResult3D envelope = enterStopExecution3D(
         *expected, expected->version, certification, &certification_report);
@@ -342,13 +346,22 @@ ExecutionSupervisor3D::prepareStop(ExecutionStopRequest3D request) const {
     // against the physical body alone. Braking with the body clear is
     // strictly safer than the horizon it replaces; leaving that horizon in
     // flight is what ended one flight against a wall.
-    if (envelope.applied() ||
-        certification_report.status !=
-            StopCertificationStatus3D::kPathValidationRejected ||
-        !stopCollisionVerdict(certification_report.path_validation_status)) {
+    if (envelope.applied() || !occupied_evidence_refusal()) {
       return envelope;
     }
     certification.physical_body_only = true;
+    ExecutionRouteTransitionResult3D body = enterStopExecution3D(
+        *expected, expected->version, certification, &certification_report);
+    // When the body cannot sweep clear either, the evidence stands where the
+    // vehicle's dynamics already carry it: braking at the guaranteed
+    // deceleration is the least motion any trajectory from this state can
+    // hold, so the same stop is certified with that verdict tolerated. Nothing
+    // published here left one recorded flight on its stale horizon, still
+    // accelerating, until it met the wall the stop had been refused for.
+    if (body.applied() || !occupied_evidence_refusal()) {
+      return body;
+    }
+    certification.tolerate_body_collision = true;
     return enterStopExecution3D(*expected, expected->version, certification,
                                 &certification_report);
   }();
@@ -359,6 +372,7 @@ ExecutionSupervisor3D::prepareStop(ExecutionStopRequest3D request) const {
   result.certification.path_validation_status =
       certification_report.path_validation_status;
   result.certification.physical_body_only = certification_report.physical_body_only;
+  result.certification.collision_tolerated = certification_report.collision_tolerated;
   if (!transition.applied() || transition.next == nullptr ||
       transition.next->stopExecution() == nullptr) {
     result.status = ExecutionStopStatus3D::kTransitionRejected;

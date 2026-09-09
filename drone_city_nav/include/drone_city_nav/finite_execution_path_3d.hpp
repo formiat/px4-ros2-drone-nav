@@ -43,6 +43,14 @@ enum class FiniteExecutionPathStatus3D {
   kLatestLidarRawCollision,
 };
 
+// Whether a verdict means the swept body met occupied evidence, as opposed to
+// a broken contract, envelope or dynamics law that no body would satisfy.
+[[nodiscard]] constexpr bool finiteExecutionPathOccupiedEvidenceVerdict3D(
+    const FiniteExecutionPathStatus3D status) noexcept {
+  return status == FiniteExecutionPathStatus3D::kRawCollision ||
+         status == FiniteExecutionPathStatus3D::kLatestLidarRawCollision;
+}
+
 struct FiniteExecutionPathTerminalBoundary3D {
   Point3 endpoint{};
   Vec3 forward{};
