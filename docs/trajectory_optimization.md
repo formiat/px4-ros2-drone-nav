@@ -75,7 +75,14 @@ question, and by one mild preference:
   can accumulate within its response time must fit inside the body clearance.
   A wall the vehicle flies along never gets nearer, so no braking distance is
   owed to it. This is the law that certifies a route's speed profile and that
-  the speed policy's `clearance` limiter applies.
+  the speed policy's `clearance` limiter applies. The hull is the only thing
+  the tube refuses a route segment for: the clearance the envelope carries
+  over the hull is the tracking allowance the tube exists to size, so a
+  segment only the hull clears keeps its route and takes the progress floor.
+  Judged on the envelope instead, the tube rejected sixteen to twenty-four
+  whole routes a recorded flight, each one a compile that failed at the
+  segment leaving the vehicle's own position while it stood beside a wall with
+  nothing to fly.
 - Ahead on the motion, the **stopping law**: the path the body covers while it
   reacts and brakes must fit inside the free path to the point where its
   envelope enters occupied evidence. It is charged along the rollout's own

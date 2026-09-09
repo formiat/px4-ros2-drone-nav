@@ -112,6 +112,51 @@ TEST(TrackingErrorTube3DTest, TheLeanLawFloorsTheSpeedWhereTheLeaningHullDoesNot
   EXPECT_FALSE(trackingErrorTubeConfig3DIsValid(malformed));
 }
 
+// The hull is what the tube refuses a segment for. A passage the envelope
+// cannot sweep but the hull clears keeps its route and loses its speed: the
+// clearance the envelope carries over the hull is the tracking allowance the
+// tube is asked to size, not a rule the route has to satisfy first.
+TEST(TrackingErrorTube3DTest, APassageOnlyTheHullClearsKeepsItsRouteAndLosesItsSpeed) {
+  ObservedOccupancyGrid3D occupancy{testBounds()};
+  // Walls at y = -0.7 m and y = 0.7 m: the 0.82 m envelope cannot sweep the
+  // route along y = 0, the 0.55 m hull clears it with 0.15 m to spare.
+  const GridBounds3D& bounds = occupancy.bounds();
+  for (int z = 0; z < bounds.depth_cells; ++z) {
+    for (int x = 0; x < bounds.width_cells; ++x) {
+      static_cast<void>(occupancy.setState({x, 12, z}, ObservedVoxelState::kOccupied));
+      static_cast<void>(occupancy.setState({x, 27, z}, ObservedVoxelState::kOccupied));
+    }
+  }
+  const std::vector<RouteSample3D> route = passageRoute();
+  const SweptFootprintConfig footprint{};
+  const TrackingErrorTubeWorld3D world{
+      .observed_occupancy = &occupancy,
+      .occupied_content_fingerprint = occupancy.occupiedSnapshot().contentFingerprint(),
+  };
+
+  ASSERT_FALSE(validateRawSweptFootprint(occupancy, route.front().position,
+                                         FootprintBodyAxis{}, route.back().position,
+                                         FootprintBodyAxis{}, footprint)
+                   .accepted());
+  ASSERT_TRUE(validateRawSweptFootprint(occupancy, route.front().position,
+                                        FootprintBodyAxis{}, route.back().position,
+                                        FootprintBodyAxis{},
+                                        physicalBodyFootprint(footprint))
+                  .accepted());
+
+  TrackingErrorTubeProfileStatus3D status{TrackingErrorTubeProfileStatus3D::kBuilt};
+  const TrackingErrorTubeProfile3D tube = makeTrackingErrorTubeProfile3D(
+      route, world, footprint,
+      TrackingErrorTubeConfig3D{.response_time_s = 0.15,
+                                .minimum_progress_speed_mps = 1.0},
+      5.0, &status);
+
+  EXPECT_EQ(status, TrackingErrorTubeProfileStatus3D::kBuilt);
+  ASSERT_TRUE(tube.valid);
+  EXPECT_EQ(tube.constrained_segment_count, route.size() - 1U);
+  EXPECT_DOUBLE_EQ(tube.minimum_speed_limit_mps, 1.0);
+}
+
 TEST(TrackingErrorTube3DTest, FullSpeedErrorMatchesClosedLoopResponseHorizon) {
   EXPECT_DOUBLE_EQ(
       trackingErrorTubeRadiusM(TrackingErrorTubeConfig3D{.response_time_s = 0.15}, 5.0),
