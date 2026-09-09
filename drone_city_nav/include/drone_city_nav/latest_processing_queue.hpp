@@ -6,6 +6,16 @@
 
 namespace drone_city_nav {
 
+// A single-consumer queue for evidence that supersedes itself: at most one
+// value waits to be processed, and a newer submission replaces it. A value the
+// processor has taken but cannot finish yet, because it waits for evidence
+// that arrives on another path, is deferred instead of dropped: it keeps its
+// place ahead of whatever is submitted meanwhile, and the processor is
+// released until that evidence calls tryAcquireProcessor(). Letting each newer
+// submission supersede the deferred value starved a 3D lidar whose scans each
+// waited for a pose bracket almost a scan period long: every scan was replaced
+// by its successor just before its own bracket arrived, and the successor then
+// waited for a bracket a period further on.
 template<typename T> class LatestProcessingQueue final {
 public:
   struct Submission {
@@ -24,45 +34,46 @@ public:
 
   [[nodiscard]] bool tryAcquireProcessor() {
     const std::scoped_lock lock{mutex_};
-    if (processor_active_ || !pending_.has_value()) {
+    if (processor_active_ || (!deferred_.has_value() && !pending_.has_value())) {
       return false;
     }
     processor_active_ = true;
     return true;
   }
 
+  // The deferred value first, then the latest submission. Releases the
+  // processor when nothing is left.
   [[nodiscard]] std::optional<T> take() {
     const std::scoped_lock lock{mutex_};
     if (!processor_active_) {
       return std::nullopt;
     }
-    if (!pending_.has_value()) {
-      processor_active_ = false;
-      return std::nullopt;
-    }
-    std::optional<T> value = std::move(pending_);
-    pending_.reset();
-    return value;
-  }
-
-  // Returns true when a newer value is already pending and the caller keeps
-  // processor ownership. Otherwise the supplied value is deferred and the
-  // processor is released until new evidence calls tryAcquireProcessor().
-  [[nodiscard]] bool deferOrContinue(T value) {
-    const std::scoped_lock lock{mutex_};
-    if (!processor_active_) {
-      return false;
+    if (deferred_.has_value()) {
+      std::optional<T> value = std::move(deferred_);
+      deferred_.reset();
+      return value;
     }
     if (pending_.has_value()) {
-      return true;
+      std::optional<T> value = std::move(pending_);
+      pending_.reset();
+      return value;
     }
-    pending_ = std::move(value);
     processor_active_ = false;
-    return false;
+    return std::nullopt;
+  }
+
+  // The processor could not finish this value yet. It waits, ahead of any
+  // newer submission, for the evidence that lets it finish; the processor is
+  // released until tryAcquireProcessor() or a submission reacquires it.
+  void defer(T value) {
+    const std::scoped_lock lock{mutex_};
+    deferred_ = std::move(value);
+    processor_active_ = false;
   }
 
 private:
   std::mutex mutex_;
+  std::optional<T> deferred_;
   std::optional<T> pending_;
   bool processor_active_{false};
 };

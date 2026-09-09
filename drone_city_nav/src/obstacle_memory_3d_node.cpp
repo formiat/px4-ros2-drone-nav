@@ -619,9 +619,12 @@ private:
     while (std::optional<PendingPointCloud3D> pending = pending_clouds_.take()) {
       const PendingPointCloudDisposition disposition = processPendingCloud(*pending);
       if (disposition == PendingPointCloudDisposition::kWaitForPoseBracket) {
-        if (pending_clouds_.deferOrContinue(std::move(*pending))) {
-          continue;
-        }
+        // The scan keeps its place until its pose bracket arrives or its wait
+        // expires; a newer scan waits behind it rather than replacing it. Its
+        // bracket lies a scan period ahead of this one's, so replacing the
+        // scan starved the memory of every scan whenever the bracket wait
+        // came close to the scan period.
+        pending_clouds_.defer(std::move(*pending));
         return;
       }
     }

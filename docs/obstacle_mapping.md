@@ -59,7 +59,15 @@ no-static production navigation requires the 3D profile.
 GPU lidar. The known beam geometry reconstructs both finite hits and maximum
 range misses. One timestamp-aligned full-6DoF acquisition pose transforms every
 accepted beam into map coordinates; an unresolved pose bracket rejects the
-complete scan instead of mixing times or frames.
+complete scan instead of mixing times or frames. A scan whose bracket has not
+arrived yet waits for it, bounded by `lidar_scan_alignment_maximum_wait_s`, and
+keeps its place ahead of the scans that arrive meanwhile; those coalesce to the
+newest behind it. Letting each newer scan replace the waiting one starved the
+memory whenever the bracket wait came close to the scan period: the sensor
+latency and the PX4 time mapping put the requested pose about a hundred
+milliseconds after the scan stamp, so every scan was replaced by its successor
+just before its own bracket arrived, and one recorded flight took off on a
+single integrated scan and flew five seconds into an unobserved platform.
 
 The node removes returns from the physical sensor body and typed dynamic-agent
 volumes, publishes the fresh hit set for immediate finite-path validation, and

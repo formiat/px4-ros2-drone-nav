@@ -39,19 +39,44 @@ TEST(LatestProcessingQueueTest, DeferredValueWaitsForExternalEvidence) {
   ASSERT_TRUE(queue.submit(1).processor_acquired);
   ASSERT_EQ(queue.take(), std::optional<int>{1});
 
-  EXPECT_FALSE(queue.deferOrContinue(1));
+  queue.defer(1);
   EXPECT_TRUE(queue.tryAcquireProcessor());
   EXPECT_EQ(queue.take(), std::optional<int>{1});
+  EXPECT_FALSE(queue.take().has_value());
 }
 
-TEST(LatestProcessingQueueTest, NewerValueSupersedesDeferredWork) {
+// The deferred value waits for its own evidence; a newer submission does not
+// take its place, it waits behind it.
+TEST(LatestProcessingQueueTest, DeferredWorkKeepsItsPlaceAheadOfNewerSubmissions) {
   LatestProcessingQueue<int> queue;
   ASSERT_TRUE(queue.submit(1).processor_acquired);
   ASSERT_EQ(queue.take(), std::optional<int>{1});
   ASSERT_FALSE(queue.submit(2).processor_acquired);
 
-  EXPECT_TRUE(queue.deferOrContinue(1));
+  queue.defer(1);
+  EXPECT_TRUE(queue.tryAcquireProcessor());
+  EXPECT_EQ(queue.take(), std::optional<int>{1});
   EXPECT_EQ(queue.take(), std::optional<int>{2});
+  EXPECT_FALSE(queue.take().has_value());
+}
+
+// Submissions behind a deferred value still coalesce to the newest, and a
+// submission reacquires the processor the deferral released.
+TEST(LatestProcessingQueueTest, SubmissionsBehindDeferredWorkCoalesceToNewest) {
+  LatestProcessingQueue<int> queue;
+  ASSERT_TRUE(queue.submit(1).processor_acquired);
+  ASSERT_EQ(queue.take(), std::optional<int>{1});
+  queue.defer(1);
+
+  const auto second = queue.submit(2);
+  const auto third = queue.submit(3);
+
+  EXPECT_TRUE(second.processor_acquired);
+  EXPECT_FALSE(second.replaced_pending);
+  EXPECT_FALSE(third.processor_acquired);
+  EXPECT_TRUE(third.replaced_pending);
+  EXPECT_EQ(queue.take(), std::optional<int>{1});
+  EXPECT_EQ(queue.take(), std::optional<int>{3});
   EXPECT_FALSE(queue.take().has_value());
 }
 
