@@ -940,15 +940,6 @@ void ProductionMppiConfigLoader::finalize() {
   planning.persistent_planner.minimum_continuous_turn_alignment =
       planning.future_route_connector.minimum_continuous_turn_alignment;
   planning.persistent_planner.physical_footprint = world.physical_footprint;
-  // The legs that leave the vehicle answer to the hull it measures. A vehicle
-  // leaves a tight spot the way it entered it, at hover and upright, so the
-  // envelope that contains the hull at every tilt is not what decides whether
-  // it may leave; everything past the departure keeps the envelope. Without
-  // this a vehicle resting beside evidence its stop had just met was refused
-  // every departure for a second or more at a time, and those refusals were
-  // the largest single share of one recorded flight's no-route time.
-  planning.persistent_planner.departure_footprint =
-      physicalBodyFootprint(world.physical_footprint);
   planning.persistent_planner.flight_envelope = world.flight_envelope;
 
   diagnostics.rviz_period_ns =

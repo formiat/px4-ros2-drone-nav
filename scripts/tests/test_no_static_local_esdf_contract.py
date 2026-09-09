@@ -173,13 +173,6 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
             "world.physical_footprint;",
             config_source,
         )
-        # A departure answers to the hull, not to the envelope that contains
-        # the hull at every tilt: the vehicle leaves at hover and upright.
-        self.assertIn(
-            "planning.persistent_planner.departure_footprint =\n"
-            "      physicalBodyFootprint(world.physical_footprint);",
-            config_source,
-        )
         self.assertIn(
             ".physical_footprint = config_.world.physical_footprint",
             runtime_source,
