@@ -471,6 +471,12 @@ would leave it on the horizon the evidence has just invalidated. One recorded
 flight came to rest a tenth of a metre from a wall on a hull-certified stop,
 drifted a fifth of a metre while holding, and met it.
 
+The rest clearance is a preference among rungs, never a reason to leave the
+vehicle without a stop: when no rung can keep it the ladder runs again without
+it (`rest_clearance_relaxed=true`). Enforced as a rule it refused the stop
+outright, and one recorded flight then coasted on into a departure its planner
+could not find, holding without a route for over two seconds.
+
 When no rung of that ladder sweeps clear, the stop is refused and the hold
 flow answers with the rest hold, the revocation or the resident owner,
 whichever the plan admits. Certifying the brake anyway, with the hull's
