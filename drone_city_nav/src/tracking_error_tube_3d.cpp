@@ -262,10 +262,12 @@ TrackingErrorTubeProfile3D makeTrackingErrorTubeProfile3D(
     const std::span<const RouteSample3D> route, const TrackingErrorTubeWorld3D& world,
     const SweptFootprintConfig& physical_footprint,
     const TrackingErrorTubeConfig3D& config, const double maximum_speed_mps,
-    TrackingErrorTubeProfileStatus3D* const status) {
-  const auto report = [status](const TrackingErrorTubeProfileStatus3D verdict) {
-    if (status != nullptr) {
-      *status = verdict;
+    TrackingErrorTubeProfileReport3D* const outcome) {
+  const auto report = [outcome](const TrackingErrorTubeProfileStatus3D verdict,
+                                const std::size_t failure_segment_index = 0U) {
+    if (outcome != nullptr) {
+      outcome->status = verdict;
+      outcome->failure_segment_index = failure_segment_index;
     }
     return TrackingErrorTubeProfile3D{};
   };
@@ -298,7 +300,7 @@ TrackingErrorTubeProfile3D makeTrackingErrorTubeProfile3D(
         segmentSpeedLimitMps(world, route[index - 1U].position, route[index].position,
                              physical_footprint, config, maximum_speed_mps);
     if (!std::isfinite(segment_limit_mps)) {
-      return report(TrackingErrorTubeProfileStatus3D::kNonFiniteSegmentLimit);
+      return report(TrackingErrorTubeProfileStatus3D::kNonFiniteSegmentLimit, index);
     }
     result.speed_limits_mps[index - 1U] =
         std::min(result.speed_limits_mps[index - 1U], segment_limit_mps);
@@ -316,8 +318,9 @@ TrackingErrorTubeProfile3D makeTrackingErrorTubeProfile3D(
   if (!result.valid) {
     return report(TrackingErrorTubeProfileStatus3D::kInvalidProfile);
   }
-  if (status != nullptr) {
-    *status = TrackingErrorTubeProfileStatus3D::kBuilt;
+  if (outcome != nullptr) {
+    outcome->status = TrackingErrorTubeProfileStatus3D::kBuilt;
+    outcome->failure_segment_index = 0U;
   }
   return result;
 }

@@ -115,10 +115,21 @@ trackingErrorTubeProfileStatus3DName(TrackingErrorTubeProfileStatus3D status) no
 // speed-dependent tracking tube remains clear of confirmed occupied evidence.
 // The route itself is never rejected merely because free/unknown labels differ.
 // `status`, when given, names the rule a refusal was reached on.
+// Why a profile could not be built, and where. The segment index is the index
+// of the second sample of the route segment the build was refused on, and is
+// meaningful only for a refusal that names a segment; every other refusal
+// leaves it zero. A refusal that reaches the log as "the tube refused a
+// segment" and nothing more says only that the route ended somewhere it could
+// not be flown, which is what the compile already said.
+struct TrackingErrorTubeProfileReport3D {
+  TrackingErrorTubeProfileStatus3D status{TrackingErrorTubeProfileStatus3D::kBuilt};
+  std::size_t failure_segment_index{0U};
+};
+
 [[nodiscard]] TrackingErrorTubeProfile3D makeTrackingErrorTubeProfile3D(
     std::span<const RouteSample3D> route, const TrackingErrorTubeWorld3D& world,
     const SweptFootprintConfig& physical_footprint,
     const TrackingErrorTubeConfig3D& config, double maximum_speed_mps,
-    TrackingErrorTubeProfileStatus3D* status = nullptr);
+    TrackingErrorTubeProfileReport3D* report = nullptr);
 
 } // namespace drone_city_nav

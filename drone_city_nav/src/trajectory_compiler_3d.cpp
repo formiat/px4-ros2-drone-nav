@@ -106,14 +106,14 @@ TrajectoryCompiler3D::compile(TrajectoryCompilerInput3D input) {
   const double maximum_profile_speed_mps =
       std::min(input.config.unconstrained_speed_mps,
                input.config.time_model.maximum_horizontal_speed_mps);
-  TrackingErrorTubeProfileStatus3D tube_status{
-      TrackingErrorTubeProfileStatus3D::kBuilt};
+  TrackingErrorTubeProfileReport3D tube_report;
   auto tracking_error_tube =
       std::make_shared<const TrackingErrorTubeProfile3D>(makeTrackingErrorTubeProfile3D(
           input.route, input.tracking_world, input.config.physical_footprint,
-          input.config.tracking_error_tube, maximum_profile_speed_mps, &tube_status));
+          input.config.tracking_error_tube, maximum_profile_speed_mps, &tube_report));
   if (!tracking_error_tube->valid) {
-    result.validation = {tubeProfileFailure(tube_status), 0U};
+    result.validation = {tubeProfileFailure(tube_report.status),
+                         tube_report.failure_segment_index};
     return result;
   }
   RouteTimeParameterization3D parameterization = parameterizeRouteTime3D(

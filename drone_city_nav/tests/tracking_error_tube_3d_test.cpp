@@ -144,14 +144,14 @@ TEST(TrackingErrorTube3DTest, APassageOnlyTheHullClearsKeepsItsRouteAndLosesItsS
                                         physicalBodyFootprint(footprint))
                   .accepted());
 
-  TrackingErrorTubeProfileStatus3D status{TrackingErrorTubeProfileStatus3D::kBuilt};
+  TrackingErrorTubeProfileReport3D report;
   const TrackingErrorTubeProfile3D tube = makeTrackingErrorTubeProfile3D(
       route, world, footprint,
       TrackingErrorTubeConfig3D{.response_time_s = 0.15,
                                 .minimum_progress_speed_mps = 1.0},
-      5.0, &status);
+      5.0, &report);
 
-  EXPECT_EQ(status, TrackingErrorTubeProfileStatus3D::kBuilt);
+  EXPECT_EQ(report.status, TrackingErrorTubeProfileStatus3D::kBuilt);
   ASSERT_TRUE(tube.valid);
   EXPECT_EQ(tube.constrained_segment_count, route.size() - 1U);
   EXPECT_DOUBLE_EQ(tube.minimum_speed_limit_mps, 1.0);
