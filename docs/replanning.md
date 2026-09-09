@@ -97,6 +97,15 @@ only what the spatial search leaves. Without the second one the refinement runs
 only while D* is idle, and the refinement is what turns a first-found route
 into a ranked one.
 
+A route the session has resolved is published as it stands whenever the
+planner holds no incumbent (`spatial_search` in the candidate source). The
+refinement treats that route as its anytime bound and returns a path only when
+it beats the bound, so with nothing to improve on the resolved route reached
+nobody: a vehicle whose route had just been retired waited for the feasibility
+search to find one of its own while D* already had one, and one recorded
+flight held for three seconds that way. The refinement improves it from the
+same bound as before.
+
 The repair runs before the feasibility search, not after it. The session's
 labels are only as true as its repair queue is short: with repairs pending, D*
 reports its shortest path complete on labels the world has already moved, the

@@ -32,6 +32,9 @@ enum class SearchProgress3D : std::uint8_t {
 
 enum class SpatialRouteCandidateSource3D : std::uint8_t {
   kFeasibilitySearch,
+  // The route the persistent D* session resolved, offered as it stands
+  // because the vehicle holds none. The refinement improves it from there.
+  kSpatialSearch,
   kExecutionTimeRefinement,
 };
 

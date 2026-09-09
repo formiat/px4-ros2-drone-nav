@@ -19,6 +19,37 @@
 namespace drone_city_nav {
 namespace {
 
+// The route the persistent session resolves is a route the vehicle can fly.
+// Held only as the refinement's anytime bound it reached nobody, and a vehicle
+// with no route waited on the feasibility search while D* already had one.
+TEST(PersistentDStarLitePlanner3DTest,
+     TheResolvedSpatialRouteIsPublishedWithNoIncumbent) {
+  auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 1.0, 16, 6, 8});
+  for (int x = 0; x < 16; ++x) {
+    for (int y = 0; y < 6; ++y) {
+      ASSERT_TRUE(occupancy->setState({x, y, 0}, ObservedVoxelState::kOccupied));
+    }
+  }
+  PersistentPlannerConfig3D config = testConfig();
+  // No feasibility branch: whatever is published came from the session itself.
+  config.feasibility_first_enabled = false;
+  PersistentDStarLitePlanner3D planner{config};
+  const Point3 start{1.5, 2.5, 3.5};
+  const Point3 goal{14.5, 2.5, 3.5};
+
+  PlannerUpdate3D update = planner.plan(request(start, goal, world(occupancy, 1U)));
+  for (int attempt = 0; attempt < 8 && !update.publishable(); ++attempt) {
+    update = planner.plan(request(start, goal, world(occupancy, 1U)));
+  }
+
+  ASSERT_TRUE(update.publishable());
+  EXPECT_FALSE(update.telemetry.feasibility_attempted);
+  const SpatialRouteCandidate3D& published = candidate(update);
+  EXPECT_EQ(published.source, SpatialRouteCandidateSource3D::kSpatialSearch);
+  expectRawValid(published.points, *occupancy, planner.config().physical_footprint);
+}
+
 TEST(PersistentDStarLitePlanner3DTest,
      TheFeasibilityFirstRouteClimbsOutOfAMetreItCouldOnlyCrawlAlong) {
   // A known floor two cells thick under a corridor: the unranked feasibility

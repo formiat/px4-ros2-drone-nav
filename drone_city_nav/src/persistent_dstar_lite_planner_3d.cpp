@@ -161,6 +161,8 @@ spatialRouteCandidateSource3DName(const SpatialRouteCandidateSource3D source) no
   switch (source) {
     case SpatialRouteCandidateSource3D::kFeasibilitySearch:
       return "feasibility_search";
+    case SpatialRouteCandidateSource3D::kSpatialSearch:
+      return "spatial_search";
     case SpatialRouteCandidateSource3D::kExecutionTimeRefinement:
       return "execution_time_refinement";
   }
@@ -802,17 +804,49 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   // ranked route comes to exist is the budget the searches are guaranteed
   // above, not a different seed.
   if (spatial_route_available) {
+    const auto extract_spatial_path = [this] {
+      return dstar_session_.extractPath(exact_start_, exact_goal_, departure_waypoints_,
+                                        adaptive_edges_in_extracted_path_);
+    };
+    std::vector<Point3> spatial_path;
     if (!execution_time_refiner_.initialized()) {
-      execution_time_refiner_.begin(
-          refinement_request,
-          dstar_session_.extractPath(exact_start_, exact_goal_, departure_waypoints_,
-                                     adaptive_edges_in_extracted_path_));
+      spatial_path = extract_spatial_path();
+      execution_time_refiner_.begin(refinement_request, spatial_path);
     } else if (!execution_time_refiner_.hasIncumbent()) {
       // The world change dropped the refinement incumbent; the repaired D*
       // route is the new anytime bound.
-      execution_time_refiner_.seedIncumbent(
-          dstar_session_.extractPath(exact_start_, exact_goal_, departure_waypoints_,
-                                     adaptive_edges_in_extracted_path_));
+      spatial_path = extract_spatial_path();
+      execution_time_refiner_.seedIncumbent(spatial_path);
+    }
+    // The route the session has resolved is a route the vehicle can fly. With
+    // no incumbent it was published by nobody: the refinement holds it as its
+    // anytime bound and returns a path only when it beats that bound, so the
+    // vehicle waited for the feasibility search to find a route of its own
+    // while D* already had one. One recorded flight held for three seconds
+    // that way, over an eighth of its no-route time. It is offered here as it
+    // stands, and the refinement improves it from the same bound as before.
+    if (coordinator_.incumbent() == nullptr) {
+      if (spatial_path.empty()) {
+        spatial_path = extract_spatial_path();
+      }
+      if (spatial_path.size() >= 2U) {
+        spatial_path =
+            refinePublishedPath(std::move(spatial_path), request, deadline, telemetry);
+      }
+      if (spatial_path.size() >= 2U &&
+          distance3D(spatial_path.back(), request.mission_goal) <=
+              config_.goal_tolerance_m) {
+        std::optional<SpatialRouteCandidate3D> resolved = makeCandidate(
+            std::move(spatial_path), SpatialRouteCandidateSource3D::kSpatialSearch,
+            request.velocity);
+        if (resolved) {
+          std::optional<SpatialRouteCandidate3D> improvement =
+              coordinator_.consider(std::move(*resolved));
+          if (improvement) {
+            update.improved_incumbent = std::move(improvement);
+          }
+        }
+      }
     }
     const std::size_t graph_expansions =
         telemetry.repair_lattice_states_processed + telemetry.expansions;
