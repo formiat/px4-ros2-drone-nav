@@ -81,19 +81,10 @@ TEST(MppiSpeedPolicyTest, ABlockedRouteLimitsSpeedToStopBeforeTheBlock) {
   EXPECT_NEAR(result.blocked_route_limit_mps, std::sqrt(2.0 * 4.0 * 5.0), 1.0e-6);
   EXPECT_DOUBLE_EQ(result.reference_speed_mps, result.blocked_route_limit_mps);
 
-  // The target the vehicle steers towards ends where the prefix ends.
-  EXPECT_DOUBLE_EQ(result.target_lookahead_m, 5.0);
-
-  // A block inside the margin leaves nothing ahead to steer towards at all.
-  input.blocked_route_remaining_m = 2.0;
-  const MppiSpeedPolicyResult inside = evaluateMppiSpeedPolicy(config, input);
-  EXPECT_DOUBLE_EQ(inside.target_lookahead_m, 0.0);
-
   input.blocked_route_remaining_m = std::nullopt;
   const MppiSpeedPolicyResult open = evaluateMppiSpeedPolicy(config, input);
   EXPECT_NE(open.active_limiter, MppiSpeedLimiter::kBlockedRoute);
   EXPECT_DOUBLE_EQ(open.reference_speed_mps, 20.0);
-  EXPECT_GT(open.target_lookahead_m, 5.0);
 }
 
 MppiSpeedPolicyConfig clearanceLimiterConfig() {

@@ -265,13 +265,6 @@ made of two laws that share the weight and no parameters of their own:
   capability (`speed_reaction_latency_s`, the horizontal acceleration), which
   the same policy applies to a blocked route, a route endpoint and the goal.
 
-A blocked route bounds the target the vehicle steers towards as well as its
-speed: the target ends a body margin before the block, as the prefix does.
-Bounding only the speed left the target beyond the block, and the controller
-kept nudging the vehicle towards it at a tenth of a metre a second while the
-policy reported a limit of zero; one recorded flight crept the last half metre
-into a building that way and lost a rotor to it.
-
 Each law is one expression read in two directions: the rollout cost reads it
 as a shortfall, the reference speed as a cap. Two copies of one law drift
 apart, and the reference speed then admits what the optimiser prices as too

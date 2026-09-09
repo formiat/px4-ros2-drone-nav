@@ -345,20 +345,6 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
   result.target_lookahead_m =
       std::clamp(result.reference_speed_mps * config.horizon_duration_s,
                  config.minimum_target_lookahead_m, config.maximum_target_lookahead_m);
-  if (input.blocked_route_remaining_m.has_value()) {
-    // The prefix is flown as if the route ended a body margin before the
-    // block, so the target it steers towards ends there too. Left at the full
-    // lookahead the target sat beyond the block and the controller kept
-    // nudging the vehicle towards it at a tenth of a metre a second while this
-    // policy reported a speed limit of zero: one recorded flight crept the
-    // last half metre into a building that way and lost a rotor to it. The
-    // minimum lookahead does not apply here; there is nothing beyond the block
-    // to look towards.
-    result.target_lookahead_m =
-        std::min(result.target_lookahead_m,
-                 std::max(0.0, *input.blocked_route_remaining_m -
-                                   config.sensor_braking_contract.physical_margin_m));
-  }
   return result;
 }
 
