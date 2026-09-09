@@ -541,15 +541,20 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     }
   }
   telemetry.escape_connection_active = escape_connection_.has_value();
-  const PlannerLattice3D::DepartureConnection3D departure =
-      escape_connection_.has_value()
-          ? PlannerLattice3D::DepartureConnection3D{.anchor =
-                                                        escape_connection_->anchor,
-                                                    .waypoints =
-                                                        escape_connection_->waypoints}
-          : lattice_.selectDepartureConnection(request.start, departure_anchor_skip_,
-                                               initialized_ ? std::optional{start_}
-                                                            : std::nullopt);
+  const PlannerLattice3D::DepartureConnection3D departure = [&] {
+    if (!escape_connection_.has_value()) {
+      return lattice_.selectDepartureConnection(request.start, departure_anchor_skip_,
+                                                initialized_ ? std::optional{start_}
+                                                             : std::nullopt);
+    }
+    // The escape fill found this connection under the envelope, so the rest of
+    // the update answers to the envelope as well.
+    lattice_.resetDepartureBody();
+    return PlannerLattice3D::DepartureConnection3D{
+        .anchor = escape_connection_->anchor,
+        .waypoints = escape_connection_->waypoints,
+    };
+  }();
   telemetry.departure_candidate_nodes = departure.diagnostics.candidate_nodes;
   telemetry.departure_valid_nodes = departure.diagnostics.valid_nodes;
   telemetry.departure_rejected_legs = departure.diagnostics.rejected_legs;

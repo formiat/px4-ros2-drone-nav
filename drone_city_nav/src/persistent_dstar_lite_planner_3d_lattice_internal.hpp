@@ -317,9 +317,17 @@ public:
   // resting near occupied evidence sees its nearest reachable node flip with
   // every raw scan, and each flip beyond a lattice diagonal restarts the
   // searches from nothing. The walk on exhaustion takes precedence.
+  // Selecting the connection also fixes the body every departure leg answers
+  // to for the rest of this update: the anchor selection may have to fall back
+  // to the hull, and a leg the selection accepted has to stay acceptable to
+  // the path validation that follows it. Judged separately, the fallback found
+  // a departure the candidate validation then refused on the same leg, and the
+  // search spent whole updates on candidates nothing could publish.
   [[nodiscard]] DepartureConnection3D selectDepartureConnection(
       const Point3& start, std::size_t skipped_connections = 0U,
-      std::optional<PersistentPlannerNode3D> preferred = std::nullopt) const;
+      std::optional<PersistentPlannerNode3D> preferred = std::nullopt);
+  // The departure legs answer to the envelope again.
+  void resetDepartureBody() noexcept;
   // How many admissible connections the start has, for bounding that walk.
   [[nodiscard]] std::size_t departureConnectionCount(const Point3& start) const;
 
@@ -547,6 +555,9 @@ private:
   // The same world judged by the physical body alone, for a departure the
   // envelope admits nowhere.
   std::optional<OccupiedCollisionOracle3D> departure_hull_collision_oracle_;
+  // Whether this update's departure legs answer to the hull rather than the
+  // envelope, fixed when the connection was selected.
+  bool departure_uses_hull_{false};
   // Level-zero edges are dense: every node owns the thirteen canonical edges
   // that leave it towards a lexicographically greater neighbour, two state
   // bits each (unknown, clear, blocked). Their raw flight time depends only on

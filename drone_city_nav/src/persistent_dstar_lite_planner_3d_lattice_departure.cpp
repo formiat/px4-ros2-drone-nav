@@ -107,10 +107,14 @@ std::size_t PlannerLattice3D::departureConnectionCount(const Point3& start) cons
 
 PlannerLattice3D::DepartureConnection3D PlannerLattice3D::selectDepartureConnection(
     const Point3& start, const std::size_t skipped_connections,
-    const std::optional<PersistentPlannerNode3D> preferred) const {
+    const std::optional<PersistentPlannerNode3D> preferred) {
   DepartureConnection3D result;
+  departure_uses_hull_ = false;
   const std::vector<PersistentPlannerNode3D> anchors =
       admissibleAnchors(start, true, &result.diagnostics);
+  // Every departure leg this update answers to the body the anchors were
+  // found with, so the path validation cannot refuse what the selection took.
+  departure_uses_hull_ = result.diagnostics.hull_fallback;
   if (!anchors.empty()) {
     if (skipped_connections == 0U && preferred.has_value() &&
         std::ranges::find(anchors, *preferred) != anchors.end()) {

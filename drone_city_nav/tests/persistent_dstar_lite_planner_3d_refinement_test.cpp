@@ -657,9 +657,15 @@ TEST(PersistentDStarLitePlanner3DTest, TheDepartureFallsBackToTheHullOnlyWhenItM
     boxed_update = boxed_planner.plan(request(boxed_start, goal, world(occupancy, 2U)));
   }
 
-  // The departure exists at all only because the hull was asked for it.
+  // The departure exists at all only because the hull was asked for it, and
+  // the route that leaves through it is published: a path validation that
+  // still demanded the envelope on the same leg would refuse every candidate.
   EXPECT_TRUE(boxed_update.telemetry.departure_hull_fallback);
   EXPECT_NE(boxed_update.input_status, PlannerInputStatus3D::kStartUnavailable);
+  for (int attempt = 0; attempt < 12 && !boxed_update.publishable(); ++attempt) {
+    boxed_update = boxed_planner.plan(request(boxed_start, goal, world(occupancy, 2U)));
+  }
+  EXPECT_TRUE(boxed_update.publishable());
 }
 
 } // namespace drone_city_nav

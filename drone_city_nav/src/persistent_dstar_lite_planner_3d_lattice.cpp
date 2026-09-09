@@ -513,11 +513,16 @@ bool PlannerLattice3D::departureSegmentValid(const Point3& first,
   return departureSegmentValidation(first, second).clear();
 }
 
+void PlannerLattice3D::resetDepartureBody() noexcept {
+  departure_uses_hull_ = false;
+}
+
 OccupiedCollisionResult3D
 PlannerLattice3D::departureSegmentValidation(const Point3& first, const Point3& second,
                                              const bool hull) const {
   const std::optional<OccupiedCollisionOracle3D>& oracle =
-      hull ? departure_hull_collision_oracle_ : departure_collision_oracle_;
+      hull || departure_uses_hull_ ? departure_hull_collision_oracle_
+                                   : departure_collision_oracle_;
   if (!oracle.has_value()) {
     return {.status = OccupiedCollisionStatus3D::kInvalidInput, .failure_point = first};
   }

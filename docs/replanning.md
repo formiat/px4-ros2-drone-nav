@@ -391,6 +391,12 @@ the hull was tried and withdrawn: ordinary routes then left the vehicle closer
 to evidence than the envelope admits, and the flights that followed were worse
 on every count, one of them lost to a collision.
 
+Selecting the connection fixes the body every departure leg answers to for the
+rest of that update. Judged separately, the fallback found a departure that the
+candidate validation then refused on the same leg, and the search spent whole
+updates on candidates nothing could publish while the vehicle waited without a
+route.
+
 ## Leaving A Closed Component
 
 A vehicle can stand where every lattice node it reaches belongs to a component
