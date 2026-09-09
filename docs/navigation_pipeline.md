@@ -473,7 +473,18 @@ drifted a fifth of a metre while holding, and met it.
 
 When no rung of that ladder sweeps clear, the stop is refused and the hold
 flow answers with the rest hold, the revocation or the resident owner,
-whichever the plan admits. Certifying the brake anyway, with the hull's
+whichever the plan admits. A moving vehicle has no rest hold to fall back on,
+so the revocation is the last thing left to publish, and it must always have a
+plan transition to commit. The suspension it prefers keeps the certified route
+for a successor to resume from and is admissible only while the plan still
+follows that route; a plan that has already moved on refuses it, and giving up
+there published nothing at all. Every recorded flight showed the same shape:
+the node decided to revoke while the vehicle carried three to five metres a
+second, no message reached the offboard, and it went on flying the horizon
+whose evidence had just invalidated it — one of them into a structure a second
+later. A plan that cannot be suspended is therefore revoked outright. The
+route it was holding is lost and the search replans from the hold, which is
+the price of telling the vehicle the truth about the horizon it is flying. Certifying the brake anyway, with the hull's
 occupied-evidence verdict tolerated, was tried and withdrawn: the contact the
 vehicle already has is exempt through the proprioceptive seed, so a verdict
 that survives that exemption is evidence ahead of the vehicle, and a

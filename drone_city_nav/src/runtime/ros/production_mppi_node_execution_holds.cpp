@@ -436,8 +436,19 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionRevocatio
           suspension.status == ExecutionRouteTransitionStatus3D::kNoChange) {
         return suspension;
       }
-      return ExecutionRouteTransitionResult3D{};
     }
+    // The suspension keeps the certified route for a successor to resume from,
+    // and it is admissible only while the plan still follows that route with
+    // its finite execution and braking fallback in place. A plan that has
+    // moved on -- awaiting a successor while it still owns the horizon the
+    // vehicle is flying -- refuses it, and giving up there left the revocation
+    // unpublished with nothing else to publish: the offboard went on flying
+    // the horizon whose evidence had just invalidated it, and one recorded
+    // flight met a structure a second after the node had decided to revoke.
+    // The wire message is the whole point of a fail-closed revocation, so the
+    // plan is revoked outright when it cannot be suspended. The route it was
+    // holding is worth less than the vehicle, and the search replans from the
+    // hold the revocation leaves.
     return revokeExecution3D(*expected, expected->version);
   }();
   const bool certified_route_preserved =
@@ -448,6 +459,15 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionRevocatio
   const bool transition_required = transition.applied();
   if (!transition_required &&
       transition.status != ExecutionRouteTransitionStatus3D::kNoChange) {
+    const std::string_view transition_name =
+        executionRouteTransitionStatus3DName(transition.status);
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+                         "EXECUTION_HORIZON revoked=false reason=%s "
+                         "stage=plan_transition_refused transition=%.*s "
+                         "action=stale_horizon_left_on_the_wire",
+                         productionMppiExecutionReasonName(reason),
+                         static_cast<int>(transition_name.size()),
+                         transition_name.data());
     return publication;
   }
   const std::int64_t publication_now_ns = get_clock()->now().nanoseconds();

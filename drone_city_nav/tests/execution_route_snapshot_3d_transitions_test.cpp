@@ -47,6 +47,33 @@ TEST(ExecutionRouteSnapshot3DTest,
   EXPECT_TRUE(resumed.next->brakingFallback() != nullptr);
 }
 
+TEST(ExecutionRouteSnapshot3DTest, APlanThatCannotBeSuspendedIsStillRevocable) {
+  // The fail-closed revocation prefers the suspension, which keeps the
+  // certified route for a successor to resume from. The suspension is
+  // admissible only while the plan still follows that route, so a plan that
+  // has moved on refuses it, and the revocation must have a transition of its
+  // own to commit: without one nothing reaches the offboard, which goes on
+  // flying the horizon the evidence has just invalidated.
+  SnapshotFixture3D fixture;
+  const std::shared_ptr<const ExecutionPlan3D> active = fixture.activeSnapshot();
+  ASSERT_NE(active, nullptr);
+  const ExecutionRouteTransitionResult3D suspended =
+      suspendFiniteExecution3D(*active, active->version);
+  ASSERT_TRUE(suspended.applied());
+  ASSERT_NE(suspended.next, nullptr);
+  ASSERT_EQ(suspendFiniteExecution3D(*suspended.next, suspended.next->version).status,
+            ExecutionRouteTransitionStatus3D::kNoChange);
+
+  const ExecutionRouteTransitionResult3D revoked =
+      revokeExecution3D(*suspended.next, suspended.next->version);
+
+  ASSERT_TRUE(revoked.applied());
+  ASSERT_NE(revoked.next, nullptr);
+  EXPECT_EQ(revoked.next->phase(), ExecutionRoutePhase3D::kRevoked);
+  EXPECT_FALSE(revoked.next->route() != nullptr);
+  EXPECT_FALSE(revoked.next->finiteExecution() != nullptr);
+}
+
 TEST(ExecutionRouteSnapshot3DTest,
      SuspendedRouteAcceptsAFullyCertifiedSameIntentCurrentStateSuccessor) {
   SnapshotFixture3D fixture;
