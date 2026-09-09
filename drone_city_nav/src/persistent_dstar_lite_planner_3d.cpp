@@ -402,6 +402,8 @@ bool PersistentDStarLitePlanner3DImpl::validRequest(
          config_.maximum_extracted_path_nodes > 1U &&
          std::isfinite(config_.maximum_compute_time_ms) &&
          config_.maximum_compute_time_ms > 0.0 &&
+         std::isfinite(config_.maximum_no_route_compute_time_ms) &&
+         config_.maximum_no_route_compute_time_ms > 0.0 &&
          std::isfinite(config_.execution_time_refinement_minimum_improvement_s) &&
          config_.execution_time_refinement_minimum_improvement_s >= 0.0 &&
          std::isfinite(config_.execution_time_refinement_minimum_improvement_ratio) &&
@@ -442,15 +444,26 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   // of the updates, so the route the vehicle flew came from the unranked
   // feasibility branch again and again. Reserving the tail of the update for
   // the session is what lets the ranked route exist at all.
-  const auto deadline =
-      operation_started +
-      std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-          std::chrono::duration<double, std::milli>{config_.maximum_compute_time_ms});
+  // A route the vehicle does not have is worth publishing the moment it
+  // exists, and a found route reaches it only when the update ends. With no
+  // route held the update is shortened, never past the full budget, so the
+  // searches are harvested more
+  // often; their work per second is unchanged, the fixed cost of an update
+  // being a millisecond and a half against a hundred and fifty of work.
+  const double compute_time_ms =
+      coordinator_.incumbent() == nullptr
+          ? std::min(config_.maximum_no_route_compute_time_ms,
+                     config_.maximum_compute_time_ms)
+          : config_.maximum_compute_time_ms;
+  telemetry.compute_budget_ms = compute_time_ms;
+  const auto deadline = operation_started +
+                        std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                            std::chrono::duration<double, std::milli>{compute_time_ms});
   lattice_.beginEdgeRefinementBudget();
   const auto spatial_search_reserve =
       std::chrono::duration_cast<std::chrono::steady_clock::duration>(
           std::chrono::duration<double, std::milli>{
-              config_.maximum_compute_time_ms *
+              compute_time_ms *
               std::clamp(config_.guaranteed_spatial_search_fraction, 0.0, 0.9)});
 
   const std::uint64_t previous_producer = world_.producer_instance_id;

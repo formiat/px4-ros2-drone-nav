@@ -387,6 +387,8 @@ void ProductionMppiConfigLoader::declarePlanning() {
       "persistent_planner_maximum_clearance_centering_queries", 4'096);
   planner.maximum_compute_time_ms =
       declare<double>("persistent_planner_maximum_compute_time_ms", 150.0);
+  planner.maximum_no_route_compute_time_ms =
+      declare<double>("persistent_planner_maximum_no_route_compute_time_ms", 60.0);
   planner.clearance_ranking_weight =
       declare<double>("persistent_planner_clearance_ranking_weight", 1.5);
   planner.clearance_ranking_distance_m =

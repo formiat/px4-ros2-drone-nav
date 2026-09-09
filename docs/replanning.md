@@ -159,6 +159,17 @@ session's reserve out of what remains when it starts
 (`persistent_planner_maximum_feasibility_compute_time_ms`, capped at a third
 of the remainder) and takes the rest.
 
+An update that begins with no route held is given a shorter budget than one
+that begins with a route (`persistent_planner_maximum_no_route_compute_time_ms`,
+capped by `persistent_planner_maximum_compute_time_ms`). A route found inside an
+update reaches the vehicle only when that update ends, so the update's length is
+the wait: with a hundred and fifty millisecond update the vehicle waits up to
+that long after the route already exists. Almost none of an update is fixed
+cost — measured with no route held, an update spent 1.5 ms installing the world
+against 105 ms of search — so harvesting the same searches two or three times as
+often costs the searches almost nothing and cuts the wait by the same factor. A
+vehicle with a route can wait for a better one; a vehicle without one cannot.
+
 Seeding the refinement with the feasibility route — so that it would improve it
 directly — was tried and does not work: the refinement treats its seed as an
 anytime *bound*, so a feasibility seed makes it declare at once that it cannot

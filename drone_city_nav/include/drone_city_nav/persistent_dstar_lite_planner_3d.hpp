@@ -136,6 +136,14 @@ struct PersistentPlannerConfig3D {
   std::size_t clearance_centering_passes{3U};
   std::size_t maximum_clearance_centering_queries{4096U};
   double maximum_compute_time_ms{150.0};
+  // The budget of an update that begins while no route is held, capped by the
+  // budget above. A found route reaches the vehicle only when the update it
+  // was found in ends, so a long update is a long wait: measured, the fixed
+  // cost of an update is a millisecond and a half against a hundred and fifty
+  // of work, and the searches lose almost nothing by being harvested three
+  // times as often. A vehicle with a route can wait for a better one; a
+  // vehicle without one cannot.
+  double maximum_no_route_compute_time_ms{60.0};
   // Share of one update reserved for the shortest-path search, whatever the
   // stages before it spend. Repair, change scheduling and the feasibility
   // search all run first against the same budget, and between them they took
@@ -267,6 +275,8 @@ struct PlannerTelemetry3D {
   double world_diff_ms{0.0};
   double world_install_ms{0.0};
   double search_ms{0.0};
+  // The budget this update was given: shortened while no route is held.
+  double compute_budget_ms{0.0};
   // Breakdown of the search phases of this update: the feasibility-first
   // search, the affected-vertex repair, the persistent spatial search, and
   // the execution-time refinement.
