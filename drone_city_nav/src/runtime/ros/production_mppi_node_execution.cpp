@@ -82,8 +82,11 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionHorizon(
   if (!execution_horizon_pub_) {
     return publication;
   }
+  // The input is labelled for a stationary rearm only by the planning tick's
+  // own gate, at a captured goal or at rest after a fail-closed revocation.
   const bool stationary_capture_rearm =
-      planning_state == ProductionMppiPlanningState::kMissionGoalPositionHold &&
+      (planning_state == ProductionMppiPlanningState::kMissionGoalPositionHold ||
+       planning_state == ProductionMppiPlanningState::kNoExecutableRouteHold) &&
       execution_input != nullptr &&
       execution_input->stationaryCaptureStateAuthoritative();
   if (objective == nullptr || execution_input == nullptr || !execution_input->valid() ||

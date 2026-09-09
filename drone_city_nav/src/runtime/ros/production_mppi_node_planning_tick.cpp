@@ -355,38 +355,45 @@ void ProductionMppiNode::planningTick() {
     return;
   }
   const std::uint64_t execution_input_sequence = ++execution_input_capture_sequence_;
+  const ProductionMppiStationaryCaptureRearmContext stationary_capture_rearm_context{
+      .objective = objective.get(),
+      .mission_waypoint_sequence = mission_waypoint_sequence_.get(),
+      .navigation = &navigation,
+      .vehicle_status = &vehicle_status,
+      .execution_authority = execution_authority,
+      .offboard_session = &offboard_session,
+      .world = world.get(),
+      .latest_raw_world_3d = latest_raw_world_3d,
+      .latest_lidar_evidence = latest_lidar_evidence,
+      .validation_policy = config_.execution.validation_policy,
+      .static_occupancy_3d = world->static_occupancy,
+      .capture_gate_config = config_.execution.mission_waypoint_capture_gate,
+      .mission_goal = mission_goal,
+      .now_ns = now_ns,
+      .offboard_session_receive_stamp_ns = offboard_session_receive_stamp_ns,
+      .maximum_pose_age_ms = config_.execution.maximum_pose_age_ms,
+      .maximum_control_feedback_age_ms =
+          config_.execution.maximum_control_feedback_age_ms,
+      .maximum_observation_age_ms = config_.world.maximum_esdf_age_ms +
+                                    config_.execution.stale_esdf_execution_window_ms,
+      .observation_age_ms = observation_age_ms,
+      .vehicle_status_epoch_stable = vehicle_status_epoch_stable,
+      .terminal_hold_enabled = terminal_hold_enabled,
+      .goal_capture_latched = goal_capture_latched,
+      .use_static_map = config_.world.use_static_map,
+      .observed_3d_world = observed_3d_world,
+  };
   const char* const stationary_capture_rearm_failure =
       stationaryCaptureRearmIneligibilityForPlanningTick(
-          ProductionMppiStationaryCaptureRearmContext{
-              .objective = objective.get(),
-              .mission_waypoint_sequence = mission_waypoint_sequence_.get(),
-              .navigation = &navigation,
-              .vehicle_status = &vehicle_status,
-              .execution_authority = execution_authority,
-              .offboard_session = &offboard_session,
-              .world = world.get(),
-              .latest_raw_world_3d = latest_raw_world_3d,
-              .latest_lidar_evidence = latest_lidar_evidence,
-              .validation_policy = config_.execution.validation_policy,
-              .static_occupancy_3d = world->static_occupancy,
-              .capture_gate_config = config_.execution.mission_waypoint_capture_gate,
-              .mission_goal = mission_goal,
-              .now_ns = now_ns,
-              .offboard_session_receive_stamp_ns = offboard_session_receive_stamp_ns,
-              .maximum_pose_age_ms = config_.execution.maximum_pose_age_ms,
-              .maximum_control_feedback_age_ms =
-                  config_.execution.maximum_control_feedback_age_ms,
-              .maximum_observation_age_ms =
-                  config_.world.maximum_esdf_age_ms +
-                  config_.execution.stale_esdf_execution_window_ms,
-              .observation_age_ms = observation_age_ms,
-              .vehicle_status_epoch_stable = vehicle_status_epoch_stable,
-              .terminal_hold_enabled = terminal_hold_enabled,
-              .goal_capture_latched = goal_capture_latched,
-              .use_static_map = config_.world.use_static_map,
-              .observed_3d_world = observed_3d_world,
-          });
+          stationary_capture_rearm_context);
   const bool stationary_capture_rearm = stationary_capture_rearm_failure == nullptr;
+  // A vehicle at rest after a fail-closed revocation, anywhere on its mission,
+  // is rearmed the same way it is at a captured goal: the offboard's local
+  // hold knows nothing about obstacles and produces no witness a successor
+  // could commit against, and the certified stationary hold does both.
+  const bool stationary_rest_rearm =
+      !stationary_capture_rearm &&
+      stationaryRestRearmEligibleForPlanningTick(stationary_capture_rearm_context);
   if (goal_capture_latched && !stationary_capture_rearm) {
     RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
                          "STATIONARY_CAPTURE_REARM eligible=false reason=%s",
@@ -397,7 +404,7 @@ void ProductionMppiNode::planningTick() {
       prepareExecutionInputForPlanningTick(
           navigation, execution_authority, execution_input_sequence, now_ns,
           config_.execution.maximum_control_feedback_age_ms, pose_predicted,
-          stationary_capture_rearm);
+          stationary_capture_rearm || stationary_rest_rearm);
   const double execution_input_ms =
       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                 execution_input_started)

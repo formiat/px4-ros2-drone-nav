@@ -46,9 +46,12 @@ namespace {
 
 } // namespace
 
-const char* missionWaypointStationaryRearmIneligibility(
+namespace {
+
+[[nodiscard]] const char* stationaryRearmIneligibility(
     const MissionWaypointStationaryRearmGateConfig& config,
-    const MissionWaypointStationaryRearmObservation& observation) noexcept {
+    const MissionWaypointStationaryRearmObservation& observation,
+    const bool at_captured_goal) noexcept {
   const bool config_valid = std::isfinite(config.maximum_pose_age_s) &&
                             config.maximum_pose_age_s > 0.0 &&
                             std::isfinite(config.maximum_vehicle_status_age_s) &&
@@ -70,7 +73,7 @@ const char* missionWaypointStationaryRearmIneligibility(
   if (!observation.objective_eligible) {
     return "objective_not_eligible";
   }
-  if (!observation.goal_capture_latched) {
+  if (at_captured_goal && !observation.goal_capture_latched) {
     return "goal_capture_not_latched";
   }
   if (!observation.execution_input_state_authoritative) {
@@ -118,7 +121,8 @@ const char* missionWaypointStationaryRearmIneligibility(
       !std::isfinite(observation.yaw_rate_radps)) {
     return "observation_not_finite";
   }
-  if (!samePoint(observation.mission_goal, observation.active_waypoint_goal)) {
+  if (at_captured_goal &&
+      !samePoint(observation.mission_goal, observation.active_waypoint_goal)) {
     return "mission_goal_mismatch";
   }
 
@@ -150,8 +154,8 @@ const char* missionWaypointStationaryRearmIneligibility(
   const double total_speed_mps =
       std::hypot(std::hypot(observation.velocity.x, observation.velocity.y),
                  observation.velocity.z);
-  if (distance3D(observation.position, observation.mission_goal) >
-      config.position_tolerance_m) {
+  if (at_captured_goal && distance3D(observation.position, observation.mission_goal) >
+                              config.position_tolerance_m) {
     return "position_outside_tolerance";
   }
   if (total_speed_mps > config.speed_tolerance_mps) {
@@ -161,6 +165,26 @@ const char* missionWaypointStationaryRearmIneligibility(
     return "yaw_rate_outside_tolerance";
   }
   return nullptr;
+}
+
+} // namespace
+
+const char* missionWaypointStationaryRearmIneligibility(
+    const MissionWaypointStationaryRearmGateConfig& config,
+    const MissionWaypointStationaryRearmObservation& observation) noexcept {
+  return stationaryRearmIneligibility(config, observation, /*at_captured_goal=*/true);
+}
+
+const char* stationaryRestRearmIneligibility(
+    const MissionWaypointStationaryRearmGateConfig& config,
+    const MissionWaypointStationaryRearmObservation& observation) noexcept {
+  return stationaryRearmIneligibility(config, observation, /*at_captured_goal=*/false);
+}
+
+bool stationaryRestRearmEligible(
+    const MissionWaypointStationaryRearmGateConfig& config,
+    const MissionWaypointStationaryRearmObservation& observation) noexcept {
+  return stationaryRestRearmIneligibility(config, observation) == nullptr;
 }
 
 bool missionWaypointStationaryRearmEligible(

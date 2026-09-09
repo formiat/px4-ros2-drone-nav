@@ -361,4 +361,54 @@ TEST(MissionWaypointCaptureGateTest,
 }
 
 } // namespace
+
+TEST(MissionWaypointCaptureGateTest, RestRearmIsTheGoalRearmWithoutTheGoal) {
+  // A vehicle at rest after a fail-closed revocation, far from any goal and
+  // with no capture latched: the goal rearm refuses it for exactly those,
+  // and the rest rearm grants it. The tightening of any other predicate
+  // refuses both.
+  const MissionWaypointStationaryRearmGateConfig config{};
+  MissionWaypointStationaryRearmObservation observation{
+      .stamp_ns = 10'000'000'000LL,
+      .mission_goal = Point3{50.0, 50.0, 10.0},
+      .active_waypoint_goal = Point3{50.0, 50.0, 10.0},
+      .position = Point3{1.0, 2.0, 3.0},
+      .velocity = Point3{0.05, 0.0, 0.0},
+      .pose_receive_stamp_ns = 9'950'000'000LL,
+      .vehicle_status_receive_stamp_ns = 9'900'000'000LL,
+      .offboard_session_source_stamp_ns = 9'950'000'000LL,
+      .offboard_session_receive_stamp_ns = 9'950'000'000LL,
+      .offboard_instance_id = 7U,
+      .yaw_rate_radps = 0.0,
+      .objective_eligible = true,
+      .goal_capture_latched = false,
+      .execution_input_state_authoritative = true,
+      .position_velocity_authoritative = true,
+      .yaw_rate_authoritative = true,
+      .vehicle_status_valid = true,
+      .vehicle_status_epoch_stable = true,
+      .armed = true,
+      .offboard_session_valid = true,
+      .applied_control_empty = true,
+      .horizon_owner_empty = true,
+      .execution_snapshot_revoked_empty = true,
+      .validation_policy_current = true,
+      .world_evidence_current = true,
+      .lidar_evidence_current = true,
+  };
+
+  EXPECT_STREQ(missionWaypointStationaryRearmIneligibility(config, observation),
+               "goal_capture_not_latched");
+  EXPECT_EQ(stationaryRestRearmIneligibility(config, observation), nullptr);
+  EXPECT_TRUE(stationaryRestRearmEligible(config, observation));
+
+  observation.velocity = Point3{0.5, 0.0, 0.0};
+  EXPECT_STREQ(stationaryRestRearmIneligibility(config, observation),
+               "speed_outside_tolerance");
+  observation.velocity = Point3{0.0, 0.0, 0.0};
+  observation.execution_snapshot_revoked_empty = false;
+  EXPECT_STREQ(stationaryRestRearmIneligibility(config, observation),
+               "execution_snapshot_not_revoked_empty");
+}
+
 } // namespace drone_city_nav

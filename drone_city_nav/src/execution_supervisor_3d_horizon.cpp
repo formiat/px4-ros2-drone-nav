@@ -392,6 +392,18 @@ previousControlCurrent(const VersionedExecutionInput3D& input,
   return false;
 }
 
+// The reasons a stationary rearm hold may carry: the goal it captured, or the
+// fail-closed revocation it rests after. The witness the rearm stands on is the
+// state identity -- a revoked, empty plan, no resident owner or control, and a
+// hold whose input is the vehicle's own state -- not the reason.
+[[nodiscard]] bool
+stationaryRearmReason(const ExecutionAuthorityReason3D reason) noexcept {
+  return reason == ExecutionAuthorityReason3D::kGoalCapture ||
+         reason == ExecutionAuthorityReason3D::kNoExecutableRoute ||
+         reason == ExecutionAuthorityReason3D::kNoExecutableHorizon ||
+         reason == ExecutionAuthorityReason3D::kUnavailableWorld;
+}
+
 [[nodiscard]] bool stationaryCaptureRearmCommit(
     const ExecutionHorizonLeaseCandidate3D& candidate,
     const ExecutionPlan3D& publication_plan, const ExecutionOwnerIdentity3D& owner,
@@ -413,7 +425,7 @@ previousControlCurrent(const VersionedExecutionInput3D& input,
          hold->position.y == owner.stationary_hold_position.y &&
          hold->position.z == owner.stationary_hold_position.z &&
          owner.execution_mode == ExecutionAuthorityMode3D::kPositionHold &&
-         owner.execution_reason == ExecutionAuthorityReason3D::kGoalCapture &&
+         stationaryRearmReason(owner.execution_reason) &&
          owner.stationary_position_hold && !resident_owner.valid &&
          !resident_control.valid &&
          sameState(navigation.state, hold->terminal_execution_input->state());

@@ -11,6 +11,7 @@
 #include <string_view>
 
 #include "production_mppi_node_execution_internal.hpp"
+#include "production_mppi_node_planning_tick_rearm.hpp"
 #include "raw_world_ingress_ros_3d.hpp"
 
 namespace drone_city_nav {
@@ -316,8 +317,17 @@ ProductionMppiNode::publishRestHold(const ProductionMppiExecutionCycle& cycle,
   const Point3 rest_position{cycle.evidence.exact_initial_state.x,
                              cycle.evidence.exact_initial_state.y,
                              cycle.evidence.exact_initial_state.z};
+  // A plan that owns nothing has no resident evidence an explicit transfer
+  // could certify the hold against; the rest hold on such a plan is the
+  // stationary rearm, from the input the planning tick labelled for it.
+  const bool rest_rearm =
+      executionSnapshotRevokedEmpty(cycle.route.execution.source_snapshot) &&
+      cycle.evidence.execution_input != nullptr &&
+      cycle.evidence.execution_input->stationaryCaptureStateAuthoritative();
   ProductionMppiExecutionPublication hold = publishPositionHold(
-      cycle, rest_position, reason, ExecutionHoldIntent3D::kExplicitTransfer);
+      cycle, rest_position, reason,
+      rest_rearm ? ExecutionHoldIntent3D::kExplicitTransferWithStationaryCaptureRearm
+                 : ExecutionHoldIntent3D::kExplicitTransfer);
   if (hold.published) {
     RCLCPP_WARN(get_logger(),
                 "EXECUTION_HOLD rest=true reason=%s position=(%.2f,%.2f,%.2f) "

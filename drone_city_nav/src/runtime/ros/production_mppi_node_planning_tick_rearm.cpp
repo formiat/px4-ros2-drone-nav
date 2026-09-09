@@ -8,9 +8,7 @@
 #include "production_mppi_route_world.hpp"
 
 namespace drone_city_nav {
-namespace {
-
-[[nodiscard]] bool executionSnapshotRevokedEmpty(
+bool executionSnapshotRevokedEmpty(
     const std::shared_ptr<const ExecutionPlan3D>& snapshot) noexcept {
   return snapshot != nullptr && snapshot->valid() &&
          snapshot->phase() == ExecutionRoutePhase3D::kRevoked &&
@@ -18,6 +16,8 @@ namespace {
          snapshot->directTrackingExecution() == nullptr &&
          snapshot->stationaryHold() == nullptr;
 }
+
+namespace {
 
 [[nodiscard]] bool observedWorldCurrentForStationaryRearm(
     const WorldSnapshot3D& world, const ProductionMppiRawWorld3D* raw_world) noexcept {
@@ -34,10 +34,9 @@ namespace {
   return resident.sameLineage(latest) && resident.revision <= latest.revision;
 }
 
-} // namespace
-
-const char* stationaryCaptureRearmIneligibilityForPlanningTick(
-    const ProductionMppiStationaryCaptureRearmContext& context) {
+[[nodiscard]] const char* stationaryRearmIneligibilityForPlanningTick(
+    const ProductionMppiStationaryCaptureRearmContext& context,
+    const bool at_captured_goal) {
   if (context.objective == nullptr || context.mission_waypoint_sequence == nullptr ||
       context.navigation == nullptr || context.vehicle_status == nullptr ||
       context.offboard_session == nullptr || context.world == nullptr) {
@@ -52,9 +51,13 @@ const char* stationaryCaptureRearmIneligibilityForPlanningTick(
       context.execution_authority->owner();
   const bool owner_lease_expired =
       execution_owner.valid && context.now_ns >= execution_owner.valid_until_ns;
+  // At the goal the rearm is the terminal hold's own: it needs the terminal
+  // hold enabled and the capture latched. At rest anywhere else it needs only
+  // an objective the vehicle can be at rest under.
   const bool stationary_rearm_candidate =
       !context.objective->tracking.has_value() && !context.objective->immediate_hold &&
-      context.terminal_hold_enabled && context.goal_capture_latched;
+      (!at_captured_goal ||
+       (context.terminal_hold_enabled && context.goal_capture_latched));
   const bool validation_policy_current = stationary_rearm_candidate &&
                                          context.validation_policy != nullptr &&
                                          context.validation_policy->valid();
@@ -76,57 +79,77 @@ const char* stationaryCaptureRearmIneligibilityForPlanningTick(
       observedWorldCurrentForStationaryRearm(*context.world,
                                              context.latest_raw_world_3d.get());
 
-  return missionWaypointStationaryRearmIneligibility(
-      MissionWaypointStationaryRearmGateConfig{
-          .maximum_pose_age_s = context.maximum_pose_age_ms * 1.0e-3,
-          .maximum_vehicle_status_age_s =
-              context.capture_gate_config.maximum_vehicle_status_age_s,
-          .maximum_offboard_session_age_s =
-              context.maximum_control_feedback_age_ms * 1.0e-3,
-          .position_tolerance_m = context.capture_gate_config.goal_radius_m,
-          .speed_tolerance_mps = kStationaryExecutionHoldSpeedToleranceMps,
-          .yaw_rate_tolerance_radps = kStationaryExecutionHoldYawRateToleranceRadps,
-      },
-      MissionWaypointStationaryRearmObservation{
-          .stamp_ns = context.now_ns,
-          .mission_goal = context.mission_goal,
-          .active_waypoint_goal = context.mission_waypoint_sequence->activeGoal(),
-          .position = Point3{context.navigation->state.x, context.navigation->state.y,
-                             context.navigation->state.z},
-          .velocity = Point3{context.navigation->state.vx, context.navigation->state.vy,
-                             context.navigation->state.vz},
-          .pose_receive_stamp_ns = context.navigation->receive_stamp_ns,
-          .vehicle_status_receive_stamp_ns = context.vehicle_status->receive_stamp_ns,
-          .offboard_session_source_stamp_ns =
-              context.offboard_session->latest_source_stamp_ns,
-          .offboard_session_receive_stamp_ns =
-              context.offboard_session_receive_stamp_ns,
-          .offboard_instance_id =
-              context.offboard_session->current_producer_instance_id,
-          .yaw_rate_radps = context.navigation->state.yaw_rate,
-          .objective_eligible = stationary_rearm_candidate,
-          .goal_capture_latched = context.goal_capture_latched,
-          .execution_input_state_authoritative =
-              context.navigation->valid && context.navigation->full_state_authoritative,
-          .position_velocity_authoritative =
-              context.navigation->position_velocity_authoritative,
-          .yaw_rate_authoritative = context.navigation->yaw_rate_authoritative,
-          .vehicle_status_valid = context.vehicle_status->valid,
-          .vehicle_status_epoch_stable = context.vehicle_status_epoch_stable,
-          .armed = context.vehicle_status->armed,
-          .offboard_session_valid = context.offboard_session->valid(),
-          // An owner whose lease has expired holds no wire authority any more;
-          // the offboard is in its local terminal hold, exactly the state a
-          // stationary capture rearm takes over. Applied-control evidence of
-          // that expired lease is equally moot.
-          .applied_control_empty = applied_control.empty() || owner_lease_expired,
-          .horizon_owner_empty = execution_owner.empty() || owner_lease_expired,
-          .execution_snapshot_revoked_empty =
-              executionSnapshotRevokedEmpty(context.execution_authority->plan()),
-          .validation_policy_current = validation_policy_current,
-          .world_evidence_current = static_world_current || observed_world_current,
-          .lidar_evidence_current = lidar_evidence_current,
-      });
+  const MissionWaypointStationaryRearmGateConfig gate_config{
+      .maximum_pose_age_s = context.maximum_pose_age_ms * 1.0e-3,
+      .maximum_vehicle_status_age_s =
+          context.capture_gate_config.maximum_vehicle_status_age_s,
+      .maximum_offboard_session_age_s =
+          context.maximum_control_feedback_age_ms * 1.0e-3,
+      .position_tolerance_m = context.capture_gate_config.goal_radius_m,
+      .speed_tolerance_mps = kStationaryExecutionHoldSpeedToleranceMps,
+      .yaw_rate_tolerance_radps = kStationaryExecutionHoldYawRateToleranceRadps,
+  };
+  const MissionWaypointStationaryRearmObservation gate_observation{
+      .stamp_ns = context.now_ns,
+      .mission_goal = context.mission_goal,
+      .active_waypoint_goal = context.mission_waypoint_sequence->activeGoal(),
+      .position = Point3{context.navigation->state.x, context.navigation->state.y,
+                         context.navigation->state.z},
+      .velocity = Point3{context.navigation->state.vx, context.navigation->state.vy,
+                         context.navigation->state.vz},
+      .pose_receive_stamp_ns = context.navigation->receive_stamp_ns,
+      .vehicle_status_receive_stamp_ns = context.vehicle_status->receive_stamp_ns,
+      .offboard_session_source_stamp_ns =
+          context.offboard_session->latest_source_stamp_ns,
+      .offboard_session_receive_stamp_ns = context.offboard_session_receive_stamp_ns,
+      .offboard_instance_id = context.offboard_session->current_producer_instance_id,
+      .yaw_rate_radps = context.navigation->state.yaw_rate,
+      .objective_eligible = stationary_rearm_candidate,
+      .goal_capture_latched = context.goal_capture_latched,
+      .execution_input_state_authoritative =
+          context.navigation->valid && context.navigation->full_state_authoritative,
+      .position_velocity_authoritative =
+          context.navigation->position_velocity_authoritative,
+      .yaw_rate_authoritative = context.navigation->yaw_rate_authoritative,
+      .vehicle_status_valid = context.vehicle_status->valid,
+      .vehicle_status_epoch_stable = context.vehicle_status_epoch_stable,
+      .armed = context.vehicle_status->armed,
+      .offboard_session_valid = context.offboard_session->valid(),
+      // An owner whose lease has expired holds no wire authority any more;
+      // the offboard is in its local terminal hold, exactly the state a
+      // stationary capture rearm takes over. Applied-control evidence of
+      // that expired lease is equally moot.
+      .applied_control_empty = applied_control.empty() || owner_lease_expired,
+      .horizon_owner_empty = execution_owner.empty() || owner_lease_expired,
+      .execution_snapshot_revoked_empty =
+          executionSnapshotRevokedEmpty(context.execution_authority->plan()),
+      .validation_policy_current = validation_policy_current,
+      .world_evidence_current = static_world_current || observed_world_current,
+      .lidar_evidence_current = lidar_evidence_current,
+  };
+  return at_captured_goal
+             ? missionWaypointStationaryRearmIneligibility(gate_config,
+                                                           gate_observation)
+             : stationaryRestRearmIneligibility(gate_config, gate_observation);
+}
+
+} // namespace
+
+const char* stationaryCaptureRearmIneligibilityForPlanningTick(
+    const ProductionMppiStationaryCaptureRearmContext& context) {
+  return stationaryRearmIneligibilityForPlanningTick(context,
+                                                     /*at_captured_goal=*/true);
+}
+
+const char* stationaryRestRearmIneligibilityForPlanningTick(
+    const ProductionMppiStationaryCaptureRearmContext& context) {
+  return stationaryRearmIneligibilityForPlanningTick(context,
+                                                     /*at_captured_goal=*/false);
+}
+
+bool stationaryRestRearmEligibleForPlanningTick(
+    const ProductionMppiStationaryCaptureRearmContext& context) {
+  return stationaryRestRearmIneligibilityForPlanningTick(context) == nullptr;
 }
 
 ProductionMppiExecutionInputPreparation prepareExecutionInputForPlanningTick(

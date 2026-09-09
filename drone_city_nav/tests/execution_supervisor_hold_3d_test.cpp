@@ -342,6 +342,58 @@ TEST(ExecutionSupervisorHold3DTest,
   EXPECT_EQ(supervisor.plan(), prepared.transition->next);
 }
 
+TEST(ExecutionSupervisorHold3DTest, ARestRearmCommitsUnderAFailClosedReason) {
+  // The rearm of a vehicle at rest after a revocation carries the revocation's
+  // reason, not a goal capture; the witness it commits on is the state
+  // identity, and the reason does not change it.
+  SnapshotFixture3D fixture;
+  ExecutionSupervisor3D supervisor;
+  const std::shared_ptr<const CommittedExecutionAuthority3D> initial_authority =
+      supervisor.authority();
+  ASSERT_NE(initial_authority, nullptr);
+  const std::shared_ptr<const ExecutionPlan3D> initial = initial_authority->plan();
+  ASSERT_NE(initial, nullptr);
+  const ExecutionRouteTransitionResult3D revocation =
+      revokeExecution3D(*initial, initial->version);
+  ASSERT_TRUE(revocation.applied());
+  ASSERT_EQ(supervisor.commitDetachedTransition(initial_authority, revocation),
+            ExecutionRoutePublicationStatus3D::kPublished);
+  const std::shared_ptr<const ExecutionPlan3D> revoked = supervisor.plan();
+  ASSERT_NE(revoked, nullptr);
+  const std::shared_ptr<const ExecutionPlan3D> fixture_active =
+      fixture.activeSnapshot();
+  ASSERT_NE(fixture_active, nullptr);
+  StationaryExecutionHoldCertification3D capture =
+      SnapshotFixture3D::holdCertification(*fixture_active);
+  capture.execution_input = stationaryCaptureInput(*capture.execution_input);
+  ASSERT_NE(capture.execution_input, nullptr);
+  const ExecutionHoldRequest3D request =
+      holdRequest(revoked, capture,
+                  ExecutionHoldIntent3D::kExplicitTransferWithStationaryCaptureRearm);
+  const ExecutionHoldPreparation3D prepared = supervisor.prepareHold(request);
+  ASSERT_TRUE(prepared.prepared())
+      << executionHoldPreparationStatus3DName(prepared.status);
+  ASSERT_NE(prepared.transition, nullptr);
+
+  ExecutionOwnerIdentity3D owner = holdOwner(*prepared.transition->next, 2U);
+  owner.execution_reason = ExecutionAuthorityReason3D::kNoExecutableRoute;
+  const ExecutionHorizonCommitResult3D committed = commitExecutionHorizonForTest(
+      supervisor, ExecutionHorizonTestTransaction3D{
+                      .kind = ExecutionHorizonCommitKind3D::kTransition,
+                      .expected_authority = prepared.expected_authority,
+                      .expected_plan = prepared.expectedPlan(),
+                      .transition = *prepared.transition,
+                      .expected_pending = nullptr,
+                      .owner = owner,
+                      .input = prepared.executionInput(),
+                      .stationary_capture_rearm_intent = true,
+                  });
+
+  EXPECT_TRUE(committed.committed())
+      << executionHorizonCommitStatus3DName(committed.status);
+  EXPECT_EQ(supervisor.plan(), prepared.transition->next);
+}
+
 TEST(ExecutionSupervisorHold3DTest,
      StaticWorldSupportsTerminalTransferAndStationaryCaptureRearm) {
   SnapshotFixture3D fixture;

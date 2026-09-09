@@ -122,6 +122,21 @@ struct MissionWaypointStationaryRearmObservation {
     const MissionWaypointStationaryRearmGateConfig& config,
     const MissionWaypointStationaryRearmObservation& observation) noexcept;
 
+// The same rearm for a vehicle at rest anywhere, not only at a captured goal:
+// the state a fail-closed revocation leaves it in. Nothing owns its motion,
+// the offboard holds it locally with no knowledge of obstacles, and the
+// certified stationary hold this rearm grants is what takes it back -- a
+// pinned position the evidence was checked against, and an owner a successor
+// route can activate from without waiting for a witness the local hold never
+// produces. Every check of the goal rearm applies except the ones that name
+// the goal: the capture latch, the goal identity, the goal radius.
+[[nodiscard]] bool stationaryRestRearmEligible(
+    const MissionWaypointStationaryRearmGateConfig& config,
+    const MissionWaypointStationaryRearmObservation& observation) noexcept;
+[[nodiscard]] const char* stationaryRestRearmIneligibility(
+    const MissionWaypointStationaryRearmGateConfig& config,
+    const MissionWaypointStationaryRearmObservation& observation) noexcept;
+
 // The gate is tick-aware: beginTick() must be paired with one update(). A
 // planning tick that exits before supplying exact evidence is detected by the
 // next beginTick() and breaks continuity.

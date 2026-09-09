@@ -422,7 +422,22 @@ is next needed and kept while the vehicle still stands within the stationary
 tolerance of it. Re-pinned at each revocation instead, a run of short-lived
 horizons walked the hold a few centimetres at a time, and one recorded flight
 ratcheted twenty centimetres into a wall it had come to rest a hull's width
-from, while supposedly holding. A position setpoint by itself brakes at whatever the
+from, while supposedly holding.
+
+A vehicle at rest after a fail-closed revocation is then rearmed the way it is
+at a captured goal. The local hold knows nothing about obstacles and produces
+no applied-control witness, so a successor route could not commit against it
+until the acknowledgement grace ran out; the certified stationary hold the
+rearm grants is a pinned position the evidence was checked against and an
+owner the successor activates from at once. The rearm applies every check the
+goal rearm applies except the ones that name the goal -- the capture latch, the
+goal identity, the goal radius -- and the hold carries the revocation's reason
+rather than a goal capture; the witness it commits on is the state identity,
+a revoked and empty plan with no owner or control and a hold whose input is
+the vehicle's own state. Before it, every such rest went to the offboard's
+local hold, because an explicit transfer has no resident evidence to certify a
+hold on a revoked plan against (`validation_world_unavailable`, four to six
+times a run). A position setpoint by itself brakes at whatever the
 position loop makes of a zero error: measured, a vehicle handed such a hold at
 1.9 m/s took nine tenths of a metre to stop, half the deceleration every
 stopping distance in the stack assumes, and met the structure it had been

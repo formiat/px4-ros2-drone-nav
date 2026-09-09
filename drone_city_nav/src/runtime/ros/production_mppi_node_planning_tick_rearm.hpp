@@ -43,6 +43,18 @@ struct ProductionMppiStationaryCaptureRearmContext {
 [[nodiscard]] bool stationaryCaptureRearmEligibleForPlanningTick(
     const ProductionMppiStationaryCaptureRearmContext& context);
 
+// The rearm of a vehicle at rest after a fail-closed revocation, anywhere on
+// its mission: the goal rearm without the goal. Names the first failing
+// predicate, or nullptr when the tick may rearm.
+[[nodiscard]] const char* stationaryRestRearmIneligibilityForPlanningTick(
+    const ProductionMppiStationaryCaptureRearmContext& context);
+[[nodiscard]] bool stationaryRestRearmEligibleForPlanningTick(
+    const ProductionMppiStationaryCaptureRearmContext& context);
+
+// A plan that owns nothing: revoked, with no route, execution, or hold left.
+[[nodiscard]] bool executionSnapshotRevokedEmpty(
+    const std::shared_ptr<const ExecutionPlan3D>& snapshot) noexcept;
+
 struct ProductionMppiExecutionInputPreparation {
   std::shared_ptr<const VersionedExecutionInput3D> execution_input;
   ProductionMppiPreviousControlSource previous_control_source{
