@@ -354,7 +354,9 @@ production_mppi_node:
     guaranteed_vertical_stopping_deceleration_mps2: 2.0
     maximum_control_jerk_mps3: 12.0
     speed_reaction_latency_s: 0.10
-    guaranteed_lidar_detection_range_m: 30.0
+    # Where adjacent beams still land within one occupancy voxel: 1.5 deg
+    # spacing against a 0.25 m voxel. Beyond it a surface is painted with gaps.
+    guaranteed_lidar_detection_range_m: 9.5
     sensor_braking_physical_margin_m: 3.0
     # The goal limiter reaches zero this far before the mission goal. The
     # capture latch fires once the vehicle rests inside the capture radius, so

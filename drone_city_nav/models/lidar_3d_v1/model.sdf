@@ -89,10 +89,11 @@
               <max_angle>3.141592653589793</max_angle>
             </horizontal>
             <vertical>
-              <!-- 1.5 deg rows: at the guaranteed 30 m detection range adjacent
-                   rows land no farther apart than the vehicle body band plus
-                   one occupancy voxel, so a wall is painted inside the band
-                   without relying on surface joins. -->
+              <!-- 1.5 deg rows: at the guaranteed detection range adjacent
+                   rows land within one occupancy voxel of each other, so a
+                   surface is painted contiguously rather than with gaps a
+                   route could be validated through. That range is 9.5 m for
+                   a 0.25 m voxel. -->
               <samples>121</samples>
               <resolution>1</resolution>
               <min_angle>-1.5707963267948966</min_angle>

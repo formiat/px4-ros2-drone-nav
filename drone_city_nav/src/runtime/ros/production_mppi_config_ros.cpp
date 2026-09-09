@@ -657,8 +657,16 @@ void ProductionMppiConfigLoader::declareControl() {
   control.speed_policy.stopping_capability.reaction_latency_s =
       declare<double>("speed_reaction_latency_s", 0.10);
   control.speed_policy.sensor_braking_contract = SensorBrakingContract3D{
+      // The range within which an obstacle is guaranteed to be in the map the
+      // validators consult, which is where adjacent beams still land within
+      // one occupancy voxel of each other. Beyond it a surface is painted with
+      // gaps a route can be validated straight through, and the gap closes as
+      // the vehicle approaches: recorded flights met such an obstacle inside
+      // their own braking distance again and again, every one of them while
+      // this contract reported nine metres a second of headroom. At 1.5 deg
+      // rows and columns against a 0.25 m voxel that range is 9.5 m.
       .guaranteed_detection_range_m =
-          declare<double>("guaranteed_lidar_detection_range_m", 30.0),
+          declare<double>("guaranteed_lidar_detection_range_m", 9.5),
       .maximum_evidence_age_s =
           config_.execution.latest_lidar_obstacle_maximum_age_ms * 1.0e-3,
       .physical_margin_m = declare<double>("sensor_braking_physical_margin_m", 3.0),
