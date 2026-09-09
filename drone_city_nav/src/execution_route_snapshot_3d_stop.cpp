@@ -333,9 +333,7 @@ certifyStopExecution3D(const ExecutionPlan3D& current,
   // recorded flight came to rest a tenth of a metre from a wall on a
   // hull-certified stop, drifted a fifth of a metre while holding, and met it.
   const double rest_margin_required_m =
-      certification.require_rest_clearance
-          ? envelopeMarginM(certification.validation_policy->sweptFootprint())
-          : 0.0;
+      envelopeMarginM(certification.validation_policy->sweptFootprint());
   if (rest_margin_required_m > 0.0) {
     const Point3 rest_position{horizon.states.back().x, horizon.states.back().y,
                                horizon.states.back().z};

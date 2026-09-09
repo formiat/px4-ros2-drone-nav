@@ -351,7 +351,7 @@ TEST(ExecutionSupervisorStop3DTest,
 // within the position error its controller holds it to. A stop that would rest
 // the hull inside the margin the envelope carries over it is refused, so a
 // vehicle flying in the clear never chooses such a rest point.
-TEST(ExecutionSupervisorStop3DTest, AStopPrefersARestPoseThatKeepsItsMargin) {
+TEST(ExecutionSupervisorStop3DTest, AStopDoesNotRestInsideTheEnvelopeMargin) {
   SnapshotFixture3D fixture;
   ExecutionSupervisor3D supervisor;
   const std::shared_ptr<const ExecutionPlan3D> active =
@@ -392,13 +392,13 @@ TEST(ExecutionSupervisorStop3DTest, AStopPrefersARestPoseThatKeepsItsMargin) {
 
   const ExecutionStopPreparation3D prepared = supervisor.prepareStop(request);
 
-  // No rung could keep the margin, so the preference was given up and the
-  // vehicle still has a stop.
-  EXPECT_FALSE(clear.certification.rest_clearance_relaxed);
-  EXPECT_TRUE(prepared.prepared())
-      << stopCertificationStatus3DName(prepared.certification.status) << " rest=("
+  EXPECT_FALSE(prepared.prepared());
+  EXPECT_EQ(prepared.certification.status,
+            StopCertificationStatus3D::kRestClearanceRejected)
+      << stopCertificationStatus3DName(prepared.certification.status) << " path="
+      << finiteExecutionPathStatus3DName(prepared.certification.path_validation_status)
+      << " reduction=" << prepared.certification.clearance_reduction << " rest=("
       << rest.x << "," << rest.y << "," << rest.z << ")";
-  EXPECT_TRUE(prepared.certification.rest_clearance_relaxed);
 }
 
 // The stop that owns the vehicle after it has been committed on the wire.

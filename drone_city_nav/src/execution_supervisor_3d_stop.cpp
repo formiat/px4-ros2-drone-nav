@@ -364,8 +364,7 @@ ExecutionSupervisor3D::prepareStop(ExecutionStopRequest3D request) const {
             finiteExecutionPathOccupiedEvidenceVerdict3D(
                 certification_report.path_validation_status));
   };
-  const auto ladder = [&](const bool require_rest_clearance) {
-    certification.require_rest_clearance = require_rest_clearance;
+  const ExecutionRouteTransitionResult3D transition = [&] {
     // The envelope keeps clearance the vehicle may already have lost:
     // evidence confirmed beside the path it was following, or a wall it is
     // braking towards. A stop is the last motion the vehicle can be given, so
@@ -393,21 +392,6 @@ ExecutionSupervisor3D::prepareStop(ExecutionStopRequest3D request) const {
     // owner, whichever the plan admits.
     return enterStopExecution3D(*expected, expected->version, certification,
                                 &certification_report);
-  };
-  // The rest-pose clearance is a preference among rungs, never a reason to
-  // leave the vehicle without a stop: a stop that rests close to evidence is
-  // still better than the horizon the evidence has just invalidated. One
-  // recorded flight was refused every stop for it and coasted into a departure
-  // its planner could not find.
-  const ExecutionRouteTransitionResult3D transition = [&] {
-    ExecutionRouteTransitionResult3D preferred = ladder(true);
-    if (preferred.applied() || certification_report.status !=
-                                   StopCertificationStatus3D::kRestClearanceRejected) {
-      return preferred;
-    }
-    ExecutionRouteTransitionResult3D relaxed = ladder(false);
-    certification_report.rest_clearance_relaxed = relaxed.applied();
-    return relaxed;
   }();
   result.transition_status = transition.status;
   result.transition_detail = transition.detail;
@@ -415,8 +399,6 @@ ExecutionSupervisor3D::prepareStop(ExecutionStopRequest3D request) const {
   result.certification.dynamics_consistency = certification_report.dynamics_consistency;
   result.certification.path_validation_status =
       certification_report.path_validation_status;
-  result.certification.rest_clearance_relaxed =
-      certification_report.rest_clearance_relaxed;
   result.certification.clearance_reduction = certification_report.clearance_reduction;
   result.certification.path_validation_failure_segment_index =
       certification_report.path_validation_failure_segment_index;

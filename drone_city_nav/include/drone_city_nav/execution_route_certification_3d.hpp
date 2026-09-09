@@ -130,11 +130,6 @@ struct StopExecutionCertification3D {
   std::shared_ptr<const VersionedExecutionInput3D> execution_input;
   std::shared_ptr<const VersionedLatestLidarEvidence3D> latest_lidar_evidence;
   std::int64_t valid_from_ns{0};
-  // Require the pose the stop rests in to keep the whole margin the envelope
-  // carries over the hull. It is a preference, not a rule: a stop that rests
-  // close to evidence is still better than no stop at all, so the caller drops
-  // the requirement when no rung of the clearance ladder can meet it.
-  bool require_rest_clearance{true};
   // How much of the policy envelope's clearance the braking sweep gives up:
   // 0 is the envelope as configured, 1 the physical body. A stop is the last
   // motion the vehicle can be given, so when the envelope cannot clear the
@@ -266,9 +261,6 @@ struct StopCertificationResult3D {
   // How much of the envelope's clearance the verdict was reached with given
   // up; 1 means the physical body alone.
   double clearance_reduction{0.0};
-  // No rung of the clearance ladder could rest the vehicle with the margin the
-  // envelope carries over the hull, so the stop was certified without it.
-  bool rest_clearance_relaxed{false};
   // Which segment of the braking path a rejected verdict was reached on. Zero
   // is the segment the vehicle is already on.
   std::size_t path_validation_failure_segment_index{0U};

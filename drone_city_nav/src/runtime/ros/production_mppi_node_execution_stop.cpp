@@ -178,12 +178,11 @@ ProductionMppiNode::publishStopExecution(const ProductionMppiExecutionCycle& cyc
               "STOP_EXECUTION published=true trajectory_revision=%" PRIu64
               " snapshot_version=%" PRIu64 " speed_mps=%.2f stop_distance_m=%.2f "
               "controls=%zu rest=(%.2f,%.2f,%.2f) clearance_reduction=%.2f "
-              "rest_clearance_relaxed=%s replacement_failure=%s",
+              "replacement_failure=%s",
               stop->trajectory_revision, prepared.preparedPlan()->version,
               prepared.initial_speed_mps, prepared.stop_distance_m,
               stop->horizon->controls.size(), stop->rest_position.x,
               stop->rest_position.y, stop->rest_position.z, stop->clearance_reduction,
-              prepared.certification.rest_clearance_relaxed ? "true" : "false",
               productionMppiExecutionReasonName(reason));
   return publication;
 }
