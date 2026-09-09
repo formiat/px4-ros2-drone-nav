@@ -57,9 +57,10 @@ FeasiblePathSearch3D::reconstructNodes(const PersistentPlannerNode3D terminal) c
   return nodes;
 }
 
-std::optional<std::vector<Point3>> FeasiblePathSearch3D::pathFromNodes(
-    const Endpoints3D& endpoints,
-    const std::vector<PersistentPlannerNode3D>& nodes) const {
+std::optional<std::vector<Point3>>
+FeasiblePathSearch3D::pathFromNodes(const Endpoints3D& endpoints,
+                                    const std::vector<PersistentPlannerNode3D>& nodes,
+                                    const bool append_exact_goal) const {
   // The vehicle may have drifted from the anchor since the labels were seeded;
   // the departure joins the first of the leading nodes it still reaches.
   constexpr std::size_t kDepartureCandidates{8U};
@@ -100,7 +101,8 @@ std::optional<std::vector<Point3>> FeasiblePathSearch3D::pathFromNodes(
       path.push_back(point);
     }
   }
-  if (distance3D(path.back(), endpoints.exact_goal) > kCostTolerance) {
+  if (append_exact_goal &&
+      distance3D(path.back(), endpoints.exact_goal) > kCostTolerance) {
     path.push_back(endpoints.exact_goal);
   }
   return path.size() >= 2U ? std::optional<std::vector<Point3>>{std::move(path)}
@@ -444,10 +446,26 @@ std::optional<std::vector<Point3>> FeasiblePathSearch3D::advanceFrontier(
           .goal_connector = true,
       });
     }
-    if (current.goal_connector && goal_connector_valid) {
+    // The goal anchor is the lattice node the goal was connected through, and
+    // the search reaches it by lattice edges the same way the ranked search
+    // does. A straight connector from it to the exact goal is not owed: the
+    // exact goal may be a point the body cannot occupy -- a goal set beside a
+    // wall -- while its anchor, admissible by construction and within the
+    // goal tolerance, is. Demanding the connector anyway left the search
+    // exploring the whole reachable lattice around a goal it stood a metre
+    // from, exhausting and restarting -- for five seconds in one recorded
+    // flight, fifteen in another, two minutes in a third -- while the ranked
+    // search, which ends on the anchor, was the only branch that ever
+    // finished. The anchor is a terminal of its own where no connector clears.
+    const bool anchor_terminal =
+        !current.goal_connector && !goal_connector_valid && current.node == goal_ &&
+        distance3D(current_point, endpoints.exact_goal) <= config_->goal_tolerance_m;
+    if ((current.goal_connector && goal_connector_valid) || anchor_terminal) {
       const std::vector<PersistentPlannerNode3D> nodes = reconstructNodes(current.node);
       std::optional<std::vector<Point3>> candidate =
-          nodes.empty() ? std::nullopt : pathFromNodes(endpoints, nodes);
+          nodes.empty() ? std::nullopt
+                        : pathFromNodes(endpoints, nodes,
+                                        /*append_exact_goal=*/!anchor_terminal);
       const std::optional<std::size_t> invalid_segment =
           candidate.has_value() ? lattice_->firstInvalidSegment(*candidate)
                                 : std::optional<std::size_t>{0U};

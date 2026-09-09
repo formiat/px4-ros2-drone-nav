@@ -40,6 +40,20 @@ the continuation already queued and leaves it in place. Judged by the gate it
 never held, the initial search used to end after every update; the planner
 ran for a fraction of each second while the vehicle held at the start.
 
+The goal anchor is a terminal of the feasibility search in its own right. The
+search connects to the exact goal by a straight raw-valid segment from any
+label within `persistent_planner_feasibility_goal_connector_reach_m`, and that
+connector is priced into the queue like an edge. It is not owed, though: the
+exact goal may be a point the body cannot occupy — a goal set beside a wall —
+while its anchor, the nearest admissible lattice node and within the goal
+tolerance by construction, is reached by lattice edges exactly as the ranked
+search reaches it. Demanding the connector anyway left the search exploring
+the whole reachable lattice around a goal it stood a metre from, exhausting
+and restarting: five seconds in one recorded flight, fifteen in another, two
+minutes in a third, while the ranked search, which ends on the anchor, was the
+only branch that ever finished. Where no connector clears, the route ends on
+the anchor.
+
 ## Successors And Suffix Repair
 
 A non-terminal route must retain enough certified suffix for:

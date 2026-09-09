@@ -543,6 +543,62 @@ TEST(PersistentDStarLitePlanner3DTest, AStaleSeedIsReanchoredAtTheRequestStart) 
   EXPECT_NEAR(path.front().y, start.y, 1.0e-9);
 }
 
+TEST(PersistentDStarLitePlanner3DTest, AGoalTheBodyCannotOccupyIsReachedAtItsAnchor) {
+  // The goal sits a hand's width from the corridor wall: a point the body
+  // cannot occupy, so no straight connector to it clears, while its anchor
+  // -- the nearest admissible lattice node -- is reached by lattice edges.
+  // The search must end on the anchor instead of exhausting the corridor and
+  // restarting around a goal it stands a metre from.
+  auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 1.0, 18, 4, 3});
+  // A wall along the whole corridor at y in [0, 1].
+  for (int x = 0; x < 18; ++x) {
+    for (int z = 0; z < 3; ++z) {
+      ASSERT_TRUE(
+          occupancy->setState(GridIndex3D{x, 0, z}, ObservedVoxelState::kOccupied));
+    }
+  }
+  PersistentPlannerConfig3D config = testConfig();
+  config.feasibility_first_enabled = true;
+  config.feasibility_goal_connector_reach_m = 2.0;
+  config.goal_tolerance_m = 2.0;
+  // A body of 0.4 m: the node a cell away from the wall face is admissible,
+  // a point a hand's width from it is not.
+  config.physical_footprint.radius_m = 0.4;
+  config.physical_footprint.body_radius_m = 0.4;
+  config.physical_footprint.lower_extent_m = 0.2;
+  config.physical_footprint.upper_extent_m = 0.2;
+  config.physical_footprint.body_lower_extent_m = 0.2;
+  config.physical_footprint.body_upper_extent_m = 0.2;
+  config.physical_footprint.perimeter_samples = 8U;
+  config.physical_footprint.radial_rings = 1U;
+  config.physical_footprint.axial_samples = 1U;
+  PersistentDStarLitePlanner3D planner{config};
+  const Point3 start{1.5, 2.5, 1.5};
+  const Point3 goal{16.5, 1.10, 1.5};
+  ASSERT_FALSE(validateRawFootprintAt(*occupancy, goal, FootprintBodyAxis{},
+                                      config.physical_footprint)
+                   .accepted());
+
+  PlannerUpdate3D update = planner.plan(request(start, goal, world(occupancy, 1U)));
+  for (int attempt = 0; attempt < 40 && !update.telemetry.feasibility_route_found;
+       ++attempt) {
+    update = planner.plan(request(start, goal, world(occupancy, 1U)));
+  }
+
+  ASSERT_TRUE(update.telemetry.feasibility_route_found)
+      << "closest_goal_m=" << update.telemetry.feasibility_closest_goal_distance_m
+      << " restarts=" << update.telemetry.feasibility_restarts
+      << " exhausted=" << update.telemetry.feasibility_frontier_exhausted;
+  EXPECT_EQ(update.telemetry.feasibility_restarts, 0U);
+  const std::vector<Point3>& path = candidate(update).points;
+  ASSERT_GE(path.size(), 2U);
+  // The route ends on the anchor, within the tolerance, not on the goal.
+  EXPECT_LE(distance3D(path.back(), goal), config.goal_tolerance_m);
+  EXPECT_GT(distance3D(path.back(), goal), 0.2);
+  expectRawValid(path, *occupancy, planner.config().physical_footprint);
+}
+
 TEST(PersistentDStarLitePlanner3DTest,
      ALabelDroppedNearTheAnchorReparentsTheExploredTreeInsteadOfDroppingIt) {
   // A corridor explored end to end; then occupied evidence closes its second

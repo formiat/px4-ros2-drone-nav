@@ -134,9 +134,13 @@ private:
   // between them, and the exact goal. The departure joins the first node the
   // exact start reaches directly; nodes before it are dropped, so a drifted
   // vehicle keeps the labels it can still use.
+  // `append_exact_goal` false ends the path on its last node instead: the
+  // goal anchor reached where no straight connector to the exact goal clears
+  // the body.
   [[nodiscard]] std::optional<std::vector<Point3>>
   pathFromNodes(const Endpoints3D& endpoints,
-                const std::vector<PersistentPlannerNode3D>& nodes) const;
+                const std::vector<PersistentPlannerNode3D>& nodes,
+                bool append_exact_goal = true) const;
 
   const PersistentPlannerConfig3D* config_{nullptr};
   PlannerLattice3D* lattice_{nullptr};
