@@ -394,7 +394,8 @@ StaticRouteSearchRetryDecision StaticRouteFailedSearchLatch::evaluate(
   }
   decision.raw_world_changed =
       failure.raw_revision != 0U && context.raw_revision > failure.raw_revision;
-  if (failure.input_rejected && decision.raw_world_changed) {
+  if ((failure.input_rejected || failure.world_refused_candidate) &&
+      decision.raw_world_changed) {
     decision.allow = true;
     decision.trigger = StaticRouteSearchRetryTrigger::kRawWorldChanged;
     return decision;

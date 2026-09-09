@@ -116,6 +116,15 @@ struct StaticRouteSearchContext {
   // retried on every newer raw world rather than after the retry interval a
   // search that ran to exhaustion has to wait.
   bool input_rejected{false};
+  // The search ran, and the raw world refused the candidate it produced: the
+  // candidate's own validation, its certification, or its execution geometry
+  // was rejected against the evidence. That refusal is the world's answer to
+  // this candidate, not the search's answer to the problem, and a newer world
+  // is a different answer -- the same reason an input rejection is retried on
+  // every newer raw world. Waiting the retry interval instead left a vehicle
+  // with no route at all standing for nine tenths of a second while the
+  // evidence under it changed ten times over.
+  bool world_refused_candidate{false};
 };
 
 enum class StaticRouteSearchRetryTrigger : std::uint8_t {

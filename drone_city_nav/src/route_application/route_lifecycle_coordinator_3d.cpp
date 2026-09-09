@@ -25,6 +25,20 @@ elapsedMilliseconds(const std::chrono::steady_clock::time_point started) noexcep
       .count();
 }
 
+// The raw world, not the search, refused this candidate: its own validation,
+// its certification or its execution geometry was rejected against the
+// evidence. A newer world is a different answer to exactly that refusal, so
+// the failed-search latch lifts on one instead of holding until the retry
+// interval.
+[[nodiscard]] bool
+worldRefusedCandidate3D(const StaticRouteActivationStatus status) noexcept {
+  return status == StaticRouteActivationStatus::kCandidateValidationRejected ||
+         status == StaticRouteActivationStatus::kCandidateNotExecutable ||
+         status == StaticRouteActivationStatus::kInvalidExecutionGeometry ||
+         status == StaticRouteActivationStatus::kRouteCertificationRejected ||
+         status == StaticRouteActivationStatus::kCertifiedSpliceRejected;
+}
+
 // The search ran on a world the activation snapshot has since contradicted with
 // exact raw evidence. The candidate and the session that produced it are both
 // stale, so neither a retry nor a continuation can recover them.
@@ -439,6 +453,8 @@ RouteLifecycleCoordinator3D::advance(RoutePlanningUpdateEvent3D event) {
                 result.planner_update.planner_invoked &&
                 (planner_input == PlannerInputStatus3D::kStartUnavailable ||
                  planner_input == PlannerInputStatus3D::kGoalUnavailable),
+            .world_refused_candidate =
+                worldRefusedCandidate3D(result.activation.admission.activation_status),
         });
         result.failed_search_latched = true;
       }

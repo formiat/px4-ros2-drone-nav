@@ -683,6 +683,38 @@ TEST(StaticRouteExtensionTest, AnInputRejectedSearchRetriesOnANewerRawWorld) {
   EXPECT_EQ(decision.trigger, StaticRouteSearchRetryTrigger::kSuppressed);
 }
 
+TEST(StaticRouteExtensionTest, ACandidateTheWorldRefusedRetriesOnANewerRawWorld) {
+  // The search ran and the raw world refused the candidate it produced. That
+  // refusal is the world's answer to this candidate, so a newer world retries
+  // it at once instead of holding the latch until the retry interval, which
+  // left a vehicle with no route standing while the evidence changed under it.
+  StaticRouteFailedSearchLatch latch;
+  StaticRouteSearchContext failure{
+      .base_route_generation = 0U,
+      .search_start = Point3{10.0, 20.0, 18.0},
+      .objective = StaticRouteObjective{.goal = Point3{100.0, 200.0, 18.0},
+                                        .mission_epoch = 3U,
+                                        .sample_sequence = 40U,
+                                        .available = true},
+      .stamp_ns = 1'000'000'000,
+      .raw_revision = 500U,
+      .input_rejected = false,
+      .world_refused_candidate = true,
+  };
+  latch.recordFailure(failure);
+
+  StaticRouteSearchContext retry = failure;
+  retry.stamp_ns += 100'000'000;
+  EXPECT_FALSE(latch.evaluate(StaticRouteSearchRetryConfig{}, retry).allow);
+
+  retry.raw_revision = 505U;
+  const StaticRouteSearchRetryDecision decision =
+      latch.evaluate(StaticRouteSearchRetryConfig{}, retry);
+
+  EXPECT_TRUE(decision.allow);
+  EXPECT_EQ(decision.trigger, StaticRouteSearchRetryTrigger::kRawWorldChanged);
+}
+
 TEST(StaticRouteExtensionTest, SuccessfulSearchClearsFailureLatch) {
   StaticRouteFailedSearchLatch latch;
   latch.recordFailure(StaticRouteSearchContext{.base_route_generation = 7U});

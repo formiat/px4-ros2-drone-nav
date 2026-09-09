@@ -395,8 +395,17 @@ vehicle that has just stopped beside evidence it met is refused a departure
 while it settles, and the next scans and its own settling are what change what
 the body clears: over one urban flight five such refusals held the vehicle for
 1.2–1.5 s each, most of it the interval. An input refusal is therefore retried
-on every newer raw world (`retry_trigger=raw_world_changed`); a search that
-ran and failed still waits.
+on every newer raw world (`retry_trigger=raw_world_changed`).
+
+A candidate the raw world refused is retried the same way. When a search runs
+and the activation rejects what it produced -- the candidate's own validation,
+its certification, its execution geometry -- the refusal is the world's answer
+to that candidate, not the search's answer to the problem, and a newer world
+is a different answer. Held to the retry interval instead, one recorded flight
+stood for nine tenths of a second with no route at all, four candidates
+refused in half a second and then nothing asked again while the evidence under
+it changed ten times over. A search that ran and failed on its own terms --
+exhausted, or converged on no route -- still waits out the interval.
 
 The latch only decides requests that reach it, so something has to keep asking
 while the vehicle has no route. The pending-route recovery is what asks, and
