@@ -452,22 +452,15 @@ the envelope, so the envelope's failure does not derive a new stop every tick.
 Other verdicts, a broken envelope or dynamics law, are not retried: no smaller
 body satisfies them.
 
-When the body's sweep meets occupied evidence too, the stop is still the
-answer. Braking with the dynamics' full authority is the least motion any
-trajectory from the vehicle's state can hold, so the same stop is certified a
-third time with the body's occupied-evidence verdict tolerated
-(`StopExecutionCertification3D::tolerate_body_collision`,
-`StopExecution3D::collision_tolerated`). Only that verdict, and only on the
-body, is tolerated. A tolerated stop stays resident, and is revalidated on the
-wire, under that same verdict: a fresh stop from the vehicle's pose would
-tolerate it again, and re-deriving it every tick would only churn the lease.
-Without this rung the ladder ended in nothing: a moving vehicle whose stop the
-body refused, and whose route stayed resident so no revocation could be
-committed, was left on the horizon it had accepted before the evidence
-arrived. One recorded flight kept accelerating along that horizon for the
-better part of a second and met, at full speed, the platform edge the stop had
-been refused for. The stop log carries
-`clearance_reduction` and `collision_tolerated=true|false`.
+When no rung of that ladder sweeps clear, the stop is refused and the hold
+flow answers with the rest hold, the revocation or the resident owner,
+whichever the plan admits. Certifying the brake anyway, with the hull's
+occupied-evidence verdict tolerated, was tried and withdrawn: the contact the
+vehicle already has is exempt through the proprioceptive seed, so a verdict
+that survives that exemption is evidence ahead of the vehicle, and a
+trajectory whose sweep enters evidence ahead is a commitment to meet it. One
+recorded flight was flown, at five metres a second, into the wall its stop had
+been refused for by exactly such a certificate.
 
 The liveness monitor compares predicted and actual full-3D route progress.
 Persistent prediction without real movement can reseed the MPPI nominal controls

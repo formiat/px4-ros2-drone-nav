@@ -135,13 +135,6 @@ struct StopExecutionCertification3D {
   // motion the vehicle can be given, so when the envelope cannot clear the
   // evidence around it the sweep gives up only as much clearance as it must.
   double clearance_reduction{0.0};
-  // Certify the braking horizon although the physical body's sweep meets
-  // occupied evidence. Braking is the least motion the vehicle can be given:
-  // when even the body cannot sweep clear, the collision is the dynamics'
-  // answer to where the vehicle already is, and braking towards it at the
-  // guaranteed deceleration is what every alternative is measured against.
-  // Requires the clearance fully given up; every other verdict still rejects.
-  bool tolerate_body_collision{false};
 };
 
 struct StationaryExecutionHoldCertification3D {
@@ -261,9 +254,9 @@ struct StopCertificationResult3D {
   // How much of the envelope's clearance the verdict was reached with given
   // up; 1 means the physical body alone.
   double clearance_reduction{0.0};
-  // Whether the stop was certified with the body's occupied-evidence verdict
-  // tolerated; path_validation_status then names that verdict.
-  bool collision_tolerated{false};
+  // Which segment of the braking path a rejected verdict was reached on. Zero
+  // is the segment the vehicle is already on.
+  std::size_t path_validation_failure_segment_index{0U};
   std::optional<StopExecution3D> execution;
 
   [[nodiscard]] bool certified() const noexcept {

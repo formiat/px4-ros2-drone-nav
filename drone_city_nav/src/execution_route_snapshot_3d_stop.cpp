@@ -107,7 +107,6 @@ stopExecutionArtifactFingerprint(const StopExecution3D& execution) noexcept {
   hashValue(hash, execution.validation_proof.validation_contract_fingerprint);
   hashValue(hash, static_cast<std::uint64_t>(
                       std::llround(execution.clearance_reduction * 1.0e6)));
-  hashValue(hash, execution.collision_tolerated ? 1U : 0U);
   hashStopLineage(hash, execution);
   return hash == 0U ? 1U : hash;
 }
@@ -290,17 +289,13 @@ certifyStopExecution3D(const ExecutionPlan3D& current,
       validateCompleteFiniteExecutionPath3D(
           validation_points, certification.execution_input->previousControl(),
           validation_world);
-  // The body's occupied-evidence verdict is tolerated only when the caller
-  // asked for it on the body: no other verdict, and no envelope sweep, is.
-  const bool collision_tolerated =
-      !path_validation.accepted() && certification.tolerate_body_collision &&
-      certification.clearance_reduction >= 1.0 &&
-      finiteExecutionPathOccupiedEvidenceVerdict3D(path_validation.status);
-  if (!path_validation.accepted() && !collision_tolerated) {
+  if (!path_validation.accepted()) {
     StopCertificationResult3D rejection =
         rejected(StopCertificationStatus3D::kPathValidationRejected);
     rejection.path_validation_status = path_validation.status;
     rejection.clearance_reduction = certification.clearance_reduction;
+    rejection.path_validation_failure_segment_index =
+        path_validation.failure_segment_index;
     return rejection;
   }
 
@@ -364,7 +359,6 @@ certifyStopExecution3D(const ExecutionPlan3D& current,
   };
   execution.validation_footprint = validation_footprint;
   execution.clearance_reduction = certification.clearance_reduction;
-  execution.collision_tolerated = collision_tolerated;
   execution.validation_proof.artifact_fingerprint =
       stopExecutionArtifactFingerprint(execution);
   if (!execution.valid()) {
@@ -374,7 +368,6 @@ certifyStopExecution3D(const ExecutionPlan3D& current,
       .status = StopCertificationStatus3D::kCertified,
       .path_validation_status = path_validation.status,
       .clearance_reduction = certification.clearance_reduction,
-      .collision_tolerated = collision_tolerated,
       .execution = std::move(execution),
   };
 }
@@ -465,7 +458,8 @@ execution_route_snapshot_3d_internal::applyEnterStopExecutionCommand3D(
     certification_report->dynamics_consistency = certified.dynamics_consistency;
     certification_report->path_validation_status = certified.path_validation_status;
     certification_report->clearance_reduction = certified.clearance_reduction;
-    certification_report->collision_tolerated = certified.collision_tolerated;
+    certification_report->path_validation_failure_segment_index =
+        certified.path_validation_failure_segment_index;
   }
   if (!certified.certified() || !certified.execution.has_value()) {
     return transitionFailure(ExecutionRouteTransitionStatus3D::kInvalidCandidate,

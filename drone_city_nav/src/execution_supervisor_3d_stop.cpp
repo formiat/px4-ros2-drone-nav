@@ -85,10 +85,7 @@ stopPathPoints(const StopExecution3D& stop) {
 
 // A resident stop keeps the vehicle only while the part of it that has not
 // been flown yet is still executable on the newest evidence. Once it no
-// longer is, a fresh stop is derived from where the vehicle now stands. A
-// stop certified with the body's collision tolerated stays executable under
-// that same verdict: a fresh stop from the vehicle's pose would tolerate it
-// again, and re-deriving it every tick would only churn the lease.
+// longer is, a fresh stop is derived from where the vehicle now stands.
 [[nodiscard]] bool
 residentStopStillExecutable(const StopExecution3D& stop,
                             const ExecutionStopRequest3D& request,
@@ -97,13 +94,10 @@ residentStopStillExecutable(const StopExecution3D& stop,
   if (points.empty() || request.now_ns >= stop.valid_until_ns) {
     return false;
   }
-  const FiniteExecutionPathValidation3D validation =
-      validateFiniteExecutionPathContinuation3D(
-          points, stop.valid_from_ns, stop.valid_until_ns, request.now_ns,
-          request.exact_initial_state, request.exact_previous_control, world);
-  return validation.accepted() ||
-         (stop.collision_tolerated &&
-          finiteExecutionPathOccupiedEvidenceVerdict3D(validation.status));
+  return validateFiniteExecutionPathContinuation3D(
+             points, stop.valid_from_ns, stop.valid_until_ns, request.now_ns,
+             request.exact_initial_state, request.exact_previous_control, world)
+      .accepted();
 }
 
 // How much of the envelope's clearance a stop gives up, in order. The first
@@ -358,7 +352,6 @@ ExecutionSupervisor3D::prepareStop(ExecutionStopRequest3D request) const {
       .latest_lidar_evidence = owned_request.latest_lidar_evidence,
       .valid_from_ns = owned_request.now_ns,
       .clearance_reduction = 0.0,
-      .tolerate_body_collision = false,
   };
   StopCertificationResult3D certification_report;
   const auto occupied_evidence_refusal = [&certification_report] {
@@ -385,13 +378,14 @@ ExecutionSupervisor3D::prepareStop(ExecutionStopRequest3D request) const {
         return attempt;
       }
     }
-    // When the hull cannot sweep clear either, the evidence stands where the
-    // vehicle's dynamics already carry it: braking at the deceleration the
-    // dynamics admit is the least motion any trajectory from this state can
-    // hold, so the same stop is certified with that verdict tolerated. Nothing
-    // published here left one recorded flight on its stale horizon, still
-    // accelerating, until it met the wall the stop had been refused for.
-    certification.tolerate_body_collision = true;
+    // No rung swept clear. Certifying the brake anyway was tried and
+    // withdrawn: the contact the vehicle already has is exempt through the
+    // proprioceptive seed, so a verdict that survives it is evidence ahead,
+    // and a trajectory that sweeps into evidence ahead is a commitment to meet
+    // it. One recorded flight was flown into the wall its stop had been
+    // refused for by exactly such a certificate. The refusal stands, and the
+    // hold flow answers it with the rest hold, the revocation or the resident
+    // owner, whichever the plan admits.
     return enterStopExecution3D(*expected, expected->version, certification,
                                 &certification_report);
   }();
@@ -402,7 +396,8 @@ ExecutionSupervisor3D::prepareStop(ExecutionStopRequest3D request) const {
   result.certification.path_validation_status =
       certification_report.path_validation_status;
   result.certification.clearance_reduction = certification_report.clearance_reduction;
-  result.certification.collision_tolerated = certification_report.collision_tolerated;
+  result.certification.path_validation_failure_segment_index =
+      certification_report.path_validation_failure_segment_index;
   if (!transition.applied() || transition.next == nullptr ||
       transition.next->stopExecution() == nullptr) {
     result.status = ExecutionStopStatus3D::kTransitionRejected;
