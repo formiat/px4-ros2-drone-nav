@@ -29,7 +29,12 @@ public:
     PersistentPlannerNode3D start{};
     PersistentPlannerNode3D goal{};
     Point3 exact_start{};
+    // The point the search connects to: the mission goal, or the refined
+    // point the goal connection stands in for it.
     Point3 exact_goal{};
+    // The mission goal itself. A route may end on any node the body can
+    // occupy within the goal tolerance of it.
+    Point3 mission_goal{};
     // See PlannerLattice3D::DepartureConnection3D.
     std::vector<Point3> departure_waypoints;
   };

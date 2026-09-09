@@ -488,9 +488,20 @@ std::optional<std::vector<Point3>> FeasiblePathSearch3D::advanceFrontier(
     // flight, fifteen in another, two minutes in a third -- while the ranked
     // search, which ends on the anchor, was the only branch that ever
     // finished. The anchor is a terminal of its own where no connector clears.
+    //
+    // So is any other node within the goal tolerance of the mission goal: the
+    // vehicle captures the goal from anywhere inside that radius, and a node
+    // the search expanded is one the body can occupy. The anchor alone was
+    // not enough once the world around the goal filled in: the anchor a
+    // refined goal connection chose could lie behind evidence the lattice
+    // edges could not pass, while nodes a metre from the goal were reached
+    // and passed by, and the search explored thirty thousand nodes to
+    // exhaustion beside the goal it stood in reach of.
     const bool anchor_terminal =
-        !current.goal_connector && !goal_connector_valid && current.node == goal_ &&
-        distance3D(current_point, endpoints.exact_goal) <= config_->goal_tolerance_m;
+        !current.goal_connector && !goal_connector_valid &&
+        (current.node == goal_ || distance3D(current_point, endpoints.mission_goal) <=
+                                      config_->goal_tolerance_m) &&
+        distance3D(current_point, endpoints.mission_goal) <= config_->goal_tolerance_m;
     if ((current.goal_connector && goal_connector_valid) || anchor_terminal) {
       const std::vector<PersistentPlannerNode3D> nodes = reconstructNodes(current.node);
       std::optional<std::vector<Point3>> candidate =

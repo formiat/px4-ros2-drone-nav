@@ -60,7 +60,14 @@ the whole reachable lattice around a goal it stood a metre from, exhausting
 and restarting: five seconds in one recorded flight, fifteen in another, two
 minutes in a third, while the ranked search, which ends on the anchor, was the
 only branch that ever finished. Where no connector clears, the route ends on
-the anchor.
+the anchor — or on any other expanded node within the goal tolerance of the
+mission goal: the vehicle captures the goal from anywhere inside that radius,
+and a node the search expanded is one the body can occupy. The anchor alone
+was not enough once the world around the goal filled in: the anchor a refined
+goal connection chose could lie behind evidence the lattice edges could not
+pass while nodes a metre from the goal were reached and passed by, and the
+search explored tens of thousands of nodes to exhaustion beside a goal it
+stood in reach of.
 
 ## Successors And Suffix Repair
 

@@ -621,6 +621,53 @@ TEST(PersistentDStarLitePlanner3DTest,
                  planner.config().physical_footprint);
 }
 
+TEST(PersistentDStarLitePlanner3DTest,
+     AGoalWhoseAnchorIsWalledInIsReachedAtANodeWithinTheTolerance) {
+  // The goal sits on a lattice node that occupied evidence has walled in on
+  // every side: admissible, so the goal connection anchors there, but no
+  // lattice edge leads to it. The node two metres before the wall is inside
+  // the goal tolerance, and the search ends on it instead of exhausting the
+  // corridor around the anchor it cannot reach.
+  auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 1.0, 20, 5, 3});
+  const Point3 goal{17.5, 2.5, 1.5};
+  for (int x = 16; x <= 18; ++x) {
+    for (int y = 1; y <= 3; ++y) {
+      for (int z = 0; z <= 2; ++z) {
+        if (x == 17 && y == 2 && z == 1) {
+          continue;
+        }
+        ASSERT_TRUE(
+            occupancy->setState(GridIndex3D{x, y, z}, ObservedVoxelState::kOccupied));
+      }
+    }
+  }
+  PersistentPlannerConfig3D config = testConfig();
+  config.feasibility_first_enabled = true;
+  config.feasibility_goal_connector_reach_m = 2.0;
+  config.goal_tolerance_m = 2.5;
+  PersistentDStarLitePlanner3D planner{config};
+  const Point3 start{1.5, 2.5, 1.5};
+
+  PlannerUpdate3D update = planner.plan(request(start, goal, world(occupancy, 1U)));
+  for (int attempt = 0; attempt < 40 && !update.telemetry.feasibility_route_found;
+       ++attempt) {
+    update = planner.plan(request(start, goal, world(occupancy, 1U)));
+  }
+
+  ASSERT_TRUE(update.telemetry.feasibility_route_found)
+      << "closest_goal_m=" << update.telemetry.feasibility_closest_goal_distance_m
+      << " restarts=" << update.telemetry.feasibility_restarts
+      << " exhausted=" << update.telemetry.feasibility_frontier_exhausted;
+  EXPECT_EQ(update.telemetry.feasibility_restarts, 0U);
+  EXPECT_FALSE(update.telemetry.feasibility_frontier_exhausted);
+  const std::vector<Point3>& path = candidate(update).points;
+  ASSERT_GE(path.size(), 2U);
+  EXPECT_LE(distance3D(path.back(), goal), config.goal_tolerance_m);
+  EXPECT_GT(distance3D(path.back(), goal), 1.0);
+  expectRawValid(path, *occupancy, planner.config().physical_footprint);
+}
+
 TEST(PersistentDStarLitePlanner3DTest, AGoalTheBodyCannotOccupyIsReachedAtItsAnchor) {
   // The goal sits a hand's width from the corridor wall: a point the body
   // cannot occupy, so no straight connector to it clears, while its anchor
@@ -847,8 +894,10 @@ TEST(PersistentDStarLitePlanner3DTest,
   ASSERT_GE(points.size(), 2U);
   const Point3& endpoint = points.back();
   EXPECT_GT(distance3D(endpoint, goal), 0.0);
+  // The route ends inside the goal tolerance -- on the refined point or on a
+  // node the search reached within it -- never on the occupied goal itself.
   EXPECT_LE(distance3D(endpoint, goal), config.goal_tolerance_m);
-  EXPECT_NEAR(distance3D(endpoint, update.telemetry.search_goal), 0.0, 1.0e-9);
+  EXPECT_LE(distance3D(update.telemetry.search_goal, goal), config.goal_tolerance_m);
   expectRawValid(points, *occupancy, planner.config().physical_footprint);
 
   // A goal in free space is reached exactly, without refinement.

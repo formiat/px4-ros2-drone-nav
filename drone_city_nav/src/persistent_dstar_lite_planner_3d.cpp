@@ -345,6 +345,7 @@ PersistentDStarLitePlanner3DImpl::searchEndpoints() const noexcept {
       .goal = goal_,
       .exact_start = exact_start_,
       .exact_goal = exact_goal_,
+      .mission_goal = mission_goal_,
       .departure_waypoints = departure_waypoints_,
   };
 }
