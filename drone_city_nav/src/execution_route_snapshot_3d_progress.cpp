@@ -461,6 +461,15 @@ namespace {
          staticWorldNotOlder(*candidate_static, *previous.static_world);
 }
 
+// Whether a candidate execution may take the vehicle back from a hold. Only
+// evidence order matters. Requiring the candidate to begin within the hold's
+// position tolerance was tried and withdrawn: a held vehicle drifts within the
+// position error its controller holds it to, and once it had drifted past the
+// tolerance the hold could no longer be refreshed at its own stale position
+// either. One recorded flight hovered for the remaining three minutes of its
+// mission a third of a metre off its hold, refusing every certified route with
+// finite_execution_conflict. The candidate is certified from the vehicle's own
+// exact state, so where the vehicle is is where the route begins.
 template<typename Candidate>
 [[nodiscard]] bool
 executionEvidenceNotOlderThanHold(const Candidate& candidate,
@@ -474,8 +483,6 @@ executionEvidenceNotOlderThanHold(const Candidate& candidate,
          previous.terminal_execution_input != nullptr &&
          executionInputNotOlder(*candidate.execution_input,
                                 *previous.terminal_execution_input) &&
-         distance3D(executionInputPosition(*candidate.execution_input),
-                    previous.position) <= kStationaryExecutionHoldPositionToleranceM &&
          candidate.latest_lidar_evidence != nullptr &&
          previous.latest_lidar_evidence != nullptr &&
          latestLidarEvidenceNotOlder(*candidate.latest_lidar_evidence,

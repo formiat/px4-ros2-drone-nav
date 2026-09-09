@@ -2093,6 +2093,7 @@ if(BUILD_TESTING)
   ament_add_gtest(execution_supervisor_stop_3d_test
                   tests/execution_supervisor_stop_3d_test.cpp)
   target_compile_features(execution_supervisor_stop_3d_test PRIVATE cxx_std_20)
+  target_include_directories(execution_supervisor_stop_3d_test PRIVATE src)
   target_link_libraries(execution_supervisor_stop_3d_test drone_city_nav_execution)
   enable_project_warnings(execution_supervisor_stop_3d_test)
 

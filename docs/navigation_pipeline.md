@@ -393,6 +393,15 @@ still executable, and delegates braking to the stop
 path that was just invalidated. Only the offboard's local position latch remains
 behind the stop, and only for a genuine loss of the planner.
 
+A route takes the vehicle back from a hold wherever the vehicle actually is.
+Only evidence order gates that takeover. Requiring the route to begin within
+the hold's own position tolerance was tried and withdrawn: a held vehicle
+drifts within the position error its controller holds it to, and once it had
+drifted past that tolerance the hold could no longer be refreshed at its own
+stale position either. One recorded flight hovered for the remaining three
+minutes of its mission a third of a metre off its hold, refusing every
+certified route with `finite_execution_conflict`.
+
 A stop never survives its own completion. It is finite by construction: once
 the vehicle rests, the execution is revoked exactly as it is at a captured
 goal, the offboard holds the position the vehicle is at, and the next certified

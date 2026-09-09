@@ -12,6 +12,7 @@
 #include <optional>
 #include <utility>
 
+#include "execution_route_snapshot_3d_internal.hpp"
 #include "execution_route_snapshot_3d_plan_test_support.hpp"
 #include "execution_supervisor_horizon_3d_test_support.hpp"
 
@@ -599,6 +600,78 @@ TEST(ExecutionSupervisorStop3DTest, ACertifiedRouteTakesTheVehicleBackFromARestH
   ASSERT_NE(activation.next->finiteExecution(), nullptr);
   EXPECT_GT(activation.next->finiteExecution()->trajectory_revision,
             stop->trajectory_revision);
+}
+
+// A held vehicle drifts within the position error its controller holds it to.
+// The route takes it back from wherever it actually is: a takeover refused
+// because the vehicle had drifted past the hold's tolerance is a hold the
+// vehicle can never leave, since the hold cannot be refreshed at its own stale
+// position either.
+TEST(ExecutionSupervisorStop3DTest, AHoldDoesNotHoldADriftedVehicleAgainstItsRoute) {
+  SnapshotFixture3D fixture;
+  ExecutionSupervisor3D supervisor;
+  const std::shared_ptr<const ExecutionPlan3D> active =
+      installRouteOwner(supervisor, fixture);
+  ASSERT_NE(active, nullptr);
+  ASSERT_NE(active->finiteExecution(), nullptr);
+  const std::shared_ptr<const VersionedExecutionInput3D> input =
+      movingInput(*active->finiteExecution()->execution_input, 4.0F);
+  const std::shared_ptr<const ExecutionPlan3D> stopping = commitStop(
+      supervisor, supervisor.prepareStop(stopRequest(fixture, active, input)), input);
+  ASSERT_NE(stopping, nullptr);
+  const StopExecution3D* const stop = stopping->stopExecution();
+  ASSERT_NE(stop, nullptr);
+
+  // The hold is pinned where the vehicle rested; the vehicle has since drifted
+  // along the route, well past the tolerance the hold pins with.
+  const Point3 rest_position = stop->rest_position;
+  const double drift_m = 4.0 * kStationaryExecutionHoldPositionToleranceM;
+  const StationaryExecutionHoldCertification3D evidence =
+      SnapshotFixture3D::holdCertification(*stopping);
+  const std::shared_ptr<const VersionedExecutionInput3D> resting_input =
+      restingInputAt(*stop->execution_input, rest_position, stop->valid_until_ns + 1);
+  ASSERT_NE(resting_input, nullptr);
+  const ExecutionHoldPreparation3D hold = supervisor.prepareHold(ExecutionHoldRequest3D{
+      .intent = ExecutionHoldIntent3D::kExplicitTransfer,
+      .requested_position = rest_position,
+      .cycle_source_plan = stopping,
+      .execution_input = resting_input,
+      .latest_lidar_evidence = evidence.latest_lidar_evidence,
+      .current_lidar_evidence = evidence.latest_lidar_evidence,
+      .current_observed_raw_world = evidence.observed_raw_world,
+      .stationary_capture_observed_raw_world = nullptr,
+      .stationary_capture_static_world = nullptr,
+      .selected_validation_policy = nullptr,
+      .stationary_capture_validation_policy = evidence.validation_policy,
+      .validation_now_ns = resting_input->effectiveStampNs(),
+  });
+  ASSERT_TRUE(hold.prepared()) << executionHoldPreparationStatus3DName(hold.status);
+  ASSERT_NE(hold.transition, nullptr);
+  const std::shared_ptr<const ExecutionPlan3D> resting = hold.transition->next;
+  ASSERT_NE(resting, nullptr);
+  const StationaryExecutionHold3D* const held = resting->stationaryHold();
+  ASSERT_NE(held, nullptr);
+
+  ExecutionRouteActivation3D successor_activation = fixture.activation();
+  successor_activation.route_generation = resting->routeGenerationHighWater() + 1U;
+  successor_activation =
+      rebindUnconstrainedDecorations(std::move(successor_activation));
+  const std::optional<CertifiedRouteSuffix3D> successor =
+      certifyExecutionRoute3D(successor_activation);
+  ASSERT_TRUE(successor.has_value());
+  const CertifiedRouteSuffix3D& successor_route =
+      successor.value(); // NOLINT(bugprone-unchecked-optional-access)
+  const FiniteExecutionPlan3D plan = SnapshotFixture3D::finitePlanForRoute(
+      *resting, successor_route, FiniteExecutionKind3D::kNominal,
+      resting->ownerTrajectoryRevision() + 1U, 55U, 0U, rest_position.x + drift_m);
+
+  EXPECT_GT(distance3D(execution_route_snapshot_3d_internal::executionInputPosition(
+                           *plan.command_horizon.execution_input),
+                       held->position),
+            kStationaryExecutionHoldPositionToleranceM);
+  EXPECT_TRUE(
+      execution_route_snapshot_3d_internal::routeExecutionEvidenceNotOlderThanHold(
+          plan.command_horizon, *held));
 }
 
 TEST(ExecutionSupervisorStop3DTest, ACertifiedSuccessorIsPublishedPendingAgainstAStop) {
