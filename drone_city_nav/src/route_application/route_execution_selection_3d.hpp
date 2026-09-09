@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/execution_route_store_3d.hpp"
+#include "drone_city_nav/pending_certified_route_3d.hpp"
 #include "drone_city_nav/tracking_error_tube_3d.hpp"
 #include "drone_city_nav/tracking_error_tube_handoff_3d.hpp"
 
@@ -36,6 +37,9 @@ struct ProductionRouteExecutionSelection3D {
   // vehicle needs a successor route, so neither may suppress the search for
   // it.
   bool routeless_execution_owner{false};
+  // Why the sealed successor is or is not the route the plan may take next.
+  PendingRouteEligibility3D pending_eligibility{
+      PendingRouteEligibility3D::kInvalidPending};
   bool pending_activation{false};
   bool physical_trajectory_invalidated{false};
   // Station of the first route sample the persistent raw world blocks while

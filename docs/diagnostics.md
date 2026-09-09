@@ -245,6 +245,14 @@ profile's own validity. `missing_tracking_world` means the compiler had no
 evidence to bind the profile to at all. One recorded flight held for three
 seconds with candidate after candidate refused as a bare invalid tube.
 
+`PENDING_ROUTE3D adopted=false eligibility=<verdict>` means a successor is
+sealed and the plan cannot take it: `owner_epoch_mismatch` and
+`base_generation_mismatch` say the plan has moved past the base the successor
+was sealed against, `base_owner_mismatch` that the base is still there but not
+in the shape the successor's kind requires. One recorded flight held for one
+and three quarter seconds with a certified successor published and nothing in
+the log to act on.
+
 `activation_status=route_certification_rejected` means the candidate passed the
 activation assessment and the dynamic handoff but the route certification
 refused it; `certification=<verdict>` names the rule

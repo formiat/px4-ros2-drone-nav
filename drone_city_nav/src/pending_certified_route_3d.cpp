@@ -93,6 +93,45 @@ bool PendingCertifiedRoute3D::valid() const noexcept {
   return false;
 }
 
+std::string_view
+pendingRouteEligibility3DName(const PendingRouteEligibility3D eligibility) noexcept {
+  switch (eligibility) {
+    case PendingRouteEligibility3D::kEligible:
+      return "eligible";
+    case PendingRouteEligibility3D::kInvalidPending:
+      return "invalid_pending";
+    case PendingRouteEligibility3D::kInvalidSnapshot:
+      return "invalid_snapshot";
+    case PendingRouteEligibility3D::kOwnerEpochMismatch:
+      return "owner_epoch_mismatch";
+    case PendingRouteEligibility3D::kBaseGenerationMismatch:
+      return "base_generation_mismatch";
+    case PendingRouteEligibility3D::kBaseOwnerMismatch:
+      return "base_owner_mismatch";
+  }
+  return "unknown";
+}
+
+PendingRouteEligibility3D
+pendingCertifiedRouteEligibility3D(const PendingCertifiedRoute3D& pending,
+                                   const ExecutionPlan3D& snapshot) noexcept {
+  if (!pending.valid()) {
+    return PendingRouteEligibility3D::kInvalidPending;
+  }
+  if (!snapshot.valid()) {
+    return PendingRouteEligibility3D::kInvalidSnapshot;
+  }
+  if (snapshot.execution_owner_epoch != pending.base_execution_owner_epoch) {
+    return PendingRouteEligibility3D::kOwnerEpochMismatch;
+  }
+  if (snapshot.routeGenerationHighWater() != pending.base_route_generation) {
+    return PendingRouteEligibility3D::kBaseGenerationMismatch;
+  }
+  return pendingCertifiedRouteEligible3D(pending, snapshot)
+             ? PendingRouteEligibility3D::kEligible
+             : PendingRouteEligibility3D::kBaseOwnerMismatch;
+}
+
 bool pendingCertifiedRouteEligible3D(const PendingCertifiedRoute3D& pending,
                                      const ExecutionPlan3D& snapshot) noexcept {
   if (!pending.valid() || !snapshot.valid()) {

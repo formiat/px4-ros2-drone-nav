@@ -501,7 +501,7 @@ void ProductionMppiNode::planningTick() {
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "ROUTE_EXECUTION3D route_generation=%" PRIu64
-        " status=%.*s effect=%s obstacle_source=%s",
+        " status=%.*s effect=%s obstacle_source=%s pending=%.*s",
         effect.route_generation,
         static_cast<int>(
             routeExecutionStatus3DName(planning.route.execution.status).size()),
@@ -509,8 +509,14 @@ void ProductionMppiNode::planningTick() {
         effect.kind == RouteExecutionSelectorEffectKind3D::kRequestRouteRelease
             ? "request_route_release"
             : "handle_physical_trajectory_collision",
-        residentObstacleSource(effect.obstacle_disposition));
+        residentObstacleSource(effect.obstacle_disposition),
+        static_cast<int>(
+            pendingRouteEligibility3DName(planning.route.execution.pending_eligibility)
+                .size()),
+        pendingRouteEligibility3DName(planning.route.execution.pending_eligibility)
+            .data());
   }
+  reportUnadoptedPendingRoute(planning.route.execution);
   if (planning.effects.request_pending_successor) {
     requestRouteRelease(RouteReleaseReason3D::kNoActiveRoute, 0U);
   }
@@ -672,6 +678,31 @@ void ProductionMppiNode::planningTick() {
       .local_route_stop_is_terminal = planning.route.local_stop_is_terminal,
       .pose_predicted = pose_predicted,
   });
+}
+
+void ProductionMppiNode::reportUnadoptedPendingRoute(
+    const ProductionRouteExecutionSelection3D& execution) {
+  if (execution.pending_route == nullptr ||
+      execution.pending_eligibility == PendingRouteEligibility3D::kEligible) {
+    return;
+  }
+  // A successor is sealed and the plan cannot take it. Without this the hold
+  // that follows names no reason at all: one recorded flight held for one and
+  // three quarter seconds with a certified successor published.
+  const std::string_view eligibility =
+      pendingRouteEligibility3DName(execution.pending_eligibility);
+  RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "PENDING_ROUTE3D adopted=false eligibility=%.*s pending_generation=%" PRIu64
+      " base_generation=%" PRIu64 " plan_generation=%" PRIu64
+      " base_owner_epoch=%" PRIu64,
+      static_cast<int>(eligibility.size()), eligibility.data(),
+      execution.pending_route->route.identity.generation,
+      execution.pending_route->base_route_generation,
+      execution.source_snapshot != nullptr
+          ? execution.source_snapshot->routeGenerationHighWater()
+          : 0U,
+      execution.pending_route->base_execution_owner_epoch);
 }
 
 } // namespace drone_city_nav

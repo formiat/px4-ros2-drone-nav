@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string_view>
 
 namespace drone_city_nav {
 
@@ -33,6 +34,26 @@ struct PendingCertifiedRoute3D {
 
   [[nodiscard]] bool valid() const noexcept;
 };
+
+// Why a sealed successor is or is not the route the plan may take next. A
+// pending route the plan cannot adopt otherwise reaches the log as nothing at
+// all, and one recorded flight held for one and three quarter seconds with a
+// certified successor published and nothing to act on.
+enum class PendingRouteEligibility3D : std::uint8_t {
+  kEligible,
+  kInvalidPending,
+  kInvalidSnapshot,
+  kOwnerEpochMismatch,
+  kBaseGenerationMismatch,
+  kBaseOwnerMismatch,
+};
+
+[[nodiscard]] std::string_view
+pendingRouteEligibility3DName(PendingRouteEligibility3D eligibility) noexcept;
+
+[[nodiscard]] PendingRouteEligibility3D
+pendingCertifiedRouteEligibility3D(const PendingCertifiedRoute3D& pending,
+                                   const ExecutionPlan3D& snapshot) noexcept;
 
 [[nodiscard]] bool
 pendingCertifiedRouteEligible3D(const PendingCertifiedRoute3D& pending,

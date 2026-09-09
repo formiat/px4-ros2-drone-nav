@@ -229,6 +229,9 @@ private:
       const AppliedControlEvidence3D& applied_control,
       const ExecutionOwnerIdentity3D& execution_horizon_owner, std::int64_t now_ns);
   void planningTick();
+  // Reports a sealed successor the plan cannot take, and why.
+  void
+  reportUnadoptedPendingRoute(const ProductionRouteExecutionSelection3D& execution);
   [[nodiscard]] bool worldGenerationAvailableForPlanning(const WorldSnapshot3D& world,
                                                          std::int64_t now_ns);
   void finalizePlanningTick(const ProductionMppiPlanningTickFinalization& finalization);

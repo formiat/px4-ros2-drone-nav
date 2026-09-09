@@ -701,6 +701,10 @@ RouteExecutionSelector3D::select(const RouteExecutionSelectorRequest3D& request)
       result.pending_route = execution_supervisor_.pending();
     }
   }
+  if (result.pending_route != nullptr) {
+    result.pending_eligibility =
+        pendingCertifiedRouteEligibility3D(*result.pending_route, *route_state);
+  }
   if (result.pending_route != nullptr &&
       pendingCertifiedRouteEligible3D(*result.pending_route, *route_state)) {
     const bool snapshot_retention_authorized =
