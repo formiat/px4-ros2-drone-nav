@@ -664,12 +664,6 @@ bool ExecutionPlan3D::publishable() const noexcept {
          !std::holds_alternative<SuspendedRoutePlan3D>(awaiting->owner);
 }
 
-bool ExecutionPlan3D::routeSuspended() const noexcept {
-  const auto* awaiting = std::get_if<AwaitingSuccessorPlan3D>(&state);
-  return awaiting != nullptr &&
-         std::holds_alternative<SuspendedRoutePlan3D>(awaiting->owner);
-}
-
 std::uint64_t ExecutionPlan3D::routeGenerationHighWater() const noexcept {
   const CertifiedRouteSuffix3D* const owned_route = route();
   return owned_route != nullptr

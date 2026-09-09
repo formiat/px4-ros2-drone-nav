@@ -58,9 +58,7 @@ public:
 
   [[nodiscard]] ExecutionRoutePublicationStatus3D commitDetachedTransition(
       const std::shared_ptr<const CommittedExecutionAuthority3D>& expected_authority,
-      const ExecutionRouteTransitionResult3D& transition,
-      DetachedTransitionIntent3D intent =
-          DetachedTransitionIntent3D::kKeepThePlanPublishable);
+      const ExecutionRouteTransitionResult3D& transition);
 
   [[nodiscard]] bool publishAppliedControlIfSame(
       const std::shared_ptr<const CommittedExecutionAuthority3D>& expected_authority,

@@ -11,18 +11,6 @@
 
 namespace drone_city_nav {
 
-// What a transition committed without a lease is for. Almost every one leaves
-// a plan a horizon can still be published from, and installing anything else
-// would strand the vehicle on an authority nothing can drive it with. The
-// exception is the transition whose whole purpose is to take the horizon away:
-// a revocation, or the suspension a revocation prefers, which keeps the
-// certified route for a successor to resume from and publishes nothing until
-// one arrives.
-enum class DetachedTransitionIntent3D : std::uint8_t {
-  kKeepThePlanPublishable,
-  kRelinquishTheHorizon,
-};
-
 enum class ExecutionRoutePublicationStatus3D : std::uint8_t {
   kPublished,
   kInvalidCandidate,
@@ -98,9 +86,7 @@ public:
 
   [[nodiscard]] ExecutionRoutePublicationStatus3D publishDetachedTransition(
       const std::shared_ptr<const CommittedExecutionAuthority3D>& expected_authority,
-      const ExecutionRouteTransitionResult3D& transition,
-      DetachedTransitionIntent3D intent =
-          DetachedTransitionIntent3D::kKeepThePlanPublishable);
+      const ExecutionRouteTransitionResult3D& transition);
 
   [[nodiscard]] ExecutionRoutePublicationStatus3D publishLeasedTransition(
       const std::shared_ptr<const CommittedExecutionAuthority3D>& expected_authority,
@@ -162,8 +148,7 @@ private:
       const std::shared_ptr<const CommittedExecutionAuthority3D>& expected_authority,
       const ExecutionRouteTransitionResult3D& transition,
       const ExecutionOwnerIdentity3D& owner,
-      std::shared_ptr<const VersionedExecutionInput3D> input,
-      DetachedTransitionIntent3D intent);
+      std::shared_ptr<const VersionedExecutionInput3D> input);
 
   mutable std::mutex mutex_;
   std::atomic<std::shared_ptr<const CommittedExecutionAuthority3D>> authority_;

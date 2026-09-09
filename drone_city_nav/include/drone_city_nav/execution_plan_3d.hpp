@@ -164,12 +164,6 @@ struct ExecutionPlan3D {
   [[nodiscard]] std::uint64_t routeGenerationHighWater() const noexcept;
   [[nodiscard]] ExecutionRoutePhase3D phase() const noexcept;
   [[nodiscard]] const CertifiedRouteSuffix3D* route() const noexcept;
-  // The plan holds a certified route for a successor to resume from and
-  // nothing owns the vehicle with it: the state a fail-closed revocation
-  // leaves. The route is stored, not flown, so it is not the resident route of
-  // an execution -- a distinction the ownership contract rests on, which reads
-  // a route without an owner as a vehicle nothing is driving.
-  [[nodiscard]] bool routeSuspended() const noexcept;
   [[nodiscard]] const FiniteExecutionState3D* finiteExecution() const noexcept;
   [[nodiscard]] const FiniteExecutionState3D* brakingFallback() const noexcept;
   [[nodiscard]] const DirectTrackingFiniteExecution3D*

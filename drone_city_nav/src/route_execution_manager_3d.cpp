@@ -172,8 +172,7 @@ ExecutionRoutePublicationStatus3D RouteExecutionManager3D::publishTransitionLock
     const std::shared_ptr<const CommittedExecutionAuthority3D>& expected_authority,
     const ExecutionRouteTransitionResult3D& transition,
     const ExecutionOwnerIdentity3D& owner,
-    std::shared_ptr<const VersionedExecutionInput3D> input,
-    const DetachedTransitionIntent3D intent) {
+    std::shared_ptr<const VersionedExecutionInput3D> input) {
   const std::shared_ptr<const CommittedExecutionAuthority3D> current =
       authority_.load(std::memory_order_acquire);
   if (expected_authority == nullptr || current != expected_authority) {
@@ -181,17 +180,8 @@ ExecutionRoutePublicationStatus3D RouteExecutionManager3D::publishTransitionLock
   }
   const std::shared_ptr<const ExecutionPlan3D>& expected_plan =
       expected_authority->plan();
-  // Only the transition that exists to take the horizon away may install a
-  // plan nothing can be published from. Requiring it of that one too made the
-  // fail-closed revocation's suspension uncommittable -- the suspension is
-  // what keeps the certified route for the successor to resume from -- so the
-  // revocation was refused here every time and returned having sent nothing
-  // while the offboard flew on.
-  const bool installs_a_publishable_plan =
-      intent == DetachedTransitionIntent3D::kRelinquishTheHorizon ||
-      transition.next == nullptr || transition.next->publishable();
   if (expected_plan == nullptr || !transition.applied() || transition.next == nullptr ||
-      !installs_a_publishable_plan ||
+      !transition.next->publishable() ||
       expected_plan->version == std::numeric_limits<std::uint64_t>::max() ||
       transition.next->version <= expected_plan->version) {
     return ExecutionRoutePublicationStatus3D::kInvalidCandidate;
@@ -206,11 +196,10 @@ ExecutionRoutePublicationStatus3D RouteExecutionManager3D::publishTransitionLock
 
 ExecutionRoutePublicationStatus3D RouteExecutionManager3D::publishDetachedTransition(
     const std::shared_ptr<const CommittedExecutionAuthority3D>& expected_authority,
-    const ExecutionRouteTransitionResult3D& transition,
-    const DetachedTransitionIntent3D intent) {
+    const ExecutionRouteTransitionResult3D& transition) {
   const std::scoped_lock lock{mutex_};
   return publishTransitionLocked(expected_authority, transition,
-                                 ExecutionOwnerIdentity3D{}, nullptr, intent);
+                                 ExecutionOwnerIdentity3D{}, nullptr);
 }
 
 ExecutionRoutePublicationStatus3D RouteExecutionManager3D::publishLeasedTransition(
@@ -220,8 +209,7 @@ ExecutionRoutePublicationStatus3D RouteExecutionManager3D::publishLeasedTransiti
     std::shared_ptr<const VersionedExecutionInput3D> input) {
   const std::scoped_lock lock{mutex_};
   return publishTransitionLocked(expected_authority, transition, owner,
-                                 std::move(input),
-                                 DetachedTransitionIntent3D::kKeepThePlanPublishable);
+                                 std::move(input));
 }
 
 ExecutionRoutePublicationStatus3D
@@ -434,8 +422,7 @@ RouteExecutionManager3D::commitPendingLeasedTransition(
     return ExecutionRoutePublicationStatus3D::kInvalidCandidate;
   }
   const ExecutionRoutePublicationStatus3D publication =
-      publishTransitionLocked(expected_authority, transition, owner, std::move(input),
-                              DetachedTransitionIntent3D::kKeepThePlanPublishable);
+      publishTransitionLocked(expected_authority, transition, owner, std::move(input));
   if (publication != ExecutionRoutePublicationStatus3D::kPublished) {
     return publication;
   }
