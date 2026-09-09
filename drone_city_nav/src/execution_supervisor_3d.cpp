@@ -43,8 +43,9 @@ bool ExecutionSupervisor3D::acknowledgePendingIfSame(
 
 ExecutionRoutePublicationStatus3D ExecutionSupervisor3D::commitDetachedTransition(
     const std::shared_ptr<const CommittedExecutionAuthority3D>& expected_authority,
-    const ExecutionRouteTransitionResult3D& transition) {
-  return manager_.publishDetachedTransition(expected_authority, transition);
+    const ExecutionRouteTransitionResult3D& transition,
+    const DetachedTransitionIntent3D intent) {
+  return manager_.publishDetachedTransition(expected_authority, transition, intent);
 }
 
 bool ExecutionSupervisor3D::publishAppliedControlIfSame(

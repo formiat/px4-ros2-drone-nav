@@ -428,20 +428,28 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionRevocatio
   if (expected == nullptr) {
     return publication;
   }
-  // The revocation is committed as a revocation, never as a suspension. The
-  // suspension keeps the certified route for a successor to resume from, but
-  // the plan it leaves is deliberately not publishable, and an authority
-  // transition is committed only to a publishable plan: every suspension
-  // offered here was refused, and the revocation returned with nothing sent.
-  // Every recorded flight showed the same shape -- the node decided to revoke
-  // while the vehicle carried three to five metres a second, no message
-  // reached the offboard, and it went on flying the horizon whose evidence had
-  // just invalidated it. One of them met a structure a second later. The route
-  // the plan was holding is worth less than the vehicle: it is dropped, the
-  // offboard is told the horizon is void, and the search replans from the hold
-  // the revocation leaves.
-  const ExecutionRouteTransitionResult3D transition =
-      revokeExecution3D(*expected, expected->version);
+  // The suspension keeps the certified route for a successor to resume from,
+  // and it is what a revocation prefers: the vehicle loses its horizon, not
+  // its route. It is admissible only while the plan still follows that route,
+  // so a plan that has moved on is revoked outright instead -- the route it
+  // was holding is worth less than the vehicle, and the wire message is the
+  // whole point of a fail-closed revocation. Left without either, the
+  // revocation returned having sent nothing, and every recorded flight showed
+  // the same shape: the node decided to revoke while the vehicle carried three
+  // to five metres a second, no message reached the offboard, and it went on
+  // flying the horizon whose evidence had just invalidated it. One of them met
+  // a structure a second later.
+  const ExecutionRouteTransitionResult3D transition = [&] {
+    if (expected->route() != nullptr) {
+      ExecutionRouteTransitionResult3D suspension =
+          suspendFiniteExecution3D(*expected, expected->version);
+      if (suspension.applied() ||
+          suspension.status == ExecutionRouteTransitionStatus3D::kNoChange) {
+        return suspension;
+      }
+    }
+    return revokeExecution3D(*expected, expected->version);
+  }();
   const bool certified_route_preserved =
       expected->route() != nullptr &&
       ((transition.applied() && transition.next != nullptr &&
@@ -509,7 +517,8 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishExecutionRevocatio
 
   const bool authority_cleared =
       transition_required ? execution_supervisor_.commitDetachedTransition(
-                                expected_authority, transition) ==
+                                expected_authority, transition,
+                                DetachedTransitionIntent3D::kRelinquishTheHorizon) ==
                                 ExecutionRoutePublicationStatus3D::kPublished
                           : execution_supervisor_.clearLeaseIfSame(expected_authority);
   if (!authority_cleared) {

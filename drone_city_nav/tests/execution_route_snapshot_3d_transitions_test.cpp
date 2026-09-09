@@ -47,6 +47,49 @@ TEST(ExecutionRouteSnapshot3DTest,
   EXPECT_TRUE(resumed.next->brakingFallback() != nullptr);
 }
 
+TEST(ExecutionRouteSnapshot3DTest, ARelinquishingTransitionInstallsASuspendedPlan) {
+  // The suspension keeps the certified route for a successor to resume from
+  // and publishes nothing until one arrives, so the plan it leaves is not a
+  // publishable one. Only the transition that exists to take the horizon away
+  // may install such a plan, and the fail-closed revocation is that
+  // transition: refused it, the revocation had nothing left to commit and sent
+  // nothing at all.
+  SnapshotFixture3D fixture;
+  const std::optional<CertifiedRouteSuffix3D> suffix = fixture.certify();
+  ASSERT_TRUE(suffix.has_value());
+  RouteExecutionManager3D manager;
+  const std::shared_ptr<const CommittedExecutionAuthority3D> initial_authority =
+      manager.authority();
+  const std::shared_ptr<const ExecutionPlan3D> initial = manager.plan();
+  ASSERT_NE(initial, nullptr);
+  const ExecutionRouteTransitionResult3D activation = activateCertifiedRoute3D(
+      *initial, initial->version, suffix.value(),
+      SnapshotFixture3D::finitePlanForRoute(*initial, suffix.value(),
+                                            FiniteExecutionKind3D::kNominal, 100U));
+  ASSERT_TRUE(activation.applied());
+  ASSERT_EQ(manager.publishDetachedTransition(initial_authority, activation),
+            ExecutionRoutePublicationStatus3D::kPublished);
+  const std::shared_ptr<const CommittedExecutionAuthority3D> authority =
+      manager.authority();
+  const std::shared_ptr<const ExecutionPlan3D> following = manager.plan();
+  ASSERT_NE(following, nullptr);
+  const ExecutionRouteTransitionResult3D suspended =
+      suspendFiniteExecution3D(*following, following->version);
+  ASSERT_TRUE(suspended.applied());
+  ASSERT_NE(suspended.next, nullptr);
+  ASSERT_FALSE(suspended.next->publishable());
+
+  EXPECT_EQ(manager.publishDetachedTransition(authority, suspended),
+            ExecutionRoutePublicationStatus3D::kInvalidCandidate);
+  EXPECT_EQ(
+      manager.publishDetachedTransition(
+          authority, suspended, DetachedTransitionIntent3D::kRelinquishTheHorizon),
+      ExecutionRoutePublicationStatus3D::kPublished);
+  ASSERT_NE(manager.plan(), nullptr);
+  EXPECT_EQ(manager.plan()->phase(), ExecutionRoutePhase3D::kAwaitingSuccessor);
+  EXPECT_TRUE(manager.plan()->route() != nullptr);
+}
+
 TEST(ExecutionRouteSnapshot3DTest, APlanThatCannotBeSuspendedIsStillRevocable) {
   // The fail-closed revocation prefers the suspension, which keeps the
   // certified route for a successor to resume from. The suspension is
