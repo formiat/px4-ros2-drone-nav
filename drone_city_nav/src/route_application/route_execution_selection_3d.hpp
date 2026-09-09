@@ -31,9 +31,11 @@ struct ProductionRouteExecutionSelection3D {
   bool route_usable{false};
   bool tracking_error_tube_handoff_active{false};
   bool execution_owner_available{false};
-  // The execution owner is a certified stationary hold: the vehicle holds a
-  // position but executes no route, so it still needs a successor route.
-  bool stationary_hold_owner{false};
+  // The execution owner executes no route of its own: a certified stationary
+  // hold pins a position, a stop brakes to one. Either owns the wire while the
+  // vehicle needs a successor route, so neither may suppress the search for
+  // it.
+  bool routeless_execution_owner{false};
   bool pending_activation{false};
   bool physical_trajectory_invalidated{false};
   // Station of the first route sample the persistent raw world blocks while

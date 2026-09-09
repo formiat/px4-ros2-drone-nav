@@ -347,11 +347,15 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
           PendingCertifiedRouteRecoveryObservation3D{
               .direct_tracking_requested =
                   output.route.execution.direct_tracking_identity.has_value(),
-              // A stationary hold owns the wire but executes no route; the
-              // successor search it waits for must not be suppressed by it.
+              // A stationary hold pins a position and a stop brakes to one:
+              // both own the wire while the vehicle executes no route, so
+              // neither may suppress the successor search it waits for. A stop
+              // that suppressed it left one recorded flight braking and
+              // resting for two and a half seconds before anything asked for
+              // a route again.
               .execution_owner_available =
                   output.route.execution.execution_owner_available &&
-                  !output.route.execution.stationary_hold_owner,
+                  !output.route.execution.routeless_execution_owner,
               .pending_activation = output.route.execution.pending_activation,
           });
   output.effects.request_pending_successor = pending_recovery.request_successor;

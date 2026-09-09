@@ -27,21 +27,6 @@ void ProductionMppiNode::maybeRequestStaticRouteExtensionFromExecution(
                              active_route->identity.generation);
     return;
   }
-  // A stop owns the vehicle while its route stays resident, so a successor can
-  // hand off from it. The invalidation that produced the stop is latched for
-  // the tick it was observed on, and nothing asked for the successor again
-  // while the vehicle braked: the request above stopped, the deferred replan
-  // was consumed, and a failed search then sat latched with nothing to
-  // re-evaluate it. One recorded flight braked and rested for two and a half
-  // seconds with the planner idle, a quarter of that run's no-route time. The
-  // request is repeated for as long as the stop owns the vehicle; the
-  // failed-search latch decides how often a search actually runs.
-  if (source.stopExecution() != nullptr && active_route != nullptr &&
-      executionRouteAcceptsCertifiedReplacement3D(source)) {
-    requestStaticRouteReplan(RouteReleaseReason3D::kBlocked,
-                             active_route->identity.generation);
-    return;
-  }
   const bool suspended_route =
       source.phase() == ExecutionRoutePhase3D::kAwaitingSuccessor &&
       source.route() != nullptr && source.finiteExecution() == nullptr &&
