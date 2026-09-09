@@ -273,7 +273,7 @@ TEST(RouteLifecycleCoordinator3DRetirementTest,
       // the departure is staged out of the way and the overlap alone decides.
       activation.materialized.departure_end_station_m = 0.0;
       activation.admission.trajectory_validation = CompiledTrajectoryValidation3D{
-          .reason = CompiledTrajectoryFailureReason3D::kNonFiniteSample,
+          .reason = CompiledTrajectoryFailureReason3D::kInvalidTrackingErrorTubeSegment,
           .sample_index = refused_beyond_the_committed_route ? sample_count - 1U : 1U,
       };
       activation.admission.certified_pending = false;
@@ -307,6 +307,72 @@ TEST(RouteLifecycleCoordinator3DRetirementTest,
 
   EXPECT_TRUE(advance(false).incumbent_rejected);
   EXPECT_FALSE(advance(true).incumbent_rejected) << "samples=" << observed_samples;
+}
+
+TEST(RouteLifecycleCoordinator3DRetirementTest,
+     ACompileThatFailsOnItsOwnTermsKeepsTheIncumbent) {
+  // A compile refusal is the raw world's verdict on the candidate only when a
+  // segment's swept hull is what the evidence refused. Every other reason is
+  // the pipeline's own and says nothing about where the vehicle may fly: one
+  // recorded flight lost its route to twenty-four compiles that had no route
+  // to compile at all.
+  ExecutionSupervisor3D supervisor;
+  const LifecycleFixture3D input = fixture();
+  ASSERT_NE(input.transaction, nullptr);
+  std::size_t initial_commit_count{0U};
+  {
+    RouteLifecycleCoordinator3D activation_coordinator{
+        supervisor, lifecycleConfig(input, supervisor, initial_commit_count)};
+    planAndActivateInitialRoute(activation_coordinator, supervisor, input);
+  }
+  ASSERT_NE(supervisor.plan(), nullptr);
+  const std::uint64_t generation = supervisor.plan()->routeGenerationHighWater();
+  const RoutePlannerVehicleState3D vehicle_state = vehicleState(input);
+  std::size_t commit_count{0U};
+  RouteLifecycleCoordinatorConfig3D config =
+      lifecycleConfig(input, supervisor, commit_count);
+  bindResidentReplanSnapshot(config, input, supervisor, 600);
+  config.activation_commit_boundary =
+      [&commit_count](PreparedRouteActivation3D prepared,
+                      const RouteActivationCommitOperation3D&) {
+        ++commit_count;
+        ProductionRouteActivationResult3D activation = std::move(prepared.result);
+        activation.admission.activation_status =
+            StaticRouteActivationStatus::kInvalidExecutionGeometry;
+        activation.admission.trajectory_validation = CompiledTrajectoryValidation3D{
+            .reason = CompiledTrajectoryFailureReason3D::kMissingRoute,
+            .sample_index = 0U,
+        };
+        activation.admission.certified_pending = false;
+        return RouteActivationCommitResult3D{.result = std::move(activation)};
+      };
+  RouteLifecycleCoordinator3D coordinator{supervisor, std::move(config)};
+  RoutePlanner3D planner{plannerConfig()};
+  const std::shared_ptr<const PlannerSearchTransaction3D> transaction =
+      makePlannerSearchTransaction3D(input.world, input.planner_world,
+                                     input.transaction->objective,
+                                     StaticRouteSearchRequestIdentity{
+                                         .kind = StaticRouteSearchRequestKind::kReplan,
+                                         .base_route_generation = generation,
+                                     },
+                                     std::optional<PlannerSearchContinuityBase3D>{},
+                                     RouteReleaseReason3D::kNoActiveRoute);
+  RoutePlannerUpdate3D planner_update = planner.update(*transaction, vehicle_state);
+  planner_update.planner_invoked = true;
+  planner_update.planner_progress = SearchProgress3D::kRunning;
+  planner_update.dispatch.continue_search = true;
+
+  const RouteLifecycleUpdate3D update = coordinator.advance(RoutePlanningUpdateEvent3D{
+      .request =
+          RoutePlanningRequest3D{
+              .transaction = transaction,
+              .continuation_session = nullptr,
+          },
+      .vehicle_state = vehicle_state,
+      .update = std::move(planner_update),
+  });
+
+  EXPECT_FALSE(update.incumbent_rejected);
 }
 
 } // namespace

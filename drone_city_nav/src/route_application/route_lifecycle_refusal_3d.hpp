@@ -1,5 +1,7 @@
 #pragma once
 
+#include "drone_city_nav/compiled_trajectory_3d.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -14,6 +16,19 @@ namespace drone_city_nav {
 // lifecycle does next -- whether the incumbent survives, and how soon the
 // failed-search latch lets another search run.
 namespace route_lifecycle_refusal_3d {
+
+// Whether a compile refusal is the raw world's verdict on the candidate's
+// geometry. Only one of them is: a segment whose swept hull the evidence
+// refuses. Every other reason is the pipeline's own -- a route that never
+// arrived, a tracking world that was not current, a fingerprint or a span set
+// that did not match -- and says nothing about where the vehicle may fly.
+// Read as a verdict, they dropped the search's incumbent: one recorded flight
+// lost its route to twenty-four compiles that had no route to compile, and
+// each one cost a feasibility search started over from nothing.
+[[nodiscard]] inline bool compileRefusalIsAWorldVerdict3D(
+    const CompiledTrajectoryFailureReason3D reason) noexcept {
+  return reason == CompiledTrajectoryFailureReason3D::kInvalidTrackingErrorTubeSegment;
+}
 
 // Where along the candidate the refusal lies, when the refusal names a sample
 // at all. A candidate the activation refused within what the vehicle is
@@ -34,9 +49,17 @@ refusedBeyondTheCommittedRoute3D(const ProductionRouteActivationResult3D& activa
   if (candidate.route == nullptr || !std::isfinite(required_certified_overlap_m)) {
     return false;
   }
+  const bool compiled_geometry_refused =
+      report.activation_status ==
+      StaticRouteActivationStatus::kInvalidExecutionGeometry;
+  if (compiled_geometry_refused &&
+      !compileRefusalIsAWorldVerdict3D(report.trajectory_validation.reason)) {
+    // The compile failed on the pipeline's own terms, so it says nothing about
+    // the incumbent at all: it is kept wherever the refusal lies.
+    return true;
+  }
   const std::size_t refused_index =
-      report.activation_status == StaticRouteActivationStatus::kInvalidExecutionGeometry
-          ? report.trajectory_validation.sample_index
+      compiled_geometry_refused ? report.trajectory_validation.sample_index
       : report.activation_status ==
               StaticRouteActivationStatus::kCandidateValidationRejected
           ? report.candidate_validation.failure_segment_index
