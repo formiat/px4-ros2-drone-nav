@@ -267,6 +267,8 @@ public:
     std::size_t refinement_reachable{0U};
     OccupiedCollisionResult3D first_leg_failure{};
     bool first_leg_failure_available{false};
+    // No anchor cleared the departure envelope and the hull was asked instead.
+    bool hull_fallback{false};
   };
 
   // Every node in the connector radius the body reaches, nearest first.
@@ -397,8 +399,13 @@ public:
   [[nodiscard]] bool rawSegmentValid(const Point3& first, const Point3& second) const;
   [[nodiscard]] bool departureSegmentValid(const Point3& first,
                                            const Point3& second) const;
+  // `hull` judges the leg by the physical body alone rather than the departure
+  // envelope: the vehicle leaves a tight spot at hover and upright, so the
+  // envelope that contains the hull at every tilt is not what decides whether
+  // it may leave at all.
   [[nodiscard]] OccupiedCollisionResult3D
-  departureSegmentValidation(const Point3& first, const Point3& second) const;
+  departureSegmentValidation(const Point3& first, const Point3& second,
+                             bool hull = false) const;
   [[nodiscard]] bool nodeValid(PersistentPlannerNode3D node) const;
   // A path is traversable when it stays inside the flight envelope and every
   // segment clears the physical body; the first segment is a departure.
@@ -537,6 +544,9 @@ private:
   int depth_{0};
   std::optional<OccupiedCollisionOracle3D> resident_collision_oracle_;
   std::optional<OccupiedCollisionOracle3D> departure_collision_oracle_;
+  // The same world judged by the physical body alone, for a departure the
+  // envelope admits nowhere.
+  std::optional<OccupiedCollisionOracle3D> departure_hull_collision_oracle_;
   // Level-zero edges are dense: every node owns the thirteen canonical edges
   // that leave it towards a lexicographically greater neighbour, two state
   // bits each (unknown, clear, blocked). Their raw flight time depends only on
