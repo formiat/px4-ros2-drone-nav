@@ -26,6 +26,17 @@ enum class ExecutionStopStatus3D : std::uint8_t {
 [[nodiscard]] const char*
 executionStopStatus3DName(ExecutionStopStatus3D status) noexcept;
 
+// The profile a stop is built with. The guaranteed deceleration in `config` is
+// what the speed policy plans against, so a routine braking tail fits what the
+// sensors see; a stop is the last motion the vehicle can be given, and it
+// brakes with the full authority the dynamics admit, the same dynamics it is
+// certified and executed under. A stop shaped to the guaranteed vertical
+// deceleration once stretched a descending vehicle's brake to five metres and
+// rested it below the floor it was diving towards.
+[[nodiscard]] FiniteMotionHorizonConfig3D
+stopMotionHorizonConfig3D(const FiniteMotionHorizonConfig3D& config,
+                          const MotionDynamicsConfig3D& dynamics) noexcept;
+
 // Owned evidence for one stop preparation. A stop is derived from the exact
 // state the vehicle is in now and the newest world owned by the caller: it is
 // never derived from the route, because the situations that need a stop are

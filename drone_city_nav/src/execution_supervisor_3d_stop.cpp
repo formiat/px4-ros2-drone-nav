@@ -106,9 +106,9 @@ residentStopStillExecutable(const StopExecution3D& stop,
 }
 
 // The longest stop the supervisor will ask for. At the absolute speed limit
-// and the guaranteed vertical deceleration a stop takes about six seconds,
-// so this bounds the arrival search well above every state the vehicle can
-// reach while leaving the trajectory finite.
+// and the dynamics' vertical deceleration a stop takes a few seconds, so this
+// bounds the arrival search well above every state the vehicle can reach
+// while leaving the trajectory finite.
 constexpr std::size_t kMaximumStopControlCount{200U};
 
 // A stop is a physics artifact: its length follows from the state the
@@ -173,6 +173,27 @@ nextStopTrajectoryRevision(const ExecutionPlan3D& plan) noexcept {
 }
 
 } // namespace
+
+FiniteMotionHorizonConfig3D
+stopMotionHorizonConfig3D(const FiniteMotionHorizonConfig3D& config,
+                          const MotionDynamicsConfig3D& dynamics) noexcept {
+  FiniteMotionHorizonConfig3D stop_config = config;
+  const double horizontal_mps2 =
+      static_cast<double>(dynamics.maximum_horizontal_acceleration_mps2);
+  const double vertical_mps2 =
+      static_cast<double>(dynamics.maximum_vertical_acceleration_mps2);
+  if (std::isfinite(horizontal_mps2) && horizontal_mps2 > 0.0) {
+    stop_config.stopping_capability.maximum_commanded_horizontal_deceleration_mps2 =
+        horizontal_mps2;
+    stop_config.stopping_capability.guaranteed_horizontal_deceleration_mps2 =
+        horizontal_mps2;
+  }
+  if (std::isfinite(vertical_mps2) && vertical_mps2 > 0.0) {
+    stop_config.stopping_capability.guaranteed_vertical_deceleration_mps2 =
+        vertical_mps2;
+  }
+  return stop_config;
+}
 
 const char* executionStopStatus3DName(const ExecutionStopStatus3D status) noexcept {
   switch (status) {
@@ -284,21 +305,25 @@ ExecutionSupervisor3D::prepareStop(ExecutionStopRequest3D request) const {
     return result;
   }
   const MotionDynamicsConfig3D& dynamics = owned_request.validation_policy->dynamics();
+  // The stop brakes with the dynamics' full authority, not the guaranteed
+  // deceleration the speed policy plans routine braking tails against.
+  const FiniteMotionHorizonConfig3D stop_config =
+      stopMotionHorizonConfig3D(owned_request.finite_horizon_config, dynamics);
   const std::size_t requested_control_count =
       std::max(owned_request.minimum_control_count,
                stopControlCountEstimate(owned_request.exact_initial_state,
                                         owned_request.exact_previous_control, dynamics,
-                                        owned_request.finite_horizon_config));
+                                        stop_config));
   std::optional<FiniteMotionHorizon3D> horizon = buildFiniteBrakingHorizon3D(
       owned_request.exact_initial_state, requested_control_count, dynamics,
-      owned_request.exact_previous_control, owned_request.finite_horizon_config);
+      owned_request.exact_previous_control, stop_config);
   if (!horizon.has_value() && requested_control_count < kMaximumStopControlCount) {
     // The estimate bounds a shaped profile from below. A state it underrates
     // still deserves the longest stop the supervisor will ask for before the
     // vehicle is left without one.
     horizon = buildFiniteBrakingHorizon3D(
         owned_request.exact_initial_state, kMaximumStopControlCount, dynamics,
-        owned_request.exact_previous_control, owned_request.finite_horizon_config);
+        owned_request.exact_previous_control, stop_config);
   }
   if (!horizon.has_value() || horizon->states.empty()) {
     result.status = ExecutionStopStatus3D::kHorizonUnavailable;

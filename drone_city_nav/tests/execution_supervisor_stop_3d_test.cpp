@@ -416,6 +416,58 @@ TEST(ExecutionSupervisorStop3DTest, AStopTheBodyCannotClearIsStillFlownWithTheVe
   EXPECT_EQ(supervisor.plan(), stopping);
 }
 
+// The guaranteed deceleration is the speed policy's planning assumption; the
+// stop itself brakes with the full authority the dynamics admit, so a soft
+// guaranteed capability does not stretch it.
+TEST(ExecutionSupervisorStop3DTest, AStopBrakesWithTheDynamicsAuthority) {
+  const auto stop_distance = [](const StoppingCapability& capability) {
+    SnapshotFixture3D fixture;
+    ExecutionSupervisor3D supervisor;
+    const std::shared_ptr<const ExecutionPlan3D> active =
+        installRouteOwner(supervisor, fixture);
+    if (active == nullptr || active->finiteExecution() == nullptr) {
+      return -1.0;
+    }
+    std::shared_ptr<const VersionedExecutionInput3D> input =
+        movingInput(*active->finiteExecution()->execution_input, 4.0F);
+    MotionState3D descending = input->state();
+    descending.vz = -2.0F;
+    input = VersionedExecutionInput3D::capture(ExecutionInputCapture3D{
+        .capture_sequence = input->captureSequence(),
+        .pose_revision = input->poseRevision(),
+        .pose_source_timestamp_us = input->poseSourceTimestampUs(),
+        .pose_receive_stamp_ns = input->poseReceiveStampNs(),
+        .effective_stamp_ns = input->effectiveStampNs(),
+        .state = descending,
+        .full_state_authoritative = true,
+        .state_provenance = input->stateProvenance(),
+        .previous_control = {},
+        .previous_control_source =
+            ExecutionPreviousControlEvidenceSource3D::kMeasuredAcceleration,
+        .previous_control_source_sequence = input->previousControlSourceSequence(),
+        .previous_control_source_stamp_ns = input->previousControlSourceStampNs(),
+        .previous_control_receive_stamp_ns = input->previousControlReceiveStampNs(),
+    });
+    ExecutionStopRequest3D request = stopRequest(fixture, active, input);
+    request.finite_horizon_config.stopping_capability = capability;
+    const ExecutionStopPreparation3D prepared = supervisor.prepareStop(request);
+    return prepared.prepared() ? prepared.stop_distance_m : -1.0;
+  };
+
+  const double authority =
+      stop_distance(FiniteMotionHorizonConfig3D{}.stopping_capability);
+  const double soft = stop_distance(StoppingCapability{
+      .maximum_commanded_horizontal_deceleration_mps2 = 0.5,
+      .guaranteed_horizontal_deceleration_mps2 = 0.5,
+      .guaranteed_vertical_deceleration_mps2 = 0.25,
+      .reaction_latency_s = 0.1,
+  });
+
+  ASSERT_GT(authority, 0.0);
+  ASSERT_GT(soft, 0.0);
+  EXPECT_NEAR(soft, authority, 1.0e-6);
+}
+
 // The stop that owns the vehicle after it has been committed on the wire.
 [[nodiscard]] std::shared_ptr<const ExecutionPlan3D>
 commitStop(ExecutionSupervisor3D& supervisor,

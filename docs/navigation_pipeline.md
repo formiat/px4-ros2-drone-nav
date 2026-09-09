@@ -420,7 +420,11 @@ nothing had owned the vehicle kept one recorded flight resting for half a
 minute with a certified route pending (`finite_execution_conflict`). A route
 may also take the vehicle back while the stop is still braking, so no approach
 to any obstacle is ever withheld. Stopping is not a route state, so the stop's length follows the
-vehicle's state and its guaranteed deceleration rather than the controller's
+vehicle's state and the full deceleration authority of its dynamics, not the
+guaranteed deceleration the speed policy plans routine braking tails against
+(a stop shaped to that softer vertical figure once stretched a descending
+vehicle's brake to five metres and rested it below the floor it was diving
+towards), rather than the controller's
 control count, and its profile is shaped against the same integrator that
 validates it, including the shedding of an inherited excess above the speed
 cap.
@@ -443,7 +447,7 @@ tick. Other verdicts, a broken envelope or dynamics law, are not retried: no
 smaller body satisfies them.
 
 When the body's sweep meets occupied evidence too, the stop is still the
-answer. Braking at the guaranteed deceleration is the least motion any
+answer. Braking with the dynamics' full authority is the least motion any
 trajectory from the vehicle's state can hold, so the same stop is certified a
 third time with the body's occupied-evidence verdict tolerated
 (`StopExecutionCertification3D::tolerate_body_collision`,
