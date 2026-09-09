@@ -5,6 +5,7 @@
 #include "drone_city_nav/static_route_extension.hpp"
 #include "drone_city_nav/world_snapshot_3d.hpp"
 
+#include <cmath>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -17,13 +18,21 @@ namespace drone_city_nav {
 struct PlannerSearchContinuityBase3D {
   std::shared_ptr<const CertifiedRouteSuffix3D> route;
   RouteProgressProjection3D request_projection{};
+  // A replacement of a route blocked ahead keeps the certified geometry
+  // before the block: the successor stitches onto the incumbent no further
+  // along than this station, so the frozen prefix ends short of the block.
+  // Unset for an extension, which stitches wherever the overlap lands.
+  std::optional<double> stitch_limit_station_m;
 
   [[nodiscard]] bool
   validFor(const StaticRouteSearchRequestIdentity& request) const noexcept {
-    return request.kind == StaticRouteSearchRequestKind::kExtension &&
+    return (request.kind == StaticRouteSearchRequestKind::kExtension ||
+            request.kind == StaticRouteSearchRequestKind::kReplan) &&
            request.base_route_generation != 0U && route != nullptr && route->valid() &&
            route->route_instance_id.valid() &&
-           route->identity.generation == request.base_route_generation;
+           route->identity.generation == request.base_route_generation &&
+           (!stitch_limit_station_m.has_value() ||
+            (std::isfinite(*stitch_limit_station_m) && *stitch_limit_station_m > 0.0));
   }
 };
 
@@ -61,7 +70,13 @@ struct PlannerSearchTransaction3D {
         return false;
       }
     } else if (continuity_base.has_value()) {
-      return false;
+      // Only a route blocked ahead is replaced onto its own certified
+      // prefix; every other replacement starts from the vehicle.
+      if (request.kind != StaticRouteSearchRequestKind::kReplan ||
+          release_reason != RouteReleaseReason3D::kBlocked ||
+          !continuity_base->validFor(request)) {
+        return false;
+      }
     }
 
     if (world->observed_occupancy != nullptr) {

@@ -470,6 +470,21 @@ void ProductionMppiNode::planningTick() {
       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                 cycle_prepare_started)
           .count();
+  {
+    // The block the replan snapshot stitches short of: the nearer of the
+    // persistent raw and the latest lidar blocks on the resident route.
+    std::optional<double> blocked_station_m =
+        planning.route.execution.raw_blocked_station_m;
+    if (planning.route.execution.latest_lidar_blocked_station_m.has_value() &&
+        (!blocked_station_m.has_value() ||
+         *planning.route.execution.latest_lidar_blocked_station_m <
+             *blocked_station_m)) {
+      blocked_station_m = planning.route.execution.latest_lidar_blocked_station_m;
+    }
+    observed_route_blocked_station_m_.store(
+        blocked_station_m.value_or(std::numeric_limits<double>::quiet_NaN()),
+        std::memory_order_release);
+  }
   for (const RouteExecutionSelectorEffect3D& effect :
        planning.effects.route_execution) {
     switch (effect.kind) {

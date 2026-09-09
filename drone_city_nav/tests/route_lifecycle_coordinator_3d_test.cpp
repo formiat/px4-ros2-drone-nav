@@ -760,5 +760,103 @@ TEST(RouteLifecycleCoordinator3DTest,
   EXPECT_EQ(replay.status, RouteLifecycleReplanStatus3D::kRouteQueueBusy);
 }
 
+// A route blocked far enough ahead is replaced onto its own certified prefix:
+// the replan carries the incumbent as the successor's continuity base with a
+// stitch limit one overlap short of the block, and the transaction admits a
+// base on a blocked replacement and on nothing else. A block inside the
+// overlap's reach leaves nothing worth keeping and the search starts from the
+// vehicle.
+TEST(RouteLifecycleCoordinator3DTest,
+     ABlockedRouteIsReplacedOntoItsCertifiedPrefixWhenTheBlockIsFarAhead) {
+  ExecutionSupervisor3D supervisor;
+  const LifecycleFixture3D input = fixture();
+  ASSERT_NE(input.transaction, nullptr);
+  std::size_t initial_commit_count{0U};
+  {
+    RouteLifecycleCoordinator3D activation_coordinator{
+        supervisor, lifecycleConfig(input, supervisor, initial_commit_count)};
+    planAndActivateInitialRoute(activation_coordinator, supervisor, input);
+  }
+  const std::shared_ptr<const ExecutionPlan3D> plan = supervisor.plan();
+  ASSERT_NE(plan, nullptr);
+  ASSERT_NE(plan->route(), nullptr);
+  const std::uint64_t generation = plan->routeGenerationHighWater();
+  const std::shared_ptr<const CertifiedRouteSuffix3D> active_route{plan, plan->route()};
+  const double end_station_m = active_route->endStationM();
+  ASSERT_GT(end_station_m, 3.0);
+  const RouteProgressProjection3D projection{
+      .valid = true,
+      .station_m = active_route->progress.station_m,
+      .total_length_m = end_station_m,
+      .remaining_m = end_station_m - active_route->progress.station_m,
+      .cross_track_m = 0.0,
+  };
+
+  const auto stitched_transaction = [&](const RouteReleaseReason3D reason) {
+    return makePlannerSearchTransaction3D(
+        input.world, input.planner_world, input.transaction->objective,
+        StaticRouteSearchRequestIdentity{
+            .kind = StaticRouteSearchRequestKind::kReplan,
+            .base_route_generation = generation,
+        },
+        PlannerSearchContinuityBase3D{
+            .route = active_route,
+            .request_projection = projection,
+            .stitch_limit_station_m = end_station_m - 1.0,
+        },
+        reason);
+  };
+  EXPECT_NE(stitched_transaction(RouteReleaseReason3D::kBlocked), nullptr);
+  EXPECT_EQ(stitched_transaction(RouteReleaseReason3D::kDiverged), nullptr);
+
+  const auto replan = [&](const double blocked_station_m) {
+    std::size_t commit_count{0U};
+    RouteLifecycleCoordinatorConfig3D config =
+        lifecycleConfig(input, supervisor, commit_count);
+    config.extension.required_certified_overlap_m = 1.0;
+    config.replan_snapshot_provider = [&input, &supervisor, active_route, projection,
+                                       blocked_station_m]() {
+      const std::shared_ptr<const ExecutionPlan3D> execution = supervisor.plan();
+      return RouteLifecycleReplanSnapshot3D{
+          .navigation = input.navigation,
+          .objective = input.objective,
+          .resident_world = input.world,
+          .resident_planner_world = input.planner_world,
+          .latest_raw_world = nullptr,
+          .world_telemetry = {},
+          .committed_route_generation =
+              execution != nullptr ? execution->routeGenerationHighWater() : 0U,
+          .blocked_raw_revision = 0U,
+          .active_route = active_route,
+          .route_projection = projection,
+          .blocked_station_m = blocked_station_m,
+          .minimum_route_mission_epoch = 0U,
+          .minimum_route_sample_sequence = 0U,
+          .stamp_ns = 600,
+      };
+    };
+    RouteLifecycleCoordinator3D coordinator{supervisor, std::move(config)};
+    return coordinator.requestReplan(RouteReleaseReason3D::kBlocked, generation);
+  };
+
+  // The queue may still hold the activation's own search; the base is
+  // decided before the request is queued either way.
+  const auto reached_the_queue = [](const RouteLifecycleReplanStatus3D status) {
+    return status == RouteLifecycleReplanStatus3D::kQueued ||
+           status == RouteLifecycleReplanStatus3D::kRouteQueueBusy;
+  };
+  const RouteLifecycleReplanOutcome3D far = replan(end_station_m);
+  EXPECT_TRUE(reached_the_queue(far.status))
+      << routeLifecycleReplanStatus3DName(far.status);
+  ASSERT_TRUE(far.stitch_limit_station_m.has_value());
+  EXPECT_NEAR(*far.stitch_limit_station_m, end_station_m - 1.0, 1.0e-9);
+
+  const RouteLifecycleReplanOutcome3D near =
+      replan(active_route->progress.station_m + 1.5);
+  EXPECT_TRUE(reached_the_queue(near.status))
+      << routeLifecycleReplanStatus3DName(near.status);
+  EXPECT_FALSE(near.stitch_limit_station_m.has_value());
+}
+
 } // namespace
 } // namespace drone_city_nav

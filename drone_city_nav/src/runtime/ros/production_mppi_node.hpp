@@ -72,6 +72,7 @@
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -407,6 +408,10 @@ private:
   std::int64_t objective_replan_stamp_ns_{0};
 
   std::atomic<std::uint64_t> observed_route_blocked_raw_revision_{0U};
+  // The station the resident route's unexecuted suffix is blocked at on the
+  // newest evidence, NaN when it is not; read by the replan snapshot.
+  std::atomic<double> observed_route_blocked_station_m_{
+      std::numeric_limits<double>::quiet_NaN()};
   std::atomic<std::uint64_t> observed_route_replan_dispatched_raw_revision_{0U};
   std::atomic<std::uint64_t> physical_trajectory_replan_route_generation_{0U};
   LatestLidarEvidenceAdmissionState3D latest_lidar_evidence_admission_state_{};

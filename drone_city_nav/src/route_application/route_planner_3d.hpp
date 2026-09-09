@@ -74,6 +74,9 @@ struct RoutePlannerUpdate3D {
   RoutePlannerUpdateStatus3D status{RoutePlannerUpdateStatus3D::kInvalidRequest};
   double attempted_stitch_station_m{0.0};
   double certified_route_end_station_m{0.0};
+  // A blocked replacement asked to stitch found its overlap reaching the
+  // block and was searched from the vehicle instead.
+  bool stitch_fallback_to_vehicle{false};
   bool planner_invoked{false};
   double search_ms{0.0};
 };

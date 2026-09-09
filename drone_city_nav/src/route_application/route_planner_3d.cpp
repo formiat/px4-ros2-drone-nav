@@ -121,10 +121,15 @@ RoutePlannerUpdate3D RoutePlanner3D::update(
     RouteInstanceId3D search_base_route_instance_id{};
     std::optional<double> search_base_stitch_station_m;
 
-    const bool certified_stitch_required = transaction.extension();
     const PlannerSearchContinuityBase3D* const continuity_base =
         transaction.continuity_base ? std::addressof(*transaction.continuity_base)
                                     : nullptr;
+    // An extension always stitches. A replacement of a route blocked ahead
+    // stitches onto the certified prefix before the block, and falls back to
+    // a search from the vehicle when the overlap would reach the block.
+    const bool certified_stitch_required =
+        transaction.extension() ||
+        (transaction.replacement() && continuity_base != nullptr);
     const CertifiedRouteSuffix3D* const active_route =
         continuity_base != nullptr ? continuity_base->route.get() : nullptr;
     const bool certified_stitch_base_available =
@@ -152,16 +157,25 @@ RoutePlannerUpdate3D RoutePlanner3D::update(
           config_.extension.required_certified_overlap_m;
       result.attempted_stitch_station_m = stitch_station_m;
       result.certified_route_end_station_m = active_geometry.back().station_m;
-      if (stitch_station_m > active_geometry.back().station_m) {
-        result.status = RoutePlannerUpdateStatus3D::kStitchBeyondCertifiedRoute;
-        return finish(std::move(result));
+      const bool stitch_beyond_limit =
+          continuity_base->stitch_limit_station_m.has_value() &&
+          stitch_station_m > *continuity_base->stitch_limit_station_m;
+      if (stitch_station_m > active_geometry.back().station_m || stitch_beyond_limit) {
+        if (transaction.extension()) {
+          result.status = RoutePlannerUpdateStatus3D::kStitchBeyondCertifiedRoute;
+          return finish(std::move(result));
+        }
+        // The block is inside the overlap: nothing certified is left to keep,
+        // so the replacement is searched from the vehicle after all.
+        result.stitch_fallback_to_vehicle = true;
+      } else {
+        const RouteSample3D stitch =
+            sampleRoute3DAtStation(active_geometry, stitch_station_m);
+        search_start = stitch.position;
+        search_velocity = velocityAtStitch(stitch, config_.cruise_speed_mps);
+        search_base_route_instance_id = active_route->route_instance_id;
+        search_base_stitch_station_m = stitch_station_m;
       }
-      const RouteSample3D stitch =
-          sampleRoute3DAtStation(active_geometry, stitch_station_m);
-      search_start = stitch.position;
-      search_velocity = velocityAtStitch(stitch, config_.cruise_speed_mps);
-      search_base_route_instance_id = active_route->route_instance_id;
-      search_base_stitch_station_m = stitch_station_m;
     }
 
     PersistentPlannerWorld3D planner_world = *transaction.planner_world;

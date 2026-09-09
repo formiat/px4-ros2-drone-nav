@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cinttypes>
+#include <cmath>
 #include <exception>
 #include <string>
 #include <utility>
@@ -400,6 +401,39 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
                     execution_supervisor_.plan();
                 snapshot.committed_route_generation =
                     execution != nullptr ? execution->routeGenerationHighWater() : 0U;
+                // The resident route, where the vehicle stands on it and where
+                // its suffix is blocked: a replacement of a route blocked far
+                // ahead stitches onto the prefix before the block.
+                if (const CertifiedRouteSuffix3D* const active_route =
+                        execution != nullptr ? execution->route() : nullptr;
+                    active_route != nullptr && active_route->geometry != nullptr &&
+                    active_route->geometry->route != nullptr) {
+                  snapshot.active_route = std::shared_ptr<const CertifiedRouteSuffix3D>{
+                      execution, active_route};
+                  const RouteProjection3D projection =
+                      projectOntoRoute3DWithinStationWindow(
+                          *active_route->geometry->route,
+                          Point3{snapshot.navigation.state.x,
+                                 snapshot.navigation.state.y,
+                                 snapshot.navigation.state.z},
+                          active_route->progress.station_m,
+                          active_route->endStationM());
+                  if (projection.valid) {
+                    snapshot.route_projection = RouteProgressProjection3D{
+                        .valid = true,
+                        .station_m = projection.station_m,
+                        .total_length_m = active_route->endStationM(),
+                        .remaining_m = projection.remaining_m,
+                        .cross_track_m = projection.distance_m,
+                        .point = {projection.point.x, projection.point.y},
+                    };
+                  }
+                  const double blocked_station_m =
+                      observed_route_blocked_station_m_.load(std::memory_order_acquire);
+                  if (std::isfinite(blocked_station_m)) {
+                    snapshot.blocked_station_m = blocked_station_m;
+                  }
+                }
                 {
                   WorldPipeline3D::ResidentLease resident =
                       world_pipeline_->lockResident();

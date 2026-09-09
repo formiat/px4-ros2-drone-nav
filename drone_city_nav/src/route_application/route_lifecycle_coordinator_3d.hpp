@@ -52,6 +52,13 @@ struct RouteLifecycleReplanSnapshot3D {
   ProductionWorldBuildTelemetry3D world_telemetry{};
   std::uint64_t committed_route_generation{0U};
   std::uint64_t blocked_raw_revision{0U};
+  // The resident route the vehicle follows, where the vehicle projects onto
+  // it, and the station its unexecuted suffix is blocked at, when known: a
+  // replacement of a route blocked far enough ahead stitches onto the
+  // certified prefix before the block instead of starting from the vehicle.
+  std::shared_ptr<const CertifiedRouteSuffix3D> active_route;
+  RouteProgressProjection3D route_projection{};
+  std::optional<double> blocked_station_m;
   std::uint64_t minimum_route_mission_epoch{0U};
   std::uint64_t minimum_route_sample_sequence{0U};
   std::int64_t stamp_ns{0};
@@ -233,6 +240,9 @@ struct RouteLifecycleReplanOutcome3D {
   std::uint64_t dispatched_raw_revision{0U};
   Point3 search_start{};
   bool raw_search_overlay_used{false};
+  // The replacement stitches onto the incumbent's certified prefix no further
+  // along than this station; unset when it is searched from the vehicle.
+  std::optional<double> stitch_limit_station_m;
 
   [[nodiscard]] bool queued() const noexcept {
     return status == RouteLifecycleReplanStatus3D::kQueued;

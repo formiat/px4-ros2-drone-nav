@@ -154,6 +154,23 @@ extracted from what was explored. Restarting the search from nothing cost one
 to two seconds per rejection and, whenever the world had not changed, found
 the same first route again.
 
+A route blocked far enough ahead is replaced onto its own certified prefix.
+The replan carries the incumbent as the successor's continuity base
+(`RouteLifecycleReplanSnapshot3D::active_route`, `route_projection`,
+`blocked_station_m`) with a stitch limit one certified overlap short of the
+block (`PlannerSearchContinuityBase3D::stitch_limit_station_m`): the successor
+is searched from the stitch one overlap ahead of the vehicle, with the
+incumbent's own velocity there, the certified prefix is frozen and the
+executor splices onto it, exactly as an extension does. A block inside that
+reach leaves nothing certified worth keeping and the replacement is searched
+from the vehicle as before (`stitch_fallback_to_vehicle`). Measured over
+three urban flights, more than half of the controller's candidate rejections
+came within two seconds of a route replacement and within four metres of its
+start: a replacement searched from the vehicle turned it around, or sent a
+vehicle descending into a hole climbing instead, and the horizon that still
+carried the old intent swept the evidence beside it. The replan log reports
+the limit as `stitch_limit_m`, -1 when the search starts from the vehicle.
+
 Holding the first-found feasibility route back after such a loss — to give
 the persistent search's repair a chance to deliver the shortest path past the
 block before the vehicle commits to a detour — was tried and does not work.

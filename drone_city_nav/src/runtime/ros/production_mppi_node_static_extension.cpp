@@ -270,12 +270,14 @@ void ProductionMppiNode::logRouteLifecycleReplanOutcome3D(
       }
       RCLCPP_INFO(get_logger(),
                   "STATIC_ROUTE_REPLAN_REQUEST status=queued generation=%" PRIu64
-                  " resident_esdf_revision=%" PRIu64 " retry_trigger=%.*s reason=%s",
+                  " resident_esdf_revision=%" PRIu64
+                  " retry_trigger=%.*s reason=%s stitch_limit_m=%.2f",
                   outcome.search_generation, outcome.resident_world_revision,
                   static_cast<int>(
                       staticRouteSearchRetryTriggerName(outcome.retry.trigger).size()),
                   staticRouteSearchRetryTriggerName(outcome.retry.trigger).data(),
-                  routeReleaseReason3DName(outcome.reason));
+                  routeReleaseReason3DName(outcome.reason),
+                  outcome.stitch_limit_station_m.value_or(-1.0));
       return;
   }
 }

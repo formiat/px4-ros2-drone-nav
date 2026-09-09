@@ -209,11 +209,35 @@ RouteLifecycleReplanOutcome3D RouteLifecycleCoordinator3D::requestReplanImpl(
                   : StaticRouteSearchRequestKind::kReplan,
       .base_route_generation = outcome.search_generation,
   };
+  // A route blocked far enough ahead is replaced onto its own certified
+  // prefix: the successor stitches one overlap ahead of the vehicle and at
+  // least one overlap short of the block, so the geometry the vehicle is
+  // flying now stays, the executor splices instead of turning the vehicle
+  // around, and the successor is searched from where the incumbent already
+  // is. A block inside that reach leaves nothing certified worth keeping.
+  std::optional<PlannerSearchContinuityBase3D> continuity_base;
+  if (request_identity.kind == StaticRouteSearchRequestKind::kReplan &&
+      reason == RouteReleaseReason3D::kBlocked && snapshot.active_route != nullptr &&
+      snapshot.active_route->valid() &&
+      snapshot.active_route->identity.generation == outcome.search_generation &&
+      snapshot.route_projection.valid && snapshot.blocked_station_m.has_value() &&
+      std::isfinite(*snapshot.blocked_station_m)) {
+    const double overlap_m = config_.extension.required_certified_overlap_m;
+    const double stitch_limit_m = *snapshot.blocked_station_m - overlap_m;
+    if (stitch_limit_m >= snapshot.route_projection.station_m + overlap_m) {
+      continuity_base = PlannerSearchContinuityBase3D{
+          .route = snapshot.active_route,
+          .request_projection = snapshot.route_projection,
+          .stitch_limit_station_m = stitch_limit_m,
+      };
+      outcome.stitch_limit_station_m = stitch_limit_m;
+    }
+  }
   const std::shared_ptr<const PlannerSearchTransaction3D> transaction =
       makePlannerSearchTransaction3D(snapshot.resident_world, std::move(planner_world),
                                      makeStaticRouteObjective(*snapshot.objective),
-                                     request_identity, std::nullopt, reason,
-                                     config_.stamp_provider());
+                                     request_identity, std::move(continuity_base),
+                                     reason, config_.stamp_provider());
   if (transaction == nullptr) {
     outcome.status = RouteLifecycleReplanStatus3D::kInvalidTransaction;
     return complete(outcome);
