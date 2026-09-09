@@ -140,6 +140,24 @@ TEST_F(LidarDebugNodeConfigTest, LoadsCustomTopicsAndProjectionParams) {
   EXPECT_TRUE(config.use_px4_heading_for_scan);
 }
 
+TEST_F(LidarDebugNodeConfigTest, KeepsACalibratedNegativeSensorTimeOffset) {
+  const auto node = makeNode("lidar_debug_node_config_negative_offset",
+                             {rclcpp::Parameter{"lidar_pose_latency_s", -0.12}});
+
+  const LidarDebugNodeConfig config = loadLidarDebugNodeConfig(*node);
+
+  EXPECT_DOUBLE_EQ(config.lidar_pose_latency_s, -0.12);
+}
+
+TEST_F(LidarDebugNodeConfigTest, ClampsTheSensorTimeOffsetSymmetrically) {
+  const auto node = makeNode("lidar_debug_node_config_negative_clamp",
+                             {rclcpp::Parameter{"lidar_pose_latency_s", -4.0}});
+
+  const LidarDebugNodeConfig config = loadLidarDebugNodeConfig(*node);
+
+  EXPECT_DOUBLE_EQ(config.lidar_pose_latency_s, -1.0);
+}
+
 TEST_F(LidarDebugNodeConfigTest, ClampsLoaderValues) {
   const auto node = makeNode("lidar_debug_node_config_clamps",
                              {rclcpp::Parameter{"snapshot_period_s", 0.0},

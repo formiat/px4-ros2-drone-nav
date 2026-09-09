@@ -163,10 +163,25 @@ mapping or lidar-debug projection. Failure rejects the whole scan, leaving both
 occupied and free memory unchanged.
 
 `lidar_pose_latency_s` is retained as a configuration-compatible name for the
-calibrated sensor time offset. A positive value samples both position and
-attitude later than the raw scan stamp. Diagnostics report the adjusted stamp,
-bracketing samples, interpolation/extrapolation age, mapper residual, and the
-single accepted pose source.
+calibrated sensor time offset. The offset is signed: a positive value samples
+both position and attitude later than the raw scan stamp, a negative value
+samples them earlier. Diagnostics report the adjusted stamp, bracketing
+samples, interpolation/extrapolation age, mapper residual, and the single
+accepted pose source.
+
+The simulated 3D GPU lidar is calibrated at `-0.12 s`. Its cloud is stamped
+after the render that produced it, so the returns correspond to the vehicle
+pose roughly 120 ms before the stamp. The value was measured by projecting the
+node's accepted scans against the world collision mesh while the vehicle flew
+at 2.5–6 m/s: with the former `+0.05 s` the projected pose led the true
+acquisition pose by about 160 ms (interquartile range ±20 ms), which placed
+every surface ahead of the vehicle 0.3–1.0 m too far away and every surface
+behind it too close; a wall approached at 6 m/s was mapped a metre behind its
+face and was only corrected once the vehicle stopped next to it. Re-run the
+measurement when the sensor model, its update rate, or the simulator changes:
+the same beams projected with poses sampled at `stamp + tau` must sit on the
+mesh for the chosen `tau`. The 2D profile keeps its previous value because it
+has not been measured.
 
 ## Motion Compensation
 

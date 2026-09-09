@@ -17,7 +17,7 @@ void sanitizeLidarDebugNodeConfig(LidarDebugNodeConfig& config) {
   config.view_radius_m = std::max(5.0, config.view_radius_m);
   config.max_lidar_range_m = std::max(1.0, config.max_lidar_range_m);
   config.range_hit_epsilon_m = std::max(0.0, config.range_hit_epsilon_m);
-  config.lidar_pose_latency_s = std::clamp(config.lidar_pose_latency_s, 0.0, 1.0);
+  config.lidar_pose_latency_s = std::clamp(config.lidar_pose_latency_s, -1.0, 1.0);
   config.lidar_scan_alignment_maximum_wait_s =
       std::clamp(config.lidar_scan_alignment_maximum_wait_s, 0.0, 2.0);
   config.lidar_scan_alignment_queue_capacity =

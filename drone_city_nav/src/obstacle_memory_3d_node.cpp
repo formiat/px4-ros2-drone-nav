@@ -256,7 +256,7 @@ public:
     acquisition_pose_config_.apply_sensor_time_offset =
         declare_parameter<bool>("motion_compensate_lidar_pose", true);
     acquisition_pose_config_.sensor_time_offset_s =
-        std::clamp(declare_parameter<double>("lidar_pose_latency_s", 0.05), 0.0, 1.0);
+        std::clamp(declare_parameter<double>("lidar_pose_latency_s", 0.05), -1.0, 1.0);
     acquisition_pose_config_.require_source_timestamp_alignment = true;
     acquisition_pose_config_.require_bracketed_pose = true;
     alignment_maximum_wait_ns_ = static_cast<std::int64_t>(

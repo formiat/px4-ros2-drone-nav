@@ -57,6 +57,32 @@ TEST(LidarAcquisitionPoseTest, AppliesOffsetBeforeSamplingPositionAndAttitude) {
   EXPECT_NEAR(result.alignment.poses.front().pitch_rad, 0.4, 1.0e-6);
 }
 
+TEST(LidarAcquisitionPoseTest, ANegativeOffsetSamplesThePoseBeforeTheScanStamp) {
+  // A simulated GPU lidar stamps its cloud after the render that produced it,
+  // so the calibrated acquisition time lies before the stamp. The offset is
+  // therefore signed: a negative value samples the earlier pose.
+  const Px4RosTimeMapper mapper = makeReadyIdentityTimeMapper();
+  const LidarPoseHistory history = makeMovingPoseHistory();
+  const LaserScanTiming timing{1'150'000'000, true, 0.0, 1'160'000'000, true};
+
+  const LidarAcquisitionPoseResult result = resolveLidarAcquisitionBeamPoses(
+      history, timing, 1U,
+      LidarAcquisitionPoseConfig{.apply_sensor_time_offset = true,
+                                 .sensor_time_offset_s = -0.1,
+                                 .require_source_timestamp_alignment = true},
+      std::nullopt, &mapper);
+
+  ASSERT_TRUE(result.resolved());
+  ASSERT_EQ(result.alignment.poses.size(), 1U);
+  EXPECT_TRUE(result.alignment.sourceAligned());
+  EXPECT_EQ(result.sensor_time_offset_ns, -100'000'000);
+  EXPECT_EQ(result.adjusted_timing.first_beam_stamp_ns, 1'050'000'000);
+  // The mapped samples sit at 1.01 s (x = 9, level) and 1.11 s (x = 10,
+  // pitched 0.4 rad); the adjusted stamp interpolates 40 % of the way.
+  EXPECT_NEAR(result.alignment.poses.front().position.x, 9.4, 1.0e-9);
+  EXPECT_NEAR(result.alignment.poses.front().pitch_rad, 0.16, 1.0e-6);
+}
+
 TEST(LidarAcquisitionPoseTest, OffsetChangesIntegratedPhysicalWallLocation) {
   const Px4RosTimeMapper mapper = makeReadyIdentityTimeMapper();
   const LidarPoseHistory history = makeMovingPoseHistory();
