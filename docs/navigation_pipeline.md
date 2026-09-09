@@ -416,7 +416,13 @@ stop had been braking for. That hold now brakes before it holds: while the
 vehicle still moves, the setpoint it is pinned to carries a zero velocity and
 the stack's own braking acceleration against the vehicle's velocity
 (`unavailable_path_braking_acceleration_mps2`), and only a vehicle at rest is
-held by position alone. A position setpoint by itself brakes at whatever the
+held by position alone. The position it is pinned to survives a horizon that
+takes the vehicle nowhere: the pin is judged against the vehicle when the hold
+is next needed and kept while the vehicle still stands within the stationary
+tolerance of it. Re-pinned at each revocation instead, a run of short-lived
+horizons walked the hold a few centimetres at a time, and one recorded flight
+ratcheted twenty centimetres into a wall it had come to rest a hull's width
+from, while supposedly holding. A position setpoint by itself brakes at whatever the
 position loop makes of a zero error: measured, a vehicle handed such a hold at
 1.9 m/s took nine tenths of a metre to stop, half the deceleration every
 stopping distance in the stack assumes, and met the structure it had been

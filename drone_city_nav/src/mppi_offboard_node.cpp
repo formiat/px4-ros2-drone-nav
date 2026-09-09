@@ -530,7 +530,13 @@ private:
         !horizon_.has_value() || horizon_->execution_mode != horizon.execution_mode ||
         horizon_->execution_reason != horizon.execution_reason;
     horizon_ = horizon;
-    unavailable_path_hold_target_.reset();
+    // The pin of the local hold survives a horizon that takes the vehicle
+    // nowhere: it is judged against the vehicle's position when the hold is
+    // next needed, not discarded here. Discarding it re-pinned the hold at
+    // wherever the vehicle had crept to under each short-lived horizon, and
+    // one recorded flight ratcheted twenty centimetres into a wall that way,
+    // a few centimetres per revocation, while it was supposedly holding.
+    unavailable_path_hold_target_lease_active_ = false;
     RCLCPP_INFO(get_logger(),
                 "EXECUTION_HORIZON accepted=true producer=%" PRIu64 " sequence=%" PRIu64
                 " mode=%s",
@@ -816,6 +822,19 @@ private:
   }
 
   void publishUnavailablePathHoldSetpoint() {
+    // A pin the vehicle has left -- carried away by a horizon that did take it
+    // somewhere -- is not a hold any more; a pin it still stands on is, and
+    // stays where it was given, so a run of short-lived horizons and
+    // revocations cannot walk it.
+    if (unavailable_path_hold_target_.has_value() &&
+        !unavailable_path_hold_target_lease_active_ &&
+        std::hypot(local_x_ - unavailable_path_hold_target_->x,
+                   local_y_ - unavailable_path_hold_target_->y,
+                   altitude_m_ - unavailable_path_hold_target_->z) >
+            kStationaryExecutionHoldPositionToleranceM) {
+      unavailable_path_hold_target_.reset();
+    }
+    unavailable_path_hold_target_lease_active_ = true;
     if (!unavailable_path_hold_target_.has_value()) {
       unavailable_path_hold_target_ = Point3{
           local_x_,
@@ -963,6 +982,9 @@ private:
   px4_msgs::msg::VehicleStatus vehicle_status_;
   std::optional<msg::MppiTrajectoryHorizon> horizon_;
   std::optional<Point3> unavailable_path_hold_target_;
+  // Whether the local hold is the setpoint in force right now, as opposed to
+  // a pin kept from the last hold for the vehicle to be judged against.
+  bool unavailable_path_hold_target_lease_active_{false};
   std::optional<rclcpp::Time> takeoff_complete_stamp_;
   std::optional<bool> last_navigation_readiness_;
   std::uint64_t offboard_producer_instance_id_{0U};
