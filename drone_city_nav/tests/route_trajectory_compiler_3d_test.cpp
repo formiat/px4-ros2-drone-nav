@@ -154,7 +154,7 @@ TEST(RouteTrajectoryCompiler3DTest, RejectsObservedRouteWithoutOwnedRawWorld) {
   EXPECT_EQ(result.trajectory, nullptr);
   EXPECT_EQ(result.decorations, nullptr);
   EXPECT_EQ(result.validation.reason,
-            CompiledTrajectoryFailureReason3D::kInvalidTrackingErrorTube);
+            CompiledTrajectoryFailureReason3D::kMissingTrackingWorld);
 }
 
 } // namespace

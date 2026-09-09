@@ -10,6 +10,28 @@
 namespace drone_city_nav {
 namespace {
 
+// The rule the tube refused on, as the compile failure that names it.
+[[nodiscard]] CompiledTrajectoryFailureReason3D
+tubeProfileFailure(const TrackingErrorTubeProfileStatus3D status) noexcept {
+  using Failure = CompiledTrajectoryFailureReason3D;
+  switch (status) {
+    case TrackingErrorTubeProfileStatus3D::kBuilt:
+    case TrackingErrorTubeProfileStatus3D::kInvalidProfile:
+      return Failure::kInvalidTrackingErrorTubeProfile;
+    case TrackingErrorTubeProfileStatus3D::kInvalidRoute:
+      return Failure::kInvalidTrackingErrorTubeRoute;
+    case TrackingErrorTubeProfileStatus3D::kInvalidWorld:
+      return Failure::kInvalidTrackingErrorTubeWorld;
+    case TrackingErrorTubeProfileStatus3D::kInvalidFootprint:
+    case TrackingErrorTubeProfileStatus3D::kInvalidConfig:
+    case TrackingErrorTubeProfileStatus3D::kInvalidSpeedCeiling:
+      return Failure::kInvalidTrackingErrorTubeContract;
+    case TrackingErrorTubeProfileStatus3D::kNonFiniteSegmentLimit:
+      return Failure::kInvalidTrackingErrorTubeSegment;
+  }
+  return Failure::kInvalidTrackingErrorTubeProfile;
+}
+
 [[nodiscard]] bool
 spansStructurallyValid(const std::span<const RouteSample3D> route,
                        const std::span<const ConstrainedRouteSpan> spans) noexcept {
@@ -84,12 +106,14 @@ TrajectoryCompiler3D::compile(TrajectoryCompilerInput3D input) {
   const double maximum_profile_speed_mps =
       std::min(input.config.unconstrained_speed_mps,
                input.config.time_model.maximum_horizontal_speed_mps);
+  TrackingErrorTubeProfileStatus3D tube_status{
+      TrackingErrorTubeProfileStatus3D::kBuilt};
   auto tracking_error_tube =
       std::make_shared<const TrackingErrorTubeProfile3D>(makeTrackingErrorTubeProfile3D(
           input.route, input.tracking_world, input.config.physical_footprint,
-          input.config.tracking_error_tube, maximum_profile_speed_mps));
+          input.config.tracking_error_tube, maximum_profile_speed_mps, &tube_status));
   if (!tracking_error_tube->valid) {
-    result.validation = {Failure::kInvalidTrackingErrorTube, 0U};
+    result.validation = {tubeProfileFailure(tube_status), 0U};
     return result;
   }
   RouteTimeParameterization3D parameterization = parameterizeRouteTime3D(

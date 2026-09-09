@@ -82,7 +82,7 @@ RouteTrajectoryCompilationResult3D RouteTrajectoryCompiler3D::compile(
     return RouteTrajectoryCompilationResult3D{
         .trajectory = nullptr,
         .decorations = nullptr,
-        .validation = {.reason = Failure::kInvalidTrackingErrorTube},
+        .validation = {.reason = Failure::kMissingTrackingWorld},
         .decoration_validation = {},
         .stop_turn_count = 0U,
     };

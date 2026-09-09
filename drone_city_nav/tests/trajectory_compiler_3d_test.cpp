@@ -166,7 +166,7 @@ TEST(TrajectoryCompiler3DTest, DistinguishesInvalidTrackingWorld) {
       route, testInitialState(route.front().position), invalid_world);
 
   EXPECT_EQ(compilation.validation.reason,
-            CompiledTrajectoryFailureReason3D::kInvalidTrackingErrorTube);
+            CompiledTrajectoryFailureReason3D::kInvalidTrackingErrorTubeWorld);
   EXPECT_EQ(compilation.trajectory, nullptr);
 }
 

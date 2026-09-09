@@ -226,16 +226,55 @@ bool trackingErrorTubeProfile3DIsValid(const TrackingErrorTubeProfile3D& profile
           }));
 }
 
+std::string_view trackingErrorTubeProfileStatus3DName(
+    const TrackingErrorTubeProfileStatus3D status) noexcept {
+  switch (status) {
+    case TrackingErrorTubeProfileStatus3D::kBuilt:
+      return "built";
+    case TrackingErrorTubeProfileStatus3D::kInvalidRoute:
+      return "invalid_route";
+    case TrackingErrorTubeProfileStatus3D::kInvalidWorld:
+      return "invalid_world";
+    case TrackingErrorTubeProfileStatus3D::kInvalidFootprint:
+      return "invalid_footprint";
+    case TrackingErrorTubeProfileStatus3D::kInvalidConfig:
+      return "invalid_config";
+    case TrackingErrorTubeProfileStatus3D::kInvalidSpeedCeiling:
+      return "invalid_speed_ceiling";
+    case TrackingErrorTubeProfileStatus3D::kNonFiniteSegmentLimit:
+      return "non_finite_segment_limit";
+    case TrackingErrorTubeProfileStatus3D::kInvalidProfile:
+      return "invalid_profile";
+  }
+  return "unknown";
+}
+
 TrackingErrorTubeProfile3D makeTrackingErrorTubeProfile3D(
     const std::span<const RouteSample3D> route, const TrackingErrorTubeWorld3D& world,
     const SweptFootprintConfig& physical_footprint,
-    const TrackingErrorTubeConfig3D& config, const double maximum_speed_mps) {
+    const TrackingErrorTubeConfig3D& config, const double maximum_speed_mps,
+    TrackingErrorTubeProfileStatus3D* const status) {
+  const auto report = [status](const TrackingErrorTubeProfileStatus3D verdict) {
+    if (status != nullptr) {
+      *status = verdict;
+    }
+    return TrackingErrorTubeProfile3D{};
+  };
   TrackingErrorTubeProfile3D result;
-  if (!routeIsValidForTube(route) || !worldConfigurationIsValid(world) ||
-      !physicalFootprintIsValid(physical_footprint) ||
-      !trackingErrorTubeConfig3DIsValid(config) || !std::isfinite(maximum_speed_mps) ||
-      !(maximum_speed_mps > kSpeedToleranceMps)) {
-    return result;
+  if (!routeIsValidForTube(route)) {
+    return report(TrackingErrorTubeProfileStatus3D::kInvalidRoute);
+  }
+  if (!worldConfigurationIsValid(world)) {
+    return report(TrackingErrorTubeProfileStatus3D::kInvalidWorld);
+  }
+  if (!physicalFootprintIsValid(physical_footprint)) {
+    return report(TrackingErrorTubeProfileStatus3D::kInvalidFootprint);
+  }
+  if (!trackingErrorTubeConfig3DIsValid(config)) {
+    return report(TrackingErrorTubeProfileStatus3D::kInvalidConfig);
+  }
+  if (!std::isfinite(maximum_speed_mps) || !(maximum_speed_mps > kSpeedToleranceMps)) {
+    return report(TrackingErrorTubeProfileStatus3D::kInvalidSpeedCeiling);
   }
 
   result.obstacle_evidence_available =
@@ -250,7 +289,7 @@ TrackingErrorTubeProfile3D makeTrackingErrorTubeProfile3D(
         segmentSpeedLimitMps(world, route[index - 1U].position, route[index].position,
                              physical_footprint, config, maximum_speed_mps);
     if (!std::isfinite(segment_limit_mps)) {
-      return {};
+      return report(TrackingErrorTubeProfileStatus3D::kNonFiniteSegmentLimit);
     }
     result.speed_limits_mps[index - 1U] =
         std::min(result.speed_limits_mps[index - 1U], segment_limit_mps);
@@ -265,6 +304,12 @@ TrackingErrorTubeProfile3D makeTrackingErrorTubeProfile3D(
       config, *std::ranges::max_element(result.speed_limits_mps));
   result.valid = true;
   result.valid = trackingErrorTubeProfile3DIsValid(result, route.size());
+  if (!result.valid) {
+    return report(TrackingErrorTubeProfileStatus3D::kInvalidProfile);
+  }
+  if (status != nullptr) {
+    *status = TrackingErrorTubeProfileStatus3D::kBuilt;
+  }
   return result;
 }
 

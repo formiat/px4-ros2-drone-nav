@@ -119,8 +119,18 @@ const char* compiledTrajectoryFailureReason3DName(
       return "incoming_tangent_mismatch";
     case CompiledTrajectoryFailureReason3D::kTerminalTangentMismatch:
       return "terminal_tangent_mismatch";
-    case CompiledTrajectoryFailureReason3D::kInvalidTrackingErrorTube:
-      return "invalid_tracking_error_tube";
+    case CompiledTrajectoryFailureReason3D::kMissingTrackingWorld:
+      return "missing_tracking_world";
+    case CompiledTrajectoryFailureReason3D::kInvalidTrackingErrorTubeRoute:
+      return "invalid_tracking_error_tube_route";
+    case CompiledTrajectoryFailureReason3D::kInvalidTrackingErrorTubeWorld:
+      return "invalid_tracking_error_tube_world";
+    case CompiledTrajectoryFailureReason3D::kInvalidTrackingErrorTubeContract:
+      return "invalid_tracking_error_tube_contract";
+    case CompiledTrajectoryFailureReason3D::kInvalidTrackingErrorTubeSegment:
+      return "invalid_tracking_error_tube_segment";
+    case CompiledTrajectoryFailureReason3D::kInvalidTrackingErrorTubeProfile:
+      return "invalid_tracking_error_tube_profile";
     case CompiledTrajectoryFailureReason3D::kInvalidTimeProfile:
       return "invalid_time_profile";
     case CompiledTrajectoryFailureReason3D::kInvalidConstrainedSpans:

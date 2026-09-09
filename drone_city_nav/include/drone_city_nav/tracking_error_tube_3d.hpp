@@ -93,12 +93,32 @@ struct TrackingErrorTubeExecutionAssessment3D {
     std::span<const RouteSample3D> route, const TrackingErrorTubeProfile3D& profile,
     const TrackingErrorTubeExecutionObservation3D& observation) noexcept;
 
+// Why a tube profile could not be built. A route the compiler refuses over its
+// tube otherwise reaches the log as a bare invalid_tracking_error_tube, and a
+// recorded flight held for three seconds on exactly that with nothing to act
+// on.
+enum class TrackingErrorTubeProfileStatus3D : std::uint8_t {
+  kBuilt,
+  kInvalidRoute,
+  kInvalidWorld,
+  kInvalidFootprint,
+  kInvalidConfig,
+  kInvalidSpeedCeiling,
+  kNonFiniteSegmentLimit,
+  kInvalidProfile,
+};
+
+[[nodiscard]] std::string_view
+trackingErrorTubeProfileStatus3DName(TrackingErrorTubeProfileStatus3D status) noexcept;
+
 // Produces per-station speed ceilings whose swept physical hull plus the
 // speed-dependent tracking tube remains clear of confirmed occupied evidence.
 // The route itself is never rejected merely because free/unknown labels differ.
+// `status`, when given, names the rule a refusal was reached on.
 [[nodiscard]] TrackingErrorTubeProfile3D makeTrackingErrorTubeProfile3D(
     std::span<const RouteSample3D> route, const TrackingErrorTubeWorld3D& world,
     const SweptFootprintConfig& physical_footprint,
-    const TrackingErrorTubeConfig3D& config, double maximum_speed_mps);
+    const TrackingErrorTubeConfig3D& config, double maximum_speed_mps,
+    TrackingErrorTubeProfileStatus3D* status = nullptr);
 
 } // namespace drone_city_nav

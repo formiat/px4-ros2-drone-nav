@@ -236,6 +236,15 @@ publication, activation, raw-connector, and raw-suffix evidence. Acceptance
 uses these fields together with measured `state_position` samples; it does not
 depend on a planner-defined passage event.
 
+`COMPILED_TRAJECTORY valid=false reason=invalid_tracking_error_tube_*` names the
+rule the tracking-error tube refused a route on: `_route` for the route
+geometry, `_world` for the evidence fingerprint the profile is bound to,
+`_contract` for the footprint, tube configuration or speed ceiling, `_segment`
+for a segment whose limit came out non-finite, `_profile` for the assembled
+profile's own validity. `missing_tracking_world` means the compiler had no
+evidence to bind the profile to at all. One recorded flight held for three
+seconds with candidate after candidate refused as a bare invalid tube.
+
 `activation_status=route_certification_rejected` means the candidate passed the
 activation assessment and the dynamic handoff but the route certification
 refused it; `certification=<verdict>` names the rule
