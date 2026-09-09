@@ -569,7 +569,11 @@ production_mppi_node:
     # the departure. The probe budget bounds one update's share; the fill
     # resumes on the next.
     persistent_planner_escape_search_radius_cells: 6
-    persistent_planner_escape_search_maximum_probes_per_update: 512
+    # Sized for the share the fill gets once the lattice searches' component
+    # is closed and they are not run: the feasibility search's share of the
+    # update, which the deadline bounds. Five hundred probes filled six
+    # milliseconds of a sixty-millisecond update and left the rest idle.
+    persistent_planner_escape_search_maximum_probes_per_update: 4096
     persistent_planner_clearance_centering_passes: 3
     persistent_planner_maximum_clearance_centering_queries: 4096
     persistent_planner_clearance_ranking_weight: 1.5

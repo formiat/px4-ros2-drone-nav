@@ -526,9 +526,26 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   if (!escape_connection_.has_value() && escape_search_pending_ &&
       coordinator_.incumbent() == nullptr) {
     const auto escape_started = std::chrono::steady_clock::now();
+    // While the lattice searches' component is closed they are not run on an
+    // unchanged world, and the fill is the only search that can hand the
+    // vehicle a way out: it takes the feasibility search's share of the
+    // update. On its fixed share of a third, one recorded flight fed the fill
+    // six milliseconds of a sixty-millisecond update, the rest idle, for five
+    // seconds in a pocket whose exit it found on the eleventh update.
+    const bool lattice_searches_closed = feasibility_search_.closedComponentMarked();
+    const bool persistent_search_has_work = dstar_session_.pendingRepairNodes() > 0U ||
+                                            !dstar_session_.shortestPathComplete();
     const auto escape_deadline =
-        escape_started +
-        std::min((deadline - escape_started) / 3, spatial_search_reserve / 2);
+        lattice_searches_closed
+            ? escape_started +
+                  feasibilitySearchBudget3D(
+                      deadline - escape_started,
+                      std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                          std::chrono::duration<double, std::milli>{
+                              config_.maximum_feasibility_compute_time_ms}),
+                      persistent_search_has_work)
+            : escape_started +
+                  std::min((deadline - escape_started) / 3, spatial_search_reserve / 2);
     telemetry.escape_search_attempted = true;
     std::size_t probes = 0U;
     std::optional<EscapeSearch3D::Result3D> found = escape_search_.advance(
@@ -544,11 +561,15 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
                                      std::chrono::steady_clock::now() - escape_started)
                                      .count();
     if (found.has_value()) {
+      // The fill keeps its cells: an exit that turns out to lead into a
+      // component the searches exhaust as well sends the fill back for
+      // another, and re-filling the same thousands of cells from the vehicle
+      // cost several updates each time. It is reset once a route is held or
+      // the vehicle leaves the component.
       escape_connection_ = std::move(found);
       departure_from_escape = true;
       telemetry.escape_search_found = true;
       escape_search_pending_ = false;
-      escape_search_.reset();
     } else if (escape_search_.exhausted()) {
       // Nothing within reach at the body's scale either: the walk over the
       // anchors and the world's own changes are what remains.
@@ -1014,10 +1035,10 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     if (escape_connection_.has_value()) {
       // The exit the fill found leads into a component the search has now
       // exhausted as well: it was no way out. Its states are closed with the
-      // origin's, so the fill resumes from the vehicle for another exit
-      // instead of holding the vehicle on a departure that leads nowhere.
+      // origin's, so the fill resumes -- from the cells it already holds --
+      // for another exit instead of holding the vehicle on a departure that
+      // leads nowhere.
       escape_connection_.reset();
-      escape_search_.reset();
       escape_search_pending_ = config_.escape_search_radius_cells > 0U;
     } else if (config_.escape_search_radius_cells > 0U && !escape_search_pending_ &&
                (!escape_search_.exhausted() || !world_update.changed_cells.empty())) {

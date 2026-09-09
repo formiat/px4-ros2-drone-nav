@@ -524,8 +524,14 @@ the lattice at that node, so the body contract is unchanged — every leg is a
 raw-validated segment — and the searches are re-seeded from the node outside.
 The vehicle flies the chain and the planner trims it as each point is passed.
 `persistent_planner_escape_search_maximum_probes_per_update` bounds the sweeps
-one update spends on the fill; it resumes on the next update, and a fill that
-found nothing is repeated only when the world changed. `PERSISTENT_PLANNER3D`
+one update spends on the fill while the lattice searches still run; once their
+component is closed and they are not run on an unchanged world, the fill is
+the only search that can hand the vehicle a way out, and it takes the
+feasibility search's share of the update instead; the probe cap is sized so
+that the share, not the cap, is what bounds it.
+It resumes on the next update, keeps its cells across an exit that leads into
+a component the searches exhaust in turn, and a fill that found nothing is
+repeated only when the world changed. `PERSISTENT_PLANNER3D`
 reports `escape_attempted`, `escape_found`, `escape_active`, `escape_exhausted`,
 `escape_probes` and `escape_cells`; `departure_waypoints` counts the chain.
 
