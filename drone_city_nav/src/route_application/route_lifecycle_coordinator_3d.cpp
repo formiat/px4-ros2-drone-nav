@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "production_mppi_route_world.hpp"
+#include "route_lifecycle_refusal_3d.hpp"
 
 namespace drone_city_nav {
 
@@ -25,47 +26,14 @@ elapsedMilliseconds(const std::chrono::steady_clock::time_point started) noexcep
       .count();
 }
 
-// The raw world, not the search, refused this candidate: its own validation,
-// its certification or its execution geometry was rejected against the
-// evidence. A newer world is a different answer to exactly that refusal, so
-// the failed-search latch lifts on one instead of holding until the retry
-// interval.
-[[nodiscard]] bool
-worldRefusedCandidate3D(const StaticRouteActivationStatus status) noexcept {
-  return status == StaticRouteActivationStatus::kCandidateValidationRejected ||
-         status == StaticRouteActivationStatus::kCandidateNotExecutable ||
-         status == StaticRouteActivationStatus::kInvalidExecutionGeometry ||
-         status == StaticRouteActivationStatus::kRouteCertificationRejected ||
-         status == StaticRouteActivationStatus::kCertifiedSpliceRejected;
-}
-
-// The search ran on a world the activation snapshot has since contradicted with
-// exact raw evidence. The candidate and the session that produced it are both
-// stale, so neither a retry nor a continuation can recover them.
-[[nodiscard]] bool
-searchInvalidatedByActivationWorld(const PlannerSearchTransaction3D& transaction,
-                                   const RouteAdmissionReport3D& admission) noexcept {
-  return admission.activation_status ==
-             StaticRouteActivationStatus::kCandidateValidationRejected &&
-         admission.candidate_validation.status ==
-             StaticRouteCandidateStatus::kRawCollision &&
-         transaction.planner_world != nullptr &&
-         transaction.planner_world->revision != 0U &&
-         admission.snapshot_raw_revision != 0U &&
-         transaction.planner_world->revision != admission.snapshot_raw_revision &&
-         transaction.planner_world->occupied_fingerprint != 0U &&
-         admission.tracking_profile_activation_occupied_fingerprint != 0U &&
-         transaction.planner_world->occupied_fingerprint !=
-             admission.tracking_profile_activation_occupied_fingerprint;
-}
-
 [[nodiscard]] RouteCandidateDisposition3D
 classifyCandidateDisposition(const PlannerSearchTransaction3D& transaction,
                              const RouteAdmissionReport3D& admission) noexcept {
   if (admission.certified_pending) {
     return RouteCandidateDisposition3D::kActivated;
   }
-  if (searchInvalidatedByActivationWorld(transaction, admission)) {
+  if (route_lifecycle_refusal_3d::searchInvalidatedByActivationWorld(transaction,
+                                                                     admission)) {
     return RouteCandidateDisposition3D::kRetireSearchAndReplan;
   }
   // A superseded snapshot says only that the commit base moved between capture
@@ -383,6 +351,8 @@ RouteLifecycleCoordinator3D::advance(RoutePlanningUpdateEvent3D event) {
   result.incumbent_rejected =
       result.candidate_disposition ==
           RouteCandidateDisposition3D::kContinueForImprovement &&
+      !route_lifecycle_refusal_3d::refusedBeyondTheCommittedRoute3D(
+          result.activation, config_.extension.required_certified_overlap_m) &&
       (blocked_replacement_from_the_vehicle ||
        result.activation.admission.activation_status ==
            StaticRouteActivationStatus::kDynamicHandoffRejected ||
@@ -454,7 +424,8 @@ RouteLifecycleCoordinator3D::advance(RoutePlanningUpdateEvent3D event) {
                 (planner_input == PlannerInputStatus3D::kStartUnavailable ||
                  planner_input == PlannerInputStatus3D::kGoalUnavailable),
             .world_refused_candidate =
-                worldRefusedCandidate3D(result.activation.admission.activation_status),
+                route_lifecycle_refusal_3d::worldRefusedCandidate3D(
+                    result.activation.admission.activation_status),
         });
         result.failed_search_latched = true;
       }

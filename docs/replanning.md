@@ -197,7 +197,14 @@ incumbent is re-validated against the current world every update and reset when
 it no longer clears the body, which is the same outcome whenever the block is
 real and on the part still to fly. A consumer that could not enter the
 incumbent it was delivered says so through the rejection sequence, and that
-does drop it — the incumbent, not the feasibility labels. The labels are
+does drop it — the incumbent, not the feasibility labels. It drops it only
+when the refusal lies inside what the vehicle is committed to: the departure
+leg it flies at hover, and the certified overlap a successor has to splice
+onto. A refusal beyond that is a block ahead like any other, the route is
+still enterable, and the search repairs the blocked part against the world it
+re-validates every update; one recorded flight dropped its incumbent to a
+refusal twelve metres ahead and stood for nine tenths of a second while the
+feasibility search explored its way back out to twenty-five. The labels are
 validated lazily against the resident world, which the consumer's evidence
 reaches through the raw overlay, so the chains through the block are dropped
 and re-parented where the search next touches them and the next candidate is
