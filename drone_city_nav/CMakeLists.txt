@@ -316,7 +316,6 @@ add_drone_city_nav_layer(
   src/persistent_dstar_lite_planner_3d_path_postprocessor.cpp
   src/persistent_dstar_lite_planner_3d_search.cpp
   src/persistent_dstar_lite_planner_3d_time_search.cpp
-  src/persistent_dstar_lite_planner_3d_types.cpp
   src/persistent_dstar_lite_planner_3d_world.cpp
   src/route_planning_3d.cpp
   src/route_risk_annotation_3d.cpp

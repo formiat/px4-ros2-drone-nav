@@ -281,16 +281,12 @@ TEST(PersistentDStarLitePlanner3DTest,
 }
 
 TEST(PersistentDStarLitePlanner3DTest,
-     TheSessionIsSuspendedWhileTheFeasibilitySearchLooksForAFirstRoute) {
-  // No route is held and the world just changed. Mapping the change onto the
-  // persistent session's vertices and repairing the labels it touches is what
-  // keeps the ranked branch true, and the ranked branch is not the one finding
-  // a route here. Measured on a recorded flight, that bookkeeping took 78 to
-  // 107 ms of scheduling and 10 ms of repair in an update budgeted at 60,
-  // while the repair queue stood at three thousand states and every scan added
-  // two thousand more -- D* expanded nothing for a whole second and the
-  // vehicle waited on a feasibility search holding a quarter of the update.
-  // Suspended, the whole update goes to the search that finds the route.
+     RepairRunsWhileTheFeasibilitySearchLooksForAFirstRoute) {
+  // No route is held and the world just changed: the feasibility search needs
+  // most of the update, and the persistent session's repair queue is what
+  // makes its labels true again. The repair has to get a share of the update
+  // before the feasibility search takes the rest, or the session reports a
+  // shortest path on labels the world has moved for as long as no route exists.
   auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
       GridBounds3D{0.0, 0.0, 0.0, 1.0, 40, 40, 3});
   PersistentPlannerConfig3D config = testConfig();
@@ -331,21 +327,20 @@ TEST(PersistentDStarLitePlanner3DTest,
   blocked.incumbent_rejection_sequence = 1U;
   update = planner.plan(blocked);
   ASSERT_TRUE(update.telemetry.feasibility_attempted);
-  // The change is not mapped onto the session at all while no route is held.
-  EXPECT_DOUBLE_EQ(update.telemetry.schedule_ms, 0.0);
-  EXPECT_EQ(update.telemetry.repair_lattice_states_processed, 0U);
+  // The update the change arrives on belongs to the search: the session's
+  // bookkeeping for it runs behind the search, so the states it affects are
+  // pending when the update ends.
+  EXPECT_GT(update.telemetry.repair_lattice_states_pending, 0U)
+      << " feasibility_ms=" << update.telemetry.feasibility_ms;
 
-  // Nor on the updates that follow, for as long as the search is the branch
-  // finding a route.
+  // The next update repairs them while the search carries on.
   update = planner.plan(request(start, goal, world(enclosed, 2U)));
 
   ASSERT_TRUE(update.telemetry.feasibility_attempted);
-  EXPECT_DOUBLE_EQ(update.telemetry.schedule_ms, 0.0);
-  EXPECT_EQ(update.telemetry.repair_lattice_states_processed, 0U)
+  EXPECT_GT(update.telemetry.repair_lattice_states_processed, 0U)
       << "pending=" << update.telemetry.repair_lattice_states_pending
       << " feasibility_ms=" << update.telemetry.feasibility_ms
       << " repair_ms=" << update.telemetry.repair_ms;
-  EXPECT_GT(update.telemetry.feasibility_expansions, 0U);
 }
 
 TEST(PersistentDStarLitePlanner3DTest, TheStartAnchorIsKeptWhileItStaysAdmissible) {

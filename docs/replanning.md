@@ -123,22 +123,6 @@ search to find one of its own while D* already had one, and one recorded
 flight held for three seconds that way. The refinement improves it from the
 same bound as before.
 
-While no route is held the session's bookkeeping is not paid for at all.
-Mapping a scan's occupied changes onto its vertices and repairing the labels
-they touch is what keeps the ranked branch true, and the ranked branch is not
-the one finding a route then. Measured on one recorded flight, an update with
-no route held spent 78 to 107 ms scheduling and 10 ms repairing against a
-60 ms budget, and D* still expanded nothing for a whole second: the repair
-queue stood at three thousand states while every scan added two thousand more,
-so the session reported its shortest path complete on labels the world had
-long moved. The vehicle waited on the feasibility search, which was holding a
-capped third of the update because the stale queues read as work. Suspended,
-the whole update goes to the search that finds the route, and the session is
-begun again from the current world as soon as there is a route to improve --
-the labels it would have caught up to are the labels it starts from.
-
-The paragraphs below describe that bookkeeping as it runs with a route held.
-
 Mapping an update's occupied changes onto the session's vertices is the
 session's own bookkeeping, and on a scan it covers thousands of cells. Measured
 on one recorded flight it took the whole update on every fourth one, leaving
