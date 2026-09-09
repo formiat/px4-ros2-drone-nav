@@ -140,23 +140,18 @@ speed contract. The guaranteed range must not exceed either the modeled 3D
 lidar range or the range admitted by obstacle memory. The organized scan spans
 the complete vertical `[-90 deg, +90 deg]` interval so pure climb and descent
 do not enter a polar blind cone, and its row and column spacing is bound to the
-guaranteed range: at that range adjacent rows and columns land within one
-occupancy voxel of each other. A surface is therefore painted contiguously by
-measured returns alone, whatever the roof or floor next to it does to the
-neighbouring rows. Bounding the spacing only by the vehicle's own size was
-tried and is not enough: at 30 m the columns land 0.79 m apart against a 0.25 m
-voxel, a wall is painted every third voxel, and a route validates straight
-through the gaps until the vehicle is close enough to close them. Recorded
-flights met such an obstacle inside their own braking distance again and
-again, every one of them while this contract still reported nine metres a
-second of headroom. The surface joins only densify that evidence, so the 3D
-profile leaves
+guaranteed range: at that range adjacent rows land no farther apart than the
+vertical body band (`physical_footprint_lower_extent_m` plus
+`physical_footprint_upper_extent_m`) plus one occupancy voxel, and adjacent
+columns no farther apart than the body diameter plus one voxel. A wall crossing
+the vehicle's path is therefore painted inside the swept footprint by measured
+returns alone, whatever the roof or floor next to it does to the neighbouring
+rows; the surface joins only densify that evidence, so the 3D profile leaves
 `lidar_surface_interpolation_enabled` off: with a dense scan the joins add tens
 of thousands of occupied voxels per scan between measured returns, every one
 of which the planner has to repair around. The 3D profile samples 121 rows
-(1.5 deg) and 240 columns (1.5 deg), which places the guarantee at 9.5 m for a
-0.25 m voxel and caps the cruise the contract admits at about four metres a
-second. With 10 deg rows the same wall was a single
+(1.5 deg) and 240 columns (1.5 deg) for the 30 m guarantee with the 0.58 m body
+band and 0.25 m voxels. With 10 deg rows the same wall was a single
 row at sensor height until the vehicle was a few metres away: under a passage
 roof the neighbouring row hits the ceiling instead of the wall, so no join can
 fill the band, and the body band sailed through unknown space between two

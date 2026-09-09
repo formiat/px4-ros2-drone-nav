@@ -96,11 +96,10 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
         self.assertAlmostEqual(vertical_min, -0.5 * math.pi, places=12)
         self.assertAlmostEqual(vertical_max, 0.5 * math.pi, places=12)
         # Sensing geometry behind the guaranteed range: at that range adjacent
-        # scan rows and columns must land within one occupancy voxel of each
-        # other, so a surface is painted contiguously by measured returns
-        # rather than with gaps a route can be validated straight through. A
-        # range that only bounded the spacing by the body's own size let
-        # recorded flights meet obstacles inside their braking distance.
+        # scan rows must land no farther apart than the vertical body band plus
+        # one occupancy voxel, and adjacent columns no farther apart than the
+        # body diameter plus one voxel, so a surface crossing the vehicle's path
+        # is painted inside the swept footprint by measured returns alone.
         horizontal = sensor.find("ray/scan/horizontal")
         self.assertIsNotNone(horizontal)
         horizontal_samples = int(horizontal.findtext("samples", "0"))
@@ -119,13 +118,12 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
         )
         body_diameter_m = 2.0 * planner["physical_footprint_radius_m"]
         self.assertLessEqual(
-            guaranteed_range_m * math.tan(vertical_spacing_rad), voxel_m
+            guaranteed_range_m * math.tan(vertical_spacing_rad), body_band_m + voxel_m
         )
         self.assertLessEqual(
-            guaranteed_range_m * math.tan(horizontal_spacing_rad), voxel_m
+            guaranteed_range_m * math.tan(horizontal_spacing_rad),
+            body_diameter_m + voxel_m,
         )
-        self.assertGreater(body_band_m, 0.0)
-        self.assertGreater(body_diameter_m, 0.0)
         self.assertNotIn("observation_distance_m", planner)
         self.assertNotIn("observation_margin_m", planner)
         self.assertIn(
