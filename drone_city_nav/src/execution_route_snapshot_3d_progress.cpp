@@ -633,10 +633,17 @@ ExecutionRouteTransitionDetail3D successorRouteEvidenceRegression(
         current_raw->validated_through_revision) {
       return Detail::kSuccessorExecutionEvidenceOlder;
     }
+    // Two certificates at one raw revision describe one persistent occupancy;
+    // they differ legitimately in the transient part of their observed world
+    // (the free-space seed follows the vehicle, the launch support its
+    // departure), so only the persistent occupancy orders them. Refusing on
+    // the complete fingerprint retired every successor a hovering vehicle
+    // was offered at the revision its resident route had reached, and cost
+    // a fresh search for each.
     if (successor_raw->validated_through_revision ==
             current_raw->validated_through_revision &&
-        successor_raw->observed_world_content_fingerprint !=
-            current_raw->observed_world_content_fingerprint) {
+        successor_raw->geometry_derivation_occupancy_content_fingerprint !=
+            current_raw->geometry_derivation_occupancy_content_fingerprint) {
       return Detail::kSuccessorWorldContentMismatch;
     }
     return Detail::kNone;
@@ -701,16 +708,18 @@ ExecutionRouteTransitionDetail3D successorEvidenceRegression(
         required_raw_revision) {
       return Detail::kSuccessorExecutionEvidenceOlder;
     }
+    // Persistent occupancy alone orders evidence at one revision; see
+    // successorRouteEvidenceRegression.
     if (successor_raw->validated_through_revision ==
             current_raw->validated_through_revision &&
-        successor_raw->observed_world_content_fingerprint !=
-            current_raw->observed_world_content_fingerprint) {
+        successor_raw->geometry_derivation_occupancy_content_fingerprint !=
+            current_raw->geometry_derivation_occupancy_content_fingerprint) {
       return Detail::kSuccessorWorldContentMismatch;
     }
     if (successor_raw->validated_through_revision ==
             current_execution_raw->validated_through_raw_revision &&
-        successor_raw->observed_world_content_fingerprint !=
-            current_execution_raw->observed_world_content_fingerprint) {
+        successor_raw->geometry_derivation_occupancy_content_fingerprint !=
+            current_execution_raw->observed_occupancy_content_fingerprint) {
       return Detail::kSuccessorWorldContentMismatch;
     }
     return Detail::kNone;

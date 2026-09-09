@@ -266,6 +266,7 @@ finiteExecutionArtifactFingerprint(const FiniteExecutionState3D& execution) noex
     hashValue(hash, raw_lineage->validated_through_raw_revision);
     hashValue(hash, raw_lineage->validation_policy_fingerprint);
     hashValue(hash, raw_lineage->observed_world_content_fingerprint);
+    hashValue(hash, raw_lineage->observed_occupancy_content_fingerprint);
   }
   return hash == 0U ? 1U : hash;
 }
@@ -358,6 +359,7 @@ sameDirectTrackingOwner(const DirectTrackingOwnerIdentity3D& first,
     hashValue(hash, raw_lineage->validated_through_raw_revision);
     hashValue(hash, raw_lineage->validation_policy_fingerprint);
     hashValue(hash, raw_lineage->observed_world_content_fingerprint);
+    hashValue(hash, raw_lineage->observed_occupancy_content_fingerprint);
   }
   return hash == 0U ? 1U : hash;
 }

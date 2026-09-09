@@ -126,7 +126,14 @@ struct ObservedRawFiniteExecutionValidationLineage3D {
   std::uint64_t producer_instance_id{0U};
   std::uint64_t validated_through_raw_revision{0U};
   std::uint64_t validation_policy_fingerprint{0U};
+  // Identity of the complete observed world the execution was validated on:
+  // the persistent occupancy together with the transient free-space seed and
+  // launch support.
   std::uint64_t observed_world_content_fingerprint{0U};
+  // Identity of the persistent occupancy alone at validated_through_raw_revision.
+  // Successor evidence is ordered by this, never by the transient part: a seed
+  // that moved with the vehicle is not a different world.
+  std::uint64_t observed_occupancy_content_fingerprint{0U};
 };
 
 using FiniteExecutionValidationLineage3D =

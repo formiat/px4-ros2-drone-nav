@@ -380,6 +380,8 @@ certifyStopExecution3D(const ExecutionPlan3D& current,
         .validation_policy_fingerprint = collision_policy_fingerprint,
         .observed_world_content_fingerprint =
             certification.observed_raw_world->contentFingerprint(),
+        .observed_occupancy_content_fingerprint =
+            certification.observed_raw_world->occupiedContentFingerprint(),
     };
   } else {
     lineage = StaticFiniteExecutionValidationLineage3D{

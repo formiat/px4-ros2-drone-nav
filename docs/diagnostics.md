@@ -327,7 +327,9 @@ transition=<status> detail=<detail> acknowledged=<bool>` reports a pending
 successor whose activation the reducer rejected on the candidate's own contract:
 every `invalid_candidate`, and a `certificate_regression` whose detail names
 the successor's own certificate (`successor_certificate_older`,
-`successor_world_content_mismatch`, `successor_producer_mismatch`,
+`successor_world_content_mismatch` — two certificates at one raw revision
+whose persistent occupancy differs; the transient free-space seed and launch
+support are not part of that comparison —, `successor_producer_mismatch`,
 `successor_certificate_kind_mismatch`, `successor_validation_policy_mismatch`)
 rather than the finite execution it was offered with
 (`successor_execution_evidence_older`, `successor_execution_input_older`).
