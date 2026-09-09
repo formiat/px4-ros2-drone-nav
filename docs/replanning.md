@@ -246,7 +246,12 @@ its route to twenty-four compiles that had no route to compile at all. A refusal
 still enterable, and the search repairs the blocked part against the world it
 re-validates every update; one recorded flight dropped its incumbent to a
 refusal twelve metres ahead and stood for nine tenths of a second while the
-feasibility search explored its way back out to twenty-five. The labels are
+feasibility search explored its way back out to twenty-five. That holds only
+while the vehicle is flying a route the refusal lies ahead of: a vehicle
+holding no route has nothing to enter, the refused candidate was its only
+offer, and keeping it as the incumbent left the feasibility search idle while
+the compile refused the same route on every update until the world happened
+to change — over a second per hold in recorded flights. The labels are
 validated lazily against the resident world, which the consumer's evidence
 reaches through the raw overlay, so the chains through the block are dropped
 and re-parented where the search next touches them and the next candidate is

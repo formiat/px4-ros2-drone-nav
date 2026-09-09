@@ -310,6 +310,61 @@ TEST(RouteLifecycleCoordinator3DRetirementTest,
 }
 
 TEST(RouteLifecycleCoordinator3DRetirementTest,
+     ARefusalBeyondTheCommittedRouteRejectsTheIncumbentOfAVehicleWithoutARoute) {
+  // The same refusal, far ahead on the candidate, but the vehicle holds no
+  // route: the refused candidate was its only offer, and keeping it as the
+  // incumbent would leave the search improving a route the compile refuses
+  // instead of searching from the vehicle.
+  ExecutionSupervisor3D supervisor;
+  const LifecycleFixture3D input = fixture();
+  ASSERT_NE(input.transaction, nullptr);
+  ASSERT_TRUE(supervisor.plan() == nullptr || supervisor.plan()->route() == nullptr);
+  const RoutePlannerVehicleState3D vehicle_state = vehicleState(input);
+  std::size_t commit_count{0U};
+  RouteLifecycleCoordinatorConfig3D config =
+      lifecycleConfig(input, supervisor, commit_count);
+  bindResidentReplanSnapshot(config, input, supervisor, 600);
+  config.extension.required_certified_overlap_m = 1.0;
+  config.activation_commit_boundary = [&commit_count](
+                                          PreparedRouteActivation3D prepared,
+                                          const RouteActivationCommitOperation3D&) {
+    ++commit_count;
+    ProductionRouteActivationResult3D activation = std::move(prepared.result);
+    activation.admission.activation_status =
+        StaticRouteActivationStatus::kInvalidExecutionGeometry;
+    const std::size_t sample_count = activation.materialized.route != nullptr
+                                         ? activation.materialized.route->size()
+                                         : 0U;
+    activation.materialized.departure_end_station_m = 0.0;
+    activation.admission.trajectory_validation = CompiledTrajectoryValidation3D{
+        .reason = CompiledTrajectoryFailureReason3D::kInvalidTrackingErrorTubeSegment,
+        .sample_index = sample_count > 0U ? sample_count - 1U : 0U,
+    };
+    activation.admission.certified_pending = false;
+    return RouteActivationCommitResult3D{.result = std::move(activation)};
+  };
+  RouteLifecycleCoordinator3D coordinator{supervisor, std::move(config)};
+  RoutePlanner3D planner{plannerConfig()};
+  RoutePlannerUpdate3D planner_update =
+      planner.update(*input.transaction, vehicle_state);
+  planner_update.planner_invoked = true;
+  planner_update.planner_progress = SearchProgress3D::kRunning;
+  planner_update.dispatch.continue_search = true;
+  const RouteLifecycleUpdate3D update = coordinator.advance(RoutePlanningUpdateEvent3D{
+      .request =
+          RoutePlanningRequest3D{
+              .transaction = input.transaction,
+              .continuation_session = nullptr,
+          },
+      .vehicle_state = vehicle_state,
+      .update = std::move(planner_update),
+  });
+
+  ASSERT_GT(commit_count, 0U);
+  EXPECT_TRUE(update.incumbent_rejected);
+}
+
+TEST(RouteLifecycleCoordinator3DRetirementTest,
      ACompileThatFailsOnItsOwnTermsKeepsTheIncumbent) {
   // A compile refusal is the raw world's verdict on the candidate only when a
   // segment's swept hull is what the evidence refused. Every other reason is

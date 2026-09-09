@@ -348,11 +348,22 @@ RouteLifecycleCoordinator3D::advance(RoutePlanningUpdateEvent3D event) {
   // A candidate the activation could not hand the vehicle over to, or whose
   // connector the raw evidence rejected, is not an incumbent worth improving:
   // the search keeps running, but from the vehicle rather than from it.
+  // A refusal beyond the committed route keeps the incumbent only while the
+  // vehicle is flying a route that refusal lies ahead of. A vehicle holding
+  // no route at all has nothing to enter: the refused candidate was its only
+  // offer, and keeping it as the incumbent left the feasibility search idle
+  // -- the planner improves an incumbent instead of searching from the
+  // vehicle -- while the compile refused the same route on every update
+  // until the world happened to change (over a second per hold in recorded
+  // flights).
+  const bool refused_beyond_a_route_being_flown =
+      route_lifecycle_refusal_3d::refusedBeyondTheCommittedRoute3D(
+          result.activation, config_.extension.required_certified_overlap_m) &&
+      !consumerHoldsNoRoute();
   result.incumbent_rejected =
       result.candidate_disposition ==
           RouteCandidateDisposition3D::kContinueForImprovement &&
-      !route_lifecycle_refusal_3d::refusedBeyondTheCommittedRoute3D(
-          result.activation, config_.extension.required_certified_overlap_m) &&
+      !refused_beyond_a_route_being_flown &&
       (blocked_replacement_from_the_vehicle ||
        result.activation.admission.activation_status ==
            StaticRouteActivationStatus::kDynamicHandoffRejected ||
