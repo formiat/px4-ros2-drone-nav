@@ -682,8 +682,25 @@ void ProductionMppiNode::planningTick() {
 
 void ProductionMppiNode::reportUnadoptedPendingRoute(
     const ProductionRouteExecutionSelection3D& execution) {
-  if (execution.pending_route == nullptr ||
-      execution.pending_eligibility == PendingRouteEligibility3D::kEligible) {
+  if (execution.pending_route == nullptr || execution.pending_activation) {
+    return;
+  }
+  if (execution.pending_eligibility == PendingRouteEligibility3D::kEligible) {
+    // The plan may take this successor and did not take it: the refresh
+    // against the current world produced nothing, or the splice onto the
+    // resident route is not ready. That is the state a vehicle waits in with a
+    // route already certified, and naming the eligibility alone said the
+    // successor was fine.
+    const std::string_view splice =
+        routeSpliceReadinessStatus3DName(execution.pending_splice_readiness);
+    RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "PENDING_ROUTE3D adopted=false eligibility=eligible refreshed=%s splice=%.*s "
+        "pending_generation=%" PRIu64 " base_generation=%" PRIu64,
+        execution.pending_refresh_available ? "true" : "false",
+        static_cast<int>(splice.size()), splice.data(),
+        execution.pending_route->route.identity.generation,
+        execution.pending_route->base_route_generation);
     return;
   }
   // A successor is sealed and the plan cannot take it. Without this the hold

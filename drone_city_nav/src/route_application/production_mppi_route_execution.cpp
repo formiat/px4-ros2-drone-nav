@@ -746,6 +746,8 @@ RouteExecutionSelector3D::select(const RouteExecutionSelectorRequest3D& request)
                    execution_navigation.state.z});
       }
     }
+    result.pending_refresh_available = refreshed_pending != nullptr;
+    result.pending_splice_readiness = splice_readiness.status;
     if (refreshed_pending != nullptr && splice_readiness.ready()) {
       result.route = std::move(refreshed_pending);
       result.pending_activation = true;

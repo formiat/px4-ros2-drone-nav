@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/certified_route_splice_3d.hpp"
 #include "drone_city_nav/execution_route_store_3d.hpp"
 #include "drone_city_nav/pending_certified_route_3d.hpp"
 #include "drone_city_nav/tracking_error_tube_3d.hpp"
@@ -41,6 +42,13 @@ struct ProductionRouteExecutionSelection3D {
   PendingRouteEligibility3D pending_eligibility{
       PendingRouteEligibility3D::kInvalidPending};
   bool pending_activation{false};
+  // Why an eligible sealed successor was not taken this tick. A successor the
+  // plan may take and does not take is the state a vehicle waits in with a
+  // route already certified, and it left no trace at all: the hold that
+  // followed named the eligibility, which said the successor was fine.
+  bool pending_refresh_available{false};
+  RouteSpliceReadinessStatus3D pending_splice_readiness{
+      RouteSpliceReadinessStatus3D::kReady};
   bool physical_trajectory_invalidated{false};
   // Station of the first route sample the persistent raw world blocks while
   // the route is still followed and its replacement is being searched: the
