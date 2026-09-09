@@ -32,17 +32,26 @@ constexpr std::uint64_t kRouteOwnerDomain{0x5254454f574e5233ULL};
 
 [[nodiscard]] std::optional<CertifiedRouteSuffix3D>
 certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
-                            const CertifiedRouteSuffix3D* const sealed_source) {
+                            const CertifiedRouteSuffix3D* const sealed_source,
+                            RouteCertificationStatus3D* const status) {
+  const auto rejected = [status](const RouteCertificationStatus3D verdict) {
+    if (status != nullptr) {
+      *status = verdict;
+    }
+    return std::optional<CertifiedRouteSuffix3D>{};
+  };
   const bool requires_observed_raw_certificate =
       observedRawLineage(activation.proposal.validated_world);
   if (activation.observation.raw_validation_required !=
           requires_observed_raw_certificate ||
       activation.validation_policy == nullptr ||
-      !activation.validation_policy->valid() ||
-      !footprintConservativelyContains(
+      !activation.validation_policy->valid()) {
+    return rejected(RouteCertificationStatus3D::kInvalidInput);
+  }
+  if (!footprintConservativelyContains(
           activation.observation.footprint,
           activation.validation_policy->sweptFootprint())) {
-    return std::nullopt;
+    return rejected(RouteCertificationStatus3D::kFootprintNotContained);
   }
   RouteActivationObservation3D owned_observation = activation.observation;
   owned_observation.flight_envelope = activation.validation_policy->flightEnvelope();
@@ -54,10 +63,12 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
         activation.observed_raw_world == nullptr ||
         !activation.observed_raw_world->valid() ||
         activation.observed_raw_world->version().producer_instance_id !=
-            activation.proposal.validated_world.producer_instance_id ||
-        activation.observed_raw_world->version().revision <
-            activation.proposal.validated_world.raw_validated_through_revision) {
-      return std::nullopt;
+            activation.proposal.validated_world.producer_instance_id) {
+      return rejected(RouteCertificationStatus3D::kRawEvidenceLineageMismatch);
+    }
+    if (activation.observed_raw_world->version().revision <
+        activation.proposal.validated_world.raw_validated_through_revision) {
+      return rejected(RouteCertificationStatus3D::kRawEvidenceNotCurrent);
     }
     owned_observation.latest_raw_occupancy =
         &activation.observed_raw_world->occupancy();
@@ -88,7 +99,7 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
         activation.static_world == nullptr || !activation.static_world->valid() ||
         !sameWorldCertificate(activation.static_world->certificate(),
                               activation.proposal.validated_world)) {
-      return std::nullopt;
+      return rejected(RouteCertificationStatus3D::kStaticWorldMismatch);
     }
     owned_observation.latest_raw_occupancy = nullptr;
     owned_observation.latest_raw_producer_instance_id = 0U;
@@ -105,14 +116,14 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
       activeIntent3D(activation.proposal);
   if (!identity.has_value() || !active_intent.has_value() ||
       activation.geometry == nullptr || activation.decorations == nullptr) {
-    return std::nullopt;
+    return rejected(RouteCertificationStatus3D::kIdentityRejected);
   }
   RouteOwnerIdentity3D route_owner;
   if (activation.retained_route_owner.has_value()) {
     if (!activation.retained_route_owner->valid() ||
         !sameActiveIntent3D(activation.retained_route_owner->active_intent,
                             *active_intent)) {
-      return std::nullopt;
+      return rejected(RouteCertificationStatus3D::kRetainedOwnerMismatch);
     }
     route_owner = *activation.retained_route_owner;
   } else {
@@ -122,22 +133,24 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
     };
   }
   if (!route_owner.valid()) {
-    return std::nullopt;
+    return rejected(RouteCertificationStatus3D::kRetainedOwnerMismatch);
   }
   const std::shared_ptr<const CompiledTrajectory3D> geometry = activation.geometry;
   const std::shared_ptr<const RouteDecorations3D> decorations = activation.decorations;
   if (geometry == nullptr || decorations == nullptr ||
       !compiledTrajectoryValid3D(*geometry, *identity) ||
       !routeDecorationsValid3D(*decorations, *geometry, identity->generation)) {
-    return std::nullopt;
+    return rejected(RouteCertificationStatus3D::kGeometryInvalid);
   }
   if (!footprintConservativelyContains(
           geometry->tracking_error_tube->physical_footprint,
-          activation.validation_policy->sweptFootprint()) ||
-      (!geometry->constrained_spans->empty() &&
-       !sameFootprintConfig(decorations->passage_volume_config.footprint,
-                            owned_observation.footprint))) {
-    return std::nullopt;
+          activation.validation_policy->sweptFootprint())) {
+    return rejected(RouteCertificationStatus3D::kTubeFootprintNotContained);
+  }
+  if (!geometry->constrained_spans->empty() &&
+      !sameFootprintConfig(decorations->passage_volume_config.footprint,
+                           owned_observation.footprint)) {
+    return rejected(RouteCertificationStatus3D::kPassageFootprintMismatch);
   }
   TrackingErrorTubeWorld3D tracking_tube_world;
   if (requires_observed_raw_certificate) {
@@ -156,7 +169,7 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
   }
   if (!trackingErrorTubeProfile3DMatchesWorld(
           *geometry->route, *geometry->tracking_error_tube, tracking_tube_world)) {
-    return std::nullopt;
+    return rejected(RouteCertificationStatus3D::kTrackingTubeWorldMismatch);
   }
   const bool passage_geometry_matches_world =
       requires_observed_raw_certificate
@@ -167,7 +180,7 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
                                                  activation.static_world->occupancy(),
                                                  decorations->passage_volume_config);
   if (!passage_geometry_matches_world) {
-    return std::nullopt;
+    return rejected(RouteCertificationStatus3D::kPassageGeometryMismatch);
   }
   const std::uint64_t route_decorations_revision =
       routeDecorationsRevision3D(*decorations);
@@ -179,30 +192,32 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
           : activation.static_world->contentFingerprint();
   if (route_decorations_revision == 0U || passage_config_fingerprint == 0U ||
       geometry_derivation_occupancy_content_fingerprint == 0U) {
-    return std::nullopt;
+    return rejected(RouteCertificationStatus3D::kDerivationFingerprintInvalid);
   }
 
   const RouteActivationAssessment3D assessment =
       assessRouteActivation3D(activation.proposal, *geometry->route, owned_observation);
   if (!assessment.accepted()) {
-    return std::nullopt;
+    return rejected(RouteCertificationStatus3D::kAssessmentRejected);
   }
   const double end_station_m = geometry->route->back().station_m;
   const RouteInstanceId3D route_instance_id{
       .value = createProducerInstanceId(kCertifiedRouteInstanceDomain)};
   if (!route_instance_id.valid()) {
-    return std::nullopt;
+    return rejected(RouteCertificationStatus3D::kInvalidArtifact);
   }
   RouteSuffixCertificate3D certificate;
   if (requires_observed_raw_certificate) {
-    if (!assessment.raw_validation.connector_validated ||
-        !assessment.raw_validation.suffix_validated) {
-      return std::nullopt;
+    if (!assessment.raw_validation.connector_validated) {
+      return rejected(RouteCertificationStatus3D::kRawConnectorNotValidated);
+    }
+    if (!assessment.raw_validation.suffix_validated) {
+      return rejected(RouteCertificationStatus3D::kRawSuffixNotValidated);
     }
     const std::uint64_t policy_fingerprint = validationPolicyFingerprint(
         owned_observation.footprint, owned_observation.launch_support_contact);
     if (policy_fingerprint == 0U) {
-      return std::nullopt;
+      return rejected(RouteCertificationStatus3D::kPolicyFingerprintInvalid);
     }
     certificate = ObservedRawRouteCertificate3D{
         .route_instance_id = route_instance_id,
@@ -230,7 +245,7 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
         !validateStaticRouteSuffixAgainstOwner(
             *activation.static_world, *geometry->route, assessment.projection,
             owned_observation, activation.validation_policy->flightEnvelope())) {
-      return std::nullopt;
+      return rejected(RouteCertificationStatus3D::kStaticSuffixRejected);
     }
     certificate = StaticRouteCertificate3D{
         .route_instance_id = route_instance_id,
@@ -276,26 +291,83 @@ certifyExecutionRoute3DImpl(const ExecutionRouteActivation3D& activation,
       .validation_policy = activation.validation_policy,
       .planned_endpoint_semantics = planned_endpoint_semantics,
   };
-  return result.valid() ? std::optional<CertifiedRouteSuffix3D>{std::move(result)}
-                        : std::nullopt;
+  if (!result.valid()) {
+    return rejected(RouteCertificationStatus3D::kInvalidArtifact);
+  }
+  if (status != nullptr) {
+    *status = RouteCertificationStatus3D::kCertified;
+  }
+  return result;
 }
 
 } // namespace execution_route_snapshot_3d_internal
 
+std::string_view
+routeCertificationStatus3DName(const RouteCertificationStatus3D status) noexcept {
+  switch (status) {
+    case RouteCertificationStatus3D::kNotAttempted:
+      return "not_attempted";
+    case RouteCertificationStatus3D::kCertified:
+      return "certified";
+    case RouteCertificationStatus3D::kInvalidInput:
+      return "invalid_input";
+    case RouteCertificationStatus3D::kFootprintNotContained:
+      return "footprint_not_contained";
+    case RouteCertificationStatus3D::kRawEvidenceLineageMismatch:
+      return "raw_evidence_lineage_mismatch";
+    case RouteCertificationStatus3D::kRawEvidenceNotCurrent:
+      return "raw_evidence_not_current";
+    case RouteCertificationStatus3D::kStaticWorldMismatch:
+      return "static_world_mismatch";
+    case RouteCertificationStatus3D::kIdentityRejected:
+      return "identity_rejected";
+    case RouteCertificationStatus3D::kRetainedOwnerMismatch:
+      return "retained_owner_mismatch";
+    case RouteCertificationStatus3D::kGeometryInvalid:
+      return "geometry_invalid";
+    case RouteCertificationStatus3D::kTubeFootprintNotContained:
+      return "tube_footprint_not_contained";
+    case RouteCertificationStatus3D::kPassageFootprintMismatch:
+      return "passage_footprint_mismatch";
+    case RouteCertificationStatus3D::kTrackingTubeWorldMismatch:
+      return "tracking_tube_world_mismatch";
+    case RouteCertificationStatus3D::kPassageGeometryMismatch:
+      return "passage_geometry_mismatch";
+    case RouteCertificationStatus3D::kDerivationFingerprintInvalid:
+      return "derivation_fingerprint_invalid";
+    case RouteCertificationStatus3D::kAssessmentRejected:
+      return "assessment_rejected";
+    case RouteCertificationStatus3D::kRawConnectorNotValidated:
+      return "raw_connector_not_validated";
+    case RouteCertificationStatus3D::kRawSuffixNotValidated:
+      return "raw_suffix_not_validated";
+    case RouteCertificationStatus3D::kPolicyFingerprintInvalid:
+      return "policy_fingerprint_invalid";
+    case RouteCertificationStatus3D::kStaticSuffixRejected:
+      return "static_suffix_rejected";
+    case RouteCertificationStatus3D::kInvalidArtifact:
+      return "invalid_artifact";
+  }
+  return "unknown";
+}
+
 std::optional<CertifiedRouteSuffix3D>
-certifyExecutionRoute3D(const ExecutionRouteActivation3D& activation) {
-  return certifyExecutionRoute3DImpl(activation, nullptr);
+certifyExecutionRoute3D(const ExecutionRouteActivation3D& activation,
+                        RouteCertificationStatus3D* const status) {
+  return certifyExecutionRoute3DImpl(activation, nullptr, status);
 }
 
 std::optional<CertifiedRouteSuffix3D> recertifyExecutionRoute3D(
     const CertifiedRouteSuffix3D& sealed_source,
     const RouteActivationObservation3D& observation,
-    std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_world) {
-  if (!sealed_source.valid() || sealed_source.geometry == nullptr) {
-    return std::nullopt;
-  }
-  const bool observed = sealed_source.observed_raw_world != nullptr;
-  if (observed != (observed_raw_world != nullptr)) {
+    std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_world,
+    RouteCertificationStatus3D* const status) {
+  if (!sealed_source.valid() || sealed_source.geometry == nullptr ||
+      (sealed_source.observed_raw_world != nullptr) !=
+          (observed_raw_world != nullptr)) {
+    if (status != nullptr) {
+      *status = RouteCertificationStatus3D::kInvalidInput;
+    }
     return std::nullopt;
   }
   return certifyExecutionRoute3DImpl(
@@ -311,7 +383,7 @@ std::optional<CertifiedRouteSuffix3D> recertifyExecutionRoute3D(
           .validation_policy = sealed_source.validation_policy,
           .retained_route_owner = sealed_source.owner,
       },
-      std::addressof(sealed_source));
+      std::addressof(sealed_source), status);
 }
 
 } // namespace drone_city_nav

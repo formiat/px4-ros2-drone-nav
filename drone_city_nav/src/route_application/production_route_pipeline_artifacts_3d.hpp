@@ -3,6 +3,7 @@
 #include "drone_city_nav/certified_route_splice_3d.hpp"
 #include "drone_city_nav/compiled_trajectory_3d.hpp"
 #include "drone_city_nav/dynamic_handoff_validator_3d.hpp"
+#include "drone_city_nav/execution_route_certification_3d.hpp"
 #include "drone_city_nav/execution_route_store_3d.hpp"
 #include "drone_city_nav/persistent_dstar_lite_planner_3d.hpp"
 #include "drone_city_nav/route_decoration_compiler_3d.hpp"
@@ -178,6 +179,10 @@ struct RouteAdmissionReport3D {
   bool candidate_world_coherent{false};
   bool certification_execution_base_current{false};
   bool route_certified{false};
+  // The certification's verdict when it was attempted: why a candidate the
+  // activation and the handoff accepted still yielded no certified route.
+  RouteCertificationStatus3D route_certification{
+      RouteCertificationStatus3D::kNotAttempted};
   bool trajectory_compile_attempted{false};
   bool trajectory_compiled{false};
   bool observed_world_rebased{false};

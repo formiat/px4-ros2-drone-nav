@@ -349,7 +349,7 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
       " activation_raw_revision=%" PRIu64
       " input=%s progress=%s search_state_reused=%s "
       "time_search_complete=%s incumbent_retained=%s certified_pending=%s "
-      "activation_status=%.*s route_certified=%s "
+      "activation_status=%.*s route_certified=%s certification=%.*s "
       "activation_currentness=(resident=%s,objective=%s,raw=%s,execution=%s,"
       "candidate=%s,certification_execution=%s) "
       "trajectory_compile=%s/%s tracking_source_occupied=%" PRIu64
@@ -385,6 +385,9 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
           staticRouteActivationStatusName(admission.activation_status).size()),
       staticRouteActivationStatusName(admission.activation_status).data(),
       admission.route_certified ? "true" : "false",
+      static_cast<int>(
+          routeCertificationStatus3DName(admission.route_certification).size()),
+      routeCertificationStatus3DName(admission.route_certification).data(),
       admission.resident_world_snapshot_current ? "true" : "false",
       admission.objective_snapshot_current ? "true" : "false",
       admission.raw_snapshot_current ? "true" : "false",

@@ -326,6 +326,9 @@ enum class StaticRouteActivationStatus : std::uint8_t {
   kStaleObjective,
   kInvalidExecutionGeometry,
   kDynamicHandoffRejected,
+  // The activation and the handoff accepted the candidate, but the route
+  // certification refused it; the admission report names the rule.
+  kRouteCertificationRejected,
   kCertifiedSpliceRejected,
   kEquivalentActiveSegmentRetained,
   kInsufficientSuccessorImprovement,

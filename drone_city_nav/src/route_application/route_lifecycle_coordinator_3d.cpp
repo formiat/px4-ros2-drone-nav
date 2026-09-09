@@ -359,6 +359,8 @@ RouteLifecycleCoordinator3D::advance(RoutePlanningUpdateEvent3D event) {
       (result.activation.admission.activation_status ==
            StaticRouteActivationStatus::kDynamicHandoffRejected ||
        result.activation.admission.activation_status ==
+           StaticRouteActivationStatus::kRouteCertificationRejected ||
+       result.activation.admission.activation_status ==
            StaticRouteActivationStatus::kCandidateValidationRejected ||
        result.activation.admission.activation_status ==
            StaticRouteActivationStatus::kCandidateNotExecutable ||

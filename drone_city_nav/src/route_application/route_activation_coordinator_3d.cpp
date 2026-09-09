@@ -194,9 +194,11 @@ RouteActivationCommitResult3D RouteActivationCoordinator3D::commit(
              overlap_search && report.route_certified && !report.splice.certified()) {
     report.activation_status = StaticRouteActivationStatus::kCertifiedSpliceRejected;
   } else if (!published_pending && report.candidate_validation.accepted &&
-             (!report.assessment.accepted() || !report.handoff.accepted() ||
-              !report.route_certified)) {
+             (!report.assessment.accepted() || !report.handoff.accepted())) {
     report.activation_status = StaticRouteActivationStatus::kDynamicHandoffRejected;
+  } else if (!published_pending && report.candidate_validation.accepted &&
+             !report.route_certified) {
+    report.activation_status = StaticRouteActivationStatus::kRouteCertificationRejected;
   }
   return committed;
 }

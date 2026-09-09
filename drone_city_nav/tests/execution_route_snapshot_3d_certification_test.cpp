@@ -167,6 +167,42 @@ TEST(ExecutionRouteSnapshot3DTest,
   EXPECT_FALSE(fixture.certify().has_value());
 }
 
+// A refusal names the rule it was reached on, so an activation the assessment
+// and the handoff accepted does not reach the log as a bare rejection.
+TEST(ExecutionRouteSnapshot3DTest, CertificationNamesTheRuleItRefusedOn) {
+  SnapshotFixture3D fixture;
+  RouteCertificationStatus3D status{RouteCertificationStatus3D::kNotAttempted};
+
+  ASSERT_TRUE(certifyExecutionRoute3D(fixture.activation(), &status).has_value());
+  EXPECT_EQ(status, RouteCertificationStatus3D::kCertified);
+
+  ExecutionRouteActivation3D missing = fixture.activation();
+  missing.validation_policy.reset();
+  EXPECT_FALSE(certifyExecutionRoute3D(missing, &status).has_value());
+  EXPECT_EQ(status, RouteCertificationStatus3D::kInvalidInput);
+
+  SweptFootprintConfig oversized = fixture.validation_policy->sweptFootprint();
+  oversized.radius_m = missing.observation.footprint.radius_m + 0.5;
+  oversized.perimeter_samples = std::max<std::size_t>(oversized.perimeter_samples, 8U);
+  oversized.radial_rings = std::max<std::size_t>(oversized.radial_rings, 1U);
+  ExecutionRouteActivation3D uncovered = fixture.activation();
+  uncovered.validation_policy = VersionedExecutionValidationPolicy3D::capture(
+      fixture.validation_policy->flightEnvelope(),
+      fixture.validation_policy->dynamics(),
+      fixture.validation_policy->altitudeEnvelope(), oversized,
+      fixture.validation_policy->latestLidarMaximumAgeMs());
+  ASSERT_NE(uncovered.validation_policy, nullptr);
+  EXPECT_FALSE(certifyExecutionRoute3D(uncovered, &status).has_value());
+  EXPECT_EQ(status, RouteCertificationStatus3D::kFootprintNotContained);
+
+  // Evidence on the route: the tube profile derived from the clear world no
+  // longer matches the world the route is certified against.
+  ASSERT_TRUE(
+      fixture.raw_occupancy.setState({12, 5, 5}, ObservedVoxelState::kOccupied));
+  EXPECT_FALSE(certifyExecutionRoute3D(fixture.activation(), &status).has_value());
+  EXPECT_EQ(status, RouteCertificationStatus3D::kTrackingTubeWorldMismatch);
+}
+
 TEST(ExecutionRouteSnapshot3DTest,
      RouteCertificationRequiresAnOwnedPolicyCoveredByTheRouteFootprint) {
   SnapshotFixture3D fixture;

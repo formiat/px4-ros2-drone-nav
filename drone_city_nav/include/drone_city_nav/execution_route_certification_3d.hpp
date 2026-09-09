@@ -157,13 +157,47 @@ struct StationaryExecutionHoldCertification3D {
 compiledTrajectoryValid3D(const CompiledTrajectory3D& geometry,
                           const ActivatedRouteIdentity3D& identity) noexcept;
 
+// Why a route could not be certified. A candidate the activation accepted and
+// the handoff accepted, yet no certified route came of it, otherwise reaches
+// the log as a bare handoff rejection with nothing to act on.
+enum class RouteCertificationStatus3D : std::uint8_t {
+  kNotAttempted,
+  kCertified,
+  kInvalidInput,
+  kFootprintNotContained,
+  kRawEvidenceLineageMismatch,
+  kRawEvidenceNotCurrent,
+  kStaticWorldMismatch,
+  kIdentityRejected,
+  kRetainedOwnerMismatch,
+  kGeometryInvalid,
+  kTubeFootprintNotContained,
+  kPassageFootprintMismatch,
+  kTrackingTubeWorldMismatch,
+  kPassageGeometryMismatch,
+  kDerivationFingerprintInvalid,
+  kAssessmentRejected,
+  kRawConnectorNotValidated,
+  kRawSuffixNotValidated,
+  kPolicyFingerprintInvalid,
+  kStaticSuffixRejected,
+  kInvalidArtifact,
+};
+
+[[nodiscard]] std::string_view
+routeCertificationStatus3DName(RouteCertificationStatus3D status) noexcept;
+
+// `status`, when given, names the verdict: kCertified, or the first rule the
+// activation broke.
 [[nodiscard]] std::optional<CertifiedRouteSuffix3D>
-certifyExecutionRoute3D(const ExecutionRouteActivation3D& activation);
+certifyExecutionRoute3D(const ExecutionRouteActivation3D& activation,
+                        RouteCertificationStatus3D* status = nullptr);
 
 [[nodiscard]] std::optional<CertifiedRouteSuffix3D> recertifyExecutionRoute3D(
     const CertifiedRouteSuffix3D& sealed_source,
     const RouteActivationObservation3D& observation,
-    std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_world);
+    std::shared_ptr<const VersionedObservedRawWorld3D> observed_raw_world,
+    RouteCertificationStatus3D* status = nullptr);
 
 [[nodiscard]] std::optional<FiniteExecutionState3D>
 certifyFiniteExecution3D(const ExecutionPlan3D& current,

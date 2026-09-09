@@ -236,6 +236,16 @@ publication, activation, raw-connector, and raw-suffix evidence. Acceptance
 uses these fields together with measured `state_position` samples; it does not
 depend on a planner-defined passage event.
 
+`activation_status=route_certification_rejected` means the candidate passed the
+activation assessment and the dynamic handoff but the route certification
+refused it; `certification=<verdict>` names the rule
+(`RouteCertificationStatus3D`: `raw_evidence_not_current`,
+`tracking_tube_world_mismatch`, `passage_geometry_mismatch`,
+`assessment_rejected`, `raw_connector_not_validated`, ...). A handoff the
+validator itself refused stays `dynamic_handoff_rejected`. Before the verdict
+was reported, one recorded flight rested for three seconds beside a wall with
+candidate after candidate logged as a handoff rejection and nothing to act on.
+
 ## Liveness Diagnostics
 
 Compare:

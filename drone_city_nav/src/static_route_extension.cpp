@@ -749,6 +749,8 @@ staticRouteActivationStatusName(const StaticRouteActivationStatus status) noexce
       return "invalid_execution_geometry";
     case StaticRouteActivationStatus::kDynamicHandoffRejected:
       return "dynamic_handoff_rejected";
+    case StaticRouteActivationStatus::kRouteCertificationRejected:
+      return "route_certification_rejected";
     case StaticRouteActivationStatus::kCertifiedSpliceRejected:
       return "certified_splice_rejected";
     case StaticRouteActivationStatus::kEquivalentActiveSegmentRetained:

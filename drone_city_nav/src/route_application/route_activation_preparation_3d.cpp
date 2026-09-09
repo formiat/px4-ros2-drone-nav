@@ -742,38 +742,40 @@ certify(RouteActivationPreparationState3D state,
               report.certification_execution_base_current &&
               report.replacement.replacementAllowed() &&
               state.successor_improvement_cleared && compiled_trajectory_valid
-          ? certifyExecutionRoute3D(ExecutionRouteActivation3D{
-                .route_generation = candidate_generation,
-                .proposal = materialized_proposal.identity,
-                .geometry = materialized_proposal.trajectory,
-                .decorations = materialized_proposal.decorations,
-                .observation =
-                    RouteActivationObservation3D{
-                        .resident_world =
-                            snapshot.resident_world != nullptr
-                                ? navigationWorldCertificate3D(*snapshot.resident_world)
-                                : NavigationWorldCertificate3D{},
-                        .current_objective =
-                            snapshot.objective != nullptr
-                                ? makeStaticRouteObjective(*snapshot.objective)
-                                : StaticRouteObjective{},
-                        .minimum_tracking_sample_sequence =
-                            report.required_objective_sample,
-                        .position = {snapshot.navigation.state.x,
-                                     snapshot.navigation.state.y,
-                                     snapshot.navigation.state.z},
-                        .maximum_cross_track_m =
-                            config.route_tracking.maximum_cross_track_m,
-                        .footprint = activationFootprint(config),
-                        .flight_envelope = config.flight_envelope,
-                        .raw_validation_required = state.raw_validation_required,
-                    },
-                .continuity_lineage = continuity_lineage,
-                .observed_raw_world = observed_owner,
-                .static_world = static_owner,
-                .validation_policy = config.validation_policy,
-                .retained_route_owner = retained_route_owner,
-            })
+          ? certifyExecutionRoute3D(
+                ExecutionRouteActivation3D{
+                    .route_generation = candidate_generation,
+                    .proposal = materialized_proposal.identity,
+                    .geometry = materialized_proposal.trajectory,
+                    .decorations = materialized_proposal.decorations,
+                    .observation =
+                        RouteActivationObservation3D{
+                            .resident_world = snapshot.resident_world != nullptr
+                                                  ? navigationWorldCertificate3D(
+                                                        *snapshot.resident_world)
+                                                  : NavigationWorldCertificate3D{},
+                            .current_objective =
+                                snapshot.objective != nullptr
+                                    ? makeStaticRouteObjective(*snapshot.objective)
+                                    : StaticRouteObjective{},
+                            .minimum_tracking_sample_sequence =
+                                report.required_objective_sample,
+                            .position = {snapshot.navigation.state.x,
+                                         snapshot.navigation.state.y,
+                                         snapshot.navigation.state.z},
+                            .maximum_cross_track_m =
+                                config.route_tracking.maximum_cross_track_m,
+                            .footprint = activationFootprint(config),
+                            .flight_envelope = config.flight_envelope,
+                            .raw_validation_required = state.raw_validation_required,
+                        },
+                    .continuity_lineage = continuity_lineage,
+                    .observed_raw_world = observed_owner,
+                    .static_world = static_owner,
+                    .validation_policy = config.validation_policy,
+                    .retained_route_owner = retained_route_owner,
+                },
+                &report.route_certification)
           : std::nullopt;
   report.route_certified = state.certified_route.has_value();
 
