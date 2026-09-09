@@ -114,6 +114,17 @@ search to find one of its own while D* already had one, and one recorded
 flight held for three seconds that way. The refinement improves it from the
 same bound as before.
 
+Mapping an update's occupied changes onto the session's vertices is the
+session's own bookkeeping, and on a scan it covers thousands of cells. Measured
+on one recorded flight it took the whole update on every fourth one, leaving
+the feasibility search three expansions instead of a hundred and thirty, and
+the vehicle waited five and a half seconds for a route the search was finding
+at a tenth of its usual rate. While no route is held the scheduling therefore
+runs behind that search, later in the same update: the labels it marks are
+repaired one update later, and a vehicle without a route needs the search that
+finds one more than it needs the session current a tick sooner. With a route
+held the order is unchanged.
+
 The repair runs before the feasibility search, not after it. The session's
 labels are only as true as its repair queue is short: with repairs pending, D*
 reports its shortest path complete on labels the world has already moved, the

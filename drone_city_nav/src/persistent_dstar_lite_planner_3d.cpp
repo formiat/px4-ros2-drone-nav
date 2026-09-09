@@ -588,6 +588,14 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
        *goal_anchor != goal_);
   const bool producer_changed = previous_producer != 0U &&
                                 previous_producer != request.world.producer_instance_id;
+  // Mapping this update's occupied changes onto the persistent session's
+  // vertices is the session's own bookkeeping, and on a scan it covers
+  // thousands of cells: measured, it took the whole update on every fourth
+  // one, leaving the feasibility search three expansions instead of a hundred
+  // and thirty. While no route is held that search is the only stage that can
+  // give the vehicle one, so the scheduling is deferred behind it and runs
+  // later in this same update.
+  bool schedule_affected_vertices{false};
   if (!initialized_ || world_update.requires_reset || mission_changed) {
     if (mission_changed || producer_changed) {
       coordinator_.reset();
@@ -619,24 +627,12 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     start_ = *start_anchor;
     last_start_ = *start_anchor;
     if (!world_update.changed_cells.empty()) {
-      dstar_session_.scheduleAffectedVertices(world_, world_update.changed_cells,
-                                              telemetry.affected_lattice_states);
-      const auto& schedule = dstar_session_.scheduleStatistics();
-      telemetry.schedule_ms = schedule.total_ms;
-      telemetry.schedule_ranking_ms = schedule.ranking_ms;
-      telemetry.schedule_edges_forgotten = schedule.edges_forgotten;
-      telemetry.schedule_clearances_tightened = schedule.clearances_tightened;
-      if (world_update.occupied_cells_removed) {
-        // A cost-to-go retained across an obstacle removal can overestimate a
-        // newly opened route until every affected label settles. Keep the
-        // refinement heuristic strictly Euclidean in that case.
-        dstar_session_.markCostToGoalInadmissible();
-      }
-      dstar_session_.advanceRepairGeneration();
       // The feasibility search keeps its labels across occupied changes and
       // re-validates their edge chains lazily on the resident world; every
-      // candidate it returns is raw-validated there as well.
+      // candidate it returns is raw-validated there as well. This marks them
+      // for revalidation now, before the search runs.
       feasibility_search_.noteWorldChanged();
+      schedule_affected_vertices = true;
     }
     // The escape anchor is outside the component the searches were seeded
     // in; they start over from it whatever the distance to the old anchor.
@@ -693,6 +689,31 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     }
   }
 
+  // The session's bookkeeping for this update's occupied changes. It runs
+  // before the repair while a route is held, and behind the feasibility search
+  // while none is: a vehicle without a route needs the search that finds one
+  // more than it needs the session's labels to be current one tick sooner.
+  const auto schedule_world_changes = [&] {
+    if (!schedule_affected_vertices) {
+      return;
+    }
+    schedule_affected_vertices = false;
+    dstar_session_.scheduleAffectedVertices(world_, world_update.changed_cells,
+                                            telemetry.affected_lattice_states);
+    const auto& schedule = dstar_session_.scheduleStatistics();
+    telemetry.schedule_ms = schedule.total_ms;
+    telemetry.schedule_ranking_ms = schedule.ranking_ms;
+    telemetry.schedule_edges_forgotten = schedule.edges_forgotten;
+    telemetry.schedule_clearances_tightened = schedule.clearances_tightened;
+    if (world_update.occupied_cells_removed) {
+      // A cost-to-go retained across an obstacle removal can overestimate a
+      // newly opened route until every affected label settles. Keep the
+      // refinement heuristic strictly Euclidean in that case.
+      dstar_session_.markCostToGoalInadmissible();
+    }
+    dstar_session_.advanceRepairGeneration();
+  };
+
   // Repair runs first. The persistent session's labels are only as good as
   // its repair queue is short: with repairs pending, the session reports its
   // shortest path complete on labels the world has already moved, and every
@@ -708,6 +729,9 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   // persistent session is guaranteed and the feasibility search follows.
   const bool feasibility_will_run =
       config_.feasibility_first_enabled && coordinator_.incumbent() == nullptr;
+  if (!feasibility_will_run) {
+    schedule_world_changes();
+  }
   const auto repair_started = std::chrono::steady_clock::now();
   const auto repair_share =
       feasibility_will_run
@@ -776,6 +800,7 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
             .count();
   }
 
+  schedule_world_changes();
   const auto spatial_search_started = std::chrono::steady_clock::now();
   const std::size_t remaining_spatial_expansions =
       telemetry.repair_lattice_states_processed < config_.maximum_expansions_per_update

@@ -327,6 +327,16 @@ TEST(PersistentDStarLitePlanner3DTest,
   blocked.incumbent_rejection_sequence = 1U;
   update = planner.plan(blocked);
   ASSERT_TRUE(update.telemetry.feasibility_attempted);
+  // The update the change arrives on belongs to the search: the session's
+  // bookkeeping for it runs behind the search, so the states it affects are
+  // pending when the update ends.
+  EXPECT_GT(update.telemetry.repair_lattice_states_pending, 0U)
+      << " feasibility_ms=" << update.telemetry.feasibility_ms;
+
+  // The next update repairs them while the search carries on.
+  update = planner.plan(request(start, goal, world(enclosed, 2U)));
+
+  ASSERT_TRUE(update.telemetry.feasibility_attempted);
   EXPECT_GT(update.telemetry.repair_lattice_states_processed, 0U)
       << "pending=" << update.telemetry.repair_lattice_states_pending
       << " feasibility_ms=" << update.telemetry.feasibility_ms
