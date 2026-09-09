@@ -358,6 +358,15 @@ braked and rested for two and a half seconds with the planner idle, a quarter
 of that run's no-route time. Both owners are now routeless owners, and the
 latch decides how often a search actually runs.
 
+The legs that leave the vehicle answer to the hull it measures, not to the
+envelope that contains the hull at every tilt
+(`PersistentPlannerConfig3D::departure_footprint`). A vehicle leaves a tight
+spot the way it entered it, at hover and upright; everything past the
+departure keeps the envelope. Judged by the envelope, a vehicle resting beside
+evidence its own stop had just met was refused every departure for a second or
+more at a time, and those refusals were the largest single share of one
+recorded flight's no-route time.
+
 ## Leaving A Closed Component
 
 A vehicle can stand where every lattice node it reaches belongs to a component
