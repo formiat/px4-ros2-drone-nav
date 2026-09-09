@@ -345,6 +345,17 @@ the body clears: over one urban flight five such refusals held the vehicle for
 on every newer raw world (`retry_trigger=raw_world_changed`); a search that
 ran and failed still waits.
 
+The latch only decides requests that reach it, so something has to keep asking
+while the vehicle has no route. The physical invalidation that ends a route's
+claim is latched for the tick it was observed on, and the deferred replan it
+raised is consumed by the first search; after that, nothing asked again while
+the stop brought the vehicle to rest, and a latched failure sat with nothing
+to re-evaluate it. One recorded flight braked and rested for two and a half
+seconds with the planner idle, a quarter of that run's no-route time. The
+successor request is therefore repeated for as long as a stop owns the vehicle
+and its route stays resident, and the latch decides how often a search
+actually runs.
+
 ## Leaving A Closed Component
 
 A vehicle can stand where every lattice node it reaches belongs to a component
