@@ -354,11 +354,15 @@ ExecutionSupervisor3D::prepareStop(ExecutionStopRequest3D request) const {
       .clearance_reduction = 0.0,
   };
   StopCertificationResult3D certification_report;
-  const auto occupied_evidence_refusal = [&certification_report] {
+  // A rung refused for the evidence its sweep met, or for the clearance its
+  // rest pose could not keep, is a rung a narrower body may still clear.
+  const auto evidence_refusal = [&certification_report] {
     return certification_report.status ==
-               StopCertificationStatus3D::kPathValidationRejected &&
-           finiteExecutionPathOccupiedEvidenceVerdict3D(
-               certification_report.path_validation_status);
+               StopCertificationStatus3D::kRestClearanceRejected ||
+           (certification_report.status ==
+                StopCertificationStatus3D::kPathValidationRejected &&
+            finiteExecutionPathOccupiedEvidenceVerdict3D(
+                certification_report.path_validation_status));
   };
   const ExecutionRouteTransitionResult3D transition = [&] {
     // The envelope keeps clearance the vehicle may already have lost:
@@ -374,7 +378,7 @@ ExecutionSupervisor3D::prepareStop(ExecutionStopRequest3D request) const {
       certification.clearance_reduction = reduction;
       ExecutionRouteTransitionResult3D attempt = enterStopExecution3D(
           *expected, expected->version, certification, &certification_report);
-      if (attempt.applied() || !occupied_evidence_refusal()) {
+      if (attempt.applied() || !evidence_refusal()) {
         return attempt;
       }
     }

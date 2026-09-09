@@ -239,6 +239,7 @@ enum class StopCertificationStatus3D : std::uint8_t {
   kHorizonContractRejected,
   kInitialStateMismatch,
   kPathValidationRejected,
+  kRestClearanceRejected,
   kValidationContractInvalid,
   kInvalidArtifact,
 };

@@ -346,6 +346,60 @@ TEST(ExecutionSupervisorStop3DTest,
   EXPECT_EQ(supervisor.plan(), stopping);
 }
 
+// Where the vehicle comes to rest it stays, and a vehicle at rest drifts
+// within the position error its controller holds it to. A stop that would rest
+// the hull inside the margin the envelope carries over it is refused, so a
+// vehicle flying in the clear never chooses such a rest point.
+TEST(ExecutionSupervisorStop3DTest, AStopDoesNotRestInsideTheEnvelopeMargin) {
+  SnapshotFixture3D fixture;
+  ExecutionSupervisor3D supervisor;
+  const std::shared_ptr<const ExecutionPlan3D> active =
+      installRouteOwner(supervisor, fixture);
+  ASSERT_NE(active, nullptr);
+  ASSERT_NE(active->finiteExecution(), nullptr);
+  const std::shared_ptr<const VersionedExecutionInput3D> input =
+      movingInput(*active->finiteExecution()->execution_input, 4.0F);
+  const ExecutionStopPreparation3D clear =
+      supervisor.prepareStop(stopRequest(fixture, active, input));
+  ASSERT_TRUE(clear.prepared()) << executionStopStatus3DName(clear.status);
+  const StopExecution3D* const clear_stop = clear.stopExecution();
+  ASSERT_NE(clear_stop, nullptr);
+
+  // A voxel beside the rest point whose near face lies half a metre from the
+  // hull: the hull sweeps clear of it, the envelope does not, and the rest
+  // pose keeps less than the margin the envelope carries over the hull.
+  const Point3 rest = clear_stop->rest_position;
+  SweptFootprintConfig footprint = fixture.execution_footprint;
+  footprint.radius_m = 1.2;
+  footprint.body_radius_m = 0.5;
+  footprint.perimeter_samples = 12U;
+  footprint.radial_rings = 2U;
+  ObservedOccupancyGrid3D beside_occupancy = fixture.raw_occupancy;
+  const std::optional<GridIndex3D> beside =
+      beside_occupancy.worldToCell(Point3{rest.x, rest.y + 1.5, rest.z});
+  ASSERT_TRUE(beside.has_value());
+  ASSERT_TRUE(beside_occupancy.setState(*beside, ObservedVoxelState::kOccupied));
+  ExecutionStopRequest3D request = stopRequest(fixture, active, input);
+  request.observed_raw_world =
+      fixture.rawWorld(SnapshotFixture3D::kLatestRawRevision + 1U, &beside_occupancy);
+  request.validation_policy = VersionedExecutionValidationPolicy3D::capture(
+      fixture.validation_policy->flightEnvelope(),
+      fixture.validation_policy->dynamics(),
+      fixture.validation_policy->altitudeEnvelope(), footprint, 100.0, 1000.0, 1000.0,
+      true);
+  ASSERT_NE(request.validation_policy, nullptr);
+
+  const ExecutionStopPreparation3D prepared = supervisor.prepareStop(request);
+
+  EXPECT_FALSE(prepared.prepared());
+  EXPECT_EQ(prepared.certification.status,
+            StopCertificationStatus3D::kRestClearanceRejected)
+      << stopCertificationStatus3DName(prepared.certification.status) << " path="
+      << finiteExecutionPathStatus3DName(prepared.certification.path_validation_status)
+      << " reduction=" << prepared.certification.clearance_reduction << " rest=("
+      << rest.x << "," << rest.y << "," << rest.z << ")";
+}
+
 // The stop that owns the vehicle after it has been committed on the wire.
 [[nodiscard]] std::shared_ptr<const ExecutionPlan3D>
 commitStop(ExecutionSupervisor3D& supervisor,

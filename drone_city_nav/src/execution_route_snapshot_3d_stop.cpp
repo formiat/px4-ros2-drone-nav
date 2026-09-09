@@ -1,5 +1,6 @@
 #include "drone_city_nav/execution_route_certification_3d.hpp"
 #include "drone_city_nav/proprioceptive_contact_seed_3d.hpp"
+#include "drone_city_nav/raw_occupancy_clearance_3d.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
 
 #include <algorithm>
@@ -135,6 +136,30 @@ stopWorldOwnerMatchesProof(const StopExecution3D& execution) noexcept {
   return lineage != nullptr && execution.static_world->valid() &&
          lineage->static_occupancy_content_fingerprint ==
              execution.static_world->contentFingerprint();
+}
+
+// The margin the clearance envelope carries over the hull: the allowance every
+// executed trajectory has for its own tracking error.
+[[nodiscard]] double envelopeMarginM(const SweptFootprintConfig& footprint) noexcept {
+  const SweptFootprintConfig body = physicalBodyFootprint(footprint);
+  return std::max(0.0, footprint.radius_m - body.radius_m);
+}
+
+// How far the hull at `position` can be inflated before it meets occupied
+// evidence, capped at `cap_m`.
+template<typename Occupancy>
+[[nodiscard]] double
+hullInflationMarginM(const Occupancy& occupancy, const Point3& position,
+                     const SweptFootprintConfig& footprint, const double cap_m,
+                     const LaunchSupportContact3D* launch_support) {
+  const SweptFootprintConfig body = physicalBodyFootprint(footprint);
+  return rawBodyInflationMargin3D(occupancy, position,
+                                  RawClearanceBody3D{
+                                      .radius_m = body.radius_m,
+                                      .lower_extent_m = body.lower_extent_m,
+                                      .upper_extent_m = body.upper_extent_m,
+                                  },
+                                  cap_m, launch_support);
 }
 
 } // namespace
@@ -299,6 +324,39 @@ certifyStopExecution3D(const ExecutionPlan3D& current,
     return rejection;
   }
 
+  // Where the vehicle comes to rest it stays, and a vehicle at rest drifts
+  // within the position error its controller holds it to. The rest pose
+  // therefore keeps the whole margin the envelope carries over the hull, even
+  // when the braking path itself had to give some of it up. A vehicle already
+  // inside that band is exempt: it is where it is, and refusing it a stop
+  // would leave it on the horizon the evidence has just invalidated. One
+  // recorded flight came to rest a tenth of a metre from a wall on a
+  // hull-certified stop, drifted a fifth of a metre while holding, and met it.
+  const double rest_margin_required_m =
+      envelopeMarginM(certification.validation_policy->sweptFootprint());
+  if (rest_margin_required_m > 0.0) {
+    const Point3 rest_position{horizon.states.back().x, horizon.states.back().y,
+                               horizon.states.back().z};
+    const Point3 initial_position =
+        executionInputPosition(*certification.execution_input);
+    const auto margin_m = [&](const Point3& position) {
+      return raw_mode
+                 ? hullInflationMarginM(certification.observed_raw_world->occupancy(),
+                                        position, validation_footprint,
+                                        rest_margin_required_m, launch_support_contact)
+                 : hullInflationMarginM(certification.static_world->occupancy(),
+                                        position, validation_footprint,
+                                        rest_margin_required_m, nullptr);
+    };
+    if (margin_m(rest_position) + kGeometryTolerance < rest_margin_required_m &&
+        margin_m(initial_position) + kGeometryTolerance >= rest_margin_required_m) {
+      StopCertificationResult3D rejection =
+          rejected(StopCertificationStatus3D::kRestClearanceRejected);
+      rejection.clearance_reduction = certification.clearance_reduction;
+      return rejection;
+    }
+  }
+
   const std::uint64_t collision_policy_fingerprint =
       validationPolicyFingerprint(validation_footprint, launch_support_contact);
   const std::uint64_t validation_contract_fingerprint = validationContractFingerprint(
@@ -387,6 +445,8 @@ stopCertificationStatus3DName(const StopCertificationStatus3D status) noexcept {
       return "initial_state_mismatch";
     case StopCertificationStatus3D::kPathValidationRejected:
       return "path_validation_rejected";
+    case StopCertificationStatus3D::kRestClearanceRejected:
+      return "rest_clearance_rejected";
     case StopCertificationStatus3D::kValidationContractInvalid:
       return "validation_contract_invalid";
     case StopCertificationStatus3D::kInvalidArtifact:

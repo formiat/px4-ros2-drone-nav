@@ -452,6 +452,16 @@ the envelope, so the envelope's failure does not derive a new stop every tick.
 Other verdicts, a broken envelope or dynamics law, are not retried: no smaller
 body satisfies them.
 
+Where the vehicle comes to rest it stays, and a vehicle at rest drifts within
+the position error its controller holds it to. The rest pose therefore keeps
+the whole margin the envelope carries over the hull even when the braking path
+had to give some of it up (`rest_clearance_rejected`); a rung refused for it is
+one a narrower body may still clear, so the ladder carries on. A vehicle
+already inside that band is exempt: it is where it is, and refusing it a stop
+would leave it on the horizon the evidence has just invalidated. One recorded
+flight came to rest a tenth of a metre from a wall on a hull-certified stop,
+drifted a fifth of a metre while holding, and met it.
+
 When no rung of that ladder sweeps clear, the stop is refused and the hold
 flow answers with the rest hold, the revocation or the resident owner,
 whichever the plan admits. Certifying the brake anyway, with the hull's
