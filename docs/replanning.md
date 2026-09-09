@@ -97,6 +97,14 @@ only what the spatial search leaves. Without the second one the refinement runs
 only while D* is idle, and the refinement is what turns a first-found route
 into a ranked one.
 
+The refinement itself runs only while an incumbent is held. It improves one,
+and with none held it has nothing to improve while the vehicle needs a route
+rather than a better one: its guaranteed share then goes to the repair and the
+feasibility search. One recorded flight spent two seconds without a route
+while the refinement took up to nineteen hundred expansions an update and the
+feasibility search, which was finding the routes that flight actually flew,
+took a hundred and fifty.
+
 A route the session has resolved is published as it stands whenever the
 planner holds no incumbent (`spatial_search` in the candidate source). The
 refinement treats that route as its anytime bound and returns a path only when

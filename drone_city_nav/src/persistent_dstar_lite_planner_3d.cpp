@@ -848,6 +848,15 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
         }
       }
     }
+    // The refinement improves an incumbent. With none held it has nothing to
+    // improve, and the vehicle needs a route rather than a better one: its
+    // guaranteed share of the update goes to the repair and the feasibility
+    // search instead. One recorded flight spent two seconds without a route
+    // while the refinement took up to nineteen hundred expansions an update
+    // and the feasibility search, which was finding the routes that flight
+    // actually flew, took a hundred and fifty.
+    const bool refinement_has_an_incumbent_to_improve =
+        coordinator_.incumbent() != nullptr;
     const std::size_t graph_expansions =
         telemetry.repair_lattice_states_processed + telemetry.expansions;
     const std::size_t guaranteed_refinement_expansions = static_cast<std::size_t>(
@@ -858,8 +867,12 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
                      ? config_.maximum_expansions_per_update - graph_expansions
                      : 0U,
                  std::max<std::size_t>(guaranteed_refinement_expansions, 1U));
-    std::optional<std::vector<Point3>> path = execution_time_refiner_.advance(
-        deadline, refinement_budget, telemetry.execution_time_search_expansions);
+    std::optional<std::vector<Point3>> path =
+        refinement_has_an_incumbent_to_improve
+            ? execution_time_refiner_.advance(
+                  deadline, refinement_budget,
+                  telemetry.execution_time_search_expansions)
+            : std::nullopt;
     if (path.has_value()) {
       // The published path came from the refinement, so its adaptive-edge count
       // is the one that describes it.
