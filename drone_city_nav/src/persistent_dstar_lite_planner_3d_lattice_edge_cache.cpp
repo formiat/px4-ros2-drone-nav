@@ -15,8 +15,10 @@ namespace drone_city_nav::detail {
 
 void PlannerLattice3D::resetEdgeStatistics() noexcept {
   clearances_rederived_ = 0U;
+  clearance_derivation_time_ = {};
   edge_queries_ = 0U;
   raw_edge_validation_checks_ = 0U;
+  raw_sweep_time_ = {};
   adaptive_edge_queries_ = 0U;
   maximum_queried_level_ = 0U;
 }

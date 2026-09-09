@@ -2,6 +2,7 @@
 #include "drone_city_nav/raw_occupancy_clearance_3d.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -312,6 +313,14 @@ std::size_t PlannerLattice3D::clearancesRederived() const noexcept {
   return clearances_rederived_;
 }
 
+double PlannerLattice3D::clearanceDerivationMs() const noexcept {
+  return std::chrono::duration<double, std::milli>(clearance_derivation_time_).count();
+}
+
+double PlannerLattice3D::rawSweepMs() const noexcept {
+  return std::chrono::duration<double, std::milli>(raw_sweep_time_).count();
+}
+
 bool PlannerLattice3D::clearanceStale(const Point3& point, const double reach_m,
                                       const std::uint64_t change_epoch) const noexcept {
   if (change_epoch == change_epoch_ || chunk_change_epoch_.empty()) {
@@ -420,7 +429,9 @@ double PlannerLattice3D::nodeClearanceWithin(const PersistentPlannerNode3D node,
     // node to the search when the move matters for its ranked labels.
     const double previous_m = cached.clearance_m;
     const double reach_m = std::max(cached.cap_m, cap_m);
+    const auto derivation_started = std::chrono::steady_clock::now();
     cached.clearance_m = deriveNodeClearance(point, reach_m);
+    clearance_derivation_time_ += std::chrono::steady_clock::now() - derivation_started;
     cached.cap_m = reach_m;
     cached.change_epoch = change_epoch_;
     ++clearances_rederived_;
@@ -429,7 +440,9 @@ double PlannerLattice3D::nodeClearanceWithin(const PersistentPlannerNode3D node,
     }
     return std::min(cached.clearance_m, cap_m);
   }
+  const auto derivation_started = std::chrono::steady_clock::now();
   const double clearance_m = deriveNodeClearance(point, cap_m);
+  clearance_derivation_time_ += std::chrono::steady_clock::now() - derivation_started;
   node_clearance_cache_.emplace(node,
                                 CachedNodeClearance{.clearance_m = clearance_m,
                                                     .cap_m = cap_m,

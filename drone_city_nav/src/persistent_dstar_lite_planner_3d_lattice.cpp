@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -502,10 +503,16 @@ bool PlannerLattice3D::rawSegmentValid(const Point3& first,
   // proprioceptive seed and launch support are local execution evidence; if
   // they changed graph edge costs, every pose refresh would invalidate the
   // complete backward search and its edge cache.
-  return resident_collision_oracle_.has_value() &&
-         resident_collision_oracle_
-             ->validateSegment(first, FootprintBodyAxis{}, second, FootprintBodyAxis{})
-             .clear();
+  if (!resident_collision_oracle_.has_value()) {
+    return false;
+  }
+  const auto sweep_started = std::chrono::steady_clock::now();
+  const bool clear =
+      resident_collision_oracle_
+          ->validateSegment(first, FootprintBodyAxis{}, second, FootprintBodyAxis{})
+          .clear();
+  raw_sweep_time_ += std::chrono::steady_clock::now() - sweep_started;
+  return clear;
 }
 
 bool PlannerLattice3D::departureSegmentValid(const Point3& first,

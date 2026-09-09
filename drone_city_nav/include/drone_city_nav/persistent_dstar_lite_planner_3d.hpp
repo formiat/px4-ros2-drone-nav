@@ -290,6 +290,10 @@ struct PlannerTelemetry3D {
   std::size_t schedule_edges_forgotten{0U};
   std::size_t schedule_clearances_tightened{0U};
   std::size_t schedule_clearances_rederived{0U};
+  // Where the search budget went inside the lattice: deriving node clearances
+  // from the raw grid and sweeping the body along candidate edges.
+  double clearance_derivation_ms{0.0};
+  double raw_sweep_ms{0.0};
   // The search had to leave the vehicle through a refined free step because no
   // lattice node was reachable from where it stands.
   bool departure_waypoint_used{false};

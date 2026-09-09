@@ -1028,6 +1028,8 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   telemetry.lattice_edge_queries = lattice_.edgeQueries();
   telemetry.raw_edge_validation_checks = lattice_.rawEdgeValidationChecks();
   telemetry.schedule_clearances_rederived = lattice_.clearancesRederived();
+  telemetry.clearance_derivation_ms = lattice_.clearanceDerivationMs();
+  telemetry.raw_sweep_ms = lattice_.rawSweepMs();
   telemetry.adaptive_edge_queries = lattice_.adaptiveEdgeQueries();
   telemetry.adaptive_edges_in_extracted_path = adaptive_edges_in_extracted_path_;
   telemetry.maximum_queried_lattice_level = lattice_.maximumQueriedLevel();

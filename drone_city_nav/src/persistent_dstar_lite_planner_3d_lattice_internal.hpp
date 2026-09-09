@@ -519,6 +519,8 @@ public:
   // ones among them.
   [[nodiscard]] std::vector<PersistentPlannerNode3D> takeMovedClearances();
   [[nodiscard]] std::size_t clearancesRederived() const noexcept;
+  [[nodiscard]] double clearanceDerivationMs() const noexcept;
+  [[nodiscard]] double rawSweepMs() const noexcept;
   // The current clearance of a node whose clearance was priced before, or
   // nullopt when it never was. A stale cache entry is re-derived first.
   [[nodiscard]] std::optional<double> cachedNodeClearance(PersistentPlannerNode3D node,
@@ -642,6 +644,9 @@ private:
   // Edges the raw sweep rejected since the last take; see rejectEdgeBySweep.
   std::vector<PersistentPlannerEdge3D> sweep_rejected_edges_;
   std::size_t clearances_rederived_{0U};
+  // Time spent deriving node clearances from the raw grid since the last
+  // statistics reset; the counterpart of clearances_rederived_.
+  std::chrono::steady_clock::duration clearance_derivation_time_{};
   // Whether a chunk within `reach_m` of the point changed after the given
   // epoch.
   [[nodiscard]] bool clearanceStale(const Point3& point, double reach_m,
@@ -675,6 +680,9 @@ private:
                             Visitor&& visitor) const;
   std::size_t edge_queries_{0U};
   std::size_t raw_edge_validation_checks_{0U};
+  // Time spent in raw swept-body segment validation since the last statistics
+  // reset; mutable because the sweep itself is a const query.
+  mutable std::chrono::steady_clock::duration raw_sweep_time_{};
   std::size_t adaptive_edge_queries_{0U};
   std::size_t maximum_queried_level_{0U};
 };
