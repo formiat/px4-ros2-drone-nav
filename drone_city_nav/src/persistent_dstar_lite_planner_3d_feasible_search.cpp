@@ -114,6 +114,44 @@ void FeasiblePathSearch3D::noteWorldChanged() noexcept {
   advanceValidationEpoch();
 }
 
+double FeasiblePathSearch3D::goalClearanceM(const Endpoints3D& endpoints) {
+  if (goal_clearance_epoch_ != validation_epoch_) {
+    goal_clearance_m_ = lattice_->pointClearanceM(endpoints.exact_goal);
+    goal_clearance_epoch_ = validation_epoch_;
+  }
+  return goal_clearance_m_;
+}
+
+bool FeasiblePathSearch3D::goalConnectorValid(const FeasibilityQueueEntry3D& current,
+                                              const Point3& current_point,
+                                              const bool direct_departure,
+                                              const Endpoints3D& endpoints) {
+  const double goal_distance_m = distance3D(current_point, endpoints.exact_goal);
+  if (goal_distance_m > config_->feasibility_goal_connector_reach_m) {
+    return false;
+  }
+  if (direct_departure) {
+    ++connector_sweep_count_;
+    return lattice_->departureSegmentValid(endpoints.exact_start, endpoints.exact_goal);
+  }
+  // A sweep across the connector reach costs more than the expansion that
+  // asked for it, and every node in reach asks. The endpoint clearances
+  // answer first: they only ever deny a connector the sweep would also deny,
+  // and across open space they affirm it without a sweep. The connector of a
+  // candidate being extracted is always swept on the resident world.
+  if (!current.goal_connector &&
+      lattice_->connectorClearsByClearance(current.node, endpoints.exact_goal,
+                                           goalClearanceM(endpoints))) {
+    return true;
+  }
+  ++connector_sweep_count_;
+  return lattice_->rawSegmentValid(current_point, endpoints.exact_goal);
+}
+
+std::size_t FeasiblePathSearch3D::connectorSweepCount() const noexcept {
+  return connector_sweep_count_;
+}
+
 void FeasiblePathSearch3D::advanceValidationEpoch() noexcept {
   if (++validation_epoch_ == 0U) {
     std::ranges::fill(validated_epoch_, 0U);
@@ -416,15 +454,8 @@ std::optional<std::vector<Point3>> FeasiblePathSearch3D::advanceFrontier(
     const bool direct_departure =
         current.node == anchor_ &&
         distance3D(endpoints.exact_start, current_point) <= kCostTolerance;
-    const bool goal_connector_in_reach =
-        distance3D(current_point, endpoints.exact_goal) <=
-        config_->feasibility_goal_connector_reach_m;
     const bool goal_connector_valid =
-        goal_connector_in_reach &&
-        (direct_departure
-             ? lattice_->departureSegmentValid(endpoints.exact_start,
-                                               endpoints.exact_goal)
-             : lattice_->rawSegmentValid(current_point, endpoints.exact_goal));
+        goalConnectorValid(current, current_point, direct_departure, endpoints);
     if (goal_connector_valid && !current.goal_connector) {
       // The connector is one more priced edge: it competes in the queue with
       // the labelled frontier instead of ending the search on the first
@@ -584,6 +615,7 @@ void FeasiblePathSearch3D::reset() noexcept {
   chain_.clear();
   invalidation_queue_.clear();
   rejected_edges_.clear();
+  goal_clearance_epoch_ = 0U;
   std::ranges::fill(queued_, 0U);
   if (++generation_ == 0U) {
     std::ranges::fill(label_generation_, 0U);

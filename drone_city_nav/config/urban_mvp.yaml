@@ -489,9 +489,14 @@ production_mppi_node:
     # expansion work the feasibility search gets at most half of the update
     # budget, so a feasibility search that keeps failing cannot starve it.
     persistent_planner_maximum_feasibility_compute_time_ms: 140.0
-    # The feasibility-first search tries the direct raw connector to the goal
-    # only from nodes within this reach.
-    persistent_planner_feasibility_goal_connector_reach_m: 40.0
+    # The feasibility-first search offers the direct connector to the goal
+    # only from nodes within this reach. Inside it the endpoint clearances
+    # affirm a connector across open space without a sweep; one they cannot
+    # affirm is swept, which costs more than the expansion that asked for it.
+    # At 40 m every expansion of the final approach swept a connector of tens
+    # of metres through clutter that could not clear, and the last stretch to
+    # the goal held the vehicle for whole seconds at a time (r92–r101).
+    persistent_planner_feasibility_goal_connector_reach_m: 12.0
     # The feasibility-first search ranks its edges by raw clearance like the D*
     # search. A short reach only sees the execution critical band, so a route
     # that clears the band by a centimetre ranks as well as one down the middle

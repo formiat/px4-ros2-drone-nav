@@ -109,6 +109,7 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
         "feasibility_exhausted=%s feasibility_explored=%zu "
         "feasibility_closest_goal_m=%.1f feasibility_restarts=%zu "
         "feasibility_invalidated_labels=%zu feasibility_adopted_labels=%zu "
+        "feasibility_connector_sweeps=%zu "
         "feasibility_invalid_segment=%zu "
         "feasibility_anchor=(%.1f,%.1f,%.1f) records=%zu open=%zu "
         "time_records=%zu time_open=%zu shortcuts=%zu/%zu edge_queries=%zu "
@@ -154,6 +155,7 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
         planner_telemetry.feasibility_restarts,
         planner_telemetry.feasibility_invalidated_labels,
         planner_telemetry.feasibility_adopted_labels,
+        planner_telemetry.feasibility_connector_sweeps,
         planner_telemetry.feasibility_last_invalid_segment,
         planner_telemetry.feasibility_anchor.x, planner_telemetry.feasibility_anchor.y,
         planner_telemetry.feasibility_anchor.z, planner_telemetry.records,

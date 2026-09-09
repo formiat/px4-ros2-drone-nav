@@ -69,6 +69,7 @@ public:
   // because a lattice edge on their chain no longer survives the resident
   // world.
   [[nodiscard]] std::size_t restartCount() const noexcept;
+  [[nodiscard]] std::size_t connectorSweepCount() const noexcept;
   [[nodiscard]] std::size_t invalidatedLabelCount() const noexcept;
   // Labels whose chain broke and that were re-parented through an intact
   // neighbour instead of being dropped.
@@ -176,6 +177,23 @@ private:
   std::size_t invalidated_label_count_{0U};
   std::size_t adopted_label_count_{0U};
   std::size_t last_invalid_segment_{0U};
+  // Raw sweeps spent on straight goal connectors; the counterpart of the
+  // connectors priced from clearances alone.
+  std::size_t connector_sweep_count_{0U};
+  // The exact goal's raw clearance, derived once per validation epoch: the
+  // connector shortcut needs it on every expansion within reach.
+  double goal_clearance_m_{0.0};
+  std::uint32_t goal_clearance_epoch_{0U};
+  [[nodiscard]] double goalClearanceM(const Endpoints3D& endpoints);
+  // Whether the straight connector from the popped entry's node to the exact
+  // goal is valid on the resident world. Within the connector reach the
+  // endpoint clearances answer first and cost no sweep; they never affirm a
+  // connector the sweep would reject. A connector they cannot affirm, and the
+  // connector of a candidate being extracted, are swept.
+  [[nodiscard]] bool goalConnectorValid(const FeasibilityQueueEntry3D& current,
+                                        const Point3& current_point,
+                                        bool direct_departure,
+                                        const Endpoints3D& endpoints);
 };
 
 // Discrete travel direction of a vector or a lattice edge. Time states are

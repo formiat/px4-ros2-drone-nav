@@ -106,20 +106,40 @@ void PlannerLattice3D::setLevelZeroState(const LevelZeroSlot slot,
   word = (word & ~(3U << (2U * slot.direction))) | (state << (2U * slot.direction));
 }
 
+double
+PlannerLattice3D::clearanceRequiredForSegment(const Point3& first,
+                                              const Point3& second) const noexcept {
+  const double body_extent_m = std::max({config_->physical_footprint.radius_m,
+                                         config_->physical_footprint.lower_extent_m,
+                                         config_->physical_footprint.upper_extent_m});
+  const double raw_half_diagonal = 0.5 * std::numbers::sqrt3 * raw_bounds_.resolution_m;
+  return 0.5 * distance3D(first, second) + body_extent_m + raw_half_diagonal;
+}
+
+bool PlannerLattice3D::connectorClearsByClearance(const PersistentPlannerNode3D node,
+                                                  const Point3& target,
+                                                  const double target_clearance_m) {
+  const double cap_m = config_->clearance_ranking_distance_m;
+  if (!(config_->clearance_ranking_weight > 0.0) || !(cap_m > 0.0)) {
+    return false;
+  }
+  const double required_m = clearanceRequiredForSegment(pointFor(node), target);
+  if (required_m >= cap_m || !(target_clearance_m > required_m)) {
+    return false;
+  }
+  const std::optional<double> node_clearance =
+      cachedNodeClearance(node, required_m + 1.0e-6);
+  return node_clearance.has_value() && *node_clearance > required_m;
+}
+
 bool PlannerLattice3D::endpointClearanceClears(const PersistentPlannerNode3D first,
                                                const PersistentPlannerNode3D second) {
   const double cap_m = config_->clearance_ranking_distance_m;
   if (!(config_->clearance_ranking_weight > 0.0) || !(cap_m > 0.0)) {
     return false;
   }
-  const Point3 first_point = pointFor(first);
-  const Point3 second_point = pointFor(second);
-  const double body_extent_m = std::max({config_->physical_footprint.radius_m,
-                                         config_->physical_footprint.lower_extent_m,
-                                         config_->physical_footprint.upper_extent_m});
-  const double raw_half_diagonal = 0.5 * std::numbers::sqrt3 * raw_bounds_.resolution_m;
   const double required_m =
-      0.5 * distance3D(first_point, second_point) + body_extent_m + raw_half_diagonal;
+      clearanceRequiredForSegment(pointFor(first), pointFor(second));
   if (required_m >= cap_m) {
     return false;
   }

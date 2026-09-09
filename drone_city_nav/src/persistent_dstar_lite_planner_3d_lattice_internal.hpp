@@ -480,6 +480,14 @@ public:
   // clearance ranking distance. It is derived ranking evidence computed from
   // the resident raw grid and cached per node.
   [[nodiscard]] double nodeClearanceM(PersistentPlannerNode3D node);
+  // Whether the straight segment from a node to a target point clears the
+  // swept body by the endpoints' clearances alone: every point of the segment
+  // lies within half its length of one endpoint, so two clearances that each
+  // exceed half the length plus the body extent leave nothing for a sweep to
+  // find. Only the node's cached ranking clearance is consulted.
+  [[nodiscard]] bool connectorClearsByClearance(PersistentPlannerNode3D node,
+                                                const Point3& target,
+                                                double target_clearance_m);
   // The same clearance at an arbitrary point, uncached.
   [[nodiscard]] double pointClearanceM(const Point3& point) const;
   // Whether the point and the body's reach around it lie in observed space.
@@ -587,6 +595,8 @@ private:
   // True when both endpoints' already cached raw clearance exceeds half the
   // edge plus the body extent, which clears the whole swept edge without
   // validation. Uncached clearances are not derived here.
+  [[nodiscard]] double clearanceRequiredForSegment(const Point3& first,
+                                                   const Point3& second) const noexcept;
   [[nodiscard]] bool endpointClearanceClears(PersistentPlannerNode3D first,
                                              PersistentPlannerNode3D second);
   // Adaptive (level > 0) edges are sparse and keep a keyed cache.

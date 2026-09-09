@@ -600,6 +600,45 @@ TEST(PersistentDStarLitePlanner3DTest, AGoalTheBodyCannotOccupyIsReachedAtItsAnc
 }
 
 TEST(PersistentDStarLitePlanner3DTest,
+     AGoalConnectorAcrossOpenSpaceIsPricedFromClearancesInsteadOfSwept) {
+  // An open hall above a known floor, the goal thirteen metres from the
+  // start and the connector reach ten. Every expanded node in reach used to
+  // sweep the straight connector to the goal; the endpoint clearances now
+  // answer for them across open space (both are capped at the six-metre
+  // ranking reach, which covers half a ten-metre connector plus the body),
+  // so the route is found with at most the sweep of the candidate being
+  // extracted.
+  auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 1.0, 20, 12, 16});
+  for (int x = 0; x < 20; ++x) {
+    for (int y = 0; y < 12; ++y) {
+      ASSERT_TRUE(occupancy->setState({x, y, 0}, ObservedVoxelState::kOccupied));
+    }
+  }
+  PersistentPlannerConfig3D config = testConfig();
+  config.feasibility_first_enabled = true;
+  config.clearance_ranking_weight = 1.5;
+  config.clearance_ranking_distance_m = 6.0;
+  config.feasibility_clearance_ranking_distance_m = 6.0;
+  config.feasibility_goal_connector_reach_m = 10.0;
+  PersistentDStarLitePlanner3D planner{config};
+  const Point3 start{2.5, 5.5, 8.5};
+  const Point3 goal{15.5, 6.5, 8.5};
+
+  PlannerUpdate3D update = planner.plan(request(start, goal, world(occupancy, 1U)));
+  for (int attempt = 0; attempt < 20 && !update.telemetry.feasibility_route_found;
+       ++attempt) {
+    update = planner.plan(request(start, goal, world(occupancy, 1U)));
+  }
+  ASSERT_TRUE(update.telemetry.feasibility_route_found);
+  EXPECT_LE(update.telemetry.feasibility_connector_sweeps, 2U);
+  const std::vector<Point3>& points = candidate(update).points;
+  ASSERT_GE(points.size(), 2U);
+  EXPECT_NEAR(distance3D(points.back(), goal), 0.0, 1.0e-6);
+  expectRawValid(points, *occupancy, planner.config().physical_footprint);
+}
+
+TEST(PersistentDStarLitePlanner3DTest,
      ALabelDroppedNearTheAnchorReparentsTheExploredTreeInsteadOfDroppingIt) {
   // A corridor explored end to end; then occupied evidence closes its second
   // cross-section except one corner cell. Every chain beyond the closure

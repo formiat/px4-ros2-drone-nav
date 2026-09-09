@@ -43,7 +43,15 @@ ran for a fraction of each second while the vehicle held at the start.
 The goal anchor is a terminal of the feasibility search in its own right. The
 search connects to the exact goal by a straight raw-valid segment from any
 label within `persistent_planner_feasibility_goal_connector_reach_m`, and that
-connector is priced into the queue like an edge. It is not owed, though: the
+connector is priced into the queue like an edge. Within that reach the
+endpoint clearances answer first: a node whose raw clearance and the goal's
+together cover half the connector plus the body extent needs no sweep, and
+only a connector they cannot affirm is swept. The reach itself is short
+(twelve metres in the urban profile): sweeping a connector of tens of metres
+from every expansion in reach made the last stretch to the goal the slowest
+part of a search, whole seconds of hold beside a goal the frontier had
+already reached. The connector of a candidate being extracted is always
+swept on the resident world. It is not owed, though: the
 exact goal may be a point the body cannot occupy — a goal set beside a wall —
 while its anchor, the nearest admissible lattice node and within the goal
 tolerance by construction, is reached by lattice edges exactly as the ranked
