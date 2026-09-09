@@ -3,6 +3,7 @@
 #include "drone_city_nav/execution_horizon_timing.hpp"
 #include "drone_city_nav/execution_plan_3d.hpp"
 #include "drone_city_nav/flight_envelope.hpp"
+#include "drone_city_nav/local_hold_pin.hpp"
 #include "drone_city_nav/msg/mppi_control_feedback.hpp"
 #include "drone_city_nav/msg/mppi_trajectory_horizon.hpp"
 #include "drone_city_nav/msg/vehicle_destroyed.hpp"
@@ -71,6 +72,16 @@ public:
         unavailable_path_braking_acceleration_mps2_ <= 0.0) {
       throw std::invalid_argument{
           "unavailable path braking acceleration must be a positive acceleration"};
+    }
+    // The time the hold brings a residual velocity to zero over: full braking
+    // above response times acceleration, proportional below it, so a vehicle
+    // that has all but stopped is settled rather than thrown the other way.
+    unavailable_path_braking_response_s_ =
+        declare_parameter<double>("unavailable_path_braking_response_s", 0.25);
+    if (!std::isfinite(unavailable_path_braking_response_s_) ||
+        unavailable_path_braking_response_s_ <= 0.0) {
+      throw std::invalid_argument{
+          "unavailable path braking response must be a positive time"};
     }
     const double control_lookahead_s =
         declare_parameter<double>("mppi_control_lookahead_s", 0.05);
@@ -285,7 +296,7 @@ private:
     if (!armed && (was_armed || horizon_.has_value())) {
       execution_horizon_rearm_required_ = true;
       horizon_.reset();
-      unavailable_path_hold_target_.reset();
+      unavailable_path_hold_pin_.reset();
       if (horizon_admission_.current_producer_instance_id != 0U) {
         static_cast<void>(tombstoneExecutionHorizonIdentity(
             horizon_admission_,
@@ -530,13 +541,7 @@ private:
         !horizon_.has_value() || horizon_->execution_mode != horizon.execution_mode ||
         horizon_->execution_reason != horizon.execution_reason;
     horizon_ = horizon;
-    // The pin of the local hold survives a horizon that takes the vehicle
-    // nowhere: it is judged against the vehicle's position when the hold is
-    // next needed, not discarded here. Discarding it re-pinned the hold at
-    // wherever the vehicle had crept to under each short-lived horizon, and
-    // one recorded flight ratcheted twenty centimetres into a wall that way,
-    // a few centimetres per revocation, while it was supposedly holding.
-    unavailable_path_hold_target_lease_active_ = false;
+    unavailable_path_hold_pin_.release();
     RCLCPP_INFO(get_logger(),
                 "EXECUTION_HORIZON accepted=true producer=%" PRIu64 " sequence=%" PRIu64
                 " mode=%s",
@@ -822,27 +827,12 @@ private:
   }
 
   void publishUnavailablePathHoldSetpoint() {
-    // A pin the vehicle has left -- carried away by a horizon that did take it
-    // somewhere -- is not a hold any more; a pin it still stands on is, and
-    // stays where it was given, so a run of short-lived horizons and
-    // revocations cannot walk it.
-    if (unavailable_path_hold_target_.has_value() &&
-        !unavailable_path_hold_target_lease_active_ &&
-        std::hypot(local_x_ - unavailable_path_hold_target_->x,
-                   local_y_ - unavailable_path_hold_target_->y,
-                   altitude_m_ - unavailable_path_hold_target_->z) >
-            kStationaryExecutionHoldPositionToleranceM) {
-      unavailable_path_hold_target_.reset();
-    }
-    unavailable_path_hold_target_lease_active_ = true;
-    if (!unavailable_path_hold_target_.has_value()) {
-      unavailable_path_hold_target_ = Point3{
-          local_x_,
-          local_y_,
-          altitude_m_,
-      };
-      const Point2 map_target = px4_map_transform_.localPositionToMap(
-          Point2{unavailable_path_hold_target_->x, unavailable_path_hold_target_->y});
+    const bool pinned_now =
+        unavailable_path_hold_pin_.acquire(Point3{local_x_, local_y_, altitude_m_});
+    const Point3& target = *unavailable_path_hold_pin_.pin();
+    if (pinned_now) {
+      const Point2 map_target =
+          px4_map_transform_.localPositionToMap(Point2{target.x, target.y});
       RCLCPP_WARN(get_logger(),
                   "FINITE_EXECUTION_PATH unavailable=true "
                   "authority=local_non_authoritative action=%s speed=%.2f "
@@ -851,10 +841,9 @@ private:
                       ? "brake_then_position_hold"
                       : "position_hold",
                   currentSpeedMps(), map_target.x, map_target.y,
-                  unavailable_path_hold_target_->z + px4_map_transform_.map_origin.z);
+                  target.z + px4_map_transform_.map_origin.z);
     }
-    const Point2 local_target{unavailable_path_hold_target_->x,
-                              unavailable_path_hold_target_->y};
+    const Point2 local_target{target.x, target.y};
     const double yaw = px4_map_transform_.mapYawToPx4Heading(heading_rad_);
     // While the vehicle still moves, the hold brakes it at the stack's own
     // deceleration instead of leaving the braking to the position loop's
@@ -863,12 +852,13 @@ private:
       const Point2 local_velocity =
           px4_map_transform_.mapVectorToLocal(Point2{velocity_x_, velocity_y_});
       setpoint_pub_->publish(buildBrakingHoldTrajectorySetpoint(
-          nowMicros(), local_target, unavailable_path_hold_target_->z, local_velocity,
-          velocity_up_mps_, unavailable_path_braking_acceleration_mps2_, yaw));
+          nowMicros(), local_target, target.z, local_velocity, velocity_up_mps_,
+          unavailable_path_braking_acceleration_mps2_,
+          unavailable_path_braking_response_s_, yaw));
       return;
     }
-    setpoint_pub_->publish(buildPositionTrajectorySetpoint(
-        nowMicros(), local_target, unavailable_path_hold_target_->z, yaw));
+    setpoint_pub_->publish(
+        buildPositionTrajectorySetpoint(nowMicros(), local_target, target.z, yaw));
   }
 
   void publishAppliedControlFeedback(const Point2 acceleration,
@@ -949,6 +939,7 @@ private:
   double local_y_{0.0};
   double altitude_m_{0.0};
   double unavailable_path_braking_acceleration_mps2_{4.0};
+  double unavailable_path_braking_response_s_{0.25};
   double velocity_x_{0.0};
   double velocity_y_{0.0};
   double velocity_up_mps_{0.0};
@@ -981,10 +972,7 @@ private:
   std::unique_ptr<VehicleDestructionDisarmLifecycle> destruction_disarm_lifecycle_;
   px4_msgs::msg::VehicleStatus vehicle_status_;
   std::optional<msg::MppiTrajectoryHorizon> horizon_;
-  std::optional<Point3> unavailable_path_hold_target_;
-  // Whether the local hold is the setpoint in force right now, as opposed to
-  // a pin kept from the last hold for the vehicle to be judged against.
-  bool unavailable_path_hold_target_lease_active_{false};
+  LocalHoldPin unavailable_path_hold_pin_;
   std::optional<rclcpp::Time> takeoff_complete_stamp_;
   std::optional<bool> last_navigation_readiness_;
   std::uint64_t offboard_producer_instance_id_{0U};

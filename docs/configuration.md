@@ -296,6 +296,10 @@ Speed policy and liveness:
   brakes a still-moving vehicle with when nothing owns its motion; the launch
   passes `maximum_horizontal_acceleration_mps2` through to it so the hold
   brakes as hard as the planner plans against and PX4 is configured to;
+- `unavailable_path_braking_response_s`: the time that hold brings a residual
+  velocity to zero over; the braking is full above response times acceleration
+  and proportional below it, so a vehicle that has all but stopped is settled
+  rather than thrown the other way;
 - the same minimum/maximum target altitude contract as the planner;
 - expected vehicle role, mission epoch, and destruction topic;
 - bounded death force-disarm retry period;

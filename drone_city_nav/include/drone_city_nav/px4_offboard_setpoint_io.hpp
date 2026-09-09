@@ -48,14 +48,19 @@ buildVelocityTrajectorySetpoint(std::uint64_t timestamp_us, Point2 velocity_xy,
 // nine tenths of a metre to stop, half the deceleration the navigation stack
 // plans its stopping distances against, and met the structure it had been
 // stopped for. The hold therefore carries the braking as well: the position
-// it is pinned to, a zero velocity, and the braking acceleration opposing the
-// vehicle's velocity at `braking_acceleration_mps2`. A vehicle already at rest
+// it is pinned to, a zero velocity, and an acceleration opposing the
+// vehicle's velocity. The acceleration is the one that brings the velocity to
+// zero over `braking_response_s`, capped at `braking_acceleration_mps2`: full
+// braking from speed, and a proportional one near rest. Full braking against a
+// residual of a few tenths of a metre a second throws the vehicle the other
+// way, and one recorded flight rang between the two for a second and a half at
+// half a metre a second, never below the rest tolerance, and walked forty
+// centimetres into the wall it had just stopped for. A vehicle already at rest
 // gets the plain position hold.
-[[nodiscard]] px4_msgs::msg::TrajectorySetpoint
-buildBrakingHoldTrajectorySetpoint(std::uint64_t timestamp_us, Point2 local_target,
-                                   double target_altitude_m, Point2 local_velocity_xy,
-                                   double vertical_velocity_up_mps,
-                                   double braking_acceleration_mps2, double yaw_rad);
+[[nodiscard]] px4_msgs::msg::TrajectorySetpoint buildBrakingHoldTrajectorySetpoint(
+    std::uint64_t timestamp_us, Point2 local_target, double target_altitude_m,
+    Point2 local_velocity_xy, double vertical_velocity_up_mps,
+    double braking_acceleration_mps2, double braking_response_s, double yaw_rad);
 
 [[nodiscard]] px4_msgs::msg::TrajectorySetpoint
 buildMppiTrajectorySetpoint(std::uint64_t timestamp_us, Point2 velocity_xy,

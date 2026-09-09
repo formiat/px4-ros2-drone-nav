@@ -416,7 +416,13 @@ stop had been braking for. That hold now brakes before it holds: while the
 vehicle still moves, the setpoint it is pinned to carries a zero velocity and
 the stack's own braking acceleration against the vehicle's velocity
 (`unavailable_path_braking_acceleration_mps2`), and only a vehicle at rest is
-held by position alone. The position it is pinned to survives a horizon that
+held by position alone. The braking is full from speed and proportional near
+rest — the acceleration that brings the residual velocity to zero over
+`unavailable_path_braking_response_s` — because full braking against a
+residual of a few tenths of a metre a second throws the vehicle the other way:
+one recorded flight rang between the two for a second and a half at half a
+metre a second, never below the rest tolerance, and walked forty centimetres
+into the wall it had just stopped for. The position it is pinned to survives a horizon that
 takes the vehicle nowhere: the pin is judged against the vehicle when the hold
 is next needed and kept while the vehicle still stands within the stationary
 tolerance of it. Re-pinned at each revocation instead, a run of short-lived
