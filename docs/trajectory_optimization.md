@@ -75,7 +75,16 @@ question, and by one mild preference:
   can accumulate within its response time must fit inside the body clearance.
   A wall the vehicle flies along never gets nearer, so no braking distance is
   owed to it. This is the law that certifies a route's speed profile and that
-  the speed policy's `clearance` limiter applies.
+  the speed policy's `clearance` limiter applies. A sealed profile stays
+  certified on a world it is admissible on: nowhere may a sealed ceiling
+  exceed the ceiling the world now permits. A world that only loosened around
+  the route still matches — flying under a lower ceiling than the world allows
+  is safe — while one that tightened anywhere is refused and the route is
+  re-sealed by a fresh search. Read as bit-for-bit equality instead, the rule
+  made every certified route perishable on every scan: a voxel that opened a
+  little clearance beside the route changed one ceiling by a hundredth of a
+  metre a second, and the successor sealed a tick earlier was refused for it
+  while the vehicle held with nothing else to fly.
 - Ahead on the motion, the **stopping law**: the path the body covers while it
   reacts and brakes must fit inside the free path to the point where its
   envelope enters occupied evidence. It is charged along the rollout's own

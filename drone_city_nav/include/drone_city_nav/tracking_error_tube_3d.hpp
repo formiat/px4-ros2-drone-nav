@@ -53,6 +53,11 @@ describeTrackingErrorTubeConstraints3D(std::span<const RouteSample3D> route,
                                        const TrackingErrorTubeProfile3D& profile,
                                        std::size_t maximum_ranges);
 
+// Whether a sealed profile is admissible on `world`: the hull still clears
+// every segment, the contract and footprint are the ones it was sealed with,
+// and nowhere does a sealed ceiling exceed the ceiling the world now permits.
+// A world that only loosened around the route still matches; one that
+// tightened anywhere does not.
 [[nodiscard]] bool
 trackingErrorTubeProfile3DMatchesWorld(std::span<const RouteSample3D> route,
                                        const TrackingErrorTubeProfile3D& profile,

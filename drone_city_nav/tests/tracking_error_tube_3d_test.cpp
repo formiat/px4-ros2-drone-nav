@@ -212,6 +212,51 @@ TEST(TrackingErrorTube3DTest, FreeUnknownRelabelingLeavesSpeedProfileUnchanged) 
             free_profile.constrained_segment_count);
 }
 
+// A world that loosened around the route leaves the sealed ceilings lower than
+// the world now permits, and the profile still matches it; a world that
+// tightened anywhere does not match, because the sealed ceilings would
+// overstate what it permits.
+TEST(TrackingErrorTube3DTest, ALoosenedWorldStillMatchesTheSealedProfile) {
+  ObservedOccupancyGrid3D tight{testBounds()};
+  addPassageWalls(tight);
+  // One more wall row on the lower side: the sealed profile is the tighter one.
+  const GridBounds3D& bounds = tight.bounds();
+  for (int z = 0; z < bounds.depth_cells; ++z) {
+    for (int x = 0; x < bounds.width_cells; ++x) {
+      static_cast<void>(tight.setState({x, 8, z}, ObservedVoxelState::kOccupied));
+    }
+  }
+  ObservedOccupancyGrid3D loose{testBounds()};
+  addPassageWalls(loose);
+  const TrackingErrorTubeProfile3D sealed_on_tight = profile(tight);
+  const TrackingErrorTubeProfile3D sealed_on_loose = profile(loose);
+  ASSERT_TRUE(sealed_on_tight.valid);
+  ASSERT_TRUE(sealed_on_loose.valid);
+  ASSERT_LT(sealed_on_tight.minimum_speed_limit_mps,
+            sealed_on_loose.minimum_speed_limit_mps);
+  ASSERT_EQ(sealed_on_tight.speed_limits_mps.size(),
+            sealed_on_loose.speed_limits_mps.size());
+  for (std::size_t index = 0U; index < sealed_on_tight.speed_limits_mps.size();
+       ++index) {
+    EXPECT_LE(sealed_on_tight.speed_limits_mps[index],
+              sealed_on_loose.speed_limits_mps[index])
+        << "index=" << index;
+  }
+
+  EXPECT_TRUE(trackingErrorTubeProfile3DMatchesWorld(
+      passageRoute(), sealed_on_tight,
+      TrackingErrorTubeWorld3D{
+          .observed_occupancy = &loose,
+          .occupied_content_fingerprint = loose.occupiedSnapshot().contentFingerprint(),
+      }));
+  EXPECT_FALSE(trackingErrorTubeProfile3DMatchesWorld(
+      passageRoute(), sealed_on_loose,
+      TrackingErrorTubeWorld3D{
+          .observed_occupancy = &tight,
+          .occupied_content_fingerprint = tight.occupiedSnapshot().contentFingerprint(),
+      }));
+}
+
 TEST(TrackingErrorTube3DTest, RejectsAnOccupancyOwnerFingerprintMismatch) {
   ObservedOccupancyGrid3D occupancy{testBounds()};
   addPassageWalls(occupancy);

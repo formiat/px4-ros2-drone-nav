@@ -327,7 +327,25 @@ bool trackingErrorTubeProfile3DMatchesWorld(const std::span<const RouteSample3D>
   const TrackingErrorTubeProfile3D derived = makeTrackingErrorTubeProfile3D(
       route, world, profile.physical_footprint, profile.config,
       profile.unconstrained_speed_limit_mps);
+  // A sealed profile matches a world it is admissible on: nowhere may the
+  // ceiling it seals exceed the ceiling the world now permits. A world that has
+  // only loosened around the route leaves the sealed ceilings lower than they
+  // need to be, and flying under a lower ceiling is safe; a world that has
+  // tightened anywhere would let the profile overstate, and is refused. Read
+  // as bit-for-bit equality of every ceiling, the rule made every certified
+  // route perishable on every scan: a voxel that opened a little clearance
+  // beside the route changed one ceiling by a hundredth of a metre a second,
+  // and the successor sealed on the previous scan -- and the route the vehicle
+  // was following -- were both refused for it. One recorded flight stood with
+  // a successor sealed on every tick of a hold it could not leave.
+  const bool sealed_ceilings_admissible =
+      derived.speed_limits_mps.size() == profile.speed_limits_mps.size() &&
+      std::ranges::equal(profile.speed_limits_mps, derived.speed_limits_mps,
+                         [](const double sealed_mps, const double permitted_mps) {
+                           return sealed_mps <= permitted_mps + kSpeedToleranceMps;
+                         });
   return derived.valid && derived.obstacle_evidence_available &&
+         sealed_ceilings_admissible &&
          derived.config.response_time_s == profile.config.response_time_s &&
          derived.config.maximum_body_tilt_rad == profile.config.maximum_body_tilt_rad &&
          derived.config.minimum_progress_speed_mps ==
@@ -347,12 +365,7 @@ bool trackingErrorTubeProfile3DMatchesWorld(const std::span<const RouteSample3D>
              profile.physical_footprint.sweep_step_m &&
          derived.physical_footprint.safe_clearance_threshold_m ==
              profile.physical_footprint.safe_clearance_threshold_m &&
-         derived.speed_limits_mps == profile.speed_limits_mps &&
-         derived.unconstrained_speed_limit_mps ==
-             profile.unconstrained_speed_limit_mps &&
-         derived.minimum_speed_limit_mps == profile.minimum_speed_limit_mps &&
-         derived.maximum_tracking_error_m == profile.maximum_tracking_error_m &&
-         derived.constrained_segment_count == profile.constrained_segment_count;
+         derived.unconstrained_speed_limit_mps == profile.unconstrained_speed_limit_mps;
 }
 
 std::string_view trackingErrorTubeExecutionStatus3DName(
