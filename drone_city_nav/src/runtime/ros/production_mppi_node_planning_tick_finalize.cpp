@@ -165,6 +165,25 @@ void ProductionMppiNode::finalizePlanningTick(
   const bool raw_invalidation_active =
       committed_route != nullptr &&
       route_execution_status == RouteExecutionStatus3D::kRawCollision;
+  // A route the vehicle cannot advance on is not a route it has. The stopping
+  // law holds the reference speed at zero while the block sits inside the
+  // margin, and the vehicle then stands on a route the searches keep trying
+  // to repair: one flight stood three minutes that way, sixty metres from its
+  // goal, with the block five metres ahead and every stage of the planner
+  // idle behind an incumbent it could not use. The liveness windows already
+  // say when nothing is moving; here that verdict releases the route, so the
+  // searches start again from where the vehicle stands and the escape fill
+  // and the retreat can run at all.
+  if (committed_route != nullptr && liveness.reseed_requested &&
+      speed_policy.active_limiter == MppiSpeedLimiter::kBlockedRoute &&
+      routeSpeed3D(
+          Vec3{navigation.state.vx, navigation.state.vy, navigation.state.vz}) <=
+          kStationaryExecutionHoldSpeedToleranceMps) {
+    handlePhysicalTrajectoryCollision(
+        committed_route->identity.generation, committed_route->observed_raw_world,
+        "stalled_behind_blocked_route",
+        ProductionMppiPhysicalTrajectoryAuthority::kResidentOwner);
+  }
   const bool finite_braking_tail_active =
       execution.retained_previous_finite_path && execution.terminal_rest_state;
   const RollingRouteTelemetryObservation3D rolling_route{
