@@ -182,7 +182,18 @@ obstacle_memory_3d_node:
     max_score: 12
     occupied_score: 3
     free_score: -1
-    obstacle_memory_3d_transport_rate_hz: 2.0
+        # The raw world the planner searches and the controller's ESDF is built
+    # from reaches them at this rate. At two hertz the lidar integrated ten
+    # scans a second into a world the rest of the stack saw half a second
+    # late: measured over two urban flights the observed evidence was 480 ms
+    # old at the median and 690 ms at the ninetieth percentile, while the
+    # executor's own latest-scan validation was 224 ms old, and the
+    # disagreement between the two stopped the vehicle outright two to five
+    # times a flight. It also handed the planner every scan's changes in one
+    # eight-thousand-cell revision, whose scheduling took eighty of a
+    # hundred and fifty millisecond update. Five hertz matches the online
+    # ESDF's own rate, which cannot run faster than the world it consumes.
+    obstacle_memory_3d_transport_rate_hz: 5.0
     obstacle_memory_3d_snapshot_minimum_period_s: 10.0
     obstacle_memory_3d_snapshot_maximum_period_s: 30.0
     obstacle_memory_3d_snapshot_rebase_dirty_ratio: 0.75

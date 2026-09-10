@@ -92,7 +92,14 @@ No-static 3D world:
 
 - `raw_obstacle_snapshot_3d_topic` and `raw_obstacle_delta_3d_topic` define the
   revisioned observed-world transport;
-- `obstacle_memory_3d_transport_rate_hz` bounds planner-world publication;
+- `obstacle_memory_3d_transport_rate_hz` bounds planner-world publication, and
+  with it how old the evidence the planner searches and the controller's ESDF
+  is built from can be. It is the pipeline's own latency, not the sensor's:
+  at two hertz against a ten hertz lidar the stack acted on evidence half a
+  second old while the executor validated against a scan a quarter of a
+  second old, and the disagreement stopped the vehicle outright several
+  times a flight. The online ESDF cannot refresh faster than the world it
+  consumes, so the two rates are set together;
 - `obstacle_memory_3d_snapshot_minimum_period_s`,
   `obstacle_memory_3d_snapshot_maximum_period_s`, and
   `obstacle_memory_3d_snapshot_rebase_dirty_ratio` control adaptive base
