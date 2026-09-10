@@ -196,7 +196,8 @@ cellIntersectsVolume(const GridBounds3D& bounds, const GridIndex3D cell,
 
 [[nodiscard]] bool validConfig(const ObstacleMemory3DConfig& config) noexcept {
   return std::isfinite(config.maximum_range_m) && config.maximum_range_m > 0.0 &&
-         std::isfinite(config.minimum_range_m) && config.minimum_range_m >= 0.0 &&
+         config.near_hit_range_m > 0.0 && std::isfinite(config.minimum_range_m) &&
+         config.minimum_range_m >= 0.0 &&
          config.minimum_range_m < config.maximum_range_m && config.scan_stride > 0 &&
          config.hit_weight > 0 && config.miss_weight > 0 &&
          config.minimum_score <= config.free_score && config.free_score < 0 &&
@@ -291,7 +292,7 @@ GridIndex3D ObstacleMemory3D::cellFromChunkBit(const OccupancyChunkIndex3D chunk
 }
 
 void ObstacleMemory3D::recordScanEvidence(const GridIndex3D index, const bool occupied,
-                                          ScanEvidence& scan_evidence,
+                                          const bool far, ScanEvidence& scan_evidence,
                                           ScanEvidenceCursor& cursor) const {
   const OccupancyChunkIndex3D chunk_index = ObservedOccupancyGrid3D::chunkIndex(index);
   if (cursor.chunk == nullptr || !(cursor.chunk_index == chunk_index)) {
@@ -306,6 +307,9 @@ void ObstacleMemory3D::recordScanEvidence(const GridIndex3D index, const bool oc
   chunk.observed[word_index] |= bit;
   if (occupied) {
     chunk.occupied[word_index] |= bit;
+    if (far) {
+      chunk.far[word_index] |= bit;
+    }
   }
 }
 
@@ -422,6 +426,7 @@ void ObstacleMemory3D::applyChunkEvidence(const OccupancyChunkIndex3D chunk_inde
        ++word_index) {
     std::uint64_t remaining = chunk_evidence.observed[word_index];
     const std::uint64_t occupied_word = chunk_evidence.occupied[word_index];
+    const std::uint64_t far_word = chunk_evidence.far[word_index];
     while (remaining != 0U) {
       const std::size_t bit_offset =
           static_cast<std::size_t>(std::countr_zero(remaining));
@@ -437,9 +442,19 @@ void ObstacleMemory3D::applyChunkEvidence(const OccupancyChunkIndex3D chunk_inde
       if (scores == nullptr) {
         scores = std::addressof(evidence_[chunk_index]);
       }
+      // A far hit raises the score no higher than the occupied threshold and
+      // never lowers it: the voxel is occupied on that evidence, and the first
+      // near look through it frees it in as many misses as the threshold is
+      // above the free one, where a near-saturated voxel takes the full climb.
+      const bool far = (far_word & (std::uint64_t{1U} << bit_offset)) != 0U;
+      const double before_score = scores->scores[bit_index];
       const double after_score =
-          std::clamp(scores->scores[bit_index] + (occupied ? hit_delta : miss_delta),
-                     minimum_score, maximum_score);
+          occupied && far
+              ? std::max(before_score,
+                         std::min(before_score + hit_delta,
+                                  static_cast<double>(config_.occupied_score)))
+              : std::clamp(before_score + (occupied ? hit_delta : miss_delta),
+                           minimum_score, maximum_score);
       scores->scores[bit_index] = after_score;
       const ObservedVoxelState before =
           grid_chunk != nullptr
@@ -483,6 +498,7 @@ void ObstacleMemory3D::integrateRay(const Point3& origin, const LidarBeam3D& bea
                         origin.y + used_range * direction.y,
                         origin.z + used_range * direction.z};
   const bool hit_within_range = beam.hit && beam.range_m <= config_.maximum_range_m;
+  const bool far_hit = hit_within_range && beam.range_m > config_.near_hit_range_m;
   const std::optional<GridIndex3D> hit_cell =
       hit_within_range ? grid_.worldToCell(endpoint) : std::nullopt;
   if (hit_within_range && !hit_cell.has_value()) {
@@ -491,17 +507,17 @@ void ObstacleMemory3D::integrateRay(const Point3& origin, const LidarBeam3D& bea
   ScanEvidenceCursor cursor;
   if (beam.surface_only) {
     if (hit_cell.has_value()) {
-      recordScanEvidence(*hit_cell, true, scan_evidence, cursor);
+      recordScanEvidence(*hit_cell, true, far_hit, scan_evidence, cursor);
     }
     return;
   }
   visitIntersectedGridCells(grid_, origin, endpoint, [&](const GridIndex3D cell) {
     if (!hit_cell.has_value() || cell != *hit_cell) {
-      recordScanEvidence(cell, false, scan_evidence, cursor);
+      recordScanEvidence(cell, false, false, scan_evidence, cursor);
     }
   });
   if (hit_cell.has_value()) {
-    recordScanEvidence(*hit_cell, true, scan_evidence, cursor);
+    recordScanEvidence(*hit_cell, true, far_hit, scan_evidence, cursor);
   }
 }
 

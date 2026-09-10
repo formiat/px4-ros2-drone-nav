@@ -237,6 +237,50 @@ TEST(ObstacleMemory3D, ConflictingEvidenceCanClearStaleOccupiedVoxel) {
   EXPECT_TRUE(memory.grid().isKnownFree({9, 1, 2}));
 }
 
+TEST(ObstacleMemory3D, AFarHitOccupiesAVoxelThatTheFirstNearLookFrees) {
+  ObstacleMemory3D memory{kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0,
+                                                          .minimum_range_m = 0.1,
+                                                          .near_hit_range_m = 5.0,
+                                                          .hit_weight = 4,
+                                                          .miss_weight = 1,
+                                                          .minimum_score = -8,
+                                                          .maximum_score = 12,
+                                                          .occupied_score = 3,
+                                                          .free_score = -1}};
+  const std::array far_hit{LidarBeam3D{
+      .direction_map = {1.0, 0.0, 0.0}, .range_m = 8.0, .hit = true, .valid = true}};
+  const std::array miss{LidarBeam3D{
+      .direction_map = {1.0, 0.0, 0.0}, .range_m = 12.0, .hit = false, .valid = true}};
+  // Three far hits leave the voxel at the occupied threshold, not saturated.
+  for (int scan = 0; scan < 3; ++scan) {
+    static_cast<void>(
+        memory.integrateScan({.origin_map = {1.5, 1.5, 2.5}, .beams = far_hit}));
+  }
+  ASSERT_TRUE(memory.grid().isOccupied({9, 1, 2}));
+  for (int scan = 0; scan < 3; ++scan) {
+    static_cast<void>(
+        memory.integrateScan({.origin_map = {1.5, 1.5, 2.5}, .beams = miss}));
+    EXPECT_TRUE(memory.grid().isOccupied({9, 1, 2})) << "scan " << scan;
+  }
+  static_cast<void>(
+      memory.integrateScan({.origin_map = {1.5, 1.5, 2.5}, .beams = miss}));
+  EXPECT_TRUE(memory.grid().isKnownFree({9, 1, 2}));
+
+  // A near hit saturates the voxel: the same four misses leave it occupied.
+  const std::array near_hit{LidarBeam3D{
+      .direction_map = {1.0, 0.0, 0.0}, .range_m = 4.0, .hit = true, .valid = true}};
+  for (int scan = 0; scan < 3; ++scan) {
+    static_cast<void>(
+        memory.integrateScan({.origin_map = {5.5, 1.5, 2.5}, .beams = near_hit}));
+  }
+  ASSERT_TRUE(memory.grid().isOccupied({9, 1, 2}));
+  for (int scan = 0; scan < 4; ++scan) {
+    static_cast<void>(
+        memory.integrateScan({.origin_map = {1.5, 1.5, 2.5}, .beams = miss}));
+  }
+  EXPECT_TRUE(memory.grid().isOccupied({9, 1, 2}));
+}
+
 TEST(ObstacleMemory3D, HitEndpointDominatesCrossingMissesWithinOneScan) {
   ObstacleMemory3D memory{kBounds, ObstacleMemory3DConfig{.maximum_range_m = 20.0,
                                                           .minimum_range_m = 0.1,

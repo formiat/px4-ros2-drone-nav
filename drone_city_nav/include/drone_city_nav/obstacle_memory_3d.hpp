@@ -6,6 +6,7 @@
 #include <bit>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <span>
 #include <unordered_map>
 #include <vector>
@@ -33,6 +34,11 @@ struct LidarScan3DView {
 struct ObstacleMemory3DConfig {
   double maximum_range_m{35.0};
   double minimum_range_m{0.2};
+  // A hit beyond this range is placed with the vehicle's heading error scaled
+  // by its range: it saturates the voxel at the occupied threshold instead of
+  // the maximum score, so the first near look through the voxel frees it in
+  // a few misses. Unbounded by default: every hit counts in full.
+  double near_hit_range_m{std::numeric_limits<double>::infinity()};
   int scan_stride{1};
   int hit_weight{4};
   int miss_weight{1};
@@ -84,6 +90,8 @@ private:
   struct ScanEvidenceChunk {
     OccupancyGrid3D::Chunk observed{};
     OccupancyGrid3D::Chunk occupied{};
+    // Occupied bits whose hit came from beyond the near hit range.
+    OccupancyGrid3D::Chunk far{};
   };
 
   using ScanEvidence = std::unordered_map<OccupancyChunkIndex3D, ScanEvidenceChunk,
@@ -108,7 +116,8 @@ private:
                           ObstacleMemory3DStats& stats);
   [[nodiscard]] double evidenceIntervalSeconds(const LidarScan3DView& scan,
                                                ObstacleMemory3DStats& stats);
-  void recordScanEvidence(GridIndex3D index, bool occupied, ScanEvidence& scan_evidence,
+  void recordScanEvidence(GridIndex3D index, bool occupied, bool far,
+                          ScanEvidence& scan_evidence,
                           ScanEvidenceCursor& cursor) const;
   void integrateRay(const Point3& origin, const LidarBeam3D& beam,
                     ScanEvidence& scan_evidence, ObstacleMemory3DStats& stats) const;

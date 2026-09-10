@@ -227,23 +227,25 @@ public:
     ObstacleMemory3DConfig memory_config;
     // A hit is placed with the vehicle's heading estimate, and a heading a
     // fraction of a degree in error moves the hit sideways in proportion to
-    // its range. The persistent memory integrates a beam only as far as one
-    // heading standard deviation still lands its hit within two voxels of
-    // the surface it came from; beyond that the same wall seen at different
-    // headings became several rotated copies of itself, and single hits
-    // landed in the corridors between them.
+    // its range. Beyond the range at which one heading standard deviation
+    // still lands a hit within two voxels of its surface, the same wall seen
+    // at different headings became several rotated copies of itself, and
+    // single hits landed in the corridors between them; not integrating such
+    // hits at all left the planner blind to the far field and guessing
+    // through unknown space instead. A far hit counts, but saturates the
+    // voxel at the occupied threshold, so the first near look through a
+    // misplaced copy frees it in a few misses.
+    memory_config.maximum_range_m = scan_config_.maximum_range_m;
     const double heading_uncertainty_rad =
         declare_parameter<double>("lidar_pose_heading_uncertainty_rad", 0.0);
-    const double heading_bounded_range_m =
-        heading_uncertainty_rad > 0.0
-            ? 2.0 * bounds_.resolution_m / std::tan(heading_uncertainty_rad)
-            : scan_config_.maximum_range_m;
-    memory_config.maximum_range_m =
-        std::min(scan_config_.maximum_range_m, heading_bounded_range_m);
+    if (heading_uncertainty_rad > 0.0) {
+      memory_config.near_hit_range_m =
+          2.0 * bounds_.resolution_m / std::tan(heading_uncertainty_rad);
+    }
     RCLCPP_INFO(get_logger(),
-                "3D obstacle memory integration range: %.2f m (sensor %.2f m, "
-                "heading uncertainty %.4f rad)",
-                memory_config.maximum_range_m, scan_config_.maximum_range_m,
+                "3D obstacle memory near hit range: %.2f m (sensor %.2f m, heading "
+                "uncertainty %.4f rad)",
+                memory_config.near_hit_range_m, scan_config_.maximum_range_m,
                 heading_uncertainty_rad);
     memory_config.minimum_range_m = scan_config_.minimum_range_m;
     memory_config.scan_stride = static_cast<int>(std::clamp<std::int64_t>(
