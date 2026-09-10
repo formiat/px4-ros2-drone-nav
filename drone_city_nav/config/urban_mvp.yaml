@@ -533,16 +533,6 @@ production_mppi_node:
     persistent_planner_maximum_extracted_path_nodes: 8192
     persistent_planner_maximum_shortcut_checks: 8192
     persistent_planner_maximum_compute_time_ms: 150.0
-    # The update while the vehicle holds no route. It was shortened to 60 ms
-    # on the measurement that almost none of an update is fixed cost, so
-    # harvesting the searches more often would cost the same and deliver a
-    # route up to 90 ms sooner. Measured since, with no route held an update
-    # spends about eleven milliseconds on the repair and two on the world
-    # before the searches start, and the feasibility search then gets about
-    # 27 ms of the 60: the recorded pockets of two to eight seconds were bound
-    # by that share, not by the harvest. The full update returns the search
-    # its time; a route found inside it still reaches the vehicle at its end.
-    persistent_planner_maximum_no_route_compute_time_ms: 150.0
     # Soft clearance ranking of lattice edges (never a reachability rule): an
     # edge within this distance of raw occupied evidence costs its flight time
     # times 1 + weight * (1 - clearance / distance)^2. The reach equals the
