@@ -321,8 +321,6 @@ RouteLifecycleCoordinator3D::advance(RoutePlanningUpdateEvent3D event) {
               .materialization = std::move(materialization),
               .snapshot = config_.activation_snapshot_provider(),
               .planning_latency = planningLatencyStatistics(),
-              .search_converged =
-                  planner_update.planner_progress == SearchProgress3D::kConverged,
               .blocked_replacement_held_s = blockedReplacementHeldSeconds(*transaction),
           });
       RouteActivationCommitResult3D committed =

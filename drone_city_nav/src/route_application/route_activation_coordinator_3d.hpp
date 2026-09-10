@@ -72,13 +72,10 @@ struct RouteActivationPreparationRequest3D {
   ProductionRouteMaterialization3D materialization{};
   ProductionRouteActivationSnapshot3D snapshot{};
   StaticRoutePlanningLatencyStats planning_latency{};
-  // Whether the search that produced the candidate has converged on its
-  // world. Before that the candidate is the first route the search found, not
-  // the best it can find, and a blocked route's replacement that costs more
-  // than the route it replaces is held for the search.
-  bool search_converged{true};
   // How long the blocked route's replacement has already been held for the
-  // search, in seconds; zero when it has not been held yet.
+  // search and the world, in seconds; zero when it has not been held yet. A
+  // replacement that costs more than the route it replaces is held for the
+  // grace its extra cost earns.
   double blocked_replacement_held_s{0.0};
 
   [[nodiscard]] bool valid() const noexcept;

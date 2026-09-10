@@ -125,7 +125,6 @@ struct RouteActivationPreparationState3D final {
   bool overlap_base_matches{false};
   bool splice_ready{false};
   bool successor_improvement_cleared{false};
-  bool search_converged{true};
   double blocked_replacement_held_s{0.0};
 };
 
@@ -142,7 +141,6 @@ beginPreparation(RouteActivationPreparationRequest3D request) {
   const bool request_valid = request.valid();
   RouteActivationPreparationState3D state;
   state.replacement_policy = request.materialization.replacement_policy;
-  state.search_converged = request.search_converged;
   state.blocked_replacement_held_s = request.blocked_replacement_held_s;
   state.planning_latency = request.planning_latency;
   state.prepared.snapshot = std::move(request.snapshot);
@@ -701,7 +699,12 @@ assessReplacement(RouteActivationPreparationState3D state,
   // 247 m loop in place of a 66 m route the moment the search produced it,
   // watched the search shorten the loop to 95 m over the next minute while it
   // flew the loop west, and ran out of mission time. Such a replacement waits
-  // for the search to settle; the vehicle stands at the block meanwhile.
+  // out the grace its extra cost earns; the vehicle stands at the block
+  // meanwhile. The search converging on its world does not end the wait: the
+  // world is what changes while the vehicle stands, a wall copied a metre into
+  // a corridor by a heading error carves away in seconds, and one recorded
+  // flight was handed a converged 195 m loop six seconds into a 36 s grace,
+  // flew it, and never got back.
   report.blocked_replacement_resident_available =
       current_route != nullptr && current_route->geometry != nullptr &&
       current_route->geometry->route != nullptr;
@@ -730,7 +733,7 @@ assessReplacement(RouteActivationPreparationState3D state,
         std::max(0.0, against_blocked.candidate_remaining_time_s -
                           against_blocked.resident_remaining_time_s);
     report.blocked_replacement_deferred =
-        !state.search_converged && against_blocked.resident_remaining_time_s > 0.0 &&
+        against_blocked.resident_remaining_time_s > 0.0 &&
         state.blocked_replacement_held_s < report.blocked_replacement_grace_s;
   }
   // A deferred replacement is drafted for nobody: with a pending draft the
