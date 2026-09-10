@@ -758,6 +758,8 @@ staticRouteActivationStatusName(const StaticRouteActivationStatus status) noexce
       return "equivalent_active_segment_retained";
     case StaticRouteActivationStatus::kInsufficientSuccessorImprovement:
       return "insufficient_successor_improvement";
+    case StaticRouteActivationStatus::kReplacementAwaitingSearch:
+      return "replacement_awaiting_search";
   }
   return "unknown";
 }

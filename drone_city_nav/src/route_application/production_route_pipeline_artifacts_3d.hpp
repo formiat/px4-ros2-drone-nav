@@ -200,6 +200,10 @@ struct RouteAdmissionReport3D {
   bool certified_pending{false};
   bool commit_assessment_performed{false};
   bool successor_improvement_required{false};
+  // A blocked route's replacement, searched from the vehicle, that costs more
+  // than the route it replaces would have cost twice over, delivered while the
+  // search had not settled: held for the search to improve on it.
+  bool blocked_replacement_deferred{false};
   bool successor_compared_to_pending{false};
   bool pending_snapshot_current{false};
 

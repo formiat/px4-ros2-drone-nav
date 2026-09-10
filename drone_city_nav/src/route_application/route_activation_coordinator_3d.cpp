@@ -163,8 +163,11 @@ RouteActivationCommitResult3D RouteActivationCoordinator3D::commit(
       routeDecorationsValid3D(*result.proposal.decorations, *result.proposal.trajectory,
                               candidate.candidate_generation);
   if (!published_pending && report.candidate_validation.accepted &&
-      report.successor_improvement_required &&
-      !report.successor_improvement.accepted()) {
+      report.blocked_replacement_deferred) {
+    report.activation_status = StaticRouteActivationStatus::kReplacementAwaitingSearch;
+  } else if (!published_pending && report.candidate_validation.accepted &&
+             report.successor_improvement_required &&
+             !report.successor_improvement.accepted()) {
     report.activation_status =
         StaticRouteActivationStatus::kInsufficientSuccessorImprovement;
   } else if (!published_pending && report.candidate_validation.accepted &&

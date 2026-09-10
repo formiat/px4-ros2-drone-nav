@@ -367,6 +367,10 @@ private:
   searchRetired(const PlannerSearchTransaction3D& transaction) const noexcept;
   [[nodiscard]] bool queueContinuation(const RouteLifecycleUpdate3D& update);
   std::uint64_t incumbent_rejection_sequence_{0U};
+  // Consecutive deliveries of a blocked route's replacement held for the
+  // search to settle; the grace ends when the search converges or this runs
+  // out, and a candidate that activates or a new transaction resets it.
+  std::size_t blocked_replacement_deferrals_{0U};
   // Rebases a continuation request onto the newest coherent world when it is
   // strictly newer than the session world.
   void refreshContinuationWorld(RoutePlanningRequest3D& request,

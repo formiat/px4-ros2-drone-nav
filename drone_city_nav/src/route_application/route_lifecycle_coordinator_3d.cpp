@@ -26,6 +26,11 @@ elapsedMilliseconds(const std::chrono::steady_clock::time_point started) noexcep
       .count();
 }
 
+// The grace a blocked route's far-worse replacement gets for the search to
+// settle, in delivered candidates: the same eight updates the planner gives a
+// closed component before its fallbacks, a little over a second.
+constexpr std::size_t kBlockedReplacementSettleUpdates{8U};
+
 [[nodiscard]] RouteCandidateDisposition3D
 classifyCandidateDisposition(const PlannerSearchTransaction3D& transaction,
                              const PlannerTelemetry3D& planned_on,
@@ -313,12 +318,20 @@ RouteLifecycleCoordinator3D::advance(RoutePlanningUpdateEvent3D event) {
               .materialization = std::move(materialization),
               .snapshot = config_.activation_snapshot_provider(),
               .planning_latency = planningLatencyStatistics(),
+              .search_settled =
+                  planner_update.planner_progress == SearchProgress3D::kConverged ||
+                  blocked_replacement_deferrals_ >= kBlockedReplacementSettleUpdates,
           });
       RouteActivationCommitResult3D committed =
           config_.activation_commit_boundary(std::move(prepared), commit_operation);
       activation = std::move(committed.result);
       result.candidate_disposition = classifyCandidateDisposition(
           *transaction, planner_update.planner_telemetry, activation.admission);
+      blocked_replacement_deferrals_ =
+          activation.admission.activation_status ==
+                  StaticRouteActivationStatus::kReplacementAwaitingSearch
+              ? blocked_replacement_deferrals_ + 1U
+              : 0U;
       if (result.candidate_disposition !=
           RouteCandidateDisposition3D::kRetrySameCandidate) {
         break;

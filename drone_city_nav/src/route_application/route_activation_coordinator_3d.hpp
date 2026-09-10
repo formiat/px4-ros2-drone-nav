@@ -72,6 +72,12 @@ struct RouteActivationPreparationRequest3D {
   ProductionRouteMaterialization3D materialization{};
   ProductionRouteActivationSnapshot3D snapshot{};
   StaticRoutePlanningLatencyStats planning_latency{};
+  // Whether the search that produced the candidate has settled on its world:
+  // it converged, or it has been given the grace it gets. A blocked route's
+  // replacement that costs far more than the route it replaces is activated
+  // only once the search has settled; before that the candidate is the first
+  // route the search found, not the best it can find.
+  bool search_settled{true};
 
   [[nodiscard]] bool valid() const noexcept;
 };

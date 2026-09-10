@@ -125,6 +125,7 @@ struct RouteActivationPreparationState3D final {
   bool overlap_base_matches{false};
   bool splice_ready{false};
   bool successor_improvement_cleared{false};
+  bool search_settled{true};
 };
 
 [[nodiscard]] RouteActivationPreparationState3D
@@ -132,6 +133,7 @@ beginPreparation(RouteActivationPreparationRequest3D request) {
   const bool request_valid = request.valid();
   RouteActivationPreparationState3D state;
   state.replacement_policy = request.materialization.replacement_policy;
+  state.search_settled = request.search_settled;
   state.planning_latency = request.planning_latency;
   state.prepared.snapshot = std::move(request.snapshot);
   state.prepared.execution_base =
@@ -681,6 +683,37 @@ assessReplacement(RouteActivationPreparationState3D state,
           *materialized_proposal.trajectory, report.assessment.projection.station_m,
           config.successor_improvement);
     }
+  }
+  // A route released as blocked is blocked at one station; its remaining time
+  // is still what the vehicle was about to spend. A replacement searched from
+  // the vehicle that would cost that time twice over is the first route the
+  // search found, not the best it can find: one recorded flight committed to a
+  // 247 m loop in place of a 66 m route the moment the search produced it,
+  // watched the search shorten the loop to 95 m over the next minute while it
+  // flew the loop west, and ran out of mission time. Such a replacement waits
+  // for the search to settle; the vehicle stands at the block meanwhile.
+  if (safety_replan_requested && !state.overlap_search && !state.search_settled &&
+      current_route != nullptr && current_route->geometry != nullptr &&
+      current_route->geometry->route != nullptr &&
+      materialized_proposal.trajectory != nullptr &&
+      current_route->identity.proposal.reaches_mission_goal &&
+      materialized_proposal.identity.reaches_mission_goal) {
+    const Point3 current_position{snapshot.navigation.state.x,
+                                  snapshot.navigation.state.y,
+                                  snapshot.navigation.state.z};
+    const RouteProjection3D blocked_projection = projectOntoRoute3DWithinStationWindow(
+        *current_route->geometry->route, current_position,
+        current_route->progress.station_m,
+        current_route->geometry->route->back().station_m);
+    const RouteSuccessorImprovementAssessment3D against_blocked =
+        assessRouteSuccessorImprovement3D(
+            *current_route->geometry, blocked_projection.station_m,
+            *materialized_proposal.trajectory, report.assessment.projection.station_m,
+            config.successor_improvement);
+    report.blocked_replacement_deferred =
+        against_blocked.resident_remaining_time_s > 0.0 &&
+        against_blocked.candidate_remaining_time_s >
+            2.0 * against_blocked.resident_remaining_time_s;
   }
   state.successor_improvement_cleared =
       !report.successor_improvement_required || report.successor_improvement.accepted();

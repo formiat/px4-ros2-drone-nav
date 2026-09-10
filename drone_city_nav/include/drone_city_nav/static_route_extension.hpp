@@ -341,6 +341,9 @@ enum class StaticRouteActivationStatus : std::uint8_t {
   kCertifiedSpliceRejected,
   kEquivalentActiveSegmentRetained,
   kInsufficientSuccessorImprovement,
+  // A blocked route's replacement far worse than the route it replaces,
+  // delivered before the search settled; the search keeps improving on it.
+  kReplacementAwaitingSearch,
   kCertifiedPending,
 };
 
