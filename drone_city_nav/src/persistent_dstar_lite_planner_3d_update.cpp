@@ -437,12 +437,28 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
       schedule_affected_vertices = true;
     }
     // The escape anchor is outside the component the searches were seeded
-    // in; they start over from it whatever the distance to the old anchor.
-    if (feasibility_start_changed || departure_from_escape) {
+    // in, so they start over from it whatever the distance to the old anchor.
+    // The fill re-finds its connection after every world change, though, and
+    // the anchor it lands on is the same node, or the one beside it, update
+    // after update. Starting the search over on each of them left it a few
+    // hundred expansions between world revisions and never let it converge:
+    // one recorded flight stood three and a half seconds beside an exit the
+    // fill reached every half second and the search lost every time. A
+    // re-found connection within one lattice diagonal of the anchor the
+    // search already holds keeps its labels, as the vehicle's own drift
+    // does; the world changes revalidate them lazily.
+    const bool escape_anchor_changed =
+        departure_from_escape &&
+        (!feasibility_search_.initialized() ||
+         (*start_anchor != feasibility_search_.anchor() &&
+          distance3D(lattice_.pointFor(*start_anchor),
+                     lattice_.pointFor(feasibility_search_.anchor())) >
+              std::numbers::sqrt2 * config_.minimum_horizontal_step_m));
+    if (feasibility_start_changed || escape_anchor_changed) {
       feasibility_search_.reset();
     }
     if (execution_time_start_changed || execution_time_goal_changed ||
-        departure_from_escape) {
+        escape_anchor_changed) {
       execution_time_refiner_.reset();
     } else if (!world_update.changed_cells.empty()) {
       execution_time_refiner_.rebaseWorld();
