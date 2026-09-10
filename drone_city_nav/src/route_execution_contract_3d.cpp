@@ -25,14 +25,12 @@ std::optional<float> routeCrossTrackTolerance3D(const bool enabled) noexcept {
 
 RouteEndpointSemantics3D
 routeEndpointSemantics3D(const bool reaches_mission_goal,
-                         const bool mission_endpoint_is_terminal,
-                         const bool endpoint_is_local_stop) noexcept {
+                         const bool mission_endpoint_is_terminal) noexcept {
   if (reaches_mission_goal) {
     return mission_endpoint_is_terminal ? RouteEndpointSemantics3D::kMissionStop
                                         : RouteEndpointSemantics3D::kContinuation;
   }
-  return endpoint_is_local_stop ? RouteEndpointSemantics3D::kLocalStop
-                                : RouteEndpointSemantics3D::kContinuation;
+  return RouteEndpointSemantics3D::kContinuation;
 }
 
 bool routeEndpointHasTerminalStop3D(const RouteEndpointSemantics3D semantics) noexcept {

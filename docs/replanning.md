@@ -500,18 +500,7 @@ what puts unmapped space in front of the sensor, and the evidence that comes
 back is what reopens the search. The route is offered only when it closes at
 least one lattice step of real distance on the goal, so it cannot become a
 hover in place, and only after the escape fill has given up: while the fill
-still has an exit to look for, the exit is the better answer. It is
-materialized as the partial route it is, not as one that reaches the goal:
-the extension machinery then carries on from its end exactly as it does for
-a route planned to a bounded planning goal. Its endpoint is a local stop
-rather than a continuation, so the endpoint law brings the vehicle to rest
-there and the certified reserve is not demanded of it -- a route that ends
-where the search ran out has nothing certified beyond it to reserve, and
-demanding it refused every such route and left the vehicle in the pocket
-with none. Read as a goal-reaching route
-instead, it was a mission the vehicle had finished, and one flight rested at
-its end for four minutes with the goal thirty-eight metres away and nothing
-asking for more.
+still has an exit to look for, the exit is the better answer.
 
 The departure envelope decides which anchors a vehicle may leave through, and
 only where it admits none at all does the hull decide instead

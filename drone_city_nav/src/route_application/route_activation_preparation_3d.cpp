@@ -275,8 +275,7 @@ compile(RouteActivationPreparationState3D state,
       activation_tracking_world_available) {
     report.trajectory_compile_attempted = true;
     const RouteEndpointSemantics3D endpoint_semantics = routeEndpointSemantics3D(
-        candidate.reaches_mission_goal, !transaction.objective.continuous_tracking,
-        candidate.endpoint_is_local_stop);
+        candidate.reaches_mission_goal, !transaction.objective.continuous_tracking);
     RouteTrajectoryCompilationResult3D compilation =
         trajectory_compiler.compile(RouteTrajectoryCompilationRequest3D{
             .materialized = candidate,
@@ -351,8 +350,7 @@ assessAdmission(RouteActivationPreparationState3D state,
             .route_reaches_mission_goal = candidate.reaches_mission_goal,
         });
     const RouteEndpointSemantics3D endpoint_semantics = routeEndpointSemantics3D(
-        candidate.reaches_mission_goal, !transaction.objective.continuous_tracking,
-        candidate.endpoint_is_local_stop);
+        candidate.reaches_mission_goal, !transaction.objective.continuous_tracking);
     report.certified_reserve = assessCertifiedRouteReserve3D(
         reserve_decision,
         reserve_projection.valid ? reserve_projection.remaining_m

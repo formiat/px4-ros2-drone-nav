@@ -440,18 +440,12 @@ CertifiedRouteReserveAssessment3D assessCertifiedRouteReserve3D(
     return result;
   }
   switch (endpoint_semantics) {
-    // The reserve exists so a route flown at speed always has certified
-    // length ahead for the stopping law. A route whose endpoint is a stop of
-    // its own satisfies that by construction: the endpoint law brings the
-    // vehicle to rest there. Demanded of such a route, the reserve is
-    // impossible by construction -- a closest-approach route ends where the
-    // search ran out, with nothing certified beyond it to reserve.
     case RouteEndpointSemantics3D::kMissionStop:
-    case RouteEndpointSemantics3D::kLocalStop:
     case RouteEndpointSemantics3D::kEmergencyBrakeTail:
       result.status = CertifiedRouteReserveStatus3D::kTerminalExempt;
       return result;
     case RouteEndpointSemantics3D::kContinuation:
+    case RouteEndpointSemantics3D::kLocalStop:
       break;
     default:
       return result;
