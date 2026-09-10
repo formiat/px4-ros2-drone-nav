@@ -692,9 +692,11 @@ assessReplacement(RouteActivationPreparationState3D state,
   // watched the search shorten the loop to 95 m over the next minute while it
   // flew the loop west, and ran out of mission time. Such a replacement waits
   // for the search to settle; the vehicle stands at the block meanwhile.
-  if (safety_replan_requested && !state.overlap_search && !state.search_settled &&
+  report.blocked_replacement_resident_available =
       current_route != nullptr && current_route->geometry != nullptr &&
-      current_route->geometry->route != nullptr &&
+      current_route->geometry->route != nullptr;
+  if (safety_replan_requested && !state.overlap_search &&
+      report.blocked_replacement_resident_available &&
       materialized_proposal.trajectory != nullptr &&
       current_route->identity.proposal.reaches_mission_goal &&
       materialized_proposal.identity.reaches_mission_goal) {
@@ -710,8 +712,10 @@ assessReplacement(RouteActivationPreparationState3D state,
             *current_route->geometry, blocked_projection.station_m,
             *materialized_proposal.trajectory, report.assessment.projection.station_m,
             config.successor_improvement);
+    report.blocked_replacement = against_blocked;
+    report.blocked_replacement_assessed = true;
     report.blocked_replacement_deferred =
-        against_blocked.resident_remaining_time_s > 0.0 &&
+        !state.search_settled && against_blocked.resident_remaining_time_s > 0.0 &&
         against_blocked.candidate_remaining_time_s >
             2.0 * against_blocked.resident_remaining_time_s;
   }

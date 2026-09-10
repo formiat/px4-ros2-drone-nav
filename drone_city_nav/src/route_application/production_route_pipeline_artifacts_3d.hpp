@@ -204,6 +204,11 @@ struct RouteAdmissionReport3D {
   // than the route it replaces would have cost twice over, delivered while the
   // search had not settled: held for the search to improve on it.
   bool blocked_replacement_deferred{false};
+  // How the rule read the blocked route's replacement: which of its
+  // premises held and the two remaining times it compared.
+  RouteSuccessorImprovementAssessment3D blocked_replacement{};
+  bool blocked_replacement_assessed{false};
+  bool blocked_replacement_resident_available{false};
   bool successor_compared_to_pending{false};
   bool pending_snapshot_current{false};
 

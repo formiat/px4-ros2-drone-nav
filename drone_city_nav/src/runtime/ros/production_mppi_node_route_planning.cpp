@@ -532,6 +532,22 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
                 admission.successor_improvement.absolute_improvement_s,
                 admission.successor_improvement.relative_improvement);
   }
+  if (transaction != nullptr && transaction->replacement() &&
+      transaction->release_reason == RouteReleaseReason3D::kBlocked) {
+    const std::string_view blocked_status =
+        routeSuccessorImprovementStatus3DName(admission.blocked_replacement.status);
+    RCLCPP_INFO(get_logger(),
+                "BLOCKED_REPLACEMENT assessed=%s resident_available=%s "
+                "deferred=%s status=%.*s resident_remaining_s=%.3f "
+                "candidate_remaining_s=%.3f progress=%s",
+                admission.blocked_replacement_assessed ? "true" : "false",
+                admission.blocked_replacement_resident_available ? "true" : "false",
+                admission.blocked_replacement_deferred ? "true" : "false",
+                static_cast<int>(blocked_status.size()), blocked_status.data(),
+                admission.blocked_replacement.resident_remaining_time_s,
+                admission.blocked_replacement.candidate_remaining_time_s,
+                planner_progress);
+  }
 
   if (admission.certified_pending &&
       materialized.cooperative_passage_assignments != nullptr) {
