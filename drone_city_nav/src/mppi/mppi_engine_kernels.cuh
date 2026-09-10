@@ -420,11 +420,17 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
           swept_state, body_axis, footprint,
           footprint.clearance_broad_phase_enabled ? risk.preferred_distance_m : 0.0F,
           grid, esdf_texture);
-      // A body sample inside a raw occupied voxel is a physical intersection,
-      // not a clearance preference: such a rollout cannot be executed.
-      step_contact = step_contact || esdf_query.inside_occupied;
+      // The envelope reaching occupied evidence is a physical intersection,
+      // not a clearance preference: the raw validators reject such a horizon,
+      // so the rollout cannot be executed. It is the same event under the
+      // same conservative query, not a sample inside a voxel: a body sample
+      // stays outside every voxel across the whole band the validators
+      // reject, and a rollout priced by that test dived through a mapped
+      // surface at four metres a second paying only the tube law.
       if (!esdf_query.unknown_space) {
         clearance = fminf(clearance, esdf_query.clearance_m);
+        step_contact = step_contact || esdf_query.inside_occupied ||
+                       !(esdf_query.clearance_m > 0.0F);
       }
     }
     minimum_clearance_m = fminf(minimum_clearance_m, clearance);
@@ -448,8 +454,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
         tubeClearanceDeficitM2(clearance, segment_speed_mps, risk.tube_response_time_s);
     // Evidence ahead on the motion: once the envelope enters occupied
     // evidence, every state before it owed the stopping law the free path it
-    // had to that point. States after the first contact are not charged
-    // again; the rollout is already intersecting.
+    // had to that point.
     if (!collision_hit) {
       trace_station_m[step + 1U] = traveled_distance_m;
       trace_speed_mps[step + 1U] = segment_speed_mps;
@@ -464,6 +469,18 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
                                   risk.stopping_deceleration_mps2);
         }
       }
+    }
+    // A state in contact has no free path at all: it owes the stopping law
+    // the whole path its speed needs. Without this a rollout already
+    // intersecting paid only the tube law, and with the body collision gate
+    // off nothing else priced carrying speed through evidence, so the update
+    // kept the speed and the raw validators rejected every horizon it
+    // produced until the vehicle braked blind into the surface.
+    if (step_contact) {
+      stopping_deficit_m2_s +=
+          dynamics.dt_s * stoppingDistanceDeficitM2(0.0F, segment_speed_mps,
+                                                    risk.stopping_response_time_s,
+                                                    risk.stopping_deceleration_mps2);
     }
     const float target_elapsed_s = static_cast<float>(step + 1U) * dynamics.dt_s;
     const float target_distance =

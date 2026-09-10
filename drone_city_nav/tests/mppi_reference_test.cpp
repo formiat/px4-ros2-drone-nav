@@ -340,6 +340,44 @@ TEST(MppiReferenceTest, AWallAheadChargesTheStatesThatCannotStopBeforeIt) {
   EXPECT_GT(blocked.soft_cost, clear.soft_cost);
 }
 
+TEST(MppiReferenceTest, AStateInContactOwesTheWholeStoppingPath) {
+  // A rollout whose envelope already reaches occupied evidence has no free
+  // path: every state in contact owes the stopping law the whole path its
+  // speed needs, so carrying speed through evidence is priced and a rollout at
+  // rest there owes nothing beyond the tube law.
+  constexpr int kWidth = 16;
+  const EsdfGrid grid{kWidth, 1, 1.0F, 0.0F, 0.0F};
+  const std::vector<float> touching(static_cast<std::size_t>(kWidth), 0.5F);
+  const std::array<Control, 4> controls{};
+  const std::array<Control, 4> noise{};
+  DynamicsConfig dynamics{};
+  dynamics.dt_s = 0.25F;
+  dynamics.linear_drag_1ps = 0.0F;
+  RiskConfig risk{};
+  risk.stopping_response_time_s = 0.1F;
+  risk.stopping_deceleration_mps2 = 4.0F;
+  const auto simulate = [&](const float speed_mps) {
+    return simulateReference(State{.x = 0.5F, .y = 0.5F, .vx = speed_mps}, controls,
+                             noise, dynamics, risk, CostConfig{}, grid, touching, 15.5F,
+                             0.5F, false);
+  };
+
+  const RolloutMetrics fast = simulate(4.0F);
+  const RolloutMetrics rest = simulate(0.0F);
+
+  // The conservative query answers zero clearance on every cell: contact from
+  // the first state. The initial state owed the stopping law the one metre it
+  // had before that contact; every state in contact owes the whole path.
+  EXPECT_FLOAT_EQ(fast.contact_distance_m, 1.0F);
+  const float per_state = stoppingDistanceDeficitM2(0.0F, 4.0F, 0.1F, 4.0F);
+  EXPECT_GT(per_state, 0.0F);
+  EXPECT_NEAR(fast.costs.stopping_deficit_m2_s,
+              dynamics.dt_s * stoppingDistanceDeficitM2(1.0F, 4.0F, 0.1F, 4.0F) +
+                  4.0F * dynamics.dt_s * per_state,
+              1.0e-4F);
+  EXPECT_FLOAT_EQ(rest.costs.stopping_deficit_m2_s, 0.0F);
+}
+
 TEST(MppiReferenceTest, PhysicalFootprintAnnotatesAdjacentDerivedZeroClearance) {
   const EsdfGrid grid{4, 4, 1.0F, 0.0F, 0.0F};
   std::vector<float> esdf(16U, 10.0F);

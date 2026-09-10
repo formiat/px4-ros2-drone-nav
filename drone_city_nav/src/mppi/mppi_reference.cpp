@@ -347,11 +347,15 @@ RolloutMetrics simulateReference(
         tubeClearanceDeficitM2(clearance, segment_speed_mps, risk.tube_response_time_s);
     // Evidence ahead on the motion: once the envelope enters occupied
     // evidence, every state before it owed the stopping law the free path it
-    // had to that point. Later states are not charged again.
+    // had to that point, and a state in contact owes the whole path its speed
+    // needs. Contact is the event the raw validators reject: the envelope
+    // reaching occupied evidence under the same conservative query.
+    const bool envelope_contact = footprint_clearance.evidence.inside_occupied ||
+                                  (known_clearance && !(clearance > 0.0F));
     if (!std::isfinite(metrics.contact_distance_m)) {
       trace_station_m.push_back(traveled_distance_m);
       trace_speed_mps.push_back(segment_speed_mps);
-      if (footprint_clearance.evidence.inside_occupied) {
+      if (envelope_contact) {
         metrics.contact_distance_m = traveled_distance_m;
         for (std::size_t prior = 0U; prior + 1U < trace_station_m.size(); ++prior) {
           metrics.costs.stopping_deficit_m2_s +=
@@ -361,6 +365,12 @@ RolloutMetrics simulateReference(
                                   risk.stopping_deceleration_mps2);
         }
       }
+    }
+    if (envelope_contact) {
+      metrics.costs.stopping_deficit_m2_s +=
+          dynamics.dt_s * stoppingDistanceDeficitM2(0.0F, segment_speed_mps,
+                                                    risk.stopping_response_time_s,
+                                                    risk.stopping_deceleration_mps2);
     }
 
     const float target_distance =
