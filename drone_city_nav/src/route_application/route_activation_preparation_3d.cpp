@@ -719,8 +719,13 @@ assessReplacement(RouteActivationPreparationState3D state,
         against_blocked.candidate_remaining_time_s >
             2.0 * against_blocked.resident_remaining_time_s;
   }
-  state.successor_improvement_cleared =
-      !report.successor_improvement_required || report.successor_improvement.accepted();
+  // A deferred replacement is drafted for nobody: with a pending draft the
+  // commit publishes it as certified pending before any admission verdict is
+  // read, and the first recorded deferral was activated that way the moment
+  // the rule held it.
+  state.successor_improvement_cleared = (!report.successor_improvement_required ||
+                                         report.successor_improvement.accepted()) &&
+                                        !report.blocked_replacement_deferred;
   report.replacement = assessRouteProposalReplacement3D(
       active_identity, materialized_proposal.identity,
       RouteProposalReplacementObservation3D{
