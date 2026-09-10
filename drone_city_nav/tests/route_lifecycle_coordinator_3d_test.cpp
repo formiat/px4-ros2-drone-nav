@@ -809,16 +809,20 @@ TEST(RouteLifecycleCoordinator3DTest,
   EXPECT_NE(stitched_transaction(RouteReleaseReason3D::kBlocked), nullptr);
   EXPECT_EQ(stitched_transaction(RouteReleaseReason3D::kDiverged), nullptr);
 
+  // The stitch window is the vehicle's own stopping path at each end, so the
+  // vehicle has to be moving for one to exist at all.
+  ProductionMppiNavigation moving_navigation = input.navigation;
+  moving_navigation.state.vx = 2.0F;
   const auto replan = [&](const double blocked_station_m) {
     std::size_t commit_count{0U};
     RouteLifecycleCoordinatorConfig3D config =
         lifecycleConfig(input, supervisor, commit_count);
     config.extension.required_certified_overlap_m = 1.0;
     config.replan_snapshot_provider = [&input, &supervisor, active_route, projection,
-                                       blocked_station_m]() {
+                                       blocked_station_m, moving_navigation]() {
       const std::shared_ptr<const ExecutionPlan3D> execution = supervisor.plan();
       return RouteLifecycleReplanSnapshot3D{
-          .navigation = input.navigation,
+          .navigation = moving_navigation,
           .objective = input.objective,
           .resident_world = input.world,
           .resident_planner_world = input.planner_world,
@@ -849,10 +853,12 @@ TEST(RouteLifecycleCoordinator3DTest,
   EXPECT_TRUE(reached_the_queue(far.status))
       << routeLifecycleReplanStatus3DName(far.status);
   ASSERT_TRUE(far.stitch_limit_station_m.has_value());
-  EXPECT_NEAR(*far.stitch_limit_station_m, end_station_m - 1.0, 1.0e-9);
+  // One stopping path short of the block, not one certified overlap.
+  EXPECT_LT(*far.stitch_limit_station_m, end_station_m);
+  EXPECT_GT(*far.stitch_limit_station_m, active_route->progress.station_m);
 
   const RouteLifecycleReplanOutcome3D near =
-      replan(active_route->progress.station_m + 1.5);
+      replan(active_route->progress.station_m + 0.2);
   EXPECT_TRUE(reached_the_queue(near.status))
       << routeLifecycleReplanStatus3DName(near.status);
   EXPECT_FALSE(near.stitch_limit_station_m.has_value());

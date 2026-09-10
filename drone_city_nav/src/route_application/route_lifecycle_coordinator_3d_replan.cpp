@@ -4,6 +4,7 @@
 #include <limits>
 #include <utility>
 
+#include "production_mppi_node_types.hpp"
 #include "production_mppi_route_world.hpp"
 #include "route_lifecycle_coordinator_3d.hpp"
 
@@ -260,20 +261,37 @@ RouteLifecycleReplanOutcome3D RouteLifecycleCoordinator3D::requestReplanImpl(
       snapshot.active_route->identity.generation == outcome.search_generation &&
       snapshot.route_projection.valid && snapshot.blocked_station_m.has_value() &&
       std::isfinite(*snapshot.blocked_station_m)) {
-    // The vehicle flies on while the successor is searched: the stitch lies
-    // beyond the distance the p99 planning latency lets it cover, so the frozen
-    // prefix is still ahead of it when the successor arrives.
-    const double overlap_m = config_.extension.required_certified_overlap_m;
+    // Where the stitch may lie is decided by the vehicle's own motion, not by
+    // the certified overlap. Ahead of it, the prefix has to still be in front
+    // of the vehicle when the successor arrives: the distance covered while
+    // the search runs, plus the path it would need to stop. Short of the
+    // block, the stitch has to leave the vehicle room to turn onto the
+    // successor: the same stopping path. The overlap is what the executor
+    // keeps certified ahead of itself while it flies, and charging it at both
+    // ends here asked for a block seen sixteen and a half metres ahead --
+    // measured over four urban flights, blocked cells are found four point
+    // nine metres ahead at the median and ten point eight at the ninetieth
+    // percentile, so the stitch never applied and every blocked route was
+    // replaced by a search from the vehicle, which stopped for it.
     const StaticRoutePlanningLatencyStats latency = planning_latency_tracker_.stats();
     const double latency_s =
         0.001 * (latency.sample_count > 0U ? latency.planning_p99_ms
                                            : std::max(0.0, latest_route_search_ms_));
-    const double speed_mps = std::hypot(
-        std::hypot(snapshot.navigation.state.vx, snapshot.navigation.state.vy),
-        snapshot.navigation.state.vz);
+    const double horizontal_speed_mps =
+        std::hypot(snapshot.navigation.state.vx, snapshot.navigation.state.vy);
+    const double vertical_speed_mps = std::abs(snapshot.navigation.state.vz);
+    const double speed_mps = std::hypot(horizontal_speed_mps, vertical_speed_mps);
+    const ProductionMppiForwardAcceleration3D forward_acceleration =
+        productionMppiForwardAcceleration3D(snapshot.navigation);
+    const JerkLimitedStoppingDistance3D stopping = jerkLimitedStoppingDistance3D(
+        horizontal_speed_mps, forward_acceleration.horizontal_mps2, vertical_speed_mps,
+        forward_acceleration.vertical_mps2, config_.extension);
+    const double stopping_path_m = stopping.valid()
+                                       ? stopping.route_station_m
+                                       : config_.extension.required_certified_overlap_m;
     const double minimum_stitch_m =
-        snapshot.route_projection.station_m + overlap_m + speed_mps * latency_s;
-    const double stitch_limit_m = *snapshot.blocked_station_m - overlap_m;
+        snapshot.route_projection.station_m + stopping_path_m + speed_mps * latency_s;
+    const double stitch_limit_m = *snapshot.blocked_station_m - stopping_path_m;
     if (std::isfinite(minimum_stitch_m) && stitch_limit_m >= minimum_stitch_m) {
       continuity_base = PlannerSearchContinuityBase3D{
           .route = snapshot.active_route,

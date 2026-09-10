@@ -305,8 +305,17 @@ A route blocked far enough ahead is replaced onto its own certified prefix.
 The replan carries the incumbent as the successor's continuity base
 (`RouteLifecycleReplanSnapshot3D::active_route`, `route_projection`,
 `blocked_station_m`) with a stitch limit one certified overlap short of the
-block (`PlannerSearchContinuityBase3D::stitch_limit_station_m`): the successor
-is searched from the stitch one overlap ahead of the vehicle, with the
+block (`PlannerSearchContinuityBase3D::stitch_limit_station_m`). Where the
+stitch may lie is the vehicle's own motion at both ends: ahead of it by the
+distance covered while the search runs plus the path it would need to stop,
+short of the block by that same stopping path, so the frozen prefix is still
+in front of the vehicle when the successor arrives and there is room to turn
+onto it. Read as one certified overlap at each end instead, the rule asked for
+a block seen sixteen and a half metres ahead, and blocked cells are found four
+point nine metres ahead at the median over four urban flights: the stitch
+never applied, every blocked route was replaced by a search from the vehicle,
+and the vehicle stopped for it. The successor is searched from the stitch,
+with the
 incumbent's own velocity there, the certified prefix is frozen and the
 executor splices onto it, exactly as an extension does. A successor that
 leaves the stitch on another tangent is joined by a short curve onto its
