@@ -177,10 +177,10 @@ obstacle_memory_3d_node:
     # The heading estimate the hits are placed with, measured against the
     # simulator's true pose over four urban flights: a standard deviation of
     # 2.2 degrees, with excursions past ten while the estimator reconciles
-    # its magnetometer with its course. Hits beyond the range at which that
-    # keeps them within two voxels of their surface, thirteen metres at this
-    # resolution, saturate a voxel at the occupied threshold only, so the
-    # first near look frees a misplaced copy in a few misses.
+    # its magnetometer with its course. The persistent memory integrates
+    # beams only as far as that keeps a hit within two voxels of its surface,
+    # thirteen metres at this resolution; the sensor braking contract needs
+    # nine and a half.
     lidar_pose_heading_uncertainty_rad: 0.038
     range_hit_epsilon_m: 0.05
     scan_stride: 1
