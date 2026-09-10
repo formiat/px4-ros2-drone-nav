@@ -123,6 +123,42 @@ TEST(ExecutionSupervisorRetention3DTest,
 }
 
 TEST(ExecutionSupervisorRetention3DTest,
+     APhysicallyRejectedResidentIsRetainedOnlyAsTheStopThatBeginsNow) {
+  SnapshotFixture3D fixture;
+  ExecutionSupervisor3D supervisor;
+  const std::shared_ptr<const ExecutionPlan3D> active =
+      installRouteOwner(supervisor, fixture);
+  ASSERT_NE(active, nullptr);
+  ASSERT_NE(active->finiteExecution(), nullptr);
+  const ExecutionRetentionResult3D clear =
+      supervisor.prepareRetention(routeRetentionRequest(active));
+  ASSERT_TRUE(clear.prepared()) << executionRetentionStatus3DName(clear.status);
+  ASSERT_NE(clear.transition->next->finiteExecution(), nullptr);
+  const std::size_t preserved_nominal_prefix =
+      clear.transition->next->finiteExecution()->horizon->nominal_prefix_control_count;
+  EXPECT_GT(preserved_nominal_prefix, 0U);
+
+  // The newest scan puts a return on the path ahead of the vehicle: the path
+  // is no longer executable from where it stands. The resident is not carried
+  // on to the last clear metre; what remains of it is the stop that begins now.
+  ExecutionRetentionRequest3D request = routeRetentionRequest(active);
+  request.latest_lidar_evidence = SnapshotFixture3D::newerLidarEvidence(
+      *request.latest_lidar_evidence, {Point3{4.0, 0.0, 5.0}});
+  request.lidar_validation_now_ns = request.latest_lidar_evidence->receiveStampNs();
+
+  const ExecutionRetentionResult3D braking = supervisor.prepareRetention(request);
+
+  EXPECT_EQ(braking.actual_state_validation.status,
+            FiniteExecutionPathStatus3D::kLatestLidarRawCollision);
+  ASSERT_TRUE(braking.prepared()) << executionRetentionStatus3DName(braking.status);
+  ASSERT_NE(braking.transition->next->finiteExecution(), nullptr);
+  EXPECT_EQ(braking.transition->next->finiteExecution()
+                ->horizon->nominal_prefix_control_count,
+            0U);
+  EXPECT_EQ(supervisor.plan(), active);
+}
+
+TEST(ExecutionSupervisorRetention3DTest,
      RawInvalidationDelegatesBrakingToTheStopWithoutRetainingThePath) {
   SnapshotFixture3D fixture;
   ExecutionSupervisor3D supervisor;

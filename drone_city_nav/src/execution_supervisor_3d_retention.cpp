@@ -177,6 +177,37 @@ directValidationWorld(const ExecutionRetentionRequest3D& request,
   };
 }
 
+// A physical rejection of the resident path from where the vehicle stands is
+// evidence the path was not certified on. Keeping the longest prefix that
+// still clears it carried the vehicle at four metres a second to the last
+// clear metre before a mapped wall, twice, and left nothing certifiable when
+// the next scan showed more of it. The premise of the path is broken, and the
+// only continuation it still supports is the stop that begins now; the next
+// tick's candidate reads the same evidence and plans past it if it can.
+[[nodiscard]] bool
+physicallyRejected(const ExecutionRetentionResult3D& result) noexcept {
+  const auto physical = [](const FiniteExecutionPathStatus3D status) {
+    return status == FiniteExecutionPathStatus3D::kRawCollision ||
+           status == FiniteExecutionPathStatus3D::kLatestLidarRawCollision;
+  };
+  return physical(result.actual_state_validation.status) ||
+         physical(result.trajectory_validation.status);
+}
+
+template<typename Execution>
+[[nodiscard]] std::size_t
+retainedNominalPrefixControlCount(const ExecutionRetentionResult3D& result,
+                                  const Execution& active) noexcept {
+  return physicallyRejected(result) ? 0U : active.horizon->nominal_prefix_control_count;
+}
+
+template<typename Execution>
+[[nodiscard]] std::size_t
+retainedPreservedPrefixControlCount(const ExecutionRetentionResult3D& result,
+                                    const Execution& active) noexcept {
+  return physicallyRejected(result) ? 0U : active.horizon->controls.size();
+}
+
 [[nodiscard]] ExecutionRetentionResult3D prepareRouteRetention(
     const std::shared_ptr<const CommittedExecutionAuthority3D>& expected_authority,
     const std::shared_ptr<const ExecutionPlan3D>& expected,
@@ -278,10 +309,10 @@ directValidationWorld(const ExecutionRetentionRequest3D& request,
       rebuildFiniteExecutionPathContinuation3D(
           points, active->valid_from_ns, active->valid_until_ns, request.now_ns,
           request.exact_initial_state, request.exact_previous_control,
-          active->horizon->nominal_prefix_control_count,
-          active->horizon->controls.size(), route->validation_policy->dynamics(),
-          arrival_search_step_controls, request.finite_horizon_config,
-          *continuation_world, candidate_validator);
+          retainedNominalPrefixControlCount(result, *active),
+          retainedPreservedPrefixControlCount(result, *active),
+          route->validation_policy->dynamics(), arrival_search_step_controls,
+          request.finite_horizon_config, *continuation_world, candidate_validator);
   result.rebuild_validation = rebuilt.validation;
   result.arrival_shaping_attempts = rebuilt.arrival_shaping_attempts;
   if (!rebuilt.accepted()) {
@@ -378,8 +409,9 @@ directValidationWorld(const ExecutionRetentionRequest3D& request,
       rebuildFiniteExecutionPathContinuation3D(
           points, active->valid_from_ns, active->valid_until_ns, request.now_ns,
           request.exact_initial_state, request.exact_previous_control,
-          active->horizon->nominal_prefix_control_count,
-          active->horizon->controls.size(), active->validation_policy->dynamics(),
+          retainedNominalPrefixControlCount(result, *active),
+          retainedPreservedPrefixControlCount(result, *active),
+          active->validation_policy->dynamics(),
           finiteHorizonArrivalSearchStepControls3D(
               active->validation_policy->dynamics().dt_s),
           request.finite_horizon_config, *continuation_world, candidate_validator);
