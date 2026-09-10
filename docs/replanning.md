@@ -508,7 +508,10 @@ latch decides how often a search actually runs.
 Where the fill exhausts its own reach without an exit, the vehicle's trail is
 what remains. Every point of it is a pose the body occupied, so the corridor
 the vehicle came through admits the body whatever the map now says about the
-space beside it, and the trail reaches back further than the fill's radius.
+space beside it, and the trail reaches back as far as the mission is long. Cut to the fill's
+own reach instead, it ended inside the pocket it was meant to leave, and one
+flight held for fifty seconds with every trail point in the same closed
+component.
 The retreat is offered on every update the fill is not
 running, not only on the one it exhausted on: waiting for the fill to re-fill
 its thousands of cells and give up again cost one flight seventeen seconds in

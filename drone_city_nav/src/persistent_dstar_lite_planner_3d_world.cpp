@@ -69,12 +69,15 @@ void PersistentDStarLitePlanner3DImpl::noteFlownPosition(const Point3& position)
       !std::isfinite(position.z)) {
     return;
   }
-  // One point per lattice step is enough to retrace the corridor, and the
-  // trail is bounded: what lies further back than the escape fill's own reach
-  // is no longer a way out this session can use.
+  // One point per half lattice step is enough to retrace the corridor. The
+  // trail has to be long enough to leave whatever the vehicle drove into: cut
+  // to the escape fill's own reach it ended inside the pocket it was meant to
+  // leave, and one flight held for fifty seconds with every trail point in
+  // the same closed component. A few hundred points is a few kilobytes and
+  // covers a mission of this size end to end.
+  constexpr std::size_t kMaximumTrailPoints{512U};
   const double step_m = std::max(0.25, 0.5 * config_.minimum_horizontal_step_m);
-  const std::size_t maximum_points = std::max<std::size_t>(
-      8U, 4U * std::max<std::size_t>(config_.escape_search_radius_cells, 1U));
+  const std::size_t maximum_points = kMaximumTrailPoints;
   if (!flown_trail_.empty() && distance3D(flown_trail_.back(), position) < step_m) {
     return;
   }
