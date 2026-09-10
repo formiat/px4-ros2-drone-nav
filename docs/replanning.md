@@ -528,6 +528,13 @@ braked and rested for two and a half seconds with the planner idle, a quarter
 of that run's no-route time. Both owners are now routeless owners, and the
 latch decides how often a search actually runs.
 
+The fill is armed by the closed component itself, not only by an update whose
+frontier emptied: the search is not run on an unchanged world once the
+component is closed, so it never exhausts again, and a vehicle in a pocket had
+the search suppressed, the fill unarmed, and both fallbacks behind it waiting
+on a fill that never ran. One flight stood seventeen seconds that way. A fill
+that found nothing still repeats only on a changed world.
+
 Where the fill exhausts its own reach without an exit, the vehicle's trail is
 what remains. Every point of it is a pose the body occupied, so the corridor
 the vehicle came through admits the body whatever the map now says about the

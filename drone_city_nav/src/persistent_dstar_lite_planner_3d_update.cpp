@@ -829,6 +829,22 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     departure_anchor_skip_ = 0U;
     escape_search_pending_ = false;
     escape_search_.reset();
+  } else if (config_.escape_search_radius_cells > 0U &&
+             feasibility_search_.closedComponentMarked() &&
+             !escape_connection_.has_value() && !escape_search_pending_ &&
+             (!escape_search_.exhausted() || !world_update.changed_cells.empty())) {
+    // The component is closed and the search is not run on an unchanged world,
+    // so it never exhausts again -- and the fill was armed only on an update
+    // that did exhaust. A vehicle in a closed pocket therefore had every stage
+    // idle: the search suppressed, the fill unarmed, and the two fallbacks
+    // behind it waiting on a fill that never ran. One flight stood seventeen
+    // seconds that way. The fill is armed by the state itself, on the same
+    // terms as before: a fill that found nothing repeats only on a changed
+    // world.
+    if (escape_search_.exhausted()) {
+      escape_search_.reset();
+    }
+    escape_search_pending_ = true;
   }
 
   const bool search_complete =
