@@ -361,6 +361,10 @@ private:
   std::unique_ptr<MissionWaypointSequence> mission_waypoint_sequence_;
   std::unique_ptr<MissionWaypointCaptureGate> mission_waypoint_capture_gate_;
   std::uint64_t mission_capture_continuity_breaks_{0U};
+  // When the vehicle was last moving. A vehicle that has held still for
+  // longer than the stall grace while carrying a route is not flying it; see
+  // the stalled-route release in the planning tick.
+  std::int64_t last_moving_stamp_ns_{0};
   std::int64_t last_planning_tick_entry_ns_{0};
   std::int64_t last_planning_tick_period_ns_{0};
   // Owner identity of the goal hold observed by the previous capture update,

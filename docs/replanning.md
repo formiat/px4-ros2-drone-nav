@@ -270,15 +270,19 @@ successor for being two hundredths of a second slower while it had nothing at
 all to fly. A pending certified route stays a base worth improving on, since
 the vehicle is about to fly it.
 
-A route the vehicle cannot advance on is released as blocked. The stopping
+A route the vehicle is not advancing on is released as blocked. The stopping
 law holds the reference speed at zero while the block sits inside its margin,
 and the vehicle then stands on a route the searches keep trying to repair:
 one flight stood three minutes that way, sixty metres from its goal, with the
 block five metres ahead, every stage of the planner idle behind an incumbent
 it could not use, and the hold metric reading it as a vehicle with a route.
-The liveness windows already say when nothing is moving, and that verdict now
-releases the route, so the searches start again from where the vehicle stands
-and the escape fill and the retreat can run at all.
+A route that ends short of the goal ends wherever the search ran out, and the
+vehicle rests there for the same reason: another flight stood four minutes at
+the end of a recovery route. Whichever law is holding it, standing still for
+three seconds while carrying a route is the same verdict, and it releases the
+route so the searches start again from where the vehicle actually is and the
+escape fill and the retreat can run at all. A captured mission goal is not
+this: that is where the vehicle is meant to rest.
 
 A request from a vehicle without a route retires the in-flight search that has
 delivered nothing, once that search has run for the failed-search retry

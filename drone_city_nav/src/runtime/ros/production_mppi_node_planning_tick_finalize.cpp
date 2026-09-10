@@ -165,23 +165,31 @@ void ProductionMppiNode::finalizePlanningTick(
   const bool raw_invalidation_active =
       committed_route != nullptr &&
       route_execution_status == RouteExecutionStatus3D::kRawCollision;
-  // A route the vehicle cannot advance on is not a route it has. The stopping
-  // law holds the reference speed at zero while the block sits inside the
-  // margin, and the vehicle then stands on a route the searches keep trying
-  // to repair: one flight stood three minutes that way, sixty metres from its
-  // goal, with the block five metres ahead and every stage of the planner
-  // idle behind an incumbent it could not use. The liveness windows already
-  // say when nothing is moving; here that verdict releases the route, so the
-  // searches start again from where the vehicle stands and the escape fill
-  // and the retreat can run at all.
-  if (committed_route != nullptr && liveness.reseed_requested &&
-      speed_policy.active_limiter == MppiSpeedLimiter::kBlockedRoute &&
-      routeSpeed3D(
-          Vec3{navigation.state.vx, navigation.state.vy, navigation.state.vz}) <=
-          kStationaryExecutionHoldSpeedToleranceMps) {
+  // A route the vehicle is not advancing on is not a route it has. The
+  // stopping law holds the reference speed at zero while a block sits inside
+  // its margin, and a route that ends short of the goal ends wherever the
+  // search ran out: either way the vehicle stands on a route the searches
+  // keep trying to repair, and the escape fill and the trail retreat are both
+  // gated on it holding none. One flight stood three minutes sixty metres
+  // from its goal that way and another four minutes at the end of a recovery
+  // route. Whichever law is holding it, standing still for the grace with a
+  // route is the same verdict, and it releases the route so the searches
+  // start again from where the vehicle actually is. The goal's own hold is
+  // not this: a captured mission goal is where the vehicle is meant to rest.
+  constexpr double kStalledRouteReleaseGraceS{3.0};
+  const double vehicle_speed_mps =
+      routeSpeed3D(Vec3{navigation.state.vx, navigation.state.vy, navigation.state.vz});
+  if (vehicle_speed_mps > kStationaryExecutionHoldSpeedToleranceMps ||
+      last_moving_stamp_ns_ == 0) {
+    last_moving_stamp_ns_ = now_ns;
+  }
+  const double stalled_s = static_cast<double>(now_ns - last_moving_stamp_ns_) / 1.0e9;
+  if (committed_route != nullptr && !goal_capture.latched &&
+      stalled_s >= kStalledRouteReleaseGraceS) {
+    last_moving_stamp_ns_ = now_ns;
     handlePhysicalTrajectoryCollision(
         committed_route->identity.generation, committed_route->observed_raw_world,
-        "stalled_behind_blocked_route",
+        "stalled_on_its_own_route",
         ProductionMppiPhysicalTrajectoryAuthority::kResidentOwner);
   }
   const bool finite_braking_tail_active =
