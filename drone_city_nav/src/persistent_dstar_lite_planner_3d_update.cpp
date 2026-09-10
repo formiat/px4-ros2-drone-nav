@@ -515,14 +515,9 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
       feasibility_search_.inClosedComponent(*departure.anchor) &&
       world_update.changed_cells.empty();
   telemetry.feasibility_anchor_in_closed_component = anchor_in_closed_component;
-  // A closest-approach incumbent is not a route to the goal: the searches run
-  // on as though the vehicle held none, and the moment one of them reaches
-  // the goal it replaces it.
-  const bool holds_goal_route =
-      coordinator_.incumbent() != nullptr &&
-      spatialRouteCandidateReachesGoal3D(coordinator_.incumbent()->source);
   const bool feasibility_will_run = config_.feasibility_first_enabled &&
-                                    !holds_goal_route && !anchor_in_closed_component;
+                                    coordinator_.incumbent() == nullptr &&
+                                    !anchor_in_closed_component;
   if (!feasibility_will_run) {
     schedule_world_changes();
   }
@@ -599,37 +594,6 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                   feasibility_started)
             .count();
-  }
-
-  // Every search this start can run has run out: the frontier emptied without
-  // reaching the goal and marked its component closed, so it will not run
-  // again until the world changes, and the escape fill has exhausted its own
-  // reach without an exit. A stationary vehicle in a mapped pocket changes
-  // nothing, and one recorded flight stood in one for the whole of its
-  // remaining four minutes with every stage idle. The route to the closest
-  // label the frontier reached is a route the vehicle can fly, and flying it
-  // is what puts unmapped space in front of the sensor. It is offered only
-  // when it closes real distance on the goal, so it cannot become a hover in
-  // place, and only here: while the fill still has an exit to look for, the
-  // exit is the better answer.
-  if (!holds_goal_route && feasibility_search_.closedComponentMarked() &&
-      !escape_connection_.has_value() && !escape_search_pending_ &&
-      escape_search_.exhausted()) {
-    const FeasiblePathSearch3D::Endpoints3D endpoints = searchEndpoints();
-    if (feasibility_search_.closestGoalDistanceM() +
-            config_.minimum_horizontal_step_m <=
-        distance3D(endpoints.exact_start, endpoints.exact_goal)) {
-      if (std::optional<std::vector<Point3>> approach =
-              feasibility_search_.closestApproachPath(endpoints)) {
-        if (std::optional<SpatialRouteCandidate3D> closest = makeCandidate(
-                refinePublishedPath(std::move(*approach), request, deadline, telemetry),
-                SpatialRouteCandidateSource3D::kFeasibilityClosestApproach,
-                request.velocity)) {
-          telemetry.feasibility_closest_approach_published = true;
-          update.improved_incumbent = coordinator_.consider(std::move(*closest));
-        }
-      }
-    }
   }
 
   schedule_world_changes();
