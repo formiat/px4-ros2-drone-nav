@@ -111,6 +111,7 @@ void ProductionMppiNode::processDiagnostics(
        << " goal_distance_m=" << snapshot.goal_capture.distance_m
        << " route_station_m=" << snapshot.route_station_m
        << " route_remaining_m=" << snapshot.route_remaining_m
+       << " route_cross_track_m=" << snapshot.route_cross_track_m
        << " route_constraint_phase="
        << constrainedRoutePhaseName(route_constraint.phase)
        << " route_constraint_passage="
@@ -459,6 +460,7 @@ void ProductionMppiNode::processDiagnostics(
         << ",\"goal_distance_m\":" << snapshot.goal_capture.distance_m
         << ",\"route_station_m\":" << snapshot.route_station_m
         << ",\"route_remaining_m\":" << snapshot.route_remaining_m
+        << ",\"route_cross_track_m\":" << snapshot.route_cross_track_m
         << ",\"route_constraint_phase\":\""
         << constrainedRoutePhaseName(route_constraint.phase) << '"'
         << ",\"route_constraint_passage\":\""

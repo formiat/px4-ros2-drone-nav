@@ -782,6 +782,8 @@ void ProductionMppiConfigLoader::declareControl() {
       static_cast<float>(declare<double>("head_progress_horizon_s", 0.4));
   mppi.costs.head_progress_weight =
       static_cast<float>(declare<double>("head_progress_weight", 8.0));
+  mppi.costs.guide_deviation_weight =
+      static_cast<float>(declare<double>("guide_deviation_weight", 1.0));
   mppi.costs.altitude_tracking_weight =
       static_cast<float>(declare<double>("altitude_tracking_weight", 4.0));
   mppi.costs.route_progress_integral_weight =

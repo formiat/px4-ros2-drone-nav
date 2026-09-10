@@ -224,6 +224,17 @@ production_mppi_node:
     maximum_vertical_speed_mps: 5.0
     head_progress_horizon_s: 0.4
     head_progress_weight: 8.0
+    # Squared horizontal distance from the route, per second. The route is
+    # the geometry certified raw-safe for the body envelope, and its speed
+    # profile, the reference speed and the obstacle approach charge all read
+    # one tube law: the tracking error the controller accumulates within its
+    # response time fits inside the clearance. Nothing else in the controller
+    # makes that law true; at the compiled default of 1 the horizontal error
+    # sat at half a metre whatever the speed, the envelope was carried into
+    # space the route never certified, and the horizon was rejected on raw
+    # evidence beside a route that was clear. The same charge that holds the
+    # vertical channel holds the horizontal one.
+    guide_deviation_weight: 40.0
     # Squared altitude error against the route's reference height, per
     # second. Vertical motion is free everywhere else in the controller: no
     # progress term rewards it and speed tracking follows the route tangent,

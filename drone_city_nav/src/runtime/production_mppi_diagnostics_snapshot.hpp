@@ -84,6 +84,7 @@ struct ProductionMppiDiagnosticsSnapshot {
   double control_feedback_age_ms{0.0};
   double route_station_m{0.0};
   double route_remaining_m{0.0};
+  double route_cross_track_m{0.0};
   ProductionMppiTickPhaseTimings phases{};
   double stability_ms{0.0};
   RollingRouteTelemetryObservation3D rolling_route{};

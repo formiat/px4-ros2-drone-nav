@@ -303,6 +303,7 @@ void ProductionMppiNode::finalizePlanningTick(
       .control_feedback_age_ms = control_feedback_age_ms,
       .route_station_m = route_projection.station_m,
       .route_remaining_m = route_projection.remaining_m,
+      .route_cross_track_m = route_projection.cross_track_m,
       .phases = phases,
       .stability_ms = stability_ms,
       .rolling_route = rolling_route,
