@@ -37,7 +37,17 @@ enum class SpatialRouteCandidateSource3D : std::uint8_t {
   // because the vehicle holds none. The refinement improves it from there.
   kSpatialSearch,
   kExecutionTimeRefinement,
+  // The route to the closest label an exhausted frontier reached. It does not
+  // reach the goal and exists only to put unmapped space in front of the
+  // sensor; any route that reaches the goal replaces it, and the searches run
+  // on as though the vehicle held none.
+  kFeasibilityClosestApproach,
 };
+
+[[nodiscard]] constexpr bool spatialRouteCandidateReachesGoal3D(
+    const SpatialRouteCandidateSource3D source) noexcept {
+  return source != SpatialRouteCandidateSource3D::kFeasibilityClosestApproach;
+}
 
 struct PersistentPlannerWorld3D {
   std::shared_ptr<const ObservedOccupancyGrid3D> observed_occupancy;
@@ -352,6 +362,9 @@ struct PlannerTelemetry3D {
   // The feasibility frontier emptied without a raw-valid candidate: every
   // lattice node reachable from the anchor was explored.
   bool feasibility_frontier_exhausted{false};
+  // The published route ends at the closest label the exhausted frontier
+  // reached instead of at the mission goal; see closestApproachPath.
+  bool feasibility_closest_approach_published{false};
   std::size_t feasibility_explored_nodes{0U};
   double feasibility_closest_goal_distance_m{0.0};
   std::size_t feasibility_restarts{0U};

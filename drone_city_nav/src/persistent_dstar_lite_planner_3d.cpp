@@ -232,6 +232,22 @@ AnytimePlannerCoordinator3D::consider(SpatialRouteCandidate3D candidate) {
     incumbent_ = std::move(candidate);
     return incumbent_;
   }
+  // A route that reaches the goal is not compared with one that does not: the
+  // closest-approach route exists only because nothing reached the goal, and
+  // being shorter is exactly what it is. Compared on time it displaced every
+  // real route, and one recorded flight sat at the end of one for two and a
+  // half minutes with the goal thirty-five metres away.
+  const bool incumbent_reaches_goal =
+      spatialRouteCandidateReachesGoal3D(incumbent_->source);
+  const bool candidate_reaches_goal =
+      spatialRouteCandidateReachesGoal3D(candidate.source);
+  if (incumbent_reaches_goal != candidate_reaches_goal) {
+    if (!candidate_reaches_goal) {
+      return std::nullopt;
+    }
+    incumbent_ = std::move(candidate);
+    return incumbent_;
+  }
   const double scale =
       std::max({1.0, candidate.objectiveS(), incumbent_->objectiveS()});
   if (candidate.objectiveS() >=

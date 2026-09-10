@@ -914,4 +914,58 @@ TEST(PersistentDStarLitePlanner3DTest,
 }
 
 } // namespace
+
+// A goal walled off by observed evidence leaves the frontier exhausted with
+// no route. The vehicle is given the route to the closest label the search
+// reached instead of nothing: standing still observes nothing new, and the
+// exhausted component stops the search from running again until the world
+// changes.
+TEST(PersistentDStarLitePlanner3DTest, AnExhaustedSearchOffersItsClosestApproach) {
+  auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 0.25, 96, 40, 24});
+  PersistentPlannerConfig3D config = testConfig();
+  config.minimum_horizontal_step_m = 2.0;
+  config.minimum_vertical_step_m = 2.0;
+  config.feasibility_first_enabled = true;
+  config.physical_footprint.radius_m = 0.4;
+  config.physical_footprint.body_radius_m = 0.4;
+  config.physical_footprint.perimeter_samples = 8U;
+  config.physical_footprint.radial_rings = 1U;
+  config.physical_footprint.axial_samples = 1U;
+  config.physical_footprint.sweep_step_m = 0.1;
+  config.flight_envelope.maximum_target_z_m = 6.0;
+  config.maximum_compute_time_ms = 60.0;
+  config.maximum_feasibility_compute_time_ms = 25.0;
+  config.maximum_feasibility_expansions_per_update = 100000U;
+  config.escape_search_maximum_probes_per_update = 1U << 16U;
+  // A wall across the world with no opening at all: the goal beyond it is
+  // unreachable, and the closest the search can come to it is the wall.
+  for (int y = 0; y < 40; ++y) {
+    for (int z = 0; z < 24; ++z) {
+      ASSERT_TRUE(occupancy->setState({48, y, z}, ObservedVoxelState::kOccupied));
+    }
+  }
+  const Point3 start{3.0, 5.0, 3.0};
+  const Point3 goal{20.0, 5.0, 3.0};
+  PersistentDStarLitePlanner3D planner{config};
+  PlannerUpdate3D update = planner.plan(request(start, goal, world(occupancy, 1U)));
+  for (int attempt = 0; attempt < 120 && !update.publishable(); ++attempt) {
+    update = planner.plan(request(start, goal, world(occupancy, 1U)));
+  }
+  ASSERT_TRUE(update.publishable())
+      << "the vehicle is left with no route at all: exhausted="
+      << update.telemetry.feasibility_frontier_exhausted
+      << " escape_exhausted=" << update.telemetry.escape_search_exhausted
+      << " closest=" << update.telemetry.feasibility_closest_goal_distance_m;
+  EXPECT_TRUE(update.telemetry.feasibility_closest_approach_published);
+  const std::vector<Point3>& points = candidate(update).points;
+  ASSERT_GE(points.size(), 2U);
+  // The route stops short of the wall and closes distance on the goal.
+  EXPECT_LT(points.back().x, 12.0);
+  EXPECT_GT(points.back().x, start.x + config.minimum_horizontal_step_m);
+  EXPECT_LT(distance3D(points.back(), goal) + config.minimum_horizontal_step_m,
+            distance3D(start, goal) + 1.0e-9);
+  expectRawValid(points, *occupancy, planner.config().physical_footprint);
+}
+
 } // namespace drone_city_nav
