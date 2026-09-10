@@ -175,6 +175,36 @@ TEST(MppiSpeedPolicyTest, TheRouteClearanceBoundsTheSpeedTheHorizonCannotYetSee)
   EXPECT_DOUBLE_EQ(both.reference_speed_mps, 1.0);
 }
 
+TEST(MppiSpeedPolicyTest, TheAgeOfTheClearanceEvidenceIsLatencyInTheStoppingLaw) {
+  // The same tight spot 10 m ahead: read off evidence half a second old, the
+  // free path to it is owed half a second of travel more than the reaction
+  // latency alone, on the horizon and on the route alike.
+  const MppiSpeedPolicyConfig config = clearanceLimiterConfig();
+  MppiSpeedPolicyInput input;
+  input.terminal_goal_limit_enabled = false;
+  input.executed_horizon_clearance = executedClearance(10.0, 1.0);
+  const MppiSpeedPolicyResult fresh = evaluateMppiSpeedPolicy(config, input);
+  input.esdf_evidence_age_s = 0.5;
+  const MppiSpeedPolicyResult aged = evaluateMppiSpeedPolicy(config, input);
+  StoppingCapability delayed = config.stopping_capability;
+  delayed.reaction_latency_s += 0.5;
+  EXPECT_NEAR(fresh.clearance_limit_mps,
+              stoppingLimitedSpeed(10.0, 2.0, config.stopping_capability), 1.0e-9);
+  EXPECT_NEAR(aged.clearance_limit_mps, stoppingLimitedSpeed(10.0, 2.0, delayed),
+              1.0e-9);
+  EXPECT_LT(aged.clearance_limit_mps, fresh.clearance_limit_mps);
+
+  input.executed_horizon_clearance.reset();
+  input.route_clearance = executedClearance(10.0, 1.0);
+  const MppiSpeedPolicyResult aged_route = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_NEAR(aged_route.route_clearance_limit_mps,
+              stoppingLimitedSpeed(10.0, 2.0, delayed), 1.0e-9);
+  // Beside the tight spot the tube law alone answers, whatever the age.
+  input.route_clearance = executedClearance(0.0, 1.0);
+  EXPECT_NEAR(evaluateMppiSpeedPolicy(config, input).route_clearance_limit_mps, 2.0,
+              1.0e-9);
+}
+
 TEST(MppiSpeedPolicyTest,
      TheObservedRangeAlongTheMotionBoundsTheSpeedLikeTheSensorRange) {
   // The sensor-braking contract bounds the speed by the range the sensor is

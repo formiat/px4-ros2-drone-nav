@@ -102,7 +102,17 @@ constexpr double kMotionDirectionSpeedThresholdMps{0.25};
 // it. The tightest answer wins.
 [[nodiscard]] double
 clearanceLimitedSpeed(const std::span<const ConstrainedHorizonSample3D> samples,
-                      const MppiSpeedPolicyConfig& config) noexcept {
+                      const MppiSpeedPolicyConfig& config,
+                      const double evidence_age_s) noexcept {
+  // The samples were measured on evidence this old, and the validators judge
+  // on what arrived since: the free path to each sample is known only as of
+  // then. The interval is latency in the stopping law, as the sensor-braking
+  // contract owes its evidence age; without it the reference stayed at four
+  // metres a second until a wall the scan had already seen stood two metres
+  // ahead, and every horizon from there was rejected.
+  StoppingCapability capability = config.stopping_capability;
+  capability.reaction_latency_s +=
+      std::isfinite(evidence_age_s) ? std::max(0.0, evidence_age_s) : 0.0;
   double limit_mps = std::numeric_limits<double>::infinity();
   for (const ConstrainedHorizonSample3D& sample : samples) {
     const double admissible_speed_mps =
@@ -110,11 +120,10 @@ clearanceLimitedSpeed(const std::span<const ConstrainedHorizonSample3D> samples,
                  static_cast<double>(mppi::tubeAdmissibleSpeedMps(
                      static_cast<float>(std::max(0.0, sample.clearance_m)),
                      static_cast<float>(config.clearance_response_time_s))));
-    limit_mps =
-        std::min(limit_mps,
-                 std::max(admissible_speed_mps,
-                          stoppingLimitedSpeed(sample.distance_m, admissible_speed_mps,
-                                               config.stopping_capability)));
+    limit_mps = std::min(
+        limit_mps, std::max(admissible_speed_mps,
+                            stoppingLimitedSpeed(sample.distance_m,
+                                                 admissible_speed_mps, capability)));
   }
   return limit_mps;
 }
@@ -228,10 +237,10 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
     // the raw world and ends at rest, so "stop within the lateral clearance"
     // is not a physical requirement, and asking for it pinned every corridor
     // to the floor.
-    result.clearance_limit_mps =
-        std::min(result.clearance_limit_mps,
-                 clearanceLimitedSpeed(
-                     input.executed_horizon_clearance->constrained_samples, config));
+    result.clearance_limit_mps = std::min(
+        result.clearance_limit_mps,
+        clearanceLimitedSpeed(input.executed_horizon_clearance->constrained_samples,
+                              config, input.esdf_evidence_age_s));
   }
   if (input.route_clearance.has_value() && input.route_clearance->constrained()) {
     // The same laws on the geometry the vehicle is committed to. The executed
@@ -243,9 +252,10 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
     // the raw validator rejected the horizon and stopped the vehicle again.
     // The route's clearance profile does not move with the speed, so it bounds
     // the reference before the horizon grows into the constraint.
-    result.route_clearance_limit_mps = std::min(
-        result.route_clearance_limit_mps,
-        clearanceLimitedSpeed(input.route_clearance->constrained_samples, config));
+    result.route_clearance_limit_mps =
+        std::min(result.route_clearance_limit_mps,
+                 clearanceLimitedSpeed(input.route_clearance->constrained_samples,
+                                       config, input.esdf_evidence_age_s));
   }
   std::optional<double> observed_range_m;
   if (input.executed_horizon_clearance.has_value() &&

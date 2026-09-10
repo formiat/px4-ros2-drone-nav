@@ -89,6 +89,13 @@ struct MppiSpeedPolicyInput {
   // the same tube and stopping laws read off it bound the reference before the
   // vehicle accelerates into the constraint.
   std::optional<ExecutedHorizonClearance3D> route_clearance;
+  // Age of the evidence the clearance samples were measured on: the time from
+  // the observation the ESDF was built from to now. The horizon and the route
+  // are read off that field, and the raw validators judge on the scan that
+  // arrived since; whatever appeared in between is not in the samples. The
+  // stopping law owes that interval as latency, on top of the reaction
+  // latency, exactly as the sensor-braking contract owes its evidence age.
+  double esdf_evidence_age_s{0.0};
   // Reference speed the previous cycle published, and how long ago, for the
   // rise limit. Absent on the first cycle, which then starts unconstrained.
   std::optional<double> previous_reference_speed_mps;
