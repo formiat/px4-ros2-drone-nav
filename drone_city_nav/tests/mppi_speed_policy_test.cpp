@@ -137,6 +137,44 @@ TEST(MppiSpeedPolicyTest,
   EXPECT_DOUBLE_EQ(open.reference_speed_mps, 20.0);
 }
 
+TEST(MppiSpeedPolicyTest, TheRouteClearanceBoundsTheSpeedTheHorizonCannotYetSee) {
+  // A vehicle at rest publishes a horizon that ends where it can stop, so the
+  // horizon sees only the space beside the vehicle and admits cruise. The
+  // route is the geometry the vehicle is committed to, and the tight spot it
+  // enters bounds the reference before the vehicle accelerates into it.
+  const MppiSpeedPolicyConfig config = clearanceLimiterConfig();
+  MppiSpeedPolicyInput input;
+  input.terminal_goal_limit_enabled = false;
+  input.executed_horizon_clearance = ExecutedHorizonClearance3D{.available = true};
+
+  const MppiSpeedPolicyResult horizon_only = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_NE(horizon_only.active_limiter, MppiSpeedLimiter::kRouteClearance);
+  EXPECT_DOUBLE_EQ(horizon_only.reference_speed_mps, 20.0);
+
+  // A 1 m clearance 10 m along the route: the tube law admits 2 m/s there, and
+  // the stopping law decides what may be carried on the way to it.
+  input.route_clearance = executedClearance(10.0, 1.0);
+  const MppiSpeedPolicyResult ahead = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_EQ(ahead.active_limiter, MppiSpeedLimiter::kRouteClearance);
+  EXPECT_STREQ(mppiSpeedLimiterName(ahead.active_limiter), "route_clearance");
+  EXPECT_NEAR(ahead.route_clearance_limit_mps,
+              stoppingLimitedSpeed(10.0, 1.0 / 0.5, config.stopping_capability),
+              1.0e-9);
+  EXPECT_DOUBLE_EQ(ahead.reference_speed_mps, ahead.route_clearance_limit_mps);
+
+  // Standing at the tight point, the tube law alone answers.
+  input.route_clearance = executedClearance(0.0, 1.0);
+  const MppiSpeedPolicyResult beside = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_EQ(beside.active_limiter, MppiSpeedLimiter::kRouteClearance);
+  EXPECT_NEAR(beside.route_clearance_limit_mps, 1.0 / 0.5, 1.0e-9);
+
+  // The horizon keeps its own authority: the tighter of the two answers wins.
+  input.executed_horizon_clearance = executedClearance(0.0, 0.25);
+  const MppiSpeedPolicyResult both = evaluateMppiSpeedPolicy(config, input);
+  EXPECT_EQ(both.active_limiter, MppiSpeedLimiter::kClearance);
+  EXPECT_DOUBLE_EQ(both.reference_speed_mps, 1.0);
+}
+
 TEST(MppiSpeedPolicyTest,
      TheObservedRangeAlongTheMotionBoundsTheSpeedLikeTheSensorRange) {
   // The sensor-braking contract bounds the speed by the range the sensor is

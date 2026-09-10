@@ -26,6 +26,7 @@ enum class MppiSpeedLimiter : std::uint8_t {
   kRouteConstraint,
   kBlockedRoute,
   kClearance,
+  kRouteClearance,
   kUnobservedFrontier,
 };
 
@@ -81,6 +82,13 @@ struct MppiSpeedPolicyInput {
   // vehicle can rest, so its own frontier is never beyond the stopping path;
   // the route says where the evidence ends ahead of that.
   std::optional<double> route_observed_range_m;
+  // Where the route ahead comes close to known occupied evidence, in the same
+  // form as the executed horizon. The horizon reaches only as far as the
+  // vehicle can stop, so at low speed it cannot see the tight spot the route
+  // enters next; the route's own clearance does not move with the speed, so
+  // the same tube and stopping laws read off it bound the reference before the
+  // vehicle accelerates into the constraint.
+  std::optional<ExecutedHorizonClearance3D> route_clearance;
   // Reference speed the previous cycle published, and how long ago, for the
   // rise limit. Absent on the first cycle, which then starts unconstrained.
   std::optional<double> previous_reference_speed_mps;
@@ -102,6 +110,7 @@ struct MppiSpeedPolicyResult {
   double route_constraint_limit_mps{std::numeric_limits<double>::infinity()};
   double blocked_route_limit_mps{std::numeric_limits<double>::infinity()};
   double clearance_limit_mps{std::numeric_limits<double>::infinity()};
+  double route_clearance_limit_mps{std::numeric_limits<double>::infinity()};
   double unobserved_frontier_limit_mps{std::numeric_limits<double>::infinity()};
   // The observed range the frontier limiter read the contract with.
   double unobserved_frontier_range_m{std::numeric_limits<double>::infinity()};

@@ -53,6 +53,46 @@ ExecutedHorizonClearance3D measureExecutedHorizonClearance3D(
   return result;
 }
 
+ExecutedHorizonClearance3D
+measureRouteClearance3D(const std::span<const RouteSample3D> route,
+                        const double from_station_m, const double lookahead_m,
+                        const EsdfGrid3D& grid, const std::span<const float> esdf_m,
+                        const SweptFootprintConfig& footprint,
+                        const double constraint_clearance_m) {
+  ExecutedHorizonClearance3D result;
+  if (route.size() < 2U || !std::isfinite(from_station_m) ||
+      !std::isfinite(lookahead_m) || !(lookahead_m > 0.0) || esdf_m.empty() ||
+      !(constraint_clearance_m > 0.0)) {
+    return result;
+  }
+  result.available = true;
+  const double end_station_m = from_station_m + lookahead_m;
+  Point3 previous = sampleRoute3DAtStation(route, from_station_m).position;
+  double previous_station_m = from_station_m;
+  for (const RouteSample3D& sample : route) {
+    if (sample.station_m <= from_station_m) {
+      continue;
+    }
+    const DerivedFootprintClearance3D clearance = querySweptFootprintClearance3D(
+        grid, esdf_m, previous, sample.position, footprint);
+    if (clearance.evidence.known_clearance_observed) {
+      const double clearance_m = clearance.evidence.minimum_known_clearance_m;
+      result.minimum_clearance_m = std::min(result.minimum_clearance_m, clearance_m);
+      if (clearance_m < constraint_clearance_m) {
+        result.constrained_samples.push_back(ConstrainedHorizonSample3D{
+            .distance_m = std::max(0.0, previous_station_m - from_station_m),
+            .clearance_m = clearance_m});
+      }
+    }
+    if (sample.station_m >= end_station_m) {
+      break;
+    }
+    previous = sample.position;
+    previous_station_m = sample.station_m;
+  }
+  return result;
+}
+
 std::optional<double>
 measureRouteObservedRange3D(const std::span<const RouteSample3D> route,
                             const double from_station_m, const double lookahead_m,

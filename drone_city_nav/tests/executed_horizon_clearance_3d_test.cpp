@@ -133,5 +133,53 @@ TEST(ExecutedHorizonClearance3DTest, ARouteThroughObservedSpaceHasNoFrontier) {
                    .has_value());
 }
 
+[[nodiscard]] std::vector<float> esdfWithTightColumn(const int column,
+                                                     const float clearance_m) {
+  std::vector<float> field = esdf();
+  for (int z = 0; z < 3; ++z) {
+    for (int y = 0; y < 3; ++y) {
+      field[(static_cast<std::size_t>(z) * 3U + static_cast<std::size_t>(y)) *
+                static_cast<std::size_t>(kLength) +
+            static_cast<std::size_t>(column)] = clearance_m;
+    }
+  }
+  return field;
+}
+
+TEST(ExecutedHorizonClearance3DTest, TheRouteAheadReportsWhereItRunsClose) {
+  // The route runs from x = 0.5 one metre per sample and the vehicle projects
+  // at station 2. Everything keeps 5 m but the column at x = 6, which keeps 3:
+  // the segment that leaves station 5 sweeps through it, three metres ahead of
+  // the projection, and the conservative query answers for less than the cell
+  // distance because the sweep samples are not on its centre.
+  const ExecutedHorizonClearance3D clearance =
+      measureRouteClearance3D(routeAlongX(0.5, 20U), 2.0, 30.0, grid(),
+                              esdfWithTightColumn(6, 3.0F), pointFootprint(), 2.0);
+  ASSERT_TRUE(clearance.available);
+  ASSERT_TRUE(clearance.constrained());
+  EXPECT_NEAR(clearance.distanceToConstraintM(), 3.0, 1.0e-6);
+  EXPECT_GT(clearance.constrainedClearanceM(), 0.0);
+  EXPECT_LT(clearance.constrainedClearanceM(), 2.0);
+  EXPECT_DOUBLE_EQ(clearance.minimum_clearance_m, clearance.constrainedClearanceM());
+}
+
+TEST(ExecutedHorizonClearance3DTest, TheRouteClearanceStopsAtTheLookahead) {
+  const ExecutedHorizonClearance3D near =
+      measureRouteClearance3D(routeAlongX(0.5, 20U), 2.0, 2.0, grid(),
+                              esdfWithTightColumn(6, 3.0F), pointFootprint(), 2.0);
+  ASSERT_TRUE(near.available);
+  EXPECT_FALSE(near.constrained());
+}
+
+TEST(ExecutedHorizonClearance3DTest, TheRouteClearanceIgnoresUnobservedSpace) {
+  // Unknown space stays traversable and carries no clearance, so a route that
+  // leaves the observed cells reports no constraint and no frontier here.
+  const ExecutedHorizonClearance3D clearance = measureRouteClearance3D(
+      routeAlongX(0.5, 20U), 2.0, 30.0, grid(), esdf(), pointFootprint(), 2.0);
+  ASSERT_TRUE(clearance.available);
+  EXPECT_FALSE(clearance.constrained());
+  EXPECT_FALSE(clearance.unobserved());
+}
+
 } // namespace
 } // namespace drone_city_nav

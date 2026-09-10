@@ -103,4 +103,22 @@ measureRouteObservedRange3D(std::span<const RouteSample3D> route, double from_st
                             std::span<const float> esdf_m,
                             const SweptFootprintConfig& footprint);
 
+// Where the route ahead of `from_station_m` comes close to known occupied
+// evidence, probing no farther than `lookahead_m`, in the same form the
+// executed horizon reports.
+//
+// The executed horizon ends where the vehicle can come to rest, so how far it
+// reaches is decided by the speed the reference already asked for: at rest it
+// sees only the space beside the vehicle, admits cruise, and finds the tight
+// spot ahead only once the vehicle is fast enough to reach into it. The route
+// is the geometry the vehicle is committed to and its clearance profile does
+// not move with the speed, so reading the same tube and stopping laws off it
+// bounds the speed before the horizon grows into the constraint. Unobserved
+// space is not reported here: it is a constraint on the sensor-braking range,
+// which the route already answers for through measureRouteObservedRange3D.
+[[nodiscard]] ExecutedHorizonClearance3D measureRouteClearance3D(
+    std::span<const RouteSample3D> route, double from_station_m, double lookahead_m,
+    const EsdfGrid3D& grid, std::span<const float> esdf_m,
+    const SweptFootprintConfig& footprint, double constraint_clearance_m);
+
 } // namespace drone_city_nav

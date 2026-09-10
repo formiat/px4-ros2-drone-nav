@@ -199,6 +199,8 @@ void ProductionMppiNode::processDiagnostics(
        << finiteOrNegative(speed_policy.sensor_braking_limit_mps)
        << " clearance_speed_limit_mps="
        << finiteOrNegative(speed_policy.clearance_limit_mps)
+       << " route_clearance_speed_limit_mps="
+       << finiteOrNegative(speed_policy.route_clearance_limit_mps)
        << " unobserved_frontier_speed_limit_mps="
        << finiteOrNegative(speed_policy.unobserved_frontier_limit_mps)
        << " unobserved_frontier_range_m="
@@ -583,6 +585,8 @@ void ProductionMppiNode::processDiagnostics(
          << finiteOrNegative(speed_policy.sensor_braking_limit_mps)
          << ",\"clearance_speed_limit_mps\":"
          << finiteOrNegative(speed_policy.clearance_limit_mps)
+         << ",\"route_clearance_speed_limit_mps\":"
+         << finiteOrNegative(speed_policy.route_clearance_limit_mps)
          << ",\"unobserved_frontier_speed_limit_mps\":"
          << finiteOrNegative(speed_policy.unobserved_frontier_limit_mps)
          << ",\"unobserved_frontier_range_m\":"

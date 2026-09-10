@@ -97,6 +97,28 @@ constexpr double kMotionDirectionSpeedThresholdMps{0.25};
   return Vec3{};
 }
 
+// The tightest speed a set of constrained samples admits: the tube law at each
+// sample, and the stopping law for what the vehicle may carry on the way to
+// it. The tightest answer wins.
+[[nodiscard]] double
+clearanceLimitedSpeed(const std::span<const ConstrainedHorizonSample3D> samples,
+                      const MppiSpeedPolicyConfig& config) noexcept {
+  double limit_mps = std::numeric_limits<double>::infinity();
+  for (const ConstrainedHorizonSample3D& sample : samples) {
+    const double admissible_speed_mps =
+        std::max(config.clearance_minimum_progress_speed_mps,
+                 static_cast<double>(mppi::tubeAdmissibleSpeedMps(
+                     static_cast<float>(std::max(0.0, sample.clearance_m)),
+                     static_cast<float>(config.clearance_response_time_s))));
+    limit_mps =
+        std::min(limit_mps,
+                 std::max(admissible_speed_mps,
+                          stoppingLimitedSpeed(sample.distance_m, admissible_speed_mps,
+                                               config.stopping_capability)));
+  }
+  return limit_mps;
+}
+
 void validateConfig(const MppiSpeedPolicyConfig& config) {
   if (!(config.cruise_speed_mps > 0.0) || !(config.absolute_speed_limit_mps > 0.0) ||
       !(config.maximum_lateral_acceleration_mps2 > 0.0) ||
@@ -206,19 +228,24 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
     // the raw world and ends at rest, so "stop within the lateral clearance"
     // is not a physical requirement, and asking for it pinned every corridor
     // to the floor.
-    for (const ConstrainedHorizonSample3D& sample :
-         input.executed_horizon_clearance->constrained_samples) {
-      const double admissible_speed_mps =
-          std::max(config.clearance_minimum_progress_speed_mps,
-                   static_cast<double>(mppi::tubeAdmissibleSpeedMps(
-                       static_cast<float>(std::max(0.0, sample.clearance_m)),
-                       static_cast<float>(config.clearance_response_time_s))));
-      result.clearance_limit_mps = std::min(
-          result.clearance_limit_mps,
-          std::max(admissible_speed_mps,
-                   stoppingLimitedSpeed(sample.distance_m, admissible_speed_mps,
-                                        config.stopping_capability)));
-    }
+    result.clearance_limit_mps =
+        std::min(result.clearance_limit_mps,
+                 clearanceLimitedSpeed(
+                     input.executed_horizon_clearance->constrained_samples, config));
+  }
+  if (input.route_clearance.has_value() && input.route_clearance->constrained()) {
+    // The same laws on the geometry the vehicle is committed to. The executed
+    // horizon reaches only as far as the vehicle can stop, so its clearance
+    // answer is a function of the speed the reference already asked for: at
+    // rest it sees only the space beside the vehicle, admits cruise, and finds
+    // the tight spot ahead only once the vehicle is fast enough to reach into
+    // it. That loop is what let the reference climb out of every stop until
+    // the raw validator rejected the horizon and stopped the vehicle again.
+    // The route's clearance profile does not move with the speed, so it bounds
+    // the reference before the horizon grows into the constraint.
+    result.route_clearance_limit_mps = std::min(
+        result.route_clearance_limit_mps,
+        clearanceLimitedSpeed(input.route_clearance->constrained_samples, config));
   }
   std::optional<double> observed_range_m;
   if (input.executed_horizon_clearance.has_value() &&
@@ -286,12 +313,12 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
     }
   }
 
-  result.reference_speed_mps =
-      std::min({result.cruise_limit_mps, result.absolute_limit_mps,
-                result.curvature_limit_mps, result.sensor_braking_limit_mps,
-                result.goal_limit_mps, result.route_endpoint_limit_mps,
-                result.route_constraint_limit_mps, result.blocked_route_limit_mps,
-                result.clearance_limit_mps, result.unobserved_frontier_limit_mps});
+  result.reference_speed_mps = std::min(
+      {result.cruise_limit_mps, result.absolute_limit_mps, result.curvature_limit_mps,
+       result.sensor_braking_limit_mps, result.goal_limit_mps,
+       result.route_endpoint_limit_mps, result.route_constraint_limit_mps,
+       result.blocked_route_limit_mps, result.clearance_limit_mps,
+       result.route_clearance_limit_mps, result.unobserved_frontier_limit_mps});
   const std::array limits{
       std::pair{result.cruise_limit_mps, MppiSpeedLimiter::kCruise},
       std::pair{result.absolute_limit_mps, MppiSpeedLimiter::kAbsolute},
@@ -302,6 +329,7 @@ MppiSpeedPolicyResult evaluateMppiSpeedPolicy(const MppiSpeedPolicyConfig& confi
       std::pair{result.route_constraint_limit_mps, MppiSpeedLimiter::kRouteConstraint},
       std::pair{result.blocked_route_limit_mps, MppiSpeedLimiter::kBlockedRoute},
       std::pair{result.clearance_limit_mps, MppiSpeedLimiter::kClearance},
+      std::pair{result.route_clearance_limit_mps, MppiSpeedLimiter::kRouteClearance},
       std::pair{result.unobserved_frontier_limit_mps,
                 MppiSpeedLimiter::kUnobservedFrontier},
   };
@@ -368,6 +396,8 @@ const char* mppiSpeedLimiterName(const MppiSpeedLimiter limiter) noexcept {
       return "blocked_route";
     case MppiSpeedLimiter::kClearance:
       return "clearance";
+    case MppiSpeedLimiter::kRouteClearance:
+      return "route_clearance";
     case MppiSpeedLimiter::kUnobservedFrontier:
       return "unobserved_frontier";
   }
