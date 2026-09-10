@@ -6,6 +6,7 @@
 #include "drone_city_nav/execution_route_certification_3d.hpp"
 #include "drone_city_nav/execution_route_store_3d.hpp"
 #include "drone_city_nav/persistent_dstar_lite_planner_3d.hpp"
+#include "drone_city_nav/route_3d.hpp"
 #include "drone_city_nav/route_decoration_compiler_3d.hpp"
 #include "drone_city_nav/route_lifecycle_3d.hpp"
 #include "drone_city_nav/route_successor_improvement_3d.hpp"
@@ -98,6 +99,13 @@ struct ProductionRouteSearchProvenance3D {
   ProductionPlanningSearchKind kind{ProductionPlanningSearchKind::kNone};
   RouteInstanceId3D base_route_instance_id{};
   std::optional<double> base_stitch_station_m;
+  // How the stitch onto the base route ended: the exact prefix first, the
+  // tangent-continuous connector when the successor leaves on another
+  // heading.
+  FrozenRoutePrefixStatus3D stitch_prefix_status{
+      FrozenRoutePrefixStatus3D::kNotAttempted};
+  FrozenRoutePrefixStatus3D stitch_connector_status{
+      FrozenRoutePrefixStatus3D::kNotAttempted};
   // A valid ID requires certified overlap with this exact route at activation;
   // an empty ID permits a dynamically validated atomic route handoff.
   RouteInstanceId3D required_splice_base_route_instance_id{};

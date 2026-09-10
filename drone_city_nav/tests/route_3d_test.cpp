@@ -188,9 +188,11 @@ TEST(Route3DTest, MaterializesDiscontinuousFutureStitchAsStopTurnHandoff) {
   const std::vector<RouteSample3D> successor =
       sampleRoute3D(std::vector<Point3>{{8.0, 0.0, 5.0}, {8.0, 8.0, 5.0}}, 1.0, 4.0);
 
-  EXPECT_FALSE(materializeFrozenRoutePrefixAtStation3D(active, successor,
-                                                       Point3{4.0, 0.0, 5.0}, 8.0)
+  FrozenRoutePrefixStatus3D status{FrozenRoutePrefixStatus3D::kNotAttempted};
+  EXPECT_FALSE(materializeFrozenRoutePrefixAtStation3D(
+                   active, successor, Point3{4.0, 0.0, 5.0}, 8.0, &status)
                    .has_value());
+  EXPECT_EQ(status, FrozenRoutePrefixStatus3D::kTangentDiscontinuous);
   const std::optional<FrozenRoutePrefix3D> handoff =
       materializeRouteHandoffAtStation3D(active, successor, Point3{4.0, 0.0, 5.0}, 8.0);
 
@@ -281,10 +283,12 @@ TEST(Route3DTest, RefusesFutureStitchWhoseSuccessorTurnsInPlaceAtTheJoin) {
       std::vector<Point3>{{8.0, 0.0, 5.0}, {8.0, 2.5, 5.0}, {16.0, 2.5, 5.0}}, 1.0,
       4.0);
 
-  EXPECT_FALSE(
-      materializeTangentContinuousRoutePrefixAtStation3D(
-          active, successor, Point3{4.0, 0.0, 5.0}, 8.0, FutureRouteConnectorConfig3D{})
-          .has_value());
+  FrozenRoutePrefixStatus3D status{FrozenRoutePrefixStatus3D::kNotAttempted};
+  EXPECT_FALSE(materializeTangentContinuousRoutePrefixAtStation3D(
+                   active, successor, Point3{4.0, 0.0, 5.0}, 8.0,
+                   FutureRouteConnectorConfig3D{}, &status)
+                   .has_value());
+  EXPECT_EQ(status, FrozenRoutePrefixStatus3D::kConnectorStopTurn);
 }
 
 TEST(Route3DTest, RejectsSpatialGapForFutureStitchHandoff) {

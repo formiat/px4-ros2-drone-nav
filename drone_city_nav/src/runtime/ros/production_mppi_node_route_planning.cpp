@@ -369,6 +369,7 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
       "reserve_required_m=%.3f reserve_shortfall_m=%.3f "
       "route_reaches_mission_goal=%s route_generation=%" PRIu64
       " base_route_instance_id=%" PRIu64 " stitch_station_m=%.3f "
+      "stitch_prefix=%s stitch_connector=%s "
       "points=%zu samples=%zu expansions=%zu time_expansions=%zu "
       "changed_occupied=%zu affected_states=%zu repair_processed=%zu "
       "repair_pending=%zu feasibility_attempted=%s feasibility_found=%s "
@@ -426,6 +427,8 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
       materialized.candidate_generation,
       materialized.provenance.base_route_instance_id.value,
       materialized.provenance.base_stitch_station_m.value_or(-1.0),
+      frozenRoutePrefixStatus3DName(materialized.provenance.stitch_prefix_status),
+      frozenRoutePrefixStatus3DName(materialized.provenance.stitch_connector_status),
       materialized.provenance.candidate_points,
       materialized.route ? materialized.route->size() : 0U, plan.expansions,
       plan.execution_time_search_expansions, plan.changed_occupied_voxels,

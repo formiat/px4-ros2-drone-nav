@@ -348,6 +348,27 @@ struct FutureRouteConnectorConfig3D {
 [[nodiscard]] bool
 futureRouteConnectorConfig3DValid(const FutureRouteConnectorConfig3D& config) noexcept;
 
+// Why a future stitch could or could not be materialized: the check that
+// refused it, so a replacement that cannot be stitched onto its incumbent
+// names the reason instead of a bare rejection.
+enum class FrozenRoutePrefixStatus3D : std::uint8_t {
+  kNotAttempted,
+  kMaterialized,
+  kInvalidInput,
+  kProjectionInvalid,
+  kStitchNotAhead,
+  kStitchBeyondRoute,
+  kStitchSeparation,
+  kTangentDiscontinuous,
+  kSuccessorTooShort,
+  kKinematicsInvalid,
+  kConnectorStopTurn,
+  kSuccessorContractBeforeJoin,
+};
+
+[[nodiscard]] const char*
+frozenRoutePrefixStatus3DName(FrozenRoutePrefixStatus3D status) noexcept;
+
 [[nodiscard]] std::optional<FrozenRoutePrefix3D>
 materializeFrozenRoutePrefix3D(std::span<const RouteSample3D> active_route,
                                std::span<const RouteSample3D> successor_route,
@@ -358,10 +379,11 @@ materializeFrozenRoutePrefix3D(std::span<const RouteSample3D> active_route,
 // route.  The station is part of the search provenance and must not be derived
 // again from a newer vehicle pose during candidate materialization.
 [[nodiscard]] std::optional<FrozenRoutePrefix3D>
-materializeFrozenRoutePrefixAtStation3D(std::span<const RouteSample3D> active_route,
-                                        std::span<const RouteSample3D> successor_route,
-                                        const Point3& current_position,
-                                        double active_stitch_station_m) noexcept;
+materializeFrozenRoutePrefixAtStation3D(
+    std::span<const RouteSample3D> active_route,
+    std::span<const RouteSample3D> successor_route, const Point3& current_position,
+    double active_stitch_station_m,
+    FrozenRoutePrefixStatus3D* status = nullptr) noexcept;
 
 // Materializes the exact active prefix and a tangent-continuous connector to a
 // point on the successor route. The successor stitch station identifies the
@@ -371,8 +393,8 @@ materializeFrozenRoutePrefixAtStation3D(std::span<const RouteSample3D> active_ro
 materializeTangentContinuousRoutePrefixAtStation3D(
     std::span<const RouteSample3D> active_route,
     std::span<const RouteSample3D> successor_route, const Point3& current_position,
-    double active_stitch_station_m,
-    const FutureRouteConnectorConfig3D& config) noexcept;
+    double active_stitch_station_m, const FutureRouteConnectorConfig3D& config,
+    FrozenRoutePrefixStatus3D* status = nullptr) noexcept;
 
 // Materializes the same future-stitch geometry for an atomic route handoff.
 // Unlike a certified splice, a handoff may contain a tangent discontinuity at

@@ -234,7 +234,17 @@ For no-static 3D runs, `PRODUCTION_MPPI_ROUTE3D` also reports
 the same persistent-planner result together with certified-route reserve,
 publication, activation, raw-connector, and raw-suffix evidence. Acceptance
 uses these fields together with measured `state_position` samples; it does not
-depend on a planner-defined passage event.
+depend on a planner-defined passage event. A candidate searched from a stitch
+on its incumbent (`stitch_station_m` above zero) reports how the stitch ended:
+`stitch_prefix` for the exact prefix (`materialized`, or
+`tangent_discontinuous` when the successor leaves on another heading) and
+`stitch_connector` for the tangent-continuous curve tried after it
+(`materialized`, `connector_stop_turn` when the curve cannot be flown without a
+stop, `successor_contract_before_join` when a passage contract begins before
+the join, `stitch_separation`, `successor_too_short`, `stitch_not_ahead`,
+`stitch_beyond_route`, `kinematics_invalid`); `not_attempted` means the step
+was not reached. A stitched replacement refused with
+`validation=invalid_passage_span` names the failing step here.
 
 `COMPILED_TRAJECTORY valid=false reason=invalid_tracking_error_tube_*` names the
 rule the tracking-error tube refused a route on: `_route` for the route

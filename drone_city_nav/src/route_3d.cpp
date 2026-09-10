@@ -161,19 +161,41 @@ nearestEnvelopeSample(const ConstrainedRouteSpan& span, const double station_m) 
                                                                         : *upper;
 }
 
+void reportPrefixStatus(FrozenRoutePrefixStatus3D* const status,
+                        const FrozenRoutePrefixStatus3D value) noexcept {
+  if (status != nullptr) {
+    *status = value;
+  }
+}
+
 [[nodiscard]] std::optional<FrozenRoutePrefix3D> materializeFrozenRoutePrefixAtStations(
     const std::span<const RouteSample3D> active_route,
     const std::span<const RouteSample3D> successor_route,
     const RouteProjection3D& active_projection, const double active_stitch_station_m,
     const double successor_begin_station_m, const double successor_stitch_station_m,
-    const FutureStitchJoinPolicy join_policy) noexcept {
-  if (!active_projection.valid || !std::isfinite(active_stitch_station_m) ||
+    const FutureStitchJoinPolicy join_policy,
+    FrozenRoutePrefixStatus3D* const status = nullptr) noexcept {
+  if (!active_projection.valid) {
+    reportPrefixStatus(status, FrozenRoutePrefixStatus3D::kProjectionInvalid);
+    return std::nullopt;
+  }
+  if (!std::isfinite(active_stitch_station_m) ||
       !std::isfinite(successor_begin_station_m) ||
       !std::isfinite(successor_stitch_station_m) ||
-      !(active_stitch_station_m > active_projection.station_m) ||
-      active_stitch_station_m > active_route.back().station_m ||
-      successor_stitch_station_m < successor_begin_station_m ||
-      successor_stitch_station_m > successor_route.back().station_m) {
+      successor_stitch_station_m < successor_begin_station_m) {
+    reportPrefixStatus(status, FrozenRoutePrefixStatus3D::kInvalidInput);
+    return std::nullopt;
+  }
+  if (!(active_stitch_station_m > active_projection.station_m)) {
+    reportPrefixStatus(status, FrozenRoutePrefixStatus3D::kStitchNotAhead);
+    return std::nullopt;
+  }
+  if (active_stitch_station_m > active_route.back().station_m) {
+    reportPrefixStatus(status, FrozenRoutePrefixStatus3D::kStitchBeyondRoute);
+    return std::nullopt;
+  }
+  if (successor_stitch_station_m > successor_route.back().station_m) {
+    reportPrefixStatus(status, FrozenRoutePrefixStatus3D::kSuccessorTooShort);
     return std::nullopt;
   }
   const RouteSample3D active_stitch =
@@ -194,9 +216,13 @@ nearestEnvelopeSample(const ConstrainedRouteSpan& span, const double station_m) 
                 (active_norm * successor_norm)
           : -1.0;
   if (distance3D(active_stitch.position, successor_stitch.position) >
-          kFrozenPrefixMaximumStitchSeparationM ||
-      (join_policy == FutureStitchJoinPolicy::kRequireContinuousTangent &&
-       tangent_alignment < kFrozenPrefixMinimumTangentAlignment)) {
+      kFrozenPrefixMaximumStitchSeparationM) {
+    reportPrefixStatus(status, FrozenRoutePrefixStatus3D::kStitchSeparation);
+    return std::nullopt;
+  }
+  if (join_policy == FutureStitchJoinPolicy::kRequireContinuousTangent &&
+      tangent_alignment < kFrozenPrefixMinimumTangentAlignment) {
+    reportPrefixStatus(status, FrozenRoutePrefixStatus3D::kTangentDiscontinuous);
     return std::nullopt;
   }
 
@@ -233,8 +259,12 @@ nearestEnvelopeSample(const ConstrainedRouteSpan& span, const double station_m) 
       result.route.push_back(sample);
     }
   }
-  return result.valid() ? std::optional<FrozenRoutePrefix3D>{std::move(result)}
-                        : std::nullopt;
+  if (!result.valid()) {
+    reportPrefixStatus(status, FrozenRoutePrefixStatus3D::kKinematicsInvalid);
+    return std::nullopt;
+  }
+  reportPrefixStatus(status, FrozenRoutePrefixStatus3D::kMaterialized);
+  return result;
 }
 
 } // namespace
@@ -308,42 +338,63 @@ materializeFrozenRoutePrefix3D(const std::span<const RouteSample3D> active_route
 std::optional<FrozenRoutePrefix3D> materializeFrozenRoutePrefixAtStation3D(
     const std::span<const RouteSample3D> active_route,
     const std::span<const RouteSample3D> successor_route,
-    const Point3& current_position, const double active_stitch_station_m) noexcept {
+    const Point3& current_position, const double active_stitch_station_m,
+    FrozenRoutePrefixStatus3D* const status) noexcept {
   if (active_route.size() < 2U || successor_route.size() < 2U ||
       !std::isfinite(active_stitch_station_m)) {
+    reportPrefixStatus(status, FrozenRoutePrefixStatus3D::kInvalidInput);
     return std::nullopt;
   }
   const RouteProjection3D active_projection =
       projectOntoRoute3D(active_route, current_position);
-  if (!active_projection.valid ||
-      active_stitch_station_m > active_route.back().station_m) {
+  if (!active_projection.valid) {
+    reportPrefixStatus(status, FrozenRoutePrefixStatus3D::kProjectionInvalid);
+    return std::nullopt;
+  }
+  if (active_stitch_station_m > active_route.back().station_m) {
+    reportPrefixStatus(status, FrozenRoutePrefixStatus3D::kStitchBeyondRoute);
     return std::nullopt;
   }
   return materializeFrozenRoutePrefixAtStations(
       active_route, successor_route, active_projection, active_stitch_station_m,
       successor_route.front().station_m, successor_route.front().station_m,
-      FutureStitchJoinPolicy::kRequireContinuousTangent);
+      FutureStitchJoinPolicy::kRequireContinuousTangent, status);
 }
 
 std::optional<FrozenRoutePrefix3D> materializeTangentContinuousRoutePrefixAtStation3D(
     const std::span<const RouteSample3D> active_route,
     const std::span<const RouteSample3D> successor_route,
     const Point3& current_position, const double active_stitch_station_m,
-    const FutureRouteConnectorConfig3D& config) noexcept {
+    const FutureRouteConnectorConfig3D& config,
+    FrozenRoutePrefixStatus3D* const status) noexcept {
   if (active_route.size() < 2U || successor_route.size() < 2U ||
       !std::isfinite(active_stitch_station_m) ||
       !futureRouteConnectorConfig3DValid(config)) {
+    reportPrefixStatus(status, FrozenRoutePrefixStatus3D::kInvalidInput);
     return std::nullopt;
   }
   const RouteProjection3D active_projection =
       projectOntoRoute3D(active_route, current_position);
-  if (!active_projection.valid ||
-      !(active_stitch_station_m > active_projection.station_m) ||
-      active_stitch_station_m > active_route.back().station_m ||
-      distance3D(sampleAtStation(active_route, active_stitch_station_m).position,
+  if (!active_projection.valid) {
+    reportPrefixStatus(status, FrozenRoutePrefixStatus3D::kProjectionInvalid);
+    return std::nullopt;
+  }
+  if (!(active_stitch_station_m > active_projection.station_m)) {
+    reportPrefixStatus(status, FrozenRoutePrefixStatus3D::kStitchNotAhead);
+    return std::nullopt;
+  }
+  if (active_stitch_station_m > active_route.back().station_m) {
+    reportPrefixStatus(status, FrozenRoutePrefixStatus3D::kStitchBeyondRoute);
+    return std::nullopt;
+  }
+  if (distance3D(sampleAtStation(active_route, active_stitch_station_m).position,
                  successor_route.front().position) >
-          kFrozenPrefixMaximumStitchSeparationM ||
-      successor_route.back().station_m < config.successor_join_station_m) {
+      kFrozenPrefixMaximumStitchSeparationM) {
+    reportPrefixStatus(status, FrozenRoutePrefixStatus3D::kStitchSeparation);
+    return std::nullopt;
+  }
+  if (successor_route.back().station_m < config.successor_join_station_m) {
+    reportPrefixStatus(status, FrozenRoutePrefixStatus3D::kSuccessorTooShort);
     return std::nullopt;
   }
 
@@ -354,6 +405,7 @@ std::optional<FrozenRoutePrefix3D> materializeTangentContinuousRoutePrefixAtStat
   const Vec3 active_tangent = normalized(active_stitch.tangent);
   const Vec3 successor_tangent = normalized(successor_join.tangent);
   if (!(vectorNorm(active_tangent) > 0.0) || !(vectorNorm(successor_tangent) > 0.0)) {
+    reportPrefixStatus(status, FrozenRoutePrefixStatus3D::kKinematicsInvalid);
     return std::nullopt;
   }
 
@@ -433,6 +485,7 @@ std::optional<FrozenRoutePrefix3D> materializeTangentContinuousRoutePrefixAtStat
   }
   if (!result.valid() || !canonicalizeRouteKinematics3D(
                              result.route, config.minimum_continuous_turn_alignment)) {
+    reportPrefixStatus(status, FrozenRoutePrefixStatus3D::kKinematicsInvalid);
     return std::nullopt;
   }
   const std::size_t connector_last_index =
@@ -440,10 +493,43 @@ std::optional<FrozenRoutePrefix3D> materializeTangentContinuousRoutePrefixAtStat
   for (std::size_t index = connector_begin_index; index <= connector_last_index;
        ++index) {
     if (result.route[index].transition == RouteKinematicTransition3D::kStopAndTurn) {
+      reportPrefixStatus(status, FrozenRoutePrefixStatus3D::kConnectorStopTurn);
       return std::nullopt;
     }
   }
+  reportPrefixStatus(status, FrozenRoutePrefixStatus3D::kMaterialized);
   return result;
+}
+
+const char*
+frozenRoutePrefixStatus3DName(const FrozenRoutePrefixStatus3D status) noexcept {
+  switch (status) {
+    case FrozenRoutePrefixStatus3D::kNotAttempted:
+      return "not_attempted";
+    case FrozenRoutePrefixStatus3D::kMaterialized:
+      return "materialized";
+    case FrozenRoutePrefixStatus3D::kInvalidInput:
+      return "invalid_input";
+    case FrozenRoutePrefixStatus3D::kProjectionInvalid:
+      return "projection_invalid";
+    case FrozenRoutePrefixStatus3D::kStitchNotAhead:
+      return "stitch_not_ahead";
+    case FrozenRoutePrefixStatus3D::kStitchBeyondRoute:
+      return "stitch_beyond_route";
+    case FrozenRoutePrefixStatus3D::kStitchSeparation:
+      return "stitch_separation";
+    case FrozenRoutePrefixStatus3D::kTangentDiscontinuous:
+      return "tangent_discontinuous";
+    case FrozenRoutePrefixStatus3D::kSuccessorTooShort:
+      return "successor_too_short";
+    case FrozenRoutePrefixStatus3D::kKinematicsInvalid:
+      return "kinematics_invalid";
+    case FrozenRoutePrefixStatus3D::kConnectorStopTurn:
+      return "connector_stop_turn";
+    case FrozenRoutePrefixStatus3D::kSuccessorContractBeforeJoin:
+      return "successor_contract_before_join";
+  }
+  return "unknown";
 }
 
 std::optional<FrozenRoutePrefix3D>

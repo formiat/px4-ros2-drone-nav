@@ -192,12 +192,13 @@ RouteMaterializer3D::materialize(RouteMaterializationRequest3D request) const {
     }
     frozen_prefix = materializeFrozenRoutePrefixAtStation3D(
         *active_route->geometry->route, candidate.route, current_position,
-        *candidate.search_base_stitch_station_m);
+        *candidate.search_base_stitch_station_m, &provenance.stitch_prefix_status);
     if (!frozen_prefix.has_value()) {
       std::optional<FrozenRoutePrefix3D> connected_prefix =
           materializeTangentContinuousRoutePrefixAtStation3D(
               *active_route->geometry->route, candidate.route, current_position,
-              *candidate.search_base_stitch_station_m, config_.future_route_connector);
+              *candidate.search_base_stitch_station_m, config_.future_route_connector,
+              &provenance.stitch_connector_status);
       if (connected_prefix.has_value()) {
         const double successor_join_station_m =
             connected_prefix.value().successor_stitch_station_m;
@@ -208,6 +209,9 @@ RouteMaterializer3D::materialize(RouteMaterializationRequest3D request) const {
             });
         if (!connector_replaces_constrained_geometry) {
           frozen_prefix = std::move(connected_prefix);
+        } else {
+          provenance.stitch_connector_status =
+              FrozenRoutePrefixStatus3D::kSuccessorContractBeforeJoin;
         }
       }
     }
