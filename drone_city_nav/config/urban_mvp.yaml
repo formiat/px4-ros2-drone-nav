@@ -626,7 +626,19 @@ production_mppi_node:
     static_route_corner_curve_samples: 4
     static_route_replan_remaining_m: 45.0
     no_static_route_replan_remaining_m: 15.0
-    route_required_certified_overlap_m: 8.0
+        # Certified route a successor must share with the incumbent it replaces.
+    # It is charged twice when a blocked route is stitched: the stitch must lie
+    # one overlap ahead of the vehicle and one overlap short of the block, so
+    # at eight metres only a block seen more than sixteen and a half metres
+    # ahead can be stitched at all. Measured over four urban flights, blocked
+    # cells are found four point nine metres ahead at the median and ten point
+    # eight at the ninetieth percentile, at two point seven metres a second:
+    # the stitch therefore never applied, every blocked route was replaced by a
+    # search from the vehicle, and the vehicle stopped for it. Three metres is
+    # more than a second of flight at those speeds, an order above the planning
+    # latency the splice has to cover, and it brings the upper half of that
+    # distribution back within reach of a stitch.
+    route_required_certified_overlap_m: 3.0
     route_extension_latency_margin_s: 0.5
     route_extension_maximum_latency_s: 8.0
     route_extension_retry_progress_m: 15.0
