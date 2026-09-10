@@ -224,15 +224,19 @@ production_mppi_node:
     maximum_vertical_speed_mps: 5.0
     head_progress_horizon_s: 0.4
     head_progress_weight: 8.0
-    # Squared horizontal distance from the route, per second. At the compiled
-    # default the tracking error sits at half a metre at the median whatever
-    # the speed; at 40, the altitude value, it fell to 0.3 m, but the flights
-    # were no better for it: the vehicle then followed a partial route to its
-    # dead end and stood there half a minute, and carried the route's speed
-    # into a surface the route skimmed. The stops the tracking error was
-    # blamed for come from evidence appearing inside the stopping distance,
-    # which no tracking weight answers.
-    guide_deviation_weight: 1.0
+    # Squared horizontal distance from the route, per second. The route is
+    # the geometry certified raw-safe for the body envelope, and its speed
+    # profile, the reference speed and the obstacle approach charge all read
+    # one tube law: the tracking error the controller accumulates within its
+    # response time fits inside the clearance. Nothing else in the controller
+    # makes that law true. At the compiled default of 1 the horizontal error
+    # sat at half a metre at the median whatever the speed, and the horizon
+    # was rejected on raw evidence beside routes that were clear; at 40, the
+    # altitude value, it fell to 0.3 m. The flight that first carried 40 dived
+    # into a mapped platform, but for the contact the rollout cost did not
+    # price and the resident path that was carried to its last clear metre,
+    # both answered since; the weight is the vertical one again.
+    guide_deviation_weight: 40.0
     # Squared altitude error against the route's reference height, per
     # second. Vertical motion is free everywhere else in the controller: no
     # progress term rewards it and speed tracking follows the route tangent,

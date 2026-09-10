@@ -397,10 +397,28 @@ void ProductionMppiNode::logPhysicalRejectionCells(
       }
     }
   }
+  // What the clearance field the speed policy reads says about the point the
+  // raw validators rejected, and how old that field is: the two answer for the
+  // same evidence, and a stop is explained by whichever of them was wrong.
+  double esdf_clearance_m = std::numeric_limits<double>::quiet_NaN();
+  double esdf_evidence_age_s = std::numeric_limits<double>::quiet_NaN();
+  if (const WorldSnapshot3D* const world = cycle.controller.world;
+      world != nullptr && world->distances_m != nullptr) {
+    const DerivedFootprintClearance3D clearance =
+        querySweptFootprintClearance3D(world->grid, *world->distances_m, failure,
+                                       failure, config_.world.physical_footprint);
+    if (clearance.evidence.known_clearance_observed) {
+      esdf_clearance_m = clearance.evidence.minimum_known_clearance_m;
+    }
+    esdf_evidence_age_s =
+        static_cast<double>(cycle.controller.now_ns - world->source_stamp_ns) * 1.0e-9;
+  }
   RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
                        "TRAJECTORY_COLLISION_CELLS failure=(%.2f,%.2f,%.2f) "
-                       "occupied_nearby=%zu cells=%s",
-                       failure.x, failure.y, failure.z, cell_count, cells.c_str());
+                       "occupied_nearby=%zu esdf_clearance_m=%.2f "
+                       "esdf_evidence_age_s=%.2f cells=%s",
+                       failure.x, failure.y, failure.z, cell_count, esdf_clearance_m,
+                       esdf_evidence_age_s, cells.c_str());
 }
 
 void ProductionMppiNode::releaseRouteRejectedByCertificationWhileStationary(
