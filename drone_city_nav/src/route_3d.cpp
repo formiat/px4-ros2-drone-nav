@@ -361,11 +361,14 @@ std::optional<FrozenRoutePrefix3D> materializeFrozenRoutePrefixAtStation3D(
       FutureStitchJoinPolicy::kRequireContinuousTangent, status);
 }
 
-std::optional<FrozenRoutePrefix3D> materializeTangentContinuousRoutePrefixAtStation3D(
+namespace {
+
+// One attempt at the connector, joining the successor at the given station.
+[[nodiscard]] std::optional<FrozenRoutePrefix3D> materializeTangentContinuousPrefix(
     const std::span<const RouteSample3D> active_route,
     const std::span<const RouteSample3D> successor_route,
     const Point3& current_position, const double active_stitch_station_m,
-    const FutureRouteConnectorConfig3D& config,
+    const FutureRouteConnectorConfig3D& config, const double join_station_m,
     FrozenRoutePrefixStatus3D* const status) noexcept {
   if (active_route.size() < 2U || successor_route.size() < 2U ||
       !std::isfinite(active_stitch_station_m) ||
@@ -393,15 +396,14 @@ std::optional<FrozenRoutePrefix3D> materializeTangentContinuousRoutePrefixAtStat
     reportPrefixStatus(status, FrozenRoutePrefixStatus3D::kStitchSeparation);
     return std::nullopt;
   }
-  if (successor_route.back().station_m < config.successor_join_station_m) {
+  if (successor_route.back().station_m < join_station_m) {
     reportPrefixStatus(status, FrozenRoutePrefixStatus3D::kSuccessorTooShort);
     return std::nullopt;
   }
 
   const RouteSample3D active_stitch =
       sampleAtStation(active_route, active_stitch_station_m);
-  const RouteSample3D successor_join =
-      sampleAtStation(successor_route, config.successor_join_station_m);
+  const RouteSample3D successor_join = sampleAtStation(successor_route, join_station_m);
   const Vec3 active_tangent = normalized(active_stitch.tangent);
   const Vec3 successor_tangent = normalized(successor_join.tangent);
   if (!(vectorNorm(active_tangent) > 0.0) || !(vectorNorm(successor_tangent) > 0.0)) {
@@ -414,7 +416,7 @@ std::optional<FrozenRoutePrefix3D> materializeTangentContinuousRoutePrefixAtStat
       .active_begin_station_m = active_projection.station_m,
       .stitch_station_m = active_stitch_station_m,
       .successor_begin_station_m = successor_route.front().station_m,
-      .successor_stitch_station_m = config.successor_join_station_m,
+      .successor_stitch_station_m = join_station_m,
   };
   const auto append = [&result](RouteSample3D sample) noexcept {
     if (!result.route.empty()) {
@@ -479,7 +481,7 @@ std::optional<FrozenRoutePrefix3D> materializeTangentContinuousRoutePrefixAtStat
   }
   const std::size_t connector_end_index = result.route.size();
   for (const RouteSample3D& source : successor_route) {
-    if (source.station_m > config.successor_join_station_m + 1.0e-6) {
+    if (source.station_m > join_station_m + 1.0e-6) {
       append(source);
     }
   }
@@ -500,6 +502,8 @@ std::optional<FrozenRoutePrefix3D> materializeTangentContinuousRoutePrefixAtStat
   reportPrefixStatus(status, FrozenRoutePrefixStatus3D::kMaterialized);
   return result;
 }
+
+} // namespace
 
 const char*
 frozenRoutePrefixStatus3DName(const FrozenRoutePrefixStatus3D status) noexcept {
@@ -530,6 +534,47 @@ frozenRoutePrefixStatus3DName(const FrozenRoutePrefixStatus3D status) noexcept {
       return "successor_contract_before_join";
   }
   return "unknown";
+}
+
+std::optional<FrozenRoutePrefix3D> materializeTangentContinuousRoutePrefixAtStation3D(
+    const std::span<const RouteSample3D> active_route,
+    const std::span<const RouteSample3D> successor_route,
+    const Point3& current_position, const double active_stitch_station_m,
+    const FutureRouteConnectorConfig3D& config,
+    FrozenRoutePrefixStatus3D* const status) noexcept {
+  // Where the connector meets the successor is a choice, not a constant. The
+  // successor leaves the stitch on whatever heading its first lattice edge
+  // takes, and a curve onto a heading two metres in that turns away again
+  // cannot be flown without a stop; joining further along meets the successor
+  // where it has settled onto its direction. Measured over one urban flight,
+  // twelve of twenty refused stitched replacements were refused for exactly
+  // that, each one retiring the search and searching the same stitch again
+  // while the vehicle flew on toward the block. The configured station is
+  // tried first, so an ordinary stitch keeps the shortest connector it has
+  // always had.
+  constexpr std::size_t kJoinStationAttempts{3U};
+  FrozenRoutePrefixStatus3D attempt_status{FrozenRoutePrefixStatus3D::kNotAttempted};
+  for (std::size_t attempt = 1U; attempt <= kJoinStationAttempts; ++attempt) {
+    const double join_station_m =
+        config.successor_join_station_m * static_cast<double>(attempt);
+    if (successor_route.empty() || join_station_m > successor_route.back().station_m) {
+      break;
+    }
+    if (std::optional<FrozenRoutePrefix3D> prefix = materializeTangentContinuousPrefix(
+            active_route, successor_route, current_position, active_stitch_station_m,
+            config, join_station_m, &attempt_status)) {
+      reportPrefixStatus(status, attempt_status);
+      return prefix;
+    }
+    // Only a connector the successor's own geometry refuses is worth another
+    // join station; everything else is the stitch itself and will not change.
+    if (attempt_status != FrozenRoutePrefixStatus3D::kConnectorStopTurn &&
+        attempt_status != FrozenRoutePrefixStatus3D::kKinematicsInvalid) {
+      break;
+    }
+  }
+  reportPrefixStatus(status, attempt_status);
+  return std::nullopt;
 }
 
 std::optional<FrozenRoutePrefix3D>

@@ -279,9 +279,16 @@ is searched from the stitch one overlap ahead of the vehicle, with the
 incumbent's own velocity there, the certified prefix is frozen and the
 executor splices onto it, exactly as an extension does. A successor that
 leaves the stitch on another tangent is joined by a short curve onto its
-own geometry two metres in; the curve has to be flown without a stop, and
+own geometry; the curve has to be flown without a stop, and
 only the curve: a corner farther along the successor is flown as the
-stop-and-turn any route corner is. Read as a ban on stop-and-turns anywhere
+stop-and-turn any route corner is. Where the connector meets the successor
+is itself a choice. The successor leaves the stitch on whatever heading its
+first lattice edge takes, and a curve onto a heading two metres in that
+turns away again cannot be flown without a stop, so the join walks along the
+successor -- two metres, four, six -- until it meets it where it has settled
+onto its direction. The configured station is tried first, so an ordinary
+stitch keeps the shortest connector it has always had, and only a refusal
+the successor's own geometry caused is worth another station. Read as a ban on stop-and-turns anywhere
 in the stitched route, the rule refused four stitched replacements in five
 over four urban flights, each refusal retiring the search and searching the
 same stitch again while the vehicle flew on toward the block. A block inside that

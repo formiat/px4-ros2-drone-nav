@@ -274,14 +274,46 @@ TEST(Route3DTest, ConnectsFutureStitchToASuccessorThatTurnsInPlaceFartherOn) {
   }
 }
 
-TEST(Route3DTest, RefusesFutureStitchWhoseSuccessorTurnsInPlaceAtTheJoin) {
-  // A corner right after the join lies inside the connector: the curve would
-  // arrive on a tangent the successor leaves at once, so the stitch is refused.
+TEST(Route3DTest, JoinsTheSuccessorFurtherAlongWhenTheFirstJoinNeedsAStop) {
+  // The successor leaves the stitch heading north and turns east two and a
+  // half metres in: a curve onto the northbound heading two metres along
+  // cannot be flown without a stop, and the connector joins where the
+  // successor has settled onto its direction instead of refusing the stitch.
   const std::vector<RouteSample3D> active =
       sampleRoute3D(std::vector<Point3>{{0.0, 0.0, 5.0}, {20.0, 0.0, 5.0}}, 1.0, 4.0);
   const std::vector<RouteSample3D> successor = sampleRoute3D(
       std::vector<Point3>{{8.0, 0.0, 5.0}, {8.0, 2.5, 5.0}, {16.0, 2.5, 5.0}}, 1.0,
       4.0);
+
+  FrozenRoutePrefixStatus3D status{FrozenRoutePrefixStatus3D::kNotAttempted};
+  const std::optional<FrozenRoutePrefix3D> connected =
+      materializeTangentContinuousRoutePrefixAtStation3D(
+          active, successor, Point3{4.0, 0.0, 5.0}, 8.0, FutureRouteConnectorConfig3D{},
+          &status);
+
+  ASSERT_TRUE(connected.has_value());
+  if (!connected.has_value()) {
+    return;
+  }
+  EXPECT_EQ(status, FrozenRoutePrefixStatus3D::kMaterialized);
+  EXPECT_GT(connected.value().successor_stitch_station_m,
+            FutureRouteConnectorConfig3D{}.successor_join_station_m + 1.0e-6);
+  std::vector<RouteSample3D> canonical = connected.value().route;
+  std::size_t stop_turn_count{0U};
+  ASSERT_TRUE(
+      canonicalizeRouteKinematics3D(canonical, 0.7071067811865476, &stop_turn_count));
+  EXPECT_EQ(stop_turn_count, 0U);
+}
+
+TEST(Route3DTest, RefusesFutureStitchWhoseSuccessorTurnsInPlaceAtTheJoin) {
+  // A corner right after the join lies inside the connector: the curve would
+  // arrive on a tangent the successor leaves at once. The successor ends
+  // before any later join station, so there is nowhere else to meet it and
+  // the stitch is refused.
+  const std::vector<RouteSample3D> active =
+      sampleRoute3D(std::vector<Point3>{{0.0, 0.0, 5.0}, {20.0, 0.0, 5.0}}, 1.0, 4.0);
+  const std::vector<RouteSample3D> successor = sampleRoute3D(
+      std::vector<Point3>{{8.0, 0.0, 5.0}, {8.0, 2.2, 5.0}, {9.5, 2.2, 5.0}}, 1.0, 4.0);
 
   FrozenRoutePrefixStatus3D status{FrozenRoutePrefixStatus3D::kNotAttempted};
   EXPECT_FALSE(materializeTangentContinuousRoutePrefixAtStation3D(
