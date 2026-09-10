@@ -28,6 +28,7 @@ elapsedMilliseconds(const std::chrono::steady_clock::time_point started) noexcep
 
 [[nodiscard]] RouteCandidateDisposition3D
 classifyCandidateDisposition(const PlannerSearchTransaction3D& transaction,
+                             const PlannerTelemetry3D& planned_on,
                              const RouteAdmissionReport3D& admission) noexcept {
   if (admission.certified_pending) {
     return RouteCandidateDisposition3D::kActivated;
@@ -39,8 +40,8 @@ classifyCandidateDisposition(const PlannerSearchTransaction3D& transaction,
   // that no longer existed for twenty and then ninety seconds without a
   // candidate, and never reached the goal. The replan opens a session on the
   // world that refused.
-  if (route_lifecycle_refusal_3d::searchInvalidatedByActivationWorld(transaction,
-                                                                     admission)) {
+  if (route_lifecycle_refusal_3d::searchInvalidatedByActivationWorld(
+          transaction, planned_on, admission)) {
     return RouteCandidateDisposition3D::kRetireSearchAndReplan;
   }
   // A superseded snapshot says only that the commit base moved between capture
@@ -316,8 +317,8 @@ RouteLifecycleCoordinator3D::advance(RoutePlanningUpdateEvent3D event) {
       RouteActivationCommitResult3D committed =
           config_.activation_commit_boundary(std::move(prepared), commit_operation);
       activation = std::move(committed.result);
-      result.candidate_disposition =
-          classifyCandidateDisposition(*transaction, activation.admission);
+      result.candidate_disposition = classifyCandidateDisposition(
+          *transaction, planner_update.planner_telemetry, activation.admission);
       if (result.candidate_disposition !=
           RouteCandidateDisposition3D::kRetrySameCandidate) {
         break;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/compiled_trajectory_3d.hpp"
+#include "drone_city_nav/persistent_dstar_lite_planner_3d.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -86,23 +87,42 @@ worldRefusedCandidate3D(const StaticRouteActivationStatus status) noexcept {
          status == StaticRouteActivationStatus::kCertifiedSpliceRejected;
 }
 
-// The search ran on a world the activation snapshot has since contradicted with
-// exact raw evidence. The candidate and the session that produced it are both
-// stale, so neither a retry nor a continuation can recover them.
+// The candidate was planned on a world the activation snapshot has since
+// contradicted with exact raw evidence: the candidate and the session that
+// produced it are both stale, and neither a retry nor a continuation can
+// recover them. The world compared is the one the planner reports having
+// planned on, not the world the transaction was opened on: a persistent
+// session keeps ingesting revisions while it runs, and read against the
+// transaction's world half the recorded refusals on the very revision the
+// activation validated on were taken for a newer world, each retiring a
+// session with nothing stale about it. A refusal on the same world is the
+// raw validators' verdict on the candidate, which the rejection sequence
+// answers without starting the search over. A planner that reports no world
+// falls back to the transaction's.
 [[nodiscard]] inline bool
 searchInvalidatedByActivationWorld(const PlannerSearchTransaction3D& transaction,
+                                   const PlannerTelemetry3D& planned_on,
                                    const RouteAdmissionReport3D& admission) noexcept {
-  return admission.activation_status ==
-             StaticRouteActivationStatus::kCandidateValidationRejected &&
-         admission.candidate_validation.status ==
-             StaticRouteCandidateStatus::kRawCollision &&
-         transaction.planner_world != nullptr &&
-         transaction.planner_world->revision != 0U &&
-         admission.snapshot_raw_revision != 0U &&
-         transaction.planner_world->revision != admission.snapshot_raw_revision &&
-         transaction.planner_world->occupied_fingerprint != 0U &&
-         admission.tracking_profile_activation_occupied_fingerprint != 0U &&
-         transaction.planner_world->occupied_fingerprint !=
+  if (admission.activation_status !=
+          StaticRouteActivationStatus::kCandidateValidationRejected ||
+      admission.candidate_validation.status !=
+          StaticRouteCandidateStatus::kRawCollision ||
+      admission.snapshot_raw_revision == 0U ||
+      admission.tracking_profile_activation_occupied_fingerprint == 0U) {
+    return false;
+  }
+  std::uint64_t planned_revision = planned_on.planned_on_revision;
+  std::uint64_t planned_fingerprint = planned_on.occupied_fingerprint;
+  if (planned_revision == 0U || planned_fingerprint == 0U) {
+    if (transaction.planner_world == nullptr) {
+      return false;
+    }
+    planned_revision = transaction.planner_world->revision;
+    planned_fingerprint = transaction.planner_world->occupied_fingerprint;
+  }
+  return planned_revision != 0U && planned_fingerprint != 0U &&
+         planned_revision != admission.snapshot_raw_revision &&
+         planned_fingerprint !=
              admission.tracking_profile_activation_occupied_fingerprint;
 }
 
