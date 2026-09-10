@@ -232,6 +232,96 @@ TEST(RouteLifecycleCoordinator3DTest,
 }
 
 TEST(RouteLifecycleCoordinator3DRetirementTest,
+     ANewerWorldRefusingBeyondTheCommittedRouteKeepsTheSearchRunning) {
+  // A raw revision newer than the search's world refused the candidate. Within
+  // the committed route that is a route the vehicle cannot enter and the
+  // session is retired; beyond it the refusal is a block ahead, which the
+  // persistent search repairs, so the session continues instead of starting
+  // over on every revision that arrives between search and activation.
+  ExecutionSupervisor3D supervisor;
+  const LifecycleFixture3D input = fixture();
+  ASSERT_NE(input.transaction, nullptr);
+  std::size_t initial_commit_count{0U};
+  {
+    RouteLifecycleCoordinator3D activation_coordinator{
+        supervisor, lifecycleConfig(input, supervisor, initial_commit_count)};
+    planAndActivateInitialRoute(activation_coordinator, supervisor, input);
+  }
+  ASSERT_NE(supervisor.plan(), nullptr);
+  const std::uint64_t generation = supervisor.plan()->routeGenerationHighWater();
+  const RoutePlannerVehicleState3D vehicle_state = vehicleState(input);
+  const auto advance = [&](const bool refused_beyond_the_committed_route) {
+    std::size_t commit_count{0U};
+    RouteLifecycleCoordinatorConfig3D config =
+        lifecycleConfig(input, supervisor, commit_count);
+    bindResidentReplanSnapshot(config, input, supervisor, 600);
+    config.extension.required_certified_overlap_m = 1.0;
+    const std::shared_ptr<const PlannerSearchTransaction3D> transaction =
+        makePlannerSearchTransaction3D(
+            input.world, input.planner_world, input.transaction->objective,
+            StaticRouteSearchRequestIdentity{
+                .kind = StaticRouteSearchRequestKind::kReplan,
+                .base_route_generation = generation,
+            },
+            std::optional<PlannerSearchContinuityBase3D>{},
+            RouteReleaseReason3D::kNoActiveRoute);
+    const std::uint64_t search_raw_revision = transaction->planner_world->revision;
+    const std::uint64_t search_occupied_fingerprint =
+        transaction->planner_world->occupied_fingerprint;
+    config.activation_commit_boundary =
+        [&commit_count, refused_beyond_the_committed_route, search_raw_revision,
+         search_occupied_fingerprint](PreparedRouteActivation3D prepared,
+                                      const RouteActivationCommitOperation3D&) {
+          ++commit_count;
+          ProductionRouteActivationResult3D activation = std::move(prepared.result);
+          const std::size_t sample_count = activation.materialized.route != nullptr
+                                               ? activation.materialized.route->size()
+                                               : 0U;
+          activation.materialized.departure_end_station_m = 0.0;
+          activation.admission.activation_status =
+              StaticRouteActivationStatus::kCandidateValidationRejected;
+          activation.admission.candidate_validation = StaticRouteCandidateValidation{
+              .status = StaticRouteCandidateStatus::kRawCollision,
+              .failure_segment_index =
+                  refused_beyond_the_committed_route ? sample_count - 1U : 1U,
+          };
+          // The activation world is one revision past the search's, with
+          // different occupied evidence.
+          activation.admission.snapshot_raw_revision = search_raw_revision + 1U;
+          activation.admission.tracking_profile_activation_occupied_fingerprint =
+              search_occupied_fingerprint + 1U;
+          activation.admission.certified_pending = false;
+          return RouteActivationCommitResult3D{.result = std::move(activation)};
+        };
+    RouteLifecycleCoordinator3D coordinator{supervisor, std::move(config)};
+    RoutePlanner3D planner{plannerConfig()};
+    RoutePlannerUpdate3D planner_update = planner.update(*transaction, vehicle_state);
+    planner_update.planner_invoked = true;
+    planner_update.planner_progress = SearchProgress3D::kRunning;
+    planner_update.dispatch.continue_search = true;
+    return coordinator.advance(RoutePlanningUpdateEvent3D{
+        .request =
+            RoutePlanningRequest3D{
+                .transaction = transaction,
+                .continuation_session = nullptr,
+            },
+        .vehicle_state = vehicle_state,
+        .update = std::move(planner_update),
+    });
+  };
+
+  const RouteLifecycleUpdate3D within = advance(false);
+  EXPECT_EQ(within.candidate_disposition,
+            RouteCandidateDisposition3D::kRetireSearchAndReplan);
+  EXPECT_TRUE(within.search_superseded_by_activation);
+
+  const RouteLifecycleUpdate3D beyond = advance(true);
+  EXPECT_EQ(beyond.candidate_disposition,
+            RouteCandidateDisposition3D::kContinueForImprovement);
+  EXPECT_FALSE(beyond.search_superseded_by_activation);
+}
+
+TEST(RouteLifecycleCoordinator3DRetirementTest,
      ARefusalBeyondTheCommittedRouteKeepsTheIncumbent) {
   // The activation refused the candidate over its compiled geometry. Where the
   // refusal lies inside what the vehicle is committed to, the route is one it

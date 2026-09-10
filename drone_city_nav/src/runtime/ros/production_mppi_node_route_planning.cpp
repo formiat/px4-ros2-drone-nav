@@ -348,6 +348,15 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
       planner_update.planner_invoked
           ? searchProgress3DName(planner_update.planner_progress)
           : "not_invoked";
+  // Where along the candidate the raw world refused it, against the departure
+  // the vehicle is committed to: a refusal beyond it is a block ahead the
+  // search repairs, one within it a route the vehicle cannot enter.
+  const double refusal_station_m =
+      validation.status == StaticRouteCandidateStatus::kRawCollision &&
+              materialized.route != nullptr &&
+              validation.failure_segment_index < materialized.route->size()
+          ? (*materialized.route)[validation.failure_segment_index].station_m
+          : -1.0;
   RCLCPP_INFO(
       get_logger(),
       "PRODUCTION_MPPI_ROUTE3D planner=persistent_dstar_lite "
@@ -378,7 +387,8 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
       "clearance_centering=%zu/%zu departure_waypoint=%s departure_hull=%s "
       "edge_queries=%zu raw_edge_checks=%zu adaptive_edge_queries=%zu "
       "adaptive_path_edges=%zu maximum_adaptive_level=%zu "
-      "path_length_m=%.3f time_objective_s=%.3f eta_s=%.3f "
+      "path_length_m=%.3f refusal_station_m=%.2f departure_end_station_m=%.2f "
+      "time_objective_s=%.3f eta_s=%.3f "
       "translation_s=%.3f turn_s=%.3f "
       "search_ms=%.3f route_planning_ms=%.3f validation_ms=%.3f "
       "smoothing_ms=%.3f raw_connector_validated=%s "
@@ -442,7 +452,8 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
       plan.departure_hull_fallback ? "true" : "false", plan.lattice_edge_queries,
       plan.raw_edge_validation_checks, plan.adaptive_edge_queries,
       plan.adaptive_edges_in_extracted_path, plan.maximum_queried_lattice_level,
-      telemetry.planner.path_length_m, plan.execution_time_search_objective_s,
+      telemetry.planner.path_length_m, refusal_station_m,
+      materialized.departure_end_station_m, plan.execution_time_search_objective_s,
       telemetry.planner.estimated_execution_time_s,
       telemetry.planner.estimated_translation_time_s,
       telemetry.planner.estimated_stationary_turn_time_s, planner_update.search_ms,
