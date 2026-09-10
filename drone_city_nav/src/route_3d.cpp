@@ -387,6 +387,12 @@ std::optional<FrozenRoutePrefix3D> materializeTangentContinuousRoutePrefixAtStat
     }
   }
   append(active_stitch);
+  // The connector runs from the stitch through the departure and the curve to
+  // the first successor sample past the join; only that stretch has to be
+  // flown without a stop. A corner farther along the successor is the
+  // successor's own, flown as a stop-and-turn like any route's corner, and
+  // refusing the stitch for it refused four stitched replacements in five.
+  const std::size_t connector_begin_index = result.route.size() - 1U;
 
   const double connector_speed_mps =
       std::min(active_stitch.reference_speed_mps, successor_join.reference_speed_mps);
@@ -419,17 +425,23 @@ std::optional<FrozenRoutePrefix3D> materializeTangentContinuousRoutePrefixAtStat
         .required_risk_tier = connector_risk_tier,
     });
   }
+  const std::size_t connector_end_index = result.route.size();
   for (const RouteSample3D& source : successor_route) {
     if (source.station_m > config.successor_join_station_m + 1.0e-6) {
       append(source);
     }
   }
-  std::size_t stop_turn_count{0U};
-  if (!result.valid() ||
-      !canonicalizeRouteKinematics3D(
-          result.route, config.minimum_continuous_turn_alignment, &stop_turn_count) ||
-      stop_turn_count != 0U) {
+  if (!result.valid() || !canonicalizeRouteKinematics3D(
+                             result.route, config.minimum_continuous_turn_alignment)) {
     return std::nullopt;
+  }
+  const std::size_t connector_last_index =
+      std::min(connector_end_index, result.route.size() - 1U);
+  for (std::size_t index = connector_begin_index; index <= connector_last_index;
+       ++index) {
+    if (result.route[index].transition == RouteKinematicTransition3D::kStopAndTurn) {
+      return std::nullopt;
+    }
   }
   return result;
 }

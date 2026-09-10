@@ -277,7 +277,14 @@ The replan carries the incumbent as the successor's continuity base
 block (`PlannerSearchContinuityBase3D::stitch_limit_station_m`): the successor
 is searched from the stitch one overlap ahead of the vehicle, with the
 incumbent's own velocity there, the certified prefix is frozen and the
-executor splices onto it, exactly as an extension does. A block inside that
+executor splices onto it, exactly as an extension does. A successor that
+leaves the stitch on another tangent is joined by a short curve onto its
+own geometry two metres in; the curve has to be flown without a stop, and
+only the curve: a corner farther along the successor is flown as the
+stop-and-turn any route corner is. Read as a ban on stop-and-turns anywhere
+in the stitched route, the rule refused four stitched replacements in five
+over four urban flights, each refusal retiring the search and searching the
+same stitch again while the vehicle flew on toward the block. A block inside that
 reach leaves nothing certified worth keeping and the replacement is searched
 from the vehicle as before (`stitch_fallback_to_vehicle`). Measured over
 three urban flights, more than half of the controller's candidate rejections

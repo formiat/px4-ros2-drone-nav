@@ -239,6 +239,54 @@ TEST(Route3DTest, ConnectsDiscontinuousFutureStitchWithoutStopTurn) {
   EXPECT_GT(stitch.tangent.x, 0.995);
 }
 
+TEST(Route3DTest, ConnectsFutureStitchToASuccessorThatTurnsInPlaceFartherOn) {
+  // The successor's own corner, well past the join, is flown as a
+  // stop-and-turn like any route corner; it is no reason to refuse the
+  // connector, which itself stays continuous.
+  const std::vector<RouteSample3D> active =
+      sampleRoute3D(std::vector<Point3>{{0.0, 0.0, 5.0}, {20.0, 0.0, 5.0}}, 1.0, 4.0);
+  const std::vector<RouteSample3D> successor = sampleRoute3D(
+      std::vector<Point3>{{8.0, 0.0, 5.0}, {8.0, 8.0, 5.0}, {16.0, 8.0, 5.0}}, 1.0,
+      4.0);
+
+  const std::optional<FrozenRoutePrefix3D> connected =
+      materializeTangentContinuousRoutePrefixAtStation3D(
+          active, successor, Point3{4.0, 0.0, 5.0}, 8.0,
+          FutureRouteConnectorConfig3D{});
+
+  ASSERT_TRUE(connected.has_value());
+  if (!connected.has_value()) {
+    return;
+  }
+  const std::vector<RouteSample3D>& route = connected.value().route;
+  const auto corner = std::ranges::find_if(route, [](const RouteSample3D& sample) {
+    return distance3D(sample.position, Point3{8.0, 8.0, 5.0}) < 1.0e-9;
+  });
+  ASSERT_NE(corner, route.end());
+  EXPECT_EQ(corner->transition, RouteKinematicTransition3D::kStopAndTurn);
+  for (const RouteSample3D& sample : route) {
+    if (sample.station_m < corner->station_m - 1.0e-9) {
+      EXPECT_EQ(sample.transition, RouteKinematicTransition3D::kContinuous)
+          << "station " << sample.station_m;
+    }
+  }
+}
+
+TEST(Route3DTest, RefusesFutureStitchWhoseSuccessorTurnsInPlaceAtTheJoin) {
+  // A corner right after the join lies inside the connector: the curve would
+  // arrive on a tangent the successor leaves at once, so the stitch is refused.
+  const std::vector<RouteSample3D> active =
+      sampleRoute3D(std::vector<Point3>{{0.0, 0.0, 5.0}, {20.0, 0.0, 5.0}}, 1.0, 4.0);
+  const std::vector<RouteSample3D> successor = sampleRoute3D(
+      std::vector<Point3>{{8.0, 0.0, 5.0}, {8.0, 2.5, 5.0}, {16.0, 2.5, 5.0}}, 1.0,
+      4.0);
+
+  EXPECT_FALSE(
+      materializeTangentContinuousRoutePrefixAtStation3D(
+          active, successor, Point3{4.0, 0.0, 5.0}, 8.0, FutureRouteConnectorConfig3D{})
+          .has_value());
+}
+
 TEST(Route3DTest, RejectsSpatialGapForFutureStitchHandoff) {
   const std::vector<RouteSample3D> active =
       sampleRoute3D(std::vector<Point3>{{0.0, 0.0, 5.0}, {20.0, 0.0, 5.0}}, 1.0, 4.0);
