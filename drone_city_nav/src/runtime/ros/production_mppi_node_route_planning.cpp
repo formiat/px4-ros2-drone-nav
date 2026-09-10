@@ -351,6 +351,10 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
   // Where along the candidate the raw world refused it, against the departure
   // the vehicle is committed to: a refusal beyond it is a block ahead the
   // search repairs, one within it a route the vehicle cannot enter.
+  const Point3 route_start =
+      materialized.route != nullptr && !materialized.route->empty()
+          ? materialized.route->front().position
+          : Point3{};
   const double refusal_station_m =
       validation.status == StaticRouteCandidateStatus::kRawCollision &&
               materialized.route != nullptr &&
@@ -388,7 +392,8 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
       "edge_queries=%zu raw_edge_checks=%zu adaptive_edge_queries=%zu "
       "adaptive_path_edges=%zu maximum_adaptive_level=%zu "
       "path_length_m=%.3f refusal_station_m=%.2f departure_end_station_m=%.2f "
-      "time_objective_s=%.3f eta_s=%.3f "
+      "refusal_point=(%.2f,%.2f,%.2f) refusal_first_validated_segment=%zu "
+      "route_start=(%.2f,%.2f,%.2f) time_objective_s=%.3f eta_s=%.3f "
       "translation_s=%.3f turn_s=%.3f "
       "search_ms=%.3f route_planning_ms=%.3f validation_ms=%.3f "
       "smoothing_ms=%.3f raw_connector_validated=%s "
@@ -453,7 +458,10 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
       plan.raw_edge_validation_checks, plan.adaptive_edge_queries,
       plan.adaptive_edges_in_extracted_path, plan.maximum_queried_lattice_level,
       telemetry.planner.path_length_m, refusal_station_m,
-      materialized.departure_end_station_m, plan.execution_time_search_objective_s,
+      materialized.departure_end_station_m, validation.failure_point.x,
+      validation.failure_point.y, validation.failure_point.z,
+      admission.assessment.raw_validation.first_validated_route_segment, route_start.x,
+      route_start.y, route_start.z, plan.execution_time_search_objective_s,
       telemetry.planner.estimated_execution_time_s,
       telemetry.planner.estimated_translation_time_s,
       telemetry.planner.estimated_stationary_turn_time_s, planner_update.search_ms,
