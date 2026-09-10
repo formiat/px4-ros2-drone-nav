@@ -13,6 +13,96 @@ from enum import Enum
 from pathlib import Path
 from typing import Iterable
 from urllib.parse import unquote, urlparse
+
+# The autopilot's own world magnetic model. The autopilot initialises and
+# corrects its heading with the declination this model gives for the vehicle's
+# coordinates, so the field the simulated world applies has to be the same
+# model's field at the same coordinates: Gazebo's stock vector for the same
+# location points eleven degrees further east than the model's, and the
+# estimated heading then wandered several degrees around the true one while
+# the filter reconciled the two, which scattered lidar hits half a metre off
+# the surfaces they came from at range.
+PX4_WORLD_MAGNETIC_MODEL_TABLES = (
+    Path(__file__).resolve().parent.parent
+    / "external"
+    / "PX4-Autopilot"
+    / "src"
+    / "lib"
+    / "world_magnetic_model"
+    / "geo_magnetic_tables.hpp"
+)
+_WORLD_MAGNETIC_MODEL_CACHE: dict[Path, dict[str, tuple[float, list[list[int]]]]] = {}
+
+
+def _load_world_magnetic_model(
+    tables: Path,
+) -> dict[str, tuple[float, list[list[int]]]] | None:
+    if tables in _WORLD_MAGNETIC_MODEL_CACHE:
+        return _WORLD_MAGNETIC_MODEL_CACHE[tables]
+    if not tables.is_file():
+        return None
+    text = tables.read_text(encoding="utf-8")
+    model: dict[str, tuple[float, list[list[int]]]] = {}
+    for quantity in ("declination", "inclination", "totalintensity"):
+        unit = re.search(rf"Magnetic {quantity} data in ([0-9.]+) ", text)
+        table = re.search(
+            rf"{quantity}_table\[19\]\[37\]\s*\{{(.*?)\}};", text, re.S
+        )
+        if unit is None or table is None:
+            return None
+        rows = [
+            [int(value) for value in re.findall(r"-?\d+", row)]
+            for row in re.findall(r"\{([^{}]*)\}", table.group(1))
+        ]
+        if len(rows) != 19 or any(len(row) != 37 for row in rows):
+            return None
+        model[quantity] = (float(unit.group(1)), rows)
+    _WORLD_MAGNETIC_MODEL_CACHE[tables] = model
+    return model
+
+
+def world_magnetic_field_enu(
+    latitude_deg: float,
+    longitude_deg: float,
+    tables: Path = PX4_WORLD_MAGNETIC_MODEL_TABLES,
+) -> tuple[float, float, float] | None:
+    """The autopilot model's field at a location as (east, north, up) in tesla.
+
+    Bilinear interpolation on the model's ten-degree grid, as the autopilot
+    itself interpolates it. None when the model's tables are not available.
+    """
+    model = _load_world_magnetic_model(tables)
+    if model is None:
+        return None
+    latitude = min(max(latitude_deg, -90.0), 90.0)
+    longitude = ((longitude_deg + 180.0) % 360.0) - 180.0
+    row = (latitude + 90.0) / 10.0
+    column = (longitude + 180.0) / 10.0
+    row_index = min(int(row), 17)
+    column_index = min(int(column), 35)
+    row_fraction = row - row_index
+    column_fraction = column - column_index
+
+    def sample(quantity: str) -> float:
+        unit, rows = model[quantity]
+        lower = rows[row_index]
+        upper = rows[row_index + 1]
+        return unit * (
+            lower[column_index] * (1.0 - row_fraction) * (1.0 - column_fraction)
+            + upper[column_index] * row_fraction * (1.0 - column_fraction)
+            + lower[column_index + 1] * (1.0 - row_fraction) * column_fraction
+            + upper[column_index + 1] * row_fraction * column_fraction
+        )
+
+    declination = math.radians(sample("declination"))
+    inclination = math.radians(sample("inclination"))
+    intensity_t = sample("totalintensity") * 1.0e-9
+    horizontal = intensity_t * math.cos(inclination)
+    return (
+        horizontal * math.sin(declination),
+        horizontal * math.cos(declination),
+        -intensity_t * math.sin(inclination),
+    )
 from xml.etree import ElementTree as ET
 
 from gazebo_visibility import SENSOR_COLLISION_PROXY_VISIBILITY_FLAG
@@ -377,6 +467,25 @@ class CollisionWorldMaterializer:
             ET.SubElement(coordinates, "latitude_deg").text = "47.397971057728974"
             ET.SubElement(coordinates, "longitude_deg").text = "8.546163739800146"
             ET.SubElement(coordinates, "elevation").text = "0"
+        self._apply_world_magnetic_model()
+
+    def _apply_world_magnetic_model(self) -> None:
+        assert self._output_world is not None
+        coordinates = self._output_world.find("spherical_coordinates")
+        if coordinates is None:
+            return
+        try:
+            latitude = float(coordinates.findtext("latitude_deg") or "")
+            longitude = float(coordinates.findtext("longitude_deg") or "")
+        except ValueError:
+            return
+        field = world_magnetic_field_enu(latitude, longitude)
+        if field is None:
+            return
+        element = self._output_world.find("magnetic_field")
+        if element is None:
+            element = ET.SubElement(self._output_world, "magnetic_field")
+        element.text = " ".join(f"{component:.4e}" for component in field)
 
     def _visit_include(
         self, include: ET.Element, parent: Transform, source_file: Path, prefix: str

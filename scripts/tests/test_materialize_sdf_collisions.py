@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import sys
 import tempfile
 import unittest
@@ -14,11 +15,13 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 from sdf_collision_materializer import (  # noqa: E402
+    PX4_WORLD_MAGNETIC_MODEL_TABLES,
     CollisionWorldMaterializer,
     MaterializationError,
     MaterializationMode,
     ResourceResolver,
     validate_visual_resource_uris,
+    world_magnetic_field_enu,
     write_materialized_world,
     write_report,
 )
@@ -218,6 +221,44 @@ class SdfCollisionMaterializerTest(unittest.TestCase):
                 output_world.findtext("./spherical_coordinates/surface_model"),
             )
             self.assertIsNone(output_world.find("plugin"))
+
+    @unittest.skipUnless(
+        PX4_WORLD_MAGNETIC_MODEL_TABLES.is_file(), "autopilot magnetic model not checked out"
+    )
+    def test_world_magnetic_field_is_the_autopilot_model_at_the_world_location(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            world = Path(directory) / "world.sdf"
+            world.write_text(
+                """<sdf version="1.6"><world name="candidate">
+  <magnetic_field>6e-06 2.3e-05 -4.2e-05</magnetic_field>
+</world></sdf>
+""",
+                encoding="utf-8",
+            )
+            materializer = CollisionWorldMaterializer(ResourceResolver([], []))
+
+            tree, _ = materializer.materialize(world)
+
+            output_world = tree.getroot().find("world")
+            self.assertIsNotNone(output_world)
+            east, north, up = (
+                float(value) for value in output_world.findtext("magnetic_field").split()
+            )
+            # Zurich, where the default coordinates lie: the model's declination
+            # is a little over three degrees east, its inclination about
+            # sixty-three degrees, its intensity about forty-eight microtesla.
+            self.assertAlmostEqual(3.4, math.degrees(math.atan2(east, north)), delta=0.5)
+            self.assertAlmostEqual(
+                63.2, math.degrees(math.atan2(-up, math.hypot(east, north))), delta=0.5
+            )
+            self.assertAlmostEqual(48.3e-6, math.sqrt(east**2 + north**2 + up**2), delta=0.5e-6)
+
+    def test_world_magnetic_field_stays_when_the_autopilot_model_is_absent(self) -> None:
+        self.assertIsNone(
+            world_magnetic_field_enu(47.4, 8.5, Path("/nonexistent/geo_magnetic_tables.hpp"))
+        )
 
     def test_resolves_classic_file_uri_against_explicit_model_path(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
