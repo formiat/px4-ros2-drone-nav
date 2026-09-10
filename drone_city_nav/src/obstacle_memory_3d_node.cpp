@@ -225,7 +225,26 @@ public:
     }
 
     ObstacleMemory3DConfig memory_config;
-    memory_config.maximum_range_m = scan_config_.maximum_range_m;
+    // A hit is placed with the vehicle's heading estimate, and a heading a
+    // fraction of a degree in error moves the hit sideways in proportion to
+    // its range. The persistent memory integrates a beam only as far as one
+    // heading standard deviation still lands its hit within two voxels of
+    // the surface it came from; beyond that the same wall seen at different
+    // headings became several rotated copies of itself, and single hits
+    // landed in the corridors between them.
+    const double heading_uncertainty_rad =
+        declare_parameter<double>("lidar_pose_heading_uncertainty_rad", 0.0);
+    const double heading_bounded_range_m =
+        heading_uncertainty_rad > 0.0
+            ? 2.0 * bounds_.resolution_m / std::tan(heading_uncertainty_rad)
+            : scan_config_.maximum_range_m;
+    memory_config.maximum_range_m =
+        std::min(scan_config_.maximum_range_m, heading_bounded_range_m);
+    RCLCPP_INFO(get_logger(),
+                "3D obstacle memory integration range: %.2f m (sensor %.2f m, "
+                "heading uncertainty %.4f rad)",
+                memory_config.maximum_range_m, scan_config_.maximum_range_m,
+                heading_uncertainty_rad);
     memory_config.minimum_range_m = scan_config_.minimum_range_m;
     memory_config.scan_stride = static_cast<int>(std::clamp<std::int64_t>(
         declare_parameter<std::int64_t>("scan_stride", 1), 1, 100000));
