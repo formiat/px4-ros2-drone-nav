@@ -201,9 +201,12 @@ struct RouteAdmissionReport3D {
   bool commit_assessment_performed{false};
   bool successor_improvement_required{false};
   // A blocked route's replacement, searched from the vehicle, that costs more
-  // than the route it replaces would have cost twice over, delivered while the
-  // search had not settled: held for the search to improve on it.
+  // than the route it replaces, delivered while the search had not converged
+  // and before the grace its extra cost earns has run out: held for the
+  // search to improve on it.
   bool blocked_replacement_deferred{false};
+  double blocked_replacement_grace_s{0.0};
+  double blocked_replacement_held_s{0.0};
   // How the rule read the blocked route's replacement: which of its
   // premises held and the two remaining times it compared.
   RouteSuccessorImprovementAssessment3D blocked_replacement{};

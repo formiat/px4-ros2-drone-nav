@@ -370,10 +370,16 @@ private:
   replanGateHolds(const PlannerSearchTransaction3D& transaction) const noexcept;
   [[nodiscard]] bool queueContinuation(const RouteLifecycleUpdate3D& update);
   std::uint64_t incumbent_rejection_sequence_{0U};
-  // Consecutive deliveries of a blocked route's replacement held for the
-  // search to settle; the grace ends when the search converges or this runs
-  // out, and a candidate that activates or a new transaction resets it.
-  std::size_t blocked_replacement_deferrals_{0U};
+  // When a blocked route's replacement was first held for the search, and
+  // the blocked route's generation it is held for. The hold is measured in
+  // time against the grace the replacement's extra cost earns; a candidate
+  // that activates ends it, and a block on a later route starts a new one.
+  [[nodiscard]] double
+  blockedReplacementHeldSeconds(const PlannerSearchTransaction3D& transaction) const;
+  void noteBlockedReplacementHold(const PlannerSearchTransaction3D& transaction,
+                                  const RouteAdmissionReport3D& admission);
+  std::int64_t blocked_replacement_hold_started_ns_{0};
+  std::uint64_t blocked_replacement_hold_generation_{0U};
   // Rebases a continuation request onto the newest coherent world when it is
   // strictly newer than the session world.
   void refreshContinuationWorld(RoutePlanningRequest3D& request,

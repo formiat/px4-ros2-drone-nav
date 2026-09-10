@@ -402,4 +402,36 @@ void RouteLifecycleCoordinator3D::notifyReplanOutcome(
   }
 }
 
+double RouteLifecycleCoordinator3D::blockedReplacementHeldSeconds(
+    const PlannerSearchTransaction3D& transaction) const {
+  if (blocked_replacement_hold_started_ns_ == 0 ||
+      blocked_replacement_hold_generation_ !=
+          transaction.request.base_route_generation) {
+    return 0.0;
+  }
+  return std::max(0.0, static_cast<double>(config_.stamp_provider() -
+                                           blocked_replacement_hold_started_ns_) *
+                           1.0e-9);
+}
+
+void RouteLifecycleCoordinator3D::noteBlockedReplacementHold(
+    const PlannerSearchTransaction3D& transaction,
+    const RouteAdmissionReport3D& admission) {
+  if (admission.certified_pending) {
+    blocked_replacement_hold_started_ns_ = 0;
+    blocked_replacement_hold_generation_ = 0U;
+    return;
+  }
+  if (admission.activation_status !=
+      StaticRouteActivationStatus::kReplacementAwaitingSearch) {
+    return;
+  }
+  if (blocked_replacement_hold_started_ns_ == 0 ||
+      blocked_replacement_hold_generation_ !=
+          transaction.request.base_route_generation) {
+    blocked_replacement_hold_started_ns_ = config_.stamp_provider();
+    blocked_replacement_hold_generation_ = transaction.request.base_route_generation;
+  }
+}
+
 } // namespace drone_city_nav

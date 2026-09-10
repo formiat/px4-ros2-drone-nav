@@ -536,17 +536,18 @@ void ProductionMppiNode::processRouteSearch3D(RouteLifecycleUpdate3D update) {
       transaction->release_reason == RouteReleaseReason3D::kBlocked) {
     const std::string_view blocked_status =
         routeSuccessorImprovementStatus3DName(admission.blocked_replacement.status);
-    RCLCPP_INFO(get_logger(),
-                "BLOCKED_REPLACEMENT assessed=%s resident_available=%s "
-                "deferred=%s status=%.*s resident_remaining_s=%.3f "
-                "candidate_remaining_s=%.3f progress=%s",
-                admission.blocked_replacement_assessed ? "true" : "false",
-                admission.blocked_replacement_resident_available ? "true" : "false",
-                admission.blocked_replacement_deferred ? "true" : "false",
-                static_cast<int>(blocked_status.size()), blocked_status.data(),
-                admission.blocked_replacement.resident_remaining_time_s,
-                admission.blocked_replacement.candidate_remaining_time_s,
-                planner_progress);
+    RCLCPP_INFO(
+        get_logger(),
+        "BLOCKED_REPLACEMENT assessed=%s resident_available=%s "
+        "deferred=%s held_s=%.2f grace_s=%.2f status=%.*s "
+        "resident_remaining_s=%.3f candidate_remaining_s=%.3f progress=%s",
+        admission.blocked_replacement_assessed ? "true" : "false",
+        admission.blocked_replacement_resident_available ? "true" : "false",
+        admission.blocked_replacement_deferred ? "true" : "false",
+        admission.blocked_replacement_held_s, admission.blocked_replacement_grace_s,
+        static_cast<int>(blocked_status.size()), blocked_status.data(),
+        admission.blocked_replacement.resident_remaining_time_s,
+        admission.blocked_replacement.candidate_remaining_time_s, planner_progress);
   }
 
   if (admission.certified_pending &&

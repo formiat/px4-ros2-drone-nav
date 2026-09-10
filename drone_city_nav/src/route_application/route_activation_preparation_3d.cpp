@@ -125,15 +125,25 @@ struct RouteActivationPreparationState3D final {
   bool overlap_base_matches{false};
   bool splice_ready{false};
   bool successor_improvement_cleared{false};
-  bool search_settled{true};
+  bool search_converged{true};
+  double blocked_replacement_held_s{0.0};
 };
+
+// The grace a blocked route's worse replacement gets, as a share of what the
+// replacement would cost over the route it replaces. Waiting is a bet that the
+// block clears or the search finds better; when the bet is even, waiting up to
+// half the loss breaks even with taking the replacement at once, and a block
+// half a second ahead of a route worth two seconds more is waited out for one
+// second while a loop worth a hundred seconds more is waited out for fifty.
+constexpr double kBlockedReplacementGraceLossRatio{0.5};
 
 [[nodiscard]] RouteActivationPreparationState3D
 beginPreparation(RouteActivationPreparationRequest3D request) {
   const bool request_valid = request.valid();
   RouteActivationPreparationState3D state;
   state.replacement_policy = request.materialization.replacement_policy;
-  state.search_settled = request.search_settled;
+  state.search_converged = request.search_converged;
+  state.blocked_replacement_held_s = request.blocked_replacement_held_s;
   state.planning_latency = request.planning_latency;
   state.prepared.snapshot = std::move(request.snapshot);
   state.prepared.execution_base =
@@ -714,10 +724,14 @@ assessReplacement(RouteActivationPreparationState3D state,
             config.successor_improvement);
     report.blocked_replacement = against_blocked;
     report.blocked_replacement_assessed = true;
+    report.blocked_replacement_held_s = state.blocked_replacement_held_s;
+    report.blocked_replacement_grace_s =
+        kBlockedReplacementGraceLossRatio *
+        std::max(0.0, against_blocked.candidate_remaining_time_s -
+                          against_blocked.resident_remaining_time_s);
     report.blocked_replacement_deferred =
-        !state.search_settled && against_blocked.resident_remaining_time_s > 0.0 &&
-        against_blocked.candidate_remaining_time_s >
-            2.0 * against_blocked.resident_remaining_time_s;
+        !state.search_converged && against_blocked.resident_remaining_time_s > 0.0 &&
+        state.blocked_replacement_held_s < report.blocked_replacement_grace_s;
   }
   // A deferred replacement is drafted for nobody: with a pending draft the
   // commit publishes it as certified pending before any admission verdict is
