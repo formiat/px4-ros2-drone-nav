@@ -431,4 +431,68 @@ TEST(RouteLifecycleCoordinator3DRetirementTest,
 }
 
 } // namespace
+
+// A search that has delivered nothing is what a routeless vehicle waits on,
+// and it keeps every later request deferred behind it. Past the retry
+// interval the request retires it and takes its place; before that it waits,
+// so an ordinary search is not restarted on every tick.
+TEST(RouteLifecycleCoordinator3DRetirementTest,
+     ARoutelessRequestRetiresASearchThatHasDeliveredNothing) {
+  ExecutionSupervisor3D supervisor;
+  const LifecycleFixture3D input = fixture();
+  ASSERT_NE(input.transaction, nullptr);
+  std::size_t initial_commit_count{0U};
+  {
+    RouteLifecycleCoordinator3D activation_coordinator{
+        supervisor, lifecycleConfig(input, supervisor, initial_commit_count)};
+    planAndActivateInitialRoute(activation_coordinator, supervisor, input);
+  }
+  ASSERT_NE(supervisor.plan(), nullptr);
+  const std::uint64_t generation = supervisor.plan()->routeGenerationHighWater();
+  std::size_t commit_count{0U};
+  RouteLifecycleCoordinatorConfig3D config =
+      lifecycleConfig(input, supervisor, commit_count);
+  std::int64_t stamp_ns{600};
+  config.replan_snapshot_provider = [&input, &supervisor, &stamp_ns]() {
+    const std::shared_ptr<const ExecutionPlan3D> execution = supervisor.plan();
+    return RouteLifecycleReplanSnapshot3D{
+        .navigation = input.navigation,
+        .objective = input.objective,
+        .resident_world = input.world,
+        .resident_planner_world = input.planner_world,
+        .latest_raw_world = nullptr,
+        .world_telemetry = {},
+        .committed_route_generation =
+            execution != nullptr ? execution->routeGenerationHighWater() : 0U,
+        .blocked_raw_revision = 0U,
+        .minimum_route_mission_epoch = 0U,
+        .minimum_route_sample_sequence = 0U,
+        .stamp_ns = stamp_ns,
+    };
+  };
+  RouteLifecycleCoordinator3D coordinator{supervisor, std::move(config)};
+  coordinator.start();
+
+  const RouteLifecycleReplanOutcome3D queued =
+      coordinator.requestReplan(RouteReleaseReason3D::kNoActiveRoute, generation);
+  ASSERT_EQ(queued.status, RouteLifecycleReplanStatus3D::kQueued)
+      << routeLifecycleReplanStatus3DName(queued.status);
+
+  // Inside the retry interval the in-flight search is left to run.
+  stamp_ns += 400'000'000;
+  const RouteLifecycleReplanOutcome3D early =
+      coordinator.requestReplan(RouteReleaseReason3D::kNoActiveRoute, generation);
+  EXPECT_FALSE(early.cleared_gate_generation.has_value());
+  EXPECT_EQ(early.status, RouteLifecycleReplanStatus3D::kDeferredReplanInFlight)
+      << routeLifecycleReplanStatus3DName(early.status);
+
+  // Past it, the request takes the search's place instead of waiting.
+  stamp_ns += 1'200'000'000;
+  const RouteLifecycleReplanOutcome3D late =
+      coordinator.requestReplan(RouteReleaseReason3D::kNoActiveRoute, generation);
+  EXPECT_NE(late.status, RouteLifecycleReplanStatus3D::kDeferredReplanInFlight)
+      << routeLifecycleReplanStatus3DName(late.status);
+  EXPECT_TRUE(late.cleared_gate_generation.has_value());
+}
+
 } // namespace drone_city_nav

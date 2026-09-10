@@ -72,8 +72,29 @@ RouteLifecycleReplanOutcome3D RouteLifecycleCoordinator3D::requestReplanImpl(
           (reason == RouteReleaseReason3D::kBlocked ||
            reason == RouteReleaseReason3D::kDiverged ||
            reason == RouteReleaseReason3D::kNoActiveRoute);
+      // A search that has delivered nothing at all is not improving anything:
+      // it is what the vehicle is waiting on, and it keeps every later
+      // request deferred behind it. Its labels are seeded on the world and
+      // the pose it opened with, and a stationary vehicle never moves them,
+      // so a session that has produced nothing for a whole retry interval
+      // will most likely produce nothing on the next one either. One
+      // recorded flight stood for five and a half seconds while such a
+      // session ran on, and the fresh session that replaced it found a route
+      // in its first update.
+      const double in_flight_age_s =
+          replan_in_flight_stamp_ns_ != 0 &&
+                  snapshot.stamp_ns > replan_in_flight_stamp_ns_
+              ? static_cast<double>(snapshot.stamp_ns - replan_in_flight_stamp_ns_) /
+                    1.0e9
+              : 0.0;
+      const bool unpublished_search_outlived_its_retry =
+          !replan_in_flight_published_ &&
+          reason == RouteReleaseReason3D::kNoActiveRoute &&
+          in_flight_age_s >=
+              std::max(0.0, config_.search_retry.minimum_retry_interval_s);
       retire_in_flight_search = replan_gate_.inFlight() &&
-                                (objective_superseded || release_needs_fresh_search);
+                                (objective_superseded || release_needs_fresh_search ||
+                                 unpublished_search_outlived_its_retry);
       if (retire_in_flight_search) {
         const std::uint64_t in_flight_generation = replan_gate_.generation();
         replan_gate_.finish(in_flight_generation);
@@ -88,8 +109,12 @@ RouteLifecycleReplanOutcome3D RouteLifecycleCoordinator3D::requestReplanImpl(
   }
   {
     const std::scoped_lock lock{lifecycle_mutex_};
-    outcome.cleared_gate_generation =
-        replan_gate_.finishIfSupersededBy(snapshot.committed_route_generation);
+    // A gate this request already retired above is reported as retired; the
+    // superseded check speaks only for a gate that is still in flight.
+    if (const std::optional<std::uint64_t> superseded =
+            replan_gate_.finishIfSupersededBy(snapshot.committed_route_generation)) {
+      outcome.cleared_gate_generation = superseded;
+    }
     if (deferStaticRouteReleaseDuringExtension(extension_request_in_flight_, reason)) {
       outcome.deferred_route_generation =
           route_generation != 0U ? route_generation : extension_in_flight_generation_;
@@ -279,6 +304,7 @@ RouteLifecycleReplanOutcome3D RouteLifecycleCoordinator3D::requestReplanImpl(
     } else {
       replan_in_flight_mission_epoch_ = snapshot.objective->mission_epoch;
       replan_in_flight_published_ = false;
+      replan_in_flight_stamp_ns_ = snapshot.stamp_ns;
     }
   }
   if (outcome.status == RouteLifecycleReplanStatus3D::kDeferredDuringExtension ||

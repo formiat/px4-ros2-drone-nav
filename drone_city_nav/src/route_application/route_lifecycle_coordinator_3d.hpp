@@ -419,6 +419,10 @@ private:
   // The in-flight replan search already delivered a candidate; what it still
   // runs for are improvements, which a release request does not wait for.
   bool replan_in_flight_published_{false};
+  // When the in-flight replan search was dispatched. A search that has
+  // delivered nothing since then is what a routeless vehicle is waiting on,
+  // and past the retry interval it is worth replacing rather than waiting on.
+  std::int64_t replan_in_flight_stamp_ns_{0};
   StaticRouteFailedSearchLatch failed_search_latch_{};
   NavigationRecoveryEpisodeTracker recovery_episodes_{};
 };

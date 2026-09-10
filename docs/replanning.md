@@ -270,6 +270,18 @@ successor for being two hundredths of a second slower while it had nothing at
 all to fly. A pending certified route stays a base worth improving on, since
 the vehicle is about to fly it.
 
+A request from a vehicle without a route retires the in-flight search that has
+delivered nothing, once that search has run for the failed-search retry
+interval. A search that has published a candidate is improving on it and the
+release does not wait for it; one that has published nothing is what the
+vehicle is waiting on, and it keeps every later request deferred behind it.
+Its labels are seeded on the world and the pose it opened with, and a
+stationary vehicle never moves them, so a session that has produced nothing
+for a whole interval will most likely produce nothing on the next one. One
+recorded flight stood for five and a half seconds while such a session ran
+on, its own requests reported as `deferred_replan_in_flight`, and the fresh
+session that eventually replaced it found a route in its first update.
+
 A route blocked far enough ahead is replaced onto its own certified prefix.
 The replan carries the incumbent as the successor's continuity base
 (`RouteLifecycleReplanSnapshot3D::active_route`, `route_projection`,
