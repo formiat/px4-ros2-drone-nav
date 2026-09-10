@@ -449,8 +449,12 @@ std::optional<std::vector<Point3>> FeasiblePathSearch3D::advanceFrontier(
     ++expansions;
 
     const Point3 current_point = lattice_->pointFor(current.node);
-    closest_goal_distance_m_ = std::min(
-        closest_goal_distance_m_, distance3D(current_point, endpoints.exact_goal));
+    if (const double goal_distance_m = distance3D(current_point, endpoints.exact_goal);
+        goal_distance_m < closest_goal_distance_m_) {
+      closest_goal_distance_m_ = goal_distance_m;
+      closest_goal_node_ = current.node;
+      closest_goal_node_available_ = true;
+    }
     const bool direct_departure =
         current.node == anchor_ &&
         distance3D(endpoints.exact_start, current_point) <= kCostTolerance;
@@ -617,9 +621,23 @@ void FeasiblePathSearch3D::initialize(const Endpoints3D& endpoints) {
   push(anchor_index, anchor_);
 }
 
+std::optional<std::vector<Point3>>
+FeasiblePathSearch3D::closestApproachPath(const Endpoints3D& endpoints) const {
+  if (!initialized_ || !closest_goal_node_available_ || closest_goal_node_ == anchor_) {
+    return std::nullopt;
+  }
+  const std::vector<PersistentPlannerNode3D> nodes =
+      reconstructNodes(closest_goal_node_);
+  if (nodes.empty()) {
+    return std::nullopt;
+  }
+  return pathFromNodes(endpoints, nodes, false);
+}
+
 void FeasiblePathSearch3D::reset() noexcept {
   initialized_ = false;
   closest_goal_distance_m_ = std::numeric_limits<double>::infinity();
+  closest_goal_node_available_ = false;
   frontier_exhausted_ = false;
   open_ = FeasibilityOpenQueue3D{};
   explored_ = 0U;

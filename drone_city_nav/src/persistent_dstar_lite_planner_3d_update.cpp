@@ -596,6 +596,36 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
             .count();
   }
 
+  // Every search this start can run has run out: the frontier emptied without
+  // reaching the goal and marked its component closed, so it will not run
+  // again until the world changes, and the escape fill has exhausted its own
+  // reach without an exit. A stationary vehicle in a mapped pocket changes
+  // nothing, and one recorded flight stood in one for the whole of its
+  // remaining four minutes with every stage idle. The route to the closest
+  // label the frontier reached is a route the vehicle can fly, and flying it
+  // is what puts unmapped space in front of the sensor. It is offered only
+  // when it closes real distance on the goal, so it cannot become a hover in
+  // place, and only here: while the fill still has an exit to look for, the
+  // exit is the better answer.
+  if (coordinator_.incumbent() == nullptr &&
+      feasibility_search_.closedComponentMarked() && !escape_connection_.has_value() &&
+      !escape_search_pending_ && escape_search_.exhausted()) {
+    const FeasiblePathSearch3D::Endpoints3D endpoints = searchEndpoints();
+    if (feasibility_search_.closestGoalDistanceM() +
+            config_.minimum_horizontal_step_m <=
+        distance3D(endpoints.exact_start, endpoints.exact_goal)) {
+      if (std::optional<std::vector<Point3>> approach =
+              feasibility_search_.closestApproachPath(endpoints)) {
+        if (std::optional<SpatialRouteCandidate3D> closest = makeCandidate(
+                refinePublishedPath(std::move(*approach), request, deadline, telemetry),
+                SpatialRouteCandidateSource3D::kFeasibilitySearch, request.velocity)) {
+          telemetry.feasibility_closest_approach_published = true;
+          update.improved_incumbent = coordinator_.consider(std::move(*closest));
+        }
+      }
+    }
+  }
+
   schedule_world_changes();
   const auto spatial_search_started = std::chrono::steady_clock::now();
   const std::size_t remaining_spatial_expansions =

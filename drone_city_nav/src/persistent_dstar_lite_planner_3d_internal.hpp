@@ -69,6 +69,15 @@ public:
   [[nodiscard]] std::size_t exploredNodes() const noexcept;
   // Smallest distance from any expanded node to the exact goal so far.
   [[nodiscard]] double closestGoalDistanceM() const noexcept;
+  // The route to the labelled node that came closest to the goal, with its
+  // departure and without the goal. A frontier that empties without reaching
+  // the goal has explored everything this start can reach on the world as it
+  // stands, and standing still observes nothing new: the closest label is
+  // where the vehicle learns the most about whether the goal is reachable at
+  // all. Empty when nothing was explored, when the closest label is the
+  // anchor itself, or when its chain no longer holds.
+  [[nodiscard]] std::optional<std::vector<Point3>>
+  closestApproachPath(const Endpoints3D& endpoints) const;
   // Candidates that failed validation since construction, by what failed:
   // full restarts (departure, degenerate candidate), and labels dropped
   // because a lattice edge on their chain no longer survives the resident
@@ -156,6 +165,8 @@ private:
   std::uint64_t queue_sequence_{0U};
   bool frontier_exhausted_{false};
   double closest_goal_distance_m_{std::numeric_limits<double>::infinity()};
+  PersistentPlannerNode3D closest_goal_node_{};
+  bool closest_goal_node_available_{false};
   FeasibilityOpenQueue3D open_{};
   // Dense labels stamped with the generation that wrote them; a reset bumps
   // the generation instead of clearing the arrays. Each label also carries

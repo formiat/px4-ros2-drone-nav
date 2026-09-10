@@ -352,6 +352,9 @@ struct PlannerTelemetry3D {
   // The feasibility frontier emptied without a raw-valid candidate: every
   // lattice node reachable from the anchor was explored.
   bool feasibility_frontier_exhausted{false};
+  // The published route ends at the closest label the exhausted frontier
+  // reached instead of at the mission goal; see closestApproachPath.
+  bool feasibility_closest_approach_published{false};
   std::size_t feasibility_explored_nodes{0U};
   double feasibility_closest_goal_distance_m{0.0};
   std::size_t feasibility_restarts{0U};

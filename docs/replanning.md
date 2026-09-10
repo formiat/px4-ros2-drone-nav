@@ -481,6 +481,20 @@ braked and rested for two and a half seconds with the planner idle, a quarter
 of that run's no-route time. Both owners are now routeless owners, and the
 latch decides how often a search actually runs.
 
+When every search a start can run has run out -- the frontier emptied without
+reaching the goal and marked its component closed, so it will not run again
+until the world changes, and the escape fill exhausted its own reach without
+an exit -- the planner publishes the route to the closest label the frontier
+reached instead of nothing (`feasibility_closest_approach_published`). A
+stationary vehicle in a mapped pocket changes nothing it can see, and one
+recorded flight stood in one for the whole of its remaining four minutes with
+every stage idle and the mission unfinished. Flying to the closest label is
+what puts unmapped space in front of the sensor, and the evidence that comes
+back is what reopens the search. The route is offered only when it closes at
+least one lattice step of real distance on the goal, so it cannot become a
+hover in place, and only after the escape fill has given up: while the fill
+still has an exit to look for, the exit is the better answer.
+
 The departure envelope decides which anchors a vehicle may leave through, and
 only where it admits none at all does the hull decide instead
 (`departure_hull=true` in `PRODUCTION_MPPI_ROUTE3D`). A vehicle leaves a tight
