@@ -104,22 +104,7 @@ double PlannerLattice3D::rankingFactorForBodyClearance(
 }
 
 double PlannerLattice3D::pointClearanceM(const Point3& point) const {
-  const double cap_m = config_->clearance_ranking_distance_m;
-  double clearance_m = cap_m;
-  if (resident_collision_oracle_.has_value()) {
-    const OccupiedCollisionWorld3D& world = resident_collision_oracle_->world();
-    if (world.observed_occupancy != nullptr) {
-      clearance_m = std::min(
-          clearance_m, rawEuclideanClearance3D(*world.observed_occupancy, point, cap_m,
-                                               world.launch_support_contact));
-    }
-    if (world.static_occupancy != nullptr) {
-      clearance_m = std::min(
-          clearance_m, rawEuclideanClearance3D(*world.static_occupancy, point, cap_m,
-                                               world.launch_support_contact));
-    }
-  }
-  return clearance_m;
+  return deriveNodeClearance(point, config_->clearance_ranking_distance_m);
 }
 
 bool PlannerLattice3D::pointObserved(const Point3& point) const {
@@ -379,8 +364,77 @@ double PlannerLattice3D::clearanceRankingReachM() const noexcept {
                                                  : 0.0;
 }
 
+std::optional<double> PlannerLattice3D::fieldClearance(const Point3& point,
+                                                       const double cap_m) const {
+  using raw_occupancy_clearance_detail::intervalGap;
+  if (clearance_field_ == nullptr || !clearance_field_->valid() ||
+      cap_m > clearance_field_->maximumDistanceM()) {
+    return std::nullopt;
+  }
+  const GridBounds3D& bounds = clearance_field_->bounds();
+  const double resolution_m = bounds.resolution_m;
+  const double half_m = 0.5 * resolution_m;
+  // The field holds centre-to-centre distances. On each axis the two cell
+  // centres bracketing the point are read; for the occupied cell nearest the
+  // point, the bracketing centre on its side is nearer to it than the point
+  // is to its box by at most the centre's shortfall from half a voxel, so
+  // the minimum over the eight of (distance - shortfall) never exceeds the
+  // true clearance, and equals it when every shortfall is zero.
+  const auto lower_index = [&](const double coordinate, const double origin) {
+    return static_cast<int>(std::floor((coordinate - origin) / resolution_m - 0.5));
+  };
+  const int lower_x = lower_index(point.x, bounds.origin_x);
+  const int lower_y = lower_index(point.y, bounds.origin_y);
+  const int lower_z = lower_index(point.z, bounds.origin_z);
+  if (lower_x < 0 || lower_y < 0 || lower_z < 0 || lower_x + 1 >= bounds.width_cells ||
+      lower_y + 1 >= bounds.height_cells || lower_z + 1 >= bounds.depth_cells) {
+    return std::nullopt;
+  }
+  double clearance_m = cap_m;
+  for (int dz = 0; dz <= 1; ++dz) {
+    for (int dy = 0; dy <= 1; ++dy) {
+      for (int dx = 0; dx <= 1; ++dx) {
+        const GridIndex3D cell{lower_x + dx, lower_y + dy, lower_z + dz};
+        const double centre_distance_m =
+            std::min(static_cast<double>(clearance_field_->distanceAt(cell)),
+                     clearance_field_->maximumDistanceM());
+        const double shortfall_x = std::max(
+            0.0, half_m - std::abs(point.x - (bounds.origin_x +
+                                              (static_cast<double>(cell.x) + 0.5) *
+                                                  resolution_m)));
+        const double shortfall_y = std::max(
+            0.0, half_m - std::abs(point.y - (bounds.origin_y +
+                                              (static_cast<double>(cell.y) + 0.5) *
+                                                  resolution_m)));
+        const double shortfall_z = std::max(
+            0.0, half_m - std::abs(point.z - (bounds.origin_z +
+                                              (static_cast<double>(cell.z) + 0.5) *
+                                                  resolution_m)));
+        clearance_m = std::min(clearance_m, centre_distance_m -
+                                                std::sqrt(shortfall_x * shortfall_x +
+                                                          shortfall_y * shortfall_y +
+                                                          shortfall_z * shortfall_z));
+      }
+    }
+  }
+  // The field leaves the launch-support contact cells out; the raw grid this
+  // stands in for counts them.
+  if (clearance_field_contact_ != nullptr) {
+    for (const AxisAlignedBox3D& box : clearance_field_contact_->contact_cells) {
+      const double dx = intervalGap(box.minimum.x, box.maximum.x, point.x);
+      const double dy = intervalGap(box.minimum.y, box.maximum.y, point.y);
+      const double dz = intervalGap(box.minimum.z, box.maximum.z, point.z);
+      clearance_m = std::min(clearance_m, std::sqrt(dx * dx + dy * dy + dz * dz));
+    }
+  }
+  return std::max(0.0, clearance_m);
+}
+
 double PlannerLattice3D::deriveNodeClearance(const Point3& point,
                                              const double cap_m) const {
+  if (const std::optional<double> field_m = fieldClearance(point, cap_m)) {
+    return *field_m;
+  }
   double clearance_m = cap_m;
   if (resident_collision_oracle_.has_value()) {
     const OccupiedCollisionWorld3D& world = resident_collision_oracle_->world();

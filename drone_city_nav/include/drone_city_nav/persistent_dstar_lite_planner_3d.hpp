@@ -2,6 +2,7 @@
 
 #include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/flight_time_model_3d.hpp"
+#include "drone_city_nav/known_obstacle_distance_3d.hpp"
 #include "drone_city_nav/observed_occupancy_grid_3d.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
 #include "drone_city_nav/tracking_error_tube_config_3d.hpp"
@@ -41,6 +42,12 @@ enum class SpatialRouteCandidateSource3D : std::uint8_t {
 struct PersistentPlannerWorld3D {
   std::shared_ptr<const ObservedOccupancyGrid3D> observed_occupancy;
   std::shared_ptr<const OccupancyGrid3D> static_occupancy;
+  // The exact distance transform of observed_occupancy's occupied cells over
+  // the local window around the vehicle, with the launch-support contact
+  // cells left out. It prices node clearance for ranking without a raw
+  // search; the raw grids above remain the only collision authority, and a
+  // world without it (or a point outside its window) ranks from the raw grid.
+  std::shared_ptr<const KnownObstacleDistance3D> observed_clearance_field;
   std::optional<ProprioceptiveFreeSpaceSeed3D> proprioceptive_free_space_seed;
   std::optional<LaunchSupportContact3D> launch_support_contact;
   std::vector<OccupancyChunkIndex3D> dirty_chunks;

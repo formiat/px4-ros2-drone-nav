@@ -152,7 +152,18 @@ scheduler therefore never walks the ranking reach box per changed cell. A
 cached clearance below its reach goes stale only when a changed chunk's box
 lies within that clearance: evidence added farther away cannot lower a
 minimum and evidence removed farther away was not the nearest, so a label
-beside a wall ignores the scan-to-scan churn of everything beyond the wall. Repair
+beside a wall ignores the scan-to-scan churn of everything beyond the wall.
+The derivation itself reads the observed ESDF's known-obstacle distance field
+where the point lies inside its window: the lattice nodes sit on voxel corners,
+where the minimum over the eight bracketing cell centres is the exact raw
+clearance, and any other point gets a lower bound within half a voxel
+diagonal, so a re-derivation costs eight reads instead of a nearest-first
+chunk search of the raw grid (50–70 µs per node at a 6 m reach, which made
+the repair of a vertex cost about a millisecond). The launch-support contact
+cells the field leaves out are counted from the contact boxes, and a point
+outside the window, or a world without the field, derives from the raw grid as
+before. The field only prices; the raw swept body check stays the authority
+on every edge. Repair
 and search share every update: with a repair queue pending the search still
 receives half the budget, so a world that changes every scan cannot starve it
 of expansions, and an anytime route on the current labels reaches the vehicle

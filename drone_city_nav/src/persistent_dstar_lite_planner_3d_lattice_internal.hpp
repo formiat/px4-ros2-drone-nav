@@ -565,6 +565,10 @@ private:
   int height_{0};
   int depth_{0};
   std::optional<OccupiedCollisionOracle3D> resident_collision_oracle_;
+  // The resident world's clearance field and the contact cells it leaves
+  // out, which the raw grid counts; see fieldClearance.
+  std::shared_ptr<const KnownObstacleDistance3D> clearance_field_;
+  const LaunchSupportContact3D* clearance_field_contact_{nullptr};
   std::optional<OccupiedCollisionOracle3D> departure_collision_oracle_;
   // The same world judged by the physical body alone, for a departure the
   // envelope admits nowhere.
@@ -666,6 +670,13 @@ private:
   [[nodiscard]] bool clearanceStale(const Point3& point, double reach_m,
                                     std::uint64_t change_epoch) const noexcept;
   [[nodiscard]] double deriveNodeClearance(const Point3& point, double cap_m) const;
+  // The raw clearance of a point read from the resident clearance field: a
+  // lower bound on the distance to the nearest occupied voxel box, exact at
+  // a voxel corner (every lattice node) and within half a voxel diagonal
+  // elsewhere. Empty when the world carries no field, the point's bracketing
+  // cells lie outside its window, or the cap exceeds its reach.
+  [[nodiscard]] std::optional<double> fieldClearance(const Point3& point,
+                                                     double cap_m) const;
   [[nodiscard]] double nodeClearanceWithin(PersistentPlannerNode3D node, double cap_m);
   // Adaptive (level > 0) cached edges keyed by every chunk their
   // margin-expanded extent touches, so an occupied change finds the long

@@ -190,6 +190,8 @@ captureResidentPlannerWorld3D(const WorldSnapshot3D& world) {
     return std::make_shared<const PersistentPlannerWorld3D>(PersistentPlannerWorld3D{
         .observed_occupancy = world.observed_occupancy,
         .static_occupancy = nullptr,
+        .observed_clearance_field =
+            world.observed_esdf_resource.known_obstacle_distance,
         .proprioceptive_free_space_seed = world.proprioceptive_free_space_seed,
         .launch_support_contact = world.launch_support_contact,
         .dirty_chunks = world.planner_dirty_chunks,

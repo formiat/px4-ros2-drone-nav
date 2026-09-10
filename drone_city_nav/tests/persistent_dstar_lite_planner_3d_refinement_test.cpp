@@ -714,4 +714,70 @@ TEST(PersistentDStarLitePlanner3DTest, TheDepartureFallsBackToTheHullOnlyWhenItM
   EXPECT_TRUE(boxed_update.publishable());
 }
 
+TEST(PersistentDStarLitePlanner3DTest, TheClearanceFieldReproducesTheRawNodeClearance) {
+  // A lattice node sits on a voxel corner, where the field's bracketing
+  // centres give the raw clearance exactly; elsewhere the field gives a lower
+  // bound within half a voxel diagonal. The launch-support contact cells the
+  // field leaves out count as they do on the raw grid, and a point outside
+  // the field's window falls back to the raw grid.
+  const GridBounds3D bounds{0.0, 0.0, 0.0, 0.25, 64, 64, 32};
+  auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(bounds);
+  for (int y = 0; y < bounds.height_cells; ++y) {
+    for (int z = 0; z < bounds.depth_cells; ++z) {
+      ASSERT_TRUE(
+          occupancy->setState(GridIndex3D{40, y, z}, ObservedVoxelState::kOccupied));
+    }
+  }
+  ASSERT_TRUE(
+      occupancy->setState(GridIndex3D{20, 44, 12}, ObservedVoxelState::kOccupied));
+  const GridIndex3D support_cell{20, 20, 3};
+  ASSERT_TRUE(occupancy->setState(support_cell, ObservedVoxelState::kOccupied));
+  LaunchSupportContact3D contact;
+  contact.contact_cells.push_back(
+      AxisAlignedBox3D{.minimum = {5.0, 5.0, 0.75}, .maximum = {5.25, 5.25, 1.0}});
+  const GridBounds3D window{2.0, 2.0, 1.0, 0.25, 40, 40, 20};
+  const std::vector<GridIndex3D> suppressed{support_cell};
+  const std::shared_ptr<const KnownObstacleDistance3D> field =
+      buildKnownObstacleDistance3D(*occupancy, window, 7.0, suppressed).field;
+  ASSERT_NE(field, nullptr);
+  ASSERT_TRUE(field->valid());
+
+  PersistentPlannerConfig3D config = testConfig();
+  config.clearance_ranking_weight = 1.0;
+  config.clearance_ranking_distance_m = 6.0;
+  PersistentPlannerWorld3D raw_world = world(occupancy, 1U);
+  raw_world.launch_support_contact = contact;
+  PersistentPlannerWorld3D field_world = raw_world;
+  field_world.observed_clearance_field = field;
+  detail::PlannerLattice3D raw_lattice{config};
+  raw_lattice.configureGridGeometry(bounds);
+  raw_lattice.installWorld(raw_world);
+  detail::PlannerLattice3D field_lattice{config};
+  field_lattice.configureGridGeometry(bounds);
+  field_lattice.installWorld(field_world);
+
+  // The wall, the pillar's corner, and the contact cell each decide a node.
+  EXPECT_NEAR(raw_lattice.nodeClearanceM(detail::PersistentPlannerNode3D{9, 5, 2}), 0.5,
+              1.0e-9);
+  EXPECT_NEAR(raw_lattice.nodeClearanceM(detail::PersistentPlannerNode3D{4, 10, 2}),
+              std::sqrt(0.75), 1.0e-9);
+  EXPECT_NEAR(raw_lattice.nodeClearanceM(detail::PersistentPlannerNode3D{4, 4, 1}),
+              std::sqrt(0.75), 1.0e-9);
+  for (int x = 2; x <= 13; ++x) {
+    for (int y = 2; y <= 13; ++y) {
+      for (int z = 1; z <= 7; ++z) {
+        const detail::PersistentPlannerNode3D node{x, y, z};
+        EXPECT_NEAR(field_lattice.nodeClearanceM(node),
+                    raw_lattice.nodeClearanceM(node), 1.0e-5)
+            << "node " << x << ' ' << y << ' ' << z;
+      }
+    }
+  }
+  const Point3 off_corner{7.3, 6.1, 2.2};
+  const double raw_m = raw_lattice.pointClearanceM(off_corner);
+  const double field_m = field_lattice.pointClearanceM(off_corner);
+  EXPECT_LE(field_m, raw_m + 1.0e-6);
+  EXPECT_GE(field_m, raw_m - 0.125 * std::sqrt(3.0) - 1.0e-6);
+}
+
 } // namespace drone_city_nav

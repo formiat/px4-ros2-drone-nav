@@ -267,6 +267,10 @@ void PlannerLattice3D::installWorld(const PersistentPlannerWorld3D& world) {
       .footprint = config_->physical_footprint,
       .flight_envelope = config_->flight_envelope,
   });
+  clearance_field_ = world.observed_clearance_field;
+  clearance_field_contact_ = world.launch_support_contact
+                                 ? std::addressof(*world.launch_support_contact)
+                                 : nullptr;
   installDepartureEvidence(world);
 }
 
