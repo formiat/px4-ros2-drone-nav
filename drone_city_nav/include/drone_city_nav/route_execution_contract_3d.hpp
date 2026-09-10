@@ -28,9 +28,13 @@ struct RouteContinuityLineage3D {
   std::uint64_t target_track_id{0U};
 };
 
+// `endpoint_is_local_stop` marks a route that ends at a stop of its own
+// rather than continuing: the closest-approach route an exhausted frontier
+// publishes stops where the search ran out, and the vehicle rests there while
+// the extension plans on from it.
 [[nodiscard]] RouteEndpointSemantics3D
-routeEndpointSemantics3D(bool reaches_mission_goal,
-                         bool mission_endpoint_is_terminal) noexcept;
+routeEndpointSemantics3D(bool reaches_mission_goal, bool mission_endpoint_is_terminal,
+                         bool endpoint_is_local_stop = false) noexcept;
 
 // Only true endpoint semantics may shape the nominal route speed to zero.
 // Unknown enum values fail closed as terminal stops.

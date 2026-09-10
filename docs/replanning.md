@@ -503,7 +503,12 @@ hover in place, and only after the escape fill has given up: while the fill
 still has an exit to look for, the exit is the better answer. It is
 materialized as the partial route it is, not as one that reaches the goal:
 the extension machinery then carries on from its end exactly as it does for
-a route planned to a bounded planning goal. Read as a goal-reaching route
+a route planned to a bounded planning goal. Its endpoint is a local stop
+rather than a continuation, so the endpoint law brings the vehicle to rest
+there and the certified reserve is not demanded of it -- a route that ends
+where the search ran out has nothing certified beyond it to reserve, and
+demanding it refused every such route and left the vehicle in the pocket
+with none. Read as a goal-reaching route
 instead, it was a mission the vehicle had finished, and one flight rested at
 its end for four minutes with the goal thirty-eight metres away and nothing
 asking for more.

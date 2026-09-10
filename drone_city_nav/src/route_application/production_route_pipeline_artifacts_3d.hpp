@@ -135,6 +135,10 @@ struct MaterializedRoute3D {
   std::uint64_t candidate_generation{0U};
   std::uint64_t fingerprint{0U};
   bool reaches_mission_goal{false};
+  // The route ends at a stop of its own rather than continuing: it is the
+  // closest approach an exhausted frontier could reach, and the vehicle rests
+  // there while the extension plans on from it.
+  bool endpoint_is_local_stop{false};
   bool planner_executable{false};
   // The station the planner left the vehicle at: the first lattice node, or
   // the last departure waypoint before it. The route up to it is flown at

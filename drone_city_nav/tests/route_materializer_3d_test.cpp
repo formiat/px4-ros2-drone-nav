@@ -260,6 +260,12 @@ TEST(RouteMaterializer3DTest, AClosestApproachCandidateIsMaterializedAsAPartialR
 
   EXPECT_TRUE(result.validation.accepted);
   EXPECT_FALSE(result.route.reaches_mission_goal);
+  // It ends at a stop of its own, so the endpoint is a local stop and the
+  // certified reserve it could never keep is not demanded of it.
+  EXPECT_TRUE(result.route.endpoint_is_local_stop);
+  EXPECT_EQ(routeEndpointSemantics3D(result.route.reaches_mission_goal, true,
+                                     result.route.endpoint_is_local_stop),
+            RouteEndpointSemantics3D::kLocalStop);
 }
 
 TEST(RouteMaterializer3DTest,

@@ -160,6 +160,9 @@ RouteMaterializer3D::materialize(RouteMaterializationRequest3D request) const {
   // carry on from.
   route.reaches_mission_goal =
       spatial_route.valid() && spatialRouteCandidateReachesGoal3D(spatial_route.source);
+  route.endpoint_is_local_stop =
+      spatial_route.valid() &&
+      !spatialRouteCandidateReachesGoal3D(spatial_route.source);
   route.planner_executable = telemetry.planner.executable;
   materialization.continuation_validation_ms = 0.0;
   route.fingerprint = routeFingerprint(candidate.route);
