@@ -578,6 +578,11 @@ private:
   // The feasibility search exhausted the start's component and the escape
   // search has work to do on the next updates.
   bool escape_search_pending_{false};
+  // Consecutive updates in which the searches' component was closed and no
+  // route was held. The fallbacks behind the fill answer a pocket, which
+  // lasts; an exhaustion the next scan undoes is not one, and sending the
+  // vehicle backwards for it costs more than it saves.
+  std::size_t closed_component_updates_{0U};
   // Where the vehicle has been, newest last, one point per lattice step. The
   // body swept every one of them, so they are the one corridor out of a
   // pocket that no map can argue with; see retreatConnection.

@@ -535,6 +535,12 @@ the search suppressed, the fill unarmed, and both fallbacks behind it waiting
 on a fill that never ran. One flight stood seventeen seconds that way. A fill
 that found nothing still repeats only on a changed world.
 
+Both fallbacks wait for the component to settle -- eight consecutive updates
+closed with no route held, a second or so of flight. They answer a pocket, and
+a pocket lasts; an exhaustion the next scan undoes is not one, and one flight
+took sixty-one of them, each sending the vehicle backwards for a block that
+had already been replanned around.
+
 Where the fill exhausts its own reach without an exit, the vehicle's trail is
 what remains. Every point of it is a pose the body occupied, so the corridor
 the vehicle came through admits the body whatever the map now says about the

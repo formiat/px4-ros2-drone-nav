@@ -89,6 +89,7 @@ void PersistentDStarLitePlanner3DImpl::reset() noexcept {
   escape_search_.reset();
   escape_connection_.reset();
   escape_search_pending_ = false;
+  closed_component_updates_ = 0U;
   flown_trail_.clear();
   closed_component_origin_.reset();
   exact_goal_ = {};
@@ -299,6 +300,18 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
       escape_search_pending_ = false;
     }
   }
+  // How long the vehicle has been in a component the searches gave up on. The
+  // fallbacks below answer a pocket, and a pocket lasts; an exhaustion the
+  // next scan undoes is not one.
+  constexpr std::size_t kClosedComponentFallbackUpdates{8U};
+  if (coordinator_.incumbent() == nullptr &&
+      feasibility_search_.closedComponentMarked()) {
+    ++closed_component_updates_;
+  } else {
+    closed_component_updates_ = 0U;
+  }
+  const bool closed_component_settled =
+      closed_component_updates_ >= kClosedComponentFallbackUpdates;
   // The fill has given up and the vehicle holds no route. It flew in, though,
   // and every point of its trail is a pose its body occupied, so the corridor
   // it came through admits the body whatever the map now says about the space
@@ -308,8 +321,7 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   // not only on the one it exhausted on: waiting for the fill to re-fill its
   // thousands of cells and give up again cost one flight seventeen seconds.
   if (!escape_connection_.has_value() && !escape_search_pending_ &&
-      coordinator_.incumbent() == nullptr &&
-      feasibility_search_.closedComponentMarked()) {
+      closed_component_settled) {
     if (std::optional<EscapeSearch3D::Result3D> retreat =
             retreatConnection(request.start)) {
       escape_connection_ = std::move(retreat);
@@ -632,7 +644,7 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   // when it closes real distance on the goal, so it cannot become a hover in
   // place, and only here: while the fill still has an exit to look for, the
   // exit is the better answer.
-  if (!holds_goal_route && feasibility_search_.closedComponentMarked() &&
+  if (!holds_goal_route && closed_component_settled &&
       !escape_connection_.has_value() && !escape_search_pending_ &&
       escape_search_.exhausted()) {
     const FeasiblePathSearch3D::Endpoints3D endpoints = searchEndpoints();
