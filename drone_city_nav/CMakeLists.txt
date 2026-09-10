@@ -1220,8 +1220,15 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
                         drone_city_nav_production_mppi_component)
   ament_target_dependencies(production_mppi_node rclcpp)
   enable_project_warnings(production_mppi_node)
+  add_executable(persistent_planner_probe tools/persistent_planner_probe.cpp)
+  target_compile_features(persistent_planner_probe PRIVATE cxx_std_20)
+  target_link_libraries(persistent_planner_probe
+                        drone_city_nav_production_mppi_component drone_city_nav_core)
+  ament_target_dependencies(persistent_planner_probe rclcpp)
+  enable_project_warnings(persistent_planner_probe)
   install(
     TARGETS production_mppi_node drone_city_nav_production_mppi_component
+            persistent_planner_probe
     ARCHIVE DESTINATION lib
     LIBRARY DESTINATION lib
     RUNTIME DESTINATION lib/${PROJECT_NAME})
