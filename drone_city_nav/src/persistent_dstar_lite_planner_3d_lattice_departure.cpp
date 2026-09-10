@@ -16,7 +16,8 @@ namespace drone_city_nav::detail {
 
 std::vector<PersistentPlannerNode3D>
 PlannerLattice3D::admissibleAnchors(const Point3& point, const bool start_anchor,
-                                    DepartureDiagnostics3D* const diagnostics) const {
+                                    DepartureDiagnostics3D* const diagnostics,
+                                    const bool hull_only) const {
   // The departure envelope decides first. Only when it admits no anchor at all
   // does the hull decide instead: a vehicle leaves a tight spot at hover and
   // upright, so the envelope that contains the hull at every tilt is not what
@@ -84,6 +85,9 @@ PlannerLattice3D::admissibleAnchors(const Point3& point, const bool start_anchor
     }
     return anchors;
   };
+  if (hull_only && start_anchor) {
+    return reachable(true);
+  }
   std::vector<PersistentPlannerNode3D> anchors = reachable(false);
   if (anchors.empty() && start_anchor) {
     anchors = reachable(true);
@@ -124,6 +128,26 @@ PlannerLattice3D::DepartureConnection3D PlannerLattice3D::selectDepartureConnect
     std::ranges::copy_if(
         anchors, std::back_inserter(open_anchors),
         [&](const PersistentPlannerNode3D anchor) { return !excluded(anchor); });
+    if (open_anchors.empty() && !result.diagnostics.hull_fallback) {
+      // Every anchor the envelope admits leads into a component the search
+      // has exhausted. The hull is asked for the anchors the envelope refused
+      // before the vehicle is left waiting: it leaves at hover and upright,
+      // and the way on may lie past a post the envelope, not the hull,
+      // sweeps. One recorded flight held for fourteen seconds a metre from
+      // such a post, its envelope anchors all inside closed pockets, until
+      // the post's cells decayed. The envelope keeps the ordinary departure:
+      // the hull is asked only once the envelope's own anchors lead nowhere.
+      std::vector<PersistentPlannerNode3D> hull_anchors =
+          admissibleAnchors(start, true, nullptr, true);
+      std::erase_if(hull_anchors, [&](const PersistentPlannerNode3D anchor) {
+        return excluded(anchor) || std::ranges::find(anchors, anchor) != anchors.end();
+      });
+      if (!hull_anchors.empty()) {
+        open_anchors = std::move(hull_anchors);
+        result.diagnostics.hull_fallback = true;
+        departure_uses_hull_ = true;
+      }
+    }
     if (!open_anchors.empty()) {
       anchors = std::move(open_anchors);
     }

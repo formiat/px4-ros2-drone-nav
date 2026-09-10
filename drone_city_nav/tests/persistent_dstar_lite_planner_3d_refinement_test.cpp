@@ -714,6 +714,62 @@ TEST(PersistentDStarLitePlanner3DTest, TheDepartureFallsBackToTheHullOnlyWhenItM
   EXPECT_TRUE(boxed_update.publishable());
 }
 
+// Every anchor the envelope admits lies in a pocket the search exhausts,
+// while the way on runs through a slot only the hull fits: the hull is asked
+// for the anchors the envelope refused, and the route leaves through the
+// slot instead of the vehicle waiting for the slot's evidence to change.
+TEST(PersistentDStarLitePlanner3DTest,
+     TheHullOpensTheAnchorsTheEnvelopeRefusedWhenItsOwnLeadNowhere) {
+  auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 0.25, 80, 40, 24});
+  PersistentPlannerConfig3D config = testConfig();
+  config.minimum_horizontal_step_m = 2.0;
+  config.minimum_vertical_step_m = 2.0;
+  config.physical_footprint.radius_m = 0.8;
+  config.physical_footprint.body_radius_m = 0.4;
+  config.physical_footprint.perimeter_samples = 8U;
+  config.physical_footprint.radial_rings = 1U;
+  config.physical_footprint.axial_samples = 1U;
+  config.physical_footprint.sweep_step_m = 0.1;
+  config.feasibility_first_enabled = true;
+  // A wall across the world at x in [4, 4.25) with one slot a metre wide at
+  // y in [2.5, 3.5): the envelope (1.6 m across) never passes it, the hull
+  // (0.8 m across) does. West of it the world ends at the grid.
+  for (int y = 0; y < 40; ++y) {
+    if (y >= 10 && y < 14) {
+      continue;
+    }
+    for (int z = 0; z < 24; ++z) {
+      ASSERT_TRUE(occupancy->setState({16, y, z}, ObservedVoxelState::kOccupied));
+    }
+  }
+  const Point3 start{3.0, 3.0, 3.0};
+  const Point3 goal{17.0, 3.0, 3.0};
+  PersistentDStarLitePlanner3D planner{config};
+  PlannerUpdate3D update = planner.plan(request(start, goal, world(occupancy, 1U)));
+  for (int attempt = 0; attempt < 24 && !update.publishable(); ++attempt) {
+    update = planner.plan(request(start, goal, world(occupancy, 1U)));
+  }
+  ASSERT_TRUE(update.publishable()) << "the vehicle waits west of the slot";
+  EXPECT_TRUE(update.telemetry.departure_hull_fallback);
+  const std::vector<Point3>& points = candidate(update).points;
+  ASSERT_GE(points.size(), 2U);
+  bool crosses_slot = false;
+  for (std::size_t index = 1U; index < points.size(); ++index) {
+    const Point3& first = points[index - 1U];
+    const Point3& second = points[index];
+    if (std::min(first.x, second.x) > 4.125 || std::max(first.x, second.x) < 4.125 ||
+        first.x == second.x) {
+      continue;
+    }
+    const double ratio = (4.125 - first.x) / (second.x - first.x);
+    const double y_at_wall = std::lerp(first.y, second.y, ratio);
+    crosses_slot = crosses_slot || (y_at_wall > 2.5 && y_at_wall < 3.5);
+  }
+  EXPECT_TRUE(crosses_slot);
+  EXPECT_NEAR(points.back().x, goal.x, 1.0e-9);
+}
+
 TEST(PersistentDStarLitePlanner3DTest, TheClearanceFieldReproducesTheRawNodeClearance) {
   // A lattice node sits on a voxel corner, where the field's bracketing
   // centres give the raw clearance exactly; elsewhere the field gives a lower

@@ -267,14 +267,18 @@ public:
     std::size_t refinement_reachable{0U};
     OccupiedCollisionResult3D first_leg_failure{};
     bool first_leg_failure_available{false};
-    // No anchor cleared the departure envelope and the hull was asked instead.
+    // The hull was asked for the anchors: the departure envelope cleared none,
+    // or every anchor it cleared lies in a component the search exhausted.
     bool hull_fallback{false};
   };
 
-  // Every node in the connector radius the body reaches, nearest first.
+  // Every node in the connector radius the body reaches, nearest first: the
+  // departure envelope's anchors, or the hull's where the envelope admits
+  // none; `hull_only` asks the hull alone.
   [[nodiscard]] std::vector<PersistentPlannerNode3D>
   admissibleAnchors(const Point3& point, bool start_anchor,
-                    DepartureDiagnostics3D* diagnostics = nullptr) const;
+                    DepartureDiagnostics3D* diagnostics = nullptr,
+                    bool hull_only = false) const;
   [[nodiscard]] std::optional<PersistentPlannerNode3D>
   selectAnchor(const Point3& point, bool start_anchor) const;
 
