@@ -295,10 +295,12 @@ TEST(PersistentDStarLitePlanner3DTest,
 
 TEST(PersistentDStarLitePlanner3DTest, ARefinedDepartureLeavesAPocketNoNodeReaches) {
   // A corridor with an alcove off it, and a lattice twice as coarse as the
-  // map. The alcove is one cell wide and its column carries no lattice node,
-  // so the vehicle resting inside it reaches no node in a single segment: the
-  // swept body clips a jamb on every straight line out. Two legs clear it —
-  // straight out of the mouth, then across to a corridor node.
+  // map. The alcove is one cell wide and its column carries no canonical
+  // lattice node. The corridor node beside it is placed into the alcove, so
+  // the vehicle resting inside reaches a node; but every lattice edge out of
+  // that node clips a jamb of the mouth, so the node alone leads nowhere. The
+  // departure walks on to the corridor nodes, which it reaches in two legs --
+  // straight out of the mouth, then across -- and the route leaves the pocket.
   constexpr int kWidth = 16;
   constexpr int kHeight = 9;
   constexpr int kDepth = 5;
@@ -327,34 +329,23 @@ TEST(PersistentDStarLitePlanner3DTest, ARefinedDepartureLeavesAPocketNoNodeReach
   config.physical_footprint.perimeter_samples = 8U;
   config.physical_footprint.radial_rings = 1U;
   config.physical_footprint.axial_samples = 1U;
+  // The feasibility-first branch is the one that closes a component and
+  // walks the departure on; the plain spatial search never gives up an anchor.
+  config.feasibility_first_enabled = true;
+  config.maximum_feasibility_expansions_per_update = 4096U;
+  config.maximum_feasibility_compute_time_ms = 500.0;
   const Point3 start{2.5, 5.5, 2.5};
   const Point3 goal{14.5, 2.5, 2.5};
 
-  PersistentPlannerConfig3D unrefined_config = config;
-  unrefined_config.departure_refinement_subdivisions = 0U;
-  PersistentDStarLitePlanner3D unrefined{unrefined_config};
-  const PlannerUpdate3D stuck =
-      unrefined.plan(request(start, goal, world(occupancy, 1U)));
-  ASSERT_EQ(stuck.input_status, PlannerInputStatus3D::kStartUnavailable)
-      << "the fixture no longer reproduces a pocket";
-  // The refusal says what the connector radius held and what the body swept
-  // into: nodes existed, and every leg to a valid one was rejected.
-  EXPECT_GT(stuck.telemetry.departure_candidate_nodes, 0U);
-  EXPECT_GT(stuck.telemetry.departure_valid_nodes, 0U);
-  EXPECT_EQ(stuck.telemetry.departure_rejected_legs,
-            stuck.telemetry.departure_valid_nodes);
-  EXPECT_TRUE(stuck.telemetry.departure_first_failure_available);
-  EXPECT_EQ(stuck.telemetry.departure_refinement_probes, 0U);
-
   PersistentDStarLitePlanner3D refined{config};
   PlannerUpdate3D update = refined.plan(request(start, goal, world(occupancy, 1U)));
-  for (int attempt = 0; attempt < 8 && !update.publishable(); ++attempt) {
+  for (int attempt = 0; attempt < 24 && !update.publishable(); ++attempt) {
     update = refined.plan(request(start, goal, world(occupancy, 1U)));
   }
 
   EXPECT_NE(update.input_status, PlannerInputStatus3D::kStartUnavailable);
   ASSERT_TRUE(update.publishable())
-      << "refined departure did not recover a pocket the plain one lost";
+      << "refined departure did not recover a pocket the placed node could not leave";
   EXPECT_TRUE(update.telemetry.departure_waypoint_used);
   const std::vector<Point3>& points = candidate(update).points;
   ASSERT_GE(points.size(), 2U);

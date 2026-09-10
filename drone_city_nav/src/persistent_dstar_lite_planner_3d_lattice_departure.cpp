@@ -38,6 +38,7 @@ PlannerLattice3D::admissibleAnchors(const Point3& point, const bool start_anchor
         const PersistentPlannerNode3D candidate{
             center.x + x_offset, center.y + y_offset, center.z + z_offset};
         if (nodeInside(candidate)) {
+          placeNode(candidate);
           candidates.push_back(candidate);
         }
       }
@@ -117,6 +118,12 @@ PlannerLattice3D::DepartureConnection3D PlannerLattice3D::selectDepartureConnect
   // Every departure leg this update answers to the body the anchors were
   // found with, so the path validation cannot refuse what the selection took.
   departure_uses_hull_ = result.diagnostics.hull_fallback;
+  // Every anchor the vehicle reaches lies inside a component the search has
+  // exhausted: a node placed into the pocket beside the vehicle, say, whose
+  // every lattice edge clips the pocket's mouth. Such an anchor is no anchor;
+  // the refined departure looks for a corridor node beyond the mouth first,
+  // and the walk cycles the closed anchors only when it finds none.
+  bool every_anchor_closed{false};
   if (excluded) {
     // An anchor inside a component the search has exhausted leads to the
     // same exhaustion; the walk moves on to the anchors it has not closed.
@@ -126,9 +133,11 @@ PlannerLattice3D::DepartureConnection3D PlannerLattice3D::selectDepartureConnect
         [&](const PersistentPlannerNode3D anchor) { return !excluded(anchor); });
     if (!open_anchors.empty()) {
       anchors = std::move(open_anchors);
+    } else {
+      every_anchor_closed = !anchors.empty();
     }
   }
-  if (!anchors.empty()) {
+  if (!anchors.empty() && !every_anchor_closed) {
     if (skipped_connections == 0U && preferred.has_value() &&
         std::ranges::find(anchors, *preferred) != anchors.end()) {
       result.anchor = *preferred;
@@ -137,8 +146,14 @@ PlannerLattice3D::DepartureConnection3D PlannerLattice3D::selectDepartureConnect
     result.anchor = anchors[skipped_connections % anchors.size()];
     return result;
   }
-  if (config_->departure_refinement_subdivisions == 0U) {
+  const auto cycle_closed_anchors = [&]() {
+    if (every_anchor_closed) {
+      result.anchor = anchors[skipped_connections % anchors.size()];
+    }
     return result;
+  };
+  if (config_->departure_refinement_subdivisions == 0U) {
+    return cycle_closed_anchors();
   }
   // No node in the connector radius is reachable in one segment. Probe a grid
   // finer than the lattice around the vehicle for a free point it can reach,
@@ -191,13 +206,13 @@ PlannerLattice3D::DepartureConnection3D PlannerLattice3D::selectDepartureConnect
     }
     ++result.diagnostics.refinement_reachable;
     const std::optional<PersistentPlannerNode3D> anchor = selectAnchor(waypoint, false);
-    if (anchor.has_value()) {
+    if (anchor.has_value() && !(excluded && excluded(*anchor))) {
       result.anchor = anchor;
       result.waypoints = {waypoint};
       return result;
     }
   }
-  return result;
+  return cycle_closed_anchors();
 }
 
 PlannerLattice3D::GoalConnection3D

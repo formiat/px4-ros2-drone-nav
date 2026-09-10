@@ -220,6 +220,7 @@ void PlannerLattice3D::noteChangedChunks(
     return;
   }
   ++change_epoch_;
+  forgetPlacementsNear(changed_chunks);
   for (const OccupancyChunkIndex3D& chunk : changed_chunks) {
     const std::optional<std::size_t> slot = chunkSlot(chunk);
     if (!slot.has_value()) {
@@ -458,6 +459,7 @@ double PlannerLattice3D::nodeClearanceM(const PersistentPlannerNode3D node) {
 
 double PlannerLattice3D::nodeClearanceWithin(const PersistentPlannerNode3D node,
                                              const double cap_m) {
+  placeNode(node);
   const Point3 point = pointFor(node);
   const auto found = node_clearance_cache_.find(node);
   if (found != node_clearance_cache_.end()) {

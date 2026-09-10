@@ -253,6 +253,14 @@ public:
   [[nodiscard]] std::size_t level(PersistentPlannerNode3D first,
                                   PersistentPlannerNode3D second) const noexcept;
   [[nodiscard]] Point3 pointFor(PersistentPlannerNode3D node) const noexcept;
+  // Where a node stands. A lattice node whose canonical position the body
+  // cannot occupy is moved, within half a step, to the nearest position it
+  // can: a passage narrower than two steps otherwise holds no node at all
+  // and the lattice cannot pass it, whatever the sweeps say about the space
+  // between. Placed once per node and forgotten where the world changes.
+  void placeNode(PersistentPlannerNode3D node) const;
+  // Whether the node was placed off its canonical point.
+  [[nodiscard]] bool nodeDisplaced(PersistentPlannerNode3D node) const noexcept;
   [[nodiscard]] PersistentPlannerNode3D nearestNode(const Point3& point) const noexcept;
 
   // Why a departure could or could not be found: what the connector radius
@@ -634,6 +642,21 @@ private:
   std::unordered_map<PersistentPlannerNode3D, CachedNodeClearance,
                      PersistentPlannerNode3DHash>
       node_clearance_cache_;
+  [[nodiscard]] Point3 canonicalPointFor(PersistentPlannerNode3D node) const noexcept;
+  void forgetPlacementsNear(
+      const std::unordered_set<OccupancyChunkIndex3D, OccupancyChunkIndex3DHash>&
+          changed_chunks) const;
+
+  // Placement of every node, dense over the lattice: the offset from the
+  // canonical position, and whether it has been derived on this world.
+  struct NodePlacement {
+    float x{0.0F};
+    float y{0.0F};
+    float z{0.0F};
+    bool placed{false};
+  };
+
+  mutable std::vector<NodePlacement> node_placements_;
   // Change epoch of the last occupied change per raw chunk, dense over the
   // chunk grid so a staleness check reads its reach box without hashing; the
   // epoch advances with every noted change set.

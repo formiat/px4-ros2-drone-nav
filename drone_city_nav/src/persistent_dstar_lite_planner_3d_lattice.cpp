@@ -331,7 +331,125 @@ PlannerLattice3D::level(const PersistentPlannerNode3D first,
   return static_cast<std::size_t>(std::countr_zero(static_cast<unsigned int>(scale)));
 }
 
+bool PlannerLattice3D::nodeDisplaced(
+    const PersistentPlannerNode3D node) const noexcept {
+  if (node_placements_.empty() || !nodeInside(node)) {
+    return false;
+  }
+  const NodePlacement& placed = node_placements_[linearIndex(node)];
+  return placed.x != 0.0F || placed.y != 0.0F || placed.z != 0.0F;
+}
+
 Point3 PlannerLattice3D::pointFor(const PersistentPlannerNode3D node) const noexcept {
+  const Point3 canonical = canonicalPointFor(node);
+  if (node_placements_.empty() || !nodeInside(node)) {
+    return canonical;
+  }
+  const NodePlacement& placed = node_placements_[linearIndex(node)];
+  return Point3{canonical.x + placed.x, canonical.y + placed.y, canonical.z + placed.z};
+}
+
+void PlannerLattice3D::placeNode(const PersistentPlannerNode3D node) const {
+  if (!nodeInside(node) || !resident_collision_oracle_.has_value()) {
+    return;
+  }
+  if (node_placements_.size() != nodeCount()) {
+    node_placements_.assign(nodeCount(), NodePlacement{});
+  }
+  NodePlacement& placement = node_placements_[linearIndex(node)];
+  if (placement.placed) {
+    return;
+  }
+  const Point3 canonical = canonicalPointFor(node);
+  const auto stands = [&](const Point3& point) {
+    return pointInsideFlightEnvelope(point) &&
+           resident_collision_oracle_->validatePoint(point).clear();
+  };
+  Vec3 offset{};
+  if (!stands(canonical)) {
+    // Nearest first, horizontally before vertically: the body is wider than
+    // it is tall, and a passage is missed across the lattice, not along it.
+    // Half a step keeps every placed node inside its own lattice cell.
+    const double horizontal_m = config_->minimum_horizontal_step_m;
+    const double vertical_m = config_->minimum_vertical_step_m;
+    constexpr std::array<double, 2> kFractions{0.25, 0.45};
+    const double diagonal = std::numbers::sqrt2 / 2.0;
+    const std::array<Vec3, 8> horizontal_axes{Vec3{1.0, 0.0, 0.0},
+                                              Vec3{-1.0, 0.0, 0.0},
+                                              Vec3{0.0, 1.0, 0.0},
+                                              Vec3{0.0, -1.0, 0.0},
+                                              Vec3{diagonal, diagonal, 0.0},
+                                              Vec3{-diagonal, diagonal, 0.0},
+                                              Vec3{diagonal, -diagonal, 0.0},
+                                              Vec3{-diagonal, -diagonal, 0.0}};
+    bool placed{false};
+    for (const double fraction : kFractions) {
+      for (const Vec3& axis : horizontal_axes) {
+        const Vec3 candidate{fraction * horizontal_m * axis.x,
+                             fraction * horizontal_m * axis.y, 0.0};
+        if (stands(Point3{canonical.x + candidate.x, canonical.y + candidate.y,
+                          canonical.z})) {
+          offset = candidate;
+          placed = true;
+          break;
+        }
+      }
+      if (placed) {
+        break;
+      }
+      for (const double sign : {1.0, -1.0}) {
+        const Vec3 candidate{0.0, 0.0, sign * fraction * vertical_m};
+        if (stands(Point3{canonical.x, canonical.y, canonical.z + candidate.z})) {
+          offset = candidate;
+          placed = true;
+          break;
+        }
+      }
+      if (placed) {
+        break;
+      }
+    }
+  }
+  placement = NodePlacement{.x = static_cast<float>(offset.x),
+                            .y = static_cast<float>(offset.y),
+                            .z = static_cast<float>(offset.z),
+                            .placed = true};
+}
+
+void PlannerLattice3D::forgetPlacementsNear(
+    const std::unordered_set<OccupancyChunkIndex3D, OccupancyChunkIndex3DHash>&
+        changed_chunks) const {
+  if (changed_chunks.empty() || node_placements_.empty()) {
+    return;
+  }
+  // A placed node stands within half a step of its cell and its body reaches
+  // less than a chunk beyond that; a change in its chunk or the chunks around
+  // it can move it, and the placement is derived again when the node is next
+  // consulted.
+  const double chunk_span_m =
+      static_cast<double>(OccupancyGrid3D::kChunkSize) * raw_bounds_.resolution_m;
+  for (const OccupancyChunkIndex3D& chunk : changed_chunks) {
+    const Point3 low{raw_bounds_.origin_x + (chunk.x - 1) * chunk_span_m,
+                     raw_bounds_.origin_y + (chunk.y - 1) * chunk_span_m,
+                     raw_bounds_.origin_z + (chunk.z - 1) * chunk_span_m};
+    const Point3 high{raw_bounds_.origin_x + (chunk.x + 2) * chunk_span_m,
+                      raw_bounds_.origin_y + (chunk.y + 2) * chunk_span_m,
+                      raw_bounds_.origin_z + (chunk.z + 2) * chunk_span_m};
+    const PersistentPlannerNode3D first = nearestNode(low);
+    const PersistentPlannerNode3D last = nearestNode(high);
+    for (int z = first.z; z <= last.z; ++z) {
+      for (int y = first.y; y <= last.y; ++y) {
+        for (int x = first.x; x <= last.x; ++x) {
+          node_placements_[linearIndex(PersistentPlannerNode3D{x, y, z})].placed =
+              false;
+        }
+      }
+    }
+  }
+}
+
+Point3
+PlannerLattice3D::canonicalPointFor(const PersistentPlannerNode3D node) const noexcept {
   return Point3{
       raw_bounds_.origin_x +
           (static_cast<double>(node.x) + 0.5) * config_->minimum_horizontal_step_m,
@@ -605,6 +723,8 @@ double PlannerLattice3D::rawEdgeCost(const PersistentPlannerNode3D first,
   if (!nodeInside(first) || !nodeInside(second) || first == second) {
     return std::numeric_limits<double>::infinity();
   }
+  placeNode(first);
+  placeNode(second);
   const std::size_t queried_level = level(first, second);
   const PersistentPlannerEdge3D edge = canonicalEdge(first, second);
   if (queried_level == 0U) {
@@ -651,6 +771,12 @@ double PlannerLattice3D::rawEdgeCost(const PersistentPlannerNode3D first,
       }
     }
     if (state == kLevelZeroEdgeClear) {
+      // The table holds the canonical geometry; an end placed off its
+      // canonical point is flown as it stands.
+      if (nodeDisplaced(first) || nodeDisplaced(second)) {
+        return minimumFlightTranslationTime3D(pointFor(first), pointFor(second),
+                                              config_->time_model);
+      }
       return level_zero_edge_time_s_[slot.direction];
     }
     if (state == kLevelZeroEdgeRefined) {
@@ -888,6 +1014,7 @@ void PlannerLattice3D::resetEdgeEvidence() noexcept {
   sweep_rejected_edges_.clear();
   adaptive_edge_cost_cache_.clear();
   resetNodeClearances();
+  node_placements_.clear();
   adaptive_edges_by_chunk_.clear();
   resetEdgeStatistics();
 }

@@ -400,25 +400,31 @@ TEST(PersistentDStarLitePlanner3DTest, TheStartAnchorIsKeptWhileItStaysAdmissibl
 // edge crosses it, so the graph has no path from one room to the other. The
 // corridor is wide enough for the body, and a vehicle in the first room has a
 // way out at the body's own scale.
+// A corridor no lattice node stands in, placed or not. The body of radius
+// 0.5 m fits the corridor y in [4.2, 5.4) only with its centre in
+// [4.7, 4.9): the row of nodes on y = 5 fails by the wall above, and node
+// placement, which probes a quarter and 0.45 of the 2 m step straight and
+// diagonally, lands nearest at y = 4.646 -- still in the wall below. The
+// escape fill, anchored on the vehicle at half-step cells, crosses the lane
+// at y = 4.8.
 struct NodelessCorridorFixture {
-  static constexpr double kResolution = 0.25;
-  static constexpr int kWidth = 64;  // 16 m
-  static constexpr int kHeight = 24; // 6 m
-  static constexpr int kDepth = 8;   // 2 m
+  static constexpr double kResolution = 0.2;
+  static constexpr int kWidth = 80;  // 16 m
+  static constexpr int kHeight = 30; // 6 m
+  static constexpr int kDepth = 10;  // 2 m
   std::shared_ptr<ObservedOccupancyGrid3D> occupancy{
       std::make_shared<ObservedOccupancyGrid3D>(
           GridBounds3D{0.0, 0.0, 0.0, kResolution, kWidth, kHeight, kDepth})};
   PersistentPlannerConfig3D config{testConfig()};
-  Point3 start{3.0, 3.5, 1.0};
+  Point3 start{3.0, 3.8, 1.0};
   Point3 goal{13.0, 3.0, 1.0};
 
   NodelessCorridorFixture() {
     // Walls between the rooms, x in [6, 10), except the corridor y in
-    // [2.75, 4.25).
-    for (int x = 24; x < 40; ++x) {
+    // [4.2, 5.4).
+    for (int x = 30; x < 50; ++x) {
       for (int y = 0; y < kHeight; ++y) {
-        const double y_m = static_cast<double>(y) * kResolution;
-        if (y_m >= 2.75 && y_m < 4.25) {
+        if (y >= 21 && y < 27) {
           continue;
         }
         for (int z = 0; z < kDepth; ++z) {
@@ -497,9 +503,21 @@ TEST(PersistentDStarLitePlanner3DTest,
   ASSERT_GE(points.size(), 2U);
   EXPECT_NEAR(points.front().x, fixture.start.x, 1.0e-9);
   EXPECT_NEAR(points.back().x, fixture.goal.x, 1.0e-9);
-  EXPECT_TRUE(std::ranges::any_of(points, [](const Point3& point) {
-    return point.x > 6.0 && point.x < 10.0 && point.y > 2.9 && point.y < 4.1;
-  })) << "the route does not pass the corridor";
+  // The chain through the corridor is shortcut into one segment, so the
+  // crossing is read off the segment that spans the wall.
+  bool crosses_corridor = false;
+  for (std::size_t index = 1U; index < points.size(); ++index) {
+    const Point3& first = points[index - 1U];
+    const Point3& second = points[index];
+    if (std::min(first.x, second.x) > 6.0 || std::max(first.x, second.x) < 10.0 ||
+        first.x == second.x) {
+      continue;
+    }
+    const double ratio = (8.0 - first.x) / (second.x - first.x);
+    const double y_at_wall = std::lerp(first.y, second.y, ratio);
+    crosses_corridor = crosses_corridor || (y_at_wall > 4.6 && y_at_wall < 5.0);
+  }
+  EXPECT_TRUE(crosses_corridor) << "the route does not pass the corridor";
   expectRawValid(points, *fixture.occupancy, planner.config().physical_footprint);
 }
 
@@ -555,15 +573,15 @@ TEST(PersistentDStarLitePlanner3DTest,
 // exhausts the pocket, which is no way out, so the exit is retired and the
 // fill resumes until it finds the corridor that leads on.
 struct DeadEndExitFixture {
-  static constexpr double kResolution = 0.25;
-  static constexpr int kWidth = 64;  // 16 m
-  static constexpr int kHeight = 32; // 8 m
-  static constexpr int kDepth = 8;   // 2 m
+  static constexpr double kResolution = 0.2;
+  static constexpr int kWidth = 80;  // 16 m
+  static constexpr int kHeight = 40; // 8 m
+  static constexpr int kDepth = 10;  // 2 m
   std::shared_ptr<ObservedOccupancyGrid3D> occupancy{
       std::make_shared<ObservedOccupancyGrid3D>(
           GridBounds3D{0.0, 0.0, 0.0, kResolution, kWidth, kHeight, kDepth})};
   PersistentPlannerConfig3D config{testConfig()};
-  Point3 start{4.0, 2.0, 1.0};
+  Point3 start{4.0, 2.3, 1.0};
   Point3 goal{13.0, 7.0, 1.0};
 
   DeadEndExitFixture() {
@@ -575,22 +593,23 @@ struct DeadEndExitFixture {
       }
     };
     // The wall between the rooms, x in [6, 10), pierced by the dead-end
-    // corridor y in [1.25, 2.75) and the corridor on, y in [5.25, 6.75): both
-    // centred on an even metre, between the lattice rows on odd metres, so
-    // neither carries a valid node.
-    for (int x = 24; x < 40; ++x) {
+    // corridor y in [2.2, 3.4) and the corridor on, y in [6.2, 7.4): the body
+    // fits either only with its centre in the 0.2 m under the lattice row on
+    // the odd metre above, where node placement does not land (see
+    // NodelessCorridorFixture), so neither carries a node. The escape fill
+    // from the start crosses both lanes, at y = 2.8 and y = 6.8.
+    for (int x = 30; x < 50; ++x) {
       for (int y = 0; y < kHeight; ++y) {
-        const double y_m = static_cast<double>(y) * kResolution;
-        if ((y_m >= 1.25 && y_m < 2.75) || (y_m >= 5.25 && y_m < 6.75)) {
+        if ((y >= 11 && y < 17) || (y >= 31 && y < 37)) {
           continue;
         }
         fill(x, y);
       }
     }
-    // The divider behind the wall, y in [3.75, 4.75), closes the pocket the
+    // The divider behind the wall, y in [3.8, 4.8), closes the pocket the
     // dead-end corridor opens into off the goal's room.
-    for (int x = 40; x < kWidth; ++x) {
-      for (int y = 15; y < 19; ++y) {
+    for (int x = 50; x < kWidth; ++x) {
+      for (int y = 19; y < 24; ++y) {
         fill(x, y);
       }
     }
@@ -647,12 +666,12 @@ TEST(PersistentDStarLitePlanner3DTest, AnEscapeIntoADeadEndIsRetiredForTheWayOn)
     }
     const double ratio = (8.0 - first.x) / (second.x - first.x);
     const double y_at_wall = std::lerp(first.y, second.y, ratio);
-    crosses_corridor_on = crosses_corridor_on || (y_at_wall > 5.3 && y_at_wall < 6.7);
+    crosses_corridor_on = crosses_corridor_on || (y_at_wall > 6.6 && y_at_wall < 7.0);
   }
   EXPECT_TRUE(crosses_corridor_on)
       << "the route does not pass the corridor on: " << described;
   EXPECT_FALSE(std::ranges::any_of(points, [](const Point3& point) {
-    return point.x > 10.0 && point.y < 3.75;
+    return point.x > 10.0 && point.y < 3.8;
   })) << "the route enters the dead end";
   expectRawValid(points, *fixture.occupancy, planner.config().physical_footprint);
 }
