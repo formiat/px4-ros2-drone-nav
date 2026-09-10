@@ -482,20 +482,15 @@ of that run's no-route time. Both owners are now routeless owners, and the
 latch decides how often a search actually runs.
 
 The departure envelope decides which anchors a vehicle may leave through, and
-the hull decides instead only where the envelope admits none at all, or where
-every anchor it admits lies in a component the search has exhausted
+only where it admits none at all does the hull decide instead
 (`departure_hull=true` in `PRODUCTION_MPPI_ROUTE3D`). A vehicle leaves a tight
 spot at hover and upright, so the envelope that contains the hull at every
 tilt is not what decides whether it may leave; a vehicle resting beside
 evidence its own stop had just met was otherwise refused every departure with
-`start_unavailable` for a second or more at a time, and one that stopped a
-metre from a post held for fourteen seconds with every envelope anchor inside
-a closed pocket and the way on past the post, which the hull clears, refused
-on every leg until the post's cells decayed. Judging every departure by
+`start_unavailable` for a second or more at a time. Judging every departure by
 the hull was tried and withdrawn: ordinary routes then left the vehicle closer
 to evidence than the envelope admits, and the flights that followed were worse
-on every count, one of them lost to a collision. The hull is therefore asked
-only once the envelope's own anchors lead nowhere.
+on every count, one of them lost to a collision.
 
 Selecting the connection fixes the body every departure leg answers to for the
 rest of that update. Judged separately, the fallback found a departure that the
