@@ -357,10 +357,10 @@ production_mppi_node:
     static_occupancy_3d_path: worlds/generated_city.occupancy3d
     static_free_space_topology_3d_path: worlds/generated_city.topology3d
     static_esdf_3d_cache_path: worlds/generated_city.esdf3d
-    # Cruise sits under the speed the sensor-braking contract admits along its
-    # worst direction for the 30 m guaranteed lidar range: the motion model
-    # caps every rollout there, so a higher cruise buys nothing and a lower
-    # one only lengthens open legs. The simulation targets pass the same value.
+    # Cruise sits above the speed the sensor-braking contract admits along its
+    # worst direction for the guaranteed lidar range below: the contract, not
+    # cruise, caps every rollout on open legs. The simulation targets pass the
+    # same value.
     cruise_speed_mps: 6.5
     absolute_speed_limit_mps: 10.0
     maximum_horizontal_acceleration_mps2: 4.0
@@ -372,7 +372,18 @@ production_mppi_node:
     guaranteed_vertical_stopping_deceleration_mps2: 2.0
     maximum_control_jerk_mps3: 12.0
     speed_reaction_latency_s: 0.10
-    guaranteed_lidar_detection_range_m: 30.0
+    # The range within which the lidar is guaranteed to have resolved an
+    # obstacle at the occupancy resolution the validators reject on, not the
+    # range at which it returns from a wall. With 240 by 121 beams over the
+    # full sphere the beams are 1.5 degrees apart, so two beams straddle a
+    # 0.25 m voxel only inside 0.25 / 0.026 = 9.5 m; farther out a voxel the
+    # route passes through is free by the beams that missed it and appears
+    # occupied only when the vehicle closes in. Measured over the recorded
+    # urban flights, the cells behind a rejected horizon were first seen 4.9 m
+    # ahead at the median and 10.8 m at the ninetieth percentile, and every
+    # stop began as a sprint to four metres a second under a contract that
+    # promised 30 m of seen ground.
+    guaranteed_lidar_detection_range_m: 9.5
     sensor_braking_physical_margin_m: 3.0
     # The goal limiter reaches zero this far before the mission goal. The
     # capture latch fires once the vehicle rests inside the capture radius, so
