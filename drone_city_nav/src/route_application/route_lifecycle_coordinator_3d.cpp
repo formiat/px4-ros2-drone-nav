@@ -28,25 +28,19 @@ elapsedMilliseconds(const std::chrono::steady_clock::time_point started) noexcep
 
 [[nodiscard]] RouteCandidateDisposition3D
 classifyCandidateDisposition(const PlannerSearchTransaction3D& transaction,
-                             const ProductionRouteActivationResult3D& activation,
-                             const double required_certified_overlap_m) {
-  const RouteAdmissionReport3D& admission = activation.admission;
+                             const RouteAdmissionReport3D& admission) noexcept {
   if (admission.certified_pending) {
     return RouteCandidateDisposition3D::kActivated;
   }
-  // A newer world refusing the candidate within what the vehicle is committed
-  // to -- its departure and the certified overlap -- is a route it cannot
-  // enter, and the search that produced it starts again from the vehicle.
-  // Refused beyond that, the candidate is enterable and the refusal is a block
-  // ahead, the same thing a blocked release is: the persistent search repairs
-  // the blocked part against the world it re-validates every update. Retiring
-  // it for that restarted the feasibility search from nothing on every raw
-  // revision that arrived between search and activation -- two a second --
-  // and the recorded holds after a stop were one to three such restarts long.
+  // A newer world refusing the candidate retires the session wherever the
+  // refusal lies. The session searches the world its transaction carries, so
+  // a continuation never sees the revision that refused it: continued past a
+  // refusal beyond the committed route, one recorded flight searched a world
+  // that no longer existed for twenty and then ninety seconds without a
+  // candidate, and never reached the goal. The replan opens a session on the
+  // world that refused.
   if (route_lifecycle_refusal_3d::searchInvalidatedByActivationWorld(transaction,
-                                                                     admission) &&
-      !route_lifecycle_refusal_3d::refusedBeyondTheCommittedRoute3D(
-          activation, required_certified_overlap_m)) {
+                                                                     admission)) {
     return RouteCandidateDisposition3D::kRetireSearchAndReplan;
   }
   // A superseded snapshot says only that the commit base moved between capture
@@ -322,8 +316,8 @@ RouteLifecycleCoordinator3D::advance(RoutePlanningUpdateEvent3D event) {
       RouteActivationCommitResult3D committed =
           config_.activation_commit_boundary(std::move(prepared), commit_operation);
       activation = std::move(committed.result);
-      result.candidate_disposition = classifyCandidateDisposition(
-          *transaction, activation, config_.extension.required_certified_overlap_m);
+      result.candidate_disposition =
+          classifyCandidateDisposition(*transaction, activation.admission);
       if (result.candidate_disposition !=
           RouteCandidateDisposition3D::kRetrySameCandidate) {
         break;

@@ -232,12 +232,12 @@ TEST(RouteLifecycleCoordinator3DTest,
 }
 
 TEST(RouteLifecycleCoordinator3DRetirementTest,
-     ANewerWorldRefusingBeyondTheCommittedRouteKeepsTheSearchRunning) {
-  // A raw revision newer than the search's world refused the candidate. Within
-  // the committed route that is a route the vehicle cannot enter and the
-  // session is retired; beyond it the refusal is a block ahead, which the
-  // persistent search repairs, so the session continues instead of starting
-  // over on every revision that arrives between search and activation.
+     ANewerWorldRefusingTheCandidateRetiresTheSessionWhereverTheRefusalLies) {
+  // A raw revision newer than the search's world refused the candidate. The
+  // session searches the world its transaction carries and a continuation
+  // never sees the revision that refused it, so it is retired whether the
+  // refusal lies within the committed route or beyond it, and the replan
+  // opens a session on the world that refused.
   ExecutionSupervisor3D supervisor;
   const LifecycleFixture3D input = fixture();
   ASSERT_NE(input.transaction, nullptr);
@@ -317,8 +317,8 @@ TEST(RouteLifecycleCoordinator3DRetirementTest,
 
   const RouteLifecycleUpdate3D beyond = advance(true);
   EXPECT_EQ(beyond.candidate_disposition,
-            RouteCandidateDisposition3D::kContinueForImprovement);
-  EXPECT_FALSE(beyond.search_superseded_by_activation);
+            RouteCandidateDisposition3D::kRetireSearchAndReplan);
+  EXPECT_TRUE(beyond.search_superseded_by_activation);
 }
 
 TEST(RouteLifecycleCoordinator3DRetirementTest,
