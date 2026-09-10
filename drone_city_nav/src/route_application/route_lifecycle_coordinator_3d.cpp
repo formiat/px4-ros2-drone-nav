@@ -152,8 +152,17 @@ RouteLifecycleCoordinator3D::enqueue(RoutePlanningRequest3D request,
                                      const RoutePlanningQueuePolicy3D policy) {
   const std::shared_ptr<const PlannerSearchTransaction3D> replacement =
       request.transaction;
+  const bool fresh_search = request.continuation_session == nullptr;
   RoutePlanningEnqueueResult3D result =
       route_planning_coordinator_->enqueue(std::move(request), policy);
+  if (result.queued() && fresh_search && replacement != nullptr &&
+      replacement->replacement()) {
+    const std::scoped_lock lock{lifecycle_mutex_};
+    if (replan_gate_.inFlight() &&
+        replan_gate_.generation() == replacement->request.base_route_generation) {
+      replan_in_flight_transaction_ = replacement;
+    }
+  }
   if (result.displaced.has_value() && result.displaced->transaction != nullptr &&
       (replacement == nullptr || !result.lifecycleTransferredTo(*replacement))) {
     finishSearch(*result.displaced->transaction);
@@ -207,8 +216,7 @@ RouteLifecycleCoordinator3D::advance(RoutePlanningUpdateEvent3D event) {
   if (result.candidate.available &&
       (transaction->replacement() || transaction->initial())) {
     const std::scoped_lock lock{lifecycle_mutex_};
-    if (replan_gate_.inFlight() &&
-        replan_gate_.generation() == transaction->request.base_route_generation) {
+    if (replanGateHolds(*transaction)) {
       replan_in_flight_published_ = true;
     }
   }
@@ -699,6 +707,7 @@ RouteLifecycleCoordinator3D::requestTrackingWorldRefresh(
       outcome.status = RouteLifecycleTrackingRefreshStatus3D::kLifecycleBusy;
       return outcome;
     }
+    replan_in_flight_transaction_.reset();
     replan_in_flight_mission_epoch_ =
         request.objective != nullptr ? request.objective->mission_epoch : 0U;
   }
@@ -786,8 +795,13 @@ bool RouteLifecycleCoordinator3D::searchRetired(
     return !extension_request_in_flight_ ||
            extension_in_flight_generation_ != transaction.request.base_route_generation;
   }
-  return !replan_gate_.inFlight() ||
-         replan_gate_.generation() != transaction.request.base_route_generation;
+  return !replanGateHolds(transaction);
+}
+
+bool RouteLifecycleCoordinator3D::replanGateHolds(
+    const PlannerSearchTransaction3D& transaction) const noexcept {
+  return replan_gate_.inFlight() &&
+         replan_in_flight_transaction_.lock().get() == std::addressof(transaction);
 }
 
 bool RouteLifecycleCoordinator3D::queueContinuation(

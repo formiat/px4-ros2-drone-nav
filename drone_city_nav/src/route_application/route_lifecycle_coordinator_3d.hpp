@@ -365,6 +365,9 @@ private:
   // search: a release retired it and queued a replacement.
   [[nodiscard]] bool
   searchRetired(const PlannerSearchTransaction3D& transaction) const noexcept;
+  // Whether the replan gate is holding this very search. Lock held by caller.
+  [[nodiscard]] bool
+  replanGateHolds(const PlannerSearchTransaction3D& transaction) const noexcept;
   [[nodiscard]] bool queueContinuation(const RouteLifecycleUpdate3D& update);
   std::uint64_t incumbent_rejection_sequence_{0U};
   // Consecutive deliveries of a blocked route's replacement held for the
@@ -418,6 +421,15 @@ private:
   StaticRoutePlanningLatencyTracker planner_update_latency_tracker_{};
   StaticRouteDeferredReplanLatch deferred_replan_latch_{};
   StaticRouteReplanGate replan_gate_{};
+  // The search the gate admitted. A search retired by a release and the
+  // replacement queued for it are opened on the same base generation, so the
+  // generation the gate holds cannot tell a late update of the retired search
+  // from the one it is holding: judged by generation, the retired search's
+  // continuation displaced the queued replacement, ran on with a candidate the
+  // executor had refused, and every later release deferred behind it -- seven
+  // seconds of standing still in one recorded flight. Bound when the fresh
+  // replacement search is queued under the gate.
+  std::weak_ptr<const PlannerSearchTransaction3D> replan_in_flight_transaction_{};
   // Mission epoch of the objective the in-flight replan search serves.
   std::uint64_t replan_in_flight_mission_epoch_{0U};
   // The in-flight replan search already delivered a candidate; what it still

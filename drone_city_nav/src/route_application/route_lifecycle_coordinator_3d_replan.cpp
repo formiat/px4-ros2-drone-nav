@@ -333,6 +333,7 @@ RouteLifecycleReplanOutcome3D RouteLifecycleCoordinator3D::requestReplanImpl(
       });
       outcome.status = RouteLifecycleReplanStatus3D::kDeferredReplanInFlight;
     } else {
+      replan_in_flight_transaction_.reset();
       replan_in_flight_mission_epoch_ = snapshot.objective->mission_epoch;
       replan_in_flight_published_ = false;
       replan_in_flight_stamp_ns_ = snapshot.stamp_ns;

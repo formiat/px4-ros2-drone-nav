@@ -147,6 +147,83 @@ TEST(RouteLifecycleCoordinator3DTest,
   coordinator.stop();
 }
 
+// A release retires the in-flight search and queues its replacement on the
+// same base generation. The retired search's last update still arrives, and
+// judged by generation alone it looked like the search the gate was holding:
+// its continuation displaced the queued replacement and ran on with the
+// candidate the executor had already refused, while every later release
+// deferred behind it. The gate holds the queued replacement, not a generation.
+TEST(RouteLifecycleCoordinator3DTest,
+     AContinuationOfARetiredSearchOnTheSameGenerationDoesNotDisplaceTheReplacement) {
+  ExecutionSupervisor3D supervisor;
+  const LifecycleFixture3D input = fixture();
+  ASSERT_NE(input.transaction, nullptr);
+  std::size_t initial_commit_count{0U};
+  {
+    RouteLifecycleCoordinator3D activation_coordinator{
+        supervisor, lifecycleConfig(input, supervisor, initial_commit_count)};
+    planAndActivateInitialRoute(activation_coordinator, supervisor, input);
+  }
+  ASSERT_NE(supervisor.plan(), nullptr);
+  const std::uint64_t generation = supervisor.plan()->routeGenerationHighWater();
+  const std::shared_ptr<const PlannerSearchTransaction3D> retired =
+      makePlannerSearchTransaction3D(input.world, input.planner_world,
+                                     input.transaction->objective,
+                                     StaticRouteSearchRequestIdentity{
+                                         .kind = StaticRouteSearchRequestKind::kReplan,
+                                         .base_route_generation = generation,
+                                     },
+                                     std::nullopt, RouteReleaseReason3D::kBlocked);
+  ASSERT_NE(retired, nullptr);
+
+  std::size_t commit_count{0U};
+  RouteLifecycleCoordinatorConfig3D config =
+      lifecycleConfig(input, supervisor, commit_count);
+  bindResidentReplanSnapshot(config, input, supervisor, 600);
+  config.activation_commit_boundary =
+      [&commit_count](PreparedRouteActivation3D prepared,
+                      const RouteActivationCommitOperation3D&) {
+        ++commit_count;
+        ProductionRouteActivationResult3D activation = std::move(prepared.result);
+        activation.admission.activation_status =
+            StaticRouteActivationStatus::kDynamicHandoffRejected;
+        activation.admission.certified_pending = false;
+        return RouteActivationCommitResult3D{.result = std::move(activation)};
+      };
+  RouteLifecycleCoordinator3D coordinator{supervisor, std::move(config)};
+  coordinator.start();
+  const RouteLifecycleReplanOutcome3D queued =
+      coordinator.requestReplan(RouteReleaseReason3D::kBlocked, generation);
+  ASSERT_EQ(queued.status, RouteLifecycleReplanStatus3D::kQueued);
+  ASSERT_EQ(queued.search_generation, generation);
+
+  RoutePlanner3D planner{plannerConfig()};
+  const RoutePlannerVehicleState3D vehicle_state = vehicleState(input);
+  RoutePlannerUpdate3D planner_update = planner.update(*retired, vehicle_state);
+  ASSERT_TRUE(planner_update.improved_incumbent.has_value());
+  ASSERT_NE(planner_update.planner_session, nullptr);
+  planner_update.planner_invoked = true;
+  planner_update.planner_progress = SearchProgress3D::kRunning;
+  planner_update.dispatch.continue_search = true;
+
+  const RouteLifecycleUpdate3D result = coordinator.advance(RoutePlanningUpdateEvent3D{
+      .request =
+          RoutePlanningRequest3D{
+              .transaction = retired,
+              .continuation_session = nullptr,
+          },
+      .vehicle_state = vehicle_state,
+      .update = std::move(planner_update),
+  });
+
+  EXPECT_EQ(result.status, RouteLifecycleAdvanceStatus3D::kCompleted);
+  EXPECT_TRUE(result.search_running);
+  EXPECT_FALSE(result.search_superseded_by_activation);
+  EXPECT_TRUE(result.search_retired);
+  EXPECT_FALSE(result.continuation_queued);
+  coordinator.stop();
+}
+
 // The continuity base a stitched replacement carries: the route the vehicle is
 // still flying, with a stitch window ahead of it.
 [[nodiscard]] std::optional<PlannerSearchContinuityBase3D>
