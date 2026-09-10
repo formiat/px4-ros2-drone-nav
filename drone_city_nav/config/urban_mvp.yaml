@@ -176,16 +176,14 @@ obstacle_memory_3d_node:
     max_lidar_range_m: 35.0
     range_hit_epsilon_m: 0.05
     scan_stride: 1
-    # A voxel is occupied once two scans have hit it. One scan's hit lands up
-    # to 1.7 m off the surface it belongs to when the pose it is projected
-    # with is a few tenths of a degree in error at range, and a single such
-    # voxel refuses the route it lands on: in one recorded flight nine of
-    # thirty-one route refusals were on voxels no later map contained, and two
-    # of them turned the vehicle around onto routes twenty to thirty seconds
-    # longer. The second hit costs one scan interval, which the sensor
-    # braking contract's evidence age already covers; the misses that free a
-    # voxel are unchanged.
-    hit_weight: 2
+    # One hit weighs four against an occupied threshold of three: a voxel is
+    # occupied on the first scan that hits it and stays so through the
+    # grazing misses a wall surface collects. Weighing a hit two, so that a
+    # second scan decides, made those surfaces flicker instead: with the
+    # misses a few tenths of a degree of heading error scatters through them,
+    # a third of the occupied episodes in one recorded flight lasted under
+    # five seconds, and the vehicle spent the whole flight replacing routes.
+    hit_weight: 4
     miss_weight: 1
     min_score: -8
     max_score: 12
