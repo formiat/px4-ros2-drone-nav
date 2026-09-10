@@ -780,4 +780,68 @@ TEST(PersistentDStarLitePlanner3DTest, TheClearanceFieldReproducesTheRawNodeClea
   EXPECT_GE(field_m, raw_m - 0.125 * std::sqrt(3.0) - 1.0e-6);
 }
 
+// Every search runs out: the frontier exhausts on the far side of a doorway
+// no lattice edge crosses, and the fill's own reach ends short of it. The
+// vehicle flew in through that doorway, so its trail is a corridor its body
+// has already swept, and the retreat walks back along it instead of standing
+// there.
+TEST(PersistentDStarLitePlanner3DTest,
+     TheRetreatWalksBackAlongTheTrailWhenEverySearchRunsOut) {
+  auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 0.25, 80, 48, 24});
+  PersistentPlannerConfig3D config = testConfig();
+  config.minimum_horizontal_step_m = 2.0;
+  config.minimum_vertical_step_m = 2.0;
+  config.feasibility_first_enabled = true;
+  config.physical_footprint.radius_m = 0.4;
+  config.physical_footprint.body_radius_m = 0.4;
+  config.physical_footprint.perimeter_samples = 8U;
+  config.physical_footprint.radial_rings = 1U;
+  config.physical_footprint.axial_samples = 1U;
+  config.physical_footprint.sweep_step_m = 0.1;
+  config.flight_envelope.maximum_target_z_m = 6.0;
+  config.maximum_compute_time_ms = 60.0;
+  config.maximum_feasibility_compute_time_ms = 25.0;
+  // The fill reaches one lattice step; the doorway is three metres behind the
+  // vehicle, so only the trail leads out.
+  config.escape_search_radius_cells = 1U;
+  config.escape_search_maximum_probes_per_update = 1U << 16U;
+  // A wall at x = 8 with a doorway at y in [5.25, 6.25): the lattice rows lie
+  // at y = 1, 3, 5 and 7, and the body clears none of them inside it, so no
+  // lattice edge crosses the wall.
+  for (int y = 0; y < 48; ++y) {
+    for (int z = 0; z < 24; ++z) {
+      if (y >= 21 && y < 25) {
+        continue;
+      }
+      ASSERT_TRUE(occupancy->setState({32, y, z}, ObservedVoxelState::kOccupied));
+    }
+  }
+  const Point3 goal{3.0, 5.75, 3.0};
+  PersistentDStarLitePlanner3D planner{config};
+  // The vehicle flies east through the doorway; every update records where it
+  // stands.
+  for (double x = 5.0; x <= 11.0; x += 0.5) {
+    static_cast<void>(
+        planner.plan(request(Point3{x, 5.75, 3.0}, goal, world(occupancy, 1U))));
+  }
+
+  // The consumer refuses the route it was handed -- the vehicle cannot enter
+  // it from where it now stands -- so the searches start again from here.
+  const Point3 trapped{11.0, 5.75, 3.0};
+  bool retreat_taken = false;
+  PlannerUpdate3D update;
+  for (int attempt = 0; attempt < 60 && !retreat_taken; ++attempt) {
+    PersistentPlannerRequest3D trapped_request =
+        request(trapped, goal, world(occupancy, 1U));
+    trapped_request.incumbent_rejection_sequence = 1U;
+    update = planner.plan(trapped_request);
+    retreat_taken = update.telemetry.escape_connection_active;
+  }
+  EXPECT_TRUE(retreat_taken)
+      << "the vehicle stands where its own trail leads out: frontier_exhausted="
+      << update.telemetry.feasibility_frontier_exhausted
+      << " escape_exhausted=" << update.telemetry.escape_search_exhausted;
+}
+
 } // namespace drone_city_nav

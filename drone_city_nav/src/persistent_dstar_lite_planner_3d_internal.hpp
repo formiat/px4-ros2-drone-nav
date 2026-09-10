@@ -567,6 +567,18 @@ private:
   // The feasibility search exhausted the start's component and the escape
   // search has work to do on the next updates.
   bool escape_search_pending_{false};
+  // Where the vehicle has been, newest last, one point per lattice step. The
+  // body swept every one of them, so they are the one corridor out of a
+  // pocket that no map can argue with; see retreatConnection.
+  std::vector<Point3> flown_trail_;
+  // Extends the trail with the vehicle's position when it has moved a step.
+  void noteFlownPosition(const Point3& position);
+  // The way back along the trail: the waypoints from the vehicle to the first
+  // trail point whose anchor lies outside the component the searches closed,
+  // or nothing when the trail offers none. Every leg answers to the departure
+  // body, exactly as an escape chain does.
+  [[nodiscard]] std::optional<EscapeSearch3D::Result3D>
+  retreatConnection(const Point3& start) const;
   // What the session's change scheduling last cost, decayed. The feasibility
   // search reserves it out of the update whenever the scheduling is still
   // pending behind it, so running the search first never pushes the update

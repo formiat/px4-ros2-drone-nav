@@ -89,6 +89,7 @@ void PersistentDStarLitePlanner3DImpl::reset() noexcept {
   escape_search_.reset();
   escape_connection_.reset();
   escape_search_pending_ = false;
+  flown_trail_.clear();
   closed_component_origin_.reset();
   exact_goal_ = {};
   mission_goal_ = {};
@@ -205,6 +206,7 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     return update;
   }
   update.input_status = PlannerInputStatus3D::kAccepted;
+  noteFlownPosition(request.start);
   telemetry.departure_seed_distance_m = anchorDepartureEvidence(request.start);
   if (world_.proprioceptive_free_space_seed.has_value()) {
     telemetry.departure_seed_contact_tolerance_m =
@@ -292,8 +294,18 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
       telemetry.escape_search_found = true;
       escape_search_pending_ = false;
     } else if (escape_search_.exhausted()) {
-      // Nothing within reach at the body's scale either: the walk over the
-      // anchors and the world's own changes are what remains.
+      // Nothing within reach at the body's scale either. The vehicle flew in,
+      // though, and every point of its trail is a pose its body occupied, so
+      // the corridor it came through admits the body whatever the map now
+      // says about the space beside it. Three recorded flights stood in such
+      // a pocket -- in three different places -- for the whole of their
+      // remaining minutes with every search idle.
+      if (std::optional<EscapeSearch3D::Result3D> retreat =
+              retreatConnection(request.start)) {
+        escape_connection_ = std::move(retreat);
+        departure_from_escape = true;
+        telemetry.escape_search_found = true;
+      }
       escape_search_pending_ = false;
     }
   }

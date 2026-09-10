@@ -64,6 +64,56 @@ double PersistentDStarLitePlanner3DImpl::anchorDepartureEvidence(const Point3& s
   return distance_m;
 }
 
+void PersistentDStarLitePlanner3DImpl::noteFlownPosition(const Point3& position) {
+  if (!std::isfinite(position.x) || !std::isfinite(position.y) ||
+      !std::isfinite(position.z)) {
+    return;
+  }
+  // One point per lattice step is enough to retrace the corridor, and the
+  // trail is bounded: what lies further back than the escape fill's own reach
+  // is no longer a way out this session can use.
+  const double step_m = std::max(0.25, 0.5 * config_.minimum_horizontal_step_m);
+  const std::size_t maximum_points = std::max<std::size_t>(
+      8U, 4U * std::max<std::size_t>(config_.escape_search_radius_cells, 1U));
+  if (!flown_trail_.empty() && distance3D(flown_trail_.back(), position) < step_m) {
+    return;
+  }
+  flown_trail_.push_back(position);
+  if (flown_trail_.size() > maximum_points) {
+    flown_trail_.erase(
+        flown_trail_.begin(),
+        flown_trail_.begin() +
+            static_cast<std::ptrdiff_t>(flown_trail_.size() - maximum_points));
+  }
+}
+
+std::optional<EscapeSearch3D::Result3D>
+PersistentDStarLitePlanner3DImpl::retreatConnection(const Point3& start) const {
+  // The searches have closed the component around the vehicle and the fill
+  // found no way out of it, but the vehicle flew in: every point of the trail
+  // is a pose its body occupied, so the corridor it came through admits the
+  // body whatever the map now says about the space beside it. The retreat
+  // walks back along the trail to the first point that anchors outside the
+  // closed component; the legs are validated against the current world by the
+  // departure body, so a corridor that has genuinely closed yields nothing.
+  std::vector<Point3> chain;
+  for (auto point = flown_trail_.rbegin(); point != flown_trail_.rend(); ++point) {
+    if (distance3D(start, *point) <= 1.0e-6) {
+      continue;
+    }
+    chain.push_back(*point);
+    const PersistentPlannerNode3D anchor = lattice_.nearestNode(*point);
+    if (!lattice_.nodeValid(anchor) || feasibility_search_.inClosedComponent(anchor)) {
+      continue;
+    }
+    if (!lattice_.departureReachable(start, chain, lattice_.pointFor(anchor))) {
+      continue;
+    }
+    return EscapeSearch3D::Result3D{.anchor = anchor, .waypoints = chain};
+  }
+  return std::nullopt;
+}
+
 PersistentPlannerWorldUpdate3D
 PersistentDStarLitePlanner3DImpl::updateWorld(const PersistentPlannerWorld3D& world) {
   PersistentPlannerWorldUpdate3D update;

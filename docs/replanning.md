@@ -500,6 +500,19 @@ braked and rested for two and a half seconds with the planner idle, a quarter
 of that run's no-route time. Both owners are now routeless owners, and the
 latch decides how often a search actually runs.
 
+Where the fill exhausts its own reach without an exit, the vehicle's trail is
+what remains. Every point of it is a pose the body occupied, so the corridor
+the vehicle came through admits the body whatever the map now says about the
+space beside it, and the trail reaches back further than the fill's radius.
+The retreat walks it backwards to the first point that anchors outside the
+component the searches closed, and hands that chain to the departure exactly
+as the fill's own exit is handed: the legs are validated against the current
+world by the departure body, so a corridor that has genuinely closed yields
+nothing. Three recorded flights stood in such a pocket -- in three different
+places on the same map -- for the whole of their remaining minutes, the fill
+exhausting on nine updates in ten and finding an exit on three of seventeen
+hundred.
+
 The departure envelope decides which anchors a vehicle may leave through, and
 only where it admits none at all does the hull decide instead
 (`departure_hull=true` in `PRODUCTION_MPPI_ROUTE3D`). A vehicle leaves a tight
