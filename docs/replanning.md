@@ -280,7 +280,12 @@ stationary vehicle never moves them, so a session that has produced nothing
 for a whole interval will most likely produce nothing on the next one. One
 recorded flight stood for five and a half seconds while such a session ran
 on, its own requests reported as `deferred_replan_in_flight`, and the fresh
-session that eventually replaced it found a route in its first update.
+session that eventually replaced it found a route in its first update. The
+bound is measured in the search's own units -- five planner updates at the
+measured p95, capped by the failed-search retry interval -- because a
+first-found route takes a handful of updates wherever one exists; read as a
+whole second of wall clock instead, one flight spent three of them retiring
+two sessions in turn.
 
 A route blocked far enough ahead is replaced onto its own certified prefix.
 The replan carries the incumbent as the successor's continuity base

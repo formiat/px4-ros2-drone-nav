@@ -87,11 +87,24 @@ RouteLifecycleReplanOutcome3D RouteLifecycleCoordinator3D::requestReplanImpl(
               ? static_cast<double>(snapshot.stamp_ns - replan_in_flight_stamp_ns_) /
                     1.0e9
               : 0.0;
+      // Measured in the search's own units: five planner updates are what a
+      // first-found route takes wherever one exists, and a session that has
+      // spent them without publishing is not about to. The retry interval
+      // bounds it from above, so a planner whose updates are long is not
+      // restarted faster than the latch would allow anyway.
+      constexpr double kUnpublishedSearchRetirementUpdates{5.0};
+      const StaticRoutePlanningLatencyStats update_latency =
+          planner_update_latency_tracker_.stats();
+      const double unpublished_budget_s =
+          update_latency.sample_count > 0U
+              ? std::min(std::max(0.0, config_.search_retry.minimum_retry_interval_s),
+                         kUnpublishedSearchRetirementUpdates * 0.001 *
+                             update_latency.planning_p95_ms)
+              : std::max(0.0, config_.search_retry.minimum_retry_interval_s);
       const bool unpublished_search_outlived_its_retry =
           !replan_in_flight_published_ &&
           reason == RouteReleaseReason3D::kNoActiveRoute &&
-          in_flight_age_s >=
-              std::max(0.0, config_.search_retry.minimum_retry_interval_s);
+          in_flight_age_s >= unpublished_budget_s;
       retire_in_flight_search = replan_gate_.inFlight() &&
                                 (objective_superseded || release_needs_fresh_search ||
                                  unpublished_search_outlived_its_retry);
