@@ -1013,6 +1013,14 @@ target_link_libraries(
 ament_target_dependencies(simulation_truth_adapter_node rclcpp)
 enable_project_warnings(simulation_truth_adapter_node)
 
+add_executable(simulation_heading_source_node
+               src/simulation_heading_source_node.cpp)
+target_compile_features(simulation_heading_source_node PRIVATE cxx_std_20)
+target_link_libraries(simulation_heading_source_node gz-transport13::gz-transport13
+                      gz-msgs10::gz-msgs10)
+ament_target_dependencies(simulation_heading_source_node rclcpp px4_msgs)
+enable_project_warnings(simulation_heading_source_node)
+
 add_library(
   drone_city_nav_interceptor_tracking_components SHARED
   src/radar_target_tracker_node.cpp
@@ -1245,6 +1253,7 @@ install(
     cooperative_traffic_referee_node
     radar_simulator_node
     simulation_truth_adapter_node
+    simulation_heading_source_node
     radar_target_tracker_node
     interceptor_guidance_node
     cooperative_traffic_agent_node

@@ -212,6 +212,11 @@ enable_obstacle_memory_override=""
 if [[ -n "${ENABLE_OBSTACLE_MEMORY+x}" ]]; then
   enable_obstacle_memory_override="$(normalize_bool "${ENABLE_OBSTACLE_MEMORY}")"
 fi
+# The simulated magnetometer's heading sits five to six degrees off the true
+# one at hover and wanders two degrees in flight, independent of the world's
+# magnetic field. The single-vehicle simulation hands the autopilot the
+# simulator's true heading with reference-grade bias and noise instead.
+enable_simulation_heading_source="$(normalize_bool "${ENABLE_SIMULATION_HEADING_SOURCE:-true}")"
 enable_gz_scene_diagnostics="$(
   normalize_bool "${ENABLE_GZ_SCENE_DIAGNOSTICS:-true}"
 )"
@@ -787,6 +792,16 @@ px4_parameter_stream() {
   sleep "${px4_param_delay_s}"
   echo "param set CBRK_SUPPLY_CHK 894281"
   echo "param set NAV_DLL_ACT 0"
+  if bool_is_true "${enable_simulation_heading_source}"; then
+    # The simulated magnetometer's heading sits five to six degrees off the
+    # true one at hover, independent of the world's magnetic field; the
+    # heading comes from the simulation heading source instead, through the
+    # external vision interface, and the magnetometer is not fused.
+    echo "param set EKF2_EV_CTRL 8"
+    echo "param set EKF2_MAG_TYPE 5"
+    echo "param set EKF2_EV_NOISE_MD 1"
+    echo "param set EKF2_EVA_NOISE 0.01"
+  fi
   echo "param set MPC_Z_VEL_MAX_UP ${px4_max_climb_speed_mps}"
   echo "param set MPC_Z_VEL_MAX_DN ${px4_max_descent_speed_mps}"
   echo "param set MPC_XY_CRUISE ${cruise_speed}"
@@ -925,6 +940,7 @@ else
     lidar_memory_hit_dump_path:="${lidar_memory_hit_dump_path}"
     enable_gazebo_bridge:=true
     enable_mission_monitor:=true
+    enable_simulation_heading_source:="${enable_simulation_heading_source}"
     enable_lidar_debug:="${enable_lidar_debug}"
     lidar_profile:="${lidar_profile}"
     enable_obstacle_memory:="${enable_obstacle_memory}"

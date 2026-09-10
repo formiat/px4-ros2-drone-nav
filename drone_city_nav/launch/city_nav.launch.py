@@ -102,6 +102,9 @@ def generate_launch_description():
     rviz_config = LaunchConfiguration("rviz_config")
     enable_gazebo_bridge = LaunchConfiguration("enable_gazebo_bridge")
     enable_mission_monitor = LaunchConfiguration("enable_mission_monitor")
+    enable_simulation_heading_source = LaunchConfiguration(
+        "enable_simulation_heading_source"
+    )
     enable_lidar_debug = LaunchConfiguration("enable_lidar_debug")
     lidar_profile = LaunchConfiguration("lidar_profile")
     enable_obstacle_memory = LaunchConfiguration("enable_obstacle_memory")
@@ -151,6 +154,8 @@ def generate_launch_description():
         default_model_name = (
             "x500_lidar_3d_0" if profile == "3d" else "x500_lidar_2d_0"
         )
+        gazebo_world_name = "generated_city"
+        gazebo_model_name = default_model_name
         sensor_name = "lidar_3d_v1" if profile == "3d" else "lidar_2d_v2"
         lidar_gz_topic = (
             f"/world/generated_city/model/{default_model_name}/link/link/"
@@ -248,9 +253,11 @@ def generate_launch_description():
                     "initial_y_m": start_y_m,
                 }
             )
+            gazebo_world_name = scenario["gazebo_world_name"]
+            gazebo_model_name = scenario["gazebo_model_name"]
             lidar_gz_topic = (
-                f"/world/{scenario['gazebo_world_name']}"
-                f"/model/{scenario['gazebo_model_name']}"
+                f"/world/{gazebo_world_name}"
+                f"/model/{gazebo_model_name}"
                 f"/link/link/sensor/{sensor_name}/scan"
             )
             if profile == "3d":
@@ -496,6 +503,25 @@ def generate_launch_description():
                     ],
                 )
             )
+        # Simulation-only: the autopilot's heading from the simulator's true
+        # attitude, with the bias and noise of a calibrated attitude
+        # reference, in place of the simulated magnetometer's.
+        nodes.append(
+            Node(
+                package="drone_city_nav",
+                executable="simulation_heading_source_node",
+                name="simulation_heading_source_node",
+                output="screen",
+                condition=IfCondition(enable_simulation_heading_source),
+                parameters=[
+                    {
+                        "use_sim_time": True,
+                        "gazebo_pose_topic": f"/world/{gazebo_world_name}/pose/info",
+                        "gazebo_model_name": gazebo_model_name,
+                    }
+                ],
+            )
+        )
         nodes.append(
             Node(
                 package="drone_city_nav",
@@ -606,6 +632,15 @@ def generate_launch_description():
                 "enable_mission_monitor",
                 default_value="true",
                 description="Start the simulation-only mission verification node.",
+            ),
+            DeclareLaunchArgument(
+                "enable_simulation_heading_source",
+                default_value="false",
+                description=(
+                    "Start the simulation-only heading source that hands the "
+                    "autopilot the simulator's true heading, with reference-grade "
+                    "bias and noise, through its external vision interface."
+                ),
             ),
             DeclareLaunchArgument(
                 "enable_lidar_debug",
