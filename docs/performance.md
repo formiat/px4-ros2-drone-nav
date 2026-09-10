@@ -163,7 +163,17 @@ the repair of a vertex cost about a millisecond). The launch-support contact
 cells the field leaves out are counted from the contact boxes, and a point
 outside the window, or a world without the field, derives from the raw grid as
 before. The field only prices; the raw swept body check stays the authority
-on every edge. Repair
+on every edge. The scheduling itself waits for the search while the
+vehicle holds no route: the labels it maintains give a routeless vehicle
+nothing this update either way, so it takes only what the search leaves and
+the rest of its change set waits for the next update, where a scan that
+changed the same cell twice is scheduled once for the state it ends in. Any
+route the session resolves is withheld while that backlog stands, since its
+labels answer for a world that has moved, and a backlog past the size the
+exact per-cell scheduling would take is scheduled at once, by chunk. Measured
+over one urban flight, the reservation had been taking eighty of a hundred
+and fifty millisecond update from the search that had to find the route the
+vehicle was waiting for. Repair
 and search share every update: with a repair queue pending the search still
 receives half the budget, so a world that changes every scan cannot starve it
 of expansions, and an anytime route on the current labels reaches the vehicle

@@ -572,6 +572,13 @@ private:
   // pending behind it, so running the search first never pushes the update
   // past its own budget.
   std::chrono::steady_clock::duration schedule_cost_estimate_{};
+  // Occupied changes this session has not mapped onto its vertices yet. A
+  // vehicle without a route is waiting on the search that can give it one,
+  // so the scheduling behind it takes only what the search leaves and the
+  // rest waits here for the next update. The session's labels are stale for
+  // exactly this set, so no route is extracted from them while it is filled.
+  std::vector<GridIndex3D> deferred_changed_cells_;
+  bool deferred_occupied_cells_removed_{false};
   // Where the vehicle stood when its component closed; moving away from it
   // discards what was learnt about the component.
   std::optional<Point3> closed_component_origin_;
