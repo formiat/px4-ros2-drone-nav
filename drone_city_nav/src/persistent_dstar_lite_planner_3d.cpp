@@ -376,8 +376,6 @@ void PersistentDStarLitePlanner3DImpl::reset() noexcept {
   feasibility_search_.reset();
   execution_time_refiner_.reset();
   coordinator_.reset();
-  deferred_changed_cells_.clear();
-  deferred_occupied_cells_removed_ = false;
   adaptive_edges_in_extracted_path_ = 0U;
   published_session_id_ = 0U;
   applied_incumbent_rejection_sequence_ = 0U;
@@ -646,13 +644,11 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   // and thirty. While no route is held that search is the only stage that can
   // give the vehicle one, so the scheduling is deferred behind it and runs
   // later in this same update.
+  bool schedule_affected_vertices{false};
   if (!initialized_ || world_update.requires_reset || mission_changed) {
     if (mission_changed || producer_changed) {
       coordinator_.reset();
     }
-    // The labels are built from the world as it stands; nothing is owed.
-    deferred_changed_cells_.clear();
-    deferred_occupied_cells_removed_ = false;
     initializeSearch(request, *start_anchor, *goal_anchor, search_goal);
   } else {
     // The feasibility search keeps its anchor while the vehicle stays within
@@ -685,11 +681,7 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
       // candidate it returns is raw-validated there as well. This marks them
       // for revalidation now, before the search runs.
       feasibility_search_.noteWorldChanged();
-      deferred_changed_cells_.insert(deferred_changed_cells_.end(),
-                                     world_update.changed_cells.begin(),
-                                     world_update.changed_cells.end());
-      deferred_occupied_cells_removed_ =
-          deferred_occupied_cells_removed_ || world_update.occupied_cells_removed;
+      schedule_affected_vertices = true;
     }
     // The escape anchor is outside the component the searches were seeded
     // in; they start over from it whatever the distance to the old anchor.
@@ -751,16 +743,13 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   // while none is: a vehicle without a route needs the search that finds one
   // more than it needs the session's labels to be current one tick sooner.
   const auto schedule_world_changes = [&] {
-    if (deferred_changed_cells_.empty()) {
+    if (!schedule_affected_vertices) {
       return;
     }
+    schedule_affected_vertices = false;
     const auto schedule_started = std::chrono::steady_clock::now();
-    // Each cell's polarity is read from the resident world as it stands now,
-    // so a cell that changed twice while the scheduling waited is scheduled
-    // once, for the state it actually holds.
-    dstar_session_.scheduleAffectedVertices(world_, deferred_changed_cells_,
+    dstar_session_.scheduleAffectedVertices(world_, world_update.changed_cells,
                                             telemetry.affected_lattice_states);
-    deferred_changed_cells_.clear();
     // A decayed maximum: the reserve follows a heavier world at once and
     // releases the update again as the scans quieten.
     schedule_cost_estimate_ =
@@ -771,13 +760,12 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     telemetry.schedule_ranking_ms = schedule.ranking_ms;
     telemetry.schedule_edges_forgotten = schedule.edges_forgotten;
     telemetry.schedule_clearances_tightened = schedule.clearances_tightened;
-    if (deferred_occupied_cells_removed_) {
+    if (world_update.occupied_cells_removed) {
       // A cost-to-go retained across an obstacle removal can overestimate a
       // newly opened route until every affected label settles. Keep the
       // refinement heuristic strictly Euclidean in that case.
       dstar_session_.markCostToGoalInadmissible();
     }
-    deferred_occupied_cells_removed_ = false;
     dstar_session_.advanceRepairGeneration();
   };
 
@@ -809,14 +797,6 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   const bool feasibility_will_run = config_.feasibility_first_enabled &&
                                     coordinator_.incumbent() == nullptr &&
                                     !anchor_in_closed_component;
-  // A change set the exact per-cell scheduling would no longer take is
-  // scheduled whatever else the update owes: past that size the session
-  // schedules it by chunk, which is bounded, and letting the backlog grow
-  // past it buys the search nothing.
-  constexpr std::size_t kMaximumDeferredChangedCells{32768U};
-  const bool schedule_waits_for_the_search =
-      feasibility_will_run &&
-      deferred_changed_cells_.size() <= kMaximumDeferredChangedCells;
   if (!feasibility_will_run) {
     schedule_world_changes();
   }
@@ -847,13 +827,8 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
     // scheduling ran long, and a vehicle without a route waited on D* alone.
     // The scheduling still owes this update its own time when it runs behind
     // the search, so the search reserves what it last cost.
-    // The scheduling reserves its own cost out of this update only when it has
-    // to run in it. A vehicle without a route can afford to owe the session
-    // its bookkeeping for one more update -- the labels give it no route
-    // either way -- and the search that does give it one takes the whole
-    // window instead of half of it.
     const auto feasibility_limit =
-        !deferred_changed_cells_.empty() && !schedule_waits_for_the_search
+        schedule_affected_vertices
             ? std::max(feasibility_started, deadline - schedule_cost_estimate_)
             : deadline;
     const auto feasibility_deadline =
@@ -900,10 +875,7 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
             .count();
   }
 
-  if (!schedule_waits_for_the_search ||
-      std::chrono::steady_clock::now() + schedule_cost_estimate_ <= deadline) {
-    schedule_world_changes();
-  }
+  schedule_world_changes();
   const auto spatial_search_started = std::chrono::steady_clock::now();
   const std::size_t remaining_spatial_expansions =
       telemetry.repair_lattice_states_processed < config_.maximum_expansions_per_update
@@ -924,12 +896,8 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   const bool repair_complete = dstar_session_.pendingRepairNodes() == 0U;
   telemetry.repair_lattice_states_pending = dstar_session_.pendingRepairNodes();
   telemetry.repair_pending = !repair_complete;
-  // Labels that do not yet know the deferred changes answer for a world that
-  // is gone: the route they resolve is not offered until the session has
-  // taken them.
-  const bool spatial_route_available = spatial_search_complete &&
-                                       dstar_session_.startResolved(start_) &&
-                                       deferred_changed_cells_.empty();
+  const bool spatial_route_available =
+      spatial_search_complete && dstar_session_.startResolved(start_);
   // Seeding the refinement with the feasibility route was tried and is wrong:
   // the refinement treats its seed as an anytime *bound*, so a feasibility
   // route handed to it as a seed makes it declare at once that it cannot
