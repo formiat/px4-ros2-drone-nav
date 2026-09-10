@@ -294,19 +294,27 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
       telemetry.escape_search_found = true;
       escape_search_pending_ = false;
     } else if (escape_search_.exhausted()) {
-      // Nothing within reach at the body's scale either. The vehicle flew in,
-      // though, and every point of its trail is a pose its body occupied, so
-      // the corridor it came through admits the body whatever the map now
-      // says about the space beside it. Three recorded flights stood in such
-      // a pocket -- in three different places -- for the whole of their
-      // remaining minutes with every search idle.
-      if (std::optional<EscapeSearch3D::Result3D> retreat =
-              retreatConnection(request.start)) {
-        escape_connection_ = std::move(retreat);
-        departure_from_escape = true;
-        telemetry.escape_search_found = true;
-      }
+      // Nothing within reach at the body's scale either: the walk over the
+      // anchors, the world's own changes, and the trail are what remain.
       escape_search_pending_ = false;
+    }
+  }
+  // The fill has given up and the vehicle holds no route. It flew in, though,
+  // and every point of its trail is a pose its body occupied, so the corridor
+  // it came through admits the body whatever the map now says about the space
+  // beside it. Three recorded flights stood in such a pocket -- in three
+  // different places on the same map -- for the whole of their remaining
+  // minutes. The retreat is offered on every update the fill is not running,
+  // not only on the one it exhausted on: waiting for the fill to re-fill its
+  // thousands of cells and give up again cost one flight seventeen seconds.
+  if (!escape_connection_.has_value() && !escape_search_pending_ &&
+      coordinator_.incumbent() == nullptr &&
+      feasibility_search_.closedComponentMarked()) {
+    if (std::optional<EscapeSearch3D::Result3D> retreat =
+            retreatConnection(request.start)) {
+      escape_connection_ = std::move(retreat);
+      departure_from_escape = true;
+      telemetry.escape_search_found = true;
     }
   }
   telemetry.escape_connection_active = escape_connection_.has_value();
