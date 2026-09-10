@@ -150,7 +150,16 @@ RouteMaterializer3D::materialize(RouteMaterializationRequest3D request) const {
       .execution_time_search_complete = plan.execution_time_search_complete,
       .incumbent_available = plan.incumbent_available,
   };
-  route.reaches_mission_goal = spatial_route.valid();
+  // Every candidate the searches produced used to end at the mission goal, so
+  // a well-formed one was one that reached it. The closest-approach route an
+  // exhausted frontier publishes does not: it stops at the closest label it
+  // reached. Read as a goal-reaching route it became a mission the vehicle
+  // had finished -- one flight rested at its end for four minutes with the
+  // goal thirty-eight metres away and nothing asking for more -- while as a
+  // partial route it is what the extension machinery already knows how to
+  // carry on from.
+  route.reaches_mission_goal =
+      spatial_route.valid() && spatialRouteCandidateReachesGoal3D(spatial_route.source);
   route.planner_executable = telemetry.planner.executable;
   materialization.continuation_validation_ms = 0.0;
   route.fingerprint = routeFingerprint(candidate.route);

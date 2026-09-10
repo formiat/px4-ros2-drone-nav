@@ -241,6 +241,27 @@ TEST(RouteMaterializer3DTest,
   EXPECT_FALSE(result.geometry_optimization_fallback.has_value());
 }
 
+// The closest-approach route an exhausted frontier publishes stops short of
+// the mission goal. Materialized as a goal-reaching route it would be a
+// mission the vehicle had finished; as the partial route it is, the
+// extension machinery carries on from its end.
+TEST(RouteMaterializer3DTest, AClosestApproachCandidateIsMaterializedAsAPartialRoute) {
+  const MaterializerFixture3D input = fixture();
+  ASSERT_NE(input.transaction, nullptr);
+  RouteMaterializer3D materializer{materializerConfig()};
+  RouteSearchCandidate3D candidate = plannerCandidate(input.transaction);
+  ASSERT_TRUE(materializer.materialize(requestFor(input, candidate))
+                  .route.reaches_mission_goal);
+
+  candidate.spatial_route.source =
+      SpatialRouteCandidateSource3D::kFeasibilityClosestApproach;
+  const ProductionRouteMaterialization3D result =
+      materializer.materialize(requestFor(input, candidate));
+
+  EXPECT_TRUE(result.validation.accepted);
+  EXPECT_FALSE(result.route.reaches_mission_goal);
+}
+
 TEST(RouteMaterializer3DTest,
      InvalidDerivedDistanceEvidenceRemainsNeutralForRawSafeRoute) {
   const MaterializerFixture3D input = fixture(
