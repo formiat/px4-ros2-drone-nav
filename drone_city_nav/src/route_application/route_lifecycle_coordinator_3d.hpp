@@ -340,9 +340,9 @@ public:
   [[nodiscard]] RouteLifecycleTrackingRefreshOutcome3D
   requestTrackingWorldRefresh(RouteLifecycleTrackingRefreshRequest3D request);
   // Whether a blocked route's replacement is being held for the search right
-  // now: a candidate was deferred within the last second. The vehicle stands
-  // at the block on purpose while this holds, and the executor's release of a
-  // route the vehicle stalled on waits for it.
+  // now: the grace its extra cost earned has not run out since its first
+  // deferral. The vehicle stands at the block on purpose while this holds,
+  // and the executor's release of a route the vehicle stalled on waits for it.
   [[nodiscard]] bool blockedReplacementHoldActive(std::int64_t now_ns) const noexcept;
 
   void finishWorldRefresh(std::uint64_t base_generation,
@@ -384,7 +384,7 @@ private:
   void noteBlockedReplacementHold(const PlannerSearchTransaction3D& transaction,
                                   const RouteAdmissionReport3D& admission);
   std::int64_t blocked_replacement_hold_started_ns_{0};
-  std::int64_t blocked_replacement_hold_deferred_ns_{0};
+  std::int64_t blocked_replacement_hold_grace_ns_{0};
   std::uint64_t blocked_replacement_hold_generation_{0U};
   // Rebases a continuation request onto the newest coherent world when it is
   // strictly newer than the session world.

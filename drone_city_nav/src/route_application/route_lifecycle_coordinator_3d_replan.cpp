@@ -421,7 +421,7 @@ void RouteLifecycleCoordinator3D::noteBlockedReplacementHold(
   const std::scoped_lock lock{lifecycle_mutex_};
   if (admission.certified_pending) {
     blocked_replacement_hold_started_ns_ = 0;
-    blocked_replacement_hold_deferred_ns_ = 0;
+    blocked_replacement_hold_grace_ns_ = 0;
     blocked_replacement_hold_generation_ = 0U;
     return;
   }
@@ -436,16 +436,21 @@ void RouteLifecycleCoordinator3D::noteBlockedReplacementHold(
     blocked_replacement_hold_started_ns_ = now_ns;
     blocked_replacement_hold_generation_ = transaction.request.base_route_generation;
   }
-  blocked_replacement_hold_deferred_ns_ = now_ns;
+  blocked_replacement_hold_grace_ns_ = static_cast<std::int64_t>(
+      std::max(0.0, admission.blocked_replacement_grace_s) * 1.0e9);
 }
 
 bool RouteLifecycleCoordinator3D::blockedReplacementHoldActive(
     const std::int64_t now_ns) const noexcept {
-  constexpr std::int64_t kHoldDeliveryWindowNs{1'000'000'000};
+  // The hold lasts for the grace the replacement's extra cost earned, from
+  // its first deferral, whether or not a delivery happens to be in flight
+  // this second: a replan re-queued on the retry interval paused the
+  // deliveries for a second, and a stall release judged by the last delivery
+  // slipped through that pause twice in one recorded flight.
   const std::scoped_lock lock{lifecycle_mutex_};
   return blocked_replacement_hold_started_ns_ != 0 &&
-         blocked_replacement_hold_deferred_ns_ != 0 &&
-         now_ns - blocked_replacement_hold_deferred_ns_ <= kHoldDeliveryWindowNs;
+         now_ns - blocked_replacement_hold_started_ns_ <=
+             blocked_replacement_hold_grace_ns_;
 }
 
 } // namespace drone_city_nav
