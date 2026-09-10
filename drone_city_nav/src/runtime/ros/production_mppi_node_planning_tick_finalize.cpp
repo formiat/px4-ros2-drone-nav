@@ -184,8 +184,16 @@ void ProductionMppiNode::finalizePlanningTick(
     last_moving_stamp_ns_ = now_ns;
   }
   const double stalled_s = static_cast<double>(now_ns - last_moving_stamp_ns_) / 1.0e9;
+  // A vehicle standing at a block while the lifecycle holds the block's
+  // worse replacement for the search is not stalled: it is waiting on
+  // purpose, for the grace the replacement's extra cost earns. Releasing the
+  // route then handed the vehicle the very replacement the hold was refusing,
+  // with no route left to weigh it against.
+  const bool holding_blocked_replacement =
+      route_lifecycle_coordinator_ != nullptr &&
+      route_lifecycle_coordinator_->blockedReplacementHoldActive(now_ns);
   if (committed_route != nullptr && !goal_capture.latched &&
-      stalled_s >= kStalledRouteReleaseGraceS) {
+      stalled_s >= kStalledRouteReleaseGraceS && !holding_blocked_replacement) {
     last_moving_stamp_ns_ = now_ns;
     handlePhysicalTrajectoryCollision(
         committed_route->identity.generation, committed_route->observed_raw_world,

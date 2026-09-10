@@ -404,6 +404,7 @@ void RouteLifecycleCoordinator3D::notifyReplanOutcome(
 
 double RouteLifecycleCoordinator3D::blockedReplacementHeldSeconds(
     const PlannerSearchTransaction3D& transaction) const {
+  const std::scoped_lock lock{lifecycle_mutex_};
   if (blocked_replacement_hold_started_ns_ == 0 ||
       blocked_replacement_hold_generation_ !=
           transaction.request.base_route_generation) {
@@ -417,8 +418,10 @@ double RouteLifecycleCoordinator3D::blockedReplacementHeldSeconds(
 void RouteLifecycleCoordinator3D::noteBlockedReplacementHold(
     const PlannerSearchTransaction3D& transaction,
     const RouteAdmissionReport3D& admission) {
+  const std::scoped_lock lock{lifecycle_mutex_};
   if (admission.certified_pending) {
     blocked_replacement_hold_started_ns_ = 0;
+    blocked_replacement_hold_deferred_ns_ = 0;
     blocked_replacement_hold_generation_ = 0U;
     return;
   }
@@ -426,12 +429,23 @@ void RouteLifecycleCoordinator3D::noteBlockedReplacementHold(
       StaticRouteActivationStatus::kReplacementAwaitingSearch) {
     return;
   }
+  const std::int64_t now_ns = config_.stamp_provider();
   if (blocked_replacement_hold_started_ns_ == 0 ||
       blocked_replacement_hold_generation_ !=
           transaction.request.base_route_generation) {
-    blocked_replacement_hold_started_ns_ = config_.stamp_provider();
+    blocked_replacement_hold_started_ns_ = now_ns;
     blocked_replacement_hold_generation_ = transaction.request.base_route_generation;
   }
+  blocked_replacement_hold_deferred_ns_ = now_ns;
+}
+
+bool RouteLifecycleCoordinator3D::blockedReplacementHoldActive(
+    const std::int64_t now_ns) const noexcept {
+  constexpr std::int64_t kHoldDeliveryWindowNs{1'000'000'000};
+  const std::scoped_lock lock{lifecycle_mutex_};
+  return blocked_replacement_hold_started_ns_ != 0 &&
+         blocked_replacement_hold_deferred_ns_ != 0 &&
+         now_ns - blocked_replacement_hold_deferred_ns_ <= kHoldDeliveryWindowNs;
 }
 
 } // namespace drone_city_nav
