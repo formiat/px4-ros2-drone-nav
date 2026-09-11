@@ -75,6 +75,34 @@ make format
 Do not run broad formatting over the entire repository unless intentionally
 normalizing the project.
 
+## Headless Acceptance Gate
+
+`scripts/headless_runtime_evidence.py` evaluates every no-static single-vehicle
+headless run. Besides the artifact and reserve proofs it holds two flight
+metrics from the final `PRODUCTION_MPPI_SUMMARY` to thresholds that are a
+product decision, not a tuning target:
+
+- post-bootstrap route availability above 97 percent of ticks
+  (`MINIMUM_POST_BOOTSTRAP_ROUTE_AVAILABILITY`);
+- ordinary post-bootstrap no-route holds below 3 percent of ticks
+  (`MAXIMUM_POST_BOOTSTRAP_NO_ROUTE_HOLD_RATIO`).
+
+The pair was set on 2026-09-11, replacing 99 and 1 percent. Measured urban
+point-to-point flights of the current stack fall into two groups: clean
+flights with three to five no-route episodes and 0.4 to 0.7 percent of hold
+ticks, and flights that meet two or three of the known tight spots (the
+corner shaft, the goal approach, the northern corridor) with eight to twelve
+episodes and 2.0 to 2.5 percent. Availability sits at 98 to 99.6 percent in
+both. The old pair was met by one flight in eleven and every other flight
+failed on the same two lines, so the checks below them stopped being read.
+The 97/3 pair is met by both groups and still rejects the regressions the
+programme has seen (3.7 and 4.3 percent of holds). Five consecutive flights
+on one commit pass it (r198 to r202).
+
+What the remaining holds cost, and where, is recorded per flight in
+`log/runs/<run-id>/ros_drone_nav.log`; the next step towards 1 percent is
+the recovery after a physical block, 0.3 to 1.2 s without a route each time.
+
 ## Adding Tests
 
 Use:

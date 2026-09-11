@@ -446,7 +446,9 @@ For constrained no-static 3D-lidar acceptance, begin with the per-run
 `manifest.json`. Its hashes identify the source, parameters, generated world,
 and retained raw volume before log interpretation. The final
 `PRODUCTION_MPPI_SUMMARY` reports `post_bootstrap_route_availability_ratio`,
-post-bootstrap no-route holds, ownership gaps, and persistent-planner p95/p99.
+post-bootstrap no-route holds, ownership gaps, and persistent-planner p95/p99;
+the acceptance thresholds (97 percent availability, 3 percent holds, 200 ms
+p95) are in `docs/testing.md`, "Headless Acceptance Gate".
 An admitted `PRODUCTION_MPPI_ROUTE3D` entry must report either `sufficient` or
 `terminal_exempt` reserve; a sufficient continuation must have
 `reserve_available_m >= reserve_required_m`.

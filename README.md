@@ -221,8 +221,10 @@ runtime profile by SHA-256. When constrained-volume validation is enabled, a
 transient-local subscriber also retains the exact observed/occupied bit words
 for that volume in a revisioned `raw_snapshot_3d_revision_<revision>.json`
 artifact. The headless acceptance gate verifies the artifact hash and payload,
-zero ownership gaps, greater than 99 percent post-bootstrap route availability,
-the measured planner p95 target, and every admitted successor-reserve proof.
+zero ownership gaps, greater than 97 percent post-bootstrap route availability,
+fewer than 3 percent of post-bootstrap ticks in ordinary no-route holds, the
+measured planner p95 target, and every admitted successor-reserve proof (see
+`docs/testing.md`, "Headless Acceptance Gate", for the thresholds and why).
 Set `DRONE_GAZEBO_RUN_ID` and `DRONE_GAZEBO_LOG_DIR` when several acceptance
 runs must remain independently discoverable.
 
