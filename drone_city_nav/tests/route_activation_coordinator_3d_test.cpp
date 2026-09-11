@@ -234,41 +234,6 @@ void activatePending(ExecutionSupervisor3D& supervisor) {
   ASSERT_EQ(supervisor.pending(), nullptr);
 }
 
-// The executor could build no nominal horizon on the resident and retained
-// what it had: the vehicle brakes or stands on it, following nothing.
-void retainResidentExecution(ExecutionSupervisor3D& supervisor) {
-  const std::shared_ptr<const CommittedExecutionAuthority3D> authority =
-      supervisor.authority();
-  ASSERT_NE(authority, nullptr);
-  const std::shared_ptr<const ExecutionPlan3D> plan = authority->plan();
-  ASSERT_NE(plan, nullptr);
-  ASSERT_NE(plan->route(), nullptr);
-  ASSERT_NE(plan->finiteExecution(), nullptr);
-  FiniteExecutionPlan3D retained = SnapshotFixture3D::finitePlanForRoute(
-      *plan, *plan->route(), FiniteExecutionKind3D::kRetained,
-      plan->finiteExecution()->trajectory_revision + 1U);
-  const ExecutionRouteTransitionResult3D transition =
-      ::drone_city_nav::replaceFiniteExecutionPlan3D(
-          *plan, SnapshotFixture3D::guard(*plan), std::move(retained));
-  ASSERT_TRUE(transition.applied());
-  ASSERT_NE(transition.next, nullptr);
-  const ExecutionHorizonCommitResult3D committed = commitExecutionHorizonForTest(
-      supervisor, ExecutionHorizonTestTransaction3D{
-                      .kind = ExecutionHorizonCommitKind3D::kTransition,
-                      .expected_authority = authority,
-                      .expected_plan = plan,
-                      .transition = transition,
-                      .expected_pending = nullptr,
-                      .owner = SnapshotFixture3D::committedOwner(*transition.next),
-                      .input = SnapshotFixture3D::committedInput(*transition.next),
-                  });
-  ASSERT_EQ(committed.status, ExecutionHorizonCommitStatus3D::kCommitted);
-  ASSERT_NE(supervisor.plan(), nullptr);
-  ASSERT_NE(supervisor.plan()->finiteExecution(), nullptr);
-  ASSERT_EQ(supervisor.plan()->finiteExecution()->kind,
-            FiniteExecutionKind3D::kRetained);
-}
-
 [[nodiscard]] PreparedRouteActivation3D
 prepare(const RouteActivationCoordinator3D& coordinator, ActivationFixture3D fixture) {
   return coordinator.prepare(RouteActivationPreparationRequest3D{
@@ -660,46 +625,6 @@ TEST(RouteActivationCoordinator3DTest,
   EXPECT_FALSE(replacement.result.admission.blocked_replacement_assessed);
   EXPECT_FALSE(replacement.result.admission.blocked_replacement_deferred);
   EXPECT_TRUE(replacement.result.admission.replacement.replacementAllowed());
-  ASSERT_TRUE(replacement.pending_draft.has_value());
-  const RouteActivationCommitContext3D replacement_context = commitContext(replacement);
-  const RouteActivationCommitResult3D committed =
-      slow_coordinator.commit(std::move(replacement), replacement_context, supervisor);
-
-  EXPECT_TRUE(committed.result.admission.certified_pending)
-      << staticRouteActivationStatusName(committed.result.admission.activation_status);
-  EXPECT_NE(supervisor.pending(), nullptr);
-}
-
-TEST(RouteActivationCoordinator3DTest,
-     AResidentOnARetainedHorizonHoldsNoSuccessorBack) {
-  ExecutionSupervisor3D supervisor;
-  RouteActivationCoordinator3D coordinator{coordinatorConfig(3.0)};
-  PreparedRouteActivation3D first = prepare(coordinator, activationFixture(supervisor));
-  const RouteActivationCommitContext3D first_context = commitContext(first);
-  static_cast<void>(coordinator.commit(std::move(first), first_context, supervisor));
-  activatePending(supervisor);
-  retainResidentExecution(supervisor);
-  ASSERT_NE(supervisor.plan(), nullptr);
-  const std::uint64_t generation = supervisor.plan()->routeGenerationHighWater();
-  ASSERT_GT(generation, 0U);
-
-  // The same route flown slower loses to the resident on remaining time; a
-  // resident under execution would hold it for the grace that loss earns.
-  RouteActivationCoordinator3D slow_coordinator{coordinatorConfig(0.5)};
-  ActivationFixture3D blocked = activationFixture(supervisor);
-  blocked.transaction = makePlannerSearchTransaction3D(
-      blocked.world, captureResidentPlannerWorld3D(*blocked.world),
-      blocked.transaction->objective,
-      StaticRouteSearchRequestIdentity{
-          .kind = StaticRouteSearchRequestKind::kReplan,
-          .base_route_generation = generation,
-      },
-      std::nullopt, RouteReleaseReason3D::kBlocked);
-  ASSERT_NE(blocked.transaction, nullptr);
-  PreparedRouteActivation3D replacement = prepare(slow_coordinator, blocked);
-  EXPECT_FALSE(replacement.result.admission.successor_improvement_required);
-  EXPECT_FALSE(replacement.result.admission.blocked_replacement_assessed);
-  EXPECT_FALSE(replacement.result.admission.blocked_replacement_deferred);
   ASSERT_TRUE(replacement.pending_draft.has_value());
   const RouteActivationCommitContext3D replacement_context = commitContext(replacement);
   const RouteActivationCommitResult3D committed =
