@@ -55,6 +55,48 @@ and keeps the identity, whereas a world whose map frame equals the SDF frame
 a PX4 pose into map coordinates, including the mission monitor, receives the
 same matrix.
 
+## Heading Source
+
+The simulated magnetometer is not usable as a heading source in this SITL
+(gz-sim 8.11, gz-sensors 8.2.2, PX4 v1.17). Measured against the simulator's
+true attitude over several urban flights, the EKF heading sat five to six
+degrees off at hover and wandered with a standard deviation of 2.2 degrees in
+flight, with excursions past ten degrees. The error did not follow the world's
+magnetic field (the world model was rotated by 41.6 degrees and the sensor's
+azimuth moved by 3) and did not respond to `EKF2_MAG_DECL`, `EKF2_DECL_TYPE`
+or `EKF2_MAG_TYPE`. A lidar map built with that heading copies every wall a
+metre sideways at the integration range, and the copies open and close
+passages the planner is trying to use.
+
+The single-vehicle simulation therefore hands the autopilot the heading a
+calibrated attitude reference would give: `simulation_heading_source_node`
+takes the simulator's true attitude, adds a slowly wandering bias (0.5 degree
+standard deviation, 60 s correlation time) and 0.3 degree of white noise, and
+publishes it through PX4's external vision interface as orientation only.
+`scripts/run_drone_nav_sim.sh` enables it by default
+(`ENABLE_SIMULATION_HEADING_SOURCE=true`, PX4 parameters `EKF2_EV_CTRL 8`,
+`EKF2_MAG_TYPE 5`, `EKF2_EV_NOISE_MD 1`, `EKF2_EVA_NOISE 0.01`);
+`ENABLE_SIMULATION_HEADING_SOURCE=false` restores the magnetometer. With the
+source enabled the measured heading error is 0.85 to 1.5 degrees standard
+deviation.
+
+**Release assumption.** The navigation stack is validated only for a heading
+of that quality: a standard deviation of about 1.5 degrees or better, from a
+vision, GNSS-heading or calibrated attitude reference. It is not validated for
+a compass-grade heading of 2 degrees and more; at that level the persistent
+map smears and the stack's route stability degrades (measured in flights
+r165 to r180: loops of 170 to 250 metres where a 40 metre passage existed).
+The assumption is carried by one parameter,
+`lidar_pose_heading_uncertainty_rad` of `obstacle_memory_3d_node`: the
+persistent memory integrates beams only as far as the heading error keeps a
+hit within two voxels of its surface, `2 * resolution / tan(sigma)`. The
+sensor braking contract needs a guaranteed detection range of 9.5 metres, so
+at 0.25 m voxels the heading error may not exceed 3 degrees (0.052 rad)
+before the two contracts conflict. Set the parameter to the actual heading
+uncertainty of the vehicle's source; the configured 0.038 rad (2.2 degrees,
+13.15 m of range) is the compass-era figure and is conservative for the
+simulation source.
+
 ## Spawn, Start, And Goal
 
 The default configuration uses:

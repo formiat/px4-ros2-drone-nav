@@ -94,6 +94,11 @@ repository container workflow.
 - Current-position hold is not a substitute for finding a physically executable
   route.
 
+The stack is validated with a heading source of about 1.5 degrees standard
+deviation or better (in simulation, the true attitude through PX4's external
+vision interface, see `docs/gazebo_simulation.md`, "Heading Source"). It is not
+validated with a compass-grade heading of 2 degrees and more.
+
 ## Documentation Map
 
 - `roadmap.md`: completed milestones and planned navigation, multi-drone, and 3D

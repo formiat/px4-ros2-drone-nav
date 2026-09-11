@@ -174,13 +174,21 @@ obstacle_memory_3d_node:
     lidar_3d_vertical_max_angle_rad: 1.5707963267948966
     lidar_3d_minimum_range_m: 0.2
     max_lidar_range_m: 35.0
-    # The heading estimate the hits are placed with, measured against the
-    # simulator's true pose over four urban flights: a standard deviation of
-    # 2.2 degrees, with excursions past ten while the estimator reconciles
-    # its magnetometer with its course. The persistent memory integrates
-    # beams only as far as that keeps a hit within two voxels of its surface,
-    # thirteen metres at this resolution; the sensor braking contract needs
-    # nine and a half.
+    # The heading estimate the hits are placed with. The persistent memory
+    # integrates beams only as far as that keeps a hit within two voxels of
+    # its surface, 2 * resolution / tan(sigma): thirteen metres at this
+    # value and resolution. The sensor braking contract needs nine and a half
+    # metres of guaranteed detection range, so the heading error may not
+    # exceed 3 degrees (0.052 rad) before the two contracts conflict.
+    # Release assumption: the stack is validated for a heading of about 1.5
+    # degrees standard deviation or better (the simulation heading source
+    # measures 0.85 to 1.5), not for a compass-grade heading of 2 degrees and
+    # more. This value is the simulated magnetometer's measured error -- a
+    # standard deviation of 2.2 degrees, with excursions past ten while the
+    # estimator reconciles its magnetometer with its course -- and is
+    # conservative for the simulation source; set it to the actual heading
+    # uncertainty of the vehicle's source. See docs/gazebo_simulation.md,
+    # "Heading Source".
     lidar_pose_heading_uncertainty_rad: 0.038
     range_hit_epsilon_m: 0.05
     scan_stride: 1
