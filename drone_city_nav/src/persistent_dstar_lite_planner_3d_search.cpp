@@ -190,17 +190,18 @@ void DStarLiteSession3D::scheduleAffectedVertices(
   const double vertical_margin = std::max(config_->physical_footprint.lower_extent_m,
                                           config_->physical_footprint.upper_extent_m) +
                                  raw_half_diagonal;
-  // A placed node stands off its canonical point, and every reach here is
-  // measured from canonical geometry: both ends of an edge can therefore lie
-  // that much nearer a change than their cells say. Without the allowance an
-  // edge a change blocks kept its cached clearance, and the search offered
-  // the same refused route until something else forgot the edge.
-  const double placement_slack_m = lattice_->maximumNodePlacementOffsetM();
   const double horizontal_reach =
-      horizontal_margin + std::numbers::sqrt2 * config_->minimum_horizontal_step_m +
-      2.0 * placement_slack_m;
-  const double vertical_reach =
-      vertical_margin + config_->minimum_vertical_step_m + 2.0 * placement_slack_m;
+      horizontal_margin + std::numbers::sqrt2 * config_->minimum_horizontal_step_m;
+  const double vertical_reach = vertical_margin + config_->minimum_vertical_step_m;
+  // A placed node stands off its canonical point, so an edge can reach that
+  // much further from its own node's point than canonical geometry says.
+  // Only the per-node rejection below allows for it: the node box the reach
+  // sizes already carries a whole step of headroom, which covers the node's
+  // own displacement, and widening the box instead cost the update a fifth of
+  // its budget for nothing.
+  const double placement_slack_m = lattice_->maximumNodePlacementOffsetM();
+  const double horizontal_edge_reach = horizontal_reach + placement_slack_m;
+  const double vertical_edge_reach = vertical_reach + placement_slack_m;
   for (const GridIndex3D cell : changed_cells) {
     changed_chunks.insert(OccupancyGrid3D::chunkIndex(cell));
   }
@@ -400,12 +401,12 @@ void DStarLiteSession3D::scheduleAffectedVertices(
           const Point3 node_point = lattice_->pointFor(node);
           // A change beyond the reach of every edge leaving this node cannot
           // touch any of them; most box nodes are filtered here.
-          if (node_point.x < changes_minimum.x - horizontal_reach ||
-              node_point.x > changes_maximum.x + horizontal_reach ||
-              node_point.y < changes_minimum.y - horizontal_reach ||
-              node_point.y > changes_maximum.y + horizontal_reach ||
-              node_point.z < changes_minimum.z - vertical_reach ||
-              node_point.z > changes_maximum.z + vertical_reach) {
+          if (node_point.x < changes_minimum.x - horizontal_edge_reach ||
+              node_point.x > changes_maximum.x + horizontal_edge_reach ||
+              node_point.y < changes_minimum.y - horizontal_edge_reach ||
+              node_point.y > changes_maximum.y + horizontal_edge_reach ||
+              node_point.z < changes_minimum.z - vertical_edge_reach ||
+              node_point.z > changes_maximum.z + vertical_edge_reach) {
             return;
           }
           const bool within_reach =
