@@ -530,7 +530,16 @@ execution_route_snapshot_3d_internal::applyEnterStopExecutionCommand3D(
   ExecutionPlan3D next = current;
   ++next.version;
   next.route_generation_high_water = current.routeGenerationHighWater();
-  next.state = StopPlan3D{.execution = std::move(*certified.execution)};
+  // The stop is the resident route's end from where the vehicle stands, and
+  // the search for its successor is already running against that route: the
+  // plan keeps it, suspended, so the replacement is still weighed against
+  // what the vehicle was flying. Dropped instead, a replacement costing twice
+  // the route it replaced walked in unopposed at every block.
+  const CertifiedRouteSuffix3D* const suspended = current.route();
+  next.state = StopPlan3D{
+      .execution = std::move(*certified.execution),
+      .suspended_route = suspended != nullptr ? *suspended : CertifiedRouteSuffix3D{},
+  };
   ++next.execution_owner_epoch;
   return finishTransition(current, std::move(next));
 }

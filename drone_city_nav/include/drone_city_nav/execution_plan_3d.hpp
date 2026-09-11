@@ -118,6 +118,12 @@ struct DirectTrackingPlan3D {
 
 struct StopPlan3D {
   StopExecution3D execution{};
+  // The route the vehicle was flying when the stop took it over. The stop
+  // owns the vehicle alone -- this route executes nothing and succeeds
+  // nothing -- but it is still the plan the lifecycle is replacing, and the
+  // replacement is weighed against it. Invalid when the stop answered no
+  // route at all.
+  CertifiedRouteSuffix3D suspended_route{};
 };
 
 struct CertifiedTerminalHoldPlan3D {
@@ -164,6 +170,8 @@ struct ExecutionPlan3D {
   [[nodiscard]] std::uint64_t routeGenerationHighWater() const noexcept;
   [[nodiscard]] ExecutionRoutePhase3D phase() const noexcept;
   [[nodiscard]] const CertifiedRouteSuffix3D* route() const noexcept;
+  // The route a stop suspended, if it kept one; never an executing route.
+  [[nodiscard]] const CertifiedRouteSuffix3D* suspendedRoute() const noexcept;
   [[nodiscard]] const FiniteExecutionState3D* finiteExecution() const noexcept;
   [[nodiscard]] const FiniteExecutionState3D* brakingFallback() const noexcept;
   [[nodiscard]] const DirectTrackingFiniteExecution3D*

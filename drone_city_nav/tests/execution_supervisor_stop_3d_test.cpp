@@ -185,8 +185,13 @@ TEST(ExecutionSupervisorStop3DTest, AMovingVehicleStopsAlongAValidatedTrajectory
   EXPECT_TRUE(stop->valid());
   EXPECT_NEAR(prepared.initial_speed_mps, 4.0, 1.0e-6);
   EXPECT_GT(prepared.stop_distance_m, 0.0);
-  // A stop is route-free by construction and ends at rest.
+  // A stop executes no route and ends at rest, but it keeps the route it
+  // took the vehicle over from: the lifecycle is replacing that route, and
+  // the replacement is weighed against it while the vehicle brakes.
   EXPECT_EQ(prepared.transition->next->route(), nullptr);
+  ASSERT_NE(prepared.transition->next->suspendedRoute(), nullptr);
+  EXPECT_EQ(prepared.transition->next->suspendedRoute()->identity.generation,
+            active->route()->identity.generation);
   EXPECT_EQ(prepared.transition->next->finiteExecution(), nullptr);
   EXPECT_EQ(prepared.transition->next->brakingFallback(), nullptr);
   ASSERT_NE(stop->horizon, nullptr);
