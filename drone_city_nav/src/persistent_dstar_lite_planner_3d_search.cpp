@@ -190,9 +190,17 @@ void DStarLiteSession3D::scheduleAffectedVertices(
   const double vertical_margin = std::max(config_->physical_footprint.lower_extent_m,
                                           config_->physical_footprint.upper_extent_m) +
                                  raw_half_diagonal;
+  // A placed node stands off its canonical point, and every reach here is
+  // measured from canonical geometry: both ends of an edge can therefore lie
+  // that much nearer a change than their cells say. Without the allowance an
+  // edge a change blocks kept its cached clearance, and the search offered
+  // the same refused route until something else forgot the edge.
+  const double placement_slack_m = lattice_->maximumNodePlacementOffsetM();
   const double horizontal_reach =
-      horizontal_margin + std::numbers::sqrt2 * config_->minimum_horizontal_step_m;
-  const double vertical_reach = vertical_margin + config_->minimum_vertical_step_m;
+      horizontal_margin + std::numbers::sqrt2 * config_->minimum_horizontal_step_m +
+      2.0 * placement_slack_m;
+  const double vertical_reach =
+      vertical_margin + config_->minimum_vertical_step_m + 2.0 * placement_slack_m;
   for (const GridIndex3D cell : changed_cells) {
     changed_chunks.insert(OccupancyGrid3D::chunkIndex(cell));
   }

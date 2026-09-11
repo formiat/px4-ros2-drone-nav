@@ -830,6 +830,85 @@ TEST(PersistentDStarLitePlanner3DTest,
                  planner.config().physical_footprint);
 }
 
+// A route through a passage only a placed node reaches stays raw-valid when
+// the passage closes: the change has to forget the edges of the placed node,
+// whose points stand off the cells the reach is measured from.
+TEST(PersistentDStarLitePlanner3DTest, AClosedPlacedPassageForgetsItsEdges) {
+  auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 0.25, 96, 48, 24});
+  PersistentPlannerConfig3D config = testConfig();
+  config.minimum_horizontal_step_m = 2.0;
+  config.minimum_vertical_step_m = 2.0;
+  config.physical_footprint.radius_m = 0.4;
+  config.physical_footprint.perimeter_samples = 8U;
+  config.physical_footprint.radial_rings = 1U;
+  config.physical_footprint.axial_samples = 1U;
+  config.physical_footprint.sweep_step_m = 0.1;
+  config.flight_envelope.maximum_target_z_m = 4.0;
+  config.feasibility_first_enabled = true;
+  // A wall across x in [10, 11), pierced by a lane at y in [5.2, 6.4): the
+  // lane lies between the lattice rows on the odd metres, so only a placed
+  // node stands in it.
+  const auto fill = [&](const int x, const int y) {
+    for (int z = 0; z < 24; ++z) {
+      if (!occupancy->setState({x, y, z}, ObservedVoxelState::kOccupied)) {
+        throw std::logic_error{"fixture cell outside the grid"};
+      }
+    }
+  };
+  for (int x = 40; x < 42; ++x) {
+    for (int y = 0; y < 48; ++y) {
+      if (y >= 21 && y < 26) {
+        continue;
+      }
+      fill(x, y);
+    }
+  }
+  PersistentDStarLitePlanner3D planner{config};
+  const Point3 start{3.0, 5.8, 1.0};
+  const Point3 goal{19.0, 5.8, 1.0};
+  PlannerUpdate3D update;
+  for (int attempt = 0; attempt < 40 && !update.publishable(); ++attempt) {
+    update = planner.plan(request(start, goal, world(occupancy, 1U)));
+  }
+  ASSERT_TRUE(update.publishable()) << "no route through the placed lane";
+  expectRawValid(candidate(update).points, *occupancy,
+                 planner.config().physical_footprint);
+
+  // The lane closes. Whatever the search offers next must be valid on the
+  // world it was planned on -- never the remembered way through.
+  auto closed = std::make_shared<ObservedOccupancyGrid3D>(*occupancy);
+  std::vector<OccupancyChunkIndex3D> dirty;
+  for (int x = 40; x < 42; ++x) {
+    for (int y = 21; y < 26; ++y) {
+      for (int z = 0; z < 24; ++z) {
+        static_cast<void>(closed->setState({x, y, z}, ObservedVoxelState::kOccupied));
+        dirty.push_back(ObservedOccupancyGrid3D::chunkIndex(GridIndex3D{x, y, z}));
+      }
+    }
+  }
+  std::ranges::sort(dirty, [](const OccupancyChunkIndex3D& first,
+                              const OccupancyChunkIndex3D& second) {
+    return std::tie(first.x, first.y, first.z) < std::tie(second.x, second.y, second.z);
+  });
+  dirty.erase(std::ranges::unique(dirty,
+                                  [](const OccupancyChunkIndex3D& first,
+                                     const OccupancyChunkIndex3D& second) {
+                                    return first.x == second.x && first.y == second.y &&
+                                           first.z == second.z;
+                                  })
+                  .begin(),
+              dirty.end());
+  for (int attempt = 0; attempt < 20; ++attempt) {
+    const PlannerUpdate3D after =
+        planner.plan(request(start, goal, world(closed, 2U, dirty)));
+    if (after.improved_incumbent.has_value()) {
+      expectRawValid(candidate(after).points, *closed,
+                     planner.config().physical_footprint);
+    }
+  }
+}
+
 // A vehicle with no route of its own is given the shortened update whatever
 // the search session still holds: the incumbent the session keeps improving
 // is a route the executor has already lost, and every full-budget update it

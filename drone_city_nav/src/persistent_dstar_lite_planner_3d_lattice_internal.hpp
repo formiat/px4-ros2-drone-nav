@@ -261,6 +261,9 @@ public:
   void placeNode(PersistentPlannerNode3D node) const;
   // Whether the node was placed off its canonical point.
   [[nodiscard]] bool nodeDisplaced(PersistentPlannerNode3D node) const noexcept;
+  // The furthest a placed node can stand from its canonical point, so every
+  // reach measured on canonical geometry can allow for it.
+  [[nodiscard]] double maximumNodePlacementOffsetM() const noexcept;
   [[nodiscard]] PersistentPlannerNode3D nearestNode(const Point3& point) const noexcept;
 
   // Why a departure could or could not be found: what the connector radius

@@ -23,6 +23,12 @@
 #include "persistent_dstar_lite_planner_3d_lattice_level_zero.hpp"
 
 namespace drone_city_nav::detail {
+namespace {
+
+// Fractions of a lattice step a placed node is probed at, nearest first.
+constexpr std::array<double, 2> kNodePlacementFractions{0.25, 0.45};
+
+} // namespace
 
 bool PlannerLattice3D::sameGridGeometry(const GridBounds3D& bounds) const noexcept {
   return width_ > 0 && height_ > 0 && depth_ > 0 && sameBounds(raw_bounds_, bounds);
@@ -331,6 +337,12 @@ PlannerLattice3D::level(const PersistentPlannerNode3D first,
   return static_cast<std::size_t>(std::countr_zero(static_cast<unsigned int>(scale)));
 }
 
+double PlannerLattice3D::maximumNodePlacementOffsetM() const noexcept {
+  const double fraction = *std::ranges::max_element(kNodePlacementFractions);
+  return fraction *
+         std::max(config_->minimum_horizontal_step_m, config_->minimum_vertical_step_m);
+}
+
 bool PlannerLattice3D::nodeDisplaced(
     const PersistentPlannerNode3D node) const noexcept {
   if (node_placements_.empty() || !nodeInside(node)) {
@@ -372,7 +384,7 @@ void PlannerLattice3D::placeNode(const PersistentPlannerNode3D node) const {
     // Half a step keeps every placed node inside its own lattice cell.
     const double horizontal_m = config_->minimum_horizontal_step_m;
     const double vertical_m = config_->minimum_vertical_step_m;
-    constexpr std::array<double, 2> kFractions{0.25, 0.45};
+    const std::array<double, 2>& fractions = kNodePlacementFractions;
     const double diagonal = std::numbers::sqrt2 / 2.0;
     const std::array<Vec3, 8> horizontal_axes{Vec3{1.0, 0.0, 0.0},
                                               Vec3{-1.0, 0.0, 0.0},
@@ -383,7 +395,7 @@ void PlannerLattice3D::placeNode(const PersistentPlannerNode3D node) const {
                                               Vec3{diagonal, -diagonal, 0.0},
                                               Vec3{-diagonal, -diagonal, 0.0}};
     bool placed{false};
-    for (const double fraction : kFractions) {
+    for (const double fraction : fractions) {
       for (const Vec3& axis : horizontal_axes) {
         const Vec3 candidate{fraction * horizontal_m * axis.x,
                              fraction * horizontal_m * axis.y, 0.0};
