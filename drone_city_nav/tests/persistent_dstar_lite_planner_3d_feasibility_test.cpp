@@ -114,6 +114,7 @@ TEST(PersistentDStarLitePlanner3DTest,
   config.clearance_ranking_distance_m = 6.0;
   config.feasibility_clearance_ranking_distance_m = 2.0;
   config.maximum_compute_time_ms = 2000.0;
+  config.maximum_no_route_compute_time_ms = 2000.0;
   PersistentDStarLitePlanner3D planner{config};
   const Point3 start{2.5, 2.5, 5.5};
   const Point3 goal{117.5, 117.5, 5.5};

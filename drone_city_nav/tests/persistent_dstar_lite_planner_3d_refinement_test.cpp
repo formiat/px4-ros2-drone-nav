@@ -444,6 +444,7 @@ struct NodelessCorridorFixture {
     config.flight_envelope.maximum_target_z_m = 2.0;
     config.feasibility_first_enabled = true;
     config.maximum_compute_time_ms = 200.0;
+    config.maximum_no_route_compute_time_ms = 200.0;
     config.maximum_feasibility_compute_time_ms = 100.0;
     config.departure_refinement_subdivisions = 4U;
     config.escape_search_radius_cells = 4U;
@@ -623,6 +624,7 @@ struct DeadEndExitFixture {
     config.flight_envelope.maximum_target_z_m = 2.0;
     config.feasibility_first_enabled = true;
     config.maximum_compute_time_ms = 200.0;
+    config.maximum_no_route_compute_time_ms = 200.0;
     config.maximum_feasibility_compute_time_ms = 100.0;
     config.departure_refinement_subdivisions = 4U;
     config.escape_search_radius_cells = 4U;

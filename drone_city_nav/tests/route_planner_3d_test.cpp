@@ -28,6 +28,7 @@ struct PlannerFixture3D {
   config.planner.goal_tolerance_m = 0.01;
   config.planner.feasibility_first_enabled = false;
   config.planner.maximum_compute_time_ms = 1000.0;
+  config.planner.maximum_no_route_compute_time_ms = 1000.0;
   config.planner.maximum_expansions_per_update = 100000U;
   config.planner.physical_footprint.radius_m = 0.0;
   config.planner.physical_footprint.lower_extent_m = 0.0;

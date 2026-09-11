@@ -45,6 +45,7 @@ namespace {
   config.goal_tolerance_m = 0.01;
   config.feasibility_first_enabled = false;
   config.maximum_compute_time_ms = 2000.0;
+  config.maximum_no_route_compute_time_ms = 2000.0;
   config.maximum_expansions_per_update = 500000U;
   config.maximum_extracted_path_nodes = 4096U;
   config.maximum_shortcut_checks = 4096U;

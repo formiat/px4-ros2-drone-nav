@@ -28,6 +28,7 @@ namespace {
   config.goal_tolerance_m = 0.01;
   config.feasibility_first_enabled = false;
   config.maximum_compute_time_ms = 1000.0;
+  config.maximum_no_route_compute_time_ms = 1000.0;
   config.maximum_expansions_per_update = 100000U;
   config.physical_footprint.radius_m = 0.0;
   config.physical_footprint.lower_extent_m = 0.0;
