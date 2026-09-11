@@ -402,8 +402,16 @@ RouteLifecycleCoordinator3D::advance(RoutePlanningUpdateEvent3D event) {
   result.route_planning_ms = elapsedMilliseconds(planning_started);
   const bool lifecycle_search = transaction->replacement() || transaction->initial();
   const bool latch_failed_search = [&]() {
+    // A candidate the lifecycle itself held back is no search that failed:
+    // the search delivered a route and the blocked-replacement rule deferred
+    // it for the grace its extra cost earns. Latched as a failure, it
+    // suppressed the next request for the whole retry interval -- and the
+    // next request is the one the vehicle makes when that route is finally
+    // blocked and released, with nothing left to fly. Recorded flights spent
+    // half a second to a second standing that way at most of their blocks.
     if (!lifecycle_search || result.activation.admission.certified_pending ||
-        result.search_running) {
+        result.search_running ||
+        result.activation.admission.blocked_replacement_deferred) {
       return false;
     }
     const std::shared_ptr<const ExecutionPlan3D> resident_execution =

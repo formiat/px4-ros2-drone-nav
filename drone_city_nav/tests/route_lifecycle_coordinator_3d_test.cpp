@@ -203,6 +203,76 @@ TEST(RouteLifecycleCoordinator3DTest,
 }
 
 TEST(RouteLifecycleCoordinator3DTest,
+     ADeferredBlockedReplacementDoesNotLatchTheSearchAsFailed) {
+  ExecutionSupervisor3D supervisor;
+  const LifecycleFixture3D input = fixture();
+  ASSERT_NE(input.transaction, nullptr);
+  std::size_t initial_commit_count{0U};
+  {
+    RouteLifecycleCoordinator3D activation_coordinator{
+        supervisor, lifecycleConfig(input, supervisor, initial_commit_count)};
+    planAndActivateInitialRoute(activation_coordinator, supervisor, input);
+  }
+  ASSERT_NE(supervisor.plan(), nullptr);
+  const std::uint64_t generation = supervisor.plan()->routeGenerationHighWater();
+  const std::shared_ptr<const PlannerSearchTransaction3D> replacement =
+      makePlannerSearchTransaction3D(input.world, input.planner_world,
+                                     input.transaction->objective,
+                                     StaticRouteSearchRequestIdentity{
+                                         .kind = StaticRouteSearchRequestKind::kReplan,
+                                         .base_route_generation = generation,
+                                     },
+                                     std::nullopt, RouteReleaseReason3D::kBlocked);
+  ASSERT_NE(replacement, nullptr);
+
+  std::size_t deferral_commit_count{0U};
+  RouteLifecycleCoordinatorConfig3D config =
+      lifecycleConfig(input, supervisor, deferral_commit_count);
+  bindResidentReplanSnapshot(config, input, supervisor, 600);
+  config.activation_commit_boundary =
+      [&deferral_commit_count](PreparedRouteActivation3D prepared,
+                               const RouteActivationCommitOperation3D&) {
+        ++deferral_commit_count;
+        ProductionRouteActivationResult3D activation = std::move(prepared.result);
+        // The rule held the delivered candidate for its grace.
+        activation.admission.activation_status =
+            StaticRouteActivationStatus::kReplacementAwaitingSearch;
+        activation.admission.blocked_replacement_assessed = true;
+        activation.admission.blocked_replacement_deferred = true;
+        activation.admission.certified_pending = false;
+        return RouteActivationCommitResult3D{.result = std::move(activation)};
+      };
+  RouteLifecycleCoordinator3D coordinator{supervisor, std::move(config)};
+
+  RoutePlanner3D planner{plannerConfig()};
+  const RoutePlannerVehicleState3D vehicle_state = vehicleState(input);
+  RoutePlannerUpdate3D planner_update = planner.update(*replacement, vehicle_state);
+  ASSERT_TRUE(planner_update.improved_incumbent.has_value());
+  planner_update.planner_invoked = true;
+  planner_update.planner_progress = SearchProgress3D::kConverged;
+  planner_update.dispatch.continue_search = false;
+  const RouteLifecycleUpdate3D result = coordinator.advance(RoutePlanningUpdateEvent3D{
+      .request =
+          RoutePlanningRequest3D{
+              .transaction = replacement,
+              .continuation_session = nullptr,
+          },
+      .vehicle_state = vehicle_state,
+      .update = std::move(planner_update),
+  });
+  ASSERT_EQ(result.status, RouteLifecycleAdvanceStatus3D::kCompleted);
+  ASSERT_TRUE(result.activation.admission.blocked_replacement_deferred);
+  EXPECT_FALSE(result.failed_search_latched)
+      << "the lifecycle's own deferral was recorded as a failed search";
+
+  // The route the vehicle was flying is then blocked and released: the search
+  // it needs now must not be suppressed by that deferral.
+  const RouteLifecycleReplanOutcome3D outcome =
+      coordinator.requestReplan(RouteReleaseReason3D::kBlocked, generation);
+  EXPECT_NE(outcome.status, RouteLifecycleReplanStatus3D::kSuppressedFailedSearch);
+}
+
+TEST(RouteLifecycleCoordinator3DTest,
      SameWorldRawCollisionDoesNotSupersedeRunningSearchAndTheInitialSearchContinues) {
   ExecutionSupervisor3D supervisor;
   const LifecycleFixture3D input = fixture();
