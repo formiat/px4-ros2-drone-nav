@@ -654,11 +654,22 @@ assessReplacement(RouteActivationPreparationState3D state,
   // refused a successor for being two hundredths of a second slower while it
   // had nothing to fly at all and was holding without an executable horizon. A
   // pending certified route is different -- the vehicle is about to fly it --
-  // so it stays a base worth improving on.
+  // so it stays a base worth improving on. A route the executor could only
+  // retain -- no nominal horizon could be built on it -- is not being
+  // followed either: the vehicle brakes or stands on what it had. One
+  // recorded flight held a slower successor for the blocked grace while doing
+  // exactly that, without an executable horizon for over a second, three
+  // times in one flight.
+  const FiniteExecutionState3D* const resident_execution =
+      current_execution != nullptr ? current_execution->finiteExecution() : nullptr;
+  const bool resident_execution_nominal =
+      resident_execution != nullptr &&
+      resident_execution->kind == FiniteExecutionKind3D::kNominal;
   const bool improvement_base_under_execution =
       captured_pending != nullptr ||
       (current_execution != nullptr &&
-       current_execution->phase() == ExecutionRoutePhase3D::kFollowing);
+       current_execution->phase() == ExecutionRoutePhase3D::kFollowing &&
+       resident_execution_nominal);
   if (improvement_resident != nullptr) {
     const std::optional<ActiveIntent3D> resident_intent =
         activeIntent3D(improvement_resident->identity.proposal);
@@ -717,7 +728,8 @@ assessReplacement(RouteActivationPreparationState3D state,
       current_route->geometry->route != nullptr;
   if (safety_replan_requested &&
       transaction.release_reason != RouteReleaseReason3D::kStalled &&
-      !state.overlap_search && report.blocked_replacement_resident_available &&
+      resident_execution_nominal && !state.overlap_search &&
+      report.blocked_replacement_resident_available &&
       materialized_proposal.trajectory != nullptr &&
       current_route->identity.proposal.reaches_mission_goal &&
       materialized_proposal.identity.reaches_mission_goal) {
