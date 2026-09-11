@@ -1,5 +1,6 @@
 #include "drone_city_nav/execution_horizon_contract_ros.hpp"
 #include "drone_city_nav/mppi/finite_execution_path.hpp"
+#include "drone_city_nav/mppi/mppi_control_limits.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -126,6 +127,21 @@ effectivePointControl(const mppi::State& previous_state, const mppi::Control& co
   if (std::abs(clamped_yaw_rate) > kClampToleranceMps) {
     effective.yaw_accel += clamped_yaw_rate / dt_s;
   }
+  // The folded step is the model's, not necessarily a control the law
+  // admits: a state above a cap sheds at the maximum deceleration whatever
+  // the command says, and a command across the motion adds to that shed
+  // instead of replacing it. Published as it is, that step came back as the
+  // applied-control witness and no later horizon could ramp from it within
+  // the acceleration law -- every rebuild was rejected and the vehicle held
+  // in flight. The vehicle is asked for the admissible control nearest the
+  // step; the witness stays inside the envelope every horizon is built under.
+  clampControlHorizontalMagnitude3D(effective.ax, effective.ay,
+                                    dynamics.maximum_horizontal_acceleration_mps2);
+  effective.az = std::clamp(effective.az, -dynamics.maximum_vertical_acceleration_mps2,
+                            dynamics.maximum_vertical_acceleration_mps2);
+  effective.yaw_accel =
+      std::clamp(effective.yaw_accel, -dynamics.maximum_yaw_acceleration_radps2,
+                 dynamics.maximum_yaw_acceleration_radps2);
   return effective;
 }
 

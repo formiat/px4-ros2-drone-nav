@@ -89,5 +89,47 @@ TEST(ProductionMppiExecutionPointsTest, PointsCarryTheBrakingTheCapImposesAboveI
   }
 }
 
+TEST(ProductionMppiExecutionPointsTest,
+     PointsStayInsideTheAccelerationEnvelopeAboveTheCap) {
+  // Above the cap the shed is the maximum deceleration; a command across the
+  // motion adds to it, and the model's step exceeds the acceleration law. The
+  // published control is the admissible one nearest that step, so the
+  // applied-control witness it returns as can seed the next horizon.
+  mppi::DynamicsConfig dynamics;
+  dynamics.dt_s = 0.05F;
+  dynamics.linear_drag_1ps = 0.08F;
+  dynamics.maximum_horizontal_acceleration_mps2 = 4.0F;
+  dynamics.maximum_horizontal_speed_mps = 10.0F;
+  dynamics.maximum_translational_speed_mps = 6.567F;
+  const std::vector<mppi::Control> controls(6U,
+                                            mppi::Control{.ax = 2.828F, .ay = -2.828F});
+  const mppi::State initial{.vx = 6.0F, .vy = 6.0F};
+  const std::vector<mppi::State> states = integrate(initial, controls, dynamics);
+
+  msg::MppiTrajectoryHorizon horizon;
+  ASSERT_TRUE(appendFiniteExecutionPoints(horizon, states, controls, mppi::Control{},
+                                          50'000'000, dynamics));
+
+  ASSERT_EQ(horizon.points.size(), states.size());
+  bool any_step_exceeded_the_law = false;
+  for (std::size_t index = 1U; index < horizon.points.size(); ++index) {
+    const mppi::State& previous = states[index - 1U];
+    const mppi::State& state = states[index];
+    const double drag = 1.0 - dynamics.linear_drag_1ps * dynamics.dt_s;
+    const double step_ax = (state.vx - previous.vx * drag) / dynamics.dt_s;
+    const double step_ay = (state.vy - previous.vy * drag) / dynamics.dt_s;
+    any_step_exceeded_the_law =
+        any_step_exceeded_the_law ||
+        std::hypot(step_ax, step_ay) > dynamics.maximum_horizontal_acceleration_mps2;
+    const double ax = horizon.points[index].acceleration.x;
+    const double ay = horizon.points[index].acceleration.y;
+    EXPECT_LE(std::hypot(ax, ay),
+              dynamics.maximum_horizontal_acceleration_mps2 + 1.0e-4);
+    // Scaled, not redirected: it still brakes against the motion.
+    EXPECT_LT(ax * previous.vx + ay * previous.vy, 0.0);
+  }
+  EXPECT_TRUE(any_step_exceeded_the_law) << "the fixture never left the envelope";
+}
+
 } // namespace
 } // namespace drone_city_nav
