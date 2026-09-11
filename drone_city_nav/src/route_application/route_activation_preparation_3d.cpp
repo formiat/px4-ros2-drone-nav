@@ -628,12 +628,14 @@ assessReplacement(RouteActivationPreparationState3D state,
   const ActivatedRouteIdentity3D* const active_identity =
       current_route != nullptr ? std::addressof(current_route->identity) : nullptr;
   // A resident route released as blocked or diverged is one the vehicle
-  // cannot follow any more: it is no base a successor has to improve on, so
-  // the first raw-valid successor replaces it.
+  // cannot follow any more, and one released as stalled is one it has stood
+  // on instead of flying: neither is a base a successor has to improve on,
+  // so the first raw-valid successor replaces it.
   const bool safety_replan_requested =
       transaction.replacement() &&
       (transaction.release_reason == RouteReleaseReason3D::kBlocked ||
-       transaction.release_reason == RouteReleaseReason3D::kDiverged);
+       transaction.release_reason == RouteReleaseReason3D::kDiverged ||
+       transaction.release_reason == RouteReleaseReason3D::kStalled);
   state.overlap_search =
       candidate.provenance.required_splice_base_route_instance_id.valid();
   const PendingCertifiedRoute3D* const captured_pending =
@@ -704,12 +706,18 @@ assessReplacement(RouteActivationPreparationState3D state,
   // world is what changes while the vehicle stands, a wall copied a metre into
   // a corridor by a heading error carves away in seconds, and one recorded
   // flight was handed a converged 195 m loop six seconds into a 36 s grace,
-  // flew it, and never got back.
+  // flew it, and never got back. A route released as stalled is past that
+  // wait: the vehicle stood through whatever grace its block earned, and the
+  // release is what ends the standing, so its successor is not weighed
+  // against it. One recorded flight held a successor a tenth of a second
+  // slower than the route the vehicle was standing on, and the next ones
+  // for a second and a half more.
   report.blocked_replacement_resident_available =
       current_route != nullptr && current_route->geometry != nullptr &&
       current_route->geometry->route != nullptr;
-  if (safety_replan_requested && !state.overlap_search &&
-      report.blocked_replacement_resident_available &&
+  if (safety_replan_requested &&
+      transaction.release_reason != RouteReleaseReason3D::kStalled &&
+      !state.overlap_search && report.blocked_replacement_resident_available &&
       materialized_proposal.trajectory != nullptr &&
       current_route->identity.proposal.reaches_mission_goal &&
       materialized_proposal.identity.reaches_mission_goal) {

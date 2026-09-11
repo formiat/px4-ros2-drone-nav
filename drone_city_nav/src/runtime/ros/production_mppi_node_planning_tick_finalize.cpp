@@ -179,9 +179,18 @@ void ProductionMppiNode::finalizePlanningTick(
   constexpr double kStalledRouteReleaseGraceS{3.0};
   const double vehicle_speed_mps =
       routeSpeed3D(Vec3{navigation.state.vx, navigation.state.vy, navigation.state.vz});
+  // The stall is measured on one route, from its activation or the last
+  // motion, whichever is later: a route the vehicle has only just been handed
+  // has had no time to move it. One recorded flight released a replacement a
+  // tenth of a second after it was activated, because the vehicle had stood
+  // through the block's grace on the route before it.
+  const std::uint64_t stalled_route_generation =
+      committed_route != nullptr ? committed_route->identity.generation : 0U;
   if (vehicle_speed_mps > kStationaryExecutionHoldSpeedToleranceMps ||
-      last_moving_stamp_ns_ == 0) {
+      last_moving_stamp_ns_ == 0 ||
+      stalled_route_generation != last_moving_route_generation_) {
     last_moving_stamp_ns_ = now_ns;
+    last_moving_route_generation_ = stalled_route_generation;
   }
   const double stalled_s = static_cast<double>(now_ns - last_moving_stamp_ns_) / 1.0e9;
   // A vehicle standing at a block while the lifecycle holds the block's
@@ -192,13 +201,18 @@ void ProductionMppiNode::finalizePlanningTick(
   const bool holding_blocked_replacement =
       route_lifecycle_coordinator_ != nullptr &&
       route_lifecycle_coordinator_->blockedReplacementHoldActive(now_ns);
+  // Released as stalled, not blocked: the vehicle has already stood through
+  // whatever grace the block earned, so the successor is searched from where
+  // it stands and taken as found, not weighed against the route it stood on.
   if (committed_route != nullptr && !goal_capture.latched &&
       stalled_s >= kStalledRouteReleaseGraceS && !holding_blocked_replacement) {
     last_moving_stamp_ns_ = now_ns;
-    handlePhysicalTrajectoryCollision(
-        committed_route->identity.generation, committed_route->observed_raw_world,
-        "stalled_on_its_own_route",
-        ProductionMppiPhysicalTrajectoryAuthority::kResidentOwner);
+    RCLCPP_WARN(get_logger(),
+                "STALLED_ROUTE_RELEASE route_generation=%" PRIu64
+                " stalled_s=%.1f action=release_route_and_search_from_the_vehicle",
+                committed_route->identity.generation, stalled_s);
+    requestRouteRelease(RouteReleaseReason3D::kStalled,
+                        committed_route->identity.generation);
   }
   const bool finite_braking_tail_active =
       execution.retained_previous_finite_path && execution.terminal_rest_state;

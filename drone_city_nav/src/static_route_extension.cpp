@@ -553,9 +553,12 @@ StaticRouteExtensionDecision evaluateStaticRouteExtension(
 
 bool deferStaticRouteReleaseDuringExtension(
     const bool request_in_flight, const RouteReleaseReason3D reason) noexcept {
+  // A vehicle standing on its route gains nothing from that route being
+  // extended: a stalled release is not held behind the extension either.
   return request_in_flight && reason != RouteReleaseReason3D::kNone &&
          reason != RouteReleaseReason3D::kNoActiveRoute &&
-         reason != RouteReleaseReason3D::kBlocked;
+         reason != RouteReleaseReason3D::kBlocked &&
+         reason != RouteReleaseReason3D::kStalled;
 }
 
 Point3 staticRoutePlanningGoal(const Point3& start, const Point3& mission_goal,

@@ -365,6 +365,8 @@ private:
   // longer than the stall grace while carrying a route is not flying it; see
   // the stalled-route release in the planning tick.
   std::int64_t last_moving_stamp_ns_{0};
+  // The route the stall is being measured on; a new route restarts the clock.
+  std::uint64_t last_moving_route_generation_{0U};
   std::int64_t last_planning_tick_entry_ns_{0};
   std::int64_t last_planning_tick_period_ns_{0};
   // Owner identity of the goal hold observed by the previous capture update,

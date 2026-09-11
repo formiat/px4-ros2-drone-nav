@@ -64,14 +64,15 @@ RouteLifecycleReplanOutcome3D RouteLifecycleCoordinator3D::requestReplanImpl(
           reason == RouteReleaseReason3D::kObjectiveChanged &&
           replan_in_flight_mission_epoch_ != 0U &&
           replan_in_flight_mission_epoch_ != snapshot.objective->mission_epoch;
-      // A route released as blocked or diverged, or a vehicle without any
-      // route, needs a fresh search from where it is now; an in-flight search
-      // that has already delivered its candidate only runs for improvements
-      // of a route the executor just gave up on.
+      // A route released as blocked, diverged or stalled, or a vehicle
+      // without any route, needs a fresh search from where it is now; an
+      // in-flight search that has already delivered its candidate only runs
+      // for improvements of a route the executor just gave up on.
       const bool release_needs_fresh_search =
           replan_in_flight_published_ &&
           (reason == RouteReleaseReason3D::kBlocked ||
            reason == RouteReleaseReason3D::kDiverged ||
+           reason == RouteReleaseReason3D::kStalled ||
            reason == RouteReleaseReason3D::kNoActiveRoute);
       // A search that has delivered nothing at all is not improving anything:
       // it is what the vehicle is waiting on, and it keeps every later
@@ -165,6 +166,14 @@ RouteLifecycleReplanOutcome3D RouteLifecycleCoordinator3D::requestReplanImpl(
   bool failed_search_latched{false};
   {
     const std::scoped_lock lock{lifecycle_mutex_};
+    // A stalled release lifts the admission the last search was refused
+    // under: its successor is not weighed against the route the vehicle
+    // stood on, so a search that failed by that weighing is worth running
+    // again at once. One recorded flight stood most of a second after its
+    // release for the latch's retry interval to run out.
+    if (reason == RouteReleaseReason3D::kStalled) {
+      failed_search_latch_.clear();
+    }
     failed_search_latched = failed_search_latch_.latched();
   }
   if (snapshot.committed_route_generation == 0U && !failed_search_latched) {

@@ -583,6 +583,59 @@ TEST(RouteActivationCoordinator3DTest,
 }
 
 TEST(RouteActivationCoordinator3DTest,
+     AStalledReleaseTakesASlowerSuccessorWithoutTheBlockedGrace) {
+  ExecutionSupervisor3D supervisor;
+  RouteActivationCoordinator3D coordinator{coordinatorConfig(3.0)};
+  PreparedRouteActivation3D first = prepare(coordinator, activationFixture(supervisor));
+  const RouteActivationCommitContext3D first_context = commitContext(first);
+  static_cast<void>(coordinator.commit(std::move(first), first_context, supervisor));
+  activatePending(supervisor);
+  ASSERT_NE(supervisor.plan(), nullptr);
+  const std::uint64_t generation = supervisor.plan()->routeGenerationHighWater();
+  ASSERT_GT(generation, 0U);
+
+  // The same route flown slower: it loses to the resident on remaining time,
+  // so a blocked release holds it for the grace that loss earns.
+  RouteActivationCoordinator3D slow_coordinator{coordinatorConfig(0.5)};
+  const auto replacement_for = [&](const RouteReleaseReason3D reason) {
+    ActivationFixture3D released = activationFixture(supervisor);
+    released.transaction = makePlannerSearchTransaction3D(
+        released.world, captureResidentPlannerWorld3D(*released.world),
+        released.transaction->objective,
+        StaticRouteSearchRequestIdentity{
+            .kind = StaticRouteSearchRequestKind::kReplan,
+            .base_route_generation = generation,
+        },
+        std::nullopt, reason);
+    return released;
+  };
+  ActivationFixture3D blocked = replacement_for(RouteReleaseReason3D::kBlocked);
+  ASSERT_NE(blocked.transaction, nullptr);
+  const PreparedRouteActivation3D held = prepare(slow_coordinator, blocked);
+  ASSERT_TRUE(held.result.admission.blocked_replacement_assessed);
+  EXPECT_TRUE(held.result.admission.blocked_replacement_deferred);
+  EXPECT_FALSE(held.pending_draft.has_value());
+
+  // Released as stalled instead, the vehicle has stood through that grace
+  // already: the successor is taken as found.
+  ActivationFixture3D stalled = replacement_for(RouteReleaseReason3D::kStalled);
+  ASSERT_NE(stalled.transaction, nullptr);
+  PreparedRouteActivation3D replacement = prepare(slow_coordinator, stalled);
+  EXPECT_FALSE(replacement.result.admission.successor_improvement_required);
+  EXPECT_FALSE(replacement.result.admission.blocked_replacement_assessed);
+  EXPECT_FALSE(replacement.result.admission.blocked_replacement_deferred);
+  EXPECT_TRUE(replacement.result.admission.replacement.replacementAllowed());
+  ASSERT_TRUE(replacement.pending_draft.has_value());
+  const RouteActivationCommitContext3D replacement_context = commitContext(replacement);
+  const RouteActivationCommitResult3D committed =
+      slow_coordinator.commit(std::move(replacement), replacement_context, supervisor);
+
+  EXPECT_TRUE(committed.result.admission.certified_pending)
+      << staticRouteActivationStatusName(committed.result.admission.activation_status);
+  EXPECT_NE(supervisor.pending(), nullptr);
+}
+
+TEST(RouteActivationCoordinator3DTest,
      InvalidPreparationFailsClosedWithoutAnExecutionDraft) {
   RouteActivationCoordinator3D coordinator{coordinatorConfig()};
 
