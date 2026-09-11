@@ -231,7 +231,9 @@ RoutePlannerUpdate3D RoutePlanner3D::update(
       continuation_session->request.world.revision;
 
   result.planner_invoked = true;
-  PlannerUpdate3D planner_update = planner_.plan(continuation_session->request);
+  PersistentPlannerRequest3D planner_request = continuation_session->request;
+  planner_request.vehicle_route_available = vehicle_state.route_available;
+  PlannerUpdate3D planner_update = planner_.plan(planner_request);
   result.planner_input_status = planner_update.input_status;
   result.planner_progress = planner_update.progress;
   result.planner_telemetry = planner_update.telemetry;

@@ -17,6 +17,9 @@ struct RoutePlannerVehicleState3D {
   Point3 position{};
   Vec3 velocity{};
   bool valid{false};
+  // Whether the executor is flying a route of its own; see
+  // PersistentPlannerRequest3D::vehicle_route_available.
+  bool route_available{true};
 };
 
 struct RoutePlannerConfig3D {

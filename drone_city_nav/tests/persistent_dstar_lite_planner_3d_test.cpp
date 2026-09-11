@@ -830,5 +830,43 @@ TEST(PersistentDStarLitePlanner3DTest,
                  planner.config().physical_footprint);
 }
 
+// A vehicle with no route of its own is given the shortened update whatever
+// the search session still holds: the incumbent the session keeps improving
+// is a route the executor has already lost, and every full-budget update it
+// spends is time the vehicle stands without one.
+TEST(PersistentDStarLitePlanner3DTest, AVehicleWithoutARouteGetsTheShortenedUpdate) {
+  auto occupancy = std::make_shared<ObservedOccupancyGrid3D>(
+      GridBounds3D{0.0, 0.0, 0.0, 0.25, 240, 240, 40});
+  PersistentPlannerConfig3D config = testConfig();
+  config.minimum_horizontal_step_m = 2.0;
+  config.maximum_compute_time_ms = 150.0;
+  config.maximum_no_route_compute_time_ms = 60.0;
+  PersistentDStarLitePlanner3D planner{config};
+  const Point3 start{2.0, 2.0, 1.0};
+  const Point3 goal{56.0, 56.0, 1.0};
+
+  const PlannerUpdate3D first =
+      planner.plan(request(start, goal, world(occupancy, 1U)));
+  EXPECT_DOUBLE_EQ(first.telemetry.compute_budget_ms,
+                   config.maximum_no_route_compute_time_ms)
+      << "the first update of a session holds no incumbent";
+
+  int attempt = 0;
+  for (; attempt < 40; ++attempt) {
+    const PlannerUpdate3D holding =
+        planner.plan(request(start, goal, world(occupancy, 1U)));
+    if (holding.telemetry.compute_budget_ms == config.maximum_compute_time_ms) {
+      break;
+    }
+  }
+  ASSERT_LT(attempt, 40) << "the search never took an incumbent";
+
+  PersistentPlannerRequest3D lost = request(start, goal, world(occupancy, 1U));
+  lost.vehicle_route_available = false;
+  const PlannerUpdate3D without_route = planner.plan(lost);
+  EXPECT_DOUBLE_EQ(without_route.telemetry.compute_budget_ms,
+                   config.maximum_no_route_compute_time_ms);
+}
+
 } // namespace
 } // namespace drone_city_nav

@@ -331,6 +331,8 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
                 // the heading to settle at the end of the takeoff climb and
                 // the vehicle then held at the start for the search it could
                 // have run during the climb.
+                const std::shared_ptr<const ExecutionPlan3D> execution =
+                    execution_supervisor_.plan();
                 return RoutePlannerVehicleState3D{
                     .position = Point3{navigation_.state.x, navigation_.state.y,
                                        navigation_.state.z},
@@ -339,6 +341,10 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
                     .valid = navigation_.world_state_authoritative &&
                              !navigation_revision_exhausted_ &&
                              !navigation_frame_reset_unresolved_,
+                    .route_available =
+                        execution != nullptr &&
+                        (execution->route() != nullptr ||
+                         execution->directTrackingExecution() != nullptr),
                 };
               },
           .activation_snapshot_provider =

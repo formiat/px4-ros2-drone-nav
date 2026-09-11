@@ -235,6 +235,13 @@ struct PersistentPlannerRequest3D {
   // evidence still delivers a route the vehicle can enter — from what it has
   // already explored, not from nothing.
   std::uint64_t incumbent_rejection_sequence{0U};
+  // Whether the vehicle is flying a route of its own right now. The update is
+  // shortened while it is not, so a route it does not have reaches it as soon
+  // as the search finds one. The planner's own incumbent does not answer this:
+  // a session keeps improving the route the executor has already lost, and
+  // measured flights spent three to ten full-budget updates -- most of a
+  // second -- in exactly that state.
+  bool vehicle_route_available{true};
 };
 
 struct SpatialRouteCandidate3D {

@@ -176,7 +176,7 @@ PersistentDStarLitePlanner3DImpl::plan(const PersistentPlannerRequest3D& request
   // often; their work per second is unchanged, the fixed cost of an update
   // being a millisecond and a half against a hundred and fifty of work.
   const double compute_time_ms =
-      coordinator_.incumbent() == nullptr
+      coordinator_.incumbent() == nullptr || !request.vehicle_route_available
           ? std::min(config_.maximum_no_route_compute_time_ms,
                      config_.maximum_compute_time_ms)
           : config_.maximum_compute_time_ms;
