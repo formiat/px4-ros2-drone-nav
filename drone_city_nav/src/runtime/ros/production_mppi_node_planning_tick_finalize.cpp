@@ -234,13 +234,7 @@ void ProductionMppiNode::finalizePlanningTick(
                                : std::numeric_limits<double>::infinity(),
       .speed_mps = routeSpeed3D(
           Vec3{navigation.state.vx, navigation.state.vy, navigation.state.vz}),
-      // A route a stop suspended is a route the stack holds: the vehicle is
-      // braking before it takes the successor the lifecycle is already
-      // searching for, not flying without a plan.
-      .resident_route_available =
-          committed_route != nullptr || committed_direct_owner ||
-          (committed_execution_snapshot != nullptr &&
-           committed_execution_snapshot->suspendedRoute() != nullptr),
+      .resident_route_available = committed_route != nullptr || committed_direct_owner,
       .execution_owner_available = committed_execution_owner,
       // A stationary hold owns execution without carrying the vehicle
       // anywhere; only a finite or direct execution flies a route.

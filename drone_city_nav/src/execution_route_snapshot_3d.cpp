@@ -524,13 +524,6 @@ const StopExecution3D* ExecutionPlan3D::stopExecution() const noexcept {
   return stopping != nullptr ? std::addressof(stopping->execution) : nullptr;
 }
 
-const CertifiedRouteSuffix3D* ExecutionPlan3D::suspendedRoute() const noexcept {
-  const auto* stopping = std::get_if<StopPlan3D>(&state);
-  return stopping != nullptr && stopping->suspended_route.valid()
-             ? std::addressof(stopping->suspended_route)
-             : nullptr;
-}
-
 const StationaryExecutionHold3D* ExecutionPlan3D::stationaryHold() const noexcept {
   const auto* stationary = std::get_if<StationaryHoldPlan3D>(&state);
   return stationary != nullptr

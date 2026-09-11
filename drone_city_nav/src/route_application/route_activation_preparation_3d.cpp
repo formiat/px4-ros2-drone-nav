@@ -612,14 +612,6 @@ assessReplacement(RouteActivationPreparationState3D state,
       state.prepared.execution_base;
   const CertifiedRouteSuffix3D* const current_route =
       current_execution != nullptr ? current_execution->route() : nullptr;
-  // The route a stop suspended is what the vehicle was flying and what this
-  // search is replacing: the blocked-replacement rule weighs against it as
-  // long as the stop holds it.
-  const CertifiedRouteSuffix3D* const blocked_route =
-      current_route != nullptr
-          ? current_route
-          : (current_execution != nullptr ? current_execution->suspendedRoute()
-                                          : nullptr);
   state.base_generation =
       current_execution != nullptr ? current_execution->routeGenerationHighWater() : 0U;
   const bool request_requires_base =
@@ -721,24 +713,24 @@ assessReplacement(RouteActivationPreparationState3D state,
   // slower than the route the vehicle was standing on, and the next ones
   // for a second and a half more.
   report.blocked_replacement_resident_available =
-      blocked_route != nullptr && blocked_route->geometry != nullptr &&
-      blocked_route->geometry->route != nullptr;
+      current_route != nullptr && current_route->geometry != nullptr &&
+      current_route->geometry->route != nullptr;
   if (safety_replan_requested &&
       transaction.release_reason != RouteReleaseReason3D::kStalled &&
       !state.overlap_search && report.blocked_replacement_resident_available &&
       materialized_proposal.trajectory != nullptr &&
-      blocked_route->identity.proposal.reaches_mission_goal &&
+      current_route->identity.proposal.reaches_mission_goal &&
       materialized_proposal.identity.reaches_mission_goal) {
     const Point3 current_position{snapshot.navigation.state.x,
                                   snapshot.navigation.state.y,
                                   snapshot.navigation.state.z};
     const RouteProjection3D blocked_projection = projectOntoRoute3DWithinStationWindow(
-        *blocked_route->geometry->route, current_position,
-        blocked_route->progress.station_m,
-        blocked_route->geometry->route->back().station_m);
+        *current_route->geometry->route, current_position,
+        current_route->progress.station_m,
+        current_route->geometry->route->back().station_m);
     const RouteSuccessorImprovementAssessment3D against_blocked =
         assessRouteSuccessorImprovement3D(
-            *blocked_route->geometry, blocked_projection.station_m,
+            *current_route->geometry, blocked_projection.station_m,
             *materialized_proposal.trajectory, report.assessment.projection.station_m,
             config.successor_improvement);
     report.blocked_replacement = against_blocked;
