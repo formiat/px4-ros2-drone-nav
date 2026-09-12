@@ -317,16 +317,17 @@ RouteLifecycleReplanOutcome3D RouteLifecycleCoordinator3D::requestReplanImpl(
         snapshot.route_projection.station_m + stopping_path_m + speed_mps * latency_s;
     const double stitch_limit_m = *snapshot.blocked_station_m - stopping_path_m;
     if (std::isfinite(minimum_stitch_m) && stitch_limit_m >= minimum_stitch_m) {
-      // The stitch is the planner's: one certified overlap ahead of the
-      // vehicle, no earlier than the minimum. A retry of the same blocked
-      // route keeps the stitch its predecessor was searched from while that
-      // stitch is still admissible, so the planner's candidate from it is not
-      // measured against a stitch that moved on with the vehicle.
-      const double fresh_stitch_m =
-          std::max(std::max(snapshot.active_route->progress.station_m,
-                            snapshot.route_projection.station_m) +
-                       config_.extension.required_certified_overlap_m,
-                   minimum_stitch_m);
+      // The stitch lies at the minimum: the vehicle's stopping path plus the
+      // distance it flies while the search runs. One certified overlap ahead
+      // of the vehicle, the planner's stitch for an extension, put it a
+      // stopping path short of the block, and the successor had to turn away
+      // from the block right there; in the urban flights r225 to r227 the
+      // vehicle spent 54 to 57 s a flight under 1 m/s on such joins against
+      // 40 to 46 s before them. A retry of the same blocked route keeps the
+      // stitch its predecessor was searched from while that stitch is still
+      // admissible, so the planner's candidate from it is not measured
+      // against a stitch that moved on with the vehicle.
+      const double fresh_stitch_m = minimum_stitch_m;
       std::optional<double> stitch_m;
       {
         const std::scoped_lock lock{lifecycle_mutex_};
