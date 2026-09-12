@@ -23,6 +23,24 @@ REPOSITORY = Path(__file__).resolve().parents[1]
 MINIMUM_POST_BOOTSTRAP_ROUTE_AVAILABILITY = 0.97
 MAXIMUM_POST_BOOTSTRAP_NO_ROUTE_HOLD_RATIO = 0.03
 
+# The mean flight speed the programme runs to: the path the vehicle flew,
+# divided by the time from mission readiness to the successful mission
+# result. The climb, every hold and stop, every replan and the approach to
+# the goal all count against it. The five accepting flights of the 97/3
+# thresholds flew 430 to 573 m in 275 to 367 s: 1.55 to 1.63 m/s.
+MINIMUM_MEAN_FLIGHT_SPEED_MPS = 2.0
+
+MISSION_READINESS_PATTERN = (
+    r"\[(\d+\.\d+)\] \[mission_monitor_node\]: MISSION_READINESS ready=true"
+)
+MISSION_SUCCESS_PATTERN = (
+    r"\[(\d+\.\d+)\] \[mission_monitor_node\]: MISSION_RESULT success=true"
+)
+TICK_POSITION_PATTERN = (
+    r"\[(\d+\.\d+)\] \[production_mppi_node\]: PRODUCTION_MPPI_TICK [^\n]*?"
+    r"state_position=\(([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)\)"
+)
+
 
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
@@ -239,6 +257,50 @@ def validate_runtime_manifest(
         validate_raw_snapshot_artifact(
             manifest.get("raw_snapshot"), expected_bounds, errors
         )
+
+
+def validate_mean_flight_speed(ros_log: str, errors: list[str]) -> None:
+    readiness = re.search(MISSION_READINESS_PATTERN, ros_log)
+    result = re.search(MISSION_SUCCESS_PATTERN, ros_log)
+    if readiness is None or result is None:
+        errors.append(
+            "FAIL: mean flight speed spans mission readiness to a successful result"
+        )
+        return
+    started_s = float(readiness.group(1))
+    finished_s = float(result.group(1))
+    duration_s = finished_s - started_s
+    if duration_s <= 0.0:
+        errors.append("FAIL: the mission result follows mission readiness")
+        return
+    path_m = 0.0
+    previous: tuple[float, float, float] | None = None
+    samples = 0
+    for tick in re.finditer(TICK_POSITION_PATTERN, ros_log):
+        stamp_s = float(tick.group(1))
+        if stamp_s < started_s or stamp_s > finished_s:
+            continue
+        position = tuple(float(tick.group(index)) for index in (2, 3, 4))
+        if not all(math.isfinite(value) for value in position):
+            continue
+        if previous is not None:
+            path_m += math.dist(previous, position)
+        previous = position
+        samples += 1
+    if samples < 2:
+        errors.append(
+            "FAIL: mean flight speed has vehicle positions between readiness and result"
+        )
+        return
+    speed_mps = path_m / duration_s
+    detail = f"{speed_mps:.3f} m/s: {path_m:.1f} m in {duration_s:.1f} s"
+    if speed_mps < MINIMUM_MEAN_FLIGHT_SPEED_MPS:
+        errors.append(
+            "FAIL: mean flight speed reaches "
+            f"{MINIMUM_MEAN_FLIGHT_SPEED_MPS:.1f} m/s ({detail})"
+        )
+    else:
+        print(f"OK: mean flight speed is {detail}")
 
 
 def parse_latest_production_summary(ros_log: str) -> dict[str, str] | None:

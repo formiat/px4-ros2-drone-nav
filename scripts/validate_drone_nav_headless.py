@@ -18,6 +18,7 @@ from headless_topology_validation import (
     validate_observed_3d_route_volume,
 )
 from headless_runtime_evidence import (
+    validate_mean_flight_speed,
     validate_persistent_3d_acceptance_metrics,
     validate_runtime_manifest,
 )
@@ -919,6 +920,7 @@ def main() -> int:
         )
     if args.require_persistent_3d_acceptance:
         validate_persistent_3d_acceptance_metrics(ros_log, errors)
+        validate_mean_flight_speed(ros_log, errors)
     require(
         "production offboard is ready",
         ros_log,
