@@ -218,24 +218,6 @@ enum class RouteLifecycleReplanOrigin3D : std::uint8_t {
 [[nodiscard]] std::string_view
 routeLifecycleReplanStatus3DName(RouteLifecycleReplanStatus3D status) noexcept;
 
-// The stitch the last replacement of a blocked route was searched from.
-struct BlockedReplacementStitch3D {
-  std::optional<double> station_m;
-  std::uint64_t route_generation{0U};
-};
-
-// The stitch a replacement of the blocked route `route_generation` is searched
-// from: the one the previous replacement of that route used while it still
-// lies within the window the vehicle admits now, else the fresh one, and none
-// when even the fresh one is past the limit the block sets. A stitch
-// recomputed on every retry moved with the vehicle, one certified overlap
-// ahead of it, while the planner offered the candidate it had searched from
-// the previous stitch; the two never met within the stitch tolerance until
-// the vehicle stopped.
-[[nodiscard]] std::optional<double> blockedReplacementStitchStationM(
-    const BlockedReplacementStitch3D& previous, std::uint64_t route_generation,
-    double fresh_stitch_m, double minimum_stitch_m, double stitch_limit_m) noexcept;
-
 struct RouteLifecycleReplanOutcome3D {
   RouteLifecycleReplanStatus3D status{
       RouteLifecycleReplanStatus3D::kObjectiveUnavailable};
@@ -261,9 +243,6 @@ struct RouteLifecycleReplanOutcome3D {
   // The replacement stitches onto the incumbent's certified prefix no further
   // along than this station; unset when it is searched from the vehicle.
   std::optional<double> stitch_limit_station_m;
-  // The stitch the replacement is searched from, kept across the retries of
-  // one blocked route while it stays ahead of the vehicle's stopping path.
-  std::optional<double> stitch_station_m;
 
   [[nodiscard]] bool queued() const noexcept {
     return status == RouteLifecycleReplanStatus3D::kQueued;
@@ -407,10 +386,6 @@ private:
   std::int64_t blocked_replacement_hold_started_ns_{0};
   std::int64_t blocked_replacement_hold_grace_ns_{0};
   std::uint64_t blocked_replacement_hold_generation_{0U};
-  // The stitch the last replacement of a blocked route was searched from and
-  // the route it belongs to; reused by the retries of that route while the
-  // stitch is still ahead of the vehicle and short of the block.
-  BlockedReplacementStitch3D blocked_replacement_stitch_{};
   // Rebases a continuation request onto the newest coherent world when it is
   // strictly newer than the session world.
   void refreshContinuationWorld(RoutePlanningRequest3D& request,

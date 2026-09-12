@@ -10,21 +10,6 @@
 
 namespace drone_city_nav {
 
-std::optional<double> blockedReplacementStitchStationM(
-    const BlockedReplacementStitch3D& previous, const std::uint64_t route_generation,
-    const double fresh_stitch_m, const double minimum_stitch_m,
-    const double stitch_limit_m) noexcept {
-  if (previous.station_m.has_value() && previous.route_generation == route_generation &&
-      std::isfinite(*previous.station_m) && *previous.station_m >= minimum_stitch_m &&
-      *previous.station_m <= stitch_limit_m) {
-    return previous.station_m;
-  }
-  if (std::isfinite(fresh_stitch_m) && fresh_stitch_m <= stitch_limit_m) {
-    return fresh_stitch_m;
-  }
-  return std::nullopt;
-}
-
 // Replan requests: the gate that serialises searches per route generation,
 // the deferral of releases raised while a search is in flight, and the
 // world a replan searches on.
@@ -317,37 +302,13 @@ RouteLifecycleReplanOutcome3D RouteLifecycleCoordinator3D::requestReplanImpl(
         snapshot.route_projection.station_m + stopping_path_m + speed_mps * latency_s;
     const double stitch_limit_m = *snapshot.blocked_station_m - stopping_path_m;
     if (std::isfinite(minimum_stitch_m) && stitch_limit_m >= minimum_stitch_m) {
-      // The stitch lies at the minimum: the vehicle's stopping path plus the
-      // distance it flies while the search runs. One certified overlap ahead
-      // of the vehicle, the planner's stitch for an extension, put it a
-      // stopping path short of the block, and the successor had to turn away
-      // from the block right there; in the urban flights r225 to r227 the
-      // vehicle spent 54 to 57 s a flight under 1 m/s on such joins against
-      // 40 to 46 s before them. A retry of the same blocked route keeps the
-      // stitch its predecessor was searched from while that stitch is still
-      // admissible, so the planner's candidate from it is not measured
-      // against a stitch that moved on with the vehicle.
-      const double fresh_stitch_m = minimum_stitch_m;
-      std::optional<double> stitch_m;
-      {
-        const std::scoped_lock lock{lifecycle_mutex_};
-        stitch_m = blockedReplacementStitchStationM(
-            blocked_replacement_stitch_, outcome.search_generation, fresh_stitch_m,
-            minimum_stitch_m, stitch_limit_m);
-        blocked_replacement_stitch_ = BlockedReplacementStitch3D{
-            .station_m = stitch_m,
-            .route_generation = outcome.search_generation,
-        };
-      }
       continuity_base = PlannerSearchContinuityBase3D{
           .route = snapshot.active_route,
           .request_projection = snapshot.route_projection,
           .stitch_limit_station_m = stitch_limit_m,
           .minimum_stitch_station_m = minimum_stitch_m,
-          .stitch_station_m = stitch_m,
       };
       outcome.stitch_limit_station_m = stitch_limit_m;
-      outcome.stitch_station_m = stitch_m;
     }
   }
   const std::shared_ptr<const PlannerSearchTransaction3D> transaction =

@@ -830,29 +830,6 @@ TEST(RouteLifecycleCoordinator3DTest,
   EXPECT_EQ(replay.status, RouteLifecycleReplanStatus3D::kRouteQueueBusy);
 }
 
-// The retries of one blocked route's replacement share the stitch the first
-// was searched from while it stays inside the window the vehicle admits; a
-// stitch recomputed on every retry moved one overlap ahead of the vehicle
-// while the planner offered the candidate from the previous stitch, and the
-// two never met within the stitch tolerance until the vehicle stopped.
-TEST(RouteLifecycleCoordinator3DTest, ARetryOfABlockedReplacementKeepsItsStitch) {
-  const BlockedReplacementStitch3D none{};
-  EXPECT_EQ(blockedReplacementStitchStationM(none, 7U, 12.0, 9.0, 15.0), 12.0);
-  const BlockedReplacementStitch3D previous{.station_m = 12.0, .route_generation = 7U};
-  // The vehicle moved on: the fresh stitch would be 12.4 m, the previous one
-  // is still ahead of the minimum and short of the limit, so it is kept.
-  EXPECT_EQ(blockedReplacementStitchStationM(previous, 7U, 12.4, 9.4, 15.0), 12.0);
-  // The vehicle's stopping path reached the previous stitch: a fresh one.
-  EXPECT_EQ(blockedReplacementStitchStationM(previous, 7U, 15.0, 12.1, 16.0), 15.0);
-  // The block moved closer than the previous stitch: a fresh one, or none
-  // when even that is past the limit.
-  EXPECT_EQ(blockedReplacementStitchStationM(previous, 7U, 11.0, 9.0, 11.5), 11.0);
-  EXPECT_EQ(blockedReplacementStitchStationM(previous, 7U, 12.4, 9.4, 11.5),
-            std::nullopt);
-  // Another route has its own stitch.
-  EXPECT_EQ(blockedReplacementStitchStationM(previous, 8U, 12.4, 9.4, 15.0), 12.4);
-}
-
 // A route blocked far enough ahead is replaced onto its own certified prefix:
 // the replan carries the incumbent as the successor's continuity base with a
 // stitch limit one overlap short of the block, and the transaction admits a
