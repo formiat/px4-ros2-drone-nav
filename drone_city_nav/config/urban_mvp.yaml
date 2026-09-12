@@ -435,7 +435,16 @@ production_mppi_node:
     # stop began as a sprint to four metres a second under a contract that
     # promised 30 m of seen ground.
     guaranteed_lidar_detection_range_m: 9.5
-    sensor_braking_physical_margin_m: 3.0
+    # The distance still left to a first-seen obstacle once the vehicle has
+    # stopped, in the contract's own units of position: it has to cover the
+    # 0.82 m body envelope, the 0.33 m the PX4 position estimate sits from the
+    # true pose (median against Gazebo in the urban flights r203 to r206),
+    # the 0.25 m voxel the obstacle is resolved to, and the tracking error the
+    # tube law admits at the contract's limit, 0.15 s times 3 m/s = 0.45 m:
+    # 1.85 m. 2.5 m keeps 0.65 m above that sum; the former 3.0 m kept 1.15 m
+    # and cost 0.2 m/s of the limit (2.84 against 3.05 m/s, everything else
+    # equal).
+    sensor_braking_physical_margin_m: 2.5
     # The goal limiter reaches zero this far before the mission goal. The
     # capture latch fires once the vehicle rests inside the capture radius, so
     # the margin only shapes where the approach comes to rest.
