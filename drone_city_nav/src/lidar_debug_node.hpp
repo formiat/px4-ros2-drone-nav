@@ -193,7 +193,6 @@ private:
   double range_hit_epsilon_m_{0.05};
   double initial_heading_rad_{0.0};
   double scan_yaw_offset_rad_{0.0};
-  double lidar_pose_latency_s_{0.05};
   double lidar_scan_duration_override_s_{0.0};
   double hit_memory_resolution_m_{0.25};
   double min_remember_altitude_m_{0.0};

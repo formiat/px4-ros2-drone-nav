@@ -272,12 +272,7 @@ public:
                           startup_heading_stable_sample_count_,
                           startup_heading_maximum_sample_delta_rad_};
 
-    acquisition_pose_config_.apply_sensor_time_offset =
-        declare_parameter<bool>("motion_compensate_lidar_pose", true);
-    acquisition_pose_config_.sensor_time_offset_s =
-        std::clamp(declare_parameter<double>("lidar_pose_latency_s", 0.05), -1.0, 1.0);
-    acquisition_pose_config_.require_source_timestamp_alignment = true;
-    acquisition_pose_config_.require_bracketed_pose = true;
+    acquisition_pose_config_ = declareLidarAcquisitionPoseConfig(*this);
     alignment_maximum_wait_ns_ = static_cast<std::int64_t>(
         std::clamp(
             declare_parameter<double>("lidar_scan_alignment_maximum_wait_s", 0.35), 0.0,
@@ -674,7 +669,7 @@ private:
       pose_generation = lidar_pose_history_.generation();
     }
     const bool permanent_failure =
-        acquisition.status == LidarAcquisitionPoseStatus::kInvalidSensorTimeOffset ||
+        acquisition.status == LidarAcquisitionPoseStatus::kInvalidSourceTimeOffset ||
         acquisition.status == LidarAcquisitionPoseStatus::kInvalidScanTimestamp;
     const bool wait_expired =
         pending.receive_stamp_ns <= 0 ||
@@ -729,8 +724,7 @@ private:
     if (!body_frame.valid) {
       return PendingPointCloudDisposition::kConsumed;
     }
-    const std::int64_t acquisition_stamp_ns =
-        acquisition.adjusted_timing.first_beam_stamp_ns;
+    const std::int64_t acquisition_stamp_ns = timing.first_beam_stamp_ns;
     DynamicAgentLidarFilterPlan filter_plan =
         dynamic_agent_state_->makeFilterPlan(now_ns, acquisition_stamp_ns);
     // Surface samples reconstructed between adjacent returns pass through the

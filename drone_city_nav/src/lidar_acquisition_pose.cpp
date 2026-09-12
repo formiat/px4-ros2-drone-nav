@@ -81,28 +81,42 @@ LidarAcquisitionPoseResult resolveLidarAcquisitionBeamPoses(
     const std::optional<double> fixed_yaw_rad,
     const Px4RosTimeMapper* const time_mapper) noexcept {
   LidarAcquisitionPoseResult result{};
-  result.adjusted_timing = timing;
   if (!timing.first_beam_stamp_valid || timing.first_beam_stamp_ns <= 0) {
     return result;
   }
-  if (!std::isfinite(config.sensor_time_offset_s) ||
-      std::abs(config.sensor_time_offset_s) > 1.0) {
-    result.status = LidarAcquisitionPoseStatus::kInvalidSensorTimeOffset;
+  const auto valid_offset = [](const double offset_s) {
+    return std::isfinite(offset_s) && std::abs(offset_s) <= 1.0;
+  };
+  if (!valid_offset(config.position_source_time_offset_s) ||
+      !valid_offset(config.attitude_source_time_offset_s)) {
+    result.status = LidarAcquisitionPoseStatus::kInvalidSourceTimeOffset;
     return result;
   }
-  result.sensor_time_offset_ns =
-      config.apply_sensor_time_offset
-          ? static_cast<std::int64_t>(
-                std::llround(config.sensor_time_offset_s * kNanosecondsPerSecond))
-          : 0;
-  if (!checkedAdd(timing.first_beam_stamp_ns, result.sensor_time_offset_ns,
-                  result.adjusted_timing.first_beam_stamp_ns) ||
-      result.adjusted_timing.first_beam_stamp_ns <= 0) {
+  const auto offset_ns = [&config](const double offset_s) {
+    return config.apply_source_time_offsets ? static_cast<std::int64_t>(std::llround(
+                                                  offset_s * kNanosecondsPerSecond))
+                                            : 0;
+  };
+  result.position_source_time_offset_ns =
+      offset_ns(config.position_source_time_offset_s);
+  result.attitude_source_time_offset_ns =
+      offset_ns(config.attitude_source_time_offset_s);
+  std::int64_t shifted_stamp_ns{0};
+  if (!checkedAdd(timing.first_beam_stamp_ns, result.position_source_time_offset_ns,
+                  shifted_stamp_ns) ||
+      shifted_stamp_ns <= 0 ||
+      !checkedAdd(timing.first_beam_stamp_ns, result.attitude_source_time_offset_ns,
+                  shifted_stamp_ns) ||
+      shifted_stamp_ns <= 0) {
     result.status = LidarAcquisitionPoseStatus::kInvalidScanTimestamp;
     return result;
   }
   result.alignment = timestampAlignedLidarBeamPosesWithDiagnostics(
-      history, result.adjusted_timing, beam_count, fixed_yaw_rad, time_mapper);
+      history, timing, beam_count, fixed_yaw_rad, time_mapper,
+      LidarPoseSourceTimeOffsets{
+          .position_ns = result.position_source_time_offset_ns,
+          .attitude_ns = result.attitude_source_time_offset_ns,
+      });
   if (!result.alignment.aligned()) {
     result.status = LidarAcquisitionPoseStatus::kPoseAlignmentFailed;
     return result;
@@ -124,8 +138,8 @@ lidarAcquisitionPoseStatusName(const LidarAcquisitionPoseStatus status) noexcept
   switch (status) {
     case LidarAcquisitionPoseStatus::kResolved:
       return "resolved";
-    case LidarAcquisitionPoseStatus::kInvalidSensorTimeOffset:
-      return "invalid_sensor_time_offset";
+    case LidarAcquisitionPoseStatus::kInvalidSourceTimeOffset:
+      return "invalid_source_time_offset";
     case LidarAcquisitionPoseStatus::kInvalidScanTimestamp:
       return "invalid_scan_timestamp";
     case LidarAcquisitionPoseStatus::kPoseAlignmentFailed:
@@ -140,14 +154,14 @@ lidarAcquisitionPoseStatusName(const LidarAcquisitionPoseStatus status) noexcept
 
 std::string formatLidarAcquisitionPoseDiagnostic(
     const char* const prefix, const LidarAcquisitionPoseResult& result,
-    const LaserScanTiming& original_timing, const std::int64_t receive_stamp_ns) {
+    const LaserScanTiming& timing, const std::int64_t receive_stamp_ns) {
   std::ostringstream stream;
   stream << prefix << ": status=" << lidarAcquisitionPoseStatusName(result.status)
-         << " sensor_time_offset_ms="
-         << 1.0e-6 * static_cast<double>(result.sensor_time_offset_ns)
-         << " original_scan_stamp_ns=" << original_timing.first_beam_stamp_ns << ' '
-         << formatLidarPoseAlignmentDiagnostic("alignment", result.alignment,
-                                               result.adjusted_timing,
+         << " position_source_time_offset_ms="
+         << 1.0e-6 * static_cast<double>(result.position_source_time_offset_ns)
+         << " attitude_source_time_offset_ms="
+         << 1.0e-6 * static_cast<double>(result.attitude_source_time_offset_ns) << ' '
+         << formatLidarPoseAlignmentDiagnostic("alignment", result.alignment, timing,
                                                receive_stamp_ns);
   return stream.str();
 }

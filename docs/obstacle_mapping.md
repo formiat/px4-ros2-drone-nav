@@ -162,26 +162,38 @@ velocity extrapolation remain library diagnostics but are not accepted for
 mapping or lidar-debug projection. Failure rejects the whole scan, leaving both
 occupied and free memory unchanged.
 
-`lidar_pose_latency_s` is retained as a configuration-compatible name for the
-calibrated sensor time offset. The offset is signed: a positive value samples
-both position and attitude later than the raw scan stamp, a negative value
-samples them earlier. Diagnostics report the adjusted stamp, bracketing
-samples, interpolation/extrapolation age, mapper residual, and the single
-accepted pose source.
+The scan stamp is the acquisition instant. Each pose source is sampled at
+that instant plus its own signed offset, `lidar_position_source_time_offset_s`
+for the PX4 local position and `lidar_attitude_source_time_offset_s` for the
+PX4 attitude (`motion_compensate_lidar_pose: false` zeroes both). A negative
+value reads the source earlier than the stamp. Diagnostics report both
+offsets, the bracketing samples of each source, interpolation/extrapolation
+age, mapper residual, and the single accepted pose source.
 
-The simulated 3D GPU lidar is calibrated at `-0.12 s`. Its cloud is stamped
-after the render that produced it, so the returns correspond to the vehicle
-pose roughly 120 ms before the stamp. The value was measured by projecting the
-node's accepted scans against the world collision mesh while the vehicle flew
-at 2.5–6 m/s: with the former `+0.05 s` the projected pose led the true
-acquisition pose by about 160 ms (interquartile range ±20 ms), which placed
-every surface ahead of the vehicle 0.3–1.0 m too far away and every surface
-behind it too close; a wall approached at 6 m/s was mapped a metre behind its
-face and was only corrected once the vehicle stopped next to it. Re-run the
-measurement when the sensor model, its update rate, or the simulator changes:
-the same beams projected with poses sampled at `stamp + tau` must sit on the
-mesh for the chosen `tau`. The 2D profile keeps its previous value because it
-has not been measured.
+The simulated 3D GPU lidar runs with a position offset of `-0.12 s` and an
+attitude offset of `0`. Both were measured against the true vehicle pose from
+Gazebo over the urban point-to-point flights r203 (headless) and r205 (GUI),
+recording the node's `latest_lidar_obstacle_scan` (hits in the body frame and
+the body axes the node placed them with) together with the `pose/info` stream:
+
+- the position estimate stamped `t` matches the true position of
+  `t + 0.09..0.12 s` (0.08 m residual, against 0.33 m at `t`): the PX4 local
+  position leads the vehicle by about a tenth of a second;
+- the attitude estimate stamped `t` matches the true attitude of `t`
+  (0.16 degrees mean, already 1 degree at ±60 ms): the attitude is in step;
+- the body-frame hits placed with the true pose of `stamp + tau` are most
+  consistent from one scan to the next at `tau = 0` (0.04 m median
+  nearest-neighbour distance between scans 0.5 s apart during manoeuvres,
+  against 0.20 m at `tau = -0.12 s`): the returns belong to the stamp.
+
+The former single offset of `-0.12 s` for both sources came from projecting
+scans against the world mesh, a test that sees position and not attitude. It
+placed the returns correctly and tilted them by the attitude the vehicle had
+120 ms earlier, 4–7 degrees at the angular rates of a turn, which rocked the
+current cloud in RViz and smeared the persistent memory on every manoeuvre.
+Re-run the three measurements when the sensor model, its update rate, the
+estimator or the simulator changes. The 2D profile keeps its previous value
+for the position source because it has not been measured.
 
 ## Motion Compensation
 

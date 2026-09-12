@@ -153,6 +153,22 @@ declareAmbiguousLidarHitTrackerConfig(rclcpp::Node& node) {
   };
 }
 
+LidarAcquisitionPoseConfig declareLidarAcquisitionPoseConfig(rclcpp::Node& node) {
+  const auto offset = [&node](const char* const name, const double fallback) {
+    return std::clamp(node.declare_parameter<double>(name, fallback), -1.0, 1.0);
+  };
+  return LidarAcquisitionPoseConfig{
+      .apply_source_time_offsets =
+          node.declare_parameter<bool>("motion_compensate_lidar_pose", true),
+      .position_source_time_offset_s =
+          offset("lidar_position_source_time_offset_s", 0.05),
+      .attitude_source_time_offset_s =
+          offset("lidar_attitude_source_time_offset_s", 0.0),
+      .require_source_timestamp_alignment = true,
+      .require_bracketed_pose = true,
+  };
+}
+
 LidarMappingYawConfig declareLidarMappingYawConfig(rclcpp::Node& node) {
   LidarMappingYawConfig config;
   config.use_px4_heading =

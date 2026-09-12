@@ -23,10 +23,12 @@ void LidarDebugNode::applyConfig(const LidarDebugNodeConfig& config) {
   gazebo_aligned_rviz_axes_swapped_ = config.gazebo_aligned_rviz_axes_swapped;
   scan_yaw_offset_rad_ = config.scan_yaw_offset_rad;
   motion_compensate_lidar_pose_ = config.motion_compensate_lidar_pose;
-  lidar_pose_latency_s_ = config.lidar_pose_latency_s;
-  lidar_acquisition_pose_config_.apply_sensor_time_offset =
+  lidar_acquisition_pose_config_.apply_source_time_offsets =
       config.motion_compensate_lidar_pose;
-  lidar_acquisition_pose_config_.sensor_time_offset_s = config.lidar_pose_latency_s;
+  lidar_acquisition_pose_config_.position_source_time_offset_s =
+      config.lidar_position_source_time_offset_s;
+  lidar_acquisition_pose_config_.attitude_source_time_offset_s =
+      config.lidar_attitude_source_time_offset_s;
   lidar_acquisition_pose_config_.require_source_timestamp_alignment = true;
   lidar_acquisition_pose_config_.require_bracketed_pose = true;
   lidar_scan_alignment_maximum_wait_ns_ =
@@ -164,8 +166,8 @@ LidarDebugNode::LidarDebugNode(const rclcpp::NodeOptions& options)
       "compensate_attitude=%s lidar_z_offset=%.2f "
       "projected_altitude_range=[%.2f, %.2f] "
       "lidar_mount_rpy=(%.3f, %.3f, %.3f) "
-      "motion_compensation=%s pose_latency=%.3fs "
-      "scan_duration_override=%.3fs "
+      "motion_compensation=%s position_source_time_offset=%.3fs "
+      "attitude_source_time_offset=%.3fs scan_duration_override=%.3fs "
       "pointcloud_z[current=%.2f, remembered=%.2f, occupied=%.2f, "
       "raw_memory=%.2f] "
       "yaw_source=%s initial_heading=%.3f max_heading_variance=%.6frad2 "
@@ -182,7 +184,9 @@ LidarDebugNode::LidarDebugNode(const rclcpp::NodeOptions& options)
       compensate_lidar_attitude_ ? "true" : "false", lidar_z_offset_m_,
       min_projected_lidar_altitude_m_, max_projected_lidar_altitude_m_,
       lidar_mount_roll_rad_, lidar_mount_pitch_rad_, lidar_mount_yaw_rad_,
-      motion_compensate_lidar_pose_ ? "true" : "false", lidar_pose_latency_s_,
+      motion_compensate_lidar_pose_ ? "true" : "false",
+      lidar_acquisition_pose_config_.position_source_time_offset_s,
+      lidar_acquisition_pose_config_.attitude_source_time_offset_s,
       lidar_scan_duration_override_s_, current_pointcloud_z_m_,
       remembered_pointcloud_z_m_, occupied_pointcloud_z_m_, raw_memory_pointcloud_z_m_,
       yawSourceName(), initial_heading_rad_, maximum_heading_variance_rad2_,

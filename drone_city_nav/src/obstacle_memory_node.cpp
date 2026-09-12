@@ -102,12 +102,7 @@ public:
         mapping_yaw_config.startup_stable_sample_count;
     startup_heading_maximum_sample_delta_rad_ =
         mapping_yaw_config.startup_maximum_sample_delta_rad;
-    lidar_acquisition_pose_config_.apply_sensor_time_offset =
-        declare_parameter<bool>("motion_compensate_lidar_pose", true);
-    lidar_acquisition_pose_config_.sensor_time_offset_s =
-        std::clamp(declare_parameter<double>("lidar_pose_latency_s", 0.05), -1.0, 1.0);
-    lidar_acquisition_pose_config_.require_source_timestamp_alignment = true;
-    lidar_acquisition_pose_config_.require_bracketed_pose = true;
+    lidar_acquisition_pose_config_ = declareLidarAcquisitionPoseConfig(*this);
     lidar_scan_alignment_maximum_wait_ns_ = static_cast<std::int64_t>(
         std::clamp(
             declare_parameter<double>("lidar_scan_alignment_maximum_wait_s", 0.35), 0.0,
@@ -339,7 +334,8 @@ public:
         "startup_stable_samples=%zu startup_maximum_delta=%.3frad "
         "compensate_attitude=%s lidar_z_offset=%.2f "
         "projected_altitude_range=[%.2f, %.2f] "
-        "motion_compensation=%s pose_latency=%.3fs "
+        "motion_compensation=%s position_source_time_offset=%.3fs "
+        "attitude_source_time_offset=%.3fs "
         "lidar_mount_rpy=(%.3f, %.3f, %.3f) full_extrinsic=%s "
         "translation_body_frd=(%.3f, %.3f, %.3f)",
         memory_config_.max_lidar_range_m, memory_config_.scan_stride,
@@ -350,9 +346,10 @@ public:
         startup_heading_maximum_sample_delta_rad_,
         compensate_lidar_attitude_ ? "true" : "false", lidar_z_offset_m_,
         min_projected_lidar_altitude_m_, max_projected_lidar_altitude_m_,
-        lidar_acquisition_pose_config_.apply_sensor_time_offset ? "true" : "false",
-        lidar_acquisition_pose_config_.sensor_time_offset_s, lidar_mount_roll_rad_,
-        lidar_mount_pitch_rad_, lidar_mount_yaw_rad_,
+        lidar_acquisition_pose_config_.apply_source_time_offsets ? "true" : "false",
+        lidar_acquisition_pose_config_.position_source_time_offset_s,
+        lidar_acquisition_pose_config_.attitude_source_time_offset_s,
+        lidar_mount_roll_rad_, lidar_mount_pitch_rad_, lidar_mount_yaw_rad_,
         use_full_lidar_extrinsic_ ? "true" : "false", lidar_translation_body_frd_m_.x,
         lidar_translation_body_frd_m_.y, lidar_translation_body_frd_m_.z);
     if (persistent_memory_enabled_) {
@@ -566,7 +563,7 @@ private:
             &px4_ros_time_mapper_);
     const bool permanent_failure =
         acquisition_pose.status ==
-            LidarAcquisitionPoseStatus::kInvalidSensorTimeOffset ||
+            LidarAcquisitionPoseStatus::kInvalidSourceTimeOffset ||
         acquisition_pose.status == LidarAcquisitionPoseStatus::kInvalidScanTimestamp;
     const bool wait_expired =
         pending.receive_stamp_ns <= 0 ||
@@ -601,15 +598,15 @@ private:
         .position = first_beam_pose.position,
         .applied_shift = acquisition_shift,
         .pose_lag_s = navigationPoseReceiveLagSeconds(last_pose_update_ns_, now_ns),
-        .latency_s = lidar_acquisition_pose_config_.sensor_time_offset_s,
+        .latency_s = lidar_acquisition_pose_config_.position_source_time_offset_s,
         .signed_time_offset_s =
-            static_cast<double>(acquisition_pose.sensor_time_offset_ns) * 1.0e-9,
+            static_cast<double>(acquisition_pose.position_source_time_offset_ns) *
+            1.0e-9,
         .applied_shift_m = std::hypot(acquisition_shift.x, acquisition_shift.y),
         .applied = std::hypot(acquisition_shift.x, acquisition_shift.y) > 0.0,
     };
 
-    const std::int64_t acquisition_stamp_ns =
-        acquisition_pose.adjusted_timing.first_beam_stamp_ns;
+    const std::int64_t acquisition_stamp_ns = scan_timing.first_beam_stamp_ns;
     const DynamicAgentLidarFilterPlan filter_plan =
         dynamic_agent_lidar_state_->makeFilterPlan(now_ns, acquisition_stamp_ns);
     const std::span<const float> raw_scan_ranges{scan.ranges.data(),

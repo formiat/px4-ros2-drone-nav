@@ -173,7 +173,7 @@ LidarDebugNode::processPendingLidarScan(const PendingLidarScan& pending) {
   if (!acquisition_pose.resolved()) {
     const bool permanent_failure =
         acquisition_pose.status ==
-            LidarAcquisitionPoseStatus::kInvalidSensorTimeOffset ||
+            LidarAcquisitionPoseStatus::kInvalidSourceTimeOffset ||
         acquisition_pose.status == LidarAcquisitionPoseStatus::kInvalidScanTimestamp;
     if (!permanent_failure && !wait_expired) {
       return PendingLidarScanDisposition::kWaitForPoseBracket;
@@ -210,9 +210,10 @@ LidarDebugNode::processPendingLidarScan(const PendingLidarScan& pending) {
   last_projected_heading_receive_ns_ = last_heading_receive_ns_;
   last_projected_attitude_receive_ns_ = last_attitude_receive_ns_;
   last_projected_pose_lag_s_ = poseReceiveLagSeconds();
-  last_projected_pose_latency_s_ = lidar_acquisition_pose_config_.sensor_time_offset_s;
+  last_projected_pose_latency_s_ =
+      lidar_acquisition_pose_config_.position_source_time_offset_s;
   last_projected_motion_time_offset_s_ =
-      static_cast<double>(acquisition_pose.sensor_time_offset_ns) * 1.0e-9;
+      static_cast<double>(acquisition_pose.position_source_time_offset_ns) * 1.0e-9;
   last_projected_motion_shift_ =
       Point2{first_beam_pose.position.x - current_pose_.position.x,
              first_beam_pose.position.y - current_pose_.position.y};

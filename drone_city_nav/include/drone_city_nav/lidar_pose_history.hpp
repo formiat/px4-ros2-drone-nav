@@ -41,6 +41,17 @@ enum class LidarPoseAlignmentSource : std::uint8_t {
   kReceiveTimestampAlignedFallback,
 };
 
+// Signed offsets, per pose source, between the instant a lidar beam was
+// acquired and the instant the source's samples describe it. A source whose
+// samples lead the vehicle (the PX4 local position estimate describes where
+// the vehicle will be about 0.1 s after the sample's stamp) needs a negative
+// offset; a source in step with the vehicle needs none. Each source is
+// bracketed at the beam stamp plus its own offset.
+struct LidarPoseSourceTimeOffsets {
+  std::int64_t position_ns{0};
+  std::int64_t attitude_ns{0};
+};
+
 struct LidarPoseTemporalAlignment {
   LidarPoseTemporalMode mode{LidarPoseTemporalMode::kUnavailable};
   std::int64_t requested_stamp_ns{0};
@@ -134,6 +145,11 @@ public:
   [[nodiscard]] LidarPoseSampleResult sampleWithDiagnostics(
       std::int64_t stamp_ns,
       LidarPoseTimeBasis time_basis = LidarPoseTimeBasis::kReceiveTime) const noexcept;
+  // The position bracketed at one stamp and the attitude at another, in the
+  // same time basis; the aligned pose reports the position stamp as requested.
+  [[nodiscard]] LidarPoseSampleResult
+  sampleWithDiagnostics(std::int64_t position_stamp_ns, std::int64_t attitude_stamp_ns,
+                        LidarPoseTimeBasis time_basis) const noexcept;
 
   void clear() noexcept;
   void startNewGeneration() noexcept;
@@ -175,7 +191,8 @@ timestampAlignedLidarBeamPoses(const LidarPoseHistory& history,
 timestampAlignedLidarBeamPosesWithDiagnostics(
     const LidarPoseHistory& history, const LaserScanTiming& timing,
     std::size_t beam_count, std::optional<double> fixed_yaw_rad = std::nullopt,
-    const Px4RosTimeMapper* time_mapper = nullptr);
+    const Px4RosTimeMapper* time_mapper = nullptr,
+    LidarPoseSourceTimeOffsets source_time_offsets = {});
 
 [[nodiscard]] const char*
 lidarPoseAlignmentStatusName(LidarPoseAlignmentStatus status) noexcept;

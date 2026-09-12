@@ -279,8 +279,14 @@ LidarPoseHistory::sample(const std::int64_t stamp_ns) const noexcept {
 
 LidarPoseSampleResult LidarPoseHistory::sampleWithDiagnostics(
     const std::int64_t stamp_ns, const LidarPoseTimeBasis time_basis) const noexcept {
+  return sampleWithDiagnostics(stamp_ns, stamp_ns, time_basis);
+}
+
+LidarPoseSampleResult LidarPoseHistory::sampleWithDiagnostics(
+    const std::int64_t position_stamp_ns, const std::int64_t attitude_stamp_ns,
+    const LidarPoseTimeBasis time_basis) const noexcept {
   LidarPoseSampleResult result{};
-  if (stamp_ns <= 0) {
+  if (position_stamp_ns <= 0 || attitude_stamp_ns <= 0) {
     result.status = LidarPoseAlignmentStatus::kInvalidBeamStamp;
     return result;
   }
@@ -293,9 +299,9 @@ LidarPoseSampleResult LidarPoseHistory::sampleWithDiagnostics(
     return result;
   }
   const auto [position_from_index, position_to_index] =
-      bracketingSamples(positions_, stamp_ns, time_basis);
+      bracketingSamples(positions_, position_stamp_ns, time_basis);
   const auto [attitude_from_index, attitude_to_index] =
-      bracketingSamples(attitudes_, stamp_ns, time_basis);
+      bracketingSamples(attitudes_, attitude_stamp_ns, time_basis);
   const PositionSample& position_from = positions_[position_from_index];
   const PositionSample& position_to = positions_[position_to_index];
   const AttitudeSample& attitude_from = attitudes_[attitude_from_index];
@@ -309,9 +315,9 @@ LidarPoseSampleResult LidarPoseHistory::sampleWithDiagnostics(
     return result;
   }
   result.position_timing =
-      temporalAlignment(position_from, position_to, stamp_ns, time_basis);
+      temporalAlignment(position_from, position_to, position_stamp_ns, time_basis);
   result.attitude_timing =
-      temporalAlignment(attitude_from, attitude_to, stamp_ns, time_basis);
+      temporalAlignment(attitude_from, attitude_to, attitude_stamp_ns, time_basis);
   const std::int64_t position_from_stamp_ns = sampleStamp(position_from, time_basis);
   const std::int64_t position_to_stamp_ns = sampleStamp(position_to, time_basis);
   const std::int64_t attitude_from_stamp_ns = sampleStamp(attitude_from, time_basis);
@@ -331,18 +337,18 @@ LidarPoseSampleResult LidarPoseHistory::sampleWithDiagnostics(
     result.status = LidarPoseAlignmentStatus::kTimestampDiscontinuity;
     return result;
   }
-  result.position_stamp_error_ns =
-      nearestStampError(stamp_ns, position_from_stamp_ns, position_to_stamp_ns);
-  result.attitude_stamp_error_ns =
-      nearestStampError(stamp_ns, attitude_from_stamp_ns, attitude_to_stamp_ns);
+  result.position_stamp_error_ns = nearestStampError(
+      position_stamp_ns, position_from_stamp_ns, position_to_stamp_ns);
+  result.attitude_stamp_error_ns = nearestStampError(
+      attitude_stamp_ns, attitude_from_stamp_ns, attitude_to_stamp_ns);
   if (result.position_stamp_error_ns > config_.max_extrapolation_ns ||
       result.attitude_stamp_error_ns > config_.max_extrapolation_ns) {
     result.status = LidarPoseAlignmentStatus::kExtrapolationExceeded;
     return result;
   }
 
-  const double position_ratio =
-      interpolationRatio(position_from_stamp_ns, position_to_stamp_ns, stamp_ns);
+  const double position_ratio = interpolationRatio(
+      position_from_stamp_ns, position_to_stamp_ns, position_stamp_ns);
   const Point3 position{position_from.position_map_m.x +
                             position_ratio * (position_to.position_map_m.x -
                                               position_from.position_map_m.x),
@@ -355,8 +361,8 @@ LidarPoseSampleResult LidarPoseHistory::sampleWithDiagnostics(
   const double yaw_delta = normalizedAngle(position_to.yaw_rad - position_from.yaw_rad);
   const double yaw_rad =
       normalizedAngle(position_from.yaw_rad + position_ratio * yaw_delta);
-  const double attitude_ratio =
-      interpolationRatio(attitude_from_stamp_ns, attitude_to_stamp_ns, stamp_ns);
+  const double attitude_ratio = interpolationRatio(
+      attitude_from_stamp_ns, attitude_to_stamp_ns, attitude_stamp_ns);
   const auto attitude_quaternion =
       slerp(attitude_from.quaternion, attitude_to.quaternion, attitude_ratio);
   const std::optional<AttitudeEuler> attitude = quaternionEuler(attitude_quaternion);
@@ -377,7 +383,7 @@ LidarPoseSampleResult LidarPoseHistory::sampleWithDiagnostics(
               .body_to_ned_quaternion = attitude_quaternion,
               .body_to_ned_quaternion_valid = true,
           },
-      .requested_stamp_ns = stamp_ns,
+      .requested_stamp_ns = position_stamp_ns,
       .position_stamp_error_ns = result.position_stamp_error_ns,
       .attitude_stamp_error_ns = result.attitude_stamp_error_ns,
       .position_interpolated = position_from_index != position_to_index,
@@ -436,7 +442,8 @@ std::optional<std::vector<LidarProjectionPose>> timestampAlignedLidarBeamPoses(
 LidarBeamPoseAlignmentResult timestampAlignedLidarBeamPosesWithDiagnostics(
     const LidarPoseHistory& history, const LaserScanTiming& timing,
     const std::size_t beam_count, const std::optional<double> fixed_yaw_rad,
-    const Px4RosTimeMapper* const time_mapper) {
+    const Px4RosTimeMapper* const time_mapper,
+    const LidarPoseSourceTimeOffsets source_time_offsets) {
   LidarBeamPoseAlignmentResult result{};
   result.position_sample_count = history.positionSampleCount();
   result.attitude_sample_count = history.attitudeSampleCount();
@@ -465,23 +472,36 @@ LidarBeamPoseAlignmentResult timestampAlignedLidarBeamPosesWithDiagnostics(
         attempt.failed_beam_index = beam_index;
         return attempt;
       }
-      std::int64_t requested_stamp_ns = beam_stamp.stamp_ns;
-      if (time_basis == LidarPoseTimeBasis::kPx4AcquisitionTime) {
-        const auto mapped_stamp =
-            time_mapper != nullptr
-                ? time_mapper->rosToPx4LocalTimeNs(beam_stamp.stamp_ns)
-                : std::nullopt;
-        if (!mapped_stamp.has_value()) {
-          attempt.status = LidarPoseAlignmentStatus::kInvalidBeamStamp;
-          attempt.failed_beam_index = beam_index;
-          attempt.poses.clear();
-          return attempt;
+      // Each source is asked for the beam instant shifted by its own offset;
+      // the shifted stamps are mapped into the PX4 basis one by one so that
+      // the offsets stay in ROS seconds whatever the mapper's scale.
+      const auto source_stamp =
+          [&](const std::int64_t offset_ns) -> std::optional<std::int64_t> {
+        const std::int64_t ros_stamp_ns = beam_stamp.stamp_ns + offset_ns;
+        if (ros_stamp_ns <= 0) {
+          return std::nullopt;
         }
-        requested_stamp_ns = *mapped_stamp;
+        if (time_basis != LidarPoseTimeBasis::kPx4AcquisitionTime) {
+          return ros_stamp_ns;
+        }
+        return time_mapper != nullptr ? time_mapper->rosToPx4LocalTimeNs(ros_stamp_ns)
+                                      : std::nullopt;
+      };
+      const std::optional<std::int64_t> requested_stamp_ns = source_stamp(0);
+      const std::optional<std::int64_t> position_stamp_ns =
+          source_stamp(source_time_offsets.position_ns);
+      const std::optional<std::int64_t> attitude_stamp_ns =
+          source_stamp(source_time_offsets.attitude_ns);
+      if (!requested_stamp_ns.has_value() || !position_stamp_ns.has_value() ||
+          !attitude_stamp_ns.has_value()) {
+        attempt.status = LidarPoseAlignmentStatus::kInvalidBeamStamp;
+        attempt.failed_beam_index = beam_index;
+        attempt.poses.clear();
+        return attempt;
       }
-      attempt.requested_stamp_ns = requested_stamp_ns;
-      const LidarPoseSampleResult sample =
-          history.sampleWithDiagnostics(requested_stamp_ns, time_basis);
+      attempt.requested_stamp_ns = *requested_stamp_ns;
+      const LidarPoseSampleResult sample = history.sampleWithDiagnostics(
+          *position_stamp_ns, *attitude_stamp_ns, time_basis);
       attempt.position_stamp_error_ns = sample.position_stamp_error_ns;
       attempt.attitude_stamp_error_ns = sample.attitude_stamp_error_ns;
       attempt.maximum_position_extrapolation_ns =

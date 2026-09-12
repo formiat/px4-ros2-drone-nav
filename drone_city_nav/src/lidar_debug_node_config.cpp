@@ -17,7 +17,10 @@ void sanitizeLidarDebugNodeConfig(LidarDebugNodeConfig& config) {
   config.view_radius_m = std::max(5.0, config.view_radius_m);
   config.max_lidar_range_m = std::max(1.0, config.max_lidar_range_m);
   config.range_hit_epsilon_m = std::max(0.0, config.range_hit_epsilon_m);
-  config.lidar_pose_latency_s = std::clamp(config.lidar_pose_latency_s, -1.0, 1.0);
+  config.lidar_position_source_time_offset_s =
+      std::clamp(config.lidar_position_source_time_offset_s, -1.0, 1.0);
+  config.lidar_attitude_source_time_offset_s =
+      std::clamp(config.lidar_attitude_source_time_offset_s, -1.0, 1.0);
   config.lidar_scan_alignment_maximum_wait_s =
       std::clamp(config.lidar_scan_alignment_maximum_wait_s, 0.0, 2.0);
   config.lidar_scan_alignment_queue_capacity =
@@ -77,8 +80,12 @@ void sanitizeLidarDebugNodeConfig(LidarDebugNodeConfig& config) {
       node.declare_parameter<double>("scan_yaw_offset_rad", config.scan_yaw_offset_rad);
   config.motion_compensate_lidar_pose = node.declare_parameter<bool>(
       "motion_compensate_lidar_pose", config.motion_compensate_lidar_pose);
-  config.lidar_pose_latency_s = node.declare_parameter<double>(
-      "lidar_pose_latency_s", config.lidar_pose_latency_s);
+  config.lidar_position_source_time_offset_s =
+      node.declare_parameter<double>("lidar_position_source_time_offset_s",
+                                     config.lidar_position_source_time_offset_s);
+  config.lidar_attitude_source_time_offset_s =
+      node.declare_parameter<double>("lidar_attitude_source_time_offset_s",
+                                     config.lidar_attitude_source_time_offset_s);
   config.lidar_scan_alignment_maximum_wait_s =
       node.declare_parameter<double>("lidar_scan_alignment_maximum_wait_s",
                                      config.lidar_scan_alignment_maximum_wait_s);

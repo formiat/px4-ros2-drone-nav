@@ -2,6 +2,7 @@
 
 #include "drone_city_nav/ambiguous_lidar_hit_tracker.hpp"
 #include "drone_city_nav/dynamic_agent_lidar_state.hpp"
+#include "drone_city_nav/lidar_acquisition_pose.hpp"
 #include "drone_city_nav/lidar_ingestion_decision.hpp"
 #include "drone_city_nav/lidar_pose_history.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
@@ -67,6 +68,12 @@ struct LidarMappingYawConfig {
 };
 
 [[nodiscard]] LidarMappingYawConfig declareLidarMappingYawConfig(rclcpp::Node& node);
+
+// The per-source time offsets of the lidar acquisition pose, clamped to a
+// second either way; production mapping accepts only source-aligned,
+// bracketed poses.
+[[nodiscard]] LidarAcquisitionPoseConfig
+declareLidarAcquisitionPoseConfig(rclcpp::Node& node);
 
 [[nodiscard]] GroundLidarRejectionConfig
 declareGroundLidarRejectionConfig(rclcpp::Node& node, double max_lidar_range_m);

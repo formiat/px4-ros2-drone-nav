@@ -42,16 +42,25 @@ resolveLidarPoseSourceStamp(const Px4RosTimeMapper& time_mapper,
 [[nodiscard]] const char*
 lidarPoseSourceStampStatusName(LidarPoseSourceStampStatus status) noexcept;
 
+// The scan stamp is the acquisition instant. Each pose source is sampled at
+// that instant plus its own signed offset, which absorbs the lead or lag of
+// that source alone: the PX4 local position estimate describes the vehicle
+// about 0.1 s after its stamp (position offset -0.12 s in the urban flights),
+// the attitude estimate is in step with the vehicle (offset 0). One offset for
+// both sources tilted every return by the attitude the vehicle had 120 ms
+// before the scan, which rocked the current cloud and smeared the persistent
+// memory on every manoeuvre.
 struct LidarAcquisitionPoseConfig {
-  bool apply_sensor_time_offset{true};
-  double sensor_time_offset_s{0.05};
+  bool apply_source_time_offsets{true};
+  double position_source_time_offset_s{0.05};
+  double attitude_source_time_offset_s{0.0};
   bool require_source_timestamp_alignment{true};
   bool require_bracketed_pose{true};
 };
 
 enum class LidarAcquisitionPoseStatus : std::uint8_t {
   kResolved,
-  kInvalidSensorTimeOffset,
+  kInvalidSourceTimeOffset,
   kInvalidScanTimestamp,
   kPoseAlignmentFailed,
   kSourceTimestampAlignmentRequired,
@@ -60,8 +69,8 @@ enum class LidarAcquisitionPoseStatus : std::uint8_t {
 
 struct LidarAcquisitionPoseResult {
   LidarBeamPoseAlignmentResult alignment{};
-  LaserScanTiming adjusted_timing{};
-  std::int64_t sensor_time_offset_ns{0};
+  std::int64_t position_source_time_offset_ns{0};
+  std::int64_t attitude_source_time_offset_ns{0};
   LidarAcquisitionPoseStatus status{LidarAcquisitionPoseStatus::kInvalidScanTimestamp};
 
   [[nodiscard]] bool resolved() const noexcept {
@@ -80,6 +89,6 @@ lidarAcquisitionPoseStatusName(LidarAcquisitionPoseStatus status) noexcept;
 
 [[nodiscard]] std::string formatLidarAcquisitionPoseDiagnostic(
     const char* prefix, const LidarAcquisitionPoseResult& result,
-    const LaserScanTiming& original_timing, std::int64_t receive_stamp_ns);
+    const LaserScanTiming& timing, std::int64_t receive_stamp_ns);
 
 } // namespace drone_city_nav

@@ -86,7 +86,8 @@ TEST_F(LidarDebugNodeConfigTest, LoadsDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.view_radius_m, 45.0);
   EXPECT_DOUBLE_EQ(config.max_lidar_range_m, 35.0);
   EXPECT_TRUE(config.motion_compensate_lidar_pose);
-  EXPECT_DOUBLE_EQ(config.lidar_pose_latency_s, 0.05);
+  EXPECT_DOUBLE_EQ(config.lidar_position_source_time_offset_s, 0.05);
+  EXPECT_DOUBLE_EQ(config.lidar_attitude_source_time_offset_s, 0.0);
   EXPECT_DOUBLE_EQ(config.hit_memory_resolution_m, 0.25);
   EXPECT_EQ(config.topics.lidar, "/scan");
   EXPECT_EQ(config.topics.path, "/drone_city_nav/mppi/path");
@@ -140,38 +141,40 @@ TEST_F(LidarDebugNodeConfigTest, LoadsCustomTopicsAndProjectionParams) {
   EXPECT_TRUE(config.use_px4_heading_for_scan);
 }
 
-TEST_F(LidarDebugNodeConfigTest, KeepsACalibratedNegativeSensorTimeOffset) {
-  const auto node = makeNode("lidar_debug_node_config_negative_offset",
-                             {rclcpp::Parameter{"lidar_pose_latency_s", -0.12}});
+TEST_F(LidarDebugNodeConfigTest, KeepsACalibratedNegativePositionSourceTimeOffset) {
+  const auto node =
+      makeNode("lidar_debug_node_config_negative_offset",
+               {rclcpp::Parameter{"lidar_position_source_time_offset_s", -0.12}});
 
   const LidarDebugNodeConfig config = loadLidarDebugNodeConfig(*node);
 
-  EXPECT_DOUBLE_EQ(config.lidar_pose_latency_s, -0.12);
+  EXPECT_DOUBLE_EQ(config.lidar_position_source_time_offset_s, -0.12);
 }
 
-TEST_F(LidarDebugNodeConfigTest, ClampsTheSensorTimeOffsetSymmetrically) {
-  const auto node = makeNode("lidar_debug_node_config_negative_clamp",
-                             {rclcpp::Parameter{"lidar_pose_latency_s", -4.0}});
+TEST_F(LidarDebugNodeConfigTest, ClampsTheSourceTimeOffsetsSymmetrically) {
+  const auto node =
+      makeNode("lidar_debug_node_config_negative_clamp",
+               {rclcpp::Parameter{"lidar_attitude_source_time_offset_s", -4.0}});
 
   const LidarDebugNodeConfig config = loadLidarDebugNodeConfig(*node);
 
-  EXPECT_DOUBLE_EQ(config.lidar_pose_latency_s, -1.0);
+  EXPECT_DOUBLE_EQ(config.lidar_attitude_source_time_offset_s, -1.0);
 }
 
 TEST_F(LidarDebugNodeConfigTest, ClampsLoaderValues) {
-  const auto node = makeNode("lidar_debug_node_config_clamps",
-                             {rclcpp::Parameter{"snapshot_period_s", 0.0},
-                              rclcpp::Parameter{"image_size_px", 99},
-                              rclcpp::Parameter{"view_radius_m", 1.0},
-                              rclcpp::Parameter{"max_lidar_range_m", -5.0},
-                              rclcpp::Parameter{"range_hit_epsilon_m", -1.0},
-                              rclcpp::Parameter{"lidar_pose_latency_s", 4.0},
-                              rclcpp::Parameter{"lidar_scan_duration_override_s", 4.0},
-                              rclcpp::Parameter{"beam_csv_stride", 0},
-                              rclcpp::Parameter{"max_logged_hit_points", 999999},
-                              rclcpp::Parameter{"hit_memory_resolution_m", 0.01},
-                              rclcpp::Parameter{"min_remember_altitude_m", -2.0},
-                              rclcpp::Parameter{"max_remembered_hit_points", 0}});
+  const auto node = makeNode(
+      "lidar_debug_node_config_clamps",
+      {rclcpp::Parameter{"snapshot_period_s", 0.0},
+       rclcpp::Parameter{"image_size_px", 99}, rclcpp::Parameter{"view_radius_m", 1.0},
+       rclcpp::Parameter{"max_lidar_range_m", -5.0},
+       rclcpp::Parameter{"range_hit_epsilon_m", -1.0},
+       rclcpp::Parameter{"lidar_position_source_time_offset_s", 4.0},
+       rclcpp::Parameter{"lidar_scan_duration_override_s", 4.0},
+       rclcpp::Parameter{"beam_csv_stride", 0},
+       rclcpp::Parameter{"max_logged_hit_points", 999999},
+       rclcpp::Parameter{"hit_memory_resolution_m", 0.01},
+       rclcpp::Parameter{"min_remember_altitude_m", -2.0},
+       rclcpp::Parameter{"max_remembered_hit_points", 0}});
 
   const LidarDebugNodeConfig config = loadLidarDebugNodeConfig(*node);
 
@@ -180,7 +183,7 @@ TEST_F(LidarDebugNodeConfigTest, ClampsLoaderValues) {
   EXPECT_DOUBLE_EQ(config.view_radius_m, 5.0);
   EXPECT_DOUBLE_EQ(config.max_lidar_range_m, 1.0);
   EXPECT_DOUBLE_EQ(config.range_hit_epsilon_m, 0.0);
-  EXPECT_DOUBLE_EQ(config.lidar_pose_latency_s, 1.0);
+  EXPECT_DOUBLE_EQ(config.lidar_position_source_time_offset_s, 1.0);
   EXPECT_DOUBLE_EQ(config.lidar_scan_duration_override_s, 1.0);
   EXPECT_EQ(config.beam_csv_stride, 1U);
   EXPECT_EQ(config.max_logged_hit_points, 100000U);

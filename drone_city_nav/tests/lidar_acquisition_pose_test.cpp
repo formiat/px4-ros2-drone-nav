@@ -44,43 +44,75 @@ TEST(LidarAcquisitionPoseTest, AppliesOffsetBeforeSamplingPositionAndAttitude) {
 
   const LidarAcquisitionPoseResult result = resolveLidarAcquisitionBeamPoses(
       history, timing, 1U,
-      LidarAcquisitionPoseConfig{.apply_sensor_time_offset = true,
-                                 .sensor_time_offset_s = 0.1,
+      LidarAcquisitionPoseConfig{.apply_source_time_offsets = true,
+                                 .position_source_time_offset_s = 0.1,
+                                 .attitude_source_time_offset_s = 0.1,
                                  .require_source_timestamp_alignment = true},
       std::nullopt, &mapper);
 
   ASSERT_TRUE(result.resolved());
   ASSERT_EQ(result.alignment.poses.size(), 1U);
   EXPECT_TRUE(result.alignment.sourceAligned());
-  EXPECT_EQ(result.adjusted_timing.first_beam_stamp_ns, 1'110'000'000);
   EXPECT_NEAR(result.alignment.poses.front().position.x, 10.0, 1.0e-9);
   EXPECT_NEAR(result.alignment.poses.front().pitch_rad, 0.4, 1.0e-6);
 }
 
 TEST(LidarAcquisitionPoseTest, ANegativeOffsetSamplesThePoseBeforeTheScanStamp) {
-  // A simulated GPU lidar stamps its cloud after the render that produced it,
-  // so the calibrated acquisition time lies before the stamp. The offset is
-  // therefore signed: a negative value samples the earlier pose.
+  // A source whose samples lead the vehicle is read before the scan stamp.
+  // The offsets are therefore signed: a negative value samples the earlier
+  // pose.
   const Px4RosTimeMapper mapper = makeReadyIdentityTimeMapper();
   const LidarPoseHistory history = makeMovingPoseHistory();
   const LaserScanTiming timing{1'150'000'000, true, 0.0, 1'160'000'000, true};
 
   const LidarAcquisitionPoseResult result = resolveLidarAcquisitionBeamPoses(
       history, timing, 1U,
-      LidarAcquisitionPoseConfig{.apply_sensor_time_offset = true,
-                                 .sensor_time_offset_s = -0.1,
+      LidarAcquisitionPoseConfig{.apply_source_time_offsets = true,
+                                 .position_source_time_offset_s = -0.1,
+                                 .attitude_source_time_offset_s = -0.1,
                                  .require_source_timestamp_alignment = true},
       std::nullopt, &mapper);
 
   ASSERT_TRUE(result.resolved());
   ASSERT_EQ(result.alignment.poses.size(), 1U);
   EXPECT_TRUE(result.alignment.sourceAligned());
-  EXPECT_EQ(result.sensor_time_offset_ns, -100'000'000);
-  EXPECT_EQ(result.adjusted_timing.first_beam_stamp_ns, 1'050'000'000);
+  EXPECT_EQ(result.position_source_time_offset_ns, -100'000'000);
+  EXPECT_EQ(result.attitude_source_time_offset_ns, -100'000'000);
   // The mapped samples sit at 1.01 s (x = 9, level) and 1.11 s (x = 10,
-  // pitched 0.4 rad); the adjusted stamp interpolates 40 % of the way.
+  // pitched 0.4 rad); the shifted stamp interpolates 40 % of the way.
   EXPECT_NEAR(result.alignment.poses.front().position.x, 9.4, 1.0e-9);
   EXPECT_NEAR(result.alignment.poses.front().pitch_rad, 0.16, 1.0e-6);
+}
+
+TEST(LidarAcquisitionPoseTest, ThePositionAndTheAttitudeAreSampledAtTheirOwnOffsets) {
+  // The PX4 position estimate leads the vehicle by about a tenth of a second
+  // while the attitude estimate is in step with it. Read with one offset the
+  // returns of a scan taken at 1.11 s were placed at the position of 1.11 s
+  // (right) but tilted by the attitude of 1.01 s (wrong by the whole pitch
+  // manoeuvre). Each source is now read at the scan stamp plus its own
+  // offset: the position a tenth earlier, the attitude at the stamp.
+  const Px4RosTimeMapper mapper = makeReadyIdentityTimeMapper();
+  const LidarPoseHistory history = makeMovingPoseHistory();
+  const LaserScanTiming timing{1'110'000'000, true, 0.0, 1'120'000'000, true};
+
+  const LidarAcquisitionPoseResult result = resolveLidarAcquisitionBeamPoses(
+      history, timing, 1U,
+      LidarAcquisitionPoseConfig{.apply_source_time_offsets = true,
+                                 .position_source_time_offset_s = -0.1,
+                                 .attitude_source_time_offset_s = 0.0,
+                                 .require_source_timestamp_alignment = true},
+      std::nullopt, &mapper);
+
+  ASSERT_TRUE(result.resolved());
+  ASSERT_EQ(result.alignment.poses.size(), 1U);
+  EXPECT_TRUE(result.alignment.sourceAligned());
+  EXPECT_EQ(result.position_source_time_offset_ns, -100'000'000);
+  EXPECT_EQ(result.attitude_source_time_offset_ns, 0);
+  EXPECT_NEAR(result.alignment.poses.front().position.x, 9.0, 1.0e-9);
+  EXPECT_NEAR(result.alignment.poses.front().pitch_rad, 0.4, 1.0e-6);
+  EXPECT_EQ(result.alignment.attitude_timing.requested_stamp_ns -
+                result.alignment.position_timing.requested_stamp_ns,
+            100'000'000);
 }
 
 TEST(LidarAcquisitionPoseTest, OffsetChangesIntegratedPhysicalWallLocation) {
@@ -89,8 +121,9 @@ TEST(LidarAcquisitionPoseTest, OffsetChangesIntegratedPhysicalWallLocation) {
   const LaserScanTiming timing{1'010'000'000, true, 0.0, 1'020'000'000, true};
   const LidarAcquisitionPoseResult acquisition = resolveLidarAcquisitionBeamPoses(
       history, timing, 1U,
-      LidarAcquisitionPoseConfig{.apply_sensor_time_offset = true,
-                                 .sensor_time_offset_s = 0.1,
+      LidarAcquisitionPoseConfig{.apply_source_time_offsets = true,
+                                 .position_source_time_offset_s = 0.1,
+                                 .attitude_source_time_offset_s = 0.1,
                                  .require_source_timestamp_alignment = true},
       std::nullopt, &mapper);
   ASSERT_TRUE(acquisition.resolved());
@@ -138,8 +171,7 @@ TEST(LidarAcquisitionPoseTest, RejectsReceiveTimeFallbackForMapping) {
 
   const LidarAcquisitionPoseResult result = resolveLidarAcquisitionBeamPoses(
       history, LaserScanTiming{1'000'000'000, true, 0.0, 1'010'000'000, true}, 1U,
-      LidarAcquisitionPoseConfig{.apply_sensor_time_offset = false,
-                                 .sensor_time_offset_s = 0.0,
+      LidarAcquisitionPoseConfig{.apply_source_time_offsets = false,
                                  .require_source_timestamp_alignment = true});
 
   EXPECT_FALSE(result.resolved());
@@ -155,8 +187,9 @@ TEST(LidarAcquisitionPoseTest, WaitsForPositionAndAttitudeToBracketAdjustedScan)
   history.addAttitude(1'020'000'000, pitchQuaternion(0.0), 1'000'000'000,
                       1'000'000'000);
   const LaserScanTiming timing{1'010'000'000, true, 0.0, 1'020'000'000, true};
-  const LidarAcquisitionPoseConfig config{.apply_sensor_time_offset = true,
-                                          .sensor_time_offset_s = 0.1,
+  const LidarAcquisitionPoseConfig config{.apply_source_time_offsets = true,
+                                          .position_source_time_offset_s = 0.1,
+                                          .attitude_source_time_offset_s = 0.1,
                                           .require_source_timestamp_alignment = true,
                                           .require_bracketed_pose = true};
 
