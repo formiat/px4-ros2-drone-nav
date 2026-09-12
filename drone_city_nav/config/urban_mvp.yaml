@@ -469,9 +469,17 @@ production_mppi_node:
     # One raw cell per sweep step, matching the world generator's portal
     # validation capsule.
     physical_footprint_sweep_step_m: 0.25
-    # Closed-loop tracking error is bounded by speed times this response horizon.
-    # At 5 m/s the tube is 0.75 m; narrower passages receive a lower speed cap.
-    tracking_error_tube_response_time_s: 0.15
+    # Closed-loop tracking error is bounded by speed times this response
+    # horizon; a passage that leaves less clearance than the tube receives a
+    # lower speed cap. Measured on PX4's local position against the offboard
+    # trajectory setpoints in the urban flight r208 (11 500 samples, the
+    # 0.07 s clock offset between the two streams removed): the error is
+    # 0.03 m at the median and 0.10 m at p99 between 1.5 and 4 m/s, the
+    # lateral part 0.07 m at p99; error over speed is 0.05 s at p99 between
+    # 1.5 and 2.5 m/s and 0.03 s above. 0.075 s keeps one and a half to two
+    # and a half times that. The former 0.15 s priced a 0.45 m tube at 3 m/s
+    # and held the vehicle at the 1 m/s floor on a fifth of its flight time.
+    tracking_error_tube_response_time_s: 0.075
     # Where the physical body clears raw occupancy, a constrained segment keeps
     # at least this ceiling (0.15 m tube at 1 m/s) instead of crawling.
     tracking_error_tube_minimum_progress_speed_mps: 1.0
