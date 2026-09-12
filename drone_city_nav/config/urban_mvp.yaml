@@ -421,8 +421,12 @@ production_mppi_node:
     # Lateral acceleration a turn may demand, for the curvature limiter and
     # the route time profile. The airframe banks for it: PX4's 45 degree tilt
     # limit admits about 9.8 m/s^2, so it is not bound to the longitudinal
-    # acceleration the speed profile is built from.
-    maximum_lateral_acceleration_mps2: 6.0
+    # acceleration the speed profile is built from. Measured on the true pose
+    # in the urban flights r222 and r223 the lateral acceleration reached
+    # 3.95 m/s^2 at p99, bounded by this limit through the curvature limiter
+    # (7 percent of the logged ticks at 2.1 m/s in the flights r230 to r233)
+    # rather than by the airframe; 8 keeps 1.8 m/s^2 below the tilt limit.
+    maximum_lateral_acceleration_mps2: 8.0
     # The vertical deceleration the stopping laws may rely on in the worst
     # direction, a pure climb or descent. PX4 bounds it by MPC_ACC_DOWN_MAX
     # (3 m/s^2, the default in force: arresting a climb) and MPC_ACC_UP_MAX
@@ -455,10 +459,9 @@ production_mppi_node:
     # true pose (median against Gazebo in the urban flights r203 to r206),
     # the 0.25 m voxel the obstacle is resolved to, and the tracking error the
     # tube law admits at the contract's limit, 0.15 s times 3 m/s = 0.45 m:
-    # 1.85 m. 2.5 m keeps 0.65 m above that sum; the former 3.0 m kept 1.15 m
-    # and cost 0.2 m/s of the limit (2.84 against 3.05 m/s, everything else
-    # equal).
-    sensor_braking_physical_margin_m: 2.5
+    # 1.85 m. 2.0 m keeps 0.15 m above that sum; 2.5 m kept 0.65 m and held
+    # the limit at 4.76 m/s against 4.93 now, with the 14 m range.
+    sensor_braking_physical_margin_m: 2.0
     # The goal limiter reaches zero this far before the mission goal. The
     # capture latch fires once the vehicle rests inside the capture radius, so
     # the margin only shapes where the approach comes to rest.
