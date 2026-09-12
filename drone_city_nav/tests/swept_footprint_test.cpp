@@ -1023,11 +1023,12 @@ TEST(SweptFootprintTest, ADepartureAlongTheLayerTheBodyRestsInIsContact) {
   // 205 seconds: the body reached voxels of the layer it had not touched at
   // rest, and a pose four centimetres below the route's samples read as
   // deeper than the contact the route stood for. Contact is the depth the
-  // body already has in the evidence; leaving along the layer at that depth,
-  // with the tracking jitter of a hover, is contact and not a collision, and
-  // the departure is measured from where the vehicle is, not from where the
-  // route was planned. Pressing deeper, and evidence ahead the body never
-  // touched, stay collisions.
+  // body already has in a voxel; leaving along the layer at that depth is
+  // contact and not a collision, and the departure is measured from where
+  // the vehicle is, not from where the route was planned. Pressing deeper,
+  // and evidence the body never touched at rest or along the departure, stay
+  // collisions: a vehicle in contact with one wall gains nothing against
+  // another.
   const GridBounds3D bounds{20.0, 40.0, 6.0, 0.25, 24, 16, 12};
   ObservedOccupancyGrid3D occupancy{bounds};
   for (int y = 4; y <= 10; ++y) {
@@ -1053,7 +1054,6 @@ TEST(SweptFootprintTest, ADepartureAlongTheLayerTheBodyRestsInIsContact) {
   const Point3 rest{22.8, 43.03, 7.86};
   ProprioceptiveFreeSpaceSeed3D seed =
       proprioceptiveContactSeed3D(rest, axis, footprint, &occupancy).value();
-  EXPECT_NEAR(seed.contact_depth_m, 0.11, 0.02);
   seed.departure_chain = {Point3{22.84, 43.03, 7.9}, Point3{23.3, 43.03, 7.9},
                           Point3{23.8, 43.03, 7.9}, Point3{24.3, 43.03, 7.9}};
 
@@ -1061,12 +1061,8 @@ TEST(SweptFootprintTest, ADepartureAlongTheLayerTheBodyRestsInIsContact) {
             SweptFootprintStatus::kRawCollision);
   EXPECT_TRUE(validateRawFootprintAt(occupancy, rest, axis, footprint, nullptr, &seed)
                   .accepted());
-  // Along the wall top at the hover altitude, and three centimetres nearer
-  // the wall, as a hover tracks its route.
+  // Along the wall top at the hover altitude.
   EXPECT_TRUE(validateRawFootprintAt(occupancy, Point3{23.3, 43.03, 7.86}, axis,
-                                     footprint, nullptr, &seed)
-                  .accepted());
-  EXPECT_TRUE(validateRawFootprintAt(occupancy, Point3{23.8, 43.0, 7.86}, axis,
                                      footprint, nullptr, &seed)
                   .accepted());
   EXPECT_TRUE(validateRawSweptFootprint(occupancy, rest, axis, Point3{24.3, 43.03, 7.9},

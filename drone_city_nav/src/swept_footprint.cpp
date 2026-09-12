@@ -720,7 +720,6 @@ validProprioceptiveSeed(const ProprioceptiveFreeSpaceSeed3D* const seed) noexcep
          std::isfinite(seed->footprint.upper_extent_m) &&
          seed->footprint.upper_extent_m >= 0.0 &&
          std::isfinite(seed->contact_tolerance_m) && seed->contact_tolerance_m >= 0.0 &&
-         std::isfinite(seed->contact_depth_m) && seed->contact_depth_m >= 0.0 &&
          std::ranges::all_of(seed->departure_chain, [](const Point3& pose) noexcept {
            return swept_footprint_detail::finitePoint(pose);
          });
@@ -751,10 +750,12 @@ bool proprioceptiveSeedAllowsSupportContact(
 // space. How far in is the depth of the body in the evidence, the least
 // shrink of the body that would clear it, not the distance of the body's
 // centre from the voxel: a body resting a tenth of a metre into the top of a
-// wall moves along that wall at the same depth without going deeper, and the
-// hover jitter of a tracking vehicle changes its centre's distance to every
-// voxel without changing its depth. Departing, holding and every free
-// direction remain open.
+// wall moves along that wall at the same depth without going deeper. The
+// depth is judged voxel by voxel: evidence the body reaches only at the
+// candidate, never at the seed or along its departure, stays a collision, so
+// a vehicle in contact with one wall of a shaft does not gain that depth
+// against the other. Departing, holding and every free direction remain
+// open.
 [[nodiscard]] SweptFootprintConfig
 physicalBody(const SweptFootprintConfig& footprint) noexcept {
   SweptFootprintConfig body = footprint;
@@ -861,7 +862,7 @@ bool proprioceptiveSeedExemptsBox(const ProprioceptiveFreeSpaceSeed3D& seed,
   // for. Where the body itself overlaps it there, the vehicle is already that
   // deep, and the candidate may not go deeper than the deepest such pose.
   bool contact{false};
-  double reference_depth_m = std::max(0.0, seed.contact_depth_m);
+  double reference_depth_m = 0.0;
   forEachContactPose(seed, [&](const Point3& pose) {
     if (!boxIntersectsFiniteCylinder(
             pose, axis, box_minimum, box_maximum, contact_envelope.lower_extent_m,
@@ -888,7 +889,7 @@ bool proprioceptiveSeedExemptsPoint(const ProprioceptiveFreeSpaceSeed3D& seed,
       contactWidenedFootprint(seed.footprint, tolerance_m);
   const SweptFootprintConfig body = physicalBody(seed.footprint);
   bool contact{false};
-  double reference_depth_m = std::max(0.0, seed.contact_depth_m);
+  double reference_depth_m = 0.0;
   forEachContactPose(seed, [&](const Point3& pose) {
     if (!pointIntersectsBody(obstacle_point, pose, seed.body_axis, contact_envelope)) {
       return;
