@@ -409,14 +409,15 @@ production_mppi_node:
     absolute_speed_limit_mps: 10.0
     # The horizontal acceleration the speed profile is built from, the
     # guaranteed horizontal deceleration of the stopping laws, and PX4's
-    # MPC_ACC_HOR_MAX. Measured on the true pose in the urban flights r222
-    # and r223 the vehicle spent 60 percent of its flight accelerating or
-    # decelerating at the former 4 m/s^2 (p95 3.8 along the motion) between
-    # twelve or thirteen stops a flight, and reached 5.1 to 6.3 m/s^2 in
-    # transients; PX4's 45 degree tilt admits 9.8. At 5 the braking contract
-    # still admits 4.5 m/s along its worst direction, above the 3.8 m/s the
-    # vehicle reaches on its legs. The Makefile targets pass the same value.
-    maximum_horizontal_acceleration_mps2: 5.0
+    # MPC_ACC_HOR_MAX; the Makefile targets pass the same value. 5 m/s^2 was
+    # tried on the urban flights r224 and r225: the vehicle spends 60 percent
+    # of a flight accelerating or decelerating between its stops, and the
+    # stops are walls revealed in unknown space a few metres ahead, so the
+    # harder profile ran into them harder and stopped more often, seventeen
+    # and eighteen times a flight against thirteen at 4, and flew slower
+    # (2.47 and 2.29 m/s against 2.55). PX4's 45 degree tilt would admit
+    # 9.8; the airframe reaches 5 to 6 in transients.
+    maximum_horizontal_acceleration_mps2: 4.0
     # Lateral acceleration a turn may demand, for the curvature limiter and
     # the route time profile. The airframe banks for it: PX4's 45 degree tilt
     # limit admits about 9.8 m/s^2, so it is not bound to the longitudinal
