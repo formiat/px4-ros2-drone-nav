@@ -138,7 +138,7 @@ obstacle_memory_3d_node:
     # into a ramp through free volume); horizontal neighbours keep a wide one
     # (a row meets a wall at grazing incidence exactly where its columns are
     # sparse, and a depth edge steps far beyond any incidence).
-    # The 121-row scan paints a wall inside the vehicle's body band with
+    # The 181-row scan paints a wall inside the vehicle's body band with
     # measured returns alone at the guaranteed range (see the sensing
     # geometry contract), so surface joins would only add occupied evidence
     # between returns: tens of thousands of voxels per scan that the planner
@@ -179,8 +179,8 @@ obstacle_memory_3d_node:
     use_full_lidar_extrinsic: true
     lidar_extrinsic_translation_body_frd_m: [0.12, 0.0, -0.315]
     lidar_extrinsic_quaternion_lidar_flu_to_body_frd: [0.0, 1.0, 0.0, 0.0]
-    lidar_3d_horizontal_samples: 240
-    lidar_3d_vertical_samples: 121
+    lidar_3d_horizontal_samples: 360
+    lidar_3d_vertical_samples: 181
     lidar_3d_horizontal_min_angle_rad: -3.141592653589793
     lidar_3d_horizontal_max_angle_rad: 3.141592653589793
     lidar_3d_vertical_min_angle_rad: -1.5707963267948966
@@ -189,20 +189,20 @@ obstacle_memory_3d_node:
     max_lidar_range_m: 35.0
     # The heading estimate the hits are placed with. The persistent memory
     # integrates beams only as far as that keeps a hit within two voxels of
-    # its surface, 2 * resolution / tan(sigma): thirteen metres at this
-    # value and resolution. The sensor braking contract needs nine and a half
+    # its surface, 2 * resolution / tan(sigma): nineteen metres at this
+    # value and resolution. The sensor braking contract needs fourteen
     # metres of guaranteed detection range, so the heading error may not
-    # exceed 3 degrees (0.052 rad) before the two contracts conflict.
+    # exceed 2 degrees (0.036 rad) before the two contracts conflict.
     # Release assumption: the stack is validated for a heading of about 1.5
     # degrees standard deviation or better (the simulation heading source
-    # measures 0.85 to 1.5), not for a compass-grade heading of 2 degrees and
-    # more. This value is the simulated magnetometer's measured error -- a
-    # standard deviation of 2.2 degrees, with excursions past ten while the
-    # estimator reconciles its magnetometer with its course -- and is
-    # conservative for the simulation source; set it to the actual heading
-    # uncertainty of the vehicle's source. See docs/gazebo_simulation.md,
-    # "Heading Source".
-    lidar_pose_heading_uncertainty_rad: 0.038
+    # measures 0.85 to 1.5 degrees against the true attitude), not for a
+    # compass-grade heading of 2 degrees and more. This value is the upper
+    # end of the simulation source's measured error; the former 0.038 rad
+    # was the simulated magnetometer's 2.2 degrees, which bounded the
+    # integration to 13 m and the contract's range with it. Set it to the
+    # actual heading uncertainty of the vehicle's source. See
+    # docs/gazebo_simulation.md, "Heading Source".
+    lidar_pose_heading_uncertainty_rad: 0.026
     range_hit_epsilon_m: 0.05
     scan_stride: 1
     # One hit weighs four against an occupied threshold of three: a voxel is
@@ -425,16 +425,20 @@ production_mppi_node:
     speed_reaction_latency_s: 0.10
     # The range within which the lidar is guaranteed to have resolved an
     # obstacle at the occupancy resolution the validators reject on, not the
-    # range at which it returns from a wall. With 240 by 121 beams over the
-    # full sphere the beams are 1.5 degrees apart, so two beams straddle a
-    # 0.25 m voxel only inside 0.25 / 0.026 = 9.5 m; farther out a voxel the
+    # range at which it returns from a wall. With 360 by 181 beams over the
+    # full sphere the beams are 1 degree apart, so two beams straddle a
+    # 0.25 m voxel inside 0.25 / tan(1 deg) = 14.3 m; farther out a voxel the
     # route passes through is free by the beams that missed it and appears
-    # occupied only when the vehicle closes in. Measured over the recorded
-    # urban flights, the cells behind a rejected horizon were first seen 4.9 m
-    # ahead at the median and 10.8 m at the ninetieth percentile, and every
-    # stop began as a sprint to four metres a second under a contract that
-    # promised 30 m of seen ground.
-    guaranteed_lidar_detection_range_m: 9.5
+    # occupied only when the vehicle closes in. The former 240 by 121 beams
+    # were 1.5 degrees apart and guaranteed 9.5 m, which held the contract's
+    # limit at 3.05 m/s; 14.0 m admits 4.8 m/s, everything else equal, and
+    # stays inside the 19 m the persistent memory integrates beams to.
+    # Measured over earlier recorded urban flights with the sparser sensor,
+    # the cells behind a rejected horizon were first seen 4.9 m ahead at the
+    # median and 10.8 m at the ninetieth percentile, and every stop began as
+    # a sprint to four metres a second under a contract that promised 30 m
+    # of seen ground.
+    guaranteed_lidar_detection_range_m: 14.0
     # The distance still left to a first-seen obstacle once the vehicle has
     # stopped, in the contract's own units of position: it has to cover the
     # 0.82 m body envelope, the 0.33 m the PX4 position estimate sits from the

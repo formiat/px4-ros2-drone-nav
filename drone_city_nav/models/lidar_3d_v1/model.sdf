@@ -83,17 +83,17 @@
         <ray>
           <scan>
             <horizontal>
-              <samples>240</samples>
+              <!-- 1 deg columns and rows: two beams straddle a 0.25 m
+                   occupancy voxel inside 0.25 / tan(1 deg) = 14.3 m, the
+                   range the sensor braking contract may rely on. At the
+                   former 1.5 deg that range was 9.5 m. -->
+              <samples>360</samples>
               <resolution>1</resolution>
               <min_angle>-3.141592653589793</min_angle>
               <max_angle>3.141592653589793</max_angle>
             </horizontal>
             <vertical>
-              <!-- 1.5 deg rows: at the guaranteed 30 m detection range adjacent
-                   rows land no farther apart than the vehicle body band plus
-                   one occupancy voxel, so a wall is painted inside the band
-                   without relying on surface joins. -->
-              <samples>121</samples>
+              <samples>181</samples>
               <resolution>1</resolution>
               <min_angle>-1.5707963267948966</min_angle>
               <max_angle>1.5707963267948966</max_angle>

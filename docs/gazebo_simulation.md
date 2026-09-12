@@ -90,12 +90,13 @@ The assumption is carried by one parameter,
 `lidar_pose_heading_uncertainty_rad` of `obstacle_memory_3d_node`: the
 persistent memory integrates beams only as far as the heading error keeps a
 hit within two voxels of its surface, `2 * resolution / tan(sigma)`. The
-sensor braking contract needs a guaranteed detection range of 9.5 metres, so
-at 0.25 m voxels the heading error may not exceed 3 degrees (0.052 rad)
-before the two contracts conflict. Set the parameter to the actual heading
-uncertainty of the vehicle's source; the configured 0.038 rad (2.2 degrees,
-13.15 m of range) is the compass-era figure and is conservative for the
-simulation source.
+sensor braking contract needs a guaranteed detection range of 14 metres (the
+1 degree lidar resolves a 0.25 m voxel with two beams inside 14.3 m), so at
+0.25 m voxels the heading error may not exceed 2 degrees (0.036 rad) before
+the two contracts conflict. Set the parameter to the actual heading
+uncertainty of the vehicle's source; the configured 0.026 rad (1.5 degrees,
+19 m of range) is the upper end of the simulation source's measured error.
+The compass-era 0.038 rad (2.2 degrees) bounded the integration to 13 m.
 
 ## Spawn, Start, And Goal
 
