@@ -28,6 +28,14 @@ struct PlannerSearchContinuityBase3D {
   // prefix is still ahead of the vehicle when the successor arrives. Unset
   // for an extension.
   std::optional<double> minimum_stitch_station_m;
+  // The stitch this replacement is searched from. A stitch recomputed on
+  // every retry moved with the vehicle, one certified overlap ahead of it,
+  // while the planner offered the candidate it had searched from the previous
+  // stitch; the two never met within the stitch tolerance until the vehicle
+  // stopped. Set by the replan while the pinned stitch is still ahead of the
+  // vehicle's stopping path and short of the block; unset, the planner
+  // computes one from the vehicle's progress.
+  std::optional<double> stitch_station_m;
 
   [[nodiscard]] bool
   validFor(const StaticRouteSearchRequestIdentity& request) const noexcept {
