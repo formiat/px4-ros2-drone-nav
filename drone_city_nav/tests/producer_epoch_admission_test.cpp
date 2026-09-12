@@ -525,6 +525,54 @@ TEST(ProducerEvidenceAdmissionTest,
             ProducerEvidenceAdmissionStatus::kRejectedAuthorityMismatch);
 }
 
+// The urban flight r229: the deltas based on a full snapshot outran it on
+// the wire. Each was rejected for lack of its base and remembered, the
+// snapshot then read as a regression against their revisions, and once eight
+// had been remembered every later snapshot was refused for capacity; the raw
+// world stood still for the rest of the flight. A full snapshot from the
+// authority is judged on its own order and content and releases the identities
+// it supersedes.
+TEST(ProducerEvidenceAdmissionTest,
+     AFullSnapshotOvertakenByTheDeltasBasedOnItIsNotARegression) {
+  const ProducerEpochAuthority authority{.producer_instance_id = 7U, .generation = 1U};
+  ProducerEvidenceAdmissionState state =
+      admitProducerEvidence(kConfig, {}, authority,
+                            observation(7U, 10U, 900, 910, 101U), true, 920)
+          .next_state;
+  for (std::uint64_t sequence = 20U; sequence < 20U + kProducerRejectedIdentityCapacity;
+       ++sequence) {
+    const ProducerEvidenceAdmissionResult orphan = admitProducerEvidence(
+        kConfig, state, authority, observation(7U, sequence, 900, 912, 200U + sequence),
+        false, 920, false);
+    ASSERT_EQ(orphan.status, ProducerEvidenceAdmissionStatus::kRejectedInvalid);
+    state = orphan.next_state;
+  }
+  const ProducerEvidenceAdmissionResult overflow =
+      admitProducerEvidence(kConfig, state, authority,
+                            observation(7U, 40U, 900, 913, 300U), false, 920, false);
+  ASSERT_EQ(overflow.status,
+            ProducerEvidenceAdmissionStatus::kRejectedIdentityCapacity);
+  state = overflow.next_state;
+  ASSERT_TRUE(state.rejected_identity_capacity_exhausted);
+
+  const ProducerEvidenceAdmissionResult snapshot = admitProducerEvidence(
+      kConfig, state, authority, observation(7U, 15U, 930, 940, 400U), true, 950);
+  ASSERT_EQ(snapshot.status, ProducerEvidenceAdmissionStatus::kAcceptedNewer);
+  EXPECT_TRUE(snapshot.install_evidence);
+  EXPECT_FALSE(snapshot.next_state.rejected_identity_capacity_exhausted);
+  EXPECT_EQ(snapshot.next_state.sequence, 15U);
+
+  const ProducerEvidenceAdmissionResult delta =
+      admitProducerEvidence(kConfig, snapshot.next_state, authority,
+                            observation(7U, 41U, 960, 970, 500U), false, 980);
+  EXPECT_EQ(delta.status, ProducerEvidenceAdmissionStatus::kAcceptedNewer);
+  // An older snapshot than the installed evidence is still a regression.
+  const ProducerEvidenceAdmissionResult older =
+      admitProducerEvidence(kConfig, delta.next_state, authority,
+                            observation(7U, 12U, 990, 1'000, 600U), true, 1'010);
+  EXPECT_EQ(older.status, ProducerEvidenceAdmissionStatus::kRejectedRegression);
+}
+
 TEST(ProducerEpochAdmissionTest, GenerationExhaustionFailsClosed) {
   ProducerEpochAdmissionState state =
       admit({}, observation(7U, 10U, 900, 910, 101U), 920).next_state;

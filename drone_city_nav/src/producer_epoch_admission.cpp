@@ -393,6 +393,37 @@ void installEvidence(ProducerEvidenceAdmissionState& state,
   eraseRejectedEvidenceIdentitiesThrough(
       state.rejected_identities, state.rejected_identity_count, authority.generation,
       observation.producer_instance_id, observation.sequence);
+  if (full_snapshot) {
+    // A full snapshot is a fresh base: the deltas rejected for lacking one,
+    // whatever their sequence, are superseded by it and by the deltas that
+    // will follow it. Rejected snapshots keep their claims.
+    std::size_t write_index{0U};
+    for (std::size_t read_index = 0U; read_index < state.rejected_identity_count;
+         ++read_index) {
+      const ProducerEvidenceRejectedIdentity& identity =
+          state.rejected_identities[read_index];
+      const bool superseded_delta =
+          !identity.full_snapshot &&
+          identity.authority_generation == authority.generation &&
+          identity.producer_instance_id == observation.producer_instance_id;
+      if (superseded_delta) {
+        continue;
+      }
+      if (write_index != read_index) {
+        state.rejected_identities[write_index] = identity;
+      }
+      ++write_index;
+    }
+    for (std::size_t index = write_index; index < state.rejected_identity_count;
+         ++index) {
+      state.rejected_identities[index] = ProducerEvidenceRejectedIdentity{};
+    }
+    state.rejected_identity_count = write_index;
+  }
+  // The identities the install released leave room for new ones.
+  if (state.rejected_identity_count < state.rejected_identities.size()) {
+    state.rejected_identity_capacity_exhausted = false;
+  }
 }
 
 } // namespace
@@ -733,7 +764,14 @@ admitProducerEvidence(const ProducerEpochAdmissionConfig& config,
     }
     return result;
   }
-  if (state.rejected_identity_capacity_exhausted) {
+  // A full snapshot from the authority is the base the rejected deltas were
+  // waiting for: it is judged on its own order and content, not failed closed
+  // by the identities they filled. In one recorded flight the deltas based on
+  // a snapshot outran it on the wire, each was remembered as a rejected
+  // identity, the snapshot then read as a regression against them, and once
+  // eight had been remembered every later snapshot was refused for capacity:
+  // the raw world stood still for the rest of the flight.
+  if (state.rejected_identity_capacity_exhausted && !full_snapshot) {
     result.status = ProducerEvidenceAdmissionStatus::kRejectedIdentityCapacity;
     return result;
   }
@@ -762,8 +800,11 @@ admitProducerEvidence(const ProducerEpochAdmissionConfig& config,
   }
   for (std::size_t index = 0U; index < state.rejected_identity_count; ++index) {
     const ProducerEvidenceRejectedIdentity& rejected = state.rejected_identities[index];
+    // A rejected delta claims nothing about the order of the snapshot it is
+    // based on; only rejected snapshots and installed evidence bound one.
     if (rejected.authority_generation == authority.generation &&
-        rejected.producer_instance_id == observation.producer_instance_id) {
+        rejected.producer_instance_id == observation.producer_instance_id &&
+        (!full_snapshot || rejected.full_snapshot)) {
       claimed_sequence_high_water =
           std::max(claimed_sequence_high_water, rejected.sequence);
     }
