@@ -377,8 +377,16 @@ production_mppi_node:
     latest_lidar_obstacle_scan_topic: /drone_city_nav/latest_lidar_obstacle_scan
     # Acquisition-aligned 3D returns are expressed in the map frame and remain
     # valid while persistent integration catches up. This budget must exceed the
-    # mapper's allowed pose-alignment wait plus transport and executor jitter.
-    latest_lidar_obstacle_maximum_age_ms: 1000.0
+    # mapper's allowed pose-alignment wait plus transport and executor jitter,
+    # and it is the evidence age the sensor braking contract charges at every
+    # speed, so slack here is speed given away. Measured at the planning tick
+    # in the urban flight r206 (scan stamp = acquisition instant): the latest
+    # scan is 100 ms old at the median, 160 ms at p99, 248 ms at most; the
+    # worst case the pipeline admits is the 0.35 s alignment wait plus one
+    # 0.1 s scan period plus transport and executor jitter. 0.6 s covers it
+    # with twice the measured maximum; the former 1.0 s cost 0.3 m/s of the
+    # contract's limit (2.2 against 2.44 m/s, everything else equal).
+    latest_lidar_obstacle_maximum_age_ms: 600.0
     navigation_health_topic: /drone_city_nav/mppi/navigation_health
     # Readiness remains observable, but advisory time/attempt budgets must not
     # abort a mission unless an operator explicitly enables that policy.
@@ -405,7 +413,14 @@ production_mppi_node:
     # limit admits about 9.8 m/s^2, so it is not bound to the longitudinal
     # acceleration the speed profile is built from.
     maximum_lateral_acceleration_mps2: 6.0
-    guaranteed_vertical_stopping_deceleration_mps2: 2.0
+    # The vertical deceleration the stopping laws may rely on in the worst
+    # direction, a pure climb or descent. PX4 bounds it by MPC_ACC_DOWN_MAX
+    # (3 m/s^2, the default in force: arresting a climb) and MPC_ACC_UP_MAX
+    # (4 m/s^2: arresting a descent). Measured on the true pose in the urban
+    # flight r206 the vehicle arrested descents at up to 3.1 m/s^2 and climbs
+    # at up to 5.5 m/s^2 in ordinary flight. The former 2.0 was below both
+    # bounds and cost 0.2 m/s of the contract's limit (2.2 against 2.42 m/s).
+    guaranteed_vertical_stopping_deceleration_mps2: 3.0
     maximum_control_jerk_mps3: 12.0
     speed_reaction_latency_s: 0.10
     # The range within which the lidar is guaranteed to have resolved an
