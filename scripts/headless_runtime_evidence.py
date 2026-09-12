@@ -27,8 +27,10 @@ MAXIMUM_POST_BOOTSTRAP_NO_ROUTE_HOLD_RATIO = 0.03
 # divided by the time from mission readiness to the successful mission
 # result. The climb, every hold and stop, every replan and the approach to
 # the goal all count against it. The five accepting flights of the 97/3
-# thresholds flew 430 to 573 m in 275 to 367 s: 1.55 to 1.63 m/s.
-MINIMUM_MEAN_FLIGHT_SPEED_MPS = 2.0
+# thresholds flew 430 to 573 m in 275 to 367 s: 1.55 to 1.63 m/s; the five
+# flights that accepted the 2.0 m/s threshold (r217 to r221, commit
+# 3a565f24) flew 385 to 428 m in 161 to 190 s: 2.25 to 2.40 m/s.
+MINIMUM_MEAN_FLIGHT_SPEED_MPS = 2.5
 
 MISSION_READINESS_PATTERN = (
     r"\[(\d+\.\d+)\] \[mission_monitor_node\]: MISSION_READINESS ready=true"

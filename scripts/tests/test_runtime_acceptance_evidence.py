@@ -222,7 +222,7 @@ class RuntimeManifestTest(unittest.TestCase):
     ) -> None:
         errors: list[str] = []
 
-        validator.validate_mean_flight_speed(self._flight_log(500.0, 200.0), errors)
+        validator.validate_mean_flight_speed(self._flight_log(540.0, 200.0), errors)
 
         self.assertEqual(errors, [])
 
@@ -236,7 +236,7 @@ class RuntimeManifestTest(unittest.TestCase):
 
     def test_mean_flight_speed_needs_a_successful_mission(self) -> None:
         errors: list[str] = []
-        log = self._flight_log(500.0, 200.0).replace("success=true", "success=false")
+        log = self._flight_log(540.0, 200.0).replace("success=true", "success=false")
 
         validator.validate_mean_flight_speed(log, errors)
 
