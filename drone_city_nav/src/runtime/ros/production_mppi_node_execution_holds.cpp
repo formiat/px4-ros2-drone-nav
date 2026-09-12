@@ -314,9 +314,21 @@ ProductionMppiNode::publishRestHold(const ProductionMppiExecutionCycle& cycle,
   if (!vehicleAtRest(cycle.evidence.exact_initial_state)) {
     return {};
   }
-  const Point3 rest_position{cycle.evidence.exact_initial_state.x,
+  const Point3 measured_rest{cycle.evidence.exact_initial_state.x,
                              cycle.evidence.exact_initial_state.y,
                              cycle.evidence.exact_initial_state.z};
+  // The hold rests at the anchor the vehicle last came to rest on, as long as
+  // it still stands within the hold tolerance of it; a motion that carried it
+  // further away sets a new anchor. Taking every rest hold at the estimate of
+  // the moment let the hold walk: in the urban flight r244 six rest holds at
+  // a wall, each taken where the vehicle had drifted to since the previous
+  // one, carried the anchor 0.3 m towards the wall in ten seconds, and the
+  // rotor reached it. The tolerance is the hold certification's own, so a
+  // kept anchor is within reach of the hold; one the certification rejects
+  // all the same gives way to the measured rest.
+  rest_hold_anchor_.release();
+  static_cast<void>(rest_hold_anchor_.acquire(measured_rest));
+  Point3 rest_position = *rest_hold_anchor_.pin();
   // A plan that owns nothing has no resident evidence an explicit transfer
   // could certify the hold against; the rest hold on such a plan is the
   // stationary rearm, from the input the planning tick labelled for it.
@@ -324,10 +336,17 @@ ProductionMppiNode::publishRestHold(const ProductionMppiExecutionCycle& cycle,
       executionSnapshotRevokedEmpty(cycle.route.execution.source_snapshot) &&
       cycle.evidence.execution_input != nullptr &&
       cycle.evidence.execution_input->stationaryCaptureStateAuthoritative();
-  ProductionMppiExecutionPublication hold = publishPositionHold(
-      cycle, rest_position, reason,
+  const ExecutionHoldIntent3D intent =
       rest_rearm ? ExecutionHoldIntent3D::kExplicitTransferWithStationaryCaptureRearm
-                 : ExecutionHoldIntent3D::kExplicitTransfer);
+                 : ExecutionHoldIntent3D::kExplicitTransfer;
+  ProductionMppiExecutionPublication hold =
+      publishPositionHold(cycle, rest_position, reason, intent);
+  if (!hold.published && distance3D(rest_position, measured_rest) > 0.0) {
+    rest_hold_anchor_.reset();
+    static_cast<void>(rest_hold_anchor_.acquire(measured_rest));
+    rest_position = measured_rest;
+    hold = publishPositionHold(cycle, rest_position, reason, intent);
+  }
   if (hold.published) {
     RCLCPP_WARN(get_logger(),
                 "EXECUTION_HOLD rest=true reason=%s position=(%.2f,%.2f,%.2f) "

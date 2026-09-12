@@ -827,8 +827,24 @@ private:
   }
 
   void publishUnavailablePathHoldSetpoint() {
-    const bool pinned_now =
-        unavailable_path_hold_pin_.acquire(Point3{local_x_, local_y_, altitude_m_});
+    // An expired stationary hold goes on at its own position: the vehicle
+    // rests there by the executor's decision. A pin at wherever the estimate
+    // stands when the lease lapses moves the hold with every excursion; in
+    // the urban flight r244 such a pin re-anchored 0.25 m nearer a wall than
+    // the hold it stood in for, and the executor's next holds kept it there.
+    const bool expired_stationary_hold =
+        horizon_.has_value() && horizon_->stationary_position_hold;
+    const Point2 hold_local = expired_stationary_hold
+                                  ? px4_map_transform_.mapPositionToLocal(
+                                        Point2{horizon_->stationary_hold_position.x,
+                                               horizon_->stationary_hold_position.y})
+                                  : Point2{local_x_, local_y_};
+    const double hold_altitude_m =
+        expired_stationary_hold
+            ? horizon_->stationary_hold_position.z - px4_map_transform_.map_origin.z
+            : altitude_m_;
+    const bool pinned_now = unavailable_path_hold_pin_.acquire(
+        Point3{hold_local.x, hold_local.y, hold_altitude_m});
     const Point3& target = *unavailable_path_hold_pin_.pin();
     if (pinned_now) {
       const Point2 map_target =

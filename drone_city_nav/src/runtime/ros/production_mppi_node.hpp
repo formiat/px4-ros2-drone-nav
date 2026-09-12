@@ -11,6 +11,7 @@
 #include "drone_city_nav/execution_supervisor_3d.hpp"
 #include "drone_city_nav/flight_envelope.hpp"
 #include "drone_city_nav/intercept_guidance.hpp"
+#include "drone_city_nav/local_hold_pin.hpp"
 #include "drone_city_nav/mission_goal_capture.hpp"
 #include "drone_city_nav/mission_waypoint_capture_gate.hpp"
 #include "drone_city_nav/mission_waypoint_sequence.hpp"
@@ -443,6 +444,9 @@ private:
 
   std::optional<mppi::MppiTickResult> previous_result_;
   ExecutionSupervisor3D execution_supervisor_{};
+  // Where the vehicle last came to rest for a rest hold, kept while it still
+  // stands within the hold tolerance of it; see publishRestHold.
+  LocalHoldPin rest_hold_anchor_;
   std::atomic<std::uint64_t> requested_execution_revocation_{0U};
   std::uint64_t handled_execution_revocation_request_{0U};
   std::optional<mppi::State> previous_predicted_next_state_;
