@@ -54,8 +54,20 @@ validateRawSweptFootprint(const OccupancyGrid2D& occupancy, const Point3& first,
 // validation, with no condition on where the body moves. A condition of that
 // kind — no closer than now, only away, not along the surface — is a
 // prohibition on moving through free space and does not belong in a collision
-// contract. Evidence the body does not overlap at the seed is never exempt,
-// and the tolerance widens what counts as contact and nothing else.
+// contract. Evidence the body itself overlaps stays allowed as deep as the
+// body already is in it, depth being the least shrink of the body that would
+// clear the evidence, so moving along a surface at that depth is contact and
+// pressing deeper is not. Evidence the body does not overlap at the seed, or
+// along its departure chain carried to the seed, is never exempt, and the
+// tolerance widens what counts as contact and nothing else.
+// The depth of the physical body at `pose` in an axis-aligned box: the least
+// uniform shrink of its radius and extents that clears the box, zero when the
+// body does not reach it.
+[[nodiscard]] double bodyDepthInBoxM(const Point3& pose, const FootprintBodyAxis& axis,
+                                     const Point3& box_minimum,
+                                     const Point3& box_maximum,
+                                     const SweptFootprintConfig& body) noexcept;
+
 [[nodiscard]] bool proprioceptiveSeedExemptsBox(
     const ProprioceptiveFreeSpaceSeed3D& seed, const Point3& candidate_position,
     const Point3& box_minimum, const Point3& box_maximum) noexcept;

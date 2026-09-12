@@ -185,7 +185,9 @@ void hashFootprint(std::uint64_t& hash,
       !std::isfinite(free_space_seed->body_axis.z) ||
       !footprintValid(free_space_seed->footprint) ||
       !std::isfinite(free_space_seed->contact_tolerance_m) ||
-      free_space_seed->contact_tolerance_m < 0.0) {
+      free_space_seed->contact_tolerance_m < 0.0 ||
+      !std::isfinite(free_space_seed->contact_depth_m) ||
+      free_space_seed->contact_depth_m < 0.0) {
     return false;
   }
   if (!std::ranges::all_of(free_space_seed->departure_chain, finitePoint)) {
@@ -195,6 +197,7 @@ void hashFootprint(std::uint64_t& hash,
   hashAxis(hash, free_space_seed->body_axis);
   hashFootprint(hash, free_space_seed->footprint);
   hashValue(hash, canonicalDoubleBits(free_space_seed->contact_tolerance_m));
+  hashValue(hash, canonicalDoubleBits(free_space_seed->contact_depth_m));
   hashValue(hash, static_cast<std::uint64_t>(free_space_seed->departure_chain.size()));
   for (const Point3& pose : free_space_seed->departure_chain) {
     hashPoint(hash, pose);

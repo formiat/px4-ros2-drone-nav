@@ -63,6 +63,7 @@ bool sameProprioceptiveFreeSpaceSeed3D(
          first.footprint.safe_clearance_threshold_m ==
              second.footprint.safe_clearance_threshold_m &&
          first.contact_tolerance_m == second.contact_tolerance_m &&
+         first.contact_depth_m == second.contact_depth_m &&
          first.departure_chain.size() == second.departure_chain.size() &&
          std::equal(first.departure_chain.begin(), first.departure_chain.end(),
                     second.departure_chain.begin(),

@@ -2,6 +2,7 @@
 #include "drone_city_nav/distance_field.hpp"
 #include "drone_city_nav/launch_support_contact_3d.hpp"
 #include "drone_city_nav/observed_esdf_3d.hpp"
+#include "drone_city_nav/proprioceptive_contact_seed_3d.hpp"
 #include "drone_city_nav/swept_footprint.hpp"
 
 #include <gtest/gtest.h>
@@ -1012,6 +1013,75 @@ TEST(SweptFootprintTest, TheDepartureChainCarriesTheContactExemptionAlongIt) {
                                    &malformed)
                 .status,
             SweptFootprintStatus::kInvalidInput);
+}
+
+TEST(SweptFootprintTest, ADepartureAlongTheLayerTheBodyRestsInIsContact) {
+  // The urban flight r216: the vehicle came to rest at z = 7.86 m over the
+  // top of a wall whose voxels span z = 7.50 to 7.75 m, with the body's
+  // lower extent 0.23 m reaching 0.11 m into that layer, and its route left
+  // along the wall top at z = 7.9 m. Every departure was rejected for
+  // 205 seconds: the body reached voxels of the layer it had not touched at
+  // rest, and a pose four centimetres below the route's samples read as
+  // deeper than the contact the route stood for. Contact is the depth the
+  // body already has in the evidence; leaving along the layer at that depth,
+  // with the tracking jitter of a hover, is contact and not a collision, and
+  // the departure is measured from where the vehicle is, not from where the
+  // route was planned. Pressing deeper, and evidence ahead the body never
+  // touched, stay collisions.
+  const GridBounds3D bounds{20.0, 40.0, 6.0, 0.25, 24, 16, 12};
+  ObservedOccupancyGrid3D occupancy{bounds};
+  for (int y = 4; y <= 10; ++y) {
+    for (int x = 0; x < bounds.width_cells; ++x) {
+      static_cast<void>(
+          occupancy.setState(GridIndex3D{x, y, 6}, ObservedVoxelState::kOccupied));
+    }
+  }
+  for (int z = 0; z < bounds.depth_cells; ++z) {
+    for (int y = 0; y < bounds.height_cells; ++y) {
+      static_cast<void>(
+          occupancy.setState(GridIndex3D{20, y, z}, ObservedVoxelState::kOccupied));
+    }
+  }
+  const SweptFootprintConfig footprint{.radius_m = 0.82,
+                                       .lower_extent_m = 0.23,
+                                       .upper_extent_m = 0.35,
+                                       .body_radius_m = 0.55,
+                                       .body_lower_extent_m = 0.23,
+                                       .body_upper_extent_m = 0.35,
+                                       .sweep_step_m = 0.25};
+  const FootprintBodyAxis axis{};
+  const Point3 rest{22.8, 43.03, 7.86};
+  ProprioceptiveFreeSpaceSeed3D seed =
+      proprioceptiveContactSeed3D(rest, axis, footprint, &occupancy).value();
+  EXPECT_NEAR(seed.contact_depth_m, 0.11, 0.02);
+  seed.departure_chain = {Point3{22.84, 43.03, 7.9}, Point3{23.3, 43.03, 7.9},
+                          Point3{23.8, 43.03, 7.9}, Point3{24.3, 43.03, 7.9}};
+
+  EXPECT_EQ(validateRawFootprintAt(occupancy, rest, axis, footprint).status,
+            SweptFootprintStatus::kRawCollision);
+  EXPECT_TRUE(validateRawFootprintAt(occupancy, rest, axis, footprint, nullptr, &seed)
+                  .accepted());
+  // Along the wall top at the hover altitude, and three centimetres nearer
+  // the wall, as a hover tracks its route.
+  EXPECT_TRUE(validateRawFootprintAt(occupancy, Point3{23.3, 43.03, 7.86}, axis,
+                                     footprint, nullptr, &seed)
+                  .accepted());
+  EXPECT_TRUE(validateRawFootprintAt(occupancy, Point3{23.8, 43.0, 7.86}, axis,
+                                     footprint, nullptr, &seed)
+                  .accepted());
+  EXPECT_TRUE(validateRawSweptFootprint(occupancy, rest, axis, Point3{24.3, 43.03, 7.9},
+                                        axis, footprint, nullptr, &seed)
+                  .accepted());
+  // Deeper into the layer is not contact the vehicle has.
+  EXPECT_EQ(validateRawFootprintAt(occupancy, Point3{23.3, 43.03, 7.72}, axis,
+                                   footprint, nullptr, &seed)
+                .status,
+            SweptFootprintStatus::kRawCollision);
+  // The wall ahead at x = 25 m was never touched and binds as it always does.
+  EXPECT_EQ(validateRawFootprintAt(occupancy, Point3{24.6, 43.03, 7.9}, axis, footprint,
+                                   nullptr, &seed)
+                .status,
+            SweptFootprintStatus::kRawCollision);
 }
 
 } // namespace

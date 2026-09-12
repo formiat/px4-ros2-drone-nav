@@ -7,6 +7,7 @@
 #include <iterator>
 #include <limits>
 #include <numbers>
+#include <numeric>
 #include <optional>
 #include <span>
 #include <type_traits>
@@ -719,6 +720,7 @@ validProprioceptiveSeed(const ProprioceptiveFreeSpaceSeed3D* const seed) noexcep
          std::isfinite(seed->footprint.upper_extent_m) &&
          seed->footprint.upper_extent_m >= 0.0 &&
          std::isfinite(seed->contact_tolerance_m) && seed->contact_tolerance_m >= 0.0 &&
+         std::isfinite(seed->contact_depth_m) && seed->contact_depth_m >= 0.0 &&
          std::ranges::all_of(seed->departure_chain, [](const Point3& pose) noexcept {
            return swept_footprint_detail::finitePoint(pose);
          });
@@ -746,7 +748,13 @@ bool proprioceptiveSeedAllowsSupportContact(
 // demonstrably stands there - and stays allowed exactly as far in as the
 // vehicle already is: an occupied voxel says nothing about where inside it
 // the surface lies, so pressing deeper into it is not moving through free
-// space. Departing, holding and every free direction remain open.
+// space. How far in is the depth of the body in the evidence, the least
+// shrink of the body that would clear it, not the distance of the body's
+// centre from the voxel: a body resting a tenth of a metre into the top of a
+// wall moves along that wall at the same depth without going deeper, and the
+// hover jitter of a tracking vehicle changes its centre's distance to every
+// voxel without changing its depth. Departing, holding and every free
+// direction remain open.
 [[nodiscard]] SweptFootprintConfig
 physicalBody(const SweptFootprintConfig& footprint) noexcept {
   SweptFootprintConfig body = footprint;
@@ -759,13 +767,44 @@ physicalBody(const SweptFootprintConfig& footprint) noexcept {
   return body;
 }
 
-// The closest approach of a point to an axis-aligned box.
-[[nodiscard]] double distanceToBox(const Point3& point, const Point3& box_minimum,
-                                   const Point3& box_maximum) noexcept {
-  const double dx = std::max({box_minimum.x - point.x, 0.0, point.x - box_maximum.x});
-  const double dy = std::max({box_minimum.y - point.y, 0.0, point.y - box_maximum.y});
-  const double dz = std::max({box_minimum.z - point.z, 0.0, point.z - box_maximum.z});
-  return std::sqrt(dx * dx + dy * dy + dz * dz);
+// Found by bisection on the intersection test.
+double bodyDepthInBoxM(const Point3& pose, const FootprintBodyAxis& axis,
+                       const Point3& box_minimum, const Point3& box_maximum,
+                       const SweptFootprintConfig& body) noexcept {
+  const auto reaches = [&](const double shrink_m) {
+    const double radius = body.radius_m - shrink_m;
+    return boxIntersectsFiniteCylinder(pose, axis, box_minimum, box_maximum,
+                                       body.lower_extent_m - shrink_m,
+                                       body.upper_extent_m - shrink_m, radius * radius);
+  };
+  if (!reaches(0.0)) {
+    return 0.0;
+  }
+  double clear_m = std::min({body.radius_m, body.lower_extent_m, body.upper_extent_m});
+  if (!(clear_m > 0.0) || reaches(clear_m)) {
+    return std::max(0.0, clear_m);
+  }
+  double reached_m = 0.0;
+  for (int iteration = 0; iteration < 24; ++iteration) {
+    const double midpoint_m = std::midpoint(reached_m, clear_m);
+    (reaches(midpoint_m) ? reached_m : clear_m) = midpoint_m;
+  }
+  return reached_m;
+}
+
+// The depth of the body at `pose` at an obstacle point: how far inside the
+// body's radius and extents the point lies. Zero when the point is outside.
+[[nodiscard]] double bodyDepthAtPointM(const Point3& point, const Point3& pose,
+                                       const FootprintBodyAxis& requested_axis,
+                                       const SweptFootprintConfig& body) noexcept {
+  const FootprintBodyAxis axis = normalized(requested_axis);
+  const Point3 delta{point.x - pose.x, point.y - pose.y, point.z - pose.z};
+  const double axial = delta.x * axis.x + delta.y * axis.y + delta.z * axis.z;
+  const double radial = std::sqrt(std::max(0.0, delta.x * delta.x + delta.y * delta.y +
+                                                    delta.z * delta.z - axial * axial));
+  const double axial_depth =
+      axial >= 0.0 ? body.upper_extent_m - axial : body.lower_extent_m + axial;
+  return std::max(0.0, std::min(body.radius_m - radial, axial_depth));
 }
 
 // Contact the body already has may not deepen; float noise must not turn a
@@ -774,21 +813,38 @@ constexpr double kContactDepthToleranceM{1.0e-3};
 
 // The poses the seed stands for: the seed itself and, when the vehicle is
 // leaving along a departure, every pose along that chain at the sweep step.
+// The chain is the route's departure and starts where the route was planned,
+// while the vehicle departs from where it is; the chain is walked as given
+// and again carried to the seed, so the departure counts from both.
 template<typename Visit>
 void forEachContactPose(const ProprioceptiveFreeSpaceSeed3D& seed, Visit&& visit) {
   visit(seed.position);
-  Point3 previous = seed.position;
+  if (seed.departure_chain.empty()) {
+    return;
+  }
   const double step_m = std::max(seed.footprint.sweep_step_m, 1.0e-3);
-  for (const Point3& pose : seed.departure_chain) {
-    const double length_m = distance3D(previous, pose);
-    const auto count = static_cast<std::size_t>(std::ceil(length_m / step_m));
-    for (std::size_t index = 1U; index <= count; ++index) {
-      const double ratio = static_cast<double>(index) / static_cast<double>(count);
-      visit(Point3{std::lerp(previous.x, pose.x, ratio),
-                   std::lerp(previous.y, pose.y, ratio),
-                   std::lerp(previous.z, pose.z, ratio)});
+  const auto walk = [&](const Point3& carry) {
+    Point3 previous = seed.position;
+    for (const Point3& chain_pose : seed.departure_chain) {
+      const Point3 pose{chain_pose.x + carry.x, chain_pose.y + carry.y,
+                        chain_pose.z + carry.z};
+      const double length_m = distance3D(previous, pose);
+      const auto count = static_cast<std::size_t>(std::ceil(length_m / step_m));
+      for (std::size_t index = 1U; index <= count; ++index) {
+        const double ratio = static_cast<double>(index) / static_cast<double>(count);
+        visit(Point3{std::lerp(previous.x, pose.x, ratio),
+                     std::lerp(previous.y, pose.y, ratio),
+                     std::lerp(previous.z, pose.z, ratio)});
+      }
+      previous = pose;
     }
-    previous = pose;
+  };
+  walk(Point3{});
+  const Point3& front = seed.departure_chain.front();
+  const Point3 carry{seed.position.x - front.x, seed.position.y - front.y,
+                     seed.position.z - front.z};
+  if (std::hypot(std::hypot(carry.x, carry.y), carry.z) > kContactDepthToleranceM) {
+    walk(carry);
   }
 }
 
@@ -801,15 +857,11 @@ bool proprioceptiveSeedExemptsBox(const ProprioceptiveFreeSpaceSeed3D& seed,
       contactWidenedFootprint(seed.footprint, tolerance_m);
   const FootprintBodyAxis axis = normalized(seed.body_axis);
   const SweptFootprintConfig body = physicalBody(seed.footprint);
-  const double body_lower_m = std::max(0.0, body.lower_extent_m);
-  const double body_upper_m = std::max(0.0, body.upper_extent_m);
-  const double body_radius_squared = body.radius_m * body.radius_m;
   // Contact: the envelope overlaps the box at some pose the vehicle stands
   // for. Where the body itself overlaps it there, the vehicle is already that
-  // deep, and the candidate may not go deeper than the shallowest such pose.
+  // deep, and the candidate may not go deeper than the deepest such pose.
   bool contact{false};
-  bool body_overlap{false};
-  double reference_distance_m = std::numeric_limits<double>::infinity();
+  double reference_depth_m = std::max(0.0, seed.contact_depth_m);
   forEachContactPose(seed, [&](const Point3& pose) {
     if (!boxIntersectsFiniteCylinder(
             pose, axis, box_minimum, box_maximum, contact_envelope.lower_extent_m,
@@ -818,24 +870,14 @@ bool proprioceptiveSeedExemptsBox(const ProprioceptiveFreeSpaceSeed3D& seed,
       return;
     }
     contact = true;
-    if (boxIntersectsFiniteCylinder(pose, axis, box_minimum, box_maximum, body_lower_m,
-                                    body_upper_m, body_radius_squared)) {
-      body_overlap = true;
-      reference_distance_m =
-          std::min(reference_distance_m, distanceToBox(pose, box_minimum, box_maximum));
-    }
+    reference_depth_m = std::max(
+        reference_depth_m, bodyDepthInBoxM(pose, axis, box_minimum, box_maximum, body));
   });
   if (!contact) {
     return false;
   }
-  if (body_overlap) {
-    return distanceToBox(candidate_position, box_minimum, box_maximum) +
-               kContactDepthToleranceM >=
-           reference_distance_m;
-  }
-  return !boxIntersectsFiniteCylinder(candidate_position, axis, box_minimum,
-                                      box_maximum, body_lower_m, body_upper_m,
-                                      body_radius_squared);
+  return bodyDepthInBoxM(candidate_position, axis, box_minimum, box_maximum, body) <=
+         reference_depth_m + kContactDepthToleranceM;
 }
 
 bool proprioceptiveSeedExemptsPoint(const ProprioceptiveFreeSpaceSeed3D& seed,
@@ -846,27 +888,21 @@ bool proprioceptiveSeedExemptsPoint(const ProprioceptiveFreeSpaceSeed3D& seed,
       contactWidenedFootprint(seed.footprint, tolerance_m);
   const SweptFootprintConfig body = physicalBody(seed.footprint);
   bool contact{false};
-  bool body_overlap{false};
-  double reference_distance_m = std::numeric_limits<double>::infinity();
+  double reference_depth_m = std::max(0.0, seed.contact_depth_m);
   forEachContactPose(seed, [&](const Point3& pose) {
     if (!pointIntersectsBody(obstacle_point, pose, seed.body_axis, contact_envelope)) {
       return;
     }
     contact = true;
-    if (pointIntersectsBody(obstacle_point, pose, seed.body_axis, body)) {
-      body_overlap = true;
-      reference_distance_m =
-          std::min(reference_distance_m, distance3D(pose, obstacle_point));
-    }
+    reference_depth_m =
+        std::max(reference_depth_m,
+                 bodyDepthAtPointM(obstacle_point, pose, seed.body_axis, body));
   });
   if (!contact) {
     return false;
   }
-  if (body_overlap) {
-    return distance3D(candidate_position, obstacle_point) + kContactDepthToleranceM >=
-           reference_distance_m;
-  }
-  return !pointIntersectsBody(obstacle_point, candidate_position, seed.body_axis, body);
+  return bodyDepthAtPointM(obstacle_point, candidate_position, seed.body_axis, body) <=
+         reference_depth_m + kContactDepthToleranceM;
 }
 
 SweptFootprintResult validateRawFootprintAt(

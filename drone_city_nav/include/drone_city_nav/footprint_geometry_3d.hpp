@@ -51,6 +51,13 @@ struct ProprioceptiveFreeSpaceSeed3D {
   FootprintBodyAxis body_axis{};
   SweptFootprintConfig footprint{};
   double contact_tolerance_m{0.0};
+  // The depth the body already has in the observed evidence at the seed: the
+  // least shrink of the body that would clear every occupied voxel it
+  // overlaps there. Contact stays allowed to that depth wherever the
+  // departure's contact volume reaches, so a hover that tracks its route a
+  // few centimetres off does not read as pressing deeper. Zero when the seed
+  // was taken without an observed world.
+  double contact_depth_m{0.0};
   // The departure the vehicle leaves along, from the seed to the first node
   // of its route: the poses the departure oracle admitted for the upright
   // hull. The contact volume is swept along it, so evidence the envelope
