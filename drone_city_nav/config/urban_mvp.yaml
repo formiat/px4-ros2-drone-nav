@@ -428,13 +428,16 @@ production_mppi_node:
     # rather than by the airframe; 8 keeps 1.8 m/s^2 below the tilt limit.
     maximum_lateral_acceleration_mps2: 8.0
     # The vertical deceleration the stopping laws may rely on in the worst
-    # direction, a pure climb or descent. PX4 bounds it by MPC_ACC_DOWN_MAX
-    # (3 m/s^2, the default in force: arresting a climb) and MPC_ACC_UP_MAX
-    # (4 m/s^2: arresting a descent). Measured on the true pose in the urban
-    # flight r206 the vehicle arrested descents at up to 3.1 m/s^2 and climbs
-    # at up to 5.5 m/s^2 in ordinary flight. The former 2.0 was below both
-    # bounds and cost 0.2 m/s of the contract's limit (2.2 against 2.42 m/s).
-    guaranteed_vertical_stopping_deceleration_mps2: 3.0
+    # direction, a pure climb or descent. Arresting a descent is bound by the
+    # thrust the airframe has above hover, not by MPC_ACC_UP_MAX (4 m/s^2):
+    # measured on PX4's local position over the urban flights r247 to r252
+    # the vehicle arrested descents at 1.8 to 2.1 m/s^2 at the median and
+    # 2.2 to 2.9 at p95 (climbs at 2.8 to 3.8 median, up to 8). The former
+    # 3.0 exceeded the p95 of four of the five flights; in r252 a horizon
+    # dived at 2.8 m/s onto a roof that the lidar resolved 2.3 m below it,
+    # the stop it was certified with assumed 3.0, the airframe gave 2.2, and
+    # the vehicle struck the roof at 0.85 m/s.
+    guaranteed_vertical_stopping_deceleration_mps2: 2.0
     maximum_control_jerk_mps3: 12.0
     speed_reaction_latency_s: 0.10
     # The range within which the lidar is guaranteed to have resolved an
@@ -511,7 +514,14 @@ production_mppi_node:
     tracking_error_tube_minimum_progress_speed_mps: 2.5
     mppi_footprint_clearance_broad_phase_enabled: true
     route_constraint_diagnostics_distance_m: 30.0
-    maximum_vertical_acceleration_mps2: 4.0
+    # The vertical acceleration the horizon dynamics and the braking contract
+    # plan with, in either sense. Symmetric, so it is the descent arrest the
+    # airframe delivers (2.0 m/s^2, see the guaranteed vertical stopping
+    # deceleration): a dive is then planned no steeper than it can be
+    # arrested. The former 4.0 let the optimiser plan dives it could not stop
+    # (r252). The braking contract's limit rises with it, 5.14 against
+    # 4.93 m/s, because the worst case carries less speed into the stop.
+    maximum_vertical_acceleration_mps2: 2.0
     # Risk-tier bands, for route annotation and diagnostics only. No law
     # measures a margin from them: the clearance laws are the tracking-error
     # tube beside the motion and the stopping capability ahead of it.
