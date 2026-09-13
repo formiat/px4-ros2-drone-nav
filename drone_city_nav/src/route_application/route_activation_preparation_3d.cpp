@@ -1,6 +1,7 @@
 #include "route_activation_preparation_3d.hpp"
 
 #include "drone_city_nav/execution_horizon_commit_3d.hpp"
+#include "drone_city_nav/execution_plan_3d.hpp"
 #include "drone_city_nav/execution_route_certification_3d.hpp"
 #include "drone_city_nav/route_risk_annotation_3d.hpp"
 
@@ -701,12 +702,16 @@ assessReplacement(RouteActivationPreparationState3D state,
   // 247 m loop in place of a 66 m route the moment the search produced it,
   // watched the search shorten the loop to 95 m over the next minute while it
   // flew the loop west, and ran out of mission time. Such a replacement waits
-  // out the grace its extra cost earns; the vehicle stands at the block
-  // meanwhile. The search converging on its world does not end the wait: the
-  // world is what changes while the vehicle stands, a wall copied a metre into
-  // a corridor by a heading error carves away in seconds, and one recorded
-  // flight was handed a converged 195 m loop six seconds into a 36 s grace,
-  // flew it, and never got back. A route released as stalled is past that
+  // out the grace its extra cost earns while the vehicle still flies the
+  // blocked route's validated prefix. The search converging on its world does
+  // not end the wait: one recorded flight was handed a converged 195 m loop
+  // six seconds into a 36 s grace, flew it, and never got back. Standing at
+  // the block does end it: measured over the urban flights r247 to r260 (43
+  // rests under a deferred replacement, 97 s), the candidate shortened by
+  // 58 s while the vehicle stood, 39 s less than the standing itself cost
+  // before the stop and the restart are counted; a vehicle at rest takes the
+  // replacement it has, and a better one replaces it under the successor
+  // improvement rule. A route released as stalled is past that
   // wait: the vehicle stood through whatever grace its block earned, and the
   // release is what ends the standing, so its successor is not weighed
   // against it. One recorded flight held a successor a tenth of a second
@@ -740,8 +745,12 @@ assessReplacement(RouteActivationPreparationState3D state,
         kBlockedReplacementGraceLossRatio *
         std::max(0.0, against_blocked.candidate_remaining_time_s -
                           against_blocked.resident_remaining_time_s);
+    const MotionState3D& vehicle = snapshot.navigation.state;
+    const bool vehicle_at_rest =
+        std::hypot(std::hypot(vehicle.vx, vehicle.vy), vehicle.vz) <=
+        kStationaryExecutionHoldSpeedToleranceMps;
     report.blocked_replacement_deferred =
-        against_blocked.resident_remaining_time_s > 0.0 &&
+        against_blocked.resident_remaining_time_s > 0.0 && !vehicle_at_rest &&
         state.blocked_replacement_held_s < report.blocked_replacement_grace_s;
   }
   // A deferred replacement is drafted for nobody: with a pending draft the

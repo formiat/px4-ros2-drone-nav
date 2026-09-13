@@ -583,7 +583,7 @@ TEST(RouteActivationCoordinator3DTest,
 }
 
 TEST(RouteActivationCoordinator3DTest,
-     AStalledReleaseTakesASlowerSuccessorWithoutTheBlockedGrace) {
+     AStalledReleaseOrAStandingVehicleTakesASlowerSuccessorWithoutTheBlockedGrace) {
   ExecutionSupervisor3D supervisor;
   RouteActivationCoordinator3D coordinator{coordinatorConfig(3.0)};
   PreparedRouteActivation3D first = prepare(coordinator, activationFixture(supervisor));
@@ -611,10 +611,22 @@ TEST(RouteActivationCoordinator3DTest,
   };
   ActivationFixture3D blocked = replacement_for(RouteReleaseReason3D::kBlocked);
   ASSERT_NE(blocked.transaction, nullptr);
+  blocked.snapshot.navigation.state.vx = 2.0F;
   const PreparedRouteActivation3D held = prepare(slow_coordinator, blocked);
   ASSERT_TRUE(held.result.admission.blocked_replacement_assessed);
   EXPECT_TRUE(held.result.admission.blocked_replacement_deferred);
   EXPECT_FALSE(held.pending_draft.has_value());
+
+  // The grace is spent flying the blocked route's prefix. Once the vehicle
+  // stands at the block, the same slower successor is taken as found.
+  ActivationFixture3D standing = replacement_for(RouteReleaseReason3D::kBlocked);
+  ASSERT_NE(standing.transaction, nullptr);
+  standing.snapshot.navigation.state.vx = 0.1F;
+  const PreparedRouteActivation3D taken = prepare(slow_coordinator, standing);
+  ASSERT_TRUE(taken.result.admission.blocked_replacement_assessed);
+  EXPECT_FALSE(taken.result.admission.blocked_replacement_deferred);
+  EXPECT_TRUE(taken.result.admission.replacement.replacementAllowed());
+  EXPECT_TRUE(taken.pending_draft.has_value());
 
   // Released as stalled instead, the vehicle has stood through that grace
   // already: the successor is taken as found.
