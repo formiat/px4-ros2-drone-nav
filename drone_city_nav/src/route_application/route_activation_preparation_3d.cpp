@@ -131,11 +131,15 @@ struct RouteActivationPreparationState3D final {
 
 // The grace a blocked route's worse replacement gets, as a share of what the
 // replacement would cost over the route it replaces. Waiting is a bet that the
-// block clears or the search finds better; when the bet is even, waiting up to
-// half the loss breaks even with taking the replacement at once, and a block
-// half a second ahead of a route worth two seconds more is waited out for one
-// second while a loop worth a hundred seconds more is waited out for fifty.
-constexpr double kBlockedReplacementGraceLossRatio{0.5};
+// block clears or the search finds better. At half the loss the bet was
+// measured on the urban flights r261 to r265: 34 to 43 held replacements per
+// flight, 1.8 to 2.6 s each, and the vehicle braked for the block under the
+// blocked-route limiter through every one of them (9 to 21 s lost per flight
+// against 4.5 m/s), while the better route the wait was for replaced the
+// taken one in 1 of 108 successor assessments. No grace: the first raw-valid
+// replacement is taken, and a better one replaces it under the successor
+// improvement rule as the search converges.
+constexpr double kBlockedReplacementGraceLossRatio{0.0};
 
 [[nodiscard]] RouteActivationPreparationState3D
 beginPreparation(RouteActivationPreparationRequest3D request) {

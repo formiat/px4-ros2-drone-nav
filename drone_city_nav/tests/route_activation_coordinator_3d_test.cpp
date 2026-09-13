@@ -583,7 +583,7 @@ TEST(RouteActivationCoordinator3DTest,
 }
 
 TEST(RouteActivationCoordinator3DTest,
-     AStalledReleaseOrAStandingVehicleTakesASlowerSuccessorWithoutTheBlockedGrace) {
+     ABlockedOrStalledReleaseTakesASlowerSuccessorWithoutAGrace) {
   ExecutionSupervisor3D supervisor;
   RouteActivationCoordinator3D coordinator{coordinatorConfig(3.0)};
   PreparedRouteActivation3D first = prepare(coordinator, activationFixture(supervisor));
@@ -594,8 +594,9 @@ TEST(RouteActivationCoordinator3DTest,
   const std::uint64_t generation = supervisor.plan()->routeGenerationHighWater();
   ASSERT_GT(generation, 0U);
 
-  // The same route flown slower: it loses to the resident on remaining time,
-  // so a blocked release holds it for the grace that loss earns.
+  // The same route flown slower: it loses to the resident on remaining time;
+  // a blocked release takes it all the same, moving or standing, because the
+  // grace such a loss earns is nil.
   RouteActivationCoordinator3D slow_coordinator{coordinatorConfig(0.5)};
   const auto replacement_for = [&](const RouteReleaseReason3D reason) {
     ActivationFixture3D released = activationFixture(supervisor);
@@ -612,13 +613,12 @@ TEST(RouteActivationCoordinator3DTest,
   ActivationFixture3D blocked = replacement_for(RouteReleaseReason3D::kBlocked);
   ASSERT_NE(blocked.transaction, nullptr);
   blocked.snapshot.navigation.state.vx = 2.0F;
-  const PreparedRouteActivation3D held = prepare(slow_coordinator, blocked);
-  ASSERT_TRUE(held.result.admission.blocked_replacement_assessed);
-  EXPECT_TRUE(held.result.admission.blocked_replacement_deferred);
-  EXPECT_FALSE(held.pending_draft.has_value());
+  const PreparedRouteActivation3D moving = prepare(slow_coordinator, blocked);
+  ASSERT_TRUE(moving.result.admission.blocked_replacement_assessed);
+  EXPECT_FALSE(moving.result.admission.blocked_replacement_deferred);
+  EXPECT_TRUE(moving.result.admission.replacement.replacementAllowed());
+  EXPECT_TRUE(moving.pending_draft.has_value());
 
-  // The grace is spent flying the blocked route's prefix. Once the vehicle
-  // stands at the block, the same slower successor is taken as found.
   ActivationFixture3D standing = replacement_for(RouteReleaseReason3D::kBlocked);
   ASSERT_NE(standing.transaction, nullptr);
   standing.snapshot.navigation.state.vx = 0.1F;
