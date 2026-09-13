@@ -29,8 +29,10 @@ MAXIMUM_POST_BOOTSTRAP_NO_ROUTE_HOLD_RATIO = 0.03
 # the goal all count against it. The five accepting flights of the 97/3
 # thresholds flew 430 to 573 m in 275 to 367 s: 1.55 to 1.63 m/s; the five
 # flights that accepted the 2.0 m/s threshold (r217 to r221, commit
-# 3a565f24) flew 385 to 428 m in 161 to 190 s: 2.25 to 2.40 m/s.
-MINIMUM_MEAN_FLIGHT_SPEED_MPS = 2.5
+# 3a565f24) flew 385 to 428 m in 161 to 190 s: 2.25 to 2.40 m/s; the five
+# that accepted 2.5 m/s (r261 to r265, commit 5d5dd9ea) flew 398 to 435 m
+# in 144 to 172 s: 2.52 to 2.83 m/s.
+MINIMUM_MEAN_FLIGHT_SPEED_MPS = 3.0
 
 MISSION_READINESS_PATTERN = (
     r"\[(\d+\.\d+)\] \[mission_monitor_node\]: MISSION_READINESS ready=true"
