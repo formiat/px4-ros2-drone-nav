@@ -499,13 +499,16 @@ production_mppi_node:
     tracking_error_tube_response_time_s: 0.075
     # Where the physical body clears raw occupancy, a constrained segment keeps
     # at least this ceiling instead of crawling, and unobserved space is
-    # entered at no less than it. The ceiling is the 0.15 m tube the floor
-    # has always stood for: 1.0 m/s at the former 0.15 s horizon, 2.0 m/s at
-    # the measured 0.075 s. The 0.82 m envelope keeps 0.27 m beyond the
-    # 0.55 m body against a lateral tracking error of 0.07 m at p99 (urban
-    # flight r208). At 1.5 the clearance limiter held the vehicle at 1.6 m/s
-    # on 28 percent of the logged ticks of the flights r217 to r222.
-    tracking_error_tube_minimum_progress_speed_mps: 2.0
+    # entered at no less than it. The ceiling is a tube of this speed times
+    # the 0.075 s response horizon: 0.19 m at 2.5 m/s, inside the 0.27 m the
+    # 0.82 m envelope keeps beyond the 0.55 m body and 2.7 times the lateral
+    # tracking error of 0.07 m at p99 (urban flight r208); the body validation
+    # stays the only hard authority. At 1.5 the clearance limiter held the
+    # vehicle at 1.6 m/s on 28 percent of the logged ticks of the flights
+    # r217 to r222; at 2.0 (a 0.15 m tube) it sat on the floor on 50 to 73
+    # percent of its own ticks, 15 to 25 percent of the flights r247 to r249,
+    # with the mean flight speed at 2.47 to 2.54 m/s.
+    tracking_error_tube_minimum_progress_speed_mps: 2.5
     mppi_footprint_clearance_broad_phase_enabled: true
     route_constraint_diagnostics_distance_m: 30.0
     maximum_vertical_acceleration_mps2: 4.0
