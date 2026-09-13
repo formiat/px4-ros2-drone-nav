@@ -503,15 +503,19 @@ production_mppi_node:
     # Where the physical body clears raw occupancy, a constrained segment keeps
     # at least this ceiling instead of crawling, and unobserved space is
     # entered at no less than it. The ceiling is a tube of this speed times
-    # the 0.075 s response horizon: 0.19 m at 2.5 m/s, inside the 0.27 m the
-    # 0.82 m envelope keeps beyond the 0.55 m body and 2.7 times the lateral
-    # tracking error of 0.07 m at p99 (urban flight r208); the body validation
-    # stays the only hard authority. At 1.5 the clearance limiter held the
-    # vehicle at 1.6 m/s on 28 percent of the logged ticks of the flights
-    # r217 to r222; at 2.0 (a 0.15 m tube) it sat on the floor on 50 to 73
-    # percent of its own ticks, 15 to 25 percent of the flights r247 to r249,
-    # with the mean flight speed at 2.47 to 2.54 m/s.
-    tracking_error_tube_minimum_progress_speed_mps: 2.5
+    # the 0.075 s response horizon: 0.225 m at 3.0 m/s, inside the 0.27 m the
+    # 0.82 m envelope keeps beyond the 0.55 m body (the clearance the tube is
+    # measured against is the envelope's, so the body keeps that 0.27 m on
+    # top of the tube) and 1.5 to 2.5 times the lateral tracking error
+    # measured on PX4's local position against the planned setpoints in the
+    # urban flights r261 to r265: 0.09 to 0.15 m at p99 between 1.5 and
+    # 4.5 m/s, 0.053 s at p99 as error over speed. The body validation stays
+    # the only hard authority. At 1.5 the clearance limiter held the vehicle
+    # at 1.6 m/s on 28 percent of the logged ticks of the flights r217 to
+    # r222; at 2.0 it sat on the floor on 15 to 25 percent of the flights
+    # r247 to r249 (2.47 to 2.54 m/s); at 2.5 on 62 to 83 percent of its own
+    # ticks, 40 to 57 s of the flights r261 to r265 (2.52 to 2.83 m/s).
+    tracking_error_tube_minimum_progress_speed_mps: 3.0
     mppi_footprint_clearance_broad_phase_enabled: true
     route_constraint_diagnostics_distance_m: 30.0
     # The vertical acceleration the horizon dynamics and the braking contract
