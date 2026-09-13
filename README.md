@@ -498,7 +498,7 @@ point-to-point mission follows the PX4-spawned model `x500_lidar_2d_0`; intercep
 missions derive the model from the typed spectator selection. Disable the
 camera with `ENABLE_GZ_GUI_FOLLOW_CAMERA=false`, change the point-to-point target
 with `GZ_GUI_FOLLOW_TARGET`, or adjust the third-person camera offset with
-`GZ_GUI_FOLLOW_OFFSET="-12 0 6"`. The runner waits for the initial model to appear
+`GZ_GUI_FOLLOW_OFFSET="-7 0 3.5"`. The runner waits for the initial model to appear
 in the server scene before starting the GUI, then repeatedly publishes an
 ID-aware native `CameraTrack` command until the resulting target state remains
 stable. The conflicting `/gui/follow` service is intentionally not used.

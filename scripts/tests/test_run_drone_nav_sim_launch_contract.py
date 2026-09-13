@@ -154,7 +154,7 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
 
     def test_gazebo_follow_camera_defaults_match_forward_view(self) -> None:
         self.assertIn(
-            'gazebo_gui_follow_offset="${GZ_GUI_FOLLOW_OFFSET:--12 0 6}"',
+            'gazebo_gui_follow_offset="${GZ_GUI_FOLLOW_OFFSET:--7 0 3.5}"',
             self.text,
         )
         self.assertIn(
