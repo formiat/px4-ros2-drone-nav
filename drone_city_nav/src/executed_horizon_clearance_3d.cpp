@@ -17,6 +17,27 @@ namespace {
                     second.z - first.z);
 }
 
+// The physical body alone, for the clearance a constrained sample's body keeps.
+[[nodiscard]] SweptFootprintConfig
+bodyFootprint(const SweptFootprintConfig& footprint) {
+  SweptFootprintConfig body = footprint;
+  body.radius_m = footprint.body_radius_m;
+  body.lower_extent_m = footprint.body_lower_extent_m;
+  body.upper_extent_m = footprint.body_upper_extent_m;
+  return body;
+}
+
+[[nodiscard]] double bodyClearanceM(const EsdfGrid3D& grid,
+                                    const std::span<const float> esdf_m,
+                                    const Point3& first, const Point3& second,
+                                    const SweptFootprintConfig& body) {
+  const DerivedFootprintClearance3D clearance =
+      querySweptFootprintClearance3D(grid, esdf_m, first, second, body);
+  return clearance.evidence.known_clearance_observed
+             ? clearance.evidence.minimum_known_clearance_m
+             : std::numeric_limits<double>::infinity();
+}
+
 } // namespace
 
 ExecutedHorizonClearance3D measureExecutedHorizonClearance3D(
@@ -30,6 +51,7 @@ ExecutedHorizonClearance3D measureExecutedHorizonClearance3D(
     return result;
   }
   result.available = true;
+  const SweptFootprintConfig body = bodyFootprint(footprint);
   double travelled_m{0.0};
   for (std::size_t index = first_remaining_state_index;
        index + 1U < horizon.states.size(); ++index) {
@@ -45,7 +67,9 @@ ExecutedHorizonClearance3D measureExecutedHorizonClearance3D(
       result.minimum_clearance_m = std::min(result.minimum_clearance_m, clearance_m);
       if (clearance_m < constraint_clearance_m) {
         result.constrained_samples.push_back(ConstrainedHorizonSample3D{
-            .distance_m = travelled_m, .clearance_m = clearance_m});
+            .distance_m = travelled_m,
+            .clearance_m = clearance_m,
+            .body_clearance_m = bodyClearanceM(grid, esdf_m, first, second, body)});
       }
     }
     travelled_m += segmentLength(first, second);
@@ -66,6 +90,7 @@ measureRouteClearance3D(const std::span<const RouteSample3D> route,
     return result;
   }
   result.available = true;
+  const SweptFootprintConfig body = bodyFootprint(footprint);
   const double end_station_m = from_station_m + lookahead_m;
   Point3 previous = sampleRoute3DAtStation(route, from_station_m).position;
   double previous_station_m = from_station_m;
@@ -81,7 +106,9 @@ measureRouteClearance3D(const std::span<const RouteSample3D> route,
       if (clearance_m < constraint_clearance_m) {
         result.constrained_samples.push_back(ConstrainedHorizonSample3D{
             .distance_m = std::max(0.0, previous_station_m - from_station_m),
-            .clearance_m = clearance_m});
+            .clearance_m = clearance_m,
+            .body_clearance_m =
+                bodyClearanceM(grid, esdf_m, previous, sample.position, body)});
       }
     }
     if (sample.station_m >= end_station_m) {

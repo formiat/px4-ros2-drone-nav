@@ -315,6 +315,29 @@ TEST(MppiSpeedPolicyTest, ATightPointFarAheadOnlyHasToBeReachedSlowly) {
   EXPECT_GT(result.clearance_limit_mps, 10.0);
 }
 
+TEST(MppiSpeedPolicyTest, TheBodyClearanceBoundsTheProgressFloor) {
+  MppiSpeedPolicyConfig config = clearanceLimiterConfig();
+  config.clearance_minimum_progress_speed_mps = 3.0;
+  MppiSpeedPolicyInput input;
+  input.terminal_goal_limit_enabled = false;
+
+  // The envelope stands in evidence, the body keeps 0.1 m: the floor would
+  // admit 3 m/s, the body's tube 0.2 m/s, and a contact is left at 1 m/s.
+  ExecutedHorizonClearance3D grazing = executedClearance(0.0, 0.0);
+  grazing.constrained_samples.front().body_clearance_m = 0.1;
+  input.executed_horizon_clearance = grazing;
+  EXPECT_NEAR(evaluateMppiSpeedPolicy(config, input).clearance_limit_mps, 1.0, 1.0e-6);
+
+  // The body keeps 2 m: its tube admits 4 m/s and the floor stands.
+  grazing.constrained_samples.front().body_clearance_m = 2.0;
+  input.executed_horizon_clearance = grazing;
+  EXPECT_NEAR(evaluateMppiSpeedPolicy(config, input).clearance_limit_mps, 3.0, 1.0e-6);
+
+  // Unmeasured, the body's clearance bounds nothing.
+  input.executed_horizon_clearance = executedClearance(0.0, 0.0);
+  EXPECT_NEAR(evaluateMppiSpeedPolicy(config, input).clearance_limit_mps, 3.0, 1.0e-6);
+}
+
 TEST(MppiSpeedPolicyTest, ATightPointBehindAMildOneStillBindsTheReference) {
   // A mild constraint nearby must not hide a tight one a few metres behind
   // it: every constrained sample is folded, and the tightest answer wins.

@@ -20,6 +20,11 @@ namespace drone_city_nav {
 struct ConstrainedHorizonSample3D {
   double distance_m{0.0};
   double clearance_m{0.0};
+  // The clearance the physical body itself keeps there. The envelope's
+  // clearance is what the tube law prices; where the envelope already stands
+  // in evidence, the body's is the only margin left and bounds the reference
+  // by itself. Infinite when it was not measured.
+  double body_clearance_m{std::numeric_limits<double>::infinity()};
 };
 
 // Where the motion the vehicle is carrying out right now comes close to known

@@ -161,6 +161,62 @@ TEST(ExecutedHorizonClearance3DTest, TheRouteAheadReportsWhereItRunsClose) {
   EXPECT_GT(clearance.constrainedClearanceM(), 0.0);
   EXPECT_LT(clearance.constrainedClearanceM(), 2.0);
   EXPECT_DOUBLE_EQ(clearance.minimum_clearance_m, clearance.constrainedClearanceM());
+  // A point footprint is its own body: the body keeps the same clearance.
+  EXPECT_DOUBLE_EQ(clearance.constrained_samples.front().body_clearance_m,
+                   clearance.constrainedClearanceM());
+}
+
+// A true distance field to a wall plane at x = `wall_x_m` across the known
+// part of the lattice, so that a wider footprint keeps less of it.
+[[nodiscard]] std::vector<float> esdfToWallPlane(const float wall_x_m) {
+  std::vector<float> field = esdf();
+  for (int z = 0; z < 3; ++z) {
+    for (int y = 0; y < 3; ++y) {
+      for (int x = 0; x < kKnownLength; ++x) {
+        field[(static_cast<std::size_t>(z) * 3U + static_cast<std::size_t>(y)) *
+                  static_cast<std::size_t>(kLength) +
+              static_cast<std::size_t>(x)] =
+            std::abs(wall_x_m - (static_cast<float>(x) + 0.5F));
+      }
+    }
+  }
+  return field;
+}
+
+TEST(ExecutedHorizonClearance3DTest, TheBodyClearanceIsMeasuredWithTheBodyFootprint) {
+  // The conservative query answers for the whole 3D offset of every sample,
+  // so it is not monotone in the radius on a lattice; the property that
+  // holds exactly is that a body of the envelope's own size keeps the
+  // envelope's clearance, and a smaller body is measured on its own.
+  SweptFootprintConfig footprint = pointFootprint();
+  footprint.radius_m = 0.4;
+  footprint.body_radius_m = 0.4;
+  footprint.body_lower_extent_m = 0.0;
+  footprint.body_upper_extent_m = 0.0;
+  footprint.perimeter_samples = 8U;
+  footprint.radial_rings = 1U;
+  footprint.axial_samples = 2U;
+  const ExecutedHorizonClearance3D same = measureRouteClearance3D(
+      routeAlongX(0.5, 10U), 2.0, 7.0, grid(), esdfToWallPlane(9.5F), footprint, 2.0);
+  ASSERT_TRUE(same.constrained());
+  for (const ConstrainedHorizonSample3D& sample : same.constrained_samples) {
+    EXPECT_DOUBLE_EQ(sample.body_clearance_m, sample.clearance_m);
+  }
+
+  footprint.body_radius_m = 0.2;
+  const ExecutedHorizonClearance3D smaller = measureRouteClearance3D(
+      routeAlongX(0.5, 10U), 2.0, 7.0, grid(), esdfToWallPlane(9.5F), footprint, 2.0);
+  ASSERT_TRUE(smaller.constrained());
+  ASSERT_EQ(smaller.constrained_samples.size(), same.constrained_samples.size());
+  bool measured_on_its_own{false};
+  for (std::size_t index = 0U; index < smaller.constrained_samples.size(); ++index) {
+    const ConstrainedHorizonSample3D& sample = smaller.constrained_samples[index];
+    EXPECT_TRUE(std::isfinite(sample.body_clearance_m));
+    EXPECT_DOUBLE_EQ(sample.clearance_m, same.constrained_samples[index].clearance_m);
+    measured_on_its_own =
+        measured_on_its_own || sample.body_clearance_m != sample.clearance_m;
+  }
+  EXPECT_TRUE(measured_on_its_own);
 }
 
 TEST(ExecutedHorizonClearance3DTest, TheRouteClearanceStopsAtTheLookahead) {

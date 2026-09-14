@@ -97,6 +97,12 @@ constexpr double kMotionDirectionSpeedThresholdMps{0.25};
   return Vec3{};
 }
 
+// The speed a contact is left at: where the body's own clearance is nil the
+// tube law admits nothing, and a vehicle resting against evidence could not
+// leave it. 1 m/s is a 0.075 m tube at the measured response horizon, inside
+// the 0.16 m the 0.55 m body model keeps beyond the rotor tips (0.39 m).
+constexpr double kContactDepartureSpeedMps{1.0};
+
 // The tightest speed a set of constrained samples admits: the tube law at each
 // sample, and the stopping law for what the vehicle may carry on the way to
 // it. The tightest answer wins.
@@ -115,11 +121,28 @@ clearanceLimitedSpeed(const std::span<const ConstrainedHorizonSample3D> samples,
       std::isfinite(evidence_age_s) ? std::max(0.0, evidence_age_s) : 0.0;
   double limit_mps = std::numeric_limits<double>::infinity();
   for (const ConstrainedHorizonSample3D& sample : samples) {
-    const double admissible_speed_mps =
+    // The progress floor stands on the margin the envelope keeps beyond the
+    // body. Where the envelope already stands in evidence that margin is
+    // spent, and the body's own clearance is all the tube has to fit in: in
+    // the urban flight r286 the reference sat on the 3 m/s floor with the
+    // body model 0.02 m from a wall the lidar had resolved beside the motion,
+    // a revocation's braking overshot into it, and the rotor touched. The
+    // body's clearance bounds the floor, down to the speed a contact is left
+    // at.
+    const double envelope_admissible_mps =
         std::max(config.clearance_minimum_progress_speed_mps,
                  static_cast<double>(mppi::tubeAdmissibleSpeedMps(
                      static_cast<float>(std::max(0.0, sample.clearance_m)),
                      static_cast<float>(config.clearance_response_time_s))));
+    const double body_admissible_mps =
+        std::max(kContactDepartureSpeedMps,
+                 std::isfinite(sample.body_clearance_m)
+                     ? static_cast<double>(mppi::tubeAdmissibleSpeedMps(
+                           static_cast<float>(std::max(0.0, sample.body_clearance_m)),
+                           static_cast<float>(config.clearance_response_time_s)))
+                     : std::numeric_limits<double>::infinity());
+    const double admissible_speed_mps =
+        std::min(envelope_admissible_mps, body_admissible_mps);
     limit_mps = std::min(
         limit_mps, std::max(admissible_speed_mps,
                             stoppingLimitedSpeed(sample.distance_m,

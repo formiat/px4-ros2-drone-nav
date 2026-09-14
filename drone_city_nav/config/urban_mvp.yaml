@@ -509,8 +509,11 @@ production_mppi_node:
     # top of the tube) and 1.5 to 2.5 times the lateral tracking error
     # measured on PX4's local position against the planned setpoints in the
     # urban flights r261 to r265: 0.09 to 0.15 m at p99 between 1.5 and
-    # 4.5 m/s, 0.053 s at p99 as error over speed. The body validation stays
-    # the only hard authority. At 1.5 the clearance limiter held the vehicle
+    # 4.5 m/s, 0.053 s at p99 as error over speed. Where the envelope
+    # already stands in evidence that margin is spent and the body's own
+    # clearance bounds the floor (mppi_speed_policy: r286, the body model
+    # 0.02 m from a wall at this floor). The body validation stays the only
+    # hard authority. At 1.5 the clearance limiter held the vehicle
     # at 1.6 m/s on 28 percent of the logged ticks of the flights r217 to
     # r222; at 2.0 it sat on the floor on 15 to 25 percent of the flights
     # r247 to r249 (2.47 to 2.54 m/s); at 2.5 on 62 to 83 percent of its own
