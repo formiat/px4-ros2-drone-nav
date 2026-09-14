@@ -31,8 +31,12 @@ MAXIMUM_POST_BOOTSTRAP_NO_ROUTE_HOLD_RATIO = 0.03
 # flights that accepted the 2.0 m/s threshold (r217 to r221, commit
 # 3a565f24) flew 385 to 428 m in 161 to 190 s: 2.25 to 2.40 m/s; the five
 # that accepted 2.5 m/s (r261 to r265, commit 5d5dd9ea) flew 398 to 435 m
-# in 144 to 172 s: 2.52 to 2.83 m/s.
-MINIMUM_MEAN_FLIGHT_SPEED_MPS = 3.0
+# in 144 to 172 s: 2.52 to 2.83 m/s; five on cb45e5fb (r268 to r272) flew
+# 3.07 to 3.19 m/s and carried the 3.0 m/s threshold, until the body's own
+# clearance was made to bound the progress floor (9ab94040, after the
+# crashes r281 and r286): the five flights r288 to r292 on it flew 372 to
+# 417 m in 124 to 149 s, 2.58 to 3.10 m/s, one of them above 3.0.
+MINIMUM_MEAN_FLIGHT_SPEED_MPS = 2.5
 
 MISSION_READINESS_PATTERN = (
     r"\[(\d+\.\d+)\] \[mission_monitor_node\]: MISSION_READINESS ready=true"
