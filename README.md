@@ -22,6 +22,14 @@ guidance, multi-drone scenarios, cooperative air traffic, generalized static 3D
 passages, no-static 3D lidar perception, lidar-inertial localization, and
 vision-only 3D perception without lidar or static maps.
 
+## Releases
+
+Code releases are tagged `vMAJOR.MINOR.PATCH` on `main` and described in
+[`CHANGELOG.md`](CHANGELOG.md); environment asset bundles carry their own
+`environment-assets-*` tags. The current release is `v0.2.0`: point-to-point
+navigation without a static map through a complex 3D urban location. Each
+flight's runtime manifest records the package version and `git describe`.
+
 ## Status And Safety
 
 This project is a simulation-oriented research and development stack. It is

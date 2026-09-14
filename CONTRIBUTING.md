@@ -61,6 +61,29 @@ All C++ development must follow `CPP_BEST_PRACTICES.md`.
 10. If a command or tool choice is ambiguous, do not guess. Record the skipped
    check and the reason in the review or task notes.
 
+## Releases
+
+Code releases are annotated tags `vMAJOR.MINOR.PATCH` on `main`; environment
+assets keep their own `environment-assets-*` tags. To cut a release:
+
+1. Fly the validation series on the release commit with nothing changed
+   between flights (`log/tools/series.sh` runs the urban point-to-point
+   flights one at a time and records `gz_pose.csv` and `tracking.npz`); record
+   the table in `CHANGELOG.md` with the commit, the flights, the mean speed,
+   the crashes, the route availability and the planner p95.
+2. In one commit: bump `<version>` in `drone_city_nav/package.xml`, add the
+   `CHANGELOG.md` entry (validated scenario, laws in force, known
+   limitations, compatible asset tags), and update the roadmap status.
+3. Run `make format`, `make quality` and `make test-scripts` in the container,
+   commit, then `git tag -a vX.Y.Z -m "..."` on that commit and push `main`
+   and the tag.
+4. Publish the GitHub release from the tag with the changelog entry as its
+   text. No build artifacts are attached: the code builds from source and the
+   assets are released separately.
+
+Every flight's runtime manifest records the package version and
+`git describe`, so a run is attributable to a release by name.
+
 ## Scope Rules
 
 - Keep production C++ in `drone_city_nav/include` and `drone_city_nav/src`.

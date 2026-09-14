@@ -713,6 +713,20 @@ route availability must exceed 99 percent and ordinary
 below 200 ms. Each runtime manifest records commit, configuration, and world
 hashes, and the run retains the raw snapshot for the constrained section.
 
+### State At v0.2.0
+
+The release `v0.2.0` (2026-09-14) ships this item as the point-to-point
+no-static navigation through the Urban Circuit Practice 01 location; see
+`CHANGELOG.md` for the validated series and the laws in force. Accepted: the
+raw world and distance evidence, the persistent strategic planner, the route
+owner and execution plan contracts, the contact law, the honest vertical
+dynamics, the body-clearance bound on the progress floor, and the immediate
+blocked-route replacement. Open: route availability after bootstrap is 88 to
+95 percent against the 97 percent target, the Manhattan final validation of
+this section has not been repeated on the release commit, and the cooperative
+and interception scenarios have not been re-flown since the September
+navigation changes. The item stays in progress.
+
 ## 13. GNSS- And Magnetometer-Denied Lidar-Inertial Navigation
 
 **Type:** dependent localization stage.

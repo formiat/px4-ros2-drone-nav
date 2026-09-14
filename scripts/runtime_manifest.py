@@ -90,6 +90,19 @@ def update_raw_snapshot_record(
     atomic_write_json(manifest_path, document)
 
 
+def package_version(repository: Path) -> str:
+    """The version of drone_city_nav from its package.xml, or "unknown"."""
+    package = repository / "drone_city_nav" / "package.xml"
+    try:
+        for line in package.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if stripped.startswith("<version>") and stripped.endswith("</version>"):
+                return stripped[len("<version>") : -len("</version>")]
+    except OSError:
+        pass
+    return "unknown"
+
+
 def _git_output(repository: Path, *arguments: str) -> str:
     result = subprocess.run(
         ["git", *arguments],
@@ -124,6 +137,10 @@ def create_manifest(args: argparse.Namespace) -> dict[str, Any]:
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "repository": {
             "commit": commit,
+            # The release the flight belongs to: the package version and the
+            # nearest tag, so a run is comparable across releases by name.
+            "version": package_version(repository),
+            "describe": _git_output(repository, "describe", "--tags", "--always"),
             "dirty": bool(status),
             "status_sha256": hashlib.sha256(status.encode("utf-8")).hexdigest(),
         },
