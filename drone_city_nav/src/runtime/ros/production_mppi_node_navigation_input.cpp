@@ -1,6 +1,5 @@
 #include "drone_city_nav/mppi/mppi_reference.hpp"
 
-#include <bit>
 #include <chrono>
 #include <cinttypes>
 #include <cmath>
@@ -12,104 +11,33 @@
 #include "production_mppi_node.hpp"
 
 namespace drone_city_nav {
-namespace {
 
-constexpr std::uint64_t kNavigationPayloadFingerprintOffset{
-    14'695'981'039'346'656'037ULL};
-constexpr std::uint64_t kNavigationPayloadFingerprintPrime{1'099'511'628'211ULL};
-
-void appendNavigationPayloadFingerprint(std::uint64_t& fingerprint,
-                                        const std::uint64_t word) noexcept {
-  for (std::size_t byte_index = 0U; byte_index < sizeof(word); ++byte_index) {
-    fingerprint ^= (word >> (byte_index * 8U)) & 0xFFU;
-    fingerprint *= kNavigationPayloadFingerprintPrime;
-  }
-}
-
-[[nodiscard]] std::uint32_t canonicalFloatBits(const float value) noexcept {
-  static_assert(sizeof(float) == sizeof(std::uint32_t));
-  if (value == 0.0F) {
-    return 0U;
-  }
-  if (std::isnan(value)) {
-    return 0x7FC0'0000U;
-  }
-  return std::bit_cast<std::uint32_t>(value);
-}
-
-[[nodiscard]] std::uint64_t navigationPayloadFingerprint(
-    const px4_msgs::msg::VehicleLocalPosition& message) noexcept {
-  std::uint64_t fingerprint = kNavigationPayloadFingerprintOffset;
-  const auto append_float = [&](const float value) noexcept {
-    appendNavigationPayloadFingerprint(fingerprint, canonicalFloatBits(value));
-  };
-  appendNavigationPayloadFingerprint(fingerprint, 1U); // Fingerprint schema.
-  append_float(message.x);
-  append_float(message.y);
-  append_float(message.z);
-  append_float(message.delta_xy[0]);
-  append_float(message.delta_xy[1]);
-  append_float(message.delta_z);
-  append_float(message.vx);
-  append_float(message.vy);
-  append_float(message.vz);
-  append_float(message.delta_vxy[0]);
-  append_float(message.delta_vxy[1]);
-  append_float(message.delta_vz);
-  append_float(message.ax);
-  append_float(message.ay);
-  append_float(message.az);
-  append_float(message.heading);
-  append_float(message.delta_heading);
-  appendNavigationPayloadFingerprint(fingerprint, message.xy_reset_counter);
-  appendNavigationPayloadFingerprint(fingerprint, message.z_reset_counter);
-  appendNavigationPayloadFingerprint(fingerprint, message.vxy_reset_counter);
-  appendNavigationPayloadFingerprint(fingerprint, message.vz_reset_counter);
-  appendNavigationPayloadFingerprint(fingerprint, message.heading_reset_counter);
-  appendNavigationPayloadFingerprint(fingerprint, message.xy_valid ? 1U : 0U);
-  appendNavigationPayloadFingerprint(fingerprint, message.z_valid ? 1U : 0U);
-  appendNavigationPayloadFingerprint(fingerprint, message.v_xy_valid ? 1U : 0U);
-  appendNavigationPayloadFingerprint(fingerprint, message.v_z_valid ? 1U : 0U);
-  appendNavigationPayloadFingerprint(fingerprint,
-                                     message.heading_good_for_control ? 1U : 0U);
-  return fingerprint;
-}
-
-} // namespace
-
-void ProductionMppiNode::onLocalPosition(
-    const px4_msgs::msg::VehicleLocalPosition& message) {
+void ProductionMppiNode::onLocalState(const AutopilotLocalState& message) {
   ProductionMppiNavigation navigation;
   navigation.receive_stamp_ns = get_clock()->now().nanoseconds();
-  // PX4 source timestamps and ROS simulation time belong to different clock
-  // domains.  Timestamp admission uses the local monotonic receive clock;
+  // Autopilot source timestamps and ROS simulation time belong to different
+  // clock domains. Timestamp admission uses the local monotonic receive clock;
   // ROS time remains the contract timestamp stored in the navigation sample.
   const std::int64_t monotonic_receive_stamp_ns =
       std::chrono::duration_cast<std::chrono::nanoseconds>(
           std::chrono::steady_clock::now().time_since_epoch())
           .count();
+  // The adapter has already read the sample in the map frame; the contracts
+  // here are the validity the autopilot vouches for and finite arithmetic.
   const bool position_velocity_contract =
-      message.xy_valid && message.z_valid && message.v_xy_valid && message.v_z_valid &&
-      std::isfinite(message.x) && std::isfinite(message.y) &&
-      std::isfinite(message.z) && std::isfinite(message.vx) &&
-      std::isfinite(message.vy) && std::isfinite(message.vz);
-  const bool heading_contract =
-      message.heading_good_for_control && std::isfinite(message.heading);
-  const Point2 map_position = config_.world.px4_map_transform.localPositionToMap(
-      Point2{static_cast<double>(message.x), static_cast<double>(message.y)});
-  const Point2 map_velocity = config_.world.px4_map_transform.localVectorToMap(
-      Point2{static_cast<double>(message.vx), static_cast<double>(message.vy)});
-  const double map_yaw =
-      heading_contract
-          ? config_.world.px4_map_transform.px4HeadingToMapYaw(message.heading)
-          : 0.0;
-  navigation.state.x = static_cast<float>(map_position.x);
-  navigation.state.y = static_cast<float>(map_position.y);
-  navigation.state.z = static_cast<float>(-static_cast<double>(message.z) +
-                                          config_.world.px4_map_transform.map_origin.z);
-  navigation.state.vx = static_cast<float>(map_velocity.x);
-  navigation.state.vy = static_cast<float>(map_velocity.y);
-  navigation.state.vz = -message.vz;
+      message.position_valid && message.altitude_valid && message.velocity_valid &&
+      message.vertical_velocity_valid && std::isfinite(message.position.x) &&
+      std::isfinite(message.position.y) && std::isfinite(message.position.z) &&
+      std::isfinite(message.velocity.x) && std::isfinite(message.velocity.y) &&
+      std::isfinite(message.velocity.z);
+  const bool heading_contract = message.heading_valid && std::isfinite(message.yaw_rad);
+  const double map_yaw = heading_contract ? message.yaw_rad : 0.0;
+  navigation.state.x = static_cast<float>(message.position.x);
+  navigation.state.y = static_cast<float>(message.position.y);
+  navigation.state.z = static_cast<float>(message.position.z);
+  navigation.state.vx = static_cast<float>(message.velocity.x);
+  navigation.state.vy = static_cast<float>(message.velocity.y);
+  navigation.state.vz = static_cast<float>(message.velocity.z);
   navigation.state.yaw = static_cast<float>(map_yaw);
   navigation.xy_reset_counter = message.xy_reset_counter;
   navigation.z_reset_counter = message.z_reset_counter;
@@ -117,30 +45,25 @@ void ProductionMppiNode::onLocalPosition(
   navigation.vz_reset_counter = message.vz_reset_counter;
   navigation.heading_reset_counter = message.heading_reset_counter;
   const bool converted_state_contract =
-      std::isfinite(map_position.x) && std::isfinite(map_position.y) &&
-      std::isfinite(map_velocity.x) && std::isfinite(map_velocity.y) &&
-      std::isfinite(map_yaw) && std::isfinite(navigation.state.x) &&
-      std::isfinite(navigation.state.y) && std::isfinite(navigation.state.z) &&
-      std::isfinite(navigation.state.vx) && std::isfinite(navigation.state.vy) &&
-      std::isfinite(navigation.state.vz) && std::isfinite(navigation.state.yaw);
+      std::isfinite(navigation.state.x) && std::isfinite(navigation.state.y) &&
+      std::isfinite(navigation.state.z) && std::isfinite(navigation.state.vx) &&
+      std::isfinite(navigation.state.vy) && std::isfinite(navigation.state.vz) &&
+      std::isfinite(navigation.state.yaw);
   const bool world_state_contract =
-      position_velocity_contract && std::isfinite(map_position.x) &&
-      std::isfinite(map_position.y) && std::isfinite(map_velocity.x) &&
-      std::isfinite(map_velocity.y) && std::isfinite(navigation.state.x) &&
+      position_velocity_contract && std::isfinite(navigation.state.x) &&
       std::isfinite(navigation.state.y) && std::isfinite(navigation.state.z) &&
       std::isfinite(navigation.state.vx) && std::isfinite(navigation.state.vy) &&
       std::isfinite(navigation.state.vz);
   const bool authoritative_state_contract =
       world_state_contract && heading_contract && converted_state_contract;
-  const std::uint64_t source_payload_fingerprint =
-      navigationPayloadFingerprint(message);
+  const std::uint64_t source_payload_fingerprint = message.payload_fingerprint;
 
   {
     auto lock = evidence_boundary_.releasableInput();
     const NavigationAngularDerivativeEstimate angular_derivative =
         navigation_angular_derivative_estimator_.observe(NavigationAngularObservation{
-            .sample_timestamp_us = message.timestamp_sample,
-            .publication_timestamp_us = message.timestamp,
+            .sample_timestamp_us = message.timestamp_sample_us,
+            .publication_timestamp_us = message.timestamp_us,
             .receive_timestamp_ns = monotonic_receive_stamp_ns,
             .yaw_rad = map_yaw,
             .source_payload_fingerprint = source_payload_fingerprint,
@@ -167,7 +90,7 @@ void ProductionMppiNode::onLocalPosition(
           "LOCAL_POSITION rejected=true reason=%s sample_timestamp_us=%" PRIu64
           " publication_timestamp_us=%" PRIu64,
           navigationAngularUpdateStatusName(angular_derivative.status),
-          message.timestamp_sample, message.timestamp);
+          message.timestamp_sample_us, message.timestamp_us);
       return;
     }
     if (!navigationAngularUpdateAccepted(angular_derivative.status)) {
@@ -190,7 +113,7 @@ void ProductionMppiNode::onLocalPosition(
           "LOCAL_POSITION rejected=true reason=%s sample_timestamp_us=%" PRIu64
           " publication_timestamp_us=%" PRIu64,
           navigationAngularUpdateStatusName(angular_derivative.status),
-          message.timestamp_sample, message.timestamp);
+          message.timestamp_sample_us, message.timestamp_us);
       return;
     }
     navigation.source_timestamp_us = angular_derivative.source_timestamp_us;
@@ -235,7 +158,7 @@ void ProductionMppiNode::onLocalPosition(
           get_logger(),
           "LOCAL_POSITION timestamp_epoch_reset=true sample_timestamp_us=%" PRIu64
           " publication_timestamp_us=%" PRIu64,
-          message.timestamp_sample, message.timestamp);
+          message.timestamp_sample_us, message.timestamp_us);
     }
     if (navigation_revision_exhausted_) {
       invalidateAppliedControlWitnessLocked();
@@ -285,21 +208,16 @@ void ProductionMppiNode::onLocalPosition(
     navigation.state.yaw_rate = angular_derivative.yaw_rate_radps;
     navigation.yaw_rate_authoritative = angular_derivative.yaw_rate_authoritative;
 
-    navigation.linear_acceleration_authoritative = std::isfinite(message.ax) &&
-                                                   std::isfinite(message.ay) &&
-                                                   std::isfinite(message.az);
+    navigation.linear_acceleration_authoritative =
+        std::isfinite(message.acceleration.x) &&
+        std::isfinite(message.acceleration.y) && std::isfinite(message.acceleration.z);
     if (navigation.linear_acceleration_authoritative) {
-      const Point2 map_acceleration = config_.world.px4_map_transform.localVectorToMap(
-          Point2{static_cast<double>(message.ax), static_cast<double>(message.ay)});
-      navigation.linear_acceleration_authoritative =
-          std::isfinite(map_acceleration.x) && std::isfinite(map_acceleration.y);
-      if (navigation.linear_acceleration_authoritative) {
-        navigation.measured_equivalent_control =
-            mppi::equivalentControlFromMeasuredAcceleration(
-                navigation.state, static_cast<float>(map_acceleration.x),
-                static_cast<float>(map_acceleration.y), -message.az,
-                config_.control.mppi.dynamics);
-      }
+      navigation.measured_equivalent_control =
+          mppi::equivalentControlFromMeasuredAcceleration(
+              navigation.state, static_cast<float>(message.acceleration.x),
+              static_cast<float>(message.acceleration.y),
+              static_cast<float>(message.acceleration.z),
+              config_.control.mppi.dynamics);
     }
     navigation.measured_equivalent_control.yaw_accel =
         angular_derivative.yaw_acceleration_radps2;

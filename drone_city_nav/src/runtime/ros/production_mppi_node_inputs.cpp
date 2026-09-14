@@ -135,7 +135,7 @@ currentTrackingTarget(const geometry_msgs::msg::Point& observed,
 
 } // namespace
 
-void ProductionMppiNode::onVehicleStatus(const px4_msgs::msg::VehicleStatus& message) {
+void ProductionMppiNode::onAutopilotStatus(const AutopilotStatus& message) {
   // PX4 source timestamps are ordered against a local monotonic receipt clock.
   // ROS /clock can pause or jump with the simulator and therefore cannot be
   // the authority for epoch/reacquisition admission.
@@ -144,8 +144,7 @@ void ProductionMppiNode::onVehicleStatus(const px4_msgs::msg::VehicleStatus& mes
           std::chrono::steady_clock::now().time_since_epoch())
           .count();
   const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
-  const bool armed =
-      message.arming_state == px4_msgs::msg::VehicleStatus::ARMING_STATE_ARMED;
+  const bool armed = message.armed;
   const auto lock = evidence_boundary_.input();
   const Px4TimestampEpochAdmissionResult admission = admitPx4TimestampEpoch(
       Px4TimestampEpochAdmissionConfig{
@@ -155,7 +154,7 @@ void ProductionMppiNode::onVehicleStatus(const px4_msgs::msg::VehicleStatus& mes
       },
       vehicle_status_timestamp_admission_,
       Px4TimestampEpochObservation{
-          .primary_timestamp_us = message.timestamp,
+          .primary_timestamp_us = message.timestamp_us,
           .corroborating_timestamp_us = 0U,
           .receive_timestamp_ns = monotonic_receive_stamp_ns,
       });
@@ -192,8 +191,8 @@ void ProductionMppiNode::onVehicleStatus(const px4_msgs::msg::VehicleStatus& mes
   if (!px4TimestampEpochAdmissionAccepted(admission.status)) {
     const bool same_identity_conflict =
         vehicle_status_.valid && !vehicle_status_revision_exhausted_ &&
-        message.timestamp != 0U &&
-        message.timestamp == vehicle_status_.source_timestamp_us &&
+        message.timestamp_us != 0U &&
+        message.timestamp_us == vehicle_status_.source_timestamp_us &&
         armed != vehicle_status_.armed;
     if (same_identity_conflict) {
       invalidate_vehicle_status();
@@ -221,16 +220,15 @@ void ProductionMppiNode::onVehicleStatus(const px4_msgs::msg::VehicleStatus& mes
   }
   vehicle_status_ = ProductionMppiVehicleStatus{
       .receive_stamp_ns = receive_stamp_ns,
-      .source_timestamp_us = message.timestamp,
+      .source_timestamp_us = message.timestamp_us,
       .revision = vehicle_status_.revision + 1U,
       .armed = armed,
-      .valid = receive_stamp_ns > 0 && message.timestamp != 0U,
+      .valid = receive_stamp_ns > 0 && message.timestamp_us != 0U,
   };
 }
 
-void ProductionMppiNode::onVehicleLandDetected(
-    const px4_msgs::msg::VehicleLandDetected& message) {
-  const bool contact = message.landed || message.maybe_landed || message.ground_contact;
+void ProductionMppiNode::onGroundContact(const AutopilotGroundContact& message) {
+  const bool contact = message.detected;
   vehicle_land_contact_.store(contact, std::memory_order_release);
   if (contact && !launch_support_confirmed_by_land_detector_.exchange(
                      true, std::memory_order_acq_rel)) {

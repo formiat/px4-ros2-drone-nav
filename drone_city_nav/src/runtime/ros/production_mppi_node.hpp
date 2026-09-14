@@ -1,6 +1,8 @@
 #pragma once
 
 #include "drone_city_nav/applied_control_admission.hpp"
+#include "drone_city_nav/autopilot_state.hpp"
+#include "drone_city_nav/autopilot_state_source.hpp"
 #include "drone_city_nav/bounded_worker_pool.hpp"
 #include "drone_city_nav/compiled_trajectory_3d.hpp"
 #include "drone_city_nav/cooperative_mppi_adapter.hpp"
@@ -61,9 +63,6 @@
 #include "drone_city_nav/world_snapshot_3d.hpp"
 
 #include <nav_msgs/msg/path.hpp>
-#include <px4_msgs/msg/vehicle_land_detected.hpp>
-#include <px4_msgs/msg/vehicle_local_position.hpp>
-#include <px4_msgs/msg/vehicle_status.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/string.hpp>
@@ -131,9 +130,9 @@ public:
   ProductionMppiNode& operator=(ProductionMppiNode&&) = delete;
 
 private:
-  void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& message);
-  void onVehicleStatus(const px4_msgs::msg::VehicleStatus& message);
-  void onVehicleLandDetected(const px4_msgs::msg::VehicleLandDetected& message);
+  void onLocalState(const AutopilotLocalState& sample);
+  void onAutopilotStatus(const AutopilotStatus& status);
+  void onGroundContact(const AutopilotGroundContact& contact);
   void onNavigationReadiness(const std_msgs::msg::Bool& message);
   void onRawObstacleSnapshot3D(msg::RawObstacleSnapshot3D::ConstSharedPtr message);
   void onRawObstacleDelta3D(msg::RawObstacleDelta3D::ConstSharedPtr message);
@@ -476,11 +475,7 @@ private:
   rclcpp::CallbackGroup::SharedPtr lidar_evidence_callback_group_;
   rclcpp::CallbackGroup::SharedPtr world_input_callback_group_;
   rclcpp::CallbackGroup::SharedPtr planning_callback_group_;
-  rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
-      local_position_sub_;
-  rclcpp::Subscription<px4_msgs::msg::VehicleStatus>::SharedPtr vehicle_status_sub_;
-  rclcpp::Subscription<px4_msgs::msg::VehicleLandDetected>::SharedPtr
-      vehicle_land_detected_sub_;
+  std::unique_ptr<AutopilotStateSource> autopilot_state_source_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr navigation_readiness_sub_;
   rclcpp::Subscription<msg::RawObstacleSnapshot3D>::SharedPtr raw_snapshot_3d_sub_;
   rclcpp::Subscription<msg::RawObstacleDelta3D>::SharedPtr raw_delta_3d_sub_;

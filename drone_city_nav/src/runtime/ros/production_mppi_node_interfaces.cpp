@@ -546,24 +546,25 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
   rclcpp::SubscriptionOptions world_subscription_options;
   world_subscription_options.callback_group = world_input_callback_group_;
   const auto sensor_qos = rclcpp::SensorDataQoS{};
-  local_position_sub_ = create_subscription<px4_msgs::msg::VehicleLocalPosition>(
-      config_.world.topics.px4_local_position, sensor_qos,
-      [this](const px4_msgs::msg::VehicleLocalPosition::SharedPtr message) {
-        onLocalPosition(*message);
+  autopilot_state_source_ = std::make_unique<AutopilotStateSource>(
+      *this, config_.world.px4_map_transform,
+      AutopilotStateTopics{
+          .local_state = config_.world.topics.px4_local_position,
+          .status = config_.execution.topics.px4_vehicle_status,
+          .ground_contact = config_.execution.topics.px4_vehicle_land_detected,
       },
-      input_subscription_options);
-  vehicle_status_sub_ = create_subscription<px4_msgs::msg::VehicleStatus>(
-      config_.execution.topics.px4_vehicle_status, sensor_qos,
-      [this](const px4_msgs::msg::VehicleStatus::SharedPtr message) {
-        onVehicleStatus(*message);
+      sensor_qos,
+      AutopilotStateCallbacks{
+          .local_state =
+              [this](const AutopilotLocalState& sample) { onLocalState(sample); },
+          .status =
+              [this](const AutopilotStatus& status) { onAutopilotStatus(status); },
+          .ground_contact =
+              [this](const AutopilotGroundContact& contact) {
+                onGroundContact(contact);
+              },
       },
-      input_subscription_options);
-  vehicle_land_detected_sub_ = create_subscription<px4_msgs::msg::VehicleLandDetected>(
-      config_.execution.topics.px4_vehicle_land_detected, sensor_qos,
-      [this](const px4_msgs::msg::VehicleLandDetected::SharedPtr message) {
-        onVehicleLandDetected(*message);
-      },
-      input_subscription_options);
+      input_subscription_options, input_subscription_options);
   navigation_readiness_sub_ = create_subscription<std_msgs::msg::Bool>(
       config_.world.topics.navigation_readiness,
       rclcpp::QoS{1}.reliable().transient_local(),
