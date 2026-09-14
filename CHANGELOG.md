@@ -4,6 +4,15 @@ Code releases are tagged `vMAJOR.MINOR.PATCH` on `main`. Environment asset
 bundles are released separately under `environment-assets-*` tags; each code
 release names the asset tags it was validated with.
 
+## Unreleased
+
+- `stop_sim.sh` stops every container of this repository (the dev image or
+  the repository mount) that runs any Makefile `sim-*` target; the former
+  pattern named only `sim-gui` and `sim-headless`, so a container left
+  behind by `make sim-urban-point-to-point-gui` survived every stop. Stopped
+  containers are removed. Every `sim_*.sh` wrapper now runs that cleanup
+  before its run and again when the run ends (`scripts/run_sim_wrapped.sh`).
+
 ## v0.2.1 (2026-09-14)
 
 - `scripts/bootstrap.sh` prepares a fresh clone with one command: host

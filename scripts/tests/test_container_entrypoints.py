@@ -24,9 +24,6 @@ class ContainerEntrypointTest(unittest.TestCase):
         expected_targets = {
             "build.sh": "make build",
             "test.sh": "make test",
-            "sim_gui.sh": "make sim-gui",
-            "sim_headless.sh": "make sim-headless",
-            "sim_environment_demo.sh": "make sim-environment-demo",
         }
 
         for script_name, make_target in expected_targets.items():
@@ -38,21 +35,43 @@ class ContainerEntrypointTest(unittest.TestCase):
                 )
                 self.assertNotIn("docker run", text)
 
-    def test_sim_wrappers_run_host_cleanup_before_container(self) -> None:
-        for script_name in (
-            "sim_gui.sh",
-            "sim_headless.sh",
-            "sim_environment_demo.sh",
-        ):
-            with self.subTest(script_name=script_name):
-                text = self.read_script(script_name)
-                cleanup_index = text.index(
-                    '"${repo_root}/scripts/cleanup_sim_processes.sh"'
+    def test_every_sim_wrapper_runs_its_target_between_cleanups(self) -> None:
+        # Every sim_*.sh wrapper hands its make target to the wrapped runner,
+        # which stops stale simulation processes before the run and again once
+        # the run ends, however it ends.
+        wrappers = sorted(SCRIPTS_DIR.glob("sim_*.sh"))
+        self.assertGreaterEqual(len(wrappers), 13)
+        for wrapper in wrappers:
+            with self.subTest(script_name=wrapper.name):
+                text = wrapper.read_text(encoding="utf-8")
+                self.assertRegex(
+                    text,
+                    r'exec "\$\{repo_root\}/scripts/run_sim_wrapped\.sh" make sim-[a-z0-9-]+\n',
                 )
-                container_index = text.index(
-                    'exec "${repo_root}/scripts/container_run.sh"'
-                )
-                self.assertLess(cleanup_index, container_index)
+                self.assertNotIn("docker run", text)
+                self.assertNotIn("container_run.sh", text)
+
+        runner = self.read_script("run_sim_wrapped.sh")
+        cleanup_index = runner.index('"${repo_root}/scripts/cleanup_sim_processes.sh"')
+        trap_index = runner.index(
+            "trap '\"${repo_root}/scripts/cleanup_sim_processes.sh\" || true' EXIT"
+        )
+        container_index = runner.index('"${repo_root}/scripts/container_run.sh" "$@"')
+        self.assertLess(cleanup_index, trap_index)
+        self.assertLess(trap_index, container_index)
+        self.assertNotIn("exec ", runner.split("container_run.sh")[0].split("trap")[1])
+
+    def test_container_cleanup_matches_every_sim_target_of_this_repository(self) -> None:
+        text = self.read_script("cleanup_sim_processes.sh")
+
+        # A container is a candidate only when it belongs to this repository
+        # (its image or its workspace mount), and any Makefile sim-* target
+        # marks it; the former pattern named only sim-gui and sim-headless.
+        self.assertIn("container_belongs_to_repository", text)
+        self.assertIn('{{.Config.Image}} {{range .Mounts}}{{.Source}} {{end}}', text)
+        self.assertIn("make[\",[:space:]]+sim-[a-z0-9-]+", text)
+        self.assertNotIn("sim-(gui|headless)", text)
+        self.assertIn("docker rm -f", text)
 
     def test_bootstrap_prepares_every_dependency_through_the_container(self) -> None:
         text = self.read_script("bootstrap.sh")

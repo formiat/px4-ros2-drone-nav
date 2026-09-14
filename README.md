@@ -87,7 +87,11 @@ ENVIRONMENT_DEMO_ID=urban_circuit_practice_01 ./scripts/sim_environment_demo.sh
 ```
 
 These wrappers start the dev container with the current UID/GID so generated and
-formatted files remain owned by the invoking user. `./scripts/dev_shell.sh`
+formatted files remain owned by the invoking user. Every `sim_*.sh` wrapper runs
+the same cleanup as `./scripts/stop_sim.sh` before its run and again when the
+run ends, however it ends; `stop_sim.sh` stops every container of this
+repository that runs a simulation target and every simulation process on the
+host, and touches nothing else. `./scripts/dev_shell.sh`
 remains available when you need an interactive container shell. Inside that
 shell, use these targets:
 

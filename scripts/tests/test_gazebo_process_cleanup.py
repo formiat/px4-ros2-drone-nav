@@ -19,6 +19,19 @@ SPEC.loader.exec_module(cleanup)
 
 
 class GazeboProcessCleanupTest(unittest.TestCase):
+    def test_matches_the_environment_demo_runner_and_the_3d_lidar_model(self) -> None:
+        self.assertTrue(
+            cleanup.is_project_run_script(
+                "bash ./scripts/run_environment_demo.sh urban_circuit_practice_01"
+            )
+        )
+        self.assertTrue(
+            cleanup.is_project_px4_process(
+                "PX4_SIM_MODEL=gz_x500_lidar_3d /workspace/external/PX4-Autopilot/build/px4_sitl_default/bin/px4 -i 0",
+                ["/workspace"],
+            )
+        )
+
     def test_selects_stale_server_and_gui_processes(self) -> None:
         processes = cleanup.parse_ps_output(
             "\n".join(

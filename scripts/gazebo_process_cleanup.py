@@ -21,6 +21,8 @@ class ProcessInfo:
     cmd: str
 
 
+PROJECT_RUN_SCRIPTS = ("run_drone_nav_sim.sh", "run_environment_demo.sh")
+
 PROJECT_NODE_EXECUTABLES = {
     "collision_crash_node",
     "lidar_debug_node",
@@ -106,12 +108,11 @@ def is_project_run_script(cmd: str) -> bool:
 
     executable = os.path.basename(tokens[command_index])
     has_runner_arg = any(
-        token.endswith("scripts/run_drone_nav_sim.sh")
-        or token.endswith("./scripts/run_drone_nav_sim.sh")
+        token.endswith(f"scripts/{runner}") for runner in PROJECT_RUN_SCRIPTS
         for token in tokens[command_index + 1 :]
     )
-    return executable in {"bash", "sh", "run_drone_nav_sim.sh"} and (
-        executable == "run_drone_nav_sim.sh" or has_runner_arg
+    return executable in {"bash", "sh", *PROJECT_RUN_SCRIPTS} and (
+        executable in PROJECT_RUN_SCRIPTS or has_runner_arg
     )
 
 
@@ -132,12 +133,7 @@ def is_project_px4_process(cmd: str, markers: list[str]) -> bool:
         return False
     if not command_has_marker(cmd, markers):
         return False
-    return (
-        "px4_sitl" in cmd
-        or "gz_x500_lidar_2d" in cmd
-        or "PX4_SIM_MODEL=gz_x500_lidar_2d" in cmd
-        or "/bin/px4" in cmd
-    )
+    return "px4_sitl" in cmd or "gz_x500_lidar_" in cmd or "/bin/px4" in cmd
 
 
 def is_project_micro_xrce_agent(cmd: str) -> bool:
