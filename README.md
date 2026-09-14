@@ -4,15 +4,13 @@ This repository is a ROS 2 workspace for a PX4/Gazebo drone navigation stack.
 The main package is `drone_city_nav`, an ament CMake package built with
 `colcon`.
 
-## Demo Videos
+## Demo Video
 
-| Autonomous interceptor mission | Navigation without a static map |
-|:--:|:--:|
-| [![Autonomous interceptor mission](https://img.youtube.com/vi/ouRDE7C2NvM/maxresdefault.jpg)](https://youtu.be/ouRDE7C2NvM) | [![Navigation without a static map](https://img.youtube.com/vi/DAHCt6dmAAE/maxresdefault.jpg)](https://youtu.be/DAHCt6dmAAE) |
-| [Watch on YouTube](https://youtu.be/ouRDE7C2NvM) | [Watch on YouTube](https://youtu.be/DAHCt6dmAAE) |
+[![Autonomous 3D navigation without a map through an urban location](https://img.youtube.com/vi/rKXcERqb9Ho/maxresdefault.jpg)](https://www.youtube.com/watch?v=rKXcERqb9Ho)
 
-The videos demonstrate autonomous interception and sensor-driven navigation as
-of August 2026.
+[Watch on YouTube](https://www.youtube.com/watch?v=rKXcERqb9Ho): point-to-point
+flight through the Urban Circuit Practice 01 location with no static map, from
+3D-lidar evidence alone, as released in v0.2.1 (September 2026).
 
 ## Quick Start
 
