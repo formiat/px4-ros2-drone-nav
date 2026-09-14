@@ -91,3 +91,31 @@ TEST(NavigationPoseOriginTest, YawInterpolationClampsRatioAndRejectsNonfiniteInp
 
 } // namespace
 } // namespace drone_city_nav
+
+namespace drone_city_nav {
+
+TEST(NavigationPoseMapPosition, AMapFrameSampleIsTakenAsItIs) {
+  NavigationPose2D state{};
+  const MapPositionSample sample{.position = Point2{3.0, 4.0},
+                                 .altitude_m = 12.0,
+                                 .yaw_rad = 7.0,
+                                 .stamp_ns = 5,
+                                 .position_valid = true,
+                                 .altitude_valid = true,
+                                 .yaw_valid = true};
+  EXPECT_EQ(updateNavigationPoseFromMapPosition(sample, state),
+            Px4LocalPoseUpdateStatus::kAccepted);
+  EXPECT_DOUBLE_EQ(state.pose.position.x, 3.0);
+  EXPECT_DOUBLE_EQ(state.pose.position.y, 4.0);
+  EXPECT_DOUBLE_EQ(state.altitude_m, 12.0);
+  EXPECT_NEAR(state.pose.yaw_rad, normalizeYaw(7.0), 1.0e-12);
+  EXPECT_TRUE(state.position_valid && state.altitude_valid && state.yaw_valid);
+
+  MapPositionSample no_yaw = sample;
+  no_yaw.yaw_valid = false;
+  EXPECT_EQ(updateNavigationPoseFromMapPosition(no_yaw, state),
+            Px4LocalPoseUpdateStatus::kInvalidYaw);
+  EXPECT_FALSE(state.position_valid);
+}
+
+} // namespace drone_city_nav

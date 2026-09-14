@@ -184,6 +184,43 @@ makeNavigationPoseFromPx4LocalPosition(const Px4LocalPositionSample& sample,
   return pose;
 }
 
+std::optional<NavigationPose2D>
+makeNavigationPoseFromMapPosition(const MapPositionSample& sample) noexcept {
+  if (!sample.position_valid || !std::isfinite(sample.position.x) ||
+      !std::isfinite(sample.position.y)) {
+    return std::nullopt;
+  }
+  NavigationPose2D pose{};
+  pose.pose.position = sample.position;
+  pose.stamp_ns = sample.stamp_ns;
+  pose.position_valid = true;
+  if (sample.altitude_valid && std::isfinite(sample.altitude_m)) {
+    pose.altitude_m = sample.altitude_m;
+    pose.altitude_valid = true;
+  }
+  if (sample.yaw_valid && std::isfinite(sample.yaw_rad)) {
+    pose.pose.yaw_rad = normalizeYaw(sample.yaw_rad);
+    pose.yaw_valid = true;
+  }
+  return pose;
+}
+
+Px4LocalPoseUpdateStatus
+updateNavigationPoseFromMapPosition(const MapPositionSample& sample,
+                                    NavigationPose2D& state) noexcept {
+  const auto pose = makeNavigationPoseFromMapPosition(sample);
+  if (!pose.has_value()) {
+    invalidateNavigationPose(state);
+    return Px4LocalPoseUpdateStatus::kInvalidPosition;
+  }
+  if (!pose->yaw_valid) {
+    invalidateNavigationPose(state);
+    return Px4LocalPoseUpdateStatus::kInvalidYaw;
+  }
+  state = *pose;
+  return Px4LocalPoseUpdateStatus::kAccepted;
+}
+
 Px4LocalPoseUpdateStatus
 updateNavigationPoseFromPx4LocalPosition(const Px4LocalPositionSample& sample,
                                          const Px4LocalPoseConfig& config,

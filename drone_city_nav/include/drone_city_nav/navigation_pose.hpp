@@ -110,6 +110,25 @@ void invalidateNavigationPose(NavigationPose2D& pose) noexcept;
                                               std::int64_t now_ns,
                                               std::int64_t max_staleness_ns) noexcept;
 
+// A position the autopilot adapter has already read in the map frame, with
+// the mapping yaw the tracker selected for it.
+struct MapPositionSample {
+  Point2 position{};
+  double altitude_m{0.0};
+  double yaw_rad{0.0};
+  std::int64_t stamp_ns{0};
+  bool position_valid{false};
+  bool altitude_valid{false};
+  bool yaw_valid{false};
+};
+
+[[nodiscard]] std::optional<NavigationPose2D>
+makeNavigationPoseFromMapPosition(const MapPositionSample& sample) noexcept;
+
+[[nodiscard]] Px4LocalPoseUpdateStatus
+updateNavigationPoseFromMapPosition(const MapPositionSample& sample,
+                                    NavigationPose2D& state) noexcept;
+
 [[nodiscard]] std::optional<NavigationPose2D>
 makeNavigationPoseFromPx4LocalPosition(const Px4LocalPositionSample& sample,
                                        const Px4LocalPoseConfig& config) noexcept;

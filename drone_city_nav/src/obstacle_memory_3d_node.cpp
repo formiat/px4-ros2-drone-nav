@@ -1,3 +1,5 @@
+#include "drone_city_nav/autopilot_state.hpp"
+#include "drone_city_nav/autopilot_state_source.hpp"
 #include "drone_city_nav/cooperative_traffic_ros.hpp"
 #include "drone_city_nav/dynamic_agent_lidar_state.hpp"
 #include "drone_city_nav/latest_lidar_obstacle_scan.hpp"
@@ -22,10 +24,6 @@
 #include "drone_city_nav/tracked_agent_lidar_filter.hpp"
 #include "drone_city_nav/visualization_marker_helpers.hpp"
 
-#include <px4_msgs/msg/timesync_status.hpp>
-#include <px4_msgs/msg/vehicle_attitude.hpp>
-#include <px4_msgs/msg/vehicle_local_position.hpp>
-#include <px4_msgs/msg/vehicle_status.hpp>
 #include <rclcpp/executors/multi_threaded_executor.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -353,6 +351,15 @@ public:
     projection_config_.px4_to_map_m01 = px4_local_pose_config_.px4_to_map_m01;
     projection_config_.px4_to_map_m10 = px4_local_pose_config_.px4_to_map_m10;
     projection_config_.px4_to_map_m11 = px4_local_pose_config_.px4_to_map_m11;
+    map_transform_ = Px4MapFrameTransform{
+        .map_origin = Point3{px4_local_pose_config_.map_origin_x_m,
+                             px4_local_pose_config_.map_origin_y_m,
+                             px4_local_pose_config_.map_origin_z_m},
+        .m00 = px4_local_pose_config_.px4_to_map_m00,
+        .m01 = px4_local_pose_config_.px4_to_map_m01,
+        .m10 = px4_local_pose_config_.px4_to_map_m10,
+        .m11 = px4_local_pose_config_.px4_to_map_m11,
+    };
     current_pose_.pose.yaw_rad = initial_heading_rad_;
     current_pose_.yaw_valid =
         !use_px4_heading_for_scan_ && std::isfinite(initial_heading_rad_);
@@ -381,34 +388,30 @@ public:
           onPointCloud(std::move(cloud));
         },
         cloud_subscription_options);
-    local_position_sub_ = create_subscription<px4_msgs::msg::VehicleLocalPosition>(
-        local_position_topic, sensor_qos,
-        [this](const px4_msgs::msg::VehicleLocalPosition::SharedPtr message) {
-          onLocalPosition(*message);
+    autopilot_state_source_ = std::make_unique<AutopilotStateSource>(
+        *this, map_transform_,
+        AutopilotStateTopics{
+            .local_state = local_position_topic,
+            .attitude = attitude_topic,
+            .clock_sync = timesync_topic,
+            .status = vehicle_status_topic,
         },
-        pose_subscription_options);
-    attitude_sub_ = create_subscription<px4_msgs::msg::VehicleAttitude>(
-        attitude_topic, sensor_qos,
-        [this](const px4_msgs::msg::VehicleAttitude::SharedPtr message) {
-          onAttitude(*message);
+        sensor_qos,
+        AutopilotStateCallbacks{
+            .local_state =
+                [this](const AutopilotLocalState& message) { onLocalState(message); },
+            .attitude =
+                [this](const AutopilotAttitude& message) { onAttitude(message); },
+            .clock_sync =
+                [this](const AutopilotClockSync& message) { onClockSync(message); },
+            .status =
+                [this](const AutopilotStatus& status) {
+                  if (memory_worker_) {
+                    memory_worker_->updateArmed(status.armed);
+                  }
+                },
         },
-        pose_subscription_options);
-    timesync_sub_ = create_subscription<px4_msgs::msg::TimesyncStatus>(
-        timesync_topic, sensor_qos,
-        [this](const px4_msgs::msg::TimesyncStatus::SharedPtr message) {
-          onTimesync(*message);
-        },
-        pose_subscription_options);
-    vehicle_status_sub_ = create_subscription<px4_msgs::msg::VehicleStatus>(
-        vehicle_status_topic, sensor_qos,
-        [this](const px4_msgs::msg::VehicleStatus::SharedPtr message) {
-          if (memory_worker_) {
-            memory_worker_->updateArmed(
-                message->arming_state ==
-                px4_msgs::msg::VehicleStatus::ARMING_STATE_ARMED);
-          }
-        },
-        cloud_subscription_options);
+        pose_subscription_options, cloud_subscription_options);
 
     const DynamicAgentLidarStateConfig dynamic_config =
         declareDynamicAgentLidarStateConfig(*this);
@@ -475,15 +478,15 @@ public:
   }
 
 private:
-  void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& message) {
+  void onLocalState(const AutopilotLocalState& message) {
     {
       const std::scoped_lock pose_lock{pose_history_mutex_};
       const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
-      const bool heading_ready = px4HeadingReadyForMapping(
-          static_cast<double>(message.heading),
-          static_cast<double>(message.heading_var), maximum_heading_variance_rad2_);
-      const MappingYawSelection mapping_yaw = mapping_yaw_tracker_.update(
-          heading_ready, static_cast<double>(message.heading));
+      const bool heading_ready =
+          px4HeadingReadyForMapping(message.yaw_rad, message.heading_variance_rad2,
+                                    maximum_heading_variance_rad2_);
+      const MappingYawSelection mapping_yaw =
+          mapping_yaw_tracker_.update(heading_ready, message.yaw_rad);
       if (use_px4_heading_for_scan_ &&
           mapping_yaw.source == MappingYawSource::kPx4Heading &&
           last_mapping_yaw_source_ != MappingYawSource::kPx4Heading) {
@@ -491,13 +494,12 @@ private:
       }
       if (mapping_yaw.source != last_mapping_yaw_source_) {
         RCLCPP_INFO(get_logger(),
-                    "LIDAR3D_MAPPING_YAW source=%s yaw=%.3f px4_heading=%.3f "
-                    "heading_good_for_control=%s mapping_ready=%s stable_samples=%zu "
+                    "LIDAR3D_MAPPING_YAW source=%s yaw=%.3f autopilot_yaw=%.3f "
+                    "heading_valid=%s mapping_ready=%s stable_samples=%zu "
                     "required_samples=%zu maximum_sample_delta_rad=%.3f "
                     "pose_history_generation=%" PRIu64,
                     mappingYawSourceName(mapping_yaw.source), mapping_yaw.yaw_rad,
-                    static_cast<double>(message.heading),
-                    message.heading_good_for_control ? "true" : "false",
+                    message.yaw_rad, message.heading_valid ? "true" : "false",
                     heading_ready ? "true" : "false",
                     mapping_yaw_tracker_.stableSampleCount(),
                     startup_heading_stable_sample_count_,
@@ -505,36 +507,35 @@ private:
                     lidar_pose_history_.generation());
       }
       last_mapping_yaw_source_ = mapping_yaw.source;
-      const Px4LocalPositionSample sample{
-          static_cast<double>(message.x),
-          static_cast<double>(message.y),
-          static_cast<double>(message.z),
-          mapping_yaw.yaw_rad,
-          static_cast<std::int64_t>(message.timestamp_sample) * 1000LL,
-          message.xy_valid,
-          message.z_valid,
-          mapping_yaw.valid};
-      const Px4LocalPoseUpdateStatus status = updateNavigationPoseFromPx4LocalPosition(
-          sample, px4_local_pose_config_, current_pose_);
+      const MapPositionSample sample{
+          .position = Point2{message.position.x, message.position.y},
+          .altitude_m = message.position.z,
+          .yaw_rad = mapping_yaw.yaw_rad,
+          .stamp_ns = static_cast<std::int64_t>(message.timestamp_sample_us) * 1000LL,
+          .position_valid = message.position_valid,
+          .altitude_valid = message.altitude_valid,
+          .yaw_valid = mapping_yaw.valid};
+      const Px4LocalPoseUpdateStatus status =
+          updateNavigationPoseFromMapPosition(sample, current_pose_);
       if (status != Px4LocalPoseUpdateStatus::kAccepted) {
         last_pose_update_ns_ = 0;
         RCLCPP_WARN_THROTTLE(
             get_logger(), *get_clock(), 5000,
-            "LIDAR3D_POSE_HISTORY position_rejected=true status=%s xy_valid=%s "
-            "z_valid=%s heading_good_for_control=%s heading=%.3f "
+            "LIDAR3D_POSE_HISTORY position_rejected=true status=%s position_valid=%s "
+            "altitude_valid=%s heading_valid=%s yaw=%.3f "
             "heading_variance=%.6f maximum_heading_variance=%.6f mapping_ready=%s",
             status == Px4LocalPoseUpdateStatus::kInvalidPosition ? "invalid_position"
                                                                  : "invalid_yaw",
-            message.xy_valid ? "true" : "false", message.z_valid ? "true" : "false",
-            message.heading_good_for_control ? "true" : "false",
-            static_cast<double>(message.heading),
-            static_cast<double>(message.heading_var), maximum_heading_variance_rad2_,
+            message.position_valid ? "true" : "false",
+            message.altitude_valid ? "true" : "false",
+            message.heading_valid ? "true" : "false", message.yaw_rad,
+            message.heading_variance_rad2, maximum_heading_variance_rad2_,
             heading_ready ? "true" : "false");
         return;
       }
       last_pose_update_ns_ = receive_stamp_ns;
       const LidarPoseSourceStampResult source_stamp =
-          resolveLidarPoseSourceStamp(time_mapper_, message.timestamp_sample,
+          resolveLidarPoseSourceStamp(time_mapper_, message.timestamp_sample_us,
                                       receive_stamp_ns, pose_source_stamp_config_);
       if (source_stamp.resolved()) {
         lidar_pose_history_.addPosition(
@@ -544,7 +545,7 @@ private:
             current_pose_.pose.yaw_rad,
             current_pose_.yaw_valid && current_pose_.altitude_valid,
             source_stamp.acquisition_stamp_ns,
-            lidarPoseSourceTimestampNanoseconds(message.timestamp_sample));
+            lidarPoseSourceTimestampNanoseconds(message.timestamp_sample_us));
       } else {
         RCLCPP_WARN_THROTTLE(
             get_logger(), *get_clock(), 5000,
@@ -552,7 +553,7 @@ private:
             "timestamp_sample_us=%" PRIu64 " acquisition_stamp_ns=%" PRId64
             " mapped_ros_stamp_ns=%" PRId64 " receive_delta_ms=%.3f",
             lidarPoseSourceStampStatusName(source_stamp.status),
-            message.timestamp_sample, source_stamp.acquisition_stamp_ns,
+            message.timestamp_sample_us, source_stamp.acquisition_stamp_ns,
             source_stamp.mapped_ros_stamp_ns,
             1.0e-6 * static_cast<double>(source_stamp.receive_delta_ns));
       }
@@ -560,17 +561,17 @@ private:
     processPendingClouds();
   }
 
-  void onAttitude(const px4_msgs::msg::VehicleAttitude& message) {
+  void onAttitude(const AutopilotAttitude& message) {
     {
       const std::scoped_lock pose_lock{pose_history_mutex_};
       const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
       const LidarPoseSourceStampResult source_stamp =
-          resolveLidarPoseSourceStamp(time_mapper_, message.timestamp_sample,
+          resolveLidarPoseSourceStamp(time_mapper_, message.timestamp_sample_us,
                                       receive_stamp_ns, pose_source_stamp_config_);
       if (source_stamp.resolved()) {
         lidar_pose_history_.addAttitude(
-            receive_stamp_ns, message.q, source_stamp.acquisition_stamp_ns,
-            lidarPoseSourceTimestampNanoseconds(message.timestamp_sample));
+            receive_stamp_ns, message.quaternion, source_stamp.acquisition_stamp_ns,
+            lidarPoseSourceTimestampNanoseconds(message.timestamp_sample_us));
       } else {
         RCLCPP_WARN_THROTTLE(
             get_logger(), *get_clock(), 5000,
@@ -578,7 +579,7 @@ private:
             "timestamp_sample_us=%" PRIu64 " acquisition_stamp_ns=%" PRId64
             " mapped_ros_stamp_ns=%" PRId64 " receive_delta_ms=%.3f",
             lidarPoseSourceStampStatusName(source_stamp.status),
-            message.timestamp_sample, source_stamp.acquisition_stamp_ns,
+            message.timestamp_sample_us, source_stamp.acquisition_stamp_ns,
             source_stamp.mapped_ros_stamp_ns,
             1.0e-6 * static_cast<double>(source_stamp.receive_delta_ns));
       }
@@ -586,11 +587,11 @@ private:
     processPendingClouds();
   }
 
-  void onTimesync(const px4_msgs::msg::TimesyncStatus& message) {
+  void onClockSync(const AutopilotClockSync& message) {
     {
       const std::scoped_lock pose_lock{pose_history_mutex_};
       const Px4RosTimeObservation observation = time_mapper_.observeTimesync(
-          message.timestamp, message.estimated_offset, message.round_trip_time,
+          message.timestamp_us, message.estimated_offset_us, message.round_trip_time_us,
           get_clock()->now().nanoseconds());
       if (observation.rebased()) {
         lidar_pose_history_.startNewGeneration();
@@ -915,11 +916,8 @@ private:
   rclcpp::CallbackGroup::SharedPtr pose_callback_group_;
 
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_sub_;
-  rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
-      local_position_sub_;
-  rclcpp::Subscription<px4_msgs::msg::VehicleAttitude>::SharedPtr attitude_sub_;
-  rclcpp::Subscription<px4_msgs::msg::TimesyncStatus>::SharedPtr timesync_sub_;
-  rclcpp::Subscription<px4_msgs::msg::VehicleStatus>::SharedPtr vehicle_status_sub_;
+  Px4MapFrameTransform map_transform_{};
+  std::unique_ptr<AutopilotStateSource> autopilot_state_source_;
   rclcpp::Subscription<msg::TargetTrack>::SharedPtr tracked_agent_sub_;
   rclcpp::Subscription<msg::CooperativeFlightIntent>::SharedPtr cooperative_intent_sub_;
   rclcpp::Subscription<msg::SpectatorTarget>::SharedPtr spectator_target_sub_;
