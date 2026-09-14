@@ -443,6 +443,7 @@ set(DRONE_CITY_NAV_MODEL_HEADERS
     include/drone_city_nav/producer_instance_id.hpp
     include/drone_city_nav/px4_map_frame_transform.hpp
     include/drone_city_nav/px4_ros_time_mapper.hpp
+    include/drone_city_nav/autopilot_state.hpp
     include/drone_city_nav/radar_cadence.hpp
     include/drone_city_nav/radar_model.hpp
     include/drone_city_nav/simulation_truth_alignment.hpp
@@ -623,6 +624,8 @@ set(DRONE_CITY_NAV_ROS_HEADERS
     include/drone_city_nav/local_hold_pin.hpp
     include/drone_city_nav/mppi_debug_markers.hpp
     include/drone_city_nav/obstacle_memory_provenance_ros.hpp
+    include/drone_city_nav/autopilot_state_source.hpp
+    include/drone_city_nav/px4_autopilot_adapter.hpp
     include/drone_city_nav/px4_offboard_setpoint_io.hpp
     include/drone_city_nav/radar_target_tracker_node.hpp
     include/drone_city_nav/raw_obstacle_3d_ros.hpp
@@ -878,6 +881,7 @@ add_library(
   src/lidar_debug_node_config.cpp
   src/memory_provenance_audit_tracker.cpp
   src/obstacle_memory_provenance_ros.cpp
+  src/px4_autopilot_adapter.cpp
   src/px4_offboard_setpoint_io.cpp
   src/lidar_debug_pointclouds.cpp
   src/mppi_debug_markers.cpp
@@ -2264,6 +2268,14 @@ if(BUILD_TESTING)
   target_compile_features(local_hold_pin_test_current PRIVATE cxx_std_20)
   target_link_libraries(local_hold_pin_test_current drone_city_nav_core)
   enable_project_warnings(local_hold_pin_test_current)
+
+  ament_add_gtest(px4_autopilot_adapter_test_current
+                  tests/px4_autopilot_adapter_test.cpp)
+  target_compile_features(px4_autopilot_adapter_test_current PRIVATE cxx_std_20)
+  target_link_libraries(px4_autopilot_adapter_test_current
+                        drone_city_nav_ros_adapters)
+  ament_target_dependencies(px4_autopilot_adapter_test_current px4_msgs rclcpp)
+  enable_project_warnings(px4_autopilot_adapter_test_current)
 
   ament_add_gtest(px4_offboard_setpoint_io_test_current
                   tests/px4_offboard_setpoint_io_test.cpp)
