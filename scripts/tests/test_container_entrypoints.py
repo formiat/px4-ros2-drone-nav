@@ -52,7 +52,9 @@ class ContainerEntrypointTest(unittest.TestCase):
                 self.assertNotIn("container_run.sh", text)
 
         runner = self.read_script("run_sim_wrapped.sh")
+        prune_index = runner.index('"${repo_root}/scripts/prune_sim_logs.sh"')
         cleanup_index = runner.index('"${repo_root}/scripts/cleanup_sim_processes.sh"')
+        self.assertLess(prune_index, cleanup_index)
         trap_index = runner.index(
             "trap '\"${repo_root}/scripts/cleanup_sim_processes.sh\" || true' EXIT"
         )

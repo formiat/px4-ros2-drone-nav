@@ -11,6 +11,7 @@ if [[ "$#" -eq 0 ]]; then
   exit 2
 fi
 
+"${repo_root}/scripts/prune_sim_logs.sh"
 "${repo_root}/scripts/cleanup_sim_processes.sh"
 trap '"${repo_root}/scripts/cleanup_sim_processes.sh" || true' EXIT
 "${repo_root}/scripts/container_run.sh" "$@"

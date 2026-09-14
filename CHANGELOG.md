@@ -6,6 +6,14 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- `scripts/prune_sim_logs.sh` deletes simulation logs older than a week
+  (`DRONE_GAZEBO_PRUNE_LOGS_DAYS`) from the places the stack writes them:
+  every entry of `log/` except `log/tools`, every run directory, and the PX4
+  flight logs under `rootfs/<n>/log`. An entry with a `.keep` file on top
+  stays; symbolic links and anything outside the repository are never
+  touched. The sim wrappers run it before every run; `--dry-run` previews and
+  `DRONE_GAZEBO_PRUNE_LOGS=false` disables it. The logs of one month filled
+  118 GB before this.
 - `stop_sim.sh` stops every container of this repository (the dev image or
   the repository mount) that runs any Makefile `sim-*` target; the former
   pattern named only `sim-gui` and `sim-headless`, so a container left

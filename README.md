@@ -91,7 +91,11 @@ formatted files remain owned by the invoking user. Every `sim_*.sh` wrapper runs
 the same cleanup as `./scripts/stop_sim.sh` before its run and again when the
 run ends, however it ends; `stop_sim.sh` stops every container of this
 repository that runs a simulation target and every simulation process on the
-host, and touches nothing else. `./scripts/dev_shell.sh`
+host, and touches nothing else. Before every run the wrappers also delete
+simulation logs older than a week (`./scripts/prune_sim_logs.sh`: entries of
+`log/`, run directories, PX4 flight logs; `log/tools` and any entry holding a
+`.keep` file stay; `--dry-run` previews, `DRONE_GAZEBO_PRUNE_LOGS=false`
+disables). `./scripts/dev_shell.sh`
 remains available when you need an interactive container shell. Inside that
 shell, use these targets:
 
