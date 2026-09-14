@@ -423,10 +423,13 @@ production_mppi_node:
     # limit admits about 9.8 m/s^2, so it is not bound to the longitudinal
     # acceleration the speed profile is built from. Measured on the true pose
     # in the urban flights r222 and r223 the lateral acceleration reached
-    # 3.95 m/s^2 at p99, bounded by this limit through the curvature limiter
-    # (7 percent of the logged ticks at 2.1 m/s in the flights r230 to r233)
-    # rather than by the airframe; 8 keeps 1.8 m/s^2 below the tilt limit.
-    maximum_lateral_acceleration_mps2: 8.0
+    # 3.95 m/s^2 at p99, bounded by the former 6 through the curvature
+    # limiter rather than by the airframe. At 8 (flights r268 to r272,
+    # PX4's local position) it reached 4.0 to 4.2 at p99 and 4.3 to 5.0 at
+    # most, still shaped by the curvature limiter, which cost 1.5 to 6.8 s
+    # per flight against 4.5 m/s on the approach to route corners. The tilt
+    # limit itself, 45 degrees, admits 9.8.
+    maximum_lateral_acceleration_mps2: 9.8
     # The vertical deceleration the stopping laws may rely on in the worst
     # direction, a pure climb or descent. Arresting a descent is bound by the
     # thrust the airframe has above hover, not by MPC_ACC_UP_MAX (4 m/s^2):
