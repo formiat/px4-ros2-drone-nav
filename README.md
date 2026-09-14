@@ -14,6 +14,24 @@ The main package is `drone_city_nav`, an ament CMake package built with
 The videos demonstrate autonomous interception and sensor-driven navigation as
 of August 2026.
 
+## Quick Start
+
+On a Linux host with Docker, git and the NVIDIA container runtime, one script
+prepares a fresh clone and starts the urban point-to-point simulation:
+
+```bash
+git clone https://github.com/formiat/px4-ros2-drone-nav.git
+cd px4-ros2-drone-nav
+./scripts/bootstrap.sh
+```
+
+It builds the dev image, clones PX4 Autopilot into `external/`, builds PX4
+SITL and the workspace inside the container, fetches the versioned urban
+environment assets, and launches the Gazebo GUI flight. `--headless` runs the
+same flight headless with the mission check; `--no-run` only prepares. Every
+step is skipped when its result already exists, so the script can be rerun.
+The first run downloads several gigabytes and builds for tens of minutes.
+
 ## Roadmap
 
 The project roadmap is maintained in [`docs/roadmap.md`](docs/roadmap.md). It
@@ -26,7 +44,7 @@ vision-only 3D perception without lidar or static maps.
 
 Code releases are tagged `vMAJOR.MINOR.PATCH` on `main` and described in
 [`CHANGELOG.md`](CHANGELOG.md); environment asset bundles carry their own
-`environment-assets-*` tags. The current release is `v0.2.0`: point-to-point
+`environment-assets-*` tags. The current release is `v0.2.1`: point-to-point
 navigation without a static map through a complex 3D urban location. Each
 flight's runtime manifest records the package version and `git describe`.
 
@@ -49,6 +67,7 @@ this repository.
 Use the top-level wrapper scripts for common workflows:
 
 ```bash
+./scripts/bootstrap.sh
 ./scripts/build.sh
 ./scripts/test.sh
 ./scripts/sim_gui.sh
@@ -677,7 +696,9 @@ Project dependencies are managed through:
 
 - ROS 2 and Gazebo system packages in `docker/Dockerfile`.
 - `px4_msgs` built into `/opt/px4_msgs_ws` by the dev image.
-- PX4 Autopilot cloned by `scripts/setup_px4_autopilot.sh` into `external/`.
+- PX4 Autopilot cloned by `scripts/setup_px4_autopilot.sh` into `external/`
+  and built there as `px4_sitl` inside the dev container; the 3D-lidar
+  profile launches that binary directly. `scripts/bootstrap.sh` does both.
 
 The wrapper scripts source `/opt/ros/${ROS_DISTRO}/setup.bash` and
 `/opt/px4_msgs_ws/install/setup.bash` inside the container before invoking

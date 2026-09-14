@@ -74,9 +74,26 @@ or dependency install.
 
 ## First Sanity Check
 
-From the repository root:
+From the repository root, one script prepares everything and runs the urban
+point-to-point flight:
 
 ```bash
+./scripts/bootstrap.sh
+```
+
+It checks the host tools and the NVIDIA runtime, builds the dev image if it is
+missing, clones PX4 Autopilot v1.17.0 into `external/PX4-Autopilot` and builds
+`px4_sitl` there inside the container, builds the workspace, fetches the
+versioned `urban_circuit_practice_01` assets, then launches the GUI flight
+(`--headless` for the headless mission check, `--no-run` to stop after the
+preparation). Each step is skipped when its result is already in place.
+
+The same steps by hand:
+
+```bash
+./scripts/build_dev_image.sh
+./scripts/setup_px4_autopilot.sh
+./scripts/dev_shell.sh make -C external/PX4-Autopilot px4_sitl
 ./scripts/build.sh
 ./scripts/test.sh
 ```

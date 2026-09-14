@@ -54,6 +54,25 @@ class ContainerEntrypointTest(unittest.TestCase):
                 )
                 self.assertLess(cleanup_index, container_index)
 
+    def test_bootstrap_prepares_every_dependency_through_the_container(self) -> None:
+        text = self.read_script("bootstrap.sh")
+
+        # Host tools and the NVIDIA runtime are checked before anything is
+        # built; every build step goes through the shared container runner.
+        self.assertIn('for tool in docker git; do', text)
+        self.assertIn("'\"nvidia\"'", text)
+        self.assertIn('"${repo_root}/scripts/build_dev_image.sh"', text)
+        self.assertIn('"${repo_root}/scripts/setup_px4_autopilot.sh"', text)
+        self.assertIn('make -C "${px4_container_dir}" px4_sitl', text)
+        self.assertIn('"${repo_root}/scripts/container_run.sh" make build', text)
+        self.assertIn("prepare_environment_simulation.py", text)
+        self.assertIn("--environment urban_circuit_practice_01", text)
+        self.assertIn('exec "${repo_root}/scripts/sim_urban_point_to_point_gui.sh"', text)
+        self.assertIn(
+            'exec "${repo_root}/scripts/sim_urban_point_to_point_headless.sh"', text
+        )
+        self.assertNotIn("docker run", text)
+
     def test_stop_sim_uses_shared_cleanup(self) -> None:
         text = self.read_script("stop_sim.sh")
 

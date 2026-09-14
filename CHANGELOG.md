@@ -4,6 +4,18 @@ Code releases are tagged `vMAJOR.MINOR.PATCH` on `main`. Environment asset
 bundles are released separately under `environment-assets-*` tags; each code
 release names the asset tags it was validated with.
 
+## v0.2.1 (2026-09-14)
+
+- `scripts/bootstrap.sh` prepares a fresh clone with one command: host
+  checks, the dev image, the PX4 checkout and its `px4_sitl` build inside the
+  container, the workspace build and the urban environment assets, then the
+  urban point-to-point simulation (`--headless`, `--no-run`). The 3D-lidar
+  profile launches the PX4 binary directly, so the SITL build was a manual,
+  undocumented step before. Verified on a fresh clone of v0.2.0: the
+  preparation took about 25 minutes with the dev image already present, and
+  the headless flight that followed completed the mission at 3.162 m/s
+  (389.8 m in 123.3 s) without a crash.
+
 ## v0.2.0 (2026-09-14)
 
 First tagged release of the 3D navigation stack: point-to-point flight without

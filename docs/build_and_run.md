@@ -8,6 +8,7 @@ workflow. Do not run ad-hoc top-level CMake commands on the host.
 Run these from the repository root:
 
 ```bash
+./scripts/bootstrap.sh
 ./scripts/build.sh
 ./scripts/test.sh
 ./scripts/sim_gui.sh
@@ -18,6 +19,9 @@ Run these from the repository root:
 ```
 
 Use `./scripts/dev_shell.sh` when an interactive container shell is needed.
+`./scripts/bootstrap.sh` prepares a fresh clone end to end (dev image, PX4
+checkout and SITL build, workspace build, urban assets) and starts the urban
+point-to-point simulation; see `installation.md`.
 
 All host scripts go through `scripts/container_run.sh`. The container runner
 sources the supported ROS 2 setup and the container-built `px4_msgs` setup
