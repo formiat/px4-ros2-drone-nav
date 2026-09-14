@@ -128,6 +128,8 @@ stationaryHoldPointSafe(const StationaryExecutionHoldCertification3D& certificat
       std::hypot(std::hypot(state.vx, state.vy), state.vz) >
           kStationaryExecutionHoldSpeedToleranceMps ||
       std::abs(state.yaw_rate) > kStationaryExecutionHoldYawRateToleranceRadps ||
+      std::hypot(std::hypot(control.ax, control.ay), control.az) >
+          kStationaryExecutionHoldAccelerationToleranceMps2 ||
       !insideFlightEnvelope(certification.position,
                             certification.validation_policy->flightEnvelope()) ||
       !motionAltitudeEnvelopeDynamicallyRecoverable3D(

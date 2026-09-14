@@ -77,6 +77,14 @@ struct StopExecution3D {
 inline constexpr double kStationaryExecutionHoldPositionToleranceM{0.25};
 inline constexpr double kStationaryExecutionHoldSpeedToleranceMps{0.25};
 inline constexpr double kStationaryExecutionHoldYawRateToleranceRadps{0.25};
+// A vehicle at rest is not accelerating: measured on PX4's local position in
+// the urban flights r268 to r270, the acceleration at a sustained rest is
+// 0.1 to 0.4 m/s^2 at p99 (0.42 at most), while at the turning point of a
+// braking overshoot, where the speed passes through zero, it is 2.6 to
+// 7.9 m/s^2 (r281). A rest read from the speed alone anchored a hold at
+// that turning point, 0.3 m inside a wall by the body model, and the hold
+// pulled the vehicle back into the wall.
+inline constexpr double kStationaryExecutionHoldAccelerationToleranceMps2{1.0};
 
 enum class StationaryExecutionHoldOrigin3D : std::uint8_t {
   kTerminalExecution,

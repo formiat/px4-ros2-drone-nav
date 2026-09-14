@@ -60,7 +60,8 @@ namespace {
                             config.maximum_offboard_session_age_s > 0.0 &&
                             finiteNonnegative(config.position_tolerance_m) &&
                             finiteNonnegative(config.speed_tolerance_mps) &&
-                            finiteNonnegative(config.yaw_rate_tolerance_radps);
+                            finiteNonnegative(config.yaw_rate_tolerance_radps) &&
+                            finiteNonnegative(config.acceleration_tolerance_mps2);
   if (!config_valid) {
     return "config_invalid";
   }
@@ -84,6 +85,9 @@ namespace {
   }
   if (!observation.yaw_rate_authoritative) {
     return "yaw_rate_not_authoritative";
+  }
+  if (!observation.acceleration_authoritative) {
+    return "acceleration_not_authoritative";
   }
   if (!observation.vehicle_status_valid) {
     return "vehicle_status_invalid";
@@ -163,6 +167,13 @@ namespace {
   }
   if (std::abs(observation.yaw_rate_radps) > config.yaw_rate_tolerance_radps) {
     return "yaw_rate_outside_tolerance";
+  }
+  // A speed within tolerance is not rest while the vehicle is still braking
+  // through it: at the turning point of an overshoot the speed passes through
+  // zero under several m/s^2.
+  if (std::hypot(std::hypot(observation.acceleration.x, observation.acceleration.y),
+                 observation.acceleration.z) > config.acceleration_tolerance_mps2) {
+    return "acceleration_outside_tolerance";
   }
   return nullptr;
 }

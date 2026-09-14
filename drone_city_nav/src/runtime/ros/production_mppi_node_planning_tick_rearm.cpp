@@ -88,6 +88,7 @@ namespace {
       .position_tolerance_m = context.capture_gate_config.goal_radius_m,
       .speed_tolerance_mps = kStationaryExecutionHoldSpeedToleranceMps,
       .yaw_rate_tolerance_radps = kStationaryExecutionHoldYawRateToleranceRadps,
+      .acceleration_tolerance_mps2 = kStationaryExecutionHoldAccelerationToleranceMps2,
   };
   const MissionWaypointStationaryRearmObservation gate_observation{
       .stamp_ns = context.now_ns,
@@ -97,6 +98,9 @@ namespace {
                          context.navigation->state.z},
       .velocity = Point3{context.navigation->state.vx, context.navigation->state.vy,
                          context.navigation->state.vz},
+      .acceleration = Point3{context.navigation->measured_equivalent_control.ax,
+                             context.navigation->measured_equivalent_control.ay,
+                             context.navigation->measured_equivalent_control.az},
       .pose_receive_stamp_ns = context.navigation->receive_stamp_ns,
       .vehicle_status_receive_stamp_ns = context.vehicle_status->receive_stamp_ns,
       .offboard_session_source_stamp_ns =
@@ -111,6 +115,8 @@ namespace {
       .position_velocity_authoritative =
           context.navigation->position_velocity_authoritative,
       .yaw_rate_authoritative = context.navigation->yaw_rate_authoritative,
+      .acceleration_authoritative =
+          context.navigation->linear_acceleration_authoritative,
       .vehicle_status_valid = context.vehicle_status->valid,
       .vehicle_status_epoch_stable = context.vehicle_status_epoch_stable,
       .armed = context.vehicle_status->armed,

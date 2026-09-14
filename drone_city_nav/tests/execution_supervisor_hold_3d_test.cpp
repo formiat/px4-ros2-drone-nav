@@ -165,6 +165,26 @@ TEST(ExecutionSupervisorHold3DTest,
   EXPECT_EQ(supervisor.plan(), prepared.transition->next);
 }
 
+TEST(ExecutionSupervisorHold3DTest, AHoldIsNotPreparedWhileTheVehicleStillBrakes) {
+  // The speed passes through zero at the turning point of a braking
+  // overshoot; a hold anchored there is a hold at the deepest point of it.
+  SnapshotFixture3D fixture;
+  ExecutionSupervisor3D supervisor;
+  const std::shared_ptr<const ExecutionPlan3D> active =
+      installRouteOwner(supervisor, fixture);
+  ASSERT_NE(active, nullptr);
+  const StationaryExecutionHoldCertification3D braking =
+      SnapshotFixture3D::holdCertification(
+          *active, true, std::nullopt, std::nullopt, std::nullopt,
+          MotionControl3D{.ax = 3.0F, .ay = 0.0F, .az = 0.0F, .yaw_accel = 0.0F});
+
+  const ExecutionHoldPreparation3D prepared =
+      supervisor.prepareHold(holdRequest(active, braking));
+
+  EXPECT_FALSE(prepared.prepared());
+  EXPECT_EQ(supervisor.plan(), active);
+}
+
 TEST(ExecutionSupervisorHold3DTest,
      ARestHoldTransfersFromARouteOwnerWhosePathTheNewestWorldBlocks) {
   // The newest raw world blocks the route ahead of the vehicle; the resting

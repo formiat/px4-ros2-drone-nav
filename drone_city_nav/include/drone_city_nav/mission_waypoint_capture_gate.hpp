@@ -79,6 +79,7 @@ struct MissionWaypointStationaryRearmGateConfig {
   double position_tolerance_m{0.25};
   double speed_tolerance_mps{0.25};
   double yaw_rate_tolerance_radps{0.25};
+  double acceleration_tolerance_mps2{1.0};
 };
 
 struct MissionWaypointStationaryRearmObservation {
@@ -87,6 +88,7 @@ struct MissionWaypointStationaryRearmObservation {
   Point3 active_waypoint_goal{};
   Point3 position{};
   Point3 velocity{};
+  Point3 acceleration{};
   std::int64_t pose_receive_stamp_ns{0};
   std::int64_t vehicle_status_receive_stamp_ns{0};
   std::int64_t offboard_session_source_stamp_ns{0};
@@ -98,6 +100,7 @@ struct MissionWaypointStationaryRearmObservation {
   bool execution_input_state_authoritative{false};
   bool position_velocity_authoritative{false};
   bool yaw_rate_authoritative{false};
+  bool acceleration_authoritative{false};
   bool vehicle_status_valid{false};
   bool vehicle_status_epoch_stable{false};
   bool armed{false};

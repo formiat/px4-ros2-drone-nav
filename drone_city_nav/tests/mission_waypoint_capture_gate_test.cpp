@@ -72,6 +72,7 @@ observe(MissionWaypointCaptureGate& gate,
       .execution_input_state_authoritative = true,
       .position_velocity_authoritative = true,
       .yaw_rate_authoritative = true,
+      .acceleration_authoritative = true,
       .vehicle_status_valid = true,
       .vehicle_status_epoch_stable = true,
       .armed = true,
@@ -385,6 +386,7 @@ TEST(MissionWaypointCaptureGateTest, RestRearmIsTheGoalRearmWithoutTheGoal) {
       .execution_input_state_authoritative = true,
       .position_velocity_authoritative = true,
       .yaw_rate_authoritative = true,
+      .acceleration_authoritative = true,
       .vehicle_status_valid = true,
       .vehicle_status_epoch_stable = true,
       .armed = true,
@@ -406,6 +408,16 @@ TEST(MissionWaypointCaptureGateTest, RestRearmIsTheGoalRearmWithoutTheGoal) {
   EXPECT_STREQ(stationaryRestRearmIneligibility(config, observation),
                "speed_outside_tolerance");
   observation.velocity = Point3{0.0, 0.0, 0.0};
+  // The speed passes through zero at the turning point of a braking
+  // overshoot; the vehicle is not at rest there.
+  observation.acceleration = Point3{3.0, 0.0, 0.0};
+  EXPECT_STREQ(stationaryRestRearmIneligibility(config, observation),
+               "acceleration_outside_tolerance");
+  observation.acceleration = Point3{0.3, 0.0, 0.0};
+  observation.acceleration_authoritative = false;
+  EXPECT_STREQ(stationaryRestRearmIneligibility(config, observation),
+               "acceleration_not_authoritative");
+  observation.acceleration_authoritative = true;
   observation.execution_snapshot_revoked_empty = false;
   EXPECT_STREQ(stationaryRestRearmIneligibility(config, observation),
                "execution_snapshot_not_revoked_empty");
