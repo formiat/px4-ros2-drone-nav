@@ -49,23 +49,31 @@ class LateralTrackingTest(unittest.TestCase):
 
 
 class DescentArrestTest(unittest.TestCase):
-    def test_measures_the_arrest_of_a_descent(self) -> None:
-        time_s = np.arange(0.0, 6.0, 0.02)
-        # Descending at 3 m/s for 2 s, arrested at 2.0 m/s^2 over 1.5 s, then level.
-        vertical_up = np.where(time_s < 2.0, -3.0, np.minimum(-3.0 + 2.0 * (time_s - 2.0), 0.0))
+    def test_measures_the_plateau_of_each_arrest(self) -> None:
+        # Three descents at 3 m/s, arrested at 1.6, 2.0 and 2.4 m/s^2, each
+        # followed by level flight; the plateau median is the middle one.
+        time_s = np.arange(0.0, 24.0, 0.02)
+        vertical_up = np.zeros_like(time_s)
+        for start, arrest in ((1.0, 1.6), (9.0, 2.0), (17.0, 2.4)):
+            descending = (time_s >= start) & (time_s < start + 2.0)
+            arresting = time_s >= start + 2.0
+            vertical_up = np.where(descending, -3.0, vertical_up)
+            vertical_up = np.where(
+                arresting, np.minimum(-3.0 + arrest * (time_s - start - 2.0), 0.0),
+                vertical_up)
         positions = np.column_stack([time_s * 1e6, time_s * 1e6, np.zeros_like(time_s),
                                      np.zeros_like(time_s), np.zeros_like(time_s),
                                      np.zeros_like(time_s), np.zeros_like(time_s),
                                      -vertical_up])
-        measured = evidence.descent_arrest_median_mps2(positions)
-        self.assertGreaterEqual(measured.samples, evidence.MINIMUM_DESCENT_ARREST_SAMPLES)
+        measured = evidence.descent_arrest_plateau_mps2(positions)
+        self.assertEqual(measured.samples, 3)
         self.assertAlmostEqual(measured.value, 2.0, places=1)
 
     def test_a_flight_without_descents_measures_nothing(self) -> None:
         time_s = np.arange(0.0, 6.0, 0.02)
         positions = np.zeros((len(time_s), 8))
         positions[:, 0] = time_s * 1e6
-        self.assertEqual(evidence.descent_arrest_median_mps2(positions).samples, 0)
+        self.assertEqual(evidence.descent_arrest_plateau_mps2(positions).samples, 0)
 
 
 class PositionEstimateTest(unittest.TestCase):

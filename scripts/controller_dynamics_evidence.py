@@ -22,17 +22,20 @@ import numpy as np
 # the other four flights sit at 0.046 to 0.063 s).
 MAXIMUM_LATERAL_TRACKING_ERROR_P99_M = 0.25
 # The descent arrest the vertical stopping laws rely on is 2.0 m/s^2. Measured
-# on twenty flights with at least 30 arresting samples (r268 to r308) the
-# airframe arrests descents faster than 1.5 m/s at 1.32 to 2.22 m/s^2 at the
-# median of the windowed samples (p75 1.7 to 2.4); r299 sat at 1.32. The
-# regression bound is the measured floor with a margin. The vertical law
-# itself rests on a different statistic of the same recordings, the fifth
-# percentile of the arrest plateau over 91 arrests, 1.41 m/s^2 (the yaml's
-# 1.4); a median of the ramp-inclusive samples below this bound would mean
-# the airframe changed. A flight with fewer than 30 arresting samples
-# measures nothing.
-MINIMUM_DESCENT_ARREST_MEDIAN_MPS2 = 1.2
-MINIMUM_DESCENT_ARREST_SAMPLES = 30
+# The arrest of a descent faster than 1.5 m/s is read per episode as its
+# plateau, the peak of the 0.2 s window, the statistic the vertical law rests
+# on: over the 91 episodes of the 25 urban flights r268 to r308 the plateau is
+# 1.41 m/s^2 at the fifth percentile and 2.19 at the median, and the law
+# (guaranteed_vertical_stopping_deceleration_mps2, 1.4) is that fifth
+# percentile. A flight's median plateau below the law would mean the airframe
+# no longer delivers what half of the stops assume. With the planned vertical
+# acceleration at 1.4 the flights r312 to r314 measured medians of 2.0 to 2.13
+# over 5, 1 and 6 episodes; the former statistic, the median of every windowed
+# sample including the ramps, fell to 1.16 on r312 against a bound of 1.2 and
+# measured the ramp, not the airframe. Fewer than three episodes measure
+# nothing.
+MINIMUM_DESCENT_ARREST_PLATEAU_MPS2 = 1.4
+MINIMUM_DESCENT_ARREST_EPISODES = 3
 # The position estimate against the true pose at every planning tick, with the
 # clocks aligned on the speed profile. The error splits into an offset along
 # the motion, read in seconds at the true speed (0.10 to 0.11 s on r288 to
@@ -116,10 +119,14 @@ def lateral_tracking_error_p99_m(setpoints: np.ndarray, positions: np.ndarray,
     return DynamicsMeasurement(float(np.percentile(lateral, 99)), int(selected.sum()))
 
 
-def descent_arrest_median_mps2(positions: np.ndarray, window_s: float = 0.2,
-                               minimum_descent_mps: float = 1.5) -> DynamicsMeasurement:
-    """The upward acceleration while a descent faster than the minimum is being
-    arrested, from the local position's vertical velocity (NED vz, down positive)."""
+def descent_arrest_plateau_mps2(positions: np.ndarray, window_s: float = 0.2,
+                                minimum_descent_mps: float = 1.5) -> DynamicsMeasurement:
+    """The median over arrest episodes of the plateau upward acceleration while
+    a descent faster than the minimum is being arrested, from the local
+    position's vertical velocity (NED vz, down positive). An episode is a run
+    of arresting samples (gaps of up to two samples allowed) at least three
+    samples long; its plateau is the peak of the windowed acceleration. The
+    sample count is the episode count."""
     if len(positions) < 10:
         return DynamicsMeasurement(float("nan"), 0)
     time_s = positions[:, 0] / 1e6
@@ -130,11 +137,18 @@ def descent_arrest_median_mps2(positions: np.ndarray, window_s: float = 0.2,
     k = max(1, int(round(window_s / step)))
     acceleration = (vertical_up[k:] - vertical_up[:-k]) / (time_s[k:] - time_s[:-k])
     descending = vertical_up[:-k] < -minimum_descent_mps
-    arresting = descending & (acceleration > 0.5)
-    if arresting.sum() < 5:
-        return DynamicsMeasurement(float("nan"), int(arresting.sum()))
-    return DynamicsMeasurement(float(np.median(acceleration[arresting])),
-                               int(arresting.sum()))
+    arresting = np.flatnonzero(descending & (acceleration > 0.5))
+    plateaus: list[float] = []
+    start = 0
+    for index in range(1, len(arresting) + 1):
+        if index == len(arresting) or arresting[index] - arresting[index - 1] > 2:
+            episode = arresting[start:index]
+            if len(episode) >= 3:
+                plateaus.append(float(acceleration[episode].max()))
+            start = index
+    if not plateaus:
+        return DynamicsMeasurement(float("nan"), 0)
+    return DynamicsMeasurement(float(np.median(plateaus)), len(plateaus))
 
 
 TICK_POSITION_PATTERN = re.compile(
@@ -232,18 +246,18 @@ def validate_controller_dynamics(run_directory: Path, ros_log: str,
         else:
             print(f"OK: lateral tracking error p99 is {lateral.value:.3f} m "
                   f"({lateral.samples} samples between 1.5 and 4.5 m/s)")
-        arrest = descent_arrest_median_mps2(positions)
-        if not np.isfinite(arrest.value) or arrest.samples < MINIMUM_DESCENT_ARREST_SAMPLES:
+        arrest = descent_arrest_plateau_mps2(positions)
+        if not np.isfinite(arrest.value) or arrest.samples < MINIMUM_DESCENT_ARREST_EPISODES:
             print(f"OK: descent arrest was not exercised enough to measure "
-                  f"({arrest.samples} samples)")
-        elif arrest.value < MINIMUM_DESCENT_ARREST_MEDIAN_MPS2:
+                  f"({arrest.samples} episodes)")
+        elif arrest.value < MINIMUM_DESCENT_ARREST_PLATEAU_MPS2:
             errors.append(
-                "FAIL: descent arrest median reaches "
-                f"{MINIMUM_DESCENT_ARREST_MEDIAN_MPS2:.1f} m/s^2 ({arrest.value:.2f} "
-                f"m/s^2 over {arrest.samples} samples)")
+                "FAIL: descent arrest plateau reaches the vertical law's "
+                f"{MINIMUM_DESCENT_ARREST_PLATEAU_MPS2:.1f} m/s^2 at the median "
+                f"({arrest.value:.2f} m/s^2 over {arrest.samples} episodes)")
         else:
-            print(f"OK: descent arrest median is {arrest.value:.2f} m/s^2 "
-                  f"({arrest.samples} samples)")
+            print(f"OK: descent arrest plateau median is {arrest.value:.2f} m/s^2 "
+                  f"({arrest.samples} episodes)")
     else:
         errors.append("FAIL: the flight recorded its setpoints and local position "
                       f"({tracking_path.name})")
