@@ -160,28 +160,42 @@ reject(const FiniteExecutionPathStatus3D status,
   };
 }
 
+// The oracle of a path validation, built once per path: its constructor
+// checks every lidar return for finiteness, 60 us for a 64 000-point scan,
+// and a path has eighty segments.
+struct PathCollisionOracle3D {
+  bool evidence_available{false};
+  OccupiedCollisionOracle3D oracle;
+
+  explicit PathCollisionOracle3D(const FiniteExecutionPathWorld3D& world) noexcept
+      : evidence_available{world.static_occupancy != nullptr ||
+                           world.observed_occupancy != nullptr ||
+                           world.raw_occupancy != nullptr ||
+                           !world.latest_lidar_obstacle_points.empty()},
+        oracle{OccupiedCollisionWorld3D{
+            .observed_occupancy = world.observed_occupancy,
+            .static_occupancy = world.static_occupancy,
+            .planar_occupancy = world.raw_occupancy,
+            .raw_point_cloud = world.latest_lidar_obstacle_points,
+            .launch_support_contact = world.launch_support_contact,
+            .proprioceptive_free_space_seed = world.proprioceptive_free_space_seed,
+            .footprint = *world.footprint,
+            .flight_envelope = *world.flight_envelope,
+        }} {
+  }
+};
+
 [[nodiscard]] FiniteExecutionPathStatus3D
 validatePhysicalSegment(const Point3& first, const FootprintBodyAxis& first_axis,
                         const Point3& second, const FootprintBodyAxis& second_axis,
-                        const FiniteExecutionPathWorld3D& world,
+                        const PathCollisionOracle3D& world,
                         Point3& failure_point) noexcept {
-  if (world.static_occupancy == nullptr && world.observed_occupancy == nullptr &&
-      world.raw_occupancy == nullptr && world.latest_lidar_obstacle_points.empty()) {
+  if (!world.evidence_available) {
     failure_point = first;
     return FiniteExecutionPathStatus3D::kRawWorldUnavailable;
   }
-  const OccupiedCollisionOracle3D oracle{OccupiedCollisionWorld3D{
-      .observed_occupancy = world.observed_occupancy,
-      .static_occupancy = world.static_occupancy,
-      .planar_occupancy = world.raw_occupancy,
-      .raw_point_cloud = world.latest_lidar_obstacle_points,
-      .launch_support_contact = world.launch_support_contact,
-      .proprioceptive_free_space_seed = world.proprioceptive_free_space_seed,
-      .footprint = *world.footprint,
-      .flight_envelope = *world.flight_envelope,
-  }};
   const OccupiedCollisionResult3D validation =
-      oracle.validateSegment(first, first_axis, second, second_axis);
+      world.oracle.validateSegment(first, first_axis, second, second_axis);
   if (validation.clear()) {
     return FiniteExecutionPathStatus3D::kValid;
   }
@@ -299,6 +313,7 @@ FiniteExecutionPathValidation3D validateCompleteFiniteExecutionPath3D(
       .status = FiniteExecutionPathStatus3D::kValid,
   };
   result.physically_validated_point_count = points.empty() ? 0U : 1U;
+  const PathCollisionOracle3D collision{world};
   for (std::size_t index = 1U; index < points.size(); ++index) {
     const TimedExecutionPathPoint3D& first = points[index - 1U];
     const TimedExecutionPathPoint3D& second = points[index];
@@ -323,7 +338,7 @@ FiniteExecutionPathValidation3D validateCompleteFiniteExecutionPath3D(
     }
     const FiniteExecutionPathStatus3D segment_status = validatePhysicalSegment(
         position(first.state), kUprightBodyAxis, position(second.state),
-        kUprightBodyAxis, world, failure_point);
+        kUprightBodyAxis, collision, failure_point);
     if (segment_status != FiniteExecutionPathStatus3D::kValid) {
       FiniteExecutionPathValidation3D rejection =
           reject(segment_status, 0U, index - 1U, failure_point, 0.0);
@@ -560,9 +575,10 @@ FiniteExecutionPathValidation3D validateFiniteExecutionTrajectoryContinuation3D(
   }
 
   Point3 failure_point{};
+  const PathCollisionOracle3D collision{world};
   FiniteExecutionPathStatus3D segment_status = validatePhysicalSegment(
       position(current_state), kUprightBodyAxis, position(first_remaining->state),
-      kUprightBodyAxis, world, failure_point);
+      kUprightBodyAxis, collision, failure_point);
   if (segment_status != FiniteExecutionPathStatus3D::kValid) {
     return reject(segment_status, first_remaining_index, first_remaining_index,
                   failure_point, remaining_duration_s);
@@ -572,7 +588,7 @@ FiniteExecutionPathValidation3D validateFiniteExecutionTrajectoryContinuation3D(
     const TimedExecutionPathPoint3D& second = points[index];
     segment_status = validatePhysicalSegment(position(first.state), kUprightBodyAxis,
                                              position(second.state), kUprightBodyAxis,
-                                             world, failure_point);
+                                             collision, failure_point);
     if (segment_status != FiniteExecutionPathStatus3D::kValid) {
       return reject(segment_status, first_remaining_index, index - 1U, failure_point,
                     remaining_duration_s);
@@ -619,6 +635,7 @@ FiniteExecutionPathValidation3D validateFiniteExecutionPathContinuation3D(
   FiniteExecutionPathStatus3D altitude_status{FiniteExecutionPathStatus3D::kValid};
   FiniteExecutionPathStatus3D segment_status{FiniteExecutionPathStatus3D::kValid};
   Point3 failure_point{};
+  const PathCollisionOracle3D collision{world};
   for (std::size_t index = source_control_index; index + 1U < points.size(); ++index) {
     const MotionControl3D& control = points[index + 1U].control;
     const MotionState3D next_state =
@@ -637,9 +654,9 @@ FiniteExecutionPathValidation3D validateFiniteExecutionPathContinuation3D(
                     first_remaining_index, index, position(next_state),
                     trajectory_validation.remaining_duration_s);
     }
-    segment_status = validatePhysicalSegment(position(simulated_state),
-                                             kUprightBodyAxis, position(next_state),
-                                             kUprightBodyAxis, world, failure_point);
+    segment_status = validatePhysicalSegment(
+        position(simulated_state), kUprightBodyAxis, position(next_state),
+        kUprightBodyAxis, collision, failure_point);
     if (segment_status != FiniteExecutionPathStatus3D::kValid) {
       return reject(segment_status, first_remaining_index, index, failure_point,
                     trajectory_validation.remaining_duration_s);
