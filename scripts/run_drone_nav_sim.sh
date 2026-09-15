@@ -792,6 +792,17 @@ px4_parameter_stream() {
   sleep "${px4_param_delay_s}"
   echo "param set CBRK_SUPPLY_CHK 894281"
   echo "param set NAV_DLL_ACT 0"
+  # The simulated GNSS has no measurement delay: the Gazebo bridge stamps the
+  # navsat sample with the time it receives it (GZBridge.cpp,
+  # sensor_gps.timestamp_sample). EKF2 subtracts EKF2_GPS_DELAY from that
+  # stamp before fusing (estimator_interface.cpp), so its default of 110 ms
+  # placed the position estimate ahead of the true pose along the motion by
+  # the speed times 0.11 s: measured against the Gazebo pose in every one of
+  # the 25 recorded urban flights r268 to r311 as +0.118 to +0.120 s at the
+  # median (0.35 m at 3 m/s), with the cross-track error untouched. The
+  # obstacle memory's position source offset (lidar_position_source_time_offset_s)
+  # compensated the same lead downstream and follows this value.
+  echo "param set EKF2_GPS_DELAY 0"
   if bool_is_true "${enable_simulation_heading_source}"; then
     # The simulated magnetometer's heading sits five to six degrees off the
     # true one at hover, independent of the world's magnetic field; the
@@ -816,6 +827,7 @@ px4_parameter_stream() {
   echo "param show MPC_JERK_AUTO"
   echo "param show MPC_Z_VEL_MAX_UP"
   echo "param show MPC_Z_VEL_MAX_DN"
+  echo "param show EKF2_GPS_DELAY"
   while true; do
     sleep 3600
   done

@@ -6,6 +6,12 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- PX4's EKF2 no longer assumes a 110 ms GNSS delay in simulation
+  (`EKF2_GPS_DELAY 0` in the parameter stream). The Gazebo bridge stamps
+  the navsat sample at receipt, and the default delay placed the position
+  estimate ahead of the true pose along the motion by the speed times
+  0.11 s, measured as +0.118 to +0.120 s on r308 and r311 with the
+  controller-dynamics recordings, 0.35 m at 3 m/s.
 - The vertical law is the fifth percentile of the arrest plateau: the
   guaranteed vertical stopping deceleration and the planned vertical
   acceleration go from 2.0 to 1.4 m/s^2. Over the 91 descent arrests

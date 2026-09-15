@@ -780,6 +780,12 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn('param show MPC_Z_VEL_MAX_DN', self.text)
         self.assertIn('param show MPC_Z_VEL_MAX_UP', self.text)
 
+    def test_px4_gnss_delay_matches_the_simulated_sensor(self) -> None:
+        # The bridge stamps GNSS samples at receipt; the EKF must not assume the
+        # 110 ms of a real receiver, which put the estimate ahead of the vehicle.
+        self.assertIn('param set EKF2_GPS_DELAY 0', self.text)
+        self.assertIn('param show EKF2_GPS_DELAY', self.text)
+
     def test_speed_profile_aligns_px4_horizontal_dynamics_with_mppi(self) -> None:
         self.assertIn(
             "production_mppi_node absolute_speed_limit_mps",
