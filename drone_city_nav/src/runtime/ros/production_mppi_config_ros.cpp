@@ -686,15 +686,34 @@ void ProductionMppiConfigLoader::declareControl() {
   mppi.stopping_capability = control.speed_policy.stopping_capability;
   mppi.dynamics.maximum_horizontal_speed_mps =
       static_cast<float>(control.speed_policy.absolute_speed_limit_mps);
-  // Every rollout, whichever way it points, stays under the speed the
-  // contract admits along its worst direction; the reference speed applies
-  // the direction the vehicle actually moves in.
-  const double sensor_braking_speed_limit_mps =
-      sensorBrakingMaximumSpeedMps(control.speed_policy.sensor_braking_contract,
-                                   control.speed_policy.stopping_capability,
-                                   control.speed_policy.absolute_speed_limit_mps);
-  mppi.dynamics.maximum_translational_speed_mps =
-      std::nextafter(static_cast<float>(sensor_braking_speed_limit_mps), 0.0F);
+  // Every rollout stays under the speed the contract admits along its own
+  // direction, read from a table by the direction's vertical share; the
+  // scalar bound is the largest entry. One bound for every
+  // direction used to be the contract's worst case, a pure climb or descent:
+  // with the 1.4 m/s^2 vertical law that is 4.62 m/s while level flight is
+  // admitted at 5.65, and the urban flights r312 to r319 flew their level
+  // legs at a p90 of 4.3 to 4.6 m/s against 4.8 to 5.0 before, a tenth of
+  // their mean speed.
+  TranslationalSpeedLimitByVerticalShare3D& speed_limit_table =
+      mppi.dynamics.translational_speed_limit_by_vertical_share;
+  float level_speed_limit_mps{0.0F};
+  for (std::size_t sample = 0U;
+       sample < TranslationalSpeedLimitByVerticalShare3D::kSamples; ++sample) {
+    const double vertical_share =
+        static_cast<double>(sample) /
+        static_cast<double>(TranslationalSpeedLimitByVerticalShare3D::kSamples - 1U);
+    const double limit_mps = sensorBrakingMaximumSpeedMps(
+        control.speed_policy.sensor_braking_contract,
+        control.speed_policy.stopping_capability,
+        control.speed_policy.absolute_speed_limit_mps,
+        Vec3{std::sqrt(std::max(0.0, 1.0 - vertical_share * vertical_share)), 0.0,
+             vertical_share});
+    speed_limit_table.limit_mps[sample] =
+        std::nextafter(static_cast<float>(limit_mps), 0.0F);
+    level_speed_limit_mps =
+        std::max(level_speed_limit_mps, speed_limit_table.limit_mps[sample]);
+  }
+  mppi.dynamics.maximum_translational_speed_mps = level_speed_limit_mps;
   mppi.dynamics.maximum_horizontal_acceleration_mps2 =
       static_cast<float>(maximum_horizontal_acceleration_mps2);
   config_.execution.finite_horizon =
@@ -930,6 +949,8 @@ void ProductionMppiConfigLoader::finalize() {
           static_cast<double>(control.mppi.dynamics.maximum_vertical_speed_mps),
       .maximum_translational_speed_mps =
           static_cast<double>(control.mppi.dynamics.maximum_translational_speed_mps),
+      .translational_speed_limit_by_vertical_share =
+          control.mppi.dynamics.translational_speed_limit_by_vertical_share,
       .maximum_horizontal_acceleration_mps2 = static_cast<double>(
           control.mppi.dynamics.maximum_horizontal_acceleration_mps2),
       .maximum_vertical_acceleration_mps2 =

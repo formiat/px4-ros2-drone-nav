@@ -3,6 +3,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <stdexcept>
@@ -46,6 +47,21 @@ TEST_F(ProductionMppiConfigTest, LoadsGroupedDefaultsAndDerivedContracts) {
   const ProductionMppiConfig config = declareProductionMppiConfig(*node);
 
   EXPECT_TRUE(config.valid());
+  // The rollout speed table is the contract along every direction: the scalar
+  // bound is its largest entry, no entry exceeds it, and a pure climb or
+  // descent is admitted less than the bound.
+  const MotionDynamicsConfig3D& dynamics = config.control.mppi.dynamics;
+  float largest_limit_mps{0.0F};
+  for (const float limit :
+       dynamics.translational_speed_limit_by_vertical_share.limit_mps) {
+    EXPECT_GT(limit, 0.0F);
+    EXPECT_LE(limit, dynamics.maximum_translational_speed_mps);
+    largest_limit_mps = std::max(largest_limit_mps, limit);
+  }
+  EXPECT_FLOAT_EQ(largest_limit_mps, dynamics.maximum_translational_speed_mps);
+  EXPECT_LT(dynamics.translational_speed_limit_by_vertical_share
+                .limit_mps[TranslationalSpeedLimitByVerticalShare3D::kSamples - 1U],
+            dynamics.maximum_translational_speed_mps);
   EXPECT_TRUE(config.world.use_static_map);
   EXPECT_EQ(config.world.frame_id, "map");
   EXPECT_EQ(config.world.topics.raw_obstacle_snapshot_3d,

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/translational_speed_limit_3d.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <cstdint>
@@ -17,6 +18,10 @@ struct FlightTimeModel3D {
   double maximum_horizontal_speed_mps{5.0};
   double maximum_vertical_speed_mps{3.0};
   double maximum_translational_speed_mps{std::numeric_limits<double>::max()};
+  // The contract's bound along a direction by its vertical share; the ETA
+  // model reads the same table the rollouts obey.
+  TranslationalSpeedLimitByVerticalShare3D
+      translational_speed_limit_by_vertical_share{};
   double maximum_horizontal_acceleration_mps2{4.0};
   double maximum_vertical_acceleration_mps2{4.0};
   double maximum_control_jerk_mps3{12.0};

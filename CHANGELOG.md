@@ -6,6 +6,16 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- The rollouts obey the braking contract along their own direction of
+  motion: the dynamics carry the contract's admitted speed at 33 vertical
+  shares from level flight to a pure climb or descent
+  (`translational_speed_limit_by_vertical_share`), read by one lookup in the
+  host and CUDA dynamics, the overspeed cost, the reference clamp and the
+  route ETA model; the scalar bound is the table's largest entry. One bound
+  for every direction used to be the contract's worst case, a pure descent,
+  4.62 m/s under the 1.4 m/s^2 vertical law, and it held the level legs of
+  r312 to r319 at a p90 of 4.3 to 4.6 m/s against the 5.65 the contract
+  admits there.
 - The production tick takes 22.7 ms at the median and 30.8 ms at p95
   (r314) instead of 52 to 55 and 70 to 98 ms (r303 to r313): a path
   validation builds its collision oracle once instead of once per segment,

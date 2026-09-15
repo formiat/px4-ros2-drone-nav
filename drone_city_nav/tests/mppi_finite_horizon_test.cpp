@@ -1,3 +1,4 @@
+#include "drone_city_nav/motion_dynamics_3d.hpp"
 #include "drone_city_nav/mppi/mppi_finite_horizon.hpp"
 #include "drone_city_nav/mppi/mppi_reference.hpp"
 
@@ -79,6 +80,34 @@ TEST(MppiFiniteHorizon, ArrivalControlsRespectAccelerationAndJerkLimits) {
     last = control;
   }
   EXPECT_TRUE(finiteHorizonHasTerminalRestState(path));
+}
+
+TEST(MppiFiniteHorizon, TranslationalCapFollowsTheDirectionOfMotion) {
+  // Level flight admitted at 5.6 m/s, a pure descent at 4.6, linearly between.
+  DynamicsConfig dynamics{.dt_s = 0.05F, .linear_drag_1ps = 0.0F};
+  dynamics.maximum_translational_speed_mps = 5.6F;
+  constexpr std::size_t kLast = TranslationalSpeedLimitByVerticalShare3D::kSamples - 1U;
+  for (std::size_t sample = 0U; sample <= kLast; ++sample) {
+    dynamics.translational_speed_limit_by_vertical_share.limit_mps[sample] =
+        5.6F - static_cast<float>(sample) / static_cast<float>(kLast);
+  }
+  ASSERT_TRUE(translationalSpeedLimitByVerticalShareValid3D(dynamics));
+
+  EXPECT_FLOAT_EQ(translationalSpeedLimitAlong3D(dynamics, 3.0F, 0.0F, 0.0F), 5.6F);
+  EXPECT_FLOAT_EQ(translationalSpeedLimitAlong3D(dynamics, 0.0F, 0.0F, -3.0F), 4.6F);
+  // A share of 1/sqrt(10) lies between samples 10 and 11; the smaller
+  // neighbour binds.
+  EXPECT_FLOAT_EQ(translationalSpeedLimitAlong3D(dynamics, 3.0F, 0.0F, -1.0F),
+                  5.6F - 11.0F / 32.0F);
+
+  // A step that would cross the cap is held at it: level at 5.6, a descent at
+  // 4.6, while the vertical speed cap alone would allow 5.0.
+  const State level =
+      integrateMotionState3D(State{.vx = 5.5F}, Control{.ax = 4.0F}, dynamics);
+  EXPECT_NEAR(std::hypot(std::hypot(level.vx, level.vy), level.vz), 5.6F, 1.0e-4F);
+  const State descent =
+      integrateMotionState3D(State{.vz = -4.5F}, Control{.az = -4.0F}, dynamics);
+  EXPECT_NEAR(std::abs(descent.vz), 4.6F, 1.0e-4F);
 }
 
 TEST(MppiFiniteHorizon, KeepsNominalPrefixAndStopsBeforeOriginalEndpoint) {

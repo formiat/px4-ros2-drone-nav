@@ -536,10 +536,13 @@ production_mppi_node:
     # airframe delivers (1.4 m/s^2, see the guaranteed vertical stopping
     # deceleration): a dive is then planned no steeper than it can be
     # arrested. The former 4.0 let the optimiser plan dives it could not stop
-    # (r252); 2.0 followed the former guarantee. The braking contract's
-    # worst-direction limit is 4.62 m/s with both at 1.4 (5.14 with both at
-    # 2.0); the level-flight limit, bound by the horizontal axis alone, does
-    # not move.
+    # (r252); 2.0 followed the former guarantee. The braking contract admits
+    # 4.62 m/s along a pure climb or descent with both at 1.4 (5.14 with both
+    # at 2.0) and 5.65 in level flight; the rollouts read the contract's bound
+    # along their own direction (translational_speed_limit_by_vertical_share),
+    # so the vertical law prices vertical motion only. While one bound stood
+    # for every direction the level legs of r312 to r319 flew at a p90 of 4.3
+    # to 4.6 m/s against 4.8 to 5.0 before, a tenth of the mean speed.
     maximum_vertical_acceleration_mps2: 1.4
     # Risk-tier bands, for route annotation and diagnostics only. No law
     # measures a margin from them: the clearance laws are the tracking-error

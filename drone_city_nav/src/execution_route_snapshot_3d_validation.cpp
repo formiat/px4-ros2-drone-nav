@@ -227,6 +227,10 @@ validationContractFingerprint(const FiniteExecutionPathWorld3D& world,
   hashValue(hash, canonicalDoubleBits(dynamics.maximum_horizontal_speed_mps));
   hashValue(hash, canonicalDoubleBits(dynamics.maximum_vertical_speed_mps));
   hashValue(hash, canonicalDoubleBits(dynamics.maximum_translational_speed_mps));
+  for (const float limit :
+       dynamics.translational_speed_limit_by_vertical_share.limit_mps) {
+    hashValue(hash, canonicalDoubleBits(limit));
+  }
   hashValue(hash, canonicalDoubleBits(dynamics.maximum_yaw_acceleration_radps2));
   hashValue(hash, canonicalDoubleBits(dynamics.maximum_yaw_rate_radps));
   hashValue(hash, canonicalDoubleBits(dynamics.maximum_control_jerk_mps3));

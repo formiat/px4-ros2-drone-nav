@@ -2,7 +2,9 @@
 
 #include "drone_city_nav/motion_state_3d.hpp"
 #include "drone_city_nav/stopping_capability.hpp"
+#include "drone_city_nav/translational_speed_limit_3d.hpp"
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -20,11 +22,38 @@ struct MotionDynamicsConfig3D {
   float maximum_vertical_acceleration_mps2{4.0F};
   float maximum_horizontal_speed_mps{10.0F};
   float maximum_vertical_speed_mps{5.0F};
+  // The bound over every direction: the largest entry of the table below.
   float maximum_translational_speed_mps{std::numeric_limits<float>::max()};
+  TranslationalSpeedLimitByVerticalShare3D
+      translational_speed_limit_by_vertical_share{};
   float maximum_yaw_acceleration_radps2{2.0F};
   float maximum_yaw_rate_radps{1.5F};
   float maximum_control_jerk_mps3{12.0F};
 };
+
+// The translational speed the dynamics admit along the direction of the
+// velocity (vx, vy, vz): the table entry for its vertical share, never above
+// the bound over every direction. One law for the host and device rollouts,
+// the overspeed cost and the reference clamp.
+[[nodiscard]] DRONE_CITY_NAV_TRANSLATIONAL_SPEED_LIMIT_FN float
+translationalSpeedLimitAlong3D(const MotionDynamicsConfig3D& dynamics, const float vx,
+                               const float vy, const float vz) noexcept {
+  const float speed = std::hypot(std::hypot(vx, vy), vz);
+  if (!(speed > 0.0F)) {
+    return dynamics.maximum_translational_speed_mps;
+  }
+  return std::fmin(
+      dynamics.maximum_translational_speed_mps,
+      translationalSpeedLimitForVerticalShare3D(
+          dynamics.translational_speed_limit_by_vertical_share, std::fabs(vz) / speed));
+}
+
+[[nodiscard]] inline bool translationalSpeedLimitByVerticalShareValid3D(
+    const MotionDynamicsConfig3D& dynamics) noexcept {
+  return translationalSpeedLimitByVerticalShareValid3D(
+      dynamics.translational_speed_limit_by_vertical_share,
+      dynamics.maximum_translational_speed_mps);
+}
 
 struct MotionAltitudeEnvelopeConfig3D {
   float minimum_z_m{-std::numeric_limits<float>::max()};
