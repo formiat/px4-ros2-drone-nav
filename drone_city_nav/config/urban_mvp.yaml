@@ -502,6 +502,13 @@ production_mppi_node:
     # 1.5 and 2.5 m/s and 0.03 s above. 0.075 s keeps one and a half to two
     # and a half times that. The former 0.15 s priced a 0.45 m tube at 3 m/s
     # and held the vehicle at the 1 m/s floor on a fifth of its flight time.
+    # The flights r288, r307 and r310 exceeded the tube at p99 (0.22, 0.19
+    # and 0.29 m lateral): in each, one to three episodes of 0.1 to 1.1 s
+    # where a horizon was revoked and rebuilt or the route turned on a 2 m
+    # radius at 2 to 3 m/s, and the position estimate ran 0.3 m ahead of the
+    # vehicle along the motion, which a turn rotates into lateral error. With
+    # that lead removed (EKF2_GPS_DELAY 0) the p99 is 0.08 to 0.18 m on r312
+    # to r314 and the remaining episodes are under 0.1 s. The law stands.
     tracking_error_tube_response_time_s: 0.075
     # Where the physical body clears raw occupancy, a constrained segment keeps
     # at least this ceiling instead of crawling, and unobserved space is
