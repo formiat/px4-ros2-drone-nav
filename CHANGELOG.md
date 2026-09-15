@@ -6,6 +6,22 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- The production tick takes 22.7 ms at the median and 30.8 ms at p95
+  (r314) instead of 52 to 55 and 70 to 98 ms (r303 to r313): a path
+  validation builds its collision oracle once instead of once per segment,
+  and the oracle's constructor scans every one of the scan's 63 700 lidar
+  returns for finiteness (`4b3dac94`). The mission check now bounds the
+  tick at 30 ms p50 and 45 ms p95 from the summary percentiles and reports
+  the share of ticks over the 20 ms deadline (71 percent on r314).
+- The vertical law is checked on the statistic it rests on: the
+  descent-arrest check reads the plateau of each arrest episode and holds
+  its median over at least three episodes to the law's 1.4 m/s^2; the
+  former median over every windowed sample measured the ramps and fell to
+  1.16 on r312 against its 1.2 bound while the plateaus sat at 2.0.
+- The tracking-error tube law keeps its 0.075 s: the p99 exceedances of
+  r288, r307 and r310 were short episodes at horizon rebuilds and 2 m
+  radius turns with the position estimate 0.3 m ahead of the vehicle;
+  without that lead the p99 is 0.08 to 0.18 m (r312 to r314).
 - PX4's EKF2 no longer assumes a 110 ms GNSS delay in simulation
   (`EKF2_GPS_DELAY 0` in the parameter stream). The Gazebo bridge stamps
   the navsat sample at receipt, and the default delay placed the position

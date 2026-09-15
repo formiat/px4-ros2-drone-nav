@@ -143,13 +143,40 @@ class RuntimeManifestTest(unittest.TestCase):
             "post_bootstrap_route_availability_ratio=0.998990 "
             "post_bootstrap_no_executable_route_hold_ticks=1 "
             "planner_latency_samples=12 planner_p95_ms=81.5 "
-            "planner_p99_ms=92.0 planner_build_and_planning_p99_ms=101.0\n"
+            "planner_p99_ms=92.0 planner_build_and_planning_p99_ms=101.0 "
+            "deadline_misses=700 tick_total_p50_ms=22.7 tick_total_p95_ms=30.8\n"
         )
         errors: list[str] = []
 
         validator.validate_persistent_3d_acceptance_metrics(log, errors)
 
         self.assertEqual(errors, [])
+
+    def test_acceptance_metrics_reject_a_tick_over_its_wall_time_budget(self) -> None:
+        log = (
+            "PRODUCTION_MPPI_ROUTE3D certified_pending=true "
+            "certified_reserve=sufficient reserve_available_m=20.0 "
+            "reserve_required_m=19.0\n"
+            "PRODUCTION_MPPI_SUMMARY ticks=1000 ownership_gap_ticks=0 "
+            "post_bootstrap_route_observations=990 "
+            "post_bootstrap_route_available_ticks=989 "
+            "post_bootstrap_route_availability_ratio=0.998990 "
+            "post_bootstrap_no_executable_route_hold_ticks=1 "
+            "planner_latency_samples=12 planner_p95_ms=81.5 "
+            "planner_p99_ms=92.0 planner_build_and_planning_p99_ms=101.0 "
+            "deadline_misses=940 tick_total_p50_ms=54.0 tick_total_p95_ms=78.0\n"
+        )
+        errors: list[str] = []
+
+        validator.validate_persistent_3d_acceptance_metrics(log, errors)
+
+        self.assertEqual(
+            [error for error in errors if "tick wall time" in error],
+            [
+                "FAIL: production tick wall time stays below 30 ms at p50 and 45 ms "
+                "at p95 (54.0 / 78.0 ms, 94% of 1000 ticks over the 20 ms deadline)"
+            ],
+        )
 
     def test_acceptance_metrics_reject_an_ownership_gap_and_short_reserve(self) -> None:
         log = (
@@ -162,7 +189,8 @@ class RuntimeManifestTest(unittest.TestCase):
             "post_bootstrap_route_availability_ratio=0.875 "
             "post_bootstrap_no_executable_route_hold_ticks=10 "
             "planner_latency_samples=5 planner_p95_ms=250.0 "
-            "planner_p99_ms=240.0 planner_build_and_planning_p99_ms=230.0\n"
+            "planner_p99_ms=240.0 planner_build_and_planning_p99_ms=230.0 "
+            "deadline_misses=90 tick_total_p50_ms=54.0 tick_total_p95_ms=78.0\n"
         )
         errors: list[str] = []
 
@@ -181,7 +209,9 @@ class RuntimeManifestTest(unittest.TestCase):
             "post_bootstrap_route_availability_ratio=1.0 "
             "post_bootstrap_no_executable_route_hold_ticks=0 "
             "planner_latency_samples=2 planner_p95_ms=20.0 "
-            "planner_p99_ms=25.0 planner_build_and_planning_p99_ms=30.0\n"
+            "planner_p99_ms=25.0 planner_build_and_planning_p99_ms=30.0 "
+            "ticks=1000 deadline_misses=0 tick_total_p50_ms=10.0 "
+            "tick_total_p95_ms=15.0\n"
         )
         errors: list[str] = []
 

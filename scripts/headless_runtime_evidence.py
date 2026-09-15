@@ -22,6 +22,17 @@ REPOSITORY = Path(__file__).resolve().parents[1]
 # fourteen times a flight.
 MINIMUM_POST_BOOTSTRAP_ROUTE_AVAILABILITY = 0.97
 MAXIMUM_POST_BOOTSTRAP_NO_ROUTE_HOLD_RATIO = 0.03
+# The production tick's wall time, snapshot to publication, from the
+# PRODUCTION_MPPI_SUMMARY percentiles. The tick is scheduled at 50 Hz
+# (deadline_ms 20); the vehicle receives a fresh horizon at the rate the
+# whole tick allows, not at the rate the CUDA controller alone would. Measured
+# on r314 (4b3dac94, the collision oracle built once per path): p50 22.7 ms,
+# p95 30.8 ms, with the controller at 10.7 ms of it; before that fix the
+# flights r303 to r313 sat at p50 52 to 55 ms and p95 70 to 98 ms. The bounds
+# hold the regression, not the deadline: 71 percent of r314's ticks still
+# overran 20 ms.
+MAXIMUM_TICK_TOTAL_P50_MS = 30.0
+MAXIMUM_TICK_TOTAL_P95_MS = 45.0
 
 # The mean flight speed the programme runs to: the path the vehicle flew,
 # divided by the time from mission readiness to the successful mission
@@ -341,6 +352,10 @@ def validate_persistent_3d_acceptance_metrics(
         build_and_planning_p99_ms = float(
             summary["planner_build_and_planning_p99_ms"]
         )
+        ticks = int(summary["ticks"])
+        deadline_misses = int(summary["deadline_misses"])
+        tick_total_p50_ms = float(summary["tick_total_p50_ms"])
+        tick_total_p95_ms = float(summary["tick_total_p95_ms"])
     except (KeyError, ValueError):
         errors.append("FAIL: production summary contains persistent 3D gate metrics")
         return
@@ -398,6 +413,32 @@ def validate_persistent_3d_acceptance_metrics(
         )
     else:
         print(f"OK: persistent planner p95 is {planner_p95_ms:.3f} ms")
+    deadline_miss_share = deadline_misses / ticks if ticks > 0 else math.inf
+    if (
+        ticks <= 0
+        or not math.isfinite(tick_total_p50_ms)
+        or not math.isfinite(tick_total_p95_ms)
+        or tick_total_p50_ms < 0.0
+        or tick_total_p95_ms < tick_total_p50_ms
+    ):
+        errors.append("FAIL: production tick wall time has measured percentiles")
+    elif (
+        tick_total_p50_ms >= MAXIMUM_TICK_TOTAL_P50_MS
+        or tick_total_p95_ms >= MAXIMUM_TICK_TOTAL_P95_MS
+    ):
+        errors.append(
+            "FAIL: production tick wall time stays below "
+            f"{MAXIMUM_TICK_TOTAL_P50_MS:.0f} ms at p50 and "
+            f"{MAXIMUM_TICK_TOTAL_P95_MS:.0f} ms at p95 "
+            f"({tick_total_p50_ms:.1f} / {tick_total_p95_ms:.1f} ms, "
+            f"{deadline_miss_share:.0%} of {ticks} ticks over the 20 ms deadline)"
+        )
+    else:
+        print(
+            f"OK: production tick wall time is {tick_total_p50_ms:.1f} ms at p50 and "
+            f"{tick_total_p95_ms:.1f} ms at p95 ({deadline_miss_share:.0%} of {ticks} "
+            "ticks over the 20 ms deadline)"
+        )
     if (
         not math.isfinite(planner_p99_ms)
         or not math.isfinite(build_and_planning_p99_ms)

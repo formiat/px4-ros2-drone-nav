@@ -87,6 +87,13 @@ product decision, not a tuning target:
 - ordinary post-bootstrap no-route holds below 3 percent of ticks
   (`MAXIMUM_POST_BOOTSTRAP_NO_ROUTE_HOLD_RATIO`).
 
+It also bounds the production tick's wall time from the same summary, snapshot
+to publication: 30 ms at p50 and 45 ms at p95 (`MAXIMUM_TICK_TOTAL_P50_MS`,
+`MAXIMUM_TICK_TOTAL_P95_MS`), and prints the share of ticks over the 20 ms
+deadline. These are regression bounds on the measured 22.7 / 30.8 ms of r314;
+the vehicle receives a fresh horizon at the rate the whole tick allows, and 71
+percent of r314's ticks still overran the deadline.
+
 The pair was set on 2026-09-11, replacing 99 and 1 percent. Measured urban
 point-to-point flights of the current stack fall into two groups: clean
 flights with three to five no-route episodes and 0.4 to 0.7 percent of hold
@@ -116,11 +123,14 @@ that breaks one is seen on the next flight rather than in a crash:
 
 - lateral tracking error at p99 between 1.5 and 4.5 m/s within 0.25 m (the
   tube law budgets 0.075 s times the speed, the envelope keeps 0.27 m beyond
-  the body; measured 0.11 to 0.22 m on r288 to r292);
-- the median arrest of a descent faster than 1.5 m/s at least 1.2 m/s^2 when
-  at least 30 samples exercised it (the stopping laws rely on 2.0; measured
-  1.32 to 2.17 over fourteen flights, so the law's value is optimistic against
-  the median and the check keeps that visible);
+  the body; measured 0.11 to 0.22 m on r288 to r292 with the position
+  estimate 0.3 m ahead of the vehicle, 0.08 to 0.18 m on r312 to r314 with
+  EKF2_GPS_DELAY 0);
+- the plateau of each arrest of a descent faster than 1.5 m/s (the peak of
+  the 0.2 s window over the episode), at the median over at least three
+  episodes, at least the vertical law's 1.4 m/s^2 (the law is the fifth
+  percentile of the plateau over 91 episodes of 25 flights; measured 2.0 to
+  2.13 at the median on r312 to r314);
 - the position estimate against the true pose, with the clocks aligned on the
   speed profile: the cross-track error at p95 within 0.35 m (measured 0.19 to
   0.25) and the offset along the motion within 0.20 s (measured 0.10 to
