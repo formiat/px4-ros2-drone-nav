@@ -1,3 +1,5 @@
+#include "drone_city_nav/autopilot_state.hpp"
+#include "drone_city_nav/autopilot_state_source.hpp"
 #include "drone_city_nav/mission_waypoint_acknowledgement_admission.hpp"
 #include "drone_city_nav/mission_waypoint_sequence.hpp"
 #include "drone_city_nav/msg/mission_waypoint_acknowledgement.hpp"
@@ -6,8 +8,6 @@
 #include "drone_city_nav/px4_map_frame_transform.hpp"
 #include "drone_city_nav/types.hpp"
 
-#include <px4_msgs/msg/vehicle_local_position.hpp>
-#include <px4_msgs/msg/vehicle_status.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <algorithm>
@@ -194,19 +194,22 @@ public:
 
     const auto px4_qos =
         rclcpp::QoS{rclcpp::KeepLast{10}}.best_effort().durability_volatile();
-    local_position_sub_ = create_subscription<px4_msgs::msg::VehicleLocalPosition>(
-        declare_parameter<std::string>("px4_local_position_topic",
-                                       "/fmu/out/vehicle_local_position"),
-        px4_qos, [this](const px4_msgs::msg::VehicleLocalPosition::SharedPtr message) {
-          onLocalPosition(*message);
-        });
-    vehicle_status_sub_ = create_subscription<px4_msgs::msg::VehicleStatus>(
-        declare_parameter<std::string>("px4_vehicle_status_topic",
-                                       "/fmu/out/vehicle_status"),
-        px4_qos, [this](const px4_msgs::msg::VehicleStatus::SharedPtr message) {
-          armed_seen_ =
-              armed_seen_ ||
-              message->arming_state == px4_msgs::msg::VehicleStatus::ARMING_STATE_ARMED;
+    autopilot_state_source_ = std::make_unique<AutopilotStateSource>(
+        *this, px4_map_transform_,
+        AutopilotStateTopics{
+            .local_state = declare_parameter<std::string>(
+                "px4_local_position_topic", "/fmu/out/vehicle_local_position"),
+            .status = declare_parameter<std::string>("px4_vehicle_status_topic",
+                                                     "/fmu/out/vehicle_status"),
+        },
+        px4_qos,
+        AutopilotStateCallbacks{
+            .local_state =
+                [this](const AutopilotLocalState& message) { onLocalState(message); },
+            .status =
+                [this](const AutopilotStatus& status) {
+                  armed_seen_ = armed_seen_ || status.armed;
+                },
         });
     vehicle_destroyed_sub_ = create_subscription<msg::VehicleDestroyed>(
         declare_parameter<std::string>("vehicle_destroyed_topic",
@@ -281,21 +284,21 @@ private:
     }
   }
 
-  void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& message) {
-    if (result_reported_ || !message.xy_valid || !message.z_valid ||
-        !message.v_xy_valid || !message.v_z_valid || !std::isfinite(message.x) ||
-        !std::isfinite(message.y) || !std::isfinite(message.z) ||
-        !std::isfinite(message.vx) || !std::isfinite(message.vy) ||
-        !std::isfinite(message.vz)) {
+  void onLocalState(const AutopilotLocalState& message) {
+    if (result_reported_ || !message.position_valid || !message.altitude_valid ||
+        !message.velocity_valid || !message.vertical_velocity_valid ||
+        !std::isfinite(message.position.x) || !std::isfinite(message.position.y) ||
+        !std::isfinite(message.position.z) || !std::isfinite(message.velocity.x) ||
+        !std::isfinite(message.velocity.y) || !std::isfinite(message.velocity.z)) {
       latest_position_valid_ = false;
       return;
     }
-    latest_position_ = px4_map_transform_.localPositionToMap(
-        Point2{static_cast<double>(message.x), static_cast<double>(message.y)});
-    latest_altitude_m_ = -static_cast<double>(message.z);
-    latest_speed_mps_ = std::hypot(
-        std::hypot(static_cast<double>(message.vx), static_cast<double>(message.vy)),
-        static_cast<double>(message.vz));
+    latest_position_ = Point2{message.position.x, message.position.y};
+    // The contract carries the map altitude; the monitor keeps the altitude
+    // above the autopilot's origin it has always reported.
+    latest_altitude_m_ = message.position.z - px4_map_transform_.map_origin.z;
+    latest_speed_mps_ = std::hypot(std::hypot(message.velocity.x, message.velocity.y),
+                                   message.velocity.z);
     latest_position_valid_ = true;
     const double start_distance_m = distance(latest_position_, start_);
     const double goal_distance_m = distance(latest_position_, goal_);
@@ -488,9 +491,7 @@ private:
   std::uint64_t navigation_health_producer_instance_id_{0U};
   std::uint64_t navigation_health_sequence_{0U};
   MissionWaypointAcknowledgementAdmissionState waypoint_acknowledgement_admission_{};
-  rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
-      local_position_sub_;
-  rclcpp::Subscription<px4_msgs::msg::VehicleStatus>::SharedPtr vehicle_status_sub_;
+  std::unique_ptr<AutopilotStateSource> autopilot_state_source_;
   rclcpp::Subscription<msg::VehicleDestroyed>::SharedPtr vehicle_destroyed_sub_;
   rclcpp::Subscription<msg::MissionWaypointAcknowledgement>::SharedPtr
       waypoint_acknowledgement_sub_;
