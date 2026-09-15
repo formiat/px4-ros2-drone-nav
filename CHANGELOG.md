@@ -6,6 +6,17 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- The navigation stack reads the autopilot through one contract
+  (`autopilot_state.hpp`, `AutopilotStateSource`); the PX4 adapter
+  (`px4_autopilot_adapter.cpp`, the offboard node and the setpoint builders)
+  is the only code that includes `px4_msgs`, and a script test pins that
+  boundary. The NED-to-map frame, the altitude sign, the heading convention
+  and the payload fingerprint live in the adapter alone. The wire is unchanged.
+- Every headless flight records the setpoints against the local position and
+  the true Gazebo pose, and the mission check holds four controller-dynamics
+  measurements to the assumptions of the navigation laws: lateral tracking
+  error, descent arrest, position-estimate error and lidar evidence age
+  (`scripts/controller_dynamics_evidence.py`, `docs/testing.md`).
 - `scripts/prune_sim_logs.sh` deletes simulation logs older than a week
   (`DRONE_GAZEBO_PRUNE_LOGS_DAYS`) from the places the stack writes them:
   every entry of `log/` except `log/tools`, every run directory, and the PX4

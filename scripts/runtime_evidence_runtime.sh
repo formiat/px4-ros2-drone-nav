@@ -68,4 +68,16 @@ start_runtime_evidence_capture() {
     --manifest "${runtime_manifest_path}" \
     --bounds "${raw_snapshot_bounds_m}" \
     > "${raw_snapshot_capture_log_file}" 2>&1 &
+  # The controller-dynamics records the mission check reads: the setpoints
+  # against the local position, and the true pose. Every headless flight
+  # records them; a GUI flight on request.
+  if [[ -n "${headless}" ]] || bool_is_true "${DRONE_GAZEBO_CAPTURE_DYNAMICS:-false}"; then
+    python3 "${repo_root}/scripts/capture_tracking_setpoints.py" \
+      "${runtime_artifact_dir}/tracking.npz" \
+      > "${runtime_artifact_dir}/tracking_capture.log" 2>&1 &
+    python3 "${repo_root}/scripts/capture_gazebo_pose.py" \
+      "${runtime_artifact_dir}/gz_pose.csv" \
+      --world "${world_name}" --model "${default_gazebo_follow_target}" \
+      > "${runtime_artifact_dir}/gz_pose.log" 2>&1 &
+  fi
 }

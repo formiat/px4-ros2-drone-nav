@@ -103,6 +103,34 @@ What the remaining holds cost, and where, is recorded per flight in
 `log/runs/<run-id>/ros_drone_nav.log`; the next step towards 1 percent is
 the recovery after a physical block, 0.3 to 1.2 s without a route each time.
 
+### Controller dynamics
+
+Every headless flight records the offboard setpoints against the autopilot's
+local position (`tracking.npz`, `scripts/capture_tracking_setpoints.py`) and
+the true pose of the vehicle from Gazebo (`gz_pose.csv`,
+`scripts/capture_gazebo_pose.py`); a GUI flight records them with
+`DRONE_GAZEBO_CAPTURE_DYNAMICS=true`. `scripts/controller_dynamics_evidence.py`
+holds four measurements of those records to the assumptions the navigation
+laws stand on, so a change of the autopilot, the simulator or the airframe
+that breaks one is seen on the next flight rather than in a crash:
+
+- lateral tracking error at p99 between 1.5 and 4.5 m/s within 0.25 m (the
+  tube law budgets 0.075 s times the speed, the envelope keeps 0.27 m beyond
+  the body; measured 0.11 to 0.22 m on r288 to r292);
+- the median arrest of a descent faster than 1.5 m/s at least 1.5 m/s^2 when
+  at least 30 samples exercised it (the stopping laws rely on 2.0; measured
+  1.62 to 2.02);
+- the position estimate against the true pose, with the clocks aligned on the
+  speed profile: the cross-track error at p95 within 0.35 m (measured 0.19 to
+  0.25) and the offset along the motion within 0.20 s (measured 0.10 to
+  0.11 s, 0.3 m at 3 m/s: how far apart in time the estimate a tick reads and
+  the true pose are stamped);
+- the lidar evidence age the planning tick reports at most 600 ms, the bound
+  the braking contract charges (measured 200 to 376 ms at most).
+
+The clocks of the three records differ; each measurement aligns them on the
+motion itself (least squares over a grid of offsets).
+
 ## Adding Tests
 
 Use:

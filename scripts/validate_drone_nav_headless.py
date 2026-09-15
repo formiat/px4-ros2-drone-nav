@@ -17,6 +17,7 @@ from headless_topology_validation import (
     parse_route_volume_bounds,
     validate_observed_3d_route_volume,
 )
+from controller_dynamics_evidence import validate_controller_dynamics  # noqa: E402
 from headless_runtime_evidence import (
     validate_mean_flight_speed,
     validate_persistent_3d_acceptance_metrics,
@@ -921,6 +922,7 @@ def main() -> int:
     if args.require_persistent_3d_acceptance:
         validate_persistent_3d_acceptance_metrics(ros_log, errors)
         validate_mean_flight_speed(ros_log, errors)
+        validate_controller_dynamics(args.runtime_manifest.parent, ros_log, errors)
     require(
         "production offboard is ready",
         ros_log,
