@@ -70,14 +70,18 @@ class DescentArrestTest(unittest.TestCase):
 
 class PositionEstimateTest(unittest.TestCase):
     def test_aligns_the_clocks_and_reads_the_horizontal_error(self) -> None:
+        # A straight flight along x whose speed breathes between 1.8 and 2.2 m/s,
+        # so the speed profile has something to align on.
         sim_time = np.arange(0.0, 40.0, 0.02)
-        truth = np.column_stack([sim_time, 2.0 * sim_time, np.sin(sim_time), 7.0 * np.ones_like(sim_time)])
+        truth = np.column_stack([sim_time, 2.0 * sim_time + 0.2 * np.sin(sim_time),
+                                 np.zeros_like(sim_time), 7.0 * np.ones_like(sim_time)])
         log_time = np.arange(0.0, 40.0, 0.2) + 1.7e9
         flight_time = log_time - 1.7e9
-        estimate = np.column_stack([log_time, 2.0 * flight_time + 0.1, np.sin(flight_time),
-                                    np.hypot(2.0, np.cos(flight_time))])
+        estimate = np.column_stack([log_time, 2.0 * flight_time + 0.2 * np.sin(flight_time) + 0.1,
+                                    np.zeros_like(flight_time),
+                                    2.0 + 0.2 * np.cos(flight_time)])
         # The estimate sits 0.1 m ahead along a 2 m/s motion: an along-track
-        # offset of +0.05 s, no cross-track error, 0.1 m in total.
+        # offset of about +0.05 s, no cross-track error, 0.1 m in total.
         measured = evidence.position_estimate_error(estimate, truth)
         self.assertGreater(measured.samples, 100)
         self.assertAlmostEqual(measured.along_track_offset_s, 0.05, delta=0.01)
