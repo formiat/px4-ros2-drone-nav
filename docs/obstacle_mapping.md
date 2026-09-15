@@ -170,17 +170,19 @@ value reads the source earlier than the stamp. Diagnostics report both
 offsets, the bracketing samples of each source, interpolation/extrapolation
 age, mapper residual, and the single accepted pose source.
 
-The simulated 3D GPU lidar runs with a position offset of `-0.12 s` and an
-attitude offset of `0`. Both were measured against the true vehicle pose from
-Gazebo over the urban point-to-point flights r203 (headless) and r205 (GUI),
-recording the node's `latest_lidar_obstacle_scan` (hits in the body frame and
-the body axes the node placed them with) together with the `pose/info` stream:
+The simulated 3D GPU lidar runs with a position offset of `0` and an attitude
+offset of `0`. Both were measured against the true vehicle pose from Gazebo:
 
-- the position estimate stamped `t` matches the true position of
-  `t + 0.09..0.12 s` (0.08 m residual, against 0.33 m at `t`): the PX4 local
-  position leads the vehicle by about a tenth of a second;
+- the position estimate stamped `t` matches the true position of `t`
+  (-0.003 s along the motion over 6258 samples of the urban flight r312, read
+  after aligning the clocks on the speed profile). It used to match the true
+  position of `t + 0.09..0.12 s` (r203, r205), which was not the vehicle's
+  latency but EKF2 subtracting its default 110 ms GNSS delay from a simulated
+  sample the Gazebo bridge stamps at receipt; the run script sets
+  `EKF2_GPS_DELAY 0`, and the `-0.12 s` that compensated the lead here is
+  gone with it;
 - the attitude estimate stamped `t` matches the true attitude of `t`
-  (0.16 degrees mean, already 1 degree at ±60 ms): the attitude is in step;
+  (0.16 degrees mean in r203/r205, already 1 degree at ±60 ms);
 - the body-frame hits placed with the true pose of `stamp + tau` are most
   consistent from one scan to the next at `tau = 0` (0.04 m median
   nearest-neighbour distance between scans 0.5 s apart during manoeuvres,

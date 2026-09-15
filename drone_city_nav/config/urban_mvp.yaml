@@ -152,20 +152,18 @@ obstacle_memory_3d_node:
     startup_heading_maximum_sample_delta_rad: 0.05
     motion_compensate_lidar_pose: true
     # Signed offsets between the scan stamp, which is the acquisition instant,
-    # and the instant each PX4 pose source describes it. Measured against the
-    # true pose from Gazebo in the urban flights r203 (headless) and r205
-    # (GUI): the local position estimate stamped t matches the true position
-    # of t + 0.09..0.12 s (0.08 m residual, 0.33 m at t itself), the attitude
-    # estimate stamped t matches the true attitude of t (0.16 deg; 1 deg
-    # already at +-60 ms), and the returns are most consistent scan to scan
-    # when placed with the true pose of the stamp (0.04 m; 0.20 m at
-    # -0.12 s). The former single offset of -0.12 s was right for the
-    # position and tilted every return by the attitude of 120 ms earlier,
-    # 4-7 deg in manoeuvres, which rocked the current cloud and smeared the
-    # persistent memory. Method in docs/obstacle_mapping.md; re-measure when
-    # the sensor model, its update rate, the estimator or the simulator
-    # changes.
-    lidar_position_source_time_offset_s: -0.12
+    # and the instant each PX4 pose source describes it. Both are zero: the
+    # local position estimate stamped t matches the true Gazebo position of t
+    # (-0.003 s along the motion on the urban flight r312, 6258 samples), and
+    # the attitude estimate stamped t matches the true attitude of t (0.16 deg
+    # in r203/r205; 1 deg already at +-60 ms). The position offset used to be
+    # -0.12 s because the estimate ran 0.09..0.12 s ahead of the vehicle; that
+    # was EKF2 subtracting its default 110 ms GNSS delay from a simulated
+    # sample that has none, and the run script now sets EKF2_GPS_DELAY 0
+    # instead of compensating it here. Method in docs/obstacle_mapping.md;
+    # re-measure when the sensor model, its update rate, the estimator or the
+    # simulator changes.
+    lidar_position_source_time_offset_s: 0.0
     lidar_attitude_source_time_offset_s: 0.0
     lidar_scan_alignment_maximum_wait_s: 0.35
     lidar_scan_alignment_queue_capacity: 8
@@ -870,20 +868,18 @@ lidar_debug_node:
     startup_heading_maximum_sample_delta_rad: 0.05
     motion_compensate_lidar_pose: true
     # Signed offsets between the scan stamp, which is the acquisition instant,
-    # and the instant each PX4 pose source describes it. Measured against the
-    # true pose from Gazebo in the urban flights r203 (headless) and r205
-    # (GUI): the local position estimate stamped t matches the true position
-    # of t + 0.09..0.12 s (0.08 m residual, 0.33 m at t itself), the attitude
-    # estimate stamped t matches the true attitude of t (0.16 deg; 1 deg
-    # already at +-60 ms), and the returns are most consistent scan to scan
-    # when placed with the true pose of the stamp (0.04 m; 0.20 m at
-    # -0.12 s). The former single offset of -0.12 s was right for the
-    # position and tilted every return by the attitude of 120 ms earlier,
-    # 4-7 deg in manoeuvres, which rocked the current cloud and smeared the
-    # persistent memory. Method in docs/obstacle_mapping.md; re-measure when
-    # the sensor model, its update rate, the estimator or the simulator
-    # changes.
-    lidar_position_source_time_offset_s: -0.12
+    # and the instant each PX4 pose source describes it. Both are zero: the
+    # local position estimate stamped t matches the true Gazebo position of t
+    # (-0.003 s along the motion on the urban flight r312, 6258 samples), and
+    # the attitude estimate stamped t matches the true attitude of t (0.16 deg
+    # in r203/r205; 1 deg already at +-60 ms). The position offset used to be
+    # -0.12 s because the estimate ran 0.09..0.12 s ahead of the vehicle; that
+    # was EKF2 subtracting its default 110 ms GNSS delay from a simulated
+    # sample that has none, and the run script now sets EKF2_GPS_DELAY 0
+    # instead of compensating it here. Method in docs/obstacle_mapping.md;
+    # re-measure when the sensor model, its update rate, the estimator or the
+    # simulator changes.
+    lidar_position_source_time_offset_s: 0.0
     lidar_attitude_source_time_offset_s: 0.0
     lidar_scan_alignment_maximum_wait_s: 0.35
     lidar_scan_alignment_queue_capacity: 8
