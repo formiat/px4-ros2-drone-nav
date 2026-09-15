@@ -1,5 +1,7 @@
 #pragma once
 
+#include "drone_city_nav/autopilot_state.hpp"
+#include "drone_city_nav/autopilot_state_source.hpp"
 #include "drone_city_nav/debug_image.hpp"
 #include "drone_city_nav/lidar_acquisition_pose.hpp"
 #include "drone_city_nav/lidar_debug_node_config.hpp"
@@ -17,9 +19,6 @@
 
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <nav_msgs/msg/path.hpp>
-#include <px4_msgs/msg/timesync_status.hpp>
-#include <px4_msgs/msg/vehicle_attitude.hpp>
-#include <px4_msgs/msg/vehicle_local_position.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -78,11 +77,11 @@ private:
 
   void applyConfig(const LidarDebugNodeConfig& config);
 
-  void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg);
+  void onLocalState(const AutopilotLocalState& msg);
 
-  void onAttitude(const px4_msgs::msg::VehicleAttitude& msg);
+  void onAttitude(const AutopilotAttitude& msg);
 
-  void onTimesyncStatus(const px4_msgs::msg::TimesyncStatus& msg);
+  void onClockSync(const AutopilotClockSync& msg);
 
   void onScan(const sensor_msgs::msg::LaserScan& msg);
 
@@ -272,10 +271,7 @@ private:
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr raw_obstacle_grid_sub_;
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr memory_grid_sub_;
   rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub_;
-  rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
-      local_position_sub_;
-  rclcpp::Subscription<px4_msgs::msg::VehicleAttitude>::SharedPtr attitude_sub_;
-  rclcpp::Subscription<px4_msgs::msg::TimesyncStatus>::SharedPtr timesync_status_sub_;
+  std::unique_ptr<AutopilotStateSource> autopilot_state_source_;
   rclcpp::Subscription<msg::SpectatorTarget>::SharedPtr spectator_target_sub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pointcloud_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr

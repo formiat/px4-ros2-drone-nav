@@ -89,20 +89,18 @@ LidarDebugNode::LidarDebugNode(const rclcpp::NodeOptions& options)
   scan_sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
       topics.lidar, sensor_qos,
       [this](const sensor_msgs::msg::LaserScan::SharedPtr msg) { onScan(*msg); });
-  local_position_sub_ = create_subscription<px4_msgs::msg::VehicleLocalPosition>(
-      topics.px4_local_position, sensor_qos,
-      [this](const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg) {
-        onLocalPosition(*msg);
-      });
-  attitude_sub_ = create_subscription<px4_msgs::msg::VehicleAttitude>(
-      topics.px4_vehicle_attitude, sensor_qos,
-      [this](const px4_msgs::msg::VehicleAttitude::SharedPtr msg) {
-        onAttitude(*msg);
-      });
-  timesync_status_sub_ = create_subscription<px4_msgs::msg::TimesyncStatus>(
-      topics.px4_timesync_status, sensor_qos,
-      [this](const px4_msgs::msg::TimesyncStatus::SharedPtr msg) {
-        onTimesyncStatus(*msg);
+  autopilot_state_source_ = std::make_unique<AutopilotStateSource>(
+      *this, px4_map_transform_,
+      AutopilotStateTopics{
+          .local_state = topics.px4_local_position,
+          .attitude = topics.px4_vehicle_attitude,
+          .clock_sync = topics.px4_timesync_status,
+      },
+      sensor_qos,
+      AutopilotStateCallbacks{
+          .local_state = [this](const AutopilotLocalState& msg) { onLocalState(msg); },
+          .attitude = [this](const AutopilotAttitude& msg) { onAttitude(msg); },
+          .clock_sync = [this](const AutopilotClockSync& msg) { onClockSync(msg); },
       });
   raw_obstacle_grid_sub_ = create_subscription<nav_msgs::msg::OccupancyGrid>(
       topics.raw_obstacle_grid, rclcpp::QoS{1}.transient_local(),
