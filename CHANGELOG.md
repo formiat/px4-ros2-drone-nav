@@ -6,6 +6,14 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- The vertical law is the fifth percentile of the arrest plateau: the
+  guaranteed vertical stopping deceleration and the planned vertical
+  acceleration go from 2.0 to 1.4 m/s^2. Over the 91 descent arrests
+  recorded in the 25 urban flights r268 to r308 the plateau reaches
+  1.41 m/s^2 in 95 percent of them and 2.19 at the median, so half of the
+  arrests fell short of the former value, which was the median of five
+  flights. The braking contract's worst-direction limit becomes 4.62 m/s
+  (was 5.14); the level-flight limit does not move.
 - Roadmap: item 12 (persistent full-3D strategic navigation) is closed on the
   v0.2.0 evidence; its unrepeated Manhattan gate, availability targets and
   cooperative/interception re-flights move to item 9, now split into stage A

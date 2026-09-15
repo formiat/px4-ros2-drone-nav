@@ -429,15 +429,20 @@ production_mppi_node:
     maximum_lateral_acceleration_mps2: 8.0
     # The vertical deceleration the stopping laws may rely on in the worst
     # direction, a pure climb or descent. Arresting a descent is bound by the
-    # thrust the airframe has above hover, not by MPC_ACC_UP_MAX (4 m/s^2):
-    # measured on PX4's local position over the urban flights r247 to r252
-    # the vehicle arrested descents at 1.8 to 2.1 m/s^2 at the median and
-    # 2.2 to 2.9 at p95 (climbs at 2.8 to 3.8 median, up to 8). The former
-    # 3.0 exceeded the p95 of four of the five flights; in r252 a horizon
-    # dived at 2.8 m/s onto a roof that the lidar resolved 2.3 m below it,
-    # the stop it was certified with assumed 3.0, the airframe gave 2.2, and
-    # the vehicle struck the roof at 0.85 m/s.
-    guaranteed_vertical_stopping_deceleration_mps2: 2.0
+    # thrust the airframe has above hover, not by MPC_ACC_UP_MAX (4 m/s^2).
+    # A guarantee is what nearly every arrest reaches, not what the typical
+    # one does: over the 91 arrests of descents faster than 1.5 m/s recorded
+    # on PX4's local position in the 25 urban flights r268 to r308, the
+    # plateau of the arrest (peak of the 0.2 s window) is 1.41 m/s^2 at the
+    # fifth percentile, 1.62 at the tenth and 2.19 at the median, and the
+    # per-flight median of the windowed samples spans 1.32 to 2.22. The
+    # former 2.0 was the median of five flights (r247 to r252) and half of
+    # the arrests since fell short of it; before that, 3.0 exceeded the p95
+    # of four of five flights and in r252 a horizon dived at 2.8 m/s onto a
+    # roof the lidar resolved 2.3 m below it, the stop it was certified with
+    # assumed 3.0, the airframe gave 2.2, and the vehicle struck the roof at
+    # 0.85 m/s. 1.4 is the fifth percentile of the plateau.
+    guaranteed_vertical_stopping_deceleration_mps2: 1.4
     maximum_control_jerk_mps3: 12.0
     speed_reaction_latency_s: 0.10
     # The range within which the lidar is guaranteed to have resolved an
@@ -523,12 +528,14 @@ production_mppi_node:
     route_constraint_diagnostics_distance_m: 30.0
     # The vertical acceleration the horizon dynamics and the braking contract
     # plan with, in either sense. Symmetric, so it is the descent arrest the
-    # airframe delivers (2.0 m/s^2, see the guaranteed vertical stopping
+    # airframe delivers (1.4 m/s^2, see the guaranteed vertical stopping
     # deceleration): a dive is then planned no steeper than it can be
     # arrested. The former 4.0 let the optimiser plan dives it could not stop
-    # (r252). The braking contract's limit rises with it, 5.14 against
-    # 4.93 m/s, because the worst case carries less speed into the stop.
-    maximum_vertical_acceleration_mps2: 2.0
+    # (r252); 2.0 followed the former guarantee. The braking contract's
+    # worst-direction limit is 4.62 m/s with both at 1.4 (5.14 with both at
+    # 2.0); the level-flight limit, bound by the horizontal axis alone, does
+    # not move.
+    maximum_vertical_acceleration_mps2: 1.4
     # Risk-tier bands, for route annotation and diagnostics only. No law
     # measures a margin from them: the clearance laws are the tracking-error
     # tube beside the motion and the stopping capability ahead of it.
