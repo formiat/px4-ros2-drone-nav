@@ -91,10 +91,9 @@ __device__ State integrate(State state, Control control, DynamicsConfig config) 
       fmaxf(config.maximum_vertical_speed_mps,
             inherited_vertical_speed_mps - vertical_shed_mps);
   state.vz = clampValue(state.vz, -vertical_speed_limit_mps, vertical_speed_limit_mps);
-  clampTranslational(
-      state.vx, state.vy, state.vz,
-      fmaxf(translationalSpeedLimitAlong3D(config, state.vx, state.vy, state.vz),
-            inherited_translational_speed_mps - horizontal_shed_mps));
+  clampTranslational(state.vx, state.vy, state.vz,
+                     fmaxf(config.maximum_translational_speed_mps,
+                           inherited_translational_speed_mps - horizontal_shed_mps));
   const float yaw_rate_limit_radps =
       fmaxf(config.maximum_yaw_rate_radps, inherited_yaw_rate_radps);
   state.yaw_rate = clampValue(state.yaw_rate + control.yaw_accel * config.dt_s,
@@ -589,10 +588,9 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
         const float horizontal_speed_mps = hypotf(state.vx, state.vy);
         const float translational_speed_mps = hypotf(horizontal_speed_mps, state.vz);
         const float excess_mps = fmaxf(
-            0.0F, fmaxf(horizontal_speed_mps - dynamics.maximum_horizontal_speed_mps,
-                        translational_speed_mps -
-                            translationalSpeedLimitAlong3D(dynamics, state.vx, state.vy,
-                                                           state.vz)));
+            0.0F,
+            fmaxf(horizontal_speed_mps - dynamics.maximum_horizontal_speed_mps,
+                  translational_speed_mps - dynamics.maximum_translational_speed_mps));
         overspeed_cost += sample_weight * excess_mps * excess_mps;
       }
     }

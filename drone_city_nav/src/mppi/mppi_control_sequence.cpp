@@ -266,10 +266,9 @@ std::vector<Control> buildGuideDirectedSeed(
       desired_vz =
           clampMagnitude(desired_vz, std::min(requested_speed_mps,
                                               dynamics.maximum_vertical_speed_mps));
-      clampTranslational(route_desired_vx, desired_vy, desired_vz,
-                         std::min(requested_speed_mps, translationalSpeedLimitAlong3D(
-                                                           dynamics, route_desired_vx,
-                                                           desired_vy, desired_vz)));
+      clampTranslational(
+          route_desired_vx, desired_vy, desired_vz,
+          std::min(requested_speed_mps, dynamics.maximum_translational_speed_mps));
     }
     const float route_velocity_gain =
         1.0F / std::max(dynamics.dt_s, std::numeric_limits<float>::epsilon());

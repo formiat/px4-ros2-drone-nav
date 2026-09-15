@@ -52,7 +52,6 @@ constexpr std::uint64_t kExecutionInputDomain{0x45584543494e5033ULL};
          config.maximum_vertical_speed_mps > 0.0F &&
          std::isfinite(config.maximum_translational_speed_mps) &&
          config.maximum_translational_speed_mps > 0.0F &&
-         translationalSpeedLimitByVerticalShareValid3D(config) &&
          std::isfinite(config.maximum_yaw_acceleration_radps2) &&
          config.maximum_yaw_acceleration_radps2 > 0.0F &&
          std::isfinite(config.maximum_yaw_rate_radps) &&
@@ -123,10 +122,6 @@ void hashDynamics(std::uint64_t& hash, const MotionDynamicsConfig3D& config) noe
   hashValue(hash, canonicalFloatBits(config.maximum_horizontal_speed_mps));
   hashValue(hash, canonicalFloatBits(config.maximum_vertical_speed_mps));
   hashValue(hash, canonicalFloatBits(config.maximum_translational_speed_mps));
-  for (const float limit :
-       config.translational_speed_limit_by_vertical_share.limit_mps) {
-    hashValue(hash, canonicalFloatBits(limit));
-  }
   hashValue(hash, canonicalFloatBits(config.maximum_yaw_acceleration_radps2));
   hashValue(hash, canonicalFloatBits(config.maximum_yaw_rate_radps));
   hashValue(hash, canonicalFloatBits(config.maximum_control_jerk_mps3));
