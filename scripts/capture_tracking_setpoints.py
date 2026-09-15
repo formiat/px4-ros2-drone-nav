@@ -74,7 +74,8 @@ def main() -> int:
                            args.save_period_s)
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, rclpy.executors.ExternalShutdownException):
+        # The launch tears the context down when the flight ends.
         pass
     finally:
         node.save()
