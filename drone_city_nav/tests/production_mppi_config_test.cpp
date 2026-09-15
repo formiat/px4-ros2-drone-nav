@@ -67,6 +67,21 @@ TEST_F(ProductionMppiConfigTest, LoadsGroupedDefaultsAndDerivedContracts) {
   EXPECT_EQ(config.diagnostics.topics.status, "/drone_city_nav/mppi/status");
 }
 
+TEST_F(ProductionMppiConfigTest, AcceptsAVerticalBoundEqualToTheVerticalAcceleration) {
+  // 1.4 has no exact binary image; the double parameter must not be judged
+  // above the float acceleration it equals.
+  const auto node = makeNode(
+      "production_mppi_config_vertical_equal",
+      {rclcpp::Parameter{"guaranteed_vertical_stopping_deceleration_mps2", 1.4},
+       rclcpp::Parameter{"maximum_vertical_acceleration_mps2", 1.4}});
+
+  const ProductionMppiConfig config = declareProductionMppiConfig(*node);
+
+  EXPECT_TRUE(config.valid());
+  EXPECT_FLOAT_EQ(config.control.mppi.dynamics.maximum_vertical_acceleration_mps2,
+                  1.4F);
+}
+
 TEST_F(ProductionMppiConfigTest, SelectsNoStaticDerivedValuesAndTopics) {
   const auto node = makeNode(
       "production_mppi_config_no_static",

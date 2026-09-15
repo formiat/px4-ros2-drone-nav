@@ -142,9 +142,13 @@ bool benchmarkConfigIsValid(const BenchmarkConfig& config) noexcept {
          config.altitude_envelope.guaranteed_vertical_deceleration_mps2 <=
              config.dynamics.maximum_vertical_acceleration_mps2 &&
          stoppingCapabilityIsValid(config.stopping_capability) &&
-         config.stopping_capability.maximum_commanded_horizontal_deceleration_mps2 <=
+         // Compared in the dynamics' float precision: a bound equal to its
+         // acceleration with no exact binary image (1.4 m/s^2) is not above it.
+         static_cast<float>(config.stopping_capability
+                                .maximum_commanded_horizontal_deceleration_mps2) <=
              config.dynamics.maximum_horizontal_acceleration_mps2 &&
-         config.stopping_capability.guaranteed_vertical_deceleration_mps2 <=
+         static_cast<float>(
+             config.stopping_capability.guaranteed_vertical_deceleration_mps2) <=
              config.dynamics.maximum_vertical_acceleration_mps2 &&
          std::isfinite(config.dynamics.maximum_translational_speed_mps) &&
          config.dynamics.maximum_translational_speed_mps > 0.0F &&

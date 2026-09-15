@@ -132,18 +132,18 @@ bool ProductionMppiConfig::valid() const noexcept {
          stoppingCapabilityIsValid(control.speed_policy.stopping_capability) &&
          sensorBrakingContract3DIsValid(control.speed_policy.sensor_braking_contract,
                                         control.speed_policy.stopping_capability) &&
-         control.speed_policy.stopping_capability
-                 .maximum_commanded_horizontal_deceleration_mps2 <=
-             static_cast<double>(
-                 control.mppi.dynamics.maximum_horizontal_acceleration_mps2) &&
-         execution.finite_horizon.stopping_capability
-                 .guaranteed_horizontal_deceleration_mps2 <=
-             static_cast<double>(
-                 control.mppi.dynamics.maximum_horizontal_acceleration_mps2) &&
-         execution.finite_horizon.stopping_capability
-                 .guaranteed_vertical_deceleration_mps2 <=
-             static_cast<double>(
-                 control.mppi.dynamics.maximum_vertical_acceleration_mps2) &&
+         // The stopping capability is compared in the dynamics' own float
+         // precision: a bound equal to its acceleration, such as 1.4 m/s^2,
+         // has no exact binary image and would otherwise exceed it.
+         static_cast<float>(control.speed_policy.stopping_capability
+                                .maximum_commanded_horizontal_deceleration_mps2) <=
+             control.mppi.dynamics.maximum_horizontal_acceleration_mps2 &&
+         static_cast<float>(execution.finite_horizon.stopping_capability
+                                .guaranteed_horizontal_deceleration_mps2) <=
+             control.mppi.dynamics.maximum_horizontal_acceleration_mps2 &&
+         static_cast<float>(execution.finite_horizon.stopping_capability
+                                .guaranteed_vertical_deceleration_mps2) <=
+             control.mppi.dynamics.maximum_vertical_acceleration_mps2 &&
          world.no_static_3d_esdf_update_rate_hz > 0.0 &&
          localObservedEsdfWindow3DIsValid(world.no_static_3d_esdf_window) &&
          rollout_budget_valid && mission_waypoints_valid && cooperative_valid &&
