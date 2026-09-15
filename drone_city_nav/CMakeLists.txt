@@ -917,7 +917,6 @@ ament_target_dependencies(
   obstacle_memory_node
   ament_index_cpp
   nav_msgs
-  px4_msgs
   rclcpp
   sensor_msgs)
 enable_project_warnings(obstacle_memory_node)
@@ -933,7 +932,6 @@ ament_target_dependencies(
   obstacle_memory_3d_node
   ament_index_cpp
   nav_msgs
-  px4_msgs
   rclcpp
   sensor_msgs)
 enable_project_warnings(obstacle_memory_3d_node)
@@ -959,7 +957,6 @@ target_link_libraries(collision_crash_node drone_city_nav_core
 ament_target_dependencies(
   collision_crash_node
   geometry_msgs
-  px4_msgs
   rclcpp
   ros_gz_interfaces)
 enable_project_warnings(collision_crash_node)
@@ -971,7 +968,6 @@ target_link_libraries(mission_monitor_node drone_city_nav_core
 ament_target_dependencies(
   mission_monitor_node
   ament_index_cpp
-  px4_msgs
   rclcpp)
 enable_project_warnings(mission_monitor_node)
 
@@ -1108,7 +1104,6 @@ ament_target_dependencies(
   ament_index_cpp
   geometry_msgs
   nav_msgs
-  px4_msgs
   rclcpp
   rclcpp_components
   sensor_msgs
@@ -1208,7 +1203,6 @@ if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
     drone_city_nav_production_mppi_component
     ament_index_cpp
     nav_msgs
-    px4_msgs
     rclcpp
     rclcpp_components
     std_msgs
