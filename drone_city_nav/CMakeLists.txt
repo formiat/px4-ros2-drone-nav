@@ -955,7 +955,7 @@ enable_project_warnings(mppi_offboard_node)
 add_executable(collision_crash_node src/collision_crash_node.cpp)
 target_compile_features(collision_crash_node PRIVATE cxx_std_20)
 target_link_libraries(collision_crash_node drone_city_nav_core
-                      ${cpp_typesupport_target})
+                      drone_city_nav_ros_adapters ${cpp_typesupport_target})
 ament_target_dependencies(
   collision_crash_node
   geometry_msgs

@@ -1,9 +1,8 @@
+#include "drone_city_nav/autopilot_state.hpp"
+#include "drone_city_nav/autopilot_state_source.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/msg/vehicle_destroyed.hpp"
 
-#include <px4_msgs/msg/vehicle_attitude.hpp>
-#include <px4_msgs/msg/vehicle_local_position.hpp>
-#include <px4_msgs/msg/vehicle_status.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <cmath>
@@ -73,25 +72,28 @@ public:
         });
     const auto px4_qos =
         rclcpp::QoS{rclcpp::KeepLast{10}}.best_effort().durability_volatile();
-    local_position_sub_ = create_subscription<px4_msgs::msg::VehicleLocalPosition>(
-        local_position_topic, px4_qos,
-        [this](const px4_msgs::msg::VehicleLocalPosition::SharedPtr position) {
-          onLocalPosition(*position);
-        });
-    attitude_sub_ = create_subscription<px4_msgs::msg::VehicleAttitude>(
-        attitude_topic, px4_qos,
-        [this](const px4_msgs::msg::VehicleAttitude::SharedPtr attitude) {
-          const auto euler = quaternionToEuler(attitude->q);
-          if (euler.has_value()) {
-            attitude_ = *euler;
-            attitude_valid_ = true;
-          }
-        });
-    status_sub_ = create_subscription<px4_msgs::msg::VehicleStatus>(
-        status_topic, px4_qos,
-        [this](const px4_msgs::msg::VehicleStatus::SharedPtr status) {
-          armed_ =
-              status->arming_state == px4_msgs::msg::VehicleStatus::ARMING_STATE_ARMED;
+    // The crash detector reads altitude and speed only, so the identity
+    // transform reads the autopilot's own origin.
+    autopilot_state_source_ = std::make_unique<AutopilotStateSource>(
+        *this, Px4MapFrameTransform{},
+        AutopilotStateTopics{
+            .local_state = local_position_topic,
+            .attitude = attitude_topic,
+            .status = status_topic,
+        },
+        px4_qos,
+        AutopilotStateCallbacks{
+            .local_state =
+                [this](const AutopilotLocalState& state) { onLocalState(state); },
+            .attitude =
+                [this](const AutopilotAttitude& attitude) {
+                  const auto euler = quaternionToEuler(attitude.quaternion);
+                  if (euler.has_value()) {
+                    attitude_ = *euler;
+                    attitude_valid_ = true;
+                  }
+                },
+            .status = [this](const AutopilotStatus& status) { armed_ = status.armed; },
         });
 
     RCLCPP_INFO(get_logger(),
@@ -104,19 +106,18 @@ public:
   }
 
 private:
-  void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& position) {
-    if (position.z_valid && std::isfinite(position.z)) {
-      altitude_m_ = -static_cast<double>(position.z);
+  void onLocalState(const AutopilotLocalState& state) {
+    if (state.altitude_valid && std::isfinite(state.position.z)) {
+      altitude_m_ = state.position.z;
       altitude_valid_ = true;
       if (armed_ && altitude_m_ >= airborne_altitude_m_) {
         airborne_seen_ = true;
       }
     }
-    if (std::isfinite(position.vx) && std::isfinite(position.vy) &&
-        std::isfinite(position.vz)) {
-      speed_mps_ = std::sqrt(static_cast<double>(position.vx) * position.vx +
-                             static_cast<double>(position.vy) * position.vy +
-                             static_cast<double>(position.vz) * position.vz);
+    if (std::isfinite(state.velocity.x) && std::isfinite(state.velocity.y) &&
+        std::isfinite(state.velocity.z)) {
+      speed_mps_ =
+          std::hypot(std::hypot(state.velocity.x, state.velocity.y), state.velocity.z);
     }
   }
 
@@ -197,10 +198,7 @@ private:
   rclcpp::Publisher<msg::VehicleDestroyed>::SharedPtr vehicle_destroyed_pub_;
   rclcpp::Subscription<msg::VehicleDestroyed>::SharedPtr vehicle_destroyed_sub_;
   rclcpp::Subscription<ros_gz_interfaces::msg::Contacts>::SharedPtr contacts_sub_;
-  rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
-      local_position_sub_;
-  rclcpp::Subscription<px4_msgs::msg::VehicleAttitude>::SharedPtr attitude_sub_;
-  rclcpp::Subscription<px4_msgs::msg::VehicleStatus>::SharedPtr status_sub_;
+  std::unique_ptr<AutopilotStateSource> autopilot_state_source_;
 };
 
 } // namespace drone_city_nav
