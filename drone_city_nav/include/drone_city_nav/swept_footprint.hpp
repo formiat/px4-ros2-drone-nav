@@ -86,11 +86,15 @@ proprioceptiveSeedExemptsPoint(const ProprioceptiveFreeSpaceSeed3D& seed,
     const FootprintBodyAxis& body_axis, const SweptFootprintConfig& config,
     const ProprioceptiveFreeSpaceSeed3D* proprioceptive_seed = nullptr) noexcept;
 
+// first_pose_validated: the caller has already validated the first pose with
+// this footprint and this evidence (as the second pose of the preceding
+// segment of one path), so the sweep does not repeat it.
 [[nodiscard]] SweptFootprintResult validateRawSweptFootprint(
     const OccupancyGrid3D& occupancy, const Point3& first,
     const FootprintBodyAxis& first_body_axis, const Point3& second,
     const FootprintBodyAxis& second_body_axis, const SweptFootprintConfig& config,
-    const ProprioceptiveFreeSpaceSeed3D* proprioceptive_seed = nullptr) noexcept;
+    const ProprioceptiveFreeSpaceSeed3D* proprioceptive_seed = nullptr,
+    bool first_pose_validated = false) noexcept;
 
 [[nodiscard]] SweptFootprintResult validateRawFootprintAt(
     const ObservedOccupancyGrid3D& occupancy, const Point3& position,
@@ -103,7 +107,8 @@ proprioceptiveSeedExemptsPoint(const ProprioceptiveFreeSpaceSeed3D& seed,
     const FootprintBodyAxis& first_body_axis, const Point3& second,
     const FootprintBodyAxis& second_body_axis, const SweptFootprintConfig& config,
     const LaunchSupportContact3D* launch_support_contact = nullptr,
-    const ProprioceptiveFreeSpaceSeed3D* proprioceptive_seed = nullptr) noexcept;
+    const ProprioceptiveFreeSpaceSeed3D* proprioceptive_seed = nullptr,
+    bool first_pose_validated = false) noexcept;
 
 // The footprint reduced to the physical body: the validation radius drops to
 // the body radius while the axial extents and sampling stay as configured.
@@ -138,7 +143,8 @@ clearanceReducedFootprint(const SweptFootprintConfig& footprint,
     const FootprintBodyAxis& first_body_axis, const Point3& second,
     const FootprintBodyAxis& second_body_axis, const SweptFootprintConfig& config,
     const LaunchSupportContact3D* launch_support_contact = nullptr,
-    const ProprioceptiveFreeSpaceSeed3D* proprioceptive_seed = nullptr) noexcept;
+    const ProprioceptiveFreeSpaceSeed3D* proprioceptive_seed = nullptr,
+    bool first_pose_validated = false) noexcept;
 
 [[nodiscard]] FootprintBodyAxis
 bodyAxisFromWorldAcceleration(const Vec3& acceleration_mps2,

@@ -642,7 +642,8 @@ template<typename Occupancy>
     const FootprintBodyAxis& first_body_axis, const Point3& second,
     const FootprintBodyAxis& second_body_axis, const SweptFootprintConfig& config,
     const LaunchSupportContact3D* const launch_support_contact,
-    const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_seed) noexcept {
+    const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_seed,
+    const bool first_pose_validated) noexcept {
   const auto cover = makeConservativeSweepCover3D(first, first_body_axis, second,
                                                   second_body_axis, config);
   if (!cover.valid()) {
@@ -651,11 +652,13 @@ template<typename Occupancy>
   if (!extentMayContainOccupied(occupancy, sweepExtent(cover, config))) {
     return validRawFootprint();
   }
-  const SweptFootprintResult first_result = validateRawFootprintAt3DExact(
-      occupancy, cover.first, cover.first_axis, config,
-      poseExemption(launch_support_contact, proprioceptive_seed, cover.first));
-  if (!first_result.accepted()) {
-    return first_result;
+  if (!first_pose_validated) {
+    const SweptFootprintResult first_result = validateRawFootprintAt3DExact(
+        occupancy, cover.first, cover.first_axis, config,
+        poseExemption(launch_support_contact, proprioceptive_seed, cover.first));
+    if (!first_result.accepted()) {
+      return first_result;
+    }
   }
   for (std::size_t interval = 0U; interval < cover.interval_count; ++interval) {
     const double interval_begin_ratio =
@@ -921,13 +924,14 @@ SweptFootprintResult validateRawSweptFootprint(
     const OccupancyGrid3D& occupancy, const Point3& first,
     const FootprintBodyAxis& first_body_axis, const Point3& second,
     const FootprintBodyAxis& second_body_axis, const SweptFootprintConfig& config,
-    const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_seed) noexcept {
+    const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_seed,
+    const bool first_pose_validated) noexcept {
   if (!validProprioceptiveSeed(proprioceptive_seed)) {
     return makeStatusResult(SweptFootprintStatus::kInvalidInput, first);
   }
   return validateRawSweptFootprint3D(occupancy, first, first_body_axis, second,
                                      second_body_axis, config, nullptr,
-                                     proprioceptive_seed);
+                                     proprioceptive_seed, first_pose_validated);
 }
 
 SweptFootprintResult validateRawFootprintAt(
@@ -949,7 +953,8 @@ SweptFootprintResult validateRawSweptFootprint(
     const FootprintBodyAxis& first_body_axis, const Point3& second,
     const FootprintBodyAxis& second_body_axis, const SweptFootprintConfig& config,
     const LaunchSupportContact3D* const launch_support_contact,
-    const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_seed) noexcept {
+    const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_seed,
+    const bool first_pose_validated) noexcept {
   if ((launch_support_contact != nullptr &&
        !launchSupportContactValid3D(*launch_support_contact)) ||
       !validProprioceptiveSeed(proprioceptive_seed)) {
@@ -957,7 +962,7 @@ SweptFootprintResult validateRawSweptFootprint(
   }
   return validateRawSweptFootprint3D(occupancy, first, first_body_axis, second,
                                      second_body_axis, config, launch_support_contact,
-                                     proprioceptive_seed);
+                                     proprioceptive_seed, first_pose_validated);
 }
 
 SweptFootprintConfig
@@ -998,7 +1003,8 @@ SweptFootprintResult validateRawPointCloudSweptFootprint(
     const FootprintBodyAxis& first_body_axis, const Point3& second,
     const FootprintBodyAxis& second_body_axis, const SweptFootprintConfig& config,
     const LaunchSupportContact3D* const launch_support_contact,
-    const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_seed) noexcept {
+    const ProprioceptiveFreeSpaceSeed3D* const proprioceptive_seed,
+    const bool first_pose_validated) noexcept {
   if ((launch_support_contact != nullptr &&
        !launchSupportContactValid3D(*launch_support_contact)) ||
       !validProprioceptiveSeed(proprioceptive_seed)) {
@@ -1014,11 +1020,13 @@ SweptFootprintResult validateRawPointCloudSweptFootprint(
   if (obstacle_points.empty()) {
     return validRawFootprint();
   }
-  const SweptFootprintResult first_result = validateRawPointCloudFootprintAt3D(
-      obstacle_points, cover.first, cover.first_axis, config,
-      poseExemption(launch_support_contact, proprioceptive_seed, cover.first));
-  if (!first_result.accepted()) {
-    return first_result;
+  if (!first_pose_validated) {
+    const SweptFootprintResult first_result = validateRawPointCloudFootprintAt3D(
+        obstacle_points, cover.first, cover.first_axis, config,
+        poseExemption(launch_support_contact, proprioceptive_seed, cover.first));
+    if (!first_result.accepted()) {
+      return first_result;
+    }
   }
   for (std::size_t interval = 0U; interval < cover.interval_count; ++interval) {
     const double interval_begin_ratio =

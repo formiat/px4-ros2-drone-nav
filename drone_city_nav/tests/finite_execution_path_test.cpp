@@ -161,6 +161,26 @@ TEST(FiniteExecutionPathTest, RejectsFreshLidarObstacleOnRemainingPath) {
   EXPECT_EQ(result.status, FiniteExecutionPathStatus::kLatestLidarRawCollision);
 }
 
+TEST(FiniteExecutionPathTest, SharedPoseIsSweptOnceAndStillRejectsAnObstacleThere) {
+  // The middle point is the second pose of segment 0 and the first pose of
+  // segment 1; it is swept as the former and the obstacle is found there.
+  TestWorld world;
+  world.occupancy.setOccupied(GridIndex3D{6, 2, 10});
+  const std::vector<TimedExecutionPathPoint> path = testPath();
+
+  const FiniteExecutionPathValidation result =
+      validateCompleteFiniteExecutionPath(path, Control{}, world.view());
+  EXPECT_EQ(result.status, FiniteExecutionPathStatus::kRawCollision);
+  EXPECT_EQ(result.failure_segment_index, 0U);
+
+  // With segment 0 discharged, segment 1 is the first swept segment and its
+  // first pose, the same middle point, is swept again.
+  const FiniteExecutionPathValidation after_discharge =
+      validateCompleteFiniteExecutionPath3D(path, Control{}, world.view(), 2U);
+  EXPECT_EQ(after_discharge.status, FiniteExecutionPathStatus::kRawCollision);
+  EXPECT_EQ(after_discharge.failure_segment_index, 1U);
+}
+
 TEST(FiniteExecutionPathTest, CompleteValidationChecksEveryRawPathSegment) {
   TestWorld world;
   world.occupancy.setOccupied(GridIndex3D{7, 2, 10});
