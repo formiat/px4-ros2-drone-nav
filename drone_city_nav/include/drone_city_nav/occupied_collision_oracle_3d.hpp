@@ -73,12 +73,10 @@ public:
   validatePoint(const Point3& position,
                 const FootprintBodyAxis& body_axis = {}) const noexcept;
 
-  // first_pose_validated: the first pose was validated by this oracle as the
-  // second pose of the preceding segment of one path and is not swept again.
   [[nodiscard]] OccupiedCollisionResult3D
   validateSegment(const Point3& first, const FootprintBodyAxis& first_body_axis,
-                  const Point3& second, const FootprintBodyAxis& second_body_axis,
-                  bool first_pose_validated = false) const noexcept;
+                  const Point3& second,
+                  const FootprintBodyAxis& second_body_axis) const noexcept;
 
   [[nodiscard]] const OccupiedCollisionWorld3D& world() const noexcept;
 

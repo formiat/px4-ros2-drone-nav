@@ -140,8 +140,7 @@ OccupiedCollisionResult3D OccupiedCollisionOracle3D::validatePoint(
 
 OccupiedCollisionResult3D OccupiedCollisionOracle3D::validateSegment(
     const Point3& first, const FootprintBodyAxis& first_body_axis, const Point3& second,
-    const FootprintBodyAxis& second_body_axis,
-    const bool first_pose_validated) const noexcept {
+    const FootprintBodyAxis& second_body_axis) const noexcept {
   if (!finitePoint(first) || !finitePoint(second) || !validBodyAxis(first_body_axis) ||
       !validBodyAxis(second_body_axis) || !world_valid_) {
     return {.status = OccupiedCollisionStatus3D::kInvalidInput,
@@ -159,19 +158,18 @@ OccupiedCollisionResult3D OccupiedCollisionOracle3D::validateSegment(
         classifyRawValidation(validateRawSweptFootprint(
             *world_.observed_occupancy, first, first_body_axis, second,
             second_body_axis, world_.footprint, world_.launch_support_contact,
-            world_.proprioceptive_free_space_seed, first_pose_validated)),
+            world_.proprioceptive_free_space_seed)),
         OccupiedCollisionSource3D::kObservedOccupancy);
     if (!observed.clear()) {
       return observed;
     }
   }
   if (world_.static_occupancy != nullptr) {
-    const OccupiedCollisionResult3D known =
-        withSource(classifyRawValidation(validateRawSweptFootprint(
-                       *world_.static_occupancy, first, first_body_axis, second,
-                       second_body_axis, world_.footprint,
-                       world_.proprioceptive_free_space_seed, first_pose_validated)),
-                   OccupiedCollisionSource3D::kStaticOccupancy);
+    const OccupiedCollisionResult3D known = withSource(
+        classifyRawValidation(validateRawSweptFootprint(
+            *world_.static_occupancy, first, first_body_axis, second, second_body_axis,
+            world_.footprint, world_.proprioceptive_free_space_seed)),
+        OccupiedCollisionSource3D::kStaticOccupancy);
     if (!known.clear()) {
       return known;
     }
@@ -190,7 +188,7 @@ OccupiedCollisionResult3D OccupiedCollisionOracle3D::validateSegment(
         classifyRawValidation(validateRawPointCloudSweptFootprint(
             world_.raw_point_cloud, first, first_body_axis, second, second_body_axis,
             world_.footprint, world_.launch_support_contact,
-            world_.proprioceptive_free_space_seed, first_pose_validated)),
+            world_.proprioceptive_free_space_seed)),
         OccupiedCollisionSource3D::kRawPointCloud);
     if (!point_cloud.clear()) {
       return point_cloud;

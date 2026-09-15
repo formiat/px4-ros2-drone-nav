@@ -160,10 +160,11 @@ reject(const FiniteExecutionPathStatus3D status,
   };
 }
 
-[[nodiscard]] FiniteExecutionPathStatus3D validatePhysicalSegment(
-    const Point3& first, const FootprintBodyAxis& first_axis, const Point3& second,
-    const FootprintBodyAxis& second_axis, const FiniteExecutionPathWorld3D& world,
-    const bool first_pose_validated, Point3& failure_point) noexcept {
+[[nodiscard]] FiniteExecutionPathStatus3D
+validatePhysicalSegment(const Point3& first, const FootprintBodyAxis& first_axis,
+                        const Point3& second, const FootprintBodyAxis& second_axis,
+                        const FiniteExecutionPathWorld3D& world,
+                        Point3& failure_point) noexcept {
   if (world.static_occupancy == nullptr && world.observed_occupancy == nullptr &&
       world.raw_occupancy == nullptr && world.latest_lidar_obstacle_points.empty()) {
     failure_point = first;
@@ -179,8 +180,8 @@ reject(const FiniteExecutionPathStatus3D status,
       .footprint = *world.footprint,
       .flight_envelope = *world.flight_envelope,
   }};
-  const OccupiedCollisionResult3D validation = oracle.validateSegment(
-      first, first_axis, second, second_axis, first_pose_validated);
+  const OccupiedCollisionResult3D validation =
+      oracle.validateSegment(first, first_axis, second, second_axis);
   if (validation.clear()) {
     return FiniteExecutionPathStatus3D::kValid;
   }
@@ -298,10 +299,6 @@ FiniteExecutionPathValidation3D validateCompleteFiniteExecutionPath3D(
       .status = FiniteExecutionPathStatus3D::kValid,
   };
   result.physically_validated_point_count = points.empty() ? 0U : 1U;
-  // A segment's first pose is the preceding segment's second pose, swept with
-  // the same footprint, exemption and evidence; it is swept once, as the
-  // second pose, unless the preceding segment was not swept in this call.
-  bool previous_segment_swept{false};
   for (std::size_t index = 1U; index < points.size(); ++index) {
     const TimedExecutionPathPoint3D& first = points[index - 1U];
     const TimedExecutionPathPoint3D& second = points[index];
@@ -322,19 +319,17 @@ FiniteExecutionPathValidation3D validateCompleteFiniteExecutionPath3D(
     // or the vehicle has already flown past it.
     if (index < discharged_leading_point_count) {
       result.physically_validated_point_count = index + 1U;
-      previous_segment_swept = false;
       continue;
     }
     const FiniteExecutionPathStatus3D segment_status = validatePhysicalSegment(
         position(first.state), kUprightBodyAxis, position(second.state),
-        kUprightBodyAxis, world, previous_segment_swept, failure_point);
+        kUprightBodyAxis, world, failure_point);
     if (segment_status != FiniteExecutionPathStatus3D::kValid) {
       FiniteExecutionPathValidation3D rejection =
           reject(segment_status, 0U, index - 1U, failure_point, 0.0);
       rejection.physically_validated_point_count = index;
       return rejection;
     }
-    previous_segment_swept = true;
     result.physically_validated_point_count = index + 1U;
   }
   return result;
@@ -567,7 +562,7 @@ FiniteExecutionPathValidation3D validateFiniteExecutionTrajectoryContinuation3D(
   Point3 failure_point{};
   FiniteExecutionPathStatus3D segment_status = validatePhysicalSegment(
       position(current_state), kUprightBodyAxis, position(first_remaining->state),
-      kUprightBodyAxis, world, false, failure_point);
+      kUprightBodyAxis, world, failure_point);
   if (segment_status != FiniteExecutionPathStatus3D::kValid) {
     return reject(segment_status, first_remaining_index, first_remaining_index,
                   failure_point, remaining_duration_s);
@@ -575,10 +570,9 @@ FiniteExecutionPathValidation3D validateFiniteExecutionTrajectoryContinuation3D(
   for (std::size_t index = first_remaining_index + 1U; index < points.size(); ++index) {
     const TimedExecutionPathPoint3D& first = points[index - 1U];
     const TimedExecutionPathPoint3D& second = points[index];
-    // The first pose was the second pose of the segment swept just before.
     segment_status = validatePhysicalSegment(position(first.state), kUprightBodyAxis,
                                              position(second.state), kUprightBodyAxis,
-                                             world, true, failure_point);
+                                             world, failure_point);
     if (segment_status != FiniteExecutionPathStatus3D::kValid) {
       return reject(segment_status, first_remaining_index, index - 1U, failure_point,
                     remaining_duration_s);
@@ -621,7 +615,6 @@ FiniteExecutionPathValidation3D validateFiniteExecutionPathContinuation3D(
       trajectory_validation.first_remaining_point_index;
   MotionState3D simulated_state = current_state;
   MotionControl3D previous_control = current_control;
-  bool simulated_state_swept{false};
   float terminal_boundary_travel_m{0.0F};
   FiniteExecutionPathStatus3D altitude_status{FiniteExecutionPathStatus3D::kValid};
   FiniteExecutionPathStatus3D segment_status{FiniteExecutionPathStatus3D::kValid};
@@ -644,15 +637,14 @@ FiniteExecutionPathValidation3D validateFiniteExecutionPathContinuation3D(
                     first_remaining_index, index, position(next_state),
                     trajectory_validation.remaining_duration_s);
     }
-    segment_status = validatePhysicalSegment(
-        position(simulated_state), kUprightBodyAxis, position(next_state),
-        kUprightBodyAxis, world, simulated_state_swept, failure_point);
+    segment_status = validatePhysicalSegment(position(simulated_state),
+                                             kUprightBodyAxis, position(next_state),
+                                             kUprightBodyAxis, world, failure_point);
     if (segment_status != FiniteExecutionPathStatus3D::kValid) {
       return reject(segment_status, first_remaining_index, index, failure_point,
                     trajectory_validation.remaining_duration_s);
     }
     simulated_state = next_state;
-    simulated_state_swept = true;
     previous_control = control;
   }
   return FiniteExecutionPathValidation3D{
