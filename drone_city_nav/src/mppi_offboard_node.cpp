@@ -1,3 +1,5 @@
+#include "drone_city_nav/autopilot_state.hpp"
+#include "drone_city_nav/autopilot_state_source.hpp"
 #include "drone_city_nav/execution_horizon_admission.hpp"
 #include "drone_city_nav/execution_horizon_contract_ros.hpp"
 #include "drone_city_nav/execution_horizon_timing.hpp"
@@ -18,8 +20,6 @@
 #include <px4_msgs/msg/offboard_control_mode.hpp>
 #include <px4_msgs/msg/trajectory_setpoint.hpp>
 #include <px4_msgs/msg/vehicle_command.hpp>
-#include <px4_msgs/msg/vehicle_local_position.hpp>
-#include <px4_msgs/msg/vehicle_status.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <visualization_msgs/msg/marker.hpp>
@@ -194,17 +194,20 @@ public:
         [this](const msg::MppiTrajectoryHorizon::SharedPtr horizon) {
           onHorizon(*horizon);
         });
-    local_position_sub_ = create_subscription<px4_msgs::msg::VehicleLocalPosition>(
-        declare_parameter<std::string>("px4_local_position_topic",
-                                       "/fmu/out/vehicle_local_position_v1"),
-        px4_qos, [this](const px4_msgs::msg::VehicleLocalPosition::SharedPtr state) {
-          onLocalPosition(*state);
-        });
-    vehicle_status_sub_ = create_subscription<px4_msgs::msg::VehicleStatus>(
-        declare_parameter<std::string>("px4_vehicle_status_topic",
-                                       "/fmu/out/vehicle_status_v1"),
-        px4_qos, [this](const px4_msgs::msg::VehicleStatus::SharedPtr status) {
-          onVehicleStatus(*status);
+    autopilot_state_source_ = std::make_unique<AutopilotStateSource>(
+        *this, px4_map_transform_,
+        AutopilotStateTopics{
+            .local_state = declare_parameter<std::string>(
+                "px4_local_position_topic", "/fmu/out/vehicle_local_position_v1"),
+            .status = declare_parameter<std::string>("px4_vehicle_status_topic",
+                                                     "/fmu/out/vehicle_status_v1"),
+        },
+        px4_qos,
+        AutopilotStateCallbacks{
+            .local_state =
+                [this](const AutopilotLocalState& state) { onLocalState(state); },
+            .status =
+                [this](const AutopilotStatus& status) { onAutopilotStatus(status); },
         });
     vehicle_destroyed_sub_ = create_subscription<msg::VehicleDestroyed>(
         declare_parameter<std::string>("vehicle_destroyed_topic",
@@ -285,12 +288,9 @@ public:
   }
 
 private:
-  void onVehicleStatus(const px4_msgs::msg::VehicleStatus& status) {
-    const bool was_armed =
-        vehicle_status_seen_ && vehicle_status_.arming_state ==
-                                    px4_msgs::msg::VehicleStatus::ARMING_STATE_ARMED;
-    const bool armed =
-        status.arming_state == px4_msgs::msg::VehicleStatus::ARMING_STATE_ARMED;
+  void onAutopilotStatus(const AutopilotStatus& status) {
+    const bool was_armed = vehicle_status_seen_ && vehicle_status_.armed;
+    const bool armed = status.armed;
     vehicle_status_ = status;
     vehicle_status_seen_ = true;
     if (!armed && (was_armed || horizon_.has_value())) {
@@ -318,24 +318,26 @@ private:
     }
   }
 
-  void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& state) {
-    if (!state.xy_valid || !state.z_valid || !state.v_xy_valid || !state.v_z_valid) {
+  void onLocalState(const AutopilotLocalState& state) {
+    if (!state.position_valid || !state.altitude_valid || !state.velocity_valid ||
+        !state.vertical_velocity_valid) {
       position_valid_ = false;
       return;
     }
-    local_x_ = state.x;
-    local_y_ = state.y;
-    altitude_m_ = -static_cast<double>(state.z);
-    const Point2 map_velocity = px4_map_transform_.localVectorToMap(
-        Point2{static_cast<double>(state.vx), static_cast<double>(state.vy)});
-    velocity_x_ = map_velocity.x;
-    velocity_y_ = map_velocity.y;
-    velocity_up_mps_ = -static_cast<double>(state.vz);
-    const bool finite_heading = std::isfinite(state.heading);
-    if (finite_heading) {
-      heading_rad_ = px4_map_transform_.px4HeadingToMapYaw(state.heading);
+    // The setpoints go out in the autopilot's own frame, so the contract's
+    // map position is read back through the transform this node commands in.
+    const Point2 local_position = px4_map_transform_.mapPositionToLocal(
+        Point2{state.position.x, state.position.y});
+    local_x_ = local_position.x;
+    local_y_ = local_position.y;
+    altitude_m_ = state.position.z - px4_map_transform_.map_origin.z;
+    velocity_x_ = state.velocity.x;
+    velocity_y_ = state.velocity.y;
+    velocity_up_mps_ = state.velocity.z;
+    if (std::isfinite(state.yaw_rad)) {
+      heading_rad_ = state.yaw_rad;
     }
-    heading_valid_ = state.heading_good_for_control && finite_heading;
+    heading_valid_ = state.heading_valid && std::isfinite(state.yaw_rad);
     position_valid_ = true;
     publishNavigationState();
     publishRvizDroneFollowTransform();
@@ -360,9 +362,7 @@ private:
     state.position_valid = position_valid_;
     state.velocity_valid = position_valid_;
     state.heading_valid = heading_valid_;
-    state.armed =
-        vehicle_status_seen_ && vehicle_status_.arming_state ==
-                                    px4_msgs::msg::VehicleStatus::ARMING_STATE_ARMED;
+    state.armed = vehicle_status_seen_ && vehicle_status_.armed;
     state.airborne = state.armed && altitude_m_ >= 1.0;
     state.navigation_ready =
         state.airborne && takeoff_complete_stamp_.has_value() &&
@@ -593,8 +593,7 @@ private:
   }
 
   void controlTick() {
-    const bool armed = vehicle_status_.arming_state ==
-                       px4_msgs::msg::VehicleStatus::ARMING_STATE_ARMED;
+    const bool armed = vehicle_status_.armed;
     const VehicleDestructionDisarmUpdate destruction_disarm =
         destruction_disarm_lifecycle_->update(now().nanoseconds(), vehicle_status_seen_,
                                               armed);
@@ -696,15 +695,13 @@ private:
     if (!planner_authorized) {
       return;
     }
-    if (auto_offboard_ && vehicle_status_.nav_state !=
-                              px4_msgs::msg::VehicleStatus::NAVIGATION_STATE_OFFBOARD) {
+    if (auto_offboard_ && !vehicle_status_.external_control) {
       publishCommand(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_DO_SET_MODE, 1.0F,
                      6.0F);
       last_command_time_ = current;
       return;
     }
-    if (auto_arm_ && vehicle_status_.arming_state !=
-                         px4_msgs::msg::VehicleStatus::ARMING_STATE_ARMED) {
+    if (auto_arm_ && !vehicle_status_.armed) {
       publishCommand(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_COMPONENT_ARM_DISARM,
                      1.0F);
       last_command_time_ = current;
@@ -986,7 +983,7 @@ private:
   Px4MapFrameTransform px4_map_transform_{};
   VehicleCommandEndpoint endpoint_{};
   std::unique_ptr<VehicleDestructionDisarmLifecycle> destruction_disarm_lifecycle_;
-  px4_msgs::msg::VehicleStatus vehicle_status_;
+  AutopilotStatus vehicle_status_;
   std::optional<msg::MppiTrajectoryHorizon> horizon_;
   LocalHoldPin unavailable_path_hold_pin_;
   std::optional<rclcpp::Time> takeoff_complete_stamp_;
@@ -1011,9 +1008,7 @@ private:
   rclcpp::Publisher<msg::VehicleNavigationState>::SharedPtr navigation_state_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr navigation_readiness_pub_;
   rclcpp::Subscription<msg::MppiTrajectoryHorizon>::SharedPtr horizon_sub_;
-  rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
-      local_position_sub_;
-  rclcpp::Subscription<px4_msgs::msg::VehicleStatus>::SharedPtr vehicle_status_sub_;
+  std::unique_ptr<AutopilotStateSource> autopilot_state_source_;
   rclcpp::Subscription<msg::VehicleDestroyed>::SharedPtr vehicle_destroyed_sub_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr mission_start_sub_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr planner_health_sub_;
