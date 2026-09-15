@@ -37,11 +37,24 @@ struct ProductionMppiTickPhaseTimings {
   double capture_ms{0.0};
   double execution_input_ms{0.0};
   double cycle_prepare_ms{0.0};
+  // Inside cycle preparation: the route execution selection with its raw and
+  // latest-lidar route-window validation, and the clearance measurements of
+  // the resident horizon and the route ahead.
+  double route_selection_ms{0.0};
+  double route_clearance_ms{0.0};
   double controller_ms{0.0};
   double publication_ms{0.0};
   // Sub-phases of publication: horizon assembly before the commit, the
   // supervisor commit transaction, and the wire publication after it.
   double assembly_ms{0.0};
+  // Inside assembly: the assembler call (finite-path validation with the
+  // arrival-shaping search) and, within it, the route certification of every
+  // attempted candidate; then the wait for the evidence-boundary lock before
+  // the commit. Inside the commit: the latest-evidence revalidation sweep.
+  double assemble_ms{0.0};
+  double certification_ms{0.0};
+  double lock_wait_ms{0.0};
+  double revalidation_ms{0.0};
   double commit_ms{0.0};
   double wire_ms{0.0};
   double total_ms{0.0};

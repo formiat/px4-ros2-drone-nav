@@ -165,6 +165,9 @@ struct HorizonCandidate3D {
       FiniteExecutionRouteAdherenceStatus3D::kNotEvaluated};
   double route_adherence_failure_distance_m{-1.0};
   bool nominal_candidate_degraded{false};
+  // Wall time spent certifying the attempted candidates against the route,
+  // summed over the arrival-shaping attempts, for the tick phase diagnostics.
+  double certification_ms{0.0};
   bool path_validation_backoff{false};
   bool persistent_raw_path_validation_backoff{false};
   bool latest_lidar_path_validation_backoff{false};

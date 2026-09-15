@@ -3,6 +3,7 @@
 #include "drone_city_nav/finite_execution_path_3d.hpp"
 #include "drone_city_nav/proprioceptive_contact_seed_3d.hpp"
 
+#include <chrono>
 #include <cmath>
 #include <memory>
 #include <optional>
@@ -713,12 +714,18 @@ ExecutionSupervisor3D::commitHorizon(ExecutionHorizonCommitRequest3D request) {
       (candidate.certification_plan != nullptr &&
        progressPreservesRouteEvidence(*candidate.expected_plan,
                                       *candidate.certification_plan));
-  result.latest_evidence_revalidated =
-      progress_preserves_route_evidence &&
+  if (progress_preserves_route_evidence &&
       result.publication_currentness ==
-          ExecutionPublicationCurrentnessStatus3D::kRevalidationRequired &&
-      revalidateFiniteExecution(*publication_plan, request.current_observed_raw_world,
-                                request.current_lidar_evidence);
+          ExecutionPublicationCurrentnessStatus3D::kRevalidationRequired) {
+    const auto revalidation_started = std::chrono::steady_clock::now();
+    result.latest_evidence_revalidated =
+        revalidateFiniteExecution(*publication_plan, request.current_observed_raw_world,
+                                  request.current_lidar_evidence);
+    result.revalidation_ms =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                  revalidation_started)
+            .count();
+  }
   if (result.publication_currentness !=
           ExecutionPublicationCurrentnessStatus3D::kCurrent &&
       !result.latest_evidence_revalidated) {

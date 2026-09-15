@@ -379,6 +379,10 @@ private:
   // Wall time of the last publication sub-phases on the planning tick thread.
   std::chrono::steady_clock::time_point latest_publication_started_{};
   double latest_horizon_assembly_ms_{0.0};
+  double latest_horizon_assemble_ms_{0.0};
+  double latest_horizon_certification_ms_{0.0};
+  double latest_horizon_lock_wait_ms_{0.0};
+  double latest_horizon_revalidation_ms_{0.0};
   double latest_horizon_commit_ms_{0.0};
   double latest_horizon_wire_ms_{0.0};
   std::unique_ptr<RouteLifecycleCoordinator3D> route_lifecycle_coordinator_;

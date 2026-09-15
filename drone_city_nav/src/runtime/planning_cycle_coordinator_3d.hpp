@@ -147,6 +147,10 @@ struct PlanningCycleOutcome3D {
   PlanningRouteDecision3D route{};
   PlanningControllerCycle3D controller{};
   PlanningCycleEffects3D effects{};
+  // Wall time of the route execution selection and of the resident-horizon
+  // and route clearance measurements, for the tick phase diagnostics.
+  double route_selection_ms{0.0};
+  double route_clearance_ms{0.0};
 
   [[nodiscard]] bool ready() const noexcept {
     return status == PlanningCycleStatus3D::kReady;

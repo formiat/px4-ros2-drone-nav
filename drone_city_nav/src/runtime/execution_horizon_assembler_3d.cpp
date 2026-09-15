@@ -163,6 +163,7 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
 
   const CertifiedRouteSuffix3D* route_certification_target{nullptr};
   std::optional<FiniteExecutionPlanCertificationResult3D> route_certification;
+  double certification_ms{0.0};
   mppi::FiniteExecutionPathCandidateValidator route_candidate_validator;
   if (!route.direct_tracking_requested) {
     route_certification_target = route_execution.pending_activation
@@ -187,6 +188,7 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
         route_certification.reset();
         return false;
       }
+      const auto certification_started = std::chrono::steady_clock::now();
       // The braking tail is the earliest stop along the candidate the
       // world admits: the stop that begins at once where it clears, and
       // otherwise the first stop that follows the candidate's own turn
@@ -197,6 +199,10 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
               cycle.controller.arrival_search_step_controls, config_.finite_horizon);
       if (braking_tails.empty()) {
         route_certification.reset();
+        certification_ms +=
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                      certification_started)
+                .count();
         return false;
       }
       route_certification.emplace(certifyFiniteExecutionPlan3DDetailed(
@@ -210,6 +216,9 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
               .kind = FiniteExecutionKind3D::kNominal,
           },
           braking_tails));
+      certification_ms += std::chrono::duration<double, std::milli>(
+                              std::chrono::steady_clock::now() - certification_started)
+                              .count();
       return route_certification->certified();
     };
   }
@@ -235,6 +244,7 @@ HorizonCandidate3D ExecutionHorizonAssembler3D::assemble(
           std::move(route_candidate_validator),
           mppi::FiniteExecutionPathBudget{.deadline = assembly_deadline});
   HorizonCandidate3D candidate;
+  candidate.certification_ms = certification_ms;
   captureValidationTelemetry(candidate, validated_path, nominal_candidate_degraded);
   if (route_certification.has_value()) {
     candidate.certification_status = route_certification->command_horizon.status;

@@ -5,6 +5,7 @@
 #include "drone_city_nav/swept_footprint.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cinttypes>
 #include <cmath>
 #include <cstdio>
@@ -538,8 +539,13 @@ ProductionMppiExecutionPublication ProductionMppiNode::publishPreparedExecutionC
   }
   ProductionMppiExecutionPublication& publication = cycle.publicationRef();
   const ProductionRouteExecutionSelection3D& route_execution = cycle.route.execution;
+  const auto assemble_started = std::chrono::steady_clock::now();
   HorizonCandidate3D candidate =
       execution_horizon_assembler_->assemble(cycle, execution_supervisor_.plan());
+  latest_horizon_assemble_ms_ = std::chrono::duration<double, std::milli>(
+                                    std::chrono::steady_clock::now() - assemble_started)
+                                    .count();
+  latest_horizon_certification_ms_ = candidate.certification_ms;
 
   if (candidate.physical_rejection.has_value()) {
     const HorizonCandidatePhysicalRejection3D& rejection =

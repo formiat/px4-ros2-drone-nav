@@ -11,6 +11,7 @@
 #include "drone_city_nav/route_execution_contract_3d.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <limits>
 #include <memory>
@@ -324,6 +325,7 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
     return output;
   }
 
+  const auto route_selection_started = std::chrono::steady_clock::now();
   RouteExecutionSelectorResult3D route_selection =
       route_execution_selector_.select(RouteExecutionSelectorRequest3D{
           .world = request.world,
@@ -339,6 +341,10 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
           .direct_tracking_identity = request.direct_tracking_identity,
           .observed_3d_world = request.observed_3d_world,
       });
+  output.route_selection_ms =
+      std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                route_selection_started)
+          .count();
   output.effects.route_execution = std::move(route_selection.effects);
   output.route.execution = std::move(route_selection.selection);
   const PendingCertifiedRouteRecoveryResult3D pending_recovery =
@@ -454,6 +460,7 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
   // The clearance the speed policy answers to is the clearance of the motion
   // the vehicle is carrying out, measured against the world as it stands now.
   // A controller candidate that never reached the offboard moved nothing.
+  const auto route_clearance_started = std::chrono::steady_clock::now();
   const std::optional<ExecutedHorizonClearance3D> executed_horizon_clearance =
       measureResidentExecutionClearance(request);
   // The executed horizon ends where the vehicle can come to rest, so the
@@ -488,6 +495,10 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
                 config_.physical_footprint,
                 config_.executed_horizon_constraint_clearance_m)}
           : std::nullopt;
+  output.route_clearance_ms =
+      std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                route_clearance_started)
+          .count();
   const double reference_elapsed_s =
       previous_reference_stamp_ns_ > 0 && request.now_ns > previous_reference_stamp_ns_
           ? static_cast<double>(request.now_ns - previous_reference_stamp_ns_) * 1.0e-9

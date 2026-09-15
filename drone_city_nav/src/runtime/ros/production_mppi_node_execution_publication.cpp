@@ -269,7 +269,12 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
     report_commit_failure("invalid_execution_input");
     return ProductionMppiHorizonCommitStatus::kRejected;
   }
+  const auto lock_wait_started = std::chrono::steady_clock::now();
   const auto input_lock = evidence_boundary_.input();
+  latest_horizon_lock_wait_ms_ =
+      std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                lock_wait_started)
+          .count();
   if (execution_horizon_sequence_ == std::numeric_limits<std::uint64_t>::max()) {
     report_commit_failure("horizon_sequence_exhausted");
     return ProductionMppiHorizonCommitStatus::kRejected;
@@ -397,6 +402,7 @@ ProductionMppiHorizonCommitStatus ProductionMppiNode::commitAndPublishExecutionH
   latest_horizon_commit_ms_ = std::chrono::duration<double, std::milli>(
                                   std::chrono::steady_clock::now() - commit_started)
                                   .count();
+  latest_horizon_revalidation_ms_ = committed.revalidation_ms;
   switch (committed.revocation_request) {
     case ExecutionHorizonRevocationRequest3D::kNone:
       break;

@@ -126,6 +126,10 @@ void ProductionMppiNode::finalizePlanningTick(
   const auto publication_started = std::chrono::steady_clock::now();
   latest_horizon_commit_ms_ = 0.0;
   latest_horizon_assembly_ms_ = 0.0;
+  latest_horizon_assemble_ms_ = 0.0;
+  latest_horizon_certification_ms_ = 0.0;
+  latest_horizon_lock_wait_ms_ = 0.0;
+  latest_horizon_revalidation_ms_ = 0.0;
   latest_horizon_wire_ms_ = 0.0;
   latest_publication_started_ = publication_started;
   ProductionMppiExecutionPublication execution = publishExecutionHorizon(
@@ -138,11 +142,17 @@ void ProductionMppiNode::finalizePlanningTick(
       .capture_ms = finalization.capture_ms,
       .execution_input_ms = finalization.execution_input_ms,
       .cycle_prepare_ms = finalization.cycle_prepare_ms,
+      .route_selection_ms = finalization.route_selection_ms,
+      .route_clearance_ms = finalization.route_clearance_ms,
       .controller_ms = finalization.controller_ms,
       .publication_ms = std::chrono::duration<double, std::milli>(publication_finished -
                                                                   publication_started)
                             .count(),
       .assembly_ms = latest_horizon_assembly_ms_,
+      .assemble_ms = latest_horizon_assemble_ms_,
+      .certification_ms = latest_horizon_certification_ms_,
+      .lock_wait_ms = latest_horizon_lock_wait_ms_,
+      .revalidation_ms = latest_horizon_revalidation_ms_,
       .commit_ms = latest_horizon_commit_ms_,
       .wire_ms = latest_horizon_wire_ms_,
       .total_ms = std::chrono::duration<double, std::milli>(publication_finished -

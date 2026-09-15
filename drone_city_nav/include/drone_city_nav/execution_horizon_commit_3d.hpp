@@ -111,6 +111,9 @@ struct ExecutionHorizonCommitResult3D {
   ExecutionRoutePublicationStatus3D lease_status{
       ExecutionRoutePublicationStatus3D::kInvalidCandidate};
   bool latest_evidence_revalidated{false};
+  // Wall time of the latest-evidence revalidation sweep, zero when it did not
+  // run, for the tick phase diagnostics.
+  double revalidation_ms{0.0};
   bool replaced_applied_control{false};
 
   [[nodiscard]] bool committed() const noexcept;

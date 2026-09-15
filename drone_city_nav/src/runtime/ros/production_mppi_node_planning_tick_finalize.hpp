@@ -48,6 +48,8 @@ struct ProductionMppiPlanningTickFinalization {
   double capture_ms;
   double execution_input_ms;
   double cycle_prepare_ms;
+  double route_selection_ms;
+  double route_clearance_ms;
   double controller_ms;
   std::chrono::steady_clock::time_point tick_started;
   RouteExecutionStatus3D route_execution_status;

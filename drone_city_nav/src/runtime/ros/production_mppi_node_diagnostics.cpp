@@ -239,9 +239,15 @@ void ProductionMppiNode::processDiagnostics(
        << " capture_ms=" << snapshot.phases.capture_ms
        << " execution_input_ms=" << snapshot.phases.execution_input_ms
        << " cycle_prepare_ms=" << snapshot.phases.cycle_prepare_ms
+       << " route_selection_ms=" << snapshot.phases.route_selection_ms
+       << " route_clearance_ms=" << snapshot.phases.route_clearance_ms
        << " controller_ms=" << snapshot.phases.controller_ms
        << " publication_ms=" << snapshot.phases.publication_ms
        << " assembly_ms=" << snapshot.phases.assembly_ms
+       << " assemble_ms=" << snapshot.phases.assemble_ms
+       << " certification_ms=" << snapshot.phases.certification_ms
+       << " lock_wait_ms=" << snapshot.phases.lock_wait_ms
+       << " revalidation_ms=" << snapshot.phases.revalidation_ms
        << " commit_ms=" << snapshot.phases.commit_ms
        << " wire_ms=" << snapshot.phases.wire_ms
        << " tick_total_ms=" << snapshot.phases.total_ms
@@ -633,9 +639,15 @@ void ProductionMppiNode::processDiagnostics(
          << ",\"capture_ms\":" << snapshot.phases.capture_ms
          << ",\"execution_input_ms\":" << snapshot.phases.execution_input_ms
          << ",\"cycle_prepare_ms\":" << snapshot.phases.cycle_prepare_ms
+         << ",\"route_selection_ms\":" << snapshot.phases.route_selection_ms
+         << ",\"route_clearance_ms\":" << snapshot.phases.route_clearance_ms
          << ",\"controller_ms\":" << snapshot.phases.controller_ms
          << ",\"publication_ms\":" << snapshot.phases.publication_ms
          << ",\"assembly_ms\":" << snapshot.phases.assembly_ms
+         << ",\"assemble_ms\":" << snapshot.phases.assemble_ms
+         << ",\"certification_ms\":" << snapshot.phases.certification_ms
+         << ",\"lock_wait_ms\":" << snapshot.phases.lock_wait_ms
+         << ",\"revalidation_ms\":" << snapshot.phases.revalidation_ms
          << ",\"commit_ms\":" << snapshot.phases.commit_ms
          << ",\"wire_ms\":" << snapshot.phases.wire_ms
          << ",\"tick_total_ms\":" << snapshot.phases.total_ms

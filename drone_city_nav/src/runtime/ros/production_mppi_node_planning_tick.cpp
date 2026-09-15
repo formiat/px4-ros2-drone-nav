@@ -673,6 +673,8 @@ void ProductionMppiNode::planningTick() {
       .capture_ms = capture_ms,
       .execution_input_ms = execution_input_ms,
       .cycle_prepare_ms = cycle_prepare_ms,
+      .route_selection_ms = planning.route_selection_ms,
+      .route_clearance_ms = planning.route_clearance_ms,
       .controller_ms = controller_ms,
       .tick_started = snapshot_started,
       .route_execution_status = planning.route.execution_status,
