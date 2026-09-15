@@ -12,286 +12,51 @@ execution order. The dependency annotations below use three meanings:
 - **independent recurring workstream**: work may run in parallel with any
   milestone and should be repeated as the architecture evolves.
 
-## 1. Interceptor Drone (Completed)
-
-Implement an autonomous interceptor drone capable of pursuing an attacking
-drone using external target information.
-
-The current foundation launches three interceptors and one attacking drone in
-isolated PX4 and ROS namespaces. The attacker flies from a fixed start to a
-fixed goal. Every interceptor receives an independent radar-derived target
-track, predicts its motion, and continuously updates a tracking objective
-without entering terminal goal hold. A separation of 5 m or less destroys the
-capturing pair and records a successful intercept outcome.
-
-The interceptor mission, radar-derived tracking, predictive guidance, and
-physical interception lifecycle have been implemented and validated in
-repeated mission runs.
-
-## 2. Radar Measurement Simulation (Completed)
-
-Replace direct access to the target's ground-truth coordinates with a more
-realistic radar measurement model.
-
-The radar interface will provide only:
-
-- range;
-- bearing;
-- elevation;
-- radial velocity.
-
-The initial implementation uses ideal measurements without noise,
-interference, latency, or measurement errors. Measurement cadence follows a
-deterministic correlated random walk between 0.1 s and 3.0 s. Guidance continues
-at 20 Hz by coasting the latest target track between scans. Swept raw-clear
-visibility of the current target estimate commands an immediate scan and 20 Hz
-track mode at any range; target occlusion restores variable search cadence.
-
-The physical radar will not be simulated. Only the radar measurement interface
-and its integration with the interceptor are implemented.
-
-Each pursuit data path is split into a simulation-truth adapter, mission
-referee, radar simulator, target tracker, and interceptor guidance node. Gazebo
-model poses are converted to typed physical truth once; only the referee and
-radar simulators may subscribe to the target's typed truth. The
-interceptor-facing `RadarScan` carries
-range, azimuth, elevation, and relative radial velocity, but no absolute target
-position, velocity, or simulator entity identity. The first detection supports
-direct pursuit; subsequent variable-dt updates estimate Cartesian velocity for
-predictive guidance. Runtime graph validation and source-contract tests enforce
-this boundary.
-
-## 3. Target Motion Prediction (Completed)
-
-Implement target trajectory prediction. The initial model will intentionally
-remain simple:
-
-- use the latest known target position;
-- use the latest known velocity vector;
-- extrapolate the trajectory several seconds ahead;
-- intercept the predicted future position instead of chasing the current
-  position.
-
-The implementation solves the constant-velocity intercept equation using the
-configured interceptor speed. The solution is capped at 15 s. When the
-interceptor is ahead and inside the target corridor, the horizon is capped at
-1 s. The transition uses spatial hysteresis and a smoothed prediction horizon.
-Slow or invalid target velocity falls back to the observed target position.
-
-Prediction starts at the measurement timestamp, so telemetry age is included
-in extrapolation. Interceptor guidance publishes a typed tracking objective from
-the radar-derived target track without reading a map. The planner clips the
-prediction segment at the first raw occupied cell and uses the last raw-free
-sample. It does not search for a nearest free point and does not add inflation
-or prohibited regions. Vertical prediction applies bounded deceleration until
-the target stops climbing or descending and clamps altitude to the configured
-flight envelope instead of rejecting the objective. Swept visibility of the
-current target activates direct moving-target MPPI pursuit. If only the full
-prediction is blocked, the planner shortens the lead toward the current target;
-only current-target occlusion returns execution to ordinary global planning.
-RViz and JSONL diagnostics expose observed, coasted current, predicted, and
-resolved target points together with visibility, prediction-path clearance,
-closing speed, commanded speed, active speed limiter, and radar age.
-
-The initial target-motion prediction scope is complete. It now consumes the
-target track produced by the radar pipeline described in section 2.
-
-## 4. Multiple Interceptors Versus One Attacker (Completed)
-
-The finite scenario now runs three interceptor drones against one attacking
-drone. They start in three different city corners and own independent PX4,
-navigation, radar, tracker, and guidance pipelines. All three use the measured
-motion direction by default. Optional long-range directional hypotheses add
-`-45` and `+45` degree alternatives; the offsets converge to zero near the
-attacker and cannot move the predicted point more than 70 m laterally.
-
-The first interceptor within 5 m of the attacker destroys that pair. Surviving
-interceptors receive a typed hold objective and enter confirmed stationary
-position hold.
-Interceptor-to-interceptor separation within 5 m is accepted as collateral
-damage; only that pair is destroyed and the pursuit continues. The spectator
-camera starts on `interceptor_0` and uses the configurable living-vehicle
-reselection lifecycle after a typed death event.
-
-This stage deliberately contains one attacker and one episode. Attacker
-despawn, respawn, and an endless campaign remain future work and are not part of
-the current implementation.
-
-## 5. Multiple Interceptors Versus Multiple Attackers (Completed)
-
-The first finite scenario launches two attacking drones from the short city
-side farthest from their shared corner destination. One attacker starts at the
-corner and the other starts one block inward along that side. Two interceptors
-start on the opposite short side, next to the destination.
-The existing 3x1 `intercept` entry point remains unchanged; dedicated
-`sim_multi_intercept_gui.sh` and `sim_multi_intercept_headless.sh` wrappers load
-the 2x2 scenario through the same generic N x M launch pipeline.
-
-Each interceptor receives an independent ideal radar scan containing relative
-measurements for every attacker and maintains one radar-derived track per
-detection. A typed assignment coordinator minimizes estimated intercept time,
-covers distinct active targets where possible, and applies hold time,
-improvement threshold, and confirmation hysteresis before changing an existing
-assignment. Terminal attackers are removed immediately and the remaining fleet
-is reassigned without restarting navigation.
-
-The multi-target referee records one first terminal outcome for every attacker
-and preserves physical 5 m proximity, typed death, disarm, and survivor-hold
-settlement. Collision avoidance remains disabled, and mid-air collisions are
-treated as acceptable collateral damage. The finite mission does not respawn
-attackers and does not implement an endless campaign.
-
-The `2x2` spectator starts on `evader_0` and uses cyclic `next_living`
-reselection, preferring `evader_1` after the first attacker's destruction.
-
-## 6. Cooperative Multi-Drone Air Traffic (Completed)
-
-The finite cooperative scenario launches four autonomous civilian drones from
-the city corners. Each vehicle has an independent point-to-point mission to the
-opposite corner, starts at the same altitude, and owns an isolated PX4,
-navigation, mapping, and MPPI pipeline. Fixed cruise-altitude layers are not
-preassigned.
-
-The drones exchange typed, bounded-validity flight intents at 20 Hz. Each intent
-contains the vehicle's physical footprint, current position and velocity,
-predicted MPPI trajectory, maneuver state, and constrained-passage use. Every
-vehicle independently validates peer freshness, predicts continuous closest
-approach over the shared horizon, and selects deterministic complementary
-vertical or lateral maneuvers. Latching and release hysteresis prevent rapid
-maneuver flapping.
-
-Peer separation is implemented as a strong soft MPPI cost and preferred
-acceleration direction. It does not create prohibited grids, inflated obstacles,
-or hard exclusion volumes. Static passages expose capacity derived from
-raw-validated lane geometry: opposite traffic may use separate lanes when the
-physical width permits it, while exclusive or conflicting use is resolved by
-deterministic right-of-way and a route-safe hold before entry.
-
-In no-static mode, cooperative peer returns are filtered from persistent lidar
-memory and from direct raw obstacle-path validation. A dedicated
-referee verifies coordinate readiness, physical minimum separation, goal
-arrival, stationary hold, vehicle destruction, and building collisions. The
-supported headless contract requires every vehicle to settle at its own goal
-without physical loss. Both static-map and no-static-map scenarios have passed
-this full mission validation.
-
-## 6.1. Non-Cooperative Collision Avoidance in Interception Missions (Completed)
-
-Every attacker carries an independent high-rate simulated airborne radar. It
-reports anonymous relative detections of all aircraft within physical range and
-line of sight; it does not expose roles, mission assignments, global routes, or
-the intent communication channel used by cooperative civilian traffic. A local variable-time
-tracker converts those measurements into anonymous position and velocity tracks.
-
-The attacker evaluates current separation and continuous closest approach for
-every fresh track. A strong finite trajectory cost applies below 10 m, with a
-lower anticipation cost between 10 m and 20 m and additional time-to-collision
-weighting. The cost covers the full MPPI rollout. On entry into a strong threat,
-a raw-validated maximin acquisition selects among route-directed, lateral,
-vertical, speed-reduction, and reverse candidates; normal route progress breaks
-ties.
-Lifecycle hysteresis and one-time entry and release reseeds prevent maneuver
-flapping.
-
-Physical obstacle validity remains stronger than aircraft separation. Avoidance
-cannot select a trajectory that intersects raw occupancy or violates the flight
-envelope. Separation is still a soft objective: the implementation does
-not create prohibited grids, inflated obstacles, hard exclusion volumes, or an
-equivalent mandatory boundary around another drone. Physical interception
-therefore remains possible.
-
-Headless validation verifies the radar-only data boundary, fresh independent
-tracks for every attacker, observable avoidance activity or cost, physical
-mission settlement, and zero building collisions. The `3x1` and `2x2` scenarios
-have passed this contract with and without a static map.
-
-## 7. Advanced 3D Passages (Completed)
-
-Static passage planning now uses a separately versioned, map-fingerprint-bound
-`FreeSpaceTopology3D`. A chunked C++ compiler consumes raw `Occupancy3D` and the
-matching `ESDF3D`, classifies footprint-feasible clearance topology, extracts
-arbitrarily oriented portal voxel patches, and skeletonizes constrained free
-space into sparse medial passage segments. Roof presence, axis-aligned portal
-heuristics, rectangular authoritative openings, and pairwise portal edges are no
-longer part of the contract.
-
-Global planning resolves route-specific `PassageTraversal` objects lazily over
-the sparse graph and caches them. The lattice uses a spatial index rather than
-scanning every passage edge at every state. After route selection, raw occupancy
-queries generate a varying 3D cross-section envelope along the traversal, so
-sloped, vertical, curved, and changing-height routes do not collapse to one
-`min_z/max_z` intersection. MPPI and route activation still perform final raw
-swept-footprint validation; derived topology never creates a hard obstacle.
-
-Region, portal, segment, traversal, and cooperative conflict-resource IDs are
-distinct strong types. Cooperative passage reservations are scoped to shared
-sparse segments instead of locking an entire free-space region. Deterministic
-fixtures cover a sloped tunnel, vertical shaft, arch, curved tunnel, T and X
-junctions, and a wide-hangar negative case.
-
-The compiler has also produced strict artifacts for the compact fixture and the
-Urban, Cave, and Finals release maps. This closes static extraction, planning,
-execution, and cooperative use of the optional sparse topology accelerator. It
-does not claim production mission integration in those external environments;
-that remains item 9. Item 8 does not reproduce this open-versus-passage
-classification online: observed navigation uses one continuous free-space
-domain.
-
-## 8. 3D Perception And Raw-World Foundation (Completed)
-
-**Type:** ordered implementation stage.
-
-**Hard prerequisite:** item 7.
-
-Provide production 3D perception and a revisioned raw world without requiring a
-preloaded static map. A street, room, tunnel, cave, shaft, and continuously
-bounded underground network are one physical domain; they do not trigger
-separate open-space and passage lifecycles.
-
-The production pipeline is:
-
-1. organized Gazebo 3D lidar hit and miss beams;
-2. timestamp alignment and full-6DoF acquisition-pose resolution;
-3. ray integration into revisioned `unknown/free/occupied` `Occupancy3D`;
-4. base snapshots plus dirty-chunk transport;
-5. chunked immutable raw snapshots for planning and exact swept validation;
-6. latest-lidar evidence for bounded final execution revalidation;
-7. MPPI and finite raw-safe PX4 execution.
-
-Raw occupancy has exactly three evidence labels: `Occupied`, `Free`, and
-`Unknown`. Only confirmed `Occupied` geometry is a hard spatial prohibition.
-Relabeling any non-occupied voxel between `Free` and `Unknown`, with occupied
-geometry unchanged, must not alter traversability or base cost. Clearance,
-observability, and derived distance caches are deliberately outside the raw
-collision contract and are completed by item 12.
-
-No-static production navigation uses the 3D lidar profile. A static map may be
-used without lidar, but there is no 2D-lidar production fallback for autonomous
-free-space navigation. RViz displays the selected spectator's latest 3D returns
-with queue depth one and its rate-limited accumulated occupied voxels; it does
-not render every vehicle's full diagnostic clouds.
-
-This item owns the sensor-to-raw-world boundary, not strategic route selection.
-Its deterministic tests prove timestamped hit and miss integration, revisioned
-dirty-chunk transport, immutable snapshot identity, exact physical-footprint
-queries, latest-lidar admission, and display provenance. End-to-end navigation
-acceptance belongs to item 12.
-
-Complex environments introduced after Manhattan use no-static 3D lidar until
-item 11 provides validated static 3D maps. After that they support static runs
-with no lidar or 3D lidar and no-static runs with 3D lidar only.
+Numbers are stable identifiers. A completed item keeps its number, is
+summarized in the Completed section at the end of this file, and is never
+renumbered or reused; a new item takes the next free number.
 
 ## 9. Large-Scale Realistic City And Full-Mission Validation
 
-**Type:** integration and validation milestone.
+**Type:** integration and validation milestone in two stages.
 
-**Hard prerequisites:** items 8 and 12 for no-static autonomous traversal;
-item 11 for full static-map validation.
+**Hard prerequisites:** item 12 (complete) for stage A; a suitably licensed
+city for stage B; item 11 for the static-map part of stage B.
+
+### Stage A: Full Mission Suite On The Current Locations
+
+Fly every supported mission on the locations that exist today, Manhattan and
+Urban Circuit Practice 01, at one release commit, headless, with nothing
+changed between runs: point-to-point with a static map and without one,
+constrained 3D traversal, single-target and multi-target interception, and
+cooperative traffic. The cooperative and interception scenarios have not been
+flown since the September 2026 navigation changes, so this stage also decides
+whether they still pass their referees. Stage A needs no new environment and
+may begin immediately.
+
+Acceptance uses the numbers the mission check already enforces, as measured in
+the v0.2.0 series (r288 to r292) and the r303 to r307 series on the
+descent-arrest commit: zero building collisions, zero execution-ownership gaps,
+persistent planner p95 below 200 ms, mean flight speed of at least 2.5 m/s on
+the urban point-to-point mission, and the controller-dynamics checks described
+in `testing.md`. Route availability after bootstrap is measured, not yet gated:
+item 12 closed at 88 to 95 percent against the 97 percent mission check and the
+99 percent target written before any measurement, with physical blocks at
+surfaces as the remaining cause. This stage re-derives the availability
+threshold from the measured runs and records it in the mission check before
+stage B begins.
+
+Stage A also repeats the unchanged three-run Manhattan no-static 3D-lidar gate
+inherited from item 12: three sequential headless point-to-point missions, each
+reaching the goal within the 120-second hard limit, crossing the required
+low-altitude route volume, collision-free, with no route-ownership gap.
+
+### Stage B: Large-Scale Realistic City
 
 Find a suitably licensed high-quality city environment or build a new one for
 the project. The location should be substantially larger and more visually and
-geometrically varied than the current regular test city, with realistic street
-layouts, building shapes, heights, materials, and urban topology.
+geometrically varied than the current locations, with realistic street layouts,
+building shapes, heights, materials, and urban topology.
 
 Where practical, include complex physically traversable 3D free-space
 structures such as multi-turn tunnels, junctions, shafts, and entrances at
@@ -302,20 +67,16 @@ remain aligned instead of becoming separate hand-maintained versions of the
 world.
 
 Use the new location as a full-system validation environment rather than only a
-visual showcase. Re-run every supported point-to-point, static-map, no-static,
-constrained-3D-traversal, single-target interception, multi-target interception,
-and cooperative-traffic mission that exists when this stage begins. Validation
-should cover multiple start and goal placements and repeated headless runs, and
-must preserve physical outcome checks, zero tolerance for building collisions,
-planner and controller diagnostics, real-time-factor monitoring, and measured
-CPU/GPU timing.
+visual showcase. Re-run the complete stage A suite on it, covering multiple
+start and goal placements and repeated headless runs, and preserve physical
+outcome checks, zero tolerance for building collisions, planner and controller
+diagnostics, real-time-factor monitoring, and measured CPU/GPU timing.
 
-This stage is complete only when the mission suite succeeds on the new city
-without scenario-specific route scripts or geometry exceptions. One successful
-3D-lidar exploration flight is integration evidence, not completion: acceptance
-requires repeated representative point-to-point and cooperative runs, plus the
-other supported mission types claimed by this milestone. Static-map acceptance
-is performed after item 11 provides validated maps.
+Stage B is complete only when the mission suite succeeds on the new city
+without scenario-specific route scripts or geometry exceptions, at the stage A
+thresholds. One successful 3D-lidar exploration flight is integration evidence,
+not completion. Static-map acceptance is performed after item 11 provides
+validated maps.
 
 ## 10. Architectural Review And Optimization
 
@@ -342,6 +103,38 @@ boundaries for shared resources, and converts validated optimizations into
 regression benchmarks. It is complete when the supported mission suite has
 measured performance budgets, reproducible baselines, and documented scaling
 limits for both static-map and 3D-sensing configurations.
+
+### Measured Debt (September 2026)
+
+Recorded at the closure of item 12 from the r303 to r307 series on commit
+`46823cac`; each entry is a measurement, not a decision.
+
+- The production tick has a 20 ms deadline (`deadline_ms`, 50 Hz). The CUDA
+  controller fits it (p50 12.1 ms, p95 15.6 ms, one miss in 3174 ticks), but
+  the whole tick measures p50 55 ms, p95 78 ms, max 288 ms: snapshot 10 ms,
+  cycle preparation 10 ms, controller 12 ms, horizon publication 32 ms
+  (assembly 19 ms, commit 12 ms). 2813 of 3174 ticks miss the deadline, so
+  the loop runs near 18 Hz. The mission check gates only the controller
+  misses. This is the first confirmed bottleneck.
+- Capture-to-publication latency of the control command is p50 44 ms, p95
+  60 ms, and the position estimate the tick reads lags the Gazebo truth by
+  0.10 to 0.12 s along the track at 3 m/s. The share owed to the tick period
+  above versus EKF or transport has not been attributed.
+- The 3D obstacle memory transports at 2 Hz; the observation age seen by the
+  tick is p50 416 ms, p95 644 ms against the 600 ms evidence-age term of the
+  sensor-braking inequality. Raising the rate buys speed through that
+  inequality and costs CPU in the memory node; neither side is measured.
+- The persistent planner search measures p50 150 ms, exactly its configured
+  budget, and p99 228 ms. The p95 mission check therefore measures the
+  configuration, and budget overruns are not gated.
+- `guaranteed_vertical_stopping_deceleration_mps2` is 2.0 while the measured
+  descent-arrest medians span 1.32 to 2.21 m/s² over nineteen flights, and the
+  tube response time of 0.075 s was exceeded in r288 (0.124 s).
+- Structure: the 2D obstacle memory node is still selectable by the launch
+  files although no 2D production navigation path remains; twelve sources sit
+  within ten percent of the 1000-line cap after being split by size rather
+  than by responsibility; 226 sources lie flat in `src/` beside the layered
+  subdirectories.
 
 ## 11. Valid 3D Static Maps For New Environments
 
@@ -371,361 +164,6 @@ coordinate transform, resolution, coverage evidence, and validation result.
 This stage is complete when every supported new environment has a reproducible
 3D static-map generation or acquisition path and that map passes coverage,
 alignment, and raw-collision validation against its physical world.
-
-## 12. Persistent Full-3D Strategic Navigation
-
-**Type:** dependent implementation stage, in progress.
-
-**Hard prerequisite:** item 8, which is complete.
-
-Finish one unified 3D navigation architecture for static and no-static maps,
-open cities, rooms, tunnels, caves, shafts, and labyrinths. There is no
-environment-specific planner mode and no location-specific knowledge of world
-names, starts, goals, opening coordinates, or opening altitudes. Static maps may
-initialize the world completely; no-static maps grow it incrementally from
-revisioned 3D-lidar evidence. Both feed the same planner, trajectory compiler,
-route owner, MPPI, and PX4 execution contracts.
-
-### Raw World And Distance Evidence
-
-The planner consumes a global, sparse, world-fixed `RawOccupancy3D` snapshot.
-Confirmed `Occupied` cells and the physical flight envelope are its only hard
-spatial constraints. `Free` and `Unknown` have identical traversability and base
-cost. A production strict-known switch, observation-frontier stop policy,
-outside-local-grid rejection, inflated hard grid, or information-gain transit
-preference would violate this invariant and must not exist.
-
-Maintain an exact capped dense `KnownObstacleDistance3D` transform over
-confirmed occupied cells within the chunk-aligned local window, reused while
-its occupied source is unchanged. It supplies optional soft clearance and
-controller evidence in both free and unknown volume. Missing or out-of-cache distance evidence is
-neutral. The hard swept-footprint query always uses raw occupancy and the
-physical vehicle hull. Tracking uncertainty is a speed-dependent tube; it may
-reduce speed in a narrow passage but must not enlarge the hard planning hull by
-a fixed margin.
-
-Unknown-space safety follows one sensor-and-braking inequality across the whole
-world:
-
-```text
-speed * total_latency + stopping_distance + physical_margin
-  <= guaranteed_lidar_detection_range
-```
-
-Stale sensing prevents publication of new motion. Fresh sensing applies the
-same speed and admission rules to free and unknown space.
-
-The production speed policy now enforces this inequality directly. Total
-latency is the configured maximum age of timestamp-aligned lidar evidence plus
-control reaction latency. Its shared jerk-limited stopping model starts from
-the worst configured forward 3D acceleration and uses the weaker guaranteed
-horizontal or vertical deceleration. Configuration contract tests bind the
-guaranteed range to both the 3D lidar model and obstacle-memory range, while
-runtime diagnostics publish every distance term and the remaining reserve. The
-solved limit is a hard complete-translational-speed bound in host and CUDA
-dynamics and the shared strategic/route ETA model. Measured overspeed keeps
-the reference at the sensor-braking limit and the optimizer sheds the excess
-under the overspeed cost while retaining physically continuous inherited
-velocity. The
-organized lidar covers the complete vertical sphere, including pure climb and
-descent directions, instead of leaving polar blind cones outside the range
-contract.
-
-### Persistent Strategic Planner
-
-Use one persistent sparse D* Lite planner over an adaptive world-fixed
-26-connected 3D lattice. It retains search state across a moving start and raw
-occupied updates, repairs only affected vertices, and preserves the incumbent
-mission route while bounded repair is incomplete. Lazy exact swept-footprint
-validation is authoritative; any-angle shortcutting may reduce lattice artifacts
-only after the shortcut passes the same raw validation and the shared complete
-path-time profile proves that predicted execution time does not increase.
-
-The planner has one route-producing pipeline with cooperating raw-connectivity,
-feasibility, and execution-time search sessions. Persistent D* Lite owns
-raw-safe connectivity, incremental repair, and admissible anisotropic
-translation-time labels. A resumable direction-labelled refinement uses those
-labels inside the same planner to minimize predicted execution time; its
-transition cost includes jerk-limited braking and restart plus physically
-bounded stationary yaw whenever the compiler's 3D tangent threshold requires a
-`StopAndTurn`.
-
-The planner contract must report a publishable incumbent independently from
-search progress. A first feasible raw-safe route may be admitted without being
-mistaken for convergence, and the same search session must continue until
-refinement converges, reports no route, or is invalidated. Goal-altitude-first
-queue ordering is forbidden because it can exhaust one horizontal layer before
-considering a required climb or descent. An occupied-cell removal disables any
-retained D* label that could overestimate a newly opened alternative and falls
-back to the geometric admissible heuristic until the next full search lineage.
-
-The strategic objective is predicted 3D execution time to the mission goal.
-Preparatory climb, descent, lateral detour, and justified backtracking are valid
-motions even when they temporarily reduce Euclidean goal progress. Spatial
-planning, curve compilation, and ranking share one 3D station/time model with
-horizontal and vertical velocity, acceleration, jerk, and stop-turn effects.
-There is no XY-only progress, frontier rank, or controller fallback metric.
-
-Topology and dead-end memory may supply stable macro-edge heuristics to the
-persistent planner. They never run as a competing route-producing pipeline,
-never own execution, and never reward unknown or unvisited space during normal
-mission transit. The legacy direct-versus-topology-versus-frontier arbitration
-and the 2D production navigation branch are removed after migration.
-
-### Active Intent, Route Owner, And Execution Plan
-
-One `ActiveIntent3D` owns a mission objective and its persistent strategic route.
-World revisions, newer candidates, or a slightly better score cannot replace
-it. Ownership ends only for mission-epoch change, completion, exact fresh-raw
-invalidation, an external safety constraint, or confirmed sustained physical
-inability to follow the route. A continuity-preserving successor may improve the
-route only after full certification and hysteresis; an extension does not change
-the active intent.
-
-One `ExecutionSupervisor3D` owns the sole production
-`RouteExecutionManager3D`, which owns immutable route chunks, monotonic progress,
-the pending and active route, an overlapping future-station successor, and
-atomic suffix repair. Production mutations cross one typed supervisor lease
-transaction; the manager is not exposed to the ROS node. Every admitted
-non-terminal route has certified remaining reserve of at least:
-
-```text
-stopping_distance + speed * p99_successor_latency + certified_overlap
-```
-
-Background planning starts early enough to preserve that reserve. A successor
-is built from a future station and appended after the frozen valid suffix. A raw
-collision keeps the valid prefix and replaces only the affected suffix. If
-repair misses the braking boundary, the certified braking plan becomes the
-execution owner; the owner is never cleared merely because repair or a compare-
-and-swap attempt failed.
-
-Execution state is a tagged variant for following, direct tracking, braking,
-stationary hold, awaiting successor, and revocation. A pure reducer owns its
-transitions so conflicting route, direct, braking, and hold combinations cannot
-be constructed.
-
-Publish one immutable atomic `CommittedExecutionAuthority3D` containing the
-execution plan, owner identity, exact versioned execution input, and
-applied-control evidence. The plan contains mission and route identities,
-geometry revision, progress, finite nominal horizon, certified braking fallback,
-raw-validation certificate, and all required evidence revisions. MPPI may
-refresh its short horizon at control rate without changing route ownership. A
-progress projection mismatch or snapshot conflict requests a fresh read and
-retry; only an exact raw collision result may report `raw_collision`.
-
-### Implementation Order And Cleanup
-
-The detailed contracts and requirement checklist are maintained in
-[`navigation_architecture_remediation.md`](navigation_architecture_remediation.md).
-The implementation order is:
-
-1. Separate planner incumbent publication from convergence, continue refinement,
-   and introduce explicit search/coordinator boundaries.
-2. Introduce the single raw-occupied collision oracle and immutable world and
-   route-stage artifacts; remove derived-ESDF hard-collision authority and route
-   state from the resident world.
-3. Move motion, dynamics, finite-horizon, and route-risk contracts below route
-   execution and MPPI. `nav_control_contracts` owns controller-neutral motion and
-   horizon DTOs, execution depends only on those contracts, and MPPI remains an
-   adapter. Compile once from the exact initial vehicle state into a sealed
-   `CompiledTrajectory3D`.
-4. Replace phase plus optionals with a tagged execution variant, one pure
-   reducer, one pending/active `RouteExecutionManager3D`, and one atomic
-   committed execution authority; seal a sample-aligned trajectory timeline and
-   gate same-intent point-to-point successors with absolute and relative
-   remaining-time hysteresis.
-5. Extract world, planning, route lifecycle, trajectory, execution-horizon,
-   control, and diagnostics services from `ProductionMppiNode` so the ROS node
-   becomes a composition root. Raw ROS messages terminate at
-   `RawWorldIngressRos3D`; the world pipeline itself remains ROS-free.
-6. Make the runtime boundaries physical with package-private
-   `drone_city_nav_world_runtime`, `drone_city_nav_route_runtime`, and
-   `drone_city_nav_mppi_runtime` targets. The ROS component contains only
-   composition and ROS adapters, does not link the compatibility umbrella, and
-   focused tests link the narrowest target.
-7. Keep `CompiledTrajectory3D` limited to base geometry, canonical time profile,
-   tracking tube, and speed constraints. Attach immutable passage, traversal,
-   and cooperative metadata as `RouteDecorations3D` only after compilation.
-8. Make the production raw-world handle an immutable, factory-built value with
-   one authoritative observed-world owner. Split route activation internally
-   into pure named stages without splitting its transaction owner.
-9. Group production configuration by world, planning, execution, control, and
-   diagnostics; replace oversized cross-stage DTOs with evidence, decision,
-   controller-cycle, and horizon-candidate values; move planner behavior into
-   its owned modules or name passive structures honestly as state.
-10. Replace source-order tests for domain orchestration with direct API tests,
-    give each private target its own include root, then remove flat-layout and
-    compatibility legacy after APIs stabilize.
-
-The current implementation includes the persistent adaptive lattice,
-direction-labelled execution-time refinement, immutable sparse
-`KnownObstacleDistance3D` cache, immutable world/search/materialization
-artifacts, the sealed exact-state `CompiledTrajectory3D`, the tagged execution
-variant and reducer, one atomic `CommittedExecutionAuthority3D`, the enforced
-eight-layer CMake DAG, controller-neutral `MotionState3D`/`MotionControl3D` and
-`EsdfGrid3D` contracts, complete registration of production-relevant GTests,
-split execution model/certification/transition/store contracts, a
-package-private hand-written C++ API, independent compilation of every
-hand-written header, and an independently tested `NavigationDiagnosticsSink`
-that owns its mailbox, worker, files, error context, and runtime statistics. The
-package-private
-`WorldPipeline3D` now owns raw producer admission and joining, incremental
-reconstruction, latest-wins scheduling, worker lifetime, generation issuance,
-and coherent immutable resident-world publication. Observed mode additionally
-owns local-window/recenter policy, audit and rate decisions, full/incremental/
-reused CPU construction, exact-parent admission, GPU upload, and publication;
-the node supplies immutable pose/evidence input and consumes typed events.
-Static mode owns ROI and refresh policy, cache/runtime-EDT construction,
-occupancy/topology/CPU artifact ownership, GPU residency, early and late
-base-route supersession, generation issuance, and fail-closed publication; the
-node supplies immutable navigation/objective and commit contexts and consumes a
-typed result for route-search coordination.
-The first planning-service boundary is also concrete: `RoutePlanner3D` owns the
-single persistent planner and exact continuation sessions, selects certified
-future stitches, and emits typed sampled candidates with raw-only segment
-evidence from immutable inputs. `RoutePlanningCoordinator3D` owns the one-slot
-request scheduler, explicit newest-world replacement versus keep-pending
-policy, worker lifecycle, request validation, failure isolation, and typed
-update/rejection delivery. Its direct tests cover overload, displaced lifecycle
-transfer, rejection reasons, callback failure, reentrant continuations, stop,
-and restart. `RouteMaterializer3D` owns one exact request through geometric
-optimization, splice preservation, derived risk annotation, optional passage
-decoration, and final candidate validation; typed fallback information is
-logged only by the ROS adapter. Its soft risk annotation now lives in
-`nav_planning` and consumes the neutral ESDF world descriptor; the legacy MPPI
-adapter and controller-layer dependency have been removed.
-`RouteTrajectoryCompiler3D` now owns exact-state compilation and
-the observed/static tracking-world binding behind one non-ROS request/result
-boundary. `RouteActivationCoordinator3D` owns that compiler and the complete
-compile/admit/certify/splice pipeline behind one immutable request and prepared
-activation result. Its consume-and-return commit takes that preparation by
-value plus a caller-locked currentness context and can publish only through the
-execution supervisor; the remaining ROS adapter owns only coherent capture,
-locks, clock access, and diagnostics. `MppiController3D` now owns the sole CUDA
-engine, nominal-reseed lifecycle, and controller-reference cache behind one
-owned request/result transaction; the node retains only the resident-world
-lease and ROS/fail-closed adaptations. `ExecutionSupervisor3D` now owns the sole
-production execution manager; activation, pending recovery, lease publication,
-revocation, and control evidence cross its typed facade. Route and
-direct-tracking retention now enter through one owned request: the supervisor
-captures the resident authority, validates current world/evidence, and returns
-one certified transition without mutating the store. Raw invalidation can only
-produce an exact-owner emergency-braking tail. Hold preparation also enters
-through one owned request: the supervisor captures the exact authority,
-validates current raw/lidar lineage, and prepares resident refresh, terminal
-transfer, or the named revoked-owner stationary-capture rearm without mutating
-the store. Horizon publication now crosses one owned `commitHorizon`
-transaction. The supervisor captures the exact authority, orders vehicle/raw/
-revocation/objective/navigation/offboard admission, validates the exact input,
-derives raw obligation and producer from the plan, validates policy, lidar,
-owner, and previous-control witness, revalidates command and
-braking paths against compatible newer evidence, and performs the final manager
-CAS. The ROS adapter retains only locked runtime capture, wire encoding,
-diagnostics, and DDS publication; the old public low-level lease
-commit has been removed. Pending publication is already one manager-owned
-transaction: the manager validates the semantic execution base, assigns the sole
-monotonic sequence, seals the candidate, and occupies the pending slot under one
-lock. A successor admitted against a captured pending route can replace only
-that exact pointer in the same transaction. Admission compares the sealed
-arrival/departure timelines at independently projected resident and candidate
-stations and requires both 1.0 s absolute and 5% relative remaining-time
-improvement. Safety replans, new objectives, continuous-tracking updates, and
-non-comparable mission extensions retain their dedicated lifecycle rules instead
-of being forced through the optimization hysteresis.
-Direct tests replace the former raw-world source-order guards with executable
-overload, quarantine, full/reuse, throttling, exact-parent,
-publication, upload-rejection/exception fail-closed behavior, and stop
-transactions, plus static build/reuse, route supersession, generation failure,
-refresh-coalescing, persistent-session transactions, and route-request
-scheduling, materialization, and exact-snapshot activation preparation and
-commit, plus exact stationary-hold output, controller reseed ownership,
-concurrent controller serialization, backend-unavailable classification, and
-reference-cache ownership, including invalid and superseded controller-world
-currentness. Direct execution-transition tests also carry the raw-invalidation
-emergency-brake contract, so the former syntax-specific ternary assertions have
-been removed. Direct supervisor tests now cover all lease kinds, exact pending
-consumption, stale CAS, control-evidence replacement, and concurrent
-single-winner publication; the manager pending-clear source parser has been
-removed. Direct supervisor retention tests cover route/direct continuation,
-raw-invalidation braking, stale lifecycle ownership, missing evidence, and the
-subsequent lease commit; policy no longer lives in the ROS adapter. The direct
-hold suite covers terminal transfer, exact unchanged replay, refreshed-input
-replacement, stationary-capture rearm, stale evidence, and stale-authority CAS.
-Hold certification and reducer calls no longer live in the ROS adapter, and its
-former source-order checks have become architectural bans. Direct horizon tests
-cover transition, unchanged and pending commits, compatible evidence
-revalidation, typed runtime failure, exact navigation/control identity,
-stationary-rearm admission, and concurrent single-winner CAS. Node source checks
-now enforce the adapter/service boundary instead of parsing the domain
-transaction. The obsolete Stage-2 planner publication source-order suite and
-the final compatibility execution headers have been removed. Remaining source
-checks cover ROS message/QoS/wiring integration or architectural dependency
-bans, not domain transaction behavior.
-Manager-owned pending identity and atomic base validation are now covered by a
-direct executable suite instead of activation source-order parsing.
-The September 2026 closure audit confirms that the runtime-modularity findings
-are implemented at both the ownership and compile-time boundaries. Execution is
-controller-neutral; raw occupancy has one factory-built authoritative owner;
-optional route metadata lives in immutable `RouteDecorations3D`; planning-cycle,
-route-lifecycle, route-selection, horizon-assembly, and raw-ingress services own
-their use cases; configuration and cross-stage values are grouped; and domain
-transactions are covered through executable APIs rather than C++ source order.
-The production component is now a ROS composition adapter over independent
-world, route, and MPPI runtime targets with narrow include roots and transitive
-header-dependency enforcement. Private implementation sources reside in their
-world/planning/trajectory/execution/runtime layers, and passive planner data has
-explicit `State` names.
-
-Item 12 remains in progress only until the unchanged three-run Manhattan
-no-static 3D-lidar mission gate below is classified. This audit is not mission
-acceptance evidence; the gate outcome is recorded only from those final runs.
-
-### Validation
-
-Deterministic generic sensor-to-execution regressions cover unobstructed motion,
-lower and upper openings, a lateral opening, a vertical shaft, an inclined
-passage, a wall requiring initial motion away from the goal, T and X junctions,
-a loop, a cul-de-sac with return, and a route beyond the local distance cache.
-They prove:
-
-- arbitrary `Free`/`Unknown` relabeling with occupied cells fixed leaves path,
-  cost, rank, speed, and admission unchanged;
-- frequent world revisions and better competing candidates do not change the
-  valid active route identity;
-- a climb-first or drop-first intent remains owner through the passage;
-- a longer raw-safe route with fewer mandatory stops defeats a shorter zigzag
-  when the shared jerk, acceleration, and yaw model predicts lower execution
-  time, while bounded refinement resumes without publishing a greedy frontier;
-- successor reserve includes measured p99 latency, stopping distance, and
-  overlap, with continuous braking ownership at every commit boundary;
-- newer raw occupied evidence repairs or brakes the affected suffix without
-  publishing stale or colliding execution;
-- planner, compiler, controller, and diagnostics use the same full-3D semantics.
-
-Final mission validation uses the unchanged Manhattan location, spawn, and
-waypoints. Run three sequential no-static 3D-lidar headless point-to-point
-missions. Each must reach the mission goal within the 120-second hard limit
-(approximately 90 seconds is the target), cross the required low-altitude route
-volume, remain collision-free, and have no route-ownership gap. After bootstrap,
-route availability must exceed 99 percent and ordinary
-`no_executable_route_hold` should be effectively absent; planner p95 is targeted
-below 200 ms. Each runtime manifest records commit, configuration, and world
-hashes, and the run retains the raw snapshot for the constrained section.
-
-### State At v0.2.0
-
-The release `v0.2.0` (2026-09-14) ships this item as the point-to-point
-no-static navigation through the Urban Circuit Practice 01 location; see
-`CHANGELOG.md` for the validated series and the laws in force. Accepted: the
-raw world and distance evidence, the persistent strategic planner, the route
-owner and execution plan contracts, the contact law, the honest vertical
-dynamics, the body-clearance bound on the progress floor, and the immediate
-blocked-route replacement. Open: route availability after bootstrap is 88 to
-95 percent against the 97 percent target, the Manhattan final validation of
-this section has not been repeated on the release commit, and the cooperative
-and interception scenarios have not been re-flown since the September
-navigation changes. The item stays in progress.
 
 ## 13. GNSS- And Magnetometer-Denied Lidar-Inertial Navigation
 
@@ -936,5 +374,134 @@ This stage is complete when repeated no-static Manhattan and complex-environment
 missions run with the lidar absent from the vehicle model, no depth or point
 cloud sensor in the control path, the raw-world and planner contracts
 unchanged, and the same mission gates as the 3D-lidar profile: mission
-complete, collision-free, route availability above 99 percent after bootstrap,
-and planner p95 below 200 ms.
+complete, collision-free, route availability at the threshold item 9 stage A
+derives, and planner p95 below 200 ms.
+## Completed
+
+Each entry keeps its original number. The release that shipped it is linked;
+the detailed contracts live in the code, its tests, `CHANGELOG.md`, and the
+documents named below.
+
+### 1. Interceptor Drone (Completed)
+
+Shipped before the first tag; see the `v0.1.0` entry in `CHANGELOG.md`. Three
+interceptors pursue one attacking drone in isolated PX4 and ROS namespaces,
+each from an independent radar-derived target track with predictive guidance
+and no terminal goal hold. A separation of 5 m or less destroys the capturing
+pair and records the intercept outcome.
+
+### 2. Radar Measurement Simulation (Completed)
+
+Shipped before the first tag (`v0.1.0` in `CHANGELOG.md`). The interceptor
+sees only range, bearing, elevation, and radial velocity from an ideal radar
+with a correlated random-walk cadence between 0.1 s and 3.0 s; swept raw-clear
+visibility commands 20 Hz track mode. Truth adapters, referees, radar
+simulators, trackers, and guidance are separate nodes, and contract tests keep
+absolute target position out of the interceptor-facing `RadarScan`.
+
+### 3. Target Motion Prediction (Completed)
+
+Shipped before the first tag (`v0.1.0` in `CHANGELOG.md`). Guidance solves
+the constant-velocity intercept from the latest track, capped at 15 s and at
+1 s inside the target corridor, with spatial hysteresis and a smoothed horizon.
+The planner clips the prediction at the first raw occupied cell without
+inflation or prohibited regions; swept visibility of the target switches to
+direct moving-target MPPI pursuit.
+
+### 4. Multiple Interceptors Versus One Attacker (Completed)
+
+Shipped before the first tag (`v0.1.0` in `CHANGELOG.md`). Three interceptors
+from three city corners own independent PX4, navigation, radar, tracker, and
+guidance pipelines; optional directional hypotheses converge to zero near the
+attacker. The first interceptor within 5 m destroys the pair, survivors enter a
+typed stationary hold, and interceptor-to-interceptor proximity is collateral.
+
+### 5. Multiple Interceptors Versus Multiple Attackers (Completed)
+
+Shipped before the first tag (`v0.1.0` in `CHANGELOG.md`). The generic N x M
+launch pipeline runs the 2x2 scenario through the `sim_multi_intercept_*.sh`
+wrappers. Each interceptor keeps one radar-derived track per detection, a typed
+assignment coordinator minimizes estimated intercept time with hold, threshold,
+and confirmation hysteresis, and the referee records one terminal outcome per
+attacker. Attackers are not respawned.
+
+### 6. Cooperative Multi-Drone Air Traffic (Completed)
+
+Shipped before the first tag (`v0.1.0` in `CHANGELOG.md`). Four civilian
+drones exchange typed bounded-validity flight intents at 20 Hz and select
+deterministic complementary vertical or lateral maneuvers from predicted
+closest approach. Separation is a strong soft MPPI cost, never a prohibited
+grid or inflated obstacle; static passages expose raw-validated lane capacity
+with deterministic right-of-way. Static and no-static scenarios passed the
+referee.
+
+### 6.1. Non-Cooperative Collision Avoidance In Interception Missions (Completed)
+
+Shipped before the first tag (`v0.1.0` in `CHANGELOG.md`). Every attacker
+carries an anonymous airborne radar and a variable-time tracker; a finite
+trajectory cost below 10 m with anticipation to 20 m and a raw-validated
+maximin acquisition drive avoidance. Raw occupancy remains stronger than
+separation and no exclusion volume exists, so physical interception stays
+possible. The 3x1 and 2x2 scenarios passed with and without a static map.
+
+### 7. Advanced 3D Passages (Completed)
+
+Shipped before the first tag (`v0.1.0` in `CHANGELOG.md`). A chunked compiler
+turns raw `Occupancy3D` and the matching `ESDF3D` into a map-fingerprint-bound
+`FreeSpaceTopology3D` of portal patches and medial passage segments with strong
+IDs. Planning resolves `PassageTraversal` objects lazily over the sparse graph
+and derives a varying 3D cross-section envelope from raw occupancy; MPPI and
+route activation keep final raw swept-footprint validation. Strict artifacts
+exist for the compact fixture and the Urban, Cave, and Finals maps.
+
+### 8. 3D Perception And Raw-World Foundation (Completed)
+
+Shipped before the first tag (`v0.1.0` in `CHANGELOG.md`). Organized Gazebo
+3D lidar beams are timestamp-aligned, resolved to a full-6DoF acquisition pose,
+and ray-integrated into revisioned `unknown/free/occupied` `Occupancy3D` with
+dirty-chunk transport and chunked immutable snapshots. Only confirmed
+`Occupied` is a hard prohibition; relabeling `Free` and `Unknown` changes
+nothing. No-static production navigation uses the 3D lidar profile; there is no
+2D-lidar production fallback.
+
+### 12. Persistent Full-3D Strategic Navigation (Completed)
+
+Shipped in [v0.2.0](https://github.com/formiat/px4-ros2-drone-nav/releases/tag/v0.2.0)
+and [v0.2.1](https://github.com/formiat/px4-ros2-drone-nav/releases/tag/v0.2.1)
+on 2026-09-14; the laws in force and the validated series are in
+`CHANGELOG.md`, the contract checklist in
+[`navigation_architecture_remediation.md`](navigation_architecture_remediation.md).
+
+One navigation architecture for static and no-static maps with no
+environment-specific planner mode and no location knowledge. The planner
+consumes a global sparse world-fixed `RawOccupancy3D`; confirmed `Occupied`
+cells and the physical hull are its only hard constraints, `Free` and
+`Unknown` are identical in traversability and cost, and the exact capped
+`KnownObstacleDistance3D` supplies soft clearance evidence only. Unknown-space
+safety is one sensor-and-braking inequality, speed times latency plus stopping
+distance plus margin within the guaranteed lidar range, enforced as a hard
+translational speed bound in host and CUDA dynamics and in the route ETA model.
+One persistent sparse D* Lite planner over an adaptive 26-connected lattice
+retains search state across a moving start and raw updates, publishes an
+incumbent independently of convergence, and refines predicted 3D execution
+time with the shared station/time model. One `ActiveIntent3D` owns the mission
+route. `ExecutionSupervisor3D` owns the sole `RouteExecutionManager3D`, the
+tagged execution variant with its pure reducer, and the atomic
+`CommittedExecutionAuthority3D` with a certified braking fallback. The ROS
+component is a composition adapter over independent world, route, and MPPI
+runtime targets, and domain transactions are tested through executable APIs.
+
+Accepted at closure: the raw world and distance evidence, the persistent
+planner, the route owner and execution plan contracts, the contact law, the
+honest vertical dynamics, the body-clearance bound on the progress floor,
+immediate blocked-route replacement, the autopilot contract with `px4_msgs`
+confined to the PX4 adapter, and the controller-dynamics mission checks.
+Closure evidence: five urban no-static point-to-point flights on `9ab94040`
+(r288 to r292) and five on `46823cac` (r303 to r307), no collisions, no
+execution-ownership gaps, planner p95 between 153 and 163 ms, mean flight
+speed between 2.72 and 3.19 m/s.
+
+Not repeated at closure and carried into item 9 stage A: the three-run
+Manhattan gate, the 97 and 99 percent availability targets (measured 88 to 95
+percent after bootstrap), and the cooperative and interception re-flights. The
+technical debt measured during closure is listed in item 10.

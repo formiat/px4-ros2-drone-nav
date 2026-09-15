@@ -6,6 +6,13 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- Roadmap: item 12 (persistent full-3D strategic navigation) is closed on the
+  v0.2.0 evidence; its unrepeated Manhattan gate, availability targets and
+  cooperative/interception re-flights move to item 9, now split into stage A
+  (full mission suite on the current locations) and stage B (the large city).
+  Item 10 records the debt measured at closure, first of all the production
+  tick at p50 55 ms against its 20 ms deadline. Completed items are summarized
+  in a Completed section at the end of `docs/roadmap.md` with stable numbers.
 - The navigation stack reads the autopilot through one contract
   (`autopilot_state.hpp`, `AutopilotStateSource`); the PX4 adapter
   (`px4_autopilot_adapter.cpp`, the offboard node and the setpoint builders)

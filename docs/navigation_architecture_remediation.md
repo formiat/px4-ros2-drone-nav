@@ -654,7 +654,8 @@ no mixed authority revision is observable.
 - [x] Pass formatting, static analysis, C++ tests, and script tests after every
   coherent stage.
 - [ ] Evaluate the unchanged three-run Manhattan no-static 3D-lidar gate only
-  after all preceding items are complete.
+  after all preceding items are complete. Roadmap item 12 closed with v0.2.0
+  on the urban series instead; this gate is carried by roadmap item 9 stage A.
 
 Replacing the persistent D* family with AD*, weighted LPA*, or another algorithm
 is not required by this remediation. Such a change requires representative
