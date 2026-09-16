@@ -23,6 +23,35 @@ TEST(Route3DTest, SamplesContinuousAltitudeProfile) {
   EXPECT_EQ(route.back().reference_speed_mps, 10.0);
 }
 
+// A vehicle braking for a block on its route crosses the chord of the turn
+// that route takes on its way there, so the distance it has is the straight
+// line to the block wherever that is shorter than the stations between them.
+// In r320 a block 4.8 m along a turning route stood 2.7 m ahead, the limiter
+// admitted the speed the longer distance allowed, and the vehicle met it.
+TEST(Route3DTest, ABlockOnATurningRouteIsAsFarAsTheStraightLineToIt) {
+  // An L: four metres east, then four metres north, sampled every half metre.
+  const std::vector<RouteSample3D> route = sampleRoute3D(
+      std::vector<Point3>{{0.0, 0.0, 2.0}, {4.0, 0.0, 2.0}, {4.0, 4.0, 2.0}}, 0.5,
+      10.0);
+  ASSERT_GE(route.size(), 8U);
+  const Point3 vehicle{0.0, 0.0, 2.0};
+  const RouteSample3D blocked = sampleRoute3DAtStation(route, 6.0);
+
+  // Along the route the block is six metres away; across the corner it is
+  // four east and two north, which is closer.
+  EXPECT_NEAR(routeBlockFreeDistanceM(route, 0.0, 6.0, vehicle),
+              std::hypot(blocked.position.x, blocked.position.y), 1.0e-6);
+  EXPECT_LT(routeBlockFreeDistanceM(route, 0.0, 6.0, vehicle), 6.0);
+
+  // On the straight leg the two agree, and a block already behind the vehicle
+  // leaves it nothing.
+  EXPECT_NEAR(routeBlockFreeDistanceM(route, 0.0, 3.0, vehicle), 3.0, 1.0e-6);
+  EXPECT_DOUBLE_EQ(routeBlockFreeDistanceM(route, 4.0, 3.0, vehicle), 0.0);
+
+  // Without samples the stations are all there is.
+  EXPECT_DOUBLE_EQ(routeBlockFreeDistanceM({}, 1.0, 6.0, vehicle), 5.0);
+}
+
 // The departure of a route is its samples up to the station the planner left
 // the vehicle at, and nothing when it carries no departure.
 TEST(Route3DTest, DepartureChainCoversTheRouteUpToItsDepartureStation) {

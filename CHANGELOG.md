@@ -6,6 +6,13 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- The blocked-route speed limit measures the distance the vehicle actually
+  has to the block: the smaller of the stations remaining along the route and
+  the straight line to the blocked sample. A route may turn on its way to the
+  block while the braking vehicle crosses the turn's chord, and in r320 the
+  block sat 4.8 m along the route with the wall 2.7 m ahead, so the limiter
+  admitted 4.36 m/s where the stop it then needed was 2.81 m long and the
+  vehicle met the wall a second later.
 - Two laws were flown and withdrawn, and what they measured is recorded here.
   A stop whose rest pose released the envelope margin along the clearance
   ladder (so that a stop refused only on that margin, as in r320, is

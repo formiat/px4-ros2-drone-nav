@@ -319,6 +319,16 @@ canonicalizeRouteKinematics3D(std::span<RouteSample3D> route,
 [[nodiscard]] RouteSample3D sampleRoute3DAtStation(std::span<const RouteSample3D> route,
                                                    double station_m) noexcept;
 
+// How far the vehicle has before it reaches a block on its route: the route's
+// own stations measure the path, and the path may turn on its way there,
+// while a vehicle braking for the block crosses the turn's chord. The free
+// distance is therefore the smaller of the remaining stations and the
+// straight line from the vehicle to the blocked sample.
+[[nodiscard]] double routeBlockFreeDistanceM(std::span<const RouteSample3D> route,
+                                             double projection_station_m,
+                                             double blocked_station_m,
+                                             const Point3& position) noexcept;
+
 // Materializes a successor whose executable beginning is copied from the
 // active route through a future stitch station.  The caller must subsequently
 // derive spans, passage volumes, timing, and raw certificates from the

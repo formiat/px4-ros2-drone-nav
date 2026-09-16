@@ -274,6 +274,25 @@ RouteSample3D sampleRoute3DAtStation(const std::span<const RouteSample3D> route,
   return sampleAtStation(route, station_m);
 }
 
+double routeBlockFreeDistanceM(const std::span<const RouteSample3D> route,
+                               const double projection_station_m,
+                               const double blocked_station_m,
+                               const Point3& position) noexcept {
+  if (!std::isfinite(projection_station_m) || !std::isfinite(blocked_station_m)) {
+    return 0.0;
+  }
+  const double along_route_m = std::max(0.0, blocked_station_m - projection_station_m);
+  if (route.empty()) {
+    return along_route_m;
+  }
+  const RouteSample3D blocked = sampleAtStation(route, blocked_station_m);
+  const double straight_line_m = distance3D(position, blocked.position);
+  if (!std::isfinite(straight_line_m)) {
+    return along_route_m;
+  }
+  return std::min(along_route_m, straight_line_m);
+}
+
 bool FrozenRoutePrefix3D::valid() const noexcept {
   return route.size() >= 2U && std::isfinite(active_begin_station_m) &&
          std::isfinite(stitch_station_m) && std::isfinite(successor_begin_station_m) &&

@@ -24,10 +24,18 @@
 namespace drone_city_nav {
 namespace {
 
-// The nearer of the persistent block and the latest scan's block ahead, as
-// distance along the route from the vehicle; nullopt when neither exists.
+// The nearer of the persistent block and the latest scan's block ahead: the
+// distance the vehicle has before it reaches the evidence, and nullopt when
+// neither block exists. The route's own stations measure the path, and the
+// path may turn on its way to the block; the vehicle crosses the turn's chord
+// while it brakes, so the free distance is the straight line to the blocked
+// sample where that is shorter. In r320 the block sat 4.8 m along a turning
+// route while the wall stood 2.7 m ahead, the limiter admitted 4.36 m/s for
+// the former, the stop it then needed was 2.81 m long, and the vehicle met
+// the wall a second later.
 [[nodiscard]] std::optional<double>
-blockedRouteRemainingM(const PlanningRouteDecision3D& route) noexcept {
+blockedRouteRemainingM(const PlanningRouteDecision3D& route,
+                       const Point3& position) noexcept {
   if (!route.usable || !route.projection.valid) {
     return std::nullopt;
   }
@@ -40,7 +48,13 @@ blockedRouteRemainingM(const PlanningRouteDecision3D& route) noexcept {
   if (!blocked_station_m.has_value()) {
     return std::nullopt;
   }
-  return std::max(0.0, *blocked_station_m - route.projection.station_m);
+  const std::span<const RouteSample3D> samples =
+      route.execution.route != nullptr && route.execution.route->geometry != nullptr &&
+              route.execution.route->geometry->route != nullptr
+          ? std::span<const RouteSample3D>{*route.execution.route->geometry->route}
+          : std::span<const RouteSample3D>{};
+  return routeBlockFreeDistanceM(samples, route.projection.station_m,
+                                 *blocked_station_m, position);
 }
 
 } // namespace
@@ -518,7 +532,10 @@ PlanningCycleCoordinator3D::prepare(const PlanningCycleRequest3D& request) {
               route_control.active
                   ? std::optional<double>{route_control.speed_limit_mps}
                   : std::nullopt,
-          .blocked_route_remaining_m = blockedRouteRemainingM(output.route),
+          .blocked_route_remaining_m =
+              blockedRouteRemainingM(output.route, Point3{request.navigation.state.x,
+                                                          request.navigation.state.y,
+                                                          request.navigation.state.z}),
           .executed_horizon_clearance = executed_horizon_clearance,
           .route_observed_range_m = route_observed_range_m,
           .route_clearance = route_clearance,
