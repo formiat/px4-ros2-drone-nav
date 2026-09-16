@@ -146,6 +146,10 @@ void ProductionMppiNode::publishSummary() {
       " planner_build_and_planning_p99_ms=%.3f"
       " route_lead_time_samples=%zu route_lead_time_p95_ms=%.3f"
       " route_lead_time_p99_ms=%.3f"
+      " raw_delivery_samples=%zu raw_delivery_p50_ms=%.3f raw_delivery_p95_ms=%.3f"
+      " raw_delivery_max_ms=%.3f lidar_delivery_samples=%zu"
+      " lidar_delivery_p50_ms=%.3f lidar_delivery_p95_ms=%.3f"
+      " lidar_delivery_max_ms=%.3f"
       " worker_route_pending=%zu worker_world_pending=%zu "
       "worker_background_pending=%zu worker_route_capacity_waits=%" PRIu64
       " worker_world_capacity_waits=%" PRIu64
@@ -215,7 +219,11 @@ void ProductionMppiNode::publishSummary() {
       planning_latency.sample_count, planning_latency.planning_p95_ms,
       planning_latency.planning_p99_ms, planning_latency.build_and_planning_p99_ms,
       route_lead_time.sample_count, route_lead_time.planning_p95_ms,
-      route_lead_time.planning_p99_ms, workers.lanes[0U].pending,
+      route_lead_time.planning_p99_ms, raw_delivery_ms_.count(),
+      raw_delivery_ms_.percentile(0.50), raw_delivery_ms_.percentile(0.95),
+      raw_delivery_ms_.percentile(1.0), lidar_delivery_ms_.count(),
+      lidar_delivery_ms_.percentile(0.50), lidar_delivery_ms_.percentile(0.95),
+      lidar_delivery_ms_.percentile(1.0), workers.lanes[0U].pending,
       world_workers.lanes[kWorldLane].pending, workers.lanes[2U].pending,
       workers.lanes[0U].capacity_waits, world_workers.lanes[kWorldLane].capacity_waits,
       workers.lanes[2U].capacity_waits,

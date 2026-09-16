@@ -319,11 +319,12 @@ void ProductionMppiNode::publishWorldReadiness(const bool ready) {
 }
 
 void ProductionMppiNode::onLatestLidarObstacleScan(
-    const msg::LatestLidarObstacleScan& message) {
+    const msg::LatestLidarObstacleScan& message, const rclcpp::MessageInfo& info) {
   // Sanity bound on untrusted wire data, well above the densest modeled scan
   // (240 x 121 beams); the memory node's own contract bounds hits by beams.
   constexpr std::size_t kMaximumObstacleBeamCount{262'144U};
   const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
+  lidar_delivery_ms_.add(transportDeliveryLatencyMs(info));
   LatestLidarEvidenceClaimResult3D claimed;
   {
     const auto lock = evidence_boundary_.latestLidar();

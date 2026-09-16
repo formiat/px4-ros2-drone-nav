@@ -73,8 +73,15 @@ void ProductionMppiNode::processDiagnostics(
        << " raw_revision=" << input.obstacle_revision
        << " esdf_revision=" << result.esdf_revision
        << " memory_sequence=" << snapshot.memory_sequence
-       << " pose_age_ms=" << snapshot.pose_age_ms
-       << " observation_age_ms=" << snapshot.observation_age_ms
+       << " pose_age_ms=" << snapshot.pose_age_ms << " observation_age_ms="
+       << snapshot.observation_age_ms
+       // The observation age split: what the transport took to deliver the
+       // last raw update, and how long ago this node received it.
+       << " raw_delivery_ms=" << raw_delivery_ms_.last() << " raw_receive_age_ms="
+       << 1.0e-6 * static_cast<double>(
+                       get_clock()->now().nanoseconds() -
+                       last_raw_receive_stamp_ns_.load(std::memory_order_relaxed))
+       << " lidar_delivery_ms=" << lidar_delivery_ms_.last()
        << " esdf_content_age_ms=" << snapshot.esdf_age_ms
        << " local_world_generation=" << world.local_world_generation.generation
        << " control_feedback_age_ms=" << snapshot.control_feedback_age_ms

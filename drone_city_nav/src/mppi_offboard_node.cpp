@@ -14,6 +14,7 @@
 #include "drone_city_nav/producer_instance_id.hpp"
 #include "drone_city_nav/px4_map_frame_transform.hpp"
 #include "drone_city_nav/px4_offboard_setpoint_io.hpp"
+#include "drone_city_nav/transport_latency_ros.hpp"
 #include "drone_city_nav/vehicle_destruction_disarm_lifecycle.hpp"
 #include "drone_city_nav/visualization_marker_helpers.hpp"
 
@@ -191,7 +192,9 @@ public:
         declare_parameter<std::string>("mppi_execution_horizon_topic",
                                        "/drone_city_nav/mppi/execution_horizon"),
         rclcpp::QoS{2}.reliable(),
-        [this](const msg::MppiTrajectoryHorizon::SharedPtr horizon) {
+        [this](const msg::MppiTrajectoryHorizon::SharedPtr horizon,
+               const rclcpp::MessageInfo& info) {
+          horizon_delivery_ms_.add(transportDeliveryLatencyMs(info));
           onHorizon(*horizon);
         });
     autopilot_state_source_ = std::make_unique<AutopilotStateSource>(
@@ -817,9 +820,10 @@ private:
                                   msg::MppiControlFeedback::EXECUTION_MODE_PLANNED);
     RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
                          "OFFBOARD_PLANNED_HORIZON_APPLIED producer=%" PRIu64
-                         " sequence=%" PRIu64,
+                         " sequence=%" PRIu64 " %s",
                          horizon_admission_.current_producer_instance_id,
-                         horizon_admission_.current_sequence);
+                         horizon_admission_.current_sequence,
+                         transportLatencyFields(horizon_delivery_ms_).c_str());
     return true;
   }
 
@@ -1008,6 +1012,9 @@ private:
   rclcpp::Publisher<msg::VehicleNavigationState>::SharedPtr navigation_state_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr navigation_readiness_pub_;
   rclcpp::Subscription<msg::MppiTrajectoryHorizon>::SharedPtr horizon_sub_;
+  // The hop from the controller: what the transport took to deliver each
+  // horizon, reported with the applied-horizon diagnostic.
+  TransportLatencySamples horizon_delivery_ms_;
   std::unique_ptr<AutopilotStateSource> autopilot_state_source_;
   rclcpp::Subscription<msg::VehicleDestroyed>::SharedPtr vehicle_destroyed_sub_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr mission_start_sub_;

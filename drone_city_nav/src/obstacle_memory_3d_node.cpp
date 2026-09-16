@@ -22,6 +22,7 @@
 #include "drone_city_nav/spectator_diagnostics_selection.hpp"
 #include "drone_city_nav/spectator_diagnostics_selection_ros.hpp"
 #include "drone_city_nav/tracked_agent_lidar_filter.hpp"
+#include "drone_city_nav/transport_latency_ros.hpp"
 #include "drone_city_nav/visualization_marker_helpers.hpp"
 
 #include <rclcpp/executors/multi_threaded_executor.hpp>
@@ -384,7 +385,9 @@ public:
     const auto sensor_qos = rclcpp::SensorDataQoS{};
     cloud_sub_ = create_subscription<sensor_msgs::msg::PointCloud2>(
         cloud_topic, rclcpp::SensorDataQoS{}.keep_last(1),
-        [this](sensor_msgs::msg::PointCloud2::SharedPtr cloud) {
+        [this](sensor_msgs::msg::PointCloud2::SharedPtr cloud,
+               const rclcpp::MessageInfo& info) {
+          cloud_delivery_ms_.add(transportDeliveryLatencyMs(info));
           onPointCloud(std::move(cloud));
         },
         cloud_subscription_options);
@@ -696,9 +699,10 @@ private:
       return PendingPointCloudDisposition::kConsumed;
     }
     RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000,
-                         "LIDAR3D_ALIGNMENT dropped=false queue_wait_ms=%.3f %s",
+                         "LIDAR3D_ALIGNMENT dropped=false queue_wait_ms=%.3f %s %s",
                          1.0e-6 *
                              static_cast<double>(now_ns - pending.receive_stamp_ns),
+                         transportLatencyFields(cloud_delivery_ms_).c_str(),
                          alignment_diagnostic.c_str());
     const std::optional<std::vector<Point3>> raw_returns =
         decodePointCloudReturns(pending.cloud);
@@ -916,6 +920,9 @@ private:
   rclcpp::CallbackGroup::SharedPtr pose_callback_group_;
 
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_sub_;
+  // The hop from the Gazebo bridge: what the transport took to deliver each
+  // scan, reported with the alignment diagnostic.
+  TransportLatencySamples cloud_delivery_ms_;
   Px4MapFrameTransform map_transform_{};
   std::unique_ptr<AutopilotStateSource> autopilot_state_source_;
   rclcpp::Subscription<msg::TargetTrack>::SharedPtr tracked_agent_sub_;

@@ -10,12 +10,15 @@
 namespace drone_city_nav {
 
 void ProductionMppiNode::onRawObstacleSnapshot3D(
-    msg::RawObstacleSnapshot3D::ConstSharedPtr message) {
+    msg::RawObstacleSnapshot3D::ConstSharedPtr message,
+    const rclcpp::MessageInfo& info) {
   if (config_.world.use_static_map) {
     return;
   }
   const auto started = std::chrono::steady_clock::now();
   const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
+  raw_delivery_ms_.add(transportDeliveryLatencyMs(info));
+  last_raw_receive_stamp_ns_.store(receive_stamp_ns, std::memory_order_relaxed);
   RawWorldIngestionResult3D ingestion;
   {
     // Raw reconstruction is serialized by RawWorldIngressRos3D and belongs to
@@ -46,12 +49,14 @@ void ProductionMppiNode::onRawObstacleSnapshot3D(
 }
 
 void ProductionMppiNode::onRawObstacleDelta3D(
-    msg::RawObstacleDelta3D::ConstSharedPtr message) {
+    msg::RawObstacleDelta3D::ConstSharedPtr message, const rclcpp::MessageInfo& info) {
   if (config_.world.use_static_map) {
     return;
   }
   const auto started = std::chrono::steady_clock::now();
   const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
+  raw_delivery_ms_.add(transportDeliveryLatencyMs(info));
+  last_raw_receive_stamp_ns_.store(receive_stamp_ns, std::memory_order_relaxed);
   RawWorldIngestionResult3D ingestion;
   {
     const auto evidence_lock = evidence_boundary_.evidence();

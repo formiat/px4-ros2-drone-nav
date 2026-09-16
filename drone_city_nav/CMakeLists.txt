@@ -616,6 +616,7 @@ set(DRONE_CITY_NAV_ROS_HEADERS
     include/drone_city_nav/cooperative_traffic_agent_node.hpp
     include/drone_city_nav/cooperative_traffic_ros.hpp
     include/drone_city_nav/execution_horizon_contract_ros.hpp
+    include/drone_city_nav/transport_latency_ros.hpp
     include/drone_city_nav/intercept_diagnostics_mux_node.hpp
     include/drone_city_nav/intercept_spectator_node.hpp
     include/drone_city_nav/interceptor_guidance_node.hpp
@@ -1574,6 +1575,11 @@ if(BUILD_TESTING)
   target_link_libraries(execution_horizon_contract_ros_test
                         drone_city_nav_ros_adapters)
   enable_project_warnings(execution_horizon_contract_ros_test)
+
+  ament_add_gtest(transport_latency_ros_test tests/transport_latency_ros_test.cpp)
+  target_compile_features(transport_latency_ros_test PRIVATE cxx_std_20)
+  target_link_libraries(transport_latency_ros_test drone_city_nav_ros_adapters)
+  enable_project_warnings(transport_latency_ros_test)
 
   ament_add_gtest(indexed_point_cloud_3d_test tests/indexed_point_cloud_3d_test.cpp)
   target_compile_features(indexed_point_cloud_3d_test PRIVATE cxx_std_20)

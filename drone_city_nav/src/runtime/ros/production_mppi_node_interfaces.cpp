@@ -579,21 +579,24 @@ void ProductionMppiNode::initializeRuntimeInterfaces(
   if (!config_.world.use_static_map) {
     raw_snapshot_3d_sub_ = create_subscription<msg::RawObstacleSnapshot3D>(
         raw_snapshot_3d_topic, rclcpp::QoS{1}.reliable().transient_local(),
-        [this](msg::RawObstacleSnapshot3D::ConstSharedPtr message) {
-          onRawObstacleSnapshot3D(std::move(message));
+        [this](msg::RawObstacleSnapshot3D::ConstSharedPtr message,
+               const rclcpp::MessageInfo& info) {
+          onRawObstacleSnapshot3D(std::move(message), info);
         },
         world_subscription_options);
     raw_delta_3d_sub_ = create_subscription<msg::RawObstacleDelta3D>(
         raw_delta_3d_topic, rclcpp::QoS{1}.best_effort().transient_local(),
-        [this](msg::RawObstacleDelta3D::ConstSharedPtr message) {
-          onRawObstacleDelta3D(std::move(message));
+        [this](msg::RawObstacleDelta3D::ConstSharedPtr message,
+               const rclcpp::MessageInfo& info) {
+          onRawObstacleDelta3D(std::move(message), info);
         },
         world_subscription_options);
   }
   latest_lidar_obstacle_scan_sub_ = create_subscription<msg::LatestLidarObstacleScan>(
       config_.world.topics.latest_lidar_obstacle_scan, rclcpp::SensorDataQoS{},
-      [this](const msg::LatestLidarObstacleScan::SharedPtr message) {
-        onLatestLidarObstacleScan(*message);
+      [this](const msg::LatestLidarObstacleScan::SharedPtr message,
+             const rclcpp::MessageInfo& info) {
+        onLatestLidarObstacleScan(*message, info);
       },
       lidar_evidence_subscription_options);
   memory_status_sub_ = create_subscription<msg::ObstacleMemoryStatus>(

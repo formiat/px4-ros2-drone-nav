@@ -58,6 +58,7 @@
 #include "drone_city_nav/swept_footprint.hpp"
 #include "drone_city_nav/tracking_error_tube_3d.hpp"
 #include "drone_city_nav/tracking_objective.hpp"
+#include "drone_city_nav/transport_latency_ros.hpp"
 #include "drone_city_nav/types.hpp"
 #include "drone_city_nav/world_generation.hpp"
 #include "drone_city_nav/world_snapshot_3d.hpp"
@@ -134,9 +135,12 @@ private:
   void onAutopilotStatus(const AutopilotStatus& status);
   void onGroundContact(const AutopilotGroundContact& contact);
   void onNavigationReadiness(const std_msgs::msg::Bool& message);
-  void onRawObstacleSnapshot3D(msg::RawObstacleSnapshot3D::ConstSharedPtr message);
-  void onRawObstacleDelta3D(msg::RawObstacleDelta3D::ConstSharedPtr message);
-  void onLatestLidarObstacleScan(const msg::LatestLidarObstacleScan& message);
+  void onRawObstacleSnapshot3D(msg::RawObstacleSnapshot3D::ConstSharedPtr message,
+                               const rclcpp::MessageInfo& info);
+  void onRawObstacleDelta3D(msg::RawObstacleDelta3D::ConstSharedPtr message,
+                            const rclcpp::MessageInfo& info);
+  void onLatestLidarObstacleScan(const msg::LatestLidarObstacleScan& message,
+                                 const rclcpp::MessageInfo& info);
   void queueRawWorld3D(const RawObstacleGridUpdate3D& update, double reconstruction_ms);
   void onMemoryStatus(const msg::ObstacleMemoryStatus& message);
   void onAppliedControl(const msg::MppiControlFeedback& message);
@@ -438,6 +442,12 @@ private:
   std::atomic_bool vehicle_land_contact_{false};
   std::atomic_bool launch_support_confirmed_by_land_detector_{false};
   std::atomic<std::uint64_t> rejected_lidar_obstacle_scans_{0U};
+  // The transport hops into this node: the obstacle memory's snapshots and
+  // deltas, and the latest lidar scan. The receive stamp of the last raw
+  // update lets the tick split the observation age it reports.
+  TransportLatencySamples raw_delivery_ms_;
+  TransportLatencySamples lidar_delivery_ms_;
+  std::atomic<std::int64_t> last_raw_receive_stamp_ns_{0};
   std::atomic_bool vehicle_navigation_ready_{false};
   std::atomic_bool world_ready_{false};
   std::unique_ptr<WorldPipeline3D> world_pipeline_;
