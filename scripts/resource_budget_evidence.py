@@ -52,6 +52,12 @@ SAMPLE_PERIOD_S = 1.0
 # nothing. Twice the largest of those is the bound. A leak at the tick rate
 # would cross it fast: 5392 ticks losing 50 KiB each are 263 MiB.
 MAXIMUM_ONBOARD_RSS_GROWTH_BYTES = 256 * 1024 * 1024
+# The delivery of the obstacle memory's snapshots and deltas to the
+# controller at p95, the hop the observation age depends on. Measured
+# 0.25 to 0.30 ms on r346 and r348 to r351, 1.24 ms on r347 under a foreign
+# build on the host; twice the worst is the bound, and a hop that turns
+# into milliseconds is what it exists to catch.
+MAXIMUM_RAW_DELIVERY_P95_MS = 2.5
 
 
 @dataclass(frozen=True)
@@ -255,11 +261,18 @@ def observation_age_split(ros_log: str, span: tuple[float, float]) -> Observatio
     )
 
 
-def report_transport(ros_log: str, span: tuple[float, float]) -> None:
+def report_transport(ros_log: str, span: tuple[float, float],
+                     errors: list[str]) -> None:
     hops = transport_hops(ros_log)
     if not hops:
         print("OK: no transport hop reported its delivery")
     for hop in hops:
+        if hop.name.startswith("memory to controller (raw") and \
+                hop.p95_ms > MAXIMUM_RAW_DELIVERY_P95_MS:
+            errors.append(
+                f"FAIL: transport {hop.name} delivers within "
+                f"{MAXIMUM_RAW_DELIVERY_P95_MS:.1f} ms at p95 ({hop.p95_ms:.2f} ms)")
+            continue
         print(f"OK: transport {hop.name} delivers in {hop.p50_ms:.2f} ms at p50, "
               f"{hop.p95_ms:.2f} at p95, {hop.max_ms:.2f} at most ({hop.samples} messages)")
     split = observation_age_split(ros_log, span)
@@ -338,4 +351,4 @@ def validate_resource_budget(run_directory: Path, ros_log: str,
         print(f"OK: real-time factor is {np.median(rtf):.2f} at p50, {rtf.min():.2f} at least")
     else:
         print("OK: real-time factor was not published")
-    report_transport(ros_log, span)
+    report_transport(ros_log, span, errors)

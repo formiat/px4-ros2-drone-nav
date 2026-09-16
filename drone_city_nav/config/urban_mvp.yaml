@@ -216,7 +216,18 @@ obstacle_memory_3d_node:
     max_score: 12
     occupied_score: 3
     free_score: -1
-    obstacle_memory_3d_transport_rate_hz: 2.0
+    # The rate the memory's snapshots and deltas reach the controller at.
+    # Measured on the urban flights r346 to r351 with the delivery of every
+    # hop instrumented: DDS delivers a snapshot in 0.15 ms at p50 and 0.3 ms
+    # at p95, so the observation age the tick sees is the publication period
+    # plus the 125 to 140 ms the memory takes from a scan's stamp to its
+    # publication. At 2 Hz the age was 404 ms at p50 and 636 at p95 against
+    # the 600 ms the braking contract charges; at 5 Hz 252 and 360; at 10 Hz,
+    # the scan rate, 194 and 260. The controller pays 0.3 cores for 5 Hz
+    # (1.67 to 1.97 at p50) and nothing more for 10; the memory node 0.83
+    # cores throughout; the tick 23.1, 24.0 and 24.3 ms at p50. Faster than
+    # the scan rate would republish unchanged memory.
+    obstacle_memory_3d_transport_rate_hz: 10.0
     obstacle_memory_3d_snapshot_minimum_period_s: 10.0
     obstacle_memory_3d_snapshot_maximum_period_s: 30.0
     obstacle_memory_3d_snapshot_rebase_dirty_ratio: 0.75

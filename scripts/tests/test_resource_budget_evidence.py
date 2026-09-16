@@ -69,7 +69,7 @@ TRANSPORT_LOG = (
     "delivery_ms=0.300 delivery_p50_ms=0.250 delivery_p95_ms=0.600 delivery_max_ms=2.000 "
     "delivery_samples=5000\n"
     "[1200.000] [production_mppi_node]: PRODUCTION_MPPI_SUMMARY ticks=9 "
-    "raw_delivery_samples=280 raw_delivery_p50_ms=1.800 raw_delivery_p95_ms=4.200 "
+    "raw_delivery_samples=280 raw_delivery_p50_ms=1.800 raw_delivery_p95_ms=1.200 "
     "raw_delivery_max_ms=12.000 lidar_delivery_samples=1400 lidar_delivery_p50_ms=2.100 "
     "lidar_delivery_p95_ms=3.900 lidar_delivery_max_ms=8.000 y=2\n")
 
@@ -112,7 +112,7 @@ class ResourceBudgetEvidenceTest(unittest.TestCase):
                                        flight_log(1005.0, 1105.0) + TRANSPORT_LOG)
         self.assertEqual(errors, [])
         self.assertIn("OK: transport memory to controller (raw snapshots and deltas) delivers "
-                      "in 1.80 ms at p50, 4.20 at p95, 12.00 at most (280 messages)", output)
+                      "in 1.80 ms at p50, 1.20 at p95, 12.00 at most (280 messages)", output)
         self.assertIn("OK: transport memory to controller (latest lidar scan) delivers in "
                       "2.10 ms at p50, 3.90 at p95, 8.00 at most (1400 messages)", output)
         self.assertIn("OK: transport bridge to memory (point cloud) delivers in 3.50 ms at "
@@ -123,6 +123,16 @@ class ResourceBudgetEvidenceTest(unittest.TestCase):
         self.assertIn("OK: observation age is 410 ms at p50 and 419 at p95: 348 ms producer "
                       "period and build, 2.00 ms delivery, 60 ms waiting for the tick, at "
                       "the median over 2 ticks", output)
+
+    def test_a_slow_memory_delivery_fails(self) -> None:
+        slow = TRANSPORT_LOG.replace("raw_delivery_p95_ms=1.200", "raw_delivery_p95_ms=2.600")
+        with tempfile.TemporaryDirectory() as directory:
+            write_record(Path(directory), range(0, 120))
+            errors, output = run_check(Path(directory), flight_log(1005.0, 1105.0) + slow)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("raw snapshots and deltas) delivers within 2.5 ms at p95 (2.60 ms)",
+                      errors[0])
+        self.assertIn("OK: transport controller to offboard (horizon)", output)
 
     def test_without_transport_lines_the_report_says_so(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
