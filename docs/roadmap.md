@@ -106,35 +106,64 @@ limits for both static-map and 3D-sensing configurations.
 
 ### Measured Debt (September 2026)
 
-Recorded at the closure of item 12 from the r303 to r307 series on commit
-`46823cac`; each entry is a measurement, not a decision.
+First recorded at the closure of item 12 from the r303 to r307 series on
+commit `46823cac`, revised on 2026-09-16 from the r340 to r344 series on
+`8dec84ea`. Each entry is a measurement, not a decision.
 
-- The production tick has a 20 ms deadline (`deadline_ms`, 50 Hz). The CUDA
-  controller fits it (p50 12.1 ms, p95 15.6 ms, one miss in 3174 ticks), but
-  the whole tick measures p50 55 ms, p95 78 ms, max 288 ms: snapshot 10 ms,
-  cycle preparation 10 ms, controller 12 ms, horizon publication 32 ms
-  (assembly 19 ms, commit 12 ms). 2813 of 3174 ticks miss the deadline, so
-  the loop runs near 18 Hz. The mission check gates only the controller
-  misses. This is the first confirmed bottleneck.
-- Capture-to-publication latency of the control command is p50 44 ms, p95
-  60 ms, and the position estimate the tick reads lags the Gazebo truth by
-  0.10 to 0.12 s along the track at 3 m/s. The share owed to the tick period
-  above versus EKF or transport has not been attributed.
-- The 3D obstacle memory transports at 2 Hz; the observation age seen by the
-  tick is p50 416 ms, p95 644 ms against the 600 ms evidence-age term of the
-  sensor-braking inequality. Raising the rate buys speed through that
-  inequality and costs CPU in the memory node; neither side is measured.
-- The persistent planner search measures p50 150 ms, exactly its configured
-  budget, and p99 228 ms. The p95 mission check therefore measures the
-  configuration, and budget overruns are not gated.
-- `guaranteed_vertical_stopping_deceleration_mps2` is 2.0 while the measured
-  descent-arrest medians span 1.32 to 2.21 m/s² over nineteen flights, and the
-  tube response time of 0.075 s was exceeded in r288 (0.124 s).
+Closed since the first record:
+
+- The production tick measures p50 23.5 ms and p95 37.8 ms against its 20 ms
+  deadline, from p50 55 ms and p95 78 ms. A path validation built its
+  collision oracle once per segment and the oracle's constructor scans every
+  lidar return for finiteness, 60 us for the 63 700 points of an urban scan
+  against 0.2 to 0.9 us for the segment itself; it is now built once per path.
+  The mission check bounds the tick at 30 ms p50 and 45 ms p95 and reports the
+  share of ticks over the deadline.
+- Capture-to-publication latency of the control command is p50 20 ms and p95
+  28 ms, from p50 44 ms and p95 60 ms, with the tick that carries it.
+- The position estimate the tick reads matches the true Gazebo pose along the
+  track within 0.01 s, from 0.10 to 0.12 s. EKF2 subtracted its default 110 ms
+  GNSS delay from a simulated sample the Gazebo bridge stamps at receipt; the
+  run script sets `EKF2_GPS_DELAY 0` and the lidar position source is read at
+  the scan stamp again.
+- `guaranteed_vertical_stopping_deceleration_mps2` is 1.4, the fifth
+  percentile of the arrest plateau over 91 descents in 25 flights, from an
+  optimistic 2.0. The descent-arrest check now holds the same statistic the
+  law rests on.
+
+Open:
+
+- The loop still runs near 43 Hz rather than 50: 71 percent of r344's ticks
+  overran the 20 ms deadline. What remains is spread thin, the CUDA
+  controller at 11.4 ms and the CPU-side sweeps around it at about 12 ms
+  together, with no single confirmed bottleneck left.
+- The 3D obstacle memory still transports at 2 Hz; the observation age seen
+  by the tick is unchanged at p50 416 ms and p95 644 ms against the 600 ms
+  evidence-age term of the sensor-braking inequality. Raising the rate buys
+  speed through that inequality and costs CPU in the memory node; neither
+  side is measured.
+- The persistent planner search still measures p50 150.0 ms, exactly its
+  configured budget, with p99 185.8 ms. The p95 mission check therefore
+  measures the configuration, and budget overruns are not gated.
+- A holding vehicle drifts 0.102 m at the median, 0.370 m at p95 and 0.394 m
+  at most over the 56 hold episodes of r303 to r334, measured against the
+  true pose, while the rest-clearance rule asks for the 0.27 m the envelope
+  carries over the hull. The margin a stop must keep at its rest pose is
+  therefore smaller than the drift it exists to cover. Two flights ended in a
+  contact when that margin was made releasable (r326 at 2.56 m/s, r334 at
+  0.06 m/s while holding), so it is not a reserve to spend.
 - Structure: the 2D obstacle memory node is still selectable by the launch
-  files although no 2D production navigation path remains; twelve sources sit
-  within ten percent of the 1000-line cap after being split by size rather
-  than by responsibility; 226 sources lie flat in `src/` beside the layered
-  subdirectories.
+  files although no 2D production navigation path remains; fourteen sources
+  sit within ten percent of the 1000-line cap after being split by size
+  rather than by responsibility; 226 sources lie flat in `src/` beside the
+  layered subdirectories.
+
+Not started, and required by this item's own completion criteria: measured
+CPU, GPU, memory, ROS/DDS transport and real-time-factor budgets; reproducible
+baselines for the whole supported mission suite rather than the urban
+point-to-point mission alone; scaling with vehicle count; and the same for the
+static-map configuration. The tick budget above is the first of those budgets
+and the only one that exists.
 
 ## 11. Valid 3D Static Maps For New Environments
 
