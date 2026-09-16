@@ -362,7 +362,12 @@ and the 3D diagnostic point cloud use bounded cadences. The 3D runtime transport
 coalesces superseded revisions, publishes cumulative deltas at a configured
 rate, and rebases only when the delta approaches snapshot size or the maximum
 base age expires. This avoids rebuilding a multi-megabyte full snapshot for
-every scan.
+every scan. The rate is the scan rate, 10 Hz
+(`obstacle_memory_3d_transport_rate_hz`): DDS delivers an update in 0.15 ms,
+so the age the planner sees is the publication period plus the memory's own
+scan-to-publication time, and at 2 Hz that age sat at 636 ms at p95 against
+the 600 ms the braking contract charges; the measurement is in
+[resource_budget.md](resource_budget.md).
 
 ## RViz Outputs
 

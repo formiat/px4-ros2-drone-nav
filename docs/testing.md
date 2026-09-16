@@ -167,6 +167,18 @@ memory at p95 and growth, the per-second sums of the onboard processes, of
 the captures and of the simulator with the harness, the GPU figures and the
 real-time factor. [resource_budget.md](resource_budget.md) reads them.
 
+The same check reads what every consumer of a transport hop measured of its
+deliveries (`transport_latency_ros.hpp`: the middleware's receive timestamp
+against the source timestamp the publisher's middleware set): the
+controller's two hops from its summary, the obstacle memory's from its
+alignment report and the offboard node's from its applied-horizon report,
+each as p50, p95 and maximum. One gate: the obstacle memory's snapshots and
+deltas reach the controller within 2.5 ms at p95 (measured 0.25 to 0.32 ms,
+1.24 under a foreign build on the host). From the tick line it also splits
+the observation age at the median into the memory's scan-to-publication
+time, the delivery and the wait for the tick (measured 184 to 200 ms at p50
+at the 10 Hz transport: 114 to 136, 0.16 and 48 to 56).
+
 ## Adding Tests
 
 Use:

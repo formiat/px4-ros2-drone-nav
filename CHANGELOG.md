@@ -6,6 +6,16 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- Every transport hop reports what its delivery took, the mission check
+  reads the four hops and splits the observation age, and the obstacle
+  memory transports at the scan rate, 10 Hz instead of 2. DDS delivers a
+  memory update in 0.15 ms, so the age the planner sees is the publication
+  period plus the memory's scan-to-publication time: 404 ms at p50 and 636
+  at p95 at 2 Hz against the 600 ms the braking contract charges, 184 to
+  200 and 252 to 274 at 10 Hz, for 0.3 cores of the controller and about a
+  millisecond of tick. The r352 to r356 series on it flew without a crash at
+  2.72 to 3.06 m/s with every dynamics, tick, resource and transport check
+  green. Roadmap item 10 closes on that.
 - Every flight records what its processes consume (`resources.csv`,
   `resources_host.json`), and the mission check gates the record's coverage
   and the onboard processes' memory growth and reports their cost. On r345

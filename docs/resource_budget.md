@@ -69,6 +69,48 @@ simulates its 8192 rollouts in 6.4 ms at p50 and 8.1 at p95 of GPU time
 inside a controller step of 11.2 ms at p50; the rest of the GPU's time is
 the simulated lidar's rendering, which does not fly.
 
+## Transport
+
+Every consumer of a ROS transport hop measures the delivery of each message
+it receives, the middleware's receive timestamp against the source timestamp
+the publisher's middleware set (`transport_latency_ros.hpp`); the mission
+check reports the four hops and bounds the memory hop at 2.5 ms at p95
+([testing.md](testing.md)). Measured on r346 (2 Hz memory transport) and the
+r352 to r356 series (10 Hz):
+
+| Hop | Message | Rate | Delivery p50 | p95 | max |
+|---|---|---|---|---|---|
+| Gazebo bridge to obstacle memory | `PointCloud2`, 63 700 returns | 10 Hz | 0.74 to 0.81 ms | 1.0 to 1.2 | 2.8 |
+| obstacle memory to controller | `RawObstacleSnapshot3D` / `Delta3D` | 2 then 10 Hz | 0.15 to 0.16 ms | 0.25 to 0.32 | 11.6 |
+| obstacle memory to controller | `LatestLidarObstacleScan` | 10 Hz | 1.3 ms | 1.5 to 1.8 | 4.2 |
+| controller to offboard | `MppiTrajectoryHorizon` | 50 Hz | 0.06 to 0.08 ms | 0.10 to 0.14 | 1.0 |
+
+The transport is not where the observation age comes from. The age the
+planning tick sees on its obstacle memory splits, at the median, into the
+time the memory takes from a scan's stamp to the publication of the update
+that carries it, the delivery, and how long the delivered update has waited
+for the tick, which is half the publication period:
+
+| Memory transport | Observation age p50 | p95 | Scan to publication | Delivery | Waiting for the tick | Controller cores p50 | Memory cores p50 | Tick p50 |
+|---|---|---|---|---|---|---|---|---|
+| 2 Hz (r346) | 404 ms | 636 | 132 ms | 0.15 ms | 248 ms | 1.68 | 0.83 | 23.1 ms |
+| 5 Hz (r348, r349) | 252 to 256 | 359 to 362 | 136 to 140 | 0.15 | 92 to 98 | 1.95 to 1.99 | 0.81 to 0.84 | 23.9 to 24.1 |
+| 10 Hz (r350 to r356) | 184 to 200 | 252 to 274 | 114 to 136 | 0.16 | 48 to 56 | 1.93 to 2.32 | 0.83 to 1.04 | 24.1 to 25.0 |
+
+The braking contract charges 600 ms of evidence age; at 2 Hz the p95 sat
+above it. The memory now transports at the scan rate
+(`obstacle_memory_3d_transport_rate_hz: 10.0`): the controller pays about
+0.3 cores to ingest five times the updates and nothing more for ten, the
+memory node is unchanged, and the tick grows by about a millisecond at
+p50. What remains of the age is the memory's own scan-to-publication time,
+the alignment wait and the integration, which no transport rate touches.
+r347 flew under a foreign compiler build on the host and is excluded: its
+lidar evidence age reached 2240 ms and its deliveries doubled.
+
+Onboard, over the r352 to r356 series at 10 Hz: 3.03 to 3.43 cores at p50
+and 3.85 to 4.14 at p95, 744 to 830 MiB; the r345 figures above are the
+2 Hz baseline.
+
 ## Onboard Computer Class
 
 What the measurements do not exclude, and what they cannot say.

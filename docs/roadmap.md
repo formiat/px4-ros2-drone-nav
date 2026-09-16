@@ -68,94 +68,6 @@ city without scenario-specific route scripts or geometry exceptions, at the
 stage A thresholds. One successful 3D-lidar exploration flight is integration
 evidence, not completion.
 
-## 10. Architectural Review And Optimization
-
-**Type:** independent recurring workstream.
-
-**Dependencies:** none; this item is not part of the ordered execution sequence.
-
-Perform systematic architecture reviews throughout development and repeat a
-full review after the navigation, passage, and large-environment mission
-contracts are established. Each review must trace the end-to-end data and
-execution paths across sensing, mapping, topology, planning, MPPI, PX4 control,
-simulation, and diagnostics.
-
-Use repeatable representative missions to measure CPU, GPU, memory, ROS/DDS
-transport, simulator real-time factor, planning latency, and control deadline
-misses. Optimize confirmed bottlenecks while
-preserving typed contracts, raw-occupancy safety validation, and observable
-mission outcomes. Prefer removing duplicated work, stale data transport, and
-unnecessary process or synchronization overhead over increasing worker counts
-or weakening safety margins.
-
-This stage also records architectural debt, defines ownership and lifetime
-boundaries for shared resources, and converts validated optimizations into
-regression benchmarks. It is complete when the urban point-to-point mission
-with the 3D lidar and no static map has measured performance budgets and
-reproducible baselines.
-
-### Measured Debt (September 2026)
-
-First recorded at the closure of item 12 from the r303 to r307 series on
-commit `46823cac`, revised on 2026-09-16 from the r340 to r344 series on
-`8dec84ea`. Each entry is a measurement, not a decision.
-
-Closed since the first record:
-
-- The production tick measures p50 23.5 ms and p95 37.8 ms against its 20 ms
-  deadline, from p50 55 ms and p95 78 ms. A path validation built its
-  collision oracle once per segment and the oracle's constructor scans every
-  lidar return for finiteness, 60 us for the 63 700 points of an urban scan
-  against 0.2 to 0.9 us for the segment itself; it is now built once per path.
-  The mission check bounds the tick at 30 ms p50 and 45 ms p95 and reports the
-  share of ticks over the deadline.
-- Capture-to-publication latency of the control command is p50 20 ms and p95
-  28 ms, from p50 44 ms and p95 60 ms, with the tick that carries it.
-- The position estimate the tick reads matches the true Gazebo pose along the
-  track within 0.01 s, from 0.10 to 0.12 s. EKF2 subtracted its default 110 ms
-  GNSS delay from a simulated sample the Gazebo bridge stamps at receipt; the
-  run script sets `EKF2_GPS_DELAY 0` and the lidar position source is read at
-  the scan stamp again.
-- `guaranteed_vertical_stopping_deceleration_mps2` is 1.4, the fifth
-  percentile of the arrest plateau over 91 descents in 25 flights, from an
-  optimistic 2.0. The descent-arrest check now holds the same statistic the
-  law rests on.
-
-Open:
-
-- The loop still runs near 43 Hz rather than 50: 71 percent of r344's ticks
-  overran the 20 ms deadline. What remains is spread thin, the CUDA
-  controller at 11.4 ms and the CPU-side sweeps around it at about 12 ms
-  together, with no single confirmed bottleneck left.
-- The 3D obstacle memory still transports at 2 Hz; the observation age seen
-  by the tick is unchanged at p50 416 ms and p95 644 ms against the 600 ms
-  evidence-age term of the sensor-braking inequality. Raising the rate buys
-  speed through that inequality and costs CPU in the memory node; neither
-  side is measured.
-- The persistent planner search still measures p50 150.0 ms, exactly its
-  configured budget, with p99 185.8 ms. The p95 mission check therefore
-  measures the configuration, and budget overruns are not gated.
-- A holding vehicle drifts 0.102 m at the median, 0.370 m at p95 and 0.394 m
-  at most over the 56 hold episodes of r303 to r334, measured against the
-  true pose, while the rest-clearance rule asks for the 0.27 m the envelope
-  carries over the hull. The margin a stop must keep at its rest pose is
-  therefore smaller than the drift it exists to cover. Two flights ended in a
-  contact when that margin was made releasable (r326 at 2.56 m/s, r334 at
-  0.06 m/s while holding), so it is not a reserve to spend.
-- Structure: the 2D obstacle memory node is still selectable by the launch
-  files although no 2D production navigation path remains; fourteen sources
-  sit within ten percent of the 1000-line cap after being split by size
-  rather than by responsibility; 226 sources lie flat in `src/` beside the
-  layered subdirectories.
-
-Measured since, and recorded by every flight from r345 on
-([resource_budget.md](resource_budget.md)): the onboard processes use 2.73
-cores at p50 and 3.36 at p95, 798 MiB of resident memory and 206 MiB of GPU
-memory, with the GPU at 42 percent of an RTX 3060 Laptop and the simulator
-at a real-time factor of 1.00; the mission check gates the record's
-coverage and the onboard processes' memory growth. Not started, and required
-by this item's own completion criteria: the ROS/DDS transport budget.
-
 ## 11. Valid 3D Static Maps For New Environments
 
 **Type:** dependent implementation and validation stage.
@@ -471,6 +383,34 @@ dirty-chunk transport and chunked immutable snapshots. Only confirmed
 `Occupied` is a hard prohibition; relabeling `Free` and `Unknown` changes
 nothing. No-static production navigation uses the 3D lidar profile; there is no
 2D-lidar production fallback.
+
+### 10. Architectural Review And Optimization (Completed)
+
+Closed on 2026-09-16 on the urban point-to-point mission with the 3D lidar
+and no static map; the measurements are in
+[`resource_budget.md`](resource_budget.md) and [`performance.md`](performance.md),
+the gates in [`testing.md`](testing.md). Every flight records what its
+processes consume and what each transport hop's delivery took, and the
+mission check bounds the tick (30 ms p50, 45 p95), the record's coverage,
+the onboard processes' memory growth and the memory hop's delivery. Measured
+at the r352 to r356 series: the onboard processes use 3.0 to 3.4 cores at
+p50 and 0.75 to 0.83 GiB, the GPU 39 to 41 percent of an RTX 3060 Laptop,
+DDS delivers every hop in 0.06 to 1.3 ms at p50, and the obstacle memory
+transports at the scan rate so the observation age is 184 to 200 ms at p50
+against the 600 ms the braking contract charges, from 404 at 2 Hz. Along the
+way the tick went from 55 to 23 ms at p50 (one collision oracle per path),
+the position estimate from 0.11 s ahead of the true pose to 0.01 s
+(`EKF2_GPS_DELAY 0`) and the vertical law from 2.0 to the measured 1.4 m/s².
+
+Known leftovers, measured and not gated: the loop runs near 43 Hz with about
+80 percent of ticks over the 20 ms deadline and no single bottleneck left;
+the planner spends its whole 150 ms budget, so the p95 check measures the
+configuration; a holding vehicle drifts 0.37 m at p95 while the rest
+clearance rule keeps 0.27 m; the ordinary no-route holds sit at 3 to 13
+percent against the 3 percent check and route availability at 92 to 96
+against 97; the 2D obstacle memory node is still selectable by the launch
+files, fourteen sources sit near the 1000-line cap and 226 lie flat in
+`src/`.
 
 ### 12. Persistent Full-3D Strategic Navigation (Completed)
 
