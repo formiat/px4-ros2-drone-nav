@@ -45,38 +45,6 @@ double maximumBodyTiltRad(const double maximum_horizontal_acceleration_mps2,
   return std::atan2(horizontal_mps2, thrust_along_gravity_mps2);
 }
 
-namespace {
-
-// The horizontal reach of the body cylinder tilted by the angle: the rim
-// projects to an ellipse displaced by the extent's lean, whose farthest point
-// from the axis is radius * cos + extent * sin while the tilt is shallower
-// than the body's diagonal, and the diagonal itself beyond that.
-[[nodiscard]] double leanedBodyRadiusM(const double body_radius_m,
-                                       const double axial_extent_m, const double sine,
-                                       const double cosine) noexcept {
-  return body_radius_m * sine <= axial_extent_m * cosine
-             ? body_radius_m * cosine + axial_extent_m * sine
-             : std::hypot(body_radius_m, axial_extent_m);
-}
-
-} // namespace
-
-SweptFootprintConfig leanedReachFootprint(const SweptFootprintConfig& footprint,
-                                          const double tilt_rad) noexcept {
-  const double tilt =
-      std::isfinite(tilt_rad) ? std::clamp(tilt_rad, 0.0, std::numbers::pi / 2.0) : 0.0;
-  const SweptFootprintConfig body = physicalBodyFootprint(footprint);
-  const double body_radius_m = std::max(0.0, body.radius_m);
-  const double axial_extent_m =
-      std::max(std::max(0.0, body.lower_extent_m), std::max(0.0, body.upper_extent_m));
-  const double leaned_radius_m =
-      leanedBodyRadiusM(body_radius_m, axial_extent_m, std::sin(tilt), std::cos(tilt));
-  SweptFootprintConfig leaned = footprint;
-  leaned.body_radius_m = leaned_radius_m;
-  leaned.radius_m = std::max(footprint.radius_m, leaned_radius_m);
-  return leaned;
-}
-
 SweptFootprintConfig tiltEnvelopedFootprint(const SweptFootprintConfig& footprint,
                                             const double tilt_rad) noexcept {
   const double tilt =
@@ -95,7 +63,9 @@ SweptFootprintConfig tiltEnvelopedFootprint(const SweptFootprintConfig& footprin
   // sqrt(radius^2 + extent^2), beyond that. The rim dips or rises by
   // radius * sin beyond the extents' own projection, and that is exact.
   const double leaned_body_radius_m =
-      leanedBodyRadiusM(body_radius_m, axial_extent_m, sine, cosine);
+      body_radius_m * sine <= axial_extent_m * cosine
+          ? body_radius_m * cosine + axial_extent_m * sine
+          : std::hypot(body_radius_m, axial_extent_m);
   // The body becomes the hull at every tilt: in flight the airframe may lean
   // that far at any moment, so contact evidence is judged against the volume
   // it can reach, not only the volume it occupies upright. The envelope grows

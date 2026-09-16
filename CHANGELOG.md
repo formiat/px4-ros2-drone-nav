@@ -6,17 +6,17 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
-- The body every execution validator answers to carries the reach of the lean
-  the dynamics can command: its rim grows from 0.55 m to 0.65 m at the lean
-  law's 0.444 rad while the axial extents stay as configured. Measured on the
-  true Gazebo pose over 408 braking episodes of the urban flights r303 to
-  r324, the airframe holds 0.303 rad of tilt at the median and 0.384 at p95
-  while it brakes, which puts the rim 0.078 to 0.090 m beyond the upright
-  body; the lean law's worst case covers 99.5 percent of the measured
-  samples. In r320 a rotor passed 0.114 m beyond a wall face the memory had
-  mapped, on a path the upright body cleared. The extents are deliberately
-  unchanged: a taller hard body turned covered streets into traps, and the
-  tube keeps pricing the dip as a speed.
+- A leaned execution body (the rim grown to the tilted rim's reach) was flown
+  and withdrawn: with it the vehicle never left the launch platform in r325
+  (the whole flight in `no_executable_route_hold`, planner p95 4.1 s). The
+  measurement that motivated it stands and is recorded here: over the 408
+  braking episodes of r303 to r324 the airframe holds 0.303 rad of tilt at
+  the median and 0.384 at p95, which puts the rim 0.078 to 0.090 m beyond the
+  upright body. It is not what struck the wall in r320: the contact point
+  there sits 0.465 m from the true centre, inside the 0.55 m upright body,
+  and 0.28 s earlier the footprint readiness already reported
+  `strict_status=raw_collision` with `status=clear`, the contact exemption
+  covering a body that was still moving into the mapped wall at 1.5 m/s.
 - A directional rollout speed bound (the contract's admitted speed along the
   rollout's own direction instead of its worst direction) was flown and
   withdrawn: r321 to r324 regained 2.73 to 2.94 m/s, but r320 struck the
