@@ -152,6 +152,7 @@ bool benchmarkConfigIsValid(const BenchmarkConfig& config) noexcept {
              config.dynamics.maximum_vertical_acceleration_mps2 &&
          std::isfinite(config.dynamics.maximum_translational_speed_mps) &&
          config.dynamics.maximum_translational_speed_mps > 0.0F &&
+         translationalSpeedLimitByVerticalShareValid3D(config.dynamics) &&
          std::isfinite(config.altitude_envelope.reaction_latency_s) &&
          config.altitude_envelope.reaction_latency_s >= 0.0F &&
          std::isfinite(config.cooperative.desired_minimum_separation_m) &&
@@ -443,9 +444,10 @@ RolloutMetrics simulateReference(
       const float horizontal_speed_mps = std::hypot(state.vx, state.vy);
       const float translational_speed_mps = std::hypot(horizontal_speed_mps, state.vz);
       const float excess_mps = std::max(
-          0.0F,
-          std::max(horizontal_speed_mps - dynamics.maximum_horizontal_speed_mps,
-                   translational_speed_mps - dynamics.maximum_translational_speed_mps));
+          0.0F, std::max(horizontal_speed_mps - dynamics.maximum_horizontal_speed_mps,
+                         translational_speed_mps -
+                             translationalSpeedLimitAlong3D(dynamics, state.vx,
+                                                            state.vy, state.vz)));
       metrics.costs.overspeed += squared(excess_mps);
     }
     metrics.costs.terminal = moving_target.has_value()
