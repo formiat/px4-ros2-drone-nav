@@ -21,18 +21,14 @@ renumbered or reused; a new item takes the next free number.
 **Type:** integration and validation milestone in two stages.
 
 **Hard prerequisites:** item 12 (complete) for stage A; a suitably licensed
-city for stage B; item 11 for the static-map part of stage B.
+city for stage B.
 
-### Stage A: Full Mission Suite On The Current Locations
+### Stage A: Point-To-Point On Urban Circuit Practice 01
 
-Fly every supported mission on the locations that exist today, Manhattan and
-Urban Circuit Practice 01, at one release commit, headless, with nothing
-changed between runs: point-to-point with a static map and without one,
-constrained 3D traversal, single-target and multi-target interception, and
-cooperative traffic. The cooperative and interception scenarios have not been
-flown since the September 2026 navigation changes, so this stage also decides
-whether they still pass their referees. Stage A needs no new environment and
-may begin immediately.
+Fly the point-to-point mission on Urban Circuit Practice 01 with the 3D lidar
+and no static map, at one release commit, headless, with nothing changed
+between runs, as a series of five flights. Stage A needs no new environment
+and may begin immediately.
 
 Acceptance uses the numbers the mission check already enforces, as measured in
 the v0.2.0 series (r288 to r292) and the r303 to r307 series on the
@@ -45,11 +41,6 @@ item 12 closed at 88 to 95 percent against the 97 percent mission check and the
 surfaces as the remaining cause. This stage re-derives the availability
 threshold from the measured runs and records it in the mission check before
 stage B begins.
-
-Stage A also repeats the unchanged three-run Manhattan no-static 3D-lidar gate
-inherited from item 12: three sequential headless point-to-point missions, each
-reaching the goal within the 120-second hard limit, crossing the required
-low-altitude route volume, collision-free, with no route-ownership gap.
 
 ### Stage B: Large-Scale Realistic City
 
@@ -67,16 +58,15 @@ remain aligned instead of becoming separate hand-maintained versions of the
 world.
 
 Use the new location as a full-system validation environment rather than only a
-visual showcase. Re-run the complete stage A suite on it, covering multiple
-start and goal placements and repeated headless runs, and preserve physical
+visual showcase. Re-run stage A on it, covering multiple start and goal
+placements and repeated headless runs, and preserve physical
 outcome checks, zero tolerance for building collisions, planner and controller
 diagnostics, real-time-factor monitoring, and measured CPU/GPU timing.
 
-Stage B is complete only when the mission suite succeeds on the new city
-without scenario-specific route scripts or geometry exceptions, at the stage A
-thresholds. One successful 3D-lidar exploration flight is integration evidence,
-not completion. Static-map acceptance is performed after item 11 provides
-validated maps.
+Stage B is complete only when the point-to-point mission succeeds on the new
+city without scenario-specific route scripts or geometry exceptions, at the
+stage A thresholds. One successful 3D-lidar exploration flight is integration
+evidence, not completion.
 
 ## 10. Architectural Review And Optimization
 
@@ -88,11 +78,11 @@ Perform systematic architecture reviews throughout development and repeat a
 full review after the navigation, passage, and large-environment mission
 contracts are established. Each review must trace the end-to-end data and
 execution paths across sensing, mapping, topology, planning, MPPI, PX4 control,
-cooperative coordination, simulation, and diagnostics.
+simulation, and diagnostics.
 
 Use repeatable representative missions to measure CPU, GPU, memory, ROS/DDS
-transport, simulator real-time factor, planning latency, control deadline
-misses, and scaling with vehicle count. Optimize confirmed bottlenecks while
+transport, simulator real-time factor, planning latency, and control deadline
+misses. Optimize confirmed bottlenecks while
 preserving typed contracts, raw-occupancy safety validation, and observable
 mission outcomes. Prefer removing duplicated work, stale data transport, and
 unnecessary process or synchronization overhead over increasing worker counts
@@ -100,9 +90,9 @@ or weakening safety margins.
 
 This stage also records architectural debt, defines ownership and lifetime
 boundaries for shared resources, and converts validated optimizations into
-regression benchmarks. It is complete when the supported urban missions have
-measured performance budgets, reproducible baselines, and documented scaling
-limits for the 3D-sensing configuration.
+regression benchmarks. It is complete when the urban point-to-point mission
+with the 3D lidar and no static map has measured performance budgets and
+reproducible baselines.
 
 ### Measured Debt (September 2026)
 
@@ -164,9 +154,7 @@ cores at p50 and 3.36 at p95, 798 MiB of resident memory and 206 MiB of GPU
 memory, with the GPU at 42 percent of an RTX 3060 Laptop and the simulator
 at a real-time factor of 1.00; the mission check gates the record's
 coverage and the onboard processes' memory growth. Not started, and required
-by this item's own completion criteria: the ROS/DDS transport budget;
-reproducible baselines for the supported urban missions rather than the
-point-to-point mission alone; and scaling with vehicle count.
+by this item's own completion criteria: the ROS/DDS transport budget.
 
 ## 11. Valid 3D Static Maps For New Environments
 
@@ -203,13 +191,10 @@ alignment, and raw-collision validation against its physical world.
 
 **Hard prerequisites:** items 8 and 12.
 
-Item 13 is accepted only in the complex environments introduced after the
-original Manhattan world. Manhattan is not a localization acceptance
-environment because its repetitive geometry creates severe position and
-heading ambiguity. Autonomous test flights in the selected labyrinths, caves,
-and tunnel networks require item 12's persistent full-3D route and repair
-backend. This roadmap dependency must not create a code dependency between the
-localization estimator and the route planner.
+Item 13 is accepted on Urban Circuit Practice 01 with the 3D lidar and no
+static map. Autonomous test flights there require item 12's persistent
+full-3D route and repair backend. This roadmap dependency must not create a
+code dependency between the localization estimator and the route planner.
 
 Add an optional navigation profile in which the aircraft does not use GNSS or
 magnetometer fusion. This stage begins after item 8 provides production 3D
@@ -236,20 +221,16 @@ estimator or control data path.
 
 Support two explicit localization configurations:
 
-- with a valid static 3D map, lidar-inertial odometry provides continuous local
-  motion while scan-to-map registration corrects accumulated drift and anchors
-  the vehicle in the mission map frame;
-- without a static map, lidar-inertial SLAM builds revisioned localization
-  submaps and uses loop closure to maintain a locally consistent frame.
+- lidar-inertial SLAM builds revisioned localization submaps and uses loop
+  closure to maintain a locally consistent frame.
 
-No-static missions with absolute map-frame goals require a declared initial
-map pose or another explicit global reference. Unknown-pose localization in a
-known static map is a separate global relocalization capability and must not be
-implicitly replaced by a scenario-provided hidden ground-truth transform.
+Missions with absolute map-frame goals require a declared initial map pose or
+another explicit global reference, never a scenario-provided hidden
+ground-truth transform.
 
 Localization quality and geometric observability must be first-class runtime
-signals. Repetitive city blocks, long feature-poor tunnels, and symmetric caves
-can leave translation or yaw weakly constrained even with 3D lidar. When the
+signals. Repetitive facades and long feature-poor corridors can leave
+translation or yaw weakly constrained even with 3D lidar. When the
 estimate is stale, divergent, or insufficiently observable, the system must
 stop publishing new executable motion and let the current finite path reach
 its validated terminal state; it must not continue an invalid path or add a
@@ -261,15 +242,13 @@ Implement and validate this stage incrementally:
    with evaluation-only Gazebo truth;
 2. fly one vehicle from a known initial pose using PX4 external odometry with
    GNSS and magnetometer fusion disabled;
-3. add static-map correction, relocalization, and explicit estimator health;
-4. add no-static submaps and loop closure;
-5. validate multiple cooperative vehicles, each with an independent estimator
-   and no shared localization state.
+3. add explicit estimator health;
+4. add submaps and loop closure.
 
 Measure position and attitude drift, velocity error, map alignment, loop
-closure consistency, estimator latency, relocalization time, time without a
+closure consistency, estimator latency, time without a
 valid executable path, minimum obstacle clearance, and physical collisions.
-This stage is complete when repeated static-map and no-static 3D-lidar missions
+This stage is complete when repeated urban point-to-point 3D-lidar missions
 run without GNSS, magnetometer data, or control-visible simulator ground truth,
 and localization failures produce an explicit safe finite-path outcome instead
 of silent frame corruption.
@@ -280,7 +259,7 @@ of silent frame corruption.
 
 **Hard prerequisites:** items 8 and 12.
 
-**Validation prerequisite:** item 9's complex environments.
+**Validation environment:** Urban Circuit Practice 01.
 
 Navigate the same no-static missions that item 8 and item 12 accept with the
 3D lidar, with no lidar at all and no static map: the vehicle carries only a
@@ -387,11 +366,8 @@ the two must not become a code dependency.
 3. Make the guaranteed detection range directional and the gaze policy part of
    execution; validate with lidar still integrated that speed and heading
    behave as the observability model says.
-4. Fly no-static Manhattan on the stereo profile alone, with the lidar removed
-   from the model, against item 8's mission gates.
-5. Fly the complex environments — Urban, tunnels, caves — on the stereo profile
-   alone against item 12's gates, then cooperative missions with every vehicle
-   on its own cameras.
+4. Fly Urban Circuit Practice 01 on the stereo profile alone, with the lidar
+   removed from the model, against item 12's gates.
 
 ### Measurement And Completion
 
@@ -402,8 +378,8 @@ was entered, time spent speed-limited by observability, perception latency
 from exposure to raw-world revision, planner p95, route availability, minimum
 obstacle clearance and physical collisions.
 
-This stage is complete when repeated no-static Manhattan and complex-environment
-missions run with the lidar absent from the vehicle model, no depth or point
+This stage is complete when repeated Urban Circuit Practice 01 missions run
+with the lidar absent from the vehicle model, no depth or point
 cloud sensor in the control path, the raw-world and planner contracts
 unchanged, and the same mission gates as the 3D-lidar profile: mission
 complete, collision-free, route availability at the threshold item 9 stage A
