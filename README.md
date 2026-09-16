@@ -55,6 +55,8 @@ aircraft operation.
 Use it as a planning, simulation, and offboard-control testbed. Do not use it
 on physical drones without a separate safety review, hardware-specific failsafe
 design, controlled test environment, and compliance with local regulations.
+No onboard computer has run it: the resource figures are from a workstation
+([docs/resource_budget.md](docs/resource_budget.md)).
 
 ## Approved Commands
 
@@ -668,6 +670,18 @@ to `mppi_error_context.jsonl` when a collision episode begins.
 Synchronized lidar, raw-grid, and local-horizon snapshots are written under
 `log/lidar_debug/`. The simulation wrapper prints the exact per-run artifact
 directory.
+
+## Resource Budget
+
+Every headless flight records what its processes consume, and the mission
+check reads the record. On r345 (392.8 m in 142 s, the same flight as the
+figures above) the onboard processes, the navigation nodes and the DDS
+agent, used 2.73 cores at p50 and 3.36 at p95 of a Ryzen 9 5900HX, 798 MiB
+of resident memory and 206 MiB of GPU memory, with the GPU at 42 percent of
+an RTX 3060 Laptop; the simulator ran at a real-time factor of 1.00. What
+that does and does not say about a drone computer, and the assumptions
+behind naming the Jetson Orin family as the class the measurements do not
+exclude, are in [docs/resource_budget.md](docs/resource_budget.md).
 
 ## Build System
 

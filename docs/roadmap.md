@@ -158,11 +158,15 @@ Open:
   rather than by responsibility; 226 sources lie flat in `src/` beside the
   layered subdirectories.
 
-Not started, and required by this item's own completion criteria: measured
-CPU, GPU, memory, ROS/DDS transport and real-time-factor budgets; reproducible
-baselines for the supported urban missions rather than the point-to-point
-mission alone; and scaling with vehicle count. The tick budget above is the
-first of those budgets and the only one that exists.
+Measured since, and recorded by every flight from r345 on
+([resource_budget.md](resource_budget.md)): the onboard processes use 2.73
+cores at p50 and 3.36 at p95, 798 MiB of resident memory and 206 MiB of GPU
+memory, with the GPU at 42 percent of an RTX 3060 Laptop and the simulator
+at a real-time factor of 1.00; the mission check gates the record's
+coverage and the onboard processes' memory growth. Not started, and required
+by this item's own completion criteria: the ROS/DDS transport budget;
+reproducible baselines for the supported urban missions rather than the
+point-to-point mission alone; and scaling with vehicle count.
 
 ## 11. Valid 3D Static Maps For New Environments
 

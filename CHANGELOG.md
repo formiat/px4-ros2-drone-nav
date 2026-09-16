@@ -6,6 +6,15 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- Every flight records what its processes consume (`resources.csv`,
+  `resources_host.json`), and the mission check gates the record's coverage
+  and the onboard processes' memory growth and reports their cost. On r345
+  the onboard processes used 2.73 cores at p50 and 3.36 at p95, 798 MiB of
+  resident memory and 206 MiB of GPU memory, the GPU 42 percent of an RTX
+  3060 Laptop, at a real-time factor of 1.00; the record cost the flight
+  nothing the tick could measure. `docs/resource_budget.md` reads the figures
+  and names the Jetson Orin family as the class of onboard computer they do
+  not exclude, with every assumption behind that marked as one.
 - The rollouts obey the braking contract along their own direction: the
   dynamics carry the contract's admitted speed at 33 vertical shares from
   level flight to a pure climb or descent, read by one lookup in the host and

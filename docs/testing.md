@@ -142,6 +142,31 @@ that breaks one is seen on the next flight rather than in a crash:
 The clocks of the three records differ; each measurement aligns them on the
 motion itself (least squares over a grid of offsets).
 
+### Resource record
+
+Every flight, headless or not, records what its processes consume
+(`resources.csv`, `scripts/capture_process_resources.py`): once a second,
+per process, CPU in cores, resident memory and threads; the GPU's
+utilisation and memory with the memory by process name; the container's
+cgroup totals; and Gazebo's real-time factor. The host is described once in
+`resources_host.json`. `scripts/resource_budget_evidence.py` holds the record
+against two gates and reports the rest, so a change of cost is seen on the
+next flight:
+
+- the record covers at least 90 percent of the seconds between mission
+  readiness and the successful result (measured 98 percent on r345);
+- no onboard process (`production_mppi_node`, `obstacle_memory_3d_node`,
+  `mppi_offboard_node`, `MicroXRCEAgent`) gains more than 256 MiB of
+  resident memory over the flight, the last tenth against the first at the
+  median of each (measured +128 MiB for the controller and +53 MiB for the
+  obstacle memory on r345, both the map growing with the observed volume; a
+  leak at the tick rate crosses the bound within a flight).
+
+The reported lines give each onboard process's cores at p50, p95 and most,
+memory at p95 and growth, the per-second sums of the onboard processes, of
+the captures and of the simulator with the harness, the GPU figures and the
+real-time factor. [resource_budget.md](resource_budget.md) reads them.
+
 ## Adding Tests
 
 Use:
