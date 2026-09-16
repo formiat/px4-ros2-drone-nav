@@ -26,6 +26,13 @@ ONBOARD_PROCESSES = ("production_mppi_node", "obstacle_memory_3d_node",
                      "mppi_offboard_node", "MicroXRCEAgent")
 MINIMUM_RECORD_COVERAGE = 0.90
 SAMPLE_PERIOD_S = 1.0
+# The resident memory an onboard process may gain over a flight, the last
+# tenth against the first. Measured on r345 (392.8 m, 142 s): the controller
+# gained 128 MiB and the obstacle memory 53 MiB, both holding a map that grows
+# with the volume the flight observes; the offboard node and the agent gained
+# nothing. Twice the largest of those is the bound. A leak at the tick rate
+# would cross it fast: 5392 ticks losing 50 KiB each are 263 MiB.
+MAXIMUM_ONBOARD_RSS_GROWTH_BYTES = 256 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -185,6 +192,11 @@ def validate_resource_budget(run_directory: Path, ros_log: str,
         usage = process_usage(record, name, span)
         if usage is None:
             print(f"OK: {name} is not in the resource record")
+            continue
+        if usage.rss_growth_bytes > MAXIMUM_ONBOARD_RSS_GROWTH_BYTES:
+            errors.append(
+                f"FAIL: {name} gains at most {mib(MAXIMUM_ONBOARD_RSS_GROWTH_BYTES):.0f} MiB "
+                f"of resident memory over the flight ({mib(usage.rss_growth_bytes):+.0f} MiB)")
             continue
         print(f"OK: {name} uses {usage.cpu_cores_p50:.2f} cores at p50, "
               f"{usage.cpu_cores_p95:.2f} at p95, {usage.cpu_cores_max:.2f} at most; "

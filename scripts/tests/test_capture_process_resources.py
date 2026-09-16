@@ -48,6 +48,7 @@ class CaptureProcessResourcesTest(unittest.TestCase):
                          "production_mppi_node")
         self.assertEqual(capture.process_label("bash", ["bash"]), "bash")
         self.assertEqual(capture.process_label("bash", ["bash", "-c", "sleep 1; ls"]), "bash")
+        self.assertEqual(capture.process_label("ruby", ["ruby", "", "-s"]), "ruby")
 
     def test_the_record_is_rewritten_atomically(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

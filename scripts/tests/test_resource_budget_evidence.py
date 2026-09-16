@@ -93,6 +93,15 @@ class ResourceBudgetEvidenceTest(unittest.TestCase):
         self.assertEqual(len(errors), 1)
         self.assertIn("covers at least 90% of the flight (80%)", errors[0])
 
+    def test_an_onboard_process_that_keeps_growing_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            write_record(Path(directory), range(0, 120), growth_bytes=400 * MIB)
+            errors, output = run_check(Path(directory), flight_log(1005.0, 1105.0))
+        self.assertEqual(len(errors), 1)
+        self.assertIn("production_mppi_node gains at most 256 MiB", errors[0])
+        self.assertIn("(+303 MiB)", errors[0])
+        self.assertIn("OK: obstacle_memory_3d_node uses", output)
+
     def test_without_a_successful_flight_nothing_is_measured(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             write_record(Path(directory), range(0, 20))

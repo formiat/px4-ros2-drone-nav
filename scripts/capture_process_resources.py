@@ -79,7 +79,7 @@ def process_label(name: str, cmdline: list[str]) -> str:
     if name not in INTERPRETERS:
         return name
     for argument in cmdline[1:]:
-        if not argument.startswith("-"):
+        if argument and not argument.startswith("-"):
             # An inline command (bash -c "...") is not a script; keep the shell.
             return name if " " in argument else os.path.basename(argument)
     return name
@@ -209,7 +209,10 @@ def main() -> int:
             process = processes[pid]
             try:
                 with process.oneshot():
-                    name = process_label(process.name(), process.cmdline())
+                    # Gazebo's ruby launcher blanks its own name and argv;
+                    # its executable still says what it is.
+                    name = process_label(process.name(), process.cmdline()) \
+                        or os.path.basename(process.exe())
                     cpu = process.cpu_percent() / 100.0
                     rss = process.memory_info().rss
                     threads = process.num_threads()
