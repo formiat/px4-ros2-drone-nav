@@ -57,6 +57,13 @@ prepare_runtime_evidence() {
 
 start_runtime_evidence_capture() {
   echo "Runtime manifest: ${runtime_manifest_path}"
+  # What every process of the flight consumes, for the resource-budget checks
+  # and the budget document; every flight records it, whatever it flies.
+  python3 "${repo_root}/scripts/capture_process_resources.py" \
+    "${runtime_artifact_dir}/resources.csv" \
+    "${runtime_artifact_dir}/resources_host.json" \
+    --world "${world_name}" \
+    > "${runtime_artifact_dir}/resources_capture.log" 2>&1 &
   if bool_is_true "${multi_vehicle_mission}" ||
     bool_is_true "${active_static_map}" || [[ "${lidar_profile}" != "3d" ]] ||
     [[ -z "${raw_snapshot_bounds_m}" ]]; then

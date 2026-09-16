@@ -287,6 +287,21 @@ class RuntimeManifestTest(unittest.TestCase):
         self.assertIn("--require-persistent-3d-acceptance", helper)
         self.assertIn("DRONE_GAZEBO_RUN_ID", container)
 
+    def test_every_flight_records_its_resources_before_the_capture_gate(self) -> None:
+        # The resource record starts before the early return that keeps the
+        # dynamics records to single-vehicle 3D flights, so a static-map or a
+        # cooperative flight records its resources too.
+        evidence_runtime = EVIDENCE_RUNTIME.read_text(encoding="utf-8")
+        container = CONTAINER_RUNNER.read_text(encoding="utf-8")
+
+        start = evidence_runtime.index("start_runtime_evidence_capture() {")
+        capture = evidence_runtime.index("capture_process_resources.py", start)
+        gate = evidence_runtime.index('if bool_is_true "${multi_vehicle_mission}"', start)
+        self.assertLess(capture, gate)
+        self.assertIn('"${runtime_artifact_dir}/resources.csv"', evidence_runtime)
+        self.assertIn('"${runtime_artifact_dir}/resources_host.json"', evidence_runtime)
+        self.assertIn('DRONE_GAZEBO_DEV_IMAGE="${image_name}"', container)
+
 
 if __name__ == "__main__":
     unittest.main()

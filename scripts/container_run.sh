@@ -32,6 +32,8 @@ env_args=(
   --env DISPLAY="${DISPLAY:-}"
   --env HOME="${container_home}"
   --env XDG_RUNTIME_DIR="${container_runtime}"
+  # The resource record of a flight names the image it ran in.
+  --env DRONE_GAZEBO_DEV_IMAGE="${image_name}"
 )
 
 optional_env_vars=(
