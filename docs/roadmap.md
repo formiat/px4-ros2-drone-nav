@@ -114,7 +114,14 @@ lidar and its timestamped full-6DoF acquisition-pose contract and item 12
 provides autonomous routing through partially observed complex environments.
 The aircraft retains its IMU and barometric altitude source and estimates
 motion from lidar-inertial odometry instead of receiving global position and
-heading from simulated navigation satellites and a simulated compass.
+heading from simulated navigation satellites and a simulated compass. Today
+the heading comes from neither: the simulated magnetometer is not fused
+(`EKF2_MAG_TYPE 5`) because it sits five to six degrees off, and
+`simulation_heading_source_node` hands the autopilot the simulator's true
+attitude, with a wandering bias and noise, through the external-vision
+interface (`EKF2_EV_CTRL 8`). That node is simulation-only and is ground
+truth inside the estimator's path; this profile removes it, and the
+lidar-inertial estimator is the only source of heading.
 
 Localization must remain a separate subsystem from obstacle memory and route
 planning. A dedicated lidar-inertial estimator deskews 3D scans, propagates the
@@ -131,10 +138,8 @@ control, planning, mapping, and diagnostics. Gazebo ground truth is available
 only to evaluation and referee components and must never cross into the
 estimator or control data path.
 
-Support two explicit localization configurations:
-
-- lidar-inertial SLAM builds revisioned localization submaps and uses loop
-  closure to maintain a locally consistent frame.
+Lidar-inertial SLAM builds revisioned localization submaps and uses loop
+closure to maintain a locally consistent frame.
 
 Missions with absolute map-frame goals require a declared initial map pose or
 another explicit global reference, never a scenario-provided hidden
@@ -158,12 +163,16 @@ Implement and validate this stage incrementally:
 4. add submaps and loop closure.
 
 Measure position and attitude drift, velocity error, map alignment, loop
-closure consistency, estimator latency, time without a
-valid executable path, minimum obstacle clearance, and physical collisions.
-This stage is complete when repeated urban point-to-point 3D-lidar missions
-run without GNSS, magnetometer data, or control-visible simulator ground truth,
-and localization failures produce an explicit safe finite-path outcome instead
-of silent frame corruption.
+closure consistency, estimator latency, time without a valid executable
+path, minimum obstacle clearance, and physical collisions. The starting
+point is measured: with GNSS and the simulated heading, PX4's estimate sits
+0.19 to 0.25 m from the true pose across the track at p95 and within 0.01 s
+along it (the position-estimate check in `testing.md`, r340 to r356). This
+stage is complete when repeated urban point-to-point 3D-lidar missions run
+without GNSS, magnetometer data, the simulation heading source, or any other
+control-visible simulator ground truth, hold that same check at no worse
+than the GNSS figures, and localization failures produce an explicit safe
+finite-path outcome instead of silent frame corruption.
 
 ## 14. Vision-Only 3D Perception Without Lidar Or Static Maps
 
