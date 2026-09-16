@@ -6,6 +6,15 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- A stop gives up the margin at its rest pose exactly as far as it gives it
+  up along the path. The clearance-reduction ladder shrank the swept body
+  rung by rung while the rest pose kept asking for the full envelope margin,
+  so a stop refused on that margin was refused at every rung. In r320 such a
+  stop had a clean path (`certification_path=valid`), was refused on the rest
+  margin at `clearance_reduction=1.00`, and the vehicle kept the horizon the
+  evidence had just invalidated and struck a wall at 0.71 m/s with no braking
+  owner. The hull itself is never given up, and a vehicle already inside the
+  band stays exempt.
 - A leaned execution body (the rim grown to the tilted rim's reach) was flown
   and withdrawn: with it the vehicle never left the launch platform in r325
   (the whole flight in `no_executable_route_hold`, planner p95 4.1 s). The
