@@ -1595,6 +1595,11 @@ if(BUILD_TESTING)
   target_link_libraries(swept_footprint_test drone_city_nav_core)
   enable_project_warnings(swept_footprint_test)
 
+  ament_add_gtest(swept_footprint_body_test tests/swept_footprint_body_test.cpp)
+  target_compile_features(swept_footprint_body_test PRIVATE cxx_std_20)
+  target_link_libraries(swept_footprint_body_test drone_city_nav_core)
+  enable_project_warnings(swept_footprint_body_test)
+
   ament_add_gtest(launch_support_contact_3d_test
                   tests/launch_support_contact_3d_test.cpp)
   target_compile_features(launch_support_contact_3d_test PRIVATE cxx_std_20)

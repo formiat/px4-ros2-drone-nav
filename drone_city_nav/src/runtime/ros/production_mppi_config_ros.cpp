@@ -953,9 +953,22 @@ void ProductionMppiConfigLoader::finalize() {
   diagnostics.file_period_ns =
       static_cast<std::int64_t>(1.0e9 / std::max(0.1, diagnostics.file_rate_hz));
 
+  // The body every execution validator answers to carries the reach of the
+  // lean the dynamics can command. Measured on the true Gazebo pose over 408
+  // braking episodes of the urban flights r303 to r324, the airframe holds
+  // 0.303 rad of tilt at the median and 0.384 at p95 while it brakes, which
+  // puts the rim 0.078 to 0.090 m beyond the upright body's 0.55 m; the lean
+  // law's own worst case, 0.444 rad, covers 99.5 percent of the measured
+  // samples. In r320 a rotor passed 0.114 m beyond a wall face the memory had
+  // mapped, while the upright body the horizon was certified with cleared it.
+  // Only the reach grows; the axial extents stay as configured, because a
+  // taller hard body turned covered streets into traps and the tube prices
+  // the dip as a speed.
   execution.validation_policy = VersionedExecutionValidationPolicy3D::capture(
       world.flight_envelope, control.mppi.dynamics, control.mppi.altitude_envelope,
-      world.physical_footprint, execution.latest_lidar_obstacle_maximum_age_ms,
+      leanedReachFootprint(world.physical_footprint,
+                           control.tracking_error_tube.maximum_body_tilt_rad),
+      execution.latest_lidar_obstacle_maximum_age_ms,
       execution.maximum_pose_prediction_age_ms,
       execution.maximum_control_feedback_age_ms,
       planning.optional_constraints.route_cross_track_constraints_enabled,

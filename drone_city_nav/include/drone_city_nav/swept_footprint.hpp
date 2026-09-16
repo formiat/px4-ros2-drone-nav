@@ -164,4 +164,13 @@ bodyAxisFromWorldAcceleration(const Vec3& acceleration_mps2,
 [[nodiscard]] SweptFootprintConfig
 tiltEnvelopedFootprint(const SweptFootprintConfig& footprint, double tilt_rad) noexcept;
 
+// The body the execution validators answer to while the airframe leans into
+// the acceleration it commands: the rim's horizontal reach grows with the
+// tilt and the axial extents stay as configured. The extents are left alone
+// deliberately: a taller hard body turned every covered street into a trap
+// once mapped, and the dip belongs to the tube's enveloped hull, which prices
+// it as a speed. The reach is what a braking vehicle puts into a wall.
+[[nodiscard]] SweptFootprintConfig
+leanedReachFootprint(const SweptFootprintConfig& footprint, double tilt_rad) noexcept;
+
 } // namespace drone_city_nav
