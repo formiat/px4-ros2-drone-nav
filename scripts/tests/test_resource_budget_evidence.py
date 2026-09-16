@@ -55,6 +55,25 @@ def write_record(directory: Path, seconds: range, growth_bytes: int = 0,
         json.dumps({"cpu_model": "Test CPU", "gpu_name": "Test GPU"}), encoding="utf-8")
 
 
+TRANSPORT_LOG = (
+    "[1010.000] [production_mppi_node]: PRODUCTION_MPPI_TICK tick=1 observation_age_ms=400.0 "
+    "raw_delivery_ms=1.500 raw_receive_age_ms=50.000 lidar_delivery_ms=2.000 x=1\n"
+    "[1011.000] [production_mppi_node]: PRODUCTION_MPPI_TICK tick=2 observation_age_ms=420.0 "
+    "raw_delivery_ms=2.500 raw_receive_age_ms=70.000 lidar_delivery_ms=3.000 x=1\n"
+    "[1012.000] [production_mppi_node]: PRODUCTION_MPPI_TICK tick=3 observation_age_ms=-1.0 "
+    "raw_delivery_ms=nan raw_receive_age_ms=0.000 lidar_delivery_ms=nan x=1\n"
+    "[1013.000] [obstacle_memory_3d_node]: LIDAR3D_ALIGNMENT dropped=false queue_wait_ms=1.0 "
+    "delivery_ms=4.000 delivery_p50_ms=3.500 delivery_p95_ms=6.000 delivery_max_ms=9.000 "
+    "delivery_samples=1200 3D lidar acquisition pose ok\n"
+    "[1014.000] [mppi_offboard_node]: OFFBOARD_PLANNED_HORIZON_APPLIED producer=1 sequence=9 "
+    "delivery_ms=0.300 delivery_p50_ms=0.250 delivery_p95_ms=0.600 delivery_max_ms=2.000 "
+    "delivery_samples=5000\n"
+    "[1200.000] [production_mppi_node]: PRODUCTION_MPPI_SUMMARY ticks=9 "
+    "raw_delivery_samples=280 raw_delivery_p50_ms=1.800 raw_delivery_p95_ms=4.200 "
+    "raw_delivery_max_ms=12.000 lidar_delivery_samples=1400 lidar_delivery_p50_ms=2.100 "
+    "lidar_delivery_p95_ms=3.900 lidar_delivery_max_ms=8.000 y=2\n")
+
+
 def run_check(directory: Path, log: str) -> tuple[list[str], str]:
     errors: list[str] = []
     output = io.StringIO()
@@ -85,6 +104,33 @@ class ResourceBudgetEvidenceTest(unittest.TestCase):
         self.assertIn("OK: GPU utilisation is 35% at p50, 35% at p95; memory used 1500 MiB "
                       "at p95, of which production_mppi_node 600 MiB", output)
         self.assertIn("OK: real-time factor is 0.95 at p50, 0.95 at least", output)
+
+    def test_transport_hops_and_the_observation_age_split_are_reported(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            write_record(Path(directory), range(0, 120))
+            errors, output = run_check(Path(directory),
+                                       flight_log(1005.0, 1105.0) + TRANSPORT_LOG)
+        self.assertEqual(errors, [])
+        self.assertIn("OK: transport memory to controller (raw snapshots and deltas) delivers "
+                      "in 1.80 ms at p50, 4.20 at p95, 12.00 at most (280 messages)", output)
+        self.assertIn("OK: transport memory to controller (latest lidar scan) delivers in "
+                      "2.10 ms at p50, 3.90 at p95, 8.00 at most (1400 messages)", output)
+        self.assertIn("OK: transport bridge to memory (point cloud) delivers in 3.50 ms at "
+                      "p50, 6.00 at p95, 9.00 at most (1200 messages)", output)
+        self.assertIn("OK: transport controller to offboard (horizon) delivers in 0.25 ms at "
+                      "p50, 0.60 at p95, 2.00 at most (5000 messages)", output)
+        # The third tick has no observation and no delivery, so two ticks split.
+        self.assertIn("OK: observation age is 410 ms at p50 and 419 at p95: 348 ms producer "
+                      "period and build, 2.00 ms delivery, 60 ms waiting for the tick, at "
+                      "the median over 2 ticks", output)
+
+    def test_without_transport_lines_the_report_says_so(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            write_record(Path(directory), range(0, 120))
+            errors, output = run_check(Path(directory), flight_log(1005.0, 1105.0))
+        self.assertEqual(errors, [])
+        self.assertIn("OK: no transport hop reported its delivery", output)
+        self.assertIn("OK: the tick does not split the observation age", output)
 
     def test_a_record_with_gaps_fails_the_coverage_check(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

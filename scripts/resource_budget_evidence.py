@@ -19,6 +19,25 @@ import numpy as np
 
 from headless_runtime_evidence import MISSION_READINESS_PATTERN, MISSION_SUCCESS_PATTERN
 
+# The transport hops: what each consumer measured of its deliveries. The
+# controller's tick line splits the observation age it reports into the
+# producer's period and build, the delivery and the wait for the tick.
+TICK_TRANSPORT_PATTERN = re.compile(
+    r"\[(\d+\.\d+)\] \[production_mppi_node\]: PRODUCTION_MPPI_TICK .*?"
+    r"observation_age_ms=(-?[\d.]+) raw_delivery_ms=(-?[\d.]+|nan) "
+    r"raw_receive_age_ms=(-?[\d.]+) lidar_delivery_ms=(-?[\d.]+|nan)")
+SUMMARY_TRANSPORT_PATTERN = re.compile(
+    r"PRODUCTION_MPPI_SUMMARY .*?raw_delivery_samples=(\d+) raw_delivery_p50_ms=([\d.]+|nan) "
+    r"raw_delivery_p95_ms=([\d.]+|nan) raw_delivery_max_ms=([\d.]+|nan) "
+    r"lidar_delivery_samples=(\d+) lidar_delivery_p50_ms=([\d.]+|nan) "
+    r"lidar_delivery_p95_ms=([\d.]+|nan) lidar_delivery_max_ms=([\d.]+|nan)")
+HOP_REPORT_PATTERN = (
+    r"delivery_ms=(?:[\d.]+|nan) delivery_p50_ms=([\d.]+|nan) delivery_p95_ms=([\d.]+|nan) "
+    r"delivery_max_ms=([\d.]+|nan) delivery_samples=(\d+)")
+CLOUD_TRANSPORT_PATTERN = re.compile(r"LIDAR3D_ALIGNMENT dropped=false .*?" + HOP_REPORT_PATTERN)
+HORIZON_TRANSPORT_PATTERN = re.compile(
+    r"OFFBOARD_PLANNED_HORIZON_APPLIED .*?" + HOP_REPORT_PATTERN)
+
 # The processes that fly on the aircraft: the navigation nodes and the DDS
 # agent. PX4 lives on the flight controller, the simulator and the
 # visualisation do not exist there, and the captures are the harness.
@@ -161,6 +180,98 @@ def mib(value: float) -> float:
     return value / (1024.0 * 1024.0)
 
 
+@dataclass(frozen=True)
+class HopLatency:
+    name: str
+    samples: int
+    p50_ms: float
+    p95_ms: float
+    max_ms: float
+
+
+def transport_hops(ros_log: str) -> list[HopLatency]:
+    """Every hop's delivery latency as its consumer summarised it: the
+    controller's two hops from its summary, the obstacle memory's and the
+    offboard node's from the last of their periodic reports."""
+    hops: list[HopLatency] = []
+    summary = None
+    for summary in SUMMARY_TRANSPORT_PATTERN.finditer(ros_log):
+        pass
+    if summary is not None:
+        hops.append(HopLatency("memory to controller (raw snapshots and deltas)",
+                               int(summary.group(1)), float(summary.group(2)),
+                               float(summary.group(3)), float(summary.group(4))))
+        hops.append(HopLatency("memory to controller (latest lidar scan)",
+                               int(summary.group(5)), float(summary.group(6)),
+                               float(summary.group(7)), float(summary.group(8))))
+    for name, pattern in (("bridge to memory (point cloud)", CLOUD_TRANSPORT_PATTERN),
+                          ("controller to offboard (horizon)", HORIZON_TRANSPORT_PATTERN)):
+        last = None
+        for last in pattern.finditer(ros_log):
+            pass
+        if last is not None:
+            hops.append(HopLatency(name, int(last.group(4)), float(last.group(1)),
+                                   float(last.group(2)), float(last.group(3))))
+    return hops
+
+
+@dataclass(frozen=True)
+class ObservationAgeSplit:
+    ticks: int
+    age_p50_ms: float
+    age_p95_ms: float
+    producer_p50_ms: float
+    delivery_p50_ms: float
+    wait_p50_ms: float
+
+
+def observation_age_split(ros_log: str, span: tuple[float, float]) -> ObservationAgeSplit | None:
+    """The observation age the tick reports, split at the median over the
+    flight: what the producer's period and build took before publication,
+    what the delivery took, and how long the update waited for the tick."""
+    ages, producer, delivery, wait = [], [], [], []
+    for match in TICK_TRANSPORT_PATTERN.finditer(ros_log):
+        stamp = float(match.group(1))
+        if stamp < span[0] or stamp > span[1]:
+            continue
+        age = float(match.group(2))
+        delivered = float(match.group(3))
+        waited = float(match.group(4))
+        if age < 0.0 or not math.isfinite(delivered) or waited < 0.0:
+            continue
+        ages.append(age)
+        delivery.append(delivered)
+        wait.append(waited)
+        producer.append(max(0.0, age - delivered - waited))
+    if not ages:
+        return None
+    return ObservationAgeSplit(
+        ticks=len(ages),
+        age_p50_ms=float(np.median(ages)),
+        age_p95_ms=float(np.percentile(ages, 95)),
+        producer_p50_ms=float(np.median(producer)),
+        delivery_p50_ms=float(np.median(delivery)),
+        wait_p50_ms=float(np.median(wait)),
+    )
+
+
+def report_transport(ros_log: str, span: tuple[float, float]) -> None:
+    hops = transport_hops(ros_log)
+    if not hops:
+        print("OK: no transport hop reported its delivery")
+    for hop in hops:
+        print(f"OK: transport {hop.name} delivers in {hop.p50_ms:.2f} ms at p50, "
+              f"{hop.p95_ms:.2f} at p95, {hop.max_ms:.2f} at most ({hop.samples} messages)")
+    split = observation_age_split(ros_log, span)
+    if split is None:
+        print("OK: the tick does not split the observation age")
+        return
+    print(f"OK: observation age is {split.age_p50_ms:.0f} ms at p50 and "
+          f"{split.age_p95_ms:.0f} at p95: {split.producer_p50_ms:.0f} ms producer period "
+          f"and build, {split.delivery_p50_ms:.2f} ms delivery, {split.wait_p50_ms:.0f} ms "
+          f"waiting for the tick, at the median over {split.ticks} ticks")
+
+
 def validate_resource_budget(run_directory: Path, ros_log: str,
                              errors: list[str]) -> None:
     """The coverage check and the usage report, on the flight's own record."""
@@ -227,3 +338,4 @@ def validate_resource_budget(run_directory: Path, ros_log: str,
         print(f"OK: real-time factor is {np.median(rtf):.2f} at p50, {rtf.min():.2f} at least")
     else:
         print("OK: real-time factor was not published")
+    report_transport(ros_log, span)
