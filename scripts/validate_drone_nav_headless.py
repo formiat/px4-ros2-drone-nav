@@ -924,7 +924,8 @@ def main() -> int:
         validate_persistent_3d_acceptance_metrics(ros_log, errors)
         validate_mean_flight_speed(ros_log, errors)
         validate_controller_dynamics(args.runtime_manifest.parent, ros_log, errors)
-    validate_resource_budget(args.runtime_manifest.parent, ros_log, errors)
+    if args.runtime_manifest is not None:
+        validate_resource_budget(args.runtime_manifest.parent, ros_log, errors)
     require(
         "production offboard is ready",
         ros_log,
