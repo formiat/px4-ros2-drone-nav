@@ -69,10 +69,14 @@ class EnvironmentManifestTest(unittest.TestCase):
         ]
         self.assertEqual(3, len(release_environments))
         for environment in release_environments:
+            # The static maps once published for these environments were
+            # checked against their worlds and withdrawn; each ships its
+            # source only and flies no-static.
             self.assertEqual(
-                {"source_bundle", "static_map_bundle"},
+                {"source_bundle"},
                 {artifact["kind"] for artifact in environment["artifacts"]},
             )
+            self.assertEqual([], environment["static_maps"])
             for artifact in environment["artifacts"]:
                 self.assertNotEqual("0" * 64, artifact["sha256"])
                 self.assertGreater(artifact["size_bytes"], 1)
@@ -154,7 +158,7 @@ class EnvironmentManifestTest(unittest.TestCase):
         duplicate["filename"] = "alternate-source.tar.gz"
         environment["artifacts"].append(duplicate)
 
-        with self.assertRaisesRegex(ManifestError, "one source and one static-map"):
+        with self.assertRaisesRegex(ManifestError, "one source bundle and at most one"):
             validate_manifest(manifest)
 
     def test_duplicate_filename_within_release_is_rejected(self) -> None:

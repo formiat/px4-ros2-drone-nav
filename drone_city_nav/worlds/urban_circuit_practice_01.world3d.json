@@ -18,7 +18,6 @@
     "maximum_target_z_m": 20.0
   },
   "environment": {
-    "manifest_id": "urban_circuit_practice_01",
-    "static_map_id": "r050"
+    "manifest_id": "urban_circuit_practice_01"
   }
 }

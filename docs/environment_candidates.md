@@ -118,16 +118,13 @@ bottleneck portal. Urban and Finals also discarded respectively one and five
 dangling portals after raw-unsafe segment removal. These are typed extraction
 outcomes; the strict artifact validator was not weakened.
 
-The exact compiler profile and expected counts are pinned with each static map
-in `environment_manifest.yaml`. Compile an installed release map and reject any
-input checksum or topology-count drift with:
-
-```bash
-./scripts/dev_shell.sh python3 scripts/manage_environment_assets.py fetch \
-  --environment urban_circuit_practice_01 --artifact static_r050
-./scripts/dev_shell.sh python3 scripts/compile_environment_topology.py \
-  --environment urban_circuit_practice_01 --static-map r050
-```
+The static maps those runs compiled from, `static_r050` for Urban and Finals
+and `static_r100` for Cave, were checked against their worlds and found wrong,
+and have been withdrawn from `environment_manifest.yaml`: the three release
+environments ship their source bundle only and fly no-static with the 3D
+lidar. Roadmap item 11 is where a valid static map for a new environment is
+built and validated; until then `compile_environment_topology.py` reports
+that an environment has no static map, and the counts above are history.
 
 The compact fixture commits its `world.topology3d` artifact. External topology
 files are reproducible derived outputs under
@@ -215,7 +212,7 @@ release after `published` becomes `true`:
 
 ```bash
 ./scripts/dev_shell.sh python3 scripts/manage_environment_assets.py fetch \
-  --environment finals_prize_round_world_07 --artifact static_r050
+  --environment finals_prize_round_world_07 --artifact source
 ```
 
 Rebuild one release environment after intentionally changing source inputs or

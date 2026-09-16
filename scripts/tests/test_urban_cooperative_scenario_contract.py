@@ -147,7 +147,7 @@ class UrbanCooperativeScenarioContractTest(unittest.TestCase):
 
         self.assertEqual(
             world["environment"],
-            {"manifest_id": "urban_circuit_practice_01", "static_map_id": "r050"},
+            {"manifest_id": "urban_circuit_practice_01"},
         )
         self.assertIn("environment_manifest.yaml", preparer)
         self.assertIn("world_collision.sdf", preparer)

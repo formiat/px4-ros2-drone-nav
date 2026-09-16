@@ -79,6 +79,8 @@ def parse_args() -> argparse.Namespace:
 
 def select_static_map(environment: dict[str, Any], map_id: str | None) -> dict[str, Any]:
     maps = environment["static_maps"]
+    if not maps:
+        raise TopologyCompilationError(f"{environment['id']} has no static map")
     if map_id is None:
         if len(maps) != 1:
             raise TopologyCompilationError("--static-map is required for this environment")

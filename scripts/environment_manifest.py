@@ -270,9 +270,10 @@ def _validate_source(environment_id: str, raw_source: Any) -> None:
 
 
 def _validate_static_maps(environment_id: str, raw_maps: Any) -> None:
+    # Empty is a statement: the environment ships without a static map and
+    # flies no-static only. The maps once published for the release
+    # environments were checked against their worlds and withdrawn.
     maps = _sequence(raw_maps, f"{environment_id}.static_maps")
-    if not maps:
-        raise ManifestError(f"{environment_id}.static_maps must not be empty")
     map_ids: set[str] = set()
     for index, raw_map in enumerate(maps):
         static_map = _mapping(raw_map, f"{environment_id}.static_maps[{index}]")
@@ -419,9 +420,9 @@ def _validate_release_environment(
                     file_data.get("destination"),
                     f"{environment_id}.{artifact_id}.build.files[{file_index}].destination",
                 )
-    if kinds != _ARTIFACT_KINDS or len(artifacts) != len(_ARTIFACT_KINDS):
+    if "source_bundle" not in kinds or len(artifacts) != len(kinds):
         raise ManifestError(
-            f"{environment_id} must have one source and one static-map bundle"
+            f"{environment_id} must have one source bundle and at most one static-map bundle"
         )
     source = environment["source"]
     source_artifact_id = _identifier(

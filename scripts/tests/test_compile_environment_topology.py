@@ -13,6 +13,7 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 from compile_environment_topology import (  # noqa: E402
+    TopologyCompilationError,
     StaticMapInputs,
     TopologyCounts,
     compiled_counts,
@@ -46,15 +47,19 @@ class CompileEnvironmentTopologyTest(unittest.TestCase):
             for static_map in environment["static_maps"]
         }
 
+        # The release environments carry no static map any more (the ones
+        # published were checked and withdrawn); the fixture is the only one.
         self.assertEqual(
-            {
-                "finals_prize_round_world_07": TopologyCounts(5, 676, 1321),
-                "cave_circuit_practice_01": TopologyCounts(3, 20, 33),
-                "urban_circuit_practice_01": TopologyCounts(3, 248, 458),
-                "compact_3d_passage_fixture": TopologyCounts(2, 2, 1),
-            },
+            {"compact_3d_passage_fixture": TopologyCounts(2, 2, 1)},
             counts,
         )
+
+    def test_an_environment_without_a_static_map_says_so(self) -> None:
+        manifest = load_manifest(MANIFEST_PATH)
+        environment = find_environment(manifest, "urban_circuit_practice_01")
+
+        with self.assertRaisesRegex(TopologyCompilationError, "has no static map"):
+            select_static_map(environment, None)
 
     def test_repository_fixture_inputs_are_resolved_without_installation(self) -> None:
         manifest = load_manifest(MANIFEST_PATH)

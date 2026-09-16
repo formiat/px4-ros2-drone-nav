@@ -6,6 +6,12 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
+- The static maps published for Urban Circuit Practice 01, Finals Prize Round
+  World 07 and Cave Circuit Practice 01 (`static_r050`, `static_r100`) were
+  checked against their worlds, found wrong, and withdrawn from the
+  environment manifest; the three environments ship their source bundle only
+  and fly no-static with the 3D lidar. A release environment may now carry no
+  static map, and the topology compiler says so instead of asking for one.
 - Every transport hop reports what its delivery took, the mission check
   reads the four hops and splits the observation age, and the obstacle
   memory transports at the scan rate, 10 Hz instead of 2. DDS delivers a
