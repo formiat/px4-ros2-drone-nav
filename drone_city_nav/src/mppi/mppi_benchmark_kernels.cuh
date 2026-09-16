@@ -93,7 +93,8 @@ __device__ State integrateDevice(State state, Control control,
   state.vz = clampValue(state.vz, -vertical_speed_limit_mps, vertical_speed_limit_mps);
   clampTranslationalDevice(
       state.vx, state.vy, state.vz,
-      fmaxf(config.maximum_translational_speed_mps, inherited_translational_speed_mps));
+      fmaxf(translationalSpeedLimitAlong3D(config, state.vx, state.vy, state.vz),
+            inherited_translational_speed_mps));
   const float yaw_rate_limit_radps =
       fmaxf(config.maximum_yaw_rate_radps, inherited_yaw_rate_radps);
   state.yaw_rate = clampValue(state.yaw_rate + control.yaw_accel * config.dt_s,
