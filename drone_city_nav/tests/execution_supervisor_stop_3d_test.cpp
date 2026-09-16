@@ -348,13 +348,10 @@ TEST(ExecutionSupervisorStop3DTest,
 }
 
 // Where the vehicle comes to rest it stays, and a vehicle at rest drifts
-// within the position error its controller holds it to, so a stop that would
-// rest the hull inside the margin the envelope carries over it is refused
-// while any clearance remains to give up. It is admitted on the last rung of
-// the ladder, resting on the bare hull, because the alternative is no stop at
-// all: in r320 such a stop was refused at every rung, the vehicle kept the
-// horizon the evidence had just invalidated and struck a wall at 0.71 m/s.
-TEST(ExecutionSupervisorStop3DTest, AStopRestsInsideTheEnvelopeMarginOnlyAsALastRung) {
+// within the position error its controller holds it to. A stop that would rest
+// the hull inside the margin the envelope carries over it is refused, so a
+// vehicle flying in the clear never chooses such a rest point.
+TEST(ExecutionSupervisorStop3DTest, AStopDoesNotRestInsideTheEnvelopeMargin) {
   SnapshotFixture3D fixture;
   ExecutionSupervisor3D supervisor;
   const std::shared_ptr<const ExecutionPlan3D> active =
@@ -395,16 +392,13 @@ TEST(ExecutionSupervisorStop3DTest, AStopRestsInsideTheEnvelopeMarginOnlyAsALast
 
   const ExecutionStopPreparation3D prepared = supervisor.prepareStop(request);
 
-  EXPECT_TRUE(prepared.prepared())
+  EXPECT_FALSE(prepared.prepared());
+  EXPECT_EQ(prepared.certification.status,
+            StopCertificationStatus3D::kRestClearanceRejected)
       << stopCertificationStatus3DName(prepared.certification.status) << " path="
       << finiteExecutionPathStatus3DName(prepared.certification.path_validation_status)
       << " reduction=" << prepared.certification.clearance_reduction << " rest=("
       << rest.x << "," << rest.y << "," << rest.z << ")";
-  // Margin was given up to get it, and only as much as the evidence forces:
-  // the fixture's rest point clears the voxel beside it once half the
-  // envelope margin is released, and the hull itself is never given up.
-  EXPECT_GT(prepared.certification.clearance_reduction, 0.0);
-  EXPECT_LE(prepared.certification.clearance_reduction, 1.0);
 }
 
 // The stop that owns the vehicle after it has been committed on the wire.

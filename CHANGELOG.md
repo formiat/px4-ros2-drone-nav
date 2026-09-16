@@ -6,15 +6,20 @@ release names the asset tags it was validated with.
 
 ## Unreleased
 
-- A stop gives up the margin at its rest pose exactly as far as it gives it
-  up along the path. The clearance-reduction ladder shrank the swept body
-  rung by rung while the rest pose kept asking for the full envelope margin,
-  so a stop refused on that margin was refused at every rung. In r320 such a
-  stop had a clean path (`certification_path=valid`), was refused on the rest
-  margin at `clearance_reduction=1.00`, and the vehicle kept the horizon the
-  evidence had just invalidated and struck a wall at 0.71 m/s with no braking
-  owner. The hull itself is never given up, and a vehicle already inside the
-  band stays exempt.
+- Two laws were flown and withdrawn, and what they measured is recorded here.
+  A stop whose rest pose released the envelope margin along the clearance
+  ladder (so that a stop refused only on that margin, as in r320, is
+  published instead of leaving the vehicle without a braking owner) touched
+  a wall twice in four flights: r326 at 2.56 m/s and r334 at 0.06 m/s while
+  holding. Measured against the true Gazebo pose over 56 hold episodes of
+  r303 to r334, a holding vehicle drifts 0.102 m at the median, 0.370 m at
+  p95 and 0.394 m at most, which is more than the 0.27 m the envelope
+  carries over the hull: the rest margin is not a reserve to release but a
+  measured amplitude, and it is if anything too small. The directional
+  rollout speed bound was restored on top of that stop and is withdrawn with
+  it, since r320 showed it needs the braking owner the refused stop did not
+  provide. The tree returns to the state that flew r315 to r319 without a
+  crash.
 - A leaned execution body (the rim grown to the tilted rim's reach) was flown
   and withdrawn: with it the vehicle never left the launch platform in r325
   (the whole flight in `no_executable_route_hold`, planner p95 4.1 s). The
@@ -26,16 +31,17 @@ release names the asset tags it was validated with.
   and 0.28 s earlier the footprint readiness already reported
   `strict_status=raw_collision` with `status=clear`, the contact exemption
   covering a body that was still moving into the mapped wall at 1.5 m/s.
-- The rollouts obey the braking contract along their own direction: the
-  dynamics carry the contract's admitted speed at 33 vertical shares from
-  level flight to a pure climb or descent, read by one lookup in the host and
-  CUDA dynamics, the overspeed cost, the reference clamp and the route ETA
-  model; the scalar bound is the table's largest entry. One bound for every
-  direction was the contract's worst case, 4.62 m/s under the 1.4 m/s^2
-  vertical law, and it held the level legs of r312 to r319 at a p90 of 4.3 to
-  4.6 m/s against the 5.65 the contract admits there, about a tenth of the
-  mean speed. Flown first as `4e1f3fce` and withdrawn after r320 struck a wall
-  with no braking owner; restored with that hole closed above.
+- A directional rollout speed bound (the contract's admitted speed along the
+  rollout's own direction instead of its worst direction) was flown and
+  withdrawn: r321 to r324 regained 2.73 to 2.94 m/s, but r320 struck the
+  starting-area base at 0.71 m/s. The obstacle memory held the base 2.9 s
+  before the impact at 11 m, the resident horizon was retained while a
+  successor was searched, the reference fell from 5.6 to 4.4 m/s only over
+  the next two seconds and the braking owner took over 0.8 s before the
+  impact from 3.7 m/s. That block-to-brake latency sat inside the margin at
+  the worst-direction bound (4.62 m/s) and outside it at 5.65; the bound
+  stays at the worst direction until the retention response is measured
+  against the contract's 0.7 s latency budget.
 - The production tick takes 22.7 ms at the median and 30.8 ms at p95
   (r314) instead of 52 to 55 and 70 to 98 ms (r303 to r313): a path
   validation builds its collision oracle once instead of once per segment,

@@ -325,20 +325,15 @@ certifyStopExecution3D(const ExecutionPlan3D& current,
   }
 
   // Where the vehicle comes to rest it stays, and a vehicle at rest drifts
-  // within the position error its controller holds it to, so the rest pose
-  // keeps the margin the envelope carries over the hull. It keeps as much of
-  // it as the sweep does and no more: the caller descends a ladder of
-  // reductions precisely because the evidence leaves the vehicle nothing
-  // better, and requiring the whole margin here made every rung of that
-  // ladder refuse the same stop. In r320 the vehicle asked for a stop whose
-  // own path validated clean, was refused at every rung on this margin
-  // alone, kept the horizon the evidence had just invalidated and struck a
-  // wall at 0.71 m/s. A vehicle already inside the band stays exempt, and the
-  // hull itself is never given up: one recorded flight came to rest a tenth
-  // of a metre from a wall on a hull-certified stop, drifted a fifth of a
-  // metre while holding, and met it, which is why the ladder starts at the
-  // full margin and gives it up only as far as the evidence forces.
-  const double rest_margin_required_m = envelopeMarginM(validation_footprint);
+  // within the position error its controller holds it to. The rest pose
+  // therefore keeps the whole margin the envelope carries over the hull, even
+  // when the braking path itself had to give some of it up. A vehicle already
+  // inside that band is exempt: it is where it is, and refusing it a stop
+  // would leave it on the horizon the evidence has just invalidated. One
+  // recorded flight came to rest a tenth of a metre from a wall on a
+  // hull-certified stop, drifted a fifth of a metre while holding, and met it.
+  const double rest_margin_required_m =
+      envelopeMarginM(certification.validation_policy->sweptFootprint());
   if (rest_margin_required_m > 0.0) {
     const Point3 rest_position{horizon.states.back().x, horizon.states.back().y,
                                horizon.states.back().z};

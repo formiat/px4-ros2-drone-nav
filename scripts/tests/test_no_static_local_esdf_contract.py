@@ -146,12 +146,10 @@ class NoStaticLocalEsdfContractTest(unittest.TestCase):
         )
         self.assertIn("sensorBrakingMaximumSpeedMps", source)
         self.assertIn("maximum_translational_speed_mps", source)
-        # Both dynamics clamp every state to the contract's bound along its own
-        # direction of motion, read from one shared table lookup.
         self.assertIn("clampTranslational(", cpu_dynamics)
-        self.assertIn("translationalSpeedLimitAlong3D(", cpu_dynamics)
+        self.assertIn("maximum_translational_speed_mps", cpu_dynamics)
         self.assertIn("clampTranslational(", cuda_dynamics)
-        self.assertIn("translationalSpeedLimitAlong3D(", cuda_dynamics)
+        self.assertIn("maximum_translational_speed_mps", cuda_dynamics)
 
     def test_hard_planning_footprint_is_the_physical_hull(self) -> None:
         config_source = (ROS_RUNTIME / "production_mppi_config_ros.cpp").read_text()

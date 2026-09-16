@@ -435,7 +435,6 @@ set(DRONE_CITY_NAV_MODEL_HEADERS
     include/drone_city_nav/latest_processing_queue.hpp
     include/drone_city_nav/latest_value_mailbox.hpp
     include/drone_city_nav/motion_state_3d.hpp
-    include/drone_city_nav/translational_speed_limit_3d.hpp
     include/drone_city_nav/navigation_angular_derivative.hpp
     include/drone_city_nav/navigation_pose.hpp
     include/drone_city_nav/navigation_recovery_episode_tracker.hpp

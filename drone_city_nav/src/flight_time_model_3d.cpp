@@ -42,12 +42,8 @@ constexpr double kEpsilon{1.0e-9};
   const double vertical_limit = vertical_share > kEpsilon
                                     ? model.maximum_vertical_speed_mps / vertical_share
                                     : std::numeric_limits<double>::infinity();
-  const double directional_limit =
-      static_cast<double>(translationalSpeedLimitForVerticalShare3D(
-          model.translational_speed_limit_by_vertical_share,
-          static_cast<float>(vertical_share)));
-  return std::min({horizontal_limit, vertical_limit,
-                   model.maximum_translational_speed_mps, directional_limit});
+  return std::min(
+      {horizontal_limit, vertical_limit, model.maximum_translational_speed_mps});
 }
 
 [[nodiscard]] double scalarAccelerationLimit(const Vec3& tangent,
@@ -161,10 +157,6 @@ bool FlightTimeModel3D::valid() const noexcept {
   return finitePositive(maximum_horizontal_speed_mps) &&
          finitePositive(maximum_vertical_speed_mps) &&
          finitePositive(maximum_translational_speed_mps) &&
-         std::ranges::all_of(translational_speed_limit_by_vertical_share.limit_mps,
-                             [](const float limit) {
-                               return finitePositive(static_cast<double>(limit));
-                             }) &&
          finitePositive(maximum_horizontal_acceleration_mps2) &&
          finitePositive(maximum_vertical_acceleration_mps2) &&
          finitePositive(maximum_control_jerk_mps3) &&

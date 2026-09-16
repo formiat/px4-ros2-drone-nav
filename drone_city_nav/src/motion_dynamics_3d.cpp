@@ -68,10 +68,9 @@ MotionState3D integrateMotionState3D(MotionState3D state, MotionControl3D contro
   state.vz = clampMagnitude(state.vz,
                             std::max(config.maximum_vertical_speed_mps,
                                      inherited_vertical_speed_mps - vertical_shed_mps));
-  clampTranslational(
-      state.vx, state.vy, state.vz,
-      std::max(translationalSpeedLimitAlong3D(config, state.vx, state.vy, state.vz),
-               inherited_translational_speed_mps - horizontal_shed_mps));
+  clampTranslational(state.vx, state.vy, state.vz,
+                     std::max(config.maximum_translational_speed_mps,
+                              inherited_translational_speed_mps - horizontal_shed_mps));
 
   state.yaw_rate =
       clampMagnitude(state.yaw_rate + control.yaw_accel * config.dt_s,
