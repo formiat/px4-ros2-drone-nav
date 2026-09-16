@@ -100,9 +100,9 @@ or weakening safety margins.
 
 This stage also records architectural debt, defines ownership and lifetime
 boundaries for shared resources, and converts validated optimizations into
-regression benchmarks. It is complete when the supported mission suite has
+regression benchmarks. It is complete when the supported urban missions have
 measured performance budgets, reproducible baselines, and documented scaling
-limits for both static-map and 3D-sensing configurations.
+limits for the 3D-sensing configuration.
 
 ### Measured Debt (September 2026)
 
@@ -160,10 +160,9 @@ Open:
 
 Not started, and required by this item's own completion criteria: measured
 CPU, GPU, memory, ROS/DDS transport and real-time-factor budgets; reproducible
-baselines for the whole supported mission suite rather than the urban
-point-to-point mission alone; scaling with vehicle count; and the same for the
-static-map configuration. The tick budget above is the first of those budgets
-and the only one that exists.
+baselines for the supported urban missions rather than the point-to-point
+mission alone; and scaling with vehicle count. The tick budget above is the
+first of those budgets and the only one that exists.
 
 ## 11. Valid 3D Static Maps For New Environments
 
