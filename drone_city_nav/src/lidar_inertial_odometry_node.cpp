@@ -18,6 +18,7 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
 #include <Eigen/Geometry>
+#include <algorithm>
 #include <chrono>
 #include <cinttypes>
 #include <cmath>
@@ -159,6 +160,10 @@ private:
       return;
     }
     const std::int64_t stamp_ns = source.mapped_ros_stamp_ns;
+    if (last_imu_stamp_ns_ > 0 && stamp_ns > last_imu_stamp_ns_) {
+      imu_gap_max_ns_ = std::max(imu_gap_max_ns_, stamp_ns - last_imu_stamp_ns_);
+    }
+    last_imu_stamp_ns_ = std::max(last_imu_stamp_ns_, stamp_ns);
     if (!odometry_->initialized()) {
       odometry_->initialize(stamp_ns, Eigen::Vector3d::Zero(),
                             initial_heading_ned_rad_);
@@ -229,18 +234,22 @@ private:
         "LIDAR_INERTIAL_ODOMETRY healthy=%s published=%s matched=%.2f residual_m=%.3f "
         "information=%.3f degenerate_axes=%zu correction_along_m=%.3f speed_mps=%.2f "
         "iterations=%zu scan_points=%zu submap_points=%zu "
-        "keyframes=%zu scan_ms=%.1f imu_lag_ms=%.1f imu_samples=%" PRIu64
-        " scans=%" PRIu64 " healthy_scans=%" PRIu64 " published_scans=%" PRIu64
-        " unmapped_imu=%" PRIu64 " position=(%.2f,%.2f,%.2f) yaw=%.3f",
+        "keyframes=%zu scan_ms=%.1f imu_lag_ms=%.1f imu_gap_max_ms=%.1f "
+        "imu_samples=%" PRIu64 " scans=%" PRIu64 " healthy_scans=%" PRIu64
+        " published_scans=%" PRIu64 " unmapped_imu=%" PRIu64
+        " position=(%.2f,%.2f,%.2f) yaw=%.3f",
         estimate.healthy ? "true" : "false", published ? "true" : "false",
         estimate.matched_fraction, estimate.residual_rms_m,
         estimate.information_per_point, estimate.degenerate_axes,
         estimate.correction_along_track_m, estimate.velocity_ned_mps.norm(),
         estimate.iterations, estimate.scan_points, estimate.submap_points,
         estimate.keyframes, scan_ms, 1.0e-6 * static_cast<double>(estimate.imu_lag_ns),
-        imu_samples_, scans_, healthy_scans_, published_scans_, unmapped_imu_samples_,
-        map_xy.x, map_xy.y, -estimate.position_ned_m.z() + transform_.map_origin.z,
-        mapYaw(estimate));
+        1.0e-6 * static_cast<double>(imu_gap_max_ns_), imu_samples_, scans_,
+        healthy_scans_, published_scans_, unmapped_imu_samples_, map_xy.x, map_xy.y,
+        -estimate.position_ned_m.z() + transform_.map_origin.z, mapYaw(estimate));
+    if (scans_ % 10U == 0U) {
+      imu_gap_max_ns_ = 0;
+    }
   }
 
   [[nodiscard]] double mapYaw(const LidarInertialEstimate& estimate) const noexcept {
@@ -283,6 +292,10 @@ private:
   bool publish_to_autopilot_{false};
   Px4RosTimeMapper time_mapper_;
   std::uint64_t imu_samples_{0U};
+  // The longest interval between consecutive IMU samples over the last ten
+  // scans: the estimator integrates each sample over the interval before it.
+  std::int64_t last_imu_stamp_ns_{0};
+  std::int64_t imu_gap_max_ns_{0};
   std::uint64_t unmapped_imu_samples_{0U};
   std::uint64_t scans_{0U};
   std::uint64_t healthy_scans_{0U};
