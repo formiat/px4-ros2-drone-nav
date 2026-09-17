@@ -266,7 +266,15 @@ def generate_launch_description():
                     "initial_y_m": start_y_m,
                 }
             )
-            lidar_inertial_overrides.update(px4_frame_overrides)
+            # The declared initial pose the estimator starts from: the
+            # scenario's start and its heading. The obstacle memory's own
+            # initial heading is a startup fallback the autopilot's heading
+            # replaces; the estimator has no autopilot heading to fall back
+            # on, so r362 started 48 degrees off and its whole trajectory
+            # turned with it.
+            lidar_inertial_overrides.update(
+                {**px4_frame_overrides, "initial_heading_rad": scenario["yaw_rad"]}
+            )
             gazebo_world_name = scenario["gazebo_world_name"]
             gazebo_model_name = scenario["gazebo_model_name"]
             lidar_gz_topic = (

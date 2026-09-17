@@ -819,8 +819,9 @@ lidar_inertial_odometry_node:
     # The same mounting the obstacle memory projects the scan with.
     lidar_extrinsic_translation_body_frd_m: [0.12, 0.0, -0.315]
     lidar_extrinsic_quaternion_lidar_flu_to_body_frd: [0.0, 1.0, 0.0, 0.0]
-    # The declared initial pose: the autopilot's local origin (set by the
-    # scenario at launch), facing this map heading, like the obstacle memory.
+    # The declared initial pose: the autopilot's local origin and the start
+    # heading, both set by the scenario at launch; this value is the
+    # fallback for a launch without a scenario.
     initial_heading_rad: 1.5707963267948966
     # The scan is thinned to one point per 0.4 m cell before registration
     # and the submap keeps its points in cells of the same size: a 63 700
