@@ -14,13 +14,16 @@ enters the estimator or the control path.
 
 `LOCALIZATION_PROFILE` selects the profile in `scripts/run_drone_nav_sim.sh`
 and reaches the launch file as `localization_profile`; the runtime manifest
-records it.
+records it. Since roadmap item 13 closed, `lidar_inertial` is the default of
+every single-vehicle flight; `gnss` remains for the multi-vehicle missions
+(their launches run no estimator, so they refuse the other profiles) and for
+comparison.
 
 | Profile | EKF2 fuses | Heading | Estimator node |
 |---|---|---|---|
-| `gnss` (default) | IMU, barometer, simulated GNSS position and velocity (the default height reference), the simulation heading source's attitude through external vision (`EKF2_EV_CTRL 8`) | the simulator's true attitude with a wandering bias and noise (`simulation_heading_source_node`, `ENABLE_SIMULATION_HEADING_SOURCE`) | not run |
+| `gnss` | IMU, barometer, simulated GNSS position and velocity (the default height reference), the simulation heading source's attitude through external vision (`EKF2_EV_CTRL 8`) | the simulator's true attitude with a wandering bias and noise (`simulation_heading_source_node`, `ENABLE_SIMULATION_HEADING_SOURCE`) | not run |
 | `gnss_shadow` | as `gnss` | as `gnss` | run, publishes its estimate to the diagnostic topic only; the mission check compares it with the true pose |
-| `lidar_inertial` | IMU and the estimator's odometry: position, height (`EKF2_HGT_REF 3`) and yaw (`EKF2_EV_CTRL 11`, no velocity); `EKF2_GPS_CTRL 0`, `EKF2_MAG_TYPE 5` | the estimator's | run, publishes `VehicleOdometry` to `/fmu/in/vehicle_visual_odometry`; the heading source is forced off |
+| `lidar_inertial` (default) | IMU and the estimator's odometry: position, height (`EKF2_HGT_REF 3`) and yaw (`EKF2_EV_CTRL 11`, no velocity); `EKF2_GPS_CTRL 0`, `EKF2_MAG_TYPE 5` | the estimator's | run, publishes `VehicleOdometry` to `/fmu/in/vehicle_visual_odometry`; the heading source is forced off |
 
 The magnetometer is not fused in any profile: the simulated one sits five to
 six degrees off. In `lidar_inertial` nothing the autopilot fuses comes from

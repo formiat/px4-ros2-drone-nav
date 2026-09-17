@@ -222,8 +222,20 @@ enable_simulation_heading_source="$(normalize_bool "${ENABLE_SIMULATION_HEADING_
 # Where the vehicle's position comes from. lidar_inertial flies on the
 # lidar-inertial estimator alone: the autopilot fuses it as external
 # odometry, GNSS and magnetometer fusion are off, and the simulation heading
-# source, which is the simulator's truth, does not run.
-localization_profile="${LOCALIZATION_PROFILE:-gnss}"
+# source, which is the simulator's truth, does not run. It is the default
+# since roadmap item 13 closed (r430 to r434): every single-vehicle flight
+# flies without GNSS unless a profile is asked for. The multi-vehicle
+# launches run no estimator, so those missions fly on gnss and refuse the
+# other profiles.
+if bool_is_true "${multi_vehicle_mission}"; then
+  localization_profile="${LOCALIZATION_PROFILE:-gnss}"
+  if [[ "${localization_profile}" != "gnss" ]]; then
+    echo "LOCALIZATION_PROFILE=${localization_profile} needs the lidar-inertial estimator, which the multi-vehicle launches do not run; multi-vehicle missions fly on gnss" >&2
+    exit 1
+  fi
+else
+  localization_profile="${LOCALIZATION_PROFILE:-lidar_inertial}"
+fi
 case "${localization_profile}" in
   gnss | gnss_shadow) ;;
   lidar_inertial) enable_simulation_heading_source=false ;;
@@ -232,6 +244,8 @@ case "${localization_profile}" in
     exit 1
     ;;
 esac
+# The runtime manifest records the profile the flight flew, defaulted or not.
+export LOCALIZATION_PROFILE="${localization_profile}"
 enable_gz_scene_diagnostics="$(
   normalize_bool "${ENABLE_GZ_SCENE_DIAGNOSTICS:-true}"
 )"

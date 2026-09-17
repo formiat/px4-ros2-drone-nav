@@ -522,7 +522,8 @@ def shown_px4_parameter(px4_log: str, name: str) -> float | None:
 def validate_localization_profile(manifest_path: Path, ros_log: str, px4_log: str,
                                   errors: list[str]) -> None:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    profile = manifest.get("effective_overrides", {}).get("LOCALIZATION_PROFILE", "gnss")
+    profile = manifest.get("effective_overrides", {}).get("LOCALIZATION_PROFILE",
+                                                          "lidar_inertial")
     if profile == "gnss":
         print("OK: localization profile is gnss (the autopilot's GNSS and the simulated "
               "heading)")

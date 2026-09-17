@@ -222,7 +222,7 @@ def generate_launch_description():
         # estimator running beside it for comparison (gnss_shadow), or the
         # lidar-inertial estimator alone, fed to the autopilot as external
         # odometry with GNSS and magnetometer fusion off (lidar_inertial).
-        localization = localization_profile.perform(context).strip() or "gnss"
+        localization = localization_profile.perform(context).strip() or "lidar_inertial"
         if localization not in ("gnss", "gnss_shadow", "lidar_inertial"):
             raise ValueError(f"unsupported localization profile: {localization}")
         lidar_inertial_overrides = {
@@ -667,12 +667,12 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "localization_profile",
-                default_value="gnss",
+                default_value="lidar_inertial",
                 description=(
-                    "gnss: the autopilot's GNSS and the simulated heading; "
-                    "gnss_shadow: the same with the lidar-inertial estimator "
-                    "running beside it for comparison; lidar_inertial: the "
-                    "estimator alone as the autopilot's external odometry."
+                    "lidar_inertial (default): the lidar-inertial estimator "
+                    "alone as the autopilot's external odometry; gnss: the "
+                    "autopilot's GNSS and the simulated heading; gnss_shadow: "
+                    "gnss with the estimator running beside it for comparison."
                 ),
             ),
             DeclareLaunchArgument(

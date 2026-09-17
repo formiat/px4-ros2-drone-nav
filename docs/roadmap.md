@@ -125,12 +125,14 @@ sensor is swapped or lost.
 ### What The Simulator Provides
 
 The simulator provides a calibrated stereo pair of RGB cameras rigidly
-mounted on the airframe, their intrinsics and baseline, the IMU, and the same
-pose source the lidar profile uses. It provides no depth camera, no RGB-D
+mounted on the airframe, their intrinsics and baseline, the IMU, and a pose
+source that does not need the lidar: the `gnss` localization profile, kept
+for this stage, since the default `lidar_inertial` estimator of item 13
+registers lidar scans and has nothing to register without them. It provides no depth camera, no RGB-D
 sensor and no point cloud in the control path: depth from a simulated depth
 sensor is a lidar by another name and would prove nothing. Simulator depth and
 Gazebo truth occupancy are available to evaluation and referee components
-only, as item 13 treats ground-truth pose, and must never cross into the
+only, as item 13 treated ground-truth pose, and must never cross into the
 perception, planning or control data path.
 
 Environments used for acceptance must carry surface texture. A stereo matcher
@@ -190,11 +192,12 @@ final execution revalidation becomes latest raw evidence from whichever
 sensor produced it; the admission rule, the freshness bound and the swept
 validation do not change.
 
-Localization is not part of this stage. The vehicle keeps the pose source the
-lidar profile uses, and item 13's rule holds in reverse: visual-inertial
-odometry, if it is ever added, is a separate estimator that this stage must
-not depend on and must not be depended on by. The roadmap dependency between
-the two must not become a code dependency.
+Localization is not part of this stage. Stages 1 to 3 fly with the lidar
+still mounted and keep the default lidar-inertial profile; stage 4, with the
+lidar removed, flies on the `gnss` profile, and item 13's rule holds in
+reverse: visual-inertial odometry, if it is ever added, is a separate
+estimator that this stage must not depend on and must not be depended on by.
+The roadmap dependency between the two must not become a code dependency.
 
 ### Implementation Order
 
@@ -349,8 +352,8 @@ files, fourteen sources sit near the 1000-line cap and 226 lie flat in
 Closed on 2026-09-17 on the urban point-to-point mission with the 3D lidar
 and no static map; the profile, the estimator and its health are in
 [`localization.md`](localization.md), the checks in [`testing.md`](testing.md).
-`LOCALIZATION_PROFILE=lidar_inertial` flies on the IMU and a lidar-inertial
-estimator alone, through the autopilot's external-odometry interface, with
+`LOCALIZATION_PROFILE=lidar_inertial`, the default of every single-vehicle
+flight since, flies on the IMU and a lidar-inertial estimator alone, through the autopilot's external-odometry interface, with
 GNSS, magnetometer and simulation-heading fusion off (`EKF2_GPS_CTRL 0`,
 `EKF2_MAG_TYPE 5`, `EKF2_EV_CTRL 11`, `EKF2_HGT_REF 3`); the mission check
 proves the profile from the logs and reports the estimator's health, and a

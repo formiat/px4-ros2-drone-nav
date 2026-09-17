@@ -56,11 +56,12 @@ Use it as a planning, simulation, and offboard-control testbed. Do not use it
 on physical drones without a separate safety review, hardware-specific failsafe
 design, controlled test environment, and compliance with local regulations.
 No onboard computer has run it: the resource figures are from a workstation
-([docs/resource_budget.md](docs/resource_budget.md)). The stack flies with
-or without GNSS: `LOCALIZATION_PROFILE=lidar_inertial` replaces the simulated
-GNSS, the magnetometer and the simulation heading source with a lidar-inertial
-estimator ([docs/localization.md](docs/localization.md)); the GNSS profile
-remains the default.
+([docs/resource_budget.md](docs/resource_budget.md)). The single-vehicle flights
+fly without GNSS by default: a lidar-inertial estimator replaces the simulated
+GNSS, the magnetometer and the simulation heading source
+(`LOCALIZATION_PROFILE=lidar_inertial`, [docs/localization.md](docs/localization.md));
+`LOCALIZATION_PROFILE=gnss` restores the GNSS profile, which the multi-vehicle
+missions still fly.
 
 ## Approved Commands
 

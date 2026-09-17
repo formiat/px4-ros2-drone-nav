@@ -296,6 +296,15 @@ class RuntimeManifestTest(unittest.TestCase):
                         encoding="utf-8")
         return path
 
+    def test_a_manifest_without_a_profile_is_read_as_lidar_inertial(self) -> None:
+        directory = Path(tempfile.mkdtemp())
+        path = directory / "manifest.json"
+        path.write_text(json.dumps({"effective_overrides": {}}), encoding="utf-8")
+        errors: list[str] = []
+        with redirect_stdout(io.StringIO()):
+            validator.validate_localization_profile(path, "", "", errors)
+        self.assertTrue(any("lidar_inertial profile" in error for error in errors))
+
     def test_the_gnss_profiles_report_and_gate_nothing(self) -> None:
         for profile in ("gnss", "gnss_shadow"):
             errors: list[str] = []

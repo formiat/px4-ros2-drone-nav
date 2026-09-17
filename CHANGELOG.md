@@ -7,18 +7,20 @@ release names the asset tags it was validated with.
 ## Unreleased
 
 - Roadmap item 13: the stack flies without GNSS, the magnetometer or the
-  simulation heading source. `LOCALIZATION_PROFILE=lidar_inertial` runs a
-  lidar-inertial estimator (IMU integration, point-to-plane registration
-  against a sliding keyframe submap, a Kalman step with degenerate-axis and
-  innovation gating) that feeds the autopilot's external-odometry interface;
-  `gnss_shadow` runs it beside GNSS for comparison. The mission check proves
-  the profile from the autopilot and ROS logs, reports the estimator's health
-  and fails a flight that left the autopilot without an estimate. Measured at
-  the r430 to r434 series: no crash, 2.57/2.97/2.58/2.78/2.80 m/s, the autopilot's estimate
-  0.15, 0.18, 0.22, 0.19 and 0.18 m from the true pose across the track at p95 against 0.19 to 0.25
-  on GNSS, the estimator at 0.5 cores and 59 MiB. Loop closure is deferred:
-  the drift does not grow with the flight's length. `docs/localization.md`
-  describes it.
+  simulation heading source, and every single-vehicle flight now does so by
+  default. `LOCALIZATION_PROFILE=lidar_inertial` runs a lidar-inertial
+  estimator (IMU integration, point-to-plane registration against a sliding
+  keyframe submap, a Kalman step with degenerate-axis and innovation gating)
+  that feeds the autopilot's external-odometry interface; `gnss` restores
+  the simulated GNSS and heading source, which the multi-vehicle missions
+  still fly, and `gnss_shadow` runs the estimator beside GNSS for comparison.
+  The mission check proves the profile from the autopilot and ROS logs,
+  reports the estimator's health and fails a flight that left the autopilot
+  without an estimate. Measured at the r430 to r434 series: no crash, 2.57
+  to 2.97 m/s, the autopilot's estimate 0.15 to 0.22 m from the true pose
+  across the track at p95 against 0.19 to 0.25 on GNSS, the estimator at 0.5
+  cores and 59 MiB. Loop closure is deferred: the drift does not grow with
+  the flight's length. `docs/localization.md` describes it.
 - The static maps published for Urban Circuit Practice 01, Finals Prize Round
   World 07 and Cave Circuit Practice 01 (`static_r050`, `static_r100`) were
   checked against their worlds, found wrong, and withdrawn from the

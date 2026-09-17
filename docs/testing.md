@@ -204,7 +204,8 @@ the weakest-axis information at p50 with their worst, and the scans that
 left the autopilot without an estimate; any such scan fails the flight
 (measured 0 of 1300 to 1700 on every accepted flight, matched share 0.88
 to 0.91 at p50, residual 0.047 to 0.050 m). The other profiles report their
-name and gate nothing. [localization.md](localization.md) describes the
+name and gate nothing; a manifest without a profile is read as
+`lidar_inertial`, the default. [localization.md](localization.md) describes the
 estimator and the profiles.
 
 ## Adding Tests

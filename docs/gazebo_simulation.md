@@ -68,17 +68,19 @@ or `EKF2_MAG_TYPE`. A lidar map built with that heading copies every wall a
 metre sideways at the integration range, and the copies open and close
 passages the planner is trying to use.
 
-The single-vehicle simulation therefore hands the autopilot the heading a
-calibrated attitude reference would give: `simulation_heading_source_node`
+On the `gnss` localization profile the single-vehicle simulation therefore
+hands the autopilot the heading a calibrated attitude reference would give: `simulation_heading_source_node`
 takes the simulator's true attitude, adds a slowly wandering bias (0.5 degree
 standard deviation, 60 s correlation time) and 0.3 degree of white noise, and
 publishes it through PX4's external vision interface as orientation only.
-`scripts/run_drone_nav_sim.sh` enables it by default
+`scripts/run_drone_nav_sim.sh` enables it on that profile
 (`ENABLE_SIMULATION_HEADING_SOURCE=true`, PX4 parameters `EKF2_EV_CTRL 8`,
 `EKF2_MAG_TYPE 5`, `EKF2_EV_NOISE_MD 1`, `EKF2_EVA_NOISE 0.01`);
 `ENABLE_SIMULATION_HEADING_SOURCE=false` restores the magnetometer. With the
 source enabled the measured heading error is 0.85 to 1.5 degrees standard
-deviation.
+deviation. The default profile since roadmap item 13, `lidar_inertial`, runs
+no heading source: the heading is the lidar-inertial estimator's
+([localization.md](localization.md)).
 
 **Release assumption.** The navigation stack is validated only for a heading
 of that quality: a standard deviation of about 1.5 degrees or better, from a
