@@ -18,6 +18,9 @@ namespace {
 // be the same frame: the 0.33 m the sensor-braking margin budgets for the
 // position estimate against the true pose.
 constexpr double kFrameResetToleranceM{0.33};
+// The longest receive interval the previous sample's velocity is carried
+// over to measure that shift; the autopilot publishes every 16 ms.
+constexpr double kFrameResetMaximumIntervalS{0.2};
 
 } // namespace
 
@@ -150,20 +153,36 @@ void ProductionMppiNode::onLocalState(const AutopilotLocalState& message) {
         (state_reset.state_lineage_reset || state_reset.frame_compensation_required);
     if (state_reset.frame_compensation_required &&
         !navigation_frame_reset_unresolved_) {
-      // The autopilot says how far the reset moved its estimate. A shift
-      // within the estimate error the sensor-braking margin already budgets
-      // is not a new frame: the autopilot aligning its estimator to a source
-      // it is still admitting resets its position by centimetres, and on the
-      // lidar-inertial profile that reset came after the first authoritative
-      // state and closed the navigation for the flight (r372). A larger
-      // shift, or a timestamp epoch reset, is a frame the stack cannot
-      // repair in this callback: offboard setpoint conversion and world
-      // producers use the same frame, so the navigation stays unavailable
-      // until a coordinated handoff or node restart.
+      // How far the reset moved the estimate the stack flies in: the new
+      // position against the previous one carried at its velocity over the
+      // receive interval. A shift within the estimate error the
+      // sensor-braking margin already budgets is not a new frame: the
+      // autopilot aligning its estimator to the lidar-inertial odometry
+      // resets its position by centimetres, and on that profile the reset
+      // came after the first authoritative state and closed the navigation
+      // for the flight (r372). The autopilot's own reset delta is not that
+      // shift: on r375 it reported 7.96 m for a published step of 0.26 m.
+      // A larger shift, an interval too long to carry the velocity over, or
+      // a timestamp epoch reset is a frame the stack cannot repair in this
+      // callback: offboard setpoint conversion and world producers use the
+      // same frame, so the navigation stays unavailable until a coordinated
+      // handoff or node restart.
+      const double interval_s =
+          1.0e-9 * static_cast<double>(navigation.receive_stamp_ns -
+                                       navigation_.receive_stamp_ns);
+      const double shift_x = static_cast<double>(navigation.state.x) -
+                             (static_cast<double>(navigation_.state.x) +
+                              static_cast<double>(navigation_.state.vx) * interval_s);
+      const double shift_y = static_cast<double>(navigation.state.y) -
+                             (static_cast<double>(navigation_.state.y) +
+                              static_cast<double>(navigation_.state.vy) * interval_s);
+      const double shift_z = static_cast<double>(navigation.state.z) -
+                             (static_cast<double>(navigation_.state.z) +
+                              static_cast<double>(navigation_.state.vz) * interval_s);
       const double reset_shift_m =
-          std::sqrt(message.reset_shift_m.x * message.reset_shift_m.x +
-                    message.reset_shift_m.y * message.reset_shift_m.y +
-                    message.reset_shift_m.z * message.reset_shift_m.z);
+          interval_s > 0.0 && interval_s <= kFrameResetMaximumIntervalS
+              ? std::sqrt(shift_x * shift_x + shift_y * shift_y + shift_z * shift_z)
+              : std::numeric_limits<double>::infinity();
       if (!angular_derivative.timestamp_epoch_reset &&
           reset_shift_m <= kFrameResetToleranceM) {
         RCLCPP_WARN(get_logger(),

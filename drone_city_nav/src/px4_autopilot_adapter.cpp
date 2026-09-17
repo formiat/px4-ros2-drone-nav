@@ -111,11 +111,6 @@ px4LocalPositionToAutopilotState(const px4_msgs::msg::VehicleLocalPosition& mess
   state.vxy_reset_counter = message.vxy_reset_counter;
   state.vz_reset_counter = message.vz_reset_counter;
   state.heading_reset_counter = message.heading_reset_counter;
-  const Point2 reset_shift =
-      transform.localVectorToMap(Point2{static_cast<double>(message.delta_xy[0]),
-                                        static_cast<double>(message.delta_xy[1])});
-  state.reset_shift_m =
-      Vec3{reset_shift.x, reset_shift.y, -static_cast<double>(message.delta_z)};
   state.payload_fingerprint = payloadFingerprint(message);
   return state;
 }

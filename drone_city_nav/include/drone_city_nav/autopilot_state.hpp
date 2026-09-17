@@ -37,10 +37,6 @@ struct AutopilotLocalState {
   std::uint8_t vxy_reset_counter{0U};
   std::uint8_t vz_reset_counter{0U};
   std::uint8_t heading_reset_counter{0U};
-  // How far the estimate shifted in the latest horizontal and vertical
-  // resets, in the map frame: what a counter change actually did to the
-  // frame the stack flies in.
-  Vec3 reset_shift_m{};
   // A fingerprint of the autopilot's own sample payload, so two samples with
   // the same stamps are told apart by content.
   std::uint64_t payload_fingerprint{0U};
