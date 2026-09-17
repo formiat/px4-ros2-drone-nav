@@ -107,6 +107,7 @@ def generate_launch_description():
     )
     enable_lidar_debug = LaunchConfiguration("enable_lidar_debug")
     lidar_profile = LaunchConfiguration("lidar_profile")
+    localization_profile = LaunchConfiguration("localization_profile")
     enable_obstacle_memory = LaunchConfiguration("enable_obstacle_memory")
     enable_rviz = LaunchConfiguration("enable_rviz")
     rviz_drone_follow_tf_enabled = LaunchConfiguration(
@@ -216,6 +217,18 @@ def generate_launch_description():
             route_stall_recovery_enabled,
             "route_stall_recovery_enabled",
         )
+        # Where the vehicle's position comes from: the autopilot's GNSS and
+        # the simulated heading (gnss), the same with the lidar-inertial
+        # estimator running beside it for comparison (gnss_shadow), or the
+        # lidar-inertial estimator alone, fed to the autopilot as external
+        # odometry with GNSS and magnetometer fusion off (lidar_inertial).
+        localization = localization_profile.perform(context).strip() or "gnss"
+        if localization not in ("gnss", "gnss_shadow", "lidar_inertial"):
+            raise ValueError(f"unsupported localization profile: {localization}")
+        lidar_inertial_overrides = {
+            "use_sim_time": True,
+            "publish_to_autopilot": localization == "lidar_inertial",
+        }
         scenario_path = point_to_point_scenario_path.perform(context).strip()
         if scenario_path:
             scenario = load_point_to_point_scenario(scenario_path, profile)
@@ -253,6 +266,7 @@ def generate_launch_description():
                     "initial_y_m": start_y_m,
                 }
             )
+            lidar_inertial_overrides.update(px4_frame_overrides)
             gazebo_world_name = scenario["gazebo_world_name"]
             gazebo_model_name = scenario["gazebo_model_name"]
             lidar_gz_topic = (
@@ -522,6 +536,16 @@ def generate_launch_description():
                 ],
             )
         )
+        if localization != "gnss":
+            nodes.append(
+                Node(
+                    package="drone_city_nav",
+                    executable="lidar_inertial_odometry_node",
+                    name="lidar_inertial_odometry_node",
+                    output="screen",
+                    parameters=[params_file.perform(context), lidar_inertial_overrides],
+                )
+            )
         nodes.append(
             Node(
                 package="drone_city_nav",
@@ -632,6 +656,16 @@ def generate_launch_description():
                 "enable_mission_monitor",
                 default_value="true",
                 description="Start the simulation-only mission verification node.",
+            ),
+            DeclareLaunchArgument(
+                "localization_profile",
+                default_value="gnss",
+                description=(
+                    "gnss: the autopilot's GNSS and the simulated heading; "
+                    "gnss_shadow: the same with the lidar-inertial estimator "
+                    "running beside it for comparison; lidar_inertial: the "
+                    "estimator alone as the autopilot's external odometry."
+                ),
             ),
             DeclareLaunchArgument(
                 "enable_simulation_heading_source",

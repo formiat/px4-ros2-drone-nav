@@ -52,6 +52,14 @@ struct AutopilotAttitude {
   std::array<float, 4> quaternion{1.0F, 0.0F, 0.0F, 0.0F};
 };
 
+// One sample of the autopilot's IMU in the body FRD frame, in the
+// autopilot's clock: the lidar-inertial estimator's inertial input.
+struct AutopilotImuSample {
+  std::uint64_t timestamp_us{0U};
+  Vec3 gyro_radps{};
+  Vec3 accelerometer_mps2{};
+};
+
 // One sample of the autopilot clock against the stack's clock.
 struct AutopilotClockSync {
   std::uint64_t timestamp_us{0U};

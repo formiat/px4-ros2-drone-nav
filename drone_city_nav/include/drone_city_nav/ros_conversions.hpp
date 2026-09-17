@@ -5,11 +5,13 @@
 
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <nav_msgs/msg/path.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
 #include <std_msgs/msg/header.hpp>
 
 #include <optional>
 #include <span>
 #include <string>
+#include <vector>
 
 namespace drone_city_nav {
 
@@ -54,5 +56,10 @@ rawOccupancyGridViewFromRos(const nav_msgs::msg::OccupancyGrid& msg,
 [[nodiscard]] nav_msgs::msg::Path pathToRos(std::span<const Point2> points,
                                             const std_msgs::msg::Header& header,
                                             double altitude_m);
+
+// The xyz of every point of a cloud, in the cloud's own frame; nullopt when
+// the layout is not three float32 fields the point step can hold.
+[[nodiscard]] std::optional<std::vector<Point3>>
+decodePointCloudReturns(const sensor_msgs::msg::PointCloud2& cloud);
 
 } // namespace drone_city_nav

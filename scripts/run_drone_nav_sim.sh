@@ -7,6 +7,8 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${repo_root}/scripts/simulation_runtime_helpers.sh"
 # shellcheck source=runtime_evidence_runtime.sh
 source "${repo_root}/scripts/runtime_evidence_runtime.sh"
+# shellcheck source=px4_parameter_runtime.sh
+source "${repo_root}/scripts/px4_parameter_runtime.sh"
 # shellcheck source=lidar_profile_runtime.sh
 source "${repo_root}/scripts/lidar_profile_runtime.sh"
 resolve_lidar_profile
@@ -217,6 +219,19 @@ fi
 # magnetic field. The single-vehicle simulation hands the autopilot the
 # simulator's true heading with reference-grade bias and noise instead.
 enable_simulation_heading_source="$(normalize_bool "${ENABLE_SIMULATION_HEADING_SOURCE:-true}")"
+# Where the vehicle's position comes from. lidar_inertial flies on the
+# lidar-inertial estimator alone: the autopilot fuses it as external
+# odometry, GNSS and magnetometer fusion are off, and the simulation heading
+# source, which is the simulator's truth, does not run.
+localization_profile="${LOCALIZATION_PROFILE:-gnss}"
+case "${localization_profile}" in
+  gnss | gnss_shadow) ;;
+  lidar_inertial) enable_simulation_heading_source=false ;;
+  *)
+    echo "Unsupported LOCALIZATION_PROFILE: ${localization_profile}" >&2
+    exit 1
+    ;;
+esac
 enable_gz_scene_diagnostics="$(
   normalize_bool "${ENABLE_GZ_SCENE_DIAGNOSTICS:-true}"
 )"
@@ -786,52 +801,6 @@ echo "MicroXRCEAgent log: ${uxrce_log_file}"
 run_with_cpu_affinity "${control_cpu_list}" \
   MicroXRCEAgent udp4 -p 8888 > "${uxrce_log_file}" 2>&1 &
 
-px4_parameter_stream() {
-  local cruise_speed="$1"
-  local maximum_speed="$2"
-  sleep "${px4_param_delay_s}"
-  echo "param set CBRK_SUPPLY_CHK 894281"
-  echo "param set NAV_DLL_ACT 0"
-  # The simulated GNSS has no measurement delay: the Gazebo bridge stamps the
-  # navsat sample with the time it receives it (GZBridge.cpp,
-  # sensor_gps.timestamp_sample). EKF2 subtracts EKF2_GPS_DELAY from that
-  # stamp before fusing (estimator_interface.cpp), so its default of 110 ms
-  # placed the position estimate ahead of the true pose along the motion by
-  # the speed times 0.11 s: measured against the Gazebo pose in every one of
-  # the 25 recorded urban flights r268 to r311 as +0.118 to +0.120 s at the
-  # median (0.35 m at 3 m/s), with the cross-track error untouched. The
-  # obstacle memory's position source offset (lidar_position_source_time_offset_s)
-  # compensated the same lead downstream and follows this value.
-  echo "param set EKF2_GPS_DELAY 0"
-  if bool_is_true "${enable_simulation_heading_source}"; then
-    # The simulated magnetometer's heading sits five to six degrees off the
-    # true one at hover, independent of the world's magnetic field; the
-    # heading comes from the simulation heading source instead, through the
-    # external vision interface, and the magnetometer is not fused.
-    echo "param set EKF2_EV_CTRL 8"
-    echo "param set EKF2_MAG_TYPE 5"
-    echo "param set EKF2_EV_NOISE_MD 1"
-    echo "param set EKF2_EVA_NOISE 0.01"
-  fi
-  echo "param set MPC_Z_VEL_MAX_UP ${px4_max_climb_speed_mps}"
-  echo "param set MPC_Z_VEL_MAX_DN ${px4_max_descent_speed_mps}"
-  echo "param set MPC_XY_CRUISE ${cruise_speed}"
-  echo "param set MPC_XY_VEL_MAX ${maximum_speed}"
-  echo "param set MPC_ACC_HOR_MAX ${px4_active_max_horizontal_acceleration_mps2}"
-  echo "param set MPC_ACC_HOR ${px4_active_max_horizontal_acceleration_mps2}"
-  echo "param set MPC_JERK_AUTO ${px4_active_maximum_jerk_mps3}"
-  echo "param show MPC_XY_CRUISE"
-  echo "param show MPC_XY_VEL_MAX"
-  echo "param show MPC_ACC_HOR_MAX"
-  echo "param show MPC_ACC_HOR"
-  echo "param show MPC_JERK_AUTO"
-  echo "param show MPC_Z_VEL_MAX_UP"
-  echo "param show MPC_Z_VEL_MAX_DN"
-  echo "param show EKF2_GPS_DELAY"
-  while true; do
-    sleep 3600
-  done
-}
 
 echo "PX4 SITL log: ${px4_log_file}"
 if bool_is_true "${multi_vehicle_mission}"; then
@@ -953,6 +922,7 @@ else
     enable_gazebo_bridge:=true
     enable_mission_monitor:=true
     enable_simulation_heading_source:="${enable_simulation_heading_source}"
+    localization_profile:="${localization_profile}"
     enable_lidar_debug:="${enable_lidar_debug}"
     lidar_profile:="${lidar_profile}"
     enable_obstacle_memory:="${enable_obstacle_memory}"

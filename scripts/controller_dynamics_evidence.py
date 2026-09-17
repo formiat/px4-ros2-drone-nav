@@ -216,6 +216,23 @@ def lidar_evidence_age_max_ms(ros_log: str) -> DynamicsMeasurement:
     return DynamicsMeasurement(max(ages), len(ages))
 
 
+def load_lidar_inertial_csv(path: Path) -> np.ndarray:
+    """timestamp_s, x, y, horizontal speed of every healthy lidar-inertial
+    estimate, in the map frame, on the simulation clock; the speed is the
+    finite difference of the positions, which the alignment reads."""
+    rows = []
+    with path.open(newline="", encoding="utf-8") as stream:
+        for row in csv.reader(stream):
+            if len(row) >= 6 and row[5] == "1":
+                rows.append([float(value) for value in row[:3]])
+    if len(rows) < 2:
+        return np.empty((0, 4))
+    array = np.array(rows, dtype=np.float64)
+    speed = np.hypot(np.gradient(array[:, 1], array[:, 0]),
+                     np.gradient(array[:, 2], array[:, 0]))
+    return np.column_stack([array, speed])
+
+
 def load_truth_csv(path: Path) -> np.ndarray:
     rows = []
     with path.open(newline="", encoding="utf-8") as stream:
@@ -286,6 +303,17 @@ def validate_controller_dynamics(run_directory: Path, ros_log: str,
                   f"({error.samples} samples)")
     else:
         errors.append(f"FAIL: the flight recorded the true pose ({truth_path.name})")
+    lio_path = run_directory / "lio_estimate.csv"
+    if lio_path.is_file() and truth_path.is_file():
+        lio = load_lidar_inertial_csv(lio_path)
+        if len(lio) >= 50:
+            error = position_estimate_error(lio, load_truth_csv(truth_path))
+            print(f"OK: lidar-inertial estimate cross-track error p95 is "
+                  f"{error.cross_track_p95_m:.3f} m, along-track offset "
+                  f"{error.along_track_offset_s:+.3f} s, total p95 {error.total_p95_m:.3f} m "
+                  f"({error.samples} samples)")
+        else:
+            print(f"OK: lidar-inertial estimate was not flown ({len(lio)} healthy samples)")
     age = lidar_evidence_age_max_ms(ros_log)
     if age.samples == 0:
         errors.append("FAIL: the planning tick reports the lidar evidence age")

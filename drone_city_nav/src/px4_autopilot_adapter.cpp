@@ -122,6 +122,55 @@ px4AttitudeToAutopilotAttitude(const px4_msgs::msg::VehicleAttitude& message) no
                            .quaternion = message.q};
 }
 
+AutopilotImuSample
+px4SensorCombinedToAutopilotImu(const px4_msgs::msg::SensorCombined& message) noexcept {
+  return AutopilotImuSample{
+      .timestamp_us = message.timestamp,
+      .gyro_radps = Vec3{static_cast<double>(message.gyro_rad[0]),
+                         static_cast<double>(message.gyro_rad[1]),
+                         static_cast<double>(message.gyro_rad[2])},
+      .accelerometer_mps2 = Vec3{static_cast<double>(message.accelerometer_m_s2[0]),
+                                 static_cast<double>(message.accelerometer_m_s2[1]),
+                                 static_cast<double>(message.accelerometer_m_s2[2])},
+  };
+}
+
+px4_msgs::msg::VehicleOdometry
+px4VisualOdometryFromEstimate(const LidarInertialEstimate& estimate,
+                              const std::uint64_t timestamp_sample_us) noexcept {
+  px4_msgs::msg::VehicleOdometry odometry;
+  odometry.timestamp = timestamp_sample_us;
+  odometry.timestamp_sample = timestamp_sample_us;
+  odometry.pose_frame = px4_msgs::msg::VehicleOdometry::POSE_FRAME_NED;
+  odometry.position = {static_cast<float>(estimate.position_ned_m.x()),
+                       static_cast<float>(estimate.position_ned_m.y()),
+                       static_cast<float>(estimate.position_ned_m.z())};
+  odometry.q = {static_cast<float>(estimate.body_to_ned.w()),
+                static_cast<float>(estimate.body_to_ned.x()),
+                static_cast<float>(estimate.body_to_ned.y()),
+                static_cast<float>(estimate.body_to_ned.z())};
+  odometry.velocity_frame = px4_msgs::msg::VehicleOdometry::VELOCITY_FRAME_NED;
+  odometry.velocity = {static_cast<float>(estimate.velocity_ned_mps.x()),
+                       static_cast<float>(estimate.velocity_ned_mps.y()),
+                       static_cast<float>(estimate.velocity_ned_mps.z())};
+  constexpr float nan = std::numeric_limits<float>::quiet_NaN();
+  odometry.angular_velocity = {nan, nan, nan};
+  odometry.position_variance = {static_cast<float>(estimate.position_variance_m2.x()),
+                                static_cast<float>(estimate.position_variance_m2.y()),
+                                static_cast<float>(estimate.position_variance_m2.z())};
+  odometry.orientation_variance = {
+      static_cast<float>(estimate.orientation_variance_rad2.x()),
+      static_cast<float>(estimate.orientation_variance_rad2.y()),
+      static_cast<float>(estimate.orientation_variance_rad2.z())};
+  odometry.velocity_variance = {
+      static_cast<float>(estimate.velocity_variance_m2ps2.x()),
+      static_cast<float>(estimate.velocity_variance_m2ps2.y()),
+      static_cast<float>(estimate.velocity_variance_m2ps2.z())};
+  odometry.reset_counter = 0U;
+  odometry.quality = estimate.healthy ? 100 : 0;
+  return odometry;
+}
+
 AutopilotClockSync
 px4TimesyncToAutopilotClockSync(const px4_msgs::msg::TimesyncStatus& message) noexcept {
   return AutopilotClockSync{.timestamp_us = message.timestamp,
@@ -166,6 +215,15 @@ AutopilotStateSource::AutopilotStateSource(
         [callback = std::move(callbacks.attitude)](
             const px4_msgs::msg::VehicleAttitude::SharedPtr message) {
           callback(px4AttitudeToAutopilotAttitude(*message));
+        },
+        state_options));
+  }
+  if (!topics.imu.empty() && callbacks.imu) {
+    subscriptions_.push_back(node.create_subscription<px4_msgs::msg::SensorCombined>(
+        topics.imu, qos,
+        [callback = std::move(callbacks.imu)](
+            const px4_msgs::msg::SensorCombined::SharedPtr message) {
+          callback(px4SensorCombinedToAutopilotImu(*message));
         },
         state_options));
   }

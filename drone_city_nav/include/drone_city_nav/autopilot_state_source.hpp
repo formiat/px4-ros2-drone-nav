@@ -16,6 +16,7 @@ namespace drone_city_nav {
 struct AutopilotStateTopics {
   std::string local_state;
   std::string attitude;
+  std::string imu;
   std::string clock_sync;
   std::string status;
   std::string ground_contact;
@@ -24,6 +25,7 @@ struct AutopilotStateTopics {
 struct AutopilotStateCallbacks {
   std::function<void(const AutopilotLocalState&)> local_state;
   std::function<void(const AutopilotAttitude&)> attitude;
+  std::function<void(const AutopilotImuSample&)> imu;
   std::function<void(const AutopilotClockSync&)> clock_sync;
   std::function<void(const AutopilotStatus&)> status;
   std::function<void(const AutopilotGroundContact&)> ground_contact;

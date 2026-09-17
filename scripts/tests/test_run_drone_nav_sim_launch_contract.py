@@ -9,6 +9,7 @@ from pathlib import Path
 
 
 RUNNER = Path(__file__).resolve().parents[1] / "run_drone_nav_sim.sh"
+PX4_PARAMETER_RUNTIME = Path(__file__).resolve().parents[1] / "px4_parameter_runtime.sh"
 RUNTIME_HELPERS = RUNNER.with_name("simulation_runtime_helpers.sh")
 LIDAR_PROFILE_RUNTIME = RUNNER.with_name("lidar_profile_runtime.sh")
 LIDAR_PROFILE_SUPPORT_FILE = (
@@ -98,7 +99,8 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.text = "\n".join(
             path.read_text(encoding="utf-8")
-            for path in (RUNNER, LIDAR_PROFILE_RUNTIME, RESOURCE_RUNTIME)
+            for path in (RUNNER, PX4_PARAMETER_RUNTIME, LIDAR_PROFILE_RUNTIME,
+                         RESOURCE_RUNTIME)
         )
         cls.makefile_text = MAKEFILE.read_text(encoding="utf-8")
         cls.lidar_profile_support_text = LIDAR_PROFILE_SUPPORT_FILE.read_text(

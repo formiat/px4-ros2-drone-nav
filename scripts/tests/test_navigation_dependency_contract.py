@@ -112,6 +112,9 @@ RUNTIME_INCLUDE_ROOTS = {
 # cannot see because every header shares one include root.
 LAYER_PREDECESSORS = {
     "model": (),
+    # The lidar-inertial estimator reads the model's types and nothing of
+    # the world, the planner or the controller.
+    "localization": ("model",),
     "control_contracts": ("model",),
     "route_contracts": ("model",),
     "world": ("model", "route_contracts"),
@@ -123,7 +126,7 @@ LAYER_PREDECESSORS = {
     "control": ("execution",),
     "runtime": ("control",),
     # ROS adapters and node headers sit above every domain layer.
-    "ros": ("runtime",),
+    "ros": ("runtime", "localization"),
 }
 PACKAGE_INCLUDE_PATTERN = re.compile(r'#\s*include\s*"drone_city_nav/([A-Za-z0-9_./+-]+\.hpp)"')
 

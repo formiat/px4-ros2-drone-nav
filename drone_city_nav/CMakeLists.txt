@@ -40,6 +40,7 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(ament_index_cpp REQUIRED)
 find_package(builtin_interfaces REQUIRED)
+find_package(Eigen3 REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(gz-common5 REQUIRED COMPONENTS graphics)
 find_package(gz-msgs10 REQUIRED)
@@ -223,6 +224,13 @@ add_drone_city_nav_layer(
   src/finite_motion_horizon_3d.cpp
   src/motion_dynamics_3d.cpp)
 target_link_libraries(drone_city_nav_control_contracts PUBLIC drone_city_nav_model)
+
+# Where the vehicle is from its own lidar and IMU: Eigen for the geometry,
+# nothing of the world, the planner or the controller.
+add_drone_city_nav_layer(drone_city_nav_localization
+                         src/lidar_inertial_odometry.cpp)
+target_link_libraries(drone_city_nav_localization PUBLIC drone_city_nav_model
+                                                         Eigen3::Eigen)
 
 add_drone_city_nav_layer(
   drone_city_nav_route_contracts
@@ -457,6 +465,9 @@ set(DRONE_CITY_NAV_MODEL_HEADERS
     include/drone_city_nav/vehicle_state_3d.hpp
     include/drone_city_nav/world_generation.hpp)
 
+set(DRONE_CITY_NAV_LOCALIZATION_HEADERS
+    include/drone_city_nav/lidar_inertial_odometry.hpp)
+
 set(DRONE_CITY_NAV_CONTROL_CONTRACTS_HEADERS
     include/drone_city_nav/control_contracts_3d.hpp
     include/drone_city_nav/control_route_projection_3d.hpp
@@ -641,6 +652,7 @@ set(DRONE_CITY_NAV_ROS_HEADERS
 
 set(DRONE_CITY_NAV_INTERNAL_LAYERS
     drone_city_nav_model
+    drone_city_nav_localization
     drone_city_nav_control_contracts
     drone_city_nav_route_contracts
     drone_city_nav_world
@@ -685,6 +697,8 @@ function(assert_drone_city_nav_layer_dependency target_name)
 endfunction()
 
 assert_drone_city_nav_layer_dependency(drone_city_nav_model)
+assert_drone_city_nav_layer_dependency(drone_city_nav_localization
+                                       drone_city_nav_model)
 assert_drone_city_nav_layer_dependency(drone_city_nav_control_contracts
                                        drone_city_nav_model)
 assert_drone_city_nav_layer_dependency(drone_city_nav_route_contracts
@@ -894,7 +908,8 @@ add_library(
   src/static_map_debug.cpp
   src/visualization_marker_helpers.cpp)
 target_compile_features(drone_city_nav_ros_adapters PUBLIC cxx_std_20)
-target_link_libraries(drone_city_nav_ros_adapters drone_city_nav_runtime)
+target_link_libraries(drone_city_nav_ros_adapters drone_city_nav_runtime
+                      drone_city_nav_localization)
 target_link_libraries(drone_city_nav_ros_adapters ${cpp_typesupport_target})
 ament_target_dependencies(
   drone_city_nav_ros_adapters
@@ -1014,6 +1029,14 @@ target_link_libraries(
   gz-msgs10::gz-msgs10)
 ament_target_dependencies(simulation_truth_adapter_node rclcpp)
 enable_project_warnings(simulation_truth_adapter_node)
+
+add_executable(lidar_inertial_odometry_node src/lidar_inertial_odometry_node.cpp)
+target_compile_features(lidar_inertial_odometry_node PRIVATE cxx_std_20)
+target_link_libraries(lidar_inertial_odometry_node drone_city_nav_localization
+                      drone_city_nav_ros_adapters)
+ament_target_dependencies(lidar_inertial_odometry_node rclcpp px4_msgs sensor_msgs
+                          geometry_msgs)
+enable_project_warnings(lidar_inertial_odometry_node)
 
 add_executable(simulation_heading_source_node
                src/simulation_heading_source_node.cpp)
@@ -1237,6 +1260,7 @@ endif()
 install(
   TARGETS
     drone_city_nav_model
+    drone_city_nav_localization
     drone_city_nav_control_contracts
     drone_city_nav_route_contracts
     drone_city_nav_world
@@ -1261,6 +1285,7 @@ install(
     radar_simulator_node
     simulation_truth_adapter_node
     simulation_heading_source_node
+    lidar_inertial_odometry_node
     radar_target_tracker_node
     interceptor_guidance_node
     cooperative_traffic_agent_node
@@ -1575,6 +1600,11 @@ if(BUILD_TESTING)
   target_link_libraries(execution_horizon_contract_ros_test
                         drone_city_nav_ros_adapters)
   enable_project_warnings(execution_horizon_contract_ros_test)
+
+  ament_add_gtest(lidar_inertial_odometry_test tests/lidar_inertial_odometry_test.cpp)
+  target_compile_features(lidar_inertial_odometry_test PRIVATE cxx_std_20)
+  target_link_libraries(lidar_inertial_odometry_test drone_city_nav_localization)
+  enable_project_warnings(lidar_inertial_odometry_test)
 
   ament_add_gtest(transport_latency_ros_test tests/transport_latency_ros_test.cpp)
   target_compile_features(transport_latency_ros_test PRIVATE cxx_std_20)

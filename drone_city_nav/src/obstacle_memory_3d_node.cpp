@@ -19,6 +19,7 @@
 #include "drone_city_nav/navigation_pose.hpp"
 #include "drone_city_nav/obstacle_memory_3d.hpp"
 #include "drone_city_nav/px4_ros_time_mapper.hpp"
+#include "drone_city_nav/ros_conversions.hpp"
 #include "drone_city_nav/spectator_diagnostics_selection.hpp"
 #include "drone_city_nav/spectator_diagnostics_selection_ros.hpp"
 #include "drone_city_nav/tracked_agent_lidar_filter.hpp"
@@ -91,53 +92,6 @@ enum class PendingPointCloudDisposition : std::uint8_t {
     throw std::invalid_argument{"invalid online Occupancy3D bounds"};
   }
   return bounds;
-}
-
-[[nodiscard]] std::optional<std::uint32_t>
-fieldOffset(const sensor_msgs::msg::PointCloud2& cloud,
-            const std::string_view name) noexcept {
-  const auto found =
-      std::ranges::find(cloud.fields, name, &sensor_msgs::msg::PointField::name);
-  if (found == cloud.fields.end() ||
-      found->datatype != sensor_msgs::msg::PointField::FLOAT32 || found->count != 1U ||
-      found->offset + sizeof(float) > cloud.point_step) {
-    return std::nullopt;
-  }
-  return found->offset;
-}
-
-[[nodiscard]] std::optional<std::vector<Point3>>
-decodePointCloudReturns(const sensor_msgs::msg::PointCloud2& cloud) {
-  const std::optional<std::uint32_t> x_offset = fieldOffset(cloud, "x");
-  const std::optional<std::uint32_t> y_offset = fieldOffset(cloud, "y");
-  const std::optional<std::uint32_t> z_offset = fieldOffset(cloud, "z");
-  if (!x_offset.has_value() || !y_offset.has_value() || !z_offset.has_value() ||
-      cloud.point_step == 0U || cloud.row_step < cloud.point_step * cloud.width ||
-      cloud.data.size() < static_cast<std::size_t>(cloud.row_step) * cloud.height) {
-    return std::nullopt;
-  }
-  const std::size_t point_count = static_cast<std::size_t>(cloud.width) * cloud.height;
-  const std::span<const std::uint8_t> bytes{cloud.data};
-  std::vector<Point3> points;
-  points.reserve(point_count);
-  for (std::uint32_t row = 0U; row < cloud.height; ++row) {
-    for (std::uint32_t column = 0U; column < cloud.width; ++column) {
-      const std::size_t offset = static_cast<std::size_t>(row) * cloud.row_step +
-                                 static_cast<std::size_t>(column) * cloud.point_step;
-      float x{0.0F};
-      float y{0.0F};
-      float z{0.0F};
-      std::memcpy(&x, bytes.subspan(offset + *x_offset, sizeof(float)).data(),
-                  sizeof(float));
-      std::memcpy(&y, bytes.subspan(offset + *y_offset, sizeof(float)).data(),
-                  sizeof(float));
-      std::memcpy(&z, bytes.subspan(offset + *z_offset, sizeof(float)).data(),
-                  sizeof(float));
-      points.push_back(Point3{static_cast<double>(x), static_cast<double>(y),
-                              static_cast<double>(z)});
-    }
-  }
-  return points;
 }
 
 [[nodiscard]] bool volumeContains(const DynamicAgentLidarVolume& volume,

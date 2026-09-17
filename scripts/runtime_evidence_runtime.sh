@@ -43,7 +43,7 @@ prepare_runtime_evidence() {
   for override_name in \
     CRUISE_SPEED_MPS ABSOLUTE_SPEED_LIMIT_MPS MAXIMUM_HORIZONTAL_ACCELERATION_MPS2 \
     MAXIMUM_VERTICAL_ACCELERATION_MPS2 MAXIMUM_CONTROL_JERK_MPS3 \
-    ENABLE_STATIC_MAP LIDAR_PROFILE HEADLESS SMOKE_DURATION_S \
+    ENABLE_STATIC_MAP LIDAR_PROFILE LOCALIZATION_PROFILE HEADLESS SMOKE_DURATION_S \
     MISSION_GOALS_XYZ_M POINT_TO_POINT_SCENARIO_PATH CITY_NAV_PARAMS_FILE \
     OBSERVED_3D_ROUTE_VOLUME_BOUNDS_M RAW_SNAPSHOT_BOUNDS_M; do
     if [[ -n "${!override_name:-}" ]]; then
@@ -86,5 +86,10 @@ start_runtime_evidence_capture() {
       "${runtime_artifact_dir}/gz_pose.csv" \
       --world "${world_name}" --model "${default_gazebo_follow_target}" \
       > "${runtime_artifact_dir}/gz_pose.log" 2>&1 &
+    # The lidar-inertial estimate, when the localization profile runs it;
+    # the mission check holds it against the true pose.
+    python3 "${repo_root}/scripts/capture_lidar_inertial_estimate.py" \
+      "${runtime_artifact_dir}/lio_estimate.csv" \
+      > "${runtime_artifact_dir}/lio_estimate.log" 2>&1 &
   fi
 }
