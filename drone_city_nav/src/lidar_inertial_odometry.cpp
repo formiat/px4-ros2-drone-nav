@@ -17,6 +17,9 @@ namespace {
 using Vector6d = Eigen::Matrix<double, 6, 1>;
 using Matrix6d = Eigen::Matrix<double, 6, 6>;
 
+// The measurement variance of an axis the registration could not observe.
+constexpr double kUnobservedVarianceM2{1.0e6};
+
 struct CellKey {
   std::int32_t x{0};
   std::int32_t y{0};
@@ -394,6 +397,8 @@ struct LidarInertialOdometry::Impl {
   std::int64_t registered_stamp_ns{0};
   Eigen::Vector3d registered_position{Eigen::Vector3d::Zero()};
   Eigen::Vector3d registered_velocity{Eigen::Vector3d::Zero()};
+  // The uncertainty of position and velocity at the last registered scan.
+  Matrix6d covariance{Matrix6d::Identity() * 0.01};
 
   struct Propagated {
     std::int64_t stamp_ns{0};
@@ -579,44 +584,72 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
     estimate.information_per_point = registration.information_per_point;
     estimate.iterations = registration.iterations;
     if (healthy) {
-      // The registration is believed along the axes it observed. Along a
-      // degenerate axis the correction is discarded, the IMU's motion
-      // stands, and the variance says so.
+      // The measurement: the registered position, with the variance the
+      // registration's information gives along each axis it observed and
+      // the degenerate variance along an axis it could not.
       const Eigen::Matrix3d translational =
           registration.information.bottomRightCorner<3, 3>();
       const double matched_points = std::max(
           1.0, registration.matched_fraction * static_cast<double>(thinned.size()));
       const Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver{translational};
-      Eigen::Matrix3d projector = Eigen::Matrix3d::Zero();
-      Eigen::Vector3d axis_variance = Eigen::Vector3d::Zero();
       const double residual_variance =
           std::max(1.0e-4, registration.residual_rms_m * registration.residual_rms_m);
+      Eigen::Matrix3d measurement_covariance = Eigen::Matrix3d::Zero();
       for (int axis = 0; axis < 3; ++axis) {
         const Eigen::Vector3d direction = solver.eigenvectors().col(axis);
         const double information = solver.eigenvalues()(axis);
+        // An axis the registration could not observe carries no measurement:
+        // the registration slides freely along it, and any finite variance
+        // there lets that slide pull the prior along.
+        double variance = kUnobservedVarianceM2;
         if (information / matched_points < impl.config.minimum_information_per_point) {
           ++estimate.degenerate_axes;
-          axis_variance +=
-              impl.config.degenerate_axis_variance_m2 * direction.cwiseAbs2();
-          continue;
+        } else {
+          variance = std::max(residual_variance / information,
+                              impl.config.minimum_position_variance_m2);
         }
-        projector += direction * direction.transpose();
-        axis_variance += (residual_variance / information) * direction.cwiseAbs2();
+        measurement_covariance += variance * direction * direction.transpose();
       }
-      const Eigen::Vector3d correction =
-          projector * (registration.position - prior_position);
-      const double speed = propagated.velocity.norm();
+      // The prior: the IMU's motion since the last registered scan, with the
+      // uncertainty white acceleration noise adds over that interval.
+      const double interval = std::max(0.0, interval_s);
+      Matrix6d transition = Matrix6d::Identity();
+      transition.topRightCorner<3, 3>() = interval * Eigen::Matrix3d::Identity();
+      const double acceleration_variance =
+          impl.config.acceleration_noise_mps2 * impl.config.acceleration_noise_mps2;
+      Matrix6d process = Matrix6d::Zero();
+      process.topLeftCorner<3, 3>() = acceleration_variance * std::pow(interval, 4) /
+                                      4.0 * Eigen::Matrix3d::Identity();
+      process.topRightCorner<3, 3>() = acceleration_variance * std::pow(interval, 3) /
+                                       2.0 * Eigen::Matrix3d::Identity();
+      process.bottomLeftCorner<3, 3>() = process.topRightCorner<3, 3>();
+      process.bottomRightCorner<3, 3>() =
+          acceleration_variance * interval * interval * Eigen::Matrix3d::Identity();
+      const Matrix6d prior_covariance =
+          transition * impl.covariance * transition.transpose() + process;
+      const Eigen::Vector3d prior_velocity =
+          impl.holding ? impl.registered_velocity : propagated.velocity;
+      // The Kalman step on the position measurement.
+      const Eigen::Matrix3d innovation_covariance =
+          prior_covariance.topLeftCorner<3, 3>() + measurement_covariance;
+      const Eigen::Matrix<double, 6, 3> gain =
+          prior_covariance.leftCols<3>() * innovation_covariance.inverse();
+      const Eigen::Vector3d innovation = registration.position - prior_position;
+      corrected_position = prior_position + gain.topRows<3>() * innovation;
+      corrected_velocity = prior_velocity + gain.bottomRows<3>() * innovation;
+      Matrix6d update = Matrix6d::Identity();
+      update.leftCols<3>() -= gain;
+      impl.covariance = update * prior_covariance;
+      impl.covariance = 0.5 * (impl.covariance + impl.covariance.transpose());
+      const Eigen::Vector3d correction = corrected_position - prior_position;
+      const double speed = prior_velocity.norm();
       estimate.correction_along_track_m =
-          speed > 0.1 ? correction.dot(propagated.velocity) / speed : 0.0;
-      corrected_position = prior_position + correction;
+          speed > 0.1 ? correction.dot(prior_velocity) / speed : 0.0;
       corrected_rotation = registration.rotation;
-      if (interval_s > 0.0) {
-        corrected_velocity =
-            propagated.velocity +
-            impl.config.velocity_correction_gain * correction / interval_s;
-      }
-      estimate.position_variance_m2 = axis_variance.cwiseMax(1.0e-4).cwiseMin(
-          impl.config.degenerate_axis_variance_m2);
+      estimate.position_variance_m2 =
+          impl.covariance.topLeftCorner<3, 3>().diagonal().cwiseMax(1.0e-4);
+      estimate.velocity_variance_m2ps2 =
+          impl.covariance.bottomRightCorner<3, 3>().diagonal().cwiseMax(1.0e-4);
       const Eigen::Matrix3d rotational = registration.information.topLeftCorner<3, 3>();
       const Eigen::Matrix3d orientation_covariance =
           residual_variance *
@@ -681,7 +714,6 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
   estimate.position_ned_m = impl.position;
   estimate.body_to_ned = impl.rotation;
   estimate.velocity_ned_mps = impl.velocity;
-  estimate.velocity_variance_m2ps2 = estimate.position_variance_m2 * 4.0;
   estimate.submap_points = impl.submap.pointCount();
   estimate.keyframes = impl.submap.keyframeCount();
   return estimate;

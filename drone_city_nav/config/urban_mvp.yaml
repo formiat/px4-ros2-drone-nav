@@ -854,19 +854,20 @@ lidar_inertial_odometry_node:
     minimum_matched_fraction: 0.3
     maximum_residual_rms_m: 0.5
     # An axis with less information than this per matched point is
-    # degenerate: the registration is not believed along it, the IMU
-    # carries the motion there and this variance is reported for it.
+    # degenerate: the registration is no measurement along it and the IMU
+    # carries the motion there.
     minimum_information_per_point: 0.02
-    degenerate_axis_variance_m2: 1.0
-    # The share of a scan's position correction, over the interval since the
-    # last scan, that corrects the IMU-integrated velocity. r374 flew 0.5 and
-    # at a sharp reversal the estimator's speed rang 9.9, 3.5, 7.1, 0.5 m/s
-    # against a true 5, the corrections reached 1.5 m and the registration
-    # 218 ms: the scans are processed at 5 to 10 Hz and the IMU arrives at 74
-    # to 100 Hz, and a correction divided by an irregular interval feeds back.
-    # A synthetic 5 m/s reversal holds the velocity to 0.20 m/s at 0.5 and to
-    # 0.03 m/s at 0.1 with the same position error.
-    velocity_correction_gain: 0.1
+    # Each registered position updates position and velocity in a Kalman
+    # step: the IMU's motion since the last registered scan is the prior,
+    # with the uncertainty white acceleration noise of this density adds over
+    # the interval, and the registration is the measurement, its variance
+    # from the registration's information floored at the second value. A
+    # fixed share of the correction divided by the interval rang at 0.5 on
+    # r374 and lagged at 0.1 on r376, where a corridor axis the registration
+    # could not observe carried a 0.45 m/s velocity error for 1.3 s and left
+    # the estimate 0.6 m behind for the rest of the flight.
+    acceleration_noise_mps2: 0.5
+    minimum_position_variance_m2: 0.0025
     # The share of the rotation the IMU missed over a scan interval that is
     # attributed to gyroscope bias. r357 flew with ten times this and the
     # heading ran away within ten seconds of takeoff.

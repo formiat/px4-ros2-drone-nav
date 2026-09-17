@@ -69,10 +69,10 @@ public:
         declare_parameter<double>("gyro_bias_gain", config.gyro_bias_gain);
     config.maximum_gyro_bias_radps = declare_parameter<double>(
         "maximum_gyro_bias_radps", config.maximum_gyro_bias_radps);
-    config.degenerate_axis_variance_m2 = declare_parameter<double>(
-        "degenerate_axis_variance_m2", config.degenerate_axis_variance_m2);
-    config.velocity_correction_gain = declare_parameter<double>(
-        "velocity_correction_gain", config.velocity_correction_gain);
+    config.acceleration_noise_mps2 = declare_parameter<double>(
+        "acceleration_noise_mps2", config.acceleration_noise_mps2);
+    config.minimum_position_variance_m2 = declare_parameter<double>(
+        "minimum_position_variance_m2", config.minimum_position_variance_m2);
     odometry_ = std::make_unique<LidarInertialOdometry>(config);
 
     // The lidar sits on the body as the obstacle memory knows it: the same

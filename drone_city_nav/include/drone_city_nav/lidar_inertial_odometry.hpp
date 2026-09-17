@@ -62,15 +62,20 @@ struct LidarInertialOdometryConfig {
   // matched and the residual stayed under this width. A translational axis
   // whose information per matched point falls under the floor is
   // degenerate: a bare corridor leaves its own axis free, and along it the
-  // registration is not believed; the IMU carries the motion there and the
-  // variance reported for that axis is the degenerate one.
+  // registration is no measurement at all; the IMU carries the motion and
+  // its uncertainty grows there.
   double minimum_matched_fraction{0.3};
   double maximum_residual_rms_m{0.5};
   double minimum_information_per_point{0.02};
-  double degenerate_axis_variance_m2{1.0};
-  // The share of a scan's position correction, spread over the interval
-  // since the last scan, that corrects the IMU-integrated velocity.
-  double velocity_correction_gain{0.5};
+  // The registered position updates position and velocity together in a
+  // Kalman step: the IMU's motion since the last registered scan is the
+  // prior, with the uncertainty white acceleration noise of this density
+  // adds over the interval, and the registration is the measurement, with
+  // its variance along each axis from the registration's information,
+  // floored at this variance, and along an axis it could not observe it
+  // carried none.
+  double acceleration_noise_mps2{0.5};
+  double minimum_position_variance_m2{0.0025};
   double gravity_mps2{9.80665};
   // The share of the rotation the IMU missed over a scan interval that is
   // attributed to the gyroscope bias, per scan, and the bias the estimator
