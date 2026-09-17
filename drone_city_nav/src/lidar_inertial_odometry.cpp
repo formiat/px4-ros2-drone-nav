@@ -408,20 +408,21 @@ struct LidarInertialOdometry::Impl {
   };
 
   // The state integrated through the IMU samples up to `target_stamp_ns`.
-  // While holding, only the attitude follows the gyroscope.
+  // While holding, only the attitude follows the gyroscope. The interval
+  // ends at the target itself: the stretch after the last sample before it
+  // is integrated with the sample that spans it, or with the last sample
+  // when none has arrived yet. Stopping at that last sample dropped up to a
+  // transport period of every scan interval, and on r381 the velocity made
+  // up for the missing motion at 1.12 times the scans' own and scattered
+  // 0.55 m/s rms about it.
   [[nodiscard]] Propagated propagateTo(const std::int64_t target_stamp_ns) const {
     Propagated state{.stamp_ns = stamp_ns,
                      .position = position,
                      .rotation = rotation,
                      .velocity = velocity};
-    for (const LidarInertialImuSample& sample : imu) {
-      if (sample.stamp_ns <= state.stamp_ns) {
-        continue;
-      }
-      if (sample.stamp_ns > target_stamp_ns) {
-        break;
-      }
-      const double dt = 1.0e-9 * static_cast<double>(sample.stamp_ns - state.stamp_ns);
+    const auto integrate = [this, &state](const LidarInertialImuSample& sample,
+                                          const std::int64_t until_ns) {
+      const double dt = 1.0e-9 * static_cast<double>(until_ns - state.stamp_ns);
       if (dt <= 0.5) {
         const Eigen::Vector3d rate = sample.gyro_radps - gyro_bias;
         state.rotation = (state.rotation * expSmallAngle(rate * dt)).normalized();
@@ -433,7 +434,22 @@ struct LidarInertialOdometry::Impl {
           state.velocity += acceleration * dt;
         }
       }
-      state.stamp_ns = sample.stamp_ns;
+      state.stamp_ns = until_ns;
+    };
+    const LidarInertialImuSample* last = nullptr;
+    for (const LidarInertialImuSample& sample : imu) {
+      if (state.stamp_ns >= target_stamp_ns) {
+        break;
+      }
+      if (sample.stamp_ns <= state.stamp_ns) {
+        last = &sample;
+        continue;
+      }
+      integrate(sample, std::min(sample.stamp_ns, target_stamp_ns));
+      last = &sample;
+    }
+    if (last != nullptr && state.stamp_ns < target_stamp_ns) {
+      integrate(*last, target_stamp_ns);
     }
     return state;
   }

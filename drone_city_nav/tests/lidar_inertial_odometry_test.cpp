@@ -134,7 +134,10 @@ TEST(LidarInertialOdometryTest, TracksAYawTurnFromTheGyroscopeAndTheWalls) {
 // motion there. Flown at 3 m/s with a true IMU the estimate stays within
 // half a metre over fifteen seconds; before this the position froze at the
 // first scan's velocity and fell forty metres behind.
-TEST(LidarInertialOdometryTest, ACorridorLeavesItsAxisToTheImu) {
+// A flight along a bare corridor: two seconds of constant acceleration,
+// then cruise. The IMU samples every 10 ms, `imu_offset_ns` before the
+// scans' own stamps.
+void flyTheCorridor(const std::int64_t imu_offset_ns) {
   std::vector<Eigen::Vector3d> corridor;
   for (double x = -40.0; x <= 40.0; x += 0.25) {
     for (double z = -4.0; z <= 0.0; z += 0.25) {
@@ -151,7 +154,7 @@ TEST(LidarInertialOdometryTest, ACorridorLeavesItsAxisToTheImu) {
   const Eigen::Quaterniond level = Eigen::Quaterniond::Identity();
   odometry.initialize(0, start, 0.0);
   for (int i = 1; i <= 100; ++i) {
-    odometry.addImu(restSample(i * kSecond / 100, level));
+    odometry.addImu(restSample(i * kSecond / 100 - imu_offset_ns, level));
   }
   const double speed = 3.0;
   const std::int64_t first_scan = kSecond;
@@ -160,12 +163,12 @@ TEST(LidarInertialOdometryTest, ACorridorLeavesItsAxisToTheImu) {
   for (int k = 0; k <= 150; ++k) {
     const std::int64_t stamp = first_scan + k * kSecond / 10;
     const double seconds = 1.0e-9 * static_cast<double>(stamp - first_scan);
-    // Two seconds of constant acceleration, then cruise.
     const double along =
         seconds < 2.0 ? 0.25 * speed * seconds * seconds : speed * (seconds - 1.0);
     if (k > 0) {
       for (int i = 1; i <= 10; ++i) {
-        const std::int64_t imu_stamp = stamp - kSecond / 10 + i * kSecond / 100;
+        const std::int64_t imu_stamp =
+            stamp - kSecond / 10 + i * kSecond / 100 - imu_offset_ns;
         const double imu_seconds = 1.0e-9 * static_cast<double>(imu_stamp - first_scan);
         LidarInertialImuSample sample = restSample(imu_stamp, level);
         sample.accelerometer_mps2.x() += imu_seconds < 2.0 ? speed / 2.0 : 0.0;
@@ -190,6 +193,17 @@ TEST(LidarInertialOdometryTest, ACorridorLeavesItsAxisToTheImu) {
   // many times the walls' across it.
   EXPECT_GT(estimate.position_variance_m2.x(),
             10.0 * estimate.position_variance_m2.y());
+}
+
+TEST(LidarInertialOdometryTest, ACorridorLeavesItsAxisToTheImu) {
+  flyTheCorridor(0);
+}
+
+// The last IMU sample before a scan lies up to a transport period before
+// the scan's stamp; the interval is integrated to the stamp all the same,
+// or the free axis falls behind by that stretch of motion every scan.
+TEST(LidarInertialOdometryTest, TheImuIsIntegratedToTheScanStamp) {
+  flyTheCorridor(5'000'000LL);
 }
 
 // A scan that matches nothing does not send the estimate away: the
