@@ -33,7 +33,7 @@ struct LidarInertialOdometryConfig {
   // A thinned scan larger than this keeps every k-th point: inside a
   // structure a 0.4 m thinning still leaves 11 000 points (r358), and the
   // registration has to fit the scan period.
-  std::size_t maximum_scan_points{6000U};
+  std::size_t maximum_scan_points{4000U};
   double minimum_range_m{1.0};
   double maximum_range_m{30.0};
   // A scan point matches the nearest submap point within this distance.

@@ -830,13 +830,8 @@ lidar_inertial_odometry_node:
     scan_voxel_m: 0.4
     # Inside a structure the 0.4 m thinning still leaves 11 000 points (r358)
     # and the registration ran to 265 ms; a scan larger than this is thinned
-    # coarser until it fits, so the submap keeps no holes. Replayed over the
-    # lidar and IMU of r391 to r393 and r401 to r404, three times each, the
-    # cross-track error at p95 reached 0.32 m at 4000 points, 0.26 at 5000,
-    # 0.21 at 6000 and 8000, with medians of 0.10, 0.10, 0.09 and 0.09 m;
-    # the worst flight at 4000 was r404, whose error builds along the
-    # corridor at x 30 to 60.
-    maximum_scan_points: 6000
+    # coarser until it fits, so the submap keeps no holes.
+    maximum_scan_points: 4000
     minimum_range_m: 1.0
     maximum_range_m: 30.0
     maximum_correspondence_m: 1.0
