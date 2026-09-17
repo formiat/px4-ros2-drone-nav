@@ -834,13 +834,25 @@ lidar_inertial_odometry_node:
     keyframe_translation_m: 0.5
     keyframe_rotation_rad: 0.17
     maximum_keyframes: 40
+    # Keyframes overlap, and every point of a cell is a candidate for every
+    # query reaching it: r357 spent up to 217 ms per scan on a 300 000 point
+    # submap with twenty per cell, twice the scan period.
+    maximum_points_per_cell: 6
+    # A scan that fails to register is retried from the last registered pose
+    # carried at its velocity with the correspondence distance widened by
+    # this factor; until one registers, the position holds there.
+    recovery_correspondence_factor: 3.0
     # The registration is healthy when at least this share of the scan
     # matched, the residual stayed under this width and the weakest
     # translational axis kept this much information per matched point.
     minimum_matched_fraction: 0.3
     maximum_residual_rms_m: 0.5
     minimum_information_per_point: 0.02
-    gyro_bias_gain: 0.05
+    # The share of the rotation the IMU missed over a scan interval that is
+    # attributed to gyroscope bias. r357 flew with ten times this and the
+    # heading ran away within ten seconds of takeoff.
+    gyro_bias_gain: 0.005
+    maximum_gyro_bias_radps: 0.05
 
 mppi_offboard_node:
   ros__parameters:

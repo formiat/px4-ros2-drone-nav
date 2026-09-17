@@ -50,6 +50,10 @@ public:
         "keyframe_rotation_rad", config.keyframe_rotation_rad);
     config.maximum_keyframes = static_cast<std::size_t>(declare_parameter<int>(
         "maximum_keyframes", static_cast<int>(config.maximum_keyframes)));
+    config.maximum_points_per_cell = static_cast<std::size_t>(declare_parameter<int>(
+        "maximum_points_per_cell", static_cast<int>(config.maximum_points_per_cell)));
+    config.recovery_correspondence_factor = declare_parameter<double>(
+        "recovery_correspondence_factor", config.recovery_correspondence_factor);
     config.minimum_matched_fraction = declare_parameter<double>(
         "minimum_matched_fraction", config.minimum_matched_fraction);
     config.maximum_residual_rms_m = declare_parameter<double>(
@@ -58,6 +62,8 @@ public:
         "minimum_information_per_point", config.minimum_information_per_point);
     config.gyro_bias_gain =
         declare_parameter<double>("gyro_bias_gain", config.gyro_bias_gain);
+    config.maximum_gyro_bias_radps = declare_parameter<double>(
+        "maximum_gyro_bias_radps", config.maximum_gyro_bias_radps);
     odometry_ = std::make_unique<LidarInertialOdometry>(config);
 
     // The lidar sits on the body as the obstacle memory knows it: the same
@@ -180,13 +186,14 @@ private:
         get_logger(), *get_clock(), 1000,
         "LIDAR_INERTIAL_ODOMETRY healthy=%s published=%s matched=%.2f residual_m=%.3f "
         "information=%.3f iterations=%zu scan_points=%zu submap_points=%zu "
-        "keyframes=%zu "
-        "scan_ms=%.1f imu_samples=%" PRIu64 " scans=%" PRIu64 " healthy_scans=%" PRIu64
+        "keyframes=%zu scan_ms=%.1f imu_lag_ms=%.1f imu_samples=%" PRIu64
+        " scans=%" PRIu64 " healthy_scans=%" PRIu64
         " position=(%.2f,%.2f,%.2f) yaw=%.3f",
         estimate.healthy ? "true" : "false", published ? "true" : "false",
         estimate.matched_fraction, estimate.residual_rms_m,
         estimate.information_per_point, estimate.iterations, estimate.scan_points,
-        estimate.submap_points, estimate.keyframes, scan_ms, imu_samples_, scans_,
+        estimate.submap_points, estimate.keyframes, scan_ms,
+        1.0e-6 * static_cast<double>(estimate.imu_lag_ns), imu_samples_, scans_,
         healthy_scans_, map_xy.x, map_xy.y,
         -estimate.position_ned_m.z() + transform_.map_origin.z, mapYaw(estimate));
   }

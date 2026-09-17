@@ -379,6 +379,13 @@ struct LidarInertialOdometry::Impl {
   Eigen::Vector3d last_keyframe_position{Eigen::Vector3d::Zero()};
   Eigen::Quaterniond last_keyframe_rotation{Eigen::Quaterniond::Identity()};
   bool has_keyframe{false};
+  // The last scan that registered: where the estimate returns to when a
+  // scan fails, carried forward at that velocity.
+  bool has_registered{false};
+  bool holding{false};
+  std::int64_t registered_stamp_ns{0};
+  Eigen::Vector3d registered_position{Eigen::Vector3d::Zero()};
+  Eigen::Vector3d registered_velocity{Eigen::Vector3d::Zero()};
 
   void propagate(const LidarInertialImuSample& sample) {
     if (sample.stamp_ns <= stamp_ns) {
@@ -391,11 +398,20 @@ struct LidarInertialOdometry::Impl {
     }
     const Eigen::Vector3d rate = sample.gyro_radps - gyro_bias;
     rotation = (rotation * expSmallAngle(rate * dt)).normalized();
-    const Eigen::Vector3d acceleration = rotation * sample.accelerometer_mps2 +
-                                         Eigen::Vector3d{0.0, 0.0, config.gravity_mps2};
-    position += velocity * dt + 0.5 * acceleration * dt * dt;
-    velocity += acceleration * dt;
+    if (!holding) {
+      const Eigen::Vector3d acceleration =
+          rotation * sample.accelerometer_mps2 +
+          Eigen::Vector3d{0.0, 0.0, config.gravity_mps2};
+      position += velocity * dt + 0.5 * acceleration * dt * dt;
+      velocity += acceleration * dt;
+    }
     stamp_ns = sample.stamp_ns;
+  }
+
+  [[nodiscard]] Eigen::Vector3d carriedPosition(const std::int64_t at_stamp_ns) const {
+    const double dt =
+        std::max(0.0, 1.0e-9 * static_cast<double>(at_stamp_ns - registered_stamp_ns));
+    return registered_position + registered_velocity * std::min(dt, 2.0);
   }
 
   // The level from the accelerometer at rest: the measured specific force
@@ -473,34 +489,56 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
   }
   const std::vector<Eigen::Vector3d> thinned = thinScan(points_body, impl.config);
   estimate.scan_points = thinned.size();
+  estimate.imu_lag_ns = stamp_ns - impl.stamp_ns;
 
-  const Eigen::Vector3d prior_position = impl.position;
   const Eigen::Quaterniond prior_rotation = impl.rotation;
+  // A scan after a lost one starts from the last registered pose carried
+  // forward, not from wherever the IMU alone has wandered.
+  const Eigen::Vector3d prior_position = impl.holding && impl.has_registered
+                                             ? impl.carriedPosition(stamp_ns)
+                                             : impl.position;
   bool healthy = false;
   if (impl.submap.empty()) {
     healthy = !thinned.empty();
     estimate.matched_fraction = healthy ? 1.0 : 0.0;
   } else {
-    const RegistrationResult registration =
+    const auto assess = [&impl](const RegistrationResult& registration) {
+      return registration.converged &&
+             registration.matched_fraction >= impl.config.minimum_matched_fraction &&
+             registration.residual_rms_m <= impl.config.maximum_residual_rms_m &&
+             registration.information_per_point >=
+                 impl.config.minimum_information_per_point;
+    };
+    RegistrationResult registration =
         registerScan(impl.submap, thinned, prior_position, prior_rotation, impl.config);
+    healthy = assess(registration);
+    if (!healthy && impl.has_registered) {
+      LidarInertialOdometryConfig wide = impl.config;
+      wide.maximum_correspondence_m *= impl.config.recovery_correspondence_factor;
+      const RegistrationResult recovered = registerScan(
+          impl.submap, thinned, impl.carriedPosition(stamp_ns), prior_rotation, wide);
+      if (assess(recovered)) {
+        registration = recovered;
+        healthy = true;
+      }
+    }
     estimate.matched_fraction = registration.matched_fraction;
     estimate.residual_rms_m = registration.residual_rms_m;
     estimate.information_per_point = registration.information_per_point;
     estimate.iterations = registration.iterations;
-    healthy =
-        registration.converged &&
-        registration.matched_fraction >= impl.config.minimum_matched_fraction &&
-        registration.residual_rms_m <= impl.config.maximum_residual_rms_m &&
-        registration.information_per_point >= impl.config.minimum_information_per_point;
     if (healthy) {
-      // The registered pose corrects the propagated one; the rotation the
-      // IMU missed feeds the gyroscope bias a little.
+      // The registered pose corrects the propagated one; a share of the
+      // rotation the IMU missed over the interval goes to the gyroscope bias.
       const Eigen::Vector3d attitude_error =
           logRotation(prior_rotation.conjugate() * registration.rotation);
       if (impl.last_scan_stamp_ns > 0 && stamp_ns > impl.last_scan_stamp_ns) {
         const double dt =
             1.0e-9 * static_cast<double>(stamp_ns - impl.last_scan_stamp_ns);
         impl.gyro_bias += impl.config.gyro_bias_gain * attitude_error / dt;
+        const double bias_norm = impl.gyro_bias.norm();
+        if (bias_norm > impl.config.maximum_gyro_bias_radps) {
+          impl.gyro_bias *= impl.config.maximum_gyro_bias_radps / bias_norm;
+        }
         impl.velocity = (registration.position - impl.last_scan_position) / dt;
       }
       impl.position = registration.position;
@@ -545,6 +583,17 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
     }
     impl.last_scan_stamp_ns = stamp_ns;
     impl.last_scan_position = impl.position;
+    impl.has_registered = true;
+    impl.holding = false;
+    impl.registered_stamp_ns = stamp_ns;
+    impl.registered_position = impl.position;
+    impl.registered_velocity = impl.velocity;
+  } else if (impl.has_registered) {
+    // Hold at the carried pose: the attitude keeps following the gyroscope,
+    // the position waits for a scan that registers.
+    impl.holding = true;
+    impl.position = prior_position;
+    impl.velocity = impl.registered_velocity;
   }
   estimate.healthy = healthy;
   estimate.position_ned_m = impl.position;

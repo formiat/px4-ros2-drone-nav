@@ -44,7 +44,16 @@ struct LidarInertialOdometryConfig {
   double keyframe_translation_m{0.5};
   double keyframe_rotation_rad{0.17};
   std::size_t maximum_keyframes{40U};
-  std::size_t maximum_points_per_cell{20U};
+  // Keyframes overlap, and every point of a cell is a candidate for every
+  // query that reaches it; six keep the nearest search inside the scan
+  // period where twenty did not (r357: 217 ms per scan at 300 000 points).
+  std::size_t maximum_points_per_cell{6U};
+  // When a scan fails to register from the propagated pose, it is tried
+  // again from the last registered pose carried forward at its velocity,
+  // with the correspondence distance widened by this factor; until a scan
+  // registers again the position holds there and only the attitude follows
+  // the gyroscope, so a lost scan cannot send the estimate running.
+  double recovery_correspondence_factor{3.0};
   // The registration is healthy when at least this share of the scan
   // matched, the residual stayed under this width and the translational
   // information along its weakest axis, per matched point, stayed above
@@ -53,9 +62,12 @@ struct LidarInertialOdometryConfig {
   double maximum_residual_rms_m{0.5};
   double minimum_information_per_point{0.02};
   double gravity_mps2{9.80665};
-  // The share of the attitude correction each scan feeds back into the
-  // gyroscope bias.
-  double gyro_bias_gain{0.05};
+  // The share of the rotation the IMU missed over a scan interval that is
+  // attributed to the gyroscope bias, per scan, and the bias the estimator
+  // will believe. r357 flew with 0.05 of the error per scan divided by the
+  // interval, ten times this, and the heading ran away within ten seconds.
+  double gyro_bias_gain{0.005};
+  double maximum_gyro_bias_radps{0.05};
 };
 
 struct LidarInertialEstimate {
@@ -68,6 +80,9 @@ struct LidarInertialEstimate {
   Eigen::Vector3d orientation_variance_rad2{Eigen::Vector3d::Zero()};
   Eigen::Vector3d velocity_variance_m2ps2{Eigen::Vector3d::Zero()};
   bool healthy{false};
+  // How far behind the scan the last IMU sample was when the scan was
+  // registered; the prior is only as current as this.
+  std::int64_t imu_lag_ns{0};
   double matched_fraction{0.0};
   double residual_rms_m{0.0};
   double information_per_point{0.0};

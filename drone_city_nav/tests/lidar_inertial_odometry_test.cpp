@@ -126,6 +126,47 @@ TEST(LidarInertialOdometryTest, TracksAYawTurnFromTheGyroscopeAndTheWalls) {
   EXPECT_LT((estimate.position_ned_m - position).norm(), 0.1);
 }
 
+// A scan that matches nothing does not send the estimate away: the
+// position holds at the last registered pose while the IMU keeps the
+// attitude, and the next scan that fits registers again from there.
+TEST(LidarInertialOdometryTest, ALostScanHoldsThePositionUntilOneRegistersAgain) {
+  const std::vector<Eigen::Vector3d> room = roomPoints();
+  LidarInertialOdometry odometry{LidarInertialOdometryConfig{}};
+  const Eigen::Vector3d position{1.0, -2.0, -2.0};
+  const Eigen::Quaterniond level = Eigen::Quaterniond::Identity();
+  odometry.initialize(0, position, 0.0);
+  for (int i = 1; i <= 50; ++i) {
+    odometry.addImu(restSample(i * kSecond / 100, level));
+  }
+  std::int64_t stamp = kSecond / 2;
+  for (int k = 0; k < 5; ++k, stamp += kSecond / 10) {
+    ASSERT_TRUE(odometry.addScan(stamp, scanFrom(room, position, level)).healthy);
+    for (int i = 1; i <= 10; ++i) {
+      odometry.addImu(restSample(stamp + i * kSecond / 100, level));
+    }
+  }
+  // Two seconds of scans from nowhere near the room, with an accelerometer
+  // that reads a spurious push the whole time.
+  const std::vector<Eigen::Vector3d> nowhere{{100.0, 100.0, 100.0},
+                                             {101.0, 100.0, 100.0},
+                                             {100.0, 101.0, 100.0},
+                                             {100.0, 100.0, 101.0}};
+  for (int k = 0; k < 20; ++k, stamp += kSecond / 10) {
+    const LidarInertialEstimate lost = odometry.addScan(stamp, nowhere);
+    EXPECT_FALSE(lost.healthy);
+    EXPECT_LT((lost.position_ned_m - position).norm(), 0.2) << "scan " << k;
+    for (int i = 1; i <= 10; ++i) {
+      LidarInertialImuSample sample = restSample(stamp + i * kSecond / 100, level);
+      sample.accelerometer_mps2 += Eigen::Vector3d{2.0, 0.0, 0.0};
+      odometry.addImu(sample);
+    }
+  }
+  const LidarInertialEstimate back =
+      odometry.addScan(stamp, scanFrom(room, position, level));
+  EXPECT_TRUE(back.healthy);
+  EXPECT_LT((back.position_ned_m - position).norm(), 0.15);
+}
+
 TEST(LidarInertialOdometryTest,
      AnEmptyScanIsNotHealthyAndAnUninitializedEstimatorSaysSo) {
   LidarInertialOdometry odometry{LidarInertialOdometryConfig{}};
