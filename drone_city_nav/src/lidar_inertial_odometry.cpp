@@ -556,6 +556,11 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
   bool healthy = false;
   Eigen::Vector3d corrected_position = prior_position;
   Eigen::Quaterniond corrected_rotation = prior_rotation;
+  // Where the scan itself registered: along the axes the registration
+  // observed its own position, along the others the filter's. The submap is
+  // built at this pose, so the map follows what the scans saw and not the
+  // filter's blend of them with the IMU.
+  Eigen::Vector3d keyframe_position = prior_position;
   Eigen::Vector3d corrected_velocity = propagated.velocity;
   if (impl.submap.empty()) {
     healthy = !thinned.empty();
@@ -595,6 +600,7 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
       const double residual_variance =
           std::max(1.0e-4, registration.residual_rms_m * registration.residual_rms_m);
       Eigen::Matrix3d measurement_covariance = Eigen::Matrix3d::Zero();
+      Eigen::Matrix3d observed = Eigen::Matrix3d::Zero();
       for (int axis = 0; axis < 3; ++axis) {
         const Eigen::Vector3d direction = solver.eigenvectors().col(axis);
         const double information = solver.eigenvalues()(axis);
@@ -607,6 +613,7 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
         } else {
           variance = std::max(residual_variance / information,
                               impl.config.minimum_position_variance_m2);
+          observed += direction * direction.transpose();
         }
         measurement_covariance += variance * direction * direction.transpose();
       }
@@ -637,6 +644,8 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
       const Eigen::Vector3d innovation = registration.position - prior_position;
       corrected_position = prior_position + gain.topRows<3>() * innovation;
       corrected_velocity = prior_velocity + gain.bottomRows<3>() * innovation;
+      keyframe_position =
+          corrected_position + observed * (registration.position - corrected_position);
       Matrix6d update = Matrix6d::Identity();
       update.leftCols<3>() -= gain;
       impl.covariance = update * prior_covariance;
@@ -683,12 +692,12 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
             impl.config.keyframe_rotation_rad;
     if (keyframe_due) {
       Keyframe keyframe;
-      keyframe.position = impl.position;
+      keyframe.position = keyframe_position;
       keyframe.rotation = impl.rotation;
       keyframe.points_world.reserve(thinned.size());
       const Eigen::Matrix3d rotation = impl.rotation.toRotationMatrix();
       for (const Eigen::Vector3d& point : thinned) {
-        keyframe.points_world.push_back(rotation * point + impl.position);
+        keyframe.points_world.push_back(rotation * point + keyframe_position);
       }
       impl.submap.insert(std::move(keyframe));
       impl.last_keyframe_position = impl.position;

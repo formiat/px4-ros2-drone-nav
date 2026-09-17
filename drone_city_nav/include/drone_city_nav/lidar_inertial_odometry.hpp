@@ -75,7 +75,7 @@ struct LidarInertialOdometryConfig {
   // floored at this variance, and along an axis it could not observe it
   // carried none.
   double acceleration_noise_mps2{0.5};
-  double minimum_position_variance_m2{0.0025};
+  double minimum_position_variance_m2{4.0e-4};
   double gravity_mps2{9.80665};
   // The share of the rotation the IMU missed over a scan interval that is
   // attributed to the gyroscope bias, per scan, and the bias the estimator

@@ -865,9 +865,15 @@ lidar_inertial_odometry_node:
     # fixed share of the correction divided by the interval rang at 0.5 on
     # r374 and lagged at 0.1 on r376, where a corridor axis the registration
     # could not observe carried a 0.45 m/s velocity error for 1.3 s and left
-    # the estimate 0.6 m behind for the rest of the flight.
+    # the estimate 0.6 m behind for the rest of the flight. The floor sets how
+    # far the filter follows the scans over the IMU: at 5 cm the steady
+    # position gain is 0.36, and on r377 the error grew with speed, 0.03 m per
+    # second at 4 to 5 m/s and 0.10 above 5; at 1 cm it is 0.63, and a
+    # synthetic corridor with an accelerometer bias of 0.05 m/s^2 drifts
+    # 0.50 m along its unobserved axis against 0.21 m at 2 and 5 cm. 2 cm,
+    # with a steady position gain of 0.50.
     acceleration_noise_mps2: 0.5
-    minimum_position_variance_m2: 0.0025
+    minimum_position_variance_m2: 0.0004
     # The share of the rotation the IMU missed over a scan interval that is
     # attributed to gyroscope bias. r357 flew with ten times this and the
     # heading ran away within ten seconds of takeoff.
