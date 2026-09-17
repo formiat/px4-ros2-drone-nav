@@ -42,8 +42,9 @@ vision-only 3D perception without lidar or static maps.
 
 Code releases are tagged `vMAJOR.MINOR.PATCH` on `main` and described in
 [`CHANGELOG.md`](CHANGELOG.md); environment asset bundles carry their own
-`environment-assets-*` tags. The current release is `v0.2.1`: point-to-point
-navigation without a static map through a complex 3D urban location. Each
+`environment-assets-*` tags. The current release is `v0.3.0`: point-to-point
+navigation without a static map through a complex 3D urban location, without
+GNSS or a magnetometer. Each
 flight's runtime manifest records the package version and `git describe`.
 
 ## Status And Safety

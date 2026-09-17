@@ -349,7 +349,8 @@ files, fourteen sources sit near the 1000-line cap and 226 lie flat in
 
 ### 13. GNSS- And Magnetometer-Denied Lidar-Inertial Navigation (Completed)
 
-Closed on 2026-09-17 on the urban point-to-point mission with the 3D lidar
+Shipped in [v0.3.0](https://github.com/formiat/px4-ros2-drone-nav/releases/tag/v0.3.0)
+on 2026-09-17, closed on the urban point-to-point mission with the 3D lidar
 and no static map; the profile, the estimator and its health are in
 [`localization.md`](localization.md), the checks in [`testing.md`](testing.md).
 `LOCALIZATION_PROFILE=lidar_inertial`, the default of every single-vehicle

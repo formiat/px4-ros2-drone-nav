@@ -4,7 +4,16 @@ Code releases are tagged `vMAJOR.MINOR.PATCH` on `main`. Environment asset
 bundles are released separately under `environment-assets-*` tags; each code
 release names the asset tags it was validated with.
 
-## Unreleased
+## v0.3.0 (2026-09-17)
+
+Navigation without GNSS and without a magnetometer: a lidar-inertial
+estimator is the vehicle's position and heading, fed to the autopilot as
+external odometry, and it is the default of every single-vehicle flight.
+The release also carries the resource and transport budgets of roadmap item
+10, the withdrawal of the wrong static maps, the braking contract along the
+direction of motion and the fixes listed below. Validated on Urban Circuit
+Practice 01 (`environment-assets-urban-v1`) with the 3D lidar and no static
+map, r430 to r434 on the lidar-inertial profile and r352 to r356 on GNSS.
 
 - Roadmap item 13: the stack flies without GNSS, the magnetometer or the
   simulation heading source, and every single-vehicle flight now does so by
