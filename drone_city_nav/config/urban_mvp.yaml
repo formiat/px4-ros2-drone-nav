@@ -859,8 +859,14 @@ lidar_inertial_odometry_node:
     minimum_information_per_point: 0.02
     degenerate_axis_variance_m2: 1.0
     # The share of a scan's position correction, over the interval since the
-    # last scan, that corrects the IMU-integrated velocity.
-    velocity_correction_gain: 0.5
+    # last scan, that corrects the IMU-integrated velocity. r374 flew 0.5 and
+    # at a sharp reversal the estimator's speed rang 9.9, 3.5, 7.1, 0.5 m/s
+    # against a true 5, the corrections reached 1.5 m and the registration
+    # 218 ms: the scans are processed at 5 to 10 Hz and the IMU arrives at 74
+    # to 100 Hz, and a correction divided by an irregular interval feeds back.
+    # A synthetic 5 m/s reversal holds the velocity to 0.20 m/s at 0.5 and to
+    # 0.03 m/s at 0.1 with the same position error.
+    velocity_correction_gain: 0.1
     # The share of the rotation the IMU missed over a scan interval that is
     # attributed to gyroscope bias. r357 flew with ten times this and the
     # heading ran away within ten seconds of takeoff.

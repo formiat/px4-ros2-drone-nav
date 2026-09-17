@@ -36,9 +36,12 @@ px4_parameter_stream() {
     echo "param set EKF2_HGT_REF 0"
     echo "param set EKF2_EV_CTRL 11"
     # The odometry carries the scan's own moment in the synchronised clock,
-    # so no delay is added on top: the registration's 50 to 190 ms stay
-    # inside the 200 ms delayed horizon (EKF2_DELAY_MAX) the filter fuses on.
+    # so no delay is added on top. The filter fuses on a delayed horizon
+    # EKF2_DELAY_MAX behind now, and a sample older than it is fused at the
+    # horizon instead of its moment: the registration took 44 ms at p50,
+    # 133 at p99 and 218 at most on r374, past the default 200.
     echo "param set EKF2_EV_DELAY 0"
+    echo "param set EKF2_DELAY_MAX 300"
     echo "param set EKF2_EV_NOISE_MD 0"
     echo "param show EKF2_GPS_CTRL"
     echo "param show EKF2_MAG_TYPE"
