@@ -116,8 +116,16 @@ public:
                                        "/fmu/in/vehicle_visual_odometry"),
         rclcpp::QoS{rclcpp::KeepLast{10}}.best_effort().durability_volatile());
 
+    // A registration holds the executor for 40 to 80 ms at p50 and p95 and
+    // longer at times. The IMU arrives at 110 Hz, so ten samples dropped
+    // whatever came during a long one: the estimator integrated gaps of up
+    // to 160 ms as one held sample. A scan kept one deep was replaced by the
+    // next, and the odometry the autopilot received went 200 ms without a
+    // sample, which ends its external-vision fusion; restarting it reset the
+    // height by 0.80, 1.17 and 2.25 m on r398, r389 and r393, and the
+    // controller closed the navigation for the rest of the flight.
     const auto px4_qos =
-        rclcpp::QoS{rclcpp::KeepLast{10}}.best_effort().durability_volatile();
+        rclcpp::QoS{rclcpp::KeepLast{100}}.best_effort().durability_volatile();
     autopilot_ = std::make_unique<AutopilotStateSource>(
         *this, transform_,
         AutopilotStateTopics{
@@ -138,7 +146,7 @@ public:
         });
     cloud_sub_ = create_subscription<sensor_msgs::msg::PointCloud2>(
         declare_parameter<std::string>("lidar_3d_topic", "/lidar_3d/points"),
-        rclcpp::SensorDataQoS{}.keep_last(1),
+        rclcpp::SensorDataQoS{}.keep_last(3),
         [this](const sensor_msgs::msg::PointCloud2::SharedPtr cloud) {
           onCloud(*cloud);
         });
