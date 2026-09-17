@@ -601,6 +601,9 @@ LidarInertialOdometry::addScan(const std::int64_t stamp_ns,
       }
       const Eigen::Vector3d correction =
           projector * (registration.position - prior_position);
+      const double speed = propagated.velocity.norm();
+      estimate.correction_along_track_m =
+          speed > 0.1 ? correction.dot(propagated.velocity) / speed : 0.0;
       corrected_position = prior_position + correction;
       corrected_rotation = registration.rotation;
       if (interval_s > 0.0) {

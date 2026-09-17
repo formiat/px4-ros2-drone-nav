@@ -98,6 +98,10 @@ struct LidarInertialEstimate {
   double information_per_point{0.0};
   // Translational axes the registration could not observe this scan.
   std::size_t degenerate_axes{0U};
+  // The position correction the registration applied to the IMU's guess,
+  // along the direction of motion (positive ahead); a constant value here
+  // is a stamp offset between the scan and the IMU, not motion.
+  double correction_along_track_m{0.0};
   std::size_t iterations{0U};
   std::size_t scan_points{0U};
   std::size_t submap_points{0U};

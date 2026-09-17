@@ -852,7 +852,14 @@ lidar_inertial_odometry_node:
     # translational axis kept this much information per matched point.
     minimum_matched_fraction: 0.3
     maximum_residual_rms_m: 0.5
+    # An axis with less information than this per matched point is
+    # degenerate: the registration is not believed along it, the IMU
+    # carries the motion there and this variance is reported for it.
     minimum_information_per_point: 0.02
+    degenerate_axis_variance_m2: 1.0
+    # The share of a scan's position correction, over the interval since the
+    # last scan, that corrects the IMU-integrated velocity.
+    velocity_correction_gain: 0.5
     # The share of the rotation the IMU missed over a scan interval that is
     # attributed to gyroscope bias. r357 flew with ten times this and the
     # heading ran away within ten seconds of takeoff.
