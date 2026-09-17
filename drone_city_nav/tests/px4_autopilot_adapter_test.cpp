@@ -39,6 +39,8 @@ namespace {
   message.v_z_valid = true;
   message.heading_good_for_control = true;
   message.xy_reset_counter = 3U;
+  message.delta_xy = {0.5F, -0.25F};
+  message.delta_z = 0.1F;
   message.heading_reset_counter = 2U;
   return message;
 }
@@ -67,6 +69,11 @@ TEST(Px4AutopilotAdapter, ReadsTheNedEstimateInTheMapFrame) {
   EXPECT_TRUE(state.position_valid && state.altitude_valid && state.velocity_valid &&
               state.vertical_velocity_valid);
   EXPECT_EQ(state.xy_reset_counter, 3U);
+  // The reset shift follows the position into the map frame, z up.
+  const Point2 expected_shift = enuTransform().localVectorToMap(Point2{0.5, -0.25});
+  EXPECT_DOUBLE_EQ(state.reset_shift_m.x, expected_shift.x);
+  EXPECT_DOUBLE_EQ(state.reset_shift_m.y, expected_shift.y);
+  EXPECT_NEAR(state.reset_shift_m.z, -0.1, 1.0e-6);
   EXPECT_EQ(state.heading_reset_counter, 2U);
   EXPECT_NE(state.payload_fingerprint, 0U);
 }

@@ -12,6 +12,15 @@
 
 namespace drone_city_nav {
 
+namespace {
+
+// The largest shift of the autopilot's estimate a reset may carry and still
+// be the same frame: the 0.33 m the sensor-braking margin budgets for the
+// position estimate against the true pose.
+constexpr double kFrameResetToleranceM{0.33};
+
+} // namespace
+
 void ProductionMppiNode::onLocalState(const AutopilotLocalState& message) {
   ProductionMppiNavigation navigation;
   navigation.receive_stamp_ns = get_clock()->now().nanoseconds();
@@ -141,17 +150,38 @@ void ProductionMppiNode::onLocalState(const AutopilotLocalState& message) {
         (state_reset.state_lineage_reset || state_reset.frame_compensation_required);
     if (state_reset.frame_compensation_required &&
         !navigation_frame_reset_unresolved_) {
-      // PX4 local-origin continuity cannot be repaired only in this callback:
-      // offboard setpoint conversion and world producers use the same frame.
-      // Keep navigation unavailable until a coordinated handoff or node restart.
-      navigation_frame_reset_unresolved_ = true;
-      RCLCPP_ERROR(
-          get_logger(),
-          "LOCAL_POSITION frame_reset_unresolved=true timestamp_epoch_reset=%s "
-          "xy_reset_counter=%u z_reset_counter=%u",
-          angular_derivative.timestamp_epoch_reset ? "true" : "false",
-          static_cast<unsigned>(navigation.xy_reset_counter),
-          static_cast<unsigned>(navigation.z_reset_counter));
+      // The autopilot says how far the reset moved its estimate. A shift
+      // within the estimate error the sensor-braking margin already budgets
+      // is not a new frame: the autopilot aligning its estimator to a source
+      // it is still admitting resets its position by centimetres, and on the
+      // lidar-inertial profile that reset came after the first authoritative
+      // state and closed the navigation for the flight (r372). A larger
+      // shift, or a timestamp epoch reset, is a frame the stack cannot
+      // repair in this callback: offboard setpoint conversion and world
+      // producers use the same frame, so the navigation stays unavailable
+      // until a coordinated handoff or node restart.
+      const double reset_shift_m =
+          std::sqrt(message.reset_shift_m.x * message.reset_shift_m.x +
+                    message.reset_shift_m.y * message.reset_shift_m.y +
+                    message.reset_shift_m.z * message.reset_shift_m.z);
+      if (!angular_derivative.timestamp_epoch_reset &&
+          reset_shift_m <= kFrameResetToleranceM) {
+        RCLCPP_WARN(get_logger(),
+                    "LOCAL_POSITION frame_reset_within_tolerance=true shift_m=%.3f "
+                    "tolerance_m=%.2f xy_reset_counter=%u z_reset_counter=%u",
+                    reset_shift_m, kFrameResetToleranceM,
+                    static_cast<unsigned>(navigation.xy_reset_counter),
+                    static_cast<unsigned>(navigation.z_reset_counter));
+      } else {
+        navigation_frame_reset_unresolved_ = true;
+        RCLCPP_ERROR(
+            get_logger(),
+            "LOCAL_POSITION frame_reset_unresolved=true timestamp_epoch_reset=%s "
+            "shift_m=%.3f xy_reset_counter=%u z_reset_counter=%u",
+            angular_derivative.timestamp_epoch_reset ? "true" : "false", reset_shift_m,
+            static_cast<unsigned>(navigation.xy_reset_counter),
+            static_cast<unsigned>(navigation.z_reset_counter));
+      }
     }
     if (angular_derivative.timestamp_epoch_reset) {
       RCLCPP_WARN(
