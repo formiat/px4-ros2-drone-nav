@@ -528,7 +528,7 @@ def validate_localization_profile(manifest_path: Path, ros_log: str, px4_log: st
         errors.append(f"FAIL: localization profile is known ({profile})")
         return
     for name, expected in (("EKF2_GPS_CTRL", 0.0), ("EKF2_MAG_TYPE", 5.0),
-                           ("EKF2_EV_CTRL", 15.0)):
+                           ("EKF2_EV_CTRL", 11.0)):
         shown = shown_px4_parameter(px4_log, name)
         if shown is None:
             errors.append(f"FAIL: lidar_inertial profile shows {name} in the autopilot log")

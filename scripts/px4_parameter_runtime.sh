@@ -24,12 +24,17 @@ px4_parameter_stream() {
   if [[ "${localization_profile}" == "lidar_inertial" ]]; then
     # The lidar-inertial estimator is the position and the heading: GNSS
     # off, magnetometer off, the barometer keeps the height reference, and
-    # the external odometry carries position, velocity and yaw with the
-    # variances the estimator reports.
+    # the external odometry carries position and yaw with the variances the
+    # estimator reports. Not velocity: the estimator's velocity is its IMU
+    # integration corrected by the scans, and at takeoff in r367 it read
+    # 3.2 m/s for a 1 m/s climb; fused with the tight variance it carried,
+    # the autopilot's height ran to 4.8 m for a 1.1 m climb and the vehicle
+    # was flown into the pad. The autopilot derives velocity from its own
+    # IMU and the fused position.
     echo "param set EKF2_GPS_CTRL 0"
     echo "param set EKF2_MAG_TYPE 5"
     echo "param set EKF2_HGT_REF 0"
-    echo "param set EKF2_EV_CTRL 15"
+    echo "param set EKF2_EV_CTRL 11"
     echo "param set EKF2_EV_DELAY 0"
     echo "param set EKF2_EV_NOISE_MD 0"
     echo "param show EKF2_GPS_CTRL"
