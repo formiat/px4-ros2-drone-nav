@@ -65,9 +65,6 @@ struct CellKeyHash {
 struct SubmapCell {
   std::vector<Eigen::Vector3d> points;
   Eigen::Vector3d normal{Eigen::Vector3d::Zero()};
-  // The plane's anchor: the mean of the points the normal was fitted over,
-  // which sits on the surface where a single thinned centroid need not.
-  Eigen::Vector3d anchor{Eigen::Vector3d::Zero()};
   bool normal_valid{false};
   bool normal_stale{true};
 };
@@ -147,18 +144,19 @@ public:
       fitNormal(*best_cell, point);
     }
     normal = best_cell->normal;
-    if (best_cell->normal_valid) {
-      point = best_cell->anchor;
-    }
     return best_cell->normal_valid;
   }
 
 private:
+  // A new point refits the planes of its own cell and the ring around it;
+  // the outer ring the fit reads keeps its plane, which one point two
+  // cells away hardly moves, and refitting it on every insertion took the
+  // registration past the scan period (r364: 86 ms at p95, 125 at most).
   void markNeighboursStale(const Eigen::Vector3d& point) {
     const CellKey center = cellOf(point, config_.scan_voxel_m);
-    for (std::int32_t dx = -2; dx <= 2; ++dx) {
-      for (std::int32_t dy = -2; dy <= 2; ++dy) {
-        for (std::int32_t dz = -2; dz <= 2; ++dz) {
+    for (std::int32_t dx = -1; dx <= 1; ++dx) {
+      for (std::int32_t dy = -1; dy <= 1; ++dy) {
+        for (std::int32_t dz = -1; dz <= 1; ++dz) {
           const auto found =
               cells_.find(CellKey{center.x + dx, center.y + dy, center.z + dz});
           if (found != cells_.end()) {
@@ -208,7 +206,6 @@ private:
     covariance /= static_cast<double>(count);
     const Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver{covariance};
     const Eigen::Vector3d values = solver.eigenvalues();
-    cell.anchor = mean;
     // A plane: the smallest spread is well below the middle one.
     if (!(values(0) < 0.25 * values(1))) {
       return;
