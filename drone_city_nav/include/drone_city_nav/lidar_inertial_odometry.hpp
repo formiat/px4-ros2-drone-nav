@@ -30,6 +30,10 @@ struct LidarInertialOdometryConfig {
   // The scan is thinned to one point per cell of this size before
   // registration; the submap keeps its points in cells of the same size.
   double scan_voxel_m{0.4};
+  // A thinned scan larger than this keeps every k-th point: inside a
+  // structure a 0.4 m thinning still leaves 11 000 points (r358), and the
+  // registration has to fit the scan period.
+  std::size_t maximum_scan_points{4000U};
   double minimum_range_m{1.0};
   double maximum_range_m{30.0};
   // A scan point matches the nearest submap point within this distance.
@@ -108,8 +112,11 @@ public:
 
   void addImu(const LidarInertialImuSample& sample);
 
-  // One scan, its points in the body FRD frame at `stamp_ns`; returns the
-  // estimate at that stamp.
+  // One scan, its points in the body FRD frame at `stamp_ns`, on the same
+  // clock as the IMU samples; returns the estimate at that stamp. The IMU
+  // samples since the last scan are integrated up to the stamp for the
+  // scan's starting guess, so a scan processed late still registers where
+  // it was taken.
   [[nodiscard]] LidarInertialEstimate
   addScan(std::int64_t stamp_ns, const std::vector<Eigen::Vector3d>& points_body);
 

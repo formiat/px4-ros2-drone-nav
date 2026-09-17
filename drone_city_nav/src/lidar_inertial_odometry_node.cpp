@@ -9,6 +9,7 @@
 #include "drone_city_nav/lidar_inertial_odometry.hpp"
 #include "drone_city_nav/px4_autopilot_adapter.hpp"
 #include "drone_city_nav/px4_map_frame_transform.hpp"
+#include "drone_city_nav/px4_ros_time_mapper.hpp"
 #include "drone_city_nav/ros_conversions.hpp"
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
@@ -21,6 +22,7 @@
 #include <cmath>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -44,6 +46,8 @@ public:
         "maximum_iterations", static_cast<int>(config.maximum_iterations)));
     config.robust_width_m =
         declare_parameter<double>("robust_width_m", config.robust_width_m);
+    config.maximum_scan_points = static_cast<std::size_t>(declare_parameter<int>(
+        "maximum_scan_points", static_cast<int>(config.maximum_scan_points)));
     config.keyframe_translation_m = declare_parameter<double>(
         "keyframe_translation_m", config.keyframe_translation_m);
     config.keyframe_rotation_rad = declare_parameter<double>(
@@ -113,10 +117,19 @@ public:
         AutopilotStateTopics{
             .imu = declare_parameter<std::string>("px4_sensor_combined_topic",
                                                   "/fmu/out/sensor_combined"),
+            .clock_sync = declare_parameter<std::string>("px4_timesync_status_topic",
+                                                         "/fmu/out/timesync_status"),
         },
         px4_qos,
         AutopilotStateCallbacks{
-            .imu = [this](const AutopilotImuSample& sample) { onImu(sample); }});
+            .imu = [this](const AutopilotImuSample& sample) { onImu(sample); },
+            .clock_sync =
+                [this](const AutopilotClockSync& sample) {
+                  time_mapper_.observeTimesync(
+                      sample.timestamp_us, sample.estimated_offset_us,
+                      sample.round_trip_time_us, get_clock()->now().nanoseconds());
+                },
+        });
     cloud_sub_ = create_subscription<sensor_msgs::msg::PointCloud2>(
         declare_parameter<std::string>("lidar_3d_topic", "/lidar_3d/points"),
         rclcpp::SensorDataQoS{}.keep_last(1),
@@ -131,7 +144,15 @@ public:
 
 private:
   void onImu(const AutopilotImuSample& sample) {
-    const std::int64_t stamp_ns = static_cast<std::int64_t>(sample.timestamp_us) * 1000;
+    // The IMU is stamped on the autopilot's clock and the scans on the
+    // simulation's; the clock synchronisation samples relate the two.
+    const std::optional<std::int64_t> mapped = time_mapper_.px4LocalToRosTimeNs(
+        static_cast<std::int64_t>(sample.timestamp_us) * 1000);
+    if (!mapped.has_value()) {
+      ++unmapped_imu_samples_;
+      return;
+    }
+    const std::int64_t stamp_ns = *mapped;
     if (!odometry_->initialized()) {
       odometry_->initialize(stamp_ns, Eigen::Vector3d::Zero(),
                             initial_heading_ned_rad_);
@@ -187,14 +208,14 @@ private:
         "LIDAR_INERTIAL_ODOMETRY healthy=%s published=%s matched=%.2f residual_m=%.3f "
         "information=%.3f iterations=%zu scan_points=%zu submap_points=%zu "
         "keyframes=%zu scan_ms=%.1f imu_lag_ms=%.1f imu_samples=%" PRIu64
-        " scans=%" PRIu64 " healthy_scans=%" PRIu64
+        " scans=%" PRIu64 " healthy_scans=%" PRIu64 " unmapped_imu=%" PRIu64
         " position=(%.2f,%.2f,%.2f) yaw=%.3f",
         estimate.healthy ? "true" : "false", published ? "true" : "false",
         estimate.matched_fraction, estimate.residual_rms_m,
         estimate.information_per_point, estimate.iterations, estimate.scan_points,
         estimate.submap_points, estimate.keyframes, scan_ms,
         1.0e-6 * static_cast<double>(estimate.imu_lag_ns), imu_samples_, scans_,
-        healthy_scans_, map_xy.x, map_xy.y,
+        healthy_scans_, unmapped_imu_samples_, map_xy.x, map_xy.y,
         -estimate.position_ned_m.z() + transform_.map_origin.z, mapYaw(estimate));
   }
 
@@ -236,7 +257,9 @@ private:
   Eigen::Quaterniond lidar_to_body_{Eigen::Quaterniond::Identity()};
   double initial_heading_ned_rad_{0.0};
   bool publish_to_autopilot_{false};
+  Px4RosTimeMapper time_mapper_;
   std::uint64_t imu_samples_{0U};
+  std::uint64_t unmapped_imu_samples_{0U};
   std::uint64_t scans_{0U};
   std::uint64_t healthy_scans_{0U};
 };

@@ -813,6 +813,7 @@ lidar_inertial_odometry_node:
   ros__parameters:
     lidar_3d_topic: /lidar_3d/points
     px4_sensor_combined_topic: /fmu/out/sensor_combined
+    px4_timesync_status_topic: /fmu/out/timesync_status
     px4_visual_odometry_topic: /fmu/in/vehicle_visual_odometry
     estimate_pose_topic: /drone_city_nav/lidar_inertial_odometry/pose
     # The same mounting the obstacle memory projects the scan with.
@@ -826,6 +827,10 @@ lidar_inertial_odometry_node:
     # point scan becomes a few thousand, and the point-to-plane registration
     # against forty keyframes runs inside the 100 ms scan period.
     scan_voxel_m: 0.4
+    # Inside a structure the 0.4 m thinning still leaves 11 000 points (r358)
+    # and the registration ran to 265 ms; a scan larger than this is thinned
+    # coarser until it fits, so the submap keeps no holes.
+    maximum_scan_points: 4000
     minimum_range_m: 1.0
     maximum_range_m: 30.0
     maximum_correspondence_m: 1.0
